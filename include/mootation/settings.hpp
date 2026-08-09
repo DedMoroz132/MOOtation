@@ -247,8 +247,17 @@ inline Settings Settings::from_string(const std::string& text, const std::string
     // A scalar bound broadcasts to n_vars. This is the only implicit step in
     // the format, and it needs n_vars to be known.
     auto broadcast = [&](std::vector<double>& v, const char* name) {
-        if (v.size() == 1 && n_vars_decl && *n_vars_decl > 1)
-            v.assign(static_cast<std::size_t>(*n_vars_decl), v[0]);
+        if (v.size() == 1 && n_vars_decl && *n_vars_decl > 1) {
+            // The scalar is copied out FIRST. v.assign(n, v[0]) passes a
+            // reference into the vector being assigned, and assign() is not
+            // required to tolerate an argument that aliases its own storage:
+            // libstdc++ and MSVC happen to survive it, libc++ destroys the
+            // element before reading it and every bound comes back 0. That is
+            // how `lower = 0 / upper = 1` turned into `0 must be < 0` on arm64
+            // macOS while passing everywhere else.
+            const double scalar = v[0];
+            v.assign(static_cast<std::size_t>(*n_vars_decl), scalar);
+        }
         else if (n_vars_decl && static_cast<int>(v.size()) != *n_vars_decl && v.size() != 1)
             throw std::invalid_argument(
                 std::string(origin) + ": " + name + " has " + std::to_string(v.size()) +

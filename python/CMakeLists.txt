@@ -42,6 +42,16 @@ set_target_properties(mootation_python PROPERTIES
 
 target_link_libraries(mootation_python PRIVATE MOOtation::MOOtation)
 
+# Building into the source tree above is a developer convenience — it makes the
+# checkout importable with no copy step. It does NOT put the extension in a
+# wheel: scikit-build-core fills the wheel from CMake's install rules, and
+# `wheel.packages` contributes the pure-Python files only. Without this rule
+# `pip install .` yields a package whose every compiled entry point raises
+# ImportError, which is exactly what CI caught.
+if(DEFINED SKBUILD)
+    install(TARGETS mootation_python LIBRARY DESTINATION mootation)
+endif()
+
 # The dispatch is generated from include/mootation/algorithms.def, so the binding cannot
 # drift from the library: adding an algorithm there makes it callable here.
 target_include_directories(mootation_python PRIVATE

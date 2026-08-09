@@ -79,10 +79,23 @@ inline int find_H_le(int m, long long target) {
 namespace detail {
 // The number of objectives is NOT passed separately: it is cur.size(), and the
 // last coordinate is the one at cur.size()-1. Deriving the bound from the
-// buffer being written keeps the two from ever disagreeing — and it is what
-// stops GCC 13 at -O2 from reporting a -Warray-bounds on the push_back below,
-// which it does when the recursion is inlined into itself and the relation
-// between a separate `m` and cur's length is lost.
+// buffer being written keeps the two from ever disagreeing.
+//
+// The pragma is the only one in the library and is not there lightly. GCC 13
+// at -O2 reports -Warray-bounds inside <bits/stl_algobase.h> for the
+// push_back below, blaming a memmove of two doubles out of a one-double
+// buffer. That cannot happen here: generate() refuses m < 1, sizes `cur` once
+// at m and never resizes it, and the terminal branch fires at dim ==
+// cur.size()-1, so every push_back copies exactly cur.size() elements out of a
+// cur.size()-element buffer. Nor is the report stable — g++ 20 does not emit
+// it, clang and MSVC never do, and rewriting the recursion to take its bound
+// from cur.size() did not move it. It is a middle-end false positive of the
+// kind GCC has a long trail of (PR 109442 and relatives), so it is suppressed
+// for GCC only, over this function only.
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Warray-bounds"
+#endif
 inline void recurse(int rem, std::size_t dim,
                     std::vector<double>& cur, double H_inv,
                     std::vector<std::vector<double>>& out)
@@ -97,6 +110,9 @@ inline void recurse(int rem, std::size_t dim,
         recurse(rem - i, dim + 1, cur, H_inv, out);
     }
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
 } // namespace detail
 
 // Generate single-layer Das-Dennis vectors with H divisions.
