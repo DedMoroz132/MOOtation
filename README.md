@@ -2,6 +2,9 @@
 
 ***English** · [Русский](README.ru.md)*
 
+[![DOI](https://zenodo.org/badge/1328202748.svg)](https://doi.org/10.5281/zenodo.21864324)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 **Header-only C++17 library with 60 multi- and many-objective evolutionary algorithms, implemented from their original papers.**
 
 *MOO* — multi-objective optimization; *mutation* — the operator every one of
@@ -542,6 +545,29 @@ Implementation notes at the top of every algorithm file document: the paper (aut
 The library has been through: a line-by-line dual-blind audit against the primary sources with arbitration of disagreements; an adversarial refutation pass over every finding, followed by a re-verification of the refutations themselves (which reinstated a substantial fraction of them); compiler-warning review at `/W4 /WX` and `-Wall -Wextra -Werror`; and ASan/UBSan runtime passes over all algorithms, enforced by CI.
 
 What that process does NOT give you: an independent reproduction of the published experimental results. The convergence suite in `tests/` checks that each algorithm converges on DTLZ2 and ZDT1 within a coarse tolerance — it is a smoke test, not a benchmark replication. Two algorithms currently carry a `known_issue` marker there (`liu_gu2011`, `moead_m2m`); their headers explain what is unresolved.
+
+## How to cite
+
+Each release is archived on Zenodo. Cite the **concept DOI** below rather than a
+version-specific one: it always resolves to the newest release, which is what a
+reader following the reference will want. Use the version DOI only when the
+exact code matters — reporting an experiment, say — and Zenodo lists one for
+every release.
+
+```bibtex
+@software{karavan_mootation,
+  author    = {Karavan, Andrey},
+  title     = {{MOOtation}: a header-only {C++17} library of multi- and
+               many-objective evolutionary algorithms},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.21864324},
+  url       = {https://github.com/DedMoroz132/MOOtation}
+}
+```
+
+If you use an algorithm in published work, **cite its paper too**. Every header
+carries the reference and DOI of the publication it follows, and that is the
+work the method comes from — this library is only an implementation of it.
 
 ## License
 

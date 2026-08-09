@@ -17,6 +17,16 @@ authors:
 version: "0.1.0"
 date-released: "2026-08-06"
 license: Apache-2.0
+# The CONCEPT doi, which always resolves to the newest release. The
+# version-specific one is listed below for anyone who needs the exact code.
+doi: "10.5281/zenodo.21864324"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.21864324"
+    description: "Concept DOI — resolves to the latest release"
+  - type: doi
+    value: "10.5281/zenodo.21864325"
+    description: "Version 0.1.0"
 repository-code: "https://github.com/DedMoroz132/MOOtation"
 url: "https://github.com/DedMoroz132/MOOtation"
 keywords:
