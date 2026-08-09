@@ -1,0 +1,20 @@
+# Normalize to LF in the repository; check out with the platform's native EOL.
+* text=auto eol=lf
+
+# Sources are always LF in the repo.
+*.hpp   text eol=lf
+*.cpp   text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.cmake text eol=lf
+*.in    text eol=lf
+*.cff   text eol=lf
+
+# Reference-point / population data files: plain text, LF.
+*.dat   text eol=lf
+*.csv   text eol=lf
+*.py    text eol=lf
+*.toml  text eol=lf
+*.def   text eol=lf
+*.json  text eol=lf
+*.cfg   text eol=lf

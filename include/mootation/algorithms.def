@@ -1,0 +1,84 @@
+// SPDX-License-Identifier: Apache-2.0
+// ============================================================================
+// The list of public algorithms, as an X-macro.
+//
+//   MOOTATION_ALG(key, IndividualType, CoreTemplate)
+//
+// Adding an algorithm to the library means adding exactly one line here; every
+// test that iterates over "all algorithms" then picks it up automatically.
+// Include this file with MOOTATION_ALG defined, then #undef it.
+// ============================================================================
+
+// ── Pareto-dominance & diversity ────────────────────────────────────────────
+MOOTATION_ALG(nsga2,      NSGAII_Individual,    NSGAIICore)
+MOOTATION_ALG(spea2,      SPEA2_Individual,     SPEA2Core)
+MOOTATION_ALG(spea2_sde,  SPEA2SDE_Individual,  SPEA2SDECore)
+MOOTATION_ALG(grea,       GrEA_Individual,      GrEACore)
+MOOTATION_ALG(vaea,       VaEA_Individual,      VaEACore)
+MOOTATION_ALG(agemoea,    AGEMOEA_Individual,   AGEMOEACore)
+MOOTATION_ALG(etea,       NSGAII_Individual,    ETEACore)
+
+// ── Reference-point (NSGA-III family) ───────────────────────────────────────
+MOOTATION_ALG(nsga3,      NSGAIII_Individual,   NSGAIIICore)
+MOOTATION_ALG(a_nsga3,    ANSGA3_Individual,    ANSGA3Core)
+MOOTATION_ALG(theta_dea,  ThetaDEA_Individual,  ThetaDEACore)
+MOOTATION_ALG(ar_moea,    ARMOEA_Individual,    ARMOEACore)
+
+// ── Decomposition & region division ─────────────────────────────────────────
+MOOTATION_ALG(moead,      MOEAD_Individual,     MOEADCore)
+MOOTATION_ALG(moead_de,   MOEAD_Individual,     MOEADDECore)
+MOOTATION_ALG(moead_dra,  MOEAD_Individual,     MOEADDRACore)
+MOOTATION_ALG(moead_dd,   MOEADD_Individual,    MOEADDCore)
+MOOTATION_ALG(moead_awa,  MOEADAWA_Individual,  MOEADAWACore)
+MOOTATION_ALG(adaw,       AdaW_Individual,      AdaWCore)
+MOOTATION_ALG(moead_m2m,  NSGAII_Individual,    MOEADM2MCore)
+MOOTATION_ALG(moead_am2m, NSGAII_Individual,    MOEADAM2MCore)
+MOOTATION_ALG(sms_m2m,    NSGAII_Individual,    SMSM2MCore)
+MOOTATION_ALG(moead_ds,   NSGAII_Individual,    MOEADDSCore)
+MOOTATION_ALG(rd_emo,     NSGAII_Individual,    RDEMOCore)
+MOOTATION_ALG(aprd,       NSGAII_Individual,    APRDCore)
+MOOTATION_ALG(liu_gu2011, NSGAII_Individual,    LiuGu2011Core)
+MOOTATION_ALG(isde_rd,    NSGAII_Individual,    ISDERDCore)
+MOOTATION_ALG(dhea,       NSGAII_Individual,    DHEACore)
+MOOTATION_ALG(hlmea,      NSGAII_Individual,    HLMEACore)
+
+// ── Indicator-based ─────────────────────────────────────────────────────────
+MOOTATION_ALG(ibea_eplus,       IBEA_Individual,      IBEAePlusCore)
+MOOTATION_ALG(ibea_hd,          IBEAhd_Individual,    IBEAhdCore)
+MOOTATION_ALG(ibea_eplus_clean, IBEA_Individual,      IBEAePlusCleanCore)
+MOOTATION_ALG(mibea,            mIBEA_Individual,     mIBEACore)
+MOOTATION_ALG(r2ibea,           R2IBEA_Individual,    R2IBEACore)
+MOOTATION_ALG(hype,             HypE_Individual,      HypECore)
+MOOTATION_ALG(mombi2,           MOMBI2_Individual,    MOMBI2Core)
+MOOTATION_ALG(nimmo,            NIMMO_Individual,     NIMMOCore)
+MOOTATION_ALG(irea,             IREA_Individual,      IREACore)
+MOOTATION_ALG(edv,              EDV_Individual,       EDVCore)
+MOOTATION_ALG(if_maoea,         NSGAII_Individual,    IFMaOEACore)
+MOOTATION_ALG(maoea_iamd,       MaOEAIAMD_Individual, MaOEAIAMDCore)
+
+// ── Reference-vector / angle-based ──────────────────────────────────────────
+MOOTATION_ALG(rvea,       RVEA_Individual,      RVEACore)
+MOOTATION_ALG(maoeaarv,   MaOEAARV_Individual,  MaOEAARVCore)
+MOOTATION_ALG(mbra,       MBRA_Individual,      MBRACore)
+MOOTATION_ALG(nrv_moea,   NRVMOEA_Individual,   NRVMOEACore)
+MOOTATION_ALG(dea_gng,    NSGAII_Individual,    DEAGNGCore)
+MOOTATION_ALG(srv,        SRV_Individual,       SRVCore)
+MOOTATION_ALG(srv_nsga3,  NSGAIII_Individual,   SRVNSGA3Core)
+MOOTATION_ALG(srv_moead,  MOEAD_Individual,     SRVMOEADCore)
+
+// ── Clustering-based ────────────────────────────────────────────────────────
+MOOTATION_ALG(camoea,     CAMOEA_Individual,    CAMOEACore)
+MOOTATION_ALG(cava_moea,  CAVAMOEA_Individual,  CAVAMOEACore)
+MOOTATION_ALG(maoea_ac,   MaOEAAC_Individual,   MaOEAACCore)
+MOOTATION_ALG(maoea_c,    MaOEAC_Individual,    MaOEACCore)
+MOOTATION_ALG(maoea_3c,   NSGAII_Individual,    MaOEA3CCore)
+MOOTATION_ALG(emyo_c,     EMyOC_Individual,     EMyOCCore)
+MOOTATION_ALG(crea,       crEA_Individual,      crEACore)
+MOOTATION_ALG(dcea,       NSGAII_Individual,    DCEACore)
+MOOTATION_ALG(hcca,       NSGAII_Individual,    HCCACore)
+MOOTATION_ALG(lis_lcs,    LISLCS_Individual,    LISLCSCore)
+MOOTATION_ALG(clia,       NSGAII_Individual,    CLIACore)
+
+// ── Archive-based ───────────────────────────────────────────────────────────
+MOOTATION_ALG(two_arch2,  NSGAII_Individual,    Two_Arch2Core)
+MOOTATION_ALG(naemo,      NSGAII_Individual,    NAEMOCore)

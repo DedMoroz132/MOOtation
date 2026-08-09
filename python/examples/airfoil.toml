@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# A run description for an external evaluator: MOOtation proposes decision
+# vectors, your own programs turn each one into objective values.
+#
+#   python -m mootation.run --show --check python/examples/airfoil.toml
+#
+# THIS ONE DOES NOT PASS --check, and that is the point of showing it: gmsh,
+# `solver` and templates/geom.geo.in do not exist on your machine, so the
+# validator names all three and exits 1. That is exactly the report you want
+# ten seconds in rather than ten minutes into a day-long run. For a config that
+# passes anywhere Python does, see demo.toml next door.
+#
+# The config is a FILE on purpose. It versions, it diffs, it copies between
+# machines, and it can be attached to a paper. A configuration assembled by
+# clicking through a UI is none of those things.
+
+[run]
+name    = "airfoil"
+scratch = "scratch/worker_{worker:02d}"   # OVERWRITTEN, one per worker
+ledger  = "results/{name}/evaluations.jsonl"
+workers = 12
+on_fail = "penalty"          # penalty | skip | abort
+penalty = 1e8
+resume  = true
+
+# Optional. Seeds the initial population from a previous run's final one.
+# [run.warm_start]
+# from             = "results/airfoil_nsga2/final_population.jsonl"
+# on_size_mismatch = "truncate"            # truncate | pad | error
+
+# ─── The problem ────────────────────────────────────────────────────────────
+[problem]
+kind   = "external"          # external | builtin
+n_vars = 12
+n_objs = 3
+bounds = [
+    [0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0],
+    [0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0],
+    [0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0],
+]
+
+[problem.input]
+template = "templates/geom.geo.in"   # {x[0]}, {x[1]}, ... are substituted
+write_to = "{scratch}/geom.geo"
+
+# Commands are argv ARRAYS, never strings: no quoting rules, no escaping of
+# spaces in paths, no difference between cmd and sh. Add run_windows /
+# run_linux / run_darwin to override one step on one platform; the generic
+# `run` is the fallback.
+[[problem.steps]]
+name    = "mesh"
+run     = ["gmsh", "-3", "{scratch}/geom.geo", "-o", "{scratch}/mesh.msh"]
+timeout = 300
+
+[[problem.steps]]
+name        = "solve"
+run         = ["solver", "--mesh", "{scratch}/mesh.msh", "--out", "{scratch}/out.csv"]
+run_windows = ["solver.exe", "--mesh", "{scratch}/mesh.msh", "--out", "{scratch}/out.csv"]
+timeout     = 3600
+
+# Parsers, from clean formats to dirty ones: csv (by column name), json (by
+# dotted path), regex (for solver logs — the commonest real case), columns
+# (positional), and python:module.function for anything binary.
+#
+# A parse failure is an EVALUATION failure and goes to on_fail. Nothing is
+# silently substituted: one corrupted point poisons the archive and every
+# metric computed from it.
+[problem.output]
+parser      = "csv"
+from        = "{scratch}/out.csv"
+objectives  = ["mass", "drag", "deflection"]
+constraints = ["stress_max"]           # <= 0 means satisfied
+
+# ─── Algorithms ─────────────────────────────────────────────────────────────
+# `--check` verifies each name against include/mootation/algorithms.def and
+# each pop against the algorithm's own constraint: NSGA-III needs an exact
+# Das-Dennis lattice size, M2M needs pop divisible by K.
+[[algorithms]]
+name   = "nsga2"
+pop    = 92
+gens   = 500
+params = { eta_c = 20, pc = 0.9 }
+
+[[algorithms]]
+name   = "moead_de"
+pop    = 91                  # a lattice size for 3 objectives
+gens   = 500
+params = { T = 20, delta = 0.9 }

@@ -1,0 +1,52 @@
+name: Bug report
+description: A crash, a build failure, or plainly wrong output
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproducer
+      description: >-
+        A self-contained .cpp that shows the problem, plus the exact compile
+        command. This is usually the difference between a fix today and a fix
+        next month.
+      render: cpp
+    validations:
+      required: true
+
+  - type: input
+    id: compiler
+    attributes:
+      label: Compiler and version
+      placeholder: "g++ 13.2 / clang 17 / MSVC 19.40"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: std
+    attributes:
+      label: C++ standard
+      options: ["c++17", "c++20", "c++23", "other"]
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Compiler or runtime output
+      description: Paste it verbatim, including any sanitizer report.
+      render: text

@@ -1,0 +1,68 @@
+name: Fidelity report
+description: An implementation does not match the paper it claims to follow
+labels: ["fidelity"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the report type this project cares about most. The more precisely
+        you can point at the paper, the faster it can be resolved.
+
+  - type: input
+    id: file
+    attributes:
+      label: File
+      description: Which header, e.g. `include/mootation/algorithms/nsga3.hpp`
+      placeholder: include/mootation/algorithms/<name>.hpp
+    validations:
+      required: true
+
+  - type: input
+    id: doi
+    attributes:
+      label: Paper DOI
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Location in the paper
+      description: Section, equation, algorithm and line number
+      placeholder: "§III-B, Eq. 7, Algorithm 2 line 14"
+    validations:
+      required: true
+
+  - type: textarea
+    id: paper_says
+    attributes:
+      label: What the paper says
+      description: >-
+        Paraphrase, or quote briefly. Please do not paste long extracts or
+        attach the PDF.
+    validations:
+      required: true
+
+  - type: textarea
+    id: code_does
+    attributes:
+      label: What the code does instead
+      description: Quote the relevant lines, with line numbers.
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: >-
+        Does this change results, and under what conditions — objective count,
+        population size, constraints on or off?
+
+  - type: checkboxes
+    id: declared
+    attributes:
+      label: Header check
+      options:
+        - label: I checked the file's "declared deviations" list and this is not already declared there.
+          required: true

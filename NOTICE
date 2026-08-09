@@ -1,0 +1,13 @@
+MOOtation
+Copyright 2026 Andrey Karavan
+
+Licensed under the Apache License, Version 2.0. See the LICENSE file.
+
+This library implements evolutionary multi- and many-objective optimization
+algorithms that were originally described in the scientific literature. Each
+source file names the primary publication it follows, with authors, venue and
+DOI. Those publications remain the intellectual work of their respective
+authors; this project claims copyright only in its own source code.
+
+If MOOtation contributes to academic work, a citation is appreciated.
+See CITATION.cff.

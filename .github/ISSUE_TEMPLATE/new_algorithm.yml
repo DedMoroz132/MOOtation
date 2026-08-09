@@ -1,0 +1,51 @@
+name: New algorithm
+description: Propose adding an algorithm from the literature
+labels: ["new-algorithm"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please open this issue before writing code, so effort is not duplicated.
+
+  - type: input
+    id: name
+    attributes:
+      label: Algorithm name and acronym
+    validations:
+      required: true
+
+  - type: input
+    id: doi
+    attributes:
+      label: Paper DOI
+    validations:
+      required: true
+
+  - type: input
+    id: venue
+    attributes:
+      label: Authors, venue and year
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why this one
+      description: >-
+        What does it do that the 60 already here do not? Which existing
+        algorithm is it closest to?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Before you start
+      options:
+        - label: I have legitimate access to the paper and will not attach it here.
+          required: true
+        - label: I will implement from the paper, not by copying a reference implementation.
+          required: true
+        - label: I intend to write the full header block — DOI, scheme, paper defaults with their section, and declared deviations.
+          required: true

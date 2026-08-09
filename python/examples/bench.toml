@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Running the standard suites instead of an external solver.
+#
+#   python -m mootation.run --show --check python/examples/bench.toml
+#
+# `--check` resolves the family/objective cross product against the real
+# registry and names anything that does not exist. Note the naming: the
+# problems are DTLZ2_3D, not DTLZ2_M3 — a plausible-looking name that is not
+# in the registry is exactly what this catches.
+
+[run]
+name    = "suite"
+scratch = "scratch/worker_{worker:02d}"
+ledger  = "results/{name}/evaluations.jsonl"
+workers = 8
+resume  = true
+
+[problem]
+kind = "builtin"          # objectives come from the built-in suites
+
+[benchmarks]
+families   = ["DTLZ", "WFG"]
+objectives = [3, 5, 10]   # sizes that actually exist for both families;
+                          # --check names the available ones if you miss
+runs       = 31           # 31 is enough for a Wilcoxon test
+
+# ... or name them outright:
+# problems = ["DTLZ2_3D", "WFG4_5D", "MaF3_8D"]
+
+# NOTE: nsga3 below needs pop to be an exact Das-Dennis lattice size, and
+# that size depends on the objective count — 91 at M=3, but not at M=5 or
+# M=10. A single pop across a family sweep is exactly the trap --check is
+# for; run one config per objective count, or pick an algorithm without
+# the lattice constraint.
+
+[[algorithms]]
+name = "nsga3"
+pop  = 91                 # an exact Das-Dennis lattice size for 3 objectives
+gens = 500
+
+[[algorithms]]
+name   = "moead_de"
+pop    = 91
+gens   = 500
+params = { T = 20, delta = 0.9 }

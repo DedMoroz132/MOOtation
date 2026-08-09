@@ -1,0 +1,639 @@
+# SPDX-License-Identifier: Apache-2.0
+name: CI
+
+on:
+  push:
+    # `ci/**` as well as main: a shakedown branch must be able to run the full
+    # suite before anything reaches the default branch. Without it a push to a
+    # side branch triggers nothing, and on a repository with no commits yet
+    # there is no base to open a pull request against either.
+    branches: [main, 'ci/**']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # 03:17 UTC daily. An odd minute on purpose: GitHub queues the top of the
+    # hour heavily, and a job that starts late is a job whose failure is seen
+    # late.
+    - cron: '17 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Linux / macOS: the compiler x standard matrix ──────────────────────────
+  build:
+    name: ${{ matrix.os }} · ${{ matrix.compiler }} · ${{ matrix.std }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:       [ubuntu-latest, macos-latest]
+        compiler: [g++, clang++]
+        std:      [17, 20]
+        exclude:
+          # Apple clang is reached through clang++; g++ on macOS runners is a
+          # shim for the same toolchain, so it would test nothing new.
+          - os: macos-latest
+            compiler: g++
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DMOOTATION_WERROR=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        # -LE nightly skips test_convergence and test_constraints, which are
+        # ~10 of the suite's ~11 minutes. They run on the schedule below, and
+        # can be forced on a branch with the `full-tests` label on a PR.
+        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
+
+  # ── Windows is a supported platform, not an afterthought ──────────────────
+  windows:
+    name: windows · msvc · ${{ matrix.std }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        std: [17, 20]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DMOOTATION_WERROR=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        # -LE nightly skips test_convergence and test_constraints, which are
+        # ~10 of the suite's ~11 minutes. They run on the schedule below, and
+        # can be forced on a branch with the `full-tests` label on a PR.
+        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
+
+  # ── The long tests ────────────────────────────────────────────────────────
+  # test_convergence runs all 60 algorithms to convergence; test_constraints
+  # runs all 60 twice, with constraint handling off and on. Together they are
+  # the bulk of the suite's runtime, so every push skips them (-LE nightly) and
+  # this job runs them on a schedule instead.
+  #
+  # Skipping them on a push is a real trade: a regression in one of them is
+  # caught within a day rather than within a minute. That is the right way
+  # round — they guard slow rot (an algorithm quietly stopping converging), not
+  # the kind of breakage a compiler catches.
+  nightly:
+    name: nightly · full test suite
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DMOOTATION_WERROR=ON
+          -DMOOTATION_BUILD_C_API=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: The tests every push skips
+        run: ctest --test-dir build --output-on-failure -L nightly
+
+      - name: Everything else, for completeness
+        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
+
+      # The long tests are the only ones that drive every algorithm to
+      # convergence, so they are the only place a use-after-free in a rarely
+      # taken branch will surface. Running them under the sanitizers is slow,
+      # which is precisely why it belongs here and not on a push.
+      - name: The long tests again, under ASan and UBSan
+        run: |
+          cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
+          cmake --build build-asan -j
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -L nightly
+
+  # ── Sanitizers ────────────────────────────────────────────────────────────
+  # The README claims the library is clean under ASan and UBSan. This job is
+  # what makes that claim checkable by anyone, rather than something the
+  # maintainer asserts.
+  sanitize:
+    name: asan + ubsan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DMOOTATION_SANITIZE=ON
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Test
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1
+        # The quick tests only. Sanitizers multiply runtime, and the long tests
+        # under ASan are a nightly job's worth of work on their own — see the
+        # `nightly` job, which runs exactly that.
+        run: ctest --test-dir build --output-on-failure -LE nightly
+
+  # ── The installed package must actually be consumable ─────────────────────
+  # Installing and then building a tiny project against find_package() is the
+  # only way to catch a broken export set. It is a common failure and invisible
+  # to every other job here.
+  install-consume:
+    name: install + find_package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install to a staging prefix
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX=$PWD/stage \
+                -DMOOTATION_BUILD_TESTS=OFF -DMOOTATION_BUILD_EXAMPLES=OFF
+          cmake --build build -j
+          cmake --install build
+
+      # The install rule copies by filesystem glob, so it sees the working tree
+      # rather than the git index. .gitignore therefore does NOT protect it:
+      # local-only work that git never tracks can still be installed. This once
+      # shipped five private headers into the install prefix, so the check is
+      # empirical — inspect what actually landed, not what should have.
+      - name: The install prefix contains no local-only work
+        run: |
+          leaked=$(find stage -type f | grep -iE '_local' || true)
+          if [ -n "$leaked" ]; then
+            echo "local-only files reached the install prefix:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "install prefix clean ($(find stage -name '*.hpp' | wc -l) headers)"
+
+      - name: Build a consumer project against the installed package
+        run: |
+          mkdir -p consumer
+          cat > consumer/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(consumer LANGUAGES CXX)
+          find_package(MOOtation REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE MOOtation::MOOtation)
+          EOF
+          cat > consumer/main.cpp <<'EOF'
+          #include <mootation/mootation.hpp>
+          #include <iostream>
+          int main() {
+              using namespace mootation;
+              Problem<NSGAII_Individual>   prob;
+              DataVault<NSGAII_Individual> vault(40, prob);
+              Optimizer<NSGAII_Individual, NSGAIICore<NSGAII_Individual>>
+                  opt(std::move(vault));
+              opt.optimize(20);
+              std::cout << "consumer OK, " << mootation::version()
+                        << ", n=" << opt.get_vault().active_n() << '\n';
+              return 0;
+          }
+          EOF
+          cmake -S consumer -B consumer/build -DCMAKE_PREFIX_PATH=$PWD/stage
+          cmake --build consumer/build -j
+          ./consumer/build/consumer
+
+      - name: The embedding layer works from the installed tree too
+        run: |
+          # A separate consumer because embed.hpp needs things the umbrella does
+          # not: algorithms.def must have been installed alongside the headers,
+          # and Threads must come through find_dependency. Neither shows up in
+          # the build tree, where both are satisfied by accident.
+          mkdir -p consumer2
+          cat > consumer2/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(consumer2 LANGUAGES CXX)
+          find_package(MOOtation REQUIRED)
+          add_executable(consumer2 main.cpp)
+          target_link_libraries(consumer2 PRIVATE MOOtation::MOOtation)
+          EOF
+          cat > consumer2/main.cpp <<'EOF'
+          #include <mootation/embed.hpp>
+          #include <cmath>
+          #include <cstdio>
+          int main() {
+              mootation::Settings s;
+              s.algorithm = "nsga2";
+              s.pop_size = 20; s.max_gen = 10; s.seed = 3; s.n_objs = 2;
+              s.set_box(6, 0.0, 1.0);
+              auto zdt1 = [](const std::vector<std::vector<double>>& X,
+                             std::vector<std::vector<double>>& F,
+                             std::vector<std::vector<double>>&) {
+                  for (std::size_t i = 0; i < X.size(); ++i) {
+                      double g = 0.0;
+                      for (std::size_t j = 1; j < X[i].size(); ++j) g += X[i][j];
+                      g = 1.0 + 9.0 * g / 5.0;
+                      F[i][0] = X[i][0];
+                      F[i][1] = g * (1.0 - std::sqrt(F[i][0] / g));
+                  }
+              };
+              auto a = mootation::run(s, zdt1);
+              mootation::Session sess(s);
+              std::vector<std::vector<double>> F;
+              for (auto X = sess.ask(); !X.empty(); X = sess.tell(F)) {
+                  F.assign(X.size(), std::vector<double>(2, 0.0));
+                  zdt1(X, F, F);
+              }
+              auto b = sess.result();
+              std::printf("installed embed OK: run=%zu session=%zu algorithms=%zu\n",
+                          a.size(), b.size(), mootation::algorithm_names().size());
+              if (mootation::algorithm_names().size() != 60) return 1;
+              if (a.size() != b.size() || a.size() == 0) return 1;
+              for (std::size_t i = 0; i < a.size(); ++i)
+                  for (std::size_t j = 0; j < 2; ++j)
+                      if (a.objectives[i][j] != b.objectives[i][j]) return 1;
+              return 0;
+          }
+          EOF
+          cmake -S consumer2 -B consumer2/build -DCMAKE_PREFIX_PATH=$PWD/stage
+          cmake --build consumer2/build -j
+          ./consumer2/build/consumer2
+
+  # ── FetchContent consumption ──────────────────────────────────────────────
+  fetchcontent:
+    name: FetchContent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: mootation }
+
+      - name: Consume the checkout via FetchContent
+        run: |
+          mkdir -p fc
+          cat > fc/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(fc LANGUAGES CXX)
+          include(FetchContent)
+          FetchContent_Declare(MOOtation SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../mootation)
+          FetchContent_MakeAvailable(MOOtation)
+          add_executable(fc main.cpp)
+          target_link_libraries(fc PRIVATE MOOtation::MOOtation)
+          EOF
+          cat > fc/main.cpp <<'EOF'
+          #include <mootation/mootation.hpp>
+          int main() { return mootation::version() ? 0 : 1; }
+          EOF
+          cmake -S fc -B fc/build
+          cmake --build fc/build -j
+          ./fc/build/fc
+          # A consumed project must not build our tests or examples.
+          test ! -e fc/build/tests/test_convergence
+          echo "FetchContent consumer did not inherit our tests — correct."
+
+  # ── Python binding ────────────────────────────────────────────────────────
+  # Optional at build time (MOOTATION_BUILD_PYTHON=OFF by default), so the
+  # library stays buildable with nothing but a compiler. CI builds it anyway:
+  # the dispatch is generated from include/mootation/algorithms.def, and this is what
+  # catches an algorithm whose individual type or setters changed shape.
+  python:
+    name: python binding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Build the module
+        run: |
+          python -m pip install --upgrade pip pybind11
+          cmake -S . -B build-py             -DCMAKE_BUILD_TYPE=Release             -DMOOTATION_BUILD_PYTHON=ON             -DMOOTATION_BUILD_EXAMPLES=OFF             -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
+          cmake --build build-py -j
+
+      - name: The extension was built for THIS interpreter
+        run: |
+          # A .pyd/.so carries an ABI tag, so a module built against one Python
+          # cannot be imported by another. Two find_package calls disagreeing
+          # about which Python to use produced exactly that, and it is silent
+          # until someone imports the thing.
+          built=$(ls python/mootation/_core*.so 2>/dev/null | head -1)
+          echo "built: $built"
+          python -c "
+          import sysconfig, sys, pathlib
+          tag = sysconfig.get_config_var('EXT_SUFFIX')
+          found = list(pathlib.Path('python/mootation').glob('_core*'))
+          assert found, 'the extension was not built into python/mootation/'
+          names = [p.name for p in found]
+          assert any(n.endswith(tag) for n in names), (
+              f'extension {names} does not match this interpreter ({tag}); '
+              'the build used a different Python')
+          print('ABI tag matches:', tag)
+          "
+
+      - name: Smoke test
+        run: PYTHONPATH=python python python/test_binding.py
+
+      - name: pip install, then use it the way a user would
+        run: |
+          # The build above proves the extension compiles. This proves the
+          # PACKAGE works: that pyproject.toml declares the right thing, that
+          # `import mootation` finds _core, and that the optional extras are
+          # genuinely optional.
+          python -m pip install --quiet ".[all]"
+          cd /tmp     # outside the source tree, so nothing resolves by accident
+          python -c "
+          import mootation
+          assert len(mootation.algorithms()) == 60
+          res = mootation.minimize(lambda x: [x[0], 1 - x[0]**0.5],
+                                   bounds=[(0.0, 1.0)] * 3, n_objs=2,
+                                   pop_size=20, n_gen=10, seed=1)
+          assert res.active_n == 20, res.active_n
+          import mootation.benchmarks as b
+          assert len(b.names()) > 200
+          print('installed package works:', len(mootation.algorithms()), 'algorithms')
+          "
+
+      - name: The examples
+        run: PYTHONPATH=python python python/test_examples.py
+
+  # ── The TOML / external-evaluator layer ───────────────────────────────────
+  # Pure Python, zero dependencies (tomllib is stdlib from 3.11). Tested on the
+  # oldest supported interpreter as well as the newest, because the whole point
+  # of using tomllib instead of a package is that there is nothing to install.
+  python-run:
+    name: run layer · python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '${{ matrix.python }}' }
+
+      - name: No dependencies were needed
+        run: |
+          # If this ever needs a pip install, the design claim is broken and
+          # this job is where that should surface.
+          python -c "import tomllib, sys; print('tomllib OK on', sys.version)"
+
+      - name: Unit tests (core layer, no dependencies)
+        run: python python/test_run_layer.py
+
+      - name: Benchmarks and TUI, with their optional dependencies
+        run: |
+          # NumPy is needed by the benchmark suites and Textual by the screens;
+          # neither is needed by the config, parser, journal or runner layers.
+          # Installing them in a SEPARATE step, after the dependency-free tests
+          # have already passed, is what keeps that boundary honest.
+          python -m pip install --quiet numpy textual
+          python python/test_run_layer.py
+          python python/test_tui.py
+
+      - name: --check the shipped example
+        run: PYTHONPATH=python python -m mootation.run --check python/examples/demo.toml
+
+      - name: --check rejects a broken config
+        run: |
+          # The validator earning its keep: a config that would die ten minutes
+          # into a day-long run must fail here instead, with exit status 1.
+          cat > /tmp/broken.toml <<'EOF'
+          [run]
+          name = "broken"
+          scratch = "s/{worker:02d}"
+          ledger = "l.jsonl"
+
+          [problem]
+          kind = "external"
+          n_vars = 3
+          n_objs = 3
+          bounds = [[0.0, 1.0], [0.0, 1.0]]
+
+          [[problem.steps]]
+          name = "solve"
+          run = ["definitely-not-installed-xyzzy"]
+
+          [problem.output]
+          parser = "csv"
+          from = "{scratch}/out.csv"
+          objectives = ["a", "b", "c"]
+
+          [[algorithms]]
+          name = "nsga3"
+          pop = 92
+          gens = 10
+          EOF
+          if PYTHONPATH=python python -m mootation.run --check /tmp/broken.toml; then
+            echo "the validator accepted a config with 4 defects"; exit 1
+          fi
+          # And it must name every one of them, not just the first.
+          out=$(PYTHONPATH=python python -m mootation.run --check /tmp/broken.toml 2>&1 || true)
+          for expect in "bounds" "not found" "lattice"; do
+            echo "$out" | grep -q "$expect" || { echo "missing complaint: $expect"; echo "$out"; exit 1; }
+          done
+          echo "validator reported: $(echo "$out" | grep -c ' - ') problems"
+
+  # ── C ABI ─────────────────────────────────────────────────────────────────
+  # The only compiled artefact the project produces. Two consumers are built
+  # here on purpose: a C99 program, which fails if a C++-ism creeps into
+  # capi.h, and a ctypes script, which proves the shared library is reachable
+  # from a language that knows nothing about C++ ABIs or headers at all.
+  c-api:
+    name: C ABI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+
+      - name: Build
+        run: |
+          cmake -S . -B build-c             -DCMAKE_BUILD_TYPE=Release             -DMOOTATION_BUILD_C_API=ON             -DMOOTATION_BUILD_EXAMPLES=OFF             -DMOOTATION_WERROR=ON
+          cmake --build build-c -j
+
+      - name: C and ctypes consumers
+        run: ctest --test-dir build-c --output-on-failure -R '^capi\.'
+
+      - name: Only the extern "C" surface is exported
+        run: |
+          # A shared library that leaks its C++ innards is a maintenance trap:
+          # every internal symbol becomes something a consumer can bind to and
+          # something we can never rename.
+          leaked=$(nm -D --defined-only build-c/capi/libmootation.so                    | awk '{print $3}' | grep -v '^moo_' | grep -v '^_' || true)
+          if [ -n "$leaked" ]; then
+            echo "non-moo_ symbols exported:"; echo "$leaked"; exit 1
+          fi
+          echo "clean: $(nm -D --defined-only build-c/capi/libmootation.so                         | grep -c '^.* moo_') moo_ symbols"
+
+  # ── Single-header amalgamation ────────────────────────────────────────────
+  # The generator is a convenience for users who cannot control include paths.
+  # It is checked by USE, not by comparing against a committed copy: the output
+  # is 1.4 MB, and a stale committed artefact is worse than none. What CI proves
+  # is that the tool still runs, its output still compiles standalone under the
+  # same warning level as the library, and it still refuses to pull in a private
+  # file.
+  amalgamation:
+    name: single-header amalgamation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate
+        run: python3 tools/amalgamate.py -o /tmp/mootation_single.hpp
+
+      - name: No private code in the amalgamation
+        run: |
+          # Match a path/include of a private file, not an identifier that
+          # merely contains the substring (e.g. a local variable last_local).
+          if grep -nE '(#include.*_local|scs_local/|_local\.hpp)' /tmp/mootation_single.hpp; then
+            echo "private code reached the amalgamation"
+            exit 1
+          fi
+          echo "clean"
+
+      - name: It compiles standalone, at the library's own warning level
+        run: |
+          cat > /tmp/amalg_tu.cpp <<'EOF'
+          #include "mootation_single.hpp"
+          int main() {
+              using namespace mootation;
+              Problem<NSGAII_Individual>   prob;
+              DataVault<NSGAII_Individual> vault(20, prob);
+              Optimizer<NSGAII_Individual, NSGAIICore<NSGAII_Individual>>
+                  opt(std::move(vault), defer_setup);
+              opt.get_algorithm().set_seed(7);
+              opt.setup();
+              opt.optimize(5);
+              return opt.get_vault().active_n() == 20 ? 0 : 1;
+          }
+          EOF
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -I/tmp /tmp/amalg_tu.cpp -o /tmp/amalg_tu
+          /tmp/amalg_tu
+          echo "amalgamation compiles and runs"
+
+      - name: The embedding layer survived the flattening
+        run: |
+          # embed.hpp includes algorithms.def three times with a different
+          # macro each time. The amalgamator has to paste an X-macro list at
+          # EVERY use; deduplicating it the way it deduplicates headers would
+          # leave the dispatch knowing one algorithm instead of 60, and that
+          # failure is invisible until someone asks for the 60th.
+          cat > /tmp/amalg_embed.cpp <<'EOF'
+          #include "mootation_single.hpp"
+          #include <cmath>
+          #include <cstdio>
+          int main() {
+              mootation::Settings s;
+              s.algorithm = "nsga2";
+              s.pop_size = 20; s.max_gen = 10; s.seed = 1; s.n_objs = 2;
+              s.set_box(6, 0.0, 1.0);
+              auto zdt1 = [](const std::vector<std::vector<double>>& X,
+                             std::vector<std::vector<double>>& F,
+                             std::vector<std::vector<double>>&) {
+                  for (std::size_t i = 0; i < X.size(); ++i) {
+                      double g = 0.0;
+                      for (std::size_t j = 1; j < X[i].size(); ++j) g += X[i][j];
+                      g = 1.0 + 9.0 * g / 5.0;
+                      F[i][0] = X[i][0];
+                      F[i][1] = g * (1.0 - std::sqrt(F[i][0] / g));
+                  }
+              };
+              auto a = mootation::run(s, zdt1);
+
+              mootation::Session sess(s);
+              std::vector<std::vector<double>> F;
+              for (auto X = sess.ask(); !X.empty(); X = sess.tell(F)) {
+                  F.assign(X.size(), std::vector<double>(2, 0.0));
+                  zdt1(X, F, F);
+              }
+              auto b = sess.result();
+
+              const std::size_t n_alg = mootation::algorithm_names().size();
+              std::printf("run=%zu session=%zu algorithms=%zu\n",
+                          a.size(), b.size(), n_alg);
+              if (n_alg != 60) return 1;
+              if (a.size() != b.size()) return 1;
+              for (std::size_t i = 0; i < a.size(); ++i)
+                  for (std::size_t j = 0; j < 2; ++j)
+                      if (a.objectives[i][j] != b.objectives[i][j]) return 1;
+              return 0;
+          }
+          EOF
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread -I/tmp /tmp/amalg_embed.cpp -o /tmp/amalg_embed
+          /tmp/amalg_embed
+          echo "embed.hpp works from the single header"
+
+  # ── Hygiene ───────────────────────────────────────────────────────────────
+  hygiene:
+    name: repo hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Every source file carries an SPDX identifier
+        run: |
+          missing=0
+          while IFS= read -r f; do
+            head -3 "$f" | grep -q 'SPDX-License-Identifier' || { echo "no SPDX: $f"; missing=1; }
+          done < <(git ls-files '*.hpp' '*.cpp' '*.h' '*.c' '*.py')
+          exit $missing
+
+      # Local-only work lives behind the generic patterns in .gitignore
+      # (*_local/, *_local.hpp, *_LOCAL_*.md). This is the belt to that
+      # suspenders: if one of those files is ever force-added, fail loudly.
+      - name: No local-only work leaked into the tree
+        run: |
+          if git ls-files | grep -qiE '(^|/)[^/]*_local(/|\.|$)|_LOCAL_'; then
+            echo "local-only paths present in the index:"
+            git ls-files | grep -iE '(^|/)[^/]*_local(/|\.|$)|_LOCAL_'
+            exit 1
+          fi
+          echo "clean"
+
+      - name: Every algorithm header is listed in include/mootation/algorithms.def
+        run: |
+          missing=0
+          for f in include/mootation/algorithms/*.hpp; do
+            b=$(basename "$f" .hpp)
+            # srv_strategy is a helper (SRVStrategy), not a runnable algorithm.
+            [ "$b" = "srv_strategy" ] && continue
+            grep -q "MOOTATION_ALG($b," include/mootation/algorithms.def || { echo "not registered: $b"; missing=1; }
+          done
+          exit $missing
+
+      # A core that declares constraint_mode and never reads it ships a switch
+      # with no effect. That was true of 21 files once; this makes the
+      # regression loud instead of silent. test_constraints catches it at
+      # runtime too, but this fires in seconds and names the file.
+      - name: constraint_mode is read, not merely declared
+        run: |
+          inert=0
+          for f in include/mootation/algorithms/*.hpp; do
+            b=$(basename "$f" .hpp)
+            [ "$b" = "srv_strategy" ] && continue
+            grep -q "ConstraintMode constraint_mode" "$f" || continue
+            # strip comment lines, then look for any real branch on the mode
+            if ! sed 's://.*::' "$f" | grep -qE 'constraint_mode *[!=]=|constraint_mode,|ConstraintMode::(CDP|FEASIBILITY|EPS_CONSTRAINT)'; then
+              echo "constraint_mode declared but never read: $b"
+              inert=1
+            fi
+          done
+          exit $inert

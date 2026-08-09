@@ -1,0 +1,14 @@
+@PACKAGE_INIT@
+
+# MOOtation is header-only and depends on nothing outside the C++ standard
+# library. The one thing it does need from the platform is a threading
+# implementation: mootation/embed.hpp's Session runs the algorithm on a worker
+# thread, and on GCC/libstdc++ <thread> is not self-sufficient at link time.
+# Threads is part of CMake's own module set, not a third-party package, so this
+# does not make the library depend on anything a consumer has to install.
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
+include("${CMAKE_CURRENT_LIST_DIR}/MOOtationTargets.cmake")
+
+check_required_components(MOOtation)

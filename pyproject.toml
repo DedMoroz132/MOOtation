@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+#   pip install .            the optimizer, compiled
+#   pip install ".[bench]"   plus the 216 benchmark problems (NumPy)
+#   pip install ".[tui]"     plus the terminal interface (Textual)
+#   pip install ".[all]"     everything
+#
+# The C++ library itself needs none of this: it is header-only and builds with
+# a compiler and CMake. This file exists so that a Python user can type one
+# command instead of learning our build system.
+
+[build-system]
+requires = ["scikit-build-core>=0.9", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "mootation"
+version = "0.1.0"
+description = "60 multi- and many-objective evolutionary algorithms, implemented from their primary publications"
+readme = "README.md"
+requires-python = ">=3.11"          # tomllib, used by mootation.run
+license = { file = "LICENSE" }
+authors = [{ name = "Andrey Karavan" }]
+keywords = [
+    "multi-objective optimization", "many-objective optimization",
+    "evolutionary algorithms", "genetic algorithms", "Pareto front",
+    "MOEA", "NSGA-II", "NSGA-III", "MOEA/D",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = []                   # the optimizer itself needs nothing
+
+[project.optional-dependencies]
+# The benchmark suites are the only part that needs NumPy, and the terminal
+# interface the only part that needs Textual. Keeping them optional is what
+# lets a machine that only drives an external solver install nothing extra.
+bench = ["numpy>=1.21"]
+tui   = ["textual>=0.50", "rich>=13.0"]
+all   = ["numpy>=1.21", "textual>=0.50", "rich>=13.0"]
+
+[project.scripts]
+mootation-run = "mootation.run.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/DedMoroz132/MOOtation"
+Source = "https://github.com/DedMoroz132/MOOtation"
+Changelog = "https://github.com/DedMoroz132/MOOtation/blob/main/CHANGELOG.md"
+
+[tool.scikit-build]
+# Only the Python extension is built for a wheel: the tests and examples are
+# for developers of the library, not for people installing it.
+cmake.args = [
+    "-DMOOTATION_BUILD_PYTHON=ON",
+    "-DMOOTATION_BUILD_TESTS=OFF",
+    "-DMOOTATION_BUILD_EXAMPLES=OFF",
+    "-DMOOTATION_INSTALL=OFF",
+]
+wheel.packages = ["python/mootation"]
+sdist.exclude = [
+    "*_local*", "scs_local", "problems/eplus",   # never published
+    "mootation_single.hpp",                      # generated
+    "build*", "*.egg-info",
+]

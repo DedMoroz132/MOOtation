@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use MOOtation in academic work, please cite it as below."
+title: "MOOtation: a header-only C++17 library of multi- and many-objective evolutionary algorithms"
+abstract: >-
+  MOOtation is a dependency-free, header-only C++17 library of 60 multi- and
+  many-objective evolutionary algorithms — Pareto-dominance, decomposition,
+  indicator-based, reference-vector, clustering-based and archive-based —
+  implemented from their primary publications. Every source file records the
+  paper it follows, the paper's default parameters with the section they come
+  from, and an explicit list of any deviations or resolved ambiguities.
+type: software
+authors:
+  - given-names: "Andrey"
+    family-names: "Karavan"
+    alias: "DedMoroz132"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+version: "0.1.0"
+date-released: "2026-08-06"
+license: Apache-2.0
+repository-code: "https://github.com/DedMoroz132/MOOtation"
+url: "https://github.com/DedMoroz132/MOOtation"
+keywords:
+  - multi-objective optimization
+  - many-objective optimization
+  - evolutionary algorithms
+  - genetic algorithms
+  - Pareto front
+  - MOEA
+  - NSGA-II
+  - NSGA-III
+  - MOEA/D
+  - C++
+  - header-only

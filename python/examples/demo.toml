@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# The same shape as airfoil.toml, but every piece exists, so this one passes
+# `--check` on any machine with Python:
+#
+#   python -m mootation.run --show --check python/examples/demo.toml
+#
+# The "solver" is solver_demo.py next door. Swap it for gmsh and your own
+# binary and nothing else about this file changes.
+#
+# PATH RULE, one rule for the whole file: every relative path resolves against
+# the directory holding THIS file, and steps run with that as their working
+# directory. That is what makes a config portable — move the directory, or copy
+# it to a cluster, and nothing inside needs editing.
+
+[run]
+name    = "demo"
+scratch = "scratch/worker_{worker:02d}"
+ledger  = "results/{name}/evaluations.jsonl"
+workers = 4
+on_fail = "penalty"
+penalty = 1e8
+resume  = true
+
+[problem]
+kind   = "external"
+n_vars = 6
+n_objs = 2
+bounds = [[0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0], [0.0, 1.0]]
+
+[problem.input]
+template = "templates/demo.in"
+write_to = "{scratch}/x.txt"
+
+[[problem.steps]]
+name    = "solve"
+run     = ["python", "solver_demo.py", "{scratch}/x.txt", "{scratch}/out.csv"]
+timeout = 60
+
+[problem.output]
+parser      = "csv"
+from        = "{scratch}/out.csv"
+objectives  = ["mass", "drag"]
+constraints = ["stress_max"]
+
+[[algorithms]]
+name   = "nsga2"
+pop    = 40
+gens   = 20
+params = { eta_c = 20, pc = 0.9 }
