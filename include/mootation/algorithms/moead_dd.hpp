@@ -186,7 +186,8 @@ private:
         const auto& fb=vault.objectives_of(b);
         bool better=false;
         for(std::size_t i=0;i<fa.size();++i) {
-            if(fa[i]>fb[i]) return false; if(fa[i]<fb[i]) better=true;
+            if(fa[i]>fb[i]) return false;
+            if(fa[i]<fb[i]) better=true;
         }
         return better;
     }

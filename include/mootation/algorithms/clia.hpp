@@ -156,7 +156,8 @@ private:
     static std::vector<double> unit(std::vector<double> v) {
         double n = 0; for (double x : v) n += x * x;
         n = std::sqrt(std::max(n, 1e-300));
-        for (double& x : v) x /= n; return v;
+        for (double& x : v) x /= n;
+        return v;
     }
     // sine of the angle between o and z (z a reference vector); the DM term of Eq.1.
     static double sin_angle(const std::vector<double>& o, const std::vector<double>& z) {
@@ -318,7 +319,8 @@ private:
         for (int r = 0; r < R; ++r) {
             // normalize onto the simplex (Sum = 1) for the classifier
             std::vector<double> p = Z_[r]; double s = 0; for (double v : p) s += v;
-            if (s < 1e-300) continue; for (double& v : p) v /= s;
+            if (s < 1e-300) continue;
+            for (double& v : p) v /= s;
             if (active_mask[r]) samp_active_.push_back(p);
             else                samp_inactive_.push_back(p);
         }

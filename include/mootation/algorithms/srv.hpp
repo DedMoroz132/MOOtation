@@ -93,7 +93,8 @@ private:
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double ca=vault.get_cv(a), cb=vault.get_cv(b);
             bool af=(ca<=0.0), bf=(cb<=0.0);
-            if(af&&!bf) return true; if(!af&&bf) return false;
+            if(af&&!bf) return true;
+            if(!af&&bf) return false;
             if(!af&&!bf) return ca<cb;
         }
         const auto& fa=vault.objectives_of(a); const auto& fb=vault.objectives_of(b);

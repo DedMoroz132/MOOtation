@@ -324,7 +324,17 @@ jobs:
       - name: Build the module
         run: |
           python -m pip install --upgrade pip pybind11
-          cmake -S . -B build-py             -DCMAKE_BUILD_TYPE=Release             -DMOOTATION_BUILD_PYTHON=ON             -DMOOTATION_BUILD_EXAMPLES=OFF             -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
+          # Python_EXECUTABLE is pinned rather than left to CMake's search.
+          # setup-python puts 3.11 on PATH but leaves the distro's 3.12 in
+          # /usr, and an unpinned find_package(Python) takes the newer one —
+          # producing a cp312 extension that the 3.11 running the tests cannot
+          # import. The step below catches that; this stops it happening.
+          cmake -S . -B build-py \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DMOOTATION_BUILD_PYTHON=ON \
+                -DMOOTATION_BUILD_EXAMPLES=OFF \
+                -DPython_EXECUTABLE=$(which python) \
+                -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
           cmake --build build-py -j
 
       - name: The extension was built for THIS interpreter

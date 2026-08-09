@@ -600,12 +600,10 @@ public:
         // ── greedily accept fronts until |St| ≥ n ─────────────────────────
         std::vector<int> St;           // accepted vault indices
         std::vector<int> Fl;           // last (partial) front
-        int front_idx = 0;
         for (auto& front : fronts) {
             int total = static_cast<int>(St.size() + front.size());
             if (total <= n) {
                 for (int v : front) St.push_back(v);
-                ++front_idx;
                 if (static_cast<int>(St.size()) == n) break;
             } else {
                 Fl = front;

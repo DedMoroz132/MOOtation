@@ -250,7 +250,8 @@ public:
         for(int j=0;j<np;++j){ if(isPiv[j]) continue; double mn=1e300; for(int p:piv) mn=std::min(mn,angle(F[j],F[p])); dmin[j]=mn; }
         while((int)piv.size()<Npiv){
             int best=-1; double bd=-1; for(int j=0;j<np;++j){ if(isPiv[j]) continue; if(dmin[j]>bd){bd=dmin[j];best=j;} }
-            if(best<0) break; isPiv[best]=1; piv.push_back(best);
+            if(best<0) break;
+            isPiv[best]=1; piv.push_back(best);
             for(int j=0;j<np;++j){ if(isPiv[j]) continue; dmin[j]=std::min(dmin[j],angle(F[j],F[best])); }
         }
         // clustering: each non-pivot → the nearest pivot

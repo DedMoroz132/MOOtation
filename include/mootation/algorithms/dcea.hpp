@@ -218,7 +218,8 @@ private:
             if(dc[p]==0) f0.push_back(p); }
         fr.push_back(f0);
         while(!fr.back().empty()){ std::vector<int> nx; for(int p:fr.back()) for(int q:dl[p]) if(--dc[q]==0) nx.push_back(q);
-            if(nx.empty()) break; fr.push_back(std::move(nx)); }
+            if(nx.empty()) break;
+            fr.push_back(std::move(nx)); }
         std::vector<int> order;
         for(auto& F:fr){ int fn=(int)F.size(); std::vector<double> cd(fn,0.0);
             for(int k=0;k<m_;++k){ std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);

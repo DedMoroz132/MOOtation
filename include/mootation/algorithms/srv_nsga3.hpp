@@ -108,13 +108,15 @@ private:
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double ca=vault.get_cv(a), cb=vault.get_cv(b);
             bool af=(ca<=0.0), bf=(cb<=0.0);
-            if(af&&!bf) return true; if(!af&&bf) return false;
+            if(af&&!bf) return true;
+            if(!af&&bf) return false;
             if(!af&&!bf) return ca<cb;
         }
         const auto& fa=vault.objectives_of(a); const auto& fb=vault.objectives_of(b);
         bool better=false;
         for (std::size_t i=0;i<fa.size();++i) {
-            if (fa[i]>fb[i]) return false; if (fa[i]<fb[i]) better=true;
+            if (fa[i]>fb[i]) return false;
+            if (fa[i]<fb[i]) better=true;
         }
         return better;
     }
@@ -275,7 +277,8 @@ private:
         if (constraint_mode==ConstraintMode::FEASIBILITY) {
             double ca=vault.get_cv(a), cb=vault.get_cv(b);
             bool af=(ca<=0.0), bf=(cb<=0.0);
-            if(af&&!bf) return a; if(!af&&bf) return b;
+            if(af&&!bf) return a;
+            if(!af&&bf) return b;
             if(!af&&!bf) return (ca<cb)?a:b;
         }
         std::uniform_int_distribution<int> coin(0,1); return coin(rng_)?a:b;

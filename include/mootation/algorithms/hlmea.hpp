@@ -214,7 +214,8 @@ private:
 
     // HV (HSO) of the union, for δ
     static double hv_union(std::vector<std::vector<double>> q){
-        if(q.empty()) return 0.0; int m=(int)q[0].size();
+        if(q.empty()) return 0.0;
+        int m=(int)q[0].size();
         if(m==1){ double mx=0; for(auto&p:q) mx=std::max(mx,p[0]); return mx; }
         std::sort(q.begin(),q.end(),[m](const std::vector<double>&a,const std::vector<double>&b){return a[m-1]>b[m-1];});
         double vol=0; int n=(int)q.size();

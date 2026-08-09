@@ -77,14 +77,24 @@ inline int find_H_le(int m, long long target) {
 
 // ── Single-layer generation ───────────────────────────────────────────────────
 namespace detail {
-inline void recurse(int m, int rem, int dim,
+// The number of objectives is NOT passed separately: it is cur.size(), and the
+// last coordinate is the one at cur.size()-1. Deriving the bound from the
+// buffer being written keeps the two from ever disagreeing — and it is what
+// stops GCC 13 at -O2 from reporting a -Warray-bounds on the push_back below,
+// which it does when the recursion is inlined into itself and the relation
+// between a separate `m` and cur's length is lost.
+inline void recurse(int rem, std::size_t dim,
                     std::vector<double>& cur, double H_inv,
                     std::vector<std::vector<double>>& out)
 {
-    if (dim == m - 1) { cur[dim] = rem * H_inv; out.push_back(cur); return; }
+    if (dim + 1 == cur.size()) {
+        cur[dim] = rem * H_inv;
+        out.push_back(cur);
+        return;
+    }
     for (int i = 0; i <= rem; ++i) {
         cur[dim] = i * H_inv;
-        recurse(m, rem - i, dim + 1, cur, H_inv, out);
+        recurse(rem - i, dim + 1, cur, H_inv, out);
     }
 }
 } // namespace detail
@@ -92,7 +102,11 @@ inline void recurse(int m, int rem, int dim,
 // Generate single-layer Das-Dennis vectors with H divisions.
 inline std::vector<std::vector<double>> generate(int m, int H) {
     std::vector<std::vector<double>> out;
-    if (H < 1) return out;
+    // m < 1 is not merely degenerate, it is unsafe: `cur` below would be empty
+    // and the recursion would still write cur[0]. Nothing in the library calls
+    // it that way, which is exactly why the guard belongs here rather than in
+    // every caller.
+    if (H < 1 || m < 1) return out;
     // FIX 2026-07-08: DD-2 (MINOR).
     // Clamp reserve to a sane ceiling. n_vectors saturates with the 2^50
     // sentinel at extreme H·m; reserve(2^50) → std::bad_alloc/crash before any
@@ -101,7 +115,7 @@ inline std::vector<std::vector<double>> generate(int m, int H) {
     constexpr std::size_t kReserveCap = 10'000'000;
     out.reserve(std::min<std::size_t>(static_cast<std::size_t>(n_vectors(m, H)), kReserveCap));
     std::vector<double> cur(m, 0.0);
-    detail::recurse(m, H, 0, cur, 1.0 / H, out);
+    detail::recurse(H, 0, cur, 1.0 / H, out);
     return out;
 }
 

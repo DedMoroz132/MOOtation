@@ -28,7 +28,7 @@ except ImportError:
     print("skipped: Textual is not installed (pip install textual)")
     raise SystemExit(0)
 
-from mootation.run.tui.app import MootationApp  # noqa: E402
+from mootation.tui.app import MootationApp  # noqa: E402
 
 CONFIGS = ["examples/demo.toml", "examples/bench.toml", "examples/airfoil.toml"]
 TABS = ("tab-config", "tab-problems", "tab-algorithms", "tab-monitor")

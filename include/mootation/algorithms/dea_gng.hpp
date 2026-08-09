@@ -262,7 +262,8 @@ private:
                     //   Eq.7: θ=max(0,1/tan(ζ')). For an obtuse ζ' (≥π/2) tan<0 ⇒ θ=0 (pure
                     //   convergence). The former folding a=min(a,π−a) inverted this into a large θ.
                     double a=ang(node_obj[t],edge);   // the true angle r↔edge in [0,π]
-                    if(a<zmin) zmin=a; ++deg; } }
+                    if(a<zmin) zmin=a;
+                    ++deg; } }
                 double theta;
                 if(deg==0) theta=INF_THETA;
                 // Eq.7 exactly. ζ'=max(0,ζ_min−ε).

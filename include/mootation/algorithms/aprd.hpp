@@ -211,7 +211,8 @@ private:
                 double mind=std::numeric_limits<double>::max();
                 for(int s:sel){ double d=edist(pts[i],pts[s]); if(d<mind) mind=d; }
                 if(mind>bd){ bd=mind; b=i; } }
-            if(b<0) break; sel.push_back(b); used[b]=1;
+            if(b<0) break;
+            sel.push_back(b); used[b]=1;
         }
         for(int i=0;(int)sel.size()<cnt;++i) sel.push_back(sel[i%std::max(1,(int)sel.size())]);
         return sel;
@@ -236,7 +237,8 @@ private:
             if(std::abs(ATA[piv][i])<1e-12) return {};   // degenerate
             std::swap(ATA[i],ATA[piv]); std::swap(ATy[i],ATy[piv]);
             for(int r=0;r<p;++r){ if(r==i) continue; double f=ATA[r][i]/ATA[i][i];
-                for(int c=i;c<p;++c) ATA[r][c]-=f*ATA[i][c]; ATy[r]-=f*ATy[i]; }
+                for(int c=i;c<p;++c) ATA[r][c]-=f*ATA[i][c];
+                ATy[r]-=f*ATy[i]; }
         }
         for(int i=0;i<p;++i) coef[i]=ATy[i]/ATA[i][i];
         return coef;
@@ -257,7 +259,8 @@ private:
     std::vector<double> project(const std::vector<double>& f) const {
         double fv=0,vv=0; for(int k=0;k<m_;++k){fv+=f[k]*V_[k];vv+=V_[k]*V_[k];}
         std::vector<double> q(m_); double c=(vv>1e-300)?fv/vv:0.0;
-        for(int k=0;k<m_;++k) q[k]=f[k]-c*V_[k]; return q;
+        for(int k=0;k<m_;++k) q[k]=f[k]-c*V_[k];
+        return q;
     }
     // L segment: bounds of the Arc projections onto L (§II-C, Fig.2).
     void refresh_L(){
@@ -299,7 +302,8 @@ private:
         fr.push_back(f0);
         while(!fr.back().empty()){ std::vector<int> nx;
             for(int p:fr.back()) for(int q:doms[p]) if(--dc[q]==0) nx.push_back(q);
-            if(nx.empty()) break; fr.push_back(std::move(nx)); }
+            if(nx.empty()) break;
+            fr.push_back(std::move(nx)); }
         std::vector<int> order;
         for(auto& F:fr){ int fn=(int)F.size(); std::vector<double> cd(fn,0.0);
             for(int k=0;k<m_;++k){ std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
@@ -367,7 +371,8 @@ private:
         while(sum<N_ && guard<100*N_+100){
             bool any=false;
             for(int k:ord){ if(sum>=N_) break; if(cnt[k]>0 && S[k]<cnt[k]){ ++S[k]; ++sum; any=true; } }
-            if(!any) break; ++guard;
+            if(!any) break;
+            ++guard;
         }
         // FIX 2026-07-07, APRD-8:
         // Algorithm 3 produces NEW subpopulations P_1..P_K; the partition is

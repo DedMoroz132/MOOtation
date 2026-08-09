@@ -328,7 +328,8 @@ private:
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double ca = vault.archive_cv(ai), cb = vault.archive_cv(bi);
             bool af=(ca<=0.0), bf=(cb<=0.0);
-            if(af&&!bf) return ai; if(!af&&bf) return bi;
+            if(af&&!bf) return ai;
+            if(!af&&bf) return bi;
             if(!af&&!bf) return (ca<cb)?ai:bi;
         }
         return (vault.archive_get(ai).fitness <= vault.archive_get(bi).fitness)

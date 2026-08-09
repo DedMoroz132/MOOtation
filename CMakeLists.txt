@@ -144,7 +144,20 @@ if(MOOTATION_BUILD_C_API)
 endif()
 
 if(MOOTATION_BUILD_PYTHON)
+    # LOCATION, not CMake's default of VERSION. The default picks the HIGHEST
+    # Python it can find anywhere on the machine, which is almost never the one
+    # you are building for: on a CI runner with a pinned 3.11 on PATH and a
+    # 3.12 in /usr, it builds a cp312 extension that the 3.11 running the tests
+    # cannot import. An extension module belongs to the interpreter you invoked,
+    # so resolve by position on PATH.
+    set(Python_FIND_STRATEGY LOCATION)
+    # actions/setup-python exports this; CMake reads it as a hint only when it
+    # is a CMake variable, so promote it.
+    if(NOT DEFINED Python_ROOT_DIR AND DEFINED ENV{Python_ROOT_DIR})
+        set(Python_ROOT_DIR "$ENV{Python_ROOT_DIR}")
+    endif()
     find_package(Python COMPONENTS Interpreter Development REQUIRED)
+    message(STATUS "MOOtation: building the extension for ${Python_EXECUTABLE} (${Python_VERSION})")
     add_subdirectory(python)
 endif()
 

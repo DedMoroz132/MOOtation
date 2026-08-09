@@ -1,5 +1,7 @@
 # MOOtation
 
+***English** · [Русский](README.ru.md)*
+
 **Header-only C++17 library with 60 multi- and many-objective evolutionary algorithms, implemented from their original papers.**
 
 No dependencies beyond the C++ standard library. Every algorithm was cross-checked line-by-line against its primary source (pseudocode, equations, default parameters); every conscious deviation, and every resolution of an in-paper ambiguity, is declared in the header of the corresponding file with section and equation references.
@@ -261,20 +263,13 @@ languages, which is the point.
 ```c
 #include <mootation/capi.h>
 
-moo_session* s = moo_open("algorithm = nsga2
-"
-                          "pop_size  = 40
-"
-                          "max_gen   = 40
-"
-                          "n_vars    = 10
-"
-                          "n_objs    = 2
-"
-                          "lower     = 0
-"
-                          "upper     = 1
-");
+moo_session* s = moo_open("algorithm = nsga2\n"
+                          "pop_size  = 40\n"
+                          "max_gen   = 40\n"
+                          "n_vars    = 10\n"
+                          "n_objs    = 2\n"
+                          "lower     = 0\n"
+                          "upper     = 1\n");
 int nv = moo_n_vars(s), no = moo_n_objs(s);
 
 for (int n = moo_ask_count(s); n > 0; ) {
@@ -503,8 +498,10 @@ interesting to build.
   arrays in and out is what the scientific ecosystem expects.
 - **A benchmark campaign runner** (repeated seeded runs, IGD/HV tabulation,
   Wilcoxon) on top of the Python binding.
-- **Thin wrappers over the C ABI** for Julia, R and MATLAB — about sixty lines
-  each, on the model of `capi/ctypes_demo.py`.
+- **Running the Julia, R and MATLAB wrappers.** They are written and shipped in
+  `capi/wrappers/`, but none of the three interpreters was installed on the
+  machine that wrote them, so the marshalling in those files has never
+  executed. Until someone runs them, only the ABI beneath them is tested.
 - Native permutation operators (order crossover, insertion, scramble).
 - The WFG hypervolume algorithm — the faster variant at large objective counts.
   A speed item, not a missing capability.

@@ -390,7 +390,8 @@ private:
                 v = DP_[r1].vars[j] + F_ * (DP_[r2].vars[j] - DP_[r3].vars[j]);
             else
                 v = base.vars[j];
-            if (v < lo) v = lo; if (v > hi) v = hi;
+            if (v < lo) v = lo;
+            if (v > hi) v = hi;
             child[j] = v;
         }
         ops::polynomial_mutation(child, bnd, eta_m_, pm_eff(nv), rng_);
