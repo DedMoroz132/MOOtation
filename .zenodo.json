@@ -1,0 +1,28 @@
+{
+  "title": "MOOtation: a header-only C++17 library of multi- and many-objective evolutionary algorithms",
+  "description": "<p>MOOtation is a dependency-free, header-only C++17 library of multi- and many-objective evolutionary algorithms &mdash; Pareto-dominance, decomposition, indicator-based, reference-vector, clustering-based and archive-based &mdash; each implemented from its primary publication rather than adapted from another implementation.</p><p>Every source file records the paper it follows (authors, venue, DOI), the paper's default parameters with the section they come from, and an explicit numbered list of any deviations and of any in-paper ambiguities that had to be resolved. Constraint handling and reproducible seeding are available for every algorithm.</p><p>The library can be used directly from C++, embedded through an ask/tell interface when the objective values come from a simulator or a separate process, called from any language through a C ABI, or driven from Python. Standard benchmark suites (ZDT, DTLZ, WFG, MaF, the Ishibuchi polygon family, MOP, BT) are included.</p>",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "Apache-2.0",
+  "creators": [
+    {
+      "name": "Karavan, Andrey"
+    }
+  ],
+  "keywords": [
+    "multi-objective optimization",
+    "many-objective optimization",
+    "evolutionary algorithms",
+    "genetic algorithms",
+    "Pareto front",
+    "MOEA",
+    "NSGA-II",
+    "NSGA-III",
+    "MOEA/D",
+    "IBEA",
+    "RVEA",
+    "C++",
+    "header-only",
+    "reproducibility"
+  ]
+}
