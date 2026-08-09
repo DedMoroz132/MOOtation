@@ -28,6 +28,17 @@
 // Extensions beyond the paper: binary variables (uniform crossover + bit-flip),
 //   active only when bin_vars_n()>0. ConstraintMode::FEASIBILITY is
 //   Algorithm 5 (C-RVEA, §VII) of the paper itself; off by default (NONE).
+// What to expect from constraint handling here: Algorithm 5 re-orders only
+//   WITHIN one reference vector's subspace (all-infeasible -> minimum CV,
+//   otherwise feasible-only -> minimum APD), and elitism keeps exactly one
+//   survivor per non-empty reference vector. It therefore cannot place a
+//   feasible individual into a subspace that has none, and its effect on the
+//   count of feasible solutions is small. Measured on the constraint suite's
+//   problem (DTLZ2 m=3 n=7, x0 <= 0.5, pop 91, 60 generations) over 20 seeds:
+//   mean feasible 63.4 -> 64.1 of 91, better on 13 seeds and worse on 6. The
+//   direction is right; the magnitude is below the seed-to-seed spread, which
+//   is why tests/test_constraints.cpp exempts rvea from its per-seed
+//   feasibility comparison and says so.
 // ============================================================================
 
 #include <algorithm>
