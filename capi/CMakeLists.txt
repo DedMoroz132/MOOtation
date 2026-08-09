@@ -46,6 +46,16 @@ if(MOOTATION_BUILD_TESTS)
     # capi.h fails here rather than in someone else's project.
     add_executable(capi_smoke smoke.c)
     target_link_libraries(capi_smoke PRIVATE mootation_c)
+
+    # smoke.c evaluates ZDT1, so it calls sqrt(). A C program on glibc must ask
+    # for libm explicitly — C++ gets it for free through libstdc++, which is why
+    # nothing else here needs it, and why MSVC (math in the CRT) and macOS (math
+    # in libSystem) link fine without it. Found rather than hardcoded as "-lm"
+    # so the platforms that have no separate libm simply skip it.
+    find_library(MOOTATION_LIBM m)
+    if(MOOTATION_LIBM)
+        target_link_libraries(capi_smoke PRIVATE ${MOOTATION_LIBM})
+    endif()
     set_target_properties(capi_smoke PROPERTIES C_STANDARD 99 FOLDER capi)
     add_test(NAME capi.smoke COMMAND capi_smoke)
     set_tests_properties(capi.smoke PROPERTIES TIMEOUT 300)
