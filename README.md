@@ -4,6 +4,9 @@
 
 **Header-only C++17 library with 60 multi- and many-objective evolutionary algorithms, implemented from their original papers.**
 
+*MOO* — multi-objective optimization; *mutation* — the operator every one of
+these algorithms is built on. The name is both words at once.
+
 No dependencies beyond the C++ standard library. Every algorithm was cross-checked line-by-line against its primary source (pseudocode, equations, default parameters); every conscious deviation, and every resolution of an in-paper ambiguity, is declared in the header of the corresponding file with section and equation references.
 
 Two files are not transcriptions of a paper and say so in their own headers: `ibea_eplus_clean.hpp` is a documented composition of two published algorithms, and `srv_moead.hpp` is an explicitly experimental extrapolation of SRV onto a carrier the SRV paper does not cover.
@@ -242,11 +245,35 @@ Seeding costs **zero function evaluations**: the objectives are read from the
 file, not recomputed.
 
 This is a warm start, not a checkpoint. No RNG position and no per-algorithm
-state are saved — only the decision variables and objectives, which is exactly
-what all 60 algorithms share and therefore what lets a population produced by
-NSGA-II seed a MOEA/D run. A resumed run does not reproduce what the
-uninterrupted one would have done; it starts from the same place. The same pair
-exists in C++ as `mootation::io::save_population` / `load_population`.
+state are saved — only the decision variables, objectives and constraint values,
+which is exactly what all 60 algorithms share and therefore what lets a
+population produced by NSGA-II seed a MOEA/D run. A resumed run does not
+reproduce what the uninterrupted one would have done; it starts from the same
+place.
+
+In C++ it is a field, in both shapes:
+
+```cpp
+mootation::Settings s = mootation::Settings::from_file("run.cfg");
+s.seed_population  = "pop.csv";                 // or set it in run.cfg
+s.on_size_mismatch = mootation::SizeMismatch::Truncate;
+
+auto r = mootation::run(s, my_evaluator);       // and Session(s) likewise
+```
+
+or straight from the previous run, with no file in between:
+
+```cpp
+mootation::Session next(s, mootation::as_population(previous));
+```
+
+Seeding is refused, with the mismatch named, when the population comes from a
+different problem — a different variable or objective count — and when a
+constrained run is handed a population that carries no per-constraint values.
+That last one matters: `cv` is a sum and cannot be taken apart again, so
+starting from it would plant a population every one of whose constraints reads
+as satisfied. Saved files carry the individual values (`g1…gk`) for exactly this
+reason. `mootation::io::save_population` / `load_population` are the file pair.
 
 ### From other languages (C ABI)
 
@@ -488,10 +515,12 @@ interesting to build.
   but only as private copies inside `hype`, `sms_m2m` and `hlmea` — the one
   number every paper reports is the one number a user cannot compute. Extract
   it, add IGD+ and GD+ beside `benchmarks.igd`, expose all of it in Python.
-- **Checkpoint and resume in the core.** `setup_with_seed` can restart from a
-  population, but a run's full state is not serializable, so a three-day job
-  that dies at hour sixty starts over. The TOML layer's journal solves this
-  only for external evaluators.
+- **A true checkpoint.** Restarting from a population works everywhere now —
+  `setup_with_seed` in the core, `seed_population` in `Settings`, so `run`,
+  `Session`, the C ABI and Python all have it. What is still missing is the
+  rest of the state: the RNG position and each algorithm's own bookkeeping are
+  not serializable, so a three-day job that dies at hour sixty resumes from the
+  right place but not on the same trajectory.
 - **A built-in parallel evaluator.** `batch_executor` is the hook; almost every
   user then writes the same thread pool. `n_workers=8` should be a parameter.
 - **NumPy-native Python signatures.** `minimize` takes and returns lists;

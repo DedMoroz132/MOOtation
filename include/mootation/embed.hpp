@@ -75,6 +75,7 @@
 #include <utility>
 #include <vector>
 
+#include "io/population.hpp"
 #include "mootation.hpp"
 #include "settings.hpp"
 
@@ -85,6 +86,11 @@ struct Result {
     std::vector<std::vector<double>> variables;   // [n][n_vars]
     std::vector<std::vector<double>> objectives;  // [n][n_objs]
     std::vector<double>              cv;          // total constraint violation
+    // Per-constraint values, `<= 0` meaning satisfied. Empty when n_cons == 0.
+    // Kept alongside cv rather than folded into it because cv is a SUM: it
+    // cannot be taken apart again, and a population handed to the next run
+    // needs the individual values, not the total.
+    std::vector<std::vector<double>> limits;      // [n][n_cons]
     std::vector<std::string>         ignored;     // knobs this algorithm lacks
     int                              generations = 0;
     int                              evaluations = 0;
@@ -287,11 +293,69 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
     return ignored;
 }
 
+// ── Warm start ──────────────────────────────────────────────────────────────
+// Everything that can be wrong with a seed population is checked HERE, once,
+// before any algorithm is instantiated — so the message names the file and the
+// mismatch instead of surfacing as a length error deep inside setup_with_seed,
+// or worse, on a Session's worker thread after the caller has stopped looking.
+inline void validate_seed(const io::Population& pop, const Settings& s,
+                          const std::string& origin)
+{
+    const std::string at = "mootation: seed population " + origin + ": ";
+
+    if (static_cast<int>(pop.size()) != s.pop_size)
+        throw std::invalid_argument(
+            at + "has " + std::to_string(pop.size()) + " individuals but "
+            "pop_size is " + std::to_string(s.pop_size) +
+            " (set on_size_mismatch to truncate or pad to resize it)");
+
+    if (pop.n_vars() != s.n_vars())
+        throw std::invalid_argument(
+            at + "has " + std::to_string(pop.n_vars()) + " variables but this "
+            "run has " + std::to_string(s.n_vars()) +
+            " — it was saved from a different problem");
+
+    if (pop.n_objs() != s.n_objs)
+        throw std::invalid_argument(
+            at + "has " + std::to_string(pop.n_objs()) + " objectives but this "
+            "run has " + std::to_string(s.n_objs) +
+            " — it was saved from a different problem");
+
+    // A constrained run cannot be seeded from a file that carries only the
+    // aggregate cv: the sum cannot be taken apart into the individual
+    // constraint values the algorithms actually compare. Starting anyway would
+    // plant a population every one of whose constraints reads as satisfied,
+    // which is a silently wrong run rather than a failed one.
+    if (s.n_cons > 0) {
+        if (pop.limits.empty())
+            throw std::invalid_argument(
+                at + "this run has " + std::to_string(s.n_cons) + " constraints, "
+                "but the file carries no per-constraint columns (g1...). It was "
+                "written either by an unconstrained run or by a version before "
+                "those columns existed; re-save it from a constrained run");
+        if (pop.n_lims() != s.n_cons)
+            throw std::invalid_argument(
+                at + "has " + std::to_string(pop.n_lims()) + " constraint "
+                "values per individual but this run has " +
+                std::to_string(s.n_cons));
+    }
+}
+
+// Load, resize to pop_size under the caller's policy, then check.
+inline io::Population load_seed(const Settings& s)
+{
+    io::Population pop = io::load_population(s.seed_population);
+    io::fit_population(pop, s.pop_size, s.on_size_mismatch);
+    validate_seed(pop, s, "'" + s.seed_population + "'");
+    return pop;
+}
+
 // ── The generic run body, one instantiation per algorithm ───────────────────
 // `hook` is called once after setup and once after every step, so Session can
 // drive the loop generation by generation without duplicating this function.
 template <typename Tag, typename Core>
 inline Result run_core(const Settings& s, Context& ctx,
+                       const io::Population* seed,
                        const std::function<void(int)>& per_generation) {
     Problem<Tag> prob;
     prob.bounds = ctx.bounds;
@@ -312,7 +376,25 @@ inline Result run_core(const Settings& s, Context& ctx,
     Result r;
     r.ignored = apply_knobs(alg, s);
 
-    opt.setup();
+    if (seed) {
+        // seed_individual plants variables AND objectives, so the evaluator is
+        // never called for the seeded generation: a warm start costs zero
+        // function evaluations, which is the whole point when one of them is a
+        // simulator run.
+        //
+        // Binary variables are passed only when the file actually has them.
+        // Handing over pop_size rows of empty vectors would look like "this
+        // problem has binary variables, all of width zero" rather than "it has
+        // none".
+        static const std::vector<std::vector<int>> kNoBinary;
+        const bool has_bin = !seed->binary_variables.empty() &&
+                             !seed->binary_variables.front().empty();
+        opt.setup_with_seed(seed->variables, seed->objectives,
+                            has_bin ? seed->binary_variables : kNoBinary,
+                            seed->limits);
+    } else {
+        opt.setup();
+    }
     if (per_generation) per_generation(0);
     for (int g = 1; g <= s.max_gen; ++g) {
         opt.step();
@@ -328,21 +410,25 @@ inline Result run_core(const Settings& s, Context& ctx,
     r.variables.reserve(n);
     r.objectives.reserve(n);
     r.cv.reserve(n);
+    if (s.n_cons > 0) r.limits.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         r.variables.push_back(v.variables_of(i));
         r.objectives.push_back(v.objectives_of(i));
         r.cv.push_back(v.get_cv(i));
+        if (s.n_cons > 0) r.limits.push_back(v.limits_of(i));
     }
     r.evaluations = ctx.evaluations;
     return r;
 }
 
 inline Result dispatch(const Settings& s, Context& ctx,
+                       const io::Population* seed,
                        const std::function<void(int)>& per_generation) {
 #define MOOTATION_ALG(KEY, IND, CORE)                                          \
     if (s.algorithm == #KEY)                                                   \
         return run_core<embed_detail::EmbedTag_##KEY,                          \
-                        CORE<embed_detail::EmbedTag_##KEY>>(s, ctx, per_generation);
+                        CORE<embed_detail::EmbedTag_##KEY>>(s, ctx, seed,      \
+                                                            per_generation);
 #include "mootation/algorithms.def"
 #undef MOOTATION_ALG
     throw std::invalid_argument("mootation: unknown algorithm '" + s.algorithm +
@@ -392,14 +478,53 @@ inline void validate_algorithm(const std::string& name) {
 }
 
 // The optimizer owns the loop; `eval` is called once per batch.
+//
+// Starts from Settings::seed_population when that is set, and from a fresh
+// random population otherwise.
 inline Result run(const Settings& s, Evaluate eval) {
     s.validate();
     validate_algorithm(s.algorithm);
     if (!eval)
         throw std::invalid_argument("mootation::run: evaluator is empty");
+
+    // Loaded BEFORE the context is installed: a bad seed file must fail as a
+    // plain exception from run(), not partway into a configured run.
+    std::optional<io::Population> seed;
+    if (!s.seed_population.empty()) seed = embed_detail::load_seed(s);
+
     embed_detail::Context ctx = embed_detail::make_context(s, std::move(eval));
     embed_detail::ContextGuard guard(&ctx);
-    return embed_detail::dispatch(s, ctx, nullptr);
+    return embed_detail::dispatch(s, ctx, seed ? &*seed : nullptr, nullptr);
+}
+
+// The same, from a population you already have in memory — no file involved.
+// Use this when the previous run's Result is still to hand, or when the
+// population comes from somewhere that is not a file at all. An explicit
+// argument wins over Settings::seed_population.
+inline Result run(const Settings& s, Evaluate eval, io::Population seed) {
+    s.validate();
+    validate_algorithm(s.algorithm);
+    if (!eval)
+        throw std::invalid_argument("mootation::run: evaluator is empty");
+
+    io::fit_population(seed, s.pop_size, s.on_size_mismatch);
+    embed_detail::validate_seed(seed, s, "passed to run()");
+
+    embed_detail::Context ctx = embed_detail::make_context(s, std::move(eval));
+    embed_detail::ContextGuard guard(&ctx);
+    return embed_detail::dispatch(s, ctx, &seed, nullptr);
+}
+
+// A Result is what a finished run hands back; this turns it into something the
+// next run can start from, without a round trip through a file.
+inline io::Population as_population(const Result& r) {
+    io::Population p;
+    p.variables  = r.variables;
+    p.objectives = r.objectives;
+    p.cv         = r.cv;
+    p.limits     = r.limits;      // empty unless the run had constraints
+    p.binary_variables.assign(r.variables.size(), {});
+    return p;
 }
 
 // ── Session: you own the loop ───────────────────────────────────────────────
@@ -408,18 +533,28 @@ inline Result run(const Settings& s, Evaluate eval) {
 // releases the worker. Your code never runs inside the library.
 class Session {
 public:
+    // Starts from Settings::seed_population when that is set, and from a fresh
+    // random population otherwise.
     explicit Session(Settings s) : settings_(std::move(s)) {
         settings_.validate();
         // Before the worker starts: a bad algorithm name must be a constructor
         // failure the caller can catch, not a surprise on the worker thread.
         validate_algorithm(settings_.algorithm);
-        ctx_ = embed_detail::make_context(settings_,
-            [this](const std::vector<std::vector<double>>& X,
-                   std::vector<std::vector<double>>&       F,
-                   std::vector<std::vector<double>>&       G) {
-                this->handoff(X, F, G);
-            });
-        start();
+        if (!settings_.seed_population.empty())
+            seed_ = embed_detail::load_seed(settings_);
+        init();
+    }
+
+    // The same, from a population already in memory — typically
+    // as_population(previous.result()) or a file you loaded yourself. An
+    // explicit argument wins over Settings::seed_population.
+    Session(Settings s, io::Population seed) : settings_(std::move(s)) {
+        settings_.validate();
+        validate_algorithm(settings_.algorithm);
+        io::fit_population(seed, settings_.pop_size, settings_.on_size_mismatch);
+        embed_detail::validate_seed(seed, settings_, "passed to Session");
+        seed_ = std::move(seed);
+        init();
     }
 
     Session(const Session&)            = delete;
@@ -530,12 +665,29 @@ private:
     // Thrown into the worker to unwind it when a Session is destroyed early.
     struct Aborted {};
 
+    // Both constructors end here: the context has to be built from the settled
+    // settings and the worker started last, once every member it touches is in
+    // place.
+    void init() {
+        ctx_ = embed_detail::make_context(settings_,
+            [this](const std::vector<std::vector<double>>& X,
+                   std::vector<std::vector<double>>&       F,
+                   std::vector<std::vector<double>>&       G) {
+                this->handoff(X, F, G);
+            });
+        start();
+    }
+
     void start() {
         worker_ = std::thread([this] {
             embed_detail::ContextGuard guard(&ctx_);
             try {
                 Result r = embed_detail::dispatch(
                     settings_, ctx_,
+                    // seed_ is written in the constructor and only read here,
+                    // after the thread is created — no synchronisation needed
+                    // because the thread's creation is the happens-before edge.
+                    seed_ ? &*seed_ : nullptr,
                     [this](int g) {
                         std::lock_guard<std::mutex> lk(m_);
                         generation_ = g;
@@ -597,7 +749,8 @@ private:
         join();
     }
 
-    Settings               settings_;
+    Settings                      settings_;
+    std::optional<io::Population> seed_;   // empty = fresh random start
     embed_detail::Context  ctx_;
     Result                 result_;
 

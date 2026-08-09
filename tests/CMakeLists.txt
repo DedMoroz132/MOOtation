@@ -5,7 +5,8 @@ set(MOOTATION_TESTS
     test_operators
     test_reproducibility
     test_convergence
-    test_constraints)
+    test_constraints
+    test_warm_start)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -44,6 +45,11 @@ set_tests_properties(test_reproducibility PROPERTIES TIMEOUT 1800)
 set_tests_properties(test_constraints PROPERTIES TIMEOUT 1800)
 set_tests_properties(test_das_dennis PROPERTIES TIMEOUT 300)
 set_tests_properties(test_operators  PROPERTIES TIMEOUT 300)
+# Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
+# all 60 algorithms for the run-time dispatch. Stays in the push tier because
+# the property it guards — that a warm start costs no function evaluations — is
+# the whole reason to have one.
+set_tests_properties(test_warm_start PROPERTIES TIMEOUT 600)
 
 # A compile-only check that the umbrella header is self-contained: it must pull
 # in everything it needs without the user having included anything first.

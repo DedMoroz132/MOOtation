@@ -51,6 +51,7 @@
 #include <vector>
 
 #include "constraint_mode.hpp"
+#include "size_mismatch.hpp"
 
 namespace mootation {
 
@@ -78,6 +79,18 @@ struct Settings {
     int                 n_objs = 2;
     int                 n_cons = 0;     // constraint values per individual
     ConstraintMode      constraints = ConstraintMode::NONE;  // see constraint_mode.hpp
+
+    // ── warm start ───────────────────────────────────────────────────────
+    // Path to a population written by save_population (or by the Python or
+    // TOML layers — one format). Empty means a fresh random start.
+    //
+    // Seeding costs ZERO function evaluations: the objectives come out of the
+    // file, not out of the evaluator. What it is not is a checkpoint — no RNG
+    // position and no per-algorithm state are stored, so a resumed run does not
+    // reproduce what the uninterrupted one would have done. It starts from the
+    // same place, which is the part that costs money to recompute.
+    std::string  seed_population;
+    SizeMismatch on_size_mismatch = SizeMismatch::Error;
 
     // ── optional algorithm knobs (empty = keep the paper default) ────────
     std::map<std::string, double> params;
@@ -182,6 +195,24 @@ inline ConstraintMode parse_constraints(const std::string& v, const std::string&
                                 "none|feasibility|cdp|eps_constraint, got '" + v + "'");
 }
 
+inline SizeMismatch parse_size_mismatch(const std::string& v, const std::string& where) {
+    std::string t;
+    for (char c : trim(v)) t += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (t == "error")    return SizeMismatch::Error;
+    if (t == "truncate") return SizeMismatch::Truncate;
+    if (t == "pad")      return SizeMismatch::Pad;
+    throw std::invalid_argument(where + ": on_size_mismatch must be "
+                                "error|truncate|pad, got '" + v + "'");
+}
+
+inline const char* size_mismatch_name(SizeMismatch m) {
+    switch (m) {
+        case SizeMismatch::Truncate: return "truncate";
+        case SizeMismatch::Pad:      return "pad";
+        default:                     return "error";
+    }
+}
+
 inline const char* constraints_name(ConstraintMode m) {
     switch (m) {
         case ConstraintMode::FEASIBILITY: return "feasibility";
@@ -233,13 +264,19 @@ inline Settings Settings::from_string(const std::string& text, const std::string
         else if (key == "lower")       s.lower     = detail::parse_list(val, w);
         else if (key == "upper")       s.upper     = detail::parse_list(val, w);
         else if (key == "constraints") s.constraints = detail::parse_constraints(val, w);
+        // Taken verbatim, not parsed as a number or a list: it is a path, and
+        // on Windows it will contain backslashes, spaces and a drive letter.
+        else if (key == "seed_population")   s.seed_population   = val;
+        else if (key == "on_size_mismatch")  s.on_size_mismatch  =
+                                                 detail::parse_size_mismatch(val, w);
         else {
             const auto& kn = knob_names();
             if (std::find(kn.begin(), kn.end(), key) == kn.end())
                 throw std::invalid_argument(
                     where + ": unknown key '" + key + "'. Known keys: algorithm, "
                     "pop_size, max_gen, seed, n_vars, n_objs, n_cons, lower, upper, "
-                    "constraints, and the knobs listed in knob_names()");
+                    "constraints, seed_population, on_size_mismatch, and the knobs "
+                    "listed in knob_names()");
             s.params[key] = detail::parse_num(val, w);
         }
     }
@@ -301,6 +338,12 @@ inline std::string Settings::to_string() const {
     o << "constraints = " << detail::constraints_name(constraints) << "\n";
     o << "lower       = "; list(lower); o << "\n";
     o << "upper       = "; list(upper); o << "\n";
+    // Written only when set: a `seed_population =` with nothing after it is not
+    // a valid line to read back, and an empty path is the default anyway.
+    if (!seed_population.empty()) {
+        o << "seed_population  = " << seed_population << "\n";
+        o << "on_size_mismatch = " << detail::size_mismatch_name(on_size_mismatch) << "\n";
+    }
     if (!params.empty()) {
         o << "\n# algorithm knobs\n";
         for (const auto& kv : params)
