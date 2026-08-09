@@ -82,19 +82,25 @@ namespace detail {
 // buffer being written keeps the two from ever disagreeing.
 //
 // The pragma is the only one in the library and is not there lightly. GCC 13
-// at -O2 reports -Warray-bounds inside <bits/stl_algobase.h> for the
-// push_back below, blaming a memmove of two doubles out of a one-double
-// buffer. That cannot happen here: generate() refuses m < 1, sizes `cur` once
-// at m and never resizes it, and the terminal branch fires at dim ==
-// cur.size()-1, so every push_back copies exactly cur.size() elements out of a
-// cur.size()-element buffer. Nor is the report stable — g++ 20 does not emit
-// it, clang and MSVC never do, and rewriting the recursion to take its bound
-// from cur.size() did not move it. It is a middle-end false positive of the
-// kind GCC has a long trail of (PR 109442 and relatives), so it is suppressed
-// for GCC only, over this function only.
+// at -O2 reports, inside <bits/stl_algobase.h> and blaming the push_back
+// below, that a one-double buffer is both what got allocated and what got
+// overflowed. Those two claims contradict each other, which is the tell: the
+// compiler merged the m == 1 path (a one-element `cur`) into its analysis of
+// the m >= 2 path. generate() now lifts m == 1 out of the recursion for that
+// reason, so this should no longer fire at all.
+//
+// It stays as a backstop because the report has already moved once under
+// exactly this treatment: silencing -Warray-bounds did not remove it, it
+// renamed it to -Wstringop-overflow. Both are named here. The code is safe by
+// construction — generate() refuses m < 1, sizes `cur` once and never resizes
+// it, and the terminal branch fires at dim == cur.size()-1, so every push_back
+// copies exactly cur.size() elements out of a cur.size()-element buffer. g++
+// 20 never reported it, clang and MSVC never do; it is a middle-end false
+// positive of the kind GCC has a long trail of (PR 109442 and relatives).
 #if defined(__GNUC__) && !defined(__clang__)
 #  pragma GCC diagnostic push
 #  pragma GCC diagnostic ignored "-Warray-bounds"
+#  pragma GCC diagnostic ignored "-Wstringop-overflow"
 #endif
 inline void recurse(int rem, std::size_t dim,
                     std::vector<double>& cur, double H_inv,
@@ -110,12 +116,12 @@ inline void recurse(int rem, std::size_t dim,
         recurse(rem - i, dim + 1, cur, H_inv, out);
     }
 }
-#if defined(__GNUC__) && !defined(__clang__)
-#  pragma GCC diagnostic pop
-#endif
 } // namespace detail
 
 // Generate single-layer Das-Dennis vectors with H divisions.
+// Still inside the diagnostic region above: the report is emitted after
+// inlining and is attributed to the chain ending HERE, in generate(), not to
+// the push_back inside recurse() that it names.
 inline std::vector<std::vector<double>> generate(int m, int H) {
     std::vector<std::vector<double>> out;
     // m < 1 is not merely degenerate, it is unsafe: `cur` below would be empty
@@ -130,10 +136,26 @@ inline std::vector<std::vector<double>> generate(int m, int H) {
     // thousands of points); beyond that the vector grows via push_back normally.
     constexpr std::size_t kReserveCap = 10'000'000;
     out.reserve(std::min<std::size_t>(static_cast<std::size_t>(n_vectors(m, H)), kReserveCap));
-    std::vector<double> cur(m, 0.0);
-    detail::recurse(H, 0, cur, 1.0 / H, out);
+    // m == 1 is handled here rather than in the recursion, and not only for
+    // clarity. It is the single-point lattice, so `cur` would have length 1 —
+    // and GCC 13 merges that length into its analysis of the m >= 2 path,
+    // producing the contradictory claim that a one-double buffer is both
+    // allocated and overflowed. Lifting the case out leaves the recursion with
+    // cur.size() >= 2 always. The value is computed exactly as the recursion
+    // would have (H * (1/H), not the literal 1.0) so the lattice is unchanged
+    // bit for bit.
+    const double H_inv = 1.0 / H;
+    if (m == 1) {
+        out.push_back(std::vector<double>(1, static_cast<double>(H) * H_inv));
+        return out;
+    }
+    std::vector<double> cur(static_cast<std::size_t>(m), 0.0);
+    detail::recurse(H, 0, cur, H_inv, out);
     return out;
 }
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
 
 // ── Two-layer generation ──────────────────────────────────────────────────────
 // Hb — boundary (outer) layer: standard Das-Dennis; per deb2014 §V it is DENSE
