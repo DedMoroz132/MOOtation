@@ -13,7 +13,7 @@ authors:
   - given-names: "Andrey"
     family-names: "Karavan"
     alias: "DedMoroz132"
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    orcid: "https://orcid.org/0009-0001-7639-2384"
 version: "0.1.0"
 date-released: "2026-08-06"
 license: Apache-2.0
