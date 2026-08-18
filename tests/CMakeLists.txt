@@ -17,6 +17,15 @@ foreach(_t IN LISTS MOOTATION_TESTS)
     target_include_directories(${_t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     set_target_properties(${_t} PROPERTIES FOLDER tests)
 
+    if(MSVC)
+        # Several of these instantiate all 60 algorithms in one translation
+        # unit, which overruns the COFF section limit in a Debug build:
+        #   fatal error C1128: number of sections exceeded object file format
+        # A Release build folds enough to stay under it, which is why the
+        # Windows CI job never hit this and every local Debug build does.
+        target_compile_options(${_t} PRIVATE /bigobj)
+    endif()
+
     add_test(NAME ${_t} COMMAND ${_t})
 endforeach()
 
@@ -36,20 +45,51 @@ endforeach()
 #   ctest                 all of it
 set_tests_properties(test_convergence test_constraints PROPERTIES LABELS nightly)
 
+# Wall-clock limits, scaled for the build they run in.
+#
+# A sanitizer build is roughly an order of magnitude slower, and the nightly job
+# stacks a Debug build on top of that. One number cannot serve both: the limit
+# that is generous for an optimized build expires under ASan+UBSan, and an
+# expired limit is reported exactly like a broken test. The nightly suite spent
+# ten consecutive nights red for that reason, with nothing actually wrong.
+#
+# The scale is deliberately blunt. Tuning per test would mean re-tuning every
+# time an algorithm gets slower, and the only thing these numbers have to do is
+# distinguish "slow" from "hung".
+#
+# Measured, not guessed: test_convergence under a Debug sanitizer build takes
+# 2 h 19 min end to end — against the thirty-minute limit it used to have, which
+# is why the nightly job had been red for ten nights. Eight gives four hours,
+# comfortably above the measurement rather than a few minutes above it, because
+# a runner slower than the machine that measured it must not turn a passing test
+# into a red night again. The nightly job runs the two long tests concurrently,
+# so even both expiring at once finishes inside the runner's own six-hour
+# ceiling and is reported as a timeout rather than as a job GitHub killed.
+if(MOOTATION_SANITIZE)
+    set(_moo_timeout_scale 8)
+else()
+    set(_moo_timeout_scale 1)
+endif()
+
+function(mootation_test_timeout _test _seconds)
+    math(EXPR _scaled "${_seconds} * ${_moo_timeout_scale}")
+    set_tests_properties(${_test} PROPERTIES TIMEOUT ${_scaled})
+endfunction()
+
 # test_convergence instantiates all 60 algorithms in one translation unit and
 # runs each for 200 generations. It is by far the slowest target, in both
-# compilation and execution, and needs a longer leash under the sanitizers.
-set_tests_properties(test_convergence PROPERTIES TIMEOUT 1800)
-set_tests_properties(test_reproducibility PROPERTIES TIMEOUT 1800)
+# compilation and execution.
+mootation_test_timeout(test_convergence 1800)
+mootation_test_timeout(test_reproducibility 1800)
 # test_constraints instantiates all 60 algorithms twice (mode off / mode on).
-set_tests_properties(test_constraints PROPERTIES TIMEOUT 1800)
-set_tests_properties(test_das_dennis PROPERTIES TIMEOUT 300)
-set_tests_properties(test_operators  PROPERTIES TIMEOUT 300)
+mootation_test_timeout(test_constraints 1800)
+mootation_test_timeout(test_das_dennis 300)
+mootation_test_timeout(test_operators 300)
 # Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
 # all 60 algorithms for the run-time dispatch. Stays in the push tier because
 # the property it guards — that a warm start costs no function evaluations — is
 # the whole reason to have one.
-set_tests_properties(test_warm_start PROPERTIES TIMEOUT 600)
+mootation_test_timeout(test_warm_start 600)
 
 # A compile-only check that the umbrella header is self-contained: it must pull
 # in everything it needs without the user having included anything first.

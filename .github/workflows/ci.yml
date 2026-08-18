@@ -128,7 +128,7 @@ jobs:
         run: |
           cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
           cmake --build build-asan -j
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -L nightly
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly
 
   # ── Sanitizers ────────────────────────────────────────────────────────────
   # The README claims the library is clean under ASan and UBSan. This job is
