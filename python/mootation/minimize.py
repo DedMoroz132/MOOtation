@@ -39,6 +39,8 @@ def minimize(
     on_size_mismatch: str = "truncate",
     save_population=None,
     log_evaluations=None,
+    on_generation=None,
+    record_every: int = 0,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -71,6 +73,12 @@ def minimize(
                 path to a CSV of EVERY evaluation, including the ones the
                 optimizer discarded. Off unless given: no file is opened and
                 nothing is wrapped.
+    on_generation, record_every
+                an observer `on_generation(gen, objectives)` called after
+                setup (gen 0) and after every `record_every`-th generation
+                with the current answer set's objective rows. This is how a
+                convergence trajectory is recorded without re-running at
+                several budgets. Off unless record_every > 0.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -149,6 +157,9 @@ def minimize(
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
     for k, v in knobs.items():
         setattr(cfg, k, v)
+    if on_generation is not None and int(record_every) > 0:
+        cfg.on_generation = on_generation
+        cfg.record_every = int(record_every)
 
     if seed_population is not None:
         from .persistence import fit_population, load_population
@@ -169,6 +180,12 @@ def minimize(
         pop = fit_population(pop, int(pop_size), on_size_mismatch)
         cfg.seed_variables = [list(v) for v in pop.variables]
         cfg.seed_objectives = [list(v) for v in pop.objectives]
+        if constraints is not None:
+            # The population file carries x, f and the aggregate cv only; the
+            # algorithms compare the individual constraint values, so they are
+            # recomputed here from `constraints`. That costs one constraint
+            # call per seed individual and no objective evaluations.
+            cfg.seed_limits = [list(constraints(list(x))) for x in pop.variables]
 
     try:
         result = _core.run(algorithm, problem, cfg)

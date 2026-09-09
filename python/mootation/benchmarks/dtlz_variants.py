@@ -2,17 +2,23 @@
 # ============================================================================
 # Irregular and scaled variants of DTLZ.
 #
-# IDTLZ1/2   — inverted DTLZ (Jain & Deb 2014, Part II): f_i <- 0.5(1+g) - f_i
-#              for DTLZ1, and (1+g) - f_i for DTLZ2 by analogy. The front is a
-#              rotated (inverted) simplex or sphere of the same size.
+# IDTLZ1/2   — inverted DTLZ. IDTLZ1 is Jain & Deb 2014 (Part II), Eq. 9:
+#              f_i <- 0.5(1+g) - f_i. IDTLZ2, f_i <- (1+g) - f_i, appears in
+#              neither NSGA-III paper; it is the analogous construction used
+#              by later suites (PlatEMO's IDTLZ2) and is declared as such.
+#              The front is a rotated (inverted) simplex or sphere of the
+#              same size.
 # minusDTLZ  — the minus variants (Ishibuchi et al. 2017): every objective is
 #              negated. The front is far larger, and the optimum sits at
 #              distance variables of 0 or 1 (g at its maximum, 0.25k for
 #              DTLZ2) rather than at 0.5.
-# SDTLZ1/2   — scaled DTLZ (Deb & Jain 2014): objective i is multiplied by
-#              10^i. Base 10 is Deb and Jain's own choice, and the point of
-#              the family is to break algorithms that assume comparable
-#              objective magnitudes.
+# SDTLZ1/2   — scaled DTLZ (Deb & Jain 2014, §V-C and Table VIII): objective
+#              i is multiplied by p^(i-1) with a base p that DEPENDS ON M AND
+#              ON THE PROBLEM: SDTLZ1 p = 10, 10, 3, 2, 1.2 and SDTLZ2
+#              p = 10, 10, 3, 3, 2 for M = 3, 5, 8, 10, 15. The point of the
+#              family is to break algorithms that assume comparable objective
+#              magnitudes. FIX 2026-09-05: base 10 used to be applied at
+#              every M, which at M = 10 scaled f_10 by 10^9 instead of 2^9.
 #
 # The reference fronts are built analytically, with g pinned at the value it
 # takes on the front, so that IGD, IGD+ and GD+ are computed against the real
@@ -25,7 +31,21 @@ import itertools
 
 from . import dtlz as _d
 
-SCALE_BASE = 10.0  # SDTLZ: objective i is scaled by SCALE_BASE^i
+# Deb & Jain 2014, Table VIII: the base p of the per-objective factor p^(i-1).
+SCALE_BASE = {
+    "SDTLZ1": {3: 10.0, 5: 10.0, 8: 3.0, 10: 2.0, 15: 1.2},
+    "SDTLZ2": {3: 10.0, 5: 10.0, 8: 3.0, 10: 3.0, 15: 2.0},
+}
+
+
+def scale_base(name: str, M: int) -> float:
+    """The scaling base for SDTLZ1/2 at M objectives; M outside Table VIII
+    falls back to the nearest tabulated M below it (10 at the low end)."""
+    tab = SCALE_BASE[name]
+    if M in tab:
+        return tab[M]
+    below = [m for m in tab if m < M]
+    return tab[max(below)] if below else 10.0
 
 
 # ---- eval ----------------------------------------------------------
@@ -47,16 +67,16 @@ def minus_dtlz2(x: List[float], M: int) -> List[float]:
     return (-np.asarray(_d.dtlz2(x, M))).tolist()
 
 
-def _scale(M: int) -> np.ndarray:
-    return SCALE_BASE ** np.arange(M, dtype=float)
+def _scale(M: int, name: str = "SDTLZ1") -> np.ndarray:
+    return scale_base(name, M) ** np.arange(M, dtype=float)
 
 
 def sdtlz1(x: List[float], M: int) -> List[float]:
-    return (np.asarray(_d.dtlz1(x, M)) * _scale(M)).tolist()
+    return (np.asarray(_d.dtlz1(x, M)) * _scale(M, "SDTLZ1")).tolist()
 
 
 def sdtlz2(x: List[float], M: int) -> List[float]:
-    return (np.asarray(_d.dtlz2(x, M)) * _scale(M)).tolist()
+    return (np.asarray(_d.dtlz2(x, M)) * _scale(M, "SDTLZ2")).tolist()
 
 
 # ---- samplers for the base fronts (g = 0) --------------------------
@@ -105,11 +125,11 @@ def pf_minus_dtlz2(M: int, n: int = 1000) -> np.ndarray:
 
 
 def pf_sdtlz1(M: int, n: int = 1000) -> np.ndarray:
-    return (0.5 * _simplex(M, n)) * _scale(M)
+    return (0.5 * _simplex(M, n)) * _scale(M, "SDTLZ1")
 
 
 def pf_sdtlz2(M: int, n: int = 1000) -> np.ndarray:
-    return _sphere_oct(M, n) * _scale(M)
+    return _sphere_oct(M, n) * _scale(M, "SDTLZ2")
 
 
 # ---- ideal/nadir + n_vars ------------------------------------------
@@ -138,10 +158,10 @@ def build_specs():
                          nadir=lambda M: tuple([0.0] * M))
     out["SDTLZ1"] = dict(eval=sdtlz1, base="DTLZ1", pf=pf_sdtlz1,
                          ideal=lambda M: tuple([0.0] * M),
-                         nadir=lambda M: tuple((0.5 * _scale(M)).tolist()))
+                         nadir=lambda M: tuple((0.5 * _scale(M, "SDTLZ1")).tolist()))
     out["SDTLZ2"] = dict(eval=sdtlz2, base="DTLZ2", pf=pf_sdtlz2,
                          ideal=lambda M: tuple([0.0] * M),
-                         nadir=lambda M: tuple((_scale(M)).tolist()))
+                         nadir=lambda M: tuple((_scale(M, "SDTLZ2")).tolist()))
     return out
 
 

@@ -12,7 +12,7 @@ Zero dependencies — `tomllib` has been in the standard library since 3.11. The
 terminal UI is a separate, optional layer on top (it needs `textual`); nothing
 here imports it, so `--check` and the runner work on a bare interpreter.
 
-Design rule, from TUI_SPEC.md: the config is a FILE. Nothing in this package
+Design rule: the config is a FILE. Nothing in this package
 writes one. A config assembled by clicking is not reproducible, cannot be
 diffed, and cannot be attached to a paper.
 """

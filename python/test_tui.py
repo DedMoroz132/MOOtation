@@ -30,21 +30,27 @@ except ImportError:
 
 from mootation.tui.app import MootationApp  # noqa: E402
 
-CONFIGS = ["examples/demo.toml", "examples/bench.toml", "examples/airfoil.toml"]
+CONFIGS = ["examples/demo.toml", "examples/bench.toml", "examples/airfoil.toml",
+           "examples/campaign.toml"]
 TABS = ("tab-config", "tab-problems", "tab-algorithms", "tab-monitor")
+CAMPAIGN_TABS = ("tab-campaign", "tab-compare", "tab-explore")
 
 
 async def exercise(cfg: Path) -> None:
     app = MootationApp(cfg)
     async with app.run_test() as pilot:
-        for tab in TABS:
+        present = {t.id for t in app.query("TabPane")}
+        tabs = TABS + tuple(t for t in CAMPAIGN_TABS if t in present)
+        if cfg.name == "campaign.toml":
+            assert set(CAMPAIGN_TABS) <= present, "campaign config must show the campaign tabs"
+        for tab in tabs:
             app.query_one("TabbedContent").active = tab
             await pilot.pause()
         # Reload re-reads the file: the config is edited outside the UI, and a
         # half-saved file must not take the app down.
         app.action_reload()
         await pilot.pause()
-    print(f"  ok    {cfg.name}: {len(TABS)} screens + reload")
+    print(f"  ok    {cfg.name}: {len(tabs)} screens + reload")
 
 
 def main() -> int:

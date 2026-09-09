@@ -117,6 +117,13 @@ def dtlz4(x: List[float], M: int) -> List[float]:
 #  DTLZ5 — degenerate (curve)
 # =============================================================
 def _dtlz_degenerate(x: np.ndarray, g: float, M: int) -> List[float]:
+    # Deb et al. 2002, Eq. 6.23 prints f = ... cos(theta_i pi/2) ... with
+    # theta_i = pi/(4(1+g)) (1 + 2 g x_i), i.e. a pi inside theta AND a pi/2
+    # outside it, which at g = 0 would give cos(pi^2/8) and no curve at all.
+    # Every reference implementation (PlatEMO, jMetal, pymoo) reads it as
+    # theta_1 = pi x_1 / 2, theta_i = pi/(4(1+g)) (1 + 2 g x_i), f = cos/sin
+    # of theta directly, so that theta_i = pi/4 on the front; that is the
+    # reading used here.
     theta = np.empty(M - 1)
     theta[0] = x[0] * math.pi / 2.0
     if M > 2:

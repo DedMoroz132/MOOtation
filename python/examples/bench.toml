@@ -23,24 +23,36 @@ kind = "builtin"          # objectives come from the built-in suites
 families   = ["DTLZ", "WFG"]
 objectives = [3, 5, 10]   # sizes that actually exist for both families;
                           # --check names the available ones if you miss
-runs       = 31           # 31 is enough for a Wilcoxon test
+runs       = 31           # seeds per problem. NOTE: a signed-rank test is run
+                          # over PROBLEMS, not seeds, and its smallest possible
+                          # two-sided p is 2^(1-n) in the number of problems:
+                          # with 5 problems p < 0.05 is unreachable even if one
+                          # method wins every one. Seeds buy a stable median per
+                          # problem, not significance.
 
 # ... or name them outright:
 # problems = ["DTLZ2_3D", "WFG4_5D", "MaF3_8D"]
 
-# NOTE: nsga3 below needs pop to be an exact Das-Dennis lattice size, and
-# that size depends on the objective count — 91 at M=3, but not at M=5 or
-# M=10. A single pop across a family sweep is exactly the trap --check is
-# for; run one config per objective count, or pick an algorithm without
-# the lattice constraint.
+# NOTE: an algorithm with an exact-lattice population (nsga3, moead_de,
+# theta_dea, ...) needs a pop that is a Das-Dennis size for EVERY objective
+# count in the sweep, and no single number is one at M = 3, 5 and 10 at once
+# (91 is a lattice size at M = 3 only). `--check` refuses such a config and
+# names the attainable sizes; uncomment the block below to see it. Run one
+# config per objective count for those, or use algorithms without the
+# constraint, as this file does.
+#
+# [[algorithms]]
+# name   = "moead_de"
+# pop    = 91             # a lattice size for 3 objectives only
+# gens   = 500
+# params = { T = 20, delta = 0.9 }
 
 [[algorithms]]
-name = "nsga3"
-pop  = 91                 # an exact Das-Dennis lattice size for 3 objectives
+name = "nsga2"
+pop  = 100
 gens = 500
 
 [[algorithms]]
-name   = "moead_de"
-pop    = 91
-gens   = 500
-params = { T = 20, delta = 0.9 }
+name = "spea2"
+pop  = 100
+gens = 500

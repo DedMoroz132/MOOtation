@@ -88,14 +88,17 @@ def mop7(x: List[float]) -> List[float]:
 
 # ---- true fronts (g = 0) -------------------------------------------
 def _nd_filter(F: np.ndarray) -> np.ndarray:
-    # keep the nondominated subset (MOP4 is disconnected)
+    # keep the nondominated subset (MOP4 is disconnected).
+    # FIX 2026-09-05: the previous version computed the rows that DOMINATE
+    # F[i] and dropped THEM, i.e. it returned the dominated part of the MOP4
+    # curve as the reference front.
     keep = np.ones(len(F), bool)
     for i in range(len(F)):
         if not keep[i]:
             continue
-        dom = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
-        dom[i] = False
-        keep[dom] = False
+        dominated_by = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
+        if np.any(dominated_by):
+            keep[i] = False
     return F[keep]
 
 

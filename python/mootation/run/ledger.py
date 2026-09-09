@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The journal: what was evaluated, and what came back (TUI_SPEC.md §4).
+"""The journal: what was evaluated, and what came back.
 
 Scratch and journal are two stores with different properties, and mixing them
 is the source of both disk bloat and the inability to resume:

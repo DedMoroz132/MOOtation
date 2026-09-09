@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """Reading and checking a run description.
 
-The file format is TOML (TUI_SPEC.md §1): `tomllib` is in the standard library
+The file format is TOML: `tomllib` is in the standard library
 from Python 3.11, comments survive, and there are none of YAML's surprises
 (`no` becoming False, the Norway problem). Arrays of tables map onto a sequence
 of steps without inventing anything.
 
-`validate()` implements TUI_SPEC.md §7. It is cheap and it runs before anything
+`validate()` is the `--check` step. It is cheap and it runs before anything
 expensive starts, because the loss it prevents is the expensive one: a run
 budgeted for a day that dies ten minutes in on a typo in a path.
 
@@ -20,7 +20,10 @@ import os
 import platform
 import re
 import shutil
-import tomllib
+try:
+    import tomllib
+except ImportError:                       # Python 3.10: the same parser as `tomli`
+    import tomli as tomllib               # type: ignore[no-redef]
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -105,9 +108,10 @@ class Config:
     steps: list[Step] = field(default_factory=list)
     output: Output | None = None
 
-    # [[algorithms]] / [benchmarks]
+    # [[algorithms]] / [benchmarks] / [campaign]
     algorithms: list[Algorithm] = field(default_factory=list)
     benchmarks: dict[str, Any] = field(default_factory=dict)
+    campaign: dict[str, Any] = field(default_factory=dict)
 
     # Resolved by validate() from [benchmarks]: the concrete problem names
     # the family/objective cross product expands to.
@@ -150,7 +154,7 @@ def _platform_key() -> str:
 
 
 def _resolve_argv(step: dict, where: str) -> list[str]:
-    """Pick run_<platform> over run (TUI_SPEC.md §2).
+    """Pick run_<platform> over run.
 
     A command is an argv ARRAY, never a string: no quoting rules, no escaping
     of spaces in paths, no difference between cmd and sh. If neither the
@@ -187,10 +191,12 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
         raise ConfigError("", f"TOML does not parse: {e}") from e
 
     run = _req(raw, "run", "", dict)
+    # scratch/ledger only matter for an external problem; a builtin campaign
+    # never writes either, so they default rather than being demanded.
     cfg = Config(
         name=_req(run, "name", "run", str),
-        scratch=_req(run, "scratch", "run", str),
-        ledger=_req(run, "ledger", "run", str),
+        scratch=_opt(run, "scratch", "scratch/worker_{worker:02d}", "run", str),
+        ledger=_opt(run, "ledger", "results/{name}/evaluations.jsonl", "run", str),
         workers=_opt(run, "workers", 1, "run", int),
         on_fail=_opt(run, "on_fail", "penalty", "run", str),
         penalty=float(_opt(run, "penalty", 1e8, "run", (int, float))),
@@ -273,6 +279,7 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
         ))
 
     cfg.benchmarks = _opt(raw, "benchmarks", {}, "", dict)
+    cfg.campaign = _opt(raw, "campaign", {}, "", dict)
     return cfg
 
 
@@ -314,7 +321,7 @@ def load(path: str | os.PathLike) -> Config:
     return loads(text, source_path=p)
 
 
-# ── Validation (TUI_SPEC.md §7) ──────────────────────────────────────────────
+# ── Validation ──────────────────────────────────────────────
 
 _PLACEHOLDER = re.compile(r"\{x\[(\d+)\]\}")
 
@@ -448,9 +455,12 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
             near = sorted(n for n in known if n.startswith(a.name[:3]))
             hint = f"; did you mean: {', '.join(near[:5])}" if near else ""
             bad(where, f"unknown algorithm '{a.name}'{hint}")
-        if a.pop < 2:
+        # pop = 0 / gens = 0 mean "the problem's own budget" in a builtin
+        # campaign (mootation.run.campaign); for an external problem there is
+        # no such default, so they stay errors there.
+        if a.pop < 2 and not (cfg.kind == "builtin" and a.pop == 0):
             bad(where, f"pop must be >= 2, got {a.pop}")
-        if a.gens < 1:
+        if a.gens < 1 and not (cfg.kind == "builtin" and a.gens == 0):
             bad(where, f"gens must be >= 1, got {a.gens}")
 
         unknown = sorted(set(a.params) - valid_knobs)
@@ -471,6 +481,30 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
         # with the selection.
         cfg.benchmark_problems = _benchmark_selection(cfg.benchmarks, bad)
 
+        # The sweep trap: a pop that is a lattice size at M = 3 but not at
+        # M = 5 aborts half the campaign at setup. Check every algorithm
+        # against every objective count the selection contains, not only
+        # against an external problem's n_objs.
+        if cfg.kind == "builtin" and cfg.benchmark_problems:
+            try:
+                from ..benchmarks import PROBLEMS as _registry
+            except ImportError:
+                _registry = {}
+            by_m: dict[int, list[str]] = {}
+            for name in cfg.benchmark_problems:
+                p = _registry.get(name)
+                if p is not None:
+                    by_m.setdefault(int(p.n_obj), []).append(name)
+            for i, a in enumerate(cfg.algorithms):
+                if a.pop < 2:
+                    continue
+                for m in sorted(by_m):
+                    reason = check_pop(a.name, a.pop, m, a.params)
+                    if reason:
+                        sample = ", ".join(by_m[m][:3]) + (", ..." if len(by_m[m]) > 3 else "")
+                        bad(f"algorithms[{i}] ({a.name})",
+                            f"for the {m}-objective problems ({sample}): {reason}")
+
     # ── warm start ──────────────────────────────────────────────────────────
     if cfg.warm_start:
         src = base / cfg.warm_start.source
@@ -490,7 +524,7 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
 def _benchmark_selection(spec: dict, bad) -> list:
     """Resolve and check a [benchmarks] section against the real registry.
 
-    Two spellings, as in TUI_SPEC.md: an explicit `problems` list, or the
+    Two spellings: an explicit `problems` list, or the
     cross product of `families` and `objectives`. Names are checked against
     the registry rather than a pattern, because the registry is what the run
     will actually look them up in — `DTLZ2_M3` looks plausible and does not

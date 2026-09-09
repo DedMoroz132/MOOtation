@@ -1,6 +1,6 @@
 % SPDX-License-Identifier: Apache-2.0
 %
-% MOOtation from MATLAB (and Octave), through the C ABI.
+% MOOtation from MATLAB, through the C ABI (Octave has no loadlibrary/calllib).
 %
 %     zdt1 = @(x) [x(1), (1 + 9*sum(x(2:end))/(numel(x)-1)) * ...
 %                        (1 - sqrt(x(1) / (1 + 9*sum(x(2:end))/(numel(x)-1))))];
@@ -15,15 +15,15 @@
 %
 %     [X, F, cv] = mootation('minimize', zdt1, settings, ...
 %                            'library', 'libmootation', ...
-%                            'header',  'capi/mootation.h');
+%                            'header',  'mootation.h');
 %     plot(F(:,1), F(:,2), 'o')
 %
 % loadlibrary needs the header, and it will not accept capi.h directly because
 % of the dllimport/visibility macros. Generate a plain one first:
 %
-%     cpp -P -DMOOTATION_C_BUILD= -D'MOO_API=' include/mootation/capi.h > capi/mootation.h
+%     cpp -P -DMOO_API= include/mootation/capi.h > mootation.h
 %
-% or copy the prototypes by hand — there are sixteen of them.
+% or copy the prototypes by hand — there are nineteen of them.
 %
 % MATLAB is column-major and the ABI is row-major, so every reshape here
 % transposes. It is deliberate and confined to this file.

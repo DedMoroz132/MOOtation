@@ -22,7 +22,7 @@ res = mootation.minimize(my_objectives, bounds=[(0, 1)] * 10, n_objs=2,
                          algorithm="nsga3", pop_size=91, n_gen=250)
 ```
 
-`mootation.algorithms()` lists all 60 names. A knob the chosen algorithm does
+`mootation.algorithms()` lists all 58 names. A knob the chosen algorithm does
 not have comes back in `res.ignored` rather than being silently dropped — a run
 configured with an ignored parameter is not the run you asked for.
 
@@ -32,11 +32,16 @@ When the objectives come from programs rather than a Python function — a
 mesher, a solver, a measurement rig — describe the run in TOML and let
 `mootation.run` drive it.
 
+The full reference of the file format, `--check`, parsers, the journal, the
+built-in suites, campaigns and the terminal interface is
+[docs/running.md](../../docs/running.md).
+
 | file | what it shows |
 |---|---|
 | [`demo.toml`](demo.toml) | a complete runnable example; the "solver" is [`solver_demo.py`](solver_demo.py) |
 | [`airfoil.toml`](airfoil.toml) | the real-world shape: gmsh, an external solver, CSV output. **Deliberately fails `--check`** — the point is to show the report |
 | [`bench.toml`](bench.toml) | running the built-in suites instead of an external program |
+| [`campaign.toml`](campaign.toml) | a benchmark campaign over the built-in suites: `python -m mootation.run --campaign python/examples/campaign.toml --list`, SLURM/GNU-parallel sharding, IGD / IGD+ / HV trajectories |
 | [`../../examples/run.cfg`](../../examples/run.cfg) | the C++/C-ABI settings format, every key commented |
 
 ```bash
@@ -59,5 +64,5 @@ driving the optimizer from your own loop.
 ## From another language
 
 `../../capi/ctypes_demo.py` drives the same optimizer through the C ABI with
-`ctypes` alone — no build step, no binding. It is about sixty lines and is
+`ctypes` alone — no build step, no binding. It is about two hundred lines and is
 meant to be copied into whatever project needs it.

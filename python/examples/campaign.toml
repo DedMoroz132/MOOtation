@@ -1,0 +1,52 @@
+# A benchmark campaign: every listed algorithm on every selected problem,
+# `runs` seeds each, with a convergence trajectory per run.
+#
+#   python -m mootation.run.campaign campaign.toml --list
+#   python -m mootation.run.campaign campaign.toml --workers 4
+#   python -m mootation.run.campaign campaign.toml --emit-slurm 40   # then: sbatch results/dtlz_wfg_sweep/submit.sh
+#   python -m mootation.run campaign.toml --tui                      # Campaign / Compare / Explore tabs
+#
+# Everything else in mootation.run (scratch, ledger, external steps) is for
+# external solvers and is not needed here.
+
+[run]
+name = "dtlz_wfg_sweep"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+families   = ["DTLZ", "WFG"]     # every problem of these families ...
+objectives = [3, 5]              # ... at these objective counts
+runs       = 31                  # seeds 1..31 (or give [campaign] seeds = [...])
+# problems = ["DTLZ2_3D", "WFG4_5D", "MaF3_8D"]   # or by name
+
+[campaign]
+out          = "results/{name}"  # relative to this file
+budget_fe    = 0                 # 0 = the problem's own pop*gens; e.g. 100000 forces gens = ceil(fe/pop)
+record_every = 1                 # trajectory point every generation
+metrics      = ["igd", "igdp", "hv"]
+n_ref        = 1000              # reference-front sample for IGD / IGD+
+
+# pop = 0 and gens = 0 take the problem's defaults (its paper's budget). A pop
+# the algorithm cannot use is rounded to the nearest it can and noted in meta.json.
+[[algorithms]]
+name = "nsga2"
+pop  = 0
+gens = 0
+
+[[algorithms]]
+name = "nsga3"
+pop  = 0
+gens = 0
+
+[[algorithms]]
+name   = "moead_de"
+pop    = 0
+gens   = 0
+params = { T = 20, delta = 0.9, nr = 2 }
+
+[[algorithms]]
+name = "rvea"
+pop  = 0
+gens = 0

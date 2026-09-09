@@ -4,7 +4,7 @@
     python -m mootation.run --check run.toml
     python -m mootation.run --show  run.toml
 
-`--check` is TUI_SPEC.md §7. It is deliberately a mode without a UI: it runs in
+`--check` is deliberately a mode without a UI: it runs in
 CI, it runs over ssh, it runs on a machine where `textual` is not installed. It
 is cheap, and it removes the main class of loss — a run budgeted for a day that
 dies ten minutes in because a path had a typo in it.
@@ -80,9 +80,22 @@ def _check(cfg) -> int:
     problems = validate(cfg)
     if not problems:
         n_alg = len(cfg.algorithms)
-        total = sum(a.pop * a.gens for a in cfg.algorithms)
-        print(f"OK — {n_alg} algorithm(s), "
-              f"about {total:,} evaluations at full budget")
+        # pop = 0 / gens = 0 mean "the problem's own budget" (builtin
+        # campaigns), so those algorithms have no evaluation count to add up
+        # here; say so instead of printing a misleading zero.
+        own = sum(1 for a in cfg.algorithms if a.pop == 0 or a.gens == 0)
+        total = sum(a.pop * a.gens for a in cfg.algorithms
+                    if a.pop > 0 and a.gens > 0)
+        if own == n_alg:
+            print(f"OK — {n_alg} algorithm(s), each at its problem's own "
+                  f"budget (pop = 0 / gens = 0)")
+        elif own:
+            print(f"OK — {n_alg} algorithm(s), about {total:,} evaluations at "
+                  f"full budget for {n_alg - own} of them; {own} take each "
+                  f"problem's own budget (pop = 0 / gens = 0)")
+        else:
+            print(f"OK — {n_alg} algorithm(s), "
+                  f"about {total:,} evaluations at full budget")
         if cfg.resume:
             led = Ledger(
                 (cfg.source_path.parent if cfg.source_path else Path.cwd())
@@ -116,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="list every benchmark problem and exit (needs NumPy)")
     ap.add_argument("--tui", action="store_true",
                     help="open the terminal interface (needs Textual)")
+    ap.add_argument("--campaign", action="store_true",
+                    help="run the benchmark campaign described by the config "
+                         "(see `python -m mootation.run.campaign --help` for shards)")
     args = ap.parse_args(argv)
 
     if args.algorithms:
@@ -148,6 +164,10 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as e:
         print(f"config error — {e}", file=sys.stderr)
         return 1
+
+    if args.campaign:
+        from .campaign import main as campaign_main
+        return campaign_main([args.config])
 
     if args.tui:
         try:

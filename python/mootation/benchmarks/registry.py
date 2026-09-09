@@ -26,6 +26,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 import json as _json
 from pathlib import Path as _Path
 
+import warnings
 import numpy as np
 
 from .wfg     import WFG_FUNCS, wfg_bounds, wfg_nadir, wfg1, wfg2, wfg9
@@ -169,12 +170,20 @@ def _pf_dtlz5(M: int, n: int) -> np.ndarray:
 
 
 def _pf_dtlz7(M: int, n: int) -> np.ndarray:
-    """The disconnected front of DTLZ7. f_1..f_{M-1} lie in [0,1] on the branches
-    where the h contribution is smallest, and f_M = 2*(M - sum f_i/2*(1 +
-    sin(3*pi*f_i))) at g = 0.
+    """The disconnected front of DTLZ7 (Deb et al. 2002, Eq. 6.25).
+
+    On the front x_M = 0, so g = 1 + 9/k * 0 = 1 (NOT 0: g has the additive
+    constant 1), hence 1 + g = 2 and
+        f_M = (1 + g) * h = 2 * (M - sum f_i/2 * (1 + sin(3 pi f_i)))
+            = 2M - sum f_i * (1 + sin(3 pi f_i)).
+    FIX 2026-09-05: the sampler used to compute M - sum f_i (1 + sin), i.e.
+    it dropped the factor (1 + g) = 2, which put the reference front a full
+    M below the true one (f_M even went negative). Every DTLZ7/MaF7 IGD
+    computed before this date is wrong; the cached reference frame carried
+    nadir f_M = 3 for M = 3 where the true value is 6.
 
     Sampled the standard (PlatEMO) way: a uniform grid over the first M-1
-    objectives, filtered to the nondominated subset, then f_M computed.
+    objectives, f_M computed, then the nondominated subset kept.
     """
     import itertools
     p = max(2, int(round((n * 2) ** (1.0 / (M - 1))))) if M > 1 else 1
@@ -188,10 +197,67 @@ def _pf_dtlz7(M: int, n: int) -> np.ndarray:
     if len(pts) < 2 * n:
         rng = np.random.default_rng(20260709 + 1000 * M + n)
         pts = np.vstack([pts, rng.random((2 * n - len(pts), M - 1))])
-    # f_M = (1+g)·h, g=0 → h = M − Σ f_i·(1+sin(3π f_i))
-    h = float(M) - np.sum(pts * (1.0 + np.sin(3.0 * math.pi * pts)), axis=1)
-    F = np.column_stack([pts, h])
+    # f_M = (1+g)·h with g = 1 on the front → 2M − Σ f_i·(1+sin(3π f_i))
+    fM = 2.0 * float(M) - np.sum(pts * (1.0 + np.sin(3.0 * math.pi * pts)), axis=1)
+    F = np.column_stack([pts, fM])
     return _nondominated(F)
+
+
+# ── Partially degenerate problems: what these reference fronts are ──────────
+# DTLZ5, DTLZ6, MaF6 and WFG3 were designed to have a degenerate (curve-shaped)
+# Pareto front, and the samplers below build exactly that curve. Ishibuchi,
+# Masuda & Nojima, "Pareto Fronts of Many-Objective Degenerate Test Problems",
+# IEEE TEC 20(5):807-813, 2016 (doi:10.1109/TEVC.2015.2505784) showed that the
+# TRUE fronts also have a non-degenerate part, and the thresholds differ:
+#
+#     DTLZ5, DTLZ6, MaF6   non-degenerate part from M >= 4
+#     WFG3                 non-degenerate part from M >= 3
+#
+# so at those objective counts the arrays below are a proper SUBSET of the true
+# front. The final non-dominated filter can drop a point but cannot add one.
+# IGD and IGD+ against a subset are still comparable BETWEEN algorithms run
+# here — every algorithm is measured against the same set — but they are not
+# comparable with published numbers, and GD against the true front is smaller.
+#
+# The obvious repair does not work, and it was tried (2026-09-09): sampling the
+# transition space and keeping the non-dominated points yields the front OF THE
+# SAMPLE, which contains points that are merely unbeaten within it. On WFG3 at
+# M = 2, where the front is known to be exactly the degenerate curve, that
+# procedure returned 173 of 300 sampled points off the curve — a contaminated
+# reference set, which is worse than a subset, because a point that is not on
+# the front is unreachable and shifts every algorithm's IGD by an unknown
+# amount. A correct repair is one of:
+#   * the explicit characterisation of the non-degenerate part (the paper
+#     writes it out for 3-objective WFG3), or
+#   * the constraints that make the problems genuinely degenerate, so that
+#     these samplers become right: Saxena, Duro, Tiwari, Deb & Zhang for
+#     DTLZ5/DTLZ6, Ishibuchi et al. for WFG3.
+# Until one of them is implemented the limitation is stated here, in
+# docs/running.md, and at run time through DEGENERATE_SUBSET_WARNING below.
+
+# Problems whose reference front is the degenerate part only, and the objective
+# count from which that becomes a strict subset of the true front.
+DEGENERATE_SUBSET_FROM = {"DTLZ5": 4, "DTLZ6": 4, "MaF6": 4, "WFG3": 3}
+
+_DEGENERATE_WARNED: set[str] = set()
+
+
+def degenerate_subset_note(name: str) -> str | None:
+    """The caveat for `name`, or None when its reference front is exact."""
+    stem = name.split("_")[0]
+    m_from = DEGENERATE_SUBSET_FROM.get(stem)
+    if m_from is None:
+        return None
+    tail = name.rsplit("_", 1)[-1]
+    m = int(tail[:-1]) if tail.endswith("D") and tail[:-1].isdigit() else 2
+    if m < m_from:
+        return None
+    return (f"{name}: the reference front is the DEGENERATE part only. "
+            f"{stem} has a non-degenerate part from {m_from} objectives "
+            f"(Ishibuchi, Masuda & Nojima, IEEE TEC 20(5), 2016), so IGD and "
+            f"IGD+ here are measured against a subset of the true front: "
+            f"comparable between algorithms run against this same set, not "
+            f"with published numbers.")
 
 
 def _nondominated(F: np.ndarray) -> np.ndarray:
@@ -216,7 +282,14 @@ def _pf_wfg_concave(M: int, n: int) -> np.ndarray:
 
 
 def _pf_wfg1(M: int, n: int) -> np.ndarray:
-    """WFG1: a convex shape h_m = prod(1 - cos)..., so f_m = 2m*h_m."""
+    """WFG1 (Huband et al. 2006, Table XIV): h_{1..M-1} = convex_m and
+    h_M = mixed_M with alpha = 1, A = 5, i.e.
+        h_M = 1 - x_1 - cos(10 pi x_1 + pi/2) / (10 pi),
+    so f_m = 2m * h_m on the front (x_M = 0).
+    FIX 2026-09-05: the sampler used convex_M = 1 - sin(pi x_1 / 2) for the
+    last objective, which is the WFG2-without-disconnection front, not
+    WFG1's mixed convex/concave one; wfg1() itself was always right.
+    """
     X = _dd_xset(M, n)
     F = np.empty((len(X), M))
     for r, x in enumerate(X):
@@ -225,8 +298,8 @@ def _pf_wfg1(M: int, n: int) -> np.ndarray:
         h[0] = float(np.prod(1.0 - c)) if M > 1 else 1.0
         for m in range(1, M - 1):
             h[m] = float(np.prod(1.0 - c[:M - 1 - m])) * (1.0 - s[M - 1 - m])
-        if M > 1:
-            h[M - 1] = 1.0 - s[0]
+        x1 = x[0]
+        h[M - 1] = 1.0 - x1 - math.cos(10.0 * math.pi * x1 + math.pi / 2.0) / (10.0 * math.pi)
         F[r] = h
     scale = 2.0 * np.arange(1, M + 1, dtype=float)
     return _nondominated(F * scale)
@@ -360,38 +433,36 @@ _DTLZ_PF = {
 #  The shapes match the objective formulae in _maf_register above.
 # =============================================================
 def _pf_maf2(M: int, n: int) -> np.ndarray:
-    """MaF2 (partially concave). On the front g = 0 and the positions lie on a
-    DTLZ2-type sphere, so the concave octant sum f^2 = 1 is sampled."""
-    return _dd_sphere(M, n)
-
-
-def _pf_maf6(M: int, n: int) -> np.ndarray:
-    """MaF6 is degenerate: a 2-D manifold in M-space, of the DTLZ5 type. On the
-    front g = 0, theta_0 and theta_1 are free and the rest are pi/4. At M = 2
-    or 3 it coincides with the degenerate DTLZ5 curve or surface."""
-    # Only the first min(2, M-1) angles vary on the front; the rest are pi/4.
-    nfree = min(2, M - 1)
-    p = max(2, int(round(n ** (1.0 / max(1, nfree)))))
-    import itertools
-    grid = np.linspace(0.0, 1.0, p)
-    combos = list(itertools.product(grid, repeat=nfree))
-    sd = math.sin(math.pi / 4.0); cd = math.cos(math.pi / 4.0)
-    F = []
-    for cm in combos:
-        theta = np.empty(M - 1)
-        for i in range(M - 1):
-            theta[i] = cm[i] * math.pi / 2.0 if i < nfree else math.pi / 4.0
-        cos = np.cos(theta); sin = np.sin(theta)
+    """MaF2 (Cheng et al. 2017, Eq. 3-4). On the front every g_i = 0 and
+    theta_i = pi/2 * (x_i/2 + 1/4) with x_i in [0,1], so theta_i only covers
+    [pi/8, 3pi/8]: the front is the PART of the unit sphere sum f^2 = 1 whose
+    angles lie in that band ("partially concave"). Sampled on a uniform grid
+    of x in [0,1]^{M-1} mapped through theta.
+    FIX 2026-09-05: the sampler used to return the whole octant."""
+    X = _dd_xset(M, n)
+    F = np.empty((len(X), M))
+    for r, x in enumerate(X):
+        th = 0.5 * math.pi * (0.5 * x + 0.25)
+        cos = np.cos(th); sin = np.sin(th)
         f = np.empty(M)
         f[0] = float(np.prod(cos)) if M > 1 else 1.0
         for i in range(2, M):
             f[i - 1] = float(np.prod(cos[:M - i])) * sin[M - i]
         if M > 1:
             f[M - 1] = sin[0]
-        F.append(f)
-    Fa = np.asarray(F, float)
-    nrm = np.linalg.norm(Fa, axis=1, keepdims=True); nrm[nrm == 0] = 1.0
-    return Fa / nrm
+        F[r] = f
+    return F
+
+
+def _pf_maf6(M: int, n: int) -> np.ndarray:
+    """MaF6 = DTLZ5(I, M) with I = 2 (Cheng et al. 2017, Eq. 11-13). On the
+    front g = 0, theta_i = pi/2 * x_i for i < I (ONE free angle, theta_1) and
+    theta_i = pi/4 for i = I..M-1, so the front is the same one-dimensional
+    curve as DTLZ5's, whatever M is. (The paper calls it "an I-dimensional
+    manifold"; the curve lives in an I-dimensional subspace.)
+    FIX 2026-09-05: the sampler used to free TWO angles, producing a 2-D
+    surface that is not the front."""
+    return _pf_dtlz5(M, n)
 
 
 def _pf_maf7(M: int, n: int) -> np.ndarray:
@@ -424,6 +495,50 @@ def _pf_maf9(M: int, n: int) -> np.ndarray:
         nrm = math.hypot(dx, dy)
         F[:, m] = np.abs(dy * (P[:, 0] - ax) - dx * (P[:, 1] - ay)) / nrm
     return F
+
+
+def _maf9_forbidden_regions(M: int) -> list:
+    """The infeasible bow-tie polygons Phi of MaF9 (Cheng et al. 2017), one
+    per pair of non-adjacent, non-parallel target lines. Empty for M <= 4."""
+    ang = 2.0 * np.pi * np.arange(M) / M
+    V = np.column_stack([np.cos(ang), np.sin(ang)])
+    out = []
+    for i in range(M):
+        for n_ in range(i + 2, M):
+            if i == 0 and n_ == M - 1:
+                continue                          # adjacent through the wrap
+            a1, b1 = V[i], V[(i + 1) % M]
+            a2, b2 = V[n_], V[(n_ + 1) % M]
+            d1 = b1 - a1; d2 = b2 - a2
+            det = d1[0] * d2[1] - d1[1] * d2[0]
+            if abs(det) < 1e-12:
+                continue                          # parallel lines (even M)
+            t = ((a2[0] - a1[0]) * d2[1] - (a2[1] - a1[1]) * d2[0]) / det
+            O = a1 + t * d1
+            # The chain facing O runs from the endpoint of edge i nearer to
+            # O to the endpoint of edge n_ nearer to O, along the boundary.
+            if np.linalg.norm(O - b1) < np.linalg.norm(O - a1):
+                chain = [V[j % M] for j in range(i + 1, n_ + 1)]      # V[i+1..n_]
+            else:
+                chain = [V[j % M] for j in range(i, n_ - M, -1)]      # V[i], V[i-1], .., V[n_+1]
+            refl = [2.0 * O - c for c in chain]
+            poly = [chain[0]] + refl + chain[:0:-1]
+            out.append(np.asarray(poly, float))
+    return out
+
+
+def _poly_edge_distance(x: np.ndarray, P: np.ndarray) -> float:
+    """Distance from x to the nearest edge of polygon P."""
+    best = float("inf")
+    n = len(P)
+    for i in range(n):
+        a = P[i]; b = P[(i + 1) % n]
+        ab = b - a; L2 = float(ab @ ab)
+        t = 0.0 if L2 == 0.0 else float(np.clip(((x - a) @ ab) / L2, 0.0, 1.0))
+        d = float(np.linalg.norm(x - (a + t * ab)))
+        if d < best:
+            best = d
+    return best
 
 
 def _sample_poly_interior(V: np.ndarray, n: int) -> np.ndarray:
@@ -467,7 +582,8 @@ PROBLEMS: Dict[str, BenchProblem] = {}
 
 
 # =============================================================
-#  ZDT1-6 (M = 2; n = 30 for ZDT1-4, n = 10 for ZDT6, n = 30 for ZDT5)
+#  ZDT1-6 (M = 2; n = 30 for ZDT1-3, n = 10 for ZDT4 and ZDT6; ZDT5 is binary
+#  and not registered)
 #  Zitzler, Deb, Thiele. Comparison of Multiobjective Evolutionary
 #  Algorithms: Empirical Results. EMO 2000.
 # =============================================================
@@ -527,9 +643,11 @@ def _zdt_register():
         f2 = g * (1.0 - math.sqrt(f1/g))
         return [float(f1), float(f2)]
 
-    bnd4 = [(0.0,1.0)] + [(-5.0,5.0)]*29
+    # Zitzler, Deb & Thiele 2000, Eq. 10: m = 10 for T4 (ZDT1-3 use m = 30).
+    # FIX 2026-09-05: this entry used to register 30 variables.
+    bnd4 = [(0.0,1.0)] + [(-5.0,5.0)]*9
     PROBLEMS["ZDT4"] = BenchProblem(
-        name="ZDT4", n_vars=30, bounds=bnd4, n_obj=2,
+        name="ZDT4", n_vars=10, bounds=bnd4, n_obj=2,
         evaluate=zdt4, constraints=_no_cons,
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, 0.0), nadir=(1.0, 1.0),
@@ -592,21 +710,36 @@ def _maf_register():
             ideal=tuple([0.0]*M), nadir=tuple([0.5]*M),
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=False)
 
-        # ── MaF2 — partial concave DTLZ2-like ────────────────────────────────
+        # ── MaF2 — DTLZ2BZ (Cheng et al. 2017, Eq. 3-4) ─────────────────────
+        # theta_i = pi/2 * (x_i/2 + 1/4) for the M-1 position variables, and a
+        # SEPARATE distance term g_i per objective, each summing
+        # ((x_j/2 + 1/4) - 0.5)^2 over its own chunk of the K distance
+        # variables: chunk size c = floor(K/M); g_1..g_{M-1} take c variables
+        # each and g_M takes the remainder (Eq. 4, 1-indexed j from
+        # M+(i-1)c to M+ic-1, and to D for g_M). With K = 10 and M = 15 the
+        # chunk size is 0, so g_1..g_14 are empty sums, as printed.
+        # FIX 2026-09-05: this entry used to evaluate plain DTLZ2 (single g,
+        # theta = pi/2 * x_i), so the whole "partially concave" character —
+        # and the front — was wrong.
         def maf2(x, M=M):
             x = np.asarray(x, dtype=float)
-            xm = x[M-1:]
-            g  = float(np.sum((xm-0.5)**2))
-            # Concave PF on first M//2 objectives, linear on rest
-            xp = x[:M-1]
-            f  = np.empty(M)
-            cos = np.cos(xp * math.pi/2)
-            sin = np.sin(xp * math.pi/2)
-            base = 1.0 + g
-            f[0] = base * float(np.prod(cos))
+            D = len(x)
+            K = D - M + 1
+            c = K // M
+            th = 0.5 * math.pi * (0.5 * x[:M-1] + 0.25)
+            cos = np.cos(th); sin = np.sin(th)
+            g = np.empty(M)
+            for i in range(M - 1):
+                lo = (M - 1) + i * c; hi = lo + c
+                seg = x[lo:hi]
+                g[i] = float(np.sum((0.5 * seg + 0.25 - 0.5) ** 2)) if hi > lo else 0.0
+            seg = x[(M - 1) + (M - 1) * c:]
+            g[M-1] = float(np.sum((0.5 * seg + 0.25 - 0.5) ** 2))
+            f = np.empty(M)
+            f[0] = float(np.prod(cos)) * (1.0 + g[0])
             for i in range(2, M):
-                f[i-1] = base * float(np.prod(cos[:M-i])) * sin[M-i]
-            f[M-1] = base * sin[0]
+                f[i-1] = float(np.prod(cos[:M-i])) * sin[M-i] * (1.0 + g[i-1])
+            f[M-1] = sin[0] * (1.0 + g[M-1])
             return f.tolist()
 
         PROBLEMS[f"MaF2_{M}D"] = BenchProblem(
@@ -704,7 +837,9 @@ def _maf_register():
                 for i in range(1, M-1):
                     theta[i] = (math.pi/denom)*(1+2*g*x[i])
             cos = np.cos(theta); sin = np.sin(theta)
-            base = 1.0+g; f = np.empty(M)
+            # Eq. 11: the objectives carry (1 + 100 g); Eq. 12's theta uses g
+            # itself. FIX 2026-09-05: this used to be (1 + g).
+            base = 1.0 + 100.0*g; f = np.empty(M)
             f[0] = base*float(np.prod(cos))
             for i in range(2, M):
                 f[i-1] = base*float(np.prod(cos[:M-i]))*sin[M-i]
@@ -733,9 +868,12 @@ def _maf_register():
             f[M-1] = (1+g)*h
             return f.tolist()
 
+        # MaF7 is the one MaF problem with K = 20 distance variables
+        # (D = M + 19); the others use K = 10. FIX 2026-09-05: it used K = 10.
+        n7 = M + 19
         PROBLEMS[f"MaF7_{M}D"] = BenchProblem(
-            name=f"MaF7_{M}D", n_vars=n_vars,
-            bounds=[(0.0,1.0)]*n_vars, n_obj=M,
+            name=f"MaF7_{M}D", n_vars=n7,
+            bounds=[(0.0,1.0)]*n7, n_obj=M,
             evaluate=maf7, constraints=_no_cons,
             hv_ref_raw=tuple([1.0]*(M-1) + [2.0*M*1.1]),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
@@ -747,9 +885,9 @@ def _maf_register():
         # for a point x = (x1, x2), f_i is the Euclidean distance to vertex i
         # of a regular M-gon centred at the origin with radius 1. The front is
         # the polygon's interior — a 2-D manifold whatever M is.
-        # The paper uses x in [-10000, 10000]^2; [-2, 2]^2 is used here, wide
-        # enough to contain a radius-1 polygon without overflowing the
-        # hypervolume normalization.
+        # Decision space x in [-10000, 10000]^2, as the paper states; the
+        # huge box IS the difficulty (a random point starts ~10^4 away from
+        # the front). FIX 2026-09-05: this used to register [-2, 2]^2.
         def maf8(x, M=M):
             x = np.asarray(x, dtype=float)
             f = np.empty(M)
@@ -761,7 +899,7 @@ def _maf_register():
 
         PROBLEMS[f"MaF8_{M}D"] = BenchProblem(
             name=f"MaF8_{M}D", n_vars=2,
-            bounds=[(-2.0,2.0)]*2, n_obj=M,
+            bounds=[(-10000.0,10000.0)]*2, n_obj=M,
             evaluate=maf8, constraints=_no_cons,
             hv_ref_raw=tuple([3.0]*M),       # max distance on [-2,2]^2 is 2*sqrt(2)+1 < 3
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
@@ -774,9 +912,24 @@ def _maf_register():
         # A_i A_{i+1} of a regular M-gon. The front is the polygon's interior,
         # and interior points and their objective images are geometrically
         # similar, which makes the decision-space distribution easy to look at.
-        # The paper uses x in [-10000, 10000]^2; [-2, 2]^2 is used here. The
-        # infeasible zones outside the polygon (the paper, M >= 5) are a
-        # constraint: the point must lie inside the convex M-gon.
+        # Decision space x in [-10000, 10000]^2, as the paper states.
+        # Infeasible regions (Cheng et al. 2017, MaF9 text): for M >= 5 some
+        # pairs of NON-adjacent target lines meet at a point O outside the
+        # polygon, and points near O are nondominated with the interior. The
+        # paper removes them by declaring infeasible, for every such pair,
+        # the polygon Phi = <A_i, A'_i, A'_{i+1}, ..., A'_n, A_n, ..., A_{i+1}>
+        # where A_i..A_n is the boundary chain facing O and A' is the point
+        # reflection of A through O — a bow-tie of two lobes touching at O.
+        # The paper repairs offenders by resampling; this port cannot move a
+        # decision vector from inside evaluate(), so membership of any Phi is
+        # reported as a constraint violation (cv = penetration depth), which
+        # under the feasibility rules has the same effect: such points never
+        # survive. For M = 3 and 4 no such pair exists (the paper: "such
+        # areas exist in the problem with five or more objectives"), so those
+        # instances are unconstrained.
+        # FIX 2026-09-05: this used to register [-2, 2]^2 and to declare the
+        # WHOLE exterior of the polygon infeasible at every M, which is a
+        # different (much easier) problem.
         def _maf9_vertices(M):
             return [(math.cos(2*math.pi*m/M), math.sin(2*math.pi*m/M))
                     for m in range(M)]
@@ -794,33 +947,24 @@ def _maf_register():
                 f[m] = abs(dy*(x[0]-ax) - dx*(x[1]-ay)) / norm
             return f.tolist()
 
-        def maf9_cons(x, M=M):
-            # The constraint: the point must lie inside the convex M-gon.
-            # For a regular polygon that holds exactly when, for every edge,
-            # the point is on the same side as the centre. cv > 0 is a
-            # violation.
-            x = np.asarray(x, dtype=float)
-            V = _maf9_vertices(M)
+        _phi9 = _maf9_forbidden_regions(M)
+
+        def maf9_cons(x, M=M, _phi=_phi9):
+            x = np.asarray(x, dtype=float)[:2]
             cv = 0.0
-            for m in range(M):
-                ax, ay = V[m]
-                bx, by = V[(m+1) % M]
-                dx, dy = bx-ax, by-ay
-                # signed offset of the point and of the centre from the edge
-                side_pt = dx*(x[1]-ay) - dy*(x[0]-ax)
-                side_c  = dx*(0.0-ay) - dy*(0.0-ax)
-                if side_pt*side_c < 0.0:          # opposite sides -> outside
-                    cv += abs(side_pt)
+            for P in _phi:
+                if _point_in_poly(x[None, :], P)[0]:
+                    cv += _poly_edge_distance(x, P)
             return [cv]
 
         PROBLEMS[f"MaF9_{M}D"] = BenchProblem(
             name=f"MaF9_{M}D", n_vars=2,
-            bounds=[(-2.0,2.0)]*2, n_obj=M,
-            evaluate=maf9, constraints=maf9_cons,
+            bounds=[(-10000.0,10000.0)]*2, n_obj=M,
+            evaluate=maf9, constraints=(maf9_cons if _phi9 else _no_cons),
             hv_ref_raw=tuple([2.0]*M),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=tuple([0.0]*M), nadir=tuple([1.0]*M),
-            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True)
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=bool(_phi9))
 
         # ── MaF10 — WFG1 (mixed, biased PF) ──────────────────────────────────
         # Cheng et al. 2017, section 2.10. Identical to WFG1; the dimension
@@ -1133,7 +1277,10 @@ _register_ipolygon()
 # a cache miss falls back to sampling that one problem, in memory. Nothing is
 # ever written back — a library that writes into its own installation
 # directory breaks on any read-only or shared install.
-_REFRAME_CACHE_FILE = _Path(__file__).with_name("reference_frames.json")
+# The shipped file is _refframe_cache.json (FIX 2026-09-05: the code looked
+# for reference_frames.json, which never existed, so every lookup fell back
+# to sampling the front — 136 s for the whole registry).
+_REFRAME_CACHE_FILE = _Path(__file__).with_name("_refframe_cache.json")
 _REFRAMED: set = set()
 _REFRAME_TABLE: Optional[dict] = None
 
@@ -1202,6 +1349,13 @@ def get(name: str) -> "BenchProblem":
         hint = f"; did you mean: {', '.join(near[:6])}" if near else ""
         raise KeyError(f"unknown benchmark problem '{name}'{hint}") from None
     _reframe_one(name, p)
+    note = degenerate_subset_note(name)
+    if note and name not in _DEGENERATE_WARNED:
+        # Once per problem per process: a caveat that scrolls past on every
+        # call is a caveat nobody reads, and this one changes how the number
+        # may be used, not whether the run works.
+        _DEGENERATE_WARNED.add(name)
+        warnings.warn(note, stacklevel=2)
     return p
 
 

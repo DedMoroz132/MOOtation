@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Reading objective values out of whatever a solver produced (TUI_SPEC.md §3).
+"""Reading objective values out of whatever a solver produced.
 
 Four declarative strategies, from clean formats to dirty ones, plus an escape
 hatch into Python for the formats nobody can describe declaratively (HDF5, VTU,

@@ -1,9 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # ============================================================================
-# The M-objective Polygon problem.
-# H. Ishibuchi, N. Akedo, Y. Nojima — "A many-objective test problem for
-# visually examining diversity maintenance behavior in evolutionary
-# many-objective optimization", GECCO 2011.
+# The M-objective Polygon problem (a library construction).
+#
+# ATTRIBUTION (corrected 2026-09-05). This is NOT the problem of Ishibuchi,
+# Akedo & Nojima (GECCO 2011) — theirs is a 2-variable problem on
+# [0,100]^2 with SEVERAL identical polygons, f_i = the distance to the
+# nearest i-th vertex over all polygons (see polygon_ishibuchi.py). What is
+# implemented here is the single-polygon distance-minimisation problem of
+# Koppen & Yoshida (2007) / MaF8 (Cheng et al. 2017) — one regular M-gon on
+# the unit circle — EXTENDED with k extra distance variables through an
+# additive g(x_3..x_n) = sum x_i^2, so that convergence and diversity can be
+# exercised separately. Use it as such; it is a MOOtation problem, not a
+# transcription of a published one.
 #
 # Idea:
 #   * a 2D position (x_1, x_2) plus k distance variables x_3..x_n;

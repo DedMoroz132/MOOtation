@@ -2,13 +2,13 @@
 # Wrappers over the C ABI
 
 Thin adapters that let other languages drive MOOtation. Each is one file meant
-to be **copied into your project** rather than installed — they are sixty to a
-hundred lines and you will want to change them.
+to be **copied into your project** rather than installed — they are one to two
+hundred lines (R: two files) and you will want to change them.
 
 | language | file | how it reaches the ABI |
 |---|---|---|
 | Julia | [`MOOtation.jl`](MOOtation.jl) | `@ccall`, directly |
-| MATLAB / Octave | [`mootation.m`](mootation.m) | `loadlibrary` / `calllib`, directly |
+| MATLAB | [`mootation.m`](mootation.m) | `loadlibrary` / `calllib`, directly |
 | R | [`mootation.R`](mootation.R) + [`mootation_r.c`](mootation_r.c) | through a C shim (see below) |
 | Python | [`../ctypes_demo.py`](../ctypes_demo.py) | `ctypes`, directly |
 
@@ -22,13 +22,18 @@ while X is not empty:
 X, F, cv = result()       # the final population
 ```
 
+The shared library is `libmootation.so` / `libmootation.dylib` on Unix and
+`mootation.dll` (no `lib` prefix) when built with MSVC; on Windows pass the
+name explicitly rather than relying on the wrappers' `libmootation` default.
+
 **The batch size is the algorithm's choice, not `pop_size`.** Generational
 algorithms hand over a whole offspring generation; steady-state ones
 (MOEA/D-DE, MOEA/DD) hand over one candidate at a time. Size your loop off the
 returned array, never off a constant.
 
-Every one of these languages is column-major except C, and the ABI is
-row-major. Each wrapper transposes in one place, marked in a comment. Getting
+Julia, MATLAB and R are column-major and the ABI is row-major, so each of
+those three wrappers transposes in one place, marked in a comment (Python's
+`ctypes` reads the row-major buffer directly). Getting
 that backwards silently scrambles decision vectors rather than failing, which
 is why it is confined rather than spread through the file.
 

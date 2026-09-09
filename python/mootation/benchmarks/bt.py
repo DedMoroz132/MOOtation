@@ -145,11 +145,16 @@ def bt9(x):
 
 # ---- reference Pareto fronts ---------------------------------------
 def _nd(F):
+    """Nondominated subset (minimisation). FIX 2026-09-05: the previous
+    version computed the rows that DOMINATE F[i] and then dropped THEM, so it
+    returned the dominated part of the BT5 curve as the reference front."""
     keep = np.ones(len(F), bool)
     for i in range(len(F)):
-        if keep[i]:
-            dom = np.all(F <= F[i], 1) & np.any(F < F[i], 1); dom[i] = False
-            keep[dom] = False
+        if not keep[i]:
+            continue
+        dominated_by = np.all(F <= F[i], 1) & np.any(F < F[i], 1)
+        if np.any(dominated_by):
+            keep[i] = False
     return F[keep]
 
 

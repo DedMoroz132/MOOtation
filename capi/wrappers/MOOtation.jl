@@ -29,7 +29,7 @@
 
 module MOOtation
 
-export minimize, ask_tell, algorithms, version
+export minimize, ask, tell, result, open_session, close_session, algorithms, version
 
 const LIB = Ref{String}("libmootation")
 

@@ -1,7 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # ============================================================================
 # Multi-polygon distance minimization.
-# H. Ishibuchi, N. Akedo, Y. Nojima — GECCO 2011.
+# H. Ishibuchi, N. Akedo, Y. Nojima — GECCO 2011, Section 2.
+#
+# INSTANCE NOTE (2026-09-05). The paper defines the FAMILY (m identical
+# polygons with k vertices in [0,100]^2, f_i = min over polygons of the
+# distance to vertex i) and illustrates it with m = 4 triangles (Fig. 1) and
+# m = 4 rectangles (Fig. 2), whose coordinates it does not print. This module
+# instantiates the family with m = 2 regular polygons of radius 20 centred
+# at (30,50) and (70,50) — a valid member of the family, not the paper's
+# figure instance.
 #
 # A problem posed in a 2D DECISION space [0, 100]^2 containing m identical
 # regular polygons of k vertices each. The objective count is k, and

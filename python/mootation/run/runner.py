@@ -12,7 +12,7 @@ Three rules this module exists to enforce:
   one fabricated point poisons the archive and every metric taken from it.
 * **Scratch is per worker and overwritten; the journal is per run and appended.**
   Mixing them is what makes a run both enormous on disk and impossible to
-  resume (TUI_SPEC.md §4).
+  resume.
 * **The journal is a cache.** Evolutionary algorithms re-propose identical
   individuals far more often than one expects, and a cache hit costs a
   dictionary lookup instead of an hour of solver time.
