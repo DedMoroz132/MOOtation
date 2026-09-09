@@ -9,6 +9,7 @@ on:
     # there is no base to open a pull request against either.
     branches: [main, 'ci/**']
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
   schedule:
     # 03:17 UTC daily. An odd minute on purpose: GitHub queues the top of the
@@ -88,8 +89,8 @@ jobs:
         run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
 
   # ── The long tests ────────────────────────────────────────────────────────
-  # test_convergence runs all 60 algorithms to convergence; test_constraints
-  # runs all 60 twice, with constraint handling off and on. Together they are
+  # test_convergence runs all 58 algorithms to convergence; test_constraints
+  # runs all 58 twice, with constraint handling off and on. Together they are
   # the bulk of the suite's runtime, so every push skips them (-LE nightly) and
   # this job runs them on a schedule instead.
   #
@@ -99,7 +100,10 @@ jobs:
   # the kind of breakage a compiler catches.
   nightly:
     name: nightly · full test suite
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'full-tests')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -265,7 +269,7 @@ jobs:
               auto b = sess.result();
               std::printf("installed embed OK: run=%zu session=%zu algorithms=%zu\n",
                           a.size(), b.size(), mootation::algorithm_names().size());
-              if (mootation::algorithm_names().size() != 60) return 1;
+              if (mootation::algorithm_names().size() != 58) return 1;
               if (a.size() != b.size() || a.size() == 0) return 1;
               for (std::size_t i = 0; i < a.size(); ++i)
                   for (std::size_t j = 0; j < 2; ++j)
@@ -370,7 +374,7 @@ jobs:
           cd /tmp     # outside the source tree, so nothing resolves by accident
           python -c "
           import mootation
-          assert len(mootation.algorithms()) == 60
+          assert len(mootation.algorithms()) == 58
           res = mootation.minimize(lambda x: [x[0], 1 - x[0]**0.5],
                                    bounds=[(0.0, 1.0)] * 3, n_objs=2,
                                    pop_size=20, n_gen=10, seed=1)
@@ -452,7 +456,7 @@ jobs:
           gens = 10
           EOF
           if PYTHONPATH=python python -m mootation.run --check /tmp/broken.toml; then
-            echo "the validator accepted a config with 4 defects"; exit 1
+            echo "the validator accepted a config with 3 defects"; exit 1
           fi
           # And it must name every one of them, not just the first.
           out=$(PYTHONPATH=python python -m mootation.run --check /tmp/broken.toml 2>&1 || true)
@@ -544,8 +548,8 @@ jobs:
           # embed.hpp includes algorithms.def three times with a different
           # macro each time. The amalgamator has to paste an X-macro list at
           # EVERY use; deduplicating it the way it deduplicates headers would
-          # leave the dispatch knowing one algorithm instead of 60, and that
-          # failure is invisible until someone asks for the 60th.
+          # leave the dispatch knowing one algorithm instead of 58, and that
+          # failure is invisible until someone asks for the 59th.
           cat > /tmp/amalg_embed.cpp <<'EOF'
           #include "mootation_single.hpp"
           #include <cmath>
@@ -579,7 +583,7 @@ jobs:
               const std::size_t n_alg = mootation::algorithm_names().size();
               std::printf("run=%zu session=%zu algorithms=%zu\n",
                           a.size(), b.size(), n_alg);
-              if (n_alg != 60) return 1;
+              if (n_alg != 58) return 1;
               if (a.size() != b.size()) return 1;
               for (std::size_t i = 0; i < a.size(); ++i)
                   for (std::size_t j = 0; j < 2; ++j)

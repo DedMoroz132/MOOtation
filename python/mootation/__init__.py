@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""MOOtation — 60 multi- and many-objective evolutionary algorithms.
+"""MOOtation — 58 multi- and many-objective evolutionary algorithms.
 
 The library is C++; this package is the Python face of it.
 

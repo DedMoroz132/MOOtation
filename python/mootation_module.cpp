@@ -9,7 +9,7 @@
 // header is missing from that file.
 //
 // Every core exposes set_seed/setup/step, but the tuning knobs differ per
-// algorithm: only 19 of the 60 have set_t_max, 10 have set_T, 7 have set_kappa.
+// algorithm: only 19 of the 58 have set_t_max, 10 have set_T, 6 have set_kappa.
 // Rather than a per-algorithm dispatch, each optional setter is detected with
 // SFINAE and applied only where it exists. A knob the caller sets that the
 // chosen algorithm does not have is REPORTED, not ignored — silently dropping
@@ -85,6 +85,42 @@ inline void eval_into(const std::vector<double>& vars,
         lims = lim.front();
         if (static_cast<int>(lims.size()) != g_problem->n_limits)
             throw std::runtime_error("limits_batch returned the wrong width");
+    }
+}
+
+// The BatchExecutor installed when the caller supplied evaluate_batch: the
+// whole dirty set crosses the GIL in ONE call, which is what "batched
+// evaluation" promises. Without it DataVault falls back to calc_objs one
+// individual at a time and a batch function only ever sees single rows.
+void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& resp)
+{
+    if (!g_problem) throw std::runtime_error("mootation: no active problem");
+    py::gil_scoped_acquire gil;
+
+    auto out = g_problem->evaluate_batch(req.variables);
+    if (out.size() != req.size())
+        throw std::runtime_error(
+            "evaluate_batch returned " + std::to_string(out.size()) +
+            " rows for a batch of " + std::to_string(req.size()));
+    for (const auto& row : out)
+        if (static_cast<int>(row.size()) != g_problem->n_objectives)
+            throw std::runtime_error("the evaluator returned the wrong number of objectives");
+    resp.objectives = std::move(out);
+
+    if (g_problem->n_limits > 0) {
+        if (!g_problem->limits_batch)
+            throw std::runtime_error("n_limits > 0 requires problem.limits_batch");
+        auto lim = g_problem->limits_batch(req.variables);
+        if (lim.size() != req.size())
+            throw std::runtime_error(
+                "limits_batch returned " + std::to_string(lim.size()) +
+                " rows for a batch of " + std::to_string(req.size()));
+        for (const auto& row : lim)
+            if (static_cast<int>(row.size()) != g_problem->n_limits)
+                throw std::runtime_error("limits_batch returned the wrong width");
+        resp.limits = std::move(lim);
+    } else {
+        resp.limits.clear();
     }
 }
 
@@ -174,11 +210,26 @@ struct RunConfig {
     std::optional<double> eta_c, eta_m, pc, pm, delta, kappa, theta, alpha, F, CR;
     std::optional<int>    T, nr, K, n_clusters, div;
 
-    // Warm start. Empty means a fresh random population. Only vars and objs
-    // are carried, because those are the fields every algorithm shares — which
-    // is what lets a population saved by NSGA-II seed a MOEA/D run.
+    // Warm start. Empty means a fresh random population. Vars and objs are
+    // what every algorithm shares — which is what lets a population saved by
+    // NSGA-II seed a MOEA/D run. A constrained run also needs the individual
+    // constraint values (the algorithms compare those, not the aggregate cv):
+    // minimize() recomputes them from `constraints`, and the binding refuses
+    // a constrained warm start without them rather than planting a population
+    // every one of whose constraints reads as satisfied.
     std::vector<std::vector<double>> seed_variables;
     std::vector<std::vector<double>> seed_objectives;
+    std::vector<std::vector<double>> seed_limits;
+
+    // Per-generation observer. When set and record_every > 0, the run is
+    // stepped one generation at a time and on_generation(gen, objectives) is
+    // called after setup (gen = 0) and after every record_every-th generation
+    // (and the last one). `objectives` are the current answer set's rows —
+    // the same view the final Result returns — so a caller can record IGD or
+    // hypervolume against the evaluation count it keeps in its own evaluator.
+    // Off by default: optimize() runs uninterrupted.
+    std::function<void(int, std::vector<std::vector<double>>)> on_generation;
+    int record_every = 0;
 };
 
 struct PyResult {
@@ -204,6 +255,7 @@ PyResult run_core(const RunConfig& cfg)
                                  std::optional<double>(b.second));
 
     DataVault<Tag>      vault(cfg.pop_size, prob);
+    if (g_problem->evaluate_batch) vault.set_batch_executor(&py_run_batch);
     Optimizer<Tag, Core> opt(std::move(vault), defer_setup);
 
     auto&                    alg = opt.get_algorithm();
@@ -243,11 +295,36 @@ PyResult run_core(const RunConfig& cfg)
             // objectives come from the file, so a warm start costs zero
             // function evaluations. That is the whole point when an evaluation
             // is a solver run.
-            opt.setup_with_seed(cfg.seed_variables, cfg.seed_objectives);
+            if (g_problem->n_limits > 0 && cfg.seed_limits.empty())
+                throw std::invalid_argument(
+                    "mootation: this run has " + std::to_string(g_problem->n_limits) +
+                    " constraints but the seed population carries no per-constraint "
+                    "values; pass seed_limits (minimize() recomputes them from "
+                    "`constraints`)");
+            opt.setup_with_seed(cfg.seed_variables, cfg.seed_objectives, {},
+                                cfg.seed_limits);
         } else {
             opt.setup();
         }
-        opt.optimize(cfg.n_gen);
+        if (cfg.on_generation && cfg.record_every > 0) {
+            auto emit = [&](int g) {
+                auto& v = opt.get_vault();
+                std::size_t n = std::min<std::size_t>(
+                    v.active_n(), static_cast<std::size_t>(v.pop_size()));
+                std::vector<std::vector<double>> P;
+                P.reserve(n);
+                for (std::size_t i = 0; i < n; ++i) P.push_back(v.objectives_of(i));
+                py::gil_scoped_acquire gil;
+                cfg.on_generation(g, std::move(P));
+            };
+            emit(0);
+            for (int g = 1; g <= cfg.n_gen; ++g) {
+                opt.step();
+                if (g % cfg.record_every == 0 || g == cfg.n_gen) emit(g);
+            }
+        } else {
+            opt.optimize(cfg.n_gen);
+        }
     }
 
     auto&    v = opt.get_vault();
@@ -342,7 +419,13 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("CR",              &RunConfig::CR)
         .def_readwrite("div",             &RunConfig::div)
         .def_readwrite("seed_variables",  &RunConfig::seed_variables)
-        .def_readwrite("seed_objectives", &RunConfig::seed_objectives);
+        .def_readwrite("seed_objectives", &RunConfig::seed_objectives)
+        .def_readwrite("seed_limits",     &RunConfig::seed_limits)
+        .def_readwrite("on_generation",   &RunConfig::on_generation,
+                       "Observer called as on_generation(gen, objectives) every "
+                       "record_every generations (gen 0 = after setup).")
+        .def_readwrite("record_every",    &RunConfig::record_every,
+                       "0 = no observer; k > 0 = call on_generation every k generations.");
 
     py::class_<PyResult>(m, "Result")
         .def_readonly("objectives", &PyResult::objectives)

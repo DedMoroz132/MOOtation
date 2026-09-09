@@ -45,7 +45,6 @@ MOOTATION_ALG(hlmea,      NSGAII_Individual,    HLMEACore)
 // ── Indicator-based ─────────────────────────────────────────────────────────
 MOOTATION_ALG(ibea_eplus,       IBEA_Individual,      IBEAePlusCore)
 MOOTATION_ALG(ibea_hd,          IBEAhd_Individual,    IBEAhdCore)
-MOOTATION_ALG(ibea_eplus_clean, IBEA_Individual,      IBEAePlusCleanCore)
 MOOTATION_ALG(mibea,            mIBEA_Individual,     mIBEACore)
 MOOTATION_ALG(r2ibea,           R2IBEA_Individual,    R2IBEACore)
 MOOTATION_ALG(hype,             HypE_Individual,      HypECore)
@@ -64,7 +63,6 @@ MOOTATION_ALG(nrv_moea,   NRVMOEA_Individual,   NRVMOEACore)
 MOOTATION_ALG(dea_gng,    NSGAII_Individual,    DEAGNGCore)
 MOOTATION_ALG(srv,        SRV_Individual,       SRVCore)
 MOOTATION_ALG(srv_nsga3,  NSGAIII_Individual,   SRVNSGA3Core)
-MOOTATION_ALG(srv_moead,  MOEAD_Individual,     SRVMOEADCore)
 
 // ── Clustering-based ────────────────────────────────────────────────────────
 MOOTATION_ALG(camoea,     CAMOEA_Individual,    CAMOEACore)

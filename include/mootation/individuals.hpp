@@ -121,10 +121,6 @@ struct SRV_Individual : public Based_Individual {
 // (reference lines come from SRV; association logic is identical)
 using SRVNSGA3_Individual = NSGAIII_Individual;
 
-// SRV-MOEA/D — no persistent per-individual fields beyond MOEA/D
-// (weight vectors and neighbourhood rebuilt from SRV; in-place update)
-using SRVMOEAD_Individual = MOEAD_Individual;
-
 // SPEA2+SDE (Li, Yang, Liu, IEEE TEVC 2014)
 // Identical to SPEA2_Individual except raw_fitness is double (fractional sums of strengths).
 // strength   — S(x): number of individuals that x dominates

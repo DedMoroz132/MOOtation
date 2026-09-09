@@ -31,6 +31,7 @@ from .registry import (          # noqa: E402
     get,
     names,
     families,
+    degenerate_subset_note,
 )
 
 
@@ -54,7 +55,7 @@ def solve(problem, algorithm="nsga2", *, pop_size=None, n_gen=None,
     paper used — a benchmark run with an arbitrary budget compares nothing.
 
     Returns the binding's Result. This is the bridge between the Python suites
-    and the C++ algorithms: 216 problems on one side, 60 algorithms on the
+    and the C++ algorithms: 216 problems on one side, 58 algorithms on the
     other, and the objective function crosses the boundary once per individual.
     """
     from .. import minimize

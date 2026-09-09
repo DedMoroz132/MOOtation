@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The Textual application: four read-only screens over a run description.
+"""The Textual application: read-only screens over a run description.
+
+Config / Problems / Algorithms / Monitor always; Campaign / Compare / Explore
+when the config describes a builtin benchmark campaign (mootation.run.campaign).
 
 Nothing here edits the config. The screens render what `config.load` and
 `config.validate` already produced, plus what the journal on disk says, so the
@@ -19,6 +22,7 @@ from textual.widgets import (
 
 from ..run.config import Config, load, validate, _platform_key
 from ..run.ledger import Ledger
+from ..run import campaign as _camp
 
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -102,7 +106,7 @@ class ConfigScreen(VerticalScroll):
 
 
 class AlgorithmsScreen(VerticalScroll):
-    """Which of the 60 are selected, with what parameters, and any objection."""
+    """Which of the 58 are selected, with what parameters, and any objection."""
 
     def __init__(self, cfg: Config) -> None:
         super().__init__()
@@ -219,7 +223,7 @@ class ProblemsScreen(VerticalScroll):
 class MonitorScreen(VerticalScroll):
     """Live progress, read from the journal.
 
-    The journal is the source of truth (TUI_SPEC.md §4): it is append-only and
+    The journal is the source of truth: it is append-only and
     it is what a resume reads, so a monitor built on it shows the same thing a
     restart would see. Reading the scratch directories instead would show
     whatever the last worker happened to leave behind.
@@ -311,6 +315,285 @@ class MonitorScreen(VerticalScroll):
             self._body.update(self._snapshot())
 
 
+
+# ── Campaign ────────────────────────────────────────────────────────────────
+
+
+def _campaign_ready(cfg: Config) -> bool:
+    return cfg.kind == "builtin" and bool(cfg.benchmark_problems) and bool(cfg.algorithms)
+
+
+class CampaignScreen(VerticalScroll):
+    """Progress of a benchmark campaign, read from the meta.json files.
+
+    The results tree is the contract between the runner and the UI: a run
+    is whatever its meta.json says it is, whether it
+    was produced on this machine or on a cluster shard and copied back.
+    """
+
+    def __init__(self, cfg: Config) -> None:
+        super().__init__()
+        self.cfg = cfg
+        self._body: Static | None = None
+        self._table: DataTable | None = None
+
+    def compose(self) -> ComposeResult:
+        self._body = Static(self._summary(), classes="panel")
+        yield self._body
+        self._table = DataTable(zebra_stripes=True, id="camp-table")
+        self._fill()
+        yield self._table
+
+    def on_mount(self) -> None:
+        self.set_interval(3.0, self._refresh)
+
+    def _jobs(self):
+        spec = _camp.campaign_spec(self.cfg)
+        return spec, _camp.expand_jobs(self.cfg, spec), _camp.out_root(self.cfg, spec)
+
+    def _summary(self) -> Text:
+        t = Text()
+        try:
+            spec, jobs, root = self._jobs()
+        except Exception as e:                       # a config that cannot expand
+            t.append(str(e), style="red")
+            return t
+        counts = {"done": 0, "failed": 0, "running": 0, "pending": 0}
+        for j in jobs:
+            st = _camp.job_status(root, j)
+            counts[st] = counts.get(st, 0) + 1
+        t.append("campaign\n", style="bold")
+        t.append(f"  {'results':<12}", style="dim"); t.append(f"{root}\n")
+        t.append(f"  {'jobs':<12}", style="dim"); t.append(f"{len(jobs)}")
+        t.append(f"   done {counts['done']}", style="green")
+        t.append(f"   running {counts['running']}", style="yellow")
+        t.append(f"   failed {counts['failed']}", style="red" if counts["failed"] else "dim")
+        t.append(f"   pending {counts['pending']}\n", style="dim")
+        t.append(f"  {'budget':<12}", style="dim")
+        t.append(("problem defaults" if spec.budget_fe == 0 else f"{spec.budget_fe:,} FE")
+                 + f", record every {spec.record_every} gen, metrics {', '.join(spec.metrics)}\n")
+        frac = counts["done"] / max(1, len(jobs))
+        width = 46
+        filled = int(width * frac)
+        t.append("\n  ")
+        t.append("#" * filled, style="green")
+        t.append("." * (width - filled), style="dim")
+        t.append(f"  {100 * frac:5.1f}%\n")
+        return t
+
+    def _fill(self) -> None:
+        if self._table is None:
+            return
+        try:
+            spec, jobs, root = self._jobs()
+        except Exception:
+            return
+        algs = [a.name for a in self.cfg.algorithms]
+        probs = list(dict.fromkeys(j.problem for j in jobs))
+        self._table.clear(columns=True)
+        self._table.add_columns("problem", *algs)
+        cell: dict = {}
+        for j in jobs:
+            st = _camp.job_status(root, j)
+            c = cell.setdefault((j.problem, j.algorithm), {"done": 0, "failed": 0, "total": 0})
+            c["total"] += 1
+            if st in ("done", "failed"):
+                c[st] += 1
+        for p in probs:
+            row = [p]
+            for a in algs:
+                c = cell.get((p, a), {"done": 0, "failed": 0, "total": 0})
+                s = f"{c['done']}/{c['total']}"
+                if c["failed"]:
+                    s += f" !{c['failed']}"
+                style = ("green" if c["done"] == c["total"] and c["total"]
+                         else "red" if c["failed"] else "")
+                row.append(Text(s, style=style))
+            self._table.add_row(*row)
+
+    def _refresh(self) -> None:
+        if self._body is not None:
+            self._body.update(self._summary())
+        self._fill()
+
+
+# ── Compare ─────────────────────────────────────────────────────────────────
+
+
+class CompareScreen(VerticalScroll):
+    """Median [q1, q3] of a final indicator per problem x algorithm, over seeds.
+
+    Type a metric name in the box (igd, igdp, hv) and press Enter; press `e`
+    to export the table as CSV next to the results.
+    """
+
+    def __init__(self, cfg: Config) -> None:
+        super().__init__()
+        self.cfg = cfg
+        self.metric = "igd"
+        self._table: DataTable | None = None
+        self._note: Static | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Input(value=self.metric, placeholder="metric: igd | igdp | hv", id="cmp-metric")
+        self._note = Static(Text(""), classes="panel")
+        yield self._note
+        self._table = DataTable(zebra_stripes=True, id="cmp-table")
+        self._fill()
+        yield self._table
+
+    def _root(self) -> Path:
+        return _camp.out_root(self.cfg, _camp.campaign_spec(self.cfg))
+
+    def _fill(self) -> None:
+        if self._table is None:
+            return
+        rows = _camp.scan_results(self._root())
+        table = _camp.compare_table(rows, self.metric)
+        algs = sorted({a for d in table.values() for a in d})
+        self._table.clear(columns=True)
+        self._table.add_columns("problem", *algs)
+        lower_better = self.metric != "hv"
+        for prob in sorted(table):
+            cells = [prob]
+            vals = {a: table[prob][a][0] for a in algs if a in table[prob]}
+            best = (min if lower_better else max)(vals, key=vals.get) if vals else None
+            for a in algs:
+                if a in table[prob]:
+                    med, q1, q3, n = table[prob][a]
+                    txt = f"{med:.4g} [{q1:.3g}, {q3:.3g}] n={n}"
+                    cells.append(Text(txt, style="bold green" if a == best else ""))
+                else:
+                    cells.append(Text("-", style="dim"))
+            self._table.add_row(*cells)
+        done = sum(1 for r in rows if r["status"] == "done")
+        if self._note is not None:
+            self._note.update(Text(
+                f"{done} finished runs under {self._root()} — metric '{self.metric}' "
+                f"({'lower' if lower_better else 'higher'} is better); best per row in green; "
+                f"press e to export CSV", style="dim"))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "cmp-metric" and event.value.strip() in ("igd", "igdp", "hv"):
+            self.metric = event.value.strip()
+            self._fill()
+
+    def export_csv(self) -> Path:
+        rows = _camp.scan_results(self._root())
+        table = _camp.compare_table(rows, self.metric)
+        path = self._root() / f"compare_{self.metric}.csv"
+        _camp.write_compare_csv(table, path, self.metric)
+        return path
+
+
+# ── Explore ─────────────────────────────────────────────────────────────────
+
+
+def _ascii_plot(xs: list, ys: list, width: int = 60, height: int = 12,
+                log_y: bool = True) -> str:
+    """A terminal plot of ys against xs (ascending in x)."""
+    import math as _m
+    pts = [(x, y) for x, y in zip(xs, ys)
+           if isinstance(y, (int, float)) and _m.isfinite(y) and (y > 0 or not log_y)]
+    if len(pts) < 2:
+        return "(not enough finite points to plot)"
+    xs = [p[0] for p in pts]
+    ys = [(_m.log10(p[1]) if log_y else p[1]) for p in pts]
+    x0, x1 = xs[0], xs[-1]
+    y0, y1 = min(ys), max(ys)
+    if y1 - y0 < 1e-12:
+        y1 = y0 + 1e-12
+    grid = [[" "] * width for _ in range(height)]
+    for x, y in zip(xs, ys):
+        c = int((x - x0) / max(1e-12, x1 - x0) * (width - 1))
+        r = int((y1 - y) / (y1 - y0) * (height - 1))
+        grid[r][c] = "*"
+    lines = []
+    for r in range(height):
+        yv = y1 - (y1 - y0) * r / (height - 1)
+        label = f"{10 ** yv:9.3g}" if log_y else f"{yv:9.3g}"
+        lines.append(f"{label} |" + "".join(grid[r]))
+    lines.append(" " * 10 + "+" + "-" * width)
+    lines.append(" " * 11 + f"FE {x0:.0f}" + " " * max(1, width - 20) + f"{x1:.0f}")
+    return "\n".join(lines)
+
+
+class ExploreScreen(VerticalScroll):
+    """One run at a time: pick it in the tree, see its trajectory."""
+
+    def __init__(self, cfg: Config) -> None:
+        super().__init__()
+        self.cfg = cfg
+        self._plot: Static | None = None
+        self._tree: Tree | None = None
+        self.metric = "igd"
+
+    def compose(self) -> ComposeResult:
+        yield Input(value=self.metric, placeholder="metric: igd | igdp | hv", id="exp-metric")
+        self._tree = Tree("results")
+        self._tree.root.expand()
+        self._build_tree()
+        yield self._tree
+        self._plot = Static(Text("select a run in the tree", style="dim"), classes="panel")
+        yield self._plot
+
+    def _build_tree(self) -> None:
+        if self._tree is None:
+            return
+        root = _camp.out_root(self.cfg, _camp.campaign_spec(self.cfg))
+        rows = _camp.scan_results(root)
+        by_prob: dict = {}
+        for r in rows:
+            by_prob.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(r)
+        self._tree.root.remove_children()
+        for prob in sorted(by_prob):
+            pn = self._tree.root.add(prob)
+            for alg in sorted(by_prob[prob]):
+                an = pn.add(alg)
+                for r in sorted(by_prob[prob][alg], key=lambda r: (r["seed"] or 0)):
+                    label = f"seed {r['seed']}  {r['status']}"
+                    v = r["final"].get(self.metric)
+                    if isinstance(v, float):
+                        label += f"  {self.metric}={v:.4g}"
+                    an.add_leaf(label, data=r["dir"])
+
+    def show_run(self, run_dir) -> None:
+        if self._plot is None:
+            return
+        traj = _camp.read_trajectory(Path(run_dir))
+        xs = [t.get("fe", 0) for t in traj]
+        ys = [t.get(self.metric) for t in traj]
+        body = Text()
+        body.append(f"{run_dir}\n", style="dim")
+        body.append(f"{self.metric} vs evaluations ({len(traj)} records)\n", style="bold")
+        body.append(_ascii_plot(xs, ys, log_y=(self.metric != "hv")) + "\n")
+        if traj:
+            body.append("\n  fe        gen     "
+                        + "   ".join(f"{m:>9}" for m in ("igd", "igdp", "hv")) + "\n",
+                        style="dim")
+            step = max(1, len(traj) // 12)
+            shown = traj[::step]
+            if shown[-1] is not traj[-1]:
+                shown.append(traj[-1])
+            for t in shown:
+                cells = []
+                for m in ("igd", "igdp", "hv"):
+                    v = t.get(m)
+                    cells.append(f"{v:9.4g}" if isinstance(v, float) else f"{'-':>9}")
+                body.append(f"  {t.get('fe', 0):<9} {t.get('gen', 0):<7} "
+                            + "   ".join(cells) + "\n")
+        self._plot.update(body)
+
+    def on_tree_node_selected(self, event: Tree.NodeSelected) -> None:
+        if event.node.data:
+            self.show_run(event.node.data)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "exp-metric" and event.value.strip() in ("igd", "igdp", "hv"):
+            self.metric = event.value.strip()
+            self._build_tree()
+
+
 # ── The app ─────────────────────────────────────────────────────────────────
 
 
@@ -323,6 +606,7 @@ class MootationApp(App):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("r", "reload", "Reload config"),
+        ("e", "export", "Export compare CSV"),
     ]
 
     def __init__(self, config_path: str | Path) -> None:
@@ -342,7 +626,27 @@ class MootationApp(App):
                 yield AlgorithmsScreen(self.cfg)
             with TabPane("Monitor", id="tab-monitor"):
                 yield MonitorScreen(self.cfg)
+            if _campaign_ready(self.cfg):
+                with TabPane("Campaign", id="tab-campaign"):
+                    yield CampaignScreen(self.cfg)
+                with TabPane("Compare", id="tab-compare"):
+                    yield CompareScreen(self.cfg)
+                with TabPane("Explore", id="tab-explore"):
+                    yield ExploreScreen(self.cfg)
         yield Footer()
+
+    def action_export(self) -> None:
+        try:
+            screen = self.query_one(CompareScreen)
+        except Exception:
+            self.notify("no Compare tab in this config", severity="warning")
+            return
+        try:
+            path = screen.export_csv()
+        except Exception as e:
+            self.notify(str(e), severity="error", timeout=8)
+            return
+        self.notify(f"wrote {path}")
 
     def on_mount(self) -> None:
         self.title = f"MOOtation — {self.cfg.name}"

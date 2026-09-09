@@ -9,7 +9,7 @@ copy is a list that goes stale.
 The population-size rules below ARE hand-maintained, and they are the one place
 in this package that can drift from the C++ headers. They are written down
 because the alternative is worse: without them a typo costs a day-long run ten
-minutes in, which is exactly the loss TUI_SPEC.md §7 is meant to prevent. Each
+minutes in, which is exactly the loss `--check` is meant to prevent. Each
 entry names the mechanism in the header it mirrors, so a reader can check it.
 """
 
@@ -73,7 +73,7 @@ def algorithm_names() -> tuple[str, ...]:
 EXACT_LATTICE = frozenset({
     "a_nsga3", "adaw", "crea", "edv", "irea", "mbra", "moead", "moead_awa",
     "moead_dd", "moead_de", "moead_dra", "mombi2", "nsga3", "rvea", "srv",
-    "srv_moead", "srv_nsga3", "theta_dea",
+    "srv_nsga3", "theta_dea",
 })
 
 # M2M-family cores that partition the population into K subregions of equal
@@ -122,6 +122,21 @@ def nearest_lattice_sizes(m: int, pop: int) -> tuple[int | None, int | None]:
         h += 1
 
 
+def two_layer_sizes(m: int, limit: int) -> list[int]:
+    """Attainable TWO-layer lattice sizes (Deb & Jain 2014 §V: boundary H1 plus
+    inner H2 < H1) for m objectives, up to `limit`. generate_exact accepts these
+    as well as the single-layer sizes."""
+    out = set()
+    h1 = 1
+    while das_dennis_count(m, h1) <= limit:
+        for h2 in range(1, h1):
+            s = das_dennis_count(m, h1) + das_dennis_count(m, h2)
+            if s <= limit:
+                out.add(s)
+        h1 += 1
+    return sorted(out)
+
+
 def check_pop(name: str, pop: int, n_objs: int, params: dict | None = None
               ) -> str | None:
     """Return a human-readable reason `pop` is unusable, or None if it is fine.
@@ -136,6 +151,11 @@ def check_pop(name: str, pop: int, n_objs: int, params: dict | None = None
     if name in EXACT_LATTICE:
         below, above = nearest_lattice_sizes(n_objs, pop)
         if below == pop:
+            return None
+        # FIX 2026-09-05: the two-layer sizes (91+..., 275 = 220+55 at M=10,
+        # 135 = 120+15 at M=15) are accepted by generate_exact too; refusing
+        # them here was stricter than the library.
+        if pop in two_layer_sizes(n_objs, pop):
             return None
         hint = ", ".join(str(v) for v in (below, above) if v is not None)
         return (

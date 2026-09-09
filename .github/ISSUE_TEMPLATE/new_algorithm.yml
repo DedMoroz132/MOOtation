@@ -33,7 +33,7 @@ body:
     attributes:
       label: Why this one
       description: >-
-        What does it do that the 60 already here do not? Which existing
+        What does it do that the 58 already here do not? Which existing
         algorithm is it closest to?
     validations:
       required: true

@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parent.parent
 INCLUDE_ROOT = ROOT / "include"
 # Two entry points, in this order: the umbrella (every algorithm and every
 # support header) and the embedding layer. embed.hpp is not part of the
-# umbrella on purpose — it instantiates the run-time dispatch over all 60
+# umbrella on purpose — it instantiates the run-time dispatch over all 58
 # algorithms, and a program that names its algorithm at compile time should not
 # pay for that. The single-header build is the opposite trade: one file, batteries
 # included, so it carries embed.hpp too.
@@ -107,7 +107,7 @@ def emit(path: Path, seen: set[Path], system: set[str], out: list[str]) -> None:
                 # X-macro list: included many times with a different macro
                 # definition each time, so it must be pasted at EVERY use.
                 # Deduplicating it would silently drop all but the first
-                # expansion and leave the dispatch missing 59 algorithms.
+                # expansion and leave the dispatch missing 58 algorithms.
                 if is_private(target):
                     raise SystemExit(f"refusing to amalgamate a private file: {target}")
                 for defline in target.read_text(encoding="utf-8").splitlines():

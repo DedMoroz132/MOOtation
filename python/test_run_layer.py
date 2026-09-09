@@ -75,7 +75,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 60, f"expected 60 algorithms, got {len(names)}"
+    assert len(names) == 58, f"expected 58 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -141,8 +141,12 @@ def minimal_config_loads():
 
 @test
 def a_missing_required_key_names_itself():
-    e = raises(ConfigError, loads, "[run]\nname='x'\nscratch='s'\n")
-    assert "ledger" in str(e), e
+    # scratch/ledger have defaults since the campaign work (a builtin campaign
+    # writes neither); `name` and the [problem] table are still required.
+    e = raises(ConfigError, loads, "[run]\nscratch='s'\nledger='l'\n")
+    assert "name" in str(e), e
+    e = raises(ConfigError, loads, "[run]\nname='x'\n")
+    assert "problem" in str(e), e
 
 
 @test
@@ -671,7 +675,7 @@ gens = 5
 def a_benchmark_name_that_does_not_exist_is_named_with_near_misses():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
-    # TUI_SPEC.md's own example writes DTLZ2_M3. The registry calls it
+    # A plausible spelling is DTLZ2_M3. The registry calls it
     # DTLZ2_3D, and a plausible-looking wrong name is exactly what this catches.
     text = """
 [run]
@@ -900,6 +904,153 @@ def the_demo_config_validates_on_any_machine_with_python():
     # move.
     probs = validate(cfg)
     assert probs == [], probs
+
+
+# ── campaign ────────────────────────────────────────────────────────────────
+
+_CAMP = """
+[run]
+name = "camp"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+problems = ["ZDT1", "DTLZ2_3D"]
+runs = 3
+
+[campaign]
+budget_fe = 2000
+record_every = 2
+metrics = ["igd", "hv"]
+
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+
+[[algorithms]]
+name = "moead_m2m"
+pop = 0
+gens = 0
+
+[[algorithms]]
+name = "nsga3"
+pop = 0
+gens = 0
+"""
+
+
+@test
+def campaign_expands_problems_algorithms_seeds():
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        return
+    from mootation.run import campaign as C
+    cfg = loads(_CAMP)
+    assert validate(cfg) == [], validate(cfg)
+    spec = C.campaign_spec(cfg)
+    jobs = C.expand_jobs(cfg, spec)
+    assert len(jobs) == 2 * 3 * 3, len(jobs)
+    assert [j.index for j in jobs] == list(range(len(jobs)))
+    assert {j.seed for j in jobs} == {1, 2, 3}
+    z = [j for j in jobs if j.problem == "ZDT1" and j.algorithm == "nsga2"][0]
+    assert z.pop == 100 and z.gens == 20, (z.pop, z.gens)          # ceil(2000/100)
+    m2m = [j for j in jobs if j.problem == "DTLZ2_3D" and j.algorithm == "moead_m2m"][0]
+    assert m2m.pop == 90 and "K=10" in m2m.pop_note, (m2m.pop, m2m.pop_note)
+    n3 = [j for j in jobs if j.problem == "DTLZ2_3D" and j.algorithm == "nsga3"][0]
+    assert n3.pop == 91 and n3.pop_note == "", (n3.pop, n3.pop_note)
+
+
+@test
+def campaign_fit_pop_rounds_to_what_the_core_accepts():
+    from mootation.run.campaign import fit_pop
+    assert fit_pop("nsga3", 91, 3, {}) == (91, "")
+    assert fit_pop("nsga3", 100, 3, {}) == (100, "")      # two-layer 55 + 45 at M=3
+    assert fit_pop("nsga3", 92, 3, {})[0] == 91            # largest lattice size <= 92 at M=3
+    assert fit_pop("nsga3", 275, 10, {}) == (275, "")      # two-layer 220 + 55
+    assert fit_pop("moead_m2m", 91, 3, {})[0] == 90
+    assert fit_pop("moead_m2m", 90, 3, {"K": 7})[0] == 84
+    assert fit_pop("nsga2", 77, 3, {}) == (77, "")
+
+
+@test
+def campaign_rejects_unknown_keys_and_metrics():
+    from mootation.run import campaign as C
+    from mootation.run.config import ConfigError
+    cfg = loads(_CAMP.replace('metrics = ["igd", "hv"]', 'metrics = ["igd", "gd"]'))
+    raises(ConfigError, C.campaign_spec, cfg)
+    cfg = loads(_CAMP.replace("budget_fe = 2000", "budget_fe = 2000" + chr(10) + "bogus = 1"))
+    raises(ConfigError, C.campaign_spec, cfg)
+
+
+@test
+def metrics_agree_with_closed_forms():
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run import metrics as M
+    f1 = np.linspace(0, 1, 401)
+    F = np.column_stack([f1, 1 - np.sqrt(f1)])                    # the ZDT1 front
+    assert M.igd(F, F) == 0.0 and M.igd_plus(F, F) == 0.0
+    hv, method = M.hypervolume(F, [0, 0], [1, 1])
+    # exact: (0.1 + 2/3 + 0.11) / 1.21 = 0.7245, minus the staircase gap of a 401-point sample
+    assert method == "exact" and abs(hv - 0.7245) < 0.003, (hv, method)
+    F3 = np.array([[0.2, 0.3, 0.4], [0.5, 0.1, 0.6], [0.7, 0.7, 0.1]])
+    v3, _ = M.hypervolume(F3, [0, 0, 0], [1, 1, 1])
+    v_mc = M._hv_mc(F3, np.full(3, 1.1), np.zeros(3), 200000, 1) / 1.1 ** 3
+    assert abs(v3 - v_mc) < 0.01, (v3, v_mc)
+    dom = M.nondominated(np.array([[1, 1], [0.5, 2], [2, 0.5], [0.6, 2.1]]))
+    assert len(dom) == 3
+
+
+@test
+def campaign_results_round_trip():
+    """Run two tiny jobs for real and read them back through scan/compare."""
+    try:
+        import numpy  # noqa: F401
+        import mootation._core as _core
+    except ImportError:
+        return
+    if not hasattr(_core.Config(), "on_generation"):
+        # An extension built before the observer existed (a stale .pyd for
+        # this interpreter): the campaign cannot record trajectories with it.
+        print("  skip  campaign_results_round_trip: _core has no on_generation "
+              "(rebuild the extension for this interpreter)")
+        return
+    from mootation.run import campaign as C
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(_CAMP.replace("runs = 3", "runs = 1")
+                            .replace("budget_fe = 2000", "budget_fe = 300"), encoding="utf-8")
+        from mootation.run.config import load
+        cfg = load(cfg_path)
+        assert validate(cfg) == []
+        spec = C.campaign_spec(cfg)
+        jobs = C.expand_jobs(cfg, spec)
+        root = C.out_root(cfg, spec)
+        z = [j for j in jobs if j.problem == "ZDT1" and j.algorithm == "nsga2"][0]
+        assert C.run_job(z, root, spec, quiet=True) == "done"
+        assert C.run_job(z, root, spec, quiet=True) == "done"      # resume: skipped, still done
+        meta = json.loads((root / z.rel_dir / "meta.json").read_text(encoding="utf-8"))
+        assert meta["status"] == "done" and meta["fe"] >= 300, meta
+        traj = C.read_trajectory(root / z.rel_dir)
+        assert traj and traj[0]["gen"] == 0 and traj[-1]["gen"] == z.gens
+        assert all("igd" in t and "hv" in t for t in traj)
+        rows = C.scan_results(root)
+        assert len(rows) == 1 and rows[0]["problem"] == "ZDT1"
+        table = C.compare_table(rows, "igd")
+        assert "ZDT1" in table and "nsga2" in table["ZDT1"]
+        out = root / "cmp.csv"
+        C.write_compare_csv(table, out, "igd")
+        assert out.read_text(encoding="utf-8").startswith("problem,")
+        script = C.emit_slurm(cfg, 2)
+        text = script.read_text(encoding="utf-8")
+        assert "--array=0-1" in text and "--shard ${SLURM_ARRAY_TASK_ID}/2" in text
+        assert (root / "jobs.txt").read_text(encoding="utf-8").count("--job") == len(jobs)
+
 
 
 def main() -> int:
