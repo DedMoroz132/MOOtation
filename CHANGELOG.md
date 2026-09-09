@@ -98,7 +98,20 @@ always listed under **Changed** or **Removed**.
     time and reported through `set_warn_handler`, on the FRACTION of dead
     pairs over the population rather than on all of them being dead: a total
     underflow is obvious from the output, a partial one looks like a working
-    run and is not.
+    run and is not. Measured afterwards, the switch also has a positive
+    indication and it is the mirror image: on DTLZ2 skewed by per-axis factors
+    1, 10 and 100 the letter degrades to a median IGD of 0.0937 while the
+    scaled reading holds at 0.0735, the value it reaches unskewed. So the rule
+    is what the spread of ranges MEANS — units, and scaling helps; the
+    problem, and it throws information away. On ZDT1 the wide axis is the
+    direction of convergence, which is why the letter wins there by 25.
+- `ibea_eplus` gains `set_normalize(false)`, an experiment switch only: the
+  paper's own Alg.2 scaling stays the default. It answers whether the cost
+  measured in R2-IBEA is a property of per-axis scaling in general. It is not
+  — for IBEA the scaling is free (median IGD on ZDT1 0.00393 against 0.00398
+  raw, a tie) because I_eps+ is a difference between two solutions, while R2's
+  Tchebycheff value is a distance from a z* that Eq.5 places with one shift for
+  all axes.
   - `adaw`, `moead_awa` and `mombi2` depend on the magnitude of the objectives
     through a constant of their own papers (z* = best - 1e-4 in AdaW's
     footnote 2, z* = min f - 1e-7 in MOEA/D-AWA's Step 1.2, eps = 1e-3

@@ -47,6 +47,21 @@
 //     + bit-flip 0.04 (footnote 3). Binary genomes are an extension here.
 //   IEP-3 (EXTENSION). The constraint modes above are not in the paper and are
 //     off by default.
+// IEP-4 (MEASURED 2026-09-10, no change to the default). Alg.2 steps 2.1-2.2
+//   scale the objectives to [0,1] over the pool before I_eps+, and that is the
+//   letter, so it is on. set_normalize(false) drops it and exists only to
+//   answer what the scaling buys, because the question came up next door: in
+//   R2-IBEA the analogous per-axis scaling costs a factor of 25 on ZDT1.
+//   Here it costs nothing either way. 3 seeds, 30 000 FE, median IGD:
+//     ZDT1   0.00393 normalised   0.00398 raw     a tie
+//     DTLZ2  0.09315 normalised   0.08831 raw     raw 5 % better, seeds apart
+//   The reason the two indicators differ is worth stating, because it stops
+//   "normalisation is bad for indicators" from being read into this: I_eps+ is
+//   a DIFFERENCE between two solutions, max_i (f_i(a) - f_i(b)), with no
+//   additive term, so dividing an axis by its range only reweights which axis
+//   wins the max. R2's Tchebycheff value is a DISTANCE from z*, and its Eq.5
+//   fixes z* with a single shift for all axes; scaling per axis breaks that
+//   pairing. The cost there is the scalarisation's, not the scaling's.
 // ============================================================================
 
 #include <algorithm>
@@ -81,6 +96,10 @@ private:
     double       eta_m_ = 20.0;   // not given numerically → convention (polynomial, η=20)
     double       pc_    = 1.0;    // footnote 3: recombination probability 1.0
     double       pm_    = 0.01;   // footnote 3: mutation probability 0.01 (fixed)
+    // IEP-4: the paper's own per-objective scaling (Alg.2 steps 2.1-2.2), on
+    // by default because it is the letter. false drops it and is a
+    // DEVIATION; it exists so that what the scaling buys can be measured.
+    bool         normalize_ = true;
     std::mt19937 rng_{std::random_device{}()};
 
     // Iε+(a,b) with a CV shift — for EPS_CONSTRAINT (extension beyond the paper)
@@ -112,6 +131,7 @@ private:
     {
         double worst = -std::numeric_limits<double>::infinity();
         for (std::size_t i = 0; i < a.size(); ++i) {
+            if (!normalize_) { worst = std::max(worst, a[i] - b[i]); continue; }
             double range = fmax[i] - fmin[i];
             double an = (range > 1e-14) ? (a[i] - fmin[i]) / range : 0.0;
             double bn = (range > 1e-14) ? (b[i] - fmin[i]) / range : 0.0;
@@ -186,6 +206,8 @@ public:
     // review): comment brought in line with the facts — the default is NOT
     // 1/n_vars but a fixed 0.01.
     void set_pm(double p)            { pm_    = p; }
+    // IEP-4, experiment: false computes I_eps+ on raw objectives.
+    void set_normalize(bool on)      { normalize_ = on; }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault)

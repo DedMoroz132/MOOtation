@@ -104,12 +104,42 @@
 //   makes them equal and, on a two-objective front whose ranges differ
 //   strongly, that is the wrong trade.
 //
-//   So: the letter is the default, the switch exists for badly scaled
-//   objectives where the letter's exponential underflows, and the underflow is
-//   detected at run time and reported through set_warn_handler. The warning
-//   measures the FRACTION of dead pairs over the whole population, not whether
-//   all of them are dead: a total underflow is obvious from the output, while
-//   a partial one looks like a working run and is not.
+//   WHEN TO TURN IT ON, measured. The spread of the axes' ranges can be two
+//   different things, and the switch is right for one of them.
+//     * When the spread carries INFORMATION, leave the letter alone. On ZDT1
+//       the wide axis is f2 = g*(1 - sqrt(f1/g)) with g in [1,10]: an early
+//       population has a large g, and converging IS driving g to 1, so the
+//       wide axis is the direction of convergence. The letter's discriminating
+//       span on axis j is v_j*range_j, i.e. proportional to that axis's own
+//       range, which weights exactly that direction; normalising makes the
+//       span v_j on every axis and mutes it. Hence the factor of 25 above.
+//     * When the spread is a choice of UNITS it carries nothing, and the
+//       letter has no reason to weight one axis over another. On DTLZ2 with
+//       per-axis factors 1, 10, 100 (the SDTLZ convention), 3 seeds, 30 000 FE,
+//       objectives divided back before IGD: the letter degrades from 0.0744 to
+//       a median 0.0937 (0.0988/0.0936/0.0937) while the scaled reading holds
+//       at 0.0735 (0.0768/0.0727/0.0735) — the same value it reaches on the
+//       unskewed problem, i.e. it removes the skew completely. 27 % better,
+//       no overlap between seeds.
+//   So: turn set_normalize(true) on when the ranges differ because of the
+//   units you chose, and leave it off when they differ because of the problem.
+//
+//   AND IT IS THIS SCALARISATION, NOT NORMALISATION AS SUCH. IBEA-eps+
+//   normalises unconditionally by its own Alg.2, and measuring the same way
+//   costs it nothing: median IGD on ZDT1 0.00393 normalised against 0.00398
+//   raw, a tie, and on DTLZ2 0.0932 against 0.0883. The difference is what the
+//   indicator is made of. I_eps+ is a DIFFERENCE between two solutions, so
+//   scaling an axis only reweights which axis wins the max. The Tchebycheff
+//   value here is a DISTANCE FROM z*, an absolute magnitude, and Eq.5 fixes z*
+//   with one shift for all axes — that pairing is what carries the weighting,
+//   and it is the pairing that per-axis scaling breaks.
+//
+//   So: the letter is the default, the switch has the indication above, and
+//   the underflow is detected at run time and reported through
+//   set_warn_handler. The warning measures the FRACTION of dead pairs over the
+//   whole population, not whether all of them are dead: a total underflow is
+//   obvious from the output, while a partial one looks like a working run and
+//   is not.
 // ============================================================================
 
 #include <algorithm>

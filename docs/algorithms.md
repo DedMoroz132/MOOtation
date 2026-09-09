@@ -62,6 +62,25 @@ from the list above or scale them yourself before the run — the `SDTLZ` family
 in the benchmark registry exists to test exactly this, and RVEA's own paper
 introduces itself on scaled problems.
 
+**Scaling is not free, so ask what the spread means.** The ranges of your
+objectives can differ for two unrelated reasons, and they call for opposite
+answers. If they differ because of the units you chose — a mass in grams beside
+a length in metres — the spread carries nothing and removing it can only help:
+R2-IBEA with `set_normalize(true)` is 27 % better than the letter on DTLZ2
+skewed by per-axis factors 1, 10 and 100, and lands on the same IGD it reaches
+unskewed. If they differ because of the problem, removing the spread throws
+information away: on ZDT1 the wide axis is the direction of convergence (`g`
+falls from 10 towards 1 as the population approaches the front), and the same
+switch is then 25 times *worse*. Both numbers are in `r2ibea.hpp`, with the
+seeds.
+
+This is not a property of normalisation in general. IBEA-ε+ scales its
+objectives unconditionally, as its own paper prescribes, and measured the same
+way that costs it nothing on either problem — because its indicator is a
+difference between two solutions, where scaling an axis only decides which axis
+wins the maximum, while R2's is a distance from a reference point that its own
+Eq. 5 places with a single shift for all axes.
+
 ## Pareto-dominance & diversity-based
 
 | Algorithm | Year | File | DOI |
