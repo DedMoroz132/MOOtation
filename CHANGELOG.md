@@ -109,9 +109,15 @@ always listed under **Changed** or **Removed**.
   paper's own Alg.2 scaling stays the default. It answers whether the cost
   measured in R2-IBEA is a property of per-axis scaling in general. It is not
   — for IBEA the scaling is free (median IGD on ZDT1 0.00393 against 0.00398
-  raw, a tie) because I_eps+ is a difference between two solutions, while R2's
-  Tchebycheff value is a distance from a z* that Eq.5 places with one shift for
-  all axes.
+  raw, a tie). Separating the two halves of IGD says why: on ZDT1 the scaled
+  R2-IBEA converges exactly as well (mean distance to the front 1e-4 against
+  8e-5) but covers half the front (span of f1 0.49 against 0.94 over three
+  seeds), spread evenly inside that half. R2 allocates effort by direction and
+  rescaling the axes moves which piece of the front each weight vector owns;
+  IBEA has no such partition, it only decides an order. The caution therefore
+  belongs to the MOEA/D and NSGA-III families, RVEA and θ-DEA rather than to
+  indicator methods, which is also why nearly every algorithm in the skew list
+  in `docs/algorithms.md` is a weight-vector or angle method.
   - `adaw`, `moead_awa` and `mombi2` depend on the magnitude of the objectives
     through a constant of their own papers (z* = best - 1e-4 in AdaW's
     footnote 2, z* = min f - 1e-7 in MOEA/D-AWA's Step 1.2, eps = 1e-3

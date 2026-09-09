@@ -74,12 +74,25 @@ falls from 10 towards 1 as the population approaches the front), and the same
 switch is then 25 times *worse*. Both numbers are in `r2ibea.hpp`, with the
 seeds.
 
-This is not a property of normalisation in general. IBEA-ε+ scales its
-objectives unconditionally, as its own paper prescribes, and measured the same
-way that costs it nothing on either problem — because its indicator is a
-difference between two solutions, where scaling an axis only decides which axis
-wins the maximum, while R2's is a distance from a reference point that its own
-Eq. 5 places with a single shift for all axes.
+**What the cost actually is, and who inherits it.** It is not convergence. On
+ZDT1 the two readings put the population equally close to the front (mean
+distance 8e-5 against 1e-4); what changes is which part of the front they
+occupy — the span of `f1` in the final population is 0.94, 0.99 and 0.80 over
+three seeds for the letter against 0.49, 0.45 and 0.54 for the scaled reading,
+on a front that runs the whole of [0, 1], with holes of the same size inside
+the covered stretch either way. The scaled reading spreads evenly over half the
+front.
+
+That is a re-mapping, and it belongs to a whole class of methods. R2 allocates
+effort by direction: each weight vector on the simplex owns a piece of the
+front, and rescaling the axes moves the pieces. The MOEA/D family, the
+NSGA-III family, RVEA and θ-DEA all allocate the same way, which is why almost
+everything in the skew list above is a weight-vector or angle method. IBEA-ε+
+owns no such partition — it compares two solutions and decides an *order*, and
+an order survives rescaling far better — and measured, its own unconditional
+scaling costs it nothing on either problem. So this is not a property of
+normalisation in general: it is what happens when you rescale the axes of a
+method that has divided the front between directions.
 
 ## Pareto-dominance & diversity-based
 

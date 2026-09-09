@@ -124,15 +124,31 @@
 //   So: turn set_normalize(true) on when the ranges differ because of the
 //   units you chose, and leave it off when they differ because of the problem.
 //
-//   AND IT IS THIS SCALARISATION, NOT NORMALISATION AS SUCH. IBEA-eps+
-//   normalises unconditionally by its own Alg.2, and measuring the same way
-//   costs it nothing: median IGD on ZDT1 0.00393 normalised against 0.00398
-//   raw, a tie, and on DTLZ2 0.0932 against 0.0883. The difference is what the
-//   indicator is made of. I_eps+ is a DIFFERENCE between two solutions, so
-//   scaling an axis only reweights which axis wins the max. The Tchebycheff
-//   value here is a DISTANCE FROM z*, an absolute magnitude, and Eq.5 fixes z*
-//   with one shift for all axes — that pairing is what carries the weighting,
-//   and it is the pairing that per-axis scaling breaks.
+//   WHAT EXACTLY THE COST IS, separated by measurement. It is not convergence.
+//   On ZDT1 the mean analytic distance of the final population to the front is
+//   8e-5 for the letter and 1e-4 for the scaled reading — the same, both are
+//   ON the front. What differs is which part of it they occupy: the span of f1
+//   in the final population is 0.94 / 0.99 / 0.80 for the letter over the
+//   three seeds and 0.49 / 0.45 / 0.54 for the scaled reading, on a front that
+//   runs the whole of [0,1]. The largest hole inside the covered stretch is
+//   comparable either way (0.015-0.043 against 0.014-0.053), so the scaled
+//   reading spreads evenly — over half the front.
+//   That is a re-mapping, not a failure to search. R2 allocates effort by
+//   direction: each weight vector on the simplex owns a piece of the front,
+//   and rescaling the axes moves the pieces. Normalising maps a uniform grid
+//   of weights onto a region that, on ZDT1, is half of what the raw axes map
+//   it onto. IBEA-eps+ has nothing of the kind to move: I_eps+ compares two
+//   solutions and only decides an ORDER, which survives rescaling far better
+//   than a partition does. Measured, its own unconditional Alg.2 scaling
+//   indeed costs it nothing — median IGD on ZDT1 0.00393 scaled against
+//   0.00398 raw, a tie, and DTLZ2 0.0932 against 0.0883.
+//   So the caution generalises to methods that distribute effort by direction
+//   — the MOEA/D family, the NSGA-III family, RVEA, theta-DEA — and not to
+//   indicator methods that merely rank. (An earlier version of this note put
+//   the difference down to I_eps+ being a difference and the Tchebycheff value
+//   a distance from z*. That explained the bug fixed above, where the additive
+//   term still differed per axis; once z* is transported the term is 1 on
+//   every axis and the explanation no longer applies, while the cost remains.)
 //
 //   So: the letter is the default, the switch has the indication above, and
 //   the underflow is detected at run time and reported through

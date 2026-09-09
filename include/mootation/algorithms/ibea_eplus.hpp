@@ -55,13 +55,16 @@
 //   Here it costs nothing either way. 3 seeds, 30 000 FE, median IGD:
 //     ZDT1   0.00393 normalised   0.00398 raw     a tie
 //     DTLZ2  0.09315 normalised   0.08831 raw     raw 5 % better, seeds apart
-//   The reason the two indicators differ is worth stating, because it stops
-//   "normalisation is bad for indicators" from being read into this: I_eps+ is
-//   a DIFFERENCE between two solutions, max_i (f_i(a) - f_i(b)), with no
-//   additive term, so dividing an axis by its range only reweights which axis
-//   wins the max. R2's Tchebycheff value is a DISTANCE from z*, and its Eq.5
-//   fixes z* with a single shift for all axes; scaling per axis breaks that
-//   pairing. The cost there is the scalarisation's, not the scaling's.
+//   The reason the two differ is worth stating, because it stops "normalisation
+//   is bad for indicators" from being read into this. R2 allocates effort by
+//   DIRECTION: every weight vector on the simplex owns a piece of the front,
+//   and rescaling the axes moves the pieces, so on ZDT1 the same uniform grid
+//   of weights ends up covering half the front (span of f1 0.49 against 0.94,
+//   with the population equally converged either way). I_eps+ owns no such
+//   partition: it compares two solutions and decides an ORDER, and an order
+//   survives rescaling far better than a partition does. The caution therefore
+//   belongs to the methods that distribute effort by direction — MOEA/D,
+//   NSGA-III, RVEA, theta-DEA — and not to indicator methods that rank.
 // ============================================================================
 
 #include <algorithm>
