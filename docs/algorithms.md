@@ -30,6 +30,38 @@ an unattainable request to the nearest lattice and say so through
 constraint before a run starts; `Result::ignored` (C++), `res.ignored` (Python) and
 `moo_ignored_*` (C ABI) name every knob the chosen algorithm does not have.
 
+## If your objectives are not commensurate
+
+Objectives in different units — a mass in kilograms beside a stress in pascals
+— are the case this field mostly assumes away. Two different things can go
+wrong, and they are worth separating.
+
+**The units of all objectives at once.** Multiplying every objective by the
+same constant must change nothing, and `tests/test_scale_invariance.cpp`
+enforces exactly that on every push: 53 of the 59 algorithms then in the tree
+reproduced their result bit for bit, the two that did not for a reason of their
+own were fixed, and the four that depend on a constant of their own paper are
+listed there by name with the measured size.
+
+**The ratio between axes.** That is a different property and most of these
+algorithms do not have it, by design rather than by defect: a weight vector on
+the simplex, a penalty-based boundary intersection, an angle between objective
+vectors and a niche radius all mean something only when the axes are
+comparable. Measured the same way (DTLZ2 with per-axis factors 1, 32 and 1024,
+each exact in binary, the objectives divided back before IGD), 18 of 56 were
+bit-identical:
+
+> NSGA-II, GrEA, VaEA, θ-DEA, MOEA/D-AM2M, DHEA, IBEA-ε+, IBEA-HD, mIBEA,
+> HypE, NIMMO, IF-MaOEA, MaOEA-IAMD, MaOEA/SRV, CA-MOEA, CAVA-MOEA, MaOEA/C, crEA
+
+The rest respond to the ratio, some strongly (NAEMO, RD-EMO, CLIA and RVEA
+moved their IGD by an order of magnitude at those factors). This is not a
+ranking: it says which methods carry their own normalisation and which expect
+you to supply it. If your objectives differ by orders of magnitude, either pick
+from the list above or scale them yourself before the run — the `SDTLZ` family
+in the benchmark registry exists to test exactly this, and RVEA's own paper
+introduces itself on scaled problems.
+
 ## Pareto-dominance & diversity-based
 
 | Algorithm | Year | File | DOI |

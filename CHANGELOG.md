@@ -81,14 +81,24 @@ always listed under **Changed** or **Removed**.
     first generation compared a simplex against objectives of whatever
     magnitude the problem used. R' is now built in the coordinates it is used
     in. Free at the native scale (DTLZ2 0.05432, ZDT1 0.00395, unchanged).
-  - `r2ibea` keeps the paper's letter: Eq.4 is written on raw objectives, and
-    the scaled reading — available as `set_normalize(true)` — costs a factor
-    of 35 on ZDT1 at the native scale (median IGD 0.0059 against 0.2050 over
-    3 seeds), because Eq.5 shifts z* by the largest range over all objectives
-    and the axes are deliberately commensurate with that one shift. Instead,
-    the underflow of `exp(-I_R2/kappa)` is now detected at run time and
-    reported through `set_warn_handler` rather than returning an arbitrary
-    ranking in silence.
+  - `r2ibea` keeps the paper's letter: Eq.4 is written on raw objectives.
+    `set_normalize(true)` transports the whole of Eq.5 into normalised
+    coordinates — every normalised range is 1, so z* is -1 on every axis — and
+    makes the run bit-identical at every scale factor. It is still not the
+    default: 3 seeds, 30 000 FE, median IGD on ZDT1 is 0.0059 for the letter
+    against 0.1489 for the scaled reading, with no overlap between seeds,
+    while DTLZ2 is a tie. Eq.5's single shift by the largest range is exactly
+    what makes an improvement on a narrow axis worth less than one on a wide
+    axis, and normalising per axis discards that. The first version of this
+    switch was wrong — it divided by the per-axis range but left z* shifted by
+    the largest one, leaving a constant `max_range/range_j` inside the
+    Tchebycheff max that was largest on the NARROWEST axis, inverting the skew
+    instead of removing it. The verdict above is measured against the
+    corrected version. The underflow of `exp(-I_R2/kappa)` is detected at run
+    time and reported through `set_warn_handler`, on the FRACTION of dead
+    pairs over the population rather than on all of them being dead: a total
+    underflow is obvious from the output, a partial one looks like a working
+    run and is not.
   - `adaw`, `moead_awa` and `mombi2` depend on the magnitude of the objectives
     through a constant of their own papers (z* = best - 1e-4 in AdaW's
     footnote 2, z* = min f - 1e-7 in MOEA/D-AWA's Step 1.2, eps = 1e-3

@@ -69,24 +69,47 @@
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY
 // (CDP preference in the tournament and a fitness penalty), binary variables
 // (uniform crossover + bit-flip).
-// R2I-NORM (AMBIGUOUS, measured 2026-09-09). Eq.4 computes the Tchebycheff
-//   value on RAW objectives and the paper prescribes no scaling, so the run
-//   depends on the units: the fitness is -exp(-I_R2/kappa) with kappa = 0.005,
-//   i.e. exp(-200*I_R2), which underflows to exactly 0 once I_R2 exceeds ~3.7.
-//   Multiplying every objective of DTLZ2 (M=3) by 2^10 moved the final IGD by
-//   1.2 %, by 2^20 by 29 % and by 2^30 by 89 % - a failure that grows without
-//   bound as the ordering is lost pair by pair.
-//   set_normalize(true) divides the Tchebycheff distance by the pool's range
-//   per objective, which makes the run bit-identical at every factor. It is
-//   NOT the default, because at the native scale it is much WORSE: 3 seeds,
-//   30 000 FE, median IGD on ZDT1 0.0059 (letter) against 0.2050 (scaled),
-//   a factor of 35, while DTLZ2 is a tie (0.0744 against 0.0751). The scaled
-//   reading breaks the paper's own construction, in which z* is shifted by the
-//   LARGEST range over all objectives (Eq.5) and the axes are therefore
-//   deliberately left commensurate with that single shift.
+// R2I-NORM (AMBIGUOUS, measured 2026-09-09, corrected the same day). Eq.4
+//   computes the Tchebycheff value on RAW objectives and the paper prescribes
+//   no scaling, so the run depends on the units: the fitness is
+//   -exp(-I_R2/kappa) with kappa = 0.005, i.e. exp(-200*I_R2), which
+//   underflows to exactly 0 once I_R2 exceeds ~3.7. Multiplying every
+//   objective of DTLZ2 (M=3) by 2^10 moved the final IGD by 1.2 %, by 2^20 by
+//   29 % and by 2^30 by 89 % - a failure that grows without bound as the
+//   ordering is lost pair by pair.
+//
+//   set_normalize(true) transports the WHOLE construction of Eq.5 into
+//   normalised coordinates: f^_j = (f_j - fmin_j)/range_j and, since every
+//   normalised range is 1, z^*_j = -1 on every axis. The Tchebycheff term is
+//   then v_j*(f^_j + 1), identical in span across axes, and the run becomes
+//   bit-identical at every scale factor (verified at 2^10 and 2^20).
+//   THE FIRST ATTEMPT AT THIS WAS WRONG and the mistake is worth recording:
+//   it divided by range_j but left z* shifted by max_range over all objectives,
+//   so each term carried a per-axis constant max_range/range_j. That constant
+//   is LARGEST on the NARROWEST axis, so the reading did not remove the skew,
+//   it inverted it, and it drowned the signal - with ranges 1 and 1000 the
+//   term on the narrow axis sits near 500 while the entire discriminating
+//   span across that axis is 0.5.
+//
+//   The letter is STILL the default, and now for a reason measured against a
+//   correct alternative rather than a broken one. 3 seeds, 30 000 FE, median
+//   IGD: DTLZ2 0.0744 (letter) against 0.0732 (scaled), a tie; ZDT1 0.0059
+//   against 0.1489, a factor of 25 with no overlap between the seeds
+//   (0.0039/0.0059/0.0232 against 0.1256/0.1489/0.1785). Fixing z* improved
+//   the scaled reading on ZDT1 from 0.2050 to 0.1489 and did not change the
+//   verdict. Why it still loses is the paper's own geometry: Eq.5 shifts z* by
+//   the LARGEST range over all objectives, one shift for all axes, so the
+//   scalarisation deliberately keeps a small absolute improvement on a narrow
+//   axis worth less than a large one on a wide axis. Normalising per axis
+//   makes them equal and, on a two-objective front whose ranges differ
+//   strongly, that is the wrong trade.
+//
 //   So: the letter is the default, the switch exists for badly scaled
-//   objectives, and the underflow is detected at run time and reported through
-//   set_warn_handler rather than silently returning an arbitrary ranking.
+//   objectives where the letter's exponential underflows, and the underflow is
+//   detected at run time and reported through set_warn_handler. The warning
+//   measures the FRACTION of dead pairs over the whole population, not whether
+//   all of them are dead: a total underflow is obvious from the output, while
+//   a partial one looks like a working run and is not.
 // ============================================================================
 
 #include <algorithm>
@@ -328,13 +351,32 @@ private:
         for (int k = 0; k < m; ++k)
             max_range = std::max(max_range, fmax[k] - fmin[k]);
         std::vector<double> zstar(m);
-        for (int k = 0; k < m; ++k) zstar[k] = fmin[k] - max_range;
         inv_range_.assign(m, 1.0);
-        if (normalize_)
-            for (int k = 0; k < m; ++k) {
-                double r = fmax[k] - fmin[k];
-                inv_range_[k] = (r > 1e-14) ? 1.0 / r : 1.0;
-            }
+        if (!normalize_) {
+            // Eq.5 verbatim: one shift, the largest range over all objectives.
+            for (int k = 0; k < m; ++k) zstar[k] = fmin[k] - max_range;
+            return zstar;
+        }
+        // The scaled reading transports the WHOLE construction of Eq.5 into
+        // normalised coordinates, z* included. In those coordinates every
+        // fmin is 0 and every range is 1, so the largest range is 1 and
+        // z^_j = -1 on every axis; ir2 divides by range_j, so storing
+        // fmin_j - range_j here reproduces exactly that:
+        //     |z*_j - f_j| / range_j = (f_j - fmin_j + range_j)/range_j
+        //                            = f^_j + 1,  f^_j in [0,1].
+        // Shifting by max_range and only THEN dividing (which this code did
+        // until 2026-09-09) leaves a per-axis constant max_range/range_j
+        // inside the Tchebycheff max. That constant is largest on the
+        // NARROWEST axis, so the reading did not remove the skew, it inverted
+        // it, and it buried the signal: with ranges 1 and 1000 the term on the
+        // narrow axis is ~500 while the whole discriminating span across that
+        // axis is 0.5, one part in a thousand.
+        for (int k = 0; k < m; ++k) {
+            const double r = fmax[k] - fmin[k];
+            const double rk = (r > 1e-14) ? r : 1.0;
+            inv_range_[k] = 1.0 / rk;
+            zstar[k] = fmin[k] - rk;
+        }
         return zstar;
     }
 
@@ -374,6 +416,7 @@ private:
         if (constraint_mode != ConstraintMode::NONE)
             for (int i = 0; i < n; ++i) cvs[i] = vault.get_cv(i);
 
+        long long pairs_total = 0, dead_total = 0;
         for (int i = 0; i < n; ++i) {
             if (constraint_mode == ConstraintMode::FEASIBILITY && cvs[i] > 0.0) {
                 vault.get_ind(i).fitness = -(1e6 + cvs[i]);
@@ -392,19 +435,27 @@ private:
                 sum += -std::exp(-t);
             }
             vault.get_ind(i).fitness = sum;
-            // R2I-NORM: on objectives of large magnitude every term underflows
-            // and the fitness stops ordering the population at all. Say so
-            // rather than return an arbitrary ranking.
-            if (!warned_underflow_ && pairs > 0 && dead == pairs) {
-                warned_underflow_ = true;
-                warn("R2-IBEA: exp(-I_R2/kappa) underflowed to zero for every "
-                     "pair, so the fitness no longer orders the population. The "
-                     "objectives are large relative to kappa = " +
-                     std::to_string(kappa_) +
-                     ". Scale the objectives, raise kappa with set_kappa(), or "
-                     "switch on the scaled reading with set_normalize(true) "
-                     "(see R2I-NORM in the header for what that costs).");
-            }
+            pairs_total += pairs;
+            dead_total  += dead;
+        }
+        // R2I-NORM: on objectives of large magnitude exp(-I_R2/kappa)
+        // underflows to exactly zero and stops carrying any ordering. The
+        // total failure — every term dead, every fitness 0 — is the harmless
+        // one: it is obvious from the output. The dangerous case is PARTIAL,
+        // where most terms are dead and the ranking is decided by whichever
+        // few survive: it looks like a working run and is not one. So the
+        // fraction is measured over the whole population and reported well
+        // before it reaches one.
+        if (!warned_underflow_ && pairs_total > 0 &&
+            dead_total * 4 >= pairs_total) {
+            warned_underflow_ = true;
+            const long long pct = (dead_total * 100) / pairs_total;
+            warn("R2-IBEA: exp(-I_R2/kappa) underflowed to zero for " +
+                 std::to_string(pct) + "% of the pairs, so the fitness is "
+                 "ordering the population on whatever survives. The objectives "
+                 "are large relative to kappa = " + std::to_string(kappa_) +
+                 ". Scale the objectives, raise kappa with set_kappa(), or "
+                 "switch on the scaled reading with set_normalize(true).");
         }
     }
 

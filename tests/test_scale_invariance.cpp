@@ -83,9 +83,12 @@ const ScaleExempt SCALE_EXEMPT[] = {
      "an absolute threshold on a raw range (measured: 2.3 % at 2^10)"},
     {"r2ibea",
      "Eq.4 is written on raw objectives and the fitness is exp(-I_R2/0.005); "
-     "set_normalize(true) removes the dependence but costs a factor of 35 on "
-     "ZDT1 at the native scale, so the letter is the default and the "
-     "underflow is reported through set_warn_handler instead"},
+     "set_normalize(true) removes the dependence entirely (bit-identical at "
+     "2^10 and 2^20) but costs a factor of 25 on ZDT1 at the native scale "
+     "(median IGD 0.0059 against 0.1489 over 3 seeds), because Eq.5's single "
+     "shift by the largest range is what makes a narrow axis count for less; "
+     "so the letter is the default and the underflow is reported through "
+     "set_warn_handler instead"},
 };
 
 const char* scale_exempt_reason(const char* key)

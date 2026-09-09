@@ -233,6 +233,11 @@ have not yet been run by anyone. [docs/embedding.md](docs/embedding.md#the-c-abi
 | Clustering-based | 11 | disconnected or irregular fronts |
 | Archive-based | 2 | the non-dominated history is the answer, not a fixed population |
 
+If your objectives differ by orders of magnitude, read
+[docs/algorithms.md](docs/algorithms.md#if-your-objectives-are-not-commensurate)
+first: uniform rescaling is tested on every push and changes nothing, but the
+ratio between axes is a property only 18 of the algorithms carry on their own.
+
 Seventeen algorithms need `pop_size` to be an exact lattice size for the
 objective count, and the M2M family needs it divisible by the subregion count;
 `python -m mootation.run --check` names the constraint and the nearest valid
