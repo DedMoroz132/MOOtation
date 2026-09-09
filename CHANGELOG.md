@@ -117,7 +117,15 @@ always listed under **Changed** or **Removed**.
   IBEA has no such partition, it only decides an order. The caution therefore
   belongs to the MOEA/D and NSGA-III families, RVEA and θ-DEA rather than to
   indicator methods, which is also why nearly every algorithm in the skew list
-  in `docs/algorithms.md` is a weight-vector or angle method.
+  in `docs/algorithms.md` is a weight-vector or angle method. Which of the two cases
+  you are in has a cheap test, now written up: the ratio between the
+  per-objective ranges of the answer set holds steady when the spread is a
+  unit and slides toward 1 when it is the problem (ZDT1 3.7 -> 1.03 over a
+  run, DTLZ2 flat at 1.00). Freezing the divisor at the first pool's ranges
+  was tried as a way to separate the two automatically and is recorded in the
+  header as rejected: it halves the cost on ZDT1 but is worse than both
+  alternatives on a skewed problem, because a frozen divisor freezes the
+  resolution as well.
   - `adaw`, `moead_awa` and `mombi2` depend on the magnitude of the objectives
     through a constant of their own papers (z* = best - 1e-4 in AdaW's
     footnote 2, z* = min f - 1e-7 in MOEA/D-AWA's Step 1.2, eps = 1e-3

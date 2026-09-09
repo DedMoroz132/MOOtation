@@ -124,6 +124,31 @@
 //   So: turn set_normalize(true) on when the ranges differ because of the
 //   units you chose, and leave it off when they differ because of the problem.
 //
+//   HOW TO TELL WHICH ONE YOU HAVE, without running both. Watch the RATIO of
+//   the per-objective ranges of the answer set over the first few generations.
+//   A unit is a constant and the ratio holds; a property of the problem moves
+//   as the search closes on the front. Measured on the two cases above, over
+//   three seeds, at 0 / 500 / 2000 / 10000 / 30000 evaluations:
+//     ZDT1   3.7 -> 3.4 -> 2.6 -> 1.04 -> 1.03    drifts by a factor of 3.6
+//     DTLZ2  1.09 -> 1.34 -> 1.01 -> 1.00 -> 1.00 flat
+//   and skewing DTLZ2 by constant per-axis factors multiplies that flat ratio
+//   by a constant, leaving it flat. So: ratio steady, normalise; ratio sliding
+//   toward 1 as you converge, do not. On ZDT1 the slide IS the convergence —
+//   f2's range is set by g, which falls from about 5.5 to 1 — which is why
+//   removing it costs so much. A case that is both skewed AND drifting is not
+//   covered by this test and has not been measured.
+//
+//   REJECTED VARIANT, recorded so it is not retried. Freezing the divisor at
+//   the first pool's ranges looks like it should separate the two: it removes
+//   a constant spread while leaving a shrinking one visible. It half works and
+//   is dominated. 3 seeds, 30 000 FE, median IGD: on ZDT1 it costs 1.9x
+//   instead of 25x (0.0110 against the letter's 0.0059), so the drift signal
+//   really is preserved; but on DTLZ2 skewed by 1, 10, 100 it reaches 0.1174,
+//   worse than BOTH the letter (0.0937) and the per-generation scaling
+//   (0.0735). A frozen divisor freezes the resolution too: as the pool
+//   contracts, (f_j - fmin_j)/range_j(0) vanishes against the +1 and the
+//   Tchebycheff term stops separating anything.
+//
 //   WHAT EXACTLY THE COST IS, separated by measurement. It is not convergence.
 //   On ZDT1 the mean analytic distance of the final population to the front is
 //   8e-5 for the letter and 1e-4 for the scaled reading — the same, both are

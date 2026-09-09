@@ -94,6 +94,16 @@ scaling costs it nothing on either problem. So this is not a property of
 normalisation in general: it is what happens when you rescale the axes of a
 method that has divided the front between directions.
 
+**Which case are you in? There is a cheap test.** Watch the ratio between the
+per-objective ranges of the answer set over the first few generations. A unit
+is a constant and the ratio holds steady; a property of the problem moves as
+the search closes on the front. On ZDT1 the ratio slides from 3.7 to 1.03 over
+a run — `f2`'s range is set by `g`, which falls towards 1 as the population
+reaches the front, so the slide *is* the convergence. On DTLZ2 it sits at 1.00
+throughout, and skewing the axes by constant factors multiplies a flat ratio by
+a constant, leaving it flat. Steady ratio: scale. Sliding ratio: do not. A
+problem that is both skewed and drifting is not covered by this test.
+
 ## Pareto-dominance & diversity-based
 
 | Algorithm | Year | File | DOI |
