@@ -41,17 +41,52 @@
 //   Table I): |V| = mu = pop_size, κ = 0.005, tmax = 10000,
 // P_c = 0.9, P_m = 1/n, η_c = η_m = 20 (the jMetal defaults; Table I gives no
 // η values).
-// DECLARED DEVIATIONS: when random() > P_c the offspring are copies of the
-// parents and are still ADDED to O_g (jMetal SBX semantics; the letter of
-// Alg. 2 Lines 8–17 would re-draw the parents instead).
-//   (MINOR) the binary tournament draws two DISTINCT individuals by rejection
-//   sampling; §IV-C does not require distinctness. A harmless strengthening,
-//   but not free: the rejection loop consumes extra RNG draws, so the stream
-//   differs from a plain pair of uniform picks. Kept as is — removing the loop
-//   would itself change the stream.
+// DECLARED DEVIATIONS:
+//   (FIXED 2026-09-06, full-paper checklist) Alg. 2 Lines 8-17: two offspring
+//   are produced and added to O_g ONLY when random() <= P_c; otherwise the
+//   parents are simply redrawn (the inner "while |O_g| < mu" loop repeats).
+//   Every offspring is therefore a crossover product (SBX applied
+//   unconditionally once the gate passes), and the gate costs extra
+//   tournament draws, not offspring. The port used to run jMetal's SBX
+//   semantics — with probability 1 − P_c the children were copies of the
+//   parents and were still added. An odd mu keeps only o1 of the last pair
+//   (the paper's {o1, o2} would overshoot mu by one). MEASURED (DTLZ2 M=3
+//   N=91 / ZDT1 N=100, 30 000 FE, median IGD of 3 seeds): DTLZ2 0.0750 -> 0.0761 (seeds 0.0733/0.0744/0.0779 ->
+//   0.0726/0.0798/0.0744), ZDT1 0.0242 -> 0.0059 (0.0043/0.0242/0.0277 ->
+//   0.0059/0.0039/0.0232) - within the seed scatter.
+//   (FIXED 2026-09-05, second primary-source pass) the binary tournament
+//   used to draw two DISTINCT individuals by rejection sampling; §IV-C says
+//   only "randomly draws two individuals from P_g", i.e. with replacement,
+//   and IBEA — which Alg.2 extends — is explicit about "with replacement".
+//   Now two plain uniform picks (a == b is a tie and yields a). The RNG
+//   stream differs from the previous release.
+//   (ARBITRATED) Alg.2 Lines 10-14 print P_m as a per-OFFSPRING gate
+//   ("if random() <= P_m then o1 = mutation(o1)"), while Table I gives
+//   P_m = 1/(# of decision variables), which as an offspring gate would
+//   mutate one child in n. jMetal, on which §V-A says every experiment ran,
+//   applies P_m per variable inside PolynomialMutation; this port follows
+//   the jMetal semantics (per-variable p_m = 1/n).
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY
 // (CDP preference in the tournament and a fitness penalty), binary variables
 // (uniform crossover + bit-flip).
+// R2I-NORM (AMBIGUOUS, measured 2026-09-09). Eq.4 computes the Tchebycheff
+//   value on RAW objectives and the paper prescribes no scaling, so the run
+//   depends on the units: the fitness is -exp(-I_R2/kappa) with kappa = 0.005,
+//   i.e. exp(-200*I_R2), which underflows to exactly 0 once I_R2 exceeds ~3.7.
+//   Multiplying every objective of DTLZ2 (M=3) by 2^10 moved the final IGD by
+//   1.2 %, by 2^20 by 29 % and by 2^30 by 89 % - a failure that grows without
+//   bound as the ordering is lost pair by pair.
+//   set_normalize(true) divides the Tchebycheff distance by the pool's range
+//   per objective, which makes the run bit-identical at every factor. It is
+//   NOT the default, because at the native scale it is much WORSE: 3 seeds,
+//   30 000 FE, median IGD on ZDT1 0.0059 (letter) against 0.2050 (scaled),
+//   a factor of 35, while DTLZ2 is a tie (0.0744 against 0.0751). The scaled
+//   reading breaks the paper's own construction, in which z* is shifted by the
+//   LARGEST range over all objectives (Eq.5) and the axes are therefore
+//   deliberately left commensurate with that single shift.
+//   So: the letter is the default, the switch exists for badly scaled
+//   objectives, and the underflow is detected at run time and reported through
+//   set_warn_handler rather than silently returning an arbitrary ranking.
 // ============================================================================
 
 #include <algorithm>
@@ -64,6 +99,7 @@
 
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
+#include "../warn.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
@@ -92,6 +128,12 @@ private:
     // generation g use the z* updated at Line 20 of generation g-1
     // (setup initialises it from P_0).
     std::vector<double> zstar_;
+
+    // 1/range per objective over the pool that produced zstar_ (all ones when
+    // normalisation is off, which is Eq.4 verbatim). See R2I-NORM.
+    std::vector<double> inv_range_;
+    bool normalize_ = false;   // the paper's letter; see R2I-NORM in the header
+    mutable bool warned_underflow_ = false;
 
     static constexpr double WREF_ = 2.0;   // HV reference point (2,...,2), Table I
 
@@ -287,6 +329,12 @@ private:
             max_range = std::max(max_range, fmax[k] - fmin[k]);
         std::vector<double> zstar(m);
         for (int k = 0; k < m; ++k) zstar[k] = fmin[k] - max_range;
+        inv_range_.assign(m, 1.0);
+        if (normalize_)
+            for (int k = 0; k < m; ++k) {
+                double r = fmax[k] - fmin[k];
+                inv_range_[k] = (r > 1e-14) ? 1.0 / r : 1.0;
+            }
         return zstar;
     }
 
@@ -304,8 +352,9 @@ private:
         for (const auto& v : weight_vectors_) {
             double tx = 0.0, ty = 0.0;
             for (int j = 0; j < m; ++j) {
-                double vx = v[j] * std::abs(zstar[j] - fx[j]);
-                double vy = v[j] * std::abs(zstar[j] - fy[j]);
+                const double s = (j < static_cast<int>(inv_range_.size())) ? inv_range_[j] : 1.0;
+                double vx = v[j] * std::abs(zstar[j] - fx[j]) * s;
+                double vy = v[j] * std::abs(zstar[j] - fy[j]) * s;
                 if (vx > tx) tx = vx;
                 if (vy > ty) ty = vy;
             }
@@ -332,13 +381,30 @@ private:
             }
             const auto& fi = vault.objectives_of(i);
             double sum = 0.0;
+            int pairs = 0, dead = 0;
             for (int j = 0; j < n; ++j) {
                 if (i == j) continue;
                 if (constraint_mode == ConstraintMode::FEASIBILITY && cvs[j] > 0.0)
                     continue;
-                sum += -std::exp(-ir2(vault.objectives_of(j), fi, zstar) / kappa_);
+                const double t = ir2(vault.objectives_of(j), fi, zstar) / kappa_;
+                ++pairs;
+                if (t > 745.0) ++dead;          // exp(-t) is exactly 0 from here
+                sum += -std::exp(-t);
             }
             vault.get_ind(i).fitness = sum;
+            // R2I-NORM: on objectives of large magnitude every term underflows
+            // and the fitness stops ordering the population at all. Say so
+            // rather than return an arbitrary ranking.
+            if (!warned_underflow_ && pairs > 0 && dead == pairs) {
+                warned_underflow_ = true;
+                warn("R2-IBEA: exp(-I_R2/kappa) underflowed to zero for every "
+                     "pair, so the fitness no longer orders the population. The "
+                     "objectives are large relative to kappa = " +
+                     std::to_string(kappa_) +
+                     ". Scale the objectives, raise kappa with set_kappa(), or "
+                     "switch on the scaled reading with set_normalize(true) "
+                     "(see R2I-NORM in the header for what that costs).");
+            }
         }
     }
 
@@ -396,9 +462,8 @@ private:
     }
 
     // ------------------------------------------------------------------ //
-    //  Binary tournament (§IV-C): draws two individuals — DISTINCT by this
-    //  port's choice, not by the paper's requirement (see the deviation in the
-    //  header) — compares
+    //  Binary tournament (§IV-C): draws two individuals with replacement (two
+    //  plain uniform picks — see the header) and compares
     //  the pair with the binary R2 indicator — a is superior when
     //  I_R2(a,b) < I_R2(b,a) (Sec. IV-B monotonicity); on a tie one of them
     //  is selected uniformly at random.
@@ -406,10 +471,10 @@ private:
     // ------------------------------------------------------------------ //
     int tournament(DataVault<Ind_t>& vault,
                    std::uniform_int_distribution<int>& dist) {
+        // §IV-C: "randomly draws two individuals from P_g" — with
+        // replacement, two plain uniform picks (see the header note).
         int a = dist(rng_);
-        int b = a;
-        if (dist.b() > dist.a())
-            do { b = dist(rng_); } while (b == a);
+        int b = dist(rng_);
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double cva = vault.get_cv(a), cvb = vault.get_cv(b);
             bool a_feas = (cva <= 0.0), b_feas = (cvb <= 0.0);
@@ -435,6 +500,9 @@ public:
     void set_eta_crossover(double e)  { eta_c_ = e; }
     void set_eta_mutation (double e)  { eta_m_ = e; }
     void set_seed         (unsigned s){ rng_.seed(s); }
+    // R2I-NORM: divide the Tchebycheff distance of Eq.4 by the pool's range
+    // per objective. false = Eq.4 verbatim on raw objectives.
+    void set_normalize    (bool on)   { normalize_ = on; }
 
     // ------------------------------------------------------------------ //
     //  setup: generate weight vectors → random init → evaluate → z* → fitness
@@ -493,14 +561,18 @@ public:
 
         // ---- breed n offspring into slots [n, 2n) ----
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
-        for (int i = 0; i < n; i += 2) {
+        std::uniform_real_distribution<double> uni(0.0, 1.0);
+        for (int i = 0; i < n; ) {
             int p1 = tournament(vault, dist_int);
             int p2 = tournament(vault, dist_int);
+            // Alg. 2 Lines 8-17: offspring only when random() <= P_c (SBX is
+            // then applied unconditionally); otherwise redraw the parents.
+            if (uni(rng_) > pc_) continue;
             for (int j = 0; j < vault.vars_n(); ++j) {
                 pv1[j] = vault.get_variable(p1, j);
                 pv2[j] = vault.get_variable(p2, j);
             }
-            ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
+            ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, 1.0, rng_);
             ops::polynomial_mutation(c1, bounds, eta_m_, rng_);
             ops::polynomial_mutation(c2, bounds, eta_m_, rng_);
             if (vault.bin_vars_n() > 0) {
@@ -519,6 +591,7 @@ public:
                 vault.set_variables(n + i, c1);
                 if (i + 1 < n) vault.set_variables(n + i + 1, c2);
             }
+            i += 2;
         }
 
         // ---- evaluate offspring ----

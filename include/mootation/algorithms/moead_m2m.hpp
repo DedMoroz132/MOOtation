@@ -27,7 +27,10 @@
 //
 // ALLOCATION (Algorithm 2), for each k:
 //   • P_k := solutions of Q whose F lies in Ω_k (v^k is the closest by angle);
-//   • |P_k| < S → ADD S−|P_k| RANDOM solutions from Q (line 4);
+//   • |P_k| < S → ADD S−|P_k| RANDOM solutions from Q (line 4) — distinct
+//     ones, drawn WITHOUT replacement from Q \ P_k (2026-09-05: was drawn
+//     with replacement from the whole Q, so a refilled subregion could hold
+//     the same solution twice);
 //   • |P_k| > S → non-dominated sorting [4] (NSGA-II), REMOVE the
 //     (|P_k|−S) worst by rank (line 6-7).
 //   Guarantees exactly S solutions in each P_k.
@@ -85,36 +88,57 @@
 //   M2M-3 (MINOR). For |P_k|>S the paper's non-dominated sorting [4] does not
 //     specify the tie-break within the boundary front. NSGA-II crowding
 //     distance is used (the paper cites [4] precisely for the sorting).
-//   M2M-4 (MINOR). Before the angles are computed, the objective vectors are
-//     translated by subtracting the coordinate-wise minimum of the pool
-//     (origin-shift). The paper §II-A assumes f≥0 and the footnote "shift
-//     f_i+M"; the reference code subtracts the min.
-//   M2M-5 (MINOR). y∈P_k is chosen randomly ≠ x (up to 5 attempts to separate);
-//     the paper (line 7) allows y=x. Consistent with the moead.hpp style.
+//   M2M-4 (fixed 2026-09-05). The angles of Eq.2 are taken from the ORIGIN,
+//     as §II-A writes (f_i ≥ 0 is assumed). When an objective of the pool is
+//     negative it is shifted by the smallest M that restores positivity
+//     (footnote 1: f_i + M), i.e. by −min_i f_i for that objective only.
+//     Previously the pool minimum was ALWAYS subtracted, which moved the apex
+//     of the cones to the pool's ideal point even for f ≥ 0 — a reading the
+//     paper does not contain.
+//   M2M-5 (retired 2026-09-05). y ∈ P_k is one plain uniform draw, as line 7
+//     says ("Randomly choose y from P_k"); y = x is admitted (then the
+//     crossover Eq.(5) returns x and only the mutation acts). Previously up to
+//     5 rejections enforced y ≠ x.
 //   M2M-6 (retired, FIX 2026-07-07). Previously: "SBX yields two children — the
 //     first is taken". Operator [20] produces exactly one offspring — line 8
 //     («generate a new solution z», singular) is now followed literally.
-//   M2M-D (DIAGNOSTIC, added 2026-08-06 — not a deviation, context for the
-//     convergence suite). This port reports mean 1.02 / best 0.010 on DTLZ2
-//     (M=3, pop 90, 200 generations), which is why it carries a known_issue
-//     marker. Two things narrow it:
-//     (a) NOT an output-filtering artefact. Alg.1 line 15 says "find all the
-//         nondominated solutions in ∪P_k and output them", and the Output is
-//         declared as "Ψ: a set of nondominated solutions", while this port
-//         presents the whole ∪P_k. Filtering to the non-dominated subset was
-//         the obvious suspect; measured, 71 of the 90 are already mutually
-//         non-dominated and the filtered mean is 1.085 — WORSE, not better.
-//         Hypothesis excluded.
-//     (b) DTLZ2 is not this paper's problem. §III-C states the test instances
-//         are "modified ZDT and DTLZ instances ... g(x) functions used in our
-//         modified instances are DIFFERENT from those in their original
-//         versions", chosen so that "both MOEA/D-DE and NSGA-II cannot locate
-//         the global PF on any instance". M2M's per-subregion quota is a
-//         diversity device for exactly that regime; plain DTLZ2 is the opposite
-//         case, where conventional MOEAs already do well. On DTLZ2 the reported
-//         error equals g = Σ(x_i−0.5)², so mean 1.02 says the distance
-//         variables sit near random (uniform x gives E[g] ≈ 0.83).
-//         A fair check means running the paper's own MOP1-MOP7.
+//   M2M-D (DIAGNOSTIC 2026-08-06, RESOLVED 2026-09 — not a deviation). This
+//     port reported mean 1.02 / best 0.010 on DTLZ2 (M=3, pop 90, 200
+//     generations) and carried a known_issue marker for it. Two hypotheses
+//     were excluded by measurement in August (output filtering; DTLZ2 being
+//     out of domain does not excuse the number). The second primary-source
+//     pass settled it:
+//     (a) The port is faithful. Algorithm 1 and Algorithm 2 were re-read
+//         line by line (random shortage refill on line 4, NDS truncation on
+//         line 7 — whose "S − |P_k|" is a sign typo for |P_k| − S); the
+//         truncation is canonical NSGA-II (fast NDS + crowding distance); the
+//         operator is liu2009 Eq.(5)-(6) to the letter, and an A/B on the
+//         sign of the exponent in rm made things slightly worse, so the
+//         paper's reading stands.
+//     (b) It is a budget mismatch. §III-A(4): "all three algorithms stop
+//         after 3000 generations". Measured at the suite's settings, varying
+//         only the budget (seed 20260804, K=10, S=9):
+//             gens    mean    median   best     distance vars at a bound
+//              200    1.022   0.741    0.0096   32.6 %
+//             1000    0.635   0.020    0.0004   17.0 %
+//             3000    0.116   0.001    0.0002    2.2 %
+//         The population is bimodal: the median converges, a shrinking
+//         minority stuck at the box bounds of the distance variables carries
+//         the mean. It comes from the extrapolating crossover x + rc·(x − y)
+//         with its bound repair, and is displaced slowly because NDS + CD
+//         inside a wide cone has little convergence pressure among mutually
+//         non-dominated members. moead_am2m (same operator, scalarizing
+//         selection) shows none of it.
+//     (c) Cone width is not the lever. Narrower cones are worse — K=30, S=3
+//         reaches mean 1.85 at 3000 generations with 72 % of distance
+//         variables at a bound — and the paper's own K=S=17 (N=289) is no
+//         better than K=10 at any budget. Sub-population size S matters more
+//         than K.
+//     The convergence suite now runs this algorithm at the paper's 3000
+//     generations, where it passes the ordinary thresholds; the known_issue
+//     marker is gone. Unchanged and still true: DTLZ2 is not this paper's
+//     problem (§III-C), and performance on the paper's MOP1-MOP7 is not
+//     claimed.
 //   M2M-7 (MINOR). set_eta_crossover/set_eta_mutation/set_pc are no-op shims
 //     for API uniformity (operator [20] has no η/p_c; the crossover is
 //     unconditional).
@@ -350,13 +374,17 @@ private:
             if (constraint_mode != ConstraintMode::NONE) cvs[i] = vault.get_cv(i);
         }
 
-        // origin-shift: subtract the coordinate-wise minimum of the pool (M2M-4)
+        // Eq.2 angles are taken from the ORIGIN (§II-A: f_i ≥ 0). An objective
+        // whose pool minimum is negative is shifted by the smallest M that
+        // makes it positive (footnote 1: f_i + M), M = −min_i f_i (M2M-4).
         std::vector<double> fmin(m, std::numeric_limits<double>::max());
         for (int i = 0; i < M_act; ++i)
             for (int k = 0; k < m; ++k) fmin[k] = std::min(fmin[k], objs[i][k]);
+        std::vector<double> shift(m, 0.0);
+        for (int k = 0; k < m; ++k) shift[k] = (fmin[k] < 0.0) ? -fmin[k] : 0.0;
         std::vector<std::vector<double>> U(M_act, std::vector<double>(m));
         for (int i = 0; i < M_act; ++i)
-            for (int k = 0; k < m; ++k) U[i][k] = objs[i][k] - fmin[k];
+            for (int k = 0; k < m; ++k) U[i][k] = objs[i][k] + shift[k];
 
         // partition: each i → the subregion closest by angle (Eq.2)
         std::vector<std::vector<int>> bucket(K_);
@@ -370,9 +398,8 @@ private:
             bucket[best].push_back(i);
         }
 
-        // survivors[k] — exactly S source indices per subregion (they may be
-        // duplicated across subregions via random refill — this is allowed)
-        std::uniform_int_distribution<int> pick(0, M_act - 1);
+        // survivors[k] — exactly S source indices per subregion (a solution may
+        // sit in several subregions via the random refill — this is allowed)
         std::vector<int> order;        // length N, source indices in block order
         order.reserve(N);
         for (int k = 0; k < K_; ++k) {
@@ -388,10 +415,18 @@ private:
                 std::vector<int> keep = select_best_S(mo, mcv, S_);
                 for (int li : keep) order.push_back(mem[li]);
             } else {
-                // shortage: all members + S−|mem| random ones from the whole pool (M2M-1)
+                // shortage (Alg.2 line 4): all members + S−|mem| DISTINCT random
+                // solutions of Q not already in P_k (without replacement; M2M-1)
                 for (int i : mem) order.push_back(i);
                 int need = S_ - static_cast<int>(mem.size());
-                for (int t = 0; t < need; ++t) order.push_back(pick(rng_));
+                std::vector<char> in_mem(M_act, 0);
+                for (int i : mem) in_mem[i] = 1;
+                std::vector<int> others;
+                others.reserve(M_act);
+                for (int i = 0; i < M_act; ++i) if (!in_mem[i]) others.push_back(i);
+                std::shuffle(others.begin(), others.end(), rng_);
+                for (int t = 0; t < need && t < static_cast<int>(others.size()); ++t)
+                    order.push_back(others[t]);
             }
         }
 
@@ -502,11 +537,10 @@ public:
         for (int k = 0; k < K_; ++k) {
             for (int j = 0; j < S_; ++j) {
                 int x = k * S_ + j;
-                // random y ∈ P_k, preferably ≠ x (M2M-5)
+                // line 7: "Randomly choose y from P_k" — one plain draw, y = x
+                // admitted (M2M-5 retired 2026-09-05)
                 std::uniform_int_distribution<int> dy(0, S_ - 1);
-                int yj = dy(rng_);
-                for (int att = 0; att < 5 && yj == j; ++att) yj = dy(rng_);
-                int y = k * S_ + yj;
+                int y = k * S_ + dy(rng_);
                 breed(vault, x, y, N + k * S_ + j);
             }
         }

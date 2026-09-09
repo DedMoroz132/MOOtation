@@ -37,6 +37,16 @@
 //                    consistently between calculate_fitness and environmental_selection;
 //   EPS_CONSTRAINT — Iε+ with a CV shift; c is computed with the same CV-shifted
 //                    indicator (otherwise an underestimated c caused exp overflow).
+//
+// DECLARED DEVIATIONS:
+//   IEP-1 (MINOR). Alg.1 Step 4 returns the non-dominated subset A of P; this
+//     core hands back the whole final P and leaves that filter to the caller,
+//     as every core in the library does.
+//   IEP-2 (DEVIATION). Binary genomes use the library's uniform crossover +
+//     bit-flip 1/n_bits; the paper's knapsack runs used one-point crossover 0.8
+//     + bit-flip 0.04 (footnote 3). Binary genomes are an extension here.
+//   IEP-3 (EXTENSION). The constraint modes above are not in the paper and are
+//     off by default.
 // ============================================================================
 
 #include <algorithm>

@@ -64,6 +64,23 @@
 // DECLARED DEVIATIONS:
 //   AM2M-1 (DEVIATION). α (probability of within-subpopulation mating) is not
 //     specified by the paper → 0.7.
+//   AM2M-mating (fixed 2026-09-05, full-paper checklist). §II-C Step 1: with
+//     probability α "randomly select y from P_k" — ONE plain draw (y = x is
+//     admitted, then Eq.(5) returns x and only the mutation acts; a P_k of one
+//     member yields its own member); with probability 1−α "from any other
+//     subpopulations" — uniform over the members of the other subpopulations.
+//     Previously: a rejection loop y ≠ x (5 tries) inside P_k, a P_k of one
+//     member was diverted to the other branch, and the other branch used
+//     rejection sampling on the angular association (10 tries, falling back
+//     to any member).
+//   AM2M-lattice (fixed 2026-09-05). Uniform initial directions/weights: an
+//     exact-size lattice is now also found for two EQUAL layers (H, H) —
+//     §V-C's N = 110 (p1 = p2 = 2) and K = 20 for m = 10 (10 + 10) are of that
+//     form, which das_dennis::generate_auto rejects (it requires Hi < Hb); for
+//     a K no lattice attains, the deterministic arbitrary-K generator of
+//     moead_m2m (detail::uniform_sphere_directions) is used. Previously K was
+//     silently replaced by the nearest lattice size (K = 20, m = 10 → 55) and
+//     N by a truncated larger lattice.
 //   AM2M-2 (MINOR). Weights = L1 normalization of the Max-Min-selected
 //     individuals (Eq.4 Σw=1).
 //   AM2M-3 (retired, FIX 2026-07-08). Previously: «η_c=20, operators as in
@@ -75,7 +92,14 @@
 //     but on problems with badly scaled objectives the normalization is
 //     necessary for the adaptation to work.
 //     The frame is fixed at init and at adaptations (since 2026-07-07 — without
-//     drift).
+//     drift). set_normalize(false) selects the LETTER of the paper: angles of
+//     §II-B/§III on the raw objective vectors (f > 0 assumed), Eq.4 on f − z.
+//     MEASURED 2026-09-05 (30 000 FE, 3 seeds, median IGD@30k, K = 10, G = 100):
+//     DTLZ2 (M = 3, N = 91) 0.0640 normalized vs 0.0660 letter — no difference;
+//     ZDT1 (N = 100) 0.0140 normalized vs 0.4120 letter (seeds 0.4189 / 0.1108 /
+//     0.4120): with f_2 ≫ f_1 early in the run the raw-angle directions
+//     collapse onto one axis and never recover. The normalization stays the
+//     default; the letter is available for problems with comparable scales.
 //   AM2M-5 (MINOR). S_k>|P̃_k| → Max-Min fill-up by repetition; S_k=0 → the
 //     subregion is empty (after the uniform initialization this is possible
 //     even before the first adaptation: an empty weight bucket of a direction).
@@ -119,6 +143,7 @@
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
+#include "../detail/sphere_directions.hpp"
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
@@ -146,6 +171,7 @@ private:
     // (§V-C via M2M [8]); default 1000 is the library convention
     // (moead_m2m/moead_awa/adaw), the caller sets the real budget via set_t_max.
     int    t_max_ = 1000;
+    bool   normalize_ = true;   // AM2M-norm (true) or the letter of the paper (false)
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; };
@@ -176,11 +202,47 @@ private:
         for(std::size_t i=0;i<f.size();++i) w[i]=std::max(std::abs(f[i])/s,1e-6);
         return w;
     }
-    // normalized objective f' = (f−zn_)/range_, clamped ≥0
+    // normalized objective f' = (f − z)/range_, where z is the RUNNING ideal
+    // point z_ (the paper's z, updated with every evaluation) and range_ the
+    // z^nad − z^min span frozen at the last adaptation.
+    // FIX 2026-09-05 (FE-trajectory audit): the translation used to be the
+    // FROZEN snapshot ideal zn_. On problems whose objectives shrink by orders
+    // of magnitude during the run (ZDT1: f2 from ~5 to ~1 as g -> 1) every
+    // improved point fell below zn_, was clamped to f' = 0 on that objective,
+    // associated with a single subregion, and the other subregions stalled
+    // until the next adaptation 100 generations later (IGD stuck at 1.2 for
+    // hundreds of generations). Translating by z_ keeps f' >= 0 without
+    // clamping and is what Eq.4 does in raw objectives.
     std::vector<double> norm(const std::vector<double>& f) const {
         std::vector<double> r(m_);
-        for(int k=0;k<m_;++k) r[k]=std::max(0.0,(f[k]-zn_[k])/range_[k]);
+        for(int k=0;k<m_;++k) r[k]=std::max(0.0,(f[k]-z_[k])/range_[k]);
         return r;
+    }
+    // Vector used for the GEOMETRY (directions §III-A, weights §III-B,
+    // association Eq.2): normalized (AM2M-norm) or the raw objective vector
+    // (the letter; §II-B assumes f > 0).
+    std::vector<double> geo(const std::vector<double>& f) const {
+        return normalize_ ? norm(f) : f;
+    }
+    // Vector used in Eq.4: normalized (AM2M-norm) or f − z (the letter).
+    std::vector<double> tch_vec(const std::vector<double>& f) const {
+        if (normalize_) return norm(f);
+        std::vector<double> r(m_);
+        for(int k=0;k<m_;++k) r[k]=f[k]-z_[k];
+        return r;
+    }
+    // Exact-size uniform lattice: das_dennis::generate_auto when it hits n;
+    // otherwise two EQUAL layers (H, H) when 2·C(H+m−1, m−1) == n (§V-C:
+    // p1 = p2 = 2 → 110; K = 20 at m = 10 → 10 + 10). Empty when nothing hits n.
+    static std::vector<std::vector<double>> lattice_exact(int m, int n) {
+        auto W = das_dennis::generate_auto(m, n);
+        if ((int)W.size() == n) return W;
+        for (int H = 1; H <= 60; ++H) {
+            long long c = das_dennis::n_vectors(m, H);
+            if (2 * c == n) return das_dennis::generate_two_layer(m, H, H);
+            if (2 * c > n) break;
+        }
+        return {};
     }
 
     // Max-Min (FPS by angle): pick cnt indices out of the unit vectors pts.
@@ -210,14 +272,14 @@ private:
     }
 
     int assoc(const std::vector<double>& f) const {
-        auto fn=norm(f);
+        auto fn=geo(f);
         int best=0; double bestc=-2.0;
         for(int k=0;k<K_;++k){ double c=cosine(fn,V_[k]); if(c>bestc){bestc=c;best=k;} }
         return best;
     }
     // Tchebycheff in the normalized space: g = max_i f'_i / w_i
     double tcheby(const std::vector<double>& f, const std::vector<double>& w) const {
-        auto fn=norm(f);
+        auto fn=tch_vec(f);
         double g=-std::numeric_limits<double>::max();
         for(int i=0;i<m_;++i){ double v=fn[i]/std::max(w[i],1e-6); if(v>g) g=v; }
         return g;
@@ -272,10 +334,10 @@ private:
         set_norm(big);   // freeze the normalization for this cycle
         // 1) Max-Min directions from big (normalized objectives projected onto the sphere)
         std::vector<std::vector<double>> proj; proj.reserve(big.size());
-        for(const auto& s:big) proj.push_back(unit(norm(s.objs)));
+        for(const auto& s:big) proj.push_back(unit(geo(s.objs)));
         int K=std::min(K_req_,(int)big.size());
         std::vector<int> di=max_min(proj,K);
-        V_.clear(); for(int idx:di) V_.push_back(unit(norm(big[idx].objs)));
+        V_.clear(); for(int idx:di) V_.push_back(unit(geo(big[idx].objs)));
         K_=(int)V_.size();
 
         // 2) association of big with V
@@ -305,10 +367,10 @@ private:
             if(S[k]<=0) continue;
             const auto& bk=bucket[k];
             std::vector<std::vector<double>> pk; pk.reserve(bk.size());
-            for(int i:bk) pk.push_back(unit(norm(big[i].objs)));
+            for(int i:bk) pk.push_back(unit(geo(big[i].objs)));
             std::vector<int> wi = pk.empty() ? std::vector<int>{} : max_min(pk,S[k]);
             for(int j=0;j<S[k];++j){
-                if(!wi.empty()) Wk_[k].push_back(l1(norm(big[bk[wi[j]]].objs)));
+                if(!wi.empty()) Wk_[k].push_back(l1(geo(big[bk[wi[j]]].objs)));
                 else            Wk_[k].push_back(std::vector<double>(m_,1.0/m_));
             }
             for(int j=0;j<S[k];++j){
@@ -340,14 +402,18 @@ private:
     // possible, AM2M-7).
     void uniform_init(const std::vector<Sol>& P){
         set_norm(P);   // AM2M-norm: the frame is fixed here, afterwards — at adaptations
-        // 1) K uniform directions: Das–Dennis lattice → unit sphere
-        auto Vr = das_dennis::generate_auto(m_, K_req_);
+        // 1) K uniform directions: exact lattice (single or two equal layers)
+        //    → unit sphere; a K no lattice attains → the deterministic
+        //    arbitrary-K generator shared with moead_m2m (AM2M-lattice)
+        auto Vr = lattice_exact(m_, K_req_);
+        if (Vr.empty()) Vr = detail::uniform_sphere_directions(m_, K_req_);
         V_.clear(); V_.reserve(Vr.size());
         for (auto& v : Vr) V_.push_back(unit(v));
         K_ = (int)V_.size();
-        // 2) N uniform weights (§V-C); the fallback lattice may yield >N → truncation
-        auto Wl = das_dennis::generate_auto(m_, N_);
-        if ((int)Wl.size() > N_) Wl.resize(N_);
+        // 2) N uniform weights (§V-C): exact lattice when attainable; otherwise
+        //    the nearest larger lattice truncated to N (AM2M-7 fallback)
+        auto Wl = lattice_exact(m_, N_);
+        if (Wl.empty()) { Wl = das_dennis::generate_auto(m_, N_); if ((int)Wl.size() > N_) Wl.resize(N_); }
         // 3) weights over the subregions: max cos to a direction (Eq.4: w∈Ω_k);
         //    l1 — Σw=1, clamp w_i≥1e-6 (Eq.4 requires w>0)
         Wk_.assign(K_,{}); hold_.assign(K_,{});
@@ -377,6 +443,8 @@ public:
     // (§V-C via M2M [8]).
     void set_t_max(int t){ if(t>0) t_max_=t; }
     void set_alpha(double a){ alpha_=a; }
+    // AM2M-norm on (default) / off = the letter of the paper (raw angles, Eq.4 on f − z).
+    void set_normalize(bool b){ normalize_=b; }
     // eta_c_/pc_ are not used by the Liu–Li operator; the setters are kept for
     // API compatibility (no effect on reproduction, FIX 2026-07-08).
     void set_eta_crossover(double e){ eta_c_=e; }
@@ -436,19 +504,26 @@ public:
         // declaration; the z^min/z^nad snapshot now changes only in
         // uniform_init() and adapt() (the weights and geometry stay in the
         // frame of the last adaptation).
+        // block offsets of the subpopulations inside Pflat (flat_pop() lays the
+        // blocks out in order k = 0..K−1)
+        std::vector<int> off(K_+1,0);
+        for(int k=0;k<K_;++k) off[k+1]=off[k]+(int)hold_[k].size();
         for(int k=0;k<K_;++k){
             int nk=(int)hold_[k].size();
+            int others=(int)Pflat.size()-nk;
             for(int j=0;j<nk;++j){
                 const Sol& x=hold_[k][j];
                 Sol y;
-                if(uni(rng_)<alpha_ && nk>1){
+                // §II-C Step 1 (AM2M-mating): with probability α — one plain
+                // draw from P_k (y = x admitted); otherwise — uniform over the
+                // members of ANY OTHER subpopulation (none → P_k).
+                if(uni(rng_)<alpha_ || others==0){
                     std::uniform_int_distribution<int> dj(0,nk-1);
-                    int yy=dj(rng_); for(int a=0;a<5&&yy==j;++a) yy=dj(rng_);
-                    y=hold_[k][yy];
+                    y=hold_[k][dj(rng_)];
                 } else {
-                    std::uniform_int_distribution<int> dp(0,(int)Pflat.size()-1);
-                    int tries=0,pi; do{ pi=dp(rng_); ++tries; } while(tries<10 && assoc(Pflat[pi].objs)==k);
-                    y=Pflat[pi];
+                    std::uniform_int_distribution<int> dp(0,others-1);
+                    int r=dp(rng_); if(r>=off[k]) r+=nk;
+                    y=Pflat[r];
                 }
                 Q.push_back(breed(x,y,vault,scratch));
             }

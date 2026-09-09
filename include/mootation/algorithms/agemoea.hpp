@@ -30,19 +30,23 @@
 //     in NSGA-III". The +inf score extremes follow the letter of §3.2
 //     (argmax f^n_i), so the two sets may differ;
 //   - diversity = min1 + min2, the two smallest L_p distances from the
-//     candidate to the ALREADY-SELECTED set Σ. The paper specifies this
-//     quantity three mutually inconsistent ways and none of them is the one
-//     implemented: §3.4's prose says "the minimum distance (L_p norm) with the
-//     other solutions in the front F_1" — a SINGLE minimum over all of F_1,
-//     which is not even greedy-selection-dependent; Eq.11 writes it as
-//     diversity(S, F_1), again over the whole front; Alg.2 line 13 writes
-//     min_{T∈Ω̄} dist + min_{T∈Ω} dist — one minimum over the REMAINING set
-//     plus one over the selected set. This port follows the authors' own
-//     reference implementation (two nearest neighbours among Σ), which is what
-//     downstream ports such as pymoo's AGEMOEA also do. The difference is not
-//     cosmetic: line 13's first term rewards a candidate for being far from
-//     other unselected candidates, which under greedy selection makes the score
-//     of every remaining solution change as the pool empties, whereas the
+//     candidate to the ALREADY-SELECTED set Σ (Alg.2's Ω). The paper states
+//     this quantity in three places that do not agree with each other:
+//     Eq.10 and the §3.4 prose define diversity(S, F_1) as ONE minimum over the
+//     whole front, which is not even greedy-selection-dependent; Alg.2 line 13
+//     writes min_{T∈Ω̄} dist + min_{T∈Ω} dist — one minimum over the REMAINING
+//     set plus one over the selected set; and the paragraph explaining line 13
+//     (§3.4, "Algorithm 2 details...") says the diversity is computed
+//     "considering the minimum (min) and the second minimum (min2) distances
+//     with regards to the solution in Ω", i.e. BOTH minima over the selected
+//     set. This port follows that explanatory paragraph, which is also what the
+//     authors' reference implementation (PlatEMO) and downstream ports such as
+//     pymoo's AGEMOEA compute. (An earlier version of this header claimed the
+//     implemented form appears nowhere in the paper; that was wrong — the
+//     prose explaining line 13 is exactly it.) The difference is not cosmetic:
+//     line 13's first term rewards a candidate for being far from other
+//     unselected candidates, which under greedy selection makes the score of
+//     every remaining solution change as the pool empties, whereas the
 //     implemented form measures only the gap the candidate would fill in the
 //     set actually being built. Note the Alg.2 line-13 form is also degenerate
 //     at the last step, where Ω̄ = {S} and its first term is 0 by convention or

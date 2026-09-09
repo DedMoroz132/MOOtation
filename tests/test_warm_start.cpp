@@ -12,7 +12,8 @@
 //       that was already done.
 //   (2) the seeded run really starts from the seeded population, rather than
 //       from a fresh draw that happens to be near it.
-//   (3) a file written by save_population loads back and seeds a run.
+//   (3) a file in the save_population format (written here by hand) loads
+//       back and seeds a run.
 //   (4) the size policies do what they say: Error refuses, Truncate shortens,
 //       Pad lengthens.
 //   (5) a mismatched seed is refused with a message that names the mismatch,

@@ -57,7 +57,10 @@
 //       sharing produces bit-identical objectives.
 //   (2) r1 = i as one of the parents. §3.7 delegates mating selection to "the
 //       practice in Li and Zhang (2009)", where the current subproblem's own
-//       solution is the first parent.
+//       solution is the first parent and the other index is one plain uniform
+//       draw from the pool (no distinctness; 2026-09-05: a rejection loop
+//       r2 ≠ i was removed — r2 = i yields a clone of x^i plus the mutation).
+//       The first SBX child is used ("a new solution p", singular).
 // DECLARED DEVIATIONS: none.
 // CONFORMANCE NOTE. §3.2 states, under Eq.2, that "all the objectives are
 //   normalised with respect to their minimum and maximum in the considered set
@@ -71,6 +74,14 @@
 //   scale-dependent per objective.
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY —
 //   an additive penalty*cv term on g; binary variables.
+// SCALE DEPENDENCE (the paper's own, measured 2026-09-09). Footnote 2 fixes
+//   z* = best - 1e-4, an ABSOLUTE offset in objective space, so the algorithm
+//   is not invariant to the units of the objectives: multiplying every
+//   objective of DTLZ2 (M=3) by 2^10 moves the final IGD by 10.3 % (0.0688 ->
+//   0.0617 at 5000 FE), and the offset is the same at 2^20 and 2^30, i.e. it
+//   is this constant being crossed and not a growing failure. This is a
+//   property of the published algorithm, not a porting choice, so the constant
+//   is left as written; scale your objectives if it matters to you.
 // ============================================================================
 
 #include <algorithm>
@@ -299,10 +310,10 @@ private:
         }
         const std::vector<int>& P = local ? B_[i] : pool_all;
 
-        // parents: x^i plus a random pool member (Li & Zhang 2009 practice).
+        // parents: x^i plus ONE plain draw from the pool (Li & Zhang 2009
+        // practice; r2 = i admitted — ASSUMPTION (2) in the file header).
         std::uniform_int_distribution<int> pickP(0, static_cast<int>(P.size()) - 1);
         int r2 = P[pickP(rng_)];
-        for (int attempt = 0; attempt < 5 && r2 == i; ++attempt) r2 = P[pickP(rng_)];
 
         const auto& bounds = vault.get_bounds();
         int nv = vault.vars_n();

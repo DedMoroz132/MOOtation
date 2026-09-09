@@ -34,15 +34,27 @@
 //
 // DEFAULTS: n_CA = 100 (Sec IV-C); n_DA = pop_size (final output size,
 //   Sec IV-A/IV-C); kappa = 0.05 (Eq. 2); p = 1/m (Sec III-C.2);
-//   SBX eta_c=20, pc=1.0; poly mutation eta_m=20, pm=1/n. (Paper uses
-//   eta=15 for both operators; see deviation TA2-5 — we keep the library
-//   defaults of 20 to match the rest of MOOtation and the harness contract.)
+//   SBX eta_c=15, pc=1.0; poly mutation eta_m=15, pm=1/n (Sec IV-A: "SBX
+//   crossover (eta = 15) and polynomial mutation (eta = 15)"; see TA2-5).
 //
 // DECLARED DEVIATIONS:
-//   TA2-1 (MINOR). I_eps+ computed on RAW objectives (no per-axis [0,1]
-//     normalization). IBEA normalizes objectives before I_eps+; the Two_Arch2
-//     paper does not explicitly state normalization for CA. On the unit-scaled
-//     DTLZ/WFG fronts used here this is immaterial; declared for honesty.
+//   TA2-1 (AMBIGUOUS, reading fixed 2026-09-09). The paper is SILENT on
+//     whether the objectives are scaled before I_eps+: Eq.1 is written on raw
+//     values, while IBEA — whose Eq.2 fitness this reuses verbatim — scales
+//     them to [0,1] over the pool in its own Alg.2 (steps 2.1-2.2). The
+//     reading taken is IBEA's: per-objective 1/range over the CA pool, frozen
+//     for the truncation loop. set_normalize(false) restores Eq.1 verbatim.
+//     WHY, MEASURED (2026-09-09): with raw values the fitness is
+//     -exp(-I_eps+/0.05) = -exp(-20*I), which underflows to exactly 0 once
+//     I_eps+ exceeds ~37, so on objectives of ordinary engineering magnitude
+//     every pair contributes zero and the CA truncation becomes arbitrary.
+//     On DTLZ2 (M=3) multiplied by 2^10 the raw reading moved the final IGD
+//     from 0.0667 to 0.2712, and at 2^20 to 0.5130 — the saturation value,
+//     i.e. total loss of ordering; the scaled reading is bit-identical at
+//     every factor. At the native scale the two are indistinguishable
+//     (3 seeds, 30 000 FE, median IGD: DTLZ2 0.0605 raw vs 0.0603 scaled,
+//     ZDT1 0.00397 vs 0.00399), so the reading costs nothing where the paper
+//     was tested and prevents collapse everywhere else.
 //   TA2-2 (MINOR). DA "boundary solutions with maximal or minimal objective
 //     values" (Alg. 3 line 3) implemented as, per objective i, the argmin and
 //     argmax of f_i (up to 2m points, de-duplicated). If that already fills DA
@@ -67,8 +79,14 @@
 //     n_DA and the FE contract). An earlier version chained the operators (the
 //     SBX child of CA x DA was always mutated), contradicting the operator
 //     independence of §III-A; it is now two independent streams.
-//   TA2-5 (MINOR). Operator distribution indices eta_c=eta_m=20 (library
-//     default) instead of the paper's 15. Peripheral; tunable via setters.
+//   TA2-5 (FIXED 2026-09-05, second primary-source pass). The defaults used
+//     to be eta_c=eta_m=20 "to match the rest of MOOtation"; Sec IV-A states
+//     eta = 15 for both operators, and no paper argument supported 20. The
+//     defaults are now 15; the setters still override them.
+//   TA2-7 (MINOR). Stream sizes. The paper fixes only the population/FE
+//     budget and says nothing about how many crossover children versus
+//     mutants are bred per generation; the ~50/50 split of n_DA offspring is
+//     this port's choice (see TA2-4).
 //   TA2-6 (MINOR). Real genome only; binary is out of scope.
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP switches BOTH archives to Deb's feasibility rules:
@@ -83,6 +101,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -104,6 +123,9 @@ public:
     void set_ca_size(int n)          { n_ca_req_ = n; }   // n_CA (default 100)
     void set_da_size(int n)          { n_da_req_ = n; }   // n_DA (default pop_size)
     void set_kappa(double k)         { kappa_ = k; }      // Eq. 2 (default 0.05)
+    // TA2-1: per-objective [0,1] scaling of I_eps+ over the CA pool, frozen
+    // for the truncation loop. false = the raw objectives of Eq.1 verbatim.
+    void set_normalize(bool on)      { normalize_ = on; }
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation(double e)  { eta_m_ = e; }
     void set_pc(double p)            { pc_ = p; }
@@ -113,8 +135,9 @@ private:
     int    n_ca_req_ = 100;     // requested CA capacity (Sec IV-C)
     int    n_da_req_ = -1;      // requested DA capacity; <0 => pop_size
     double kappa_    = 0.05;    // Eq. 2 scaling
-    double eta_c_    = 20.0;
-    double eta_m_    = 20.0;
+    bool   normalize_ = true;   // TA2-1, see the header
+    double eta_c_    = 15.0;    // Sec IV-A (TA2-5)
+    double eta_m_    = 15.0;    // Sec IV-A (TA2-5)
     double pc_       = 1.0;
     double pm_       = -1.0;    // <0 => 1/n
     std::mt19937 rng_{std::random_device{}()};
@@ -138,11 +161,33 @@ private:
     }
 
     // ── I_eps+ (Eq. 1): max_i ( f_i(x1) - f_i(x2) ) ─────────────────────────
+    // `inv` is 1/range_i over the pool when normalize_ is on (TA2-1) and 1
+    // otherwise, which is Eq.1 verbatim.
     double i_eps_plus(const std::vector<double>& x1,
-                      const std::vector<double>& x2) const {
+                      const std::vector<double>& x2,
+                      const std::vector<double>& inv) const {
         double v = -std::numeric_limits<double>::infinity();
-        for (int i = 0; i < m_; ++i) v = std::max(v, x1[i] - x2[i]);
+        for (int i = 0; i < m_; ++i) v = std::max(v, (x1[i] - x2[i]) * inv[i]);
         return v;
+    }
+
+    // 1/range per objective over the pool, or all-ones when normalisation is
+    // off. A degenerate axis (range 0) contributes nothing either way.
+    std::vector<double> pool_inv_range(const std::vector<Sol>& pool) const {
+        std::vector<double> inv(m_, 1.0);
+        if (!normalize_ || pool.empty()) return inv;
+        std::vector<double> lo(m_,  std::numeric_limits<double>::max());
+        std::vector<double> hi(m_, -std::numeric_limits<double>::max());
+        for (const auto& s : pool)
+            for (int i = 0; i < m_; ++i) {
+                lo[i] = std::min(lo[i], s.objs[i]);
+                hi[i] = std::max(hi[i], s.objs[i]);
+            }
+        for (int i = 0; i < m_; ++i) {
+            double r = hi[i] - lo[i];
+            inv[i] = (r > 1e-14) ? 1.0 / r : 1.0;
+        }
+        return inv;
     }
 
     // ── Minkowski L_p distance, p = 1/m (Sec III-C.2). Fractional norm. ──────
@@ -164,12 +209,15 @@ private:
         // feasible one by an additive penalty on F (larger F is better here),
         // so Alg. 2 removes infeasible members first, worst-CV first. The
         // indicator itself is left untouched.
+        // The scale is computed once over the whole pool and FROZEN for the
+        // truncation loop, exactly as IBEA's Alg.2 (steps 2.1-2.2) does.
+        const std::vector<double> inv = pool_inv_range(CA_);
         std::vector<double> F(sz, 0.0);
         std::vector<char> alive(sz, 1);
         for (int i = 0; i < sz; ++i)
             for (int j = 0; j < sz; ++j) {
                 if (i == j) continue;
-                F[i] += -std::exp(-i_eps_plus(CA_[j].objs, CA_[i].objs) / kappa_);
+                F[i] += -std::exp(-i_eps_plus(CA_[j].objs, CA_[i].objs, inv) / kappa_);
             }
         if (constraint_mode != ConstraintMode::NONE)
             for (int i = 0; i < sz; ++i)
@@ -185,7 +233,7 @@ private:
             // Alg. 2 line 5: update remaining F(x) += e^{ -I_eps+(x*,x)/kappa }.
             for (int i = 0; i < sz; ++i)
                 if (alive[i] && i != worst)
-                    F[i] += std::exp(-i_eps_plus(CA_[worst].objs, CA_[i].objs) / kappa_);
+                    F[i] += std::exp(-i_eps_plus(CA_[worst].objs, CA_[i].objs, inv) / kappa_);
             alive[worst] = 0;
             --live;
         }
@@ -350,6 +398,10 @@ private:
 
 public:
     void setup(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("Two_Arch2: binary variables are not supported (reproduction is real-valued only)");
         m_    = vault.objs_n();
         n_ca_ = (n_ca_req_ > 0) ? n_ca_req_ : 100;
         n_da_ = (n_da_req_ > 0) ? n_da_req_ : vault.pop_size();
@@ -379,6 +431,10 @@ public:
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("Two_Arch2: binary variables are not supported (reproduction is real-valued only)");
         m_    = vault.objs_n();
         n_ca_ = (n_ca_req_ > 0) ? n_ca_req_ : 100;
         n_da_ = (n_da_req_ > 0) ? n_da_req_ : vault.pop_size();

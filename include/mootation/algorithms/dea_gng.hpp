@@ -46,17 +46,41 @@
 //   η_c=20/pc=1; PM η_m=20/pm=1/n.
 //
 // DECLARED DEVIATIONS:
-//   GNG-1 (MINOR). The A_S update (III-C) is approximated: front-0, and when
-//     >N_S an FPS diversity selection in objective space (without the exact
-//     niching by c_J of the paper).
+//   GNG-1 — RESOLVED (audit 2026-09). The A_S update follows §III-C
+//     literally: the first front only (i = 1), Alg.2 normalization and
+//     association against the current R, then per reference vector the
+//     closest solution while c_J = 0, the farthest ones while c_J < c_max = M,
+//     and a random one after that. It used to be an FPS max-min selection in
+//     objective space, declared here as an approximation. Measured on DTLZ2
+//     (M=3, n=12, pop 91, 200 generations, seeds 20260804/1/2/3): mean front
+//     error 0.000345 -> 0.000226, lower on every seed.
 //   GNG-2 (MINOR). sub-networks = the connected components of the edges (BFS).
 //   GNG-3 (MINOR). NSGA-III selection: normalization by z*/z' (max over F_1);
 //     association by angle; niches c_j; PBI f^S_J for the critical front.
 //   GNG-4 (MINOR). θ=∞ is emulated by a large value (1e6); R'_u → d2.
 //   GNG-5 (MINOR). real-valued genome; binary is out of coverage (NONE).
+//   GNG-7 (MINOR, declared 2026-09-05). Alg.1 lines 7-8 give only
+//     P' = Mating_Selection(P), P'' = Reproduction(P') and §III-B only the
+//     tournament criteria; neither the size of P' nor how SBX children are
+//     kept is stated. This port breeds N offspring, each from its own pair
+//     of tournament winners (2N tournaments), keeping the FIRST SBX child
+//     and applying PM to it. The PlatEMO convention (N winners, N/2 pairs,
+//     both children) is an equally valid reading; the offspring count is N
+//     either way.
 //   GNG-θ. ζ_k is the angle between r and the EDGE (r_nb − r) per Eq.8 — not
 //     the angle between two node positions, which is what an earlier version
 //     computed.
+//   GNG-8 (FIXED 2026-09-06, third primary-source pass). Alg.1 line 17
+//     increments g AFTER environmental selection and line 10 tests
+//     g < (1−α)·G_max with g = 0 in the first generation; the port incremented
+//     g before the test, so the learning model stopped one generation early
+//     (⌈0.9·G_max⌉ − 1 adapting generations instead of ⌈0.9·G_max⌉). g is now
+//     incremented at the end of step(). Measured (FE-trajectory driver, DTLZ2
+//     M=3 N=91 / ZDT1 N=100, 30 000 FE, median IGD of 3 seeds, before ->
+//     after): DTLZ2 0.0551 -> 0.0547 (0.0554/0.0552/0.0541 ->
+//     0.0547/0.0551/0.0540), ZDT1 0.0044 -> 0.0042 (0.0044/0.0045/0.0042 ->
+//     0.0042/0.0046/0.0042) - within the seed scatter, as expected from one
+//     extra adapting generation.
 //   GNG-6 (AMBIGUOUS — the paper mixes two frames; the raw one is chosen).
 //     ζ (Eq.8) is measured on the RAW, un-expanded GNG node geometry: both the
 //     reference vector and the edge come from node_obj, matching V_edge as
@@ -79,6 +103,7 @@
 #include <numeric>
 #include <queue>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../detail/math_compat.hpp"
@@ -138,16 +163,40 @@ private:
         return nd;
     }
 
+    // §III-C — Alg.2 with P <- A_S (EMPTY at entry: i = 1, only the first
+    // front is kept), N <- N_S, and lines 16-21 replaced by the paper's rule:
+    // per reference vector, the CLOSEST solution by angle while c_J = 0, then
+    // the FARTHEST ones while c_J < c_max = M, then a random one. Normalization
+    // as in Alg.2 lines 3-4 (z' = max over F_1, z* the running ideal), the
+    // association by angle to the CURRENT R (Alg.1 line 11 passes R).
     void archive_update(const std::vector<Sol>& Ppp){
         std::vector<Sol> U=AS_; for(auto&s:Ppp) U.push_back(s);
         auto nd=nondominated(U);
         std::vector<Sol> F0; for(int i:nd) F0.push_back(U[i]);
         if((int)F0.size()<=NS_){ AS_=F0; return; }
-        std::vector<std::vector<double>> pts; for(auto&s:F0) pts.push_back(s.objs);
-        std::vector<int> sel; std::vector<char> used(F0.size(),0);
-        int first=std::uniform_int_distribution<int>(0,(int)F0.size()-1)(rng_); sel.push_back(first); used[first]=1;
-        while((int)sel.size()<NS_){ int b=-1; double bd=-1; for(int i=0;i<(int)F0.size();++i){ if(used[i])continue; double mn=1e300; for(int s:sel) mn=std::min(mn,edist(pts[i],pts[s])); if(mn>bd){bd=mn;b=i;} } if(b<0)break; sel.push_back(b); used[b]=1; }
-        AS_.clear(); for(int i:sel) AS_.push_back(F0[i]);
+        int R=(int)R_.size();
+        if(R==0){ AS_=F0; return; }                       // unreachable: R_ starts as R_u
+        std::vector<double> zp(m_,-1e300);
+        for(auto&s:F0) for(int k=0;k<m_;++k) zp[k]=std::max(zp[k],s.objs[k]);
+        auto fnorm=[&](const std::vector<double>& o){ std::vector<double> r(m_); for(int k=0;k<m_;++k){double d=zp[k]-z_[k]; r[k]=(d>1e-12)?(o[k]-z_[k])/d:(o[k]-z_[k]); } return r; };
+        std::vector<std::vector<std::pair<double,int>>> Delta(R);   // (angle, index into F0)
+        for(int i=0;i<(int)F0.size();++i){ auto fp=fnorm(F0[i].objs); int best=0; double ba=ang(fp,R_[0]);
+            for(int r=1;r<R;++r){ double a=ang(fp,R_[r]); if(a<ba){ba=a;best=r;} }
+            Delta[best].push_back({ba,i}); }
+        std::vector<int> cj(R,0); std::vector<char> Cact(R,1);
+        std::vector<Sol> out; out.reserve(NS_);
+        while((int)out.size()<NS_){
+            int J=-1; for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }
+            if(J<0) break;
+            auto& D=Delta[J];
+            if(D.empty()){ Cact[J]=0; continue; }
+            int pick=0;
+            if(cj[J]==0){ for(int t=1;t<(int)D.size();++t) if(D[t].first<D[pick].first) pick=t; }        // closest
+            else if(cj[J]<m_){ for(int t=1;t<(int)D.size();++t) if(D[t].first>D[pick].first) pick=t; }  // farthest, c_max = M
+            else pick=std::uniform_int_distribution<int>(0,(int)D.size()-1)(rng_);                      // random
+            out.push_back(F0[D[pick].second]); D.erase(D.begin()+pick); ++cj[J];
+        }
+        AS_=out;
     }
 
     void gng_update(){
@@ -369,6 +418,10 @@ public:
     void set_seed(unsigned s){ rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("DEA-GNG: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); g_=0; NS_=m_*N_;
         age_max_=N_; lambda_=std::max(1,(int)std::floor(0.2*N_)); maxnode_=N_;
         // ε from the number of objectives (§IV-A) unless set explicitly.
@@ -385,6 +438,10 @@ public:
         AS_.clear(); gn_.clear(); gadj_.clear(); sig_count_=0;
     }
     void setup_seeded(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("DEA-GNG: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); g_=0; NS_=m_*N_;
         age_max_=N_; lambda_=std::max(1,(int)std::floor(0.2*N_)); maxnode_=N_;
         // ε from the number of objectives (§IV-A) unless set explicitly.
@@ -398,7 +455,6 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault){
-        ++g_;
         int scratch=vault.expand(1);
         std::uniform_int_distribution<int> di(0,(int)pop_.size()-1);
         // Mating tournament per §III-B — primary the non-dominated sorting
@@ -420,6 +476,7 @@ public:
         std::vector<Sol> U=pop_; for(auto&s:Pp) U.push_back(s);
         pop_=env_select(U);
         store_arch(vault);
+        ++g_;                                   // Alg.1 line 17 (GNG-8)
     }
 };
 

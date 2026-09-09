@@ -30,6 +30,10 @@
 //   # lower     = 0, 0, -5     # ... or one value per variable
 //   constraints = none         # none | feasibility | cdp | eps_constraint
 //
+//   # ---- warm start (optional) -----------------------------------------
+//   # seed_population  = pop.csv   # a file written by io::save_population
+//   # on_size_mismatch = error     # error | truncate | pad
+//
 //   # ---- optional algorithm knobs ---------------------------------------
 //   # Anything not listed keeps the algorithm's own paper default.
 //   # eta_c eta_m pc pm T delta nr kappa K n_clusters theta alpha F CR div

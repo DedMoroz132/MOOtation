@@ -26,16 +26,14 @@
 //   arccos|a·b/(||a||·||b||)| (Eq.6/Eq.8).
 //
 // PAPER DEFAULTS: §III.
-// DECLARED DEVIATIONS: the k-means loop runs t < 2m against the paper's
-//   "while t <= 2m", i.e. one iteration fewer; a duplicate extreme centroid
-//   shared by two axes is skipped, whereas Alg.2 lines 5-8 set c^i = x^{e(i)}
-//   for every i = 1..m with no distinctness test and therefore insert the
-//   duplicate. Consequence, since the freeze is POSITIONAL: with k_e < m
-//   distinct extremes the slots [k_e, m) hold delta-ranked ORDINARY points,
-//   and those are frozen through the whole k-means in place of centroids the
-//   paper would have adjusted — so up to m−k_e fewer boundary directions are
-//   emitted. No boundary individual is dropped: the shared argmax stays a
-//   centroid, only its second copy is skipped;
+// DECLARED DEVIATIONS (2026-09-06, third primary-source pass — the two former
+//   deviations are now the letter): the k-means loop runs "while t <= 2m" as
+//   Alg.3 line 8 prints (it used to run t < 2m, one iteration fewer); an
+//   extreme individual shared by two axes is inserted as a centroid TWICE, as
+//   Alg.2 lines 5-8 do with no distinctness test (it used to be skipped,
+//   which — the freeze being positional — froze a delta-ranked ordinary point
+//   in the vacated slot). A duplicate RV gives one empty subset in the
+//   carrier's APP, which the level construction tolerates. Remaining:
 //   z^nad = the max over Pc (Table I; acceptable for a standalone carrier).
 // EXTENSIONS BEYOND THE PAPER: guards for empty clusters, zero norms and
 //   N <= 1 — numerical protection only.
@@ -203,7 +201,10 @@ public:
             for (int i = 0; i < n; ++i) {
                 if (fstar[i][axis] > best_val) { best_val = fstar[i][axis]; best = i; }
             }
-            if (best >= 0 && !is_centroid[best]) {
+            // Alg.2 lines 5-8: c^i = x^{e(i)} for EVERY axis i, no
+            // distinctness test — a shared extreme enters twice and both
+            // copies stay frozen in Alg.3.
+            if (best >= 0) {
                 is_centroid[best] = true;
                 centroids.push_back(best);
             }
@@ -253,8 +254,8 @@ public:
         assign_all();
 
         // Iterate: update free centroids (k ≥ m), keep extreme (k < m) fixed
-        // Max 2m iterations per Algorithm 3 [line 8: t ≤ 2m && flag=false]
-        for (int t = 0; t < 2 * m; ++t) {
+        // Algorithm 3 line 8: while t <= 2m && flag == false (2m+1 passes at most)
+        for (int t = 0; t <= 2 * m; ++t) {
             // Update centroids k = m..N-1 by Eq. 13-14:
             //   Eq.13: c_k = mean_{x in C_k} f*(x) — a centroid INSIDE the
             //          sphere (the mean of unit vectors, ||c_k|| <= 1);

@@ -32,7 +32,9 @@
 //
 // ALLOCATION (Algorithm 2):
 //   ∀k: P_k = {Q : F∈Ω_k};
-//       |P_k|<S → ADD S−|P_k| RANDOM solutions from Q;
+//       |P_k|<S → ADD S−|P_k| RANDOM solutions from Q — distinct ones, drawn
+//                 WITHOUT replacement from Q \ P_k (2026-09-05; was with
+//                 replacement from the whole Q);
 //       |P_k|>S → SMS removes |P_k|−S solutions ONE BY ONE.
 //
 // SMS TRUNCATION (= SMS-EMOA, Beume et al. 2007, §2.3): each removal —
@@ -89,9 +91,15 @@
 //     auto-corrected on purpose — rounding pop_size would move the
 //     function-evaluation budget that a benchmark holds fixed.
 //
-//   SMSM2M-6..8 (MINOR). As in moead_m2m: origin-shift before the angles; y≠x
-//     in the P_k branch (up to 5 attempts); SBX yields 2 children — the first
-//     is taken.
+//   SMSM2M-6 (fixed 2026-09-05, as M2M-4 in moead_m2m). The angles of Eq.2 are
+//     taken from the ORIGIN (§2.2 assumes f ≥ 0); an objective whose pool
+//     minimum is negative is shifted by the smallest M restoring positivity
+//     (§2.2: f_i + M). Previously the pool minimum was always subtracted.
+//   SMSM2M-7 (retired 2026-09-05). y in the P_k branch is ONE plain draw, as
+//     Algorithm 1 says ("Randomly choose y from P_k"); y = x is admitted.
+//     Previously up to 5 rejections enforced y ≠ x.
+//   SMSM2M-8 (MINOR). SBX yields 2 children — the first is taken ("a new
+//     solution z", singular).
 //
 // EXTENSIONS BEYOND THE PAPER (disabled by default): binary/mixed genome;
 //   constraint_mode FEASIBILITY/CDP (SMSM2M-C). The paper is unconstrained, so
@@ -334,12 +342,16 @@ private:
             lims[i]  = vault.limits_of(i);
         }
 
+        // Eq.2 angles from the ORIGIN (§2.2: f ≥ 0); a negative objective is
+        // shifted by the smallest M that makes it positive (SMSM2M-6).
         std::vector<double> fmin(m, std::numeric_limits<double>::max());
         for (int i = 0; i < M_act; ++i)
             for (int k = 0; k < m; ++k) fmin[k] = std::min(fmin[k], objs[i][k]);
+        std::vector<double> shift(m, 0.0);
+        for (int k = 0; k < m; ++k) shift[k] = (fmin[k] < 0.0) ? -fmin[k] : 0.0;
         std::vector<std::vector<double>> U(M_act, std::vector<double>(m));
         for (int i = 0; i < M_act; ++i)
-            for (int k = 0; k < m; ++k) U[i][k] = objs[i][k] - fmin[k];
+            for (int k = 0; k < m; ++k) U[i][k] = objs[i][k] + shift[k];
 
         std::vector<std::vector<int>> bucket(K_);
         for (int i = 0; i < M_act; ++i) {
@@ -351,7 +363,6 @@ private:
             bucket[best].push_back(i);
         }
 
-        std::uniform_int_distribution<int> pick(0, M_act - 1);
         std::vector<int> order; order.reserve(N);
         for (int k = 0; k < K_; ++k) {
             const auto& mem = bucket[k];
@@ -361,9 +372,16 @@ private:
                 std::vector<int> keep = sms_reduce(objs, cvs, mem, (int)mem.size() - S_);
                 for (int i : keep) order.push_back(i);
             } else {
+                // shortage (Algorithm 2): all members + S−|mem| DISTINCT random
+                // solutions of Q not already in P_k (without replacement)
                 for (int i : mem) order.push_back(i);
                 int need = S_ - (int)mem.size();
-                for (int t = 0; t < need; ++t) order.push_back(pick(rng_));
+                std::vector<char> in_mem(M_act, 0);
+                for (int i : mem) in_mem[i] = 1;
+                std::vector<int> others; others.reserve(M_act);
+                for (int i = 0; i < M_act; ++i) if (!in_mem[i]) others.push_back(i);
+                std::shuffle(others.begin(), others.end(), rng_);
+                for (int t = 0; t < need && t < (int)others.size(); ++t) order.push_back(others[t]);
             }
         }
 
@@ -467,10 +485,9 @@ public:
                     if (r >= k*S_) r += S_;
                     y = r;
                 } else {
+                    // "Randomly choose y from P_k" — one plain draw, y = x admitted
                     std::uniform_int_distribution<int> din(0, S_ - 1);
-                    int yj = din(rng_);
-                    for (int att = 0; att < 5 && yj == j; ++att) yj = din(rng_);
-                    y = k*S_ + yj;
+                    y = k*S_ + din(rng_);
                 }
                 breed(vault, x, y, N + k*S_ + j);
             }

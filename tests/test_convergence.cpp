@@ -45,7 +45,7 @@ constexpr unsigned SEED = 20260804u;
 
 // A run must at least reach this mean distance to the front. Calibrated from
 // the observed spread across all algorithms, then given room so that ordinary
-// stochastic variation does not turn the suite red. 53 of 60 algorithms land
+// stochastic variation does not turn the suite red. 53 of the 60 algorithms listed at calibration time (2026-08) land
 // below 0.015 here, so this is a very loose floor, not a performance bar.
 constexpr double MEAN_ERROR_LIMIT = 0.35;
 
@@ -58,11 +58,15 @@ constexpr double BEST_ERROR_LIMIT = 0.10;
 // how a suite quietly stops testing anything.
 //
 //   pop  > 0        run this algorithm at a different population size
+//   gens > 0        run it for a different number of generations — the
+//                   paper's own stopping criterion, when the suite's default
+//                   is far outside the regime the algorithm was designed for
 //   mean / best     relaxed thresholds
 //   known_issue     report the numbers, do not fail the suite
 struct Override {
     const char* name;
     int         pop;          // 0 = use the default
+    int         gens;         // 0 = use the default
     double      mean;         // < 0 = use the default
     double      best;         // < 0 = use the default
     bool        known_issue;
@@ -74,34 +78,37 @@ const Override OVERRIDES[] = {
     // 91 is not a multiple of the default K=10; 90 = 10 * 9 is. This is a
     // documented structural constraint, not a defect, so the suite adapts
     // instead of reporting a failure.
-    {"sms_m2m",   90, -1.0, -1.0, false,
+    {"sms_m2m",   90, 0, -1.0, -1.0, false,
      "M2M requires pop = K*S; 90 = 10*9"},
 
-    // pop=90 satisfies the K*S constraint, so this one runs — and then lands at
-    // mean=1.02 with best=0.010: the same signature as liu_gu2011. Two controls
-    // in the same family rule out "M2M decomposition is just weak here":
-    // sms_m2m reaches 0.0002 and moead_am2m 0.013 at identical settings.
-    // Recorded for the primary-source pass; see the note in liu_gu2011.hpp.
-    {"moead_m2m", 90, -1.0, -1.0, true,
-     "M2M requires pop=K*S (90=10*9); mean/best mismatch shared with liu_gu2011"},
+    // pop=90 satisfies the K*S constraint. At the suite's default 200
+    // generations this port lands at mean 1.02 / best 0.010 — which for a
+    // year read as a defect. The second primary-source pass (2026-09) showed
+    // it is a budget mismatch: the paper stops after 3000 generations
+    // (liu2014 §III-A(4)) and the annealed operator is calibrated to that.
+    // At 3000 the same port reaches mean 0.116 / median 0.001 with no
+    // relaxation of the thresholds. The mechanism (a boundary-stuck minority
+    // carrying the mean) and the experiments that excluded the alternatives
+    // are written up as M2M-D in the file header.
+    {"moead_m2m", 90, 3000, -1.0, -1.0, false,
+     "M2M requires pop=K*S (90=10*9); the paper's 3000 generations"},
 
     // Steady-state schemes: one generation advances only a fraction of the
     // population, so at equal generation counts they have spent far fewer
     // function evaluations than a generational (mu+lambda) algorithm. The
     // honest comparison is at equal FE. Thresholds are relaxed rather than
     // removed, so a real regression still shows up.
-    {"nimmo",     0, 0.90, 0.30, false,
+    {"nimmo",     0, 0, 0.90, 0.30, false,
      "steady-state, floor(N/5) subproblems per generation"},
-    {"moead_dra", 0, 0.40, -1.0, false,
+    {"moead_dra", 0, 0, 0.40, -1.0, false,
      "steady-state with dynamic resource allocation"},
 
-    // Under investigation. best=0.003 shows the front IS reached, while
-    // mean=1.01 says most of the retained population sits far from it —
-    // pointing at environmental selection, not at convergence speed. Tracked in
-    // the file header; resolution has to come from the paper, so the suite
-    // reports the numbers without going red over them.
-    {"liu_gu2011", 0, -1.0, -1.0, true,
-     "mean/best mismatch, selection under review against liu2011 SIV-A"},
+    // Same story as moead_m2m, same family, same operator: mean 1.01 at 200
+    // generations, mean 0.028 / median 0.000 at 3000. The paper runs
+    // 300,000 evaluations, i.e. about 3300 generations at this population
+    // (liu2011 §IV-A). Resolved in the file header (the RESOLVED block).
+    {"liu_gu2011", 0, 3000, -1.0, -1.0, false,
+     "the paper's budget: ~3300 generations at 300k evaluations"},
 };
 
 const Override* find_override(const std::string& name)
@@ -135,12 +142,13 @@ void run_one(const char* name)
 
     const Override* ov       = find_override(n);
     const int       pop      = (ov && ov->pop > 0)     ? ov->pop  : POP;
+    const int       gens     = (ov && ov->gens > 0)    ? ov->gens : GENS;
     const double    lim_mean = (ov && ov->mean >= 0.0) ? ov->mean : MEAN_ERROR_LIMIT;
     const double    lim_best = (ov && ov->best >= 0.0) ? ov->best : BEST_ERROR_LIMIT;
 
     RunResult r;
     try {
-        r = run_algorithm<Ind, Core, DTLZ2Spec>(pop, GENS, SEED);
+        r = run_algorithm<Ind, Core, DTLZ2Spec>(pop, gens, SEED);
     } catch (const std::exception& e) {
         // Reaching here means an algorithm refused this population size and no
         // override accounts for it — a genuine failure. Caught rather than

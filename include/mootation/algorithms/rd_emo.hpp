@@ -27,33 +27,39 @@
 //     "θ = 5 suggested in MOEA/D is set in RD-EMO". Settable via set_theta.
 //   RDE-2 (MINOR). A region is argmin d2 to a reference line, i.e. the
 //     "nearest reference line".
-//   RDE-3 (DEVIATION — filling a hole, not overriding a value). z* is the
-//     RUNNING ideal: the per-objective minimum over the population. The paper
-//     never says how z* is obtained. §3.1 introduces it only as "an ideal point
-//     z*" inside Eq.2, and Fig.1/Fig.2 draw every reference line as emanating
-//     from the axis origin, which is where the origin reading comes from — but
-//     no section, §4.1 included, states it. The suite the paper runs (DTLZ,
-//     WFG) has f ≥ 0 throughout, so the distinction never surfaces there. It
-//     surfaces immediately outside it: ZDT3 has f2 < 0, and with z* pinned at
-//     the origin those points fall into a different orthant, the angular region
-//     division misassigns them and PF segments are lost. The running ideal
-//     coincides with the origin whenever f ≥ 0 and the minimum is attained at
-//     0, and stays well-defined otherwise. Verified: ZDT3 spread 0.43 -> 0.84.
+//   RDE-3 (DEVIATION — overriding a stated value). z* is the RUNNING ideal:
+//     the per-objective minimum over the population and every offspring seen.
+//     The paper DOES fix z*: §4.1 says "An ideal point z* used in our three
+//     algorithms is set to be the origin", and Fig.1/Fig.2 draw every reference
+//     line as emanating from the axis origin. (An earlier version of this
+//     entry claimed the paper never states it; that was wrong.) The suite the
+//     paper runs (DTLZ, WFG) has f ≥ 0 with the minimum attained at 0, so the
+//     two coincide there. They differ outside it: ZDT3 has f2 < 0, and with z*
+//     pinned at the origin those points fall into a different orthant, the
+//     angular region division misassigns them and PF segments are lost. The
+//     running ideal coincides with the origin whenever f ≥ 0 and the minimum
+//     is attained at 0, and stays well-defined otherwise. Verified: ZDT3 spread
+//     0.43 -> 0.84. A caller who wants the paper's letter on an f ≥ 0 problem
+//     loses nothing; on a problem with f < 0 the letter is the broken choice.
+//   RDE-3b (MINOR). Alg.1 line 18 draws the second parent's region from the
+//     T-neighbourhood U_n restricted to regions with RD > 0; when every
+//     region of U_n is empty (only possible at very small N) the paper has no
+//     rule, and this port falls back to a uniformly random member of P.
 //   RDE-4 (MINOR). The distance between regions is the Euclidean distance
 //     between reference points; T and W are truncated to n−1.
 //   RDE-5 (MINOR). Reference points = Das–Dennis(pop_size) via generate_auto,
 //     with automatic layering.
-//   RDE-6 (MINOR). Alg.1 line 20 applies SBX ONCE per pair and takes the
-//     complementary pair (x_new, x''_new). This port calls ops::sbx twice on
-//     the same pair, keeping c1 from the first call and c2 from the second.
-//     Per-child marginals are unchanged (sbx swaps the two output positions
-//     with probability 1/2), but the siblings are decorrelated and the RNG
-//     consumption per pair is doubled: with p_c=0.9 the gate is drawn twice, so
-//     paired application makes both children parent copies together with
-//     probability 0.1, whereas split application makes exactly one a copy with
-//     probability 0.18. Both children are consumed sequentially by the Alg.2
-//     eviction loop, so it is the joint law that drives the trajectory. Not
-//     collapsed to one call: that would itself change the RNG stream.
+//   RDE-6 (FIXED 2026-09-05, second primary-source pass). Alg.1 line 20
+//     applies SBX ONCE per pair and takes the complementary pair
+//     (x_new, x''_new); PM is then applied to each child. This port now does
+//     exactly that: one ops::sbx call yields c1 and c2, each is mutated and
+//     evaluated, and both enter Q_t in that order. It used to call ops::sbx
+//     twice on the same pair (c1 from the first call, c2 from the second),
+//     which decorrelated the siblings and doubled the p_c gate draws — with
+//     p_c=0.9 that made "both children parent copies" a 0.1 event under the
+//     paper and a 0.01 event in the port. Both children are consumed
+//     sequentially by the Alg.2 eviction loop, so the joint law matters. The
+//     RNG stream differs from the previous release for that reason.
 //   RDE-7 (CONSTRAINT, documented for callers). §3.3 requires an EVEN popsiz —
 //     "population size is set to the number of reference points; otherwise ...
 //     plus one" — because SBX produces offspring in pairs. pop_size comes from
@@ -61,7 +67,18 @@
 //     breeds pop_size−1 offspring and the per-generation FE budget is
 //     pop_size−1. Not auto-corrected on purpose: rounding pop_size would move a
 //     function-evaluation budget that a benchmark holds fixed (same rule as
-//     sms_m2m.hpp).
+//     sms_m2m.hpp). Note (full-paper checklist 2026-09-06): the paper's own
+//     Table 1 lists RD-EMO popsize = H for every M (91, 210, 156, 275, 135 —
+//     three of them odd) against §3.3's "H or H+1"; with an odd popsiz Alg.1's
+//     loop j = 1..popsiz/2 breeds popsiz−1 offspring, which is exactly what
+//     this port does with pop_size = 91.
+//   RDE-8 (READING). U_i and V_i — the T / W "closest regions" to Λ_i —
+//     EXCLUDE Λ_i itself. The paper's Fig.2 worked example (RD = (0,1,3,1,1),
+//     W = 2 → RSR = (2,1,2,2,2)) holds only with self excluded (RSR_1 would be
+//     1 otherwise), so the same phrase is read the same way for T; the MOEA/D
+//     analogy the paper invokes for T (§3.3) would include the vector itself
+//     in its own neighbourhood. Consequence: the second parent never comes
+//     from the first parent's own region.
 //
 // NOTE (not a deviation). Algorithm 3 line 24 increments RSR_n, which read
 //   literally would make RSR_1 = 0 in the paper's own Fig.2 example. The §3.2
@@ -168,27 +185,32 @@ private:
         return RD;
     }
 
-    Sol breed_child(const Sol& x, const Sol& y, bool first,
-                    DataVault<Ind_t>& vault, int scratch){
+    // Alg.1 line 20: ONE SBX application on (x, x'') yields the complementary
+    // pair (x_new, x''_new); PM is applied to each; both are evaluated (RDE-6).
+    void breed_pair(const Sol& x, const Sol& y,
+                    DataVault<Ind_t>& vault, int scratch,
+                    Sol& z1, Sol& z2){
         const auto& b=vault.get_bounds(); int nv=vault.vars_n();
         std::vector<double> c1,c2;
         ops::sbx(x.vars,y.vars,c1,c2,b,eta_c_,pc_,rng_);
-        std::vector<double>& c = first ? c1 : c2;
-        ops::polynomial_mutation(c,b,eta_m_,pm_eff(nv),rng_);
-        Sol z; z.vars=c;
+        ops::polynomial_mutation(c1,b,eta_m_,pm_eff(nv),rng_);
+        ops::polynomial_mutation(c2,b,eta_m_,pm_eff(nv),rng_);
+        std::vector<int> bc1,bc2;
         if(vault.bin_vars_n()>0){
-            std::vector<int> bc1,bc2;
             ops::binary_crossover(x.bvars,y.bvars,bc1,bc2,rng_);
-            std::vector<int>& bc = first ? bc1 : bc2;
-            ops::bit_flip_mutation(bc,vault.bin_vars_n(),rng_);
-            z.bvars=bc; vault.set_all_variables(scratch,c,bc);
-        } else {
-            vault.set_variables(scratch,c);
+            ops::bit_flip_mutation(bc1,vault.bin_vars_n(),rng_);
+            ops::bit_flip_mutation(bc2,vault.bin_vars_n(),rng_);
         }
-        vault.refresh_objectives(scratch);
-        z.objs=vault.objectives_of(scratch);
-        if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
-        return z;
+        auto finish=[&](std::vector<double>& c, std::vector<int>& bc, Sol& z){
+            z.vars=c;
+            if(vault.bin_vars_n()>0){ z.bvars=bc; vault.set_all_variables(scratch,c,bc); }
+            else                     { vault.set_variables(scratch,c); }
+            vault.refresh_objectives(scratch);
+            z.objs=vault.objectives_of(scratch);
+            if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
+        };
+        finish(c1,bc1,z1);
+        finish(c2,bc2,z2);
     }
 
     void store_arch(DataVault<Ind_t>& vault){
@@ -298,8 +320,10 @@ public:
             } else {
                 x2=dp(rng_);
             }
-            Q.push_back(breed_child(pop_[win],pop_[x2],true ,vault,scratch));
-            Q.push_back(breed_child(pop_[win],pop_[x2],false,vault,scratch));
+            Sol z1, z2;
+            breed_pair(pop_[win],pop_[x2],vault,scratch,z1,z2);
+            Q.push_back(std::move(z1));
+            Q.push_back(std::move(z2));
         }
 
         // ── Algorithm 2: update ──

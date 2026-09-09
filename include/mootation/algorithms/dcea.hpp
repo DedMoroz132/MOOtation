@@ -59,18 +59,24 @@
 //     itself says ρ "is set simply, not in order to learn the shape of the PF",
 //     so ρ=1 is an admissible degradation; the unit normalization is harmless
 //     because the association is angular.
-//     Second, the period is counted in GENERATIONS (upd_period_ = 100), which
-//     equals the paper's 10000 NFE only when N = 100; at any other population
-//     size the real period is 100·N evaluations.
-//   DCEA-2 (MINOR). The Y^w/τ association — the acute angle to V/Λ on the
-//     translated f−z_min (Eq.7). z_min here is a MONOTONE RUNNING ideal point:
-//     initialized in setup() and only ever lowered as individuals are
-//     evaluated, never recomputed. The gloss of Eq.7 specifies the minimum over
-//     the PREVIOUS F_R, refreshed when Algorithm 6 ends, so once a
-//     record-holding individual is discarded the running z_min sits strictly
-//     below min(R). Transiently the code's z is therefore <= the paper's.
-//   DCEA-3 (MINOR). K-means: Lloyd ≤ kmeans_it_ iterations (the paper: 100;
-//     capped here for cost, convergence at small W is sufficient).
+//     FIX 2026-09-05: the update period used to be counted in GENERATIONS
+//     (100), which equals the paper's 10000 NFE only when N = 100; it now
+//     fires on the generation whose evaluations (gen·N) cross a multiple of
+//     10000, as Alg.2 line 6 says.
+//   DCEA-2 (FIXED 2026-09-05, second primary-source pass). The Y^w/τ
+//     association — the acute angle to V/Λ on the translated f−z_min (Eq.7).
+//     The gloss of Eq.7 specifies z_min as the minimum over the PREVIOUS F_R,
+//     "updated when Algorithm 6 ends"; z_ is now recomputed over R at the end
+//     of every ESM and held fixed through the next generation (offspring do
+//     NOT lower it mid-generation). It used to be a monotone running ideal
+//     that offspring lowered immediately.
+//     Scope: the paper introduces Eq.7 with "while tracking MaOPs" and says
+//     nothing about MOPs; this port translates at every M. For M = 2-3 a
+//     front far from the origin would otherwise collapse onto a few angular
+//     subspaces, so the uniform choice is the safer reading (audit 2026-09).
+//   DCEA-3 (FIXED 2026-09-05). K-means: Lloyd with the paper's limit of 100
+//     iterations (§3.1.2), early exit on a stable assignment. It used to be
+//     capped at 30.
 //   DCEA-4 (MINOR). NDS removal when |Y^w|>S: the tie-break inside the
 //     boundary front is by crowding distance (the paper: "lowest ranks", the
 //     tie is not specified).
@@ -104,16 +110,20 @@
 //     first and mutates second. ops::polynomial_mutation clamps its own output,
 //     so the population stays inside the box either way, but
 //     PM(clamp(y)) != clamp(PM(y)) whenever the SCA step leaves the box.
+//     Kept deliberately: Deb's PM is undefined outside the box (its δ1/δ2
+//     terms take fractional powers of a negative base), and PlatEMO — on
+//     which §4.1.1 says the paper ran — clamps into the bounds before PM.
 //
-//   DCEA-10 (AMBIGUOUS — the paper does not name the set). Alg.5 line 6 says
-//     "perform the nondominated sorting method to obtain the maximum number of
-//     front as MF" and names no population. MF is the switch between the two
-//     regimes: MF > 1 gives r0 = NFE/NFEmax + 1 > 1 (exploration), MF = 1 gives
-//     r0 = 1 − NFE/NFEmax < 1 (exploitation), so the reading changes the
-//     operator's behaviour throughout the run. This port reads it PER SUBSPACE,
-//     because line 6 sits inside the loop over w (line 5) — the textual
-//     reading. The alternative, one sorting over the whole population, is
-//     available via set_mf_scope_global(true).
+//   DCEA-10 (RESOLVED 2026-09-07, third primary-source pass — it used to be
+//     filed as AMBIGUOUS "the paper does not name the set"). Alg.5 line 6 alone
+//     names no population, but §3.1.3 does: "The nondominated sorting method is
+//     applied to EACH SUBSPACE Y^i in order to achieve the maximum number of
+//     fronts and results in MF", matching line 6 sitting inside the loop over w
+//     (line 5). PER SUBSPACE is therefore the letter, not a choice, and is the
+//     default. MF is the switch between the two regimes: MF > 1 gives
+//     r0 = NFE/NFEmax + 1 > 1 (exploration), MF = 1 gives r0 = 1 − NFE/NFEmax
+//     < 1 (exploitation). The whole-population alternative is kept only as an
+//     experiment behind set_mf_scope_global(true) and is NOT the paper.
 //     Measured on DTLZ2 (M=3, n=12, pop 91, 200 generations, seed 20260804):
 //       per-subspace  mean 0.1108  best 0.0101
 //       global        mean 0.0863  best 0.0065
@@ -135,6 +145,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../detail/math_compat.hpp"
@@ -153,9 +164,10 @@ public:
 
 private:
     int    W_req_ = 10, b_ = 10;
-    // DCEA-3 / DCEA-1: both depart from the paper (100 Lloyd iterations; the V
-    // update every 10000 NFE) and neither is reachable from the public API.
-    int    kmeans_it_ = 30, upd_period_ = 100;
+    // §3.1.2: "The maximum number of iterations in K-means is set to 100";
+    // Alg.2 line 6: V is updated whenever NFE crosses a multiple of 10000.
+    int    kmeans_it_ = 100;
+    long   upd_nfe_   = 10000;
     double eta_m_ = 20.0, pm_ = -1.0;
     int    t_max_ = 1000;
     bool   mf_global_ = false;   // DCEA-10: scope of Alg.5 line 6
@@ -307,6 +319,10 @@ public:
     void set_seed(unsigned s){ rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("DCEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         auto Vr=das_dennis::generate_auto(m_,W_req_); V_.clear(); for(auto&v:Vr) V_.push_back(unit(v)); W_=(int)V_.size();
         if(N_%W_!=0) S_=std::max(1,N_/W_); else S_=N_/W_;
@@ -324,6 +340,10 @@ public:
         init_subpops();   // DCEA-6: Alg.3 l.6-7 (Eq.2 + Algorithm 1)
     }
     void setup_seeded(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("DCEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         auto Vr=das_dennis::generate_auto(m_,W_req_); V_.clear(); for(auto&v:Vr) V_.push_back(unit(v)); W_=(int)V_.size();
         S_=N_/W_; if(S_<1) S_=1;
@@ -395,7 +415,7 @@ public:
                 vault.set_variables(scratch,y); vault.refresh_objectives(scratch);
                 Sol z; z.vars=y; z.objs=vault.objectives_of(scratch);
                 if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
-                upd_ideal(z.objs); Q.push_back(z);
+                Q.push_back(z);   // z_min is NOT touched here (Eq.7 gloss, DCEA-2)
             }
         }
 
@@ -445,9 +465,21 @@ public:
         SP_.assign(W_,{});
         for(int t=0;t<(int)pop_.size();++t) SP_[owner[t]].push_back(t);
 
+        // Eq.7 gloss: z^min_g is "calculated from the previous F_R, which will
+        // be updated when Algorithm 6 ends" — recomputed here over this
+        // generation's R, held fixed until the next ESM ends (DCEA-2).
+        z_.assign(m_,std::numeric_limits<double>::max());
+        for(const auto& s:R) upd_ideal(s.objs);
+
         // ── periodic update of V from the cluster centres (DCEA-1) ──
-        if(gen_%upd_period_==0){
-            for(int c=0;c<W_;++c){ auto u=unit(kcen[c]); if(u.size()==(std::size_t)m_) V_[c]=u; }
+        // Alg.2 line 6: "if NFE mod 10000 == 0". NFE advances by N per
+        // generation, so the update fires on the generation whose evaluations
+        // cross a multiple of upd_nfe_.
+        {
+            long nfe_before=(long)(gen_-1)*(long)N_, nfe_after=(long)gen_*(long)N_;
+            if(nfe_after/upd_nfe_ != nfe_before/upd_nfe_){
+                for(int c=0;c<W_;++c){ auto u=unit(kcen[c]); if(u.size()==(std::size_t)m_) V_[c]=u; }
+            }
         }
         store_arch(vault);
     }

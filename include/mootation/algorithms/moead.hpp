@@ -30,8 +30,10 @@
 //   invert the whole scalarization; the flip is the paper's instruction, not an
 //   edit to it.
 // Deviations:
-//   - MOEAD-2 (MINOR): up to 5 attempts to ensure k ≠ l (the paper allows k = l).
 //   - EP may contain duplicate F-vectors (does not contradict the letter of Step 2.5).
+//   (MOEAD-2, the former "up to 5 attempts to ensure k ≠ l", was removed on
+//   2026-09-05: Step 2.1 says "Randomly select two indexes k, l from B(i)" —
+//   two independent draws, k = l allowed; the port now does exactly that.)
 // Extensions beyond the paper (disabled by default):
 //   - ConstraintMode::FEASIBILITY — g^te + penalty·cv; the 2007 paper handles
 //     constraints with a problem-specific repair heuristic (Step 2.2), not a penalty.
@@ -213,11 +215,10 @@ private:
 
         // Step 2.1: pick two indexes k, l from B(i).
         std::uniform_int_distribution<int> dist_B(0, T_eff - 1);
+        // Two independent draws from B(i); k = l is allowed by the letter of
+        // Step 2.1 (then SBX reproduces the parent and only PM acts).
         int k_idx = dist_B(rng_);
         int l_idx = dist_B(rng_);
-        // MOEAD-2 (MINOR, beyond the letter of the paper): up to 5 attempts to ensure k ≠ l.
-        for (int attempt = 0; attempt < 5 && l_idx == k_idx; ++attempt)
-            l_idx = dist_B(rng_);
         int p1 = B[k_idx], p2 = B[l_idx];
 
         // Breed offspring y.

@@ -51,14 +51,18 @@
 #ifndef MOOTATION_CAPI_H
 #define MOOTATION_CAPI_H
 
-#if defined(_WIN32)
-#  if defined(MOOTATION_C_BUILD)
-#    define MOO_API __declspec(dllexport)
+/* -DMOO_API= on the command line strips the decoration, which is what a
+ * header-reading FFI such as MATLAB's loadlibrary needs (see wrappers/). */
+#ifndef MOO_API
+#  if defined(_WIN32)
+#    if defined(MOOTATION_C_BUILD)
+#      define MOO_API __declspec(dllexport)
+#    else
+#      define MOO_API __declspec(dllimport)
+#    endif
 #  else
-#    define MOO_API __declspec(dllimport)
+#    define MOO_API __attribute__((visibility("default")))
 #  endif
-#else
-#  define MOO_API __attribute__((visibility("default")))
 #endif
 
 #ifdef __cplusplus

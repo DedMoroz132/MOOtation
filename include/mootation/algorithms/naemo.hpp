@@ -71,9 +71,12 @@
 //     §4.1/4.9 restrict reproduction to the neighbourhood. §4.1/4.9 is followed
 //     (partners from nbr), with a fallback to the whole archive when the pool
 //     is too small.
-//   NAEMO-4 (MINOR). Gaussian(μ,v): v is read as the VARIANCE (text of §4.5),
-//     so std = sqrt(v). F and CR are truncated to [0,1] (§4.5: "sampled values
-//     ... truncated to [0,1]", said of F and CR); η_c is clamped from below to
+//   NAEMO-4 (MINOR). Gaussian(μ,v): v is read as the VARIANCE (text of §4.5:
+//     "mean μ_ηc and variance 5"), so std = sqrt(v). F and CR are truncated to
+//     [0,1] (§4.5: "The sampled values are then truncated to [0,1]", said of F
+//     and CR). §4.4 says instead that F "is randomly chosen between 0 and 2"
+//     — a self-contradiction; §4.5 describes the adaptive scheme actually
+//     used (Alg.1 lines 16-18, 32-34) and wins. η_c is clamped from below to
 //     >=1e-6, a guard beyond the paper that is harmless under N(30, sqrt(5)).
 //   NAEMO-5 (MINOR). k=⌊0.2·n⌋ (§5.2: «20% of the total number of
 //     reference lines"); the soft limit is pop_size (the paper: C·n, with C a
@@ -82,6 +85,15 @@
 //     did not; the declaration is now correct.
 //   NAEMO-6 (MINOR). z* and PBI are recomputed once per generation (at the
 //     start of step) and held fixed for the inner loop.
+//   NAEMO-8 (MINOR). Mating pool = the parent's own sub-archive PLUS the k
+//     nearest non-empty lines. §4.1 says the other parents "belong only to
+//     sub_arch_j, such that j ∈ nbr_i", and §4.9(2) "uses points only from
+//     its k closest neighboring reference lines"; whether the parent's own
+//     line counts as its closest neighbour is not said (nbr_i is defined for
+//     the EMPTY-line case, where the question does not arise). The own line
+//     is included here; when the pool still has fewer than 3 members the whole
+//     archive is used (NAEMO-3). The neighbourhood is that of the line the
+//     parent was actually drawn from (ind), not of the empty line j.
 //   NAEMO-7 (MINOR, resolved). The reference-line count is chosen as the
 //     LARGEST attainable Das-Dennis lattice <= pop_size on the default path.
 //     das_dennis::generate_auto rounds UP, and since every line keeps at least

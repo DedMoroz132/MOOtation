@@ -92,7 +92,13 @@ public:
     ConstraintMode constraint_mode = ConstraintMode::NONE;
 
 private:
-    static constexpr double EPS_ = 1e-12;
+    // Zero-length guards. These are OURS, not the paper's, so they must not
+    // introduce a scale of their own: an absolute 1e-12 compared against a
+    // norm in objective space fires at different points depending on the
+    // magnitude of the objectives, which made the algorithm's result depend
+    // on the units (measured 2026-09-09: IGD moved 1.6 % on DTLZ2 scaled by
+    // 2^10, and the offset stayed at every larger factor). The test is now
+    // "is it exactly zero", which is scale-free and guards the same division.
 
     double       eta_c_ = 20.0;   // §IV-A.3
     double       eta_m_ = 20.0;   // §IV-A.3
@@ -122,7 +128,7 @@ private:
     // Acute angle between vectors (Alg.3 lines 16/22: arccos(F(p),F(q))).
     static double acute_angle(const std::vector<double>& a, const std::vector<double>& b) {
         double na = norm(a), nb = norm(b);
-        if (na < EPS_ || nb < EPS_) return 0.0;
+        if (!(na > 0.0) || !(nb > 0.0)) return 0.0;
         double c = dot(a, b) / (na * nb);
         c = std::min(1.0, std::max(-1.0, c));
         return std::acos(c);
@@ -198,7 +204,7 @@ private:
         if (F.empty()) return out;
         for (std::size_t k = 0; k < R.size(); ++k) {
             double nr = norm(R[k]);
-            if (nr < EPS_) continue;                // numerical guard
+            if (!(nr > 0.0)) continue;              // numerical guard (scale-free)
             double best_perp = std::numeric_limits<double>::max();
             double best_proj = 0.0;
             for (const auto& f : F) {
@@ -543,6 +549,37 @@ public:
         return s;
     }
 
+    // R' is consumed in TRANSLATED objective coordinates (f - z*), while R0_ is
+    // stored on the unit simplex and scaled into them at every adaptation
+    // (Operation 1, "Rs[k][j] = R0_[k][j] * (znad[j] - zmin[j])"). The initial
+    // "R' <- R" of Alg.1 line 4 has to land in the same coordinates, or the
+    // first generation compares unit-simplex points against objectives of
+    // whatever magnitude the problem happens to use. FIX 2026-09-09: this was
+    // the last scale dependence in the file - with the raw copy, multiplying
+    // every objective of DTLZ2 (M=3) by 2^10 moved the final IGD by 1.6 %, and
+    // by the same 1.6 % at 2^20 and 2^30, the signature of a one-off mismatch
+    // rather than a growing failure. The paper's R' and R live in one space;
+    // only this port kept them in two. At the native scale the fix is free:
+    // 3 seeds, 30 000 FE, median IGD DTLZ2 0.05432 and ZDT1 0.00395, the
+    // same numbers as before it.
+    std::vector<std::vector<double>> scaled_reference(DataVault<Ind_t>& vault,
+                                                      int n) const {
+        const int m = vault.objs_n();
+        std::vector<double> zmin(m,  std::numeric_limits<double>::max());
+        std::vector<double> znad(m, -std::numeric_limits<double>::max());
+        for (int i = 0; i < n; ++i) {
+            const auto& o = vault.objectives_of(i);
+            for (int j = 0; j < m; ++j) {
+                zmin[j] = std::min(zmin[j], o[j]);
+                znad[j] = std::max(znad[j], o[j]);
+            }
+        }
+        std::vector<std::vector<double>> Rs = R0_;
+        for (auto& r : Rs)
+            for (int j = 0; j < m; ++j) r[j] *= (znad[j] - zmin[j]);
+        return Rs;
+    }
+
     // Alg.1 lines 1-4: P ← RandomInitialize(N); R ← UniformReferencePoint(N_R);
     // A ← P; R' ← R.
     void setup(DataVault<Ind_t>& vault) {
@@ -568,7 +605,7 @@ public:
         vault.archive_clear();                               // A ← P
         for (int i = 0; i < n; ++i)
             vault.archive_push(static_cast<std::size_t>(i));
-        Rp_ = R0_;                                           // R' ← R
+        Rp_ = scaled_reference(vault, n);                    // R' ← R
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
@@ -578,7 +615,7 @@ public:
         vault.archive_clear();                               // A ← P
         for (int i = 0; i < n; ++i)
             vault.archive_push(static_cast<std::size_t>(i));
-        Rp_ = R0_;                                           // R' ← R
+        Rp_ = scaled_reference(vault, n);                    // R' ← R
     }
 
     // Alg.1 lines 6-9: one generation.

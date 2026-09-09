@@ -28,14 +28,22 @@
 //      individuals are mapped and clustered into N clusters, while Alg.2 takes
 //      F_l alone as its input and Alg.3 line 2 loops i = 1…N−N_n. The
 //      Alg.2/Alg.3 reading is adopted; the two coincide only when l = 1.)
-//   7. Pruning: P_c is compared against Arc — the non-dominated ones of
-//      P_c ∪ Arc, when >N an ε-cull down to N → the new population P.
-//      CAUTION: the paper is internally inconsistent — Alg.1 line 15 states
-//      «P ← P_c» (no pruning), but the text THREE TIMES (Framework, Proposed
-//      algorithm, Archive management) describes an ε-selection of P_c
-//      against Arc into the population; the Alg.1 pseudocode is demonstrably
-//      defective (line 8 «break»). The textual reading is adopted — a change
-//      to the pseudocode's «P ← P_c» is deliberately NOT implemented.
+//   7. P ← P_c (Alg.1 line 15). The comparison of P_c with Arc that the text
+//      describes (Framework, Proposed algorithm, Archive management) is the
+//      archive update of line 3 at the next generation: §"Archive
+//      management" ends with "we will keep the non-dominated solutions only
+//      in the archive", and the "parents of the next generation" it screens
+//      are the members of P ∪ Arc that Reproduction draws from (line 4).
+//      NRV-1 (FIXED 2026-09-06, third primary-source pass): the port used to
+//      ε-select P_c ∪ Arc into the POPULATION as well ("the textual
+//      reading"), which made P and Arc near-identical sets and emptied the
+//      archive of its role; set_population_pruning(true) restores it.
+//      Measured (FE-trajectory driver, DTLZ2 M=3 N=91 / ZDT1 N=100, 30 000
+//      FE, median IGD of 3 seeds, pruned -> letter): DTLZ2 0.0880 -> 0.0610
+//      (per seed 0.0882/0.0882/0.0862 -> 0.0601/0.0600/0.0602), ZDT1
+//      0.0039 -> 0.0040 (0.0039/0.0038/0.0039 -> 0.0040/0.0040/0.0040).
+//      The letter is the default: it is clearly better on DTLZ2 and level
+//      on ZDT1.
 //
 // PAPER DEFAULTS = §Experimental settings: p_c=1, p_m=1/V, η_c=η_m=20,
 //   f_r=0.1.
@@ -56,9 +64,10 @@
 //   (3) For a degenerate system of extreme points, fall back to the intercept
 //       plane Σ x_k/a_k = 1 with a_k the max of the normalized k-th coordinate
 //       over the archive. The paper does not address degeneracy.
-// DECLARED DEVIATIONS: topping the population up when <N survive pruning (by
-//   the Σ of normalized objectives) — a guard of the fixed-N framework, the
-//   case is not specified in the paper.
+// DECLARED DEVIATIONS: with set_population_pruning(true) only — topping the
+//   population up when <N survive the pruning (by the Σ of normalized
+//   objectives), a guard of the fixed-N framework; under the letter P_c has
+//   exactly N members (N_n whole fronts + one per cluster).
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY
 //   — CDP in NDS (fast_nds → dominates); binary variables.
 //   Notable fix: this header used to promise CDP also in the «archive
@@ -103,6 +112,7 @@ private:
     double       pc_    = 1.0;
     int          t_max_ = 1000;
     int          current_gen_ = 0;
+    bool         population_pruning_ = false;   // NRV-1: true = the previous port
     std::vector<double> s_rng_;             // cache of s (frozen for f_r·MaxG)
     int          s_age_ = -1;               // when s was last updated
     std::mt19937 rng_{std::random_device{}()};
@@ -292,6 +302,7 @@ public:
     void set_eta_mutation (double e) { eta_m_ = e; }
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_t_max(int t)            { t_max_ = (t > 0) ? t : 1; }
+    void set_population_pruning(bool b) { population_pruning_ = b; }   // NRV-1
 
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
@@ -502,8 +513,15 @@ public:
         }
         if (static_cast<int>(Pc.size()) > N) Pc.resize(N);
 
+        // ── Alg.1 line 15: P ← P_c (NRV-1). The ε-comparison of P_c with Arc
+        //    is the archive update of line 3 at the next generation.
+        if (!population_pruning_) {
+            rearrange(vault, Pc, pool);
+            return;
+        }
+
         // ── [code E] Pruning: Pc against Arc, ε-cull → new population P ────
-        // (the textual reading of the paper; see the file header)
+        // (the previous port; set_population_pruning(true) — see the header)
         std::vector<int> finalP;
         {
             int total = static_cast<int>(Pc.size()) + A;

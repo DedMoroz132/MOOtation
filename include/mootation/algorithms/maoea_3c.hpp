@@ -79,18 +79,16 @@
 //     reading consistent with the prose calling it a "loose condition". Label
 //     selects the convergence estimator (Sum / EdI / EdN) for the whole
 //     generation, so the choice is load-bearing, not cosmetic.
-//   3C-8 (UNDECLARED-NO-MORE: deviation in normalization scope, ES1).
-//     Alg.2 line 2 REASSIGNS Q = [F_1..F_l] before line 4 normalizes it and
-//     line 5 searches it for extreme points; §3.3.1 confirms it ("solutions in
-//     fronts after F_l are discarded (line 2)"), so the paper's Eq.6 z^max is
-//     the max over the RETAINED fronts. This port keeps Q as the full 2N union
-//     and normalizes over all of it (env_select_1), so z^max can come from a
-//     discarded solution. Consequence: every axis is rescaled, which shifts the
-//     Eq.7 ASF values and every Eq.8 angle distance, i.e. the fill order of the
-//     critical front. The extreme points themselves are practically unaffected
-//     — ASF is dominance-monotone, so its argmin is attained in F_1, which is
-//     never discarded. Note this does NOT apply to ES2/Alg.3, where normalizing
-//     the full Q is correct.
+//   3C-8 (FIXED 2026-09-05, second primary-source pass). Alg.2 line 2
+//     REASSIGNS Q = [F_1..F_l] before line 4 normalizes it and line 5 searches
+//     it for extreme points; §3.3.1 confirms it ("solutions in fronts after
+//     F_l are discarded (line 2)"), so the paper's Eq.6 z^min/z^max are taken
+//     over the RETAINED fronts. env_select_1 now discards the later fronts
+//     first and normalizes, finds the extremes and runs the max-min-angle fill
+//     on the retained set only. It used to normalize the full 2N union, so a
+//     discarded solution could set z^max and rescale every axis (shifting the
+//     Eq.7 ASF values and the Eq.8 fill order). This does NOT apply to
+//     ES2/Alg.3, where normalizing the full Q is what line 16 says.
 //   3C-9 (AMBIGUOUS -> resolved). Alg.3 line 16 normalizes Q, so CalFitness at
 //     line 20 could be read as operating on normalized objectives. This port
 //     uses RAW objectives with z^min/z^max taken over Q, because: line 16 sits
@@ -118,6 +116,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -394,37 +393,37 @@ private:
         for (std::size_t fi = 0; fi < fronts.size(); ++fi)
             for (int idx : fronts[fi]) Q[idx].ndfront = (int)fi + 1;
 
-        // l: minimal cumulated front count >= N
-        std::vector<int> Pidx;          // selected (indices into Q)
-        std::vector<int> lastFront;
-        int cum = 0; std::size_t l = 0;
-        for (; l < fronts.size(); ++l) {
-            cum += (int)fronts[l].size();
-            if (cum >= N_) { lastFront = fronts[l]; break; }
+        // Alg.2 line 2: Q <- [F_1..F_l], l minimal with cumulated size >= N;
+        // the fronts after F_l are DISCARDED before normalization (3C-8).
+        // Qr holds the retained members; Pidx / lastFront index into Qr.
+        std::vector<Sol> Qr;
+        std::vector<int> Pidx;          // P = F_1..F_{l-1}   (Alg.2 line 3)
+        std::vector<int> lastFront;     // F_l, the candidate pool
+        int cum = 0;
+        for (std::size_t fi = 0; fi < fronts.size(); ++fi) {
+            int base = (int)Qr.size();
+            for (int idx : fronts[fi]) Qr.push_back(Q[idx]);
+            cum += (int)fronts[fi].size();
+            if (cum >= N_) {
+                for (int k = 0; k < (int)fronts[fi].size(); ++k) lastFront.push_back(base + k);
+                break;
+            }
+            for (int k = 0; k < (int)fronts[fi].size(); ++k) Pidx.push_back(base + k);
         }
-        // P = F_1..F_{l-1}
-        for (std::size_t fi = 0; fi < l; ++fi)
-            for (int idx : fronts[fi]) Pidx.push_back(idx);
 
-        // candidate pool for max-min-angle = the last front F_l
-        // normalize whole Q (Eq.6)
-        auto F = normalize(Q, m_);
+        // Alg.2 line 4: normalize the RETAINED Q (Eq.6, z over F_1..F_l)
+        auto F = normalize(Qr, m_);
 
         if ((int)Pidx.size() < N_) {
-            // add m extreme points (from full Q), unique from Pidx (3C-3)
+            // Alg.2 line 5: m extreme points of the retained Q, unique from P (3C-3)
             auto ex = find_extremes(F, m_);
-            std::vector<char> inP(Q.size(), 0);
+            std::vector<char> inP(Qr.size(), 0);
             for (int p : Pidx) inP[p] = 1;
-            std::vector<char> inCand(Q.size(), 0);
-            for (int c : lastFront) inCand[c] = 1;
             for (int axis = 0; axis < m_ && (int)Pidx.size() < N_; ++axis) {
                 int e = ex[axis];
-                if (e >= 0 && !inP[e]) {
-                    Pidx.push_back(e); inP[e] = 1;
-                    inCand[e] = 0; // if it was a candidate, remove it
-                }
+                if (e >= 0 && !inP[e]) { Pidx.push_back(e); inP[e] = 1; }
             }
-            // build candidate list = last front minus already selected
+            // Alg.2 lines 6-11: max-min-angle over F_l minus the already selected
             std::vector<int> cand;
             for (int c : lastFront) if (!inP[c]) cand.push_back(c);
             maxmin_angle_fill(F, Pidx, cand, N_);
@@ -433,7 +432,7 @@ private:
 
         std::vector<Sol> nextP;
         nextP.reserve(Pidx.size());
-        for (int idx : Pidx) nextP.push_back(Q[idx]);
+        for (int idx : Pidx) nextP.push_back(Qr[idx]);
         P_.swap(nextP);
     }
 
@@ -608,6 +607,10 @@ private:
 
 public:
     void setup(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("MaOEA-3C: binary variables are not supported (reproduction is real-valued only)");
         m_ = vault.objs_n();
         N_ = vault.pop_size();
         const auto& bd = vault.get_bounds();
@@ -627,6 +630,10 @@ public:
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("MaOEA-3C: binary variables are not supported (reproduction is real-valued only)");
         m_ = vault.objs_n();
         N_ = vault.pop_size();
         read_pop(vault);

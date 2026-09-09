@@ -83,4 +83,34 @@ inline void polynomial_mutation(std::vector<double>& x,
     polynomial_mutation(x, bounds, eta_m, pm, rng);
 }
 
+// ============================================================================
+// Polynomial mutation, LITERAL Eq.7 of Li & Zhang 2009 (huili2009) = Eq.5 of
+// Zhang, Liu, Li 2009 (zhang2009) = Deb & Goyal 1996:
+//   y_k = ȳ_k + σ_k·(b_k − a_k)   with probability p_m,   y_k = ȳ_k otherwise,
+//   σ_k = (2u)^{1/(η+1)} − 1        if u < 0.5,
+//   σ_k = 1 − (2 − 2u)^{1/(η+1)}    otherwise,        u ~ U[0,1].
+// σ_k does NOT depend on where ȳ_k sits in the box (unlike the bounded variant
+// above) and the result MAY leave [a_k, b_k]: the caller repairs it
+// (ops::repair_out_of_box — MOEA/D-DE Step 2.3 / MOEA/D-DRA Step 3.3).
+// Added on 2026-09-05 (full-paper checklists of moead_de / moead_dra).
+// ============================================================================
+template <typename RNG>
+inline void polynomial_mutation_eq7(std::vector<double>& x,
+                                    const std::vector<std::pair<std::optional<double>,
+                                                                std::optional<double>>>& bounds,
+                                    double eta_m, double pm, RNG& rng)
+{
+    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    for (std::size_t j = 0; j < x.size(); ++j) {
+        if (uni(rng) > pm) continue;
+        double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));
+        double hi = sbx_require_bound(bounds[j].second, "upper", static_cast<int>(j));
+        double u = uni(rng);
+        double sigma = (u < 0.5)
+            ? std::pow(2.0 * u, 1.0 / (eta_m + 1.0)) - 1.0
+            : 1.0 - std::pow(2.0 - 2.0 * u, 1.0 / (eta_m + 1.0));
+        x[j] += sigma * (hi - lo);
+    }
+}
+
 } // namespace mootation::ops

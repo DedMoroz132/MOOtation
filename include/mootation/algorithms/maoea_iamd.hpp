@@ -51,24 +51,36 @@
 //   algorithm" — so §4.3(2)'s "all compared algorithms employ SBX and PM"
 //   describes the peer set, not MaOEA-IAMD's own operator.
 //
-// MaOEA-IAMD-N (OUR CHOICE, NOT A PAPER VALUE — the largest free parameter in
-//   this file). Alg.4 line 13 is the entire specification of the KPCM noise:
-//   "Add appropriate noise to each individual's decision variables." No
-//   distribution, no scale, no number, anywhere in the paper. This port uses a
-//   Gaussian with sigma = noise_frac * (hi - lo) per variable, noise_frac =
-//   0.01, settable with set_noise_frac.
-//   Why 0.01 and not something larger: the noise is applied to EVERY variable
-//   of EVERY offspring, so its scale dominates convergence. Measured on
-//   DTLZ2 (M=3, n=12, pop 91, 200 generations, seed 20260804), mean distance
-//   to the front:
+// MaOEA-IAMD-N (DEVIATION — overriding a stated value; the largest free
+//   parameter in this file). Alg.4 line 13 says only "Add appropriate noise
+//   to each individual's decision variables", but the §3.4 prose DOES fix it:
+//   "the normal distribution perturbation with a mean of 0 and variance of
+//   0.1 is applied to the decision variables of each individual", i.e.
+//   N(0, 0.1), sigma = sqrt(0.1) ~= 0.316, in the units of the decision
+//   variables (the paper's DTLZ variables live in [0,1]).
+//   FIX 2026-09-05 (second primary-source pass): an earlier version of this
+//   entry claimed "no distribution, no scale, no number, anywhere in the
+//   paper" and called the sqrt(0.1) of a still earlier version unattributed.
+//   Both were wrong; §3.4 states the value.
+//   This port nevertheless defaults to a Gaussian with sigma = noise_frac *
+//   (hi - lo) per variable, noise_frac = 0.01, settable with set_noise_frac
+//   (set_noise_frac(0.316) restores the paper's letter on unit-range
+//   variables). Why: the noise is applied to EVERY variable of EVERY offspring,
+//   so its scale dominates convergence, and at the paper's own value the
+//   population cannot settle. Measured on DTLZ2 (M=3, n=12, pop 91, 200
+//   generations, seed 20260804), mean distance to the front:
 //       noise_frac  0.316  0.20   0.10   0.05   0.02   0.01   0.00
 //       mean        0.289  0.127  0.065  0.046  0.015  0.005  0.014
-//   An earlier version of this file used 0.316 (= sqrt(0.1)) and attributed
-//   "N(0, 0.1)" to §3.4; that number is not in the paper and is ~50x worse than
-//   0.01 here. At 0.0 the population collapses to a single point (mean == best),
-//   so some noise IS required — the paper is right about that much.
-//   This value is ours and was picked from the sweep above; a reader who
-//   disagrees has the numbers to argue with and a setter to override it.
+//   At 0.0 the population collapses to a single point (mean == best), so some
+//   noise IS required. A DTLZ2 mean error of 0.29 is incompatible with the
+//   IGD values the paper reports for itself, so either the variance is
+//   applied to a different quantity than the raw variables or it is a
+//   misprint; the paper gives no way to tell. The default is ours.
+//   Measured again 2026-09-06 (FE-trajectory driver, DTLZ2 M=3 N=91 n=12 /
+//   ZDT1 N=100 n=30, 30 000 FE, median IGD of 3 seeds, noise_frac
+//   0.01 -> 0.316): DTLZ2 0.0582 -> 0.2112 (seeds 0.0566/0.0582/0.0580 ->
+//   0.2112/0.1997/0.2112); ZDT1 0.0166 -> 0.2649 (0.0167/0.0157/0.0168 ->
+//   0.2649/0.2394/0.2821). The letter stays selectable, not default.
 // Parameters the paper does not give numerically, taken from the primary
 //   sources it cites:
 //   nS = 2, nP = 4 — the LMEA [32] variable-classification defaults;
@@ -122,12 +134,12 @@ private:
     static constexpr int    NR_MAXIT_  = 100;    // §3.5
     static constexpr double KNEE_T_    = 0.5;    // KnEA [36]: rate T
 
-    // Alg.4 line 13 is the whole specification of the KPCM noise: "Add
-    // appropriate noise to each individual's decision variables". No
-    // distribution, no scale, nowhere in the paper. It is therefore a free
-    // parameter of this port, not a paper default, and must be settable.
-    // Expressed as a fraction of each variable's own range, so it does not
-    // silently depend on how the problem is scaled.
+    // KPCM noise (Alg.4 line 13). §3.4 fixes it: a normal perturbation with
+    // mean 0 and variance 0.1 on every decision variable (sigma ~= 0.316).
+    // This port's default is smaller, by measurement — see MaOEA-IAMD-N in the
+    // header; set_noise_frac(0.316) restores the letter on unit-range
+    // variables. Expressed as a fraction of each variable's own range, so it
+    // does not silently depend on how the problem is scaled.
     double noise_frac_ = 0.01;          // see MaOEA-IAMD-N in the header
 
     double eta_c_ = 20.0;   // §4.3(2)
@@ -615,12 +627,10 @@ private:
             int y = ed[dy(rng_)];
             for (int v : dv_) c[v] = vault.get_variable(y, v);
         }
-        // Alg.4 line 13: "Add appropriate noise to each individual's decision
-        // variables". The paper fixes neither the distribution nor its scale,
-        // so this is our choice, not a transcription (MaOEA-IAMD-N). Gaussian
-        // with sigma = noise_frac_ * (hi - lo) per variable, so the strength is
-        // relative to that variable's own range rather than to whatever units
-        // the problem happens to use.
+        // Alg.4 line 13 / §3.4: N(0, 0.1) noise on every decision variable.
+        // Gaussian with sigma = noise_frac_ * (hi - lo) per variable; the
+        // default noise_frac_ = 0.01 is this port's measured choice, not the
+        // paper's 0.316 (MaOEA-IAMD-N).
         const auto& bnd = vault.get_bounds();
         for (std::size_t j = 0; j < c.size(); ++j) {
             const double lo = bnd[j].first .value_or(0.0);

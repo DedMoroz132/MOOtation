@@ -41,8 +41,12 @@
 // Deviations:
 //   - |S| = 1: one offspring of the SBX pair is used (Alg.1 line 6 allows
 //     several; one offspring yields exactly N FE per generation).
-//   - Eq.6: the angle is computed w.r.t. (F(x) − z*), not the raw F(x) —
-//     the standard reading, adopted by the audits.
+//   - Eq.6 (READING): the angle is computed w.r.t. (F(x) − z*), not the raw
+//     F(x) that Eq.6 literally writes. The z*-anchored reading keeps the
+//     association consistent with the PBI geometry of Eq.2–4 and Fig.1 (d_2
+//     is measured from the ray through z*), and on every test problem of the
+//     paper (z* = 0) the two coincide. set_association_shift_ideal(false)
+//     selects the literal raw-F(x) angle.
 //   - z* is the running component-wise MINIMUM over everything evaluated. §II-B
 //     defines the ideal vector with a STRICT inequality, z*_i < min_{x∈Ω}
 //     f_i(x), i.e. strictly below the true optimum, which no online estimator
@@ -56,10 +60,12 @@
 //   - pbi_value in an individual is an informational cache from the moment
 //     of association; in selection the PBI is RECOMPUTED from the current z*
 //     — a cached value goes stale as soon as z* moves.
-//   - the two mating parents are forced DISTINCT (up to 10 retries); Alg.3 says
-//     only "randomly select two solutions". A harmless strengthening, but the
-//     retry loop draws a data-dependent number of uniforms, so the RNG stream
-//     differs from a plain pair of picks.
+//   - the two mating parents are DISTINCT whenever the candidate set has more
+//     than one member: Alg.3 forms a SET P̄ of k solutions ("choose k
+//     solutions ... to form P̄"), so the second draw is repeated until it
+//     differs from the first (2026-09-05: was "up to 10 retries", which could
+//     still return a pair of identical parents with probability 2^-10 at
+//     |candidates| = 2). The loop draws a data-dependent number of uniforms.
 // Extensions beyond the paper (disabled by default / active only when binary
 // variables are present): UNIFORM crossover + bit-flip for bin_vars
 // (general-purpose; see moead.hpp — no one-point operator exists in this
@@ -99,6 +105,7 @@ private:
     double       pc_    = 1.0;   // §IV-D-1: p_c = 1.0
     double       pm_    = -1.0;  // §IV-D-1: p_m = 1/n; <0 → auto 1/n
     int          mating_k_ = 2;  // k parents (Alg.3); SBX requires 2
+    bool         assoc_shift_ = true;  // Eq.6 angle w.r.t. F(x) − z* (true) or raw F(x)
     std::mt19937 rng_{std::random_device{}()};
 
     std::vector<std::vector<double>> W_;     // weight vectors [N][M]
@@ -159,7 +166,7 @@ private:
         const auto& fo = vault.objectives_of(v);
         double dot=0.0, ww=0.0, ff=0.0;
         for (int j=0;j<m;++j) {
-            double f = fo[j]-ideal_[j];
+            double f = assoc_shift_ ? (fo[j]-ideal_[j]) : fo[j];
             dot += f*fw[j]; ww += fw[j]*fw[j]; ff += f*f;
         }
         double denom = std::sqrt(ww)*std::sqrt(ff);
@@ -531,6 +538,9 @@ public:
     void set_eta_mutation (double e) { eta_m_ = e; }
     void set_pc           (double p) { pc_    = p; }
     void set_pm           (double p) { pm_    = p; }
+    // Eq.6 reading (see the file header): true — angle w.r.t. F(x) − z*
+    // (default); false — the literal raw F(x).
+    void set_association_shift_ideal(bool b) { assoc_shift_ = b; }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault) {
@@ -580,10 +590,17 @@ public:
         for (int i = 0; i < n; ++i) {
             // Alg.1 line 4: MATING_SELECTION (Alg.3 / Alg.8).
             auto cand = mating_candidates(vault, i, n);
+            // Alg.3: P̄ is a SET of k = 2 solutions — the second parent is
+            // redrawn until it differs from the first (possible whenever
+            // |cand| > 1; under FEASIBILITY each draw is an Alg.8 tournament
+            // whose winner can coincide with pa even for a different pair,
+            // hence the loop; the bound is a safety net, never reached in
+            // practice — the per-try failure probability is at most 3/4).
             int pa = pick_parent(vault, cand);
-            int pb = pick_parent(vault, cand);
-            for (int t = 0; t < 10 && pb == pa && cand.size() > 1; ++t)
-                pb = pick_parent(vault, cand);
+            int pb = pa;
+            if (cand.size() > 1)
+                for (int t = 0; t < 100000 && pb == pa; ++t)
+                    pb = pick_parent(vault, cand);
 
             // Alg.1 line 5: VARIATION — SBX(p_c, η_c) + PM(p_m, η_m);
             // one offspring c1 is used (|S| = 1, see the file header).

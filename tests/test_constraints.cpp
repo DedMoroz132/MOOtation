@@ -8,7 +8,7 @@
 // half: g = x0 - 0.5 <= 0. Roughly half of any uniformly drawn population is
 // infeasible, so the constraint is not a formality the search can ignore.
 //
-// For each of the 60 algorithms the same seed is run twice — once with
+// For each of the 58 algorithms the same seed is run twice — once with
 // ConstraintMode::NONE and once with ConstraintMode::FEASIBILITY — and the test
 // requires:
 //
@@ -17,6 +17,9 @@
 //   (2) the constrained run ends with at least as many feasible solutions as
 //       the unconstrained one. Constraint handling wired to the wrong
 //       comparison would show up here as a regression.
+//   (3) CDP and EPS_CONSTRAINT run at all: no exception, finite objectives,
+//       at least one feasible survivor. A smoke test, added after a second
+//       audit found neither mode had ever been executed by any suite.
 //
 // Check (2) is a heuristic, not a theorem, and a named exemption list carries
 // the algorithms for which it does not hold — each with the measurement that
@@ -130,7 +133,9 @@ CRun run_constrained(int pop, int gens, unsigned seed, ConstraintMode mode)
 
     auto& v = opt.get_vault();
     CRun r;
-    r.n = v.active_n();
+    // The answer set is [0, pop_size()), never [0, active_n()): steady-state
+    // cores keep a scratch slot past pop_size(). Same rule as harness.hpp.
+    r.n = std::min<std::size_t>(v.active_n(), static_cast<std::size_t>(v.pop_size()));
     r.signature.reserve(r.n * static_cast<std::size_t>(CDTLZ2Spec::NOBJS));
     for (std::size_t i = 0; i < r.n; ++i) {
         if (v.get_cv(i) <= 0.0) ++r.feasible;
@@ -178,7 +183,7 @@ int pop_for(const char* key)
 
 // ── Исключения из проверки (2) ──────────────────────────────────────────────
 // Check (2) — "the constrained run ends with at least as many feasible
-// solutions" — is a heuristic that holds for 59 of the 60, not a theorem. For
+// solutions" — is a heuristic that holds for 57 of the 58, not a theorem. For
 // an algorithm whose effect on this problem is smaller than the seed-to-seed
 // spread, a single seed decides the outcome by luck, and the luck differs
 // between compilers because their arithmetic does.
@@ -263,6 +268,26 @@ void probe(const char* name)
     }
     std::cout << "  feasible " << off.feasible << " -> " << on.feasible
               << " of " << on.n << std::endl;
+
+    // (3) The other two modes must at least RUN. Until 2026-09 nothing in the
+    // suites ever executed CDP or EPS_CONSTRAINT for most of the 58 — a
+    // dispatch that threw, or a mode that produced NaN, would have shipped
+    // unnoticed. A short run: no exception, finite objectives, a non-empty
+    // population, and at least one feasible member.
+    for (ConstraintMode mode : {ConstraintMode::CDP, ConstraintMode::EPS_CONSTRAINT}) {
+        const char* mname = (mode == ConstraintMode::CDP) ? "cdp" : "eps_constraint";
+        try {
+            CRun r = run_constrained<Ind, Core>(pop, 25, SEED, mode);
+            bool finite = true;
+            for (double c : r.signature) if (!std::isfinite(c)) finite = false;
+            check(finite && r.n > 0,
+                  std::string(name) + ": " + mname + " runs and stays finite");
+            check(r.feasible > 0,
+                  std::string(name) + ": " + mname + " keeps at least one feasible solution");
+        } catch (const std::exception& e) {
+            check(false, std::string(name) + ": " + mname + " threw: " + e.what());
+        }
+    }
 }
 
 } // namespace

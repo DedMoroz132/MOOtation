@@ -53,7 +53,11 @@
 //     declaration outlived it. distance_matrix is the sole distance producer
 //     and feeds all three sites.)
 //   ETEA-2 (MINOR). Mating — binary tournament on F (the paper leaves this
-//     free; see the note above for the exact §3.1 wording). Variation —
+//     free; see the note above for the exact §3.1 wording). The F used by the
+//     tournament is RECOMPUTED over the archive Q_{t+1} alone (Eq.1-4 with
+//     Q_{t+1} as the pool), not carried over from the line-4 assignment on
+//     R_t: the archive is what breeds, so its EMST density is measured among
+//     its own members. Also a library choice. Variation —
 //     SBX + PM, which §4.3 does state: "the distribution indexes in both SBX
 //     and the polynomial mutation are set to 20", p_c = 1.0, p_m = 1/n.
 //   ETEA-3 (MINOR). Findout_neighbor (Alg.2 line 4): the neighbors of p are
@@ -75,6 +79,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -96,6 +101,10 @@ public:
     void set_eta_mutation(double e)  { eta_m_ = e; }
 
     void setup(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("ETEA: binary variables are not supported (reproduction is real-valued only)");
         m_ = vault.objs_n();
         N_ = vault.pop_size();
         const auto& bd = vault.get_bounds();
@@ -118,6 +127,10 @@ public:
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("ETEA: binary variables are not supported (reproduction is real-valued only)");
         m_ = vault.objs_n();
         N_ = vault.pop_size();
         P_.clear();

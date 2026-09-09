@@ -38,6 +38,10 @@
 //       chosen. NOT to be confused with the Eq.2/Eq.3 clamp below, which the
 //       paper DOES specify: after mutation v is clipped to [−δ_j, +δ_j] with
 //       δ_j = (ub_j − lb_j)/2. Both are implemented; they are different steps.
+//   (3) §2 says "two different individuals are randomly selected" for each
+//       x. Read as a != b AND both distinct from the parent x (the DE
+//       convention r1 != r2 != i that [2] follows); the paper's sentence
+//       alone only forces a != b. Declared 2026-09-05.
 // DECLARED DEVIATIONS: the "until different" retry is capped at 10 attempts,
 //   as a guard against looping forever.
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY —

@@ -6,7 +6,8 @@ set(MOOTATION_TESTS
     test_reproducibility
     test_convergence
     test_constraints
-    test_warm_start)
+    test_warm_start
+    test_scale_invariance)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -18,7 +19,7 @@ foreach(_t IN LISTS MOOTATION_TESTS)
     set_target_properties(${_t} PROPERTIES FOLDER tests)
 
     if(MSVC)
-        # Several of these instantiate all 60 algorithms in one translation
+        # Several of these instantiate all 58 algorithms in one translation
         # unit, which overruns the COFF section limit in a Debug build:
         #   fatal error C1128: number of sections exceeded object file format
         # A Release build folds enough to stay under it, which is why the
@@ -30,13 +31,13 @@ foreach(_t IN LISTS MOOTATION_TESTS)
 endforeach()
 
 # ── Labels: which tests every push pays for, and which run nightly ──────────
-# test_convergence and test_constraints each instantiate all 60 algorithms and
+# test_convergence and test_constraints each instantiate all 58 algorithms and
 # run them; together they are ~10 minutes of the ~11-minute suite. Paying that
 # on every push, across a six-way compiler/standard matrix, means every pull
 # request waits on the slowest thing in the repository.
 #
 # They are labelled `nightly` rather than deleted or shortened, because what
-# they check — that all 60 converge, and that every constraint_mode switch
+# they check — that all 58 converge, and that every constraint_mode switch
 # actually does something — is exactly what must not silently rot. CI runs
 # `-LE nightly` on push and the full set on a schedule.
 #
@@ -44,6 +45,13 @@ endforeach()
 #   ctest -L  nightly     only the long ones
 #   ctest                 all of it
 set_tests_properties(test_convergence test_constraints PROPERTIES LABELS nightly)
+
+# test_scale_invariance instantiates all 58 twice as well, but runs each for
+# 25 generations only: it asks whether a decision CHANGES when the objectives
+# are rescaled, and a decision that changes at all changes early. That keeps
+# it in the push tier, where it belongs — the defects it found (a fitness
+# whose exponential underflowed to zero, a reference set living in the wrong
+# coordinates) are exactly the kind that reappear silently.
 
 # Wall-clock limits, scaled for the build they run in.
 #
@@ -76,17 +84,18 @@ function(mootation_test_timeout _test _seconds)
     set_tests_properties(${_test} PROPERTIES TIMEOUT ${_scaled})
 endfunction()
 
-# test_convergence instantiates all 60 algorithms in one translation unit and
+# test_convergence instantiates all 58 algorithms in one translation unit and
 # runs each for 200 generations. It is by far the slowest target, in both
 # compilation and execution.
 mootation_test_timeout(test_convergence 1800)
 mootation_test_timeout(test_reproducibility 1800)
-# test_constraints instantiates all 60 algorithms twice (mode off / mode on).
+# test_constraints instantiates all 58 algorithms twice (mode off / mode on).
 mootation_test_timeout(test_constraints 1800)
 mootation_test_timeout(test_das_dennis 300)
+mootation_test_timeout(test_scale_invariance 900)
 mootation_test_timeout(test_operators 300)
 # Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
-# all 60 algorithms for the run-time dispatch. Stays in the push tier because
+# all 58 algorithms for the run-time dispatch. Stays in the push tier because
 # the property it guards — that a warm start costs no function evaluations — is
 # the whole reason to have one.
 mootation_test_timeout(test_warm_start 600)

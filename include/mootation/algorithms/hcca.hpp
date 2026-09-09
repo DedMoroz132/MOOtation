@@ -40,9 +40,10 @@
 //     3-objective DTLZ set, 300/600 for UF) — the library takes it from
 //     pop_size instead, and then REVISES it to the Das–Dennis weight count,
 //     which the paper does not do (see HCCA-8).
-//   K0 = 0.5N is not a stated default either. §5 sweeps the initial K over
-//     {0, 0.25N, 0.5N, 0.75N, N} and reports that HCCA is robust to the
-//     choice; 0.5N is the midpoint of that sweep, adopted here.
+//   K0 = 0.5N IS stated: Alg.1 line 2 reads "K <- 0.5N". (FIX 2026-09-05:
+//     this header used to claim it was not a stated default and to source it
+//     from the §5 sweep over {0, 0.25N, 0.5N, 0.75N, N}; the sweep exists, but
+//     the pseudocode fixes the value.)
 //   T (neighbourhood) = max(2, N/10), a MOEA/D convention, since Table 2
 //     omits it for HCCA.
 //
@@ -115,6 +116,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -859,8 +861,16 @@ public:
     void set_nr(int n)               { nr_ = n; }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
-    void setup(DataVault<Ind_t>& vault)        { init_pops(vault, false); store(vault, final_select(PP_, DP_)); }
-    void setup_seeded(DataVault<Ind_t>& vault) { init_pops(vault, true);  store(vault, final_select(PP_, DP_)); }
+    void setup(DataVault<Ind_t>& vault)        {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("HCCA: binary variables are not supported (reproduction is real-valued only)"); init_pops(vault, false); store(vault, final_select(PP_, DP_)); }
+    void setup_seeded(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("HCCA: binary variables are not supported (reproduction is real-valued only)"); init_pops(vault, true);  store(vault, final_select(PP_, DP_)); }
 
     void step(DataVault<Ind_t>& vault) {
         int scratch = vault.expand(1);

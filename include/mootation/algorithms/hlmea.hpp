@@ -40,8 +40,14 @@
 //     text — K=3 ("the number of K in K-means is set as 3"; §5.4 reports K=2
 //     and K>=4 as worse) and β=0.9 (also §5.3). The defaults now match the
 //     paper: K=3, β=0.9, both settable.
-//   HLMEA-2 (MINOR). The allocation of [17]: NDS truncation plus random refill
-//     (as in moead_m2m); the boundary-front tie is broken by crowding distance.
+//   HLMEA-2 (MINOR; refill FIXED 2026-09-06, full-paper checklist). The
+//     allocation of [17] (Alg.1): NDS truncation plus random refill; the
+//     boundary-front tie is broken by crowding distance. Alg.1 line 4
+//     "Select S_w − |P_w| solutions from P randomly and add them to P_w" —
+//     DISTINCT members of P not already in P_w (partial Fisher–Yates), the
+//     reading used in moead_m2m / sms_m2m / isde_rd. Previously the draws were
+//     i.i.d. over the whole pool (a P_w member or the same outsider could be
+//     added twice).
 //   HLMEA-3 (MINOR). HV of the cluster centres via HSO slicing. Alg.4 gives
 //     three lines — H_old, H_new, δ = H_old/H_new − 1 — and never names a
 //     reference point, so this port fixes one: ref = 1.1·max over the UNION
@@ -57,7 +63,21 @@
 //   HLMEA-4 (MINOR). K-means: Lloyd in decision space with an early exit on
 //     stabilization; the iteration limit is 100 per §4.3 (it had been 30 as an
 //     "implementation choice", but the paper states 100 explicitly).
-//   HLMEA-5 (MINOR). The Φ_w association uses the acute angle to V on f−z_min.
+//   HLMEA-5 (FIXED 2026-09-06, full-paper checklist). The Φ_w association is
+//     Eq.(2) of [17] — the acute angle between the objective vector and v^w
+//     taken from the ORIGIN ("u ∈ R^m_+", objectives assumed non-negative).
+//     Only an objective whose pool minimum is negative is shifted, by −min
+//     ([17] footnote 1: f_i + M) — the rule of moead_m2m (M2M-4), sms_m2m and
+//     isde_rd. Previously every objective was shifted by the running minimum
+//     (cone apex at the ideal point of the pool), which is not in the paper.
+//     MEASURED (DTLZ2 M=3 N=91 W=15 / ZDT1 N=100 W=10, 30 000 FE, median IGD
+//     of 3 seeds, together with the HLMEA-2 refill change): DTLZ2 0.0865 -> 0.0904
+//     (per seed 0.0892/0.0843/0.0861 -> 0.0906/0.0911/0.0890), ZDT1 0.0062 ->
+//     0.0066 (0.0062/0.0061/0.0071 -> 0.0066/0.0068/0.0063). A/B on the same
+//     code with set_ideal_shift(true) (the old rule): DTLZ2 0.0878
+//     (0.0868/0.0819/0.0890), ZDT1 0.0064 (0.0064/0.0064/0.0067). All within
+//     the seed scatter; the letter stays the default, the old rule is the
+//     switch.
 //   HLMEA-6 (MINOR). Real-valued genome; binary is out of scope.
 //   HLMEA-9 (MINOR, consequence of the sizing formula). The Alg.1 allocation
 //     fills every subregion to exactly S = floor(N/W), so the active
@@ -88,6 +108,23 @@
 //     requested count then goes through das_dennis::generate_auto, so the
 //     effective W is the nearest attainable lattice size >= the request (at
 //     m=3 a request of 15 is exact; at m=2 any W is exact).
+//   HLMEA-10 (MINOR, pseudocode defect). Alg.2 line 3 initialises Q = ∅ ONCE,
+//     outside the generation loop, and lines 12/26 write Q = Q ∪ P inside the
+//     per-subregion loop. Read literally the offspring pool would grow without
+//     bound across generations. The port resets Q every generation, which is
+//     what §3.2 assumes ("the complexity of generating N individuals is O(N)"
+//     per generation) and what the allocation of 2N -> N at line 14 needs.
+//   HLMEA-11 (FIXED 2026-09-05, second primary-source pass). Alg.4 takes the
+//     cluster centres "of the last and current generation". The port used to
+//     roll c_old only when δ was refreshed (every second generation), so the
+//     comparison was gen−2 vs gen; c_old is now the immediately preceding
+//     generation's centre set, rolled every stage-2 generation, and the
+//     refresh at even gen compares gen−1 vs gen.
+//   HLMEA-12 (MINOR). K-means runs in DECISION space (§3.1), so a cluster
+//     centre has no objective vector of its own; the "centre" fed to the HV
+//     of Alg.4 is the mean of the members' objective vectors. Evaluating the
+//     decision-space centroid instead would cost K·W extra FE per generation,
+//     which the paper never budgets.
 //
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP routes the NDS used by the Alg.1 allocation and by the
@@ -102,6 +139,7 @@
 #include <numeric>
 #include <random>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -131,12 +169,13 @@ private:
     // is an OCR error).
     double F1_=0.5, CR1_=1.0, F2_=0.5, CR2_=0.6;
     double eta_m_=20.0, pm_=-1.0;
+    bool   ideal_shift_=false; // HLMEA-5 A/B: true = shift every objective by its pool minimum (pre-2026-09-06 behaviour)
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; double cv=0.0; };
     std::vector<std::vector<double>> V_;
     std::vector<std::vector<Sol>> subpop_;
-    std::vector<double> z_;
+    std::vector<double> z_;                    // HLMEA-5: per-objective shift (≤ 0): min f_i when negative, else 0
     std::vector<std::vector<double>> c_old_;   // stage-2 centres of the previous round (objs)
     double delta_=0.0;
     int W_=0, m_=0, N_=0, S_=0, gen_=0;
@@ -149,7 +188,14 @@ private:
     static std::vector<double> unit(std::vector<double> f){ double n=0; for(double v:f) n+=v*v; n=std::sqrt(std::max(n,1e-300)); for(double&v:f) v/=n; return f; }
     bool dom(const Sol& a, const Sol& b) const {
         return detail::dominates(constraint_mode, a.objs, a.cv, b.objs, b.cv); }
-    void upd_ideal(const std::vector<double>& f){ for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],f[k]); }
+    // HLMEA-5: [17] Eq.2 — angles from the origin; only a negative objective is
+    // shifted (by −min f_i over the pool being allocated).
+    void set_shift(const std::vector<Sol>& pool){
+        z_.assign(m_,0.0);
+        for(int k=0;k<m_;++k){ double mn=std::numeric_limits<double>::max();
+            for(const auto& s:pool) mn=std::min(mn,s.objs[k]);
+            z_[k]=ideal_shift_ ? mn : ((mn<0.0)?mn:0.0); }
+    }
     int assoc(const std::vector<double>& f) const {
         std::vector<double> s(m_); for(int k=0;k<m_;++k) s[k]=f[k]-z_[k];
         int best=0; double bc=cosang(s,V_[0]); for(int i=1;i<W_;++i){double c=cosang(s,V_[i]); if(c>bc){bc=c;best=i;}} return best;
@@ -179,6 +225,7 @@ private:
     // allocation of [17]: pool -> W subpopulations of size S (angle association;
     // NDS truncation when above S, random refill when below)
     void allocate(const std::vector<Sol>& pool){
+        set_shift(pool);                       // HLMEA-5
         std::vector<std::vector<int>> bk(W_);
         for(int i=0;i<(int)pool.size();++i) bk[assoc(pool[i].objs)].push_back(i);
         std::uniform_int_distribution<int> dp(0,(int)pool.size()-1);
@@ -190,7 +237,15 @@ private:
                 auto ord=nds_order(sub); for(int t=0;t<S_;++t) subpop_[w].push_back(sub[ord[t]]);
             } else {
                 for(int i:bk[w]) subpop_[w].push_back(pool[i]);
-                int need=S_-(int)bk[w].size(); for(int t=0;t<need;++t) subpop_[w].push_back(pool[dp(rng_)]);
+                int need=S_-(int)bk[w].size();
+                // Alg.1 line 4: S_w − |P_w| solutions "from P" — distinct members of
+                // P not already in P_w (HLMEA-2).
+                std::vector<char> in(pool.size(),0); for(int i:bk[w]) in[i]=1;
+                std::vector<int> others; others.reserve(pool.size());
+                for(int i=0;i<(int)pool.size();++i) if(!in[i]) others.push_back(i);
+                int n_o=(int)others.size();
+                for(int t=0;t<need && t<n_o;++t){ int r=std::uniform_int_distribution<int>(t,n_o-1)(rng_); std::swap(others[t],others[r]); subpop_[w].push_back(pool[others[t]]); }
+                for(int t=n_o;t<need;++t) subpop_[w].push_back(pool[dp(rng_)]);   // degenerate: fewer outsiders than needed
             }
         }
     }
@@ -253,12 +308,13 @@ private:
         vault.set_variables(scratch,y); vault.refresh_objectives(scratch);
         Sol z; z.vars=y; z.objs=vault.objectives_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
-        upd_ideal(z.objs); return z;
+        return z;
     }
 
 public:
     HLMEACore() = default;
     void set_W(int w){ W_req_=w; }
+    void set_ideal_shift(bool b){ ideal_shift_=b; }   // HLMEA-5 A/B switch
     // Paper default for W, resolved once m is known (see W_req_).
     int W_default() const { return (m_==3) ? 15 : 10; }
     void set_n_clusters(int w){ W_req_=w; }
@@ -272,6 +328,10 @@ public:
     void set_seed(unsigned s){ rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("HLMEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; delta_=0.0;
         c_old_.clear();   // stage-2 HV history is per-run state, not per-object
         int w_req=(W_req_>0)?W_req_:W_default();
@@ -288,13 +348,17 @@ public:
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
-        std::vector<Sol> P; z_.assign(m_,std::numeric_limits<double>::max());
+        std::vector<Sol> P;
         for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
-            upd_ideal(s.objs); P.push_back(s);}
+            P.push_back(s);}
         allocate(P);
     }
     void setup_seeded(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("HLMEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; delta_=0.0;
         c_old_.clear();   // stage-2 HV history is per-run state, not per-object
         int w_req=(W_req_>0)?W_req_:W_default();
@@ -307,10 +371,10 @@ public:
                            std::to_string(W_*S_) + " individuals, not " +
                            std::to_string(N_) + " (see HLMEA-9). "
                            "set_W with a divisor of pop_size to avoid it"; });
-        std::vector<Sol> P; z_.assign(m_,std::numeric_limits<double>::max());
+        std::vector<Sol> P;
         for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
-            upd_ideal(s.objs); P.push_back(s);}
+            P.push_back(s);}
         allocate(P);
     }
 
@@ -381,18 +445,19 @@ public:
             auto ord=nds_order(P);
             std::vector<Sol> np; for(int t=0;t<N_ && t<(int)ord.size();++t) np.push_back(P[ord[t]]);
             allocate(np);
-            // δ is refreshed every 2 generations
-            if(gen_%2==0){
-                if(!c_old_.empty() && !c_new.empty()){
-                    // ONE reference for both sets (see hv_ref / HLMEA-3).
-                    std::vector<std::vector<double>> both=c_old_;
-                    both.insert(both.end(), c_new.begin(), c_new.end());
-                    auto ref=hv_ref(both);
-                    double ho=hv_of(c_old_,ref), hn=hv_of(c_new,ref);
-                    delta_ = (hn>1e-300)? (ho/hn - 1.0) : 0.0;
-                }
-                c_old_=c_new;
+            // δ is refreshed every 2 generations (Alg.2 lines 30-32) from the
+            // centres of "the last and current generation" (Alg.4) — c_old is
+            // the immediately preceding generation's set, so it is rolled
+            // every stage-2 generation, not only when δ is refreshed (HLMEA-11).
+            if(gen_%2==0 && !c_old_.empty() && !c_new.empty()){
+                // ONE reference for both sets (see hv_ref / HLMEA-3).
+                std::vector<std::vector<double>> both=c_old_;
+                both.insert(both.end(), c_new.begin(), c_new.end());
+                auto ref=hv_ref(both);
+                double ho=hv_of(c_old_,ref), hn=hv_of(c_new,ref);
+                delta_ = (hn>1e-300)? (ho/hn - 1.0) : 0.0;
             }
+            c_old_=c_new;
         }
         store_arch(vault);
     }

@@ -37,8 +37,12 @@
 //   W_concave: projection cos(ϑ_j), divided by the norm (Steps 3-4).
 //   W_unit: the same lattice in linear coordinates u_j = (L−i_j)/L — the
 //   "traditional" unit simplex with the same M and L, in 1-to-1 correspondence
-//   with the angle sets; W_convex = 2·W_unit − W_concave (Eq.4). Working set =
-//   W_concave ∪ W_convex (∪ inner; Step 5 adds an inner layer).
+//   with the angle sets; W_convex = 2·W_unit − W_concave (Eq.4) is the paper's
+//   convex-front counterpart and is computed for the record but NOT used.
+//   Working set = W_concave, sized like the paper's Table 2 (see IF-MaOEA-10):
+//   the largest L with C(L+M-1, M-1) <= N, plus an inner layer (Step 5, the
+//   angular contraction — IF-MaOEA-11) only when L < M, chosen so the total
+//   stays <= N.
 //
 // FITNESS (Alg.2, Eq.5-7):
 //   norm f'_i = (f_i − z)/(z^nad − z) (Eq.5).
@@ -58,9 +62,10 @@
 //   distance in the normalized space (§2.4, the IGD concept; the selection was
 //   previously by angle, which is a different criterion — see the note at
 //   optimally_distributed); if there are more than needed, take those with the
-//   smaller ‖f'‖ (Euclidean distance to the ideal; the paper says "smaller
-//   Euclidean distance" without naming the target); if fewer, fill up by
-//   maximum fitness (Eq.7).
+//   smaller Euclidean distance to their reference point — the distance that
+//   defines them (§2.4; it used to be read as ‖f'‖, the distance to the ideal,
+//   see IF-MaOEA-10 for what that did); if fewer, fill up by maximum fitness
+//   (Eq.7).
 //
 // PAPER SETTINGS (§3.1, Table 2): the population size N and the
 //   function-evaluation budget, per objective count M. Table 2 carries only
@@ -101,22 +106,37 @@
 //     details, is not available. Consequence worth knowing: because the
 //     reference always has a larger k-th objective it can never dominate the
 //     candidate, so on a mutually non-dominated layer every volume is positive.
-//   IF-MaOEA-3 (DEVIATION — a different operation, not merely a
-//     reconstruction). §2.4 invokes the "reference point adjustment strategy"
-//     of [44] = AR-MOEA. That sentence does describe an operation: AR-MOEA's
-//     Alg. 4 AdjustLocation moves each reference point to the orthogonal
-//     projection of its associated solution onto the reference vector.
-//     THAT PROJECTION IS NOT IMPLEMENTED HERE. adapt_refpoints ports AR-MOEA's
-//     set-level Operation 3 instead — keep the valid reference points, then top
-//     up with the directions of actual solutions by max-min angle, rebuilding
-//     from Ref0_ every generation.
-//     Why: the paper fixes neither the schedule nor the pool for the
-//     projection, and this file uses Ref_ only through angles and a
-//     simplex projection, where relocating a point along its own ray changes
-//     little. The effect obtained is the intended one — boundary coverage on
-//     convex and irregular fronts — but by a different mechanism than [44]
-//     specifies. An earlier version of this entry claimed the paper gives "a
-//     single sentence with no formula"; that understated what §2.4 says.
+//   IF-MaOEA-3 (FIXED 2026-09-06, third primary-source pass). §2.4 invokes
+//     the "reference point adjustment strategy" of [44] = AR-MOEA and says
+//     what it does: link each reference point with the nearest solution in its
+//     assigned subpopulation, then move the reference point to where that
+//     solution intersects the perpendicular line of the reference vector —
+//     AR-MOEA Alg. 4 AdjustLocation. adjust_refpoints now does exactly that:
+//     niches by smallest angle (§2.3-A), nearest = Euclidean distance to the
+//     current vertex, the vertex moved to that solution's orthogonal projection
+//     onto the reference ray; an empty niche keeps its simplex vertex; rebuilt
+//     from Ref0_ on every environmental selection. The port used to run
+//     AR-MOEA's set-level Operation 3 instead (keep the valid reference
+//     points, top up with solution directions by max-min angle), which the
+//     paper does not describe. Chosen here because the paper leaves them open:
+//     the schedule (every environmental selection that reaches the critical
+//     front) and the pool (the critical-front candidates, the same pool the
+//     optimally distributed individuals are drawn from).
+//     Measured 2026-09-06 (FE-trajectory driver, DTLZ2 M=3 N=91 / ZDT1 N=100,
+//     30 000 FE, median IGD of 3 seeds, Operation 3 -> AdjustLocation):
+//     DTLZ2 0.0545 -> 0.0545 (seeds 0.0544/0.0545/0.0546 -> 0.0545/0.0544/
+//     0.0547); ZDT1 0.0066 -> 0.0050 (0.0063/0.0066/0.0066 -> 0.0050/0.0049/
+//     0.0050) — the convex ZDT1 front, where §2.4 says the adjustment
+//     matters, improves beyond the seed scatter.
+//   IF-MaOEA-11 (FIXED 2026-09-06). Step 5 writes the inner layer as
+//     w_ij = ½·w_ij + (M−1)/(2M)·π/2 for w_ij ∈ W_2 — a contraction of the
+//     ANGULAR coordinates toward their mean (M−1)π/(2M), applied before the
+//     cosine projection of Steps 3-4. The port contracted the projected
+//     simplex points toward the centroid 1/M (the Deb-Jain form), which is
+//     a different set: at M=3, L=1 the angles (0, π/2, π/2) give
+//     (0.626, 0.187, 0.187) by the letter and (0.667, 0.167, 0.167) by
+//     Deb-Jain. Only lattices with L < M carry an inner layer (Table 2: M=8
+//     and M=10), so the M=3 trajectories above are unaffected by this entry.
 //   IF-MaOEA-4 (MINOR). One offspring per pair (SBX, first child), as in
 //     ISDE+RD and others in this library; |O| = N.
 //   IF-MaOEA-5 (MINOR). Real-valued genome; binary is out of scope.
@@ -141,6 +161,23 @@
 //     angles relative to the reference vector is likely to yield a more uniform
 //     distribution". Smallest angle = LARGEST cosine, so this port maximizes
 //     cos θ_ij over j (Eq.6).
+//   IF-MaOEA-10 (FIXED 2026-09-05, FE-trajectory audit). The reference set is
+//     ONE angular lattice of at most N points. The port used to take the
+//     union W_concave ∪ W_convex (plus an inner layer), about 2N points; with
+//     that many reference points the "optimally distributed individuals" of
+//     the critical front always outnumbered the slots, so the overflow
+//     trimming of Alg.3 ran every generation and decided the whole
+//     selection. Any trimming key that is comparable across reference points
+//     is biased on a curved front — the distance from a simplex vertex to
+//     the sphere is 0 at the corners and 0.42 at the centre — and the
+//     population drifted to the corners and edges of the DTLZ2 front (IGD
+//     0.32-0.54 with zero convergence error, seeds 1-3). Table 2 of the paper
+//     sizes the set as (p1, p2) = (12,0), (5,0), (3,2), (3,1) for M = 3, 5,
+//     8, 10 with N = 100, 126, 156, 230: one lattice of at most N points, so
+//     the overflow branch is the exception and the fitness top-up (Eq.7) is
+//     the rule. Now built that way. Which of W_concave / W_convex the paper
+//     runs with is not stated; the angular set — its own contribution — is
+//     used, and the fitness is angle-based so the choice is second-order.
 //   IF-MaOEA-9 (PAPER PSEUDOCODE BROKEN, resolved from §2.4). Alg.3 as printed
 //     cannot run: (a) lines 5-10 accumulate the critical-layer picks into p and
 //     then "return Q" at line 12 without ever merging p into Q, and line 8's
@@ -162,6 +199,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../detail/math_compat.hpp"
@@ -197,6 +235,7 @@ private:
     int m_ = 0, N_ = 0;
     std::vector<std::vector<double>> Ref_;   // reference points (unit-norm rows)
     std::vector<std::vector<double>> Ref0_;  // static base set (used by §2.4)
+    std::vector<std::vector<double>> Vert_;  // reference points as simplex vertices (§2.4)
     std::vector<Sol> P_;                      // current population
     std::vector<Sol> AS_;                     // external archive
 
@@ -212,10 +251,14 @@ private:
     // unit simplex, i.e. Das–Dennis with the same M and L, in 1-to-1
     // correspondence with the angle sets).
     // Per Eq.4: W_convex = 2·W_unit − W_concave (see build_refpoints).
+    // shrink >= 0 selects the Step 5 inner layer: ϑ' = ϑ/2 + shrink, with
+    // shrink = (M−1)π/(4M), applied to the angles before the projection
+    // (IF-MaOEA-11).
     static void enum_angles(int M, int L, int dim, double sum_so_far,
                             std::vector<int>& idx,
                             std::vector<std::vector<double>>& out_concave,
-                            std::vector<std::vector<double>>& out_unit)
+                            std::vector<std::vector<double>>& out_unit,
+                            double shrink = -1.0)
     {
         const double step = (M_PI / 2.0) / L;          // Ω increment
         if (dim == M - 1) {
@@ -228,6 +271,8 @@ private:
             std::vector<double> ang(M);
             for (int j = 0; j < M - 1; ++j) ang[j] = idx[j] * step;
             ang[M - 1] = std::max(0.0, std::min(M_PI / 2.0, last));
+            if (shrink >= 0.0)                                   // Step 5 (IF-MaOEA-11)
+                for (int j = 0; j < M; ++j) ang[j] = 0.5 * ang[j] + shrink;
             // W_concave: cosine projection, normalized onto the simplex (Steps 3-4)
             std::vector<double> wc(M); double sc = 0.0;
             for (int j = 0; j < M; ++j) { wc[j] = std::cos(ang[j]); if (wc[j] < 0) wc[j] = 0; sc += wc[j]; }
@@ -266,7 +311,7 @@ private:
             double hi = m * M_PI / 2.0 + 1e-9;
             if (ns < lo || ns > hi) continue;
             idx[dim] = i;
-            enum_angles(M, L, dim + 1, ns, idx, out_concave, out_unit);
+            enum_angles(M, L, dim + 1, ns, idx, out_concave, out_unit, shrink);
         }
     }
 
@@ -277,37 +322,43 @@ private:
         return conc;
     }
 
-    // Reference set of §2.2 + Eq.4: per angular sample, W_concave (concave PF)
-    // and W_convex = 2·W_unit − W_concave (convex PF). Covers both front types.
+    // Reference set of §2.2 sized like Table 2 (IF-MaOEA-10): the angular
+    // lattice W_concave with the largest L whose C(L+M-1, M-1) <= N, plus —
+    // only when L < M, where the lattice has no interior point (Step 5) — an
+    // inner layer with the largest L2 < L keeping the total <= N. W_convex
+    // (Eq.4) is not part of the working set.
+    static long long lattice_count(int M, int L) {
+        long long c = 1;                               // C(L+M-1, M-1)
+        for (int i = 1; i <= M - 1; ++i) c = c * (L + i) / i;
+        return c;
+    }
     void build_refpoints() {
+        int L1 = 1;
+        while (lattice_count(m_, L1 + 1) <= N_) ++L1;
         std::vector<std::vector<double>> conc, unit;
-        for (int L = 1; L <= 60; ++L) {
-            conc.clear(); unit.clear();
+        {
             std::vector<int> idx(m_, 0);
-            enum_angles(m_, L, 0, 0.0, idx, conc, unit);
-            if ((int)conc.size() * 2 >= N_) break;     // concave+convex ≈ N
+            enum_angles(m_, L1, 0, 0.0, idx, conc, unit);
         }
         if (conc.empty()) {                            // fallback
-            conc = das_dennis::generate_auto(m_, std::max(1, N_ / 2));
-            unit = conc;
+            conc = das_dennis::generate_auto(m_, std::max(1, N_));
         }
-        std::vector<std::vector<double>> set;
-        for (std::size_t i = 0; i < conc.size(); ++i) {
-            set.push_back(conc[i]);                     // W_concave
-            std::vector<double> wx(m_); double s = 0.0; // W_convex (Eq.4)
-            for (int k = 0; k < m_; ++k) {
-                double v = 2.0 * unit[i][k] - conc[i][k];
-                if (v < 0.0) v = 0.0;
-                wx[k] = v; s += v;
+        std::vector<std::vector<double>> set = conc;   // W_concave, boundary layer
+        if (L1 < m_) {
+            // Step 5: an inner layer, angles contracted toward their mean
+            // (IF-MaOEA-11).
+            int L2 = 0;
+            for (int L = L1 - 1; L >= 1; --L)
+                if ((long long)set.size() + lattice_count(m_, L) <= N_) { L2 = L; break; }
+            if (L2 >= 1) {
+                std::vector<std::vector<double>> c2, u2;
+                std::vector<int> idx(m_, 0);
+                // w_ij = ½·w_ij + (M−1)/(2M)·π/2 for w_ij ∈ W_2 — written in
+                // ANGULAR coordinates; the cosine projection follows.
+                const double shrink = (m_ - 1) * M_PI / (4.0 * m_);
+                enum_angles(m_, L2, 0, 0.0, idx, c2, u2, shrink);
+                set.insert(set.end(), c2.begin(), c2.end());
             }
-            if (s > 1e-9) { for (int k = 0; k < m_; ++k) wx[k] /= s; set.push_back(wx); }
-        }
-        // Step 5: inner layer contracted toward the centroid (deb2014 §V)
-        if ((int)set.size() < N_) {
-            std::vector<std::vector<double>> inner = set;
-            double c = 1.0 / m_;
-            for (auto& w : inner) for (double& wi : w) wi = wi / 2.0 + c / 2.0;
-            set.insert(set.end(), inner.begin(), inner.end());
         }
         // unit-normalize (L2) for cosθ (Eq.6)
         Ref_.clear();
@@ -318,57 +369,55 @@ private:
             Ref_.push_back(w);
         }
         Ref0_ = Ref_;                  // keep the static base set (§2.4)
+        Vert_ = simplex_vertices(Ref0_);
     }
 
-    // ── §2.4 Reference-point adjustment ──────────────────────────────────────
-    // A port of the AR-MOEA principle ([44] Tian et al. 2017) — an INDEPENDENT
-    // copy that does not depend on ar_moea.hpp. Motivation: on convex and
-    // irregular fronts the optimally distributed individuals cluster in the
-    // centre and the boundaries stay uncovered. The adaptation keeps the "valid"
-    // reference points (nearest by angle to at least one solution) and tops them
-    // up with DIRECTIONS of the actual solutions by max-min angle, up to |Ref0_|
-    // (as in AR-MOEA Op.2-3). Rebuilt from Ref0_ on every call, so nothing
-    // accumulates and the set cannot degenerate. Modifies ONLY Ref_ for the
-    // subsequent optimally_distributed; the caller restores Ref0_.
-    void adapt_refpoints(const std::vector<std::vector<double>>& F,
-                         const std::vector<int>& idxs) {
+    // Reference points as simplex vertices (Fig.3(c)): each unit-norm row
+    // divided by the sum of its coordinates.
+    static std::vector<std::vector<double>> simplex_vertices(
+            const std::vector<std::vector<double>>& R) {
+        std::vector<std::vector<double>> V = R;
+        for (auto& v : V) {
+            double s = 0.0; for (double c : v) s += c;
+            if (s > 1e-12) for (double& c : v) c /= s;
+        }
+        return V;
+    }
+
+    // ── §2.4 Reference-point adjustment ([44] = AR-MOEA Alg. 4 AdjustLocation)
+    // "links each reference point with the nearest solution in the assigned
+    // subpopulation, then moves the reference point to the location where the
+    // nearest solution intersects the perpendicular line of the reference
+    // vector it is associated with". Assignment = smallest angle (§2.3-A);
+    // nearest = Euclidean distance to the current vertex; the new vertex is
+    // the orthogonal projection of that solution onto the reference ray. A
+    // reference point with an empty niche keeps its simplex vertex. Pool = the
+    // candidates handed in (the critical front). Rebuilt from Ref0_ on every
+    // call; modifies ONLY Vert_ (IF-MaOEA-3).
+    void adjust_refpoints(const std::vector<std::vector<double>>& F,
+                          const std::vector<int>& idxs) {
+        Vert_ = simplex_vertices(Ref0_);
         const int NR = static_cast<int>(Ref0_.size());
-        if (idxs.empty() || NR == 0) { Ref_ = Ref0_; return; }
-        // unit directions of the candidate solutions
-        std::vector<std::vector<double>> S; S.reserve(idxs.size());
+        if (idxs.empty() || NR == 0) return;
+        std::vector<int>    best(NR, -1);
+        std::vector<double> bd(NR, std::numeric_limits<double>::max());
         for (int i : idxs) {
-            double n = norm2(F[i]); if (n < 1e-300) continue;
-            std::vector<double> d(m_);
-            for (int k = 0; k < m_; ++k) d[k] = F[i][k] / n;
-            S.push_back(std::move(d));
-        }
-        if (S.empty()) { Ref_ = Ref0_; return; }
-        // R^valid: the Ref0_ points that are nearest by angle to >= 1 solution
-        std::vector<char> valid(NR, 0);
-        for (const auto& s : S) {
             int arg = 0; double cm = -2.0;
-            for (int r = 0; r < NR; ++r) { double c = cosang(s, Ref0_[r]); if (c > cm) { cm = c; arg = r; } }
-            valid[arg] = 1;
+            for (int r = 0; r < NR; ++r) {
+                double c = cosang(F[i], Ref0_[r]);
+                if (c > cm) { cm = c; arg = r; }
+            }
+            double d2 = 0.0;
+            for (int k = 0; k < m_; ++k) { double t = F[i][k] - Vert_[arg][k]; d2 += t * t; }
+            if (d2 < bd[arg]) { bd[arg] = d2; best[arg] = i; }
         }
-        std::vector<std::vector<double>> Rp;
-        for (int r = 0; r < NR; ++r) if (valid[r]) Rp.push_back(Ref0_[r]);
-        // top up with solution directions by max-min angle, up to |Ref0_|
-        auto ang = [&](const std::vector<double>& a, const std::vector<double>& b) {
-            return std::acos(cosang(a, b)); };
-        std::vector<char> used(S.size(), 0);
-        std::vector<double> minang(S.size(), std::numeric_limits<double>::max());
-        for (std::size_t i = 0; i < S.size(); ++i)
-            for (const auto& r : Rp) minang[i] = std::min(minang[i], ang(S[i], r));
-        while (static_cast<int>(Rp.size()) < NR) {
-            int best = -1;
-            for (std::size_t i = 0; i < S.size(); ++i)
-                if (!used[i] && (best < 0 || minang[i] > minang[best])) best = static_cast<int>(i);
-            if (best < 0) break;
-            used[best] = 1; Rp.push_back(S[best]);
-            for (std::size_t i = 0; i < S.size(); ++i)
-                minang[i] = std::min(minang[i], ang(S[i], S[best]));
+        for (int r = 0; r < NR; ++r) {
+            if (best[r] < 0) continue;
+            double proj = 0.0;                        // Ref0_ rows are unit vectors
+            for (int k = 0; k < m_; ++k) proj += F[best[r]][k] * Ref0_[r][k];
+            if (proj <= 0.0) continue;
+            for (int k = 0; k < m_; ++k) Vert_[r][k] = proj * Ref0_[r][k];
         }
-        Ref_ = std::move(Rp);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────
@@ -458,26 +507,27 @@ private:
     // reference vector") by EUCLIDEAN distance. Selecting by angle (max cos)
     // is a different criterion: a distant individual lying exactly along the ray
     // wins on angle while losing on Euclidean distance.
-    // The vertex is a point on the simplex (Fig.3(c)); Ref_ is stored
-    // L2-normalized (for cosθ, Eq.6), so each reference point is mapped back
-    // onto the simplex by dividing by the sum of its coordinates — for the
-    // solution directions coming from adapt_refpoints, that is their
-    // intersection with the simplex.
-    std::vector<int> optimally_distributed(const std::vector<int>& idxs,
+    // The vertices are Vert_: the simplex points of Fig.3(c) (Ref_ rows divided
+    // by the sum of their coordinates), or the relocated points set by
+    // adjust_refpoints (§2.4, IF-MaOEA-3).
+    // Returns the chosen indices together with each one's distance to the
+    // reference-point vertex that selected it (the smallest such distance if
+    // several vertices pick the same individual).
+    std::vector<std::pair<int,double>> optimally_distributed(const std::vector<int>& idxs,
                                            const std::vector<std::vector<double>>& F) const {
-        std::vector<int> chosen;
-        std::vector<char> picked(F.size(), 0);
-        std::vector<double> vert(m_);
-        for (const auto& r : Ref_) {
-            double sr = 0.0; for (double c : r) sr += c;
-            for (int k = 0; k < m_; ++k) vert[k] = (sr > 1e-12) ? r[k] / sr : r[k];
+        std::vector<std::pair<int,double>> chosen;
+        std::vector<int> slot(F.size(), -1);
+        for (const auto& vert : Vert_) {
             int best = -1; double bd = std::numeric_limits<double>::max();
             for (int i : idxs) {
                 double d2 = 0.0;
                 for (int k = 0; k < m_; ++k) { double t = F[i][k] - vert[k]; d2 += t * t; }
                 if (d2 < bd) { bd = d2; best = i; }
             }
-            if (best >= 0 && !picked[best]) { picked[best] = 1; chosen.push_back(best); }
+            if (best < 0) continue;
+            double d = std::sqrt(bd);
+            if (slot[best] < 0) { slot[best] = (int)chosen.size(); chosen.push_back({best, d}); }
+            else if (d < chosen[slot[best]].second) chosen[slot[best]].second = d;
         }
         return chosen;
     }
@@ -545,23 +595,35 @@ private:
             // normalise whole CA for angle / fitness in critical layer
             auto Fnorm = normalize(CA);
 
-            // §2.4: adapt the reference points to the current critical layer
-            // (the AR-MOEA port), then pick the optimally distributed ones;
-            // afterwards restore the static base set for everything else.
-            adapt_refpoints(Fnorm, Fk);
+            // §2.4: relocate the reference points along their rays to the
+            // critical-front candidates ([44] AdjustLocation, IF-MaOEA-3),
+            // pick the optimally distributed ones, then restore the vertices.
+            adjust_refpoints(Fnorm, Fk);
             auto od = optimally_distributed(Fk, Fnorm);
-            Ref_ = Ref0_;
+            Vert_ = simplex_vertices(Ref0_);
             std::vector<char> inFk(n, 0); for (int i : Fk) inFk[i] = 1;
 
             if ((int)od.size() >= need) {
-                // pick `need` with smaller Euclidean distance to ideal (‖f'‖)
-                std::sort(od.begin(), od.end(), [&](int a, int b) {
-                    return norm2(Fnorm[a]) < norm2(Fnorm[b]);
+                // §2.4: "If the number of optimally distributed individuals is
+                // greater than N-|Q|, the N-|Q| solution with smaller Euclidean
+                // distance is selected". The distance in §2.4 is the one that
+                // DEFINES an optimally distributed individual — its distance
+                // to the reference point — so the best-matched ones are kept.
+                // FIX 2026-09-05 (FE-trajectory audit): this used to read the
+                // distance as ‖f'‖ (distance to the ideal point). In the
+                // per-pool normalisation of Eq.5 that measure is smallest
+                // along whichever objective the pool's nadir estimate inflates
+                // most, so the trimming preferred one axis, the population
+                // drifted there, the nadir estimate followed, and on DTLZ2
+                // (M = 3) the population collapsed to a patch of the sphere
+                // (IGD 0.5 with zero convergence error).
+                std::sort(od.begin(), od.end(), [&](const std::pair<int,double>& a, const std::pair<int,double>& b) {
+                    return a.second < b.second;
                 });
-                for (int t = 0; t < need; ++t) Q.push_back(od[t]);
+                for (int t = 0; t < need; ++t) Q.push_back(od[t].first);
             } else {
                 std::vector<char> taken(n, 0);
-                for (int i : od) { Q.push_back(i); taken[i] = 1; }
+                for (const auto& pr : od) { Q.push_back(pr.first); taken[pr.first] = 1; }
                 int still = need - (int)od.size();
                 // remaining Fk by descending fitness (Eq.7)
                 auto fit = fitness_all(Fnorm);
@@ -592,6 +654,10 @@ private:
 
 public:
     void setup(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("IF-MaOEA: binary variables are not supported (reproduction is real-valued only)");
         m_ = vault.objs_n(); N_ = vault.pop_size();
         build_refpoints();
         const auto& bd = vault.get_bounds();
@@ -611,6 +677,10 @@ public:
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("IF-MaOEA: binary variables are not supported (reproduction is real-valued only)");
         m_ = vault.objs_n(); N_ = vault.pop_size();
         build_refpoints();
         read_pop(vault, P_);

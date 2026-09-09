@@ -20,35 +20,37 @@
 //      Addition — around every point with rho_j >= 2, a sub-simplex of M points
 //      whose inter-point distance equals the step of the original lattice
 //      (Fig.25); checks: (i) outside the first quadrant is REJECTED,
-//      (ii) a duplicate is REJECTED; cooldown: a point is not operated on again
-//      until every original point has had a chance (§VII-A).
-//      Deletion — added (non-original) points with rho_j = 0 are removed;
-//      original points are always kept (§VII-B).
+//      (ii) a duplicate is REJECTED; cooldown: a point operated on in
+//      generation t is skipped in t+1 (§VII-A).
+//      Deletion — only in the paper's "perfect scenario" (exactly N reference
+//      points with rho_j = 1): the added (non-original) points with rho_j = 0
+//      are removed; original points are always kept (§VII-B).
 //
 // PAPER DEFAULTS (Part I, Tables I-II): eta_c=30, eta_m=20, pc=1.0, pm=1/n.
 // DECLARED DEVIATIONS:
 //   - Path-A: pop_size = the Das-Dennis lattice size (see nsga3.hpp);
-//   - deletion is NOT gated on the paper's "exactly N points with rho_j = 1"
-//     perfect-scenario condition. §VII-B opens by tying the step to the
-//     UPDATED niche counts, and its literal gate is nearly unsatisfiable
-//     (Σρ_j = N always, so it demands a perfectly even spread); the
-//     unconditional reading is the one every reference implementation uses.
-//     Deletion here runs every generation, including those in which nothing
-//     was added — note that the paper's own "perfect scenario" is exactly the
-//     case where no point is crowded and therefore nothing IS added, so a
-//     gate on additions would skip the one situation §VII-B names;
-//   - cooldown reset: the inclusion flags are cleared once ALL original points
-//     have been operated on (a reading of "have a chance"). This is STRICTER
-//     than the paper's wording: the flag is set only on the rho_j >= 2 path, so
-//     an original point that is never crowded blocks the global reset — each
-//     original then fires inclusion at most once per run, and further
-//     refinement proceeds outward through the newly added (unflagged) points,
-//     which the addition loop rescans every generation;
+// READING OF §VII (set_adaptation_mode; default 3 = the paper's letter,
+//   measured 2026-09-05, details in VERIFY_2026-09-05/checklists/a_nsga3.md):
+//   bit 0 — §VII-B deletion runs ONLY when exactly N reference points have
+//   rho_j = 1 (the "perfect scenario" the paper names); bit 1 — the §VII-A
+//   cooldown lasts exactly one generation ("not allowed to have another
+//   inclusion operation until all original reference points have a chance to
+//   be operated" — every original point is scanned once per generation).
+//   The pre-2026-09-05 port (mode 0: deletion every generation, a point
+//   blocked until ALL originals had fired) left the adaptation inert: on the
+//   inverted DTLZ1 of §VIII-A (M=3, N=91, 40 000 FE, 3 seeds) it occupied 28
+//   reference points with IGD 0.030 — identical to plain NSGA-III — while the
+//   literal reading occupies 77 and reaches IGD 0.0227; on DTLZ2 (regular
+//   front) the two readings differ by < 0.002 IGD (0.0560 vs 0.0550).
+//   Mode 0 remains available for comparison.
 //   - set_reference_points does not project the aspiration points through
 //     Eq.4 — supply points already on the unit simplex; the M extreme points
 //     (1,0,...,0)^T, ... are appended per §VI.
-// EXTENSIONS BEYOND THE PAPER: a safety cap on |Z| (the paper sets no limit;
-//   it rarely triggers thanks to checks (i)-(ii), the cooldown and deletion).
+// EXTENSIONS BEYOND THE PAPER: a safety cap on |Z| (the paper sets no limit).
+//   Under the literal §VII reading the default cap IS reached on irregular
+//   fronts (inverted DTLZ1: |Z| = 182 = 2N); set_ref_cap(1000) lets the set
+//   settle at ~232 points with the same outcome (IGD 0.0223-0.0227, 71-81
+//   occupied points vs 0.0227 / 77 at the default), so the cap is kept.
 //   The cap is 2·max(N, |Z_0|), where |Z_0| is the initial reference set AFTER
 //   the M extreme points of §VI are appended — set_reference_points runs before
 //   setup() and has no access to pop_size, so at that moment it can only scale
@@ -98,6 +100,14 @@ private:
     std::vector<char> inclusion_done_;  // §VII-A cooldown: already operated on
     double spacing_ = 0.0;              // step of the original lattice (median NN)
     int    cap_ = 0;                    // safety cap on |ref_points_|
+    // Adaptation reading (bit mask, see set_adaptation_mode):
+    //   bit 0 — §VII-B deletion only in the "perfect scenario" (exactly |P|
+    //           reference points with rho_j = 1); otherwise every generation;
+    //   bit 1 — §VII-A cooldown = the next generation only (a point that was
+    //           operated on in generation t is skipped in t+1 and free in
+    //           t+2); otherwise "once until every original point fired".
+    int    adapt_mode_ = 3;
+    int    cap_override_ = 0;           // >0: user-set cap on |ref_points_| (0 = auto)
 
     // ── Persistent normalization state (Part I §IV-C) ─────────────────────
     std::vector<double>              zmin_hist_;     // historical ideal point
@@ -133,6 +143,7 @@ private:
         inclusion_done_.assign(ref_points_.size(), 0);
         spacing_ = compute_spacing(m);
         cap_ = 2 * std::max<int>(pop_hint, static_cast<int>(ref_points_.size()));
+        if (cap_override_ > 0) cap_ = cap_override_;
     }
 
     // ── Das-Dennis reference point generation ─────────────────────────────
@@ -187,10 +198,12 @@ private:
 
         double off = spacing_ / std::sqrt(2.0);
         std::vector<std::vector<double>> added;
+        std::vector<char> fired_now(nref, 0);
         for (int j = 0; j < nref; ++j) {
             if (rho[j] < 2) continue;
             if (inclusion_done_[j]) continue;   // §VII-A cooldown
-            inclusion_done_[j] = 1;
+            fired_now[j] = 1;
+            if (!(adapt_mode_ & 2)) inclusion_done_[j] = 1;
             for (int k = 0; k < m; ++k) {
                 std::vector<double> p = ref_points_[j];
                 for (int i = 0; i < m; ++i)
@@ -203,12 +216,20 @@ private:
                 added.push_back(p);
             }
         }
-        // Cooldown reset: every original point has had its chance.
-        bool all_orig_done = true;
-        for (int j = 0; j < nref; ++j)
-            if (is_original_[j] && !inclusion_done_[j]) { all_orig_done = false; break; }
-        if (all_orig_done)
-            inclusion_done_.assign(inclusion_done_.size(), 0);
+        if (adapt_mode_ & 2) {
+            // §VII-A, literal: "not allowed to have another inclusion
+            // operation until all original reference points have a chance to
+            // be operated" — every original point is scanned once per
+            // generation, so the block lasts exactly the next generation.
+            inclusion_done_ = fired_now;
+        } else {
+            // Cooldown reset: every original point has had its chance.
+            bool all_orig_done = true;
+            for (int j = 0; j < nref; ++j)
+                if (is_original_[j] && !inclusion_done_[j]) { all_orig_done = false; break; }
+            if (all_orig_done)
+                inclusion_done_.assign(inclusion_done_.size(), 0);
+        }
 
         for (auto& p : added) {
             ref_points_.push_back(std::move(p));
@@ -232,10 +253,20 @@ private:
         rho.assign(nref, 0);
         for (int v : P) ++rho[vault.get_ind(v).ref_point_idx];
 
+        // §VII-B gate (bit 0): "if there exists exactly N reference points
+        // having rho_j = 1 ... we then arrange to delete all included reference
+        // points having rho_j = 0". N here is the number of associated
+        // members (|P| = N when unconstrained).
+        bool do_delete = true;
+        if (adapt_mode_ & 1) {
+            int ones = 0;
+            for (int j = 0; j < nref; ++j) if (rho[j] == 1) ++ones;
+            do_delete = (ones == static_cast<int>(P.size()));
+        }
         std::vector<std::vector<double>> keptW;
         std::vector<char> keptOrig, keptIncl;
         for (int j = 0; j < nref; ++j) {
-            if (is_original_[j] || rho[j] > 0) {
+            if (is_original_[j] || rho[j] > 0 || !do_delete) {
                 keptW.push_back(ref_points_[j]);
                 keptOrig.push_back(is_original_[j]);
                 keptIncl.push_back(inclusion_done_[j]);
@@ -627,6 +658,15 @@ public:
     void set_eta_mutation (double e)  { eta_m_ = e; }
     void set_pc           (double p)  { pc_ = p; }
     void set_seed         (unsigned s){ rng_.seed(s); }
+    // Reading of §VII (bit mask): bit 0 — deletion gated on the perfect
+    // scenario (§VII-B); bit 1 — one-generation cooldown (§VII-A).
+    // 3 = the paper's letter (default); 0 = unconditional deletion +
+    // once-per-cycle cooldown (the pre-2026-09-05 behaviour, see header).
+    void set_adaptation_mode(int mode) { adapt_mode_ = mode; }
+    int  adaptation_mode() const       { return adapt_mode_; }
+    // Safety cap on the reference set (an extension; the paper sets no limit).
+    // 0 = automatic 2*max(N, |Z_0|); a positive value overrides it.
+    void set_ref_cap(int c)            { cap_override_ = c; if (c > 0) cap_ = c; }
 
     // Allow user to supply custom reference points (optional).
     // Initializes the adaptation state (is_original_ / spacing_ / cap_ /
@@ -677,7 +717,7 @@ public:
         // Guard: user-supplied points may have arrived without init.
         if (is_original_.size() != ref_points_.size())
             init_adaptation_state(m, n);
-        cap_ = std::max(cap_, 2 * n);
+        cap_ = (cap_override_ > 0) ? cap_override_ : std::max(cap_, 2 * n);
 
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
@@ -707,7 +747,7 @@ public:
         if (ref_points_.empty()) generate_reference_points(n, m);
         if (is_original_.size() != ref_points_.size())
             init_adaptation_state(m, n);
-        cap_ = std::max(cap_, 2 * n);
+        cap_ = (cap_override_ > 0) ? cap_override_ : std::max(cap_, 2 * n);
         auto fronts = fast_nondominated_sort(vault, n);
         (void)fronts;
     }

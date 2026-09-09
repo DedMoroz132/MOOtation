@@ -17,45 +17,61 @@
 //      ⌊N/5⌋=2), the m unit-vector indexes are already more than the target
 //      and nothing is added. See DRA-9.
 //   2. Step 3 (for each i ∈ I): 3.1 P = B(i) with prob. δ, otherwise {1..N};
-//      3.2 r1 = i, r2, r3 from P, DE (Eq.4) + polynomial mutation (Eq.5);
-//      3.3 repair — random reset inside the domain (DERepair::RandomReset);
-//      3.4 update z; 3.5 up to n_r replacements at random j ∈ P without
-//      replacement, x^j ← y / FV^j ← F(y) by COPYING (seed_individual,
-//      without re-evaluation; FE per generation = exactly |I|).
+//      3.2 r1 = i; r2, r3 — two independent uniform draws from P (Step 3.2
+//      requires no distinctness: r2 = r3, then ȳ = x^i, and r2 = i are
+//      admitted); DE (Eq.4, ops::de_eq6, no j_rand term) + the literal
+//      polynomial mutation (Eq.5, ops::polynomial_mutation_eq7, may leave the
+//      box); 3.3 repair of the FINAL y — random reset inside the domain
+//      (ops::repair_out_of_box, DERepair::RandomReset); 3.4 update z;
+//      3.5 up to n_r replacements at random j ∈ P without replacement,
+//      x^j ← y / FV^j ← F(y) by COPYING (seed_individual, without
+//      re-evaluation; FE per generation = exactly |I|).
 //   3. Step 5: every 50 generations π^i ← 1 if Δ^i > 0.001, otherwise
 //      (0.95 + 0.05·Δ^i/0.001)·π^i; Δ^i = (old − new)/old WITHOUT clipping.
 //
 // Defaults = Sec.III: T = 0.1N, n_r = 0.01N (computed in setup; the
 //   set_T/set_nr setters override), δ = 0.9; CR = 1.0, F = 0.5, η = 20,
 //   p_m = 1/n; π update period = 50 (Step 5).
+// Fixed 2026-09-05 (full-paper checklist, VERIFY_2026-09-05/checklists/moead_dra.md):
+//   - DRA-6: the j_rand gene of de_rand_1_bin (absent from Eq.4) — removed.
+//   - DRA-7: r2, r3 were forced distinct from i and from each other (up to 10
+//     rejections) — now two plain draws, as Step 3.2 says.
+//   - DRA-8 / G3: the repair was applied to the DE mutant before the
+//     crossover select and before a BOUNDED (NSGA-II-code) polynomial
+//     mutation — now Eq.4 → literal Eq.5 → Step 3.3 repair of the final y.
+//   Measured on the 30 000-FE sanity runs (3 seeds, median IGD): before /
+//   after — DTLZ2 (M=3, N=91) 0.0813 / 0.0787, ZDT1 (N=100) 0.2649 / 0.2779;
+//   within seed scatter — the ZDT1 level is set by the Step 3.3 reset (below).
 // Deviations:
-//   - DRA-5 (MINOR): weights — Das–Dennis lattice instead of the authors'
-//     maximin selection of N out of 5000 random vectors (Sec.III); the unit
-//     vectors e_j are present in the lattice.
-//   - G3 (MINOR): PM is the bounded (position-dependent δ1/δ2) NSGA-II
-//     variant — see operators/poly_mutation.hpp — not the literal Eq.5.
+//   - DRA-5 (MINOR): weights — Das–Dennis lattice (N must be a lattice size,
+//     Path-A) instead of the authors' maximin selection of N out of 5000
+//     random vectors (Sec.III: W starts from the unit vectors, then the vector
+//     of W_1 farthest from W is moved in until |W| = N); the paper's N = 1000
+//     (m = 3) is not a lattice size — use 990 or 1035. The unit vectors e_j
+//     are present in the lattice.
 //   - Numerical guard old_g > 1e-14 for the division in Δ (the paper does
 //     not address division by 0).
-//   - DRA-6 (MINOR): guaranteed j_rand gene in the binomial crossover — Eq.4
-//     of the paper has no such term; with the default CR=1.0 it has no effect.
-//     Same deviation as MDE-3 in moead_de.hpp (shared operator).
-//   - DRA-7 (MINOR): r2, r3 are kept distinct from i and from each other;
-//     Step 3.2 says only "randomly select two indexes r_2 and r_3 from P".
-//     Not inert — the rejection loop draws until distinct, so the RNG stream
-//     differs. Same as MDE-4.
-//   - DRA-8 (MINOR): the Step 3.3 random reset is applied to the DE mutant v
-//     inside de_rand_1_bin, before the crossover select and before PM, not to
-//     the final y. Same as MDE-5 — see moead_de.hpp for the consequences.
 //   - DRA-9 (MINOR): the 10-tournament draws WITHOUT replacement from the
 //     not-yet-selected indexes (Step 2 says "select OTHER ⌊N/5⌋ − m indexes",
 //     which reads as "not already in I"); it shrinks to min(10, |candidates|)
 //     when fewer than ten remain, a case the paper does not contemplate. Note
 //     moead_awa implements the same step with the opposite convention.
+//   - DRA-10 (READING): Δ^i = (old − new)/old compares the g^te snapshot
+//     taken at the previous Step-5 update (with the z of THAT moment) against
+//     the current g^te (current z); the paper says only "old function value −
+//     new function value" and does not say whether the old value is
+//     re-evaluated with the current z.
 // Extensions beyond the paper (disabled by default):
 //   - EP archive (vault.archive_*): in the paper Output = {x^1..x^N};
 //     enabled via set_use_ep(true), adds no extra FE.
 //   - ConstraintMode::FEASIBILITY — g^te + penalty·cv.
 //   - Binary variables: inheritance from x^i + bit-flip 1/n_bin.
+// MEASURED (2026-09-05 FE-trajectory audit, literal pipeline): the random-
+// reset repair of Step 3.3 is the paper's and stays the default, but on ZDT1
+// (n = 30, N = 100, 30 000 FE, 3 seeds) it converges to median IGD 0.2779
+// where clamping to the bound (PlatEMO / jMetal) reaches 0.0179; see MDE-6 in
+// moead_de.hpp. set_de_repair(ops::DERepair::Clip) selects the clamping
+// variant.
 // ============================================================================
 
 #include <algorithm>
@@ -90,6 +106,7 @@ private:
     double pm_           = -1.0;  // Sec.III: p_m = 1/n; <0 → auto 1/n
     double feas_penalty_ = 1e6;   // extension beyond the paper (FEASIBILITY)
     bool   use_ep_       = false; // EP — beyond the paper, off by default
+    ops::DERepair repair_ = ops::DERepair::RandomReset;  // Step 3.3 repair; Clip = PlatEMO/jMetal variant
     std::mt19937 rng_{std::random_device{}()};
 
     int T_eff_  = 0;   // effective T (after setup)
@@ -257,18 +274,14 @@ private:
             std::iota(P.begin(), P.end(), 0);
         }
 
-        // Step 3.2: DE/rand/1 — r1 = i, r2, r3 from P.
+        // Step 3.2: r1 = i; r2, r3 — two independent uniform draws from P
+        // ("randomly select two indexes r2 and r3 from P": r2 = r3 and
+        // r2 = i are admitted; 2026-09-05 — the former rejection loop DRA-7
+        // is gone).
         int psz = static_cast<int>(P.size());
         std::uniform_int_distribution<int> dP(0, psz - 1);
-        auto pick = [&](int e1, int e2) -> int {
-            for (int t = 0; t < 10; ++t) {
-                int idx = P[dP(rng_)];
-                if (idx != e1 && idx != e2) return idx;
-            }
-            return P[dP(rng_)];
-        };
-        int r2 = pick(i, -1);
-        int r3 = pick(i, r2);
+        int r2 = P[dP(rng_)];
+        int r3 = P[dP(rng_)];
 
         int nv = vault.vars_n();
         std::vector<double> x_i(nv), x_2(nv), x_3(nv), y;
@@ -277,11 +290,12 @@ private:
             x_2[j] = vault.get_variable(r2, j);
             x_3[j] = vault.get_variable(r3, j);
         }
-        // ȳ = x_i + F·(x_2 − x_3), trial with x_i; Step 3.3: out-of-bound →
-        // random reset inside the domain (DERepair::RandomReset, fix G2).
-        ops::de_rand_1_bin(x_i, x_2, x_3, x_i, y, bounds, F_, CR_,
-                           ops::DERepair::RandomReset, rng_);
-        ops::polynomial_mutation(y, bounds, eta_m_, pm_eff(nv), rng_);
+        // ȳ by Eq.4 (r1 = i), then the literal Eq.5 mutation (may leave the
+        // box), then Step 3.3: repair of the FINAL y — random reset (paper)
+        // or clamping (set_de_repair(Clip)).
+        ops::de_eq6(x_i, x_2, x_3, y, F_, CR_, rng_);
+        ops::polynomial_mutation_eq7(y, bounds, eta_m_, pm_eff(nv), rng_);
+        ops::repair_out_of_box(y, bounds, repair_, rng_);
 
         // Evaluate the offspring in the scratch slot: exactly ONE objective
         // function call.
@@ -361,6 +375,7 @@ public:
     void set_pm              (double p) { pm_           = p; }
     void set_feas_penalty    (double p) { feas_penalty_ = p; }
     void set_use_ep          (bool b)   { use_ep_       = b; }
+    void set_de_repair       (ops::DERepair r){ repair_ = r; }
     void set_seed            (unsigned s){ rng_.seed(s); }
 
     int effective_T()  const { return T_eff_;  }

@@ -40,37 +40,52 @@
 //
 // PAPER DEFAULTS (§5.1): α = 0.5, ε = 1e-3 ("the parameters ε and α were set
 // to 1e-3 and 0.5, respectively"), p_c = 1.0, η_c = 30, p_m = 1/n, η_m = 20;
-// BEYOND THE PAPER — record = 5. The paper never gives the record LENGTH. §4.2
-// describes it only as holding "the nadir vector of a few generations", and
-// Alg.1 uses it through "obtain the vector of variances from record" and "the
-// mark lasts the same number of generations that record is kept" — so the
-// length sets both the variance window and the mark lifetime, and neither §5.1
-// nor Table 1 pins it. The 5 used here is the value the wider literature
-// settled on: Tian et al. 2018 (AR-MOEA, §IV-A.2) states it explicitly for its
-// MOMBI-II baseline — "the threshold of variance α, the tolerance threshold ε
-// and the record size of nadir vectors are set to 0.5, 0.001 and 5" — matching
-// the paper on the two parameters the paper does give. Settable.
+// record = 5 — ALSO from §5.1: "Similarly, the record size (used for tracing
+// the variance of the nadir vector) was set to 5 generations." The record
+// length sets both the variance window (Alg.1 line 4) and the mark lifetime
+// ("the mark lasts the same number of generations that record is kept").
+// FIX 2026-09-05 (second primary-source pass): this header used to claim the
+// paper "never gives the record LENGTH" and sourced 5 from Tian et al. 2018;
+// that was wrong — §5.1 states it in the sentence right after ε and α.
 // Weights are SLD/Das-Dennis with |W| = |P| — except for
 // m = 3, where §5.1 raises |P| to |W| + 1 = 92 "to fulfill the requirement of
 // adopting even numbers in the binary tournament selection".
 // DECLARED DEVIATIONS: the binary tournament criterion (the paper gives none;
-// (rank, L2) was chosen); the max_j z_j^max snapshot for Line 10 is taken
-// before the edits of the current call (the paper does not say);
+// (rank, L2) was chosen); the two contestants are drawn WITH replacement
+// (plain uniform picks; the paper says only "binary tournament selection" —
+// FIX 2026-09-05: the port used to force two distinct picks by rejection
+// sampling, an undeclared strengthening); the max_j z_j^max snapshot for
+// Line 10 is taken before the edits of the current call (the paper does not
+// say);
 // Path-A forces |P| = |W| exactly, so the paper's m=3 setting has to be run as
 // 91 — 92 is not an attainable lattice size for m=3 (single-layer sizes are
 // 3,6,10,...,91,105 and no two-layer pair sums to 92), and generate_exact
 // throws on it; and where |P| is attainable only as a two-layer lattice, the
 // weight set is the Deb-Jain two-layer construction rather than the
 // single-layer SLD of Eq.10;
-// u_ASF is evaluated WITHOUT the |·| of Eq.8 / footnote 3 ("We consider the
-// absolute value from its original definition"). Because z^min is persistent
-// and refreshed only at the end of the step (Alg.1 Line 13), the normalized
-// F is negative for any offspring that improves the running ideal, so such a
-// point is ranked BETTER instead of being penalised by the absolute value.
-// Inserting std::abs would be the paper-exact form and would change selection.
+// u_ASF is evaluated as max_i f'_i / w_i, i.e. WITHOUT the |·| that Eq.8 /
+// footnote 3 print ("We consider the absolute value from its original
+// definition"). DECLARED DEVIATION MOMBI2-ASF (settled 2026-09-05 by the
+// FE-trajectory audit). The bars are the conventional ASF notation for
+// f' >= 0. Alg.3 does not guarantee that: z^min is refreshed at Line 13 on the
+// REDUCED population, so at Line 10 an offspring that improves an objective
+// past the previous z^min has f'_i < 0. With |f'_i| that improvement is scored
+// as a loss of the same size, the offspring loses the R2 ranking to its
+// parents, z^min never moves, and the search freezes: on ZDT1 (N=100,
+// 30000 FE) the literal |·| version sat at IGD 0.26 from 10000 FE on, the
+// signed version reaches 0.014. Earlier in the same pass the |·| had been
+// restored as "paper-exact"; the measurement overrides that reading. The two
+// forms are identical whenever f' >= 0, i.e. once the ideal has settled.
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY
 // (CDP dominance when estimating the nadir, feasible-first in the tournament),
 // binary variables.
+// SCALE DEPENDENCE (the paper's own, measured 2026-09-09). Alg. line 9 tests
+//   |z^max_j - z^min_j| < eps with eps = 1e-3 from §5.1, i.e. an ABSOLUTE
+//   threshold against a RAW objective range, so which axes are treated as
+//   degenerate depends on the units. Multiplying every objective of DTLZ2
+//   (M=3) by 2^10 moves the final IGD by 2.3 % (5000 FE) and by 1.0 % at 2^20
+//   and beyond - a threshold being crossed once, not a growing failure. The
+//   paper's constant is left as written.
 // ============================================================================
 
 #include <algorithm>
@@ -234,9 +249,7 @@ private:
     int tournament(DataVault<Ind_t>& vault,
                    std::uniform_int_distribution<int>& dist) {
         int a = dist(rng_);
-        int b = a;
-        if (dist.b() > dist.a())
-            do { b = dist(rng_); } while (b == a);
+        int b = dist(rng_);   // with replacement (see the header)
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double cva = vault.get_cv(a), cvb = vault.get_cv(b);
             bool af = (cva <= 0.0), bf = (cvb <= 0.0);
@@ -389,6 +402,15 @@ public:
                 double best = -std::numeric_limits<double>::max();
                 for (int j = 0; j < m; ++j) {
                     double wj = (w[j] > 1e-6) ? w[j] : 1e-6;   // footnote 4
+                    // Eq.8 / footnote 3 print |v_i - r_i| with r = 0. The bars
+                    // are the conventional ASF notation for f' >= 0, which
+                    // Alg.3 does NOT guarantee here: z^min is refreshed at
+                    // Line 13 on the REDUCED population, so an offspring that
+                    // improves an objective past last generation's z^min has
+                    // f' < 0 at Line 10. Taking |f'| would score that
+                    // improvement as a loss; on ZDT1 it froze the search at
+                    // IGD 0.26 (FE-trajectory audit 2026-09-05). The signed
+                    // value is used: identical whenever f' >= 0.
                     best = std::max(best, Fn[i][j] / wj);
                 }
                 mu[i] = best;

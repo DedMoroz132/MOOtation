@@ -77,9 +77,12 @@
 //     TWO-LAYER Das-Dennis scheme is used (dense boundary Hb, sparse inner
 //     Hi = Hb/2), as in NSGA-III. Using a single-layer generate(M, H_active+D)
 //     at M >= 8 was a deviation.
-//   CLIA-5 (MINOR). One offspring per pair (SBX, first child), as elsewhere in
-//     this library; parents are mated at random from the pool (§III-C,
-//     "evolve").
+//   CLIA-5 (MINOR). One offspring per pair (SBX, first child), N pairs drawn
+//     at random from the population. The paper never specifies the mating
+//     scheme: §III-C says only "evolve the population to get the offsprings
+//     and combine them as the potential population with the size of 2N", and
+//     Alg.1/Alg.2 cover selection and adaptation only. Any scheme yielding N
+//     offspring from N evaluations satisfies the letter; this is one of them.
 //   CLIA-6 (MINOR). Real-valued genome; binary and mixed are out of scope
 //     (constraint_mode=NONE).
 //
@@ -95,6 +98,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -410,6 +414,10 @@ private:
 // ── setup ────────────────────────────────────────────────────────────────
 template <typename Ind_t>
 void CLIACore<Ind_t>::setup(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("CLIA: binary variables are not supported (reproduction is real-valued only)");
     m_ = vault.objs_n(); N_ = vault.pop_size();
     init_refs(); compute_theta(); t_ = 0;
     const auto& bd = vault.get_bounds();
@@ -433,6 +441,10 @@ void CLIACore<Ind_t>::setup(DataVault<Ind_t>& vault) {
 
 template <typename Ind_t>
 void CLIACore<Ind_t>::setup_seeded(DataVault<Ind_t>& vault) {
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("CLIA: binary variables are not supported (reproduction is real-valued only)");
     m_ = vault.objs_n(); N_ = vault.pop_size();
     init_refs(); compute_theta(); t_ = 0;
     pop_.clear();

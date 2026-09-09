@@ -49,10 +49,11 @@
 //     increments G once per outer iteration, i.e. per GENERATION. The two
 //     readings coincide up to a constant here — this algorithm spends exactly N
 //     evaluations per generation — so θ traces the same ramp either way and the
-//     choice is free. (Generations instead of NFE; proportional.) The counter is advanced at the START of step(), so the
-//     first DDS runs at θ = 1/Gmax, whereas Alg.1 increments G at line 13 —
-//     after the line-12 DDS — and therefore runs its first in-loop DDS at
-//     θ = 0. The whole schedule is shifted by one generation, i.e. by 1/Gmax.
+//     choice is free. (Generations instead of NFE; proportional.) The counter
+//     is advanced at the END of step(), after the DDS, as Alg.1 line 13 does
+//     after the line-12 DDS: the DDS of the g-th generation runs at
+//     θ = (g − 1)/Gmax, the first one at θ = 0 (fixed 2026-09-05; previously
+//     the counter was advanced first and the schedule was shifted by 1/Gmax).
 //   DDS-5 (MINOR). Real-valued genome; binary is outside the coverage (NONE).
 //   DDS-6 (ARBITRATION). FIX 2026-07-07 (source-fidelity review):
 //     the literal Eq.9 inverts the ASF weights («when j=i, w=0» → 1e-6 on the
@@ -66,13 +67,11 @@
 //     Previously the code implemented the literal formula while the header
 //     claimed "as in NSGA-III" — the code has been brought in line with the
 //     declaration.
-//   DDS-7 (MINOR). Mating d2 is recomputed from a FRESH normalization of the
-//     N-solution parent population. Alg.1 line 8 instead consumes the d2
-//     returned by the line-12 DDS run over the merged 2N pool. normalize()
-//     derives its frame from z_min and from ASF-based intercepts, both
-//     set-dependent, so the two frames differ and so do the resulting
-//     distances. (Carrying d2 out of dds() would also remove the duplicate
-//     work.)
+//   DDS-7 (fixed 2026-09-05). Mating d2 (Alg.4 line 2) uses the reference
+//     points R returned by the LAST DDS call (Alg.1 line 3 for the first
+//     generation, line 12 afterwards) — i.e. the normalization frame of the
+//     merged 2N pool, as Alg.1 line 8 consumes "d2" from line 12. Previously
+//     the parent population was re-normalized on its own every generation.
 //
 // CONSTRAINTS (beyond the paper, off by default). The DDS pivot loop picks,
 //   among the candidates near a pivot, the NON-DOMINATED one with the smallest
@@ -87,6 +86,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -110,6 +110,7 @@ private:
 
     struct Sol { std::vector<double> vars, objs; double cv=0.0; };
     std::vector<Sol> pop_;
+    std::vector<std::vector<double>> R_last_;   // reference points R of pop_ from the last DDS (DDS-7)
     int N_=0, m_=0, gen_=0, K_=10;
 
     double pm_eff(int nv) const { return (pm_>0.0)?pm_:(nv>0?1.0/nv:0.0); }
@@ -182,8 +183,8 @@ private:
     // DDS: select N out of pool
     std::vector<Sol> dds(const std::vector<Sol>& pool){
         int n=(int)pool.size();
-        if(n<=N_) return pool;
         std::vector<std::vector<double>> R; std::vector<double> d1; normalize(pool,R,d1);
+        if(n<=N_){ R_last_=R; return pool; }   // Alg.1 line 3: DDS over the initial P — nothing to remove, d2 is kept
         double theta=std::min(1.0,(double)gen_/std::max(1,t_max_));
         std::vector<char> inQ(n,0);
         std::vector<int> ext=extreme_idx(pool);
@@ -210,8 +211,11 @@ private:
             for(int x:Wv) distQ[x]=std::min(distQ[x],d2(R[x],R[s]));
         }
         // if there were >N extremes (rare) — truncate
-        std::vector<Sol> out; for(int i=0;i<(int)Q.size() && (int)out.size()<N_;++i) out.push_back(pool[Q[i]]);
-        while((int)out.size()<N_) out.push_back(pool[std::uniform_int_distribution<int>(0,n-1)(rng_)]);
+        std::vector<int> sel; for(int i=0;i<(int)Q.size() && (int)sel.size()<N_;++i) sel.push_back(Q[i]);
+        while((int)sel.size()<N_) sel.push_back(std::uniform_int_distribution<int>(0,n-1)(rng_));
+        std::vector<Sol> out; out.reserve(N_);
+        R_last_.clear(); R_last_.reserve(N_);
+        for(int i:sel){ out.push_back(pool[i]); R_last_.push_back(R[i]); }   // d2 frame of this DDS (DDS-7)
         return out;
     }
 
@@ -238,6 +242,10 @@ public:
     void set_seed(unsigned s){ rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("MOEA/D-DS: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=std::max(2,(int)std::floor(std::sqrt((double)N_)));
         const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
@@ -246,19 +254,27 @@ public:
         pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
+        pop_=dds(pop_);   // Alg.1 line 3: [P, d1, d2] = DDS(P, N, 0)
     }
     void setup_seeded(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("MOEA/D-DS: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=std::max(2,(int)std::floor(std::sqrt((double)N_)));
         pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
+        pop_=dds(pop_);   // Alg.1 line 3 (a seeded pool larger than N is reduced to N here)
     }
 
     void step(DataVault<Ind_t>& vault){
-        ++gen_;
         int scratch=vault.expand(1);
-        // normalization of the current P for d2-based mating
-        std::vector<std::vector<double>> R; std::vector<double> d1; normalize(pop_,R,d1);
+        // Alg.1 line 8 / Alg.4: mating d2 from the R of the last DDS (DDS-7);
+        // a fresh normalization only if none is available (size mismatch).
+        std::vector<std::vector<double>> R;
+        if((int)R_last_.size()==(int)pop_.size()) R=R_last_;
+        else { std::vector<double> d1; normalize(pop_,R,d1); }
         std::uniform_real_distribution<double> uni(0,1);
         std::uniform_int_distribution<int> di(0,N_-1);
         std::vector<Sol> O; O.reserve(N_);
@@ -274,7 +290,8 @@ public:
             O.push_back(breed(pop_[p1],pop_[p2],vault,scratch));
         }
         std::vector<Sol> merged=pop_; for(auto&s:O) merged.push_back(s);
-        pop_=dds(merged);
+        pop_=dds(merged);        // Alg.1 line 12 with θ = G/Gmax, G = generations completed so far
+        ++gen_;                  // Alg.1 line 13
         store_arch(vault);
     }
 };

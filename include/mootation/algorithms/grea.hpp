@@ -30,8 +30,10 @@
 //   an UNKNOWN problem it recommends "a division value around 9 ... a slightly
 //   larger div if the problem is hard to converge, and a slightly lower value
 //   if coverage of the Pareto front is more emphasized". The library default is
-//   div=8 — inside that recommended band, but NOT a paper value: reproducing
-//   any specific experiment requires set_div.
+//   div=9 — the paper's own recommendation for an unknown problem (§V-B last
+//   paragraph, repeated in §VI). It is NOT the per-problem Table II value:
+//   reproducing any specific experiment requires set_div (e.g. 16 for the
+//   3-objective DTLZ2 per Fig.6).
 // DECLARED DEVIATIONS: the PD propagation in GR_adjustment is performed even
 //   without increasing PD(p); this is behaviourally equivalent to the letter of
 //   Alg.3 line 11 by the transitivity of grid dominance.
@@ -65,7 +67,7 @@ public:
     ConstraintMode constraint_mode = ConstraintMode::NONE;
 
 private:
-    int          div_  = 8;     // paper: per-problem (see header); use set_div
+    int          div_  = 9;     // §V-B/§VI: "division 9 was recommended for an unknown problem"; per-problem via set_div
     double       eta_c_ = 20.0; // §IV-C.1
     double       eta_m_ = 20.0; // §IV-C.1
     double       pc_    = 1.0;  // §IV-C.1: «A crossover probability pc = 1.0»

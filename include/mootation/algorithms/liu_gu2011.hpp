@@ -80,31 +80,40 @@
 //     set never exceeds pop_size; under the ceiling reading it does (see LG-3).
 //     Note that floor does not restore the §II-B equality either — at N=91,
 //     S=9, floor(91/9)=10 gives Σ=90 ≠ 91.
-//   LG-4 (MINOR). The central vectors W — a Das–Dennis lattice of S points
-//     normalized to unit length (the paper: «uniformly distributed unit
-//     vectors»).
-//     NOTE: S = ⌈√N⌉ is generally NOT an attainable Das–Dennis lattice size.
-//     generate_auto returns the nearest attainable size FROM ABOVE and the
-//     effective S becomes that size — at m=5, N=100 a requested S=10 comes back
-//     as 15, because n_vectors(5,H) runs 5, 15, 35, … The substitution then
-//     propagates into l_i = ⌈N/S⌉ and into the external-set size 5·l_i, so all
-//     three quantities in the DEFAULTS block above can differ from what a
-//     reader computes from N alone.
+//   LG-4 (READING; FIXED 2026-09-06, full-paper checklist). The central
+//     vectors W — «uniformly distributed unit vectors on the first quadrant of
+//     the unit hyper-sphere», no construction given. When S = ⌈√N⌉ is a
+//     Das–Dennis lattice size the lattice normalized to unit length is used
+//     (m=3, N=91: S=10 = H=3); otherwise the deterministic arbitrary-K
+//     generator detail::uniform_sphere_directions shared with moead_m2m /
+//     sms_m2m. S therefore stays EXACTLY ⌈√N⌉, and l_i = ⌈N/S⌉ and the
+//     external size 5·l_i follow from N alone. Previously generate_auto
+//     silently substituted the nearest attainable lattice size from above
+//     (m=5, N=100: S=10 became 15) and l_i / 5·l_i moved with it.
 //   LG-5 (MINOR). Shift by the minimum of the internal population; association
 //     by the acute angle (cos) of the shifted f.
-//   LG-6 (MINOR). External may contain duplicates (random
-//     initialization/replacement — per the letter of the paper). (The former
-//     part about "SBX yields 2 children" is retired: operator [1] produces
-//     exactly one offspring.)
-//   LG-6b (MINOR). Step 3.3 says "the remained individuals replace the same
-//     number of external individuals randomly" without saying whether the
-//     positions are drawn with or without replacement. This port draws them
-//     i.i.d., so two rejected individuals can land in the same external slot
-//     and FEWER than |rej| distinct members are displaced — the reservoir
-//     turns over slightly more slowly than "the same number" suggests. Small
-//     at the paper's settings (N=91, S=10, |external_k|=50, |rej|≈9 gives ≈0.7
-//     collisions per region per generation, ≈8% of writes). Sampling distinct
-//     slots via a partial shuffle would change the RNG draw count.
+//   LG-6 (FIXED 2026-09-06, full-paper checklist). §II-B: «Randomly select
+//     5·l_i individuals from the initial population to constitute the external
+//     set» — a random SUBSET of the 5N pool (sampling without replacement,
+//     sample_idx). Previously the draws were i.i.d., so one individual could
+//     occupy several slots of the same external set. One individual may still
+//     belong to the external sets of several sub-regions: every set is drawn
+//     from the whole pool, as the paper says. (Operator [1] produces exactly
+//     one offspring — the old remark about SBX pairs is retired.)
+//   LG-6b (FIXED 2026-09-06, full-paper checklist). Step 3.3: «the remained
+//     individuals replace the same number of external individuals randomly»
+//     — |rej| DISTINCT external slots are drawn (partial Fisher–Yates) and
+//     overwritten, so exactly "the same number" of members is displaced.
+//     Previously the slots were drawn i.i.d. (≈8% of writes collided at the
+//     paper's settings). When |rej| exceeds |external_k| — no rule in the
+//     paper — a random |external_k| of the rejected replace the whole set.
+//   LG-9 (FIXED 2026-09-06, full-paper checklist). §II-C: «If M_gen < N, we
+//     randomly select N − M_gen individuals from the internal set to
+//     participate in mating» — distinct internal members that are NOT already
+//     marked R=1 (sample_idx over the rest). Only when the whole internal
+//     population is smaller than N (possible: caps without refill) are the
+//     remaining places filled i.i.d. from all internal members. Previously the
+//     top-up was i.i.d. over all internal members, R=1 ones included.
 //   LG-7 (AMBIGUOUS→resolved). For |R1|>N (possible when Σl_i>N, LG-3) the
 //     paper only says «all of these individuals take part in mating» and
 //     «generate N new individuals», without specifying the order.
@@ -112,71 +121,46 @@
 //     truncation "the first N in region-major order" (it systematically cut
 //     off the tail regions) — RANDOM truncation to N (shuffle).
 //   ---------------------------------------------------------------------
-//   OPEN — UNDER INVESTIGATION (noted 2026-08-04, convergence smoke suite).
+//   RESOLVED 2026-09 (second primary-source pass) — was "OPEN — UNDER
+//   INVESTIGATION" since 2026-08-04.
 //   ---------------------------------------------------------------------
-//   On DTLZ2 (M=3, n=12, pop_size=91, 200 generations, Liu–Li Eq.(5)-(6) with
-//   p_m = 1/n and t_max left at the class default of 1000 — NOT SBX/PM, which
-//   this class does not use at all) this
-//   implementation reports:
-//       mean distance of the population to the true front  = 1.010
-//       distance of the single best solution               = 0.003
-//       final population size                              = 100
-//   Every other algorithm in the suite lands at mean <= 0.25, and 55 of 60
-//   land below 0.015.
+//   Symptom: on DTLZ2 (M=3, n=12, N=91) at 200 generations the population
+//   mean distance to the front was 1.01 while the best was 0.003.
 //
-//   Reading of the two numbers: best = 0.003 means the search DOES reach the
-//   front, so this is not a convergence-speed artefact of the sub-regional
-//   scheme. A population mean of 1.01 alongside it means most of the retained
-//   population sits roughly one unit away from the front — i.e. survivors are
-//   being kept that should not be. That points at environmental selection or
-//   at the external set, not at variation.
+//   Finding: not a defect of this port. The port was re-verified line by line
+//   against liu2011 §II-B..D and §IV-A, and the operator against liu2009
+//   §III-A Eq.(5)-(6) including the sign of the exponent in rm (an A/B with
+//   the +a reading made things slightly WORSE, so the paper's -a stands).
+//   What the number measures is a budget mismatch: the paper stops after
+//   300,000 evaluations, i.e. Max_gen = ⌈(300000 − 5N)/N⌉ ≈ 3300 generations,
+//   and the annealing schedule of the operator is calibrated to that.
 //
-//   The population size of 100 > 91 is explained and declared by LG-3/LG-3b
-//   (l_i = ⌈N/S⌉ is uniform across sub-regions, so Σ l_i ≥ N — the paper's own
-//   §II-B equality is violated by its own §IV-A formula) together with LG-7
-//   (truncation when |R1| > N). Whether the overshoot and the mean are the same
-//   defect or two separate ones is NOT yet established.
+//   Measured at the same settings, varying only the budget (seed 20260804):
+//       gens    mean    median   best     distance vars at a box bound
+//        200    0.939   0.762    0.0031   28.5 %
+//       1000    0.633   0.014    0.0006   16.9 %
+//       3000    0.028   0.000    0.0000    1.1 %
+//   The population is bimodal: most members converge early (the median is
+//   0.014 by 1000 generations) while a shrinking minority sits at the box
+//   bounds of the distance variables and dominates the MEAN. That minority
+//   is produced by the extrapolating crossover of Eq.(5), x + rc·(x − y),
+//   whose out-of-bound repair lands between the bound and the parent, and it
+//   is displaced slowly because selection inside a sub-region (NDS + crowding
+//   distance, as the paper prescribes) exerts little convergence pressure
+//   among mutually non-dominated members. moead_am2m, which shares the
+//   operator but selects by scalarization, shows none of it — consistent with
+//   the mechanism, not with a bug in the operator.
+//   Cone width is NOT the lever: for the sibling moead_m2m, narrower cones
+//   (K=30, S=3) made it catastrophically worse, and the paper's own K=S=17
+//   no better than K=10.
 //
-//   NARROWED 2026-08-06, by measurement:
-//   (a) NOT an output-filtering artefact. Step 5 outputs "non-dominated
-//       solutions" while store_arch presents the union of the internal sets,
-//       which by design also holds locally-best-but-globally-dominated points.
-//       Filtering the presented set to the non-dominated subset was the obvious
-//       suspect. Measured: 84 of the 100 returned solutions are already
-//       mutually non-dominated, and the filtered mean is 0.944 against 1.010 —
-//       the anomaly survives the filter. Hypothesis excluded.
-//   (b) What the number actually says. On DTLZ2 the front is ‖f‖ = 1 and
-//       ‖f‖ = 1 + g, so the reported error IS g = Σ(x_i − 0.5)² over the ten
-//       distance variables. A mean of 1.01 therefore means g ≈ 1, while
-//       uniformly random x gives E[g] = 10/12 ≈ 0.83. The distance variables
-//       are barely being optimised at all, even though the population is spread
-//       and mutually non-dominated in the objective directions. Whatever is
-//       wrong is in convergence pressure, not in diversity.
-//   (c) Out-of-domain benchmark. §IV tests this algorithm on UF1-UF9 (CEC 2009)
-//       and reports IGD 0.0081 on UF1 — the UF suite is built around
-//       COMPLICATED PARETO SETS, which is the structure Fig.2's argument
-//       ("individuals of the same sub-region are adjacent in decision space")
-//       depends on. DTLZ2 appears nowhere in the paper. The smoke suite is
-//       therefore judging this port on a problem its source never claimed.
-//       That does not excuse the number, but it does mean a fair check requires
-//       running UF1 and comparing against the paper's own table.
+//   Consequence for the convergence suite: this algorithm is run at the
+//   paper's budget (3000 generations) rather than the suite's default 200,
+//   and passes the ordinary thresholds there without any relaxation. The
+//   known_issue marker is gone. See tests/test_convergence.cpp.
 //
-//   NOT ISOLATED (added 2026-08-04). moead_m2m.hpp shows the same signature at
-//   pop=90: mean 1.022, best 0.010. Two controls from the same family rule out
-//   "this decomposition is simply weak on DTLZ2" — at identical settings
-//   sms_m2m reaches mean 0.0002 and moead_am2m 0.013.
-//
-//   What the two affected files have in common, as candidate leads (none
-//   verified): both build sub-regional populations with per-region slot quotas,
-//   and both were switched from SBX/PM to the Liu-Li annealing operator during
-//   the 2026-07 fix waves. Note that moead_am2m was switched to Liu-Li too and
-//   is fine, so the operator alone does not explain it.
-//
-//   Deliberately not "fixed" here: the correct resolution has to come from
-//   §IV-A of the paper (liu2011, doi:10.1109/CEC.2011.5949848), not from
-//   tuning until the number looks better. Scheduled for the primary-source
-//   verification pass. Until then treat this algorithm's diversity behaviour
-//   as unverified.
+//   Not established and not claimed: performance on the paper's own UF1-UF10
+//   instances against Table I. DTLZ2 appears nowhere in liu2011.
 //
 //   LG-8 (MINOR). set_eta_crossover/set_eta_mutation/set_pc are no-op shims
 //     for API uniformity (operator [1] has no η/p_c; the crossover is
@@ -204,6 +188,7 @@
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
+#include "../detail/sphere_directions.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 // FIX 2026-07-07 (source-fidelity review): SBX/PM replaced with the
@@ -268,6 +253,15 @@ private:
         int best=0; double bc=-2.0;
         for(int i=0;i<S_;++i){ double c=cosine(sh,W_[i]); if(c>bc){bc=c;best=i;} }
         return best;
+    }
+
+    // k distinct indices out of [0,n) — partial Fisher–Yates (sampling without
+    // replacement; LG-6 / LG-6b / LG-9).
+    std::vector<int> sample_idx(int n, int k){
+        std::vector<int> idx(n); std::iota(idx.begin(),idx.end(),0);
+        k=std::clamp(k,0,n);
+        for(int t=0;t<k;++t){ int r=std::uniform_int_distribution<int>(t,n-1)(rng_); std::swap(idx[t],idx[r]); }
+        idx.resize(k); return idx;
     }
 
     // NSGA-II ordering (best→worst) by NDS + crowding distance.
@@ -367,6 +361,7 @@ public:
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         S_=(int)std::ceil(std::sqrt((double)N_));
         auto Wr=das_dennis::generate_auto(m_,S_);
+        if((int)Wr.size()!=S_) Wr=detail::uniform_sphere_directions(m_,S_);   // LG-4: S = ⌈√N⌉ exactly
         W_.clear(); for(auto& w:Wr) W_.push_back(unit(w)); S_=(int)W_.size();
         l_.assign(S_,(int)std::ceil((double)N_/S_));
 
@@ -389,13 +384,14 @@ public:
         std::vector<std::vector<int>> bk(S_);
         for(int i=0;i<(int)pool.size();++i) bk[assoc(pool[i].objs)].push_back(i);
         internal_.assign(S_,{}); external_.assign(S_,{});
-        std::uniform_int_distribution<int> dp(0,(int)pool.size()-1);
         for(int k=0;k<S_;++k){
             std::vector<Sol> reg; for(int i:bk[k]) reg.push_back(pool[i]);
             if((int)reg.size()<=l_[k]){ internal_[k]=reg; }
             else { auto ord=nsga2_order(reg); for(int t=0;t<l_[k];++t) internal_[k].push_back(reg[ord[t]]); }
-            int es=5*l_[k];
-            for(int t=0;t<es;++t) external_[k].push_back(pool[dp(rng_)]);
+            // §II-B: "Randomly select 5·l_i individuals from the initial population"
+            // — a random subset of the 5N pool, distinct members (LG-6).
+            int es=std::min(5*l_[k],(int)pool.size());
+            for(int i:sample_idx((int)pool.size(),es)) external_[k].push_back(pool[i]);
         }
         recompute_R();
         store_arch(vault);
@@ -405,6 +401,7 @@ public:
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         S_=(int)std::ceil(std::sqrt((double)N_));
         auto Wr=das_dennis::generate_auto(m_,S_);
+        if((int)Wr.size()!=S_) Wr=detail::uniform_sphere_directions(m_,S_);   // LG-4: S = ⌈√N⌉ exactly
         W_.clear(); for(auto& w:Wr) W_.push_back(unit(w)); S_=(int)W_.size();
         l_.assign(S_,(int)std::ceil((double)N_/S_));
         std::vector<Sol> pool;
@@ -415,13 +412,12 @@ public:
         std::vector<std::vector<int>> bk(S_);
         for(int i=0;i<(int)pool.size();++i) bk[assoc(pool[i].objs)].push_back(i);
         internal_.assign(S_,{}); external_.assign(S_,{});
-        std::uniform_int_distribution<int> dp(0,std::max(0,(int)pool.size()-1));
         for(int k=0;k<S_;++k){
             std::vector<Sol> reg; for(int i:bk[k]) reg.push_back(pool[i]);
             if((int)reg.size()<=l_[k]) internal_[k]=reg;
             else { auto ord=nsga2_order(reg); for(int t=0;t<l_[k];++t) internal_[k].push_back(reg[ord[t]]); }
-            int es=5*l_[k];
-            for(int t=0;t<es && !pool.empty();++t) external_[k].push_back(pool[dp(rng_)]);
+            int es=std::min(5*l_[k],(int)pool.size());       // LG-6: distinct members
+            for(int i:sample_idx((int)pool.size(),es)) external_[k].push_back(pool[i]);
             if(external_[k].empty() && !internal_[k].empty()) external_[k]=internal_[k];
         }
         recompute_R();
@@ -438,6 +434,13 @@ public:
         for(int k=0;k<S_;++k) for(int j=0;j<(int)internal_[k].size();++j) all_int.push_back({k,j});
         std::vector<std::pair<int,int>> mating=R1;
         if((int)mating.size()<N_ && !all_int.empty()){
+            // §II-C: "randomly select N − M_gen individuals from the internal set"
+            // — distinct internal members not already marked R=1 (LG-9); repeats
+            // only when the whole internal population is smaller than N.
+            std::vector<std::pair<int,int>> rest;
+            for(auto& pr:all_int) if(internal_[pr.first][pr.second].rank!=0) rest.push_back(pr);
+            int need=N_-(int)mating.size();
+            for(int i:sample_idx((int)rest.size(),std::min(need,(int)rest.size()))) mating.push_back(rest[i]);
             std::uniform_int_distribution<int> da(0,(int)all_int.size()-1);
             while((int)mating.size()<N_) mating.push_back(all_int[da(rng_)]);
         } else if((int)mating.size()>N_){
@@ -475,8 +478,14 @@ public:
                 for(int t=0;t<(int)ord.size();++t) (t<l_[k]?keep:rej).push_back(R[ord[t]]);
                 internal_[k]=keep;
                 if(!external_[k].empty()){
-                    std::uniform_int_distribution<int> de(0,(int)external_[k].size()-1);
-                    for(auto& s:rej) external_[k][de(rng_)]=s;
+                    // Step 3.3: "the remained individuals replace the same number of
+                    // external individuals randomly" — |rej| DISTINCT slots (LG-6b).
+                    // |rej| > |external_k|: a random |external_k| of them replace the
+                    // whole set (the paper has no rule for this case).
+                    int ne=(int)external_[k].size(), nr=(int)rej.size();
+                    if(nr>ne){ std::shuffle(rej.begin(),rej.end(),rng_); nr=ne; }
+                    auto slots=sample_idx(ne,nr);
+                    for(int t=0;t<nr;++t) external_[k][slots[t]]=rej[t];
                 }
             }
         }

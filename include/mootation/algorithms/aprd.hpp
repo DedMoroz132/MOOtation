@@ -32,8 +32,8 @@
 //        Arc = Update(Arc u Q); fit L over Arc; rebuild P_1..P_K from
 //        (union P_k) u Q via Algorithm 3.
 //   Algorithm 2 Update(R,N_a): NDS; if |NDS| <= N_a then Arc = NDS, otherwise
-//      Max-Min down to N_a, with the distance read as Euclidean — see APRD-9,
-//      the paper is contradictory here.
+//      Max-Min down to N_a by the maximum ANGLE between objective vectors
+//      (§II-B) — see APRD-9.
 //   Algorithm 3: K centres (Min-Max over the projections) -> assignment
 //      (parallel distance) -> slots S_i (no refill) -> subregion ideal points Z
 //      (Min-Max) -> PBI selection.
@@ -87,8 +87,13 @@
 //     possible.
 //   APRD-5 (MINOR). Case I NSGA-II: (rank, CD) tournament plus SBX/PM, then
 //     NDS+CD selection.
-//   APRD-6 (MINOR). SBX yields the first child; y != x when mating inside a
-//     subpopulation (Case II).
+//   APRD-6 (MINOR / partly FIXED 2026-09-06, full-paper checklist). SBX
+//     yields the first child — one offspring per x, Alg.1's "a new solution
+//     z". Case II partner: Alg.1 says "if rand < p: randomly choose y from
+//     P_k, else randomly choose y from P" — ONE plain draw in either branch,
+//     y = x admitted (a one-member P_k mates with itself; SBX then returns x
+//     and only PM acts). Previously the P_k branch retried up to 5 times for
+//     y ≠ x and a one-member P_k was diverted to the P branch.
 //   APRD-7 (resolved).
 //     update_archive receives Arc u Q in BOTH cases (Alg.1: "Arc <-
 //     UpdateArchive(Arc u Q, N_a)"), not pop u Q as it once did. The archive is
@@ -103,16 +108,24 @@
 //     association by parallel distance (Eq.2-3). Case I invalidates the
 //     partition. Individuals added by the Alg.3 fallback top-up are assigned to
 //     the nearest centre (par_dist).
-//   APRD-9 (READING — the paper contradicts itself). Algorithm 2 truncates the
-//     archive by Euclidean max-min in objective space (maxmin_euclid). The
-//     prose of §II-B specifies the maximum ANGLE, borrowing Max-Min from
-//     M2M [2]; §II-D1 contrasts the two metrics explicitly, but does so only
-//     for the subregion CENTRES, where it states plainly that the Euclidean
-//     distance is used rather than the angle. Algorithm 2's own pseudocode
-//     writes a generic d(x_i, x_j) with no metric named. This implementation
-//     follows the pseudocode and reads d as Euclidean. An angular variant would
-//     substitute an acute-angle measure (cf. ar_moea.hpp). The reading is not
-//     free: on a strongly curved front the two metrics keep different survivors.
+//   APRD-9 (FIXED 2026-09-06, full-paper checklist). Algorithm 2 truncates
+//     the archive by the Max-Min principle of §II-B, whose measure is the
+//     ANGLE: "select the first point in the remaining points and make it have
+//     the maximum angle to first selected point; … the next points is selected
+//     to make it have the maximum angle with the set of selected points"
+//     (maxmin_angle: random start, then the point whose minimum angle to the
+//     selected set is largest). The earlier entry called the paper
+//     contradictory and used Euclidean max-min; that was a misreading. §II-D1
+//     says "the Min-Max method HERE differs from Max-Min [12]. Its measure is
+//     not the angle but the Euclidean distance" — i.e. the CENTRE selection
+//     (Min-Max, Euclidean, maxmin_euclid) is a different procedure from the
+//     ARCHIVE truncation (Max-Min, angle); the two statements are consistent
+//     and Algorithm 2's generic d(x_i, x_j) is the angle. Angles are taken
+//     from the origin (§I assumes non-negative objectives). MEASURED (DTLZ2
+//     M=3 N=91 / ZDT1 N=100, 30 000 FE, median IGD of 3 seeds, together with
+//     the APRD-6 change): DTLZ2 0.1993 -> 0.1379
+//     (per seed 0.1845/0.2095/0.1563 -> 0.1304/0.1407/0.1345), ZDT1 0.0179 ->
+//     0.0191 (0.0179/0.0190/0.0179 -> 0.0191/0.0161/0.0221, within scatter).
 //
 //   APRD-10 (ARBITRATION — the printed PBI equations are misprinted).
 //     Eq.(7)-(8) as printed are dimensionally inconsistent (d1 already divided
@@ -129,6 +142,32 @@
 //   PBI selection inside a subregion stays on raw objectives. The paper is
 //   unconstrained.
 // EXTENSIONS BEYOND THE PAPER (off by default): binary genome.
+//   APRD-11 (DIAGNOSTIC 2026-09, second primary-source pass — a property of
+//     the method as printed, not a deviation). On DTLZ2 (M=3, n=12, N=91)
+//     this port lands at mean 0.25 at 200 generations and does not improve
+//     with budget: 0.31 at 1000, with a non-monotone trajectory. K has no
+//     effect (K=2, 5, 10, 20 all sit at 0.25-0.35). θ is the whole story:
+//         θ = 1   -> mean 0.009 at 1000 generations
+//         θ = 5   -> mean 0.31           (the paper's setting, §III)
+//         θ = 20  -> mean 0.38
+//     Why: every Z lies on the hyperplane through the origin (§II-C: "shift
+//     the line 1 to the origin"), so d1 = F·V̂ is the SAME for every Z and
+//     only the lateral term θ·d2 distinguishes candidates for a slot. With
+//     θ = 5 a lateral offset of 0.06 costs as much as a convergence gap of
+//     0.3, so the individual whose own projection was chosen as Z (d2 = 0)
+//     wins almost regardless of height: the selection preserves the Min-Max
+//     spread and exerts almost no convergence pressure. Nothing else in
+//     Case II selects for dominance — Alg.1 feeds (∪P_k) ∪ Q to Algorithm 3
+//     unfiltered, and the archive never flows back into P.
+//     A second reading matter, recorded rather than resolved: Alg.3 Step 4
+//     says "PBI is used to select the offspring by Eq.(8)" — and Eq.(8) is
+//     the d2 term alone. This port uses the full PBI of Eq.(4),
+//     g = d1 + θ·d2, which is the only reading with any convergence pressure
+//     at all; a literal Eq.(8) selection would be pure lateral placement.
+//     The paper's own instances (IMOP, IDTLZ1, MPDMP, MaF8) are not DTLZ2;
+//     performance on them is not claimed here. Callers who see the suite's
+//     number should know θ is the knob, and that the paper's value is the
+//     one shipped.
 // ============================================================================
 
 #include <algorithm>
@@ -215,6 +254,33 @@ private:
             sel.push_back(b); used[b]=1;
         }
         for(int i=0;(int)sel.size()<cnt;++i) sel.push_back(sel[i%std::max(1,(int)sel.size())]);
+        return sel;
+    }
+
+    // §II-B / Alg.2 Max-Min [2]: random start, then the point with the largest
+    // acute angle to the already selected set (angle to a set = the minimum).
+    static double angle_between(const std::vector<double>& a, const std::vector<double>& b){
+        double dot=0,na=0,nb=0;
+        for(std::size_t k=0;k<a.size();++k){dot+=a[k]*b[k];na+=a[k]*a[k];nb+=b[k]*b[k];}
+        double d=std::sqrt(na)*std::sqrt(nb);
+        if(d<1e-300) return 0.0;
+        return std::acos(std::clamp(dot/d,-1.0,1.0));
+    }
+    std::vector<int> maxmin_angle(const std::vector<std::vector<double>>& pts, int cnt){
+        int n=(int)pts.size(); std::vector<int> sel;
+        if(n==0||cnt<=0) return sel;
+        std::vector<char> used(n,0);
+        int r=std::uniform_int_distribution<int>(0,n-1)(rng_);
+        sel.push_back(r); used[r]=1;
+        while((int)sel.size()<cnt){
+            int b=-1; double bd=-1.0;
+            for(int i=0;i<n;++i){ if(used[i]) continue;
+                double mina=std::numeric_limits<double>::max();
+                for(int s:sel){ double a=angle_between(pts[i],pts[s]); if(a<mina) mina=a; }
+                if(mina>bd){ bd=mina; b=i; } }
+            if(b<0) break;
+            sel.push_back(b); used[b]=1;
+        }
         return sel;
     }
 
@@ -340,7 +406,7 @@ private:
         std::vector<Sol> NDS; for(int i:nd) NDS.push_back(R[i]);
         if((int)NDS.size()<=Na_){ arc_=NDS; return; }
         std::vector<std::vector<double>> pts; for(auto& s:NDS) pts.push_back(s.objs);
-        auto sel=maxmin_euclid(pts,Na_);
+        auto sel=maxmin_angle(pts,Na_);      // §II-B: Max-Min by angle (APRD-9)
         arc_.clear(); for(int i:sel) arc_.push_back(NDS[i]);
     }
 
@@ -509,10 +575,10 @@ public:
                 int sz=(int)Pk_[k].size();
                 for(int j=0;j<sz;++j){
                     int x=Pk_[k][j], y;
-                    if(uni(rng_)<p_ && sz>1){ int yy=std::uniform_int_distribution<int>(0,sz-1)(rng_);
-                        for(int a=0;a<5&&yy==j;++a) yy=std::uniform_int_distribution<int>(0,sz-1)(rng_);
-                        y=Pk_[k][yy]; }
-                    else y=dall(rng_);
+                    // Alg.1: rand < p → "Randomly choose y from P_k" (one plain
+                    // draw, y = x admitted); else "Randomly choose y from P" (APRD-6).
+                    if(uni(rng_)<p_) y=Pk_[k][std::uniform_int_distribution<int>(0,sz-1)(rng_)];
+                    else             y=dall(rng_);
                     Q.push_back(breed(pop_[x],pop_[y],vault,scratch));
                 }
             }

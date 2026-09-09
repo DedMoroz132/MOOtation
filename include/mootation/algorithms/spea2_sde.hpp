@@ -72,9 +72,9 @@ public:
     ConstraintMode constraint_mode = ConstraintMode::NONE;
 
 private:
-    double       eta_c_       = 20.0;  // §IV: distribution index 20
-    double       eta_m_       = 20.0;  // §IV: distribution index 20
-    double       pc_          = 1.0;   // §IV: "crossover probability pc = 1.0"
+    double       eta_c_       = 20.0;  // §III settings paragraph: distribution index 20
+    double       eta_m_       = 20.0;  // §III settings paragraph: distribution index 20
+    double       pc_          = 1.0;   // §III settings paragraph: "crossover probability pc = 1.0"
     int          archive_size_ = -1;   // Ā; -1 → use pop_size()
     std::mt19937 rng_{std::random_device{}()};
     int          eff_arch_    = 0;
@@ -349,7 +349,7 @@ private:
             int bi = tournament_archive(vault);
             const auto& av = vault.archive_variables_of(static_cast<std::size_t>(ai));
             const auto& bv = vault.archive_variables_of(static_cast<std::size_t>(bi));
-            // §IV: pc=1.0, pm=1/n
+            // §III settings paragraph: pc=1.0, pm=1/n
             double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
             ops::sbx(av, bv, c1, c2, bounds, eta_c_, pc_, rng_);
             ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);

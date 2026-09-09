@@ -183,7 +183,12 @@ RunResult run_algorithm(int pop, int gens, unsigned seed)
 
     auto& v = opt.get_vault();
     RunResult r;
-    r.n = v.active_n();
+    // NOT active_n() alone: steady-state cores park a persistent scratch slot
+    // at active index pop_size(), holding an unselected offspring. Averaging
+    // it in reported n = 92 for a population of 91 and inflated the mean of
+    // every steady-state algorithm. See data_vault.hpp, "SCRATCH SLOTS AND
+    // CONSUMERS" — the same rule save_population and the binding follow.
+    r.n = std::min<std::size_t>(v.active_n(), static_cast<std::size_t>(v.pop_size()));
     if (r.n == 0) { r.finite = false; return r; }
 
     double sum  = 0.0;

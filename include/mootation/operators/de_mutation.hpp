@@ -91,4 +91,51 @@ inline void de_rand_1_bin(
     de_rand_1_bin(x_a, x_b, x_c, x_i, y, bounds, F, CR, DERepair::Clip, rng);
 }
 
+// ── Literal DE of Li & Zhang 2009 (huili2009 Eq.6) = Zhang, Liu, Li 2009
+// (zhang2009 Eq.4):
+//   ȳ_k = x^{r1}_k + F·(x^{r2}_k − x^{r3}_k)   with probability CR,
+//   ȳ_k = x^{r1}_k                             otherwise.
+// No j_rand term and no repair: both papers repair the FINAL y, after the
+// mutation step, with a random reset (repair_out_of_box below). Added on
+// 2026-09-05 (full-paper checklists of moead_de / moead_dra), which use it
+// instead of de_rand_1_bin.
+template <typename RNG>
+inline void de_eq6(const std::vector<double>& x_r1,
+                   const std::vector<double>& x_r2,
+                   const std::vector<double>& x_r3,
+                   std::vector<double>&       y,
+                   double F, double CR, RNG& rng)
+{
+    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    std::size_t nv = x_r1.size();
+    y.resize(nv);
+    for (std::size_t k = 0; k < nv; ++k)
+        y[k] = (U01(rng) < CR) ? x_r1[k] + F * (x_r2[k] - x_r3[k]) : x_r1[k];
+}
+
+// ── Repair of a finished offspring (MOEA/D-DE Step 2.3, MOEA/D-DRA Step 3.3):
+// "If an element of y is out of the boundary of Ω, its value is reset to be a
+// randomly selected value inside the boundary" (DERepair::RandomReset).
+// DERepair::Clip is the PlatEMO / jMetal clamping convention, kept for
+// experiments (see MDE-6 in moead_de.hpp).
+template <typename RNG>
+inline void repair_out_of_box(std::vector<double>& y,
+                              const std::vector<std::pair<std::optional<double>,
+                                                          std::optional<double>>>& bounds,
+                              DERepair repair, RNG& rng)
+{
+    for (std::size_t k = 0; k < y.size(); ++k) {
+        double lo = sbx_require_bound(bounds[k].first,  "lower", static_cast<int>(k));
+        double hi = sbx_require_bound(bounds[k].second, "upper", static_cast<int>(k));
+        if (y[k] < lo || y[k] > hi) {
+            if (repair == DERepair::RandomReset) {
+                std::uniform_real_distribution<double> dom(lo, hi);
+                y[k] = dom(rng);
+            } else {
+                y[k] = std::clamp(y[k], lo, hi);
+            }
+        }
+    }
+}
+
 } // namespace mootation::ops

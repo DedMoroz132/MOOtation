@@ -10,11 +10,15 @@
 //
 // Generation scheme (Step 2 of the paper, SEQUENTIALLY for i = 1..N):
 //   1. Step 2.1: P = B(i) with probability δ, otherwise the whole population {1..N}.
-//   2. Step 2.2: r1 = i; r2, r3 drawn at random from P; DE (Eq.6):
-//      ȳ_k = x^i_k + F·(x^r2_k − x^r3_k) with prob. CR, otherwise x^i_k;
-//      then polynomial mutation (Eq.7) with probability p_m.
-//   3. Step 2.3 (repair): a component of y outside the bounds Ω is reset to a
-//      RANDOM value inside the domain (DERepair::RandomReset).
+//   2. Step 2.2: r1 = i; r2, r3 — two independent uniform draws from P (the
+//      paper requires no distinctness: r2 = r3 or r2 = i are admitted, and
+//      then ȳ = x^i); DE (Eq.6, ops::de_eq6): ȳ_k = x^i_k + F·(x^r2_k − x^r3_k)
+//      with prob. CR, otherwise x^i_k — no j_rand term; then polynomial
+//      mutation (Eq.7, ops::polynomial_mutation_eq7) with probability p_m —
+//      the literal, position-independent σ_k, which may leave the box.
+//   3. Step 2.3 (repair): a component of the FINAL y outside the bounds Ω is
+//      reset to a RANDOM value inside the domain (ops::repair_out_of_box,
+//      DERepair::RandomReset).
 //   4. Step 2.4: update z with the component-wise minimum of f(y).
 //   5. Step 2.5: up to n_r replacements — random j from P without replacement;
 //      if g(y|λ^j,z) ≤ g(x^j|λ^j,z): x^j ← y, FV^j ← F(y) by COPYING
@@ -23,25 +27,30 @@
 // Defaults = §IV-A: CR = 1.0, F = 0.5; PM η = 20, p_m = 1/n;
 //   T = 20, δ = 0.9, n_r = 2. N is set by the user (paper: N=300 for
 //   2-objective, 595 for 3-objective problems); weights — Das–Dennis lattice
-//   (= scheme H of the paper, §IV-A-4).
+//   (= scheme H of the paper, §IV-A-4; N must be a lattice size, Path-A).
+// Fixed 2026-09-05 (full-paper checklist, VERIFY_2026-09-05/checklists/moead_de.md):
+//   - MDE-3: the j_rand gene of de_rand_1_bin (absent from Eq.6) — removed.
+//   - MDE-4: r2, r3 were forced distinct from i and from each other (up to 10
+//     rejections) — now two plain draws, as Step 2.2 says.
+//   - MDE-5 / G3: the repair was applied to the DE mutant before the
+//     crossover select and before a BOUNDED (NSGA-II-code) polynomial
+//     mutation — now Eq.6 → literal Eq.7 → Step 2.3 repair of the final y.
+//   Measured on the 30 000-FE sanity runs (3 seeds, median IGD): before /
+//   after — DTLZ2 (M=3, N=91) 0.0802 / 0.0786, ZDT1 (N=100) 0.0776 / 0.0955;
+//   DTLZ2 unchanged; ZDT1 worse by the letter: its PS sits on the lower bound
+//   (x_2..x_n = 0), the literal Eq.7 moves such a gene out of the box with
+//   probability ≈ 1/2 and Step 2.3 then resets it to a uniform draw — the
+//   bounded PM never left the box. With Clip the same pipeline reaches 0.0063.
 // Deviations:
-//   - MDE-3 (MINOR): guaranteed j_rand gene in the binomial crossover —
-//     absent from Eq.6 of the paper; with the default CR=1.0 it has no effect.
-//   - MDE-4 (MINOR): r2, r3 are kept distinct from i and from each other
-//     (the paper does not require distinctness) — a harmless strengthening.
-//     Not inert: the rejection loop draws until distinct, so the RNG stream
-//     differs from a plain uniform pick.
-//   - MDE-5 (MINOR): the Step 2.3 random reset is applied to the DE mutant v
-//     INSIDE de_rand_1_bin — i.e. before the binomial crossover select and
-//     before PM — whereas Step 2.3 repairs the final y. The invariant y ∈ Ω
-//     still holds because the bounded PM (G3) cannot leave the box, but two
-//     things differ: at CR<1 a reset draw is consumed for genes the crossover
-//     then discards (different RNG stream), and PM sees an in-box value rather
-//     than a possibly out-of-box ȳ, which matters because the bounded PM's
-//     δ1/δ2 depend on the position of x inside the box.
-//   - G3 (MINOR): PM is the bounded (position-dependent δ1/δ2) NSGA-II
-//     variant — see operators/poly_mutation.hpp — not the literal Eq.7, whose
-//     σ_k does not depend on where x sits in the box.
+//   - MDE-6 (MEASURED, 2026-09-05). Step 2.3's RANDOM RESET is the paper's
+//     and stays the default, but it is expensive: with CR = 1 every
+//     out-of-box gene of the final y is replaced by a fresh uniform draw, and
+//     early in a run that is a large fraction of the genes. On ZDT1 (n = 30,
+//     N = 100, 30 000 FE) the median IGD over 3 seeds is 0.0955 with the
+//     random reset and 0.0063 with clamping to the bound (the PlatEMO /
+//     jMetal convention); MOEA/D-DRA shows the same gap (0.2779 vs 0.0179).
+//     set_de_repair(ops::DERepair::Clip) selects the clamping variant; the
+//     paper default stays.
 // Extensions beyond the paper (disabled by default):
 //   - EP archive (vault.archive_*): the 2009 paper keeps NO archive
 //     (Output = {x^1..x^N}); enabled via set_use_ep(true), adds no extra FE.
@@ -81,6 +90,10 @@ private:
     double pm_          = -1.0;  // §IV-A-1: p_m = 1/n; <0 → auto 1/n
     double feas_penalty_= 1e6;   // extension beyond the paper (FEASIBILITY)
     bool   use_ep_      = false; // EP archive — beyond the paper, off by default
+    // Step 2.3 repair of the out-of-box genes of the final y: the paper's
+    // RANDOM RESET is the default; DERepair::Clip is PlatEMO/jMetal's clamping
+    // variant, exposed for experiments (see MDE-6 in the header).
+    ops::DERepair repair_ = ops::DERepair::RandomReset;
     std::mt19937 rng_{std::random_device{}()};
 
     // ── runtime state ──────────────────────────────────────────────────────
@@ -169,27 +182,17 @@ private:
         vault.archive_push(scratch_slot);
     }
 
-    // ── DE/rand/1/bin offspring (Step 2.2, Eq.6: r1 = i) ──────────────────
-    // Mutation base = x^i (r1=i); r2, r3 — from the pool. Repair Step 2.3 —
-    // random reset inside the domain (DERepair::RandomReset, fix G2).
+    // ── Step 2.2, Eq.6 with r1 = i ─────────────────────────────────────────
+    // "randomly select two indexes r2 and r3 from P": two independent uniform
+    // draws — r2 = r3 (then ȳ = x^i) and r2 = i are admitted, as in the paper
+    // (2026-09-05: the former distinctness rejection loop, MDE-4, is gone).
+    // No repair here: Step 2.3 repairs the final y after the mutation.
     std::vector<double> de_offspring(DataVault<Ind_t>& vault, int i,
-                                     const std::vector<int>& mating_pool,
-                                     const std::vector<std::pair<
-                                         std::optional<double>,
-                                         std::optional<double>>>& bounds) {
+                                     const std::vector<int>& mating_pool) {
         int pool_sz = static_cast<int>(mating_pool.size());
         std::uniform_int_distribution<int> dist_pool(0, pool_sz - 1);
-
-        auto pick_distinct = [&](int exclude1, int exclude2) -> int {
-            for (int attempt = 0; attempt < 10; ++attempt) {
-                int idx = mating_pool[dist_pool(rng_)];
-                if (idx != exclude1 && idx != exclude2) return idx;
-            }
-            return mating_pool[dist_pool(rng_)];
-        };
-
-        int b = pick_distinct(i, -1);
-        int c = pick_distinct(i, b);
+        int b = mating_pool[dist_pool(rng_)];
+        int c = mating_pool[dist_pool(rng_)];
         int nv = vault.vars_n();
 
         std::vector<double> x_b(nv), x_c(nv), x_i(nv);
@@ -200,10 +203,7 @@ private:
         }
 
         std::vector<double> y;
-        // base = x_i, difference pair (x_b − x_c), crossover with x_i;
-        // out-of-bound → random reset (Step 2.3).
-        ops::de_rand_1_bin(x_i, x_b, x_c, x_i, y, bounds, F_, CR_,
-                           ops::DERepair::RandomReset, rng_);
+        ops::de_eq6(x_i, x_b, x_c, y, F_, CR_, rng_);   // ȳ (Eq.6)
         return y;
     }
 
@@ -222,10 +222,14 @@ private:
             std::iota(mating_pool.begin(), mating_pool.end(), 0);
         }
 
-        // Step 2.2: DE offspring (Eq.6) + polynomial mutation (Eq.7).
-        auto y_vars = de_offspring(vault, i, mating_pool, bounds);
-        ops::polynomial_mutation(y_vars, bounds, eta_m_,
-                                 pm_eff(vault.vars_n()), rng_);
+        // Step 2.2: ȳ by Eq.6 (r1 = i), then the literal Eq.7 mutation with
+        // probability p_m per gene (may leave the box).
+        auto y_vars = de_offspring(vault, i, mating_pool);
+        ops::polynomial_mutation_eq7(y_vars, bounds, eta_m_,
+                                     pm_eff(vault.vars_n()), rng_);
+        // Step 2.3: repair of the FINAL y — random reset inside the domain
+        // (the paper) or clamping (set_de_repair(Clip), see MDE-6).
+        ops::repair_out_of_box(y_vars, bounds, repair_, rng_);
 
         // Binary variables (extension beyond the paper): inherited from x^i
         // + bit-flip with probability 1/n_bin.
@@ -305,6 +309,7 @@ public:
     void set_pm                (double p){ pm_            = p; }
     void set_feas_penalty      (double p){ feas_penalty_  = p; }
     void set_use_ep            (bool b)  { use_ep_        = b; }
+    void set_de_repair         (ops::DERepair r){ repair_ = r; }
     void set_seed              (unsigned s){ rng_.seed(s); }
 
     std::size_t external_population_size(DataVault<Ind_t>& vault) const {

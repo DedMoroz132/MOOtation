@@ -27,9 +27,24 @@
 // Reference set R: in the paper this is an external fixed parameter (a Require
 // of every algorithm); set it with set_reference_point().
 // DECLARED DEVIATION (the default when R is not supplied): an adaptive point
-// r_i = max_i f_i · (1 ± 0.1) over the current pool. This is a practical
-// default for problems of unknown scale; the paper does NOT define such a
-// construction.
+// r_i = max_i f_i · (1 ± ref_offset) over the current pool, ref_offset = 1.0
+// (set_ref_offset). This is a practical default for problems of unknown
+// scale; the paper does NOT define such a construction.
+// MEASURED (2026-09-05 FE-trajectory audit): with the offset at 0.1 the
+// exclusive hypervolume of the two extreme points on ZDT1 was the smallest
+// in the last front, they were truncated first, the maximum shrank, the
+// reference point followed it, and the front contracted step by step: median
+// IGD 0.085 at 30000 FE with a converged population. Offset 1.0 (r = 2·max)
+// gives 0.0037, a fixed R = (2, 2) 0.0037; on DTLZ2 (M = 3) the two offsets
+// are indistinguishable (0.079 vs 0.078). The default is now 1.0.
+// AND A LIMIT THAT NO OFFSET LIFTS: where the front's derivative diverges at
+// the edge (lim -f'(x) = +inf as x -> x_min, which is the case for ZDT1 and
+// ZDT4), the extreme point is in NO optimal mu-distribution for ANY finite
+// reference point (Auger, Bader, Brockhoff & Zitzler, Theorem 2 and Table 1,
+// where those two problems carry r = +inf). Raising ref_offset does not help
+// there: if you need the extremes of such a front, keep them yourself — the
+// vault's archive is the place — rather than expect the hypervolume to hold
+// them.
 // DECLARED DEVIATION (domain narrowing): only |R| = 1 is supported, while the
 // paper allows a reference SET (§3.3 works a two-point example). At |R| = 1 the
 // UR filter of Alg.2 line 4 and the "∃r∈R : s ≼ r" test of Alg.3 line 11 both
@@ -71,7 +86,10 @@ public:
 private:
     // ── hyperparameters ────────────────────────────────────────────────────
     int          n_samples_  = 10000;  // M: MC sample count (paper §6.1)
-    double       ref_offset_ = 0.1;    // adaptive ref point offset (deviation)
+    // Adaptive reference point offset (deviation, see header): r_i =
+    // max_i·(1 + ref_offset_). Was 0.1 until 2026-09-05 — measured to strip
+    // the extremes and shrink the front (ZDT1 IGD 0.085 vs 0.0037 at 1.0).
+    double       ref_offset_ = 1.0;
     double       eta_c_      = 20.0;
     double       eta_m_      = 20.0;
     std::mt19937 rng_{std::random_device{}()};

@@ -9,15 +9,18 @@
 // Generational scheme (Alg.1):
 //   1. Alg.3: N offspring; parents come from a binary tournament over the
 //      archive EA (line 4); SBX (p_c=1, eta_c=20) + polynomial mutation
-//      (p_m=1/n, eta_m=20). The offspring y lies in Omega by construction,
+//      (p_m=1/pop_size — EDV-1, eta_m=20). The offspring y lies in Omega by construction,
 //      since the bounded operators clamp: "F(y) in Omega" in Alg.3 line 7 is a
 //      typo in the paper for y in Omega, and a separate check would be dead
 //      code. The ideal point z* is updated by the offspring (line 9,
 //      monotonically).
 //   2. Alg.4 (Update EA): S = the non-dominated members of EA u Y;
 //      if |S| <= 2N then EA = S (the EA size is variable, up to 2N);
-//      otherwise: Step 1 — for each of the N direction vectors d_i (a two-layer
-//      Das-Dennis lattice, Alg.2), the solution of S closest by angle is moved
+//      otherwise: Step 1 — for each of the N direction vectors d_i (Alg.2: a
+//      Das-Dennis lattice of exactly N points — das_dennis::generate_exact
+//      picks the single layer when N is a single-layer size and the two-layer
+//      pair H1/H2 otherwise; an unattainable N throws, the library's Path-A
+//      rule), the solution of S closest by angle is moved
 //      into EA if that angle is below a_i, the minimum angle from d_i to its
 //      neighbours; Step 2 — exactly |S|−2N of the remaining S are removed, the
 //      worst by the eps+ fitness of Eq.4,
@@ -25,11 +28,10 @@
 //      incremental update of Eq.5; the rest moves into EA, giving |EA| = 2N.
 //
 //   I_{eps+}(a,b) = max_i (f_i(a) − f_i(b)) (Eq.2); angles are measured from
-//   f − z* (an assumption: the paper does not specify the role of z* in the
-//   angle); arccos is used instead of the paper's sin theta, which is
-//   monotonically equivalent on [0, pi/2].
+//   f − z* by default (EDV-3); arccos is used instead of the paper's sin theta,
+//   which is monotonically equivalent on [0, pi/2].
 //
-// PAPER DEFAULTS (§4.2.4): v (kappa) = 0.05, p_c=1, p_m=1/n, eta=20.
+// PAPER DEFAULTS (§4.2.4): v (kappa) = 0.05, p_c=1, p_m=1/pop_size, eta=20.
 //   NOTE the paper is internally inconsistent on v: §2.2 gives v=0.01 while
 //   §4.2.4 gives v=0.05. The experimental value 0.05 of §4.2.4 is used.
 //   It is NOT inconsistent on p_m — see EDV-1.
@@ -38,15 +40,45 @@
 //   fitness of Eq.4 as computed inside EA, larger being better, which is the
 //   only ranking the algorithm already maintains over EA.
 // DECLARED DEVIATIONS:
-//   EDV-1 (DEVIATION). p_m = 1/n_vars, not the paper's literal 1/pop_size.
-//     §4.2.4 is explicit and self-consistent here — "the mutation probability
-//     (p_m) is set to 1/pops. The pops is equal to the pop_size of the
-//     algorithm" — so this is a deliberate departure from the text, not a
-//     resolved ambiguity: it is read as a slip against the Deb polynomial-
-//     mutation convention the paper itself cites. The gap is large, not
-//     cosmetic: at the paper's own m=3 setting (pop_size 300, DTLZ n=7) it is
-//     1/300 against 1/7. Compare sms_m2m.hpp (SMSM2M-2), which meets the same
-//     phrasing in a different paper and implements it literally.
+//   EDV-1 (FIXED 2026-09-06, third primary-source pass). p_m = 1/pop_size, the
+//     paper's letter: §4.2.4 is explicit and self-consistent — "the mutation
+//     probability (p_m) is set to 1/pops. The pops is equal to the pop_size of
+//     the algorithm". The port used 1/n_vars (the Deb polynomial-mutation
+//     convention the paper cites) and called the text a slip; the gap is
+//     large (at the paper's m=3 setting, pop_size 300 and DTLZ n=7: 1/300
+//     against 1/7). Measured 2026-09-06 (FE-trajectory driver, DTLZ2 M=3 N=91
+//     n=12 / ZDT1 N=100 n=30, 30 000 FE, median IGD of 3 seeds, 1/n_vars ->
+//     1/pop_size): DTLZ2 0.0546 -> 0.0545 (seeds 0.0546/0.0545/0.0547 ->
+//     0.0545/0.0546/0.0544); ZDT1 0.0039 -> 0.0040 (0.0039/0.0039/0.0039 ->
+//     0.0040/0.0040/0.0040); ZDT1 converges more slowly mid-run (IGD at
+//     5k/10k FE 0.066/0.013 -> 0.174/0.040) and ends level, so the letter
+//     is the default. set_pm_literal(false) restores 1/n_vars. Compare
+//     sms_m2m.hpp (SMSM2M-2), which meets the same phrasing in a different
+//     paper and also implements it literally.
+//   EDV-2 (FIXED 2026-09-05, second primary-source pass). Alg.3 lines 2-11
+//     build Y one offspring at a time: each iteration draws its own parents
+//     Pa by binary tournament, "y = SBX(Pa)" yields ONE offspring y, and PM is
+//     applied to that y. The port used to keep both SBX children of N/2
+//     tournament pairs (N tournaments in total); it now runs N iterations
+//     with two tournaments each and keeps the first SBX child, as printed.
+//     The RNG stream differs from the previous release.
+//   EDV-3 (READING, measured). Alg.4 line 8 takes the angle between F(x) and
+//     d^i; Fig.3 draws F(x) from the origin O, while §3.2 keeps z* "used to
+//     the evolution process to some extent" without saying where. The only
+//     geometric use z* can have is that angle, so it is measured from f − z*
+//     by default; set_ideal_shift(false) measures it from the origin.
+//     Measured 2026-09-06 (protocol as in EDV-1, f − z* -> origin):
+//     DTLZ2 0.0546 -> 0.0548 (seeds 0.0546/0.0545/0.0547 -> 0.0548/0.0548/
+//     0.0548); ZDT1 0.0039 -> 0.0039 (0.0039/0.0039/0.0039 -> 0.0039/0.0039/
+//     0.0039) — within the seed scatter; the default stays f − z*, the reading
+//     under which z* has a use.
+//   EDV-4 (DECLARED). Table 3 lists N = 276 at m = 10 for the (3,2) two-layer
+//     lattice, whose size is C(12,9) + C(11,9) = 275; this port requires
+//     |D| = N exactly (generate_exact), so 276 throws and 275 is the size to
+//     use. Alg.4 line 27 "Set the size of EA: M = N" is read as |EA| = 2N,
+//     which is what §3.4 says in words and what lines 14 and 22-26 produce.
+//     Alg.3 line 4 "Pa = binary tournament(EA)" is run twice per offspring
+//     (two parents for SBX), with replacement, ties to the first draw.
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY —
 //   CDP in the dominance relation; binary variables.
 // ============================================================================
@@ -85,6 +117,8 @@ private:
     double       eta_c_ = 20.0;
     double       eta_m_ = 20.0;
     double       pc_    = 1.0;
+    bool         ideal_shift_ = true;   // EDV-3: angles from f − z* (true) or from the origin
+    bool         pm_literal_  = true;   // EDV-1: p_m = 1/pop_size (the paper's letter); false -> 1/n_vars
     std::mt19937 rng_{std::random_device{}()};
 
     std::vector<std::vector<double>> D_;     // direction vectors (N of them)
@@ -170,6 +204,8 @@ public:
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation (double e) { eta_m_ = e; }
     void set_seed(unsigned s)        { rng_.seed(s); }
+    void set_ideal_shift(bool b)     { ideal_shift_ = b; }   // EDV-3
+    void set_pm_literal(bool b)      { pm_literal_ = b; }    // EDV-1
 
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
@@ -233,12 +269,15 @@ public:
             return (fit[a] >= fit[b]) ? a : b;
         };
 
-        // ── Alg.3: N offspring, binary tournament(EA) + SBX + PM ───────────
+        // ── Alg.3: N offspring; per offspring y: Pa = binary tournament(EA)
+        //    (two parents), y = SBX(Pa) — ONE child, the first —, y = PM(y).
+        //    (EDV-2)
         int off_base = vault.expand(N);
         int nv = vault.vars_n();
-        double pm = (nv > 0) ? 1.0 / nv : 0.0;
+        double pm = pm_literal_ ? 1.0 / static_cast<double>(N)          // §4.2.4 (EDV-1)
+                                : ((nv > 0) ? 1.0 / nv : 0.0);           // Deb convention
         std::vector<double> pv1(nv), pv2(nv), c1, c2;
-        for (int i = 0; i < N; i += 2) {
+        for (int i = 0; i < N; ++i) {
             int p1 = tournament(), p2 = tournament();
             for (int j = 0; j < nv; ++j) {
                 pv1[j] = vault.get_variable(p1, j);
@@ -246,7 +285,6 @@ public:
             }
             ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
             ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
-            ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
             if (vault.bin_vars_n() > 0) {
                 std::vector<int> bv1(vault.bin_vars_n()), bv2(vault.bin_vars_n()), bc1, bc2;
                 for (int j = 0; j < vault.bin_vars_n(); ++j) {
@@ -255,12 +293,9 @@ public:
                 }
                 ops::binary_crossover(bv1, bv2, bc1, bc2, rng_);
                 ops::bit_flip_mutation(bc1, vault.bin_vars_n(), rng_);
-                if (i + 1 < N) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
                 vault.set_all_variables(off_base + i, c1, bc1);
-                if (i + 1 < N) vault.set_all_variables(off_base + i + 1, c2, bc2);
             } else {
                 vault.set_variables(off_base + i, c1);
-                if (i + 1 < N) vault.set_variables(off_base + i + 1, c2);
             }
         }
         vault.sync();
@@ -272,11 +307,11 @@ public:
             update_ideal(vault.objectives_of(i));
 
         // shifted objectives f' = f − z* (for the angles; eps+ is
-        // translation-invariant)
+        // translation-invariant) — or the raw f when ideal_shift_ is off (EDV-3)
         std::vector<std::vector<double>> Fp(pool, std::vector<double>(m, 0.0));
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) Fp[i][j] = o[j] - ideal_[j];
+            for (int j = 0; j < m; ++j) Fp[i][j] = o[j] - (ideal_shift_ ? ideal_[j] : 0.0);
         }
 
         // ── Alg.4 line 2: the non-dominated set S from EA u Y ──────────────

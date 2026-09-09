@@ -8,9 +8,15 @@
 // doi:10.1109/CEC.2017.7969423
 //
 // Generational scheme (Alg.2 = the adaptive Alg.1 of IBEA_HD plus Step 2.1):
-//   1. Mating (Step 6): binary tournament on F over the current parent pool.
-//   2. Variation (Step 7): SBX (eta_c=20, p_c=0.9) + polynomial mutation
-//      (eta_m=20, p_m=1/n); the offspring are appended to P.
+//   1. Mating (Step 6): binary tournament on F over the current parent pool,
+//      two parents per offspring.
+//   2. Variation (Step 7): SBX (eta_c=20, p_c=0.9) "to generate two
+//      offspring, and use a mutation operator on one of the offspring. The
+//      resulting offspring is then added to P" — ONE child per pair (the first
+//      SBX child, PM eta_m=20 / p_m=1/n on it), mu children per generation;
+//      this is jMetal's IBEA inner loop, which §IV-A says the paper ran.
+//      FIX 2026-09-05 (second primary-source pass): the port used to keep
+//      both SBX children of mu/2 pairs and mutate both; now one per pair.
 //   3. Step 2.1 (the key modification): NSGA-II fast non-dominated sorting,
 //      P <- front 0, so the dominated solutions are removed BEFORE scaling.
 //      The pool size after the filter is variable and may fall below mu.
@@ -399,8 +405,13 @@ public:
         vault.expand(n);   // n offspring slots: [n_parents, n_parents+n)
         double pm = resolved_pm(vault);
 
+        // Alg.1 Steps 6-7, per offspring: two tournament parents, crossover
+        // "to generate two offspring, and use a mutation operator on ONE of
+        // the offspring. The resulting offspring is then added to P" — one
+        // child per pair (the first SBX child, PM on it), mu children per
+        // generation. This is jMetal's IBEA inner loop, which the paper ran.
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
-        for (int i = 0; i < n; i += 2) {
+        for (int i = 0; i < n; ++i) {
             int p1 = tournament(vault, dist_int);
             int p2 = tournament(vault, dist_int);
             for (int j = 0; j < vault.vars_n(); ++j) {
@@ -409,7 +420,6 @@ public:
             }
             ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
             ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
-            ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
             if (vault.bin_vars_n() > 0) {
                 std::vector<int> bv1(vault.bin_vars_n()), bv2(vault.bin_vars_n()),
                                  bc1, bc2;
@@ -419,12 +429,9 @@ public:
                 }
                 ops::binary_crossover(bv1, bv2, bc1, bc2, rng_);
                 ops::bit_flip_mutation(bc1, vault.bin_vars_n(), rng_);
-                if (i + 1 < n) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
-                vault.set_all_variables(n_parents + i,     c1, bc1);
-                if (i + 1 < n) vault.set_all_variables(n_parents + i + 1, c2, bc2);
+                vault.set_all_variables(n_parents + i, c1, bc1);
             } else {
                 vault.set_variables(n_parents + i, c1);
-                if (i + 1 < n) vault.set_variables(n_parents + i + 1, c2);
             }
         }
         vault.sync();

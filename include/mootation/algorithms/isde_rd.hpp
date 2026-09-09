@@ -58,12 +58,27 @@
 //     The lattice path also warns loudly when it substitutes K; it used to be
 //     silent, and setup_seeded used to skip the warning entirely (both entry
 //     points now share build_directions).
-//   ISDE-3 (DEVIATION). The angular ASSOCIATION is computed in the shifted
-//     space (f − z*), where z* is the running ideal over the pool. Without the
-//     shift, negative objectives (ZDT3 has f2 < 0) push points into another
-//     quadrant, the angular division goes wrong and segments are lost. The WS
-//     ordering and the SDE distance are translation-invariant and need no
-//     shift. Verified: ZDT3 spread 0.42 -> 0.84.
+//   ISDE-3 (DEVIATION, kept by measurement 2026-09-06, full-paper checklist).
+//     The angular association is computed in the shifted space f − z*, z* the
+//     per-objective minimum over the pool being allocated (the cone apex sits
+//     at the pool's ideal point). The LETTER is the decomposition of
+//     MOEA/D-M2M [4] that §II-B delegates to: angles from the ORIGIN ([4]
+//     Eq.2, objectives assumed non-negative; [4] footnote 1 shifts a negative
+//     objective by a constant M) — the rule used by moead_m2m (M2M-4),
+//     sms_m2m and hlmea, implemented here as set_ideal_shift(false) (only an
+//     objective whose pool minimum is negative is shifted, by −min). It is
+//     NOT the default because it measures worse: DTLZ2 (M=3, N=91, K=10,
+//     30 000 FE, 6 seeds) median IGD 0.0934 under the letter
+//     (0.0919/0.0992/0.0936/0.0962/0.0855/0.0866, trajectory non-monotone:
+//     0.077 at 5k FE -> 0.093 at 30k) against 0.0797 under the shift
+//     (0.0801/0.0820/0.0813/0.0750/0.0795/0.0791) — disjoint ranges; ZDT1
+//     (N=100) 0.0109 (0.0109/0.0108/0.0108/0.0119/0.0112/0.0076) against
+//     0.0091 (0.0087/0.0190/0.0050/0.0096/0.0261/0.0073) — overlapping. The
+//     older evidence stands too: without any shift ZDT3 (f2 < 0) loses PF
+//     segments (spread 0.42 -> 0.84 with the shift). The WS ordering and the
+//     SDE distance are translation-invariant either way, so only the cone
+//     membership is affected. The same A/B on hlmea showed no difference, so
+//     hlmea keeps the letter; the two defaults differ on purpose.
 //   ISDE-4 (MINOR). Above S, removal proceeds one at a time with I_SDE^+
 //     recomputed; P_WS = empty gives +inf.
 //   ISDE-5 (MINOR). One offspring per member (SBX, first child); real-valued
@@ -75,13 +90,35 @@
 //     answer set is then SMALLER than pop_size (m=6, pop_size=132 -> K_=21,
 //     S_=6, so 126 are returned) — and LARGER when the substituted K_ exceeds
 //     pop_size, because the S_<1 -> 1 clamp forces one member per subregion.
-//   ISDE-7 (MINOR). Intra-subregion mating retries up to 5 times to avoid
-//     q == p; Alg.3 line 8 says only "randomly choose q from P_k" and imposes
-//     no such condition. Two effects: at |P_k| = 2 the paper self-mates half
-//     the time while this code almost never does, and the retry loop consumes
-//     a data-dependent number of RNG draws (1 to 6 per mating), so the stream
-//     position is not the same as a single unconditional draw. Kept rather
-//     than deleted — removing it would itself change the stream.
+//   ISDE-7 (FIXED 2026-09-05, second primary-source pass). Alg.3 line 8 says
+//     only "randomly choose q from P_k" — no q != p condition, no size test.
+//     The port used to retry up to 5 times to avoid q == p and to skip the
+//     intra-subregion branch altogether at |P_k| = 1; both are gone. A
+//     self-mating SBX yields copies of p that PM then perturbs, which is the
+//     paper's own behaviour at small S_k. One unconditional draw per mating,
+//     so the RNG stream differs from the previous release.
+//   ISDE-8 (FIXED 2026-09-05). Alg.3 line 13, P = P ∪ o, is written INSIDE
+//     the "for each p in P_k" loop, so the line-10 partner ("randomly choose q
+//     from P") is drawn from P as it grows during the generation and can be
+//     an offspring bred earlier in the same generation. The port used to draw
+//     from a generation-start snapshot of P. It now keeps one growing P and
+//     hands it whole to the allocation (lines 16-17). P_k itself is not
+//     touched during the loop, exactly as in the pseudocode.
+//   ISDE-9 (FIXED 2026-09-06, full-paper checklist). Alg.3 line 2 only
+//     ASSIGNS the initial population to the subregions; the quota selection
+//     (line 17 = Alg.1) sits inside the generation loop. The port used to run
+//     Alg.1 on the initial population too, truncating/refilling every
+//     subregion to S_k before the first generation (at N=91, K=10 that
+//     dropped one member and bred 90 offspring instead of 91 in generation 1).
+//     setup/setup_seeded now associate only (assign_only); the first
+//     allocation follows the first generation's offspring, as in the
+//     pseudocode.
+//   ISDE-10 (FIXED 2026-09-06, full-paper checklist). Alg.1 line 6 / §II-C
+//     Case 2: "randomly select S_k − |P_k| individuals from P" — DISTINCT
+//     members of P that are not already in P_k (partial Fisher–Yates), the
+//     reading used for the same rule in moead_m2m / sms_m2m. Previously the
+//     draws were i.i.d. over the whole pool, so a member of P_k itself, or the
+//     same outsider, could be added twice.
 //
 // CONSTRAINTS (beyond the paper, off by default). ISDE+RD's only preference
 //   relation is the per-subregion truncation by I_SDE^+ (smallest indicator
@@ -98,6 +135,7 @@
 #include <numeric>
 #include <random>
 #include <string>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -119,6 +157,7 @@ public:
 private:
     int    K_req_=10;
     bool   exact_K_=false;   // ISDE-2: opt out of the Das-Dennis round-up
+    bool   ideal_shift_=true;  // ISDE-3: shift every objective by its pool minimum (default, measured); false = [4] letter
     double inprob_=0.7;
     double eta_c_=20.0, eta_m_=20.0, pc_=1.0, pm_=-1.0;
     std::mt19937 rng_{std::random_device{}()};
@@ -127,7 +166,7 @@ private:
     std::vector<std::vector<double>> V_;
     std::vector<std::vector<Sol>> subpop_;
     int K_=0, m_=0, N_=0, S_=0;
-    std::vector<double> z_;   // running ideal (ISDE-3): shift for the angular association
+    std::vector<double> z_;   // ISDE-3: per-objective shift (≤ 0): min f_i when negative, else 0
 
     double pm_eff(int nv) const { return (pm_>0.0)?pm_:(nv>0?1.0/nv:0.0); }
     static double cosang(const std::vector<double>& a, const std::vector<double>& b){
@@ -135,10 +174,16 @@ private:
         double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 1.0; return std::clamp(d/q,-1.0,1.0);
     }
     static std::vector<double> unit(std::vector<double> f){ double n=0; for(double v:f) n+=v*v; n=std::sqrt(std::max(n,1e-300)); for(double&v:f) v/=n; return f; }
+    // ISDE-3: default — shift by the pool minimum of every objective; letter of
+    // [4] Eq.2 (ideal_shift_=false) — angles from the origin, only a negative
+    // objective is shifted (by −min f_i, [4] footnote 1).
+    void set_shift(const std::vector<Sol>& pool){
+        z_.assign(m_,0.0);
+        for(int k=0;k<m_;++k){ double mn=std::numeric_limits<double>::max();
+            for(const auto& s:pool) mn=std::min(mn,s.objs[k]);
+            z_[k]=ideal_shift_ ? mn : ((mn<0.0)?mn:0.0); }
+    }
     int assoc(const std::vector<double>& f) const {
-        // ISDE-3: the angular association runs in the shifted space (f−z*);
-        // otherwise negative objectives (ZDT3 f2 < 0) break the angular
-        // division around the origin.
         std::vector<double> s(m_); for(int k=0;k<m_;++k) s[k]= z_.empty()? f[k] : f[k]-z_[k];
         int best=0; double bc=cosang(s,V_[0]); for(int i=1;i<K_;++i){double c=cosang(s,V_[i]); if(c>bc){bc=c;best=i;}} return best;
     }
@@ -165,10 +210,15 @@ private:
     void store_arch(DataVault<Ind_t>& vault){ auto P=flat(); vault.reduce(0); vault.expand((int)P.size());
         for(int i=0;i<(int)P.size();++i) vault.seed_individual((std::size_t)i,P[i].vars,P[i].objs,{},{}); }
 
+    // Alg.3 line 2: association only (no quota selection) — ISDE-9.
+    void assign_only(const std::vector<Sol>& pool){
+        set_shift(pool);
+        subpop_.assign(K_,{});
+        for(const auto& s:pool) subpop_[assoc(s.objs)].push_back(s);
+    }
+
     void allocate(const std::vector<Sol>& pool){
-        // running ideal over the pool (the shift for the angular association)
-        z_.assign(m_,std::numeric_limits<double>::max());
-        for(const auto& s:pool) for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],s.objs[k]);
+        set_shift(pool);                       // ISDE-3 (shift rule per ideal_shift_)
         std::vector<std::vector<int>> bk(K_);
         for(int i=0;i<(int)pool.size();++i) bk[assoc(pool[i].objs)].push_back(i);
         std::uniform_int_distribution<int> dp(0,(int)pool.size()-1);
@@ -176,7 +226,16 @@ private:
         for(int k=0;k<K_;++k){
             std::vector<Sol> G; for(int i:bk[k]) G.push_back(pool[i]);
             if((int)G.size()==S_){ subpop_[k]=G; }
-            else if((int)G.size()<S_){ subpop_[k]=G; int need=S_-(int)G.size(); for(int t=0;t<need;++t) subpop_[k].push_back(pool[dp(rng_)]); }
+            else if((int)G.size()<S_){ subpop_[k]=G; int need=S_-(int)G.size();
+                // Alg.1 line 6 / Case 2: S_k − |P_k| individuals "from P" — distinct
+                // members of P not already in P_k (ISDE-10).
+                std::vector<char> in(pool.size(),0); for(int i:bk[k]) in[i]=1;
+                std::vector<int> others; others.reserve(pool.size());
+                for(int i=0;i<(int)pool.size();++i) if(!in[i]) others.push_back(i);
+                int n_o=(int)others.size();
+                for(int t=0;t<need && t<n_o;++t){ int r=std::uniform_int_distribution<int>(t,n_o-1)(rng_); std::swap(others[t],others[r]); subpop_[k].push_back(pool[others[t]]); }
+                for(int t=n_o;t<need;++t) subpop_[k].push_back(pool[dp(rng_)]);   // degenerate: fewer outsiders than needed
+            }
             else { // above S: remove one at a time by I_SDE^+
                 std::vector<int> alive(G.size()); std::iota(alive.begin(),alive.end(),0);
                 while((int)alive.size()>S_){
@@ -214,6 +273,7 @@ public:
     // sms_m2m. The generator draws no random numbers, so the switch changes
     // the geometry without shifting the RNG stream.
     void set_exact_directions(bool b){ exact_K_=b; }
+    void set_ideal_shift(bool b){ ideal_shift_=b; }   // ISDE-3: false = angles from the origin ([4] Eq.2 letter)
     void set_n_clusters(int k){ K_req_=k; }
     void set_inprob(double p){ inprob_=p; }
     void set_eta_crossover(double e){ eta_c_=e; }
@@ -245,6 +305,10 @@ public:
     }
 
     void setup(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("ISDE+RD: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size();
         build_directions();
         const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
@@ -254,32 +318,39 @@ public:
         std::vector<Sol> P; for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             P.push_back(s);}
-        allocate(P);
+        assign_only(P);   // Alg.3 line 2 (ISDE-9)
     }
     void setup_seeded(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("ISDE+RD: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size();
         build_directions();
-        std::vector<Sol> P; for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); P.push_back(s);}
-        allocate(P);
+        std::vector<Sol> P; for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+            if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
+            P.push_back(s);}
+        assign_only(P);   // Alg.3 line 2 (ISDE-9)
     }
 
     void step(DataVault<Ind_t>& vault){
         int scratch=vault.expand(1);
         std::uniform_real_distribution<double> uni(0,1);
-        std::vector<Sol> flatP=flat();
-        std::uniform_int_distribution<int> dall(0,(int)flatP.size()-1);
-        std::vector<Sol> O;
+        // Alg.3 lines 4-15. Line 13 (P = P ∪ o) sits INSIDE the per-member
+        // loop, so the line-10 partner is drawn from P as it grows within the
+        // generation (ISDE-8); line 8 draws q from P_k with no q != p
+        // condition and no size test (ISDE-7).
+        std::vector<Sol> P=flat();
         for(int k=0;k<K_;++k){
             auto& Pk=subpop_[k]; int sz=(int)Pk.size(); if(sz==0) continue;
             for(int j=0;j<sz;++j){
                 Sol q;
-                if(uni(rng_)<inprob_ && sz>1){ int qq=std::uniform_int_distribution<int>(0,sz-1)(rng_); for(int a=0;a<5&&qq==j;++a) qq=std::uniform_int_distribution<int>(0,sz-1)(rng_); q=Pk[qq]; }
-                else q=flatP[dall(rng_)];
-                O.push_back(breed(Pk[j],q,vault,scratch));
+                if(uni(rng_)<inprob_) q=Pk[std::uniform_int_distribution<int>(0,sz-1)(rng_)];
+                else q=P[std::uniform_int_distribution<int>(0,(int)P.size()-1)(rng_)];
+                P.push_back(breed(Pk[j],q,vault,scratch));
             }
         }
-        std::vector<Sol> merged=flatP; for(auto&s:O) merged.push_back(s);
-        allocate(merged);
+        allocate(P);   // Alg.3 lines 16-17
         store_arch(vault);
     }
 };

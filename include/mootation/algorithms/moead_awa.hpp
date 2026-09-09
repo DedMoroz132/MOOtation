@@ -10,10 +10,18 @@
 //   1. Step 2.1–2.2: every 50 generations Δ^i=(old−new)/old on g^tc(x^i|λ^i),
 //      π^i ← 1 if Δ>0.001, otherwise (0.95+0.05·Δ/0.001)·π^i.
 //   2. Step 2.3: I = m corner subproblems (weights ≈ permutations of
-//      (1,0,…,0)) + (⌊N/5⌋−m) subproblems by a 10-tournament on π^i.
+//      (1,0,…,0)) + (⌊N/5⌋−m) OTHER subproblems by a 10-tournament on π^i —
+//      the tournament draws from the indexes not yet in I, so I is a set of
+//      exactly max(m, ⌊N/5⌋) distinct subproblems (same reading as DRA-9 in
+//      moead_dra.hpp, whose Step 2 has the identical wording; the paper's
+//      "other … indices … add them to I" is read as a set). Fixed 2026-09-05:
+//      the tournament used to draw from all N with replacement and could put
+//      one subproblem into I several times.
 //   3. Step 3.1–3.3 (for i∈I): pool P = B(i) with probability δ=0.9,
-//      otherwise {1..N}; r1=i, r2,r3 random from P; SBX + polynomial
-//      mutation → y.
+//      otherwise {1..N}; r1=i, r2,r3 — two plain uniform draws from P (no
+//      distinctness is required by Step 3.2; 2026-09-05: a rejection loop on
+//      r3 ≠ r2 was removed — r3 is unused anyway, see ASSUMPTION (1));
+//      SBX(x^{r1}, x^{r2}) + polynomial mutation → y.
 //   4. Step 3.4–3.5: z*_j = f_j(y)−10⁻⁷ on improvement; replacements: random
 //      j from P, g^tc(y|λ^j)≤g^tc(x^j|λ^j) → x^j=y, at most n_r replacements.
 //   5. Step 4.1 + §4.3: EP archive of non-dominated solutions, cap 1.5N,
@@ -34,13 +42,19 @@
 // Defaults = §4.3: T=0.1N, δ=0.9, nus=0.05N, rate_evol=0.8, |EP|≤1.5N;
 //   SBX/PM: η_c=η_m=20, p_c=1.0, p_m=1/n (Table 1). The paper sets wag
 //   per problem (100–250, §4.3 for Adaptive-MOEA/D); the default here is 100
-//   (set_wag). The paper does not set n_r — we inherit n_r=2 from MOEA/D-DRA.
+//   (set_wag). The paper does not set n_r anywhere: n_r = 2 is INHERITED from
+//   MOEA/D-DE (Li & Zhang 2009, §IV-A), the origin of the n_r-bounded Step 3.5;
+//   MOEA/D-DRA (Zhang, Liu, Li 2009), whose resource allocation §3.4 adopts,
+//   uses n_r = 0.01N instead (1 / 3 for the paper's N = 100 / 300). set_nr
+//   selects either; the value is a reading, not a statement of the paper.
 // ASSUMPTIONS (each is a gap in the paper, not a departure from it):
 //   (1) Step 3.2 reads "construct a solution ȳ from x^{r1}, x^{r2} and x^{r3}
 //       by the SBX operator" — but SBX is a BINARY operator and the step names
 //       three parents. This port crosses x^{r1} with x^{r2}; r3 is still drawn
-//       (so the RNG stream matches a three-index reading) and then unused. The
-//       paper offers no three-parent SBX and no rule for picking two of three.
+//       (one plain uniform draw, so the RNG stream matches a three-index
+//       reading) and then unused. The paper offers no three-parent SBX and no
+//       rule for picking two of three. The first SBX child is used ("a
+//       solution ȳ", singular).
 //   (2) After a weight adjustment the utility π is reset to 1. The paper does
 //       not say what happens to π for a subproblem whose weight just moved,
 //       and a stale π would rank it by the performance of a different
@@ -61,6 +75,12 @@
 // Extensions beyond the paper (disabled by default): ConstraintMode::FEASIBILITY —
 //   an additive penalty·cv term added to g^tc; binary variables (uniform
 //   crossover + bit-flip).
+// SCALE DEPENDENCE (the paper's own, measured 2026-09-09). Step 1.2/3.4 fixes
+//   z*_j = min f_j - 1e-7 and Eq.6 divides by (f_j - z*_j) with an epsilon,
+//   both ABSOLUTE in objective space, so the run is not invariant to the units:
+//   multiplying every objective of DTLZ2 (M=3) by 2^10 moves the final IGD by
+//   2.1 % (5000 FE), by 5.4 % at 2^30 - small and slowly growing, unlike an
+//   exponential fitness, but real. The paper's constants are left as written.
 // ============================================================================
 
 #include <algorithm>
@@ -274,23 +294,33 @@ private:
     }
 
     // ── Step 2.3: I = corners + 10-tournament on π ─────────────────────────
+    // "other ⌊N/5⌋ − m indices … add them to I": the tournament draws from the
+    // indexes NOT yet in I (I is a set; same reading as DRA-9 in
+    // moead_dra.hpp); it shrinks to min(10, |candidates|) when fewer than
+    // ten remain.
     std::vector<int> select_subproblems(int n, int m) {
         std::vector<int> I;
         // m corner subproblems: argmax_i λ^i_j for each objective j.
-        std::vector<char> is_corner(n, 0);
+        std::vector<char> in_I(n, 0);
         for (int j = 0; j < m; ++j) {
             int best = 0;
             for (int i = 1; i < n; ++i) if (W_[i][j] > W_[best][j]) best = i;
-            if (!is_corner[best]) { is_corner[best] = 1; I.push_back(best); }
+            if (!in_I[best]) { in_I[best] = 1; I.push_back(best); }
         }
         int total = std::max(static_cast<int>(I.size()), n / 5);
-        std::uniform_int_distribution<int> pick(0, n - 1);
-        while (static_cast<int>(I.size()) < total) {
-            int winner = pick(rng_);
-            for (int k = 1; k < 10; ++k) {
-                int cand = pick(rng_);
+        std::vector<int> candidates;
+        candidates.reserve(n);
+        for (int i = 0; i < n; ++i) if (!in_I[i]) candidates.push_back(i);
+        while (static_cast<int>(I.size()) < total && !candidates.empty()) {
+            int t_size = std::min(10, static_cast<int>(candidates.size()));
+            std::uniform_int_distribution<int> dc(0, static_cast<int>(candidates.size()) - 1);
+            int winner = candidates[dc(rng_)];
+            for (int k = 1; k < t_size; ++k) {
+                int cand = candidates[dc(rng_)];
                 if (utility_[cand] > utility_[winner]) winner = cand;
             }
+            candidates.erase(std::find(candidates.begin(), candidates.end(), winner));
+            in_I[winner] = 1;
             I.push_back(winner);
         }
         return I;
@@ -309,12 +339,13 @@ private:
         }
         const std::vector<int>& P = local ? *poolB : pool_all;
 
-        // Step 3.2: r1 = i; r2, r3 from P. SBX(x^{r1}, x^{r2}) + PM.
+        // Step 3.2: r1 = i; r2, r3 — two plain draws from P (no distinctness
+        // required). SBX(x^{r1}, x^{r2}) + PM; r3 is unused (SBX is binary —
+        // ASSUMPTION (1) in the file header).
         std::uniform_int_distribution<int> pickP(0, static_cast<int>(P.size()) - 1);
         int r2 = P[pickP(rng_)];
         int r3 = P[pickP(rng_)];
-        for (int attempt = 0; attempt < 5 && r3 == r2; ++attempt) r3 = P[pickP(rng_)];
-        (void)r3;   // SBX is binary; r3 of Step 3.2 is unused (see the file header)
+        (void)r3;
 
         const auto& bounds = vault.get_bounds();
         int nv = vault.vars_n();

@@ -51,10 +51,29 @@
 //       mating tournament, so a wrong pick propagates through all three.
 //
 // DECLARED DEVIATIONS:
-//   DHEA-1 (MINOR). Mating — binary tournament (dominance→Knee→Div); variation
-//     SBX(first child)+PM; pairs taken sequentially from the mating pool.
+//   DHEA-1 (FIXED 2026-09-05, second primary-source pass). §Mating selection:
+//     binary tournament (dominance→Knee→Div, "select one solution randomly if
+//     all the three principles fail"), "Repeat until N solutions are
+//     selected" — the mating pool P' holds N winners. Variation is
+//     unspecified beyond SBX+PM (§Parameter settings (2)); the port pairs
+//     consecutive pool members and keeps BOTH SBX children, PM each — the
+//     standard GA of PlatEMO, on which the paper ran (§Simulation results).
+//     An odd N pairs the last winner with a random pool member and keeps c1.
+//     Previously: 2N tournaments, N independent pairs, first child only.
+//   DHEA-4 (ARBITRATED). Alg.1 line 6-7 passes FrontNo to MatingSelection,
+//     but the prose defines the first tournament level as "If one solution is
+//     dominated by the other" — a pairwise test, not a rank comparison. The
+//     two differ only for a pair in different fronts that does not dominate
+//     each other; the port follows the prose (pairwise dominance).
 //   DHEA-2 (MINOR). w (the local nadir) with protection against zero
 //     components (1e-12); cos is clamped to [−1,1].
+//   DHEA-5 (FIXED 2026-09-06, full-paper checklist). Alg.2 line 14 computes
+//     Div "of each solution in P" AFTER line 3 replaced P by its normalized
+//     objectives, i.e. on the F' of the retained pool (ideal/nadir over
+//     F_1 ∪ … ∪ F_l). The port used to re-normalize over the N survivors
+//     alone, which moves the ideal/nadir and hence every angle. The survivors'
+//     F' rows are now reused (nextIdx). The initial Div (Alg.1 line 4) is
+//     unchanged: there P is the whole population.
 //   DHEA-3 (MINOR). real-valued genome; binary is beyond coverage.
 //
 // NOTABLE FIXES:
@@ -90,6 +109,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -150,14 +170,21 @@ private:
         crit_keep=keep; return keep;
     }
 
-    Sol breed(const Sol& x, const Sol& y, DataVault<Ind_t>& vault, int scratch){
+    // One SBX application on (x, y) -> both children, PM each, evaluate each;
+    // first_only keeps c1 alone (the unpaired last parent of an odd N). DHEA-1.
+    void breed_pair(const Sol& x, const Sol& y, DataVault<Ind_t>& vault, int scratch,
+                    std::vector<Sol>& O, bool first_only=false){
         const auto& b=vault.get_bounds(); int nv=vault.vars_n();
         std::vector<double> c1,c2;
         ops::sbx(x.vars,y.vars,c1,c2,b,eta_c_,pc_,rng_);
-        ops::polynomial_mutation(c1,b,eta_m_,pm_eff(nv),rng_);
-        Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch);
-        if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
-        return z;
+        auto finish=[&](std::vector<double>& c){
+            ops::polynomial_mutation(c,b,eta_m_,pm_eff(nv),rng_);
+            Sol z; z.vars=c; vault.set_variables(scratch,c); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch);
+            if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
+            O.push_back(std::move(z));
+        };
+        finish(c1);
+        if(!first_only) finish(c2);
     }
     void store_arch(DataVault<Ind_t>& vault){ vault.reduce(0); vault.expand((int)pop_.size());
         for(int i=0;i<(int)pop_.size();++i) vault.seed_individual((std::size_t)i,pop_[i].vars,pop_[i].objs,{},{}); }
@@ -199,6 +226,10 @@ public:
     void set_seed(unsigned s){ rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("DHEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
@@ -211,6 +242,10 @@ public:
         for(int e:find_extremes(F)) pop_[e].knee=true;      // Alg.1 l.3: Knee(Extreme)=true
     }
     void setup_seeded(DataVault<Ind_t>& vault){
+        // Real-valued reproduction only: refuse a binary genome instead of
+        // silently leaving every offspring bit at zero (see the header).
+        if (vault.bin_vars_n() > 0)
+            throw std::invalid_argument("DHEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
@@ -223,14 +258,20 @@ public:
         ++gen_;
         int scratch=vault.expand(1);
         std::uniform_int_distribution<int> di(0,N_-1);
-        // mating: binary tournament (dominance → knee → div)
+        std::uniform_real_distribution<double> uni(0.0,1.0);
+        // mating: binary tournament (dominance → knee → div → random), §Mating selection
         auto tour=[&](){ int a=di(rng_),b=di(rng_);
             if(dom(pop_[a],pop_[b])) return a;
             if(dom(pop_[b],pop_[a])) return b;
             if(pop_[a].knee!=pop_[b].knee) return pop_[a].knee?a:b;
-            return (pop_[a].div>pop_[b].div)?a:b; };
+            if(pop_[a].div!=pop_[b].div) return (pop_[a].div>pop_[b].div)?a:b;
+            return (uni(rng_)<0.5)?a:b; };
+        // mating pool P' of N winners ("Repeat until N solutions are selected"),
+        // consecutive pairs, both SBX children + PM (DHEA-1)
+        std::vector<int> pool(N_); for(int i=0;i<N_;++i) pool[i]=tour();
         std::vector<Sol> O; O.reserve(N_);
-        for(int i=0;i<N_;++i){ int p1=tour(),p2=tour(); O.push_back(breed(pop_[p1],pop_[p2],vault,scratch)); }
+        for(int i=0;i+1<N_;i+=2) breed_pair(pop_[pool[i]],pop_[pool[i+1]],vault,scratch,O);
+        if(N_%2==1) breed_pair(pop_[pool[N_-1]],pop_[pool[di(rng_)]],vault,scratch,O,true);
 
         // env selection
         std::vector<Sol> Q=pop_; for(auto&s:O) Q.push_back(s);
@@ -265,17 +306,18 @@ public:
         // pick 1 from the cluster
         std::vector<char> isExt(np,0); for(int e:ext) isExt[e]=1;
         std::vector<Sol> next; next.reserve(N_);
+        std::vector<int> nextIdx; nextIdx.reserve(N_);   // rows of F kept (DHEA-5)
         double Pt=std::pow(std::min(1.0,(double)gen_/std::max(1,t_max_)),alpha_);
         for(int c=0;c<P_ && (int)next.size()<N_;++c){
             auto& cl=cluster[c];
             // if the pivot is an extreme: auto-select the extreme
             int extInCl=-1; for(int idx:cl) if(isExt[idx]) extInCl=idx;
-            if(extInCl>=0){ Sol s=P[extInCl]; s.knee=true; next.push_back(s); continue; }
-            if((int)cl.size()==1){ Sol s=P[cl[0]]; s.knee=true; next.push_back(s); continue; }
+            if(extInCl>=0){ Sol s=P[extInCl]; s.knee=true; next.push_back(s); nextIdx.push_back(extInCl); continue; }
+            if((int)cl.size()==1){ Sol s=P[cl[0]]; s.knee=true; next.push_back(s); nextIdx.push_back(cl[0]); continue; }
             // local ideal
             std::vector<double> li(m_,1e300); for(int idx:cl) for(int k=0;k<m_;++k) li[k]=std::min(li[k],P[idx].objs[k]);
             int coincide=-1; for(int idx:cl){ bool eq=true; for(int k=0;k<m_;++k) if(std::abs(P[idx].objs[k]-li[k])>1e-12){eq=false;break;} if(eq){coincide=idx;break;} }
-            if(coincide>=0){ Sol s=P[coincide]; s.knee=true; next.push_back(s); continue; }
+            if(coincide>=0){ Sol s=P[coincide]; s.knee=true; next.push_back(s); nextIdx.push_back(coincide); continue; }
             // Case III: hAPD. F_T=F'-li' (on the normalized ones). local nadir = max translated
             std::vector<double> li2(m_,1e300); for(int idx:cl) for(int k=0;k<m_;++k) li2[k]=std::min(li2[k],F[idx][k]);
             std::vector<double> w(m_,0.0); for(int idx:cl) for(int k=0;k<m_;++k) w[k]=std::max(w[k],F[idx][k]-li2[k]);
@@ -303,16 +345,19 @@ public:
                 if(hapd<bg){bg=hapd;best=idx;}           // Alg.3 l.23: finalChoose at min hAPD
             }
             if(best<0) best=cl[0];
-            Sol s=P[best]; s.knee=(best==kneeIdx); next.push_back(s);  // Alg.3 l.28: knee only if the selected = argmin d_h
+            Sol s=P[best]; s.knee=(best==kneeIdx); next.push_back(s); nextIdx.push_back(best);  // Alg.3 l.28: knee only if the selected = argmin d_h
         }
         // top-up on a shortfall (extension beyond the paper): a copy WITHOUT the
         // knee label — an explicit reset, so that a stale knee flag does not leak
         // into the mating tournament (Alg.3 l.2/l.28: knee only on the ones
         // selected by the algorithm).
-        while((int)next.size()<N_ && np>0){ Sol s=P[std::uniform_int_distribution<int>(0,np-1)(rng_)]; s.knee=false; next.push_back(s); }
-        if((int)next.size()>N_) next.resize(N_);
+        while((int)next.size()<N_ && np>0){ int ri=std::uniform_int_distribution<int>(0,np-1)(rng_); Sol s=P[ri]; s.knee=false; next.push_back(s); nextIdx.push_back(ri); }
+        if((int)next.size()>N_){ next.resize(N_); nextIdx.resize(N_); }
         pop_=next;
-        auto F2=normalize(pop_); compute_div(pop_,F2);
+        // Alg.2 line 14: Div on the line-3 normalization of the retained pool (DHEA-5)
+        std::vector<std::vector<double>> F2; F2.reserve(nextIdx.size());
+        for(int i:nextIdx) F2.push_back(F[i]);
+        compute_div(pop_,F2);
         store_arch(vault);
     }
 };

@@ -27,6 +27,17 @@
 // PAPER DEFAULTS (§III-C-3): pc=1.0, pm=1/n, eta_c=30, eta_m=20.
 // DECLARED DEVIATIONS (all MINOR, deliberate):
 //   - Definition 1/3: on multiple minima the first is taken, not a random one;
+//     each extreme e_i is the argmin over the WHOLE F_l (Definition 3), and a
+//     solution that is the extreme of several axes enters P once ("we only
+//     add these solutions once"), so the bootstrap may hold fewer than m
+//     extremes;
+//   - Alg.4 lines 1-7, the bootstrap when P = ∅: the m extreme solutions are
+//     added first, then "the first m best converged solutions". §II-B-3 says a
+//     solution that is both is added "only once", leaving open whether P then
+//     holds fewer than 2m members or whether the next-best fill in. This port
+//     fills in — the m best by fit are taken among the members NOT already
+//     added as extremes — so the bootstrap yields min(2m, K, |F_l|) distinct
+//     members (a reading; the paper does not say);
 //   - a defensive top-up of P from the remaining pool in degenerate cases
 //     (line 1 of Alg.6 in the paper simply returns P);
 //   - angle() = π/2 at zero norm, i.e. an individual sitting at the ideal
@@ -269,12 +280,14 @@ public:
                     axis[i] = 1.0;
                     int best = -1;
                     double ba = std::numeric_limits<double>::max();
+                    // Definition 3: argmin over the whole F_l (not only the
+                    // members still unflagged); one solution that is the
+                    // extreme of two axes is added once.
                     for (int j = 0; j < T; ++j) {
-                        if (flag[j]) continue;
                         double a = angle(Fn[Fl[j]], axis);
                         if (a < ba) { ba = a; best = j; }
                     }
-                    if (best >= 0) { P.push_back(Fl[best]); flag[best] = 1; }
+                    if (best >= 0 && !flag[best]) { P.push_back(Fl[best]); flag[best] = 1; }
                 }
                 // (2) the m best by convergence (fit, smaller is better)
                 std::vector<int> ord;
