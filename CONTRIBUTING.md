@@ -106,9 +106,10 @@ Rules for that block:
 
 ## Tests
 
-Add your algorithm to the smoke suite in `tests/`. The bar is:
+Register your algorithm in `include/mootation/algorithms.def`; every test that
+iterates over all algorithms picks it up from there. The bar is:
 
-- it converges on ZDT1 / DTLZ2 within the tolerance the suite already uses;
+- it converges on DTLZ2 (M = 3) within the thresholds `test_convergence` already uses;
 - it runs clean under ASan and UBSan;
 - it does not throw for a population size that is not a Das–Dennis lattice
   count, or it documents that restriction in the header and fails with a clear
