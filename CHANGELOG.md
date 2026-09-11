@@ -29,6 +29,9 @@ always listed under **Changed** or **Removed**.
 
 ### Changed
 
+- CI: `actions/checkout` v4 -> v5 and `actions/setup-python` v5 -> v6, the
+  releases that run on Node 24. GitHub had begun forcing the old ones onto
+  Node 24, with a deprecation warning on every job.
 - README rewritten around the question "which way in do I want", at half the
   length: install, one quick start per interface, how to choose an algorithm,
   what the library is not. The algorithm tables moved to `docs/algorithms.md`,
@@ -42,6 +45,17 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `--ranks METRIC` on `mootation.run.campaign`, and the same view in the TUI's
+  Compare tab (`t` switches between it and the medians, `e` exports either):
+  each algorithm's rank on every problem by its median indicator, averaged
+  overall, per family and per objective count, with the problems it won. A
+  medians table 58 columns wide cannot be read; this is the view that says
+  which algorithm is good where. `--compare` and `--ranks` reject an unknown
+  metric instead of printing an empty table.
+- `python/examples/campaign_all.toml`: all 58 algorithms on 45 problems (ZDT;
+  DTLZ1-7, WFG1-9, IDTLZ1-2 and SDTLZ1-2 at 3 and 5 objectives) with measured
+  run times, and a recipe in `docs/running.md` for running it on another
+  machine, or split across several.
 - `mootation.run.campaign`: a benchmark campaign runner — every selected
   algorithm on every selected problem, several seeds each, one
   `trajectory.jsonl` (IGD / IGD+ / HV against evaluations) plus `meta.json`
@@ -62,6 +76,39 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- Every Linux and macOS build, the C ABI job and the single-header check had
+  been failing in CI since the binary-genome refusals were added. In HCCA the
+  refusal shared a line with the two calls after it, which GCC and Clang flag
+  as `-Wmisleading-indentation`, and CI builds with `-Werror`. Behaviour was
+  unaffected — the `if` guarded only the `throw`, as intended — and MSVC does
+  not warn, which is why the Windows jobs and local test runs stayed green.
+  The bodies are reformatted, and an `-O3 -Wall -Wextra -Wpedantic` pass over
+  every translation unit the CI builds is clean with GCC 15.
+- A campaign job could spend more than ten minutes inside one hypervolume.
+  Equal rows do not dominate each other, so the nondominated filter kept every
+  copy, and the WFG recursion branches on each of them. The MOEA/D-M2M family
+  carries copies in its population for the whole run: at generation 0 on
+  WFG4 with five objectives a MOEA/D-AM2M population is 126 rows with 11
+  distinct, and that single call never finished. The filter keeps each
+  distinct row once. The values are unchanged — checked against the old code
+  on eleven final populations at 3 and 5 objectives — the set above takes
+  4 ms, and an ordinary well-spread 126-point set at five objectives still
+  takes two to three seconds, which is why the shipped `campaign.toml` now
+  records a trajectory point every 10 generations instead of every one.
+- Every campaign job that set an integer parameter failed. The TOML layer
+  turned every `params` value into a float; `T`, `nr`, `K`, `n_clusters` and
+  `div` are integers in the binding, and pybind11 3 refuses 20.0 for an int.
+  The shipped `campaign.toml` sets `T = 20` and `nr = 2` for MOEA/D-DE, so on
+  a fresh install every one of its MOEA/D-DE jobs failed. TOML integers now
+  stay integers, and `minimize()` takes a whole float such as `T=20.0` as the
+  integer it means and names the parameter when given a fractional one.
+- `pip install .` produced a package whose run layer could not start. The TOML
+  layer reads the algorithm list out of `algorithms.def` and the knob list out
+  of `settings.hpp`, and neither was in the wheel, so outside a checkout every
+  campaign and run file failed validation with "cannot find
+  include/mootation/algorithms.def", and the knob list silently fell back to a
+  snapshot. Both files are now installed into the package, and the CI job
+  that installs it exercises the run layer from outside the source tree.
 - **Scale invariance.** A new test (`tests/test_scale_invariance.cpp`) runs
   every algorithm on DTLZ2 and on the same problem with every objective
   multiplied by 2^10, a power of two so the scaling is exact and a

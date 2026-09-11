@@ -24,7 +24,8 @@ runs       = 31                  # seeds 1..31 (or give [campaign] seeds = [...]
 [campaign]
 out          = "results/{name}"  # relative to this file
 budget_fe    = 0                 # 0 = the problem's own pop*gens; e.g. 100000 forces gens = ceil(fe/pop)
-record_every = 1                 # trajectory point every generation
+record_every = 10                # trajectory point every 10 generations; hypervolume at
+                                 # 5 objectives costs seconds per point
 metrics      = ["igd", "igdp", "hv"]
 n_ref        = 1000              # reference-front sample for IGD / IGD+
 

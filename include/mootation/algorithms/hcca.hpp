@@ -861,16 +861,22 @@ public:
     void set_nr(int n)               { nr_ = n; }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
-    void setup(DataVault<Ind_t>& vault)        {
+    void setup(DataVault<Ind_t>& vault) {
         // Real-valued reproduction only: refuse a binary genome instead of
         // silently leaving every offspring bit at zero (see the header).
         if (vault.bin_vars_n() > 0)
-            throw std::invalid_argument("HCCA: binary variables are not supported (reproduction is real-valued only)"); init_pops(vault, false); store(vault, final_select(PP_, DP_)); }
+            throw std::invalid_argument("HCCA: binary variables are not supported (reproduction is real-valued only)");
+        init_pops(vault, false);
+        store(vault, final_select(PP_, DP_));
+    }
     void setup_seeded(DataVault<Ind_t>& vault) {
         // Real-valued reproduction only: refuse a binary genome instead of
         // silently leaving every offspring bit at zero (see the header).
         if (vault.bin_vars_n() > 0)
-            throw std::invalid_argument("HCCA: binary variables are not supported (reproduction is real-valued only)"); init_pops(vault, true);  store(vault, final_select(PP_, DP_)); }
+            throw std::invalid_argument("HCCA: binary variables are not supported (reproduction is real-valued only)");
+        init_pops(vault, true);
+        store(vault, final_select(PP_, DP_));
+    }
 
     void step(DataVault<Ind_t>& vault) {
         int scratch = vault.expand(1);

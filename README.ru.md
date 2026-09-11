@@ -278,7 +278,13 @@ ASan / UBSan на всех алгоритмах; и то и другое про�
 Секция `[campaign]` в файле запуска превращает произведение семейство × число
 критериев × алгоритм × сид в возобновляемые задания с траекторией сходимости
 у каждого, локально или как массив SLURM:
-[docs/running.md](docs/running.md#campaigns).
+[docs/running.md](docs/running.md#campaigns). Потом `--ranks igd` или `t` на
+вкладке Compare в TUI сводит результаты в одну строку на алгоритм: средний ранг
+в целом, по семействам и по числу критериев.
+[`python/examples/campaign_all.toml`](python/examples/campaign_all.toml) ставит
+все 58 алгоритмов на 45 задач, а в
+[docs/running.md](docs/running.md#all-58-algorithms-on-another-machine) есть
+рецепт, как прогнать его на другой машине или разложить на несколько.
 
 ## Устройство репозитория
 
@@ -295,7 +301,7 @@ include/mootation/
 examples/            семь программ на C++, run.cfg с каждым ключом настроек
 capi/                реализация C ABI, дымовой тест на C99, ctypes_demo.py, wrappers/
 python/mootation/    биндинг, benchmarks/, run/ (TOML-слой, кампании, метрики), tui/
-python/examples/     шесть скриптов и четыре описания запуска
+python/examples/     шесть скриптов и пять описаний запуска
 tests/               набор CTest; долгие тесты сходимости и ограничений идут по ночам
 tools/amalgamate.py  сплющивает всё в один заголовок
 docs/                algorithms, embedding, running, writing-an-algorithm

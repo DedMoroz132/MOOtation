@@ -1004,6 +1004,22 @@ def metrics_agree_with_closed_forms():
     assert abs(v3 - v_mc) < 0.01, (v3, v_mc)
     dom = M.nondominated(np.array([[1, 1], [0.5, 2], [2, 0.5], [0.6, 2.1]]))
     assert len(dom) == 3
+    # Copies of a row must not multiply the work. Equal rows do not dominate
+    # each other, so they used to survive the filter and the WFG recursion
+    # branched on every copy: a MOEA/D-AM2M population with 11 distinct rows
+    # out of 126 kept a campaign job busy for more than ten minutes.
+    # Six distinct rows on the simplex (mutually nondominated whatever the
+    # draw) twelve times over: about 100 000 recursive calls and ten seconds
+    # with the copies kept, milliseconds without.
+    import time
+    base = np.random.default_rng(3).dirichlet(np.ones(5), size=6)
+    copies = np.repeat(base, 12, axis=0)
+    assert len(M.nondominated(copies)) == 6
+    t0 = time.perf_counter()
+    v_rep, method = M.hypervolume(copies, [0] * 5, [1] * 5)
+    assert method == "exact" and time.perf_counter() - t0 < 1.0
+    v_one, _ = M.hypervolume(base, [0] * 5, [1] * 5)
+    assert abs(v_rep - v_one) < 1e-12, (v_rep, v_one)
 
 
 @test
@@ -1023,8 +1039,16 @@ def campaign_results_round_trip():
     from mootation.run import campaign as C
     with tempfile.TemporaryDirectory() as td:
         cfg_path = Path(td) / "c.toml"
-        cfg_path.write_text(_CAMP.replace("runs = 3", "runs = 1")
-                            .replace("budget_fe = 2000", "budget_fe = 300"), encoding="utf-8")
+        # Integer knobs ride along on purpose. The config layer used to turn
+        # every parameter into a float, and pybind11 3 refuses 20.0 for an
+        # int, so every job with T or nr failed — the shipped campaign's
+        # MOEA/D-DE among them.
+        text = (_CAMP.replace("runs = 3", "runs = 1")
+                .replace("budget_fe = 2000", "budget_fe = 300")
+                .replace('name = "nsga2"\npop = 0\ngens = 0',
+                         'name = "nsga2"\npop = 0\ngens = 0\nparams = { T = 20, delta = 0.9 }'))
+        assert "params = { T = 20" in text
+        cfg_path.write_text(text, encoding="utf-8")
         from mootation.run.config import load
         cfg = load(cfg_path)
         assert validate(cfg) == []
@@ -1036,6 +1060,18 @@ def campaign_results_round_trip():
         assert C.run_job(z, root, spec, quiet=True) == "done"      # resume: skipped, still done
         meta = json.loads((root / z.rel_dir / "meta.json").read_text(encoding="utf-8"))
         assert meta["status"] == "done" and meta["fe"] >= 300, meta
+        assert meta["params"] == {"T": 20, "delta": 0.9}, meta["params"]
+        assert isinstance(meta["params"]["T"], int) and meta["mootation"], meta
+        # ... and a whole float passed straight to minimize() means the integer
+        from mootation import minimize
+
+        def zdt(x):
+            return [x[0], 1.0 - x[0] ** 0.5]
+
+        kw = dict(bounds=[(0.0, 1.0)] * 3, n_objs=2, algorithm="moead_de",
+                  pop_size=10, n_gen=2, seed=1)
+        assert minimize(zdt, T=5.0, nr=2.0, **kw).active_n == 10
+        assert "T" in str(raises(TypeError, minimize, zdt, T=5.5, **kw))
         traj = C.read_trajectory(root / z.rel_dir)
         assert traj and traj[0]["gen"] == 0 and traj[-1]["gen"] == z.gens
         assert all("igd" in t and "hv" in t for t in traj)
@@ -1046,10 +1082,61 @@ def campaign_results_round_trip():
         out = root / "cmp.csv"
         C.write_compare_csv(table, out, "igd")
         assert out.read_text(encoding="utf-8").startswith("problem,")
+        ranks = C.rank_table(rows, "igd")
+        assert [a for a, _ in ranks["algorithms"]] == ["nsga2"] and ranks["groups"] == []
+        C.write_rank_csv(ranks, root / "ranks.csv")
+        assert (root / "ranks.csv").read_text(encoding="utf-8").startswith("algorithm,mean_rank")
         script = C.emit_slurm(cfg, 2)
         text = script.read_text(encoding="utf-8")
         assert "--array=0-1" in text and "--shard ${SLURM_ARRAY_TASK_ID}/2" in text
         assert (root / "jobs.txt").read_text(encoding="utf-8").count("--job") == len(jobs)
+
+
+@test
+def campaign_rank_table():
+    """Mean ranks: medians ranked per problem, ties averaged, grouped by family and M."""
+    from mootation.run import campaign as C
+
+    def row(problem, alg, igd, hv, m, status="done"):
+        return {"problem": problem, "algorithm": alg, "seed": 1, "status": status,
+                "final": {"igd": igd, "hv": hv}, "n_objs": m}
+
+    rows = [
+        row("ZDT1", "a", 0.1, 0.9, 2), row("ZDT1", "b", 0.2, 0.8, 2),
+        row("ZDT1", "c", 0.3, 0.7, 2),
+        row("DTLZ2_3D", "a", 0.5, 0.4, 3), row("DTLZ2_3D", "b", 0.5, 0.4, 3),
+        row("DTLZ2_3D", "c", 0.1, 0.6, 3),
+        row("DTLZ1_3D", "a", 0.2, 0.5, 3), row("DTLZ1_3D", "b", 0.3, 0.4, 3),
+        row("DTLZ1_3D", "c", 0.0, 1.0, 3, status="failed"),   # not finished: not ranked
+        row("DTLZ3_3D", "a", 0.1, 0.3, 3), row("DTLZ3_3D", "b", 0.1, 0.3, 3),
+        row("DTLZ3_3D", "c", 0.2, 0.2, 3),
+    ]
+
+    def close(x, y):
+        return abs(x - y) < 1e-12
+
+    # hv mirrors igd, so higher-is-better must produce exactly the same ranks
+    for metric in ("igd", "hv"):
+        r = C.rank_table(rows, metric)
+        assert r["n_problems"] == 4 and r["groups"] == ["DTLZ", "ZDT", "M=2", "M=3"], r
+        assert [a for a, _ in r["algorithms"]] == ["a", "b", "c"], (metric, r["algorithms"])
+        e = dict(r["algorithms"])
+        assert close(e["a"]["all"][0], 1.5) and e["a"]["all"][1] == 4          # 1, 2.5, 1, 1.5
+        assert close(e["b"]["all"][0], 2.0) and e["b"]["all"][1] == 4          # 2, 2.5, 2, 1.5
+        assert close(e["c"]["all"][0], 7 / 3) and e["c"]["all"][1] == 3        # absent on DTLZ1
+        assert (e["a"]["wins"], e["b"]["wins"], e["c"]["wins"]) == (3, 1, 1)   # shared best counts
+        assert close(e["a"]["DTLZ"][0], 5 / 3) and close(e["c"]["ZDT"][0], 3.0)
+        assert close(e["c"]["M=3"][0], 2.0) and close(e["b"]["M=2"][0], 2.0)
+
+    # one family at one objective count: no group columns to show
+    assert C.rank_table([x for x in rows if x["problem"].startswith("DTLZ")], "igd")["groups"] == []
+    assert C.format_ranks(C.rank_table(rows, "igd")).splitlines()[2].startswith("a ")
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "ranks.csv"
+        C.write_rank_csv(C.rank_table(rows, "igd"), p)
+        lines = p.read_text(encoding="utf-8").splitlines()
+        assert lines[0].startswith("algorithm,mean_rank,problems,wins,DTLZ_mean_rank,DTLZ_problems")
+        assert lines[1].startswith("a,1.5,4,3,"), lines[1]
 
 
 

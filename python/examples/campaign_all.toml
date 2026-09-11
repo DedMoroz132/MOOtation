@@ -1,0 +1,143 @@
+# All 58 algorithms on a spread of problem shapes: which one is good where.
+#
+#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 13 050 jobs
+#   python -m mootation.run.campaign campaign_all.toml --workers 16        # one per core
+#   python -m mootation.run.campaign campaign_all.toml --ranks igd         # the condensed answer
+#   python -m mootation.run --tui campaign_all.toml                        # Campaign / Compare / Explore
+#
+# Split across machines: run `--shard i/n` on machine i (i = 0 .. n-1), then copy
+# every machine's results/all58 into one tree; Compare, --compare and --ranks
+# read whatever meta.json files are under it. A killed run resumes when started
+# again. docs/running.md, "All 58 algorithms on another machine", has the recipe.
+#
+# ── What it costs ───────────────────────────────────────────────────────────
+# Measured with one seed at 5 000 evaluations, six jobs at a time on an
+# 8-thread desktop. The benchmark is evaluated in Python, which is most of the
+# time for the cheaper algorithms.
+#
+#   all 58 on one 2-objective problem     23 s   (ZDT1)
+#   all 58 on one 3-objective problem     92 s   (DTLZ2_3D; HypE 38 s of it)
+#   all 58 on one 5-objective problem    545 s   (DTLZ2_5D; SMS-M2M 312 s,
+#                                                 R2-IBEA 99 s, HypE 46 s)
+#
+# Time grows about in proportion to the budget. As shipped — 5 runs at 10 000
+# evaluations — the whole campaign is about 36 CPU-hours: some 2 hours on 16
+# cores, 4 to 5 on 8. SMS-M2M alone is half of that, R2-IBEA a sixth and HypE
+# an eighth; commenting out those three leaves about 8 CPU-hours. Two presets:
+#
+#   first look      runs = 5,  budget_fe = 10000   as shipped
+#   paper budgets   runs = 21, budget_fe = 0       500 generations each; about
+#                                                  900 CPU-hours, so shard it
+
+# The list comes first because TOML allows top-level keys only before the first
+# [table]. Comment a line out to drop an algorithm. pop = 0 and gens = 0 take
+# each problem's own defaults, rounded to a size the algorithm accepts (the
+# rounding is noted in each run's meta.json); parameters are the papers'.
+algorithms = [
+    # Pareto dominance and diversity
+    { name = "nsga2",      pop = 0, gens = 0 },
+    { name = "spea2",      pop = 0, gens = 0 },
+    { name = "spea2_sde",  pop = 0, gens = 0 },
+    { name = "grea",       pop = 0, gens = 0 },
+    { name = "vaea",       pop = 0, gens = 0 },
+    { name = "agemoea",    pop = 0, gens = 0 },
+    { name = "etea",       pop = 0, gens = 0 },
+    # Reference points (NSGA-III family)
+    { name = "nsga3",      pop = 0, gens = 0 },
+    { name = "a_nsga3",    pop = 0, gens = 0 },
+    { name = "theta_dea",  pop = 0, gens = 0 },
+    { name = "ar_moea",    pop = 0, gens = 0 },
+    # Decomposition and region division (MOEA/D family)
+    { name = "moead",      pop = 0, gens = 0 },
+    { name = "moead_de",   pop = 0, gens = 0 },
+    { name = "moead_dra",  pop = 0, gens = 0 },
+    { name = "moead_dd",   pop = 0, gens = 0 },
+    { name = "moead_awa",  pop = 0, gens = 0 },
+    { name = "adaw",       pop = 0, gens = 0 },
+    { name = "moead_m2m",  pop = 0, gens = 0 },
+    { name = "moead_am2m", pop = 0, gens = 0 },
+    { name = "sms_m2m",    pop = 0, gens = 0 },
+    { name = "moead_ds",   pop = 0, gens = 0 },
+    { name = "rd_emo",     pop = 0, gens = 0 },
+    { name = "aprd",       pop = 0, gens = 0 },
+    { name = "liu_gu2011", pop = 0, gens = 0 },
+    { name = "isde_rd",    pop = 0, gens = 0 },
+    { name = "dhea",       pop = 0, gens = 0 },
+    { name = "hlmea",      pop = 0, gens = 0 },
+    # Indicator-based
+    { name = "ibea_eplus", pop = 0, gens = 0 },
+    { name = "ibea_hd",    pop = 0, gens = 0 },
+    { name = "mibea",      pop = 0, gens = 0 },
+    { name = "r2ibea",     pop = 0, gens = 0 },
+    { name = "hype",       pop = 0, gens = 0 },
+    { name = "mombi2",     pop = 0, gens = 0 },
+    { name = "nimmo",      pop = 0, gens = 0 },
+    { name = "irea",       pop = 0, gens = 0 },
+    { name = "edv",        pop = 0, gens = 0 },
+    { name = "if_maoea",   pop = 0, gens = 0 },
+    { name = "maoea_iamd", pop = 0, gens = 0 },
+    # Reference vectors and angles
+    { name = "rvea",       pop = 0, gens = 0 },
+    { name = "maoeaarv",   pop = 0, gens = 0 },
+    { name = "mbra",       pop = 0, gens = 0 },
+    { name = "nrv_moea",   pop = 0, gens = 0 },
+    { name = "dea_gng",    pop = 0, gens = 0 },
+    { name = "srv",        pop = 0, gens = 0 },
+    { name = "srv_nsga3",  pop = 0, gens = 0 },
+    # Clustering
+    { name = "camoea",     pop = 0, gens = 0 },
+    { name = "cava_moea",  pop = 0, gens = 0 },
+    { name = "maoea_ac",   pop = 0, gens = 0 },
+    { name = "maoea_c",    pop = 0, gens = 0 },
+    { name = "maoea_3c",   pop = 0, gens = 0 },
+    { name = "emyo_c",     pop = 0, gens = 0 },
+    { name = "crea",       pop = 0, gens = 0 },
+    { name = "dcea",       pop = 0, gens = 0 },
+    { name = "hcca",       pop = 0, gens = 0 },
+    { name = "lis_lcs",    pop = 0, gens = 0 },
+    { name = "clia",       pop = 0, gens = 0 },
+    # Archives
+    { name = "two_arch2",  pop = 0, gens = 0 },
+    { name = "naemo",      pop = 0, gens = 0 },
+]
+
+[run]
+name = "all58"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+runs = 5
+problems = [
+    # 2 objectives: convex, concave, disconnected, multimodal, biased
+    "ZDT1", "ZDT2", "ZDT3", "ZDT4", "ZDT6",
+
+    # 3 objectives
+    "DTLZ1_3D", "DTLZ2_3D", "DTLZ3_3D", "DTLZ4_3D", "DTLZ5_3D", "DTLZ6_3D", "DTLZ7_3D",
+    "WFG1_3D", "WFG2_3D", "WFG3_3D", "WFG4_3D", "WFG5_3D", "WFG6_3D", "WFG7_3D", "WFG8_3D", "WFG9_3D",
+    "IDTLZ1_3D", "IDTLZ2_3D",     # inverted fronts: hard on weight-vector methods
+    "SDTLZ1_3D", "SDTLZ2_3D",     # objectives scaled apart: who copes with incommensurate axes
+
+    # 5 objectives
+    "DTLZ1_5D", "DTLZ2_5D", "DTLZ3_5D", "DTLZ4_5D", "DTLZ5_5D", "DTLZ6_5D", "DTLZ7_5D",
+    "WFG1_5D", "WFG2_5D", "WFG3_5D", "WFG4_5D", "WFG5_5D", "WFG6_5D", "WFG7_5D", "WFG8_5D", "WFG9_5D",
+    "IDTLZ1_5D", "IDTLZ2_5D",
+    "SDTLZ1_5D", "SDTLZ2_5D",
+]
+# DTLZ5, DTLZ6 (from 4 objectives) and WFG3 (from 3) have true fronts with a
+# non-degenerate part that their reference sets leave out, so IGD on them ranks
+# the algorithms against each other but does not compare with published numbers;
+# a warning says so at run time. SDTLZ's IGD is taken in its scaled units, so the
+# widest objective dominates it; see "If your objectives are not commensurate"
+# in docs/algorithms.md.
+
+[campaign]
+out          = "results/{name}"   # relative to this file
+budget_fe    = 10000              # 0 = each problem's own pop x 500 generations
+record_every = 10                 # a trajectory point every 10 generations, for Explore
+# No hypervolume here: exact HV is cheap at 2 and 3 objectives, but a spread
+# 126-point set at 5 takes two to three seconds per call, which would be most
+# of the run time at 5 objectives. Add "hv" back for a smaller campaign.
+metrics      = ["igd", "igdp"]
+n_ref        = 1000

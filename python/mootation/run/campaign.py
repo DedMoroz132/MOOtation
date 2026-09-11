@@ -8,6 +8,8 @@ seeds each, with a convergence trajectory recorded per run.
     python -m mootation.run.campaign camp.toml --shard 3/40      # one slice, for an array job
     python -m mootation.run.campaign camp.toml --job 17          # exactly one job
     python -m mootation.run.campaign camp.toml --emit-slurm 40   # write submit.sh + jobs.txt
+    python -m mootation.run.campaign camp.toml --compare igd     # median per problem x algorithm
+    python -m mootation.run.campaign camp.toml --ranks igd       # mean rank per algorithm
 
 The config is the same TOML the rest of `mootation.run` reads
 with `[problem] kind = "builtin"`, a `[benchmarks]` selection, `[[algorithms]]`
@@ -206,7 +208,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     """Run one job to completion; returns the final status."""
     import numpy as np
     from ..benchmarks import get as bench_get
-    from .. import minimize
+    from .. import __version__, minimize
     from . import metrics as M
 
     d = root / job.rel_dir
@@ -231,6 +233,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "pop_note": job.pop_note, "metrics": list(spec.metrics),
         "record_every": spec.record_every, "n_ref": spec.n_ref,
         "has_reference_front": ref is not None,
+        "mootation": __version__,
         "host": socket.gethostname(), "platform": platform.platform(),
         "python": sys.version.split()[0], "pid": os.getpid(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -423,7 +426,7 @@ def read_trajectory(run_dir: Path) -> list[dict]:
 
 
 def scan_results(root: Path) -> list[dict]:
-    """Every run under root as {problem, algorithm, seed, status, final, seconds, fe}."""
+    """Every run under root as {problem, algorithm, seed, status, final, seconds, fe, n_objs}."""
     rows = []
     if not root.is_dir():
         return rows
@@ -438,7 +441,7 @@ def scan_results(root: Path) -> list[dict]:
             "algorithm": m.get("algorithm", meta.parents[1].name),
             "seed": m.get("seed"), "status": m.get("status", "?"),
             "final": m.get("final", {}) or {}, "seconds": m.get("seconds"),
-            "fe": m.get("fe"), "dir": meta.parent,
+            "fe": m.get("fe"), "n_objs": m.get("n_objs"), "dir": meta.parent,
         })
     return rows
 
@@ -481,6 +484,115 @@ def write_compare_csv(table: dict, path: Path, metric: str) -> None:
             fh.write(prob + "," + ",".join(cells) + "\n")
 
 
+def problem_family(name: str) -> str:
+    """The family of a registry name: DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT.
+
+    The same stem rule as `mootation.benchmarks.families()`.
+    """
+    stem = name.split("_")[0]
+    return "".join(c for c in stem if not c.isdigit()) or stem
+
+
+def rank_table(rows: list[dict], metric: str = "igd") -> dict:
+    """Where each algorithm stands, as one mean rank per group of problems.
+
+    On every problem the algorithms are ranked by their median `metric` over
+    seeds (1 is best; equal medians share the average of their ranks; a
+    non-finite median ranks last). The ranks are then averaged over all
+    problems, over each family and over each objective count. A group column
+    appears only when the campaign has more than one family, or more than one
+    objective count. A win is a problem on which the algorithm's median is the
+    best one, a shared best included.
+
+    An algorithm with no finished run on some problem is averaged over the
+    problems it has, and the count next to every mean says how many that was,
+    so a partial campaign cannot pass for a complete one.
+
+    A mean rank rewards consistency, not margin: an algorithm second everywhere
+    outranks one that alternates between first and last. Read it next to the
+    medians, not instead of them.
+
+        {"metric": "igd", "lower_better": True, "n_problems": 45,
+         "groups": ["DTLZ", "WFG", "ZDT", "M=2", "M=3", "M=5"],
+         "algorithms": [(name, {"all": (mean, n), "DTLZ": (mean, n), ...,
+                                "wins": w}), ...]}      # best mean rank first
+    """
+    table = compare_table(rows, metric)
+    lower_better = metric != "hv"
+    n_objs: dict = {}
+    for r in rows:
+        if r.get("n_objs") is not None:
+            n_objs.setdefault(r["problem"], int(r["n_objs"]))
+
+    def key(med: float) -> tuple:
+        if not math.isfinite(med):
+            return (1, 0.0)
+        return (0, med if lower_better else -med)
+
+    ranks: dict = {}
+    wins: dict = {}
+    for prob, algs in table.items():
+        labels = ["all", problem_family(prob)]
+        if prob in n_objs:
+            labels.append(f"M={n_objs[prob]}")
+        order = sorted(algs, key=lambda a: key(algs[a][0]))
+        i = 0
+        while i < len(order):
+            j = i
+            while j + 1 < len(order) and key(algs[order[j + 1]][0]) == key(algs[order[i]][0]):
+                j += 1
+            rank = (i + j) / 2 + 1
+            for a in order[i:j + 1]:
+                per = ranks.setdefault(a, {})
+                for g in labels:
+                    per.setdefault(g, []).append(rank)
+                if i == 0 and math.isfinite(algs[a][0]):
+                    wins[a] = wins.get(a, 0) + 1
+            i = j + 1
+
+    fams = sorted({problem_family(p) for p in table})
+    ms = sorted({n_objs[p] for p in table if p in n_objs})
+    groups = ((fams if len(fams) > 1 else [])
+              + ([f"M={m}" for m in ms] if len(ms) > 1 else []))
+    out = []
+    for a, per in ranks.items():
+        entry: dict = {g: (sum(v) / len(v), len(v)) for g, v in per.items()}
+        entry["wins"] = wins.get(a, 0)
+        out.append((a, entry))
+    out.sort(key=lambda t: (t[1]["all"][0], -t[1]["wins"], t[0]))
+    return {"metric": metric, "lower_better": lower_better, "n_problems": len(table),
+            "groups": groups, "algorithms": out}
+
+
+def format_ranks(ranks: dict) -> str:
+    """The rank table as fixed-width text, for the terminal."""
+    groups = ranks["groups"]
+    lines = [f"mean rank by median {ranks['metric']} over {ranks['n_problems']} problem(s): "
+             f"1 = best, ties share the average rank; probs = problems ranked on",
+             f"{'algorithm':<14}{'mean':>7}{'wins':>6}{'probs':>6}"
+             + "".join(f"{g[:9]:>10}" for g in groups)]
+    for alg, e in ranks["algorithms"]:
+        mean, n = e["all"]
+        line = f"{alg[:14]:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}"
+        for g in groups:
+            line += f"{e[g][0]:>10.2f}" if g in e else f"{'-':>10}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def write_rank_csv(ranks: dict, path: Path) -> None:
+    groups = ranks["groups"]
+    with path.open("w", encoding="utf-8") as fh:
+        fh.write("algorithm,mean_rank,problems,wins"
+                 + "".join(f",{g}_mean_rank,{g}_problems" for g in groups) + "\n")
+        for alg, e in ranks["algorithms"]:
+            mean, n = e["all"]
+            cells = [alg, f"{mean:.6g}", str(n), str(e["wins"])]
+            for g in groups:
+                cells += [f"{e[g][0]:.6g}", str(e[g][1])] if g in e else ["", ""]
+            fh.write(",".join(cells) + "\n")
+
+
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 
@@ -499,6 +611,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--partition", default=None, help="SLURM partition for --emit-slurm")
     ap.add_argument("--python", default="python", help="interpreter name in the emitted scripts")
     ap.add_argument("--compare", metavar="METRIC", help="print the median table for METRIC and exit")
+    ap.add_argument("--ranks", metavar="METRIC",
+                    help="print each algorithm's mean rank by median METRIC, overall, per "
+                         "family and per objective count, and exit")
     args = ap.parse_args(argv)
 
     try:
@@ -531,6 +646,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{j.index:5d} {j.problem:<14} {j.algorithm:<14} seed {j.seed:<3} "
                   f"pop {j.pop:<4} gens {j.gens:<5} fe {j.pop * j.gens:<8} {st}{note}")
         print(f"\n{len(jobs)} jobs -> {root}", file=sys.stderr)
+        return 0
+    for flag, metric in (("--compare", args.compare), ("--ranks", args.ranks)):
+        if metric is not None and metric not in ("igd", "igdp", "hv"):
+            print(f"{flag}: unknown metric '{metric}'; known: igd, igdp, hv", file=sys.stderr)
+            return 1
+    if args.ranks:
+        print(format_ranks(rank_table(scan_results(root), args.ranks)))
         return 0
     if args.compare:
         table = compare_table(scan_results(root), args.compare)

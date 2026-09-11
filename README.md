@@ -273,7 +273,13 @@ needs and, where a closed form exists, a sampler of the true Pareto front.
 objectives, Monte-Carlo above). A `[campaign]` section in a run file turns a
 family × objective-count × algorithm × seed cross product into resumable jobs
 with a convergence trajectory each, locally or as a SLURM array:
-[docs/running.md](docs/running.md#campaigns).
+[docs/running.md](docs/running.md#campaigns). Afterwards `--ranks igd`, or `t`
+in the TUI's Compare tab, condenses the results into one row per algorithm: its
+mean rank overall, per family and per objective count.
+[`python/examples/campaign_all.toml`](python/examples/campaign_all.toml) puts
+all 58 algorithms on 45 problems, and
+[docs/running.md](docs/running.md#all-58-algorithms-on-another-machine) has the
+recipe for running it on another machine, or split across several.
 
 ## Project layout
 
@@ -290,7 +296,7 @@ include/mootation/
 examples/            seven C++ programs, run.cfg with every settings key
 capi/                the C ABI implementation, a C99 smoke test, ctypes_demo.py, wrappers/
 python/mootation/    the binding, benchmarks/, run/ (TOML layer, campaign, metrics), tui/
-python/examples/     six scripts and four run descriptions
+python/examples/     six scripts and five run descriptions
 tests/               CTest suite; the long convergence and constraint tests run nightly
 tools/amalgamate.py  flattens everything into one header
 docs/                algorithms, embedding, running, writing-an-algorithm

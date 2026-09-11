@@ -38,7 +38,7 @@ jobs:
           - os: macos-latest
             compiler: g++
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: >
@@ -67,7 +67,7 @@ jobs:
       matrix:
         std: [17, 20]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: ilammy/msvc-dev-cmd@v1
 
@@ -106,7 +106,7 @@ jobs:
       contains(github.event.pull_request.labels.*.name, 'full-tests')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: >
@@ -142,7 +142,7 @@ jobs:
     name: asan + ubsan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure
         run: >
@@ -171,7 +171,7 @@ jobs:
     name: install + find_package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install to a staging prefix
         run: |
@@ -286,7 +286,7 @@ jobs:
     name: FetchContent
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with: { path: mootation }
 
       - name: Consume the checkout via FetchContent
@@ -321,8 +321,8 @@ jobs:
     name: python binding
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: '3.11' }
 
       - name: Build the module
@@ -371,6 +371,7 @@ jobs:
           # `import mootation` finds _core, and that the optional extras are
           # genuinely optional.
           python -m pip install --quiet ".[all]"
+          cp python/examples/campaign.toml /tmp/campaign.toml
           cd /tmp     # outside the source tree, so nothing resolves by accident
           python -c "
           import mootation
@@ -381,8 +382,25 @@ jobs:
           assert res.active_n == 20, res.active_n
           import mootation.benchmarks as b
           assert len(b.names()) > 200
+          # The run layer reads its algorithm and knob lists out of two source
+          # files. Outside a checkout they have to travel inside the package:
+          # a wheel without them installs cleanly and then cannot expand a
+          # single campaign.
+          from mootation.run.algorithms import algorithm_names
+          from mootation.run.knobs import knob_source
+          assert len(algorithm_names()) == 58, algorithm_names()
+          assert 'fallback' not in knob_source(), knob_source()
           print('installed package works:', len(mootation.algorithms()), 'algorithms')
           "
+          python -m mootation.run.campaign campaign.toml --list > jobs.txt
+          echo "the installed campaign runner expands $(wc -l < jobs.txt) jobs"
+
+      - name: The run layer against the built extension
+        # The run-layer jobs below have no extension, so test_run_layer.py
+        # skips its campaign round trip there. Here it runs for real, and it
+        # is the only place in CI where a parameter travels from a TOML file
+        # through minimize() into the binding.
+        run: PYTHONPATH=python python python/test_run_layer.py
 
       - name: The examples
         run: PYTHONPATH=python python python/test_examples.py
@@ -399,8 +417,8 @@ jobs:
       matrix:
         python: ['3.11', '3.13']
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: '${{ matrix.python }}' }
 
       - name: No dependencies were needed
@@ -474,8 +492,8 @@ jobs:
     name: C ABI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: '3.11' }
 
       - name: Build
@@ -508,7 +526,7 @@ jobs:
     name: single-header amalgamation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Generate
         run: python3 tools/amalgamate.py -o /tmp/mootation_single.hpp
@@ -600,7 +618,7 @@ jobs:
     name: repo hygiene
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Every source file carries an SPDX identifier
         run: |

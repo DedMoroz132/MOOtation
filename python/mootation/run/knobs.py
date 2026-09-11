@@ -6,9 +6,11 @@ Settings::validate() checks against and what embed.hpp's setter table applies.
 Parsing it here keeps this package from carrying a second copy that silently
 falls behind when a knob is added.
 
-If the header cannot be found — an installed layout, a wheel — the list falls
-back to a snapshot. The snapshot can go stale, so it is used only as a last
-resort and is marked as such in `knob_source()`.
+A checkout has the header in include/; an installed package carries a copy
+beside itself (python/CMakeLists.txt installs it into the wheel). If neither is
+found — a package copied by hand — the list falls back to a snapshot. The
+snapshot can go stale, so it is used only as a last resort and is marked as
+such in `knob_source()`.
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ _STRING = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"')
 def _settings_hpp() -> Path | None:
     here = Path(__file__).resolve()
     for c in (here.parents[3] / "include" / "mootation" / "settings.hpp",
+              here.parents[1] / "settings.hpp",
               Path.cwd() / "include" / "mootation" / "settings.hpp"):
         if c.is_file():
             return c

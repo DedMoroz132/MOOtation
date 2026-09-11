@@ -24,8 +24,17 @@ HV_MC_SAMPLES = 100_000
 
 
 def nondominated(F: np.ndarray) -> np.ndarray:
-    """Rows of F that no other row dominates (minimisation)."""
+    """Distinct rows of F that no other row dominates (minimisation).
+
+    Each distinct row is kept once. Equal rows do not dominate each other, so
+    without this every copy survives, and the WFG recursion below — whose
+    limit sets are full of rows clipped to the same values — branches on every
+    copy: a 126-point set with 11 distinct rows, which a MOEA/D-AM2M population
+    at generation 0 is, ran for more than ten minutes instead of milliseconds.
+    """
     F = np.asarray(F, float)
+    if len(F) > 1:
+        F = np.unique(F, axis=0)
     n = len(F)
     keep = np.ones(n, bool)
     for i in range(n):

@@ -50,6 +50,15 @@ target_link_libraries(mootation_python PRIVATE MOOtation::MOOtation)
 # ImportError, which is exactly what CI caught.
 if(DEFINED SKBUILD)
     install(TARGETS mootation_python LIBRARY DESTINATION mootation)
+    # The run layer reads the algorithm list out of algorithms.def and the knob
+    # list out of settings.hpp instead of carrying copies that go stale
+    # (run/algorithms.py, run/knobs.py). A checkout finds them in include/; an
+    # installed package has no include/, so they travel inside it. Without
+    # them `pip install .` succeeds and then no campaign or run file validates.
+    install(FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include/mootation/algorithms.def
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include/mootation/settings.hpp
+        DESTINATION mootation)
 endif()
 
 # The dispatch is generated from include/mootation/algorithms.def, so the binding cannot

@@ -156,7 +156,19 @@ def minimize(
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
     for k, v in knobs.items():
-        setattr(cfg, k, v)
+        try:
+            setattr(cfg, k, v)
+        except TypeError:
+            # T, nr, K, n_clusters and div are integers in the binding, and
+            # pybind11 refuses a float for them. A whole number arrives as a
+            # float from JSON, from arithmetic or from a config layer, and it
+            # means the integer; a fractional one is a mistake worth naming.
+            if isinstance(v, float) and v.is_integer():
+                setattr(cfg, k, int(v))
+            elif isinstance(v, float):
+                raise TypeError(f"parameter {k} takes an integer, got {v!r}") from None
+            else:
+                raise
     if on_generation is not None and int(record_every) > 0:
         cfg.on_generation = on_generation
         cfg.record_every = int(record_every)

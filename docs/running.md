@@ -199,13 +199,84 @@ python -m mootation.run.campaign campaign.toml --workers 4     # local process p
 python -m mootation.run.campaign campaign.toml --shard 3/40    # one shard of forty
 python -m mootation.run.campaign campaign.toml --emit-slurm 40 # writes submit.sh + jobs.txt
 python -m mootation.run.campaign campaign.toml --compare igd   # median table
+python -m mootation.run.campaign campaign.toml --ranks igd     # mean rank per algorithm
 ```
 
 Each run writes `trajectory.jsonl` (IGD, IGD+ and hypervolume against the
 evaluation count), `meta.json` and `final.csv`; a campaign is resumable, and
 `pop = 0` / `gens = 0` take each problem's own published budget.
 `mootation.run.metrics` carries the indicators: IGD, IGD+ and an exact WFG
-hypervolume up to five objectives, Monte-Carlo above that.
+hypervolume up to five objectives, Monte-Carlo above that. Exact is not cheap
+at five: a well-spread set of 126 points takes two to three seconds per call,
+so a campaign that records hypervolume every few generations at five
+objectives spends most of its time on the indicator rather than on the
+algorithms. IGD and IGD+ cost hundredths of a second.
+
+### Reading the results
+
+`--compare` prints the median of a final indicator for every problem ×
+algorithm pair. With four algorithms that is the whole story; with fifty-eight
+it is a table nobody can read, and `--ranks` condenses it. On every problem the
+algorithms are ranked by that median — 1 is best, equal medians share the
+average rank — and each algorithm's ranks are averaged over all problems, over
+each family and over each objective count, next to the number of problems it
+won and the number it was ranked on.
+
+Two cautions. A mean rank rewards consistency, not margin: an algorithm second
+on every problem outranks one that alternates between first and last, and a
+rank cannot tell whether two medians differ by more than the spread between
+seeds (a Wilcoxon test is on the roadmap, not here yet). Use the ranks to find
+where to look and the medians with their quartiles to decide. And a group mean
+is only as broad as its group: best on WFG at five objectives means best on
+those nine problems, at the budget the campaign gave them.
+
+### All 58 algorithms on another machine
+
+[`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)
+runs every algorithm on 45 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
+the inverted IDTLZ1–2 and the scaled SDTLZ1–2 at three and five — five seeds
+each at 10 000 evaluations: 13 050 jobs and about 36 CPU-hours, some two hours
+on a 16-core machine. The file records what that estimate is built from, which
+three algorithms are most of it, and a preset for the papers' own budgets.
+
+A clean machine needs Python 3.11 or newer and a C++17 compiler — on Windows,
+the Visual Studio Build Tools with the "Desktop development with C++" workload.
+pip fetches CMake if it is missing, and the extension compiles once, in a few
+minutes.
+
+```bash
+git clone https://github.com/DedMoroz132/MOOtation.git
+cd MOOtation
+python -m pip install ".[all]"
+cd python/examples
+python -m mootation.run.campaign campaign_all.toml --list > jobs.txt
+python -m mootation.run.campaign campaign_all.toml --workers 16
+```
+
+`--workers` is how many jobs run at once; each job is single-threaded, so use
+one per core. While it runs, the Campaign tab of
+`python -m mootation.run --tui campaign_all.toml` shows progress per problem ×
+algorithm, and the results land in `python/examples/results/all58/`.
+
+Across several machines, start the same file on each with its own shard:
+
+```bash
+python -m mootation.run.campaign campaign_all.toml --shard 0/3 --workers 16   # machine 1
+python -m mootation.run.campaign campaign_all.toml --shard 1/3 --workers 16   # machine 2
+python -m mootation.run.campaign campaign_all.toml --shard 2/3 --workers 16   # machine 3
+```
+
+then copy every machine's `results/all58/` into one directory. The trees do not
+overlap — a job writes only its own `<problem>/<algorithm>/run_<seed>/` — and
+Compare, `--compare` and `--ranks` read whatever `meta.json` files sit under the
+results root, wherever they were produced. Use the same commit everywhere; each
+`meta.json` records the library version, the host and the Python it ran under.
+A killed shard resumes when started again, and `--force` reruns finished jobs.
+
+```bash
+python -m mootation.run.campaign campaign_all.toml --ranks igd
+python -m mootation.run --tui campaign_all.toml       # Compare tab, then t
+```
 
 ## The terminal interface
 
@@ -214,7 +285,8 @@ functions: the resolved config with its `--check` verdict, the problem registry
 with a filter, the selected algorithms with each one's population objection,
 and a monitor that reads the journal live. A built-in campaign adds three more:
 progress per problem × algorithm, a comparison table of medians with quartiles
-(exported to CSV with `e`), and a per-run trajectory plot. The interface is
+that `t` switches to the mean ranks above (either view exported to CSV with
+`e`), and a per-run trajectory plot. The interface is
 read-only on purpose: you edit the config in your own editor, because a
 configuration assembled by clicking cannot be diffed, copied to a cluster or
 attached to a paper.

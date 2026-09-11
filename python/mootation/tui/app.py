@@ -421,16 +421,24 @@ class CampaignScreen(VerticalScroll):
 
 
 class CompareScreen(VerticalScroll):
-    """Median [q1, q3] of a final indicator per problem x algorithm, over seeds.
+    """Two readings of the finished runs, switched with `t`.
+
+    medians  median [q1, q3] of a final indicator per problem x algorithm, over
+             seeds, the best per row in green.
+    ranks    one row per algorithm: its rank on every problem (by that median,
+             1 = best, ties averaged) averaged overall, per family and per
+             objective count, with the number of problems it won. With dozens
+             of algorithms this is the view that says which one is good where.
 
     Type a metric name in the box (igd, igdp, hv) and press Enter; press `e`
-    to export the table as CSV next to the results.
+    to export the current view as CSV next to the results.
     """
 
     def __init__(self, cfg: Config) -> None:
         super().__init__()
         self.cfg = cfg
         self.metric = "igd"
+        self.view = "medians"
         self._table: DataTable | None = None
         self._note: Static | None = None
 
@@ -449,6 +457,13 @@ class CompareScreen(VerticalScroll):
         if self._table is None:
             return
         rows = _camp.scan_results(self._root())
+        done = sum(1 for r in rows if r["status"] == "done")
+        if self.view == "ranks":
+            self._fill_ranks(rows, done)
+        else:
+            self._fill_medians(rows, done)
+
+    def _fill_medians(self, rows: list, done: int) -> None:
         table = _camp.compare_table(rows, self.metric)
         algs = sorted({a for d in table.values() for a in d})
         self._table.clear(columns=True)
@@ -466,20 +481,56 @@ class CompareScreen(VerticalScroll):
                 else:
                     cells.append(Text("-", style="dim"))
             self._table.add_row(*cells)
-        done = sum(1 for r in rows if r["status"] == "done")
         if self._note is not None:
             self._note.update(Text(
                 f"{done} finished runs under {self._root()} — metric '{self.metric}' "
                 f"({'lower' if lower_better else 'higher'} is better); best per row in green; "
-                f"press e to export CSV", style="dim"))
+                f"t: mean ranks, e: export CSV", style="dim"))
+
+    def _fill_ranks(self, rows: list, done: int) -> None:
+        ranks = _camp.rank_table(rows, self.metric)
+        groups = ranks["groups"]
+        self._table.clear(columns=True)
+        self._table.add_columns("algorithm", "mean rank", "wins", "problems", *groups)
+        best = {}
+        for g in ("all", *groups):
+            vals = [e[g][0] for _, e in ranks["algorithms"] if g in e]
+            best[g] = min(vals) if vals else None
+
+        def cell(e: dict, g: str) -> Text:
+            if g not in e:
+                return Text("-", style="dim")
+            return Text(f"{e[g][0]:.2f}", style="bold green" if e[g][0] == best[g] else "")
+
+        for alg, e in ranks["algorithms"]:
+            self._table.add_row(alg, cell(e, "all"), str(e["wins"]), str(e["all"][1]),
+                                *(cell(e, g) for g in groups))
+        if self._note is not None:
+            self._note.update(Text(
+                f"{done} finished runs under {self._root()} — mean rank by median "
+                f"'{self.metric}' over {ranks['n_problems']} problem(s), 1 = best, ties share "
+                f"the average; best per column in green; t: medians, e: export CSV",
+                style="dim"))
+
+    def toggle_view(self) -> None:
+        self.view = "ranks" if self.view == "medians" else "medians"
+        self._fill()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "cmp-metric" and event.value.strip() in ("igd", "igdp", "hv"):
             self.metric = event.value.strip()
             self._fill()
+            # Hand the keys back: with the box focused, `t` and `e` would be typed
+            # into it instead of reaching the app.
+            if self._table is not None:
+                self._table.focus()
 
     def export_csv(self) -> Path:
         rows = _camp.scan_results(self._root())
+        if self.view == "ranks":
+            path = self._root() / f"ranks_{self.metric}.csv"
+            _camp.write_rank_csv(_camp.rank_table(rows, self.metric), path)
+            return path
         table = _camp.compare_table(rows, self.metric)
         path = self._root() / f"compare_{self.metric}.csv"
         _camp.write_compare_csv(table, path, self.metric)
@@ -607,6 +658,7 @@ class MootationApp(App):
         ("q", "quit", "Quit"),
         ("r", "reload", "Reload config"),
         ("e", "export", "Export compare CSV"),
+        ("t", "toggle_view", "Medians / ranks"),
     ]
 
     def __init__(self, config_path: str | Path) -> None:
@@ -634,6 +686,14 @@ class MootationApp(App):
                 with TabPane("Explore", id="tab-explore"):
                     yield ExploreScreen(self.cfg)
         yield Footer()
+
+    def action_toggle_view(self) -> None:
+        try:
+            screen = self.query_one(CompareScreen)
+        except Exception:
+            self.notify("no Compare tab in this config", severity="warning")
+            return
+        screen.toggle_view()
 
     def action_export(self) -> None:
         try:

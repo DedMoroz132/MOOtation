@@ -77,7 +77,7 @@ class Algorithm:
     name: str
     pop: int
     gens: int
-    params: dict[str, float] = field(default_factory=dict)
+    params: dict[str, int | float] = field(default_factory=dict)
 
 
 @dataclass
@@ -275,7 +275,10 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             name=_req(a, "name", where, str),
             pop=_req(a, "pop", where, int),
             gens=_req(a, "gens", where, int),
-            params={k: float(v) for k, v in params.items()},
+            # A TOML integer stays an integer: T, nr, K, n_clusters and div are
+            # ints in the binding, and pybind11 3 refuses 20.0 for them.
+            params={k: (v if isinstance(v, int) and not isinstance(v, bool) else float(v))
+                    for k, v in params.items()},
         ))
 
     cfg.benchmarks = _opt(raw, "benchmarks", {}, "", dict)
