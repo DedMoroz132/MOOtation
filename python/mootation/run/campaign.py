@@ -422,14 +422,14 @@ def _job_crashed(index: int, e: BaseException) -> str:
     return "failed"
 
 
-def _worker_main(cfg_path, force, job_q, res_q, target, active, lock) -> None:
-    """One worker process: jobs from the queue until it is surplus or the queue ends.
+def _worker_main(cfg_path, force, conn) -> None:
+    """One worker process: asks the runner for a job, runs it, reports, repeats.
 
-    The config is read and expanded once per process, not once per job. Before
-    taking a job the worker checks whether more workers are alive than the
-    target, and leaves if so, which is why a job in progress always finishes.
+    The runner answers each request over this worker's own pipe with a job
+    index, or with None when the worker is surplus or nothing is left, so it
+    always knows which job a worker holds. The config is read and expanded once
+    per process, not once per job.
     """
-    import queue as _queue
     pid = os.getpid()
     try:
         cfg = load(cfg_path)
@@ -438,55 +438,62 @@ def _worker_main(cfg_path, force, job_q, res_q, target, active, lock) -> None:
         jobs = expand_jobs(cfg, spec)
         root = out_root(cfg, spec)
     except Exception as e:                           # noqa: BLE001
-        with lock:
-            active.value -= 1
-        res_q.put(("broken", pid, f"{type(e).__name__}: {e}"))
+        conn.send(("broken", pid, f"{type(e).__name__}: {e}"))
         return
     while True:
-        with lock:
-            surplus = active.value > target.value
-            if surplus:
-                active.value -= 1
-        if surplus:
-            res_q.put(("bye", pid))
-            return
-        try:
-            index = job_q.get(timeout=0.5)
-        except _queue.Empty:
-            continue
+        conn.send(("ready", pid))
+        index = conn.recv()
         if index is None:
-            with lock:
-                active.value -= 1
-            res_q.put(("bye", pid))
             return
-        res_q.put(("start", pid, index))
         try:
             status = run_job(jobs[index], root, spec, force=force)
         except Exception as e:                       # noqa: BLE001
             status = _job_crashed(index, e)
-        res_q.put(("done", pid, index, status))
+        conn.send(("done", pid, index, status))
+
+
+def _readable(conns: list, timeout: float) -> list:
+    """The pipes in `conns` with something to read, waiting up to `timeout`.
+
+    One wait on Windows takes at most 63 handles, so a larger pool is polled in
+    slices of 60.
+    """
+    from multiprocessing.connection import wait
+    if len(conns) <= 60:
+        return wait(conns, timeout=timeout)
+    ready: list = []
+    for i in range(0, len(conns), 60):
+        ready += wait(conns[i:i + 60], timeout=0)
+    if not ready:
+        time.sleep(min(timeout, 0.05))
+    return ready
 
 
 def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
-                 force: bool, label: str) -> dict:
-    """Run `todo` with a pool whose size follows `_workers.txt` while it runs."""
+                 force: bool, label: str, worker=None) -> dict:
+    """Run `todo` with a pool whose size follows `_workers.txt` while it runs.
+
+    Each worker has its own pipe and asks for one job at a time, so the runner
+    always knows which job a worker holds, and a worker that dies holding one
+    fails exactly that job. `worker` stands in for `_worker_main` in tests.
+    """
     import multiprocessing as mp
-    import queue as _queue
+    from collections import deque
+    # Nothing but a pipe crosses to a worker. The pool used to share queues,
+    # whose semaphores are duplicated into a process that is still starting;
+    # on a loaded Windows machine they arrived dead in every worker of a run
+    # ("The handle is invalid" on the first report), the job each worker had
+    # taken was lost with it, and the campaign waited forever.
     ctx = mp.get_context()
-    job_q, res_q = ctx.Queue(), ctx.Queue()
-    for j in todo:
-        job_q.put(j.index)
-    lock = ctx.Lock()
-    target = ctx.Value("i", 0)
-    active = ctx.Value("i", 0)
+    pending = deque(j.index for j in todo)
     ceiling = os.cpu_count() or 1
     write_workers(root, workers)
 
-    procs: dict = {}         # pid -> Process, until reaped
-    inflight: dict = {}      # pid -> the job it is running
-    left: set = set()        # pids that said goodbye
+    pool: dict = {}          # the runner's end of a worker's pipe -> [process, job it holds]
+    retired: list = []       # workers told to leave, joined at the end
     counts = {"done": 0, "failed": 0}
     finished = 0
+    want = 0
     started = time.time()
     last_read = last_beat = 0.0
     state = "running"
@@ -495,80 +502,97 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
         _write_json(root / RUNNER_FILE, {
             "state": st, "pid": os.getpid(), "slice": label,
             "started": started, "updated": time.time(),
-            "target": target.value, "active": active.value,
+            "target": want, "active": len(pool),
             "todo": len(todo), "done": counts["done"], "failed": counts["failed"],
-            "running": sorted(inflight.values()),
+            "running": sorted(job for _, job in pool.values() if job is not None),
         })
 
     def spawn() -> None:
-        with lock:
-            active.value += 1
-        p = ctx.Process(target=_worker_main, daemon=True,
-                        args=(cfg_path, force, job_q, res_q, target, active, lock))
+        here, there = ctx.Pipe()
+        p = ctx.Process(target=worker or _worker_main, daemon=True,
+                        args=(cfg_path, force, there))
         p.start()
-        procs[p.pid] = p
+        there.close()
+        pool[here] = [p, None]
+
+    def lose(conn) -> None:
+        # A worker gone without being told to leave crashed inside a core or
+        # was killed. The job it held failed, and the next read of
+        # _workers.txt starts a replacement.
+        nonlocal finished
+        p, job = pool.pop(conn)
+        conn.close()
+        p.join(timeout=1)
+        if job is not None:
+            counts["failed"] += 1
+            finished += 1
+            print(f"[{job}] FAILED: its worker exited with code {p.exitcode}",
+                  file=sys.stderr)
 
     try:
-        while finished < len(todo):
+        while finished < len(todo) and state == "running":
             now = time.time()
             if now - last_read >= 1.5:
                 last_read = now
                 want = min(read_workers(root, workers), ceiling)
-                with lock:
-                    target.value = want
-                    missing = min(want, len(todo) - finished) - active.value
-                for _ in range(max(0, missing)):
+                busy = sum(1 for _, job in pool.values() if job is not None)
+                for _ in range(min(want, busy + len(pending)) - len(pool)):
                     spawn()
-                if want == 0 and active.value == 0:
+                if want == 0 and not pool:
                     state = "stopped"                # drained on request
                     break
             if now - last_beat >= 2.0:
                 last_beat = now
                 beat("running")
-            try:
-                msg = res_q.get(timeout=0.5)
-            except _queue.Empty:
-                msg = None
-            if msg is not None:
-                kind, pid = msg[0], msg[1]
-                if kind == "start":
-                    inflight[pid] = msg[2]
-                elif kind == "done":
-                    inflight.pop(pid, None)
+            for conn in _readable(list(pool), 0.5):
+                try:
+                    msg = conn.recv()
+                except (EOFError, OSError):
+                    lose(conn)
+                    continue
+                if msg[0] == "ready":
+                    if pending and len(pool) <= want:
+                        pool[conn][1] = index = pending.popleft()
+                        try:
+                            conn.send(index)
+                        except OSError:
+                            pool[conn][1] = None
+                            pending.appendleft(index)
+                            lose(conn)
+                        continue
+                    try:                             # surplus, or nothing left: leave
+                        conn.send(None)
+                    except OSError:
+                        pass
+                    retired.append(pool.pop(conn)[0])
+                    conn.close()
+                elif msg[0] == "done":
+                    pool[conn][1] = None
                     counts[msg[3]] = counts.get(msg[3], 0) + 1
                     finished += 1
-                elif kind == "bye":
-                    left.add(pid)
-                elif kind == "broken":
+                elif msg[0] == "broken":
                     print(f"a worker could not start: {msg[2]}", file=sys.stderr)
                     state = "broken"
                     break
-                continue                             # drain the queue before reaping
-            # A worker that died without saying goodbye crashed — inside a core,
-            # or killed. Its job failed, and the pool is one short until the
-            # next read of _workers.txt starts a replacement.
-            for pid, p in list(procs.items()):
+            # A worker that died before it could take its end of the pipe leaves
+            # no end of file to read, so the processes are checked as well.
+            for conn, (p, _) in list(pool.items()):
                 if p.is_alive():
                     continue
-                procs.pop(pid)
-                if pid in left:
-                    continue
-                with lock:
-                    active.value -= 1
-                if pid in inflight:
-                    index = inflight.pop(pid)
-                    counts["failed"] += 1
-                    finished += 1
-                    print(f"[{index}] FAILED: its worker exited with code {p.exitcode}",
-                          file=sys.stderr)
+                try:
+                    if conn.poll():
+                        continue                     # its last words are read first
+                except OSError:
+                    pass
+                lose(conn)
     except KeyboardInterrupt:
         state = "stopped"
         raise
     finally:
-        for p in procs.values():
+        for p, _ in pool.values():
             if p.is_alive():
                 p.terminate()
-        for p in procs.values():
+        for p in [p for p, _ in pool.values()] + retired:
             p.join(timeout=5)
         beat("finished" if state == "running" else state)
     counts["pending"] = len(todo) - finished

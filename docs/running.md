@@ -270,7 +270,7 @@ echo 8 > results/all58/_workers.txt
 `<results>/_runner.json` is the runner's heartbeat — workers alive and wanted,
 jobs done, the jobs in flight — rewritten every two seconds, which is how the
 TUI shows a campaign it did not start. A worker that dies inside an algorithm
-fails its one job, which is recorded, and is replaced.
+fails the one job it holds, which is recorded, and is replaced.
 
 ### All 58 algorithms on another machine
 

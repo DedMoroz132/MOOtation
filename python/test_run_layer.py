@@ -1236,8 +1236,12 @@ def campaign_worker_pool():
     """The pool runs every job, and a target of 0 drains without running any."""
     try:
         import numpy  # noqa: F401
-        import mootation._core  # noqa: F401
+        from mootation import _core
     except ImportError:
+        return
+    if not hasattr(_core.Config(), "max_evaluations"):
+        print("  skip  campaign_worker_pool: _core has no max_evaluations "
+              "(rebuild the extension for this interpreter)")
         return
     from mootation.run import campaign as C
     from mootation.run.config import load
@@ -1259,6 +1263,60 @@ def campaign_worker_pool():
             assert state and state["alive"] is False, state
             assert state["state"] == ("finished" if workers else "stopped"), state
             assert C.read_workers(root, -1) == workers
+
+
+def _worker_that_drops_a_job(cfg_path, force, conn):
+    """A pool worker that takes one job and dies without running it."""
+    import os
+    from mootation.run import campaign as C
+    flag = str(Path(cfg_path).with_suffix(".dropped"))
+    try:
+        os.close(os.open(flag, os.O_CREAT | os.O_EXCL | os.O_WRONLY))   # the first worker only
+    except FileExistsError:
+        return C._worker_main(cfg_path, force, conn)
+    conn.send(("ready", os.getpid()))
+    conn.recv()
+    os._exit(3)
+
+
+@test
+def campaign_pool_fails_only_the_job_whose_worker_died_holding_it():
+    """A worker that dies holding a job fails that job, and the pool runs the rest."""
+    try:
+        import numpy  # noqa: F401
+        from mootation import _core
+    except ImportError:
+        return
+    if not hasattr(_core.Config(), "max_evaluations"):
+        print("  skip  campaign_pool_fails_only_the_job_whose_worker_died_holding_it: _core has "
+              "no max_evaluations (rebuild the extension for this interpreter)")
+        return
+    import threading
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "drop.toml"
+        cfg_path.write_text(
+            _CAMP.replace('name = "camp"', 'name = "drop"')
+            .replace('problems = ["ZDT1", "DTLZ2_3D"]', 'problems = ["ZDT1"]')
+            .replace("budget_fe = 2000", "budget_fe = 200")
+            .split("[[algorithms]]")[0] + '[[algorithms]]\nname = "nsga2"\npop = 20\ngens = 0\n',
+            encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        jobs = C.expand_jobs(cfg, spec)
+        root = C.out_root(cfg, spec)
+        root.mkdir(parents=True, exist_ok=True)
+        got = {}
+        run = threading.Thread(daemon=True, target=lambda: got.update(C._run_dynamic(
+            str(cfg_path), jobs, root, workers=2, force=False, label="drop",
+            worker=_worker_that_drops_a_job)))
+        run.start()
+        run.join(timeout=120)
+        assert not run.is_alive(), "the pool is still waiting for the job its worker dropped"
+        assert len(jobs) == 3 and got["done"] == 2 and got["failed"] == 1, got
+        assert got["pending"] == 0, got
 
 
 @test

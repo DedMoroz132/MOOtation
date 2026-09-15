@@ -117,6 +117,15 @@ always listed under **Changed** or **Removed**.
   stopped a campaign 8 400 jobs in. The write now retries for a few seconds,
   and an error outside a job's own run fails that job instead of the pool; the
   job reruns when the campaign is started again.
+- A campaign on Windows could hang for good. The pool's workers shared two
+  queues, whose semaphores are handed to a worker process while it is still
+  starting, and on a loaded machine they could arrive dead in every worker of
+  a run: each worker took a job, failed to report it ("The handle is invalid"
+  or "Access is denied"), and died, and the runner waited for jobs nobody was
+  running. It showed up in the test suite while the machine was compiling.
+  Each worker now has its own pipe and asks the runner for one job at a time,
+  so no semaphore crosses to it, and the runner always knows which job a
+  worker holds: a worker that dies holding one fails exactly that job.
 - Every Linux and macOS build, the C ABI job and the single-header check had
   been failing in CI since the binary-genome refusals were added. In HCCA the
   refusal shared a line with the two calls after it, which GCC and Clang flag
