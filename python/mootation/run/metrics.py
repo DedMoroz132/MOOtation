@@ -156,22 +156,86 @@ def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
     return float(v / ref_scale ** m), method
 
 
-def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",)) -> dict:
-    """Every requested indicator in one dict; missing inputs give None."""
+def eps_plus(F: np.ndarray, ref: np.ndarray) -> float:
+    """Additive epsilon indicator of F against a reference front.
+
+    The smallest eps such that every reference point is weakly dominated by
+    some point of F moved by eps in every objective: the maximum over r of the
+    minimum over a of max_i (a_i - r_i). Zero on the front, lower is better,
+    and weakly Pareto-compliant. It sees only the worst place, so it goes with
+    IGD+, not instead of it — but it is the one indicator whose value reads
+    directly: no worse than the front by more than eps in any objective.
+    """
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
+    if F.size == 0:
+        return float("inf")
+    worst = np.empty(len(ref))
+    for start in range(0, len(ref), 256):           # bounded memory for dense fronts
+        r = ref[start:start + 256]
+        worst[start:start + len(r)] = (F[None, :, :] - r[:, None, :]).max(axis=2).min(axis=1)
+    return float(worst.max())
+
+
+def _normalised(F, ref, ideal, nadir):
+    ideal = np.asarray(ideal, float)
+    span = np.asarray(nadir, float) - ideal
+    span[span <= 0] = 1.0
+    return (np.asarray(F, float) - ideal) / span, (np.asarray(ref, float) - ideal) / span
+
+
+def lattice_h(m: int, pop: int) -> int:
+    """The largest Das-Dennis parameter H whose lattice has at most `pop` points.
+
+    100 points at 2 objectives give H = 99, 91 at 3 give 12, 126 at 5 give 5.
+    """
+    from math import comb
+    if m < 2:
+        return 1
+    h = 1
+    while comb(h + 1 + m - 1, m - 1) <= pop:
+        h += 1
+    return h
+
+
+def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
+            pop: int | None = None) -> dict:
+    """Every requested indicator in one dict; missing inputs give None.
+
+    `pop` is the problem's default population size. hv_h places its reference
+    point at 1 + 1/H with H taken from it, so every algorithm on a problem is
+    measured against the same point whatever population it rounded to.
+    """
     out: dict = {}
     F = np.asarray(F, float)
+    have_box = ideal is not None and nadir is not None
     for name in which:
-        if name == "igd":
-            out["igd"] = igd(F, ref_front) if ref_front is not None else None
-        elif name == "igdp":
-            out["igdp"] = igd_plus(F, ref_front) if ref_front is not None else None
+        if name in ("igd", "igdp", "eps"):
+            fn = {"igd": igd, "igdp": igd_plus, "eps": eps_plus}[name]
+            out[name] = fn(F, ref_front) if ref_front is not None else None
+        elif name in ("igdp_norm", "eps_norm"):
+            if ref_front is None or not have_box:
+                out[name] = None
+            else:
+                G, R = _normalised(F, ref_front, ideal, nadir)
+                out[name] = igd_plus(G, R) if name == "igdp_norm" else eps_plus(G, R)
         elif name == "hv":
-            if ideal is None or nadir is None:
+            if not have_box:
                 out["hv"] = None
             else:
                 v, method = hypervolume(F, ideal, nadir)
                 out["hv"] = v
                 out["hv_method"] = method
+        elif name == "hv_h":
+            if not have_box or not pop or F.ndim != 2:
+                out["hv_h"] = None
+            else:
+                scale = 1.0 + 1.0 / lattice_h(F.shape[1], int(pop))
+                v, method = hypervolume(F, ideal, nadir, ref_scale=scale)
+                out["hv_h"] = v
+                out["hv_h_ref"] = scale
+                out["hv_method"] = method
         else:
-            raise ValueError(f"unknown metric '{name}'; known: igd, igdp, hv")
+            from .metric_names import METRIC_NAMES
+            raise ValueError(f"unknown metric '{name}'; known: {', '.join(METRIC_NAMES)}")
     return out

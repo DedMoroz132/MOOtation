@@ -983,6 +983,14 @@ def campaign_rejects_unknown_keys_and_metrics():
     raises(ConfigError, C.campaign_spec, cfg)
     cfg = loads(_CAMP.replace("budget_fe = 2000", "budget_fe = 2000" + chr(10) + "bogus = 1"))
     raises(ConfigError, C.campaign_spec, cfg)
+    nl = chr(10)
+    cfg = loads(_CAMP.replace('metrics = ["igd", "hv"]',
+                              'metrics = ["igd", "hv"]' + nl + 'final_metrics = ["eps", "zzz"]'))
+    raises(ConfigError, C.campaign_spec, cfg)
+    spec = C.campaign_spec(loads(_CAMP.replace(
+        'metrics = ["igd", "hv"]',
+        'metrics = ["igd"]' + nl + 'final_metrics = ["igdp_norm", "eps", "hv_h"]')))
+    assert spec.metrics == ("igd",) and spec.final_metrics == ("igdp_norm", "eps", "hv_h"), spec
 
 
 @test
@@ -1020,6 +1028,23 @@ def metrics_agree_with_closed_forms():
     assert method == "exact" and time.perf_counter() - t0 < 1.0
     v_one, _ = M.hypervolume(base, [0] * 5, [1] * 5)
     assert abs(v_rep - v_one) < 1e-12, (v_rep, v_one)
+    # additive epsilon, and the scale-free variants
+    R = F                                                           # the ZDT1 front sample
+    assert abs(M.eps_plus(R, R)) < 1e-12
+    assert abs(M.eps_plus(R + 0.1, R) - 0.1) < 1e-12                 # 0.1 behind everywhere
+    wide = np.array([1.0, 100.0])
+    out = M.compute(R * wide, ref_front=R * wide, ideal=[0, 0], nadir=[1, 100],
+                    which=("igdp_norm", "eps_norm"))
+    assert out["igdp_norm"] == 0.0 and abs(out["eps_norm"]) < 1e-12, out
+    behind = M.compute((R + [0.0, 0.1]) * wide, ref_front=R * wide, ideal=[0, 0],
+                       nadir=[1, 100], which=("eps", "eps_norm", "igdp", "igdp_norm"))
+    assert abs(behind["eps"] - 10.0) < 1e-9 and abs(behind["eps_norm"] - 0.1) < 1e-12, behind
+    # normalised, the 100x axis is a unit again: the same as IGD+ of the unscaled offset
+    assert abs(behind["igdp_norm"] - M.igd_plus(R + [0.0, 0.1], R)) < 1e-12, behind
+    assert (M.lattice_h(2, 100), M.lattice_h(3, 91), M.lattice_h(5, 126)) == (99, 12, 5)
+    hh = M.compute(R, ideal=[0, 0], nadir=[1, 1], which=("hv", "hv_h"), pop=100)
+    assert abs(hh["hv_h_ref"] - (1 + 1 / 99)) < 1e-12 and hh["hv_h"] != hh["hv"], hh
+    assert M.compute(R, ideal=[0, 0], nadir=[1, 1], which=("hv_h",))["hv_h"] is None
 
 
 @test
@@ -1099,6 +1124,15 @@ def campaign_results_round_trip():
         assert [a for a, _ in ranks["algorithms"]] == ["nsga2"] and ranks["groups"] == []
         C.write_rank_csv(ranks, root / "ranks.csv")
         assert (root / "ranks.csv").read_text(encoding="utf-8").startswith("algorithm,mean_rank")
+        # anytime: at the whole budget the trajectory's last record is the final value
+        row = C.scan_results(root)[0]
+        assert abs(C.value_at(row, "igd", 1.0) - row["final"]["igd"]) < 1e-12, row
+        assert C.value_at(row, "igd", 0.5) is not None
+        assert C.rank_table([row], "igd", 0.5)["at"] == 0.5
+        # indicators added after the run, from final.csv, without rerunning it
+        assert C.recompute_final(root, ["eps", "igdp_norm", "hv_h"]) == {"done": 1}
+        fin = json.loads((root / z.rel_dir / "meta.json").read_text(encoding="utf-8"))["final"]
+        assert all(k in fin for k in ("eps", "igdp_norm", "hv_h", "igd", "hv")), fin
         script = C.emit_slurm(cfg, 2)
         text = script.read_text(encoding="utf-8")
         assert "--array=0-1" in text and "--shard ${SLURM_ARRAY_TASK_ID}/2" in text

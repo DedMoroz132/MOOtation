@@ -210,12 +210,32 @@ many steps: a step is a generation for most algorithms, but one offspring for
 NIMMO and a fifth of the population for MOEA/D-DRA and MOEA/D-AWA, and a budget
 in generations left those three with 2 % and 21 % of everyone else's
 evaluations. The count each run actually spent is `fe` in its `meta.json`.
-`mootation.run.metrics` carries the indicators: IGD, IGD+ and an exact WFG
-hypervolume up to five objectives, Monte-Carlo above that. Exact is not cheap
-at five: a well-spread set of 126 points takes two to three seconds per call,
-so a campaign that records hypervolume every few generations at five
-objectives spends most of its time on the indicator rather than on the
-algorithms. IGD and IGD+ cost hundredths of a second.
+`mootation.run.metrics` carries the indicators. `metrics` names the ones
+recorded along every trajectory, `final_metrics` the ones computed once on the
+final population (the same list when omitted):
+
+| name | what it measures | better |
+|---|---|---|
+| `igd` | mean distance from the reference front to the nearest point; not Pareto-compliant, so for comparison with published numbers rather than for ranking | lower |
+| `igdp` | IGD+: only the dominated part of each offset counts | lower |
+| `igdp_norm` | IGD+ with objectives and front divided by nadir − ideal: scale-free, for SDTLZ and anything in mixed units | lower |
+| `eps`, `eps_norm` | additive ε: the smallest shift in every objective that makes the set weakly dominate the reference front, i.e. no worse than the front by more than ε anywhere; raw and normalised | lower |
+| `hv` | hypervolume, objectives normalised by ideal and nadir, reference point 1.1 | higher |
+| `hv_h` | hypervolume with the reference point at 1 + 1/H, H from the problem's default population (1.0101, 1.0833 and 1.2 at 2, 3 and 5 objectives), which evens out the contributions of a uniformly spread set (Ishibuchi, Imada, Setoguchi & Nojima, GECCO 2017) | higher |
+
+The hypervolume is exact up to five objectives and Monte-Carlo above, and exact
+is not cheap at five: a well-spread set of 126 points takes two to three
+seconds per call, so recording it along a trajectory is most of a campaign's
+time. That is what `final_metrics` is for — `metrics = ["igdp"]` with
+`final_metrics = ["igdp", "eps", "hv", "hv_h"]` pays for the hypervolume once
+per run. The other indicators cost hundredths of a second.
+
+Two more readings need no rerun. `--at 0.25` gives `--compare` and `--ranks`
+every run as it stood at a quarter of its budget, read from its trajectory, so
+ranks at several budgets come out of one campaign — they do differ with the
+budget (Tanabe & Oyama, GECCO 2017). `--recompute eps,hv_h` computes indicators
+a campaign did not record from each finished run's `final.csv` and stores them
+in its `meta.json`; `--workers` spreads the work.
 
 ### Reading the results
 

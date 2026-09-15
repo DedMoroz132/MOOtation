@@ -45,6 +45,14 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Campaign indicators: `igdp_norm` (IGD+ in nadir − ideal units, scale-free),
+  `eps` and `eps_norm` (additive epsilon), and `hv_h` (hypervolume with the
+  reference point at 1 + 1/H of the problem's default population, as
+  Ishibuchi et al. propose). `final_metrics` computes its own list once on the
+  final population, so the hypervolume at five objectives is not paid for at
+  every trajectory point. `--at FRACTION` reads every run at that fraction of
+  its budget for `--compare` and `--ranks`, and `--recompute` adds indicators
+  to finished runs from their `final.csv` without rerunning them.
 - The TUI can run a campaign. A campaign config opens on a dashboard —
   progress, speed and time left, the jobs in flight, every algorithm grouped
   by family with its own progress bar, every problem — with Start, Stop and a

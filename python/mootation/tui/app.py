@@ -39,6 +39,7 @@ from textual.widgets import (
 )
 
 from ..run.algorithms import algorithm_families
+from ..run.metric_names import HIGHER_IS_BETTER, METRIC_NAMES
 from ..run.config import Config, load, validate, _platform_key
 from ..run.ledger import Ledger
 from ..run import campaign as _camp
@@ -822,8 +823,8 @@ class CompareScreen(VerticalScroll):
              objective count, with the number of problems it won. With dozens
              of algorithms this is the view that says which one is good where.
 
-    Type a metric name in the box (igd, igdp, hv) and press Enter; press `e`
-    to export the current view as CSV next to the results.
+    Type a metric name in the box (any of mootation.run.metric_names) and press
+    Enter; press `e` to export the current view as CSV next to the results.
     """
 
     def __init__(self, cfg: Config) -> None:
@@ -835,7 +836,8 @@ class CompareScreen(VerticalScroll):
         self._note: Static | None = None
 
     def compose(self) -> ComposeResult:
-        yield Input(value=self.metric, placeholder="metric: igd | igdp | hv", id="cmp-metric")
+        yield Input(value=self.metric, placeholder="metric: " + " | ".join(METRIC_NAMES),
+                    id="cmp-metric")
         self._note = Static(Text(""), classes="panel")
         yield self._note
         self._table = DataTable(zebra_stripes=True, id="cmp-table")
@@ -860,7 +862,7 @@ class CompareScreen(VerticalScroll):
         algs = sorted({a for d in table.values() for a in d})
         self._table.clear(columns=True)
         self._table.add_columns("problem", *algs)
-        lower_better = self.metric != "hv"
+        lower_better = self.metric not in HIGHER_IS_BETTER
         for prob in sorted(table):
             cells = [prob]
             vals = {a: table[prob][a][0] for a in algs if a in table[prob]}
@@ -909,7 +911,7 @@ class CompareScreen(VerticalScroll):
         self._fill()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "cmp-metric" and event.value.strip() in ("igd", "igdp", "hv"):
+        if event.input.id == "cmp-metric" and event.value.strip() in METRIC_NAMES:
             self.metric = event.value.strip()
             self._fill()
             # Hand the keys back: with the box focused, `t` and `e` would be typed
@@ -972,7 +974,8 @@ class ExploreScreen(VerticalScroll):
         self.metric = "igd"
 
     def compose(self) -> ComposeResult:
-        yield Input(value=self.metric, placeholder="metric: igd | igdp | hv", id="exp-metric")
+        yield Input(value=self.metric, placeholder="metric: " + " | ".join(METRIC_NAMES),
+                    id="exp-metric")
         self._tree = Tree("results")
         self._tree.root.expand()
         self._build_tree()
@@ -1009,10 +1012,11 @@ class ExploreScreen(VerticalScroll):
         body = Text()
         body.append(f"{run_dir}\n", style="dim")
         body.append(f"{self.metric} vs evaluations ({len(traj)} records)\n", style="bold")
-        body.append(_ascii_plot(xs, ys, log_y=(self.metric != "hv")) + "\n")
+        body.append(_ascii_plot(xs, ys, log_y=(self.metric not in HIGHER_IS_BETTER)) + "\n")
+        cols = [m for m in METRIC_NAMES if any(m in t for t in traj)] or ["igd", "igdp", "hv"]
         if traj:
             body.append("\n  fe        gen     "
-                        + "   ".join(f"{m:>9}" for m in ("igd", "igdp", "hv")) + "\n",
+                        + "   ".join(f"{m:>9}" for m in cols) + "\n",
                         style="dim")
             step = max(1, len(traj) // 12)
             shown = traj[::step]
@@ -1020,7 +1024,7 @@ class ExploreScreen(VerticalScroll):
                 shown.append(traj[-1])
             for t in shown:
                 cells = []
-                for m in ("igd", "igdp", "hv"):
+                for m in cols:
                     v = t.get(m)
                     cells.append(f"{v:9.4g}" if isinstance(v, float) else f"{'-':>9}")
                 body.append(f"  {t.get('fe', 0):<9} {t.get('gen', 0):<7} "
@@ -1032,7 +1036,7 @@ class ExploreScreen(VerticalScroll):
             self.show_run(event.node.data)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "exp-metric" and event.value.strip() in ("igd", "igdp", "hv"):
+        if event.input.id == "exp-metric" and event.value.strip() in METRIC_NAMES:
             self.metric = event.value.strip()
             self._build_tree()
 

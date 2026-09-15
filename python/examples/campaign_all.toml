@@ -133,11 +133,13 @@ problems = [
 # in docs/algorithms.md.
 
 [campaign]
-out          = "results/{name}"   # relative to this file
-budget_fe    = 10000              # 0 = each problem's own pop x 500 generations
-record_every = 10                 # a trajectory point every 10 generations, for Explore
-# No hypervolume here: exact HV is cheap at 2 and 3 objectives, but a spread
-# 126-point set at 5 takes two to three seconds per call, which would be most
-# of the run time at 5 objectives. Add "hv" back for a smaller campaign.
-metrics      = ["igd", "igdp"]
-n_ref        = 1000
+out           = "results/{name}"   # relative to this file
+budget_fe     = 10000              # 0 = each problem's own pop x 500 generations
+record_every  = 10                 # a trajectory point every 10 generations, for Explore
+# Along the trajectory only the cheap indicators: exact hypervolume at 5
+# objectives takes two to three seconds per call, and recorded every 10
+# generations it would be most of the run time. On the final population, once
+# per run, the two hypervolumes add up to about 8 CPU-hours to the campaign.
+metrics       = ["igd", "igdp"]
+final_metrics = ["igd", "igdp", "igdp_norm", "eps", "hv", "hv_h"]
+n_ref         = 1000

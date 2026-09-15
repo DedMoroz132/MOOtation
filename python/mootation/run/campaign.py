@@ -55,6 +55,7 @@ from pathlib import Path
 from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
+from .metric_names import HIGHER_IS_BETTER, METRIC_NAMES, NEEDS_FRONT
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -82,6 +83,7 @@ class CampaignSpec:
     budget_fe: int = 0
     record_every: int = 1
     metrics: tuple = METRICS_DEFAULT
+    final_metrics: tuple = ()          # empty: the same as metrics
     n_ref: int = 1000
     seeds: tuple = ()
 
@@ -92,7 +94,7 @@ class CampaignSpec:
 def campaign_spec(cfg: Config) -> CampaignSpec:
     raw = dict(cfg.campaign or {})
     spec = CampaignSpec()
-    known = {"out", "budget_fe", "record_every", "metrics", "n_ref", "seeds"}
+    known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -100,11 +102,19 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.out = str(raw.get("out", spec.out))
     spec.budget_fe = int(raw.get("budget_fe", 0))
     spec.record_every = int(raw.get("record_every", 1))
-    metrics = tuple(raw.get("metrics", METRICS_DEFAULT))
-    for m in metrics:
-        if m not in ("igd", "igdp", "hv"):
-            raise ConfigError("campaign.metrics", f"unknown metric '{m}'; known: igd, igdp, hv")
-    spec.metrics = metrics
+    # `metrics` are recorded along the trajectory, `final_metrics` once on the
+    # final population. Splitting them is what lets a costly indicator — the
+    # hypervolume at five objectives — be measured on the result without
+    # being paid for at every trajectory point.
+    for key, default in (("metrics", METRICS_DEFAULT), ("final_metrics", None)):
+        names = raw.get(key, default)
+        if names is None:
+            continue
+        for m in names:
+            if m not in METRIC_NAMES:
+                raise ConfigError(f"campaign.{key}",
+                                  f"unknown metric '{m}'; known: {', '.join(METRIC_NAMES)}")
+        setattr(spec, key, tuple(names))
     spec.n_ref = int(raw.get("n_ref", 1000))
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
     if spec.record_every < 1:
@@ -222,7 +232,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     p = bench_get(job.problem)
     ref = None
-    if any(m in spec.metrics for m in ("igd", "igdp")) and callable(p.pareto_front):
+    final_metrics = spec.final_metrics or spec.metrics
+    if any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_front):
         ref = np.asarray(p.pareto_front(spec.n_ref), float)
     ideal, nadir = p.ideal, p.nadir
 
@@ -231,6 +242,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.pop * job.gens,
         "params": job.params, "n_objs": p.n_obj, "n_vars": p.n_vars,
         "pop_note": job.pop_note, "metrics": list(spec.metrics),
+        "final_metrics": list(final_metrics),
         "record_every": spec.record_every, "n_ref": spec.n_ref,
         "has_reference_front": ref is not None,
         "mootation": __version__,
@@ -257,7 +269,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
         if finite and F.size:
-            rec.update(M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=spec.metrics))
+            rec.update(M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir,
+                                 which=spec.metrics, pop=p.pop_size))
         fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
         fh.flush()
         n_records += 1
@@ -300,7 +313,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     final = {}
     if F.size and np.all(np.isfinite(F)):
-        final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=spec.metrics)
+        final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir,
+                          which=final_metrics, pop=p.pop_size)
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -680,20 +694,43 @@ def scan_results(root: Path) -> list[dict]:
             "algorithm": m.get("algorithm", meta.parents[1].name),
             "seed": m.get("seed"), "status": m.get("status", "?"),
             "final": m.get("final", {}) or {}, "seconds": m.get("seconds"),
-            "fe": m.get("fe"), "n_objs": m.get("n_objs"), "dir": meta.parent,
+            "fe": m.get("fe"), "n_objs": m.get("n_objs"), "budget_fe": m.get("budget_fe"),
+            "dir": meta.parent,
         })
     return rows
 
 
-def compare_table(rows: list[dict], metric: str = "igd") -> dict:
-    """{problem: {algorithm: (median, q1, q3, n)}} over finished runs."""
+def value_at(row: dict, metric: str, at: float | None) -> float | None:
+    """A run's `metric`: its final value, or at a fraction `at` of its budget.
+
+    At a fraction it is the last trajectory record that had spent no more than
+    `at * budget_fe` evaluations — the anytime reading of the same run, so ranks
+    at 10 %, 25 % and 100 % of the budget come out of one campaign. It needs the
+    metric among the campaign's `metrics`, which are what a trajectory records.
+    """
+    if at is None:
+        v = row["final"].get(metric)
+        return None if v is None else float(v)
+    limit = float(at) * float(row.get("budget_fe") or 0)
+    found = None
+    for rec in read_trajectory(Path(row["dir"])):
+        if rec.get("fe", 0) <= limit and rec.get(metric) is not None:
+            found = rec[metric]
+    return None if found is None else float(found)
+
+
+def compare_table(rows: list[dict], metric: str = "igd", at: float | None = None) -> dict:
+    """{problem: {algorithm: (median, q1, q3, n)}} over finished runs.
+
+    `at` reads every run at that fraction of its budget instead of at the end.
+    """
     import statistics
     table: dict = {}
     grouped: dict = {}
     for r in rows:
         if r["status"] != "done":
             continue
-        v = r["final"].get(metric)
+        v = value_at(r, metric, at)
         if v is None:
             continue
         grouped.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(float(v))
@@ -732,7 +769,7 @@ def problem_family(name: str) -> str:
     return "".join(c for c in stem if not c.isdigit()) or stem
 
 
-def rank_table(rows: list[dict], metric: str = "igd") -> dict:
+def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -> dict:
     """Where each algorithm stands, as one mean rank per group of problems.
 
     On every problem the algorithms are ranked by their median `metric` over
@@ -756,8 +793,8 @@ def rank_table(rows: list[dict], metric: str = "igd") -> dict:
          "algorithms": [(name, {"all": (mean, n), "DTLZ": (mean, n), ...,
                                 "wins": w}), ...]}      # best mean rank first
     """
-    table = compare_table(rows, metric)
-    lower_better = metric != "hv"
+    table = compare_table(rows, metric, at)
+    lower_better = metric not in HIGHER_IS_BETTER
     n_objs: dict = {}
     for r in rows:
         if r.get("n_objs") is not None:
@@ -799,14 +836,15 @@ def rank_table(rows: list[dict], metric: str = "igd") -> dict:
         entry["wins"] = wins.get(a, 0)
         out.append((a, entry))
     out.sort(key=lambda t: (t[1]["all"][0], -t[1]["wins"], t[0]))
-    return {"metric": metric, "lower_better": lower_better, "n_problems": len(table),
-            "groups": groups, "algorithms": out}
+    return {"metric": metric, "at": at, "lower_better": lower_better,
+            "n_problems": len(table), "groups": groups, "algorithms": out}
 
 
 def format_ranks(ranks: dict) -> str:
     """The rank table as fixed-width text, for the terminal."""
     groups = ranks["groups"]
-    lines = [f"mean rank by median {ranks['metric']} over {ranks['n_problems']} problem(s): "
+    at = f" at {ranks['at']:.0%} of the budget" if ranks.get("at") is not None else ""
+    lines = [f"mean rank by median {ranks['metric']}{at} over {ranks['n_problems']} problem(s): "
              f"1 = best, ties share the average rank; probs = problems ranked on",
              f"{'algorithm':<14}{'mean':>7}{'wins':>6}{'probs':>6}"
              + "".join(f"{g[:9]:>10}" for g in groups)]
@@ -832,6 +870,67 @@ def write_rank_csv(ranks: dict, path: Path) -> None:
             fh.write(",".join(cells) + "\n")
 
 
+# ── indicators added after the fact ─────────────────────────────────────────
+
+
+def _recompute_one(args) -> str:
+    run_dir, names, n_ref = args
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    from . import metrics as M
+    run_dir = Path(run_dir)
+    meta_path = run_dir / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if meta.get("status") != "done":
+            return "skipped"
+        p = bench_get(meta["problem"])
+        m = int(meta.get("n_objs") or p.n_obj)
+        rows = []
+        with (run_dir / "final.csv").open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or line.startswith("f1"):
+                    continue
+                rows.append([float(v) for v in line.split(",")[:m]])
+        F = np.asarray(rows, float)
+        if not F.size or not np.all(np.isfinite(F)):
+            return "skipped"
+        ref = None
+        if any(name in NEEDS_FRONT for name in names) and callable(p.pareto_front):
+            ref = np.asarray(p.pareto_front(int(meta.get("n_ref") or n_ref)), float)
+        final = dict(meta.get("final") or {})
+        final.update(M.compute(F, ref_front=ref, ideal=p.ideal, nadir=p.nadir,
+                               which=names, pop=p.pop_size))
+        meta["final"] = final
+        _write_json(meta_path, meta)
+        return "done"
+    except Exception as e:                           # noqa: BLE001
+        print(f"{run_dir}: {type(e).__name__}: {e}", file=sys.stderr)
+        return "failed"
+
+
+def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1000) -> dict:
+    """Compute `names` from every finished run's final.csv and merge them into its meta.json.
+
+    The final population is on disk, so an indicator added after a campaign
+    ran costs its own arithmetic, not a rerun. Trajectories keep what they
+    recorded.
+    """
+    tasks = [(str(m.parent), list(names), n_ref) for m in root.glob("*/*/run_*/meta.json")]
+    counts: dict = {}
+    if workers > 1 and len(tasks) > 1:
+        import multiprocessing as mp
+        with mp.Pool(processes=workers) as pool:
+            for status in pool.imap_unordered(_recompute_one, tasks, chunksize=8):
+                counts[status] = counts.get(status, 0) + 1
+    else:
+        for task in tasks:
+            status = _recompute_one(task)
+            counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
 # ── CLI ─────────────────────────────────────────────────────────────────────
 
 
@@ -855,6 +954,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ranks", metavar="METRIC",
                     help="print each algorithm's mean rank by median METRIC, overall, per "
                          "family and per objective count, and exit")
+    ap.add_argument("--at", type=float, metavar="FRACTION",
+                    help="with --compare or --ranks: read every run at this fraction of its "
+                         "budget, from its trajectory, instead of at the end")
+    ap.add_argument("--recompute", metavar="METRICS",
+                    help="compute these comma-separated metrics from every finished run's "
+                         "final.csv, store them in its meta.json, and exit (honours --workers)")
     args = ap.parse_args(argv)
 
     try:
@@ -889,14 +994,28 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{len(jobs)} jobs -> {root}", file=sys.stderr)
         return 0
     for flag, metric in (("--compare", args.compare), ("--ranks", args.ranks)):
-        if metric is not None and metric not in ("igd", "igdp", "hv"):
-            print(f"{flag}: unknown metric '{metric}'; known: igd, igdp, hv", file=sys.stderr)
+        if metric is not None and metric not in METRIC_NAMES:
+            print(f"{flag}: unknown metric '{metric}'; known: {', '.join(METRIC_NAMES)}",
+                  file=sys.stderr)
             return 1
+    if args.at is not None and not 0.0 < args.at <= 1.0:
+        print("--at wants a fraction of the budget in (0, 1], e.g. 0.25", file=sys.stderr)
+        return 1
+    if args.recompute:
+        names = [m.strip() for m in args.recompute.split(",") if m.strip()]
+        bad = [m for m in names if m not in METRIC_NAMES]
+        if bad or not names:
+            print(f"--recompute: unknown metric(s) {', '.join(bad) or '(none given)'}; "
+                  f"known: {', '.join(METRIC_NAMES)}", file=sys.stderr)
+            return 1
+        counts = recompute_final(root, names, workers=args.workers, n_ref=spec.n_ref)
+        print(f"recomputed {', '.join(names)}: {counts}", file=sys.stderr)
+        return 0 if counts.get("failed", 0) == 0 else 2
     if args.ranks:
-        print(format_ranks(rank_table(scan_results(root), args.ranks)))
+        print(format_ranks(rank_table(scan_results(root), args.ranks, args.at)))
         return 0
     if args.compare:
-        table = compare_table(scan_results(root), args.compare)
+        table = compare_table(scan_results(root), args.compare, args.at)
         algs = sorted({a for d in table.values() for a in d})
         print("problem".ljust(16) + "".join(a[:14].rjust(15) for a in algs))
         for prob in sorted(table):
