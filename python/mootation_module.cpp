@@ -20,6 +20,8 @@
 // ============================================================================
 
 #include <algorithm>
+#include <atomic>
+#include <climits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -57,6 +59,12 @@ struct PyProblem {
 // is single-threaded from Python's side and the pointer outlives the vault.
 PyProblem* g_problem = nullptr;
 
+// Evaluations spent by the current run, counted where the Python evaluator is
+// actually called: one per individual through eval_into, the batch size through
+// py_run_batch. A warm start plants objectives without evaluating and costs
+// nothing. Atomic because the step loop reads it with the GIL released.
+std::atomic<long long> g_evaluations{0};
+
 // Objective/limit evaluation, shared by every generated Problem<> below.
 inline void eval_into(const std::vector<double>& vars,
                       std::vector<double>&       objs,
@@ -74,6 +82,7 @@ inline void eval_into(const std::vector<double>& vars,
     } else {
         throw std::runtime_error("set problem.evaluate or problem.evaluate_batch");
     }
+    ++g_evaluations;
     if (static_cast<int>(objs.size()) != g_problem->n_objectives)
         throw std::runtime_error("the evaluator returned the wrong number of objectives");
 
@@ -105,6 +114,7 @@ void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& 
     for (const auto& row : out)
         if (static_cast<int>(row.size()) != g_problem->n_objectives)
             throw std::runtime_error("the evaluator returned the wrong number of objectives");
+    g_evaluations += static_cast<long long>(req.size());
     resp.objectives = std::move(out);
 
     if (g_problem->n_limits > 0) {
@@ -230,6 +240,16 @@ struct RunConfig {
     // Off by default: optimize() runs uninterrupted.
     std::function<void(int, std::vector<std::vector<double>>)> on_generation;
     int record_every = 0;
+
+    // Evaluation budget. 0 = run n_gen steps. > 0 = step until this many
+    // evaluations have been spent; n_gen is then ignored. A step is not a
+    // generation of pop_size evaluations for every core: NIMMO evaluates one
+    // offspring per step and MOEA/D-DRA and -AWA a fifth of the population,
+    // so a budget in steps is not a budget. The check sits between steps, so
+    // a generational core overshoots by less than one generation. The
+    // observer then fires every record_every * pop_size evaluations instead
+    // of every record_every steps, which keeps trajectories comparable.
+    long long max_evaluations = 0;
 };
 
 struct PyResult {
@@ -241,6 +261,8 @@ struct PyResult {
     // than dropped: a run configured with an ignored parameter is not the run
     // the caller asked for.
     std::vector<std::string>         ignored;
+    // Evaluations the run spent, setup included.
+    long long                        evaluations = 0;
 };
 
 template <typename Tag, typename Core>
@@ -270,7 +292,14 @@ PyResult run_core(const RunConfig& cfg)
     // t_max is not a user knob but a schedule input: several algorithms anneal
     // against it, and a default of 1000 against a 250-generation run is not the
     // paper's schedule. Always pass the real budget where the core takes it.
-    apply_t_max(alg, cfg.n_gen);
+    // Under an evaluation budget the number of steps is not known yet: start
+    // from budget / pop_size and correct it after the first step (below).
+    const bool by_evaluations = cfg.max_evaluations > 0;
+    if (by_evaluations)
+        apply_t_max(alg, static_cast<int>(std::min<long long>(
+            INT_MAX, (cfg.max_evaluations + cfg.pop_size - 1) / std::max(1, cfg.pop_size))));
+    else
+        apply_t_max(alg, cfg.n_gen);
 
     if (cfg.eta_c)      note(apply_eta_c(alg, *cfg.eta_c),           "eta_c");
     if (cfg.eta_m)      note(apply_eta_m(alg, *cfg.eta_m),           "eta_m");
@@ -306,24 +335,60 @@ PyResult run_core(const RunConfig& cfg)
         } else {
             opt.setup();
         }
-        if (cfg.on_generation && cfg.record_every > 0) {
-            auto emit = [&](int g) {
-                auto& v = opt.get_vault();
-                std::size_t n = std::min<std::size_t>(
-                    v.active_n(), static_cast<std::size_t>(v.pop_size()));
-                std::vector<std::vector<double>> P;
-                P.reserve(n);
-                for (std::size_t i = 0; i < n; ++i) P.push_back(v.objectives_of(i));
-                py::gil_scoped_acquire gil;
-                cfg.on_generation(g, std::move(P));
-            };
-            emit(0);
-            for (int g = 1; g <= cfg.n_gen; ++g) {
-                opt.step();
-                if (g % cfg.record_every == 0 || g == cfg.n_gen) emit(g);
+        const bool observe = cfg.on_generation && cfg.record_every > 0;
+        auto emit = [&](int g) {
+            auto& v = opt.get_vault();
+            std::size_t n = std::min<std::size_t>(
+                v.active_n(), static_cast<std::size_t>(v.pop_size()));
+            std::vector<std::vector<double>> P;
+            P.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) P.push_back(v.objectives_of(i));
+            py::gil_scoped_acquire gil;
+            cfg.on_generation(g, std::move(P));
+        };
+        if (!by_evaluations) {
+            if (observe) {
+                emit(0);
+                for (int g = 1; g <= cfg.n_gen; ++g) {
+                    opt.step();
+                    if (g % cfg.record_every == 0 || g == cfg.n_gen) emit(g);
+                }
+            } else {
+                opt.optimize(cfg.n_gen);
             }
         } else {
-            opt.optimize(cfg.n_gen);
+            if (observe) emit(0);
+            const long long start  = g_evaluations.load();
+            const long long stride = static_cast<long long>(cfg.record_every) *
+                                     std::max(1, cfg.pop_size);
+            long long next_record  = start + stride;
+            long long idle         = 0;   // consecutive steps that evaluated nothing
+            for (int g = 1; g_evaluations.load() < cfg.max_evaluations; ++g) {
+                const long long before = g_evaluations.load();
+                opt.step();
+                const long long now = g_evaluations.load();
+                if (now > before) {
+                    idle = 0;
+                } else if (++idle >= 10000) {
+                    throw std::runtime_error(
+                        "mootation: 10000 steps in a row evaluated nothing; this core "
+                        "cannot run on an evaluation budget, use n_gen");
+                }
+                if (g == 1) {
+                    // The real cost of a step is known now: give the schedule the
+                    // number of steps the budget buys (MOEA/D-AWA anneals over
+                    // five times more steps than a generational core).
+                    const long long per  = std::max(1LL, now - start);
+                    const long long left = std::max(0LL, cfg.max_evaluations - now);
+                    apply_t_max(alg, static_cast<int>(std::min<long long>(
+                        INT_MAX, 1 + (left + per - 1) / per)));
+                }
+                const bool last = now >= cfg.max_evaluations;
+                if (observe && (now >= next_record || last)) {
+                    emit(g);
+                    while (next_record <= now) next_record += stride;
+                }
+            }
         }
     }
 
@@ -339,6 +404,7 @@ PyResult run_core(const RunConfig& cfg)
     r.active_n = std::min<std::size_t>(v.active_n(),
                                        static_cast<std::size_t>(v.pop_size()));
     r.ignored  = std::move(ignored);
+    r.evaluations = g_evaluations.load();
     r.objectives.reserve(r.active_n);
     r.variables.reserve(r.active_n);
     for (std::size_t i = 0; i < r.active_n; ++i) {
@@ -356,6 +422,7 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
         throw std::invalid_argument("problem.bounds is empty");
 
     g_problem = &problem;
+    g_evaluations = 0;
     struct Guard { ~Guard() { g_problem = nullptr; } } guard;
 
 #define MOOTATION_ALG(KEY, IND, CORE) \
@@ -425,7 +492,11 @@ PYBIND11_MODULE(_core, m)
                        "Observer called as on_generation(gen, objectives) every "
                        "record_every generations (gen 0 = after setup).")
         .def_readwrite("record_every",    &RunConfig::record_every,
-                       "0 = no observer; k > 0 = call on_generation every k generations.");
+                       "0 = no observer; k > 0 = call on_generation every k generations "
+                       "(every k * pop_size evaluations under max_evaluations).")
+        .def_readwrite("max_evaluations", &RunConfig::max_evaluations,
+                       "0 = run n_gen steps; > 0 = step until this many evaluations are "
+                       "spent (n_gen is then ignored).");
 
     py::class_<PyResult>(m, "Result")
         .def_readonly("objectives", &PyResult::objectives)
@@ -433,7 +504,9 @@ PYBIND11_MODULE(_core, m)
         .def_readonly("cv",         &PyResult::cv)
         .def_readonly("active_n",   &PyResult::active_n)
         .def_readonly("ignored",    &PyResult::ignored,
-                      "Knobs you set that this algorithm does not have.");
+                      "Knobs you set that this algorithm does not have.")
+        .def_readonly("evaluations", &PyResult::evaluations,
+                      "Evaluations the run spent, setup included.");
 
     m.def("algorithms", &algorithm_names,
           "Names accepted by run(), straight from include/mootation/algorithms.def.");

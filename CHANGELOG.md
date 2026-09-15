@@ -76,6 +76,23 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- Campaign budgets were counted in steps, and a step is not a generation for
+  every core: NIMMO evaluates one offspring per step and MOEA/D-DRA and
+  MOEA/D-AWA a fifth of the population, so at the same budget they spent 2 %
+  and 21 % of what the other 55 algorithms did, and their campaign ranks meant
+  nothing. It showed up by comparing the `fe` field of a finished campaign with
+  its budget. `minimize()` and the binding's `Config` take `max_evaluations` —
+  the run stops between steps once that many evaluations are spent, and
+  `Result.evaluations` reports the count — and every campaign job runs on it.
+  Schedules that anneal over `t_max` get the number of steps the budget
+  actually buys, measured after the first step. The C++ `run()` / `Session`
+  and the TOML runs of external solvers still count generations.
+- A campaign on Windows died on the first collision between a worker writing a
+  `meta.json` and the TUI or `--list` reading it. Windows refuses to replace a
+  file another process has open, the error was not caught, and one collision
+  stopped a campaign 8 400 jobs in. The write now retries for a few seconds,
+  and an error outside a job's own run fails that job instead of the pool; the
+  job reruns when the campaign is started again.
 - Every Linux and macOS build, the C ABI job and the single-header check had
   been failing in CI since the binary-genome refusals were added. In HCCA the
   refusal shared a line with the two calls after it, which GCC and Clang flag

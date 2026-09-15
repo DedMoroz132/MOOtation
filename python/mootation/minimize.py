@@ -31,6 +31,7 @@ def minimize(
     algorithm: str = "nsga2",
     pop_size: int = 100,
     n_gen: int = 250,
+    max_evaluations: int = 0,
     seed: int = 0,
     constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
     n_cons: int = 0,
@@ -73,6 +74,14 @@ def minimize(
                 path to a CSV of EVERY evaluation, including the ones the
                 optimizer discarded. Off unless given: no file is opened and
                 nothing is wrapped.
+    max_evaluations
+                stop once this many evaluations have been spent instead of
+                after `n_gen` steps, which is then ignored. Use it whenever
+                algorithms are compared: a step is not a generation for every
+                core (NIMMO evaluates one offspring per step, MOEA/D-DRA and
+                -AWA a fifth of the population). Checked between steps, so a
+                generational core overshoots by less than one generation, and
+                `record_every` then counts `pop_size` evaluations per unit.
     on_generation, record_every
                 an observer `on_generation(gen, objectives)` called after
                 setup (gen 0) and after every `record_every`-th generation
@@ -83,7 +92,7 @@ def minimize(
                 reported in `result.ignored` rather than dropped.
 
     Returns the binding's Result: `.objectives`, `.variables`, `.cv`,
-    `.active_n`, `.ignored`.
+    `.active_n`, `.ignored`, `.evaluations`.
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if not bounds:
@@ -152,6 +161,10 @@ def minimize(
     cfg = _core.Config()
     cfg.pop_size = int(pop_size)
     cfg.n_gen = int(n_gen)
+    if max_evaluations:
+        if int(max_evaluations) < 0:
+            raise ValueError(f"max_evaluations must be >= 0, got {max_evaluations}")
+        cfg.max_evaluations = int(max_evaluations)
     cfg.seed = int(seed)
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY

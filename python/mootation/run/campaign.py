@@ -17,7 +17,7 @@ entries and a `[campaign]` table:
 
     [campaign]
     out          = "results/{name}"   # results root, relative to the config
-    budget_fe    = 0                  # 0 -> the problem's own pop*gens; else gens = ceil(budget/pop)
+    budget_fe    = 0                  # 0 -> the problem's own pop*gens; else this many evaluations
     record_every = 1                  # generations between trajectory points
     metrics      = ["igd", "igdp", "hv"]
     n_ref        = 1000               # reference-front sample size for IGD/IGD+
@@ -268,6 +268,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens,
             seed=job.seed,
             constraints=(p.constraints if p.has_cons else None),
+            # The budget is spent in evaluations, not steps. NIMMO evaluates one
+            # offspring per step and MOEA/D-DRA and -AWA a fifth of the
+            # population, so a budget in generations gave them 2 % and 21 % of
+            # what every other algorithm spent.
+            max_evaluations=job.pop * job.gens,
             on_generation=on_gen, record_every=spec.record_every,
             **job.params,
         )
@@ -312,7 +317,21 @@ def _write_json(path: Path, obj: dict) -> None:
     tmp = path.with_suffix(".json.tmp")
     with tmp.open("w", encoding="utf-8") as fh:
         json.dump(obj, fh, indent=1)
-    os.replace(tmp, path)
+    # On Windows a file another process has open cannot be replaced, and the
+    # TUI and --list read every meta.json every few seconds: one collision
+    # used to abort a whole campaign 8 400 jobs in. A reader holds the file
+    # for milliseconds, so a few seconds of retries is plenty; on POSIX the
+    # first attempt always succeeds.
+    delay = 0.01
+    for attempt in range(40):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if attempt == 39:
+                raise
+            time.sleep(delay)
+            delay = min(2 * delay, 0.25)
 
 
 # ── the whole campaign ──────────────────────────────────────────────────────
@@ -320,11 +339,23 @@ def _write_json(path: Path, obj: dict) -> None:
 
 def _pool_worker(args):
     cfg_path, index, force = args
-    cfg = load(cfg_path)
-    validate(cfg)
-    spec = campaign_spec(cfg)
-    jobs = expand_jobs(cfg, spec)
-    return index, run_job(jobs[index], out_root(cfg, spec), spec, force=force)
+    try:
+        cfg = load(cfg_path)
+        validate(cfg)
+        spec = campaign_spec(cfg)
+        jobs = expand_jobs(cfg, spec)
+        return index, run_job(jobs[index], out_root(cfg, spec), spec, force=force)
+    except Exception as e:                           # noqa: BLE001
+        return index, _job_crashed(index, e)
+
+
+def _job_crashed(index: int, e: BaseException) -> str:
+    # run_job already records a failing optimisation as "failed". This is
+    # everything around it — the file system, a config edited mid-run — and it
+    # must cost one job, not the campaign. The job's meta.json still says
+    # "running", so starting the campaign again reruns it.
+    print(f"[{index}] FAILED outside the run: {type(e).__name__}: {e}", file=sys.stderr)
+    return "failed"
 
 
 def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,

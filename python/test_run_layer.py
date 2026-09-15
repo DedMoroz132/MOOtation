@@ -1072,8 +1072,21 @@ def campaign_results_round_trip():
                   pop_size=10, n_gen=2, seed=1)
         assert minimize(zdt, T=5.0, nr=2.0, **kw).active_n == 10
         assert "T" in str(raises(TypeError, minimize, zdt, T=5.5, **kw))
+        # The budget is in evaluations whatever a core spends per step: a step
+        # of NIMMO is one offspring, of MOEA/D-DRA a fifth of the population.
+        for name, per_step in (("nsga2", 20), ("nimmo", 1), ("moead_dra", 4)):
+            spent = [0]
+
+            def counted(x, spent=spent):
+                spent[0] += 1
+                return zdt(x)
+
+            r = minimize(counted, bounds=[(0.0, 1.0)] * 3, n_objs=2, algorithm=name,
+                         pop_size=20, n_gen=1, seed=1, max_evaluations=200)
+            assert 200 <= spent[0] < 200 + per_step, (name, spent[0])
+            assert r.evaluations == spent[0], (name, r.evaluations, spent[0])
         traj = C.read_trajectory(root / z.rel_dir)
-        assert traj and traj[0]["gen"] == 0 and traj[-1]["gen"] == z.gens
+        assert traj and traj[0]["gen"] == 0 and traj[-1]["fe"] >= z.pop * z.gens
         assert all("igd" in t and "hv" in t for t in traj)
         rows = C.scan_results(root)
         assert len(rows) == 1 and rows[0]["problem"] == "ZDT1"
@@ -1137,6 +1150,27 @@ def campaign_rank_table():
         lines = p.read_text(encoding="utf-8").splitlines()
         assert lines[0].startswith("algorithm,mean_rank,problems,wins,DTLZ_mean_rank,DTLZ_problems")
         assert lines[1].startswith("a,1.5,4,3,"), lines[1]
+
+
+@test
+def campaign_write_survives_an_open_reader():
+    """meta.json is replaced while another handle has it open, as the TUI does."""
+    import threading
+    from mootation.run import campaign as C
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "meta.json"
+        p.write_text('{"status": "running"}', encoding="utf-8")
+        reader = p.open("r", encoding="utf-8")
+        release = threading.Timer(0.3, reader.close)
+        release.start()
+        try:
+            C._write_json(p, {"status": "done"})
+        finally:
+            release.join()
+            reader.close()
+        assert json.loads(p.read_text(encoding="utf-8"))["status"] == "done"
+        # a job that cannot even be set up costs that job, not the pool
+        assert C._pool_worker((str(Path(td) / "missing.toml"), 7, False)) == (7, "failed")
 
 
 

@@ -204,7 +204,12 @@ python -m mootation.run.campaign campaign.toml --ranks igd     # mean rank per a
 
 Each run writes `trajectory.jsonl` (IGD, IGD+ and hypervolume against the
 evaluation count), `meta.json` and `final.csv`; a campaign is resumable, and
-`pop = 0` / `gens = 0` take each problem's own published budget.
+`pop = 0` / `gens = 0` take each problem's own published budget. Whatever the
+budget, a run stops when it has spent that many evaluations, not after that
+many steps: a step is a generation for most algorithms, but one offspring for
+NIMMO and a fifth of the population for MOEA/D-DRA and MOEA/D-AWA, and a budget
+in generations left those three with 2 % and 21 % of everyone else's
+evaluations. The count each run actually spent is `fe` in its `meta.json`.
 `mootation.run.metrics` carries the indicators: IGD, IGD+ and an exact WFG
 hypervolume up to five objectives, Monte-Carlo above that. Exact is not cheap
 at five: a well-spread set of 126 points takes two to three seconds per call,
