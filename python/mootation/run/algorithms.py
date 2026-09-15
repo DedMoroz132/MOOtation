@@ -63,6 +63,33 @@ def algorithm_names() -> tuple[str, ...]:
     return tuple(names)
 
 
+_SECTION_RE = re.compile(r"^\s*//\s*──\s*(.+?)\s*─")
+
+
+@lru_cache(maxsize=1)
+def algorithm_families() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """The families algorithms.def groups its entries under, in file order.
+
+    Read from the section comments of the same file the names come from, so a
+    family list cannot fall behind the registry either.
+    """
+    groups: list = []
+    current = None
+    for line in _algorithms_def().read_text(encoding="utf-8").splitlines():
+        m = _SECTION_RE.match(line)
+        if m:
+            current = (m.group(1), [])
+            groups.append(current)
+            continue
+        m = _ALG_RE.match(line)
+        if m:
+            if current is None:
+                current = ("algorithms", [])
+                groups.append(current)
+            current[1].append(m.group(1))
+    return tuple((name, tuple(names)) for name, names in groups if names)
+
+
 # ── Population-size rules ───────────────────────────────────────────────────
 
 # Cores that call das_dennis::generate_exact: the population size must equal a

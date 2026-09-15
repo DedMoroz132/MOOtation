@@ -7,9 +7,10 @@ screen is actually composed and rendered here rather than merely imported. A
 screen that raises on a config shape it did not expect — a builtin problem with
 no steps, an external one with no benchmarks — fails here.
 
-The shipped campaign has no results next to it, so its Compare tab renders an
-empty table. It is exercised once more over a handful of finished runs written
-by hand, which is the only way the medians and ranks views draw real rows.
+The shipped campaign has no results next to it, so its Campaign and Compare
+tabs render empty. It is exercised once more over a handful of finished runs
+written by hand, which is the only way the dashboard, the medians and the ranks
+draw real rows. Start is not pressed: it would launch a real campaign.
 
 Skipped, not failed, when Textual is absent: the rest of mootation_run does not
 need it.
@@ -34,7 +35,7 @@ except ImportError:
     print("skipped: Textual is not installed (pip install textual)")
     raise SystemExit(0)
 
-from mootation.tui.app import MootationApp  # noqa: E402
+from mootation.tui.app import CampaignScreen, MootationApp  # noqa: E402
 
 CONFIGS = ["examples/demo.toml", "examples/bench.toml", "examples/airfoil.toml",
            "examples/campaign.toml"]
@@ -71,14 +72,35 @@ def fake_campaign(td: Path) -> Path:
 
 async def exercise(cfg: Path, finished_runs: bool = False) -> None:
     app = MootationApp(cfg)
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(160, 60)) as pilot:
         present = {t.id for t in app.query("TabPane")}
         tabs = TABS + tuple(t for t in CAMPAIGN_TABS if t in present)
         if cfg.name == "campaign.toml":
             assert set(CAMPAIGN_TABS) <= present, "campaign config must show the campaign tabs"
+            assert app.query_one("TabbedContent").active == "tab-campaign", \
+                "a campaign config opens on its dashboard"
         for tab in tabs:
             app.query_one("TabbedContent").active = tab
             await pilot.pause()
+        if "tab-campaign" in present:
+            app.query_one("TabbedContent").active = "tab-campaign"
+            screen = app.query_one(CampaignScreen)
+            screen.scan_now()
+            await app.workers.wait_for_complete()
+            await pilot.pause()
+            snap = screen.last_snapshot
+            assert snap is not None, "the dashboard never finished a scan"
+            if finished_runs:
+                done = len(FAKE_PROBLEMS) * len(FAKE_ALGORITHMS) * 2
+                assert snap["counts"]["done"] == done, snap["counts"]
+                # Apply writes the worker count a running campaign would pick up;
+                # Stop with nothing running must only say so.
+                screen.query_one("#camp-workers").value = "3"
+                screen.apply()
+                screen.stop()
+                await pilot.pause()
+                results = cfg.parent / "results" / "dtlz_wfg_sweep"
+                assert (results / "_workers.txt").read_text(encoding="utf-8").strip() == "3"
         if "tab-compare" in present:
             # Both readings of the results, and the export of each.
             app.query_one("TabbedContent").active = "tab-compare"
@@ -102,7 +124,7 @@ async def exercise(cfg: Path, finished_runs: bool = False) -> None:
         # half-saved file must not take the app down.
         app.action_reload()
         await pilot.pause()
-    suffix = " + finished runs, both compare views" if finished_runs else ""
+    suffix = " + finished runs, dashboard, both compare views" if finished_runs else ""
     print(f"  ok    {cfg.name}{suffix}: {len(tabs)} screens + reload")
 
 

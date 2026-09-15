@@ -4,7 +4,7 @@ seeds each, with a convergence trajectory recorded per run.
 
     python -m mootation.run.campaign camp.toml --list
     python -m mootation.run.campaign camp.toml                   # run all jobs here
-    python -m mootation.run.campaign camp.toml --workers 8       # local pool
+    python -m mootation.run.campaign camp.toml --workers 8       # local pool; <results>/_workers.txt resizes it live
     python -m mootation.run.campaign camp.toml --shard 3/40      # one slice, for an array job
     python -m mootation.run.campaign camp.toml --job 17          # exactly one job
     python -m mootation.run.campaign camp.toml --emit-slurm 40   # write submit.sh + jobs.txt
@@ -313,10 +313,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     return "done"
 
 
-def _write_json(path: Path, obj: dict) -> None:
-    tmp = path.with_suffix(".json.tmp")
+def _write_text(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
     with tmp.open("w", encoding="utf-8") as fh:
-        json.dump(obj, fh, indent=1)
+        fh.write(text)
     # On Windows a file another process has open cannot be replaced, and the
     # TUI and --list read every meta.json every few seconds: one collision
     # used to abort a whole campaign 8 400 jobs in. A reader holds the file
@@ -332,6 +332,56 @@ def _write_json(path: Path, obj: dict) -> None:
                 raise
             time.sleep(delay)
             delay = min(2 * delay, 0.25)
+
+
+def _write_json(path: Path, obj: dict) -> None:
+    _write_text(path, json.dumps(obj, indent=1))
+
+
+# ── live control of a running campaign ──────────────────────────────────────
+#
+# Two small files in the results root. `_workers.txt` holds the number of
+# worker processes the runner keeps. It is re-read every 1.5 s: a higher number
+# starts workers at once, a lower one lets the surplus finish the job it is on
+# and leave, and 0 drains the campaign and stops it cleanly, with unfinished
+# jobs left pending. Anything may write it — the TUI, or by hand,
+# `echo 8 > results/<name>/_workers.txt`. `_runner.json` is the runner's
+# heartbeat, rewritten every two seconds, so a UI can show and steer a run it
+# did not start.
+
+WORKERS_FILE = "_workers.txt"
+RUNNER_FILE = "_runner.json"
+_HEARTBEAT_STALE_S = 15.0
+
+
+def read_workers(root: Path, default: int) -> int:
+    """The worker count the running campaign should keep, as `_workers.txt` says."""
+    try:
+        return max(0, int((root / WORKERS_FILE).read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        return default
+
+
+def write_workers(root: Path, n: int) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    _write_text(root / WORKERS_FILE, f"{max(0, int(n))}\n")
+
+
+def runner_state(root: Path) -> dict | None:
+    """The last heartbeat of this results root's runner, with `alive` added.
+
+    None when no runner ever wrote one. `alive` is False once the runner has
+    finished or stopped, or has not written for 15 s — killed without a chance
+    to say so.
+    """
+    try:
+        with (root / RUNNER_FILE).open("r", encoding="utf-8") as fh:
+            st = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    st["alive"] = (st.get("state") == "running"
+                   and time.time() - float(st.get("updated", 0)) <= _HEARTBEAT_STALE_S)
+    return st
 
 
 # ── the whole campaign ──────────────────────────────────────────────────────
@@ -356,6 +406,159 @@ def _job_crashed(index: int, e: BaseException) -> str:
     # "running", so starting the campaign again reruns it.
     print(f"[{index}] FAILED outside the run: {type(e).__name__}: {e}", file=sys.stderr)
     return "failed"
+
+
+def _worker_main(cfg_path, force, job_q, res_q, target, active, lock) -> None:
+    """One worker process: jobs from the queue until it is surplus or the queue ends.
+
+    The config is read and expanded once per process, not once per job. Before
+    taking a job the worker checks whether more workers are alive than the
+    target, and leaves if so, which is why a job in progress always finishes.
+    """
+    import queue as _queue
+    pid = os.getpid()
+    try:
+        cfg = load(cfg_path)
+        validate(cfg)
+        spec = campaign_spec(cfg)
+        jobs = expand_jobs(cfg, spec)
+        root = out_root(cfg, spec)
+    except Exception as e:                           # noqa: BLE001
+        with lock:
+            active.value -= 1
+        res_q.put(("broken", pid, f"{type(e).__name__}: {e}"))
+        return
+    while True:
+        with lock:
+            surplus = active.value > target.value
+            if surplus:
+                active.value -= 1
+        if surplus:
+            res_q.put(("bye", pid))
+            return
+        try:
+            index = job_q.get(timeout=0.5)
+        except _queue.Empty:
+            continue
+        if index is None:
+            with lock:
+                active.value -= 1
+            res_q.put(("bye", pid))
+            return
+        res_q.put(("start", pid, index))
+        try:
+            status = run_job(jobs[index], root, spec, force=force)
+        except Exception as e:                       # noqa: BLE001
+            status = _job_crashed(index, e)
+        res_q.put(("done", pid, index, status))
+
+
+def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
+                 force: bool, label: str) -> dict:
+    """Run `todo` with a pool whose size follows `_workers.txt` while it runs."""
+    import multiprocessing as mp
+    import queue as _queue
+    ctx = mp.get_context()
+    job_q, res_q = ctx.Queue(), ctx.Queue()
+    for j in todo:
+        job_q.put(j.index)
+    lock = ctx.Lock()
+    target = ctx.Value("i", 0)
+    active = ctx.Value("i", 0)
+    ceiling = os.cpu_count() or 1
+    write_workers(root, workers)
+
+    procs: dict = {}         # pid -> Process, until reaped
+    inflight: dict = {}      # pid -> the job it is running
+    left: set = set()        # pids that said goodbye
+    counts = {"done": 0, "failed": 0}
+    finished = 0
+    started = time.time()
+    last_read = last_beat = 0.0
+    state = "running"
+
+    def beat(st: str) -> None:
+        _write_json(root / RUNNER_FILE, {
+            "state": st, "pid": os.getpid(), "slice": label,
+            "started": started, "updated": time.time(),
+            "target": target.value, "active": active.value,
+            "todo": len(todo), "done": counts["done"], "failed": counts["failed"],
+            "running": sorted(inflight.values()),
+        })
+
+    def spawn() -> None:
+        with lock:
+            active.value += 1
+        p = ctx.Process(target=_worker_main, daemon=True,
+                        args=(cfg_path, force, job_q, res_q, target, active, lock))
+        p.start()
+        procs[p.pid] = p
+
+    try:
+        while finished < len(todo):
+            now = time.time()
+            if now - last_read >= 1.5:
+                last_read = now
+                want = min(read_workers(root, workers), ceiling)
+                with lock:
+                    target.value = want
+                    missing = min(want, len(todo) - finished) - active.value
+                for _ in range(max(0, missing)):
+                    spawn()
+                if want == 0 and active.value == 0:
+                    state = "stopped"                # drained on request
+                    break
+            if now - last_beat >= 2.0:
+                last_beat = now
+                beat("running")
+            try:
+                msg = res_q.get(timeout=0.5)
+            except _queue.Empty:
+                msg = None
+            if msg is not None:
+                kind, pid = msg[0], msg[1]
+                if kind == "start":
+                    inflight[pid] = msg[2]
+                elif kind == "done":
+                    inflight.pop(pid, None)
+                    counts[msg[3]] = counts.get(msg[3], 0) + 1
+                    finished += 1
+                elif kind == "bye":
+                    left.add(pid)
+                elif kind == "broken":
+                    print(f"a worker could not start: {msg[2]}", file=sys.stderr)
+                    state = "broken"
+                    break
+                continue                             # drain the queue before reaping
+            # A worker that died without saying goodbye crashed — inside a core,
+            # or killed. Its job failed, and the pool is one short until the
+            # next read of _workers.txt starts a replacement.
+            for pid, p in list(procs.items()):
+                if p.is_alive():
+                    continue
+                procs.pop(pid)
+                if pid in left:
+                    continue
+                with lock:
+                    active.value -= 1
+                if pid in inflight:
+                    index = inflight.pop(pid)
+                    counts["failed"] += 1
+                    finished += 1
+                    print(f"[{index}] FAILED: its worker exited with code {p.exitcode}",
+                          file=sys.stderr)
+    except KeyboardInterrupt:
+        state = "stopped"
+        raise
+    finally:
+        for p in procs.values():
+            if p.is_alive():
+                p.terminate()
+        for p in procs.values():
+            p.join(timeout=5)
+        beat("finished" if state == "running" else state)
+    counts["pending"] = len(todo) - finished
+    return counts
 
 
 def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
@@ -383,16 +586,21 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
           f"{len(todo)} to run -> {root}", file=sys.stderr)
 
     counts = {"done": 0, "failed": 0, "skipped": len(selected) - len(todo)}
-    if workers > 1 and len(todo) > 1:
-        import multiprocessing as mp
-        cfg_path = str(cfg.source_path)
-        with mp.Pool(processes=workers) as pool:
-            for _, status in pool.imap_unordered(
-                    _pool_worker, [(cfg_path, j.index, force) for j in todo]):
-                counts[status] = counts.get(status, 0) + 1
+    if len(todo) > 1 and cfg.source_path is not None:
+        # Worker processes whenever there is more than one job, even with
+        # workers = 1, so the pool can be grown while the campaign runs.
+        label = (f"shard {shard[0]}/{shard[1]}" if shard is not None
+                 else f"{len(only)} job(s)" if only is not None else "all")
+        got = _run_dynamic(str(cfg.source_path), todo, root, workers=workers,
+                           force=force, label=label)
+        for k, v in got.items():
+            counts[k] = counts.get(k, 0) + v
     else:
         for j in todo:
-            status = run_job(j, root, spec, force=force)
+            try:
+                status = run_job(j, root, spec, force=force)
+            except Exception as e:                   # noqa: BLE001
+                status = _job_crashed(j.index, e)
             counts[status] = counts.get(status, 0) + 1
     print(f"finished: {counts}", file=sys.stderr)
     return counts
@@ -634,7 +842,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--list", action="store_true", help="print the job list and exit")
     ap.add_argument("--shard", help="i/n: run the jobs with index %% n == i")
     ap.add_argument("--job", type=int, action="append", help="run one job by index (repeatable)")
-    ap.add_argument("--workers", type=int, default=1, help="local process pool size")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="worker processes to start with; change it while the campaign runs by "
+                         "writing the number into <results>/_workers.txt (0 drains and stops)")
     ap.add_argument("--force", action="store_true", help="rerun jobs already marked done")
     ap.add_argument("--emit-slurm", type=int, metavar="N",
                     help="write <out>/submit.sh (an array of N shards) and jobs.txt, then exit")

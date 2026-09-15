@@ -1173,6 +1173,71 @@ def campaign_write_survives_an_open_reader():
         assert C._pool_worker((str(Path(td) / "missing.toml"), 7, False)) == (7, "failed")
 
 
+@test
+def campaign_control_files():
+    """_workers.txt steers a running campaign; _runner.json says whether one is alive."""
+    import time
+    from mootation.run import campaign as C
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td) / "results"
+        assert C.read_workers(root, 5) == 5                     # nothing written yet
+        C.write_workers(root, 8)
+        assert C.read_workers(root, 5) == 8
+        (root / C.WORKERS_FILE).write_text("eight", encoding="utf-8")
+        assert C.read_workers(root, 5) == 5                     # garbage falls back
+        C.write_workers(root, -3)
+        assert C.read_workers(root, 5) == 0                     # 0 means drain
+        assert C.runner_state(root) is None
+        beat = {"state": "running", "updated": time.time(), "active": 2, "target": 2}
+        C._write_json(root / C.RUNNER_FILE, beat)
+        assert C.runner_state(root)["alive"] is True
+        C._write_json(root / C.RUNNER_FILE, dict(beat, updated=time.time() - 60))
+        assert C.runner_state(root)["alive"] is False           # killed without a word
+        C._write_json(root / C.RUNNER_FILE, dict(beat, state="finished"))
+        assert C.runner_state(root)["alive"] is False
+
+
+@test
+def campaign_worker_pool():
+    """The pool runs every job, and a target of 0 drains without running any."""
+    try:
+        import numpy  # noqa: F401
+        import mootation._core  # noqa: F401
+    except ImportError:
+        return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        for name, workers, expect_done in (("pool", 2, 3), ("drained", 0, 0)):
+            cfg_path = Path(td) / f"{name}.toml"
+            cfg_path.write_text(
+                _CAMP.replace('name = "camp"', f'name = "{name}"')
+                .replace('problems = ["ZDT1", "DTLZ2_3D"]', 'problems = ["ZDT1"]')
+                .replace("budget_fe = 2000", "budget_fe = 200")
+                .split("[[algorithms]]")[0] + '[[algorithms]]\nname = "nsga2"\npop = 20\ngens = 0\n',
+                encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            counts = C.run_campaign(cfg, workers=workers)
+            root = C.out_root(cfg, C.campaign_spec(cfg))
+            assert counts["done"] == expect_done and counts["pending"] == 3 - expect_done, counts
+            state = C.runner_state(root)
+            assert state and state["alive"] is False, state
+            assert state["state"] == ("finished" if workers else "stopped"), state
+            assert C.read_workers(root, -1) == workers
+
+
+@test
+def algorithm_families_cover_the_registry():
+    """The families in algorithms.def's section comments hold every algorithm once."""
+    from mootation.run.algorithms import algorithm_families
+    fams = algorithm_families()
+    names = [a for _, members in fams for a in members]
+    assert names == list(algorithm_names()), "families must list the registry in order"
+    assert len(fams) == 7 and fams[0][1][0] == "nsga2", fams
+    assert all(name and "─" not in name for name, _ in fams), fams
+
+
 
 def main() -> int:
     failed = []

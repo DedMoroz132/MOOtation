@@ -1,25 +1,44 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The Textual application: read-only screens over a run description.
+"""The Textual application: screens over a run description.
 
 Config / Problems / Algorithms / Monitor always; Campaign / Compare / Explore
-when the config describes a builtin benchmark campaign (mootation.run.campaign).
+when the config describes a builtin benchmark campaign (mootation.run.campaign),
+and then the app opens on Campaign.
 
 Nothing here edits the config. The screens render what `config.load` and
 `config.validate` already produced, plus what the journal on disk says, so the
-UI cannot disagree with `--check`: they call the same functions.
+UI cannot disagree with `--check`: they call the same functions. The one thing
+the app does besides reading is run the campaign its config describes: the
+Campaign tab starts it, stops it and changes its number of workers while it
+runs.
 """
 
 from __future__ import annotations
 
+import atexit
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from collections import deque
 from pathlib import Path
 
+from rich import box
+from rich.align import Align
+from rich.console import Group
+from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
+from textual import work
 from textual.app import App, ComposeResult
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
-    DataTable, Footer, Header, Input, Static, TabbedContent, TabPane, Tree,
+    Button, DataTable, Footer, Header, Input, Static, TabbedContent, TabPane, Tree,
 )
 
+from ..run.algorithms import algorithm_families
 from ..run.config import Config, load, validate, _platform_key
 from ..run.ledger import Ledger
 from ..run import campaign as _camp
@@ -323,98 +342,471 @@ def _campaign_ready(cfg: Config) -> bool:
     return cfg.kind == "builtin" and bool(cfg.benchmark_problems) and bool(cfg.algorithms)
 
 
-class CampaignScreen(VerticalScroll):
-    """Progress of a benchmark campaign, read from the meta.json files.
+# Campaigns this app started, by results root. Module-level so that a reload,
+# which rebuilds every screen, does not lose track of them, and so that exit
+# can stop them however the app ends.
+_STARTED: dict = {}
 
-    The results tree is the contract between the runner and the UI: a run
-    is whatever its meta.json says it is, whether it
-    was produced on this machine or on a cluster shard and copied back.
+
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Stop a campaign runner and every worker process under it."""
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True)
+        else:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        proc.wait(timeout=10)
+    except Exception:                                    # noqa: BLE001
+        pass
+
+
+def _stop_started() -> None:
+    for proc in list(_STARTED.values()):
+        _kill_tree(proc)
+
+
+atexit.register(_stop_started)
+
+_GREEN = "#9ece6a"
+_YELLOW = "#e0af68"
+_DIM = "grey42"
+_MAGENTA = "#bb9af7"
+_CYAN = "#7dcfff"
+
+
+def _hms(seconds: float) -> str:
+    s = int(max(0.0, seconds))
+    return f"{s // 3600:02d}:{(s % 3600) // 60:02d}:{s % 60:02d}"
+
+
+def _bar(frac: float, width: int, color: str) -> Text:
+    frac = max(0.0, min(1.0, frac))
+    n = int(round(frac * width))
+    t = Text()
+    t.append("━" * n, style=color)
+    t.append("━" * (width - n), style=_DIM)
+    return t
+
+
+class CampaignScreen(Vertical):
+    """A campaign dashboard, and the controls that run the campaign.
+
+    The results tree is the contract between the runner and the UI: a run is
+    whatever its meta.json says it is, whether it was produced on this machine
+    or on a cluster shard and copied back. The scan runs in a worker thread
+    every four seconds and does not re-read a job it has already seen finish,
+    so a campaign of thousands of jobs does not stall the interface.
+
+    Start launches `python -m mootation.run.campaign <config> --workers N` as
+    a process group of its own, and Stop kills that group; jobs that were
+    running then run again next time. Apply writes the worker count into
+    `_workers.txt`, which a running campaign picks up within two seconds: a
+    higher number starts workers at once, a lower one lets the surplus finish
+    its current job, 0 drains the campaign. A campaign started elsewhere is
+    shown from its heartbeat and resized the same way, and Stop drains it
+    rather than killing it. Closing the app stops a campaign the app started.
+    """
+
+    DEFAULT_CSS = """
+    CampaignScreen #camp-ctl { height: 1; padding: 0 1; }
+    CampaignScreen #camp-ctl Static.label { width: auto; padding: 0 1 0 0; color: $text-muted; }
+    CampaignScreen #camp-ctl Input { width: 8; border: none; height: 1; padding: 0; }
+    CampaignScreen #camp-ctl Button { border: none; height: 1; min-width: 9; margin: 0 1; padding: 0 1; }
+    CampaignScreen #camp-state { width: 1fr; height: 1; padding: 0 1; }
+    CampaignScreen #camp-main { height: 1fr; }
+    CampaignScreen #camp-dash-scroll { width: 1fr; }
+    CampaignScreen #camp-probs-scroll { width: 34; }
+    CampaignScreen #camp-dash { padding: 0 1; }
+    CampaignScreen #camp-probs { padding: 0 1; }
     """
 
     def __init__(self, cfg: Config) -> None:
         super().__init__()
         self.cfg = cfg
-        self._body: Static | None = None
-        self._table: DataTable | None = None
+        self.last_snapshot: dict | None = None
+        self._scanning = False
+        self._seen_done: set = set()
+        self._history: deque = deque(maxlen=90)          # (time, done): ~6 minutes of scans
+        try:
+            self._spec = _camp.campaign_spec(cfg)
+            self._jobs = _camp.expand_jobs(cfg, self._spec)
+            self._root = _camp.out_root(cfg, self._spec)
+            self._error = ""
+        except Exception as e:                           # a config that cannot expand
+            self._spec, self._jobs, self._root, self._error = None, [], None, str(e)
+        self._by_index = {j.index: j for j in self._jobs}
+        self._problems = list(dict.fromkeys(j.problem for j in self._jobs))
+        self._groups = self._families([a.name for a in cfg.algorithms])
+
+    @staticmethod
+    def _families(names: list) -> list:
+        try:
+            fams = algorithm_families()
+        except Exception:                                # noqa: BLE001
+            fams = ()
+        groups, placed = [], set()
+        for family, members in fams:
+            inside = [a for a in names if a in members]
+            if inside:
+                groups.append((family, inside))
+                placed.update(inside)
+        rest = [a for a in names if a not in placed]
+        if rest:
+            groups.append(("other", rest))
+        return groups
 
     def compose(self) -> ComposeResult:
-        self._body = Static(self._summary(), classes="panel")
-        yield self._body
-        self._table = DataTable(zebra_stripes=True, id="camp-table")
-        self._fill()
-        yield self._table
+        default = os.cpu_count() or 1
+        if self._root is not None:
+            default = _camp.read_workers(self._root, default) or default
+        with Horizontal(id="camp-ctl"):
+            yield Static("workers", classes="label")
+            yield Input(value=str(default), id="camp-workers", type="integer", max_length=3)
+            yield Button("Apply", id="camp-apply", variant="primary")
+            yield Button("Start", id="camp-start", variant="success")
+            yield Button("Stop", id="camp-stop", variant="error")
+            yield Static("", id="camp-state")
+        with Horizontal(id="camp-main"):
+            with VerticalScroll(id="camp-dash-scroll"):
+                yield Static(Text(self._error or "reading the results ...",
+                                  style="red" if self._error else _DIM), id="camp-dash")
+            with VerticalScroll(id="camp-probs-scroll"):
+                yield Static("", id="camp-probs")
 
     def on_mount(self) -> None:
-        self.set_interval(3.0, self._refresh)
+        self.scan_now()
+        self.set_interval(4.0, self.scan_now)
 
-    def _jobs(self):
-        spec = _camp.campaign_spec(self.cfg)
-        return spec, _camp.expand_jobs(self.cfg, spec), _camp.out_root(self.cfg, spec)
+    # ── reading the results, off the UI thread ───────────────────────────────
 
-    def _summary(self) -> Text:
-        t = Text()
+    def scan_now(self) -> None:
+        self._update_state()
+        if self._scanning or self._root is None:
+            return
+        self._scanning = True
+        self._scan()
+
+    @work(thread=True)
+    def _scan(self) -> None:
         try:
-            spec, jobs, root = self._jobs()
-        except Exception as e:                       # a config that cannot expand
-            t.append(str(e), style="red")
-            return t
+            snap = self._collect()
+        except Exception as e:                           # noqa: BLE001
+            snap = {"error": f"{type(e).__name__}: {e}"}
+        self.app.call_from_thread(self._scan_done, snap)
+
+    def _collect(self) -> dict:
         counts = {"done": 0, "failed": 0, "running": 0, "pending": 0}
-        for j in jobs:
-            st = _camp.job_status(root, j)
+        per_alg: dict = {}                               # algorithm -> [done, failed, total]
+        per_prob: dict = {}                              # problem -> [done, total]
+        failed = []
+        for j in self._jobs:
+            key = (j.problem, j.algorithm, j.seed)
+            if key in self._seen_done:
+                st = "done"
+            else:
+                st = _camp.job_status(self._root, j)
+                if st == "done":
+                    self._seen_done.add(key)
+                elif st == "failed":
+                    failed.append(j)
             counts[st] = counts.get(st, 0) + 1
-        t.append("campaign\n", style="bold")
-        t.append(f"  {'results':<12}", style="dim"); t.append(f"{root}\n")
-        t.append(f"  {'jobs':<12}", style="dim"); t.append(f"{len(jobs)}")
-        t.append(f"   done {counts['done']}", style="green")
-        t.append(f"   running {counts['running']}", style="yellow")
-        t.append(f"   failed {counts['failed']}", style="red" if counts["failed"] else "dim")
-        t.append(f"   pending {counts['pending']}\n", style="dim")
-        t.append(f"  {'budget':<12}", style="dim")
-        t.append(("problem defaults" if spec.budget_fe == 0 else f"{spec.budget_fe:,} FE")
-                 + f", record every {spec.record_every} gen, metrics {', '.join(spec.metrics)}\n")
-        frac = counts["done"] / max(1, len(jobs))
-        width = 46
-        filled = int(width * frac)
-        t.append("\n  ")
-        t.append("#" * filled, style="green")
-        t.append("." * (width - filled), style="dim")
-        t.append(f"  {100 * frac:5.1f}%\n")
-        return t
+            a = per_alg.setdefault(j.algorithm, [0, 0, 0])
+            p = per_prob.setdefault(j.problem, [0, 0])
+            a[2] += 1
+            p[1] += 1
+            if st == "done":
+                a[0] += 1
+                p[0] += 1
+            elif st == "failed":
+                a[1] += 1
+        errors = []
+        for j in failed[-4:]:
+            try:
+                meta = json.loads((self._root / j.rel_dir / "meta.json").read_text(encoding="utf-8"))
+                errors.append(f"{j.algorithm} {j.problem} seed {j.seed}: {meta.get('error', '?')}")
+            except (OSError, ValueError):
+                pass
+        return {"counts": counts, "per_alg": per_alg, "per_prob": per_prob,
+                "errors": errors, "beat": _camp.runner_state(self._root), "time": time.time()}
 
-    def _fill(self) -> None:
-        if self._table is None:
+    def _scan_done(self, snap: dict) -> None:
+        self._scanning = False
+        if "error" in snap:
+            self.query_one("#camp-dash", Static).update(Text(snap["error"], style="red"))
             return
+        self.last_snapshot = snap
+        self._history.append((snap["time"], snap["counts"]["done"]))
         try:
-            spec, jobs, root = self._jobs()
-        except Exception:
-            return
-        algs = [a.name for a in self.cfg.algorithms]
-        probs = list(dict.fromkeys(j.problem for j in jobs))
-        self._table.clear(columns=True)
-        self._table.add_columns("problem", *algs)
-        cell: dict = {}
-        for j in jobs:
-            st = _camp.job_status(root, j)
-            c = cell.setdefault((j.problem, j.algorithm), {"done": 0, "failed": 0, "total": 0})
-            c["total"] += 1
-            if st in ("done", "failed"):
-                c[st] += 1
-        for p in probs:
-            row = [p]
-            for a in algs:
-                c = cell.get((p, a), {"done": 0, "failed": 0, "total": 0})
-                s = f"{c['done']}/{c['total']}"
-                if c["failed"]:
-                    s += f" !{c['failed']}"
-                style = ("green" if c["done"] == c["total"] and c["total"]
-                         else "red" if c["failed"] else "")
-                row.append(Text(s, style=style))
-            self._table.add_row(*row)
+            self.query_one("#camp-dash", Static).update(self._dashboard(snap))
+            self.query_one("#camp-probs", Static).update(self._problems_panel(snap))
+        except Exception as e:                           # noqa: BLE001
+            self.query_one("#camp-dash", Static).update(Text(f"render error: {e!r}", style="red"))
+        self._update_state()
 
-    def _refresh(self) -> None:
-        if self._body is not None:
-            self._body.update(self._summary())
-        self._fill()
+    # ── drawing ──────────────────────────────────────────────────────────────
+
+    def _rate(self) -> float | None:
+        """Jobs finished per minute over the last few minutes of scans."""
+        if len(self._history) < 2:
+            return None
+        (t0, d0), (t1, d1) = self._history[0], self._history[-1]
+        if t1 - t0 < 1.0 or d1 <= d0:
+            return None
+        return (d1 - d0) / (t1 - t0) * 60.0
+
+    def _flying(self, snap: dict) -> list:
+        beat = snap.get("beat")
+        if not (beat and beat.get("alive")):
+            return []
+        return [self._by_index[i] for i in beat.get("running", []) if i in self._by_index]
+
+    def _dashboard(self, snap: dict) -> Panel:
+        counts, per_alg = snap["counts"], snap["per_alg"]
+        total, done = len(self._jobs), counts["done"]
+        beat = snap.get("beat") or {}
+        alive = bool(beat.get("alive")) or self._own() is not None
+        per_prob = snap["per_prob"]
+        probs_done = sum(1 for d, n in per_prob.values() if n and d >= n)
+        flying = self._flying(snap)
+
+        title = Align.center(Text(self.cfg.name, style=f"bold {_MAGENTA}"))
+        summary = Text(justify="center")
+        for label, value, style in (
+                ("done ", f"{done}", f"bold {_GREEN}"),
+                ("left ", f"{total - done}", "bold"),
+                ("problems ", f"{probs_done}/{len(per_prob)}", "bold"),
+                ("failed ", f"{counts['failed']}", f"bold {'red' if counts['failed'] else _GREEN}")):
+            summary.append(label, style=_DIM)
+            summary.append(value, style=style)
+            summary.append("   ·   ", style=_DIM)
+        summary.append("● running" if alive else "○ stopped",
+                       style=f"bold {_GREEN if alive else _DIM}")
+
+        frac = done / total if total else 0.0
+        progress = Text("  ")
+        progress.append_text(_bar(frac, 48, _GREEN))
+        progress.append(f" {100 * frac:5.1f}%", style="bold")
+
+        rate = self._rate()
+        info = Text("  ")
+        info.append("elapsed ", style=_DIM)
+        info.append(_hms(time.time() - beat["started"]) if beat.get("alive") else "-")
+        info.append("    speed ", style=_DIM)
+        info.append(f"{rate:.1f} jobs/min" if rate else "-")
+        info.append("    ETA ", style=_DIM)
+        info.append(f"~{_hms((total - done) / rate * 60.0)}" if rate else "-")
+        budget = Text("  ")
+        budget.append("budget ", style=_DIM)
+        budget.append("problem defaults" if self._spec.budget_fe == 0
+                      else f"{self._spec.budget_fe:,} evaluations per run")
+        budget.append(f"    metrics {', '.join(self._spec.metrics)}", style=_DIM)
+
+        now1 = Text("  ")
+        now1.append("NOW RUNNING  ", style=f"bold {_MAGENTA}")
+        if beat.get("alive"):
+            now1.append(f"{len(flying)} job(s)", style=f"bold {_CYAN}")
+            now1.append(f"   workers {beat.get('active', 0)}/{beat.get('target', 0)}", style=_DIM)
+        else:
+            now1.append("- (the campaign is not running)", style=_DIM)
+        now2 = Text("    ")
+        if flying:
+            now2.append(" · ".join(f"▶ {j.algorithm} {j.problem} s{j.seed}" for j in flying[:6]),
+                        style=_CYAN)
+            if len(flying) > 6:
+                now2.append(f"  +{len(flying) - 6} more", style=_DIM)
+        else:
+            now2.append("-", style=_DIM)
+
+        active = {j.algorithm for j in flying}
+        table = Table(box=None, show_header=True, header_style=f"bold {_MAGENTA}",
+                      padding=(0, 2, 0, 0), pad_edge=False, expand=False)
+        table.add_column("ALGORITHM", no_wrap=True)
+        table.add_column("PROGRESS", no_wrap=True)
+        table.add_column("STATUS", no_wrap=True)
+        table.add_column("DONE", no_wrap=True, justify="right")
+        for family, members in self._groups:
+            gd = sum(per_alg.get(a, (0, 0, 0))[0] for a in members)
+            gt = sum(per_alg.get(a, (0, 0, 0))[2] for a in members)
+            color = _GREEN if gt and gd >= gt else (_YELLOW if gd else _DIM)
+            table.add_row(Text(f"● {family}", style=f"bold {color}"), Text(""), Text(""),
+                          Text(f"{gd}/{gt}", style=_DIM))
+            for a in members:
+                d, f, n = per_alg.get(a, (0, 0, 0))
+                if a in active:
+                    dot, color, status = "▶", _CYAN, "running"
+                elif n and d >= n:
+                    dot, color, status = "●", _GREEN, "done"
+                elif d:
+                    dot, color, status = "◐", _YELLOW, "partial"
+                else:
+                    dot, color, status = "○", _DIM, "waiting"
+                name = Text("   ")
+                name.append(dot + " ", style=color)
+                name.append(a, style=f"bold {_CYAN}" if a in active else "default")
+                cell = Text("[", style=_DIM)
+                cell.append_text(_bar(d / n if n else 0.0, 18, color if d or a in active else _DIM))
+                cell.append("] ", style=_DIM)
+                cell.append(f"{100 * d / max(1, n):3.0f}%", style=_DIM)
+                stat = Text(status, style=f"bold {color}" if a in active else color)
+                if f:
+                    stat.append(f" !{f}", style="bold red")
+                table.add_row(name, cell, stat,
+                              Text(f"{d}/{n}", style=f"bold {_CYAN}" if a in active else "default"))
+
+        blocks = [title, Text(""), summary, Text(""), progress, info, budget, Text(""),
+                  now1, now2, Text(""), table]
+        if snap["errors"]:
+            fails = Text()
+            for line in snap["errors"]:
+                fails.append("  ! ", style="red")
+                fails.append(line[:160] + "\n", style=_DIM)
+            blocks += [Text(""), fails]
+        return Panel(Group(*blocks), box=box.ROUNDED, border_style=_DIM, padding=(1, 2),
+                     title=f"[{_DIM}]campaign[/]", subtitle=f"[{_DIM}]{self._root}[/]")
+
+    def _problems_panel(self, snap: dict) -> Panel:
+        per_prob = snap["per_prob"]
+        busy = {j.problem for j in self._flying(snap)}
+        groups: dict = {}
+        for p in self._problems:
+            groups.setdefault(_camp.problem_family(p), []).append(p)
+        table = Table(box=None, show_header=False, padding=(0, 1, 0, 0), pad_edge=False)
+        table.add_column(no_wrap=True)
+        finished = 0
+        for suite, probs in groups.items():
+            complete = sum(1 for p in probs if per_prob.get(p, (0, 0))[1]
+                           and per_prob[p][0] >= per_prob[p][1])
+            finished += complete
+            color = _GREEN if complete == len(probs) else (_YELLOW if complete else _DIM)
+            head = Text()
+            head.append(f"● {suite} ", style=f"bold {color}")
+            head.append(f"{complete}/{len(probs)}", style=_DIM)
+            table.add_row(head)
+            for p in probs:
+                d, n = per_prob.get(p, (0, 0))
+                short = p[len(suite):] if p.startswith(suite) and len(p) > len(suite) else p
+                if p in busy:
+                    dot, color, tail = "▶", _CYAN, f"{d}/{n}"
+                elif n and d >= n:
+                    dot, color, tail = "●", _GREEN, "✓"
+                elif d:
+                    dot, color, tail = "◐", _YELLOW, f"{d}/{n}"
+                else:
+                    dot, color, tail = "○", _DIM, ""
+                row = Text("  ")
+                row.append(dot + " ", style=color)
+                row.append(short.ljust(8), style=f"bold {_CYAN}" if p in busy else "default")
+                if tail:
+                    row.append(" " + tail, style=_DIM)
+                table.add_row(row)
+        return Panel(table, box=box.ROUNDED, border_style=_DIM, padding=(1, 1),
+                     title=f"[{_DIM}]problems {finished}/{len(self._problems)}[/]")
+
+    # ── running it ───────────────────────────────────────────────────────────
+
+    def _own(self) -> subprocess.Popen | None:
+        proc = _STARTED.get(str(self._root))
+        return proc if proc is not None and proc.poll() is None else None
+
+    def _heartbeat(self) -> dict | None:
+        return _camp.runner_state(self._root) if self._root is not None else None
+
+    def _update_state(self) -> None:
+        if self._root is None:
+            return
+        st = self._heartbeat()
+        alive = bool(st and st["alive"])
+        t = Text()
+        if self._own() is not None or alive:
+            t.append("● running", style=f"bold {_GREEN}")
+            if alive:
+                t.append(f"   workers {st['active']} of {st['target']}", style=_CYAN)
+                if self._own() is None:
+                    t.append("   started elsewhere", style=_DIM)
+            else:
+                t.append("   starting ...", style=_DIM)
+        else:
+            t.append("○ stopped", style="bold")
+            if st and st.get("state") in ("finished", "stopped", "broken"):
+                t.append(f"   last run {st['state']}", style=_DIM)
+        t.append("    s start · x stop · Enter applies workers", style=_DIM)
+        self.query_one("#camp-state", Static).update(t)
+
+    def _workers_value(self, at_least: int) -> int | None:
+        try:
+            n = int(self.query_one("#camp-workers", Input).value)
+        except (ValueError, TypeError):
+            n = -1
+        if n < at_least:
+            self.app.notify(f"workers must be a whole number >= {at_least}", severity="error")
+            return None
+        return n
+
+    def apply(self) -> None:
+        n = self._workers_value(0)
+        if n is None or self._root is None:
+            return
+        _camp.write_workers(self._root, n)
+        running = self._own() is not None or bool((self._heartbeat() or {}).get("alive"))
+        self.app.notify(f"workers: {n}" + ("" if running else " (used when the campaign starts)"))
+        self._update_state()
+
+    def start(self) -> None:
+        if self._root is None or self.cfg.source_path is None:
+            self.app.notify("this config has no campaign to run", severity="warning")
+            return
+        if self._own() is not None or bool((self._heartbeat() or {}).get("alive")):
+            self.app.notify("the campaign is already running; Apply changes its workers",
+                            severity="warning")
+            return
+        n = self._workers_value(1)
+        if n is None:
+            return
+        self._root.mkdir(parents=True, exist_ok=True)
+        env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        # The package this app was imported from, so a checkout runs without installing.
+        here = str(Path(__file__).resolve().parents[2])
+        env["PYTHONPATH"] = here + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        kw = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt"
+              else {"start_new_session": True})
+        log_path = self._root / "run_stdout.log"
+        with log_path.open("a", encoding="utf-8") as log:
+            _STARTED[str(self._root)] = subprocess.Popen(
+                [sys.executable, "-m", "mootation.run.campaign", str(self.cfg.source_path),
+                 "--workers", str(n)],
+                cwd=str(self.cfg.source_path.parent), env=env,
+                stdout=log, stderr=subprocess.STDOUT, **kw)
+        self.app.notify(f"started with {n} worker(s); output goes to {log_path}")
+        self._update_state()
+
+    def stop(self) -> None:
+        proc = self._own()
+        if proc is not None:
+            _kill_tree(proc)
+            self.app.notify("stopped; the jobs that were running will run again next time")
+        elif bool((self._heartbeat() or {}).get("alive")):
+            _camp.write_workers(self._root, 0)
+            self.app.notify("started elsewhere, so draining it: running jobs finish, then it stops")
+        else:
+            self.app.notify("nothing is running", severity="warning")
+        self._update_state()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        action = {"camp-apply": self.apply, "camp-start": self.start,
+                  "camp-stop": self.stop}.get(event.button.id)
+        if action is not None:
+            action()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "camp-workers":
+            self.apply()
+            self.query_one("#camp-dash-scroll").focus()
 
 
 # ── Compare ─────────────────────────────────────────────────────────────────
@@ -659,6 +1051,8 @@ class MootationApp(App):
         ("r", "reload", "Reload config"),
         ("e", "export", "Export compare CSV"),
         ("t", "toggle_view", "Medians / ranks"),
+        ("s", "start_campaign", "Start campaign"),
+        ("x", "stop_campaign", "Stop campaign"),
     ]
 
     def __init__(self, config_path: str | Path) -> None:
@@ -669,7 +1063,7 @@ class MootationApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with TabbedContent():
+        with TabbedContent(initial="tab-campaign" if _campaign_ready(self.cfg) else ""):
             with TabPane("Config", id="tab-config"):
                 yield ConfigScreen(self.cfg, self.problems)
             with TabPane("Problems", id="tab-problems"):
@@ -686,6 +1080,23 @@ class MootationApp(App):
                 with TabPane("Explore", id="tab-explore"):
                     yield ExploreScreen(self.cfg)
         yield Footer()
+
+    def _campaign(self) -> CampaignScreen | None:
+        try:
+            return self.query_one(CampaignScreen)
+        except Exception:
+            self.notify("no Campaign tab in this config", severity="warning")
+            return None
+
+    def action_start_campaign(self) -> None:
+        screen = self._campaign()
+        if screen is not None:
+            screen.start()
+
+    def action_stop_campaign(self) -> None:
+        screen = self._campaign()
+        if screen is not None:
+            screen.stop()
 
     def action_toggle_view(self) -> None:
         try:
@@ -711,6 +1122,11 @@ class MootationApp(App):
     def on_mount(self) -> None:
         self.title = f"MOOtation — {self.cfg.name}"
         self.sub_title = str(self.config_path)
+
+    def on_unmount(self) -> None:
+        # Closing the app stops a campaign it started. A reload rebuilds the
+        # screens but keeps the app, so this is the place, not the screen.
+        _stop_started()
 
     def action_reload(self) -> None:
         """Re-read the file. The config is edited elsewhere; this picks it up."""

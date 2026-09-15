@@ -45,6 +45,22 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- The TUI can run a campaign. A campaign config opens on a dashboard —
+  progress, speed and time left, the jobs in flight, every algorithm grouped
+  by family with its own progress bar, every problem — with Start, Stop and a
+  worker count that Apply changes while the campaign runs. The results are
+  scanned in a background thread and a finished job is never re-read. The tab
+  it replaces re-read every meta.json on the UI thread every three seconds and
+  rebuilt a problems × algorithms table, which on a campaign of thousands of
+  jobs is what made the interface lag.
+- A running campaign follows `<results>/_workers.txt`, re-read every 1.5 s:
+  more workers start at once, fewer let the surplus finish the job it is on,
+  0 drains the campaign and stops it. `_runner.json` is its heartbeat. A
+  worker that dies inside a core fails its one job and is replaced instead of
+  leaving the pool a worker short, and each worker reads the config once
+  instead of once per job.
+- `algorithm_families()` in `mootation.run.algorithms`, read from the section
+  comments of `algorithms.def`.
 - `--ranks METRIC` on `mootation.run.campaign`, and the same view in the TUI's
   Compare tab (`t` switches between it and the medians, `e` exports either):
   each algorithm's rank on every problem by its median indicator, averaged

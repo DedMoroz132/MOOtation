@@ -235,6 +235,23 @@ where to look and the medians with their quartiles to decide. And a group mean
 is only as broad as its group: best on WFG at five objectives means best on
 those nine problems, at the budget the campaign gave them.
 
+### Changing the number of workers while it runs
+
+`--workers N` is only where a campaign starts. The runner re-reads
+`<results>/_workers.txt` every 1.5 seconds: raise the number and workers start
+at once, lower it and the surplus finish the job they are on and leave, write 0
+and the campaign drains and stops with the unfinished jobs left for next time.
+The TUI's Apply writes that file, and so can anything else:
+
+```bash
+echo 8 > results/all58/_workers.txt
+```
+
+`<results>/_runner.json` is the runner's heartbeat — workers alive and wanted,
+jobs done, the jobs in flight — rewritten every two seconds, which is how the
+TUI shows a campaign it did not start. A worker that dies inside an algorithm
+fails its one job, which is recorded, and is replaced.
+
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)
@@ -288,10 +305,22 @@ python -m mootation.run --tui campaign_all.toml       # Compare tab, then t
 `python -m mootation.run --tui run.toml` opens four screens over the same
 functions: the resolved config with its `--check` verdict, the problem registry
 with a filter, the selected algorithms with each one's population objection,
-and a monitor that reads the journal live. A built-in campaign adds three more:
-progress per problem × algorithm, a comparison table of medians with quartiles
-that `t` switches to the mean ranks above (either view exported to CSV with
-`e`), and a per-run trajectory plot. The interface is
-read-only on purpose: you edit the config in your own editor, because a
+and a monitor that reads the journal live. A built-in campaign adds three more
+and opens on the first of them: a dashboard of the campaign with its controls,
+a comparison table of medians with quartiles that `t` switches to the mean
+ranks above (either view exported to CSV with `e`), and a per-run trajectory
+plot.
+
+The dashboard shows progress, speed and time left, the jobs in flight, every
+algorithm grouped by family with its own progress bar, and every problem. It
+reads the results in a background thread and never re-reads a finished job, so
+it stays responsive on a campaign of thousands. Start (`s`) launches the
+campaign with the worker count in the box, Stop (`x`) kills it — the jobs that
+were running run again next time — and Apply, or Enter in the box, changes the
+number of workers while it runs. A campaign started from the command line is
+shown as well and can be resized the same way; Stop drains it instead of
+killing it. Closing the app stops a campaign the app started.
+
+The config itself stays read-only: you edit it in your own editor, because a
 configuration assembled by clicking cannot be diffed, copied to a cluster or
 attached to a paper.
