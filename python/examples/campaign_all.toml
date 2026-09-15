@@ -1,6 +1,6 @@
 # All 58 algorithms on a spread of problem shapes: which one is good where.
 #
-#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 13 050 jobs
+#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 15 370 jobs
 #   python -m mootation.run.campaign campaign_all.toml --workers 16        # one per core
 #   python -m mootation.run.campaign campaign_all.toml --ranks igd         # the condensed answer
 #   python -m mootation.run --tui campaign_all.toml                        # Campaign / Compare / Explore
@@ -21,13 +21,13 @@
 #                                                 R2-IBEA 99 s, HypE 46 s)
 #
 # Time grows about in proportion to the budget. As shipped — 5 runs at 10 000
-# evaluations — the whole campaign is about 36 CPU-hours: some 2 hours on 16
-# cores, 4 to 5 on 8. SMS-M2M alone is half of that, R2-IBEA a sixth and HypE
-# an eighth; commenting out those three leaves about 8 CPU-hours. Two presets:
+# evaluations — the whole campaign is about 43 CPU-hours: some 3 hours on 16
+# cores, 5 to 6 on 8. SMS-M2M alone is half of that, R2-IBEA a sixth and HypE
+# an eighth; commenting out those three leaves about 10 CPU-hours. Two presets:
 #
 #   first look      runs = 5,  budget_fe = 10000   as shipped
 #   paper budgets   runs = 21, budget_fe = 0       500 generations each; about
-#                                                  900 CPU-hours, so shard it
+#                                                  1 100 CPU-hours, so shard it
 
 # The list comes first because TOML allows top-level keys only before the first
 # [table]. Comment a line out to drop an algorithm. pop = 0 and gens = 0 take
@@ -124,6 +124,13 @@ problems = [
     "WFG1_5D", "WFG2_5D", "WFG3_5D", "WFG4_5D", "WFG5_5D", "WFG6_5D", "WFG7_5D", "WFG8_5D", "WFG9_5D",
     "IDTLZ1_5D", "IDTLZ2_5D",
     "SDTLZ1_5D", "SDTLZ2_5D",
+
+    # DTLZ1-4 with every distance variable's optimum moved off the centre of
+    # the box: the same fronts as DTLZ1-4 above, so an algorithm that does much
+    # better there than here was helped by the centred optimum, not by its
+    # search. Last in the list, so the job numbers above stay as they were.
+    "shiftDTLZ1_3D", "shiftDTLZ2_3D", "shiftDTLZ3_3D", "shiftDTLZ4_3D",
+    "shiftDTLZ1_5D", "shiftDTLZ2_5D", "shiftDTLZ3_5D", "shiftDTLZ4_5D",
 ]
 # DTLZ5, DTLZ6 (from 4 objectives) and WFG3 (from 3) have true fronts with a
 # non-degenerate part that their reference sets leave out, so IGD on them ranks

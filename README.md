@@ -30,7 +30,7 @@ plus *mutation*, the operator all of these algorithms are built on.
 - **Five ways in, one algorithm list.** A C++ template, a C++ ask/tell session,
   a Python `minimize`, a TOML run description for external programs, and a C
   ABI. All five are generated from the same `algorithms.def`, so none can drift.
-- **216 benchmark problems** (ZDT, DTLZ, WFG, MaF, MOP, BT, the Ishibuchi
+- **244 benchmark problems** (ZDT, DTLZ, WFG, MaF, MOP, BT, the Ishibuchi
   polygons) with true Pareto fronts where a closed form exists, IGD / IGD+ /
   hypervolume, and a campaign runner that shards across a cluster.
 - **Warm starts**, an evaluation log, constraint handling in every algorithm
@@ -266,7 +266,7 @@ conclusions live in the headers.
 
 ## Benchmarks and campaigns
 
-`mootation.benchmarks` holds 216 problems across 11 families, 2 to 15
+`mootation.benchmarks` holds 244 problems across 12 families, 2 to 15
 objectives, each with bounds, an evaluator, the reference point a hypervolume
 needs and, where a closed form exists, a sampler of the true Pareto front.
 `mootation.run.metrics` computes IGD, IGD+ and hypervolume (exact up to five
@@ -277,7 +277,7 @@ with a convergence trajectory each, locally or as a SLURM array:
 in the TUI's Compare tab, condenses the results into one row per algorithm: its
 mean rank overall, per family and per objective count.
 [`python/examples/campaign_all.toml`](python/examples/campaign_all.toml) puts
-all 58 algorithms on 45 problems, and
+all 58 algorithms on 53 problems, and
 [docs/running.md](docs/running.md#all-58-algorithms-on-another-machine) has the
 recipe for running it on another machine, or split across several.
 

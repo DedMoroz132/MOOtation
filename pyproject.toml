@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #   pip install .            the optimizer, compiled
-#   pip install ".[bench]"   plus the 216 benchmark problems (NumPy)
+#   pip install ".[bench]"   plus the 244 benchmark problems (NumPy)
 #   pip install ".[tui]"     plus the terminal interface (Textual)
 #   pip install ".[all]"     everything
 #

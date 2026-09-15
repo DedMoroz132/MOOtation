@@ -9,6 +9,7 @@
 #   MaF1-13 x M={3,5,8} Cheng et al. 2017 (irregular fronts)
 #   Polygon x M={3..6}  Ishibuchi, Akedo, Nojima 2011
 #   MOP1-7, BT1-9, and the inverted / scaled / minus DTLZ variants
+#   shiftDTLZ1-4        DTLZ1-4 with the distance optimum off the centre (ours)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -38,7 +39,7 @@ from .polygon import (polygon_eval, polygon_bounds,
                      polygon_nadir, polygon_ideal)
 from .mop     import MOP_SPECS, mop_nadir, mop_ideal
 from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
-                           hv_ref_raw as dv_hv_ref)
+                           hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz)
 from .maf     import MAF_FIX, maf_n_vars
 from .bt      import BT_SPECS, N as BT_N
 from . import polygon_ishibuchi as _ipoly
@@ -1115,6 +1116,31 @@ def _register_dtlz():
 
 
 # =============================================================
+#  shiftDTLZ1-4 × the DTLZ sizes: DTLZ1-4 with every distance variable's
+#  optimum moved off the centre of the box (dtlz_variants.shift_centres).
+#  Front, ideal and nadir are DTLZ's, and so is the reference front.
+# =============================================================
+def _register_shifted_dtlz():
+    for M in (2, 3, 4, 5, 6, 10, 15):
+        pop, ng = _budget(M)
+        for base in SHIFT_BASES:
+            n_vars = dtlz_n_vars(base, M)
+            nadir  = dtlz_nadir(base, M)
+            ideal  = dtlz_ideal(base, M)
+            def _eval(x, _b=base, _M=M): return shift_dtlz(_b, list(x), _M)
+            def _pf(n, _g=_DTLZ_PF[base], _M=M): return _g(_M, n)
+            prob_name = f"shift{base}_{M}D"
+            PROBLEMS[prob_name] = BenchProblem(
+                name=prob_name, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
+                evaluate=_eval, constraints=_no_cons,
+                hv_ref_raw=tuple(v * 1.1 for v in nadir),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+                ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+                pareto_front=_pf)
+
+
+# =============================================================
 #  Polygon × M={3,4,5,6}
 # =============================================================
 def _register_polygon():
@@ -1238,6 +1264,7 @@ def _register_bt():
 _zdt_register()
 _register_wfg()
 _register_dtlz()
+_register_shifted_dtlz()
 _register_polygon()
 _maf_register()
 _register_mop()

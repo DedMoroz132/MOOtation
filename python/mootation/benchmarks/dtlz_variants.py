@@ -19,12 +19,27 @@
 #              family is to break algorithms that assume comparable objective
 #              magnitudes. FIX 2026-09-05: base 10 used to be applied at
 #              every M, which at M = 10 scaled f_10 by 10^9 instead of 2^9.
+# shiftDTLZ1-4 — DTLZ1-4 with the optimum of every distance variable moved off
+#              the centre of the box. DTLZ puts it at exactly x = 1/2, where an
+#              operator or an initialisation that drifts toward the middle of
+#              the range lands for free. Each distance variable is read through
+#              the cyclic shift y = (x - c + 1/2) mod 1, which moves its optimum
+#              to x = c. The shifted g is continuous, because every DTLZ g term
+#              takes the same value at y = 0 and at y = 1, and it keeps DTLZ's
+#              optima (for DTLZ1 and DTLZ3 the two half-basins of the local
+#              optimum at the bounds join into one). Position variables, front,
+#              ideal and nadir are DTLZ's. c_i = 1/2 +- (0.15 + 0.2 frac(i phi)),
+#              + for odd i, phi the golden-ratio conjugate: every optimum is at
+#              least 0.15 from the centre and from both bounds, and each
+#              distance variable has its own. The family is a control for
+#              centre bias written for this library, not a published suite.
 #
 # The reference fronts are built analytically, with g pinned at the value it
 # takes on the front, so that IGD, IGD+ and GD+ are computed against the real
 # thing rather than against whatever the run happened to find.
 # ============================================================================
 from __future__ import annotations
+import math
 from typing import List
 import numpy as np
 import itertools
@@ -175,3 +190,26 @@ def variant_n_vars(base: str, M: int) -> int:
 def hv_ref_raw(ideal: tuple, nadir: tuple) -> tuple:
     # ref = nadir + 0.1*(nadir - ideal), correct for negative objectives too
     return tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir))
+
+
+# ---- shiftDTLZ1-4: the distance optimum moved off the centre -------
+SHIFT_BASES = ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4")
+_PHI = (math.sqrt(5.0) - 1.0) / 2.0
+
+
+def shift_centres(k: int) -> np.ndarray:
+    """Where the optimum of each of the k distance variables sits.
+
+    c_i = 1/2 + d_i for odd i and 1/2 - d_i for even i (i = 1..k), with
+    d_i = 0.15 + 0.2 frac(i phi).
+    """
+    i = np.arange(1, k + 1)
+    d = 0.15 + 0.2 * np.mod(i * _PHI, 1.0)
+    return 0.5 + np.where(i % 2 == 1, d, -d)
+
+
+def shift_dtlz(name: str, x: List[float], M: int) -> List[float]:
+    """DTLZ1-4 with every distance variable read through y = (x - c + 1/2) mod 1."""
+    y = np.array(x, dtype=float)
+    y[M - 1:] = np.mod(y[M - 1:] - shift_centres(len(y) - M + 1) + 0.5, 1.0)
+    return _d.DTLZ_FUNCS[name](y, M)

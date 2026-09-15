@@ -76,10 +76,18 @@ always listed under **Changed** or **Removed**.
   medians table 58 columns wide cannot be read; this is the view that says
   which algorithm is good where. `--compare` and `--ranks` reject an unknown
   metric instead of printing an empty table.
-- `python/examples/campaign_all.toml`: all 58 algorithms on 45 problems (ZDT;
-  DTLZ1-7, WFG1-9, IDTLZ1-2 and SDTLZ1-2 at 3 and 5 objectives) with measured
-  run times, and a recipe in `docs/running.md` for running it on another
-  machine, or split across several.
+- `shiftDTLZ1`–`shiftDTLZ4` in `mootation.benchmarks`, at every size DTLZ has:
+  DTLZ1-4 with the optimum of every distance variable moved off the centre of
+  the box, where DTLZ puts it and where an operator or an initialisation that
+  drifts toward the middle finds it for free. Each distance variable is read
+  through a cyclic shift, so the landscape stays continuous and the fronts,
+  ideal and nadir are DTLZ's; a large gap between an algorithm's DTLZ and
+  shiftDTLZ results is centre bias. `campaign_all.toml` runs them at 3 and 5
+  objectives, at the end of its problem list so existing job numbers hold.
+- `python/examples/campaign_all.toml`: all 58 algorithms on 53 problems (ZDT;
+  DTLZ1-7, WFG1-9, IDTLZ1-2, SDTLZ1-2 and shiftDTLZ1-4 at 3 and 5 objectives)
+  with measured run times, and a recipe in `docs/running.md` for running it on
+  another machine, or split across several.
 - `mootation.run.campaign`: a benchmark campaign runner — every selected
   algorithm on every selected problem, several seeds each, one
   `trajectory.jsonl` (IGD / IGD+ / HV against evaluations) plus `meta.json`

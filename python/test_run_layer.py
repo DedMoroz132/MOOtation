@@ -621,6 +621,34 @@ def benchmark_problems_evaluate_to_their_published_values():
 
 
 @test
+def shifted_dtlz_keeps_the_front_and_moves_the_optimum_off_the_centre():
+    """shiftDTLZ1-4 reach the DTLZ front at x = c instead of x = 1/2, with no jump at the wrap."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks.dtlz_variants import shift_centres
+    c = [float(v) for v in shift_centres(10)]
+    assert all(min(abs(v - 0.5), v, 1.0 - v) >= 0.15 for v in c), c
+    assert len({round(v, 12) for v in c}) == len(c), c
+    pos = [0.3, 0.6]
+    for base in ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4"):
+        d, s = get(f"{base}_3D"), get(f"shift{base}_3D")
+        k = d.n_vars - 2
+        assert s.n_vars == d.n_vars and tuple(s.nadir) == tuple(d.nadir), base
+        on = d.evaluate(pos + [0.5] * k)                          # g = 0: on the front
+        here = s.evaluate(pos + [float(v) for v in shift_centres(k)])
+        assert max(abs(a - b) for a, b in zip(here, on)) < 1e-12, (base, here, on)
+        assert sum(s.evaluate(pos + [0.5] * k)) > sum(on) + 1e-6, base   # the centre is not
+        # Where y = (x - c + 1/2) mod 1 wraps, both sides give the same objectives.
+        wrap = [(v - 0.5) % 1.0 for v in shift_centres(k)]
+        below = s.evaluate(pos + [v - 1e-9 for v in wrap])
+        above = s.evaluate(pos + [v + 1e-9 for v in wrap])
+        assert max(abs(a - b) for a, b in zip(below, above)) < 1e-6 * max(1.0, max(below)), base
+    assert np.allclose(get("shiftDTLZ2_5D").pareto_front(50), get("DTLZ2_5D").pareto_front(50))
+
+
+@test
 def every_benchmark_evaluates_without_raising():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return

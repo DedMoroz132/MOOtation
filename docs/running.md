@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 58 algorithm names |
-| `--problems` | list the 216 benchmark problems (needs NumPy) |
+| `--problems` | list the 244 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -138,8 +138,8 @@ day-long run.
 
 ## The built-in suites
 
-ZDT, DTLZ, WFG, MaF, the Ishibuchi polygon family, MOP and BT: 216 problems
-across 11 families, each with bounds, an evaluator, the reference point a
+ZDT, DTLZ, WFG, MaF, the Ishibuchi polygon family, MOP and BT: 244 problems
+across 12 families, each with bounds, an evaluator, the reference point a
 hypervolume needs and, where a closed form exists, a sampler of the true
 Pareto front. Objective counts run from 2 to 15. Point a config at them instead
 of an external program:
@@ -275,10 +275,11 @@ fails the one job it holds, which is recorded, and is replaced.
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)
-runs every algorithm on 45 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
-the inverted IDTLZ1–2 and the scaled SDTLZ1–2 at three and five — five seeds
-each at 10 000 evaluations: 13 050 jobs and about 36 CPU-hours, some two hours
-on a 16-core machine. The file records what that estimate is built from, which
+runs every algorithm on 53 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
+the inverted IDTLZ1–2, the scaled SDTLZ1–2 and shiftDTLZ1–4 (DTLZ1–4 with the
+optimum moved off the centre of the box) at three and five — five seeds each at
+10 000 evaluations: 15 370 jobs and about 43 CPU-hours, some three hours on a
+16-core machine. The file records what that estimate is built from, which
 three algorithms are most of it, and a preset for the papers' own budgets.
 
 A clean machine needs Python 3.11 or newer and a C++17 compiler — on Windows,
