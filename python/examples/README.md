@@ -10,7 +10,7 @@ Run any of them from the repository root after `pip install ".[all]"`, or with
 |---|---|
 | [`01_basic.py`](01_basic.py) | minimize a Python function — the whole API for the common case |
 | [`02_constraints.py`](02_constraints.py) | a second function returning violations; `<= 0` means satisfied |
-| [`03_benchmarks.py`](03_benchmarks.py) | the 244 built-in problems, and comparing algorithms by IGD |
+| [`03_benchmarks.py`](03_benchmarks.py) | the 324 built-in problems, and comparing algorithms by IGD |
 | [`04_expensive.py`](04_expensive.py) | batched evaluation and caching, for when a call costs real time |
 | [`05_many_objective.py`](05_many_objective.py) | five objectives, and the Das-Dennis population-size trap |
 | [`06_restart.py`](06_restart.py) | saving a population and an evaluation log, then continuing from them — including with a different algorithm |

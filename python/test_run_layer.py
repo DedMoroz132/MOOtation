@@ -649,6 +649,58 @@ def shifted_dtlz_keeps_the_front_and_moves_the_optimum_off_the_centre():
 
 
 @test
+def zcat_vanishes_on_its_pareto_set_and_keeps_the_papers_frame():
+    """On y_II = g(y_I|m) every beta is zero, so f = alpha = i²·F (ZCAT Eq. 1-8)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import zcat
+    from mootation.benchmarks.registry import PROBLEMS
+
+    for M in (2, 3):
+        scale = np.arange(1, M + 1, dtype=float) ** 2
+        n = zcat.n_vars(M)
+        assert n == 10 * M, n                                  # Section 5.1
+        for name in zcat.NAMES:
+            # Straight off PROBLEMS: get() would reframe ideal/nadir from the
+            # sampled front, and what is checked here is the analytic frame.
+            p = PROBLEMS[f"{name}_{M}D"]
+            assert p.n_vars == n and p.bounds[-1] == (-n / 2.0, n / 2.0), name
+            assert tuple(p.nadir) == tuple(scale) and set(p.ideal) == {0.0}, name
+            y = np.zeros(n)
+            y[:M - 1] = 0.3 + 0.1 * np.arange(M - 1)           # ZCAT20 switches m here
+            m = zcat.position_count(name, y, M)
+            y[m:] = zcat.topology(zcat.G_OF[name], y[:m], m, n)
+            assert np.all((y >= 0.0) & (y <= 1.0)), (name, y.min(), y.max())
+            x = (y - 0.5) * np.arange(1, n + 1)                # Omega = Π[-i/2, i/2]
+            f = np.asarray(p.evaluate(x.tolist()), float)
+            alpha = scale * zcat.F_FUNCS[name](y, M)
+            assert np.max(np.abs(f - alpha)) <= 1e-6 * M ** 2, (name, M, f, alpha)
+
+    # Every Z is zero only at w = 0 (Section 4.3.1), including the deceptive
+    # pair, whose |w|^0.002 term makes that zero unreachable from a rounded x.
+    for lv in range(1, 7):
+        assert zcat.level_value(lv, np.zeros(4)) == 0.0, lv
+        assert zcat.level_value(lv, np.full(4, 0.25)) > 0.0, lv
+
+
+@test
+def zcat_reference_fronts_are_nondominated_and_inside_the_paper_box():
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import zcat
+    scale = np.arange(1, 4, dtype=float) ** 2
+    for name in ("ZCAT1", "ZCAT6", "ZCAT14", "ZCAT19", "ZCAT20"):
+        F = zcat.pareto_front(name, 3, 100)
+        assert len(F) > 10, (name, len(F))
+        assert np.all(F >= -1e-9) and np.all(F <= scale + 1e-9), (name, F.max(0))
+        dom = ((F[:, None, :] <= F[None, :, :]).all(2)
+               & (F[:, None, :] < F[None, :, :]).any(2))
+        assert not dom.any(), name
+
+
+@test
 def every_benchmark_evaluates_without_raising():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return

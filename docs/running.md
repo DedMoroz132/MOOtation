@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 58 algorithm names |
-| `--problems` | list the 244 benchmark problems (needs NumPy) |
+| `--problems` | list the 324 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -138,11 +138,11 @@ day-long run.
 
 ## The built-in suites
 
-ZDT, DTLZ, WFG, MaF, the Ishibuchi polygon family, MOP and BT: 244 problems
-across 12 families, each with bounds, an evaluator, the reference point a
-hypervolume needs and, where a closed form exists, a sampler of the true
-Pareto front. Objective counts run from 2 to 15. Point a config at them instead
-of an external program:
+ZDT, DTLZ, WFG, MaF, ZCAT, the Ishibuchi polygon family, MOP and BT: 324
+problems across 13 families, each with bounds, an evaluator, the reference
+point a hypervolume needs and, where a closed form exists, a sampler of the
+true Pareto front. Objective counts run from 2 to 15. Point a config at them
+instead of an external program:
 
 ```toml
 [run]

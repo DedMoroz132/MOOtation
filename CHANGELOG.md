@@ -45,6 +45,22 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- ZCAT1-20 at M = 2, 3, 5 and 10, the suite of Zapotecas-Martínez, Coello
+  Coello, Aguirre & Tanaka (Swarm and Evolutionary Computation 81, 2023,
+  101350) — 80 problems, and the registry is now 324 across 13 families.
+  Every problem is f_i = α_i(y_I) + β_i(y_II − g(y_I|m)), so the front (α) and
+  the Pareto set (g, one of eleven topologies) are chosen independently and the
+  difficulty of the distance term is a dial rather than a property of the
+  problem: six levels, a bias, an imbalance between objectives, degenerate and
+  region-switching fronts. Registered with the paper's own defaults (n = 10M,
+  Level 1, complicated Pareto set, no bias, no imbalance) and its analytic
+  ideal (0, ..., 0) and nadir (1, 4, ..., M²); the other dials are arguments of
+  `mootation.benchmarks.zcat.evaluate`. Written from the paper and its
+  supplement — the authors' reference implementation is GPL-3.0 and was not
+  read or ported. The five points the paper leaves open (the missing absolute
+  values in Z₂ and Z₄, the undefined constant A of ZCAT19, which m the topology
+  is called with, the free index in ZCAT17/18's degenerate region, and whether
+  exp(μ)⁸ means e^(8μ)) are resolved and declared in the module header.
 - Campaign indicators: `igdp_norm` (IGD+ in nadir − ideal units, scale-free),
   `eps` and `eps_norm` (additive epsilon), and `hv_h` (hypervolume with the
   reference point at 1 + 1/H of the problem's default population, as

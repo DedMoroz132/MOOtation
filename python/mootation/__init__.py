@@ -20,8 +20,8 @@ The library is C++; this package is the Python face of it.
 
 Three further pieces, each independent:
 
-    mootation.benchmarks   the standard suites: ZDT, DTLZ, WFG, MaF, Polygon,
-                           MOP, BT — 244 problems. Needs NumPy.
+    mootation.benchmarks   the standard suites: ZDT, DTLZ, WFG, MaF, ZCAT,
+                           Polygon, MOP, BT — 324 problems. Needs NumPy.
     mootation.run          driving a run from a TOML file, with objectives from
                            external programs. Needs nothing.
     mootation.tui          a terminal interface over that. Needs Textual.

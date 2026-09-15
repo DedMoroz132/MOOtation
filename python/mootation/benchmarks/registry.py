@@ -7,6 +7,7 @@
 #   DTLZ1-7 x M={2..6}  Deb, Thiele, Laumanns, Zitzler 2002
 #   WFG1-9  x M={2..6}  Huband et al. 2006
 #   MaF1-13 x M={3,5,8} Cheng et al. 2017 (irregular fronts)
+#   ZCAT1-20 x 4 sizes  Zapotecas-Martinez et al. 2023 (tunable difficulty)
 #   Polygon x M={3..6}  Ishibuchi, Akedo, Nojima 2011
 #   MOP1-7, BT1-9, and the inverted / scaled / minus DTLZ variants
 #   shiftDTLZ1-4        DTLZ1-4 with the distance optimum off the centre (ours)
@@ -43,6 +44,7 @@ from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
 from .maf     import MAF_FIX, maf_n_vars
 from .bt      import BT_SPECS, N as BT_N
 from . import polygon_ishibuchi as _ipoly
+from . import zcat as _zcat
 
 
 # =============================================================
@@ -1141,6 +1143,46 @@ def _register_shifted_dtlz():
 
 
 # =============================================================
+#  ZCAT1-20 × M={2,3,5,10} — Zapotecas-Martínez, Coello Coello, Aguirre &
+#  Tanaka, Swarm and Evolutionary Computation 81 (2023) 101350.
+#  Registered with the suite's own defaults (Section 5.1): n = 10M, Level 1,
+#  a complicated Pareto set, no bias, no imbalance. The other dials — the six
+#  difficulty levels, bias, imbalance, the simple PS — are arguments of
+#  zcat.evaluate, not separate registry entries, because they multiply 20
+#  problems by 24 and none of them change the front.
+#  THE REFERENCE FRAME IS THE PAPER'S, NOT THE SAMPLED FRONT'S, and that is a
+#  deliberate exception to the convention at the top of this file. Section 4.1
+#  states the frame outright — "the ideal and the Nadir points of the test
+#  problems with M objectives are z* = (0, 0, ..., 0) and n* = (1², 2², ...,
+#  M²)" — deriving it from F ∈ [0,1]^M, so it is exact where a sample is an
+#  estimate. Measured, the two agree: the sampled front reaches that bound on
+#  every objective of all 20 problems at M = 3 and at M = 10. The agreement is
+#  why the exact frame costs nothing here, and the reason to prefer it anyway
+#  is that it does not depend on how well the front happened to be sampled —
+#  before zcat.pareto_front sampled the corners of the position cube and kept
+#  the per-objective extremes, that same sample reached 0.007 of the bound on
+#  ZCAT2's first objective at M = 10, and taking it as the nadir would have
+#  rescaled every normalized indicator on that problem by 140x. The reference
+#  FRONT is still sampled, from the image of alpha, since only Theorem 1
+#  characterises it.
+# =============================================================
+def _register_zcat():
+    for M in (2, 3, 5, 10):
+        pop, ng = _budget(M)
+        for name in _zcat.NAMES:
+            sp = _zcat.spec(name, M)
+            prob_name = f"{name}_{M}D"
+            PROBLEMS[prob_name] = BenchProblem(
+                name=prob_name, n_vars=sp["n_vars"], bounds=sp["bounds"], n_obj=M,
+                evaluate=sp["evaluate"], constraints=_no_cons,
+                hv_ref_raw=tuple(v * 1.1 for v in sp["nadir"]),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+                ideal=sp["ideal"], nadir=sp["nadir"],
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+                pareto_front=sp["pareto_front"])
+
+
+# =============================================================
 #  Polygon × M={3,4,5,6}
 # =============================================================
 def _register_polygon():
@@ -1265,6 +1307,7 @@ _zdt_register()
 _register_wfg()
 _register_dtlz()
 _register_shifted_dtlz()
+_register_zcat()
 _register_polygon()
 _maf_register()
 _register_mop()
