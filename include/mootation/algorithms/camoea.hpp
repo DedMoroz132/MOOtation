@@ -34,6 +34,12 @@
 //   (c) The paper does not specify mating selection ("Crossover and
 //       Mutation(P)"), so random pairs are used, as in the reference practice
 //       (NSGA-III / PlatEMO).
+//   (d) The reference set is the K Ward centroids and nothing else: Algorithm 2
+//       computes the centres of the K clusters of the normalized f_l (lines
+//       2-6) and returns them. A comparison with PlatEMO (2026-09) reports
+//       that its CA-MOEA adds the extreme points of the last front on every
+//       objective to the centres; Algorithm 2 does not, and the letter is
+//       kept. That code is not read here.
 //
 // Formulas:
 //   (2) C_i^c = (Sum_j p_{j,i}^c)/n   — the centroid of cluster c

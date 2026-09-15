@@ -27,7 +27,8 @@
 //      x^j ← y / FV^j ← F(y) by COPYING (seed_individual, without
 //      re-evaluation; FE per generation = exactly |I|).
 //   3. Step 5: every 50 generations π^i ← 1 if Δ^i > 0.001, otherwise
-//      (0.95 + 0.05·Δ^i/0.001)·π^i; Δ^i = (old − new)/old WITHOUT clipping.
+//      max(0, 0.95 + 0.05·Δ^i/0.001)·π^i; Δ^i = (old − new)/old is not
+//      clipped, and the floor on the factor is DRA-11.
 //
 // Defaults = Sec.III: T = 0.1N, n_r = 0.01N (computed in setup; the
 //   set_T/set_nr setters override), δ = 0.9; CR = 1.0, F = 0.5, η = 20,
@@ -61,6 +62,23 @@
 //     the current g^te (current z); the paper says only "old function value −
 //     new function value" and does not say whether the old value is
 //     re-evaluated with the current z.
+//   - DRA-11 (READING, the paper against itself; 2026-09-16). Step 5's factor
+//     0.95 + 0.05·Δ^i/0.001 is negative once Δ^i < −0.019, and that happens:
+//     Δ^i compares g^te across a moving z (DRA-10), so a subproblem that did
+//     not improve can read as worse. The literal product then makes π^i
+//     negative, and every later non-improving update moves a negative π^i UP
+//     (a factor in (0, 1) shrinks its magnitude, a negative one flips its
+//     sign) — against the paper's own gloss on Step 5: "If Δ^i is smaller
+//     than 0.001, the value of π^i will be reduced." The factor is floored at
+//     0, so π^i stays in [0, 1] and never rises without an improvement.
+//     Measured (median IGD over 11 seeds, 30 000 FE, literal → floored): ZDT1
+//     0.259 → 0.209 (lower on all 11 seeds), WFG4 0.389 → 0.381 (8 of 11);
+//     DTLZ2 0.0792 → 0.0805, DTLZ7 0.427 → 0.432 and scaled DTLZ2 22.0 → 23.3
+//     stay within the seed scatter. Inverted DTLZ1 is bimodal either way — a
+//     run ends near 0.04 or above 0.1 — and 6 of 11 seeds converge under the
+//     literal update, 5 under the floor, so its median jumps 0.048 → 0.268 on
+//     one seed. moead_awa takes this step from MOEA/D-DRA and gets the same
+//     floor (AWA-14).
 // Extensions beyond the paper (disabled by default):
 //   - EP archive (vault.archive_*): in the paper Output = {x^1..x^N};
 //     enabled via set_use_ep(true), adds no extra FE.
@@ -192,9 +210,10 @@ private:
     }
 
     // ── Utility update (Step 5) ──────────────────────────────────────────────
-    // Δ^i = (old − new)/old. The paper does NOT clip negative Δ, and this port
-    // does not either: for Δ < 0 the factor (0.95 + 0.05·Δ/0.001) drops below
-    // 0.95, which is what Step 5 says even though it is never discussed.
+    // Δ^i = (old − new)/old, not clipped (the paper does not clip it). The
+    // FACTOR 0.95 + 0.05·Δ/0.001 is floored at 0 (DRA-11): below Δ = −0.019
+    // it is negative, and a negative π^i would then rise on every later
+    // update, against Step 5's "the value of π^i will be reduced".
     void update_utility(DataVault<Ind_t>& vault, int n) {
         for (int i = 0; i < n; ++i) {
             double g_new = g_of(vault, i);
@@ -205,7 +224,7 @@ private:
             if (delta > 0.001)
                 utility_[i] = 1.0;
             else
-                utility_[i] = (0.95 + 0.05 * delta / 0.001) * utility_[i];
+                utility_[i] = std::max(0.0, 0.95 + 0.05 * delta / 0.001) * utility_[i];
 
             old_g_[i] = g_new;
         }

@@ -48,15 +48,16 @@
 //   default — the paper handled constraints differently, knapsack);
 //   mixed real+binary genome (uniform crossover + bit-flip).
 //
-// RESULT SET (read this before consuming the output). Per Algorithm 1 Step 4
-//   the answer is the nondominated members of the ARCHIVE P̄_{t+1}, which live
-//   in vault.archive_* (archive_size(), archive_objectives_of(), ...). The
-//   ACTIVE population after step() is the freshly bred, un-selected offspring
-//   generation P_{t+1} — it is NOT the algorithm's output. A caller that reads
-//   the active slots gets raw offspring, not the selected front. This differs
-//   from most cores in the library, where the active population IS the answer.
+// RESULT SET. Per Algorithm 1 Step 4 the answer is the ARCHIVE P̄_{t+1}; it
+//   lives in vault.archive_* and, after setup() and every step(), is also
+//   copied into the active slots, so a caller reading the active population —
+//   as the Python binding, run() and campaigns do — gets the selected archive.
+//   Until 2026-09-16 the active slots held the freshly bred, un-selected
+//   offspring instead, and a step ended with an evaluated generation that was
+//   never selected; see step().
 //
-// Layout: active [0,N) = P_t; vault.archive_* = P̄_t.
+// Layout: active [0,N) = P̄_t after a step (offspring P_{t+1} inside step());
+//   vault.archive_* = P̄_t.
 // ============================================================================
 
 #include <algorithm>
@@ -372,9 +373,32 @@ public:
     void set_eta_mutation (double e) { eta_m_        = e; }
     void set_seed         (unsigned s){ rng_.seed(s); }
 
+    // ── The answer set into the active slots ───────────────────────────────
+    // Algorithm 1 Step 4 answers with the archive P̄_{t+1}, while every
+    // consumer of a core — the Python binding, run(), the C ABI, a campaign —
+    // reads the active slots. After selection the archive is therefore copied
+    // there (seeded, not evaluated). The next step's breed() overwrites those
+    // slots with offspring before the fitness pool is formed, so nothing is
+    // counted twice. SPEA2-ANSWER (fixed 2026-09-16): the active slots used to
+    // hold the freshly bred, un-selected offspring, and that is what every
+    // consumer measured.
+    void publish_archive(DataVault<Ind_t>& vault) {
+        const int n = std::min<int>(static_cast<int>(vault.pop_size()),
+                                    static_cast<int>(vault.archive_size()));
+        for (int i = 0; i < n; ++i) {
+            const auto a = static_cast<std::size_t>(i);
+            vault.seed_individual(a, vault.archive_variables_of(a),
+                                  vault.archive_objectives_of(a),
+                                  vault.bin_vars_n() > 0 ? vault.archive_bin_variables_of(a)
+                                                         : std::vector<int>{},
+                                  vault.lims_n() > 0 ? vault.archive_limits_of(a)
+                                                     : std::vector<double>{});
+        }
+    }
+
     // ── setup ──────────────────────────────────────────────────────────────
-    // Population Pt in active [0, N). Archive P̄0 = ∅ initially.
-    // After setup: archive holds P̄1, active [0,N) holds new offspring Pt+1.
+    // Population P_0 in active [0, N). Archive P̄_0 = ∅ initially.
+    // After setup: the archive holds P̄_1 and the active slots show it.
     void setup(DataVault<Ind_t>& vault) {
         int N = vault.pop_size();
         eff_arch_ = (archive_size_ > 0) ? archive_size_ : N;
@@ -398,10 +422,7 @@ public:
         // Archive is empty → assign_fitness uses only active pool [0,N).
         assign_fitness(vault, N);
         update_archive(vault, N);
-
-        // Breed first offspring generation into [0,N) from archive.
-        breed(vault, N);
-        vault.sync();
+        publish_archive(vault);
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
@@ -409,27 +430,27 @@ public:
         eff_arch_ = (archive_size_ > 0) ? archive_size_ : N;
         assign_fitness(vault, N);
         update_archive(vault, N);
-        breed(vault, N);
-        vault.sync();
+        publish_archive(vault);
     }
 
     // ── step ──────────────────────────────────────────────────────────────
-    // On entry: active [0,N) = Pt (offspring from last step),
-    //           vault.archive_* = P̄t.
-    // Pool = P̄t ∪ Pt  (archive + active).
+    // On entry: the active slots show P̄_t; vault.archive_* = P̄_t.
     void step(DataVault<Ind_t>& vault) {
         int N = vault.pop_size();
         eff_arch_ = (archive_size_ > 0) ? archive_size_ : N;
 
-        // Fitness over pool = archive ∪ active.
-        assign_fitness(vault, N);
-
-        // Update archive P̄t+1 from pool.
-        update_archive(vault, N);
-
-        // Breed new offspring Pt+1 from archive into active [0,N).
-        breed(vault, N);
+        // One pass of Algorithm 1 from Step 5 round to Step 3: mating selection on
+        // P̄_t and variation into the active slots (Steps 5-6), evaluation, fitness
+        // over P_{t+1} ∪ P̄_t (Step 2), environmental selection into P̄_{t+1}
+        // (Step 3), and the archive published as the answer set. Ending the step
+        // with selection is what Step 4 needs: every evaluated generation is
+        // selected before the run can stop — the last one used to be evaluated and
+        // thrown away — and the start costs N evaluations, not 2N.
+        breed(vault, N);              // Steps 5-6: offspring P_{t+1} from P̄_t
         vault.sync();
+        assign_fitness(vault, N);     // Step 2: pool = P_{t+1} ∪ P̄_t
+        update_archive(vault, N);     // Step 3: P̄_{t+1}
+        publish_archive(vault);
     }
 };
 

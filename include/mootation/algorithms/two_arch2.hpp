@@ -87,6 +87,12 @@
 //     budget and says nothing about how many crossover children versus
 //     mutants are bred per generation; the ~50/50 split of n_DA offspring is
 //     this port's choice (see TA2-4).
+//   TA2-8 (letter, noted 2026-09-16). Parents are drawn uniformly: §V-E-2
+//     describes the crossover as "one parent from CA and the other from DA"
+//     and names no mating selection, and Eq.(2) is -e^{-I/0.05} with no
+//     c = max|I| factor (the scaling IBEA adds is handled by TA2-1). A
+//     comparison with PlatEMO (2026-09) reports a tournament for the CA
+//     parent in the authors' code; that code is not read here.
 //   TA2-6 (MINOR). Real genome only; binary is out of scope.
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP switches BOTH archives to Deb's feasibility rules:

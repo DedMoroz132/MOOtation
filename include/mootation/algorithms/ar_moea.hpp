@@ -472,7 +472,16 @@ private:
     // ── EnvironmentalSelection (Alg.5) ──────────────────────────────────────
     void environmental_selection(DataVault<Ind_t>& vault, int pool, int N) {
         const int m = vault.objs_n();
-        // line 3: f_i(p) <- f_i(p) - the min over the merged population
+        // line 3: f_i(p) <- f_i(p) - the min over the merged population.
+        // AR-ORIGIN (declared 2026-09-16): not the origin R' was built in.
+        // Alg.1 line 8 hands RefPointAdaption the PARENT population and Alg.3
+        // translates by its minimum, while line 9 hands this selection P ∪ O
+        // and line 3 translates by the minimum of that; when an offspring
+        // improves an objective's minimum, reference points and solutions sit
+        // one offset apart. That is the letter of Alg.1, 3 and 5 and is kept. A
+        // comparison with PlatEMO (2026-09) reports that the authors' code uses
+        // one accumulated minimum throughout. The offset is one generation's
+        // improvement, so it matters early in a run and fades as it converges.
         std::vector<double> zmin(m, std::numeric_limits<double>::max());
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);

@@ -67,6 +67,12 @@ namespace mootation::ops {
 //     the operator degenerates into copying the parent (rc=rm=0, the annealing
 //     has "cooled down") — the calling algorithm must pass the real Max_gen
 //     (set_t_max).
+//   LL-6 (LETTER, noted 2026-09-16). Step 6 of liu2009 reads "If gen ≤
+//     Max_gen, go to step 4", so the paper runs a generation AT gen = Max_gen,
+//     where a = 0 and rc = rm = 0: that generation's offspring are copies of
+//     their parents, and its N evaluations re-evaluate known points. A caller
+//     that counts the first mating as gen = 1 (the contract below) does the
+//     same; it costs 1/Max_gen of the budget (0.3 % at 300 generations).
 //
 // gen — current generation (1-based, as in the paper: first mating at gen=1);
 // max_gen ≥ 1 — maximum number of generations. Finite variable bounds are

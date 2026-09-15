@@ -8,7 +8,8 @@
 //
 // Generation scheme (Alg.4; the skeleton inherits MOEA/D-DRA, Zhang et al. 2009):
 //   1. Step 2.1–2.2: every 50 generations Δ^i=(old−new)/old on g^tc(x^i|λ^i),
-//      π^i ← 1 if Δ>0.001, otherwise (0.95+0.05·Δ/0.001)·π^i.
+//      π^i ← 1 if Δ>0.001, otherwise max(0, 0.95+0.05·Δ/0.001)·π^i (the
+//      floor is AWA-14).
 //   2. Step 2.3: I = m corner subproblems (weights ≈ permutations of
 //      (1,0,…,0)) + (⌊N/5⌋−m) OTHER subproblems by a 10-tournament on π^i —
 //      the tournament draws from the indexes not yet in I, so I is a set of
@@ -59,13 +60,28 @@
 //       not say what happens to π for a subproblem whose weight just moved,
 //       and a stale π would rank it by the performance of a different
 //       subproblem.
-//   (3) Corner subproblems = argmax_i λ^i_j per objective j. After the WS
-//       transformation the exact permutations of (1,0,…,0) survive with an
-//       ε-clamp, so the argmax picks them out.
+//   (3) Corner subproblems = argmax_i λ^i_j per objective j: the subproblems
+//       whose Tchebycheff weight is closest to e_j, i.e. which optimise f_j
+//       alone — what Step 2 of MOEA/D-DRA selects. (Corrected 2026-09-16: this
+//       note used to say the argmax picks the WS images of the permutations
+//       of (1,0,…,0). It does not: WS maps a vertex of the λ' lattice to about
+//       (ε, 1/2, 1/2) at M = 3, and λ ≈ e_j is the image of the midpoint of the
+//       opposite edge. The code was right; the explanation was not.)
 // Deviations:
 //   AWA-12 (MINOR). If the EP left after Alg.3 Step 1 supplies fewer than nus
 //     candidates, the last-removed subproblems are restored so that
 //     |evol_pop| stays N; Alg.3 defines no behaviour for that case.
+//   AWA-14 (READING, as DRA-11 in moead_dra.hpp; 2026-09-16). Step 2.2 is
+//     MOEA/D-DRA's utility update — §3.4 adopts that strategy "as proposed in
+//     (Zhang et al., 2009)" and repeats its formula — so it inherits the same
+//     contradiction: a factor below 0 makes π negative, and a negative π then
+//     rises on every non-improving update, against the DRA paper's "the value
+//     of π^i will be reduced". The factor is floored at 0 here too. Measured
+//     (median IGD over 11 seeds, 30 000 FE, literal → floored): DTLZ2 and
+//     scaled DTLZ2 unchanged (bit-identical on 11 and 10 seeds), ZDT1
+//     0.00398 → 0.00399, DTLZ7 0.103 → 0.105, WFG4 0.257 → 0.255, inverted
+//     DTLZ1 0.0294 → 0.0302 — all within the seed scatter; the floor rarely
+//     acts in this algorithm.
 //   (AWA-1…AWA-11 were closed by the internal audit.)
 // Assumption made explicit: EP maintenance runs EVERY generation. Alg.4 nests
 //   Step 4.1 inside the gate (gen >= rate_evol·G_max AND gen mod wag == 0), but
@@ -288,7 +304,7 @@ private:
             double old_g = old_g_[i];
             double delta = (old_g > 1e-30) ? (old_g - new_g) / old_g : 0.0;
             if (delta > 0.001) utility_[i] = 1.0;
-            else utility_[i] = (0.95 + 0.05 * delta / 0.001) * utility_[i];
+            else utility_[i] = std::max(0.0, 0.95 + 0.05 * delta / 0.001) * utility_[i];   // AWA-14
             old_g_[i] = new_g;
         }
     }
@@ -445,19 +461,26 @@ private:
 
         // ── Alg.2 Step 1: reallocation of x^i over the subproblems ─────────
         // if g^tc(x^i|λ^j,z) < g^tc(x^j|λ^j,z) then x^j = x^i, FV^j = FV^i.
+        // AWA-13 (reading, 2026-09-16): the condition quantifies over x^i, x^j
+        // in evol_pop as it stands when Step 1 begins, so every subproblem
+        // chooses from that population, not from one already partly
+        // overwritten. The port used to copy in place while scanning, which
+        // made the result depend on the subproblem order: a solution copied
+        // over at an early j was no longer available to a later one.
+        const std::vector<Entry> before = pop;
         for (int j = 0; j < n; ++j) {
             int best = -1;
-            double gbest = tchebycheff(pop[j].objs, pop[j].w);
+            double gbest = tchebycheff(before[j].objs, pop[j].w);
             for (int i = 0; i < n; ++i) {
                 if (i == j) continue;
-                double gi = tchebycheff(pop[i].objs, pop[j].w);
+                double gi = tchebycheff(before[i].objs, pop[j].w);
                 if (gi < gbest) { gbest = gi; best = i; }
             }
             if (best >= 0) {
-                pop[j].vars  = pop[best].vars;
-                pop[j].objs  = pop[best].objs;
-                pop[j].lims  = pop[best].lims;
-                pop[j].bvars = pop[best].bvars;
+                pop[j].vars  = before[best].vars;
+                pop[j].objs  = before[best].objs;
+                pop[j].lims  = before[best].lims;
+                pop[j].bvars = before[best].bvars;
             }
         }
 

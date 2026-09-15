@@ -47,6 +47,12 @@
 //     is measured from the ray through z*), and on every test problem of the
 //     paper (z* = 0) the two coincide. set_association_shift_ideal(false)
 //     selects the literal raw-F(x) angle.
+//     DD-ASSOC (fixed 2026-09-16): the reading has a cost the literal angle
+//     does not — an association is valid only for the z* it was computed
+//     against. The port associated each offspring once, at insertion, and left
+//     the rest of P on older origins, so the niche counts of UPDATE_POPULATION
+//     mixed subregions measured from different z*. Every member of P is now
+//     re-associated whenever an offspring moves z*.
 //   - z* is the running component-wise MINIMUM over everything evaluated. §II-B
 //     defines the ideal vector with a STRICT inequality, z*_i < min_{x∈Ω}
 //     f_i(x), i.e. strictly below the true optimum, which no online estimator
@@ -478,7 +484,15 @@ private:
 
         // Update z* (xc is already evaluated).
         const auto& fo = vault.objectives_of(scratch);
-        for (int j=0;j<m;++j) ideal_[j] = std::min(ideal_[j], fo[j]);
+        bool moved = false;
+        for (int j=0;j<m;++j) if (fo[j] < ideal_[j]) { ideal_[j] = fo[j]; moved = true; }
+
+        // Under the z*-anchored reading of Eq.6 an association is only valid
+        // for the z* it was computed against, so when z* moves every member of
+        // P is re-associated before the niche counts are taken; otherwise the
+        // counts mix subregions measured from different origins (DD-ASSOC).
+        if (moved && assoc_shift_)
+            for (int s = 0; s < n; ++s) associate(vault, s);
 
         // Line 1: associate xc via Eq.6.
         associate(vault, scratch);

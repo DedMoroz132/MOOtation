@@ -100,6 +100,66 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- SPEA2 and SPEA2+SDE returned the wrong set. Their answer is the archive
+  (Algorithm 1, Step 4), but the archive lived only in the vault's archive
+  slots, and everything that reads a result — `minimize()`, the binding, `run()`
+  and campaigns — reads the active population, which held the freshly bred
+  offspring that no selection had seen. The archive is now copied into the
+  active slots after `setup()` and every `step()`. Median IGD at 30 000
+  evaluations, before → after: SPEA2 (3 seeds) DTLZ2 0.0788 → 0.0579, ZDT1
+  0.0105 → 0.0040, DTLZ7 0.097 → 0.068, inverted DTLZ1 0.0437 → 0.0220, WFG4
+  0.303 → 0.237; SPEA2+SDE (11 seeds) DTLZ2 0.085 → 0.077, ZDT1
+  0.0115 → 0.0043, DTLZ7 0.082 → 0.063, inverted DTLZ1 0.0427 → 0.0218, but
+  WFG4 0.315 → 0.326 (worse on 9 seeds) and scaled DTLZ2 2.53 → 2.96 (worse on
+  10). Campaign results for both were measured on the offspring and need
+  rerunning.
+- RVEA's reference vector adaptation (Algorithm 3, lines 5-7) rescaled only as
+  many vectors as there were survivors instead of all N, so whenever the
+  population fell short of N the vectors at the end of the list never followed
+  the front. ZDT1 0.0228 → 0.0202 and DTLZ7 0.148 → 0.103; DTLZ2, scaled
+  DTLZ2, inverted DTLZ1 and WFG4 are unchanged.
+- MOEA/DD associated each offspring with its subregion once, against the
+  ideal point of that moment, and never again, so the niche counts it compares
+  mixed subregions measured from different ideal points. The population is now
+  re-associated whenever an offspring moves the ideal point. ZDT1 0.0052 →
+  0.0040, inverted DTLZ1 0.056 → 0.039, DTLZ7 0.129 → 0.121; DTLZ2, scaled
+  DTLZ2 and WFG4 are unchanged.
+- NRV-MOEA's union of archive and population kept a solution twice when it
+  was in both — every member at the first generation, since the archive starts
+  as a copy of the population — and copies never dominate each other, so
+  reproduction drew such a solution twice as often. The union now holds each
+  solution once. No clear change in the results: DTLZ7 0.060 → 0.065, WFG4
+  0.243 → 0.238, the other four within 1 %.
+- A-NSGA-III's size cap on the reference set (an extension beyond the paper)
+  trimmed the newest points first without looking at them, so it could drop a
+  point that had just attracted a member while an empty one stayed. It now
+  drops empty added points first. DTLZ2 0.0552 → 0.0542, inverted DTLZ1
+  0.0230 → 0.0224, DTLZ7 0.069 → 0.071.
+- MOEA/D-DRA's utility could go negative and then climb. Step 5 multiplies
+  π by 0.95 + 0.05·Δ/0.001, which is negative once Δ < −0.019, and Δ gets
+  there: it compares scalarized values across a moving ideal point. A
+  negative π then rose on every later update without an improvement, where
+  the paper says it "will be reduced". The factor is floored at 0. Median IGD
+  over 11 seeds at 30 000 evaluations: ZDT1 0.259 → 0.209 (lower on every
+  seed), WFG4 0.389 → 0.381; DTLZ2, DTLZ7 and scaled DTLZ2 stay within the
+  seed scatter, and inverted DTLZ1 is bimodal either way. MOEA/D-AWA takes
+  this step from MOEA/D-DRA and gets the same floor, which there changes
+  nothing outside the seed scatter on the same six problems.
+- MOEA/D-AWA's reallocation (Algorithm 2, Step 1) gave each subproblem the
+  best solution for its weight while reading from the population it was
+  overwriting, so a slot already replaced could be copied again. It reads
+  from a copy taken before the step. The six measured problems are unchanged
+  except DTLZ7, which moves within the seed scatter (0.103 → 0.107).
+- Algorithm headers that misdescribed the code or the paper, found by
+  checking a comparison with PlatEMO against the papers: MOEA/D-AWA's note
+  on corner subproblems (the code was right), MOEA/D-M2M's claim about what
+  PlatEMO does (withdrawn), and in the benchmark registry the conventions (no
+  unbounded archive is kept; `K_runs` is 21) and the MaF attribution.
+  Readings the papers leave open are now declared, with a measurement where
+  one was taken: MOEA/D's zero weights and result set, DEA-GNG's tie-breaking
+  and sub-network expansion, the last generation of the Liu–Li operator,
+  CLIA's reference-point relearning, HypE's reference point, and notes in
+  CA-MOEA, VaEA, AR-MOEA, MOMBI-II, AdaW and Two_Arch2.
 - Campaign budgets were counted in steps, and a step is not a generation for
   every core: NIMMO evaluates one offspring per step and MOEA/D-DRA and
   MOEA/D-AWA a fifth of the population, so at the same budget they spent 2 %

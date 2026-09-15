@@ -10,12 +10,14 @@
 #   Polygon x M={3..6}  Ishibuchi, Akedo, Nojima 2011
 #   MOP1-7, BT1-9, and the inverted / scaled / minus DTLZ variants
 #
-# Conventions follow Tanabe & Oyama, GECCO 2017, so that numbers produced here
-# are comparable with the literature rather than merely self-consistent:
-#   * the archive is unbounded and feasible-only (cv > 0 is skipped);
+# Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
+# here are comparable with the literature rather than merely self-consistent:
 #   * the hypervolume reference point is normalized, (1.1, ..., 1.1);
 #   * hv_norm_divisor = 1.1^M;
-#   * K_runs = 31, enough for a Wilcoxon test.
+#   * K_runs = 21 for every problem.
+# Their archive convention (score an unbounded, feasible-only archive of every
+# solution evaluated) is not applied here: solve() and campaigns score the
+# population the algorithm returns.
 # ============================================================================
 from __future__ import annotations
 
@@ -673,7 +675,7 @@ def _zdt_register():
 
 # =============================================================
 #  MaF1-13 — Many-objective benchmark suite with irregular PFs
-#  Cheng, Jin, Olhofer, Sendhoff.
+#  R. Cheng et al.
 #  "A Benchmark Test Suite for Evolutionary Many-Objective Optimization."
 #  Complex & Intelligent Systems 3(1): 67-81, 2017.
 #  https://doi.org/10.1007/s40747-017-0039-7

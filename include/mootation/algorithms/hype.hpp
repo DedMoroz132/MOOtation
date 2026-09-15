@@ -29,7 +29,10 @@
 // DECLARED DEVIATION (the default when R is not supplied): an adaptive point
 // r_i = max_i f_i · (1 ± ref_offset) over the current pool, ref_offset = 1.0
 // (set_ref_offset). This is a practical default for problems of unknown
-// scale; the paper does NOT define such a construction.
+// scale; the paper does NOT define such a construction. Being a multiple of
+// the maximum, it also depends on where the origin is: shifting every
+// objective by a constant moves r relative to the front, and an objective
+// whose pool maximum is exactly 0 gets r_i = 0, with no margin at all.
 // MEASURED (2026-09-05 FE-trajectory audit): with the offset at 0.1 the
 // exclusive hypervolume of the two extreme points on ZDT1 was the smallest
 // in the last front, they were truncated first, the maximum shrank, the

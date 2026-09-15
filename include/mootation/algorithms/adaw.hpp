@@ -19,7 +19,12 @@
 //   5. Archive maintenance EVERY generation while |A| > N_A = 2N
 //      (Steps 18–20): iteratively remove argmax D(p) = 1 − Prod R(p,q)
 //      (Eq.1–2, §3.2); the objectives are normalized by the set's min/max;
-//      r is the median distance to the k-th nearest neighbour, k = m.
+//      r is the median distance to the k-th nearest neighbour, k = m. The
+//      normalization, r and D(p) are recomputed on the reduced set after
+//      every removal: §3.2 "iteratively deletes the solution having the
+//      biggest crowding degree in the set", and each quantity is defined on
+//      "the set" as it stands (a comparison with PlatEMO, 2026-09, flagged the
+//      recomputation; it is the letter).
 //   6. Weight update every 5% of the generations, never in the last 10%
 //      (Steps 21–25): addition §3.3–3.4 (undeveloped: a niche of radius r_a
 //      containing no population solution, with r_a the median NN distance of

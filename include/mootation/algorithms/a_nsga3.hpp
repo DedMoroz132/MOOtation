@@ -54,7 +54,11 @@
 //   The cap is 2·max(N, |Z_0|), where |Z_0| is the initial reference set AFTER
 //   the M extreme points of §VI are appended — set_reference_points runs before
 //   setup() and has no access to pop_size, so at that moment it can only scale
-//   by |Z_0|; setup() then re-arms it with the real N. Also:
+//   by |Z_0|; setup() then re-arms it with the real N. When the cap trims,
+//   it drops included points with rho = 0 first and only then the newest
+//   included ones (2026-09-16; it used to drop purely from the end, which
+//   could discard a point that had just found a member while an empty one
+//   stayed, whenever the §VII-B gate kept deletion off). Also:
 //   constraint_mode FEASIBILITY == CDP; mixed real+binary genome.
 // ============================================================================
 
@@ -265,23 +269,30 @@ private:
         }
         std::vector<std::vector<double>> keptW;
         std::vector<char> keptOrig, keptIncl;
+        std::vector<int> keptRho;
         for (int j = 0; j < nref; ++j) {
             if (is_original_[j] || rho[j] > 0 || !do_delete) {
                 keptW.push_back(ref_points_[j]);
                 keptOrig.push_back(is_original_[j]);
                 keptIncl.push_back(inclusion_done_[j]);
+                keptRho.push_back(rho[j]);
             }
         }
         // Size safety cap (an extension beyond the paper, see the header):
-        // drop surplus NON-original points from the end.
+        // drop surplus NON-original points, the empty ones (rho = 0) first and
+        // the newest first within each group. Dropping purely from the end
+        // could discard a point that had just found a member while an empty
+        // included one stayed, whenever the §VII-B gate kept deletion off.
         while (static_cast<int>(keptW.size()) > cap_) {
             int idx = -1;
-            for (int j = static_cast<int>(keptW.size()) - 1; j >= 0; --j)
-                if (!keptOrig[j]) { idx = j; break; }
+            for (int pass = 0; pass < 2 && idx < 0; ++pass)
+                for (int j = static_cast<int>(keptW.size()) - 1; j >= 0; --j)
+                    if (!keptOrig[j] && (pass == 1 || keptRho[j] == 0)) { idx = j; break; }
             if (idx < 0) break;
             keptW.erase(keptW.begin() + idx);
             keptOrig.erase(keptOrig.begin() + idx);
             keptIncl.erase(keptIncl.begin() + idx);
+            keptRho.erase(keptRho.begin() + idx);
         }
         ref_points_.swap(keptW);
         is_original_.swap(keptOrig);

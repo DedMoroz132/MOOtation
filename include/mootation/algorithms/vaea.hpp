@@ -310,6 +310,10 @@ public:
             }
 
             while (static_cast<int>(P.size()) < N) {
+                // Alg.5 picks BOTH ρ (line 4) and μ (line 5) before x_ρ joins P
+                // (line 6); Alg.7 then reads θ(x_μ) and γ(x_μ) as Alg.6 left
+                // them. A comparison with PlatEMO (2026-09) suggests recomputing
+                // μ after x_ρ is added; that is not the paper's order.
                 // ρ = argmax θ among the unselected
                 int rho = -1; double bestmax = -1.0;
                 for (int j = 0; j < T; ++j)

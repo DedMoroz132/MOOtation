@@ -69,7 +69,13 @@
 //     either way.
 //   GNG-θ. ζ_k is the angle between r and the EDGE (r_nb − r) per Eq.8 — not
 //     the angle between two node positions, which is what an earlier version
-//     computed.
+//     computed. The direction is the paper's letter: "v_edge,k can be obtained
+//     by r_k^nb − r" (§III-F, under Eq.8). A comparison with PlatEMO (2026-09)
+//     reports that the authors' MATLAB code takes r − r_nb instead; that code
+//     is not read here. The two readings turn ζ into π − ζ, and because ζ_min
+//     is taken over all edges of a node they give nearly the same θ wherever a
+//     node has neighbours on opposite sides of it; they part only at the ends
+//     of a chain and at nodes whose neighbours all lie to one side.
 //   GNG-8 (FIXED 2026-09-06, third primary-source pass). Alg.1 line 17
 //     increments g AFTER environmental selection and line 10 tests
 //     g < (1−α)·G_max with g = 0 in the first generation; the port incremented
@@ -91,6 +97,28 @@
 //     not invariant under it. The pre-expansion reading is adopted because it
 //     is the only one in which both operands live in the same frame. The same
 //     mixing affects the raw-vs-normalized scale of R'_node.
+//   GNG-9 (AMBIGUOUS, measured 2026-09-16). Alg.2 line 12 writes
+//     J = argmin_{j∈C} c_j and says nothing about ties. The port takes the
+//     FIRST minimal index, here and in the A_S update (§III-C), and R lists
+//     R'_u ahead of R'_node, so a tie goes to a surviving uniform vector
+//     before any GNG node. §III-B calls the selection "similar to that in
+//     NSGA-III", whose niching draws at random among the minimal ρ_j (deb2014
+//     Alg.4 lines 3-4), so random ties were tried in both places. They are
+//     worse (median IGD over 11 seeds, 30 000 FE, first index → random):
+//     DTLZ7 0.099 → 0.130 (worse on 10 of 11 seeds), WFG4 0.275 → 0.284,
+//     scaled DTLZ2 1.94 → 2.05; DTLZ2 0.0545 → 0.0545, ZDT1 0.0043 → 0.0044
+//     and inverted DTLZ1 0.0259 → 0.0255 do not move. First index stays.
+//   GNG-10 (LETTER + GUARDS, noted 2026-09-16). Eq.5 (Alg.3 line 12) maps each
+//     sub-network's node box [f^q_min,node, f^q_max,node] onto the box of its
+//     signals [f^q_min,A_S, f^q_max,A_S]. Alg.3 does not discuss three cases:
+//     (a) a sub-network that attracts ONE signal: the signal box has zero
+//         width, so all its nodes collapse onto that signal (duplicate
+//         reference vectors) — the letter, kept;
+//     (b) a sub-network that attracts NO signal: the signal box is undefined,
+//         and its nodes stay where they are (identity map) — a guard;
+//     (c) a component in which every node of a sub-network has the same value
+//         (a single-node or flat sub-network): Eq.5 divides 0 by 0, and those
+//         nodes go to f^q_min,A_S in that component — a guard.
 //
 // EXTENSIONS BEYOND THE PAPER: constraint_mode exists for API uniformity and
 //   does not change the DEA-GNG logic (NONE).
@@ -186,7 +214,7 @@ private:
         std::vector<int> cj(R,0); std::vector<char> Cact(R,1);
         std::vector<Sol> out; out.reserve(NS_);
         while((int)out.size()<NS_){
-            int J=-1; for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }
+            int J=-1; for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }   // ties: first index (GNG-9)
             if(J<0) break;
             auto& D=Delta[J];
             if(D.empty()){ Cact[J]=0; continue; }
@@ -356,7 +384,7 @@ private:
         std::vector<char> Cact(R,1);
         std::vector<int> chosen=Pidx;
         while((int)chosen.size()<N_){
-            int J=-1; for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }
+            int J=-1; for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }   // ties: first index (GNG-9)
             if(J<0) break;
             if(Delta[J].empty()){ Cact[J]=0; continue; }
             int pick;

@@ -212,7 +212,12 @@ private:
         }
 
         // Marks age one generation per update ("the mark lasts the same
-        // number of generations that record is kept").
+        // number of generations that record is kept"). A mark set at update t
+        // holds REC_ and is aged before the line-15 test, so it blocks t+1 ..
+        // t+REC_−1 and expires at t+REC_ — exactly when the nadir stored at t
+        // leaves the record. Counting the marking generation itself, that is
+        // REC_ generations. A comparison with PlatEMO (2026-09) reads it as one
+        // generation too short; the reading here is the one tied to the record.
         for (int j = 0; j < m; ++j) if (mark_[j] > 0) --mark_[j];
 
         // Line 5: global variance test, α = 0.5.

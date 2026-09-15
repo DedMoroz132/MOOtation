@@ -44,6 +44,11 @@
 //      0.0039 -> 0.0040 (0.0039/0.0038/0.0039 -> 0.0040/0.0040/0.0040).
 //      The letter is the default: it is clearly better on DTLZ2 and level
 //      on ZDT1.
+//      NRV-2 (FIXED 2026-09-16): Arc ∪ P kept a solution twice when it sat in
+//      both — every member at the first generation, since Arc starts as a
+//      copy of P. Copies never dominate each other, so both stayed, and
+//      Reproduction drew such a solution twice as often. The union now enters
+//      each solution (identical variables) once, as a set union does.
 //
 // PAPER DEFAULTS = §Experimental settings: p_c=1, p_m=1/V, η_c=η_m=20,
 //   f_r=0.1.
@@ -347,7 +352,44 @@ public:
             std::vector<std::vector<double>> F(total);
             for (int i = 0; i < A; ++i) F[i] = vault.archive_objectives_of(i);
             for (int i = 0; i < n; ++i) F[A + i] = vault.objectives_of(i);
-            std::vector<int> items(total); std::iota(items.begin(), items.end(), 0);
+            // NRV-2: the merge is a set union ("we first combine P_c with Arc"),
+            // so a population member that is already in the archive — all of
+            // them at the first generation, since Arc starts as a copy of P, and
+            // every survivor that stayed in P after that — enters once. Two
+            // copies of one solution never dominate each other, so both used to
+            // stay, and Reproduction (parents from P ∪ Arc) drew that solution
+            // twice as often.
+            auto same_solution = [&](int pi, const std::vector<double>& v,
+                                     const std::vector<int>& b) {
+                for (int j = 0; j < vault.vars_n(); ++j)
+                    if (vault.get_variable(pi, j) != v[j]) return false;
+                for (int j = 0; j < vault.bin_vars_n(); ++j)
+                    if (vault.get_bin_variable(pi, j) != b[j]) return false;
+                return true;
+            };
+            std::vector<int> items;
+            items.reserve(total);
+            for (int i = 0; i < A; ++i) items.push_back(i);
+            std::vector<std::vector<double>> seen_v;
+            std::vector<std::vector<int>> seen_b;
+            for (int i = 0; i < A; ++i) {
+                seen_v.push_back(vault.archive_variables_of(i));
+                seen_b.push_back(vault.bin_vars_n() ? vault.archive_bin_variables_of(i)
+                                                    : std::vector<int>());
+            }
+            for (int i = 0; i < n; ++i) {
+                bool dup = false;
+                for (std::size_t s = 0; s < seen_v.size() && !dup; ++s)
+                    dup = same_solution(i, seen_v[s], seen_b[s]);
+                if (dup) continue;
+                items.push_back(A + i);
+                std::vector<double> v(vault.vars_n());
+                for (int j = 0; j < vault.vars_n(); ++j) v[j] = vault.get_variable(i, j);
+                std::vector<int> b(vault.bin_vars_n());
+                for (int j = 0; j < vault.bin_vars_n(); ++j) b[j] = vault.get_bin_variable(i, j);
+                seen_v.push_back(std::move(v));
+                seen_b.push_back(std::move(b));
+            }
             auto keep = eps_archive_select(F, items, N);
             // rewrite the archive: keep vars/objs/lims of the non-dominated survivors
             std::vector<std::vector<double>> kv, ko, kl;

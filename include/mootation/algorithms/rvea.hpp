@@ -23,6 +23,9 @@
 //   RVEA-1 (resolved): the reference-vector adaptation was skipped at t=0
 //   because t was incremented before the divisibility check; the check now
 //   runs first.
+//   RVEA-2 (resolved 2026-09-16): the adaptation updated only as many vectors
+//   as there were survivors, not all N of Alg.3 lines 5-7 (see
+//   adapt_reference_vectors).
 //   RVEA* (Alg. 4, vector regeneration for irregular PFs) is not implemented —
 //   a deliberate implementation boundary (baseline RVEA).
 // Extensions beyond the paper: binary variables (uniform crossover + bit-flip),
@@ -128,7 +131,11 @@ private:
 
     // ── Reference vector adaptation (Algorithm 3, Eq. 11) ────────────────
     // Triggered when (t / t_max) mod fr == 0.
-    // v_{t+1,i} = normalise( V0_[i] ⊙ (z_max - z_min) )
+    // v_{t+1,i} = normalise( V0_[i] ⊙ (z_max - z_min) ) for i = 1..N (Alg.3
+    // lines 5-7), with z_min/z_max over the n survivors in P_{t+1}.
+    // RVEA-2 (fixed 2026-09-16): the vector loop ran over the n survivors
+    //   instead of the N vectors, so whenever a subspace was empty (n < N)
+    //   vectors n..N-1 kept the ranges of an earlier adaptation.
     void adapt_reference_vectors(DataVault<Ind_t>& vault, int n) {
         int m = vault.objs_n();
         std::vector<double> zmin(m,  std::numeric_limits<double>::max());
@@ -143,7 +150,7 @@ private:
         std::vector<double> range(m);
         for (int j = 0; j < m; ++j) range[j] = std::max(zmax[j] - zmin[j], 1e-14);
 
-        for (int i = 0; i < n; ++i) {
+        for (int i = 0; i < static_cast<int>(V0_.size()); ++i) {   // all N vectors
             double norm = 0.0;
             for (int j = 0; j < m; ++j) norm += (V0_[i][j] * range[j]) * (V0_[i][j] * range[j]);
             norm = std::sqrt(norm);

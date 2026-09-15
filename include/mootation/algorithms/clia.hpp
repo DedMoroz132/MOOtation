@@ -85,6 +85,25 @@
 //     offspring from N evaluations satisfies the letter; this is one of them.
 //   CLIA-6 (MINOR). Real-valued genome; binary and mixed are out of scope
 //     (constraint_mode=NONE).
+//   CLIA-7 (AMBIGUOUS, the kernel width). §IV-B gives <S,C> = <0.056,10>,
+//     "S is the kernel scale of the Gaussian kernel", and no formula. Three
+//     readings are in circulation: exp(−d²/(2S²)), S as a standard deviation,
+//     used here; exp(−d²/S²), MATLAB's KernelScale, which divides the inputs
+//     by S (the paper tuned S with MATLAB's optimizer); and exp(−d²/(2S)), S as
+//     a variance, reported for PlatEMO's iSVM. The width differs by √2 between
+//     the first two and by about 4.2× for the third. The classifier here is a
+//     Parzen estimator, not the SVM (CLIA-1), so no reading reproduces the
+//     paper exactly; the choice is declared, not derived.
+//   The round-robin of Alg.1 starts from the first cluster, so with more
+//     clusters than N the later ones lose their centres. §III-A-3 says so
+//     itself ("unless the number of clusters is more than N ... all cluster
+//     centers will be kept"): the letter, not a deviation.
+//   After an RPIL update the previously active reference vectors are gone.
+//     Alg.2 regenerates Z at the denser density D+1 and keeps the points of
+//     THAT set which pass δ (Z ← find(Z, y, δ)); the new lattice need not
+//     contain the old points (a single Das–Dennis lattice at H+1 shares only
+//     its corners with the one at H). The port replaces Z_ the same way: the
+//     letter, not a deviation.
 //
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP makes the Frontier Identification step of Cascade

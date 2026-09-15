@@ -29,6 +29,25 @@
 //   2.3 literally under a minimizing objective would drive z to the nadir and
 //   invert the whole scalarization; the flip is the paper's instruction, not an
 //   edit to it.
+// RESULT SET (the letter of §V-C, noted 2026-09-16). The algorithm of §III
+//   outputs EP (Step 3), but the variant the paper runs on continuous MOPs,
+//   whose settings (§V-E) are the defaults here, has "no external population
+//   EP. Instead, the final internal population is returned as an approximation
+//   to the PF. Step 2.5 is not needed." (§V-C). The port returns the internal
+//   population, as §V-C does. It still keeps EP (Step 2.5) in vault.archive_*
+//   for C++ callers who want the output of §III; the Python layer does not
+//   return it.
+// ZERO WEIGHTS (the letter, measured 2026-09-16). The weights of §V-E are
+//   those of §IV-E, every λ_j taken from {0/H, 1/H, ..., H/H}, so boundary
+//   subproblems have zero components and g^te ignores those objectives: such
+//   a subproblem cannot tell a Pareto-optimal point from a weakly
+//   Pareto-optimal one beside it, and the ≤ of Step 2.4 lets the weaker one
+//   in. A floor of 1e-6 on λ_j, a common implementation convention the paper
+//   does not have, was measured against the letter and moves nothing outside
+//   the seed scatter (median IGD, 3 seeds, 30 000 FE, letter / floor): DTLZ2
+//   (M = 3) 0.0770 / 0.0770, ZDT1 0.0040 / 0.0039, DTLZ7 0.208 / 0.203,
+//   inverted DTLZ1 0.0323 / 0.0323, WFG4 0.351 / 0.353, scaled DTLZ2
+//   18.5 / 18.2. The letter stays; moead_de and moead_dra share it.
 // Deviations:
 //   - EP may contain duplicate F-vectors (does not contradict the letter of Step 2.5).
 //   (MOEAD-2, the former "up to 5 attempts to ensure k ≠ l", was removed on

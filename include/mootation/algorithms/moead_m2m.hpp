@@ -62,12 +62,13 @@
 //   the requested set_K for ANY K≥1.
 //
 // DECLARED DEVIATIONS:
-//   M2M-1 (DEVIATION, paper text vs reference code). Algorithm 2 line 4:
-//     when solutions are lacking, the subregion is refilled with RANDOM ones
-//     from Q (the letter of the paper). The authors' reference implementation in
-//     PlatEMO instead refills with the solutions having the smallest angle to
-//     v^k. Here we follow the LETTER of the paper (random refill);
-//     this is also ablation point A4/A5 ("hard quotas + refill").
+//   M2M-1 (LETTER, not a deviation). Algorithm 2 line 4: when solutions are
+//     lacking, the subregion is refilled with RANDOM ones from Q, and the port
+//     does exactly that; this is also ablation point A4/A5 ("hard quotas +
+//     refill"). An earlier version of this item said that PlatEMO refills
+//     with the solutions of smallest angle to v^k instead. A 2026-09
+//     comparison against PlatEMO's code reports that it does not, and that
+//     code is not read here, so the claim is withdrawn rather than corrected.
 //   M2M-2 (MINOR). Direction vectors: "uniformly from the unit sphere" —
 //     for K attainable by the lattice, implemented as the Das–Dennis simplex
 //     lattice normalized to unit length (the canonical way; the reference code
