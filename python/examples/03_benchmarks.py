@@ -4,12 +4,13 @@
 
     python python/examples/03_benchmarks.py
 
-324 problems ship with the package — ZDT, DTLZ, WFG, MaF, ZCAT, Polygon, MOP,
-BT and the inverted/scaled/minus DTLZ variants — each carrying the population
-size and generation count its paper used, and where a closed form exists a
-sampler of the true Pareto front. That last part is what makes IGD meaningful:
-without a reference front you can only report that a run finished, not that it
-worked.
+434 problems ship with the package — ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj,
+Polygon, MOP, BT and the inverted/scaled/minus DTLZ variants — each carrying
+the population size and generation count its paper used, and where a closed
+form exists a sampler of the true Pareto front. That last part is what makes
+IGD meaningful: without a reference front you can only report that a run
+finished, not that it worked — which is why the bbob-biobj problems, whose
+Pareto set has no closed form, report no IGD at all rather than a made-up one.
 
 Needs NumPy (`pip install "mootation[bench]"`).
 """

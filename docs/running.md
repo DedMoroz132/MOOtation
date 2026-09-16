@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 58 algorithm names |
-| `--problems` | list the 324 benchmark problems (needs NumPy) |
+| `--problems` | list the 434 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -138,11 +138,11 @@ day-long run.
 
 ## The built-in suites
 
-ZDT, DTLZ, WFG, MaF, ZCAT, the Ishibuchi polygon family, MOP and BT: 324
-problems across 13 families, each with bounds, an evaluator, the reference
-point a hypervolume needs and, where a closed form exists, a sampler of the
-true Pareto front. Objective counts run from 2 to 15. Point a config at them
-instead of an external program:
+ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
+BT: 434 problems across 14 families, each with bounds, an evaluator, the
+reference point a hypervolume needs and, where a closed form exists, a sampler
+of the true Pareto front. Objective counts run from 2 to 15. Point a config at
+them instead of an external program:
 
 ```toml
 [run]
@@ -275,13 +275,19 @@ fails the one job it holds, which is recorded, and is replaced.
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)
-runs every algorithm on 93 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
+runs every algorithm on 203 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
 the inverted IDTLZ1–2, the scaled SDTLZ1–2, shiftDTLZ1–4 (DTLZ1–4 with the
-optimum moved off the centre of the box) and ZCAT1–20 at three and five — five
-seeds each at 10 000 evaluations: 26 970 jobs and about 80 CPU-hours, some five
-hours on a 16-core machine. The file records what that estimate is built from,
-which three algorithms are most of it, how much of it ZCAT is, and a preset for
-the papers' own budgets.
+optimum moved off the centre of the box) and ZCAT1–20 at three and five; and
+bbob-biobj F1–F55, every pair of ten bbob functions, at 5 and 10 variables —
+five seeds each at 10 000 evaluations: 58 870 jobs and about 90 CPU-hours,
+under six hours on a 16-core machine. The file records what that estimate is
+built from, which three algorithms are most of it, where the time goes between
+the suites, and a preset for the papers' own budgets.
+
+The bbob-biobj problems have no reference front — a pair of bbob functions has
+no closed-form Pareto set — so `igd` and `igdp` are recorded as null for all
+110 of them and only `hv` and `hv_h` rank them. Use `--ranks hv` if you want
+them counted; `--ranks igd` silently covers the other 93.
 
 A clean machine needs Python 3.11 or newer and a C++17 compiler — on Windows,
 the Visual Studio Build Tools with the "Desktop development with C++" workload.

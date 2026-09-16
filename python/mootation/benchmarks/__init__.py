@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """The standard test suites, as runnable problems.
 
-ZDT, DTLZ, WFG, MaF, ZCAT, the Ishibuchi polygon family, MOP and BT — the sets
-a multi-objective paper is expected to report on. Each one arrives as a
+ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
+BT — the sets a multi-objective paper is expected to report on. Each arrives as a
 `BenchProblem`: bounds, an evaluator, a constraint function, the reference
 points a hypervolume needs, and — where a closed form exists — a sampler for
 the true Pareto front so IGD and friends can be computed.
@@ -40,7 +40,7 @@ def describe():
 
     `get()` also fixes a problem's ideal and nadir by sampling its true Pareto
     front, which is the right thing when you are about to compute IGD and the
-    wrong thing when you only want to list what exists: doing it for all 324
+    wrong thing when you only want to list what exists: doing it for all 434
     takes over two minutes. Listing, filtering and counting go through here.
     """
     return sorted(PROBLEMS.items())
@@ -55,7 +55,7 @@ def solve(problem, algorithm="nsga2", *, pop_size=None, n_gen=None,
     paper used — a benchmark run with an arbitrary budget compares nothing.
 
     Returns the binding's Result. This is the bridge between the Python suites
-    and the C++ algorithms: 324 problems on one side, 58 algorithms on the
+    and the C++ algorithms: 434 problems on one side, 58 algorithms on the
     other, and the objective function crosses the boundary once per individual.
     """
     from .. import minimize

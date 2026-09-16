@@ -1,6 +1,6 @@
 # All 58 algorithms on a spread of problem shapes: which one is good where.
 #
-#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 26 970 jobs
+#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 58 870 jobs
 #   python -m mootation.run.campaign campaign_all.toml --workers 16        # one per core
 #   python -m mootation.run.campaign campaign_all.toml --ranks igd         # the condensed answer
 #   python -m mootation.run --tui campaign_all.toml                        # Campaign / Compare / Explore
@@ -21,19 +21,27 @@
 #                                                 R2-IBEA 99 s, HypE 46 s)
 #
 # Time grows about in proportion to the budget. As shipped — 5 runs at 10 000
-# evaluations — the whole campaign is about 80 CPU-hours: some 5 hours on 16
-# cores, 10 on 8. SMS-M2M alone is about half of that, R2-IBEA a sixth and HypE
-# an eighth; commenting out those three leaves about 18 CPU-hours. Two presets:
+# evaluations — the whole campaign is about 90 CPU-hours: under 6 hours on 16
+# cores, 11 on 8. SMS-M2M alone is about half of that, R2-IBEA a sixth and HypE
+# an eighth; commenting out those three leaves about 21 CPU-hours. Two presets:
 #
 #   first look      runs = 5,  budget_fe = 10000   as shipped
 #   paper budgets   runs = 21, budget_fe = 0       500 generations each; about
-#                                                  2 000 CPU-hours, so shard it
+#                                                  2 300 CPU-hours, so shard it
 #
-# The 40 ZCAT problems added about 83% to what the campaign was, nearly all of
-# it the twenty at five objectives, so commenting out the ZCAT*_5D block brings
-# it back to about 48 CPU-hours. What did NOT matter is their evaluation: at
-# about 3x DTLZ2's (measured, 71 us against 25 at three objectives and 92
-# against 33 at five) it is still only 0.9 s of a 10 000-evaluation job.
+# WHERE THE TIME GOES, since the problem count no longer predicts it. The
+# objective count does: one 5-objective problem costs about as much as twenty
+# 2-objective ones.
+#   * the 40 ZCAT problems are roughly half the campaign, nearly all of it the
+#     twenty at five objectives, so commenting out the ZCAT*_5D block takes
+#     about 40 CPU-hours off;
+#   * the 110 bbob-biobj problems are the majority of the problem list and only
+#     about an eighth of the time, because they have two objectives.
+# Neither suite's evaluation cost is what matters. ZCAT's is about 3x DTLZ2's
+# (measured, 71 us against 25 at three objectives and 92 against 33 at five)
+# and bbob-biobj's runs from 5 us for a pair of spheres to 114 us for a pair of
+# Gallagher 101-peak functions; at 10 000 evaluations that is about a second of
+# a job either way, and the algorithm is the rest.
 
 # The list comes first because TOML allows top-level keys only before the first
 # [table]. Comment a line out to drop an algorithm. pop = 0 and gens = 0 take
@@ -155,6 +163,42 @@ problems = [
     "ZCAT6_5D", "ZCAT7_5D", "ZCAT8_5D", "ZCAT9_5D", "ZCAT10_5D",
     "ZCAT11_5D", "ZCAT12_5D", "ZCAT13_5D", "ZCAT14_5D", "ZCAT15_5D",
     "ZCAT16_5D", "ZCAT17_5D", "ZCAT18_5D", "ZCAT19_5D", "ZCAT20_5D",
+
+    # bbob-biobj F1-F55 at 5 and 10 variables: every pair of the ten bbob
+    # functions, two objectives each, on the [-5,5]^n box. What they add that
+    # nothing above has is single-objective landscapes that are understood one
+    # at a time — ill-conditioning, asymmetry, a bent ridge, 101 random peaks —
+    # so a failure can be read back to the property that caused it.
+    #
+    # THEY HAVE NO REFERENCE FRONT: a pair of bbob functions has no
+    # closed-form Pareto set, and COCO itself only estimates each instance's
+    # hypervolume from accumulated experiments. So igd and igdp are recorded as
+    # null for all 110, along the trajectory as well, and only hv and hv_h in
+    # final_metrics say anything about them. Rank them with --ranks hv; a
+    # --ranks igd simply will not see them. Their ideal and nadir, which is
+    # what hv needs, are exact rather than sampled.
+    "bbobbiobj01_n05_2D", "bbobbiobj02_n05_2D", "bbobbiobj03_n05_2D", "bbobbiobj04_n05_2D", "bbobbiobj05_n05_2D",
+    "bbobbiobj06_n05_2D", "bbobbiobj07_n05_2D", "bbobbiobj08_n05_2D", "bbobbiobj09_n05_2D", "bbobbiobj10_n05_2D",
+    "bbobbiobj11_n05_2D", "bbobbiobj12_n05_2D", "bbobbiobj13_n05_2D", "bbobbiobj14_n05_2D", "bbobbiobj15_n05_2D",
+    "bbobbiobj16_n05_2D", "bbobbiobj17_n05_2D", "bbobbiobj18_n05_2D", "bbobbiobj19_n05_2D", "bbobbiobj20_n05_2D",
+    "bbobbiobj21_n05_2D", "bbobbiobj22_n05_2D", "bbobbiobj23_n05_2D", "bbobbiobj24_n05_2D", "bbobbiobj25_n05_2D",
+    "bbobbiobj26_n05_2D", "bbobbiobj27_n05_2D", "bbobbiobj28_n05_2D", "bbobbiobj29_n05_2D", "bbobbiobj30_n05_2D",
+    "bbobbiobj31_n05_2D", "bbobbiobj32_n05_2D", "bbobbiobj33_n05_2D", "bbobbiobj34_n05_2D", "bbobbiobj35_n05_2D",
+    "bbobbiobj36_n05_2D", "bbobbiobj37_n05_2D", "bbobbiobj38_n05_2D", "bbobbiobj39_n05_2D", "bbobbiobj40_n05_2D",
+    "bbobbiobj41_n05_2D", "bbobbiobj42_n05_2D", "bbobbiobj43_n05_2D", "bbobbiobj44_n05_2D", "bbobbiobj45_n05_2D",
+    "bbobbiobj46_n05_2D", "bbobbiobj47_n05_2D", "bbobbiobj48_n05_2D", "bbobbiobj49_n05_2D", "bbobbiobj50_n05_2D",
+    "bbobbiobj51_n05_2D", "bbobbiobj52_n05_2D", "bbobbiobj53_n05_2D", "bbobbiobj54_n05_2D", "bbobbiobj55_n05_2D",
+    "bbobbiobj01_n10_2D", "bbobbiobj02_n10_2D", "bbobbiobj03_n10_2D", "bbobbiobj04_n10_2D", "bbobbiobj05_n10_2D",
+    "bbobbiobj06_n10_2D", "bbobbiobj07_n10_2D", "bbobbiobj08_n10_2D", "bbobbiobj09_n10_2D", "bbobbiobj10_n10_2D",
+    "bbobbiobj11_n10_2D", "bbobbiobj12_n10_2D", "bbobbiobj13_n10_2D", "bbobbiobj14_n10_2D", "bbobbiobj15_n10_2D",
+    "bbobbiobj16_n10_2D", "bbobbiobj17_n10_2D", "bbobbiobj18_n10_2D", "bbobbiobj19_n10_2D", "bbobbiobj20_n10_2D",
+    "bbobbiobj21_n10_2D", "bbobbiobj22_n10_2D", "bbobbiobj23_n10_2D", "bbobbiobj24_n10_2D", "bbobbiobj25_n10_2D",
+    "bbobbiobj26_n10_2D", "bbobbiobj27_n10_2D", "bbobbiobj28_n10_2D", "bbobbiobj29_n10_2D", "bbobbiobj30_n10_2D",
+    "bbobbiobj31_n10_2D", "bbobbiobj32_n10_2D", "bbobbiobj33_n10_2D", "bbobbiobj34_n10_2D", "bbobbiobj35_n10_2D",
+    "bbobbiobj36_n10_2D", "bbobbiobj37_n10_2D", "bbobbiobj38_n10_2D", "bbobbiobj39_n10_2D", "bbobbiobj40_n10_2D",
+    "bbobbiobj41_n10_2D", "bbobbiobj42_n10_2D", "bbobbiobj43_n10_2D", "bbobbiobj44_n10_2D", "bbobbiobj45_n10_2D",
+    "bbobbiobj46_n10_2D", "bbobbiobj47_n10_2D", "bbobbiobj48_n10_2D", "bbobbiobj49_n10_2D", "bbobbiobj50_n10_2D",
+    "bbobbiobj51_n10_2D", "bbobbiobj52_n10_2D", "bbobbiobj53_n10_2D", "bbobbiobj54_n10_2D", "bbobbiobj55_n10_2D",
 ]
 # DTLZ5, DTLZ6 (from 4 objectives) and WFG3 (from 3) have true fronts with a
 # non-degenerate part that their reference sets leave out, so IGD on them ranks

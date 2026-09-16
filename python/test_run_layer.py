@@ -701,6 +701,56 @@ def zcat_reference_fronts_are_nondominated_and_inside_the_paper_box():
 
 
 @test
+def bbob_functions_reach_their_own_optimum():
+    """f(x_opt) = f_opt for all ten bbob base functions.
+
+    Every one of them is <something>(z) + f_opt where the <something> vanishes
+    at the optimum, so this one identity catches a wrong transformation order,
+    a wrong constant or a misread erratum in any of the ten.
+    """
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import bbob
+    for fid in bbob.BASE_IDS:
+        for D in (2, 5, 10):
+            s = bbob.instance(fid, 1, D)
+            assert abs(s(s.x_opt) - s.f_opt) <= 1e-9 * max(1.0, abs(s.f_opt)), (fid, D)
+            for M in (s.R, s.Q):
+                if M is not None:
+                    assert np.allclose(M @ M.T, np.eye(D), atol=1e-10), (fid, D)
+    # f20 is the one where the report's own text is ambiguous (2|x^opt| against
+    # 2|x_hat^opt|): only this value puts the optimum where Schwefel's is.
+    s = bbob.instance(20, 1, 5)
+    assert abs(2 * abs(float(s.x_opt[0])) - 4.2096874633) < 1e-9, s.x_opt
+
+
+@test
+def bbob_biobj_pairs_and_frame_follow_the_paper():
+    """The 55 pairs, the instance numbering, and a frame with no reference front."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import bbob_biobj as bb, igd
+    from mootation.benchmarks.registry import PROBLEMS
+    assert len(bb.PAIRS) == 55 and len(set(bb.PAIRS)) == 55, len(bb.PAIRS)
+    # The paper names this group outright, so it pins the F-numbering: F5, F6,
+    # F14 and F15 are the separable x ill-conditioned combinations.
+    for f in (5, 6, 14, 15):
+        a, b = bb.PAIRS[f - 1]
+        assert {a, b} & {1, 2} and {a, b} & {13, 14}, (f, a, b)
+    assert bb.single_instance_ids(1) == (2, 4)        # the historical exceptions
+    assert bb.single_instance_ids(2) == (3, 5)
+    assert bb.single_instance_ids(4) == (9, 10)       # K_a = 2K+1, K_b = K_a+1
+    for key in ("bbobbiobj01_n05_2D", "bbobbiobj55_n10_2D"):
+        p = PROBLEMS[key]
+        assert p.n_obj == 2 and p.pareto_front is None, key
+        # the hypervolume is the only indicator here, so the box must be real
+        assert all(n > i for i, n in zip(p.ideal, p.nadir)), (key, p.ideal, p.nadir)
+    # and the front-based indicators must say nothing rather than invent it
+    assert igd("bbobbiobj01_n05_2D", [[1.0, 2.0]]) is None
+
+
+@test
 def every_benchmark_evaluates_without_raising():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return

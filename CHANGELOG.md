@@ -45,9 +45,33 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- bbob-biobj F1-F55 at 5 and 10 variables, the suite of Brockhoff, Auger,
+  Hansen & Tusar (Evolutionary Computation 30(2):165-193, 2022), on top of the
+  ten single-objective bbob functions of Hansen et al. (INRIA RR-6829, 2009
+  definitions with the 2019 errata) in a new `benchmarks/bbob.py` — 110
+  problems, and the registry is now 434 across 14 families. Each F is a pair
+  of two bbob functions, two from each of the five bbob groups, giving
+  C(11,2) = 55 pairs including the diagonal. Written from the papers.
+  These are the first problems here with **no reference front**, which is the
+  suite's nature rather than an omission: a pair of bbob functions has no
+  closed-form Pareto set, and COCO itself estimates each instance's
+  hypervolume from accumulated experiments. `pareto_front` is therefore None
+  and IGD / IGD+ / ε report nothing on them instead of a number measured
+  against an invented front; the hypervolume works, because the ideal and the
+  nadir are exact — every base function's unique optimum is known by
+  construction. Declared in the module headers: the 2019 errata arrive in the
+  converted report as "A --> B" with the colour lost (read as B replacing A);
+  f20's printed 2|x̂ᵒᵖᵗ| must be 2|xᵒᵖᵗ|, since only that puts the optimum at
+  z = 420.96874633 where Schwefel's is; f17 lost a parenthesis; and the nadir
+  formula in the bi-objective paper prints what is actually the ideal point,
+  so its own defining sentence is followed instead. **The instances are ours.**
+  The papers give the distributions an instance is drawn from but not the
+  generator that turns an instance number into them, which exists only in
+  COCO's code, so instance 1 here is not instance 1 in the COCO archives and
+  results are not comparable with them.
 - ZCAT1-20 at M = 2, 3, 5 and 10, the suite of Zapotecas-Martínez, Coello
   Coello, Aguirre & Tanaka (Swarm and Evolutionary Computation 81, 2023,
-  101350) — 80 problems, and the registry is now 324 across 13 families.
+  101350) — 80 problems.
   Every problem is f_i = α_i(y_I) + β_i(y_II − g(y_I|m)), so the front (α) and
   the Pareto set (g, one of eleven topologies) are chosen independently and the
   difficulty of the distance term is a dial rather than a property of the

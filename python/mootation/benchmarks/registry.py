@@ -8,6 +8,7 @@
 #   WFG1-9  x M={2..6}  Huband et al. 2006
 #   MaF1-13 x M={3,5,8} Cheng et al. 2017 (irregular fronts)
 #   ZCAT1-20 x 4 sizes  Zapotecas-Martinez et al. 2023 (tunable difficulty)
+#   bbob-biobj x n=5,10 Brockhoff et al. 2022 (55 pairs of bbob functions)
 #   Polygon x M={3..6}  Ishibuchi, Akedo, Nojima 2011
 #   MOP1-7, BT1-9, and the inverted / scaled / minus DTLZ variants
 #   shiftDTLZ1-4        DTLZ1-4 with the distance optimum off the centre (ours)
@@ -45,6 +46,7 @@ from .maf     import MAF_FIX, maf_n_vars
 from .bt      import BT_SPECS, N as BT_N
 from . import polygon_ishibuchi as _ipoly
 from . import zcat as _zcat
+from . import bbob_biobj as _bbobbiobj
 
 
 # =============================================================
@@ -1183,6 +1185,44 @@ def _register_zcat():
 
 
 # =============================================================
+#  bbob-biobj × n={5,10} — Brockhoff, Auger, Hansen & Tusar, Evolutionary
+#  Computation 30(2), 2022. 55 problems, each a pair of the ten bbob functions
+#  in bbob.py, at two objectives and 5 or 10 variables.
+#
+#  THESE ARE THE ONLY PROBLEMS HERE WITH NO REFERENCE FRONT, and that is a
+#  property of the suite rather than a gap: the Pareto set of a pair of bbob
+#  functions has no closed form, and COCO itself estimates each instance's
+#  hypervolume from the accumulated output of many experiments. So
+#  pareto_front stays None and IGD/IGD+/GD+ report nothing on them, which is
+#  the honest answer; the hypervolume works, because the ideal and the nadir
+#  ARE exact — each objective's unique global optimum is known by
+#  construction, so the ideal is the pair of optimal values and the nadir is
+#  each objective's value at the other's optimum.
+#
+#  The name carries the variable count in its own segment, `_n05_`, because
+#  the registry's `_<k>D` suffix means the OBJECTIVE count and the config's
+#  `objectives = [...]` filter matches on it. These are two-objective problems
+#  that scale in variables, so the suffix is `_2D` for all of them.
+# =============================================================
+def _register_bbob_biobj():
+    pop, ng = _budget(2)
+    for D in (5, 10):
+        for fnum in range(1, 56):
+            sp = _bbobbiobj.spec(fnum, D, 1)
+            ideal, nadir = sp["ideal"], sp["nadir"]
+            key = _bbobbiobj.name(fnum, D)
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=sp["n_vars"], bounds=sp["bounds"], n_obj=2,
+                evaluate=sp["evaluate"], constraints=_no_cons,
+                hv_ref_raw=tuple(nd + 0.1 * (nd - id_)
+                                 for id_, nd in zip(ideal, nadir)),
+                hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
+                ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+                pareto_front=None)
+
+
+# =============================================================
 #  Polygon × M={3,4,5,6}
 # =============================================================
 def _register_polygon():
@@ -1308,6 +1348,7 @@ _register_wfg()
 _register_dtlz()
 _register_shifted_dtlz()
 _register_zcat()
+_register_bbob_biobj()
 _register_polygon()
 _maf_register()
 _register_mop()
