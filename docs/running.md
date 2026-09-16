@@ -275,12 +275,13 @@ fails the one job it holds, which is recorded, and is replaced.
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)
-runs every algorithm on 53 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
-the inverted IDTLZ1–2, the scaled SDTLZ1–2 and shiftDTLZ1–4 (DTLZ1–4 with the
-optimum moved off the centre of the box) at three and five — five seeds each at
-10 000 evaluations: 15 370 jobs and about 43 CPU-hours, some three hours on a
-16-core machine. The file records what that estimate is built from, which
-three algorithms are most of it, and a preset for the papers' own budgets.
+runs every algorithm on 93 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
+the inverted IDTLZ1–2, the scaled SDTLZ1–2, shiftDTLZ1–4 (DTLZ1–4 with the
+optimum moved off the centre of the box) and ZCAT1–20 at three and five — five
+seeds each at 10 000 evaluations: 26 970 jobs and about 80 CPU-hours, some five
+hours on a 16-core machine. The file records what that estimate is built from,
+which three algorithms are most of it, how much of it ZCAT is, and a preset for
+the papers' own budgets.
 
 A clean machine needs Python 3.11 or newer and a C++17 compiler — on Windows,
 the Visual Studio Build Tools with the "Desktop development with C++" workload.

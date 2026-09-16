@@ -1,6 +1,6 @@
 # All 58 algorithms on a spread of problem shapes: which one is good where.
 #
-#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 15 370 jobs
+#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 26 970 jobs
 #   python -m mootation.run.campaign campaign_all.toml --workers 16        # one per core
 #   python -m mootation.run.campaign campaign_all.toml --ranks igd         # the condensed answer
 #   python -m mootation.run --tui campaign_all.toml                        # Campaign / Compare / Explore
@@ -21,13 +21,19 @@
 #                                                 R2-IBEA 99 s, HypE 46 s)
 #
 # Time grows about in proportion to the budget. As shipped — 5 runs at 10 000
-# evaluations — the whole campaign is about 43 CPU-hours: some 3 hours on 16
-# cores, 5 to 6 on 8. SMS-M2M alone is half of that, R2-IBEA a sixth and HypE
-# an eighth; commenting out those three leaves about 10 CPU-hours. Two presets:
+# evaluations — the whole campaign is about 80 CPU-hours: some 5 hours on 16
+# cores, 10 on 8. SMS-M2M alone is about half of that, R2-IBEA a sixth and HypE
+# an eighth; commenting out those three leaves about 18 CPU-hours. Two presets:
 #
 #   first look      runs = 5,  budget_fe = 10000   as shipped
 #   paper budgets   runs = 21, budget_fe = 0       500 generations each; about
-#                                                  1 100 CPU-hours, so shard it
+#                                                  2 000 CPU-hours, so shard it
+#
+# The 40 ZCAT problems added about 83% to what the campaign was, nearly all of
+# it the twenty at five objectives, so commenting out the ZCAT*_5D block brings
+# it back to about 48 CPU-hours. What did NOT matter is their evaluation: at
+# about 3x DTLZ2's (measured, 71 us against 25 at three objectives and 92
+# against 33 at five) it is still only 0.9 s of a 10 000-evaluation job.
 
 # The list comes first because TOML allows top-level keys only before the first
 # [table]. Comment a line out to drop an algorithm. pop = 0 and gens = 0 take
@@ -131,6 +137,24 @@ problems = [
     # search. Last in the list, so the job numbers above stay as they were.
     "shiftDTLZ1_3D", "shiftDTLZ2_3D", "shiftDTLZ3_3D", "shiftDTLZ4_3D",
     "shiftDTLZ1_5D", "shiftDTLZ2_5D", "shiftDTLZ3_5D", "shiftDTLZ4_5D",
+
+    # ZCAT1-20. The one suite here where the front and the Pareto set are
+    # chosen independently of each other, so these separate "can it find the
+    # front" from "can it follow the set through a complicated topology" —
+    # every other problem above pairs one front with one fixed set. The four
+    # groups are ZCAT1-10 connected and non-degenerate, ZCAT11-13 disconnected,
+    # ZCAT14-16 degenerate, ZCAT17-20 part degenerate and part not. Registered
+    # with the paper's defaults, so Level 1 and no bias or imbalance: the
+    # difficulty dials are left at their easiest and the suite is still hard.
+    # Appended, so the job numbers above stay as they were.
+    "ZCAT1_3D", "ZCAT2_3D", "ZCAT3_3D", "ZCAT4_3D", "ZCAT5_3D",
+    "ZCAT6_3D", "ZCAT7_3D", "ZCAT8_3D", "ZCAT9_3D", "ZCAT10_3D",
+    "ZCAT11_3D", "ZCAT12_3D", "ZCAT13_3D", "ZCAT14_3D", "ZCAT15_3D",
+    "ZCAT16_3D", "ZCAT17_3D", "ZCAT18_3D", "ZCAT19_3D", "ZCAT20_3D",
+    "ZCAT1_5D", "ZCAT2_5D", "ZCAT3_5D", "ZCAT4_5D", "ZCAT5_5D",
+    "ZCAT6_5D", "ZCAT7_5D", "ZCAT8_5D", "ZCAT9_5D", "ZCAT10_5D",
+    "ZCAT11_5D", "ZCAT12_5D", "ZCAT13_5D", "ZCAT14_5D", "ZCAT15_5D",
+    "ZCAT16_5D", "ZCAT17_5D", "ZCAT18_5D", "ZCAT19_5D", "ZCAT20_5D",
 ]
 # DTLZ5, DTLZ6 (from 4 objectives) and WFG3 (from 3) have true fronts with a
 # non-degenerate part that their reference sets leave out, so IGD on them ranks
