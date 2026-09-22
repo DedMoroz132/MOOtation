@@ -442,8 +442,9 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
                             f"column indices are zero-based and non-negative, got {f}")
 
     # ── algorithms ──────────────────────────────────────────────────────────
+    from .baselines import BASELINES
     try:
-        known = set(algorithm_names())
+        known = set(algorithm_names()) | set(BASELINES)
     except (FileNotFoundError, ValueError) as e:
         known = set()
         bad("algorithms", f"cannot read the algorithm registry: {e}")
@@ -466,6 +467,9 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
         if a.gens < 1 and not (cfg.kind == "builtin" and a.gens == 0):
             bad(where, f"gens must be >= 1, got {a.gens}")
 
+        if a.name in BASELINES and a.params:
+            bad(where, f"{a.name} is a baseline and takes no parameters, got: "
+                       f"{', '.join(sorted(a.params))}")
         unknown = sorted(set(a.params) - valid_knobs)
         if unknown:
             bad(where,

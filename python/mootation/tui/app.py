@@ -457,6 +457,11 @@ class CampaignScreen(Vertical):
             if inside:
                 groups.append((family, inside))
                 placed.update(inside)
+        from ..run.baselines import BASELINES
+        base = [a for a in names if a not in placed and a in BASELINES]
+        if base:
+            groups.append(("Baselines", base))
+            placed.update(base)
         rest = [a for a in names if a not in placed]
         if rest:
             groups.append(("other", rest))

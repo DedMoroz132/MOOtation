@@ -166,16 +166,45 @@ gens = 500
 `--check` expands the cross product against the real registry and names what
 does not exist, with near misses; the names are `DTLZ2_3D`, not `DTLZ2_M3`.
 
-**One caveat, and it is reported at run time too.** DTLZ5, DTLZ6, MaF6 and
-WFG3 were designed with a degenerate, curve-shaped Pareto front, and their
-reference fronts here are exactly that curve. Their true fronts also have a
-non-degenerate part — from 4 objectives for DTLZ5, DTLZ6 and MaF6, and already
-from 3 for WFG3 (Ishibuchi, Masuda & Nojima, IEEE TEC 20(5), 2016). At those
-objective counts the reference set is a proper subset of the true front, so IGD
-and IGD+ on them compare algorithms run here against each other but do not
-compare with published numbers. `mootation.benchmarks.get()` warns once per
-affected problem, and `degenerate_subset_note(name)` returns the caveat for any
-name. Every other reference front in the registry is exact.
+**Four problems use their FULL fronts, and three of them have very long ones.**
+DTLZ5, DTLZ6, MaF6 and WFG3 were designed with a degenerate, curve-shaped
+Pareto front, but the true fronts of DTLZ5 and DTLZ6 from 4 objectives and of
+WFG3 from 3 also have a non-degenerate part (Ishibuchi, Masuda & Nojima, IEEE
+TEC 20(5), 2016), and MaF6's from 7. At those sizes the reference front is now
+the full one, built by `mootation.benchmarks.fronts_full` in the problem's
+reduced coordinates and kept only if every point survives an independent
+sample of 10^6, a local search for a dominating point and an exact test
+against every attainable point (`python -m mootation.benchmarks.make_fronts`
+rebuilds them). Things to know before reading a number on them:
+
+- **The DTLZ5 and DTLZ6 fronts run to the largest g the box allows.** With
+  f_M = 0, the smallest f_2 a point can have is (1 + g) sin²(π / (4(1 + g))),
+  which falls as g grows, so the front's far end sits at the bound of g — 2.5
+  for DTLZ5, 10 for DTLZ6 with their ten distance variables. The nadir in the
+  objectives before the last is about 3.4 on DTLZ5 and 11 on DTLZ6 at four and
+  five objectives, where the curve never exceeded 1; f_M itself stays at most 1,
+  since the curve dominates every point above that. Every indicator
+  normalised by the nadir (`hv`, `hv_h`, `igdp_norm`, `eps_norm`) changed
+  accordingly, and the two problems no longer share a front.
+- **WFG3's first objective reaches 3** at three objectives, where the curve
+  stopped at 1: the paper's counterexample (3, 1, 1) is on the front.
+- **MaF6 leaves the curve only from 7 objectives.** Its objectives carry
+  (1 + 100 g), which makes leaving the curve pay only where an objective
+  multiplies five cosines or more; at 5 the build finds no point off it, so
+  MaF6_5D keeps the curve. At 8 its front, too, runs to the bound of g, with
+  f_7 up to 245, and a quarter of it is off the curve at 10.
+- **Runs scored against the old curve are not comparable** with runs scored
+  against the full fronts on these problems: `--recompute` updates their final
+  indicators from `final.csv`, but a trajectory has to be run again.
+
+`mootation.benchmarks.get()` still warns, once per problem, for any size that
+has no shipped full front — WFG3 at six and ten, DTLZ5 and DTLZ6 at ten and
+fifteen, MaF6 at fifteen — and
+`degenerate_subset_note(name)` returns that caveat. Every other reference front in the registry is exact. Where one is
+sampled as the nondominated images of a grid of positions — DTLZ7 and MaF7,
+WFG1, WFG2 and MaF11, ZDT3, ZCAT — every point is also checked against a
+fresh sample and its own neighbours: until 2026-09-22 such fronts kept points
+that merely no other grid point beat, up to a third of WFG2_3D's.
 [`python/examples/bench.toml`](../python/examples/bench.toml) is the complete
 example. The same suites are importable directly:
 
@@ -222,13 +251,54 @@ final population (the same list when omitted):
 | `eps`, `eps_norm` | additive ε: the smallest shift in every objective that makes the set weakly dominate the reference front, i.e. no worse than the front by more than ε anywhere; raw and normalised | lower |
 | `hv` | hypervolume, objectives normalised by ideal and nadir, reference point 1.1 | higher |
 | `hv_h` | hypervolume with the reference point at 1 + 1/H, H from the problem's default population (1.0101, 1.0833 and 1.2 at 2, 3 and 5 objectives), which evens out the contributions of a uniformly spread set (Ishibuchi, Imada, Setoguchi & Nojima, GECCO 2017) | higher |
+| `gdp` | GD+: IGD+'s distance averaged over the set instead of the front — convergence only; beside IGD+ it tells "still converging" (both fall) from "converged, now spreading" (GD+ flat, IGD+ falling) | lower |
+| `roi_dist` | distance from the set to the box [ideal, nadir] in normalised units, 0 once any point is inside; tells apart the runs whose hypervolume is exactly 0 (COCO scores bbob-biobj this way) | lower |
+| `range_cover` | the worst objective's covered share of [ideal, nadir]; falls early when a population collapses onto part of the front, as on DTLZ4; per objective in `range_cover_each` | higher |
+| `nd_share`, `dup_share` | the share of the set no other member dominates, and the share that repeats an objective vector already in it: stagnation and duplicates | — |
+
+`gdp` needs a reference front like `igd`; `roi_dist` and `range_cover` need only
+the problem's ideal and nadir, and `nd_share` and `dup_share` nothing at all, so
+those four also describe the bbob-biobj problems, which have no front.
 
 The hypervolume is exact up to five objectives and Monte-Carlo above, and exact
 is not cheap at five: a well-spread set of 126 points takes two to three
 seconds per call, so recording it along a trajectory is most of a campaign's
 time. That is what `final_metrics` is for — `metrics = ["igdp"]` with
 `final_metrics = ["igdp", "eps", "hv", "hv_h"]` pays for the hypervolume once
-per run. The other indicators cost hundredths of a second.
+per run — and `trajectory_hv_max_m = 3` keeps it on the trajectory only where
+it is cheap (about 50 ms per point at three objectives), recording `null`
+above. The other indicators cost milliseconds.
+
+**Where the trajectory is recorded.** `record_every = k` records every k
+generations. `record_grid = "log"` records instead at fixed evaluation counts,
+round(10^(j / `record_per_decade`)), 10 per decade by default: 100, 126, 158,
+200, … The counts are absolute, so a 10 000- and a 25 000-evaluation run share
+every point up to 10 000 and a budget ladder compares point by point, without
+interpolating; a point is the first generation at or past its count.
+
+**What else a run keeps.**
+- `meta.json` records `revision`: the git commit and whether tracked files
+  differed from it, for the source tree and, separately, for the compiled
+  extension — a pulled commit whose C++ was never rebuilt shows as a mismatch.
+  The version string alone never changes between commits.
+- `archive.csv` holds every nondominated point the run evaluated, whatever the
+  algorithm kept: at most one per cell of a grid in normalised objectives
+  (step 1e-3, or 1e-2 from five objectives; `archive_delta`), with each
+  objective's best point kept outside the grid so the ends of the front are
+  never pruned. `archive = false` turns it off. `meta.json` says the step and
+  the normalisation used.
+- `snapshots = true`, or a list of problem names, stores the population's
+  objectives at every trajectory point in `snapshots.npz` (float32), to see how
+  the front's shape moved or to compute an indicator the run did not record.
+
+**Baselines.** `random_search` and `sobol_search` (scrambled Sobol, needs
+SciPy) go in the algorithm list like any core. They sample the box blindly,
+keep the run archive, and answer with the problem's population size chosen
+from it by distance-based subset selection on the IGD+ distance — the same
+selection that thins every other point set here — so their indicators compare
+with a population's. They spend the budget exactly. An algorithm that does not
+clearly beat them on a problem says more about the problem or the budget than
+about the algorithm.
 
 Two more readings need no rerun. `--at 0.25` gives `--compare` and `--ranks`
 every run as it stood at a quarter of its budget, read from its trajectory, so
@@ -275,19 +345,22 @@ fails the one job it holds, which is recorded, and is replaced.
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)
-runs every algorithm on 203 problems — ZDT at two objectives; DTLZ1–7, WFG1–9,
-the inverted IDTLZ1–2, the scaled SDTLZ1–2, shiftDTLZ1–4 (DTLZ1–4 with the
-optimum moved off the centre of the box) and ZCAT1–20 at three and five; and
-bbob-biobj F1–F55, every pair of ten bbob functions, at 5 and 10 variables —
-five seeds each at 10 000 evaluations: 58 870 jobs and about 90 CPU-hours,
-under six hours on a 16-core machine. The file records what that estimate is
-built from, which three algorithms are most of it, where the time goes between
-the suites, and a preset for the papers' own budgets.
+runs every algorithm and the two baselines on 203 problems — ZDT at two
+objectives; DTLZ1–7, WFG1–9, the inverted IDTLZ1–2, the scaled SDTLZ1–2,
+shiftDTLZ1–4 (DTLZ1–4 with the optimum moved off the centre of the box) and
+ZCAT1–20 at three and five; and bbob-biobj F1–F55, every pair of ten bbob
+functions, at 5 and 10 variables — five seeds each at 10 000 evaluations:
+60 900 jobs and about 100 CPU-hours, some six hours on a 16-core machine. The
+file records what that estimate is built from, which three algorithms are most
+of it, where the time goes between the suites, and a preset for the papers'
+own budgets. Its trajectories are on the logarithmic grid, so a second run of
+the same file at 25 000 or 50 000 evaluations lines up with it point by point.
 
 The bbob-biobj problems have no reference front — a pair of bbob functions has
-no closed-form Pareto set — so `igd` and `igdp` are recorded as null for all
-110 of them and only `hv` and `hv_h` rank them. Use `--ranks hv` if you want
-them counted; `--ranks igd` silently covers the other 93.
+no closed-form Pareto set — so `igd`, `igdp`, `gdp` and `eps` are recorded as
+null for all 110 of them. `hv` and `hv_h` rank them, and `roi_dist`,
+`range_cover`, `nd_share` and `dup_share` describe them. Use `--ranks hv` if you
+want them counted; `--ranks igd` silently covers the other 93.
 
 A clean machine needs Python 3.11 or newer and a C++17 compiler — on Windows,
 the Visual Studio Build Tools with the "Desktop development with C++" workload.

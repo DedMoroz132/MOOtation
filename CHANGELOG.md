@@ -42,8 +42,99 @@ always listed under **Changed** or **Removed**.
   HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C, MOEA/D-DS, NAEMO, Two_Arch2) refuse a
   binary or mixed genome at `setup()` with a message. Twelve of them used to
   accept it and run with every offspring bit silently left at zero.
+- Four reported defects that turned out to be the papers' own letter, each
+  traced, measured and now described in its header rather than changed.
+  **Two_Arch2** returns 7, 5, 26, 7 and 51 solutions on ZDT2 over seeds 1-5 at
+  10 000 evaluations: the diversity archive admits only nondominated points,
+  and the search has collapsed to x1 = 0 in three of them — as it does for
+  IBEA (largest f1 0.105 and 0.25 in two seeds) and NSGA-II (0.064) on the
+  same budget. The archive's selection never ran and its output is §III-A's.
+  **RVEA** keeps one solution per non-empty reference vector (§III-C, Alg. 2);
+  on IDTLZ1_5D only 21 of the 126 vectors are the nearest to any point of the
+  front, so the population stays at 8-27. **LIS/LCS** breeds N − K offspring
+  with the old K and K with the new one (Alg. 1, lines 4-10), so a step costs
+  N − K_old + K_new while line 16 books N; the binding counts what was spent.
+  **MaOEA-IAMD** spends exactly N per step; its only extra is the 8·D
+  variable-classification sample at setup (Alg. 1, line 2).
+- NSGA-III's header: the quoted "Special care is taken to handle degenerate
+  cases and nonnegative intercepts" is in the final journal version (§IV-C,
+  p. 581 or 582), but it says only that care is taken, so the per-axis
+  `nadir − z^min` fallback is now declared as this port's own rule (NSGA3-N2),
+  next to the two places where the text and Algorithm 2 disagree — the ideal
+  point and the extreme points, both kept historically as the text says
+  (NSGA3-N1) — and the 1e-6 ASF weight, which Part I never states (NSGA3-N3).
+- **The reference fronts of DTLZ5 and DTLZ6 at four to six objectives, of WFG3
+  at three to five and of MaF6 at eight and ten are now their FULL Pareto
+  fronts**; where no front is built yet — WFG3 at six and ten, DTLZ5 and DTLZ6
+  at ten and fifteen, MaF6 at fifteen — the curve stays, with its run-time
+  warning. Each of the six-objective builds took about six hours. The four
+  were designed with a degenerate, curve-shaped front and the registry's
+  reference sets were that curve, but at those sizes the true front also has a
+  non-degenerate part (Ishibuchi, Masuda & Nojima, IEEE TEVC 20(5), 2016, for
+  DTLZ5, DTLZ6 and WFG3), so the curve was a proper subset of it.
+  `mootation.benchmarks.fronts_full` builds each front in the problem's
+  reduced coordinates — the positions plus the distance scalar, M dimensions
+  whatever the number of variables — sampling the box and its faces of every
+  dimension (the far parts of the DTLZ5/6 fronts lie three and four
+  coordinates deep); keeps a point only if it survives an independent sample
+  of 10^6, a local search for a dominating point and an EXACT test against
+  every attainable point, for which one value of the distance scalar is
+  decided greedily in M steps and the scalar is scanned on a grid of 20 001;
+  re-evaluates every survivor with the problem's own code; and stores the
+  result in DSS order in `benchmarks/_fronts/` (`python -m
+  mootation.benchmarks.make_fronts` rebuilds them). The exact test is what
+  makes them clean: after every sampling check a quarter to a third of the
+  DTLZ5/6 points, and 1-2 % of WFG3's, were still dominated, by 2e-4 to 4.5e-2
+  of the range. The frame moves with the front. The DTLZ5 and DTLZ6 fronts run
+  to the largest g the box allows (2.5 and 10), so their nadir reaches about
+  3.4 and 11 in the objectives before the last, where the curve never
+  exceeded 1; WFG3_3D's first objective reaches 3, the paper's counterexample
+  (3, 1, 1) being on the front. So `hv`, `hv_h`, `igdp_norm`, `eps_norm` and
+  every IGD-type value change on the campaign's DTLZ5_5D, DTLZ6_5D, WFG3_3D
+  and WFG3_5D: `--recompute` updates finished runs' final values, but their
+  trajectories need the runs again. MaF6 = DTLZ5(I = 2, M) with the factor
+  (1 + 100 g) leaves the curve only from seven objectives — at five the build
+  finds nothing off it, so `DEGENERATE_SUBSET_FROM` says 7 for it, not 4. And
+  cos(pi/2) is 6.1e-17 in floating point, which let every point with x_1 = 1
+  and g > 0 pass for nondominated and set the nadir of f_M to 1 + g_max (251
+  on MaF6), while every point with f_M > 1 is dominated by the curve.
+- `campaign_all.toml` records its trajectories on the new logarithmic grid,
+  with GD+, ε, the range cover and the duplicate and nondominated shares on
+  them, the hypervolume only up to three objectives, `roi_dist` on the final
+  population, and the two baselines in its algorithm list.
 
 ### Added
+
+- Provenance: every campaign run's `meta.json` records `revision` — the git
+  commit and whether tracked files differed from it, for the source tree and
+  for the compiled extension separately (`_core.__git_commit__`,
+  `_core.__git_dirty__`, stamped by `python/git_stamp.cmake` on every build).
+  The version string stays 0.1.0 across commits, so it could not tell a run
+  made before a fix from one made after it; the pair also shows a checkout
+  whose C++ was never rebuilt after a pull.
+- New indicators: `gdp` (GD+, convergence only), `roi_dist` (distance to the
+  box [ideal, nadir], which separates runs whose hypervolume is 0 and needs no
+  reference front — the COCO bbob-biobj convention), `range_cover` (the worst
+  objective's covered share of [ideal, nadir], per objective in
+  `range_cover_each`), `nd_share` and `dup_share`.
+- Campaign recording: `record_grid = "log"` records at the fixed evaluation
+  counts round(10^(j/10)) — the same at every budget, so the 10 000 / 25 000 /
+  50 000 ladder compares point by point instead of through interpolation;
+  `trajectory_hv_max_m` keeps the hypervolume on the trajectory only where it
+  is cheap; `snapshots` (true or a list of problems) stores the population's
+  objectives at every record in `snapshots.npz`.
+- The run archive: every campaign run writes `archive.csv`, every
+  nondominated point it evaluated whatever the algorithm kept, at most one per
+  cell of a grid in normalized objectives (1e-3, or 1e-2 from five
+  objectives), each objective's best point kept outside the grid so the ends
+  of the front are never pruned (`mootation.run.archive.GridArchive`).
+  `dss_order` selects N points of any set — distance-based subset selection
+  on the IGD+ distance, indicator-neutral — and its order is incremental, so a
+  set stored in that order is thinned by slicing.
+- Baselines `random_search` and `sobol_search` (scrambled Sobol, SciPy):
+  blind sampling with the run archive, answered by DSS at the problem's
+  population size, spending the budget exactly. They go in the algorithm list
+  like any core but are not C++ cores (`mootation.run.baselines`).
 
 - bbob-biobj F1-F55 at 5 and 10 variables, the suite of Brockhoff, Auger,
   Hansen & Tusar (Evolutionary Computation 30(2):165-193, 2022), on top of the
@@ -148,6 +239,45 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- The ZCAT reference fronts contained dominated points. The sampler kept the
+  points of its own candidate set that no other candidate dominated, which is
+  not Pareto-optimality: next to the gaps of a disconnected front a candidate
+  the sample happened not to beat is beaten by a position vector it did not
+  contain. Against 50 000 fresh points, 24 of ZCAT11_3D's 1000 reference
+  points were dominated, 164 of ZCAT11_5D's (by up to 1.48 in f_5, whose span
+  is 25), 98 of ZCAT12_5D's and 66 of ZCAT13_5D's (by up to 3.72). Every point
+  is now checked against an independent sample and its own neighbours before
+  the thinning, from a generator of its own, so the fronts in which nothing
+  was dropped are bit-identical to what they were: 33 of the 40 in the
+  campaign; ZCAT11-13 at three and five objectives and ZCAT16_3D changed. A
+  fresh sample still finds 1 of ZCAT12_5D's points (by 0.37) and 2 of
+  ZCAT13_5D's (0.27), where it found 98 and 66. IGD, IGD+, GD+ and ε change on
+  the problems that changed; the frame, the paper's, does not.
+- The same defect in the registry's own samplers for DTLZ7 (and MaF7), WFG2
+  (and MaF11) and ZDT3, which take the nondominated images of a grid: 150 of
+  WFG2_3D's 416 reference points were dominated by fresh front points (by up
+  to 0.38), 256 of WFG2_4D's 700 (1.13), 140 of WFG2_10D's 844 (11.7); they
+  get the same check (WFG1, whose front is connected, loses nothing). DTLZ7
+  was worse: its grid ran over the cube, but the Pareto set is the product of
+  the intervals [0, 0.2514] u [0.6316, 0.8594] — the left records of
+  x (1 + sin 3 pi x) — so from eight objectives the grid points were almost
+  all outside it (all but one of DTLZ7_15D's 16 384, whose grid was {0, 1}^14).
+  The grid now runs over that set, with random draws from it where a grid
+  would be its corners alone. The frame moves with it wherever a
+  non-Pareto-optimal point had set it: the nadir of x_i is 0.8594, not 1, and
+  the ideal of f_M is 2M − (M − 1) 1.6930 (3.228 at five objectives, where
+  the grid had given 3.757). Thirteen frames changed (DTLZ7 at 2-6, 10 and 15,
+  MaF7 at 3, 5, 8, 10 and 15, ZDT3 by 5e-4); WFG2's did not.
+- AGE-MOEA, two corner cases of the geometry estimate. When the normalized
+  central point's coordinates summed to M or more — which §3.3 says cannot
+  happen, but the hyperplane normalization allows on irregular fronts — Eq. 8
+  has no value and the guard drove p to its cap of 20; it is now p = 1, the
+  answer the same function already gave when no central point existed (AGE-2).
+  When one solution was the extreme of every objective, the second-minimum
+  distance stayed at DBL_MAX and the first candidate in index order won with a
+  score ranking it among the extremes (AGE-3). Neither case occurs on the
+  campaign's problems at 10 000 evaluations: all 203, and 12 of them over five
+  seeds, gave bit-identical results before and after.
 - SPEA2 and SPEA2+SDE returned the wrong set. Their answer is the archive
   (Algorithm 1, Step 4), but the archive lived only in the vault's archive
   slots, and everything that reads a result — `minimize()`, the binding, `run()`

@@ -28,6 +28,19 @@
 //   adapt_reference_vectors).
 //   RVEA* (Alg. 4, vector regeneration for irregular PFs) is not implemented —
 //   a deliberate implementation boundary (baseline RVEA).
+//   POPULATION SIZE, the letter of §III-C: "one elitist can be selected from
+//   each subpopulation to create P_{t+1}", and Alg. 2 skips the empty ones, so
+//   |P_{t+1}| is the number of reference vectors that have at least one
+//   solution closest to them. On a regular front that is close to N; on an
+//   irregular one it can stay far below N for good — which is exactly what §VI
+//   and RVEA* are for. Measured 2026-09-22 on IDTLZ1_5D, 10 000 evaluations:
+//   126 at generation 0, then 10-27 for the rest of the run, ending at 22, 8,
+//   23, 14 and 11 over seeds 1-5. The bound is geometric: every normalized
+//   direction on that inverted front has all its components <= 1/4, and of the
+//   126 lattice vectors exactly 21 are the nearest vector to some point of the
+//   front (20 000 sampled points), so a population on the front occupies at
+//   most 21 subpopulations. Not a defect of the port; compare RVEA on
+//   inverted or degenerate fronts with that in mind.
 // Extensions beyond the paper: binary variables (uniform crossover + bit-flip),
 //   active only when bin_vars_n()>0. ConstraintMode::FEASIBILITY is
 //   Algorithm 5 (C-RVEA, §VII) of the paper itself; off by default (NONE).

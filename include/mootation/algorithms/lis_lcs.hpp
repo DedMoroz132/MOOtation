@@ -61,6 +61,18 @@
 //     weight; for PP offspring it is the weight at the actual parent's position
 //     (the PP index, or the DP parent of a Pool_1 individual). The paper does
 //     not specify the PP-to-W association.
+//   - EVALUATIONS PER STEP are not N, and that is Algorithm 1's own order
+//     (measured and traced 2026-09-22). Line 4 breeds N−K offspring with the
+//     K of the previous generation; line 8 re-adapts K inside LIS; line 10
+//     breeds |M_PP| = the NEW K. One step therefore evaluates N − K_old + K_new,
+//     anywhere between 6 and 2N−6, while line 16 books it as ev ← ev + N.
+//     The binding counts the evaluations actually made, so a run stops on what
+//     it spent: summed over T steps it is T·N + (K_T − K_0), within N of the
+//     paper's bookkeeping, and only the step that crosses the budget can
+//     overshoot it — by up to 2N−7. Measured at 10 000 evaluations: final
+//     fe/budget 1.004-1.0185 at N = 91-126, and 1.040 at N = 275 (DTLZ2_10D).
+//     Initialization adds 2N (DP and PP, line 1), which line 2 does not count
+//     either (ev ← 0 after it); the binding does.
 //   - CCD runs at the end of EVERY step(). This follows the step() framework
 //     contract — the vault's active population must be a valid result at any
 //     moment — whereas the paper runs it once on termination. DP and PP live in

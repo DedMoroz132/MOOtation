@@ -177,6 +177,76 @@ def eps_plus(F: np.ndarray, ref: np.ndarray) -> float:
     return float(worst.max())
 
 
+def gd_plus(F: np.ndarray, ref: np.ndarray) -> float:
+    """GD+ (Ishibuchi et al. 2015): IGD+'s distance averaged over the set instead.
+
+    The same d+(a, r) = ||max(a − r, 0)|| matrix as igd_plus, minimized over the
+    reference and averaged over the set: how far the points are from the front,
+    blind to how much of it they cover. Read next to IGD+, it separates "still
+    converging" (both fall) from "converged, now spreading" (GD+ flat, IGD+
+    falling).
+    """
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
+    if F.size == 0:
+        return float("inf")
+    d = np.sqrt((np.maximum(F[None, :, :] - ref[:, None, :], 0.0) ** 2).sum(axis=2))
+    return float(d.min(axis=0).mean())
+
+
+def roi_dist(F: np.ndarray, ideal, nadir) -> float:
+    """Distance of the set to the region of interest [ideal, nadir], normalised.
+
+    min over a of ||max(G(a) − 1, 0)||, G(a) = (a − ideal)/(nadir − ideal): zero
+    as soon as one point has every objective at or below the nadir. COCO scores
+    bbob-biobj runs that have no hypervolume yet by this distance; it tells
+    apart the many runs whose HV is exactly 0 (DTLZ3 at small budgets) and
+    needs no reference front.
+    """
+    F = np.asarray(F, float)
+    if F.size == 0:
+        return float("inf")
+    ideal = np.asarray(ideal, float)
+    span = np.asarray(nadir, float) - ideal
+    span = np.where(span > 0.0, span, 1.0)
+    G = (F - ideal) / span
+    return float(np.sqrt((np.maximum(G - 1.0, 0.0) ** 2).sum(axis=1)).min())
+
+
+def range_cover_each(F: np.ndarray, ideal, nadir) -> np.ndarray:
+    """Per objective: the share of [ideal_j, nadir_j] that the set spans.
+
+    Values are clipped to the box first, so a point beyond the nadir counts as
+    reaching the nadir end and a set entirely outside spans nothing.
+    """
+    F = np.asarray(F, float)
+    ideal = np.asarray(ideal, float)
+    span = np.asarray(nadir, float) - ideal
+    span = np.where(span > 0.0, span, 1.0)
+    G = np.clip((F - ideal) / span, 0.0, 1.0)
+    return G.max(axis=0) - G.min(axis=0)
+
+
+def nd_share(F: np.ndarray) -> float:
+    """Share of rows no other row dominates; equal rows do not dominate each other."""
+    F = np.asarray(F, float)
+    n = len(F)
+    if n == 0:
+        return 0.0
+    le = np.all(F[:, None, :] <= F[None, :, :], axis=2)      # le[j, i]: F_j <= F_i
+    lt = np.any(F[:, None, :] < F[None, :, :], axis=2)
+    dominated = np.any(le & lt, axis=0)
+    return float(1.0 - dominated.mean())
+
+
+def dup_share(F: np.ndarray) -> float:
+    """Share of rows that repeat an objective vector already in the set (exactly)."""
+    F = np.asarray(F, float)
+    if len(F) == 0:
+        return 0.0
+    return float(1.0 - len(np.unique(F, axis=0)) / len(F))
+
+
 def _normalised(F, ref, ideal, nadir):
     ideal = np.asarray(ideal, float)
     span = np.asarray(nadir, float) - ideal
@@ -210,9 +280,22 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
     F = np.asarray(F, float)
     have_box = ideal is not None and nadir is not None
     for name in which:
-        if name in ("igd", "igdp", "eps"):
-            fn = {"igd": igd, "igdp": igd_plus, "eps": eps_plus}[name]
+        if name in ("igd", "igdp", "gdp", "eps"):
+            fn = {"igd": igd, "igdp": igd_plus, "gdp": gd_plus, "eps": eps_plus}[name]
             out[name] = fn(F, ref_front) if ref_front is not None else None
+        elif name == "roi_dist":
+            out[name] = roi_dist(F, ideal, nadir) if have_box and F.size else None
+        elif name == "range_cover":
+            if not have_box or F.ndim != 2 or not F.size:
+                out[name] = None
+            else:
+                each = range_cover_each(F, ideal, nadir)
+                out[name] = float(each.min())
+                out["range_cover_each"] = [round(float(v), 6) for v in each]
+        elif name == "nd_share":
+            out[name] = nd_share(F) if F.ndim == 2 and F.size else None
+        elif name == "dup_share":
+            out[name] = dup_share(F) if F.ndim == 2 and F.size else None
         elif name in ("igdp_norm", "eps_norm"):
             if ref_front is None or not have_box:
                 out[name] = None

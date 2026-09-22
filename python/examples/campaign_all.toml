@@ -1,6 +1,7 @@
-# All 58 algorithms on a spread of problem shapes: which one is good where.
+# All 58 algorithms, and two blind-sampling baselines, on a spread of problem
+# shapes: which one is good where.
 #
-#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 58 870 jobs
+#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 60 900 jobs
 #   python -m mootation.run.campaign campaign_all.toml --workers 16        # one per core
 #   python -m mootation.run.campaign campaign_all.toml --ranks igd         # the condensed answer
 #   python -m mootation.run --tui campaign_all.toml                        # Campaign / Compare / Explore
@@ -21,9 +22,13 @@
 #                                                 R2-IBEA 99 s, HypE 46 s)
 #
 # Time grows about in proportion to the budget. As shipped — 5 runs at 10 000
-# evaluations — the whole campaign is about 90 CPU-hours: under 6 hours on 16
-# cores, 11 on 8. SMS-M2M alone is about half of that, R2-IBEA a sixth and HypE
-# an eighth; commenting out those three leaves about 21 CPU-hours. Two presets:
+# evaluations — the whole campaign is about 100 CPU-hours: 90 scaled from the
+# measurements above, plus an estimated 10 for what every run now records
+# besides (the archive, some 20-50 us per evaluation, and the hypervolume on the
+# 3-objective trajectories, ~50 ms per point); the two baselines themselves are
+# nearly free. That is about 6 hours on 16 cores, 12 on 8. SMS-M2M alone is
+# about half of it, R2-IBEA a sixth and HypE an eighth; commenting out those
+# three leaves about 30 CPU-hours. Two presets:
 #
 #   first look      runs = 5,  budget_fe = 10000   as shipped
 #   paper budgets   runs = 21, budget_fe = 0       500 generations each; about
@@ -113,6 +118,10 @@ algorithms = [
     # Archives
     { name = "two_arch2",  pop = 0, gens = 0 },
     { name = "naemo",      pop = 0, gens = 0 },
+    # Baselines: blind sampling with the run archive, answered by DSS. The
+    # floor every algorithm has to clear (docs/running.md, "Baselines").
+    { name = "random_search", pop = 0, gens = 0 },
+    { name = "sobol_search",  pop = 0, gens = 0 },
 ]
 
 [run]
@@ -200,21 +209,31 @@ problems = [
     "bbobbiobj46_n10_2D", "bbobbiobj47_n10_2D", "bbobbiobj48_n10_2D", "bbobbiobj49_n10_2D", "bbobbiobj50_n10_2D",
     "bbobbiobj51_n10_2D", "bbobbiobj52_n10_2D", "bbobbiobj53_n10_2D", "bbobbiobj54_n10_2D", "bbobbiobj55_n10_2D",
 ]
-# DTLZ5, DTLZ6 (from 4 objectives) and WFG3 (from 3) have true fronts with a
-# non-degenerate part that their reference sets leave out, so IGD on them ranks
-# the algorithms against each other but does not compare with published numbers;
-# a warning says so at run time. SDTLZ's IGD is taken in its scaled units, so the
-# widest objective dominates it; see "If your objectives are not commensurate"
-# in docs/algorithms.md.
+# DTLZ5_5D, DTLZ6_5D, WFG3_3D and WFG3_5D are scored against their FULL fronts,
+# non-degenerate part included (mootation.benchmarks.fronts_full). The DTLZ5/6
+# ones reach the bound of g, so their nadir reaches about 3.4 and 11 where the
+# curve never exceeded 1: runs scored against the old curve do not compare.
+# SDTLZ's IGD is taken in its scaled units, so the widest objective dominates
+# it; see "If your objectives are not commensurate" in docs/algorithms.md.
 
 [campaign]
 out           = "results/{name}"   # relative to this file
 budget_fe     = 10000              # 0 = each problem's own pop x 500 generations
-record_every  = 10                 # a trajectory point every 10 generations, for Explore
-# Along the trajectory only the cheap indicators: exact hypervolume at 5
-# objectives takes two to three seconds per call, and recorded every 10
-# generations it would be most of the run time. On the final population, once
-# per run, the two hypervolumes add up to about 8 CPU-hours to the campaign.
-metrics       = ["igd", "igdp"]
-final_metrics = ["igd", "igdp", "igdp_norm", "eps", "hv", "hv_h"]
+# Trajectory points at fixed evaluation counts, 10 per decade (100, 126, 158,
+# ...): the SAME counts at 10 000, 25 000 and 50 000 evaluations, so the budget
+# ladder lines up point by point. About 20 points per run up to 10 000.
+record_grid       = "log"
+record_per_decade = 10
+# The hypervolume on the trajectory only up to three objectives (~50 ms a
+# point); exact at five it costs ~1.6 s a point and is recorded as null. On the
+# final population, once per run, both hypervolumes are always computed.
+trajectory_hv_max_m = 3
+metrics       = ["igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv_h",
+                 "range_cover", "nd_share", "dup_share"]
+final_metrics = ["igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
+                 "roi_dist", "range_cover", "nd_share", "dup_share"]
 n_ref         = 1000
+# Every run also writes archive.csv, its nondominated points (archive = true is
+# the default). Population snapshots cost disk — on the order of gigabytes for
+# the whole campaign at 25 000 evaluations — so they are off here; switch them
+# on for a few problems with  snapshots = ["DTLZ2_3D", "WFG4_5D"].

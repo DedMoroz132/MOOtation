@@ -12,7 +12,12 @@
 //      per variable, nS individuals x nP perturbations; the angle between the
 //      principal axis of the normalized objectives and the diagonal (1,...,1);
 //      k-means (k=2) over the rows of angles; the cluster with the smaller mean
-//      angle becomes CV.
+//      angle becomes CV. The perturbations are real evaluations: setup costs
+//      N + D·nS·nP = N + 8D, and every step after it exactly N (measured
+//      2026-09-22 on seven problems, D = 5..50). That setup cost is the whole
+//      of this algorithm's excess over an N-per-step core — at 10 000
+//      evaluations fe/budget ends between 1.0005 and 1.015, the rest being the
+//      last step crossing the budget.
 //   1. KP = Identify knee points(P) (Alg. 2, the KnEA [36] method without NDS):
 //      hyperplane L through the extreme points (max f_i), vertical distance to
 //      L, greedy selection by decreasing d with neighbour removal

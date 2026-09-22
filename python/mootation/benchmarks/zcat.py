@@ -459,7 +459,7 @@ def nadir(M: int) -> tuple:
 
 
 # ---- reference front ------------------------------------------------
-def _nondominated(F: np.ndarray) -> np.ndarray:
+def _nondominated_mask(F: np.ndarray) -> np.ndarray:
     keep = np.ones(len(F), bool)
     for i in range(len(F)):
         if not keep[i]:
@@ -467,11 +467,85 @@ def _nondominated(F: np.ndarray) -> np.ndarray:
         dom = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
         if np.any(dom):
             keep[i] = False
-    return F[keep]
+    return keep
+
+
+def _nondominated(F: np.ndarray) -> np.ndarray:
+    return F[_nondominated_mask(F)]
+
+
+def _images(name: str, M: int, P: np.ndarray) -> np.ndarray:
+    scale = np.arange(1, M + 1, dtype=float) ** 2
+    return np.array([scale * F_FUNCS[name](y, M) for y in P])
+
+
+def _strictly_dominated_by(C: np.ndarray, V: np.ndarray, block: int = 256) -> np.ndarray:
+    out = np.zeros(len(C), bool)
+    for a in range(0, len(C), block):
+        c = C[a:a + block, None, :]
+        out[a:a + block] = np.any(np.all(V[None] <= c, axis=2) & np.any(V[None] < c, axis=2),
+                                  axis=1)
+    return out
+
+
+def _dominated_elsewhere(name: str, M: int, Y: np.ndarray, F: np.ndarray,
+                         samples: int = 60_000) -> np.ndarray:
+    """Which rows of the sample's nondominated set something outside it beats.
+
+    Nondominated WITHIN the sample is not Pareto-optimal: next to the gaps of
+    a disconnected front, a candidate the sample happened not to beat is
+    beaten by a position vector it did not contain. Measured 2026-09-22 at
+    n_points = 1000, against 50 000 fresh points: 164 of the 1000 front points
+    of ZCAT11_5D were dominated (by up to 1.48 in f_5, whose span is 25), 98 of
+    ZCAT12_5D, 66 of ZCAT13_5D (up to 3.72), 24 of ZCAT11_3D. So every row is
+    checked against an independent sample of position vectors and against its
+    own neighbours — each position moved alone, both ways, by 0.05 down to
+    0.001, and 64 Gaussian moves of all of them at once — and dropped when any
+    of them strictly dominates it. What is left is not zero: a fresh sample of
+    50 000 still beats 1 of ZCAT12_5D's 1000 points (by 0.37) and 2 of
+    ZCAT13_5D's (by 0.27), next to the gaps, where a dominator sits across a
+    gap no sample and no move reached. The draws come from their own generator,
+    so a front in which nothing is dropped is bit-identical to the unchecked
+    one; and only the points the thinning keeps are checked (88 moves each at
+    three objectives), which is what keeps a front at seconds.
+    """
+    rng = np.random.default_rng(20260922 + 100 * M)
+    d = 1 if name in DEGENERATE else M - 1            # the positions that vary
+    width = Y.shape[1]
+    P = np.zeros((samples, width))
+    P[:, :d] = rng.random((samples, d))
+    bad = _strictly_dominated_by(F, _images(name, M, P))
+    moves = []
+    for step in (0.05, 0.02, 0.01, 0.005, 0.002, 0.001):
+        for j in range(d):
+            for sgn in (-1.0, 1.0):
+                Q = Y.copy()
+                Q[:, j] = np.clip(Q[:, j] + sgn * step, 0.0, 1.0)
+                moves.append(Q)
+    for s in (0.2, 0.1, 0.05, 0.02):
+        for _ in range(16):
+            Q = Y.copy()
+            Q[:, :d] = np.clip(Q[:, :d] + rng.normal(0.0, s, (len(Y), d)), 0.0, 1.0)
+            moves.append(Q)
+    for Q in moves:
+        G = _images(name, M, Q)
+        bad |= np.all(G <= F, axis=1) & np.any(G < F, axis=1)
+    return bad
 
 
 def pareto_front(name: str, M: int, n_points: int = 1000) -> np.ndarray:
     """The nondominated part of {(alpha_1..alpha_M)(y_I) : y_I in [0,1]^m}.
+
+    Computed once per (problem, M, n_points) and process: a campaign asks for
+    it on every run, and the verification below costs seconds. The caller gets
+    a copy.
+    """
+    return _pareto_front(name, M, int(n_points)).copy()
+
+
+@lru_cache(maxsize=None)
+def _pareto_front(name: str, M: int, n_points: int) -> np.ndarray:
+    """The front itself; see pareto_front.
 
     Theorem 1 puts the front over the Pareto set of the alpha-only problem, not
     over every y_I, so the image is filtered. The position vector is sampled on
@@ -498,6 +572,11 @@ def pareto_front(name: str, M: int, n_points: int = 1000) -> np.ndarray:
         by a uniform choice of n_points, however it got there.
     An IGD reference front that stops short of the real one measures the
     sampler rather than the algorithm, and flatters whatever fails to spread.
+
+    And nondominated within the sample is not yet Pareto-optimal: every point
+    the thinning keeps is checked against an independent sample and its own
+    neighbours, and one that fails is replaced by a checked point of the rest
+    (_dominated_elsewhere, which also gives the measurements).
     """
     m = 1 if name in DEGENERATE else M - 1
     rng = np.random.default_rng(20260916 + 100 * M)
@@ -525,15 +604,36 @@ def pareto_front(name: str, M: int, n_points: int = 1000) -> np.ndarray:
         Y = np.unique(Y, axis=0)
     scale = np.arange(1, M + 1, dtype=float) ** 2
     F = np.array([scale * F_FUNCS[name](y, M) for y in Y])
-    F = _nondominated(F)
+    keep = _nondominated_mask(F)
+    Y, F = Y[keep], F[keep]
+    sel = np.arange(len(F))
     if len(F) > n_points:
         keep = np.unique(np.concatenate([F.argmin(0), F.argmax(0)]))
         if len(keep) >= n_points:
-            F = F[keep[:n_points]]
+            sel = keep[:n_points]
         else:
             rest = np.setdiff1d(np.arange(len(F)), keep)
-            F = F[np.concatenate([keep, rng.choice(rest, n_points - len(keep),
-                                                   replace=False)])]
+            sel = np.concatenate([keep, rng.choice(rest, n_points - len(keep),
+                                                   replace=False)])
+    # The selected points are checked, and a dropped one is replaced from the
+    # rest, which is checked in turn: a front in which nothing is dropped comes
+    # out exactly as the unchecked sampler made it.
+    bad = _dominated_elsewhere(name, M, Y[sel], F[sel])
+    if bad.any():
+        pool = np.random.default_rng(20260923 + 100 * M).permutation(
+            np.setdiff1d(np.arange(len(F)), sel))
+        good = [sel[~bad]]
+        need = int(bad.sum())
+        for start in range(0, len(pool), 256):
+            if need <= 0:
+                break
+            chunk = pool[start:start + 256]
+            ok = chunk[~_dominated_elsewhere(name, M, Y[chunk], F[chunk])]
+            good.append(ok[:need])
+            need -= len(ok[:need])
+        sel = np.concatenate(good)
+    F = F[sel]
+    F.setflags(write=False)                           # shared through the cache
     return F
 
 

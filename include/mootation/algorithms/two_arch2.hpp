@@ -59,9 +59,23 @@
 //     values" (Alg. 3 line 3) implemented as, per objective i, the argmin and
 //     argmax of f_i (up to 2m points, de-duplicated). If that already fills DA
 //     it is truncated; the paper does not specify a tie/overflow rule here.
-//   TA2-3 (MINOR). If after Pareto filtering |DA| <= n_DA, DA is kept as-is
-//     (no padding) — DA may temporarily hold fewer than n_DA solutions early on,
-//     exactly as Alg. 3 implies (selection only triggers on overflow).
+//   TA2-3 (reading; measured 2026-09-22). If after Pareto filtering
+//     |DA| <= n_DA, DA is kept as-is, with no padding. The paper says both
+//     that DA has "a fixed size" (§III-A, §IV-C) and that "only non-dominated
+//     solutions can be added to DA" (§III-C.1), which cannot both hold when the
+//     search has fewer than n_DA nondominated solutions to offer; the port
+//     reads the size as a capacity, since padding would need dominated
+//     solutions. The OUTPUT is then smaller than n_DA, and not only early on.
+//     On ZDT2 at 10 000 evaluations it ends at 7, 5, 26, 7 and 51 solutions
+//     over seeds 1-5, three of them with every f1 below 1e-14: the search has
+//     collapsed to x1 = 0, and there the nondominated set is a handful of
+//     near-identical points. The collapse is ZDT2's rather than this port's —
+//     the same budget and seeds take IBEA (the same I_eps+ fitness as CA) to a
+//     largest f1 of 0.105, 0.51, 1.0, 1.0 and 0.25, and NSGA-II to 0.66, 0.71,
+//     0.064, 0.39 and 0.99 — and Two_Arch2 only makes it visible, because the
+//     others hand back a whole population whose spread is just as lost. The
+//     Alg. 3 selection never ran in those runs (the largest DA was 51), so
+//     neither it nor the final output (DA, §III-A) is involved.
 //     Objective-identical solutions are also collapsed to one before the Alg. 3
 //     selection, which is a second way |DA| can fall below n_DA. The paper
 //     never mentions duplicates; the collapse is provably neutral for the

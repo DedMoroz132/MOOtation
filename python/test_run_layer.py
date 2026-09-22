@@ -701,6 +701,61 @@ def zcat_reference_fronts_are_nondominated_and_inside_the_paper_box():
 
 
 @test
+def zcat_reference_fronts_survive_a_fresh_sample():
+    """Nondominated within its own sample is not Pareto-optimal (zcat._dominated_elsewhere).
+
+    Before the check, 24 of ZCAT11_3D's 1000 reference points and 164 of
+    ZCAT11_5D's were dominated by points of a fresh sample, next to the gaps
+    of the disconnected front.
+    """
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import zcat
+    for name, M in (("ZCAT11", 3), ("ZCAT13", 3)):
+        F = zcat.pareto_front(name, M, 300)
+        P = np.random.default_rng(424242).random((20_000, M - 1))
+        V = zcat._images(name, M, P)
+        dom = zcat._strictly_dominated_by(F, V)
+        assert not dom.any(), (name, M, int(dom.sum()))
+        assert zcat.pareto_front(name, M, 300) is not zcat.pareto_front(name, M, 300)
+
+
+@test
+def disconnected_reference_fronts_survive_a_fresh_sample():
+    """DTLZ7 and WFG2 sample their fronts as the nondominated images of a grid.
+
+    Before registry._checked, 150 of WFG2_3D's 416 reference points were
+    dominated by fresh front points, and DTLZ7's grid put most of its points
+    outside the Pareto set (all but one of DTLZ7_15D's 16 384).
+    """
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import registry as R
+    rng = np.random.default_rng(424242)
+    for key, M, images in (("WFG2_3D", 3, lambda X: R._img_wfg2(3, X)),
+                           ("DTLZ7_3D", 3, lambda X: R._img_dtlz7(3, X)),
+                           ("DTLZ7_5D", 5, lambda X: R._img_dtlz7(5, X))):
+        F = R.PROBLEMS[key].pareto_front(1000)
+        dom = R._strictly_dominated_by(F, images(rng.random((20_000, M - 1))))
+        assert not dom.any(), (key, int(dom.sum()))
+    # DTLZ7's Pareto set is the product of phi's left records: every position
+    # of every reference point is one, and the frame is the analytic one
+    t = np.linspace(0.0, 1.0, 200_001)
+    phi = t * (1.0 + np.sin(3.0 * math.pi * t))
+    F = R.PROBLEMS["DTLZ7_10D"].pareto_front(1000)
+    x = F[:, :9]
+    run_max = np.maximum.accumulate(phi)
+    below = run_max[np.clip((x * 200_000).astype(int) - 1, 0, None)]
+    assert np.all(x * (1.0 + np.sin(3.0 * math.pi * x)) >= below - 1e-6), "a position is no record"
+    p = R.get("DTLZ7_5D")
+    assert abs(p.ideal[4] - (10.0 - 4.0 * phi.max())) < 1e-4 and abs(p.nadir[0] - 0.8594) < 1e-3, \
+        (p.ideal, p.nadir)
+
+
+@test
 def bbob_functions_reach_their_own_optimum():
     """f(x_opt) = f_opt for all ten bbob base functions.
 
@@ -748,6 +803,134 @@ def bbob_biobj_pairs_and_frame_follow_the_paper():
         assert all(n > i for i, n in zip(p.ideal, p.nadir)), (key, p.ideal, p.nadir)
     # and the front-based indicators must say nothing rather than invent it
     assert igd("bbobbiobj01_n05_2D", [[1.0, 2.0]]) is None
+
+
+@test
+def full_fronts_are_the_curve_where_the_paper_says_the_curve_is_all():
+    """DTLZ5, DTLZ6 and MaF6 at M = 3 and WFG3 at M = 2 have no non-degenerate part.
+
+    Built by the same pipeline as the shipped fronts, at a test-sized budget:
+    no point of the verified front may lie off the curve.
+    """
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import fronts_full as FF
+    for name, M in (("DTLZ5", 3), ("DTLZ6", 3), ("MaF6", 3), ("WFG3", 2)):
+        F, rep = FF.build_front(name, M, n_int=6000, n_face=600, n_verify=30000,
+                                n_keep=200, log=lambda s: None)
+        assert rep["verified"] > 100, rep
+        assert rep["distance_scalar_max_on_front"] == 0.0, (name, M, rep["distance_scalar_max_on_front"])
+
+
+@test
+def the_shipped_full_fronts_leave_the_curve_and_survive_a_fresh_sample():
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import fronts_full as FF, get
+    from mootation.benchmarks.registry import FULL_FRONT, degenerate_subset_note
+    for key in ("DTLZ5_5D", "DTLZ6_5D", "WFG3_3D", "WFG3_5D"):
+        assert key in FULL_FRONT, (key, sorted(FULL_FRONT))
+        assert degenerate_subset_note(key) is None, key
+        name, M = key.split("_")[0], int(key.split("_")[1][:-1])
+        F, rep = FF.load(name, M)
+        assert rep["share_off_the_curve"] > 0.0 and rep["verify_sample"] >= 1_000_000, rep
+        # an independent sample of the reduced box, from a seed the build never used
+        lo, hi = FF.box(name, M)
+        V = FF._sample(lo, hi, 60000, 4000, np.random.default_rng(424242))
+        assert not FF.dominated_by_any(F, FF.objectives(name, V, M)).any(), key
+        # and exactly, on a grid of g (or t_M) that the build did not use: no
+        # point beaten by 1e-5 of the range or more (a point beaten by less can
+        # sit between two grid values; the one such point met was 9.7e-6)
+        span = np.array(rep["nadir"]) - np.array(rep["ideal"])
+        exact = (FF.radial_dominated(name, M, F, span=span, tau=1e-5, n_g=10_007)
+                 if name in FF.G_MAX else
+                 FF.wfg3_dominated(M, F, span=span, tau=1e-5, n_t=10_007))
+        assert not exact.any(), (key, int(exact.sum()))
+        # the registry uses it: thinning is slicing, the frame is the verified set's
+        p = get(key)
+        assert np.array_equal(p.pareto_front(500), F[:500]), key
+        assert np.allclose(p.nadir, rep["nadir"]) and np.allclose(p.ideal, rep["ideal"]), key
+
+
+@test
+def full_fronts_contain_the_points_the_analysis_says_they_must():
+    """(3,1,1) on WFG3_3D (Ishibuchi et al.'s counterexample) and the far corner of DTLZ6."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import fronts_full as FF
+    pt = FF.objectives("WFG3", np.array([[1.0, 1.0, 1.0]]), 3)[0]
+    assert np.allclose(pt, [3.0, 1.0, 1.0]), pt                 # t = (1, 1, 1) gives it
+    F, _ = FF.load("WFG3", 3)
+    assert not (np.all(F <= pt, axis=1) & np.any(F < pt, axis=1)).any()
+    assert np.min(np.linalg.norm(F - pt, axis=1)) < 0.05, np.min(np.linalg.norm(F - pt, axis=1))
+    # DTLZ6 at M = 4, x = (0, 1, 0) and g = 9.9: f_2 = (1+g) sin^2(pi/(4(1+g))) is the
+    # smallest any point with f_4 = 0 can have, and it falls with g — so this point
+    # is Pareto-optimal and the front reaches g ~ 10, where DTLZ5 stops at 2.5
+    g = 9.9
+    q = FF.objectives("DTLZ6", np.array([[0.0, 1.0, 0.0, g]]), 4)[0]
+    assert abs(q[1] - (1 + g) * math.sin(math.pi / (4 * (1 + g))) ** 2) < 1e-12, q
+    F6, rep6 = FF.load("DTLZ6", 4)
+    assert not (np.all(F6 <= q, axis=1) & np.any(F6 < q, axis=1)).any()
+    assert rep6["nadir"][2] > 10.0 and FF.load("DTLZ5", 4)[1]["nadir"][2] < 4.0, rep6["nadir"]
+
+
+@test
+def the_exact_dominance_tests_see_what_sampling_misses():
+    """radial_dominated and wfg3_dominated decide dominance by the whole attainable set.
+
+    A DTLZ5 point with g > 0 and every theta_i strictly inside its range is
+    beaten by its own radial projection (the same angles at the smallest g
+    that reaches them); the curve is not beaten; neither is WFG3's (3, 1, 1),
+    while the same point moved up by 0.01 is.
+    """
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import fronts_full as FF
+    rng = np.random.default_rng(5)
+    U = 0.05 + 0.9 * rng.random((200, 4))
+    U[:, 3] = 0.05 + 2.0 * rng.random(200)
+    assert FF.radial_dominated("DTLZ5", 4, FF.objectives("DTLZ5", U, 4)).all()
+    C = FF.objectives("DTLZ5", FF._curve_u("DTLZ5", 4, np.linspace(0.0, 1.0, 30)), 4)
+    assert not FF.radial_dominated("DTLZ5", 4, C).any()
+    pt = FF.objectives("WFG3", np.ones((1, 3)), 3)
+    assert not FF.wfg3_dominated(3, pt, span=np.ones(3)).any()
+    assert FF.wfg3_dominated(3, pt + 0.01, span=np.ones(3)).all()
+
+
+@test
+def no_full_front_point_of_the_dtlz5_family_has_f_M_above_one():
+    """Every point with f_M > 1 is dominated by the curve (fronts_full's header).
+
+    At x_1 = 1 that needs cos(pi/2) = 0 exactly: with the rounded 6.1e-17 the
+    points with x_1 = 1 and g > 0 looked nondominated and set the nadir of f_M
+    to 1 + g_max, 251 for MaF6 at eight objectives.
+    """
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import fronts_full as FF
+    rng = np.random.default_rng(11)
+    for name, M in (("DTLZ5", 4), ("DTLZ6", 5), ("MaF6", 8)):
+        lo, hi = FF.box(name, M)
+        U = lo + rng.random((4000, M)) * (hi - lo)
+        U[:1000, 0] = 1.0                                        # x_1 = 1: the corner case
+        F = FF.objectives(name, U, M)
+        assert np.all(F[:1000, :M - 1] == 0.0), name               # exactly, not ~1e-17
+        far = F[:, M - 1] > 1.0
+        assert far.sum() > 1000, (name, far.sum())
+        hit, _ = FF.curve_dominated(name, M, F[far])
+        assert hit.all(), (name, int((~hit).sum()))
+    for key in sorted(FF.SIZES):
+        if key == "WFG3":
+            continue
+        for M in FF.SIZES[key]:
+            if FF.has_front(key, M):
+                F, rep = FF.load(key, M)
+                assert rep["nadir"][M - 1] == 1.0 and F[:, M - 1].max() <= 1.0, (key, M, rep["nadir"])
 
 
 @test
@@ -1175,6 +1358,214 @@ def metrics_agree_with_closed_forms():
     hh = M.compute(R, ideal=[0, 0], nadir=[1, 1], which=("hv", "hv_h"), pop=100)
     assert abs(hh["hv_h_ref"] - (1 + 1 / 99)) < 1e-12 and hh["hv_h"] != hh["hv"], hh
     assert M.compute(R, ideal=[0, 0], nadir=[1, 1], which=("hv_h",))["hv_h"] is None
+
+
+@test
+def new_indicators_agree_with_closed_forms():
+    """GD+, roi_dist, range_cover, nd_share, dup_share on sets whose values are known."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run import metrics as M
+    f1 = np.linspace(0, 1, 201)
+    R = np.column_stack([f1, 1 - f1])                               # a linear front
+    assert M.gd_plus(R, R) == 0.0
+    assert abs(M.gd_plus(R + 0.1, R) - 0.1 * np.sqrt(2)) < 1e-12     # every point 0.1 behind in both
+    # GD+ averages over the SET: one converged point scores 0 however little it covers
+    assert M.gd_plus(R[:1], R) == 0.0 and M.igd_plus(R[:1], R) > 0.3
+    # roi_dist: zero inside the box, the normalized overshoot outside it
+    assert M.roi_dist(R, [0, 0], [1, 1]) == 0.0
+    assert abs(M.roi_dist(np.array([[2.0, 3.0], [1.5, 1.0]]), [0, 0], [1, 2]) - 0.5) < 1e-12
+    # range_cover: per objective, clipped to the box; the worst objective is the score
+    each = M.range_cover_each(np.array([[0.0, 0.5], [0.5, 0.6], [2.0, 0.7]]), [0, 0], [1, 1])
+    assert np.allclose(each, [1.0, 0.2]), each
+    out = M.compute(np.array([[0.0, 0.5], [0.5, 0.6]]), ideal=[0, 0], nadir=[1, 1],
+                    which=("range_cover", "nd_share", "dup_share", "roi_dist", "gdp"))
+    assert abs(out["range_cover"] - 0.1) < 1e-12 and out["range_cover_each"] == [0.5, 0.1], out
+    assert out["gdp"] is None                                        # no reference front: nothing
+    # nd_share / dup_share
+    F = np.array([[1, 1], [1, 1], [0.5, 2], [2, 2], [2, 0.5]], float)
+    assert abs(M.nd_share(F) - 0.8) < 1e-12                          # (2,2) is dominated; copies are not
+    assert abs(M.dup_share(F) - 0.2) < 1e-12
+
+
+@test
+def the_log_grid_is_the_same_at_every_budget():
+    from mootation.run.campaign import log_grid
+    g10, g25 = log_grid(10_000, 10), log_grid(25_000, 10)
+    assert g25[:len(g10)] == g10 and g10[-1] <= 10_000 < g25[len(g10)], (g10[-3:], g25[:len(g10) + 1])
+    assert g10 == sorted(set(g10)) and g10[0] == 1
+    assert [v for v in g10 if 100 <= v <= 1000] == [100, 126, 158, 200, 251, 316, 398, 501,
+                                                    631, 794, 1000]
+
+
+@test
+def dss_keeps_the_extremes_and_its_order_is_incremental():
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run.archive import dss_order
+    t = np.linspace(0, np.pi / 2, 400)
+    F = np.column_stack([np.cos(t), np.sin(t)])                     # a quarter circle
+    order = dss_order(F)
+    assert sorted(order.tolist()) == list(range(len(F)))           # a permutation
+    assert set(order[:2].tolist()) == {int(np.argmin(F[:, 0])), int(np.argmin(F[:, 1]))}
+    # the first n of the full order ARE the n-point selection
+    assert np.array_equal(dss_order(F, k=25), order[:25])
+
+    # Farthest-first on the IGD+ distance: each next point is exactly the
+    # candidate the prefix covers worst. (Not uniform in angle — d+ counts only
+    # the coordinate in which the selected point is worse.)
+    def cover(prefix):
+        S = F[prefix]
+        d = np.sqrt((np.maximum(S[:, None, :] - F[None, :, :], 0.0) ** 2).sum(axis=2))
+        return d.min(axis=0)
+    for k in (2, 5, 12, 24):
+        c = cover(order[:k])
+        assert abs(c[order[k]] - c.max()) < 1e-12, (k, c[order[k]], c.max())
+    # and it beats chance at what it is for: IGD+ of the selection against the set
+    from mootation.run.metrics import igd_plus
+    mine = igd_plus(F[order[:25]], F)
+    rng = np.random.default_rng(1)
+    assert all(mine < igd_plus(F[rng.choice(len(F), 25, replace=False)], F) for _ in range(20))
+
+
+@test
+def the_grid_archive_keeps_the_front_prunes_neighbours_and_protects_extremes():
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run.archive import GridArchive
+    a = GridArchive(2, 1, ideal=[0, 0], nadir=[1, 1], delta=0.1)
+    assert a.add([0.5, 0.5], [0.0]) and not a.add([0.6, 0.6], [0.0])   # dominated
+    assert not a.add([0.5, 0.5], [0.0])                                  # a duplicate
+    assert a.add([0.4, 0.4], [0.0]) and len(a) == 1                      # dominates, replaces
+    # two nondominated neighbours in one cell: the one nearer the lower corner stays
+    a.add([0.0, 1.0], [0.0]); a.add([1.0, 0.0], [0.0])                  # the two extremes
+    a.add([0.31, 0.49], [0.0]); a.add([0.38, 0.42], [0.0])
+    F, X, ext = a.points()
+    assert len(F) == len({tuple(np.floor(f / 0.1).astype(int)) for f in F[~ext]}) + ext.sum()
+    # extremes live outside the grid: three mutually nondominated points in ONE
+    # cell (step 0.5) all survive, because two of them are extremes
+    b = GridArchive(2, 0, ideal=[0, 0], nadir=[1, 1], delta=0.5)
+    for f in ([0.0, 0.4], [0.2, 0.05], [0.05, 0.3]):
+        assert b.add(f)
+    F, _, ext = b.points()
+    assert len(b) == 3 and int(ext.sum()) == 2, (F, ext)
+    # without a frame the grid follows the archive's own estimate (re-gridded
+    # when it drifts by a quarter of its span, so the cells end up near 0.01)
+    c = GridArchive(2, 0, delta=0.01)
+    for t in np.linspace(0, 1, 500):
+        c.add([t, 1 - t])
+    assert c.normalization == "archive" and 80 <= len(c) <= 160, len(c)
+
+
+@test
+def baselines_spend_the_budget_exactly_and_answer_with_the_archive():
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run.archive import GridArchive
+    from mootation.run.baselines import run_baseline
+    from mootation.benchmarks import get
+    p = get("ZDT1")
+    for name in ("random_search", "sobol_search"):
+        if name == "sobol_search":
+            try:
+                import scipy  # noqa: F401
+            except ImportError:
+                continue
+        runs = []
+        for _ in range(2):
+            arc = GridArchive(2, p.n_vars, ideal=p.ideal, nadir=p.nadir)
+            spent = [0]
+
+            def ev(x, arc=arc, spent=spent):
+                spent[0] += 1
+                f = p.evaluate(x)
+                arc.add(f, x)
+                return f
+            res = run_baseline(name, ev, p.bounds, pop=100, max_evaluations=1234, seed=7,
+                               archive=arc)
+            assert spent[0] == 1234, (name, spent[0])
+            assert len(res.objectives) == min(100, len(arc)), (name, len(res.objectives))
+            runs.append(np.asarray(res.objectives))
+        assert np.array_equal(runs[0], runs[1]), name                   # a seed is a seed
+
+
+@test
+def results_record_the_revision_they_were_made_with():
+    from mootation.run.provenance import revision
+    r = revision()
+    assert set(r) == {"commit", "dirty", "source", "core_commit", "core_dirty"}, r
+    if r["source"] == "git":
+        assert len(r["commit"]) == 40 and int(r["commit"], 16) >= 0, r
+        assert isinstance(r["dirty"], bool), r
+
+
+@test
+def a_campaign_writes_the_log_grid_the_archive_and_snapshots():
+    """The 2026-09-22 recording options end to end, on two tiny problems."""
+    try:
+        import numpy as np
+        import mootation._core as _core
+    except ImportError:
+        return
+    if not hasattr(_core.Config(), "max_evaluations"):
+        print("  skip  a_campaign_writes_the_log_grid...: stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "nsga2", pop = 0, gens = 0 },
+    { name = "random_search", pop = 0, gens = 0 },
+]
+[run]
+name = "rec"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1", "DTLZ2_5D"]
+[campaign]
+out = "res"
+budget_fe = 600
+record_grid = "log"
+trajectory_hv_max_m = 3
+metrics = ["igdp", "gdp", "hv_h", "roi_dist", "range_cover", "nd_share", "dup_share"]
+final_metrics = ["igdp", "hv", "roi_dist"]
+snapshots = ["ZDT1"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for prob, pop in (("ZDT1", 100), ("DTLZ2_5D", 126)):
+            for alg in ("nsga2", "random_search"):
+                d = root / prob / alg / "run_1"
+                meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+                T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+                grid = C.log_grid(meta["budget_fe"], 10)
+                # every record after the first sits at or past a grid count it was waiting for
+                for t in T[1:-1]:
+                    assert any(g <= t["fe"] < g + pop for g in grid), (prob, alg, t["fe"])
+                hv = [t["hv_h"] for t in T]
+                assert (all(v is None for v in hv) if prob == "DTLZ2_5D"
+                        else all(v is not None for v in hv)), (prob, hv)
+                rows = (d / "archive.csv").read_text().splitlines()
+                assert len(rows) - 2 == meta["archive"]["size"] > 0, (prob, alg)
+                assert (d / "snapshots.npz").exists() == (prob == "ZDT1"), (prob, alg)
+                assert meta["revision"]["commit"], meta
+                if alg == "random_search":
+                    assert meta["fe"] == meta["budget_fe"], meta    # exactly, no overshoot
 
 
 @test

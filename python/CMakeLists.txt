@@ -42,6 +42,25 @@ set_target_properties(mootation_python PROPERTIES
 
 target_link_libraries(mootation_python PRIVATE MOOtation::MOOtation)
 
+# The source revision the extension is built from, as _core.__git_commit__ and
+# _core.__git_dirty__. Campaign results record it: a version string that stays
+# 0.1.0 across every commit cannot tell two runs apart, and an installed
+# package has no .git to ask at run time. Regenerated on every build, see
+# git_stamp.cmake.
+find_package(Git QUIET)
+set(_MOOTATION_STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/generated)
+add_custom_target(mootation_git_stamp
+    COMMAND ${CMAKE_COMMAND}
+            -DSRC=${PROJECT_SOURCE_DIR}
+            -DOUT=${_MOOTATION_STAMP_DIR}/mootation_git_stamp.h
+            -DGIT=${GIT_EXECUTABLE}
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/git_stamp.cmake
+    BYPRODUCTS ${_MOOTATION_STAMP_DIR}/mootation_git_stamp.h
+    COMMENT "MOOtation: stamping the source revision"
+    VERBATIM)
+add_dependencies(mootation_python mootation_git_stamp)
+target_include_directories(mootation_python PRIVATE ${_MOOTATION_STAMP_DIR})
+
 # Building into the source tree above is a developer convenience — it makes the
 # checkout importable with no copy step. It does NOT put the extension in a
 # wheel: scikit-build-core fills the wheel from CMake's install rules, and

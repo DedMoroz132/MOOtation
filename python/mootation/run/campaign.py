@@ -55,7 +55,7 @@ from pathlib import Path
 from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
-from .metric_names import HIGHER_IS_BETTER, METRIC_NAMES, NEEDS_FRONT
+from .metric_names import HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -86,6 +86,45 @@ class CampaignSpec:
     final_metrics: tuple = ()          # empty: the same as metrics
     n_ref: int = 1000
     seeds: tuple = ()
+    # "generations": a trajectory point every record_every generations.
+    # "log": at fixed evaluation counts 10^(j/record_per_decade), the SAME
+    # counts at every budget, so runs of a budget ladder line up (log_grid).
+    record_grid: str = "generations"
+    record_per_decade: int = 10
+    # The hypervolumes on the trajectory only up to this many objectives
+    # (0 = always); exact HV costs ~50 ms per point at 3 objectives, ~1.6 s at 5.
+    trajectory_hv_max_m: int = 0
+    # The run archive (archive.GridArchive -> archive.csv); archive_delta 0 is
+    # the default grid step, 1e-3 below five objectives and 1e-2 from five.
+    archive: bool = True
+    archive_delta: float = 0.0
+    # Population objectives at every trajectory record (snapshots.npz, float32),
+    # to look at the front's shape later or compute a metric the run did not
+    # record: False, True, or a list of the problems to keep them for.
+    snapshots: object = False
+
+
+def _snapshots_wanted(spec: "CampaignSpec", problem: str) -> bool:
+    s = spec.snapshots
+    return s if isinstance(s, bool) else problem in s
+
+
+def log_grid(limit: int, per_decade: int) -> list:
+    """Evaluation counts round(10^(j/per_decade)) up to `limit`, without repeats.
+
+    Absolute, not relative to the budget: a 10 000- and a 25 000-evaluation run
+    share every threshold up to 10 000, so their trajectories can be compared
+    point by point instead of through interpolation.
+    """
+    out = []
+    j = 0
+    while True:
+        v = int(round(10.0 ** (j / per_decade)))
+        if v > limit:
+            return out
+        if not out or v > out[-1]:
+            out.append(v)
+        j += 1
 
 
 # ── reading the [campaign] table ────────────────────────────────────────────
@@ -94,7 +133,9 @@ class CampaignSpec:
 def campaign_spec(cfg: Config) -> CampaignSpec:
     raw = dict(cfg.campaign or {})
     spec = CampaignSpec()
-    known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds"}
+    known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds",
+             "record_grid", "record_per_decade", "trajectory_hv_max_m",
+             "archive", "archive_delta", "snapshots"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -117,6 +158,29 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
         setattr(spec, key, tuple(names))
     spec.n_ref = int(raw.get("n_ref", 1000))
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
+    spec.record_grid = str(raw.get("record_grid", "generations"))
+    spec.record_per_decade = int(raw.get("record_per_decade", 10))
+    spec.trajectory_hv_max_m = int(raw.get("trajectory_hv_max_m", 0))
+    if spec.record_grid not in ("generations", "log"):
+        raise ConfigError("campaign.record_grid",
+                          f"'generations' or 'log', not '{spec.record_grid}'")
+    if spec.record_per_decade < 1:
+        raise ConfigError("campaign.record_per_decade", "must be >= 1")
+    if spec.trajectory_hv_max_m < 0:
+        raise ConfigError("campaign.trajectory_hv_max_m", "must be >= 0 (0 = no limit)")
+    spec.archive = raw.get("archive", True)
+    if not isinstance(spec.archive, bool):
+        raise ConfigError("campaign.archive", "true or false")
+    spec.archive_delta = float(raw.get("archive_delta", 0.0))
+    if spec.archive_delta < 0:
+        raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
+    snaps = raw.get("snapshots", False)
+    if isinstance(snaps, bool):
+        spec.snapshots = snaps
+    elif isinstance(snaps, (list, tuple)):
+        spec.snapshots = tuple(str(s) for s in snaps)
+    else:
+        raise ConfigError("campaign.snapshots", "true, false, or a list of problem names")
     if spec.record_every < 1:
         raise ConfigError("campaign.record_every", "must be >= 1")
     if spec.budget_fe < 0:
@@ -220,6 +284,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     from ..benchmarks import get as bench_get
     from .. import __version__, minimize
     from . import metrics as M
+    from .provenance import revision
 
     d = root / job.rel_dir
     meta_path = d / "meta.json"
@@ -246,49 +311,106 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "record_every": spec.record_every, "n_ref": spec.n_ref,
         "has_reference_front": ref is not None,
         "mootation": __version__,
+        # the version never changes between commits; these do (provenance.py)
+        "revision": revision(),
         "host": socket.gethostname(), "platform": platform.platform(),
         "python": sys.version.split()[0], "pid": os.getpid(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     _write_json(meta_path, meta)
 
+    from .archive import GridArchive
+    from .baselines import BASELINES, run_baseline
+    baseline = job.algorithm in BASELINES
+    # Every nondominated point the run evaluates, whatever the algorithm keeps
+    # in its population (archive.GridArchive; archive.csv). A baseline's
+    # answer IS its archive, so it gets one even when archiving is off.
+    arc = (GridArchive(p.n_obj, p.n_vars, ideal=ideal, nadir=nadir,
+                       delta=spec.archive_delta or None)
+           if (spec.archive or baseline) else None)
+
+    def feasible(x) -> bool:
+        return all(c <= 0.0 for c in p.constraints(x))
+
     fe = 0
     def evaluate(x):
         nonlocal fe
         fe += 1
-        return p.evaluate(x)
+        f = p.evaluate(x)
+        if arc is not None and (not p.has_cons or feasible(x)):
+            arc.add(f, x)
+        return f
+
+    snap = _snapshots_wanted(spec, job.problem)
+    snap_fe, snap_gen, snap_n, snap_F = [], [], [], []
 
     t0 = time.perf_counter()
     fh = traj_path.open("a", encoding="utf-8")
     n_records = 0
+    budget = job.pop * job.gens
+
+    # The hypervolumes stay off the trajectory above trajectory_hv_max_m
+    # objectives (recorded as null there, so the absence is explicit).
+    traj_metrics = list(spec.metrics)
+    hv_skipped = []
+    if spec.trajectory_hv_max_m and p.n_obj > spec.trajectory_hv_max_m:
+        hv_skipped = [m for m in traj_metrics if m in HV_NAMES]
+        traj_metrics = [m for m in traj_metrics if m not in HV_NAMES]
+    grid = log_grid(budget, spec.record_per_decade) if spec.record_grid == "log" else None
+    next_i = 0
+    meta.update(record_grid=spec.record_grid,
+                record_per_decade=spec.record_per_decade if grid is not None else None,
+                trajectory_hv_max_m=spec.trajectory_hv_max_m,
+                trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped)
 
     def on_gen(gen, objectives):
-        nonlocal n_records
+        nonlocal n_records, next_i
+        if grid is not None:
+            # Generation 0 and the last call are always recorded; in between,
+            # the first call at or past the next count of the grid.
+            if gen > 0 and fe < budget and (next_i >= len(grid) or fe < grid[next_i]):
+                return
+            while next_i < len(grid) and grid[next_i] <= fe:
+                next_i += 1
         F = np.asarray(objectives, float)
         rec = {"gen": gen, "fe": fe, "t": round(time.perf_counter() - t0, 3), "n": int(len(F))}
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
         if finite and F.size:
             rec.update(M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir,
-                                 which=spec.metrics, pop=p.pop_size))
+                                 which=traj_metrics, pop=p.pop_size))
+            for m in hv_skipped:
+                rec[m] = None
+        if snap:
+            snap_fe.append(fe); snap_gen.append(gen); snap_n.append(len(F))
+            snap_F.append(F.astype(np.float32).reshape(len(F), p.n_obj))
         fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
         fh.flush()
         n_records += 1
 
     try:
-        res = minimize(
-            evaluate, bounds=p.bounds, n_objs=p.n_obj,
-            algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens,
-            seed=job.seed,
-            constraints=(p.constraints if p.has_cons else None),
-            # The budget is spent in evaluations, not steps. NIMMO evaluates one
-            # offspring per step and MOEA/D-DRA and -AWA a fifth of the
-            # population, so a budget in generations gave them 2 % and 21 % of
-            # what every other algorithm spent.
-            max_evaluations=job.pop * job.gens,
-            on_generation=on_gen, record_every=spec.record_every,
-            **job.params,
-        )
+        if baseline:
+            res = run_baseline(job.algorithm, evaluate, p.bounds, pop=job.pop,
+                               max_evaluations=budget, seed=job.seed, archive=arc,
+                               on_generation=on_gen,
+                               record_every=(1 if grid is not None else spec.record_every))
+        else:
+            res = minimize(
+                evaluate, bounds=p.bounds, n_objs=p.n_obj,
+                algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens,
+                seed=job.seed,
+                constraints=(p.constraints if p.has_cons else None),
+                # The budget is spent in evaluations, not steps. NIMMO
+                # evaluates one offspring per step and MOEA/D-DRA and -AWA a
+                # fifth of the population, so a budget in generations gave them
+                # 2 % and 21 % of what every other algorithm spent.
+                max_evaluations=budget,
+                # Under the log grid the observer must see every stride of one
+                # population; on_gen itself decides which calls become records.
+                on_generation=on_gen,
+                record_every=(1 if grid is not None else spec.record_every),
+                **job.params,
+            )
     except Exception as e:                       # one bad job must not kill the shard
         fh.close()
         meta.update(status="failed", error=f"{type(e).__name__}: {e}",
@@ -310,6 +432,28 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                            + [f"x{i+1}" for i in range(X.shape[1] if X.ndim == 2 else 0)]) + "\n")
         for i in range(len(F)):
             out.write(",".join(f"{v:.10g}" for v in list(F[i]) + list(X[i])) + "\n")
+
+    if arc is not None:
+        AF, AX, AE = arc.points()
+        with (d / "archive.csv").open("w", encoding="utf-8") as out:
+            out.write(f"# mootation campaign archive v1: every nondominated point evaluated"
+                      f"{' (feasible only)' if p.has_cons else ''}, at most one per cell of a "
+                      f"{arc.delta:g} grid in {arc.normalization}-normalized objectives, "
+                      f"each objective's best point kept whatever its cell holds\n")
+            out.write(",".join([f"f{i+1}" for i in range(p.n_obj)]
+                               + [f"x{i+1}" for i in range(p.n_vars)] + ["extreme"]) + "\n")
+            for i in range(len(AF)):
+                out.write(",".join(f"{v:.10g}" for v in list(AF[i]) + list(AX[i]))
+                          + f",{int(AE[i])}\n")
+        meta["archive"] = dict(arc.info(), extremes=int(AE.sum()), file="archive.csv",
+                               feasible_only=bool(p.has_cons))
+    if snap and snap_F:
+        np.savez_compressed(d / "snapshots.npz", fe=np.asarray(snap_fe, np.int64),
+                            gen=np.asarray(snap_gen, np.int64),
+                            n=np.asarray(snap_n, np.int64), F=np.vstack(snap_F))
+        meta["snapshots"] = {"file": "snapshots.npz", "records": len(snap_F),
+                             "dtype": "float32", "layout": "F rows of every record, "
+                             "stacked in order; n gives each record's row count"}
 
     final = {}
     if F.size and np.all(np.isfinite(F)):

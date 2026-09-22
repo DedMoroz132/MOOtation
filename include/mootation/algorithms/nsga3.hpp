@@ -13,11 +13,11 @@
 //      constraints — the CV tournament of Part II Alg.1), SBX (eta_c=30, pc=1)
 //      + PM (eta_m=20, pm=1/n)
 //   2. R_t = P_t ∪ Q_t → fast non-dominated sort; accept fronts until |S_t| ≥ N
-//   3. Normalize (Alg.2, §IV-C): historical z^min over ∪_τ S_τ; extreme
-//      points — min ASF, accumulated "ever found from the start";
-//      hyperplane intercepts a_i; f^n = (f − z^min)/a (Eq.4);
-//      on degeneracy/a_i ≤ 0 — per-objective fallback to nadir − z^min
-//      ("Special care … nonnegative intercepts", §IV-C)
+//   3. Normalize (§IV-C, Alg.2, Eq.4): z^min; the extreme point of each axis
+//      by minimum ASF; the hyperplane through the M extremes and its
+//      intercepts a_i (Alg.2 line 6); f^n = (f − z^min)/a. Three readings here,
+//      NSGA3-N1..N3 below — the paper contradicts itself twice and leaves the
+//      degenerate case to the implementer.
 //   4. Associate (Alg.3): min perpendicular distance to the reference lines
 //   5. Niching (Alg.4): K picks from F_l by argmin ρ_j (random tie-break)
 //
@@ -29,6 +29,30 @@
 //   - set_reference_points: user-supplied (aspiration) points are used as
 //     is — the mapping onto the normalized hyperplane via Eq.4
 //     (Alg.2 lines 8-9) is not performed; supply points on the unit simplex.
+//   - NSGA3-N1 (reading: the §IV-C text over Algorithm 2, twice). The ideal
+//     point: the text takes z^min over ∪_{τ=0}^t S_τ, Alg.2 line 2 over S_t.
+//     The extreme points: §IV-C's first paragraph finds them among "x ∈ S_t"
+//     and Alg.2 line 4 "of S_t", while its third paragraph says the
+//     normalization "is done at each generation using extreme points ever
+//     found from the start of the simulation". The port keeps both
+//     historically — z^min over every S_τ, and the extremes as the best-ASF
+//     points among the previous extremes and S_t — as the text says.
+//   - NSGA3-N2 (the port's own rule, declared 2026-09-22). All §IV-C says of
+//     the hard cases is "Special care is taken to handle degenerate cases and
+//     nonnegative intercepts" — that care is taken, not what it is — and
+//     Alg.2 line 6 only says "Compute intercepts". The rule here is this
+//     port's: a singular system sends EVERY axis to a_i = nadir_i − z^min_i,
+//     the nadir taken over the current S_t; an intercept a_i <= 1e-12 sends
+//     that axis ALONE. The sentence itself is genuine: it is in the final
+//     journal version, IEEE TEVC 18(4):577-601, Aug. 2014 ("date of current
+//     version July 29, 2014"), §IV-C, the paragraph after Fig. 2 — p. 581 or
+//     582, estimated from the page layout of the converted text because the
+//     PDF was not at hand. A 2026-09 review did not find it in the accepted
+//     manuscript (IEEE early access) or in KanGAL report 2012009; those were
+//     not checked here.
+//   - NSGA3-N3 (the port's value). The ASF of each axis is formed "with a
+//     weight vector close to ith objective axis"; Part I gives no number, and
+//     the off-axis weights here are 1e-6, the usual choice.
 // FIX 2026-07-08 (internal audit — consistency with a_nsga3.hpp; the changes
 //   manifest ONLY with constraint_mode≠NONE / user points, the default
 //   unconstrained path is NOT changed):
@@ -220,10 +244,11 @@ private:
     // ── Normalisation (paper §IV-C, Alg.2) ─────────────────────────────────
     // 1. z^min — the historical ideal point (update_norm_state).
     // 2. Extreme points — historical (update_norm_state).
-    // 3. Hyperplane through the M extremes → intercepts a_i.
-    //    "Special care is taken to handle degenerate cases and nonnegative
-    //    intercepts": degenerate system OR a_i ≤ 0 → per-objective fallback
-    //    to nadir_i − z^min_i (nadir over the current St).
+    // 3. Hyperplane through the M extremes → intercepts a_i (Alg.2 line 6).
+    //    §IV-C says only that "special care is taken to handle degenerate
+    //    cases and nonnegative intercepts"; the care itself is this port's
+    //    (NSGA3-N2): a degenerate system → every axis, an a_i ≤ 0 → that axis,
+    //    falls back to nadir_i − z^min_i (nadir over the current St).
     // 4. f^n_i(s) = (f_i(s) − z^min_i) / a_i   (Eq.4; a_i is already stored in
     //    translated coordinates — z^min is not subtracted a second time).
     std::vector<std::vector<double>>

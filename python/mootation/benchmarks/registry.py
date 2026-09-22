@@ -189,68 +189,99 @@ def _pf_dtlz7(M: int, n: int) -> np.ndarray:
     computed before this date is wrong; the cached reference frame carried
     nadir f_M = 3 for M = 3 where the true value is 6.
 
-    Sampled the standard (PlatEMO) way: a uniform grid over the first M-1
-    objectives, f_M computed, then the nondominated subset kept.
+    Sampled the standard (PlatEMO) way — a uniform grid over the first M-1
+    objectives, f_M computed, the nondominated subset kept — but on the
+    Pareto SET instead of the cube (FIX 2026-09-22). With f_i = x_i and
+    f_M = 2M − sum phi(x_i), phi(x) = x (1 + sin 3 pi x), a point is
+    Pareto-optimal exactly when every x_i is a left record of phi:
+    phi(x_i) > phi(t) for all t < x_i. A smaller t with phi(t) >= phi(x_i)
+    would dominate it, and with every coordinate a record any x' <= x has
+    sum phi(x') < sum phi(x) unless x' = x, so nothing can. The set is a
+    product of intervals, [0, 0.251] u [0.632, 0.859] up to the grid's
+    resolution; x = 1 and x = 1/2 are not in it. The cube grid put most of
+    its points outside: at M = 15 it was {0, 1}^14, all 16 384 points of which
+    the filter kept and only x = 0 is Pareto-optimal; at M = 10, 1973 of the
+    1990 kept points were dominated. So the grid runs over the records, spaced
+    by their measure and with both ends of the set; where that grid would be
+    its corners alone (p = 2, from M = 10) the positions are drawn from the
+    records at random instead, with the corners of the set added — the extremes
+    the frame is taken from.
     """
     import itertools
-    p = max(2, int(round((n * 2) ** (1.0 / (M - 1))))) if M > 1 else 1
-    grid = np.linspace(0.0, 1.0, p)
     if M == 1:
         return np.array([[2.0]])
-    pts = np.asarray(list(itertools.product(grid, repeat=M - 1)), float)
-    # FIX 2026-07-09: at high M the grid degenerated (M=10 gave 2^9 = 512
-    # points), so it is topped up with random cube points to 2n BEFORE the
-    # nondominated filter, from a fixed seed.
-    if len(pts) < 2 * n:
+    p = max(2, int(round((n * 2) ** (1.0 / (M - 1)))))
+    rec = _dtlz7_record_cells()
+    if p >= 3 and p ** (M - 1) <= 4 * n:
+        grid = rec[np.linspace(0, len(rec) - 1, p).round().astype(int)]
+        pts = np.asarray(list(itertools.product(grid, repeat=M - 1)), float)
+    else:
         rng = np.random.default_rng(20260709 + 1000 * M + n)
-        pts = np.vstack([pts, rng.random((2 * n - len(pts), M - 1))])
-    # f_M = (1+g)·h with g = 1 on the front → 2M − Σ f_i·(1+sin(3π f_i))
+        ends = np.array([rec[0], rec[-1]])
+        corners = ends[(np.arange(1 << (M - 1))[:, None] >> np.arange(M - 1)) & 1] \
+            if M - 1 <= 10 else np.vstack([np.full(M - 1, ends[0]), np.full(M - 1, ends[1]),
+                                           ends[0] + np.eye(M - 1) * (ends[1] - ends[0])])
+        pts = np.vstack([corners, _dtlz7_records(rng, max(0, 2 * n - len(corners)), M - 1)])    # f_M = (1+g)·h with g = 1 on the front → 2M − Σ f_i·(1+sin(3π f_i))
     fM = 2.0 * float(M) - np.sum(pts * (1.0 + np.sin(3.0 * math.pi * pts)), axis=1)
     F = np.column_stack([pts, fM])
-    return _nondominated(F)
+    keep = _nondominated_mask(F)
+    pts, F = pts[keep], F[keep]
+    return F[_checked(pts, F, lambda X: _img_dtlz7(M, X), 20260922 + M)]
 
 
-# ── Partially degenerate problems: what these reference fronts are ──────────
+# ── Partially degenerate problems: their FULL fronts ────────────────────────
 # DTLZ5, DTLZ6, MaF6 and WFG3 were designed to have a degenerate (curve-shaped)
 # Pareto front, and the samplers below build exactly that curve. Ishibuchi,
 # Masuda & Nojima, "Pareto Fronts of Many-Objective Degenerate Test Problems",
 # IEEE TEC 20(5):807-813, 2016 (doi:10.1109/TEVC.2015.2505784) showed that the
-# TRUE fronts also have a non-degenerate part, and the thresholds differ:
+# TRUE fronts also have a non-degenerate part (as the 2026-09-22 task sums the
+# paper up; the paper itself is not in the local library):
 #
-#     DTLZ5, DTLZ6, MaF6   non-degenerate part from M >= 4
-#     WFG3                 non-degenerate part from M >= 3
+#     DTLZ5, DTLZ6   non-degenerate part from M >= 4
+#     WFG3           non-degenerate part from M >= 3
+#     MaF6           from M >= 7 — our own analysis, not the paper's; below
 #
-# so at those objective counts the arrays below are a proper SUBSET of the true
-# front. The final non-dominated filter can drop a point but cannot add one.
-# IGD and IGD+ against a subset are still comparable BETWEEN algorithms run
-# here — every algorithm is measured against the same set — but they are not
-# comparable with published numbers, and GD against the true front is smaller.
+# From 2026-09-22 those sizes use their FULL fronts, built and verified by
+# fronts_full.py and shipped in _fronts/ (see _attach_full_fronts at the end of
+# this file); the curve samplers below remain for the smaller sizes, where the
+# curve IS the whole front — which the construction confirms: at DTLZ5_3D and
+# WFG3_2D it finds no point off the curve at all.
 #
-# The obvious repair does not work, and it was tried (2026-09-09): sampling the
-# transition space and keeping the non-dominated points yields the front OF THE
-# SAMPLE, which contains points that are merely unbeaten within it. On WFG3 at
-# M = 2, where the front is known to be exactly the degenerate curve, that
-# procedure returned 173 of 300 sampled points off the curve — a contaminated
-# reference set, which is worse than a subset, because a point that is not on
-# the front is unreachable and shifts every algorithm's IGD by an unknown
-# amount. A correct repair is one of:
-#   * the explicit characterisation of the non-degenerate part (the paper
-#     writes it out for 3-objective WFG3), or
-#   * the constraints that make the problems genuinely degenerate, so that
-#     these samplers become right: Saxena, Duro, Tiwari, Deb & Zhang for
-#     DTLZ5/DTLZ6, Ishibuchi et al. for WFG3.
-# Until one of them is implemented the limitation is stated here, in
-# docs/running.md, and at run time through DEGENERATE_SUBSET_WARNING below.
-
-# Problems whose reference front is the degenerate part only, and the objective
-# count from which that becomes a strict subset of the true front.
-DEGENERATE_SUBSET_FROM = {"DTLZ5": 4, "DTLZ6": 4, "MaF6": 4, "WFG3": 3}
+# The naive repair was tried first (2026-09-09) and does not work: sampling the
+# transition space and keeping the nondominated points yields the front OF THE
+# SAMPLE — on WFG3 at M = 2, 173 of 300 sampled points off the curve. What
+# fronts_full.py adds is the verification: every point must survive an
+# independent sample of 10^6, a local search for a dominating point and an
+# exact test against every attainable point, which is what removes those
+# points; see its header.
+#
+# DEGENERATE_SUBSET_FROM still names the sizes at which the old curve would be
+# a subset, and degenerate_subset_note warns only where a size has no shipped
+# full front: WFG3 at six and ten, DTLZ5 and DTLZ6 at ten and fifteen, MaF6 at
+# fifteen, where a build in pure Python runs for hours (make_fronts builds one
+# on request; the six-objective ones took about six hours each).
+#
+# MaF6 is NOT like DTLZ5 here, although it is DTLZ5(I, M) with I = 2: its
+# objectives carry (1 + 100 g) where DTLZ5's carry (1 + g), while the angles
+# still move with g alone. Leaving the curve then pays off only where an
+# objective multiplies many cosines: at g = 2.5 each angle can shrink its
+# factor from 0.707 to 0.2225, and 0.2225^k * 251 < 0.707^k needs k >= 5, i.e.
+# M >= 7. Measured 2026-09-22: at M = 5 the build finds no point off the curve
+# at all, and at M = 8 the front runs to the bound of g like DTLZ5's (f_7 up
+# to 244.7). (Ishibuchi et al. 2016 predates MaF, 2017; the old entry
+# "MaF6: 4" was carried over from DTLZ5.)
+DEGENERATE_SUBSET_FROM = {"DTLZ5": 4, "DTLZ6": 4, "MaF6": 7, "WFG3": 3}
 
 _DEGENERATE_WARNED: set[str] = set()
+
+# Problem keys whose reference front is the full one (fronts_full).
+FULL_FRONT: set[str] = set()
 
 
 def degenerate_subset_note(name: str) -> str | None:
     """The caveat for `name`, or None when its reference front is exact."""
+    if name in FULL_FRONT:
+        return None
     stem = name.split("_")[0]
     m_from = DEGENERATE_SUBSET_FROM.get(stem)
     if m_from is None:
@@ -267,8 +298,7 @@ def degenerate_subset_note(name: str) -> str | None:
             f"with published numbers.")
 
 
-def _nondominated(F: np.ndarray) -> np.ndarray:
-    """Keep the nondominated points (minimization)."""
+def _nondominated_mask(F: np.ndarray) -> np.ndarray:
     n = len(F)
     keep = np.ones(n, bool)
     for i in range(n):
@@ -277,7 +307,132 @@ def _nondominated(F: np.ndarray) -> np.ndarray:
         dom = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
         if np.any(dom):
             keep[i] = False
-    return F[keep]
+    return keep
+
+
+def _nondominated(F: np.ndarray) -> np.ndarray:
+    """Keep the nondominated points (minimization)."""
+    return F[_nondominated_mask(F)]
+
+
+# ---- a sampled front must be Pareto-optimal, not only unbeaten in the sample
+def _strictly_dominated_by(C: np.ndarray, V: np.ndarray, block: int = 256) -> np.ndarray:
+    out = np.zeros(len(C), bool)
+    for a in range(0, len(C), block):
+        c = C[a:a + block, None, :]
+        out[a:a + block] = np.any(np.all(V[None] <= c, axis=2) & np.any(V[None] < c, axis=2),
+                                  axis=1)
+    return out
+
+
+def _checked(X: np.ndarray, F: np.ndarray, images, seed: int,
+             samples: int = 20_000) -> np.ndarray:
+    """Mask of the rows of a sampled front that nothing outside the sample beats.
+
+    DTLZ7, WFG1, WFG2 — and MaF7 and MaF11, which share their fronts — and ZDT3
+    sample the front as the nondominated images of a grid of position vectors
+    X. Where the front is disconnected that keeps grid points that merely no
+    other GRID point beats. Measured 2026-09-22, n = 1000 against 100 000
+    fresh front points: 150 of WFG2_3D's 416 reference points were dominated
+    (by up to 0.38 in an objective spanning 2..6), 256 of WFG2_4D's 700 (1.13),
+    32 of WFG2_6D's 1024 (5.2), 140 of WFG2_10D's 844 (11.7), 164 of
+    DTLZ7_10D's 1990 (1.5), 7 of DTLZ7_3D's 529 (0.01); WFG1 had none.
+    Each row is checked against `samples` fresh position vectors and its own
+    neighbours — every position moved alone, both ways, by 0.05 down to 0.001,
+    and 32 Gaussian moves of all of them at once — and dropped when any of
+    them strictly dominates it. `images(X)` maps positions to objectives. The
+    draws come from their own generator, so a front in which nothing is
+    dropped is bit-identical to the unchecked one.
+    """
+    rng = np.random.default_rng(seed)
+    d = X.shape[1]
+    bad = _strictly_dominated_by(F, images(rng.random((samples, d))))
+    moves = []
+    for step in (0.05, 0.02, 0.01, 0.005, 0.002, 0.001):
+        for j in range(d):
+            for sgn in (-1.0, 1.0):
+                Q = X.copy()
+                Q[:, j] = np.clip(Q[:, j] + sgn * step, 0.0, 1.0)
+                moves.append(Q)
+    for s in (0.2, 0.1, 0.05, 0.02):
+        for _ in range(8):
+            moves.append(np.clip(X + rng.normal(0.0, s, X.shape), 0.0, 1.0))
+    for Q in moves:
+        G = images(Q)
+        bad |= np.all(G <= F, axis=1) & np.any(G < F, axis=1)
+    return ~bad
+
+
+def _cached_front(fn):
+    """Sample a front once per arguments and process; every caller gets a copy.
+
+    A campaign asks for the reference front on every run, and the check above
+    costs seconds.
+    """
+    import functools
+    cached = functools.lru_cache(maxsize=None)(fn)
+
+    @functools.wraps(fn)
+    def front(*args):
+        return cached(*args).copy()
+    return front
+
+
+def _dtlz7_records(rng, k: int, d: int) -> np.ndarray:
+    """k points of DTLZ7's Pareto set in d positions: every coordinate a left
+    record of phi(x) = x (1 + sin 3 pi x) (see _pf_dtlz7), drawn uniformly."""
+    lo = _dtlz7_record_cells()
+    X = lo[rng.integers(0, len(lo), (k, d))] + rng.random((k, d)) * _DTLZ7_CELL
+    return np.minimum(X, 1.0)
+
+
+_DTLZ7_CELL = 1.0 / 200_000
+
+
+def _dtlz7_record_cells() -> np.ndarray:
+    """Left ends of the cells of a 2e5 grid on [0, 1] where phi is a left record."""
+    t = np.linspace(0.0, 1.0, 200_001)
+    phi = t * (1.0 + np.sin(3.0 * math.pi * t))
+    ok = phi >= np.maximum.accumulate(phi)
+    return t[:-1][ok[:-1]]
+
+
+def _img_dtlz7(M: int, X: np.ndarray) -> np.ndarray:
+    F = np.empty((len(X), M))
+    F[:, :M - 1] = X
+    F[:, M - 1] = 2.0 * M - np.sum(X * (1.0 + np.sin(3.0 * math.pi * X)), axis=1)
+    return F
+
+
+def _img_wfg_convex(M: int, X: np.ndarray, last: np.ndarray) -> np.ndarray:
+    """f_m = 2m h_m with WFG's convex h_1..h_M-1 and the given h_M."""
+    s = np.sin(math.pi * X / 2.0)
+    c = np.cos(math.pi * X / 2.0)
+    H = np.empty((len(X), M))
+    H[:, 0] = np.prod(1.0 - c, axis=1)
+    for m in range(1, M - 1):
+        H[:, m] = np.prod(1.0 - c[:, :M - 1 - m], axis=1) * (1.0 - s[:, M - 1 - m])
+    H[:, M - 1] = last
+    return H * (2.0 * np.arange(1, M + 1, dtype=float))
+
+
+def _img_wfg1(M: int, X: np.ndarray) -> np.ndarray:
+    x1 = X[:, 0]
+    return _img_wfg_convex(M, X, 1.0 - x1 - np.cos(10.0 * math.pi * x1 + math.pi / 2.0)
+                           / (10.0 * math.pi))
+
+
+def _img_wfg2(M: int, X: np.ndarray) -> np.ndarray:
+    x1 = X[:, 0]
+    return _img_wfg_convex(M, X, 1.0 - x1 * np.cos(5.0 * math.pi * x1) ** 2)
+
+
+def _img_zdt3(X: np.ndarray) -> np.ndarray:
+    f1 = X[:, 0]
+    return np.column_stack([f1, 1.0 - np.sqrt(f1) - f1 * np.sin(10.0 * math.pi * f1)])
+
+
+_pf_dtlz7 = _cached_front(_pf_dtlz7)                # defined above, before the helpers
 
 
 # ---- WFG base fronts: f_m = 2m*h_m, with x_M = 0 on the front -------
@@ -288,6 +443,7 @@ def _pf_wfg_concave(M: int, n: int) -> np.ndarray:
     return d * scale
 
 
+@_cached_front
 def _pf_wfg1(M: int, n: int) -> np.ndarray:
     """WFG1 (Huband et al. 2006, Table XIV): h_{1..M-1} = convex_m and
     h_M = mixed_M with alpha = 1, A = 5, i.e.
@@ -309,9 +465,13 @@ def _pf_wfg1(M: int, n: int) -> np.ndarray:
         h[M - 1] = 1.0 - x1 - math.cos(10.0 * math.pi * x1 + math.pi / 2.0) / (10.0 * math.pi)
         F[r] = h
     scale = 2.0 * np.arange(1, M + 1, dtype=float)
-    return _nondominated(F * scale)
+    F = F * scale
+    keep = _nondominated_mask(F)
+    X, F = X[keep], F[keep]
+    return F[_checked(X, F, lambda Q: _img_wfg1(M, Q), 20260922 + 100 + M)]
 
 
+@_cached_front
 def _pf_wfg2(M: int, n: int) -> np.ndarray:
     """WFG2: convex and disconnected; the last objective is h_M = 1 - x1*cos^2(5*pi*x1)."""
     X = _dd_xset(M, n)
@@ -326,7 +486,10 @@ def _pf_wfg2(M: int, n: int) -> np.ndarray:
         h[M - 1] = 1.0 - x1 * (math.cos(5.0 * math.pi * x1) ** 2)
         F[r] = h
     scale = 2.0 * np.arange(1, M + 1, dtype=float)
-    return _nondominated(F * scale)
+    F = F * scale
+    keep = _nondominated_mask(F)
+    X, F = X[keep], F[keep]
+    return F[_checked(X, F, lambda Q: _img_wfg2(M, Q), 20260922 + 200 + M)]
 
 
 def _pf_wfg3(M: int, n: int) -> np.ndarray:
@@ -371,11 +534,13 @@ def _pf_zdt2(n: int) -> np.ndarray:
     return np.column_stack([f1, 1.0 - f1 ** 2])
 
 
+@_cached_front
 def _pf_zdt3(n: int) -> np.ndarray:
     f1 = np.linspace(0.0, 1.0, 4 * n)
     f2 = 1.0 - np.sqrt(f1) - f1 * np.sin(10.0 * math.pi * f1)
     F = np.column_stack([f1, f2])
-    return _nondominated(F)[:, :]
+    keep = _nondominated_mask(F)
+    return F[keep][_checked(f1[keep, None], F[keep], _img_zdt3, 20260922)]
 
 
 def _pf_zdt4(n: int) -> np.ndarray:
@@ -1379,6 +1544,28 @@ _register_dtlz_variants()
 _register_maf_fix()
 _register_bt()
 _register_ipolygon()
+
+
+def _attach_full_fronts():
+    """Give the partially degenerate problems their full fronts (fronts_full).
+
+    The reference front becomes the stored, verified set — thinned by taking
+    its first n points, since it is stored in DSS order. Nothing is read here,
+    only checked for: the file loads on the first pareto_front() call, and the
+    frame (which moves: WFG3_3D's first objective now reaches about 3, not 1)
+    comes from _refframe_cache.json on get(), where fronts_full.py writes the
+    whole verified set's ideal and nadir.
+    """
+    from . import fronts_full as _ff
+    for name, sizes in _ff.SIZES.items():
+        for M in sizes:
+            key = f"{name}_{M}D"
+            if key in PROBLEMS and _ff.has_front(name, M):
+                PROBLEMS[key].pareto_front = (lambda n, _n=name, _M=M: _ff.front(_n, _M, n))
+                FULL_FRONT.add(key)
+
+
+_attach_full_fronts()
 
 
 # ── HV/IGD reference frame = the sampled reference PF (PlatEMO convention) ──

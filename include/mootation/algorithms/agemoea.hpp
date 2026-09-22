@@ -51,7 +51,30 @@
 //     set actually being built. Note the Alg.2 line-13 form is also degenerate
 //     at the last step, where Ω̄ = {S} and its first term is 0 by convention or
 //     undefined by inspection;
-//   - guards beyond the paper: clamp f^n >= 0, sum_C in (0,M), p in [0.1, 20],
+//   - AGE-2 (FIXED 2026-09-22), p when Eq.8 has no value. §3.3 says of the
+//     central point: "the coordinates of C cannot be all zero ... nor all equal
+//     to ones ..., the summation ΣC_i is always greater than zero and lower
+//     than M. This implies that the denominator in Equation 8 is always > 0."
+//     That holds when F1 is normalized into [0,1]^M, which §3.2 takes for
+//     granted ("the objectives for F1 take values in [0, 1]"), but the
+//     hyperplane intercepts built here from the ASF extremes do not guarantee
+//     it: on degenerate or irregular fronts an intercept can fall short of a
+//     point's coordinate, C lands outside the unit box, and ΣC >= M. Eq.8's
+//     denominator is then zero or negative. This port used to clamp ΣC to
+//     M - 1e-10, which drove p to the 20 cap — the most extreme geometry it can
+//     express, chosen by a guard rather than by the front — while the other
+//     "no geometry" branch of the same function, no usable central point,
+//     already answered p = 1. Both now answer p = 1, the linear front and the
+//     neutral choice between convex and concave. The paper gives no rule for a
+//     case it asserts cannot happen, so this is a declared reading; it is also
+//     the value a 2026-09 comparison reports for the authors' code.
+//   - AGE-3 (FIXED 2026-09-22), a single extreme point. When one solution is
+//     the argmax of every normalized objective — duplicates in F1, or axes
+//     whose range is zero — Σ starts with ONE member, the second minimum of
+//     the diversity does not exist, and it used to stay at DBL_MAX: the first
+//     candidate in index order won with a score of about DBL_MAX, ranking it
+//     with the extremes. The distance to that one member now counts twice.
+//   - guards beyond the paper: clamp f^n >= 0, p in [0.1, 20] for a valid ΣC,
 //     proximity >= 1e-14 — inactive on regular data.
 // EXTENSIONS BEYOND THE PAPER: constraint_mode FEASIBILITY (CDP; off by
 //   default); mixed real+binary genome.
@@ -270,13 +293,16 @@ private:
         const auto& C = fn_F1[best_idx];
         double sum_C = 0.0;
         for (int j = 0; j < m; ++j) sum_C += C[j];
-        // Guard: sum_C must be in (0, M) for log to be valid.
-        sum_C = std::max(sum_C, 1e-10);
-        sum_C = std::min(sum_C, static_cast<double>(m) - 1e-10);
+        // AGE-2: Eq.8 is defined only for 0 < ΣC < M, which §3.3 asserts always
+        // holds. It can fail here — see the header — and outside that interval
+        // there is no geometry to estimate, so the answer is the linear one,
+        // p = 1, as in the no-central-point branch above.
+        if (!(sum_C > 1e-12) || !(sum_C < static_cast<double>(m) - 1e-12)) return 1.0;
         double log_M    = std::log(static_cast<double>(m));
         double log_sumC = std::log(sum_C);
         double p = log_M / (log_M - log_sumC);
-        // Clamp to reasonable range.
+        // Numerical guard only: a valid ΣC within 1e-12 of M still gives a p
+        // in the thousands.
         return std::max(0.1, std::min(p, 20.0));
     }
 
@@ -338,7 +364,9 @@ private:
                         if (d_val < min1) { min2 = min1; min1 = d_val; }
                         else if (d_val < min2) { min2 = d_val; }
                     }
-                    double diversity = min1 + min2;
+                    // AGE-3: with a single selected solution there is no
+                    // second minimum; the one distance counts twice.
+                    double diversity = min1 + (sigma.size() > 1 ? min2 : min1);
                     double prox_oi   = std::max(prox[oi], 1e-14);
                     double value     = diversity / prox_oi;
                     if (value > best_val) { best_val = value; best_idx = oi; }
