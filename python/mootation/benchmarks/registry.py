@@ -48,6 +48,7 @@ from .bt      import BT_SPECS, N as BT_N
 from . import polygon_ishibuchi as _ipoly
 from . import zcat as _zcat
 from . import bbob_biobj as _bbobbiobj
+from . import uninformative as _uninf
 from . import pareto_sets as _psets
 
 
@@ -79,6 +80,10 @@ class BenchProblem:
     # Variables whose distance wraps with the period of their range: the
     # problem reads them mod 1 (shiftDTLZ's distance variables).
     cyclic_vars: Tuple[int, ...] = ()
+    # A problem whose values depend on the run, not only on x, hands each run
+    # its own evaluator: make_evaluator(seed) -> callable (uninformative.py).
+    # None for every ordinary problem, where `evaluate` is the function.
+    make_evaluator: Optional[Callable[[int], Callable]] = None
 
     @property
     def fevals_max(self) -> int:
@@ -1401,6 +1406,19 @@ def _register_bbob_biobj():
                 pareto_front=None)
 
 
+def _register_uninformative():
+    pop, ng = _budget(2)
+    for n in _uninf.SIZES:
+        key = _uninf.name(n)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=n, bounds=[(0.0, 1.0)] * n, n_obj=2,
+            evaluate=_uninf.evaluate_by_x, constraints=_no_cons,
+            hv_ref_raw=(1.1, 1.1), hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
+            ideal=(0.0, 0.0), nadir=(1.0, 1.0),
+            pop_size=pop, n_gen=ng, K_runs=30, has_cons=False,
+            pareto_front=None, make_evaluator=_uninf.Evaluator)
+
+
 # =============================================================
 #  Polygon × M={3,4,5,6}
 # =============================================================
@@ -1529,6 +1547,7 @@ _register_dtlz()
 _register_shifted_dtlz()
 _register_zcat()
 _register_bbob_biobj()
+_register_uninformative()
 _register_polygon()
 _maf_register()
 _register_mop()

@@ -254,3 +254,122 @@ def format_ecdf(rep: dict) -> str:
         lines.append(f"{mark_budget(a)[:16]:<16}" + "".join(
             f"{s:>9.2f}" for s in rep["algorithms"][a]["share"]))
     return "\n".join(lines)
+
+
+# ── structural bias (task 2, A3) ─────────────────────────────────────────────
+def _chi2_sf(x: float, dof: int) -> float:
+    """P(chi^2_dof >= x): the regularized upper incomplete gamma Q(dof/2, x/2),
+    by its series below a + 1 and its continued fraction above (Numerical
+    Recipes §6.2), to about 1e-12."""
+    a, z = dof / 2.0, x / 2.0
+    if z <= 0.0:
+        return 1.0
+    gln = math.lgamma(a)
+    if z < a + 1.0:
+        term = total = 1.0 / a
+        ap = a
+        for _ in range(1000):
+            ap += 1.0
+            term *= z / ap
+            total += term
+            if abs(term) < abs(total) * 1e-15:
+                break
+        return max(0.0, 1.0 - total * math.exp(-z + a * math.log(z) - gln))
+    b = z + 1.0 - a
+    c = 1.0 / 1e-300
+    d = 1.0 / b
+    h = d
+    for i in range(1, 1000):
+        an = -i * (i - a)
+        b += 2.0
+        d = an * d + b
+        d = 1e-300 if abs(d) < 1e-300 else d
+        c = b + an / c
+        c = 1e-300 if abs(c) < 1e-300 else c
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 1e-15:
+            break
+    return min(1.0, math.exp(-z + a * math.log(z) - gln) * h)
+
+
+def _final_variables(run_dir, m: int, n: int):
+    from .campaign import _read_points
+    from pathlib import Path
+    _, X = _read_points(Path(run_dir) / "final.csv", m, n)
+    return X
+
+
+def structural_bias(rows: list, *, bins: int = 10) -> dict:
+    """Where each algorithm's final populations sit in the box, per problem.
+
+    For the uninformative problems (benchmarks/uninformative.py) any
+    preference is the algorithm's own. Per (problem, algorithm), over every
+    finished run's final population, variables mapped to [0, 1] by the bounds:
+      chi2       per variable, 10 equal bins against uniform, then the mean over
+                 the variables; p_min the smallest p-value (9 degrees of freedom)
+      edge       share of coordinates within 10 % of a bound (uniform: 0.2)
+      centre     share in the central 20 % of the range (uniform: 0.2)
+      edge_sd, centre_sd   their spread over the runs
+    The points of one population are not independent draws, so the p-values
+    overstate the evidence; read them as a scale, and the shares as the effect.
+    """
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    groups: dict = {}
+    for r in rows:
+        if r.get("status") != "done":
+            continue
+        groups.setdefault((r["problem"], r["algorithm"]), []).append(r)
+    out: dict = {}
+    for (prob, alg), runs in sorted(groups.items()):
+        p = bench_get(prob)
+        lo = np.array([b[0] for b in p.bounds], float)
+        hi = np.array([b[1] for b in p.bounds], float)
+        U_all, edge_runs, centre_runs = [], [], []
+        for r in runs:
+            X = _final_variables(r["dir"], p.n_obj, p.n_vars)
+            if X is None or not len(X):
+                continue
+            U = np.clip((X - lo) / (hi - lo), 0.0, 1.0)
+            U_all.append(U)
+            edge_runs.append(float(np.mean((U < 0.1) | (U > 0.9))))
+            centre_runs.append(float(np.mean((U >= 0.4) & (U < 0.6))))
+        if not U_all:
+            continue
+        U = np.vstack(U_all)
+        idx = np.minimum((U * bins).astype(int), bins - 1)
+        chi, pmin = [], 1.0
+        for j in range(U.shape[1]):
+            counts = np.bincount(idx[:, j], minlength=bins)
+            expected = len(U) / bins
+            c2 = float(((counts - expected) ** 2).sum() / expected)
+            chi.append(c2)
+            pmin = min(pmin, _chi2_sf(c2, bins - 1))
+        out[(prob, alg)] = {
+            "runs": len(U_all), "points": int(len(U)), "chi2": float(np.mean(chi)),
+            "p_min": pmin, "edge": float(np.mean((U < 0.1) | (U > 0.9))),
+            "centre": float(np.mean((U >= 0.4) & (U < 0.6))),
+            "edge_sd": float(np.std(edge_runs)), "centre_sd": float(np.std(centre_runs)),
+        }
+    return out
+
+
+def format_bias(rep: dict) -> str:
+    lines = ["where the final populations sit, per problem: 10 bins per variable against "
+             "uniform (chi2: mean over the variables, p_min: the smallest p, 9 dof), the "
+             "share of coordinates within 10 % of a bound and in the central 20 % (both 0.2 "
+             "when uniform), their spread over the runs; strongest bias first"]
+    probs = sorted({p for p, _ in rep})
+    for prob in probs:
+        rows = [(a, e) for (p, a), e in rep.items() if p == prob]
+        rows.sort(key=lambda t: -(abs(t[1]["edge"] - 0.2) + abs(t[1]["centre"] - 0.2)))
+        lines.append(f"\n{prob}")
+        lines.append(f"  {'algorithm':<20}{'runs':>5}{'chi2':>10}{'p_min':>10}"
+                     f"{'edge':>8}{'sd':>6}{'centre':>8}{'sd':>6}")
+        for a, e in rows:
+            lines.append(f"  {mark_budget(a)[:20]:<20}{e['runs']:>5}{e['chi2']:>10.1f}"
+                         f"{e['p_min']:>10.2g}{e['edge']:>8.3f}{e['edge_sd']:>6.3f}"
+                         f"{e['centre']:>8.3f}{e['centre_sd']:>6.3f}")
+    return "\n".join(lines)

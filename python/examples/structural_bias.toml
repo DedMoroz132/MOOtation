@@ -1,0 +1,117 @@
+# Structural bias: where does each algorithm put its population when the
+# objectives say nothing? (Task 2 of 2026-09-23, A3.)
+#
+# On the two uninformative problems every objective value is a U(0, 1) draw
+# that does not depend on x (benchmarks/uninformative.py), so no region of the
+# box is better than another and any preference the final populations show —
+# piled at the bounds, drawn to the centre — is the algorithm's, and it will
+# carry it onto every other problem. Thirty seeds at 10 000 evaluations, in
+# two and ten variables:
+#
+#   python -m mootation.run.campaign structural_bias.toml --workers 16
+#   python -m mootation.run.campaign structural_bias.toml --bias
+#
+# About 3 700 jobs of a few seconds each: roughly an hour on 16 cores. The
+# report gives, per problem and algorithm, a chi-square against uniform over
+# ten bins per variable and the shares of coordinates within 10 % of a bound
+# and in the central 20 % (0.2 each when uniform). The method simplifies
+# Kudela, van Stein, Bäck & Kononova (GECCO 2026), who ran 120 PlatEMO
+# algorithms on five such problems through the BIAS toolbox.
+#
+# The algorithm list is campaign_all's; keep the two in step.
+
+algorithms = [
+    # Pareto dominance and diversity
+    { name = "nsga2",      pop = 0, gens = 0 },
+    { name = "spea2",      pop = 0, gens = 0 },
+    { name = "spea2_sde",  pop = 0, gens = 0 },
+    { name = "grea",       pop = 0, gens = 0 },
+    { name = "vaea",       pop = 0, gens = 0 },
+    { name = "agemoea",    pop = 0, gens = 0 },
+    { name = "etea",       pop = 0, gens = 0 },
+    # Reference points (NSGA-III family)
+    { name = "nsga3",      pop = 0, gens = 0 },
+    { name = "a_nsga3",    pop = 0, gens = 0 },
+    { name = "theta_dea",  pop = 0, gens = 0 },
+    { name = "ar_moea",    pop = 0, gens = 0 },
+    # Decomposition and region division (MOEA/D family)
+    { name = "moead",      pop = 0, gens = 0 },
+    { name = "moead_de",   pop = 0, gens = 0 },
+    { name = "moead_dra",  pop = 0, gens = 0 },
+    { name = "moead_dd",   pop = 0, gens = 0 },
+    { name = "moead_awa",  pop = 0, gens = 0 },
+    { name = "adaw",       pop = 0, gens = 0 },
+    { name = "moead_m2m",  pop = 0, gens = 0 },
+    { name = "moead_am2m", pop = 0, gens = 0 },
+    { name = "sms_m2m",    pop = 0, gens = 0 },
+    { name = "moead_ds",   pop = 0, gens = 0 },
+    { name = "rd_emo",     pop = 0, gens = 0 },
+    { name = "aprd",       pop = 0, gens = 0 },
+    { name = "liu_gu2011", pop = 0, gens = 0 },
+    { name = "isde_rd",    pop = 0, gens = 0 },
+    { name = "dhea",       pop = 0, gens = 0 },
+    { name = "hlmea",      pop = 0, gens = 0 },
+    # Indicator-based
+    { name = "ibea_eplus", pop = 0, gens = 0 },
+    { name = "ibea_hd",    pop = 0, gens = 0 },
+    { name = "mibea",      pop = 0, gens = 0 },
+    { name = "r2ibea",     pop = 0, gens = 0 },
+    { name = "hype",       pop = 0, gens = 0 },
+    { name = "mombi2",     pop = 0, gens = 0 },
+    { name = "nimmo",      pop = 0, gens = 0 },
+    { name = "irea",       pop = 0, gens = 0 },
+    { name = "edv",        pop = 0, gens = 0 },
+    { name = "if_maoea",   pop = 0, gens = 0 },
+    { name = "maoea_iamd", pop = 0, gens = 0 },
+    # Reference vectors and angles
+    { name = "rvea",       pop = 0, gens = 0 },
+    { name = "maoeaarv",   pop = 0, gens = 0 },
+    { name = "mbra",       pop = 0, gens = 0 },
+    { name = "nrv_moea",   pop = 0, gens = 0 },
+    { name = "dea_gng",    pop = 0, gens = 0 },
+    { name = "srv",        pop = 0, gens = 0 },
+    { name = "srv_nsga3",  pop = 0, gens = 0 },
+    # Clustering
+    { name = "camoea",     pop = 0, gens = 0 },
+    { name = "cava_moea",  pop = 0, gens = 0 },
+    { name = "maoea_ac",   pop = 0, gens = 0 },
+    { name = "maoea_c",    pop = 0, gens = 0 },
+    { name = "maoea_3c",   pop = 0, gens = 0 },
+    { name = "emyo_c",     pop = 0, gens = 0 },
+    { name = "crea",       pop = 0, gens = 0 },
+    { name = "dcea",       pop = 0, gens = 0 },
+    { name = "hcca",       pop = 0, gens = 0 },
+    { name = "lis_lcs",    pop = 0, gens = 0 },
+    { name = "clia",       pop = 0, gens = 0 },
+    # Archives
+    { name = "two_arch2",  pop = 0, gens = 0 },
+    { name = "naemo",      pop = 0, gens = 0 },
+    # Baselines: blind sampling with the run archive, answered by DSS. The
+    # floor every algorithm has to clear (docs/running.md, "Baselines").
+    { name = "random_search", pop = 0, gens = 0 },
+    { name = "sobol_search",  pop = 0, gens = 0 },
+    # Ablations: NSGA-II's operators with random survival, and GSEMO (the
+    # nondominated set, one mutation per evaluation). What selection, and a
+    # diversity mechanism on top of it, are worth (docs/running.md).
+    { name = "random_selection_ea", pop = 0, gens = 0 },
+    { name = "gsemo",               pop = 0, gens = 0 },
+]
+
+[run]
+name = "structural_bias"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+runs = 30
+problems = ["uninformative_n02_2D", "uninformative_n10_2D"]
+
+[campaign]
+out           = "results/{name}"
+budget_fe     = 10000
+record_grid   = "log"
+metrics       = ["nd_share"]
+final_metrics = ["nd_share", "n_final"]
+# Nothing to archive: the answer here is where the population is.
+archive       = false

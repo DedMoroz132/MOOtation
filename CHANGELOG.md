@@ -108,6 +108,15 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Structural bias (task 2, A3): `uninformative_n02_2D` and
+  `uninformative_n10_2D`, whose objective values are U(0, 1) draws from the
+  run's seed and the evaluation's number, independent of x
+  (`benchmarks/uninformative.py`; `BenchProblem.make_evaluator` gives each
+  campaign run its own stream), `--bias` on the campaign command line (per
+  problem and algorithm: a chi-square against uniform over ten bins per
+  variable, and the shares near the bounds and in the centre) and
+  `python/examples/structural_bias.toml`, every algorithm on both at thirty
+  seeds. The registry holds 436 problems in 15 families.
 - `bound_repair`: what an operator that can leave the box does with the
   variables it put outside — `clip`, `reflect`, `random`, `midpoint`,
   `resample`, `wrap` or `native` (`operators/bound_repair.hpp`) — a knob of

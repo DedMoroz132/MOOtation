@@ -385,10 +385,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         return all(c <= 0.0 for c in p.constraints(x))
 
     fe = 0
+    # a problem whose values depend on the run (uninformative.py) gets its
+    # evaluator from the run's seed; every other problem is its `evaluate`
+    objective = (p.make_evaluator(job.seed) if getattr(p, "make_evaluator", None)
+                 else p.evaluate)
+
     def evaluate(x):
         nonlocal fe
         fe += 1
-        f = p.evaluate(x)
+        f = objective(x)
         if arc is not None and (not p.has_cons or feasible(x)):
             arc.add(f, x)
         return f
@@ -1305,6 +1310,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ecdf", metavar="METRIC",
                     help="print the runtime ECDF of METRIC over (run, target) pairs, targets "
                          "at fixed distances from the best known value, and exit")
+    ap.add_argument("--bias", action="store_true",
+                    help="print where each algorithm's final populations sit in the box: "
+                         "per variable a chi-square against uniform over 10 bins, and the "
+                         "shares near the bounds and in the centre (the uninformative "
+                         "problems make any preference the algorithm's own)")
     ap.add_argument("--interpolation", choices=("step", "linear"), default="step",
                     help="with --ecdf: a target reached between two records is charged to the "
                          "later record (step, the default) or interpolated (linear)")
@@ -1398,8 +1408,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"recomputed {', '.join(names)} ({args.scenario}): {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
     rows = None
-    if any(v is not None for v in (args.ranks, args.compare, args.gap, args.zero_share,
-                                   args.ecdf)):
+    if args.bias or any(v is not None for v in (args.ranks, args.compare, args.gap,
+                                                args.zero_share, args.ecdf)):
         from . import report as R
         rows = scenario_rows(scan_results(root), args.scenario)
         if only_problems is not None:
@@ -1437,6 +1447,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.ecdf:
                 print(R.format_ecdf(R.ecdf_report(rows, args.ecdf,
                                                   interpolation=args.interpolation)))
+            if args.bias:
+                print(R.format_bias(R.structural_bias(rows)))
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 1

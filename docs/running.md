@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 58 algorithm names |
-| `--problems` | list the 434 benchmark problems (needs NumPy) |
+| `--problems` | list the 436 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -156,7 +156,8 @@ day-long run.
 ## The built-in suites
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
-BT: 434 problems across 14 families, each with bounds, an evaluator, the
+BT, and two uninformative probes: 436 problems across 15 families, each
+with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
 them instead of an external program:
@@ -402,6 +403,25 @@ the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`
 refuses them; `--compare survival_share` and the other tables read them.
+
+**Structural bias.** Where does an algorithm put its population when the
+objectives say nothing? On `uninformative_n02_2D` and `uninformative_n10_2D`
+every objective value is a U(0, 1) draw that does not depend on x — drawn
+from the run's seed and the evaluation's number, so a campaign run gets its
+own stream (`BenchProblem.make_evaluator`) — and no region of the box is
+better than another. A final population piled at the bounds or drawn to the
+centre shows a preference of the algorithm's own, which it carries onto every
+problem; Kudela, van Stein, Bäck & Kononova (GECCO 2026) found such pulls in
+120 PlatEMO algorithms and traced the one towards the bounds to the default
+clamp. [`python/examples/structural_bias.toml`](../python/examples/structural_bias.toml)
+runs every algorithm on both, thirty seeds at 10 000 evaluations (about an
+hour on 16 cores), and `--bias` reads it: per problem and algorithm, a
+chi-square against uniform over ten bins per variable (the mean over the
+variables, and the smallest p-value) and the shares of coordinates within
+10 % of a bound and in the central 20 % — 0.2 each when uniform — with their
+spread over the runs. The points of one population are not independent
+draws, so the p-values overstate the evidence: read them as a scale and the
+shares as the effect.
 
 **The archive scenario.** With the run archive on (the default), every run
 also stores `final_archive` in its `meta.json`: the final indicators once more,

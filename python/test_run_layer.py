@@ -2441,6 +2441,104 @@ operator_stats = STATS
         assert code == 0
 
 
+# ── task 2, step 2: structural bias ─────────────────────────────────────────
+
+@test
+def uninformative_values_come_from_the_seed_and_the_count_not_from_x():
+    if not _have_numpy():                 # the benchmarks package needs NumPy
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks.uninformative import Evaluator, evaluate_by_x, name, value
+    a, b = Evaluator(11), Evaluator(11)
+    fa = [a([0.1, 0.2]) for _ in range(50)]
+    fb = [b([0.9, 0.7]) for _ in range(50)]
+    assert fa == fb, "the same seed gives the same stream whatever x is"
+    assert fa != [Evaluator(12)([0.1, 0.2]) for _ in range(50)]
+    assert len(set(map(tuple, fa))) == 50                 # the count moves it on
+    vals = [value(3, k, i) for k in range(20000) for i in range(2)]
+    assert all(0.0 <= v < 1.0 for v in vals)
+    assert abs(sum(vals) / len(vals) - 0.5) < 0.01        # U(0, 1): mean 1/2
+    assert evaluate_by_x([0.3, 0.4]) == evaluate_by_x([0.3, 0.4])
+    assert name(2) == "uninformative_n02_2D" and name(10) == "uninformative_n10_2D"
+
+
+@test
+def the_chi_square_tail_and_the_bias_shares_are_right():
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import report as R
+    # P(chi2_9 >= 16.919) = 0.05, P(chi2_9 >= 21.666) = 0.01, P(chi2_2 >= x) = exp(-x/2)
+    assert abs(R._chi2_sf(16.918978, 9) - 0.05) < 1e-6
+    assert abs(R._chi2_sf(21.665994, 9) - 0.01) < 1e-6
+    for x in (0.1, 1.0, 5.0, 40.0):
+        assert abs(R._chi2_sf(x, 2) - np.exp(-x / 2)) < 1e-12, x
+    assert R._chi2_sf(0.0, 9) == 1.0
+    rng = np.random.default_rng(4)
+    with tempfile.TemporaryDirectory() as td:
+        rows = []
+        for alg, maker in (("flat", lambda: rng.random((100, 2))),
+                           ("centre", lambda: 0.45 + 0.1 * rng.random((100, 2))),
+                           ("edges", lambda: np.where(rng.random((100, 2)) < 0.5, 0.0, 1.0))):
+            for seed in (1, 2, 3):
+                d = Path(td) / alg / str(seed)
+                d.mkdir(parents=True)
+                X = maker()
+                F = rng.random((100, 2))
+                with (d / "final.csv").open("w", encoding="utf-8") as fh:
+                    fh.write("# final\nf1,f2,x1,x2\n")
+                    for f, x in zip(F, X):
+                        fh.write(",".join(f"{v:.10g}" for v in (*f, *x)) + "\n")
+                rows.append({"problem": "uninformative_n02_2D", "algorithm": alg,
+                             "status": "done", "dir": d})
+        rep = R.structural_bias(rows)
+        flat, centre, edges = (rep[("uninformative_n02_2D", a)] for a in ("flat", "centre", "edges"))
+        assert abs(flat["edge"] - 0.2) < 0.05 and abs(flat["centre"] - 0.2) < 0.05, flat
+        assert flat["p_min"] > 1e-3 and flat["runs"] == 3 and flat["points"] == 300, flat
+        assert centre["centre"] == 1.0 and centre["edge"] == 0.0 and centre["p_min"] < 1e-12, centre
+        assert edges["edge"] == 1.0 and edges["centre"] == 0.0, edges
+        text = R.format_bias(rep)
+        assert text.index("edges") < text.index("flat") and "centre" in text
+
+
+@test
+def a_campaign_hands_each_run_its_own_uninformative_stream():
+    """make_evaluator(seed): two campaigns with the same seed run the same, x never matters."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_hands...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "u"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["uninformative_n10_2D"]
+[campaign]
+out = "OUT"
+budget_fe = 400
+metrics = ["nd_share"]
+final_metrics = ["n_final"]
+archive = false
+"""
+    with tempfile.TemporaryDirectory() as td:
+        finals = {}
+        for tag in ("a", "b"):
+            cfg_path = Path(td) / f"{tag}.toml"
+            cfg_path.write_text(text.replace("OUT", f"res_{tag}"), encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+            finals[tag] = [(root / "uninformative_n10_2D" / "nsga2" / f"run_{s}" / "final.csv")
+                           .read_text() for s in (1, 2)]
+        assert finals["a"] == finals["b"], "the same seed gives the same run"
+        assert finals["a"][0] != finals["a"][1], "another seed another stream"
+
+
 def main() -> int:
     failed = []
     for fn in TESTS:
