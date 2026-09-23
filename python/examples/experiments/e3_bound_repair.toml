@@ -1,0 +1,62 @@
+# E3 (task 2 of 2026-09-23): which bound repair should the new operators use
+# by default? (reflect is provisional until this answers.)
+#
+# The gaussian and Cauchy mutations leave the box; clip, reflect, random and
+# midpoint each put the variable back differently. The same problems as E1/E2,
+# with oob_share recorded (operator_stats), and the structural-bias problems
+# as the other half of the question: structural_bias.toml runs every algorithm
+# there; for these 24 variants run this file with problems =
+# ["uninformative_n02_2D", "uninformative_n10_2D"] and runs = 30 as well, and
+# read it with --bias.
+#
+#   python -m mootation.run.campaign e3_bound_repair.toml --workers 16
+#   python -m mootation.run.campaign e3_bound_repair.toml --compare igdp_norm
+#   python -m mootation.run.campaign e3_bound_repair.toml --compare oob_share
+#
+# 3 algorithms x 2 mutations x 4 repairs x 7 problems x 5 seeds = 840 runs.
+
+algorithms = [
+    { name = "nsga2", label = "nsga2_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "nsga2", label = "nsga2_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "nsga2", label = "nsga2_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "nsga2", label = "nsga2_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "nsga2", label = "nsga2_cauch_clip", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "clip" } },
+    { name = "nsga2", label = "nsga2_cauch_reflect", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "reflect" } },
+    { name = "nsga2", label = "nsga2_cauch_random", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "random" } },
+    { name = "nsga2", label = "nsga2_cauch_midpoint", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "midpoint" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "ibea_eplus", label = "ibea_eplus_cauch_clip", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "clip" } },
+    { name = "ibea_eplus", label = "ibea_eplus_cauch_reflect", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "reflect" } },
+    { name = "ibea_eplus", label = "ibea_eplus_cauch_random", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "random" } },
+    { name = "ibea_eplus", label = "ibea_eplus_cauch_midpoint", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "midpoint" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "spea2_sde", label = "spea2_sde_cauch_clip", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "clip" } },
+    { name = "spea2_sde", label = "spea2_sde_cauch_reflect", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "reflect" } },
+    { name = "spea2_sde", label = "spea2_sde_cauch_random", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "random" } },
+    { name = "spea2_sde", label = "spea2_sde_cauch_midpoint", pop = 0, gens = 0, params = { mutation = "cauchy", bound_repair = "midpoint" } },
+]
+
+[run]
+name = "e3_bound_repair"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+runs = 5
+problems = ["DTLZ1_3D", "DTLZ3_3D", "shiftDTLZ1_3D", "shiftDTLZ3_3D", "ZDT4", "ZDT1", "ZDT6"]
+
+[campaign]
+out            = "results/{name}"
+budget_fe      = 10000
+record_grid    = "log"
+metrics        = ["igdp_norm", "hv"]
+final_metrics  = ["igd", "igdp", "igdp_norm", "eps_norm", "hv", "hv_h", "tau90", "n_final",
+                  "range_cover", "igdx", "pdist"]
+operator_stats = true

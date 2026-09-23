@@ -1,0 +1,41 @@
+# E1 (task 2 of 2026-09-23): does SBX cross half the variables (0.5, the
+# canonical realcross and the default) or all of them (1.0)?
+#
+# sbx.hpp once claimed 1.0 is stronger on multimodal problems; that was seen
+# outside this repository and is unverified. The shifted problems are the
+# control: if 1.0 wins on DTLZ1/3 and not on shiftDTLZ1/3, the gain is a pull
+# to the centre of the box, not better search.
+#
+#   python -m mootation.run.campaign e1_sbx_var_prob.toml --workers 16
+#   python -m mootation.run.campaign e1_sbx_var_prob.toml --compare igdp_norm
+#   python -m mootation.run.campaign e1_sbx_var_prob.toml --ranks igdp_norm --reference nsga2_vp05
+#
+# 3 algorithms x 2 settings x 7 problems x 5 seeds = 210 runs, minutes.
+
+algorithms = [
+    { name = "nsga2", label = "nsga2_vp05", pop = 0, gens = 0, params = { sbx_var_prob = 0.5 } },
+    { name = "nsga2", label = "nsga2_vp10", pop = 0, gens = 0, params = { sbx_var_prob = 1.0 } },
+    { name = "ibea_eplus", label = "ibea_eplus_vp05", pop = 0, gens = 0, params = { sbx_var_prob = 0.5 } },
+    { name = "ibea_eplus", label = "ibea_eplus_vp10", pop = 0, gens = 0, params = { sbx_var_prob = 1.0 } },
+    { name = "spea2_sde", label = "spea2_sde_vp05", pop = 0, gens = 0, params = { sbx_var_prob = 0.5 } },
+    { name = "spea2_sde", label = "spea2_sde_vp10", pop = 0, gens = 0, params = { sbx_var_prob = 1.0 } },
+]
+
+[run]
+name = "e1_sbx_var_prob"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+runs = 5
+problems = ["DTLZ1_3D", "DTLZ3_3D", "shiftDTLZ1_3D", "shiftDTLZ3_3D", "ZDT4", "ZDT1", "ZDT6"]
+
+[campaign]
+out            = "results/{name}"
+budget_fe      = 10000
+record_grid    = "log"
+metrics        = ["igdp_norm", "hv"]
+final_metrics  = ["igd", "igdp", "igdp_norm", "eps_norm", "hv", "hv_h", "tau90", "n_final",
+                  "range_cover", "igdx", "pdist"]
+operator_stats = true
