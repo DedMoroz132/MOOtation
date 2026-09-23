@@ -22,7 +22,7 @@ from pathlib import Path
 # Last resort only. Mirrors knob_names() in settings.hpp as of 0.1.0.
 _FALLBACK = (
     "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
-    "K", "n_clusters", "theta", "alpha", "F", "CR", "div",
+    "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
 )
 
 _BLOCK = re.compile(

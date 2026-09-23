@@ -69,9 +69,13 @@ def _show(cfg) -> None:
     if cfg.algorithms:
         print(f"\nalgorithms   ({len(cfg.algorithms)})")
         for a in cfg.algorithms:
-            p = ("  " + ", ".join(f"{k}={v:g}" for k, v in sorted(a.params.items()))
+            p = ("  " + ", ".join(f"{k}={str(v).lower()}" if isinstance(v, bool) else f"{k}={v:g}"
+                                  for k, v in sorted(a.params.items()))
                  if a.params else "")
-            print(f"  {a.name:<14} pop={a.pop:<5} gens={a.gens:<6}{p}")
+            lab = f" as {a.label}" if a.label else ""
+            budget = (f"evaluations={a.evaluations}" if a.evaluations
+                      else f"gens={a.gens:<6}")
+            print(f"  {a.name:<14} pop={a.pop:<5} {budget}{p}{lab}")
     if cfg.benchmarks:
         print(f"\nbenchmarks   {cfg.benchmarks}")
 
@@ -83,9 +87,10 @@ def _check(cfg) -> int:
         # pop = 0 / gens = 0 mean "the problem's own budget" (builtin
         # campaigns), so those algorithms have no evaluation count to add up
         # here; say so instead of printing a misleading zero.
-        own = sum(1 for a in cfg.algorithms if a.pop == 0 or a.gens == 0)
-        total = sum(a.pop * a.gens for a in cfg.algorithms
-                    if a.pop > 0 and a.gens > 0)
+        own = sum(1 for a in cfg.algorithms
+                  if not a.evaluations and (a.pop == 0 or a.gens == 0))
+        total = sum(a.budget for a in cfg.algorithms
+                    if a.evaluations or (a.pop > 0 and a.gens > 0))
         if own == n_alg:
             print(f"OK — {n_alg} algorithm(s), each at its problem's own "
                   f"budget (pop = 0 / gens = 0)")

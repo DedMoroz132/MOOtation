@@ -68,7 +68,7 @@ class ConfigScreen(VerticalScroll):
                 verdict.append("  ! ", style="red")
                 verdict.append(p + "\n")
         else:
-            total = sum(a.pop * a.gens for a in cfg.algorithms)
+            total = sum(a.budget for a in cfg.algorithms)
             verdict.append("OK", style="bold green")
             verdict.append(f" — {len(cfg.algorithms)} algorithm(s), about "
                            f"{total:,} evaluations at full budget\n")
@@ -143,7 +143,7 @@ class AlgorithmsScreen(VerticalScroll):
             if self.cfg.n_objs:
                 note = check_pop(a.name, a.pop, self.cfg.n_objs, a.params) or ""
             params = ", ".join(f"{k}={v:g}" for k, v in sorted(a.params.items()))
-            table.add_row(a.name, str(a.pop), str(a.gens), f"{a.pop * a.gens:,}",
+            table.add_row(a.key, str(a.pop), str(a.gens), f"{a.budget:,}",
                           params or "-",
                           Text(note, style="red") if note else Text("ok",
                                                                     style="green"))
@@ -319,7 +319,7 @@ class MonitorScreen(VerticalScroll):
         t.append(f"\n  {'journal size':<14}", style="dim")
         t.append(f"{path.stat().st_size / 1e6:.2f} MB\n")
 
-        budget = sum(a.pop * a.gens for a in self.cfg.algorithms)
+        budget = sum(a.budget for a in self.cfg.algorithms)
         if budget:
             frac = min(1.0, done / budget)
             width = 46

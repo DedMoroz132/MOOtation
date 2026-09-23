@@ -102,9 +102,71 @@ always listed under **Changed** or **Removed**.
   with GD+, ε, the range cover and the duplicate and nondominated shares on
   them, the hypervolume only up to three objectives, `roi_dist` on the final
   population, and the two baselines in its algorithm list.
+- `campaign_all.toml` also records `igdx`, `cr` and `pdist` on the final
+  population and a Monte-Carlo hypervolume (10 000 points) on the
+  five-objective trajectories, and runs the two ablations: 62 930 jobs.
 
 ### Added
 
+- The analysis layer of a campaign (`mootation.run.report`, `stats`,
+  `postprocess`), on the campaign command line:
+  `--reference ALG` tests every algorithm against a reference — the exact
+  Wilcoxon rank-sum test per problem, Holm-corrected over the problems, with
+  the Vargha-Delaney A12, and the exact signed-rank test on the per-problem
+  medians across problems, Holm-corrected over the algorithms (both exact with
+  ties, by dynamic programming over doubled ranks); `--ci` gives 95 %
+  bootstrap intervals of the mean ranks; `--by KEY` ranks within groups of
+  problems sharing a property; `--gap METRIC` prints the distance to the best
+  value any run reached; `--zero-share` the share of seeds whose hypervolume
+  is 0; `--ecdf METRIC` the COCO-style runtime ECDF, with the interpolation
+  between records stated (`--interpolation step|linear`). Every table marks
+  with `*` the sixteen algorithms that run on a schedule of the budget share
+  spent, whose curves at different budgets must be overlaid by fraction.
+- `mootation.benchmarks.properties`: front geometry, multimodality,
+  deception, bias, scaled ranges, separability and a medial optimum for every
+  problem campaign_all runs — Huband et al.'s Tables V, VII and XV for ZDT,
+  DTLZ and WFG, argued in the module for IDTLZ, SDTLZ, shiftDTLZ, ZCAT and
+  bbob-biobj; `?` where the source leaves it open.
+- The archive scenario: every run with an archive also stores
+  `final_archive`, the final indicators on the run archive reduced to the
+  population size by DSS, and `--scenario archive` makes every table read it.
+  `--recompute ... --scenario archive` rebuilds it from `archive.csv`, for
+  campaigns run before it existed too; `meta.json` records the frame the
+  selection normalised by, so the rebuild picks the same points.
+- Two ablation baselines: `random_selection_ea`, NSGA-II's SBX and polynomial
+  mutation with uniformly random parents and survival, and `gsemo`, global
+  SEMO (Laumanns, Thiele & Zitzler 2004; Giel 2003) carried to real variables.
+  Both are in `campaign_all.toml`.
+- Pareto-set samples (`BenchProblem.pareto_set`) for Polygon, DTLZ1-4,
+  shiftDTLZ1-4 (with `cyclic_vars`, the distance variables whose differences
+  wrap) and ZCAT1-20 (the positions with every distance variable at g(y_I)),
+  and three decision-space indicators on the final population: `igdx`
+  (Tanabe & Ishibuchi 2019, Eq. 5, variables normalised by the bounds, cyclic
+  ones wrapped), `cr` (the cover rate, Eqs. 7-8) and `pdist` (the mean
+  pairwise distance, no reference needed).
+- The exact hypervolume in C++: `mootation/hypervolume.hpp` (WFG, While,
+  Bradstreet & Barone 2012, with sorting and slicing) and
+  `mootation._core.hypervolume`, which `metrics.hypervolume` uses when the
+  extension is built — about 20 ms for 210 points at five objectives, where
+  the Python recursion took seconds. The Monte-Carlo estimate draws its points
+  in NumPy and counts them in C++ (`_core.hv_covered`), so it is the same
+  number either way. `tests/test_hypervolume.cpp` checks the exact value
+  against inclusion-exclusion on 300 random sets.
+- Hypervolume options in `[campaign]`: `hv_exact_max_m` (5) and
+  `hv_mc_samples` (100 000) for the final value, `trajectory_hv_mc_samples` for
+  a Monte-Carlo hypervolume on the trajectory above `trajectory_hv_max_m`
+  instead of null.
+- Variants: `[[algorithms]]` takes `label`, which names a variant and the
+  directory its results are filed under, so two entries of one core with
+  different parameters can share a campaign; and `evaluations`, a budget in
+  evaluations that replaces `pop` x `gens`. Parameters can be booleans.
+- `normalize` as a knob (`set_normalize` of `ibea_eplus`, `r2ibea`,
+  `two_arch2`, `moead_am2m`) in the Python binding, the campaign's `params`
+  and the settings file; each header says which setting is the paper's.
+- `max_evaluations` in the C++ `Settings`, and so in `run()`, `Session`, the
+  settings file and the C ABI: a budget in evaluations instead of `max_gen`
+  steps, checked between steps, with the schedule's t_max corrected after the
+  first step to the number of steps the budget buys.
 - Provenance: every campaign run's `meta.json` records `revision` — the git
   commit and whether tracked files differed from it, for the source tree and
   for the compiled extension separately (`_core.__git_commit__`,

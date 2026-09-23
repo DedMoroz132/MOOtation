@@ -19,6 +19,7 @@
 //   algorithm   = nsga3        # any name from algorithm_names()
 //   pop_size    = 92
 //   max_gen     = 300
+//   # max_evaluations = 30000  # instead of max_gen: stop on evaluations spent
 //   seed        = 42
 //
 //   # ---- the problem ----------------------------------------------------
@@ -37,6 +38,7 @@
 //   # ---- optional algorithm knobs ---------------------------------------
 //   # Anything not listed keeps the algorithm's own paper default.
 //   # eta_c eta_m pc pm T delta nr kappa K n_clusters theta alpha F CR div
+//   # normalize (0 or 1: the objective normalization a few cores switch)
 //   eta_c       = 30
 //
 // A knob an algorithm does not have is REPORTED (Result::ignored), not
@@ -65,7 +67,7 @@ namespace mootation {
 inline const std::vector<std::string>& knob_names() {
     static const std::vector<std::string> v = {
         "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
-        "K", "n_clusters", "theta", "alpha", "F", "CR", "div"
+        "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize"
     };
     return v;
 }
@@ -75,6 +77,14 @@ struct Settings {
     std::string algorithm = "nsga2";
     int         pop_size  = 100;
     int         max_gen   = 250;
+    // Evaluation budget. 0 = run max_gen steps; > 0 = step until this many
+    // evaluations have been spent (setup included), and max_gen is ignored.
+    // A step is not a generation of pop_size evaluations for every core —
+    // NIMMO evaluates one offspring per step, MOEA/D-DRA and -AWA a fifth of
+    // the population, LIS/LCS N − K_old + K_new — so a budget in steps is not
+    // a budget. Checked between steps: a generational core overshoots by less
+    // than one step.
+    int         max_evaluations = 0;
     unsigned    seed      = 0;
 
     // ── the problem ──────────────────────────────────────────────────────
@@ -115,6 +125,7 @@ struct Settings {
         if (algorithm.empty())        bad("algorithm is empty");
         if (pop_size < 2)             bad("pop_size must be >= 2, got " + std::to_string(pop_size));
         if (max_gen < 0)              bad("max_gen must be >= 0, got " + std::to_string(max_gen));
+        if (max_evaluations < 0)      bad("max_evaluations must be >= 0, got " + std::to_string(max_evaluations));
         if (lower.empty())            bad("lower/upper are empty — no decision variables");
         if (lower.size() != upper.size())
             bad("lower.size()=" + std::to_string(lower.size()) +
@@ -261,6 +272,7 @@ inline Settings Settings::from_string(const std::string& text, const std::string
         if      (key == "algorithm")   s.algorithm = val;
         else if (key == "pop_size")    s.pop_size  = detail::parse_int(val, w);
         else if (key == "max_gen")     s.max_gen   = detail::parse_int(val, w);
+        else if (key == "max_evaluations") s.max_evaluations = detail::parse_int(val, w);
         else if (key == "seed")        s.seed      = static_cast<unsigned>(detail::parse_int(val, w));
         else if (key == "n_objs")      s.n_objs    = detail::parse_int(val, w);
         else if (key == "n_cons")      s.n_cons    = detail::parse_int(val, w);
@@ -278,7 +290,7 @@ inline Settings Settings::from_string(const std::string& text, const std::string
             if (std::find(kn.begin(), kn.end(), key) == kn.end())
                 throw std::invalid_argument(
                     where + ": unknown key '" + key + "'. Known keys: algorithm, "
-                    "pop_size, max_gen, seed, n_vars, n_objs, n_cons, lower, upper, "
+                    "pop_size, max_gen, max_evaluations, seed, n_vars, n_objs, n_cons, lower, upper, "
                     "constraints, seed_population, on_size_mismatch, and the knobs "
                     "listed in knob_names()");
             s.params[key] = detail::parse_num(val, w);
@@ -336,6 +348,8 @@ inline std::string Settings::to_string() const {
     o << "algorithm   = " << algorithm << "\n";
     o << "pop_size    = " << pop_size  << "\n";
     o << "max_gen     = " << max_gen   << "\n";
+    if (max_evaluations > 0)
+        o << "max_evaluations = " << max_evaluations << "\n";
     o << "seed        = " << seed      << "\n";
     o << "n_objs      = " << n_objs    << "\n";
     o << "n_cons      = " << n_cons    << "\n";

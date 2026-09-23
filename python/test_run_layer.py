@@ -1852,6 +1852,412 @@ def algorithm_families_cover_the_registry():
 
 
 
+# ── analysis layer: variants, Pareto sets, hypervolume, reports, ablations ──
+
+def _core_with(attr: str):
+    """The compiled extension if it has `attr`, else None (a stale or absent build)."""
+    try:
+        from mootation import _core
+    except ImportError:
+        return None
+    return _core if hasattr(_core, attr) or hasattr(_core.Config(), attr) else None
+
+
+@test
+def variant_labels_and_evaluation_budgets_parse_and_validate():
+    """[[algorithms]] label = ... files a variant apart; evaluations = ... budgets it."""
+    cfg = loads(_MIN.replace('[[algorithms]]\nname = "nsga2"\npop = 20\ngens = 5\n', """
+[[algorithms]]
+name = "r2ibea"
+pop = 20
+gens = 5
+
+[[algorithms]]
+name = "r2ibea"
+label = "r2ibea_norm"
+pop = 20
+evaluations = 1000
+params = { normalize = true }
+"""))
+    a, b = cfg.algorithms
+    assert (a.key, a.budget) == ("r2ibea", 100), (a.key, a.budget)
+    assert (b.key, b.budget, b.gens) == ("r2ibea_norm", 1000, 0), (b.key, b.budget, b.gens)
+    assert b.params == {"normalize": True} and isinstance(b.params["normalize"], bool)
+    assert not [p for p in validate(cfg) if "algorithms" in p], validate(cfg)
+    same = loads(_MIN.replace('[[algorithms]]\nname = "nsga2"\npop = 20\ngens = 5\n', """
+[[algorithms]]
+name = "nsga2"
+pop = 20
+gens = 5
+
+[[algorithms]]
+name = "nsga2"
+pop = 20
+gens = 9
+"""))
+    assert any("label" in p for p in validate(same)), validate(same)
+    bad = loads(_MIN.replace('name = "nsga2"', 'name = "nsga2"\nlabel = "a/b"'))
+    assert any("label" in p for p in validate(bad)), validate(bad)
+    assert "normalize" in knob_names()
+
+
+@test
+def pareto_set_samples_land_on_the_front():
+    """Every Pareto-set sample evaluates onto the front (Polygon, DTLZ1-4, shiftDTLZ, ZCAT)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    for key in ("DTLZ1_3D", "DTLZ2_5D", "DTLZ3_3D", "DTLZ4_5D",
+                "shiftDTLZ1_3D", "shiftDTLZ2_5D", "shiftDTLZ3_5D", "shiftDTLZ4_3D"):
+        p = get(key)
+        X = np.asarray(p.pareto_set(300), float)
+        F = np.array([p.evaluate(list(x)) for x in X])
+        on = F.sum(1) - 0.5 if "DTLZ1" in key else (F ** 2).sum(1) - 1.0
+        assert np.abs(on).max() < 1e-9, (key, np.abs(on).max())
+        lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+        assert np.all((X >= lo) & (X <= hi)), key
+    assert get("shiftDTLZ2_3D").cyclic_vars and not get("DTLZ2_3D").cyclic_vars
+    p = get("Polygon_4D")
+    X = np.asarray(p.pareto_set(400), float)
+    F = np.array([p.evaluate(list(x)) for x in X])
+    R = np.asarray(p.pareto_front(2000), float)
+    dom = np.array([bool(np.any(np.all(R <= f, 1) & np.any(R < f, 1))) for f in F])
+    assert not dom.any(), int(dom.sum())
+    from mootation.benchmarks import zcat
+    for key in ("ZCAT11_3D", "ZCAT2_5D"):
+        p = get(key)
+        X = np.asarray(p.pareto_set(200), float)
+        F = np.array([p.evaluate(list(x)) for x in X])
+        name, M = key.split("_")[0], int(key.split("_")[1][:-1])
+        y = X / np.arange(1, X.shape[1] + 1) + 0.5
+        alpha = np.array([np.arange(1, M + 1) ** 2 * zcat.F_FUNCS[name](r, M) for r in y])
+        assert np.abs(F - alpha).max() < 1e-12, key          # beta = 0: on the front
+
+
+@test
+def decision_space_indicators_agree_with_closed_forms():
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    b = [(0.0, 1.0), (0.0, 1.0)]
+    ps = np.array([[0.0, 0.5], [1.0, 0.5]])
+    assert M.igdx(ps, ps, bounds=b) == 0.0
+    assert abs(M.igdx(np.array([[0.0, 0.5]]), ps, bounds=b) - 0.5) < 1e-12
+    # the wrap: 0.98 and 0.02 are 0.04 apart on a cyclic variable, 0.96 on another
+    assert abs(M.igdx(np.array([[0.0, 0.98]]), np.array([[0.0, 0.02]]), bounds=b,
+                      cyclic=(1,)) - 0.04) < 1e-12
+    assert abs(M.igdx(np.array([[0.0, 0.98]]), np.array([[0.0, 0.02]]), bounds=b)
+               - 0.96) < 1e-12
+    # bounds normalise: the same set on [0, 10] reads the same
+    assert abs(M.igdx(np.array([[0.0, 5.0]]), np.array([[0.0, 5.0], [10.0, 5.0]]),
+                      bounds=[(0.0, 10.0)] * 2) - 0.5) < 1e-12
+    assert abs(M.cover_rate(np.array([[0.0, 0.5], [0.5, 0.5]]), ps) - 0.5 ** 0.5) < 1e-12
+    assert M.cover_rate(np.array([[2.0, 2.0]]), ps) == 0.0
+    assert abs(M.pairwise_distance(np.array([[0.0, 0.0], [1.0, 0.0]]), bounds=b) - 1.0) < 1e-12
+    out = M.compute(np.array([[0.1, 0.9]]), which=["igdx", "cr", "pdist"])
+    assert out == {"igdx": None, "cr": None, "pdist": None}, out
+
+
+@test
+def compiled_hypervolume_agrees_with_the_python_recursion():
+    """_core.hypervolume (WFG in C++) and hv_covered against metrics' own Python."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    core = _core_with("hv_covered")
+    if core is None:
+        print("  skip  compiled_hypervolume...: _core without hypervolume"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(7)
+    for m in (2, 3, 4, 5):
+        for _ in range(8):
+            P = rng.random((int(rng.integers(1, 40)), m))
+            P /= np.linalg.norm(P, axis=1, keepdims=True)
+            P = M.nondominated(P)
+            ref = np.full(m, 1.1)
+            a, b = core.hypervolume(P, ref), M._hv_wfg(P, ref)
+            assert abs(a - b) <= 1e-12 * max(1.0, b), (m, a, b)
+    P = rng.random((30, 4))
+    S = rng.random((5000, 4)) * 1.1
+    brute = int(np.any(np.all(P[None, :, :] <= S[:, None, :], axis=2), axis=1).sum())
+    assert core.hv_covered(P, S) == brute
+    # the estimate does not depend on who counted: same samples, same count
+    F = rng.random((60, 6)) * 0.9
+    v1, how = M.hypervolume(F, np.zeros(6), np.ones(6), exact_max_m=5, mc_samples=30_000)
+    saved = core.hv_covered
+    try:
+        del core.hv_covered
+        v2, _ = M.hypervolume(F, np.zeros(6), np.ones(6), exact_max_m=5, mc_samples=30_000)
+    finally:
+        core.hv_covered = saved
+    assert how == "mc" and v1 == v2, (how, v1, v2)
+    exact, _ = M.hypervolume(F, np.zeros(6), np.ones(6), exact_max_m=6)
+    assert abs(v1 - exact) < 0.02, (v1, exact)
+
+
+@test
+def trajectory_hypervolume_by_monte_carlo_above_the_exact_limit():
+    """trajectory_hv_mc_samples fills the hypervolume in where it would be null."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  trajectory_hypervolume_by_monte_carlo...: no NumPy or stale _core")
+        return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "mc"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_5D"]
+[campaign]
+out = "res"
+budget_fe = 400
+record_grid = "log"
+trajectory_hv_max_m = 3
+trajectory_hv_mc_samples = 4000
+metrics = ["igdp", "hv_h"]
+final_metrics = ["hv_h"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        assert (spec.trajectory_hv_mc_samples, spec.hv_exact_max_m) == (4000, 5)
+        root = C.out_root(cfg, spec)
+        (job,) = C.expand_jobs(cfg, spec)
+        assert C.run_job(job, root, spec, quiet=True) == "done"
+        d = root / job.rel_dir
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+        assert all(t["hv_h"] is not None and t["hv_method"] == "mc" for t in T), T[-1]
+        assert meta["trajectory_hv"].startswith("monte-carlo") and not meta["trajectory_hv_skipped"]
+        assert meta["final"]["hv_method"] == "exact", meta["final"]
+        assert abs(T[-1]["hv_h"] - meta["final"]["hv_h"]) < 0.05, (T[-1], meta["final"])
+    bad = text.replace("trajectory_hv_mc_samples = 4000", "trajectory_hv_mc_samples = -1")
+    raises(ConfigError, C.campaign_spec, loads(bad))
+
+
+@test
+def statistics_match_hand_computed_cases():
+    from mootation.run import stats as ST
+    six = ST.wilcoxon_signed_rank([1, 2, 3, 4, 5, 6], [2, 4, 6, 8, 10, 12])
+    assert six["better"] == "A" and six["w_plus"] == 21 and abs(six["p"] - 2 / 64) < 1e-12
+    assert ST.wilcoxon_signed_rank([1, 2], [1, 2])["p"] == 1.0          # zeros dropped
+    rs = ST.rank_sum([1, 2, 3], [4, 5, 6])
+    assert rs["better"] == "A" and abs(rs["p"] - 2 / 20) < 1e-12, rs
+    hb = ST.rank_sum([1, 2, 3], [4, 5, 6], lower_better=False)
+    assert hb["better"] == "B" and abs(hb["p"] - 0.1) < 1e-12, hb
+    tied = ST.rank_sum([1, 1, 2], [1, 2, 2])
+    assert 0.0 < tied["p"] <= 1.0 and tied["better"] == "A", tied
+    assert ST.a12([1, 2], [3, 4]) == 1.0 and ST.a12([1, 3], [2, 3]) == 0.625
+    assert ST.a12([1, 2], [3, 4], lower_better=False) == 0.0
+    assert all(abs(x - y) < 1e-15 for x, y in zip(ST.holm([0.01, 0.04, 0.03]),
+                                                   [0.03, 0.06, 0.06]))
+    assert ST.average_ranks([3.0, 1.0, 3.0]) == [2.5, 1.0, 2.5]
+    ci = ST.bootstrap_mean_ranks({"p1": {"a": 1, "b": 2}, "p2": {"a": 1, "b": 2}}, n_boot=50)
+    assert ci == {"a": (1.0, 1.0), "b": (2.0, 2.0)}, ci
+    assert ST.mark(0.01, "A") == "+" and ST.mark(0.01, "B") == "-" and ST.mark(0.2, "A") == "="
+
+
+@test
+def every_campaign_problem_has_a_property_row():
+    """properties.py covers campaign_all's problem list; the groups read key=value."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks.properties import KEYS, label, properties
+    from mootation.run.config import load
+    cfg = load(HERE / "examples" / "campaign_all.toml")
+    assert validate(cfg) == [], validate(cfg)[:3]
+    names = cfg.benchmark_problems
+    assert len(names) > 100, len(names)
+    missing = [n for n in names if properties(n) is None]
+    assert not missing, missing[:10]
+    assert properties("DTLZ5_3D")["front"] == "degenerate"
+    assert properties("DTLZ5_5D")["front"] == "degenerate+mixed"
+    assert properties("WFG3_3D")["front"] == "degenerate+mixed"
+    assert properties("shiftDTLZ2_3D")["centre"] is False and properties("DTLZ2_3D")["centre"]
+    assert properties("SDTLZ1_3D")["scaled"] is True
+    assert label("WFG5_3D", "deceptive") == "deceptive=yes"
+    assert label("ZCAT1_3D", "front") == "front=?"
+    assert set(KEYS) == set(properties("ZDT1")), properties("ZDT1")
+
+
+@test
+def postprocessing_runtimes_gaps_and_budget_marks():
+    from mootation.run import postprocess as PP
+    recs = [{"fe": 100, "igdp": 1.0}, {"fe": 200, "igdp": 0.5}, {"fe": 400, "igdp": 0.1}]
+    assert PP.runtime_to_target(recs, "igdp", 0.3) == 400                       # step
+    assert abs(PP.runtime_to_target(recs, "igdp", 0.3, interpolation="linear") - 300) < 1e-9
+    assert PP.runtime_to_target(recs, "igdp", 0.01) is None
+    hv = [{"fe": 100, "hv": 0.1}, {"fe": 300, "hv": 0.5}]
+    assert PP.runtime_to_target(hv, "hv", 0.3, interpolation="linear") == 200.0
+    rows = [{"problem": "P", "algorithm": a, "status": "done", "final": {"hv": v}}
+            for a, v in (("x", 0.0), ("x", 0.4), ("y", 0.5))]
+    assert PP.zero_share(rows) == {"P": {"x": 0.5, "y": 0.0}}
+    assert PP.gap_to_best(rows, "hv") == {"P": {"x": [0.5, 0.09999999999999998], "y": [0.0]}}
+    assert len(PP.BUDGET_SCHEDULED) == 16 and PP.budget_note("rvea") == "*"
+    assert PP.budget_note("nsga2") == "" and set(PP.BUDGET_SCHEDULED) <= set(algorithm_names())
+    ecdf = PP.runtime_ecdf([recs], "igdp", [0.3, 0.01], grid=[150, 450])
+    assert ecdf["share"] == [0.0, 0.5] and ecdf["pairs"] == 2, ecdf
+
+
+@test
+def the_report_tests_rank_and_group_a_toy_campaign():
+    """reference_report, rank_intervals, property_ranks on hand-made rows."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.run import report as R
+    rows = []
+    for p in ("ZDT1", "ZDT2", "ZDT4", "DTLZ2_3D", "WFG4_3D", "WFG5_3D"):
+        for s in range(5):
+            rows.append({"problem": p, "algorithm": "good", "status": "done",
+                         "final": {"igdp": 0.01 + 0.001 * s}, "dir": "."})
+            rows.append({"problem": p, "algorithm": "bad", "status": "done",
+                         "final": {"igdp": 0.5 + 0.01 * s}, "dir": ".",
+                         "final_archive": {"igdp": 0.001 * s}})
+            rows.append({"problem": p, "algorithm": "same", "status": "done",
+                         "final": {"igdp": 0.01 + 0.001 * s}, "dir": "."})
+    rep = R.reference_report(rows, "igdp", "good")
+    by = {e["algorithm"]: e for e in rep["algorithms"]}
+    assert by["bad"]["losses"] == 6 and by["bad"]["wins"] == 0, by["bad"]
+    assert by["same"]["ties"] == 6 and by["same"]["mark"] == "=", by["same"]
+    assert by["bad"]["a12_median"] == 0.0
+    # six problems all one way: the exact signed-rank p is 2/2^6
+    assert abs(by["bad"]["signed_rank"]["p"] - 2 / 64) < 1e-12
+    ci = R.rank_intervals(rows, "igdp", n_boot=200)
+    assert ci["bad"][0] == 3.0 and ci["good"][1] == 1.5, ci
+    g = R.property_ranks(rows, "igdp", "multimodal")
+    assert set(g) == {"multimodal=yes", "multimodal=no"}, g
+    assert g["multimodal=yes"]["bad"] == (3.0, 3), g        # ZDT4, WFG4, WFG5
+    assert "bad" in R.format_reference(rep)
+    assert "multimodal" in R.format_property_ranks(g, "igdp", "multimodal")
+    # the archive scenario reads final_archive, where "bad" is the best
+    arch = R.values(rows, "igdp", scenario="archive")
+    assert set(arch["ZDT1"]) == {"bad"} and arch["ZDT1"]["bad"][0] == 0.0, arch["ZDT1"]
+    raises(ValueError, R.property_ranks, rows, "igdp", "colour")
+
+
+@test
+def the_ablation_baselines_spend_the_budget_and_behave():
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import ablations as A
+    from mootation.run.baselines import BASELINES
+    assert {"random_selection_ea", "gsemo"} <= set(BASELINES)
+    lo, hi = np.zeros(5), np.ones(5)
+    calls = []
+
+    def f(x):
+        calls.append(x)
+        return [x[0], 1.0 - x[0] ** 0.5 + sum(x[1:])]
+    F, X, gens = A.random_selection_ea(f, lo, hi, pop=10, max_evaluations=95, seed=1)
+    assert len(calls) == 95 and len(F) == 10 and np.all((X >= 0) & (X <= 1))
+    calls.clear()
+
+    def pick(Fa, k):
+        return np.arange(min(k, len(Fa)))
+    F, X, steps = A.gsemo(f, lo, hi, pop=10, max_evaluations=300, seed=1, select=pick)
+    assert len(calls) == 300 and len(F) <= 10
+    dom = (np.all(F[:, None] <= F[None], 2) & np.any(F[:, None] < F[None], 2)).any(0)
+    assert not dom.any()                                   # the population is nondominated
+    # the operators keep children in the box however close the parents sit to it
+    rng = np.random.default_rng(3)
+    for _ in range(200):
+        a, b = rng.random(5), rng.random(5)
+        c1, c2 = A.sbx(a, b, lo, hi, rng)
+        m = A.polynomial_mutation(c1.copy(), lo, hi, rng, pm=1.0)
+        assert np.all((c1 >= 0) & (c1 <= 1) & (c2 >= 0) & (c2 <= 1) & (m >= 0) & (m <= 1))
+
+
+@test
+def archive_scenario_recompute_and_report_flags_end_to_end():
+    """final_archive, --recompute --scenario archive, and every report flag, on a tiny campaign."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  archive_scenario...: no NumPy or stale _core"); return
+    import contextlib
+    import io
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "nsga2", pop = 0, gens = 0 },
+    { name = "rvea", pop = 0, gens = 0 },
+    { name = "gsemo", pop = 0, gens = 0 },
+    { name = "random_selection_ea", pop = 0, gens = 0 },
+]
+[run]
+name = "rep"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["ZDT1", "DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 500
+record_grid = "log"
+metrics = ["igdp", "igdp_norm", "hv"]
+final_metrics = ["igdp", "hv", "igdx", "pdist"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "DTLZ2_3D" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        fa = meta["final_archive"]
+        assert 0 < fa["n"] <= 91 and fa["igdx"] is not None and fa["pdist"] > 0, fa
+        assert meta["final"]["igdx"] is not None and meta["archive"]["frame"], meta["final"]
+        assert json.loads((root / "ZDT1" / "gsemo" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))["final"]["igdx"] is None             # ZDT1 has no Pareto set
+        # recomputing from archive.csv reproduces what the run wrote (up to the
+        # ten digits the csv keeps)
+        for key in ("final_archive", "final"):
+            meta[key] = {}
+        (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        for scen in ("archive", "final"):
+            counts = C.recompute_final(root, ["igdp", "hv", "igdx"], scenario=scen)
+            assert counts == {"done": 16}, (scen, counts)
+        again = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        assert again["final_archive"]["n"] == fa["n"], again["final_archive"]
+        for k in ("igdp", "hv", "igdx"):
+            assert abs(again["final_archive"][k] - fa[k]) < 1e-8, (k, again["final_archive"])
+        rows = C.scan_results(root)
+        assert all(r["final_archive"] for r in rows), [r["dir"] for r in rows if not r["final_archive"]]
+
+        def cli(*argv):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = C.main([str(cfg_path), *argv])
+            return code, out.getvalue()
+        code, txt = cli("--ranks", "igdp", "--ci")
+        assert code == 0 and "bootstrap" in txt and "rvea*" in txt, txt
+        code, txt = cli("--ranks", "hv", "--reference", "nsga2", "--scenario", "archive")
+        assert code == 0 and "(archive) against nsga2" in txt, txt
+        code, txt = cli("--ranks", "igdp", "--by", "front")
+        assert code == 0 and "grouped by front" in txt, txt
+        code, txt = cli("--compare", "igdx")
+        assert code == 0 and "DTLZ2_3D" in txt and "ZDT1" not in txt, txt
+        for argv in (("--gap", "igdp"), ("--zero-share",),
+                     ("--ecdf", "igdp_norm", "--interpolation", "linear")):
+            code, txt = cli(*argv)
+            assert code == 0 and txt.strip(), (argv, txt)
+        assert cli("--ecdf", "hv", "--scenario", "archive")[0] == 1
+        assert cli("--ci")[0] == 1 and cli("--gap", "nonsense")[0] == 1
+        assert cli("--ranks", "igdp", "--reference", "nobody")[0] == 1
+
+
 def main() -> int:
     failed = []
     for fn in TESTS:

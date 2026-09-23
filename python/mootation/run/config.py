@@ -78,6 +78,23 @@ class Algorithm:
     pop: int
     gens: int
     params: dict[str, int | float] = field(default_factory=dict)
+    # A variant's own name: two entries of one core with different params are
+    # told apart by it, and a campaign files each under it. None = the name.
+    label: str | None = None
+    # A budget in evaluations instead of generations (0 = use gens). A step
+    # is not a generation of pop evaluations for every core, so a comparison
+    # budgets evaluations.
+    evaluations: int = 0
+
+    @property
+    def key(self) -> str:
+        """What results are filed and reported under: the label, else the name."""
+        return self.label or self.name
+
+    @property
+    def budget(self) -> int:
+        """Evaluations the entry is budgeted: `evaluations`, else pop * gens."""
+        return self.evaluations or self.pop * self.gens
 
 
 @dataclass
@@ -270,14 +287,19 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
         for k, v in params.items():
             if not isinstance(v, (int, float, bool)):
                 raise ConfigError(f"{where}.params.{k}",
-                                  f"expected a number, got {type(v).__name__}")
+                                  f"expected a number or true/false, got {type(v).__name__}")
+        evaluations = _opt(a, "evaluations", 0, where, int)
         cfg.algorithms.append(Algorithm(
             name=_req(a, "name", where, str),
             pop=_req(a, "pop", where, int),
-            gens=_req(a, "gens", where, int),
+            # with a budget in evaluations, gens may be left out
+            gens=(_opt(a, "gens", 0, where, int) if evaluations else _req(a, "gens", where, int)),
+            label=_opt(a, "label", None, where, str),
+            evaluations=evaluations,
             # A TOML integer stays an integer: T, nr, K, n_clusters and div are
-            # ints in the binding, and pybind11 3 refuses 20.0 for them.
-            params={k: (v if isinstance(v, int) and not isinstance(v, bool) else float(v))
+            # ints in the binding, and pybind11 3 refuses 20.0 for them. A
+            # boolean stays a boolean (normalize = true).
+            params={k: (v if isinstance(v, (bool, int)) else float(v))
                     for k, v in params.items()},
         ))
 
@@ -327,6 +349,7 @@ def load(path: str | os.PathLike) -> Config:
 # ── Validation ──────────────────────────────────────────────
 
 _PLACEHOLDER = re.compile(r"\{x\[(\d+)\]\}")
+_LABEL = re.compile(r"[A-Za-z0-9_.+-]+")
 
 
 def _executable_findable(argv0: str) -> bool:
@@ -451,6 +474,13 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
 
     if not cfg.algorithms and not cfg.benchmarks:
         bad("algorithms", "no algorithms and no benchmarks — nothing to run")
+    seen: dict = {}
+    for i, a in enumerate(cfg.algorithms):
+        if a.key in seen:
+            bad(f"algorithms[{i}] ({a.name})",
+                f"{a.key!r} is already algorithms[{seen[a.key]}]: results would land in one "
+                "directory; give one of them a label")
+        seen.setdefault(a.key, i)
 
     valid_knobs = set(knob_names())
     for i, a in enumerate(cfg.algorithms):
@@ -464,8 +494,13 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
         # no such default, so they stay errors there.
         if a.pop < 2 and not (cfg.kind == "builtin" and a.pop == 0):
             bad(where, f"pop must be >= 2, got {a.pop}")
-        if a.gens < 1 and not (cfg.kind == "builtin" and a.gens == 0):
+        if a.evaluations < 0:
+            bad(where, f"evaluations must be >= 0, got {a.evaluations}")
+        if a.gens < 1 and not (cfg.kind == "builtin" and a.gens == 0) and a.evaluations <= 0:
             bad(where, f"gens must be >= 1, got {a.gens}")
+        if a.label is not None and not _LABEL.fullmatch(a.label):
+            bad(where, f"label {a.label!r} must be letters, digits and _ . + - only: it "
+                       "names a results directory")
 
         if a.name in BASELINES and a.params:
             bad(where, f"{a.name} is a baseline and takes no parameters, got: "

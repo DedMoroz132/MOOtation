@@ -21,6 +21,9 @@
 //   (6) a CONSTRAINED run cannot be seeded from a population that carries only
 //       the aggregate cv. This is the one that would be silently wrong rather
 //       than loudly broken: every constraint would read as satisfied.
+//   (7) not warm start, but here because this test already pays for the
+//       dispatch over every algorithm: `max_evaluations` stops run() and a
+//       Session on evaluations spent, and `normalize` is applied or reported.
 //
 // What is NOT claimed anywhere: that a resumed run reproduces the uninterrupted
 // one. No RNG position and no per-algorithm state are saved. It starts from the
@@ -240,6 +243,57 @@ int main()
         check(r.evaluations > 0 && r.evaluations <= 20 * 3,
               "a seeded Session pays only for the generations it ran (" +
               std::to_string(r.evaluations) + ")");
+    }
+
+    // ── (7) an evaluation budget, and the one knob that is a switch ─────────
+    // Here because this is the one test that already pays for embed.hpp's
+    // dispatch over every algorithm. The budget is checked between steps: a
+    // generational core may overshoot it by less than one generation, and
+    // NIMMO, one offspring per step, must land on it exactly.
+    {
+        Settings b = base_settings(20, 1000);       // max_gen must not matter
+        b.max_evaluations = 500;
+        const Result r = run(b, zdt1);
+        check(r.evaluations >= 500 && r.evaluations < 500 + 20,
+              "nsga2 stops within one generation of the budget (" +
+              std::to_string(r.evaluations) + ")");
+        check(r.generations < 1000, "and max_gen is ignored under a budget");
+
+        b.algorithm = "nimmo";
+        const Result one = run(b, zdt1);
+        check(one.evaluations == 500,
+              "nimmo, one evaluation per step, spends the budget exactly (" +
+              std::to_string(one.evaluations) + ")");
+
+        b.algorithm = "nsga2";
+        Session sess(b);
+        std::vector<std::vector<double>> F;
+        int handed = 0;
+        for (auto X = sess.ask(); !X.empty(); X = sess.tell(F)) {
+            F.assign(X.size(), std::vector<double>(2, 0.0));
+            std::vector<std::vector<double>> G;
+            zdt1(X, F, G);
+            handed += static_cast<int>(X.size());
+        }
+        check(handed == sess.result().evaluations && handed >= 500 && handed < 520,
+              "a Session stops on the budget too (" + std::to_string(handed) + ")");
+
+        const Settings back = Settings::from_string(b.to_string());
+        check(back.max_evaluations == 500, "max_evaluations survives the settings text");
+        bool threw = false;
+        try {
+            Settings::from_string("n_vars = 2\nlower = 0\nupper = 1\nmax_evaluations = -1\n");
+        } catch (const std::exception&) { threw = true; }
+        check(threw, "a negative budget is refused");
+
+        Settings k = base_settings(20, 2);
+        k.params["normalize"] = 0.0;
+        k.algorithm = "two_arch2";
+        check(run(k, zdt1).ignored.empty(), "two_arch2 takes normalize");
+        k.algorithm = "nsga2";
+        const Result kn = run(k, zdt1);
+        check(kn.ignored.size() == 1 && kn.ignored[0] == "normalize",
+              "nsga2 reports normalize as a knob it does not have");
     }
 
     std::printf("warm_start: %d/%d checks passed%s\n",

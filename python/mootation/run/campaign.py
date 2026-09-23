@@ -55,7 +55,7 @@ from pathlib import Path
 from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
-from .metric_names import HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT
+from .metric_names import HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT, NEEDS_SET
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -71,10 +71,22 @@ class Job:
     params: dict
     n_objs: int
     pop_note: str = ""
+    # the variant's label (results are filed and reported under it) and a
+    # budget in evaluations that overrides pop * gens (0 = pop * gens)
+    label: str = ""
+    evaluations: int = 0
+
+    @property
+    def key(self) -> str:
+        return self.label or self.algorithm
+
+    @property
+    def budget(self) -> int:
+        return self.evaluations or self.pop * self.gens
 
     @property
     def rel_dir(self) -> Path:
-        return Path(self.problem) / self.algorithm / f"run_{self.seed}"
+        return Path(self.problem) / self.key / f"run_{self.seed}"
 
 
 @dataclass
@@ -91,9 +103,21 @@ class CampaignSpec:
     # counts at every budget, so runs of a budget ladder line up (log_grid).
     record_grid: str = "generations"
     record_per_decade: int = 10
-    # The hypervolumes on the trajectory only up to this many objectives
-    # (0 = always); exact HV costs ~50 ms per point at 3 objectives, ~1.6 s at 5.
+    # The hypervolumes on the trajectory exactly only up to this many objectives
+    # (0 = always). Above it they are recorded as null, or, with
+    # trajectory_hv_mc_samples > 0, estimated by Monte Carlo from that many
+    # points (the same points at every record, so the curve is smooth).
     trajectory_hv_max_m: int = 0
+    trajectory_hv_mc_samples: int = 0
+    # The final hypervolume: exact up to hv_exact_max_m objectives, Monte Carlo
+    # from hv_mc_samples points above (metrics.hypervolume). The exact one is the
+    # compiled WFG when the extension is built: milliseconds at 5 objectives.
+    hv_exact_max_m: int = 5
+    hv_mc_samples: int = 100_000
+    # Scenario "archive" (report.py): the final metrics once more, on the run
+    # archive reduced to the problem's population size by DSS
+    # (meta["final_archive"]). Needs archive = true.
+    archive_scenario: bool = True
     # The run archive (archive.GridArchive -> archive.csv); archive_delta 0 is
     # the default grid step, 1e-3 below five objectives and 1e-2 from five.
     archive: bool = True
@@ -135,7 +159,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec = CampaignSpec()
     known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds",
              "record_grid", "record_per_decade", "trajectory_hv_max_m",
-             "archive", "archive_delta", "snapshots"}
+             "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
+             "archive", "archive_delta", "archive_scenario", "snapshots"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -168,6 +193,15 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
         raise ConfigError("campaign.record_per_decade", "must be >= 1")
     if spec.trajectory_hv_max_m < 0:
         raise ConfigError("campaign.trajectory_hv_max_m", "must be >= 0 (0 = no limit)")
+    for key, lo in (("trajectory_hv_mc_samples", 0), ("hv_exact_max_m", 0),
+                    ("hv_mc_samples", 1)):
+        v = raw.get(key, getattr(spec, key))
+        if not isinstance(v, int) or isinstance(v, bool) or v < lo:
+            raise ConfigError(f"campaign.{key}", f"an integer >= {lo}, not {v!r}")
+        setattr(spec, key, v)
+    spec.archive_scenario = raw.get("archive_scenario", True)
+    if not isinstance(spec.archive_scenario, bool):
+        raise ConfigError("campaign.archive_scenario", "true or false")
     spec.archive = raw.get("archive", True)
     if not isinstance(spec.archive, bool):
         raise ConfigError("campaign.archive", "true or false")
@@ -251,14 +285,17 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
         for a in cfg.algorithms:
             pop = a.pop if a.pop > 0 else p.pop_size
             pop, note = fit_pop(a.name, pop, p.n_obj, a.params)
-            if spec.budget_fe > 0:
+            if a.evaluations > 0:                  # the algorithm's own budget
+                gens = max(1, math.ceil(a.evaluations / pop))
+            elif spec.budget_fe > 0:
                 gens = max(1, math.ceil(spec.budget_fe / pop))
             else:
                 gens = a.gens if a.gens > 0 else p.n_gen
             for s in seeds:
                 jobs.append(Job(index=idx, problem=pname, algorithm=a.name, seed=s,
                                 pop=pop, gens=gens, params=dict(a.params),
-                                n_objs=p.n_obj, pop_note=note))
+                                n_objs=p.n_obj, pop_note=note, label=a.key,
+                                evaluations=a.evaluations))
                 idx += 1
     return jobs
 
@@ -301,10 +338,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_front):
         ref = np.asarray(p.pareto_front(spec.n_ref), float)
     ideal, nadir = p.ideal, p.nadir
+    pset = None
+    if any(m in NEEDS_SET for m in final_metrics) and callable(p.pareto_set):
+        pset = np.asarray(p.pareto_set(spec.n_ref), float)
+    final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
     meta = {
-        "status": "running", "problem": job.problem, "algorithm": job.algorithm,
-        "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.pop * job.gens,
+        "status": "running", "problem": job.problem, "algorithm": job.key,
+        "core": job.algorithm,
+        "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
         "params": job.params, "n_objs": p.n_obj, "n_vars": p.n_vars,
         "pop_note": job.pop_note, "metrics": list(spec.metrics),
         "final_metrics": list(final_metrics),
@@ -347,20 +389,28 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     t0 = time.perf_counter()
     fh = traj_path.open("a", encoding="utf-8")
     n_records = 0
-    budget = job.pop * job.gens
+    budget = job.budget
 
-    # The hypervolumes stay off the trajectory above trajectory_hv_max_m
-    # objectives (recorded as null there, so the absence is explicit).
+    # Above trajectory_hv_max_m objectives the hypervolumes stay off the
+    # trajectory (recorded as null, so the absence is explicit), or are
+    # estimated by Monte Carlo when trajectory_hv_mc_samples asks for it.
     traj_metrics = list(spec.metrics)
     hv_skipped = []
+    traj_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
     if spec.trajectory_hv_max_m and p.n_obj > spec.trajectory_hv_max_m:
-        hv_skipped = [m for m in traj_metrics if m in HV_NAMES]
-        traj_metrics = [m for m in traj_metrics if m not in HV_NAMES]
+        if spec.trajectory_hv_mc_samples > 0:
+            traj_hv = {"exact_max_m": 0, "mc_samples": spec.trajectory_hv_mc_samples}
+        else:
+            hv_skipped = [m for m in traj_metrics if m in HV_NAMES]
+            traj_metrics = [m for m in traj_metrics if m not in HV_NAMES]
     grid = log_grid(budget, spec.record_per_decade) if spec.record_grid == "log" else None
     next_i = 0
     meta.update(record_grid=spec.record_grid,
                 record_per_decade=spec.record_per_decade if grid is not None else None,
                 trajectory_hv_max_m=spec.trajectory_hv_max_m,
+                trajectory_hv=("not recorded" if hv_skipped else
+                               "exact" if traj_hv["exact_max_m"] >= p.n_obj else
+                               f"monte-carlo, {traj_hv['mc_samples']} samples"),
                 trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped)
 
     def on_gen(gen, objectives):
@@ -378,7 +428,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         rec["finite"] = finite
         if finite and F.size:
             rec.update(M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir,
-                                 which=traj_metrics, pop=p.pop_size))
+                                 which=traj_metrics, pop=p.pop_size, hv_options=traj_hv))
             for m in hv_skipped:
                 rec[m] = None
         if snap:
@@ -419,7 +469,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                     seconds=round(time.perf_counter() - t0, 3))
         _write_json(meta_path, meta)
         if not quiet:
-            print(f"[{job.index}] {job.problem} {job.algorithm} seed {job.seed}: FAILED {e}",
+            print(f"[{job.index}] {job.problem} {job.key} seed {job.seed}: FAILED {e}",
                   file=sys.stderr)
         return "failed"
     fh.close()
@@ -445,8 +495,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             for i in range(len(AF)):
                 out.write(",".join(f"{v:.10g}" for v in list(AF[i]) + list(AX[i]))
                           + f",{int(AE[i])}\n")
+        lo, hi = arc.frame()
+        # The frame DSS normalises by when it reduces the archive (scenario
+        # "archive"), so that --recompute --scenario archive selects the same points.
         meta["archive"] = dict(arc.info(), extremes=int(AE.sum()), file="archive.csv",
-                               feasible_only=bool(p.has_cons))
+                               feasible_only=bool(p.has_cons),
+                               frame=None if lo is None else [np.asarray(lo).tolist(),
+                                                              np.asarray(hi).tolist()])
     if snap and snap_F:
         np.savez_compressed(d / "snapshots.npz", fe=np.asarray(snap_fe, np.int64),
                             gen=np.asarray(snap_gen, np.int64),
@@ -455,10 +510,18 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                              "dtype": "float32", "layout": "F rows of every record, "
                              "stacked in order; n gives each record's row count"}
 
+    extra = {"pop": p.pop_size, "hv_options": final_hv, "pareto_set": pset,
+             "bounds": p.bounds, "cyclic": p.cyclic_vars}
     final = {}
     if F.size and np.all(np.isfinite(F)):
-        final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir,
-                          which=final_metrics, pop=p.pop_size)
+        final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
+                          X=X, **extra)
+    if arc is not None and spec.archive_scenario and len(arc.points()[0]):
+        AF, AX, _ = arc.points()
+        idx = arc.select(p.pop_size)
+        meta["final_archive"] = M.compute(AF[idx], ref_front=ref, ideal=ideal, nadir=nadir,
+                                          which=final_metrics, X=AX[idx], **extra)
+        meta["final_archive"]["n"] = int(len(idx))
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -466,7 +529,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     _write_json(meta_path, meta)
     if not quiet:
         summary = ", ".join(f"{k}={v:.4g}" for k, v in final.items() if isinstance(v, float))
-        print(f"[{job.index}] {job.problem} {job.algorithm} seed {job.seed}: done "
+        print(f"[{job.index}] {job.problem} {job.key} seed {job.seed}: done "
               f"fe={fe} {summary}", file=sys.stderr)
     return "done"
 
@@ -753,7 +816,7 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
     _write_json(root / "campaign.json", {
         "name": cfg.name, "config": str(cfg.source_path or ""),
         "problems": sorted({j.problem for j in jobs}),
-        "algorithms": [a.name for a in cfg.algorithms],
+        "algorithms": [a.key for a in cfg.algorithms],
         "seeds": sorted({j.seed for j in jobs}),
         "jobs": len(jobs), "spec": asdict(spec),
     })
@@ -863,6 +926,7 @@ def scan_results(root: Path) -> list[dict]:
             "seed": m.get("seed"), "status": m.get("status", "?"),
             "final": m.get("final", {}) or {}, "seconds": m.get("seconds"),
             "fe": m.get("fe"), "n_objs": m.get("n_objs"), "budget_fe": m.get("budget_fe"),
+            "final_archive": m.get("final_archive") or {},
             "dir": meta.parent,
         })
     return rows
@@ -1016,12 +1080,19 @@ def format_ranks(ranks: dict) -> str:
              f"1 = best, ties share the average rank; probs = problems ranked on",
              f"{'algorithm':<14}{'mean':>7}{'wins':>6}{'probs':>6}"
              + "".join(f"{g[:9]:>10}" for g in groups)]
+    from .postprocess import budget_note
+    marked = False
     for alg, e in ranks["algorithms"]:
         mean, n = e["all"]
-        line = f"{alg[:14]:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}"
+        name = alg[:13] + budget_note(alg)
+        marked |= name != alg[:13]
+        line = f"{name:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}"
         for g in groups:
             line += f"{e[g][0]:>10.2f}" if g in e else f"{'-':>10}"
         lines.append(line)
+    if marked:
+        lines.append("* runs on a schedule of the budget share spent: compare its runs at "
+                     "different budgets by fraction of budget, not by evaluations")
     return "\n".join(lines)
 
 
@@ -1041,11 +1112,28 @@ def write_rank_csv(ranks: dict, path: Path) -> None:
 # ── indicators added after the fact ─────────────────────────────────────────
 
 
+def _read_points(path: Path, m: int, n: int):
+    """(F, X) from a final.csv or archive.csv: m objective columns, then n variables."""
+    import numpy as np
+    rows = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or line.startswith("f1"):
+                continue
+            rows.append([float(v) for v in line.split(",")])
+    width = max((len(r) for r in rows), default=m + n)
+    A = np.asarray([r + [np.nan] * (width - len(r)) for r in rows], float).reshape(-1, width)
+    X = A[:, m:m + n] if width >= m + n else None
+    return A[:, :m], X
+
+
 def _recompute_one(args) -> str:
-    run_dir, names, n_ref = args
+    run_dir, names, n_ref, hv_options, scenario = args
     import numpy as np
     from ..benchmarks import get as bench_get
     from . import metrics as M
+    from .archive import dss_order
     run_dir = Path(run_dir)
     meta_path = run_dir / "meta.json"
     try:
@@ -1054,23 +1142,43 @@ def _recompute_one(args) -> str:
             return "skipped"
         p = bench_get(meta["problem"])
         m = int(meta.get("n_objs") or p.n_obj)
-        rows = []
-        with (run_dir / "final.csv").open("r", encoding="utf-8") as fh:
-            for line in fh:
-                line = line.strip()
-                if not line or line.startswith("#") or line.startswith("f1"):
-                    continue
-                rows.append([float(v) for v in line.split(",")[:m]])
-        F = np.asarray(rows, float)
-        if not F.size or not np.all(np.isfinite(F)):
-            return "skipped"
-        ref = None
+        n = int(meta.get("n_vars") or p.n_vars)
+        k = int(meta.get("n_ref") or n_ref)
+        ref = pset = None
         if any(name in NEEDS_FRONT for name in names) and callable(p.pareto_front):
-            ref = np.asarray(p.pareto_front(int(meta.get("n_ref") or n_ref)), float)
-        final = dict(meta.get("final") or {})
-        final.update(M.compute(F, ref_front=ref, ideal=p.ideal, nadir=p.nadir,
-                               which=names, pop=p.pop_size))
-        meta["final"] = final
+            ref = np.asarray(p.pareto_front(k), float)
+        if any(name in NEEDS_SET for name in names) and callable(p.pareto_set):
+            pset = np.asarray(p.pareto_set(k), float)
+        kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=names, pop=p.pop_size,
+                  hv_options=hv_options, pareto_set=pset, bounds=p.bounds,
+                  cyclic=p.cyclic_vars)
+        if scenario == "archive":
+            path = run_dir / "archive.csv"
+            if not path.is_file():
+                return "skipped"
+            F, X = _read_points(path, m, n)
+            if not len(F):
+                return "skipped"
+            frame = (meta.get("archive") or {}).get("frame")
+            if frame:
+                lo, hi = frame
+            elif p.ideal is not None and p.nadir is not None:
+                lo, hi = p.ideal, p.nadir
+            else:
+                lo = hi = None                   # the archive's own range
+            idx = (np.arange(len(F)) if len(F) <= p.pop_size
+                   else dss_order(F, k=p.pop_size, ideal=lo, nadir=hi))
+            out = dict(meta.get("final_archive") or {})
+            out.update(M.compute(F[idx], X=None if X is None else X[idx], **kw))
+            out["n"] = int(len(idx))
+            meta["final_archive"] = out
+        else:
+            F, X = _read_points(run_dir / "final.csv", m, n)
+            if not F.size or not np.all(np.isfinite(F)):
+                return "skipped"
+            out = dict(meta.get("final") or {})
+            out.update(M.compute(F, X=X, **kw))
+            meta["final"] = out
         _write_json(meta_path, meta)
         return "done"
     except Exception as e:                           # noqa: BLE001
@@ -1078,14 +1186,19 @@ def _recompute_one(args) -> str:
         return "failed"
 
 
-def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1000) -> dict:
+def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1000,
+                    hv_options: dict | None = None, scenario: str = "final") -> dict:
     """Compute `names` from every finished run's final.csv and merge them into its meta.json.
 
     The final population is on disk, so an indicator added after a campaign
     ran costs its own arithmetic, not a rerun. Trajectories keep what they
-    recorded.
+    recorded. With scenario "archive" the same is done for the run archive
+    (archive.csv) reduced to the population size by DSS, into
+    meta["final_archive"] — which also gives that scenario to campaigns run
+    before it existed, as long as they kept an archive.
     """
-    tasks = [(str(m.parent), list(names), n_ref) for m in root.glob("*/*/run_*/meta.json")]
+    tasks = [(str(m.parent), list(names), n_ref, hv_options, scenario)
+             for m in root.glob("*/*/run_*/meta.json")]
     counts: dict = {}
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
@@ -1097,6 +1210,13 @@ def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1
             status = _recompute_one(task)
             counts[status] = counts.get(status, 0) + 1
     return counts
+
+
+def scenario_rows(rows: list[dict], scenario: str) -> list[dict]:
+    """The rows as the tables read them: "archive" puts final_archive in place of final."""
+    if scenario != "archive":
+        return rows
+    return [dict(r, final=r.get("final_archive") or {}) for r in rows]
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -1127,7 +1247,38 @@ def main(argv: list[str] | None = None) -> int:
                          "budget, from its trajectory, instead of at the end")
     ap.add_argument("--recompute", metavar="METRICS",
                     help="compute these comma-separated metrics from every finished run's "
-                         "final.csv, store them in its meta.json, and exit (honours --workers)")
+                         "final.csv (with --scenario archive: its archive.csv reduced by DSS), "
+                         "store them in its meta.json, and exit (honours --workers)")
+    ap.add_argument("--scenario", choices=("final", "archive"), default="final",
+                    help="which answer of a run the tables and --recompute read: 'final', "
+                         "what the algorithm returned, or 'archive', the run archive reduced "
+                         "to the problem's population size by DSS (default final)")
+    ap.add_argument("--reference", metavar="ALG",
+                    help="with --compare or --ranks: test every algorithm against ALG — the "
+                         "exact Wilcoxon rank-sum per problem (Holm over the problems) with "
+                         "the Vargha-Delaney A12, and the exact signed-rank test on the "
+                         "medians across problems (Holm over the algorithms)")
+    ap.add_argument("--alpha", type=float, default=0.05,
+                    help="significance level for --reference (default 0.05)")
+    ap.add_argument("--ci", action="store_true",
+                    help="with --ranks: a 95 %% bootstrap interval for every mean rank, "
+                         "resampling the problems")
+    ap.add_argument("--by", metavar="KEY",
+                    help="with --ranks: mean ranks within groups of problems sharing a "
+                         "property: front, multimodal, deceptive, bias, scaled, separable, "
+                         "centre (benchmarks/properties.py)")
+    ap.add_argument("--gap", metavar="METRIC",
+                    help="print each algorithm's median gap to the best final METRIC any run "
+                         "reached, per problem, and exit")
+    ap.add_argument("--zero-share", nargs="?", const="hv", metavar="METRIC",
+                    help="print the share of seeds whose final METRIC (default hv) is exactly "
+                         "0, per problem, and exit")
+    ap.add_argument("--ecdf", metavar="METRIC",
+                    help="print the runtime ECDF of METRIC over (run, target) pairs, targets "
+                         "at fixed distances from the best known value, and exit")
+    ap.add_argument("--interpolation", choices=("step", "linear"), default="step",
+                    help="with --ecdf: a target reached between two records is charged to the "
+                         "later record (step, the default) or interpolated (linear)")
     args = ap.parse_args(argv)
 
     try:
@@ -1157,17 +1308,29 @@ def main(argv: list[str] | None = None) -> int:
         for j in jobs:
             st = job_status(root, j)
             note = f"  [{j.pop_note}]" if j.pop_note else ""
-            print(f"{j.index:5d} {j.problem:<14} {j.algorithm:<14} seed {j.seed:<3} "
-                  f"pop {j.pop:<4} gens {j.gens:<5} fe {j.pop * j.gens:<8} {st}{note}")
+            print(f"{j.index:5d} {j.problem:<14} {j.key:<14} seed {j.seed:<3} "
+                  f"pop {j.pop:<4} gens {j.gens:<5} fe {j.budget:<8} {st}{note}")
         print(f"\n{len(jobs)} jobs -> {root}", file=sys.stderr)
         return 0
-    for flag, metric in (("--compare", args.compare), ("--ranks", args.ranks)):
+    for flag, metric in (("--compare", args.compare), ("--ranks", args.ranks),
+                         ("--gap", args.gap), ("--zero-share", args.zero_share),
+                         ("--ecdf", args.ecdf)):
         if metric is not None and metric not in METRIC_NAMES:
             print(f"{flag}: unknown metric '{metric}'; known: {', '.join(METRIC_NAMES)}",
                   file=sys.stderr)
             return 1
     if args.at is not None and not 0.0 < args.at <= 1.0:
         print("--at wants a fraction of the budget in (0, 1], e.g. 0.25", file=sys.stderr)
+        return 1
+    if args.scenario == "archive" and (args.at is not None or args.ecdf):
+        print("--scenario archive reads the end of a run: it does not combine with --at or "
+              "--ecdf, which read the trajectory", file=sys.stderr)
+        return 1
+    if (args.ci or args.by) and not args.ranks:
+        print("--ci and --by go with --ranks METRIC", file=sys.stderr)
+        return 1
+    if args.reference and not (args.ranks or args.compare):
+        print("--reference goes with --ranks or --compare METRIC", file=sys.stderr)
         return 1
     if args.recompute:
         names = [m.strip() for m in args.recompute.split(",") if m.strip()]
@@ -1176,16 +1339,62 @@ def main(argv: list[str] | None = None) -> int:
             print(f"--recompute: unknown metric(s) {', '.join(bad) or '(none given)'}; "
                   f"known: {', '.join(METRIC_NAMES)}", file=sys.stderr)
             return 1
-        counts = recompute_final(root, names, workers=args.workers, n_ref=spec.n_ref)
-        print(f"recomputed {', '.join(names)}: {counts}", file=sys.stderr)
+        counts = recompute_final(root, names, workers=args.workers, n_ref=spec.n_ref,
+                                 hv_options={"exact_max_m": spec.hv_exact_max_m,
+                                             "mc_samples": spec.hv_mc_samples},
+                                 scenario=args.scenario)
+        print(f"recomputed {', '.join(names)} ({args.scenario}): {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
-    if args.ranks:
-        print(format_ranks(rank_table(scan_results(root), args.ranks, args.at)))
-        return 0
+    rows = None
+    if any(v is not None for v in (args.ranks, args.compare, args.gap, args.zero_share,
+                                   args.ecdf)):
+        from . import report as R
+        rows = scenario_rows(scan_results(root), args.scenario)
+        try:
+            if args.reference:
+                metric = args.ranks or args.compare
+                if not any(r["algorithm"] == args.reference for r in rows):
+                    print(f"--reference: no run of '{args.reference}' under {root}",
+                          file=sys.stderr)
+                    return 1
+                print(R.format_reference(R.reference_report(
+                    rows, metric, args.reference, at=args.at, scenario=args.scenario,
+                    alpha=args.alpha)))
+                print()
+            if args.ranks and args.by:
+                print(R.format_property_ranks(R.property_ranks(
+                    rows, args.ranks, args.by, at=args.at, scenario=args.scenario),
+                    args.ranks, args.by))
+            elif args.ranks:
+                table = rank_table(rows, args.ranks, args.at)
+                print(format_ranks(table))
+                if args.ci:
+                    ci = R.rank_intervals(rows, args.ranks, at=args.at, scenario=args.scenario)
+                    print("\n95 % bootstrap interval of each mean rank (problems resampled "
+                          "2000 times)")
+                    for alg, _ in table["algorithms"]:
+                        if alg in ci:
+                            lo, hi = ci[alg]
+                            print(f"  {R.mark_budget(alg)[:16]:<16} [{lo:5.2f}, {hi:5.2f}]")
+            if args.gap:
+                print(R.gap_report(rows, args.gap))
+            if args.zero_share:
+                print(R.zero_share_report(rows, args.zero_share))
+            if args.ecdf:
+                print(R.format_ecdf(R.ecdf_report(rows, args.ecdf,
+                                                  interpolation=args.interpolation)))
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        if not args.compare:
+            return 0
     if args.compare:
-        table = compare_table(scan_results(root), args.compare, args.at)
+        from .postprocess import budget_note
+        at = f" at {args.at:.0%} of the budget" if args.at is not None else ""
+        print(f"median {args.compare}{at} ({args.scenario}), runs per cell in brackets")
+        table = compare_table(rows, args.compare, args.at)
         algs = sorted({a for d in table.values() for a in d})
-        print("problem".ljust(16) + "".join(a[:14].rjust(15) for a in algs))
+        print("problem".ljust(16) + "".join((a[:13] + budget_note(a)).rjust(15) for a in algs))
         for prob in sorted(table):
             cells = []
             for a in algs:

@@ -10,9 +10,13 @@ The hypervolume follows the registry's convention (Tanabe & Oyama 2017):
 objectives are normalised by the problem's ideal and nadir, the reference
 point is (1.1, ..., 1.1), and the value is divided by 1.1^M so that a perfect
 front scores close to 1. Points that do not dominate the reference point
-contribute nothing. Exact (WFG recursion) up to M = 5 objectives; above that
-a Monte-Carlo estimate with a fixed seed, which is what the literature does
-and is stated in the record as `hv_method`.
+contribute nothing. Exact (the WFG algorithm) up to M = 5 objectives by
+default; above that a Monte-Carlo estimate with a fixed seed, which is what the
+literature does and is stated in the record as `hv_method`. Both limits are
+settings of hypervolume() and of a campaign (hv_exact_max_m, hv_mc_samples).
+The exact value comes from the compiled extension (include/mootation/
+hypervolume.hpp, about a thousand times faster) when it is built, and from
+the Python recursion below otherwise; the two agree to rounding.
 """
 
 from __future__ import annotations
@@ -105,32 +109,63 @@ def _hv_wfg(pl: np.ndarray, ref: np.ndarray) -> float:
     return float(total)
 
 
+def _hv_exact(pl: np.ndarray, ref: np.ndarray) -> float:
+    """Exact hypervolume of `pl` (nondominated, inside `ref`): C++ when built."""
+    try:
+        from .. import _core
+        fn = getattr(_core, "hypervolume", None)
+    except ImportError:                              # pragma: no cover - no extension
+        fn = None
+    if fn is not None:
+        return float(fn(np.ascontiguousarray(pl, float), np.ascontiguousarray(ref, float)))
+    return _hv_wfg(pl, ref)
+
+
 def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: int) -> float:
+    """Monte-Carlo hypervolume: the box [lo, ref] times the share of `samples`
+    uniform points in it that some row of `pl` weakly dominates.
+
+    The points are drawn here, from NumPy's generator with `seed`, and only
+    counted by the compiled hv_covered when the extension is built, so the
+    estimate does not depend on which of the two counted it.
+    """
     rng = np.random.default_rng(seed)
     box = np.prod(ref - lo)
     if box <= 0:
         return 0.0
+    try:
+        from .. import _core
+        count = getattr(_core, "hv_covered", None)
+    except ImportError:                              # pragma: no cover - no extension
+        count = None
+    pl = np.ascontiguousarray(pl, float)
     hit = 0
     chunk = 20_000
     done = 0
     while done < samples:
         k = min(chunk, samples - done)
         s = lo + rng.random((k, len(ref))) * (ref - lo)
-        # a sample is covered if some point dominates it (<= in every coordinate)
-        covered = np.zeros(k, bool)
-        for row in pl:
-            covered |= np.all(row[None, :] <= s, axis=1)
-        hit += int(covered.sum())
+        if count is not None:
+            hit += int(count(pl, np.ascontiguousarray(s)))
+        else:
+            # a sample is covered if some point dominates it (<= in every coordinate)
+            covered = np.zeros(k, bool)
+            for row in pl:
+                covered |= np.all(row[None, :] <= s, axis=1)
+            hit += int(covered.sum())
         done += k
     return float(box * hit / samples)
 
 
 def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
-                mc_samples: int = HV_MC_SAMPLES, seed: int = 0) -> tuple[float, str]:
+                mc_samples: int = HV_MC_SAMPLES, seed: int = 0,
+                exact_max_m: int = HV_EXACT_MAX_M) -> tuple[float, str]:
     """Normalised hypervolume and the method used ("exact" or "mc").
 
     F is normalised to (F - ideal) / (nadir - ideal); the reference point is
-    ref_scale in every objective; the result is divided by ref_scale^M.
+    ref_scale in every objective; the result is divided by ref_scale^M. Exact
+    up to `exact_max_m` objectives, a Monte-Carlo estimate from `mc_samples`
+    points (the same points on every call with the same seed) above.
     """
     F = np.asarray(F, float)
     ideal = np.asarray(ideal, float)
@@ -146,8 +181,8 @@ def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
     if len(G) == 0:
         return 0.0, "none"
     G = nondominated(G)
-    if m <= HV_EXACT_MAX_M:
-        v = _hv_wfg(G, ref)
+    if m <= exact_max_m:
+        v = _hv_exact(G, ref)
         method = "exact"
     else:
         lo = np.minimum(G.min(axis=0), 0.0)
@@ -247,6 +282,82 @@ def dup_share(F: np.ndarray) -> float:
     return float(1.0 - len(np.unique(F, axis=0)) / len(F))
 
 
+# ── the decision space ──────────────────────────────────────────────────────
+def _unit(X, bounds) -> np.ndarray:
+    """Variables mapped to [0, 1] by the problem's bounds."""
+    X = np.atleast_2d(np.asarray(X, float))
+    lo = np.array([b[0] for b in bounds], float)
+    hi = np.array([b[1] for b in bounds], float)
+    return (X - lo) / np.where(hi > lo, hi - lo, 1.0)
+
+
+def _unit_diff(A: np.ndarray, B: np.ndarray, cyclic) -> np.ndarray:
+    """B − A for every pair, (len(B), len(A), d); cyclic variables wrap at 1."""
+    D = B[:, None, :] - A[None, :, :]
+    if len(cyclic):
+        c = list(cyclic)
+        D[..., c] = np.mod(D[..., c] + 0.5, 1.0) - 0.5
+    return D
+
+
+def igdx(X, pareto_set, *, bounds, cyclic=()) -> float:
+    """IGDX (Tanabe & Ishibuchi 2019, Eq. 5): IGD in the decision space.
+
+    The mean over a Pareto-set sample of the distance to the nearest solution,
+    here in variables normalised by the problem's bounds — so that ZCAT's,
+    which span [-i/2, i/2], weigh alike; on [0, 1]^n it is Eq. 5 exactly — and
+    with the wrap of the cyclic variables (shiftDTLZ's distance variables,
+    read mod 1), without which a solution next to its optimum across the
+    wrap reads as far from it.
+    """
+    U = _unit(X, bounds)
+    R = _unit(pareto_set, bounds)
+    if U.size == 0:
+        return float("inf")
+    best = np.empty(len(R))
+    for a in range(0, len(R), 128):
+        D = _unit_diff(U, R[a:a + 128], cyclic)
+        best[a:a + 128] = np.sqrt((D ** 2).sum(axis=2)).min(axis=1)
+    return float(best.mean())
+
+
+def cover_rate(X, pareto_set) -> float:
+    """CR (Tanabe & Ishibuchi 2019, Eqs. 7-8): the share of the Pareto set's
+    extent in every variable that the solutions span, (prod delta_i)^(1/2D).
+
+    delta_i is the squared overlap of the solutions' range of x_i with the
+    set's, over the set's; 1 where the set is a single value, 0 where the
+    ranges do not meet. Higher is better; 1 at full cover.
+    """
+    X = np.atleast_2d(np.asarray(X, float))
+    P = np.atleast_2d(np.asarray(pareto_set, float))
+    if X.size == 0:
+        return 0.0
+    smin, smax = P.min(axis=0), P.max(axis=0)
+    xmin, xmax = X.min(axis=0), X.max(axis=0)
+    span = smax - smin
+    live = span > 0
+    delta = np.ones(X.shape[1])
+    delta[live] = ((np.minimum(smax, xmax) - np.maximum(smin, xmin))[live] / span[live]) ** 2
+    delta[live & ((xmin >= smax) | (xmax <= smin))] = 0.0
+    return float(np.prod(np.clip(delta, 0.0, 1.0)) ** (1.0 / (2 * X.shape[1])))
+
+
+def pairwise_distance(X, *, bounds, cyclic=()) -> float:
+    """The mean distance between two solutions in normalised variables (the
+    cyclic ones wrapped): how spread the set is in the decision space, with no
+    reference needed. 0 for fewer than two solutions."""
+    U = _unit(X, bounds)
+    n = len(U)
+    if n < 2:
+        return 0.0
+    total = 0.0
+    for a in range(0, n, 128):
+        D = _unit_diff(U, U[a:a + 128], cyclic)
+        total += float(np.sqrt((D ** 2).sum(axis=2)).sum())
+    return total / (n * (n - 1))
+
+
 def _normalised(F, ref, ideal, nadir):
     ideal = np.asarray(ideal, float)
     span = np.asarray(nadir, float) - ideal
@@ -269,15 +380,20 @@ def lattice_h(m: int, pop: int) -> int:
 
 
 def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
-            pop: int | None = None) -> dict:
+            pop: int | None = None, hv_options: dict | None = None, X=None,
+            pareto_set=None, bounds=None, cyclic=()) -> dict:
     """Every requested indicator in one dict; missing inputs give None.
 
     `pop` is the problem's default population size. hv_h places its reference
     point at 1 + 1/H with H taken from it, so every algorithm on a problem is
     measured against the same point whatever population it rounded to.
+    `hv_options` goes to hypervolume() (exact_max_m, mc_samples, seed). The
+    decision-space indicators need the solutions `X` and the problem's
+    `bounds`, and igdx and cr a `pareto_set` sample besides.
     """
     out: dict = {}
     F = np.asarray(F, float)
+    hvo = dict(hv_options or {})
     have_box = ideal is not None and nadir is not None
     for name in which:
         if name in ("igd", "igdp", "gdp", "eps"):
@@ -306,7 +422,7 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             if not have_box:
                 out["hv"] = None
             else:
-                v, method = hypervolume(F, ideal, nadir)
+                v, method = hypervolume(F, ideal, nadir, **hvo)
                 out["hv"] = v
                 out["hv_method"] = method
         elif name == "hv_h":
@@ -314,10 +430,20 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 out["hv_h"] = None
             else:
                 scale = 1.0 + 1.0 / lattice_h(F.shape[1], int(pop))
-                v, method = hypervolume(F, ideal, nadir, ref_scale=scale)
+                v, method = hypervolume(F, ideal, nadir, ref_scale=scale, **hvo)
                 out["hv_h"] = v
                 out["hv_h_ref"] = scale
                 out["hv_method"] = method
+        elif name in ("igdx", "cr"):
+            if X is None or pareto_set is None or bounds is None or not np.size(X):
+                out[name] = None
+            elif name == "igdx":
+                out[name] = igdx(X, pareto_set, bounds=bounds, cyclic=cyclic)
+            else:
+                out[name] = cover_rate(X, pareto_set)
+        elif name == "pdist":
+            ok = X is not None and bounds is not None and np.size(X)
+            out[name] = pairwise_distance(X, bounds=bounds, cyclic=cyclic) if ok else None
         else:
             from .metric_names import METRIC_NAMES
             raise ValueError(f"unknown metric '{name}'; known: {', '.join(METRIC_NAMES)}")

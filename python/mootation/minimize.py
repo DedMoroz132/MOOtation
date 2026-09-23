@@ -21,7 +21,7 @@ from . import _core
 # instead of a silently ignored argument — a run configured with an ignored
 # parameter is not the run that was asked for.
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
-         "K", "n_clusters", "theta", "alpha", "F", "CR", "div")
+         "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize")
 
 def minimize(
     fn: Callable[[Sequence[float]], Sequence[float]],

@@ -7,7 +7,8 @@ set(MOOTATION_TESTS
     test_convergence
     test_constraints
     test_warm_start
-    test_scale_invariance)
+    test_scale_invariance
+    test_hypervolume)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -94,6 +95,8 @@ mootation_test_timeout(test_constraints 1800)
 mootation_test_timeout(test_das_dennis 300)
 mootation_test_timeout(test_scale_invariance 900)
 mootation_test_timeout(test_operators 300)
+# hypervolume.hpp alone: 300 random sets against inclusion-exclusion, seconds.
+mootation_test_timeout(test_hypervolume 300)
 # Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
 # all 58 algorithms for the run-time dispatch. Stays in the push tier because
 # the property it guards — that a warm start costs no function evaluations — is
@@ -117,7 +120,10 @@ if(Python3_Interpreter_FOUND AND NOT Python3_VERSION VERSION_LESS 3.11)
     add_test(NAME python.mootation_run
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/../python/test_run_layer.py)
-    set_tests_properties(python.mootation_run PROPERTIES TIMEOUT 300)
+    # Six minutes: the suite runs real campaigns now — the recording grid, the
+    # archive and its scenario, the report flags, the ablations — which is most
+    # of its time, and a loaded runner must not turn that into a red build.
+    set_tests_properties(python.mootation_run PROPERTIES TIMEOUT 600)
 
     # --check must stay green on the shipped example, because that example is
     # the first thing anyone copies.

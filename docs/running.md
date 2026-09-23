@@ -83,6 +83,23 @@ gens   = 500
 params = { eta_c = 20, pc = 0.9 }            # any knob from `--algorithms`
 ```
 
+An `[[algorithms]]` entry can also carry `evaluations = 30000`, a budget in
+evaluations that replaces `pop` × `gens` (and `gens` may then be left out): a
+step is not a generation for every core — one offspring for NIMMO, a fifth of
+the population for MOEA/D-DRA and -AWA — so a budget in steps is not a budget.
+And `label`, which names a variant: two entries of one core with different
+`params` must be told apart, and a campaign files and reports each under its
+label. A parameter can be a switch:
+
+```toml
+[[algorithms]]
+name   = "r2ibea"
+label  = "r2ibea_norm"                      # results/.../r2ibea_norm/
+pop    = 0
+gens   = 0
+params = { normalize = true }                # IBEA, R2-IBEA, Two_Arch2, MOEA/D-AM2M
+```
+
 Commands are argv **arrays**: nothing to quote, nothing to escape, no
 difference between `cmd` and `sh`. `run_windows` / `run_linux` / `run_darwin`
 override one step on one platform; `run` is the fallback.
@@ -255,19 +272,47 @@ final population (the same list when omitted):
 | `roi_dist` | distance from the set to the box [ideal, nadir] in normalised units, 0 once any point is inside; tells apart the runs whose hypervolume is exactly 0 (COCO scores bbob-biobj this way) | lower |
 | `range_cover` | the worst objective's covered share of [ideal, nadir]; falls early when a population collapses onto part of the front, as on DTLZ4; per objective in `range_cover_each` | higher |
 | `nd_share`, `dup_share` | the share of the set no other member dominates, and the share that repeats an objective vector already in it: stagnation and duplicates | — |
+| `igdx` | IGD in the decision space: the mean distance from a Pareto-SET sample to the nearest solution, variables normalised by the bounds (Tanabe & Ishibuchi 2019, Eq. 5) | lower |
+| `cr` | cover rate: how much of the Pareto set's extent in each variable the solutions span, geometric mean over the variables, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7–8) | higher |
+| `pdist` | the mean distance between two solutions in normalised variables: spread in the decision space, no reference needed | — |
 
 `gdp` needs a reference front like `igd`; `roi_dist` and `range_cover` need only
 the problem's ideal and nadir, and `nd_share` and `dup_share` nothing at all, so
 those four also describe the bbob-biobj problems, which have no front.
 
-The hypervolume is exact up to five objectives and Monte-Carlo above, and exact
-is not cheap at five: a well-spread set of 126 points takes two to three
-seconds per call, so recording it along a trajectory is most of a campaign's
-time. That is what `final_metrics` is for — `metrics = ["igdp"]` with
-`final_metrics = ["igdp", "eps", "hv", "hv_h"]` pays for the hypervolume once
-per run — and `trajectory_hv_max_m = 3` keeps it on the trajectory only where
-it is cheap (about 50 ms per point at three objectives), recording `null`
-above. The other indicators cost milliseconds.
+`igdx` and `cr` need a sample of the Pareto SET, which only some problems
+have: the Ishibuchi polygons (Polygon, IPolygon), DTLZ1–4, shiftDTLZ1–4 and
+ZCAT1–20. On shiftDTLZ the distance variables are **cyclic** — the optimum
+moved off the centre wraps around the box — so their differences are taken as
+((x − c + 0.5) mod 1) − 0.5 in normalised units; a plain difference would call
+two solutions on either side of the wrap far apart. On ZCAT the set is the
+positions with every distance variable at its optimum g(y_I). Elsewhere they
+are null. `pdist` needs nothing but the solutions. All three read the final
+population (`final_metrics`), whose variables `final.csv` keeps, so
+`--recompute igdx,cr,pdist` adds them to a campaign that ran without them.
+
+The hypervolume is exact up to `hv_exact_max_m` objectives (5 by default) and
+a Monte-Carlo estimate from `hv_mc_samples` points (100 000) above. The exact
+one is the WFG algorithm (While, Bradstreet & Barone 2012) compiled into the
+extension, `mootation._core.hypervolume`: about 20 ms for 210 points at five
+objectives, where the Python recursion it replaces took seconds; without the
+extension the Python one still runs. The Monte-Carlo points are drawn by
+NumPy from a fixed seed and only counted in C++, so an estimate does not
+depend on which of the two counted it, and every record of a trajectory uses
+the same points, which keeps the curve free of sampling jitter. `hv_method` in
+each record says which one ran.
+
+Along a trajectory, `trajectory_hv_max_m = 3` keeps the exact hypervolume to
+three objectives; above it the hypervolume is `null`, or, with
+`trajectory_hv_mc_samples = 10000`, estimated from that many points (about
+±0.01 at 95 %, ~15 ms per record at five objectives). The final population
+always gets the exact value up to `hv_exact_max_m`. `final_metrics` pays for
+anything costly once per run: `metrics = ["igdp"]` with `final_metrics =
+["igdp", "eps", "hv", "hv_h"]`. The other indicators cost milliseconds.
+
+The same C++ is available to a C++ program as `mootation/hypervolume.hpp`:
+`hypervolume::wfg(F, n, m, ref)` for the exact value and
+`hypervolume::covered(F, n, m, S, k)` for the Monte-Carlo count.
 
 **Where the trajectory is recorded.** `record_every = k` records every k
 generations. `record_grid = "log"` records instead at fixed evaluation counts,
@@ -300,12 +345,42 @@ with a population's. They spend the budget exactly. An algorithm that does not
 clearly beat them on a problem says more about the problem or the budget than
 about the algorithm.
 
+Two ablations take one ingredient of an evolutionary algorithm away.
+`random_selection_ea` is NSGA-II's variation — SBX with η_c = 20 and p_c =
+0.9, polynomial mutation with η_m = 20 and p_m = 1/n, formula for formula the
+library's operators — with none of its selection: parents drawn uniformly, and
+N of the 2N parents and children kept uniformly at random. What is left is
+what the operators do on their own; its answer is its last population. `gsemo`
+is global SEMO (Laumanns, Thiele & Zitzler, IEEE TEVC 8(2), 2004, with Giel's
+global mutation, CEC 2003) carried to real variables: the population is every
+nondominated point found, each evaluation mutates one member drawn uniformly
+(every variable with probability 1/n, polynomial mutation), and the child
+enters unless a member weakly dominates it. Selection by dominance alone, no
+diversity mechanism and no population size; its answer is the population
+reduced to N by DSS. The carrying-over to real variables is ours: both papers
+define the algorithm on bit strings. None of the four baselines handles
+constraints; only the run archive keeps to feasible points.
+
+**The archive scenario.** With the run archive on (the default), every run
+also stores `final_archive` in its `meta.json`: the final indicators once more,
+on the archive reduced to the problem's population size by the same DSS
+selection — what the run found, not what the algorithm kept.
+`archive_scenario = false` turns it off. `--scenario archive` makes
+`--compare`, `--ranks` and every report below read it instead of the final
+population, which answers a different question: how good the search was, as
+opposed to how good the population it returns is. `meta.json` also records the
+frame the selection normalised by, so `--recompute ... --scenario archive`
+selects the same points again from `archive.csv` — or, on a campaign run before
+the scenario existed, selects them for the first time.
+
 Two more readings need no rerun. `--at 0.25` gives `--compare` and `--ranks`
 every run as it stood at a quarter of its budget, read from its trajectory, so
 ranks at several budgets come out of one campaign — they do differ with the
 budget (Tanabe & Oyama, GECCO 2017). `--recompute eps,hv_h` computes indicators
 a campaign did not record from each finished run's `final.csv` and stores them
-in its `meta.json`; `--workers` spreads the work.
+in its `meta.json` — `--scenario archive` does the same from `archive.csv` into
+`final_archive` — with the campaign's own hypervolume settings; `--workers`
+spreads the work.
 
 ### Reading the results
 
@@ -319,11 +394,65 @@ won and the number it was ranked on.
 
 Two cautions. A mean rank rewards consistency, not margin: an algorithm second
 on every problem outranks one that alternates between first and last, and a
-rank cannot tell whether two medians differ by more than the spread between
-seeds (a Wilcoxon test is on the roadmap, not here yet). Use the ranks to find
-where to look and the medians with their quartiles to decide. And a group mean
-is only as broad as its group: best on WFG at five objectives means best on
-those nine problems, at the budget the campaign gave them.
+rank alone cannot tell whether two medians differ by more than the spread
+between seeds. Use the ranks to find where to look and the tests below to
+decide. And a group mean is only as broad as its group: best on WFG at five
+objectives means best on those nine problems, at the budget the campaign gave
+them.
+
+The tests and groupings, all read from the same results:
+
+```bash
+python -m mootation.run.campaign c.toml --ranks hv_h --reference nsga2   # tests against a reference
+python -m mootation.run.campaign c.toml --ranks hv_h --ci                # bootstrap intervals of the mean ranks
+python -m mootation.run.campaign c.toml --ranks igdp_norm --by front     # ranks within groups of problems
+python -m mootation.run.campaign c.toml --ranks hv --scenario archive    # the run archives instead
+python -m mootation.run.campaign c.toml --gap igdp_norm                  # distance to the best known value
+python -m mootation.run.campaign c.toml --zero-share                     # seeds whose hypervolume is 0
+python -m mootation.run.campaign c.toml --ecdf igdp_norm --interpolation linear
+```
+
+- `--reference ALG` (with `--ranks` or `--compare`): on every problem, each
+  algorithm's seeds against the reference's by the exact Wilcoxon rank-sum
+  test, Holm-corrected over the problems, with the Vargha–Delaney A12 effect
+  size; across problems, the exact Wilcoxon signed-rank test on the
+  per-problem medians, Holm-corrected over the algorithms. `+` / `-` / `=`
+  count the problems where an algorithm is significantly better, worse, or
+  neither (`--alpha`, 0.05). Both tests are exact with ties — the null
+  distribution is built by dynamic programming, not approximated — which
+  matters on the tied medians of converged runs. With five seeds a side the
+  smallest attainable rank-sum p is 1/126 ≈ 0.008, before Holm. The
+  signed-rank test ranks the SIZE of the differences across problems, so use a
+  scale-free metric for it (`hv`, `hv_h`, `igdp_norm`, `eps_norm`): in raw units
+  the problem with the largest values decides.
+- `--ci`: a 95 % percentile interval for each mean rank, resampling the
+  problems 2000 times. Two algorithms whose intervals overlap widely are not
+  ordered by this campaign.
+- `--by KEY` groups the problems by one property and ranks within each group:
+  `front` (linear, concave, convex, mixed, disconnected, degenerate),
+  `multimodal`, `deceptive`, `bias`, `scaled`, `separable` and `centre`
+  (the optimum in the middle of the box). The values are Huband, Hingston,
+  Barone & While's (IEEE TEVC 10(5), 2006, Tables V, VII and XV) for ZDT, DTLZ
+  and WFG and are argued in `mootation/benchmarks/properties.py` for the rest;
+  unknown is `?`, never guessed.
+- `--gap METRIC`: every algorithm's median distance to the best final value
+  any run reached on each problem — a common zero across problems whose raw
+  values differ by orders of magnitude.
+- `--zero-share [METRIC]`: the share of seeds whose final hypervolume (or
+  METRIC) is exactly 0, a split between seeds that a median hides.
+- `--ecdf METRIC`: the COCO-style runtime ECDF — the share of (run, target)
+  pairs solved by each evaluation count, the targets the best known value plus
+  1, 0.1, …, 10⁻⁴ in the metric's own units (so use a normalised one). How a
+  target reached between two records is charged is stated in the output:
+  `step` (the default) charges it to the later record, a pessimistic runtime
+  with no assumption; `linear` interpolates the evaluation count.
+
+Every table marks with `*` the sixteen algorithms whose behaviour follows the
+share of the budget spent (a t/t_max schedule): RVEA, MOEA/D-AWA, AdaW,
+DEA-GNG, MBRA, NRV-MOEA, HLMEA, DHEA, MOEA/D-DS, SRV, SRV-NSGA-III, DCEA,
+MaOEA-3C, MOEA/D-M2M, MOEA/D-AM2M and Liu–Gu 2011. Their runs at 10 000 and
+25 000 evaluations are not one run cut at two points, so overlay their curves
+by fraction of the budget (`--at`), never by absolute evaluations.
 
 ### Changing the number of workers while it runs
 
@@ -345,12 +474,13 @@ fails the one job it holds, which is recorded, and is replaced.
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)
-runs every algorithm and the two baselines on 203 problems — ZDT at two
-objectives; DTLZ1–7, WFG1–9, the inverted IDTLZ1–2, the scaled SDTLZ1–2,
-shiftDTLZ1–4 (DTLZ1–4 with the optimum moved off the centre of the box) and
+runs every algorithm, the two baselines and the two ablations on 203
+problems — ZDT at two objectives; DTLZ1–7, WFG1–9, the inverted IDTLZ1–2,
+the scaled SDTLZ1–2, shiftDTLZ1–4 (DTLZ1–4 with the optimum moved off the
+centre of the box) and
 ZCAT1–20 at three and five; and bbob-biobj F1–F55, every pair of ten bbob
 functions, at 5 and 10 variables — five seeds each at 10 000 evaluations:
-60 900 jobs and about 100 CPU-hours, some six hours on a 16-core machine. The
+62 930 jobs and about 105 CPU-hours, some seven hours on a 16-core machine. The
 file records what that estimate is built from, which three algorithms are most
 of it, where the time goes between the suites, and a preset for the papers'
 own budgets. Its trajectories are on the logarithmic grid, so a second run of

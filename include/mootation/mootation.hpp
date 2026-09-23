@@ -75,3 +75,4 @@
 #include "optimizer.hpp"
 #include "io/population.hpp"
 #include "io/evaluation_log.hpp"
+#include "hypervolume.hpp"

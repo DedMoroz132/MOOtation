@@ -41,12 +41,14 @@ from .polygon import (polygon_eval, polygon_bounds,
                      polygon_nadir, polygon_ideal)
 from .mop     import MOP_SPECS, mop_nadir, mop_ideal
 from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
-                           hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz)
+                           hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz,
+                           shift_centres)
 from .maf     import MAF_FIX, maf_n_vars
 from .bt      import BT_SPECS, N as BT_N
 from . import polygon_ishibuchi as _ipoly
 from . import zcat as _zcat
 from . import bbob_biobj as _bbobbiobj
+from . import pareto_sets as _psets
 
 
 # =============================================================
@@ -70,9 +72,13 @@ class BenchProblem:
     # A sampler of the true PF (n_points -> ndarray n x M) for IGD/IGD+/GD+.
     # None where no reference is defined yet; hypervolume still works.
     pareto_front: Optional[Callable[[int], "np.ndarray"]] = None
-    # A sampler of the true Pareto SET, in decision space, for IGDX and PSP.
-    # Set only on decision-space-diversity problems (Polygon, MMF).
+    # A sampler of the true Pareto SET, in decision space, for IGDX and CR
+    # (benchmarks/pareto_sets.py): IPolygon, Polygon, DTLZ1-4, shiftDTLZ1-4,
+    # ZCAT. None elsewhere, and the decision-space indicators say nothing there.
     pareto_set: Optional[Callable[[int], "np.ndarray"]] = None
+    # Variables whose distance wraps with the period of their range: the
+    # problem reads them mod 1 (shiftDTLZ's distance variables).
+    cyclic_vars: Tuple[int, ...] = ()
 
     @property
     def fevals_max(self) -> int:
@@ -1273,6 +1279,9 @@ def _register_dtlz():
             ideal  = dtlz_ideal(name, M)
             def _eval(x, _f=func, _M=M): return _f(list(x), _M)
             def _pf(n, _g=_DTLZ_PF[name], _M=M): return _g(_M, n)
+            _ps = None
+            if name in ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4"):
+                def _ps(n, _M=M, _nv=n_vars): return _psets.dtlz(_M, _nv, n)
             prob_name = f"{name}_{M}D"
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=n_vars, bounds=bounds, n_obj=M,
@@ -1281,7 +1290,7 @@ def _register_dtlz():
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-                pareto_front=_pf)
+                pareto_front=_pf, pareto_set=_ps)
 
 
 # =============================================================
@@ -1298,6 +1307,8 @@ def _register_shifted_dtlz():
             ideal  = dtlz_ideal(base, M)
             def _eval(x, _b=base, _M=M): return shift_dtlz(_b, list(x), _M)
             def _pf(n, _g=_DTLZ_PF[base], _M=M): return _g(_M, n)
+            def _ps(n, _M=M, _nv=n_vars):
+                return _psets.dtlz(_M, _nv, n, shift_centres(_nv - _M + 1))
             prob_name = f"shift{base}_{M}D"
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
@@ -1306,7 +1317,8 @@ def _register_shifted_dtlz():
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-                pareto_front=_pf)
+                pareto_front=_pf, pareto_set=_ps,
+                cyclic_vars=tuple(range(M - 1, n_vars)))
 
 
 # =============================================================
@@ -1346,7 +1358,8 @@ def _register_zcat():
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=sp["ideal"], nadir=sp["nadir"],
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-                pareto_front=sp["pareto_front"])
+                pareto_front=sp["pareto_front"],
+                pareto_set=(lambda n, _n=name, _M=M: _psets.zcat(_n, _M, n)))
 
 
 # =============================================================
@@ -1399,6 +1412,7 @@ def _register_polygon():
         pop, ng = _budget(M)
         def _eval(x, _M=M): return polygon_eval(list(x), _M)
         def _pf(n, _M=M): return _pf_polygon(_M, n)
+        def _ps(n, _M=M, _nv=n_vars): return _psets.polygon(_M, _nv, n)
         prob_name = f"Polygon_{M}D"
         PROBLEMS[prob_name] = BenchProblem(
             name=prob_name, n_vars=n_vars, bounds=bounds, n_obj=M,
@@ -1407,7 +1421,7 @@ def _register_polygon():
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=ideal, nadir=nadir,
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-            pareto_front=_pf)
+            pareto_front=_pf, pareto_set=_ps)
 
 
 # =============================================================

@@ -8,16 +8,22 @@ config checks, the command line and the TUI need the names, not the arithmetic.
 from __future__ import annotations
 
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
-                "roi_dist", "range_cover", "nd_share", "dup_share")
+                "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist")
 
-# Higher is better for these; lower for every other indicator. nd_share and
-# range_cover are diagnostics rather than quality indicators, oriented the way
-# a healthy run moves.
-HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share"})
+# Higher is better for these; lower for every other indicator. nd_share,
+# range_cover and pdist are diagnostics rather than quality indicators,
+# oriented the way a healthy run moves.
+HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pdist"})
 
 # These compare the answer set with a sample of the true Pareto front, so a
 # problem without one gives None for them.
 NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm"})
+
+# These look at the decision variables: all of them need the solutions, and
+# igdx and cr a sample of the Pareto SET besides (BenchProblem.pareto_set),
+# which only some problems have.
+NEEDS_X = frozenset({"igdx", "cr", "pdist"})
+NEEDS_SET = frozenset({"igdx", "cr"})
 
 # The hypervolumes: exact above three objectives costs seconds per call, which
 # is why a campaign can keep them off the trajectory (trajectory_hv_max_m).
@@ -45,4 +51,10 @@ DESCRIPTIONS = {
     "nd_share": "share of the set that no other member dominates; no reference front needed",
     "dup_share": "share of the set that repeats an objective vector already in it; "
                  "no reference front needed",
+    "igdx": "IGD in the decision space against a Pareto-set sample, variables normalised "
+            "by the bounds, cyclic ones wrapped (Tanabe & Ishibuchi 2019, Eq. 5)",
+    "cr": "cover rate: how much of the Pareto set's extent in each variable the solutions "
+          "span, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7-8)",
+    "pdist": "mean pairwise distance between solutions in normalised variables: spread in "
+             "the decision space; no reference needed",
 }

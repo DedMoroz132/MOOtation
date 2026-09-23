@@ -63,6 +63,8 @@
 // Session must be driven from one thread at a time.
 // ============================================================================
 
+#include <algorithm>
+#include <climits>
 #include <condition_variable>
 #include <exception>
 #include <functional>
@@ -262,6 +264,7 @@ MOOTATION_OPTIONAL_SETTER(alpha,      set_alpha,      double)
 MOOTATION_OPTIONAL_SETTER(F,          set_F,          double)
 MOOTATION_OPTIONAL_SETTER(CR,         set_CR,         double)
 MOOTATION_OPTIONAL_SETTER(div,        set_div,        int)
+MOOTATION_OPTIONAL_SETTER(normalize,  set_normalize,  bool)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
@@ -290,6 +293,7 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
     if (auto* v = get("F"))          note(apply_F(alg, *v), "F");
     if (auto* v = get("CR"))         note(apply_CR(alg, *v), "CR");
     if (auto* v = get("div"))        note(apply_div(alg, static_cast<int>(*v)), "div");
+    if (auto* v = get("normalize"))  note(apply_normalize(alg, *v != 0.0), "normalize");
     return ignored;
 }
 
@@ -371,7 +375,13 @@ inline Result run_core(const Settings& s, Context& ctx,
     // t_max is a schedule input, not a user knob: several cores anneal against
     // it, and their 1000-generation default against a 250-generation budget is
     // not the paper's schedule. Always pass the real budget where it is taken.
-    apply_t_max(alg, s.max_gen);
+    // Under an evaluation budget the number of steps is not known yet: start
+    // from budget / pop_size and correct it after the first step (below).
+    const bool by_evaluations = s.max_evaluations > 0;
+    apply_t_max(alg, by_evaluations
+        ? static_cast<int>(std::min<long long>(INT_MAX,
+              (static_cast<long long>(s.max_evaluations) + s.pop_size - 1) / s.pop_size))
+        : s.max_gen);
 
     Result r;
     r.ignored = apply_knobs(alg, s);
@@ -396,10 +406,36 @@ inline Result run_core(const Settings& s, Context& ctx,
         opt.setup();
     }
     if (per_generation) per_generation(0);
-    for (int g = 1; g <= s.max_gen; ++g) {
-        opt.step();
-        r.generations = g;
-        if (per_generation) per_generation(g);
+    if (!by_evaluations) {
+        for (int g = 1; g <= s.max_gen; ++g) {
+            opt.step();
+            r.generations = g;
+            if (per_generation) per_generation(g);
+        }
+    } else {
+        const int start = ctx.evaluations;
+        int idle = 0;                    // consecutive steps that evaluated nothing
+        for (int g = 1; ctx.evaluations < s.max_evaluations; ++g) {
+            const int before = ctx.evaluations;
+            opt.step();
+            r.generations = g;
+            if (ctx.evaluations > before) {
+                idle = 0;
+            } else if (++idle >= 10000) {
+                throw std::runtime_error(
+                    "mootation: 10000 steps in a row evaluated nothing; this core "
+                    "cannot run on an evaluation budget, use max_gen");
+            }
+            if (g == 1) {
+                // The cost of a step is known now: give the schedule the number
+                // of steps the budget buys (MOEA/D-AWA anneals over five times
+                // more steps than a generational core).
+                const int per  = std::max(1, ctx.evaluations - start);
+                const int left = std::max(0, s.max_evaluations - ctx.evaluations);
+                apply_t_max(alg, 1 + (left + per - 1) / per);
+            }
+            if (per_generation) per_generation(g);
+        }
     }
 
     auto& v = opt.get_vault();

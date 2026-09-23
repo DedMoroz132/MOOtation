@@ -1,7 +1,7 @@
-# All 58 algorithms, and two blind-sampling baselines, on a spread of problem
-# shapes: which one is good where.
+# All 58 algorithms, two blind-sampling baselines and two ablations, on a
+# spread of problem shapes: which one is good where.
 #
-#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 60 900 jobs
+#   python -m mootation.run.campaign campaign_all.toml --list > jobs.txt   # 62 930 jobs
 #   python -m mootation.run.campaign campaign_all.toml --workers 16        # one per core
 #   python -m mootation.run.campaign campaign_all.toml --ranks igd         # the condensed answer
 #   python -m mootation.run --tui campaign_all.toml                        # Campaign / Compare / Explore
@@ -22,11 +22,12 @@
 #                                                 R2-IBEA 99 s, HypE 46 s)
 #
 # Time grows about in proportion to the budget. As shipped — 5 runs at 10 000
-# evaluations — the whole campaign is about 100 CPU-hours: 90 scaled from the
-# measurements above, plus an estimated 10 for what every run now records
-# besides (the archive, some 20-50 us per evaluation, and the hypervolume on the
-# 3-objective trajectories, ~50 ms per point); the two baselines themselves are
-# nearly free. That is about 6 hours on 16 cores, 12 on 8. SMS-M2M alone is
+# evaluations — the whole campaign is about 105 CPU-hours: 90 scaled from the
+# measurements above, an estimated 10 for what every run now records besides
+# (the archive, some 20-50 us per evaluation, and the hypervolume on the
+# trajectories, ~15 ms a point with the compiled extension), and about 5 for
+# the four baselines, which cost what NSGA-II does: the benchmark's evaluation
+# in Python is most of their time. That is about 7 hours on 16 cores, 13 on 8. SMS-M2M alone is
 # about half of it, R2-IBEA a sixth and HypE an eighth; commenting out those
 # three leaves about 30 CPU-hours. Two presets:
 #
@@ -122,6 +123,11 @@ algorithms = [
     # floor every algorithm has to clear (docs/running.md, "Baselines").
     { name = "random_search", pop = 0, gens = 0 },
     { name = "sobol_search",  pop = 0, gens = 0 },
+    # Ablations: NSGA-II's operators with random survival, and GSEMO (the
+    # nondominated set, one mutation per evaluation). What selection, and a
+    # diversity mechanism on top of it, are worth (docs/running.md).
+    { name = "random_selection_ea", pop = 0, gens = 0 },
+    { name = "gsemo",               pop = 0, gens = 0 },
 ]
 
 [run]
@@ -224,14 +230,20 @@ budget_fe     = 10000              # 0 = each problem's own pop x 500 generation
 # ladder lines up point by point. About 20 points per run up to 10 000.
 record_grid       = "log"
 record_per_decade = 10
-# The hypervolume on the trajectory only up to three objectives (~50 ms a
-# point); exact at five it costs ~1.6 s a point and is recorded as null. On the
-# final population, once per run, both hypervolumes are always computed.
+# The hypervolume on the trajectory: exact up to three objectives, and at five
+# a Monte-Carlo estimate from 10 000 points (about +-0.01 at 95 %; the same
+# points at every record, so the curve does not jitter). On the final
+# population, once per run, both hypervolumes are exact up to five objectives
+# (the compiled WFG, ~20 ms) and Monte Carlo above.
 trajectory_hv_max_m = 3
+trajectory_hv_mc_samples = 10000
 metrics       = ["igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv_h",
                  "range_cover", "nd_share", "dup_share"]
+# igdx and cr where the problem has a Pareto-set sample (DTLZ1-4, shiftDTLZ1-4,
+# ZCAT; null elsewhere), pdist everywhere: the decision space.
 final_metrics = ["igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
-                 "roi_dist", "range_cover", "nd_share", "dup_share"]
+                 "roi_dist", "range_cover", "nd_share", "dup_share",
+                 "igdx", "cr", "pdist"]
 n_ref         = 1000
 # Every run also writes archive.csv, its nondominated points (archive = true is
 # the default). Population snapshots cost disk — on the order of gigabytes for

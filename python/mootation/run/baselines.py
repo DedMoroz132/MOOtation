@@ -14,10 +14,22 @@ converges to is decided by the archiver, not by how the points are drawn
                   which matters at budgets of tens to hundreds of points and
                   not after; needs SciPy
 
-The ANSWER of a baseline is not its last batch but its archive, reduced to the
-problem's population size N by the same DSS selection used everywhere else, so
-its metrics are comparable with a population's. It spends exactly the budget:
-the last batch is cut to what is left.
+and two ablations (ablations.py), which take one ingredient of an EA away:
+
+  random_selection_ea  NSGA-II's variation (SBX, polynomial mutation) with
+                       uniform random survival: the operators without the
+                       selection
+  gsemo                global SEMO on real variables: the nondominated set,
+                       one mutated member per evaluation: selection by
+                       dominance alone, no diversity mechanism and no
+                       population size
+
+The ANSWER of a sampling baseline is not its last batch but its archive,
+reduced to the problem's population size N by the same DSS selection used
+everywhere else, so its metrics are comparable with a population's; GSEMO's is
+its population reduced the same way, random_selection_ea's its last population.
+Each spends exactly the budget: the last batch is cut to what is left. None of
+them handles constraints: only the run archive keeps to feasible points.
 
 These are not C++ cores and are not in algorithms.def: nothing about them
 needs the core, and every interface that should run them — the campaign — is
@@ -32,6 +44,9 @@ from types import SimpleNamespace
 BASELINES = {
     "random_search": "uniform sampling of the box, archived, N chosen by DSS",
     "sobol_search": "scrambled Sobol sampling (SciPy), archived, N chosen by DSS",
+    "random_selection_ea": "ablation: NSGA-II's SBX and polynomial mutation, survival "
+                           "uniformly at random",
+    "gsemo": "ablation: global SEMO on real variables, the nondominated set, N chosen by DSS",
 }
 
 
@@ -53,6 +68,28 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
     lo = np.array([b[0] for b in bounds], float)
     hi = np.array([b[1] for b in bounds], float)
     d = len(lo)
+    if name in ("random_selection_ea", "gsemo"):
+        from . import ablations
+        if name == "random_selection_ea":
+            F, X, steps = ablations.random_selection_ea(
+                evaluate, lo, hi, pop=pop, max_evaluations=max_evaluations, seed=seed,
+                on_generation=on_generation, record_every=record_every)
+        else:
+            from .archive import dss_order
+            # the frame DSS normalises by: the problem's, when the archive has it
+            ideal, nadir = (archive.frame() if archive is not None
+                            and archive.normalization == "problem" else (None, None))
+
+            def select(F, k):
+                if len(F) <= k:
+                    return np.arange(len(F))
+                return dss_order(F, k=k, ideal=ideal, nadir=nadir)
+            F, X, steps = ablations.gsemo(
+                evaluate, lo, hi, pop=pop, max_evaluations=max_evaluations, seed=seed,
+                select=select, on_generation=on_generation, record_every=record_every)
+        return SimpleNamespace(objectives=np.asarray(F).tolist(),
+                               variables=np.asarray(X).tolist(),
+                               ignored=[], active_n=len(F), steps=steps)
     if name == "sobol_search":
         try:
             from scipy.stats import qmc

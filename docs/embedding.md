@@ -95,11 +95,13 @@ A plain struct, and the same fields as a `key = value` file:
 |---|---|
 | `algorithm` | any name from `mootation::algorithm_names()` |
 | `pop_size`, `max_gen`, `seed` | the run |
+| `max_evaluations` | a budget in evaluations instead of `max_gen` steps (0, the default, runs `max_gen`); checked between steps, so a generational core overshoots it by less than one generation. Use it whenever algorithms are compared or a budget is what you pay for: a step is one offspring for NIMMO and a fifth of the population for MOEA/D-DRA and -AWA |
 | `n_vars`, `lower`, `upper` | per-variable bounds; one scalar broadcasts to all `n_vars` (`Settings::set_box(n, lo, hi)`) |
 | `n_objs`, `n_cons` | objective and constraint values per candidate |
 | `constraints` | `none`, `feasibility`, `cdp`, `eps_constraint` |
 | `seed_population`, `on_size_mismatch` | warm start: a population file, and `error` / `truncate` / `pad` when its size differs from `pop_size` |
 | `eta_c eta_m pc pm T delta nr kappa K n_clusters theta alpha F CR div` | optional knobs; anything absent keeps the paper's default |
+| `normalize` | 0 or 1: the objective normalization of IBEA, R2-IBEA, Two_Arch2 and MOEA/D-AM2M; each header says which setting is the paper's |
 
 `Settings::from_file("run.cfg")` reads the file; an unknown key is an error, not
 a silent no-op. [`examples/run.cfg`](../examples/run.cfg) is a commented copy
