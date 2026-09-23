@@ -2046,6 +2046,16 @@ final_metrics = ["hv_h"]
 @test
 def statistics_match_hand_computed_cases():
     from mootation.run import stats as ST
+    # the effect size, the correction and the ranks are plain Python ...
+    assert ST.a12([1, 2], [3, 4]) == 1.0 and ST.a12([1, 3], [2, 3]) == 0.625
+    assert ST.a12([1, 2], [3, 4], lower_better=False) == 0.0
+    assert all(abs(x - y) < 1e-15 for x, y in zip(ST.holm([0.01, 0.04, 0.03]),
+                                                   [0.03, 0.06, 0.06]))
+    assert ST.average_ranks([3.0, 1.0, 3.0]) == [2.5, 1.0, 2.5]
+    assert ST.mark(0.01, "A") == "+" and ST.mark(0.01, "B") == "-" and ST.mark(0.2, "A") == "="
+    # ... the exact null distributions and the bootstrap are NumPy
+    if not _have_numpy():
+        print("    (exact tests and bootstrap skipped: no NumPy)"); return
     six = ST.wilcoxon_signed_rank([1, 2, 3, 4, 5, 6], [2, 4, 6, 8, 10, 12])
     assert six["better"] == "A" and six["w_plus"] == 21 and abs(six["p"] - 2 / 64) < 1e-12
     assert ST.wilcoxon_signed_rank([1, 2], [1, 2])["p"] == 1.0          # zeros dropped
@@ -2055,14 +2065,8 @@ def statistics_match_hand_computed_cases():
     assert hb["better"] == "B" and abs(hb["p"] - 0.1) < 1e-12, hb
     tied = ST.rank_sum([1, 1, 2], [1, 2, 2])
     assert 0.0 < tied["p"] <= 1.0 and tied["better"] == "A", tied
-    assert ST.a12([1, 2], [3, 4]) == 1.0 and ST.a12([1, 3], [2, 3]) == 0.625
-    assert ST.a12([1, 2], [3, 4], lower_better=False) == 0.0
-    assert all(abs(x - y) < 1e-15 for x, y in zip(ST.holm([0.01, 0.04, 0.03]),
-                                                   [0.03, 0.06, 0.06]))
-    assert ST.average_ranks([3.0, 1.0, 3.0]) == [2.5, 1.0, 2.5]
     ci = ST.bootstrap_mean_ranks({"p1": {"a": 1, "b": 2}, "p2": {"a": 1, "b": 2}}, n_boot=50)
     assert ci == {"a": (1.0, 1.0), "b": (2.0, 2.0)}, ci
-    assert ST.mark(0.01, "A") == "+" and ST.mark(0.01, "B") == "-" and ST.mark(0.2, "A") == "="
 
 
 @test
