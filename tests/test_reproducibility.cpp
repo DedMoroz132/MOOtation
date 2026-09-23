@@ -12,6 +12,11 @@
 // set_seed entirely and uses a fixed internal state would pass (1) perfectly
 // while making the guarantee worthless.
 //
+// The one exception is a method with no randomness in it at all (DMS, a
+// direct search): its core says so with `static constexpr bool deterministic
+// = true`, and for it (2) is turned round — another seed must give the SAME
+// population, since a seed that changed anything would be state leaking in.
+//
 // Bit-for-bit is the right bar here, not a tolerance: every algorithm is
 // deterministic given its RNG stream, so any difference means state is leaking
 // in from somewhere it should not.
@@ -22,6 +27,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "harness.hpp"
@@ -38,6 +44,12 @@ using namespace mootation::testing;
 
 constexpr int POP  = 60;
 constexpr int GENS = 30;   // enough to diverge, short enough to run 60 times x3
+
+template <typename C, typename = void>
+struct is_deterministic : std::false_type {};
+template <typename C>
+struct is_deterministic<C, std::void_t<decltype(C::deterministic)>>
+    : std::bool_constant<C::deterministic> {};
 
 // Full objective matrix of the final population, flattened.
 template <typename Ind, typename Core>
@@ -88,14 +100,19 @@ void check_one(const char* name)
 
     const bool same = (a == b);
     const bool diff = (a != c);
+    constexpr bool fixed = is_deterministic<Core>::value;
     std::cout << (same ? "deterministic" : "NON-DETERMINISTIC") << ", "
-              << (diff ? "seed-sensitive" : "SEED IGNORED") << '\n'
+              << (fixed ? (diff ? "SEED CHANGED A DETERMINISTIC METHOD" : "no randomness")
+                        : (diff ? "seed-sensitive" : "SEED IGNORED")) << '\n'
               << std::flush;
 
     check(!a.empty(), n + ": produced a non-empty population");
     check(same, n + ": identical seeds must give a bit-for-bit identical population");
-    check(diff, n + ": different seeds must give a different population "
-                    "(set_seed appears to be ignored)");
+    if constexpr (fixed)
+        check(!diff, n + ": a method without randomness must not depend on the seed");
+    else
+        check(diff, n + ": different seeds must give a different population "
+                        "(set_seed appears to be ignored)");
 }
 
 }   // namespace

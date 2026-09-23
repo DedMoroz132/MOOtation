@@ -16,7 +16,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "mootation"
 version = "0.1.0"
-description = "58 multi- and many-objective evolutionary algorithms, implemented from their primary publications"
+description = "59 multi- and many-objective algorithms (58 evolutionary, one direct search), implemented from their primary publications"
 readme = "README.md"
 requires-python = ">=3.11"          # tomllib, used by mootation.run
 license = { file = "LICENSE" }

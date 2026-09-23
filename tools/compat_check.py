@@ -116,14 +116,17 @@ def main(argv=None) -> int:
                     "".join(f"{k} {p} {v}\n" for (k, p), v in sorted(rows.items())),
                     encoding="utf-8")
 
-    changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+    new = sorted(k for k in after if k not in before)       # added since the baseline
+    changed = sorted(k for k in before if before.get(k) != after.get(k))
     unexpected = [k for k in changed if k[0] not in allowed]
     for k in changed:
         tag = "declared" if k[0] in allowed else "CHANGED"
         print(f"{tag:<9} {k[0]:<12} {k[1]:<8} {before.get(k)} -> {after.get(k)}"
               + (f"   ({allowed[k[0]]})" if k[0] in allowed else ""))
+    for k in new:
+        print(f"{'new':<9} {k[0]:<12} {k[1]:<8} {after[k]}")
     print(f"{len(before)} fingerprints against {ref}: {len(changed)} differ, "
-          f"{len(unexpected)} not declared")
+          f"{len(unexpected)} not declared, {len(new)} new")
     return 1 if unexpected else 0
 
 

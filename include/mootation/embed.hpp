@@ -50,7 +50,7 @@
 // the total violation from those. With n_cons = 0, G is empty and ignored.
 //
 // ── COST ────────────────────────────────────────────────────────────────────
-// Including this header instantiates all 58 algorithms in the translation
+// Including this header instantiates all 59 algorithms in the translation
 // unit, because the dispatch is by string. That is a real compile-time cost
 // (tens of seconds). A program that always uses one algorithm can skip it and
 // build `Optimizer<Ind, Core>` directly — see docs/writing-an-algorithm.md.
@@ -271,8 +271,24 @@ MOOTATION_OPTIONAL_SETTER(mutation,   set_mutation,   ops::Mutation)
 MOOTATION_OPTIONAL_SETTER(mutation_scale, set_mutation_scale, double)
 MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,  double)
 MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,  double)
+MOOTATION_OPTIONAL_SETTER(crowding_space, set_crowding_space, CrowdingSpace)
+MOOTATION_OPTIONAL_SETTER(dms_init,   set_init,       DMSInit)
 
 #undef MOOTATION_OPTIONAL_SETTER
+
+// A core that can tell it has converged (DMS: every step size below its
+// tolerance) ends the run early instead of stepping on without evaluating.
+template <typename C, typename = void>
+struct has_finished : std::false_type {};
+template <typename C>
+struct has_finished<C, std::void_t<decltype(std::declval<const C&>().finished())>>
+    : std::true_type {};
+template <typename C>
+bool core_finished(const C& c)
+{
+    if constexpr (has_finished<C>::value) return c.finished();
+    else { (void)c; return false; }
+}
 
 template <typename Core>
 inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
@@ -324,6 +340,16 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
         auto m = ops::parse_mutation(*v);
         if (!m) throw bad_word("mutation", *v);
         note(apply_mutation(alg, *m), "mutation");
+    }
+    if (auto* v = word("dms_init")) {
+        auto i = parse_dms_init(*v);
+        if (!i) throw bad_word("dms_init", *v);
+        note(apply_dms_init(alg, *i), "dms_init");
+    }
+    if (auto* v = word("crowding_space")) {
+        auto c = parse_crowding_space(*v);
+        if (!c) throw bad_word("crowding_space", *v);
+        note(apply_crowding_space(alg, *c), "crowding_space");
     }
     return ignored;
 }
@@ -452,6 +478,7 @@ inline Result run_core(const Settings& s, Context& ctx,
             opt.step();
             r.generations = g;
             if (per_generation) per_generation(g);
+            if (core_finished(alg)) break;
         }
     } else {
         const int start = ctx.evaluations;
@@ -476,6 +503,7 @@ inline Result run_core(const Settings& s, Context& ctx,
                 apply_t_max(alg, 1 + (left + per - 1) / per);
             }
             if (per_generation) per_generation(g);
+            if (core_finished(alg)) break;
         }
     }
 

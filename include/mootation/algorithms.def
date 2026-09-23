@@ -80,3 +80,6 @@ MOOTATION_ALG(clia,       NSGAII_Individual,    CLIACore)
 // ── Archive-based ───────────────────────────────────────────────────────────
 MOOTATION_ALG(two_arch2,  NSGAII_Individual,    Two_Arch2Core)
 MOOTATION_ALG(naemo,      NSGAII_Individual,    NAEMOCore)
+
+// ── Direct search ───────────────────────────────────────────────────────────
+MOOTATION_ALG(dms,        DMS_Individual,       DMSCore)

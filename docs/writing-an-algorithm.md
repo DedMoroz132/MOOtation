@@ -25,6 +25,8 @@ public:
     void step(DataVault<Ind_t>& vault);        // required
 
     void set_t_max(int t);                     // optional, see below
+    bool finished() const;                     // optional, see below
+    static constexpr bool deterministic = true;// optional, see below
 };
 ```
 
@@ -48,6 +50,17 @@ switch-over generation, a freeze window. If you provide it, say in the header
 that the caller *must* set it, and what happens if they do not: a schedule
 computed against a default budget of 1000 while the run is 200 generations long
 is not the algorithm the paper describes.
+
+**`finished`** is optional too. A method with a stopping rule of its own (DMS:
+every step size below its tolerance) returns true once it holds; `run`,
+`Session` and the Python binding then end the loop instead of calling `step()`
+on until the budget runs out. `step()` must still be safe to call afterwards —
+`Optimizer::optimize` knows nothing of `finished` — and do nothing.
+
+**`deterministic`** declares a method with no randomness in it at all. Its
+`set_seed` is then accepted and changes nothing, and
+`tests/test_reproducibility.cpp` checks exactly that instead of requiring
+another seed to give another population.
 
 ## The one invariant that is easy to miss
 

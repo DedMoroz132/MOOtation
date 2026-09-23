@@ -30,6 +30,8 @@ _FALLBACK_TEXT = {
     "crossover": ("sbx", "uniform", "blx_alpha"),
     "mutation": ("polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                  "mixture_cauchy"),
+    "crowding_space": ("objectives", "decision"),
+    "dms_init": ("line", "single"),
 }
 
 _BLOCK = re.compile(

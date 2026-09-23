@@ -8,7 +8,7 @@
 // half: g = x0 - 0.5 <= 0. Roughly half of any uniformly drawn population is
 // infeasible, so the constraint is not a formality the search can ignore.
 //
-// For each of the 58 algorithms the same seed is run twice — once with
+// For each of the 59 algorithms the same seed is run twice — once with
 // ConstraintMode::NONE and once with ConstraintMode::FEASIBILITY — and the test
 // requires:
 //
@@ -183,7 +183,7 @@ int pop_for(const char* key)
 
 // ── Исключения из проверки (2) ──────────────────────────────────────────────
 // Check (2) — "the constrained run ends with at least as many feasible
-// solutions" — is a heuristic that holds for 57 of the 58, not a theorem. For
+// solutions" — is a heuristic that holds for 58 of the 59, not a theorem. For
 // an algorithm whose effect on this problem is smaller than the seed-to-seed
 // spread, a single seed decides the outcome by luck, and the luck differs
 // between compilers because their arithmetic does.
@@ -270,7 +270,7 @@ void probe(const char* name)
               << " of " << on.n << std::endl;
 
     // (3) The other two modes must at least RUN. Until 2026-09 nothing in the
-    // suites ever executed CDP or EPS_CONSTRAINT for most of the 58 — a
+    // suites ever executed CDP or EPS_CONSTRAINT for most of the 59 — a
     // dispatch that threw, or a mode that produced NaN, would have shipped
     // unnoticed. A short run: no exception, finite objectives, a non-empty
     // population, and at least one feasible member.

@@ -109,6 +109,16 @@ const Override OVERRIDES[] = {
     // (liu2011 §IV-A). Resolved in the file header (the RESOLVED block).
     {"liu_gu2011", 0, 3000, -1.0, -1.0, false,
      "the paper's budget: ~3300 generations at 300k evaluations"},
+
+    // DMS is not generational: one step() is one poll of one list point, at
+    // most 2n = 24 evaluations here and fewer at the bounds (steps leaving the
+    // box are not evaluated). 200 polls spend 2 292 evaluations and leave the
+    // diagonal's extreme points (g = 2.5) in the answer, mean 2.08 / best
+    // 0.021 (2026-09-23); 1000 polls spend 19 175, about the 18 200 the
+    // generational algorithms spend in 200 generations, and reach mean 0.048 /
+    // best 0.015 under the default thresholds.
+    {"dms",        0, 1000, -1.0, -1.0, false,
+     "one generation is one poll (<= 2n evaluations); ~equal evaluations"},
 };
 
 const Override* find_override(const std::string& name)

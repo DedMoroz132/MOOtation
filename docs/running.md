@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 58 algorithm names |
+| `--algorithms` | list the 59 algorithm names |
 | `--problems` | list the 436 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -413,6 +413,28 @@ does. The operators live in `operators/real_crossover.hpp` and
 `operators/real_mutation.hpp`, with DE/rand/2/bin and DE/best/1/bin (Storn &
 Price's DE/x/y/z notation) in `operators/de_mutation.hpp`.
 
+**Crowding in the decision space.** `crowding_space = "decision"` makes
+NSGA-II compute its crowding distance over the variables instead of the
+objectives: the same formula, each variable's gaps over its range on the
+front. Among equally ranked solutions it keeps those far apart in the
+PARAMETERS, so that different parameter sets with the same objective values
+survive side by side. It is the idea of DN-NSGA-II (Liang, Yue & Qu, CEC
+2016), whose paper is not in the corpus: the knob implements the description
+of it, not the paper's letter. Default `objectives`, the paper's.
+
+**DMS.** Direct MultiSearch (Custódio, Madeira, Vaz & Vicente, SIAM J.
+Optim. 21(3), 2011) is the one algorithm here that is not evolutionary: a
+list of nondominated points, each with its own step size, polled one at a
+time along ±every coordinate (2n evaluations a poll). It is deterministic —
+the seed changes nothing — and stops by itself when every step size is below
+10⁻³ of the variable's range, which can be before the budget runs out. Its
+answer is the list reduced to `pop` by DSS, so `pop` is the size of the
+answer, not of a population. `dms_init` chooses the initial list: `line`, n
+points on the box's diagonal (the paper's best variant, the default), or
+`single`, the box's centre. A problem whose optimum sits at the centre of the
+box (ZDT4's g) is solved by `single` at the first evaluation; see the
+structural-bias campaign before reading anything into that.
+
 **What the operators did.** `operator_stats = true` in `[campaign]` adds to
 every trajectory record, for the offspring evaluated since the previous one,
 and to `final` for the whole run:
@@ -426,7 +448,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-58 cores, so "not dominated by its parents" is read as "by any parent", and
+59 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

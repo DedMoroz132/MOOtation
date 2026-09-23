@@ -81,12 +81,17 @@ inline const std::vector<std::string>& knob_names() {
 //                 variables it put outside (operators/bound_repair.hpp)
 //   crossover     nsga2, ibea_eplus, spea2_sde, agemoea (operators/real_crossover.hpp)
 //   mutation      the same four and moead_de (operators/real_mutation.hpp)
+//   crowding_space nsga2: its crowding distance over the objectives or the
+//                 decision variables
+//   dms_init      dms: the initial list, n points on the diagonal or one
 inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text_knobs() {
     static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
         {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
         {"crossover",    {"sbx", "uniform", "blx_alpha"}},
         {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                           "mixture_cauchy"}},
+        {"crowding_space", {"objectives", "decision"}},
+        {"dms_init",     {"line", "single"}},
     };
     return v;
 }

@@ -108,6 +108,26 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- DMS, Direct MultiSearch (Custódio, Madeira, Vaz & Vicente, SIAM J. Optim.
+  21(3), 2011; task 2, C1): `dms`, the first algorithm here that is not
+  evolutionary — a list of nondominated points with a step size each, polled
+  along ±every coordinate, the step halved where a poll finds nothing. It is
+  deterministic (the seed changes nothing; `test_reproducibility` holds it to
+  that), stops on its own once every step is below 10⁻³ of the range (a
+  `finished()` a core may now declare, which ends the loop early in `run`,
+  `Session` and the binding), and answers with its list reduced to
+  `pop_size` by DSS — `include/mootation/dss.hpp`, the C++ twin of
+  `archive.dss_order`, reachable as `_core.dss_order`. `dms_init` chooses the
+  initial list: `line` (the paper's best variant, the default) or `single`.
+  Variables are normalised to the box (declared DMS-1). The public list is 59
+  algorithms in eight families; DMS is in `structural_bias.toml`, not in
+  `campaign_all.toml`, whose all58 runs it postdates.
+- `crowding_space` (task 2, C2): NSGA-II's crowding distance over the
+  decision variables instead of the objectives (`decision`; default
+  `objectives`), the idea of DN-NSGA-II (Liang, Yue & Qu, CEC 2016) as the
+  task describes it — that paper is not in the corpus, and the header says so.
+- `tools/compat_check.py` reports an algorithm the baseline does not have as
+  new instead of changed.
 - Operators (task 2, B1-B3): the mutations `gaussian`, `cauchy`,
   `uniform_reset`, `mixture` and `mixture_cauchy`
   (`operators/real_mutation.hpp`), the crossovers `uniform` and `blx_alpha`

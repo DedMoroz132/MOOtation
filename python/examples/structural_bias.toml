@@ -11,14 +11,15 @@
 #   python -m mootation.run.campaign structural_bias.toml --workers 16
 #   python -m mootation.run.campaign structural_bias.toml --bias
 #
-# About 3 700 jobs of a few seconds each: roughly an hour on 16 cores. The
+# About 3 800 jobs of a few seconds each: roughly an hour on 16 cores. The
 # report gives, per problem and algorithm, a chi-square against uniform over
 # ten bins per variable and the shares of coordinates within 10 % of a bound
 # and in the central 20 % (0.2 each when uniform). The method simplifies
 # Kudela, van Stein, Bäck & Kononova (GECCO 2026), who ran 120 PlatEMO
 # algorithms on five such problems through the BIAS toolbox.
 #
-# The algorithm list is campaign_all's; keep the two in step.
+# The algorithm list is campaign_all's, plus DMS (added after campaign_all's
+# all58 runs); keep the two in step otherwise.
 
 algorithms = [
     # Pareto dominance and diversity
@@ -86,6 +87,9 @@ algorithms = [
     # Archives
     { name = "two_arch2",  pop = 0, gens = 0 },
     { name = "naemo",      pop = 0, gens = 0 },
+    # Direct search: deterministic, so here the seed only changes the problem's
+    # draws; its initial list is the box's diagonal
+    { name = "dms",        pop = 0, gens = 0 },
     # Baselines: blind sampling with the run archive, answered by DSS. The
     # floor every algorithm has to clear (docs/running.md, "Baselines").
     { name = "random_search", pop = 0, gens = 0 },

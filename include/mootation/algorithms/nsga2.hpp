@@ -5,7 +5,9 @@
 #include <cstddef>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -18,6 +20,22 @@
 #include "../operators/sbx.hpp"
 
 namespace mootation {
+
+// Where NSGA-II measures crowding: in the objectives (the paper) or in the
+// decision variables (see the header below, "crowding_space").
+enum class CrowdingSpace { Objectives, Decision };
+
+inline const char* crowding_space_name(CrowdingSpace c)
+{
+    return c == CrowdingSpace::Decision ? "decision" : "objectives";
+}
+
+inline std::optional<CrowdingSpace> parse_crowding_space(const std::string& s)
+{
+    if (s == "objectives") return CrowdingSpace::Objectives;
+    if (s == "decision")   return CrowdingSpace::Decision;
+    return std::nullopt;
+}
 
 // ============================================================================
 // NSGA-II — A Fast and Elitist Multiobjective Genetic Algorithm
@@ -39,6 +57,18 @@ namespace mootation {
 //   - binary genome: uniform crossover p=1 instead of single-point pc=0.9.
 // Extensions beyond the paper: constraint_mode FEASIBILITY (off by default;
 //   CDP follows §VI of the paper); mixed real+binary genome.
+//
+// crowding_space (task 2 of 2026-09-23, C2): `decision` computes the crowding
+//   distance of §III-B over the decision variables instead of the objectives
+//   — the same formula, each variable's gaps divided by its range on the
+//   front, which is the normalisation — so that among equally ranked
+//   solutions the ones far from others IN THE PARAMETERS survive: different
+//   parameter sets with the same residual, what a calibration wants to see.
+//   This is the idea of DN-NSGA-II (Liang, Yue & Qu, "Multimodal
+//   multi-objective optimization: A preliminary study", CEC 2016,
+//   doi:10.1109/CEC.2016.7744093), whose paper is NOT in this project's
+//   corpus: the switch implements the task's description of it, not the
+//   paper's letter, and does not claim to be DN-NSGA-II. Default `objectives`.
 // ============================================================================
 template <typename Ind_t>
 class NSGAIICore {
@@ -56,6 +86,7 @@ private:
     // ablations, and bound_repair applies to those that can leave the box.
     ops::CrossoverSpec xover_;
     ops::MutationSpec  mut_;
+    CrowdingSpace      crowding_space_ = CrowdingSpace::Objectives;
     std::mt19937 rng_{std::random_device{}()};
 
     bool dominates_plain(const std::vector<double>& a,
@@ -139,16 +170,21 @@ private:
     void assign_crowding_distance(DataVault<Ind_t>& vault,
                                   const std::vector<int>& front)
     {
-        int m = vault.objs_n();
+        const bool in_x = crowding_space_ == CrowdingSpace::Decision;
+        int m = in_x ? vault.vars_n() : vault.objs_n();
         int l = static_cast<int>(front.size());
         if (l == 0) return;
+        // the coordinate the distance is measured in: an objective, or a variable
+        auto at = [&](int v, int k) -> double {
+            return in_x ? vault.variables_of(v)[k] : vault.objectives_of(v)[k];
+        };
 
         for (int v : front) vault.get_ind(v).crowding_distance = 0.0;
 
         for (int obj = 0; obj < m; ++obj) {
             std::vector<int> sorted = front;
             std::sort(sorted.begin(), sorted.end(), [&](int a, int b) {
-                return vault.objectives_of(a)[obj] < vault.objectives_of(b)[obj];
+                return at(a, obj) < at(b, obj);
             });
 
             vault.get_ind(sorted.front()).crowding_distance =
@@ -156,14 +192,14 @@ private:
             vault.get_ind(sorted.back()).crowding_distance  =
                 std::numeric_limits<double>::infinity();
 
-            double f_min = vault.objectives_of(sorted.front())[obj];
-            double f_max = vault.objectives_of(sorted.back())[obj];
+            double f_min = at(sorted.front(), obj);
+            double f_max = at(sorted.back(), obj);
             double range = f_max - f_min;
             if (range < 1e-14) continue;
 
             for (int i = 1; i < l - 1; ++i) {
-                double prev = vault.objectives_of(sorted[i - 1])[obj];
-                double next = vault.objectives_of(sorted[i + 1])[obj];
+                double prev = at(sorted[i - 1], obj);
+                double next = at(sorted[i + 1], obj);
                 vault.get_ind(sorted[i]).crowding_distance += (next - prev) / range;
             }
         }
@@ -203,6 +239,7 @@ public:
     void set_mutation_scale(double s)         { mut_.scale = s; }
     void set_mixture_q(double q)              { mut_.q = q; }
     void set_blx_alpha(double a)              { xover_.alpha = a; }
+    void set_crowding_space(CrowdingSpace c) { crowding_space_ = c; }
     void set_bound_repair(ops::BoundRepair r) {
         ops::require_repair(r, "nsga2", true, false);
         xover_.repair = r; mut_.repair = r;

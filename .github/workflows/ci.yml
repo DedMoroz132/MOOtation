@@ -89,8 +89,8 @@ jobs:
         run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
 
   # ── The long tests ────────────────────────────────────────────────────────
-  # test_convergence runs all 58 algorithms to convergence; test_constraints
-  # runs all 58 twice, with constraint handling off and on. Together they are
+  # test_convergence runs all 59 algorithms to convergence; test_constraints
+  # runs all 59 twice, with constraint handling off and on. Together they are
   # the bulk of the suite's runtime, so every push skips them (-LE nightly) and
   # this job runs them on a schedule instead.
   #
@@ -269,7 +269,7 @@ jobs:
               auto b = sess.result();
               std::printf("installed embed OK: run=%zu session=%zu algorithms=%zu\n",
                           a.size(), b.size(), mootation::algorithm_names().size());
-              if (mootation::algorithm_names().size() != 58) return 1;
+              if (mootation::algorithm_names().size() != 59) return 1;
               if (a.size() != b.size() || a.size() == 0) return 1;
               for (std::size_t i = 0; i < a.size(); ++i)
                   for (std::size_t j = 0; j < 2; ++j)
@@ -375,7 +375,7 @@ jobs:
           cd /tmp     # outside the source tree, so nothing resolves by accident
           python -c "
           import mootation
-          assert len(mootation.algorithms()) == 58
+          assert len(mootation.algorithms()) == 59
           res = mootation.minimize(lambda x: [x[0], 1 - x[0]**0.5],
                                    bounds=[(0.0, 1.0)] * 3, n_objs=2,
                                    pop_size=20, n_gen=10, seed=1)
@@ -388,7 +388,7 @@ jobs:
           # single campaign.
           from mootation.run.algorithms import algorithm_names
           from mootation.run.knobs import knob_source
-          assert len(algorithm_names()) == 58, algorithm_names()
+          assert len(algorithm_names()) == 59, algorithm_names()
           assert 'fallback' not in knob_source(), knob_source()
           print('installed package works:', len(mootation.algorithms()), 'algorithms')
           "
@@ -566,8 +566,8 @@ jobs:
           # embed.hpp includes algorithms.def three times with a different
           # macro each time. The amalgamator has to paste an X-macro list at
           # EVERY use; deduplicating it the way it deduplicates headers would
-          # leave the dispatch knowing one algorithm instead of 58, and that
-          # failure is invisible until someone asks for the 59th.
+          # leave the dispatch knowing one algorithm instead of 59, and that
+          # failure is invisible until someone asks for the 60th.
           cat > /tmp/amalg_embed.cpp <<'EOF'
           #include "mootation_single.hpp"
           #include <cmath>
@@ -601,7 +601,7 @@ jobs:
               const std::size_t n_alg = mootation::algorithm_names().size();
               std::printf("run=%zu session=%zu algorithms=%zu\n",
                           a.size(), b.size(), n_alg);
-              if (n_alg != 58) return 1;
+              if (n_alg != 59) return 1;
               if (a.size() != b.size()) return 1;
               for (std::size_t i = 0; i < a.size(); ++i)
                   for (std::size_t j = 0; j < 2; ++j)

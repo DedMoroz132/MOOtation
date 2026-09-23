@@ -347,8 +347,24 @@ MOOTATION_OPTIONAL_SETTER(mutation,   set_mutation,          mootation::ops::Mut
 MOOTATION_OPTIONAL_SETTER(mutation_scale, set_mutation_scale, double)
 MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,         double)
 MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,         double)
+MOOTATION_OPTIONAL_SETTER(crowding_space, set_crowding_space, mootation::CrowdingSpace)
+MOOTATION_OPTIONAL_SETTER(dms_init,   set_init,              mootation::DMSInit)
 
 #undef MOOTATION_OPTIONAL_SETTER
+
+// A core that can tell it has converged (DMS: every step size below its
+// tolerance) ends the run early instead of stepping on without evaluating.
+template <typename C, typename = void>
+struct has_finished : std::false_type {};
+template <typename C>
+struct has_finished<C, std::void_t<decltype(std::declval<const C&>().finished())>>
+    : std::true_type {};
+template <typename C>
+bool core_finished(const C& c)
+{
+    if constexpr (has_finished<C>::value) return c.finished();
+    else { (void)c; return false; }
+}
 
 // ── Run configuration ───────────────────────────────────────────────────────
 // NOT named PyConfig: CPython's own Python.h defines that (PEP 587).
@@ -371,6 +387,10 @@ struct RunConfig {
     // Switchable operators (nsga2, ibea_eplus, spea2_sde, agemoea; moead_de the
     // mutation only) and their parameters: text_knobs() / knob_names().
     std::optional<std::string> crossover, mutation;
+    // nsga2: crowding distance over the objectives or the decision variables
+    std::optional<std::string> crowding_space;
+    // dms: the initial list, line (n points on the diagonal) or single
+    std::optional<std::string> dms_init;
     std::optional<double>      mutation_scale, mixture_q, blx_alpha;
     // The SBX operator's share of crossed variables (ops::sbx_var_prob, 0.5),
     // for this run only.
@@ -504,6 +524,18 @@ PyResult run_core(const RunConfig& cfg)
                                         "gaussian, cauchy, uniform_reset, mixture, mixture_cauchy");
         note(apply_mutation(alg, *m), "mutation");
     }
+    if (cfg.dms_init) {
+        auto i = parse_dms_init(*cfg.dms_init);
+        if (!i) throw std::invalid_argument("dms_init = '" + *cfg.dms_init + "': line or single");
+        note(apply_dms_init(alg, *i), "dms_init");
+    }
+    if (cfg.crowding_space) {
+        auto c = parse_crowding_space(*cfg.crowding_space);
+        if (!c)
+            throw std::invalid_argument("crowding_space = '" + *cfg.crowding_space +
+                                        "': objectives or decision");
+        note(apply_crowding_space(alg, *c), "crowding_space");
+    }
     if (cfg.mutation_scale) note(apply_mutation_scale(alg, *cfg.mutation_scale), "mutation_scale");
     if (cfg.mixture_q)      note(apply_mixture_q(alg, *cfg.mixture_q),           "mixture_q");
     if (cfg.blx_alpha)      note(apply_blx_alpha(alg, *cfg.blx_alpha),           "blx_alpha");
@@ -556,12 +588,12 @@ PyResult run_core(const RunConfig& cfg)
                 emit(0);
                 for (int g = 1; g <= cfg.n_gen; ++g) {
                     one_step();
-                    if (g % cfg.record_every == 0 || g == cfg.n_gen) emit(g);
+                    const bool done = core_finished(alg);
+                    if (g % cfg.record_every == 0 || g == cfg.n_gen || done) emit(g);
+                    if (done) break;
                 }
-            } else if (g_ops.on) {
-                for (int g = 1; g <= cfg.n_gen; ++g) one_step();
             } else {
-                opt.optimize(cfg.n_gen);
+                for (int g = 1; g <= cfg.n_gen && !core_finished(alg); ++g) one_step();
             }
         } else {
             if (observe) emit(0);
@@ -590,11 +622,13 @@ PyResult run_core(const RunConfig& cfg)
                     apply_t_max(alg, static_cast<int>(std::min<long long>(
                         INT_MAX, 1 + (left + per - 1) / per)));
                 }
-                const bool last = now >= cfg.max_evaluations;
+                const bool finished = core_finished(alg);
+                const bool last = now >= cfg.max_evaluations || finished;
                 if (observe && (now >= next_record || last)) {
                     emit(g);
                     while (next_record <= now) next_record += stride;
                 }
+                if (finished) break;
             }
         }
     }
@@ -727,6 +761,12 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("mutation",        &RunConfig::mutation,
                        "polynomial (the default), gaussian, cauchy, uniform_reset, mixture or "
                        "mixture_cauchy: the same four and moead_de")
+        .def_readwrite("dms_init",        &RunConfig::dms_init,
+                       "dms: the initial list, line (n points on the diagonal, the paper's "
+                       "best) or single (the centre of the box)")
+        .def_readwrite("crowding_space",  &RunConfig::crowding_space,
+                       "nsga2: its crowding distance over the objectives (the default) or "
+                       "the decision variables")
         .def_readwrite("mutation_scale",  &RunConfig::mutation_scale,
                        "s of the gaussian (0.1) and Cauchy (0.05) steps, a share of ub - lb")
         .def_readwrite("mixture_q",       &RunConfig::mixture_q,
@@ -809,6 +849,14 @@ PYBIND11_MODULE(_core, m)
           py::arg("points"), py::arg("samples"),
           "How many rows of `samples` some row of `points` weakly dominates: the "
           "count behind a Monte-Carlo hypervolume estimate (minimisation).");
+    m.def("dss_order",
+          [](const std::vector<std::vector<double>>& points, std::size_t k) {
+              return mootation::dss::order(points, k);
+          },
+          py::arg("points"), py::arg("k"),
+          "The first k indices of `points` in DSS order, as DMS selects its answer "
+          "(include/mootation/dss.hpp); the same order as "
+          "mootation.run.archive.dss_order in the set's own frame.");
     m.def("operator_stats", []() {
               // Since the previous call: offspring evaluated, the shares of them
               // that left the box before repair (and of their variables), that

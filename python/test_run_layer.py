@@ -75,7 +75,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 58, f"expected 58 algorithms, got {len(names)}"
+    assert len(names) == 59, f"expected 59 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -1847,7 +1847,8 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 7 and fams[0][1][0] == "nsga2", fams
+    assert len(fams) == 8 and fams[0][1][0] == "nsga2", fams
+    assert fams[-1] == ("Direct search", ("dms",)), fams[-1]
     assert all(name and "─" not in name for name, _ in fams), fams
 
 
@@ -2597,6 +2598,95 @@ def switchable_operators_run_inside_the_box_and_keep_the_defaults():
     assert again.objectives == plain.objectives, "the toggle is put back after the run"
     r = minimize(p.evaluate, algorithm="moead_de", sbx_var_prob=1.0, **kw)
     assert r.ignored == ["sbx_var_prob"], r.ignored
+
+
+# ── task 2, step 5: DMS and crowding in the decision space ──────────────────
+
+@test
+def dms_and_crowding_space_are_knobs_of_the_run_layer():
+    from mootation.run.knobs import text_knobs
+    words = text_knobs()
+    assert list(words["crowding_space"]) == ["objectives", "decision"], words
+    assert list(words["dms_init"]) == ["line", "single"], words
+    assert "dms" in algorithm_names()
+    tail = 'gens = 5\n'
+    bad = loads(_MIN.replace(tail, tail + 'params = { crowding_space = "genotype" }\n'))
+    assert any("crowding_space" in q and "genotype" in q for q in validate(bad)), validate(bad)
+
+
+@test
+def cpp_dss_selects_what_the_run_layer_selects():
+    """dss.hpp (DMS's answer) and archive.dss_order agree index for index, ties included."""
+    if not _have_numpy() or _core_with("dss_order") is None:
+        print("  skip  cpp_dss_selects...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run.archive import dss_order
+    rng = np.random.default_rng(3)
+    for m in (2, 3, 5):
+        F = rng.random((60, m))
+        F[10] = F[20]                               # a duplicate
+        F[30, 0] = F[:, 0].min()                    # a tie for the best of f1
+        F = np.round(F, 2)                          # ties in the distances too
+        for k in (1, m, 17, 60, 80):
+            assert list(_core.dss_order(F.tolist(), k)) == dss_order(F, k).tolist(), (m, k)
+    assert list(_core.dss_order([], 5)) == []
+
+
+@test
+def dms_is_deterministic_stops_by_itself_and_answers_with_a_nondominated_set():
+    if not _have_numpy() or _core_with("dms_init") is None:
+        print("  skip  dms_...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.run.metrics import nondominated
+
+    def sch(x):                                     # Schaffer's, on [-5, 5]^2 here
+        return [x[0] ** 2 + x[1] ** 2, (x[0] - 2) ** 2 + (x[1] - 2) ** 2]
+
+    kw = dict(bounds=[(-5.0, 5.0)] * 2, n_objs=2, algorithm="dms", pop_size=30)
+    a = minimize(sch, max_evaluations=200000, seed=1, **kw)
+    b = minimize(sch, max_evaluations=200000, seed=99, **kw)
+    assert a.objectives == b.objectives, "no randomness: the seed changes nothing"
+    assert a.evaluations < 200000, "every step below 1e-3: the run ends before the budget"
+    F = np.array(a.objectives)
+    assert len(F) == 30 and len(nondominated(F)) == 30, len(F)
+    # The Pareto set is x1 = x2 in [0, 2]; the smallest step polled is 1e-3 of
+    # the range, 0.01 here, and a point a few such steps off the line is not
+    # dominated by anything the list holds.
+    X = np.array(a.variables)
+    assert np.all(np.abs(X[:, 0] - X[:, 1]) < 0.05) and np.all((X > -0.05) & (X < 2.05)), X
+    # early on the two initial lists differ; on this symmetric problem both
+    # reach the same list by 2000 evaluations
+    single = minimize(sch, max_evaluations=20, dms_init="single", **kw)
+    line = minimize(sch, max_evaluations=20, **kw)
+    assert single.variables != line.variables       # (the objectives are symmetric)
+    assert not single.ignored and "dms_init" in minimize(sch, max_evaluations=100, algorithm="nsga2",
+                                                         bounds=kw["bounds"], n_objs=2,
+                                                         dms_init="single").ignored
+
+
+@test
+def crowding_in_the_decision_space_is_off_by_default_and_changes_the_run_when_on():
+    if not _have_numpy() or _core_with("crowding_space") is None:
+        print("  skip  crowding_space...: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("ZDT1")
+    kw = dict(bounds=p.bounds, n_objs=2, pop_size=40, max_evaluations=2000, seed=5)
+    plain = minimize(p.evaluate, algorithm="nsga2", **kw)
+    same = minimize(p.evaluate, algorithm="nsga2", crowding_space="objectives", **kw)
+    dec = minimize(p.evaluate, algorithm="nsga2", crowding_space="decision", **kw)
+    assert plain.objectives == same.objectives
+    assert not dec.ignored and dec.objectives != plain.objectives
+    r = minimize(p.evaluate, algorithm="spea2", crowding_space="decision", **kw)
+    assert r.ignored == ["crowding_space"], r.ignored
+    try:
+        minimize(p.evaluate, algorithm="nsga2", crowding_space="genotype", **kw)
+    except ValueError as exc:
+        assert "objectives or decision" in str(exc), exc
+    else:
+        raise AssertionError("an unknown crowding_space must be refused")
 
 
 def main() -> int:

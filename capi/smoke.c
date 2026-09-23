@@ -52,7 +52,7 @@ int main(void) {
 
     printf("MOOtation %s, %d algorithms\n", moo_version_string(),
            moo_algorithm_count());
-    if (moo_algorithm_count() != 58) return fail("expected 58 algorithms", NULL);
+    if (moo_algorithm_count() != 59) return fail("expected 59 algorithms", NULL);
     if (moo_algorithm_name(0) == NULL) return fail("algorithm_name(0)", NULL);
     if (moo_algorithm_name(-1) != NULL || moo_algorithm_name(99999) != NULL)
         return fail("algorithm_name must reject an out-of-range index", NULL);

@@ -186,4 +186,11 @@ struct MaOEAARV_Individual : public Based_Individual {
     double fitness = 0.0;
 };
 
+// DMS (Custódio, Madeira, Vaz & Vicente, SIAM J. Optim. 2011)
+// alpha — the step size the point carries in DMS's list (dms.hpp), relative to
+//         each variable's range; the answer set's members report theirs
+struct DMS_Individual : public Based_Individual {
+    double alpha = 0.0;
+};
+
 } // namespace mootation

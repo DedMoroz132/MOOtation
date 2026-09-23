@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-58 algorithms, one header each under `include/mootation/algorithms/`, registered
+59 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`. Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
@@ -19,6 +19,7 @@ implementation follows; if you publish results, cite that paper.
 | Reference-vector / angle-based | 7 | irregular or scaled fronts, where a fixed lattice misses | adaptive variants (DEA-GNG, NRV-MOEA, SRV) need a few generations before they help |
 | Clustering-based | 11 | disconnected or irregular fronts | cluster counts are parameters the papers tuned per problem |
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
+| Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
 
 Seventeen algorithms require `pop_size` to be an exact Das–Dennis lattice size
 for the objective count (91 at M = 3, 210 at M = 5, ...): A-NSGA-III, AdaW,
@@ -203,14 +204,27 @@ on 2026-09-09.
 | Two_Arch2 | 2015 | `two_arch2` | [10.1109/TEVC.2014.2350987](https://doi.org/10.1109/TEVC.2014.2350987) |
 | NAEMO | 2019 | `naemo` | [10.1016/j.swevo.2018.12.002](https://doi.org/10.1016/j.swevo.2018.12.002) |
 
+## Direct search
+
+| Algorithm | Year | File | DOI |
+|---|---|---|---|
+| DMS | 2011 | `dms` | [10.1137/10079731X](https://doi.org/10.1137/10079731X) |
+
+Not evolutionary: a list of nondominated points with a step size each, polled
+along the coordinate directions, the step halved where a poll finds nothing.
+Deterministic, and it stops on its own when every step size is below 10⁻³ of
+the range. Its answer is the list reduced to `pop_size` by DSS
+(`include/mootation/dss.hpp`), the same selection the run layer uses for
+reference fronts and archives.
+
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 45 of the 58
+Every algorithm works on a real-valued genome with box bounds. 45 of the 59
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
-`Problem<>` specialisation); the other 13 refuse it at `setup()` with a clear
+`Problem<>` specialisation); the other 14 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only: CLIA, DCEA,
-DEA-GNG, DHEA, ETEA, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C, MOEA/D-DS, NAEMO
-and Two_Arch2. Binary and mixed genomes are a C++ feature: the Python binding,
+DEA-GNG, DHEA, DMS, ETEA, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C, MOEA/D-DS,
+NAEMO and Two_Arch2. Binary and mixed genomes are a C++ feature: the Python binding,
 the C ABI and the TOML layer expose real-valued variables only.
 
 ## Variation operators
