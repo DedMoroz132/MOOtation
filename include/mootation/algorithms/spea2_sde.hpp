@@ -61,6 +61,8 @@
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
+#include "../operators/real_crossover.hpp"
+#include "../operators/real_mutation.hpp"
 #include "../operators/sbx.hpp"
 
 namespace mootation {
@@ -75,6 +77,12 @@ private:
     double       eta_m_       = 20.0;  // §III settings paragraph: distribution index 20
     double       pc_          = 1.0;   // §III settings paragraph: "crossover probability pc = 1.0"
     int          archive_size_ = -1;   // Ā; -1 → use pop_size()
+    // Switchable operators (task 2 of 2026-09-23, B3): crossover and mutation
+    // default to the paper's SBX and polynomial mutation, called exactly as
+    // before; the alternatives (real_crossover.hpp, real_mutation.hpp) are for
+    // ablations, and bound_repair applies to those that can leave the box.
+    ops::CrossoverSpec xover_;
+    ops::MutationSpec  mut_;
     std::mt19937 rng_{std::random_device{}()};
     int          eff_arch_    = 0;
 
@@ -350,9 +358,9 @@ private:
             const auto& bv = vault.archive_variables_of(static_cast<std::size_t>(bi));
             // §III settings paragraph: pc=1.0, pm=1/n
             double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
-            ops::sbx(av, bv, c1, c2, bounds, eta_c_, pc_, rng_);
-            ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
-            ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
+            xover_.apply(av, bv, c1, c2, bounds, eta_c_, pc_, rng_);
+            mut_.apply(c1, bounds, eta_m_, pm, rng_);
+            mut_.apply(c2, bounds, eta_m_, pm, rng_);
             if (vault.bin_vars_n() > 0) {
                 const auto& abv = vault.archive_bin_variables_of(static_cast<std::size_t>(ai));
                 const auto& bbv = vault.archive_bin_variables_of(static_cast<std::size_t>(bi));
@@ -377,6 +385,15 @@ public:
     void set_pc           (double p) { pc_          = p; }
     void set_archive_size (int sz)   { archive_size_= sz; }
     void set_seed(unsigned s)        { rng_.seed(s); }
+    void set_crossover(ops::Crossover c)      { xover_.kind = c; }
+    void set_mutation(ops::Mutation m)        { mut_.kind = m; }
+    void set_mutation_scale(double s)         { mut_.scale = s; }
+    void set_mixture_q(double q)              { mut_.q = q; }
+    void set_blx_alpha(double a)              { xover_.alpha = a; }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "spea2_sde", true, false);
+        xover_.repair = r; mut_.repair = r;
+    }
 
     // ── The answer set into the active slots ───────────────────────────────
     // Algorithm 1 Step 4 answers with the archive P̄_{t+1}, while every

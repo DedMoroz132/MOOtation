@@ -23,9 +23,13 @@ from pathlib import Path
 _FALLBACK = (
     "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
     "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
+    "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
+    "crossover": ("sbx", "uniform", "blx_alpha"),
+    "mutation": ("polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
+                 "mixture_cauchy"),
 }
 
 _BLOCK = re.compile(

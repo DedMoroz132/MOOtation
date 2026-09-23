@@ -22,7 +22,8 @@ from . import _core
 # parameter is not the run that was asked for.
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
-         "bound_repair")
+         "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
+         "sbx_var_prob")
 
 def minimize(
     fn: Callable[[Sequence[float]], Sequence[float]],

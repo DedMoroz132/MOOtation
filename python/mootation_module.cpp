@@ -342,6 +342,11 @@ MOOTATION_OPTIONAL_SETTER(CR,         set_CR,                double)
 MOOTATION_OPTIONAL_SETTER(div,        set_div,               int)
 MOOTATION_OPTIONAL_SETTER(normalize,  set_normalize,         bool)
 MOOTATION_OPTIONAL_SETTER(bound_repair, set_bound_repair,    mootation::ops::BoundRepair)
+MOOTATION_OPTIONAL_SETTER(crossover,  set_crossover,         mootation::ops::Crossover)
+MOOTATION_OPTIONAL_SETTER(mutation,   set_mutation,          mootation::ops::Mutation)
+MOOTATION_OPTIONAL_SETTER(mutation_scale, set_mutation_scale, double)
+MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,         double)
+MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,         double)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
@@ -363,6 +368,13 @@ struct RunConfig {
     // What an operator that can leave the box does there (text_knobs() in
     // settings.hpp); the algorithms without such an operator report it ignored.
     std::optional<std::string> bound_repair;
+    // Switchable operators (nsga2, ibea_eplus, spea2_sde, agemoea; moead_de the
+    // mutation only) and their parameters: text_knobs() / knob_names().
+    std::optional<std::string> crossover, mutation;
+    std::optional<double>      mutation_scale, mixture_q, blx_alpha;
+    // The SBX operator's share of crossed variables (ops::sbx_var_prob, 0.5),
+    // for this run only.
+    std::optional<double>      sbx_var_prob;
 
     // Warm start. Empty means a fresh random population. Vars and objs are
     // what every algorithm shares — which is what lets a population saved by
@@ -478,6 +490,29 @@ PyResult run_core(const RunConfig& cfg)
                 "midpoint, resample, wrap, native");
         note(apply_bound_repair(alg, *how), "bound_repair");
     }
+    if (cfg.crossover) {
+        auto c = ops::parse_crossover(*cfg.crossover);
+        if (!c)
+            throw std::invalid_argument("crossover = '" + *cfg.crossover +
+                                        "': one of sbx, uniform, blx_alpha");
+        note(apply_crossover(alg, *c), "crossover");
+    }
+    if (cfg.mutation) {
+        auto m = ops::parse_mutation(*cfg.mutation);
+        if (!m)
+            throw std::invalid_argument("mutation = '" + *cfg.mutation + "': one of polynomial, "
+                                        "gaussian, cauchy, uniform_reset, mixture, mixture_cauchy");
+        note(apply_mutation(alg, *m), "mutation");
+    }
+    if (cfg.mutation_scale) note(apply_mutation_scale(alg, *cfg.mutation_scale), "mutation_scale");
+    if (cfg.mixture_q)      note(apply_mixture_q(alg, *cfg.mixture_q),           "mixture_q");
+    if (cfg.blx_alpha)      note(apply_blx_alpha(alg, *cfg.blx_alpha),           "blx_alpha");
+    std::optional<ops::ScopedSbxVarProb> var_prob;
+    if (cfg.sbx_var_prob) {
+        if (!(*cfg.sbx_var_prob >= 0.0 && *cfg.sbx_var_prob <= 1.0))
+            throw std::invalid_argument("sbx_var_prob must be in [0, 1]");
+        var_prob.emplace(*cfg.sbx_var_prob);
+    }
 
     {
         py::gil_scoped_release unlock;   // the callback re-acquires per batch
@@ -578,6 +613,11 @@ PyResult run_core(const RunConfig& cfg)
     r.ignored  = std::move(ignored);
     r.evaluations = g_evaluations.load();
     for (const auto& u : ops::operators_used()) r.operators.emplace_back(u.op, u.repair);
+    if (var_prob) {
+        bool used = false;
+        for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";
+        if (!used) r.ignored.emplace_back("sbx_var_prob");
+    }
     if (g_ops.on) {
         const auto& rc = ops::repair_counts();
         const double n_vars = static_cast<double>(g_problem->bounds.size());
@@ -681,6 +721,20 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("F",               &RunConfig::F)
         .def_readwrite("CR",              &RunConfig::CR)
         .def_readwrite("div",             &RunConfig::div)
+        .def_readwrite("crossover",       &RunConfig::crossover,
+                       "sbx (the default), uniform or blx_alpha: nsga2, ibea_eplus, "
+                       "spea2_sde, agemoea")
+        .def_readwrite("mutation",        &RunConfig::mutation,
+                       "polynomial (the default), gaussian, cauchy, uniform_reset, mixture or "
+                       "mixture_cauchy: the same four and moead_de")
+        .def_readwrite("mutation_scale",  &RunConfig::mutation_scale,
+                       "s of the gaussian (0.1) and Cauchy (0.05) steps, a share of ub - lb")
+        .def_readwrite("mixture_q",       &RunConfig::mixture_q,
+                       "the share of gaussian/Cauchy steps in a mixture (0.1)")
+        .def_readwrite("blx_alpha",       &RunConfig::blx_alpha, "BLX-alpha's alpha (0.5)")
+        .def_readwrite("sbx_var_prob",    &RunConfig::sbx_var_prob,
+                       "SBX's share of crossed variables for this run (0.5, the canonical "
+                       "realcross; 1.0 crosses every variable)")
         .def_readwrite("operator_stats",  &RunConfig::operator_stats,
                        "keep per-step operator statistics; read them with "
                        "operator_stats() from the on_generation observer")

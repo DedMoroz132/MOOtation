@@ -301,10 +301,19 @@ int main()
         br.text_params["bound_repair"] = "reflect";
         br.algorithm = "moead_de";
         check(run(br, zdt1).ignored.empty(), "moead_de takes bound_repair");
-        br.algorithm = "nsga2";
+        br.algorithm = "spea2";
         const Result bn = run(br, zdt1);
         check(bn.ignored.size() == 1 && bn.ignored[0] == "bound_repair",
-              "nsga2 reports bound_repair as a knob it does not have");
+              "spea2 reports bound_repair as a knob it does not have");
+        // the switchable operators: taken by nsga2, reported by spea2
+        Settings sw = base_settings(20, 2);
+        sw.text_params["crossover"] = "blx_alpha";
+        sw.text_params["mutation"] = "gaussian";
+        sw.params["mutation_scale"] = 0.05;
+        sw.algorithm = "nsga2";
+        check(run(sw, zdt1).ignored.empty(), "nsga2 takes crossover, mutation, mutation_scale");
+        sw.algorithm = "spea2";
+        check(run(sw, zdt1).ignored.size() == 3, "spea2 reports all three");
     }
 
     std::printf("warm_start: %d/%d checks passed%s\n",

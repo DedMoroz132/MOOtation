@@ -266,6 +266,11 @@ MOOTATION_OPTIONAL_SETTER(CR,         set_CR,         double)
 MOOTATION_OPTIONAL_SETTER(div,        set_div,        int)
 MOOTATION_OPTIONAL_SETTER(normalize,  set_normalize,  bool)
 MOOTATION_OPTIONAL_SETTER(bound_repair, set_bound_repair, ops::BoundRepair)
+MOOTATION_OPTIONAL_SETTER(crossover,  set_crossover,  ops::Crossover)
+MOOTATION_OPTIONAL_SETTER(mutation,   set_mutation,   ops::Mutation)
+MOOTATION_OPTIONAL_SETTER(mutation_scale, set_mutation_scale, double)
+MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,  double)
+MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,  double)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
@@ -295,11 +300,30 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
     if (auto* v = get("CR"))         note(apply_CR(alg, *v), "CR");
     if (auto* v = get("div"))        note(apply_div(alg, static_cast<int>(*v)), "div");
     if (auto* v = get("normalize"))  note(apply_normalize(alg, *v != 0.0), "normalize");
-    auto text = s.text_params.find("bound_repair");
-    if (text != s.text_params.end()) {
-        auto how = ops::parse_bound_repair(text->second);
-        if (!how) throw std::invalid_argument("bound_repair: unknown value '" + text->second + "'");
+    if (auto* v = get("mutation_scale")) note(apply_mutation_scale(alg, *v), "mutation_scale");
+    if (auto* v = get("mixture_q"))  note(apply_mixture_q(alg, *v), "mixture_q");
+    if (auto* v = get("blx_alpha"))  note(apply_blx_alpha(alg, *v), "blx_alpha");
+    auto word = [&](const char* k) -> const std::string* {
+        auto it = s.text_params.find(k);
+        return it == s.text_params.end() ? nullptr : &it->second;
+    };
+    auto bad_word = [](const char* k, const std::string& v) {
+        return std::invalid_argument(std::string(k) + ": unknown value '" + v + "'");
+    };
+    if (auto* v = word("bound_repair")) {
+        auto how = ops::parse_bound_repair(*v);
+        if (!how) throw bad_word("bound_repair", *v);
         note(apply_bound_repair(alg, *how), "bound_repair");
+    }
+    if (auto* v = word("crossover")) {
+        auto c = ops::parse_crossover(*v);
+        if (!c) throw bad_word("crossover", *v);
+        note(apply_crossover(alg, *c), "crossover");
+    }
+    if (auto* v = word("mutation")) {
+        auto m = ops::parse_mutation(*v);
+        if (!m) throw bad_word("mutation", *v);
+        note(apply_mutation(alg, *m), "mutation");
     }
     return ignored;
 }
@@ -392,6 +416,16 @@ inline Result run_core(const Settings& s, Context& ctx,
 
     Result r;
     r.ignored = apply_knobs(alg, s);
+    // sbx_var_prob belongs to the SBX operator, not to a core: it is set for
+    // this run, and reported as ignored when the run never used SBX.
+    std::optional<ops::ScopedSbxVarProb> var_prob;
+    const auto vp = s.params.find("sbx_var_prob");
+    if (vp != s.params.end()) {
+        if (!(vp->second >= 0.0 && vp->second <= 1.0))
+            throw std::invalid_argument("sbx_var_prob must be in [0, 1]");
+        var_prob.emplace(vp->second);
+    }
+    ops::reset_operator_records();
 
     if (seed) {
         // seed_individual plants variables AND objectives, so the evaluator is
@@ -461,6 +495,11 @@ inline Result run_core(const Settings& s, Context& ctx,
         if (s.n_cons > 0) r.limits.push_back(v.limits_of(i));
     }
     r.evaluations = ctx.evaluations;
+    if (var_prob) {
+        bool used = false;
+        for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";
+        if (!used) r.ignored.emplace_back("sbx_var_prob");
+    }
     return r;
 }
 

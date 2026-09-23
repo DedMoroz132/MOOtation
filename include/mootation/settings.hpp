@@ -68,7 +68,8 @@ namespace mootation {
 inline const std::vector<std::string>& knob_names() {
     static const std::vector<std::string> v = {
         "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
-        "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize"
+        "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
+        "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob"
     };
     return v;
 }
@@ -78,9 +79,14 @@ inline const std::vector<std::string>& knob_names() {
 // it out of this file), an algorithm without the knob reports it as ignored.
 //   bound_repair  what an operator that can leave the box does with the
 //                 variables it put outside (operators/bound_repair.hpp)
+//   crossover     nsga2, ibea_eplus, spea2_sde, agemoea (operators/real_crossover.hpp)
+//   mutation      the same four and moead_de (operators/real_mutation.hpp)
 inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text_knobs() {
     static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
         {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
+        {"crossover",    {"sbx", "uniform", "blx_alpha"}},
+        {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
+                          "mixture_cauchy"}},
     };
     return v;
 }

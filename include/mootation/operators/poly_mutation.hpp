@@ -30,8 +30,12 @@ namespace mootation::ops {
 //   here is the NSGA-II code (mutation.c, Deb & Tiwari 2008), not the
 //   deb2014_ formulas (they agree only at the endpoints: u=0→lo, u=0.5→x,
 //   u=1→hi). The parameters p_m=1/n and η_m=20 follow the deb2014_ §5
-//   settings (pp. 177-178). Formulas/code NOT changed — only the comment
-//   text was edited.
+//   settings (items 5 and 6 of its parameter list). Formulas/code NOT
+//   changed — only the comment text was edited.
+//   FIX 2026-09-23: the page reference "pp. 177-178" was wrong. The article
+//   is Int. J. Artificial Intelligence and Soft Computing 4(1), pp. 1-28, as
+//   its own first page says; it has no page 177, and §5 is where the settings
+//   are, whatever page that falls on.
 //
 // eta_m — distribution index; pm — mutation probability of EACH variable
 // (taken from the specific algorithm's paper; typically 1/n).

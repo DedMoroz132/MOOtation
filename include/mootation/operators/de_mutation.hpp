@@ -132,6 +132,71 @@ inline void de_rand_1_bin(
     de_rand_1_bin(x_a, x_b, x_c, x_i, y, bounds, F, CR, DERepair::Clip, rng);
 }
 
+// ── More of the DE/x/y/z family (task 2 of 2026-09-23, B2) ──────────────────
+// Storn & Price 1997, §2 (storn1997): x is the vector perturbed — "rand", a
+// random population member, or "best", "the vector of lowest cost from the
+// current population" — y the number of difference vectors, z the crossover,
+// "bin" for the binomial one of de_rand_1_bin. Their Eq.5 writes DE/best/2 as
+// v = x_best + F·(x_r1 + x_r2 − x_r3 − x_r4); by the same notation
+//   DE/rand/2/bin   v = x_r1 + F·(x_r2 + x_r3 − x_r4 − x_r5)
+//   DE/best/1/bin   v = x_best + F·(x_r1 − x_r2)
+// with the trial built exactly as in de_rand_1_bin (j_rand, repair before the
+// coin, midpoint towards the target x_i). Which vector is "best" in a
+// multi-objective population is the caller's decision.
+namespace detail {
+template <typename RNG, typename Mutant>
+inline void de_bin(Mutant mutant, const std::vector<double>& x_i, std::vector<double>& y,
+                   const std::vector<std::pair<std::optional<double>,
+                                               std::optional<double>>>& bounds,
+                   double CR, BoundRepair repair, const char* op, RNG& rng)
+{
+    require_de_repair(repair, op);
+    note_operator(op, bound_repair_name(repair));
+    RepairTally tally;
+    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    const int nv = static_cast<int>(x_i.size());
+    if (nv == 0) { y.clear(); return; }
+    std::uniform_int_distribution<int> rand_dim(0, nv - 1);
+    const int j_rand = rand_dim(rng);
+    y.resize(nv);
+    for (int j = 0; j < nv; ++j) {
+        const double lo = sbx_require_bound(bounds[j].first,  "lower", j);
+        const double hi = sbx_require_bound(bounds[j].second, "upper", j);
+        double v_j = mutant(j);
+        const bool out = v_j < lo || v_j > hi;
+        if (out) v_j = repair_value(v_j, lo, hi, x_i[j], repair, rng);
+        const bool take = U01(rng) < CR || j == j_rand;
+        y[j] = take ? v_j : x_i[j];
+        if (take && out) tally.out();
+    }
+}
+}   // namespace detail
+
+template <typename RNG>
+inline void de_rand_2_bin(const std::vector<double>& x_r1, const std::vector<double>& x_r2,
+                          const std::vector<double>& x_r3, const std::vector<double>& x_r4,
+                          const std::vector<double>& x_r5, const std::vector<double>& x_i,
+                          std::vector<double>& y,
+                          const std::vector<std::pair<std::optional<double>,
+                                                      std::optional<double>>>& bounds,
+                          double F, double CR, BoundRepair repair, RNG& rng)
+{
+    detail::de_bin([&](int j) { return x_r1[j] + F * (x_r2[j] + x_r3[j] - x_r4[j] - x_r5[j]); },
+                   x_i, y, bounds, CR, repair, "de_rand_2_bin", rng);
+}
+
+template <typename RNG>
+inline void de_best_1_bin(const std::vector<double>& x_best, const std::vector<double>& x_r1,
+                          const std::vector<double>& x_r2, const std::vector<double>& x_i,
+                          std::vector<double>& y,
+                          const std::vector<std::pair<std::optional<double>,
+                                                      std::optional<double>>>& bounds,
+                          double F, double CR, BoundRepair repair, RNG& rng)
+{
+    detail::de_bin([&](int j) { return x_best[j] + F * (x_r1[j] - x_r2[j]); },
+                   x_i, y, bounds, CR, repair, "de_best_1_bin", rng);
+}
+
 // ── Literal DE of Li & Zhang 2009 (huili2009 Eq.6) = Zhang, Liu, Li 2009
 // (zhang2009 Eq.4):
 //   ȳ_k = x^{r1}_k + F·(x^{r2}_k − x^{r3}_k)   with probability CR,

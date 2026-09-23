@@ -71,6 +71,7 @@
 #include "../data_vault.hpp"
 #include "../operators/de_mutation.hpp"
 #include "../operators/poly_mutation.hpp"
+#include "../operators/real_mutation.hpp"
 
 namespace mootation {
 
@@ -96,6 +97,10 @@ private:
     // bound_repair (2026-09-23): any of ops::BoundRepair but resample and
     // native; midpoint moves towards x^i.
     ops::BoundRepair repair_ = ops::BoundRepair::Random;
+    // Switchable mutation (task 2 of 2026-09-23, B3): `polynomial` is the
+    // literal Eq.7 above; any other (real_mutation.hpp) leaves its steps raw
+    // for Step 2.3's repair of the whole offspring (bound_repair), as Eq.7's.
+    ops::MutationSpec mut_;
     std::mt19937 rng_{std::random_device{}()};
 
     // ── runtime state ──────────────────────────────────────────────────────
@@ -227,8 +232,12 @@ private:
         // Step 2.2: ȳ by Eq.6 (r1 = i), then the literal Eq.7 mutation with
         // probability p_m per gene (may leave the box).
         auto y_vars = de_offspring(vault, i, mating_pool);
-        ops::polynomial_mutation_eq7(y_vars, bounds, eta_m_,
-                                     pm_eff(vault.vars_n()), rng_);
+        if (mut_.kind == ops::Mutation::Polynomial)
+            ops::polynomial_mutation_eq7(y_vars, bounds, eta_m_,
+                                         pm_eff(vault.vars_n()), rng_);
+        else
+            mut_.apply(y_vars, bounds, eta_m_, pm_eff(vault.vars_n()), rng_,
+                       /*caller_repairs=*/true);
         // Step 2.3: repair of the FINAL y — random reset inside the domain
         // (the paper) or clamping (set_de_repair(Clip), see MDE-6).
         ops::repair_out_of_box(y_vars, bounds, repair_, rng_, &vault.variables_of(i));
@@ -315,6 +324,9 @@ public:
     void set_bound_repair      (ops::BoundRepair r){
         ops::require_repair(r, "moead_de", false, false); repair_ = r; }
     void set_seed              (unsigned s){ rng_.seed(s); }
+    void set_mutation          (ops::Mutation m){ mut_.kind = m; }
+    void set_mutation_scale    (double s){ mut_.scale = s; }
+    void set_mixture_q         (double q){ mut_.q = q; }
 
     std::size_t external_population_size(DataVault<Ind_t>& vault) const {
         return vault.archive_size();

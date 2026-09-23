@@ -2539,6 +2539,66 @@ archive = false
         assert finals["a"][0] != finals["a"][1], "another seed another stream"
 
 
+# ── task 2, step 3: operators and switchable variation ──────────────────────
+
+@test
+def operator_words_are_knobs_of_the_run_layer():
+    from mootation.run.knobs import text_knobs
+    words = text_knobs()
+    assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha"}, words
+    assert {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
+            "mixture_cauchy"} == set(words["mutation"]), words
+    for k in ("mutation_scale", "mixture_q", "blx_alpha", "crossover", "mutation"):
+        assert k in knob_names(), k
+    tail = 'gens = 5\n'
+    ok = loads(_MIN.replace(tail, tail + 'params = { crossover = "blx_alpha", mutation = '
+                                          '"gaussian", mutation_scale = 0.05, blx_alpha = 0.3 }\n'))
+    assert not [q for q in validate(ok) if "params" in q or "crossover" in q or "mutation" in q]
+    bad = loads(_MIN.replace(tail, tail + 'params = { mutation = "levy" }\n'))
+    assert any("mutation" in q and "levy" in q for q in validate(bad)), validate(bad)
+
+
+@test
+def switchable_operators_run_inside_the_box_and_keep_the_defaults():
+    """nsga2, ibea_eplus, spea2_sde, agemoea take crossover/mutation; the defaults are SBX + PM."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  switchable_operators...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("ZDT4")                         # x_1 in [0, 1], the rest in [-5, 5]
+    lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+    kw = dict(bounds=p.bounds, n_objs=2, pop_size=100, max_evaluations=1500, seed=4)
+    for alg in ("nsga2", "ibea_eplus", "spea2_sde", "agemoea"):
+        plain = minimize(p.evaluate, algorithm=alg, **kw)
+        same = minimize(p.evaluate, algorithm=alg, crossover="sbx", mutation="polynomial", **kw)
+        assert np.array_equal(np.array(plain.objectives), np.array(same.objectives)), alg
+        assert dict(plain.operators) == {"sbx": "none", "polynomial": "none"}, plain.operators
+        for extra in ({"crossover": "blx_alpha", "blx_alpha": 1.0, "bound_repair": "reflect"},
+                      {"crossover": "uniform", "mutation": "gaussian", "mutation_scale": 0.3},
+                      {"mutation": "mixture_cauchy", "mixture_q": 0.5, "bound_repair": "random"},
+                      {"mutation": "uniform_reset"}):
+            r = minimize(p.evaluate, algorithm=alg, **kw, **extra)
+            assert not r.ignored, (alg, extra, r.ignored)
+            X = np.array(r.variables)
+            assert np.all((X >= lo) & (X <= hi)), (alg, extra)
+            ops = dict(r.operators)
+            name = extra.get("crossover", "sbx")
+            assert name in ops, (alg, extra, r.operators)
+    r = minimize(p.evaluate, algorithm="moead_de", mutation="gaussian", **kw)
+    assert dict(r.operators)["gaussian"] == "repaired by the caller", r.operators
+    r = minimize(p.evaluate, algorithm="spea2", crossover="uniform", **kw)
+    assert r.ignored == ["crossover"], r.ignored
+    # sbx_var_prob: for the run only, and ignored by a core without SBX
+    plain = minimize(p.evaluate, algorithm="nsga2", **kw)
+    every = minimize(p.evaluate, algorithm="nsga2", sbx_var_prob=1.0, **kw)
+    again = minimize(p.evaluate, algorithm="nsga2", **kw)
+    assert not every.ignored and every.objectives != plain.objectives
+    assert again.objectives == plain.objectives, "the toggle is put back after the run"
+    r = minimize(p.evaluate, algorithm="moead_de", sbx_var_prob=1.0, **kw)
+    assert r.ignored == ["sbx_var_prob"], r.ignored
+
+
 def main() -> int:
     failed = []
     for fn in TESTS:

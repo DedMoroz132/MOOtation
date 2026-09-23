@@ -108,6 +108,16 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Operators (task 2, B1-B3): the mutations `gaussian`, `cauchy`,
+  `uniform_reset`, `mixture` and `mixture_cauchy`
+  (`operators/real_mutation.hpp`), the crossovers `uniform` and `blx_alpha`
+  (`operators/real_crossover.hpp`), and DE/rand/2/bin and DE/best/1/bin
+  (Storn & Price's DE/x/y/z notation). NSGA-II, IBEA-ε+, SPEA2+SDE and
+  AGE-MOEA take `crossover` and `mutation`, MOEA/D-DE `mutation`, with
+  `mutation_scale`, `mixture_q` and `blx_alpha`; the defaults are the papers'
+  SBX and polynomial mutation, and every algorithm returns bit for bit what
+  it did (tools/compat_check.py). `sbx_var_prob` sets SBX's share of crossed
+  variables for one run (for experiment E1).
 - Structural bias (task 2, A3): `uninformative_n02_2D` and
   `uninformative_n10_2D`, whose objective values are U(0, 1) draws from the
   run's seed and the evaluation's number, independent of x
@@ -339,6 +349,12 @@ always listed under **Changed** or **Removed**.
   measured difference).
 
 ### Fixed
+
+- `poly_mutation.hpp` cited Deb & Deb 2014 at "pp. 177-178"; the article is
+  Int. J. AISC 4(1), pp. 1-28, and the settings are in its §5. `sbx.hpp`
+  claimed that crossing every variable is "empirically stronger" on
+  MaF3/DTLZ3; that was seen outside this repository and is now marked as
+  unverified until experiment E1.
 
 - The ZCAT reference fronts contained dominated points. The sampler kept the
   points of its own candidate set that no other candidate dominated, which is

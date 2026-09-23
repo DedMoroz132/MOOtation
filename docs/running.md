@@ -385,6 +385,34 @@ ignored: SBX and polynomial mutation cannot leave the box. Whatever the
 settings, every run's `meta.json` lists the operators it used with their
 repair under `operators`.
 
+**Switchable operators.** NSGA-II, IBEA-ε+, SPEA2+SDE and AGE-MOEA take
+`crossover` and `mutation`, MOEA/D-DE `mutation` alone; the defaults are
+each paper's SBX and polynomial mutation, called exactly as before. The
+alternatives are for ablations — a variant in a campaign is an
+`[[algorithms]]` entry with its own `label`:
+
+```toml
+[[algorithms]]
+name   = "nsga2"
+label  = "nsga2_gauss01"
+pop    = 0
+gens   = 0
+params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect" }
+```
+
+| knob | values |
+|---|---|
+| `crossover` | `sbx`; `uniform` (every variable from one parent at random, the other child the complement — JEGA's shuffle_random for two parents); `blx_alpha` (each variable uniform in [min − αI, max + αI], I the parents' distance, `blx_alpha` = 0.5) |
+| `mutation` | `polynomial`; `gaussian`, x + s(ub − lb)·N(0, 1) with `mutation_scale` s = 0.1; `cauchy`, the same with C(0, 1) and s = 0.05; `uniform_reset`, U(lb, ub); `mixture` (`mixture_cauchy`): the polynomial step with probability 1 − `mixture_q` (0.1), the gaussian (Cauchy) one otherwise. Every one mutates each variable with probability `pm`, 1/n by default |
+| `bound_repair` | for the operators above that can leave the box (BLX-α, gaussian, Cauchy): `reflect` by default, provisionally, until experiment E3 picks one |
+| `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
+
+In MOEA/D-DE, `polynomial` is its literal Eq. 7 and every other mutation
+leaves its steps raw for Step 2.3's repair of the whole offspring, as Eq. 7
+does. The operators live in `operators/real_crossover.hpp` and
+`operators/real_mutation.hpp`, with DE/rand/2/bin and DE/best/1/bin (Storn &
+Price's DE/x/y/z notation) in `operators/de_mutation.hpp`.
+
 **What the operators did.** `operator_stats = true` in `[campaign]` adds to
 every trajectory record, for the offspring evaluated since the previous one,
 and to `final` for the whole run:

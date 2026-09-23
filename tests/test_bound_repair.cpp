@@ -12,7 +12,12 @@
 //       other repair keeps children inside; the crossover refuses resample;
 //   (4) the counters: a tally books one offspring and its variables outside,
 //       and the operator list records what ran with which repair;
-//   (5) the settings file takes bound_repair as a word and refuses an unknown one.
+//   (5) the settings file takes bound_repair as a word and refuses an unknown one;
+//   (6) the mutations of real_mutation.hpp: inside the box under every repair,
+//       nothing moves at p_m = 0, the polynomial choice is polynomial_mutation;
+//   (7) the crossovers of real_crossover.hpp: uniform children are complementary,
+//       BLX-alpha's inside the box, SBX is ops::sbx;
+//   (8) DE/rand/2/bin and DE/best/1/bin are Storn & Price's formulas at CR = 1.
 // ============================================================================
 
 #include <cmath>
@@ -24,6 +29,8 @@
 #include <mootation/operators/bound_repair.hpp>
 #include <mootation/operators/de_mutation.hpp>
 #include <mootation/operators/liuli_crossover.hpp>
+#include <mootation/operators/real_crossover.hpp>
+#include <mootation/operators/real_mutation.hpp>
 #include <mootation/settings.hpp>
 
 namespace {
@@ -171,6 +178,98 @@ int main() {
             mootation::Settings::from_string("n_vars = 2\nlower = 0\nupper = 1\nbound_repair = clamp\n");
         } catch (const std::invalid_argument&) { threw = true; }
         check(threw, "an unknown repair is refused when the file is read");
+    }
+
+    // ── (6) the mutations ────────────────────────────────────────────────────
+    {
+        const Bounds bd(10, {-2.0, 3.0});
+        bool ok = true, still = true;
+        for (Mutation m : {Mutation::Polynomial, Mutation::Gaussian, Mutation::Cauchy,
+                           Mutation::UniformReset, Mutation::Mixture, Mutation::MixtureCauchy}) {
+            for (BoundRepair b : {BoundRepair::Clip, BoundRepair::Reflect, BoundRepair::Random,
+                                  BoundRepair::Midpoint, BoundRepair::Resample, BoundRepair::Wrap}) {
+                MutationSpec spec;
+                spec.kind = m;
+                spec.repair = b;
+                spec.scale = 0.5;               // large: plenty of steps leave the box
+                for (int t = 0; t < 100; ++t) {
+                    std::vector<double> x(10);
+                    for (double& v : x) v = std::uniform_real_distribution<double>(-2.0, 3.0)(rng);
+                    spec.apply(x, bd, 20.0, 1.0, rng);
+                    for (double v : x) ok = ok && v >= -2.0 && v <= 3.0;
+                    std::vector<double> y = x;
+                    spec.apply(y, bd, 20.0, 0.0, rng);   // p_m = 0: nothing moves
+                    still = still && y == x;
+                }
+            }
+            check(parse_mutation(mutation_name(m)) == m, std::string("name: ") + mutation_name(m));
+        }
+        check(ok, "every mutation stays inside the box under every repair");
+        check(still, "at p_m = 0 no mutation changes anything");
+        MutationSpec poly;
+        std::vector<double> a(10, 0.3), b2(10, 0.3);
+        std::mt19937 r1(5u), r2(5u);
+        poly.apply(a, bd, 20.0, 0.5, r1);
+        polynomial_mutation(b2, bd, 20.0, 0.5, r2);
+        check(a == b2 && r1() == r2(), "the polynomial choice is polynomial_mutation, draw for draw");
+        MutationSpec raw;
+        raw.kind = Mutation::Gaussian;
+        raw.scale = 5.0;
+        std::vector<double> z(10, 0.0);
+        raw.apply(z, bd, 20.0, 1.0, rng, /*caller_repairs=*/true);
+        bool left = false;
+        for (double v : z) left = left || v < -2.0 || v > 3.0;
+        check(left, "with the caller repairing, the steps are left raw");
+    }
+
+    // ── (7) the crossovers ───────────────────────────────────────────────────
+    {
+        const Bounds bd(6, {0.0, 1.0});
+        const std::vector<double> p1 = {0.1, 0.2, 0.3, 0.4, 0.5, 0.95};
+        const std::vector<double> p2 = {0.9, 0.8, 0.7, 0.6, 0.5, 0.05};
+        std::vector<double> c1, c2;
+        uniform_crossover(p1, p2, c1, c2, 1.0, rng);
+        bool comp = true;
+        for (std::size_t j = 0; j < p1.size(); ++j)
+            comp = comp && ((c1[j] == p1[j] && c2[j] == p2[j]) || (c1[j] == p2[j] && c2[j] == p1[j]));
+        check(comp, "uniform: every variable from one parent, the other child's from the other");
+        bool ok = true;
+        for (BoundRepair b : {BoundRepair::Clip, BoundRepair::Reflect, BoundRepair::Random,
+                              BoundRepair::Midpoint, BoundRepair::Resample, BoundRepair::Wrap})
+            for (int t = 0; t < 300; ++t) {
+                blx_alpha_crossover(p1, p2, c1, c2, bd, 2.0, 1.0, b, rng);
+                for (double v : c1) ok = ok && v >= 0.0 && v <= 1.0;
+                for (double v : c2) ok = ok && v >= 0.0 && v <= 1.0;
+            }
+        check(ok, "BLX-alpha children stay inside under every repair, even at alpha = 2");
+        blx_alpha_crossover(p1, p2, c1, c2, bd, 0.0, 1.0, BoundRepair::Clip, rng);
+        bool between = true;
+        for (std::size_t j = 0; j < p1.size(); ++j)
+            between = between && c1[j] >= std::min(p1[j], p2[j]) && c1[j] <= std::max(p1[j], p2[j]);
+        check(between, "BLX-0 draws between the parents");
+        CrossoverSpec sbx_spec;
+        std::vector<double> a1, a2, b1, b2;
+        std::mt19937 r1(6u), r2(6u);
+        sbx_spec.apply(p1, p2, a1, a2, bd, 20.0, 0.9, r1);
+        sbx(p1, p2, b1, b2, bd, 20.0, 0.9, r2);
+        check(a1 == b1 && a2 == b2 && r1() == r2(), "the SBX choice is ops::sbx, draw for draw");
+    }
+
+    // ── (8) DE/rand/2/bin and DE/best/1/bin ──────────────────────────────────
+    {
+        const Bounds bd(3, {-10.0, 10.0});
+        const std::vector<double> r1 = {1, 2, 3}, r2 = {0.5, 0.5, 0.5}, r3 = {1, 1, 1},
+                                  r4 = {0, 1, 0}, r5 = {2, 0, 1}, x = {9, 9, 9};
+        std::vector<double> y;
+        de_rand_2_bin(r1, r2, r3, r4, r5, x, y, bd, 0.5, 1.0, BoundRepair::Clip, rng);
+        bool f = true;
+        for (int j = 0; j < 3; ++j)
+            f = f && std::abs(y[j] - (r1[j] + 0.5 * (r2[j] + r3[j] - r4[j] - r5[j]))) < 1e-12;
+        check(f, "DE/rand/2: v = x_r1 + F(x_r2 + x_r3 - x_r4 - x_r5)");
+        de_best_1_bin(r1, r2, r3, x, y, bd, 0.5, 1.0, BoundRepair::Clip, rng);
+        f = true;
+        for (int j = 0; j < 3; ++j) f = f && std::abs(y[j] - (r1[j] + 0.5 * (r2[j] - r3[j]))) < 1e-12;
+        check(f, "DE/best/1: v = x_best + F(x_r1 - x_r2)");
     }
 
     std::printf("bound repair: %d/%d checks passed%s\n", g_checks - g_failed, g_checks,

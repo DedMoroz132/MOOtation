@@ -17,11 +17,28 @@ namespace mootation::ops {
 // ── Global toggle for per-variable participation in SBX ──────────────────────
 // Canonical form (Deb nsga2.c realcross / PlatEMO / jMetal): each variable is
 // crossed with probability 0.5. The old MOOtation code crossed ALL variables
-// (=1.0), which is empirically stronger on multimodal problems (MaF3/DTLZ3).
+// (=1.0). That 1.0 is stronger on multimodal problems (MaF3/DTLZ3) was seen in
+// runs outside this repository, not with its public algorithms, and is NOT
+// established here (2026-09-23): experiment E1 of the task of that date —
+// 0.5 against 1.0 on NSGA-II, IBEA-e+ and SPEA2+SDE, with shiftDTLZ as the
+// control for a pull to the centre — is what will settle it.
 // The toggle enables an A/B test without touching every algorithm:
 // ops::sbx_var_prob() = 1.0. Default 0.5 → behavior is unchanged relative to
 // the current build.
 inline double& sbx_var_prob() { static double v = 0.5; return v; }
+
+// Sets sbx_var_prob() for one run and puts the old value back after it: the
+// knob `sbx_var_prob` of run(), Session and the Python binding. The toggle is
+// process-wide, so two runs at once in one process would share it.
+class ScopedSbxVarProb {
+public:
+    explicit ScopedSbxVarProb(double v) : saved_(sbx_var_prob()) { sbx_var_prob() = v; }
+    ~ScopedSbxVarProb() { sbx_var_prob() = saved_; }
+    ScopedSbxVarProb(const ScopedSbxVarProb&) = delete;
+    ScopedSbxVarProb& operator=(const ScopedSbxVarProb&) = delete;
+private:
+    double saved_;
+};
 
 // Require explicit bounds: the silent [0,1] default led to a silent
 // clamp/NaN on problems with other domains (2026-06 audit).
