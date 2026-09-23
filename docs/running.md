@@ -215,8 +215,8 @@ rebuilds them). Things to know before reading a number on them:
   indicators from `final.csv`, but a trajectory has to be run again.
 
 `mootation.benchmarks.get()` still warns, once per problem, for any size that
-has no shipped full front — WFG3 at six and ten, DTLZ5 and DTLZ6 at ten and
-fifteen, MaF6 at fifteen — and
+has no shipped full front — WFG3 at six and ten, DTLZ5 at fifteen, DTLZ6 at
+ten and fifteen, MaF6 at fifteen — and
 `degenerate_subset_note(name)` returns that caveat. Every other reference front in the registry is exact. Where one is
 sampled as the nondominated images of a grid of positions — DTLZ7 and MaF7,
 WFG1, WFG2 and MaF11, ZDT3, ZCAT — every point is also checked against a

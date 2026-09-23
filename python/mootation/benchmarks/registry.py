@@ -263,9 +263,10 @@ def _pf_dtlz7(M: int, n: int) -> np.ndarray:
 #
 # DEGENERATE_SUBSET_FROM still names the sizes at which the old curve would be
 # a subset, and degenerate_subset_note warns only where a size has no shipped
-# full front: WFG3 at six and ten, DTLZ5 and DTLZ6 at ten and fifteen, MaF6 at
-# fifteen, where a build in pure Python runs for hours (make_fronts builds one
-# on request; the six-objective ones took about six hours each).
+# full front: WFG3 at six and ten, DTLZ5 at fifteen, DTLZ6 at ten and fifteen,
+# MaF6 at fifteen, where a build in pure Python runs for hours (make_fronts
+# builds one on request; the six-objective ones took about six hours each,
+# DTLZ5_10D under three).
 #
 # MaF6 is NOT like DTLZ5 here, although it is DTLZ5(I, M) with I = 2: its
 # objectives carry (1 + 100 g) where DTLZ5's carry (1 + g), while the angles

@@ -63,11 +63,11 @@ always listed under **Changed** or **Removed**.
   next to the two places where the text and Algorithm 2 disagree — the ideal
   point and the extreme points, both kept historically as the text says
   (NSGA3-N1) — and the 1e-6 ASF weight, which Part I never states (NSGA3-N3).
-- **The reference fronts of DTLZ5 and DTLZ6 at four to six objectives, of WFG3
-  at three to five and of MaF6 at eight and ten are now their FULL Pareto
-  fronts**; where no front is built yet — WFG3 at six and ten, DTLZ5 and DTLZ6
-  at ten and fifteen, MaF6 at fifteen — the curve stays, with its run-time
-  warning. Each of the six-objective builds took about six hours. The four
+- **The reference fronts of DTLZ5 at four to six and ten objectives, of DTLZ6
+  at four to six, of WFG3 at three to five and of MaF6 at eight and ten are
+  now their FULL Pareto fronts**; where no front is built yet — WFG3 at six
+  and ten, DTLZ5 at fifteen, DTLZ6 at ten and fifteen, MaF6 at fifteen — the
+  curve stays, with its run-time warning. Each of the six-objective builds took about six hours. The four
   were designed with a degenerate, curve-shaped front and the registry's
   reference sets were that curve, but at those sizes the true front also has a
   non-degenerate part (Ishibuchi, Masuda & Nojima, IEEE TEVC 20(5), 2016, for
