@@ -246,6 +246,7 @@ python -m mootation.run.campaign campaign.toml --shard 3/40    # one shard of fo
 python -m mootation.run.campaign campaign.toml --emit-slurm 40 # writes submit.sh + jobs.txt
 python -m mootation.run.campaign campaign.toml --compare igd   # median table
 python -m mootation.run.campaign campaign.toml --ranks igd     # mean rank per algorithm
+python -m mootation.run.campaign campaign.toml --problems DTLZ5_5D,WFG3_5D --force  # rerun two
 ```
 
 Each run writes `trajectory.jsonl` (IGD, IGD+ and hypervolume against the
@@ -525,6 +526,23 @@ Compare, `--compare` and `--ranks` read whatever `meta.json` files sit under the
 results root, wherever they were produced. Use the same commit everywhere; each
 `meta.json` records the library version, the host and the Python it ran under.
 A killed shard resumes when started again, and `--force` reruns finished jobs.
+
+`--problems` narrows everything to part of the selection — `--list`, the run
+(with `--shard` and `--force`), the tables and `--recompute` — which is how a
+campaign catches up when some problems' reference fronts change: their final
+indicators can be recomputed, but their trajectories were normalised by the
+old front, so those problems are run again and nothing else is.
+
+```bash
+P=ZDT3,DTLZ7_3D,DTLZ7_5D,WFG2_3D,WFG3_3D,WFG3_5D,DTLZ5_5D,DTLZ6_5D
+P=$P,ZCAT11_3D,ZCAT12_3D,ZCAT13_3D,ZCAT16_3D,ZCAT11_5D,ZCAT12_5D,ZCAT13_5D
+python -m mootation.run.campaign campaign_all.toml --problems $P --force --workers 16
+```
+
+The fifteen problems in `P` are those whose references changed on 2026-09-22
+(the full fronts and the cleaned samples). Run without `--problems`
+afterwards, the campaign fills in only what is still missing — the
+baselines added since, on every other problem.
 
 ```bash
 python -m mootation.run.campaign campaign_all.toml --ranks igd

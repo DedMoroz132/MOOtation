@@ -179,6 +179,10 @@ always listed under **Changed** or **Removed**.
   reference front — the COCO bbob-biobj convention), `range_cover` (the worst
   objective's covered share of [ideal, nadir], per objective in
   `range_cover_each`), `nd_share` and `dup_share`.
+- `--problems NAMES` on the campaign command line narrows `--list`, the run
+  (with `--shard` and `--force`), the tables and `--recompute` to part of the
+  selection: rerunning only the problems whose reference changed is
+  `--problems ... --force`.
 - Campaign recording: `record_grid = "log"` records at the fixed evaluation
   counts round(10^(j/10)) — the same at every budget, so the 10 000 / 25 000 /
   50 000 ladder compares point by point instead of through interpolation;

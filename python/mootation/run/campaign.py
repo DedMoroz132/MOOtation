@@ -1187,7 +1187,8 @@ def _recompute_one(args) -> str:
 
 
 def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1000,
-                    hv_options: dict | None = None, scenario: str = "final") -> dict:
+                    hv_options: dict | None = None, scenario: str = "final",
+                    problems=None) -> dict:
     """Compute `names` from every finished run's final.csv and merge them into its meta.json.
 
     The final population is on disk, so an indicator added after a campaign
@@ -1198,7 +1199,8 @@ def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1
     before it existed, as long as they kept an archive.
     """
     tasks = [(str(m.parent), list(names), n_ref, hv_options, scenario)
-             for m in root.glob("*/*/run_*/meta.json")]
+             for m in root.glob("*/*/run_*/meta.json")
+             if problems is None or m.parents[2].name in problems]
     counts: dict = {}
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
@@ -1245,6 +1247,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--at", type=float, metavar="FRACTION",
                     help="with --compare or --ranks: read every run at this fraction of its "
                          "budget, from its trajectory, instead of at the end")
+    ap.add_argument("--problems", metavar="NAMES",
+                    help="only these comma-separated problems of the campaign's selection, for "
+                         "--list, running (with --shard and --force), the tables and "
+                         "--recompute: e.g. rerun the problems whose reference front changed "
+                         "with --problems ZDT3,WFG3_5D --force")
     ap.add_argument("--recompute", metavar="METRICS",
                     help="compute these comma-separated metrics from every finished run's "
                          "final.csv (with --scenario archive: its archive.csv reduced by DSS), "
@@ -1304,6 +1311,26 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     root = out_root(cfg, spec)
 
+    only_problems = None
+    if args.problems is not None:
+        only_problems = [q.strip() for q in args.problems.split(",") if q.strip()]
+        have = {j.problem for j in jobs}
+        missing = [q for q in only_problems if q not in have]
+        if missing or not only_problems:
+            print(f"--problems: not in this campaign's selection: "
+                  f"{', '.join(missing) or '(none given)'}", file=sys.stderr)
+            return 1
+        if args.job:
+            print("--problems and --job both pick jobs; give one of them", file=sys.stderr)
+            return 1
+        if args.emit_slurm:
+            print("--problems does not combine with --emit-slurm, whose array covers the "
+                  "whole campaign; use --shard with --problems on each node instead",
+                  file=sys.stderr)
+            return 1
+        only_problems = set(only_problems)
+        jobs = [j for j in jobs if j.problem in only_problems]
+
     if args.list:
         for j in jobs:
             st = job_status(root, j)
@@ -1342,7 +1369,7 @@ def main(argv: list[str] | None = None) -> int:
         counts = recompute_final(root, names, workers=args.workers, n_ref=spec.n_ref,
                                  hv_options={"exact_max_m": spec.hv_exact_max_m,
                                              "mc_samples": spec.hv_mc_samples},
-                                 scenario=args.scenario)
+                                 scenario=args.scenario, problems=only_problems)
         print(f"recomputed {', '.join(names)} ({args.scenario}): {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
     rows = None
@@ -1350,6 +1377,8 @@ def main(argv: list[str] | None = None) -> int:
                                    args.ecdf)):
         from . import report as R
         rows = scenario_rows(scan_results(root), args.scenario)
+        if only_problems is not None:
+            rows = [r for r in rows if r["problem"] in only_problems]
         try:
             if args.reference:
                 metric = args.ranks or args.compare
@@ -1422,7 +1451,13 @@ def main(argv: list[str] | None = None) -> int:
             print("--shard: i must satisfy 0 <= i < n", file=sys.stderr)
             return 1
         shard = (i, n)
-    counts = run_campaign(cfg, shard=shard, only=args.job, workers=args.workers,
+    only = args.job
+    if only_problems is not None:
+        # the problems' jobs, by their indices in the whole campaign, so that
+        # --shard i/n splits them the same way on every machine
+        only = [j.index for j in jobs if shard is None or j.index % shard[1] == shard[0]]
+        shard = None
+    counts = run_campaign(cfg, shard=shard, only=only, workers=args.workers,
                           force=args.force)
     return 0 if counts.get("failed", 0) == 0 else 2
 

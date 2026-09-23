@@ -2262,6 +2262,63 @@ final_metrics = ["igdp", "hv", "igdx", "pdist"]
         assert cli("--ranks", "igdp", "--reference", "nobody")[0] == 1
 
 
+@test
+def campaign_problems_flag_restricts_every_mode_to_a_subset():
+    """--problems: --list, the run, --force, the tables and --recompute see only those problems."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  campaign_problems_flag...: no NumPy or stale _core"); return
+    import contextlib
+    import io
+    from mootation.run import campaign as C
+    text = """algorithms = [ { name = "random_search", pop = 0, gens = 0 } ]
+[run]
+name = "sub"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1", "ZDT2", "ZDT3"]
+[campaign]
+out = "res"
+budget_fe = 300
+metrics = ["igdp"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        root = Path(td) / "res"      # one seed: one job a problem, run in-process
+
+        def cli(*argv):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = C.main([str(cfg_path), *argv])
+            return code, out.getvalue()
+
+        def runs():
+            return {m.parents[2].name: m.stat().st_mtime_ns
+                    for m in root.glob("*/*/run_*/meta.json")}
+        code, txt = cli("--list", "--problems", "ZDT3, ZDT1")
+        assert code == 0 and "ZDT2" not in txt and txt.count("random_search") == 2, txt
+        assert cli("--problems", "ZDT3")[0] == 0
+        first = runs()
+        assert set(first) == {"ZDT3"}, first
+        assert cli("--problems", "ZDT3")[0] == 0 and runs() == first     # done: skipped
+        assert cli("--problems", "ZDT3", "--force")[0] == 0
+        assert runs()["ZDT3"] != first["ZDT3"]                          # rerun
+        assert cli("--problems", "ZDT1")[0] == 0 and set(runs()) == {"ZDT1", "ZDT3"}
+        code, txt = cli("--ranks", "igdp", "--problems", "ZDT3")
+        assert code == 0 and "over 1 problem(s)" in txt, txt
+        assert cli("--recompute", "igdp,roi_dist", "--problems", "ZDT1")[0] == 0
+        meta = json.loads(next((root / "ZDT1").glob("*/run_1/meta.json")).read_text(
+            encoding="utf-8"))
+        other = json.loads(next((root / "ZDT3").glob("*/run_1/meta.json")).read_text(
+            encoding="utf-8"))
+        assert "roi_dist" in meta["final"] and "roi_dist" not in other["final"]
+        assert cli("--problems", "ZDT9")[0] == 1
+        assert cli("--problems", "ZDT1", "--job", "0")[0] == 1
+        assert cli("--problems", "ZDT1", "--emit-slurm", "2")[0] == 1
+
+
 def main() -> int:
     failed = []
     for fn in TESTS:
