@@ -44,6 +44,7 @@ inline void polynomial_mutation(std::vector<double>& x,
                                 double pm,
                                 RNG& rng)
 {
+    note_operator("polynomial", "none");   // bounded: cannot leave the box
     std::uniform_real_distribution<double> uni(0.0, 1.0);
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;
@@ -100,6 +101,7 @@ inline void polynomial_mutation_eq7(std::vector<double>& x,
                                                                 std::optional<double>>>& bounds,
                                     double eta_m, double pm, RNG& rng)
 {
+    note_operator("polynomial_eq7", "box repair after mutation");
     std::uniform_real_distribution<double> uni(0.0, 1.0);
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;

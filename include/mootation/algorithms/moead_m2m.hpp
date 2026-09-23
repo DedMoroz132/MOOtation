@@ -213,6 +213,9 @@ private:
     // 3000 generations); default 1000 is the library convention, see
     // header/set_t_max.
     int    t_max_  = 1000;
+    // Liu-Li repair (bound_repair, 2026-09-23): the paper's own rule by
+    // default; resample works in the mutation only (liuli_crossover.hpp).
+    ops::BoundRepair repair_ = ops::BoundRepair::Native;
     std::mt19937 rng_{std::random_device{}()};
 
     // ── runtime state ──────────────────────────────────────────────────────
@@ -451,8 +454,8 @@ private:
             pv1[j] = vault.get_variable(x, j);
             pv2[j] = vault.get_variable(y, j);
         }
-        ops::liuli_crossover(pv1, pv2, c1, bounds, gen_, t_max_, rng_);
-        ops::liuli_mutation(c1, bounds, pm_eff(nv), gen_, t_max_, rng_);
+        ops::liuli_crossover(pv1, pv2, c1, bounds, gen_, t_max_, rng_, repair_);
+        ops::liuli_mutation(c1, bounds, pm_eff(nv), gen_, t_max_, rng_, repair_);
 
         int nb = vault.bin_vars_n();
         if (nb > 0) {
@@ -498,6 +501,8 @@ public:
     void set_pc(double)           {}
     void set_pm(double p)         { pm_ = p; }
     void set_seed(unsigned s)     { rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "moead_m2m", false, true); repair_ = r; }
 
     // ── setup: K×S random initialization + initial Allocation (line 1) ───────
     void setup(DataVault<Ind_t>& vault) {

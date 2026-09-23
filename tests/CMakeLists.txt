@@ -8,7 +8,8 @@ set(MOOTATION_TESTS
     test_constraints
     test_warm_start
     test_scale_invariance
-    test_hypervolume)
+    test_hypervolume
+    test_bound_repair)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -97,6 +98,8 @@ mootation_test_timeout(test_scale_invariance 900)
 mootation_test_timeout(test_operators 300)
 # hypervolume.hpp alone: 300 random sets against inclusion-exclusion, seconds.
 mootation_test_timeout(test_hypervolume 300)
+# operators/bound_repair.hpp and the operators that use it: milliseconds.
+mootation_test_timeout(test_bound_repair 300)
 # Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
 # all 58 algorithms for the run-time dispatch. Stays in the push tier because
 # the property it guards — that a warm start costs no function evaluations — is

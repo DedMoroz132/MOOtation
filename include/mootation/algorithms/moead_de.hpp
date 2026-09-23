@@ -93,7 +93,9 @@ private:
     // Step 2.3 repair of the out-of-box genes of the final y: the paper's
     // RANDOM RESET is the default; DERepair::Clip is PlatEMO/jMetal's clamping
     // variant, exposed for experiments (see MDE-6 in the header).
-    ops::DERepair repair_ = ops::DERepair::RandomReset;
+    // bound_repair (2026-09-23): any of ops::BoundRepair but resample and
+    // native; midpoint moves towards x^i.
+    ops::BoundRepair repair_ = ops::BoundRepair::Random;
     std::mt19937 rng_{std::random_device{}()};
 
     // ── runtime state ──────────────────────────────────────────────────────
@@ -229,7 +231,7 @@ private:
                                      pm_eff(vault.vars_n()), rng_);
         // Step 2.3: repair of the FINAL y — random reset inside the domain
         // (the paper) or clamping (set_de_repair(Clip), see MDE-6).
-        ops::repair_out_of_box(y_vars, bounds, repair_, rng_);
+        ops::repair_out_of_box(y_vars, bounds, repair_, rng_, &vault.variables_of(i));
 
         // Binary variables (extension beyond the paper): inherited from x^i
         // + bit-flip with probability 1/n_bin.
@@ -309,7 +311,9 @@ public:
     void set_pm                (double p){ pm_            = p; }
     void set_feas_penalty      (double p){ feas_penalty_  = p; }
     void set_use_ep            (bool b)  { use_ep_        = b; }
-    void set_de_repair         (ops::DERepair r){ repair_ = r; }
+    void set_de_repair         (ops::DERepair r){ repair_ = ops::to_bound_repair(r); }
+    void set_bound_repair      (ops::BoundRepair r){
+        ops::require_repair(r, "moead_de", false, false); repair_ = r; }
     void set_seed              (unsigned s){ rng_.seed(s); }
 
     std::size_t external_population_size(DataVault<Ind_t>& vault) const {

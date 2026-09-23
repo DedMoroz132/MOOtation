@@ -613,6 +613,23 @@ jobs:
           /tmp/amalg_embed
           echo "embed.hpp works from the single header"
 
+  # ── Default behaviour, bit for bit ────────────────────────────────────────
+  # Options are added under one rule: every algorithm at its defaults returns
+  # exactly the population it returned at the baseline commit
+  # (tests/compat_baseline.txt). A stored population cannot check that across
+  # compilers and standard libraries, so tools/compat_check.py compiles
+  # tests/compat_dump.cpp against the baseline's headers and against this
+  # tree's, here, with the same compiler, and compares the fingerprints.
+  default-behaviour:
+    name: default behaviour, bit for bit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # the baseline commit's headers
+      - name: Every algorithm at its defaults returns the baseline's population
+        run: python3 tools/compat_check.py --cxx g++
+
   # ── Hygiene ───────────────────────────────────────────────────────────────
   hygiene:
     name: repo hygiene

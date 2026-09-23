@@ -209,6 +209,9 @@ private:
     // the caller must pass the real budget via set_t_max.
     int    t_max_ = 1000;
     double pm_ = -1.0;                 // P_m Eq.(6); <0 → auto 1/n ([1] §V)
+    // Liu-Li repair (bound_repair, 2026-09-23): the paper's own rule by
+    // default; resample works in the mutation only (liuli_crossover.hpp).
+    ops::BoundRepair repair_ = ops::BoundRepair::Native;
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; int rank=0; };
@@ -320,8 +323,8 @@ private:
     Sol breed(const Sol& x, const Sol& y, DataVault<Ind_t>& vault, int scratch){
         const auto& b=vault.get_bounds(); int nv=vault.vars_n();
         std::vector<double> c1;
-        ops::liuli_crossover(x.vars,y.vars,c1,b,gen_,t_max_,rng_);
-        ops::liuli_mutation(c1,b,pm_eff(nv),gen_,t_max_,rng_);
+        ops::liuli_crossover(x.vars,y.vars,c1,b,gen_,t_max_,rng_,repair_);
+        ops::liuli_mutation(c1,b,pm_eff(nv),gen_,t_max_,rng_,repair_);
         Sol z; z.vars=c1; z.rank=0;            // the offspring is marked R=1
         if(vault.bin_vars_n()>0){
             std::vector<int> bc1,bc2;
@@ -356,6 +359,8 @@ public:
     void set_pc(double){}
     void set_pm(double p){ pm_=p; }
     void set_seed(unsigned s){ rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "liu_gu2011", false, true); repair_ = r; }
 
     void setup(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;

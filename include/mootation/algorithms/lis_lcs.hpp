@@ -157,6 +157,8 @@ private:
     int    nr_    = 2;
 
     int          K_ = 0;                       // adaptive K (Eq.4–9)
+    // DE mutant repair (bound_repair, 2026-09-23): random reset by default.
+    ops::BoundRepair repair_ = ops::BoundRepair::Random;
     std::mt19937 rng_{std::random_device{}()};
 
     // Internal co-evolution individual (DP / PP / offspring). The vault holds
@@ -590,6 +592,8 @@ public:
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation (double e) { eta_m_ = e; }
     void set_seed(unsigned s)        { rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "lis_lcs", false, false); repair_ = r; }
 
     void setup(DataVault<Ind_t>& vault) {
         const int N = vault.pop_size(), m = vault.objs_n();
@@ -660,7 +664,7 @@ public:
             Sol ch;
             ops::de_rand_1_bin(dp_[a].x, dp_[b].x, dp_[c].x, dp_[i].x, ch.x,
                                bounds, de_F_, de_CR_,
-                               ops::DERepair::RandomReset, rng_);
+                               repair_, rng_);
             ops::polynomial_mutation(ch.x, bounds, eta_m_, pm, rng_);
             if (nb > 0) {                                // extension: binary
                 std::vector<int> bc1, bc2;

@@ -265,6 +265,7 @@ MOOTATION_OPTIONAL_SETTER(F,          set_F,          double)
 MOOTATION_OPTIONAL_SETTER(CR,         set_CR,         double)
 MOOTATION_OPTIONAL_SETTER(div,        set_div,        int)
 MOOTATION_OPTIONAL_SETTER(normalize,  set_normalize,  bool)
+MOOTATION_OPTIONAL_SETTER(bound_repair, set_bound_repair, ops::BoundRepair)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
@@ -294,6 +295,12 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
     if (auto* v = get("CR"))         note(apply_CR(alg, *v), "CR");
     if (auto* v = get("div"))        note(apply_div(alg, static_cast<int>(*v)), "div");
     if (auto* v = get("normalize"))  note(apply_normalize(alg, *v != 0.0), "normalize");
+    auto text = s.text_params.find("bound_repair");
+    if (text != s.text_params.end()) {
+        auto how = ops::parse_bound_repair(text->second);
+        if (!how) throw std::invalid_argument("bound_repair: unknown value '" + text->second + "'");
+        note(apply_bound_repair(alg, *how), "bound_repair");
+    }
     return ignored;
 }
 

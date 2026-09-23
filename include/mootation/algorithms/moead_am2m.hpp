@@ -172,6 +172,9 @@ private:
     // (moead_m2m/moead_awa/adaw), the caller sets the real budget via set_t_max.
     int    t_max_ = 1000;
     bool   normalize_ = true;   // AM2M-norm (true) or the letter of the paper (false)
+    // Liu-Li repair (bound_repair, 2026-09-23): the paper's own rule by
+    // default; resample works in the mutation only (liuli_crossover.hpp).
+    ops::BoundRepair repair_ = ops::BoundRepair::Native;
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; };
@@ -304,8 +307,8 @@ private:
     Sol breed(const Sol& x, const Sol& y, DataVault<Ind_t>& vault, int scratch){
         int nv=vault.vars_n(); const auto& b=vault.get_bounds();
         std::vector<double> c1;
-        ops::liuli_crossover(x.vars,y.vars,c1,b,gen_,t_max_,rng_);
-        ops::liuli_mutation(c1,b,pm_eff(nv),gen_,t_max_,rng_);
+        ops::liuli_crossover(x.vars,y.vars,c1,b,gen_,t_max_,rng_,repair_);
+        ops::liuli_mutation(c1,b,pm_eff(nv),gen_,t_max_,rng_,repair_);
         Sol z; z.vars=c1;
         if(vault.bin_vars_n()>0){
             std::vector<int> bc1,bc2;
@@ -452,6 +455,8 @@ public:
     void set_pc(double p){ pc_=p; }
     void set_pm(double p){ pm_=p; }
     void set_seed(unsigned s){ rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "moead_am2m", false, true); repair_ = r; }
 
     void setup(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;

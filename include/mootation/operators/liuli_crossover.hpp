@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "bound_repair.hpp"
 #include "sbx.hpp"   // sbx_require_bound
 
 namespace mootation::ops {
@@ -74,6 +75,13 @@ namespace mootation::ops {
 //     that counts the first mating as gen = 1 (the contract below) does the
 //     same; it costs 1/Max_gen of the budget (0.3 % at 300 generations).
 //
+// BOUND REPAIR (2026-09-23): both operators take an ops::BoundRepair, default
+// BoundRepair::Native — the paper's rules above, unchanged. Any other value
+// replaces them: the crossover's parent for midpoint is the base xⁱ, the
+// mutation's the pre-mutation value. The crossover draws ONE rc per offspring,
+// so it cannot redraw a single variable and refuses resample; the mutation
+// redraws (u, r) for the component, at most resample_tries() times.
+//
 // gen — current generation (1-based, as in the paper: first mating at gen=1);
 // max_gen ≥ 1 — maximum number of generations. Finite variable bounds are
 // required (as for all bounded operators: sbx_require_bound).
@@ -100,8 +108,14 @@ inline void liuli_crossover(const std::vector<double>& x,
                             const std::vector<std::pair<std::optional<double>,
                                                         std::optional<double>>>& bounds,
                             int gen, int max_gen,
-                            RNG& rng)
+                            RNG& rng,
+                            BoundRepair repair = BoundRepair::Native)
 {
+    if (repair == BoundRepair::Resample)
+        throw std::invalid_argument("liuli_crossover: one rc per offspring cannot redraw a "
+                                    "single variable; bound_repair 'resample' is not available");
+    note_operator("liuli_crossover", bound_repair_name(repair));
+    RepairTally tally;
     std::uniform_real_distribution<double> uni01(0.0, 1.0);
     std::uniform_real_distribution<double> uni11(-1.0, 1.0);
     const double a = liuli_anneal(gen, max_gen);
@@ -116,8 +130,13 @@ inline void liuli_crossover(const std::vector<double>& x,
         double lo = sbx_require_bound(bounds[k].first,  "lower", k);
         double hi = sbx_require_bound(bounds[k].second, "upper", k);
         double c  = x[k] + rc * (x[k] - y[k]);
-        if (c < lo)      c = lo + 0.5 * uni01(rng) * (x[k] - lo);   // letter of the paper
-        else if (c > hi) c = hi - 0.5 * uni01(rng) * (hi - x[k]);   // LL-2 (typo)
+        if (c < lo || c > hi) {
+            tally.out();
+            if (repair != BoundRepair::Native)
+                c = repair_value(c, lo, hi, x[k], repair, rng);
+            else if (c < lo) c = lo + 0.5 * uni01(rng) * (x[k] - lo);   // letter of the paper
+            else             c = hi - 0.5 * uni01(rng) * (hi - x[k]);   // LL-2 (typo)
+        }
         child[k] = std::clamp(c, lo, hi);               // numerical guard
     }
 }
@@ -130,10 +149,13 @@ inline void liuli_mutation(std::vector<double>& x,
                                                        std::optional<double>>>& bounds,
                            double pm,
                            int gen, int max_gen,
-                           RNG& rng)
+                           RNG& rng,
+                           BoundRepair repair = BoundRepair::Native)
 {
     int nv = static_cast<int>(x.size());
     if (nv == 0) return;
+    note_operator("liuli_mutation", bound_repair_name(repair));
+    RepairTally tally;
     std::uniform_real_distribution<double> uni01(0.0, 1.0);
     std::uniform_real_distribution<double> uni11(-1.0, 1.0);
     const double a = liuli_anneal(gen, max_gen);
@@ -142,12 +164,24 @@ inline void liuli_mutation(std::vector<double>& x,
         double lo  = sbx_require_bound(bounds[h].first,  "lower", h);
         double hi  = sbx_require_bound(bounds[h].second, "upper", h);
         double old = x[h];                              // x̃ᶜ_h (before mutation)
-        double u   = uni11(rng);                        // rand ∈ [−1,1] (LL-1)
-        double r   = std::max(uni01(rng), 1e-12);       // base, guard LL-5
-        double rm  = 0.15 * u * (1.0 - std::pow(r, -a));// Eq.(6), exponent −a
-        double c   = old + rm * (hi - lo);
-        if (c < lo)      c = lo + 0.5 * uni01(rng) * (old - lo);
-        else if (c > hi) c = hi - 0.5 * uni01(rng) * (hi - old);
+        auto draw = [&]() {
+            double u   = uni11(rng);                    // rand ∈ [−1,1] (LL-1)
+            double r   = std::max(uni01(rng), 1e-12);   // base, guard LL-5
+            double rm  = 0.15 * u * (1.0 - std::pow(r, -a));   // Eq.(6), exponent −a
+            return old + rm * (hi - lo);
+        };
+        double c = draw();
+        if (c < lo || c > hi) {
+            tally.out();
+            if (repair == BoundRepair::Native) {
+                if (c < lo) c = lo + 0.5 * uni01(rng) * (old - lo);
+                else        c = hi - 0.5 * uni01(rng) * (hi - old);
+            } else if (repair == BoundRepair::Resample) {
+                for (int t = 0; t < resample_tries() && (c < lo || c > hi); ++t) c = draw();
+            } else {
+                c = repair_value(c, lo, hi, old, repair, rng);
+            }
+        }
         x[h] = std::clamp(c, lo, hi);                   // numerical guard
     };
 

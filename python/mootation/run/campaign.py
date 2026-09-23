@@ -55,7 +55,8 @@ from pathlib import Path
 from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
-from .metric_names import HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT, NEEDS_SET
+from .metric_names import (HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT, NEEDS_SET,
+                           RUN_STATS, TABLE_NAMES)
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -118,6 +119,11 @@ class CampaignSpec:
     # archive reduced to the problem's population size by DSS
     # (meta["final_archive"]). Needs archive = true.
     archive_scenario: bool = True
+    # What the variation operators did (metric_names.RUN_STATS): per trajectory
+    # record and over the run in `final`. Off by default; it never changes a
+    # run's result. meta["operators"] lists the operators and their bound
+    # repair either way.
+    operator_stats: bool = False
     # The run archive (archive.GridArchive -> archive.csv); archive_delta 0 is
     # the default grid step, 1e-3 below five objectives and 1e-2 from five.
     archive: bool = True
@@ -160,7 +166,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds",
              "record_grid", "record_per_decade", "trajectory_hv_max_m",
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
-             "archive", "archive_delta", "archive_scenario", "snapshots"}
+             "archive", "archive_delta", "archive_scenario", "snapshots",
+             "operator_stats"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -199,6 +206,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
         if not isinstance(v, int) or isinstance(v, bool) or v < lo:
             raise ConfigError(f"campaign.{key}", f"an integer >= {lo}, not {v!r}")
         setattr(spec, key, v)
+    spec.operator_stats = raw.get("operator_stats", False)
+    if not isinstance(spec.operator_stats, bool):
+        raise ConfigError("campaign.operator_stats", "true or false")
     spec.archive_scenario = raw.get("archive_scenario", True)
     if not isinstance(spec.archive_scenario, bool):
         raise ConfigError("campaign.archive_scenario", "true or false")
@@ -384,6 +394,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         return f
 
     snap = _snapshots_wanted(spec, job.problem)
+    op_stats = spec.operator_stats and not baseline
+    if op_stats:
+        from .. import _core
     snap_fe, snap_gen, snap_n, snap_F = [], [], [], []
 
     t0 = time.perf_counter()
@@ -431,6 +444,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                                  which=traj_metrics, pop=p.pop_size, hv_options=traj_hv))
             for m in hv_skipped:
                 rec[m] = None
+        if op_stats:
+            rec.update(_core.operator_stats())
         if snap:
             snap_fe.append(fe); snap_gen.append(gen); snap_n.append(len(F))
             snap_F.append(F.astype(np.float32).reshape(len(F), p.n_obj))
@@ -459,6 +474,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 # population; on_gen itself decides which calls become records.
                 on_generation=on_gen,
                 record_every=(1 if grid is not None else spec.record_every),
+                operator_stats=op_stats,
                 **job.params,
             )
     except Exception as e:                       # one bad job must not kill the shard
@@ -522,6 +538,12 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         meta["final_archive"] = M.compute(AF[idx], ref_front=ref, ideal=ideal, nadir=nadir,
                                           which=final_metrics, X=AX[idx], **extra)
         meta["final_archive"]["n"] = int(len(idx))
+    if not baseline:
+        meta["operators"] = [{"operator": o, "bound_repair": r}
+                             for o, r in getattr(res, "operators", [])]
+    if op_stats and final:
+        final.update({k: float(v) for k, v in dict(res.operator_totals).items()})
+    meta["operator_stats"] = op_stats
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1342,8 +1364,8 @@ def main(argv: list[str] | None = None) -> int:
     for flag, metric in (("--compare", args.compare), ("--ranks", args.ranks),
                          ("--gap", args.gap), ("--zero-share", args.zero_share),
                          ("--ecdf", args.ecdf)):
-        if metric is not None and metric not in METRIC_NAMES:
-            print(f"{flag}: unknown metric '{metric}'; known: {', '.join(METRIC_NAMES)}",
+        if metric is not None and metric not in TABLE_NAMES:
+            print(f"{flag}: unknown metric '{metric}'; known: {', '.join(TABLE_NAMES)}",
                   file=sys.stderr)
             return 1
     if args.at is not None and not 0.0 < args.at <= 1.0:
@@ -1363,7 +1385,10 @@ def main(argv: list[str] | None = None) -> int:
         names = [m.strip() for m in args.recompute.split(",") if m.strip()]
         bad = [m for m in names if m not in METRIC_NAMES]
         if bad or not names:
-            print(f"--recompute: unknown metric(s) {', '.join(bad) or '(none given)'}; "
+            stats = [m for m in bad if m in RUN_STATS]
+            why = (f" ({', '.join(stats)} describe the run itself: only a run with "
+                   f"operator_stats = true records them)" if stats else "")
+            print(f"--recompute: unknown metric(s) {', '.join(bad) or '(none given)'}{why}; "
                   f"known: {', '.join(METRIC_NAMES)}", file=sys.stderr)
             return 1
         counts = recompute_final(root, names, workers=args.workers, n_ref=spec.n_ref,

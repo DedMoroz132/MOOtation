@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+#include "bound_repair.hpp"
+
 namespace mootation::ops {
 
 // ── Global toggle for per-variable participation in SBX ──────────────────────
@@ -59,6 +61,7 @@ inline void sbx(const std::vector<double>& p1,
                 double pc,
                 RNG& rng)
 {
+    note_operator("sbx", "none");      // bounded: cannot leave the box
     std::uniform_real_distribution<double> uni(0.0, 1.0);
     int nv = static_cast<int>(p1.size());
     c1 = p1; c2 = p2;

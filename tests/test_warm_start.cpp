@@ -294,6 +294,17 @@ int main()
         const Result kn = run(k, zdt1);
         check(kn.ignored.size() == 1 && kn.ignored[0] == "normalize",
               "nsga2 reports normalize as a knob it does not have");
+
+        // the text knob: taken by a core whose operator can leave the box,
+        // reported by one whose operators cannot
+        Settings br = base_settings(20, 2);
+        br.text_params["bound_repair"] = "reflect";
+        br.algorithm = "moead_de";
+        check(run(br, zdt1).ignored.empty(), "moead_de takes bound_repair");
+        br.algorithm = "nsga2";
+        const Result bn = run(br, zdt1);
+        check(bn.ignored.size() == 1 && bn.ignored[0] == "bound_repair",
+              "nsga2 reports bound_repair as a knob it does not have");
     }
 
     std::printf("warm_start: %d/%d checks passed%s\n",

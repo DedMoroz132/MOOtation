@@ -8,7 +8,18 @@ config checks, the command line and the TUI need the names, not the arithmetic.
 from __future__ import annotations
 
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
-                "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist")
+                "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
+                "tau90", "n_final")
+
+# What a run's variation operators did, recorded with [campaign] operator_stats
+# = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
+# along the trajectory per interval, in `final` over the whole run. Not
+# computable afterwards, so --recompute refuses them; the tables read them.
+RUN_STATS = ("oob_share", "oob_var_share", "survival_share", "offspring_nd_share",
+             "step_mean")
+
+# Everything a table can be asked for.
+TABLE_NAMES = METRIC_NAMES + RUN_STATS
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
@@ -17,7 +28,7 @@ HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pd
 
 # These compare the answer set with a sample of the true Pareto front, so a
 # problem without one gives None for them.
-NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm"})
+NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "tau90"})
 
 # These look at the decision variables: all of them need the solutions, and
 # igdx and cr a sample of the Pareto SET besides (BenchProblem.pareto_set),
@@ -57,4 +68,15 @@ DESCRIPTIONS = {
           "span, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7-8)",
     "pdist": "mean pairwise distance between solutions in normalised variables: spread in "
              "the decision space; no reference needed",
+    "tau90": "the 0.9 quantile of the IGD+ distances d+(z, A) over the reference sample, "
+             "normalised like igdp_norm: 90 % of the front lies within tau90 of the set; "
+             "igdp_norm is their mean, their maximum the Euclidean counterpart of eps_norm; "
+             "weakly Pareto-compliant; coverage_curve gives the share within 0.01 ... 0.2",
+    "n_final": "the number of points in the answer: hv, IGD+ and eps never get worse by "
+               "adding points, so read them next to it when set sizes differ",
+    "oob_share": "share of offspring with a variable outside the box before repair",
+    "oob_var_share": "share of offspring variables outside the box before repair",
+    "survival_share": "share of offspring that entered the next population",
+    "offspring_nd_share": "share of offspring no member of the parent population dominates",
+    "step_mean": "mean distance from an offspring to the nearest parent, over ||ub - lb||",
 }

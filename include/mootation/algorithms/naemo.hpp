@@ -131,6 +131,7 @@
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
 #include "../warn.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 
@@ -154,6 +155,9 @@ private:
     // flag1=true — per-problem, via the setters.
     bool   flag1_    = false;    // polynomial mutation after SBX (DTLZ3 -> true)
     bool   flag2_    = false;    // polynomial mutation after DE  (DTLZ1 -> true)
+    // DE branch repair (bound_repair, 2026-09-23): clip by default, as the
+    // code always did; midpoint moves towards the parent.
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     std::mt19937 rng_{std::random_device{}()};
 
     // ── state ───────────────────────────────────────────────────────────────
@@ -335,6 +339,8 @@ private:
             const auto& r2 = arch_[pool[b]].vars;
             const auto& r3 = arch_[pool[c]].vars;
             child = parent;
+            ops::note_operator("naemo_de_rand_1_bin", ops::bound_repair_name(repair_));
+            ops::RepairTally tally;
             std::uniform_int_distribution<int> jr(0, nv-1);
             int jrand = jr(rng_);
             for (int j=0; j<nv; ++j) {
@@ -349,7 +355,10 @@ private:
                 // the bounds are always given.
                 double lo = bounds[j].first .value_or(0.0);
                 double hi = bounds[j].second.value_or(1.0);
-                child[j] = std::clamp(child[j], lo, hi);
+                if (child[j] < lo || child[j] > hi) {
+                    tally.out();
+                    child[j] = ops::repair_value(child[j], lo, hi, parent[j], repair_, rng_);
+                }
             }
             if (flag2_) poly(child, bounds, nv);
         } else {
@@ -407,6 +416,8 @@ public:
     void set_flag1(bool f)         { flag1_ = f; }
     void set_flag2(bool f)         { flag2_ = f; }
     void set_seed(unsigned s)      { rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "naemo", false, false); repair_ = r; }
 
     void setup(DataVault<Ind_t>& vault) {
         require_real_only(vault);

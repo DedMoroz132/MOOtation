@@ -1,0 +1,6 @@
+# The commit whose default behaviour every algorithm must keep, bit for bit
+# (tools/compat_check.py, tests/compat_dump.cpp). The first non-comment line is
+# the commit; after it, one line per algorithm whose defaults a later commit
+# changed ON PURPOSE: "<key> <commit>: <why>". Move the baseline forward only
+# when no declared change is left to explain.
+fb6be41

@@ -396,6 +396,12 @@ public:
         else                 calc_one(r);
     }
 
+    // Whether active individual v still waits for its evaluation. For an
+    // observer that must not trigger one: objectives_of() evaluates a dirty
+    // slot on the spot, which would spend an evaluation the algorithm never
+    // asked for.
+    bool is_dirty(std::size_t v) const { return dirty_[real_idx(v)] != 0; }
+
     Ind_type&       get_ind(std::size_t v)       { return buf_[real_idx(v)]; }
     const Ind_type& get_ind(std::size_t v) const { return buf_[real_idx(v)]; }
 

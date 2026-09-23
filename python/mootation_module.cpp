@@ -22,6 +22,9 @@
 #include <algorithm>
 #include <atomic>
 #include <climits>
+#include <cmath>
+#include <map>
+#include <unordered_map>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -79,6 +82,123 @@ PyProblem* g_problem = nullptr;
 // nothing. Atomic because the step loop reads it with the GIL released.
 std::atomic<long long> g_evaluations{0};
 
+// ── Operator statistics (the 2026-09-23 task, A2/B4/D2) ─────────────────────
+// Asked for with RunConfig::operator_stats; nothing below runs otherwise, and
+// nothing below draws a random number or evaluates anything, so a run's
+// result is the same with or without it (tests/compat_dump.cpp, and
+// test_run_layer's operator-statistics test compares the two).
+//
+// Per step: the population before it (the "parents"), every point the step
+// evaluated (the "offspring") and the population after it. The library does
+// not track which individuals an offspring came from across its 58 cores, so
+// the relations are to the parent POPULATION:
+//   survival    an offspring is in the next population. By value: the next
+//               population holds more copies of its variable vector than the
+//               parents did (a clone of a surviving parent is not counted, a
+//               child copied into several MOEA/D neighbours counts once);
+//   nd          no parent dominates the offspring (objectives only);
+//   step        distance to the nearest parent in variables, over the box
+//               diagonal ||ub - lb||.
+// The out-of-box counts come from the repair sites (operators/bound_repair.hpp).
+struct OpStats {
+    bool on = false;
+    std::vector<std::vector<double>> log_x, log_f;           // this step's evaluations
+    std::vector<std::vector<double>> par_x, par_f;           // the population before it
+    // running sums: since the last operator_stats() read, and for the run
+    long long off = 0, surv = 0, nd = 0, step_n = 0;
+    double    step = 0.0;
+    long long t_off = 0, t_surv = 0, t_nd = 0, t_step_n = 0;
+    double    t_step = 0.0;
+    long long evals_read = 0;
+    long long setup_evals = 0;                                // not offspring
+    mootation::ops::RepairCounts rc_read;
+};
+OpStats g_ops;
+
+inline std::string vec_key(const std::vector<double>& x)
+{
+    return std::string(reinterpret_cast<const char*>(x.data()), x.size() * sizeof(double));
+}
+
+template <typename Vault>
+void ops_before_step(Vault& v)
+{
+    g_ops.log_x.clear();
+    g_ops.log_f.clear();
+    g_ops.par_x.clear();
+    g_ops.par_f.clear();
+    const std::size_t n = std::min<std::size_t>(v.active_n(), static_cast<std::size_t>(v.pop_size()));
+    for (std::size_t i = 0; i < n; ++i) {
+        if (v.is_dirty(i)) continue;              // never evaluate on the observer's behalf
+        g_ops.par_x.push_back(v.variables_of(i));
+        g_ops.par_f.push_back(v.objectives_of(i));
+    }
+}
+
+template <typename Vault>
+void ops_after_step(Vault& v)
+{
+    const auto& O = g_ops.log_x;
+    if (O.empty()) return;
+    // survival, by multiset count of exact variable vectors
+    std::unordered_map<std::string, long long> cp, cq, co;
+    for (const auto& x : g_ops.par_x) ++cp[vec_key(x)];
+    for (const auto& x : O) ++co[vec_key(x)];
+    const std::size_t n = std::min<std::size_t>(v.active_n(), static_cast<std::size_t>(v.pop_size()));
+    for (std::size_t i = 0; i < n; ++i) {
+        auto k = vec_key(v.variables_of(i));
+        if (co.count(k)) ++cq[k];
+    }
+    long long surv = 0;
+    for (const auto& kv : co) {
+        auto q = cq.find(kv.first);
+        auto pp = cp.find(kv.first);
+        long long extra = (q == cq.end() ? 0 : q->second) - (pp == cp.end() ? 0 : pp->second);
+        surv += std::min(kv.second, std::max(0LL, extra));
+    }
+    // nondominated by the parents, and the step to the nearest parent
+    double diag = 0.0;
+    for (const auto& b : g_problem->bounds) diag += (b.second - b.first) * (b.second - b.first);
+    diag = std::sqrt(diag);
+    long long nd = 0, step_n = 0;
+    double step = 0.0;
+    for (std::size_t c = 0; c < O.size(); ++c) {
+        const auto& f = g_ops.log_f[c];
+        bool dominated = false;
+        for (const auto& pf : g_ops.par_f) {
+            bool le = true, lt = false;
+            for (std::size_t j = 0; j < f.size() && le; ++j) {
+                le = pf[j] <= f[j];
+                lt = lt || pf[j] < f[j];
+            }
+            if (le && lt) { dominated = true; break; }
+        }
+        nd += dominated ? 0 : 1;
+        if (!g_ops.par_x.empty() && diag > 0.0) {
+            double best = 1e300;
+            for (const auto& px : g_ops.par_x) {
+                double d2 = 0.0;
+                for (std::size_t j = 0; j < px.size(); ++j) d2 += (O[c][j] - px[j]) * (O[c][j] - px[j]);
+                best = std::min(best, d2);
+            }
+            step += std::sqrt(best) / diag;
+            ++step_n;
+        }
+    }
+    const long long off = static_cast<long long>(O.size());
+    g_ops.off += off;   g_ops.surv += surv;   g_ops.nd += nd;
+    g_ops.step += step; g_ops.step_n += step_n;
+    g_ops.t_off += off; g_ops.t_surv += surv; g_ops.t_nd += nd;
+    g_ops.t_step += step; g_ops.t_step_n += step_n;
+}
+
+inline void ops_log(const std::vector<double>& x, const std::vector<double>& f)
+{
+    if (!g_ops.on) return;
+    g_ops.log_x.push_back(x);
+    g_ops.log_f.push_back(f);
+}
+
 // Objective/limit evaluation, shared by every generated Problem<> below.
 inline void eval_into(const std::vector<double>& vars,
                       std::vector<double>&       objs,
@@ -99,6 +219,7 @@ inline void eval_into(const std::vector<double>& vars,
     ++g_evaluations;
     if (static_cast<int>(objs.size()) != g_problem->n_objectives)
         throw std::runtime_error("the evaluator returned the wrong number of objectives");
+    ops_log(vars, objs);
 
     if (g_problem->n_limits > 0) {
         if (!g_problem->limits_batch)
@@ -129,6 +250,7 @@ void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& 
         if (static_cast<int>(row.size()) != g_problem->n_objectives)
             throw std::runtime_error("the evaluator returned the wrong number of objectives");
     g_evaluations += static_cast<long long>(req.size());
+    for (std::size_t i = 0; i < req.size(); ++i) ops_log(req.variables[i], out[i]);
     resp.objectives = std::move(out);
 
     if (g_problem->n_limits > 0) {
@@ -219,6 +341,7 @@ MOOTATION_OPTIONAL_SETTER(F,          set_F,                 double)
 MOOTATION_OPTIONAL_SETTER(CR,         set_CR,                double)
 MOOTATION_OPTIONAL_SETTER(div,        set_div,               int)
 MOOTATION_OPTIONAL_SETTER(normalize,  set_normalize,         bool)
+MOOTATION_OPTIONAL_SETTER(bound_repair, set_bound_repair,    mootation::ops::BoundRepair)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
@@ -237,6 +360,9 @@ struct RunConfig {
     // The objective normalization that ibea_eplus, r2ibea, two_arch2 and
     // moead_am2m can switch; each header says which setting is the paper's.
     std::optional<bool>   normalize;
+    // What an operator that can leave the box does there (text_knobs() in
+    // settings.hpp); the algorithms without such an operator report it ignored.
+    std::optional<std::string> bound_repair;
 
     // Warm start. Empty means a fresh random population. Vars and objs are
     // what every algorithm shares — which is what lets a population saved by
@@ -268,6 +394,9 @@ struct RunConfig {
     // observer then fires every record_every * pop_size evaluations instead
     // of every record_every steps, which keeps trajectories comparable.
     long long max_evaluations = 0;
+    // Operator statistics along the run (the per-step bookkeeping above); read
+    // them with operator_stats() from the on_generation observer.
+    bool operator_stats = false;
 };
 
 struct PyResult {
@@ -281,6 +410,12 @@ struct PyResult {
     std::vector<std::string>         ignored;
     // Evaluations the run spent, setup included.
     long long                        evaluations = 0;
+    // Every variation operator the run used, with its bound repair ("none" for
+    // one that cannot leave the box), in order of first use.
+    std::vector<std::pair<std::string, std::string>> operators;
+    // The run's operator statistics (operator_stats() over the whole run);
+    // empty unless RunConfig::operator_stats.
+    std::map<std::string, double>    operator_totals;
 };
 
 template <typename Tag, typename Core>
@@ -335,6 +470,14 @@ PyResult run_core(const RunConfig& cfg)
     if (cfg.CR)         note(apply_CR(alg, *cfg.CR),                 "CR");
     if (cfg.div)        note(apply_div(alg, *cfg.div),               "div");
     if (cfg.normalize)  note(apply_normalize(alg, *cfg.normalize),   "normalize");
+    if (cfg.bound_repair) {
+        auto how = ops::parse_bound_repair(*cfg.bound_repair);
+        if (!how)
+            throw std::invalid_argument(
+                "bound_repair = '" + *cfg.bound_repair + "': one of clip, reflect, random, "
+                "midpoint, resample, wrap, native");
+        note(apply_bound_repair(alg, *how), "bound_repair");
+    }
 
     {
         py::gil_scoped_release unlock;   // the callback re-acquires per batch
@@ -354,7 +497,15 @@ PyResult run_core(const RunConfig& cfg)
         } else {
             opt.setup();
         }
+        // the initial population is not offspring: the counts start here
+        g_ops.setup_evals = g_ops.evals_read = g_evaluations.load();
+        g_ops.rc_read = ops::repair_counts();
         const bool observe = cfg.on_generation && cfg.record_every > 0;
+        auto one_step = [&]() {
+            if (g_ops.on) ops_before_step(opt.get_vault());
+            opt.step();
+            if (g_ops.on) ops_after_step(opt.get_vault());
+        };
         auto emit = [&](int g) {
             auto& v = opt.get_vault();
             std::size_t n = std::min<std::size_t>(
@@ -369,9 +520,11 @@ PyResult run_core(const RunConfig& cfg)
             if (observe) {
                 emit(0);
                 for (int g = 1; g <= cfg.n_gen; ++g) {
-                    opt.step();
+                    one_step();
                     if (g % cfg.record_every == 0 || g == cfg.n_gen) emit(g);
                 }
+            } else if (g_ops.on) {
+                for (int g = 1; g <= cfg.n_gen; ++g) one_step();
             } else {
                 opt.optimize(cfg.n_gen);
             }
@@ -384,7 +537,7 @@ PyResult run_core(const RunConfig& cfg)
             long long idle         = 0;   // consecutive steps that evaluated nothing
             for (int g = 1; g_evaluations.load() < cfg.max_evaluations; ++g) {
                 const long long before = g_evaluations.load();
-                opt.step();
+                one_step();
                 const long long now = g_evaluations.load();
                 if (now > before) {
                     idle = 0;
@@ -424,6 +577,23 @@ PyResult run_core(const RunConfig& cfg)
                                        static_cast<std::size_t>(v.pop_size()));
     r.ignored  = std::move(ignored);
     r.evaluations = g_evaluations.load();
+    for (const auto& u : ops::operators_used()) r.operators.emplace_back(u.op, u.repair);
+    if (g_ops.on) {
+        const auto& rc = ops::repair_counts();
+        const double n_vars = static_cast<double>(g_problem->bounds.size());
+        const double ev = static_cast<double>(r.evaluations - g_ops.setup_evals);
+        r.operator_totals["offspring"] = static_cast<double>(g_ops.t_off);
+        if (ev > 0) {
+            r.operator_totals["oob_share"] = static_cast<double>(rc.out_children) / ev;
+            r.operator_totals["oob_var_share"] = static_cast<double>(rc.out_vars) / (ev * n_vars);
+        }
+        if (g_ops.t_off > 0) {
+            r.operator_totals["survival_share"] = static_cast<double>(g_ops.t_surv) / g_ops.t_off;
+            r.operator_totals["offspring_nd_share"] = static_cast<double>(g_ops.t_nd) / g_ops.t_off;
+        }
+        if (g_ops.t_step_n > 0)
+            r.operator_totals["step_mean"] = g_ops.t_step / static_cast<double>(g_ops.t_step_n);
+    }
     r.objectives.reserve(r.active_n);
     r.variables.reserve(r.active_n);
     for (std::size_t i = 0; i < r.active_n; ++i) {
@@ -442,6 +612,9 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
 
     g_problem = &problem;
     g_evaluations = 0;
+    mootation::ops::reset_operator_records();
+    g_ops = OpStats{};
+    g_ops.on = cfg.operator_stats;
     struct Guard { ~Guard() { g_problem = nullptr; } } guard;
 
 #define MOOTATION_ALG(KEY, IND, CORE) \
@@ -508,6 +681,13 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("F",               &RunConfig::F)
         .def_readwrite("CR",              &RunConfig::CR)
         .def_readwrite("div",             &RunConfig::div)
+        .def_readwrite("operator_stats",  &RunConfig::operator_stats,
+                       "keep per-step operator statistics; read them with "
+                       "operator_stats() from the on_generation observer")
+        .def_readwrite("bound_repair",    &RunConfig::bound_repair,
+                       "what an operator that can leave the box does with the variables "
+                       "it put outside: clip, reflect, random, midpoint, resample, wrap, "
+                       "native (operators/bound_repair.hpp)")
         .def_readwrite("normalize",       &RunConfig::normalize,
                        "the objective normalization of ibea_eplus, r2ibea, two_arch2 and "
                        "moead_am2m (their headers say which setting is the paper's)")
@@ -532,7 +712,11 @@ PYBIND11_MODULE(_core, m)
         .def_readonly("ignored",    &PyResult::ignored,
                       "Knobs you set that this algorithm does not have.")
         .def_readonly("evaluations", &PyResult::evaluations,
-                      "Evaluations the run spent, setup included.");
+                      "Evaluations the run spent, setup included.")
+        .def_readonly("operators", &PyResult::operators,
+                      "(operator, bound repair) for every variation operator the run used")
+        .def_readonly("operator_totals", &PyResult::operator_totals,
+                      "the operator statistics over the whole run (operator_stats)");
 
     m.def("hypervolume",
           [](py::array_t<double, py::array::c_style | py::array::forcecast> points,
@@ -571,6 +755,44 @@ PYBIND11_MODULE(_core, m)
           py::arg("points"), py::arg("samples"),
           "How many rows of `samples` some row of `points` weakly dominates: the "
           "count behind a Monte-Carlo hypervolume estimate (minimisation).");
+    m.def("operator_stats", []() {
+              // Since the previous call: offspring evaluated, the shares of them
+              // that left the box before repair (and of their variables), that
+              // survived, that no parent dominates, and the mean step. None where
+              // nothing was counted.
+              py::dict d;
+              const long long ev = g_evaluations.load() - g_ops.evals_read;
+              const auto& rc = mootation::ops::repair_counts();
+              const double n_vars = g_problem ? static_cast<double>(g_problem->bounds.size()) : 0.0;
+              d["offspring"] = ev;
+              if (ev > 0) {
+                  d["oob_share"] = static_cast<double>(rc.out_children - g_ops.rc_read.out_children) / ev;
+                  d["oob_var_share"] = n_vars > 0
+                      ? py::cast(static_cast<double>(rc.out_vars - g_ops.rc_read.out_vars) / (ev * n_vars))
+                      : py::none();
+              } else {
+                  d["oob_share"] = py::none();
+                  d["oob_var_share"] = py::none();
+              }
+              if (g_ops.on && g_ops.off > 0) {
+                  d["survival_share"] = static_cast<double>(g_ops.surv) / g_ops.off;
+                  d["offspring_nd_share"] = static_cast<double>(g_ops.nd) / g_ops.off;
+              } else {
+                  d["survival_share"] = py::none();
+                  d["offspring_nd_share"] = py::none();
+              }
+              d["step_mean"] = (g_ops.on && g_ops.step_n > 0)
+                  ? py::cast(g_ops.step / static_cast<double>(g_ops.step_n)) : py::none();
+              g_ops.evals_read = g_evaluations.load();
+              g_ops.rc_read = rc;
+              g_ops.off = g_ops.surv = g_ops.nd = g_ops.step_n = 0;
+              g_ops.step = 0.0;
+              return d;
+          },
+          "Operator statistics since the previous call, for the run in progress "
+          "(call it from on_generation): offspring, oob_share, oob_var_share, "
+          "survival_share, offspring_nd_share, step_mean. The last three need "
+          "RunConfig.operator_stats.");
     m.def("algorithms", &algorithm_names,
           "Names accepted by run(), straight from include/mootation/algorithms.def.");
     m.def("run", &run, py::arg("name"), py::arg("problem"), py::arg("config"),

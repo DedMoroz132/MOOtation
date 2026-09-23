@@ -21,7 +21,8 @@ from . import _core
 # instead of a silently ignored argument — a run configured with an ignored
 # parameter is not the run that was asked for.
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
-         "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize")
+         "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
+         "bound_repair")
 
 def minimize(
     fn: Callable[[Sequence[float]], Sequence[float]],
@@ -42,6 +43,7 @@ def minimize(
     log_evaluations=None,
     on_generation=None,
     record_every: int = 0,
+    operator_stats: bool = False,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -88,6 +90,12 @@ def minimize(
                 with the current answer set's objective rows. This is how a
                 convergence trajectory is recorded without re-running at
                 several budgets. Off unless record_every > 0.
+    operator_stats
+                keep per-step statistics of the variation operators, read with
+                mootation._core.operator_stats() from on_generation: offspring,
+                oob_share, oob_var_share, survival_share, offspring_nd_share,
+                step_mean. Off by default; it never changes the run's result.
+                result.operators lists the operators used either way.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -182,6 +190,7 @@ def minimize(
                 raise TypeError(f"parameter {k} takes an integer, got {v!r}") from None
             else:
                 raise
+    cfg.operator_stats = bool(operator_stats)
     if on_generation is not None and int(record_every) > 0:
         cfg.on_generation = on_generation
         cfg.record_every = int(record_every)

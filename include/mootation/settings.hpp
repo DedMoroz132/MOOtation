@@ -54,6 +54,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "constraint_mode.hpp"
@@ -70,6 +71,25 @@ inline const std::vector<std::string>& knob_names() {
         "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize"
     };
     return v;
+}
+
+// Knobs whose value is a word, each with the words it takes. Same rule as
+// knob_names(): the list is the authority (python/mootation/run/knobs.py reads
+// it out of this file), an algorithm without the knob reports it as ignored.
+//   bound_repair  what an operator that can leave the box does with the
+//                 variables it put outside (operators/bound_repair.hpp)
+inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text_knobs() {
+    static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
+        {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
+    };
+    return v;
+}
+
+// The words a text knob takes, or nullptr for a name that is not one.
+inline const std::vector<std::string>* text_knob_words(const std::string& name) {
+    for (const auto& kv : text_knobs())
+        if (kv.first == name) return &kv.second;
+    return nullptr;
 }
 
 struct Settings {
@@ -108,6 +128,7 @@ struct Settings {
 
     // ── optional algorithm knobs (empty = keep the paper default) ────────
     std::map<std::string, double> params;
+    std::map<std::string, std::string> text_params;   // text_knobs()
 
     int n_vars() const { return static_cast<int>(lower.size()); }
 
@@ -142,6 +163,12 @@ struct Settings {
             const auto& kn = knob_names();
             if (std::find(kn.begin(), kn.end(), kv.first) == kn.end())
                 bad("unknown knob '" + kv.first + "' in params");
+        }
+        for (const auto& kv : text_params) {
+            const auto* words = text_knob_words(kv.first);
+            if (!words) bad("unknown text knob '" + kv.first + "'");
+            if (std::find(words->begin(), words->end(), kv.second) == words->end())
+                bad(kv.first + " = '" + kv.second + "' is not one of its values");
         }
     }
 
@@ -285,6 +312,15 @@ inline Settings Settings::from_string(const std::string& text, const std::string
         else if (key == "seed_population")   s.seed_population   = val;
         else if (key == "on_size_mismatch")  s.on_size_mismatch  =
                                                  detail::parse_size_mismatch(val, w);
+        else if (const auto* words = text_knob_words(key)) {
+            if (std::find(words->begin(), words->end(), val) == words->end()) {
+                std::string all;
+                for (const auto& w2 : *words) all += (all.empty() ? "" : ", ") + w2;
+                throw std::invalid_argument(where + ": " + key + " = '" + val +
+                                            "' is not one of: " + all);
+            }
+            s.text_params[key] = val;
+        }
         else {
             const auto& kn = knob_names();
             if (std::find(kn.begin(), kn.end(), key) == kn.end())
@@ -362,9 +398,11 @@ inline std::string Settings::to_string() const {
         o << "seed_population  = " << seed_population << "\n";
         o << "on_size_mismatch = " << detail::size_mismatch_name(on_size_mismatch) << "\n";
     }
-    if (!params.empty()) {
+    if (!params.empty() || !text_params.empty()) {
         o << "\n# algorithm knobs\n";
         for (const auto& kv : params)
+            o << kv.first << " = " << kv.second << "\n";
+        for (const auto& kv : text_params)
             o << kv.first << " = " << kv.second << "\n";
     }
     return o.str();

@@ -147,6 +147,7 @@
 #include "../das_dennis.hpp"
 #include "../warn.hpp"
 #include "../data_vault.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
 
 namespace mootation {
@@ -170,6 +171,9 @@ private:
     double F1_=0.5, CR1_=1.0, F2_=0.5, CR2_=0.6;
     double eta_m_=20.0, pm_=-1.0;
     bool   ideal_shift_=false; // HLMEA-5 A/B: true = shift every objective by its pool minimum (pre-2026-09-06 behaviour)
+    // Eq.4-6 offspring repair (bound_repair, 2026-09-23): clip by default, as
+    // the code always did; midpoint moves towards the base solution x.
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; double cv=0.0; };
@@ -302,8 +306,11 @@ private:
         for(int i=0;i<(int)P.size();++i) vault.seed_individual((std::size_t)i,P[i].vars,P[i].objs,{},{}); }
 
     Sol eval(std::vector<double> y, const std::vector<std::pair<std::optional<double>,std::optional<double>>>& bd,
-             DataVault<Ind_t>& vault, int scratch){
-        for(int t=0;t<(int)y.size();++t){ double lo=bd[t].first.value_or(0.0),hi=bd[t].second.value_or(1.0); y[t]=std::clamp(y[t],lo,hi); }
+             DataVault<Ind_t>& vault, int scratch, const std::vector<double>& parent){
+        ops::note_operator("hlmea_eq4_6", ops::bound_repair_name(repair_));
+        { ops::RepairTally tally;
+          for(int t=0;t<(int)y.size();++t){ double lo=bd[t].first.value_or(0.0),hi=bd[t].second.value_or(1.0);
+              if(y[t]<lo||y[t]>hi){ tally.out(); y[t]=ops::repair_value(y[t],lo,hi,parent[t],repair_,rng_); } } }
         ops::polynomial_mutation(y,bd,eta_m_,pm_eff((int)y.size()),rng_);
         vault.set_variables(scratch,y); vault.refresh_objectives(scratch);
         Sol z; z.vars=y; z.objs=vault.objectives_of(scratch);
@@ -326,6 +333,7 @@ public:
     void set_eta_crossover(double){}
     void set_pm(double p){ pm_=p; }
     void set_seed(unsigned s){ rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r){ ops::require_repair(r,"hlmea",false,false); repair_=r; }
 
     void setup(DataVault<Ind_t>& vault){
         // Real-valued reproduction only: refuse a binary genome instead of
@@ -398,7 +406,7 @@ public:
                     double F0=(2*rv-1)*std::pow(std::max(1e-12,1-rv), -std::pow(1.0-(double)gen_/std::max(1,t_max_),0.8));
                     std::vector<double> y(vault.vars_n());
                     for(int t=0;t<vault.vars_n();++t) y[t]=Pw[j].vars[t]+F0*(Pw[j].vars[t]-Pw[rr].vars[t]);
-                    Q.push_back(eval(y,bd,vault,scratch));
+                    Q.push_back(eval(y,bd,vault,scratch,Pw[j].vars));
                 }
             }
             auto P=flat(); for(auto&s:Q) P.push_back(s);
@@ -437,7 +445,7 @@ public:
                             else y[t]=Pw[j].vars[t];
                         }
                     }
-                    Q.push_back(eval(y,bd,vault,scratch));
+                    Q.push_back(eval(y,bd,vault,scratch,Pw[j].vars));
                 }
             }
             // NSGA-II environment

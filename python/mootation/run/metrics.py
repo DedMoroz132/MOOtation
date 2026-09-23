@@ -71,6 +71,45 @@ def igd_plus(F: np.ndarray, ref: np.ndarray) -> float:
     return float(d.min(axis=1).mean())
 
 
+# ── coverage with a tolerance ────────────────────────────────────────────────
+# The same directed distances IGD+ averages: d+(z, A) = min over a in A of
+# ||max(a - z, 0)||, one per reference point z. Their mean is IGD+, their
+# maximum the Euclidean counterpart of the additive epsilon (which takes the
+# largest component where this takes the norm); a quantile sits between the
+# two on the same scale, and so does the share of the front within a
+# tolerance. All of them
+# are weakly Pareto-compliant: if A weakly dominates B, d+(z, A) <= d+(z, B)
+# for every z. Read "tau90 = 0.03" as "90 % of the front sample lies within
+# 0.03 (normalised) of something found" — an engineering tolerance, and less
+# at the mercy of one far reference point than eps.
+
+COVERAGE_TAUS = (0.01, 0.02, 0.05, 0.1, 0.2)
+
+
+def dplus_distances(F: np.ndarray, ref: np.ndarray) -> np.ndarray:
+    """d+(z, F) for every reference point z: the vector IGD+ is the mean of."""
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
+    out = np.empty(len(ref))
+    for a in range(0, len(ref), 512):                 # bounded memory on big fronts
+        R = ref[a:a + 512]
+        d = np.sqrt((np.maximum(F[None, :, :] - R[:, None, :], 0.0) ** 2).sum(axis=2))
+        out[a:a + 512] = d.min(axis=1)
+    return out
+
+
+def tau_quantile(F, ref, q: float = 0.9) -> float:
+    """The q-quantile of d+(z, F) over the reference sample (NumPy's linear
+    interpolation between order statistics)."""
+    return float(np.quantile(dplus_distances(F, ref), q))
+
+
+def coverage_curve(F, ref, taus=COVERAGE_TAUS) -> dict:
+    """C(tau): the share of the reference sample within tau of the set, per tau."""
+    d = dplus_distances(F, ref)
+    return {f"{t:g}": float(np.mean(d <= t)) for t in taus}
+
+
 # ── hypervolume ──────────────────────────────────────────────────────────────
 
 
@@ -418,6 +457,16 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             else:
                 G, R = _normalised(F, ref_front, ideal, nadir)
                 out[name] = igd_plus(G, R) if name == "igdp_norm" else eps_plus(G, R)
+        elif name == "tau90":
+            if ref_front is None or not have_box or not F.size:
+                out[name] = None
+            else:
+                G, R = _normalised(F, ref_front, ideal, nadir)
+                d = dplus_distances(G, R)
+                out[name] = float(np.quantile(d, 0.9))
+                out["coverage_curve"] = {f"{t:g}": float(np.mean(d <= t)) for t in COVERAGE_TAUS}
+        elif name == "n_final":
+            out[name] = int(len(F)) if F.ndim == 2 else 0
         elif name == "hv":
             if not have_box:
                 out["hv"] = None

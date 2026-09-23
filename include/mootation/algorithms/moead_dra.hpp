@@ -124,7 +124,9 @@ private:
     double pm_           = -1.0;  // Sec.III: p_m = 1/n; <0 → auto 1/n
     double feas_penalty_ = 1e6;   // extension beyond the paper (FEASIBILITY)
     bool   use_ep_       = false; // EP — beyond the paper, off by default
-    ops::DERepair repair_ = ops::DERepair::RandomReset;  // Step 3.3 repair; Clip = PlatEMO/jMetal variant
+    // Step 3.3 repair; Clip = PlatEMO/jMetal variant. bound_repair (2026-09-23):
+    // any of ops::BoundRepair but resample and native; midpoint moves to x^i.
+    ops::BoundRepair repair_ = ops::BoundRepair::Random;
     std::mt19937 rng_{std::random_device{}()};
 
     int T_eff_  = 0;   // effective T (after setup)
@@ -314,7 +316,7 @@ private:
         // or clamping (set_de_repair(Clip)).
         ops::de_eq6(x_i, x_2, x_3, y, F_, CR_, rng_);
         ops::polynomial_mutation_eq7(y, bounds, eta_m_, pm_eff(nv), rng_);
-        ops::repair_out_of_box(y, bounds, repair_, rng_);
+        ops::repair_out_of_box(y, bounds, repair_, rng_, &x_i);
 
         // Evaluate the offspring in the scratch slot: exactly ONE objective
         // function call.
@@ -394,7 +396,9 @@ public:
     void set_pm              (double p) { pm_           = p; }
     void set_feas_penalty    (double p) { feas_penalty_ = p; }
     void set_use_ep          (bool b)   { use_ep_       = b; }
-    void set_de_repair       (ops::DERepair r){ repair_ = r; }
+    void set_de_repair       (ops::DERepair r){ repair_ = ops::to_bound_repair(r); }
+    void set_bound_repair    (ops::BoundRepair r){
+        ops::require_repair(r, "moead_dra", false, false); repair_ = r; }
     void set_seed            (unsigned s){ rng_.seed(s); }
 
     int effective_T()  const { return T_eff_;  }

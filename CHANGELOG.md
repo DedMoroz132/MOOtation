@@ -108,6 +108,32 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `bound_repair`: what an operator that can leave the box does with the
+  variables it put outside — `clip`, `reflect`, `random`, `midpoint`,
+  `resample`, `wrap` or `native` (`operators/bound_repair.hpp`) — a knob of
+  the nine algorithms that have such an operator (DE in `moead_de`,
+  `moead_dra`, `lis_lcs`; Liu & Li's in `liu_gu2011`, `moead_m2m`,
+  `moead_am2m`; `dcea`, `hlmea`, `naemo`), in the binding, the campaign's
+  `params` and the settings file. Each keeps the repair it had.
+  `DERepair::Clip` / `RandomReset` remain and map onto `clip` / `random`.
+- Operator records: every run's `meta.json` lists the variation operators it
+  used with their repair (`operators`), and `operator_stats = true` in
+  `[campaign]` adds what they did to the trajectory and to `final`:
+  `oob_share` and `oob_var_share` (outside the box before repair),
+  `survival_share`, `offspring_nd_share` and `step_mean`, relative to the
+  parent population (`mootation._core.operator_stats()`,
+  `minimize(operator_stats=True)`). Off by default; the populations are the
+  same with it on.
+- `tau90`, the 0.9 quantile of the IGD+ distances in `igdp_norm`'s
+  normalisation, with the coverage curve at 0.01-0.2 beside it, and
+  `n_final`, the size of the answer.
+- `tools/compat_check.py` and `tests/compat_dump.cpp`: every algorithm at its
+  defaults must return, bit for bit, the population it returned at the
+  baseline commit in `tests/compat_baseline.txt`; the driver is compiled
+  against both trees with the same compiler, and the CI job "default
+  behaviour, bit for bit" runs it. `tests/test_bound_repair.cpp` checks the
+  repairs themselves.
+
 - The analysis layer of a campaign (`mootation.run.report`, `stats`,
   `postprocess`), on the campaign command line:
   `--reference ALG` tests every algorithm against a reference — the exact

@@ -276,6 +276,8 @@ final population (the same list when omitted):
 | `igdx` | IGD in the decision space: the mean distance from a Pareto-SET sample to the nearest solution, variables normalised by the bounds (Tanabe & Ishibuchi 2019, Eq. 5) | lower |
 | `cr` | cover rate: how much of the Pareto set's extent in each variable the solutions span, geometric mean over the variables, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7–8) | higher |
 | `pdist` | the mean distance between two solutions in normalised variables: spread in the decision space, no reference needed | — |
+| `tau90` | the 0.9 quantile of the IGD+ distances d⁺(z, A) = min over a of ‖max(a − z, 0)‖ over the reference sample, normalised like `igdp_norm`: 90 % of the front lies within `tau90` of the set. `igdp_norm` is the mean of the same distances; one reference point far from everything moves their maximum and not this. Weakly Pareto-compliant, like IGD+. With it, `coverage_curve` gives the share of the sample within 0.01, 0.02, 0.05, 0.1 and 0.2 | lower |
+| `n_final` | the number of points in the answer. `hv`, IGD+ and ε never get worse when points are added, so when two algorithms answer with sets of different sizes, read them next to this | — |
 
 `gdp` needs a reference front like `igd`; `roi_dist` and `range_cover` need only
 the problem's ideal and nadir, and `nd_share` and `dup_share` nothing at all, so
@@ -361,6 +363,45 @@ diversity mechanism and no population size; its answer is the population
 reduced to N by DSS. The carrying-over to real variables is ours: both papers
 define the algorithm on bit strings. None of the four baselines handles
 constraints; only the run archive keeps to feasible points.
+
+**Bound repair.** An operator that can put a variable outside the box repairs
+it, and how is part of the algorithm: Kononova et al. (Evol. Comput. 32(1),
+2024) show that results are not reproducible without saying which, and
+Kudela, van Stein, Bäck & Kononova (GECCO 2026) trace a systematic pull
+towards the bounds in 120 PlatEMO algorithms to its default clamp. The knob
+`bound_repair` takes `clip`, `reflect` (mirrored at the violated bound, again
+while outside), `random` (uniform in the box), `midpoint` (halfway between the
+parent's value and the bound), `resample` (the operator draws that variable
+again, at most ten times, then clips), `wrap` (the box as a torus) or `native`
+(the rule the operator's own paper gives). Nine algorithms have an operator
+that can leave the box, and each keeps its own default: `moead_de`,
+`moead_dra` and `lis_lcs` (DE) `random`, the rule MOEA/D-DE's paper gives;
+`dcea`, `hlmea` and `naemo` `clip`, as their code always did; `liu_gu2011`,
+`moead_m2m` and `moead_am2m` `native`, Liu & Li's own formula. DE refuses
+`resample` and `native`, Liu & Li's crossover `resample` (one scalar per
+offspring cannot redraw one variable). Every other core reports the knob as
+ignored: SBX and polynomial mutation cannot leave the box. Whatever the
+settings, every run's `meta.json` lists the operators it used with their
+repair under `operators`.
+
+**What the operators did.** `operator_stats = true` in `[campaign]` adds to
+every trajectory record, for the offspring evaluated since the previous one,
+and to `final` for the whole run:
+
+| field | what it counts |
+|---|---|
+| `oob_share`, `oob_var_share` | offspring with a variable outside the box before repair, and the share of their variables that were (the measure of Kononova, Caraffini & Bäck, Inf. Sci. 581, 2021). Liu & Li's offspring pass two repair sites, crossover and mutation, and count at each |
+| `survival_share` | offspring that entered the next population: it holds more copies of their variable vector than the parents did, so a clone of a surviving parent does not count and a child copied into several MOEA/D neighbourhoods counts once |
+| `offspring_nd_share` | offspring that no member of the parent population dominates |
+| `step_mean` | the distance from an offspring to the nearest member of the parent population, over the box diagonal ‖ub − lb‖ |
+
+The relations are to the parent POPULATION, the one before the step: the
+library does not track which individuals an offspring came from across its
+58 cores, so "not dominated by its parents" is read as "by any parent", and
+the nearest parent as the nearest member. The statistics cost milliseconds
+and never change a run: the populations are the same with them on or off.
+They are off by default and not computable afterwards, so `--recompute`
+refuses them; `--compare survival_share` and the other tables read them.
 
 **The archive scenario.** With the run archive on (the default), every run
 also stores `final_archive` in its `meta.json`: the final indicators once more,

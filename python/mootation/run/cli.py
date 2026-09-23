@@ -69,7 +69,8 @@ def _show(cfg) -> None:
     if cfg.algorithms:
         print(f"\nalgorithms   ({len(cfg.algorithms)})")
         for a in cfg.algorithms:
-            p = ("  " + ", ".join(f"{k}={str(v).lower()}" if isinstance(v, bool) else f"{k}={v:g}"
+            p = ("  " + ", ".join(f"{k}={str(v).lower()}" if isinstance(v, bool)
+                                  else f"{k}={v}" if isinstance(v, str) else f"{k}={v:g}"
                                   for k, v in sorted(a.params.items()))
                  if a.params else "")
             lab = f" as {a.label}" if a.label else ""

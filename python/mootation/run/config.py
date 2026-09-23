@@ -284,8 +284,14 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
         if not isinstance(a, dict):
             raise ConfigError(where, "each algorithm must be a table")
         params = _opt(a, "params", {}, where, dict)
+        from .knobs import text_knobs
+        words = text_knobs()
         for k, v in params.items():
-            if not isinstance(v, (int, float, bool)):
+            if k in words:
+                if not isinstance(v, str):
+                    raise ConfigError(f"{where}.params.{k}",
+                                      f"expected one of {', '.join(words[k])}, got {v!r}")
+            elif not isinstance(v, (int, float, bool)):
                 raise ConfigError(f"{where}.params.{k}",
                                   f"expected a number or true/false, got {type(v).__name__}")
         evaluations = _opt(a, "evaluations", 0, where, int)
@@ -299,7 +305,7 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             # A TOML integer stays an integer: T, nr, K, n_clusters and div are
             # ints in the binding, and pybind11 3 refuses 20.0 for them. A
             # boolean stays a boolean (normalize = true).
-            params={k: (v if isinstance(v, (bool, int)) else float(v))
+            params={k: (v if isinstance(v, (bool, int, str)) else float(v))
                     for k, v in params.items()},
         ))
 
@@ -510,6 +516,11 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
             bad(where,
                 f"unknown parameter(s): {', '.join(unknown)}. "
                 f"Known: {', '.join(sorted(valid_knobs))}")
+        from .knobs import text_knobs
+        for k, v in a.params.items():
+            allowed = text_knobs().get(k)
+            if allowed is not None and v not in allowed:
+                bad(where, f"{k} = {v!r} is not one of: {', '.join(allowed)}")
 
         if cfg.n_objs >= 1 and a.pop >= 2:
             reason = check_pop(a.name, a.pop, cfg.n_objs, a.params)

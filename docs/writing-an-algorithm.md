@@ -100,6 +100,18 @@ short-circuits at `pc >= 1.0` on purpose, and several algorithms keep an
 apparently pointless retry loop for exactly this reason, each with a line in its
 header explaining it.
 
+**The defaults do not move.** A new option comes switched off, and every
+algorithm at its defaults keeps returning exactly the population it returned
+before. `python tools/compat_check.py` checks that: it compiles
+`tests/compat_dump.cpp` against the headers of the baseline commit in
+`tests/compat_baseline.txt` and against the working tree's, with the same
+compiler, and compares a fingerprint of every algorithm's final population on
+two problems (the CI job "default behaviour, bit for bit" runs it). A
+stored population could not check this — the standard library's
+distributions differ between MSVC, libstdc++ and libc++ — but one compiler on
+one machine is deterministic. A change that alters a default on purpose, a
+fix, is declared in `compat_baseline.txt` with its commit and reason.
+
 ## Constraints
 
 `constraint_mode` is off by default (`NONE`), because the source papers are

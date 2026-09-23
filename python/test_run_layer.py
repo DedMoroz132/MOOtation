@@ -2319,6 +2319,128 @@ metrics = ["igdp"]
         assert cli("--problems", "ZDT1", "--emit-slurm", "2")[0] == 1
 
 
+# ── task 2, step 1: bound repair, operator statistics, tau90, n_final ───────
+
+@test
+def text_knobs_take_their_words_and_refuse_others():
+    """bound_repair is a word from settings.hpp's text_knobs(); anything else is refused."""
+    from mootation.run.knobs import text_knobs
+    assert "reflect" in text_knobs()["bound_repair"], text_knobs()
+    assert "bound_repair" in knob_names()
+    tail = 'gens = 5\n'
+    cfg = loads(_MIN.replace(tail, tail + 'params = { bound_repair = "reflect" }\n'))
+    assert cfg.algorithms[0].params == {"bound_repair": "reflect"}, cfg.algorithms[0].params
+    assert not [q for q in validate(cfg) if "bound_repair" in q or "params" in q], validate(cfg)
+    bad = loads(_MIN.replace(tail, tail + 'params = { bound_repair = "clamp" }\n'))
+    assert any("bound_repair" in q and "clamp" in q for q in validate(bad)), validate(bad)
+    raises(ConfigError, loads, _MIN.replace(tail, tail + 'params = { bound_repair = 2 }\n'))
+    raises(ConfigError, loads, _MIN.replace(tail, tail + 'params = { eta_c = "big" }\n'))
+
+
+@test
+def tau90_is_a_quantile_of_the_igd_plus_distances():
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    ref = np.array([[0.0, 1.0], [0.25, 0.75], [0.5, 0.5], [0.75, 0.25], [1.0, 0.0]])
+    box = dict(ref_front=ref, ideal=[0.0, 0.0], nadir=[1.0, 1.0])
+    out = M.compute(ref, which=["tau90", "n_final"], **box)
+    assert out["tau90"] == 0.0 and out["n_final"] == 5, out
+    assert all(v == 1.0 for v in out["coverage_curve"].values()), out
+    # every reference point's nearest dominated offset is the 0.03 shift
+    out = M.compute(ref + [0.03, 0.0], which=["tau90", "igdp_norm"], **box)
+    assert abs(out["tau90"] - 0.03) < 1e-12 and abs(out["igdp_norm"] - 0.03) < 1e-12, out
+    assert out["coverage_curve"] == {"0.01": 0.0, "0.02": 0.0, "0.05": 1.0, "0.1": 1.0,
+                                     "0.2": 1.0}, out["coverage_curve"]
+    # one reference point far from the set moves the maximum, not the 0.9 quantile
+    ref20 = np.column_stack([np.linspace(0, 1, 20), 1 - np.linspace(0, 1, 20)])
+    ref21 = np.vstack([ref20, [[-0.5, -0.5]]])
+    d = M.dplus_distances(ref20, ref21)
+    assert d.max() > 0.5 and M.tau_quantile(ref20, ref21) == 0.0, (d.max(), M.tau_quantile(ref20, ref21))
+    # weakly Pareto-compliant: a set that weakly dominates another is never worse
+    rng = np.random.default_rng(5)
+    for _ in range(20):
+        B = rng.random((8, 2))
+        Ab = np.minimum(B, B + rng.normal(0, 0.1, B.shape))
+        assert M.tau_quantile(Ab, ref20) <= M.tau_quantile(B, ref20) + 1e-12
+    assert M.compute(np.zeros((0, 2)), which=["n_final", "tau90"], **box) == {
+        "n_final": 0, "tau90": None}
+
+
+@test
+def operator_statistics_leave_the_run_alone_and_describe_it():
+    """[campaign] operator_stats: the same populations, the records and meta it adds."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  operator_statistics...: no NumPy or stale _core"); return
+    import contextlib
+    import io
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "nsga2", pop = 0, gens = 0 },
+    { name = "moead_de", pop = 0, gens = 0 },
+    { name = "moead_de", label = "de_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "random_search", pop = 0, gens = 0 },
+]
+[run]
+name = "ops"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "OUT"
+budget_fe = 600
+record_grid = "log"
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm", "tau90", "n_final"]
+operator_stats = STATS
+"""
+    with tempfile.TemporaryDirectory() as td:
+        roots = {}
+        for flag in ("true", "false"):
+            cfg_path = Path(td) / f"c_{flag}.toml"
+            cfg_path.write_text(text.replace("OUT", f"res_{flag}").replace("STATS", flag),
+                                encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            roots[flag] = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, roots[flag], spec, quiet=True) == "done", job
+        for alg in ("nsga2", "moead_de", "de_reflect"):
+            a, b = (roots[f] / "DTLZ2_3D" / alg / "run_1" for f in ("true", "false"))
+            assert (a / "final.csv").read_text() == (b / "final.csv").read_text(), alg
+            meta = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            T = [json.loads(l) for l in (a / "trajectory.jsonl").read_text().splitlines()]
+            assert T[0]["offspring"] == 0 and T[0]["survival_share"] is None, T[0]
+            for key in ("oob_share", "survival_share", "offspring_nd_share", "step_mean"):
+                assert 0.0 <= T[-1][key] <= (1.0 if key != "step_mean" else 2.0), (alg, key, T[-1])
+                assert key in meta["final"], (alg, key)
+            ops = {o["operator"]: o["bound_repair"] for o in meta["operators"]}
+            if alg == "nsga2":
+                assert ops == {"sbx": "none", "polynomial": "none"}, ops
+                assert meta["final"]["oob_share"] == 0.0
+            else:
+                assert ops["box repair"] == ("reflect" if alg == "de_reflect" else "random"), ops
+                assert meta["final"]["oob_share"] > 0.0, meta["final"]
+            assert meta["final"]["n_final"] == 91 and meta["final"]["tau90"] > 0
+            off = json.loads((b / "meta.json").read_text(encoding="utf-8"))
+            assert "survival_share" not in off["final"] and off["operators"], off["final"]
+        base = json.loads((roots["true"] / "DTLZ2_3D" / "random_search" / "run_1" /
+                           "meta.json").read_text(encoding="utf-8"))
+        assert base["operator_stats"] is False and "operators" not in base
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = C.main([str(Path(td) / "c_true.toml"), "--recompute", "survival_share"])
+        assert code == 1 and "operator_stats" in out.getvalue(), out.getvalue()
+        with contextlib.redirect_stdout(out):
+            code = C.main([str(Path(td) / "c_true.toml"), "--compare", "survival_share"])
+        assert code == 0
+
+
 def main() -> int:
     failed = []
     for fn in TESTS:

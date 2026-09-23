@@ -153,6 +153,7 @@
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
 
 namespace mootation {
@@ -171,6 +172,9 @@ private:
     double eta_m_ = 20.0, pm_ = -1.0;
     int    t_max_ = 1000;
     bool   mf_global_ = false;   // DCEA-10: scope of Alg.5 line 6
+    // The sine-cosine move's repair (bound_repair, 2026-09-23): clip by default,
+    // as the code always did; midpoint moves towards x.
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; double cv=0.0; };
@@ -317,6 +321,7 @@ public:
     void set_eta_crossover(double){}
     void set_pm(double p){ pm_=p; }
     void set_seed(unsigned s){ rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r){ ops::require_repair(r,"dcea",false,false); repair_=r; }
 
     void setup(DataVault<Ind_t>& vault){
         // Real-valued reproduction only: refuse a binary genome instead of
@@ -403,13 +408,15 @@ public:
                 double r0 = (mf>1)? frac+1.0 : 1.0-frac;
                 std::vector<double> y(vault.vars_n());
                 bool sgn = uni(rng_)<0.5;
+                ops::note_operator("dcea_sine_cosine", ops::bound_repair_name(repair_));
+                ops::RepairTally tally;
                 for(int t=0;t<vault.vars_n();++t){
                     double xv=pop_[idx].vars[t], pv=pop_[p].vars[t];
                     double mv = (sgn? std::sin(r1):std::cos(r1)) * std::abs(r2*pv - xv);
                     double yt = xv + r0*mv;
                     y[t] = yt + mu*(pv - xv);
                     double lo=bd[t].first.value_or(0.0),hi=bd[t].second.value_or(1.0);
-                    y[t]=std::clamp(y[t],lo,hi);
+                    if(y[t]<lo||y[t]>hi){ tally.out(); y[t]=ops::repair_value(y[t],lo,hi,xv,repair_,rng_); }
                 }
                 ops::polynomial_mutation(y,bd,eta_m_,pm_eff(vault.vars_n()),rng_);
                 vault.set_variables(scratch,y); vault.refresh_objectives(scratch);
