@@ -119,6 +119,18 @@ const Override OVERRIDES[] = {
     // best 0.015 under the default thresholds.
     {"dms",        0, 1000, -1.0, -1.0, false,
      "one generation is one poll (<= 2n evaluations); ~equal evaluations"},
+
+    // (μ+1) schemes: one step() is ONE offspring. 200 steps are 200
+    // evaluations — SMS-EMOA mean 0.54 / best 0.18, MO-CMA-ES 0.97 / 0.19
+    // (2026-09-23) — so both run 18 200 steps, the evaluations the
+    // generational algorithms spend in 200 generations of 91: SMS-EMOA
+    // 0.00008 / 0.00001, MO-CMA-ES 0.18 / 0.06, under the default thresholds.
+    // MO-CMA-ES adapts a step size per individual from σ_0 = 0.6 of the
+    // range and is the slower of the two on this budget.
+    {"sms_emoa",   0, 18200, -1.0, -1.0, false,
+     "steady state, one evaluation a step; ~equal evaluations"},
+    {"mo_cma_es",  0, 18200, -1.0, -1.0, false,
+     "steady state, one evaluation a step; ~equal evaluations"},
 };
 
 const Override* find_override(const std::string& name)

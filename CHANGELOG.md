@@ -108,6 +108,27 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- GDE3, SMS-EMOA and the steady-state MO-CMA-ES (task 2, C3, first queue).
+  `gde3` (Kukkonen & Lampinen, CEC 2005): a DE/rand/1/bin trial per member,
+  both kept when neither dominates, pruned by non-dominated sorting and a
+  crowding distance recomputed after every removal; the constraint-domination
+  of the paper (violations compared per constraint); `F` and `CR` knobs,
+  0.2/0.2 by default (the paper's setting on its test problems), and
+  `bound_repair` for its DE, `reflect` by default. `sms_emoa` (Emmerich, Beume
+  & Naujoks, EMO 2005, with Beume's 2011 thesis for the adaptive reference
+  point nad + 1 — the EJOR 2007 paper is not in the corpus): (μ+1), SBX
+  η_c = 15 and PM η_m = 20, the least hypervolume contributor of the worst
+  front removed. `mo_cma_es` (Voß, Hansen & Igel, GECCO 2010): (μ+1) with
+  success meaning "selected", per-individual step size, evolution path and
+  covariance matrix, the paper's constants, penalised box constraints (Eq. 5),
+  the search in box-normalised coordinates. Hypervolume contributions
+  (`include/mootation/hv_contribution.hpp`, `_core.hv_contributions`) are
+  exact at two and three objectives and Monte-Carlo, each point in its own
+  bounding box, from four. Declared readings in each header. The public list
+  is 62 algorithms. Experiment E5 (`python/examples/experiments/
+  e5_rotation.toml`): GDE3 at CR = 1 against CR = 0.5, MO-CMA-ES and SMS-EMOA
+  on E1's problems and the 110 bbob-biobj ones. All three are in
+  `structural_bias.toml`, not in `campaign_all.toml`.
 - DMS, Direct MultiSearch (Custódio, Madeira, Vaz & Vicente, SIAM J. Optim.
   21(3), 2011; task 2, C1): `dms`, the first algorithm here that is not
   evolutionary — a list of nondominated points with a step size each, polled

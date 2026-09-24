@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 59 algorithm names |
+| `--algorithms` | list the 62 algorithm names |
 | `--problems` | list the 436 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -435,6 +435,23 @@ points on the box's diagonal (the paper's best variant, the default), or
 box (ZDT4's g) is solved by `single` at the first evaluation; see the
 structural-bias campaign before reading anything into that.
 
+**GDE3, SMS-EMOA, MO-CMA-ES.** Three classics the library lacked. GDE3
+(Kukkonen & Lampinen, CEC 2005) builds a DE/rand/1/bin trial for every
+member and keeps both when neither dominates, pruning back to `pop` by
+non-dominated sorting and crowding distance recomputed one removal at a time;
+`F` and `CR` are knobs, 0.2 and 0.2 by default (the paper's setting on its
+test problems), and at `CR = 1` the trial is rotation-invariant. SMS-EMOA
+(Emmerich, Beume & Naujoks, EMO 2005) and the steady-state MO-CMA-ES (Voß,
+Hansen & Igel, GECCO 2010) spend one evaluation a step and drop the point
+with the smallest hypervolume contribution in the worst front — exactly at
+two and three objectives, by Monte-Carlo from four
+(`include/mootation/hv_contribution.hpp`). SMS-EMOA's reference point is the
+nadir plus one in every objective, as its author's thesis defines it, so it
+depends on the objectives' units; MO-CMA-ES adapts a step size and a
+covariance matrix per individual and is the first operator here that is
+invariant to rotating and rescaling the search space. Both hypervolume
+algorithms are slow by construction on five or more objectives.
+
 **What the operators did.** `operator_stats = true` in `[campaign]` adds to
 every trajectory record, for the offspring evaluated since the previous one,
 and to `final` for the whole run:
@@ -448,7 +465,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-59 cores, so "not dominated by its parents" is read as "by any parent", and
+62 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

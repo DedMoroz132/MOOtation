@@ -75,7 +75,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 59, f"expected 59 algorithms, got {len(names)}"
+    assert len(names) == 62, f"expected 62 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -2687,6 +2687,65 @@ def crowding_in_the_decision_space_is_off_by_default_and_changes_the_run_when_on
         assert "objectives or decision" in str(exc), exc
     else:
         raise AssertionError("an unknown crowding_space must be refused")
+
+
+# ── task 2, C3: GDE3, SMS-EMOA, MO-CMA-ES ───────────────────────────────────
+
+@test
+def hypervolume_contributions_match_the_definition():
+    """hv_contribution.hpp: S(F) − S(F without p), exactly at M = 2, 3, 4; MC close."""
+    if not _have_numpy() or _core_with("hv_contributions") is None:
+        print("  skip  hypervolume_contributions...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import _core
+    rng = np.random.default_rng(7)
+    for m in (2, 3, 4):
+        # a non-dominated set: points on the simplex, with one copy
+        P = rng.random((25, m))
+        P = P / P.sum(1, keepdims=True)
+        P[5] = P[6]
+        r = [1.2] * m
+        exact = np.array(_core.hv_contributions(P.tolist(), r))
+        total = _core.hypervolume(P, r)
+        brute = [total - _core.hypervolume(np.delete(P, i, 0), r) for i in range(len(P))]
+        assert np.allclose(exact, brute, rtol=1e-9, atol=1e-12), (m, exact - brute)
+        assert exact[5] == 0.0 and exact[6] == 0.0, "a copy has no region of its own"
+        # MC: each point in its own bounding box, which at M = 4 can be far
+        # larger than the region (measured: up to 11 % off per point at 20 000
+        # samples, the sum within 1 %)
+        mc = np.array(_core.hv_contributions(P.tolist(), r, 20000, 3))
+        big = exact > 1e-4
+        assert np.all(np.abs(mc[big] - exact[big]) <= 0.25 * exact[big]), (m, mc, exact)
+        assert abs(mc.sum() - exact.sum()) <= 0.03 * exact.sum(), (m, mc.sum(), exact.sum())
+        assert mc[5] == 0.0 and mc[6] == 0.0
+
+
+@test
+def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
+    if not _have_numpy() or _core_with("hv_contributions") is None:
+        print("  skip  gde3_smsemoa_mocmaes...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("ZDT4")                         # x_1 in [0, 1], the rest in [-5, 5]
+    lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+    kw = dict(bounds=p.bounds, n_objs=2, pop_size=20, max_evaluations=600)
+    for alg in ("gde3", "sms_emoa", "mo_cma_es"):
+        a = minimize(p.evaluate, algorithm=alg, seed=3, **kw)
+        b = minimize(p.evaluate, algorithm=alg, seed=3, **kw)
+        c = minimize(p.evaluate, algorithm=alg, seed=4, **kw)
+        assert a.objectives == b.objectives and a.objectives != c.objectives, alg
+        X = np.array(a.variables)
+        assert len(X) == 20 and np.all((X >= lo) & (X <= hi)), alg
+    # GDE3: F and CR are its knobs, bound_repair its DE's
+    r = minimize(p.evaluate, algorithm="gde3", seed=3, F=0.5, CR=1.0, bound_repair="clip", **kw)
+    assert not r.ignored and dict(r.operators) == {"de_rand_1_bin": "clip"}, (r.ignored, r.operators)
+    assert r.objectives != minimize(p.evaluate, algorithm="gde3", seed=3, **kw).objectives
+    # SMS-EMOA: SBX with eta_c 15 by default; MO-CMA-ES has no variation knobs
+    r = minimize(p.evaluate, algorithm="sms_emoa", seed=3, eta_c=20.0, mutation="gaussian", **kw)
+    assert not r.ignored, r.ignored
+    r = minimize(p.evaluate, algorithm="mo_cma_es", seed=3, eta_c=20.0, **kw)
+    assert r.ignored == ["eta_c"], r.ignored
 
 
 def main() -> int:

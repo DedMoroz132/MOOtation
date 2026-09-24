@@ -1,0 +1,79 @@
+# E5 (task 2 of 2026-09-23): does invariance to rotating the search space pay
+# on our problems?
+#
+# GDE3's trial is x_r3 + F·(x_r1 − x_r2) entirely at CR = 1, so it is
+# rotation-invariant; at CR = 0.5 half the variables stay the parent's, which
+# favours problems whose variables can be optimised one at a time. MO-CMA-ES
+# adapts a full covariance matrix per individual — invariant to rotation and to
+# rescaling — and its paper reports it losing to NSGA-II on the multimodal
+# ZDT4, IHR4 and DTLZ1 (Voß, Hansen & Igel 2010, §4.3); SMS-EMOA has the same
+# hypervolume selection with SBX and polynomial mutation, so the two together
+# separate what the operator is worth from what the selection is. GDE3 at the
+# default 0.2/0.2 (its paper's test-problem setting) and NSGA-II are the
+# references. F = 0.5 in both CR variants, the usual DE value (the task names
+# only CR).
+#
+# Problems: E1's seven (ZDT1, ZDT4, ZDT6, DTLZ1_3D, DTLZ3_3D and the shifted
+# DTLZ1/3, where the optimum is not at the centre of the box) and all 110
+# bbob-biobj problems, where most pairs are not separable. bbob-biobj has no
+# reference front: rank it by hv (--ranks hv; --by separable splits F1, F2 and
+# F11 from the rest, see README.md on E4).
+#
+#   python -m mootation.run.campaign e5_rotation.toml --workers 16
+#   python -m mootation.run.campaign e5_rotation.toml --ranks hv --by separable
+#   python -m mootation.run.campaign e5_rotation.toml --compare igdp_norm
+#
+# 6 algorithms x 117 problems x 5 seeds = 3 510 runs at 10 000 evaluations.
+# SMS-EMOA is the slow one: exact hypervolume contributions, about 20 s a run
+# at three objectives on a desktop core, a second or two at two.
+
+algorithms = [
+    { name = "gde3", label = "gde3_cr1", pop = 0, gens = 0, params = { F = 0.5, CR = 1.0 } },
+    { name = "gde3", label = "gde3_cr05", pop = 0, gens = 0, params = { F = 0.5, CR = 0.5 } },
+    { name = "gde3", pop = 0, gens = 0 },
+    { name = "mo_cma_es", pop = 0, gens = 0 },
+    { name = "sms_emoa", pop = 0, gens = 0 },
+    { name = "nsga2", pop = 0, gens = 0 },
+]
+
+[run]
+name = "e5_rotation"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+runs = 5
+problems = [
+    "ZDT1", "ZDT4", "ZDT6", "DTLZ1_3D", "DTLZ3_3D", "shiftDTLZ1_3D", "shiftDTLZ3_3D",
+    "bbobbiobj01_n05_2D", "bbobbiobj02_n05_2D", "bbobbiobj03_n05_2D", "bbobbiobj04_n05_2D", "bbobbiobj05_n05_2D",
+    "bbobbiobj06_n05_2D", "bbobbiobj07_n05_2D", "bbobbiobj08_n05_2D", "bbobbiobj09_n05_2D", "bbobbiobj10_n05_2D",
+    "bbobbiobj11_n05_2D", "bbobbiobj12_n05_2D", "bbobbiobj13_n05_2D", "bbobbiobj14_n05_2D", "bbobbiobj15_n05_2D",
+    "bbobbiobj16_n05_2D", "bbobbiobj17_n05_2D", "bbobbiobj18_n05_2D", "bbobbiobj19_n05_2D", "bbobbiobj20_n05_2D",
+    "bbobbiobj21_n05_2D", "bbobbiobj22_n05_2D", "bbobbiobj23_n05_2D", "bbobbiobj24_n05_2D", "bbobbiobj25_n05_2D",
+    "bbobbiobj26_n05_2D", "bbobbiobj27_n05_2D", "bbobbiobj28_n05_2D", "bbobbiobj29_n05_2D", "bbobbiobj30_n05_2D",
+    "bbobbiobj31_n05_2D", "bbobbiobj32_n05_2D", "bbobbiobj33_n05_2D", "bbobbiobj34_n05_2D", "bbobbiobj35_n05_2D",
+    "bbobbiobj36_n05_2D", "bbobbiobj37_n05_2D", "bbobbiobj38_n05_2D", "bbobbiobj39_n05_2D", "bbobbiobj40_n05_2D",
+    "bbobbiobj41_n05_2D", "bbobbiobj42_n05_2D", "bbobbiobj43_n05_2D", "bbobbiobj44_n05_2D", "bbobbiobj45_n05_2D",
+    "bbobbiobj46_n05_2D", "bbobbiobj47_n05_2D", "bbobbiobj48_n05_2D", "bbobbiobj49_n05_2D", "bbobbiobj50_n05_2D",
+    "bbobbiobj51_n05_2D", "bbobbiobj52_n05_2D", "bbobbiobj53_n05_2D", "bbobbiobj54_n05_2D", "bbobbiobj55_n05_2D",
+    "bbobbiobj01_n10_2D", "bbobbiobj02_n10_2D", "bbobbiobj03_n10_2D", "bbobbiobj04_n10_2D", "bbobbiobj05_n10_2D",
+    "bbobbiobj06_n10_2D", "bbobbiobj07_n10_2D", "bbobbiobj08_n10_2D", "bbobbiobj09_n10_2D", "bbobbiobj10_n10_2D",
+    "bbobbiobj11_n10_2D", "bbobbiobj12_n10_2D", "bbobbiobj13_n10_2D", "bbobbiobj14_n10_2D", "bbobbiobj15_n10_2D",
+    "bbobbiobj16_n10_2D", "bbobbiobj17_n10_2D", "bbobbiobj18_n10_2D", "bbobbiobj19_n10_2D", "bbobbiobj20_n10_2D",
+    "bbobbiobj21_n10_2D", "bbobbiobj22_n10_2D", "bbobbiobj23_n10_2D", "bbobbiobj24_n10_2D", "bbobbiobj25_n10_2D",
+    "bbobbiobj26_n10_2D", "bbobbiobj27_n10_2D", "bbobbiobj28_n10_2D", "bbobbiobj29_n10_2D", "bbobbiobj30_n10_2D",
+    "bbobbiobj31_n10_2D", "bbobbiobj32_n10_2D", "bbobbiobj33_n10_2D", "bbobbiobj34_n10_2D", "bbobbiobj35_n10_2D",
+    "bbobbiobj36_n10_2D", "bbobbiobj37_n10_2D", "bbobbiobj38_n10_2D", "bbobbiobj39_n10_2D", "bbobbiobj40_n10_2D",
+    "bbobbiobj41_n10_2D", "bbobbiobj42_n10_2D", "bbobbiobj43_n10_2D", "bbobbiobj44_n10_2D", "bbobbiobj45_n10_2D",
+    "bbobbiobj46_n10_2D", "bbobbiobj47_n10_2D", "bbobbiobj48_n10_2D", "bbobbiobj49_n10_2D", "bbobbiobj50_n10_2D",
+    "bbobbiobj51_n10_2D", "bbobbiobj52_n10_2D", "bbobbiobj53_n10_2D", "bbobbiobj54_n10_2D", "bbobbiobj55_n10_2D",
+]
+
+[campaign]
+out           = "results/{name}"
+budget_fe     = 10000
+record_grid   = "log"
+metrics       = ["igdp_norm", "hv"]
+final_metrics = ["igd", "igdp", "igdp_norm", "eps_norm", "hv", "hv_h", "tau90", "n_final",
+                 "range_cover", "igdx", "pdist"]

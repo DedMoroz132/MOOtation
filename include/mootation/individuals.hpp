@@ -193,4 +193,19 @@ struct DMS_Individual : public Based_Individual {
     double alpha = 0.0;
 };
 
+// MO-CMA-ES (Igel, Hansen & Roth 2007; Voß, Hansen & Igel 2010)
+// x      — the search point in coordinates normalised to the box, unclipped
+//          (the population's variables are its clip, mo_cma_es.hpp MOCMA-2)
+// sigma, p_succ, pc, C — step size, smoothed success rate, evolution path,
+//          covariance matrix (n×n, row-major)
+// fpen   — the objectives penalised for leaving the box (Eq. 5), which
+//          selection compares; dist2 the squared distance to the box
+struct MOCMAES_Individual : public Based_Individual {
+    int                 rank   = 0;
+    double              sigma  = 0.0;
+    double              p_succ = 0.0;
+    double              dist2  = 0.0;
+    std::vector<double> x, pc, C, fpen;
+};
+
 } // namespace mootation

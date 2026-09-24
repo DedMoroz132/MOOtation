@@ -9,7 +9,7 @@
 // header is missing from that file.
 //
 // Every core exposes set_seed/setup/step, but the tuning knobs differ per
-// algorithm: only 19 of the 58 have set_t_max, 10 have set_T, 6 have set_kappa.
+// algorithm: only 19 of the 62 have set_t_max, 10 have set_T, 6 have set_kappa.
 // Rather than a per-algorithm dispatch, each optional setter is detected with
 // SFINAE and applied only where it exists. A knob the caller sets that the
 // chosen algorithm does not have is REPORTED, not ignored — silently dropping
@@ -26,6 +26,7 @@
 #include <map>
 #include <unordered_map>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -90,7 +91,7 @@ std::atomic<long long> g_evaluations{0};
 //
 // Per step: the population before it (the "parents"), every point the step
 // evaluated (the "offspring") and the population after it. The library does
-// not track which individuals an offspring came from across its 58 cores, so
+// not track which individuals an offspring came from across its cores, so
 // the relations are to the parent POPULATION:
 //   survival    an offspring is in the next population. By value: the next
 //               population holds more copies of its variable vector than the
@@ -857,6 +858,19 @@ PYBIND11_MODULE(_core, m)
           "The first k indices of `points` in DSS order, as DMS selects its answer "
           "(include/mootation/dss.hpp); the same order as "
           "mootation.run.archive.dss_order in the set's own frame.");
+    m.def("hv_contributions",
+          [](const std::vector<std::vector<double>>& points, const std::vector<double>& ref,
+             std::size_t samples_per_point, unsigned seed) {
+              if (samples_per_point == 0) return mootation::hv::contributions_exact(points, ref);
+              std::mt19937 rng(seed);
+              return mootation::hv::contributions_mc(points, ref, samples_per_point, rng);
+          },
+          py::arg("points"), py::arg("ref"), py::arg("samples_per_point") = 0,
+          py::arg("seed") = 0,
+          "The hypervolume contribution of every point of a non-dominated set against "
+          "ref, as SMS-EMOA and MO-CMA-ES select by it (include/mootation/"
+          "hv_contribution.hpp): exact, or a Monte-Carlo estimate with that many "
+          "samples per point.");
     m.def("operator_stats", []() {
               // Since the previous call: offspring evaluated, the shares of them
               // that left the box before repair (and of their variables), that

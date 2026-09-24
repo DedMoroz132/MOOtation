@@ -81,6 +81,10 @@ const ScaleExempt SCALE_EXEMPT[] = {
     {"mombi2",
      "Alg. line 9 compares |z^max - z^min| against eps = 1e-3 from Sec 5.1, "
      "an absolute threshold on a raw range (measured: 2.3 % at 2^10)"},
+    {"sms_emoa",
+     "the adaptive reference point is nad(Q) + (1, ..., 1) (Beume's thesis, "
+     "Def. 2.6 and Alg. 3.1), an absolute offset in objective space "
+     "(measured: 0.8 % of the mean error at 2^10)"},
     {"r2ibea",
      "Eq.4 is written on raw objectives and the fitness is exp(-I_R2/0.005); "
      "set_normalize(true) removes the dependence entirely (bit-identical at "

@@ -4,7 +4,7 @@
 Three shapes, from the most static to the most portable: the algorithm fixed at
 compile time (`Optimizer<Ind, Core>`), the algorithm chosen by name at run time
 with either the library or you owning the loop (`embed.hpp`), and the same loop
-behind a C ABI for other languages. All three run the same 59 cores from
+behind a C ABI for other languages. All three run the same 62 cores from
 `include/mootation/algorithms.def`.
 
 ## Compile-time choice: `Optimizer<Ind, Core>`
@@ -56,8 +56,8 @@ carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 you; the full WFG / MaF families live on the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
-[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 45 of the 59 cores
-accept one, the other 14 refuse it at `setup()` with a message.
+[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 46 of the 62 cores
+accept one, the other 16 refuse it at `setup()` with a message.
 
 ### External or parallel evaluation
 
@@ -82,7 +82,7 @@ sizes in the message.
 
 ## Run-time choice: `embed.hpp`
 
-`#include <mootation/embed.hpp>` instantiates all 59 cores in that translation
+`#include <mootation/embed.hpp>` instantiates all 62 cores in that translation
 unit so that the algorithm can be picked by name. That is a real compile-time
 cost (about a minute); a program that always runs one algorithm should use
 `Optimizer<Ind, Core>` directly.

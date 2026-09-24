@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-59 algorithms, one header each under `include/mootation/algorithms/`, registered
+62 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`. Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
@@ -12,10 +12,10 @@ implementation follows; if you publish results, cite that paper.
 
 | family | count | reach for it when | watch out for |
 |---|---|---|---|
-| Pareto-dominance & diversity | 7 | 2–3 objectives, a baseline everyone recognises | crowding distance degrades above 3 objectives |
+| Pareto-dominance & diversity | 8 | 2–3 objectives, a baseline everyone recognises | crowding distance degrades above 3 objectives |
 | Reference-point (NSGA-III family) | 4 | many objectives with a regular front | `pop_size` must be an exact Das–Dennis lattice size |
 | Decomposition & region division (MOEA/D family) | 16 | scalarisable problems, many objectives, cheap per-generation cost | most members need an exact lattice size too (the weights are a Das–Dennis set); the steady-state members hand over one candidate at a time; the M2M members want `pop` divisible by `K` |
-| Indicator-based | 11 | you care about one quality indicator (ε+, hypervolume, R2) | cost grows fast with the objective count (HypE, R2-IBEA) |
+| Indicator-based | 13 | you care about one quality indicator (ε+, hypervolume, R2) | cost grows fast with the objective count (HypE, R2-IBEA, SMS-EMOA, MO-CMA-ES) |
 | Reference-vector / angle-based | 7 | irregular or scaled fronts, where a fixed lattice misses | adaptive variants (DEA-GNG, NRV-MOEA, SRV) need a few generations before they help |
 | Clustering-based | 11 | disconnected or irregular fronts | cluster counts are parameters the papers tuned per problem |
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
@@ -116,6 +116,7 @@ problem that is both skewed and drifting is not covered by this test.
 | VaEA | 2017 | `vaea` | [10.1109/TEVC.2016.2587808](https://doi.org/10.1109/TEVC.2016.2587808) |
 | AGE-MOEA | 2019 | `agemoea` | [10.1145/3321707.3321839](https://doi.org/10.1145/3321707.3321839) |
 | ETEA | 2014 | `etea` | [10.1162/evco_a_00106](https://doi.org/10.1162/evco_a_00106) |
+| GDE3 | 2005 | `gde3` | [10.1109/CEC.2005.1554717](https://doi.org/10.1109/CEC.2005.1554717) |
 
 ## Reference-point based (NSGA-III family)
 
@@ -162,6 +163,8 @@ problem that is both skewed and drifting is not covered by this test.
 | EDV | 2019 | `edv` | [10.1016/j.asoc.2018.11.041](https://doi.org/10.1016/j.asoc.2018.11.041) |
 | IF-MaOEA | 2024 | `if_maoea` | [10.1016/j.asoc.2024.111881](https://doi.org/10.1016/j.asoc.2024.111881) |
 | MaOEA-IAMD | 2026 | `maoea_iamd` | [10.1007/s11227-026-08362-3](https://doi.org/10.1007/s11227-026-08362-3) |
+| SMS-EMOA | 2005 | `sms_emoa` | [10.1007/978-3-540-31880-4_5](https://doi.org/10.1007/978-3-540-31880-4_5) |
+| MO-CMA-ES (μ+1, success by population) | 2010 | `mo_cma_es` | [10.1145/1830483.1830573](https://doi.org/10.1145/1830483.1830573) |
 
 ## Reference-vector / angle-based
 
@@ -219,12 +222,12 @@ reference fronts and archives.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 45 of the 59
+Every algorithm works on a real-valued genome with box bounds. 46 of the 62
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
-`Problem<>` specialisation); the other 14 refuse it at `setup()` with a clear
+`Problem<>` specialisation); the other 16 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only: CLIA, DCEA,
-DEA-GNG, DHEA, DMS, ETEA, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C, MOEA/D-DS,
-NAEMO and Two_Arch2. Binary and mixed genomes are a C++ feature: the Python binding,
+DEA-GNG, DHEA, DMS, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
+MO-CMA-ES, MOEA/D-DS, NAEMO and Two_Arch2. Binary and mixed genomes are a C++ feature: the Python binding,
 the C ABI and the TOML layer expose real-valued variables only.
 
 ## Variation operators

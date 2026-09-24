@@ -17,6 +17,7 @@ MOOTATION_ALG(grea,       GrEA_Individual,      GrEACore)
 MOOTATION_ALG(vaea,       VaEA_Individual,      VaEACore)
 MOOTATION_ALG(agemoea,    AGEMOEA_Individual,   AGEMOEACore)
 MOOTATION_ALG(etea,       NSGAII_Individual,    ETEACore)
+MOOTATION_ALG(gde3,       NSGAII_Individual,    GDE3Core)
 
 // ── Reference-point (NSGA-III family) ───────────────────────────────────────
 MOOTATION_ALG(nsga3,      NSGAIII_Individual,   NSGAIIICore)
@@ -54,6 +55,8 @@ MOOTATION_ALG(irea,             IREA_Individual,      IREACore)
 MOOTATION_ALG(edv,              EDV_Individual,       EDVCore)
 MOOTATION_ALG(if_maoea,         NSGAII_Individual,    IFMaOEACore)
 MOOTATION_ALG(maoea_iamd,       MaOEAIAMD_Individual, MaOEAIAMDCore)
+MOOTATION_ALG(sms_emoa,         NSGAII_Individual,    SMSEMOACore)
+MOOTATION_ALG(mo_cma_es,        MOCMAES_Individual,   MOCMAESCore)
 
 // ── Reference-vector / angle-based ──────────────────────────────────────────
 MOOTATION_ALG(rvea,       RVEA_Individual,      RVEACore)
