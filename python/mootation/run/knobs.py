@@ -27,7 +27,7 @@ _FALLBACK = (
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
-    "crossover": ("sbx", "uniform", "blx_alpha"),
+    "crossover": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx"),
     "mutation": ("polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                  "mixture_cauchy"),
     "crowding_space": ("objectives", "decision"),

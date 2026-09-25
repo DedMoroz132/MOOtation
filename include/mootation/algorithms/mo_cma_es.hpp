@@ -23,8 +23,8 @@ namespace mootation {
 //                                                  (source: mocmaes_voss2010)
 // The algorithm itself is Igel, Hansen & Roth, "Covariance Matrix Adaptation
 // for Multi-objective Optimization", Evol. Comput. 15(1):1-28, 2007,
-// doi:10.1162/evco.2007.15.1.1 — NOT in this project's corpus; the 2010 paper
-// restates it (§2, Algorithm 1) and gives its defaults "as given in [14]".
+// doi:10.1162/evco.2007.15.1.1 (source: igel2007); the 2010 paper restates it
+// (§2, Algorithm 1) and gives its defaults "as given in [14]".
 //
 // An individual is [x, p̄_succ, σ, p_c, C]. One step() is one offspring
 // (Algorithm 1 with λ = 1, line 4a):
@@ -41,8 +41,8 @@ namespace mootation {
 //      C ← (1 − c_cov)·C + c_cov·p_c·p_cᵀ; else p_c ← (1 − c_c)·p_c and
 //      C ← (1 − c_cov)·C + c_cov·(p_c·p_cᵀ + c_c(2 − c_c)·C);
 //      parent (lines 17-18): the same p̄_succ and σ update with the same succ.
-// Defaults (§2, "as given in [14]"): d = 1 + n/2, p_target = (5 + √(1/2))⁻¹,
-// c_p = p_target/(2 + p_target), c_c = 2/(n + 2), c_cov = 2/(n² + 6),
+// Defaults (§2, "as given in [14]"): d = 1 + n/2, p_target = (5 + √(1/2))⁻¹
+// (MOCMA-9), c_p = p_target/(2 + p_target), c_c = 2/(n + 2), c_cov = 2/(n² + 6),
 // p_thresh = 0.44; σ_0 = 0.6 of the range; box constraints by the penalised
 // fitness of Eq. 5, f(feasible(x)) + α‖x − feasible(x)‖², α = 10⁻⁶, feasible
 // the L1-closest point of the box (the clip).
@@ -54,20 +54,26 @@ namespace mootation {
 //   MOCMA-1 (task, as DMS-1). The search runs in coordinates normalised to
 //     the box, u = (x − ℓ)/(u − ℓ): the paper's σ_0 = 0.6·(x^u − x^l) is
 //     stated for equal ranges, and normalising makes it literal for unequal
-//     ones (equivalently, C_0 = diag of the squared ranges). The penalty of
-//     Eq. 5 is measured in the same coordinates.
+//     ones (equivalently, C_0 = diag of the squared ranges). The 2007 paper
+//     does the same by hand: σ_0 is 60 % of x_2^u − x_2^l, and ZDT4's first
+//     variable is "rescaled to [−5, 5]" to give it that range (§4.2). The
+//     penalty of Eq. 5 is measured in the same coordinates.
 //   MOCMA-2. The individual keeps its unclipped x; the library's population
 //     holds feasible(x) and its true objectives f(feasible(x)), so the answer
 //     is always inside the box. Selection compares the penalised values.
-//   MOCMA-3. Initial state, from the 2007 paper, which is not in the corpus
-//     (unverified): x uniform in the box, p̄_succ = p_target, p_c = 0, C = I.
+//   MOCMA-3. Initial state: p̄_succ = p_target, p_c = 0, C = I (the 2007
+//     paper, §2.1 "Initialization"); x and σ "must be chosen problem
+//     dependent" there — here x is uniform in the box and σ = σ_0.
 //   MOCMA-4. The reference point is r = nad + (nad − ideal) over Q in every
 //     objective (nad + 1 where the range is zero), which every member
 //     dominates, and the boundary elements of the front being ranked — its
 //     best point in each objective — are given an infinite contribution. The
 //     paper leaves r free under exactly those two conditions; this choice
 //     scales with the objectives, so the selection does not depend on their
-//     units.
+//     units. "Boundary element" is the 2010 paper's (the argmin of each
+//     objective); the 2007 paper (§3.2.3) calls boundary every element whose
+//     contribution depends on the reference point — the same two points at
+//     M = 2, more at M ≥ 3.
 //   MOCMA-5. Contributions as SMS-EMOA's (hv_contribution.hpp): exact for
 //     M ≤ 3, Monte-Carlo for M ≥ 4 (10 000 samples a step; set_n_samples, 0
 //     = exact at every M).
@@ -78,6 +84,12 @@ namespace mootation {
 //     FEASIBILITY and CDP rank by Deb's constrained domination; EPS_CONSTRAINT
 //     acts as FEASIBILITY. The paper handles box constraints only.
 //   MOCMA-8. Continuous variables only; a problem with binary ones is refused.
+//   MOCMA-9. p_target as the 2010 paper prints it, (5 + √(1/2))⁻¹ ≈ 0.1752.
+//     The 2007 paper's Table 1 gives 1/(5 + √λ/2), the root over λ alone
+//     (checked on the PDF page), which is 2/11 ≈ 0.1818 at λ = 1. The 2010
+//     paper states its value "as given in [14] and used in this paper" (read
+//     from the converted text; its PDF is not at hand), so its runs are the
+//     ones this default reproduces.
 // ============================================================================
 template <typename Ind_t>
 class MOCMAESCore {

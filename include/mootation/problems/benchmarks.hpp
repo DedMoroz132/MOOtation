@@ -286,7 +286,7 @@ struct CDTLZ2 {
         void calc_objs(TAG& ind) const                                        \
         {                                                                     \
             Spec_::eval(ind.variables, ind.objectives);                       \
-            if (Spec_::NLIMS > 0)                                             \
+            if constexpr (Spec_::NLIMS > 0)                                   \
                 Spec_::eval_limits(ind.variables, ind.limits);                \
         }                                                                     \
     };                                                                        \

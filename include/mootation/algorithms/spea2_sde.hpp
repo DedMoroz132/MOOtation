@@ -350,6 +350,10 @@ private:
     // aliasing), write into [0,N).
     void breed(DataVault<Ind_t>& vault, int N) {
         const auto& bounds = vault.get_bounds();
+        // one more parent, for the crossovers that take more than two (B2)
+        auto draw = [&] {
+            return vault.archive_variables_of(static_cast<std::size_t>(tournament_archive(vault)));
+        };
         std::vector<double> c1, c2;
         for (int i = 0; i < N; i += 2) {
             int ai = tournament_archive(vault);
@@ -358,7 +362,7 @@ private:
             const auto& bv = vault.archive_variables_of(static_cast<std::size_t>(bi));
             // §III settings paragraph: pc=1.0, pm=1/n
             double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
-            xover_.apply(av, bv, c1, c2, bounds, eta_c_, pc_, rng_);
+            xover_.apply_any(av, bv, draw, c1, c2, bounds, eta_c_, pc_, rng_);
             mut_.apply(c1, bounds, eta_m_, pm, rng_);
             mut_.apply(c2, bounds, eta_m_, pm, rng_);
             if (vault.bin_vars_n() > 0) {

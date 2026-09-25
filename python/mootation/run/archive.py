@@ -9,12 +9,14 @@ other point set, the same way everywhere (reference fronts, random search, the
 `dss_order` is distance-based subset selection (DSS): start from the best point
 of every objective, then repeatedly add the candidate that the selected set
 covers WORST, until the set is full. "Covers" is measured with the IGD+
-distance, d+(s, c) = ||max(s − c, 0)||, the amount by which a selected point s
-is worse than candidate c; a candidate dominated by (or equal to) a selected
-point is covered completely. Greedy maximin on that distance picks the point
-contributing most to IGD+ of the selection against the whole set, without
-optimizing IGD+ or the hypervolume themselves — an indicator-neutral choice,
-where selecting by one indicator would flatter that indicator afterwards.
+distance, d+(c, s) = ||max(s − c, 0)||, the amount by which a selected point s
+is worse than candidate c (c in the place of IGD+'s reference point); a
+candidate dominated by (or equal to) a selected point is covered completely.
+Greedy maximin on that distance picks the point contributing most to IGD+ of
+the selection against the whole set, without optimizing IGD+ (a mean) or the
+hypervolume themselves, where selecting by one indicator would flatter that
+indicator afterwards. It does lower, greedily, the LARGEST d+ from the set to
+the selection, a norm analogue of the additive epsilon.
 
 The order is INCREMENTAL: the first n points of dss_order(F) are exactly the
 DSS selection of size n from F. A set stored in this order is thinned by
@@ -25,10 +27,16 @@ so that no objective dominates the distance by its units alone; pass the frame
 explicitly where one is known (a registry problem), otherwise the set's own
 minimum and maximum are used.
 
-Sources: DSS is Singh, Bhattacharjee & Ray (IEEE TEVC 23(5):904-912, 2019);
-the IGD+ distance in its place is Chen, Ishibuchi & Shang (2020). Neither paper
-is in this project's corpus yet; the procedure above is the one specified for
-MOOtation on 2026-09-22 and is written from that specification.
+Sources: DSS is Singh, Bhattacharjee & Ray, "Distance based subset selection
+for benchmarking in evolutionary multi/many-objective optimization" (IEEE
+TEVC, 2019), Algo. 1. The procedure above is the one specified for MOOtation
+on 2026-09-22 and departs from Algo. 1 three times: the seeds are the M
+per-objective minima (the rule of Tanabe, Ishibuchi & Oyama 2017, which Singh
+et al. replace by ONE extreme point); the distance is d+ (Ishibuchi, Masuda,
+Tanigaki & Nojima, EMO 2015, Eq. 18; in DSS after Chen, Ishibuchi & Shang
+2020, not in the corpus), not the Euclidean; nothing is filtered (the callers
+pass non-dominated sets). Singh et al.'s results on the spacing of the
+selected points assume the Euclidean distance and are not claimed here.
 """
 
 from __future__ import annotations

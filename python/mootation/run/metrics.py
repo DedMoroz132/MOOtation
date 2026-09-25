@@ -62,7 +62,11 @@ def igd(F: np.ndarray, ref: np.ndarray) -> float:
 
 
 def igd_plus(F: np.ndarray, ref: np.ndarray) -> float:
-    """IGD+ (Ishibuchi et al. 2015): only the dominated part of the offset counts."""
+    """IGD+ (Ishibuchi, Masuda, Tanigaki & Nojima, EMO 2015, Eqs. 12 and 18,
+    p = 1): the mean over reference points z of the smallest
+    d+(z, a) = ||max(a − z, 0)|| over a in F — only the objectives in which a
+    is worse than z count. Minimisation, raw units. Weakly Pareto-compliant
+    for non-dominated sets (§5), not strictly (Table 8)."""
     F = np.asarray(F, float)
     ref = np.asarray(ref, float)
     if F.size == 0:
@@ -77,11 +81,12 @@ def igd_plus(F: np.ndarray, ref: np.ndarray) -> float:
 # maximum the Euclidean counterpart of the additive epsilon (which takes the
 # largest component where this takes the norm); a quantile sits between the
 # two on the same scale, and so does the share of the front within a
-# tolerance. All of them
-# are weakly Pareto-compliant: if A weakly dominates B, d+(z, A) <= d+(z, B)
-# for every z. Read "tau90 = 0.03" as "90 % of the front sample lies within
-# 0.03 (normalised) of something found" — an engineering tolerance, and less
-# at the mercy of one far reference point than eps.
+# tolerance. All of them are weakly Pareto-compliant: if A weakly dominates B,
+# d+(z, A) <= d+(z, B) for every z (Eq. 22 of Ishibuchi et al. 2015, who
+# prove it for the mean only; the rest follows). Read "tau90 = 0.03" as "90 %
+# of the front sample lies within 0.03 (normalised) of something found" — an
+# engineering tolerance, and less at the mercy of one far reference point
+# than eps.
 
 COVERAGE_TAUS = (0.01, 0.02, 0.05, 0.1, 0.2)
 
@@ -254,11 +259,12 @@ def eps_plus(F: np.ndarray, ref: np.ndarray) -> float:
 def gd_plus(F: np.ndarray, ref: np.ndarray) -> float:
     """GD+ (Ishibuchi et al. 2015): IGD+'s distance averaged over the set instead.
 
-    The same d+(a, r) = ||max(a − r, 0)|| matrix as igd_plus, minimized over the
+    The same d+(r, a) = ||max(a − r, 0)|| matrix as igd_plus, minimized over the
     reference and averaged over the set: how far the points are from the front,
     blind to how much of it they cover. Read next to IGD+, it separates "still
     converging" (both fall) from "converged, now spreading" (GD+ flat, IGD+
-    falling).
+    falling). Not Pareto-compliant, not even weakly: a set that dominates
+    another can score worse (Ishibuchi et al. 2015, Fig. 8 and Table 7).
     """
     F = np.asarray(F, float)
     ref = np.asarray(ref, float)
@@ -418,6 +424,121 @@ def lattice_h(m: int, pop: int) -> int:
     return h
 
 
+def das_dennis(m: int, h: int) -> np.ndarray:
+    """The simplex lattice of Das & Dennis (SIAM J. Optim. 8(3), 1998): every
+    weight vector whose components are multiples of 1/h and sum to 1."""
+    rows: list = []
+
+    def rec(prefix, left, k):
+        if k == 1:
+            rows.append(prefix + [left])
+            return
+        for v in range(left, -1, -1):
+            rec(prefix + [v], left - v, k - 1)
+
+    rec([], int(h), int(m))
+    return np.asarray(rows, float) / float(h)
+
+
+def r2_discrete(F, ideal, nadir, h: int) -> float:
+    """Discrete R2 (task 2, D5): the unary R2 of Brockhoff, Wagner & Trautmann
+    (Evol. Comput. 23(3), 2015, Def. 4, after Hansen & Jaszkiewicz 1998) — the
+    mean over the Das-Dennis lattice of H = h of min over a of
+    max_i λ_i·G(a)_i, G = (F − ideal)/(nadir − ideal), so that the ideal point
+    is the utopian point of the plain weighted Tchebycheff utility; the
+    normalisation (ideal to 0, nadir to 1) is Schäpermeier & Kerschke's
+    (arXiv:2407.01504, 2024). Lower is better. On a finite set of weights R2 is
+    only weakly Pareto-compliant, and at most as many points count as there
+    are weights; the integral over all weights is Pareto-compliant
+    (Schäpermeier & Kerschke, exact at two objectives; Jaszkiewicz &
+    Zielniewicz, IEEE TEVC 29(4), 2025)."""
+    ideal = np.asarray(ideal, float)
+    span = np.asarray(nadir, float) - ideal
+    span[span <= 0] = 1.0
+    G = (np.asarray(F, float) - ideal) / span
+    W = das_dennis(G.shape[1], h)
+    best = np.full(len(W), np.inf)
+    for a in range(0, len(G), 256):                  # (weights, points) in blocks
+        u = (W[:, None, :] * G[None, a:a + 256, :]).max(axis=2)
+        best = np.minimum(best, u.min(axis=1))
+    return float(best.mean())
+
+
+def magnitude(F, ideal, nadir, *, ref_scale: float) -> float:
+    """Magnitude of the dominated region (Emmerich, arXiv 2604.18147, 2026,
+    Theorem 3.3): Σ over the subsets S of the objectives of 2^−|S| times the
+    |S|-dimensional measure of the region's projection on S, the empty S
+    counting 1. In the normalised frame, G = (F − ideal)/(nadir − ideal), with
+    the anchor at ref_scale in every objective (minimisation: the region is
+    ∪ [G(a), r] over the points with G(a) ≤ r); 0 when no point is inside.
+    At M = 2 it is 1 + (X + Y)/2 + HV/4, X and Y the region's extents
+    (Theorem 2.5). Not scale-invariant, so only in this fixed frame.
+    Weakly and strictly Pareto-compliant (Corollary 3.7)."""
+    import itertools
+    ideal = np.asarray(ideal, float)
+    span = np.asarray(nadir, float) - ideal
+    span[span <= 0] = 1.0
+    G = (np.asarray(F, float) - ideal) / span
+    m = G.shape[1]
+    r = np.full(m, float(ref_scale))
+    G = G[np.all(G <= r, axis=1)]
+    if not len(G):
+        return 0.0
+    total = 1.0
+    for k in range(1, m + 1):
+        for S in itertools.combinations(range(m), k):
+            P = G[:, list(S)]
+            ref = r[list(S)]
+            P = P[np.all(P < ref, axis=1)]
+            if not len(P):
+                continue
+            vol = float(ref[0] - P[:, 0].min()) if k == 1 else _hv_exact(nondominated(P), ref)
+            total += vol / 2.0 ** k
+    return float(total)
+
+
+def nondominated_mask(F) -> np.ndarray:
+    """Which rows of F no other row dominates (minimisation); copies all kept."""
+    F = np.asarray(F, float)
+    keep = np.ones(len(F), bool)
+    for i in range(len(F)):
+        worse = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
+        keep[i] = not worse.any()
+    return keep
+
+
+def chamfer(X, Y, *, bounds, cyclic=()) -> float:
+    """Averaged Hausdorff (chamfer) distance between two solution sets in
+    variables normalised by the bounds (task 2, D4):
+    ½·[mean over x of min over y ‖x − y‖ + mean over y of min over x ‖x − y‖];
+    cyclic variables wrap at 1, as in igdx."""
+    U = _unit(X, bounds)
+    V = _unit(Y, bounds)
+    D = np.sqrt((_unit_diff(U, V, cyclic) ** 2).sum(axis=2))    # (|V|, |U|)
+    return float(0.5 * (D.min(axis=0).mean() + D.min(axis=1).mean()))
+
+
+def eps_mult(A, B):
+    """Binary multiplicative ε, I_ε×(A, B) = max over b of min over a of
+    max_i a_i / b_i (Zitzler, Thiele, Laumanns, Fonseca & Grunert da Fonseca,
+    IEEE TEVC 7(2), 2003): the smallest factor by which A, stretched, weakly
+    dominates B; A is better than B iff I(A, B) ≤ 1 < I(B, A). Needs no
+    reference and no frame, and does not change when an objective is
+    rescaled. For non-negative objectives only (None otherwise); a zero in b
+    is matched only by a zero (a_i/0 is 0 when a_i = 0 and ∞ otherwise), so
+    residuals with a natural zero are compared as they are."""
+    A = np.asarray(A, float)
+    B = np.asarray(B, float)
+    if not A.size or not B.size or (A < 0).any() or (B < 0).any():
+        return None
+    num = A[None, :, :]
+    den = B[:, None, :]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        R = np.where(den > 0, num / np.where(den > 0, den, 1.0),
+                     np.where(num > 0, np.inf, 0.0))
+    return float(R.max(axis=2).min(axis=1).max())
+
+
 def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             pop: int | None = None, hv_options: dict | None = None, X=None,
             pareto_set=None, bounds=None, cyclic=()) -> dict:
@@ -483,6 +604,13 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 out["hv_h"] = v
                 out["hv_h_ref"] = scale
                 out["hv_method"] = method
+        elif name == "r2":
+            if not have_box or not pop or F.ndim != 2 or not F.size:
+                out["r2"] = None
+            else:
+                h = lattice_h(F.shape[1], int(pop))
+                out["r2"] = r2_discrete(F, ideal, nadir, h)
+                out["r2_h"] = h
         elif name in ("igdx", "cr"):
             if X is None or pareto_set is None or bounds is None or not np.size(X):
                 out[name] = None

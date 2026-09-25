@@ -9,7 +9,7 @@ from __future__ import annotations
 
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
                 "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
-                "tau90", "n_final")
+                "tau90", "n_final", "r2")
 
 # What a run's variation operators did, recorded with [campaign] operator_stats
 # = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
@@ -46,7 +46,8 @@ DESCRIPTIONS = {
     "igdp": "IGD+: only the part of each offset that is dominated counts; raw units",
     "igdp_norm": "IGD+ with objectives and front divided by nadir - ideal; scale-free",
     "gdp": "GD+: the mean over the SET of the IGD+ distance to the nearest reference "
-           "point — convergence only, where IGD+ mixes in coverage; raw units",
+           "point — convergence only, where IGD+ mixes in coverage; raw units. "
+           "Not Pareto-compliant: a set that dominates another can score worse",
     "eps": "additive epsilon: the smallest shift in every objective that makes the set "
            "weakly dominate the reference front; raw units",
     "eps_norm": "additive epsilon after the nadir - ideal normalisation; scale-free",
@@ -74,6 +75,11 @@ DESCRIPTIONS = {
              "weakly Pareto-compliant; coverage_curve gives the share within 0.01 ... 0.2",
     "n_final": "the number of points in the answer: hv, IGD+ and eps never get worse by "
                "adding points, so read them next to it when set sizes differ",
+    "r2": "discrete R2 (Brockhoff, Wagner & Trautmann 2015, Def. 4): the mean over the "
+          "Das-Dennis weights of hv_h's lattice of the "
+          "best weighted Tchebycheff value max_i w_i (f_i - ideal_i)/(nadir_i - ideal_i) "
+          "in the set; weakly Pareto-compliant, linear in the objective count where the "
+          "hypervolume turns Monte-Carlo, and non-zero where hv is 0",
     "oob_share": "share of offspring with a variable outside the box before repair",
     "oob_var_share": "share of offspring variables outside the box before repair",
     "survival_share": "share of offspring that entered the next population",

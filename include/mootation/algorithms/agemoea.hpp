@@ -483,6 +483,8 @@ public:
 
         // ── expand: active = 2n ────────────────────────────────────────────
         int off_base = vault.expand(n);  // [off_base, off_base+n) = offspring slots
+        // one more parent, for the crossovers that take more than two (B2)
+        auto draw = [&] { return vault.variables_of(tournament(vault, dist_int)); };
 
         // ── breed n offspring into [n, 2n) ────────────────────────────────
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
@@ -495,7 +497,7 @@ public:
             }
             // Table 1: pc=1, pm=1/n
             double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
-            xover_.apply(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
+            xover_.apply_any(pv1, pv2, draw, c1, c2, bounds, eta_c_, pc_, rng_);
             mut_.apply(c1, bounds, eta_m_, pm, rng_);
             mut_.apply(c2, bounds, eta_m_, pm, rng_);
             if (vault.bin_vars_n() > 0) {

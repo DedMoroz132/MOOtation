@@ -29,9 +29,10 @@
 // The counts (A2 of the 2026-09-23 task; the measure of Kononova, Caraffini &
 // Bäck, Inf. Sci. 581, 2021): every repair site reports how many variables it
 // found outside the box, and whether the offspring had any. The counters are
-// thread-local, like sbx_var_prob(): a run is one thread (the Python binding
-// runs the core on the caller's thread), and the binding reads and resets them
-// between trajectory records. They never touch a random stream.
+// thread-local (unlike sbx_var_prob(), which is one value for the process): a
+// run is one thread (the Python binding runs the core on the caller's thread),
+// and the binding reads and resets them between trajectory records. They never
+// touch a random stream.
 // ============================================================================
 
 #include <algorithm>

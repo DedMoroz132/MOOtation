@@ -2546,7 +2546,8 @@ archive = false
 def operator_words_are_knobs_of_the_run_layer():
     from mootation.run.knobs import text_knobs
     words = text_knobs()
-    assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha"}, words
+    assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha",
+                                       "spx", "rex", "undx", "pcx"}, words
     assert {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
             "mixture_cauchy"} == set(words["mutation"]), words
     for k in ("mutation_scale", "mixture_q", "blx_alpha", "crossover", "mutation"):
@@ -2561,7 +2562,7 @@ def operator_words_are_knobs_of_the_run_layer():
 
 @test
 def switchable_operators_run_inside_the_box_and_keep_the_defaults():
-    """nsga2, ibea_eplus, spea2_sde, agemoea take crossover/mutation; the defaults are SBX + PM."""
+    """nsga2, ibea_eplus, spea2_sde, agemoea, sms_emoa take crossover/mutation; the defaults are SBX + PM."""
     if not _have_numpy() or _core_with("operator_stats") is None:
         print("  skip  switchable_operators...: no NumPy or stale _core"); return
     import numpy as np
@@ -2570,7 +2571,7 @@ def switchable_operators_run_inside_the_box_and_keep_the_defaults():
     p = get("ZDT4")                         # x_1 in [0, 1], the rest in [-5, 5]
     lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
     kw = dict(bounds=p.bounds, n_objs=2, pop_size=100, max_evaluations=1500, seed=4)
-    for alg in ("nsga2", "ibea_eplus", "spea2_sde", "agemoea"):
+    for alg in ("nsga2", "ibea_eplus", "spea2_sde", "agemoea", "sms_emoa"):
         plain = minimize(p.evaluate, algorithm=alg, **kw)
         same = minimize(p.evaluate, algorithm=alg, crossover="sbx", mutation="polynomial", **kw)
         assert np.array_equal(np.array(plain.objectives), np.array(same.objectives)), alg
@@ -2578,7 +2579,11 @@ def switchable_operators_run_inside_the_box_and_keep_the_defaults():
         for extra in ({"crossover": "blx_alpha", "blx_alpha": 1.0, "bound_repair": "reflect"},
                       {"crossover": "uniform", "mutation": "gaussian", "mutation_scale": 0.3},
                       {"mutation": "mixture_cauchy", "mixture_q": 0.5, "bound_repair": "random"},
-                      {"mutation": "uniform_reset"}):
+                      {"mutation": "uniform_reset"},
+                      # the multi-parent ones: 11 parents for spx and rex at n = 10
+                      {"crossover": "spx"}, {"crossover": "rex"},
+                      {"crossover": "undx", "bound_repair": "midpoint"},
+                      {"crossover": "pcx", "bound_repair": "clip"}):
             r = minimize(p.evaluate, algorithm=alg, **kw, **extra)
             assert not r.ignored, (alg, extra, r.ignored)
             X = np.array(r.variables)
@@ -2586,6 +2591,12 @@ def switchable_operators_run_inside_the_box_and_keep_the_defaults():
             ops = dict(r.operators)
             name = extra.get("crossover", "sbx")
             assert name in ops, (alg, extra, r.operators)
+    try:                                    # a multi-parent child cannot redraw one variable
+        minimize(p.evaluate, algorithm="nsga2", crossover="spx", bound_repair="resample", **kw)
+    except ValueError as e:
+        assert "resample" in str(e), e
+    else:
+        raise AssertionError("spx with bound_repair = resample must be refused")
     r = minimize(p.evaluate, algorithm="moead_de", mutation="gaussian", **kw)
     assert dict(r.operators)["gaussian"] == "repaired by the caller", r.operators
     r = minimize(p.evaluate, algorithm="spea2", crossover="uniform", **kw)
@@ -2687,6 +2698,115 @@ def crowding_in_the_decision_space_is_off_by_default_and_changes_the_run_when_on
         assert "objectives or decision" in str(exc), exc
     else:
         raise AssertionError("an unknown crowding_space must be refused")
+
+
+# ── task 2, D4-D7: set comparisons and two indicators ───────────────────────
+
+@test
+def discrete_r2_magnitude_chamfer_and_eps_mult_are_what_they_say():
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    W = M.das_dennis(3, 12)
+    assert W.shape == (91, 3) and np.allclose(W.sum(1), 1.0)
+    assert M.das_dennis(2, 99).shape == (100, 2) and M.das_dennis(5, 5).shape == (126, 5)
+    box = dict(ideal=[0.0, 0.0], nadir=[1.0, 1.0])
+    # R2: 0 at the ideal point; one point at the nadir costs max(w, 1 - w) per weight
+    assert M.r2_discrete([[0.0, 0.0]], h=99, **box) == 0.0
+    w = np.arange(100) / 99.0
+    assert abs(M.r2_discrete([[1.0, 1.0]], h=99, **box) - np.maximum(w, 1 - w).mean()) < 1e-12
+    A = np.array([[0.2, 0.8], [0.8, 0.2]])
+    assert M.r2_discrete(np.vstack([A, [[0.5, 0.5]]]), h=20, **box) <= M.r2_discrete(A, h=20, **box)
+    out = M.compute(A, which=["r2"], pop=100, **box)
+    assert out["r2_h"] == 99 and out["r2"] == M.r2_discrete(A, h=99, **box), out
+    # magnitude: one box is the product of (1 + L/2) (Remark 2.6); two boxes at
+    # M = 2 are 1 + (X + Y)/2 + HV/4 (Theorem 2.5); nothing inside the anchor, 0
+    assert abs(M.magnitude([[0.0, 0.0]], ref_scale=1.1, **box) - 1.55 ** 2) < 1e-12
+    assert abs(M.magnitude([[0.0, 0.0, 0.0]], ideal=[0] * 3, nadir=[1] * 3, ref_scale=1.0)
+               - 1.5 ** 3) < 1e-12
+    two = M.magnitude([[0.0, 0.5], [0.5, 0.0]], ref_scale=1.0, **box)
+    assert abs(two - (1 + (1 + 1) / 2 + 0.75 / 4)) < 1e-12, two
+    assert M.magnitude([[2.0, 2.0]], ref_scale=1.1, **box) == 0.0
+    # a point ON the anchor's face: no hypervolume, but a positive magnitude
+    edge = M.magnitude([[1.0, 0.0]], ref_scale=1.0, **box)
+    assert abs(edge - 1.5) < 1e-12 and M.hypervolume(np.array([[1.0, 0.0]]), [0, 0], [1, 1],
+                                                       ref_scale=1.0)[0] == 0.0
+    # chamfer: 0 for the same set, symmetric, in normalised units
+    b = [(0.0, 2.0)]
+    assert M.chamfer([[0.5]], [[0.5]], bounds=b) == 0.0
+    assert M.chamfer([[0.0]], [[1.0]], bounds=b) == 0.5
+    X, Y = np.random.default_rng(1).random((7, 1)) * 2, np.random.default_rng(2).random((4, 1)) * 2
+    assert abs(M.chamfer(X, Y, bounds=b) - M.chamfer(Y, X, bounds=b)) < 1e-15
+    # multiplicative epsilon: half of B is better than B; zeros match only zeros
+    B = np.array([[1.0, 4.0], [2.0, 2.0]])
+    assert M.eps_mult(B, B) == 1.0
+    assert M.eps_mult(B / 2, B) == 0.5 and M.eps_mult(B, B / 2) == 2.0
+    assert M.eps_mult([[0.0, 1.0]], [[0.0, 2.0]]) == 0.5
+    assert M.eps_mult([[1.0, 1.0]], [[0.0, 2.0]]) == float("inf")
+    assert M.eps_mult([[-1.0, 1.0]], B) is None
+    assert M.eps_mult(B * 3.0, B) == 3.0 and M.eps_mult(B * [1, 7], B * [1, 7]) == 1.0
+
+
+@test
+def seed_distance_eps_table_and_magnitude_read_a_finished_campaign():
+    # run_job imports minimize, hence the extension, even for the Python baselines
+    if not _have_numpy() or _core_with("Config") is None:
+        print("  skip  seed_distance_eps_table...: no NumPy or no _core"); return
+    import contextlib
+    import io
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "random_search", pop = 0, gens = 0 },
+    { name = "gsemo", pop = 0, gens = 0 },
+]
+[run]
+name = "sets"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["ZDT1", "DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 300
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm", "hv_h", "n_final"]
+archive = false
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for flag, want in (("--seed-distance", "chamfer"), ("--eps-table", "multiplicative"),
+                           ("--magnitude", "Kendall")):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = C.main([str(cfg_path), flag])
+            text_out = out.getvalue()
+            assert code == 0 and want in text_out and "ZDT1" in text_out, (flag, text_out)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            code = C.main([str(cfg_path), "--eps-table", "--scenario", "archive"])
+        assert code == 1 and "final populations" in out.getvalue(), out.getvalue()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            assert C.main([str(cfg_path), "--recompute", "r2"]) == 0
+        meta = json.loads((root / "DTLZ2_3D" / "gsemo" / "run_1" / "meta.json")
+                          .read_text(encoding="utf-8"))
+        assert meta["final"]["r2"] > 0 and meta["final"]["r2_h"] == 12, meta["final"]
+        from mootation.run import report as R
+        rows = C.scenario_rows(C.scan_results(root), "final")
+        rep = R.seed_distance(rows)
+        assert set(rep) == {(p, a) for p in ("ZDT1", "DTLZ2_3D") for a in ("random_search", "gsemo")}
+        assert all(e["runs"] == 2 and e["pairs"] == 1 and e["chamfer"] > 0 for e in rep.values())
+        mag = R.magnitude_experiment(rows)
+        assert set(mag["per_problem"]) == {"ZDT1", "DTLZ2_3D"}, mag
 
 
 # ── task 2, C3: GDE3, SMS-EMOA, MO-CMA-ES ───────────────────────────────────

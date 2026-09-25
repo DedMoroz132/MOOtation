@@ -4,13 +4,18 @@
 These four were designed to have a degenerate, curve-shaped front, and their
 reference sets used to be exactly that curve. Ishibuchi, Masuda & Nojima,
 "Pareto Fronts of Many-Objective Degenerate Test Problems" (IEEE TEVC 20(5):
-807-813, 2016) showed that the true fronts also have a NON-degenerate part —
-DTLZ5 and DTLZ6 from four objectives, WFG3 from three (as the task of
-2026-09-22 sums the paper up; it is not in the local library) — so the curve
-was a proper subset of the front there. For DTLZ5 and DTLZ6 this was already
+807-813, 2016, doi:10.1109/TEVC.2015.2505784; source: ishibuchi2016) showed
+that WFG3's true front also has a NON-degenerate part from three objectives
+(Section IV; its shape at M = 3 is Eq. (25)) and recalled that DTLZ5's and
+DTLZ6's have one from four (Section II-B, after Huband et al. and Saxena et
+al.) — so the curve was a proper subset of the front there. The paper's
+constraints (7)-(8) (DTLZ5, from Saxena et al.) and (27)-(28) (WFG3) would
+cut the non-degenerate part off; the library keeps the problems as defined
+and uses the full fronts. For DTLZ5 and DTLZ6 this was already
 in Huband, Hingston, Barone & While (IEEE TEVC 10(5), 2006, Section VI-A,
-the DTLZ suite), which is in the library: at M = 4 with g = 10, y_1 = 0,
-y_2 = 0.95 and y_3 = 0, DTLZ5 gives f_2 = 11 cos(20 pi/44) sin(pi/44) = 0.11
+the DTLZ suite), which is in the library: at M = 4 with g = 10 ("possible
+when k >= 40"; with the usual k = 10, g <= 2.5), y_1 = 0, y_2 = 0.95 and
+y_3 = 0, DTLZ5 gives f_2 = 11 cos(20 pi/44) sin(pi/44) = 0.11
 with f_4 = 0, where the curve's point with f_4 = 0 has f_2 = 0.5 — "we have
 found that this is untrue for instances with four or more objectives". MaF6,
 DTLZ5(I = 2, M) with a factor (1 + 100 g), came later than both papers; it

@@ -64,11 +64,17 @@ inline std::optional<CrowdingSpace> parse_crowding_space(const std::string& s)
 //   front, which is the normalisation — so that among equally ranked
 //   solutions the ones far from others IN THE PARAMETERS survive: different
 //   parameter sets with the same residual, what a calibration wants to see.
-//   This is the idea of DN-NSGA-II (Liang, Yue & Qu, "Multimodal
-//   multi-objective optimization: A preliminary study", CEC 2016,
-//   doi:10.1109/CEC.2016.7744093), whose paper is NOT in this project's
-//   corpus: the switch implements the task's description of it, not the
-//   paper's letter, and does not claim to be DN-NSGA-II. Default `objectives`.
+//   It is one of the two changes of DN-NSGA-II (J. J. Liang, C. T. Yue,
+//   B. Y. Qu, "Multimodal multi-objective optimization: A preliminary
+//   study", IEEE CEC 2016, pp. 2454-2461, doi:10.1109/CEC.2016.7744093;
+//   source liang2016). Its §IV says only that "the crowding in objective
+//   space is replaced by crowding in decision space", with no formula, so
+//   §III-B over the (real) variables is this library's reading. The other
+//   change is not here: DN-NSGA-II fills the mating pool by niching — a
+//   random solution meets the nearest, by Euclidean distance in the
+//   variables, of CF random others and the better of the two enters (CF
+//   and "better" left open) — where this tournament draws its rival at
+//   random. So this is not DN-NSGA-II. Default `objectives`.
 // ============================================================================
 template <typename Ind_t>
 class NSGAIICore {
@@ -293,6 +299,8 @@ public:
         std::uniform_int_distribution<int> dist_int(0, n - 1);
 
         int off_base = vault.expand(n);  // [off_base, off_base+n) — offspring slots
+        // one more parent, for the crossovers that take more than two (B2)
+        auto draw = [&] { return vault.variables_of(tournament(vault, dist_int)); };
 
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         for (int i = 0; i < n; i += 2) {
@@ -305,7 +313,7 @@ public:
             }
             // §IV-A: pc=0.9, pm=1/n
             double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
-            xover_.apply(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
+            xover_.apply_any(pv1, pv2, draw, c1, c2, bounds, eta_c_, pc_, rng_);
             mut_.apply(c1, bounds, eta_m_, pm, rng_);
             mut_.apply(c2, bounds, eta_m_, pm, rng_);
 

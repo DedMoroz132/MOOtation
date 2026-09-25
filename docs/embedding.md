@@ -102,7 +102,7 @@ A plain struct, and the same fields as a `key = value` file:
 | `seed_population`, `on_size_mismatch` | warm start: a population file, and `error` / `truncate` / `pad` when its size differs from `pop_size` |
 | `eta_c eta_m pc pm T delta nr kappa K n_clusters theta alpha F CR div` | optional knobs; anything absent keeps the paper's default |
 | `normalize` | 0 or 1: the objective normalization of IBEA, R2-IBEA, Two_Arch2 and MOEA/D-AM2M; each header says which setting is the paper's |
-| `crossover`, `mutation` | words: `sbx` / `uniform` / `blx_alpha`, and `polynomial` / `gaussian` / `cauchy` / `uniform_reset` / `mixture` / `mixture_cauchy` — NSGA-II, IBEA-ε+, SPEA2+SDE and AGE-MOEA take both, MOEA/D-DE the mutation; the defaults are the papers' SBX and polynomial mutation |
+| `crossover`, `mutation` | words: `sbx` / `uniform` / `blx_alpha` / `spx` / `rex` / `undx` / `pcx`, and `polynomial` / `gaussian` / `cauchy` / `uniform_reset` / `mixture` / `mixture_cauchy` — NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA take both, MOEA/D-DE the mutation; the defaults are the papers' SBX and polynomial mutation |
 | `mutation_scale`, `mixture_q`, `blx_alpha` | their parameters: s of the gaussian (0.1) and Cauchy (0.05) steps as a share of ub − lb, the share of noisy steps in a mixture (0.1), BLX's α (0.5) |
 | `sbx_var_prob` | SBX's share of crossed variables (0.5) for this run |
 | `bound_repair` | a word: `clip`, `reflect`, `random`, `midpoint`, `resample`, `wrap` or `native` — what an operator that can leave the box does with the variables it put outside (DE in MOEA/D-DE, MOEA/D-DRA and LIS/LCS; Liu & Li's operators; DCEA, HLMEA and NAEMO); each keeps its own default, and the others report it as ignored (`operators/bound_repair.hpp`) |

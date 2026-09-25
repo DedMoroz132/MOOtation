@@ -108,6 +108,34 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Set comparisons and two indicators (task 2, D4-D7). `r2`, the discrete R2 on
+  `hv_h`'s Das-Dennis lattice, a final or trajectory metric for four
+  objectives and more (`--recompute r2` adds it to a finished campaign).
+  `--seed-distance` (D4): the chamfer distance between the non-dominated sets
+  of two seeds in normalised variables, beside `pdist`. `--eps-table` (D6):
+  the binary multiplicative epsilon between every two algorithms per problem,
+  on raw non-negative objectives. `--magnitude` (D7): the magnitude of the
+  dominated set (Emmerich 2026) against `hv_h` at up to three objectives,
+  Kendall's tau per problem and the mean ranks — an experiment on
+  `all58_v2`'s final populations, not a metric. `metrics.das_dennis`,
+  `r2_discrete`, `magnitude`, `chamfer`, `eps_mult`.
+- Multi-parent crossovers (task 2, B2): `spx`, `rex`, `undx` and `pcx`, words
+  of the `crossover` knob in NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and
+  SMS-EMOA (`operators/multi_parent.hpp`). SPX draws uniformly in the simplex
+  of n + 1 parents expanded √(n + 2) times about its centre (Tsutsui,
+  Yamamura & Higuchi, GECCO 1999, with the expansion rate of Higuchi, Tsutsui
+  & Yamamura, PPSN 2000, as in Tanabe & Ishibuchi, GECCO 2019, under which
+  the children's covariance is the parents'); REX
+  adds Σ ξ_j(x_j − g), ξ_j ~ N(0, 1/n), to the centre g of n + 1 parents
+  (Akimoto et al., 2009); UNDX draws the symmetric pair of Ono & Kobayashi
+  about the midpoint of two parents, spread α = 0.5 along them and, by a
+  third, β = 0.35 across; PCX draws about one of three parents with
+  σ_ζ = σ_η = 0.1 (Deb, Anand & Joshi, Evol. Comput. 2002). The pair is the
+  algorithm's own; the other parents come from its own mating selection, all
+  different (MP-6), and are drawn only when the pair is crossed, with
+  probability `pc`. `bound_repair` applies, `reflect` provisionally;
+  `resample` is refused. Every algorithm at its defaults returns what it did
+  (tools/compat_check.py).
 - GDE3, SMS-EMOA and the steady-state MO-CMA-ES (task 2, C3, first queue).
   `gde3` (Kukkonen & Lampinen, CEC 2005): a DE/rand/1/bin trial per member,
   both kept when neither dominates, pruned by non-dominated sorting and a
@@ -115,13 +143,16 @@ always listed under **Changed** or **Removed**.
   of the paper (violations compared per constraint); `F` and `CR` knobs,
   0.2/0.2 by default (the paper's setting on its test problems), and
   `bound_repair` for its DE, `reflect` by default. `sms_emoa` (Emmerich, Beume
-  & Naujoks, EMO 2005, with Beume's 2011 thesis for the adaptive reference
-  point nad + 1 — the EJOR 2007 paper is not in the corpus): (μ+1), SBX
+  & Naujoks, EMO 2005, and Beume, Naujoks & Emmerich, EJOR 2007, with Beume's
+  2011 thesis for the adaptive reference point nad + 1, which EJOR uses from
+  three objectives and this implementation at two as well, SMS-4): (μ+1), SBX
   η_c = 15 and PM η_m = 20, the least hypervolume contributor of the worst
-  front removed. `mo_cma_es` (Voß, Hansen & Igel, GECCO 2010): (μ+1) with
-  success meaning "selected", per-individual step size, evolution path and
-  covariance matrix, the paper's constants, penalised box constraints (Eq. 5),
-  the search in box-normalised coordinates. Hypervolume contributions
+  front removed (EJOR's basic Reduce, not its "dp" variant). `mo_cma_es`
+  (Voß, Hansen & Igel, GECCO 2010, after Igel, Hansen & Roth, Evol. Comput.
+  2007): (μ+1) with success meaning "selected", per-individual step size,
+  evolution path and covariance matrix, the 2010 paper's constants (its
+  p_target is not the 2007 paper's 2/11, MOCMA-9), penalised box constraints
+  (Eq. 5), the search in box-normalised coordinates. Hypervolume contributions
   (`include/mootation/hv_contribution.hpp`, `_core.hv_contributions`) are
   exact at two and three objectives and Monte-Carlo, each point in its own
   bounding box, from four. Declared readings in each header. The public list
@@ -145,8 +176,8 @@ always listed under **Changed** or **Removed**.
   `campaign_all.toml`, whose all58 runs it postdates.
 - `crowding_space` (task 2, C2): NSGA-II's crowding distance over the
   decision variables instead of the objectives (`decision`; default
-  `objectives`), the idea of DN-NSGA-II (Liang, Yue & Qu, CEC 2016) as the
-  task describes it — that paper is not in the corpus, and the header says so.
+  `objectives`): one of the two changes of DN-NSGA-II (Liang, Yue & Qu, CEC
+  2016), whose niched mating pool is not implemented; the header says which.
 - `tools/compat_check.py` reports an algorithm the baseline does not have as
   new instead of changed.
 - Operators (task 2, B1-B3): the mutations `gaussian`, `cauchy`,
@@ -390,6 +421,30 @@ always listed under **Changed** or **Removed**.
   measured difference).
 
 ### Fixed
+
+- `MOOTATION_DEFINE_PROBLEM` tested its compile-time constraint count with a
+  plain `if`, which MSVC 14.44 at `/W4 /WX` rejects as a constant condition
+  (C4127), so `examples/benchmark_problem.cpp` did not build there; it is
+  `if constexpr` now. The `crossover` and `mutation` knobs were documented
+  for four algorithms (`settings.hpp`, the binding, docs/embedding.md);
+  SMS-EMOA takes both as well.
+
+- Headers and docstrings checked against the papers that were missing
+  (Igel, Hansen & Roth 2007; Beume, Naujoks & Emmerich 2007; Deb, Anand &
+  Joshi 2002; Higuchi, Tsutsui & Yamamura 2000; Eshelman & Schaffer 1993;
+  Liang, Yue & Qu 2016; Singh, Bhattacharjee & Ray 2019; Ishibuchi et al.
+  2015 and 2016; Brockhoff, Wagner & Trautmann 2015); no code changed.
+  SMS-1 called EJOR's "dp" variant the EJOR version: EJOR has both, and the
+  basic Reduce is the one implemented; SMS-4 now says that at two objectives
+  EJOR and the 2005 paper always keep the extremes, which this
+  implementation does not. MO-CMA-ES: the initial state is the 2007 paper's;
+  MOCMA-9 declares that the 2010 paper's p_target, (5 + √(1/2))⁻¹, is not
+  the 2007 paper's 2/11 at λ = 1. DSS departs from Singh et al.'s Algo. 1 in
+  three ways (the M per-objective minima as seeds, the d+ distance, no
+  filtering), now said in dss.hpp and archive.py, where "indicator-neutral"
+  overstated it. GD+ is not Pareto-compliant, not even weakly, and the
+  metric's description says so. `crowding_space = decision` is one of
+  DN-NSGA-II's two changes, not DN-NSGA-II.
 
 - `poly_mutation.hpp` cited Deb & Deb 2014 at "pp. 177-178"; the article is
   Int. J. AISC 4(1), pp. 1-28, and the settings are in its §5. `sbx.hpp`

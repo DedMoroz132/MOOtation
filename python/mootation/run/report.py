@@ -21,6 +21,13 @@ The campaign CLI (python -m mootation.run.campaign) calls these:
   ecdf_report       --ecdf METRIC: the COCO-style runtime ECDF over (run,
                     target) pairs, targets at fixed distances from the best
                     known value, with the interpolation between records named.
+  seed_distance     --seed-distance: whether the seeds find the same solutions,
+                    the chamfer distance between runs' non-dominated sets in
+                    normalised variables (task 2, D4).
+  eps_table         --eps-table: the binary multiplicative epsilon between
+                    every two algorithms, per problem (D6).
+  magnitude_experiment  --magnitude: the magnitude of the dominated set
+                    against hv_h, at up to three objectives (experiment D7).
 
 Every table marks with '*' the algorithms whose curves depend on the share of
 the budget spent (postprocess.BUDGET_SCHEDULED).
@@ -372,4 +379,213 @@ def format_bias(rep: dict) -> str:
             lines.append(f"  {mark_budget(a)[:20]:<20}{e['runs']:>5}{e['chi2']:>10.1f}"
                          f"{e['p_min']:>10.2g}{e['edge']:>8.3f}{e['edge_sd']:>6.3f}"
                          f"{e['centre']:>8.3f}{e['centre_sd']:>6.3f}")
+    return "\n".join(lines)
+
+
+# ── task 2, D4, D6, D7: set comparisons read from the final populations ─────
+def _final_sets(rows: list):
+    """{(problem, algorithm): [(F, X) of every finished run]}, from final.csv."""
+    from ..benchmarks import get as bench_get
+    from .campaign import _read_points
+    from pathlib import Path
+    out: dict = {}
+    for r in rows:
+        if r.get("status") != "done":
+            continue
+        p = bench_get(r["problem"])
+        F, X = _read_points(Path(r["dir"]) / "final.csv", p.n_obj, p.n_vars)
+        if F is None or not len(F):
+            continue
+        out.setdefault((r["problem"], r["algorithm"]), []).append((F, X))
+    return out
+
+
+def seed_distance(rows: list) -> dict:
+    """D4: do different seeds find the same solutions?
+
+    Per (problem, algorithm): the chamfer distance between the non-dominated
+    solutions of two runs, variables normalised by the bounds (cyclic ones
+    wrapped), averaged over every pair of seeds, beside the median pdist — the
+    spread WITHIN one run's set. The measure needs no reference front, so it
+    would suit a calibration problem as well; a campaign, and so this table,
+    runs registry problems only.
+    """
+    import itertools
+    from ..benchmarks import get as bench_get
+    from . import metrics as M
+    out: dict = {}
+    for (prob, alg), runs in sorted(_final_sets(rows).items()):
+        p = bench_get(prob)
+        sets = [X[M.nondominated_mask(F)] for F, X in runs if X is not None and len(X)]
+        if len(sets) < 2:
+            continue
+        pairs = [M.chamfer(a, b, bounds=p.bounds, cyclic=p.cyclic_vars)
+                 for a, b in itertools.combinations(sets, 2)]
+        spread = [M.pairwise_distance(s, bounds=p.bounds, cyclic=p.cyclic_vars)
+                  for s in sets if len(s) > 1]
+        out[(prob, alg)] = {"runs": len(sets), "pairs": len(pairs),
+                            "chamfer": sum(pairs) / len(pairs),
+                            "chamfer_max": max(pairs),
+                            "pdist": _median(spread) if spread else None}
+    return out
+
+
+def format_seed_distance(rep: dict) -> str:
+    lines = ["do the seeds find the same solutions? chamfer distance between the "
+             "non-dominated sets of two runs in normalised variables, mean (and worst) "
+             "over the pairs of seeds, beside pdist, the spread inside one run's set; "
+             "chamfer well below pdist: the seeds agree"]
+    if not rep:
+        lines.append("(no algorithm with two finished runs on a problem)")
+    for prob in sorted({p for p, _ in rep}):
+        rs = sorted(((a, e) for (p, a), e in rep.items() if p == prob),
+                    key=lambda t: t[1]["chamfer"])
+        lines.append(f"\n{prob}")
+        lines.append(f"  {'algorithm':<20}{'runs':>5}{'chamfer':>10}{'worst':>10}{'pdist':>10}")
+        for a, e in rs:
+            pd = f"{e['pdist']:>10.4f}" if e["pdist"] is not None else f"{'-':>10}"
+            lines.append(f"  {mark_budget(a)[:20]:<20}{e['runs']:>5}{e['chamfer']:>10.4f}"
+                         f"{e['chamfer_max']:>10.4f}{pd}")
+    return "\n".join(lines)
+
+
+def eps_table(rows: list) -> dict:
+    """D6: the binary multiplicative ε between every two algorithms, per problem.
+
+    {problem: {(A, B): median over every pair of runs (one of A, one of B) of
+    I_ε×(A, B)}}, on the raw objective values: no reference front and no frame,
+    and a rescaled objective changes nothing. A problem with a negative
+    objective value anywhere is left out (the indicator needs values ≥ 0).
+    """
+    from . import metrics as M
+    sets = _final_sets(rows)
+    out: dict = {}
+    for prob in sorted({p for p, _ in sets}):
+        algs = sorted(a for p, a in sets if p == prob)
+        cell: dict = {}
+        ok = True
+        for a in algs:
+            for b in algs:
+                if a == b:
+                    continue
+                vals = [M.eps_mult(Fa, Fb) for Fa, _ in sets[(prob, a)]
+                        for Fb, _ in sets[(prob, b)]]
+                if any(v is None for v in vals):
+                    ok = False
+                    break
+                cell[(a, b)] = _median(vals)
+            if not ok:
+                break
+        if ok and cell:
+            out[prob] = cell
+    return out
+
+
+def format_eps_table(rep: dict) -> str:
+    lines = ["binary multiplicative epsilon I(row, column): the factor by which the row's "
+             "set, stretched, weakly dominates the column's; median over the pairs of "
+             "runs, raw objective values (none negative). The row is better than the "
+             "column where I(row, col) <= 1 < I(col, row), marked '<'"]
+    if not rep:
+        lines.append("(no problem whose objective values are all non-negative)")
+    for prob, cell in rep.items():
+        algs = sorted({a for a, _ in cell})
+        lines.append(f"\n{prob}")
+        lines.append(f"  {'':<16}" + "".join(f"{mark_budget(b)[:11]:>12}" for b in algs))
+        for a in algs:
+            row = []
+            for b in algs:
+                if a == b:
+                    row.append(f"{'-':>12}")
+                    continue
+                v, w = cell[(a, b)], cell[(b, a)]
+                mark = "<" if v <= 1.0 < w else " "
+                row.append(f"{v:>11.4g}{mark}")
+            lines.append(f"  {mark_budget(a)[:16]:<16}" + "".join(row))
+    return "\n".join(lines)
+
+
+def _kendall_tau(x, y):
+    """Kendall's tau-b of two paired sequences; None when either is constant."""
+    n = len(x)
+    conc = disc = tx = ty = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            dx, dy = x[i] - x[j], y[i] - y[j]
+            if dx == 0 and dy == 0:
+                continue
+            if dx == 0:
+                tx += 1
+            elif dy == 0:
+                ty += 1
+            elif (dx > 0) == (dy > 0):
+                conc += 1
+            else:
+                disc += 1
+    den = math.sqrt((conc + disc + tx) * (conc + disc + ty))
+    return None if den == 0 else (conc - disc) / den
+
+
+def magnitude_experiment(rows: list, *, max_m: int = 3) -> dict:
+    """D7: would the magnitude of the dominated set rank the algorithms as hv_h does?
+
+    On every problem with at most max_m objectives, each finished run's final
+    population is measured by magnitude (metrics.magnitude) in hv_h's frame —
+    objectives normalised by the problem's ideal and nadir, anchor 1 + 1/H —
+    and by hv_h (recorded, or computed when the run has none). Per problem:
+    the algorithms' median values ranked both ways, and Kendall's tau between
+    the two orders; over the problems, each algorithm's mean rank by each.
+    """
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    from . import metrics as M
+    mag: dict = {}
+    hvh: dict = {}
+    for (prob, alg), runs in _final_sets(rows).items():
+        p = bench_get(prob)
+        if p.n_obj > max_m or p.ideal is None or p.nadir is None:
+            continue
+        scale = 1.0 + 1.0 / M.lattice_h(p.n_obj, int(p.pop_size))
+        for F, _ in runs:
+            mag.setdefault(prob, {}).setdefault(alg, []).append(
+                M.magnitude(F, p.ideal, p.nadir, ref_scale=scale))
+            h, _ = M.hypervolume(np.asarray(F, float), p.ideal, p.nadir, ref_scale=scale)
+            hvh.setdefault(prob, {}).setdefault(alg, []).append(float(h))
+    rm = problem_ranks(mag, lower_better=False)
+    rh = problem_ranks(hvh, lower_better=False)
+    per: dict = {}
+    for prob in sorted(rm):
+        algs = sorted(rm[prob])
+        tau = _kendall_tau([rm[prob][a] for a in algs], [rh[prob][a] for a in algs])
+        moved = sorted(((a, rh[prob][a], rm[prob][a]) for a in algs),
+                       key=lambda t: -abs(t[1] - t[2]))[:3]
+        per[prob] = {"tau": tau, "algorithms": len(algs), "moved": moved}
+    mean: dict = {}
+    for alg in sorted({a for d in rm.values() for a in d}):
+        a = [rm[p][alg] for p in rm if alg in rm[p]]
+        b = [rh[p][alg] for p in rh if alg in rh[p]]
+        mean[alg] = (sum(b) / len(b), sum(a) / len(a), len(a))
+    return {"per_problem": per, "mean_ranks": mean, "max_m": max_m}
+
+
+def format_magnitude(rep: dict) -> str:
+    per, mean = rep["per_problem"], rep["mean_ranks"]
+    lines = [f"magnitude against hv_h on the problems with at most {rep['max_m']} objectives "
+             "(both in hv_h's frame; experiment D7, not a campaign metric): Kendall's tau "
+             "between the two orders of the algorithms' medians, and the algorithms whose "
+             "rank moves most (hv_h rank -> magnitude rank)"]
+    if not per:
+        lines.append("(no finished run on such a problem)")
+        return "\n".join(lines)
+    taus = [e["tau"] for e in per.values() if e["tau"] is not None]
+    for prob, e in per.items():
+        t = f"{e['tau']:6.3f}" if e["tau"] is not None else "     -"
+        moved = ", ".join(f"{mark_budget(a)[:14]} {h:g}->{m:g}"
+                          for a, h, m in e["moved"] if h != m)
+        lines.append(f"  {prob[:18]:<18} tau {t}   {moved or 'same order'}")
+    if taus:
+        lines.append(f"\nmean tau over {len(taus)} problems: {sum(taus) / len(taus):.3f}")
+    lines.append(f"\n  {'algorithm':<20}{'rank hv_h':>10}{'rank mag':>10}{'problems':>10}")
+    for alg, (h, m, n) in sorted(mean.items(), key=lambda t: t[1][0]):
+        lines.append(f"  {mark_budget(alg)[:20]:<20}{h:>10.2f}{m:>10.2f}{n:>10}")
     return "\n".join(lines)

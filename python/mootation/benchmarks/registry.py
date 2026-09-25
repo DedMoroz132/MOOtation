@@ -244,9 +244,9 @@ def _pf_dtlz7(M: int, n: int) -> np.ndarray:
 # DTLZ5, DTLZ6, MaF6 and WFG3 were designed to have a degenerate (curve-shaped)
 # Pareto front, and the samplers below build exactly that curve. Ishibuchi,
 # Masuda & Nojima, "Pareto Fronts of Many-Objective Degenerate Test Problems",
-# IEEE TEC 20(5):807-813, 2016 (doi:10.1109/TEVC.2015.2505784) showed that the
-# TRUE fronts also have a non-degenerate part (as the 2026-09-22 task sums the
-# paper up; the paper itself is not in the local library):
+# IEEE TEVC 20(5):807-813, 2016 (doi:10.1109/TEVC.2015.2505784) showed that the
+# TRUE fronts also have a non-degenerate part (Section IV for WFG3; Section
+# II-B recalls DTLZ5 and DTLZ6 from Huband et al. and Saxena et al.):
 #
 #     DTLZ5, DTLZ6   non-degenerate part from M >= 4
 #     WFG3           non-degenerate part from M >= 3
@@ -304,7 +304,7 @@ def degenerate_subset_note(name: str) -> str | None:
         return None
     return (f"{name}: the reference front is the DEGENERATE part only. "
             f"{stem} has a non-degenerate part from {m_from} objectives "
-            f"(Ishibuchi, Masuda & Nojima, IEEE TEC 20(5), 2016), so IGD and "
+            f"(Ishibuchi, Masuda & Nojima, IEEE TEVC 20(5), 2016), so IGD and "
             f"IGD+ here are measured against a subset of the true front: "
             f"comparable between algorithms run against this same set, not "
             f"with published numbers.")

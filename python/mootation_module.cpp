@@ -515,7 +515,7 @@ PyResult run_core(const RunConfig& cfg)
         auto c = ops::parse_crossover(*cfg.crossover);
         if (!c)
             throw std::invalid_argument("crossover = '" + *cfg.crossover +
-                                        "': one of sbx, uniform, blx_alpha");
+                                        "': one of sbx, uniform, blx_alpha, spx, rex, undx, pcx");
         note(apply_crossover(alg, *c), "crossover");
     }
     if (cfg.mutation) {
@@ -757,11 +757,11 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("CR",              &RunConfig::CR)
         .def_readwrite("div",             &RunConfig::div)
         .def_readwrite("crossover",       &RunConfig::crossover,
-                       "sbx (the default), uniform or blx_alpha: nsga2, ibea_eplus, "
-                       "spea2_sde, agemoea")
+                       "sbx (the default), uniform, blx_alpha, or the multi-parent spx, rex, "
+                       "undx, pcx: nsga2, ibea_eplus, spea2_sde, agemoea, sms_emoa")
         .def_readwrite("mutation",        &RunConfig::mutation,
                        "polynomial (the default), gaussian, cauchy, uniform_reset, mixture or "
-                       "mixture_cauchy: the same four and moead_de")
+                       "mixture_cauchy: the same five and moead_de")
         .def_readwrite("dms_init",        &RunConfig::dms_init,
                        "dms: the initial list, line (n points on the diagonal, the paper's "
                        "best) or single (the centre of the box)")

@@ -23,56 +23,75 @@ namespace mootation {
 // M. Emmerich, N. Beume, B. Naujoks, "An EMO Algorithm Using the Hypervolume
 // Measure as Selection Criterion", EMO 2005, LNCS 3410, pp. 62-76,
 // doi:10.1007/978-3-540-31880-4_5                     (source: emmerich2005)
+// N. Beume, B. Naujoks, M. Emmerich, "SMS-EMOA: Multiobjective selection
+// based on dominated hypervolume", EJOR 181(3):1653-1669, 2007,
+// doi:10.1016/j.ejor.2006.08.008                          (source: beume2007)
+// — the journal version: the 2005 algorithm (Algorithms 1-2, Eq. 3), the
+// reference point (§2.1.3), the "dp" variant (§2.2), the settings (§3.2).
 // N. Beume, "Hypervolume-based Metaheuristics for Multiobjective
 // Optimization", PhD thesis, TU Dortmund, 2011, §3.1   (source:
 //                                   smsemoa_beume2011_thesis_substitute)
-// The journal version the task names — N. Beume, B. Naujoks, M. Emmerich,
-// EJOR 181(3):1653-1669, 2007, doi:10.1016/j.ejor.2006.08.008 — is NOT in
-// this project's corpus; the thesis, which restates the algorithm
-// (Algorithm 3.1) and the reference point it recommends, stands in for it.
+// — restates the basic algorithm (Algorithm 3.1) and gives the parameters.
 //
 // A steady-state (μ+1) scheme; one step() is one offspring, one evaluation:
 //   1. two parents drawn uniformly from the population, with replacement
 //      (thesis §3.1, "contrarily to the binary tournament used in most other
 //      EMOA");
 //   2. SBX, one of its two children chosen uniformly, then polynomial
-//      mutation (thesis Algorithm 3.2; the 2005 paper's footnote 1: the
+//      mutation (thesis Algorithm 3.2; footnote 1 of both papers: the
 //      operators of ε-MOEA, from the KanGAL code);
 //   3. Q = P ∪ {q}; non-dominated sorting of Q into F_1 … F_v;
 //   4. if |F_v| = 1 that point goes; otherwise the point of F_v with the
-//      smallest hypervolume contribution ΔS(s, F_v) (2005, Eq. 3) goes, the
-//      contributions taken against the ADAPTIVE reference point
-//      r = nad(Q) + (1, …, 1) (thesis Def. 2.6 and Algorithm 3.1, line 9:
-//      "the maximal value of the population plus one" in every objective).
+//      smallest hypervolume contribution ΔS(s, F_v) (EJOR Algorithm 2 and
+//      Eq. 3, as in 2005) goes, the contributions taken against the ADAPTIVE
+//      reference point r = nad(Q) + (1, …, 1) (thesis Def. 2.6 and Algorithm
+//      3.1, line 9: "the maximal value of the population plus one" in every
+//      objective; EJOR §2.1.3 at M ≥ 3; at M = 2 see SMS-4).
 // Parameters (thesis §3.4.1, "chosen according to the studies of Deb et al.
-// (2003)" — the ε-MOEA settings the 2005 paper used): η_c = 15, η_m = 20,
-// p_c = 1, p_m = 1/n. SBX and PM are the NSGA-II implementation's
+// (2003)"; EJOR §3.2 gives no values, only "the same parameter settings as
+// in the benchmark from Deb et al."): η_c = 15, η_m = 20, p_c = 1,
+// p_m = 1/n. EJOR's runs: μ = 100; 20 000 evaluations on ZDT, 30 000 on
+// DTLZ, 100 000 on DTLZ3. SBX and PM are the NSGA-II implementation's
 // (operators/sbx.hpp, poly_mutation.hpp), as in the thesis's experiments.
 // The crossover and mutation are switchable as in NSGA-II (task 2, B3).
 //
 // Declared readings and deviations:
-//   SMS-1. Several fronts. The EJOR version is reported (thesis §3.1,
-//     "Variants", Eq. 3.1) to use, when Q has dominated points, the number
-//     of points dominating each point of F_v instead of the hypervolume; the
-//     thesis does not consider that variant and recommends the adaptive
-//     reference point. Implemented: Algorithm 3.1 of the thesis — the
-//     hypervolume on the worst front whether or not there are several.
-//   SMS-2. Contributions (hv_contribution.hpp): exact for M ≤ 3 (Eq. 4 of
-//     the 2005 paper at M = 2, the exclusive hypervolume by WFG at M = 3);
-//     Monte-Carlo for M ≥ 4, as HypE does (task: "при M = 5 — Монте-Карло,
-//     как у HypE"), 10 000 samples a step shared out over the points of F_v,
-//     each point sampled in its own bounding box. set_n_samples changes the
-//     number; set_n_samples(0) makes every M exact.
+//   SMS-1. Several fronts. EJOR has two Reduce procedures: the basic one
+//     (Algorithm 2, Eq. 3, as in 2005) removes the smallest ΔS of the worst
+//     front F_v whatever the number of fronts; "SMS-EMOA dp" (§2.2,
+//     Algorithm 3, Eq. 5) removes, when there are several fronts, the point
+//     of F_v dominated by the most points of Q, else the smallest ΔS of F_1.
+//     Both are benchmarked (Tables 1-2); the thesis (§3.1, "Variants",
+//     Eq. 3.1) credits dp to Naujoks et al. (CEC 2005) and leaves it out.
+//     Implemented: the basic one (the thesis's Algorithm 3.1); dp is not.
+//   SMS-2. Contributions (hv_contribution.hpp): exact for M ≤ 3 (EJOR Eq. 6,
+//     the 2005 paper's Eq. 4, at M = 2; the exclusive hypervolume by WFG at
+//     M = 3, where EJOR §2.3 uses the exact O(μ³) grid algorithm of Naujoks
+//     et al.); Monte-Carlo for M ≥ 4, which EJOR does not cover (it calls
+//     SMS-EMOA "hardly applicable" there, §5), as HypE does (task: "при
+//     M = 5 — Монте-Карло, как у HypE"), 10 000 samples a step shared out
+//     over the points of F_v, each point sampled in its own bounding box.
+//     set_n_samples changes the number; set_n_samples(0) makes every M exact.
 //   SMS-3. A tie in the smallest contribution removes the point that comes
 //     first in the population, the offspring last.
-//   SMS-4. The adaptive reference point is an absolute offset of 1 in every
-//     objective, so the selection depends on the objectives' units (see
-//     tests/test_scale_invariance.cpp). That is the thesis's definition.
+//   SMS-4. r = nad(Q) + (1, …, 1), recomputed every step, at every M. That
+//     is EJOR's rule for M ≥ 3 ("the vector of the currently worst objective
+//     values increased by 1.0", §2.1.3) and the thesis's for every M
+//     (Def. 2.6). At M = 2 EJOR and the 2005 paper use none: they always keep
+//     the two extremes of the worst front (EJOR §2.1.3 and Eq. 6; 2005
+//     §3.2), which leaves the order independent of the objectives' scale.
+//     Here M = 2 follows the thesis too, which records the 2005 rule and
+//     adds "However, the usage of the adaptive reference point is
+//     recommended" (§3.1, "Variants of SMS-EMOA") — so an extreme of F_v can
+//     go. The offset is absolute, so the selection depends on the
+//     objectives' units (see tests/test_scale_invariance.cpp).
 //   SMS-5. constraint_mode NONE (the default) ignores constraints;
 //     FEASIBILITY and CDP sort by Deb's constrained domination (a feasible
 //     point beats an infeasible one, two infeasible ones compare by their
-//     violation); EPS_CONSTRAINT acts as FEASIBILITY. The papers have no
-//     constrained experiments.
+//     violation); EPS_CONSTRAINT acts as FEASIBILITY. The papers give the
+//     selection no constraint handling; EJOR's constrained airfoil case
+//     (§4) repeats the variation up to 1000 times to meet the geometric
+//     constraints and says no more.
 //   SMS-6. A binary or mixed genome uses the library's uniform crossover and
 //     bit-flip mutation, as NSGA-II does; the papers are real-valued.
 // ============================================================================
@@ -218,8 +237,11 @@ public:
         const int a = pick(rng_), b = pick(rng_);
         const std::vector<double> x1 = vault.variables_of(static_cast<std::size_t>(a));
         const std::vector<double> x2 = vault.variables_of(static_cast<std::size_t>(b));
+        // one more parent, uniformly as the two, for the crossovers that take
+        // more than two (B2)
+        auto draw = [&] { return vault.variables_of(static_cast<std::size_t>(pick(rng_))); };
         std::vector<double> c1, c2;
-        xover_.apply(x1, x2, c1, c2, bounds, eta_c_, pc_, rng_);
+        xover_.apply_any(x1, x2, draw, c1, c2, bounds, eta_c_, pc_, rng_);
         std::uniform_int_distribution<int> coin(0, 1);
         const bool second = coin(rng_) == 1;
         std::vector<double>& child = second ? c2 : c1;

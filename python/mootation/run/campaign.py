@@ -1315,6 +1315,18 @@ def main(argv: list[str] | None = None) -> int:
                          "per variable a chi-square against uniform over 10 bins, and the "
                          "shares near the bounds and in the centre (the uninformative "
                          "problems make any preference the algorithm's own)")
+    ap.add_argument("--seed-distance", action="store_true",
+                    help="print whether each algorithm's seeds find the same solutions: the "
+                         "chamfer distance between the non-dominated sets of two runs in "
+                         "normalised variables, over every pair of seeds, beside pdist")
+    ap.add_argument("--eps-table", action="store_true",
+                    help="print the binary multiplicative epsilon between every two "
+                         "algorithms per problem, median over the pairs of runs, on the raw "
+                         "objectives (no reference, no frame; values must be >= 0)")
+    ap.add_argument("--magnitude", action="store_true",
+                    help="experiment D7: rank the algorithms by the magnitude of the "
+                         "dominated set and by hv_h on the problems with at most three "
+                         "objectives, and print how far the two orders agree")
     ap.add_argument("--interpolation", choices=("step", "linear"), default="step",
                     help="with --ecdf: a target reached between two records is charged to the "
                          "later record (step, the default) or interpolated (linear)")
@@ -1385,6 +1397,11 @@ def main(argv: list[str] | None = None) -> int:
         print("--scenario archive reads the end of a run: it does not combine with --at or "
               "--ecdf, which read the trajectory", file=sys.stderr)
         return 1
+    set_tables = args.seed_distance or args.eps_table or args.magnitude
+    if set_tables and args.scenario == "archive":
+        print("--seed-distance, --eps-table and --magnitude read the final populations "
+              "(final.csv); drop --scenario archive", file=sys.stderr)
+        return 1
     if (args.ci or args.by) and not args.ranks:
         print("--ci and --by go with --ranks METRIC", file=sys.stderr)
         return 1
@@ -1408,8 +1425,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"recomputed {', '.join(names)} ({args.scenario}): {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
     rows = None
-    if args.bias or any(v is not None for v in (args.ranks, args.compare, args.gap,
-                                                args.zero_share, args.ecdf)):
+    if args.bias or set_tables or any(v is not None for v in (
+            args.ranks, args.compare, args.gap, args.zero_share, args.ecdf)):
         from . import report as R
         rows = scenario_rows(scan_results(root), args.scenario)
         if only_problems is not None:
@@ -1449,6 +1466,12 @@ def main(argv: list[str] | None = None) -> int:
                                                   interpolation=args.interpolation)))
             if args.bias:
                 print(R.format_bias(R.structural_bias(rows)))
+            if args.seed_distance:
+                print(R.format_seed_distance(R.seed_distance(rows)))
+            if args.eps_table:
+                print(R.format_eps_table(R.eps_table(rows)))
+            if args.magnitude:
+                print(R.format_magnitude(R.magnitude_experiment(rows)))
         except ValueError as e:
             print(str(e), file=sys.stderr)
             return 1

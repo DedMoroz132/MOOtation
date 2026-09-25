@@ -79,15 +79,16 @@ inline const std::vector<std::string>& knob_names() {
 // it out of this file), an algorithm without the knob reports it as ignored.
 //   bound_repair  what an operator that can leave the box does with the
 //                 variables it put outside (operators/bound_repair.hpp)
-//   crossover     nsga2, ibea_eplus, spea2_sde, agemoea (operators/real_crossover.hpp)
-//   mutation      the same four and moead_de (operators/real_mutation.hpp)
+//   crossover     nsga2, ibea_eplus, spea2_sde, agemoea, sms_emoa
+//                 (operators/real_crossover.hpp, multi_parent.hpp)
+//   mutation      the same five and moead_de (operators/real_mutation.hpp)
 //   crowding_space nsga2: its crowding distance over the objectives or the
 //                 decision variables
 //   dms_init      dms: the initial list, n points on the diagonal or one
 inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text_knobs() {
     static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
         {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
-        {"crossover",    {"sbx", "uniform", "blx_alpha"}},
+        {"crossover",    {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx"}},
         {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                           "mixture_cauchy"}},
         {"crowding_space", {"objectives", "decision"}},

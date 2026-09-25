@@ -398,18 +398,24 @@ public:
         int off_base = vault.expand(n);  // [off_base, off_base+n) — offspring slots
         double pm = resolved_pm(vault);
 
+        // binary tournament on the fitness; draw: one more parent, for the
+        // crossovers that take more than two (B2)
+        auto pick = [&] {
+            int a = dist_int(rng_), b = dist_int(rng_);
+            return (vault.get_ind(a).fitness > vault.get_ind(b).fitness) ? a : b;
+        };
+        auto draw = [&] { return vault.variables_of(pick()); };
+
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         for (int i = 0; i < n; i += 2) {
-            int a = dist_int(rng_), b = dist_int(rng_);
-            int p1 = (vault.get_ind(a).fitness > vault.get_ind(b).fitness) ? a : b;
-            int cc = dist_int(rng_), d = dist_int(rng_);
-            int p2 = (vault.get_ind(cc).fitness > vault.get_ind(d).fitness) ? cc : d;
+            int p1 = pick();
+            int p2 = pick();
 
             for (int j = 0; j < vault.vars_n(); ++j) {
                 pv1[j] = vault.get_variable(p1, j);
                 pv2[j] = vault.get_variable(p2, j);
             }
-            xover_.apply(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
+            xover_.apply_any(pv1, pv2, draw, c1, c2, bounds, eta_c_, pc_, rng_);
             mut_.apply(c1, bounds, eta_m_, pm, rng_);
             mut_.apply(c2, bounds, eta_m_, pm, rng_);
 

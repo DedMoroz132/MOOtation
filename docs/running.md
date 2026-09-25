@@ -188,7 +188,8 @@ does not exist, with near misses; the names are `DTLZ2_3D`, not `DTLZ2_M3`.
 DTLZ5, DTLZ6, MaF6 and WFG3 were designed with a degenerate, curve-shaped
 Pareto front, but the true fronts of DTLZ5 and DTLZ6 from 4 objectives and of
 WFG3 from 3 also have a non-degenerate part (Ishibuchi, Masuda & Nojima, IEEE
-TEC 20(5), 2016), and MaF6's from 7. At those sizes the reference front is now
+TEVC 20(5), 2016), and — by this library's own analysis — MaF6's from 7. At
+those sizes the reference front is now
 the full one, built by `mootation.benchmarks.fronts_full` in the problem's
 reduced coordinates and kept only if every point survives an independent
 sample of 10^6, a local search for a dominating point and an exact test
@@ -279,6 +280,7 @@ final population (the same list when omitted):
 | `pdist` | the mean distance between two solutions in normalised variables: spread in the decision space, no reference needed | — |
 | `tau90` | the 0.9 quantile of the IGD+ distances d⁺(z, A) = min over a of ‖max(a − z, 0)‖ over the reference sample, normalised like `igdp_norm`: 90 % of the front lies within `tau90` of the set. `igdp_norm` is the mean of the same distances; one reference point far from everything moves their maximum and not this. Weakly Pareto-compliant, like IGD+. With it, `coverage_curve` gives the share of the sample within 0.01, 0.02, 0.05, 0.1 and 0.2 | lower |
 | `n_final` | the number of points in the answer. `hv`, IGD+ and ε never get worse when points are added, so when two algorithms answer with sets of different sizes, read them next to this | — |
+| `r2` | discrete R2 (the unary R2 of Brockhoff, Wagner & Trautmann, Evol. Comput. 2015, Def. 4): over the Das–Dennis weights of `hv_h`'s lattice, the mean of the set's best weighted Tchebycheff value max_i w_i·(f_i − ideal_i)/(nadir_i − ideal_i) (`r2_h` is the lattice's H). Weakly Pareto-compliant, and no more points count than there are weights; its cost grows linearly with the number of objectives where the hypervolume turns Monte-Carlo, and it is not 0 where `hv` is. Meant for four objectives and more; the R2 integrated over all weights is Pareto-compliant (Schäpermeier & Kerschke, arXiv:2407.01504, 2024, exact at two objectives; Jaszkiewicz & Zielniewicz, IEEE TEVC 29(4), 2025) | lower |
 
 `gdp` needs a reference front like `igd`; `roi_dist` and `range_cover` need only
 the problem's ideal and nadir, and `nd_share` and `dup_share` nothing at all, so
@@ -402,25 +404,31 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 
 | knob | values |
 |---|---|
-| `crossover` | `sbx`; `uniform` (every variable from one parent at random, the other child the complement — JEGA's shuffle_random for two parents); `blx_alpha` (each variable uniform in [min − αI, max + αI], I the parents' distance, `blx_alpha` = 0.5) |
+| `crossover` | `sbx`; `uniform` (every variable from one parent at random, the other child the complement — JEGA's shuffle_random for two parents); `blx_alpha` (each variable uniform in [min − αI, max + αI], I the parents' distance, `blx_alpha` = 0.5); and four multi-parent, rotation-invariant ones: `spx` (uniform in the parents' simplex expanded √(n+2) times about its centre, n + 1 parents), `rex` (centre + Σ ξ_j(x_j − centre), ξ_j ~ N(0, 1/n), n + 1 parents), `undx` (a normal distribution along the line of two parents, spread across it by a third; three parents, the symmetric pair of children), `pcx` (a normal distribution about one of three parents). The pair is the algorithm's own, the other parents come from its own mating selection, all different; their parameters are the papers' (`operators/multi_parent.hpp`) |
 | `mutation` | `polynomial`; `gaussian`, x + s(ub − lb)·N(0, 1) with `mutation_scale` s = 0.1; `cauchy`, the same with C(0, 1) and s = 0.05; `uniform_reset`, U(lb, ub); `mixture` (`mixture_cauchy`): the polynomial step with probability 1 − `mixture_q` (0.1), the gaussian (Cauchy) one otherwise. Every one mutates each variable with probability `pm`, 1/n by default |
-| `bound_repair` | for the operators above that can leave the box (BLX-α, gaussian, Cauchy): `reflect` by default, provisionally, until experiment E3 picks one |
+| `bound_repair` | for the operators above that can leave the box (BLX-α, the four multi-parent crossovers, gaussian, Cauchy): `reflect` by default, provisionally, until experiment E3 picks one; the multi-parent crossovers refuse `resample` |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
 
 In MOEA/D-DE, `polynomial` is its literal Eq. 7 and every other mutation
 leaves its steps raw for Step 2.3's repair of the whole offspring, as Eq. 7
-does. The operators live in `operators/real_crossover.hpp` and
-`operators/real_mutation.hpp`, with DE/rand/2/bin and DE/best/1/bin (Storn &
-Price's DE/x/y/z notation) in `operators/de_mutation.hpp`.
+does. The operators live in `operators/real_crossover.hpp`,
+`operators/multi_parent.hpp` and `operators/real_mutation.hpp`, with
+DE/rand/2/bin and DE/best/1/bin (Storn & Price's DE/x/y/z notation) in
+`operators/de_mutation.hpp`. The crossover and mutation are switchable in
+NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA; MOEA/D-DE takes the
+mutation.
 
 **Crowding in the decision space.** `crowding_space = "decision"` makes
 NSGA-II compute its crowding distance over the variables instead of the
 objectives: the same formula, each variable's gaps over its range on the
 front. Among equally ranked solutions it keeps those far apart in the
 PARAMETERS, so that different parameter sets with the same objective values
-survive side by side. It is the idea of DN-NSGA-II (Liang, Yue & Qu, CEC
-2016), whose paper is not in the corpus: the knob implements the description
-of it, not the paper's letter. Default `objectives`, the paper's.
+survive side by side. It is one of the two changes of DN-NSGA-II (Liang, Yue
+& Qu, CEC 2016), which swaps the crowding in the objectives for crowding in
+the decision space without giving a formula; the other, a niched mating pool
+(a random solution competes with the nearest of a few random others), is not
+implemented, so the knob does not make NSGA-II into DN-NSGA-II. Default
+`objectives`, NSGA-II's.
 
 **DMS.** Direct MultiSearch (Custódio, Madeira, Vaz & Vicente, SIAM J.
 Optim. 21(3), 2011) is the one algorithm here that is not evolutionary: a
@@ -539,6 +547,9 @@ python -m mootation.run.campaign c.toml --ranks hv --scenario archive    # the r
 python -m mootation.run.campaign c.toml --gap igdp_norm                  # distance to the best known value
 python -m mootation.run.campaign c.toml --zero-share                     # seeds whose hypervolume is 0
 python -m mootation.run.campaign c.toml --ecdf igdp_norm --interpolation linear
+python -m mootation.run.campaign c.toml --seed-distance                  # do the seeds agree in x?
+python -m mootation.run.campaign c.toml --eps-table                      # A against B, no reference
+python -m mootation.run.campaign c.toml --magnitude                      # experiment D7
 ```
 
 - `--reference ALG` (with `--ranks` or `--compare`): on every problem, each
@@ -575,6 +586,34 @@ python -m mootation.run.campaign c.toml --ecdf igdp_norm --interpolation linear
   target reached between two records is charged is stated in the output:
   `step` (the default) charges it to the later record, a pessimistic runtime
   with no assumption; `linear` interpolates the evaluation count.
+- `--seed-distance`: whether different seeds find the same solutions — per
+  problem and algorithm the chamfer distance ½[mean over x of min over y
+  ‖x − y‖ + mean over y of min over x ‖x − y‖] between the non-dominated sets
+  of two runs, variables normalised by the bounds, averaged over every pair of
+  seeds, beside `pdist`, the spread inside one run's set. A chamfer well
+  below `pdist` says the seeds land on the same solutions. The measure needs
+  no reference front, so it would suit a calibration problem as well; a
+  campaign, though, runs registry problems only.
+- `--eps-table`: the binary multiplicative ε, I(A, B) = max over b of min over
+  a of max_i a_i / b_i (Zitzler, Thiele, Laumanns, Fonseca & Grunert da
+  Fonseca, IEEE TEVC 7(2), 2003), between every two algorithms on each
+  problem, the median over the pairs of runs. A is better than B exactly when
+  I(A, B) ≤ 1 < I(B, A), marked `<`. It needs no reference front and no
+  frame and does not change when an objective is rescaled, which is what a
+  calibration's residuals want ("no worse than B by more than 5 % in any
+  residual" is I ≤ 1.05); it needs values ≥ 0, a zero in b being matched only
+  by a zero, and a problem with a negative value is left out. On a benchmark
+  front that touches 0 in some objective, ratios against values near 0 run
+  into the thousands: read it on residuals, not there.
+- `--magnitude`: experiment D7, not a metric. On the problems with at most
+  three objectives, every final population is measured by the magnitude of
+  its dominated region (Emmerich, arXiv 2604.18147, 2026: the sum over the
+  subsets S of the objectives of 2^−|S| times the measure of the region's
+  projection on S, so a point on the boundary of the reference box counts,
+  which it does not for the hypervolume) in `hv_h`'s frame, and by `hv_h`;
+  printed are Kendall's tau between the two orders of the algorithms per
+  problem and the mean ranks by both. Magnitude joins the metrics only if the
+  order it gives is clearly different and the difference can be explained.
 
 Every table marks with `*` the sixteen algorithms whose behaviour follows the
 share of the budget spent (a t/t_max schedule): RVEA, MOEA/D-AWA, AdaW,

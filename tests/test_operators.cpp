@@ -10,8 +10,10 @@
 // SBX:  Deb & Agrawal (1995), Complex Systems 9(2).
 // PM:   NSGA-II reference implementation (mutation.c).
 // DE:   Storn & Price (1997), rand/1/bin.
+// SPX, REX, UNDX, PCX: the sources in operators/multi_parent.hpp.
 // ============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
@@ -255,6 +257,196 @@ void test_determinism()
     check(run(4242) != run(4243), "different seeds produce different streams");
 }
 
+// ── Multi-parent crossovers (operators/multi_parent.hpp) ────────────────────
+// The properties their sources give: SPX with n + 1 parents and the factor
+// √(n + 2), and REX with σ² = 1/(μ − 1), hand the parents' mean g and
+// covariance on (Higuchi, Tsutsui & Yamamura 2000, Theorem 3; Tanabe &
+// Ishibuchi 2019, §2.2) — SPX the covariance (1/μ)·S, REX (1/(μ − 1))·S,
+// S = Σ (x_j − g)(x_j − g)ᵀ. UNDX's pair is symmetric about the parents'
+// midpoint with spread α·d1 along their line and β·d2/√n in every direction
+// across it (Ono, Kita & Kobayashi 1999, Eq. 1-2); PCX's child spreads
+// σ_ζ·|d| along d and σ_η·D̄ across it (Deb, Anand & Joshi, Evol. Comput.
+// 2002, Eq. 2).
+
+using Vec = std::vector<double>;
+
+double dot(const Vec& a, const Vec& b)
+{
+    double s = 0.0;
+    for (std::size_t j = 0; j < a.size(); ++j) s += a[j] * b[j];
+    return s;
+}
+
+void test_spx_rex_statistics()
+{
+    std::cout << "-- SPX and REX hand the parents' mean and covariance on --\n";
+    const std::size_t n = 3, mu = n + 1;
+    const ops::ParentSet P = {{0.1, 0.2, 0.7}, {0.8, 0.1, 0.3}, {0.4, 0.9, 0.5}, {0.6, 0.5, 0.1}};
+    const Vec g = ops::mp_detail::centre(P);
+    Vec S(n * n, 0.0);
+    for (const auto& x : P)
+        for (std::size_t a = 0; a < n; ++a)
+            for (std::size_t b = 0; b < n; ++b) S[a * n + b] += (x[a] - g[a]) * (x[b] - g[b]);
+
+    // Mean and covariance about g of 200 000 children, against scale·S.
+    auto moments = [&](auto child, double scale, const std::string& name) {
+        std::mt19937 rng(2026);
+        const int draws = 200000;
+        Vec mean(n, 0.0), C(n * n, 0.0);
+        for (int t = 0; t < draws; ++t) {
+            const Vec y = child(rng);
+            for (std::size_t a = 0; a < n; ++a) {
+                mean[a] += y[a] / draws;
+                for (std::size_t b = 0; b < n; ++b)
+                    C[a * n + b] += (y[a] - g[a]) * (y[b] - g[b]) / draws;
+            }
+        }
+        double mean_err = 0.0, cov_err = 0.0, largest = 0.0;
+        for (std::size_t a = 0; a < n; ++a) {
+            mean_err = std::max(mean_err, std::abs(mean[a] - g[a]));
+            for (std::size_t b = 0; b < n; ++b) {
+                cov_err = std::max(cov_err, std::abs(C[a * n + b] - scale * S[a * n + b]));
+                largest = std::max(largest, std::abs(scale * S[a * n + b]));
+            }
+        }
+        check(mean_err < 0.005, name + ": the children's mean is the parents' centre");
+        check(cov_err < 0.03 * largest, name + ": the children's covariance is the parents'");
+    };
+    moments([&](std::mt19937& r) { return ops::spx_child(P, std::sqrt(n + 2.0), r); },
+            1.0 / static_cast<double>(mu), "SPX, e = sqrt(n + 2)");
+    moments([&](std::mt19937& r) { return ops::rex_child(P, r); },
+            1.0 / static_cast<double>(mu - 1), "REX, sigma^2 = 1/(mu - 1)");
+}
+
+void test_undx_pair()
+{
+    std::cout << "-- UNDX: a symmetric pair, alpha*d1 along the parents, beta*d2/sqrt(n) across --\n";
+    const std::size_t n = 4;
+    const Vec x1{0.2, 0.3, 0.4, 0.5}, x2{0.6, 0.1, 0.4, 0.7}, x3{0.3, 0.8, 0.2, 0.4};
+    Vec m(n), e1(n), v(n);
+    for (std::size_t j = 0; j < n; ++j) { m[j] = 0.5 * (x1[j] + x2[j]); e1[j] = x2[j] - x1[j]; }
+    const double d1 = std::sqrt(dot(e1, e1));
+    for (double& c : e1) c /= d1;
+    for (std::size_t j = 0; j < n; ++j) v[j] = x3[j] - x1[j];
+    const double along3 = dot(v, e1);
+    for (std::size_t j = 0; j < n; ++j) v[j] -= along3 * e1[j];
+    const double d2 = std::sqrt(dot(v, v));
+
+    std::mt19937 rng(7);
+    const int draws = 100000;
+    bool symmetric = true;
+    double along = 0.0, across = 0.0;
+    for (int t = 0; t < draws; ++t) {
+        const auto pr = ops::undx_pair(x1, x2, x3, 0.5, 0.35, rng);
+        Vec s(n);
+        for (std::size_t j = 0; j < n; ++j) {
+            if (std::abs(pr.first[j] + pr.second[j] - 2.0 * m[j]) > 1e-12) symmetric = false;
+            s[j] = pr.first[j] - m[j];
+        }
+        const double a = dot(s, e1);
+        along  += a * a / draws;
+        across += (dot(s, s) - a * a) / draws;
+    }
+    check(symmetric, "c1 + c2 = 2m in every pair");
+    const double want_along = 0.5 * d1;
+    const double want_across = (n - 1.0) * std::pow(0.35 * d2 / std::sqrt(static_cast<double>(n)), 2);
+    check_close(std::sqrt(along), want_along, 0.02 * want_along, "spread along the parents is alpha*d1");
+    check_close(across, want_across, 0.02 * want_across,
+                "spread across is (n - 1)(beta*d2/sqrt(n))^2 in total");
+}
+
+void test_pcx_child()
+{
+    std::cout << "-- PCX: sigma_zeta*|d| along d, sigma_eta*Dbar across --\n";
+    const std::size_t n = 4;
+    const ops::ParentSet P = {{0.2, 0.3, 0.4, 0.5}, {0.6, 0.1, 0.4, 0.7}, {0.3, 0.8, 0.2, 0.4}};
+    const Vec g = ops::mp_detail::centre(P);
+
+    std::mt19937 rng(11);
+    const int draws = 100000;
+    double along_ratio = 0.0, across_ratio = 0.0;
+    for (int t = 0; t < draws; ++t) {
+        const auto [y, p] = ops::pcx_child(P, 0.1, 0.1, rng);
+        Vec d(n), s(n);
+        for (std::size_t j = 0; j < n; ++j) { d[j] = P[p][j] - g[j]; s[j] = y[j] - P[p][j]; }
+        const double dn2 = dot(d, d);
+        double Dbar = 0.0;
+        for (std::size_t i = 0; i < P.size(); ++i) {
+            if (i == p) continue;
+            Vec r(n);
+            for (std::size_t j = 0; j < n; ++j) r[j] = P[i][j] - g[j];
+            const double k = dot(r, d) / dn2;
+            for (std::size_t j = 0; j < n; ++j) r[j] -= k * d[j];
+            Dbar += std::sqrt(dot(r, r)) / static_cast<double>(P.size() - 1);
+        }
+        const double a = dot(s, d) / std::sqrt(dn2);            // w_zeta*|d|
+        along_ratio  += a * a / dn2 / draws;                     // -> sigma_zeta^2
+        across_ratio += (dot(s, s) - a * a) / (Dbar * Dbar) / draws;   // -> (n-1) sigma_eta^2
+    }
+    check_close(along_ratio, 0.01, 0.0003, "the step along d has variance sigma_zeta^2 |d|^2");
+    check_close(across_ratio, (n - 1.0) * 0.01, 0.0009,
+                "the step across has variance sigma_eta^2 Dbar^2 per direction");
+}
+
+void test_multi_parent_host_entry()
+{
+    std::cout << "-- apply_any: the host's pair, further parents drawn only when used --\n";
+    const std::size_t n = 5;
+    const auto b = unit_bounds(static_cast<int>(n));
+    std::mt19937 pool_rng(3);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    std::vector<Vec> pool(40, Vec(n));
+    for (auto& x : pool) for (double& c : x) c = u(pool_rng);
+    const Vec p1 = pool[0], p2 = pool[1];
+
+    int drawn = 0;
+    std::mt19937 draw_rng(5);
+    std::uniform_int_distribution<std::size_t> any(0, pool.size() - 1);
+    auto draw = [&] { ++drawn; return pool[any(draw_rng)]; };
+
+    ops::CrossoverSpec sbx_spec;                                  // the default
+    Vec a1, a2, b1, b2;
+    std::mt19937 r1(9), r2(9);
+    sbx_spec.apply(p1, p2, a1, a2, b, 20.0, 0.9, r1);
+    sbx_spec.apply_any(p1, p2, draw, b1, b2, b, 20.0, 0.9, r2);
+    check(a1 == b1 && a2 == b2 && drawn == 0,
+          "SBX through apply_any: the same children, no further parent drawn");
+
+    ops::CrossoverSpec spx;
+    spx.kind = ops::Crossover::SPX;
+    bool refused = false;
+    try { spx.apply(p1, p2, a1, a2, b, 20.0, 1.0, r1); }
+    catch (const std::invalid_argument&) { refused = true; }
+    check(refused, "apply() refuses a kind that takes more than two parents");
+
+    spx.apply_any(p1, p2, draw, a1, a2, b, 20.0, 0.0, r1);
+    check(drawn == 0 && a1 == p1 && a2 == p2, "pc = 0: the pair is copied and nothing is drawn");
+
+    bool inside = true;
+    for (auto kind : {ops::Crossover::SPX, ops::Crossover::REX, ops::Crossover::UNDX,
+                      ops::Crossover::PCX}) {
+        ops::CrossoverSpec c;
+        c.kind = kind;
+        for (int t = 0; t < 500; ++t) {
+            drawn = 0;
+            c.apply_any(p1, p2, draw, a1, a2, b, 20.0, 1.0, r1);
+            if (!within(a1, b) || !within(a2, b)) inside = false;
+        }
+        check(drawn >= c.parents(static_cast<int>(n)) - 2,
+              std::string(ops::crossover_name(kind)) + " draws its parents beyond the pair");
+    }
+    check(inside, "the four multi-parent kinds repair their children into the box");
+
+    // MP-6: a pool of two distinct members cannot give SPX n + 1 different
+    // parents; the redraws run out and the application still completes.
+    std::vector<Vec> two = {p1, p2};
+    auto draw_two = [&] { return two[any(draw_rng) % 2]; };
+    bool completed = true;
+    try { spx.apply_any(p1, p2, draw_two, a1, a2, b, 20.0, 1.0, r1); }
+    catch (...) { completed = false; }
+    check(completed && within(a1, b), "a converged pool still crosses, repeating a parent");
+}
+
 }   // namespace
 
 int main()
@@ -271,5 +463,9 @@ int main()
     test_de_zero_vars();
     test_bit_flip();
     test_determinism();
+    test_spx_rex_statistics();
+    test_undx_pair();
+    test_pcx_child();
+    test_multi_parent_host_entry();
     return mootation::testing::report("operators");
 }

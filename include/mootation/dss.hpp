@@ -10,14 +10,24 @@
 // In objectives normalised by the set's own range ((f − min)/(max − min), a
 // zero range counting as 1): first the best point of every objective, then
 // repeatedly the candidate the selected set covers WORST, "cover" being the
-// IGD+ distance d+(s, c) = ||max(s − c, 0)|| minimised over the selected s.
-// Ties go to the lowest index, so the order is deterministic, and it is
-// incremental: the first j of order(F, k) are order(F, j).
+// IGD+ distance d+(c, s) = ||max(s − c, 0)|| minimised over the selected s
+// (the candidate c in the place of IGD+'s reference point). Ties go to the
+// lowest index, so the order is deterministic, and it is incremental: the
+// first j of order(F, k) are order(F, j). It is archive.py's dss_order with
+// ideal and nadir left None.
 //
-// Sources: Singh, Bhattacharjee & Ray, IEEE TEVC 23(5), 2019 (DSS); the IGD+
-// distance in its place, Chen, Ishibuchi & Shang, 2020 — neither is in this
-// project's corpus; the procedure is the one specified for MOOtation on
-// 2026-09-22 (archive.py).
+// Sources: DSS is Singh, Bhattacharjee & Ray, "Distance based subset
+// selection for benchmarking in evolutionary multi/many-objective
+// optimization", IEEE TEVC, 2019, Algo. 1 (source singh2019). The procedure
+// here is the one specified for MOOtation on 2026-09-22 and departs from
+// Algo. 1 three times: the seeds are the M per-objective minima, the rule of
+// Tanabe, Ishibuchi & Oyama (2017) that Singh et al. replace by ONE extreme
+// point; the distance is d+ (Ishibuchi, Masuda, Tanigaki & Nojima, EMO 2015,
+// Eq. 18, source ishibuchi2015 — its use in DSS after Chen, Ishibuchi &
+// Shang, 2020, not in the corpus), not the Euclidean; nothing is filtered
+// (every caller passes a non-dominated set). Singh et al.'s results on the
+// spacing of the selected points assume the Euclidean distance and are not
+// claimed here.
 // ============================================================================
 
 #include <algorithm>
