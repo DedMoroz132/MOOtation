@@ -108,6 +108,8 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1) -> dict:
                           tuple(budgets)))
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
+        from .campaign import single_threaded_blas
+        single_threaded_blas()
         with mp.Pool(processes=workers) as pool:
             for key, v in pool.imap_unordered(_values_of_run, tasks, chunksize=32):
                 values[key] = v

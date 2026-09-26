@@ -499,6 +499,14 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- A campaign's workers ran out of memory on a many-core Windows machine:
+  importing NumPy made OpenBLAS reserve a buffer for every core in every
+  process (756 MB each at 24 threads), and the stage-3 probe's twenty workers
+  reached the commit limit of 31 GB of RAM plus page file — a MemoryError on
+  a 5 MB array. The campaign pool, `--recompute`, `--cover` and the budget
+  check now start their workers with one BLAS thread (17 MB), unless
+  `OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS` or `MKL_NUM_THREADS` is set.
+
 - README's family table (English and Russian) still added up to 58
   algorithms: Pareto-dominance 7 (GDE3 makes 8),
   indicator-based 11 (SMS-EMOA and MO-CMA-ES make 13), and no row for DMS.

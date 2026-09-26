@@ -702,6 +702,19 @@ def _pool_worker(args):
         return index, _job_crashed(index, e)
 
 
+def single_threaded_blas() -> None:
+    """One BLAS thread in every worker process started after this call.
+
+    The pool is the parallelism. Left alone, NumPy's OpenBLAS reserves a buffer
+    for every core in every process at import — 756 MB each on a 24-thread
+    machine — and the stage-3 probe's twenty workers exhausted the commit limit
+    of a 31 GB Windows machine with it (MemoryError on a 5 MB array). A value
+    the user has set is kept.
+    """
+    for var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+        os.environ.setdefault(var, "1")
+
+
 def _job_crashed(index: int, e: BaseException) -> str:
     # run_job already records a failing optimisation as "failed". This is
     # everything around it — the file system, a config edited mid-run — and it
@@ -916,6 +929,7 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
     if len(todo) > 1 and cfg.source_path is not None:
         # Worker processes whenever there is more than one job, even with
         # workers = 1, so the pool can be grown while the campaign runs.
+        single_threaded_blas()
         label = (f"shard {shard[0]}/{shard[1]}" if shard is not None
                  else f"{len(only)} job(s)" if only is not None else "all")
         got = _run_dynamic(str(cfg.source_path), todo, root, workers=workers,
@@ -1319,6 +1333,7 @@ def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1
     counts: dict = {}
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
+        single_threaded_blas()
         with mp.Pool(processes=workers) as pool:
             for status in pool.imap_unordered(_recompute_one, tasks, chunksize=8):
                 counts[status] = counts.get(status, 0) + 1

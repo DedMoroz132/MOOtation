@@ -709,6 +709,12 @@ the budget (`--at`), never by absolute evaluations.
 
 ### Changing the number of workers while it runs
 
+Every worker runs NumPy with one BLAS thread (`OPENBLAS_NUM_THREADS`,
+`OMP_NUM_THREADS` and `MKL_NUM_THREADS` are set to 1 unless you set them): the
+pool is the parallelism, and OpenBLAS otherwise reserves a buffer for every
+core in every process at import — 756 MB each on a 24-thread machine, enough
+for twenty workers to exhaust a 31 GB Windows machine's commit limit.
+
 `--workers N` is only where a campaign starts. The runner re-reads
 `<results>/_workers.txt` every 1.5 seconds: raise the number and workers start
 at once, lower it and the surplus finish the job they are on and leave, write 0

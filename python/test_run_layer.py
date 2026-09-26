@@ -1370,6 +1370,25 @@ def campaign_record_at_and_ladder_expand_as_documented():
 
 
 @test
+def campaign_workers_get_one_blas_thread():
+    """single_threaded_blas: 1 where unset, a user's value kept."""
+    import os
+    from mootation.run import campaign as C
+    names = ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")
+    saved = {v: os.environ.pop(v, None) for v in names}
+    try:
+        os.environ["MKL_NUM_THREADS"] = "4"
+        C.single_threaded_blas()
+        assert [os.environ[v] for v in names] == ["1", "1", "4"]
+    finally:
+        for v, old in saved.items():
+            if old is None:
+                os.environ.pop(v, None)
+            else:
+                os.environ[v] = old
+
+
+@test
 def ladder_rungs_stand_in_for_budget_dependent_runs_at_a_fraction():
     """--at 0.4 of 25 000 reads rvea's 10 000-evaluation rung, nsga2's trajectory."""
     from mootation.run import campaign as C

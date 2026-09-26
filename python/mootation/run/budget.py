@@ -124,6 +124,8 @@ def check(algorithms, *, problem: str = "DTLZ2_3D", seed: int = 1, short: int = 
              for a in algorithms]
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
+        from .campaign import single_threaded_blas
+        single_threaded_blas()
         with mp.Pool(processes=workers) as pool:
             out = list(pool.imap_unordered(_check_one, tasks))
     else:
