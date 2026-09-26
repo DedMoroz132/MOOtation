@@ -22,15 +22,15 @@ namespace mootation {
 // SMS-EMOA — S-metric selection EMOA
 // M. Emmerich, N. Beume, B. Naujoks, "An EMO Algorithm Using the Hypervolume
 // Measure as Selection Criterion", EMO 2005, LNCS 3410, pp. 62-76,
-// doi:10.1007/978-3-540-31880-4_5                     (source: emmerich2005)
+// doi:10.1007/978-3-540-31880-4_5            (source: sms-emoa_emmerich2005)
 // N. Beume, B. Naujoks, M. Emmerich, "SMS-EMOA: Multiobjective selection
 // based on dominated hypervolume", EJOR 181(3):1653-1669, 2007,
-// doi:10.1016/j.ejor.2006.08.008                          (source: beume2007)
+// doi:10.1016/j.ejor.2006.08.008                (source: sms-emoa_beume2007)
 // — the journal version: the 2005 algorithm (Algorithms 1-2, Eq. 3), the
 // reference point (§2.1.3), the "dp" variant (§2.2), the settings (§3.2).
 // N. Beume, "Hypervolume-based Metaheuristics for Multiobjective
 // Optimization", PhD thesis, TU Dortmund, 2011, §3.1   (source:
-//                                   smsemoa_beume2011_thesis_substitute)
+//                                   sms-emoa_beume2011_thesis)
 // — restates the basic algorithm (Algorithm 3.1) and gives the parameters.
 //
 // A steady-state (μ+1) scheme; one step() is one offspring, one evaluation:
@@ -43,10 +43,14 @@ namespace mootation {
 //   3. Q = P ∪ {q}; non-dominated sorting of Q into F_1 … F_v;
 //   4. if |F_v| = 1 that point goes; otherwise the point of F_v with the
 //      smallest hypervolume contribution ΔS(s, F_v) (EJOR Algorithm 2 and
-//      Eq. 3, as in 2005) goes, the contributions taken against the ADAPTIVE
-//      reference point r = nad(Q) + (1, …, 1) (thesis Def. 2.6 and Algorithm
-//      3.1, line 9: "the maximal value of the population plus one" in every
-//      objective; EJOR §2.1.3 at M ≥ 3; at M = 2 see SMS-4).
+//      Eq. 3, as in 2005) goes. At M = 2 the two extremes of F_v are always
+//      kept — "We decided to omit y_ref and always keep these extremal
+//      solutions" (EJOR §2.1.3; 2005 §3.2) — and the others compare by
+//      EJOR Eq. 6 (2005 Eq. 4), which needs no reference point. From M = 3
+//      the contributions are taken against the ADAPTIVE reference point
+//      r = nad(Q) + (1, …, 1), "the vector of the currently worst objective
+//      values increased by 1.0" (EJOR §2.1.3; the thesis's Def. 2.6 and
+//      Algorithm 3.1, line 9).
 // Parameters (thesis §3.4.1, "chosen according to the studies of Deb et al.
 // (2003)"; EJOR §3.2 gives no values, only "the same parameter settings as
 // in the benchmark from Deb et al."): η_c = 15, η_m = 20, p_c = 1,
@@ -74,17 +78,17 @@ namespace mootation {
 //     set_n_samples changes the number; set_n_samples(0) makes every M exact.
 //   SMS-3. A tie in the smallest contribution removes the point that comes
 //     first in the population, the offspring last.
-//   SMS-4. r = nad(Q) + (1, …, 1), recomputed every step, at every M. That
-//     is EJOR's rule for M ≥ 3 ("the vector of the currently worst objective
-//     values increased by 1.0", §2.1.3) and the thesis's for every M
-//     (Def. 2.6). At M = 2 EJOR and the 2005 paper use none: they always keep
-//     the two extremes of the worst front (EJOR §2.1.3 and Eq. 6; 2005
-//     §3.2), which leaves the order independent of the objectives' scale.
-//     Here M = 2 follows the thesis too, which records the 2005 rule and
-//     adds "However, the usage of the adaptive reference point is
-//     recommended" (§3.1, "Variants of SMS-EMOA") — so an extreme of F_v can
-//     go. The offset is absolute, so the selection depends on the
-//     objectives' units (see tests/test_scale_invariance.cpp).
+//   SMS-4. Two objectives, two points. When F_v holds only two points at
+//     M = 2, both are extremes and "always keep" cannot hold; the papers do
+//     not say which goes, and here their contributions against
+//     r = nad(Q) + 1 decide — the thesis's rule, which it uses at every M
+//     ("However, the usage of the adaptive reference point is recommended",
+//     §3.1, "Variants of SMS-EMOA"). With three points or more the order at
+//     M = 2 does not depend on the objectives' scale (2005 §3.2); from M = 3
+//     the offset of r is absolute and it does (see
+//     tests/test_scale_invariance.cpp). The extremes are the least f_1 and
+//     the least f_2 of F_v, the lower other objective breaking a tie (so of
+//     two copies one is kept and the other contributes nothing).
 //   SMS-5. constraint_mode NONE (the default) ignores constraints;
 //     FEASIBILITY and CDP sort by Deb's constrained domination (a feasible
 //     point beats an infeasible one, two infeasible ones compare by their
@@ -178,8 +182,16 @@ private:
         const bool mc = m >= 4 && n_samples_ > 0;
         const std::size_t per = mc ? std::max<std::size_t>(
             1, static_cast<std::size_t>(n_samples_) / Fv.size()) : 0;
-        const auto c = mc ? hv::contributions_mc(Fv, r, per, rng_)
-                          : hv::contributions_exact(Fv, r);
+        auto c = mc ? hv::contributions_mc(Fv, r, per, rng_)
+                    : hv::contributions_exact(Fv, r);
+        if (m == 2 && Fv.size() > 2) {                     // SMS-4: the two extremes stay
+            std::size_t a = 0, b = 0;
+            for (std::size_t t = 1; t < Fv.size(); ++t) {
+                if (Fv[t][0] < Fv[a][0] || (Fv[t][0] == Fv[a][0] && Fv[t][1] < Fv[a][1])) a = t;
+                if (Fv[t][1] < Fv[b][1] || (Fv[t][1] == Fv[b][1] && Fv[t][0] < Fv[b][0])) b = t;
+            }
+            c[a] = c[b] = std::numeric_limits<double>::infinity();
+        }
         std::size_t arg = 0;
         for (std::size_t t = 1; t < c.size(); ++t)
             if (c[t] < c[arg]) arg = t;

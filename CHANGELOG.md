@@ -36,6 +36,14 @@ always listed under **Changed** or **Removed**.
   step size now aims at a slightly higher success rate, so MO-CMA-ES's
   populations differ from the previous version's; no other algorithm
   changes.
+- `sms_emoa` at two objectives keeps the two extremes of the worst front
+  always and compares the other points by their contributions from the
+  neighbours alone, as EJOR 2007 (§2.1.3, "We decided to omit y_ref and
+  always keep these extremal solutions") and the 2005 paper (§3.2) do; the
+  order there no longer depends on the objectives' scale. It used the
+  adaptive reference point nad + 1 of Beume's thesis at every M, so an
+  extreme could go. From three objectives nothing changes. When the worst
+  front has only the two extremes, nad + 1 still decides which goes (SMS-4).
 - CI: `actions/checkout` v4 -> v5 and `actions/setup-python` v5 -> v6, the
   releases that run on Node 24. GitHub had begun forcing the old ones onto
   Node 24, with a deprecation warning on every job.
@@ -152,7 +160,7 @@ always listed under **Changed** or **Removed**.
   `bound_repair` for its DE, `reflect` by default. `sms_emoa` (Emmerich, Beume
   & Naujoks, EMO 2005, and Beume, Naujoks & Emmerich, EJOR 2007, with Beume's
   2011 thesis for the adaptive reference point nad + 1, which EJOR uses from
-  three objectives and this implementation at two as well, SMS-4): (μ+1), SBX
+  three objectives; at two the extremes are kept, see Changed): (μ+1), SBX
   η_c = 15 and PM η_m = 20, the least hypervolume contributor of the worst
   front removed (EJOR's basic Reduce, not its "dp" variant). `mo_cma_es`
   (Voß, Hansen & Igel, GECCO 2010, after Igel, Hansen & Roth, Evol. Comput.
@@ -443,9 +451,7 @@ always listed under **Changed** or **Removed**.
   Liang, Yue & Qu 2016; Singh, Bhattacharjee & Ray 2019; Ishibuchi et al.
   2015 and 2016; Brockhoff, Wagner & Trautmann 2015); no code changed.
   SMS-1 called EJOR's "dp" variant the EJOR version: EJOR has both, and the
-  basic Reduce is the one implemented; SMS-4 now says that at two objectives
-  EJOR and the 2005 paper always keep the extremes, which this
-  implementation does not. MO-CMA-ES: the initial state is the 2007
+  basic Reduce is the one implemented. MO-CMA-ES: the initial state is the 2007
   paper's. DSS departs from Singh et al.'s Algo. 1 in
   three ways (the M per-objective minima as seeds, the d+ distance, no
   filtering), now said in dss.hpp and archive.py, where "indicator-neutral"
