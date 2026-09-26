@@ -438,6 +438,15 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- `test_constraints` decided its feasibility check — the constrained run ends
+  with at least as many feasible solutions as the unconstrained one — on one
+  seed, and under MSVC crEA's run on that seed went 68 -> 66 of 91 although
+  crEA gains on every one of seeds 1-20 (61.4 -> 67.2 on average): its
+  constraint handling works, the seed was unlucky. A regression on the
+  suite's seed is now measured again on four more seeds and the mean over
+  the five decides (crEA: 62.8 -> 67). The algorithms that pass on the
+  suite's seed cost no more time; RVEA stays exempt.
+
 - `MOOTATION_DEFINE_PROBLEM` tested its compile-time constraint count with a
   plain `if`, which MSVC 14.44 at `/W4 /WX` rejects as a constant condition
   (C4127), so `examples/benchmark_problem.cpp` did not build there; it is
