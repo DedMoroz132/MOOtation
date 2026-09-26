@@ -29,6 +29,13 @@ always listed under **Changed** or **Removed**.
 
 ### Changed
 
+- `mo_cma_es`: p_target is 2/11, Table 1 of Igel, Hansen & Roth (Evol.
+  Comput. 2007) at λ = 1, and c_p 1/12 with it; it was (5 + √(1/2))⁻¹ ≈
+  0.1752, the value the 2010 paper prints while giving its defaults "as
+  given in" that table — Table 1's value at λ = 2, a slip (MOCMA-9). The
+  step size now aims at a slightly higher success rate, so MO-CMA-ES's
+  populations differ from the previous version's; no other algorithm
+  changes.
 - CI: `actions/checkout` v4 -> v5 and `actions/setup-python` v5 -> v6, the
   releases that run on Node 24. GitHub had begun forcing the old ones onto
   Node 24, with a deprecation warning on every job.
@@ -150,9 +157,10 @@ always listed under **Changed** or **Removed**.
   front removed (EJOR's basic Reduce, not its "dp" variant). `mo_cma_es`
   (Voß, Hansen & Igel, GECCO 2010, after Igel, Hansen & Roth, Evol. Comput.
   2007): (μ+1) with success meaning "selected", per-individual step size,
-  evolution path and covariance matrix, the 2010 paper's constants (its
-  p_target is not the 2007 paper's 2/11, MOCMA-9), penalised box constraints
-  (Eq. 5), the search in box-normalised coordinates. Hypervolume contributions
+  evolution path and covariance matrix, the constants of the 2007 paper at
+  λ = 1 that the 2010 paper restates (p_target 2/11, see Changed), penalised
+  box constraints (Eq. 5), the search in box-normalised coordinates.
+  Hypervolume contributions
   (`include/mootation/hv_contribution.hpp`, `_core.hv_contributions`) are
   exact at two and three objectives and Monte-Carlo, each point in its own
   bounding box, from four. Declared readings in each header. The public list
@@ -437,9 +445,8 @@ always listed under **Changed** or **Removed**.
   SMS-1 called EJOR's "dp" variant the EJOR version: EJOR has both, and the
   basic Reduce is the one implemented; SMS-4 now says that at two objectives
   EJOR and the 2005 paper always keep the extremes, which this
-  implementation does not. MO-CMA-ES: the initial state is the 2007 paper's;
-  MOCMA-9 declares that the 2010 paper's p_target, (5 + √(1/2))⁻¹, is not
-  the 2007 paper's 2/11 at λ = 1. DSS departs from Singh et al.'s Algo. 1 in
+  implementation does not. MO-CMA-ES: the initial state is the 2007
+  paper's. DSS departs from Singh et al.'s Algo. 1 in
   three ways (the M per-objective minima as seeds, the d+ distance, no
   filtering), now said in dss.hpp and archive.py, where "indicator-neutral"
   overstated it. GD+ is not Pareto-compliant, not even weakly, and the

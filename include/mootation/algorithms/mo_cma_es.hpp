@@ -41,8 +41,9 @@ namespace mootation {
 //      C ← (1 − c_cov)·C + c_cov·p_c·p_cᵀ; else p_c ← (1 − c_c)·p_c and
 //      C ← (1 − c_cov)·C + c_cov·(p_c·p_cᵀ + c_c(2 − c_c)·C);
 //      parent (lines 17-18): the same p̄_succ and σ update with the same succ.
-// Defaults (§2, "as given in [14]"): d = 1 + n/2, p_target = (5 + √(1/2))⁻¹
-// (MOCMA-9), c_p = p_target/(2 + p_target), c_c = 2/(n + 2), c_cov = 2/(n² + 6),
+// Defaults (§2, "as given in [14]"; [14]'s Table 1 at λ = 1): d = 1 + n/2,
+// p_target = 2/11 (MOCMA-9), c_p = p_target/(2 + p_target) = 1/12,
+// c_c = 2/(n + 2), c_cov = 2/(n² + 6),
 // p_thresh = 0.44; σ_0 = 0.6 of the range; box constraints by the penalised
 // fitness of Eq. 5, f(feasible(x)) + α‖x − feasible(x)‖², α = 10⁻⁶, feasible
 // the L1-closest point of the box (the clip).
@@ -84,12 +85,12 @@ namespace mootation {
 //     FEASIBILITY and CDP rank by Deb's constrained domination; EPS_CONSTRAINT
 //     acts as FEASIBILITY. The paper handles box constraints only.
 //   MOCMA-8. Continuous variables only; a problem with binary ones is refused.
-//   MOCMA-9. p_target as the 2010 paper prints it, (5 + √(1/2))⁻¹ ≈ 0.1752.
-//     The 2007 paper's Table 1 gives 1/(5 + √λ/2), the root over λ alone
-//     (checked on the PDF page), which is 2/11 ≈ 0.1818 at λ = 1. The 2010
-//     paper states its value "as given in [14] and used in this paper" (read
-//     from the converted text; its PDF is not at hand), so its runs are the
-//     ones this default reproduces.
+//   MOCMA-9. p_target = 2/11 ≈ 0.1818, the 2007 paper's value. The 2010
+//     paper prints (5 + √(1/2))⁻¹ ≈ 0.1752, the root over the whole 1/2
+//     (HAL version, PDF page 4), while it gives its defaults "as given in [14]":
+//     [14]'s Table 1 has 1/(5 + √λ/2), the root over λ alone (p. 5), and every
+//     MO-CMA-ES individual is a (1+1)-ES, λ = 1. The 2010 value is Table 1's
+//     at λ = 2 — a slip in restating it, taken as such.
 // ============================================================================
 template <typename Ind_t>
 class MOCMAESCore {
@@ -113,7 +114,7 @@ private:
         n_ = n;
         const double nd = static_cast<double>(n);
         d_        = 1.0 + nd / 2.0;
-        p_target_ = 1.0 / (5.0 + std::sqrt(0.5));
+        p_target_ = 2.0 / 11.0;                  // 1/(5 + √λ/2) at λ = 1, MOCMA-9
         c_p_      = p_target_ / (2.0 + p_target_);
         c_c_      = 2.0 / (nd + 2.0);
         c_cov_    = 2.0 / (nd * nd + 6.0);
