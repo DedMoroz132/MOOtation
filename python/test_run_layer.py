@@ -1629,6 +1629,51 @@ def dss_sets_almost_dominated_points_aside():
 
 
 @test
+def dss_in_a_given_frame_asks_lazily_and_orders_the_same():
+    """With the problem's frame DSS asks "set aside?" only of the points it is
+    about to take; the order must be the one checking every point first gives."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run.archive import dss_order, set_aside
+
+    def eager(F, k, lo, hi):
+        G, kept = set_aside(F, lo, hi)
+        n = len(G)
+        order, taken, cover = [], np.zeros(n, bool), np.full(n, np.inf)
+        for j in range(G.shape[1]):
+            if len(order) >= k:
+                break
+            i = int(np.argmin(np.where(kept, G[:, j], np.inf)))
+            if not taken[i]:
+                taken[i] = True
+                order.append(i)
+                np.minimum(cover, np.sqrt((np.maximum(G[i] - G, 0.0) ** 2).sum(axis=1)), out=cover)
+        while len(order) < k:
+            pool = kept & ~taken if (kept & ~taken).any() else ~taken
+            i = int(np.argmax(np.where(pool, cover, -1.0)))
+            taken[i] = True
+            order.append(i)
+            np.minimum(cover, np.sqrt((np.maximum(G[i] - G, 0.0) ** 2).sum(axis=1)), out=cover)
+        return order
+
+    rng = np.random.default_rng(11)
+    for m in (2, 3, 5):
+        D = rng.random((120, m))
+        F = np.vstack([D / np.linalg.norm(D, axis=1, keepdims=True),     # a front
+                       rng.random((30, m)) * 1.5])                       # dominated points
+        for j in range(m):                                              # and some DRS
+            p = F[np.argmin(F[:120, j])].copy()
+            p[j] -= 1e-4
+            p[(j + 1) % m] += 0.6
+            F = np.vstack([F, p])
+        lo, hi = np.zeros(m), np.full(m, 1.5)
+        for k in (m, 20, 60, len(F)):
+            assert dss_order(F, k=k, ideal=lo, nadir=hi).tolist() == eager(F, k, lo, hi), (m, k)
+
+
+@test
 def the_grid_archive_keeps_the_front_prunes_neighbours_and_protects_extremes():
     try:
         import numpy as np

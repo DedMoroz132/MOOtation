@@ -43,7 +43,10 @@ always listed under **Changed** or **Removed**.
   `sobol_search` and `gsemo`, and DMS's answer — on DTLZ2_3D its list had
   some (tools/compat_check.py: DMS's DTLZ2_3D fingerprint moved, ZDT1's did
   not; DMS is younger than the compatibility baseline). The docs and both
-  headers now say that DSS has no approximation guarantee.
+  headers now say that DSS has no approximation guarantee. In the problem's
+  frame a point is set aside or not whatever the others are, so
+  `dss_order` asks only the points it is about to take — the same order,
+  0.1 s instead of 12.6 s on a 12 758-point archive at five objectives.
 - The tables and the TUI leave a budget ladder's rungs out, and `--at` reads a
   budget-dependent algorithm from its rung of that budget when there is one.
   `postprocess.BUDGET_SCHEDULED` is `budget.BUDGET_DEPENDENT`.

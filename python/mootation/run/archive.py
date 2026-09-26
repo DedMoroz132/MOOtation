@@ -82,19 +82,26 @@ DRS_GAIN = 1e-3
 DRS_LOSS = 0.1
 
 
-def almost_dominated(G) -> np.ndarray:
+def almost_dominated(G, rows=None) -> np.ndarray:
     """Which rows p of the normalized set G another row q almost dominates:
     q better than p by more than DRS_LOSS somewhere, p better than q by at
-    most DRS_GAIN everywhere."""
+    most DRS_GAIN everywhere. All rows, or only `rows` (indices into G),
+    compared with every row, a block of rows at a time."""
     G = np.asarray(G, float)
-    out = np.zeros(len(G), bool)
-    for i in range(len(G)):
-        diff = G[i] - G                        # p − q for every q; > 0 where p is worse
-        loss = diff.max(axis=1)                # p's largest loss to q
-        gain = (-diff).max(axis=1)             # p's largest gain over q
-        hit = (gain <= DRS_GAIN) & (loss > DRS_LOSS)
-        hit[i] = False
-        out[i] = bool(hit.any())
+    rows = np.arange(len(G)) if rows is None else np.asarray(rows, dtype=np.intp)
+    out = np.zeros(len(rows), bool)
+    step = max(1, 500_000 // max(1, G.size))            # about 4 MB of differences a block
+    for a in range(0, len(rows), step):
+        r = rows[a:a + step]
+        diff = G[r][:, None, :] - G[None, :, :]         # p − q; > 0 where p is worse
+        # p better than q by at most DRS_GAIN everywhere (-diff <= DRS_GAIN), and
+        # only for those q, worse by more than DRS_LOSS somewhere
+        near = np.all(diff >= -DRS_GAIN, axis=2)
+        near[np.arange(len(r)), r] = False
+        for b in range(len(r)):
+            q = np.flatnonzero(near[b])
+            if len(q):
+                out[a + b] = bool((diff[b, q].max(axis=1) > DRS_LOSS).any())
     return out
 
 
@@ -134,7 +141,23 @@ def dss_order(F, k=None, ideal=None, nadir=None) -> np.ndarray:
     k = n if k is None else min(int(k), n)
     if k <= 0:
         return np.empty(0, dtype=np.intp)
-    G, kept = set_aside(F, ideal, nadir)
+    # state: 1 kept, -1 set aside, 0 not known yet
+    if ideal is not None and nadir is not None:
+        # In a given frame whether a point is set aside does not depend on the
+        # others' fate, so it is asked only of the points DSS is about to take:
+        # the same order as asking all first, at k checks instead of n (a
+        # 12 758-point archive at five objectives: 13 s -> well under one).
+        G = normalized(F, ideal, nadir)
+        state = np.zeros(n, np.int8)
+    else:
+        G, kept = set_aside(F, ideal, nadir)
+        state = np.where(kept, 1, -1).astype(np.int8)
+
+    def is_kept(i):
+        if state[i] == 0:
+            state[i] = -1 if almost_dominated(G, [i])[0] else 1
+        return state[i] == 1
+
     order = []
     taken = np.zeros(n, bool)
     cover = np.full(n, np.inf)                 # min over selected of d+(s, c)
@@ -148,16 +171,20 @@ def dss_order(F, k=None, ideal=None, nadir=None) -> np.ndarray:
     for j in range(G.shape[1]):               # the best kept point of every objective
         if len(order) >= k:
             break
-        i = int(np.argmin(np.where(kept, G[:, j], np.inf)))
-        if not taken[i]:
-            take(i)
+        for i in np.lexsort((np.arange(n), G[:, j])):   # by value, ties by index
+            if is_kept(int(i)):
+                if not taken[i]:
+                    take(int(i))
+                break
     while len(order) < k:
-        pool = kept & ~taken
+        pool = ~taken & (state >= 0)           # not taken, not known to be set aside
         if not pool.any():
             pool = ~taken                      # then the points set aside
         i = int(np.argmax(np.where(pool, cover, -1.0)))
         if taken[i]:
             break
+        if state[i] >= 0 and not is_kept(i):
+            continue                           # set aside now: look again
         take(i)
     return np.asarray(order, dtype=np.intp)
 
