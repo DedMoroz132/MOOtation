@@ -3,7 +3,7 @@
 // ============================================================================
 // MOEA/D — A Multiobjective Evolutionary Algorithm Based on Decomposition
 // Q. Zhang, H. Li — IEEE Transactions on Evolutionary Computation 11(6), 2007
-// doi:10.1109/TEVC.2007.892759          (source: qingfuzhang2007)
+// doi:10.1109/TEVC.2007.892759          (source: moead_zhang2007)
 //
 // Generation scheme (Step 2 of the paper, SEQUENTIALLY for i = 1..N):
 //   1. Step 2.1: two random indexes k, l from B(i); offspring y = SBX(x^k, x^l)

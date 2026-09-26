@@ -4,9 +4,9 @@
 // DAS-DENNIS — simplex-lattice reference point generation (Normal-Boundary
 // Intersection §5).
 // I. Das, J.E. Dennis — SIAM J. Optimization 8(3), 1998.
-// doi:10.1137/S1052623496307510          (source: das1998)
+// doi:10.1137/S1052623496307510          (source: das-dennis_das1998)
 // Two-layer extension: K. Deb, H. Jain — IEEE TEVC 18(4), 2014 (§V, Fig.4).
-// doi:10.1109/TEVC.2013.2281535          (source: deb2014)
+// doi:10.1109/TEVC.2013.2281535          (source: nsga3_deb2014)
 //
 // Generation scheme:
 //   1. Single-layer: all lattice points with step 1/H on the unit simplex,

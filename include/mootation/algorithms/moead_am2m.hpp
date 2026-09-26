@@ -7,7 +7,8 @@
 // the descriptive subtitle is this library's).
 // H.-L. Liu, L. Chen, Q. Zhang, K. Deb — IEEE Transactions on Evolutionary
 // Computation 22(3), 2018, pp. 433-448 (journal version of conf. liu2016).
-// doi:10.1109/TEVC.2017.2725902     (source: liu2018, conf: liu2016)
+// doi:10.1109/TEVC.2017.2725902     (source: moead-am2m_liu2018,
+//                                    conf: am2m-precursor_liu2016)
 //
 // IDEA. The MOEA/D-M2M framework, but the direction vectors v¹..v^K and the
 // weights w^{k,j} are NOT fixed by a lattice — they are ADAPTIVELY built from

@@ -3,7 +3,7 @@
 // ============================================================================
 // MaOEA-ARV — Many-Objective Evolutionary Algorithm with Adaptive Reference Vector
 // Zhang, Wang, Li, Hu, Li, Wu — Information Sciences, 2021
-// doi:10.1016/j.ins.2021.01.015          (source: zhang2021)
+// doi:10.1016/j.ins.2021.01.015          (source: maoea-arv_zhang2021)
 //
 // Generation scheme (Algorithm 1):
 //   1. NDS of population P; Con ← Adaptive_reference_vector(P,N,M) (Alg.2):

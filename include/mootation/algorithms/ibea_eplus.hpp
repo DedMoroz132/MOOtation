@@ -3,7 +3,7 @@
 // ============================================================================
 // IBEA-ε+ — Indicator-Based Evolutionary Algorithm (adaptive, Iε+ indicator)
 // Eckart Zitzler, Simon Künzli — PPSN VIII (LNCS 3242), 2004
-// doi:10.1007/978-3-540-30217-9_84          (source: zitzler2004)
+// doi:10.1007/978-3-540-30217-9_84          (source: ibea_zitzler2004)
 //
 // Generation scheme (Alg.1 + adaptive version Alg.2):
 //   1. Mating: binary tournament with replacement on F (larger F is better),

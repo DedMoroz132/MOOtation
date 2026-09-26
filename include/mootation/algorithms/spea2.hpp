@@ -3,7 +3,7 @@
 // ============================================================================
 // SPEA2 — Improving the Strength Pareto Evolutionary Algorithm
 // E. Zitzler, M. Laumanns, L. Thiele — TIK-Report 103, ETH Zürich, 2001
-// doi:10.3929/ethz-a-004284029          (source: eth-24689-01)
+// doi:10.3929/ethz-a-004284029          (source: spea2_zitzler2001)
 // NOTE: this DOI is registered with DataCite (ETH Zurich Research Collection),
 //   not Crossref — api.crossref.org returns 404 for it. Verified via
 //   api.datacite.org: "SPEA2: Improving the strength pareto evolutionary

@@ -40,7 +40,7 @@ inline std::optional<CrowdingSpace> parse_crowding_space(const std::string& s)
 // ============================================================================
 // NSGA-II — A Fast and Elitist Multiobjective Genetic Algorithm
 // K. Deb, A. Pratap, S. Agarwal, T. Meyarivan — IEEE TEVC 6(2), 2002
-// doi:10.1109/4235.996017          (source: deb2002)
+// doi:10.1109/4235.996017          (source: nsga2_deb2002)
 //
 // Generational scheme:
 //   1. Binary tournament by ≺_n (rank, then crowding distance; CDP — §VI)
@@ -67,7 +67,7 @@ inline std::optional<CrowdingSpace> parse_crowding_space(const std::string& s)
 //   It is one of the two changes of DN-NSGA-II (J. J. Liang, C. T. Yue,
 //   B. Y. Qu, "Multimodal multi-objective optimization: A preliminary
 //   study", IEEE CEC 2016, pp. 2454-2461, doi:10.1109/CEC.2016.7744093;
-//   source liang2016). Its §IV says only that "the crowding in objective
+//   source dn-nsga2_liang2016). Its §IV says only that "the crowding in objective
 //   space is replaced by crowding in decision space", with no formula, so
 //   §III-B over the (real) variables is this library's reading. The other
 //   change is not here: DN-NSGA-II fills the mating pool by niching — a

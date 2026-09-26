@@ -5,8 +5,8 @@
 // selection criterion of SMS-EMOA and of the (μ+1)-MO-CMA-ES:
 //   ΔS(p, F) = S(F) − S(F \ {p})
 // against a reference point r (Emmerich, Beume & Naujoks, EMO 2005, Eq. 3;
-// source emmerich2005). F must be mutually non-dominated; copies are allowed
-// and contribute nothing.
+// source sms-emoa_emmerich2005). F must be mutually non-dominated; copies
+// are allowed and contribute nothing.
 //
 //   M = 2, exact: Eq. 4 of that paper. Sorted by f1 ascending (so f2
 //     descending), ΔS(s_i) = (f1(s_{i+1}) − f1(s_i))·(f2(s_{i−1}) − f2(s_i)),

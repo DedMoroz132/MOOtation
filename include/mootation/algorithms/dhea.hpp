@@ -5,7 +5,7 @@
 //        evolutionary algorithm.
 // X. Wang, F. Zhang, M. Yao — Complex & Intelligent Systems (2024);
 // accepted 23 Aug 2024, published online 19 Dec 2024.
-// doi:10.1007/s40747-024-01637-3          (source: s40747-024-01637-3)
+// doi:10.1007/s40747-024-01637-3          (source: dhea_wang2024)
 //
 // IDEA (FPS scaffold built from individuals + hAPD). No predefined reference
 // vectors: "pivot solutions" are chosen by FPS on ANGLE (max angular distance

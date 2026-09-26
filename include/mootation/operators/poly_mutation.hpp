@@ -22,8 +22,8 @@ namespace mootation::ops {
 // FIX 2026-07-08 (source-fidelity review):
 //   corrected the ATTRIBUTION of the formulas. The previous header attributed
 //   the δ1/δ2 formulas to the Deb & Deb 2014 paper ("Analysing mutation
-//   schemes for real-parameter GAs", source: deb2014_) — this is WRONG.
-//   deb2014_ (Eq.1-3, lines 51/61/63) defines a DIFFERENT, simpler variant:
+//   schemes for real-parameter GAs", source: polynomial-mutation_deb2014) —
+//   this is WRONG. The paper (Eq.1-3, lines 51/61/63 of its md) defines a DIFFERENT, simpler variant:
 //   δ̄_L=(2u)^{1/(1+η_m)}−1, δ̄_R=1−(2(1−u))^{1/(1+η_m)}, where the
 //   perturbation is scaled by the distance to the bound (p−x^L / x^U−p) and
 //   δ̄ does NOT depend on the position of x. The δ1/δ2 variant implemented

@@ -5,7 +5,7 @@
 // subproblems.
 // H.-L. Liu, F. Gu, Q. Zhang — IEEE Transactions on Evolutionary Computation
 // 18(3), 2014.
-// doi:10.1109/TEVC.2013.2281533            (source: liu2014)
+// doi:10.1109/TEVC.2013.2281533            (source: moead-m2m+mop_liu2014)
 //
 // IDEA (§II-A). K unit direction vectors v¹..v^K in R₊ᵐ are chosen.
 // The space is divided into K subregions (Eq.2):

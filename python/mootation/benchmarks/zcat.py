@@ -4,8 +4,9 @@
 # optimization".
 # S. Zapotecas-Martínez, C. A. Coello Coello, H. E. Aguirre, K. Tanaka —
 # Swarm and Evolutionary Computation 81 (2023) 101350.
-# doi:10.1016/j.swevo.2023.101350         (source: S2210650223001232, and its
-# supplementary material S2210650223001232-mmc1)
+# doi:10.1016/j.swevo.2023.101350
+# (source: zcat_zapotecas-martinez2023, and its supplementary material,
+# zcat_zapotecas-martinez2023_supplement)
 #
 # Written from the paper. The authors' reference code is GPL-3.0 and is not
 # read or ported here.

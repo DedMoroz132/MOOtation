@@ -4,7 +4,7 @@
 // RVEA — A Reference Vector Guided Evolutionary Algorithm for Many-Objective
 //        Optimization
 // R. Cheng, Y. Jin, M. Olhofer, B. Sendhoff — IEEE Trans. Evol. Comput. 20(5), 2016
-// doi:10.1109/TEVC.2016.2519378          (source: cheng2016)
+// doi:10.1109/TEVC.2016.2519378          (source: rvea_cheng2016)
 //
 // Generation scheme (Algorithm 1):
 //   1. Offspring (§III-B): ⌊N/2⌋ random pairs WITHOUT mating selection;

@@ -10,7 +10,7 @@
 //   blx_alpha  every variable drawn uniformly from [min − α·I, max + α·I],
 //              I = |x1_i − x2_i| (Eshelman & Schaffer, "Real-Coded Genetic
 //              Algorithms and Interval-Schemata", FOGA 2, 1993, pp. 187-202,
-//              §2 and Fig. 1, in words; source eshelman1993); α = 0.5 by
+//              §2 and Fig. 1, in words; source blx-alpha_eshelman1993); α = 0.5 by
 //              default, the value at which a child is as likely outside its
 //              parents as between them (§3.2), the one §4.2 runs. Two children
 //              per mating (§4.1), each on its own draws — this library's

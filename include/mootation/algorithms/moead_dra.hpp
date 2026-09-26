@@ -6,7 +6,7 @@
 // allocation; MOEA/D-DRA is the paper's own name for it).
 // Q. Zhang, W. Liu, H. Li — IEEE CEC 2009, pp. 203-208 (winner of the CEC09
 // MOEA competition)
-// doi:10.1109/CEC.2009.4982949          (source: zhang2009)
+// doi:10.1109/CEC.2009.4982949          (source: moead-dra_zhang2009)
 //
 // Generation scheme:
 //   1. Step 2: I = indexes of the subproblems whose objectives are individual

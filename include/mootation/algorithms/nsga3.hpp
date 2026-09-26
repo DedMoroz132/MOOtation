@@ -4,9 +4,10 @@
 // NSGA-III — An Evolutionary Many-Objective Optimization Algorithm Using
 //            Reference-Point-Based Nondominated Sorting Approach, Part I
 // K. Deb, H. Jain — IEEE TEVC 18(4), 2014
-// doi:10.1109/TEVC.2013.2281535          (source: deb2014)
+// doi:10.1109/TEVC.2013.2281535          (source: nsga3_deb2014)
 // Constrained mode (CDP, tournament): Part II — H. Jain, K. Deb,
-// IEEE TEVC 18(4), 2014, doi:10.1109/TEVC.2013.2281534 (source: jain2014).
+// IEEE TEVC 18(4), 2014, doi:10.1109/TEVC.2013.2281534
+// (source: a-nsga3+c-nsga3_jain2014).
 //
 // Generation scheme (Alg.1):
 //   1. Q_t: parents drawn at random from P_t (§IV-F, no tournament; with

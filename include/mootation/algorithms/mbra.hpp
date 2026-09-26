@@ -5,7 +5,7 @@
 //   Reference Vector Adjustment
 // X. Wang, F. Zhang, M. Yao — Complex & Intelligent Systems 10 (2024) 207-231
 //   (2024 issue; online 2023)
-// doi:10.1007/s40747-023-01161-w        (source: s40747-023-01161-w)
+// doi:10.1007/s40747-023-01161-w        (source: mbra_wang2024)
 //
 // Generation scheme (Algorithm 1):
 //   1. MatingSelection: two random individuals; Pareto dominance → smaller Σf_j →

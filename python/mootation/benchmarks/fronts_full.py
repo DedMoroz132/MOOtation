@@ -4,8 +4,8 @@
 These four were designed to have a degenerate, curve-shaped front, and their
 reference sets used to be exactly that curve. Ishibuchi, Masuda & Nojima,
 "Pareto Fronts of Many-Objective Degenerate Test Problems" (IEEE TEVC 20(5):
-807-813, 2016, doi:10.1109/TEVC.2015.2505784; source: ishibuchi2016) showed
-that WFG3's true front also has a NON-degenerate part from three objectives
+807-813, 2016, doi:10.1109/TEVC.2015.2505784; source:
+degenerate-fronts_ishibuchi2016) showed that WFG3's true front also has a NON-degenerate part from three objectives
 (Section IV; its shape at M = 3 is Eq. (25)) and recalled that DTLZ5's and
 DTLZ6's have one from four (Section II-B, after Huband et al. and Saxena et
 al.) — so the curve was a proper subset of the front there. The paper's

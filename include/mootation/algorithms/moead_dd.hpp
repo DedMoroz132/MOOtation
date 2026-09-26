@@ -5,7 +5,7 @@
 //           Dominance and Decomposition
 // K. Li, K. Deb, Q. Zhang, S. Kwong — IEEE Transactions on Evolutionary
 // Computation 19(5), 2015
-// doi:10.1109/TEVC.2014.2373386          (source: li2015)
+// doi:10.1109/TEVC.2014.2373386          (source: moead-dd_li2015)
 //
 // Generation scheme (Alg.1, steady-state, SEQUENTIALLY for i = 1..N):
 //   1. MATING_SELECTION (Alg.3): with prob. δ, k SUBREGION indexes are picked

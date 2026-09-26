@@ -9,27 +9,26 @@
 //         expanded about its centre g. Tsutsui et al. write the expanded
 //         vertices as g + (1 + ε)(x_j − g) and run ε = 1 (§4, "the α value
 //         of 0.5 in BLX-α"). Higuchi, Tsutsui & Yamamura (PPSN VI, 2000,
-//         §3.1 Eq. 5 and §4 Eq. 9; source higuchi2000) make the factor itself
-//         the expansion rate, g + ε(x_j − g), and derive ε = √(m + 2) for
-//         m + 1 parents, the value that keeps the population's covariance
-//         (their Theorem 3). That is the setting here, e = √(n + 2) with
-//         μ = n + 1 parents, as in Tanabe & Ishibuchi (GECCO 2019, Table 1
-//         and §2.2; source bc_tanabe2019); it is ε = √(n + 2) − 1 in the 1999
-//         notation. Given the parents, a uniform point of the expanded simplex
-//         has covariance e²/(μ(μ + 1))·Σ (x_j − g)(x_j − g)ᵀ, the parents'
+//         §3.1 Eq. 5 and §4 Eq. 9; source spx-theory_higuchi2000) make the
+//         factor itself the expansion rate, g + ε(x_j − g), and derive
+//         ε = √(m + 2) for m + 1 parents, the value that keeps the
+//         population's covariance (their Theorem 3). That is the setting
+//         here, e = √(n + 2) with μ = n + 1 parents, as in Tanabe &
+//         Ishibuchi (GECCO 2019, Table 1 and §2.2; source bc_tanabe2019);
+//         it is ε = √(n + 2) − 1 in the 1999 notation. Given the parents, a
+//         uniform point of the expanded simplex has covariance e²/(μ(μ + 1))·Σ (x_j − g)(x_j − g)ᵀ, the parents'
 //         (1/μ)·Σ (x_j − g)(x_j − g)ᵀ exactly when e² = μ + 1.
 //         The point is g + e·Σ w_j (x_j − g) with barycentric weights w from
 //         a flat Dirichlet (normalised exponentials); the papers draw the same
 //         uniform point by the recursion r_k = u^(1/(k+1)) (Higuchi et al.,
 //         Eqs. 3, 6-7).
 //   rex   REAL-CODED ENSEMBLE crossover (Akimoto, Sakuma, Ono & Kobayashi,
-//         GECCO 2009 / JSAI 24(6), §2.2, Eq. 3; source rex_akimoto_arex2009):
+//         GECCO 2009 / JSAI 24(6), §2.2, Eq. 3; source arex_akimoto2009):
 //         x = g + α·Σ ξ_j (x_j − g), ξ_j ~ N(0, σ²) independent, α = 1,
 //         σ² = 1/(μ − 1) — mean g and covariance (1/(μ − 1))·Σ (x_j − g)(x_j − g)ᵀ.
 //   undx  UNIMODAL NORMAL DISTRIBUTION crossover (Ono & Kobayashi, ICGA-7,
 //         1997, pp. 246-253 — not in the corpus; restated in Ono, Kita &
-//         Kobayashi, GECCO 1999, §2.1, Eqs. 1-2, source
-//         undx_ono1999_gecco_substitute, the same text as Ono_gecco99): from
+//         Kobayashi, GECCO 1999, §2.1, Eqs. 1-2, source undx_ono1999): from
 //         x_1, x_2 and a third parent x_3, the pair
 //         c = m ± (z_1 e_1 + Σ_{k≥2} z_k e_k), m = (x_1 + x_2)/2,
 //         e_1 = (x_2 − x_1)/d_1, z_1 ~ N(0, (α d_1)²), z_k ~ N(0, (β d_2/√n)²),
@@ -40,8 +39,8 @@
 //         The paper's MGG applies it many times to one pair (§2.2, step 3);
 //         a host here, once per mating.
 //   pcx   PARENT-CENTRIC crossover (Deb, Anand & Joshi, Evol. Comput. 10(4),
-//         2002, §2.2, Eq. 2; source deb2002_ — and its precursor, KanGAL
-//         2001003, source pcx_deb2002_kangal2001003_precursor): for each child
+//         2002, §2.2, Eq. 2; source pcx_deb2002 — and its precursor, KanGAL
+//         2001003, source pcx_deb2001_report): for each child
 //         one parent x_p "chosen with equal probability", d = x_p − g, D̄ the
 //         mean perpendicular distance of the other μ − 1 parents from the line
 //         through g along d, and y = x_p + w_ζ·d + Σ w_η·D̄·e^(i),

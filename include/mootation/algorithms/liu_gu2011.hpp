@@ -4,7 +4,7 @@
 // Liu & Gu 2011 — An Improved NSGA-II Algorithm Based on Sub-regional Search.
 // H.-L. Liu, F. Gu — IEEE Congress on Evolutionary Computation (CEC) 2011,
 // pp. 1906-1911.
-// doi:10.1109/CEC.2011.5949848          (source: liu2011)
+// doi:10.1109/CEC.2011.5949848          (source: nsga2-subregional_liu2011)
 //
 // IDEA (the earliest sub-regional ancestor of the M2M family). The objective
 // space is divided A PRIORI into S = ⌈√N⌉ fixed subregions by uniform

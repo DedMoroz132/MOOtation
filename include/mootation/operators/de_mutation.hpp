@@ -1,7 +1,7 @@
 #pragma once
 // SPDX-License-Identifier: Apache-2.0
 // DE/rand/1/bin — Differential Evolution mutation + binomial crossover
-// Storn & Price, 1997, Journal of Global Optimization (source: storn1997)
+// Storn & Price, 1997, Journal of Global Optimization (source: de_storn1997)
 //
 // Mutant:  v_j = x_a_j + F * (x_b_j - x_c_j)
 // Trial:   y_j = v_j   if U(0,1) < CR or j == j_rand

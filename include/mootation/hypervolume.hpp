@@ -4,7 +4,7 @@
 // HYPERVOLUME — exact, by the WFG algorithm.
 // L. While, L. Bradstreet, L. Barone, "A Fast Way of Calculating Exact
 // Hypervolumes", IEEE TEVC 16(1):86-95, 2012.
-// doi:10.1109/TEVC.2010.2077298          (source: while2012)
+// doi:10.1109/TEVC.2010.2077298          (source: hv-wfg_while2012)
 //
 // The hypervolume of a set is a sum of exclusive hypervolumes (Eq. 3),
 //   Hyp({p_1, ..., p_m}) = sum_i ExcHyp(p_i, {p_i+1, ..., p_m}),

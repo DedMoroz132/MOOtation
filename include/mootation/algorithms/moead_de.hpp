@@ -6,7 +6,7 @@
 // evolution operator; MOEA/D-DE is the paper's own name for it).
 // H. Li, Q. Zhang — IEEE Transactions on Evolutionary Computation 13(2), 2009,
 // pp. 284-302
-// doi:10.1109/TEVC.2008.925798          (source: huili2009)
+// doi:10.1109/TEVC.2008.925798          (source: moead-de_li2009)
 //
 // Generation scheme (Step 2 of the paper, SEQUENTIALLY for i = 1..N):
 //   1. Step 2.1: P = B(i) with probability δ, otherwise the whole population {1..N}.

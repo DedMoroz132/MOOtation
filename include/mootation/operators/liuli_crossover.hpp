@@ -23,7 +23,7 @@ namespace mootation::ops {
 // Primary source:
 //   H.-L. Liu, X. Li — "The multiobjective evolutionary algorithm based on
 //   determined weight and sub-regional search", IEEE CEC 2009, §III-A,
-//   Eq.(5)–(6).                              (source: liu2009)
+//   Eq.(5)–(6).                              (source: liuli-operators_liu2009)
 // This operator is referenced by:
 //   • liu2011  §II-C: "the crossover and mutation used in [1]" (§II-D Step 2
 //     points at "equation(3)/(4)", which do not exist in that paper);

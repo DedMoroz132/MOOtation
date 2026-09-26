@@ -20,11 +20,11 @@ namespace mootation {
 // of success (MO-CMA-ES^P)
 // T. Voß, N. Hansen, C. Igel, "Improved Step Size Adaptation for the
 // MO-CMA-ES", GECCO 2010, pp. 487-494, doi:10.1145/1830483.1830573
-//                                                  (source: mocmaes_voss2010)
+//                                                  (source: mo-cma-es_voss2010)
 // The algorithm itself is Igel, Hansen & Roth, "Covariance Matrix Adaptation
 // for Multi-objective Optimization", Evol. Comput. 15(1):1-28, 2007,
-// doi:10.1162/evco.2007.15.1.1 (source: igel2007); the 2010 paper restates it
-// (§2, Algorithm 1) and gives its defaults "as given in [14]".
+// doi:10.1162/evco.2007.15.1.1 (source: mo-cma-es_igel2007); the 2010 paper
+// restates it (§2, Algorithm 1) and gives its defaults "as given in [14]".
 //
 // An individual is [x, p̄_succ, σ, p_c, C]. One step() is one offspring
 // (Algorithm 1 with λ = 1, line 4a):

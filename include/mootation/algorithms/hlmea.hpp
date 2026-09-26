@@ -4,7 +4,7 @@
 // HLMEA — Two-stage hybrid learning-based multi-objective evolutionary
 //         algorithm based on objective space decomposition.
 // W. Zheng, J. Sun — Information Sciences 610 (2022) 1163-1186.
-// doi:10.1016/j.ins.2022.08.030    (source: 1-s2.0-S0020025522009136-main)
+// doi:10.1016/j.ins.2022.08.030    (source: hlmea_zheng2022)
 // FIX 2026-08-09 (Crossref sweep): the DOI read 10.1016/j.ins.2022.08.077,
 //   which resolves to "Interpretable fuzzy clustering using unsupervised fuzzy
 //   decision trees" — an unrelated Information Sciences paper. Authors and

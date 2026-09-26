@@ -57,7 +57,7 @@ inline double sbx_require_bound(const std::optional<double>& b,
 //
 // Primary sources:
 //   - β-distribution: Deb & Agrawal 1995, "Simulated Binary Crossover for
-//     Continuous Search Space", Complex Systems 9(2) (source: 09-2-2).
+//     Continuous Search Space", Complex Systems 9(2) (source: sbx_deb1995).
 //   - Vector scheme — Deb's reference implementation (realcross, NSGA-II code;
 //     the same scheme in jMetal and PlatEMO):
 //       * the whole pair is crossed with probability pc (otherwise children = parents);

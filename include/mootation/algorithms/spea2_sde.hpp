@@ -4,7 +4,7 @@
 // SPEA2+SDE — Shift-Based Density Estimation for Pareto-Based Algorithms
 //             in Many-Objective Optimization
 // M. Li, S. Yang, X. Liu — IEEE TEVC 18(3), 2014
-// doi:10.1109/TEVC.2013.2262178          (source: li2014)
+// doi:10.1109/TEVC.2013.2262178          (source: spea2-sde_li2014)
 // SPEA2 framework: Zitzler, Laumanns, Thiele — TIK-Report 103, 2001
 // (eth-24689-01); SDE replaces ONLY the density estimation (§II-C).
 //

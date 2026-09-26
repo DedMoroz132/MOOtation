@@ -4,7 +4,7 @@
 // MOEA/D-AWA — MOEA/D with Adaptive Weight Vector Adjustment
 // Y. Qi, X. Ma, F. Liu, L. Jiao, J. Sun, J. Wu —
 //   Evolutionary Computation 22(2), 2014
-// doi:10.1162/EVCO_a_00109          (source: qi2014)
+// doi:10.1162/EVCO_a_00109          (source: moead-awa_qi2014)
 //
 // Generation scheme (Alg.4; the skeleton inherits MOEA/D-DRA, Zhang et al. 2009):
 //   1. Step 2.1–2.2: every 50 generations Δ^i=(old−new)/old on g^tc(x^i|λ^i),
