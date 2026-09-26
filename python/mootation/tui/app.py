@@ -855,7 +855,7 @@ class CompareScreen(VerticalScroll):
     def _fill(self) -> None:
         if self._table is None:
             return
-        rows = _camp.scan_results(self._root())
+        rows = _camp.main_rows(_camp.scan_results(self._root()))
         done = sum(1 for r in rows if r["status"] == "done")
         if self.view == "ranks":
             self._fill_ranks(rows, done)
@@ -925,7 +925,7 @@ class CompareScreen(VerticalScroll):
                 self._table.focus()
 
     def export_csv(self) -> Path:
-        rows = _camp.scan_results(self._root())
+        rows = _camp.main_rows(_camp.scan_results(self._root()))
         if self.view == "ranks":
             path = self._root() / f"ranks_{self.metric}.csv"
             _camp.write_rank_csv(_camp.rank_table(rows, self.metric), path)
@@ -992,7 +992,7 @@ class ExploreScreen(VerticalScroll):
         if self._tree is None:
             return
         root = _camp.out_root(self.cfg, _camp.campaign_spec(self.cfg))
-        rows = _camp.scan_results(root)
+        rows = _camp.main_rows(_camp.scan_results(root))
         by_prob: dict = {}
         for r in rows:
             by_prob.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(r)

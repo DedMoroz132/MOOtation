@@ -28,17 +28,9 @@ from pathlib import Path
 
 from .metric_names import HIGHER_IS_BETTER
 
-# Checked 2026-09-22 against the code: 18 cores have set_t_max; these 16 use
-# t/t_max in a schedule. Of the other two, IF-MaOEA stores t_max and never
-# reads it, and CLIA uses it once, for theta = min(20, max(5, ceil(t_max*N /
-# 2e4))) (§IV-B), which is 5 at every budget up to 100 000 evaluations — so on
-# the 10 000 / 25 000 / 50 000 ladder CLIA behaves as unscheduled. RVEA*
-# (rvea_star, added 2026-09-27) has RVEA's APD schedule: 19 and 17.
-BUDGET_SCHEDULED = frozenset({
-    "rvea", "rvea_star", "moead_awa", "adaw", "dea_gng", "mbra", "nrv_moea",
-    "hlmea", "dhea", "moead_ds", "srv", "srv_nsga3", "dcea", "maoea_3c",
-    "moead_m2m", "moead_am2m", "liu_gu2011",
-})
+# The list and how it was made (read off the headers, then measured) live in
+# budget.py; this is its measured list under the name the tables use.
+from .budget import BUDGET_DEPENDENT as BUDGET_SCHEDULED
 
 INTERPOLATIONS = ("step", "linear")
 

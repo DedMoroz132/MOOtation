@@ -307,6 +307,26 @@ def range_cover_each(F: np.ndarray, ideal, nadir) -> np.ndarray:
     return G.max(axis=0) - G.min(axis=0)
 
 
+def nn_cv(F: np.ndarray, ideal, nadir) -> float | None:
+    """Evenness of the set: the coefficient of variation (standard deviation over
+    mean) of the distances from each distinct non-dominated point to its nearest
+    other one, objectives normalised by ideal and nadir. 0 when every point is
+    as far from its nearest neighbour as every other is from its own; larger as
+    the set clumps. Needs no reference front, so it reads bbob-biobj too. None
+    with fewer than two such points."""
+    ideal = np.asarray(ideal, float)
+    span = np.asarray(nadir, float) - ideal
+    span = np.where(span > 0.0, span, 1.0)
+    G = nondominated((np.asarray(F, float) - ideal) / span)
+    if len(G) < 2:
+        return None
+    d = np.sqrt(((G[:, None, :] - G[None, :, :]) ** 2).sum(axis=2))
+    np.fill_diagonal(d, np.inf)
+    nn = d.min(axis=1)
+    mean = float(nn.mean())
+    return float(nn.std() / mean) if mean > 0.0 else None
+
+
 def nd_share(F: np.ndarray) -> float:
     """Share of rows no other row dominates; equal rows do not dominate each other."""
     F = np.asarray(F, float)
@@ -572,12 +592,13 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             out[name] = nd_share(F) if F.ndim == 2 and F.size else None
         elif name == "dup_share":
             out[name] = dup_share(F) if F.ndim == 2 and F.size else None
-        elif name in ("igdp_norm", "eps_norm"):
+        elif name in ("igdp_norm", "eps_norm", "gdp_norm"):
             if ref_front is None or not have_box:
                 out[name] = None
             else:
                 G, R = _normalised(F, ref_front, ideal, nadir)
-                out[name] = igd_plus(G, R) if name == "igdp_norm" else eps_plus(G, R)
+                fn = {"igdp_norm": igd_plus, "eps_norm": eps_plus, "gdp_norm": gd_plus}[name]
+                out[name] = fn(G, R)
         elif name == "tau90":
             if ref_front is None or not have_box or not F.size:
                 out[name] = None
@@ -586,6 +607,16 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 d = dplus_distances(G, R)
                 out[name] = float(np.quantile(d, 0.9))
                 out["coverage_curve"] = {f"{t:g}": float(np.mean(d <= t)) for t in COVERAGE_TAUS}
+        elif name == "gap_max":
+            # the largest hole: max over the reference sample of d+(z, A), in
+            # igdp_norm's frame — tau90's quantile taken at 100 %
+            if ref_front is None or not have_box or not F.size:
+                out[name] = None
+            else:
+                G, R = _normalised(F, ref_front, ideal, nadir)
+                out[name] = float(dplus_distances(G, R).max())
+        elif name == "nn_cv":
+            out[name] = nn_cv(F, ideal, nadir) if have_box and F.ndim == 2 and F.size else None
         elif name == "n_final":
             out[name] = int(len(F)) if F.ndim == 2 else 0
         elif name == "hv":

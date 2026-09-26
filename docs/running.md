@@ -281,10 +281,27 @@ final population (the same list when omitted):
 | `tau90` | the 0.9 quantile of the IGD+ distances d⁺(z, A) = min over a of ‖max(a − z, 0)‖ over the reference sample, normalised like `igdp_norm`: 90 % of the front lies within `tau90` of the set. `igdp_norm` is the mean of the same distances; one reference point far from everything moves their maximum and not this. Weakly Pareto-compliant, like IGD+. With it, `coverage_curve` gives the share of the sample within 0.01, 0.02, 0.05, 0.1 and 0.2 | lower |
 | `n_final` | the number of points in the answer. `hv`, IGD+ and ε never get worse when points are added, so when two algorithms answer with sets of different sizes, read them next to this | — |
 | `r2` | discrete R2 (the unary R2 of Brockhoff, Wagner & Trautmann, Evol. Comput. 2015, Def. 4): over the Das–Dennis weights of `hv_h`'s lattice, the mean of the set's best weighted Tchebycheff value max_i w_i·(f_i − ideal_i)/(nadir_i − ideal_i) (`r2_h` is the lattice's H). Weakly Pareto-compliant, and no more points count than there are weights; its cost grows linearly with the number of objectives where the hypervolume turns Monte-Carlo, and it is not 0 where `hv` is. Meant for four objectives and more; the R2 integrated over all weights is Pareto-compliant (Schäpermeier & Kerschke, arXiv:2407.01504, 2024, exact at two objectives; Jaszkiewicz & Zielniewicz, IEEE TEVC 29(4), 2025) | lower |
+| `gdp_norm` | GD+ with objectives and front divided by nadir − ideal, like `igdp_norm`: how far the set is from the front, one scale on every problem | lower |
+| `gap_max` | the largest hole: the maximum over the reference sample of d⁺(z, A), normalised like `igdp_norm` — `tau90` taken at 100 %. One reference point nothing comes near decides it | lower |
+| `nn_cv` | evenness: the coefficient of variation of the distances from each distinct non-dominated point to its nearest other one, objectives normalised by ideal and nadir; 0 when evenly spaced, larger as the set clumps. No reference front needed | lower |
 
 `gdp` needs a reference front like `igd`; `roi_dist` and `range_cover` need only
 the problem's ideal and nadir, and `nd_share` and `dup_share` nothing at all, so
-those four also describe the bbob-biobj problems, which have no front.
+those four also describe the bbob-biobj problems, which have no front; so does
+`nn_cv`.
+
+What each one looks at — the question a table of them answers depends on it:
+
+| looks at | indicators |
+|---|---|
+| progress towards the front | `gdp`, `gdp_norm` |
+| how much of the front is covered, and how evenly | `igdp`, `igdp_norm`, `tau90`, `gap_max`, `range_cover`, `nn_cv` |
+| both at once | `hv`, `hv_h`, `eps`, `eps_norm` |
+
+GD+ falls as the set approaches the front whatever part of it the set sits on;
+the coverage indicators fall only as the set spreads over it (`nn_cv` needs no
+front, and sees the spacing but not the extent). The hypervolume and ε cannot
+tell a set that is close but narrow from one that is wide but far.
 
 `igdx` and `cr` need a sample of the Pareto SET, which only some problems
 have: the Ishibuchi polygons (Polygon, IPolygon), DTLZ1–4, shiftDTLZ1–4 and
@@ -326,6 +343,9 @@ round(10^(j / `record_per_decade`)), 10 per decade by default: 100, 126, 158,
 200, … The counts are absolute, so a 10 000- and a 25 000-evaluation run share
 every point up to 10 000 and a budget ladder compares point by point, without
 interpolating; a point is the first generation at or past its count.
+`record_at = [2500, 5000, 10000]` adds counts the decade grid misses (it has
+2 512 and 5 012): the rungs of a budget ladder get a record of their own, at the
+same generation a separate run of that budget stops at.
 
 **What else a run keeps.**
 - `meta.json` records `revision`: the git commit and whether tracked files
@@ -508,7 +528,22 @@ population, which answers a different question: how good the search was, as
 opposed to how good the population it returns is. `meta.json` also records the
 frame the selection normalised by, so `--recompute ... --scenario archive`
 selects the same points again from `archive.csv` — or, on a campaign run before
-the scenario existed, selects them for the first time.
+the scenario existed, or with `archive_scenario = false`, selects them for the
+first time: the archive is written either way.
+
+DSS (`archive.dss_order`, and `dss.hpp` for DMS's answer) starts from the best
+point of every objective and then takes the point the selection covers worst.
+Both steps used to favour *almost-dominated* points — the best value of one
+objective bought with a much worse value of another. Such a point is now set
+aside when some other point is better than it by more than 0.1 in some
+objective while it is better than that point by at most 0.001 everywhere
+(normalised units: a trade-off beyond 100 to 1 over a tenth of the range); the
+points set aside come after all the others, so a selection of N contains none
+of them while enough others remain. Without the problem's frame, the ideal and
+nadir are taken from the points kept, after every round that sets points aside,
+so one outlier no longer stretches the frame the rest is measured in. DSS is a
+spread heuristic with no approximation guarantee: nothing bounds the covering
+radius it leaves against the best subset of the same size.
 
 Two more readings need no rerun. `--at 0.25` gives `--compare` and `--ranks`
 every run as it stood at a quarter of its budget, read from its trajectory, so
@@ -550,6 +585,7 @@ python -m mootation.run.campaign c.toml --ecdf igdp_norm --interpolation linear
 python -m mootation.run.campaign c.toml --seed-distance                  # do the seeds agree in x?
 python -m mootation.run.campaign c.toml --eps-table                      # A against B, no reference
 python -m mootation.run.campaign c.toml --magnitude                      # experiment D7
+python -m mootation.run.campaign c.toml --cover --workers 8              # sets that cover the problems
 ```
 
 - `--reference ALG` (with `--ranks` or `--compare`): on every problem, each
@@ -614,13 +650,62 @@ python -m mootation.run.campaign c.toml --magnitude                      # exper
   printed are Kendall's tau between the two orders of the algorithms per
   problem and the mean ranks by both. Magnitude joins the metrics only if the
   order it gives is clearly different and the difference can be explained.
+- `--cover`: which few algorithms together do well everywhere. An algorithm
+  covers a problem at level τ and budget b when at least `--cover-seeds` of
+  its seeds (7, meant for ten) reach it: `igdp_norm ≤ τ` where the problem has
+  a reference front, and, where it has none (bbob-biobj), a relative gap of
+  `hv_h` to the best any run of the campaign reached on it, (best − hv_h)/best
+  ≤ τ — those best values depend on what the campaign ran, and are written to
+  `best_known_hv.csv`. A second criterion reads `gdp_norm ≤ τ` instead: the
+  progress towards the front alone. For every criterion, τ in `--cover-taus`
+  (0.1, 0.03, 0.01, 0.003) and budget in `--cover-budgets` (the campaign's
+  ladder and full budget), it reports the problems nobody covers, the smallest
+  sets of algorithms covering every problem somebody does — exact, by branch
+  and bound, all of them up to `--cover-max-sets`, and the greedy set beside
+  them — and the curve k → the largest share k algorithms cover, exact up to
+  the smallest set's size, with problems weighted alike and with families
+  weighted alike (bbob-biobj is more than half of the problems), with each
+  family's count along it. `--cover-bootstrap N` resamples the seeds N times
+  and says how often each algorithm is in a smallest set. Tables on the
+  terminal, CSV in `<results>/_cover/`. A budget-dependent algorithm is read
+  at a smaller budget from its ladder rung, every other from its trajectory
+  (the first record at or after the budget).
 
-Every table marks with `*` the seventeen algorithms whose behaviour follows the
-share of the budget spent (a t/t_max schedule): RVEA, RVEA*, MOEA/D-AWA, AdaW,
+**Budget-dependent algorithms.** Seventeen algorithms schedule something by
+the share of the budget spent — RVEA's angle penalty t/t_max, the adaptation
+periods of MOEA/D-AWA and AdaW, and so on: RVEA, RVEA*, MOEA/D-AWA, AdaW,
 DEA-GNG, MBRA, NRV-MOEA, HLMEA, DHEA, MOEA/D-DS, SRV, SRV-NSGA-III, DCEA,
-MaOEA-3C, MOEA/D-M2M, MOEA/D-AM2M and Liu–Gu 2011. Their runs at 10 000 and
-25 000 evaluations are not one run cut at two points, so overlay their curves
-by fraction of the budget (`--at`), never by absolute evaluations.
+MaOEA-3C, MOEA/D-M2M, MOEA/D-AM2M and Liu–Gu 2011. For them the record at
+10 000 evaluations of a 25 000-evaluation run is not what a run of 10 000
+gives, and every table marks them with `*`. The list is known two ways,
+kept side by side in `mootation/run/budget.py`: read off the code — the
+binding passes the budget to every core with `set_t_max`, and these use it in
+a schedule (IF-MaOEA stores it without reading it, and CLIA's one use gives the
+same value at every budget up to 100 000) — and measured:
+
+```bash
+python -m mootation.run.budget --workers 16          # DTLZ2_3D, seed 1, 10 000 against 25 000
+```
+
+runs every algorithm twice on one problem, seed and population and compares
+every record of the answer set up to the shorter budget bit for bit. On
+2026-09-27 exactly the seventeen differed, MOEA/D-M2M first (at 180
+evaluations) and MOEA/D-AWA last (at 9 109); the other 46 and the four
+baselines were identical — the baselines up to their last step, which they cut
+to end exactly at the budget, and which the check reports as "same, cut".
+
+A budget ladder therefore needs separate runs for these seventeen only.
+`ladder = [2500, 5000, 10000]` in `[campaign]` adds them: for every
+budget-dependent algorithm, problem and seed, a run of each budget, filed under
+`<algorithm>@<budget>` and appended after all other jobs, so the full runs'
+job numbers do not move. Every `meta.json` says `budget_dependent`, and a rung
+also `ladder_of`. The analysis reads a budget-dependent algorithm at a smaller
+budget from its rung and every other from its full run's trajectory: `--cover`
+takes the first record at or after the budget, and `--at` puts the rung in the
+full run's place when the campaign has one of exactly that budget. The rungs
+never appear as algorithms of their own in `--compare`, `--ranks` or the TUI.
+Without rungs, overlay a budget-dependent algorithm's curves by fraction of
+the budget (`--at`), never by absolute evaluations.
 
 ### Changing the number of workers while it runs
 

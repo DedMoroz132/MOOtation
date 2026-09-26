@@ -9,7 +9,7 @@ from __future__ import annotations
 
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
                 "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
-                "tau90", "n_final", "r2")
+                "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm")
 
 # What a run's variation operators did, recorded with [campaign] operator_stats
 # = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
@@ -28,7 +28,8 @@ HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pd
 
 # These compare the answer set with a sample of the true Pareto front, so a
 # problem without one gives None for them.
-NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "tau90"})
+NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "tau90",
+                         "gap_max", "gdp_norm"})
 
 # These look at the decision variables: all of them need the solutions, and
 # igdx and cr a sample of the Pareto SET besides (BenchProblem.pareto_set),
@@ -80,6 +81,15 @@ DESCRIPTIONS = {
           "best weighted Tchebycheff value max_i w_i (f_i - ideal_i)/(nadir_i - ideal_i) "
           "in the set; weakly Pareto-compliant, linear in the objective count where the "
           "hypervolume turns Monte-Carlo, and non-zero where hv is 0",
+    "gdp_norm": "GD+ with objectives and front divided by nadir - ideal, like igdp_norm: "
+                "how far the set is from the front, scale-free, so one threshold reads "
+                "alike on every problem (--cover's progress criterion)",
+    "gap_max": "the largest hole: the maximum over the reference sample of the IGD+ "
+               "distance d+(z, A), normalised like igdp_norm — tau90 taken at 100 %; "
+               "coverage, blind to how many points fill the rest",
+    "nn_cv": "evenness: the coefficient of variation of the nearest-neighbour distances "
+             "among the distinct non-dominated points, objectives normalised by ideal and "
+             "nadir; 0 = evenly spaced, larger = clumped; no reference front needed",
     "oob_share": "share of offspring with a variable outside the box before repair",
     "oob_var_share": "share of offspring variables outside the box before repair",
     "survival_share": "share of offspring that entered the next population",

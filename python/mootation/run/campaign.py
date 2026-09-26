@@ -76,6 +76,9 @@ class Job:
     # budget in evaluations that overrides pop * gens (0 = pop * gens)
     label: str = ""
     evaluations: int = 0
+    # a rung of the budget ladder: the label of the full-budget run it
+    # shortens ([campaign] ladder); empty for every other job
+    ladder_of: str = ""
 
     @property
     def key(self) -> str:
@@ -104,6 +107,16 @@ class CampaignSpec:
     # counts at every budget, so runs of a budget ladder line up (log_grid).
     record_grid: str = "generations"
     record_per_decade: int = 10
+    # Extra evaluation counts for the "log" grid — a budget ladder's rungs
+    # (2 500, 5 000, 10 000), which 10^(j/10) misses: a record is taken at the
+    # first generation that reaches each, like the grid's own counts.
+    record_at: tuple = ()
+    # Budget ladder: for every budget-dependent algorithm (budget.py), a
+    # separate run at each of these budgets besides the full one, filed under
+    # "<label>@<budget>" and marked ladder_of in meta.json. For the others a
+    # rung is read off the full run's trajectory (record_at puts a record
+    # there). The ladder jobs follow all the others in the job list.
+    ladder: tuple = ()
     # The hypervolumes on the trajectory exactly only up to this many objectives
     # (0 = always). Above it they are recorded as null, or, with
     # trajectory_hv_mc_samples > 0, estimated by Monte Carlo from that many
@@ -164,7 +177,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     raw = dict(cfg.campaign or {})
     spec = CampaignSpec()
     known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds",
-             "record_grid", "record_per_decade", "trajectory_hv_max_m",
+             "record_grid", "record_per_decade", "record_at", "ladder", "trajectory_hv_max_m",
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_scenario", "snapshots",
              "operator_stats"}
@@ -198,6 +211,18 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
                           f"'generations' or 'log', not '{spec.record_grid}'")
     if spec.record_per_decade < 1:
         raise ConfigError("campaign.record_per_decade", "must be >= 1")
+    at = raw.get("record_at", [])
+    if (not isinstance(at, (list, tuple))
+            or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in at)):
+        raise ConfigError("campaign.record_at", f"a list of positive evaluation counts, not {at!r}")
+    if at and spec.record_grid != "log":
+        raise ConfigError("campaign.record_at", "needs record_grid = \"log\"")
+    spec.record_at = tuple(sorted(set(at)))
+    ladder = raw.get("ladder", [])
+    if (not isinstance(ladder, (list, tuple))
+            or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in ladder)):
+        raise ConfigError("campaign.ladder", f"a list of positive evaluation counts, not {ladder!r}")
+    spec.ladder = tuple(sorted(set(ladder)))
     if spec.trajectory_hv_max_m < 0:
         raise ConfigError("campaign.trajectory_hv_max_m", "must be >= 0 (0 = no limit)")
     for key, lo in (("trajectory_hv_mc_samples", 0), ("hv_exact_max_m", 0),
@@ -307,6 +332,27 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
                                 n_objs=p.n_obj, pop_note=note, label=a.key,
                                 evaluations=a.evaluations))
                 idx += 1
+    if spec.ladder:
+        # The rungs, after every full-budget job so that the job numbers of a
+        # campaign without them stay as they were.
+        from .budget import BUDGET_DEPENDENT
+        full = {(j.problem, j.key): j for j in jobs}
+        for pname in problems:
+            for a in cfg.algorithms:
+                if a.name not in BUDGET_DEPENDENT or a.evaluations > 0:
+                    continue
+                base = full[(pname, a.key)]
+                for b in spec.ladder:
+                    if b >= base.budget:
+                        continue
+                    gens = max(1, math.ceil(b / base.pop))
+                    for s in seeds:
+                        jobs.append(Job(index=idx, problem=pname, algorithm=a.name, seed=s,
+                                        pop=base.pop, gens=gens, params=dict(a.params),
+                                        n_objs=base.n_objs, pop_note=base.pop_note,
+                                        label=f"{a.key}@{b}", evaluations=b,
+                                        ladder_of=a.key))
+                        idx += 1
     return jobs
 
 
@@ -353,9 +399,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         pset = np.asarray(p.pareto_set(spec.n_ref), float)
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
+    from .budget import BUDGET_DEPENDENT
     meta = {
         "status": "running", "problem": job.problem, "algorithm": job.key,
         "core": job.algorithm,
+        # measured in budget.py: a record of this run at a smaller budget is
+        # not what a separate run of that budget gives (ladder_of: the full
+        # run a ladder rung shortens)
+        "budget_dependent": job.algorithm in BUDGET_DEPENDENT,
+        "ladder_of": job.ladder_of or None,
         "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
         "params": job.params, "n_objs": p.n_obj, "n_vars": p.n_vars,
         "pop_note": job.pop_note, "metrics": list(spec.metrics),
@@ -421,10 +473,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         else:
             hv_skipped = [m for m in traj_metrics if m in HV_NAMES]
             traj_metrics = [m for m in traj_metrics if m not in HV_NAMES]
-    grid = log_grid(budget, spec.record_per_decade) if spec.record_grid == "log" else None
+    grid = (sorted(set(log_grid(budget, spec.record_per_decade))
+                   | {v for v in spec.record_at if v <= budget})
+            if spec.record_grid == "log" else None)
     next_i = 0
     meta.update(record_grid=spec.record_grid,
                 record_per_decade=spec.record_per_decade if grid is not None else None,
+                record_at=list(spec.record_at),
                 trajectory_hv_max_m=spec.trajectory_hv_max_m,
                 trajectory_hv=("not recorded" if hv_skipped else
                                "exact" if traj_hv["exact_max_m"] >= p.n_obj else
@@ -954,9 +1009,38 @@ def scan_results(root: Path) -> list[dict]:
             "final": m.get("final", {}) or {}, "seconds": m.get("seconds"),
             "fe": m.get("fe"), "n_objs": m.get("n_objs"), "budget_fe": m.get("budget_fe"),
             "final_archive": m.get("final_archive") or {},
+            "core": m.get("core"), "budget_dependent": m.get("budget_dependent"),
+            "ladder_of": m.get("ladder_of"),
+            "has_reference_front": m.get("has_reference_front"),
             "dir": meta.parent,
         })
     return rows
+
+
+def main_rows(rows: list[dict]) -> list[dict]:
+    """The full-budget runs: without the rungs of a budget ladder, which are read
+    in their place at a smaller budget (rungs_in_place, cover.py), not beside them."""
+    return [r for r in rows if not r.get("ladder_of")]
+
+
+def rungs_in_place(rows: list[dict], at: float | None) -> list[dict]:
+    """The full-budget runs, each read at the fraction `at` of its budget the way
+    the budget asks: a budget-dependent algorithm's run is replaced by its
+    ladder rung of exactly that budget when the campaign has one (the rung's
+    final answer, filed under the full run's label), every other run is read
+    off its trajectory (value_at)."""
+    main = main_rows(rows)
+    if at is None:
+        return main
+    rungs = {(r["problem"], r["ladder_of"], r["seed"], r.get("budget_fe")): r
+             for r in rows if r.get("ladder_of")}
+    out = []
+    for r in main:
+        b = int(round(float(at) * float(r.get("budget_fe") or 0)))
+        rung = rungs.get((r["problem"], r["algorithm"], r["seed"], b))
+        out.append(dict(rung, algorithm=r["algorithm"], rung_of=r.get("budget_fe"))
+                   if rung is not None else r)
+    return out
 
 
 def value_at(row: dict, metric: str, at: float | None) -> float | None:
@@ -966,8 +1050,9 @@ def value_at(row: dict, metric: str, at: float | None) -> float | None:
     `at * budget_fe` evaluations — the anytime reading of the same run, so ranks
     at 10 %, 25 % and 100 % of the budget come out of one campaign. It needs the
     metric among the campaign's `metrics`, which are what a trajectory records.
+    A ladder rung put in a full run's place (rungs_in_place) is read at its end.
     """
-    if at is None:
+    if at is None or row.get("rung_of"):
         v = row["final"].get(metric)
         return None if v is None else float(v)
     limit = float(at) * float(row.get("budget_fe") or 0)
@@ -1186,8 +1271,11 @@ def _recompute_one(args) -> str:
             F, X = _read_points(path, m, n)
             if not len(F):
                 return "skipped"
-            frame = (meta.get("archive") or {}).get("frame")
-            if frame:
+            arc_meta = meta.get("archive") or {}
+            frame = arc_meta.get("frame")
+            if arc_meta.get("normalization") == "archive":
+                lo = hi = None                   # the kept points' range, as GridArchive.select
+            elif frame:
                 lo, hi = frame
             elif p.ideal is not None and p.nadir is not None:
                 lo, hi = p.ideal, p.nadir
@@ -1330,6 +1418,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--interpolation", choices=("step", "linear"), default="step",
                     help="with --ecdf: a target reached between two records is charged to the "
                          "later record (step, the default) or interpolated (linear)")
+    ap.add_argument("--cover", action="store_true",
+                    help="the smallest sets of algorithms that cover the problems at each level "
+                         "and budget, exact and greedy, the curve k -> share covered, and the "
+                         "problems nobody covers (cover.py); CSV under <results>/_cover/")
+    ap.add_argument("--cover-taus", default="0.1,0.03,0.01,0.003", metavar="LIST",
+                    help="with --cover: the levels, comma-separated (default 0.1,0.03,0.01,0.003)")
+    ap.add_argument("--cover-budgets", metavar="LIST",
+                    help="with --cover: the budgets, comma-separated (default the campaign's "
+                         "ladder and full budget)")
+    ap.add_argument("--cover-seeds", type=int, default=7, metavar="N",
+                    help="with --cover: a problem is covered when N seeds reach the level (7)")
+    ap.add_argument("--cover-max-sets", type=int, default=20, metavar="N",
+                    help="with --cover: list at most N smallest sets per case (20)")
+    ap.add_argument("--cover-bootstrap", type=int, default=0, metavar="N",
+                    help="with --cover: N resamplings of the seeds, and how often each "
+                         "algorithm is in a smallest set (0: off)")
     args = ap.parse_args(argv)
 
     try:
@@ -1424,11 +1528,27 @@ def main(argv: list[str] | None = None) -> int:
                                  scenario=args.scenario, problems=only_problems)
         print(f"recomputed {', '.join(names)} ({args.scenario}): {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
+    if args.cover:
+        from . import cover as C
+        try:
+            taus = tuple(float(v) for v in args.cover_taus.split(",") if v.strip())
+            budgets = (tuple(int(v) for v in args.cover_budgets.split(",") if v.strip())
+                       if args.cover_budgets else
+                       tuple(sorted(set(spec.ladder) | {spec.budget_fe})) if spec.budget_fe
+                       else C.BUDGETS)
+        except ValueError:
+            print("--cover-taus wants numbers and --cover-budgets integers, comma-separated",
+                  file=sys.stderr)
+            return 1
+        print(C.run(root, taus=taus, budgets=budgets, min_seeds=args.cover_seeds,
+                    max_sets=args.cover_max_sets, replicates=args.cover_bootstrap,
+                    workers=args.workers))
+        return 0
     rows = None
     if args.bias or set_tables or any(v is not None for v in (
             args.ranks, args.compare, args.gap, args.zero_share, args.ecdf)):
         from . import report as R
-        rows = scenario_rows(scan_results(root), args.scenario)
+        rows = rungs_in_place(scenario_rows(scan_results(root), args.scenario), args.at)
         if only_problems is not None:
             rows = [r for r in rows if r["problem"] in only_problems]
         try:

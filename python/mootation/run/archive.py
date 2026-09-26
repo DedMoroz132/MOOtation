@@ -27,6 +27,25 @@ so that no objective dominates the distance by its units alone; pass the frame
 explicitly where one is known (a registry problem), otherwise the set's own
 minimum and maximum are used.
 
+ALMOST-DOMINATED POINTS GO LAST (2026-09-27). A point p is set aside when some
+other point q is better than p by more than DRS_LOSS in some objective while p
+is better than q by at most DRS_GAIN in every objective — in normalized
+coordinates, a trade-off worse than 100 to 1 over a tenth of the range. Such
+points (dominance-resistant: the best value of one objective, bought with a
+much worse value of another) are exactly what the per-objective seeds picked
+first, and far from everything else, the max-min steps picked them next.
+Without a given frame the set's minimum and maximum are taken again from the
+points kept, and the test repeated until nothing more is set aside, so an
+outlier does not stretch the frame the rest is measured in. The points set
+aside follow all the others in the order, in the same greedy order among
+themselves; a selection of k no larger than the rest contains none of them.
+
+NO APPROXIMATION GUARANTEE. No bound holds for the covering radius DSS leaves
+— the largest d+ from a point of the set to the selection — against the best
+achievable with the same k: d+ is not symmetric and the seeds are forced, so
+the argument that bounds greedy max-min selection under a metric does not
+apply. It is a spread heuristic, not an optimal subset.
+
 Sources: DSS is Singh, Bhattacharjee & Ray, "Distance based subset selection
 for benchmarking in evolutionary multi/many-objective optimization" (IEEE
 TEVC, 2019), Algo. 1. The procedure above is the one specified for MOOtation
@@ -34,9 +53,11 @@ on 2026-09-22 and departs from Algo. 1 three times: the seeds are the M
 per-objective minima (the rule of Tanabe, Ishibuchi & Oyama 2017, which Singh
 et al. replace by ONE extreme point); the distance is d+ (Ishibuchi, Masuda,
 Tanigaki & Nojima, EMO 2015, Eq. 18; in DSS after Chen, Ishibuchi & Shang
-2020, not in the corpus), not the Euclidean; nothing is filtered (the callers
-pass non-dominated sets). Singh et al.'s results on the spacing of the
-selected points assume the Euclidean distance and are not claimed here.
+2020, not in the corpus), not the Euclidean; the almost-dominated points go
+last (Singh et al. filter nothing: they select from reference sets). Singh et
+al.'s results on the spacing of the selected points assume the Euclidean
+distance and are not claimed here. include/mootation/dss.hpp is the same
+selection in C++, index for index.
 """
 
 from __future__ import annotations
@@ -54,16 +75,66 @@ def normalized(F, ideal=None, nadir=None):
     return (F - lo) / span
 
 
+# Almost-dominated points (module docstring): p is set aside when some q beats
+# it by more than DRS_LOSS in an objective while p beats q by at most DRS_GAIN
+# in every objective, in normalized coordinates.
+DRS_GAIN = 1e-3
+DRS_LOSS = 0.1
+
+
+def almost_dominated(G) -> np.ndarray:
+    """Which rows p of the normalized set G another row q almost dominates:
+    q better than p by more than DRS_LOSS somewhere, p better than q by at
+    most DRS_GAIN everywhere."""
+    G = np.asarray(G, float)
+    out = np.zeros(len(G), bool)
+    for i in range(len(G)):
+        diff = G[i] - G                        # p − q for every q; > 0 where p is worse
+        loss = diff.max(axis=1)                # p's largest loss to q
+        gain = (-diff).max(axis=1)             # p's largest gain over q
+        hit = (gain <= DRS_GAIN) & (loss > DRS_LOSS)
+        hit[i] = False
+        out[i] = bool(hit.any())
+    return out
+
+
+def set_aside(F, ideal=None, nadir=None):
+    """(G, kept): F normalized, and the points DSS seeds from and picks first.
+
+    A missing ideal or nadir is the minimum or maximum of the points kept, taken
+    again after every round that sets points aside, until a round sets none
+    aside. A round never sets aside every point left.
+    """
+    F = np.asarray(F, float)
+    kept = np.ones(len(F), bool)
+    if not len(F):
+        return F.copy(), kept
+    while True:
+        lo = F[kept].min(0) if ideal is None else ideal
+        hi = F[kept].max(0) if nadir is None else nadir
+        G = normalized(F, lo, hi)
+        idx = np.flatnonzero(kept)
+        drop = almost_dominated(G[idx])
+        if not drop.any() or drop.all():
+            return G, kept
+        kept[idx[drop]] = False
+
+
 def dss_order(F, k=None, ideal=None, nadir=None) -> np.ndarray:
     """Indices of F in DSS order (all of them, or the first k).
 
-    Ties are broken by the lowest index, so the order is deterministic.
+    The points set_aside() keeps come first: the best of every objective, then
+    the greedy max-min steps; the points it sets aside follow in the same
+    greedy order. Ties are broken by the lowest index, so the order is
+    deterministic. A set with nothing to set aside is ordered exactly as
+    before the rule existed.
     """
-    G = normalized(F, ideal, nadir)
-    n = len(G)
+    F = np.asarray(F, float)
+    n = len(F)
     k = n if k is None else min(int(k), n)
     if k <= 0:
         return np.empty(0, dtype=np.intp)
+    G, kept = set_aside(F, ideal, nadir)
     order = []
     taken = np.zeros(n, bool)
     cover = np.full(n, np.inf)                 # min over selected of d+(s, c)
@@ -74,15 +145,17 @@ def dss_order(F, k=None, ideal=None, nadir=None) -> np.ndarray:
         d = np.sqrt(np.sum(np.maximum(G[i] - G, 0.0) ** 2, axis=1))
         np.minimum(cover, d, out=cover)
 
-    for j in range(G.shape[1]):               # the best point of every objective
+    for j in range(G.shape[1]):               # the best kept point of every objective
         if len(order) >= k:
             break
-        i = int(np.argmin(G[:, j]))
+        i = int(np.argmin(np.where(kept, G[:, j], np.inf)))
         if not taken[i]:
             take(i)
     while len(order) < k:
-        c = np.where(taken, -1.0, cover)
-        i = int(np.argmax(c))
+        pool = kept & ~taken
+        if not pool.any():
+            pool = ~taken                      # then the points set aside
+        i = int(np.argmax(np.where(pool, cover, -1.0)))
         if taken[i]:
             break
         take(i)
@@ -285,12 +358,19 @@ class GridArchive:
         return self._lo.copy(), self._lo + self._span
 
     def select(self, k: int):
-        """Indices into points() of a DSS selection of k (all if fewer)."""
+        """Indices into points() of a DSS selection of k (all if fewer).
+
+        In the problem's frame when there is one; otherwise in the frame of the
+        points DSS keeps (set_aside), not in the grid's running estimate, which
+        an outlier stretches.
+        """
         F = self.points()[0]
         if len(F) <= k:
             return np.arange(len(F))
-        lo, hi = self.frame()
-        return dss_order(F, k=k, ideal=lo, nadir=hi)
+        if self.normalization == "problem":
+            lo, hi = self.frame()
+            return dss_order(F, k=k, ideal=lo, nadir=hi)
+        return dss_order(F, k=k)
 
     def info(self) -> dict:
         return {"size": len(self), "delta": self.delta, "normalization": self.normalization,

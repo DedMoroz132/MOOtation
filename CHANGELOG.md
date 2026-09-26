@@ -29,6 +29,24 @@ always listed under **Changed** or **Removed**.
 
 ### Changed
 
+- DSS (`archive.dss_order` and `dss.hpp`) sets almost-dominated points aside:
+  a point some other point beats by more than 0.1 in an objective while it
+  beats that point by at most 0.001 everywhere, in normalised coordinates — the
+  best value of one objective bought with a much worse one of another. The
+  per-objective seeds picked exactly these, and the max-min steps picked them
+  next; now they come after every other point. Without the problem's frame the
+  ideal and nadir are taken from the points kept, so an outlier no longer
+  stretches the frame (the run archive's reduction and `--recompute --scenario
+  archive` normalise so when the archive had no problem frame). A set with
+  nothing to set aside is ordered exactly as before. What changes where such
+  points exist: the archive scenario, the answers of `random_search`,
+  `sobol_search` and `gsemo`, and DMS's answer — on DTLZ2_3D its list had
+  some (tools/compat_check.py: DMS's DTLZ2_3D fingerprint moved, ZDT1's did
+  not; DMS is younger than the compatibility baseline). The docs and both
+  headers now say that DSS has no approximation guarantee.
+- The tables and the TUI leave a budget ladder's rungs out, and `--at` reads a
+  budget-dependent algorithm from its rung of that budget when there is one.
+  `postprocess.BUDGET_SCHEDULED` is `budget.BUDGET_DEPENDENT`.
 - `mo_cma_es`: p_target is 2/11, Table 1 of Igel, Hansen & Roth (Evol.
   Comput. 2007) at λ = 1, and c_p 1/12 with it; it was (5 + √(1/2))⁻¹ ≈
   0.1752, the value the 2010 paper prints while giving its defaults "as
@@ -123,6 +141,30 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- What stage 3 of the comparison campaign needs (task 3). **Budget ladder**:
+  `[campaign] record_at` puts trajectory records at exact evaluation counts
+  the decade grid misses (2 500, 5 000), and `ladder = [2500, 5000, 10000]`
+  runs every budget-dependent algorithm separately at each of those budgets,
+  filed as `<algorithm>@<budget>` after all other jobs; `meta.json` says
+  `budget_dependent` and, for a rung, `ladder_of`. `mootation.run.budget`
+  keeps the list read off the code beside the measured one and measures it
+  (`python -m mootation.run.budget`): each algorithm at 10 000 and 25 000
+  evaluations, every record compared bit for bit — exactly the seventeen with
+  a t/t_max schedule differ. **`--cover`**: for levels τ of `igdp_norm` (and
+  `gdp_norm`, the progress alone; the gap of `hv_h` to the campaign's best on
+  bbob-biobj) and budgets, the problems nobody covers, the smallest sets of
+  algorithms covering the rest — exact, by branch and bound, all of them up to
+  a limit, with the greedy set — the curve k -> share covered with problems
+  and with families weighted alike, and a bootstrap over seeds; CSV in
+  `_cover/`. **Metrics**: `gap_max` (the largest d+ hole, tau90 at 100 %),
+  `nn_cv` (the evenness of the non-dominated points, no front needed) and
+  `gdp_norm` (GD+ in `igdp_norm`'s frame), with a table in docs/running.md of
+  which indicators measure progress and which coverage. **Configs**:
+  `campaign_stage3.toml` (every algorithm but HypE, R2-IBEA and SMS-M2M, the
+  four baselines, 225 problems — stage 2's 203 and every BT, MOP, Polygon and
+  IPolygon instance but IPolygon_8D — ten seeds, 25 000 evaluations, the
+  ladder), `campaign_stage3_heavy.toml` (those three, the same settings and
+  results tree) and `campaign_stage3_probe.toml`.
 - RVEA* (`rvea_star`), the variant for irregular fronts that Cheng, Jin,
   Olhofer & Sendhoff give in §VI of the RVEA paper (IEEE TEVC 20(5), 2016,
   Algorithm 4). Beside RVEA's uniform vector set V it keeps a second set V*

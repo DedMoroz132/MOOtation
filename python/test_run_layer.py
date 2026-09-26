@@ -1306,6 +1306,142 @@ def campaign_rejects_unknown_keys_and_metrics():
     assert spec.metrics == ("igd",) and spec.final_metrics == ("igdp_norm", "eps", "hv_h"), spec
 
 
+_LADDER = """
+[run]
+name = "ladder"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+problems = ["DTLZ2_3D"]
+runs = 2
+
+[campaign]
+budget_fe = 25000
+record_grid = "log"
+record_at = [10000, 2500, 5000]
+ladder = [2500, 10000, 30000]
+
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+
+[[algorithms]]
+name = "rvea"
+pop = 0
+gens = 0
+"""
+
+
+@test
+def campaign_record_at_and_ladder_expand_as_documented():
+    """Task 3, item 3: exact ladder counts in the log grid, and the rungs of the
+    budget-dependent algorithms as separate jobs after all the others."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.run import campaign as C
+    from mootation.run.budget import BUDGET_DEPENDENT
+    assert "rvea" in BUDGET_DEPENDENT and "nsga2" not in BUDGET_DEPENDENT
+    cfg = loads(_LADDER)
+    assert validate(cfg) == [], validate(cfg)
+    spec = C.campaign_spec(cfg)
+    assert spec.record_at == (2500, 5000, 10000) and spec.ladder == (2500, 10000, 30000), spec
+    jobs = C.expand_jobs(cfg, spec)
+    assert [j.index for j in jobs] == list(range(len(jobs)))
+    full, rungs = jobs[:4], jobs[4:]
+    assert all(not j.ladder_of for j in full) and len(rungs) == 4, [j.key for j in jobs]
+    assert [(j.key, j.evaluations, j.seed) for j in rungs] == [
+        ("rvea@2500", 2500, 1), ("rvea@2500", 2500, 2),
+        ("rvea@10000", 10000, 1), ("rvea@10000", 10000, 2)]      # 30000 > the full budget
+    assert all(j.ladder_of == "rvea" and j.pop == 91 and j.budget == j.evaluations for j in rungs)
+    assert rungs[0].rel_dir.as_posix() == "DTLZ2_3D/rvea@2500/run_1"
+    nl = chr(10)
+    for old, bad in (("record_at = [10000, 2500, 5000]", "record_at = [0]"),
+                     ("record_at = [10000, 2500, 5000]", "record_at = 2500"),
+                     ("ladder = [2500, 10000, 30000]", 'ladder = ["x"]')):
+        raises(ConfigError, C.campaign_spec, loads(_LADDER.replace(old, bad)))
+    raises(ConfigError, C.campaign_spec, loads(_LADDER.replace('record_grid = "log"' + nl, "")))
+    # without a ladder the job list is the one it always was
+    plain = loads(_LADDER.replace("ladder = [2500, 10000, 30000]" + nl, ""))
+    assert validate(plain) == []
+    assert len(C.expand_jobs(plain, C.campaign_spec(plain))) == 4
+
+
+@test
+def ladder_rungs_stand_in_for_budget_dependent_runs_at_a_fraction():
+    """--at 0.4 of 25 000 reads rvea's 10 000-evaluation rung, nsga2's trajectory."""
+    from mootation.run import campaign as C
+    rows = [
+        {"problem": "P", "algorithm": "rvea", "seed": 1, "status": "done", "budget_fe": 25000,
+         "final": {"igd": 0.1}, "ladder_of": None, "dir": "."},
+        {"problem": "P", "algorithm": "nsga2", "seed": 1, "status": "done", "budget_fe": 25000,
+         "final": {"igd": 0.2}, "ladder_of": None, "dir": "."},
+        {"problem": "P", "algorithm": "rvea@10000", "seed": 1, "status": "done",
+         "budget_fe": 10000, "final": {"igd": 0.5}, "ladder_of": "rvea", "dir": "."},
+    ]
+    assert [r["algorithm"] for r in C.main_rows(rows)] == ["rvea", "nsga2"]
+    at = C.rungs_in_place(rows, 0.4)
+    assert [r["algorithm"] for r in at] == ["rvea", "nsga2"]
+    assert at[0]["final"] == {"igd": 0.5} and at[0]["rung_of"] == 25000
+    assert C.value_at(at[0], "igd", 0.4) == 0.5 and at[1] is rows[1]
+    assert C.rungs_in_place(rows, None) == C.main_rows(rows)
+    assert C.rungs_in_place(rows, 0.2)[0] is rows[0]                 # no rung of 5000
+
+
+@test
+def cover_finds_the_smallest_sets_exactly_where_greedy_does_not():
+    """cover.py on the textbook case: greedy takes 3 sets where 2 suffice."""
+    from mootation.run import cover as V
+    P = [f"p{i:02d}" for i in range(1, 16)]                         # p15: nobody covers it
+    fam = lambda p: "X" if int(p[1:]) <= 7 else "Y"                # noqa: E731
+    cov = {"A": set(P[0:7]), "B": set(P[7:14]),
+           "C": {P[i] for i in (0, 1, 2, 3, 7, 8, 9, 10)},
+           "D": {P[i] for i in (4, 5, 11, 12)}, "E": {P[6], P[13]}}
+    sets = V._masks(cov, P)
+    universe = 0
+    for m in sets.values():
+        universe |= m
+    assert V.greedy_cover(sets, universe) == ["C", "D", "E"]
+    size, sets_found, exact = V.smallest_covers(sets, universe)
+    assert (size, sets_found, exact) == (2, [("A", "B")], True), (size, sets_found)
+    res = V.analyse(cov, P, fam)
+    assert res["nobody"] == ["p15"] and res["n_covered"] == 14 and res["size"] == 2
+    c1, c2 = res["curve"]
+    assert c1["set"] == ["C"] and abs(c1["share"] - 8 / 14) < 1e-12, c1
+    assert c2["set"] == ["A", "B"] and c2["share"] == 1.0 and c2["exact"], c2
+    assert c2["per_family"] == {"X": 7, "Y": 7}
+    # several smallest sets, all listed
+    two = {"a": {1, 2}, "b": {3, 4}, "c": {1, 3}, "d": {2, 4}}
+    m2 = V._masks(two, [1, 2, 3, 4])
+    assert V.smallest_covers(m2, 0b1111)[1] == [("a", "b"), ("c", "d")]
+    assert V.smallest_covers(m2, 0b1111, max_sets=1)[1] == [("a", "b")]
+
+
+@test
+def cover_reads_levels_seeds_and_the_hypervolume_gap():
+    """igdp_norm <= tau with a front, the gap to the best hv_h without one, and
+    >= min_seeds seeds for a success."""
+    from mootation.run import cover as V
+    vals = {}
+    for s in range(1, 11):
+        vals[("F", "a", s)] = {100: {"igdp_norm": 0.005 if s <= 7 else 0.5, "gdp_norm": 0.001}}
+        vals[("F", "b", s)] = {100: {"igdp_norm": 0.005 if s <= 6 else 0.5, "gdp_norm": 0.001}}
+        vals[("H", "a", s)] = {100: {"hv_h": 0.995}}
+        vals[("H", "b", s)] = {100: {"hv_h": 0.90}}
+    data = {"values": vals, "front": {"F": True, "H": False}, "main": [
+        {"problem": "H", "algorithm": "b", "seed": 1, "final": {"hv_h": 1.0}}]}
+    best = V.best_known_hv(data)
+    assert best == {"H": (1.0, "b", 1)}
+    hit = V.reached(data, "igdp", 0.01, 100, best)
+    cov = V.successes(hit, 7)
+    assert cov == {"a": {"F", "H"}, "b": set()}, cov              # b: 6 seeds; gap 0.1 > 0.01
+    assert V.successes(V.reached(data, "gdp", 0.01, 100, best), 7) == {"a": {"F", "H"},
+                                                                       "b": {"F"}}
+    assert V.successes(hit, 7, seeds=[1] * 10)["b"] == {"F"}       # a resample of seed 1 only
+
+
 @test
 def metrics_agree_with_closed_forms():
     try:
@@ -1430,6 +1566,47 @@ def dss_keeps_the_extremes_and_its_order_is_incremental():
     mine = igd_plus(F[order[:25]], F)
     rng = np.random.default_rng(1)
     assert all(mine < igd_plus(F[rng.choice(len(F), 25, replace=False)], F) for _ in range(20))
+
+
+@test
+def dss_sets_almost_dominated_points_aside():
+    """Points that buy the best value of one objective with a much worse value of
+    another are neither seeds nor picks while other points are left, and do not
+    stretch the frame the others are normalized in (archive.py, 2026-09-27)."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run.archive import DRS_GAIN, DRS_LOSS, dss_order, normalized, set_aside
+    rng = np.random.default_rng(7)
+    D = rng.random((50, 3))
+    front = D / np.linalg.norm(D, axis=1, keepdims=True)            # 50 points of DTLZ2's front
+    bad = []
+    for j in range(3):                     # each objective's best, beaten by 1e-4, worse by 0.8
+        p = front[np.argmin(front[:, j])].copy()
+        p[j] -= 1e-4
+        p[(j + 1) % 3] += 0.8
+        bad.append(p)
+    F = np.vstack([front, bad])
+    drs = set(range(len(front), len(F)))
+    for frame in ((None, None), ((0.0, 0.0, 0.0), (1.0, 1.0, 1.0))):
+        order = dss_order(F, ideal=frame[0], nadir=frame[1]).tolist()
+        assert not drs & set(order[:len(front)]), (frame, order[:len(front)])
+        assert set(order[len(front):]) == drs and sorted(order) == list(range(len(F)))
+        for k in (3, 10, 50):                                       # never as a seed or a pick
+            assert not drs & set(dss_order(F, k=k, ideal=frame[0], nadir=frame[1]).tolist())
+    G, kept = set_aside(F)
+    assert kept.tolist() == [True] * len(front) + [False] * 3
+    assert np.array_equal(G[:len(front)], normalized(front))        # the frame is the front's
+    # the rule's size: a gain of DRS_GAIN or less and a loss of more than DRS_LOSS
+    assert set_aside([[0.0, 1.0], [DRS_GAIN, 1.0 - 2 * DRS_LOSS], [1.0, 0.0]])[1].tolist() \
+        == [False, True, True]
+    assert set_aside([[0.0, 1.0], [2 * DRS_GAIN, 1.0 - 2 * DRS_LOSS], [1.0, 0.0]])[1].all()
+    # a steep but ordinary front keeps its ends: ZDT1's f2 = 1 - sqrt(f1)
+    x = np.linspace(0.0, 1.0, 200)
+    Z = np.column_stack([x, 1.0 - np.sqrt(x)])
+    assert set_aside(Z)[1].all()
+    assert set(dss_order(Z, k=2).tolist()) == {0, 199}
 
 
 @test
@@ -2370,6 +2547,37 @@ def tau90_is_a_quantile_of_the_igd_plus_distances():
 
 
 @test
+def gap_max_is_the_largest_hole_and_nn_cv_the_evenness():
+    """Task 3, item 6: gap_max = max over the reference of d+(z, A) in igdp_norm's
+    frame; nn_cv = CV of the nearest-neighbour distances among the non-dominated."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    ref = np.column_stack([np.linspace(0, 1, 21), 1 - np.linspace(0, 1, 21)])
+    box = dict(ref_front=ref, ideal=[0.0, 0.0], nadir=[2.0, 2.0])
+    out = M.compute(ref, which=["gap_max", "nn_cv"], **box)
+    assert out["gap_max"] == 0.0 and abs(out["nn_cv"]) < 1e-9, out       # the front, evenly
+    # the left half missing: the hole is the far end, in the normalised frame (/2)
+    A = ref[10:]
+    out = M.compute(A, which=["gap_max", "tau90", "igdp_norm"], **box)
+    assert abs(out["gap_max"] - 0.25) < 1e-12, out                       # d+ to (0.5, 0.5) from (0, 1)
+    assert out["gap_max"] >= out["tau90"] >= 0.0 and out["gap_max"] >= out["igdp_norm"]
+    assert out["gap_max"] == M.dplus_distances((A - 0) / 2, ref / 2).max()
+    # a clump raises nn_cv; a dominated point and a copy do not count
+    clumped = np.vstack([ref[:3], ref[[10, 20]]])
+    assert M.compute(clumped, which=["nn_cv"], **box)["nn_cv"] > 0.5
+    even = ref[::5]
+    noisy = np.vstack([even, even[2] + 0.3, even[1]])
+    assert abs(M.nn_cv(noisy, [0, 0], [2, 2]) - M.nn_cv(even, [0, 0], [2, 2])) < 1e-12
+    assert M.nn_cv(ref[:1], [0, 0], [2, 2]) is None
+    assert M.compute(A, which=["gap_max"], ideal=[0, 0], nadir=[2, 2]) == {"gap_max": None}
+    from mootation.run.metric_names import DESCRIPTIONS, METRIC_NAMES, NEEDS_FRONT
+    assert {"gap_max", "nn_cv"} <= set(METRIC_NAMES) and "gap_max" in NEEDS_FRONT
+    assert "nn_cv" not in NEEDS_FRONT and {"gap_max", "nn_cv"} <= set(DESCRIPTIONS)
+
+
+@test
 def operator_statistics_leave_the_run_alone_and_describe_it():
     """[campaign] operator_stats: the same populations, the records and meta it adds."""
     if not _have_numpy() or _core_with("operator_stats") is None:
@@ -2642,6 +2850,19 @@ def cpp_dss_selects_what_the_run_layer_selects():
         for k in (1, m, 17, 60, 80):
             assert list(_core.dss_order(F.tolist(), k)) == dss_order(F, k).tolist(), (m, k)
     assert list(_core.dss_order([], 5)) == []
+    # the almost-dominated points set aside, the same ones in both
+    D = rng.random((40, 3))
+    F = D / np.linalg.norm(D, axis=1, keepdims=True)
+    bad = []
+    for j in range(3):
+        p = F[np.argmin(F[:, j])].copy()
+        p[j] -= 1e-4
+        p[(j + 1) % 3] += 0.8
+        bad.append(p)
+    F = np.vstack([F, bad])
+    for k in (3, 20, 40, 43):
+        assert list(_core.dss_order(F.tolist(), k)) == dss_order(F, k).tolist(), k
+    assert not {40, 41, 42} & set(_core.dss_order(F.tolist(), 40))
 
 
 @test
@@ -2866,6 +3087,65 @@ def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
     assert not r.ignored, r.ignored
     r = minimize(p.evaluate, algorithm="mo_cma_es", seed=3, eta_c=20.0, **kw)
     assert r.ignored == ["eta_c"], r.ignored
+
+
+@test
+def budget_check_tells_a_schedule_from_none():
+    """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  budget_check...: no NumPy or stale _core"); return
+    from mootation.run.budget import check
+    res = {r["algorithm"]: r for r in check(["nsga2", "rvea", "random_search"],
+                                            problem="ZDT1", short=600, long=1200)}
+    assert not res["nsga2"]["dependent"] and res["nsga2"]["compared"] >= 6, res["nsga2"]
+    assert res["rvea"]["dependent"] and res["rvea"]["by_headers"], res["rvea"]
+    assert not res["random_search"]["dependent"], res["random_search"]
+
+
+@test
+def a_ladder_campaign_runs_marks_and_covers():
+    """Rungs run as jobs, meta.json says budget_dependent and ladder_of, and
+    --cover reads rungs for rvea and trajectory records for nsga2."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  a_ladder_campaign...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import cover as V
+    from mootation.run.config import load
+    text = (_LADDER.replace('problems = ["DTLZ2_3D"]', 'problems = ["ZDT1"]')
+            .replace("budget_fe = 25000", 'budget_fe = 1200' + chr(10)
+                     + 'metrics = ["igdp_norm", "gdp_norm", "hv_h"]')
+            .replace("record_at = [10000, 2500, 5000]", "record_at = [600]")
+            .replace("ladder = [2500, 10000, 30000]", "ladder = [600]"))
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        jobs = C.expand_jobs(cfg, spec)
+        assert [j.key for j in jobs[4:]] == ["rvea@600", "rvea@600"]
+        for job in jobs:
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        m = json.loads((root / "ZDT1" / "rvea@600" / "run_1" / "meta.json").read_text("utf-8"))
+        assert m["budget_dependent"] and m["ladder_of"] == "rvea" and m["budget_fe"] == 600, m
+        m = json.loads((root / "ZDT1" / "nsga2" / "run_1" / "meta.json").read_text("utf-8"))
+        assert m["budget_dependent"] is False and m["ladder_of"] is None and m["record_at"] == [600]
+        T = [json.loads(l) for l in (root / "ZDT1" / "nsga2" / "run_1" / "trajectory.jsonl")
+             .read_text().splitlines()]
+        assert any(600 <= t["fe"] < 700 for t in T), [t["fe"] for t in T]   # the rung's record
+        data = V.collect(root, (600, 1200))
+        rung = json.loads((root / "ZDT1" / "rvea@600" / "run_2" / "meta.json").read_text("utf-8"))
+        assert data["values"][("ZDT1", "rvea", 2)][600]["igdp_norm"] == rung["final"]["igdp_norm"]
+        first = next(t for t in T if t["fe"] >= 600)
+        assert data["values"][("ZDT1", "nsga2", 1)][600]["igdp_norm"] == first["igdp_norm"]
+        assert not data["missing"] and data["dependent"] == {"rvea"}
+        text_out = V.run(root, taus=(10.0, 1e-9), budgets=(600, 1200), min_seeds=2)
+        assert "igdp <= 10 at 600: 1/1 covered" in text_out, text_out
+        assert "igdp <= 1e-09 at 1200: 0/1 covered" in text_out, text_out
+        for name in ("cover_summary.csv", "cover_curve.csv", "cover_nobody.csv",
+                     "best_known_hv.csv"):
+            assert (root / "_cover" / name).is_file(), name
 
 
 def main() -> int:
