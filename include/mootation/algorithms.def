@@ -60,6 +60,7 @@ MOOTATION_ALG(mo_cma_es,        MOCMAES_Individual,   MOCMAESCore)
 
 // ── Reference-vector / angle-based ──────────────────────────────────────────
 MOOTATION_ALG(rvea,       RVEA_Individual,      RVEACore)
+MOOTATION_ALG(rvea_star,  RVEA_Individual,      RVEAStarCore)
 MOOTATION_ALG(maoeaarv,   MaOEAARV_Individual,  MaOEAARVCore)
 MOOTATION_ALG(mbra,       MBRA_Individual,      MBRACore)
 MOOTATION_ALG(nrv_moea,   NRVMOEA_Individual,   NRVMOEACore)

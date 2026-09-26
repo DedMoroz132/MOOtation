@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use MOOtation in academic work, please cite it as below."
 title: "MOOtation: a header-only C++17 library of multi- and many-objective evolutionary algorithms"
 abstract: >-
-  MOOtation is a dependency-free, header-only C++17 library of 62 multi- and
+  MOOtation is a dependency-free, header-only C++17 library of 63 multi- and
   many-objective optimization algorithms — Pareto-dominance, decomposition,
   indicator-based, reference-vector, clustering-based, archive-based and
   direct search —

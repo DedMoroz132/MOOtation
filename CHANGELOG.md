@@ -123,6 +123,25 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- RVEA* (`rvea_star`), the variant for irregular fronts that Cheng, Jin,
+  Olhofer & Sendhoff give in §VI of the RVEA paper (IEEE TEVC 20(5), 2016,
+  Algorithm 4). Beside RVEA's uniform vector set V it keeps a second set V*
+  of N vectors; after every generation each vector of V* that is the nearest
+  one to no non-dominated solution is replaced by a random direction inside
+  the non-dominated solutions' range after the translation, where every
+  minimum is 0 (footnote 6), and V ∪ V* guides the selection. The paper keeps
+  one solution per non-empty vector, so its population can reach 2N; here
+  every generation keeps N: all of V's best, then V*'s by APD, the runners-up
+  when fewer than N vectors are occupied (RVEA*-1). Algorithm 4's "for j = 1
+  to N" runs over the M objectives (RVEA*-2). Measured against RVEA over
+  seeds 1-5 at 500 generations: the population stays N where RVEA's shrinks
+  (55-57 of 91 on DTLZ5, 12-18 of 126 on IDTLZ1 at five objectives) and the
+  median IGD falls from 0.070 to 0.018 on DTLZ5, 0.145 to 0.068 on IDTLZ1
+  (M = 5) and 0.675 to 0.398 on DTLZ7 (M = 6); on DTLZ2 the two agree. It
+  converges more slowly where convergence is the whole task — ZDT1 0.031
+  against 0.0095, DTLZ6 0.77 against 0.43 — and at four times the budget is
+  close on ZDT1 (0.0064 against 0.0049) and ahead on DTLZ6 (0.094 against
+  0.136). `rvea` is unchanged. The public list is 63 algorithms.
 - Set comparisons and two indicators (task 2, D4-D7). `r2`, the discrete R2 on
   `hv_h`'s Das-Dennis lattice, a final or trajectory metric for four
   objectives and more (`--recompute r2` adds it to a finished campaign).
@@ -437,6 +456,14 @@ always listed under **Changed** or **Removed**.
   measured difference).
 
 ### Fixed
+
+- README's family table (English and Russian) still added up to 58
+  algorithms: Pareto-dominance 7 (GDE3 makes 8),
+  indicator-based 11 (SMS-EMOA and MO-CMA-ES make 13), and no row for DMS.
+  `rvea.hpp` said in one place that RVEA's population "recovers later" after
+  a generation with empty subpopulations and, a few lines below, measured,
+  that on an irregular front it stays below N for good; it now says the
+  latter throughout.
 
 - `test_constraints` decided its feasibility check — the constrained run ends
   with at least as many feasible solutions as the unconstrained one — on one

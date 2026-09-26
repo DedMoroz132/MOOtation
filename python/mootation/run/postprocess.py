@@ -32,11 +32,12 @@ from .metric_names import HIGHER_IS_BETTER
 # t/t_max in a schedule. Of the other two, IF-MaOEA stores t_max and never
 # reads it, and CLIA uses it once, for theta = min(20, max(5, ceil(t_max*N /
 # 2e4))) (§IV-B), which is 5 at every budget up to 100 000 evaluations — so on
-# the 10 000 / 25 000 / 50 000 ladder CLIA behaves as unscheduled.
+# the 10 000 / 25 000 / 50 000 ladder CLIA behaves as unscheduled. RVEA*
+# (rvea_star, added 2026-09-27) has RVEA's APD schedule: 19 and 17.
 BUDGET_SCHEDULED = frozenset({
-    "rvea", "moead_awa", "adaw", "dea_gng", "mbra", "nrv_moea", "hlmea", "dhea",
-    "moead_ds", "srv", "srv_nsga3", "dcea", "maoea_3c", "moead_m2m", "moead_am2m",
-    "liu_gu2011",
+    "rvea", "rvea_star", "moead_awa", "adaw", "dea_gng", "mbra", "nrv_moea",
+    "hlmea", "dhea", "moead_ds", "srv", "srv_nsga3", "dcea", "maoea_3c",
+    "moead_m2m", "moead_am2m", "liu_gu2011",
 })
 
 INTERPOLATIONS = ("step", "linear")

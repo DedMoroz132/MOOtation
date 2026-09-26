@@ -9,7 +9,7 @@
 // header is missing from that file.
 //
 // Every core exposes set_seed/setup/step, but the tuning knobs differ per
-// algorithm: only 19 of the 62 have set_t_max, 10 have set_T, 6 have set_kappa.
+// algorithm: only 19 of the 63 have set_t_max, 10 have set_T, 6 have set_kappa.
 // Rather than a per-algorithm dispatch, each optional setter is detected with
 // SFINAE and applied only where it exists. A knob the caller sets that the
 // chosen algorithm does not have is REPORTED, not ignored — silently dropping

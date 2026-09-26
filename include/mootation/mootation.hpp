@@ -45,6 +45,7 @@
 #include "algorithms/r2ibea.hpp"
 #include "algorithms/hype.hpp"
 #include "algorithms/rvea.hpp"
+#include "algorithms/rvea_star.hpp"
 #include "algorithms/agemoea.hpp"
 #include "algorithms/theta_dea.hpp"
 #include "algorithms/grea.hpp"

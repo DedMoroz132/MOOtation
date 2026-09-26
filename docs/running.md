@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 62 algorithm names |
+| `--algorithms` | list the 63 algorithm names |
 | `--problems` | list the 436 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -473,7 +473,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-62 cores, so "not dominated by its parents" is read as "by any parent", and
+63 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`
@@ -615,8 +615,8 @@ python -m mootation.run.campaign c.toml --magnitude                      # exper
   problem and the mean ranks by both. Magnitude joins the metrics only if the
   order it gives is clearly different and the difference can be explained.
 
-Every table marks with `*` the sixteen algorithms whose behaviour follows the
-share of the budget spent (a t/t_max schedule): RVEA, MOEA/D-AWA, AdaW,
+Every table marks with `*` the seventeen algorithms whose behaviour follows the
+share of the budget spent (a t/t_max schedule): RVEA, RVEA*, MOEA/D-AWA, AdaW,
 DEA-GNG, MBRA, NRV-MOEA, HLMEA, DHEA, MOEA/D-DS, SRV, SRV-NSGA-III, DCEA,
 MaOEA-3C, MOEA/D-M2M, MOEA/D-AM2M and Liu–Gu 2011. Their runs at 10 000 and
 25 000 evaluations are not one run cut at two points, so overlay their curves

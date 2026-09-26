@@ -65,7 +65,7 @@ def main() -> int:
     assert run_pkg.__name__ == "mootation.run"
     assert callable(mootation.run_raw)
     assert mootation.run_raw is not run_pkg
-    check(len(names) == 62, f"expected 62 algorithms, got {len(names)}")
+    check(len(names) == 63, f"expected 63 algorithms, got {len(names)}")
 
     # ── 1. every registered name runs ───────────────────────────────────────
     skipped: list[str] = []

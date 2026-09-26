@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""MOOtation — 62 multi- and many-objective optimization algorithms.
+"""MOOtation — 63 multi- and many-objective optimization algorithms.
 
 The library is C++; this package is the Python face of it.
 

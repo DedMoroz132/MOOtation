@@ -14,7 +14,8 @@
 //      vectors are a Das-Dennis lattice normalised onto the unit sphere (Eq. 2–3).
 //   4. APD (Eq. 8–10): d = (1 + M·(t/t_max)^α·θ/γ_v)·‖f'‖, γ_v — the minimum
 //      angle from v to the other vectors; from each non-empty subpopulation a
-//      single min-APD individual survives (empty niches → |P_{t+1}| ≤ N, recovers later).
+//      single min-APD individual survives (empty ones → |P_{t+1}| ≤ N, see
+//      POPULATION SIZE below).
 //   5. Vector adaptation (Alg. 3, Eq. 11): when (t/t_max mod fr) == 0 —
 //      including t = 0 — v_i = normalise(v0_i ∘ (z_max − z_min)), z over P_{t+1}.
 //
@@ -26,21 +27,21 @@
 //   RVEA-2 (resolved 2026-09-16): the adaptation updated only as many vectors
 //   as there were survivors, not all N of Alg.3 lines 5-7 (see
 //   adapt_reference_vectors).
-//   RVEA* (Alg. 4, vector regeneration for irregular PFs) is not implemented —
-//   a deliberate implementation boundary (baseline RVEA).
+//   RVEA* (§VI, Alg. 4, vector regeneration for irregular PFs) is a separate
+//   algorithm, rvea_star.hpp; this file is the baseline RVEA.
 //   POPULATION SIZE, the letter of §III-C: "one elitist can be selected from
 //   each subpopulation to create P_{t+1}", and Alg. 2 skips the empty ones, so
 //   |P_{t+1}| is the number of reference vectors that have at least one
 //   solution closest to them. On a regular front that is close to N; on an
 //   irregular one it can stay far below N for good — which is exactly what §VI
-//   and RVEA* are for. Measured 2026-09-22 on IDTLZ1_5D, 10 000 evaluations:
-//   126 at generation 0, then 10-27 for the rest of the run, ending at 22, 8,
-//   23, 14 and 11 over seeds 1-5. The bound is geometric: every normalized
-//   direction on that inverted front has all its components <= 1/4, and of the
-//   126 lattice vectors exactly 21 are the nearest vector to some point of the
-//   front (20 000 sampled points), so a population on the front occupies at
-//   most 21 subpopulations. Not a defect of the port; compare RVEA on
-//   inverted or degenerate fronts with that in mind.
+//   and RVEA* (rvea_star.hpp) are for. Measured 2026-09-22 on IDTLZ1_5D,
+//   10 000 evaluations: 126 at generation 0, then 10-27 for the rest of the
+//   run, ending at 22, 8, 23, 14 and 11 over seeds 1-5. The bound is geometric:
+//   every normalized direction on that inverted front has all its components
+//   <= 1/4, and of the 126 lattice vectors exactly 21 are the nearest vector to
+//   some point of the front (20 000 sampled points), so a population on the
+//   front occupies at most 21 subpopulations. Not a defect of the port; compare
+//   RVEA on inverted or degenerate fronts with that in mind.
 // Extensions beyond the paper: binary variables (uniform crossover + bit-flip),
 //   active only when bin_vars_n()>0. ConstraintMode::FEASIBILITY is
 //   Algorithm 5 (C-RVEA, §VII) of the paper itself; off by default (NONE).
@@ -422,8 +423,8 @@ public:
 
         // ── move survivors to [0, |survivors|) ────────────────────────────
         rearrange(vault, survivors, pool_size);
-        // vault.active_n() may now be < n if some subspaces were empty.
-        // This is correct behaviour; population recovers next generation.
+        // vault.active_n() is < n when some subspaces were empty: Alg. 2 keeps
+        // one individual per non-empty subspace (POPULATION SIZE in the header).
 
         // ── reference vector adaptation (Algorithm 3, line 3) ─────────────
         // The paper's condition: "if (t/t_max mod f_r) == 0" — true for

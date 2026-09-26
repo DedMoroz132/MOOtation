@@ -75,7 +75,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 62, f"expected 62 algorithms, got {len(names)}"
+    assert len(names) == 63, f"expected 63 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -2106,7 +2106,7 @@ def postprocessing_runtimes_gaps_and_budget_marks():
             for a, v in (("x", 0.0), ("x", 0.4), ("y", 0.5))]
     assert PP.zero_share(rows) == {"P": {"x": 0.5, "y": 0.0}}
     assert PP.gap_to_best(rows, "hv") == {"P": {"x": [0.5, 0.09999999999999998], "y": [0.0]}}
-    assert len(PP.BUDGET_SCHEDULED) == 16 and PP.budget_note("rvea") == "*"
+    assert len(PP.BUDGET_SCHEDULED) == 17 and PP.budget_note("rvea") == "*"
     assert PP.budget_note("nsga2") == "" and set(PP.BUDGET_SCHEDULED) <= set(algorithm_names())
     ecdf = PP.runtime_ecdf([recs], "igdp", [0.3, 0.01], grid=[150, 450])
     assert ecdf["share"] == [0.0, 0.5] and ecdf["pairs"] == 2, ecdf
