@@ -332,6 +332,12 @@ three objectives; above it the hypervolume is `null`, or, with
 always gets the exact value up to `hv_exact_max_m`. `final_metrics` pays for
 anything costly once per run: `metrics = ["igdp"]` with `final_metrics =
 ["igdp", "eps", "hv", "hv_h"]`. The other indicators cost milliseconds.
+The decision-space indicators (`pdist`, and `igdx` and `cr` where the problem
+has a Pareto-set sample) can be recorded along the trajectory too: the
+campaign asks the running core for the rows' variables only at the records
+(`mootation._core.current_variables()`, from the observer), and a baseline
+hands its own over. `meta.json` says what the records cost, `record_seconds`
+of the run's `seconds`.
 
 The same C++ is available to a C++ program as `mootation/hypervolume.hpp`:
 `hypervolume::wfg(F, n, m, ref)` for the exact value and
@@ -366,6 +372,18 @@ same generation a separate run of that budget stops at.
 - `snapshots = true`, or a list of problem names, stores the population's
   objectives at every trajectory point in `snapshots.npz` (float32), to see how
   the front's shape moved or to compute an indicator the run did not record.
+  `snapshot_variables = "pareto_set"` stores the variables as well where the
+  problem has a Pareto-set sample (`"all"`: everywhere), so that `igdx`, `cr`
+  and `pdist` can be recomputed too. `--recompute-trajectory METRICS` computes
+  indicators at every record from the snapshots into `trajectory.jsonl` — an
+  indicator thought of after a campaign costs its arithmetic, not a rerun. The
+  rows are float32, so a recomputed value agrees with one recorded during the
+  run to about 1e-6 relative, not bit for bit.
+- `archive_checkpoints = true` takes the archive scenario (below) also at the
+  `record_at` counts below the budget, at the record that first reaches each:
+  its trajectory indicators go to `meta.json` (`archive_at`, keyed by the
+  count) and its points to `archive_at.npz` (objectives, and variables by the
+  snapshots' rule). The end of the run is `final_archive`.
 
 **Baselines.** `random_search` and `sobol_search` (scrambled Sobol, needs
 SciPy) go in the algorithm list like any core. They sample the box blindly,
@@ -554,7 +572,10 @@ radius it leaves against the best subset of the same size.
 Two more readings need no rerun. `--at 0.25` gives `--compare` and `--ranks`
 every run as it stood at a quarter of its budget, read from its trajectory, so
 ranks at several budgets come out of one campaign — they do differ with the
-budget (Tanabe & Oyama, GECCO 2017). `--recompute eps,hv_h` computes indicators
+budget (Tanabe & Oyama, GECCO 2017). The fraction is of the budget asked for
+(`budget_nominal` in `meta.json`): `budget_fe` rounds it up to whole
+generations, 25 025 at a population of 91. With `--scenario archive`, `--at`
+reads the archive checkpoint of exactly that budget. `--recompute eps,hv_h` computes indicators
 a campaign did not record from each finished run's `final.csv` and stores them
 in its `meta.json` — `--scenario archive` does the same from `archive.csv` into
 `final_archive` — with the campaign's own hypervolume settings; `--workers`
@@ -592,6 +613,8 @@ python -m mootation.run.campaign c.toml --seed-distance                  # do th
 python -m mootation.run.campaign c.toml --eps-table                      # A against B, no reference
 python -m mootation.run.campaign c.toml --magnitude                      # experiment D7
 python -m mootation.run.campaign c.toml --cover --workers 8              # sets that cover the problems
+python -m mootation.run.campaign c.toml --cover --scenario archive       # the same for the run archives
+python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
 ```
 
 - `--reference ALG` (with `--ranks` or `--compare`): on every problem, each
@@ -675,7 +698,10 @@ python -m mootation.run.campaign c.toml --cover --workers 8              # sets 
   and says how often each algorithm is in a smallest set. Tables on the
   terminal, CSV in `<results>/_cover/`. A budget-dependent algorithm is read
   at a smaller budget from its ladder rung, every other from its trajectory
-  (the first record at or after the budget).
+  (the first record at or after the budget). `--cover --scenario archive` reads
+  the reduced archive instead: `final_archive` at the full budget, the archive
+  checkpoints below it, a rung's `final_archive` for a budget-dependent
+  algorithm; CSV in `<results>/_cover_archive/`.
 
 **Budget-dependent algorithms.** Seventeen algorithms schedule something by
 the share of the budget spent — RVEA's angle penalty t/t_max, the adaptation

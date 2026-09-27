@@ -101,7 +101,7 @@ def random_selection_ea(evaluate, lo, hi, *, pop: int, max_evaluations: int, see
     F = np.array([evaluate(list(x)) for x in X], float)
     spent, gen = k0, 0
     if on_generation is not None:
-        on_generation(0, F.tolist())
+        on_generation(0, F.tolist(), X)
     while spent < max_evaluations:
         k = min(pop, max_evaluations - spent)
         kids = []
@@ -120,7 +120,7 @@ def random_selection_ea(evaluate, lo, hi, *, pop: int, max_evaluations: int, see
         X, F = Xa[keep], Fa[keep]
         if on_generation is not None and (gen % max(1, record_every) == 0
                                           or spent >= max_evaluations):
-            on_generation(gen, F.tolist())
+            on_generation(gen, F.tolist(), X)
     return F, X, gen
 
 
@@ -142,7 +142,8 @@ def gsemo(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select
         return PF[:size][idx], PX[:size][idx]
 
     if on_generation is not None:
-        on_generation(0, answer()[0].tolist())
+        Fa, Xa = answer()
+        on_generation(0, Fa.tolist(), Xa)
     while spent < max_evaluations:
         parent = PX[int(rng.integers(0, size))]
         y = polynomial_mutation(parent.copy(), lo, hi, rng)
@@ -162,6 +163,7 @@ def gsemo(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select
             step += 1
             if on_generation is not None and (step % max(1, record_every) == 0
                                               or spent >= max_evaluations):
-                on_generation(step, answer()[0].tolist())
+                Fa, Xa = answer()
+                on_generation(step, Fa.tolist(), Xa)
     Fa, Xa = answer()
     return Fa, Xa, step

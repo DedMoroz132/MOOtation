@@ -23,6 +23,7 @@
 #include <atomic>
 #include <climits>
 #include <cmath>
+#include <functional>
 #include <map>
 #include <unordered_map>
 #include <memory>
@@ -115,6 +116,13 @@ struct OpStats {
     mootation::ops::RepairCounts rc_read;
 };
 OpStats g_ops;
+
+// The variables of the rows on_generation receives, for the run in progress:
+// what current_variables() returns to an observer that asks for them (a
+// trajectory recording decision-space indicators, or snapshots keeping the
+// variables). Set by run_core, cleared by run(); asked for only at the
+// records, so a run that never asks pays nothing.
+std::function<std::vector<std::vector<double>>()> g_answer_variables;
 
 inline std::string vec_key(const std::vector<double>& x)
 {
@@ -569,6 +577,16 @@ PyResult run_core(const RunConfig& cfg)
         g_ops.setup_evals = g_ops.evals_read = g_evaluations.load();
         g_ops.rc_read = ops::repair_counts();
         const bool observe = cfg.on_generation && cfg.record_every > 0;
+        // the variables of the rows emit() hands over, when the observer asks
+        g_answer_variables = [&opt]() {
+            auto& v = opt.get_vault();
+            std::size_t n = std::min<std::size_t>(
+                v.active_n(), static_cast<std::size_t>(v.pop_size()));
+            std::vector<std::vector<double>> X;
+            X.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) X.push_back(v.variables_of(i));
+            return X;
+        };
         auto one_step = [&]() {
             if (g_ops.on) ops_before_step(opt.get_vault());
             opt.step();
@@ -690,7 +708,7 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     mootation::ops::reset_operator_records();
     g_ops = OpStats{};
     g_ops.on = cfg.operator_stats;
-    struct Guard { ~Guard() { g_problem = nullptr; } } guard;
+    struct Guard { ~Guard() { g_problem = nullptr; g_answer_variables = nullptr; } } guard;
 
 #define MOOTATION_ALG(KEY, IND, CORE) \
     if (name == #KEY) return run_core<PyTag_##KEY, mootation::CORE<PyTag_##KEY>>(cfg);
@@ -909,6 +927,14 @@ PYBIND11_MODULE(_core, m)
           "(call it from on_generation): offspring, oob_share, oob_var_share, "
           "survival_share, offspring_nd_share, step_mean. The last three need "
           "RunConfig.operator_stats.");
+    m.def("current_variables", []() {
+              if (!g_answer_variables)
+                  throw std::runtime_error("current_variables() answers only from an "
+                                           "on_generation observer of a run in progress");
+              return g_answer_variables();
+          },
+          "The variables of the rows the on_generation observer has just received, in "
+          "the same order, for the run in progress (call it from on_generation).");
     m.def("algorithms", &algorithm_names,
           "Names accepted by run(), straight from include/mootation/algorithms.def.");
     m.def("run", &run, py::arg("name"), py::arg("problem"), py::arg("config"),

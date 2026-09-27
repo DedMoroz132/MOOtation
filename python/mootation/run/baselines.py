@@ -59,7 +59,8 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
     """Sample until max_evaluations; returns a result shaped like minimize()'s.
 
     `evaluate(x)` must feed `archive` itself (the campaign's evaluator does),
-    so that every algorithm's archive is filled by the same code.
+    so that every algorithm's archive is filled by the same code. The observer
+    is called as on_generation(gen, objectives, variables) with the answer's rows.
     """
     import numpy as np
 
@@ -120,7 +121,8 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
         spent += k
         if on_generation is not None and (gen % max(1, record_every) == 0
                                           or spent >= max_evaluations):
-            on_generation(gen, answer()[0].tolist())
+            Fa, Xa = answer()
+            on_generation(gen, Fa.tolist(), Xa)
         gen += 1
     F, X = answer()
     return SimpleNamespace(objectives=F.tolist(), variables=X.tolist(),

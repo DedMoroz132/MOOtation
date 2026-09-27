@@ -93,24 +93,32 @@ record_at          = [2500, 5000, 10000, 25000]
 # Budget-dependent algorithms (budget.py) get separate runs at these budgets,
 # after all other jobs; the rest are read off the trajectory.
 ladder             = [2500, 5000, 10000]
-# The hypervolume on the trajectory: exact up to three objectives, a Monte-Carlo
-# estimate from 10 000 points above; the final one exact up to five.
-trajectory_hv_max_m      = 3
+# Every indicator along the trajectory: the hypervolumes exact up to five
+# objectives and estimated from 10 000 Monte-Carlo points above (Polygon_6D);
+# igdx and cr where the problem has a Pareto-set sample (None elsewhere).
+trajectory_hv_max_m      = 5
 trajectory_hv_mc_samples = 10000
-metrics       = ["igdp_norm", "gdp", "gdp_norm", "eps_norm", "hv_h", "range_cover",
-                 "tau90", "gap_max", "nn_cv"]
+metrics       = ["igdp_norm", "gdp", "gdp_norm", "eps_norm", "hv", "hv_h", "range_cover",
+                 "tau90", "gap_max", "nn_cv", "roi_dist", "nd_share", "dup_share", "r2",
+                 "pdist", "igdx", "cr"]
 final_metrics = ["igd", "igdp", "igdp_norm", "gdp", "gdp_norm", "eps", "eps_norm", "hv",
                  "hv_h", "roi_dist", "range_cover", "nd_share", "dup_share", "tau90",
-                 "gap_max", "nn_cv", "n_final", "igdx", "cr", "pdist"]
+                 "gap_max", "nn_cv", "n_final", "igdx", "cr", "pdist", "r2"]
 n_ref         = 1000
+# What the variation operators did, per trajectory interval and over the run.
+operator_stats = true
 # Every run keeps its archive and the "archive" scenario: the archive reduced to
 # the population size by DSS, almost-dominated points last. The archive keeps
 # the objectives of every point (archive.csv.gz) and the variables only of the
-# points the scenario selects (final_archive.csv.gz): for the whole stage about
-# 8 GiB instead of the 88 of archive.csv.
-archive           = true
-archive_scenario  = true
-archive_variables = "selected"
-# The population's objectives at every trajectory record (snapshots.npz,
-# float32): about 3 GiB for the whole stage.
-snapshots         = true
+# points the scenario selects (final_archive.csv.gz). The scenario is taken at
+# 2 500, 5 000 and 10 000 evaluations too (meta.json archive_at,
+# archive_at.npz), so that --cover and the tables read it at every budget.
+archive             = true
+archive_scenario    = true
+archive_variables   = "selected"
+archive_checkpoints = true
+# The population at every trajectory record (snapshots.npz, float32): the
+# objectives, and the variables where the problem has a Pareto-set sample, from
+# which --recompute-trajectory computes an indicator later.
+snapshots          = true
+snapshot_variables = "pareto_set"

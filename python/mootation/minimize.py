@@ -90,7 +90,9 @@ def minimize(
                 setup (gen 0) and after every `record_every`-th generation
                 with the current answer set's objective rows. This is how a
                 convergence trajectory is recorded without re-running at
-                several budgets. Off unless record_every > 0.
+                several budgets. Off unless record_every > 0. The observer
+                gets the rows' variables, when it needs them, from
+                mootation._core.current_variables().
     operator_stats
                 keep per-step statistics of the variation operators, read with
                 mootation._core.operator_stats() from on_generation: offspring,

@@ -3294,6 +3294,146 @@ def a_ladder_campaign_runs_marks_and_covers():
             assert (root / "_cover" / name).is_file(), name
 
 
+@test
+def a_budget_that_no_population_divides_still_finds_its_rungs():
+    """At a population of 91 a budget of 1200 runs to 1274 evaluations: --cover
+    and --at count from the budget asked for (budget_nominal), so rvea's full
+    run stands at 1200 and its rung at 600, not missing."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  a_budget_that_no_population...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import cover as V
+    from mootation.run.config import load
+    text = (_LADDER.replace("budget_fe = 25000", 'budget_fe = 1200' + chr(10)
+                            + 'metrics = ["igdp_norm", "gdp_norm", "hv_h"]')
+            .replace("record_at = [10000, 2500, 5000]", "record_at = [600]")
+            .replace("ladder = [2500, 10000, 30000]", "ladder = [600]"))
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        m = json.loads((root / "DTLZ2_3D" / "rvea" / "run_1" / "meta.json").read_text("utf-8"))
+        assert m["budget_fe"] == 1274 and m["budget_nominal"] == 1200, m
+        data = V.collect(root, (600, 1200))
+        assert not data["missing"], data["missing"]
+        full = json.loads((root / "DTLZ2_3D" / "rvea" / "run_2" / "meta.json").read_text("utf-8"))
+        assert data["values"][("DTLZ2_3D", "rvea", 2)][1200]["igdp_norm"] == \
+            full["final"]["igdp_norm"]
+        rows = C.rungs_in_place(C.scan_results(root), 0.5)
+        assert {r["algorithm"]: r.get("rung_of") for r in rows if r["seed"] == 1} == \
+            {"nsga2": None, "rvea": 1274}, rows
+
+
+@test
+def the_trajectory_keeps_variables_checkpoints_and_recomputes_from_snapshots():
+    """Decision-space indicators along the trajectory (the core hands its
+    variables over through current_variables, a baseline passes them), the
+    snapshots' variables where the problem has a Pareto set, the archive
+    checkpoints and the tables and --cover reading them in the archive scenario,
+    record_seconds, and --recompute-trajectory from the snapshots."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  the_trajectory_keeps_variables...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import _core
+    if not hasattr(_core, "current_variables"):
+        print("  skip  the_trajectory_keeps_variables...: stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import cover as V
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "nsga2", pop = 0, gens = 0 },
+    { name = "random_search", pop = 0, gens = 0 },
+]
+[run]
+name = "tr"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1", "DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1500
+record_grid = "log"
+record_at = [500, 1000, 1500]
+metrics = ["igdp_norm", "gdp_norm", "hv_h", "nd_share", "r2", "pdist", "igdx", "cr"]
+final_metrics = ["igdp_norm", "pdist", "igdx", "cr"]
+operator_stats = true
+archive_variables = "selected"
+archive_checkpoints = true
+snapshots = true
+snapshot_variables = "pareto_set"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for prob, pop, n in (("ZDT1", 100, 30), ("DTLZ2_3D", 91, 12)):
+            for alg in ("nsga2", "random_search"):
+                d = root / prob / alg / "run_1"
+                meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+                T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+                assert 0 < meta["record_seconds"] < meta["seconds"], meta["record_seconds"]
+                # the last record is the answer: the same rows, the same variables
+                for k in ("pdist", "igdx", "cr"):
+                    assert T[-1][k] == meta["final"][k], (prob, alg, k, T[-1][k])
+                assert T[-1]["pdist"] > 0 and (T[-1]["igdx"] is None) == (prob == "ZDT1")
+                with np.load(d / "snapshots.npz") as z:
+                    assert ("X" in z.files) == (prob == "DTLZ2_3D"), (prob, z.files)
+                    assert z["F"].shape[0] == int(z["n"].sum()), z["F"].shape
+                    if "X" in z.files:
+                        assert z["X"].shape == (z["F"].shape[0], n), z["X"].shape
+                # checkpoints before the end only: 1500 is the end (final_archive)
+                assert sorted(meta["archive_at"], key=int) == ["500", "1000"], meta["archive_at"]
+                for b, e in meta["archive_at"].items():
+                    assert int(b) <= e["fe"] < int(b) + pop and 0 < e["n"] <= pop, (b, e)
+                with np.load(d / "archive_at.npz") as z:
+                    assert z["budget"].tolist() == [500, 1000] and ("X" in z.files) == \
+                        (prob == "DTLZ2_3D"), (prob, z.files)
+        # the tables and --cover read the checkpoints in the archive scenario
+        rows = C.rungs_in_place(C.scenario_rows(C.scan_results(root), "archive"), 1000 / 1500)
+        r = next(r for r in rows if r["problem"] == "DTLZ2_3D" and r["algorithm"] == "nsga2")
+        assert C.value_at(r, "igdx", 1000 / 1500) == r["archive_at"]["1000"]["igdx"], r
+        data = V.collect(root, (500, 1000, 1500), scenario="archive")
+        v = data["values"][("DTLZ2_3D", "nsga2", 1)]
+        assert v[500]["igdp_norm"] == r["archive_at"]["500"]["igdp_norm"], v
+        assert v[1500]["igdp_norm"] == r["final_archive"]["igdp_norm"], v
+        out = V.run(root, taus=(10.0,), budgets=(500, 1500), min_seeds=1, scenario="archive")
+        assert "igdp <= 10 at 500: 2/2 covered" in out, out
+        assert (root / "_cover_archive" / "cover_summary.csv").is_file()
+        # --recompute-trajectory: what the snapshots give back (float32 rows);
+        # without the variables (ZDT1) pdist and igdx stay out
+        before = {}
+        for prob in ("DTLZ2_3D", "ZDT1"):
+            d = root / prob / "nsga2" / "run_1"
+            before[prob] = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+            blank = [{k: v for k, v in t.items() if k not in ("igdp_norm", "pdist", "igdx")}
+                     for t in before[prob]]
+            (d / "trajectory.jsonl").write_text("".join(json.dumps(t) + "\n" for t in blank),
+                                                encoding="utf-8")
+        counts = C.recompute_trajectory(root, ["igdp_norm", "pdist", "igdx"],
+                                        hv_settings=(5, 100_000, 0, 0))
+        assert counts == {"done": 4}, counts
+        for prob, keys in (("DTLZ2_3D", ("igdp_norm", "pdist", "igdx")), ("ZDT1", ("igdp_norm",))):
+            d = root / prob / "nsga2" / "run_1"
+            again = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+            for t, u in zip(before[prob], again):
+                for k in keys:
+                    assert abs(u[k] - t[k]) <= 1e-5 * max(1.0, abs(t[k])), (prob, k, t[k], u[k])
+                if prob == "ZDT1":
+                    assert "pdist" not in u and "igdx" not in u, u
+
+
 def main() -> int:
     failed = []
     for fn in TESTS:

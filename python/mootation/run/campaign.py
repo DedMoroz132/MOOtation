@@ -62,7 +62,7 @@ from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
 from .metric_names import (HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT, NEEDS_SET,
-                           RUN_STATS, TABLE_NAMES)
+                           NEEDS_X, RUN_STATS, TABLE_NAMES)
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -155,8 +155,19 @@ class CampaignSpec:
     archive_variables: str = "all"
     # Population objectives at every trajectory record (snapshots.npz, float32),
     # to look at the front's shape later or compute a metric the run did not
-    # record: False, True, or a list of the problems to keep them for.
+    # record (--recompute-trajectory): False, True, or a list of the problems to
+    # keep them for.
     snapshots: object = False
+    # Whose snapshots keep the variables too (float32), so that igdx, cr and
+    # pdist can be recomputed along the trajectory: "none", "pareto_set" (the
+    # problems with a Pareto-set sample, which igdx and cr need) or "all". The
+    # archive checkpoints keep their variables by the same rule.
+    snapshot_variables: str = "none"
+    # The archive scenario also at every record_at count below the budget: the
+    # archive reduced by DSS there, its trajectory metrics in
+    # meta["archive_at"] and its points in archive_at.npz, so that --cover and
+    # the tables read the archive scenario at those budgets. Needs the archive.
+    archive_checkpoints: bool = False
 
 
 def _snapshots_wanted(spec: "CampaignSpec", problem: str) -> bool:
@@ -192,7 +203,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "record_grid", "record_per_decade", "record_at", "ladder", "trajectory_hv_max_m",
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
-             "operator_stats"}
+             "snapshot_variables", "archive_checkpoints", "operator_stats"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -266,6 +277,13 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
         spec.snapshots = tuple(str(s) for s in snaps)
     else:
         raise ConfigError("campaign.snapshots", "true, false, or a list of problem names")
+    spec.snapshot_variables = raw.get("snapshot_variables", "none")
+    if spec.snapshot_variables not in ("none", "pareto_set", "all"):
+        raise ConfigError("campaign.snapshot_variables",
+                          f"\"none\", \"pareto_set\" or \"all\", not {spec.snapshot_variables!r}")
+    spec.archive_checkpoints = raw.get("archive_checkpoints", False)
+    if not isinstance(spec.archive_checkpoints, bool):
+        raise ConfigError("campaign.archive_checkpoints", "true or false")
     if spec.record_every < 1:
         raise ConfigError("campaign.record_every", "must be >= 1")
     if spec.budget_fe < 0:
@@ -411,7 +429,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         ref = np.asarray(p.pareto_front(spec.n_ref), float)
     ideal, nadir = p.ideal, p.nadir
     pset = None
-    if any(m in NEEDS_SET for m in final_metrics) and callable(p.pareto_set):
+    if any(m in NEEDS_SET for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_set):
         pset = np.asarray(p.pareto_set(spec.n_ref), float)
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
@@ -425,11 +443,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "budget_dependent": job.algorithm in BUDGET_DEPENDENT,
         "ladder_of": job.ladder_of or None,
         "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
+        # the budget asked for: budget_fe rounds it up to whole generations
+        # (25 025 at a population of 91), --at and the checkpoints count from it
+        "budget_nominal": job.evaluations or spec.budget_fe or job.budget,
         "params": job.params, "n_objs": p.n_obj, "n_vars": p.n_vars,
         "pop_note": job.pop_note, "metrics": list(spec.metrics),
         "final_metrics": list(final_metrics),
         "record_every": spec.record_every, "n_ref": spec.n_ref,
         "has_reference_front": ref is not None,
+        "has_pareto_set": callable(p.pareto_set),
         "mootation": __version__,
         # the version never changes between commits; these do (provenance.py)
         "revision": revision(),
@@ -467,10 +489,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         return f
 
     snap = _snapshots_wanted(spec, job.problem)
+    # the variables go into the snapshots and checkpoints where snapshot_variables says so
+    keep_x = (spec.snapshot_variables == "all"
+              or (spec.snapshot_variables == "pareto_set" and callable(p.pareto_set)))
     op_stats = spec.operator_stats and not baseline
     if op_stats:
         from .. import _core
-    snap_fe, snap_gen, snap_n, snap_F = [], [], [], []
+    snap_fe, snap_gen, snap_n, snap_F, snap_X = [], [], [], [], []
 
     t0 = time.perf_counter()
     fh = traj_path.open("a", encoding="utf-8")
@@ -501,9 +526,28 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                                "exact" if traj_hv["exact_max_m"] >= p.n_obj else
                                f"monte-carlo, {traj_hv['mc_samples']} samples"),
                 trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped)
+    # The archive scenario at the record_at counts below the budget (its end is
+    # final_archive): taken at the record that first reaches each count.
+    checkpoints = ([b for b in spec.record_at if b < budget]
+                   if spec.archive_checkpoints and arc is not None and grid is not None else [])
+    archive_at = {}
+    ck_budget, ck_fe, ck_n, ck_F, ck_X = [], [], [], [], []
+    last_fe = 0                    # the evaluations of the previous record
+    record_seconds = 0.0           # what the records cost: indicators, statistics, snapshots
+    need_x = (snap and keep_x) or any(m in NEEDS_X for m in traj_metrics)
+    if need_x and not baseline:
+        from .. import _core                   # current_variables() at the records
 
-    def on_gen(gen, objectives):
-        nonlocal n_records, next_i
+    def measure(F, X):
+        vals = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=traj_metrics,
+                         pop=p.pop_size, hv_options=traj_hv, X=X, pareto_set=pset,
+                         bounds=p.bounds, cyclic=p.cyclic_vars)
+        for m in hv_skipped:
+            vals[m] = None
+        return vals
+
+    def on_gen(gen, objectives, variables=None):
+        nonlocal n_records, next_i, last_fe, record_seconds
         if grid is not None:
             # Generation 0 and the last call are always recorded; in between,
             # the first call at or past the next count of the grid.
@@ -511,23 +555,43 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 return
             while next_i < len(grid) and grid[next_i] <= fe:
                 next_i += 1
+        t_rec = time.perf_counter()
         F = np.asarray(objectives, float)
-        rec = {"gen": gen, "fe": fe, "t": round(time.perf_counter() - t0, 3), "n": int(len(F))}
+        X = None
+        if need_x and F.size:
+            # a baseline hands its variables over; a core is asked for them
+            if variables is None:
+                variables = _core.current_variables()
+            X = np.asarray(variables, float).reshape(len(F), p.n_vars)
+        rec = {"gen": gen, "fe": fe, "t": round(t_rec - t0, 3), "n": int(len(F))}
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
         if finite and F.size:
-            rec.update(M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir,
-                                 which=traj_metrics, pop=p.pop_size, hv_options=traj_hv))
-            for m in hv_skipped:
-                rec[m] = None
+            rec.update(measure(F, X))
         if op_stats:
             rec.update(_core.operator_stats())
         if snap:
             snap_fe.append(fe); snap_gen.append(gen); snap_n.append(len(F))
             snap_F.append(F.astype(np.float32).reshape(len(F), p.n_obj))
+            if keep_x:
+                snap_X.append(np.zeros((0, p.n_vars), np.float32) if X is None
+                              else X.astype(np.float32))
+        crossed = [b for b in checkpoints if last_fe < b <= fe]
+        if crossed and fe < budget and len(arc):         # the end is final_archive
+            AF, AX, _ = arc.points()
+            idx = arc.select(p.pop_size)
+            vals = dict(measure(AF[idx], AX[idx]), fe=fe, n=int(len(idx)))
+            for b in crossed:
+                archive_at[str(b)] = vals
+                ck_budget.append(b); ck_fe.append(fe); ck_n.append(len(idx))
+                ck_F.append(AF[idx].astype(np.float32))
+                if keep_x:
+                    ck_X.append(AX[idx].astype(np.float32))
+        last_fe = fe
         fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
         fh.flush()
         n_records += 1
+        record_seconds += time.perf_counter() - t_rec
 
     try:
         if baseline:
@@ -615,12 +679,25 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                                frame=None if lo is None else [np.asarray(lo).tolist(),
                                                               np.asarray(hi).tolist()])
     if snap and snap_F:
-        np.savez_compressed(d / "snapshots.npz", fe=np.asarray(snap_fe, np.int64),
-                            gen=np.asarray(snap_gen, np.int64),
-                            n=np.asarray(snap_n, np.int64), F=np.vstack(snap_F))
+        payload = dict(fe=np.asarray(snap_fe, np.int64), gen=np.asarray(snap_gen, np.int64),
+                       n=np.asarray(snap_n, np.int64), F=np.vstack(snap_F))
+        if keep_x:
+            payload["X"] = np.vstack(snap_X)
+        np.savez_compressed(d / "snapshots.npz", **payload)
         meta["snapshots"] = {"file": "snapshots.npz", "records": len(snap_F),
-                             "dtype": "float32", "layout": "F rows of every record, "
-                             "stacked in order; n gives each record's row count"}
+                             "dtype": "float32", "variables": keep_x,
+                             "layout": "F (and X) rows of every record, stacked in order; "
+                                       "n gives each record's row count"}
+    if checkpoints:
+        # the archive scenario at the record_at counts: indicators and points
+        meta["archive_at"] = archive_at
+        if ck_F:
+            payload = dict(budget=np.asarray(ck_budget, np.int64),
+                           fe=np.asarray(ck_fe, np.int64), n=np.asarray(ck_n, np.int64),
+                           F=np.vstack(ck_F))
+            if keep_x:
+                payload["X"] = np.vstack(ck_X)
+            np.savez_compressed(d / "archive_at.npz", **payload)
 
     extra = {"pop": p.pop_size, "hv_options": final_hv, "pareto_set": pset,
              "bounds": p.bounds, "cyclic": p.cyclic_vars}
@@ -642,7 +719,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
-                seconds=round(time.perf_counter() - t0, 3))
+                seconds=round(time.perf_counter() - t0, 3),
+                # of `seconds`, what the trajectory records took (indicators,
+                # operator statistics, snapshots, archive checkpoints)
+                record_seconds=round(record_seconds, 3))
     _write_json(meta_path, meta)
     if not quiet:
         summary = ", ".join(f"{k}={v:.4g}" for k, v in final.items() if isinstance(v, float))
@@ -1057,7 +1137,9 @@ def scan_results(root: Path) -> list[dict]:
             "seed": m.get("seed"), "status": m.get("status", "?"),
             "final": m.get("final", {}) or {}, "seconds": m.get("seconds"),
             "fe": m.get("fe"), "n_objs": m.get("n_objs"), "budget_fe": m.get("budget_fe"),
+            "budget_nominal": m.get("budget_nominal"),
             "final_archive": m.get("final_archive") or {},
+            "archive_at": m.get("archive_at") or {},
             "core": m.get("core"), "budget_dependent": m.get("budget_dependent"),
             "ladder_of": m.get("ladder_of"),
             "has_reference_front": m.get("has_reference_front"),
@@ -1085,7 +1167,7 @@ def rungs_in_place(rows: list[dict], at: float | None) -> list[dict]:
              for r in rows if r.get("ladder_of")}
     out = []
     for r in main:
-        b = int(round(float(at) * float(r.get("budget_fe") or 0)))
+        b = int(round(float(at) * float(r.get("budget_nominal") or r.get("budget_fe") or 0)))
         rung = rungs.get((r["problem"], r["algorithm"], r["seed"], b))
         out.append(dict(rung, algorithm=r["algorithm"], rung_of=r.get("budget_fe"))
                    if rung is not None else r)
@@ -1100,11 +1182,18 @@ def value_at(row: dict, metric: str, at: float | None) -> float | None:
     at 10 %, 25 % and 100 % of the budget come out of one campaign. It needs the
     metric among the campaign's `metrics`, which are what a trajectory records.
     A ladder rung put in a full run's place (rungs_in_place) is read at its end.
+    In the archive scenario (scenario_rows) a fraction is read from the archive
+    checkpoint of exactly that budget (archive_checkpoints), or is missing.
     """
     if at is None or row.get("rung_of"):
         v = row["final"].get(metric)
         return None if v is None else float(v)
     limit = float(at) * float(row.get("budget_fe") or 0)
+    if row.get("scenario") == "archive":
+        # the archive checkpoint of exactly that budget, if the run took one
+        b = int(round(float(at) * float(row.get("budget_nominal") or row.get("budget_fe") or 0)))
+        v = (row.get("archive_at") or {}).get(str(b), {}).get(metric)
+        return None if v is None else float(v)
     found = None
     for rec in read_trajectory(Path(row["dir"])):
         if rec.get("fe", 0) <= limit and rec.get(metric) is not None:
@@ -1396,11 +1485,101 @@ def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1
     return counts
 
 
+def _retrajectory_one(args) -> str:
+    run_dir, names, hv_settings = args
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    from . import metrics as M
+    run_dir = Path(run_dir)
+    meta_path = run_dir / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        snap_path = run_dir / "snapshots.npz"
+        if meta.get("status") != "done" or not snap_path.is_file():
+            return "skipped"
+        with np.load(snap_path) as z:
+            S = {k: z[k] for k in z.files}
+        traj_path = run_dir / "trajectory.jsonl"
+        recs = [json.loads(line) for line in traj_path.read_text(encoding="utf-8").splitlines()
+                if line.strip()]
+        if [r.get("fe") for r in recs] != S["fe"].tolist():
+            print(f"{run_dir}: the snapshots and the trajectory do not line up", file=sys.stderr)
+            return "failed"
+        # the decision-space indicators only where the snapshots kept the variables
+        todo = [m for m in names if m not in NEEDS_X or "X" in S]
+        if not todo:
+            return "skipped"
+        p = bench_get(meta["problem"])
+        k = int(meta.get("n_ref") or 1000)
+        ref = (np.asarray(p.pareto_front(k), float)
+               if any(m in NEEDS_FRONT for m in todo) and callable(p.pareto_front) else None)
+        pset = (np.asarray(p.pareto_set(k), float)
+                if any(m in NEEDS_SET for m in todo) and callable(p.pareto_set) else None)
+        # the trajectory's hypervolume settings (run_job): exact up to
+        # trajectory_hv_max_m objectives, Monte Carlo or nothing above
+        exact_max_m, mc_samples, traj_max_m, traj_mc = hv_settings
+        hvo = {"exact_max_m": exact_max_m, "mc_samples": mc_samples}
+        if traj_max_m and p.n_obj > traj_max_m:
+            if traj_mc > 0:
+                hvo = {"exact_max_m": 0, "mc_samples": traj_mc}
+            else:
+                todo = [m for m in todo if m not in HV_NAMES]
+        start = 0
+        for rec, n in zip(recs, S["n"].tolist()):
+            F = S["F"][start:start + n].astype(float)
+            X = S["X"][start:start + n].astype(float) if "X" in S else None
+            start += n
+            if n and rec.get("finite", True):
+                rec.update(M.compute(F, ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=todo,
+                                     pop=p.pop_size, hv_options=hvo, X=X, pareto_set=pset,
+                                     bounds=p.bounds, cyclic=p.cyclic_vars))
+        tmp = traj_path.with_suffix(".jsonl.tmp")
+        tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in recs),
+                       encoding="utf-8")
+        os.replace(tmp, traj_path)
+        meta["trajectory_metrics"] = list(dict.fromkeys([*meta.get("trajectory_metrics", []),
+                                                         *todo]))
+        _write_json(meta_path, meta)
+        return "done"
+    except Exception as e:                           # noqa: BLE001
+        print(f"{run_dir}: {type(e).__name__}: {e}", file=sys.stderr)
+        return "failed"
+
+
+def recompute_trajectory(root: Path, names: list, *, workers: int = 1,
+                         hv_settings: tuple = (5, 100_000, 0, 0), problems=None) -> dict:
+    """Compute `names` at every trajectory record of every finished run that kept
+    snapshots ([campaign] snapshots), from snapshots.npz, into its
+    trajectory.jsonl, and add them to meta["trajectory_metrics"]. An indicator
+    thought of after a campaign costs its arithmetic, not a rerun. igdx, cr and
+    pdist need the snapshots' variables (snapshot_variables); a run without them
+    gets the others. `hv_settings`: (hv_exact_max_m, hv_mc_samples,
+    trajectory_hv_max_m, trajectory_hv_mc_samples), as the campaign recorded.
+    """
+    tasks = [(str(m.parent), list(names), tuple(hv_settings))
+             for m in root.glob("*/*/run_*/meta.json")
+             if problems is None or m.parents[2].name in problems]
+    counts: dict = {}
+    if workers > 1 and len(tasks) > 1:
+        import multiprocessing as mp
+        single_threaded_blas()
+        with mp.Pool(processes=workers) as pool:
+            for status in pool.imap_unordered(_retrajectory_one, tasks, chunksize=8):
+                counts[status] = counts.get(status, 0) + 1
+    else:
+        for task in tasks:
+            status = _retrajectory_one(task)
+            counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
 def scenario_rows(rows: list[dict], scenario: str) -> list[dict]:
-    """The rows as the tables read them: "archive" puts final_archive in place of final."""
+    """The rows as the tables read them: "archive" puts final_archive in place of
+    final, and value_at reads such a row at a smaller budget from its archive
+    checkpoints (archive_at) instead of its trajectory."""
     if scenario != "archive":
         return rows
-    return [dict(r, final=r.get("final_archive") or {}) for r in rows]
+    return [dict(r, final=r.get("final_archive") or {}, scenario="archive") for r in rows]
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -1439,10 +1618,16 @@ def main(argv: list[str] | None = None) -> int:
                          "final.csv (with --scenario archive: its final_archive.csv.gz, or "
                          "its archive.csv reduced by DSS), "
                          "store them in its meta.json, and exit (honours --workers)")
+    ap.add_argument("--recompute-trajectory", metavar="METRICS",
+                    help="compute these comma-separated metrics at every trajectory record of "
+                         "every finished run that kept snapshots (snapshots.npz), store them in "
+                         "its trajectory.jsonl, and exit (honours --workers); igdx, cr and pdist "
+                         "need the snapshots' variables")
     ap.add_argument("--scenario", choices=("final", "archive"), default="final",
-                    help="which answer of a run the tables and --recompute read: 'final', "
-                         "what the algorithm returned, or 'archive', the run archive reduced "
-                         "to the problem's population size by DSS (default final)")
+                    help="which answer of a run the tables, --cover and --recompute read: "
+                         "'final', what the algorithm returned, or 'archive', the run archive "
+                         "reduced to the problem's population size by DSS — with --at, at its "
+                         "archive checkpoints (default final)")
     ap.add_argument("--reference", metavar="ALG",
                     help="with --compare or --ranks: test every algorithm against ALG — the "
                          "exact Wilcoxon rank-sum per problem (Holm over the problems) with "
@@ -1565,9 +1750,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.at is not None and not 0.0 < args.at <= 1.0:
         print("--at wants a fraction of the budget in (0, 1], e.g. 0.25", file=sys.stderr)
         return 1
-    if args.scenario == "archive" and (args.at is not None or args.ecdf):
-        print("--scenario archive reads the end of a run: it does not combine with --at or "
-              "--ecdf, which read the trajectory", file=sys.stderr)
+    if args.scenario == "archive" and args.ecdf:
+        print("--scenario archive has no trajectory, only the end of a run and its archive "
+              "checkpoints: it does not combine with --ecdf", file=sys.stderr)
         return 1
     set_tables = args.seed_distance or args.eps_table or args.magnitude
     if set_tables and args.scenario == "archive":
@@ -1596,6 +1781,19 @@ def main(argv: list[str] | None = None) -> int:
                                  scenario=args.scenario, problems=only_problems)
         print(f"recomputed {', '.join(names)} ({args.scenario}): {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
+    if args.recompute_trajectory:
+        names = [m.strip() for m in args.recompute_trajectory.split(",") if m.strip()]
+        bad = [m for m in names if m not in METRIC_NAMES]
+        if bad or not names:
+            print(f"--recompute-trajectory: unknown metric(s) {', '.join(bad) or '(none given)'}"
+                  f"; known: {', '.join(METRIC_NAMES)}", file=sys.stderr)
+            return 1
+        counts = recompute_trajectory(
+            root, names, workers=args.workers, problems=only_problems,
+            hv_settings=(spec.hv_exact_max_m, spec.hv_mc_samples,
+                         spec.trajectory_hv_max_m, spec.trajectory_hv_mc_samples))
+        print(f"recomputed {', '.join(names)} along the trajectories: {counts}", file=sys.stderr)
+        return 0 if counts.get("failed", 0) == 0 else 2
     if args.cover:
         from . import cover as C
         try:
@@ -1610,7 +1808,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(C.run(root, taus=taus, budgets=budgets, min_seeds=args.cover_seeds,
                     max_sets=args.cover_max_sets, replicates=args.cover_bootstrap,
-                    workers=args.workers))
+                    workers=args.workers, scenario=args.scenario))
         return 0
     rows = None
     if args.bias or set_tables or any(v is not None for v in (

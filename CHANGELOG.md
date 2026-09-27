@@ -144,6 +144,23 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- What the stage-3 trajectories need (task 4). **Variables at the records**:
+  `mootation._core.current_variables()` returns, from an `on_generation`
+  observer, the variables of the rows it has just received, so a campaign
+  records `pdist`, `igdx` and `cr` along the trajectory (the baselines pass
+  theirs to the observer). **Snapshots**: `[campaign] snapshot_variables =
+  "pareto_set"` (or `"all"`) keeps the variables in `snapshots.npz` too, and
+  `--recompute-trajectory METRICS` computes indicators at every record from
+  the snapshots into `trajectory.jsonl`, to about 1e-6 of the recorded values
+  (float32 rows). **Archive checkpoints**: `archive_checkpoints = true` takes
+  the archive scenario at the `record_at` counts below the budget —
+  indicators in `meta.json` (`archive_at`), points in `archive_at.npz` — which
+  `--at` and `--cover --scenario archive` read. `meta.json` also records
+  `record_seconds` (what the records cost), `budget_nominal` and
+  `has_pareto_set`. The stage-3 configs record every indicator along the
+  trajectory (the hypervolumes exact up to five objectives), the operator
+  statistics, the checkpoints, and the variables in the snapshots where the
+  problem has a Pareto-set sample.
 - What stage 3 of the comparison campaign needs (task 3). **Budget ladder**:
   `[campaign] record_at` puts trajectory records at exact evaluation counts
   the decade grid misses (2 500, 5 000), and `ladder = [2500, 5000, 10000]`
@@ -509,6 +526,13 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- `--cover` and `--at` lost a budget-dependent algorithm on every problem
+  whose population does not divide the budget: a run's `budget_fe` rounds the
+  budget up to whole generations (25 025 at a population of 91), so `--cover`
+  found no value at 25 000 and reported the full run as a missing rung, and
+  `--at 0.1` looked for a rung of 2 502 evaluations and read the full run's
+  trajectory instead of the 2 500 rung. Both now count from the budget asked
+  for, `budget_nominal` in `meta.json` (new test at a population of 91).
 - `sms_m2m` spent hours to days on a run at five and six objectives: its own
   hypervolume slicing carried every point of a slice down to the next
   objective, and each contribution was HV(F) − HV(F\{s}), n + 1 volumes for

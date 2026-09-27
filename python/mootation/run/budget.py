@@ -72,7 +72,7 @@ def _records(name: str, problem: str, seed: int, budget: int, pop: int) -> list:
             arc.add(f, x)
         return f
 
-    def on_gen(gen, objectives):
+    def on_gen(gen, objectives, variables=None):
         recs.append((int(gen), fe, np.asarray(objectives, float)))
 
     if name in BASELINES:

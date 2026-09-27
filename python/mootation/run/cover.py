@@ -22,6 +22,12 @@ budget; for a budget-dependent algorithm (budget.py), the final value of its
 ladder rung of budget b; for any other, the first trajectory record at or
 after b evaluations ([campaign] record_at puts one at every rung).
 
+SCENARIO. With --scenario archive every value is the run archive reduced by
+DSS instead of the population: final_archive at a run's own budget, the
+archive checkpoint of budget b below it ([campaign] archive_checkpoints), and
+a rung's final_archive for a budget-dependent algorithm. CSV under
+<results>/_cover_archive/.
+
 FOR EVERY CRITERION, LEVEL AND BUDGET:
   * the problems no algorithm covers;
   * the smallest sets of algorithms covering every problem some algorithm
@@ -75,7 +81,13 @@ def _values_of_run(task) -> tuple:
     return key, out
 
 
-def collect(root: Path, budgets=BUDGETS, workers: int = 1) -> dict:
+def _end(row: dict, scenario: str) -> dict:
+    """A run's answer at its own budget: the population's indicators, or in the
+    archive scenario the reduced archive's."""
+    return (row.get("final_archive") or {}) if scenario == "archive" else row["final"]
+
+
+def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "final") -> dict:
     """{(problem, algorithm, seed): {budget: {metric: value}}} with the facts
     the analysis needs: which problems have a reference front, which
     algorithms are budget-dependent, and the rungs a campaign lacks."""
@@ -92,17 +104,26 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1) -> dict:
         dep = r.get("budget_dependent")
         if dep is None:                                  # a campaign from before the flag
             dep = (r.get("core") or r["algorithm"]) in BUDGET_DEPENDENT
-        bfe = int(r.get("budget_fe") or 0)
+        # the budget asked for; budget_fe rounds it up to whole generations
+        # (25 025 at a population of 91), which no budget of the list equals
+        bfe = int(r.get("budget_nominal") or r.get("budget_fe") or 0)
         if dep:
             dependent.add(r["algorithm"])
-            values[key] = {bfe: {m: r["final"].get(m) for m in METRICS}} if bfe in budgets else {}
+            values[key] = ({bfe: {m: _end(r, scenario).get(m) for m in METRICS}}
+                           if bfe in budgets else {})
             for b in budgets:
                 if b < bfe:
                     rung = rungs.get((r["problem"], r["algorithm"], r["seed"], b))
                     if rung is None:
                         missing.append((r["problem"], r["algorithm"], r["seed"], b))
                     else:
-                        values[key][b] = {m: rung["final"].get(m) for m in METRICS}
+                        values[key][b] = {m: _end(rung, scenario).get(m) for m in METRICS}
+        elif scenario == "archive":
+            # the run's own archive checkpoints below its budget
+            values[key] = {b: ({m: _end(r, scenario).get(m) for m in METRICS} if b == bfe
+                               else {m: r["archive_at"][str(b)].get(m) for m in METRICS})
+                           for b in budgets
+                           if b == bfe or (b < bfe and str(b) in r.get("archive_at", {}))}
         else:
             tasks.append((key, str(r["dir"]), r["final"], bfe, any(b < bfe for b in budgets),
                           tuple(budgets)))
@@ -126,14 +147,14 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1) -> dict:
             from ..benchmarks import get as bench_get
             front[p] = callable(bench_get(p).pareto_front)
     return {"values": values, "front": front, "dependent": dependent, "missing": missing,
-            "main": main}
+            "main": main, "scenario": scenario}
 
 
 def best_known_hv(data: dict) -> dict:
     """{problem: (best final hv_h, algorithm, seed)} over the full-budget runs."""
     best = {}
     for r in data["main"]:
-        v = r["final"].get("hv_h")
+        v = _end(r, data.get("scenario", "final")).get("hv_h")
         if v is None or not math.isfinite(float(v)):
             continue
         if r["problem"] not in best or float(v) > best[r["problem"]][0]:
@@ -368,13 +389,15 @@ def bootstrap(hit: dict, problems: list, seeds: list, min_seeds: int, replicates
 
 
 def run(root: Path, *, taus=TAUS, budgets=BUDGETS, min_seeds: int = 7, max_sets: int = 20,
-        replicates: int = 0, workers: int = 1, out_dir: Path | None = None) -> str:
+        replicates: int = 0, workers: int = 1, out_dir: Path | None = None,
+        scenario: str = "final") -> str:
     """The whole analysis: text for the terminal; CSV files in out_dir."""
     from .campaign import problem_family
     root = Path(root)
-    out_dir = Path(out_dir) if out_dir else root / "_cover"
+    out_dir = (Path(out_dir) if out_dir else
+               root / ("_cover_archive" if scenario == "archive" else "_cover"))
     out_dir.mkdir(parents=True, exist_ok=True)
-    data = collect(root, budgets, workers=workers)
+    data = collect(root, budgets, workers=workers, scenario=scenario)
     problems = sorted({k[0] for k in data["values"]})
     seeds = sorted({k[2] for k in data["values"]})
     best_hv = best_known_hv(data)
