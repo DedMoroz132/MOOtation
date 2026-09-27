@@ -166,7 +166,11 @@ always listed under **Changed** or **Removed**.
   The stage-3 configs record every indicator along the
   trajectory (the hypervolumes exact up to five objectives), the operator
   statistics, the checkpoints, and the variables in the snapshots where the
-  problem has a Pareto-set sample.
+  problem has a Pareto-set sample. Measured on all 225 stage-3 problems
+  (five algorithms, one seed, scaled to the stage): the records cost about
+  4 % of the stage's CPU — 0.3 s a run at two objectives, 1.8 s at five —
+  and the files come to about 32 GiB, of which the snapshots' variables are
+  6.5 and the checkpoints 2.
 - What stage 3 of the comparison campaign needs (task 3). **Budget ladder**:
   `[campaign] record_at` puts trajectory records at exact evaluation counts
   the decade grid misses (2 500, 5 000), and `ladder = [2500, 5000, 10000]`
@@ -195,8 +199,9 @@ always listed under **Changed** or **Removed**.
   algorithm but HLMEA, HypE and R2-IBEA, the four baselines, 225 problems —
   stage 2's 203 and every BT, MOP, Polygon and IPolygon instance but
   IPolygon_8D — ten seeds, 25 000 evaluations, the ladder, the archive as
-  `"selected"` and the population snapshots: about 20 GiB for the whole
-  stage), `campaign_stage3_heavy.toml` (those three, the same settings and
+  `"selected"` and the population snapshots: about 32 GiB for the whole
+  stage with task 4's trajectories, snapshot variables and archive
+  checkpoints), `campaign_stage3_heavy.toml` (those three, the same settings and
   results tree) and `campaign_stage3_probe.toml`.
 - RVEA* (`rvea_star`), the variant for irregular fronts that Cheng, Jin,
   Olhofer & Sendhoff give in §VI of the RVEA paper (IEEE TEVC 20(5), 2016,
