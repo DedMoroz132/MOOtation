@@ -3295,6 +3295,94 @@ def a_ladder_campaign_runs_marks_and_covers():
 
 
 @test
+def one_pass_over_the_front_gives_what_each_indicator_computes_alone():
+    """compute() reads igdp_norm, gdp_norm, eps_norm, tau90 and gap_max off one
+    pass over the differences (front_distances); the values must be those of
+    igd_plus, gd_plus, eps_plus and dplus_distances, bit for bit (the reference
+    sizes cross the 512-row chunks)."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(3)
+    for _ in range(30):
+        m, n, k = int(rng.integers(2, 7)), int(rng.integers(1, 200)), int(rng.integers(1, 1300))
+        F, ref = rng.random((n, m)) * 1.3, rng.random((k, m))
+        ideal, nadir = np.zeros(m), np.ones(m) * (1 + rng.random())
+        out = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir,
+                        which=["igdp_norm", "gdp_norm", "eps_norm", "tau90", "gap_max"])
+        G, R = M._normalised(F, ref, ideal, nadir)
+        d = M.dplus_distances(G, R)
+        assert out["igdp_norm"] == M.igd_plus(G, R) and out["gdp_norm"] == M.gd_plus(G, R)
+        assert out["eps_norm"] == M.eps_plus(G, R)
+        assert out["tau90"] == float(np.quantile(d, 0.9)) and out["gap_max"] == float(d.max())
+
+
+@test
+def costly_indicators_can_wait_for_the_record_at_counts():
+    """record_at_metrics: those indicators only at the records that reach a
+    record_at count and at the last one; --recompute-trajectory fills the rest
+    from the snapshots."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  costly_indicators...: no NumPy or stale _core"); return
+    from mootation import _core
+    if not hasattr(_core, "current_variables"):
+        print("  skip  costly_indicators...: stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import ConfigError, load
+    text = """algorithms = [
+    { name = "nsga2", pop = 0, gens = 0 },
+]
+[run]
+name = "sparse"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1500
+record_grid = "log"
+record_at = [500, 1000]
+metrics = ["igdp_norm", "igdx"]
+record_at_metrics = ["igdx"]
+snapshots = true
+snapshot_variables = "pareto_set"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "DTLZ2_3D" / "nsga2" / "run_1"
+        T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+        assert all("igdp_norm" in t for t in T)
+        marks = [t["fe"] for t in T if "igdx" in t]
+        want = [next(t["fe"] for t in T if t["fe"] >= b) for b in (500, 1000)] + [T[-1]["fe"]]
+        assert marks == want, (marks, want)
+        assert C.recompute_trajectory(root, ["igdx"]) == {"done": 1}
+        again = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+        assert all(u["igdx"] is not None for u in again)
+        for t, u in zip(T, again):
+            if "igdx" in t:
+                assert abs(u["igdx"] - t["igdx"]) <= 1e-5 * max(1.0, t["igdx"]), (t, u)
+        bad = Path(td) / "bad.toml"
+        bad.write_text(text.replace('record_at_metrics = ["igdx"]', 'record_at_metrics = ["hv"]'),
+                       encoding="utf-8")
+        try:
+            C.campaign_spec(load(bad))
+            raise AssertionError("record_at_metrics outside metrics accepted")
+        except ConfigError:
+            pass
+
+
+@test
 def a_budget_that_no_population_divides_still_finds_its_rungs():
     """At a population of 91 a budget of 1200 runs to 1274 evaluations: --cover
     and --at count from the budget asked for (budget_nominal), so rvea's full

@@ -157,7 +157,13 @@ always listed under **Changed** or **Removed**.
   indicators in `meta.json` (`archive_at`), points in `archive_at.npz` — which
   `--at` and `--cover --scenario archive` read. `meta.json` also records
   `record_seconds` (what the records cost), `budget_nominal` and
-  `has_pareto_set`. The stage-3 configs record every indicator along the
+  `has_pareto_set`. `record_at_metrics` names costly indicators recorded
+  only at the `record_at` counts and at the end; `--recompute-trajectory`
+  fills the other records later. `metrics.compute` reads `igdp_norm`,
+  `gdp_norm`, `eps_norm`, `tau90` and `gap_max` off one pass over the
+  normalised differences (`front_distances`) instead of one each — the same
+  values bit for bit, half a trajectory record's cost at five objectives.
+  The stage-3 configs record every indicator along the
   trajectory (the hypervolumes exact up to five objectives), the operator
   statistics, the checkpoints, and the variables in the snapshots where the
   problem has a Pareto-set sample.

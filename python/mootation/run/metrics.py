@@ -103,6 +103,29 @@ def dplus_distances(F: np.ndarray, ref: np.ndarray) -> np.ndarray:
     return out
 
 
+def front_distances(F: np.ndarray, ref: np.ndarray) -> tuple:
+    """One pass over the differences a − z of every point a of the set and z of
+    the reference: the d+ matrix minimised over the set for every z (the vector
+    IGD+ is the mean of, dplus_distances), minimised over the reference for
+    every a (GD+'s), and the additive epsilon's min over a of max_i (a_i − z_i)
+    for every z (eps_plus's). The same arithmetic as igd_plus, gd_plus,
+    dplus_distances and eps_plus, element for element, so the values are the
+    same."""
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
+    to_set = np.empty(len(ref))
+    to_ref = np.full(len(F), np.inf)
+    eps = np.empty(len(ref))
+    for a in range(0, len(ref), 512):                 # bounded memory on big fronts
+        R = ref[a:a + 512]
+        diff = F[None, :, :] - R[:, None, :]
+        d = np.sqrt((np.maximum(diff, 0.0) ** 2).sum(axis=2))
+        to_set[a:a + 512] = d.min(axis=1)
+        np.minimum(to_ref, d.min(axis=0), out=to_ref)
+        eps[a:a + 512] = diff.max(axis=2).min(axis=1)
+    return to_set, to_ref, eps
+
+
 def tau_quantile(F, ref, q: float = 0.9) -> float:
     """The q-quantile of d+(z, F) over the reference sample (NumPy's linear
     interpolation between order statistics)."""
@@ -575,6 +598,18 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
     F = np.asarray(F, float)
     hvo = dict(hv_options or {})
     have_box = ideal is not None and nadir is not None
+    # igdp_norm, gdp_norm, eps_norm, tau90 and gap_max read the same normalised
+    # differences: one pass for all of them (front_distances; most of a
+    # trajectory record's cost at five objectives otherwise), with the values
+    # computing each alone gives
+    shared = {}
+
+    def dplus_norm():
+        if "d" not in shared:
+            G, R = _normalised(F, ref_front, ideal, nadir)
+            shared["d"] = front_distances(G, R)
+        return shared["d"]
+
     for name in which:
         if name in ("igd", "igdp", "gdp", "eps"):
             fn = {"igd": igd, "igdp": igd_plus, "gdp": gd_plus, "eps": eps_plus}[name]
@@ -592,19 +627,20 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             out[name] = nd_share(F) if F.ndim == 2 and F.size else None
         elif name == "dup_share":
             out[name] = dup_share(F) if F.ndim == 2 and F.size else None
-        elif name in ("igdp_norm", "eps_norm", "gdp_norm"):
+        elif name in ("igdp_norm", "gdp_norm", "eps_norm"):
             if ref_front is None or not have_box:
                 out[name] = None
+            elif not F.size:
+                out[name] = float("inf")
             else:
-                G, R = _normalised(F, ref_front, ideal, nadir)
-                fn = {"igdp_norm": igd_plus, "eps_norm": eps_plus, "gdp_norm": gd_plus}[name]
-                out[name] = fn(G, R)
+                to_set, to_ref, eps = dplus_norm()
+                out[name] = float(to_set.mean() if name == "igdp_norm" else
+                                  to_ref.mean() if name == "gdp_norm" else eps.max())
         elif name == "tau90":
             if ref_front is None or not have_box or not F.size:
                 out[name] = None
             else:
-                G, R = _normalised(F, ref_front, ideal, nadir)
-                d = dplus_distances(G, R)
+                d = dplus_norm()[0]
                 out[name] = float(np.quantile(d, 0.9))
                 out["coverage_curve"] = {f"{t:g}": float(np.mean(d <= t)) for t in COVERAGE_TAUS}
         elif name == "gap_max":
@@ -613,8 +649,7 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             if ref_front is None or not have_box or not F.size:
                 out[name] = None
             else:
-                G, R = _normalised(F, ref_front, ideal, nadir)
-                out[name] = float(dplus_distances(G, R).max())
+                out[name] = float(dplus_norm()[0].max())
         elif name == "nn_cv":
             out[name] = nn_cv(F, ideal, nadir) if have_box and F.ndim == 2 and F.size else None
         elif name == "n_final":

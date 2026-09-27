@@ -351,7 +351,11 @@ every point up to 10 000 and a budget ladder compares point by point, without
 interpolating; a point is the first generation at or past its count.
 `record_at = [2500, 5000, 10000]` adds counts the decade grid misses (it has
 2 512 and 5 012): the rungs of a budget ladder get a record of their own, at the
-same generation a separate run of that budget stops at.
+same generation a separate run of that budget stops at. `record_at_metrics`
+names indicators of `metrics` that are recorded only at those counts and at the
+end of the run, not on the whole grid — the costly ones; `--at` then reads the
+last record that has them, and `--recompute-trajectory` fills the other records
+from the snapshots.
 
 **What else a run keeps.**
 - `meta.json` records `revision`: the git commit and whether tracked files

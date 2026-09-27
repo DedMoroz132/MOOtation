@@ -117,6 +117,10 @@ class CampaignSpec:
     # (2 500, 5 000, 10 000), which 10^(j/10) misses: a record is taken at the
     # first generation that reaches each, like the grid's own counts.
     record_at: tuple = ()
+    # Trajectory indicators (of `metrics`) recorded only at the record_at
+    # counts and at the end of a run, not on the whole grid: the costly ones.
+    # --recompute-trajectory fills the other records from the snapshots.
+    record_at_metrics: tuple = ()
     # Budget ladder: for every budget-dependent algorithm (budget.py), a
     # separate run at each of these budgets besides the full one, filed under
     # "<label>@<budget>" and marked ladder_of in meta.json. For the others a
@@ -200,7 +204,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     raw = dict(cfg.campaign or {})
     spec = CampaignSpec()
     known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds",
-             "record_grid", "record_per_decade", "record_at", "ladder", "trajectory_hv_max_m",
+             "record_grid", "record_per_decade", "record_at", "record_at_metrics", "ladder",
+             "trajectory_hv_max_m",
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats"}
@@ -241,6 +246,13 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if at and spec.record_grid != "log":
         raise ConfigError("campaign.record_at", "needs record_grid = \"log\"")
     spec.record_at = tuple(sorted(set(at)))
+    sparse = raw.get("record_at_metrics", [])
+    if not isinstance(sparse, (list, tuple)) or any(m not in spec.metrics for m in sparse):
+        raise ConfigError("campaign.record_at_metrics",
+                          f"a list of names from `metrics`, not {sparse!r}")
+    if sparse and not spec.record_at:
+        raise ConfigError("campaign.record_at_metrics", "needs record_at")
+    spec.record_at_metrics = tuple(sparse)
     ladder = raw.get("ladder", [])
     if (not isinstance(ladder, (list, tuple))
             or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in ladder)):
@@ -525,7 +537,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 trajectory_hv=("not recorded" if hv_skipped else
                                "exact" if traj_hv["exact_max_m"] >= p.n_obj else
                                f"monte-carlo, {traj_hv['mc_samples']} samples"),
-                trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped)
+                trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped,
+                trajectory_metrics_at_record_at=[m for m in traj_metrics
+                                                 if m in spec.record_at_metrics])
     # The archive scenario at the record_at counts below the budget (its end is
     # final_archive): taken at the record that first reaches each count.
     checkpoints = ([b for b in spec.record_at if b < budget]
@@ -538,13 +552,16 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if need_x and not baseline:
         from .. import _core                   # current_variables() at the records
 
-    def measure(F, X):
-        vals = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=traj_metrics,
+    def measure(F, X, which):
+        vals = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=which,
                          pop=p.pop_size, hv_options=traj_hv, X=X, pareto_set=pset,
                          bounds=p.bounds, cyclic=p.cyclic_vars)
         for m in hv_skipped:
             vals[m] = None
         return vals
+
+    # the costly indicators only at the record_at counts and at the end
+    everywhere = [m for m in traj_metrics if m not in spec.record_at_metrics]
 
     def on_gen(gen, objectives, variables=None):
         nonlocal n_records, next_i, last_fe, record_seconds
@@ -566,8 +583,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         rec = {"gen": gen, "fe": fe, "t": round(t_rec - t0, 3), "n": int(len(F))}
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
+        mark = fe >= budget or any(last_fe < b <= fe for b in spec.record_at)
         if finite and F.size:
-            rec.update(measure(F, X))
+            rec.update(measure(F, X, traj_metrics if mark else everywhere))
         if op_stats:
             rec.update(_core.operator_stats())
         if snap:
@@ -580,7 +598,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         if crossed and fe < budget and len(arc):         # the end is final_archive
             AF, AX, _ = arc.points()
             idx = arc.select(p.pop_size)
-            vals = dict(measure(AF[idx], AX[idx]), fe=fe, n=int(len(idx)))
+            vals = dict(measure(AF[idx], AX[idx], traj_metrics), fe=fe, n=int(len(idx)))
             for b in crossed:
                 archive_at[str(b)] = vals
                 ck_budget.append(b); ck_fe.append(fe); ck_n.append(len(idx))
