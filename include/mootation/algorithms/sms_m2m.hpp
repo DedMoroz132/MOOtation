@@ -43,6 +43,7 @@
 //      with the MINIMAL exclusive hypervolume contribution ΔS = HV(F)−HV(F\{s})
 //      is removed.
 //   HV reference point: r_j = 1.1·max_j(P_k) (as in the reference SMS-EMOA).
+//   The contributions are hv_contribution.hpp's, exact at every M (SMSM2M-10).
 //
 // DEFAULTS (= §2.7):
 //   • Operators as in [5] (SMS-EMOA): SBX η_c=20, p_c(SBX)=1.0; PM η_m=20.
@@ -100,6 +101,19 @@
 //     Previously up to 5 rejections enforced y ≠ x.
 //   SMSM2M-8 (MINOR). SBX yields 2 children — the first is taken ("a new
 //     solution z", singular).
+//   SMSM2M-10 (implementation, fixed 2026-09-27). The contributions come from
+//     hv_contribution.hpp, the routine SMS-EMOA and MO-CMA-ES use: at M = 2
+//     the neighbours' formula, from M = 3 each point's exclusive hypervolume
+//     against the others limited by it, by WFG. The paper prescribes no
+//     algorithm (§2.9 reasons about the cost with HSO). The port had its own
+//     slicing recursion, which carried every point of a slice down to the
+//     next objective, and took each ΔS as HV(F) − HV(F\{s}): n + 1 volumes a
+//     removal. 45 points at five objectives cost 8.9 s against 2.4 ms now;
+//     a 25 000-evaluation run on DTLZ3 with five objectives took 38-42 min
+//     and takes 14 s; on WFG3 with five it had made 120 evaluations after an
+//     hour and now finishes in a minute. The values are the same up to
+//     rounding (the difference of two volumes lost digits when ΔS was small
+//     next to HV(F)); the default fingerprints did not move.
 //
 // EXTENSIONS BEYOND THE PAPER (disabled by default): binary/mixed genome;
 //   constraint_mode FEASIBILITY/CDP (SMSM2M-C). The paper is unconstrained, so
@@ -110,8 +124,9 @@
 //   preference. The per-subregion quota S stays unconditional, so an
 //   all-infeasible subregion still keeps S members, ordered by CV.
 //
-// COST. SMS computes the HV contribution inside subregions — expensive for
-//   large m (like HypE). For smoke tests m=2 suffices.
+// COST. SMS computes the HV contributions inside subregions, exactly at every
+//   m. A 25 000-evaluation run takes 5-25 s at two and three objectives and
+//   10-130 s at five and six (SMSM2M-10).
 // ============================================================================
 
 #include <algorithm>
@@ -132,6 +147,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../hv_contribution.hpp"
 
 namespace mootation {
 
@@ -193,51 +209,6 @@ private:
             V_.push_back(std::move(w));
         }
         K_ = static_cast<int>(V_.size());
-    }
-
-    // ── Hypervolume (HSO slicing), maximization of the union [0,q] ────────────
-    // q-points = (ref - f), clamped into [0,∞). Returns the volume of the union.
-    static double hv_union(std::vector<std::vector<double>> q) {
-        if (q.empty()) return 0.0;
-        int m = static_cast<int>(q[0].size());
-        if (m == 1) {
-            double mx = 0.0; for (auto& p : q) mx = std::max(mx, p[0]);
-            return mx;
-        }
-        // sort by the last coordinate, descending
-        std::sort(q.begin(), q.end(),
-                  [m](const std::vector<double>& a, const std::vector<double>& b){
-                      return a[m-1] > b[m-1];
-                  });
-        double vol = 0.0;
-        int n = static_cast<int>(q.size());
-        for (int i = 0; i < n; ++i) {
-            double next = (i+1 < n) ? q[i+1][m-1] : 0.0;
-            double thick = q[i][m-1] - next;
-            if (thick <= 0.0) continue;
-            // projection of points [0..i] onto the first m-1 coordinates
-            std::vector<std::vector<double>> proj;
-            proj.reserve(i+1);
-            for (int t = 0; t <= i; ++t)
-                proj.emplace_back(q[t].begin(), q[t].begin() + (m-1));
-            vol += thick * hv_union(proj);
-        }
-        return vol;
-    }
-
-    static double hv_of(const std::vector<std::vector<double>>& objs,
-                        const std::vector<int>& idx,
-                        const std::vector<double>& ref) {
-        int m = static_cast<int>(ref.size());
-        std::vector<std::vector<double>> q;
-        q.reserve(idx.size());
-        for (int i : idx) {
-            std::vector<double> qi(m);
-            for (int k = 0; k < m; ++k)
-                qi[k] = std::max(0.0, ref[k] - objs[i][k]);
-            q.push_back(std::move(qi));
-        }
-        return hv_union(std::move(q));
     }
 
     // fast non-dominated sort → vector of ranks (0 = best front)
@@ -302,20 +273,16 @@ private:
                     ref[k] = (ref[k] > 0.0) ? ref[k]*1.1 : ref[k] + 1.0;
 
                 // exclusive HV contribution of each member of the last front
-                std::vector<int> last_idx;     // global indices of the last front
-                last_idx.reserve(last_local.size());
-                for (int lp : last_local) last_idx.push_back(members[lp]);
-                double hv_all = hv_of(objs, last_idx, ref);
+                // (SMSM2M-10); the first smallest goes
+                std::vector<std::vector<double>> last_objs;
+                last_objs.reserve(last_local.size());
+                for (int lp : last_local) last_objs.push_back(objs[members[lp]]);
+                const std::vector<double> contrib = hv::contributions_exact(last_objs, ref);
                 double worst_contrib = std::numeric_limits<double>::max();
                 victim_local = last_local[0];
-                for (std::size_t t = 0; t < last_idx.size(); ++t) {
-                    std::vector<int> without;
-                    without.reserve(last_idx.size()-1);
-                    for (std::size_t u = 0; u < last_idx.size(); ++u)
-                        if (u != t) without.push_back(last_idx[u]);
-                    double contrib = hv_all - hv_of(objs, without, ref);
-                    if (contrib < worst_contrib) {
-                        worst_contrib = contrib;
+                for (std::size_t t = 0; t < contrib.size(); ++t) {
+                    if (contrib[t] < worst_contrib) {
+                        worst_contrib = contrib[t];
                         victim_local  = last_local[t];
                     }
                 }

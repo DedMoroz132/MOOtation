@@ -502,6 +502,18 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- `sms_m2m` spent hours to days on a run at five and six objectives: its own
+  hypervolume slicing carried every point of a slice down to the next
+  objective, and each contribution was HV(F) − HV(F\{s}), n + 1 volumes for
+  every removal. It now takes the contributions from `hv_contribution.hpp`,
+  as SMS-EMOA and MO-CMA-ES do, exact at every M (SMSM2M-10). A 25 000-
+  evaluation run on DTLZ3 with five objectives: 38-42 min -> 14 s; the whole
+  algorithm in the stage-3 campaign: about 23 000 CPU-hours -> 10. The
+  contributions are the same up to rounding, the default fingerprints did
+  not move, and nine of ten finished probe runs returned the same population
+  (the tenth parted in its last generation over points with objectives near
+  1e-15, where the old difference of two volumes had lost the digits).
+
 - A campaign's workers ran out of memory on a many-core Windows machine:
   importing NumPy made OpenBLAS reserve a buffer for every core in every
   process (756 MB each at 24 threads), and the stage-3 probe's twenty workers
