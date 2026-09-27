@@ -3,19 +3,34 @@
 
     python -m mootation.run.campaign camp.toml --cover
     python -m mootation.run.campaign camp.toml --cover --cover-taus 0.1,0.03 \\
-        --cover-budgets 10000,25000 --cover-seeds 7 --cover-bootstrap 200
+        --cover-floor-taus 1,0.5 --cover-budgets 10000,25000 --cover-seeds 7 \\
+        --cover-bootstrap 200
 
 Reads finished runs; runs nothing.
 
-COVERED. An algorithm covers a problem at level τ and budget b when it reaches
-the level in at least `min_seeds` of its seeds (7, meant for ten). The level:
-  * on a problem with a reference front — criterion "igdp": igdp_norm ≤ τ;
-    criterion "gdp": gdp_norm ≤ τ, the progress towards the front alone (GD+ in
-    igdp_norm's frame, so that one τ reads alike on every problem);
+COVERED. An algorithm covers a problem at a level and budget b when it reaches
+the level in at least `min_seeds` of its seeds (7, meant for ten). The levels
+go from coarse to fine, k = 0, 1, ...; level k:
+  * on a problem with a reference front — criterion "igdp": igdp_norm ≤
+    (1 + FLOOR_TAUS[k]) · floor, within 2, 1.5, 1.25 and 1.1 times the
+    problem's floor; criterion "gdp": gdp_norm ≤ TAUS[k], the progress towards
+    the front alone (GD+ in igdp_norm's frame, so that one τ reads alike on
+    every problem);
   * on a problem without one (bbob-biobj), under both criteria: the relative
     gap of hv_h to the best value any run of the campaign reached on it,
-    (best − hv_h)/best ≤ τ. The best known values depend on what the campaign
-    ran, so they are written out with the result (best_known_hv.csv).
+    (best − hv_h)/best ≤ TAUS[k]. The best known values depend on what the
+    campaign ran, so they are written out with the result (best_known_hv.csv).
+
+THE FLOOR (owner and reviewer, 2026-09-28). N points on the front itself leave
+IGD+ above zero, so absolute levels of igdp_norm cannot all be reached: the
+floor is about 0.002 at two objectives, 0.02 at three and 0.06 at five, above
+0.01 and 0.003 at three objectives and above every level but 0.1 at five.
+A problem's floor is the IGD+, in igdp_norm's frame, of the N points (N = its
+population) that DSS selects from the reference front the runs were measured
+against: the best N-point subset of that reference, as far as DSS finds it. A
+run can go below it (DSS is not the best subset); GD+ has a floor of 0, so its
+levels stay absolute. The floors are written out (igdp_floor.csv) and read back
+by the next analysis of the same results.
 
 AT A BUDGET. A run's value at b evaluations is its final value when b is its
 budget; for a budget-dependent algorithm (budget.py), the final value of its
@@ -51,6 +66,7 @@ import random
 from pathlib import Path
 
 TAUS = (0.1, 0.03, 0.01, 0.003)
+FLOOR_TAUS = (1.0, 0.5, 0.25, 0.1)                       # igdp_norm <= (1 + tau) * floor
 BUDGETS = (2500, 5000, 10000, 25000)
 CRITERIA = {"igdp": "igdp_norm", "gdp": "gdp_norm"}      # criterion -> metric with a front
 METRICS = ("igdp_norm", "gdp_norm", "hv_h")
@@ -150,6 +166,61 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
             "main": main, "scenario": scenario}
 
 
+def igdp_floor(problem: str, n_ref: int) -> float | None:
+    """The IGD+ floor of a problem (THE FLOOR above); None without a front."""
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    from .archive import dss_order
+    from .metrics import _normalised, igd_plus
+    p = bench_get(problem)
+    if not callable(p.pareto_front):
+        return None
+    ref = np.asarray(p.pareto_front(n_ref), float)
+    idx = dss_order(ref, k=p.pop_size, ideal=p.ideal, nadir=p.nadir)
+    return igd_plus(*_normalised(ref[idx], ref, p.ideal, p.nadir))
+
+
+def _median(values) -> float:
+    v = sorted(values)
+    return (v[(len(v) - 1) // 2] + v[len(v) // 2]) / 2 if v else math.nan
+
+
+def _floor_task(task) -> tuple:
+    problem, n_ref = task
+    return problem, igdp_floor(problem, n_ref)
+
+
+def floors(problems, n_ref: int, path: Path, workers: int = 1) -> dict:
+    """{problem: floor} for the problems with a reference front, from the CSV at
+    `path` where it has them for this n_ref, computed and added otherwise (a
+    reference front takes up to a minute to sample: ZCAT's are verified)."""
+    from ..benchmarks import get as bench_get
+    have = {}
+    if path.is_file():
+        with path.open(newline="", encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                if int(row["n_ref"]) == n_ref:
+                    have[row["problem"]] = float(row["floor"])
+    todo = [(p, n_ref) for p in problems
+            if p not in have and callable(bench_get(p).pareto_front)]
+    if workers > 1 and len(todo) > 1:
+        import multiprocessing as mp
+        from .campaign import single_threaded_blas
+        single_threaded_blas()
+        with mp.Pool(processes=workers) as pool:
+            done = list(pool.imap_unordered(_floor_task, todo))
+    else:
+        done = [_floor_task(t) for t in todo]
+    have.update({p: f for p, f in done if f is not None})
+    if done:
+        with path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["problem", "pop", "n_ref", "floor"])
+            for prob in sorted(have):
+                w.writerow([prob, bench_get(prob).pop_size, n_ref, f"{have[prob]:.10g}"])
+    return have
+
+
 def best_known_hv(data: dict) -> dict:
     """{problem: (best final hv_h, algorithm, seed)} over the full-budget runs."""
     best = {}
@@ -162,20 +233,25 @@ def best_known_hv(data: dict) -> dict:
     return best
 
 
-def reached(data: dict, criterion: str, tau: float, budget: int, best_hv: dict) -> dict:
-    """{problem: {algorithm: {seed: bool}}}: did the run reach level tau at budget."""
+def reached(data: dict, criterion: str, level: tuple, budget: int, best_hv: dict,
+            floor: dict | None = None) -> dict:
+    """{problem: {algorithm: {seed: bool}}}: did the run reach the level at budget.
+    `level` = (tau, tau_hv): igdp_norm <= (1 + tau) * floor, or gdp_norm <= tau,
+    where the problem has a reference front; the hv_h gap <= tau_hv where not."""
     metric = CRITERIA[criterion]
+    tau, tau_hv = level
     out: dict = {}
     for (prob, alg, seed), by_b in data["values"].items():
         v = by_b.get(budget, {})
         ok = False
         if data["front"].get(prob):
             x = v.get(metric)
-            ok = x is not None and math.isfinite(float(x)) and float(x) <= tau
+            limit = tau if criterion == "gdp" else (1.0 + tau) * (floor or {}).get(prob, math.nan)
+            ok = x is not None and math.isfinite(float(x)) and float(x) <= limit
         else:
             x, best = v.get("hv_h"), best_hv.get(prob, (0.0,))[0]
             ok = (x is not None and best > 0.0 and math.isfinite(float(x))
-                  and (best - float(x)) / best <= tau)
+                  and (best - float(x)) / best <= tau_hv)
         out.setdefault(prob, {}).setdefault(alg, {})[seed] = ok
     return out
 
@@ -388,10 +464,14 @@ def bootstrap(hit: dict, problems: list, seeds: list, min_seeds: int, replicates
 # ── the report ──────────────────────────────────────────────────────────────
 
 
-def run(root: Path, *, taus=TAUS, budgets=BUDGETS, min_seeds: int = 7, max_sets: int = 20,
-        replicates: int = 0, workers: int = 1, out_dir: Path | None = None,
-        scenario: str = "final") -> str:
-    """The whole analysis: text for the terminal; CSV files in out_dir."""
+def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_seeds: int = 7,
+        max_sets: int = 20, replicates: int = 0, workers: int = 1,
+        out_dir: Path | None = None, scenario: str = "final", n_ref: int = 1000) -> str:
+    """The whole analysis: text for the terminal; CSV files in out_dir. Level k
+    is floor_taus[k] for igdp, taus[k] for gdp, taus[k] for the hv_h gap."""
+    if len(floor_taus) != len(taus):
+        raise ValueError(f"{len(floor_taus)} floor levels against {len(taus)} levels: "
+                         f"level k pairs floor_taus[k] with taus[k]")
     from .campaign import problem_family
     root = Path(root)
     out_dir = (Path(out_dir) if out_dir else
@@ -409,6 +489,10 @@ def run(root: Path, *, taus=TAUS, budgets=BUDGETS, min_seeds: int = 7, max_sets:
     if data["missing"]:
         lines.append(f"  {len(data['missing'])} ladder rungs missing (budget-dependent runs "
                      f"read as not reaching any level there), e.g. {data['missing'][0]}")
+    floor = floors([p for p in problems if data["front"].get(p)], n_ref,
+                   out_dir / "igdp_floor.csv", workers=workers)
+    lines.append(f"  igdp levels from each problem's floor (igdp_floor.csv): median "
+                 f"{_median(floor.values()):.4g}" if floor else "  no problem with a front")
     no_front = [p for p in problems if not data["front"].get(p)]
     if no_front:
         lines.append(f"  {len(no_front)} problems without a reference front: the relative gap "
@@ -420,41 +504,47 @@ def run(root: Path, *, taus=TAUS, budgets=BUDGETS, min_seeds: int = 7, max_sets:
             w.writerow([p, f"{best_hv[p][0]:.10g}", best_hv[p][1], best_hv[p][2]])
 
     summary, curves, uncovered, boot = [], [], [], []
+    levels = {"igdp": list(zip(floor_taus, taus)), "gdp": list(zip(taus, taus))}
     for crit in CRITERIA:
-        for tau in taus:
+        for tau, tau_hv in levels[crit]:
+            name = (f"igdp <= {1 + tau:g} x floor" if crit == "igdp" else f"gdp <= {tau:g}")
             for b in budgets:
-                hit = reached(data, crit, tau, b, best_hv)
+                hit = reached(data, crit, (tau, tau_hv), b, best_hv, floor)
                 cov = successes(hit, min_seeds)
                 res = analyse(cov, problems, problem_family, max_sets=max_sets)
                 opt = ["+".join(s) for s in res["optimal"]]
-                summary.append([crit, tau, b, res["n_problems"], res["n_covered"],
+                summary.append([crit, tau, tau_hv, b, res["n_problems"], res["n_covered"],
                                 len(res["nobody"]), res["size"], len(opt), res["exact"],
                                 " | ".join(opt), "+".join(res["greedy"])])
                 for c in res["curve"]:
-                    curves.append([crit, tau, b, c["k"], f"{c['share']:.6g}", "+".join(c["set"]),
+                    curves.append([crit, tau, tau_hv, b, c["k"], f"{c['share']:.6g}",
+                                   "+".join(c["set"]),
                                    c["exact"], f"{c['share_families']:.6g}",
                                    "+".join(c["set_families"]), c["exact_families"],
                                    json.dumps(c["per_family"], sort_keys=True)])
                 for p in res["nobody"]:
-                    uncovered.append([crit, tau, b, p, problem_family(p)])
+                    uncovered.append([crit, tau, tau_hv, b, p, problem_family(p)])
                 lines.append(
-                    f"{crit} <= {tau:g} at {b}: {res['n_covered']}/{res['n_problems']} covered by "
+                    f"{name} (hv_h gap <= {tau_hv:g}) at {b}: {res['n_covered']}/"
+                    f"{res['n_problems']} covered by "
                     f"someone; smallest set {res['size']}{'' if res['exact'] else ' (greedy, bound)'}"
                     f" x{len(opt)}{'+' if len(opt) >= max_sets else ''}: {opt[0] if opt else '-'}"
                     f"; greedy {len(res['greedy'])}")
                 if replicates:
                     for a, share in bootstrap(hit, problems, seeds, min_seeds,
                                               replicates).items():
-                        boot.append([crit, tau, b, a, f"{share:.4f}"])
+                        boot.append([crit, tau, tau_hv, b, a, f"{share:.4f}"])
     heads = {
-        "cover_summary.csv": ["criterion", "tau", "budget", "problems", "covered_by_someone",
+        "cover_summary.csv": ["criterion", "tau", "tau_hv", "budget", "problems",
+                              "covered_by_someone",
                               "covered_by_nobody", "smallest_size", "smallest_sets_listed",
                               "exact", "smallest_sets", "greedy_set"],
-        "cover_curve.csv": ["criterion", "tau", "budget", "k", "share", "set", "exact",
+        "cover_curve.csv": ["criterion", "tau", "tau_hv", "budget", "k", "share", "set", "exact",
                             "share_families_alike", "set_families_alike", "exact_families",
                             "covered_per_family"],
-        "cover_nobody.csv": ["criterion", "tau", "budget", "problem", "family"],
-        "cover_bootstrap.csv": ["criterion", "tau", "budget", "algorithm", "share_in_smallest"],
+        "cover_nobody.csv": ["criterion", "tau", "tau_hv", "budget", "problem", "family"],
+        "cover_bootstrap.csv": ["criterion", "tau", "tau_hv", "budget", "algorithm",
+                                "share_in_smallest"],
     }
     for name, rows in (("cover_summary.csv", summary), ("cover_curve.csv", curves),
                        ("cover_nobody.csv", uncovered), ("cover_bootstrap.csv", boot)):

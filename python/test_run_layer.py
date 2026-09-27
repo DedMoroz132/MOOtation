@@ -1440,8 +1440,8 @@ def cover_finds_the_smallest_sets_exactly_where_greedy_does_not():
 
 @test
 def cover_reads_levels_seeds_and_the_hypervolume_gap():
-    """igdp_norm <= tau with a front, the gap to the best hv_h without one, and
-    >= min_seeds seeds for a success."""
+    """igdp_norm <= (1 + tau) x floor and gdp_norm <= tau with a front, the gap to
+    the best hv_h without one, and >= min_seeds seeds for a success."""
     from mootation.run import cover as V
     vals = {}
     for s in range(1, 11):
@@ -1453,12 +1453,37 @@ def cover_reads_levels_seeds_and_the_hypervolume_gap():
         {"problem": "H", "algorithm": "b", "seed": 1, "final": {"hv_h": 1.0}}]}
     best = V.best_known_hv(data)
     assert best == {"H": (1.0, "b", 1)}
-    hit = V.reached(data, "igdp", 0.01, 100, best)
+    floor = {"F": 0.004}
+    hit = V.reached(data, "igdp", (0.5, 0.01), 100, best, floor)   # igdp_norm <= 0.006
     cov = V.successes(hit, 7)
     assert cov == {"a": {"F", "H"}, "b": set()}, cov              # b: 6 seeds; gap 0.1 > 0.01
-    assert V.successes(V.reached(data, "gdp", 0.01, 100, best), 7) == {"a": {"F", "H"},
-                                                                       "b": {"F"}}
+    assert V.successes(V.reached(data, "igdp", (0.1, 0.01), 100, best, floor), 7)["a"] == {"H"}
+    assert V.successes(V.reached(data, "gdp", (0.01, 0.01), 100, best), 7) == {"a": {"F", "H"},
+                                                                               "b": {"F"}}
     assert V.successes(hit, 7, seeds=[1] * 10)["b"] == {"F"}       # a resample of seed 1 only
+
+
+@test
+def the_igdp_floor_is_what_n_points_on_the_front_leave():
+    """The floor of DTLZ2: N points DSS takes from the reference itself leave
+    igdp_norm above 0.01 at three objectives and above 0.03 at five (the
+    absolute levels those populations could never reach), and the floors are
+    written once and read back."""
+    try:
+        import numpy as np  # noqa: F401
+    except ImportError:
+        return
+    from mootation.run import cover as V
+    f3, f5 = V.igdp_floor("DTLZ2_3D", 1000), V.igdp_floor("DTLZ2_5D", 1000)
+    assert 0.01 < f3 < 0.05 and 0.03 < f5 < 0.12, (f3, f5)
+    assert V.igdp_floor("bbobbiobj01_n05_2D", 1000) is None
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "igdp_floor.csv"
+        got = V.floors(["DTLZ2_3D", "bbobbiobj01_n05_2D"], 1000, path)
+        assert got == {"DTLZ2_3D": f3} and path.is_file(), got
+        path.write_text(path.read_text(encoding="utf-8").replace(f"{f3:.10g}", "0.5"),
+                        encoding="utf-8")
+        assert V.floors(["DTLZ2_3D"], 1000, path) == {"DTLZ2_3D": 0.5}   # read, not recomputed
 
 
 @test
@@ -3286,9 +3311,12 @@ def a_ladder_campaign_runs_marks_and_covers():
         first = next(t for t in T if t["fe"] >= 600)
         assert data["values"][("ZDT1", "nsga2", 1)][600]["igdp_norm"] == first["igdp_norm"]
         assert not data["missing"] and data["dependent"] == {"rvea"}
-        text_out = V.run(root, taus=(10.0, 1e-9), budgets=(600, 1200), min_seeds=2)
-        assert "igdp <= 10 at 600: 1/1 covered" in text_out, text_out
-        assert "igdp <= 1e-09 at 1200: 0/1 covered" in text_out, text_out
+        text_out = V.run(root, taus=(10.0, 1e-9), floor_taus=(1e6, 0.0), budgets=(600, 1200),
+                         min_seeds=2)
+        assert "igdp <= 1e+06 x floor (hv_h gap <= 10) at 600: 1/1 covered" in text_out, text_out
+        assert "gdp <= 1e-09 (hv_h gap <= 1e-09) at 1200: 0/1 covered" in text_out, text_out
+        with (root / "_cover" / "igdp_floor.csv").open(encoding="utf-8") as fh:
+            assert fh.read().splitlines()[1].startswith("ZDT1,100,1000,")
         for name in ("cover_summary.csv", "cover_curve.csv", "cover_nobody.csv",
                      "best_known_hv.csv"):
             assert (root / "_cover" / name).is_file(), name
@@ -3496,8 +3524,9 @@ snapshot_variables = "pareto_set"
         v = data["values"][("DTLZ2_3D", "nsga2", 1)]
         assert v[500]["igdp_norm"] == r["archive_at"]["500"]["igdp_norm"], v
         assert v[1500]["igdp_norm"] == r["final_archive"]["igdp_norm"], v
-        out = V.run(root, taus=(10.0,), budgets=(500, 1500), min_seeds=1, scenario="archive")
-        assert "igdp <= 10 at 500: 2/2 covered" in out, out
+        out = V.run(root, taus=(10.0,), floor_taus=(1e6,), budgets=(500, 1500), min_seeds=1,
+                    scenario="archive")
+        assert "igdp <= 1e+06 x floor (hv_h gap <= 10) at 500: 2/2 covered" in out, out
         assert (root / "_cover_archive" / "cover_summary.csv").is_file()
         # --recompute-trajectory: what the snapshots give back (float32 rows);
         # without the variables (ZDT1) pdist and igdx stay out

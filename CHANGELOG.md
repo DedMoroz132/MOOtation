@@ -29,6 +29,17 @@ always listed under **Changed** or **Removed**.
 
 ### Changed
 
+- `--cover` reads the coverage criterion against each problem's IGD+ floor:
+  `igdp_norm ≤ (1 + τ) × floor`, τ = 1, 0.5, 0.25, 0.1 by default
+  (`--cover-floor-taus`). N points on the front itself leave IGD+ above zero —
+  the floor, the IGD+ of the N points DSS selects from the reference front
+  itself, is about 0.002 at two objectives, 0.02 at three and 0.06 at five —
+  so the absolute levels 0.01 and 0.003 could not be reached at three
+  objectives, nor anything but 0.1 at five, whatever the algorithm. The
+  progress criterion (`gdp_norm`, floor 0) and the hypervolume gap on problems
+  without a front keep the absolute levels of `--cover-taus`; level k pairs the
+  k-th values of both lists. The floors go to `igdp_floor.csv` and are read
+  back by the next analysis; the CSV files gain a `tau_hv` column.
 - DSS (`archive.dss_order` and `dss.hpp`) sets almost-dominated points aside:
   a point some other point beats by more than 0.1 in an objective while it
   beats that point by at most 0.001 everywhere, in normalised coordinates — the

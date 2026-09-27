@@ -1694,7 +1694,11 @@ def main(argv: list[str] | None = None) -> int:
                          "and budget, exact and greedy, the curve k -> share covered, and the "
                          "problems nobody covers (cover.py); CSV under <results>/_cover/")
     ap.add_argument("--cover-taus", default="0.1,0.03,0.01,0.003", metavar="LIST",
-                    help="with --cover: the levels, comma-separated (default 0.1,0.03,0.01,0.003)")
+                    help="with --cover: the levels of gdp_norm and of the hv_h gap, coarse to "
+                         "fine, comma-separated (default 0.1,0.03,0.01,0.003)")
+    ap.add_argument("--cover-floor-taus", default="1,0.5,0.25,0.1", metavar="LIST",
+                    help="with --cover: the levels of igdp_norm, as igdp_norm <= (1 + tau) x the "
+                         "problem's floor, as many as --cover-taus (default 1,0.5,0.25,0.1)")
     ap.add_argument("--cover-budgets", metavar="LIST",
                     help="with --cover: the budgets, comma-separated (default the campaign's "
                          "ladder and full budget)")
@@ -1816,17 +1820,23 @@ def main(argv: list[str] | None = None) -> int:
         from . import cover as C
         try:
             taus = tuple(float(v) for v in args.cover_taus.split(",") if v.strip())
+            floor_taus = tuple(float(v) for v in args.cover_floor_taus.split(",") if v.strip())
             budgets = (tuple(int(v) for v in args.cover_budgets.split(",") if v.strip())
                        if args.cover_budgets else
                        tuple(sorted(set(spec.ladder) | {spec.budget_fe})) if spec.budget_fe
                        else C.BUDGETS)
         except ValueError:
-            print("--cover-taus wants numbers and --cover-budgets integers, comma-separated",
-                  file=sys.stderr)
+            print("--cover-taus and --cover-floor-taus want numbers and --cover-budgets "
+                  "integers, comma-separated", file=sys.stderr)
             return 1
-        print(C.run(root, taus=taus, budgets=budgets, min_seeds=args.cover_seeds,
-                    max_sets=args.cover_max_sets, replicates=args.cover_bootstrap,
-                    workers=args.workers, scenario=args.scenario))
+        if len(floor_taus) != len(taus):
+            print(f"--cover-floor-taus gives {len(floor_taus)} levels and --cover-taus "
+                  f"{len(taus)}: level k pairs the two k-th values", file=sys.stderr)
+            return 1
+        print(C.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
+                    min_seeds=args.cover_seeds, max_sets=args.cover_max_sets,
+                    replicates=args.cover_bootstrap, workers=args.workers,
+                    scenario=args.scenario, n_ref=spec.n_ref))
         return 0
     rows = None
     if args.bias or set_tables or any(v is not None for v in (

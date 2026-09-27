@@ -684,14 +684,23 @@ python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --worker
   problem and the mean ranks by both. Magnitude joins the metrics only if the
   order it gives is clearly different and the difference can be explained.
 - `--cover`: which few algorithms together do well everywhere. An algorithm
-  covers a problem at level τ and budget b when at least `--cover-seeds` of
-  its seeds (7, meant for ten) reach it: `igdp_norm ≤ τ` where the problem has
-  a reference front, and, where it has none (bbob-biobj), a relative gap of
-  `hv_h` to the best any run of the campaign reached on it, (best − hv_h)/best
-  ≤ τ — those best values depend on what the campaign ran, and are written to
-  `best_known_hv.csv`. A second criterion reads `gdp_norm ≤ τ` instead: the
-  progress towards the front alone. For every criterion, τ in `--cover-taus`
-  (0.1, 0.03, 0.01, 0.003) and budget in `--cover-budgets` (the campaign's
+  covers a problem at a level and budget b when at least `--cover-seeds` of
+  its seeds (7, meant for ten) reach it. The levels go from coarse to fine.
+  Where the problem has a reference front, criterion `igdp` reads `igdp_norm ≤
+  (1 + τ) × floor`, τ in `--cover-floor-taus` (1, 0.5, 0.25, 0.1: within 2,
+  1.5, 1.25 and 1.1 times the floor): N points on the front itself leave IGD+
+  above zero — about 0.002 at two objectives, 0.02 at three, 0.06 at five —
+  so absolute levels of 0.01 and 0.003 could not be reached at all. The floor
+  is the IGD+ of the N points (the problem's population) DSS selects from the
+  reference front itself, written to `igdp_floor.csv` and read back next time;
+  a run can go below it. Criterion `gdp` reads `gdp_norm ≤ τ`, τ in
+  `--cover-taus` (0.1, 0.03, 0.01, 0.003): the progress towards the front
+  alone, whose floor is 0. Where there is no front (bbob-biobj), both read the
+  relative gap of `hv_h` to the best any run of the campaign reached on it,
+  (best − hv_h)/best ≤ τ of `--cover-taus` — those best values depend on what
+  the campaign ran, and are written to `best_known_hv.csv`; level k pairs the
+  k-th values of the two lists. For every criterion, level and budget in
+  `--cover-budgets` (the campaign's
   ladder and full budget), it reports the problems nobody covers, the smallest
   sets of algorithms covering every problem somebody does — exact, by branch
   and bound, all of them up to `--cover-max-sets`, and the greedy set beside
