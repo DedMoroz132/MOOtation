@@ -357,7 +357,12 @@ same generation a separate run of that budget stops at.
   (step 1e-3, or 1e-2 from five objectives; `archive_delta`), with each
   objective's best point kept outside the grid so the ends of the front are
   never pruned. `archive = false` turns it off. `meta.json` says the step and
-  the normalisation used.
+  the normalisation used. `archive_variables = "selected"` keeps the variables
+  only of the points the archive scenario selects (below): the objectives of
+  every archive point go to `archive.csv.gz`, and the selected points,
+  objectives and variables, to `final_archive.csv.gz`. Over the stage-3
+  problems that is a tenth of the room of `archive.csv` (a quarter of it
+  gzipped); the default `"all"` writes `archive.csv` as before.
 - `snapshots = true`, or a list of problem names, stores the population's
   objectives at every trajectory point in `snapshots.npz` (float32), to see how
   the front's shape moved or to compute an indicator the run did not record.
@@ -529,7 +534,8 @@ opposed to how good the population it returns is. `meta.json` also records the
 frame the selection normalised by, so `--recompute ... --scenario archive`
 selects the same points again from `archive.csv` — or, on a campaign run before
 the scenario existed, or with `archive_scenario = false`, selects them for the
-first time: the archive is written either way.
+first time: the archive is written either way. With `archive_variables =
+"selected"` it reads the selection the run kept, `final_archive.csv.gz`.
 
 DSS (`archive.dss_order`, and `dss.hpp` for DMS's answer) starts from the best
 point of every objective and then takes the point the selection covers worst.

@@ -117,7 +117,14 @@ final_metrics = ["igd", "igdp", "igdp_norm", "gdp", "gdp_norm", "eps", "eps_norm
                  "hv_h", "roi_dist", "range_cover", "nd_share", "dup_share", "tau90",
                  "gap_max", "nn_cv", "n_final", "igdx", "cr", "pdist"]
 n_ref         = 1000
-# Every run keeps its archive (archive.csv) and the "archive" scenario: the
-# archive reduced to the population size by DSS, almost-dominated points last.
-archive          = true
-archive_scenario = true
+# Every run keeps its archive and the "archive" scenario: the archive reduced to
+# the population size by DSS, almost-dominated points last. The archive keeps
+# the objectives of every point (archive.csv.gz) and the variables only of the
+# points the scenario selects (final_archive.csv.gz): for the whole stage about
+# 8 GiB instead of the 88 of archive.csv.
+archive           = true
+archive_scenario  = true
+archive_variables = "selected"
+# The population's objectives at every trajectory record (snapshots.npz,
+# float32): about 3 GiB for the whole stage.
+snapshots         = true

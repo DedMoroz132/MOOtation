@@ -34,6 +34,12 @@ Layout on disk, the contract the TUI reads:
     <out>/<problem>/<algorithm>/run_<seed>/meta.json          status, budget, timing
     <out>/<problem>/<algorithm>/run_<seed>/final.csv          objectives then variables
 
+and with the run archive on, archive.csv (every archive point, objectives
+then variables) or, with archive_variables = "selected", archive.csv.gz (the
+objectives of every point) and final_archive.csv.gz (the N points DSS selects
+for the archive scenario, objectives then variables); with snapshots on,
+snapshots.npz.
+
 A job whose meta.json says "done" is skipped, so a killed campaign resumes by
 being started again; `--force` reruns everything.
 """
@@ -141,6 +147,12 @@ class CampaignSpec:
     # the default grid step, 1e-3 below five objectives and 1e-2 from five.
     archive: bool = True
     archive_delta: float = 0.0
+    # Whose variables the archive keeps: "all" — every point's, in archive.csv;
+    # "selected" — only those of the N points DSS selects for the archive
+    # scenario, in final_archive.csv.gz, with the objectives of every point in
+    # archive.csv.gz. Over the stage-3 problems "selected" takes a tenth of the
+    # room of "all" (a quarter of it gzipped).
+    archive_variables: str = "all"
     # Population objectives at every trajectory record (snapshots.npz, float32),
     # to look at the front's shape later or compute a metric the run did not
     # record: False, True, or a list of the problems to keep them for.
@@ -179,7 +191,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds",
              "record_grid", "record_per_decade", "record_at", "ladder", "trajectory_hv_max_m",
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
-             "archive", "archive_delta", "archive_scenario", "snapshots",
+             "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "operator_stats"}
     unknown = sorted(set(raw) - known)
     if unknown:
@@ -243,6 +255,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.archive_delta = float(raw.get("archive_delta", 0.0))
     if spec.archive_delta < 0:
         raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
+    spec.archive_variables = raw.get("archive_variables", "all")
+    if spec.archive_variables not in ("all", "selected"):
+        raise ConfigError("campaign.archive_variables",
+                          f"\"all\" or \"selected\", not {spec.archive_variables!r}")
     snaps = raw.get("snapshots", False)
     if isinstance(snaps, bool):
         spec.snapshots = snaps
@@ -559,22 +575,42 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         for i in range(len(F)):
             out.write(",".join(f"{v:.10g}" for v in list(F[i]) + list(X[i])) + "\n")
 
+    arc_sel = None                  # the archive scenario's points: indices into arc.points()
     if arc is not None:
         AF, AX, AE = arc.points()
-        with (d / "archive.csv").open("w", encoding="utf-8") as out:
+        # "all": every point with its variables; "selected": the objectives of
+        # every point, and the variables only of the points DSS selects
+        whole = spec.archive_variables == "all"
+        name = "archive.csv" if whole else "archive.csv.gz"
+        with _open_text(d / name, "w") as out:
             out.write(f"# mootation campaign archive v1: every nondominated point evaluated"
                       f"{' (feasible only)' if p.has_cons else ''}, at most one per cell of a "
                       f"{arc.delta:g} grid in {arc.normalization}-normalized objectives, "
-                      f"each objective's best point kept whatever its cell holds\n")
+                      f"each objective's best point kept whatever its cell holds"
+                      + ("" if whole else "; objectives only, the variables of the points "
+                         "the archive scenario selects are in final_archive.csv.gz") + "\n")
             out.write(",".join([f"f{i+1}" for i in range(p.n_obj)]
-                               + [f"x{i+1}" for i in range(p.n_vars)] + ["extreme"]) + "\n")
+                               + [f"x{i+1}" for i in range(p.n_vars) if whole]
+                               + ["extreme"]) + "\n")
             for i in range(len(AF)):
-                out.write(",".join(f"{v:.10g}" for v in list(AF[i]) + list(AX[i]))
-                          + f",{int(AE[i])}\n")
+                row = list(AF[i]) + (list(AX[i]) if whole else [])
+                out.write(",".join(f"{v:.10g}" for v in row) + f",{int(AE[i])}\n")
+        if len(AF) and (spec.archive_scenario or not whole):
+            arc_sel = arc.select(p.pop_size)
+        if not whole and arc_sel is not None:
+            with _open_text(d / "final_archive.csv.gz", "w") as out:
+                out.write("# mootation campaign archive selection v1: the points DSS selects "
+                          "from the archive for the archive scenario\n")
+                out.write(",".join([f"f{i+1}" for i in range(p.n_obj)]
+                                   + [f"x{i+1}" for i in range(p.n_vars)]) + "\n")
+                for i in arc_sel:
+                    out.write(",".join(f"{v:.10g}" for v in list(AF[i]) + list(AX[i])) + "\n")
         lo, hi = arc.frame()
         # The frame DSS normalises by when it reduces the archive (scenario
         # "archive"), so that --recompute --scenario archive selects the same points.
-        meta["archive"] = dict(arc.info(), extremes=int(AE.sum()), file="archive.csv",
+        meta["archive"] = dict(arc.info(), extremes=int(AE.sum()), file=name,
+                               variables=("all, in archive.csv" if whole else
+                                          "the selected points', in final_archive.csv.gz"),
                                feasible_only=bool(p.has_cons),
                                frame=None if lo is None else [np.asarray(lo).tolist(),
                                                               np.asarray(hi).tolist()])
@@ -592,12 +628,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if F.size and np.all(np.isfinite(F)):
         final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
                           X=X, **extra)
-    if arc is not None and spec.archive_scenario and len(arc.points()[0]):
+    if arc_sel is not None and spec.archive_scenario:
         AF, AX, _ = arc.points()
-        idx = arc.select(p.pop_size)
-        meta["final_archive"] = M.compute(AF[idx], ref_front=ref, ideal=ideal, nadir=nadir,
-                                          which=final_metrics, X=AX[idx], **extra)
-        meta["final_archive"]["n"] = int(len(idx))
+        meta["final_archive"] = M.compute(AF[arc_sel], ref_front=ref, ideal=ideal, nadir=nadir,
+                                          which=final_metrics, X=AX[arc_sel], **extra)
+        meta["final_archive"]["n"] = int(len(arc_sel))
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}
                              for o, r in getattr(res, "operators", [])]
@@ -1238,11 +1273,20 @@ def write_rank_csv(ranks: dict, path: Path) -> None:
 # ── indicators added after the fact ─────────────────────────────────────────
 
 
+def _open_text(path: Path, mode: str = "r"):
+    """A results text file, gzip-compressed when its name ends in .gz."""
+    if path.suffix == ".gz":
+        import gzip
+        return gzip.open(path, mode + "t", compresslevel=6, encoding="utf-8", newline="\n")
+    return path.open(mode, encoding="utf-8")
+
+
 def _read_points(path: Path, m: int, n: int):
-    """(F, X) from a final.csv or archive.csv: m objective columns, then n variables."""
+    """(F, X) from a final.csv, archive.csv or final_archive.csv.gz: m objective
+    columns, then n variables."""
     import numpy as np
     rows = []
-    with path.open("r", encoding="utf-8") as fh:
+    with _open_text(path) as fh:
         for line in fh:
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("f1"):
@@ -1278,7 +1322,14 @@ def _recompute_one(args) -> str:
         kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=names, pop=p.pop_size,
                   hv_options=hv_options, pareto_set=pset, bounds=p.bounds,
                   cyclic=p.cyclic_vars)
-        if scenario == "archive":
+        if scenario == "archive" and (run_dir / "final_archive.csv.gz").is_file():
+            # archive_variables = "selected": the run kept its selection
+            F, X = _read_points(run_dir / "final_archive.csv.gz", m, n)
+            out = dict(meta.get("final_archive") or {})
+            out.update(M.compute(F, X=X, **kw))
+            out["n"] = int(len(F))
+            meta["final_archive"] = out
+        elif scenario == "archive":
             path = run_dir / "archive.csv"
             if not path.is_file():
                 return "skipped"
@@ -1323,9 +1374,10 @@ def recompute_final(root: Path, names: list, *, workers: int = 1, n_ref: int = 1
     The final population is on disk, so an indicator added after a campaign
     ran costs its own arithmetic, not a rerun. Trajectories keep what they
     recorded. With scenario "archive" the same is done for the run archive
-    (archive.csv) reduced to the population size by DSS, into
-    meta["final_archive"] — which also gives that scenario to campaigns run
-    before it existed, as long as they kept an archive.
+    reduced to the population size by DSS, into meta["final_archive"]: the
+    selection the run kept (final_archive.csv.gz, archive_variables =
+    "selected"), or archive.csv reduced now — which also gives that scenario
+    to campaigns run before it existed, as long as they kept an archive.
     """
     tasks = [(str(m.parent), list(names), n_ref, hv_options, scenario)
              for m in root.glob("*/*/run_*/meta.json")
@@ -1384,7 +1436,8 @@ def main(argv: list[str] | None = None) -> int:
                          "with --problems ZDT3,WFG3_5D --force")
     ap.add_argument("--recompute", metavar="METRICS",
                     help="compute these comma-separated metrics from every finished run's "
-                         "final.csv (with --scenario archive: its archive.csv reduced by DSS), "
+                         "final.csv (with --scenario archive: its final_archive.csv.gz, or "
+                         "its archive.csv reduced by DSS), "
                          "store them in its meta.json, and exit (honours --workers)")
     ap.add_argument("--scenario", choices=("final", "archive"), default="final",
                     help="which answer of a run the tables and --recompute read: 'final', "

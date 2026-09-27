@@ -2505,6 +2505,88 @@ final_metrics = ["igdp", "hv", "igdx", "pdist"]
 
 
 @test
+def archive_variables_selected_keeps_the_same_archive_scenario():
+    """archive_variables = "selected": the objectives of every archive point in
+    archive.csv.gz, the selected points with their variables in
+    final_archive.csv.gz; the archive scenario and --recompute give what "all"
+    gives."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  archive_variables...: no NumPy or stale _core"); return
+    import gzip
+    from mootation.run import campaign as C
+    from mootation.run.config import ConfigError, load
+    text = """algorithms = [
+    { name = "nsga2", pop = 0, gens = 0 },
+    { name = "random_search", pop = 0, gens = 0 },
+]
+[run]
+name = "sel"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1", "DTLZ2_3D"]
+[campaign]
+out = "res_{keep}"
+budget_fe = 500
+record_grid = "log"
+metrics = ["igdp"]
+final_metrics = ["igdp", "hv", "igdx", "pdist"]
+archive_variables = "{keep}"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        roots = {}
+        for keep in ("all", "selected"):
+            cfg_path = Path(td) / f"{keep}.toml"
+            cfg_path.write_text(text.replace("{keep}", keep), encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            roots[keep] = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, roots[keep], spec, quiet=True) == "done", job
+        for prob, m, n in (("ZDT1", 2, 30), ("DTLZ2_3D", 3, 12)):
+            for alg in ("nsga2", "random_search"):
+                a = roots["all"] / prob / alg / "run_1"
+                s = roots["selected"] / prob / alg / "run_1"
+                ma = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+                ms = json.loads((s / "meta.json").read_text(encoding="utf-8"))
+                assert (a / "archive.csv").exists() and not (a / "final_archive.csv.gz").exists()
+                assert not (s / "archive.csv").exists(), (prob, alg)
+                assert ms["archive"]["file"] == "archive.csv.gz", ms["archive"]
+                with gzip.open(s / "archive.csv.gz", "rt", encoding="utf-8") as fh:
+                    rows = [l.strip() for l in fh if l.strip() and not l.startswith("#")][1:]
+                assert len(rows) == ms["archive"]["size"] > 0, (prob, alg)
+                assert all(len(r.split(",")) == m + 1 for r in rows), rows[0]   # f, extreme
+                F, X = C._read_points(s / "final_archive.csv.gz", m, n)
+                assert len(F) == ms["final_archive"]["n"] and X.shape == (len(F), n), X.shape
+                # the same run, the same archive, the same selection
+                Fa, _ = C._read_points(a / "archive.csv", m, n)
+                Fs, _ = C._read_points(s / "archive.csv.gz", m, 0)
+                assert Fa.tolist() == Fs.tolist(), (prob, alg)
+                for key in ("final", "final_archive"):
+                    assert ma[key] == ms[key], (prob, alg, key)
+        # --recompute --scenario archive reads the kept selection
+        d = roots["selected"] / "DTLZ2_3D" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        fa, meta["final_archive"] = meta["final_archive"], {}
+        (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        counts = C.recompute_final(roots["selected"], ["igdp", "hv", "igdx"], scenario="archive")
+        assert counts == {"done": 4}, counts
+        again = json.loads((d / "meta.json").read_text(encoding="utf-8"))["final_archive"]
+        assert again["n"] == fa["n"], again
+        for k in ("igdp", "hv", "igdx"):
+            assert abs(again[k] - fa[k]) < 1e-8, (k, again, fa)
+        bad = Path(td) / "bad.toml"
+        bad.write_text(text.replace("{keep}", "some"), encoding="utf-8")
+        try:
+            C.campaign_spec(load(bad))
+            raise AssertionError("archive_variables = \"some\" accepted")
+        except ConfigError:
+            pass
+
+
+@test
 def campaign_problems_flag_restricts_every_mode_to_a_subset():
     """--problems: --list, the run, --force, the tables and --recompute see only those problems."""
     if not _have_numpy() or _core_with("max_evaluations") is None:

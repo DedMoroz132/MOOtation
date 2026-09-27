@@ -162,11 +162,18 @@ always listed under **Changed** or **Removed**.
   `_cover/`. **Metrics**: `gap_max` (the largest d+ hole, tau90 at 100 %),
   `nn_cv` (the evenness of the non-dominated points, no front needed) and
   `gdp_norm` (GD+ in `igdp_norm`'s frame), with a table in docs/running.md of
-  which indicators measure progress and which coverage. **Configs**:
-  `campaign_stage3.toml` (every algorithm but HypE, R2-IBEA and SMS-M2M, the
-  four baselines, 225 problems — stage 2's 203 and every BT, MOP, Polygon and
-  IPolygon instance but IPolygon_8D — ten seeds, 25 000 evaluations, the
-  ladder), `campaign_stage3_heavy.toml` (those three, the same settings and
+  which indicators measure progress and which coverage. **Archive**:
+  `[campaign] archive_variables = "selected"` keeps the variables only of the
+  points the archive scenario selects — the objectives of every archive point
+  in `archive.csv.gz`, the selected points in `final_archive.csv.gz`, which
+  `--recompute --scenario archive` then reads — a tenth of the room of
+  `archive.csv` over the stage-3 problems; `"all"`, the default, writes
+  `archive.csv` as before. **Configs**: `campaign_stage3.toml` (every
+  algorithm but HLMEA, HypE and R2-IBEA, the four baselines, 225 problems —
+  stage 2's 203 and every BT, MOP, Polygon and IPolygon instance but
+  IPolygon_8D — ten seeds, 25 000 evaluations, the ladder, the archive as
+  `"selected"` and the population snapshots: about 20 GiB for the whole
+  stage), `campaign_stage3_heavy.toml` (those three, the same settings and
   results tree) and `campaign_stage3_probe.toml`.
 - RVEA* (`rvea_star`), the variant for irregular fronts that Cheng, Jin,
   Olhofer & Sendhoff give in §VI of the RVEA paper (IEEE TEVC 20(5), 2016,
