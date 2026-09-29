@@ -199,6 +199,14 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `--instance-space` (task 4, item 5): instance space analysis written from
+  Smith-Miles & Muñoz 2023 (PRELIM's relative performance, SIFTED's first
+  step, PILOT by BFGS with the analytical solution and the exact optimum's loss
+  beside it) and Muñoz & Smith-Miles 2017 (footprints by Delaunay triangulation
+  with distance, density and purity limits; contradictions between the best
+  algorithms' footprints removed), the problem properties as features, one
+  space for the problems with a front and one for bbob-biobj; footprints at
+  `--cover`'s levels and budgets. Needs SciPy.
 - `--portfolio` (task 4, item 5): the oracle and the single best solver, the
   Shapley values of the coverage game and the complementarity of every two
   algorithms at `--cover`'s levels and budgets, at 5, 7 and 10 seeds of ten,

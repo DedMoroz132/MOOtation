@@ -620,6 +620,7 @@ python -m mootation.run.campaign c.toml --cover --workers 8              # sets 
 python -m mootation.run.campaign c.toml --cover --scenario archive       # the same for the run archives
 python -m mootation.run.campaign c.toml --behaviour --workers 8          # how the runs behave, grouped
 python -m mootation.run.campaign c.toml --portfolio --workers 8          # oracle, Shapley, the matrix
+python -m mootation.run.campaign c.toml --instance-space --workers 8     # the problems as a plane, footprints
 python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
 python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # against a changed reference front
 ```
@@ -775,6 +776,32 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   the median and 7th best of `igdp_norm`, `gdp_norm`, `hv_h` and `eps_norm`
   (`portfolio_matrix.csv`), so that later analyses need not read every
   `meta.json`. CSV in `<results>/_portfolio/` (`_portfolio_archive/`).
+- `--instance-space`: instance space analysis (Smith-Miles & Muñoz, ACM
+  Computing Surveys 55(12), 2023; the footprints of Muñoz & Smith-Miles,
+  Evolutionary Computation 25(4), 2017), with the problems with a reference
+  front and the bbob-biobj ones in spaces of their own. The features are the
+  problem properties of `--by` (yes/no as 1/0, unknown as 0.5, the front's
+  shapes a column each, the bbob-biobj function groups as counts, M, log2 D,
+  the front's dimension), z-scored; the performance is PRELIM's relative one,
+  each algorithm's median `igdp_norm` (or `hv_h`) at the full budget against
+  the best median on the problem, Box-Cox-transformed and z-scored; SIFTED's
+  first step keeps the features correlated with some algorithm's performance.
+  PILOT places each problem at Z = A F so that linear models of Z predict the
+  features and the performances best: by BFGS from 30 random starts, keeping
+  the plane that best preserves the distances between the problems, as the
+  authors' toolkit does, with the analytical solution and the loss of the exact
+  optimum reported beside it. The footprint of an algorithm at each of
+  `--cover`'s levels and budgets (good = the level in `--cover-seeds` seeds) is
+  the Delaunay triangulation of the problems where it is good, without
+  triangles whose side exceeds a quarter of the largest distance or whose
+  density or purity (the share of good problems inside, at least 0.75) is too
+  low; its area and density are given as shares of the known region's, the
+  same construction over all problems. The footprints of the best algorithm per
+  problem lose the triangles where another algorithm's overlapping ones are
+  larger. Needs SciPy. CSV and JSON in `<results>/_instance_space/`
+  (`_instance_space_archive/`): the coordinates with the features, the relative
+  performances, the projection with every feature's and algorithm's R², the
+  footprints' measures and triangles.
 - `--recompute-reference`: every run records which reference front its
   metrics were measured against (`reference_version` and `reference_rows` in
   `meta.json`; the registry's `REFERENCE_VERSION`, version 2 since

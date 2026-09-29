@@ -1863,6 +1863,11 @@ def main(argv: list[str] | None = None) -> int:
                          "single best solver at 5, 7 and 10 of ten seeds, Shapley values, "
                          "complementarity, the oracle gap per problem, and the matrix problem x "
                          "algorithm x budget (portfolio.py); CSV under <results>/_portfolio/")
+    ap.add_argument("--instance-space", action="store_true",
+                    help="the problems as points of a plane drawn from their properties "
+                         "(PILOT), per group of problems, and each algorithm's footprint there "
+                         "at --cover's levels and budgets (instance_space.py; needs SciPy); CSV "
+                         "under <results>/_instance_space/")
     ap.add_argument("--behaviour", action="store_true",
                     help="describe every run from its trajectory (time to targets, "
                          "convergence slope, converged-then-spreading, collapse, stagnation, "
@@ -2002,8 +2007,7 @@ def main(argv: list[str] | None = None) -> int:
                     scenario=args.scenario, n_ref=spec.n_ref,
                     keep_caveats=args.cover_keep_caveats))
         return 0
-    if args.portfolio:
-        from . import portfolio as P
+    if args.portfolio or args.instance_space:
         try:
             taus = tuple(float(v) for v in args.cover_taus.split(",") if v.strip())
             floor_taus = tuple(float(v) for v in args.cover_floor_taus.split(",") if v.strip())
@@ -2015,9 +2019,21 @@ def main(argv: list[str] | None = None) -> int:
             print("--cover-taus and --cover-floor-taus want numbers and --cover-budgets "
                   "integers, comma-separated", file=sys.stderr)
             return 1
-        print(P.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
-                    workers=args.workers, scenario=args.scenario, n_ref=spec.n_ref,
-                    keep_caveats=args.cover_keep_caveats))
+        if len(floor_taus) != len(taus):
+            print(f"--cover-floor-taus gives {len(floor_taus)} levels and --cover-taus "
+                  f"{len(taus)}: level k pairs the two k-th values", file=sys.stderr)
+            return 1
+        if args.portfolio:
+            from . import portfolio as P
+            print(P.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
+                        workers=args.workers, scenario=args.scenario, n_ref=spec.n_ref,
+                        keep_caveats=args.cover_keep_caveats))
+        if args.instance_space:
+            from . import instance_space as S
+            print(S.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
+                        min_seeds=args.cover_seeds, workers=args.workers,
+                        scenario=args.scenario, n_ref=spec.n_ref,
+                        keep_caveats=args.cover_keep_caveats))
         return 0
     if args.behaviour:
         if args.scenario == "archive":

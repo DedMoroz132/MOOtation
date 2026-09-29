@@ -1785,6 +1785,163 @@ def portfolio_runs_on_a_results_tree():
             assert (root / "_portfolio" / name).is_file(), name
 
 
+def _have_scipy():
+    try:
+        import scipy  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+@test
+def instance_space_pilot_reaches_the_optimum():
+    """PILOT: BFGS reaches the optimum of min ||F - B A F||^2 + ||Y - C A F||^2,
+    whose loss pilot_optimum_loss gives in closed form; the analytical solution
+    of the survey's Algorithm 3 is no better, and equals the optimum and the
+    two leading principal components of [F; Y] when Y lies in F's row space;
+    a repeated feature (F F^T singular) takes the pseudo-inverse."""
+    if not _have_numpy() or not _have_scipy():
+        print("  skip  instance_space_pilot...: no NumPy or SciPy"); return
+    import numpy as np
+    from mootation.run import instance_space as S
+    rng = np.random.default_rng(3)
+    F = rng.standard_normal((4, 40))
+    Y = rng.standard_normal((5, 40)) + 0.5 * (rng.standard_normal((5, 4)) @ F)
+    opt = S.pilot_optimum_loss(F, Y)
+    num = S.pilot_numerical(F, Y, tries=5, seed=1)
+    ana = S.pilot_analytic(F, Y)
+    assert abs(num["loss"] - opt) <= 1e-6 * opt, (num["loss"], opt)
+    assert ana["loss"] >= opt - 1e-9 * opt, (ana["loss"], opt)
+    assert np.allclose(num["Z"], (num["A"] @ F).T) and -1.0 <= num["preservation"] <= 1.0
+    Y2 = rng.standard_normal((5, 4)) @ F
+    X = np.vstack([F, Y2])
+    pca = float((X ** 2).sum() - np.sort(np.linalg.eigvalsh(X @ X.T))[-2:].sum())
+    for got in (S.pilot_analytic(F, Y2)["loss"], S.pilot_optimum_loss(F, Y2)):
+        assert abs(got - pca) <= 1e-8 * pca, (got, pca)
+    F3 = np.vstack([F, F[:1]])
+    a3 = S.pilot_analytic(F3, Y)
+    assert np.isfinite(a3["loss"]) and a3["loss"] >= S.pilot_optimum_loss(F3, Y) - 1e-6
+
+
+@test
+def instance_space_footprints_and_contradictions():
+    """The 2017 paper's Algorithm 1 on a grid: the footprint of the left
+    columns is their hull, triangles longer than Delta and impure ones go;
+    Algorithm 2 takes a small triangle out where a larger one overlaps it, and
+    touching triangles do not overlap."""
+    if not _have_numpy() or not _have_scipy():
+        print("  skip  instance_space_footprints...: no NumPy or SciPy"); return
+    import numpy as np
+    from mootation.run import instance_space as S
+    g = np.linspace(0.0, 1.0, 11)
+    Z = np.array([[x, y] for x in g for y in g]) + 1e-4 * np.random.default_rng(0).standard_normal((121, 2))
+    dmax = float(np.sqrt(((Z[:, None] - Z[None]) ** 2).sum(axis=2)).max())
+    known = S.footprint(Z, np.ones(len(Z), bool), dmax)
+    assert abs(known["area"] - 1.0) < 0.01 and known["inside"] == 121, known["area"]
+    left = Z[:, 0] < 0.45
+    fp = S.footprint(Z, left, dmax, rho=0.0, purity=0.75)
+    assert abs(fp["area"] - 0.4) < 0.01 and fp["good_inside"] == left.sum(), fp["area"]
+    assert fp["inside"] == fp["good_inside"]            # nothing impure kept
+    # five good problems in a corner, far apart against Delta = 25 % of dmax:
+    # no triangle survives
+    corner = np.zeros(121, bool)
+    corner[[0, 10, 110, 120, 60]] = True
+    assert S.footprint(Z, corner, dmax)["triangles"] == []
+    # a purity limit of 1 takes out every triangle holding a bad problem
+    mixed = left.copy()
+    mixed[np.argmin(np.hypot(Z[:, 0] - 0.2, Z[:, 1] - 0.5))] = False
+    pure = S.footprint(Z, mixed, dmax, purity=1.0)
+    assert pure["area"] < fp["area"] and pure["inside"] == pure["good_inside"]
+    P = np.array([[0.0, 0.0], [4.0, 0.0], [0.0, 4.0], [1.0, 1.0], [2.0, 1.0], [1.0, 2.0],
+                  [4.0, 4.0]])
+    none = np.zeros(len(P), bool)
+    big, small = S.summarize(P, none, [(0, 1, 2)]), S.summarize(P, none, [(3, 4, 5)])
+    assert S.remove_contradictions(P, big, small) == ([(0, 1, 2)], [])
+    assert not S.overlap(P[[1, 2, 6]], P[[0, 1, 2]])     # a shared side only
+    assert S.overlap(P[[0, 1, 2]], P[[3, 4, 5]])
+
+
+@test
+def instance_space_features_and_performance():
+    """The features read off the properties (0.5 where unknown, the bbob-biobj
+    groups as counts); PRELIM's relative performance, the best algorithm the
+    first by name on a tie, and its Box-Cox and z-score, a constant algorithm
+    dropped; SIFTED's first step keeps a feature that tracks a performance."""
+    if not _have_numpy() or not _have_scipy():
+        print("  skip  instance_space_features...: no NumPy or SciPy"); return
+    import math
+    import numpy as np
+    from mootation.run import instance_space as S
+    names = S.feature_names()
+    rows = S.feature_rows(["ZDT1", "DTLZ2_3D", "bbobbiobj01_n05_2D"])
+    val = lambda n, j: rows[names.index(n)][j]  # noqa: E731
+    assert (val("front=convex", 0), val("front=concave", 1), val("front=convex", 2)) == \
+        (1.0, 1.0, 0.5), rows
+    assert (val("centre", 1), val("scaled", 2), val("bbob=separable", 2)) == (1.0, 0.5, 2.0)
+    assert (val("n_obj", 1), val("log2_n_vars", 2), val("front_dim", 1)) == (3.0, math.log2(5), 2.0)
+    med = {"P": {"a": 2.0, "b": 1.0, "c": 1.0}, "Q": {"a": 1.0, "b": 3.0}}
+    rel, best = S.relative_performance(med, ["P", "Q"], ["a", "b", "c"], higher=False)
+    assert best == ["b", "a"] and rel[0] == [1.0, 0.0] and rel[1] == [0.0, 2.0], (rel, best)
+    assert rel[2][0] == 0.0 and math.isnan(rel[2][1])
+    rel, best = S.relative_performance({"P": {"a": 0.5, "b": 1.0}}, ["P"], ["a", "b"], higher=True)
+    assert best == ["b"] and rel == [[0.5], [0.0]], rel
+    rng = np.random.default_rng(2)
+    perf = [list(rng.uniform(0.0, 2.0, 50)), [0.3] * 50, list(rng.uniform(0.0, 1.0, 50))]
+    keep, Y = S.prelim_performance(perf)
+    assert keep == [0, 2] and np.allclose(Y.mean(axis=1), 0.0) and np.allclose(Y.std(axis=1), 1.0)
+    F = np.vstack([Y[0] + 0.1 * rng.standard_normal(50), rng.standard_normal(50)])
+    F = (F - F.mean(axis=1, keepdims=True)) / F.std(axis=1, keepdims=True)
+    sel, R = S.sifted(F, Y)
+    assert 0 in sel and R[0, 0] > 0.9, (sel, R)
+
+
+@test
+def instance_space_runs_on_a_results_tree():
+    """--instance-space end to end on a made-up campaign: the problems with a
+    front and the bbob-biobj ones in spaces of their own, the files written."""
+    if not _have_numpy() or not _have_scipy():
+        print("  skip  instance_space_runs...: no NumPy or SciPy"); return
+    from mootation.run import instance_space as S
+    front = ["ZDT1", "ZDT2", "ZDT3", "DTLZ2_3D", "WFG4_3D", "MOP1"]
+    bbob = ["bbobbiobj01_n05_2D", "bbobbiobj15_n05_2D", "bbobbiobj40_n10_2D",
+            "bbobbiobj55_n10_2D"]
+    algs = {"a": 1.0, "b": 2.0, "c": 3.0}
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        for i, prob in enumerate(front + bbob):
+            for alg, x in algs.items():
+                for s in range(1, 11):
+                    d = root / prob / alg / f"run_{s}"
+                    d.mkdir(parents=True)
+                    v = (x + i) % 3 + 1.0 + 0.01 * s     # a different order per problem
+                    final = ({"igdp_norm": 0.01 * v, "gdp_norm": 0.001 * v} if prob in front
+                             else {"hv_h": 1.0 / v})
+                    (d / "meta.json").write_text(json.dumps(
+                        {"problem": prob, "algorithm": alg, "seed": s, "status": "done",
+                         "final": final, "budget_nominal": 1000, "budget_fe": 1000,
+                         "has_reference_front": prob in front, "reference_version": 2}),
+                        encoding="utf-8")
+        text = S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=3)
+        assert "front: 6 problems" in text and "bbob: 4 problems" in text, text
+        out = root / "_instance_space"
+        with (out / "is_coordinates.csv").open(encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        assert [r["problem"] for r in rows if r["group"] == "front"] == sorted(front)
+        assert [r["problem"] for r in rows if r["group"] == "bbob"] == sorted(bbob)
+        zdt1 = next(r for r in rows if r["problem"] == "ZDT1")
+        assert zdt1["best_algorithm"] == "c" and zdt1["front=convex"] == "1", zdt1
+        with (out / "is_projection.csv").open(encoding="utf-8") as fh:
+            proj = list(csv.DictReader(fh))
+        assert {r["name"] for r in proj if r["kind"] == "performance"} == set(algs)
+        meta = json.loads((out / "is_meta.json").read_text(encoding="utf-8"))
+        for g in ("front", "bbob"):
+            p = meta["groups"][g]["pilot"]
+            assert abs(p["loss"] - p["optimum_loss"]) <= 1e-5 * p["optimum_loss"], p
+        for name in ("is_performance.csv", "is_footprints.csv", "is_footprints.json",
+                     "is_report.txt"):
+            assert (out / name).is_file(), name
+
+
 @test
 def behaviour_reads_the_descriptors_off_a_trajectory():
     """Time to targets, settling, the convergence slope, converged-then-spreading,
