@@ -115,7 +115,7 @@ TAUS = (0.1, 0.03, 0.01, 0.003)
 FLOOR_TAUS = (1.0, 0.5, 0.25, 0.1)                       # igdp_norm <= (1 + tau) * floor
 BUDGETS = (2500, 5000, 10000, 25000)
 CRITERIA = {"igdp": "igdp_norm", "gdp": "gdp_norm"}      # criterion -> metric with a front
-METRICS = ("igdp_norm", "gdp_norm", "hv_h")
+METRICS = ("igdp_norm", "gdp_norm", "hv_h", "eps_norm")  # read at every budget (portfolio.py too)
 
 
 IDEAL_FLOOR_TAU = 0.1                                    # 1.1 x floor: the ideal level
@@ -717,6 +717,45 @@ def bootstrap(hit: dict, problems: list, seeds: list, min_seeds: int, replicates
 # ── the report ──────────────────────────────────────────────────────────────
 
 
+def prepare(data: dict, n_ref: int, floor_path: Path, workers: int = 1,
+            keep_caveats: bool = False) -> dict:
+    """What every analysis of the coverage needs beside the values (collect):
+    the problems with a front, their floors at every population the runs used
+    (floors(), cached at floor_path), which floor the scenario's levels read
+    and {(problem, N): that floor}, the problems with a doubtful or outdated
+    reference (KNOWN REFERENCE PROBLEMS) and those left out, and the marked
+    ones (MARKED PROBLEMS)."""
+    from ..benchmarks import get as bench_get
+    from ..benchmarks.registry import REFERENCE_CHANGED, REFERENCE_VERSION
+    problems = sorted({k[0] for k in data["values"]})
+    with_front = [p for p in problems if data["front"].get(p)]
+    sizes = {p: {bench_get(p).pop_size} for p in with_front}
+    for (p, _), n in data["pop"].items():
+        if p in sizes:
+            sizes[p].add(n)
+    fl = floors(sizes, n_ref, floor_path, workers=workers)
+    which = level_floor(data.get("scenario", "final"))
+    caveats = {}
+    for p in problems:
+        oldest = min(data["versions"].get(p, {REFERENCE_VERSION}))
+        why = reference_caveat(p, oldest)
+        stale = [v for v in REFERENCE_CHANGED if v > oldest and p in REFERENCE_CHANGED[v]]
+        if stale and not why:
+            why = (f"runs measured against reference v{oldest}, changed in v{max(stale)}: "
+                   f"--recompute-reference")
+        if why:
+            caveats[p] = why
+    marks = {}
+    for p in with_front:
+        f = fl.get((p, bench_get(p).pop_size))
+        found = reference_marks(p, f and f["rows"], f and f["distinct"], n_ref)
+        if found:
+            marks[p] = found
+    return {"problems": problems, "with_front": with_front, "fl": fl, "which": which,
+            "floor": {key: f[which] for key, f in fl.items()}, "caveats": caveats,
+            "excluded": {} if keep_caveats else caveats, "marks": marks}
+
+
 def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_seeds: int = 7,
         max_sets: int = 20, replicates: int = 0, workers: int = 1,
         out_dir: Path | None = None, scenario: str = "final", n_ref: int = 1000,
@@ -744,15 +783,11 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
         lines.append(f"  {len(data['missing'])} ladder rungs missing (budget-dependent runs "
                      f"read as not reaching any level there), e.g. {data['missing'][0]}")
     from ..benchmarks import get as bench_get
-    from ..benchmarks.registry import REFERENCE_CHANGED, REFERENCE_VERSION
-    with_front = [p for p in problems if data["front"].get(p)]
-    sizes = {p: {bench_get(p).pop_size} for p in with_front}
-    for (p, _), n in data["pop"].items():
-        if p in sizes:
-            sizes[p].add(n)
-    fl = floors(sizes, n_ref, out_dir / "igdp_floor.csv", workers=workers)
-    which = level_floor(scenario)
-    floor = {key: f[which] for key, f in fl.items()}
+    from ..benchmarks.registry import REFERENCE_VERSION
+    prep = prepare(data, n_ref, out_dir / "igdp_floor.csv", workers=workers,
+                   keep_caveats=keep_caveats)
+    with_front, fl, which, floor = prep["with_front"], prep["fl"], prep["which"], prep["floor"]
+    caveats, excluded, marks = prep["caveats"], prep["excluded"], prep["marks"]
     at_pop = [fl[(p, bench_get(p).pop_size)] for p in with_front
               if (p, bench_get(p).pop_size) in fl]
     lines.append(f"  igdp levels from each problem's {which} floor (igdp_floor.csv): median "
@@ -765,23 +800,6 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
     from .provenance import revision
     rev = revision()
     commit = (rev.get("commit") or "unknown")[:12] + ("+dirty" if rev.get("dirty") else "")
-    caveats = {}
-    for p in problems:
-        oldest = min(data["versions"].get(p, {REFERENCE_VERSION}))
-        why = reference_caveat(p, oldest)
-        stale = [v for v in REFERENCE_CHANGED if v > oldest and p in REFERENCE_CHANGED[v]]
-        if stale and not why:
-            why = (f"runs measured against reference v{oldest}, changed in v{max(stale)}: "
-                   f"--recompute-reference")
-        if why:
-            caveats[p] = why
-    excluded = {} if keep_caveats else caveats
-    marks = {}
-    for p in with_front:
-        f = fl.get((p, bench_get(p).pop_size))
-        found = reference_marks(p, f and f["rows"], f and f["distinct"], n_ref)
-        if found:
-            marks[p] = found
     meta = {
         "analysis": {"mootation": __version__, "commit": rev.get("commit"),
                      "dirty": rev.get("dirty"), "source": rev.get("source")},

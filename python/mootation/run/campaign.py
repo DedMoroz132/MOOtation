@@ -1857,6 +1857,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cover-bootstrap", type=int, default=0, metavar="N",
                     help="with --cover: N resamplings of the seeds, and how often each "
                          "algorithm is in a smallest set (0: off)")
+    ap.add_argument("--portfolio", action="store_true",
+                    help="what the portfolio gains over its members, per group of problems (with "
+                         "a front, bbob-biobj) at --cover's levels and budgets: the oracle and the "
+                         "single best solver at 5, 7 and 10 of ten seeds, Shapley values, "
+                         "complementarity, the oracle gap per problem, and the matrix problem x "
+                         "algorithm x budget (portfolio.py); CSV under <results>/_portfolio/")
     ap.add_argument("--behaviour", action="store_true",
                     help="describe every run from its trajectory (time to targets, "
                          "convergence slope, converged-then-spreading, collapse, stagnation, "
@@ -1994,6 +2000,23 @@ def main(argv: list[str] | None = None) -> int:
                     min_seeds=args.cover_seeds, max_sets=args.cover_max_sets,
                     replicates=args.cover_bootstrap, workers=args.workers,
                     scenario=args.scenario, n_ref=spec.n_ref,
+                    keep_caveats=args.cover_keep_caveats))
+        return 0
+    if args.portfolio:
+        from . import portfolio as P
+        try:
+            taus = tuple(float(v) for v in args.cover_taus.split(",") if v.strip())
+            floor_taus = tuple(float(v) for v in args.cover_floor_taus.split(",") if v.strip())
+            budgets = (tuple(int(v) for v in args.cover_budgets.split(",") if v.strip())
+                       if args.cover_budgets else
+                       tuple(sorted(set(spec.ladder) | {spec.budget_fe})) if spec.budget_fe
+                       else None)
+        except ValueError:
+            print("--cover-taus and --cover-floor-taus want numbers and --cover-budgets "
+                  "integers, comma-separated", file=sys.stderr)
+            return 1
+        print(P.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
+                    workers=args.workers, scenario=args.scenario, n_ref=spec.n_ref,
                     keep_caveats=args.cover_keep_caveats))
         return 0
     if args.behaviour:

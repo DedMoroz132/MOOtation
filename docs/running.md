@@ -619,6 +619,7 @@ python -m mootation.run.campaign c.toml --magnitude                      # exper
 python -m mootation.run.campaign c.toml --cover --workers 8              # sets that cover the problems
 python -m mootation.run.campaign c.toml --cover --scenario archive       # the same for the run archives
 python -m mootation.run.campaign c.toml --behaviour --workers 8          # how the runs behave, grouped
+python -m mootation.run.campaign c.toml --portfolio --workers 8          # oracle, Shapley, the matrix
 python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
 python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # against a changed reference front
 ```
@@ -760,6 +761,20 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   the families. CSV in `<results>/_behaviour/` (`behaviour_meta.json` records
   the commit of the analysis code); `mootation/run/behaviour.py` defines every
   descriptor.
+- `--portfolio`: what the set of algorithms gains over its members, at
+  `--cover`'s levels, budgets and floors, with the problems with a reference
+  front and the bbob-biobj ones kept apart (the latter's target, the gap to the
+  campaign's best run, is relative): for every level, budget and number of
+  seeds that must reach it (5, 7 and 10 of ten), the oracle (the problems some
+  algorithm covers), the single best solver and the gap, every algorithm's
+  Shapley value in the coverage game (each problem's 1 split among the
+  algorithms covering it) and what it covers alone; for every two algorithms
+  the problems one covers and the other does not; per problem the gap between
+  the best median and that of the single best solver on average; and the
+  matrix problem × algorithm × budget with the seeds reaching every level and
+  the median and 7th best of `igdp_norm`, `gdp_norm`, `hv_h` and `eps_norm`
+  (`portfolio_matrix.csv`), so that later analyses need not read every
+  `meta.json`. CSV in `<results>/_portfolio/` (`_portfolio_archive/`).
 - `--recompute-reference`: every run records which reference front its
   metrics were measured against (`reference_version` and `reference_rows` in
   `meta.json`; the registry's `REFERENCE_VERSION`, version 2 since

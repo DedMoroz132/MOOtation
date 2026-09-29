@@ -199,6 +199,14 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `--portfolio` (task 4, item 5): the oracle and the single best solver, the
+  Shapley values of the coverage game and the complementarity of every two
+  algorithms at `--cover`'s levels and budgets, at 5, 7 and 10 seeds of ten,
+  with the problems with a front and the bbob-biobj ones apart; the gap to the
+  oracle per problem; and the matrix problem × algorithm × budget of the seeds
+  reaching every level and the median and 7th best of four indicators.
+  `cover.prepare` gathers the floors, the problems left out and the marked ones
+  for both.
 - `--recompute-reference`: a run measured against an older reference front
   than the current one, on a problem whose reference changed since, measured
   again from its saved answers — final, archive, archive checkpoints and

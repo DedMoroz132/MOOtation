@@ -1707,6 +1707,85 @@ snapshots = true
 
 
 @test
+def portfolio_shapley_oracle_and_complementarity():
+    """The Shapley value of the coverage game by its closed form (each problem
+    split among the algorithms covering it) against the definition over every
+    order of the players; the oracle, the single best solver, what each covers
+    alone, and the complementarity of the pairs."""
+    import itertools
+    from mootation.run import portfolio as P
+    cov = {"A": {1, 2, 3}, "B": {3, 4}, "C": {4}}
+    phi = P.shapley(cov)
+    assert phi == {"A": 2.5, "B": 1.0, "C": 0.5}, phi
+    orders = list(itertools.permutations(sorted(cov)))
+    for a in cov:
+        total = 0.0
+        for order in orders:
+            before = set().union(*(cov[b] for b in order[:order.index(a)]))
+            total += len(before | cov[a]) - len(before)
+        assert abs(total / len(orders) - phi[a]) < 1e-12, (a, total / len(orders))
+    o = P.oracle(cov)
+    assert (o["oracle"], o["sbs"], o["sbs_covers"]) == (4, "A", 3), o
+    assert o["unique"] == {"A": {1, 2}, "B": set(), "C": set()}, o["unique"]
+    assert P.complementarity(cov) == {("A", "B"): 2, ("A", "C"): 3, ("B", "A"): 1,
+                                      ("B", "C"): 1, ("C", "A"): 1}
+    # the oracle gap: the single best on average, and its ratio to the best per problem
+    sbs, rows = P.oracle_gap({"P1": {"a": 1.0, "b": 2.0}, "P2": {"a": 4.0, "b": 2.0}},
+                             "igdp_norm")
+    assert sbs == "a" and rows == [("P1", "a", 1.0, 1.0, 1.0), ("P2", "b", 2.0, 4.0, 2.0)], rows
+    sbs, rows = P.oracle_gap({"Q": {"a": 0.9, "b": 1.0}}, "hv_h")
+    assert sbs == "b" and rows == [("Q", "b", 1.0, 1.0, 0.0)], rows
+
+
+@test
+def portfolio_runs_on_a_results_tree():
+    """--portfolio end to end on a made-up campaign: a problem with a front and
+    a bbob-biobj one kept apart, the seed rules, and the matrix."""
+    from mootation.run import portfolio as P
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        values = {("DTLZ2_3D", "nsga2"): {"igdp_norm": 0.02, "gdp_norm": 0.01, "eps_norm": 0.05},
+                  ("DTLZ2_3D", "moead"): {"igdp_norm": 0.1, "gdp_norm": 0.2, "eps_norm": 0.3},
+                  ("bbobbiobj01_n05_2D", "nsga2"): {"hv_h": 0.9},
+                  ("bbobbiobj01_n05_2D", "moead"): {"hv_h": 1.0}}
+        for (prob, alg), final in values.items():
+            for s in range(1, 11):
+                d = root / prob / alg / f"run_{s}"
+                d.mkdir(parents=True)
+                f = dict(final)
+                if alg == "nsga2" and prob == "DTLZ2_3D" and s > 6:
+                    f["igdp_norm"] = 0.5                    # 6 seeds reach the level, 4 do not
+                (d / "meta.json").write_text(json.dumps(
+                    {"problem": prob, "algorithm": alg, "seed": s, "status": "done", "final": f,
+                     "budget_nominal": 1000, "budget_fe": 1000, "pop": 91 if prob != "bbobbiobj01_n05_2D" else 100,
+                     "has_reference_front": prob == "DTLZ2_3D", "reference_version": 2}),
+                    encoding="utf-8")
+        text = P.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,))
+        assert "1 problems with a front, 1 without" in text, text
+        with (root / "_portfolio" / "portfolio_summary.csv").open(encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        get = lambda g, c, rule: next(r for r in rows if r["group"] == g and r["criterion"] == c  # noqa: E731
+                                      and r["seeds_required"] == str(rule))
+        assert get("front", "igdp", 5)["oracle_covers"] == "1"      # nsga2: 6 seeds of 10
+        assert get("front", "igdp", 7)["oracle_covers"] == "0"
+        assert get("front", "gdp", 10)["single_best"] == "nsga2"
+        assert get("bbob", "hv", 10)["oracle_covers"] == "1" and \
+            get("bbob", "hv", 10)["problems"] == "1"
+        with (root / "_portfolio" / "portfolio_matrix.csv").open(encoding="utf-8") as fh:
+            m = {(r["problem"], r["algorithm"]): r for r in csv.DictReader(fh)}
+        assert len(m) == 4, m
+        r = m[("DTLZ2_3D", "nsga2")]
+        assert (r["igdp_level0_seeds"], r["gdp_level0_seeds"], r["hv_level0_seeds"]) == \
+            ("6", "10", ""), r
+        assert float(r["igdp_norm_7th"]) == 0.5 and float(r["igdp_norm_median"]) == 0.02, r
+        b = m[("bbobbiobj01_n05_2D", "nsga2")]
+        assert b["hv_level0_seeds"] == "10" and b["igdp_level0_seeds"] == "", b
+        for name in ("portfolio_shapley.csv", "portfolio_complementarity.csv",
+                     "portfolio_oracle_gap.csv", "portfolio_meta.json", "portfolio_report.txt"):
+            assert (root / "_portfolio" / name).is_file(), name
+
+
+@test
 def behaviour_reads_the_descriptors_off_a_trajectory():
     """Time to targets, settling, the convergence slope, converged-then-spreading,
     collapse, stagnation at nd_share ~ 1, duplicates and igdx, on a made-up run;
