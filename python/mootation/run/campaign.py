@@ -1700,7 +1700,16 @@ def recompute_reference(root: Path, *, workers: int = 1, problems=None) -> dict:
     metas = [m for m in root.glob("*/*/run_*/meta.json")
              if (problems is None or m.parents[2].name in problems)
              and m.parents[2].name in changed]
-    counts: dict = {"to_run_again": sum(1 for m in metas if m.parents[2].name in redefined)}
+
+    def older(meta_path) -> bool:
+        try:
+            m = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return int(m.get("reference_version") or 1) < REFERENCE_VERSION
+
+    counts: dict = {"to_run_again": sum(1 for m in metas
+                                        if m.parents[2].name in redefined and older(m))}
     tasks = [(str(m.parent), REFERENCE_VERSION) for m in metas
              if m.parents[2].name not in redefined]
     if workers > 1 and len(tasks) > 1:
