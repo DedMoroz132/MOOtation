@@ -620,6 +620,7 @@ python -m mootation.run.campaign c.toml --cover --workers 8              # sets 
 python -m mootation.run.campaign c.toml --cover --scenario archive       # the same for the run archives
 python -m mootation.run.campaign c.toml --behaviour --workers 8          # how the runs behave, grouped
 python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
+python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # against a changed reference front
 ```
 
 - `--reference ALG` (with `--ranks` or `--compare`): on every problem, each
@@ -695,24 +696,40 @@ python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --worker
   1.5, 1.25 and 1.1 times the floor): N points on the front itself leave IGD+
   above zero — about 0.002 at two objectives, 0.02 at three, 0.06 at five —
   so absolute levels of 0.01 and 0.003 could not be reached at all. The floor
-  is the IGD+ of the N points (the problem's population) DSS selects from the
-  reference front itself, written to `igdp_floor.csv` and read back next time;
-  a run can go below it. Criterion `gdp` reads `gdp_norm ≤ τ`, τ in
+  is the IGD+, against the reference front the runs were measured against, of
+  the best N points of that front as far as a greedy search finds them (added
+  one at a time for the smallest IGD+, then single swaps); N is the population
+  the algorithm ran with, so an M2M core's multiple of K has its own floor.
+  Beside it the IGD+ of the N points DSS selects, "an ideal archive reduced by
+  DSS", and the ratio of the two, DSS's tax; the population's levels read the
+  greedy floor, the archive scenario's the DSS floor, since that answer is
+  itself a DSS selection. 1.1 × floor is the ideal level: the best attainable,
+  not a target. Both floors go to `igdp_floor.csv`, with the reference version,
+  and are read back next time. Criterion `gdp` reads `gdp_norm ≤ τ`, τ in
   `--cover-taus` (0.1, 0.03, 0.01, 0.003): the progress towards the front
   alone, whose floor is 0. Where there is no front (bbob-biobj), both read the
   relative gap of `hv_h` to the best any run of the campaign reached on it,
   (best − hv_h)/best ≤ τ of `--cover-taus` — those best values depend on what
   the campaign ran, and are written to `best_known_hv.csv`; level k pairs the
   k-th values of the two lists. Problems whose reference front is doubtful —
-  DTLZ5, DTLZ6 and MaF6 from four objectives, WFG3, DTLZ1 at five objectives —
+  DTLZ5, DTLZ6 and MaF6 from four objectives, WFG3, DTLZ1 at five objectives,
+  and against references of version 1 IPolygon and the aliased WFG1 and WFG2 —
   are left out of the coverage (`cover_excluded.csv`; `--cover-keep-caveats`
-  keeps them). `cover_meta.json` records the commit of the analysis code and
-  the scheme of the levels, and every CSV row says its level in words, so
-  absolute and floor-based levels are never confused. `floor_review.csv` sets
-  each problem's floor beside the best `igdp_norm` any run reached, the best
-  algorithm's median and the value that decides coverage (its `--cover-seeds`-th
-  best seed): a ratio below 1 says the floor is too high. For every criterion, level and budget in
-  `--cover-budgets` (the campaign's
+  keeps them), and so is a problem whose runs were measured against an older
+  reference than the current one where it changed since (run
+  `--recompute-reference`). Problems marked for their reference — other than
+  n_ref rows, repeated rows, the Das-Dennis lattice from four objectives, a
+  front of lower dimension than M − 1 — stay in, and every table is written
+  twice, over all problems and over the unmarked ones (the `subset` column;
+  `cover_marks.csv` says why). `cover_meta.json` records the commit of the
+  analysis code and the scheme of the levels, and every CSV row says its level
+  in words, so absolute and floor-based levels are never confused.
+  `floor_review.csv` sets each problem's floors beside the best `igdp_norm` any
+  run reached, the best algorithm's median and the value that decides coverage
+  (its `--cover-seeds`-th best seed), as ratios to the level's floor, and as
+  η = ratio^(−d), d the front's dimension, which reads alike across numbers of
+  objectives: a ratio below 1 says the floor is too high. For every criterion,
+  level and budget in `--cover-budgets` (the campaign's
   ladder and full budget), it reports the problems nobody covers, the smallest
   sets of algorithms covering every problem somebody does — exact, by branch
   and bound, all of them up to `--cover-max-sets`, and the greedy set beside
@@ -743,6 +760,20 @@ python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --worker
   the families. CSV in `<results>/_behaviour/` (`behaviour_meta.json` records
   the commit of the analysis code); `mootation/run/behaviour.py` defines every
   descriptor.
+- `--recompute-reference`: every run records which reference front its
+  metrics were measured against (`reference_version` and `reference_rows` in
+  `meta.json`; the registry's `REFERENCE_VERSION`, version 2 since
+  2026-09-29: distinct rows, exactly `n_ref` of them where the sampler can
+  give as many, WFG1 and WFG2 without the aliasing grid, a new IPolygon). A run
+  measured against an older version, on a problem whose reference changed since
+  (`REFERENCE_CHANGED`), is measured again from its saved answers — `final.csv`,
+  `final_archive.csv.gz`, the archive checkpoints in `archive_at.npz`, the
+  trajectory from `snapshots.npz` — every reference-dependent metric it
+  recorded; the old values stay beside the new, in `meta.json` under
+  `reference_v1` and in `trajectory.ref_v1.jsonl`. A problem whose definition
+  changed (`PROBLEM_CHANGED`: IPolygon) is not measured again but counted: its
+  runs answered another problem and are to be run again. Until then `--cover`
+  leaves such problems out.
 
 **Budget-dependent algorithms.** Seventeen algorithms schedule something by
 the share of the budget spent — RVEA's angle penalty t/t_max, the adaptation

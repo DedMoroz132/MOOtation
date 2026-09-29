@@ -47,6 +47,43 @@ always listed under **Changed** or **Removed**.
   CSV row its level in words, `cover_summary.csv` the commit too.
   `floor_review.csv` sets each floor beside the best `igdp_norm` of any run,
   the best algorithm's median and the value that decides coverage.
+- `--cover`, after the review of the floor (2026-09-29): the floor is the
+  greedy one — N reference points added one at a time for the smallest IGD+,
+  then single swaps — since DSS picks for coverage, not IGD+: on stage 3 the
+  best run stood below the DSS floor on 28 of 106 problems and below the greedy
+  one on 2 (curves, by 1-2 %). N is the population the algorithm ran with, so
+  MOEA/D-M2M's and SMS-M2M's multiples of K have their own floors. The DSS
+  floor stays beside it with their ratio, DSS's tax (`igdp_floor.csv`:
+  `floor_greedy`, `floor_dss`, `dss_tax`, the reference version and its row
+  counts), and the archive scenario, whose answer is itself a DSS selection,
+  reads its levels from the DSS floor. 1.1 × floor is named the ideal level.
+  Problems measured against IPolygon's and the aliased WFG1/WFG2 references of
+  version 1, or against an older reference where it changed since, are left
+  out; problems marked for their reference (other than n_ref rows, repeated
+  rows, the Das-Dennis lattice from four objectives, a front of lower dimension
+  than M − 1; `cover_marks.csv`) stay in, and every table is written twice, over
+  all problems and over the unmarked ones (a `subset` column). `floor_review.csv`
+  gains both floors, the level's floor and η = ratio^(−d). An analysis over no
+  problem at all no longer fails.
+- Reference fronts, version 2 (`registry.REFERENCE_VERSION`): every
+  `pareto_front(n)` returns distinct rows, exactly n of them where its sampler
+  can give as many — a shortfall drawn again from a larger sample, a surplus
+  thinned at random with every objective's extremes kept, so the frame stays.
+  The stage-3 audit had found rows repeated up to 216 times and 259 to 6 399
+  rows where 1 000 were asked for. WFG1 and WFG2 sample their positions at
+  random with the cube's corners instead of a grid whose x1 levels fell on the
+  zeros of the last shape at five objectives (both fronts came out as the same
+  linear slices). 82 of the 324 references changed (`REFERENCE_CHANGED`); IGD+,
+  GD+ and the other reference-dependent values on them are not comparable with
+  earlier ones until recomputed.
+- IPolygon is a new instance (reference version 2): four polygons of radius 8,
+  centred 50 apart in the four quarters of the box, as in the paper's figures;
+  the two of radius 20, 40 apart, were too close for the paper's equivalent
+  Pareto regions (Ishibuchi, Akedo & Nojima 2011, Section 2: "not too close").
+  Checked on a dense grid: the non-dominated points are exactly the polygons'
+  (and grid points within a step outside, which their projection dominates).
+  Its frame is exact (0 at a vertex, the longest chord). Runs of the old
+  instance answered another problem: run them again (`PROBLEM_CHANGED`).
 - DSS (`archive.dss_order` and `dss.hpp`) sets almost-dominated points aside:
   a point some other point beats by more than 0.1 in an objective while it
   beats that point by at most 0.001 everywhere, in normalised coordinates — the
@@ -162,6 +199,15 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `--recompute-reference`: a run measured against an older reference front
+  than the current one, on a problem whose reference changed since, measured
+  again from its saved answers — final, archive, archive checkpoints and
+  trajectory — with the old values kept beside the new (`meta.json`
+  `reference_v1`, `trajectory.ref_v1.jsonl`). Every run's `meta.json` now
+  records `reference_version` and `reference_rows`.
+- `front_dim` among the problem properties: the Pareto front's dimension (1 for
+  DTLZ5/6 at three objectives and ZCAT14-16, 2 for Polygon and IPolygon, M − 1
+  for a regular front), for reading ratios to the IGD+ floor across M.
 - `--behaviour` (task 4, item 4): descriptors of every run from its trajectory
   — time to `gdp_norm` targets and to `igdp_norm` within a factor of the
   campaign's best, where both settle, the convergence slope, whether the
@@ -573,9 +619,9 @@ always listed under **Changed** or **Removed**.
   apart) are: at three objectives the Pareto set is a region between the
   triangles and 862 of the 1 000 reference points are dominated; at four only
   the squares' inner halves are Pareto-optimal (f2 = f4 there), and 523 of the
-  reference points and half of `pareto_set`'s are dominated. The header now
-  says so; the code is unchanged, as the stage-3 campaign ran it, and the
-  IPolygon values of IGD+, IGDX and PSP are not to be trusted. The Polygon
+  reference points and half of `pareto_set`'s are dominated. The IPolygon
+  values of IGD+, IGDX and PSP measured on that instance are not to be
+  trusted; it is replaced in reference version 2 (see Changed). The Polygon
   header said the front is (M-1)-dimensional; it is 2-dimensional whatever M,
   degenerate from four objectives, as MaF8's.
 - `--cover` and `--at` lost a budget-dependent algorithm on every problem

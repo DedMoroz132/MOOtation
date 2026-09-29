@@ -1451,10 +1451,11 @@ def cover_reads_levels_seeds_and_the_hypervolume_gap():
         vals[("H", "a", s)] = {100: {"hv_h": 0.995}}
         vals[("H", "b", s)] = {100: {"hv_h": 0.90}}
     data = {"values": vals, "front": {"F": True, "H": False}, "main": [
-        {"problem": "H", "algorithm": "b", "seed": 1, "final": {"hv_h": 1.0}}]}
+        {"problem": "H", "algorithm": "b", "seed": 1, "final": {"hv_h": 1.0}}],
+        "pop": {("F", "a"): 100, ("F", "b"): 100}}
     best = V.best_known_hv(data)
     assert best == {"H": (1.0, "b", 1)}
-    floor = {"F": 0.004}
+    floor = {("F", 100): 0.004}                                  # per problem and population
     hit = V.reached(data, "igdp", (0.5, 0.01), 100, best, floor)   # igdp_norm <= 0.006
     cov = V.successes(hit, 7)
     assert cov == {"a": {"F", "H"}, "b": set()}, cov              # b: 6 seeds; gap 0.1 > 0.01
@@ -1475,16 +1476,23 @@ def the_igdp_floor_is_what_n_points_on_the_front_leave():
     except ImportError:
         return
     from mootation.run import cover as V
-    f3, f5 = V.igdp_floor("DTLZ2_3D", 1000), V.igdp_floor("DTLZ2_5D", 1000)
-    assert 0.01 < f3 < 0.05 and 0.03 < f5 < 0.12, (f3, f5)
-    assert V.igdp_floor("bbobbiobj01_n05_2D", 1000) is None
+    f3, f5 = V.igdp_floors("DTLZ2_3D", 1000, [91]), V.igdp_floors("DTLZ2_5D", 1000, [126])
+    (g3, d3), (g5, d5) = f3[91], f5[126]
+    # the greedy subset leaves less than DSS's: DSS picks for coverage, not IGD+
+    assert 0.01 < g3 < d3 < 0.05 and 0.03 < g5 < d5 < 0.12, (f3, f5)
+    assert (f3["rows"], f3["distinct"]) == (1000, 1000), f3
+    assert V.igdp_floors("bbobbiobj01_n05_2D", 1000, [100]) is None
+    # fewer points (an M2M core's multiple of K) leave a higher floor
+    assert V.igdp_floors("DTLZ2_3D", 1000, [90])[90][0] >= g3
     with tempfile.TemporaryDirectory() as td:
         path = Path(td) / "igdp_floor.csv"
-        got = V.floors(["DTLZ2_3D", "bbobbiobj01_n05_2D"], 1000, path)
-        assert got == {"DTLZ2_3D": f3} and path.is_file(), got
-        path.write_text(path.read_text(encoding="utf-8").replace(f"{f3:.10g}", "0.5"),
+        got = V.floors({"DTLZ2_3D": {91}, "bbobbiobj01_n05_2D": {100}}, 1000, path)
+        assert got == {("DTLZ2_3D", 91): {"greedy": g3, "dss": d3, "rows": 1000,
+                                          "distinct": 1000}} and path.is_file(), got
+        path.write_text(path.read_text(encoding="utf-8").replace(f"{g3:.10g}", "0.5"),
                         encoding="utf-8")
-        assert V.floors(["DTLZ2_3D"], 1000, path) == {"DTLZ2_3D": 0.5}   # read, not recomputed
+        again = V.floors({"DTLZ2_3D": {91}}, 1000, path)            # read, not recomputed
+        assert again[("DTLZ2_3D", 91)]["greedy"] == 0.5, again
 
 
 @test
@@ -1494,10 +1502,21 @@ def cover_sets_aside_the_problems_with_a_doubtful_reference():
     from mootation.run import cover as V
     marked = ["DTLZ5_5D", "DTLZ6_4D", "MaF6_8D", "WFG3_3D", "WFG3_5D", "DTLZ1_5D"]
     kept = ["DTLZ5_3D", "DTLZ6_3D", "DTLZ1_3D", "WFG4_5D", "DTLZ2_5D", "ZDT1", "BT9",
-            "bbobbiobj01_n05_2D"]
+            "bbobbiobj01_n05_2D", "IPolygon_3D", "WFG1_5D", "WFG2_5D", "WFG1_3D"]
     assert all(V.reference_caveat(p) for p in marked), [p for p in marked
                                                         if not V.reference_caveat(p)]
     assert not any(V.reference_caveat(p) for p in kept)
+    # against references of version 1: IPolygon, and WFG1/2 where x1's grid aliased
+    old = ["IPolygon_3D", "IPolygon_4D", "WFG1_5D", "WFG2_5D"]
+    assert all(V.reference_caveat(p, 1) for p in old) and not V.reference_caveat("WFG1_3D", 1)
+    # marked, not left out
+    lattice = "Das-Dennis lattice topped up with Dirichlet points, coarse from four objectives"
+    assert V.reference_marks("DTLZ2_5D", 1000, 1000, 1000) == [lattice]
+    assert V.reference_marks("DTLZ2_3D", 1000, 1000, 1000) == []
+    assert V.reference_marks("Polygon_4D", 1000, 1000, 1000) == ["front of dimension 2"]
+    assert V.reference_marks("DTLZ5_3D", 1000, 1000, 1000) == ["front of dimension 1"]
+    assert V.reference_marks("ZDT1", 259, 228, 1000) == ["259 reference rows, not 1000",
+                                                         "31 repeated reference rows"]
 
 
 @test
@@ -1511,12 +1530,20 @@ def the_floor_review_reads_the_best_run_median_and_deciding_seed():
                      "final": {"igdp_norm": 0.02 + 0.001 * s_, "n_final": 91}})
         main.append({"problem": "DTLZ2_3D", "algorithm": "b", "seed": s_,
                      "final": {"igdp_norm": 0.015 if s_ == 1 else 0.05, "n_final": 91}})
-    rows = V.floor_review({"main": main, "scenario": "final"}, {"DTLZ2_3D": 0.025}, 7)
+    fl = {("DTLZ2_3D", 91): {"greedy": 0.025, "dss": 0.03, "rows": 1000, "distinct": 1000}}
+    rows = V.floor_review({"main": main, "scenario": "final"}, fl, 7)
     r = rows[0]
     assert (r["best"], r["best_algorithm"], r["best_seed"]) == (0.015, "b", 1), r
     assert abs(r["best_ratio"] - 0.6) < 1e-12 and r["median_algorithm"] == "a", r
     assert abs(r["kth"] - 0.027) < 1e-12 and r["kth_algorithm"] == "a", r   # a's 7th best seed
     assert r["n_obj"] == 3 and r["pop"] == 91 and r["caveat"] == "", r
+    # the population reads the greedy floor; DSS's tax and eta = ratio^(-d) beside it
+    assert r["level_floor"] == "greedy" and abs(r["dss_tax"] - 1.2) < 1e-12, r
+    assert r["front_dim"] == 2 and abs(r["best_eta"] - 0.6 ** -2) < 1e-9, r
+    # the archive scenario, itself a DSS selection, reads the DSS floor
+    main_a = [dict(m, final_archive=m["final"]) for m in main]
+    ra = V.floor_review({"main": main_a, "scenario": "archive"}, fl, 7)[0]
+    assert ra["level_floor"] == "dss" and abs(ra["best_ratio"] - 0.5) < 1e-12, ra
 
 
 @test
@@ -1528,11 +1555,155 @@ def the_igdp_floor_is_deterministic():
     except ImportError:
         return
     from mootation.run import cover as V
-    a = V.igdp_floor("DTLZ2_3D", 1000)
-    assert a == V.igdp_floor("DTLZ2_3D", 1000)
+    a = V.igdp_floors("DTLZ2_3D", 1000, [91])
+    assert a == V.igdp_floors("DTLZ2_3D", 1000, [91])
     with tempfile.TemporaryDirectory() as td:
-        got = V.floors(["DTLZ2_3D", "ZDT1"], 1000, Path(td) / "f.csv", workers=2)
-    assert got["DTLZ2_3D"] == a and got["ZDT1"] == V.igdp_floor("ZDT1", 1000), got
+        got = V.floors({"DTLZ2_3D": {91}, "ZDT1": {100}}, 1000, Path(td) / "f.csv", workers=2)
+    z = V.igdp_floors("ZDT1", 1000, [100])
+    for key, want in ((("DTLZ2_3D", 91), a[91]), (("ZDT1", 100), z[100])):
+        assert (got[key]["greedy"], got[key]["dss"]) == want, (key, got[key], want)
+
+
+@test
+def reference_fronts_of_version_2_have_n_distinct_rows():
+    """Reference version 2: no repeated rows and exactly n of them, the front's
+    range kept (WFG1 and WFG2 at five objectives no longer the same 1 296
+    points, one vertex 216 times; WFG2_3D no longer 259 rows, MOP4 no longer
+    6 399), a front that had nothing to fix unchanged."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks.registry import REFERENCE_VERSION
+    assert REFERENCE_VERSION >= 2
+    for name in ("WFG1_5D", "WFG2_5D", "WFG2_3D", "DTLZ7_3D", "BT5", "MOP4", "MOP7", "ZDT3",
+                 "DTLZ2_3D"):
+        p = get(name)
+        R = np.asarray(p.pareto_front(1000), float)
+        assert len(R) == 1000 == len(np.unique(np.round(R, 12), axis=0)), (name, len(R))
+        span = np.asarray(p.nadir) - np.asarray(p.ideal)
+        assert np.all(R.min(0) >= np.asarray(p.ideal) - 1e-3 * span), name
+        assert np.all(R.max(0) <= np.asarray(p.nadir) + 1e-3 * span), name
+        assert np.allclose(R.max(0), np.asarray(p.nadir), atol=1e-3 * span.max()), name
+    assert not np.allclose(get("WFG1_5D").pareto_front(1000), get("WFG2_5D").pareto_front(1000))
+    assert np.array_equal(get("DTLZ2_3D").pareto_front(1000), get("DTLZ2_3D").pareto_front(1000))
+
+
+@test
+def the_ipolygon_polygons_are_far_enough_apart():
+    """IPolygon of reference version 2: four polygons, every point inside one
+    non-dominated by the points of a grid of [0, 100]^2, the reference and the
+    Pareto set too, and the frame exact (0 at a vertex, the longest chord)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks import polygon_ishibuchi as ip
+    assert ip.N_POLY == 4
+    g = np.linspace(0.0, 100.0, 201)
+    G = np.array([[a, b] for a in g for b in g])
+    for M in (3, 4):
+        p = get(f"IPolygon_{M}D")
+        V = ip._vertices(M)
+        F = np.array([p.evaluate(list(x)) for x in G])
+        inside = np.zeros(len(G), bool)
+        for poly in V:
+            inside |= ip._inside(G, poly)
+        R = np.asarray(p.pareto_front(300), float)
+        S = np.array([p.evaluate(list(x)) for x in p.pareto_set(300)])
+        for Q in (F[inside], R, S):
+            beaten = [np.any(np.all(F <= q + 1e-9, axis=1) & np.any(F < q - 1e-9, axis=1))
+                      for q in Q]
+            assert not any(beaten), (M, sum(beaten))
+        chord = np.linalg.norm(V[0][:, None] - V[0][None], axis=2).max()
+        assert np.allclose(p.ideal, 0.0) and np.allclose(p.nadir, chord), (p.ideal, p.nadir)
+
+
+@test
+def recompute_reference_measures_old_runs_again_and_keeps_their_values():
+    """--recompute-reference: a run measured against an older reference of a
+    problem whose reference changed gets every reference-dependent value again
+    — final, archive, archive checkpoints, trajectory — with the old ones kept
+    (meta["reference_v1"], trajectory.ref_v1.jsonl); a problem whose
+    definition changed is only counted, to be run again; --cover sets a
+    problem with runs measured against the old reference aside."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  recompute_reference...: no NumPy or stale _core"); return
+    from mootation.benchmarks import registry as REG
+    from mootation.run import campaign as C
+    from mootation.run import cover as V
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "nsga2", pop = 0, gens = 0 },
+]
+[run]
+name = "rr"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1", "DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1500
+record_grid = "log"
+record_at = [500, 1000, 1500]
+metrics = ["igdp_norm", "gdp_norm", "hv_h"]
+archive_variables = "selected"
+archive_checkpoints = true
+snapshots = true
+"""
+    saved = (REG.REFERENCE_CHANGED, REG.PROBLEM_CHANGED)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "c.toml"
+            cfg_path.write_text(text, encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+            d = root / "ZDT1" / "nsga2" / "run_1"
+            meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+            assert meta["reference_version"] == REG.REFERENCE_VERSION and \
+                meta["reference_rows"] == 1000, meta
+            T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+            # as if measured against an older reference: version 1, values off
+            for run in (root / "ZDT1" / "nsga2" / "run_1", root / "DTLZ2_3D" / "nsga2" / "run_1"):
+                m = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+                m["reference_version"] = 1
+                m["final"]["igdp_norm"] *= 2
+                m["final_archive"]["igdp_norm"] *= 2
+                m["archive_at"]["500"]["igdp_norm"] *= 2
+                (run / "meta.json").write_text(json.dumps(m), encoding="utf-8")
+                recs = [json.loads(l) for l in (run / "trajectory.jsonl").read_text().splitlines()]
+                for rec in recs:
+                    rec["igdp_norm"] *= 2
+                (run / "trajectory.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs),
+                                                      encoding="utf-8")
+            REG.REFERENCE_CHANGED = {2: frozenset({"ZDT1", "DTLZ2_3D"})}
+            REG.PROBLEM_CHANGED = {2: frozenset({"DTLZ2_3D"})}
+            out = V.run(root, taus=(10.0,), floor_taus=(1e6,), budgets=(1500,), min_seeds=1)
+            assert "ZDT1" in out and "measured against reference v1" in \
+                (root / "_cover" / "cover_excluded.csv").read_text(encoding="utf-8"), out
+            assert C.recompute_reference(root) == {"to_run_again": 1, "done": 1}
+            m = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+            assert m["reference_version"] == REG.REFERENCE_VERSION, m
+            assert abs(m["final"]["igdp_norm"] - meta["final"]["igdp_norm"]) <= \
+                1e-8 * meta["final"]["igdp_norm"], (m["final"], meta["final"])
+            assert m["reference_v1"]["final"]["igdp_norm"] == 2 * meta["final"]["igdp_norm"]
+            for got, want in ((m["final_archive"], meta["final_archive"]),
+                              (m["archive_at"]["500"], meta["archive_at"]["500"])):
+                assert abs(got["igdp_norm"] - want["igdp_norm"]) <= 1e-5 * want["igdp_norm"]
+            again = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+            for t, u in zip(T, again):
+                assert abs(u["igdp_norm"] - t["igdp_norm"]) <= 1e-5 * max(1.0, t["igdp_norm"])
+            old = [json.loads(l) for l in (d / "trajectory.ref_v1.jsonl").read_text().splitlines()]
+            assert old[0]["igdp_norm"] == 2 * T[0]["igdp_norm"], (old[0], T[0])
+            assert C.recompute_reference(root) == {"to_run_again": 1, "skipped": 1}
+    finally:
+        REG.REFERENCE_CHANGED, REG.PROBLEM_CHANGED = saved
 
 
 @test
@@ -2517,8 +2688,12 @@ def every_campaign_problem_has_a_property_row():
     assert properties("Polygon_3D")["front"] == "linear"
     assert properties("Polygon_4D")["degenerate"] is True
     assert properties("IPolygon_3D")["multimodal"] is True
-    # the registry's polygons are too close (polygon_ishibuchi.py)
-    assert properties("IPolygon_3D")["front"] is None and properties("IPolygon_4D")["degenerate"]
+    # the instance of reference version 2: four polygons far enough apart
+    assert properties("IPolygon_3D")["front"] == "linear" and properties("IPolygon_4D")["degenerate"]
+    assert [properties(n)["front_dim"] for n in ("ZDT1", "DTLZ2_3D", "DTLZ2_5D", "DTLZ5_3D",
+                                                 "DTLZ5_5D", "ZCAT14_5D", "Polygon_6D",
+                                                 "bbobbiobj01_n05_2D")] == \
+        [1, 2, 4, 1, None, 1, 2, 1]
     assert (properties("ZDT1")["n_obj"], properties("ZDT1")["n_vars"]) == (2, 30)
     assert properties("DTLZ2_5D")["n_obj"] == 5
     assert properties("bbobbiobj01_n05_2D")["bbob_groups"] == "separable+separable"
@@ -3490,14 +3665,18 @@ def a_ladder_campaign_runs_marks_and_covers():
         assert meta["floor_taus"] == [1e6, 0.0] and meta["excluded"] == {}, meta
         with (root / "_cover" / "cover_summary.csv").open(encoding="utf-8") as fh:
             rows = list(csv.DictReader(fh))
-        assert rows[0]["level"] == "igdp_norm <= 1e+06 x floor | hv_h gap <= 10", rows[0]
+        assert rows[0]["level"] == "igdp_norm <= 1e+06 x greedy floor | hv_h gap <= 10", rows[0]
         assert rows[0]["analysis_commit"] == meta["analysis"]["commit"][:12] + \
             ("+dirty" if meta["analysis"]["dirty"] else ""), rows[0]
+        # every table over all problems and over the unmarked ones
+        assert [r_["subset"] for r_ in rows[:2]] == ["all", "unmarked"], rows[:2]
+        assert meta["floor_method"] == "greedy" and meta["reference_version"] >= 2, meta
         with (root / "_cover" / "floor_review.csv").open(encoding="utf-8") as fh:
             review = list(csv.DictReader(fh))
         assert [r["problem"] for r in review] == ["ZDT1"] and float(review[0]["best_ratio"]) > 0
+        assert float(review[0]["floor_greedy"]) < float(review[0]["floor_dss"]), review[0]
         for name in ("cover_summary.csv", "cover_curve.csv", "cover_nobody.csv",
-                     "best_known_hv.csv"):
+                     "best_known_hv.csv", "cover_marks.csv"):
             assert (root / "_cover" / name).is_file(), name
 
 

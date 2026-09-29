@@ -446,6 +446,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
     from .budget import BUDGET_DEPENDENT
+    from ..benchmarks.registry import REFERENCE_VERSION
     meta = {
         "status": "running", "problem": job.problem, "algorithm": job.key,
         "core": job.algorithm,
@@ -463,6 +464,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "final_metrics": list(final_metrics),
         "record_every": spec.record_every, "n_ref": spec.n_ref,
         "has_reference_front": ref is not None,
+        # which reference the metrics were measured against (registry.py,
+        # REFERENCE_VERSION) and how many rows it had
+        "reference_version": REFERENCE_VERSION,
+        "reference_rows": None if ref is None else int(len(ref)),
         "has_pareto_set": callable(p.pareto_set),
         "mootation": __version__,
         # the version never changes between commits; these do (provenance.py)
@@ -1161,6 +1166,7 @@ def scan_results(root: Path) -> list[dict]:
             "core": m.get("core"), "budget_dependent": m.get("budget_dependent"),
             "ladder_of": m.get("ladder_of"),
             "has_reference_front": m.get("has_reference_front"),
+            "pop": m.get("pop"), "reference_version": m.get("reference_version"),
             "dir": meta.parent,
         })
     return rows
@@ -1591,6 +1597,125 @@ def recompute_trajectory(root: Path, names: list, *, workers: int = 1,
     return counts
 
 
+def _rereference_one(args) -> str:
+    """One run's reference-dependent values measured again against the current
+    reference front (recompute_reference)."""
+    run_dir, current = args
+    import shutil
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    from . import metrics as M
+    run_dir = Path(run_dir)
+    meta_path = run_dir / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        old = int(meta.get("reference_version") or 1)
+        if meta.get("status") != "done" or old >= current:
+            return "skipped"
+        p = bench_get(meta["problem"])
+        m = int(meta.get("n_objs") or p.n_obj)
+        n = int(meta.get("n_vars") or p.n_vars)
+        ref = np.asarray(p.pareto_front(int(meta.get("n_ref") or 1000)), float)
+        kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, pop=p.pop_size,
+                  bounds=p.bounds, cyclic=p.cyclic_vars)
+
+        def again(F, values: dict) -> dict:
+            """The reference-dependent metrics among `values`, measured on F
+            again: {name: old value}, `values` updated in place."""
+            names = [x for x in values if x in NEEDS_FRONT]
+            if not names or not len(F) or not np.all(np.isfinite(F)):
+                return {}
+            new = M.compute(F, which=names, **kw)
+            before = {x: values.get(x) for x in new}
+            values.update(new)
+            return before
+
+        kept: dict = {}
+        if meta.get("final"):
+            F, _ = _read_points(run_dir / "final.csv", m, n)
+            kept["final"] = again(F, meta["final"])
+        if meta.get("final_archive") and (run_dir / "final_archive.csv.gz").is_file():
+            F, _ = _read_points(run_dir / "final_archive.csv.gz", m, n)
+            kept["final_archive"] = again(F, meta["final_archive"])
+        if meta.get("archive_at") and (run_dir / "archive_at.npz").is_file():
+            with np.load(run_dir / "archive_at.npz") as z:
+                A = {k: z[k] for k in z.files}
+            kept["archive_at"], start = {}, 0
+            for b, cnt in zip(A["budget"].tolist(), A["n"].tolist()):
+                F = A["F"][start:start + cnt].astype(float)
+                start += cnt
+                if str(b) in meta["archive_at"]:
+                    kept["archive_at"][str(b)] = again(F, meta["archive_at"][str(b)])
+        traj_path, snap_path = run_dir / "trajectory.jsonl", run_dir / "snapshots.npz"
+        recs = None
+        if traj_path.is_file() and snap_path.is_file():
+            with np.load(snap_path) as z:
+                S = {k: z[k] for k in z.files}
+            recs = [json.loads(line) for line in traj_path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()]
+            if [r.get("fe") for r in recs] != S["fe"].tolist():
+                print(f"{run_dir}: the snapshots and the trajectory do not line up",
+                      file=sys.stderr)
+                return "failed"
+            start = 0
+            for rec, cnt in zip(recs, S["n"].tolist()):
+                F = S["F"][start:start + cnt].astype(float)
+                start += cnt
+                if cnt and rec.get("finite", True):
+                    again(F, rec)
+            keep_old = run_dir / f"trajectory.ref_v{old}.jsonl"
+            if not keep_old.is_file():
+                shutil.copy2(traj_path, keep_old)
+            meta["trajectory_ref_file"] = {f"v{old}": keep_old.name}
+        meta[f"reference_v{old}"] = kept
+        meta["reference_version"] = current
+        meta["reference_rows"] = int(len(ref))
+        if recs is not None:
+            tmp = traj_path.with_suffix(".jsonl.tmp")
+            tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in recs),
+                           encoding="utf-8")
+            os.replace(tmp, traj_path)
+        _write_json(meta_path, meta)
+        return "done"
+    except Exception as e:                           # noqa: BLE001
+        print(f"{run_dir}: {type(e).__name__}: {e}", file=sys.stderr)
+        return "failed"
+
+
+def recompute_reference(root: Path, *, workers: int = 1, problems=None) -> dict:
+    """Bring every finished run measured against an older reference version
+    than the current one (benchmarks.registry, REFERENCE_VERSION), on a problem
+    whose reference changed since (REFERENCE_CHANGED), up to date: every
+    reference-dependent metric (NEEDS_FRONT) it recorded, measured again from
+    its saved answers — final.csv, final_archive.csv.gz, the archive
+    checkpoints of archive_at.npz, the trajectory from snapshots.npz. The old
+    values stay beside the new: meta["reference_v<old>"] for the final ones and
+    the checkpoints, trajectory.ref_v<old>.jsonl for the trajectory. A problem
+    whose DEFINITION changed (PROBLEM_CHANGED: IPolygon at version 2) is not
+    measured again — its runs answered another problem — but counted, to be
+    run again."""
+    from ..benchmarks.registry import PROBLEM_CHANGED, REFERENCE_CHANGED, REFERENCE_VERSION
+    changed = set().union(*REFERENCE_CHANGED.values()) if REFERENCE_CHANGED else set()
+    redefined = set().union(*PROBLEM_CHANGED.values()) if PROBLEM_CHANGED else set()
+    metas = [m for m in root.glob("*/*/run_*/meta.json")
+             if (problems is None or m.parents[2].name in problems)
+             and m.parents[2].name in changed]
+    counts: dict = {"to_run_again": sum(1 for m in metas if m.parents[2].name in redefined)}
+    tasks = [(str(m.parent), REFERENCE_VERSION) for m in metas
+             if m.parents[2].name not in redefined]
+    if workers > 1 and len(tasks) > 1:
+        import multiprocessing as mp
+        single_threaded_blas()
+        with mp.Pool(processes=workers) as pool:
+            for status in pool.imap_unordered(_rereference_one, tasks, chunksize=8):
+                counts[status] = counts.get(status, 0) + 1
+    else:
+        for task in tasks:
+            status = _rereference_one(task)
+            counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
 def scenario_rows(rows: list[dict], scenario: str) -> list[dict]:
     """The rows as the tables read them: "archive" puts final_archive in place of
     final, and value_at reads such a row at a smaller budget from its archive
@@ -1641,6 +1766,13 @@ def main(argv: list[str] | None = None) -> int:
                          "every finished run that kept snapshots (snapshots.npz), store them in "
                          "its trajectory.jsonl, and exit (honours --workers); igdx, cr and pdist "
                          "need the snapshots' variables")
+    ap.add_argument("--recompute-reference", action="store_true",
+                    help="measure every finished run whose problem's reference front changed "
+                         "since the run (benchmarks registry: REFERENCE_VERSION, "
+                         "REFERENCE_CHANGED) again against the current one — final, archive, "
+                         "archive checkpoints and trajectory, from the saved answers — keeping "
+                         "the old values beside the new, and exit (honours --workers and "
+                         "--problems)")
     ap.add_argument("--scenario", choices=("final", "archive"), default="final",
                     help="which answer of a run the tables, --cover and --recompute read: "
                          "'final', what the algorithm returned, or 'archive', the run archive "
@@ -1812,6 +1944,10 @@ def main(argv: list[str] | None = None) -> int:
                                              "mc_samples": spec.hv_mc_samples},
                                  scenario=args.scenario, problems=only_problems)
         print(f"recomputed {', '.join(names)} ({args.scenario}): {counts}", file=sys.stderr)
+        return 0 if counts.get("failed", 0) == 0 else 2
+    if args.recompute_reference:
+        counts = recompute_reference(root, workers=args.workers, problems=only_problems)
+        print(f"measured against the current reference: {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
     if args.recompute_trajectory:
         names = [m.strip() for m in args.recompute_trajectory.split(",") if m.strip()]

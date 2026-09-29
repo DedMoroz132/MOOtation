@@ -455,6 +455,20 @@ def _pf_wfg_concave(M: int, n: int) -> np.ndarray:
     return d * scale
 
 
+def _wfg12_positions(M: int, n: int, seed: int) -> np.ndarray:
+    """Position vectors for the WFG1 and WFG2 fronts (reference version 2): the
+    corners of [0, 1]^(M-1), for the front's extremes, and 4n uniform draws
+    from a fixed seed. Version 1 took the grid of _dd_xset, round(n^(1/(M-1)))
+    levels per position, and where x1's levels fell on the zeros of the last
+    shape's oscillation — six levels at five objectives, n = 1000 — the
+    reference saw only its linear part: WFG1's mixed and WFG2's disconnected
+    fronts came out the same 1 296 points, one vertex 216 times."""
+    import itertools
+    corners = np.asarray(list(itertools.product((0.0, 1.0), repeat=M - 1)), float)
+    rng = np.random.default_rng(seed)
+    return np.vstack([corners, rng.random((4 * n, M - 1))])
+
+
 @_cached_front
 def _pf_wfg1(M: int, n: int) -> np.ndarray:
     """WFG1 (Huband et al. 2006, Table XIV): h_{1..M-1} = convex_m and
@@ -465,19 +479,8 @@ def _pf_wfg1(M: int, n: int) -> np.ndarray:
     last objective, which is the WFG2-without-disconnection front, not
     WFG1's mixed convex/concave one; wfg1() itself was always right.
     """
-    X = _dd_xset(M, n)
-    F = np.empty((len(X), M))
-    for r, x in enumerate(X):
-        s = np.sin(math.pi * x / 2.0); c = np.cos(math.pi * x / 2.0)
-        h = np.empty(M)
-        h[0] = float(np.prod(1.0 - c)) if M > 1 else 1.0
-        for m in range(1, M - 1):
-            h[m] = float(np.prod(1.0 - c[:M - 1 - m])) * (1.0 - s[M - 1 - m])
-        x1 = x[0]
-        h[M - 1] = 1.0 - x1 - math.cos(10.0 * math.pi * x1 + math.pi / 2.0) / (10.0 * math.pi)
-        F[r] = h
-    scale = 2.0 * np.arange(1, M + 1, dtype=float)
-    F = F * scale
+    X = _wfg12_positions(M, n, 20260929 + 100 + M)
+    F = _img_wfg1(M, X)
     keep = _nondominated_mask(F)
     X, F = X[keep], F[keep]
     return F[_checked(X, F, lambda Q: _img_wfg1(M, Q), 20260922 + 100 + M)]
@@ -486,19 +489,8 @@ def _pf_wfg1(M: int, n: int) -> np.ndarray:
 @_cached_front
 def _pf_wfg2(M: int, n: int) -> np.ndarray:
     """WFG2: convex and disconnected; the last objective is h_M = 1 - x1*cos^2(5*pi*x1)."""
-    X = _dd_xset(M, n)
-    F = np.empty((len(X), M))
-    for r, x in enumerate(X):
-        s = np.sin(math.pi * x / 2.0); c = np.cos(math.pi * x / 2.0)
-        h = np.empty(M)
-        h[0] = float(np.prod(1.0 - c)) if M > 1 else 1.0
-        for m in range(1, M - 1):
-            h[m] = float(np.prod(1.0 - c[:M - 1 - m])) * (1.0 - s[M - 1 - m])
-        x1 = x[0]
-        h[M - 1] = 1.0 - x1 * (math.cos(5.0 * math.pi * x1) ** 2)
-        F[r] = h
-    scale = 2.0 * np.arange(1, M + 1, dtype=float)
-    F = F * scale
+    X = _wfg12_positions(M, n, 20260929 + 200 + M)
+    F = _img_wfg2(M, X)
     keep = _nondominated_mask(F)
     X, F = X[keep], F[keep]
     return F[_checked(X, F, lambda Q: _img_wfg2(M, Q), 20260922 + 200 + M)]
@@ -1558,9 +1550,7 @@ _register_mop()
 def _register_ipolygon():
     for name, sp in _ipoly.specs((3, 4, 8)).items():
         M = sp["M"]; pop, ng = _budget(M)
-        Z = sp["pf"](1000)
-        ideal = tuple(float(v) for v in Z.min(0))
-        nadir = tuple(float(v) for v in Z.max(0))
+        ideal, nadir = sp["frame"]              # exact (reference version 2)
         def _eval(x, _f=sp["eval"]): return _f(list(x))
         def _pf(n, _p=sp["pf"]): return _p(n)
         def _ps(n, _p=sp["ps"]): return _p(n)
@@ -1600,6 +1590,94 @@ def _attach_full_fronts():
 
 
 _attach_full_fronts()
+
+
+# ── reference version 2 (2026-09-29) ───────────────────────────────────────
+# What the stage-3 review found in the reference fronts (TASK4, reference
+# audit): rows repeated up to 216 times, which IGD+ counts as many times, and
+# 259 to 6 399 rows where 1 000 were asked for. Version 2: every pareto_front(n)
+# returns distinct rows and exactly n of them where its sampler can give as
+# many (_exactly_n); besides, WFG1 and WFG2 sample their positions at random,
+# not on an aliasing grid (_wfg12_positions), and IPolygon is a new instance
+# (polygon_ishibuchi.py). A campaign writes the version into every run's
+# meta.json; --recompute-reference brings older runs up to date, keeping their
+# old values beside the new. REFERENCE_CHANGED lists, per version, the problems
+# whose pareto_front(1000) changed with it (measured: TASK4
+# reference_changes.py); a run measured against an older reference of one of
+# them is set aside by --cover until recomputed.
+REFERENCE_VERSION = 2
+REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
+    "BT5", "BT9", "DTLZ1_2D", "DTLZ2_2D", "DTLZ3_2D", "DTLZ4_2D", "DTLZ7_10D", "DTLZ7_15D",
+    "DTLZ7_2D", "DTLZ7_3D", "DTLZ7_4D", "DTLZ7_5D", "DTLZ7_6D", "IPolygon_3D",
+    "IPolygon_4D", "IPolygon_8D", "MOP4", "MOP6", "MOP7", "MaF10_10D", "MaF10_15D",
+    "MaF10_3D", "MaF10_5D", "MaF10_8D", "MaF11_10D", "MaF11_15D", "MaF11_3D", "MaF11_5D",
+    "MaF11_8D", "MaF2_15D", "MaF2_3D", "MaF2_5D", "MaF2_8D", "MaF7_10D", "MaF7_15D",
+    "MaF7_3D", "MaF7_5D", "MaF7_8D", "WFG1_10D", "WFG1_2D", "WFG1_3D", "WFG1_4D", "WFG1_5D",
+    "WFG1_6D", "WFG2_10D", "WFG2_2D", "WFG2_3D", "WFG2_4D", "WFG2_5D", "WFG2_6D", "WFG4_2D",
+    "WFG5_2D", "WFG6_2D", "WFG7_2D", "WFG8_2D", "WFG9_2D", "ZCAT12_10D", "ZCAT12_3D",
+    "ZCAT12_5D", "ZCAT17_3D", "ZCAT17_5D", "ZCAT18_3D", "ZCAT18_5D", "ZCAT19_10D",
+    "ZCAT19_3D", "ZCAT19_5D", "ZCAT1_10D", "ZCAT1_3D", "ZCAT1_5D", "ZCAT20_3D", "ZCAT20_5D",
+    "ZCAT2_10D", "ZCAT2_3D", "ZCAT2_5D", "ZCAT8_10D", "ZCAT8_3D", "ZCAT8_5D", "ZDT3",
+    "shiftDTLZ1_2D", "shiftDTLZ2_2D", "shiftDTLZ3_2D", "shiftDTLZ4_2D"})}
+# the problems whose DEFINITION changed with a version: their older runs
+# answered another problem and are run again, not recomputed
+PROBLEM_CHANGED: Dict[int, frozenset] = {
+    2: frozenset({"IPolygon_3D", "IPolygon_4D", "IPolygon_8D"})}
+
+_REPEAT_DIGITS = 12                  # rows equal to 12 decimals count as one
+_MAX_GROWTH = 64                     # draw at most 64 x n candidates for n distinct rows
+
+
+def _distinct_rows(F: np.ndarray) -> np.ndarray:
+    """F without repeated rows, in the order they came."""
+    if len(F) == 0:
+        return F
+    _, first = np.unique(np.round(F, _REPEAT_DIGITS), axis=0, return_index=True)
+    return F[np.sort(first)]
+
+
+def _thin(F: np.ndarray, n: int, seed: int) -> np.ndarray:
+    """n rows of F, in order: every objective's smallest and largest row, so
+    that the front's range stays, and the rest drawn uniformly at random."""
+    keep = sorted(set(np.argmin(F, axis=0).tolist()) | set(np.argmax(F, axis=0).tolist()))
+    rest = np.setdiff1d(np.arange(len(F)), keep)
+    rng = np.random.default_rng(seed)
+    extra = rng.choice(rest, size=max(0, n - len(keep)), replace=False)
+    return F[np.sort(np.concatenate([np.asarray(keep, int), extra]))]
+
+
+def _exactly_n(pf: Callable, seed: int) -> Callable:
+    """pareto_front of reference version 2: pf(n) without repeated rows and
+    thinned to n rows (_thin); a sample of fewer distinct rows is drawn again
+    at 2, 4, ... times n until it has n or stops growing. Once per n and
+    process; every caller gets a copy."""
+    import functools
+
+    @functools.lru_cache(maxsize=None)
+    def front(n: int) -> np.ndarray:
+        F = _distinct_rows(np.asarray(pf(n), float))
+        k = n
+        while len(F) < n and k < _MAX_GROWTH * n:
+            k *= 2
+            more = _distinct_rows(np.asarray(pf(k), float))
+            if len(more) <= len(F):
+                break                              # the sampler gives no more
+            F = more
+        return _thin(F, n, seed) if len(F) > n else F
+
+    def call(n: int = 1000) -> np.ndarray:
+        return front(int(n)).copy()
+    return call
+
+
+def _version2_references() -> None:
+    import zlib
+    for name, p in PROBLEMS.items():
+        if callable(p.pareto_front):
+            p.pareto_front = _exactly_n(p.pareto_front, zlib.crc32(name.encode()))
+
+
+_version2_references()
 
 
 # ── HV/IGD reference frame = the sampled reference PF (PlatEMO convention) ──

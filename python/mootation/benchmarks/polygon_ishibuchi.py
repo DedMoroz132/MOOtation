@@ -3,14 +3,6 @@
 # Multi-polygon distance minimization.
 # H. Ishibuchi, N. Akedo, Y. Nojima — GECCO 2011, Section 2.
 #
-# INSTANCE NOTE (2026-09-05). The paper defines the FAMILY (m identical
-# polygons with k vertices in [0,100]^2, f_i = min over polygons of the
-# distance to vertex i) and illustrates it with m = 4 triangles (Fig. 1) and
-# m = 4 rectangles (Fig. 2), whose coordinates it does not print. This module
-# instantiates the family with m = 2 regular polygons of radius 20 centred
-# at (30,50) and (70,50) — a valid member of the family, not the paper's
-# figure instance.
-#
 # A problem posed in a 2D DECISION space [0, 100]^2 containing m identical
 # regular polygons of k vertices each. The objective count is k, and
 # f_i(x) = the distance from x to the i-th vertex, minimized over the m
@@ -20,38 +12,41 @@
 # point: a test of decision-space diversity, where objective-space metrics
 # alone cannot tell whether an algorithm found one region or all of them.
 #
-# THIS INSTANCE'S POLYGONS ARE TOO CLOSE (found 2026-09-29). With radius 20
-# and centres 40 apart the squares share the vertex (50, 50) and the
-# triangles' lower vertices are 5.4 apart, and the condition fails. Checked on
-# a 401 x 401 grid of [0, 100]^2 and, exactly, for each point of a polygon
-# against its twin moved by (40, 0) into the other polygon:
-#   * three objectives: the Pareto set is a region between the polygons
-#     (x1 about 27.5-72.5, x2 40-70); 862 of the 1 000 points pf(1000)
-#     returns are dominated by a grid point, 866 of ps(1000)'s;
-#   * four objectives: only the inner halves of the squares (x1 30-70) are
-#     Pareto-optimal. A point p of the left square's outer half is dominated
-#     by p + (40, 0): f1, f2, f3 equal, f4 smaller (the right square's vertex
-#     4 is the left one's vertex 2 moved by (40, 0)). On the inner halves
-#     f2 = f4: the front is degenerate. 523 of pf(1000)'s points and 500 of
-#     ps(1000)'s are dominated so.
-# So pf(n) (one polygon's image) and ps(n) (both polygons) are NOT this
-# instance's Pareto front and set, and IGD+, IGDX and PSP measured against
-# them are off. The code is left as it ran in the stage-3 campaign; a
-# corrected instance needs polygons far enough apart, verified the paper's
-# way (a dense grid, Section 2).
+# THE INSTANCE (2026-09-29, reference version 2). The paper defines the family
+# and illustrates it with m = 4 triangles (Fig. 1) and m = 4 rectangles
+# (Fig. 2), whose coordinates it does not print. Here, as in its figures,
+# m = 4 regular polygons, radius 8, centred at (25, 25), (75, 25), (25, 75)
+# and (75, 75): every two centres at least 50 apart, more than 6 radii. That
+# is far enough (our argument, not the paper's): for x in polygon P, its own
+# vertex i is within 2r and every other polygon's beyond 50 - 2r > 4r, so f is
+# P's own distances; and a point y with f_i(y) <= 2r for every i has all its
+# nearest vertices in one polygon Q (two of them in different polygons would
+# put their centres within 2r + r + 2r + r = 6r), so y dominating x would make
+# y moved by c_P - c_Q dominate x in the one-polygon problem, where the
+# polygon itself is the Pareto set. Checked the paper's way on a dense grid
+# (TASK4 ipolygon_v2_check): the grid's non-dominated points are exactly
+# those inside the four polygons, and pf(1000) has no dominated point.
 #
-# Provides: eval(x) -> [f...]; pf(n) -> objective vectors (one polygon);
-# ps(n) -> points of both polygons, for IGDX and PSP (see above).
+# The instance before it (version 1, stage 3 ran it): m = 2 polygons of radius
+# 20 centred at (30, 50) and (70, 50) — too close: the squares shared the vertex
+# (50, 50), the triangles' lower vertices were 5.4 apart. At three objectives
+# the Pareto set was a region between the triangles and 862 of pf(1000)'s
+# points were dominated; at four only the squares' inner halves were
+# Pareto-optimal (f2 = f4 there) and 523 of pf(1000)'s points were dominated.
+#
+# Provides: eval(x) -> [f...]; pf(n) -> objective vectors (one polygon, the
+# same for every polygon); ps(n) -> points of all m polygons, for IGDX and PSP;
+# frame(M) -> the exact ideal and nadir.
 # ============================================================================
 from __future__ import annotations
 from typing import List
 import numpy as np
 
 BOX = 100.0
-RADIUS = 20.0
-N_POLY = 2            # m: the number of equivalent regions
-# Centres of the m polygons, spread across [0,100]^2.
-CENTERS = np.array([[30.0, 50.0], [70.0, 50.0]])
+RADIUS = 8.0
+N_POLY = 4            # m: the number of equivalent regions
+# Centres of the m polygons, one in each quarter of [0,100]^2, 50 apart.
+CENTERS = np.array([[25.0, 25.0], [75.0, 25.0], [25.0, 75.0], [75.0, 75.0]])
 
 
 def _vertices(M: int):
@@ -118,10 +113,19 @@ def bounds():
     return [(0.0, BOX), (0.0, BOX)]
 
 
+def frame(M: int) -> tuple:
+    """(ideal, nadir) of the front, exactly: f_i is 0 at vertex i itself, and
+    its largest value over the polygon — a convex function's maximum, at a
+    vertex — is the distance from vertex i to the farthest other vertex."""
+    V = _vertices(M)[0]
+    far = np.linalg.norm(V[:, None, :] - V[None, :, :], axis=2).max(axis=1)
+    return tuple([0.0] * M), tuple(float(v) for v in far)
+
+
 # name -> builders (M = vertex count = objective count)
 def specs(Ms=(3, 4, 8)):
     out = {}
     for M in Ms:
         out[f"IPolygon_{M}D"] = dict(
-            M=M, eval=make_eval(M), pf=make_pf(M), ps=make_ps(M))
+            M=M, eval=make_eval(M), pf=make_pf(M), ps=make_ps(M), frame=frame(M))
     return out

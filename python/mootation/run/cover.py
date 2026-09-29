@@ -21,34 +21,62 @@ go from coarse to fine, k = 0, 1, ...; level k:
     (best − hv_h)/best ≤ TAUS[k]. The best known values depend on what the
     campaign ran, so they are written out with the result (best_known_hv.csv).
 
-THE FLOOR (owner and reviewer, 2026-09-28). N points on the front itself leave
-IGD+ above zero, so absolute levels of igdp_norm cannot all be reached: the
-floor is about 0.002 at two objectives, 0.02 at three and 0.06 at five, above
-0.01 and 0.003 at three objectives and above every level but 0.1 at five.
-A problem's floor is the IGD+, in igdp_norm's frame, of the N points (N = its
-population) that DSS selects from the reference front the runs were measured
-against: the best N-point subset of that reference, as far as DSS finds it. A
-run can go below it (DSS is not the best subset); GD+ has a floor of 0, so its
-levels stay absolute. The floors are written out (igdp_floor.csv) and read back
-by the next analysis of the same results.
+THE FLOOR (owner and reviewer, 2026-09-28; the greedy floor 2026-09-29). N
+points on the front itself leave IGD+ above zero, so absolute levels of
+igdp_norm cannot all be reached: about 0.002 at two objectives, 0.02 at three
+and 0.06 at five. A problem's floor is the IGD+, in igdp_norm's frame and
+against the very reference front the runs were measured against, of the best N
+points of that reference as far as a greedy search finds them: points added
+one at a time, each the one that lowers IGD+ most, then single swaps while one
+improves — a local optimum, an upper bound on the best N-subset. N is the
+run's population: the problem's, or a multiple of K for the M2M-like cores
+(campaign.fit_pop), whose floor is then its own. Beside it the IGD+ of the N
+points DSS selects, "an ideal archive reduced by DSS", and the ratio of the
+two, DSS's tax (on stage 3 1.05-3.7, median 1.39). The population scenario's
+levels read the greedy floor; the archive scenario's the DSS floor, since that
+answer is itself a DSS selection (on DTLZ2 the best archives stand at 0.97-0.99
+of the DSS floor, 1.36-1.41 of the greedy one). 1.1 x floor (tau = 0.1) is the
+ideal level: in stage 3 the min_seeds-th best seed reached it on 4 of 39 clean
+regular problems; read it as the best attainable, not as a target. GD+ has a
+floor of 0, so its levels stay absolute. The floors are written out
+(igdp_floor.csv, with the reference version) and read back by the next
+analysis of the same results.
 
 KNOWN REFERENCE PROBLEMS (owner and reviewer, 2026-09-29). Where the reference
 front itself is doubtful, no level says anything: DTLZ5, DTLZ6 and MaF6 from
 four objectives (degenerate fronts the sample does not fill), WFG3 (its
 degenerate front, incomplete in the sample at three objectives and more), DTLZ1
-at five objectives (a fifth of the reference on the front's boundary). These
-problems are left out of the coverage (cover_excluded.csv says which and why)
-unless keep_caveats is set, and marked in floor_review.csv.
+at five objectives (a fifth of the reference on the front's boundary); and,
+measured against references of version 1 (benchmarks.registry,
+REFERENCE_VERSION), IPolygon (polygons too close: most of the reference
+dominated) and WFG1 and WFG2 where the grid of x1 aliases their last shape (at
+n_ref = 1000: five objectives, WFG1 at eight, both at ten). A problem some of
+whose runs were measured against an older reference than the current one, where
+the reference changed since (REFERENCE_CHANGED), is set aside too, until
+--recompute-reference brings them up to date. These problems are left out of
+the coverage (cover_excluded.csv says which and why) unless keep_caveats is set,
+and marked in floor_review.csv.
+
+MARKED PROBLEMS (reviewer, 2026-09-29) stay in, and every table is written
+twice, over all problems ("all") and over the unmarked ones ("unmarked"), to
+see whether the conclusions hold without them: a reference of other than n_ref
+rows or with repeated rows, the Das-Dennis lattice topped up with Dirichlet
+points from four objectives (DTLZ1-4 and their variants, WFG4-9: at five
+objectives the lattice has H = 6), and fronts of a lower dimension than M - 1
+(properties.front_dim: DTLZ5/6 at three objectives, ZCAT14-16, Polygon from
+four). cover_marks.csv lists them. The dimension also gives floor_review.csv's
+eta = ratio^(-d), which reads alike across numbers of objectives.
 
 WHAT IS WRITTEN. cover_meta.json: the commit of the analysis code (and whether
 its tree differed), the scheme of the levels, the lists and the problems left
 out; every CSV row says its level in words ("igdp_norm <= 2 x floor | hv_h gap
-<= 0.1"), and cover_summary.csv the commit too, so that absolute and
-floor-based levels are never confused. floor_review.csv: per problem with a
-front, the floor beside the best igdp_norm any run reached at the full budget,
-the best algorithm's median over its seeds and the value that decides coverage
-(its min_seeds-th best seed), as ratios to the floor: a ratio below 1 says the
-floor is too high, far above 2 on an easy problem says it is too strict.
+<= 0.1") and its subset, and cover_summary.csv the commit too, so that absolute
+and floor-based levels are never confused. floor_review.csv: per problem with a
+front, both floors at the problem's population and the level's own, beside the
+best igdp_norm any run reached at the full budget, the best algorithm's median
+over its seeds and the value that decides coverage (its min_seeds-th best
+seed), as ratios to the level's floor: a ratio below 1 says the floor is too
+high, far above 2 on an easy problem says it is too strict.
 
 AT A BUDGET. A run's value at b evaluations is its final value when b is its
 budget; for a budget-dependent algorithm (budget.py), the final value of its
@@ -90,9 +118,20 @@ CRITERIA = {"igdp": "igdp_norm", "gdp": "gdp_norm"}      # criterion -> metric w
 METRICS = ("igdp_norm", "gdp_norm", "hv_h")
 
 
-def reference_caveat(problem: str) -> str | None:
+IDEAL_FLOOR_TAU = 0.1                                    # 1.1 x floor: the ideal level
+# the reference fronts built on a Das-Dennis lattice topped up with Dirichlet
+# points (dtlz_variants._simplex), coarse from four objectives (MARKED PROBLEMS)
+LATTICE_FAMILIES = ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "IDTLZ1", "IDTLZ2", "SDTLZ1", "SDTLZ2",
+                    "shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4", "WFG4", "WFG5",
+                    "WFG6", "WFG7", "WFG8", "WFG9")
+
+
+def reference_caveat(problem: str, version: int | None = None) -> str | None:
     """Why a problem's reference front is doubtful (KNOWN REFERENCE PROBLEMS),
-    or None."""
+    or None; `version` is the reference version the runs were measured
+    against, the current one when None."""
+    from ..benchmarks.registry import REFERENCE_VERSION
+    version = REFERENCE_VERSION if version is None else version
     family, _, rest = problem.partition("_")
     m = int(rest[:-1]) if rest.endswith("D") and rest[:-1].isdigit() else None
     if family in ("DTLZ5", "DTLZ6", "MaF6") and m is not None and m >= 4:
@@ -101,7 +140,35 @@ def reference_caveat(problem: str) -> str | None:
         return "degenerate WFG3 front; the reference sample is incomplete"
     if family == "DTLZ1" and m == 5:
         return "a fifth of the reference lies on the front's boundary"
+    if version < 2 and family == "IPolygon":
+        return "reference v1: the polygons are too close, most of the reference is dominated"
+    if version < 2 and (family, m) in (("WFG1", 5), ("WFG1", 8), ("WFG1", 10), ("WFG2", 5),
+                                       ("WFG2", 10)):
+        return "reference v1: x1 on a grid where the last shape is linear"
     return None
+
+
+def reference_marks(problem: str, rows: int | None, distinct: int | None,
+                    n_ref: int) -> list:
+    """Why a problem is marked (MARKED PROBLEMS); empty when it is not.
+    `rows` and `distinct` count the reference front's rows."""
+    from ..benchmarks import get as bench_get
+    from ..benchmarks.properties import properties
+    marks = []
+    if rows is not None and rows != n_ref:
+        marks.append(f"{rows} reference rows, not {n_ref}")
+    if rows is not None and distinct is not None and distinct < rows:
+        marks.append(f"{rows - distinct} repeated reference rows")
+    m = bench_get(problem).n_obj
+    if problem.partition("_")[0] in LATTICE_FAMILIES and m >= 4:
+        marks.append("Das-Dennis lattice topped up with Dirichlet points, coarse from four "
+                     "objectives")
+    d = (properties(problem) or {}).get("front_dim")
+    if d is not None and d < m - 1:
+        marks.append(f"front of dimension {d}")
+    return marks
+
+
 NODE_LIMIT = 2_000_000
 
 
@@ -194,12 +261,67 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
         if has is None:                                  # older meta.json: ask the registry
             from ..benchmarks import get as bench_get
             front[p] = callable(bench_get(p).pareto_front)
+    # the population each algorithm ran with (a floor per N) and the reference
+    # versions each problem's runs were measured against (a meta.json without
+    # them: the problem's population, version 1)
+    pop, versions = {}, {}
+    for r in main:
+        if r.get("pop"):
+            pop[(r["problem"], r["algorithm"])] = int(r["pop"])
+        versions.setdefault(r["problem"], set()).add(int(r.get("reference_version") or 1))
     return {"values": values, "front": front, "dependent": dependent, "missing": missing,
-            "main": main, "scenario": scenario}
+            "main": main, "scenario": scenario, "pop": pop, "versions": versions}
 
 
-def igdp_floor(problem: str, n_ref: int) -> float | None:
-    """The IGD+ floor of a problem (THE FLOOR above); None without a front."""
+FLOOR_SWEEPS = 3                                         # passes of single swaps at most
+
+
+def _dplus_matrix(G):
+    """D[c, z] = d+(z, c) = ||max(c - z, 0)|| between the rows of G: how far
+    candidate c leaves reference point z uncovered; a block of rows at a time."""
+    import numpy as np
+    D = np.empty((len(G), len(G)))
+    for a in range(0, len(G), 256):
+        D[a:a + 256] = np.sqrt((np.maximum(G[a:a + 256, None, :] - G[None, :, :], 0.0) ** 2)
+                               .sum(axis=2))
+    return D
+
+
+def greedy_subset(G, n: int, sweeps: int = FLOOR_SWEEPS) -> list:
+    """Indices of n rows of the normalized reference G chosen for the smallest
+    IGD+ against G itself (THE FLOOR): added one at a time, each the row that
+    lowers IGD+ most, then single swaps while one improves, at most `sweeps`
+    passes. Ties go to the lowest index, so the choice is deterministic."""
+    import numpy as np
+    D = _dplus_matrix(G)
+    cur = np.full(len(G), np.inf)
+    chosen: list = []
+    for _ in range(min(n, len(G))):
+        cost = np.minimum(cur[None, :], D).mean(axis=1)
+        cost[chosen] = np.inf
+        c = int(np.argmin(cost))
+        chosen.append(c)
+        cur = np.minimum(cur, D[c])
+    for _ in range(sweeps):
+        improved = False
+        for i in range(len(chosen)):
+            rest = chosen[:i] + chosen[i + 1:]
+            base = D[rest].min(axis=0) if rest else np.full(len(G), np.inf)
+            cost = np.minimum(base[None, :], D).mean(axis=1)
+            cost[rest] = np.inf
+            c = int(np.argmin(cost))
+            if cost[c] < np.minimum(base, D[chosen[i]]).mean() - 1e-15:
+                chosen[i] = c
+                improved = True
+        if not improved:
+            break
+    return chosen
+
+
+def igdp_floors(problem: str, n_ref: int, sizes) -> dict | None:
+    """The floors of a problem (THE FLOOR) at every population size N in
+    `sizes`: {N: (greedy, dss)}, and under "rows" and "distinct" how many rows
+    the reference front has and how many of them differ; None without a front."""
     import numpy as np
     from ..benchmarks import get as bench_get
     from .archive import dss_order
@@ -208,8 +330,13 @@ def igdp_floor(problem: str, n_ref: int) -> float | None:
     if not callable(p.pareto_front):
         return None
     ref = np.asarray(p.pareto_front(n_ref), float)
-    idx = dss_order(ref, k=p.pop_size, ideal=p.ideal, nadir=p.nadir)
-    return igd_plus(*_normalised(ref[idx], ref, p.ideal, p.nadir))
+    G, _ = _normalised(ref, ref, p.ideal, p.nadir)
+    out: dict = {"rows": len(ref), "distinct": len(np.unique(np.round(ref, 12), axis=0))}
+    for n in sorted(set(sizes)):
+        dss = igd_plus(G[dss_order(ref, k=n, ideal=p.ideal, nadir=p.nadir)], G)
+        greedy = igd_plus(G[greedy_subset(G, n)], G)
+        out[n] = (greedy, dss)
+    return out
 
 
 def _median(values) -> float:
@@ -218,23 +345,36 @@ def _median(values) -> float:
 
 
 def _floor_task(task) -> tuple:
-    problem, n_ref = task
-    return problem, igdp_floor(problem, n_ref)
+    problem, n_ref, sizes = task
+    return problem, igdp_floors(problem, n_ref, sizes)
 
 
-def floors(problems, n_ref: int, path: Path, workers: int = 1) -> dict:
-    """{problem: floor} for the problems with a reference front, from the CSV at
-    `path` where it has them for this n_ref, computed and added otherwise (a
+FLOOR_COLUMNS = ["problem", "pop", "n_ref", "reference_version", "floor_greedy", "floor_dss",
+                 "dss_tax", "ref_rows", "ref_distinct"]
+
+
+def floors(sizes: dict, n_ref: int, path: Path, workers: int = 1) -> dict:
+    """{(problem, N): {"greedy", "dss", "rows", "distinct"}} for sizes =
+    {problem: the population sizes its runs used}, over the problems with a
+    reference front: from the CSV at `path` where it has them for this n_ref
+    and the current reference version, computed and added otherwise (a
     reference front takes up to a minute to sample: ZCAT's are verified)."""
     from ..benchmarks import get as bench_get
-    have = {}
+    from ..benchmarks.registry import REFERENCE_VERSION
+    have: dict = {}
     if path.is_file():
         with path.open(newline="", encoding="utf-8") as fh:
             for row in csv.DictReader(fh):
-                if int(row["n_ref"]) == n_ref:
-                    have[row["problem"]] = float(row["floor"])
-    todo = [(p, n_ref) for p in problems
-            if p not in have and callable(bench_get(p).pareto_front)]
+                if (row.get("floor_greedy") and int(row["n_ref"]) == n_ref
+                        and int(row.get("reference_version") or 1) == REFERENCE_VERSION):
+                    have[(row["problem"], int(row["pop"]))] = {
+                        "greedy": float(row["floor_greedy"]), "dss": float(row["floor_dss"]),
+                        "rows": int(row["ref_rows"]), "distinct": int(row["ref_distinct"])}
+    todo = []
+    for prob in sorted(sizes):
+        missing = sorted(n for n in sizes[prob] if (prob, n) not in have)
+        if missing and callable(bench_get(prob).pareto_front):
+            todo.append((prob, n_ref, tuple(missing)))
     if workers > 1 and len(todo) > 1:
         import multiprocessing as mp
         from .campaign import single_threaded_blas
@@ -243,27 +383,47 @@ def floors(problems, n_ref: int, path: Path, workers: int = 1) -> dict:
             done = list(pool.imap_unordered(_floor_task, todo))
     else:
         done = [_floor_task(t) for t in todo]
-    have.update({p: f for p, f in done if f is not None})
+    for prob, res in done:
+        if res is not None:
+            for n in (k for k in res if isinstance(k, int)):
+                have[(prob, n)] = {"greedy": res[n][0], "dss": res[n][1],
+                                   "rows": res["rows"], "distinct": res["distinct"]}
     if done:
         with path.open("w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
-            w.writerow(["problem", "pop", "n_ref", "floor"])
-            for prob in sorted(have):
-                w.writerow([prob, bench_get(prob).pop_size, n_ref, f"{have[prob]:.10g}"])
+            w.writerow(FLOOR_COLUMNS)
+            for (prob, n) in sorted(have):
+                f = have[(prob, n)]
+                tax = f["dss"] / f["greedy"] if f["greedy"] > 0 else math.nan
+                w.writerow([prob, n, n_ref, REFERENCE_VERSION, f"{f['greedy']:.10g}",
+                            f"{f['dss']:.10g}", f"{tax:.6g}", f["rows"], f["distinct"]])
     return have
 
 
-def floor_review(data: dict, floor: dict, min_seeds: int) -> list:
-    """Rows of floor_review.csv (WHAT IS WRITTEN): per problem with a floor, the
-    best igdp_norm of any full-budget run, the best algorithm's median over its
-    seeds, and the smallest min_seeds-th best seed over the algorithms (what a
-    level has to admit for somebody to cover the problem), each beside its ratio
-    to the floor."""
+def level_floor(scenario: str) -> str:
+    """Which floor a scenario's levels read (THE FLOOR): "greedy" for the
+    population, "dss" for the archive, itself a DSS selection."""
+    return "dss" if scenario == "archive" else "greedy"
+
+
+def floor_review(data: dict, fl: dict, min_seeds: int, caveats: dict | None = None,
+                 marks: dict | None = None) -> list:
+    """Rows of floor_review.csv (WHAT IS WRITTEN): per problem with a floor at its
+    population, both floors and DSS's tax; the best igdp_norm of any full-budget
+    run, the best algorithm's median over its seeds and the smallest
+    min_seeds-th best seed over the algorithms (what a level has to admit for
+    somebody to cover the problem), each beside its ratio to the floor the
+    scenario's levels read, and the best and deciding ratios as eta =
+    ratio^(-d), d the front's dimension."""
     from ..benchmarks import get as bench_get
+    from ..benchmarks.properties import properties
     scenario = data.get("scenario", "final")
+    which = level_floor(scenario)
+    caveats, marks = caveats or {}, marks or {}
+    at_pop = {prob: f for (prob, n), f in fl.items() if n == bench_get(prob).pop_size}
     runs: dict = {}                                     # problem -> algorithm -> [(v, seed, n)]
     for r in data["main"]:
-        if r["problem"] not in floor:
+        if r["problem"] not in at_pop:
             continue
         end = _end(r, scenario)
         v = end.get("igdp_norm")
@@ -272,23 +432,31 @@ def floor_review(data: dict, floor: dict, min_seeds: int) -> list:
         runs.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(
             (float(v), r["seed"], end.get("n_final") or end.get("n")))
     rows = []
-    for prob in sorted(floor):
-        f = floor[prob]
+    for prob in sorted(at_pop):
+        f = at_pop[prob][which]
         by_alg = runs.get(prob, {})
         p = bench_get(prob)
-        row = {"problem": prob, "n_obj": p.n_obj, "pop": p.pop_size, "floor": f,
-               "caveat": reference_caveat(prob) or ""}
+        d = (properties(prob) or {}).get("front_dim")
+        g, s = at_pop[prob]["greedy"], at_pop[prob]["dss"]
+        row = {"problem": prob, "n_obj": p.n_obj, "pop": p.pop_size, "floor_greedy": g,
+               "floor_dss": s, "dss_tax": s / g if g > 0 else math.nan, "level_floor": which,
+               "floor": f, "front_dim": d, "caveat": caveats.get(prob, ""),
+               "marks": "; ".join(marks.get(prob, []))}
         if by_alg and f > 0:
-            best = min((v, a, s, n) for a, vs in by_alg.items() for v, s, n in vs)
+            best = min((v, a, s_, n) for a, vs in by_alg.items() for v, s_, n in vs)
             med = min((_median([v for v, _, _ in vs]), a) for a, vs in by_alg.items())
             kth = [(sorted(v for v, _, _ in vs)[min_seeds - 1], a) for a, vs in by_alg.items()
                    if len(vs) >= min_seeds]
             row.update(best=best[0], best_ratio=best[0] / f, best_algorithm=best[1],
                        best_seed=best[2], best_n=best[3],
                        median=med[0], median_ratio=med[0] / f, median_algorithm=med[1])
+            if d:
+                row["best_eta"] = row["best_ratio"] ** (-d)
             if kth:
                 k = min(kth)
                 row.update(kth=k[0], kth_ratio=k[0] / f, kth_algorithm=k[1])
+                if d:
+                    row["kth_eta"] = row["kth_ratio"] ** (-d)
         rows.append(row)
     return rows
 
@@ -309,16 +477,25 @@ def reached(data: dict, criterion: str, level: tuple, budget: int, best_hv: dict
             floor: dict | None = None) -> dict:
     """{problem: {algorithm: {seed: bool}}}: did the run reach the level at budget.
     `level` = (tau, tau_hv): igdp_norm <= (1 + tau) * floor, or gdp_norm <= tau,
-    where the problem has a reference front; the hv_h gap <= tau_hv where not."""
+    where the problem has a reference front; the hv_h gap <= tau_hv where not.
+    `floor`: {(problem, N): floor}, N the population the algorithm ran with
+    (data["pop"]; the problem's own where the run did not say)."""
+    from ..benchmarks import get as bench_get
     metric = CRITERIA[criterion]
     tau, tau_hv = level
+    pop = data.get("pop", {})
+    own: dict = {}                                       # problem -> its population
     out: dict = {}
     for (prob, alg, seed), by_b in data["values"].items():
         v = by_b.get(budget, {})
         ok = False
         if data["front"].get(prob):
             x = v.get(metric)
-            limit = tau if criterion == "gdp" else (1.0 + tau) * (floor or {}).get(prob, math.nan)
+            n = pop.get((prob, alg))
+            if n is None:
+                n = own.setdefault(prob, bench_get(prob).pop_size)
+            limit = tau if criterion == "gdp" else (1.0 + tau) * (floor or {}).get((prob, n),
+                                                                                  math.nan)
             ok = x is not None and math.isfinite(float(x)) and float(x) <= limit
         else:
             x, best = v.get("hv_h"), best_hv.get(prob, (0.0,))[0]
@@ -478,6 +655,10 @@ _CURVE_CACHE: dict = {}
 
 def analyse(cov: dict, problems: list, family_of, max_sets: int = 20) -> dict:
     """Everything item 5 asks of one criterion, level and budget."""
+    if not problems or not cov:                    # nothing to cover, or nobody to cover it
+        return {"n_problems": len(problems), "n_covered": 0, "nobody": list(problems),
+                "size": 0, "optimal": [()], "exact": True, "greedy": [], "curve": [],
+                "families": {}}
     sets = _masks(cov, problems)
     universe = 0
     for m in sets.values():
@@ -562,18 +743,45 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
     if data["missing"]:
         lines.append(f"  {len(data['missing'])} ladder rungs missing (budget-dependent runs "
                      f"read as not reaching any level there), e.g. {data['missing'][0]}")
-    floor = floors([p for p in problems if data["front"].get(p)], n_ref,
-                   out_dir / "igdp_floor.csv", workers=workers)
-    lines.append(f"  igdp levels from each problem's floor (igdp_floor.csv): median "
-                 f"{_median(floor.values()):.4g}" if floor else "  no problem with a front")
+    from ..benchmarks import get as bench_get
+    from ..benchmarks.registry import REFERENCE_CHANGED, REFERENCE_VERSION
+    with_front = [p for p in problems if data["front"].get(p)]
+    sizes = {p: {bench_get(p).pop_size} for p in with_front}
+    for (p, _), n in data["pop"].items():
+        if p in sizes:
+            sizes[p].add(n)
+    fl = floors(sizes, n_ref, out_dir / "igdp_floor.csv", workers=workers)
+    which = level_floor(scenario)
+    floor = {key: f[which] for key, f in fl.items()}
+    at_pop = [fl[(p, bench_get(p).pop_size)] for p in with_front
+              if (p, bench_get(p).pop_size) in fl]
+    lines.append(f"  igdp levels from each problem's {which} floor (igdp_floor.csv): median "
+                 f"{_median([f[which] for f in at_pop]):.4g}; DSS's tax median "
+                 f"{_median([f['dss'] / f['greedy'] for f in at_pop if f['greedy'] > 0]):.3g}"
+                 if at_pop else "  no problem with a front")
     # what the levels are and which code drew them (WHAT IS WRITTEN)
     import time
     from .. import __version__
     from .provenance import revision
     rev = revision()
     commit = (rev.get("commit") or "unknown")[:12] + ("+dirty" if rev.get("dirty") else "")
-    caveats = {p: reference_caveat(p) for p in problems if reference_caveat(p)}
+    caveats = {}
+    for p in problems:
+        oldest = min(data["versions"].get(p, {REFERENCE_VERSION}))
+        why = reference_caveat(p, oldest)
+        stale = [v for v in REFERENCE_CHANGED if v > oldest and p in REFERENCE_CHANGED[v]]
+        if stale and not why:
+            why = (f"runs measured against reference v{oldest}, changed in v{max(stale)}: "
+                   f"--recompute-reference")
+        if why:
+            caveats[p] = why
     excluded = {} if keep_caveats else caveats
+    marks = {}
+    for p in with_front:
+        f = fl.get((p, bench_get(p).pop_size))
+        found = reference_marks(p, f and f["rows"], f and f["distinct"], n_ref)
+        if found:
+            marks[p] = found
     meta = {
         "analysis": {"mootation": __version__, "commit": rev.get("commit"),
                      "dirty": rev.get("dirty"), "source": rev.get("source")},
@@ -581,16 +789,25 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "levels": {
             "igdp": "igdp_norm <= (1 + tau) x floor, tau in floor_taus; floor = IGD+ in "
-                    "igdp_norm's frame of the N points (N = the problem's population) DSS "
-                    "selects from the n_ref-point reference front, against that reference",
+                    "igdp_norm's frame, against the n_ref-point reference front, of N points "
+                    "of that reference: chosen greedily for the smallest IGD+ and improved "
+                    "by swaps (floor_method greedy, scenario final) or selected by DSS "
+                    "(floor_method dss, scenario archive, whose answer is a DSS selection); "
+                    "N = the population the algorithm ran with",
+            "ideal": f"igdp_norm <= {1 + IDEAL_FLOOR_TAU:g} x floor is the ideal level: read it "
+                     f"as the best attainable, not as a target",
             "gdp": "gdp_norm <= tau, tau in taus (absolute: GD+ has a floor of 0)",
             "hv_h": "problems without a reference front, both criteria: (best - hv_h) / best "
                     "<= tau, tau in taus (absolute); best = the campaign's best final hv_h",
             "level_k": "level k pairs floor_taus[k] (igdp) or taus[k] (gdp) with taus[k] (hv_h)",
         },
+        "floor_method": which, "reference_version": REFERENCE_VERSION,
+        "subsets": {"all": "every problem not left out",
+                    "unmarked": "without the marked problems (cover_marks.csv)"},
         "taus": list(taus), "floor_taus": list(floor_taus), "budgets": list(budgets),
         "min_seeds": min_seeds, "n_ref": n_ref, "keep_caveats": keep_caveats,
-        "excluded": excluded, "floor_file": "igdp_floor.csv",
+        "excluded": excluded, "marked": {p: "; ".join(m) for p, m in sorted(marks.items())},
+        "floor_file": "igdp_floor.csv",
     }
     (out_dir / "cover_meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
     with (out_dir / "cover_excluded.csv").open("w", newline="", encoding="utf-8") as fh:
@@ -598,14 +815,23 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
         w.writerow(["problem", "reason", "excluded"])
         for p_ in sorted(caveats):
             w.writerow([p_, caveats[p_], p_ in excluded])
+    with (out_dir / "cover_marks.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["problem", "marks"])
+        for p_ in sorted(marks):
+            w.writerow([p_, "; ".join(marks[p_])])
     if caveats:
         lines.append(f"  {len(caveats)} problems with a doubtful reference front "
                      f"(cover_excluded.csv): {'kept' if keep_caveats else 'left out'}: "
                      f"{', '.join(sorted(caveats))}")
-    review = floor_review(data, floor, min_seeds)
-    review_cols = ["problem", "n_obj", "pop", "floor", "best", "best_ratio", "best_algorithm",
-                   "best_seed", "best_n", "median", "median_ratio", "median_algorithm", "kth",
-                   "kth_ratio", "kth_algorithm", "caveat"]
+    if marks:
+        lines.append(f"  {len(marks)} problems marked (cover_marks.csv): every table twice, "
+                     f"with them and without")
+    review = floor_review(data, fl, min_seeds, caveats, marks)
+    review_cols = ["problem", "n_obj", "pop", "floor_greedy", "floor_dss", "dss_tax",
+                   "level_floor", "floor", "best", "best_ratio", "best_algorithm", "best_seed",
+                   "best_n", "median", "median_ratio", "median_algorithm", "kth", "kth_ratio",
+                   "kth_algorithm", "front_dim", "best_eta", "kth_eta", "caveat", "marks"]
     with (out_dir / "floor_review.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(review_cols)
@@ -613,12 +839,15 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
             w.writerow([f"{r_[c]:.6g}" if isinstance(r_.get(c), float) else r_.get(c, "")
                         for c in review_cols])
     ratios = [r_["best_ratio"] for r_ in review if "best_ratio" in r_ and not r_["caveat"]]
+    deciding = [r_["kth_ratio"] for r_ in review if "kth_ratio" in r_ and not r_["caveat"]]
     if ratios:
-        lines.append(f"  best igdp_norm / floor (floor_review.csv): median {_median(ratios):.3g}; "
-                     f"below 1 on {sum(v < 1 for v in ratios)}, above 2 on "
-                     f"{sum(v > 2 for v in ratios)} of {len(ratios)} problems")
+        lines.append(f"  best igdp_norm / {which} floor (floor_review.csv): median "
+                     f"{_median(ratios):.3g}; below 1 on {sum(v < 1 for v in ratios)}, above 2 on "
+                     f"{sum(v > 2 for v in ratios)} of {len(ratios)} problems; the deciding "
+                     f"{min_seeds}th seed below 1 on {sum(v < 1 for v in deciding)}")
     kept = [p_ for p_ in problems if p_ not in excluded]
     kept_set = set(kept)
+    subsets = {"all": kept, "unmarked": [p_ for p_ in kept if p_ not in marks]}
     no_front = [p for p in problems if not data["front"].get(p)]
     if no_front:
         lines.append(f"  {len(no_front)} problems without a reference front: the relative gap "
@@ -633,49 +862,54 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
     levels = {"igdp": list(zip(floor_taus, taus)), "gdp": list(zip(taus, taus))}
     for crit in CRITERIA:
         for tau, tau_hv in levels[crit]:
-            name = (f"igdp <= {1 + tau:g} x floor" if crit == "igdp" else f"gdp <= {tau:g}")
-            level = (f"igdp_norm <= {1 + tau:g} x floor" if crit == "igdp"
-                     else f"gdp_norm <= {tau:g}") + f" | hv_h gap <= {tau_hv:g}"
+            ideal = crit == "igdp" and abs(tau - IDEAL_FLOOR_TAU) < 1e-12
+            name = (f"igdp <= {1 + tau:g} x floor{' (ideal)' if ideal else ''}" if crit == "igdp"
+                    else f"gdp <= {tau:g}")
+            level = (f"igdp_norm <= {1 + tau:g} x {which} floor{' (ideal)' if ideal else ''}"
+                     if crit == "igdp" else f"gdp_norm <= {tau:g}") + f" | hv_h gap <= {tau_hv:g}"
             for b in budgets:
-                hit = {p_: v for p_, v in reached(data, crit, (tau, tau_hv), b, best_hv,
-                                                    floor).items() if p_ in kept_set}
-                cov = successes(hit, min_seeds)
-                res = analyse(cov, kept, problem_family, max_sets=max_sets)
-                opt = ["+".join(s) for s in res["optimal"]]
-                summary.append([crit, tau, tau_hv, level, b, res["n_problems"], res["n_covered"],
-                                len(res["nobody"]), res["size"], len(opt), res["exact"],
-                                " | ".join(opt), "+".join(res["greedy"]), commit])
-                for c in res["curve"]:
-                    curves.append([crit, tau, tau_hv, level, b, c["k"], f"{c['share']:.6g}",
-                                   "+".join(c["set"]),
-                                   c["exact"], f"{c['share_families']:.6g}",
-                                   "+".join(c["set_families"]), c["exact_families"],
-                                   json.dumps(c["per_family"], sort_keys=True)])
-                for p in res["nobody"]:
-                    uncovered.append([crit, tau, tau_hv, level, b, p, problem_family(p)])
-                lines.append(
-                    f"{name} (hv_h gap <= {tau_hv:g}) at {b}: {res['n_covered']}/"
-                    f"{res['n_problems']} covered by "
-                    f"someone; smallest set {res['size']}{'' if res['exact'] else ' (greedy, bound)'}"
-                    f" x{len(opt)}{'+' if len(opt) >= max_sets else ''}: {opt[0] if opt else '-'}"
-                    f"; greedy {len(res['greedy'])}")
-                if replicates:
-                    for a, share in bootstrap(hit, kept, seeds, min_seeds,
-                                              replicates).items():
-                        boot.append([crit, tau, tau_hv, level, b, a, f"{share:.4f}"])
+                hit_all = {p_: v for p_, v in reached(data, crit, (tau, tau_hv), b, best_hv,
+                                                        floor).items() if p_ in kept_set}
+                for subset, members in subsets.items():
+                    member_set = set(members)
+                    hit = {p_: v for p_, v in hit_all.items() if p_ in member_set}
+                    cov = successes(hit, min_seeds)
+                    res = analyse(cov, members, problem_family, max_sets=max_sets)
+                    opt = ["+".join(s) for s in res["optimal"]]
+                    head = [crit, tau, tau_hv, level, subset, b]
+                    summary.append(head + [res["n_problems"], res["n_covered"],
+                                           len(res["nobody"]), res["size"], len(opt), res["exact"],
+                                           " | ".join(opt), "+".join(res["greedy"]), commit])
+                    for c in res["curve"]:
+                        curves.append(head + [c["k"], f"{c['share']:.6g}", "+".join(c["set"]),
+                                              c["exact"], f"{c['share_families']:.6g}",
+                                              "+".join(c["set_families"]), c["exact_families"],
+                                              json.dumps(c["per_family"], sort_keys=True)])
+                    for p in res["nobody"]:
+                        uncovered.append(head + [p, problem_family(p)])
+                    if subset == "all":
+                        lines.append(
+                            f"{name} (hv_h gap <= {tau_hv:g}) at {b}: {res['n_covered']}/"
+                            f"{res['n_problems']} covered by someone; smallest set "
+                            f"{res['size']}{'' if res['exact'] else ' (greedy, bound)'}"
+                            f" x{len(opt)}{'+' if len(opt) >= max_sets else ''}: "
+                            f"{opt[0] if opt else '-'}; greedy {len(res['greedy'])}")
+                    else:
+                        lines.append(f"    unmarked: {res['n_covered']}/{res['n_problems']}; "
+                                     f"smallest set {res['size']}: {opt[0] if opt else '-'}")
+                    if replicates:
+                        for a, share in bootstrap(hit, members, seeds, min_seeds,
+                                                  replicates).items():
+                            boot.append(head + [a, f"{share:.4f}"])
+    key = ["criterion", "tau", "tau_hv", "level", "subset", "budget"]
     heads = {
-        "cover_summary.csv": ["criterion", "tau", "tau_hv", "level", "budget", "problems",
-                              "covered_by_someone",
-                              "covered_by_nobody", "smallest_size", "smallest_sets_listed",
-                              "exact", "smallest_sets", "greedy_set", "analysis_commit"],
-        "cover_curve.csv": ["criterion", "tau", "tau_hv", "level", "budget", "k", "share", "set",
-                            "exact",
-                            "share_families_alike", "set_families_alike", "exact_families",
-                            "covered_per_family"],
-        "cover_nobody.csv": ["criterion", "tau", "tau_hv", "level", "budget", "problem",
-                             "family"],
-        "cover_bootstrap.csv": ["criterion", "tau", "tau_hv", "level", "budget", "algorithm",
-                                "share_in_smallest"],
+        "cover_summary.csv": key + ["problems", "covered_by_someone", "covered_by_nobody",
+                                    "smallest_size", "smallest_sets_listed", "exact",
+                                    "smallest_sets", "greedy_set", "analysis_commit"],
+        "cover_curve.csv": key + ["k", "share", "set", "exact", "share_families_alike",
+                                  "set_families_alike", "exact_families", "covered_per_family"],
+        "cover_nobody.csv": key + ["problem", "family"],
+        "cover_bootstrap.csv": key + ["algorithm", "share_in_smallest"],
     }
     for name, rows in (("cover_summary.csv", summary), ("cover_curve.csv", curves),
                        ("cover_nobody.csv", uncovered), ("cover_bootstrap.csv", boot)):

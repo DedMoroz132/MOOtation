@@ -70,15 +70,14 @@ Huband analyses:
               variables whose optimum is 0, the middle of [-1, 1] (medial). The
               Pareto set is 2-dimensional, so the front is a 2-dimensional
               manifold whatever M: degenerate from four objectives.
-  IPolygon    Ishibuchi, Akedo & Nojima, GECCO 2011: m = 2 identical polygons
-              in [0, 100]^2, each objective the distance to the nearer copy of
-              a vertex, so every objective has two minima (multimodal). The
-              registry's polygons are too close for the paper's equivalent
-              Pareto regions (polygon_ishibuchi.py): at three objectives the
-              Pareto set is a region between them, front unknown (None); at
-              four it is the squares' inner halves, where f2 = f4
-              ("degenerate"). Where it sits in the domain is not what the
-              construction intends: centre None.
+  IPolygon    Ishibuchi, Akedo & Nojima, GECCO 2011: m = 4 identical polygons
+              in [0, 100]^2, each objective the distance to the nearest copy
+              of a vertex, so every objective has four minima and the Pareto
+              set four equivalent regions (multimodal); the front is one
+              polygon's, as MaF8's (linear, degenerate from four objectives);
+              the polygons sit in the four quarters, not in the middle. (The
+              instance before reference version 2 had two polygons too close
+              for that: polygon_ishibuchi.py.)
 
 At M >= 4 (WFG3: M >= 3) DTLZ5, DTLZ6 and WFG3 have a non-degenerate part
 besides the curve (fronts_full.py), so their front reads "degenerate+mixed"
@@ -102,12 +101,21 @@ Besides Huband's vocabulary (task 4, item 5):
               f2), moderate (f6, f8: low or moderate conditioning),
               ill-conditioned (f13, f14), multimodal (f15, f17: adequate
               global structure), weakly-structured (f20, f21); None elsewhere
+  front_dim   d, the dimension of the Pareto front (reviewer, 2026-09-29: to
+              read a ratio to the IGD+ floor alike across M as ratio^(-d)):
+              M - 1 for a regular front, 1 at two objectives; 1 for the curves
+              of DTLZ5 and DTLZ6 at three objectives and of ZCAT14-16; 2 for
+              Polygon and IPolygon, one polygon's image whatever M; None where
+              a degenerate front is not one of those (DTLZ5/6 from four
+              objectives and WFG3, which have a non-degenerate part besides,
+              ZCAT17-20, part degenerate)
 """
 
 from __future__ import annotations
 
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
-        "degenerate", "disconnected", "linkage", "n_obj", "n_vars", "bbob_groups")
+        "degenerate", "disconnected", "linkage", "n_obj", "n_vars", "bbob_groups",
+        "front_dim")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, deceptive=False) -> dict:
@@ -219,7 +227,23 @@ def properties(name: str) -> dict | None:
         from .bbob_biobj import PAIRS
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
+    row["front_dim"] = _front_dim(stem, row["n_obj"], front)
     return row
+
+
+def _front_dim(stem: str, m: int, front: str | None) -> int | None:
+    """The Pareto front's dimension d (see front_dim above)."""
+    if m == 2:
+        return 1
+    if stem in ("Polygon", "IPolygon"):
+        return 2
+    if stem in ("DTLZ5", "DTLZ6") and m == 3:
+        return 1
+    if stem in ("ZCAT14", "ZCAT15", "ZCAT16"):
+        return 1
+    if front is not None and "degenerate" in front:
+        return None
+    return m - 1
 
 
 def _huband(name: str) -> dict | None:
@@ -265,7 +289,7 @@ def _huband(name: str) -> dict | None:
     if stem == "Polygon":
         return _p("linear+degenerate" if m >= 4 else "linear", False, False, False, False, True)
     if stem == "IPolygon":
-        return _p("degenerate" if m == 4 else None, True, False, False, False, None)
+        return _p("linear+degenerate" if m >= 4 else "linear", True, False, False, False, False)
     return None
 
 
