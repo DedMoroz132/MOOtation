@@ -1536,6 +1536,99 @@ def the_igdp_floor_is_deterministic():
 
 
 @test
+def behaviour_reads_the_descriptors_off_a_trajectory():
+    """Time to targets, settling, the convergence slope, converged-then-spreading,
+    collapse, stagnation at nd_share ~ 1, duplicates and igdx, on a made-up run;
+    and on a problem without a front, stagnation from hv_h."""
+    import math
+    from mootation.run import behaviour as B
+    rec = lambda fe, g, q, rc, nd, dup, x: {"fe": fe, "gdp_norm": g, "igdp_norm": q,  # noqa: E731
+                                            "range_cover": rc, "nd_share": nd,
+                                            "dup_share": dup, "igdx": x, "cr": 1.0}
+    recs = [rec(100, 1.0, 0.8, 0.9, 0.3, 0.0, 0.5), rec(200, 0.5, 0.5, 1.0, 0.8, 0.1, 0.4),
+            rec(400, 0.25, 0.3, 1.0, 1.0, 0.05, 0.3), rec(800, 0.0101, 0.1, 0.95, 1.0, 0.2, 0.3),
+            rec(1600, 0.01, 0.05, 0.7, 1.0, 0.1, 0.29), rec(3200, 0.01, 0.05, 0.7, 1.0, 0.1, 0.29)]
+    d = B.run_descriptors(recs, best_igdp=0.045)
+    assert (d["t_gdp_0.1"], d["t_gdp_0.03"], d["t_gdp_0.01"], d["t_gdp_0.003"]) == \
+        (800, 800, 1600, None), d
+    assert (d["t_igdp_1"], d["t_igdp_0.25"], d["t_igdp_0.1"]) == (1600, 1600, None), d
+    assert (d["settle_gdp"], d["settle_igdp"], d["settle_igdx"]) == (800, 1600, 400), d
+    assert abs(d["slope"] - math.log10(0.0101) / math.log10(8.0)) < 1e-12, d
+    assert abs(d["spread"] - math.log10(2.0)) < 1e-12, d
+    assert abs(d["rc_drop"] - 0.3) < 1e-12 and d["stall"] == 0.5, d   # nd 1 from 400, settled 1600
+    assert (d["dup_end"], d["dup_max"], d["igdx_end"], d["cr_end"]) == (0.1, 0.2, 0.29, 1.0), d
+    h = [{"fe": 100, "hv_h": 0.1, "nd_share": 1.0}, {"fe": 200, "hv_h": 0.5, "nd_share": 1.0},
+         {"fe": 400, "hv_h": 0.52, "nd_share": 1.0}, {"fe": 800, "hv_h": 0.53, "nd_share": 1.0}]
+    e = B.run_descriptors(h, best_igdp=None)
+    assert e["stall"] == 0.75 and e["t_gdp_0.1"] is None and e["slope"] is None, e
+    assert B.settle_index([1.0, 0.5, 0.5]) == 1 and B.settle_index([3.0]) == 0
+    # medians over seeds: a target never reached counts as infinitely late
+    runs = {("P", "a", s): dict(B.run_descriptors(recs, 0.045)) for s in (1, 2, 3)}
+    runs[("P", "a", 2)]["t_gdp_0.01"] = None
+    runs[("P", "a", 3)]["t_gdp_0.01"] = None
+    assert B.medians(runs)[("P", "a")]["t_gdp_0.01"] == math.inf
+    runs[("P", "a", 3)]["t_gdp_0.01"] = 400
+    assert B.medians(runs)[("P", "a")]["t_gdp_0.01"] == 1600
+
+
+@test
+def behaviour_groups_the_algorithms_by_their_profiles():
+    """Shares ranked per problem and descriptor, distance as their mean absolute
+    difference, average linkage, and the cut into k groups."""
+    from mootation.run import behaviour as B
+    names = B.descriptor_names()
+    med = {}
+    for a, v in (("x", 1.0), ("y", 2.0), ("z", 2.0)):
+        med[("P", a)] = dict.fromkeys(names)
+        med[("P", a)]["slope"] = v
+    sh = B.shares(med)
+    assert (sh["x"][("P", "slope")], sh["y"][("P", "slope")], sh["z"][("P", "slope")]) == \
+        (0.0, 0.75, 0.75), sh
+    prof = {"a1": {("p", "u"): 0.0, ("p", "v"): 0.1}, "a2": {("p", "u"): 0.05, ("p", "v"): 0.0},
+            "b1": {("p", "u"): 1.0, ("p", "v"): 0.9}, "b2": {("p", "u"): 0.95, ("p", "v"): 1.0}}
+    algs = sorted(prof)
+    dist = {(a, b): B.distance(prof[a], prof[b]) for i, a in enumerate(algs) for b in algs[i + 1:]}
+    assert abs(dist[("a1", "a2")] - 0.075) < 1e-12
+    merges = B.average_linkage(algs, dist)
+    assert len(merges) == 3 and merges[-1][0] > 0.8, merges
+    assert B.cut(algs, merges, 2) == {"a1": 1, "a2": 1, "b1": 2, "b2": 2}
+    assert B.cut(algs, merges, 4) == {"a1": 1, "a2": 2, "b1": 3, "b2": 4}
+
+
+@test
+def behaviour_runs_on_a_results_tree():
+    """--behaviour end to end on four made-up algorithms of two families: the
+    files, the commit, and the two behaviours falling into different groups."""
+    from mootation.run import behaviour as B
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        for alg, fast in (("nsga2", True), ("spea2", True), ("moead", False), ("moead_de", False)):
+            for s in (1, 2, 3):
+                d = root / "DTLZ2_3D" / alg / f"run_{s}"
+                d.mkdir(parents=True)
+                g = [0.5, 0.01, 0.01, 0.01] if fast else [0.5, 0.4, 0.2, 0.05]
+                recs = [{"fe": fe, "gdp_norm": v, "igdp_norm": 2 * v, "range_cover": 1.0,
+                         "nd_share": 1.0, "dup_share": 0.0 if fast else 0.3}
+                        for fe, v in zip((100, 1000, 5000, 10000), g)]
+                (d / "trajectory.jsonl").write_text("".join(json.dumps(r) + "\n" for r in recs),
+                                                    encoding="utf-8")
+                (d / "meta.json").write_text(json.dumps(
+                    {"problem": "DTLZ2_3D", "algorithm": alg, "seed": s, "status": "done",
+                     "final": {"igdp_norm": 2 * g[-1]}}), encoding="utf-8")
+        text = B.run(root)
+        out = root / "_behaviour"
+        for f in ("behaviour_meta.json", "behaviour_runs.csv", "behaviour_medians.csv",
+                  "behaviour_profile.csv", "behaviour_merges.csv", "behaviour_report.txt"):
+            assert (out / f).is_file(), f
+        meta = json.loads((out / "behaviour_meta.json").read_text(encoding="utf-8"))
+        assert "commit" in meta["analysis"] and meta["settle"] == B.SETTLE
+        assert "12 runs, 1 problems, 4 algorithms" in text, text
+        with (out / "behaviour_profile.csv").open(newline="", encoding="utf-8") as fh:
+            group = {r["algorithm"]: r["group"] for r in csv.DictReader(fh)}
+        assert group["nsga2"] == group["spea2"] != group["moead"] == group["moead_de"], group
+
+
+@test
 def metrics_agree_with_closed_forms():
     try:
         import numpy as np
@@ -2387,17 +2480,20 @@ def statistics_match_hand_computed_cases():
 
 @test
 def every_campaign_problem_has_a_property_row():
-    """properties.py covers campaign_all's problem list; the groups read key=value."""
+    """properties.py covers the problem lists of campaign_all and of stage 3
+    (MOP, BT, Polygon, IPolygon); the groups read key=value."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     from mootation.benchmarks.properties import KEYS, label, properties
     from mootation.run.config import load
-    cfg = load(HERE / "examples" / "campaign_all.toml")
-    assert validate(cfg) == [], validate(cfg)[:3]
-    names = cfg.benchmark_problems
-    assert len(names) > 100, len(names)
-    missing = [n for n in names if properties(n) is None]
-    assert not missing, missing[:10]
+    for camp, least in (("campaign_all.toml", 100), ("campaign_stage3.toml", 225)):
+        cfg = load(HERE / "examples" / camp)
+        assert validate(cfg) == [], (camp, validate(cfg)[:3])
+        names = cfg.benchmark_problems
+        assert len(names) >= least, (camp, len(names))
+        missing = [n for n in names if properties(n) is None]
+        assert not missing, (camp, missing[:10])
+        assert all(set(properties(n)) == set(KEYS) for n in names), camp
     assert properties("DTLZ5_3D")["front"] == "degenerate"
     assert properties("DTLZ5_5D")["front"] == "degenerate+mixed"
     assert properties("WFG3_3D")["front"] == "degenerate+mixed"
@@ -2405,7 +2501,26 @@ def every_campaign_problem_has_a_property_row():
     assert properties("SDTLZ1_3D")["scaled"] is True
     assert label("WFG5_3D", "deceptive") == "deceptive=yes"
     assert label("ZCAT1_3D", "front") == "front=?"
-    assert set(KEYS) == set(properties("ZDT1")), properties("ZDT1")
+    # the keys beyond Huband's
+    assert properties("DTLZ5_3D")["degenerate"] is True and not properties("DTLZ2_3D")["degenerate"]
+    assert properties("ZCAT1_3D")["degenerate"] is None
+    assert properties("MOP4")["disconnected"] is True and properties("BT5")["disconnected"] is True
+    assert properties("MOP1")["linkage"] and properties("ZCAT1_3D")["linkage"]
+    assert [properties(f"BT{i}")["linkage"] for i in range(1, 10)] == \
+        [False] * 5 + [True] * 3 + [False]
+    assert properties("DTLZ2_3D")["linkage"] is False and properties("WFG4_3D")["linkage"] is None
+    assert properties("BT8")["multimodal"] and not properties("BT7")["multimodal"]
+    assert properties("Polygon_3D")["front"] == "linear"
+    assert properties("Polygon_4D")["degenerate"] is True
+    assert properties("IPolygon_3D")["multimodal"] is True
+    # the registry's polygons are too close (polygon_ishibuchi.py)
+    assert properties("IPolygon_3D")["front"] is None and properties("IPolygon_4D")["degenerate"]
+    assert (properties("ZDT1")["n_obj"], properties("ZDT1")["n_vars"]) == (2, 30)
+    assert properties("DTLZ2_5D")["n_obj"] == 5
+    assert properties("bbobbiobj01_n05_2D")["bbob_groups"] == "separable+separable"
+    assert properties("bbobbiobj55_n10_2D")["bbob_groups"] == "weakly-structured+weakly-structured"
+    assert properties("ZDT1")["bbob_groups"] is None
+    assert label("BT7", "linkage") == "linkage=yes"
 
 
 @test

@@ -14,7 +14,8 @@ The campaign CLI (python -m mootation.run.campaign) calls these:
   property_ranks    --ranks METRIC --by KEY: mean ranks within each group of
                     problems sharing a property (benchmarks/properties.py:
                     front, multimodal, deceptive, bias, scaled, separable,
-                    centre).
+                    centre, degenerate, disconnected, linkage, n_obj, n_vars,
+                    bbob_groups).
   gap_report        --gap METRIC: each algorithm's distance to the best value
                     any run reached, per problem, in the metric's own units.
   zero_share_report --zero-share: the share of seeds whose hypervolume is 0.

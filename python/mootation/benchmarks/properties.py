@@ -49,14 +49,65 @@ Huband analyses:
               closed form (None), x_opt is uniform in [-4, 4]^n (not medial),
               no bias is built in.
 
+  MOP1-7      Liu, Gu & Zhang, IEEE TEVC 18(3), 2014, Section III-C: the fronts
+              as the paper states them (MOP1, 5 convex, MOP2, 3, 7 concave,
+              MOP4 discontinuous, MOP6 linear); every Pareto set is nonlinear,
+              x_j = sin(0.5 pi x_1) or x_1 x_2 (linkage, not separable, not
+              medial). The paper does not classify modality: read off g,
+              MOP1, 5, 6, 7's -0.9 t^2 + |t|^0.6 has a second basin at |t| = 1,
+              the edge of the domain (multimodal), MOP2-4's |t|/(1 + e^|t|)
+              rises all the way (not). Its "imbalance" (g multiplied by
+              sin(pi x_1), zero at the ends) is none of Huband's biases: None.
+  BT1-9       Li, Zhang & Deng, IEEE TCYB 47(1), 2017, Section III-B: every
+              problem has a distance-related bias (bias), BT3 and BT4 a
+              position-related one too; BT5's front is disconnected, BT9's the
+              octant of the sphere, the others f2 = 1 - sqrt(f1) (convex); BT6
+              and BT8 have simple nonlinear Pareto sets and BT7 a complicated
+              one (linkage), the others constant optima sin(j pi / 2n)
+              (separable, not medial); BT8 is multimodal.
+  Polygon     a MOOtation construction (polygon.py): MaF8 of Cheng et al. 2017
+              — "Linear, degenerate" in their Table 1 — with extra distance
+              variables whose optimum is 0, the middle of [-1, 1] (medial). The
+              Pareto set is 2-dimensional, so the front is a 2-dimensional
+              manifold whatever M: degenerate from four objectives.
+  IPolygon    Ishibuchi, Akedo & Nojima, GECCO 2011: m = 2 identical polygons
+              in [0, 100]^2, each objective the distance to the nearer copy of
+              a vertex, so every objective has two minima (multimodal). The
+              registry's polygons are too close for the paper's equivalent
+              Pareto regions (polygon_ishibuchi.py): at three objectives the
+              Pareto set is a region between them, front unknown (None); at
+              four it is the squares' inner halves, where f2 = f4
+              ("degenerate"). Where it sits in the domain is not what the
+              construction intends: centre None.
+
 At M >= 4 (WFG3: M >= 3) DTLZ5, DTLZ6 and WFG3 have a non-degenerate part
 besides the curve (fronts_full.py), so their front reads "degenerate+mixed"
 there.
+
+Besides Huband's vocabulary (task 4, item 5):
+
+  degenerate, disconnected
+              read off `front`: True when it names that geometry, None when
+              the front is unknown
+  linkage     the optimum of a distance variable depends on the position
+              variables — a curved Pareto set (Li & Zhang, IEEE TEVC 13(2),
+              2009): ZCAT at its defaults, MOP, BT6-8; not ZDT, DTLZ and its
+              variants, BT1-5 and 9, Polygon, whose optima are constants.
+              None where no source puts it so: WFG (its parameter-dependent
+              biases are stated as biases, Huband Table XV), IPolygon (no
+              distance variables), bbob-biobj (no closed form)
+  n_obj, n_vars  M and D of the registry entry
+  bbob_groups the two function groups of a bbob-biobj pair (Brockhoff et al.
+              2022, Section 5.1), sorted and joined by "+": separable (f1,
+              f2), moderate (f6, f8: low or moderate conditioning),
+              ill-conditioned (f13, f14), multimodal (f15, f17: adequate
+              global structure), weakly-structured (f20, f21); None elsewhere
 """
 
 from __future__ import annotations
 
-KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre")
+KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
+        "degenerate", "disconnected", "linkage", "n_obj", "n_vars", "bbob_groups")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, deceptive=False) -> dict:
@@ -113,6 +164,22 @@ for _i in (17, 18, 19, 20):
 
 _BBOB_SEPARABLE = {1, 2}
 _BBOB_MULTIMODAL = {15, 17, 20, 21}
+_BBOB_GROUP = {1: "separable", 2: "separable", 6: "moderate", 8: "moderate",
+               13: "ill-conditioned", 14: "ill-conditioned", 15: "multimodal",
+               17: "multimodal", 20: "weakly-structured", 21: "weakly-structured"}
+
+# Liu, Gu & Zhang 2014, Section III-C (see the module docstring)
+_MOP_FRONT = {1: "convex", 2: "concave", 3: "concave", 4: "disconnected", 5: "convex",
+              6: "linear", 7: "concave"}
+_MOP_MULTIMODAL = {1: True, 2: False, 3: False, 4: False, 5: True, 6: True, 7: True}
+
+# Li, Zhang & Deng 2017, Section III-B and Appendix A
+_BT_FRONT = {i: "convex" for i in (1, 2, 3, 4, 6, 7, 8)}
+_BT_FRONT.update({5: "disconnected", 9: "concave"})
+_BT_LINKAGE = {6, 7, 8}
+
+# the curved Pareto sets (linkage), by family; WFG, IPolygon, bbob: None
+_LINKAGE = {"ZDT": False, "DTLZ": False, "ZCAT": True, "MOP": True, "Polygon": False}
 
 
 def _stem_and_m(name: str) -> tuple:
@@ -124,6 +191,39 @@ def _stem_and_m(name: str) -> tuple:
 
 def properties(name: str) -> dict | None:
     """The row for one registry name, or None for a problem the table lacks."""
+    row = _huband(name)
+    if row is None:
+        return None
+    stem, m = _stem_and_m(name)
+    front = row["front"]
+    row["degenerate"] = None if front is None else "degenerate" in front
+    row["disconnected"] = None if front is None else "disconnected" in front
+    if stem.startswith("BT"):
+        row["linkage"] = int(stem[2:]) in _BT_LINKAGE
+    elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "IDTLZ", "SDTLZ")):
+        row["linkage"] = False
+    elif stem.startswith("ZCAT"):
+        row["linkage"] = _LINKAGE["ZCAT"]
+    elif stem.startswith("MOP"):
+        row["linkage"] = _LINKAGE["MOP"]
+    elif stem == "Polygon":
+        row["linkage"] = _LINKAGE["Polygon"]
+    else:
+        row["linkage"] = None
+    from .registry import PROBLEMS
+    p = PROBLEMS.get(name)
+    row["n_obj"] = p.n_obj if p is not None else m
+    row["n_vars"] = p.n_vars if p is not None else None
+    row["bbob_groups"] = None
+    if stem.startswith("bbobbiobj"):
+        from .bbob_biobj import PAIRS
+        fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
+        row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
+    return row
+
+
+def _huband(name: str) -> dict | None:
+    """Huband's seven keys for one registry name, or None."""
     stem, m = _stem_and_m(name)
     if stem in _ZDT:
         return dict(_ZDT[stem])
@@ -156,6 +256,16 @@ def properties(name: str) -> dict | None:
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
         return _p(None, fa in _BBOB_MULTIMODAL or fb in _BBOB_MULTIMODAL, False, None,
                   fa in _BBOB_SEPARABLE and fb in _BBOB_SEPARABLE, False)
+    if stem.startswith("MOP") and stem[3:].isdigit():
+        i = int(stem[3:])
+        return _p(_MOP_FRONT[i], _MOP_MULTIMODAL[i], None, False, False, False)
+    if stem.startswith("BT") and stem[2:].isdigit():
+        i = int(stem[2:])
+        return _p(_BT_FRONT[i], i == 8, True, False, i not in _BT_LINKAGE, False)
+    if stem == "Polygon":
+        return _p("linear+degenerate" if m >= 4 else "linear", False, False, False, False, True)
+    if stem == "IPolygon":
+        return _p("degenerate" if m == 4 else None, True, False, False, False, None)
     return None
 
 

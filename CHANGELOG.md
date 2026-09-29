@@ -162,6 +162,18 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `--behaviour` (task 4, item 4): descriptors of every run from its trajectory
+  — time to `gdp_norm` targets and to `igdp_norm` within a factor of the
+  campaign's best, where both settle, the convergence slope, whether the
+  coverage kept improving after the convergence stopped, the collapse of
+  `range_cover`, stagnation at `nd_share` ≈ 1, `dup_share`, `igdx` and `cr` —
+  their medians per problem and algorithm, and the algorithms grouped by
+  those profiles (average linkage) beside the families `algorithms.def`
+  declares. CSV under `<results>/_behaviour/`.
+- Problem properties (task 4, item 5): `degenerate`, `disconnected`,
+  `linkage`, `n_obj`, `n_vars` and `bbob_groups` beside Huband's keys, and rows
+  for MOP1-7 (Liu, Gu & Zhang 2014), BT1-9 (Li, Zhang & Deng 2017), Polygon and
+  IPolygon; every stage-3 problem has one. `--ranks --by` takes the new keys.
 - What the stage-3 trajectories need (task 4). **Variables at the records**:
   `mootation._core.current_variables()` returns, from an `on_generation`
   observer, the variables of the rows it has just received, so a campaign
@@ -555,6 +567,17 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- The IPolygon header claimed every point inside the two polygons is
+  Pareto-optimal. Ishibuchi, Akedo & Nojima (2011, Section 2) state that only
+  for polygons "not too close", and the registry's (radius 20, centres 40
+  apart) are: at three objectives the Pareto set is a region between the
+  triangles and 862 of the 1 000 reference points are dominated; at four only
+  the squares' inner halves are Pareto-optimal (f2 = f4 there), and 523 of the
+  reference points and half of `pareto_set`'s are dominated. The header now
+  says so; the code is unchanged, as the stage-3 campaign ran it, and the
+  IPolygon values of IGD+, IGDX and PSP are not to be trusted. The Polygon
+  header said the front is (M-1)-dimensional; it is 2-dimensional whatever M,
+  degenerate from four objectives, as MaF8's.
 - `--cover` and `--at` lost a budget-dependent algorithm on every problem
   whose population does not divide the budget: a run's `budget_fe` rounds the
   budget up to whole generations (25 025 at a population of 91), so `--cover`

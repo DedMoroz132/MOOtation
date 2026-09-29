@@ -14,13 +14,34 @@
 # A problem posed in a 2D DECISION space [0, 100]^2 containing m identical
 # regular polygons of k vertices each. The objective count is k, and
 # f_i(x) = the distance from x to the i-th vertex, minimized over the m
-# polygons. Every point inside a polygon is Pareto-optimal, so there are m
-# EQUIVALENT Pareto regions in decision space — which is the point: this is a
-# test of decision-space diversity, where objective-space metrics alone cannot
-# tell whether an algorithm found one region or all of them.
+# polygons. The paper: "When all polygons are the same and they are not too
+# close, all points inside the polygons (including the sides) are Pareto
+# optimal" — m EQUIVALENT Pareto regions in decision space, which is the
+# point: a test of decision-space diversity, where objective-space metrics
+# alone cannot tell whether an algorithm found one region or all of them.
+#
+# THIS INSTANCE'S POLYGONS ARE TOO CLOSE (found 2026-09-29). With radius 20
+# and centres 40 apart the squares share the vertex (50, 50) and the
+# triangles' lower vertices are 5.4 apart, and the condition fails. Checked on
+# a 401 x 401 grid of [0, 100]^2 and, exactly, for each point of a polygon
+# against its twin moved by (40, 0) into the other polygon:
+#   * three objectives: the Pareto set is a region between the polygons
+#     (x1 about 27.5-72.5, x2 40-70); 862 of the 1 000 points pf(1000)
+#     returns are dominated by a grid point, 866 of ps(1000)'s;
+#   * four objectives: only the inner halves of the squares (x1 30-70) are
+#     Pareto-optimal. A point p of the left square's outer half is dominated
+#     by p + (40, 0): f1, f2, f3 equal, f4 smaller (the right square's vertex
+#     4 is the left one's vertex 2 moved by (40, 0)). On the inner halves
+#     f2 = f4: the front is degenerate. 523 of pf(1000)'s points and 500 of
+#     ps(1000)'s are dominated so.
+# So pf(n) (one polygon's image) and ps(n) (both polygons) are NOT this
+# instance's Pareto front and set, and IGD+, IGDX and PSP measured against
+# them are off. The code is left as it ran in the stage-3 campaign; a
+# corrected instance needs polygons far enough apart, verified the paper's
+# way (a dense grid, Section 2).
 #
 # Provides: eval(x) -> [f...]; pf(n) -> objective vectors (one polygon);
-# ps(n) -> points of the Pareto SET across all m regions, for IGDX and PSP.
+# ps(n) -> points of both polygons, for IGDX and PSP (see above).
 # ============================================================================
 from __future__ import annotations
 from typing import List

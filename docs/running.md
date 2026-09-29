@@ -618,6 +618,7 @@ python -m mootation.run.campaign c.toml --eps-table                      # A aga
 python -m mootation.run.campaign c.toml --magnitude                      # experiment D7
 python -m mootation.run.campaign c.toml --cover --workers 8              # sets that cover the problems
 python -m mootation.run.campaign c.toml --cover --scenario archive       # the same for the run archives
+python -m mootation.run.campaign c.toml --behaviour --workers 8          # how the runs behave, grouped
 python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
 ```
 
@@ -643,7 +644,10 @@ python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --worker
   (the optimum in the middle of the box). The values are Huband, Hingston,
   Barone & While's (IEEE TEVC 10(5), 2006, Tables V, VII and XV) for ZDT, DTLZ
   and WFG and are argued in `mootation/benchmarks/properties.py` for the rest;
-  unknown is `?`, never guessed.
+  unknown is `?`, never guessed. Besides these: `degenerate` and `disconnected`
+  (read off the front), `linkage` (a distance variable's optimum depends on the
+  position variables: a curved Pareto set), `n_obj`, `n_vars`, and for
+  bbob-biobj `bbob_groups`, the function groups of the pair.
 - `--gap METRIC`: every algorithm's median distance to the best final value
   any run reached on each problem — a common zero across problems whose raw
   values differ by orders of magnitude.
@@ -723,6 +727,22 @@ python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --worker
   the reduced archive instead: `final_archive` at the full budget, the archive
   checkpoints below it, a rung's `final_archive` for a budget-dependent
   algorithm; CSV in `<results>/_cover_archive/`.
+- `--behaviour`: how each run behaved, read off its trajectory — the
+  evaluations until `gdp_norm` reaches 0.1, 0.03, 0.01, 0.003 and until
+  `igdp_norm` comes within 2, 1.5, 1.25, 1.1 times the best any run of the
+  campaign reached (not the IGD+ floor of `--cover`); where `gdp_norm` and
+  `igdp_norm` settle (never again more than 10 % better); the slope of
+  log `gdp_norm` against log evaluations until it settles; `spread`, whether
+  the coverage kept improving after the convergence stopped; the collapse of
+  `range_cover`; `stall`, the share of the budget spent with the population
+  non-dominated for good and the quality settled; `dup_share`; `igdx` and `cr`
+  where the problem has a Pareto set. Medians over the seeds per problem and
+  algorithm; then, per problem and descriptor, the algorithms ranked into
+  shares from 0 to 1, and grouped by average linkage on the mean difference of
+  their shares into as many groups as there are declared families, set beside
+  the families. CSV in `<results>/_behaviour/` (`behaviour_meta.json` records
+  the commit of the analysis code); `mootation/run/behaviour.py` defines every
+  descriptor.
 
 **Budget-dependent algorithms.** Seventeen algorithms schedule something by
 the share of the budget spent — RVEA's angle penalty t/t_max, the adaptation

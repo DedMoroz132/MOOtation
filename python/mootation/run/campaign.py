@@ -1659,7 +1659,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--by", metavar="KEY",
                     help="with --ranks: mean ranks within groups of problems sharing a "
                          "property: front, multimodal, deceptive, bias, scaled, separable, "
-                         "centre (benchmarks/properties.py)")
+                         "centre, degenerate, disconnected, linkage, n_obj, n_vars, "
+                         "bbob_groups (benchmarks/properties.py)")
     ap.add_argument("--gap", metavar="METRIC",
                     help="print each algorithm's median gap to the best final METRIC any run "
                          "reached, per problem, and exit")
@@ -1713,6 +1714,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cover-bootstrap", type=int, default=0, metavar="N",
                     help="with --cover: N resamplings of the seeds, and how often each "
                          "algorithm is in a smallest set (0: off)")
+    ap.add_argument("--behaviour", action="store_true",
+                    help="describe every run from its trajectory (time to targets, "
+                         "convergence slope, converged-then-spreading, collapse, stagnation, "
+                         "duplicates, igdx), and group the algorithms by those profiles beside "
+                         "their declared families (behaviour.py); CSV under <results>/_behaviour/")
     args = ap.parse_args(argv)
 
     try:
@@ -1842,6 +1848,14 @@ def main(argv: list[str] | None = None) -> int:
                     replicates=args.cover_bootstrap, workers=args.workers,
                     scenario=args.scenario, n_ref=spec.n_ref,
                     keep_caveats=args.cover_keep_caveats))
+        return 0
+    if args.behaviour:
+        if args.scenario == "archive":
+            print("--behaviour reads the population's trajectories: drop --scenario archive",
+                  file=sys.stderr)
+            return 1
+        from . import behaviour as B
+        print(B.run(root, workers=args.workers, problems=only_problems))
         return 0
     rows = None
     if args.bias or set_tables or any(v is not None for v in (

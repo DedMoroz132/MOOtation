@@ -23,8 +23,11 @@
 #
 # Bounds: x_1, x_2 in [-1, 1] (position); x_3..x_n in [-1, 1] (distance).
 #
-# Pareto front: the interior of the M-gon (precisely, the convex hull of its
-# vertices) — an (M-1)-dimensional manifold in objective space.
+# Pareto set: the interior of the M-gon in (x_1, x_2) (precisely, the convex
+# hull of its vertices), with the distance variables at 0. Pareto front: its
+# image, a 2-dimensional manifold in objective space whatever M (corrected
+# 2026-09-29; this said (M-1)-dimensional): degenerate from four objectives,
+# as MaF8 is — "Linear, degenerate" in Cheng et al. 2017, Table 1.
 #
 # Ideal / nadir: ideal_m = 0, reached at vertex m itself; nadir_m = 2, the
 # diameter of the unit circle, an upper bound on max f_m over the front.
