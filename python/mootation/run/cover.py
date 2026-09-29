@@ -32,6 +32,24 @@ run can go below it (DSS is not the best subset); GD+ has a floor of 0, so its
 levels stay absolute. The floors are written out (igdp_floor.csv) and read back
 by the next analysis of the same results.
 
+KNOWN REFERENCE PROBLEMS (owner and reviewer, 2026-09-29). Where the reference
+front itself is doubtful, no level says anything: DTLZ5, DTLZ6 and MaF6 from
+four objectives (degenerate fronts the sample does not fill), WFG3 (its
+degenerate front, incomplete in the sample at three objectives and more), DTLZ1
+at five objectives (a fifth of the reference on the front's boundary). These
+problems are left out of the coverage (cover_excluded.csv says which and why)
+unless keep_caveats is set, and marked in floor_review.csv.
+
+WHAT IS WRITTEN. cover_meta.json: the commit of the analysis code (and whether
+its tree differed), the scheme of the levels, the lists and the problems left
+out; every CSV row says its level in words ("igdp_norm <= 2 x floor | hv_h gap
+<= 0.1"), and cover_summary.csv the commit too, so that absolute and
+floor-based levels are never confused. floor_review.csv: per problem with a
+front, the floor beside the best igdp_norm any run reached at the full budget,
+the best algorithm's median over its seeds and the value that decides coverage
+(its min_seeds-th best seed), as ratios to the floor: a ratio below 1 says the
+floor is too high, far above 2 on an easy problem says it is too strict.
+
 AT A BUDGET. A run's value at b evaluations is its final value when b is its
 budget; for a budget-dependent algorithm (budget.py), the final value of its
 ladder rung of budget b; for any other, the first trajectory record at or
@@ -70,6 +88,20 @@ FLOOR_TAUS = (1.0, 0.5, 0.25, 0.1)                       # igdp_norm <= (1 + tau
 BUDGETS = (2500, 5000, 10000, 25000)
 CRITERIA = {"igdp": "igdp_norm", "gdp": "gdp_norm"}      # criterion -> metric with a front
 METRICS = ("igdp_norm", "gdp_norm", "hv_h")
+
+
+def reference_caveat(problem: str) -> str | None:
+    """Why a problem's reference front is doubtful (KNOWN REFERENCE PROBLEMS),
+    or None."""
+    family, _, rest = problem.partition("_")
+    m = int(rest[:-1]) if rest.endswith("D") and rest[:-1].isdigit() else None
+    if family in ("DTLZ5", "DTLZ6", "MaF6") and m is not None and m >= 4:
+        return "degenerate front; the reference sample does not fill it from four objectives"
+    if family == "WFG3" and m is not None and m >= 3:
+        return "degenerate WFG3 front; the reference sample is incomplete"
+    if family == "DTLZ1" and m == 5:
+        return "a fifth of the reference lies on the front's boundary"
+    return None
 NODE_LIMIT = 2_000_000
 
 
@@ -219,6 +251,46 @@ def floors(problems, n_ref: int, path: Path, workers: int = 1) -> dict:
             for prob in sorted(have):
                 w.writerow([prob, bench_get(prob).pop_size, n_ref, f"{have[prob]:.10g}"])
     return have
+
+
+def floor_review(data: dict, floor: dict, min_seeds: int) -> list:
+    """Rows of floor_review.csv (WHAT IS WRITTEN): per problem with a floor, the
+    best igdp_norm of any full-budget run, the best algorithm's median over its
+    seeds, and the smallest min_seeds-th best seed over the algorithms (what a
+    level has to admit for somebody to cover the problem), each beside its ratio
+    to the floor."""
+    from ..benchmarks import get as bench_get
+    scenario = data.get("scenario", "final")
+    runs: dict = {}                                     # problem -> algorithm -> [(v, seed, n)]
+    for r in data["main"]:
+        if r["problem"] not in floor:
+            continue
+        end = _end(r, scenario)
+        v = end.get("igdp_norm")
+        if v is None or not math.isfinite(float(v)):
+            continue
+        runs.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(
+            (float(v), r["seed"], end.get("n_final") or end.get("n")))
+    rows = []
+    for prob in sorted(floor):
+        f = floor[prob]
+        by_alg = runs.get(prob, {})
+        p = bench_get(prob)
+        row = {"problem": prob, "n_obj": p.n_obj, "pop": p.pop_size, "floor": f,
+               "caveat": reference_caveat(prob) or ""}
+        if by_alg and f > 0:
+            best = min((v, a, s, n) for a, vs in by_alg.items() for v, s, n in vs)
+            med = min((_median([v for v, _, _ in vs]), a) for a, vs in by_alg.items())
+            kth = [(sorted(v for v, _, _ in vs)[min_seeds - 1], a) for a, vs in by_alg.items()
+                   if len(vs) >= min_seeds]
+            row.update(best=best[0], best_ratio=best[0] / f, best_algorithm=best[1],
+                       best_seed=best[2], best_n=best[3],
+                       median=med[0], median_ratio=med[0] / f, median_algorithm=med[1])
+            if kth:
+                k = min(kth)
+                row.update(kth=k[0], kth_ratio=k[0] / f, kth_algorithm=k[1])
+        rows.append(row)
+    return rows
 
 
 def best_known_hv(data: dict) -> dict:
@@ -466,7 +538,8 @@ def bootstrap(hit: dict, problems: list, seeds: list, min_seeds: int, replicates
 
 def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_seeds: int = 7,
         max_sets: int = 20, replicates: int = 0, workers: int = 1,
-        out_dir: Path | None = None, scenario: str = "final", n_ref: int = 1000) -> str:
+        out_dir: Path | None = None, scenario: str = "final", n_ref: int = 1000,
+        keep_caveats: bool = False) -> str:
     """The whole analysis: text for the terminal; CSV files in out_dir. Level k
     is floor_taus[k] for igdp, taus[k] for gdp, taus[k] for the hv_h gap."""
     if len(floor_taus) != len(taus):
@@ -493,6 +566,59 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
                    out_dir / "igdp_floor.csv", workers=workers)
     lines.append(f"  igdp levels from each problem's floor (igdp_floor.csv): median "
                  f"{_median(floor.values()):.4g}" if floor else "  no problem with a front")
+    # what the levels are and which code drew them (WHAT IS WRITTEN)
+    import time
+    from .. import __version__
+    from .provenance import revision
+    rev = revision()
+    commit = (rev.get("commit") or "unknown")[:12] + ("+dirty" if rev.get("dirty") else "")
+    caveats = {p: reference_caveat(p) for p in problems if reference_caveat(p)}
+    excluded = {} if keep_caveats else caveats
+    meta = {
+        "analysis": {"mootation": __version__, "commit": rev.get("commit"),
+                     "dirty": rev.get("dirty"), "source": rev.get("source")},
+        "results": str(root), "scenario": scenario,
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "levels": {
+            "igdp": "igdp_norm <= (1 + tau) x floor, tau in floor_taus; floor = IGD+ in "
+                    "igdp_norm's frame of the N points (N = the problem's population) DSS "
+                    "selects from the n_ref-point reference front, against that reference",
+            "gdp": "gdp_norm <= tau, tau in taus (absolute: GD+ has a floor of 0)",
+            "hv_h": "problems without a reference front, both criteria: (best - hv_h) / best "
+                    "<= tau, tau in taus (absolute); best = the campaign's best final hv_h",
+            "level_k": "level k pairs floor_taus[k] (igdp) or taus[k] (gdp) with taus[k] (hv_h)",
+        },
+        "taus": list(taus), "floor_taus": list(floor_taus), "budgets": list(budgets),
+        "min_seeds": min_seeds, "n_ref": n_ref, "keep_caveats": keep_caveats,
+        "excluded": excluded, "floor_file": "igdp_floor.csv",
+    }
+    (out_dir / "cover_meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
+    with (out_dir / "cover_excluded.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["problem", "reason", "excluded"])
+        for p_ in sorted(caveats):
+            w.writerow([p_, caveats[p_], p_ in excluded])
+    if caveats:
+        lines.append(f"  {len(caveats)} problems with a doubtful reference front "
+                     f"(cover_excluded.csv): {'kept' if keep_caveats else 'left out'}: "
+                     f"{', '.join(sorted(caveats))}")
+    review = floor_review(data, floor, min_seeds)
+    review_cols = ["problem", "n_obj", "pop", "floor", "best", "best_ratio", "best_algorithm",
+                   "best_seed", "best_n", "median", "median_ratio", "median_algorithm", "kth",
+                   "kth_ratio", "kth_algorithm", "caveat"]
+    with (out_dir / "floor_review.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(review_cols)
+        for r_ in review:
+            w.writerow([f"{r_[c]:.6g}" if isinstance(r_.get(c), float) else r_.get(c, "")
+                        for c in review_cols])
+    ratios = [r_["best_ratio"] for r_ in review if "best_ratio" in r_ and not r_["caveat"]]
+    if ratios:
+        lines.append(f"  best igdp_norm / floor (floor_review.csv): median {_median(ratios):.3g}; "
+                     f"below 1 on {sum(v < 1 for v in ratios)}, above 2 on "
+                     f"{sum(v > 2 for v in ratios)} of {len(ratios)} problems")
+    kept = [p_ for p_ in problems if p_ not in excluded]
+    kept_set = set(kept)
     no_front = [p for p in problems if not data["front"].get(p)]
     if no_front:
         lines.append(f"  {len(no_front)} problems without a reference front: the relative gap "
@@ -508,22 +634,25 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
     for crit in CRITERIA:
         for tau, tau_hv in levels[crit]:
             name = (f"igdp <= {1 + tau:g} x floor" if crit == "igdp" else f"gdp <= {tau:g}")
+            level = (f"igdp_norm <= {1 + tau:g} x floor" if crit == "igdp"
+                     else f"gdp_norm <= {tau:g}") + f" | hv_h gap <= {tau_hv:g}"
             for b in budgets:
-                hit = reached(data, crit, (tau, tau_hv), b, best_hv, floor)
+                hit = {p_: v for p_, v in reached(data, crit, (tau, tau_hv), b, best_hv,
+                                                    floor).items() if p_ in kept_set}
                 cov = successes(hit, min_seeds)
-                res = analyse(cov, problems, problem_family, max_sets=max_sets)
+                res = analyse(cov, kept, problem_family, max_sets=max_sets)
                 opt = ["+".join(s) for s in res["optimal"]]
-                summary.append([crit, tau, tau_hv, b, res["n_problems"], res["n_covered"],
+                summary.append([crit, tau, tau_hv, level, b, res["n_problems"], res["n_covered"],
                                 len(res["nobody"]), res["size"], len(opt), res["exact"],
-                                " | ".join(opt), "+".join(res["greedy"])])
+                                " | ".join(opt), "+".join(res["greedy"]), commit])
                 for c in res["curve"]:
-                    curves.append([crit, tau, tau_hv, b, c["k"], f"{c['share']:.6g}",
+                    curves.append([crit, tau, tau_hv, level, b, c["k"], f"{c['share']:.6g}",
                                    "+".join(c["set"]),
                                    c["exact"], f"{c['share_families']:.6g}",
                                    "+".join(c["set_families"]), c["exact_families"],
                                    json.dumps(c["per_family"], sort_keys=True)])
                 for p in res["nobody"]:
-                    uncovered.append([crit, tau, tau_hv, b, p, problem_family(p)])
+                    uncovered.append([crit, tau, tau_hv, level, b, p, problem_family(p)])
                 lines.append(
                     f"{name} (hv_h gap <= {tau_hv:g}) at {b}: {res['n_covered']}/"
                     f"{res['n_problems']} covered by "
@@ -531,19 +660,21 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
                     f" x{len(opt)}{'+' if len(opt) >= max_sets else ''}: {opt[0] if opt else '-'}"
                     f"; greedy {len(res['greedy'])}")
                 if replicates:
-                    for a, share in bootstrap(hit, problems, seeds, min_seeds,
+                    for a, share in bootstrap(hit, kept, seeds, min_seeds,
                                               replicates).items():
-                        boot.append([crit, tau, tau_hv, b, a, f"{share:.4f}"])
+                        boot.append([crit, tau, tau_hv, level, b, a, f"{share:.4f}"])
     heads = {
-        "cover_summary.csv": ["criterion", "tau", "tau_hv", "budget", "problems",
+        "cover_summary.csv": ["criterion", "tau", "tau_hv", "level", "budget", "problems",
                               "covered_by_someone",
                               "covered_by_nobody", "smallest_size", "smallest_sets_listed",
-                              "exact", "smallest_sets", "greedy_set"],
-        "cover_curve.csv": ["criterion", "tau", "tau_hv", "budget", "k", "share", "set", "exact",
+                              "exact", "smallest_sets", "greedy_set", "analysis_commit"],
+        "cover_curve.csv": ["criterion", "tau", "tau_hv", "level", "budget", "k", "share", "set",
+                            "exact",
                             "share_families_alike", "set_families_alike", "exact_families",
                             "covered_per_family"],
-        "cover_nobody.csv": ["criterion", "tau", "tau_hv", "budget", "problem", "family"],
-        "cover_bootstrap.csv": ["criterion", "tau", "tau_hv", "budget", "algorithm",
+        "cover_nobody.csv": ["criterion", "tau", "tau_hv", "level", "budget", "problem",
+                             "family"],
+        "cover_bootstrap.csv": ["criterion", "tau", "tau_hv", "level", "budget", "algorithm",
                                 "share_in_smallest"],
     }
     for name, rows in (("cover_summary.csv", summary), ("cover_curve.csv", curves),
@@ -554,5 +685,5 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
             w = csv.writer(fh)
             w.writerow(heads[name])
             w.writerows(rows)
-    lines.append(f"CSV: {out_dir}")
+    lines.append(f"CSV: {out_dir} (analysis code {commit}; levels in cover_meta.json)")
     return "\n".join(lines)

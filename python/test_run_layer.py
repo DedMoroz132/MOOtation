@@ -10,6 +10,7 @@ requiring pytest to test a zero-dependency package would defeat the point.
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 import tempfile
@@ -1484,6 +1485,54 @@ def the_igdp_floor_is_what_n_points_on_the_front_leave():
         path.write_text(path.read_text(encoding="utf-8").replace(f"{f3:.10g}", "0.5"),
                         encoding="utf-8")
         assert V.floors(["DTLZ2_3D"], 1000, path) == {"DTLZ2_3D": 0.5}   # read, not recomputed
+
+
+@test
+def cover_sets_aside_the_problems_with_a_doubtful_reference():
+    """DTLZ5, DTLZ6 and MaF6 from four objectives, WFG3, DTLZ1 at five objectives;
+    the same families elsewhere, and the rest, are kept."""
+    from mootation.run import cover as V
+    marked = ["DTLZ5_5D", "DTLZ6_4D", "MaF6_8D", "WFG3_3D", "WFG3_5D", "DTLZ1_5D"]
+    kept = ["DTLZ5_3D", "DTLZ6_3D", "DTLZ1_3D", "WFG4_5D", "DTLZ2_5D", "ZDT1", "BT9",
+            "bbobbiobj01_n05_2D"]
+    assert all(V.reference_caveat(p) for p in marked), [p for p in marked
+                                                        if not V.reference_caveat(p)]
+    assert not any(V.reference_caveat(p) for p in kept)
+
+
+@test
+def the_floor_review_reads_the_best_run_median_and_deciding_seed():
+    """floor_review: the best run, the best algorithm's median and the smallest
+    min_seeds-th best seed, each against the floor."""
+    from mootation.run import cover as V
+    main = []
+    for s_ in range(1, 11):
+        main.append({"problem": "DTLZ2_3D", "algorithm": "a", "seed": s_,
+                     "final": {"igdp_norm": 0.02 + 0.001 * s_, "n_final": 91}})
+        main.append({"problem": "DTLZ2_3D", "algorithm": "b", "seed": s_,
+                     "final": {"igdp_norm": 0.015 if s_ == 1 else 0.05, "n_final": 91}})
+    rows = V.floor_review({"main": main, "scenario": "final"}, {"DTLZ2_3D": 0.025}, 7)
+    r = rows[0]
+    assert (r["best"], r["best_algorithm"], r["best_seed"]) == (0.015, "b", 1), r
+    assert abs(r["best_ratio"] - 0.6) < 1e-12 and r["median_algorithm"] == "a", r
+    assert abs(r["kth"] - 0.027) < 1e-12 and r["kth_algorithm"] == "a", r   # a's 7th best seed
+    assert r["n_obj"] == 3 and r["pop"] == 91 and r["caveat"] == "", r
+
+
+@test
+def the_igdp_floor_is_deterministic():
+    """The same floor in two calls and in a worker process: the reference is
+    sampled from fixed seeds and DSS breaks ties by index, never at random."""
+    try:
+        import numpy as np  # noqa: F401
+    except ImportError:
+        return
+    from mootation.run import cover as V
+    a = V.igdp_floor("DTLZ2_3D", 1000)
+    assert a == V.igdp_floor("DTLZ2_3D", 1000)
+    with tempfile.TemporaryDirectory() as td:
+        got = V.floors(["DTLZ2_3D", "ZDT1"], 1000, Path(td) / "f.csv", workers=2)
+    assert got["DTLZ2_3D"] == a and got["ZDT1"] == V.igdp_floor("ZDT1", 1000), got
 
 
 @test
@@ -3317,6 +3366,17 @@ def a_ladder_campaign_runs_marks_and_covers():
         assert "gdp <= 1e-09 (hv_h gap <= 1e-09) at 1200: 0/1 covered" in text_out, text_out
         with (root / "_cover" / "igdp_floor.csv").open(encoding="utf-8") as fh:
             assert fh.read().splitlines()[1].startswith("ZDT1,100,1000,")
+        meta = json.loads((root / "_cover" / "cover_meta.json").read_text(encoding="utf-8"))
+        assert meta["analysis"]["commit"] and "floor" in meta["levels"]["igdp"], meta
+        assert meta["floor_taus"] == [1e6, 0.0] and meta["excluded"] == {}, meta
+        with (root / "_cover" / "cover_summary.csv").open(encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        assert rows[0]["level"] == "igdp_norm <= 1e+06 x floor | hv_h gap <= 10", rows[0]
+        assert rows[0]["analysis_commit"] == meta["analysis"]["commit"][:12] + \
+            ("+dirty" if meta["analysis"]["dirty"] else ""), rows[0]
+        with (root / "_cover" / "floor_review.csv").open(encoding="utf-8") as fh:
+            review = list(csv.DictReader(fh))
+        assert [r["problem"] for r in review] == ["ZDT1"] and float(review[0]["best_ratio"]) > 0
         for name in ("cover_summary.csv", "cover_curve.csv", "cover_nobody.csv",
                      "best_known_hv.csv"):
             assert (root / "_cover" / name).is_file(), name

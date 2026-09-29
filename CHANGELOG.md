@@ -39,7 +39,14 @@ always listed under **Changed** or **Removed**.
   progress criterion (`gdp_norm`, floor 0) and the hypervolume gap on problems
   without a front keep the absolute levels of `--cover-taus`; level k pairs the
   k-th values of both lists. The floors go to `igdp_floor.csv` and are read
-  back by the next analysis; the CSV files gain a `tau_hv` column.
+  back by the next analysis; the CSV files gain a `tau_hv` column. Problems
+  whose reference front is doubtful — DTLZ5, DTLZ6 and MaF6 from four
+  objectives, WFG3, DTLZ1 at five objectives — are left out of the coverage
+  (`cover_excluded.csv`, `--cover-keep-caveats` keeps them). `cover_meta.json`
+  records the commit of the analysis code and the scheme of the levels, every
+  CSV row its level in words, `cover_summary.csv` the commit too.
+  `floor_review.csv` sets each floor beside the best `igdp_norm` of any run,
+  the best algorithm's median and the value that decides coverage.
 - DSS (`archive.dss_order` and `dss.hpp`) sets almost-dominated points aside:
   a point some other point beats by more than 0.1 in an objective while it
   beats that point by at most 0.001 everywhere, in normalised coordinates — the

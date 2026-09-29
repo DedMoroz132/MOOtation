@@ -1699,6 +1699,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--cover-floor-taus", default="1,0.5,0.25,0.1", metavar="LIST",
                     help="with --cover: the levels of igdp_norm, as igdp_norm <= (1 + tau) x the "
                          "problem's floor, as many as --cover-taus (default 1,0.5,0.25,0.1)")
+    ap.add_argument("--cover-keep-caveats", action="store_true",
+                    help="with --cover: keep the problems whose reference front is doubtful "
+                         "(DTLZ5/6 and MaF6 from four objectives, WFG3, DTLZ1 at five), which "
+                         "are left out of the coverage otherwise")
     ap.add_argument("--cover-budgets", metavar="LIST",
                     help="with --cover: the budgets, comma-separated (default the campaign's "
                          "ladder and full budget)")
@@ -1836,7 +1840,8 @@ def main(argv: list[str] | None = None) -> int:
         print(C.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
                     min_seeds=args.cover_seeds, max_sets=args.cover_max_sets,
                     replicates=args.cover_bootstrap, workers=args.workers,
-                    scenario=args.scenario, n_ref=spec.n_ref))
+                    scenario=args.scenario, n_ref=spec.n_ref,
+                    keep_caveats=args.cover_keep_caveats))
         return 0
     rows = None
     if args.bias or set_tables or any(v is not None for v in (

@@ -699,7 +699,15 @@ python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --worker
   relative gap of `hv_h` to the best any run of the campaign reached on it,
   (best − hv_h)/best ≤ τ of `--cover-taus` — those best values depend on what
   the campaign ran, and are written to `best_known_hv.csv`; level k pairs the
-  k-th values of the two lists. For every criterion, level and budget in
+  k-th values of the two lists. Problems whose reference front is doubtful —
+  DTLZ5, DTLZ6 and MaF6 from four objectives, WFG3, DTLZ1 at five objectives —
+  are left out of the coverage (`cover_excluded.csv`; `--cover-keep-caveats`
+  keeps them). `cover_meta.json` records the commit of the analysis code and
+  the scheme of the levels, and every CSV row says its level in words, so
+  absolute and floor-based levels are never confused. `floor_review.csv` sets
+  each problem's floor beside the best `igdp_norm` any run reached, the best
+  algorithm's median and the value that decides coverage (its `--cover-seeds`-th
+  best seed): a ratio below 1 says the floor is too high. For every criterion, level and budget in
   `--cover-budgets` (the campaign's
   ladder and full budget), it reports the problems nobody covers, the smallest
   sets of algorithms covering every problem somebody does — exact, by branch
