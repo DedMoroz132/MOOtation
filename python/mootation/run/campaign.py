@@ -1834,8 +1834,10 @@ def main(argv: list[str] | None = None) -> int:
                          "problem's floor, as many as --cover-taus (default 1,0.5,0.25,0.1)")
     ap.add_argument("--cover-keep-caveats", action="store_true",
                     help="with --cover: keep the problems whose reference front is doubtful "
-                         "(DTLZ5/6 and MaF6 from four objectives, WFG3, DTLZ1 at five), which "
-                         "are left out of the coverage otherwise")
+                         "(DTLZ5/6 and MaF6 from four objectives, WFG3, DTLZ1 at five; against "
+                         "references of version 1 IPolygon and the aliased WFG1/WFG2) or older "
+                         "than the current one where it changed, which are left out of the "
+                         "coverage otherwise")
     ap.add_argument("--cover-budgets", metavar="LIST",
                     help="with --cover: the budgets, comma-separated (default the campaign's "
                          "ladder and full budget)")
