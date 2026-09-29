@@ -777,8 +777,9 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   (`portfolio_matrix.csv`), so that later analyses need not read every
   `meta.json`. CSV in `<results>/_portfolio/` (`_portfolio_archive/`).
 - `--instance-space`: instance space analysis (Smith-Miles & Muñoz, ACM
-  Computing Surveys 55(12), 2023; the footprints of Muñoz & Smith-Miles,
-  Evolutionary Computation 25(4), 2017), with the problems with a reference
+  Computing Surveys 55(12), 2023; the projection of Muñoz, Villanova, Baatar &
+  Smith-Miles, Machine Learning 107(1), 2018; the footprints of Muñoz &
+  Smith-Miles, Evolutionary Computation 25(4), 2017), with the problems with a reference
   front and the bbob-biobj ones in spaces of their own. The features are the
   problem properties of `--by` (yes/no as 1/0, unknown as 0.5, the front's
   shapes a column each, the bbob-biobj function groups as counts, M, log2 D,
@@ -791,13 +792,20 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   the plane that best preserves the distances between the problems, as the
   authors' toolkit does — among the starts that reach the lowest loss, since
   some stop short of the optimum — with the analytical solution and the loss of
-  the exact optimum reported beside it. The footprint of an algorithm at each of
+  the exact optimum reported beside it. The analytical solution the papers give
+  is not that optimum (it takes the eigenvectors of [F; Y] where those of its
+  part in F's row space are needed) and falls 2–6 % short on stage 3; the exact
+  optimum is a reduced-rank regression. The footprint of an algorithm at each of
   `--cover`'s levels and budgets (good = the level in `--cover-seeds` seeds) is
   the Delaunay triangulation of the problems where it is good, without
   triangles whose side exceeds a quarter of the largest distance or whose
   density or purity (the share of good problems inside, at least 0.75) is too
   low; its area and density are given as shares of the known region's, the
-  same construction over all problems. The footprints of the best algorithm per
+  same construction over all problems, and its area also as a share of the
+  convex hull of all problems, as the 2018 paper and Yap, Muñoz & Smith-Miles
+  (IEEE TEVC 26(6), 2022) give it. The density limit is relative to the known
+  region's density (the papers' ρ = 10 per unit area was 4 % of it in 2017 and
+  50 % of the hull's in 2018; PILOT's plane has no scale of its own). The footprints of the best algorithm per
   problem lose the triangles where another algorithm's overlapping ones are
   larger. Needs SciPy. CSV and JSON in `<results>/_instance_space/`
   (`_instance_space_archive/`): the coordinates with the features, the relative

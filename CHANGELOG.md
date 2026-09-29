@@ -206,7 +206,11 @@ always listed under **Changed** or **Removed**.
   with distance, density and purity limits; contradictions between the best
   algorithms' footprints removed), the problem properties as features, one
   space for the problems with a front and one for bbob-biobj; footprints at
-  `--cover`'s levels and budgets. Needs SciPy.
+  `--cover`'s levels and budgets, their areas as shares of the known region
+  and of the convex hull. Checked against Muñoz et al. 2018 (Machine Learning
+  107(1), Appendix A): the analytical solution of Corollary 1 is not the
+  optimum, which is that of Corollary 2's rank-constrained form, a reduced-rank
+  regression. Needs SciPy.
 - `--portfolio` (task 4, item 5): the oracle and the single best solver, the
   Shapley values of the coverage game and the complementarity of every two
   algorithms at `--cover`'s levels and budgets, at 5, 7 and 10 seeds of ten,

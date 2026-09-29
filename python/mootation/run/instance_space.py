@@ -8,11 +8,14 @@ Reads finished runs; runs nothing; needs SciPy. CSV and JSON under
 <results>/_instance_space/ (_instance_space_archive/ for the archive).
 
 After Smith-Miles & Muñoz, "Instance Space Analysis for Algorithm Testing", ACM
-Computing Surveys 55(12), 2023, Section 3.2 (PRELIM, SIFTED, PILOT), and Muñoz
-& Smith-Miles, "Performance Analysis of Continuous Black-Box Optimization
-Algorithms via Footprints in Instance Space", Evolutionary Computation 25(4),
-2017, Section 5 (the footprints). Written from the papers: the authors' MATLAB
-toolkit (MATILDA) is under a non-commercial licence.
+Computing Surveys 55(12), 2023, Section 3.2 (PRELIM, SIFTED, PILOT); Muñoz,
+Villanova, Baatar & Smith-Miles, "Instance Spaces for Machine Learning
+Classification", Machine Learning 107(1), 2018, Section 6.1 and Appendix A
+(PILOT, there PBLDR, and its optimum); and Muñoz & Smith-Miles, "Performance
+Analysis of Continuous Black-Box Optimization Algorithms via Footprints in
+Instance Space", Evolutionary Computation 25(4), 2017, Section 5 (the
+footprints). Written from the papers: the authors' MATLAB toolkit (MATILDA) is
+under a non-commercial licence.
 
 TWO SPACES, one per group of problems as in portfolio.py: "front", with a
 reference front, and "bbob", bbob-biobj; their performance measures differ and
@@ -46,25 +49,38 @@ Numerically, as the toolkit does by default: BFGS from 30 random starts in
 [-1, 1], keeping the solution of the highest topological preservation, the
 Pearson correlation of the problems' distances in features and in the plane —
 among the solutions at the lowest loss: the survey takes every BFGS result for
-a global optimum, but some stop short of it (pilot_numerical). Beside it the
-analytical solution (lines 3-9: V the two leading eigenvectors of Xbar Xbar^T,
-Xbar = [F; Y], A = V^T Xbar F^T (F F^T)^+, the pseudo-inverse putting the
-problem in the subspace F spans when F is not of full row rank), its loss and
-preservation reported, and the loss of the optimum itself as a check that BFGS
-got there (pilot_optimum_loss; on stage 3 the analytical solution fell 2-6 %
-short of it). The R^2 of every feature's and every algorithm's linear model:
-is_projection.csv.
+a global optimum, but some stop short of it (pilot_numerical); in 2018 all 30
+runs of BIPOP-CMA-ES reached one loss. Beside it the analytical solution (lines
+3-9, the 2018 paper's Corollary 1, Eq. 13: V the two leading eigenvectors of
+Xbar Xbar^T, Xbar = [F; Y], A = V^T Xbar F^T (F F^T)^+, the pseudo-inverse
+putting the problem in the subspace F spans when F is not of full row rank), its
+loss and preservation reported, and the loss of the optimum itself as a check
+that BFGS got there (pilot_optimum_loss). The analytical solution is not that
+optimum: Appendix A's step from the relaxation (Z free) to the problem (Eq. 11,
+"with the same objective value") holds only when the relaxation's Z lies in the
+row space of F, which Y's part of it does not. The 2018 paper's own numbers show
+the gap (Eq. 13: 1.8749e3 against 1.8658e3 by CMA-ES), which it puts down to
+numerical instability; on stage 3 the analytical solution fell 2-6 % short. The
+optimum is that of the rank-constrained form of the problem (Corollary 2): a
+reduced-rank regression of Xbar on F. The R^2 of every feature's and every
+algorithm's linear model: is_projection.csv.
 
 FOOTPRINTS (the 2017 paper's Algorithm 1): of the problems where the algorithm
 is good, one of any two closer than delta is dropped; the rest are triangulated
 (Delaunay); triangles with a side longer than Delta go; so do those whose
 density (problems inside per unit area) is below rho or whose purity (the share
 of good problems among those inside) is below pi. delta and Delta are 1 % and
-25 % of the largest distance between two problems and pi = 0.75, as in the
-paper; its rho = 10 problems per unit area was 10 / 233.7 of its known region's
-density, and is taken so, relative to ours. The known region is the same
-construction over all problems of the group, with no density or purity limit; a
-footprint's area and density are given as shares of the known region's. GOOD
+25 % of the largest distance between two problems and pi = 0.75, as in the 2017
+and 2018 papers. Both set rho = 10 problems per unit area, in planes of
+different scale: 10 / 233.7 of the known region's density in 2017, 10 / 19.88 of
+the convex hull's in 2018. PILOT's plane has no scale of its own (any invertible
+map of Z is another optimum), so rho is taken relative, as in 2017; on stage 3
+the 2018 share changes no footprint either, the triangles short enough for Delta
+holding several times the region's mean density. The
+known region is the same construction over all problems of the group, with no
+density or purity limit; a footprint's area and density are given as shares of
+the known region's (2017), its area also as a share of the convex hull of all
+problems (2018; Yap, Muñoz & Smith-Miles, IEEE TEVC 26(6), 2022). GOOD
 is --cover's criterion at a level and budget, reached in min_seeds seeds:
 "igdp" (igdp_norm against the floor) and "gdp" (gdp_norm) on "front", the hv_h
 gap to the campaign's best ("hv") on "bbob". The BEST footprints, of the best
@@ -245,7 +261,10 @@ def pilot_optimum_loss(F, Y) -> float:
     squares, which leave of Xbar = [F; Y] what lies outside Z's row space; Z's
     rows lie in F's, so the optimum keeps the most of Xbar P_F, P_F the
     projection on F's row space: ||Xbar||^2 less the two largest eigenvalues
-    of (Xbar P_F)(Xbar P_F)^T."""
+    of (Xbar P_F)(Xbar P_F)^T — the reduced-rank regression of Xbar on F that
+    the 2018 paper's Corollary 2 states the problem as. The analytical solution
+    takes the eigenvectors of Xbar Xbar^T instead, which is the same only when
+    Y lies in F's row space."""
     import numpy as np
     Xbar = np.vstack([F, Y])
     XP = Xbar @ F.T @ np.linalg.pinv(F @ F.T) @ F
@@ -394,6 +413,7 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
         import scipy  # noqa: F401
     except ImportError as e:                        # pragma: no cover - machine-dependent
         raise ImportError("--instance-space needs SciPy: pip install scipy") from e
+    from scipy.spatial import ConvexHull, QhullError
     from scipy.spatial.distance import pdist
     taus = tuple(taus or V.TAUS)
     floor_taus = tuple(floor_taus or V.FLOOR_TAUS)
@@ -461,6 +481,10 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
         known = footprint(Z, np.ones(len(Z), bool), dmax)
         density = known["inside"] / known["area"] if known["area"] > 0.0 else 0.0
         rho = DENSITY_SHARE * density
+        try:                                       # the 2018 paper's and Yap et al.'s reference
+            hull = float(ConvexHull(Z).volume)
+        except (QhullError, ValueError):
+            hull = 0.0
 
         for j, p in enumerate(problems):
             coords.append([group, p, f"{Z[j, 0]:.6g}", f"{Z[j, 1]:.6g}", best[j] or ""]
@@ -489,6 +513,7 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
                             "" if k is None else level_text(crit, k), b, alg,
                             int(np.asarray(good).sum()), len(fp["triangles"]),
                             f"{fp['area'] / known['area']:.6g}",
+                            f"{(fp['area'] / hull) if hull else 0.0:.6g}",
                             f"{(fp['inside'] / fp['area'] / density) if fp['area'] else 0.0:.6g}",
                             f"{(fp['good_inside'] / fp['inside']) if fp['inside'] else 0.0:.6g}"])
             if fp["triangles"]:
@@ -532,7 +557,7 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
                       "optimum_loss": optimum, "analytical_loss": analytic["loss"],
                       "analytical_preservation": analytic["preservation"]},
             "known_area": known["area"], "known_density": density, "rho": rho,
-            "max_distance": dmax}
+            "convex_hull_area": hull, "max_distance": dmax}
         r2f = sorted(zip(used, proj["r2_features"]), key=lambda t: -t[1])
         lines.append(f"  {group}: {len(problems)} problems at {points} points, {len(used)} "
                      f"features, {len(y_rows)} algorithms; PILOT "
@@ -567,7 +592,7 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
                               "a2", "model1", "model2", "r2"],
         "is_footprints.csv": ["group", "kind", "criterion", "level", "level_text", "budget",
                               "algorithm", "problems_good", "triangles", "area_share",
-                              "density_share", "purity"],
+                              "area_share_hull", "density_share", "purity"],
     }
     for name, rows_ in (("is_coordinates.csv", coords), ("is_performance.csv", performance),
                         ("is_projection.csv", projection), ("is_footprints.csv", fp_rows)):

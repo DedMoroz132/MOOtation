@@ -1940,6 +1940,9 @@ def instance_space_runs_on_a_results_tree():
         for name in ("is_performance.csv", "is_footprints.csv", "is_footprints.json",
                      "is_report.txt"):
             assert (out / name).is_file(), name
+        with (out / "is_footprints.csv").open(encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):                 # the known region lies in the hull
+                assert float(r["area_share_hull"]) <= float(r["area_share"]) + 1e-12, r
 
 
 @test
