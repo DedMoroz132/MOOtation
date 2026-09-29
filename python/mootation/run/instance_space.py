@@ -44,14 +44,16 @@ PILOT (Algorithm 3): coordinates Z = A F such that linear models of Z predict
 the features and the performances best, min ||F - B Z||^2 + ||Y - C Z||^2.
 Numerically, as the toolkit does by default: BFGS from 30 random starts in
 [-1, 1], keeping the solution of the highest topological preservation, the
-Pearson correlation of the problems' distances in features and in the plane.
-Beside it the analytical solution (lines 3-9: V the two leading eigenvectors of
-Xbar Xbar^T, Xbar = [F; Y], A = V^T Xbar F^T (F F^T)^+, the pseudo-inverse
-putting the problem in the subspace F spans when F is not of full row rank), its
-loss and preservation reported, and the loss of the optimum itself as a check
-that BFGS got there (pilot_optimum_loss; on stage 3 it did, and the analytical
-solution fell 5-6 % short of it). The R^2 of every feature's and every
-algorithm's linear model: is_projection.csv.
+Pearson correlation of the problems' distances in features and in the plane —
+among the solutions at the lowest loss: the survey takes every BFGS result for
+a global optimum, but some stop short of it (pilot_numerical). Beside it the
+analytical solution (lines 3-9: V the two leading eigenvectors of Xbar Xbar^T,
+Xbar = [F; Y], A = V^T Xbar F^T (F F^T)^+, the pseudo-inverse putting the
+problem in the subspace F spans when F is not of full row rank), its loss and
+preservation reported, and the loss of the optimum itself as a check that BFGS
+got there (pilot_optimum_loss; on stage 3 the analytical solution fell 2-6 %
+short of it). The R^2 of every feature's and every algorithm's linear model:
+is_projection.csv.
 
 FOOTPRINTS (the 2017 paper's Algorithm 1): of the problems where the algorithm
 is good, one of any two closer than delta is dropped; the rest are triangulated
@@ -252,8 +254,10 @@ def pilot_optimum_loss(F, Y) -> float:
 
 def pilot_numerical(F, Y, tries: int = PILOT_TRIES, seed: int = 0) -> dict:
     """PILOT's numerical solution (Algorithm 3, lines 11-25): BFGS from `tries`
-    random starts, the result of the highest topological preservation; the
-    same dict as pilot_analytic."""
+    random starts; of the results at the lowest loss, the one of the highest
+    topological preservation. The survey takes every BFGS result for a global
+    optimum; on stage 3 up to a quarter stopped short of it, by up to 1 %, and
+    one of those had the highest preservation. The same dict as pilot_analytic."""
     import numpy as np
     from scipy.optimize import minimize
     q, a = F.shape[0], Y.shape[0]
@@ -271,14 +275,14 @@ def pilot_numerical(F, Y, tries: int = PILOT_TRIES, seed: int = 0) -> dict:
         return float((E1 ** 2).sum() + (E2 ** 2).sum()), grad
 
     rng = np.random.default_rng(seed)
-    best, best_rho = None, -math.inf
+    results = []
     for _ in range(tries):
         x = minimize(loss, rng.uniform(-1.0, 1.0, 4 * q + 2 * a), jac=True, method="BFGS").x
-        res = _pilot_result(F, Y, *split(x))
-        rho = res["preservation"] if math.isfinite(res["preservation"]) else -math.inf
-        if best is None or rho > best_rho:
-            best, best_rho = res, rho
-    return best
+        results.append(_pilot_result(F, Y, *split(x)))
+    lowest = min(r["loss"] for r in results)
+    at_optimum = [r for r in results if r["loss"] <= lowest + 1e-6 * abs(lowest)]
+    return max(at_optimum, key=lambda r: (r["preservation"] if math.isfinite(r["preservation"])
+                                          else -math.inf))
 
 
 # ── footprints ─────────────────────────────────────────────────────────────

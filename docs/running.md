@@ -789,8 +789,9 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   PILOT places each problem at Z = A F so that linear models of Z predict the
   features and the performances best: by BFGS from 30 random starts, keeping
   the plane that best preserves the distances between the problems, as the
-  authors' toolkit does, with the analytical solution and the loss of the exact
-  optimum reported beside it. The footprint of an algorithm at each of
+  authors' toolkit does — among the starts that reach the lowest loss, since
+  some stop short of the optimum — with the analytical solution and the loss of
+  the exact optimum reported beside it. The footprint of an algorithm at each of
   `--cover`'s levels and budgets (good = the level in `--cover-seeds` seeds) is
   the Delaunay triangulation of the problems where it is good, without
   triangles whose side exceeds a quarter of the largest distance or whose
