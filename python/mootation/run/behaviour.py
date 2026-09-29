@@ -39,13 +39,15 @@ a target counts as infinitely late; "inf" in the CSV).
 
 PROFILES AND GROUPS. On each problem every descriptor's medians are ranked
 across the algorithms, as a share from 0 (the smallest value) to 1 (the
-largest), so that problems of different scales weigh alike. Two algorithms are
-as far apart as the mean absolute difference of their shares over the
-(problem, descriptor) pairs both have. The algorithms are grouped by average
-linkage (the distance between two groups is the mean distance between their
-members), cut into as many groups as algorithms.def declares families, and the
-groups set beside the families. behaviour_profile.csv gives each algorithm's
-median share per descriptor: its behaviour in one row.
+largest), so that problems of different scales weigh alike; a descriptor on
+which all algorithms are equal on a problem (a target nobody reaches) is left
+out there. Two algorithms are as far apart as the mean absolute difference of
+their shares over the (problem, descriptor) pairs both have. The algorithms
+are grouped by average linkage (the distance between two groups is the mean
+distance between their members), cut into as many groups as there are
+families — those algorithms.def declares, and "Baseline" for the run layer's
+baselines — and the groups set beside the families. behaviour_profile.csv
+gives each algorithm's median share per descriptor: its behaviour in one row.
 
 WHAT IS WRITTEN (<results>/_behaviour/):
   behaviour_meta.json     the commit of the analysis code, the settings
@@ -236,15 +238,19 @@ def _asked(d: dict, name: str) -> bool:
 def shares(med: dict) -> dict:
     """{algorithm: {(problem, descriptor): share}}: on every problem each
     descriptor's medians ranked across the algorithms, 0 the smallest, 1 the
-    largest, ties sharing their mean rank."""
+    largest, ties sharing their mean rank. A descriptor on which every
+    algorithm has the same value there (no algorithm reaching a target: all
+    infinitely late) tells them apart in nothing and is left out."""
     from .stats import average_ranks
     out: dict = {}
-    problems = sorted({p for p, _ in med})
-    for prob in problems:
-        algs = sorted(a for p, a in med if p == prob)
+    algs_of: dict = {}
+    for p, a in med:
+        algs_of.setdefault(p, []).append(a)
+    for prob in sorted(algs_of):
+        algs = sorted(algs_of[prob])
         for name in descriptor_names():
             have = [(a, med[(prob, a)][name]) for a in algs if med[(prob, a)][name] is not None]
-            if len(have) < 2:
+            if len(have) < 2 or len({v for _, v in have}) == 1:
                 continue
             ranks = average_ranks([v for _, v in have])
             for (a, _), r in zip(have, ranks):
@@ -299,9 +305,13 @@ def cut(names: list, merges: list, k: int) -> dict:
 
 
 def family_of() -> dict:
-    """{algorithm: family} as algorithms.def declares them."""
+    """{algorithm: family} as algorithms.def declares them; the run layer's
+    baselines (random and Sobol sampling, the ablations) as "Baseline"."""
     from .algorithms import algorithm_families
-    return {a: fam for fam, algs in algorithm_families() for a in algs}
+    from .baselines import BASELINES
+    out = {a: fam for fam, algs in algorithm_families() for a in algs}
+    out.update({b: "Baseline" for b in BASELINES})
+    return out
 
 
 # ── the whole analysis ─────────────────────────────────────────────────────
@@ -383,8 +393,8 @@ def run(root: Path, *, workers: int = 1, out_dir: Path | None = None, problems=N
         counts = [sum(1 for a in members if group[a] == g) for g in range(1, len(families) + 1)]
         lines.append(f"{f_[:35]:<36}" + "".join(f"{c if c else '.':>4}" for c in counts))
     lines.append("")
-    show = ["t_gdp_0.01", "t_igdp_1", "slope", "spread", "rc_drop", "stall", "dup_max",
-            "igdx_end"]
+    show = ["t_gdp_0.1", "t_gdp_0.01", "t_igdp_1", "slope", "spread", "rc_drop", "stall",
+            "dup_max", "igdx_end"]
     lines.append("median share per descriptor (0 = smallest value among the algorithms, "
                  "1 = largest), by group:")
     lines.append(f"{'group':>5} {'algorithm':<16}" + "".join(f"{n:>11}" for n in show))

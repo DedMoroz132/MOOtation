@@ -1575,15 +1575,19 @@ def behaviour_reads_the_descriptors_off_a_trajectory():
 def behaviour_groups_the_algorithms_by_their_profiles():
     """Shares ranked per problem and descriptor, distance as their mean absolute
     difference, average linkage, and the cut into k groups."""
+    import math
     from mootation.run import behaviour as B
     names = B.descriptor_names()
     med = {}
     for a, v in (("x", 1.0), ("y", 2.0), ("z", 2.0)):
         med[("P", a)] = dict.fromkeys(names)
         med[("P", a)]["slope"] = v
+        med[("P", a)]["t_gdp_0.01"] = math.inf                  # nobody reached it: left out
     sh = B.shares(med)
     assert (sh["x"][("P", "slope")], sh["y"][("P", "slope")], sh["z"][("P", "slope")]) == \
         (0.0, 0.75, 0.75), sh
+    assert ("P", "t_gdp_0.01") not in sh["x"], sh
+    assert B.family_of()["random_search"] == "Baseline" and B.family_of()["nsga2"] != "Baseline"
     prof = {"a1": {("p", "u"): 0.0, ("p", "v"): 0.1}, "a2": {("p", "u"): 0.05, ("p", "v"): 0.0},
             "b1": {("p", "u"): 1.0, ("p", "v"): 0.9}, "b2": {("p", "u"): 0.95, ("p", "v"): 1.0}}
     algs = sorted(prof)
