@@ -69,7 +69,8 @@ inline const std::vector<std::string>& knob_names() {
     static const std::vector<std::string> v = {
         "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
         "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
-        "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob"
+        "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob",
+        "step_share", "F_spread"
     };
     return v;
 }
@@ -84,7 +85,13 @@ inline const std::vector<std::string>& knob_names() {
 //   mutation      the same five and moead_de (operators/real_mutation.hpp)
 //   crowding_space nsga2: its crowding distance over the objectives or the
 //                 decision variables
-//   dms_init      dms: the initial list, n points on the diagonal or one
+//   dms_init      dms: the initial list, n points on the diagonal, one, or n
+//                 drawn from the seed
+//   dms_poll      dms: the next poll centre, the first still worth polling or
+//                 one of them at random
+// Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
+// clamp of the difference vector as a share of the range, and the spread of
+// its factor F), the knobs that test its mechanism (emyo_c.hpp).
 inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text_knobs() {
     static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
         {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
@@ -92,7 +99,8 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                           "mixture_cauchy"}},
         {"crowding_space", {"objectives", "decision"}},
-        {"dms_init",     {"line", "single"}},
+        {"dms_init",     {"line", "single", "random"}},
+        {"dms_poll",     {"first", "random"}},
     };
     return v;
 }

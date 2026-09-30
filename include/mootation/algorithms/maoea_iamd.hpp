@@ -120,6 +120,7 @@
 #include "../individuals.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../operators/sbx.hpp"
 
 namespace mootation {
@@ -645,7 +646,15 @@ private:
             std::normal_distribution<double> gauss(0.0, sd);
             c[j] += gauss(rng_);
         }
-        // vault.set_variables performs the clamp into the bounds
+        // Clipped into the box here, counted and logged (task 5, 2026-10-01);
+        // it used to be the vault's silent clamp, to the same values: a bound
+        // the problem leaves open is left open, as there.
+        ops::note_operator("maoea_iamd_gaussian", "clip");
+        ops::RepairTally tally;
+        for (std::size_t j = 0; j < c.size(); ++j) {
+            if (bnd[j].first && c[j] < *bnd[j].first)        { tally.out(); c[j] = *bnd[j].first; }
+            else if (bnd[j].second && c[j] > *bnd[j].second) { tally.out(); c[j] = *bnd[j].second; }
+        }
     }
 
     // ── Alg. 6 + Alg. 7: environmental selection ───────────────────────────

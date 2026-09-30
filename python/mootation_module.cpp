@@ -358,6 +358,9 @@ MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,         double)
 MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,         double)
 MOOTATION_OPTIONAL_SETTER(crowding_space, set_crowding_space, mootation::CrowdingSpace)
 MOOTATION_OPTIONAL_SETTER(dms_init,   set_init,              mootation::DMSInit)
+MOOTATION_OPTIONAL_SETTER(dms_poll,   set_poll,              mootation::DMSPoll)
+MOOTATION_OPTIONAL_SETTER(step_share, set_step_share,        double)
+MOOTATION_OPTIONAL_SETTER(F_spread,   set_F_spread,          double)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
@@ -398,9 +401,13 @@ struct RunConfig {
     std::optional<std::string> crossover, mutation;
     // nsga2: crowding distance over the objectives or the decision variables
     std::optional<std::string> crowding_space;
-    // dms: the initial list, line (n points on the diagonal) or single
-    std::optional<std::string> dms_init;
+    // dms: the initial list, line (n points on the diagonal), single or random;
+    // the next poll centre, first or random (dms.hpp, DMS-6)
+    std::optional<std::string> dms_init, dms_poll;
     std::optional<double>      mutation_scale, mixture_q, blx_alpha;
+    // emyo_c: the clamp of the difference vector (a share of the range) and
+    // the spread of its factor F (emyo_c.hpp, the knobs for the mechanism)
+    std::optional<double>      step_share, F_spread;
     // The SBX operator's share of crossed variables (ops::sbx_var_prob, 0.5),
     // for this run only.
     std::optional<double>      sbx_var_prob;
@@ -535,8 +542,14 @@ PyResult run_core(const RunConfig& cfg)
     }
     if (cfg.dms_init) {
         auto i = parse_dms_init(*cfg.dms_init);
-        if (!i) throw std::invalid_argument("dms_init = '" + *cfg.dms_init + "': line or single");
+        if (!i) throw std::invalid_argument("dms_init = '" + *cfg.dms_init +
+                                            "': line, single or random");
         note(apply_dms_init(alg, *i), "dms_init");
+    }
+    if (cfg.dms_poll) {
+        auto p = parse_dms_poll(*cfg.dms_poll);
+        if (!p) throw std::invalid_argument("dms_poll = '" + *cfg.dms_poll + "': first or random");
+        note(apply_dms_poll(alg, *p), "dms_poll");
     }
     if (cfg.crowding_space) {
         auto c = parse_crowding_space(*cfg.crowding_space);
@@ -548,6 +561,8 @@ PyResult run_core(const RunConfig& cfg)
     if (cfg.mutation_scale) note(apply_mutation_scale(alg, *cfg.mutation_scale), "mutation_scale");
     if (cfg.mixture_q)      note(apply_mixture_q(alg, *cfg.mixture_q),           "mixture_q");
     if (cfg.blx_alpha)      note(apply_blx_alpha(alg, *cfg.blx_alpha),           "blx_alpha");
+    if (cfg.step_share)     note(apply_step_share(alg, *cfg.step_share),         "step_share");
+    if (cfg.F_spread)       note(apply_F_spread(alg, *cfg.F_spread),             "F_spread");
     std::optional<ops::ScopedSbxVarProb> var_prob;
     if (cfg.sbx_var_prob) {
         if (!(*cfg.sbx_var_prob >= 0.0 && *cfg.sbx_var_prob <= 1.0))
@@ -782,7 +797,15 @@ PYBIND11_MODULE(_core, m)
                        "mixture_cauchy: the same five and moead_de")
         .def_readwrite("dms_init",        &RunConfig::dms_init,
                        "dms: the initial list, line (n points on the diagonal, the paper's "
-                       "best) or single (the centre of the box)")
+                       "best), single (the centre of the box) or random (a Latin hypercube "
+                       "of n points from the seed)")
+        .def_readwrite("dms_poll",        &RunConfig::dms_poll,
+                       "dms: the next poll centre, first (the first still worth polling) or "
+                       "random (one of them at random, the directions in random order)")
+        .def_readwrite("step_share",      &RunConfig::step_share,
+                       "emyo_c: the clamp of the difference vector, a share of ub - lb (0.5)")
+        .def_readwrite("F_spread",        &RunConfig::F_spread,
+                       "emyo_c: F drawn from U[F - F_spread, F + F_spread] per offspring (0)")
         .def_readwrite("crowding_space",  &RunConfig::crowding_space,
                        "nsga2: its crowding distance over the objectives (the default) or "
                        "the decision variables")

@@ -27,6 +27,7 @@
 
 #include "batch_executor.hpp"
 #include "individuals.hpp"
+#include "operators/bound_repair.hpp"
 #include "problem.hpp"
 
 namespace mootation {
@@ -298,18 +299,26 @@ public:
     }
 
     // ── Variable setters ─────────────────────────────────────────────────────
+    // A value outside the box is clamped here, the last guard. An operator
+    // repairs its offspring before writing them (operators/bound_repair.hpp),
+    // so a clamp here means one did not: it is booked like any repair, as
+    // "vault"/"clip" in the operator log and in the out-of-box counts
+    // (oob_share), so that no clamp goes unseen (task 5, 2026-10-01: EMyO/C,
+    // HCCA's DE and MaOEA-IAMD's noise used to rely on it without a count).
 
     void set_variables(std::size_t v, const std::vector<double>& vars) {
         std::size_t r = real_idx(v);
         if (static_cast<int>(vars.size()) != num_vars_)
             throw std::invalid_argument("set_variables: wrong size");
+        int clamped = 0;
         for (int j = 0; j < num_vars_; ++j) {
             double val = vars[j];
             const auto& b = problem_.bounds[j];
-            if (b.first  && val < *b.first)  val = *b.first;
-            if (b.second && val > *b.second) val = *b.second;
+            if (b.first  && val < *b.first)  { val = *b.first;  ++clamped; }
+            if (b.second && val > *b.second) { val = *b.second; ++clamped; }
             buf_[r].variables[j] = val;
         }
+        if (clamped > 0) book_clamp(clamped);
         dirty_[r] = 1;
     }
 
@@ -320,18 +329,27 @@ public:
         std::size_t r = real_idx(v);
         if (static_cast<int>(rvars.size()) != num_vars_)
             throw std::invalid_argument("set_all_variables: wrong real size");
+        int clamped = 0;
         for (int j = 0; j < num_vars_; ++j) {
             double val = rvars[j];
             const auto& b = problem_.bounds[j];
-            if (b.first  && val < *b.first)  val = *b.first;
-            if (b.second && val > *b.second) val = *b.second;
+            if (b.first  && val < *b.first)  { val = *b.first;  ++clamped; }
+            if (b.second && val > *b.second) { val = *b.second; ++clamped; }
             buf_[r].variables[j] = val;
         }
+        if (clamped > 0) book_clamp(clamped);
         if (static_cast<int>(bvars.size()) != num_bin_vars_)
             throw std::invalid_argument("set_all_variables: wrong binary size");
         for (int j = 0; j < num_bin_vars_; ++j)
             buf_[r].binary_variables[j] = (bvars[j] != 0) ? 1 : 0;
         dirty_[r] = 1;
+    }
+
+    // One write's clamps, booked as one offspring repaired (see above).
+    static void book_clamp(int n) {
+        ops::note_operator("vault", "clip");
+        ops::RepairTally tally;
+        for (int i = 0; i < n; ++i) tally.out();
     }
 
     // ── Sync ─────────────────────────────────────────────────────────────────

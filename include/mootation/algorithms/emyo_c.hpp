@@ -46,6 +46,18 @@
 //   as a guard against looping forever.
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY —
 //   CDP inside the non-dominated sort; binary variables (bit-flip).
+// KNOBS FOR THE MECHANISM (task 5, 2026-10-01; off by default, the defaults
+//   are the paper's). Stage 3 traced EMyO/C's exact hits of DTLZ1/3's
+//   x = 0.5 and of the bounds (ZDT, DTLZ6/7) to the two clips: a parent on a
+//   bound plus a step of exactly half the range lands on the middle, and
+//   Eq. 5 lands on the bounds. To test that by runs:
+//     bound_repair  Eq. 5's repair of the offspring: clip (the paper),
+//                   reflect, random, midpoint, wrap;
+//     step_share    the clamp of v in Eq. 2-3, ±step_share·(ub − lb): 0.5;
+//     F, F_spread   v = F·(a − b) with F drawn from U[F − F_spread,
+//                   F + F_spread] per offspring: F = 1, no spread (see (1)).
+//   The offspring's repair goes through the out-of-box counts (RepairTally)
+//   and the operator log as "emyo_c_difference".
 // ============================================================================
 
 #include <algorithm>
@@ -59,6 +71,7 @@
 #include "../data_vault.hpp"
 #include "../individuals.hpp"
 #include "../operators/bit_flip.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
 
 namespace mootation {
@@ -76,6 +89,10 @@ private:
     double       eta_m_ = 20.0;
     double       cr_    = 0.15;    // CR = 0.15 (§3.2)
     std::mt19937 rng_{std::random_device{}()};
+    // the knobs for the mechanism (header): the paper's values by default
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
+    double step_share_ = 0.5;
+    double F_ = 1.0, F_spread_ = 0.0;
 
     std::vector<double> ideal_;    // z, the historical (monotone) ideal point
 
@@ -194,6 +211,13 @@ public:
     void set_eta_mutation (double e) { eta_m_ = e; }
     void set_cr           (double c) { cr_ = c; }
     void set_seed(unsigned s)        { rng_.seed(s); }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "emyo_c", false, false);
+        repair_ = r;
+    }
+    void set_step_share(double s)    { step_share_ = s; }
+    void set_F(double f)             { F_ = f; }
+    void set_F_spread(double s)      { F_spread_ = s; }
 
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
@@ -245,6 +269,7 @@ public:
             dbounds[j] = std::make_pair(std::optional<double>(-(hi - lo)),
                                         std::optional<double>(hi - lo));
         }
+        ops::note_operator("emyo_c_difference", ops::bound_repair_name(repair_));
         for (int i = 0; i < n; ++i) {
             std::vector<double> child(nv);
             bool differs = false;
@@ -264,17 +289,27 @@ public:
                 if (n >= 2) while (a == i) a = dist_N(rng_);
                 if (n >= 3) while (b == i || b == a) b = dist_N(rng_);
                 else if (n == 2) while (b == a) b = dist_N(rng_);
+                // F (1 in the paper, (1)) and its spread: a draw only when
+                // the knob asks for one, so the default stream is untouched
+                double F = F_;
+                if (F_spread_ > 0.0)
+                    F = std::uniform_real_distribution<double>(F_ - F_spread_, F_ + F_spread_)(rng_);
                 std::vector<double> v(nv);
-                for (int j = 0; j < nv; ++j) v[j] = vault.get_variable(a, j) - vault.get_variable(b, j);
+                for (int j = 0; j < nv; ++j)
+                    v[j] = F * (vault.get_variable(a, j) - vault.get_variable(b, j));
                 ops::polynomial_mutation(v, dbounds, eta_m_, pm, rng_);
+                ops::RepairTally tally;
                 for (int j = 0; j < nv; ++j) {
                     double lo = bounds[j].first.value_or(0.0);
                     double hi = bounds[j].second.value_or(1.0);
-                    double dj = (hi - lo) / 2.0;
+                    double dj = step_share_ * (hi - lo);        // Eq. 2-3, δ = (ub − lb)/2
                     if (v[j] < -dj) v[j] = -dj; else if (v[j] > dj) v[j] = dj;
                     double xj = vault.get_variable(i, j);
                     double cj = (dr(rng_) < cr_) ? xj + v[j] : xj;
-                    cj = std::min(std::max(cj, lo), hi);
+                    if (cj < lo || cj > hi) {                    // Eq. 5
+                        tally.out();
+                        cj = ops::repair_value(cj, lo, hi, xj, repair_, rng_);
+                    }
                     child[j] = cj;
                     if (std::abs(cj - xj) > 1e-15) differs = true;
                 }

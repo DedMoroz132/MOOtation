@@ -105,7 +105,9 @@ A plain struct, and the same fields as a `key = value` file:
 | `crossover`, `mutation` | words: `sbx` / `uniform` / `blx_alpha` / `spx` / `rex` / `undx` / `pcx`, and `polynomial` / `gaussian` / `cauchy` / `uniform_reset` / `mixture` / `mixture_cauchy` — NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA take both, MOEA/D-DE the mutation; the defaults are the papers' SBX and polynomial mutation |
 | `mutation_scale`, `mixture_q`, `blx_alpha` | their parameters: s of the gaussian (0.1) and Cauchy (0.05) steps as a share of ub − lb, the share of noisy steps in a mixture (0.1), BLX's α (0.5) |
 | `sbx_var_prob` | SBX's share of crossed variables (0.5) for this run |
-| `bound_repair` | a word: `clip`, `reflect`, `random`, `midpoint`, `resample`, `wrap` or `native` — what an operator that can leave the box does with the variables it put outside (DE in MOEA/D-DE, MOEA/D-DRA and LIS/LCS; Liu & Li's operators; DCEA, HLMEA and NAEMO); each keeps its own default, and the others report it as ignored (`operators/bound_repair.hpp`) |
+| `bound_repair` | a word: `clip`, `reflect`, `random`, `midpoint`, `resample`, `wrap` or `native` — what an operator that can leave the box does with the variables it put outside (DE in MOEA/D-DE, MOEA/D-DRA, LIS/LCS and HCCA; Liu & Li's operators; DCEA, HLMEA, NAEMO and EMyO/C); each keeps its own default, and the others report it as ignored (`operators/bound_repair.hpp`). A value still outside when written is clamped by the store and counted as a repair of its own, `vault` in the operator log |
+| `step_share`, `F_spread` | EMyO/C: the clamp of its difference vector as a share of ub − lb (0.5) and the spread of its factor F (0) |
+| `dms_init`, `dms_poll` | words for DMS: the initial list, `line` / `single` / `random`, and the next poll centre, `first` / `random` (`dms.hpp`, DMS-6) |
 
 `Settings::from_file("run.cfg")` reads the file; an unknown key is an error, not
 a silent no-op. [`examples/run.cfg`](../examples/run.cfg) is a commented copy

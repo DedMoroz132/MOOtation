@@ -29,6 +29,8 @@ Huband analyses:
               Table VIII): scaled
   shiftDTLZ   DTLZ1-4 with every distance variable's optimum 0.15-0.35 from
               the centre (dtlz_variants.py): not medial, the point of them
+  wideDTLZ3   DTLZ3 with the distance variables in [0, 1.2]: DTLZ3's row,
+              but not medial (the optimum at 0.5, the middle of the box at 0.6)
   ZCAT        Zapotecas-Martinez et al. 2023, Section 4: ZCAT3-4 linear,
               ZCAT5-10 "a high level of convexity and/or concavity"
               (mixed), ZCAT1-2 simplex-like and left None, ZCAT11-13
@@ -208,7 +210,7 @@ def properties(name: str) -> dict | None:
     row["disconnected"] = None if front is None else "disconnected" in front
     if stem.startswith("BT"):
         row["linkage"] = int(stem[2:]) in _BT_LINKAGE
-    elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "IDTLZ", "SDTLZ")):
+    elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "IDTLZ", "SDTLZ", "wideDTLZ")):
         row["linkage"] = False
     elif stem.startswith("ZCAT"):
         row["linkage"] = _LINKAGE["ZCAT"]
@@ -263,6 +265,10 @@ def _huband(name: str) -> dict | None:
         return row
     if stem.startswith("shiftDTLZ") and stem[5:] in _DTLZ:
         row = dict(_DTLZ[stem[5:]])
+        row["centre"] = False
+        return row
+    if stem == "wideDTLZ3":
+        row = dict(_DTLZ["DTLZ3"])
         row["centre"] = False
         return row
     if stem in ("IDTLZ1", "IDTLZ2"):

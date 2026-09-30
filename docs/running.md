@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 63 algorithm names |
-| `--problems` | list the 436 benchmark problems (needs NumPy) |
+| `--problems` | list the 438 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -156,7 +156,7 @@ day-long run.
 ## The built-in suites
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
-BT, and two uninformative probes: 436 problems across 15 families, each
+BT, the DTLZ variants, and two uninformative probes: 438 problems across 16 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -454,6 +454,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `crossover` | `sbx`; `uniform` (every variable from one parent at random, the other child the complement — JEGA's shuffle_random for two parents); `blx_alpha` (each variable uniform in [min − αI, max + αI], I the parents' distance, `blx_alpha` = 0.5); and four multi-parent, rotation-invariant ones: `spx` (uniform in the parents' simplex expanded √(n+2) times about its centre, n + 1 parents), `rex` (centre + Σ ξ_j(x_j − centre), ξ_j ~ N(0, 1/n), n + 1 parents), `undx` (a normal distribution along the line of two parents, spread across it by a third; three parents, the symmetric pair of children), `pcx` (a normal distribution about one of three parents). The pair is the algorithm's own, the other parents come from its own mating selection, all different; their parameters are the papers' (`operators/multi_parent.hpp`) |
 | `mutation` | `polynomial`; `gaussian`, x + s(ub − lb)·N(0, 1) with `mutation_scale` s = 0.1; `cauchy`, the same with C(0, 1) and s = 0.05; `uniform_reset`, U(lb, ub); `mixture` (`mixture_cauchy`): the polynomial step with probability 1 − `mixture_q` (0.1), the gaussian (Cauchy) one otherwise. Every one mutates each variable with probability `pm`, 1/n by default |
 | `bound_repair` | for the operators above that can leave the box (BLX-α, the four multi-parent crossovers, gaussian, Cauchy): `reflect` by default, provisionally, until experiment E3 picks one; the multi-parent crossovers refuse `resample` |
+| `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
 
 In MOEA/D-DE, `polynomial` is its literal Eq. 7 and every other mutation
@@ -488,7 +489,13 @@ answer, not of a population. `dms_init` chooses the initial list: `line`, n
 points on the box's diagonal (the paper's best variant, the default), or
 `single`, the box's centre. A problem whose optimum sits at the centre of the
 box (ZDT4's g) is solved by `single` at the first evaluation; see the
-structural-bias campaign before reading anything into that.
+structural-bias campaign before reading anything into that. The line's points
+and their halved steps land exactly on the middle and the bounds of the box,
+where DTLZ1-4 and ZDT have their optima, and every seed is the same run; to
+tell its search from both, `dms_init = "random"` starts from a Latin
+hypercube of n points drawn from the seed and `dms_poll = "random"` polls a
+point drawn among those still worth polling (`first`, the default, the first
+in list order), the directions in random order (DMS-6 in `dms.hpp`).
 
 **GDE3, SMS-EMOA, MO-CMA-ES.** Three classics the library lacked. GDE3
 (Kukkonen & Lampinen, CEC 2005) builds a DE/rand/1/bin trial for every
@@ -513,7 +520,7 @@ and to `final` for the whole run:
 
 | field | what it counts |
 |---|---|
-| `oob_share`, `oob_var_share` | offspring with a variable outside the box before repair, and the share of their variables that were (the measure of Kononova, Caraffini & Bäck, Inf. Sci. 581, 2021). Liu & Li's offspring pass two repair sites, crossover and mutation, and count at each |
+| `oob_share`, `oob_var_share` | offspring with a variable outside the box before repair, per evaluation, and the share of their variables that were (the measure of Kononova, Caraffini & Bäck, Inf. Sci. 581, 2021). Liu & Li's offspring pass two repair sites, crossover and mutation, and count at each. Every repair goes through the count: an operator's own, and since 2026-10-01 also the store's clamp of a value written outside the box, logged as `vault` — so 0 now says no offspring left the box (EMyO/C's step, HCCA's DE and MaOEA-IAMD's noise used to be clipped past it) |
 | `survival_share` | offspring that entered the next population: it holds more copies of their variable vector than the parents did, so a clone of a surviving parent does not count and a child copied into several MOEA/D neighbourhoods counts once |
 | `offspring_nd_share` | offspring that no member of the parent population dominates |
 | `step_mean` | the distance from an offspring to the nearest member of the parent population, over the box diagonal ‖ub − lb‖ |

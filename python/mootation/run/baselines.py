@@ -9,10 +9,12 @@ converges to is decided by the archiver, not by how the points are drawn
 (Schütze et al. 2008), so the two are built together.
 
   random_search   uniform points of the box
-  sobol_search    a scrambled Sobol sequence (scipy.stats.qmc, Owen-type
-                  scrambling seeded per run): lower discrepancy than uniform,
-                  which matters at budgets of tens to hundreds of points and
-                  not after; needs SciPy
+  sobol_search    a scrambled Sobol sequence (scipy.stats.qmc.Sobol: its
+                  scrambling is a linear matrix scramble with a digital shift,
+                  "LMS+shift" — Matoušek's affine scrambling, not Owen's nested
+                  uniform one — seeded per run): lower discrepancy than
+                  uniform, which matters at budgets of tens to hundreds of
+                  points and not after; needs SciPy
 
 and two ablations (ablations.py), which take one ingredient of an EA away:
 

@@ -23,7 +23,7 @@ from pathlib import Path
 _FALLBACK = (
     "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
     "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
-    "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob",
+    "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob", "step_share", "F_spread",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
@@ -31,7 +31,8 @@ _FALLBACK_TEXT = {
     "mutation": ("polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                  "mixture_cauchy"),
     "crowding_space": ("objectives", "decision"),
-    "dms_init": ("line", "single"),
+    "dms_init": ("line", "single", "random"),
+    "dms_poll": ("first", "random"),
 }
 
 _BLOCK = re.compile(

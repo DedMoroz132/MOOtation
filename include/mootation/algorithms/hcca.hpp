@@ -103,6 +103,9 @@
 //     against HCCA's own text, which says PP. Separately, the objectives are
 //     min-max normalized before the exponential: e^{I/0.05} overflows on the
 //     raw DTLZ1/DTLZ3 scales (the same guard as in lis_lcs.hpp).
+//   HCCA-10 (MINOR). The paper names no repair for DE/rand/1's offspring; a
+//     variable it puts outside the box is clipped (knob bound_repair), and
+//     since 2026-10-01 counted (RepairTally) and logged as "hcca_de_rand_1".
 //
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP makes the non-dominated sorts constrained — the Alg.2 NDS
@@ -123,6 +126,7 @@
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 
@@ -136,6 +140,9 @@ public:
 private:
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;
     double CR_ = 1.0, F_ = 0.5;
+    // DE/rand/1's repair of a variable it put outside the box: clip (the
+    // paper names none); counted and logged as "hcca_de_rand_1" (task 5).
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     double delta_ = 0.9;       // MOEA/D neighbor mating prob
     int    nr_    = 2;         // MOEA/D max replacements
     std::mt19937 rng_{std::random_device{}()};
@@ -385,6 +392,8 @@ private:
         std::uniform_real_distribution<double> ur(0.0, 1.0);
         std::vector<double> child(nv);
         int jrand = std::uniform_int_distribution<int>(0, nv - 1)(rng_);
+        ops::note_operator("hcca_de_rand_1", ops::bound_repair_name(repair_));
+        ops::RepairTally tally;
         for (int j = 0; j < nv; ++j) {
             double lo = bnd[j].first.value_or(0.0), hi = bnd[j].second.value_or(1.0);
             double v;
@@ -392,8 +401,10 @@ private:
                 v = DP_[r1].vars[j] + F_ * (DP_[r2].vars[j] - DP_[r3].vars[j]);
             else
                 v = base.vars[j];
-            if (v < lo) v = lo;
-            if (v > hi) v = hi;
+            if (v < lo || v > hi) {
+                tally.out();
+                v = ops::repair_value(v, lo, hi, base.vars[j], repair_, rng_);
+            }
             child[j] = v;
         }
         ops::polynomial_mutation(child, bnd, eta_m_, pm_eff(nv), rng_);
@@ -857,6 +868,10 @@ public:
     void set_pm(double p)            { pm_ = p; }
     void set_CR(double c)            { CR_ = c; }
     void set_F(double f)             { F_ = f; }
+    void set_bound_repair(ops::BoundRepair r) {
+        ops::require_repair(r, "hcca", false, false);
+        repair_ = r;
+    }
     void set_delta(double d)         { delta_ = d; }
     void set_nr(int n)               { nr_ = n; }
     void set_seed(unsigned s)        { rng_.seed(s); }

@@ -23,7 +23,7 @@ from . import _core
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
-         "sbx_var_prob", "crowding_space", "dms_init")
+         "sbx_var_prob", "crowding_space", "dms_init", "dms_poll", "step_share", "F_spread")
 
 def minimize(
     fn: Callable[[Sequence[float]], Sequence[float]],

@@ -33,6 +33,15 @@
 #              least 0.15 from the centre and from both bounds, and each
 #              distance variable has its own. The family is a control for
 #              centre bias written for this library, not a published suite.
+# wideDTLZ3  — DTLZ3 with its distance variables in [0, 1.2] instead of [0, 1]
+#              (task 5, 2026-10-01, run A2). The optimum stays at x = 0.5 and
+#              the front, ideal and nadir are DTLZ3's, but the middle of the
+#              box moves to 0.6, 5e-5 from a local minimum of g: (0.1)^2 −
+#              cos(2π) = −0.99 per variable, g = 100(k − 0.99k) = k (10 at
+#              three and at five objectives). A parent on a bound plus a step
+#              of half the range — EMyO/C's exact hits of 0.5 on DTLZ3 — then
+#              lands on 0.6. A control written for this library, at three and
+#              five objectives.
 #
 # The reference fronts are built analytically, with g pinned at the value it
 # takes on the front, so that IGD, IGD+ and GD+ are computed against the real
@@ -213,3 +222,13 @@ def shift_dtlz(name: str, x: List[float], M: int) -> List[float]:
     y = np.array(x, dtype=float)
     y[M - 1:] = np.mod(y[M - 1:] - shift_centres(len(y) - M + 1) + 0.5, 1.0)
     return _d.DTLZ_FUNCS[name](y, M)
+
+
+# ---- wideDTLZ3: the distance variables in [0, 1.2] ------------------------
+WIDE_UPPER = 1.2
+WIDE_M = (3, 5)
+
+
+def wide_bounds(n_vars: int, M: int) -> list:
+    """Positions in [0, 1], the distance variables in [0, WIDE_UPPER]."""
+    return [(0.0, 1.0)] * (M - 1) + [(0.0, WIDE_UPPER)] * (n_vars - M + 1)

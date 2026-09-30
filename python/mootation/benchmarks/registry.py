@@ -12,6 +12,7 @@
 #   Polygon x M={3..6}  Ishibuchi, Akedo, Nojima 2011
 #   MOP1-7, BT1-9, and the inverted / scaled / minus DTLZ variants
 #   shiftDTLZ1-4        DTLZ1-4 with the distance optimum off the centre (ours)
+#   wideDTLZ3 x M={3,5} DTLZ3 with the distance variables in [0, 1.2] (ours)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -42,7 +43,7 @@ from .polygon import (polygon_eval, polygon_bounds,
 from .mop     import MOP_SPECS, mop_nadir, mop_ideal
 from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
                            hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz,
-                           shift_centres)
+                           shift_centres, WIDE_M, wide_bounds)
 from .maf     import MAF_FIX, maf_n_vars
 from .bt      import BT_SPECS, N as BT_N
 from . import polygon_ishibuchi as _ipoly
@@ -1320,6 +1321,31 @@ def _register_shifted_dtlz():
 
 
 # =============================================================
+#  wideDTLZ3 × M={3,5}: DTLZ3 with the distance variables in [0, 1.2]
+#  (dtlz_variants.py). The same function, front, ideal, nadir and Pareto set
+#  as DTLZ3; only the box is wider, its middle on a local optimum of g.
+# =============================================================
+def _register_wide_dtlz3():
+    for M in WIDE_M:
+        pop, ng = _budget(M)
+        n_vars = dtlz_n_vars("DTLZ3", M)
+        nadir  = dtlz_nadir("DTLZ3", M)
+        ideal  = dtlz_ideal("DTLZ3", M)
+        def _eval(x, _M=M): return DTLZ_FUNCS["DTLZ3"](list(x), _M)
+        def _pf(n, _M=M): return _DTLZ_PF["DTLZ3"](_M, n)
+        def _ps(n, _M=M, _nv=n_vars): return _psets.dtlz(_M, _nv, n)
+        prob_name = f"wideDTLZ3_{M}D"
+        PROBLEMS[prob_name] = BenchProblem(
+            name=prob_name, n_vars=n_vars, bounds=wide_bounds(n_vars, M), n_obj=M,
+            evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(v * 1.1 for v in nadir),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+            ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+            pareto_front=_pf, pareto_set=_ps)
+
+
+# =============================================================
 #  ZCAT1-20 × M={2,3,5,10} — Zapotecas-Martínez, Coello Coello, Aguirre &
 #  Tanaka, Swarm and Evolutionary Computation 81 (2023) 101350.
 #  Registered with the suite's own defaults (Section 5.1): n = 10M, Level 1,
@@ -1537,6 +1563,7 @@ _zdt_register()
 _register_wfg()
 _register_dtlz()
 _register_shifted_dtlz()
+_register_wide_dtlz3()
 _register_zcat()
 _register_bbob_biobj()
 _register_uninformative()

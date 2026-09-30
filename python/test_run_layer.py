@@ -3642,7 +3642,8 @@ def dms_and_crowding_space_are_knobs_of_the_run_layer():
     from mootation.run.knobs import text_knobs
     words = text_knobs()
     assert list(words["crowding_space"]) == ["objectives", "decision"], words
-    assert list(words["dms_init"]) == ["line", "single"], words
+    assert list(words["dms_init"]) == ["line", "single", "random"], words
+    assert list(words["dms_poll"]) == ["first", "random"], words
     assert "dms" in algorithm_names()
     tail = 'gens = 5\n'
     bad = loads(_MIN.replace(tail, tail + 'params = { crowding_space = "genotype" }\n'))
@@ -3712,6 +3713,67 @@ def dms_is_deterministic_stops_by_itself_and_answers_with_a_nondominated_set():
     assert not single.ignored and "dms_init" in minimize(sch, max_evaluations=100, algorithm="nsga2",
                                                          bounds=kw["bounds"], n_objs=2,
                                                          dms_init="single").ignored
+
+
+@test
+def dms_can_start_off_the_grid_and_poll_at_random():
+    """DMS-6 (task 5, run A1): dms_init = random and dms_poll = random make the
+    seed matter — the same seed repeats the run, another changes it — while the
+    defaults stay one run for every seed. The line's grid puts coordinates on
+    exactly 0.5, DTLZ1's optimum; a random start does not."""
+    if not _have_numpy() or _core_with("dms_poll") is None:
+        print("  skip  dms_can_start...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ1_3D")
+    kw = dict(bounds=p.bounds, n_objs=3, algorithm="dms", pop_size=20, max_evaluations=600)
+    rnd = dict(dms_init="random", dms_poll="random")
+    a = minimize(p.evaluate, seed=1, **rnd, **kw)
+    b = minimize(p.evaluate, seed=1, **rnd, **kw)
+    c = minimize(p.evaluate, seed=2, **rnd, **kw)
+    assert not a.ignored and a.objectives == b.objectives and a.objectives != c.objectives
+    d = minimize(p.evaluate, seed=1, **kw)
+    assert d.objectives == minimize(p.evaluate, seed=2, **kw).objectives
+    assert minimize(p.evaluate, seed=1, dms_poll="random", **kw).objectives != d.objectives
+    assert np.any(np.array(d.variables) == 0.5) and not np.any(np.array(a.variables) == 0.5)
+    try:
+        minimize(p.evaluate, seed=1, dms_poll="last", **kw)
+    except ValueError as exc:
+        assert "first or random" in str(exc), exc
+    else:
+        raise AssertionError("an unknown dms_poll must be refused")
+
+
+@test
+def clipping_is_counted_where_emyo_c_hcca_and_maoea_iamd_clip():
+    """Task 5, item 2: EMyO/C's offspring, HCCA's DE/rand/1 and MaOEA-IAMD's
+    noise used to be clipped past the out-of-box counts (the first two by
+    hand, the last by the store); now each is in the operator log, repaired
+    before the store, and counted. EMyO/C's knobs for run A2 (bound_repair,
+    step_share, F, F_spread) change its run; its defaults are the paper's."""
+    if not _have_numpy() or _core_with("step_share") is None:
+        print("  skip  clipping_is_counted...: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ3_3D")
+    kw = dict(bounds=p.bounds, n_objs=3, pop_size=20, max_evaluations=400, seed=3,
+              operator_stats=True)
+    for alg, op in (("emyo_c", "emyo_c_difference"), ("hcca", "hcca_de_rand_1"),
+                    ("maoea_iamd", "maoea_iamd_gaussian")):
+        r = minimize(p.evaluate, algorithm=alg, **kw)
+        ops = dict(r.operators)
+        assert ops.get(op) == "clip" and "vault" not in ops, (alg, r.operators)
+        if alg != "maoea_iamd":                 # its noise is 1 % of the range
+            assert dict(r.operator_totals)["oob_share"] > 0, (alg, r.operator_totals)
+    plain = minimize(p.evaluate, algorithm="emyo_c", **kw)
+    knobs = minimize(p.evaluate, algorithm="emyo_c", bound_repair="reflect", step_share=0.45,
+                     F=0.5, F_spread=0.1, **kw)
+    assert not knobs.ignored and dict(knobs.operators)["emyo_c_difference"] == "reflect"
+    assert knobs.objectives != plain.objectives
+    same = minimize(p.evaluate, algorithm="emyo_c", step_share=0.5, F=1.0, F_spread=0.0, **kw)
+    assert same.objectives == plain.objectives, "the paper's values are the defaults"
+    assert minimize(p.evaluate, algorithm="nsga2", step_share=0.45, **kw).ignored == ["step_share"]
 
 
 @test

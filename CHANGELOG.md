@@ -199,6 +199,16 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Knobs for the runs that test stage 3's artefacts (task 5, runs A1 and A2),
+  every default unchanged: DMS `dms_init = "random"` (a Latin hypercube of n
+  points from the seed) and `dms_poll = "random"` (a poll centre drawn among
+  those still worth polling, the directions in random order), so that its ten
+  seeds are ten runs and its steps leave the dyadic grid that lands on the
+  middle and the bounds of the box; EMyO/C `bound_repair`, `step_share`, `F`
+  and `F_spread` (its offspring's repair, the clamp of the difference vector,
+  and a factor on it, the paper's clip, 0.5 and 1 by default); and the problem
+  `wideDTLZ3_3D`/`_5D`, DTLZ3 with the distance variables in [0, 1.2], whose
+  middle is a local optimum of g (438 problems, 16 families).
 - `--instance-space` (task 4, item 5): instance space analysis written from
   Smith-Miles & Muñoz 2023 (PRELIM's relative performance, SIFTED's first
   step, PILOT by BFGS with the analytical solution and the exact optimum's loss
@@ -633,6 +643,16 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- Clipping past the out-of-box counts (`oob_share` = 0 proved nothing where
+  it happened): EMyO/C's offspring (`emyo_c_difference`), HCCA's DE/rand/1
+  (`hcca_de_rand_1`, which was missing from the operator log altogether) and
+  MaOEA-IAMD's noise (`maoea_iamd_gaussian`, clamped by the store) are now
+  repaired, counted and logged where they leave the box, to the same values
+  as before; and the store counts a clamp of its own as a repair, `vault` in
+  the operator log, so that none can go unseen again. A run of every
+  algorithm finds none left for the store.
+- `sobol_search`'s header called SciPy's scrambling Owen-type; it is a linear
+  matrix scramble with a digital shift (Matoušek), not Owen's nested one.
 - The tables read a budget below the end (`--at`) the way `--cover` does, by
   one function (`cover.read_at`): the first trajectory record at or after the
   budget asked for (`budget_nominal`). `value_at` took the last record at or

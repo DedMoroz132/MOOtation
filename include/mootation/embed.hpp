@@ -273,6 +273,9 @@ MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,  double)
 MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,  double)
 MOOTATION_OPTIONAL_SETTER(crowding_space, set_crowding_space, CrowdingSpace)
 MOOTATION_OPTIONAL_SETTER(dms_init,   set_init,       DMSInit)
+MOOTATION_OPTIONAL_SETTER(dms_poll,   set_poll,       DMSPoll)
+MOOTATION_OPTIONAL_SETTER(step_share, set_step_share, double)
+MOOTATION_OPTIONAL_SETTER(F_spread,   set_F_spread,   double)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
@@ -319,6 +322,8 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
     if (auto* v = get("mutation_scale")) note(apply_mutation_scale(alg, *v), "mutation_scale");
     if (auto* v = get("mixture_q"))  note(apply_mixture_q(alg, *v), "mixture_q");
     if (auto* v = get("blx_alpha"))  note(apply_blx_alpha(alg, *v), "blx_alpha");
+    if (auto* v = get("step_share")) note(apply_step_share(alg, *v), "step_share");
+    if (auto* v = get("F_spread"))   note(apply_F_spread(alg, *v), "F_spread");
     auto word = [&](const char* k) -> const std::string* {
         auto it = s.text_params.find(k);
         return it == s.text_params.end() ? nullptr : &it->second;
@@ -345,6 +350,11 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
         auto i = parse_dms_init(*v);
         if (!i) throw bad_word("dms_init", *v);
         note(apply_dms_init(alg, *i), "dms_init");
+    }
+    if (auto* v = word("dms_poll")) {
+        auto p = parse_dms_poll(*v);
+        if (!p) throw bad_word("dms_poll", *v);
+        note(apply_dms_poll(alg, *p), "dms_poll");
     }
     if (auto* v = word("crowding_space")) {
         auto c = parse_crowding_space(*v);
