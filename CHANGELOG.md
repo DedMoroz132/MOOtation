@@ -209,6 +209,15 @@ always listed under **Changed** or **Removed**.
   and a factor on it, the paper's clip, 0.5 and 1 by default); and the problem
   `wideDTLZ3_3D`/`_5D`, DTLZ3 with the distance variables in [0, 1.2], whose
   middle is a local optimum of g (438 problems, 16 families).
+- Small budgets (task 5, run B1): `[campaign] hard_budgets` reads a budget as
+  the last record at or below it and the run archive after exactly that many
+  evaluations reduced to `answer_k` points (`meta.json` `hard_at`);
+  `pop_fit = "nearest"` fits a population to the nearest size its algorithm
+  accepts; `ladder_min_gens` leaves out rungs of too few generations; an
+  algorithm entry's `init = "sobol"` starts it from a scrambled Sobol design
+  and `init_share` from a plan taking that share of the budget (the
+  nondominated points of the plan first, the rest by DSS), through
+  `minimize(init=..., init_share=...)` and the new `mootation.designs`.
 - The analysis rules of task 5, item 2, for the runs after stage 3: an
   algorithm whose seeds are one run (DMS) is named by `--cover`,
   `--portfolio` and `--instance-space`, which add the sensitivity row "one run

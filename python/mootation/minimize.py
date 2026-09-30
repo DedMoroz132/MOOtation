@@ -45,6 +45,8 @@ def minimize(
     on_generation=None,
     record_every: int = 0,
     operator_stats: bool = False,
+    init: str = "uniform",
+    init_share: float = 0.0,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -99,6 +101,16 @@ def minimize(
                 oob_share, oob_var_share, survival_share, offspring_nd_share,
                 step_mean. Off by default; it never changes the run's result.
                 result.operators lists the operators used either way.
+    init        the first population: "uniform", the algorithm's own random
+                start (the default, as in its paper), or a design of
+                mootation.designs ("sobol"), evaluated here through `fn` — the
+                pop_size evaluations the algorithm's own start would cost —
+                and handed over as a seed population.
+    init_share  with a design: the share of max_evaluations it takes (0: just
+                pop_size points). A larger design is a plan of experiments
+                before the optimization: the algorithm starts from pop_size of
+                its points, the nondominated first, the rest by DSS
+                (designs.start_points), and has what is left of the budget.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -197,6 +209,37 @@ def minimize(
     if on_generation is not None and int(record_every) > 0:
         cfg.on_generation = on_generation
         cfg.record_every = int(record_every)
+
+    if init != "uniform":
+        # A design as the seed population: evaluated here, so that it costs
+        # what the algorithm's own start costs; the core then plants it
+        # without evaluating it again (setup_with_seed).
+        from . import designs
+        if init not in designs.KINDS:
+            raise ValueError(f"init = '{init}': uniform, or a design: {', '.join(designs.KINDS)}")
+        if seed_population is not None:
+            raise ValueError("init and seed_population both give the first population")
+        n_design = int(pop_size)
+        if init_share:
+            if not max_evaluations:
+                raise ValueError("init_share is a share of max_evaluations, which is not given")
+            n_design = max(n_design, int(round(float(init_share) * int(max_evaluations))))
+        rows = [list(x) for x in designs.design(init, n_design, bounds, seed)]
+        F = ([list(r) for r in batch(rows)] if batch is not None
+             else [list(fn(x)) for x in rows])
+        pick = designs.start_points(F, int(pop_size))
+        cfg.seed_variables = [rows[i] for i in pick]
+        cfg.seed_objectives = [F[i] for i in pick]
+        if constraints is not None:
+            cfg.seed_limits = [list(constraints(rows[i])) for i in pick]
+        if max_evaluations:
+            left = int(max_evaluations) - n_design
+            if left <= 0:
+                raise ValueError(f"the design takes {n_design} of the {max_evaluations} "
+                                 f"evaluations and leaves none to {algorithm}")
+            cfg.max_evaluations = left
+    elif init_share:
+        raise ValueError("init_share needs a design: init = 'sobol'")
 
     if seed_population is not None:
         from .persistence import fit_population, load_population

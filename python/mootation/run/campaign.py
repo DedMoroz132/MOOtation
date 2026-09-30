@@ -85,6 +85,9 @@ class Job:
     # a rung of the budget ladder: the label of the full-budget run it
     # shortens ([campaign] ladder); empty for every other job
     ladder_of: str = ""
+    # the first population (config.Algorithm: init, init_share)
+    init: str = "uniform"
+    init_share: float = 0.0
 
     @property
     def key(self) -> str:
@@ -127,6 +130,9 @@ class CampaignSpec:
     # rung is read off the full run's trajectory (record_at puts a record
     # there). The ladder jobs follow all the others in the job list.
     ladder: tuple = ()
+    # No rung whose budget is under this many populations (task 5, run B1:
+    # a configuration with fewer than three generations is not run); 0: all.
+    ladder_min_gens: int = 0
     # The hypervolumes on the trajectory exactly only up to this many objectives
     # (0 = always). Above it they are recorded as null, or, with
     # trajectory_hv_mc_samples > 0, estimated by Monte Carlo from that many
@@ -172,6 +178,22 @@ class CampaignSpec:
     # meta["archive_at"] and its points in archive_at.npz, so that --cover and
     # the tables read the archive scenario at those budgets. Needs the archive.
     archive_checkpoints: bool = False
+    # Budgets read the hard way (task 5, run B1: at 100-1 000 evaluations a
+    # generation is a large share of the budget). The population at b is the
+    # last trajectory record at or below b evaluations: a generation that
+    # would pass b does not count, where the first record at or after b
+    # (record_at) would add up to a whole population. The archive at b is the
+    # run archive after exactly b evaluations, reduced by DSS to answer_k
+    # points (0: the problem's population size), one answer size for every
+    # configuration. Both in meta["hard_at"], the evaluations of the record
+    # read beside them; a record every generation needed.
+    hard_budgets: tuple = ()
+    answer_k: int = 0
+    # A population an algorithm does not accept (a Das-Dennis lattice, a
+    # multiple of K) is fitted to "below", the largest accepted size up to it,
+    # or "nearest", the accepted size nearest to it (fit_pop); the size run
+    # is in meta.json, pop_note says why.
+    pop_fit: str = "below"
 
 
 def _snapshots_wanted(spec: "CampaignSpec", problem: str) -> bool:
@@ -208,7 +230,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "trajectory_hv_max_m",
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
-             "snapshot_variables", "archive_checkpoints", "operator_stats"}
+             "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
+             "answer_k", "pop_fit", "ladder_min_gens"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -298,6 +321,28 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
         raise ConfigError("campaign.archive_checkpoints", "true or false")
     if spec.record_every < 1:
         raise ConfigError("campaign.record_every", "must be >= 1")
+    hard = raw.get("hard_budgets", [])
+    if (not isinstance(hard, (list, tuple))
+            or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in hard)):
+        raise ConfigError("campaign.hard_budgets", f"a list of positive evaluation counts, "
+                                                   f"not {hard!r}")
+    if hard and (spec.record_grid != "generations" or spec.record_every != 1):
+        raise ConfigError("campaign.hard_budgets", "reads the last record at or below each "
+                                                   "budget: needs a record every generation "
+                                                   "(record_grid = \"generations\", "
+                                                   "record_every = 1)")
+    spec.hard_budgets = tuple(sorted(set(hard)))
+    spec.answer_k = raw.get("answer_k", 0)
+    if not isinstance(spec.answer_k, int) or isinstance(spec.answer_k, bool) or spec.answer_k < 0:
+        raise ConfigError("campaign.answer_k", f"an integer >= 0, not {spec.answer_k!r}")
+    spec.pop_fit = raw.get("pop_fit", "below")
+    if spec.pop_fit not in ("below", "nearest"):
+        raise ConfigError("campaign.pop_fit", f"\"below\" or \"nearest\", not {spec.pop_fit!r}")
+    spec.ladder_min_gens = raw.get("ladder_min_gens", 0)
+    if (not isinstance(spec.ladder_min_gens, int) or isinstance(spec.ladder_min_gens, bool)
+            or spec.ladder_min_gens < 0):
+        raise ConfigError("campaign.ladder_min_gens",
+                          f"an integer >= 0, not {spec.ladder_min_gens!r}")
     if spec.budget_fe < 0:
         raise ConfigError("campaign.budget_fe", "must be >= 0")
     return spec
@@ -325,13 +370,21 @@ def _two_layer_sizes(m: int, limit: int) -> set:
     return sizes
 
 
-def fit_pop(name: str, pop: int, n_objs: int, params: dict) -> tuple[int, str]:
-    """The population size this algorithm will accept, and a note if it changed."""
+def fit_pop(name: str, pop: int, n_objs: int, params: dict,
+            rule: str = "below") -> tuple[int, str]:
+    """The population size this algorithm will accept, and a note if it changed.
+    rule "below": the largest accepted size up to pop (the smallest above when
+    there is none); "nearest": the accepted size nearest to pop, the smaller of
+    two as near (CampaignSpec.pop_fit)."""
     if name in EXACT_LATTICE:
         from .algorithms import lattice_sizes
-        ok = set(lattice_sizes(n_objs, pop)) | _two_layer_sizes(n_objs, pop)
+        ok = set(lattice_sizes(n_objs, 2 * pop)) | _two_layer_sizes(n_objs, 2 * pop)
         if pop in ok:
             return pop, ""
+        if rule == "nearest":
+            _, above = nearest_lattice_sizes(n_objs, pop)
+            near = min(ok | {above}, key=lambda s: (abs(s - pop), s))
+            return near, f"pop {pop} -> {near} (nearest lattice size for M={n_objs})"
         below = max((s for s in ok if s <= pop), default=None)
         if below is None:
             _, above = nearest_lattice_sizes(n_objs, pop)
@@ -342,6 +395,8 @@ def fit_pop(name: str, pop: int, n_objs: int, params: dict) -> tuple[int, str]:
         if pop % k == 0:
             return pop, ""
         new = max(k, (pop // k) * k)
+        if rule == "nearest" and pop - new > new + k - pop:
+            new += k
         return new, f"pop {pop} -> {new} (multiple of K={k})"
     return pop, ""
 
@@ -365,7 +420,7 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
         p = PROBLEMS[pname]
         for a in cfg.algorithms:
             pop = a.pop if a.pop > 0 else p.pop_size
-            pop, note = fit_pop(a.name, pop, p.n_obj, a.params)
+            pop, note = fit_pop(a.name, pop, p.n_obj, a.params, spec.pop_fit)
             if a.evaluations > 0:                  # the algorithm's own budget
                 gens = max(1, math.ceil(a.evaluations / pop))
             elif spec.budget_fe > 0:
@@ -376,7 +431,8 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
                 jobs.append(Job(index=idx, problem=pname, algorithm=a.name, seed=s,
                                 pop=pop, gens=gens, params=dict(a.params),
                                 n_objs=p.n_obj, pop_note=note, label=a.key,
-                                evaluations=a.evaluations))
+                                evaluations=a.evaluations, init=a.init,
+                                init_share=a.init_share))
                 idx += 1
     if spec.ladder:
         # The rungs, after every full-budget job so that the job numbers of a
@@ -385,11 +441,12 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
         full = {(j.problem, j.key): j for j in jobs}
         for pname in problems:
             for a in cfg.algorithms:
-                if a.name not in BUDGET_DEPENDENT or a.evaluations > 0:
+                # a plan taking a share of the budget depends on the budget too
+                if (a.name not in BUDGET_DEPENDENT and not a.init_share) or a.evaluations > 0:
                     continue
                 base = full[(pname, a.key)]
                 for b in spec.ladder:
-                    if b >= base.budget:
+                    if b >= base.budget or b < spec.ladder_min_gens * base.pop:
                         continue
                     gens = max(1, math.ceil(b / base.pop))
                     for s in seeds:
@@ -397,7 +454,8 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
                                         pop=base.pop, gens=gens, params=dict(a.params),
                                         n_objs=base.n_objs, pop_note=base.pop_note,
                                         label=f"{a.key}@{b}", evaluations=b,
-                                        ladder_of=a.key))
+                                        ladder_of=a.key, init=a.init,
+                                        init_share=a.init_share))
                         idx += 1
     return jobs
 
@@ -452,9 +510,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "core": job.algorithm,
         # measured in budget.py: a record of this run at a smaller budget is
         # not what a separate run of that budget gives (ladder_of: the full
-        # run a ladder rung shortens)
-        "budget_dependent": job.algorithm in BUDGET_DEPENDENT,
+        # run a ladder rung shortens); so is a plan taking a share of it
+        "budget_dependent": job.algorithm in BUDGET_DEPENDENT or bool(job.init_share),
         "ladder_of": job.ladder_of or None,
+        "init": job.init, "init_share": job.init_share,
         "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
         # the budget asked for: budget_fe rounds it up to whole generations
         # (25 025 at a population of 91), --at and the checkpoints count from it
@@ -496,6 +555,18 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # evaluator from the run's seed; every other problem is its `evaluate`
     objective = (p.make_evaluator(job.seed) if getattr(p, "make_evaluator", None)
                  else p.evaluate)
+    # The hard budgets (CampaignSpec.hard_budgets): the archive after exactly
+    # b evaluations is taken by the evaluator, the population's last record at
+    # or below b by on_gen.
+    hard = [b for b in spec.hard_budgets if b <= job.budget]
+    hard_pop, hard_arc = {}, {}
+
+    def take_hard_archive(b):
+        AF, AX, _ = arc.points()
+        if len(AF):
+            idx = arc.select(spec.answer_k or p.pop_size)
+            hard_arc[str(b)] = dict(measure(AF[idx], AX[idx], traj_metrics), fe=fe,
+                                    n=int(len(idx)))
 
     def evaluate(x):
         nonlocal fe
@@ -503,6 +574,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         f = objective(x)
         if arc is not None and (not p.has_cons or feasible(x)):
             arc.add(f, x)
+        if arc is not None and fe in hard:
+            take_hard_archive(fe)
         return f
 
     snap = _snapshots_wanted(spec, job.problem)
@@ -599,6 +672,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             if keep_x:
                 snap_X.append(np.zeros((0, p.n_vars), np.float32) if X is None
                               else X.astype(np.float32))
+        for b in hard:                                   # the last record at or below b
+            if fe <= b:
+                hard_pop[str(b)] = {k: rec.get(k) for k in ("gen", "fe", "n", *traj_metrics)}
         crossed = [b for b in checkpoints if last_fe < b <= fe]
         if crossed and fe < budget and len(arc):         # the end is final_archive
             AF, AX, _ = arc.points()
@@ -638,6 +714,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 on_generation=on_gen,
                 record_every=(1 if grid is not None else spec.record_every),
                 operator_stats=op_stats,
+                init=job.init, init_share=job.init_share,
                 **job.params,
             )
     except Exception as e:                       # one bad job must not kill the shard
@@ -721,6 +798,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             if keep_x:
                 payload["X"] = np.vstack(ck_X)
             np.savez_compressed(d / "archive_at.npz", **payload)
+    if hard:
+        for b in hard:
+            if str(b) not in hard_arc and arc is not None and len(arc):
+                take_hard_archive(b)         # the run stopped before b: its archive at the end
+        meta["hard_at"] = {str(b): {"population": hard_pop.get(str(b)),
+                                    "archive": hard_arc.get(str(b))} for b in hard}
+        meta["answer_k"] = spec.answer_k or p.pop_size
 
     extra = {"pop": p.pop_size, "hv_options": final_hv, "pareto_set": pset,
              "bounds": p.bounds, "cyclic": p.cyclic_vars}

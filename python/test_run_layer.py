@@ -1287,6 +1287,12 @@ def campaign_fit_pop_rounds_to_what_the_core_accepts():
     assert fit_pop("moead_m2m", 91, 3, {})[0] == 90
     assert fit_pop("moead_m2m", 90, 3, {"K": 7})[0] == 84
     assert fit_pop("nsga2", 77, 3, {}) == (77, "")
+    # pop_fit = "nearest" (task 5, run B1): 21 rather than 6 at six objectives
+    assert fit_pop("nsga3", 20, 6, {})[0] == 6 and fit_pop("nsga3", 20, 6, {}, "nearest")[0] == 21
+    assert fit_pop("nsga3", 50, 6, {}, "nearest")[0] == 56
+    assert fit_pop("moead", 20, 3, {}, "nearest")[0] == 21
+    assert fit_pop("nsga3", 10, 5, {}, "nearest")[0] == 5            # 5 and 15 as near
+    assert fit_pop("moead_m2m", 97, 3, {}, "nearest")[0] == 100
 
 
 @test
@@ -4032,6 +4038,74 @@ def budget_check_tells_a_schedule_from_none():
     assert not res["nsga2"]["dependent"] and res["nsga2"]["compared"] >= 6, res["nsga2"]
     assert res["rvea"]["dependent"] and res["rvea"]["by_headers"], res["rvea"]
     assert not res["random_search"]["dependent"], res["random_search"]
+
+
+@test
+def small_budgets_read_hard_and_start_from_a_design():
+    """Task 5, run B1: the last record at or below a hard budget and the archive
+    after exactly that many evaluations, reduced to answer_k; a Sobol start and
+    a plan of half the budget before NSGA-II, the plan a budget-dependent run."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  small_budgets...: no NumPy or stale _core"); return
+    from mootation import designs
+    from mootation.run import campaign as C
+    from mootation.run.config import ConfigError, load, loads
+    F = [[0, 3], [1, 1], [3, 0], [2, 2], [4, 4], [1, 3.5]]
+    assert list(designs.nondominated(F)) == [0, 1, 2]
+    assert sorted(designs.start_points(F, 4)[:3]) == [0, 1, 2] and len(designs.start_points(F, 4)) == 4
+    assert set(designs.start_points(F, 2)) <= {0, 1, 2}
+    text = "\n".join([
+        '[run]', 'name = "small"', '[problem]', 'kind = "builtin"', '[benchmarks]',
+        'problems = ["ZDT1"]', 'runs = 1', '[campaign]', 'budget_fe = 300',
+        'record_grid = "generations"', 'metrics = ["igdp_norm", "gdp_norm", "hv_h"]',
+        'hard_budgets = [100, 300]', 'answer_k = 10', 'ladder = [100]',
+        '[[algorithms]]', 'name = "nsga2"', 'pop = 20', 'gens = 0',
+        '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_sobol"', 'pop = 20', 'gens = 0',
+        'init = "sobol"',
+        '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_plan"', 'pop = 20', 'gens = 0',
+        'init = "sobol"', 'init_share = 0.5', ''])
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        jobs = C.expand_jobs(cfg, spec)
+        assert [j.key for j in jobs] == ["nsga2", "nsga2_sobol", "nsga2_plan", "nsga2_plan@100"]
+        for job in jobs:
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+
+        def run(label):
+            d = root / "ZDT1" / label / "run_1"
+            return (json.loads((d / "meta.json").read_text("utf-8")),
+                    [json.loads(t) for t in (d / "trajectory.jsonl").read_text().splitlines()])
+        m, T = run("nsga2")
+        at = m["hard_at"]
+        assert at["100"]["population"]["fe"] == 100 and at["100"]["population"]["gen"] == 4, at
+        rec = next(t for t in T if t["fe"] == 100)
+        assert at["100"]["population"]["igdp_norm"] == rec["igdp_norm"]
+        assert at["100"]["archive"]["fe"] == 100 and 0 < at["100"]["archive"]["n"] <= 10, at
+        assert at["300"]["population"]["fe"] == 300 and m["answer_k"] == 10
+        m, T = run("nsga2_sobol")
+        assert m["init"] == "sobol" and T[0]["fe"] == 20 and T[0]["n"] == 20 and m["fe"] == 300, m
+        # the plan: 150 points, then generations of 20 past 300 (310); read at 290
+        m, T = run("nsga2_plan")
+        assert m["budget_dependent"] and T[0]["fe"] == 150 and m["fe"] == 310, (m, T[0])
+        assert m["hard_at"]["300"]["population"]["fe"] == 290, m["hard_at"]
+        assert m["hard_at"]["300"]["archive"]["fe"] == 300, m["hard_at"]
+        assert m["hard_at"]["100"]["population"] is None       # still planning at 100
+        m, T = run("nsga2_plan@100")
+        assert m["ladder_of"] == "nsga2_plan" and T[0]["fe"] == 50, (m, T[0])
+        assert m["hard_at"]["100"]["population"]["fe"] == 90, m["hard_at"]
+    bad = text.replace('init_share = 0.5', 'init_share = 0.5\n[[algorithms]]\nname = '
+                       '"random_search"\npop = 20\ngens = 0\ninit = "sobol"')
+    assert any("baseline" in e for e in validate(loads(bad))), validate(loads(bad))
+    try:
+        C.campaign_spec(loads(text.replace('record_grid = "generations"', 'record_grid = "log"')))
+        raise AssertionError("hard_budgets on the log grid")
+    except ConfigError:
+        pass
 
 
 @test

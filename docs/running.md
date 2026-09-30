@@ -388,6 +388,35 @@ read a rung at the record `record_at` puts there, which has them, and
   its trajectory indicators go to `meta.json` (`archive_at`, keyed by the
   count) and its points to `archive_at.npz` (objectives, and variables by the
   snapshots' rule). The end of the run is `final_archive`.
+- `hard_budgets = [100, 300, 1000]` reads those budgets the hard way, for
+  budgets of a few generations, where the first record at or after b (the
+  rule of `record_at` and `--at`) can add a whole population — at N = 200
+  and b = 300, 400 evaluations. The population at b is the last record at or
+  below b, and the archive at b is the run archive after exactly b
+  evaluations, reduced by DSS to `answer_k` points (0: the problem's
+  population size), so that configurations of different N answer with as
+  many points. Both go to `meta.json` (`hard_at`, keyed by the budget, the
+  record's evaluations and generation beside its indicators); it needs a
+  record every generation (`record_grid = "generations"`, `record_every =
+  1`). A run is not cut at b: its last generation may pass it, and the
+  reading ignores what it evaluated beyond.
+- `pop_fit = "nearest"` fits a population an algorithm does not accept (a
+  Das-Dennis lattice, a multiple of K) to the accepted size nearest to it —
+  21 for 20 at six objectives, where the default `"below"` takes the largest
+  size up to it, 6 — and lets the config ask for such a size at every
+  objective count; `pop_note` in `meta.json` says what was run.
+  `ladder_min_gens = 3` leaves out the rungs whose budget is under three
+  populations.
+
+**The first population.** `init = "sobol"` in an algorithm's entry starts it
+from a scrambled Sobol design (`mootation.designs`) instead of its own random
+population: the design is evaluated by the campaign's evaluator, costing what
+the algorithm's own start would, and planted as the seed population.
+`init_share = 0.5` makes the design a plan of half the budget before the
+algorithm: its population is the plan's nondominated points first, the rest
+chosen by DSS among the others, and it has the other half to run; such a run
+depends on its budget, so a `ladder` gives it a run of its own at each rung.
+`minimize(init=..., init_share=...)` does the same outside a campaign.
 
 **Baselines.** `random_search` and `sobol_search` (scrambled Sobol, needs
 SciPy) go in the algorithm list like any core. They sample the box blindly,
