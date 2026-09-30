@@ -1498,6 +1498,8 @@ def cover_finds_the_smallest_sets_exactly_where_greedy_does_not():
 def cover_reads_levels_seeds_and_the_hypervolume_gap():
     """igdp_norm <= (1 + tau) x floor and gdp_norm <= tau with a front, the gap to
     the best hv_h without one, and >= min_seeds seeds for a success."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
     from mootation.run import cover as V
     vals = {}
     for s in range(1, 11):
@@ -1554,6 +1556,8 @@ def the_igdp_floor_is_what_n_points_on_the_front_leave():
 def cover_sets_aside_the_problems_with_a_doubtful_reference():
     """DTLZ5, DTLZ6 and MaF6 from four objectives, WFG3, DTLZ1 at five objectives;
     the same families elsewhere, and the rest, are kept."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
     from mootation.run import cover as V
     marked = ["DTLZ5_5D", "DTLZ6_4D", "MaF6_8D", "WFG3_3D", "WFG3_5D", "DTLZ1_5D"]
     kept = ["DTLZ5_3D", "DTLZ6_3D", "DTLZ1_3D", "WFG4_5D", "DTLZ2_5D", "ZDT1", "BT9",
@@ -1578,6 +1582,8 @@ def cover_sets_aside_the_problems_with_a_doubtful_reference():
 def the_floor_review_reads_the_best_run_median_and_deciding_seed():
     """floor_review: the best run, the best algorithm's median and the smallest
     min_seeds-th best seed, each against the floor."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
     from mootation.run import cover as V
     main = []
     for s_ in range(1, 11):
@@ -1796,6 +1802,8 @@ def portfolio_shapley_oracle_and_complementarity():
 def portfolio_runs_on_a_results_tree():
     """--portfolio end to end on a made-up campaign: a problem with a front and
     a bbob-biobj one kept apart, the seed rules, and the matrix."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
     from mootation.run import portfolio as P
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
