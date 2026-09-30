@@ -1472,6 +1472,27 @@ def the_tables_and_cover_read_a_budget_alike():
 
 
 @test
+def cover_reads_the_front_flag_from_any_run():
+    """collect takes whether a problem has a reference front from the first run
+    that says so, in whatever order the file system lists the runs: a run
+    without the flag listed first (macOS, CI #93) made it ask the registry,
+    which needs NumPy."""
+    from mootation.run import cover as V
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        for alg, flag in (("a_old", None), ("b_new", True)):   # listed in this order here
+            d = root / "DTLZ2_3D" / alg / "run_1"
+            d.mkdir(parents=True)
+            meta = {"problem": "DTLZ2_3D", "algorithm": alg, "seed": 1, "status": "done",
+                    "final": {"igdp_norm": 0.1}, "budget_nominal": 100, "budget_fe": 100,
+                    "fe": 100, "pop": 10}
+            if flag is not None:
+                meta["has_reference_front"] = flag
+            (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        assert V.collect(root, (100,))["front"] == {"DTLZ2_3D": True}
+
+
+@test
 def cover_finds_the_smallest_sets_exactly_where_greedy_does_not():
     """cover.py on the textbook case: greedy takes 3 sets where 2 suffice."""
     from mootation.run import cover as V
@@ -4402,15 +4423,22 @@ snapshot_variables = "pareto_set"
 
 
 def main() -> int:
+    import os
     failed = []
     for fn in TESTS:
         try:
             fn()
             print(f"  ok    {fn.__name__}")
-        except Exception:
+        except Exception as e:
             failed.append(fn.__name__)
             print(f"  FAIL  {fn.__name__}")
             traceback.print_exc()
+            if os.environ.get("GITHUB_ACTIONS"):
+                # an annotation of the run, readable where the log is not
+                where = traceback.extract_tb(e.__traceback__)[-1]
+                what = f"{type(e).__name__}: {e}".replace("\n", " ")[:300]
+                print(f"::error title=run layer: {fn.__name__}::line {where.lineno} of "
+                      f"{Path(where.filename).name}: {what}", flush=True)
     print(f"\n{len(TESTS) - len(failed)}/{len(TESTS)} passed")
     if failed:
         print("failed: " + ", ".join(failed), file=sys.stderr)
