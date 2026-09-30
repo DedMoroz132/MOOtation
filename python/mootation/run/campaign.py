@@ -1184,14 +1184,15 @@ def rungs_in_place(rows: list[dict], at: float | None) -> list[dict]:
     ladder rung of exactly that budget when the campaign has one (the rung's
     final answer, filed under the full run's label), every other run is read
     off its trajectory (value_at)."""
+    from .cover import nominal
     main = main_rows(rows)
     if at is None:
         return main
-    rungs = {(r["problem"], r["ladder_of"], r["seed"], r.get("budget_fe")): r
+    rungs = {(r["problem"], r["ladder_of"], r["seed"], nominal(r)): r
              for r in rows if r.get("ladder_of")}
     out = []
     for r in main:
-        b = int(round(float(at) * float(r.get("budget_nominal") or r.get("budget_fe") or 0)))
+        b = int(round(float(at) * nominal(r)))
         rung = rungs.get((r["problem"], r["algorithm"], r["seed"], b))
         out.append(dict(rung, algorithm=r["algorithm"], rung_of=r.get("budget_fe"))
                    if rung is not None else r)
@@ -1201,28 +1202,28 @@ def rungs_in_place(rows: list[dict], at: float | None) -> list[dict]:
 def value_at(row: dict, metric: str, at: float | None) -> float | None:
     """A run's `metric`: its final value, or at a fraction `at` of its budget.
 
-    At a fraction it is the last trajectory record that had spent no more than
-    `at * budget_fe` evaluations — the anytime reading of the same run, so ranks
-    at 10 %, 25 % and 100 % of the budget come out of one campaign. It needs the
-    metric among the campaign's `metrics`, which are what a trajectory records.
-    A ladder rung put in a full run's place (rungs_in_place) is read at its end.
-    In the archive scenario (scenario_rows) a fraction is read from the archive
-    checkpoint of exactly that budget (archive_checkpoints), or is missing.
+    At a fraction it is read at `at` times the budget asked for (budget_nominal)
+    the way --cover reads a budget (cover.read_at): the first trajectory record
+    at or after it — the anytime reading of the same run, so ranks at 10 %,
+    25 % and 100 % of the budget come out of one campaign — or in the archive
+    scenario (scenario_rows) the archive checkpoint of exactly that budget
+    (archive_checkpoints); a run that stopped before spending it, at its end;
+    missing where the run has neither. It needs the metric among the
+    campaign's `metrics`, which are what a trajectory records. A ladder rung
+    put in a full run's place (rungs_in_place) is read at its end.
     """
+    from .cover import needs_trajectory, nominal, read_at
     if at is None or row.get("rung_of"):
         v = row["final"].get(metric)
         return None if v is None else float(v)
-    limit = float(at) * float(row.get("budget_fe") or 0)
-    if row.get("scenario") == "archive":
-        # the archive checkpoint of exactly that budget, if the run took one
-        b = int(round(float(at) * float(row.get("budget_nominal") or row.get("budget_fe") or 0)))
-        v = (row.get("archive_at") or {}).get(str(b), {}).get(metric)
-        return None if v is None else float(v)
-    found = None
-    for rec in read_trajectory(Path(row["dir"])):
-        if rec.get("fe", 0) <= limit and rec.get(metric) is not None:
-            found = rec[metric]
-    return None if found is None else float(found)
+    budget = nominal(row)
+    b = int(round(float(at) * budget))
+    archive = row.get("scenario") == "archive"
+    traj = (read_trajectory(Path(row["dir"]))
+            if not archive and needs_trajectory(b, budget, row.get("fe")) else ())
+    v = read_at(b, budget, row.get("fe"), row["final"], traj,
+                (row.get("archive_at") or {}) if archive else None, (metric,))[metric]
+    return None if v is None else float(v)
 
 
 def compare_table(rows: list[dict], metric: str = "igd", at: float | None = None) -> dict:

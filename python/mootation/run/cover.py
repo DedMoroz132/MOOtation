@@ -78,10 +78,15 @@ over its seeds and the value that decides coverage (its min_seeds-th best
 seed), as ratios to the level's floor: a ratio below 1 says the floor is too
 high, far above 2 on an easy problem says it is too strict.
 
-AT A BUDGET. A run's value at b evaluations is its final value when b is its
-budget; for a budget-dependent algorithm (budget.py), the final value of its
-ladder rung of budget b; for any other, the first trajectory record at or
-after b evaluations ([campaign] record_at puts one at every rung).
+AT A BUDGET (read_at: the one reading of --cover, --portfolio,
+--instance-space and the tables' --at). A run's value at b evaluations is its
+final value when b is its budget, the budget asked for (budget_nominal: the
+evaluations spent round it up to whole generations); for a budget-dependent
+algorithm (budget.py), the final value of its ladder rung of nominal budget b;
+for any other, the first trajectory record at or after b evaluations
+([campaign] record_at puts one at every rung). A run that stopped before
+spending b evaluations (DMS once its step is small enough: on BT6 and BT8 of
+stage 3 after 630) is read at its end: its answer did not change after.
 
 SCENARIO. With --scenario archive every value is the run archive reduced by
 DSS instead of the population: final_archive at a run's own budget, the
@@ -175,7 +180,32 @@ NODE_LIMIT = 2_000_000
 # ── reading the runs ────────────────────────────────────────────────────────
 
 
-def _first_at_or_after(traj: list, b: int, metrics) -> dict:
+def nominal(row: dict) -> int:
+    """The budget a run was asked for (budget_nominal; budget_fe for older runs)."""
+    return int(row.get("budget_nominal") or row.get("budget_fe") or 0)
+
+
+def needs_trajectory(b: int, budget: int, spent) -> bool:
+    """Does read_at look into the trajectory at b: below the budget, and not
+    after the run stopped?"""
+    return b < budget and not (spent is not None and spent < b)
+
+
+def read_at(b: int, budget: int, spent, answer: dict, traj=(), archive_at=None,
+            metrics=METRICS) -> dict:
+    """{metric: value} of a run at b evaluations (AT A BUDGET). budget: the
+    run's nominal budget; spent: the evaluations it spent (meta.json "fe");
+    answer: its final values (of the population, or in the archive scenario of
+    the reduced archive); archive_at: its archive checkpoints in the archive
+    scenario, None otherwise. None past the budget, or where the run has no
+    record at or after b below it."""
+    if b > budget:
+        return {m: None for m in metrics}
+    if not needs_trajectory(b, budget, spent):
+        return {m: answer.get(m) for m in metrics}
+    if archive_at is not None:
+        point = archive_at.get(str(b)) or {}
+        return {m: point.get(m) for m in metrics}
     for rec in traj:
         if rec.get("fe", 0) >= b:
             return {m: rec.get(m) for m in metrics}
@@ -183,17 +213,12 @@ def _first_at_or_after(traj: list, b: int, metrics) -> dict:
 
 
 def _values_of_run(task) -> tuple:
-    """(key, {budget: {metric: value}}) of one full-budget run."""
-    key, run_dir, final, budget_fe, from_trajectory, budgets = task
+    """(key, {budget: {metric: value}}) of one full-budget run, population."""
+    key, run_dir, final, budget, spent, budgets = task
     from .campaign import read_trajectory
-    out = {}
-    traj = read_trajectory(Path(run_dir)) if from_trajectory else None
-    for b in budgets:
-        if b == budget_fe:
-            out[b] = {m: final.get(m) for m in METRICS}
-        elif b < budget_fe and traj is not None:
-            out[b] = _first_at_or_after(traj, b, METRICS)
-    return key, out
+    traj = (read_trajectory(Path(run_dir))
+            if any(needs_trajectory(b, budget, spent) for b in budgets) else ())
+    return key, {b: read_at(b, budget, spent, final, traj) for b in budgets if b <= budget}
 
 
 def _end(row: dict, scenario: str) -> dict:
@@ -209,7 +234,7 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
     from .budget import BUDGET_DEPENDENT
     from .campaign import scan_results
     rows = [r for r in scan_results(Path(root)) if r["status"] == "done"]
-    rungs = {(r["problem"], r["ladder_of"], r["seed"], r.get("budget_fe")): r
+    rungs = {(r["problem"], r["ladder_of"], r["seed"], nominal(r)): r
              for r in rows if r.get("ladder_of")}
     main = [r for r in rows if not r.get("ladder_of")]
     tasks, values, missing = [], {}, []
@@ -221,7 +246,7 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
             dep = (r.get("core") or r["algorithm"]) in BUDGET_DEPENDENT
         # the budget asked for; budget_fe rounds it up to whole generations
         # (25 025 at a population of 91), which no budget of the list equals
-        bfe = int(r.get("budget_nominal") or r.get("budget_fe") or 0)
+        bfe = nominal(r)
         if dep:
             dependent.add(r["algorithm"])
             values[key] = ({bfe: {m: _end(r, scenario).get(m) for m in METRICS}}
@@ -235,13 +260,11 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
                         values[key][b] = {m: _end(rung, scenario).get(m) for m in METRICS}
         elif scenario == "archive":
             # the run's own archive checkpoints below its budget
-            values[key] = {b: ({m: _end(r, scenario).get(m) for m in METRICS} if b == bfe
-                               else {m: r["archive_at"][str(b)].get(m) for m in METRICS})
-                           for b in budgets
-                           if b == bfe or (b < bfe and str(b) in r.get("archive_at", {}))}
+            values[key] = {b: read_at(b, bfe, r.get("fe"), _end(r, scenario),
+                                      archive_at=r.get("archive_at") or {})
+                           for b in budgets if b <= bfe}
         else:
-            tasks.append((key, str(r["dir"]), r["final"], bfe, any(b < bfe for b in budgets),
-                          tuple(budgets)))
+            tasks.append((key, str(r["dir"]), r["final"], bfe, r.get("fe"), tuple(budgets)))
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
         from .campaign import single_threaded_blas

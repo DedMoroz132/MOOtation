@@ -1411,6 +1411,61 @@ def ladder_rungs_stand_in_for_budget_dependent_runs_at_a_fraction():
 
 
 @test
+def the_tables_and_cover_read_a_budget_alike():
+    """--at and --cover read a run at b evaluations the same way (cover.read_at):
+    the first record at or after b of the budget asked for — 2 548, not 2 002,
+    for "2 500" at a population of 91, whose budget_fe is 25 025; a run that
+    stopped before b (DMS) at its end; a rung found by its nominal budget
+    though it spent more; and in the archive scenario the checkpoint of b, also
+    through report._value, which used to ignore --at there."""
+    from mootation.run import campaign as C
+    from mootation.run import cover as V
+    from mootation.run import report as R
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        traj = {"nsga2": [(2002, 0.9), (2548, 0.5), (5005, 0.3), (10010, 0.2), (25025, 0.1)],
+                "dms": [(90, 0.8), (540, 0.4)]}
+        spent = {"nsga2": 25025, "dms": 630}
+        for alg, recs in traj.items():
+            d = root / "DTLZ2_3D" / alg / "run_1"
+            d.mkdir(parents=True)
+            (d / "trajectory.jsonl").write_text(
+                "".join(json.dumps({"fe": fe, "igdp_norm": v}) + "\n" for fe, v in recs),
+                encoding="utf-8")
+            final = {"igdp_norm": recs[-1][1] if alg == "nsga2" else 0.35}
+            (d / "meta.json").write_text(json.dumps(
+                {"problem": "DTLZ2_3D", "algorithm": alg, "seed": 1, "status": "done",
+                 "final": final, "final_archive": {"igdp_norm": final["igdp_norm"] / 2},
+                 "archive_at": {"2500": {"igdp_norm": 0.25}} if alg == "nsga2" else {},
+                 "budget_nominal": 25000, "budget_fe": 25025, "fe": spent[alg], "pop": 91,
+                 "has_reference_front": True}), encoding="utf-8")
+        d = root / "DTLZ2_3D" / "rvea@2500" / "run_1"              # a rung that spent 2 548
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps(
+            {"problem": "DTLZ2_3D", "algorithm": "rvea@2500", "seed": 1, "status": "done",
+             "final": {"igdp_norm": 0.6}, "ladder_of": "rvea", "budget_nominal": 2500,
+             "budget_fe": 2548, "fe": 2548}), encoding="utf-8")
+        d = root / "DTLZ2_3D" / "rvea" / "run_1"
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps(
+            {"problem": "DTLZ2_3D", "algorithm": "rvea", "seed": 1, "status": "done",
+             "final": {"igdp_norm": 0.05}, "budget_dependent": True, "budget_nominal": 25000,
+             "budget_fe": 25025, "fe": 25025}), encoding="utf-8")
+        rows = C.rungs_in_place(C.scan_results(root), 0.1)
+        at = {r["algorithm"]: C.value_at(r, "igdp_norm", 0.1) for r in rows}
+        assert at == {"nsga2": 0.5, "dms": 0.35, "rvea": 0.6}, at
+        data = V.collect(root, (2500, 25000))
+        assert {k[1]: v[2500]["igdp_norm"] for k, v in data["values"].items()} == at
+        assert data["values"][("DTLZ2_3D", "nsga2", 1)][25000]["igdp_norm"] == 0.1
+        arch = C.rungs_in_place(C.scenario_rows(C.scan_results(root), "archive"), 0.1)
+        got = {r["algorithm"]: C.value_at(r, "igdp_norm", 0.1) for r in arch}
+        assert got == {"nsga2": 0.25, "dms": 0.175, "rvea": None}, got
+        raw = next(r for r in C.scan_results(root) if r["algorithm"] == "nsga2")
+        assert R._value(raw, "igdp_norm", 0.1, "archive") == 0.25
+        assert V.read_at(30000, 25000, 25025, {"igdp_norm": 1.0})["igdp_norm"] is None
+
+
+@test
 def cover_finds_the_smallest_sets_exactly_where_greedy_does_not():
     """cover.py on the textbook case: greedy takes 3 sets where 2 suffice."""
     from mootation.run import cover as V

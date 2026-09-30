@@ -52,10 +52,12 @@ def _lower(metric: str) -> bool:
 
 
 def _value(row: dict, metric: str, at, scenario: str):
-    if scenario == "archive":
-        v = (row.get("final_archive") or {}).get(metric)
-        return None if v is None else float(v)
+    """The tables' reading (campaign.value_at) in both scenarios: in the archive
+    one the reduced archive, at `at` from its checkpoints like the population
+    from its trajectory."""
     from .campaign import value_at
+    if scenario == "archive" and row.get("scenario") != "archive":
+        row = dict(row, final=row.get("final_archive") or {}, scenario="archive")
     return value_at(row, metric, at)
 
 

@@ -633,6 +633,19 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- The tables read a budget below the end (`--at`) the way `--cover` does, by
+  one function (`cover.read_at`): the first trajectory record at or after the
+  budget asked for (`budget_nominal`). `value_at` took the last record at or
+  below `at × budget_fe`, and `budget_fe` is rounded up to whole generations:
+  at a population of 91 "2 500" was read at 2 002 evaluations, while the
+  budget-dependent algorithms' rungs had spent 2 548. The tables at 10 % of
+  the budget therefore put the ordinary algorithms a fifth of a budget
+  behind (on stage 3 the 17 budget-dependent ones stood 8.5 places too high
+  by `igdp_norm` at 2 500). A run that stopped before the budget (DMS, once
+  its steps are below tolerance) is now read at its end, in `--cover` too,
+  instead of having no value there; a rung is found by its nominal budget;
+  and `report._value` (`--ci`, `--by`, `--reference`) reads the archive
+  scenario at `--at` too, where it used to take the end.
 - The IPolygon header claimed every point inside the two polygons is
   Pareto-optimal. Ishibuchi, Akedo & Nojima (2011, Section 2) state that only
   for polygons "not too close", and the registry's (radius 20, centres 40

@@ -353,9 +353,9 @@ interpolating; a point is the first generation at or past its count.
 2 512 and 5 012): the rungs of a budget ladder get a record of their own, at the
 same generation a separate run of that budget stops at. `record_at_metrics`
 names indicators of `metrics` that are recorded only at those counts and at the
-end of the run, not on the whole grid — the costly ones; `--at` then reads the
-last record that has them, and `--recompute-trajectory` fills the other records
-from the snapshots.
+end of the run, not on the whole grid — the costly ones; `--at` and `--cover`
+read a rung at the record `record_at` puts there, which has them, and
+`--recompute-trajectory` fills the other records from the snapshots.
 
 **What else a run keeps.**
 - `meta.json` records `revision`: the git commit and whether tracked files
@@ -577,9 +577,16 @@ Two more readings need no rerun. `--at 0.25` gives `--compare` and `--ranks`
 every run as it stood at a quarter of its budget, read from its trajectory, so
 ranks at several budgets come out of one campaign — they do differ with the
 budget (Tanabe & Oyama, GECCO 2017). The fraction is of the budget asked for
-(`budget_nominal` in `meta.json`): `budget_fe` rounds it up to whole
-generations, 25 025 at a population of 91. With `--scenario archive`, `--at`
-reads the archive checkpoint of exactly that budget. `--recompute eps,hv_h` computes indicators
+(`budget_nominal` in `meta.json`; `budget_fe` rounds it up to whole
+generations, 25 025 at a population of 91), and a run is read at the first
+record at or after that many evaluations, exactly as `--cover` reads a budget:
+at a population of 91 the record of "2 500" is at 2 548, the end of the
+generation a separate run of 2 500 stops at. (Until 2026-10-01 `--at` took the
+last record at or below `at × budget_fe` — 2 002 there — and the tables at 10 %
+put the ordinary algorithms a fifth of a budget behind the budget-dependent
+ones' rungs.) A run that stopped before spending the budget (DMS once its step
+is small enough) is read at its end, its answer no longer changing. With
+`--scenario archive`, `--at` reads the archive checkpoint of exactly that budget. `--recompute eps,hv_h` computes indicators
 a campaign did not record from each finished run's `final.csv` and stores them
 in its `meta.json` — `--scenario archive` does the same from `archive.csv` into
 `final_archive` — with the campaign's own hypervolume settings; `--workers`
