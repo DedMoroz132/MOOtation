@@ -276,9 +276,11 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
         for t in tasks:
             key, v = _values_of_run(t)
             values[key] = v
+    # whether a problem has a reference front: the first run that says so, in
+    # whatever order the file system lists them (the registry only where none does)
     front = {}
     for r in main:
-        if r["problem"] not in front:
+        if front.get(r["problem"]) is None:
             front[r["problem"]] = r.get("has_reference_front")
     for p, has in list(front.items()):
         if has is None:                                  # older meta.json: ask the registry
