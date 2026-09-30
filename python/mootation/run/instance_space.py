@@ -14,8 +14,9 @@ Classification", Machine Learning 107(1), 2018, Section 6.1 and Appendix A
 (PILOT, there PBLDR, and its optimum); and Muñoz & Smith-Miles, "Performance
 Analysis of Continuous Black-Box Optimization Algorithms via Footprints in
 Instance Space", Evolutionary Computation 25(4), 2017, Section 5 (the
-footprints). Written from the papers: the authors' MATLAB toolkit (MATILDA) is
-under a non-commercial licence.
+footprints). Written from the papers: the authors' toolkit (MATILDA) is under
+the PolyForm Noncommercial licence (the MATLAB code since March 2026, the
+Python one since July 2026; GPL v3 before).
 
 TWO SPACES, one per group of problems as in portfolio.py: "front", with a
 reference front, and "bbob", bbob-biobj; their performance measures differ and
@@ -26,16 +27,20 @@ measures: each shape of the front a column (1 when the front has it, 0.5 when
 the front is unknown), every yes/no property 1 or 0 (0.5 when unknown), the
 bbob-biobj function groups as counts (0, 1 or 2 of the pair), M, log2 D and the
 front's dimension (M - 1 when unknown). Many problems share a feature vector
-and so a point. Constant columns are dropped and the rest z-scored. Not
-PRELIM's bounding (median +- 5 IQR) and Box-Cox transform: meant for measured
-features, they would flatten a rare yes (deceptive: two problems) to a constant.
+and so a position in the plane (on stage 3 the 110 problems with a front have
+77 vectors and 73 positions). Constant columns are dropped and the rest
+z-scored. Not PRELIM's bounding (median +- 5 IQR), meant for measured features:
+it would flatten a rare yes (deceptive: two problems) to a constant; nor its
+Box-Cox transform, which after the z-score changes nothing on a yes/no column.
 
 PERFORMANCE (PRELIM, the survey's Algorithm 1, relative): per problem the
 median over the seeds at the full budget of igdp_norm ("front") or hv_h
 ("bbob"), as median / best - 1 or 1 - median / best, best the best median of
 any algorithm there; zeros replaced by the machine epsilon, then Box-Cox (lambda
-by maximum likelihood) and z-score per algorithm. The best algorithm of a
-problem: the first by name with the best median.
+by maximum likelihood) and z-score per algorithm. A missing median takes the
+worst value of the algorithm's row (the survey sets the instance to +-infinity;
+stage 3 has none missing). The best algorithm of a problem: the first by name
+with the best median (the survey breaks ties at random).
 
 SIFTED, its first step (Algorithm 2, lines 2-8): a feature stays when it is the
 one most correlated with some algorithm's performance or correlates with some
@@ -49,8 +54,11 @@ Numerically, as the toolkit does by default: BFGS from 30 random starts in
 [-1, 1], keeping the solution of the highest topological preservation, the
 Pearson correlation of the problems' distances in features and in the plane —
 among the solutions at the lowest loss: the survey takes every BFGS result for
-a global optimum, but some stop short of it (pilot_numerical); in 2018 all 30
-runs of BIPOP-CMA-ES reached one loss. Beside it the analytical solution (lines
+a global optimum, but some stop short of it (pilot_numerical; how many, and how
+many ended on a loss of precision, is in is_meta.json); in 2018 all 30 runs of
+BIPOP-CMA-ES reached one loss. The problem is not convex, as the survey says:
+the loss is the same for (tA, B/t, C/t), which leaves BFGS ill-conditioned.
+Beside it the analytical solution (lines
 3-9, the 2018 paper's Corollary 1, Eq. 13: V the two leading eigenvectors of
 Xbar Xbar^T, Xbar = [F; Y], A = V^T Xbar F^T (F F^T)^+, the pseudo-inverse
 putting the problem in the subspace F spans when F is not of full row rank), its
@@ -58,12 +66,15 @@ loss and preservation reported, and the loss of the optimum itself as a check
 that BFGS got there (pilot_optimum_loss). The analytical solution is not that
 optimum: Appendix A's step from the relaxation (Z free) to the problem (Eq. 11,
 "with the same objective value") holds only when the relaxation's Z lies in the
-row space of F, which Y's part of it does not. The 2018 paper's own numbers show
-the gap (Eq. 13: 1.8749e3 against 1.8658e3 by CMA-ES), which it puts down to
-numerical instability; on stage 3 the analytical solution fell 2-6 % short. The
-optimum is that of the rank-constrained form of the problem (Corollary 2): a
-reduced-rank regression of Xbar on F. The R^2 of every feature's and every
-algorithm's linear model: is_projection.csv.
+row space of F, which the part of it Y adds in general does not. The 2018
+paper's own numbers (its Section 6.1) show the gap: Eq. 13 1.8749e3 against
+1.8658e3 by CMA-ES, which it puts down to numerical instability; on stage 3
+the analytical solution fell 2-6 % short. The optimum is that of problem (D'),
+Eq. 15, the one Corollary 2 is about: a reduced-rank regression of Xbar on F.
+The R^2 of every feature's and every algorithm's linear model:
+is_projection.csv. The plane is fixed only up to an invertible linear map of
+Z (any such map of an optimum is another), and the footprints and the
+preservation depend on which one BFGS lands on.
 
 FOOTPRINTS (the 2017 paper's Algorithm 1): of the problems where the algorithm
 is good, one of any two closer than delta is dropped; the rest are triangulated
@@ -71,22 +82,27 @@ is good, one of any two closer than delta is dropped; the rest are triangulated
 density (problems inside per unit area) is below rho or whose purity (the share
 of good problems among those inside) is below pi. delta and Delta are 1 % and
 25 % of the largest distance between two problems and pi = 0.75, as in the 2017
-and 2018 papers. Both set rho = 10 problems per unit area, in planes of
+and 2018 papers (the authors' 2018 code takes delta and Delta as the 1st and
+25th percentiles of the distances between the good problems instead). Both
+papers set rho = 10 problems per unit area, an absolute number, in planes of
 different scale: 10 / 233.7 of the known region's density in 2017, 10 / 19.88 of
-the convex hull's in 2018. PILOT's plane has no scale of its own (any invertible
-map of Z is another optimum), so rho is taken relative, as in 2017; on stage 3
-the 2018 share changes no footprint either, the triangles short enough for Delta
-holding several times the region's mean density. The
-known region is the same construction over all problems of the group, with no
-density or purity limit; a footprint's area and density are given as shares of
-the known region's (2017), its area also as a share of the convex hull of all
-problems (2018; Yap, Muñoz & Smith-Miles, IEEE TEVC 26(6), 2022). GOOD
-is --cover's criterion at a level and budget, reached in min_seeds seeds:
-"igdp" (igdp_norm against the floor) and "gdp" (gdp_norm) on "front", the hv_h
-gap to the campaign's best ("hv") on "bbob". The BEST footprints, of the best
-algorithm of every problem at a budget, lose their contradictions as in the
-paper's Algorithm 2: of two algorithms, a triangle of one goes when the
-triangles of the other overlapping it are together larger than it.
+the convex hull's in 2018. PILOT's plane has no scale of its own, so rho is the
+2017 share of the known region's density; with Delta so short it never binds —
+a triangle holds at least its three vertices, and with sides within Delta its
+area is at most (3^0.5 / 4) Delta^2. The known region is the same construction
+over all problems of the group, with no density or purity limit; a footprint's
+area and density are given as shares of the known region's (2017), its area
+also as a share of the convex hull of all problems (2018; Yap, Muñoz &
+Smith-Miles, IEEE TEVC 26(6), 2022). GOOD is --cover's criterion at a level
+and budget, reached in min_seeds seeds: "igdp" (igdp_norm against the floor)
+and "gdp" (gdp_norm) on "front", the hv_h gap to the campaign's best ("hv") on
+"bbob". The BEST footprints, of the best algorithm of every problem at a
+budget, lose their contradictions as in the paper's Algorithm 2: of two
+algorithms, a triangle of one goes when the triangles of the other overlapping
+it are together larger than it — both ways at once and in the order of the
+names (the authors' code takes the ordered pairs in turn), a tie leaving both.
+The 2017 paper also suggests Algorithm 2 between an algorithm's good footprint
+and its unsolved problems taken as a second algorithm; that is not done here.
 """
 
 from __future__ import annotations
@@ -261,10 +277,10 @@ def pilot_optimum_loss(F, Y) -> float:
     squares, which leave of Xbar = [F; Y] what lies outside Z's row space; Z's
     rows lie in F's, so the optimum keeps the most of Xbar P_F, P_F the
     projection on F's row space: ||Xbar||^2 less the two largest eigenvalues
-    of (Xbar P_F)(Xbar P_F)^T — the reduced-rank regression of Xbar on F that
-    the 2018 paper's Corollary 2 states the problem as. The analytical solution
-    takes the eigenvectors of Xbar Xbar^T instead, which is the same only when
-    Y lies in F's row space."""
+    of (Xbar P_F)(Xbar P_F)^T — the reduced-rank regression of Xbar on F, which
+    is problem (D'), Eq. 15, of the 2018 paper. The analytical solution takes
+    the eigenvectors of Xbar Xbar^T instead, the same only when Y lies in F's
+    row space."""
     import numpy as np
     Xbar = np.vstack([F, Y])
     XP = Xbar @ F.T @ np.linalg.pinv(F @ F.T) @ F
@@ -276,7 +292,9 @@ def pilot_numerical(F, Y, tries: int = PILOT_TRIES, seed: int = 0) -> dict:
     random starts; of the results at the lowest loss, the one of the highest
     topological preservation. The survey takes every BFGS result for a global
     optimum; on stage 3 up to a quarter stopped short of it, by up to 1 %, and
-    one of those had the highest preservation. The same dict as pilot_analytic."""
+    one of those had the highest preservation. The same dict as pilot_analytic,
+    and "short": how many starts stopped above the lowest loss, "imprecise":
+    how many ended on BFGS's loss of precision rather than its tolerance."""
     import numpy as np
     from scipy.optimize import minimize
     q, a = F.shape[0], Y.shape[0]
@@ -294,14 +312,16 @@ def pilot_numerical(F, Y, tries: int = PILOT_TRIES, seed: int = 0) -> dict:
         return float((E1 ** 2).sum() + (E2 ** 2).sum()), grad
 
     rng = np.random.default_rng(seed)
-    results = []
+    results, imprecise = [], 0
     for _ in range(tries):
-        x = minimize(loss, rng.uniform(-1.0, 1.0, 4 * q + 2 * a), jac=True, method="BFGS").x
-        results.append(_pilot_result(F, Y, *split(x)))
+        res = minimize(loss, rng.uniform(-1.0, 1.0, 4 * q + 2 * a), jac=True, method="BFGS")
+        imprecise += not res.success
+        results.append(_pilot_result(F, Y, *split(res.x)))
     lowest = min(r["loss"] for r in results)
     at_optimum = [r for r in results if r["loss"] <= lowest + 1e-6 * abs(lowest)]
-    return max(at_optimum, key=lambda r: (r["preservation"] if math.isfinite(r["preservation"])
+    best = max(at_optimum, key=lambda r: (r["preservation"] if math.isfinite(r["preservation"])
                                           else -math.inf))
+    return dict(best, short=len(results) - len(at_optimum), imprecise=imprecise)
 
 
 # ── footprints ─────────────────────────────────────────────────────────────
@@ -547,24 +567,29 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
         triangles[group] = {"known": [list(t) for t in known["triangles"]], "footprints": shapes}
 
         points = len({tuple(r[j] for r in raw) for j in range(len(problems))})
+        positions = len({(round(float(z[0]), 6), round(float(z[1]), 6)) for z in Z})
         meta_groups[group] = {
-            "problems": len(problems), "points": points, "metric": metric, "features": used,
+            "problems": len(problems), "points": points, "positions": positions,
+            "metric": metric, "features": used,
             "features_constant": [n for i, n in enumerate(names) if i not in f_rows],
             "features_sifted_out": [names[f] for i, f in enumerate(f_rows) if i not in sel],
             "algorithms_constant": [a for i, a in enumerate(algorithms) if i not in y_rows],
             "pilot": {"method": "numerical" if tries > 0 else "analytical", "tries": tries,
                       "seed": seed, "loss": proj["loss"], "preservation": proj["preservation"],
+                      "starts_short": proj.get("short"), "starts_imprecise": proj.get("imprecise"),
                       "optimum_loss": optimum, "analytical_loss": analytic["loss"],
                       "analytical_preservation": analytic["preservation"]},
             "known_area": known["area"], "known_density": density, "rho": rho,
             "convex_hull_area": hull, "max_distance": dmax}
         r2f = sorted(zip(used, proj["r2_features"]), key=lambda t: -t[1])
-        lines.append(f"  {group}: {len(problems)} problems at {points} points, {len(used)} "
-                     f"features, {len(y_rows)} algorithms; PILOT "
+        lines.append(f"  {group}: {len(problems)} problems ({points} feature vectors, "
+                     f"{positions} positions), {len(used)} features, {len(y_rows)} algorithms; PILOT "
                      f"{meta_groups[group]['pilot']['method']}: preservation "
                      f"{proj['preservation']:.3f} (analytical {analytic['preservation']:.3f}), "
                      f"loss {proj['loss']:.6g} (optimum {optimum:.6g}, analytical "
-                     f"{analytic['loss']:.6g})")
+                     f"{analytic['loss']:.6g})"
+                     + (f"; of {tries} BFGS starts {proj['short']} stopped short of the lowest "
+                        f"loss, {proj['imprecise']} on a loss of precision" if tries > 0 else ""))
         lines.append("    features best predicted from the plane (R^2): "
                      + ", ".join(f"{n} {r:.2f}" for n, r in r2f[:6]))
         lines.append(f"    performance R^2: median {float(np.median(proj['r2_performance'])):.2f}"
