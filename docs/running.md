@@ -607,7 +607,10 @@ it is a table nobody can read, and `--ranks` condenses it. On every problem the
 algorithms are ranked by that median — 1 is best, equal medians share the
 average rank — and each algorithm's ranks are averaged over all problems, over
 each family and over each objective count, next to the number of problems it
-won and the number it was ranked on.
+won and the number it was ranked on, and `short`, the problems where its
+median answer has fewer than N/2 points (N its population): an indicator such
+as GD+ does not see a short answer, so read its ranks with that column (the
+CSV's `short_answers`). `--compare` marks such a cell with `~`.
 
 Two cautions. A mean rank rewards consistency, not margin: an algorithm second
 on every problem outranks one that alternates between first and last, and a
@@ -723,7 +726,11 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   not a target. Both floors go to `igdp_floor.csv`, with the reference version,
   and are read back next time. Criterion `gdp` reads `gdp_norm ≤ τ`, τ in
   `--cover-taus` (0.1, 0.03, 0.01, 0.003): the progress towards the front
-  alone, whose floor is 0. Where there is no front (bbob-biobj), both read the
+  alone, whose floor is 0 — counted only for an answer of at least N/2 points,
+  since GD+ does not see how much of the front the answer covers (on stage 3
+  DMS reached its finest level on BT6–BT8 with 2 points of 100);
+  `cover_short_answers.csv` lists the runs shorter than that at every budget.
+  Where there is no front (bbob-biobj), both read the
   relative gap of `hv_h` to the best any run of the campaign reached on it,
   (best − hv_h)/best ≤ τ of `--cover-taus` — those best values depend on what
   the campaign ran, and are written to `best_known_hv.csv`; level k pairs the
@@ -753,7 +760,13 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   the smallest set's size, with problems weighted alike and with families
   weighted alike (bbob-biobj is more than half of the problems), with each
   family's count along it. `--cover-bootstrap N` resamples the seeds N times
-  and says how often each algorithm is in a smallest set. Tables on the
+  and says how often each algorithm is in a smallest set. An algorithm whose
+  seeds give the same values on every problem at every budget (on stage 3 DMS
+  alone) has its ten seeds as one run, so "7 of 10" is "1 of 1" for it: the
+  report names it, and beside every level the row "one run each" reads every
+  algorithm from one seed at a time (covered = the level in that seed) and
+  gives the mean over the seeds, with the problems the deterministic algorithm
+  then covers alone (`cover_one_run.csv`, per seed). Tables on the
   terminal, CSV in `<results>/_cover/`. A budget-dependent algorithm is read
   at a smaller budget from its ladder rung, every other from its trajectory
   (the first record at or after the budget). `--cover --scenario archive` reads
@@ -787,9 +800,15 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   the problems one covers and the other does not; per problem the gap between
   the best median and that of the single best solver on average; and the
   matrix problem × algorithm × budget with the seeds reaching every level and
-  the median and 7th best of `igdp_norm`, `gdp_norm`, `hv_h` and `eps_norm`
+  the median and 7th best of `igdp_norm`, `gdp_norm`, `hv_h` and `eps_norm`,
+  the answer's median size and the seeds whose answer is shorter than N/2
   (`portfolio_matrix.csv`), so that later analyses need not read every
-  `meta.json`. CSV in `<results>/_portfolio/` (`_portfolio_archive/`).
+  `meta.json`. With a deterministic algorithm in the campaign, the rule
+  "one_run" beside 5, 7 and 10: per seed every algorithm covering what it
+  reaches in that seed, the oracle, Shapley values and problems covered alone
+  averaged over the seeds, and the report sets the deterministic algorithm's
+  Shapley value and place under 7 of 10 beside them. CSV in
+  `<results>/_portfolio/` (`_portfolio_archive/`).
 - `--instance-space`: instance space analysis (Smith-Miles & Muñoz, ACM
   Computing Surveys 55(12), 2023; the projection of Muñoz, Villanova, Baatar &
   Smith-Miles, Machine Learning 107(1), 2018; the footprints of Muñoz &
@@ -821,7 +840,10 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   region's density (the papers' ρ = 10 per unit area was 4 % of it in 2017 and
   50 % of the hull's in 2018; PILOT's plane has no scale of its own). The footprints of the best algorithm per
   problem lose the triangles where another algorithm's overlapping ones are
-  larger. Needs SciPy. CSV and JSON in `<results>/_instance_space/`
+  larger. With a deterministic algorithm in the campaign every good footprint
+  is drawn once more per seed, good = the level in that one seed, and the mean
+  of its area shares goes beside it (kind `good_one_run`). Needs SciPy. CSV
+  and JSON in `<results>/_instance_space/`
   (`_instance_space_archive/`): the coordinates with the features, the relative
   performances, the projection with every feature's and algorithm's R², the
   footprints' measures and triangles.

@@ -209,6 +209,17 @@ always listed under **Changed** or **Removed**.
   and a factor on it, the paper's clip, 0.5 and 1 by default); and the problem
   `wideDTLZ3_3D`/`_5D`, DTLZ3 with the distance variables in [0, 1.2], whose
   middle is a local optimum of g (438 problems, 16 families).
+- The analysis rules of task 5, item 2, for the runs after stage 3: an
+  algorithm whose seeds are one run (DMS) is named by `--cover`,
+  `--portfolio` and `--instance-space`, which add the sensitivity row "one run
+  each" — every algorithm read from one seed at a time, the mean over the
+  seeds (`cover_one_run.csv`, the portfolio's rule `one_run`, the footprints
+  `good_one_run`); every budget reads the answer's size beside the
+  indicators, a gdp level counts only for an answer of at least N/2 points
+  (GD+ does not see how much of the front two points cover), and the answers
+  shorter than that are marked: `cover_short_answers.csv`, the portfolio
+  matrix's `seeds_short`, the rank tables' `short` column and `~` in
+  `--compare`.
 - `--instance-space` (task 4, item 5): instance space analysis written from
   Smith-Miles & Muñoz 2023 (PRELIM's relative performance, SIFTED's first
   step, PILOT by BFGS with the analytical solution and the exact optimum's loss

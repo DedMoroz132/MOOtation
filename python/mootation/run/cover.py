@@ -94,6 +94,27 @@ archive checkpoint of budget b below it ([campaign] archive_checkpoints), and
 a rung's final_archive for a budget-dependent algorithm. CSV under
 <results>/_cover_archive/.
 
+THE ANSWER'S SIZE (task 5, 2026-10-01). Beside the indicators every budget
+reads how many points the answer has there ("n": n_final of a final
+population, n of a trajectory record or a reduced archive). GD+ measures only
+how close the answer's points are to the front, not how much of it they
+cover: on stage 3 DMS reached the finest gdp level on BT6-BT8 with 2 points
+of 100. So a gdp level counts only for an answer of at least N/2 points, N
+the population the algorithm ran with; the igdp levels and the hv_h gap
+penalise a short answer themselves. cover_short_answers.csv lists the runs
+shorter than N/2 at every budget.
+
+DETERMINISTIC ALGORITHMS (task 5, 2026-10-01). An algorithm whose seeds give
+the same values on every problem at every budget (on stage 3 DMS alone,
+which draws no random number) has its ten seeds as one run: "7 of 10" is
+then "1 of 1" for it and "7 of 10" for everybody else. They are named in the
+report and in cover_meta.json, and beside every level the sensitivity row
+ONE RUN EACH (the fifth variant of report 06 of the stage-3 analysis) reads
+every algorithm from one seed at a time — covered = the level in that seed — and
+gives the mean over the seeds of what the main rule gives (cover_one_run.csv:
+per seed, the smallest set and the problems each deterministic algorithm
+covers alone).
+
 FOR EVERY CRITERION, LEVEL AND BUDGET:
   * the problems no algorithm covers;
   * the smallest sets of algorithms covering every problem some algorithm
@@ -191,25 +212,33 @@ def needs_trajectory(b: int, budget: int, spent) -> bool:
     return b < budget and not (spent is not None and spent < b)
 
 
+def answer_size(answer: dict):
+    """How many points an answer has (THE ANSWER'S SIZE): n_final of a final
+    population, n of a trajectory record or a reduced archive; None where the
+    run did not record it."""
+    v = answer.get("n_final", answer.get("n"))
+    return None if v is None else int(v)
+
+
 def read_at(b: int, budget: int, spent, answer: dict, traj=(), archive_at=None,
             metrics=METRICS) -> dict:
-    """{metric: value} of a run at b evaluations (AT A BUDGET). budget: the
-    run's nominal budget; spent: the evaluations it spent (meta.json "fe");
-    answer: its final values (of the population, or in the archive scenario of
-    the reduced archive); archive_at: its archive checkpoints in the archive
-    scenario, None otherwise. None past the budget, or where the run has no
-    record at or after b below it."""
+    """{metric: value} of a run at b evaluations (AT A BUDGET), and "n", the
+    size of the answer there. budget: the run's nominal budget; spent: the
+    evaluations it spent (meta.json "fe"); answer: its final values (of the
+    population, or in the archive scenario of the reduced archive); archive_at:
+    its archive checkpoints in the archive scenario, None otherwise. None past
+    the budget, or where the run has no record at or after b below it."""
     if b > budget:
-        return {m: None for m in metrics}
+        return dict({m: None for m in metrics}, n=None)
     if not needs_trajectory(b, budget, spent):
-        return {m: answer.get(m) for m in metrics}
+        return dict({m: answer.get(m) for m in metrics}, n=answer_size(answer))
     if archive_at is not None:
         point = archive_at.get(str(b)) or {}
-        return {m: point.get(m) for m in metrics}
+        return dict({m: point.get(m) for m in metrics}, n=answer_size(point))
     for rec in traj:
         if rec.get("fe", 0) >= b:
-            return {m: rec.get(m) for m in metrics}
-    return {m: None for m in metrics}
+            return dict({m: rec.get(m) for m in metrics}, n=answer_size(rec))
+    return dict({m: None for m in metrics}, n=None)
 
 
 def _values_of_run(task) -> tuple:
@@ -228,9 +257,9 @@ def _end(row: dict, scenario: str) -> dict:
 
 
 def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "final") -> dict:
-    """{(problem, algorithm, seed): {budget: {metric: value}}} with the facts
-    the analysis needs: which problems have a reference front, which
-    algorithms are budget-dependent, and the rungs a campaign lacks."""
+    """{(problem, algorithm, seed): {budget: {metric: value, "n": answer size}}}
+    with the facts the analysis needs: which problems have a reference front,
+    which algorithms are budget-dependent, and the rungs a campaign lacks."""
     from .budget import BUDGET_DEPENDENT
     from .campaign import scan_results
     rows = [r for r in scan_results(Path(root)) if r["status"] == "done"]
@@ -249,7 +278,8 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
         bfe = nominal(r)
         if dep:
             dependent.add(r["algorithm"])
-            values[key] = ({bfe: {m: _end(r, scenario).get(m) for m in METRICS}}
+            end = _end(r, scenario)
+            values[key] = ({bfe: dict({m: end.get(m) for m in METRICS}, n=answer_size(end))}
                            if bfe in budgets else {})
             for b in budgets:
                 if b < bfe:
@@ -257,7 +287,9 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
                     if rung is None:
                         missing.append((r["problem"], r["algorithm"], r["seed"], b))
                     else:
-                        values[key][b] = {m: _end(rung, scenario).get(m) for m in METRICS}
+                        end = _end(rung, scenario)
+                        values[key][b] = dict({m: end.get(m) for m in METRICS},
+                                              n=answer_size(end))
         elif scenario == "archive":
             # the run's own archive checkpoints below its budget
             values[key] = {b: read_at(b, bfe, r.get("fe"), _end(r, scenario),
@@ -499,8 +531,9 @@ def best_known_hv(data: dict) -> dict:
 def reached(data: dict, criterion: str, level: tuple, budget: int, best_hv: dict,
             floor: dict | None = None) -> dict:
     """{problem: {algorithm: {seed: bool}}}: did the run reach the level at budget.
-    `level` = (tau, tau_hv): igdp_norm <= (1 + tau) * floor, or gdp_norm <= tau,
-    where the problem has a reference front; the hv_h gap <= tau_hv where not.
+    `level` = (tau, tau_hv): igdp_norm <= (1 + tau) * floor, or gdp_norm <= tau
+    with an answer of at least N/2 points (THE ANSWER'S SIZE), where the
+    problem has a reference front; the hv_h gap <= tau_hv where not.
     `floor`: {(problem, N): floor}, N the population the algorithm ran with
     (data["pop"]; the problem's own where the run did not say)."""
     from ..benchmarks import get as bench_get
@@ -520,6 +553,8 @@ def reached(data: dict, criterion: str, level: tuple, budget: int, best_hv: dict
             limit = tau if criterion == "gdp" else (1.0 + tau) * (floor or {}).get((prob, n),
                                                                                   math.nan)
             ok = x is not None and math.isfinite(float(x)) and float(x) <= limit
+            if criterion == "gdp" and v.get("n") is not None and v["n"] < n / 2:
+                ok = False                               # GD+ does not see a short answer
         else:
             x, best = v.get("hv_h"), best_hv.get(prob, (0.0,))[0]
             ok = (x is not None and best > 0.0 and math.isfinite(float(x))
@@ -540,6 +575,70 @@ def successes(hit: dict, min_seeds: int, seeds=None) -> dict:
             if n >= min_seeds:
                 cov[alg].add(prob)
     return cov
+
+
+def deterministic(values: dict) -> list:
+    """The algorithms whose seeds are one run (DETERMINISTIC ALGORITHMS): on
+    every problem where they ran more than one seed, every seed's values alike
+    at every budget, the answer's size included."""
+    runs: dict = {}                                  # (problem, algorithm) -> [seeds, values]
+    for (prob, alg, _), by_b in values.items():
+        seen = runs.setdefault((prob, alg), [0, set()])
+        seen[0] += 1
+        seen[1].add(json.dumps(by_b, sort_keys=True))
+    alike: dict = {}
+    for (prob, alg), (n_seeds, distinct) in runs.items():
+        if n_seeds > 1:
+            alike[alg] = alike.get(alg, True) and len(distinct) == 1
+    return sorted(a for a, same in alike.items() if same)
+
+
+def short_answers(data: dict, budgets) -> list:
+    """[(problem, algorithm, budget, N, seeds, short seeds, median size)] of every
+    problem with a front and budget where some run's answer has fewer than N/2
+    points (THE ANSWER'S SIZE), N the population the algorithm ran with."""
+    from ..benchmarks import get as bench_get
+    sizes: dict = {}
+    for (prob, alg, _), by_b in data["values"].items():
+        if not data["front"].get(prob):
+            continue
+        for b in budgets:
+            n = by_b.get(b, {}).get("n")
+            if n is not None:
+                sizes.setdefault((prob, alg, b), []).append(n)
+    out = []
+    for (prob, alg, b), ns in sorted(sizes.items()):
+        pop = data.get("pop", {}).get((prob, alg)) or bench_get(prob).pop_size
+        short = sum(1 for n in ns if n < pop / 2)
+        if short:
+            out.append((prob, alg, b, pop, len(ns), short, _median(ns)))
+    return out
+
+
+def _alone(sets: dict, a: str) -> int:
+    """How many problems of the bit masks `sets` algorithm a covers alone."""
+    others = 0
+    for b, m in sets.items():
+        if b != a:
+            others |= m
+    return (sets.get(a, 0) & ~others).bit_count()
+
+
+def one_run(hit: dict, problems: list, seeds: list, watch=()) -> list:
+    """ONE RUN EACH: per seed s, every algorithm covering what it reaches in s
+    ("1 of 1"): [(s, covered by someone, smallest size, exact, the first
+    smallest set, {a: problems a covers alone} for a in watch)]."""
+    out = []
+    for s in seeds:
+        cov = successes(hit, 1, seeds=[s])
+        sets = _masks(cov, problems)
+        universe = 0
+        for m in sets.values():
+            universe |= m
+        size, optimal, exact = smallest_covers(sets, universe, max_sets=1)
+        out.append((s, universe.bit_count(), size, exact, optimal[0],
+                    {a: _alone(sets, a) for a in watch}))
+    return out
 
 
 # ── set cover on bit masks ──────────────────────────────────────────────────
@@ -805,6 +904,11 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
     if data["missing"]:
         lines.append(f"  {len(data['missing'])} ladder rungs missing (budget-dependent runs "
                      f"read as not reaching any level there), e.g. {data['missing'][0]}")
+    fixed = deterministic(data["values"])
+    if fixed:
+        lines.append(f"  deterministic, every seed the same run on every problem: "
+                     f"{', '.join(fixed)}; 'one run each' reads every algorithm from one seed "
+                     f"at a time (cover_one_run.csv)")
     from ..benchmarks import get as bench_get
     from ..benchmarks.registry import REFERENCE_VERSION
     prep = prepare(data, n_ref, out_dir / "igdp_floor.csv", workers=workers,
@@ -837,7 +941,8 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
                     "N = the population the algorithm ran with",
             "ideal": f"igdp_norm <= {1 + IDEAL_FLOOR_TAU:g} x floor is the ideal level: read it "
                      f"as the best attainable, not as a target",
-            "gdp": "gdp_norm <= tau, tau in taus (absolute: GD+ has a floor of 0)",
+            "gdp": "gdp_norm <= tau, tau in taus (absolute: GD+ has a floor of 0), with an "
+                   "answer of at least N/2 points (GD+ does not see a short answer)",
             "hv_h": "problems without a reference front, both criteria: (best - hv_h) / best "
                     "<= tau, tau in taus (absolute); best = the campaign's best final hv_h",
             "level_k": "level k pairs floor_taus[k] (igdp) or taus[k] (gdp) with taus[k] (hv_h)",
@@ -849,6 +954,10 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
         "min_seeds": min_seeds, "n_ref": n_ref, "keep_caveats": keep_caveats,
         "excluded": excluded, "marked": {p: "; ".join(m) for p, m in sorted(marks.items())},
         "floor_file": "igdp_floor.csv",
+        "deterministic": fixed,
+        "one_run_each": "cover_one_run.csv: every algorithm read from one seed at a time "
+                        "(covered = the level in that seed), per seed",
+        "short_answers": "cover_short_answers.csv: runs whose answer has fewer than N/2 points",
     }
     (out_dir / "cover_meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
     with (out_dir / "cover_excluded.csv").open("w", newline="", encoding="utf-8") as fh:
@@ -898,8 +1007,20 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
         w.writerow(["problem", "best_hv_h", "algorithm", "seed"])
         for p in sorted(best_hv):
             w.writerow([p, f"{best_hv[p][0]:.10g}", best_hv[p][1], best_hv[p][2]])
+    short = short_answers(data, budgets)
+    with (out_dir / "cover_short_answers.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["problem", "algorithm", "budget", "pop", "seeds", "seeds_short",
+                    "median_size"])
+        w.writerows([p, a, b, n, k, s, f"{m:g}"] for p, a, b, n, k, s, m in short)
+    at_full = [r for r in short if r[2] == max(budgets) and r[0] in kept_set]
+    if at_full:
+        lines.append(f"  answers of fewer than N/2 points at {max(budgets)}, which no gdp level "
+                     f"counts: {len(at_full)} problem-algorithm pairs, "
+                     f"{len({r[0] for r in at_full})} problems, "
+                     f"{len({r[1] for r in at_full})} algorithms (cover_short_answers.csv)")
 
-    summary, curves, uncovered, boot = [], [], [], []
+    summary, curves, uncovered, boot, single = [], [], [], [], []
     levels = {"igdp": list(zip(floor_taus, taus)), "gdp": list(zip(taus, taus))}
     for crit in CRITERIA:
         for tau, tau_hv in levels[crit]:
@@ -938,6 +1059,23 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
                     else:
                         lines.append(f"    unmarked: {res['n_covered']}/{res['n_problems']}; "
                                      f"smallest set {res['size']}: {opt[0] if opt else '-'}")
+                    if fixed:
+                        per_seed = one_run(hit, members, seeds, fixed)
+                        for s, n_cov, size, exact, first, alone in per_seed:
+                            single.append(head + [s, len(members), n_cov, size, exact,
+                                                  "+".join(first), json.dumps(alone)])
+                        if subset == "all":
+                            covs = [r_[1] for r_ in per_seed]
+                            sizes = [r_[2] for r_ in per_seed]
+                            masks = _masks(cov, members)
+                            lines.append(
+                                f"    one run each ({len(seeds)} seeds, each alone): covered "
+                                f"{sum(covs) / len(covs):.1f}/{len(members)}; smallest set "
+                                f"{sum(sizes) / len(sizes):.1f} ({min(sizes)}-{max(sizes)}); "
+                                + "; ".join(
+                                    f"{a} covers alone {_alone(masks, a)} here, "
+                                    f"{sum(r_[5][a] for r_ in per_seed) / len(per_seed):.1f} "
+                                    f"one run each" for a in fixed))
                     if replicates:
                         for a, share in bootstrap(hit, members, seeds, min_seeds,
                                                   replicates).items():
@@ -951,10 +1089,14 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
                                   "set_families_alike", "exact_families", "covered_per_family"],
         "cover_nobody.csv": key + ["problem", "family"],
         "cover_bootstrap.csv": key + ["algorithm", "share_in_smallest"],
+        "cover_one_run.csv": key + ["seed", "problems", "covered_by_someone", "smallest_size",
+                                    "exact", "smallest_set", "deterministic_alone"],
     }
     for name, rows in (("cover_summary.csv", summary), ("cover_curve.csv", curves),
-                       ("cover_nobody.csv", uncovered), ("cover_bootstrap.csv", boot)):
-        if name == "cover_bootstrap.csv" and not replicates:
+                       ("cover_nobody.csv", uncovered), ("cover_bootstrap.csv", boot),
+                       ("cover_one_run.csv", single)):
+        if (name == "cover_bootstrap.csv" and not replicates) or (
+                name == "cover_one_run.csv" and not fixed):
             continue
         with (out_dir / name).open("w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)

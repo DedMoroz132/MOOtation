@@ -1523,6 +1523,41 @@ def cover_reads_levels_seeds_and_the_hypervolume_gap():
 
 
 @test
+def a_gdp_level_needs_half_an_answer_and_one_run_each_reads_the_seeds_alone():
+    """Task 5: a gdp level counts only an answer of at least N/2 points; an
+    algorithm whose seeds are all alike is found; 'one run each' covers with
+    one seed at a time."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.run import cover as V
+    vals = {}
+    for s in range(1, 11):
+        # d: every seed alike, on F two points of 100 at GD+ 0 (DMS on BT6-BT8)
+        vals[("F", "d", s)] = {100: {"gdp_norm": 0.0, "igdp_norm": 0.5, "n": 2}}
+        vals[("F", "a", s)] = {100: {"gdp_norm": 0.001, "igdp_norm": 0.5,
+                                     "n": 60 if s <= 5 else 40}}
+        vals[("G", "d", s)] = {100: {"gdp_norm": 0.001, "igdp_norm": 0.5, "n": 80}}
+        vals[("G", "a", s)] = {100: {"gdp_norm": 0.001 if s == 3 else 0.5, "igdp_norm": 0.5,
+                                     "n": 80}}
+    data = {"values": vals, "front": {"F": True, "G": True}, "main": [],
+            "pop": {(p, a): 100 for p in "FG" for a in "da"}}
+    assert V.deterministic(vals) == ["d"]
+    hit = V.reached(data, "gdp", (0.01, 0.01), 100, {})
+    assert not any(hit["F"]["d"].values())                     # two points: not counted
+    assert [hit["F"]["a"][s] for s in range(1, 11)] == [True] * 5 + [False] * 5
+    assert V.successes(hit, 5) == {"a": {"F"}, "d": {"G"}}
+    per = V.one_run(hit, ["F", "G"], list(range(1, 11)), ["d"])
+    assert [r[1] for r in per] == [2] * 5 + [1] * 5, per      # covered by someone
+    assert [r[2] for r in per] == [2, 2, 1, 2, 2, 1, 1, 1, 1, 1], per   # seed 3: a alone
+    assert [r[5]["d"] for r in per] == [1, 1, 0, 1, 1, 1, 1, 1, 1, 1], per
+    short = V.short_answers(data, [100])
+    assert [(r[0], r[1], r[5], r[6]) for r in short] == [("F", "a", 5, 50), ("F", "d", 10, 2)]
+    # the size read at a budget: a final population's n_final, a record's n
+    assert V.read_at(100, 100, 100, {"gdp_norm": 0.1, "n_final": 7})["n"] == 7
+    assert V.read_at(50, 100, 100, {}, [{"fe": 60, "gdp_norm": 0.2, "n": 9}])["n"] == 9
+
+
+@test
 def the_igdp_floor_is_what_n_points_on_the_front_leave():
     """The floor of DTLZ2: N points DSS takes from the reference itself leave
     igdp_norm above 0.01 at three objectives and above 0.03 at five (the
@@ -1807,8 +1842,11 @@ def portfolio_runs_on_a_results_tree():
     from mootation.run import portfolio as P
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
-        values = {("DTLZ2_3D", "nsga2"): {"igdp_norm": 0.02, "gdp_norm": 0.01, "eps_norm": 0.05},
-                  ("DTLZ2_3D", "moead"): {"igdp_norm": 0.1, "gdp_norm": 0.2, "eps_norm": 0.3},
+        # moead: every seed alike, and a gdp_norm within the level from 30 points of 91
+        values = {("DTLZ2_3D", "nsga2"): {"igdp_norm": 0.02, "gdp_norm": 0.01, "eps_norm": 0.05,
+                                          "n_final": 91},
+                  ("DTLZ2_3D", "moead"): {"igdp_norm": 0.1, "gdp_norm": 0.05, "eps_norm": 0.3,
+                                          "n_final": 30},
                   ("bbobbiobj01_n05_2D", "nsga2"): {"hv_h": 0.9},
                   ("bbobbiobj01_n05_2D", "moead"): {"hv_h": 1.0}}
         for (prob, alg), final in values.items():
@@ -1846,6 +1884,15 @@ def portfolio_runs_on_a_results_tree():
         for name in ("portfolio_shapley.csv", "portfolio_complementarity.csv",
                      "portfolio_oracle_gap.csv", "portfolio_meta.json", "portfolio_report.txt"):
             assert (root / "_portfolio" / name).is_file(), name
+        # task 5: 30 of 91 points do not count for gdp; moead's seeds are one run
+        s = m[("DTLZ2_3D", "moead")]
+        assert (s["gdp_level0_seeds"], s["size_median"], s["seeds_short"]) == ("0", "30", "10"), s
+        assert m[("DTLZ2_3D", "nsga2")]["seeds_short"] == "0"
+        assert "deterministic, every seed the same run on every problem: moead" in text, text
+        assert get("front", "igdp", "one_run")["oracle_covers"] == "0.6"   # 6 seeds of 10 alone
+        with (root / "_portfolio" / "portfolio_shapley.csv").open(encoding="utf-8") as fh:
+            det = {r["algorithm"]: r["deterministic"] for r in csv.DictReader(fh)}
+        assert det == {"nsga2": "False", "moead": "True"}, det
 
 
 def _have_scipy():
@@ -2590,6 +2637,13 @@ def campaign_rank_table():
         lines = p.read_text(encoding="utf-8").splitlines()
         assert lines[0].startswith("algorithm,mean_rank,problems,wins,DTLZ_mean_rank,DTLZ_problems")
         assert lines[1].startswith("a,1.5,4,3,"), lines[1]
+        assert lines[0].endswith(",short_answers") and lines[1].endswith(",0"), lines[:2]
+    # task 5: an answer of fewer than N/2 points is counted beside the rank
+    short = [dict(x, pop=10, final=dict(x["final"], n_final=3 if x["algorithm"] == "b" else 8))
+             for x in rows]
+    e = dict(C.rank_table(short, "igd")["algorithms"])
+    assert (e["a"]["short"], e["b"]["short"], e["c"]["short"]) == (0, 4, 0), e
+    assert "short" in C.format_ranks(C.rank_table(short, "igd")).splitlines()[1]
 
 
 @test

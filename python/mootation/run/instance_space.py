@@ -103,6 +103,14 @@ it are together larger than it — both ways at once and in the order of the
 names (the authors' code takes the ordered pairs in turn), a tie leaving both.
 The 2017 paper also suggests Algorithm 2 between an algorithm's good footprint
 and its unsolved problems taken as a second algorithm; that is not done here.
+
+ONE RUN EACH (task 5, 2026-10-01), where the campaign has a deterministic
+algorithm (cover.py, DETERMINISTIC ALGORITHMS: on stage 3 DMS, whose ten seeds
+are one run): every good footprint once more per seed, good = the level in
+that one seed, and the mean over the seeds of the problems good, the triangles
+and the two area shares (kind "good_one_run" in is_footprints.csv; no
+triangles kept). The gdp levels count only an answer of at least N/2 points
+(cover.py, THE ANSWER'S SIZE).
 """
 
 from __future__ import annotations
@@ -456,6 +464,8 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
     groups = {"front": [p for p in kept if data["front"].get(p)],
               "bbob": [p for p in kept if not data["front"].get(p)]}
     algorithms = sorted({k[1] for k in data["values"]})
+    fixed = V.deterministic(data["values"])
+    seeds = sorted({k[2] for k in data["values"]})
     full = max(budgets)
     # --cover's levels: "igdp" and "gdp" where there is a front, the hv_h gap
     # ("hv", which either of cover's criteria reads) where not
@@ -478,6 +488,10 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
     coords, projection, performance, fp_rows = [], [], [], []
     triangles, meta_groups = {}, {}
     lines = [f"instance space ({scenario}): analysis code {commit}; CSV in {out_dir}"]
+    if fixed:
+        lines.append(f"  deterministic, every seed the same run on every problem: "
+                     f"{', '.join(fixed)}; footprints 'good_one_run': good in one seed, the "
+                     f"mean over the seeds")
     for group, problems in groups.items():
         if len(problems) < 4:
             if problems:
@@ -552,6 +566,19 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
                         good = np.array([p in cov.get(alg, ()) for p in problems])
                         record("good", crit, k, b, alg, footprint(Z, good, dmax, rho, PURITY),
                                good)
+                    per_seed = ([V.successes({p: hit[p] for p in problems if p in hit}, 1,
+                                             seeds=[s]) for s in seeds] if fixed else [])
+                    for alg in (algorithms if fixed else ()):     # ONE RUN EACH
+                        figs = []
+                        for cov_s in per_seed:
+                            good = np.array([p in cov_s.get(alg, ()) for p in problems])
+                            fp = footprint(Z, good, dmax, rho, PURITY)
+                            figs.append((int(good.sum()), len(fp["triangles"]),
+                                         fp["area"] / known["area"],
+                                         (fp["area"] / hull) if hull else 0.0))
+                        mean = [sum(f[i] for f in figs) / len(figs) for i in range(4)]
+                        fp_rows.append([group, "good_one_run", crit, k, level_text(crit, k), b,
+                                        alg] + [f"{v:.6g}" for v in mean] + ["", ""])
         for b in (budgets if drawn else ()):
             _, best_b = relative_performance(medians(data, metric, b, set(problems)), problems,
                                              algorithms, higher)
@@ -600,11 +627,15 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
             continue
         for crit in criteria[group]:
             for k in (0, len(taus) - 1):
-                top = sorted(((float(r[9]), r[6]) for r in fp_rows
-                              if r[0] == group and r[1] == "good" and r[2] == crit
-                              and r[3] == k and r[5] == full), reverse=True)[:5]
-                lines.append(f"    largest footprints, {level_text(crit, k)} at {full}: "
-                             + ", ".join(f"{a} {v:.0%}" for v, a in top))
+                for kind in ("good", "good_one_run") if fixed else ("good",):
+                    order = sorted(((float(r[9]), r[6]) for r in fp_rows
+                                    if r[0] == group and r[1] == kind and r[2] == crit
+                                    and r[3] == k and r[5] == full), reverse=True)
+                    places = "".join(f"; {a} {v:.0%} (place {i + 1})"
+                                     for i, (v, a) in enumerate(order) if a in fixed)
+                    lines.append((f"    largest footprints, {level_text(crit, k)} at {full}: "
+                                  if kind == "good" else "      one run each: ")
+                                 + ", ".join(f"{a} {v:.0%}" for v, a in order[:5]) + places)
         top = sorted(((float(r[9]), r[6]) for r in fp_rows if r[0] == group
                       and r[1] == "best" and r[5] == full), reverse=True)[:5]
         lines.append(f"    largest best footprints at {full}: "
@@ -632,7 +663,8 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, min_seeds: int 
             "results": str(root), "scenario": scenario,
             "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "budgets": list(budgets),
             "full_budget": full, "taus": list(taus), "floor_taus": list(floor_taus),
-            "min_seeds": min_seeds, "delta": DELTA, "big_delta": BIG_DELTA, "purity": PURITY,
+            "min_seeds": min_seeds, "deterministic": fixed,
+            "delta": DELTA, "big_delta": BIG_DELTA, "purity": PURITY,
             "density_share": DENSITY_SHARE, "sifted": [SIFTED_CORRELATION, SIFTED_P],
             "excluded": prep["excluded"], "groups": meta_groups,
             "triangles": "is_footprints.json: per group the known region's and every non-empty "

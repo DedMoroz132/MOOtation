@@ -1212,35 +1212,56 @@ def value_at(row: dict, metric: str, at: float | None) -> float | None:
     campaign's `metrics`, which are what a trajectory records. A ladder rung
     put in a full run's place (rungs_in_place) is read at its end.
     """
-    from .cover import needs_trajectory, nominal, read_at
+    v = read_row(row, (metric,), at)[metric]
+    return None if v is None else float(v)
+
+
+def read_row(row: dict, metrics, at: float | None) -> dict:
+    """{metric: value} of a run where value_at reads it, and "n", the size of
+    its answer there (cover.py, THE ANSWER'S SIZE)."""
+    from .cover import answer_size, needs_trajectory, nominal, read_at
     if at is None or row.get("rung_of"):
-        v = row["final"].get(metric)
-        return None if v is None else float(v)
+        return dict({m: row["final"].get(m) for m in metrics}, n=answer_size(row["final"]))
     budget = nominal(row)
     b = int(round(float(at) * budget))
     archive = row.get("scenario") == "archive"
     traj = (read_trajectory(Path(row["dir"]))
             if not archive and needs_trajectory(b, budget, row.get("fe")) else ())
-    v = read_at(b, budget, row.get("fe"), row["final"], traj,
-                (row.get("archive_at") or {}) if archive else None, (metric,))[metric]
-    return None if v is None else float(v)
+    return read_at(b, budget, row.get("fe"), row["final"], traj,
+                   (row.get("archive_at") or {}) if archive else None, tuple(metrics))
 
 
-def compare_table(rows: list[dict], metric: str = "igd", at: float | None = None) -> dict:
+def is_short(size, pop) -> bool:
+    """An answer of fewer than N/2 points, N the population (THE ANSWER'S SIZE)."""
+    return size is not None and bool(pop) and size < int(pop) / 2
+
+
+def compare_table(rows: list[dict], metric: str = "igd", at: float | None = None,
+                  sizes: dict | None = None) -> dict:
     """{problem: {algorithm: (median, q1, q3, n)}} over finished runs.
 
     `at` reads every run at that fraction of its budget instead of at the end.
+    `sizes`, when given, is filled with {(problem, algorithm): (median answer
+    size, population)} from the same reading.
     """
     import statistics
     table: dict = {}
     grouped: dict = {}
+    counts: dict = {}
     for r in rows:
         if r["status"] != "done":
             continue
-        v = value_at(r, metric, at)
+        got = read_row(r, (metric,), at)
+        if got["n"] is not None:
+            counts.setdefault((r["problem"], r["algorithm"]), (r.get("pop"), []))[1].append(
+                got["n"])
+        v = got[metric]
         if v is None:
             continue
         grouped.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(float(v))
+    if sizes is not None:
+        for key, (pop, ns) in counts.items():
+            sizes[key] = (statistics.median(ns), pop)
     for prob, algs in grouped.items():
         table[prob] = {}
         for alg, vals in algs.items():
@@ -1293,14 +1314,17 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
 
     A mean rank rewards consistency, not margin: an algorithm second everywhere
     outranks one that alternates between first and last. Read it next to the
-    medians, not instead of them.
+    medians, not instead of them. "short" counts the problems where the
+    algorithm's median answer has fewer than N/2 points (cover.py, THE
+    ANSWER'S SIZE): a metric such as GD+ does not see it.
 
         {"metric": "igd", "lower_better": True, "n_problems": 45,
          "groups": ["DTLZ", "WFG", "ZDT", "M=2", "M=3", "M=5"],
          "algorithms": [(name, {"all": (mean, n), "DTLZ": (mean, n), ...,
-                                "wins": w}), ...]}      # best mean rank first
+                                "wins": w, "short": s}), ...]}   # best mean rank first
     """
-    table = compare_table(rows, metric, at)
+    sizes: dict = {}
+    table = compare_table(rows, metric, at, sizes)
     lower_better = metric not in HIGHER_IS_BETTER
     n_objs: dict = {}
     for r in rows:
@@ -1341,6 +1365,8 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
     for a, per in ranks.items():
         entry: dict = {g: (sum(v) / len(v), len(v)) for g, v in per.items()}
         entry["wins"] = wins.get(a, 0)
+        entry["short"] = sum(1 for p in table if a in table[p]
+                             and is_short(*sizes.get((p, a), (None, None))))
         out.append((a, entry))
     out.sort(key=lambda t: (t[1]["all"][0], -t[1]["wins"], t[0]))
     return {"metric": metric, "at": at, "lower_better": lower_better,
@@ -1352,8 +1378,9 @@ def format_ranks(ranks: dict) -> str:
     groups = ranks["groups"]
     at = f" at {ranks['at']:.0%} of the budget" if ranks.get("at") is not None else ""
     lines = [f"mean rank by median {ranks['metric']}{at} over {ranks['n_problems']} problem(s): "
-             f"1 = best, ties share the average rank; probs = problems ranked on",
-             f"{'algorithm':<14}{'mean':>7}{'wins':>6}{'probs':>6}"
+             f"1 = best, ties share the average rank; probs = problems ranked on; short = "
+             f"problems where the median answer has fewer than N/2 points",
+             f"{'algorithm':<14}{'mean':>7}{'wins':>6}{'probs':>6}{'short':>6}"
              + "".join(f"{g[:9]:>10}" for g in groups)]
     from .postprocess import budget_note
     marked = False
@@ -1361,7 +1388,7 @@ def format_ranks(ranks: dict) -> str:
         mean, n = e["all"]
         name = alg[:13] + budget_note(alg)
         marked |= name != alg[:13]
-        line = f"{name:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}"
+        line = f"{name:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}{e.get('short', 0):>6}"
         for g in groups:
             line += f"{e[g][0]:>10.2f}" if g in e else f"{'-':>10}"
         lines.append(line)
@@ -1375,12 +1402,14 @@ def write_rank_csv(ranks: dict, path: Path) -> None:
     groups = ranks["groups"]
     with path.open("w", encoding="utf-8") as fh:
         fh.write("algorithm,mean_rank,problems,wins"
-                 + "".join(f",{g}_mean_rank,{g}_problems" for g in groups) + "\n")
+                 + "".join(f",{g}_mean_rank,{g}_problems" for g in groups)
+                 + ",short_answers\n")
         for alg, e in ranks["algorithms"]:
             mean, n = e["all"]
             cells = [alg, f"{mean:.6g}", str(n), str(e["wins"])]
             for g in groups:
                 cells += [f"{e[g][0]:.6g}", str(e[g][1])] if g in e else ["", ""]
+            cells.append(str(e.get("short", 0)))
             fh.write(",".join(cells) + "\n")
 
 
@@ -2100,8 +2129,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.compare:
         from .postprocess import budget_note
         at = f" at {args.at:.0%} of the budget" if args.at is not None else ""
-        print(f"median {args.compare}{at} ({args.scenario}), runs per cell in brackets")
-        table = compare_table(rows, args.compare, args.at)
+        print(f"median {args.compare}{at} ({args.scenario}), runs per cell in brackets; "
+              f"~ the median answer has fewer than N/2 points")
+        sizes: dict = {}
+        table = compare_table(rows, args.compare, args.at, sizes)
         algs = sorted({a for d in table.values() for a in d})
         print("problem".ljust(16) + "".join((a[:13] + budget_note(a)).rjust(15) for a in algs))
         for prob in sorted(table):
@@ -2109,7 +2140,8 @@ def main(argv: list[str] | None = None) -> int:
             for a in algs:
                 if a in table[prob]:
                     med, q1, q3, n = table[prob][a]
-                    cells.append(f"{med:.4g} ({n})".rjust(15))
+                    mark = "~" if is_short(*sizes.get((prob, a), (None, None))) else ""
+                    cells.append(f"{med:.4g} ({n}){mark}".rjust(15))
                 else:
                     cells.append("-".rjust(15))
             print(prob.ljust(16) + "".join(cells))

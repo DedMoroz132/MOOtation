@@ -27,6 +27,12 @@ the conclusions hang on --cover's 7):
     phi_a = sum of 1 / c_p over the problems a covers — a problem a covers alone
     counts 1, one all 67 cover 1/67 — and the values add up to the oracle;
   * the problems each algorithm covers alone.
+ONE RUN EACH (task 5, 2026-10-01), where the campaign has a deterministic
+algorithm (cover.py, DETERMINISTIC ALGORITHMS: on stage 3 DMS, whose ten seeds
+are one run): the same per seed, every algorithm covering what it reaches in
+that one seed, and the mean over the seeds (seeds_required "one_run"): the
+oracle, the Shapley values, the problems covered and covered alone; the
+single best is the one covering most on average.
 COMPLEMENTARITY (7 seeds): for every two algorithms A and B, how many problems
 A covers and B does not (portfolio_complementarity.csv, the pairs where some).
 THE ORACLE GAP PER PROBLEM, at every budget: the virtual best solver's median
@@ -36,7 +42,9 @@ median) for igdp_norm, of the relative gap (best - median) / best for hv_h — a
 their ratio or relative gap.
 THE MATRIX (portfolio_matrix.csv): problem x algorithm x budget in the scenario,
 how many seeds reach every level, and the median and the 7th best of
-igdp_norm, gdp_norm, hv_h and eps_norm — the coverage without reading the runs.
+igdp_norm, gdp_norm, hv_h and eps_norm — the coverage without reading the runs;
+and the answer's median size with the seeds whose answer has fewer than N/2
+points, which no gdp level counts (cover.py, THE ANSWER'S SIZE).
 """
 
 from __future__ import annotations
@@ -165,6 +173,8 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
     rev = revision()
     commit = (rev.get("commit") or "unknown")[:12] + ("+dirty" if rev.get("dirty") else "")
     fam = family_of()
+    fixed = V.deterministic(data["values"])
+    seeds = sorted({k[2] for k in data["values"]})
 
     # {(criterion, k, budget): {problem: {algorithm: {seed: reached}}}} over every
     # problem, left out or not (the matrix has them all): cover's "igdp" reads
@@ -197,10 +207,28 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
                                     commit])
                     for a in sorted(cov):
                         values.append([group, crit, k, level, b, rule, a, fam.get(a, "?"),
-                                       f"{phi[a]:.6g}", len(cov[a]), len(o["unique"][a])])
+                                       f"{phi[a]:.6g}", len(cov[a]), len(o["unique"][a]),
+                                       a in fixed])
                     if rule == 7:
                         for (a, c), n in complementarity(cov).items():
                             pairs.append([group, crit, k, level, b, a, c, n])
+                if fixed:                                # ONE RUN EACH
+                    per = [V.successes(hit, 1, seeds=[s]) for s in seeds]
+                    orcs = [oracle(c) for c in per]
+                    phis = [shapley(c) for c in per]
+                    algs = sorted({a for c in per for a in c})
+                    covers = {a: sum(len(c.get(a, ())) for c in per) / len(per) for a in algs}
+                    sbs = max(sorted(covers), key=lambda a: covers[a])
+                    mean_oracle = sum(o["oracle"] for o in orcs) / len(orcs)
+                    summary.append([group, crit, k, level, b, "one_run", len(members),
+                                    f"{mean_oracle:.6g}", sbs, f"{covers[sbs]:.6g}",
+                                    f"{mean_oracle - covers[sbs]:.6g}", commit])
+                    for a in algs:
+                        mean_phi = sum(p.get(a, 0.0) for p in phis) / len(phis)
+                        alone = sum(len(o["unique"].get(a, ())) for o in orcs) / len(orcs)
+                        values.append([group, crit, k, level, b, "one_run", a, fam.get(a, "?"),
+                                       f"{mean_phi:.6g}", f"{covers[a]:.6g}", f"{alone:.6g}",
+                                       a in fixed])
 
     gaps, sbs_rows = [], []
     for group, metric in (("front", "igdp_norm"), ("bbob", "hv_h")):
@@ -217,20 +245,26 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
     by_run: dict = {}
     for (p, a, s), vals in data["values"].items():
         by_run.setdefault((p, a), {})[s] = vals
+    pop_of = data.get("pop", {})
     for (p, a) in sorted(by_run):
         crits = ("igdp", "gdp") if data["front"].get(p) else ("hv",)
         for b in budgets:
             row = [p, a, b, scenario, len(by_run[(p, a)])]
             for crit in ("igdp", "gdp", "hv"):
                 for k in range(len(taus)):
-                    seeds = hits[(crit, k, b)].get(p, {}).get(a, {})
-                    row.append(sum(bool(x) for x in seeds.values()) if crit in crits else "")
+                    reach = hits[(crit, k, b)].get(p, {}).get(a, {})
+                    row.append(sum(bool(x) for x in reach.values()) if crit in crits else "")
             for m in MATRIX_METRICS:
                 vs = sorted(float(v[b][m]) for v in by_run[(p, a)].values()
                             if b in v and v[b].get(m) is not None and math.isfinite(float(v[b][m])))
                 if m in HIGHER:
                     vs.reverse()
                 row += [_fmt(V._median(vs) if vs else None), _fmt(vs[6] if len(vs) >= 7 else None)]
+            sizes = [v[b]["n"] for v in by_run[(p, a)].values()
+                     if b in v and v[b].get("n") is not None]
+            n = pop_of.get((p, a))
+            row += [_fmt(V._median(sizes) if sizes else None),
+                    sum(1 for s in sizes if s < n / 2) if n and sizes else ""]
             matrix.append(row)
 
     key = ["group", "criterion", "level", "level_text", "budget", "seeds_required"]
@@ -238,7 +272,7 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
         "portfolio_summary.csv": key + ["problems", "oracle_covers", "single_best",
                                         "single_best_covers", "gap", "analysis_commit"],
         "portfolio_shapley.csv": key + ["algorithm", "family", "shapley", "covers",
-                                        "covers_alone"],
+                                        "covers_alone", "deterministic"],
         "portfolio_complementarity.csv": key[:5] + ["algorithm_a", "algorithm_b",
                                                     "a_covers_b_does_not"],
         "portfolio_oracle_gap.csv": ["group", "metric", "budget", "problem", "best_algorithm",
@@ -254,6 +288,7 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
     mhead = ["problem", "algorithm", "budget", "scenario", "seeds"]
     mhead += [f"{c}_level{k}_seeds" for c in ("igdp", "gdp", "hv") for k in range(len(taus))]
     mhead += [f"{m}_{s}" for m in MATRIX_METRICS for s in ("median", "7th")]
+    mhead += ["size_median", "seeds_short"]
     with (out_dir / "portfolio_matrix.csv").open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(mhead)
@@ -268,23 +303,53 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
                        "gdp": f"gdp_norm <= tau, tau in {list(taus)}",
                        "hv": f"(best - hv_h) / best <= tau, tau in {list(taus)}, best = the "
                              f"campaign's best final hv_h (group bbob)"},
-            "seed_rules": list(SEED_RULES), "budgets": list(budgets),
+            "seed_rules": list(SEED_RULES) + (["one_run"] if fixed else []),
+            "deterministic": fixed, "budgets": list(budgets),
+            "gdp_answer_size": "a gdp level counts only for an answer of at least N/2 points; "
+                               "the matrix's seeds_short counts the answers shorter",
             "excluded": prep["excluded"], "single_best_by_metric": sbs_rows}
     (out_dir / "portfolio_meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
 
     lines = [f"portfolio ({scenario}): {len(groups['front'])} problems with a front, "
              f"{len(groups['bbob'])} without; analysis code {commit}; CSV in {out_dir}"]
+    if fixed:
+        lines.append(f"  deterministic, every seed the same run on every problem: "
+                     f"{', '.join(fixed)}; rule one_run reads every algorithm from one seed at "
+                     f"a time, the mean over the seeds")
     full = max(budgets)
+    rules = SEED_RULES + (("one_run",) if fixed else ())
     for (group, crit), lv in levels.items():
         for k in range(len(lv)):
             cells = []
-            for rule in SEED_RULES:
+            for rule in rules:
                 r = next((r for r in summary if r[:3] == [group, crit, k] and r[4] == full
                           and r[5] == rule), None)
                 if r:
-                    cells.append(f"{rule}/10: oracle {r[7]}/{r[6]}, best {r[8]} {r[9]}")
+                    label = "one run each" if rule == "one_run" else f"{rule}/10"
+                    cells.append(f"{label}: oracle {r[7]}/{r[6]}, best {r[8]} {r[9]}")
             if cells:
                 lines.append(f"  {group} {crit} level {k} at {full}: " + "; ".join(cells))
+
+    def place(a, group, crit, k, rule):
+        """(Shapley value, place) of algorithm a at the full budget, or None."""
+        rows_ = [r for r in values if r[:3] == [group, crit, k] and r[4] == full
+                 and r[5] == rule]
+        mine = next((float(r[8]) for r in rows_ if r[6] == a), None)
+        if mine is None:
+            return None
+        return mine, 1 + sum(1 for r in rows_ if float(r[8]) > mine)
+
+    for a in fixed:
+        for (group, crit), lv in levels.items():
+            cells = []
+            for k in range(len(lv)):
+                seven, one = place(a, group, crit, k, 7), place(a, group, crit, k, "one_run")
+                if seven and one:
+                    cells.append(f"level {k} {seven[0]:.3g} ({seven[1]}) -> {one[0]:.3g} "
+                                 f"({one[1]})")
+            if cells:
+                lines.append(f"  {a}'s Shapley value (place), {group} {crit} at {full}, 7/10 -> "
+                             f"one run each: " + "; ".join(cells))
     for group, metric, b, sbs in sbs_rows:
         if b == full:
             g = [float(r[8]) for r in gaps if r[0] == group and r[2] == b and r[8] not in ("", "inf")]
