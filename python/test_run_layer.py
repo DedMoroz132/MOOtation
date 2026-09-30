@@ -4212,15 +4212,22 @@ snapshot_variables = "pareto_set"
 
 
 def main() -> int:
+    import os
     failed = []
     for fn in TESTS:
         try:
             fn()
             print(f"  ok    {fn.__name__}")
-        except Exception:
+        except Exception as e:
             failed.append(fn.__name__)
             print(f"  FAIL  {fn.__name__}")
             traceback.print_exc()
+            if os.environ.get("GITHUB_ACTIONS"):
+                # an annotation of the run, readable where the log is not
+                where = traceback.extract_tb(e.__traceback__)[-1]
+                what = f"{type(e).__name__}: {e}".replace("\n", " ")[:300]
+                print(f"::error title=run layer: {fn.__name__}::line {where.lineno} of "
+                      f"{Path(where.filename).name}: {what}", flush=True)
     print(f"\n{len(TESTS) - len(failed)}/{len(TESTS)} passed")
     if failed:
         print("failed: " + ", ".join(failed), file=sys.stderr)
