@@ -29,8 +29,10 @@ from pathlib import Path
 from .metric_names import HIGHER_IS_BETTER
 
 # The list and how it was made (read off the headers, then measured) live in
-# budget.py; this is its measured list under the name the tables use.
-from .budget import BUDGET_DEPENDENT as BUDGET_SCHEDULED
+# budget.py; these are the cores with a schedule of the budget share spent,
+# under the name the tables use (lhs_search depends on its budget too, but by
+# laying out its hypercube for it, not by a schedule).
+from .budget import BY_HEADERS as BUDGET_SCHEDULED
 
 INTERPOLATIONS = ("step", "linear")
 

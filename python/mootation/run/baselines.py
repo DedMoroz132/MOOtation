@@ -15,6 +15,10 @@ converges to is decided by the archiver, not by how the points are drawn
                   uniform one — seeded per run): lower discrepancy than
                   uniform, which matters at budgets of tens to hundreds of
                   points and not after; needs SciPy
+  lhs_search      a maximin Latin hypercube of the whole budget
+                  (designs.py, after Morris & Mitchell 1995), its points
+                  evaluated in batches of N; laid out for the budget at once, so
+                  a smaller budget is a run of its own (budget.py)
 
 and two ablations (ablations.py), which take one ingredient of an EA away:
 
@@ -46,6 +50,8 @@ from types import SimpleNamespace
 BASELINES = {
     "random_search": "uniform sampling of the box, archived, N chosen by DSS",
     "sobol_search": "scrambled Sobol sampling (SciPy), archived, N chosen by DSS",
+    "lhs_search": "a maximin Latin hypercube of the whole budget (Morris & Mitchell 1995), "
+                  "archived, N chosen by DSS",
     "random_selection_ea": "ablation: NSGA-II's SBX and polynomial mutation, survival "
                            "uniformly at random",
     "gsemo": "ablation: global SEMO on real variables, the nondominated set, N chosen by DSS",
@@ -104,6 +110,14 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
             with warnings.catch_warnings():         # "balance properties ... power of 2"
                 warnings.simplefilter("ignore")
                 return engine.random(k)
+    elif name == "lhs_search":
+        from ..designs import design
+        plan = design("lhs", max_evaluations, [(0.0, 1.0)] * d, seed)
+        served = [0]
+
+        def draw(k):
+            served[0] += k
+            return plan[served[0] - k:served[0]]
     else:
         rng = np.random.default_rng(seed)
 

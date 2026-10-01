@@ -2432,28 +2432,54 @@ def baselines_spend_the_budget_exactly_and_answer_with_the_archive():
     from mootation.run.baselines import run_baseline
     from mootation.benchmarks import get
     p = get("ZDT1")
-    for name in ("random_search", "sobol_search"):
+    for name in ("random_search", "sobol_search", "lhs_search"):
         if name == "sobol_search":
             try:
                 import scipy  # noqa: F401
             except ImportError:
                 continue
+        budget = 234 if name == "lhs_search" else 1234        # a Latin hypercube costs more
         runs = []
         for _ in range(2):
             arc = GridArchive(2, p.n_vars, ideal=p.ideal, nadir=p.nadir)
-            spent = [0]
+            spent, seen = [0], []
 
-            def ev(x, arc=arc, spent=spent):
+            def ev(x, arc=arc, spent=spent, seen=seen):
                 spent[0] += 1
+                seen.append(x)
                 f = p.evaluate(x)
                 arc.add(f, x)
                 return f
-            res = run_baseline(name, ev, p.bounds, pop=100, max_evaluations=1234, seed=7,
+            res = run_baseline(name, ev, p.bounds, pop=100, max_evaluations=budget, seed=7,
                                archive=arc)
-            assert spent[0] == 1234, (name, spent[0])
+            assert spent[0] == budget, (name, spent[0])
             assert len(res.objectives) == min(100, len(arc)), (name, len(res.objectives))
             runs.append(np.asarray(res.objectives))
         assert np.array_equal(runs[0], runs[1]), name                   # a seed is a seed
+        if name == "lhs_search":                       # one point in each of the n cells
+            cells = np.sort(np.floor(np.asarray(seen) * budget).astype(int), axis=0)
+            assert (cells == np.arange(budget)[:, None]).all()
+
+
+@test
+def a_maximin_latin_hypercube_reaches_the_papers_catalog():
+    """designs.maximin_lhs finds the maximin designs of Morris & Mitchell 1995,
+    Table 2(A) (Euclidean): n = 5, k = 2: d1 = 0.5590 (squared, in levels: 5),
+    J1 = 4; n = 9, k = 2: d1 = 0.3953 (10), J1 = 12; every column a
+    permutation of the levels, and a design the same for a seed."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    for n, k, d1, j1 in ((5, 2, 5, 4), (9, 2, 10, 12)):
+        L = D.maximin_lhs(n, k, np.random.default_rng(3))
+        assert (np.sort(L, axis=0) == np.arange(n)[:, None]).all(), L
+        key = D.maximin_order(D.squared_distances(L))
+        assert (-key[0], key[1]) == (d1, j1), (n, k, key[:4])
+    X = D.design("lhs", 30, [(0.0, 1.0), (-2.0, 2.0)], 11)
+    assert np.array_equal(X, D.design("lhs", 30, [(0.0, 1.0), (-2.0, 2.0)], 11))
+    assert X[:, 1].min() >= -2.0 and X[:, 1].max() <= 2.0 and not (X == 0.5).any()
 
 
 @test
@@ -4084,7 +4110,9 @@ def small_budgets_read_hard_and_start_from_a_design():
         '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_sobol"', 'pop = 20', 'gens = 0',
         'init = "sobol"',
         '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_plan"', 'pop = 20', 'gens = 0',
-        'init = "sobol"', 'init_share = 0.5', ''])
+        'init = "sobol"', 'init_share = 0.5',
+        '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_lhs"', 'pop = 20', 'gens = 0',
+        'init = "lhs"', ''])
     with tempfile.TemporaryDirectory() as td:
         cfg_path = Path(td) / "c.toml"
         cfg_path.write_text(text, encoding="utf-8")
@@ -4093,7 +4121,8 @@ def small_budgets_read_hard_and_start_from_a_design():
         spec = C.campaign_spec(cfg)
         root = C.out_root(cfg, spec)
         jobs = C.expand_jobs(cfg, spec)
-        assert [j.key for j in jobs] == ["nsga2", "nsga2_sobol", "nsga2_plan", "nsga2_plan@100"]
+        assert [j.key for j in jobs] == ["nsga2", "nsga2_sobol", "nsga2_plan", "nsga2_lhs",
+                                         "nsga2_plan@100"]
         for job in jobs:
             assert C.run_job(job, root, spec, quiet=True) == "done", job
 
@@ -4110,6 +4139,8 @@ def small_budgets_read_hard_and_start_from_a_design():
         assert at["300"]["population"]["fe"] == 300 and m["answer_k"] == 10
         m, T = run("nsga2_sobol")
         assert m["init"] == "sobol" and T[0]["fe"] == 20 and T[0]["n"] == 20 and m["fe"] == 300, m
+        m, T = run("nsga2_lhs")
+        assert m["init"] == "lhs" and T[0]["fe"] == 20 and m["fe"] == 300, m
         # the plan: 150 points, then generations of 20 past 300 (310); read at 290
         m, T = run("nsga2_plan")
         assert m["budget_dependent"] and T[0]["fe"] == 150 and m["fe"] == 310, (m, T[0])

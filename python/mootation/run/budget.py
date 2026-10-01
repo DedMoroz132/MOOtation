@@ -46,7 +46,9 @@ BY_HEADERS = frozenset({
 # every algorithm and baseline: exactly the 17 above differ — MOEA/D-M2M first,
 # at 180 evaluations, MOEA/D-AWA last, at 9 109 — and the other 46 and the four
 # baselines are the same up to 10 000 (the baselines up to their last, cut step).
-BUDGET_DEPENDENT = BY_HEADERS
+# lhs_search (2026-10-01) depends on its budget by construction: its Latin
+# hypercube is laid out for the whole budget at once.
+BUDGET_DEPENDENT = BY_HEADERS | {"lhs_search"}
 
 
 def _records(name: str, problem: str, seed: int, budget: int, pop: int) -> list:

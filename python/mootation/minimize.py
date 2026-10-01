@@ -103,7 +103,7 @@ def minimize(
                 result.operators lists the operators used either way.
     init        the first population: "uniform", the algorithm's own random
                 start (the default, as in its paper), or a design of
-                mootation.designs ("sobol"), evaluated here through `fn` — the
+                mootation.designs ("sobol", "lhs"), evaluated here through `fn` — the
                 pop_size evaluations the algorithm's own start would cost —
                 and handed over as a seed population.
     init_share  with a design: the share of max_evaluations it takes (0: just

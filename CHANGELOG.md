@@ -199,6 +199,15 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Maximin Latin hypercubes (`mootation.designs`, after Morris & Mitchell,
+  "Exploratory designs for computational experiments", 1995): their φ_p
+  criterion and annealing search, once per p of their Section 5, the best by
+  the maximin order; the search cut at 20 000 perturbations (2·10⁷/n above
+  1 000 points) and the point drawn inside its Latin-hypercube cell instead of
+  the paper's grid i/(n − 1), which holds the optima of DTLZ and ZDT. The
+  tests check two designs of the paper's catalog. As a start, `init = "lhs"`;
+  as a baseline, `lhs_search`, one hypercube of the whole budget
+  (budget-dependent).
 - Knobs for the runs that test stage 3's artefacts (task 5, runs A1 and A2),
   every default unchanged: DMS `dms_init = "random"` (a Latin hypercube of n
   points from the seed) and `dms_poll = "random"` (a poll centre drawn among
