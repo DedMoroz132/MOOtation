@@ -61,8 +61,9 @@ from pathlib import Path
 from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
-from .metric_names import (HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT, NEEDS_SET,
-                           NEEDS_X, RUN_STATS, TABLE_NAMES)
+from .metric_names import (DENSE_SUFFIX, HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES,
+                           NEEDS_FRONT, NEEDS_SET, NEEDS_X, RUN_STATS, TABLE_NAMES,
+                           is_table_name)
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -110,6 +111,10 @@ class CampaignSpec:
     metrics: tuple = METRICS_DEFAULT
     final_metrics: tuple = ()          # empty: the same as metrics
     n_ref: int = 1000
+    # The front indicators against the dense reference too, where a problem
+    # has one (registry.dense_reference: 4 to 10 objectives), as
+    # "<indicator>_ref_v3" beside the usual values (task 6, item 9).
+    dense_reference: bool = False
     seeds: tuple = ()
     # "generations": a trajectory point every record_every generations.
     # "log": at fixed evaluation counts 10^(j/record_per_decade), the SAME
@@ -231,7 +236,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
-             "answer_k", "pop_fit", "ladder_min_gens"}
+             "answer_k", "pop_fit", "ladder_min_gens", "dense_reference"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -253,6 +258,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
                                   f"unknown metric '{m}'; known: {', '.join(METRIC_NAMES)}")
         setattr(spec, key, tuple(names))
     spec.n_ref = int(raw.get("n_ref", 1000))
+    spec.dense_reference = raw.get("dense_reference", False)
+    if not isinstance(spec.dense_reference, bool):
+        raise ConfigError("campaign.dense_reference", "true or false")
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
     spec.record_grid = str(raw.get("record_grid", "generations"))
     spec.record_per_decade = int(raw.get("record_per_decade", 10))
@@ -497,6 +505,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     final_metrics = spec.final_metrics or spec.metrics
     if any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_front):
         ref = np.asarray(p.pareto_front(spec.n_ref), float)
+    ref3 = info3 = None                     # the dense reference ([campaign] dense_reference)
+    if spec.dense_reference and ref is not None:
+        from ..benchmarks.registry import dense_reference, has_dense_reference
+        if has_dense_reference(job.problem):
+            ref3, info3 = dense_reference(job.problem, p.pop_size)
     ideal, nadir = p.ideal, p.nadir
     pset = None
     if any(m in NEEDS_SET for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_set):
@@ -528,6 +541,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # REFERENCE_VERSION) and how many rows it had
         "reference_version": REFERENCE_VERSION,
         "reference_rows": None if ref is None else int(len(ref)),
+        # the dense reference's rows and step, and the population's step
+        "reference_v3": info3,
         "has_pareto_set": callable(p.pareto_set),
         "mootation": __version__,
         # the version never changes between commits; these do (provenance.py)
@@ -653,11 +668,21 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if need_x and not baseline:
         from .. import _core                   # current_variables() at the records
 
+    def dense(F, X, which) -> dict:
+        """The front indicators among `which` against the dense reference."""
+        front = [m for m in which if m in NEEDS_FRONT]
+        if ref3 is None or not front or not len(F):
+            return {}
+        got = M.compute(F, ref_front=ref3, ideal=ideal, nadir=nadir, which=front, X=X,
+                        constraints=cons)
+        return {m + DENSE_SUFFIX: got[m] for m in front}
+
     def measure(F, X, which):
         vals = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=which,
                          pop=p.pop_size, hv_options=traj_hv, X=X, pareto_set=pset,
                          bounds=p.bounds, cyclic=p.cyclic_vars, distance_fn=p.distance_fn,
                          constraints=cons)
+        vals.update(dense(F, X, which))
         if truth is not None and len(F):
             vals["true_dominated_share"] = 1.0 - M.nd_share(F)
         for m in hv_skipped:
@@ -851,6 +876,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if F.size and np.all(np.isfinite(F)):
         final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
                           X=X, **extra)
+        final.update(dense(F, X, final_metrics))
     if cons is not None:
         final["fe_first_feas"] = fe_first_feas
     if truth is not None:
@@ -863,6 +889,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         T = true_values(AF[arc_sel], AX[arc_sel])
         meta["final_archive"] = M.compute(T, ref_front=ref, ideal=ideal, nadir=nadir,
                                           which=final_metrics, X=AX[arc_sel], **extra)
+        meta["final_archive"].update(dense(T, AX[arc_sel], final_metrics))
         meta["final_archive"]["n"] = int(len(arc_sel))
         if truth is not None and len(T):
             meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
@@ -1605,12 +1632,41 @@ def _read_points(path: Path, m: int, n: int):
     return A[:, :m], X
 
 
+def _archive_answer(run_dir: Path, meta: dict, p, m: int, n: int):
+    """(F, X) of a run's archive scenario, from its files: the selection the
+    run kept (final_archive.csv.gz, archive_variables = "selected"), or
+    archive.csv reduced to the population size by DSS in the frame the run
+    used; None where it has neither, or an empty archive."""
+    import numpy as np
+    from .archive import dss_order
+    if (run_dir / "final_archive.csv.gz").is_file():
+        return _read_points(run_dir / "final_archive.csv.gz", m, n)
+    path = run_dir / "archive.csv"
+    if not path.is_file():
+        return None
+    F, X = _read_points(path, m, n)
+    if not len(F):
+        return None
+    arc_meta = meta.get("archive") or {}
+    frame = arc_meta.get("frame")
+    if arc_meta.get("normalization") == "archive":
+        lo = hi = None                   # the kept points' range, as GridArchive.select
+    elif frame:
+        lo, hi = frame
+    elif p.ideal is not None and p.nadir is not None:
+        lo, hi = p.ideal, p.nadir
+    else:
+        lo = hi = None                   # the archive's own range
+    idx = (np.arange(len(F)) if len(F) <= p.pop_size
+           else dss_order(F, k=p.pop_size, ideal=lo, nadir=hi))
+    return F[idx], (None if X is None else X[idx])
+
+
 def _recompute_one(args) -> str:
     run_dir, names, n_ref, hv_options, scenario = args
     import numpy as np
     from ..benchmarks import get as bench_get
     from . import metrics as M
-    from .archive import dss_order
     run_dir = Path(run_dir)
     meta_path = run_dir / "meta.json"
     try:
@@ -1630,37 +1686,16 @@ def _recompute_one(args) -> str:
                   hv_options=hv_options, pareto_set=pset, bounds=p.bounds,
                   cyclic=p.cyclic_vars, distance_fn=p.distance_fn,
                   constraints=p.constraints if p.has_cons else None)
-        if scenario == "archive" and (run_dir / "final_archive.csv.gz").is_file():
-            # archive_variables = "selected": the run kept its selection
-            F, X = _read_points(run_dir / "final_archive.csv.gz", m, n)
+        if scenario == "archive":
+            got = _archive_answer(run_dir, meta, p, m, n)
+            if got is None:
+                return "skipped"
+            F, X = got
+            if X is None:
+                kw["constraints"] = None             # the archive keeps feasible points only
             out = dict(meta.get("final_archive") or {})
             out.update(M.compute(F, X=X, **kw))
             out["n"] = int(len(F))
-            meta["final_archive"] = out
-        elif scenario == "archive":
-            path = run_dir / "archive.csv"
-            if not path.is_file():
-                return "skipped"
-            F, X = _read_points(path, m, n)
-            if not len(F):
-                return "skipped"
-            if X is None:
-                kw["constraints"] = None             # the archive keeps feasible points only
-            arc_meta = meta.get("archive") or {}
-            frame = arc_meta.get("frame")
-            if arc_meta.get("normalization") == "archive":
-                lo = hi = None                   # the kept points' range, as GridArchive.select
-            elif frame:
-                lo, hi = frame
-            elif p.ideal is not None and p.nadir is not None:
-                lo, hi = p.ideal, p.nadir
-            else:
-                lo = hi = None                   # the archive's own range
-            idx = (np.arange(len(F)) if len(F) <= p.pop_size
-                   else dss_order(F, k=p.pop_size, ideal=lo, nadir=hi))
-            out = dict(meta.get("final_archive") or {})
-            out.update(M.compute(F[idx], X=None if X is None else X[idx], **kw))
-            out["n"] = int(len(idx))
             meta["final_archive"] = out
         else:
             F, X = _read_points(run_dir / "final.csv", m, n)
@@ -1928,6 +1963,107 @@ def recompute_reference(root: Path, *, workers: int = 1, problems=None) -> dict:
     return counts
 
 
+def _dense_one(run_dir: str) -> str:
+    """One finished run's front indicators against the dense reference, from
+    its saved answers, as new "<indicator>_ref_v3" values beside the old ones
+    (recompute_dense)."""
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    from ..benchmarks.registry import dense_reference
+    from . import metrics as M
+    run_dir = Path(run_dir)
+    meta_path = run_dir / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if meta.get("status") != "done" or meta.get("reference_v3"):
+            return "skipped"
+        p = bench_get(meta["problem"])
+        m = int(meta.get("n_objs") or p.n_obj)
+        n = int(meta.get("n_vars") or p.n_vars)
+        ref3, info3 = dense_reference(meta["problem"], p.pop_size)
+        cons = p.constraints if p.has_cons else None
+
+        def add(F, X, values: dict) -> None:
+            names = [x for x in values if x in NEEDS_FRONT]
+            if not names or not len(F) or not np.all(np.isfinite(F)):
+                return
+            # an archive holds feasible points only: without its variables, as it is
+            c = cons if X is not None else None
+            got = M.compute(F, ref_front=ref3, ideal=p.ideal, nadir=p.nadir, which=names, X=X,
+                            constraints=c)
+            values.update({x + DENSE_SUFFIX: got[x] for x in names})
+
+        if meta.get("final") and (run_dir / "final.csv").is_file():
+            F, X = _read_points(run_dir / "final.csv", m, n)
+            add(F, X, meta["final"])
+        got = _archive_answer(run_dir, meta, p, m, n) if meta.get("final_archive") else None
+        if got is not None:
+            F, X = got
+            add(F, X, meta["final_archive"])
+        if meta.get("archive_at") and (run_dir / "archive_at.npz").is_file():
+            with np.load(run_dir / "archive_at.npz") as z:
+                A = {k: z[k] for k in z.files}
+            start = 0
+            for b, cnt in zip(A["budget"].tolist(), A["n"].tolist()):
+                F = A["F"][start:start + cnt].astype(float)
+                X = A["X"][start:start + cnt].astype(float) if "X" in A else None
+                start += cnt
+                if str(b) in meta["archive_at"]:
+                    add(F, X, meta["archive_at"][str(b)])
+        traj_path, snap_path = run_dir / "trajectory.jsonl", run_dir / "snapshots.npz"
+        if traj_path.is_file() and snap_path.is_file():
+            with np.load(snap_path) as z:
+                S = {k: z[k] for k in z.files}
+            recs = [json.loads(line) for line in traj_path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()]
+            if [r.get("fe") for r in recs] != S["fe"].tolist():
+                print(f"{run_dir}: the snapshots and the trajectory do not line up",
+                      file=sys.stderr)
+                return "failed"
+            start = 0
+            for rec, cnt in zip(recs, S["n"].tolist()):
+                F = S["F"][start:start + cnt].astype(float)
+                X = S["X"][start:start + cnt].astype(float) if "X" in S else None
+                start += cnt
+                if cnt and rec.get("finite", True):
+                    add(F, X, rec)
+            tmp = traj_path.with_suffix(".jsonl.tmp")
+            tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in recs),
+                           encoding="utf-8")
+            os.replace(tmp, traj_path)
+        meta["reference_v3"] = info3
+        _write_json(meta_path, meta)
+        return "done"
+    except Exception as e:                           # noqa: BLE001
+        print(f"{run_dir}: {type(e).__name__}: {e}", file=sys.stderr)
+        return "failed"
+
+
+def recompute_dense(root: Path, *, workers: int = 1, problems=None) -> dict:
+    """Add to every finished run on a problem with a dense reference
+    (registry.dense_reference: 4 to 10 objectives) its front indicators
+    against it — final, archive, archive checkpoints and, from snapshots.npz,
+    the trajectory — as "<indicator>_ref_v3" beside the old values, which stay
+    as they are; meta["reference_v3"] records the reference's rows and step.
+    A run that has them is skipped."""
+    from ..benchmarks.registry import has_dense_reference
+    tasks = [str(m.parent) for m in root.glob("*/*/run_*/meta.json")
+             if (problems is None or m.parents[2].name in problems)
+             and has_dense_reference(m.parents[2].name)]
+    counts: dict = {}
+    if workers > 1 and len(tasks) > 1:
+        import multiprocessing as mp
+        single_threaded_blas()
+        with mp.Pool(processes=workers) as pool:
+            for status in pool.imap_unordered(_dense_one, tasks, chunksize=4):
+                counts[status] = counts.get(status, 0) + 1
+    else:
+        for task in tasks:
+            status = _dense_one(task)
+            counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
 def scenario_rows(rows: list[dict], scenario: str) -> list[dict]:
     """The rows as the tables read them: "archive" puts final_archive in place of
     final, and value_at reads such a row at a smaller budget from its archive
@@ -1983,8 +2119,10 @@ def main(argv: list[str] | None = None) -> int:
                          "since the run (benchmarks registry: REFERENCE_VERSION, "
                          "REFERENCE_CHANGED) again against the current one — final, archive, "
                          "archive checkpoints and trajectory, from the saved answers — keeping "
-                         "the old values beside the new, and exit (honours --workers and "
-                         "--problems)")
+                         "the old values beside the new; and measure every run on a problem "
+                         "with a dense reference (4 to 10 objectives) against it too, as "
+                         "<indicator>_ref_v3, the old values untouched; then exit (honours "
+                         "--workers and --problems)")
     ap.add_argument("--scenario", choices=("final", "archive"), default="final",
                     help="which answer of a run the tables, --cover and --recompute read: "
                          "'final', what the algorithm returned, or 'archive', the run archive "
@@ -2137,7 +2275,7 @@ def main(argv: list[str] | None = None) -> int:
     for flag, metric in (("--compare", args.compare), ("--ranks", args.ranks),
                          ("--gap", args.gap), ("--zero-share", args.zero_share),
                          ("--ecdf", args.ecdf)):
-        if metric is not None and metric not in TABLE_NAMES:
+        if metric is not None and not is_table_name(metric):
             print(f"{flag}: unknown metric '{metric}'; known: {', '.join(TABLE_NAMES)}",
                   file=sys.stderr)
             return 1
@@ -2178,7 +2316,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.recompute_reference:
         counts = recompute_reference(root, workers=args.workers, problems=only_problems)
         print(f"measured against the current reference: {counts}", file=sys.stderr)
-        return 0 if counts.get("failed", 0) == 0 else 2
+        dense = recompute_dense(root, workers=args.workers, problems=only_problems)
+        print(f"measured against the dense reference (_ref_v3): {dense}", file=sys.stderr)
+        return 0 if counts.get("failed", 0) == 0 and dense.get("failed", 0) == 0 else 2
     if args.recompute_trajectory:
         names = [m.strip() for m in args.recompute_trajectory.split(",") if m.strip()]
         bad = [m for m in names if m not in METRIC_NAMES]

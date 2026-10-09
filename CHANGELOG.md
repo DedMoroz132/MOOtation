@@ -265,6 +265,16 @@ always listed under **Changed** or **Removed**.
   files and snapshots and the noisy ones in `final.csv` as `f_seen`, and
   records `true_dominated_share`. A family of their own, `noisy`. 487
   problems in 20 families.
+- Dense references (task 6, item 9): `registry.dense_reference` gives, for the
+  problems with an analytic front at 4 to 10 objectives, the first of 1 000
+  ... 100 000 points whose step is at most a third of the population's;
+  `[campaign] dense_reference = true` measures the front indicators against
+  it beside the usual ones, as `<indicator>_ref_v3`, and
+  `--recompute-reference` adds those to a finished campaign from its saved
+  answers, the old values untouched (`recompute_dense`); the tables read
+  them. IGD, IGD+ and GD+ are computed in blocks of reference points now (ε,
+  igdp_norm and the others were), with the same values; `reference_step`
+  uses a KD-tree when SciPy is there, with the same value.
 - `--reference` (task 6, item 10): a warning when the seeds and the number of
   problems leave no mark but `=` possible under Holm (at k seeds a side,
   beyond 0.025·C(2k, k) problems); `--adjust bh` for Benjamini–Hochberg over

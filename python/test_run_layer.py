@@ -4653,6 +4653,100 @@ snapshot_variables = "all"
         assert np.allclose(last, TL, rtol=1e-5, atol=1e-5)          # float32 snapshots
 
 
+# ── task 6, item 9: dense references at four objectives and more ───────────
+
+@test
+def a_dense_reference_is_a_third_of_the_populations_step():
+    """registry.dense_reference: the first size whose step is at most a third
+    of the population's (5 000 rows at DTLZ2_4D, 10 000 at DTLZ2_5D), the
+    largest where none is (DTLZ1_10D); none at three objectives or fifteen.
+    At three objectives a dense sample moves IGD+ by less than the step of the
+    usual one (task 6, item 9)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks.registry import DENSE_SIZES, dense_reference, has_dense_reference
+    from mootation.run import metrics as M
+    from mootation.run.metric_names import base_name, is_table_name
+    for name, rows in (("DTLZ2_4D", 5000), ("DTLZ2_5D", 10_000)):
+        F, info = dense_reference(name, get(name).pop_size)
+        assert len(F) == info["rows"] == rows, (name, info)
+        assert info["step"] <= info["population_step"] / 3.0, info
+        assert np.allclose(M.reference_step(F), info["step"])        # the frame is [0, 1]
+    assert [has_dense_reference(n) for n in ("DTLZ2_3D", "DTLZ2_15D", "WFG4_6D", "ZDT1",
+                                             "MaF7_5D")] == [False, False, True, False, False]
+    p = get("DTLZ2_3D")
+    old = np.asarray(p.pareto_front(1000), float)
+    new = np.asarray(p.pareto_front(DENSE_SIZES[-1]), float)
+    A = 1.02 * np.asarray(p.pareto_front(91), float)
+    assert abs(M.igd_plus(A, new) - M.igd_plus(A, old)) <= M.reference_step(old)
+    assert base_name("igdp_norm_ref_v3") == "igdp_norm" and base_name("hv_ref_v3") == "hv_ref_v3"
+    assert is_table_name("eps_norm_ref_v3") and not is_table_name("hv_ref_v3")
+
+
+@test
+def a_campaign_measures_against_the_dense_reference_and_recompute_adds_it():
+    """[campaign] dense_reference = true records "<indicator>_ref_v3" beside
+    the front indicators — final, archive, trajectory — and the reference's
+    rows and step; on a campaign without it --recompute-reference adds the
+    same values from the saved answers and leaves the old ones as they were;
+    the tables read the new columns (task 6, item 9)."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_measures_against_the_dense...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "d"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_4D"]
+[campaign]
+out = "OUT"
+budget_fe = 500
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm", "hv"]
+archive = true
+snapshots = true
+DENSE
+"""
+    with tempfile.TemporaryDirectory() as td:
+        metas = {}
+        for tag, dense in (("with", "dense_reference = true"), ("without", "")):
+            cfg_path = Path(td) / f"{tag}.toml"
+            cfg_path.write_text(text.replace("OUT", f"res_{tag}").replace("DENSE", dense),
+                                encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+            run = root / "DTLZ2_4D" / "nsga2" / "run_1"
+            metas[tag] = (root, run, json.loads((run / "meta.json").read_text(encoding="utf-8")))
+        root, run, meta = metas["with"]
+        assert meta["reference_v3"]["rows"] == 5000, meta["reference_v3"]
+        assert "igdp_norm_ref_v3" in meta["final"] and "hv_ref_v3" not in meta["final"]
+        assert "igdp_norm_ref_v3" in meta["final_archive"]
+        assert all("igdp_norm_ref_v3" in t for t in C.read_trajectory(run))
+        root2, run2, before = metas["without"]
+        assert before["reference_v3"] is None and "igdp_norm_ref_v3" not in before["final"]
+        assert C.recompute_dense(root2) == {"done": 1}
+        after = json.loads((run2 / "meta.json").read_text(encoding="utf-8"))
+        assert after["reference_v3"] == meta["reference_v3"], after["reference_v3"]
+        for part in ("final", "final_archive"):
+            assert {k: v for k, v in after[part].items() if not k.endswith("_ref_v3")} == \
+                before[part], part                                  # the old values stay
+            assert abs(after[part]["igdp_norm_ref_v3"] - meta[part]["igdp_norm_ref_v3"]) < 1e-9
+        assert all("igdp_norm_ref_v3" in t for t in C.read_trajectory(run2))
+        assert C.recompute_dense(root2) == {"skipped": 1}
+        table = C.compare_table(C.scan_results(root2), "igdp_norm_ref_v3")
+        assert table["DTLZ2_4D"]["nsga2"][3] == 1, table
+
+
 # ── task 2, step 3: operators and switchable variation ──────────────────────
 
 @test

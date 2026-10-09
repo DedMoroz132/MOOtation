@@ -43,6 +43,23 @@ HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pd
 NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "tau90",
                          "gap_max", "gdp_norm", "gdp_min"})
 
+# The same indicators against the dense reference of four objectives and more
+# (benchmarks.registry.dense_reference, task 6 of 2026-10-09, item 9) are
+# recorded beside them under the name with this suffix: igdp_norm_ref_v3.
+DENSE_SUFFIX = "_ref_v3"
+
+
+def base_name(name: str) -> str:
+    """A metric's name without the dense reference's suffix."""
+    stem = name[:-len(DENSE_SUFFIX)] if name.endswith(DENSE_SUFFIX) else None
+    return stem if stem in NEEDS_FRONT else name
+
+
+def is_table_name(name: str) -> bool:
+    """Can a table be asked for `name`: TABLE_NAMES, and the front indicators
+    against the dense reference."""
+    return name in TABLE_NAMES or base_name(name) != name
+
 # These look at the decision variables: all of them need the solutions; igdx,
 # cr and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
 # and g_min and g_median the problem's distance function (BenchProblem.

@@ -57,8 +57,11 @@ def igd(F: np.ndarray, ref: np.ndarray) -> float:
     ref = np.asarray(ref, float)
     if F.size == 0:
         return float("inf")
-    d = np.sqrt(((ref[:, None, :] - F[None, :, :]) ** 2).sum(axis=2))
-    return float(d.min(axis=1).mean())
+    near = np.empty(len(ref))
+    for a in range(0, len(ref), 512):                 # bounded memory on big fronts
+        R = ref[a:a + 512]
+        near[a:a + 512] = np.sqrt(((R[:, None, :] - F[None, :, :]) ** 2).sum(axis=2)).min(axis=1)
+    return float(near.mean())
 
 
 def igd_plus(F: np.ndarray, ref: np.ndarray) -> float:
@@ -71,8 +74,7 @@ def igd_plus(F: np.ndarray, ref: np.ndarray) -> float:
     ref = np.asarray(ref, float)
     if F.size == 0:
         return float("inf")
-    d = np.sqrt((np.maximum(F[None, :, :] - ref[:, None, :], 0.0) ** 2).sum(axis=2))
-    return float(d.min(axis=1).mean())
+    return float(dplus_distances(F, ref).mean())
 
 
 # ── coverage with a tolerance ────────────────────────────────────────────────
@@ -293,8 +295,7 @@ def gd_plus(F: np.ndarray, ref: np.ndarray) -> float:
     ref = np.asarray(ref, float)
     if F.size == 0:
         return float("inf")
-    d = np.sqrt((np.maximum(F[None, :, :] - ref[:, None, :], 0.0) ** 2).sum(axis=2))
-    return float(d.min(axis=0).mean())
+    return float(front_distances(F, ref)[1].mean())
 
 
 def roi_dist(F: np.ndarray, ideal, nadir) -> float:
@@ -472,11 +473,18 @@ def reference_step(ref) -> float:
     R = np.asarray(ref, float)
     key = (R.shape, hash(R.tobytes()))
     if key not in _REF_STEP:
-        nearest = np.empty(len(R))
-        for a in range(0, len(R), 256):
-            D = np.sqrt(((R[a:a + 256, None, :] - R[None, :, :]) ** 2).sum(axis=2))
-            D[np.arange(len(D)), np.arange(a, a + len(D))] = np.inf
-            nearest[a:a + 256] = D.min(axis=1)
+        try:                                # Euclidean distance is a metric: a KD-tree is
+            from scipy.spatial import cKDTree        # exact here, and dense samples need it
+        except ImportError:
+            cKDTree = None
+        if cKDTree is not None and len(R) > 1:
+            nearest = cKDTree(R).query(R, k=2)[0][:, 1]
+        else:
+            nearest = np.empty(len(R))
+            for a in range(0, len(R), 256):
+                D = np.sqrt(((R[a:a + 256, None, :] - R[None, :, :]) ** 2).sum(axis=2))
+                D[np.arange(len(D)), np.arange(a, a + len(D))] = np.inf
+                nearest[a:a + 256] = D.min(axis=1)
         _REF_STEP[key] = float(np.median(nearest))
     return _REF_STEP[key]
 

@@ -1914,6 +1914,58 @@ def _shifted_fronts() -> None:
 _shifted_fronts()
 
 
+# ── dense references at four objectives and more (task 6 of 2026-10-09, item 9)
+# At M >= 4 a reference of 1 000 points is only 1.5-2 times finer than the
+# population it measures — the median distance from a point to its nearest
+# neighbour, in the problem's frame, against that of N points of the same
+# sampler — so IGD+ there measures the reference as well as the set. For the
+# problems whose front is analytic and cheap to sample (DENSE_STEMS, from 4 to
+# 10 objectives: at 15 the DTLZ grid sampler enumerates 3^14 combinations;
+# not MaF2, whose sampler takes seconds and grows no finer at eight and ten),
+# dense_reference gives the first size of DENSE_SIZES whose step is at most a
+# third of the population's, or the largest, with both steps. A campaign
+# measures the front indicators against it beside the usual reference when
+# asked ([campaign] dense_reference = true), and --recompute-reference adds
+# them to a finished one; either way under the indicator's name with "_ref_v3"
+# after it (metric_names.DENSE_SUFFIX), the usual values left as they are.
+DENSE_STEMS = frozenset({"DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "IDTLZ1", "IDTLZ2", "SDTLZ1",
+                         "SDTLZ2", "minusDTLZ2", "shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3",
+                         "shiftDTLZ4", "WFG4", "WFG5", "WFG6", "WFG7", "WFG8", "WFG9",
+                         "Polygon", "MaF1", "MaF3", "MaF4", "MaF5", "MaF12", "MaF13"})
+DENSE_SIZES = (1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000)
+DENSE_RATIO = 3.0
+
+
+def has_dense_reference(name: str) -> bool:
+    p = PROBLEMS.get(name)
+    return (p is not None and callable(p.pareto_front) and 4 <= p.n_obj <= 10
+            and name.split("_")[0] in DENSE_STEMS)
+
+
+_DENSE: Dict[Tuple[str, int], tuple] = {}
+
+
+def dense_reference(name: str, pop: int) -> tuple:
+    """(front, info) of the dense reference of `name` for a population of
+    `pop` (see above): info = {"rows", "step", "population_step"}, the steps
+    in the problem's frame. Once per problem, population and process."""
+    from ..run.metrics import reference_step
+    key = (name, int(pop))
+    if key not in _DENSE:
+        p = get(name)
+        lo, hi = np.asarray(p.ideal, float), np.asarray(p.nadir, float)
+        span = np.where(hi > lo, hi - lo, 1.0)
+        pop_step = reference_step((np.asarray(p.pareto_front(int(pop)), float) - lo) / span)
+        for n in DENSE_SIZES:
+            F = np.asarray(p.pareto_front(n), float)
+            step = reference_step((F - lo) / span)
+            if step <= pop_step / DENSE_RATIO:
+                break
+        _DENSE[key] = (F, {"rows": int(len(F)), "step": step, "population_step": pop_step})
+    F, info = _DENSE[key]
+    return F.copy(), dict(info)
+
+
 # ── HV/IGD reference frame = the sampled reference PF (PlatEMO convention) ──
 # Computed LAZILY, per problem, on first lookup.
 #

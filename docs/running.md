@@ -316,6 +316,25 @@ final population (the same list when omitted):
 | `g_min`, `g_median` | the smallest and the median g(x) − g* in the set: the problem's own distance to the Pareto set (`BenchProblem.distance_fn`: ZDT1–4 and 6, DTLZ1–4 and 7, DTLZ5–6 up to three objectives, IDTLZ, SDTLZ, wideDTLZ3, the shift variants, C1-DTLZ1, C1-DTLZ3 and C2-DTLZ2). Exact, no reference sample | lower |
 | `ps_dmin` | the smallest distance from a solution to the Pareto-set sample, variables normalised by the bounds and the cyclic ones wrapped, as `igdx`: the decision-space counterpart where the problem has a Pareto set but no distance function | lower |
 
+**Dense references.** From four objectives on, a reference of 1 000 points is
+only 1.5–2 times finer than the population it measures (the median distance
+from a point to its nearest neighbour, in the problem's frame, against that of
+N points of the same sampler), so IGD+ there measures the reference as well
+as the set. For the problems with an analytic front — DTLZ1–4, IDTLZ, SDTLZ,
+minusDTLZ2, shiftDTLZ1–4, WFG4–9, Polygon, MaF1, 3, 4, 5, 12 and 13, at 4 to
+10 objectives — `[campaign] dense_reference = true` measures the front
+indicators also against a dense reference: the first of 1 000, 2 000, 5 000,
+… 100 000 points whose step is at most a third of the population's, or
+100 000 (5 000 at four objectives, 10 000 at five, 20 000 at six, 100 000 —
+still only 2.3 times finer — at ten). The values go beside the usual ones as
+`igdp_norm_ref_v3` and so on, which every table can be asked for
+(`--ranks igdp_norm_ref_v3`), and `meta.json` records the reference's rows
+and step (`reference_v3`). At five objectives and 126 points an IGD+ pass
+over 10 000 reference points costs about 0.1 s, over 100 000 about 1 s.
+IGD, IGD+, GD+ and ε are computed in blocks of reference points, whatever the
+size; no KD-tree, since d⁺ is not a metric and the nearest point by it can be
+far by the Euclidean distance.
+
 On a constrained problem every indicator is measured on the feasible part of
 the answer, and two more are recorded unasked: `feas_share`, the share of the
 answer that satisfies every constraint (wherever an indicator is measured, the
@@ -784,6 +803,10 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   difference — for those two a ratio of medians, below 1 where the algorithm
   is better. The order of the table is by `+` minus `-`: an order of these
   counts, not a rating.
+- `--recompute-reference` also measures every finished run on a problem with a
+  dense reference against it (below), from the saved answers, into new values
+  `<indicator>_ref_v3` beside the old ones, which stay as they are; a run that
+  has them is skipped.
 - `--ci`: a 95 % percentile interval for each mean rank, resampling the
   problems 2000 times. Two algorithms whose intervals overlap widely are not
   ordered by this campaign.
