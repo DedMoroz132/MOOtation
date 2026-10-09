@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 63 algorithm names |
-| `--problems` | list the 487 benchmark problems (needs NumPy) |
+| `--problems` | list the 511 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -156,8 +156,8 @@ day-long run.
 ## The built-in suites
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
-BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ and noisy
-copies: 487 problems across 20 families, each
+BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, rotated DTLZ
+and WFG and noisy copies: 511 problems across 25 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -252,6 +252,23 @@ the share of the answer another of its points dominates by the true values.
 They are a family of their own, `noisy`, picked by name: `families = ["DTLZ"]`
 does not bring them in.
 
+**The rotated problems** mix the distance variables, which ZDT, DTLZ and WFG
+keep each on its own axis — a gift to operators that work coordinate by
+coordinate, SBX and polynomial mutation. The position variables are left
+alone; the distance block is rotated about its optimum, so the front and the
+Pareto set stay exactly known (`benchmarks/rotated.py`, a construction of this
+library; its header sets it beside Deb, Sinha & Kukkonen's L1-ZDT4, Iorio &
+Li's rotated problems and CEC 2007's R_DTLZ2). `rDTLZ1_3D` … `rDTLZ4_5D`
+evaluate DTLZ at y = 1/2 + Q (z − c), c the shifted optimum, unclipped;
+`rcDTLZ2` at y = 1/2 + Λ Q (z − c) with condition number 10³; `rWFG4`–`rWFG7`
+rotate WFG's normalised distance variables about 0.35 and clip them to
+[0, 1] (most random points have a few clipped; none within 0.35 of the
+optimum). DTLZ2's and DTLZ4's g is isotropic, so `rDTLZ2` and `rDTLZ4` are the
+same functions as without the rotation — checks of invariance; rotated in
+earnest are `rDTLZ1`, `rDTLZ3`, `rcDTLZ2` and `rWFG4`–`rWFG7`. Their controls
+are the same construction with Q = I: `r0DTLZ1`, `r0DTLZ3`, `c0DTLZ2` (each a
+family of its own), and WFG itself.
+
 [`python/examples/bench.toml`](../python/examples/bench.toml) is the complete
 example. The same suites are importable directly:
 
@@ -321,9 +338,10 @@ only 1.5–2 times finer than the population it measures (the median distance
 from a point to its nearest neighbour, in the problem's frame, against that of
 N points of the same sampler), so IGD+ there measures the reference as well
 as the set. For the problems with an analytic front — DTLZ1–4, IDTLZ, SDTLZ,
-minusDTLZ2, shiftDTLZ1–4, WFG4–9, Polygon, MaF1, 3, 4, 5, 12 and 13, at 4 to
-10 objectives — `[campaign] dense_reference = true` measures the front
-indicators also against a dense reference: the first of 1 000, 2 000, 5 000,
+minusDTLZ2, shiftDTLZ1–4, WFG4–9, Polygon, MaF1, 3, 4, 5, 12 and 13, and the
+rotated DTLZ and WFG, at 4 to 10 objectives — a campaign measures the front
+indicators also against a dense reference (`[campaign] dense_reference`, on
+by default; `false` switches it off): the first of 1 000, 2 000, 5 000,
 … 100 000 points whose step is at most a third of the population's, or
 100 000 (5 000 at four objectives, 10 000 at five, 20 000 at six, 100 000 —
 still only 2.3 times finer — at ten). The values go beside the usual ones as

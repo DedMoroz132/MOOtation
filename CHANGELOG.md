@@ -257,6 +257,18 @@ always listed under **Changed** or **Removed**.
   cuts in the convex front, points of larger g are Pareto-optimal too; it is
   sampled and checked point by point (`registry.APPROXIMATE_FRONT`, a
   `--cover` caveat).
+- Rotated DTLZ and WFG (`benchmarks/rotated.py`, task 6, item 1 and its
+  supplement 2): the distance variables rotated about their optimum, the
+  position variables untouched, front and Pareto set exact — rDTLZ1-4 (y =
+  1/2 + Q (z - c), unclipped), rcDTLZ2 (Lambda Q, condition number 10^3),
+  rWFG4-7 (WFG's normalised distance variables about 0.35, clipped to
+  [0, 1]), at three and five objectives, and the Q = I controls r0DTLZ1,
+  r0DTLZ3 and c0DTLZ2. Q a Haar rotation from a fixed seed; the tests hold a
+  hash of every matrix, bbob-biobj's included. The header records the
+  literature and how the construction differs, and how often rWFG clips.
+  `mootation.families` is the one family rule of the registry and the
+  tables. 511 problems in 25 families.
+- `properties`: minusDTLZ2 has a row; ZCAT's centre is False (was None).
 - Noisy copies (`benchmarks/noisy.py`, task 6, item 7): `<base>_n1` and
   `<base>_n5` add 0.01 and 0.05 (nadir − ideal) N(0, 1) to each objective of
   ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D and WFG7_3D, the noise from the run's seed and
@@ -268,8 +280,9 @@ always listed under **Changed** or **Removed**.
 - Dense references (task 6, item 9): `registry.dense_reference` gives, for the
   problems with an analytic front at 4 to 10 objectives, the first of 1 000
   ... 100 000 points whose step is at most a third of the population's;
-  `[campaign] dense_reference = true` measures the front indicators against
-  it beside the usual ones, as `<indicator>_ref_v3`, and
+  a campaign measures the front indicators against it beside the usual
+  ones, as `<indicator>_ref_v3` (`[campaign] dense_reference`, on by default:
+  the usual values do not change), and
   `--recompute-reference` adds those to a finished campaign from its saved
   answers, the old values untouched (`recompute_dense`); the tables read
   them. IGD, IGD+ and GD+ are computed in blocks of reference points now (ε,

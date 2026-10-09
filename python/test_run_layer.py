@@ -4687,7 +4687,7 @@ def a_dense_reference_is_a_third_of_the_populations_step():
 
 @test
 def a_campaign_measures_against_the_dense_reference_and_recompute_adds_it():
-    """[campaign] dense_reference = true records "<indicator>_ref_v3" beside
+    """[campaign] dense_reference (on by default) records "<indicator>_ref_v3" beside
     the front indicators — final, archive, trajectory — and the reference's
     rows and step; on a campaign without it --recompute-reference adds the
     same values from the saved answers and leaves the old ones as they were;
@@ -4715,7 +4715,7 @@ DENSE
 """
     with tempfile.TemporaryDirectory() as td:
         metas = {}
-        for tag, dense in (("with", "dense_reference = true"), ("without", "")):
+        for tag, dense in (("with", ""), ("without", "dense_reference = false")):
             cfg_path = Path(td) / f"{tag}.toml"
             cfg_path.write_text(text.replace("OUT", f"res_{tag}").replace("DENSE", dense),
                                 encoding="utf-8")
@@ -4745,6 +4745,148 @@ DENSE
         assert C.recompute_dense(root2) == {"skipped": 1}
         table = C.compare_table(C.scan_results(root2), "igdp_norm_ref_v3")
         assert table["DTLZ2_4D"]["nsga2"][3] == 1, table
+
+
+# ── task 6, item 1: rotated DTLZ and WFG ────────────────────────────────────
+
+# sha256 (16 hex digits) of every rotated problem's matrix (Q, Lambda Q, I or
+# Lambda), rounded to 1e-12, and of every rotation of the registered
+# bbob-biobj problems: numpy does not promise its normal stream across
+# versions, and a changed draw must fail here, not move results silently.
+ROTATION_HASHES = {
+    "c0DTLZ2_3D": "1e24edff38434edf", "c0DTLZ2_5D": "1e24edff38434edf",
+    "r0DTLZ1_3D": "1a8475b42f5782e9", "r0DTLZ1_5D": "1a8475b42f5782e9",
+    "r0DTLZ3_3D": "a3c81aeea2e1ab58", "r0DTLZ3_5D": "a3c81aeea2e1ab58",
+    "rDTLZ1_3D": "0b3008ed21263fbc", "rDTLZ1_5D": "ef5a865bfb3c0415",
+    "rDTLZ2_3D": "9d2a751088421ed6", "rDTLZ2_5D": "219ddeb235a454a0",
+    "rDTLZ3_3D": "ef85240a1c1c76ee", "rDTLZ3_5D": "1f7ffcdb60f9914f",
+    "rDTLZ4_3D": "4767919b46de0568", "rDTLZ4_5D": "6134b078d8446b73",
+    "rWFG4_3D": "f52d69d1a9090e8f", "rWFG4_5D": "836e2efbfecb0621",
+    "rWFG5_3D": "786c215ca3c4a44c", "rWFG5_5D": "db857c63767a80d8",
+    "rWFG6_3D": "8bd9224b78e079c3", "rWFG6_5D": "c19dac79a30b4db7",
+    "rWFG7_3D": "bf02effac24cdcde", "rWFG7_5D": "45d4935de1c51b2e",
+    "rcDTLZ2_3D": "f5494f9446406f34", "rcDTLZ2_5D": "26423ce721190dfa",
+}
+BBOB_ROTATION_HASH = "b20703a7d9b960f5"
+
+
+def _matrix_hash(A, digest=None) -> str:
+    import hashlib
+    import numpy as np
+    d = digest or hashlib.sha256()
+    d.update((np.round(np.asarray(A, float), 12) + 0.0).tobytes())
+    return d.hexdigest()[:16]
+
+
+@test
+def the_rotations_are_rotations_and_numpy_still_draws_them():
+    """Every Q of rotated.py is orthogonal (1e-12), the conditioned ones are
+    Lambda Q with the stated Lambda, the controls I or Lambda; the hash of every
+    matrix, and of bbob-biobj's rotations, is the one recorded (task 6, item
+    1.3)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import hashlib
+    import numpy as np
+    from mootation.benchmarks import bbob_biobj as BB
+    from mootation.benchmarks import names
+    from mootation.benchmarks import rotated as R
+    from mootation.benchmarks.registry import ROTATED
+    assert sorted(ROTATED) == sorted(ROTATION_HASHES) == sorted(
+        n for n in names() if n.split("_")[0] in R.SPECS)
+    for name, r in ROTATED.items():
+        family, rotate, condition = R.SPECS[name.split("_")[0]]
+        k = len(r.optimum)
+        Q = R.rotation(family, r.M, k) if rotate else np.eye(k)
+        assert np.allclose(Q.T @ Q, np.eye(k), atol=1e-12), name
+        L = R.conditioning(k) if condition else np.ones(k)
+        assert np.array_equal(r.A, L[:, None] * Q), name
+        assert _matrix_hash(r.A) == ROTATION_HASHES[name], (name, _matrix_hash(r.A))
+    assert R.conditioning(10)[[0, -1]].tolist() == [1.0, 1e3 ** 0.5]   # cond(Lambda^2) = 1e3
+    d = hashlib.sha256()
+    for n in sorted(names()):
+        if n.startswith("bbobbiobj"):
+            p = BB.problem(int(n[9:11]), int(n[13:15]), 1)
+            for A in (p.alpha.R, p.alpha.Q, p.beta.R, p.beta.Q):
+                if A is not None:
+                    d.update((np.round(A, 12) + 0.0).tobytes())
+    assert d.hexdigest()[:16] == BBOB_ROTATION_HASH, d.hexdigest()[:16]
+
+
+@test
+def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
+    """At Q = I and c = 1/2 rDTLZ is DTLZ, at Q = I rWFG is WFG; rDTLZ2 and
+    rDTLZ4 are their Q = I construction (the isotropic g), rDTLZ1, rDTLZ3 and
+    rcDTLZ2 are not; the Pareto set lands on the front; 10^4 uniform points
+    give finite values; no point dominates the front; the properties
+    (task 6, item 1.3 and supplement 2)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import rotated as R
+    from mootation.benchmarks.properties import properties
+    from mootation.benchmarks.registry import ROTATED
+    rng = np.random.default_rng(11)
+
+    def box(p, n):
+        lo = np.array([b[0] for b in p.bounds])
+        hi = np.array([b[1] for b in p.bounds])
+        return lo + (hi - lo) * rng.random((n, p.n_vars))
+
+    for name, r in ROTATED.items():
+        p, base = get(name), get(f"{r.family}_{r.M}D")
+        ident = R.Rotated(name.split("_")[0], r.M, p.n_vars)
+        ident.A = np.eye(len(r.optimum))
+        if not r.wfg:
+            ident.optimum = np.full(len(r.optimum), 0.5)
+        X = box(p, 2000 if r.wfg else 10_000)
+        assert max(np.abs(np.subtract(ident.evaluate(x), base.evaluate(list(x)))).max()
+                   for x in X[:2000]) < 1e-12, name
+        F = np.array([p.evaluate(list(x)) for x in box(p, 10_000)])
+        assert np.all(np.isfinite(F)), name
+        S = np.asarray(p.pareto_set(100), float)
+        FS = np.array([p.evaluate(list(x)) for x in S])
+        if r.wfg:                      # the base's own values at the same point
+            assert np.abs(FS - [base.evaluate(list(x)) for x in S]).max() < 1e-9, name
+        else:
+            G = FS if r.family == "DTLZ1" else FS ** 2
+            assert np.abs(G.sum(axis=1) - (0.5 if r.family == "DTLZ1" else 1.0)).max() < 1e-9
+            assert max(p.distance_fn(list(x)) for x in S) < 1e-9, name
+        row = properties(name)
+        assert (row["centre"], row["boundary"], p.cyclic_vars) == (False, False, ()), name
+    for M in R.SIZES:
+        X = box(get(f"DTLZ1_{M}D"), 2000)
+        for stem, other, same in (("rDTLZ2", None, True), ("rDTLZ4", None, True),
+                                  ("rDTLZ1", "r0DTLZ1", False), ("rDTLZ3", "r0DTLZ3", False),
+                                  ("rcDTLZ2", "c0DTLZ2", False)):
+            r = ROTATED[R.name(stem, M)]
+            if other is None:
+                q = R.Rotated(stem, M, r.n_vars)
+                q.A = np.eye(len(r.optimum))
+            else:
+                q = ROTATED[R.name(other, M)]
+            Y = box(get(R.name(stem, M)), 2000)
+            d = max(np.abs(np.subtract(r.evaluate(x), q.evaluate(x))).max() for x in Y)
+            assert (d < 1e-12) == same, (stem, M, d)
+    for name in ("rDTLZ1_3D", "rcDTLZ2_3D", "rWFG4_3D", "rWFG7_5D"):
+        p, r = get(name), ROTATED[name]
+        Z = np.asarray(p.pareto_front(2000), float)
+        near = np.asarray(p.pareto_set(300), float)
+        lo = np.array([b[0] for b in p.bounds])
+        hi = np.array([b[1] for b in p.bounds])
+        near[:, r.first:] += 1e-3 * (hi - lo)[r.first:] * rng.standard_normal(
+            (len(near), p.n_vars - r.first))
+        X = np.vstack([box(p, 500), np.clip(near, lo, hi)])
+        F = np.array([p.evaluate(list(x)) for x in X])
+        D = (F[:, None, :] - Z[None, :, :]) / (Z.max(axis=0) - Z.min(axis=0))
+        assert not np.all(D < -1e-9, axis=2).any(), name     # better than the front everywhere
+    assert properties("rDTLZ1_3D")["separable"] is False
+    assert properties("rDTLZ2_3D")["separable"] is True          # its g ignores the rotation
+    assert properties("r0DTLZ1_3D")["separable"] is True
+    fam = families()
+    assert sorted(fam["r0DTLZ"]) == ["r0DTLZ1_3D", "r0DTLZ1_5D", "r0DTLZ3_3D", "r0DTLZ3_5D"]
+    assert len(fam["rDTLZ"]) == 8 and len(fam["rWFG"]) == 8 and len(fam["c0DTLZ"]) == 2
 
 
 # ── task 2, step 3: operators and switchable variation ──────────────────────

@@ -31,6 +31,11 @@ Huband analyses:
               IDTLZ1; IDTLZ2 is this library's analogue, dtlz_variants.py)
   SDTLZ1/2    DTLZ1/2 with objective i scaled by p^(i-1) (Deb & Jain 2014,
               Table VIII): scaled
+  minusDTLZ2  DTLZ2 negated (Ishibuchi, Setoguchi, Masuda & Nojima, IEEE TEVC
+              21(2), 2017): the front -(1 + 0.25 k) times the sphere's octant,
+              convex; g at its largest, every distance variable at 0 or 1, so
+              the Pareto set is 2^k equivalent pieces (multimodal, as
+              IPolygon's four) on the boundary; separable as DTLZ2
   shiftDTLZ   DTLZ1-4 with every distance variable's optimum 0.15-0.35 from
               the centre (dtlz_variants.py): not medial, the point of them
   wideDTLZ3   DTLZ3 with the distance variables in [0, 1.2]: DTLZ3's row,
@@ -51,7 +56,8 @@ Huband analyses:
               with the complicated Pareto set, which the defaults switch on,
               every distance variable's optimum is g(y_I), a function of the
               position variables: not separable. Nor medial: sampled, those
-              optima spread over the whole [0, 1] (None).
+              optima spread over the whole [0, 1] (False; None until
+              2026-10-10).
   bbob-biobj  Brockhoff et al. 2022, Section 5.1: each objective is one of
               ten bbob functions from five groups — separable (f1, f2), low
               or moderate conditioning (f6, f8), high conditioning (f13,
@@ -137,6 +143,8 @@ only the curve, keep the value read at two and three.
 """
 
 from __future__ import annotations
+
+from .rotated import SPECS as _ROTATED
 
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
         "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
@@ -254,7 +262,7 @@ def properties(name: str) -> dict | None:
     if stem.startswith("BT"):
         row["linkage"] = int(stem[2:]) in _BT_LINKAGE
     elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "shiftZDT", "IDTLZ", "SDTLZ", "wideDTLZ",
-                          "C1-DTLZ", "C2-DTLZ2")):
+                          "C1-DTLZ", "C2-DTLZ2", "rDTLZ", "rcDTLZ", "r0DTLZ", "c0DTLZ")):
         row["linkage"] = False
     elif stem.startswith("ZCAT"):
         row["linkage"] = _LINKAGE["ZCAT"]
@@ -317,6 +325,16 @@ def _huband(name: str) -> dict | None:
         return row
     if stem in _CDTLZ:
         return dict(_CDTLZ[stem])
+    if stem in _ROTATED:
+        # rotated.py: the base's row, the optimum off centre and bound; not
+        # separable where the rotation mixes an anisotropic g (rDTLZ2 and
+        # rDTLZ4 are their Q = I construction: separable as DTLZ2)
+        family, rotate, condition = _ROTATED[stem]
+        row = dict((_WFG if family.startswith("WFG") else _DTLZ)[family])
+        row["centre"] = row["boundary"] = False
+        if rotate and (condition or family not in ("DTLZ2", "DTLZ4")):
+            row["separable"] = False
+        return row
     if stem == "wideDTLZ3":
         row = dict(_DTLZ["DTLZ3"])
         row["centre"] = False
@@ -325,12 +343,14 @@ def _huband(name: str) -> dict | None:
         row = dict(_DTLZ["DTLZ" + stem[-1]])
         row["front"] = "linear" if stem == "IDTLZ1" else "convex"
         return row
+    if stem == "minusDTLZ2":
+        return _p("convex", True, False, False, True, False, True)
     if stem in ("SDTLZ1", "SDTLZ2"):
         row = dict(_DTLZ["DTLZ" + stem[-1]])
         row["scaled"] = True
         return row
     if stem.startswith("ZCAT") and stem[4:].isdigit():
-        return _p(_ZCAT_FRONT[int(stem[4:])], False, False, True, False, None, False)
+        return _p(_ZCAT_FRONT[int(stem[4:])], False, False, True, False, False, False)
     if stem.startswith("bbobbiobj"):
         from .bbob_biobj import PAIRS
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
@@ -370,6 +390,8 @@ def _positions(name: str, n_obj: int) -> int:
         return 2
     if stem == "IPolygon":
         return 0
+    if stem.startswith("rWFG"):
+        return 2 * (n_obj - 1)  # WFG's k
     return n_obj - 1            # DTLZ and its variants, ZCAT
 
 

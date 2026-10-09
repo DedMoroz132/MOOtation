@@ -18,6 +18,8 @@
 #   C-DTLZ x M={3,5}    Jain & Deb 2014, constrained DTLZ (c_dtlz.py)
 #   <base>_n1, _n5      noisy copies of ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D, WFG7_3D
 #                       (ours, noisy.py)
+#   rDTLZ1-4, rcDTLZ2, rWFG4-7 x M={3,5}, and the controls r0DTLZ1, r0DTLZ3,
+#                       c0DTLZ2: the distance variables rotated (ours, rotated.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -60,6 +62,7 @@ from . import shifted as _shift
 from . import distances as _dist
 from . import c_dtlz as _cd
 from . import noisy as _noisy
+from . import rotated as _rot
 
 
 # =============================================================
@@ -312,6 +315,9 @@ FULL_FRONT: set[str] = set()
 # shifted copies (shifted.py) and the noisy ones (noisy.py) -> their base
 # problem.
 FRAME_OF: Dict[str, str] = {}
+
+# The rotated problems' maps (rotated.py), for the distance functions and the tests.
+ROTATED: Dict[str, "_rot.Rotated"] = {}
 
 # Problems whose ideal and nadir are set exactly at registration and are not
 # read off a front sample (C-DTLZ: c_dtlz.py, FRONTS).
@@ -1764,11 +1770,45 @@ _register_c_dtlz()
 _register_noisy()
 
 
+# =============================================================
+#  Rotated DTLZ and WFG x M={3,5} (rotated.py, task 6 of 2026-10-09, item 1):
+#  the base problem evaluated at the mapped point. Box, budget, frame and front
+#  are the base's (FRAME_OF); the Pareto set has the base's positions and the
+#  distance variables at their optimum, c or 0.35 * 2i.
+# =============================================================
+def _register_rotated():
+    for M in _rot.SIZES:
+        for stem, (family, _, _) in _rot.SPECS.items():
+            b = PROBLEMS[f"{family}_{M}D"]
+            r = _rot.Rotated(stem, M, b.n_vars)
+            if r.wfg:
+                k = r.first
+                def _ps(n, _k=k, _r=r):
+                    P = _psets._cube_positions(_k, n) * 2.0 * np.arange(1, _k + 1)
+                    return _psets.fill(P, _r.n_vars, _r.optimum)
+            else:
+                def _ps(n, _M=M, _r=r): return _psets.dtlz(_M, _r.n_vars, n, _r.optimum)
+            key = _rot.name(stem, M)
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=M,
+                evaluate=r.evaluate, constraints=_no_cons,
+                hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+                hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+                pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+                pareto_front=None, pareto_set=_ps)
+            FRAME_OF[key] = b.name
+            ROTATED[key] = r
+
+
+_register_rotated()
+
+
 def _attach_distances():
     """distance_fn (distances.py) for every problem built on a g of its own:
     ZDT1-4 and 6, DTLZ1-4 and 7, DTLZ5/6 up to three objectives, the IDTLZ,
-    SDTLZ and wideDTLZ3, the shift variants read through their shift, and
-    C1-DTLZ1/3 and C2-DTLZ2, whose Pareto sets are their DTLZ's g = 0."""
+    SDTLZ and wideDTLZ3, the shift variants read through their shift,
+    C1-DTLZ1/3 and C2-DTLZ2, whose Pareto sets are their DTLZ's g = 0, and the
+    rotated DTLZ and their controls, read at the mapped point."""
     from .dtlz_variants import cyclic_input
     for name, p in PROBLEMS.items():
         stem, M = name.split("_")[0], p.n_obj
@@ -1784,6 +1824,8 @@ def _attach_distances():
             p.distance_fn = _dist.dtlz("DTLZ" + stem[-1], M)
         elif stem in ("C1-DTLZ1", "C1-DTLZ3", "C2-DTLZ2"):     # their Pareto sets have g = 0
             p.distance_fn = _dist.dtlz(_cd.BASE[stem], M)
+        elif name in ROTATED and not ROTATED[name].wfg:      # g read at the mapped point
+            p.distance_fn = _dist.dtlz(ROTATED[name].family, M, ROTATED[name].map)
         elif stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):
             p.distance_fn = _dist.dtlz(stem[5:], M, lambda x, _M=M: cyclic_input(x, _M))
         elif stem in ("shiftDTLZ6", "shiftDTLZ7"):
@@ -1931,7 +1973,8 @@ _shifted_fronts()
 DENSE_STEMS = frozenset({"DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "IDTLZ1", "IDTLZ2", "SDTLZ1",
                          "SDTLZ2", "minusDTLZ2", "shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3",
                          "shiftDTLZ4", "WFG4", "WFG5", "WFG6", "WFG7", "WFG8", "WFG9",
-                         "Polygon", "MaF1", "MaF3", "MaF4", "MaF5", "MaF12", "MaF13"})
+                         "Polygon", "MaF1", "MaF3", "MaF4", "MaF5", "MaF12", "MaF13",
+                         *_rot.SPECS})
 DENSE_SIZES = (1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000)
 DENSE_RATIO = 3.0
 
@@ -2059,13 +2102,11 @@ def get(name: str) -> "BenchProblem":
 
 
 def families() -> dict:
-    """Problem names grouped by family stem: {"DTLZ": [...], "WFG": [...]};
-    the noisy copies are a family of their own, "noisy"."""
+    """Problem names grouped by family: {"DTLZ": [...], "WFG": [...]}, the rule
+    of mootation.families (the noisy copies "noisy", the rotated problems'
+    controls "r0DTLZ" and "c0DTLZ")."""
+    from ..families import family
     out: Dict[str, List[str]] = {}
     for n in sorted(PROBLEMS):
-        stem = n.split("_")[0]
-        stem = "".join(c for c in stem if not c.isdigit()) or stem
-        if _noisy.is_noisy(n):
-            stem = "noisy"
-        out.setdefault(stem, []).append(n)
+        out.setdefault(family(n), []).append(n)
     return out

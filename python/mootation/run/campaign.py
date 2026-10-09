@@ -113,8 +113,9 @@ class CampaignSpec:
     n_ref: int = 1000
     # The front indicators against the dense reference too, where a problem
     # has one (registry.dense_reference: 4 to 10 objectives), as
-    # "<indicator>_ref_v3" beside the usual values (task 6, item 9).
-    dense_reference: bool = False
+    # "<indicator>_ref_v3" beside the usual values (task 6, item 9); on by
+    # the owner's word of 2026-10-10 — the usual values do not change.
+    dense_reference: bool = True
     seeds: tuple = ()
     # "generations": a trajectory point every record_every generations.
     # "log": at fixed evaluation counts 10^(j/record_per_decade), the SAME
@@ -258,7 +259,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
                                   f"unknown metric '{m}'; known: {', '.join(METRIC_NAMES)}")
         setattr(spec, key, tuple(names))
     spec.n_ref = int(raw.get("n_ref", 1000))
-    spec.dense_reference = raw.get("dense_reference", False)
+    spec.dense_reference = raw.get("dense_reference", True)
     if not isinstance(spec.dense_reference, bool):
         raise ConfigError("campaign.dense_reference", "true or false")
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
@@ -1465,15 +1466,10 @@ def write_compare_csv(table: dict, path: Path, metric: str) -> None:
 
 
 def problem_family(name: str) -> str:
-    """The family of a registry name: DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT,
-    a noisy copy (ZDT1_n1) -> noisy.
-
-    The same stem rule as `mootation.benchmarks.families()`.
-    """
-    if name.rsplit("_", 1)[-1] in ("n1", "n5"):     # benchmarks/noisy.py, SIGMA
-        return "noisy"
-    stem = name.split("_")[0]
-    return "".join(c for c in stem if not c.isdigit()) or stem
+    """The family of a registry name: DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT
+    (mootation.families, the rule of `mootation.benchmarks.families()`)."""
+    from ..families import family
+    return family(name)
 
 
 def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -> dict:
