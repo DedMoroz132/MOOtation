@@ -303,8 +303,9 @@ always listed under **Changed** or **Removed**.
 - `--reference` (task 6, item 10): a warning when the seeds and the number of
   problems leave no mark but `=` possible under Holm (at k seeds a side,
   beyond 0.025·C(2k, k) problems); `--adjust bh` for Benjamini–Hochberg over
-  the problems; beside the counts the `=` with a large A12 and the median
-  A12 with its class; across problems, for `igdp_norm` and `eps_norm`, the
+  the problems; beside the counts the `=` with a large A12, how many
+  problems fall in each class of A12 and the median A12 with its class;
+  across problems, for `igdp_norm` and `eps_norm`, the
   signed-rank test on the logarithms of the medians, and for every metric
   the sign test and the Hodges–Lehmann estimate (a ratio of medians for those
   two). The header says the order is by `+` minus `-`, not a rating.
@@ -332,7 +333,9 @@ always listed under **Changed** or **Removed**.
   the first evaluation to give a feasible point, in `final`. An answer
   without a feasible point has no value — none, not 0 or infinity — and is
   counted apart: `--compare` writes "k empty" in its cell, `--ranks` (and its
-  CSV) an `empty` column, and in the median it counts as the worst value. A
+  CSV) and `--ranks --by` an `empty` column, `--ci` and `--reference` their
+  count; in the medians, the tests and the ranks it counts as the worst
+  value. A
   constrained run keeps its variables in snapshots and checkpoints.
 - Maximin Latin hypercubes (`mootation.designs`, after Morris & Mitchell,
   "Exploratory designs for computational experiments", 1995): their φ_p

@@ -3614,6 +3614,7 @@ def the_reference_report_warns_when_no_mark_is_possible_and_sizes_its_effects():
     assert not rep["labels_possible"] and rep["algorithms"][0]["ties"] == 110, rep
     assert rep["algorithms"][0]["ties_large"] == 110
     assert "WARNING: no mark but '='" in " ".join(R.format_reference(rep).split())
+    assert "0/0/0/110" in R.format_reference(rep)                 # A12 classes: all large
     assert R.reference_report(many[:6 * 10], "igdp_norm", "ref")["labels_possible"]
     assert R.reference_report(many, "igdp_norm", "ref", adjust="bh")["labels_possible"]
     raises(ValueError, R.reference_report, many, "igdp_norm", "ref", adjust="bonferroni")
@@ -4547,6 +4548,24 @@ def a_constrained_answer_is_measured_on_its_feasible_part():
         assert e["b"]["all"][0] == 1.5 and e["a"]["all"][0] == 1.5, e   # last on P1, first on P2
     text = C.format_ranks(C.rank_table(rows, "igdp_norm"))
     assert "empty" in text.splitlines()[1] and "no feasible point" in text, text
+    # the report's tests and groups count them the same way (report.values)
+    from mootation.run import report as R
+    empty: dict = {}
+    vals = R.values(rows, "igdp_norm", empty=empty)
+    assert empty == {"b": 3} and vals["P1"]["b"].count(math.inf) == 2, (empty, vals)
+    assert R.values(rows, "hv")["P1"]["b"].count(-math.inf) == 2
+    rep = R.reference_report(rows, "igdp_norm", "a")
+    e = rep["algorithms"][0]
+    assert e["empty"] == 3 and rep["empty_reference"] == 0, e
+    assert e["per_problem"]["P1"]["a12"] < 0.5, e["per_problem"]         # worse there
+    assert "empty runs" in R.format_reference(rep)
+    ci_empty: dict = {}
+    R.rank_intervals(rows, "igdp_norm", n_boot=50, empty=ci_empty)
+    assert ci_empty == {"b": 3}
+    by_empty: dict = {}
+    g = R.property_ranks(rows, "igdp_norm", "front", empty=by_empty)
+    assert by_empty == {"b": 3} and g["front=?"]["b"] == (1.5, 2), g
+    assert "empty" in R.format_property_ranks(g, "igdp_norm", "front", by_empty).splitlines()[1]
 
 
 @test

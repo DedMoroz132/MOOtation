@@ -58,31 +58,55 @@ def _lower(metric: str) -> bool:
     return metric not in HIGHER_IS_BETTER
 
 
-def _value(row: dict, metric: str, at, scenario: str):
-    """The tables' reading (campaign.value_at) in both scenarios: in the archive
+def _read(row: dict, metrics, at, scenario: str) -> dict:
+    """The tables' reading (campaign.read_row) in both scenarios: in the archive
     one the reduced archive, at `at` from its checkpoints like the population
-    from its trajectory."""
-    from .campaign import value_at
+    from its trajectory. {metric: value or None}."""
+    from .campaign import read_row
     if scenario == "archive" and row.get("scenario") != "archive":
         row = dict(row, final=row.get("final_archive") or {}, scenario="archive")
-    return value_at(row, metric, at)
+    got = read_row(row, tuple(metrics), at)
+    return {m: (None if got[m] is None else float(got[m])) for m in metrics}
 
 
-def values(rows: list, metric: str, *, at=None, scenario: str = "final") -> dict:
-    """{problem: {algorithm: [one value per finished run]}}."""
+def _value(row: dict, metric: str, at, scenario: str):
+    """One metric of one run as the tables read it (_read)."""
+    return _read(row, (metric,), at, scenario)[metric]
+
+
+def values(rows: list, metric: str, *, at=None, scenario: str = "final",
+           empty: dict | None = None) -> dict:
+    """{problem: {algorithm: [one value per finished run]}}.
+
+    An empty run — a constrained problem's whose answer has no feasible point
+    there (feas_share 0, no value) — counts as the worst value, infinitely
+    bad, as in campaign.compare_table (task 6, item 5.2); `empty`, when given,
+    is filled with {algorithm: the number of such runs}. Other runs without a
+    finite value are left out."""
+    worst = math.inf if _lower(metric) else -math.inf
     out: dict = {}
     for r in rows:
         if r.get("status") != "done":
             continue
-        v = _value(r, metric, at, scenario)
-        if v is None or not math.isfinite(v):
+        got = _read(r, (metric, "feas_share"), at, scenario)
+        v = got[metric]
+        if v is None and got["feas_share"] == 0.0:
+            v = worst
+            if empty is not None:
+                empty[r["algorithm"]] = empty.get(r["algorithm"], 0) + 1
+        elif v is None or not math.isfinite(v):
             continue
         out.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(v)
     return out
 
 
 def _median(v):
-    return ST.summarize(v)[0]
+    """The median of the values, an empty run's infinity included."""
+    v = sorted(float(x) for x in v if x is not None and not math.isnan(x))
+    if not v:
+        return float("nan")
+    k = len(v) // 2
+    return v[k] if len(v) % 2 else 0.5 * (v[k - 1] + v[k])
 
 
 def problem_ranks(vals: dict, lower_better: bool) -> dict:
@@ -130,7 +154,8 @@ def reference_report(rows: list, metric: str, reference: str, *, at=None,
     correct = ST.holm if adjust == "holm" else ST.benjamini_hochberg
     lower = _lower(metric)
     log = metric in LOG_METRICS
-    vals = values(rows, metric, at=at, scenario=scenario)
+    empty: dict = {}
+    vals = values(rows, metric, at=at, scenario=scenario, empty=empty)
     probs = sorted(p for p, a in vals.items() if reference in a)
     algs = sorted({a for p in probs for a in vals[p]} - {reference})
     p_min = 1.0
@@ -165,6 +190,7 @@ def reference_report(rows: list, metric: str, reference: str, *, at=None,
             "signed_rank": sr, "sign": ST.sign_test(a, b, lower_better=lower),
             "hl": hl, "hl_ratio": math.exp(hl) if log and hl is not None else None,
             "a12_median": a12_med, "a12_median_class": ST.a12_magnitude(a12_med),
+            "empty": empty.get(alg, 0),
             "per_problem": {p: {"p_adj": pa, "mark": mk, "a12": eff, "a12_class": c}
                             for (p, _, eff), pa, mk, c in zip(tests, adj, marks, classes)},
         })
@@ -178,7 +204,7 @@ def reference_report(rows: list, metric: str, reference: str, *, at=None,
     return {"metric": metric, "reference": reference, "scenario": scenario, "at": at,
             "alpha": alpha, "adjust": adjust, "log": log, "problems": m,
             "smallest_p": p_min, "labels_possible": bool(m == 0 or possible),
-            "algorithms": per_alg}
+            "empty_reference": empty.get(reference, 0), "algorithms": per_alg}
 
 
 def format_reference(rep: dict) -> str:
@@ -201,39 +227,52 @@ def format_reference(rep: dict) -> str:
                if rep.get("adjust", "holm") == "holm" else "")
             + f"; that is not below alpha {rep['alpha']}. Read A12 and its class instead.", 100)
     hl_head = "HL ratio" if rep.get("log") else "HL diff"
-    lines.append(f"{'algorithm':<16}{'+':>4}{'-':>4}{'=':>4}{'=L':>4}{'A12 med':>12}"
+    lines.append("A12 n/s/m/l: the problems whose A12 is negligible / small / medium / large.")
+    lines.append(f"{'algorithm':<16}{'+':>4}{'-':>4}{'=':>4}{'=L':>4}{'A12 n/s/m/l':>14}"
+                 f"{'A12 med':>12}"
                  f"{'W+':>8}{'W-':>8}{'p(Holm)':>9}{'across':>7}{'sign':>9}{'p':>8}"
                  f"{hl_head:>10}")
     for e in rep["algorithms"]:
         sr, sg = e["signed_rank"], e["sign"]
         a12 = ("-" if e["a12_median"] is None
                else f"{e['a12_median']:.2f} {e['a12_median_class'][:3]}")
+        c = e["a12_classes"]
+        classes = f"{c['negligible']}/{c['small']}/{c['medium']}/{c['large']}"
         hl = e["hl_ratio"] if rep.get("log") else e["hl"]
         lines.append(f"{mark_budget(e['algorithm'])[:16]:<16}{e['wins']:>4}{e['losses']:>4}"
-                     f"{e['ties']:>4}{e['ties_large']:>4}{a12:>12}"
+                     f"{e['ties']:>4}{e['ties_large']:>4}{classes:>14}{a12:>12}"
                      f"{sr['w_plus']:>8.1f}{sr['w_minus']:>8.1f}{e['p_holm']:>9.3g}"
                      f"{e['mark']:>7}{sg['wins']:>5}:{sg['losses']:<3}{sg['p']:>8.3g}"
                      f"{'-' if hl is None else format(hl, '.3g'):>10}")
     lines.append("* its curve depends on the share of the budget spent (read by fraction).")
+    empties = {e["algorithm"]: e["empty"] for e in rep["algorithms"] if e["empty"]}
+    if empties or rep.get("empty_reference"):
+        lines.append("empty runs (no feasible point; each counted as the worst value): "
+                     + ", ".join(f"{a} {n}" for a, n in sorted(empties.items()))
+                     + (f"; the reference {rep['empty_reference']}"
+                        if rep.get("empty_reference") else ""))
     return "\n".join(lines)
 
 
 def rank_intervals(rows: list, metric: str, *, at=None, scenario: str = "final",
-                   n_boot: int = 2000, level: float = 0.95) -> dict:
-    """{algorithm: (low, high)} of the mean rank, problems resampled."""
-    vals = values(rows, metric, at=at, scenario=scenario)
+                   n_boot: int = 2000, level: float = 0.95, empty: dict | None = None) -> dict:
+    """{algorithm: (low, high)} of the mean rank, problems resampled; an empty
+    run ranks as the worst value, `empty` counting them (values)."""
+    vals = values(rows, metric, at=at, scenario=scenario, empty=empty)
     return ST.bootstrap_mean_ranks(problem_ranks(vals, _lower(metric)), n_boot=n_boot,
                                    level=level)
 
 
 # ── 3.2 by property ─────────────────────────────────────────────────────────
 def property_ranks(rows: list, metric: str, key: str, *, at=None,
-                   scenario: str = "final") -> dict:
-    """{group label: {algorithm: (mean rank, problems)}} for one property."""
+                   scenario: str = "final", empty: dict | None = None) -> dict:
+    """{group label: {algorithm: (mean rank, problems)}} for one property; an
+    empty run ranks as the worst value, `empty` counting them (values)."""
     from ..benchmarks.properties import KEYS, label
     if key not in KEYS:
         raise ValueError(f"unknown property '{key}'; known: {', '.join(KEYS)}")
-    ranks = problem_ranks(values(rows, metric, at=at, scenario=scenario), _lower(metric))
+    ranks = problem_ranks(values(rows, metric, at=at, scenario=scenario, empty=empty),
+                          _lower(metric))
     out: dict = {}
     for prob, per in ranks.items():
         g = label(prob, key)
@@ -243,7 +282,8 @@ def property_ranks(rows: list, metric: str, key: str, *, at=None,
             for g, algs in out.items()}
 
 
-def format_property_ranks(groups: dict, metric: str, key: str) -> str:
+def format_property_ranks(groups: dict, metric: str, key: str,
+                          empty: dict | None = None) -> str:
     labels = sorted(groups)
     algs = sorted({a for g in groups.values() for a in g},
                   key=lambda a: sum(groups[g][a][0] for g in labels if a in groups[g])
@@ -252,10 +292,15 @@ def format_property_ranks(groups: dict, metric: str, key: str) -> str:
     lines = [f"mean rank by median {metric}, problems grouped by {key} "
              f"(problems per group in brackets)",
              f"{'algorithm':<16}" + "".join(f"{(g.split('=', 1)[1] + f'[{n[g]}]')[:13]:>14}"
-                                            for g in labels)]
+                                            for g in labels)
+             + (f"{'empty':>7}" if empty else "")]
     for a in algs:
         lines.append(f"{mark_budget(a)[:16]:<16}" + "".join(
-            f"{groups[g][a][0]:>14.2f}" if a in groups[g] else f"{'-':>14}" for g in labels))
+            f"{groups[g][a][0]:>14.2f}" if a in groups[g] else f"{'-':>14}" for g in labels)
+            + (f"{empty.get(a, 0) or '':>7}" if empty else ""))
+    if empty:
+        lines.append("empty = runs without a feasible point (constrained problems), each "
+                     "ranked as the worst value")
     return "\n".join(lines)
 
 

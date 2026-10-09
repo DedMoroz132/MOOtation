@@ -377,9 +377,10 @@ answer that satisfies every constraint (wherever an indicator is measured, the
 trajectory included), and `fe_first_feas`, the evaluation that first gave a
 feasible point (in `final`; none when the run found none). An answer without a
 feasible point has no value at all — none, not 0 and not infinity. Such an
-empty run is counted apart: `--compare` writes "n, k empty" in its cell, and
-`--ranks` an `empty` column; in the median, and so in the rank, it counts as
-the worst value. A run on a constrained problem keeps the variables in its
+empty run is counted apart: `--compare` writes "n, k empty" in its cell,
+`--ranks` and `--ranks --by` an `empty` column, `--ci` "k empty" beside the
+interval and `--reference` a line of them; in the median, the tests and the
+ranks it counts as the worst value. A run on a constrained problem keeps the variables in its
 snapshots and checkpoints, whatever `snapshot_variables` says, since telling
 the feasible points apart needs them (in float32 there, so a point within
 rounding of a constraint may read differently when recomputed).
@@ -838,8 +839,9 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   leaves no mark but `=` possible at all, and the report says so in a warning;
   `--adjust bh` adjusts by Benjamini–Hochberg instead, which controls the false
   discovery rate and keeps marks possible. Beside the counts: `=L`, the `=`
-  with a large effect, and the median A12 with its class (negligible, small,
-  medium, large at 0.06, 0.14 and 0.21 from 0.5, Vargha & Delaney). The
+  with a large effect, how many problems fall in each class of A12
+  (`A12 n/s/m/l`: negligible, small, medium, large at 0.06, 0.14 and 0.21
+  from 0.5, Vargha & Delaney), and the median A12 with its class. The
   signed-rank test ranks the SIZE of the differences across problems, so use a
   scale-free metric for it (`hv`, `hv_h`, `igdp_norm`, `eps_norm`): in raw units
   the problem with the largest values decides. For `igdp_norm` and `eps_norm`

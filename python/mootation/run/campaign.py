@@ -2425,20 +2425,25 @@ def main(argv: list[str] | None = None) -> int:
                     alpha=args.alpha, adjust=args.adjust)))
                 print()
             if args.ranks and args.by:
+                empty: dict = {}
                 print(R.format_property_ranks(R.property_ranks(
-                    rows, args.ranks, args.by, at=args.at, scenario=args.scenario),
-                    args.ranks, args.by))
+                    rows, args.ranks, args.by, at=args.at, scenario=args.scenario, empty=empty),
+                    args.ranks, args.by, empty))
             elif args.ranks:
                 table = rank_table(rows, args.ranks, args.at)
                 print(format_ranks(table))
                 if args.ci:
-                    ci = R.rank_intervals(rows, args.ranks, at=args.at, scenario=args.scenario)
+                    empty: dict = {}
+                    ci = R.rank_intervals(rows, args.ranks, at=args.at, scenario=args.scenario,
+                                          empty=empty)
                     print("\n95 % bootstrap interval of each mean rank (problems resampled "
                           "2000 times)")
                     for alg, _ in table["algorithms"]:
                         if alg in ci:
                             lo, hi = ci[alg]
-                            print(f"  {R.mark_budget(alg)[:16]:<16} [{lo:5.2f}, {hi:5.2f}]")
+                            k = empty.get(alg)
+                            print(f"  {R.mark_budget(alg)[:16]:<16} [{lo:5.2f}, {hi:5.2f}]"
+                                  + (f"  {k} empty, ranked worst" if k else ""))
             if args.gap:
                 print(R.gap_report(rows, args.gap))
             if args.zero_share:

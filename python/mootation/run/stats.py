@@ -29,7 +29,12 @@ better for the metric, whichever way it runs.
 A caution that no test fixes: the signed-rank test ranks the SIZE of the
 differences across problems, so on a raw-unit metric (igd, igdp, eps) a
 problem whose values are a thousand times larger decides the result. Use it on
-the scale-free ones — hv, hv_h, igdp_norm, eps_norm.
+the scale-free ones — hv, hv_h, igdp_norm, eps_norm — and on the last two, by
+the logarithm (report.reference_report does): dimensionless is not
+homogeneous, igdp_norm runs over orders of magnitude between problems, and
+the problems where an algorithm fails would decide the ranks of the raw
+differences. sign_test and hodges_lehmann go beside it: the sign test asks
+on how many problems, the signed-rank test how much, and they can disagree.
 """
 
 from __future__ import annotations
@@ -106,8 +111,10 @@ def wilcoxon_signed_rank(a: Sequence[float], b: Sequence[float], *,
         raise ValueError("wilcoxon_signed_rank needs paired samples of equal length")
     d = []
     for x, y in zip(a, b):
-        if x is None or y is None or not (math.isfinite(x) and math.isfinite(y)):
+        if x is None or y is None or math.isnan(x) or math.isnan(y) or x == y:
             continue
+        # an infinite value is an empty run's (report.values): the largest
+        # difference there is, in its direction
         diff = (y - x) if lower_better else (x - y)        # > 0: A better
         if diff != 0.0:
             d.append(diff)
@@ -131,8 +138,8 @@ def rank_sum(a: Sequence[float], b: Sequence[float], *, lower_better: bool = Tru
     "p", "better"}. With 5 seeds a side the smallest attainable p is 1/126 ≈
     0.008, so 5-seed campaigns cannot resolve much below 0.01.
     """
-    a = [float(v) for v in a if v is not None and math.isfinite(v)]
-    b = [float(v) for v in b if v is not None and math.isfinite(v)]
+    a = [float(v) for v in a if v is not None and not math.isnan(v)]   # infinity: an
+    b = [float(v) for v in b if v is not None and not math.isnan(v)]   # empty run, worst
     if not a or not b:
         return {"n_a": len(a), "n_b": len(b), "r_a": None, "p": 1.0, "better": None}
     pooled = a + b
@@ -154,8 +161,8 @@ def a12(a: Sequence[float], b: Sequence[float], *, lower_better: bool = True) ->
     0.5 is no effect; the conventional thresholds are 0.56 / 0.64 / 0.71
     (small / medium / large) on either side of 0.5.
     """
-    a = [float(v) for v in a if v is not None and math.isfinite(v)]
-    b = [float(v) for v in b if v is not None and math.isfinite(v)]
+    a = [float(v) for v in a if v is not None and not math.isnan(v)]
+    b = [float(v) for v in b if v is not None and not math.isnan(v)]
     if not a or not b:
         return None
     wins = 0.0
@@ -214,7 +221,7 @@ def sign_test(a: Sequence[float], b: Sequence[float], *, lower_better: bool = Tr
     pairs dropped) and the exact two-sided binomial p."""
     wins = losses = 0
     for x, y in zip(a, b):
-        if x is None or y is None or not (math.isfinite(x) and math.isfinite(y)) or x == y:
+        if x is None or y is None or math.isnan(x) or math.isnan(y) or x == y:
             continue
         if (x < y) == lower_better:
             wins += 1
