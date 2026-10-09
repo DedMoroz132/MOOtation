@@ -1,26 +1,30 @@
-# Structural bias: where does each algorithm put its population when the
-# objectives say nothing? (Task 2 of 2026-09-23, A3.)
+# Structural bias: where does each algorithm search when the objectives say
+# nothing? (Task 2 of 2026-09-23, A3; task 6 of 2026-10-09, item 11.)
 #
-# On the two uninformative problems every objective value is a U(0, 1) draw
-# that does not depend on x (benchmarks/uninformative.py), so no region of the
-# box is better than another and any preference the final populations show —
-# piled at the bounds, drawn to the centre — is the algorithm's, and it will
-# carry it onto every other problem. Thirty seeds at 10 000 evaluations, in
-# two and ten variables:
+# On the uninformative problems every objective value is a random draw that
+# does not depend on x (benchmarks/uninformative.py), so no region of the box is
+# better than another and any preference — points piled at the bounds, drawn
+# to the centre — is the algorithm's, and it will carry it onto every other
+# problem. The problems are Kudela, van Stein, Bäck & Kononova's (GECCO 2026,
+# Table 1): f1 [U, U] and, in their variant beta, f2b (a disconnected front),
+# f3b (convex stairs) and f4b (two concave regions), in two and ten variables,
+# at their settings (Section 3.4: population 100, 300 iterations, 30 000
+# evaluations; 30 seeds here, 100 there). f5, where every point is
+# non-dominated, has a file of its own: structural_bias_f5.toml.
 #
 #   python -m mootation.run.campaign structural_bias.toml --workers 16
 #   python -m mootation.run.campaign structural_bias.toml --bias
 #
-# About 4 000 jobs of a few seconds each: roughly an hour on 16 cores. The
-# report gives, per problem and algorithm, a chi-square against uniform over
-# ten bins per variable and the shares of coordinates within 10 % of a bound
-# and in the central 20 % (0.2 each when uniform). The method simplifies
-# Kudela, van Stein, Bäck & Kononova (GECCO 2026), who ran 120 PlatEMO
-# algorithms on five such problems through the BIAS toolbox.
+# --bias gives, per problem and algorithm, Kudela et al.'s binsizes over 20
+# bins (the two outer and the two middle ones, 1 = no bias) for the final
+# populations, the points non-dominated over each run and every point
+# evaluated, the shares of coordinates exactly on a bound and exactly at 1/2,
+# a chi-squared test on one point per run, the Clark-Evans index at two
+# variables, and a class (docs/running.md, "--bias").
 #
 # The algorithm list is campaign_all's, plus DMS, GDE3, SMS-EMOA, MO-CMA-ES
 # and RVEA* (added after campaign_all's all58 runs); keep the two in step
-# otherwise.
+# otherwise, and this file and structural_bias_f5.toml.
 
 algorithms = [
     # Pareto dominance and diversity
@@ -114,13 +118,18 @@ kind = "builtin"
 
 [benchmarks]
 runs = 30
-problems = ["uninformative_n02_2D", "uninformative_n10_2D"]
+problems = ["uninformative_n02_2D", "uninformative_n10_2D",
+            "uninformative_f2b_n02_2D", "uninformative_f2b_n10_2D",
+            "uninformative_f3b_n02_2D", "uninformative_f3b_n10_2D",
+            "uninformative_f4b_n02_2D", "uninformative_f4b_n10_2D"]
 
 [campaign]
 out           = "results/{name}"
-budget_fe     = 10000
+budget_fe     = 30000
 record_grid   = "log"
 metrics       = ["nd_share"]
 final_metrics = ["nd_share", "n_final"]
-# Nothing to archive: the answer here is where the population is.
+# Nothing to archive: the answer here is where the points are, and the
+# problem counts every evaluated and every non-dominated one itself
+# (meta.json, structural_bias).
 archive       = false

@@ -1997,7 +1997,9 @@ def portfolio_runs_on_a_results_tree():
                      "has_reference_front": prob == "DTLZ2_3D", "reference_version": 2}),
                     encoding="utf-8")
         text = P.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,))
-        assert "1 problems with a front, 1 without" in text, text
+        # DTLZ2's optimum is at the centre: no front_interior group (task 6)
+        assert "1 problems with a front (0 with the optimum neither" in text, text
+        assert "1 without" in text, text
         with (root / "_portfolio" / "portfolio_summary.csv").open(encoding="utf-8") as fh:
             rows = list(csv.DictReader(fh))
         get = lambda g, c, rule: next(r for r in rows if r["group"] == g and r["criterion"] == c  # noqa: E731
@@ -3038,6 +3040,173 @@ def pareto_set_samples_land_on_the_front():
 
 
 @test
+def pareto_sets_of_zdt_dtlz5_7_and_the_dtlz_variants_land_on_their_fronts():
+    """The samplers added 2026-10-09 (pareto_sets.py): ZDT1-4 and 6 on g = 1,
+    DTLZ5/6 at three objectives and the IDTLZ/SDTLZ on g = 0, DTLZ7 on
+    f_M = 2M - sum f_i (1 + sin 3 pi f_i), minusDTLZ2 on g = 0.25 k."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks.dtlz_variants import scale_base
+
+    def front_error(key, F):
+        M = F.shape[1]
+        if key.startswith("ZDT"):
+            f1, f2 = F[:, 0], F[:, 1]
+            want = {"ZDT1": 1 - np.sqrt(f1), "ZDT2": 1 - f1 ** 2,
+                    "ZDT3": 1 - np.sqrt(f1) - f1 * np.sin(10 * np.pi * f1),
+                    "ZDT4": 1 - np.sqrt(f1), "ZDT6": 1 - f1 ** 2}[key]
+            return np.abs(f2 - want).max()
+        if key.startswith("DTLZ7"):
+            P = F[:, :M - 1]
+            return np.abs(F[:, -1] - (2 * M - np.sum(P * (1 + np.sin(3 * np.pi * P)), 1))).max()
+        if key.startswith("minusDTLZ2"):
+            return np.abs(np.sqrt((F ** 2).sum(1)) - (1 + 0.25 * 10)).max()
+        if key.startswith(("IDTLZ1", "SDTLZ1")):
+            G = 0.5 - F if key.startswith("IDTLZ1") else F / scale_base("SDTLZ1", M) ** np.arange(M)
+            return np.abs(G.sum(1) - 0.5).max()
+        if key.startswith("IDTLZ2"):
+            return np.abs(((1 - F) ** 2).sum(1) - 1).max()
+        if key.startswith("SDTLZ2"):
+            return np.abs(((F / scale_base("SDTLZ2", M) ** np.arange(M)) ** 2).sum(1) - 1).max()
+        return np.abs((F ** 2).sum(1) - 1).max()               # DTLZ5, DTLZ6: the sphere
+
+    for key in ("ZDT1", "ZDT2", "ZDT3", "ZDT4", "ZDT6", "DTLZ5_3D", "DTLZ6_3D", "DTLZ6_2D",
+                "DTLZ7_3D", "DTLZ7_5D", "IDTLZ1_3D", "IDTLZ2_5D", "SDTLZ1_3D", "SDTLZ2_5D",
+                "minusDTLZ2_3D"):
+        p = get(key)
+        X = np.asarray(p.pareto_set(200), float)
+        lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+        assert np.all((X >= lo) & (X <= hi)), key
+        F = np.array([p.evaluate(list(x)) for x in X])
+        assert front_error(key, F) < 1e-9, (key, front_error(key, F))
+    assert get("DTLZ6_4D").pareto_set is None and get("DTLZ5_5D").pareto_set is None
+
+
+@test
+def shifted_zdt_and_dtlz67_move_the_optimum_off_the_bound():
+    """shiftZDT1-4, shiftZDT6, shiftDTLZ6/7 (task 6, shifted.py): the base
+    problem at c = 0, h(c) = 0, the Pareto set on the base's front and at least
+    0.15 from the bounds and the middle, one optimum per variable for
+    shiftZDT4 away from the multiples of 1/2, the base's front and frame."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks import shifted as S
+    from mootation.benchmarks.dtlz import DTLZ_FUNCS
+    from mootation.benchmarks.registry import FULL_FRONT
+    rng = np.random.default_rng(3)
+    for base in S.ZDT_BASES:
+        b, s = get(base), get("shift" + base)
+        lo = np.array([q[0] for q in b.bounds]); hi = np.array([q[1] for q in b.bounds])
+        c = S.zdt_centres(base, b.n_vars)
+        assert np.all(np.abs(S.zdt_input(base, np.concatenate([[0.3], c]), c)[1:]) == 0.0)
+        for x in lo + rng.random((30, b.n_vars)) * (hi - lo):
+            at_zero = S.zdt_input(base, x, np.zeros(b.n_vars - 1))       # c = 0: the base
+            assert b.evaluate(list(at_zero)) == b.evaluate(list(x)), base
+        assert np.array_equal(s.pareto_front(300), b.pareto_front(300)), base
+        assert tuple(s.ideal) == tuple(b.ideal) and tuple(s.nadir) == tuple(b.nadir), base
+        assert s.cyclic_vars == () and s.bounds == b.bounds, base
+    for M in (2, 3, 5):
+        for base in S.DTLZ_BASES:
+            b = get(f"{base}_{M}D")
+            x = rng.random(b.n_vars)
+            zero = S.dtlz_input(x, M, np.zeros(b.n_vars - M + 1))
+            assert DTLZ_FUNCS[base](list(zero), M) == b.evaluate(list(x)), (base, M)
+    assert np.array_equal(get("shiftDTLZ6_5D").pareto_front(500), get("DTLZ6_5D").pareto_front(500))
+    assert "shiftDTLZ6_5D" in FULL_FRONT and get("shiftDTLZ6_5D").pareto_set is None
+    for key in ("shiftZDT1", "shiftZDT3", "shiftZDT4", "shiftZDT6", "shiftDTLZ6_3D",
+                "shiftDTLZ7_3D", "shiftDTLZ7_5D"):
+        p, b = get(key), get(key[5:])
+        X = np.asarray(p.pareto_set(200), float)
+        k = 1 if "ZDT" in key else p.n_obj - 1
+        lo = np.array([q[0] for q in p.bounds])[k:]; hi = np.array([q[1] for q in p.bounds])[k:]
+        U = (X[:, k:] - lo) / (hi - lo)
+        assert np.min(np.minimum(np.minimum(U, 1 - U), np.abs(U - 0.5))) >= 0.15, key
+        base_x = np.asarray(b.pareto_set(200), float)                    # the same positions
+        F = np.array([p.evaluate(list(x)) for x in X])
+        G = np.array([b.evaluate(list(x)) for x in base_x])
+        assert np.abs(F - G).max() < 1e-12, key
+    # shiftZDT4: x = c the only minimum along every variable, c off the 1/2 grid
+    p, c = get("shiftZDT4"), S.zdt_centres("ZDT4", 10)
+    assert np.min(np.abs(2 * c - np.round(2 * c))) / 2 > 0.02, c
+    grid = np.linspace(-5.0, 5.0, 40001)
+    for j in range(9):
+        x = np.tile(np.concatenate([[0.4], c]), (len(grid), 1))
+        x[:, j + 1] = grid
+        f2 = np.array([p.evaluate(list(r))[1] for r in x[::10]])
+        best = grid[::10][f2.argmin()]
+        assert abs(best - c[j]) <= 2.5e-3 and np.sum(f2 <= f2.min() + 1e-12) == 1, (j, best, c[j])
+
+
+@test
+def boundary_and_centre_follow_the_pareto_sets():
+    """properties' boundary agrees with what every Pareto-set sample shows
+    (properties.measured, 99 % of the distance variables within 1e-9 of a
+    bound), and so does centre where the table has a value; interior() is
+    neither."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import names
+    from mootation.benchmarks.properties import interior, measured, properties
+    from mootation.benchmarks.registry import PROBLEMS
+    checked = 0
+    for name in names():
+        if PROBLEMS[name].pareto_set is None or properties(name) is None:
+            continue
+        if name.startswith("ZCAT") and name not in ("ZCAT1_3D", "ZCAT11_3D", "ZCAT14_3D"):
+            continue                                       # seconds each: three of them
+        m, row = measured(name, 100), properties(name)
+        assert row["boundary"] is m["boundary"], (name, m, row["boundary"])
+        assert row["centre"] is None or row["centre"] is m["centre"], (name, m, row["centre"])
+        checked += 1
+    assert checked > 100, checked
+    assert [properties(n)["boundary"] for n in ("ZDT1", "ZDT4", "DTLZ7_3D", "WFG4_3D")] == \
+        [True, False, True, False]
+    assert interior("shiftZDT1") and interior("WFG4_3D") and interior("ZCAT1_3D")
+    assert not interior("ZDT1") and not interior("DTLZ2_3D") and not interior("MaF1_3D")
+
+
+@test
+def convergence_indicators_without_coverage_vanish_on_the_pareto_set():
+    """gdp_min, g_min, g_median and ps_dmin (task 6, item 8): g_min = g_median =
+    ps_dmin = 0 on a Pareto-set sample, gdp_min below the reference's
+    resolution there and flagged so; off the set g_min > 0; no distance
+    function where g is no distance to the Pareto set."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    which = ("gdp_min", "g_min", "g_median", "ps_dmin")
+    for key in ("ZDT1", "ZDT4", "shiftZDT6", "DTLZ1_3D", "DTLZ7_3D", "shiftDTLZ2_3D",
+                "shiftDTLZ7_3D", "IDTLZ1_3D", "wideDTLZ3_3D", "Polygon_3D"):
+        p = get(key)
+        X = np.asarray(p.pareto_set(60), float)
+        F = np.array([p.evaluate(list(x)) for x in X])
+        kw = dict(ref_front=np.asarray(p.pareto_front(500), float), ideal=p.ideal,
+                  nadir=p.nadir, which=which, pareto_set=X, bounds=p.bounds,
+                  cyclic=p.cyclic_vars, distance_fn=p.distance_fn)
+        on = M.compute(F, X=X, **kw)
+        assert on["ps_dmin"] == 0.0, (key, on)
+        assert on["gdp_min"] < on["gdp_min_ref_step"] and on["gdp_min_below_step"], (key, on)
+        if key == "Polygon_3D":                              # no g of its own
+            assert p.distance_fn is None and on["g_min"] is None, on
+            continue
+        assert abs(on["g_min"]) < 1e-12 and abs(on["g_median"]) < 1e-12, (key, on)
+        lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+        k = 1 if "ZDT" in key else p.n_obj - 1
+        Y = X.copy()
+        Y[:, k:] = np.clip(Y[:, k:] + 0.05 * (hi - lo)[k:], lo[k:], hi[k:])
+        off = M.compute(np.array([p.evaluate(list(y)) for y in Y]), X=Y, **kw)
+        assert off["g_min"] > 1e-6 and off["ps_dmin"] > 1e-3, (key, off)
+    assert all(get(k).distance_fn is None for k in ("DTLZ5_5D", "DTLZ6_4D", "shiftDTLZ6_5D",
+                                                    "WFG4_3D", "ZCAT1_3D"))
+
+
+@test
 def decision_space_indicators_agree_with_closed_forms():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
@@ -3329,7 +3498,7 @@ name = "rep"
 kind = "builtin"
 [benchmarks]
 runs = 2
-problems = ["ZDT1", "DTLZ2_3D"]
+problems = ["WFG4_2D", "DTLZ2_3D"]
 [campaign]
 out = "res"
 budget_fe = 500
@@ -3351,8 +3520,8 @@ final_metrics = ["igdp", "hv", "igdx", "pdist"]
         fa = meta["final_archive"]
         assert 0 < fa["n"] <= 91 and fa["igdx"] is not None and fa["pdist"] > 0, fa
         assert meta["final"]["igdx"] is not None and meta["archive"]["frame"], meta["final"]
-        assert json.loads((root / "ZDT1" / "gsemo" / "run_1" / "meta.json").read_text(
-            encoding="utf-8"))["final"]["igdx"] is None             # ZDT1 has no Pareto set
+        assert json.loads((root / "WFG4_2D" / "gsemo" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))["final"]["igdx"] is None             # WFG4_2D has no Pareto set
         # recomputing from archive.csv reproduces what the run wrote (up to the
         # ten digits the csv keeps)
         for key in ("final_archive", "final"):
@@ -3380,7 +3549,7 @@ final_metrics = ["igdp", "hv", "igdx", "pdist"]
         code, txt = cli("--ranks", "igdp", "--by", "front")
         assert code == 0 and "grouped by front" in txt, txt
         code, txt = cli("--compare", "igdx")
-        assert code == 0 and "DTLZ2_3D" in txt and "ZDT1" not in txt, txt
+        assert code == 0 and "DTLZ2_3D" in txt and "WFG4_2D" not in txt, txt
         for argv in (("--gap", "igdp"), ("--zero-share",),
                      ("--ecdf", "igdp_norm", "--interpolation", "linear")):
             code, txt = cli(*argv)
@@ -3703,6 +3872,52 @@ def uninformative_values_come_from_the_seed_and_the_count_not_from_x():
 
 
 @test
+def kudelas_problems_and_where_the_points_fell():
+    """f2b-f5 (task 6, item 11, Kudela et al. 2026, Table 1, variant beta) from
+    the seed and the count; the evaluator's counts of every point and of the
+    non-dominated ones: uniform points give binsizes 1 +- 0.1 and no exact
+    hits, clipped points atoms on the bounds; on f5 every point is
+    non-dominated."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get, names
+    from mootation.benchmarks import uninformative as U
+    from mootation.run import report as R
+    assert len([n for n in names() if n.startswith("uninformative")]) == 10
+    assert U.name(10, "f3b") == "uninformative_f3b_n10_2D"
+    rng = np.random.default_rng(9)
+    X = rng.random((20000, 2))
+    for problem in ("f2b", "f3b", "f4b", "f5"):
+        a, b = U.Evaluator(7, problem), U.Evaluator(7, problem)
+        fa = [a(x) for x in X[:200]]
+        assert fa == [b([0.5, 0.5]) for _ in range(200)], problem     # x never matters
+        assert all(np.isfinite(f).all() for f in fa), problem
+        assert fa != [U.Evaluator(8, problem)([0.1, 0.1]) for _ in range(200)], problem
+        g1 = np.array([f[0] for f in fa])
+        assert 0.0 <= g1.min() and g1.max() < 1.0, problem             # g1 = a = U(0, 1)
+    assert all(f[1] == -f[0] for f in (U.Evaluator(3, "f5")([0.2, 0.3]) for _ in range(5)))
+    assert U.objectives("f4b", 0.25, 0.0) == [0.25, -0.125]
+    assert abs(U.objectives("f3b", 0.35, 0.0)[1] - (0.1 / 1.5 ** 10 + 0.7)) < 1e-15
+    e = get("uninformative_f2b_n02_2D").make_evaluator(1)
+    for x in X:
+        e(x)
+    s = e.summary()
+    assert s["evaluations"] == 20000 and s["all"]["points"] == 20000
+    m = R._bin_measures(s["all"]["hist"], s["all"]["at_lower"], s["all"]["at_upper"],
+                        s["all"]["at_half"])
+    assert np.all(np.abs(np.array(m["binsizes"]) - 1.0) < 0.1), m["binsizes"]
+    assert m["at_bound"] == 0.0 and m["at_half"] == 0.0, m
+    assert 0 < s["nondominated"]["points"] < 2000, s["nondominated"]
+    e = U.Evaluator(2, "f5")
+    for x in np.clip(0.5 + 0.6 * rng.standard_normal((3000, 2)), 0.0, 1.0):
+        e(x)
+    s = e.summary()
+    assert s["nondominated"]["points"] == 3000, s["nondominated"]["points"]  # every one
+    assert s["all"]["at_lower"] + s["all"]["at_upper"] > 1000, s["all"]
+
+
+@test
 def the_chi_square_tail_and_the_bias_shares_are_right():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
@@ -3717,28 +3932,34 @@ def the_chi_square_tail_and_the_bias_shares_are_right():
     rng = np.random.default_rng(4)
     with tempfile.TemporaryDirectory() as td:
         rows = []
-        for alg, maker in (("flat", lambda: rng.random((100, 2))),
-                           ("centre", lambda: 0.45 + 0.1 * rng.random((100, 2))),
-                           ("edges", lambda: np.where(rng.random((100, 2)) < 0.5, 0.0, 1.0))):
-            for seed in (1, 2, 3):
+        for alg, maker in (("flat", lambda: rng.random((400, 2))),
+                           ("centre", lambda: 0.45 + 0.1 * rng.random((400, 2))),
+                           ("clipped", lambda: np.clip(0.5 + 0.6 * rng.standard_normal((400, 2)),
+                                                       0.0, 1.0))):
+            for seed in (1, 2, 3, 4, 5):
                 d = Path(td) / alg / str(seed)
                 d.mkdir(parents=True)
                 X = maker()
-                F = rng.random((100, 2))
+                F = rng.random((400, 2))
                 with (d / "final.csv").open("w", encoding="utf-8") as fh:
                     fh.write("# final\nf1,f2,x1,x2\n")
                     for f, x in zip(F, X):
                         fh.write(",".join(f"{v:.10g}" for v in (*f, *x)) + "\n")
-                rows.append({"problem": "uninformative_n02_2D", "algorithm": alg,
+                rows.append({"problem": "uninformative_n02_2D", "algorithm": alg, "seed": seed,
                              "status": "done", "dir": d})
         rep = R.structural_bias(rows)
-        flat, centre, edges = (rep[("uninformative_n02_2D", a)] for a in ("flat", "centre", "edges"))
-        assert abs(flat["edge"] - 0.2) < 0.05 and abs(flat["centre"] - 0.2) < 0.05, flat
-        assert flat["p_min"] > 1e-3 and flat["runs"] == 3 and flat["points"] == 300, flat
-        assert centre["centre"] == 1.0 and centre["edge"] == 0.0 and centre["p_min"] < 1e-12, centre
-        assert edges["edge"] == 1.0 and edges["centre"] == 0.0, edges
+        flat, centre, clipped = (rep[("uninformative_n02_2D", a)]
+                                 for a in ("flat", "centre", "clipped"))
+        L = flat["L"]                               # 4 000 coordinates, 200 a bin
+        assert abs(L["bound"] - 1) < 0.25 and abs(L["centre"] - 1) < 0.25, L
+        assert L["at_bound"] == 0.0 and L["at_half"] == 0.0 and flat["class"] == "none", flat
+        assert flat["chi2_p"] > 1e-3 and flat["runs"] == 5 and 0.8 < flat["cei"] < 1.2, flat
+        assert flat["P"] is None and flat["A"] is None      # no meta.json counts here
+        assert centre["class"] == "centre" and centre["L"]["bound"] == 0.0, centre
+        assert centre["cei"] < 0.5, centre                  # clustered in the middle
+        assert clipped["class"] == "bound" and clipped["L"]["at_bound"] > 0.3, clipped
         text = R.format_bias(rep)
-        assert text.index("edges") < text.index("flat") and "centre" in text
+        assert all(a in text for a in ("flat", "centre", "clipped")) and "bound" in text
 
 
 @test
@@ -3778,6 +3999,14 @@ archive = false
                            .read_text() for s in (1, 2)]
         assert finals["a"] == finals["b"], "the same seed gives the same run"
         assert finals["a"][0] != finals["a"][1], "another seed another stream"
+        # the counts --bias reads (task 6, item 11): every evaluated point, and
+        # the run's non-dominated ones
+        meta = json.loads((root / "uninformative_n10_2D" / "nsga2" / "run_1" / "meta.json")
+                          .read_text(encoding="utf-8"))
+        sb = meta["structural_bias"]
+        assert sb["evaluations"] == meta["fe"] == sb["all"]["points"], (sb["evaluations"], meta["fe"])
+        assert sum(sb["all"]["hist"]) == 10 * sb["all"]["points"], sb["all"]
+        assert 0 < sb["nondominated"]["points"] < sb["all"]["points"], sb["nondominated"]
 
 
 # ── task 2, step 3: operators and switchable variation ──────────────────────
@@ -4321,8 +4550,10 @@ def a_ladder_campaign_runs_marks_and_covers():
         assert rows[0]["level"] == "igdp_norm <= 1e+06 x greedy floor | hv_h gap <= 10", rows[0]
         assert rows[0]["analysis_commit"] == meta["analysis"]["commit"][:12] + \
             ("+dirty" if meta["analysis"]["dirty"] else ""), rows[0]
-        # every table over all problems and over the unmarked ones
-        assert [r_["subset"] for r_ in rows[:2]] == ["all", "unmarked"], rows[:2]
+        # every table over all problems, the unmarked ones and the interior ones
+        # (task 6): ZDT1's optimum is on the boundary, so none of those here
+        assert [r_["subset"] for r_ in rows[:3]] == ["all", "unmarked", "interior"], rows[:3]
+        assert (rows[0]["problems"], rows[2]["problems"]) == ("1", "0"), rows[:3]
         assert meta["floor_method"] == "greedy" and meta["reference_version"] >= 2, meta
         with (root / "_cover" / "floor_review.csv").open(encoding="utf-8") as fh:
             review = list(csv.DictReader(fh))
@@ -4482,7 +4713,7 @@ name = "tr"
 kind = "builtin"
 [benchmarks]
 runs = 1
-problems = ["ZDT1", "DTLZ2_3D"]
+problems = ["WFG4_2D", "DTLZ2_3D"]
 [campaign]
 out = "res"
 budget_fe = 1500
@@ -4505,7 +4736,7 @@ snapshot_variables = "pareto_set"
         root = C.out_root(cfg, spec)
         for job in C.expand_jobs(cfg, spec):
             assert C.run_job(job, root, spec, quiet=True) == "done", job
-        for prob, pop, n in (("ZDT1", 100, 30), ("DTLZ2_3D", 91, 12)):
+        for prob, pop, n in (("WFG4_2D", 100, 22), ("DTLZ2_3D", 91, 12)):
             for alg in ("nsga2", "random_search"):
                 d = root / prob / alg / "run_1"
                 meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
@@ -4514,7 +4745,7 @@ snapshot_variables = "pareto_set"
                 # the last record is the answer: the same rows, the same variables
                 for k in ("pdist", "igdx", "cr"):
                     assert T[-1][k] == meta["final"][k], (prob, alg, k, T[-1][k])
-                assert T[-1]["pdist"] > 0 and (T[-1]["igdx"] is None) == (prob == "ZDT1")
+                assert T[-1]["pdist"] > 0 and (T[-1]["igdx"] is None) == (prob == "WFG4_2D")
                 with np.load(d / "snapshots.npz") as z:
                     assert ("X" in z.files) == (prob == "DTLZ2_3D"), (prob, z.files)
                     assert z["F"].shape[0] == int(z["n"].sum()), z["F"].shape
@@ -4540,9 +4771,9 @@ snapshot_variables = "pareto_set"
         assert "igdp <= 1e+06 x floor (hv_h gap <= 10) at 500: 2/2 covered" in out, out
         assert (root / "_cover_archive" / "cover_summary.csv").is_file()
         # --recompute-trajectory: what the snapshots give back (float32 rows);
-        # without the variables (ZDT1) pdist and igdx stay out
+        # without the variables (WFG4_2D) pdist and igdx stay out
         before = {}
-        for prob in ("DTLZ2_3D", "ZDT1"):
+        for prob in ("DTLZ2_3D", "WFG4_2D"):
             d = root / prob / "nsga2" / "run_1"
             before[prob] = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
             blank = [{k: v for k, v in t.items() if k not in ("igdp_norm", "pdist", "igdx")}
@@ -4552,13 +4783,13 @@ snapshot_variables = "pareto_set"
         counts = C.recompute_trajectory(root, ["igdp_norm", "pdist", "igdx"],
                                         hv_settings=(5, 100_000, 0, 0))
         assert counts == {"done": 4}, counts
-        for prob, keys in (("DTLZ2_3D", ("igdp_norm", "pdist", "igdx")), ("ZDT1", ("igdp_norm",))):
+        for prob, keys in (("DTLZ2_3D", ("igdp_norm", "pdist", "igdx")), ("WFG4_2D", ("igdp_norm",))):
             d = root / prob / "nsga2" / "run_1"
             again = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
             for t, u in zip(before[prob], again):
                 for k in keys:
                     assert abs(u[k] - t[k]) <= 1e-5 * max(1.0, abs(t[k])), (prob, k, t[k], u[k])
-                if prob == "ZDT1":
+                if prob == "WFG4_2D":
                     assert "pdist" not in u and "igdx" not in u, u
 
 

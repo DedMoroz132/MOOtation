@@ -637,7 +637,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     def measure(F, X, which):
         vals = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=which,
                          pop=p.pop_size, hv_options=traj_hv, X=X, pareto_set=pset,
-                         bounds=p.bounds, cyclic=p.cyclic_vars)
+                         bounds=p.bounds, cyclic=p.cyclic_vars, distance_fn=p.distance_fn)
         for m in hv_skipped:
             vals[m] = None
         return vals
@@ -811,7 +811,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         meta["answer_k"] = spec.answer_k or p.pop_size
 
     extra = {"pop": p.pop_size, "hv_options": final_hv, "pareto_set": pset,
-             "bounds": p.bounds, "cyclic": p.cyclic_vars}
+             "bounds": p.bounds, "cyclic": p.cyclic_vars, "distance_fn": p.distance_fn}
     final = {}
     if F.size and np.all(np.isfinite(F)):
         final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
@@ -827,6 +827,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if op_stats and final:
         final.update({k: float(v) for k, v in dict(res.operator_totals).items()})
     meta["operator_stats"] = op_stats
+    if hasattr(objective, "summary"):
+        # the uninformative problems count where every evaluated point and
+        # every non-dominated one fell (benchmarks/uninformative.py; --bias)
+        meta["structural_bias"] = objective.summary()
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1552,7 +1556,7 @@ def _recompute_one(args) -> str:
             pset = np.asarray(p.pareto_set(k), float)
         kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=names, pop=p.pop_size,
                   hv_options=hv_options, pareto_set=pset, bounds=p.bounds,
-                  cyclic=p.cyclic_vars)
+                  cyclic=p.cyclic_vars, distance_fn=p.distance_fn)
         if scenario == "archive" and (run_dir / "final_archive.csv.gz").is_file():
             # archive_variables = "selected": the run kept its selection
             F, X = _read_points(run_dir / "final_archive.csv.gz", m, n)
@@ -1674,7 +1678,8 @@ def _retrajectory_one(args) -> str:
             if n and rec.get("finite", True):
                 rec.update(M.compute(F, ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=todo,
                                      pop=p.pop_size, hv_options=hvo, X=X, pareto_set=pset,
-                                     bounds=p.bounds, cyclic=p.cyclic_vars))
+                                     bounds=p.bounds, cyclic=p.cyclic_vars,
+                                     distance_fn=p.distance_fn))
         tmp = traj_path.with_suffix(".jsonl.tmp")
         tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in recs),
                        encoding="utf-8")
@@ -1918,8 +1923,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--by", metavar="KEY",
                     help="with --ranks: mean ranks within groups of problems sharing a "
                          "property: front, multimodal, deceptive, bias, scaled, separable, "
-                         "centre, degenerate, disconnected, linkage, n_obj, n_vars, "
-                         "bbob_groups (benchmarks/properties.py)")
+                         "centre, boundary, degenerate, disconnected, linkage, n_obj, "
+                         "n_vars, bbob_groups (benchmarks/properties.py)")
     ap.add_argument("--gap", metavar="METRIC",
                     help="print each algorithm's median gap to the best final METRIC any run "
                          "reached, per problem, and exit")
@@ -1930,10 +1935,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="print the runtime ECDF of METRIC over (run, target) pairs, targets "
                          "at fixed distances from the best known value, and exit")
     ap.add_argument("--bias", action="store_true",
-                    help="print where each algorithm's final populations sit in the box: "
-                         "per variable a chi-square against uniform over 10 bins, and the "
-                         "shares near the bounds and in the centre (the uninformative "
-                         "problems make any preference the algorithm's own)")
+                    help="print where each algorithm searched (Kudela et al. 2026): binsizes "
+                         "over 20 bins at the bounds and in the centre for the final "
+                         "populations, the non-dominated and all evaluated points, exact "
+                         "hits of a bound and of 1/2, chi-square on one point per run, the "
+                         "Clark-Evans index (the uninformative problems make any preference "
+                         "the algorithm's own)")
     ap.add_argument("--seed-distance", action="store_true",
                     help="print whether each algorithm's seeds find the same solutions: the "
                          "chamfer distance between the non-dominated sets of two runs in "

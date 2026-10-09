@@ -13,7 +13,8 @@ statistics on, and every variant is an `[[algorithms]]` entry with its own
 | `e2_mutation_step.toml` | polynomial mutation against gaussian steps of 0.025-0.3 of the range and a Cauchy step |
 | `e3_bound_repair.toml` | clip, reflect, random or midpoint for the operators that leave the box |
 | `e5_rotation.toml` | GDE3 at CR = 1 (rotation-invariant) against CR = 0.5, MO-CMA-ES and SMS-EMOA, on E1's problems and all of bbob-biobj |
-| `../structural_bias.toml` | where every algorithm's population goes when the objectives say nothing (A3) |
+| `../structural_bias.toml` | where every algorithm searches when the objectives say nothing (A3; Kudela et al.'s f1-f4b since task 6) |
+| `../structural_bias_f5.toml` | the same on f5, every point non-dominated: ten seeds, DMS at 10 000 evaluations |
 
 E4 needs no run: on the campaign's results,
 

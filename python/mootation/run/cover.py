@@ -43,8 +43,9 @@ floor of 0, so its levels stay absolute. The floors are written out
 analysis of the same results.
 
 KNOWN REFERENCE PROBLEMS (owner and reviewer, 2026-09-29). Where the reference
-front itself is doubtful, no level says anything: DTLZ5, DTLZ6 and MaF6 from
-four objectives (degenerate fronts the sample does not fill), WFG3 (its
+front itself is doubtful, no level says anything: DTLZ5, DTLZ6 (and
+shiftDTLZ6, which has its front) and MaF6 from four objectives (degenerate
+fronts the sample does not fill), WFG3 (its
 degenerate front, incomplete in the sample at three objectives and more), DTLZ1
 at five objectives (a fifth of the reference on the front's boundary); and,
 measured against references of version 1 (benchmarks.registry,
@@ -56,6 +57,13 @@ the reference changed since (REFERENCE_CHANGED), is set aside too, until
 --recompute-reference brings them up to date. These problems are left out of
 the coverage (cover_excluded.csv says which and why) unless keep_caveats is set,
 and marked in floor_review.csv.
+
+INTERIOR (task 6 of 2026-10-09). Every table a third time, over the problems
+whose optimum is neither at the centre nor on the boundary of the box
+("interior": properties.interior — centre and boundary not True; MaF and the
+other problems without a row of properties stay out), where clipping a
+variable to a bound or stepping to the middle of the range finds no optimum by
+construction.
 
 MARKED PROBLEMS (reviewer, 2026-09-29) stay in, and every table is written
 twice, over all problems ("all") and over the unmarked ones ("unmarked"), to
@@ -160,7 +168,7 @@ def reference_caveat(problem: str, version: int | None = None) -> str | None:
     version = REFERENCE_VERSION if version is None else version
     family, _, rest = problem.partition("_")
     m = int(rest[:-1]) if rest.endswith("D") and rest[:-1].isdigit() else None
-    if family in ("DTLZ5", "DTLZ6", "MaF6") and m is not None and m >= 4:
+    if family in ("DTLZ5", "DTLZ6", "shiftDTLZ6", "MaF6") and m is not None and m >= 4:
         return "degenerate front; the reference sample does not fill it from four objectives"
     if family == "WFG3" and m is not None and m >= 3:
         return "degenerate WFG3 front; the reference sample is incomplete"
@@ -951,7 +959,10 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
         },
         "floor_method": which, "reference_version": REFERENCE_VERSION,
         "subsets": {"all": "every problem not left out",
-                    "unmarked": "without the marked problems (cover_marks.csv)"},
+                    "unmarked": "without the marked problems (cover_marks.csv)",
+                    "interior": "without the problems whose optimum is at the centre or on "
+                                "the boundary (properties centre, boundary) and those "
+                                "without a row of properties"},
         "taus": list(taus), "floor_taus": list(floor_taus), "budgets": list(budgets),
         "min_seeds": min_seeds, "n_ref": n_ref, "keep_caveats": keep_caveats,
         "excluded": excluded, "marked": {p: "; ".join(m) for p, m in sorted(marks.items())},
@@ -997,9 +1008,11 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
                      f"{_median(ratios):.3g}; below 1 on {sum(v < 1 for v in ratios)}, above 2 on "
                      f"{sum(v > 2 for v in ratios)} of {len(ratios)} problems; the deciding "
                      f"{min_seeds}th seed below 1 on {sum(v < 1 for v in deciding)}")
+    from ..benchmarks.properties import interior
     kept = [p_ for p_ in problems if p_ not in excluded]
     kept_set = set(kept)
-    subsets = {"all": kept, "unmarked": [p_ for p_ in kept if p_ not in marks]}
+    subsets = {"all": kept, "unmarked": [p_ for p_ in kept if p_ not in marks],
+               "interior": [p_ for p_ in kept if interior(p_)]}
     no_front = [p for p in problems if not data["front"].get(p)]
     if no_front:
         lines.append(f"  {len(no_front)} problems without a reference front: the relative gap "
@@ -1059,7 +1072,7 @@ def run(root: Path, *, taus=TAUS, floor_taus=FLOOR_TAUS, budgets=BUDGETS, min_se
                             f" x{len(opt)}{'+' if len(opt) >= max_sets else ''}: "
                             f"{opt[0] if opt else '-'}; greedy {len(res['greedy'])}")
                     else:
-                        lines.append(f"    unmarked: {res['n_covered']}/{res['n_problems']}; "
+                        lines.append(f"    {subset}: {res['n_covered']}/{res['n_problems']}; "
                                      f"smallest set {res['size']}: {opt[0] if opt else '-'}")
                     if fixed:
                         per_seed = one_run(hit, members, seeds, fixed)

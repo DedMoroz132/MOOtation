@@ -284,6 +284,9 @@ final population (the same list when omitted):
 | `gdp_norm` | GD+ with objectives and front divided by nadir − ideal, like `igdp_norm`: how far the set is from the front, one scale on every problem | lower |
 | `gap_max` | the largest hole: the maximum over the reference sample of d⁺(z, A), normalised like `igdp_norm` — `tau90` taken at 100 %. One reference point nothing comes near decides it | lower |
 | `nn_cv` | evenness: the coefficient of variation of the distances from each distinct non-dominated point to its nearest other one, objectives normalised by ideal and nadir; 0 when evenly spaced, larger as the set clumps. No reference front needed | lower |
+| `gdp_min` | has the set reached the front anywhere: the smallest d⁺(a, Z) of any point of the set, normalised like `igdp_norm`. It cannot tell values below the reference's resolution apart, so `gdp_min_ref_step` (the median distance between neighbouring reference points) goes beside it and `gdp_min_below_step` says when it is lower | lower |
+| `g_min`, `g_median` | the smallest and the median g(x) − g* in the set: the problem's own distance to the Pareto set (`BenchProblem.distance_fn`: ZDT1–4 and 6, DTLZ1–4 and 7, DTLZ5–6 up to three objectives, IDTLZ, SDTLZ, wideDTLZ3 and the shift variants). Exact, no reference sample | lower |
+| `ps_dmin` | the smallest distance from a solution to the Pareto-set sample, variables normalised by the bounds and the cyclic ones wrapped, as `igdx`: the decision-space counterpart where the problem has a Pareto set but no distance function | lower |
 
 `gdp` needs a reference front like `igd`; `roi_dist` and `range_cover` need only
 the problem's ideal and nadir, and `nd_share` and `dup_share` nothing at all, so
@@ -295,6 +298,7 @@ What each one looks at — the question a table of them answers depends on it:
 | looks at | indicators |
 |---|---|
 | progress towards the front | `gdp`, `gdp_norm` |
+| whether any point reached the front | `gdp_min`, `g_min`, `ps_dmin` |
 | how much of the front is covered, and how evenly | `igdp`, `igdp_norm`, `tau90`, `gap_max`, `range_cover`, `nn_cv` |
 | both at once | `hv`, `hv_h`, `eps`, `eps_norm` |
 
@@ -304,8 +308,10 @@ front, and sees the spacing but not the extent). The hypervolume and ε cannot
 tell a set that is close but narrow from one that is wide but far.
 
 `igdx` and `cr` need a sample of the Pareto SET, which only some problems
-have: the Ishibuchi polygons (Polygon, IPolygon), DTLZ1–4, shiftDTLZ1–4 and
-ZCAT1–20. On shiftDTLZ the distance variables are **cyclic** — the optimum
+have: the Ishibuchi polygons (Polygon, IPolygon), ZDT1–4 and ZDT6, DTLZ1–4 and
+DTLZ7, DTLZ5–6 up to three objectives, IDTLZ, SDTLZ, minusDTLZ2, the shift and
+wide variants and ZCAT1–20. On shiftDTLZ1–4 the distance variables are
+**cyclic** — the optimum
 moved off the centre wraps around the box — so their differences are taken as
 ((x − c + 0.5) mod 1) − 0.5 in normalised units; a plain difference would call
 two solutions on either side of the wrap far apart. On ZCAT the set is the
@@ -575,24 +581,38 @@ and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`
 refuses them; `--compare survival_share` and the other tables read them.
 
-**Structural bias.** Where does an algorithm put its population when the
-objectives say nothing? On `uninformative_n02_2D` and `uninformative_n10_2D`
-every objective value is a U(0, 1) draw that does not depend on x — drawn
-from the run's seed and the evaluation's number, so a campaign run gets its
-own stream (`BenchProblem.make_evaluator`) — and no region of the box is
-better than another. A final population piled at the bounds or drawn to the
-centre shows a preference of the algorithm's own, which it carries onto every
-problem; Kudela, van Stein, Bäck & Kononova (GECCO 2026) found such pulls in
-120 PlatEMO algorithms and traced the one towards the bounds to the default
-clamp. [`python/examples/structural_bias.toml`](../python/examples/structural_bias.toml)
-runs every algorithm on both, thirty seeds at 10 000 evaluations (about an
-hour on 16 cores), and `--bias` reads it: per problem and algorithm, a
-chi-square against uniform over ten bins per variable (the mean over the
-variables, and the smallest p-value) and the shares of coordinates within
-10 % of a bound and in the central 20 % — 0.2 each when uniform — with their
-spread over the runs. The points of one population are not independent
-draws, so the p-values overstate the evidence: read them as a scale and the
-shares as the effect.
+**Structural bias.** Where does an algorithm search when the objectives say
+nothing? On the uninformative problems every objective value is a random draw
+that does not depend on x — drawn from the run's seed and the evaluation's
+number, so a campaign run gets its own stream (`BenchProblem.make_evaluator`)
+— and no region of the box is better than another. Points piled at the bounds
+or drawn to the centre show a preference of the algorithm's own, which it
+carries onto every problem; Kudela, van Stein, Bäck & Kononova (GECCO 2026)
+found such pulls in 120 PlatEMO algorithms. The problems are theirs (Table 1),
+in two and ten variables: `uninformative_n02_2D` is f1, [U, U]; f2b, f3b and
+f4b (`uninformative_f2b_n02_2D`, ...) put a disconnected, a stepped and a
+two-region front under a χ²-shaped noise (variant β); f5 is [a, −a], every
+point non-dominated. The problem itself counts, in 20 bins of [0, 1] and
+exactly on a bound or at ½, the coordinates of every point a run evaluated and
+of those non-dominated over the run, and the campaign writes the counts into
+`meta.json` (`structural_bias`).
+[`python/examples/structural_bias.toml`](../python/examples/structural_bias.toml)
+runs every algorithm on f1–f4b at the paper's 30 000 evaluations and thirty
+seeds, [`structural_bias_f5.toml`](../python/examples/structural_bias_f5.toml)
+on f5 with ten seeds and DMS at 10 000 (every algorithm truncates its
+non-dominated set at every evaluation there). `--bias` reads them as the paper
+does (Section 3.3): per problem and algorithm the binsizes n_k / (N/K) over 20
+bins of all coordinates of all runs — `bound` the mean of the two outer bins,
+`centre` of the two middle ones, 1 when uniform — for the final populations
+(L), the runs' non-dominated points (P) and every evaluated point (A); the
+shares of coordinates exactly on a bound and exactly at ½, the trace of a
+clamp or of exact arithmetic; a χ² test on one point drawn from each run's
+final population (independent across runs, unlike the points of one
+population); the Clark–Evans index of the final populations at two variables
+(the mean nearest-neighbour distance over 0.5/√N: ~1 uniform, below 1
+clustered); and a class by our thresholds, which the paper does not give —
+`bound` when the outer bins exceed 1.5 and the middle ones do not, `centre`
+the other way round, `mixed` when both do, `empty edges` below 0.67.
 
 **The archive scenario.** With the run archive on (the default), every run
 also stores `final_archive` in its `meta.json`: the final indicators once more,
@@ -702,11 +722,14 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   ordered by this campaign.
 - `--by KEY` groups the problems by one property and ranks within each group:
   `front` (linear, concave, convex, mixed, disconnected, degenerate),
-  `multimodal`, `deceptive`, `bias`, `scaled`, `separable` and `centre`
-  (the optimum in the middle of the box). The values are Huband, Hingston,
-  Barone & While's (IEEE TEVC 10(5), 2006, Tables V, VII and XV) for ZDT, DTLZ
-  and WFG and are argued in `mootation/benchmarks/properties.py` for the rest;
-  unknown is `?`, never guessed. Besides these: `degenerate` and `disconnected`
+  `multimodal`, `deceptive`, `bias`, `scaled`, `separable`, `centre` (the
+  optimum in the middle of the box: Huband's medial parameters) and `boundary`
+  (the optimum on a bound: his extremal parameters). The values are Huband,
+  Hingston, Barone & While's (IEEE TEVC 10(5), 2006, Tables V, VII and XV) for
+  ZDT, DTLZ and WFG and are argued in `mootation/benchmarks/properties.py` for
+  the rest; unknown is `?`, never guessed. Where a problem has a Pareto-set
+  sample, `properties.measured()` reads `centre` and `boundary` off it, and the
+  tests hold the table to that. Besides these: `degenerate` and `disconnected`
   (read off the front), `linkage` (a distance variable's optimum depends on the
   position variables: a curved Pareto set), `n_obj`, `n_vars`, and for
   bbob-biobj `bbob_groups`, the function groups of the pair.
@@ -786,7 +809,12 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   n_ref rows, repeated rows, the Das-Dennis lattice from four objectives, a
   front of lower dimension than M − 1 — stay in, and every table is written
   twice, over all problems and over the unmarked ones (the `subset` column;
-  `cover_marks.csv` says why). `cover_meta.json` records the commit of the
+  `cover_marks.csv` says why), and a third time over the problems whose
+  optimum is neither at the centre nor on the boundary (`interior`: the
+  properties `centre` and `boundary` not true), where clipping a variable or
+  stepping to the middle of its range finds no optimum by construction;
+  `--portfolio` gives those as the group `front_interior`, on lines of its
+  own. `cover_meta.json` records the commit of the
   analysis code and the scheme of the levels, and every CSV row says its level
   in words, so absolute and floor-based levels are never confused.
   `floor_review.csv` sets each problem's floors beside the best `igdp_norm` any

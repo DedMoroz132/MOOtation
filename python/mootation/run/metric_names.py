@@ -9,7 +9,8 @@ from __future__ import annotations
 
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
                 "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
-                "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm")
+                "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm",
+                "gdp_min", "g_min", "g_median", "ps_dmin")
 
 # What a run's variation operators did, recorded with [campaign] operator_stats
 # = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
@@ -29,13 +30,14 @@ HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pd
 # These compare the answer set with a sample of the true Pareto front, so a
 # problem without one gives None for them.
 NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "tau90",
-                         "gap_max", "gdp_norm"})
+                         "gap_max", "gdp_norm", "gdp_min"})
 
-# These look at the decision variables: all of them need the solutions, and
-# igdx and cr a sample of the Pareto SET besides (BenchProblem.pareto_set),
-# which only some problems have.
-NEEDS_X = frozenset({"igdx", "cr", "pdist"})
-NEEDS_SET = frozenset({"igdx", "cr"})
+# These look at the decision variables: all of them need the solutions; igdx,
+# cr and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
+# and g_min and g_median the problem's distance function (BenchProblem.
+# distance_fn), which only some problems have.
+NEEDS_X = frozenset({"igdx", "cr", "pdist", "g_min", "g_median", "ps_dmin"})
+NEEDS_SET = frozenset({"igdx", "cr", "ps_dmin"})
 
 # The hypervolumes: exact above three objectives costs seconds per call, which
 # is why a campaign can keep them off the trajectory (trajectory_hv_max_m).
@@ -90,6 +92,18 @@ DESCRIPTIONS = {
     "nn_cv": "evenness: the coefficient of variation of the nearest-neighbour distances "
              "among the distinct non-dominated points, objectives normalised by ideal and "
              "nadir; 0 = evenly spaced, larger = clumped; no reference front needed",
+    "gdp_min": "convergence without coverage: the smallest IGD+ distance d+(a, Z) of any "
+               "point of the set to the reference, normalised like igdp_norm — has the set "
+               "reached the front anywhere; it cannot go below the reference's resolution, "
+               "given beside it (gdp_min_ref_step, the median distance between neighbouring "
+               "reference points; gdp_min_below_step when lower)",
+    "g_min": "the smallest g(x) - g* in the set, the problem's own distance to the Pareto "
+             "set (BenchProblem.distance_fn: ZDT, DTLZ and their variants): exact, no "
+             "reference sample",
+    "g_median": "the median g(x) - g* over the set (see g_min)",
+    "ps_dmin": "the smallest distance from a solution to a Pareto-set sample, variables "
+               "normalised by the bounds, cyclic ones wrapped, as igdx's: for the problems "
+               "with a Pareto set and no distance function",
     "oob_share": "share of offspring with a variable outside the box before repair",
     "oob_var_share": "share of offspring variables outside the box before repair",
     "survival_share": "share of offspring that entered the next population",

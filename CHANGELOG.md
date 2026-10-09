@@ -199,6 +199,52 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- shiftZDT1-4, shiftZDT6, shiftDTLZ6 and shiftDTLZ7 (`benchmarks/shifted.py`,
+  task 6, item 2): ZDT1-3, ZDT6, DTLZ6 and DTLZ7 put the optimum of every
+  distance variable on the lower bound, where clipping a variable lands for
+  free, and ZDT4 in the middle of [-5, 5]. Each distance variable is read
+  through h(x) = |x − c| / max(c, 1 − c), 0 at c and 1 at the farther bound,
+  so g keeps its range (shiftZDT4: u = x − c in ZDT4's box); c from
+  `shift_centres`, at least 0.15 of the range from both bounds and from the
+  middle. Not shiftDTLZ1-4's cyclic shift: a linear g would jump across the
+  wrap. The front, ideal and nadir are the base problem's, its reference front
+  row for row; with c = 0 every problem is its base. 19 problems, 457 in all.
+- Pareto-set samples for ZDT1-4 and ZDT6, DTLZ7, DTLZ5 and DTLZ6 up to three
+  objectives (from four their fronts have a part with g > 0), IDTLZ1-2,
+  SDTLZ1-2 and minusDTLZ2 (`pareto_sets.fill`, `minus_dtlz`), so `igdx`, `cr`
+  and `ps_dmin` read them too.
+- The problem property `boundary` (task 6, item 4): the optimum on a bound of
+  the box, Huband et al.'s extremal parameters (Tables V, VII and XV) beside
+  `centre`, their medial ones. `properties.measured()` reads both off a
+  problem's Pareto-set sample (the share of the distance variables within
+  1e-9 of a bound or of the middle, a flag from 99 %), and the tests hold the
+  table's `boundary` to it on every problem with a sample. `--cover` writes
+  every table a third time over the problems whose optimum is neither at the
+  centre nor on the boundary (`subset` `interior`), and `--portfolio` gives
+  those as the group `front_interior`; `--ranks --by boundary` groups by it.
+- `--bias` brought to Kudela, van Stein, Bäck & Kononova (GECCO 2026; task 6,
+  item 11). Their problems beside f1 (`uninformative_n02_2D`, unchanged, bit
+  for bit): f2b, f3b and f4b, a disconnected, a stepped and a two-region front
+  under a χ²-shaped noise (Table 1, variant β), and f5, [a, −a], every point
+  non-dominated, in two and ten variables, from the run's seed and the
+  evaluation's number. The problem counts, in 20 bins and exactly on a bound
+  or at ½, the coordinates of every evaluated point and of the run's
+  non-dominated ones, and the campaign writes the counts into `meta.json`
+  (`structural_bias`). `--bias` gives the paper's binsizes at the bounds and in
+  the centre for the final populations, the non-dominated and all evaluated
+  points, the shares exactly on a bound and at ½, a χ² test on one point per
+  run, the Clark-Evans index at two variables and a class by our thresholds,
+  in place of the earlier ten-bin χ² per variable and the shares near the
+  bounds. `structural_bias.toml` runs f1-f4b at the paper's 30 000
+  evaluations; `structural_bias_f5.toml` runs f5 with ten seeds and DMS at
+  10 000, whose run there otherwise takes over ten minutes.
+- Indicators of convergence without coverage (task 6, item 8): `gdp_min`, the
+  smallest d+ of any point of the set to the reference in `igdp_norm`'s frame,
+  with the reference's resolution beside it (`gdp_min_ref_step`,
+  `gdp_min_below_step`); `g_min` and `g_median`, the problem's own g(x) − g*
+  over the set (`BenchProblem.distance_fn`, `benchmarks/distances.py`: ZDT,
+  DTLZ and their variants), exact and without a reference; `ps_dmin`, the
+  smallest distance from a solution to the Pareto-set sample.
 - Maximin Latin hypercubes (`mootation.designs`, after Morris & Mitchell,
   "Exploratory designs for computational experiments", 1995): their φ_p
   criterion and annealing search, once per p of their Section 5, the best by

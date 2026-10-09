@@ -12,7 +12,9 @@ problems with a reference front, whose levels read igdp_norm against the floor
 (criterion igdp) or gdp_norm (criterion gdp); and "bbob", those without one
 (bbob-biobj), whose single level reads the gap of hv_h to the best run of the
 campaign. That target is relative, and mixed with the fronts it would inflate
-whoever wins there.
+whoever wins there. "front_interior" (task 6 of 2026-10-09) is "front" once
+more without the problems whose optimum is at the centre or on the boundary
+(cover.py, INTERIOR), on lines of its own.
 
 FOR EVERY group, criterion, level, budget and number of seeds that must reach
 the level for an algorithm to cover a problem (5, 7 and 10 of the ten: how much
@@ -162,13 +164,17 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
     prep = V.prepare(data, n_ref, cover_dir / "igdp_floor.csv", workers=workers,
                      keep_caveats=keep_caveats)
     best_hv = V.best_known_hv(data)
+    from ..benchmarks.properties import interior
     kept = [p for p in prep["problems"] if p not in prep["excluded"]]
     groups = {"front": [p for p in kept if data["front"].get(p)],
               "bbob": [p for p in kept if not data["front"].get(p)]}
+    groups["front_interior"] = [p for p in groups["front"] if interior(p)]
     # level k of each criterion; "bbob" has one, the hv_h gap (both of cover's
     # criteria read it there)
     levels = {("front", "igdp"): list(zip(floor_taus, taus)),
               ("front", "gdp"): list(zip(taus, taus)),
+              ("front_interior", "igdp"): list(zip(floor_taus, taus)),
+              ("front_interior", "gdp"): list(zip(taus, taus)),
               ("bbob", "hv"): list(zip(taus, taus))}
     rev = revision()
     commit = (rev.get("commit") or "unknown")[:12] + ("+dirty" if rev.get("dirty") else "")
@@ -310,8 +316,10 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
             "excluded": prep["excluded"], "single_best_by_metric": sbs_rows}
     (out_dir / "portfolio_meta.json").write_text(json.dumps(meta, indent=1), encoding="utf-8")
 
-    lines = [f"portfolio ({scenario}): {len(groups['front'])} problems with a front, "
-             f"{len(groups['bbob'])} without; analysis code {commit}; CSV in {out_dir}"]
+    lines = [f"portfolio ({scenario}): {len(groups['front'])} problems with a front "
+             f"({len(groups['front_interior'])} with the optimum neither at the centre nor on "
+             f"the boundary: front_interior), {len(groups['bbob'])} without; analysis code "
+             f"{commit}; CSV in {out_dir}"]
     if fixed:
         lines.append(f"  deterministic, every seed the same run on every problem: "
                      f"{', '.join(fixed)}; rule one_run reads every algorithm from one seed at "

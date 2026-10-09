@@ -14,8 +14,8 @@ The campaign CLI (python -m mootation.run.campaign) calls these:
   property_ranks    --ranks METRIC --by KEY: mean ranks within each group of
                     problems sharing a property (benchmarks/properties.py:
                     front, multimodal, deceptive, bias, scaled, separable,
-                    centre, degenerate, disconnected, linkage, n_obj, n_vars,
-                    bbob_groups).
+                    centre, boundary, degenerate, disconnected, linkage, n_obj,
+                    n_vars, bbob_groups).
   gap_report        --gap METRIC: each algorithm's distance to the best value
                     any run reached, per problem, in the metric's own units.
   zero_share_report --zero-share: the share of seeds whose hypervolume is 0.
@@ -40,7 +40,9 @@ archive holds, reduced to the problem's population size by DSS
 
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 from . import postprocess as PP
 from . import stats as ST
@@ -311,19 +313,59 @@ def _final_variables(run_dir, m: int, n: int):
     return X
 
 
-def structural_bias(rows: list, *, bins: int = 10) -> dict:
-    """Where each algorithm's final populations sit in the box, per problem.
+BIAS_BINS = 20
 
-    For the uninformative problems (benchmarks/uninformative.py) any
-    preference is the algorithm's own. Per (problem, algorithm), over every
-    finished run's final population, variables mapped to [0, 1] by the bounds:
-      chi2       per variable, 10 equal bins against uniform, then the mean over
-                 the variables; p_min the smallest p-value (9 degrees of freedom)
-      edge       share of coordinates within 10 % of a bound (uniform: 0.2)
-      centre     share in the central 20 % of the range (uniform: 0.2)
-      edge_sd, centre_sd   their spread over the runs
-    The points of one population are not independent draws, so the p-values
-    overstate the evidence; read them as a scale, and the shares as the effect.
+
+def _bin_measures(hist, at_lower: int, at_upper: int, at_half: int) -> dict | None:
+    """Kudela et al.'s binsizes from the counts of one point set's coordinates
+    in BIAS_BINS bins: binsize_k = n_k / (N / K); bound = the mean of the two
+    outer bins, centre of the two middle ones (1 = no bias); with the shares
+    of coordinates exactly on a bound and exactly at 1/2."""
+    import numpy as np
+    h = np.asarray(hist, float)
+    total = h.sum()
+    if total == 0:
+        return None
+    b = h / (total / len(h))
+    k = len(h)
+    return {"bound": float((b[0] + b[-1]) / 2), "centre": float((b[k // 2 - 1] + b[k // 2]) / 2),
+            "at_bound": (at_lower + at_upper) / total, "at_half": at_half / total,
+            "binsizes": [round(float(v), 4) for v in b]}
+
+
+def bias_class(bound: float, centre: float) -> str:
+    """Our thresholds; Kudela et al. give none: "bound" when the outer bins
+    exceed 1.5 and the middle ones do not, "centre" the other way round,
+    "mixed" when both do, "empty edges" when the outer bins fall below 0.67."""
+    if bound > 1.5 and centre > 1.5:
+        return "mixed"
+    if bound > 1.5:
+        return "bound"
+    if centre > 1.5:
+        return "centre"
+    if bound < 0.67:
+        return "empty edges"
+    return "none"
+
+
+def structural_bias(rows: list) -> dict:
+    """Where each algorithm searched, per problem (Kudela, van Stein, Bäck &
+    Kononova, GECCO 2026, Section 3.3; benchmarks/uninformative.py).
+
+    Per (problem, algorithm), over its finished runs, variables mapped to
+    [0, 1] by the bounds, three sets of points:
+      L  the final populations (final.csv): binsizes, the shares exactly on a
+         bound and at 1/2, and its class (bias_class);
+      P  the points non-dominated over each whole run and
+      A  every point evaluated — both from the counts the uninformative
+         problems leave in meta.json (structural_bias), where a run has them;
+      chi2_p   the chi-squared test on ONE point drawn from every run's final
+               population (independent across runs, unlike the points of one
+               population), its coordinates pooled into min(10, max(2, n/5))
+               bins;
+      cei      at two variables, the median over the runs of the Clark-Evans
+               index of the final population: mean nearest-neighbour distance
+               over 0.5 / sqrt(N), ~1 uniform, < 1 clustered, > 1 grid-like.
     """
     import numpy as np
     from ..benchmarks import get as bench_get
@@ -337,51 +379,78 @@ def structural_bias(rows: list, *, bins: int = 10) -> dict:
         p = bench_get(prob)
         lo = np.array([b[0] for b in p.bounds], float)
         hi = np.array([b[1] for b in p.bounds], float)
-        U_all, edge_runs, centre_runs = [], [], []
+        U_all, picks, ceis = [], [], []
+        counts = {"all": None, "nondominated": None}
         for r in runs:
             X = _final_variables(r["dir"], p.n_obj, p.n_vars)
             if X is None or not len(X):
                 continue
-            U = np.clip((X - lo) / (hi - lo), 0.0, 1.0)
+            U = (X - lo) / (hi - lo)
             U_all.append(U)
-            edge_runs.append(float(np.mean((U < 0.1) | (U > 0.9))))
-            centre_runs.append(float(np.mean((U >= 0.4) & (U < 0.6))))
+            picks.append(U[np.random.default_rng(int(r.get("seed") or 0)).integers(len(U))])
+            if U.shape[1] == 2 and len(U) > 1:
+                D = np.sqrt(((U[:, None, :] - U[None, :, :]) ** 2).sum(axis=2))
+                np.fill_diagonal(D, np.inf)
+                ceis.append(float(D.min(axis=1).mean() / (0.5 / np.sqrt(len(U)))))
+            meta_path = Path(r["dir"]) / "meta.json"
+            sb = (json.loads(meta_path.read_text(encoding="utf-8")).get("structural_bias")
+                  if meta_path.is_file() else None)
+            for key in counts:
+                if sb and sb.get(key):
+                    c = sb[key]
+                    old = counts[key] or {"hist": [0] * len(c["hist"]), "at_lower": 0,
+                                          "at_upper": 0, "at_half": 0}
+                    counts[key] = {"hist": [a + b for a, b in zip(old["hist"], c["hist"])],
+                                   **{f: old[f] + c[f] for f in ("at_lower", "at_upper", "at_half")}}
         if not U_all:
             continue
         U = np.vstack(U_all)
-        idx = np.minimum((U * bins).astype(int), bins - 1)
-        chi, pmin = [], 1.0
-        for j in range(U.shape[1]):
-            counts = np.bincount(idx[:, j], minlength=bins)
-            expected = len(U) / bins
-            c2 = float(((counts - expected) ** 2).sum() / expected)
-            chi.append(c2)
-            pmin = min(pmin, _chi2_sf(c2, bins - 1))
+        v = U.ravel()
+        hist = np.histogram(np.clip(v, 0.0, 1.0), bins=BIAS_BINS, range=(0.0, 1.0))[0]
+        L = _bin_measures(hist, int(np.sum(v == 0.0)), int(np.sum(v == 1.0)),
+                          int(np.sum(v == 0.5)))
+        w = np.concatenate(picks)
+        nb = int(min(10, max(2, len(w) // 5)))
+        c = np.histogram(np.clip(w, 0.0, 1.0), bins=nb, range=(0.0, 1.0))[0]
+        expected = len(w) / nb
+        chi = float(((c - expected) ** 2).sum() / expected)
         out[(prob, alg)] = {
-            "runs": len(U_all), "points": int(len(U)), "chi2": float(np.mean(chi)),
-            "p_min": pmin, "edge": float(np.mean((U < 0.1) | (U > 0.9))),
-            "centre": float(np.mean((U >= 0.4) & (U < 0.6))),
-            "edge_sd": float(np.std(edge_runs)), "centre_sd": float(np.std(centre_runs)),
+            "runs": len(U_all), "points": int(len(U)), "L": L, "class": bias_class(L["bound"],
+                                                                               L["centre"]),
+            "P": _bin_measures(**counts["nondominated"]) if counts["nondominated"] else None,
+            "A": _bin_measures(**counts["all"]) if counts["all"] else None,
+            "chi2_p": _chi2_sf(chi, nb - 1), "cei": float(np.median(ceis)) if ceis else None,
         }
     return out
 
 
 def format_bias(rep: dict) -> str:
-    lines = ["where the final populations sit, per problem: 10 bins per variable against "
-             "uniform (chi2: mean over the variables, p_min: the smallest p, 9 dof), the "
-             "share of coordinates within 10 % of a bound and in the central 20 % (both 0.2 "
-             "when uniform), their spread over the runs; strongest bias first"]
+    lines = ["where each algorithm searched, per problem (Kudela et al. 2026): binsizes over 20 "
+             "bins of all coordinates of all runs, bound = the two outer bins, centre = the two "
+             "middle ones, 1 = no bias; L the final populations, P the run's non-dominated "
+             "points, A every evaluated point; '=bd' / '=0.5' the shares exactly on a bound "
+             "and at 1/2; chi2 p on one point per run; CEI the Clark-Evans index at n = 2; "
+             "class by our thresholds (bound or centre > 1.5, edges < 0.67); strongest first"]
+
+    def cell(m, key, digits=2, width=7):
+        return f"{m[key]:>{width}.{digits}f}" if m and m.get(key) is not None else "-".rjust(width)
+
     probs = sorted({p for p, _ in rep})
     for prob in probs:
         rows = [(a, e) for (p, a), e in rep.items() if p == prob]
-        rows.sort(key=lambda t: -(abs(t[1]["edge"] - 0.2) + abs(t[1]["centre"] - 0.2)))
+        rows.sort(key=lambda t: -max(abs(math.log2(max(t[1]["L"]["bound"], 1e-3))),
+                                     abs(math.log2(max(t[1]["L"]["centre"], 1e-3)))))
         lines.append(f"\n{prob}")
-        lines.append(f"  {'algorithm':<20}{'runs':>5}{'chi2':>10}{'p_min':>10}"
-                     f"{'edge':>8}{'sd':>6}{'centre':>8}{'sd':>6}")
+        lines.append(f"  {'algorithm':<20}{'runs':>5}{'class':>13}{'L bd':>7}{'L ctr':>7}"
+                     f"{'=bd':>7}{'=0.5':>7}{'P bd':>7}{'P ctr':>7}{'A bd':>7}{'A ctr':>7}"
+                     f"{'A =bd':>7}{'chi2 p':>9}{'CEI':>6}")
         for a, e in rows:
-            lines.append(f"  {mark_budget(a)[:20]:<20}{e['runs']:>5}{e['chi2']:>10.1f}"
-                         f"{e['p_min']:>10.2g}{e['edge']:>8.3f}{e['edge_sd']:>6.3f}"
-                         f"{e['centre']:>8.3f}{e['centre_sd']:>6.3f}")
+            L, P, A = e["L"], e["P"], e["A"]
+            lines.append(f"  {mark_budget(a)[:20]:<20}{e['runs']:>5}{e['class']:>13}"
+                         + cell(L, "bound") + cell(L, "centre") + cell(L, "at_bound", 3)
+                         + cell(L, "at_half", 3) + cell(P, "bound") + cell(P, "centre")
+                         + cell(A, "bound") + cell(A, "centre") + cell(A, "at_bound", 3)
+                         + f"{e['chi2_p']:>9.2g}" + cell(e, "cei", 2, 6))
     return "\n".join(lines)
 
 

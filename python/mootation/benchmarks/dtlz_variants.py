@@ -217,11 +217,17 @@ def shift_centres(k: int) -> np.ndarray:
     return 0.5 + np.where(i % 2 == 1, d, -d)
 
 
-def shift_dtlz(name: str, x: List[float], M: int) -> List[float]:
-    """DTLZ1-4 with every distance variable read through y = (x - c + 1/2) mod 1."""
+def cyclic_input(x, M: int) -> np.ndarray:
+    """The point DTLZ1-4 are evaluated at: y = (x - c + 1/2) mod 1 for every
+    distance variable."""
     y = np.array(x, dtype=float)
     y[M - 1:] = np.mod(y[M - 1:] - shift_centres(len(y) - M + 1) + 0.5, 1.0)
-    return _d.DTLZ_FUNCS[name](y, M)
+    return y
+
+
+def shift_dtlz(name: str, x: List[float], M: int) -> List[float]:
+    """DTLZ1-4 with every distance variable read through y = (x - c + 1/2) mod 1."""
+    return _d.DTLZ_FUNCS[name](cyclic_input(x, M), M)
 
 
 # ---- wideDTLZ3: the distance variables in [0, 1.2] ------------------------

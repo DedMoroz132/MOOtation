@@ -18,6 +18,10 @@ and XV):
   centre      the optimum at the centre of the domain — R2's "medial
               parameters": "the projection [of the Pareto set onto a
               parameter's domain] should cluster around the middle"
+  boundary    the optimum on the boundary of the domain — R1's "extremal
+              parameters": the projection "is a single value at the edge of
+              the domain" (task 6 of 2026-10-09; Huband's Tables V, VII and
+              XV for ZDT, DTLZ and WFG)
 
 True / False, or None where the source leaves it open ("?" in Huband's table
 for DTLZ5 and DTLZ6) or where nothing classifies it. Beyond the three suites
@@ -31,6 +35,10 @@ Huband analyses:
               the centre (dtlz_variants.py): not medial, the point of them
   wideDTLZ3   DTLZ3 with the distance variables in [0, 1.2]: DTLZ3's row,
               but not medial (the optimum at 0.5, the middle of the box at 0.6)
+  shiftZDT1-4, shiftZDT6, shiftDTLZ6-7
+              the base problem's row with every distance variable's optimum
+              0.15-0.35 from the centre and from the bounds (shifted.py):
+              neither medial nor extremal
   ZCAT        Zapotecas-Martinez et al. 2023, Section 4: ZCAT3-4 linear,
               ZCAT5-10 "a high level of convexity and/or concavity"
               (mixed), ZCAT1-2 simplex-like and left None, ZCAT11-13
@@ -111,55 +119,70 @@ Besides Huband's vocabulary (task 4, item 5):
               a degenerate front is not one of those (DTLZ5/6 from four
               objectives and WFG3, which have a non-degenerate part besides,
               ZCAT17-20, part degenerate)
+
+MEASURED (task 6 of 2026-10-09). Where a problem has a Pareto-set sample
+(pareto_sets.py), measured() reads centre and boundary off it: the share of
+the distance variables' values within 1e-9 of the middle of their range, and
+of either bound, in units of the range; a flag holds from 99 %. The tests hold
+every boundary value of the table to it, and the centre values where the table
+has one. IPolygon has no distance variables, so both of its variables count.
+Without a sample the value is the source's — WFG: Table XV's caption ("no
+extremal nor medial parameters"); MOP and BT: their Pareto sets, curves or
+constants inside the box (Liu, Gu & Zhang 2014, Section III-C; Li, Zhang & Deng
+2017, Section III-B); bbob-biobj: x_opt uniform in [-4, 4]^n inside [-5, 5]^n
+(Brockhoff et al. 2022) — and DTLZ5/6 from four objectives, whose sample covers
+only the curve, keep the value read at two and three.
 """
 
 from __future__ import annotations
 
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
-        "degenerate", "disconnected", "linkage", "n_obj", "n_vars", "bbob_groups",
-        "front_dim")
+        "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
+        "bbob_groups", "front_dim")
 
 
-def _p(front, multimodal, bias, scaled, separable, centre, deceptive=False) -> dict:
+def _p(front, multimodal, bias, scaled, separable, centre, boundary,
+       deceptive=False) -> dict:
     return {"front": front, "multimodal": multimodal, "deceptive": deceptive,
-            "bias": bias, "scaled": scaled, "separable": separable, "centre": centre}
+            "bias": bias, "scaled": scaled, "separable": separable, "centre": centre,
+            "boundary": boundary}
 
 
-# Huband et al. 2006, Table V (R2 x = medial parameters present; R6 check =
-# dissimilar ranges).
+# Huband et al. 2006, Table V (R2 x = medial parameters present; R1 x =
+# extremal parameters present; R6 check = dissimilar ranges).
 _ZDT = {
-    "ZDT1": _p("convex", False, False, False, True, False),
-    "ZDT2": _p("concave", False, False, False, True, False),
-    "ZDT3": _p("disconnected", True, False, True, True, False),
-    "ZDT4": _p("convex", True, False, False, True, True),
-    "ZDT6": _p("concave", True, True, True, True, False),
+    "ZDT1": _p("convex", False, False, False, True, False, True),
+    "ZDT2": _p("concave", False, False, False, True, False, True),
+    "ZDT3": _p("disconnected", True, False, True, True, False, True),
+    "ZDT4": _p("convex", True, False, False, True, True, False),
+    "ZDT6": _p("concave", True, True, True, True, False, True),
 }
 
 # Table VII. "S*": separable. DTLZ5/6: "?" where the table has it; their
-# centre is ours — DTLZ5's distance optimum is x = 1/2 (medial), DTLZ6's x = 0
-# (extremal).
+# centre and boundary are ours — DTLZ5's distance optimum is x = 1/2
+# (medial), DTLZ6's x = 0 (extremal).
 _DTLZ = {
-    "DTLZ1": _p("linear", True, False, False, True, True),
-    "DTLZ2": _p("concave", False, False, False, True, True),
-    "DTLZ3": _p("concave", True, False, False, True, True),
-    "DTLZ4": _p("concave", False, True, False, True, True),
-    "DTLZ5": _p("degenerate", False, False, None, None, True),
-    "DTLZ6": _p("degenerate", False, True, None, None, False),
-    "DTLZ7": _p("disconnected", True, False, False, True, False),
+    "DTLZ1": _p("linear", True, False, False, True, True, False),
+    "DTLZ2": _p("concave", False, False, False, True, True, False),
+    "DTLZ3": _p("concave", True, False, False, True, True, False),
+    "DTLZ4": _p("concave", False, True, False, True, True, False),
+    "DTLZ5": _p("degenerate", False, False, None, None, True, False),
+    "DTLZ6": _p("degenerate", False, True, None, None, False, True),
+    "DTLZ7": _p("disconnected", True, False, False, True, False, True),
 }
 
 # Table XV; its caption: no extremal nor medial parameters, dissimilar
 # tradeoff magnitudes for every WFG problem.
 _WFG = {
-    "WFG1": _p("convex+mixed", False, True, True, True, False),
-    "WFG2": _p("convex+disconnected", True, False, True, False, False),
-    "WFG3": _p("linear+degenerate", False, False, True, False, False),
-    "WFG4": _p("concave", True, False, True, True, False),
-    "WFG5": _p("concave", True, False, True, True, False, deceptive=True),
-    "WFG6": _p("concave", False, False, True, False, False),
-    "WFG7": _p("concave", False, True, True, True, False),
-    "WFG8": _p("concave", False, True, True, False, False),
-    "WFG9": _p("concave", True, True, True, False, False, deceptive=True),
+    "WFG1": _p("convex+mixed", False, True, True, True, False, False),
+    "WFG2": _p("convex+disconnected", True, False, True, False, False, False),
+    "WFG3": _p("linear+degenerate", False, False, True, False, False, False),
+    "WFG4": _p("concave", True, False, True, True, False, False),
+    "WFG5": _p("concave", True, False, True, True, False, False, deceptive=True),
+    "WFG6": _p("concave", False, False, True, False, False, False),
+    "WFG7": _p("concave", False, True, True, True, False, False),
+    "WFG8": _p("concave", False, True, True, False, False, False),
+    "WFG9": _p("concave", True, True, True, False, False, False, deceptive=True),
 }
 
 _ZCAT_FRONT = {1: None, 2: None, 3: "linear", 4: "linear"}
@@ -210,7 +233,7 @@ def properties(name: str) -> dict | None:
     row["disconnected"] = None if front is None else "disconnected" in front
     if stem.startswith("BT"):
         row["linkage"] = int(stem[2:]) in _BT_LINKAGE
-    elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "IDTLZ", "SDTLZ", "wideDTLZ")):
+    elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "shiftZDT", "IDTLZ", "SDTLZ", "wideDTLZ")):
         row["linkage"] = False
     elif stem.startswith("ZCAT"):
         row["linkage"] = _LINKAGE["ZCAT"]
@@ -265,7 +288,11 @@ def _huband(name: str) -> dict | None:
         return row
     if stem.startswith("shiftDTLZ") and stem[5:] in _DTLZ:
         row = dict(_DTLZ[stem[5:]])
-        row["centre"] = False
+        row["centre"] = row["boundary"] = False
+        return row
+    if stem.startswith("shiftZDT") and stem[5:] in _ZDT:
+        row = dict(_ZDT[stem[5:]])
+        row["centre"] = row["boundary"] = False
         return row
     if stem == "wideDTLZ3":
         row = dict(_DTLZ["DTLZ3"])
@@ -280,23 +307,68 @@ def _huband(name: str) -> dict | None:
         row["scaled"] = True
         return row
     if stem.startswith("ZCAT") and stem[4:].isdigit():
-        return _p(_ZCAT_FRONT[int(stem[4:])], False, False, True, False, None)
+        return _p(_ZCAT_FRONT[int(stem[4:])], False, False, True, False, None, False)
     if stem.startswith("bbobbiobj"):
         from .bbob_biobj import PAIRS
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
         return _p(None, fa in _BBOB_MULTIMODAL or fb in _BBOB_MULTIMODAL, False, None,
-                  fa in _BBOB_SEPARABLE and fb in _BBOB_SEPARABLE, False)
+                  fa in _BBOB_SEPARABLE and fb in _BBOB_SEPARABLE, False, False)
     if stem.startswith("MOP") and stem[3:].isdigit():
         i = int(stem[3:])
-        return _p(_MOP_FRONT[i], _MOP_MULTIMODAL[i], None, False, False, False)
+        return _p(_MOP_FRONT[i], _MOP_MULTIMODAL[i], None, False, False, False, False)
     if stem.startswith("BT") and stem[2:].isdigit():
         i = int(stem[2:])
-        return _p(_BT_FRONT[i], i == 8, True, False, i not in _BT_LINKAGE, False)
+        return _p(_BT_FRONT[i], i == 8, True, False, i not in _BT_LINKAGE, False, False)
     if stem == "Polygon":
-        return _p("linear+degenerate" if m >= 4 else "linear", False, False, False, False, True)
+        return _p("linear+degenerate" if m >= 4 else "linear", False, False, False, False, True,
+                  False)
     if stem == "IPolygon":
-        return _p("linear+degenerate" if m >= 4 else "linear", True, False, False, False, False)
+        return _p("linear+degenerate" if m >= 4 else "linear", True, False, False, False, False,
+                  False)
     return None
+
+
+def interior(name: str) -> bool:
+    """Does the table put the optimum neither at the centre nor on the
+    boundary (centre and boundary not True; None, unknown, counts as
+    neither)? A problem without a row: no."""
+    row = properties(name)
+    return row is not None and row["centre"] is not True and row["boundary"] is not True
+
+
+def _positions(name: str, n_obj: int) -> int:
+    """How many of the leading variables are position variables, whose
+    optimum spans the box; the rest are the distance variables measured()
+    reads (IPolygon: none — both of its variables count)."""
+    stem, _ = _stem_and_m(name)
+    if stem.startswith(("ZDT", "shiftZDT")):
+        return 1
+    if stem == "Polygon":
+        return 2
+    if stem == "IPolygon":
+        return 0
+    return n_obj - 1            # DTLZ and its variants, ZCAT
+
+
+def measured(name: str, n: int = 300) -> dict | None:
+    """centre and boundary read off the problem's Pareto-set sample (MEASURED
+    above): the shares of the distance variables' values within 1e-9 of the
+    middle of the range and of a bound, in units of the range, and the flags
+    at 99 %; None where the problem has no sample."""
+    import numpy as np
+    from .registry import PROBLEMS
+    p = PROBLEMS[name]
+    if p.pareto_set is None:
+        return None
+    k = _positions(name, p.n_obj)
+    X = np.asarray(p.pareto_set(n), float)[:, k:]
+    lo = np.array([b[0] for b in p.bounds], float)[k:]
+    hi = np.array([b[1] for b in p.bounds], float)[k:]
+    U = (X - lo) / (hi - lo)
+    at_middle = float(np.mean(np.abs(U - 0.5) <= 1e-9))
+    at_bound = float(np.mean((U <= 1e-9) | (U >= 1.0 - 1e-9)))
+    return {"centre_share": at_middle, "boundary_share": at_bound,
+            "centre": at_middle >= 0.99, "boundary": at_bound >= 0.99}
 
 
 def label(name: str, key: str) -> str:
