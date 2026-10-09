@@ -445,7 +445,10 @@ read a rung at the record `record_at` puts there, which has them, and
 
 **The first population.** `init = "sobol"` in an algorithm's entry starts it
 from a scrambled Sobol design (`mootation.designs`), `init = "lhs"` from a
-maximin Latin hypercube (below), instead of its own random
+maximin Latin hypercube (below), `init = "halton_rand"` from a randomized
+Halton sequence (Owen, arXiv:1706.02808, 2017: every digit of every
+coordinate through a random permutation of its own, seeded by the run),
+instead of its own random
 population: the design is evaluated by the campaign's evaluator, costing what
 the algorithm's own start would, and planted as the seed population.
 `init_share = 0.5` makes the design a plan of half the budget before the
@@ -455,7 +458,8 @@ depends on its budget, so a `ladder` gives it a run of its own at each rung.
 `minimize(init=..., init_share=...)` does the same outside a campaign.
 
 **Baselines.** `random_search`, `sobol_search` (scrambled Sobol, needs
-SciPy) and `lhs_search` go in the algorithm list like any core. They sample the box blindly,
+SciPy), `lhs_search` and `halton_search` (the randomized Halton sequence) go
+in the algorithm list like any core. They sample the box blindly,
 keep the run archive, and answer with the problem's population size chosen
 from it by distance-based subset selection on the IGD+ distance — the same
 selection that thins every other point set here — so their indicators compare
@@ -474,6 +478,17 @@ hypercube with the point drawn inside it, not the paper's grid i/(n − 1),
 whose 0, 1 and, at odd n, 1/2 are exactly the optima of DTLZ1–4's and ZDT's
 distance variables (`designs.py`). A smaller budget is another hypercube, so
 the baseline is budget-dependent and a `ladder` runs it at each rung.
+`sobol_search` and `halton_search` draw sequences, whose first points do not
+depend on how many follow: a smaller budget is the start of the same run, and
+a `ladder` reads it off the trajectory.
+
+The randomized Halton design is stratified at n = b^m in the coordinate of
+base b, and nowhere exactly 0 or 1/2. In many variables its bases are large
+(71 is the 20th prime, 229 the 50th), and Owen warns that neighbouring
+coordinates then line up; measured, at 30 and 50 variables and 100 to 1 000
+points it is close to uniform points instead — its correlations no larger
+than theirs, its discrepancy only 2-15 % lower — while at 10 variables its
+discrepancy is a third to a sixth of theirs (`designs.py`).
 
 Two ablations take one ingredient of an evolutionary algorithm away.
 `random_selection_ea` is NSGA-II's variation — SBX with η_c = 20 and p_c =
@@ -488,7 +503,7 @@ nondominated point found, each evaluation mutates one member drawn uniformly
 enters unless a member weakly dominates it. Selection by dominance alone, no
 diversity mechanism and no population size; its answer is the population
 reduced to N by DSS. The carrying-over to real variables is ours: both papers
-define the algorithm on bit strings. None of the five baselines handles
+define the algorithm on bit strings. None of the six baselines handles
 constraints; only the run archive keeps to feasible points.
 
 **Bound repair.** An operator that can put a variable outside the box repairs

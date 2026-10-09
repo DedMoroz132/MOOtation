@@ -13,6 +13,9 @@ first points lie may decide as much as what it does after (task 5 of
            (scipy.stats.qmc.Sobol, linear matrix scrambling with a digital
            shift, seeded), as sobol_search draws them
   lhs      a maximin Latin hypercube (MAXIMIN LHS below)
+  halton_rand
+           the first n points of a randomized Halton sequence (RANDOMIZED
+           HALTON below), seeded; as halton_search draws them
 
 (The uniform start is every algorithm's own: `init = "uniform"` leaves it to
 the algorithm.)
@@ -56,6 +59,31 @@ maximin order itself is the design. Two departures:
     McKay, Conover & Beckman's Latin hypercube (1979) and the point is drawn
     uniformly in its cell: the maximin arrangement of the cells is the paper's,
     the points are on no grid.
+
+RANDOMIZED HALTON, after A. B. Owen, "A randomized Halton algorithm in R",
+arXiv:1706.02808, 2017 (task 6 of 2026-10-09, item 12.3). Coordinate j of
+point i (i = 0, 1, ...) is the radical inverse of i in the j-th prime base b
+with each digit put through a permutation of its own: x_ij = sum_k
+pi_jk(a_k(i)) b^-k, a_k(i) the k-th base-b digit of i, the pi_jk uniform
+random permutations of 0..b-1, independent over j and k (Eq. 5). As many
+digits as a double resolves: until 1 - b^-k rounds to 1 (Algorithm 1's loop).
+The permutations of coordinate j come from numpy's default_rng([seed, j]):
+the same seed the same plan, another seed another one. The sequence extends:
+the first n points of a longer plan are the plan of n points, which is why
+halton_search, unlike lhs_search, does not depend on its budget. At n = b^m
+every coordinate of base b puts one point in each of its b^m equal
+intervals; at other n the balance is incomplete. In many variables the bases
+grow (the 20th prime is 71, the 50th 229), and where b exceeds n a coordinate
+moves by its first digit alone and neighbouring coordinates line up (Owen
+2017, Section 4); the permutations weaken that without removing it. Measured
+2026-10-10 over 10 seeds (Pearson r between coordinates, scipy's centred L2
+discrepancy), against uniform points: at d = 10 and n = 100, 300, 1 000 the
+discrepancy is 0.026, 0.0062, 0.0012 against their 0.070, 0.024, 0.0073 and
+the mean |r| 0.043, 0.014, 0.004 against 0.083, 0.047, 0.025. At d = 30 and
+50 the plan is close to uniform points: discrepancy 2-15 % lower, mean |r|
+2-45 % lower, and the largest |r| of neighbouring coordinates never above
+theirs by more than 0.001 (0.21-0.24 at n = 100, 0.06-0.08 at 1 000) — no
+lining-up beyond chance shows, and little of the low discrepancy is left.
 """
 
 from __future__ import annotations
@@ -63,7 +91,7 @@ from __future__ import annotations
 import math
 import warnings
 
-KINDS = ("sobol", "lhs")
+KINDS = ("sobol", "lhs", "halton_rand")
 P_VALUES = (1, 2, 5, 10, 20, 50, 100)      # Morris & Mitchell 1995, Section 5
 FAC_T = 0.95                               # Section 4: "0.90 and 0.95"
 ACCEPT = 0.99                              # Section 4: t0 accepts a step of one level so
@@ -83,6 +111,8 @@ def design(kind: str, n: int, bounds, seed: int):
         L = maximin_lhs(n, len(lo), rng)
         U = (L + rng.random(L.shape)) / n          # a point drawn in each cell
         return lo + U * (hi - lo)
+    if kind == "halton_rand":
+        return lo + randomized_halton(n, len(lo), seed) * (hi - lo)
     try:
         from scipy.stats import qmc
     except ImportError as e:                        # pragma: no cover - machine-dependent
@@ -91,6 +121,46 @@ def design(kind: str, n: int, bounds, seed: int):
         warnings.simplefilter("ignore")
         U = qmc.Sobol(len(lo), scramble=True, seed=seed).random(n)
     return lo + U * (hi - lo)
+
+
+# ── randomized Halton ───────────────────────────────────────────────────────
+
+
+def primes(d: int) -> list:
+    """The first d primes."""
+    out, k = [], 2
+    while len(out) < d:
+        if all(k % p for p in out if p * p <= k):
+            out.append(k)
+        k += 1
+    return out
+
+
+def halton_digits(b: int) -> int:
+    """How many base-b digits a double resolves: the k >= 1 for which
+    1 - b^-k still differs from 1 (Owen 2017, Algorithm 1's loop)."""
+    k, b2r = 0, 1.0 / b
+    while 1.0 - b2r < 1.0:
+        k += 1
+        b2r /= b
+    return k
+
+
+def randomized_halton(n: int, d: int, seed: int, start: int = 0):
+    """Points start .. start + n - 1 of the randomized Halton sequence in
+    [0, 1)^d (RANDOMIZED HALTON above), as an (n, d) array."""
+    import numpy as np
+    X = np.empty((n, d))
+    idx = np.arange(start, start + n, dtype=np.int64)
+    for j, b in enumerate(primes(d)):
+        rng = np.random.default_rng([seed, j])
+        rest, scale, x = idx.copy(), 1.0, np.zeros(n)
+        for perm in [rng.permutation(b) for _ in range(halton_digits(b))]:
+            scale /= b
+            x += perm[rest % b] * scale
+            rest //= b
+        X[:, j] = x
+    return X
 
 
 # ── maximin Latin hypercubes ────────────────────────────────────────────────

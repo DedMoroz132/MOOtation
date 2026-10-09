@@ -2542,7 +2542,7 @@ def baselines_spend_the_budget_exactly_and_answer_with_the_archive():
     from mootation.run.baselines import run_baseline
     from mootation.benchmarks import get
     p = get("ZDT1")
-    for name in ("random_search", "sobol_search", "lhs_search"):
+    for name in ("random_search", "sobol_search", "lhs_search", "halton_search"):
         if name == "sobol_search":
             try:
                 import scipy  # noqa: F401
@@ -2590,6 +2590,98 @@ def a_maximin_latin_hypercube_reaches_the_papers_catalog():
     X = D.design("lhs", 30, [(0.0, 1.0), (-2.0, 2.0)], 11)
     assert np.array_equal(X, D.design("lhs", 30, [(0.0, 1.0), (-2.0, 2.0)], 11))
     assert X[:, 1].min() >= -2.0 and X[:, 1].max() <= 2.0 and not (X == 0.5).any()
+
+
+@test
+def a_randomized_halton_plan_is_stratified_seeded_and_off_the_grid():
+    """designs.randomized_halton (task 6, item 12.5): at n = b^m the coordinate
+    of base b has one point in each of its b^m intervals; no coordinate is
+    exactly 0 or 1/2 over 10 seeds of 1 000 points; a seed is a plan and
+    another seed another plan; the first n points of a longer plan are the
+    plan of n; its centred L2 discrepancy, over 20 seeds, is below uniform
+    points' at d = 2 and 10."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    assert D.primes(6) == [2, 3, 5, 7, 11, 13] and D.primes(50)[-1] == 229
+    assert D.halton_digits(2) == 53                    # 1 - 2^-53 < 1 == 1 - 2^-54
+    for j, b, m in ((0, 2, 9), (1, 3, 5), (2, 5, 3)):
+        x = D.randomized_halton(b ** m, 3, 7)[:, j]
+        assert len(np.unique(np.floor(x * b ** m))) == b ** m, (b, m)
+    for seed in range(10):
+        X = D.randomized_halton(1000, 10, seed)
+        assert not ((X == 0.0) | (X == 0.5)).any() and X.min() > 0.0 and X.max() < 1.0, seed
+    A = D.design("halton_rand", 300, [(0.0, 1.0), (-2.0, 2.0)], 11)
+    assert np.array_equal(A, D.design("halton_rand", 300, [(0.0, 1.0), (-2.0, 2.0)], 11))
+    assert not np.array_equal(A, D.design("halton_rand", 300, [(0.0, 1.0), (-2.0, 2.0)], 12))
+    assert A[:, 1].min() >= -2.0 and A[:, 1].max() <= 2.0
+    B = D.randomized_halton(800, 5, 3)
+    assert np.array_equal(B[:500], D.randomized_halton(500, 5, 3))
+    assert np.array_equal(B[500:], D.randomized_halton(300, 5, 3, start=500))
+    if _core_with("max_evaluations") is not None:     # init = "halton_rand": its first points
+        from mootation import minimize
+        seen = []
+
+        def f(x):
+            seen.append(list(x))
+            return [x[0], 1.0 - x[0] ** 0.5 + sum(x[1:])]
+        r = minimize(f, bounds=[(0.0, 1.0)] * 3, n_objs=2, algorithm="nsga2", pop_size=20,
+                     n_gen=3, seed=1, init="halton_rand")
+        assert r.evaluations == 60 and len(r.objectives) == 20, r.evaluations
+        assert np.allclose(seen[:20], D.design("halton_rand", 20, [(0.0, 1.0)] * 3, 1))
+    try:
+        from scipy.stats import qmc
+    except ImportError:
+        return
+    for d in (2, 10):
+        h = np.mean([qmc.discrepancy(D.randomized_halton(256, d, s)) for s in range(20)])
+        u = np.mean([qmc.discrepancy(np.random.default_rng(s).random((256, d)))
+                     for s in range(20)])
+        assert h < u, (d, h, u)
+
+
+@test
+def the_older_designs_have_not_moved():
+    """The sobol and lhs designs and the draws of random_search, sobol_search
+    and lhs_search are what they were before the randomized Halton came (task
+    6, item 12.5): rows 0, 5 and 11 of 12 points at seed 5, to 1e-12."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    from mootation.run.archive import GridArchive
+    from mootation.run.baselines import run_baseline
+    box = [(0.0, 1.0), (-2.0, 2.0), (0.0, 10.0)]
+    was = {
+        "random_search": [[0.80500292374538, 1.23176315894597, 5.15325561042142],
+                          [0.844231037608741, -0.430381342660887, 4.93023018731743],
+                          [0.436667052175653, -1.18698865554174, 3.24942644575606]],
+        "lhs_search": [[0.0671787427199933, 0.87864713808322, 5.03133728213074],
+                       [0.328950833854345, -1.08414312656047, 8.04914019274116],
+                       [0.871689838192273, 0.412373696896755, 2.23928782044247]],
+        "sobol_search": [[0.63135180901736, -1.05258386209607, 5.24911201559007],
+                         [0.149958958849311, 0.586466815322638, 6.30971090868115],
+                         [0.965077580884099, 1.46423656120896, 7.00347781181335]],
+    }
+    try:
+        import scipy  # noqa: F401
+    except ImportError:
+        del was["sobol_search"]
+    for name, rows in was.items():
+        seen, arc = [], GridArchive(2, 3)
+
+        def ev(x, seen=seen, arc=arc):
+            seen.append(x)
+            arc.add([x[0], 1.0 - x[0]], x)
+            return [x[0], 1.0 - x[0]]
+        run_baseline(name, ev, box, pop=12, max_evaluations=12, seed=5, archive=arc)
+        assert np.allclose(np.array(seen)[[0, 5, 11]], rows, rtol=0, atol=1e-12), name
+        if name != "random_search":                    # the design is the baseline's draw
+            X = D.design(name.split("_")[0], 12, box, 5)
+            assert np.allclose(X[[0, 5, 11]], rows, rtol=0, atol=1e-12), name
 
 
 @test

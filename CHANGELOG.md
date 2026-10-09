@@ -257,6 +257,15 @@ always listed under **Changed** or **Removed**.
   cuts in the convex front, points of larger g are Pareto-optimal too; it is
   sampled and checked point by point (`registry.APPROXIMATE_FRONT`, a
   `--cover` caveat). 477 problems in 19 families.
+- A randomized Halton design (`mootation.designs`, task 6, item 12.3), after
+  Owen, "A randomized Halton algorithm in R" (arXiv:1706.02808, 2017, Eq. 5
+  and Algorithm 1): every base-b digit of every coordinate through an
+  independent random permutation, as many digits as a double resolves,
+  seeded by the run. `init = "halton_rand"` starts an algorithm from it and
+  the baseline `halton_search` samples it; a sequence, so not
+  budget-dependent. The header records its correlations and discrepancy at
+  10, 30 and 50 variables. Tests hold `sobol`, `lhs` and the baselines' draws
+  to their earlier values.
 - Indicators of a constrained problem (task 6, item 5.2): every indicator is
   measured on the feasible part of the answer (`metrics.compute(...,
   constraints=)`), `feas_share` is recorded beside them and `fe_first_feas`,

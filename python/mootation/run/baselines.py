@@ -19,6 +19,9 @@ converges to is decided by the archiver, not by how the points are drawn
                   (designs.py, after Morris & Mitchell 1995), its points
                   evaluated in batches of N; laid out for the budget at once, so
                   a smaller budget is a run of its own (budget.py)
+  halton_search   a randomized Halton sequence (designs.py, after Owen 2017),
+                  seeded per run; a sequence, so a smaller budget is the start
+                  of the same run, as with sobol_search
 
 and two ablations (ablations.py), which take one ingredient of an EA away:
 
@@ -52,6 +55,7 @@ BASELINES = {
     "sobol_search": "scrambled Sobol sampling (SciPy), archived, N chosen by DSS",
     "lhs_search": "a maximin Latin hypercube of the whole budget (Morris & Mitchell 1995), "
                   "archived, N chosen by DSS",
+    "halton_search": "randomized Halton sampling (Owen 2017), archived, N chosen by DSS",
     "random_selection_ea": "ablation: NSGA-II's SBX and polynomial mutation, survival "
                            "uniformly at random",
     "gsemo": "ablation: global SEMO on real variables, the nondominated set, N chosen by DSS",
@@ -110,9 +114,10 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
             with warnings.catch_warnings():         # "balance properties ... power of 2"
                 warnings.simplefilter("ignore")
                 return engine.random(k)
-    elif name == "lhs_search":
+    elif name in ("lhs_search", "halton_search"):
         from ..designs import design
-        plan = design("lhs", max_evaluations, [(0.0, 1.0)] * d, seed)
+        kind = "lhs" if name == "lhs_search" else "halton_rand"
+        plan = design(kind, max_evaluations, [(0.0, 1.0)] * d, seed)
         served = [0]
 
         def draw(k):
