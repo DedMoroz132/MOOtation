@@ -265,6 +265,14 @@ always listed under **Changed** or **Removed**.
   files and snapshots and the noisy ones in `final.csv` as `f_seen`, and
   records `true_dominated_share`. A family of their own, `noisy`. 487
   problems in 20 families.
+- `--reference` (task 6, item 10): a warning when the seeds and the number of
+  problems leave no mark but `=` possible under Holm (at k seeds a side,
+  beyond 0.025·C(2k, k) problems); `--adjust bh` for Benjamini–Hochberg over
+  the problems; beside the counts the `=` with a large A12 and the median
+  A12 with its class; across problems, for `igdp_norm` and `eps_norm`, the
+  signed-rank test on the logarithms of the medians, and for every metric
+  the sign test and the Hodges–Lehmann estimate (a ratio of medians for those
+  two). The header says the order is by `+` minus `-`, not a rating.
 - A randomized Halton design (`mootation.designs`, task 6, item 12.3), after
   Owen, "A randomized Halton algorithm in R" (arXiv:1706.02808, 2017, Eq. 5
   and Algorithm 1): every base-b digit of every coordinate through an

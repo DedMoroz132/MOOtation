@@ -3538,6 +3538,63 @@ def the_report_tests_rank_and_group_a_toy_campaign():
 
 
 @test
+def the_reference_report_warns_when_no_mark_is_possible_and_sizes_its_effects():
+    """--reference (task 6, item 10): at 5 seeds and 110 problems Holm leaves no
+    mark but '=' possible (110 > 0.025 C(10, 5) = 6.3), and the report says so;
+    A12's class on shifts of known size; Benjamini-Hochberg, the sign test and
+    the Hodges-Lehmann estimate on values worked by hand; igdp_norm compared
+    across problems by the logarithm, its HL as a ratio."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    from mootation.run import report as R
+    from mootation.run import stats as ST
+
+    def rows_of(per_problem):
+        out = []
+        for p, by_alg in per_problem.items():
+            for alg, vals in by_alg.items():
+                out += [{"problem": p, "algorithm": alg, "status": "done", "dir": ".",
+                         "final": {"igdp_norm": v}} for v in vals]
+        return out
+
+    ref = [1.0, 2.0, 3.0, 4.0, 5.0]
+    many = rows_of({f"P{i}": {"ref": ref, "x": [v + 10.0 for v in ref]} for i in range(110)})
+    rep = R.reference_report(many, "igdp_norm", "ref")
+    assert rep["smallest_p"] == 2 / math.comb(10, 5) and 110 > 0.025 * math.comb(10, 5)
+    assert not rep["labels_possible"] and rep["algorithms"][0]["ties"] == 110, rep
+    assert rep["algorithms"][0]["ties_large"] == 110
+    assert "WARNING: no mark but '='" in " ".join(R.format_reference(rep).split())
+    assert R.reference_report(many[:6 * 10], "igdp_norm", "ref")["labels_possible"]
+    assert R.reference_report(many, "igdp_norm", "ref", adjust="bh")["labels_possible"]
+    raises(ValueError, R.reference_report, many, "igdp_norm", "ref", adjust="bonferroni")
+
+    # A12 of a against the reference, lower better: 15/25 = 0.6 (small),
+    # 17/25 = 0.68 (medium), 0.5 (negligible), 0 (large, worse)
+    shifts = {"small": [v - 0.5 for v in ref], "medium": [v - 1.0 for v in ref],
+              "negligible": list(ref), "large": [v + 10.0 for v in ref]}
+    rep = R.reference_report(rows_of({"P": dict(shifts, ref=ref)}), "igdp_norm", "ref")
+    for e in rep["algorithms"]:
+        got = e["per_problem"]["P"]
+        assert got["a12_class"] == e["algorithm"], (e["algorithm"], got)
+    a12 = {e["algorithm"]: e["per_problem"]["P"]["a12"] for e in rep["algorithms"]}
+    assert (a12["small"], a12["medium"], a12["negligible"], a12["large"]) == (0.6, 0.68, 0.5, 0.0)
+
+    adj = ST.benjamini_hochberg([0.01, 0.04, 0.03, 0.2])
+    assert all(abs(x - y) < 1e-12 for x, y in zip(adj, [0.04, 0.16 / 3, 0.16 / 3, 0.2])), adj
+    assert ST.sign_test([1.0] * 10, [2.0] * 10)["p"] == 2 / 2 ** 10
+    assert ST.sign_test([1.0, 3.0, 2.0], [2.0, 2.0, 2.0]) == {"n": 2, "wins": 1, "losses": 1,
+                                                             "p": 1.0}
+    assert ST.hodges_lehmann([1.0, 2.0, 3.0]) == 2.0          # Walsh: 1, 1.5, 2, 2, 2.5, 3
+    half = rows_of({f"P{i}": {"ref": [2.0 * (i + 1)] * 3, "x": [1.0 * (i + 1)] * 3}
+                    for i in range(8)})
+    e = R.reference_report(half, "igdp_norm", "ref")["algorithms"][0]
+    assert abs(e["hl_ratio"] - 0.5) < 1e-12 and e["sign"]["wins"] == 8, e
+    text = " ".join(R.format_reference(R.reference_report(half, "igdp_norm", "ref")).split())
+    assert "HL ratio" in text and "not a rating" in text
+
+
+@test
 def the_ablation_baselines_spend_the_budget_and_behave():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
@@ -3639,6 +3696,8 @@ final_metrics = ["igdp", "hv", "igdx", "pdist"]
         assert code == 0 and "bootstrap" in txt and "rvea*" in txt, txt
         code, txt = cli("--ranks", "hv", "--reference", "nsga2", "--scenario", "archive")
         assert code == 0 and "(archive) against nsga2" in txt, txt
+        code, txt = cli("--ranks", "hv", "--reference", "nsga2", "--adjust", "bh")
+        assert code == 0 and "Benjamini-Hochberg" in " ".join(txt.split()), txt
         code, txt = cli("--ranks", "igdp", "--by", "front")
         assert code == 0 and "grouped by front" in txt, txt
         code, txt = cli("--compare", "igdx")

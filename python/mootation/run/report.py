@@ -6,9 +6,13 @@ The campaign CLI (python -m mootation.run.campaign) calls these:
   reference_report  --compare/--ranks METRIC --reference ALG. On every
                     problem each algorithm's runs against the reference's:
                     the exact Wilcoxon rank-sum test, Holm-corrected over the
-                    problems, and the Vargha-Delaney A12; across problems the
-                    exact signed-rank test on the per-problem medians,
-                    Holm-corrected over the algorithms (stats.py).
+                    problems (or Benjamini-Hochberg, --adjust bh), and the
+                    Vargha-Delaney A12 with its class; a warning when the
+                    seeds and the problems leave no mark but '=' possible.
+                    Across problems the exact signed-rank test on the
+                    per-problem medians (their logarithms for igdp_norm and
+                    eps_norm), Holm-corrected over the algorithms, with the
+                    sign test and the Hodges-Lehmann estimate (stats.py).
   rank_intervals    --ranks METRIC --ci: a 95 % bootstrap interval for each
                     mean rank, resampling the problems.
   property_ranks    --ranks METRIC --by KEY: mean ranks within each group of
@@ -42,6 +46,7 @@ from __future__ import annotations
 
 import json
 import math
+import textwrap
 from pathlib import Path
 
 from . import postprocess as PP
@@ -96,12 +101,39 @@ def mark_budget(name: str) -> str:
 
 
 # ── 3.1 against a reference ─────────────────────────────────────────────────
+# The positive scale-free indicators: across problems they are compared by the
+# logarithm of their medians, so that a problem counts by the ratio of two
+# medians, not by how large its values happen to be (task 6, item 10).
+LOG_METRICS = frozenset({"igdp_norm", "eps_norm"})
+ADJUSTMENTS = ("holm", "bh")
+
+
 def reference_report(rows: list, metric: str, reference: str, *, at=None,
-                     scenario: str = "final", alpha: float = 0.05) -> dict:
+                     scenario: str = "final", alpha: float = 0.05,
+                     adjust: str = "holm") -> dict:
+    """Every algorithm against `reference` (task 6 of 2026-10-09, item 10).
+
+    Per problem: the exact rank-sum test of the seeds, the p-values adjusted
+    over the problems by Holm, or by Benjamini & Hochberg (`adjust` "bh"),
+    a mark +, - or = at `alpha`, and beside it A12 and its class. Whether a
+    mark can be anything but = at all: `labels_possible` — under Holm only if
+    the smallest p a problem can give (both seed samples wholly apart, 2 /
+    C(n_a + n_b, n_a)) times the number of problems is below alpha, so at k
+    seeds a side not beyond 0.025 C(2k, k) problems at alpha 0.05; under BH
+    only if that p is below alpha. Across problems: the exact signed-rank
+    test on the per-problem medians (Holm over the algorithms) — on their
+    logarithms for igdp_norm and eps_norm (LOG_METRICS) — with the sign test
+    and the Hodges-Lehmann estimate of the difference beside it, as a ratio
+    of medians for the logarithmic ones."""
+    if adjust not in ADJUSTMENTS:
+        raise ValueError(f"unknown adjustment '{adjust}'; known: {', '.join(ADJUSTMENTS)}")
+    correct = ST.holm if adjust == "holm" else ST.benjamini_hochberg
     lower = _lower(metric)
+    log = metric in LOG_METRICS
     vals = values(rows, metric, at=at, scenario=scenario)
     probs = sorted(p for p, a in vals.items() if reference in a)
     algs = sorted({a for p in probs for a in vals[p]} - {reference})
+    p_min = 1.0
     per_alg = []
     for alg in algs:
         tests = []
@@ -110,44 +142,78 @@ def reference_report(rows: list, metric: str, reference: str, *, at=None,
                 continue
             rs = ST.rank_sum(vals[p][alg], vals[p][reference], lower_better=lower)
             tests.append((p, rs, ST.a12(vals[p][alg], vals[p][reference], lower_better=lower)))
-        adj = ST.holm([t[1]["p"] for t in tests])
+            p_min = min(p_min, ST.smallest_rank_sum_p(len(vals[p][alg]),
+                                                      len(vals[p][reference])))
+        adj = correct([t[1]["p"] for t in tests])
         marks = [ST.mark(pa, t[1]["better"], alpha) for t, pa in zip(tests, adj)]
+        classes = [ST.a12_magnitude(t[2]) for t in tests]
         a = [_median(vals[p][alg]) for p, _, _ in tests]
         b = [_median(vals[p][reference]) for p, _, _ in tests]
+        if log:
+            pairs = [(math.log(x), math.log(y)) for x, y in zip(a, b) if x > 0 and y > 0]
+            a, b = [x for x, _ in pairs], [y for _, y in pairs]
         sr = ST.wilcoxon_signed_rank(a, b, lower_better=lower)
+        hl = ST.hodges_lehmann([x - y for x, y in zip(a, b)])
         a12s = [t[2] for t in tests if t[2] is not None]
+        a12_med = _median(a12s) if a12s else None
         per_alg.append({
             "algorithm": alg, "problems": len(tests),
             "wins": marks.count("+"), "losses": marks.count("-"), "ties": marks.count("="),
-            "signed_rank": sr, "a12_median": _median(a12s) if a12s else None,
-            "per_problem": {p: {"p_holm": pa, "mark": mk, "a12": eff}
-                            for (p, _, eff), pa, mk in zip(tests, adj, marks)},
+            "ties_large": sum(1 for mk, c in zip(marks, classes) if mk == "=" and c == "large"),
+            "a12_classes": {c: classes.count(c)
+                            for c in ("negligible", "small", "medium", "large")},
+            "signed_rank": sr, "sign": ST.sign_test(a, b, lower_better=lower),
+            "hl": hl, "hl_ratio": math.exp(hl) if log and hl is not None else None,
+            "a12_median": a12_med, "a12_median_class": ST.a12_magnitude(a12_med),
+            "per_problem": {p: {"p_adj": pa, "mark": mk, "a12": eff, "a12_class": c}
+                            for (p, _, eff), pa, mk, c in zip(tests, adj, marks, classes)},
         })
     padj = ST.holm([e["signed_rank"]["p"] for e in per_alg])
     for e, pa in zip(per_alg, padj):
         e["p_holm"] = pa
         e["mark"] = ST.mark(pa, e["signed_rank"]["better"], alpha)
     per_alg.sort(key=lambda e: (-(e["wins"] - e["losses"]), e["algorithm"]))
+    m = len(probs)
+    possible = (m * p_min < alpha) if adjust == "holm" else (p_min < alpha)
     return {"metric": metric, "reference": reference, "scenario": scenario, "at": at,
-            "alpha": alpha, "problems": len(probs), "algorithms": per_alg}
+            "alpha": alpha, "adjust": adjust, "log": log, "problems": m,
+            "smallest_p": p_min, "labels_possible": bool(m == 0 or possible),
+            "algorithms": per_alg}
 
 
 def format_reference(rep: dict) -> str:
     at = f" at {rep['at']:.0%} of the budget" if rep.get("at") is not None else ""
-    lines = [
+    adjust = {"holm": "Holm", "bh": "Benjamini-Hochberg"}[rep.get("adjust", "holm")]
+    on = "the logarithms of the medians" if rep.get("log") else "the medians"
+    lines = textwrap.wrap(
         f"{rep['metric']}{at} ({rep['scenario']}) against {rep['reference']} on "
-        f"{rep['problems']} problem(s). Per problem: exact Wilcoxon rank-sum, Holm over the "
-        f"problems, alpha {rep['alpha']}; across problems: exact signed-rank test on the "
-        f"medians, Holm over the algorithms. '+' = better than the reference.",
-        f"{'algorithm':<16}{'+':>5}{'-':>5}{'=':>5}{'W+':>9}{'W-':>9}{'p(Holm)':>10}  "
-        f"{'across':>6}{'A12 med':>9}",
-    ]
+        f"{rep['problems']} problem(s). Per problem: exact Wilcoxon rank-sum, {adjust} over "
+        f"the problems, alpha {rep['alpha']}, with A12 (Vargha-Delaney; classes at 0.06, "
+        f"0.14, 0.21 from 0.5); across problems: exact signed-rank test on {on}, Holm over "
+        f"the algorithms, the sign test and the Hodges-Lehmann estimate beside it. "
+        f"'+' = better than the reference; =L counts the '=' with a large A12. Sorted by + "
+        f"minus -: an order of these counts, not a rating of the algorithms.", 100)
+    if not rep.get("labels_possible", True):
+        lines += textwrap.wrap(
+            f"WARNING: no mark but '=' is possible here: the smallest p a problem can give "
+            f"with these seeds is {rep['smallest_p']:.3g}"
+            + (f", and {adjust} multiplies it by the {rep['problems']} problems"
+               if rep.get("adjust", "holm") == "holm" else "")
+            + f"; that is not below alpha {rep['alpha']}. Read A12 and its class instead.", 100)
+    hl_head = "HL ratio" if rep.get("log") else "HL diff"
+    lines.append(f"{'algorithm':<16}{'+':>4}{'-':>4}{'=':>4}{'=L':>4}{'A12 med':>12}"
+                 f"{'W+':>8}{'W-':>8}{'p(Holm)':>9}{'across':>7}{'sign':>9}{'p':>8}"
+                 f"{hl_head:>10}")
     for e in rep["algorithms"]:
-        sr = e["signed_rank"]
-        a12 = "-" if e["a12_median"] is None else f"{e['a12_median']:.2f}"
-        lines.append(f"{mark_budget(e['algorithm'])[:16]:<16}{e['wins']:>5}{e['losses']:>5}"
-                     f"{e['ties']:>5}{sr['w_plus']:>9.1f}{sr['w_minus']:>9.1f}"
-                     f"{e['p_holm']:>10.3g}  {e['mark']:>6}{a12:>9}")
+        sr, sg = e["signed_rank"], e["sign"]
+        a12 = ("-" if e["a12_median"] is None
+               else f"{e['a12_median']:.2f} {e['a12_median_class'][:3]}")
+        hl = e["hl_ratio"] if rep.get("log") else e["hl"]
+        lines.append(f"{mark_budget(e['algorithm'])[:16]:<16}{e['wins']:>4}{e['losses']:>4}"
+                     f"{e['ties']:>4}{e['ties_large']:>4}{a12:>12}"
+                     f"{sr['w_plus']:>8.1f}{sr['w_minus']:>8.1f}{e['p_holm']:>9.3g}"
+                     f"{e['mark']:>7}{sg['wins']:>5}:{sg['losses']:<3}{sg['p']:>8.3g}"
+                     f"{'-' if hl is None else format(hl, '.3g'):>10}")
     lines.append("* its curve depends on the share of the budget spent (read by fraction).")
     return "\n".join(lines)
 

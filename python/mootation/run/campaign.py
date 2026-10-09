@@ -1997,6 +1997,9 @@ def main(argv: list[str] | None = None) -> int:
                          "medians across problems (Holm over the algorithms)")
     ap.add_argument("--alpha", type=float, default=0.05,
                     help="significance level for --reference (default 0.05)")
+    ap.add_argument("--adjust", choices=("holm", "bh"), default="holm",
+                    help="with --reference: how the per-problem p-values are adjusted over "
+                         "the problems — Holm (default) or Benjamini-Hochberg")
     ap.add_argument("--ci", action="store_true",
                     help="with --ranks: a 95 %% bootstrap interval for every mean rank, "
                          "resampling the problems")
@@ -2264,7 +2267,7 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
                 print(R.format_reference(R.reference_report(
                     rows, metric, args.reference, at=args.at, scenario=args.scenario,
-                    alpha=args.alpha)))
+                    alpha=args.alpha, adjust=args.adjust)))
                 print()
             if args.ranks and args.by:
                 print(R.format_property_ranks(R.property_ranks(

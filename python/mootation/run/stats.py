@@ -188,6 +188,58 @@ def holm(pvalues: Sequence[float]) -> list:
     return adjusted
 
 
+def benjamini_hochberg(pvalues: Sequence[float]) -> list:
+    """Benjamini & Hochberg's step-up adjusted p-values (J. R. Statist. Soc. B
+    57(1), 1995), in the input order: they hold the false discovery rate where
+    Holm's hold the chance of any false mark."""
+    m = len(pvalues)
+    order = sorted(range(m), key=lambda i: pvalues[i], reverse=True)
+    adjusted = [0.0] * m
+    running = 1.0
+    for k, i in enumerate(order):                 # the largest p first: rank m
+        running = min(running, pvalues[i] * m / (m - k))
+        adjusted[i] = min(1.0, running)
+    return adjusted
+
+
+def smallest_rank_sum_p(n_a: int, n_b: int) -> float:
+    """The smallest two-sided p the exact rank-sum test can give with n_a and
+    n_b runs, the two samples wholly apart: 2 / C(n_a + n_b, n_a)."""
+    return min(1.0, 2.0 / math.comb(n_a + n_b, n_a))
+
+
+# ── across problems, besides the signed-rank test ───────────────────────────
+def sign_test(a: Sequence[float], b: Sequence[float], *, lower_better: bool = True) -> dict:
+    """Paired sign test of a against b: the pairs A wins and loses (equal
+    pairs dropped) and the exact two-sided binomial p."""
+    wins = losses = 0
+    for x, y in zip(a, b):
+        if x is None or y is None or not (math.isfinite(x) and math.isfinite(y)) or x == y:
+            continue
+        if (x < y) == lower_better:
+            wins += 1
+        else:
+            losses += 1
+    n = wins + losses
+    if n == 0:
+        return {"n": 0, "wins": 0, "losses": 0, "p": 1.0}
+    tail = sum(math.comb(n, i) for i in range(min(wins, losses) + 1))
+    return {"n": n, "wins": wins, "losses": losses, "p": min(1.0, 2.0 * tail / 2.0 ** n)}
+
+
+def hodges_lehmann(d: Sequence[float]) -> float | None:
+    """The Hodges-Lehmann estimate of where the differences d centre: the
+    median of their Walsh averages (d_i + d_j) / 2, i <= j (Hodges & Lehmann,
+    Ann. Math. Statist. 34(2), 1963) — the estimate that goes with the
+    signed-rank test."""
+    d = [float(v) for v in d if v is not None and math.isfinite(v)]
+    if not d:
+        return None
+    w = sorted((d[i] + d[j]) / 2.0 for i in range(len(d)) for j in range(i, len(d)))
+    n = len(w)
+    return w[n // 2] if n % 2 else 0.5 * (w[n // 2 - 1] + w[n // 2])
+
+
 # ── bootstrap of mean ranks ──────────────────────────────────────────────────
 def bootstrap_mean_ranks(ranks_by_problem: dict, *, n_boot: int = 2000,
                          level: float = 0.95, seed: int = 20260922) -> dict:

@@ -769,10 +769,21 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   neither (`--alpha`, 0.05). Both tests are exact with ties — the null
   distribution is built by dynamic programming, not approximated — which
   matters on the tied medians of converged runs. With five seeds a side the
-  smallest attainable rank-sum p is 1/126 ≈ 0.008, before Holm. The
+  smallest attainable rank-sum p is 1/126 ≈ 0.008, before Holm — so beyond
+  0.025·C(2k, k) problems at k seeds a side (6 at five seeds, 85 at seven) Holm
+  leaves no mark but `=` possible at all, and the report says so in a warning;
+  `--adjust bh` adjusts by Benjamini–Hochberg instead, which controls the false
+  discovery rate and keeps marks possible. Beside the counts: `=L`, the `=`
+  with a large effect, and the median A12 with its class (negligible, small,
+  medium, large at 0.06, 0.14 and 0.21 from 0.5, Vargha & Delaney). The
   signed-rank test ranks the SIZE of the differences across problems, so use a
   scale-free metric for it (`hv`, `hv_h`, `igdp_norm`, `eps_norm`): in raw units
-  the problem with the largest values decides.
+  the problem with the largest values decides. For `igdp_norm` and `eps_norm`
+  it runs on the logarithms of the medians, a problem counting by the ratio of
+  two medians; beside it the sign test, and the Hodges–Lehmann estimate of the
+  difference — for those two a ratio of medians, below 1 where the algorithm
+  is better. The order of the table is by `+` minus `-`: an order of these
+  counts, not a rating.
 - `--ci`: a 95 % percentile interval for each mean rank, resampling the
   problems 2000 times. Two algorithms whose intervals overlap widely are not
   ordered by this campaign.
