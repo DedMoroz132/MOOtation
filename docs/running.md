@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 63 algorithm names |
-| `--problems` | list the 511 benchmark problems (needs NumPy) |
+| `--problems` | list the 535 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -157,7 +157,7 @@ day-long run.
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, rotated DTLZ
-and WFG and noisy copies: 511 problems across 25 families, each
+and WFG, noisy copies and the real-world RE and CRE: 535 problems across 27 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -237,7 +237,7 @@ and the values agree with pymoo 0.6.2 at fixed points to 1e-12. The fronts
 are analytic but for C2-ConvexDTLZ2's: behind the hole the cylinder cuts in
 the convex front lie points of larger g that nothing feasible dominates, which
 the paper's and pymoo's front leave out; that front is a sample checked point
-by point (`APPROXIMATE_FRONT`, and `--cover` says so). MaF9 from five
+by point (`BenchProblem.front_exact` is False, and `--cover` says so). MaF9 from five
 objectives is constrained too.
 
 **The noisy copies** stand in for the noise of a mesh and a solver: `ZDT1_n1`
@@ -251,6 +251,24 @@ ones too, as `f1_seen`, ... — and records `true_dominated_share` beside them,
 the share of the answer another of its points dominates by the true values.
 They are a family of their own, `noisy`, picked by name: `families = ["DTLZ"]`
 does not bring them in.
+
+**The real-world problems** are Tanabe & Ishibuchi's RE and CRE (Applied Soft
+Computing 89:106078, 2020): truss, beam, pressure vessel, welded beam, disc
+brake, speed reducer, gear train, car side impact, ship design, water
+resources — `RE21` … `RE91` without constraints (where the original has some,
+the last objective is the sum of their violations) and `CRE21` … `CRE51` with
+them, ported formula for formula from the authors' Python code
+(github.com/ryojitanabe/reproblems, MIT; `benchmarks/re.py`, whose header
+lists the defects kept on purpose — RE22's "3,10", RE33's range of x4 — and
+those fixed upstream). Their true fronts are unknown: the reference is the
+authors' approximation for RE, shipped as it is (`benchmarks/_re/`), and for
+CRE the feasible points of RE's, which are thin — so IGD+ and ε there are a
+distance to an approximation (`front_exact = False`; the rank table and
+`--cover` say so). Integer variables are rounded inside the function, as in
+the original. RE91 draws four normals at every evaluation; here they come
+from the run's seed. In a rank table the real-world problems count apart:
+with synthetic ones beside them, `all` is the synthetic problems only and
+`engineering` the real-world ones (`--by family_kind` groups the same way).
 
 **The rotated problems** mix the distance variables, which ZDT, DTLZ and WFG
 keep each on its own axis — a gift to operators that work coordinate by

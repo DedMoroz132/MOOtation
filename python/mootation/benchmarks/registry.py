@@ -20,6 +20,7 @@
 #                       (ours, noisy.py)
 #   rDTLZ1-4, rcDTLZ2, rWFG4-7 x M={3,5}, and the controls r0DTLZ1, r0DTLZ3,
 #                       c0DTLZ2: the distance variables rotated (ours, rotated.py)
+#   RE21-91, CRE21-51   Tanabe & Ishibuchi 2020, real-world problems (re.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -63,6 +64,7 @@ from . import distances as _dist
 from . import c_dtlz as _cd
 from . import noisy as _noisy
 from . import rotated as _rot
+from . import re as _re
 
 
 # =============================================================
@@ -103,6 +105,10 @@ class BenchProblem:
     # its own evaluator: make_evaluator(seed) -> callable (uninformative.py).
     # None for every ordinary problem, where `evaluate` is the function.
     make_evaluator: Optional[Callable[[int], Callable]] = None
+    # False where pareto_front is an approximation, not the front: a verified
+    # sample (C2-ConvexDTLZ2) or a set of good points found by optimizers
+    # (RE, CRE); IGD+ and eps then measure the distance to it.
+    front_exact: bool = True
     # A noisy copy's noise-free objectives (noisy.py), on which a campaign
     # measures it; None for every other problem.
     true_objectives: Optional[Callable[[List[float]], List[float]]] = None
@@ -319,13 +325,9 @@ FRAME_OF: Dict[str, str] = {}
 # The rotated problems' maps (rotated.py), for the distance functions and the tests.
 ROTATED: Dict[str, "_rot.Rotated"] = {}
 
-# Problems whose ideal and nadir are set exactly at registration and are not
-# read off a front sample (C-DTLZ: c_dtlz.py, FRONTS).
+# Problems whose ideal and nadir are set at registration and are not read off
+# a front sample (C-DTLZ: c_dtlz.py, FRONTS; RE and CRE: the authors' files).
 EXACT_FRAME: set[str] = set()
-
-# Problems whose reference front is a verified sample, not an analytic one
-# (C2-ConvexDTLZ2: c_dtlz.convex_c2_front); cover.reference_caveat says so.
-APPROXIMATE_FRONT: set[str] = set()
 
 
 def degenerate_subset_note(name: str) -> str | None:
@@ -1729,10 +1731,8 @@ def _register_c_dtlz():
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=True,
-                pareto_front=_pf, pareto_set=_ps)
+                pareto_front=_pf, pareto_set=_ps, front_exact=name != "C2-ConvexDTLZ2")
             EXACT_FRAME.add(key)
-            if name == "C2-ConvexDTLZ2":
-                APPROXIMATE_FRONT.add(key)
 
 
 # =============================================================
@@ -1954,6 +1954,49 @@ def _shifted_fronts() -> None:
 
 
 _shifted_fronts()
+
+
+# =============================================================
+#  RE and CRE (re.py, task 6 of 2026-10-09, item 6): Tanabe & Ishibuchi's
+#  real-world problems. Registered after the reference version: the front is
+#  an approximation used whole, whatever size is asked for (the authors' for
+#  RE, read off RE's for CRE), and the frame the authors' ideal and nadir.
+#  RE91 draws four normals at every evaluation: from the run's seed.
+# =============================================================
+def _register_re():
+    for name, (M, (lb, ub), fn) in _re.RE.items():
+        ideal, nadir = _re.frame(name)
+        pop, ng = _budget(M)
+        def _eval(x, _f=fn): return [float(v) for v in _f(x)]
+        def _pf(n=1000, _n=name): return _re.reference(_n)
+        PROBLEMS[name] = BenchProblem(
+            name=name, n_vars=len(lb), bounds=_re.bounds(name), n_obj=M,
+            evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False, pareto_front=_pf,
+            front_exact=False,
+            make_evaluator=(lambda seed: _re.RE91Evaluator(seed)) if name == "RE91" else None)
+        EXACT_FRAME.add(name)
+    for name, (base, model) in _re.CRE.items():
+        ideal, nadir = _re.frame(base)
+        ideal, nadir = ideal[:-1], nadir[:-1]        # without the violation objective
+        M = len(ideal)
+        pop, ng = _budget(M)
+        def _eval(x, _m=model): return [float(v) for v in _m(x)[0]]
+        def _cons(x, _m=model): return [float(v) for v in _m(x)[1]]
+        def _pf(n=1000, _n=name): return _re.cre_reference(_n)
+        PROBLEMS[name] = BenchProblem(
+            name=name, n_vars=len(_re.bounds(name)), bounds=_re.bounds(name), n_obj=M,
+            evaluate=_eval, constraints=_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf,
+            front_exact=False)
+        EXACT_FRAME.add(name)
+
+
+_register_re()
 
 
 # ── dense references at four objectives and more (task 6 of 2026-10-09, item 9)

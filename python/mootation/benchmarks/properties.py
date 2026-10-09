@@ -148,7 +148,7 @@ from .rotated import SPECS as _ROTATED
 
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
         "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
-        "bbob_groups", "front_dim")
+        "bbob_groups", "front_dim", "family_kind")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, boundary,
@@ -282,6 +282,8 @@ def properties(name: str) -> dict | None:
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
     row["front_dim"] = _front_dim(stem, row["n_obj"], front)
+    from ..families import is_engineering
+    row["family_kind"] = "engineering" if is_engineering(name) else "synthetic"
     return row
 
 
@@ -325,6 +327,12 @@ def _huband(name: str) -> dict | None:
         return row
     if stem in _CDTLZ:
         return dict(_CDTLZ[stem])
+    if stem.startswith(("RE", "CRE")) and stem.lstrip("CRE").isdigit():
+        # Tanabe & Ishibuchi 2020: the true fronts are unknown; Section 2.6 and
+        # Fig. 2 call RE2-4-3 (RE23) and RE2-3-5 (RE25) disconnected. The rest
+        # of Huband's vocabulary is not given for them: None.
+        front = "disconnected" if stem in ("RE23", "RE25") else None
+        return _p(front, None, None, None, None, None, None, deceptive=None)
     if stem in _ROTATED:
         # rotated.py: the base's row, the optimum off centre and bound; not
         # separable where the rotation mixes an anisotropic g (rDTLZ2 and

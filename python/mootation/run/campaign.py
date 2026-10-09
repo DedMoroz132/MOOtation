@@ -1495,6 +1495,11 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
     runs without a feasible point on the constrained problems, each ranked as
     the worst value (compare_table): the mark beside a rank that has them.
 
+    The real-world problems (RE, CRE: mootation.families.is_engineering) are
+    ranked apart from the synthetic ones (task 6, item 6): in a campaign with
+    both, "all" averages the synthetic problems only and the group
+    "engineering" the real-world ones.
+
         {"metric": "igd", "lower_better": True, "n_problems": 45,
          "groups": ["DTLZ", "WFG", "ZDT", "M=2", "M=3", "M=5"],
          "algorithms": [(name, {"all": (mean, n), "DTLZ": (mean, n), ...,
@@ -1514,10 +1519,13 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
             return (1, 0.0)
         return (0, med if lower_better else -med)
 
+    from ..families import is_engineering
+    apart = len({is_engineering(p) for p in table}) == 2
     ranks: dict = {}
     wins: dict = {}
     for prob, algs in table.items():
-        labels = ["all", problem_family(prob)]
+        labels = ["engineering" if apart and is_engineering(prob) else "all",
+                  problem_family(prob)]
         if prob in n_objs:
             labels.append(f"M={n_objs[prob]}")
         order = sorted(algs, key=lambda a: key(algs[a][0]))
@@ -1538,18 +1546,22 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
     fams = sorted({problem_family(p) for p in table})
     ms = sorted({n_objs[p] for p in table if p in n_objs})
     groups = ((fams if len(fams) > 1 else [])
-              + ([f"M={m}" for m in ms] if len(ms) > 1 else []))
+              + ([f"M={m}" for m in ms] if len(ms) > 1 else [])
+              + (["engineering"] if apart else []))
     out = []
     for a, per in ranks.items():
         entry: dict = {g: (sum(v) / len(v), len(v)) for g, v in per.items()}
+        entry.setdefault("all", (math.nan, 0))       # an algorithm on real-world problems only
         entry["wins"] = wins.get(a, 0)
         entry["short"] = sum(1 for p in table if a in table[p]
                              and is_short(*sizes.get((p, a), (None, None))))
         entry["empty"] = sum(v for (_, alg), v in empty.items() if alg == a)
         out.append((a, entry))
-    out.sort(key=lambda t: (t[1]["all"][0], -t[1]["wins"], t[0]))
+    out.sort(key=lambda t: (t[1]["all"][0] if math.isfinite(t[1]["all"][0]) else math.inf,
+                            -t[1]["wins"], t[0]))
     return {"metric": metric, "at": at, "lower_better": lower_better,
-            "n_problems": len(table), "groups": groups, "algorithms": out}
+            "n_problems": len(table), "groups": groups, "algorithms": out,
+            "n_engineering": sum(1 for p in table if is_engineering(p))}
 
 
 def format_ranks(ranks: dict) -> str:
@@ -1582,6 +1594,13 @@ def format_ranks(ranks: dict) -> str:
     if empties:
         lines.append("empty = runs whose answer has no feasible point (constrained problems): "
                      "no value, ranked as the worst one")
+    if "engineering" in groups:
+        lines.append("all = the synthetic problems; engineering = the real-world RE and CRE, "
+                     "ranked apart")
+    from .metric_names import base_name
+    if ranks.get("n_engineering") and base_name(ranks["metric"]) in NEEDS_FRONT:
+        lines.append(f"on RE and CRE, {ranks['metric']} is the distance to an approximation "
+                     f"of the front, not to the front")
     return "\n".join(lines)
 
 

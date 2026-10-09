@@ -255,8 +255,20 @@ always listed under **Changed** or **Removed**.
   fronts and exact frames; Pareto sets and g for C1 and C2-DTLZ2. The front of
   C2-ConvexDTLZ2 is larger than the paper's: behind the hole the cylinder
   cuts in the convex front, points of larger g are Pareto-optimal too; it is
-  sampled and checked point by point (`registry.APPROXIMATE_FRONT`, a
+  sampled and checked point by point (`BenchProblem.front_exact = False`, a
   `--cover` caveat).
+- RE and CRE (`benchmarks/re.py`, task 6, item 6): Tanabe & Ishibuchi's
+  real-world problems (Applied Soft Computing 89:106078, 2020), RE21-91 and
+  CRE21-51, ported formula for formula from github.com/ryojitanabe/reproblems
+  (MIT, commit 7876b4e); the values agree with its Python version at fixed
+  points to 1e-12. Defects kept on purpose and those fixed upstream are in
+  the header. The reference fronts are the authors' approximations, shipped
+  as they are in `benchmarks/_re/` with their license, and for CRE the
+  feasible points of RE's; `BenchProblem.front_exact` is False there (and for
+  C2-ConvexDTLZ2, replacing `registry.APPROXIMATE_FRONT`). RE91's normal
+  draws come from the run's seed. The property `family_kind` (engineering /
+  synthetic), and the rank table counts the real-world problems apart.
+  535 problems in 27 families.
 - Rotated DTLZ and WFG (`benchmarks/rotated.py`, task 6, item 1 and its
   supplement 2): the distance variables rotated about their optimum, the
   position variables untouched, front and Pareto set exact — rDTLZ1-4 (y =
