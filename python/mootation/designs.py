@@ -16,6 +16,10 @@ first points lie may decide as much as what it does after (task 5 of
   halton_rand
            the first n points of a randomized Halton sequence (RANDOMIZED
            HALTON below), seeded; as halton_search draws them
+  sobol_owen
+           the first n points of the Sobol sequence under Owen's nested
+           uniform scrambling (SOBOL-OWEN below), seeded; as sobol_owen_search
+           draws them
 
 (The uniform start is every algorithm's own: `init = "uniform"` leaves it to
 the algorithm.)
@@ -84,14 +88,44 @@ the mean |r| 0.043, 0.014, 0.004 against 0.083, 0.047, 0.025. At d = 30 and
 2-45 % lower, and the largest |r| of neighbouring coordinates never above
 theirs by more than 0.001 (0.21-0.24 at n = 100, 0.06-0.08 at 1 000) — no
 lining-up beyond chance shows, and little of the low discrepancy is left.
+
+SOBOL-OWEN (task 6, item 12.2). The Sobol sequence in base two, 32 bits: the
+direction numbers of S. Joe and F. Y. Kuo, "Constructing Sobol sequences with
+better two-dimensional projections", SIAM J. Sci. Comput. 30, 2008, file
+new-joe-kuo-6.21201 (their recommended set; shipped in _sobol/ with its BSD
+licence), the first coordinate the van der Corput sequence (every m_k = 1),
+the recurrence and the Gray-code order of their "Notes on generating Sobol'
+sequences" (2008) — unscrambled, the points are SciPy's
+scipy.stats.qmc.Sobol(scramble=False), bit for bit. Each coordinate is then
+scrambled by B. Burley, "Practical Hash-based Owen Scrambling", JCGT 9(4),
+2020, Listing 2: reverse the 32 bits, apply the Laine-Karras permutation with
+a key, reverse back — a nested uniform scramble, every digit permuted by a
+function of the digits above it. The key of coordinate j is a splitmix64
+hash of (seed, j), ours; Burley's sample-index shuffle (his Listing 3) is not
+used: the plan is the first n points in order. The hash is a practical
+stand-in for Owen's full nested scrambling — the permutations come from the
+hash, not from independent random bits at every node (Burley, Section 5.2).
+SciPy's own scramble (the kind "sobol") is a linear matrix scramble with a
+digital shift (Matousek), not Owen's. At n = 2^m every coordinate has one
+point in each of its 2^m equal intervals; the budgets 100, 300 and 1 000 are
+not powers of two, and their first n points are not balanced so — the plan
+is not rounded to one. Measured as the randomized Halton above (2026-10-10,
+10 seeds): the mean |r| over the pairs of coordinates is below Halton's and
+uniform points' at every d and n (0.003-0.053), and the discrepancy at or
+below Halton's; but at n = 100 with d = 30 and 50, and at n = 300 with d = 50,
+one pair of coordinates correlates to |r| 0.40, 0.75 and 0.26, above Halton's
+0.31, 0.35 and 0.20 — pairs of the sequence itself, which SciPy's scrambled
+Sobol shows alike and the scrambling keeps.
 """
 
 from __future__ import annotations
 
+import functools
 import math
 import warnings
+from pathlib import Path
 
-KINDS = ("sobol", "lhs", "halton_rand")
+KINDS = ("sobol", "lhs", "halton_rand", "sobol_owen")
 P_VALUES = (1, 2, 5, 10, 20, 50, 100)      # Morris & Mitchell 1995, Section 5
 FAC_T = 0.95                               # Section 4: "0.90 and 0.95"
 ACCEPT = 0.99                              # Section 4: t0 accepts a step of one level so
@@ -113,6 +147,8 @@ def design(kind: str, n: int, bounds, seed: int):
         return lo + U * (hi - lo)
     if kind == "halton_rand":
         return lo + randomized_halton(n, len(lo), seed) * (hi - lo)
+    if kind == "sobol_owen":
+        return lo + sobol_owen(n, len(lo), seed) * (hi - lo)
     try:
         from scipy.stats import qmc
     except ImportError as e:                        # pragma: no cover - machine-dependent
@@ -161,6 +197,96 @@ def randomized_halton(n: int, d: int, seed: int, start: int = 0):
             rest //= b
         X[:, j] = x
     return X
+
+
+# ── Sobol with Owen's scrambling ────────────────────────────────────────────
+
+SOBOL_BITS = 32
+_JOE_KUO = Path(__file__).with_name("_sobol") / "new-joe-kuo-6.21201"
+_MASK32 = 0xFFFFFFFF
+
+
+@functools.lru_cache(maxsize=None)
+def sobol_directions(d: int):
+    """(d, 32) integers: row j holds the direction numbers v_{k,j} 2^32,
+    k = 1..32, of coordinate j + 1 (Joe & Kuo's notes, Eq. 2: m_k = 2 a_1
+    m_{k-1} xor ... xor 2^(s-1) a_{s-1} m_{k-s+1} xor 2^s m_{k-s} xor m_{k-s},
+    v_k = m_k / 2^k)."""
+    import numpy as np
+    V = np.zeros((d, SOBOL_BITS), dtype=np.uint64)
+    V[0] = [1 << (SOBOL_BITS - k) for k in range(1, SOBOL_BITS + 1)]
+    if d > 1:
+        with open(_JOE_KUO, encoding="ascii") as fh:
+            next(fh)                                       # the header: d s a m_i
+            for j in range(1, d):
+                fields = fh.readline().split()
+                s, a = int(fields[1]), int(fields[2])
+                m = [int(v) for v in fields[3:3 + s]]
+                for k in range(s + 1, SOBOL_BITS + 1):
+                    mk = m[k - s - 1] ^ (m[k - s - 1] << s)
+                    for t in range(1, s):
+                        if (a >> (s - 1 - t)) & 1:       # a = (a_1 a_2 ... a_{s-1})_2
+                            mk ^= m[k - t - 1] << t
+                    m.append(mk)
+                V[j] = [m[k - 1] << (SOBOL_BITS - k) for k in range(1, SOBOL_BITS + 1)]
+    return V
+
+
+def sobol_integers(n: int, d: int, start: int = 0):
+    """Points start .. start + n - 1 of the Sobol sequence as 32-bit integers
+    (the coordinate times 2^32), in Gray-code order (Joe & Kuo's notes, Eq. 4)."""
+    import numpy as np
+    V = sobol_directions(d)
+    i = np.arange(start, start + n, dtype=np.uint64)
+    gray = i ^ (i >> np.uint64(1))
+    X = np.zeros((n, d), dtype=np.uint64)
+    for k in range(SOBOL_BITS):
+        X[((gray >> np.uint64(k)) & np.uint64(1)).astype(bool)] ^= V[:, k]
+    return X
+
+
+def _reverse_bits(x):
+    """The 32 low bits of x reversed."""
+    import numpy as np
+    for shift, mask in ((1, 0x55555555), (2, 0x33333333), (4, 0x0F0F0F0F), (8, 0x00FF00FF),
+                        (16, 0x0000FFFF)):
+        s, m = np.uint64(shift), np.uint64(mask)
+        x = ((x >> s) & m) | ((x & m) << s)
+    return x & np.uint64(_MASK32)
+
+
+def laine_karras(x, key: int):
+    """The Laine-Karras permutation of 32-bit integers (Burley 2020, Listing 1)."""
+    import numpy as np
+    m = np.uint64(_MASK32)
+    x = (x + np.uint64(key)) & m
+    for c in (0x6c50b47c, 0xb82f1e52, 0xc7afe638, 0x8d22f6e6):
+        x ^= (x * np.uint64(c)) & m
+    return x
+
+
+def nested_uniform_scramble(x, key: int):
+    """Owen's nested uniform scrambling of 32-bit integers (Burley 2020, Listing 2)."""
+    return _reverse_bits(laine_karras(_reverse_bits(x), key))
+
+
+def _splitmix64(z: int) -> int:
+    z = (z + 0x9E3779B97F4A7C15) & 0xFFFFFFFFFFFFFFFF
+    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & 0xFFFFFFFFFFFFFFFF
+    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & 0xFFFFFFFFFFFFFFFF
+    return z ^ (z >> 31)
+
+
+def sobol_owen(n: int, d: int, seed: int, start: int = 0):
+    """Points start .. start + n - 1 of the Owen-scrambled Sobol sequence in
+    [0, 1)^d (SOBOL-OWEN above), as an (n, d) array."""
+    import numpy as np
+    X = sobol_integers(n, d, start)
+    U = np.empty((n, d))
+    for j in range(d):
+        key = _splitmix64((seed & 0xFFFFFFFFFFFFFFFF) ^ _splitmix64(j + 1)) & _MASK32
+        U[:, j] = nested_uniform_scramble(X[:, j], key) * 2.0 ** -SOBOL_BITS
+    return U
 
 
 # ── maximin Latin hypercubes ────────────────────────────────────────────────

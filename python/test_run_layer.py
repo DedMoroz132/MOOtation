@@ -2542,7 +2542,8 @@ def baselines_spend_the_budget_exactly_and_answer_with_the_archive():
     from mootation.run.baselines import run_baseline
     from mootation.benchmarks import get
     p = get("ZDT1")
-    for name in ("random_search", "sobol_search", "lhs_search", "halton_search"):
+    for name in ("random_search", "sobol_search", "lhs_search", "halton_search",
+                 "sobol_owen_search"):
         if name == "sobol_search":
             try:
                 import scipy  # noqa: F401
@@ -2637,6 +2638,54 @@ def a_randomized_halton_plan_is_stratified_seeded_and_off_the_grid():
         return
     for d in (2, 10):
         h = np.mean([qmc.discrepancy(D.randomized_halton(256, d, s)) for s in range(20)])
+        u = np.mean([qmc.discrepancy(np.random.default_rng(s).random((256, d)))
+                     for s in range(20)])
+        assert h < u, (d, h, u)
+
+
+@test
+def an_owen_scrambled_sobol_plan_is_stratified_seeded_and_off_the_grid():
+    """designs.sobol_owen (task 6, items 12.2 and 12.5): unscrambled, the
+    points are Joe and Kuo's example and SciPy's Sobol(scramble=False); the
+    Laine-Karras permutation of 0 under Burley's seed is his Table 1's; at
+    n = 2^m each coordinate has one point in each of its 2^m intervals; no
+    coordinate exactly 0 or 1/2 over 10 seeds of 1 000 points; a seed is a
+    plan, another seed another; the plan extends; its centred L2 discrepancy
+    over 20 seeds is below uniform points' at d = 2 and 10."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    # "./sobol 10 3 new-joe-kuo-6.21201" on Joe and Kuo's page
+    page = [[0, 0, 0], [0.5, 0.5, 0.5], [0.75, 0.25, 0.25], [0.25, 0.75, 0.75],
+            [0.375, 0.375, 0.625], [0.875, 0.875, 0.125], [0.625, 0.125, 0.875],
+            [0.125, 0.625, 0.375], [0.1875, 0.3125, 0.9375], [0.6875, 0.8125, 0.4375]]
+    assert (D.sobol_integers(10, 3) / 2.0 ** 32).tolist() == page
+    assert int(D.laine_karras(np.array([0], dtype=np.uint64), 0x552553bc)[0]) == 0x71b1c2ac
+    x = np.arange(1000, dtype=np.uint64) * np.uint64(4294967)
+    assert np.array_equal(D._reverse_bits(D._reverse_bits(x)), x)
+    for m, d in ((10, 5), (7, 30)):
+        U = D.sobol_owen(2 ** m, d, 7)
+        for j in range(d):
+            assert len(np.unique(np.floor(U[:, j] * 2 ** m))) == 2 ** m, (m, j)
+    for seed in range(10):
+        X = D.sobol_owen(1000, 10, seed)
+        assert not ((X == 0.0) | (X == 0.5)).any() and X.min() > 0.0 and X.max() < 1.0, seed
+    A = D.design("sobol_owen", 300, [(0.0, 1.0), (-2.0, 2.0)], 11)
+    assert np.array_equal(A, D.design("sobol_owen", 300, [(0.0, 1.0), (-2.0, 2.0)], 11))
+    assert not np.array_equal(A, D.design("sobol_owen", 300, [(0.0, 1.0), (-2.0, 2.0)], 12))
+    B = D.sobol_owen(800, 5, 3)
+    assert np.array_equal(B[:500], D.sobol_owen(500, 5, 3))
+    assert np.array_equal(B[500:], D.sobol_owen(300, 5, 3, start=500))
+    try:
+        from scipy.stats import qmc
+    except ImportError:
+        return
+    assert np.array_equal(D.sobol_integers(1024, 40) / 2.0 ** 32,
+                          qmc.Sobol(40, scramble=False).random(1024))
+    for d in (2, 10):
+        h = np.mean([qmc.discrepancy(D.sobol_owen(256, d, s)) for s in range(20)])
         u = np.mean([qmc.discrepancy(np.random.default_rng(s).random((256, d)))
                      for s in range(20)])
         assert h < u, (d, h, u)

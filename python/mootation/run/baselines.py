@@ -22,6 +22,10 @@ converges to is decided by the archiver, not by how the points are drawn
   halton_search   a randomized Halton sequence (designs.py, after Owen 2017),
                   seeded per run; a sequence, so a smaller budget is the start
                   of the same run, as with sobol_search
+  sobol_owen_search
+                  the Sobol sequence with Owen's nested uniform scrambling
+                  (designs.py: Joe & Kuo's direction numbers, Burley's hash),
+                  seeded per run; a sequence too
 
 and two ablations (ablations.py), which take one ingredient of an EA away:
 
@@ -56,6 +60,7 @@ BASELINES = {
     "lhs_search": "a maximin Latin hypercube of the whole budget (Morris & Mitchell 1995), "
                   "archived, N chosen by DSS",
     "halton_search": "randomized Halton sampling (Owen 2017), archived, N chosen by DSS",
+    "sobol_owen_search": "Owen-scrambled Sobol sampling (Burley 2020), archived, N chosen by DSS",
     "random_selection_ea": "ablation: NSGA-II's SBX and polynomial mutation, survival "
                            "uniformly at random",
     "gsemo": "ablation: global SEMO on real variables, the nondominated set, N chosen by DSS",
@@ -114,9 +119,10 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
             with warnings.catch_warnings():         # "balance properties ... power of 2"
                 warnings.simplefilter("ignore")
                 return engine.random(k)
-    elif name in ("lhs_search", "halton_search"):
+    elif name in ("lhs_search", "halton_search", "sobol_owen_search"):
         from ..designs import design
-        kind = "lhs" if name == "lhs_search" else "halton_rand"
+        kind = {"lhs_search": "lhs", "halton_search": "halton_rand",
+                "sobol_owen_search": "sobol_owen"}[name]
         plan = design(kind, max_evaluations, [(0.0, 1.0)] * d, seed)
         served = [0]
 

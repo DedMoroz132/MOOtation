@@ -47,8 +47,8 @@ BY_HEADERS = frozenset({
 # at 180 evaluations, MOEA/D-AWA last, at 9 109 — and the other 46 and the four
 # baselines are the same up to 10 000 (the baselines up to their last, cut step).
 # lhs_search (2026-10-01) depends on its budget by construction: its Latin
-# hypercube is laid out for the whole budget at once. halton_search
-# (2026-10-10) does not: like sobol_search it draws a sequence.
+# hypercube is laid out for the whole budget at once. halton_search and
+# sobol_owen_search (2026-10-10) do not: like sobol_search they draw sequences.
 BUDGET_DEPENDENT = BY_HEADERS | {"lhs_search"}
 
 

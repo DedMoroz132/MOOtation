@@ -1,0 +1,6 @@
+new-joe-kuo-6.21201: the primitive polynomials and initial direction numbers of
+S. Joe and F. Y. Kuo, "Constructing Sobol sequences with better two-dimensional
+projections", SIAM J. Sci. Comput. 30:2635-2654, 2008, search criterion D(6), up to
+dimension 21201 — downloaded unchanged from https://web.maths.unsw.edu.au/~fkuo/sobol/
+on 2026-10-10 (last updated there on 16 September 2010). LICENSE.txt is the page's
+licence for sobol.cc and the direction numbers, unchanged (BSD style).

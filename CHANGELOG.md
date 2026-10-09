@@ -308,6 +308,15 @@ always listed under **Changed** or **Removed**.
   signed-rank test on the logarithms of the medians, and for every metric
   the sign test and the Hodges–Lehmann estimate (a ratio of medians for those
   two). The header says the order is by `+` minus `-`, not a rating.
+- An Owen-scrambled Sobol design (`mootation.designs`, task 6, item 12.2):
+  the Sobol sequence with Joe & Kuo's direction numbers (new-joe-kuo-6.21201,
+  shipped in `mootation/_sobol/` with its BSD licence; unscrambled, the
+  points are SciPy's bit for bit) under Owen's nested uniform scrambling by
+  Burley's hash (JCGT 9(4), 2020: bit reversal, the Laine-Karras
+  permutation, bit reversal), keyed by the run's seed and the coordinate.
+  `init = "sobol_owen"` and the baseline `sobol_owen_search`, not
+  budget-dependent; the header records its correlations and discrepancy
+  beside the randomized Halton's.
 - A randomized Halton design (`mootation.designs`, task 6, item 12.3), after
   Owen, "A randomized Halton algorithm in R" (arXiv:1706.02808, 2017, Eq. 5
   and Algorithm 1): every base-b digit of every coordinate through an
