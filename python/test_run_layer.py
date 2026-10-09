@@ -2801,7 +2801,8 @@ def campaign_rank_table():
         lines = p.read_text(encoding="utf-8").splitlines()
         assert lines[0].startswith("algorithm,mean_rank,problems,wins,DTLZ_mean_rank,DTLZ_problems")
         assert lines[1].startswith("a,1.5,4,3,"), lines[1]
-        assert lines[0].endswith(",short_answers") and lines[1].endswith(",0"), lines[:2]
+        assert lines[0].endswith(",short_answers,empty_runs") and lines[1].endswith(",0,0"), \
+            lines[:2]
     # task 5: an answer of fewer than N/2 points is counted beside the rank
     short = [dict(x, pop=10, final=dict(x["final"], n_final=3 if x["algorithm"] == "b" else 8))
              for x in rows]
@@ -4007,6 +4008,393 @@ archive = false
         assert sb["evaluations"] == meta["fe"] == sb["all"]["points"], (sb["evaluations"], meta["fe"])
         assert sum(sb["all"]["hist"]) == 10 * sb["all"]["points"], sb["all"]
         assert 0 < sb["nondominated"]["points"] < sb["all"]["points"], sb["nondominated"]
+
+
+# ── task 6, item 5: C-DTLZ and the indicators of a constrained problem ──────
+
+# pymoo 0.6.2's C-DTLZ (problems/many/cdtlz.py, Apache-2.0) at the points of
+# c_dtlz_fixed_points: (objectives, constraints), <= 0 satisfied. The convex
+# C2-DTLZ2, for which pymoo has no class, is its DTLZ2 turned convex (f_i^4,
+# f_M^2) under its constraint_c4_cylindrical, the paper's Eq. 6.
+C_DTLZ_PYMOO = {
+    "C1-DTLZ1_3D": [
+        ([59.7984043146437, 118.137038268974, 69.8737772743156],
+         [471.327180624427]),
+        ([88.9682583664649, 115.05557038731, 45.3836916666593],
+         [482.687143618648]),
+        ([123.325279701835, 106.730020890775, 20.5403237653231],
+         [493.344474127426]),
+        ([11.6481296007396, 23.0119105714592, 13.6107112340644],
+         [91.0045990678383]),
+        ([61.8356237688568, 79.9670926868747, 31.5430349505318],
+         [335.177157829016]),
+    ],
+    "C1-DTLZ3_3D": [
+        ([378.041371309325, 220.432887766739, 922.570821542082],
+         [-1087002992591.2]),
+        ([224.323791039201, 183.254881448657, 985.648141542881],
+         [-1113778974154.13]),
+        ([87.4754767992258, 97.9946256132122, 1014.5968659256],
+         [-1095399201993.48]),
+        ([71.1148807980232, 41.4665159085698, 173.548502838375],
+         [-1357728433.99052]),
+        ([151.186148241474, 123.507183720111, 664.291314581048],
+         [-229772324436.839]),
+    ],
+    "C2-DTLZ2_3D": [
+        ([0.684588560766381, 0.399178092226137, 1.67066749529848],
+         [0.917799536095413]),
+        ([0.41736525869089, 0.340954566824441, 1.83384602082331],
+         [0.825742962243431]),
+        ([0.159784418525468, 0.178998901694088, 1.85328249918289],
+         [0.625662690623007]),
+        ([0.370600175935276, 0.216093986500306, 0.904411354746914],
+         [0.0331782905061725]),
+        ([0.219229662775171, 0.179093379599993, 0.963265236756179],
+         [-0.0785144735123583]),
+    ],
+    "C2-ConvexDTLZ2_3D": [
+        ([0.21964359926911, 0.02539023923308, 2.79112987984688],
+         [-4.71590560624918]),
+        ([0.0303434657310284, 0.0135140663684382, 3.3629912280895],
+         [-7.39131553117562]),
+        ([0.000651835045328287, 0.00102660048460497, 3.43465602177757],
+         [-7.81010696590413]),
+        ([0.0188635090441306, 0.00218057347903423, 0.817959898595148],
+         [-0.384151422473147]),
+        ([0.00230992172400047, 0.00102876961256665, 0.927879916342938],
+         [-0.521286501495012]),
+    ],
+    "C3-DTLZ1_3D": [
+        ([59.7984043146437, 118.137038268974, 69.8737772743156],
+         [-306.607624172577, -364.946258126907, -316.682997132248]),
+        ([88.9682583664649, 115.05557038731, 45.3836916666593],
+         [-337.375778786899, -363.463090807744, -293.791212087093]),
+        ([123.325279701835, 106.730020890775, 20.5403237653231],
+         [-372.920904059768, -356.325645248708, -270.135948123256]),
+        ([11.6481296007396, 23.0119105714592, 13.6107112340644],
+         [-58.9188810070028, -70.2826619777224, -60.8814626403276]),
+        ([61.8356237688568, 79.9670926868747, 31.5430349505318],
+         [-234.18137517512, -252.312844093138, -203.888786356795]),
+    ],
+    "C3-DTLZ4_3D": [
+        ([1.40783736378174, 9.7137204167572e-48, 9.10274982407908e-15],
+         [0.504498489285019, -0.982006042859924, -0.982006042859924]),
+        ([1.43980337503174, 2.04099820292739e-36, 4.28112523765757e-09],
+         [0.481741560311801, -1.0730337587528, -1.0730337587528]),
+        ([1.46356538642609, 1.92096083262571e-27, 0.000444025668062882],
+         [0.464493892755065, -1.14202383750336, -1.14202368963426]),
+        ([1.0005, 6.90319601325218e-48, 6.46900091820764e-15],
+         [0.7497499375, -0.00100024999999992, -0.00100024999999992]),
+        ([1.002, 1.4203885299881e-36, 2.97935646111283e-09],
+         [0.748999, -0.0040039999999999, -0.0040039999999999]),
+    ],
+    "C1-DTLZ1_5D": [
+        ([36.1218374535393, 27.0132218586119, 3.03717546512012, 130.729104259922,
+          77.3215280167352],
+         [521.671891435612]),
+        ([3.54171545726692, 1.72762838741242, 92.1271873706594, 125.955185124205,
+          49.6830467768852],
+         [528.508510640564]),
+        ([16.1633356690998, 4.76994112552867, 114.907149541453, 117.561067574421,
+          22.6247720184261],
+         [543.510941185049]),
+        ([6.35843485552335, 4.75506849967716, 0.53462624553912, 23.0119105714592,
+          13.6107112340644],
+         [91.0045990678383]),
+        ([2.24858300166456, 1.09684582852584, 58.4901949386664, 79.9670926868747,
+          31.5430349505318],
+         [335.177157829016]),
+    ],
+    "C1-DTLZ3_5D": [
+        ([17.5977005666561, 22.1171892212406, 391.349728325773, 228.787232930179,
+          957.535999193056],
+         [-1261322431809.4]),
+        ([114.026429374905, 201.47732425991, 19.7216343864504, 189.807371500353,
+          1020.89112983807],
+         [-1281748885880.08]),
+        ([31.0302444335286, 82.95988644939, 21.8691001705988, 102.204099285361, 1058.18006008785],
+         [-1296018463027.65]),
+        ([3.18949322982626, 4.00862743497276, 70.9301368244946, 41.4665159085698,
+          173.548502838375],
+         [-1354953222.94151]),
+        ([74.196713491333, 131.100792904447, 12.8328183577615, 123.507183720111,
+          664.291314581048],
+         [-229736251225.296]),
+    ],
+    "C2-DTLZ2_5D": [
+        ([0.0304706544058254, 0.0382962095892014, 0.677627300138466, 0.396148160418738,
+          1.65798641714771],
+         [0.801453308495799]),
+        ([0.201216973509685, 0.355537375331783, 0.0348018227498706, 0.334943969152602,
+          1.80151763547293],
+         [0.672724244998741]),
+        ([0.0554638619600905, 0.148283578626342, 0.0390891137081371, 0.182680934617247,
+          1.89140478436634],
+         [0.604567031948086]),
+        ([0.0166213700825164, 0.0208901149237555, 0.369637421750437, 0.216093986500306,
+          0.904411354746914],
+         [-0.0568217094938274]),
+        ([0.107590018443692, 0.19010460252016, 0.0186084140230469, 0.179093379599993,
+          0.963265236756179],
+         [-0.168514473512358]),
+    ],
+    "C2-ConvexDTLZ2_5D": [
+        ([8.62039419848259e-07, 2.1509145888177e-06, 0.21084513170011, 0.0246280810512119,
+          2.74891895944631],
+         [-5.76966973331538]),
+        ([0.00163930004228304, 0.0159786854717592, 1.46692517902439e-06, 0.0125860267358389,
+          3.24546579091998],
+         [-8.33683515985183]),
+        ([9.4632524362562e-06, 0.000483473009898146, 2.33465812654689e-06, 0.00111371200065977,
+          3.57741205832389],
+         [-10.1853751865018]),
+        ([7.63250816372747e-08, 1.90442255662988e-07, 0.0186682552088692, 0.00218057347903423,
+          0.817959898595148],
+         [-0.478066548663102]),
+        ([0.000133994794765356, 0.00130608224558252, 1.19905040706128e-07, 0.00102876961256665,
+          0.927879916342938],
+         [-0.637229112541956]),
+    ],
+    "C3-DTLZ1_5D": [
+        ([36.1218374535393, 27.0132218586119, 3.03717546512012, 130.729104259922,
+          77.3215280167352],
+         [-309.344704507468, -300.23608891254, -276.260042519049, -403.95197131385,
+          -350.544395070664]),
+        ([3.54171545726692, 1.72762838741242, 92.1271873706594, 125.955185124205,
+          49.6830467768852],
+         [-275.576478573696, -273.762391503842, -364.161950487089, -397.989948240635,
+          -321.717809893315]),
+        ([16.1633356690998, 4.76994112552867, 114.907149541453, 117.561067574421,
+          22.6247720184261],
+         [-291.189601598029, -279.796207054458, -389.933415470382, -392.58733350335,
+          -297.651037947355]),
+        ([6.35843485552335, 4.75506849967716, 0.53462624553912, 23.0119105714592,
+          13.6107112340644],
+         [-53.6291862617866, -52.0258199059404, -47.8053776518023, -70.2826619777224,
+          -60.8814626403276]),
+        ([2.24858300166456, 1.09684582852584, 58.4901949386664, 79.9670926868747,
+          31.5430349505318],
+         [-174.594334407928, -173.442597234789, -230.83594634493, -252.312844093138,
+          -203.888786356795]),
+    ],
+    "C3-DTLZ4_5D": [
+        ([1.43031003708889, 1.26320600690361e-24, 0.02046721678758, 9.86978649937e-48,
+          9.24899971033251e-15],
+         [0.488134392487665, -1.04620570916025, -1.04589152893798, -1.04620570916025,
+          -1.04620570916025]),
+        ([1.40669439005996, 1.23036065344279e-17, 4.63046436309942e-127, 1.99406444794389e-36,
+          4.18267866251128e-09],
+         [0.505302723243461, -0.978789107026155, -0.978789107026155, -0.978789107026155,
+          -0.978789107026155]),
+        ([1.46652437881813, 1.35452422387409e-11, 1.39067988622334e-81, 1.92484457334673e-27,
+          0.000444923385777343],
+         [0.462326363626204, -1.15069395162473, -1.15069395162473, -1.15069395162473,
+          -1.15069380315711]),
+        ([1.000397581688, 8.83520496753379e-25, 0.0143153258015671, 6.90319601325218e-48,
+          6.46900091820764e-15],
+         [0.749596241085396, -0.00100024999999992, -0.000846553585396204, -0.00100024999999992,
+          -0.00100024999999992]),
+        ([1.002, 8.76396027069628e-18, 3.29831790374017e-127, 1.4203885299881e-36,
+          2.97935646111283e-09],
+         [0.748999, -0.0040039999999999, -0.0040039999999999, -0.0040039999999999,
+          -0.0040039999999999]),
+    ],
+}
+
+
+def c_dtlz_fixed_points(name: str, M: int) -> list:
+    """Five points of a C-DTLZ problem: x_i = (0.1 j + 0.61803398875 i) mod 1,
+    i = 1..n, for j = 1, 2, 3, and the first two again with the distance
+    variables at 0.5 + 0.01 j, near the front."""
+    import numpy as np
+    from mootation.benchmarks import c_dtlz
+    i = np.arange(1, c_dtlz.n_vars(name, M) + 1)
+    X = [(0.1 * j + 0.61803398875 * i) % 1.0 for j in (1, 2, 3)]
+    for j in (1, 2):
+        x = X[j - 1].copy()
+        x[M - 1:] = 0.5 + 0.01 * j
+        X.append(x)
+    return [list(x) for x in X]
+
+
+@test
+def c_dtlz_matches_pymoo():
+    """C1-DTLZ1, C1-DTLZ3, C2-DTLZ2, C2-ConvexDTLZ2, C3-DTLZ1 and C3-DTLZ4 at
+    three and five objectives give pymoo's objectives and constraints at five
+    points each, to 1e-12 relative (task 6, item 5.3)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import get, names
+    assert sorted(C_DTLZ_PYMOO) == sorted(n for n in names() if n[:3] in ("C1-", "C2-", "C3-"))
+    for key, rows in C_DTLZ_PYMOO.items():
+        name, M = key.split("_")[0], int(key.split("_")[1][:-1])
+        p = get(key)
+        assert p.has_cons and p.n_obj == M, key
+        for x, (f, g) in zip(c_dtlz_fixed_points(name, M), rows):
+            for mine, theirs in ((p.evaluate(x), f), (p.constraints(x), g)):
+                assert len(mine) == len(theirs), key
+                for a, b in zip(mine, theirs):
+                    assert abs(a - b) <= 1e-12 * max(1.0, abs(b)), (key, a, b)
+
+
+@test
+def c_dtlz_fronts_are_feasible_and_the_constraints_point_the_right_way():
+    """Every reference front is feasible (to 1e-12: C3's lies on its
+    constraints) and mutually non-dominated, its extremes the registered
+    frame; the Pareto sets are feasible with g = 0. The sign: C1-DTLZ1 is
+    infeasible just above its band and feasible just below, C3-DTLZ1 and
+    C3-DTLZ4 are feasible off the unconstrained front and infeasible on it
+    (task 6, item 5.3)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import c_dtlz, get
+    from mootation.benchmarks.registry import APPROXIMATE_FRONT, _strictly_dominated_by
+    for key in C_DTLZ_PYMOO:
+        name, p = key.split("_")[0], get(key)
+        F = p.pareto_front(300)
+        worst = max(max(c_dtlz.constraints(name, f, p.n_obj)) for f in F)
+        assert worst <= 1e-12, (key, worst)
+        assert not _strictly_dominated_by(F, F).any(), key
+        assert np.allclose(F.min(0), p.ideal, atol=1e-12), (key, F.min(0))
+        assert np.allclose(F.max(0), p.nadir, atol=1e-12), (key, F.max(0))
+        if p.pareto_set is not None:
+            for x in p.pareto_set(40):
+                assert max(p.constraints(list(x))) <= 0.0 and p.distance_fn(list(x)) == 0.0, key
+    assert APPROXIMATE_FRONT == {"C2-ConvexDTLZ2_3D", "C2-ConvexDTLZ2_5D"}
+    assert [get(k).pareto_set is None for k in ("C2-DTLZ2_3D", "C2-ConvexDTLZ2_3D",
+                                               "C3-DTLZ1_3D", "C3-DTLZ4_5D")] == \
+        [False, True, True, True]
+
+    def dtlz1_x(positions, g, k):
+        """DTLZ1's x with these positions and g(x) = g: one distance variable
+        at 0.5 + d, where g = 100 (1 + d^2 - cos(20 pi d)) grows with d."""
+        lo, hi = 0.0, 0.05
+        for _ in range(100):
+            mid = 0.5 * (lo + hi)
+            if 100.0 * (1.0 + mid * mid - math.cos(20.0 * math.pi * mid)) < g:
+                lo = mid
+            else:
+                hi = mid
+        return list(positions) + [0.5 + hi] + [0.5] * (k - 1)
+
+    def feasible(key, x):
+        return max(get(key).constraints(x)) <= 0.0
+
+    # C1-DTLZ1 at (0, 0, f_3): f_3 = 0.5 (1 + g), the band's top f_3 = 0.6 at g = 0.2
+    above, below = dtlz1_x([0, 0], 0.2 * (1 + 1e-6), 5), dtlz1_x([0, 0], 0.2 * (1 - 1e-6), 5)
+    assert abs(get("C1-DTLZ1_3D").evaluate(above)[2] - 0.6) < 1e-6
+    assert not feasible("C1-DTLZ1_3D", above) and feasible("C1-DTLZ1_3D", below)
+    # C3-DTLZ1 at (f_1, 0, 0), f_1 = 0.5 (1 + g): feasible from g = 1, so at
+    # g = 1.5 (sum f = 1.25, off DTLZ1's front) and not on that front (g = 0)
+    off, on = dtlz1_x([1, 1], 1.5, 5), [1, 1] + [0.5] * 5
+    assert abs(sum(get("C3-DTLZ1_3D").evaluate(off)) - 1.25) < 1e-9
+    assert feasible("C3-DTLZ1_3D", off) and not feasible("C3-DTLZ1_3D", on)
+    # C3-DTLZ4 at (1 + g, 0, 0): feasible from g = 1; g = sum (x - 1/2)^2 = 1.21
+    off = [0, 0, 1, 1, 1, 1, 0.5 + math.sqrt(0.21)]
+    assert abs(get("C3-DTLZ4_3D").evaluate(off)[0] - 2.21) < 1e-9
+    assert feasible("C3-DTLZ4_3D", off) and not feasible("C3-DTLZ4_3D", [0, 0] + [0.5] * 5)
+
+
+@test
+def a_constrained_answer_is_measured_on_its_feasible_part():
+    """metrics.compute with constraints: the indicators of the feasible rows
+    and feas_share; no feasible row, no value (None, n_final 0). The tables
+    count such an empty run, rank it as the worst value and say so (task 6,
+    item 5.2)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.run import campaign as C
+    from mootation.run import metrics as M
+
+    def cons(x):                                   # feasible when x_0 <= 0.5
+        return [x[0] - 0.5]
+
+    X = np.array([[0.2, 0.0], [0.4, 0.0], [0.9, 0.0], [0.7, 0.0]])
+    F = np.array([[0.2, 0.8], [0.4, 0.6], [0.0, 0.0], [0.7, 0.3]])
+    ref = np.array([[0.0, 1.0], [0.5, 0.5], [1.0, 0.0]])
+    kw = dict(ref_front=ref, ideal=(0.0, 0.0), nadir=(1.0, 1.0), which=("igdp", "n_final"))
+    got = M.compute(F, X=X, constraints=cons, **kw)
+    assert got["feas_share"] == 0.5 and got["n_final"] == 2, got
+    assert got["igdp"] == M.compute(F[:2], **kw)["igdp"]
+    none = M.compute(F[2:], X=X[2:], constraints=cons, **kw)
+    assert none == {"feas_share": 0.0, "igdp": None, "n_final": 0}, none
+    assert "variables" in str(raises(ValueError, M.compute, F, constraints=cons, **kw))
+
+    def row(problem, alg, seed, v):
+        final = ({"igdp_norm": None, "hv": None, "feas_share": 0.0} if v is None else
+                 {"igdp_norm": v, "hv": 1.0 - v, "feas_share": 1.0})
+        return {"problem": problem, "algorithm": alg, "seed": seed, "status": "done",
+                "final": final, "n_objs": 3}
+
+    rows = [row("P1", "a", s, 0.1) for s in (1, 2, 3)] + \
+           [row("P1", "b", 1, 0.05), row("P1", "b", 2, None), row("P1", "b", 3, None)] + \
+           [row("P2", "a", s, 0.3) for s in (1, 2, 3)] + \
+           [row("P2", "b", s, 0.2) for s in (1, 2)] + [row("P2", "b", 3, None)]
+    for metric in ("igdp_norm", "hv"):
+        empty: dict = {}
+        table = C.compare_table(rows, metric, empty=empty)
+        assert empty == {("P1", "b"): 2, ("P2", "b"): 1}, empty
+        assert table["P1"]["b"][3] == 3 and not math.isfinite(table["P1"]["b"][0]), table
+        assert math.isfinite(table["P2"]["b"][0]), table          # one of three: the median holds
+        e = dict(C.rank_table(rows, metric)["algorithms"])
+        assert e["b"]["empty"] == 3 and e["a"]["empty"] == 0, e
+        assert e["b"]["all"][0] == 1.5 and e["a"]["all"][0] == 1.5, e   # last on P1, first on P2
+    text = C.format_ranks(C.rank_table(rows, "igdp_norm"))
+    assert "empty" in text.splitlines()[1] and "no feasible point" in text, text
+
+
+@test
+def a_campaign_on_a_constrained_problem_records_feasibility():
+    """A run on C-DTLZ records feas_share wherever it measures, fe_first_feas
+    in final, and its indicators only where the answer has a feasible point;
+    the archive keeps feasible points only (task 6, item 5.2)."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_on_a_constrained...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "c"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["C1-DTLZ3_3D", "C1-DTLZ1_3D"]
+[campaign]
+out = "res"
+budget_fe = 400
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm", "n_final"]
+archive = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for problem in ("C1-DTLZ3_3D", "C1-DTLZ1_3D"):
+            run = root / problem / "nsga2" / "run_1"
+            meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+            final, first = meta["final"], meta["final"]["fe_first_feas"]
+            assert (first is None) == (final["feas_share"] == 0.0), (problem, final)
+            assert (final["igdp_norm"] is None) == (final["feas_share"] == 0.0), (problem, final)
+            assert meta["final_archive"]["feas_share"] == (0.0 if first is None else 1.0), meta
+            traj = C.read_trajectory(run)
+            assert all("feas_share" in t for t in traj), traj[0]
+        # outside the shell 16 <= sum f^2 <= 81 every DTLZ3 point is feasible
+        meta = json.loads((root / "C1-DTLZ3_3D" / "nsga2" / "run_1" / "meta.json")
+                          .read_text(encoding="utf-8"))
+        assert meta["final"]["fe_first_feas"] == 1, meta["final"]
+        assert C.recompute_final(root, ["igdp_norm"]) == {"done": 2}
 
 
 # ── task 2, step 3: operators and switchable variation ──────────────────────

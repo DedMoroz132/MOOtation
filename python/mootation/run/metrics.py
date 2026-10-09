@@ -617,9 +617,17 @@ def eps_mult(A, B):
     return float(R.max(axis=2).min(axis=1).max())
 
 
+def feasible_mask(X, constraints) -> np.ndarray:
+    """Which rows of X satisfy every constraint: constraints(x) is a list of
+    values, each <= 0 when satisfied (the library's sign, BenchProblem)."""
+    X = np.asarray(X, float).reshape(len(X), -1) if len(X) else np.zeros((0, 0))
+    return np.array([all(c <= 0.0 for c in constraints(list(x))) for x in X], bool)
+
+
 def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             pop: int | None = None, hv_options: dict | None = None, X=None,
-            pareto_set=None, bounds=None, cyclic=(), distance_fn=None) -> dict:
+            pareto_set=None, bounds=None, cyclic=(), distance_fn=None,
+            constraints=None) -> dict:
     """Every requested indicator in one dict; missing inputs give None.
 
     `pop` is the problem's default population size. hv_h places its reference
@@ -629,9 +637,25 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
     decision-space indicators need the solutions `X` and the problem's
     `bounds`, igdx, cr and ps_dmin a `pareto_set` sample besides, and g_min
     and g_median the problem's `distance_fn`.
+
+    `constraints`, a constrained problem's (BenchProblem.constraints), needs
+    `X` too: every indicator is then measured on the feasible part of the set
+    alone, and feas_share, the feasible share of the set, is added (task 6 of
+    2026-10-09, item 5.2). A set without a feasible point, an empty one
+    included, has feas_share 0 and no value for any indicator: None, not 0 and
+    not infinity (n_final 0).
     """
     out: dict = {}
     F = np.asarray(F, float)
+    if constraints is not None:
+        if X is None:
+            raise ValueError("a constrained problem's indicators need the variables X")
+        ok = feasible_mask(X, constraints)
+        out["feas_share"] = float(ok.mean()) if len(ok) else 0.0
+        if not ok.any():
+            out.update({name: (0 if name == "n_final" else None) for name in which})
+            return out
+        F, X = F[ok], np.asarray(X, float)[ok]
     hvo = dict(hv_options or {})
     have_box = ideal is not None and nadir is not None
     # igdp_norm, gdp_norm, eps_norm, tau90 and gap_max read the same normalised

@@ -15,6 +15,7 @@
 #   wideDTLZ3 x M={3,5} DTLZ3 with the distance variables in [0, 1.2] (ours)
 #   shiftZDT1-4, shiftZDT6, shiftDTLZ6-7
 #                       the distance optimum off the bound (ours, shifted.py)
+#   C-DTLZ x M={3,5}    Jain & Deb 2014, constrained DTLZ (c_dtlz.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -55,6 +56,7 @@ from . import uninformative as _uninf
 from . import pareto_sets as _psets
 from . import shifted as _shift
 from . import distances as _dist
+from . import c_dtlz as _cd
 
 
 # =============================================================
@@ -81,8 +83,8 @@ class BenchProblem:
     # A sampler of the true Pareto SET, in decision space, for IGDX and CR
     # (benchmarks/pareto_sets.py): IPolygon, Polygon, ZDT1-4 and 6, DTLZ1-4
     # and 7, DTLZ5-6 up to three objectives, IDTLZ, SDTLZ, minusDTLZ2, the
-    # shift and wide variants, ZCAT. None elsewhere, and the decision-space
-    # indicators say nothing there.
+    # shift and wide variants, ZCAT, C1-DTLZ1/3 and C2-DTLZ2. None elsewhere,
+    # and the decision-space indicators say nothing there.
     pareto_set: Optional[Callable[[int], "np.ndarray"]] = None
     # Variables whose distance wraps with the period of their range: the
     # problem reads them mod 1 (shiftDTLZ's distance variables).
@@ -303,6 +305,14 @@ FULL_FRONT: set[str] = set()
 # A problem whose reference front and frame are another's, row for row: the
 # shifted copies (shifted.py) -> their base problem.
 FRAME_OF: Dict[str, str] = {}
+
+# Problems whose ideal and nadir are set exactly at registration and are not
+# read off a front sample (C-DTLZ: c_dtlz.py, FRONTS).
+EXACT_FRAME: set[str] = set()
+
+# Problems whose reference front is a verified sample, not an analytic one
+# (C2-ConvexDTLZ2: c_dtlz.convex_c2_front); cover.reference_caveat says so.
+APPROXIMATE_FRONT: set[str] = set()
 
 
 def degenerate_subset_note(name: str) -> str | None:
@@ -1680,16 +1690,50 @@ def _register_ipolygon():
             pareto_front=_pf, pareto_set=_ps)
 
 
+# =============================================================
+#  C-DTLZ x M={3,5}: Jain & Deb's constrained DTLZ (c_dtlz.py, task 6 of
+#  2026-10-09, item 5). The constraints in the library's sign, <= 0
+#  satisfied; ideal and nadir exact (the fronts' corners, c_dtlz.py FRONTS).
+# =============================================================
+def _register_c_dtlz():
+    for M in _cd.SIZES:
+        pop, ng = _budget(M)
+        for name in _cd.NAMES:
+            n_vars = _cd.n_vars(name, M)
+            top = {"C1-DTLZ1": 0.5, "C3-DTLZ4": 2.0}.get(name, 1.0)
+            ideal, nadir = (0.0,) * M, (top,) * M
+            def _eval(x, _n=name, _M=M): return _cd.objectives(_n, x, _M)
+            def _cons(x, _n=name, _M=M): return _cd.constraints(_n, _cd.objectives(_n, x, _M), _M)
+            def _pf(n, _n=name, _M=M): return _cd.front(_n, _M, n, _dd_simplex, _dd_sphere)
+            _ps = None
+            if name in ("C1-DTLZ1", "C1-DTLZ3", "C2-DTLZ2"):
+                def _ps(n, _n=name, _M=M): return _cd.pareto_set(_n, _M, n, _psets.dtlz)
+            key = f"{name}_{M}D"
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
+                evaluate=_eval, constraints=_cons,
+                hv_ref_raw=tuple(v * 1.1 for v in nadir),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+                ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=True,
+                pareto_front=_pf, pareto_set=_ps)
+            EXACT_FRAME.add(key)
+            if name == "C2-ConvexDTLZ2":
+                APPROXIMATE_FRONT.add(key)
+
+
 _register_dtlz_variants()
 _register_maf_fix()
 _register_bt()
 _register_ipolygon()
+_register_c_dtlz()
 
 
 def _attach_distances():
     """distance_fn (distances.py) for every problem built on a g of its own:
     ZDT1-4 and 6, DTLZ1-4 and 7, DTLZ5/6 up to three objectives, the IDTLZ,
-    SDTLZ and wideDTLZ3, and the shift variants read through their shift."""
+    SDTLZ and wideDTLZ3, the shift variants read through their shift, and
+    C1-DTLZ1/3 and C2-DTLZ2, whose Pareto sets are their DTLZ's g = 0."""
     from .dtlz_variants import cyclic_input
     for name, p in PROBLEMS.items():
         stem, M = name.split("_")[0], p.n_obj
@@ -1703,6 +1747,8 @@ def _attach_distances():
             p.distance_fn = _dist.dtlz(stem, M)
         elif stem in ("IDTLZ1", "IDTLZ2", "SDTLZ1", "SDTLZ2", "wideDTLZ3"):
             p.distance_fn = _dist.dtlz("DTLZ" + stem[-1], M)
+        elif stem in ("C1-DTLZ1", "C1-DTLZ3", "C2-DTLZ2"):     # their Pareto sets have g = 0
+            p.distance_fn = _dist.dtlz(_cd.BASE[stem], M)
         elif stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):
             p.distance_fn = _dist.dtlz(stem[5:], M, lambda x, _M=M: cyclic_input(x, _M))
         elif stem in ("shiftDTLZ6", "shiftDTLZ7"):
@@ -1863,7 +1909,7 @@ def _reframe_table() -> dict:
 
 def _reframe_one(name: str, p: "BenchProblem", n: int = 500) -> None:
     """Set p.ideal / p.nadir from the true PF, once."""
-    if name in _REFRAMED:
+    if name in _REFRAMED or name in EXACT_FRAME:
         return
     _REFRAMED.add(name)
 

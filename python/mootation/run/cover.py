@@ -174,6 +174,8 @@ def reference_caveat(problem: str, version: int | None = None) -> str | None:
         return "degenerate WFG3 front; the reference sample is incomplete"
     if family == "DTLZ1" and m == 5:
         return "a fifth of the reference lies on the front's boundary"
+    if family == "C2-ConvexDTLZ2":
+        return "the reference is a verified sample, not analytic (c_dtlz.convex_c2_front)"
     if version < 2 and family == "IPolygon":
         return "reference v1: the polygons are too close, most of the reference is dominated"
     if version < 2 and (family, m) in (("WFG1", 5), ("WFG1", 8), ("WFG1", 10), ("WFG2", 5),

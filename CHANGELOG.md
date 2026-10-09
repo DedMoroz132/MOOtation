@@ -245,6 +245,26 @@ always listed under **Changed** or **Removed**.
   over the set (`BenchProblem.distance_fn`, `benchmarks/distances.py`: ZDT,
   DTLZ and their variants), exact and without a reference; `ps_dmin`, the
   smallest distance from a solution to the Pareto-set sample.
+- C-DTLZ (`benchmarks/c_dtlz.py`, task 6, item 5): Jain & Deb's constrained
+  DTLZ (IEEE TEVC 18(4), 2014) — C1-DTLZ1, C1-DTLZ3, C2-DTLZ2,
+  C2-ConvexDTLZ2, C3-DTLZ1, C3-DTLZ4 — at three and five objectives, the
+  registry's first constrained family besides MaF9. Constraints in the
+  library's sign (at most 0 when satisfied, the paper's c >= 0 turned); two
+  equations read as pymoo reads them, written down in the module's header,
+  and the values agree with pymoo 0.6.2 at fixed points to 1e-12. Analytic
+  fronts and exact frames; Pareto sets and g for C1 and C2-DTLZ2. The front of
+  C2-ConvexDTLZ2 is larger than the paper's: behind the hole the cylinder
+  cuts in the convex front, points of larger g are Pareto-optimal too; it is
+  sampled and checked point by point (`registry.APPROXIMATE_FRONT`, a
+  `--cover` caveat). 477 problems in 19 families.
+- Indicators of a constrained problem (task 6, item 5.2): every indicator is
+  measured on the feasible part of the answer (`metrics.compute(...,
+  constraints=)`), `feas_share` is recorded beside them and `fe_first_feas`,
+  the first evaluation to give a feasible point, in `final`. An answer
+  without a feasible point has no value — none, not 0 or infinity — and is
+  counted apart: `--compare` writes "k empty" in its cell, `--ranks` (and its
+  CSV) an `empty` column, and in the median it counts as the worst value. A
+  constrained run keeps its variables in snapshots and checkpoints.
 - Maximin Latin hypercubes (`mootation.designs`, after Morris & Mitchell,
   "Exploratory designs for computational experiments", 1995): their φ_p
   criterion and annealing search, once per p of their Section 5, the best by

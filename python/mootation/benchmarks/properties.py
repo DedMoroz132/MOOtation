@@ -35,6 +35,8 @@ Huband analyses:
               the centre (dtlz_variants.py): not medial, the point of them
   wideDTLZ3   DTLZ3 with the distance variables in [0, 1.2]: DTLZ3's row,
               but not medial (the optimum at 0.5, the middle of the box at 0.6)
+  C-DTLZ      Jain & Deb 2014 (c_dtlz.py): C1 and C2-DTLZ2 their DTLZ's row,
+              the rest ours (see _CDTLZ below)
   shiftZDT1-4, shiftZDT6, shiftDTLZ6-7
               the base problem's row with every distance variable's optimum
               0.15-0.35 from the centre and from the bounds (shifted.py):
@@ -171,6 +173,24 @@ _DTLZ = {
     "DTLZ7": _p("disconnected", True, False, False, True, False, True),
 }
 
+# C-DTLZ (Jain & Deb 2014; c_dtlz.py). C1 and C2-DTLZ2 keep their DTLZ's row,
+# C2-DTLZ2's front cut into pieces; the rest is ours, read off c_dtlz.py's
+# FRONTS: C2-ConvexDTLZ2's front is the convex one with a hole and the points
+# behind it, C3-DTLZ1's piecewise linear and bent towards the ideal point
+# (convex), C3-DTLZ4's pieces of ellipsoids, concave, meeting in kinks that
+# point to the ideal point (mixed). Where the Pareto set needs g > 0 (C3, and
+# C2-ConvexDTLZ2 behind the hole) its distance variables lie on level sets of
+# g: separable and centre unknown, None; C3-DTLZ4's g reaches 1 at the
+# corners, so not medial there.
+_CDTLZ = {
+    "C1-DTLZ1": dict(_DTLZ["DTLZ1"]),
+    "C1-DTLZ3": dict(_DTLZ["DTLZ3"]),
+    "C2-DTLZ2": dict(_DTLZ["DTLZ2"], front="concave+disconnected"),
+    "C2-ConvexDTLZ2": _p("convex", False, False, False, None, None, False),
+    "C3-DTLZ1": _p("convex", True, False, False, None, None, False),
+    "C3-DTLZ4": _p("mixed", False, True, False, None, False, False),
+}
+
 # Table XV; its caption: no extremal nor medial parameters, dissimilar
 # tradeoff magnitudes for every WFG problem.
 _WFG = {
@@ -233,7 +253,8 @@ def properties(name: str) -> dict | None:
     row["disconnected"] = None if front is None else "disconnected" in front
     if stem.startswith("BT"):
         row["linkage"] = int(stem[2:]) in _BT_LINKAGE
-    elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "shiftZDT", "IDTLZ", "SDTLZ", "wideDTLZ")):
+    elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "shiftZDT", "IDTLZ", "SDTLZ", "wideDTLZ",
+                          "C1-DTLZ", "C2-DTLZ2")):
         row["linkage"] = False
     elif stem.startswith("ZCAT"):
         row["linkage"] = _LINKAGE["ZCAT"]
@@ -294,6 +315,8 @@ def _huband(name: str) -> dict | None:
         row = dict(_ZDT[stem[5:]])
         row["centre"] = row["boundary"] = False
         return row
+    if stem in _CDTLZ:
+        return dict(_CDTLZ[stem])
     if stem == "wideDTLZ3":
         row = dict(_DTLZ["DTLZ3"])
         row["centre"] = False

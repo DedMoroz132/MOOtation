@@ -19,13 +19,20 @@ METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_
 RUN_STATS = ("oob_share", "oob_var_share", "survival_share", "offspring_nd_share",
              "step_mean")
 
+# What a run on a constrained problem records besides (task 6 of 2026-10-09,
+# item 5.2), unasked: feas_share wherever an indicator is measured, which is
+# then measured on the feasible part of the answer (metrics.compute), and
+# fe_first_feas in `final`.
+FEASIBILITY = ("feas_share", "fe_first_feas")
+
 # Everything a table can be asked for.
-TABLE_NAMES = METRIC_NAMES + RUN_STATS
+TABLE_NAMES = METRIC_NAMES + RUN_STATS + FEASIBILITY
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
 # oriented the way a healthy run moves.
-HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pdist"})
+HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pdist",
+                              "feas_share"})
 
 # These compare the answer set with a sample of the true Pareto front, so a
 # problem without one gives None for them.
@@ -109,4 +116,9 @@ DESCRIPTIONS = {
     "survival_share": "share of offspring that entered the next population",
     "offspring_nd_share": "share of offspring no member of the parent population dominates",
     "step_mean": "mean distance from an offspring to the nearest parent, over ||ub - lb||",
+    "feas_share": "a constrained problem's: the share of the answer that satisfies every "
+                  "constraint; every other indicator is measured on that part, and an answer "
+                  "without one has no value (an empty run, counted apart and ranked worst)",
+    "fe_first_feas": "a constrained problem's: the evaluation that first gave a feasible "
+                     "point; none when the run found none",
 }

@@ -554,6 +554,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     def feasible(x) -> bool:
         return all(c <= 0.0 for c in p.constraints(x))
 
+    # A constrained problem's indicators are measured on the feasible part of
+    # each answer (metrics.compute), which needs its variables; fe_first_feas
+    # is the evaluation that first gave a feasible point (task 6, item 5.2).
+    cons = p.constraints if p.has_cons else None
+    fe_first_feas = None
     fe = 0
     # a problem whose values depend on the run (uninformative.py) gets its
     # evaluator from the run's seed; every other problem is its `evaluate`
@@ -567,24 +572,28 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     def take_hard_archive(b):
         AF, AX, _ = arc.points()
-        if len(AF):
+        if len(AF) or cons is not None:     # a constrained problem's empty archive: feas_share 0
             idx = arc.select(spec.answer_k or p.pop_size)
             hard_arc[str(b)] = dict(measure(AF[idx], AX[idx], traj_metrics), fe=fe,
                                     n=int(len(idx)))
 
     def evaluate(x):
-        nonlocal fe
+        nonlocal fe, fe_first_feas
         fe += 1
         f = objective(x)
-        if arc is not None and (not p.has_cons or feasible(x)):
+        ok = cons is None or feasible(x)
+        if cons is not None and ok and fe_first_feas is None:
+            fe_first_feas = fe
+        if arc is not None and ok:
             arc.add(f, x)
         if arc is not None and fe in hard:
             take_hard_archive(fe)
         return f
 
     snap = _snapshots_wanted(spec, job.problem)
-    # the variables go into the snapshots and checkpoints where snapshot_variables says so
-    keep_x = (spec.snapshot_variables == "all"
+    # the variables go into the snapshots and checkpoints where snapshot_variables
+    # says so, and always on a constrained problem, whose indicators need them
+    keep_x = (spec.snapshot_variables == "all" or cons is not None
               or (spec.snapshot_variables == "pareto_set" and callable(p.pareto_set)))
     op_stats = spec.operator_stats and not baseline
     if op_stats:
@@ -630,14 +639,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     ck_budget, ck_fe, ck_n, ck_F, ck_X = [], [], [], [], []
     last_fe = 0                    # the evaluations of the previous record
     record_seconds = 0.0           # what the records cost: indicators, statistics, snapshots
-    need_x = (snap and keep_x) or any(m in NEEDS_X for m in traj_metrics)
+    need_x = (snap and keep_x) or any(m in NEEDS_X for m in traj_metrics) or cons is not None
     if need_x and not baseline:
         from .. import _core                   # current_variables() at the records
 
     def measure(F, X, which):
         vals = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=which,
                          pop=p.pop_size, hv_options=traj_hv, X=X, pareto_set=pset,
-                         bounds=p.bounds, cyclic=p.cyclic_vars, distance_fn=p.distance_fn)
+                         bounds=p.bounds, cyclic=p.cyclic_vars, distance_fn=p.distance_fn,
+                         constraints=cons)
         for m in hv_skipped:
             vals[m] = None
         return vals
@@ -680,7 +690,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             if fe <= b:
                 hard_pop[str(b)] = {k: rec.get(k) for k in ("gen", "fe", "n", *traj_metrics)}
         crossed = [b for b in checkpoints if last_fe < b <= fe]
-        if crossed and fe < budget and len(arc):         # the end is final_archive
+        if crossed and fe < budget and (len(arc) or cons is not None):   # the end is final_archive
             AF, AX, _ = arc.points()
             idx = arc.select(p.pop_size)
             vals = dict(measure(AF[idx], AX[idx], traj_metrics), fe=fe, n=int(len(idx)))
@@ -763,7 +773,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             for i in range(len(AF)):
                 row = list(AF[i]) + (list(AX[i]) if whole else [])
                 out.write(",".join(f"{v:.10g}" for v in row) + f",{int(AE[i])}\n")
-        if len(AF) and (spec.archive_scenario or not whole):
+        if (len(AF) or cons is not None) and (spec.archive_scenario or not whole):
             arc_sel = arc.select(p.pop_size)
         if not whole and arc_sel is not None:
             with _open_text(d / "final_archive.csv.gz", "w") as out:
@@ -804,18 +814,21 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             np.savez_compressed(d / "archive_at.npz", **payload)
     if hard:
         for b in hard:
-            if str(b) not in hard_arc and arc is not None and len(arc):
+            if str(b) not in hard_arc and arc is not None and (len(arc) or cons is not None):
                 take_hard_archive(b)         # the run stopped before b: its archive at the end
         meta["hard_at"] = {str(b): {"population": hard_pop.get(str(b)),
                                     "archive": hard_arc.get(str(b))} for b in hard}
         meta["answer_k"] = spec.answer_k or p.pop_size
 
     extra = {"pop": p.pop_size, "hv_options": final_hv, "pareto_set": pset,
-             "bounds": p.bounds, "cyclic": p.cyclic_vars, "distance_fn": p.distance_fn}
+             "bounds": p.bounds, "cyclic": p.cyclic_vars, "distance_fn": p.distance_fn,
+             "constraints": cons}
     final = {}
     if F.size and np.all(np.isfinite(F)):
         final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
                           X=X, **extra)
+    if cons is not None:
+        final["fe_first_feas"] = fe_first_feas
     if arc_sel is not None and spec.archive_scenario:
         AF, AX, _ = arc.points()
         meta["final_archive"] = M.compute(AF[arc_sel], ref_front=ref, ideal=ideal, nadir=nadir,
@@ -1329,25 +1342,37 @@ def is_short(size, pop) -> bool:
 
 
 def compare_table(rows: list[dict], metric: str = "igd", at: float | None = None,
-                  sizes: dict | None = None) -> dict:
+                  sizes: dict | None = None, empty: dict | None = None) -> dict:
     """{problem: {algorithm: (median, q1, q3, n)}} over finished runs.
 
     `at` reads every run at that fraction of its budget instead of at the end.
     `sizes`, when given, is filled with {(problem, algorithm): (median answer
     size, population)} from the same reading.
+
+    An empty run, a constrained problem's whose answer has no feasible point
+    there (feas_share 0, the metric None; metrics.compute), counts as the
+    worst value, infinitely bad, in the median and the quartiles and in n
+    (task 6 of 2026-10-09, item 5.2). `empty`, when given, is filled with
+    {(problem, algorithm): the number of such runs}, where there is any.
     """
     import statistics
     table: dict = {}
     grouped: dict = {}
     counts: dict = {}
+    worst = -math.inf if metric in HIGHER_IS_BETTER else math.inf
     for r in rows:
         if r["status"] != "done":
             continue
-        got = read_row(r, (metric,), at)
+        got = read_row(r, (metric, "feas_share"), at)
         if got["n"] is not None:
             counts.setdefault((r["problem"], r["algorithm"]), (r.get("pop"), []))[1].append(
                 got["n"])
         v = got[metric]
+        if v is None and got["feas_share"] == 0:
+            v = worst
+            if empty is not None:
+                key = (r["problem"], r["algorithm"])
+                empty[key] = empty.get(key, 0) + 1
         if v is None:
             continue
         grouped.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(float(v))
@@ -1408,15 +1433,18 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
     outranks one that alternates between first and last. Read it next to the
     medians, not instead of them. "short" counts the problems where the
     algorithm's median answer has fewer than N/2 points (cover.py, THE
-    ANSWER'S SIZE): a metric such as GD+ does not see it.
+    ANSWER'S SIZE): a metric such as GD+ does not see it. "empty" counts its
+    runs without a feasible point on the constrained problems, each ranked as
+    the worst value (compare_table): the mark beside a rank that has them.
 
         {"metric": "igd", "lower_better": True, "n_problems": 45,
          "groups": ["DTLZ", "WFG", "ZDT", "M=2", "M=3", "M=5"],
          "algorithms": [(name, {"all": (mean, n), "DTLZ": (mean, n), ...,
-                                "wins": w, "short": s}), ...]}   # best mean rank first
+                                "wins": w, "short": s, "empty": e}), ...]}   # best first
     """
     sizes: dict = {}
-    table = compare_table(rows, metric, at, sizes)
+    empty: dict = {}
+    table = compare_table(rows, metric, at, sizes, empty)
     lower_better = metric not in HIGHER_IS_BETTER
     n_objs: dict = {}
     for r in rows:
@@ -1459,6 +1487,7 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
         entry["wins"] = wins.get(a, 0)
         entry["short"] = sum(1 for p in table if a in table[p]
                              and is_short(*sizes.get((p, a), (None, None))))
+        entry["empty"] = sum(v for (_, alg), v in empty.items() if alg == a)
         out.append((a, entry))
     out.sort(key=lambda t: (t[1]["all"][0], -t[1]["wins"], t[0]))
     return {"metric": metric, "at": at, "lower_better": lower_better,
@@ -1476,17 +1505,25 @@ def format_ranks(ranks: dict) -> str:
              + "".join(f"{g[:9]:>10}" for g in groups)]
     from .postprocess import budget_note
     marked = False
+    empties = any(e.get("empty") for _, e in ranks["algorithms"])
+    if empties:
+        lines[1] += f"{'empty':>6}"
     for alg, e in ranks["algorithms"]:
         mean, n = e["all"]
         name = alg[:13] + budget_note(alg)
         marked |= name != alg[:13]
         line = f"{name:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}{e.get('short', 0):>6}"
+        if empties:
+            line += f"{e.get('empty', 0) or '':>6}"
         for g in groups:
             line += f"{e[g][0]:>10.2f}" if g in e else f"{'-':>10}"
         lines.append(line)
     if marked:
         lines.append("* runs on a schedule of the budget share spent: compare its runs at "
                      "different budgets by fraction of budget, not by evaluations")
+    if empties:
+        lines.append("empty = runs whose answer has no feasible point (constrained problems): "
+                     "no value, ranked as the worst one")
     return "\n".join(lines)
 
 
@@ -1495,13 +1532,13 @@ def write_rank_csv(ranks: dict, path: Path) -> None:
     with path.open("w", encoding="utf-8") as fh:
         fh.write("algorithm,mean_rank,problems,wins"
                  + "".join(f",{g}_mean_rank,{g}_problems" for g in groups)
-                 + ",short_answers\n")
+                 + ",short_answers,empty_runs\n")
         for alg, e in ranks["algorithms"]:
             mean, n = e["all"]
             cells = [alg, f"{mean:.6g}", str(n), str(e["wins"])]
             for g in groups:
                 cells += [f"{e[g][0]:.6g}", str(e[g][1])] if g in e else ["", ""]
-            cells.append(str(e.get("short", 0)))
+            cells += [str(e.get("short", 0)), str(e.get("empty", 0))]
             fh.write(",".join(cells) + "\n")
 
 
@@ -1556,7 +1593,8 @@ def _recompute_one(args) -> str:
             pset = np.asarray(p.pareto_set(k), float)
         kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=names, pop=p.pop_size,
                   hv_options=hv_options, pareto_set=pset, bounds=p.bounds,
-                  cyclic=p.cyclic_vars, distance_fn=p.distance_fn)
+                  cyclic=p.cyclic_vars, distance_fn=p.distance_fn,
+                  constraints=p.constraints if p.has_cons else None)
         if scenario == "archive" and (run_dir / "final_archive.csv.gz").is_file():
             # archive_variables = "selected": the run kept its selection
             F, X = _read_points(run_dir / "final_archive.csv.gz", m, n)
@@ -1571,6 +1609,8 @@ def _recompute_one(args) -> str:
             F, X = _read_points(path, m, n)
             if not len(F):
                 return "skipped"
+            if X is None:
+                kw["constraints"] = None             # the archive keeps feasible points only
             arc_meta = meta.get("archive") or {}
             frame = arc_meta.get("frame")
             if arc_meta.get("normalization") == "archive":
@@ -1653,9 +1693,9 @@ def _retrajectory_one(args) -> str:
             return "failed"
         # the decision-space indicators only where the snapshots kept the variables
         todo = [m for m in names if m not in NEEDS_X or "X" in S]
-        if not todo:
-            return "skipped"
         p = bench_get(meta["problem"])
+        if not todo or (p.has_cons and "X" not in S):     # feasibility needs them too
+            return "skipped"
         k = int(meta.get("n_ref") or 1000)
         ref = (np.asarray(p.pareto_front(k), float)
                if any(m in NEEDS_FRONT for m in todo) and callable(p.pareto_front) else None)
@@ -1679,7 +1719,8 @@ def _retrajectory_one(args) -> str:
                 rec.update(M.compute(F, ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=todo,
                                      pop=p.pop_size, hv_options=hvo, X=X, pareto_set=pset,
                                      bounds=p.bounds, cyclic=p.cyclic_vars,
-                                     distance_fn=p.distance_fn))
+                                     distance_fn=p.distance_fn,
+                                     constraints=p.constraints if p.has_cons else None))
         tmp = traj_path.with_suffix(".jsonl.tmp")
         tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in recs),
                        encoding="utf-8")
@@ -1742,24 +1783,27 @@ def _rereference_one(args) -> str:
         kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, pop=p.pop_size,
                   bounds=p.bounds, cyclic=p.cyclic_vars)
 
-        def again(F, values: dict) -> dict:
+        def again(F, values: dict, X=None) -> dict:
             """The reference-dependent metrics among `values`, measured on F
-            again: {name: old value}, `values` updated in place."""
+            again: {name: old value}, `values` updated in place. A constrained
+            problem's on the feasible rows, from X (metrics.compute)."""
             names = [x for x in values if x in NEEDS_FRONT]
             if not names or not len(F) or not np.all(np.isfinite(F)):
                 return {}
-            new = M.compute(F, which=names, **kw)
+            cons = p.constraints if p.has_cons and X is not None else None
+            new = M.compute(F, which=names, X=X, constraints=cons, **kw)
+            new.pop("feas_share", None)
             before = {x: values.get(x) for x in new}
             values.update(new)
             return before
 
         kept: dict = {}
         if meta.get("final"):
-            F, _ = _read_points(run_dir / "final.csv", m, n)
-            kept["final"] = again(F, meta["final"])
+            F, X = _read_points(run_dir / "final.csv", m, n)
+            kept["final"] = again(F, meta["final"], X)
         if meta.get("final_archive") and (run_dir / "final_archive.csv.gz").is_file():
             F, _ = _read_points(run_dir / "final_archive.csv.gz", m, n)
-            kept["final_archive"] = again(F, meta["final_archive"])
+            kept["final_archive"] = again(F, meta["final_archive"])   # feasible points only
         if meta.get("archive_at") and (run_dir / "archive_at.npz").is_file():
             with np.load(run_dir / "archive_at.npz") as z:
                 A = {k: z[k] for k in z.files}
@@ -1783,9 +1827,10 @@ def _rereference_one(args) -> str:
             start = 0
             for rec, cnt in zip(recs, S["n"].tolist()):
                 F = S["F"][start:start + cnt].astype(float)
+                X = S["X"][start:start + cnt].astype(float) if "X" in S else None
                 start += cnt
                 if cnt and rec.get("finite", True):
-                    again(F, rec)
+                    again(F, rec, X)
             keep_old = run_dir / f"trajectory.ref_v{old}.jsonl"
             if not keep_old.is_file():
                 shutil.copy2(traj_path, keep_old)
@@ -2227,7 +2272,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"median {args.compare}{at} ({args.scenario}), runs per cell in brackets; "
               f"~ the median answer has fewer than N/2 points")
         sizes: dict = {}
-        table = compare_table(rows, args.compare, args.at, sizes)
+        empty: dict = {}
+        table = compare_table(rows, args.compare, args.at, sizes, empty)
         algs = sorted({a for d in table.values() for a in d})
         print("problem".ljust(16) + "".join((a[:13] + budget_note(a)).rjust(15) for a in algs))
         for prob in sorted(table):
@@ -2236,10 +2282,15 @@ def main(argv: list[str] | None = None) -> int:
                 if a in table[prob]:
                     med, q1, q3, n = table[prob][a]
                     mark = "~" if is_short(*sizes.get((prob, a), (None, None))) else ""
-                    cells.append(f"{med:.4g} ({n}){mark}".rjust(15))
+                    k = empty.get((prob, a))
+                    runs = f"{n}, {k} empty" if k else f"{n}"
+                    cells.append(f"{med:.4g} ({runs}){mark}".rjust(15))
                 else:
                     cells.append("-".rjust(15))
             print(prob.ljust(16) + "".join(cells))
+        if empty:
+            print(f"empty: runs without a feasible point in the answer, {sum(empty.values())} "
+                  f"in all; counted as the worst value (inf) in the median")
         return 0
     if args.emit_slurm:
         script = emit_slurm(cfg, args.emit_slurm, time_limit=args.time,

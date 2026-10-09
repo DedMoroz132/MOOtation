@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 63 algorithm names |
-| `--problems` | list the 438 benchmark problems (needs NumPy) |
+| `--problems` | list the 477 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -156,7 +156,8 @@ day-long run.
 ## The built-in suites
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
-BT, the DTLZ variants, and two uninformative probes: 438 problems across 16 families, each
+BT, the DTLZ variants, the uninformative probes and the constrained C-DTLZ: 477 problems
+across 19 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -224,6 +225,21 @@ sampled as the nondominated images of a grid of positions — DTLZ7 and MaF7,
 WFG1, WFG2 and MaF11, ZDT3, ZCAT — every point is also checked against a
 fresh sample and its own neighbours: until 2026-09-22 such fronts kept points
 that merely no other grid point beat, up to a third of WFG2_3D's.
+**The constrained problems** are Jain & Deb's C-DTLZ (IEEE TEVC 18(4), 2014,
+doi:10.1109/TEVC.2013.2281534) at three and five objectives: `C1-DTLZ1_3D`,
+`C1-DTLZ3_3D` (a feasible band, or an infeasible shell, beside the front),
+`C2-DTLZ2_3D`, `C2-ConvexDTLZ2_3D` (only pieces of the unconstrained front
+feasible) and `C3-DTLZ1_3D`, `C3-DTLZ4_3D` (the front on the constraints), and
+the same at `_5D`. A constraint is a value that is at most 0 when satisfied,
+as everywhere in the library: the paper's c(x) >= 0 with the sign turned. Two
+of the paper's equations are read as pymoo reads them (`c_dtlz.py`, READINGS),
+and the values agree with pymoo 0.6.2 at fixed points to 1e-12. The fronts
+are analytic but for C2-ConvexDTLZ2's: behind the hole the cylinder cuts in
+the convex front lie points of larger g that nothing feasible dominates, which
+the paper's and pymoo's front leave out; that front is a sample checked point
+by point (`APPROXIMATE_FRONT`, and `--cover` says so). MaF9 from five
+objectives is constrained too.
+
 [`python/examples/bench.toml`](../python/examples/bench.toml) is the complete
 example. The same suites are importable directly:
 
@@ -285,8 +301,21 @@ final population (the same list when omitted):
 | `gap_max` | the largest hole: the maximum over the reference sample of d⁺(z, A), normalised like `igdp_norm` — `tau90` taken at 100 %. One reference point nothing comes near decides it | lower |
 | `nn_cv` | evenness: the coefficient of variation of the distances from each distinct non-dominated point to its nearest other one, objectives normalised by ideal and nadir; 0 when evenly spaced, larger as the set clumps. No reference front needed | lower |
 | `gdp_min` | has the set reached the front anywhere: the smallest d⁺(a, Z) of any point of the set, normalised like `igdp_norm`. It cannot tell values below the reference's resolution apart, so `gdp_min_ref_step` (the median distance between neighbouring reference points) goes beside it and `gdp_min_below_step` says when it is lower | lower |
-| `g_min`, `g_median` | the smallest and the median g(x) − g* in the set: the problem's own distance to the Pareto set (`BenchProblem.distance_fn`: ZDT1–4 and 6, DTLZ1–4 and 7, DTLZ5–6 up to three objectives, IDTLZ, SDTLZ, wideDTLZ3 and the shift variants). Exact, no reference sample | lower |
+| `g_min`, `g_median` | the smallest and the median g(x) − g* in the set: the problem's own distance to the Pareto set (`BenchProblem.distance_fn`: ZDT1–4 and 6, DTLZ1–4 and 7, DTLZ5–6 up to three objectives, IDTLZ, SDTLZ, wideDTLZ3, the shift variants, C1-DTLZ1, C1-DTLZ3 and C2-DTLZ2). Exact, no reference sample | lower |
 | `ps_dmin` | the smallest distance from a solution to the Pareto-set sample, variables normalised by the bounds and the cyclic ones wrapped, as `igdx`: the decision-space counterpart where the problem has a Pareto set but no distance function | lower |
+
+On a constrained problem every indicator is measured on the feasible part of
+the answer, and two more are recorded unasked: `feas_share`, the share of the
+answer that satisfies every constraint (wherever an indicator is measured, the
+trajectory included), and `fe_first_feas`, the evaluation that first gave a
+feasible point (in `final`; none when the run found none). An answer without a
+feasible point has no value at all — none, not 0 and not infinity. Such an
+empty run is counted apart: `--compare` writes "n, k empty" in its cell, and
+`--ranks` an `empty` column; in the median, and so in the rank, it counts as
+the worst value. A run on a constrained problem keeps the variables in its
+snapshots and checkpoints, whatever `snapshot_variables` says, since telling
+the feasible points apart needs them (in float32 there, so a point within
+rounding of a constraint may read differently when recomputed).
 
 `gdp` needs a reference front like `igd`; `roi_dist` and `range_cover` need only
 the problem's ideal and nadir, and `nd_share` and `dup_share` nothing at all, so
