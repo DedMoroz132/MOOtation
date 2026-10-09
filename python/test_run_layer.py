@@ -4489,6 +4489,111 @@ archive = true
         assert C.recompute_final(root, ["igdp_norm"]) == {"done": 2}
 
 
+# ── task 6, item 7: noisy copies ────────────────────────────────────────────
+
+@test
+def a_noisy_copy_adds_the_noise_of_its_seed_and_nothing_else():
+    """noisy.py: sigma = 0 gives the base problem; one seed, one stream, another
+    seed another; over 10^5 evaluations the noise has the asked-for standard
+    deviation to 1 % and mean 0; a copy is its base in everything but the
+    values (task 6, item 7)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import families, get, noisy
+    from mootation.benchmarks.properties import properties
+    from mootation.run.campaign import problem_family
+    want = sorted(f"{b}_{lv}" for b in noisy.BASES for lv in ("n1", "n5"))
+    assert sorted(families()["noisy"]) == want
+    assert all(problem_family(n) == "noisy" for n in want)
+    base = get("DTLZ2_3D").evaluate
+    x = [0.2, 0.7] + [0.4] * 10
+    assert noisy.Evaluator(base, [0.0, 0.0, 0.0], 5)(x) == base(x)
+    a, b, c = (noisy.Evaluator(base, [0.05] * 3, s) for s in (5, 5, 6))
+    run_a, run_b, run_c = ([e(x) for _ in range(50)] for e in (a, b, c))
+    assert run_a == run_b and run_a != run_c and len({tuple(f) for f in run_a}) == 50
+    zero = noisy.Evaluator(lambda x: [0.0, 0.0], [0.01, 0.05], 11)
+    Z = np.array([zero(x) for _ in range(100_000)])
+    for i, s in enumerate((0.01, 0.05)):
+        assert abs(Z[:, i].std() / s - 1.0) < 0.01, (i, Z[:, i].std())
+        assert abs(Z[:, i].mean()) < 0.02 * s, (i, Z[:, i].mean())
+    assert abs(np.corrcoef(Z[:, 0], Z[:, 1])[0, 1]) < 0.01
+    for name in want:
+        p, q = get(name), get(noisy.base_of(name))
+        assert (p.n_vars, p.bounds, p.ideal, p.nadir) == (q.n_vars, q.bounds, q.ideal, q.nadir)
+        assert np.array_equal(p.pareto_front(200), q.pareto_front(200)), name
+        assert p.true_objectives is q.evaluate and properties(name) == properties(q.name)
+        assert (p.distance_fn is None) == (q.distance_fn is None), name
+        sigma = noisy.SIGMA[name.rsplit("_", 1)[1]]
+        assert p.make_evaluator(1).scale == [sigma * (h - l) for l, h in zip(q.ideal, q.nadir)]
+        assert p.evaluate(x[:p.n_vars]) == p.evaluate(x[:p.n_vars]) != q.evaluate(x[:p.n_vars])
+
+
+@test
+def a_campaign_on_a_noisy_copy_measures_the_noise_free_values():
+    """The algorithm sees the noisy values; the indicators, the files and the
+    snapshots hold the noise-free ones at the same x, final.csv the noisy ones
+    too (f_seen), and true_dominated_share goes beside them (task 6, item 7)."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_on_a_noisy...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run import metrics as M
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "n"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1_n5"]
+[campaign]
+out = "res"
+budget_fe = 400
+metrics = ["igdp"]
+final_metrics = ["igdp"]
+archive = true
+snapshots = true
+snapshot_variables = "all"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "n.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        run = root / "ZDT1_n5" / "nsga2" / "run_1"
+        meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+        assert meta["noise"]["scale"] == [0.05, 0.05], meta["noise"]
+        lines = [r for r in (run / "final.csv").read_text(encoding="utf-8").splitlines()
+                 if not r.startswith("#")]
+        assert lines[0].endswith(",f1_seen,f2_seen"), lines[0]
+        A = np.array([[float(v) for v in r.split(",")] for r in lines[1:]])
+        base = get("ZDT1")
+        F, X, seen = A[:, :2], A[:, 2:2 + base.n_vars], A[:, 2 + base.n_vars:]
+        T = np.array([base.evaluate(list(x)) for x in X])
+        assert np.allclose(F, T, rtol=1e-8, atol=1e-9) and not np.allclose(seen, T)
+        ref = np.asarray(base.pareto_front(1000), float)
+        assert abs(meta["final"]["igdp"] - M.igd_plus(T, ref)) < 1e-6, meta["final"]
+        assert 0.0 <= meta["final"]["true_dominated_share"] <= 1.0
+        assert "true_dominated_share" in meta["final_archive"], meta["final_archive"]
+        AF, AX = C._read_points(run / "archive.csv", 2, base.n_vars)
+        TA = np.array([base.evaluate(list(x)) for x in AX])
+        assert np.allclose(AF, TA, rtol=1e-8, atol=1e-9)           # the archive: noise-free
+        traj = C.read_trajectory(run)
+        assert all("true_dominated_share" in t for t in traj), traj[-1]
+        with np.load(run / "snapshots.npz") as z:
+            last = z["F"][-z["n"][-1]:].astype(float)
+            XL = z["X"][-z["n"][-1]:].astype(float)
+        TL = np.array([base.evaluate(list(x)) for x in XL])
+        assert np.allclose(last, TL, rtol=1e-5, atol=1e-5)          # float32 snapshots
+
+
 # ── task 2, step 3: operators and switchable variation ──────────────────────
 
 @test

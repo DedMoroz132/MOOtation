@@ -16,6 +16,8 @@
 #   shiftZDT1-4, shiftZDT6, shiftDTLZ6-7
 #                       the distance optimum off the bound (ours, shifted.py)
 #   C-DTLZ x M={3,5}    Jain & Deb 2014, constrained DTLZ (c_dtlz.py)
+#   <base>_n1, _n5      noisy copies of ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D, WFG7_3D
+#                       (ours, noisy.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -57,6 +59,7 @@ from . import pareto_sets as _psets
 from . import shifted as _shift
 from . import distances as _dist
 from . import c_dtlz as _cd
+from . import noisy as _noisy
 
 
 # =============================================================
@@ -97,6 +100,9 @@ class BenchProblem:
     # its own evaluator: make_evaluator(seed) -> callable (uninformative.py).
     # None for every ordinary problem, where `evaluate` is the function.
     make_evaluator: Optional[Callable[[int], Callable]] = None
+    # A noisy copy's noise-free objectives (noisy.py), on which a campaign
+    # measures it; None for every other problem.
+    true_objectives: Optional[Callable[[List[float]], List[float]]] = None
 
     @property
     def fevals_max(self) -> int:
@@ -303,7 +309,8 @@ _DEGENERATE_WARNED: set[str] = set()
 FULL_FRONT: set[str] = set()
 
 # A problem whose reference front and frame are another's, row for row: the
-# shifted copies (shifted.py) -> their base problem.
+# shifted copies (shifted.py) and the noisy ones (noisy.py) -> their base
+# problem.
 FRAME_OF: Dict[str, str] = {}
 
 # Problems whose ideal and nadir are set exactly at registration and are not
@@ -1722,11 +1729,39 @@ def _register_c_dtlz():
                 APPROXIMATE_FRONT.add(key)
 
 
+# =============================================================
+#  Noisy copies (noisy.py, task 6 of 2026-10-09, item 7): <base>_n1 and _n5,
+#  sigma = 0.01 and 0.05 of the base's nadir - ideal. Everything but the
+#  values is the base's: box, budget, frame and front (FRAME_OF), Pareto set,
+#  distance function; true_objectives is the base's evaluate.
+# =============================================================
+def _register_noisy():
+    for base in _noisy.BASES:
+        b = PROBLEMS[base]
+        for level, sigma in _noisy.SIGMA.items():
+            def _scale(_b=base, _s=sigma):
+                p = get(_b)                     # the base's frame, read when first wanted
+                return [_s * (hi - lo) for lo, hi in zip(p.ideal, p.nadir)]
+            def _eval(x, _f=b.evaluate, _sc=_scale): return _noisy.evaluate_by_x(_f, _sc(), x)
+            def _make(seed, _f=b.evaluate, _sc=_scale): return _noisy.Evaluator(_f, _sc(), seed)
+            key = _noisy.name(base, level)
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
+                evaluate=_eval, constraints=_no_cons,
+                hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+                hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+                pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+                pareto_front=None, pareto_set=b.pareto_set, cyclic_vars=b.cyclic_vars,
+                make_evaluator=_make, true_objectives=b.evaluate)
+            FRAME_OF[key] = base
+
+
 _register_dtlz_variants()
 _register_maf_fix()
 _register_bt()
 _register_ipolygon()
 _register_c_dtlz()
+_register_noisy()
 
 
 def _attach_distances():
@@ -1869,7 +1904,7 @@ _version2_references()
 
 
 def _shifted_fronts() -> None:
-    """A shifted problem's reference front is its base's own (FRAME_OF)."""
+    """A shifted or noisy problem's reference front is its base's own (FRAME_OF)."""
     for name, base in FRAME_OF.items():
         PROBLEMS[name].pareto_front = PROBLEMS[base].pareto_front
         if base in FULL_FRONT:
@@ -1972,10 +2007,13 @@ def get(name: str) -> "BenchProblem":
 
 
 def families() -> dict:
-    """Problem names grouped by family stem: {"DTLZ": [...], "WFG": [...]}."""
+    """Problem names grouped by family stem: {"DTLZ": [...], "WFG": [...]};
+    the noisy copies are a family of their own, "noisy"."""
     out: Dict[str, List[str]] = {}
     for n in sorted(PROBLEMS):
         stem = n.split("_")[0]
         stem = "".join(c for c in stem if not c.isdigit()) or stem
+        if _noisy.is_noisy(n):
+            stem = "noisy"
         out.setdefault(stem, []).append(n)
     return out

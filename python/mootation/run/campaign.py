@@ -559,6 +559,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # is the evaluation that first gave a feasible point (task 6, item 5.2).
     cons = p.constraints if p.has_cons else None
     fe_first_feas = None
+    # A noisy copy (benchmarks/noisy.py): the algorithm sees the noisy values,
+    # every indicator is measured on the noise-free ones at the same x, and the
+    # files keep those (task 6, item 7).
+    truth = p.true_objectives
+
+    def true_values(F, X):
+        if truth is None:
+            return F
+        return np.array([truth(list(x)) for x in X], float).reshape(len(X), p.n_obj)
     fe = 0
     # a problem whose values depend on the run (uninformative.py) gets its
     # evaluator from the run's seed; every other problem is its `evaluate`
@@ -574,8 +583,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         AF, AX, _ = arc.points()
         if len(AF) or cons is not None:     # a constrained problem's empty archive: feas_share 0
             idx = arc.select(spec.answer_k or p.pop_size)
-            hard_arc[str(b)] = dict(measure(AF[idx], AX[idx], traj_metrics), fe=fe,
-                                    n=int(len(idx)))
+            hard_arc[str(b)] = dict(measure(true_values(AF[idx], AX[idx]), AX[idx], traj_metrics),
+                                    fe=fe, n=int(len(idx)))
 
     def evaluate(x):
         nonlocal fe, fe_first_feas
@@ -639,7 +648,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     ck_budget, ck_fe, ck_n, ck_F, ck_X = [], [], [], [], []
     last_fe = 0                    # the evaluations of the previous record
     record_seconds = 0.0           # what the records cost: indicators, statistics, snapshots
-    need_x = (snap and keep_x) or any(m in NEEDS_X for m in traj_metrics) or cons is not None
+    need_x = ((snap and keep_x) or any(m in NEEDS_X for m in traj_metrics)
+              or cons is not None or truth is not None)
     if need_x and not baseline:
         from .. import _core                   # current_variables() at the records
 
@@ -648,6 +658,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                          pop=p.pop_size, hv_options=traj_hv, X=X, pareto_set=pset,
                          bounds=p.bounds, cyclic=p.cyclic_vars, distance_fn=p.distance_fn,
                          constraints=cons)
+        if truth is not None and len(F):
+            vals["true_dominated_share"] = 1.0 - M.nd_share(F)
         for m in hv_skipped:
             vals[m] = None
         return vals
@@ -672,6 +684,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             if variables is None:
                 variables = _core.current_variables()
             X = np.asarray(variables, float).reshape(len(F), p.n_vars)
+        if truth is not None and X is not None:
+            F = true_values(F, X)                 # snapshot and indicators: noise-free
         rec = {"gen": gen, "fe": fe, "t": round(t_rec - t0, 3), "n": int(len(F))}
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
@@ -693,11 +707,12 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         if crossed and fe < budget and (len(arc) or cons is not None):   # the end is final_archive
             AF, AX, _ = arc.points()
             idx = arc.select(p.pop_size)
-            vals = dict(measure(AF[idx], AX[idx], traj_metrics), fe=fe, n=int(len(idx)))
+            T = true_values(AF[idx], AX[idx])
+            vals = dict(measure(T, AX[idx], traj_metrics), fe=fe, n=int(len(idx)))
             for b in crossed:
                 archive_at[str(b)] = vals
                 ck_budget.append(b); ck_fe.append(fe); ck_n.append(len(idx))
-                ck_F.append(AF[idx].astype(np.float32))
+                ck_F.append(T.astype(np.float32))
                 if keep_x:
                     ck_X.append(AX[idx].astype(np.float32))
         last_fe = fe
@@ -746,16 +761,25 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     F = np.asarray(res.objectives, float)
     X = np.asarray(res.variables, float)
+    seen = None
+    if truth is not None and len(F):
+        seen, F = F, true_values(F, X)       # f: noise-free; f_seen: what the algorithm saw
     with (d / "final.csv").open("w", encoding="utf-8") as out:
-        out.write("# mootation campaign final population v1\n")
+        out.write("# mootation campaign final population v1"
+                  + ("; f noise-free, f_seen as the algorithm saw it" if seen is not None
+                     else "") + "\n")
         out.write(",".join([f"f{i+1}" for i in range(F.shape[1] if F.ndim == 2 else 0)]
-                           + [f"x{i+1}" for i in range(X.shape[1] if X.ndim == 2 else 0)]) + "\n")
+                           + [f"x{i+1}" for i in range(X.shape[1] if X.ndim == 2 else 0)]
+                           + ([f"f{i+1}_seen" for i in range(p.n_obj)] if seen is not None
+                              else [])) + "\n")
         for i in range(len(F)):
-            out.write(",".join(f"{v:.10g}" for v in list(F[i]) + list(X[i])) + "\n")
+            row = list(F[i]) + list(X[i]) + (list(seen[i]) if seen is not None else [])
+            out.write(",".join(f"{v:.10g}" for v in row) + "\n")
 
     arc_sel = None                  # the archive scenario's points: indices into arc.points()
     if arc is not None:
         AF, AX, AE = arc.points()
+        AF = true_values(AF, AX)          # a noisy copy's archive is written noise-free
         # "all": every point with its variables; "selected": the objectives of
         # every point, and the variables only of the points DSS selects
         whole = spec.archive_variables == "all"
@@ -829,11 +853,19 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                           X=X, **extra)
     if cons is not None:
         final["fe_first_feas"] = fe_first_feas
+    if truth is not None:
+        if final:
+            final["true_dominated_share"] = 1.0 - M.nd_share(F)
+        meta["noise"] = {"scale": list(objective.scale),
+                         "measured": "every indicator on the noise-free objectives"}
     if arc_sel is not None and spec.archive_scenario:
         AF, AX, _ = arc.points()
-        meta["final_archive"] = M.compute(AF[arc_sel], ref_front=ref, ideal=ideal, nadir=nadir,
+        T = true_values(AF[arc_sel], AX[arc_sel])
+        meta["final_archive"] = M.compute(T, ref_front=ref, ideal=ideal, nadir=nadir,
                                           which=final_metrics, X=AX[arc_sel], **extra)
         meta["final_archive"]["n"] = int(len(arc_sel))
+        if truth is not None and len(T):
+            meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}
                              for o, r in getattr(res, "operators", [])]
@@ -1406,10 +1438,13 @@ def write_compare_csv(table: dict, path: Path, metric: str) -> None:
 
 
 def problem_family(name: str) -> str:
-    """The family of a registry name: DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT.
+    """The family of a registry name: DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT,
+    a noisy copy (ZDT1_n1) -> noisy.
 
     The same stem rule as `mootation.benchmarks.families()`.
     """
+    if name.rsplit("_", 1)[-1] in ("n1", "n5"):     # benchmarks/noisy.py, SIGMA
+        return "noisy"
     stem = name.split("_")[0]
     return "".join(c for c in stem if not c.isdigit()) or stem
 

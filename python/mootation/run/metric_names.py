@@ -25,8 +25,12 @@ RUN_STATS = ("oob_share", "oob_var_share", "survival_share", "offspring_nd_share
 # fe_first_feas in `final`.
 FEASIBILITY = ("feas_share", "fe_first_feas")
 
+# What a run on a noisy copy (benchmarks/noisy.py) records besides, its
+# indicators being measured on the noise-free objectives (task 6, item 7).
+NOISE = ("true_dominated_share",)
+
 # Everything a table can be asked for.
-TABLE_NAMES = METRIC_NAMES + RUN_STATS + FEASIBILITY
+TABLE_NAMES = METRIC_NAMES + RUN_STATS + FEASIBILITY + NOISE
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
@@ -121,4 +125,7 @@ DESCRIPTIONS = {
                   "without one has no value (an empty run, counted apart and ranked worst)",
     "fe_first_feas": "a constrained problem's: the evaluation that first gave a feasible "
                      "point; none when the run found none",
+    "true_dominated_share": "a noisy copy's: the share of the answer that another of its "
+                            "points dominates by the noise-free objectives — what the noise "
+                            "let through",
 }

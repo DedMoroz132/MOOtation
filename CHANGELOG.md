@@ -256,7 +256,15 @@ always listed under **Changed** or **Removed**.
   C2-ConvexDTLZ2 is larger than the paper's: behind the hole the cylinder
   cuts in the convex front, points of larger g are Pareto-optimal too; it is
   sampled and checked point by point (`registry.APPROXIMATE_FRONT`, a
-  `--cover` caveat). 477 problems in 19 families.
+  `--cover` caveat).
+- Noisy copies (`benchmarks/noisy.py`, task 6, item 7): `<base>_n1` and
+  `<base>_n5` add 0.01 and 0.05 (nadir − ideal) N(0, 1) to each objective of
+  ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D and WFG7_3D, the noise from the run's seed and
+  the evaluation's number (`make_evaluator`). A campaign measures them on the
+  noise-free objectives (`BenchProblem.true_objectives`), keeps those in its
+  files and snapshots and the noisy ones in `final.csv` as `f_seen`, and
+  records `true_dominated_share`. A family of their own, `noisy`. 487
+  problems in 20 families.
 - A randomized Halton design (`mootation.designs`, task 6, item 12.3), after
   Owen, "A randomized Halton algorithm in R" (arXiv:1706.02808, 2017, Eq. 5
   and Algorithm 1): every base-b digit of every coordinate through an
