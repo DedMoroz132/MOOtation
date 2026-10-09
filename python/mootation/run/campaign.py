@@ -447,6 +447,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     from .budget import BUDGET_DEPENDENT
     from ..benchmarks.registry import REFERENCE_VERSION
+    from ..benchmarks.wfg import numba_enabled as wfg_numba_enabled
     meta = {
         "status": "running", "problem": job.problem, "algorithm": job.key,
         "core": job.algorithm,
@@ -474,6 +475,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "revision": revision(),
         "host": socket.gethostname(), "platform": platform.platform(),
         "python": sys.version.split()[0], "pid": os.getpid(),
+        # whether the WFG kernels ran compiled (benchmarks/wfg.py: until
+        # 2026-10-09 the path without numba computed WFG wrong from M = 3)
+        "numba": wfg_numba_enabled(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     _write_json(meta_path, meta)

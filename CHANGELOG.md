@@ -633,6 +633,19 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- WFG1-9 without numba. `benchmarks/wfg.py` kept a plain-NumPy copy of every
+  function for machines without numba, and its shape functions took one factor
+  too few in the middle objectives — `prod(s[:M-2-m]) * c[M-1-m]` where Huband
+  et al.'s Table X multiplies M − m sines, likewise for the convex and linear
+  shapes — so f_2 … f_{M−1} were wrong from three objectives on (by up to 18 at
+  ten objectives against pymoo), while f_1, f_M and every value at two
+  objectives were right. The copies are gone: every WFG function runs the
+  kernels, compiled by numba where it is installed and interpreted where it is
+  not, at the same cost. A new test holds both paths — the second in a child
+  process with `NUMBA_DISABLE_JIT=1` — to pymoo's values at fixed points, WFG1-9
+  at 2, 3, 5 and 10 objectives, and runs in CI, where there is no numba. WFG
+  values computed without numba before this fix are wrong from three
+  objectives on. Every campaign run's `meta.json` now records `numba`.
 - The tables read a budget below the end (`--at`) the way `--cover` does, by
   one function (`cover.read_at`): the first trajectory record at or after the
   budget asked for (`budget_nominal`). `value_at` took the last record at or
