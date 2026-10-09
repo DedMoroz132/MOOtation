@@ -672,6 +672,19 @@ always listed under **Changed** or **Removed**.
 
 ### Fixed
 
+- WFG1-9 without numba. `benchmarks/wfg.py` kept a plain-NumPy copy of every
+  function for machines without numba, and its shape functions took one factor
+  too few in the middle objectives — `prod(s[:M-2-m]) * c[M-1-m]` where Huband
+  et al.'s Table X multiplies M − m sines, likewise for the convex and linear
+  shapes — so f_2 … f_{M−1} were wrong from three objectives on (by up to 18 at
+  ten objectives against pymoo), while f_1, f_M and every value at two
+  objectives were right. The copies are gone: every WFG function runs the
+  kernels, compiled by numba where it is installed and interpreted where it is
+  not, at the same cost. A new test holds both paths — the second in a child
+  process with `NUMBA_DISABLE_JIT=1` — to pymoo's values at fixed points, WFG1-9
+  at 2, 3, 5 and 10 objectives, and runs in CI, where there is no numba. WFG
+  values computed without numba before this fix are wrong from three
+  objectives on. Every campaign run's `meta.json` now records `numba`.
 - Clipping past the out-of-box counts (`oob_share` = 0 proved nothing where
   it happened): EMyO/C's offspring (`emyo_c_difference`), HCCA's DE/rand/1
   (`hcca_de_rand_1`, which was missing from the operator log altogether) and
