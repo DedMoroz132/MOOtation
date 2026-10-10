@@ -351,6 +351,8 @@ def _front_dim(stem: str, m: int, front: str | None) -> int | None:
         return 1
     if stem in ("ZCAT14", "ZCAT15", "ZCAT16"):
         return 1
+    if stem == "DOC9":                               # the quarter circle at f3 = 0
+        return 1
     if front is not None and "degenerate" in front:
         return None
     return m - 1
@@ -426,6 +428,14 @@ def _huband(name: str) -> dict | None:
         if i in (3, 4) or 9 <= i <= 12:
             shape += "+disconnected"
         return _p(shape, False, False, False, False, False, False)
+    if stem.startswith("DOC") and stem[3:].isdigit():
+        # Liu and Wang 2019, Table I: the front's shape, and "multimodal"
+        # where the table names the problem so (DOC3, 5, 6, 7, 9)
+        i = int(stem[3:])
+        shape = {1: "concave", 2: "convex+disconnected", 3: "concave+disconnected",
+                 4: "linear+disconnected", 5: "linear+disconnected", 6: "mixed",
+                 7: "mixed", 8: "linear+disconnected", 9: "degenerate+concave"}[i]
+        return _p(shape, i in (3, 5, 6, 7, 9), False, False, False, False, False)
     if stem == "wideDTLZ3":
         row = dict(_DTLZ["DTLZ3"])
         row["centre"] = False

@@ -33,6 +33,8 @@
 #                       the paper's sixteen triplets (dascmop.py)
 #   LIR-CMOP1-14        Fan et al. 2019, constrained with large infeasible
 #                       regions (lir_cmop.py)
+#   DOC1-9              Liu & Wang 2019, constraints in the decision and the
+#                       objective space, equalities in DOC3, 5, 7 (doc.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -80,6 +82,7 @@ from . import re as _re
 from . import binary as _bin
 from . import dascmop as _das
 from . import lir_cmop as _lir
+from . import doc as _doc
 from . import mw as _mw
 from . import failing as _fail
 
@@ -137,6 +140,13 @@ class BenchProblem:
     # A failing copy's (share in per cent, kind) (failing.py): its evaluations
     # fail in a region of the box, and a campaign records the failures.
     failing: Optional[tuple] = None
+    # Equality constraints (DOC3, 5, 7): the last n_eq values of
+    # `constraints` are equalities, there as |h| - 1e-4 <= 0, which is what
+    # minimize's eq_constraints does at eq_tol = 1e-4, bit for bit;
+    # `equalities` gives h itself, for a run with another tolerance or the
+    # linear schedule (benchmarks.solve passes it on). 0 and None elsewhere.
+    n_eq: int = 0
+    equalities: Optional[Callable[[List[float]], List[float]]] = None
 
     @property
     def fevals_max(self) -> int:
@@ -1907,6 +1917,34 @@ def _register_lir_cmop():
 
 
 _register_lir_cmop()
+
+
+# =============================================================
+#  DOC1-9 (doc.py, task 7, §8): Liu and Wang's problems with constraints in
+#  both the decision and the objective space, each on a CEC 2006 problem.
+#  The fronts are the paper's (doc.py, THE FRONTS); the frame is read off
+#  them on first use (_reframe_one).
+# =============================================================
+def _register_doc():
+    for i in range(1, 10):
+        M = _doc.n_obj(i)
+        pop, ng = _budget(M)
+        def _eval(x, _i=i): return _doc.evaluate(_i, x)[0]
+        def _cons(x, _i=i): return _doc.constraints(_i, x)
+        def _eqs(x, _i=i): return _doc.equalities(_i, x)
+        def _pf(n=1000, _i=i): return _doc.front(_i, int(n))
+        key = _doc.name(i)
+        n_eq = _doc.N_EQ.get(i, 0)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=_doc.n_vars(i), bounds=list(_doc.BOUNDS[i]), n_obj=M,
+            evaluate=_eval, constraints=_cons,
+            hv_ref_raw=tuple([1.1] * M), hv_ref_norm=_ref_norm(M),
+            hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([1.0] * M),
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf,
+            n_eq=n_eq, equalities=_eqs if n_eq else None)
+
+
+_register_doc()
 _register_noisy()
 
 

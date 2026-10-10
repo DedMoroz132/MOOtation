@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 1173 benchmark problems (needs NumPy) |
+| `--problems` | list the 1182 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -201,8 +201,8 @@ day-long run.
 ## The built-in suites
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
-BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP and LIR-CMOP, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE: 1173 problems across 42 families, each
+BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE: 1182 problems across 43 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -403,6 +403,25 @@ and feasible points made on purpose do not beat it. Two kinds of point
 belong to 9-12's fronts though they lie apart from the rest: f1 = 0 only at
 x1 = 0 and f2 = 0 only at x1 = 1, so the least feasible point on either axis
 is Pareto-optimal (9: (0, 2.175...)), and the frame takes it.
+
+**DOC1-9** (Liu and Wang, IEEE TEVC 23(5), 2019; `benchmarks/doc.py`):
+constraints in both the decision and the objective space. Each takes a
+problem of the CEC 2006 suite (g04, g19, g23, g09, g21, g07, g14, g10, g18)
+with its constraints as the decision part, its objective shifted to a least
+feasible value of 1 as the distance function g of a ZDT- or DTLZ-like pair or
+triple, and constraints on the objectives that cut the front: an arc, pieces,
+or 21 and 14 isolated points (DOC4, DOC5). DOC3, DOC5 and DOC7 hold
+equalities (4, 5, 3): `constraints` gives them as |h| - 1e-4 <= 0, the
+paper's Eq. 3 and, bit for bit, `eq_constraints` at `eq_tol = 1e-4`;
+`equalities` and `n_eq` give h itself, and `benchmarks.solve` passes them on,
+so that `eq_tol` and `eq_tol_schedule` reach them. The formulas are the
+paper's supplementary file, S-I, with two readings where it contradicts the
+front it states (DOC-7's sine constraint, DOC-9's f3; in `doc.py`). Checked:
+the least g over the decision constraints is 1 for all nine (SciPy's SLSQP,
+the equalities within 1e-4), and the share of feasible random points is
+27.0 % for DOC1 and 0.52 % for DOC4 (the paper's Table I: 26.97 %, 0.53 %).
+The fronts are the paper's; DOC2's ends are solved here, and its 0.3830 is
+0.3803, the circle's edge.
 
 **Bit strings.** OneMinMax (`OMM_n10`, `_n20`, `_n50`), LOTZ (`LOTZ_n…`) and
 OneJumpZeroJump (`OJZJ_n10_k2`, `OJZJ_n10_k3`, `OJZJ_n20_k3`, `OJZJ_n20_k4`)

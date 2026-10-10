@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- DOC1-9 (`benchmarks/doc.py`; task 7, §8): Liu and Wang's problems with
+  constraints in both the decision and the objective space (IEEE TEVC 23(5),
+  2019, supplementary file S-I), on CEC 2006's g04, g19, g23, g09, g21, g07,
+  g14, g10 and g18; the equalities of DOC3, 5 and 7 as |h| - 1e-4 in
+  `constraints` and as h in the new `BenchProblem.equalities` (`n_eq`), which
+  `benchmarks.solve` hands to `eq_constraints`; the paper's fronts. 1182
+  problems in 43 families.
 - Equality constraints (task 7, supplement 3, §3; `data_vault.hpp`,
   EQUALITY CONSTRAINTS): `minimize(eq_constraints=..., n_eq=...)`; an
   equality holds where |h| <= `eq_tol` (1e-4) and adds max(|h| - eq_tol, 0)

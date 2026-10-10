@@ -7415,6 +7415,70 @@ def equalities_hold_within_their_tolerance_and_its_schedule():
 
 
 @test
+def doc_follows_its_supplement_and_its_fronts_hold():
+    """Task 7, §8: DOC1-9 (Liu and Wang 2019, supplementary file S-I): the
+    sizes of Table I (D, inequalities, equalities), hand-checked points at
+    g = 1, the share of feasible random points of DOC1 and DOC4 (Table I:
+    26.97 %, 0.53 %), the fronts inside the objective constraints with the
+    pieces and points the paper states, and the equalities: |h| - 1e-4 in
+    constraints, h in equalities, the same run either way."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import doc as D
+    from mootation.benchmarks.properties import properties
+    assert families()["DOC"] == [f"DOC{i}" for i in range(1, 10)]
+    table = {1: (6, 7, 0), 2: (16, 7, 0), 3: (10, 6, 4), 4: (8, 6, 0), 5: (8, 4, 5),
+             6: (11, 10, 0), 7: (11, 3, 3), 8: (10, 7, 0), 9: (11, 14, 0)}
+    for i, (n, nic, nec) in table.items():
+        lo = [b[0] for b in D.BOUNDS[i]]
+        _, ineq, eq = D.evaluate(i, lo)
+        p = get(f"DOC{i}")
+        assert (p.n_vars, len(ineq), len(eq), p.n_eq) == (n, nic, nec, nec), i
+        c = p.constraints(lo)
+        assert c[:nic] == ineq and c[nic:] == [abs(h) - 1e-4 for h in eq], i
+    # at g = 1 the objectives are the unconstrained front's
+    x = [0.25, 193.724510070035, 20.0, 20.0, 200.0, 6.5, 6.0, 5.0]
+    assert np.allclose(D.evaluate(5, x)[0], [0.25, 0.5], atol=1e-12)
+    x = [0.3, 0.6, 600.0, 1400.0, 7048.2480205286 + 1.0 - 2000.0] + [300.0] * 5
+    assert np.allclose(D.evaluate(8, x)[0], [0.18, 0.12, 0.7], atol=1e-9)
+    x = [0.0, 0.5] + [0.0] * 9                                 # g = 1.8660254038
+    assert np.allclose(D.evaluate(9, x)[0], [1.8660254038 * math.sqrt(0.5)] * 2 + [0.0])
+    rng = np.random.default_rng(11)
+    for i, lo_hi in ((1, (25.5, 28.5)), (4, (0.33, 0.75))):
+        b = np.array(D.BOUNDS[i])
+        X = b[:, 0] + (b[:, 1] - b[:, 0]) * rng.random((20000, len(b)))
+        share = 100.0 * np.mean([max(D.constraints(i, x)) <= 0.0 for x in X])
+        assert lo_hi[0] < share < lo_hi[1], (i, share)
+    for i in range(1, 10):
+        p = get(f"DOC{i}")
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert np.allclose(Z.min(axis=0), p.ideal) and np.allclose(Z.max(axis=0), p.nadir), i
+        assert max(max(D.objective_constraints(i, z)) for z in Z) <= 1e-12, i
+    assert len(D.front(4)) == 21 and len(D.front(5)) == 14
+    assert sorted(np.round(D.front(5)[:, 0] * 20).astype(int)) == list(range(9)) + list(range(16, 21))
+    ends = [D._circle_ends(p) for p, _ in D.CIRCLES]          # the paper: 0.050, 0.2202, 0.3830 (sic),
+    assert np.allclose(ends, [(0.0500, 0.2203), (0.3803, 0.6247), (0.7439, 1.0)], atol=1e-4)
+    Z = D.front(3, 10 ** 6)
+    Z = Z[np.argsort(Z[:, 0])]
+    cut = np.flatnonzero(np.diff(Z[:, 0]) > 0.01)
+    pieces = [Z[0, 0]] + [v for k in cut for v in (Z[k, 0], Z[k + 1, 0])] + [Z[-1, 0]]
+    assert np.allclose(pieces, [0, 0.3403, 0.4782, 0.6553, 0.7553, 0.8782, 0.9403, 1], atol=1e-4)
+    assert np.allclose(D.front(9)[:, 2], 0.0) and properties("DOC9")["front"].startswith("degenerate")
+    assert properties("DOC9")["front_dim"] == 1 and properties("DOC5")["multimodal"]
+    # the equalities as such or as |h| - 1e-4: the same run
+    from mootation.benchmarks import solve
+    from mootation import minimize
+    p = get("DOC3")
+    a = solve("DOC3", "nsga2", pop_size=20, max_evaluations=600, seed=3)
+    b = minimize(p.evaluate, p.bounds, 2, pop_size=20, max_evaluations=600, seed=3,
+                 constraints=p.constraints)
+    assert a.objectives == b.objectives and a.cv == b.cv and a.eq_tol == 1e-4
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:
