@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The epsilon level (supplement 3, §4.1; `data_vault.hpp`, EPSILON LEVEL):
+  `minimize(constraint_mode="eps_level")`. The vault counts a violation up to
+  ε as none for the algorithm, so every feasibility-first core does the
+  ε-level comparison; ε follows MOEA/D-IEpsilon's rule (Fan et al. 2019,
+  Eq. 8) once per generation and is 0 from 80 % of the budget on
+  (`eps_schedule`). With ε held at 0 every core's run is the feasibility one
+  bit for bit; without the mode nothing changes. `_core.current_cv_level()`.
 - bbob-biobj-mixint (`benchmarks/bbob_biobj_mixint.py`; supplement 3, §1.4):
   the 55 bbob-biobj pairs at n = 5 and 10 with four fifths of the variables
   integer (arities 2, 4, 8, 16), discretized as Tušar et al. (GECCO 2019,

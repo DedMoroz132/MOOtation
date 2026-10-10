@@ -7617,6 +7617,71 @@ def mixed_integer_and_categorical_problems_keep_their_optima():
 
 
 @test
+def eps_level_follows_fans_rule_and_is_feasibility_at_zero():
+    """Supplement 3, §4.1: constraint_mode = "eps_level" with eps held at 0
+    (eps_schedule tc = 0) is the feasibility-first run bit for bit, on every
+    core; otherwise eps follows Fan et al.'s Eq. 8 once per generation — 0.9
+    of itself while the population is mostly infeasible, 1.1 times the largest
+    violation seen once 95 % of it is feasible, 0 from 80 % of the budget on;
+    the answer's cv is the violation itself."""
+    if _core_with("eps_level") is None:
+        print("  skip  eps_level...: stale _core"); return
+    import math
+    import mootation
+    from mootation import _core
+    from mootation.benchmarks import get
+    p = get("LIR-CMOP2")
+    for alg in mootation.algorithms():
+        a = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20,
+                               max_evaluations=600, seed=1, constraints=p.constraints)
+        b = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20,
+                               max_evaluations=600, seed=1, constraints=p.constraints,
+                               constraint_mode="eps_level", eps_schedule={"tc": 0.0})
+        assert a.objectives == b.objectives and a.cv == b.cv, alg
+    # the schedule on a mostly infeasible start: rule 2, then rule 4
+    levels = []
+    mootation.minimize(p.evaluate, p.bounds, 2, pop_size=50, max_evaluations=5000, seed=2,
+                       constraints=p.constraints, constraint_mode="eps_level",
+                       on_generation=lambda g, F: levels.append(_core.current_cv_level()),
+                       record_every=1)
+    assert levels[0] > 0.0 and len(levels) == 100
+    for g in range(1, 10):
+        assert levels[g] == (1.0 - 0.1) * levels[g - 1], g
+    assert all(v == 0.0 for v in levels[80:]) and levels[79] > 0.0
+    # rule 3 where 95 % are feasible: 1.1 times the largest violation so far
+    seen = {"max": 0.0}
+    hist = []
+
+    def g(x):
+        v = x[0] - 0.96
+        seen["max"] = max(seen["max"], v)
+        return [v]
+
+    def f(x):
+        return [x[0], 1.0 - math.sqrt(x[0]) + sum(x[1:])]
+
+    r = mootation.minimize(f, [(0.0, 1.0)] * 4, 2, pop_size=100, max_evaluations=4000, seed=3,
+                           constraints=g, constraint_mode="eps_level",
+                           on_generation=lambda gen, F: hist.append((_core.current_cv_level(),
+                                                                     seen["max"])),
+                           record_every=1)
+    rises = [k for k in range(1, len(hist)) if hist[k][0] > hist[k - 1][0]]
+    assert rises, hist[:5]
+    for k in rises:
+        assert hist[k][0] == (1.0 + 0.1) * hist[k - 1][1], (k, hist[k - 1], hist[k])
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(x[0] - 0.96, 0.0)
+    for bad in (dict(constraint_mode="eps"), dict(constraint_mode="eps_level"),
+                dict(eps_schedule={"tc": 0.5})):
+        try:
+            mootation.minimize(f, [(0.0, 1.0)] * 4, 2, pop_size=10, n_gen=2, **bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{bad} was accepted")
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:

@@ -53,6 +53,8 @@ def minimize(
     eq_tol: float = 1e-4,
     eq_tol_schedule: str = "fixed",
     eq_tol0: float | None = None,
+    constraint_mode: str = "feasibility",
+    eps_schedule: dict | None = None,
     batch: Callable[[list], list] | None = None,
     seed_population=None,
     on_size_mismatch: str = "truncate",
@@ -91,6 +93,20 @@ def minimize(
                 with the same violation (the DOC problems, IEEE TEVC 23(5),
                 2019, Eq. 3); the RWMOP competition's guidelines (Kumar et
                 al. 2021) take 1e-4 too, but count |h| itself beyond it.
+    constraint_mode
+                with constraints: "feasibility" (the default) ranks a feasible
+                point above every infeasible one and infeasible ones by their
+                violation; "eps_level" counts a violation up to a level eps as
+                none (Takahama and Sakai's epsilon-level comparison), eps set
+                once per generation by Fan et al.'s improved rule (Soft
+                Computing 23(23), 2019, Eq. 8) and 0 from 80 % of the budget
+                on (python/mootation_module.cpp, RunConfig::eps_level). Every
+                core that takes constraints takes it; result.cv is the
+                violation itself.
+    eps_schedule
+                with "eps_level": {"tau": 0.1, "alpha": 0.95, "theta": 0.05,
+                "tc": 0.8}, the paper's values, any of them replaced; tc is
+                the share of the budget from which eps is 0.
     eq_tol_schedule, eq_tol0
                 "fixed" (the default): eq_tol throughout. "linear": the
                 tolerance falls from eq_tol0 to eq_tol in proportion to the
@@ -352,8 +368,23 @@ def minimize(
     cfg.fail_raise = on_failure == "raise"
     cfg.unique_evaluations = lambda: points.count
     cfg.budget_unique = budget_counts == "unique"
+    if constraint_mode not in ("feasibility", "eps_level"):
+        raise ValueError(f"constraint_mode = '{constraint_mode}': feasibility or eps_level")
+    if constraint_mode == "eps_level" and constraints is None:
+        raise ValueError("constraint_mode = 'eps_level' needs constraints")
+    if eps_schedule is not None and constraint_mode != "eps_level":
+        raise ValueError("eps_schedule goes with constraint_mode = 'eps_level'")
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
+    if constraint_mode == "eps_level":
+        # the vault's epsilon level on the feasibility-first ranking
+        cfg.eps_level = True
+        sched = dict(eps_schedule or {})
+        bad = sorted(set(sched) - {"tau", "alpha", "theta", "tc"})
+        if bad:
+            raise ValueError(f"eps_schedule: unknown key(s) {bad}; tau, alpha, theta, tc")
+        for k, v in sched.items():
+            setattr(cfg, "eps_" + k, float(v))
     if n_eq:
         cfg.n_eq = n_eq
         cfg.eq_tol = float(eq_tol)

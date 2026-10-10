@@ -86,7 +86,10 @@ satisfied" and cv adds max(|h| - delta, 0). `set_eq_tol(delta)` moves the
 tolerance between steps and rewrites every evaluated point from its |h|.
 Limits you hand to `setup_with_seed` are your problem's own, h included; an
 algorithm writing values back through `seed_individual` writes the vault's
-(EQUALITY CONSTRAINTS).
+(EQUALITY CONSTRAINTS). `set_cv_level(eps)` makes a violation up to eps count
+as none for the algorithm — the ε-level comparison on any feasibility-first
+core — while `raw_cv(v)` and `max_raw_cv()` keep the violation itself
+(EPSILON LEVEL); set it back to 0 before you read the answer's cv.
 
 ### Diagnostics
 

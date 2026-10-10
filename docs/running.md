@@ -172,6 +172,25 @@ the tolerance of the moment it read them, so under the linear schedule its
 answer can hold points that meet only a looser one; check them against
 `eq_tol` there.
 
+### The epsilon level
+
+`minimize(constraints=g, constraint_mode="eps_level")` counts a violation up
+to a level ε as none: the vault hands the algorithm cv = 0 for such a point
+(`data_vault.hpp`, EPSILON LEVEL), so every core that ranks by feasibility
+first does Takahama and Sakai's ε-level comparison — by the objectives where
+both violations are at most ε, by the violation otherwise. ε follows Fan et
+al.'s improved setting (Soft Computing 23(23), 2019, Eq. 8, the rule of
+MOEA/D-IEpsilon) once per generation of `pop_size` evaluations: ε(0) is the
+violation of the initial population's (0.05 N)-th worst point, then 0.9 of
+itself while fewer than 95 % of the population are feasible, 1.1 times the
+largest violation seen once that many are, and 0 from 80 % of the budget on.
+The paper's Tc is 800 of its 1 000 generations; here it is 80 % of whatever
+budget the run has — jMetal's fixed 800 generations never reach ε = 0 on a
+short budget. `eps_schedule = {"tau", "alpha", "theta", "tc"}` replaces any
+of the four; with `tc = 0` ε stays 0 and the run is the feasibility-first one
+bit for bit. `result.cv` is the violation itself; an observer reads ε from
+`mootation._core.current_cv_level()`.
+
 ### What `--check` verifies
 
 Before anything expensive starts: unknown keys (an error, never a silent

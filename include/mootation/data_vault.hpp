@@ -49,6 +49,15 @@
 // 0) and delta = 1e-4, the binding's default, are Liu and Wang's (IEEE TEVC
 // 23(5), 2019, Eq. 3, the DOC problems); the RWMOP competition's guidelines
 // (Kumar et al. 2021) take 1e-4 too, but count |h| itself beyond it.
+//
+// EPSILON LEVEL (supplement 3, §4.1). set_cv_level(eps): a point whose
+// violation is at most eps has cv 0 for the algorithm, any other its
+// violation — so every core that ranks by feasibility first (FEASIBILITY,
+// CDP) does Takahama and Sakai's epsilon-level comparison (2006; Fan et al.
+// 2019, Eq. 6): by the objectives where both violations are at most eps, by
+// the violation otherwise. The violation itself stays in the slot (cv_raw);
+// raw_cv(v) and max_raw_cv() read it. The binding's EPS_LEVEL schedule moves
+// eps between steps; at 0, the default, cv is the violation, as before.
 // ============================================================================
 
 #include <algorithm>
@@ -112,6 +121,10 @@ private:
     std::size_t eq_n_   = 0;                      // the last eq_n_ limits are equalities
     double      eq_tol_ = 0.0;                    // their tolerance delta
 
+    // ── Epsilon level (EPSILON LEVEL above) ─────────────────────────────────
+    double      cv_level_ = 0.0;                  // a violation up to this counts as none
+    double      cv_max_   = 0.0;                  // the largest violation evaluated so far
+
     // ── Internal helpers ─────────────────────────────────────────────────────
 
     std::size_t real_idx(std::size_t v) const {
@@ -159,7 +172,9 @@ private:
     void calc_cv_slot(std::size_t r) {
         double s = 0.0;
         for (double g : buf_[r].limits) if (g > 0.0) s += g;
-        buf_[r].cv = s;
+        buf_[r].cv_raw = s;
+        buf_[r].cv = s > cv_level_ ? s : 0.0;
+        if (!buf_[r].failed && s > cv_max_) cv_max_ = s;
     }
 
     // The penalty of a failed slot (FAILED EVALUATIONS), its cv included.
@@ -175,7 +190,7 @@ private:
             s.limits[j] = 2.0 * std::max(worst, 0.0) + 1.0;
             cv += s.limits[j];
         }
-        s.cv = cv;
+        s.cv = s.cv_raw = cv;
     }
 
     // A finite slot widens the finite range; true if the penalty moves.
@@ -398,6 +413,23 @@ public:
     }
     std::size_t eq_n()   const { return eq_n_; }
     double      eq_tol() const { return eq_tol_; }
+
+    // EPSILON LEVEL: a new level; every evaluated slot's cv follows it.
+    void set_cv_level(double eps) {
+        if (eps == cv_level_) return;
+        cv_level_ = eps;
+        for (std::size_t r = 0; r < buf_.size(); ++r) {
+            if (dirty_[r]) continue;
+            Ind_type& s = buf_[r];
+            s.cv = s.cv_raw > cv_level_ ? s.cv_raw : 0.0;
+        }
+    }
+    double cv_level()   const { return cv_level_; }
+    double max_raw_cv() const { return cv_max_; }
+    // Active individual v's violation, whatever the level.
+    double raw_cv(std::size_t v) {
+        std::size_t r = real_idx(v); ensure_ready(r); return buf_[r].cv_raw;
+    }
 
     // ── Dimensions ───────────────────────────────────────────────────────────
 

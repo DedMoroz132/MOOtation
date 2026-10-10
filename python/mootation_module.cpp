@@ -129,6 +129,8 @@ OpStats g_ops;
 std::function<std::vector<std::vector<double>>()> g_answer_variables;
 // The equalities' tolerance of the run in progress, for current_eq_tol().
 std::function<double()> g_eq_tol;
+// The vault's epsilon level of the run in progress, for current_cv_level().
+std::function<double()> g_cv_level;
 
 inline std::string vec_key(const std::vector<double>& x)
 {
@@ -538,6 +540,20 @@ struct RunConfig {
     // "unique": a repeat answered from memory costs nothing).
     std::function<long long()> unique_evaluations;
     bool                       budget_unique = false;
+    // EPS_LEVEL (supplement 3, §4.1; data_vault.hpp, EPSILON LEVEL): the core
+    // ranks by feasibility (constraint_mode), the vault counts a violation up
+    // to eps as none, and eps follows Fan et al.'s improved setting (Soft
+    // Computing 23(23), 2019, Eq. 8) once per generation — pop_size
+    // evaluations under max_evaluations, a step under n_gen: eps(0) the
+    // violation of the initial population's (eps_theta N)-th worst point,
+    // then (1 - eps_tau) eps while fewer than eps_alpha of the population are
+    // feasible, (1 + eps_tau) times the largest violation seen once that many
+    // are, and 0 from eps_tc of the budget on. The paper: tau 0.1, alpha 0.95,
+    // theta 0.05, Tc 800 of its 1000 generations — eps_tc = 0.8 here, of the
+    // budget the run has, not 800 generations of any budget (the jMetal trap:
+    // a short budget never reaches eps = 0). The answer's cv is the violation.
+    bool   eps_level = false;
+    double eps_tau = 0.1, eps_alpha = 0.95, eps_theta = 0.05, eps_tc = 0.8;
 };
 
 struct PyResult {
@@ -746,6 +762,21 @@ PyResult run_core(const RunConfig& cfg)
         } else {
             opt.setup();
         }
+        // EPS_LEVEL: eps(0) from the initial population (Eq. 8, rule 1)
+        int eps_gen = 0;                      // generations whose eps is set
+        long long steps_done = 0;
+        if (cfg.eps_level) {
+            auto& v = opt.get_vault();
+            const std::size_t n = std::min<std::size_t>(v.active_n(),
+                                                        static_cast<std::size_t>(v.pop_size()));
+            std::vector<double> cv;
+            for (std::size_t i = 0; i < n; ++i)
+                if (!v.is_dirty(i)) cv.push_back(v.raw_cv(i));
+            std::sort(cv.begin(), cv.end(), std::greater<double>());
+            const std::size_t theta = static_cast<std::size_t>(
+                std::max(1L, std::lround(cfg.eps_theta * static_cast<double>(v.pop_size()))));
+            v.set_cv_level(cv.empty() ? 0.0 : cv[std::min(theta, cv.size()) - 1]);
+        }
         // the initial population is not offspring: the counts start here
         g_ops.setup_evals = g_ops.evals_read = g_evaluations.load();
         g_ops.rc_read = ops::repair_counts();
@@ -768,7 +799,34 @@ PyResult run_core(const RunConfig& cfg)
             py::gil_scoped_acquire gil;
             return cfg.unique_evaluations();
         };
+        g_cv_level = [&opt]() { return opt.get_vault().cv_level(); };
+        // EPS_LEVEL, Eq. 8 rules 2-4, once for every generation reached
+        auto eps_update = [&]() {
+            auto& v = opt.get_vault();
+            const double pop = static_cast<double>(std::max(1, cfg.pop_size));
+            const double gens_total = by_evaluations
+                ? static_cast<double>(cfg.max_evaluations) / pop : static_cast<double>(cfg.n_gen);
+            const int gen_now = by_evaluations
+                ? static_cast<int>(static_cast<double>(spent()) / pop)
+                : static_cast<int>(steps_done);
+            for (; eps_gen < gen_now; ++eps_gen) {
+                const double k = static_cast<double>(eps_gen + 1);
+                if (k >= cfg.eps_tc * gens_total) { v.set_cv_level(0.0); continue; }
+                const std::size_t n = std::min<std::size_t>(
+                    v.active_n(), static_cast<std::size_t>(v.pop_size()));
+                std::size_t feasible = 0, seen = 0;
+                for (std::size_t i = 0; i < n; ++i) {
+                    if (v.is_dirty(i)) continue;
+                    ++seen;
+                    feasible += v.raw_cv(i) <= 0.0;
+                }
+                const double r = seen ? static_cast<double>(feasible) / static_cast<double>(seen) : 0.0;
+                v.set_cv_level(r < cfg.eps_alpha ? (1.0 - cfg.eps_tau) * v.cv_level()
+                                                 : (1.0 + cfg.eps_tau) * v.max_raw_cv());
+            }
+        };
         auto one_step = [&]() {
+            if (cfg.eps_level) eps_update();
             if (cfg.n_eq > 0 && cfg.eq_linear) {
                 // the share of the budget spent so far, setup included
                 const double t = std::min(1.0, static_cast<double>(spent()) /
@@ -777,6 +835,7 @@ PyResult run_core(const RunConfig& cfg)
             }
             if (g_ops.on) ops_before_step(opt.get_vault());
             opt.step();
+            ++steps_done;
             if (g_ops.on) ops_after_step(opt.get_vault());
         };
         auto emit = [&](int g) {
@@ -847,6 +906,7 @@ PyResult run_core(const RunConfig& cfg)
 
     auto&    v = opt.get_vault();
     if (cfg.n_eq > 0) v.set_eq_tol(cfg.eq_tol);   // the answer at the final tolerance
+    v.set_cv_level(0.0);                          // and its cv the violation itself
     PyResult r;
     // NOT active_n(): steady-state cores (moead_de, moead_dd, hlmea, adaw,
     // ...) park a persistent scratch slot at active index pop_size(), so
@@ -923,7 +983,10 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     g_ops = OpStats{};
     g_ops.on = cfg.operator_stats;
     struct Guard {
-        ~Guard() { g_problem = nullptr; g_answer_variables = nullptr; g_eq_tol = nullptr; }
+        ~Guard() {
+            g_problem = nullptr; g_answer_variables = nullptr; g_eq_tol = nullptr;
+            g_cv_level = nullptr;
+        }
     } guard;
 
 #define MOOTATION_ALG(KEY, IND, CORE) \
@@ -1039,6 +1102,14 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("unique_evaluations", &RunConfig::unique_evaluations,
                        "a callable giving the number of distinct decoded points evaluated "
                        "so far (mootation/unique.py)")
+        .def_readwrite("eps_level",       &RunConfig::eps_level,
+                       "EPS_LEVEL: the vault's epsilon level on a feasibility-first core, "
+                       "set by Fan et al.'s improved rule (Eq. 8) once per generation")
+        .def_readwrite("eps_tau",         &RunConfig::eps_tau)
+        .def_readwrite("eps_alpha",       &RunConfig::eps_alpha)
+        .def_readwrite("eps_theta",       &RunConfig::eps_theta)
+        .def_readwrite("eps_tc",          &RunConfig::eps_tc,
+                       "the share of the budget from which eps is 0")
         .def_readwrite("budget_unique",   &RunConfig::budget_unique,
                        "max_evaluations counts distinct points, not calls "
                        "(budget_counts = unique)")
@@ -1241,6 +1312,12 @@ PYBIND11_MODULE(_core, m)
           },
           "The variables of the rows the on_generation observer has just received, in "
           "the same order, for the run in progress (call it from on_generation).");
+    m.def("current_cv_level", []() {
+              if (!g_cv_level)
+                  throw std::runtime_error("current_cv_level() answers only during a run");
+              return g_cv_level();
+          },
+          "The vault's epsilon level of the run in progress (EPS_LEVEL); 0 otherwise.");
     m.def("current_eq_tol", []() {
               if (!g_eq_tol)
                   throw std::runtime_error("current_eq_tol() answers only during a run");
