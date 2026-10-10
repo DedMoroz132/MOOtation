@@ -70,6 +70,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -229,10 +230,15 @@ public:
         std::uniform_int_distribution<int> any(0, N + static_cast<int>(archive_.size()) - 1);
         const int i = any(rng);
         if (i < N) return from_population();
-        return archive_[static_cast<std::size_t>(i - N)];
+        const auto& a = archive_[static_cast<std::size_t>(i - N)];
+        return view ? view(a) : a;
     }
 
     const std::vector<std::vector<double>>& archive() const { return archive_; }
+
+    // Where the variation runs in learned coordinates (variation.hpp): the
+    // archive's members, kept in x, handed over in y. Empty otherwise.
+    std::function<std::vector<double>(const std::vector<double>&)> view;
 
     // The population at the start of a step (X its variables, F its
     // objectives): the verdict on the children of the previous step, then the

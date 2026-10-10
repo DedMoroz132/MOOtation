@@ -36,6 +36,12 @@ SA_STATS = ("sa_T", "sa_s", "sa_archive_size", "sa_reseeds", "sa_p_laplace", "sa
             "sa_p_sbx")
 SA_WEIGHT_STATS = ("sa_w_mean_", "sa_w_sd_")
 
+# The learned coordinates' (coords = pca, pca_nd, randrot; task 7, supplement
+# 1): the spectrum with operator_stats, and with [campaign] coords_diag the
+# principal angles against the distance block too (coords_diag.py).
+COORDS_STATS = ("coords_ratio", "coords_lead_share", "coords_updates", "coords_angle_max",
+                "coords_angle_mean")
+
 # What a run on a constrained problem records besides (task 6 of 2026-10-09,
 # item 5.2), unasked: feas_share wherever an indicator is measured, which is
 # then measured on the feasible part of the answer (metrics.compute), and
@@ -51,7 +57,8 @@ NOISE = ("true_dominated_share",)
 NOISE_MODES = ("_oracle", "_observed")
 
 # Everything a table can be asked for.
-TABLE_NAMES = METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + FEASIBILITY + NOISE
+TABLE_NAMES = (METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + COORDS_STATS + FEASIBILITY
+               + NOISE)
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
@@ -173,6 +180,13 @@ DESCRIPTIONS = {
     "de_f_mean": "the mean F of the children drawn",
     "de_cr_success_mean": "the mean CR of the children the selection kept",
     "de_f_success_mean": "the mean F of the children the selection kept",
+    "coords_ratio": "coords: the largest eigenvalue of the last update over the smallest "
+                    "one above 1e-12 of it",
+    "coords_lead_share": "coords: the share of the first M - 1 components in the spectrum",
+    "coords_updates": "coords: the updates of the learned basis so far",
+    "coords_angle_max": "coords_diag: the largest principal angle, in degrees, between the "
+                        "distance block and the learned minor subspace",
+    "coords_angle_mean": "coords_diag: their mean",
     "sa_T": "mosa: the temperature at the record",
     "sa_s": "mosa: the step scale at the record, over ub - lb",
     "sa_archive_size": "mosa: the archive's size at the record",

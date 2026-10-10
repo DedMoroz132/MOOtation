@@ -98,6 +98,7 @@
 #include "../operators/poly_mutation.hpp"
 #include "../operators/real_crossover.hpp"
 #include "../operators/real_mutation.hpp"
+#include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
 
 namespace mootation {
@@ -526,9 +527,8 @@ public:
             }
             // Table 1: pc=1, pm=1/n
             double pm = pm_ ? *pm_ : (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
-            xover_.apply_any(pv1, pv2, draw, best, n, c1, c2, bounds, eta_c_, pc_, rng_);
-            mut_.apply(c1, bounds, eta_m_, pm, rng_);
-            mut_.apply(c2, bounds, eta_m_, pm, rng_);
+            ops::vary(xover_, mut_, pv1, pv2, draw, best, n, c1, c2, bounds,
+                      eta_c_, pc_, eta_m_, pm, rng_, [] { return -1; });
             xover_.finish(c1, c2, i + 1 < n ? -1 : 0);
             if (vault.bin_vars_n() > 0) {
                 std::vector<int> bv1(vault.bin_vars_n()), bv2(vault.bin_vars_n()),

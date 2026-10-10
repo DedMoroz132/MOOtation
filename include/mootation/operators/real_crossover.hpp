@@ -48,12 +48,14 @@
 
 #include "bound_repair.hpp"
 #include "de_crossover.hpp"
+#include "learned_coords.hpp"
 #include "multi_parent.hpp"
 #include "sbx.hpp"
 
 namespace mootation::ops {
 
-enum class Crossover { SBX, Uniform, BlxAlpha, SPX, REX, UNDX, PCX, DE, DEPBest, Portfolio };
+enum class Crossover { SBX, Uniform, BlxAlpha, SPX, REX, UNDX, PCX, DE, DEPBest, Portfolio,
+                       None };
 
 inline const char* crossover_name(Crossover c)
 {
@@ -68,6 +70,7 @@ inline const char* crossover_name(Crossover c)
         case Crossover::DE:       return "de";
         case Crossover::DEPBest:  return "de_pbest";
         case Crossover::Portfolio: return "portfolio";
+        case Crossover::None:     return "none";
     }
     return "?";
 }
@@ -76,7 +79,8 @@ inline std::optional<Crossover> parse_crossover(const std::string& s)
 {
     for (Crossover c : {Crossover::SBX, Crossover::Uniform, Crossover::BlxAlpha,
                         Crossover::SPX, Crossover::REX, Crossover::UNDX, Crossover::PCX,
-                        Crossover::DE, Crossover::DEPBest, Crossover::Portfolio})
+                        Crossover::DE, Crossover::DEPBest, Crossover::Portfolio,
+                        Crossover::None})
         if (s == crossover_name(c)) return c;
     return std::nullopt;
 }
@@ -172,6 +176,7 @@ inline void reset_crossover_records()
 {
     de_record() = DERecord{};
     portfolio_record().clear();
+    coords_record() = CoordsRecord{};
 }
 
 // {name: value} of the records since the last call (totals: over the run),
@@ -219,6 +224,23 @@ inline std::vector<std::pair<std::string, double>> crossover_stats(bool totals)
         if (c > 0) out.emplace_back("portfolio_kept_" + kv.first, static_cast<double>(k) / static_cast<double>(c));
         if (!totals) kv.second.children = kv.second.kept = 0;
     }
+    // coords (learned_coords.hpp): the spectrum of the last update — the
+    // largest eigenvalue over the smallest one above 1e-12 of it, and the
+    // share of the first M - 1 components
+    const auto& co = coords_record();
+    if (co.active && !co.eig.empty()) {
+        double sum = 0.0, lead = 0.0, low = co.eig.front();
+        for (std::size_t i = 0; i < co.eig.size(); ++i) {
+            sum += std::max(co.eig[i], 0.0);
+            if (static_cast<int>(i) < co.m - 1) lead += std::max(co.eig[i], 0.0);
+            if (co.eig[i] > 1e-12 * co.eig.front()) low = co.eig[i];
+        }
+        if (co.eig.front() > 0.0) {
+            out.emplace_back("coords_ratio", co.eig.front() / low);
+            out.emplace_back("coords_lead_share", lead / sum);
+        }
+        out.emplace_back("coords_updates", static_cast<double>(co.updates));
+    }
     return out;
 }
 
@@ -230,6 +252,7 @@ struct CrossoverSpec {
     std::vector<Crossover> portfolio = {Crossover::SBX, Crossover::DE, Crossover::PCX,
                                         Crossover::UNDX};
     PortfolioCredit credit = PortfolioCredit::Uniform;
+    LearnedCoords coords;                          // coords (learned_coords.hpp, variation.hpp)
 
     bool multi() const { return is_multi(kind); }
 
@@ -263,6 +286,7 @@ struct CrossoverSpec {
     // set_param / set_word hand them here; false: not one of them.
     bool set_param(const std::string& k, double v)
     {
+        if (coords.set_param(k, v)) return true;
         if (k == "de_p") {
             if (!(v > 0.0 && v <= 1.0)) throw std::invalid_argument("de_p must be in (0, 1]");
             de.set.p = v;
@@ -278,6 +302,7 @@ struct CrossoverSpec {
     }
     bool set_word(const std::string& k, const std::string& w)
     {
+        if (coords.set_word(k, w)) return true;
         if (k == "de_adapt") {
             auto a = parse_de_adapt(w);
             if (!a) throw std::invalid_argument("de_adapt = '" + w + "': none or shade");
@@ -419,11 +444,14 @@ struct CrossoverSpec {
 
     // At the start of every step, the population the host's selection left:
     // the verdict on the last step's children (de_crossover.hpp; the
-    // portfolio's archive and counts).
+    // portfolio's archive and counts), and the learned coordinates' update
+    // (learned_coords.hpp) — `offspring` the children this step will make,
+    // n by default (sms_emoa: 1).
     template <typename Vault, typename RNG>
-    void observe(Vault& vault, int n, RNG& rng)
+    void observe(Vault& vault, int n, RNG& rng, int offspring = -1)
     {
-        if (!observing()) return;
+        const bool learn = coords.kind != CoordsKind::Axis;
+        if (!observing() && !learn) return;
         std::vector<std::vector<double>> X, F;
         X.reserve(static_cast<std::size_t>(n));
         F.reserve(static_cast<std::size_t>(n));
@@ -431,8 +459,11 @@ struct CrossoverSpec {
             X.push_back(vault.variables_of(static_cast<std::size_t>(i)));
             F.push_back(vault.objectives_of(static_cast<std::size_t>(i)));
         }
-        de.observe(X, F, rng);
-        if (kind == Crossover::Portfolio) observe_portfolio(X, F);
+        if (observing()) {
+            de.observe(X, F, rng);
+            if (kind == Crossover::Portfolio) observe_portfolio(X, F);
+        }
+        if (learn) coords.observe(X, F, offspring < 0 ? n : offspring, vault.get_bounds(), rng);
     }
 
 private:
@@ -501,6 +532,10 @@ private:
             case Crossover::Uniform:  uniform_crossover(p1, p2, c1, c2, pc, rng); break;
             case Crossover::BlxAlpha:
                 blx_alpha_crossover(p1, p2, c1, c2, bounds, alpha, pc, repair, rng); break;
+            case Crossover::None:     // the children are the parents (task 7, supplement 2)
+                c1 = p1; c2 = p2;
+                note_operator("none", "none");
+                break;
             default:
                 throw std::invalid_argument(std::string("crossover '") + crossover_name(k) +
                                             "' takes more than two parents: call apply_any");

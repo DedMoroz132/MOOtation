@@ -392,6 +392,13 @@ bool apply_word(C& core, const std::string& k, const std::string& w)
     else { (void)core; (void)k; (void)w; return false; }
 }
 
+// A core with an inner archive (operators/inner_archive.hpp): its members.
+template <typename C, typename = void>
+struct has_inner_archive : std::false_type {};
+template <typename C>
+struct has_inner_archive<C, std::void_t<decltype(std::declval<const C&>().inner_archive())>>
+    : std::true_type {};
+
 // A core that can tell it has converged (DMS: every step size below its
 // tolerance) ends the run early instead of stepping on without evaluating.
 template <typename C, typename = void>
@@ -496,6 +503,10 @@ struct PyResult {
     // The run's operator statistics (operator_stats() over the whole run);
     // empty unless RunConfig::operator_stats.
     std::map<std::string, double>    operator_totals;
+    // The inner archive (operators/inner_archive.hpp) at the end, for the cores
+    // that keep one and with inner_archive = "nd"; empty otherwise.
+    std::vector<std::vector<double>> inner_objectives;
+    std::vector<std::vector<double>> inner_variables;
 };
 
 template <typename Tag, typename Core>
@@ -749,6 +760,13 @@ PyResult run_core(const RunConfig& cfg)
             r.operator_totals["step_mean"] = g_ops.t_step / static_cast<double>(g_ops.t_step_n);
         for (const auto& kv : ops::crossover_stats(true)) r.operator_totals[kv.first] = kv.second;
         for (const auto& kv : mosa_record()) r.operator_totals[kv.first] = kv.second;
+        for (const auto& kv : ops::inner_archive_stats(true)) r.operator_totals[kv.first] = kv.second;
+    }
+    if constexpr (has_inner_archive<Core>::value) {
+        for (const auto& m : alg.inner_archive()) {
+            r.inner_objectives.push_back(m.f);
+            r.inner_variables.push_back(m.x);
+        }
     }
     r.objectives.reserve(r.active_n);
     r.variables.reserve(r.active_n);
@@ -771,6 +789,7 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     mootation::ops::reset_operator_records();
     mootation::ops::reset_crossover_records();
     mootation::mosa_record().clear();
+    mootation::ops::inner_archive_record() = mootation::ops::InnerArchiveRecord{};
     g_ops = OpStats{};
     g_ops.on = cfg.operator_stats;
     struct Guard { ~Guard() { g_problem = nullptr; g_answer_variables = nullptr; } } guard;
@@ -909,7 +928,12 @@ PYBIND11_MODULE(_core, m)
         .def_readonly("operators", &PyResult::operators,
                       "(operator, bound repair) for every variation operator the run used")
         .def_readonly("operator_totals", &PyResult::operator_totals,
-                      "the operator statistics over the whole run (operator_stats)");
+                      "the operator statistics over the whole run (operator_stats)")
+        .def_readonly("inner_archive", &PyResult::inner_objectives,
+                      "the objectives of the inner archive at the end (inner_archive = "
+                      "\"nd\"; operators/inner_archive.hpp), empty without one")
+        .def_readonly("inner_archive_variables", &PyResult::inner_variables,
+                      "their variables");
 
     m.def("hypervolume",
           [](py::array_t<double, py::array::c_style | py::array::forcecast> points,
@@ -1001,6 +1025,8 @@ PYBIND11_MODULE(_core, m)
               for (const auto& kv : mootation::ops::crossover_stats(false)) d[py::str(kv.first)] = kv.second;
               // mosa: the annealing's state (algorithms/mosa.hpp)
               for (const auto& kv : mootation::mosa_record()) d[py::str(kv.first)] = kv.second;
+              // the inner archive (operators/inner_archive.hpp)
+              for (const auto& kv : mootation::ops::inner_archive_stats(false)) d[py::str(kv.first)] = kv.second;
               g_ops.evals_read = g_evaluations.load();
               g_ops.rc_read = rc;
               g_ops.off = g_ops.surv = g_ops.nd = g_ops.step_n = 0;
@@ -1013,7 +1039,22 @@ PYBIND11_MODULE(_core, m)
           "RunConfig.operator_stats); with crossover de or de_pbest de_mu_cr_* and "
           "de_mu_f_* (the SHADE memory: mean, q1, q3), de_cr_mean, de_f_mean and "
           "de_cr_success_mean, de_f_success_mean; with portfolio, per operator "
-          "portfolio_share_<op> and portfolio_kept_<op>.");
+          "portfolio_share_<op> and portfolio_kept_<op>; with coords, coords_ratio, "
+          "coords_lead_share and coords_updates.");
+    m.def("coords_state", []() {
+              const auto& r = mootation::ops::coords_record();
+              py::dict d;
+              d["active"] = r.active;
+              d["R"] = r.R;
+              d["mu"] = r.mu;
+              d["eig"] = r.eig;
+              d["m"] = r.m;
+              d["updates"] = r.updates;
+              return d;
+          },
+          "The learned coordinates of the run in progress at their last update "
+          "(operators/learned_coords.hpp): active, R (columns the basis), mu, eig, m "
+          "(the objectives), updates. Call it from on_generation.");
     m.def("current_variables", []() {
               if (!g_answer_variables)
                   throw std::runtime_error("current_variables() answers only from an "

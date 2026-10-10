@@ -454,8 +454,10 @@ void test_multi_parent_host_entry()
 // A population a CrossoverSpec can observe (variables_of / objectives_of).
 struct FakeVault {
     std::vector<Vec> X, F;
+    Bounds box;
     const Vec& variables_of(std::size_t i) const { return X[i]; }
     const Vec& objectives_of(std::size_t i) const { return F[i]; }
+    const Bounds& get_bounds() const { return box; }
 };
 
 void test_de_crossover()

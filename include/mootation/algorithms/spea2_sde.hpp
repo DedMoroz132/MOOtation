@@ -65,6 +65,7 @@
 #include "../operators/poly_mutation.hpp"
 #include "../operators/real_crossover.hpp"
 #include "../operators/real_mutation.hpp"
+#include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
 
 namespace mootation {
@@ -383,9 +384,8 @@ private:
             const auto& bv = vault.archive_variables_of(static_cast<std::size_t>(bi));
             // §III settings paragraph: pc=1.0, pm=1/n
             double pm = pm_ ? *pm_ : (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
-            xover_.apply_any(av, bv, draw, best, na, c1, c2, bounds, eta_c_, pc_, rng_);
-            mut_.apply(c1, bounds, eta_m_, pm, rng_);
-            mut_.apply(c2, bounds, eta_m_, pm, rng_);
+            ops::vary(xover_, mut_, av, bv, draw, best, na, c1, c2, bounds,
+                      eta_c_, pc_, eta_m_, pm, rng_, [] { return -1; });
             xover_.finish(c1, c2, i + 1 < N ? -1 : 0);
             if (vault.bin_vars_n() > 0) {
                 const auto& abv = vault.archive_bin_variables_of(static_cast<std::size_t>(ai));

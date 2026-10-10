@@ -74,7 +74,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 7 of 2026-10-10: handed to a core's set_param (below)
         "ref_delta", "de_p", "de_memory",
         "p_de", "sa_chains", "sa_reseed", "sa_t_ratio", "sa_s0", "sa_s_end",
-        "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window"
+        "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
+        "coords_warmup", "coords_update",
+        "spu_frac", "inner_archive_cap", "archive_reuse_p"
     };
     return v;
 }
@@ -90,11 +92,23 @@ inline const std::vector<std::string>& knob_names() {
 //   portfolio, portfolio_credit
 //                  crossover = portfolio (operators/real_crossover.hpp)
 //   p_de, sa_*     mosa (algorithms/mosa.hpp)
+//   coords, coords_warmup, coords_update
+//                  the switchable algorithms and mosa's sbx step: the variation
+//                  in learned coordinates (operators/learned_coords.hpp)
+//   survival, spu_frac
+//                  sms_emoa, nsga2, nsga3: the stochastic population update
+//   inner_archive, inner_archive_cap, archive_reuse_p
+//                  sms_emoa, nsga2, nsga3, ibea_eplus: an archive the
+//                  algorithm sees and draws parents from
+//                  (operators/inner_archive.hpp)
+//   bin_crossover  sms_emoa, nsga2: uniform or none for the binary genome
+//   mating         nsga2: tournament, or each member a parent once
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
                           "sa_t_ratio", "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha",
-                          "sa_adapt_window"})
+                          "sa_adapt_window", "coords_warmup", "coords_update", "spu_frac",
+                          "inner_archive_cap", "archive_reuse_p"})
         if (name == k) return true;
     return false;
 }
@@ -120,7 +134,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
     static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
         {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
         {"crossover",    {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de",
-                          "de_pbest", "portfolio"}},
+                          "de_pbest", "portfolio", "none"}},
         {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                           "mixture_cauchy", "none"}},
         {"crowding_space", {"objectives", "decision"}},
@@ -136,6 +150,11 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"sa_step",      {"mix", "laplace", "de", "sbx", "adaptive"}},
         {"sa_weights",   {"psa", "fixed"}},
         {"sa_tch_accept", {"weighted_sum", "chebyshev"}},
+        {"coords",       {"axis", "pca", "pca_nd", "randrot"}},
+        {"survival",     {"greedy", "stochastic"}},
+        {"inner_archive", {"off", "nd"}},
+        {"bin_crossover", {"uniform", "none"}},
+        {"mating",       {"tournament", "each"}},
     };
     return v;
 }
@@ -155,7 +174,8 @@ inline bool is_core_word(const std::string& name)
 {
     for (const char* k : {"de_adapt", "de_adapt_weight", "de_archive", "portfolio",
                           "portfolio_credit", "sa_energy", "sa_step", "sa_weights",
-                          "sa_tch_accept"})
+                          "sa_tch_accept", "coords", "survival", "inner_archive",
+                          "bin_crossover", "mating"})
         if (name == k) return true;
     return false;
 }

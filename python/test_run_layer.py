@@ -6219,7 +6219,7 @@ def operator_words_are_knobs_of_the_run_layer():
     from mootation.run.knobs import text_knobs
     words = text_knobs()
     assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx",
-                                       "pcx", "de", "de_pbest", "portfolio"}, words
+                                       "pcx", "de", "de_pbest", "portfolio", "none"}, words
     assert {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
             "mixture_cauchy", "none"} == set(words["mutation"]), words
     for k in ("mutation_scale", "mixture_q", "blx_alpha", "crossover", "mutation"):
@@ -6706,6 +6706,132 @@ archive_checkpoints = true
         assert sorted(at, key=int) == ["100", "300", "1000"], at
         assert all(at[b]["fe"] == int(b) and 0 < at[b]["n"] <= 91 for b in at), at
         assert at["100"]["igdp_norm"] >= at["1000"]["igdp_norm"], at
+
+
+@test
+def coords_are_knobs_and_the_diagnostics_find_the_distance_block():
+    """coords (task 7, supplement 1): a knob of the switchable algorithms and of
+    mosa, refused words refused, ignored elsewhere. On rcDTLZ2_3D started from
+    its Pareto set, pca_nd's minor subspace is the distance block: principal
+    angles near 0; a campaign with coords_diag records them and the spectrum."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  coords_are_knobs...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation import _core
+    from mootation.benchmarks import get
+    from mootation.persistence import LoadedPopulation
+    from mootation.run import campaign as C
+    from mootation.run import coords_diag as D
+    from mootation.run.config import load
+    from mootation.run.metric_names import COORDS_STATS, is_table_name
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    assert all(is_table_name(k) for k in COORDS_STATS)
+    p = get("ZDT1")
+    for alg in ("nsga2", "ibea_eplus", "spea2_sde", "agemoea", "sms_emoa", "mosa"):
+        r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20, max_evaluations=400,
+                        seed=1, coords="pca", coords_warmup=0)
+        assert not set(r.ignored) & {"coords", "coords_warmup"}, (alg, r.ignored)
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="moead", pop_size=20, max_evaluations=200,
+                    seed=1, coords="pca")
+    assert "coords" in r.ignored
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    coords="diagonal")
+        raise AssertionError("coords = diagonal accepted")
+    except ValueError:
+        pass
+    q = get("rcDTLZ2_3D")
+    S = np.asarray(q.pareto_set(91), float)
+    seed = LoadedPopulation([list(x) for x in S], [q.evaluate(list(x)) for x in S],
+                            [0.0] * len(S), {})
+    states = []
+
+    def watch(gen, F):
+        states.append(dict(_core.coords_state()))
+    Mz.minimize(q.evaluate, q.bounds, 3, algorithm="nsga2", pop_size=91, max_evaluations=182,
+                seed=1, coords="pca_nd", coords_warmup=0, seed_population=seed,
+                on_generation=watch, record_every=1)
+    st = next(s for s in states if s["active"])
+    assert D.distance_start("rcDTLZ2_3D") == 2 and D.distance_start("rWFG4_3D") == 4
+    assert D.distance_start("bbobbiobj01_n05_2D") is None
+    amax, amean = D.principal_angles(st["R"], 2)
+    assert amax < 1e-4, (amax, amean)
+    rot = D.principal_angles(np.eye(12)[:, ::-1], 2)          # the block's complement
+    assert rot[0] > 89.9, rot
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0, params = { coords = "pca", coords_warmup = 2 } } ]
+[run]
+name = "co"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["rDTLZ1_3D"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm"]
+coords_diag = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "co.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "rDTLZ1_3D" / "nsga2" / "run_1"
+        T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+        late = [t for t in T if "coords_angle_max" in t]
+        assert late and all(0.0 <= t["coords_angle_max"] <= 90.0 and t["coords_ratio"] >= 1.0
+                            for t in late), T[-1]
+        assert "coords_angle_max" not in T[0], T[0]                # warm-up: R = I
+
+
+@test
+def stochastic_survival_and_the_inner_archive_are_knobs():
+    """Task 7, supplement 2: survival, spu_frac, inner_archive, inner_archive_cap,
+    archive_reuse_p, bin_crossover and mating reach their algorithms and no
+    other; the result holds the inner archive, mutually non-dominated, and
+    operator_stats the share of the parents drawn from it."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  stochastic_survival...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    p = get("ZDT1")
+    for alg in ("sms_emoa", "nsga2", "nsga3"):
+        pop = 20 if alg != "nsga3" else 21
+        r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=pop,
+                        max_evaluations=600, seed=1, survival="stochastic", inner_archive="nd",
+                        archive_reuse_p=0.5, operator_stats=True)
+        assert not set(r.ignored) & {"survival", "inner_archive", "archive_reuse_p"}, (alg, r.ignored)
+        A = np.asarray(r.inner_archive)
+        assert len(A) > 0 and len(r.inner_archive_variables) == len(A), alg
+        assert not any((np.all(A <= a, axis=1) & np.any(A < a, axis=1)).any() for a in A), alg
+        share = r.operator_totals["archive_parent_share"]
+        assert 0.3 < share < 0.7, (alg, share)
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="ibea_eplus", pop_size=20,
+                    max_evaluations=400, seed=1, inner_archive="nd", inner_archive_cap=10,
+                    survival="stochastic")
+    assert 0 < len(r.inner_archive) <= 10 and r.ignored == ["survival"], r.ignored
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="moead", pop_size=20, max_evaluations=200,
+                    seed=1, survival="stochastic", inner_archive="nd", mating="each")
+    assert {"survival", "inner_archive", "mating"} <= set(r.ignored) and not r.inner_archive
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    mating="each")
+        raise AssertionError("mating = each with SBX accepted")
+    except ValueError as e:
+        assert "crossover" in str(e), e
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    seed=1, mating="each", crossover="none")
+    assert r.evaluations >= 200 and "mating" not in r.ignored
 
 
 @test

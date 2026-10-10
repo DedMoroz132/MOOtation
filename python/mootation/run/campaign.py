@@ -165,6 +165,10 @@ class CampaignSpec:
     # run's result. meta["operators"] lists the operators and their bound
     # repair either way.
     operator_stats: bool = False
+    # With coords = pca, pca_nd or randrot: the learned basis's spectrum and
+    # its principal angles against the problem's distance block at every
+    # record (coords_diag.py; task 7, supplement 1).
+    coords_diag: bool = False
     # The run archive (archive.GridArchive -> archive.csv); archive_delta 0 is
     # the default grid step, 1e-3 below five objectives and 1e-2 from five.
     archive: bool = True
@@ -250,7 +254,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
-             "noise_cell"}
+             "noise_cell", "coords_diag"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -314,6 +318,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.operator_stats = raw.get("operator_stats", False)
     if not isinstance(spec.operator_stats, bool):
         raise ConfigError("campaign.operator_stats", "true or false")
+    spec.coords_diag = raw.get("coords_diag", False)
+    if not isinstance(spec.coords_diag, bool):
+        raise ConfigError("campaign.coords_diag", "true or false")
     spec.archive_scenario = raw.get("archive_scenario", True)
     if not isinstance(spec.archive_scenario, bool):
         raise ConfigError("campaign.archive_scenario", "true or false")
@@ -675,6 +682,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     op_stats = spec.operator_stats and not baseline
     if op_stats:
         from .. import _core
+    diag = spec.coords_diag and not baseline
+    if diag:
+        from .. import _core
+        from . import coords_diag
+        diag_start = coords_diag.distance_start(job.problem)
     snap_fe, snap_gen, snap_n, snap_F, snap_X = [], [], [], [], []
 
     t0 = time.perf_counter()
@@ -774,6 +786,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             rec.update(measure(F, X, traj_metrics if mark else everywhere))
         if op_stats:
             rec.update(_core.operator_stats())
+        if diag:
+            rec.update(coords_diag.record(job.problem, _core.coords_state(), diag_start))
         if snap:
             snap_fe.append(fe); snap_gen.append(gen); snap_n.append(len(F))
             snap_F.append(F.astype(np.float32).reshape(len(F), p.n_obj))

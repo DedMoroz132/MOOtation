@@ -18,6 +18,7 @@
 #include "../data_vault.hpp"
 #include "../dss.hpp"
 #include "../operators/bound_repair.hpp"
+#include "../operators/learned_coords.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 
@@ -164,6 +165,7 @@ private:
     int      cap_ = 0;                    // 0: no cap
     int      window_ = 200;
     ops::BoundRepair repair_ = ops::BoundRepair::Reflect;
+    ops::LearnedCoords coords_;           // coords: the sbx step in learned coordinates
     int      t_max_ = 1000;
     std::mt19937 rng_{0};
 
@@ -245,17 +247,38 @@ private:
         return y;
     }
 
-    std::vector<double> sbx_move(const std::vector<double>& x, const Bounds& bounds)
+    // coords (task 7, supplement 1; operators/learned_coords.hpp): with
+    // learned coordinates the SBX and the mutation act in y, the basis learned
+    // from the archive (the non-dominated points, so pca and pca_nd agree),
+    // a generation being pop_size steps.
+    std::vector<double> sbx_move(const std::vector<double>& x, const Bounds& bounds, int N)
     {
         std::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
         const std::vector<double> xa = archive_[any(rng_)].x;
+        const long long gen = k_ / std::max(1, N);
+        if (coords_.due(gen)) {
+            std::vector<std::vector<double>> X, F;
+            for (const auto& a : archive_) { X.push_back(a.x); F.push_back(a.f); }
+            coords_.fit_at(gen, X, F, bounds, rng_);
+        }
+        const bool learned = coords_.active();
         std::vector<double> c1, c2;
-        ops::sbx(x, xa, c1, c2, bounds, eta_c_, 1.0, rng_);
+        if (learned) {
+            ops::require_repair(repair_, ops::coords_name(coords_.kind), false, false);
+            ops::sbx(coords_.to_y(x), coords_.to_y(xa), c1, c2, coords_.open(x.size()), eta_c_,
+                     1.0, rng_);
+        } else {
+            ops::sbx(x, xa, c1, c2, bounds, eta_c_, 1.0, rng_);
+        }
         std::uniform_real_distribution<double> u(0.0, 1.0);
         std::vector<double> y = u(rng_) < 0.5 ? c1 : c2;
         const double pm = pm_ ? *pm_ : 1.0 / static_cast<double>(x.size());
-        ops::polynomial_mutation(y, bounds, eta_m_, pm, rng_);
-        return y;
+        if (!learned) {
+            ops::polynomial_mutation(y, bounds, eta_m_, pm, rng_);
+            return y;
+        }
+        ops::polynomial_mutation(y, coords_.mutation_bounds(y), eta_m_, pm, rng_);
+        return coords_.back(y, bounds, x, repair_, rng_);
     }
 
     // 0 laplace, 1 de, 2 sbx — the step actually taken
@@ -456,6 +479,7 @@ public:
     }
     bool set_param(const std::string& k, double v)
     {
+        if (coords_.set_param(k, v)) return true;
         auto positive = [&](const char* name) {
             if (!(v > 0.0)) throw std::invalid_argument(std::string(name) + " must be > 0");
         };
@@ -477,6 +501,7 @@ public:
     }
     bool set_word(const std::string& k, const std::string& w)
     {
+        if (coords_.set_word(k, w)) return true;
         auto bad = [&](const char* words) {
             return std::invalid_argument(k + " = '" + w + "': " + words);
         };
@@ -668,7 +693,7 @@ public:
         Point& x = cur_[static_cast<std::size_t>(c)];
         const int op = choose(u);
         std::vector<double> y;
-        if (op == 2) y = sbx_move(x.x, vault.get_bounds());
+        if (op == 2) y = sbx_move(x.x, vault.get_bounds(), vault.pop_size());
         else if (op == 1) y = differential(x.x);
         else y = laplace(x.x);
         const Point p = evaluate(vault, {y})[0];

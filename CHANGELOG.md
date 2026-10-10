@@ -223,6 +223,33 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- The stochastic population update and an inner archive (task 7, supplement
+  2): `survival = "stochastic"` in SMS-EMOA, NSGA-II and NSGA-III after Bian,
+  Zhou, Li & Qian (IJCAI 2023) — a random Q′ of ⌊`spu_frac`·|Q|⌋ members
+  (1/2; 3/4) selected alone, the rest kept, so any member survives with
+  probability at least 1/2 or 1/4 (tested); `spu_frac = 1` is greedy bit for
+  bit. `inner_archive = "nd"`, `inner_archive_cap` and `archive_reuse_p` in
+  SMS-EMOA, NSGA-II, NSGA-III and IBEA-ε+: the non-dominated points the
+  algorithm evaluated, cut by DSS, and parents drawn from them; the result's
+  `inner_archive`, `operator_stats`' `archive_parent_share`
+  (`operators/inner_archive.hpp`). For the papers' theory runs:
+  `bin_crossover = "none"`, NSGA-II's `mating = "each"`, and
+  `crossover = "none"`. Every default is unchanged.
+- `coords`: the variation in learned coordinates (`operators/learned_coords.hpp`,
+  `variation.hpp`; task 7, supplement 1), in NSGA-II, IBEA-ε+, SPEA2+SDE,
+  AGE-MOEA, SMS-EMOA and mosa's sbx step. `pca` crosses and mutates in
+  y = (x − μ) R, R the eigenvectors of the population's covariance; `pca_nd`
+  from its non-dominated members; `randrot` a fresh random rotation, the
+  control; `axis`, the default, as before, bit for bit. R = I for the first
+  `coords_warmup` generations (10), then updated every `coords_update` (1);
+  no box in y (the crossovers unbounded, the mutation within the projected
+  population's widened range), the children mapped back and repaired. The
+  spectrum goes to `operator_stats`; `[campaign] coords_diag` adds the
+  principal angles between the learned minor subspace and the problem's
+  distance block (`run/coords_diag.py`); `_core.coords_state()` gives the
+  basis. Tests: the basis complete and orthonormal, randrot reproducible, the
+  offspring distribution turning with the population, the children in the
+  box, an endless warm-up identical to axis in NSGA-II, SMS-EMOA and mosa.
 - `--invariance-check` (`run/invariance.py`, task 7, §5.4): every algorithm
   entry of a campaign on its problems, on the objectives times 2^10 and times
   (2^-6, 1, 2^6, ...) — exact, so the trajectories are compared bit for bit —

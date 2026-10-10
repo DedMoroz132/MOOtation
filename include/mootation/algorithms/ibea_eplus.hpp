@@ -65,6 +65,13 @@
 //   survives rescaling far better than a partition does. The caution therefore
 //   belongs to the methods that distribute effort by direction — MOEA/D,
 //   NSGA-III, RVEA, theta-DEA — and not to indicator methods that rank.
+//
+// inner_archive, inner_archive_cap, archive_reuse_p (task 7 of 2026-10-10,
+//   supplement 2; operators/inner_archive.hpp): an archive of every
+//   non-dominated point evaluated, the initial population included; each
+//   parent, with probability archive_reuse_p, a member drawn uniformly
+//   instead of the tournament's winner. No theory behind it here: it is for
+//   the corpus's rule that experiments from four objectives run on IBEA-ε+.
 // ============================================================================
 
 #include <algorithm>
@@ -79,9 +86,11 @@
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
+#include "../operators/inner_archive.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/real_crossover.hpp"
 #include "../operators/real_mutation.hpp"
+#include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
 
 namespace mootation {
@@ -114,6 +123,22 @@ private:
     ops::CrossoverSpec xover_;
     ops::MutationSpec  mut_;
     std::mt19937 rng_{std::random_device{}()};
+    ops::InnerArchive arch_;
+
+    void archive_point(DataVault<Ind_t>& vault, std::size_t i)
+    {
+        if (!arch_.on) return;
+        if (constraint_mode != ConstraintMode::NONE && vault.get_cv(i) > 0.0) return;
+        arch_.add(vault.objectives_of(i), vault.variables_of(i),
+                  vault.bin_vars_n() > 0 ? vault.binary_variables_of(i) : std::vector<int>{});
+    }
+
+    void start_archive(DataVault<Ind_t>& vault)
+    {
+        arch_.start(vault.pop_size(), vault.vars_n() == 0 && vault.bin_vars_n() > 0);
+        for (std::size_t i = 0; i < static_cast<std::size_t>(vault.pop_size()); ++i)
+            archive_point(vault, i);
+    }
 
     // Iε+(a,b) with a CV shift — for EPS_CONSTRAINT (extension beyond the paper)
     double eps_indicator_with_cv(const std::vector<double>& a,
@@ -230,8 +255,15 @@ public:
     // crossover = de / de_pbest / portfolio (de_crossover.hpp, real_crossover.hpp)
     void set_F(double f)                      { xover_.de.set.F  = ops::checked_de_F(f); }
     void set_CR(double c)                     { xover_.de.set.CR = ops::checked_de_CR(c); }
-    bool set_param(const std::string& k, double v)             { return xover_.set_param(k, v); }
-    bool set_word(const std::string& k, const std::string& w)  { return xover_.set_word(k, w); }
+    bool set_param(const std::string& k, double v)
+    {
+        return arch_.set_param(k, v) || xover_.set_param(k, v);
+    }
+    bool set_word(const std::string& k, const std::string& w)
+    {
+        return arch_.set_word(k, w) || xover_.set_word(k, w);
+    }
+    const std::vector<ops::InnerArchive::Member>& inner_archive() const { return arch_.members(); }
     void set_bound_repair(ops::BoundRepair r) {
         ops::require_repair(r, "ibea_eplus", true, false);
         xover_.repair = r; mut_.repair = r;
@@ -262,6 +294,7 @@ public:
         }
         vault.sync();
         calculate_fitness(vault, n);
+        start_archive(vault);
     }
 
     // ============================================================
@@ -274,6 +307,7 @@ public:
     {
         int n = vault.pop_size();
         calculate_fitness(vault, n);
+        start_archive(vault);
     }
 
     void calculate_fitness(DataVault<Ind_t>& vault, int n)
@@ -426,29 +460,35 @@ public:
             int a = dist_int(rng_), b = dist_int(rng_);
             return (vault.get_ind(a).fitness > vault.get_ind(b).fitness) ? a : b;
         };
-        auto draw = [&] { return vault.variables_of(pick()); };
+        auto draw = [&] {
+            if (arch_.reuse(rng_)) return arch_.pick(rng_).x;
+            return vault.variables_of(pick());
+        };
+        // a parent: the tournament's winner, or a member of the inner archive
+        const bool bin = vault.bin_vars_n() > 0;
+        auto parent = [&](std::vector<double>& x, std::vector<int>& bv) {
+            if (arch_.reuse(rng_)) {
+                const auto& m = arch_.pick(rng_);
+                x = m.x;
+                bv = m.b;
+                return;
+            }
+            const int p = pick();
+            for (int j = 0; j < vault.vars_n(); ++j) x[j] = vault.get_variable(p, j);
+            if (bin) bv = vault.binary_variables_of(static_cast<std::size_t>(p));
+        };
 
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
+        std::vector<int> bv1, bv2;
         for (int i = 0; i < n; i += 2) {
-            int p1 = pick();
-            int p2 = pick();
-
-            for (int j = 0; j < vault.vars_n(); ++j) {
-                pv1[j] = vault.get_variable(p1, j);
-                pv2[j] = vault.get_variable(p2, j);
-            }
-            xover_.apply_any(pv1, pv2, draw, best, n, c1, c2, bounds, eta_c_, pc_, rng_);
-            mut_.apply(c1, bounds, eta_m_, pm, rng_);
-            mut_.apply(c2, bounds, eta_m_, pm, rng_);
+            parent(pv1, bv1);
+            parent(pv2, bv2);
+            ops::vary(xover_, mut_, pv1, pv2, draw, best, n, c1, c2, bounds,
+                      eta_c_, pc_, eta_m_, pm, rng_, [] { return -1; });
             xover_.finish(c1, c2, i + 1 < n ? -1 : 0);
 
-            if (vault.bin_vars_n() > 0) {
-                std::vector<int> bv1(vault.bin_vars_n()), bv2(vault.bin_vars_n());
+            if (bin) {
                 std::vector<int> bc1, bc2;
-                for (int j = 0; j < vault.bin_vars_n(); ++j) {
-                    bv1[j] = vault.get_bin_variable(p1, j);
-                    bv2[j] = vault.get_bin_variable(p2, j);
-                }
                 ops::binary_crossover(bv1, bv2, bc1, bc2, rng_);
                 ops::bit_flip_mutation(bc1, vault.bin_vars_n(), rng_);
                 if (i + 1 < n) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
@@ -460,6 +500,7 @@ public:
             }
         }
         vault.sync();
+        for (int i = 0; i < n; ++i) archive_point(vault, static_cast<std::size_t>(off_base + i));
         calculate_fitness(vault, n * 2);
         environmental_selection(vault, n);
     }

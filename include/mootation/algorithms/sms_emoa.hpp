@@ -19,6 +19,8 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/real_crossover.hpp"
 #include "../operators/real_mutation.hpp"
+#include "../operators/inner_archive.hpp"
+#include "../operators/variation.hpp"
 
 namespace mootation {
 
@@ -109,6 +111,29 @@ namespace mootation {
 //     least value of every objective in Q (a zero range: an offset of δ);
 //     unset, the papers' + 1 stays. p_m is the knob pm (1/n by default; it
 //     used to be fixed, §5.1).
+//   SMS-8. survival = "stochastic" (task 7 of 2026-10-10, supplement 2):
+//     Bian, Zhou, Li & Qian, "Stochastic Population Update Can Provably Be
+//     Helpful in Multi-Objective Evolutionary Algorithms", IJCAI 2023,
+//     doi:10.24963/ijcai.2023/612 (Artificial Intelligence 341:104308, 2025;
+//     arXiv 2306.02611 v3), Algorithm 5 — WRITTEN FROM THE TASK, the paper is
+//     to be checked against: Q' of ⌊spu_frac·|Q|⌋ members of Q = P ∪ {x'},
+//     drawn uniformly without replacement (spu_frac 1/2, the paper's), and
+//     Reduce on Q' alone — its fronts, its reference point nad(Q') + 1 (or
+//     ref_delta's from Q'), SMS-4's extremes of Q', the Monte Carlo from M = 4;
+//     the worst of Q' goes, every other member of Q stays. Q' is drawn by a
+//     partial Fisher-Yates shuffle of the slots: slot i takes a uniform one of
+//     [i, μ] in turn, so after the step the members are in that shuffled
+//     order, which the fingerprints of a stochastic run depend on. Any member
+//     survives with probability at least 1/2 (the paper's Lemma 1). spu_frac
+//     = 1 draws nothing and is greedy bit for bit; ⌊spu_frac·|Q|⌋ < 1 is
+//     refused. "greedy" (the default) is the paper's Reduce on all of Q.
+//   SMS-9. inner_archive, inner_archive_cap, archive_reuse_p
+//     (operators/inner_archive.hpp): an archive of every non-dominated point
+//     evaluated, the initial population included; a parent, with probability
+//     archive_reuse_p, is a member drawn uniformly instead of pick(). And
+//     bin_crossover = "none" (uniform by default): the binary part of the
+//     genome is not crossed, as in the paper's theory runs (bit-wise mutation
+//     only, Algorithm 1).
 // ============================================================================
 template <typename Ind_t>
 class SMSEMOACore {
@@ -125,7 +150,39 @@ private:
     std::optional<double> ref_delta_;     // SMS-7: r = nad + δ (nad − ideal)
     ops::CrossoverSpec xover_;
     ops::MutationSpec  mut_;
+    ops::InnerArchive  arch_;             // SMS-9
+    bool   stochastic_ = false;           // SMS-8: survival
+    double spu_frac_ = 0.5;               // SMS-8: |Q'| / |Q|, the paper's 1/2
+    bool   bin_cross_ = true;             // SMS-9: bin_crossover = uniform
     std::mt19937 rng_{std::random_device{}()};
+
+    // SMS-8: the index in [0, n] of the point to remove, from a random Q'.
+    int worst_stochastic(DataVault<Ind_t>& vault, int n)
+    {
+        if (spu_frac_ >= 1.0) return worst(vault, n + 1);    // no draw: greedy
+        const int k = static_cast<int>(std::floor(spu_frac_ * (n + 1)));
+        if (k < 1)
+            throw std::invalid_argument("spu_frac = " + std::to_string(spu_frac_) +
+                                        " leaves Q' empty at a population of " +
+                                        std::to_string(n) + ": |Q'| = floor(spu_frac (n + 1)) "
+                                        "must be at least 1");
+        for (int i = 0; i < k; ++i) {                      // Q' into [0, k)
+            std::uniform_int_distribution<int> any(i, n);
+            const int j = any(rng_);
+            if (j != i) vault.swap_active(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+        }
+        return worst(vault, k);
+    }
+
+    // SMS-9: one evaluated point into the inner archive (feasible only under
+    // constraint handling, as the answer's archive).
+    void archive_point(DataVault<Ind_t>& vault, std::size_t i)
+    {
+        if (!arch_.on) return;
+        if (constraint_mode != ConstraintMode::NONE && vault.get_cv(i) > 0.0) return;
+        arch_.add(vault.objectives_of(i), vault.variables_of(i),
+                  vault.bin_vars_n() > 0 ? vault.binary_variables_of(i) : std::vector<int>{});
+    }
 
     static bool dominates(const std::vector<double>& a, const std::vector<double>& b)
     {
@@ -251,9 +308,44 @@ public:
             ref_delta_ = v;
             return true;
         }
-        return xover_.set_param(k, v);
+        if (k == "spu_frac") {
+            if (!(v > 0.0 && v <= 1.0)) throw std::invalid_argument("spu_frac must be in (0, 1]");
+            spu_frac_ = v;
+            return true;
+        }
+        return arch_.set_param(k, v) || xover_.set_param(k, v);
     }
-    bool set_word(const std::string& k, const std::string& w) { return xover_.set_word(k, w); }
+    bool set_word(const std::string& k, const std::string& w)
+    {
+        if (k == "survival") {
+            if (w != "greedy" && w != "stochastic")
+                throw std::invalid_argument("survival = '" + w + "': greedy or stochastic");
+            stochastic_ = w == "stochastic";
+            return true;
+        }
+        if (k == "bin_crossover") {
+            if (w != "uniform" && w != "none")
+                throw std::invalid_argument("bin_crossover = '" + w + "': uniform or none");
+            bin_cross_ = w == "uniform";
+            return true;
+        }
+        return arch_.set_word(k, w) || xover_.set_word(k, w);
+    }
+
+    // The inner archive's members (SMS-9), for the binding's result.
+    const std::vector<ops::InnerArchive::Member>& inner_archive() const { return arch_.members(); }
+
+    // The selection of one step on the μ + 1 active points (tests).
+    void reduce_once(DataVault<Ind_t>& vault)
+    {
+        const int n = vault.pop_size();
+        const int out = stochastic_ ? worst_stochastic(vault, n) : worst(vault, n + 1);
+        if (out != n) vault.swap_active(static_cast<std::size_t>(out), static_cast<std::size_t>(n));
+        vault.reduce(n);
+    }
+
+    // Reduce on the first k active points alone (tests: Q' by hand).
+    int worst_of_first(DataVault<Ind_t>& vault, int k) { return worst(vault, k); }
 
     void setup(DataVault<Ind_t>& vault)
     {
@@ -274,16 +366,25 @@ public:
             else                        vault.set_variables(static_cast<std::size_t>(i), x);
         }
         vault.sync();
+        start_archive(vault);
     }
 
-    void setup_seeded(DataVault<Ind_t>&) {}
+    void setup_seeded(DataVault<Ind_t>& vault) { start_archive(vault); }
+
+    void start_archive(DataVault<Ind_t>& vault)
+    {
+        arch_.start(vault.pop_size(), vault.vars_n() == 0 && vault.bin_vars_n() > 0);
+        for (std::size_t i = 0; i < static_cast<std::size_t>(vault.pop_size()); ++i)
+            archive_point(vault, i);
+    }
 
     void step(DataVault<Ind_t>& vault)
     {
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_int_distribution<int> pick(0, n - 1);
-        xover_.observe(vault, n, rng_);  // de, de_pbest, portfolio: the last step's verdict
+        // de, de_pbest, portfolio: the last step's verdict; coords: one offspring a step
+        xover_.observe(vault, n, rng_, 1);
         // de_pbest: a random one of the best ⌈p·n⌉ by front, ties by position
         std::vector<int> order;
         auto best = [&](double p) {
@@ -300,29 +401,43 @@ public:
             return vault.variables_of(static_cast<std::size_t>(
                 order[static_cast<std::size_t>(top(rng_))]));
         };
-        const int a = pick(rng_), b = pick(rng_);
-        const std::vector<double> x1 = vault.variables_of(static_cast<std::size_t>(a));
-        const std::vector<double> x2 = vault.variables_of(static_cast<std::size_t>(b));
+        // a parent: uniformly from P, or (SMS-9) from the inner archive
+        const bool bin = vault.bin_vars_n() > 0;
+        auto parent = [&](std::vector<double>& x, std::vector<int>& bv) {
+            if (arch_.reuse(rng_)) {
+                const auto& m = arch_.pick(rng_);
+                x = m.x;
+                bv = m.b;
+                return;
+            }
+            const auto i = static_cast<std::size_t>(pick(rng_));
+            x = vault.variables_of(i);
+            if (bin) bv = vault.binary_variables_of(i);
+        };
+        std::vector<double> x1, x2;
+        std::vector<int> b1, b2;
+        parent(x1, b1);
+        parent(x2, b2);
         // one more parent, uniformly as the two, for the crossovers that take
         // more than two (B2)
-        auto draw = [&] { return vault.variables_of(static_cast<std::size_t>(pick(rng_))); };
+        auto draw = [&] {
+            if (arch_.reuse(rng_)) return arch_.pick(rng_).x;
+            return vault.variables_of(static_cast<std::size_t>(pick(rng_)));
+        };
         std::vector<double> c1, c2;
-        xover_.apply_any(x1, x2, draw, best, n, c1, c2, bounds, eta_c_, pc_, rng_);
-        std::uniform_int_distribution<int> coin(0, 1);
-        const bool second = coin(rng_) == 1;
-        std::vector<double>& child = second ? c2 : c1;
         const double pm = pm_ ? *pm_ : vault.vars_n() > 0 ? 1.0 / vault.vars_n() : 0.0;
-        mut_.apply(child, bounds, eta_m_, pm, rng_);
+        std::uniform_int_distribution<int> coin(0, 1);
+        // the coin between the crossover and the mutation of the child kept
+        const bool second = ops::vary(xover_, mut_, x1, x2, draw, best, n, c1, c2, bounds,
+                                      eta_c_, pc_, eta_m_, pm, rng_,
+                                      [&] { return coin(rng_); }) == 1;
+        std::vector<double>& child = second ? c2 : c1;
         xover_.finish(c1, c2, second ? 1 : 0);
 
         const int q = vault.expand(1);
-        if (vault.bin_vars_n() > 0) {
-            std::vector<int> b1(static_cast<std::size_t>(vault.bin_vars_n())), b2 = b1, bc1, bc2;
-            for (int j = 0; j < vault.bin_vars_n(); ++j) {
-                b1[static_cast<std::size_t>(j)] = vault.get_bin_variable(static_cast<std::size_t>(a), j);
-                b2[static_cast<std::size_t>(j)] = vault.get_bin_variable(static_cast<std::size_t>(b), j);
-            }
-            ops::binary_crossover(b1, b2, bc1, bc2, rng_);
+        if (bin) {
+            std::vector<int> bc1 = b1, bc2 = b2;
+            if (bin_cross_) ops::binary_crossover(b1, b2, bc1, bc2, rng_);
             std::vector<int>& bchild = second ? bc2 : bc1;
             ops::bit_flip_mutation(bchild, vault.bin_vars_n(), rng_);
             vault.set_all_variables(static_cast<std::size_t>(q), child, bchild);
@@ -330,10 +445,9 @@ public:
             vault.set_variables(static_cast<std::size_t>(q), child);
         }
         vault.sync();
+        archive_point(vault, static_cast<std::size_t>(q));
 
-        const int out = worst(vault, n + 1);
-        if (out != n) vault.swap_active(static_cast<std::size_t>(out), static_cast<std::size_t>(n));
-        vault.reduce(n);
+        reduce_once(vault);
     }
 };
 

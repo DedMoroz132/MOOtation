@@ -495,6 +495,7 @@ inline Result run_core(const Settings& s, Context& ctx,
     ops::reset_operator_records();
     ops::reset_crossover_records();
     mosa_record().clear();
+    ops::inner_archive_record() = ops::InnerArchiveRecord{};
 
     if (seed) {
         // seed_individual plants variables AND objectives, so the evaluator is

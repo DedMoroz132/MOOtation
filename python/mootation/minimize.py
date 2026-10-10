@@ -24,9 +24,12 @@ from . import _core
 # is_core_word) travel in Config.params and Config.words, a list knob
 # (portfolio) as comma-separated words.
 PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio",
-               "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window")
+               "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
+               "coords_warmup", "coords_update", "spu_frac", "inner_archive_cap",
+               "archive_reuse_p")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
-              "sa_energy", "sa_step", "sa_weights", "sa_tch_accept")
+              "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
+              "inner_archive", "bin_crossover", "mating")
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
