@@ -147,7 +147,7 @@ public:
     struct Point {
         std::vector<double> x, f;
         double cv = 0.0;
-        std::vector<double> g;            // the constraint values (empty without)
+        std::vector<double> g{};          // the constraint values (empty without)
     };
     using Bounds = std::vector<std::pair<std::optional<double>, std::optional<double>>>;
 
