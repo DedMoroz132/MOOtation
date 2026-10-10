@@ -216,6 +216,19 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- The rotations of the other families (`benchmarks/rotated.py`, task 7, §7),
+  each turning only the distance block about its own optimum, conditioned
+  only where g is isotropic, each with its Q = I control and three instances:
+  rWFG1-3 (about 0.35, clipped); rWFG8 and rWFG9, whose optimum b_param makes
+  depend on other variables, turned about it — 0.35^(1/e(u)), computed in
+  order for the current positions — and checked on the front's sphere;
+  rcDTLZ5 and c0DTLZ5; MaF by the form of its g (rcMaF1, rcMaF5, rcMaF6
+  conditioned; rMaF2, whose per-objective chunk sums a rotation does change,
+  rMaF3 and rMaF4 rotated; MaF7 not; the table in the header); rZCAT1-20 about
+  the Pareto set y_II = g(y_I), clipped to the box, ZCAT19 and ZCAT20 with a
+  matrix for each size of their distance block; rcPolygon with the optimum
+  moved off the centre first, control c0Polygon. The header records how often
+  rWFG and rZCAT clip. 904 problems in 36 families.
 - Rotated ZDT, rotation instances and more objectives (`benchmarks/rotated.py`,
   task 7, §3): rZDT1-3 and rZDT6 evaluate ZDT at x' = |Q (z - c)| / m (the
   sum of absolute values in g is not isotropic, so the rotation changes the

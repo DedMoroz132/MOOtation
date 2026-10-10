@@ -5410,8 +5410,16 @@ DENSE
 ROTATION_HASHES = {
     "c0DTLZ2_10D": "1e24edff38434edf", "c0DTLZ2_3D": "1e24edff38434edf",
     "c0DTLZ2_5D": "1e24edff38434edf", "c0DTLZ2_6D": "1e24edff38434edf",
+    "c0DTLZ5_3D": "1e24edff38434edf", "c0DTLZ5_5D": "1e24edff38434edf",
+    "c0MaF1_3D": "1e24edff38434edf", "c0MaF1_5D": "1e24edff38434edf",
+    "c0MaF5_3D": "1e24edff38434edf", "c0MaF5_5D": "1e24edff38434edf",
+    "c0MaF6_3D": "1e24edff38434edf", "c0MaF6_5D": "1e24edff38434edf",
+    "c0Polygon_3D": "e39f2f1a8fc9cdd7", "c0Polygon_5D": "e39f2f1a8fc9cdd7",
     "r0DTLZ1_3D": "1a8475b42f5782e9", "r0DTLZ1_5D": "1a8475b42f5782e9",
     "r0DTLZ3_3D": "a3c81aeea2e1ab58", "r0DTLZ3_5D": "a3c81aeea2e1ab58",
+    "r0MaF2_3D": "a3c81aeea2e1ab58", "r0MaF2_5D": "a3c81aeea2e1ab58",
+    "r0MaF3_3D": "a3c81aeea2e1ab58", "r0MaF3_5D": "a3c81aeea2e1ab58",
+    "r0MaF4_3D": "a3c81aeea2e1ab58", "r0MaF4_5D": "a3c81aeea2e1ab58",
     "rDTLZ1_3D": "0b3008ed21263fbc", "rDTLZ1_3D_i1": "0b3008ed21263fbc",
     "rDTLZ1_3D_i2": "9169379bdd28ba11", "rDTLZ1_3D_i3": "7cff97a191d3584c",
     "rDTLZ1_5D": "ef5a865bfb3c0415", "rDTLZ1_5D_i1": "ef5a865bfb3c0415",
@@ -5422,6 +5430,30 @@ ROTATION_HASHES = {
     "rDTLZ3_5D": "1f7ffcdb60f9914f", "rDTLZ3_5D_i1": "1f7ffcdb60f9914f",
     "rDTLZ3_5D_i2": "5a029a3f7dc04e2e", "rDTLZ3_5D_i3": "9b34fd3f50cd4b85",
     "rDTLZ4_3D": "4767919b46de0568", "rDTLZ4_5D": "6134b078d8446b73",
+    "rMaF2_3D": "29005c03e3fa87d0", "rMaF2_3D_i1": "29005c03e3fa87d0",
+    "rMaF2_3D_i2": "e17045ee438df222", "rMaF2_3D_i3": "8721bb8cbb014fb0",
+    "rMaF2_5D": "3dc9bb2b8cf3dae6", "rMaF2_5D_i1": "3dc9bb2b8cf3dae6",
+    "rMaF2_5D_i2": "8300bc692dc5428b", "rMaF2_5D_i3": "2b52a0b03e485751",
+    "rMaF3_3D": "3b4d546b4c2b2ba6", "rMaF3_3D_i1": "3b4d546b4c2b2ba6",
+    "rMaF3_3D_i2": "896ad8f32e32f911", "rMaF3_3D_i3": "ad498915a8dad1e7",
+    "rMaF3_5D": "73e9987f0bdc23da", "rMaF3_5D_i1": "73e9987f0bdc23da",
+    "rMaF3_5D_i2": "173f357d1a6192ab", "rMaF3_5D_i3": "84e07121db0917e9",
+    "rMaF4_3D": "9f400087949f64e4", "rMaF4_3D_i1": "9f400087949f64e4",
+    "rMaF4_3D_i2": "798ebef01375c9e3", "rMaF4_3D_i3": "8553e134b77f7e91",
+    "rMaF4_5D": "b769ade76b7afd2f", "rMaF4_5D_i1": "b769ade76b7afd2f",
+    "rMaF4_5D_i2": "e4082a3b2d8d35c5", "rMaF4_5D_i3": "df659ae26b4fbda2",
+    "rWFG1_3D": "2248640f866edf98", "rWFG1_3D_i1": "2248640f866edf98",
+    "rWFG1_3D_i2": "4a0ce15897f910b9", "rWFG1_3D_i3": "c46055999f8f4b53",
+    "rWFG1_5D": "b50a2c45ba46ff16", "rWFG1_5D_i1": "b50a2c45ba46ff16",
+    "rWFG1_5D_i2": "56b43c31663b60c5", "rWFG1_5D_i3": "15a4eb7d2b4e59e5",
+    "rWFG2_3D": "a3ae0c35f8f2b164", "rWFG2_3D_i1": "a3ae0c35f8f2b164",
+    "rWFG2_3D_i2": "58378a8692309b9a", "rWFG2_3D_i3": "d841a0ad604a7c11",
+    "rWFG2_5D": "3c5a87edbda3a75d", "rWFG2_5D_i1": "3c5a87edbda3a75d",
+    "rWFG2_5D_i2": "2297e86325dd6120", "rWFG2_5D_i3": "988b9c228f6e670b",
+    "rWFG3_3D": "1560cb7f88859e1b", "rWFG3_3D_i1": "1560cb7f88859e1b",
+    "rWFG3_3D_i2": "310e7c181bc951a3", "rWFG3_3D_i3": "50355e68c8216d79",
+    "rWFG3_5D": "9df6ad6fb58f0ec9", "rWFG3_5D_i1": "9df6ad6fb58f0ec9",
+    "rWFG3_5D_i2": "fc190b8528e90d1a", "rWFG3_5D_i3": "fe38119adc6974e7",
     "rWFG4_3D": "f52d69d1a9090e8f", "rWFG4_3D_i1": "f52d69d1a9090e8f",
     "rWFG4_3D_i2": "42d7f7de01070b65", "rWFG4_3D_i3": "c7145d5424bb7270",
     "rWFG4_5D": "836e2efbfecb0621", "rWFG4_5D_i1": "836e2efbfecb0621",
@@ -5438,6 +5470,94 @@ ROTATION_HASHES = {
     "rWFG7_3D_i2": "960a694dc1baf202", "rWFG7_3D_i3": "e4247c13997367e7",
     "rWFG7_5D": "45d4935de1c51b2e", "rWFG7_5D_i1": "45d4935de1c51b2e",
     "rWFG7_5D_i2": "626c534d02b922c3", "rWFG7_5D_i3": "a5a19831e13d2fbc",
+    "rWFG8_3D": "231518110f3b0c39", "rWFG8_3D_i1": "231518110f3b0c39",
+    "rWFG8_3D_i2": "4740e5732c41fde5", "rWFG8_3D_i3": "24e354e755620fb3",
+    "rWFG8_5D": "f041343d90aeaea3", "rWFG8_5D_i1": "f041343d90aeaea3",
+    "rWFG8_5D_i2": "78aab635e951aeb5", "rWFG8_5D_i3": "054c1fd7b8241154",
+    "rWFG9_3D": "6accbc10c06ae5cf", "rWFG9_3D_i1": "6accbc10c06ae5cf",
+    "rWFG9_3D_i2": "413fd625f6e41872", "rWFG9_3D_i3": "01e60d1cd7a31309",
+    "rWFG9_5D": "336b46a6a5d4d6c3", "rWFG9_5D_i1": "336b46a6a5d4d6c3",
+    "rWFG9_5D_i2": "a7d61df08b13bc1c", "rWFG9_5D_i3": "24e19b3cb551a026",
+    "rZCAT10_3D": "b30a7bbdbd7e248b", "rZCAT10_3D_i1": "b30a7bbdbd7e248b",
+    "rZCAT10_3D_i2": "9bb90d12b770ea13", "rZCAT10_3D_i3": "88f55b90a7b3dc37",
+    "rZCAT10_5D": "001d2261a58815ac", "rZCAT10_5D_i1": "001d2261a58815ac",
+    "rZCAT10_5D_i2": "03a6818177276e37", "rZCAT10_5D_i3": "61d593b00b3f0760",
+    "rZCAT11_3D": "cae8aa18019a953f", "rZCAT11_3D_i1": "cae8aa18019a953f",
+    "rZCAT11_3D_i2": "dbb386542e3aa275", "rZCAT11_3D_i3": "7d6be77e28696118",
+    "rZCAT11_5D": "01eeffb952c4d803", "rZCAT11_5D_i1": "01eeffb952c4d803",
+    "rZCAT11_5D_i2": "17e478b64e34c857", "rZCAT11_5D_i3": "a2f93b9564e2cda0",
+    "rZCAT12_3D": "a653abc249819320", "rZCAT12_3D_i1": "a653abc249819320",
+    "rZCAT12_3D_i2": "3afcf2de50f4470f", "rZCAT12_3D_i3": "e1a300f30380a72d",
+    "rZCAT12_5D": "cab1c9a41b1df248", "rZCAT12_5D_i1": "cab1c9a41b1df248",
+    "rZCAT12_5D_i2": "5c21c84a6e54ff39", "rZCAT12_5D_i3": "8a548c5ae00f07de",
+    "rZCAT13_3D": "695d42cbe02bd892", "rZCAT13_3D_i1": "695d42cbe02bd892",
+    "rZCAT13_3D_i2": "c18c1df5905e21cf", "rZCAT13_3D_i3": "a17f7390325abe1c",
+    "rZCAT13_5D": "ec6509234640739f", "rZCAT13_5D_i1": "ec6509234640739f",
+    "rZCAT13_5D_i2": "5b19afc2e954ed1a", "rZCAT13_5D_i3": "0b0fd25b68b7a0ae",
+    "rZCAT14_3D": "a6a41578f50f39c8", "rZCAT14_3D_i1": "a6a41578f50f39c8",
+    "rZCAT14_3D_i2": "a0b89cccd801e0a3", "rZCAT14_3D_i3": "cc8e6146cfce8f0f",
+    "rZCAT14_5D": "fdc644009e7a532a", "rZCAT14_5D_i1": "fdc644009e7a532a",
+    "rZCAT14_5D_i2": "ff54990013512e8e", "rZCAT14_5D_i3": "3d1c539212ef6949",
+    "rZCAT15_3D": "e74e8847642f11dd", "rZCAT15_3D_i1": "e74e8847642f11dd",
+    "rZCAT15_3D_i2": "6c0d48fcba48a58d", "rZCAT15_3D_i3": "69f73c0e4bd5a698",
+    "rZCAT15_5D": "a5295681b071ba68", "rZCAT15_5D_i1": "a5295681b071ba68",
+    "rZCAT15_5D_i2": "7b9cacf2ef1e8de7", "rZCAT15_5D_i3": "959a7cf019d357ad",
+    "rZCAT16_3D": "9820e4a85c0b87a5", "rZCAT16_3D_i1": "9820e4a85c0b87a5",
+    "rZCAT16_3D_i2": "5eb11b1f3b07a93b", "rZCAT16_3D_i3": "6c545a6ae61a7cd7",
+    "rZCAT16_5D": "b4e0397282e2e4b5", "rZCAT16_5D_i1": "b4e0397282e2e4b5",
+    "rZCAT16_5D_i2": "a8d34598bb1fee13", "rZCAT16_5D_i3": "ddbbdf6540aa4ea6",
+    "rZCAT17_3D": "9afadb934b31a0f2", "rZCAT17_3D_i1": "9afadb934b31a0f2",
+    "rZCAT17_3D_i2": "c85ca1066d6f4501", "rZCAT17_3D_i3": "46658721894d4d7f",
+    "rZCAT17_5D": "e973c22a0f4a5e2f", "rZCAT17_5D_i1": "e973c22a0f4a5e2f",
+    "rZCAT17_5D_i2": "5704d001e79a06d9", "rZCAT17_5D_i3": "ceebf901d0dab19b",
+    "rZCAT18_3D": "7546e7ce28aed4b3", "rZCAT18_3D_i1": "7546e7ce28aed4b3",
+    "rZCAT18_3D_i2": "9f6244a7a63b5449", "rZCAT18_3D_i3": "2833be2edacec68b",
+    "rZCAT18_5D": "6b1884887617cfd0", "rZCAT18_5D_i1": "6b1884887617cfd0",
+    "rZCAT18_5D_i2": "5dce5638c0eac9fd", "rZCAT18_5D_i3": "518a97bf49241107",
+    "rZCAT19_3D": "56bbeb8f602006ad", "rZCAT19_3D_i1": "56bbeb8f602006ad",
+    "rZCAT19_3D_i2": "3eb0a537b249fa12", "rZCAT19_3D_i3": "674000f6d63c6d0c",
+    "rZCAT19_5D": "da0c239b305fc77d", "rZCAT19_5D_i1": "da0c239b305fc77d",
+    "rZCAT19_5D_i2": "c32962a710755e05", "rZCAT19_5D_i3": "7b8f5af0f7e74123",
+    "rZCAT1_3D": "0dfce2c033ac62d6", "rZCAT1_3D_i1": "0dfce2c033ac62d6",
+    "rZCAT1_3D_i2": "28f0f181d6b5a62d", "rZCAT1_3D_i3": "172ea6dd1c8ab999",
+    "rZCAT1_5D": "bca919d83bb11d24", "rZCAT1_5D_i1": "bca919d83bb11d24",
+    "rZCAT1_5D_i2": "cb546eb532f1c9f9", "rZCAT1_5D_i3": "ce3542ecae63217c",
+    "rZCAT20_3D": "704b286eb7f5d0a5", "rZCAT20_3D_i1": "704b286eb7f5d0a5",
+    "rZCAT20_3D_i2": "fd4e1ace5bb42803", "rZCAT20_3D_i3": "b76ac4e1f3687416",
+    "rZCAT20_5D": "e1fe567bb5001f12", "rZCAT20_5D_i1": "e1fe567bb5001f12",
+    "rZCAT20_5D_i2": "32c3ed4454196c2d", "rZCAT20_5D_i3": "4b968459dce740fe",
+    "rZCAT2_3D": "2e0fdd8302f50c29", "rZCAT2_3D_i1": "2e0fdd8302f50c29",
+    "rZCAT2_3D_i2": "c14db1825abe865e", "rZCAT2_3D_i3": "0822af60425cb550",
+    "rZCAT2_5D": "54c5462e760d317d", "rZCAT2_5D_i1": "54c5462e760d317d",
+    "rZCAT2_5D_i2": "a4215c7f1364c3d0", "rZCAT2_5D_i3": "6a2d81a89a56187f",
+    "rZCAT3_3D": "a924fd604e45a40c", "rZCAT3_3D_i1": "a924fd604e45a40c",
+    "rZCAT3_3D_i2": "95b4a890f8bb5e4a", "rZCAT3_3D_i3": "ef948b6d4c0c0da8",
+    "rZCAT3_5D": "c494f6c6ed4421be", "rZCAT3_5D_i1": "c494f6c6ed4421be",
+    "rZCAT3_5D_i2": "f5eaaa59aff344d2", "rZCAT3_5D_i3": "74107bc2c9d916d6",
+    "rZCAT4_3D": "a2d02f1804238f87", "rZCAT4_3D_i1": "a2d02f1804238f87",
+    "rZCAT4_3D_i2": "55ce2efdb0319df0", "rZCAT4_3D_i3": "2fa959d928a6012a",
+    "rZCAT4_5D": "d982971b1be3f6a1", "rZCAT4_5D_i1": "d982971b1be3f6a1",
+    "rZCAT4_5D_i2": "ffe48254a6109dda", "rZCAT4_5D_i3": "de82e0043e230715",
+    "rZCAT5_3D": "d3ce8d0934c7a0e1", "rZCAT5_3D_i1": "d3ce8d0934c7a0e1",
+    "rZCAT5_3D_i2": "d92ff96ddf1f1209", "rZCAT5_3D_i3": "6f787bc95443030e",
+    "rZCAT5_5D": "b094e11d97e20867", "rZCAT5_5D_i1": "b094e11d97e20867",
+    "rZCAT5_5D_i2": "12cca01f25b6ed55", "rZCAT5_5D_i3": "75f7dd0bef78e874",
+    "rZCAT6_3D": "fd87ad69e956e1b6", "rZCAT6_3D_i1": "fd87ad69e956e1b6",
+    "rZCAT6_3D_i2": "97e27ce861d6720a", "rZCAT6_3D_i3": "c0cb83a7295d4b72",
+    "rZCAT6_5D": "78af41dbb32c86be", "rZCAT6_5D_i1": "78af41dbb32c86be",
+    "rZCAT6_5D_i2": "1bb604c1806ceb0f", "rZCAT6_5D_i3": "836e5f23009f758d",
+    "rZCAT7_3D": "86a8cfd4437ef3dc", "rZCAT7_3D_i1": "86a8cfd4437ef3dc",
+    "rZCAT7_3D_i2": "8d7a5504b7e4ef81", "rZCAT7_3D_i3": "c40532c477aff6f2",
+    "rZCAT7_5D": "84cd78bafae55dbf", "rZCAT7_5D_i1": "84cd78bafae55dbf",
+    "rZCAT7_5D_i2": "ecd6a851f42f6195", "rZCAT7_5D_i3": "a9d39aa57f393e1f",
+    "rZCAT8_3D": "b060c82c250277b5", "rZCAT8_3D_i1": "b060c82c250277b5",
+    "rZCAT8_3D_i2": "bab58709b0b28abb", "rZCAT8_3D_i3": "8b284e126dd4023f",
+    "rZCAT8_5D": "3060434380249cf6", "rZCAT8_5D_i1": "3060434380249cf6",
+    "rZCAT8_5D_i2": "8bc60e34274c7c80", "rZCAT8_5D_i3": "84ed2ca61f2e81a6",
+    "rZCAT9_3D": "26904b3f65a60468", "rZCAT9_3D_i1": "26904b3f65a60468",
+    "rZCAT9_3D_i2": "0027849d5c404010", "rZCAT9_3D_i3": "b692c0a0272c304d",
+    "rZCAT9_5D": "4410298209e29fc0", "rZCAT9_5D_i1": "4410298209e29fc0",
+    "rZCAT9_5D_i2": "4ddc4af7e4468598", "rZCAT9_5D_i3": "cd8687ed9134f40d",
     "rZDT1": "b354526c9313ee04", "rZDT1_i1": "b354526c9313ee04",
     "rZDT1_i2": "f251132fe79365ea", "rZDT1_i3": "8a10a4d2e933faa7",
     "rZDT2": "e8527dfe55c24d1d", "rZDT2_i1": "e8527dfe55c24d1d",
@@ -5456,6 +5576,26 @@ ROTATION_HASHES = {
     "rcDTLZ2_5D_i2": "bd4e8ad2632c9a58", "rcDTLZ2_5D_i3": "dd2cb0ba67a4440e",
     "rcDTLZ2_6D": "d34c832b084a366a", "rcDTLZ2_6D_i1": "d34c832b084a366a",
     "rcDTLZ2_6D_i2": "e44fcc9ba80da5cf", "rcDTLZ2_6D_i3": "514f464849d27d36",
+    "rcDTLZ5_3D": "3889499deaebdc26", "rcDTLZ5_3D_i1": "3889499deaebdc26",
+    "rcDTLZ5_3D_i2": "451102b5c3ef5d6d", "rcDTLZ5_3D_i3": "0ac06d43473a175d",
+    "rcDTLZ5_5D": "517e3b871ddc410e", "rcDTLZ5_5D_i1": "517e3b871ddc410e",
+    "rcDTLZ5_5D_i2": "60933deaea640d04", "rcDTLZ5_5D_i3": "a6b3fcff5b72bdf0",
+    "rcMaF1_3D": "09cb1b449177b6ea", "rcMaF1_3D_i1": "09cb1b449177b6ea",
+    "rcMaF1_3D_i2": "cc3ea0b80e3d588a", "rcMaF1_3D_i3": "e5750210e0c4563b",
+    "rcMaF1_5D": "25183d84ff269d1b", "rcMaF1_5D_i1": "25183d84ff269d1b",
+    "rcMaF1_5D_i2": "ed41abe945f93614", "rcMaF1_5D_i3": "499599abbfb00e3a",
+    "rcMaF5_3D": "1486d1d5272b12e6", "rcMaF5_3D_i1": "1486d1d5272b12e6",
+    "rcMaF5_3D_i2": "cffd5899f19495c1", "rcMaF5_3D_i3": "aa3eb87a42abf344",
+    "rcMaF5_5D": "8e55af982be1c5ea", "rcMaF5_5D_i1": "8e55af982be1c5ea",
+    "rcMaF5_5D_i2": "755fd6a88c9d85da", "rcMaF5_5D_i3": "dcd02224261ce8ff",
+    "rcMaF6_3D": "75e536f4ab3de561", "rcMaF6_3D_i1": "75e536f4ab3de561",
+    "rcMaF6_3D_i2": "3b30b8ae52e39f99", "rcMaF6_3D_i3": "782f536392707907",
+    "rcMaF6_5D": "390f4a872dcbb8ff", "rcMaF6_5D_i1": "390f4a872dcbb8ff",
+    "rcMaF6_5D_i2": "b95e803771bccb42", "rcMaF6_5D_i3": "e4fb96a625d0b771",
+    "rcPolygon_3D": "5baf3e7d19605e43", "rcPolygon_3D_i1": "5baf3e7d19605e43",
+    "rcPolygon_3D_i2": "700df10027033b0d", "rcPolygon_3D_i3": "8f8700bdb316d774",
+    "rcPolygon_5D": "3de23de36416c89b", "rcPolygon_5D_i1": "3de23de36416c89b",
+    "rcPolygon_5D_i2": "276109726ae77bc3", "rcPolygon_5D_i3": "ceadba497a9a5642",
 }
 BBOB_ROTATION_HASH = "b20703a7d9b960f5"
 
@@ -5473,8 +5613,10 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
     """Every Q of rotated.py is orthogonal (1e-12), the conditioned ones are
     Lambda Q with the stated Lambda, the controls I or Lambda; the hash of every
     matrix, and of bbob-biobj's rotations, is the one recorded (task 6, item
-    1.3; the rZDT, the instances and M = 6 and 10, task 7, §3). Instance 1 is
-    the problem without the suffix, 2 and 3 are other matrices."""
+    1.3; the rZDT, the instances and M = 6 and 10, task 7, §3; the other
+    families, §7, ZCAT19 and ZCAT20 with a matrix per size of the distance
+    block). Instance 1 is the problem without the suffix, 2 and 3 are other
+    matrices."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import hashlib
@@ -5487,12 +5629,16 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
         n for n in names() if n.split("_")[0] in R.SPECS)
     for name, r in ROTATED.items():
         family, rotate, condition = R.SPECS[name.split("_")[0]]
-        k = len(r.optimum)
-        Q = R.rotation(family, r.M, k, r.instance) if rotate else np.eye(k)
-        assert np.allclose(Q.T @ Q, np.eye(k), atol=1e-12), name
-        L = R.conditioning(k) if condition else np.ones(k)
-        assert np.array_equal(r.A, L[:, None] * Q), name
-        assert _matrix_hash(r.A) == ROTATION_HASHES[name], (name, _matrix_hash(r.A))
+        digest = hashlib.sha256()
+        for A in r.matrices():
+            k = len(A)
+            Q = R.rotation(family, r.M, k, r.instance) if rotate else np.eye(k)
+            assert np.allclose(Q.T @ Q, np.eye(k), atol=1e-12), name
+            L = R.conditioning(k) if condition else np.ones(k)
+            assert np.array_equal(A, L[:, None] * Q), name
+            h = _matrix_hash(A, digest)
+        assert h == ROTATION_HASHES[name], (name, h)
+    assert [len(A) for A in ROTATED["rZCAT19_3D"].matrices()] == [28, 29]
     assert R.conditioning(10)[[0, -1]].tolist() == [1.0, 1e3 ** 0.5]   # cond(Lambda^2) = 1e3
     for name in ROTATED:
         if name.endswith("_i1"):
@@ -5512,14 +5658,16 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
 
 @test
 def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
-    """At Q = I and c = 1/2 rDTLZ is DTLZ, at Q = I rWFG is WFG, at Q = I and
-    c = 0 rZDT is ZDT; rDTLZ2 and rDTLZ4 are their Q = I construction (the
-    isotropic g), rDTLZ1, rDTLZ3 and rcDTLZ2 are not, nor rZDT its shiftZDT; the
-    Pareto set lands on the front; 10^4 uniform points give finite values; no
-    point dominates the front; an instance other than the first is another
-    function; the properties (task 6, item 1.3 and supplement 2; task 7,
-    §3). The instances are the same construction: their matrices are checked
-    above, their values here only against instance 1."""
+    """At Q = I and c = 1/2 rDTLZ and rMaF are DTLZ and MaF, at Q = I rWFG and
+    rZCAT are WFG and ZCAT, at Q = I and c = 0 rZDT and rcPolygon are ZDT and
+    Polygon; rDTLZ2 and rDTLZ4 are their Q = I construction (the isotropic g),
+    rDTLZ1, rDTLZ3, rcDTLZ2, rcDTLZ5, rMaF and rcMaF are not, nor rZDT its
+    shiftZDT; the Pareto set lands on the front (rWFG8 and rWFG9: on the
+    sphere, their optimum computed in order); uniform points give finite
+    values; no point dominates the front; an instance other than the first is
+    another function; the properties (task 6, item 1.3 and supplement 2; task
+    7, §3 and §7). The instances are the same construction: their matrices
+    are checked above, their values here only against instance 1."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import numpy as np
@@ -5534,26 +5682,38 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
         hi = np.array([b[1] for b in p.bounds])
         return lo + (hi - lo) * rng.random((n, p.n_vars))
 
+    task6 = ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "WFG4", "WFG5", "WFG6", "WFG7")
     for name, r in ROTATED.items():
         if "_i" in name:
             continue
-        p, base = get(name), get(r.family if r.zdt else f"{r.family}_{r.M}D")
+        p, base = get(name), get(r.base)
         ident = R.Rotated(name.split("_")[0], r.M, p.n_vars)
-        ident.A = np.eye(len(r.optimum))
-        if r.zdt:
-            ident.optimum = np.zeros(len(r.optimum))
-            ident.spread = np.ones(len(r.optimum))
-        elif not r.wfg:
-            ident.optimum = np.full(len(r.optimum), 0.5)
-        X = box(p, 2000 if r.wfg else 10_000)
+        ident.A = np.eye(len(r.A))
+        ident._matrices = {len(A): np.eye(len(A)) for A in r.matrices()}
+        if r.zdt or r.kind == "polygon":
+            ident.optimum = np.zeros(len(r.A))
+            ident.spread = np.ones(len(r.A))
+        elif r.kind in ("dtlz", "maf"):
+            ident.optimum = np.full(len(r.A), 0.5)
+        many = r.family in task6 or r.zdt         # task 7's new kinds: fewer points
+        X = box(p, 2000 if many else 300)
         assert max(np.abs(np.subtract(ident.evaluate(x), base.evaluate(list(x)))).max()
-                   for x in X[:2000]) < 1e-12, name
-        F = np.array([p.evaluate(list(x)) for x in box(p, 10_000)])
+                   for x in X) < 1e-12, name
+        F = np.array([p.evaluate(list(x)) for x in box(p, 10_000 if many else 1000)])
         assert np.all(np.isfinite(F)), name
+        if r.kind == "zcat" and name not in ("rZCAT1_3D", "rZCAT14_3D", "rZCAT19_3D"):
+            continue                   # ZCAT's Pareto-set sampler takes seconds a problem
         S = np.asarray(p.pareto_set(100), float)
         FS = np.array([p.evaluate(list(x)) for x in S])
-        if r.wfg:                      # the base's own values at the same point
+        if r.wfg or r.kind == "zcat":  # the base's own values at the same point
             assert np.abs(FS - [base.evaluate(list(x)) for x in S]).max() < 1e-9, name
+            if r.family in ("WFG8", "WFG9"):         # on the sphere: u* is the optimum
+                H = FS / (2.0 * np.arange(1, r.M + 1))
+                assert np.abs((H ** 2).sum(axis=1) - 1.0).max() < 1e-9, name
+        elif r.kind in ("maf", "polygon"):      # the base at its own optimum
+            S0 = S.copy()
+            S0[:, r.first:] = 0.5 if r.kind == "maf" else 0.0
+            assert np.abs(FS - [base.evaluate(list(x)) for x in S0]).max() < 1e-9, name
         elif r.zdt:                    # the base's own values on its own Pareto set
             FB = [base.evaluate(list(x)) for x in base.pareto_set(100)]
             assert np.abs(FS - FB).max() < 1e-9, name
@@ -5561,9 +5721,11 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
         else:
             G = FS if r.family == "DTLZ1" else FS ** 2
             assert np.abs(G.sum(axis=1) - (0.5 if r.family == "DTLZ1" else 1.0)).max() < 1e-9
-            assert max(p.distance_fn(list(x)) for x in S) < 1e-9, name
+            if p.distance_fn is not None or r.family != "DTLZ5":
+                assert max(p.distance_fn(list(x)) for x in S) < 1e-9, name
         row = properties(name)
-        assert (row["centre"], row["boundary"], p.cyclic_vars) == (False, False, ()), name
+        assert p.cyclic_vars == () and (row is None) == (r.kind == "maf"), name
+        assert row is None or (row["centre"], row["boundary"]) == (False, False), name
     for M in R.SIZES:
         X = box(get(f"DTLZ1_{M}D"), 2000)
         for stem, other, same in (("rDTLZ2", None, True), ("rDTLZ4", None, True),
@@ -5578,12 +5740,23 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
             Y = box(get(R.name(stem, M)), 2000)
             d = max(np.abs(np.subtract(r.evaluate(x), q.evaluate(x))).max() for x in Y)
             assert (d < 1e-12) == same, (stem, M, d)
+        for stem, other in (("rcDTLZ5", "c0DTLZ5"), ("rcMaF1", "c0MaF1"), ("rMaF2", "r0MaF2"),
+                            ("rMaF3", "r0MaF3"), ("rMaF4", "r0MaF4"), ("rcMaF5", "c0MaF5"),
+                            ("rcMaF6", "c0MaF6"), ("rcPolygon", "c0Polygon"),
+                            ("rWFG8", None), ("rZCAT1", None)):
+            p = get(R.name(stem, M))
+            q = get(R.name(other, M) if other else ROTATED[R.name(stem, M)].base)
+            Y = box(p, 200)
+            d = max(np.abs(np.subtract(p.evaluate(list(x)), q.evaluate(list(x)))).max()
+                    for x in Y)
+            assert d > 1e-6, (stem, M, d)
     for stem in ("rZDT1", "rZDT2", "rZDT3", "rZDT4", "rZDT6"):
         p, q = get(stem), get("shift" + stem[1:])
         Y = box(p, 300)
         assert max(np.abs(np.subtract(p.evaluate(list(x)), q.evaluate(list(x)))).max()
                    for x in Y) > 1e-3, stem
-    for name in ("rZDT4", "rDTLZ1_3D", "rcDTLZ2_10D", "rWFG7_5D"):
+    for name in ("rZDT4", "rDTLZ1_3D", "rcDTLZ2_10D", "rWFG7_5D", "rWFG8_3D", "rcMaF1_5D",
+                 "rZCAT19_3D", "rcPolygon_3D"):
         p = get(name)
         Y = box(p, 300)
         for k, same in ((1, True), (2, False), (3, False)):
@@ -5591,7 +5764,8 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
                 list(x)))).max() for x in Y)
             assert (d < 1e-12) == same, (name, k, d)
     for name in ("rDTLZ1_3D", "rcDTLZ2_3D", "rWFG4_3D", "rWFG7_5D", "rZDT1", "rZDT4",
-                 "rZDT6", "rcDTLZ2_10D"):
+                 "rZDT6", "rcDTLZ2_10D", "rWFG1_3D", "rWFG8_3D", "rWFG9_5D", "rcDTLZ5_3D",
+                 "rcMaF1_3D", "rMaF2_3D", "rMaF3_3D", "rcPolygon_3D"):
         p, r = get(name), ROTATED[name]
         Z = np.asarray(p.pareto_front(2000), float)
         near = np.asarray(p.pareto_set(300), float)
@@ -5608,10 +5782,17 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
     assert properties("r0DTLZ1_3D")["separable"] is True
     assert properties("rZDT1")["separable"] is False and properties("rZDT4")["multimodal"]
     assert properties("rDTLZ1_3D_i2")["n_obj"] == 3 and properties("rcDTLZ2_10D")["front_dim"] == 9
+    assert properties("rWFG8_3D")["separable"] is False and properties("rcMaF1_3D") is None
+    assert properties("rcDTLZ5_5D")["front"] == "degenerate+mixed"
+    assert properties("rZCAT1_3D")["linkage"] and properties("rcPolygon_3D")["separable"] is False
     fam = families()
     assert sorted(fam["r0DTLZ"]) == ["r0DTLZ1_3D", "r0DTLZ1_5D", "r0DTLZ3_3D", "r0DTLZ3_5D"]
-    assert (len(fam["rDTLZ"]), len(fam["rWFG"]), len(fam["c0DTLZ"]), len(fam["rcDTLZ"]),
-            len(fam["rZDT"])) == (20, 32, 4, 16, 20), {k: len(v) for k, v in fam.items()}
+    counts = {k: len(fam[k]) for k in ("rDTLZ", "rWFG", "c0DTLZ", "rcDTLZ", "rZDT", "rMaF",
+                                       "rcMaF", "r0MaF", "c0MaF", "rZCAT", "rcPolygon",
+                                       "c0Polygon")}
+    assert counts == {"rDTLZ": 20, "rWFG": 72, "c0DTLZ": 6, "rcDTLZ": 24, "rZDT": 20,
+                      "rMaF": 24, "rcMaF": 24, "r0MaF": 6, "c0MaF": 6, "rZCAT": 160,
+                      "rcPolygon": 8, "c0Polygon": 2}, counts
 
 
 # ── task 6, item 6: the RE and CRE real-world problems ─────────────────────

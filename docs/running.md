@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 624 benchmark problems (needs NumPy) |
+| `--problems` | list the 904 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -157,7 +157,7 @@ day-long run.
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ and MW, rotated
-ZDT, DTLZ and WFG, noisy copies and the real-world RE and CRE: 624 problems across 29 families, each
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 904 problems across 36 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -286,6 +286,17 @@ same functions as without the rotation — checks of invariance; rotated in
 earnest are `rDTLZ1`, `rDTLZ3`, `rcDTLZ2` and `rWFG4`–`rWFG7`. Their controls
 are the same construction with Q = I: `r0DTLZ1`, `r0DTLZ3`, `c0DTLZ2` (each a
 family of its own), and WFG itself.
+
+Task 7 added `rZDT1`–`rZDT4` and `rZDT6` (ZDT at |Q (z − c)| / m, ZDT4 at
+Q (z − c); their control is shiftZDT); `rWFG1`–`rWFG3`, and `rWFG8` and `rWFG9`,
+whose optimum depends on other variables and which turn about that optimum
+for the current positions; `rcDTLZ5`; MaF by the form of its g — `rcMaF1`,
+`rcMaF5`, `rcMaF6` conditioned, `rMaF2`–`rMaF4` rotated, controls `c0MaF*` and
+`r0MaF*`; `rZCAT1`–`rZCAT20`, about the Pareto set y_II = g(y_I), clipped to
+the box; `rcPolygon` with its optimum moved off the centre (control
+`c0Polygon`); and `rcDTLZ2` and `c0DTLZ2` at six and ten objectives. Every
+rotated problem, the controls aside, comes in three instances of Q,
+`<name>_i1` … `_i3`, the first being the problem without the suffix.
 
 [`python/examples/bench.toml`](../python/examples/bench.toml) is the complete
 example. The same suites are importable directly:

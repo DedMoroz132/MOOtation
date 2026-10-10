@@ -301,11 +301,11 @@ def properties(name: str) -> dict | None:
                           "C1-DTLZ", "C2-DTLZ2", "rDTLZ", "rcDTLZ", "r0DTLZ", "c0DTLZ",
                           "rZDT")):
         row["linkage"] = False
-    elif stem.startswith("ZCAT"):
+    elif stem.startswith(("ZCAT", "rZCAT")):
         row["linkage"] = _LINKAGE["ZCAT"]
     elif stem.startswith("MOP"):
         row["linkage"] = _LINKAGE["MOP"]
-    elif stem == "Polygon":
+    elif stem in ("Polygon", "rcPolygon", "c0Polygon"):
         row["linkage"] = _LINKAGE["Polygon"]
     elif stem in _MW:
         row["linkage"] = stem in _MW_LINKAGE
@@ -379,8 +379,9 @@ def _huband(name: str) -> dict | None:
         # separable where the rotation mixes an anisotropic g (rDTLZ2 and
         # rDTLZ4 are their Q = I construction: separable as DTLZ2)
         family, rotate, condition = _ROTATED[stem]
-        row = dict((_WFG if family.startswith("WFG") else
-                    _ZDT if family.startswith("ZDT") else _DTLZ)[family])
+        if family.startswith("MaF"):
+            return None                          # MaF has no row of its own
+        row = _huband(family + ("" if family.startswith("ZDT") else f"_{m}D"))
         row["centre"] = row["boundary"] = False
         if rotate and (condition or family not in ("DTLZ2", "DTLZ4")):
             row["separable"] = False
@@ -436,7 +437,7 @@ def _positions(name: str, n_obj: int) -> int:
     stem, _ = _stem_and_m(name)
     if stem.startswith(("ZDT", "shiftZDT", "rZDT")):
         return 1
-    if stem == "Polygon":
+    if stem in ("Polygon", "rcPolygon", "c0Polygon"):
         return 2
     if stem == "IPolygon":
         return 0

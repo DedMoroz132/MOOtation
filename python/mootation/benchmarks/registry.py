@@ -19,11 +19,11 @@
 #   MW1-14              Ma & Wang 2019, constrained; MW4, MW8, MW14 at M={3,5} (mw.py)
 #   <base>_n1, _n5      noisy copies of ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D, WFG7_3D
 #                       (ours, noisy.py)
-#   rZDT1-4, rZDT6, rDTLZ1-4, rcDTLZ2, rWFG4-7 x M={3,5}, rcDTLZ2 at M={6,10},
-#                       the controls r0DTLZ1, r0DTLZ3, c0DTLZ2, and three
-#                       instances <name>_i1.._i3 of rZDT, rDTLZ1, rDTLZ3,
-#                       rcDTLZ2, rWFG4-7: the distance variables rotated (ours,
-#                       rotated.py)
+#   rZDT1-4, rZDT6, rDTLZ1-4, rcDTLZ2, rcDTLZ5, rWFG1-9, rcMaF1, rMaF2-4,
+#   rcMaF5-6, rZCAT1-20, rcPolygon x M={3,5}, rcDTLZ2 at M={6,10}, the Q = I
+#                       controls (r0, c0), and three instances <name>_i1.._i3
+#                       of every rotated one: the distance variables rotated
+#                       (ours, rotated.py)
 #   RE21-91, CRE21-51   Tanabe & Ishibuchi 2020, real-world problems (re.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
@@ -1825,8 +1825,21 @@ def _register_rotated():
                     def _ps(n, _k=k, _r=r):
                         P = _psets._cube_positions(_k, n) * 2.0 * np.arange(1, _k + 1)
                         return _psets.fill(P, _r.n_vars, _r.optimum)
+                    if family == "WFG8":
+                        def _ps(n, _k=k, _r=r):
+                            P = _psets.fill(_psets._cube_positions(_k, n)
+                                            * 2.0 * np.arange(1, _k + 1), _r.n_vars, 0.0)
+                            P[:, _k:] = [_r.distance_optimum(x) for x in P]
+                            return P
                 elif r.zdt:
                     def _ps(n, _f=family, _r=r): return _ps_zdt(_f, n, _r.optimum)
+                elif r.kind == "zcat":
+                    _ps = b.pareto_set                   # y_II = g(y_I): the map is I there
+                elif r.kind == "polygon":
+                    def _ps(n, _M=M, _r=r):
+                        P = _psets.polygon(_M, _r.n_vars, n)
+                        P[:, 2:] = _r.optimum
+                        return P
                 else:
                     def _ps(n, _M=M, _r=r): return _psets.dtlz(_M, _r.n_vars, n, _r.optimum)
                 key = _rot.name(stem, M, instance)
@@ -1867,7 +1880,9 @@ def _attach_distances():
             p.distance_fn = _dist.dtlz(_cd.BASE[stem], M)
         elif name in ROTATED and ROTATED[name].zdt:           # g read at the mapped point
             p.distance_fn = _dist.zdt(ROTATED[name].family, ROTATED[name].map)
-        elif name in ROTATED and not ROTATED[name].wfg:
+        elif name in ROTATED and ROTATED[name].kind == "dtlz":
+            if ROTATED[name].family == "DTLZ5" and M > 3:
+                continue                         # the front has a part with g > 0
             p.distance_fn = _dist.dtlz(ROTATED[name].family, M, ROTATED[name].map)
         elif stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):
             p.distance_fn = _dist.dtlz(stem[5:], M, lambda x, _M=M: cyclic_input(x, _M))
