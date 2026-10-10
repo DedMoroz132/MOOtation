@@ -325,7 +325,7 @@ public:
         ops::require_repair(r, "moead_de", false, false); repair_ = r; }
     void set_seed              (unsigned s){ rng_.seed(s); }
     void set_mutation          (ops::Mutation m){ mut_.kind = m; }
-    void set_mutation_scale    (double s){ mut_.scale = s; }
+    void set_mutation_scale    (double s){ mut_.scale = ops::checked_mutation_scale(s); }
     void set_mixture_q         (double q){ mut_.q = q; }
 
     std::size_t external_population_size(DataVault<Ind_t>& vault) const {

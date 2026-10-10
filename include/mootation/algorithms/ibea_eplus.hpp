@@ -70,7 +70,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -222,9 +224,14 @@ public:
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_crossover(ops::Crossover c)      { xover_.kind = c; }
     void set_mutation(ops::Mutation m)        { mut_.kind = m; }
-    void set_mutation_scale(double s)         { mut_.scale = s; }
+    void set_mutation_scale(double s)         { mut_.scale = ops::checked_mutation_scale(s); }
     void set_mixture_q(double q)              { mut_.q = q; }
     void set_blx_alpha(double a)              { xover_.alpha = a; }
+    // crossover = de / de_pbest / portfolio (de_crossover.hpp, real_crossover.hpp)
+    void set_F(double f)                      { xover_.de.set.F  = ops::checked_de_F(f); }
+    void set_CR(double c)                     { xover_.de.set.CR = ops::checked_de_CR(c); }
+    bool set_param(const std::string& k, double v)             { return xover_.set_param(k, v); }
+    bool set_word(const std::string& k, const std::string& w)  { return xover_.set_word(k, w); }
     void set_bound_repair(ops::BoundRepair r) {
         ops::require_repair(r, "ibea_eplus", true, false);
         xover_.repair = r; mut_.repair = r;
@@ -395,6 +402,21 @@ public:
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_int_distribution<int> dist_int(0, n - 1);
+        xover_.observe(vault, n, rng_);  // de, de_pbest, portfolio: the last step's verdict
+        // de_pbest: a random one of the best ⌈p·n⌉ by fitness (higher is better)
+        std::vector<int> order;
+        auto best = [&](double p) {
+            if (order.empty()) {
+                order.resize(static_cast<std::size_t>(n));
+                std::iota(order.begin(), order.end(), 0);
+                std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+                    return vault.get_ind(a).fitness > vault.get_ind(b).fitness;
+                });
+            }
+            const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
+            std::uniform_int_distribution<int> top(0, k - 1);
+            return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
+        };
         int off_base = vault.expand(n);  // [off_base, off_base+n) — offspring slots
         double pm = resolved_pm(vault);
 
@@ -415,9 +437,10 @@ public:
                 pv1[j] = vault.get_variable(p1, j);
                 pv2[j] = vault.get_variable(p2, j);
             }
-            xover_.apply_any(pv1, pv2, draw, c1, c2, bounds, eta_c_, pc_, rng_);
+            xover_.apply_any(pv1, pv2, draw, best, n, c1, c2, bounds, eta_c_, pc_, rng_);
             mut_.apply(c1, bounds, eta_m_, pm, rng_);
             mut_.apply(c2, bounds, eta_m_, pm, rng_);
+            xover_.finish(c1, c2, i + 1 < n ? -1 : 0);
 
             if (vault.bin_vars_n() > 0) {
                 std::vector<int> bv1(vault.bin_vars_n()), bv2(vault.bin_vars_n());

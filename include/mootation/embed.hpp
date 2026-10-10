@@ -279,6 +279,33 @@ MOOTATION_OPTIONAL_SETTER(F_spread,   set_F_spread,   double)
 
 #undef MOOTATION_OPTIONAL_SETTER
 
+// The knobs after the per-knob setters (settings.hpp, is_core_param): a core
+// takes them through set_param / set_word, which answer whether it has them.
+template <typename C, typename = void>
+struct has_set_param : std::false_type {};
+template <typename C>
+struct has_set_param<C, std::void_t<decltype(std::declval<C&>().set_param(
+                            std::declval<const std::string&>(), std::declval<double>()))>>
+    : std::true_type {};
+template <typename C, typename = void>
+struct has_set_word : std::false_type {};
+template <typename C>
+struct has_set_word<C, std::void_t<decltype(std::declval<C&>().set_word(
+                           std::declval<const std::string&>(), std::declval<const std::string&>()))>>
+    : std::true_type {};
+template <typename C>
+bool apply_param(C& core, const std::string& k, double v)
+{
+    if constexpr (has_set_param<C>::value) return core.set_param(k, v);
+    else { (void)core; (void)k; (void)v; return false; }
+}
+template <typename C>
+bool apply_word(C& core, const std::string& k, const std::string& w)
+{
+    if constexpr (has_set_word<C>::value) return core.set_word(k, w);
+    else { (void)core; (void)k; (void)w; return false; }
+}
+
 // A core that can tell it has converged (DMS: every step size below its
 // tolerance) ends the run early instead of stepping on without evaluating.
 template <typename C, typename = void>
@@ -361,6 +388,10 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
         if (!c) throw bad_word("crowding_space", *v);
         note(apply_crowding_space(alg, *c), "crowding_space");
     }
+    for (const auto& kv : s.params)
+        if (is_core_param(kv.first)) note(apply_param(alg, kv.first, kv.second), kv.first.c_str());
+    for (const auto& kv : s.text_params)
+        if (is_core_word(kv.first)) note(apply_word(alg, kv.first, kv.second), kv.first.c_str());
     return ignored;
 }
 
@@ -462,6 +493,7 @@ inline Result run_core(const Settings& s, Context& ctx,
         var_prob.emplace(vp->second);
     }
     ops::reset_operator_records();
+    ops::reset_crossover_records();
 
     if (seed) {
         // seed_individual plants variables AND objectives, so the evaluator is

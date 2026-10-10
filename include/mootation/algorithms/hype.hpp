@@ -69,7 +69,9 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -93,6 +95,11 @@ private:
     // max_i·(1 + ref_offset_). Was 0.1 until 2026-09-05 — measured to strip
     // the extremes and shrink the front (ZDT1 IGD 0.085 vs 0.0037 at 1.0).
     double       ref_offset_ = 1.0;
+    // task 7 of 2026-10-10, §5.3: the knob ref_delta puts the reference point
+    // relative, r = nad + δ (nad − ideal) over the pool (a zero range: an
+    // offset of δ), which does not move with a shift of the objectives as
+    // max·(1 ± ref_offset) does; unset, the default above stays.
+    std::optional<double> ref_delta_;
     double       eta_c_      = 20.0;
     double       eta_m_      = 20.0;
     std::mt19937 rng_{std::random_device{}()};
@@ -179,6 +186,15 @@ private:
             const auto& o = vault.objectives_of(i);
             for (int k = 0; k < m; ++k)
                 rp[k] = std::max(rp[k], o[k]);
+        }
+        if (ref_delta_) {               // task 7, §5.3: r = nad + δ (nad − ideal)
+            for (int k = 0; k < m; ++k) {
+                double lo = std::numeric_limits<double>::infinity();
+                for (int i = 0; i < n; ++i) lo = std::min(lo, vault.objectives_of(i)[k]);
+                const double span = rp[k] - lo;
+                rp[k] += *ref_delta_ * (span > 0.0 ? span : 1.0);
+            }
+            return rp;
         }
         for (int k = 0; k < m; ++k) {
             double val = rp[k];
@@ -440,6 +456,13 @@ public:
 
     void set_n_samples    (int n)     { n_samples_  = n; }
     void set_ref_offset   (double r)  { ref_offset_ = r; }
+    bool set_param(const std::string& k, double v)
+    {
+        if (k != "ref_delta") return false;
+        if (!(v > 0.0)) throw std::invalid_argument("ref_delta must be > 0");
+        ref_delta_ = v;
+        return true;
+    }
     void set_eta_crossover(double e)  { eta_c_ = e; }
     void set_eta_mutation (double e)  { eta_m_ = e; }
     void set_seed         (unsigned s){ rng_.seed(s); }

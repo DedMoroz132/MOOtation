@@ -3,9 +3,13 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <limits>
+#include <numeric>
+#include <optional>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -98,6 +102,13 @@ namespace mootation {
 //     constraints and says no more.
 //   SMS-6. A binary or mixed genome uses the library's uniform crossover and
 //     bit-flip mutation, as NSGA-II does; the papers are real-valued.
+//   SMS-7. The reference point's offset "+ 1" is an absolute unit: from M = 3
+//     the selection depends on the objectives' scale (tests/test_scale_
+//     invariance.cpp). The knob ref_delta (task 7 of 2026-10-10, §5.3) puts
+//     it relative instead, r = nad(Q) + δ·(nad(Q) − ideal(Q)), ideal(Q) the
+//     least value of every objective in Q (a zero range: an offset of δ);
+//     unset, the papers' + 1 stays. p_m is the knob pm (1/n by default; it
+//     used to be fixed, §5.1).
 // ============================================================================
 template <typename Ind_t>
 class SMSEMOACore {
@@ -110,6 +121,8 @@ private:
     double eta_m_ = 20.0;   // thesis §3.4.1
     double pc_    = 1.0;    // thesis §3.4.1
     int    n_samples_ = 10000;   // SMS-2
+    std::optional<double> pm_;            // 1/n when not set (thesis §3.4.1)
+    std::optional<double> ref_delta_;     // SMS-7: r = nad + δ (nad − ideal)
     ops::CrossoverSpec xover_;
     ops::MutationSpec  mut_;
     std::mt19937 rng_{std::random_device{}()};
@@ -176,7 +189,17 @@ private:
             const auto& f = vault.objectives_of(static_cast<std::size_t>(i));
             for (std::size_t k = 0; k < m; ++k) r[k] = std::max(r[k], f[k]);
         }
-        for (double& x : r) x += 1.0;                      // r = nad(Q) + 1
+        if (!ref_delta_) {
+            for (double& x : r) x += 1.0;                  // r = nad(Q) + 1
+        } else {                                           // SMS-7
+            for (std::size_t k = 0; k < m; ++k) {
+                double lo = std::numeric_limits<double>::infinity();
+                for (int i = 0; i < n; ++i)
+                    lo = std::min(lo, vault.objectives_of(static_cast<std::size_t>(i))[k]);
+                const double span = r[k] - lo;
+                r[k] += *ref_delta_ * (span > 0.0 ? span : 1.0);
+            }
+        }
         std::vector<std::vector<double>> Fv;
         for (int i : last) Fv.push_back(vault.objectives_of(static_cast<std::size_t>(i)));
         const bool mc = m >= 4 && n_samples_ > 0;
@@ -210,13 +233,27 @@ public:
     void set_n_samples(int s)             { n_samples_ = s; }
     void set_crossover(ops::Crossover c)  { xover_.kind = c; }
     void set_mutation(ops::Mutation m)    { mut_.kind = m; }
-    void set_mutation_scale(double s)     { mut_.scale = s; }
+    void set_mutation_scale(double s)     { mut_.scale = ops::checked_mutation_scale(s); }
+    void set_pm(double p)                 { pm_ = p; }
     void set_mixture_q(double q)          { mut_.q = q; }
     void set_blx_alpha(double a)          { xover_.alpha = a; }
     void set_bound_repair(ops::BoundRepair b) {
         ops::require_repair(b, "sms_emoa", true, false);
         xover_.repair = b; mut_.repair = b;
     }
+    // crossover = de / de_pbest / portfolio (de_crossover.hpp, real_crossover.hpp)
+    void set_F(double f)                  { xover_.de.set.F  = ops::checked_de_F(f); }
+    void set_CR(double c)                 { xover_.de.set.CR = ops::checked_de_CR(c); }
+    bool set_param(const std::string& k, double v)
+    {
+        if (k == "ref_delta") {
+            if (!(v > 0.0)) throw std::invalid_argument("ref_delta must be > 0");
+            ref_delta_ = v;
+            return true;
+        }
+        return xover_.set_param(k, v);
+    }
+    bool set_word(const std::string& k, const std::string& w) { return xover_.set_word(k, w); }
 
     void setup(DataVault<Ind_t>& vault)
     {
@@ -246,6 +283,23 @@ public:
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_int_distribution<int> pick(0, n - 1);
+        xover_.observe(vault, n, rng_);  // de, de_pbest, portfolio: the last step's verdict
+        // de_pbest: a random one of the best ⌈p·n⌉ by front, ties by position
+        std::vector<int> order;
+        auto best = [&](double p) {
+            if (order.empty()) {
+                const auto rank = ranks(vault, n);
+                order.resize(static_cast<std::size_t>(n));
+                std::iota(order.begin(), order.end(), 0);
+                std::stable_sort(order.begin(), order.end(), [&](int x, int y) {
+                    return rank[static_cast<std::size_t>(x)] < rank[static_cast<std::size_t>(y)];
+                });
+            }
+            const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
+            std::uniform_int_distribution<int> top(0, k - 1);
+            return vault.variables_of(static_cast<std::size_t>(
+                order[static_cast<std::size_t>(top(rng_))]));
+        };
         const int a = pick(rng_), b = pick(rng_);
         const std::vector<double> x1 = vault.variables_of(static_cast<std::size_t>(a));
         const std::vector<double> x2 = vault.variables_of(static_cast<std::size_t>(b));
@@ -253,12 +307,13 @@ public:
         // more than two (B2)
         auto draw = [&] { return vault.variables_of(static_cast<std::size_t>(pick(rng_))); };
         std::vector<double> c1, c2;
-        xover_.apply_any(x1, x2, draw, c1, c2, bounds, eta_c_, pc_, rng_);
+        xover_.apply_any(x1, x2, draw, best, n, c1, c2, bounds, eta_c_, pc_, rng_);
         std::uniform_int_distribution<int> coin(0, 1);
         const bool second = coin(rng_) == 1;
         std::vector<double>& child = second ? c2 : c1;
-        const double pm = vault.vars_n() > 0 ? 1.0 / vault.vars_n() : 0.0;
+        const double pm = pm_ ? *pm_ : vault.vars_n() > 0 ? 1.0 / vault.vars_n() : 0.0;
         mut_.apply(child, bounds, eta_m_, pm, rng_);
+        xover_.finish(c1, c2, second ? 1 : 0);
 
         const int q = vault.expand(1);
         if (vault.bin_vars_n() > 0) {

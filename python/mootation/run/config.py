@@ -289,10 +289,15 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
         if not isinstance(a, dict):
             raise ConfigError(where, "each algorithm must be a table")
         params = _opt(a, "params", {}, where, dict)
-        from .knobs import text_knobs
+        from .knobs import LIST_KNOBS, text_knobs
         words = text_knobs()
         for k, v in params.items():
-            if k in words:
+            if k in LIST_KNOBS:
+                if not (isinstance(v, str) or (isinstance(v, list)
+                                               and all(isinstance(w, str) for w in v))):
+                    raise ConfigError(f"{where}.params.{k}",
+                                      f"expected a list of {', '.join(words[k])}, got {v!r}")
+            elif k in words:
                 if not isinstance(v, str):
                     raise ConfigError(f"{where}.params.{k}",
                                       f"expected one of {', '.join(words[k])}, got {v!r}")
@@ -312,7 +317,7 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             # A TOML integer stays an integer: T, nr, K, n_clusters and div are
             # ints in the binding, and pybind11 3 refuses 20.0 for them. A
             # boolean stays a boolean (normalize = true).
-            params={k: (v if isinstance(v, (bool, int, str)) else float(v))
+            params={k: (v if isinstance(v, (bool, int, str, list)) else float(v))
                     for k, v in params.items()},
         ))
 
@@ -533,10 +538,10 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
             bad(where,
                 f"unknown parameter(s): {', '.join(unknown)}. "
                 f"Known: {', '.join(sorted(valid_knobs))}")
-        from .knobs import text_knobs
+        from .knobs import accepts, text_knobs
         for k, v in a.params.items():
             allowed = text_knobs().get(k)
-            if allowed is not None and v not in allowed:
+            if allowed is not None and not accepts(k, v):
                 bad(where, f"{k} = {v!r} is not one of: {', '.join(allowed)}")
 
         if cfg.n_objs >= 1 and a.pop >= 2:

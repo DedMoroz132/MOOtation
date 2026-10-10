@@ -4128,6 +4128,82 @@ def gap_max_is_the_largest_hole_and_nn_cv_the_evenness():
 
 
 @test
+def de_and_the_portfolio_record_what_they_do():
+    """Task 7, §2: crossover = de_pbest with SHADE and = portfolio in a
+    campaign — the SHADE memory and the CR and F drawn and kept along the
+    trajectory, every operator's share of the children and of them kept;
+    a TOML list for `portfolio`; the knobs after the per-knob setters reach
+    the binding through Config.params / Config.words, and their lists agree
+    with settings.hpp; mutation_scale 0 is refused."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  de_and_the_portfolio...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import knobs as K
+    from mootation.run.config import load
+    from mootation.run.metric_names import DE_STATS, is_table_name
+    import mootation
+    assert callable(mootation.minimize)                # loads the module behind the function
+    Mz = sys.modules["mootation.minimize"]
+    assert set(Mz.PARAM_KNOBS) <= set(K.knob_names()), set(Mz.PARAM_KNOBS) - set(K.knob_names())
+    assert set(Mz.WORD_KNOBS) <= set(K.text_knobs()), set(Mz.WORD_KNOBS) - set(K.text_knobs())
+    assert K.LIST_KNOBS == ("portfolio",) and K.accepts("portfolio", ["sbx", "de"])
+    assert not K.accepts("portfolio", ["sbx", "nope"]) and K.accepts("portfolio", "sbx, pcx".replace(" ", ""))
+    text = """algorithms = [
+    { name = "nsga2", label = "shade", pop = 20, gens = 0, params = { crossover = "de_pbest", de_adapt = "shade", mutation = "none" } },
+    { name = "sms_emoa", label = "pf", pop = 20, gens = 0, params = { crossover = "portfolio", portfolio = ["sbx", "de", "pcx"], portfolio_credit = "borg" } },
+]
+[run]
+name = "de"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1"]
+[campaign]
+out = "res"
+budget_fe = 1200
+record_grid = "log"
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+operator_stats = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "ZDT1" / "shade" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+        assert {o["operator"] for o in meta["operators"]} == {"de_pbest", "none"}, meta["operators"]
+        assert all(k in meta["final"] for k in DE_STATS), sorted(meta["final"])
+        assert 0.0 <= T[-1]["de_mu_cr_mean"] <= 1.0 and T[-1]["de_mu_f_mean"] > 0.0, T[-1]
+        assert all(is_table_name(k) for k in DE_STATS)
+        d = root / "ZDT1" / "pf" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        shares = {k: v for k, v in meta["final"].items() if k.startswith("portfolio_share_")}
+        assert set(shares) == {"portfolio_share_sbx", "portfolio_share_de", "portfolio_share_pcx"}, shares
+        assert abs(sum(shares.values()) - 1.0) < 1e-12 and is_table_name("portfolio_kept_de")
+        bad = Path(td) / "bad.toml"
+        bad.write_text(text.replace('["sbx", "de", "pcx"]', '["sbx", "nope"]'), encoding="utf-8")
+        assert validate(load(bad)), "a portfolio word that is no crossover passed"
+    p = __import__("mootation.benchmarks", fromlist=["get"]).get("ZDT1")
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="moead", pop_size=20, max_evaluations=200,
+                    seed=1, de_adapt="shade", ref_delta=0.5)
+    assert set(r.ignored) == {"de_adapt", "ref_delta"}, r.ignored
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    mutation="gaussian", mutation_scale=0.0)
+        raise AssertionError("mutation_scale = 0 accepted")
+    except ValueError as e:
+        assert "mutation = \"none\"" in str(e), e
+
+
+@test
 def operator_statistics_leave_the_run_alone_and_describe_it():
     """[campaign] operator_stats: the same populations, the records and meta it adds."""
     if not _have_numpy() or _core_with("operator_stats") is None:
@@ -5719,10 +5795,10 @@ def re_fronts_frames_and_the_kept_defects():
 def operator_words_are_knobs_of_the_run_layer():
     from mootation.run.knobs import text_knobs
     words = text_knobs()
-    assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha",
-                                       "spx", "rex", "undx", "pcx"}, words
+    assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx",
+                                       "pcx", "de", "de_pbest", "portfolio"}, words
     assert {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
-            "mixture_cauchy"} == set(words["mutation"]), words
+            "mixture_cauchy", "none"} == set(words["mutation"]), words
     for k in ("mutation_scale", "mixture_q", "blx_alpha", "crossover", "mutation"):
         assert k in knob_names(), k
     tail = 'gens = 5\n'

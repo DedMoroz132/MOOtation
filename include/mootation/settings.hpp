@@ -70,9 +70,33 @@ inline const std::vector<std::string>& knob_names() {
         "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
         "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
         "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob",
-        "step_share", "F_spread"
+        "step_share", "F_spread",
+        // task 7 of 2026-10-10: handed to a core's set_param (below)
+        "ref_delta", "de_p", "de_memory",
+        "p_de", "sa_chains", "sa_reseed", "sa_t_ratio", "sa_s0", "sa_s_end",
+        "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window"
     };
     return v;
+}
+
+// The knobs that came after the per-knob setters (task 7 of 2026-10-10): a
+// core takes them through bool set_param(name, value) and bool set_word(name,
+// word), and one without the method, or answering false, reports them
+// ignored, as any knob it lacks.
+//   ref_delta      sms_emoa, hype: the reference point nad + δ (nad − ideal)
+//                  instead of their papers' absolute offsets
+//   de_p, de_memory, de_adapt, de_adapt_weight, de_archive
+//                  crossover = de / de_pbest (operators/de_crossover.hpp)
+//   portfolio, portfolio_credit
+//                  crossover = portfolio (operators/real_crossover.hpp)
+//   p_de, sa_*     mosa (algorithms/mosa.hpp)
+inline bool is_core_param(const std::string& name)
+{
+    for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
+                          "sa_t_ratio", "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha",
+                          "sa_adapt_window"})
+        if (name == k) return true;
+    return false;
 }
 
 // Knobs whose value is a word, each with the words it takes. Same rule as
@@ -95,12 +119,23 @@ inline const std::vector<std::string>& knob_names() {
 inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text_knobs() {
     static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
         {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
-        {"crossover",    {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx"}},
+        {"crossover",    {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de",
+                          "de_pbest", "portfolio"}},
         {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
-                          "mixture_cauchy"}},
+                          "mixture_cauchy", "none"}},
         {"crowding_space", {"objectives", "decision"}},
         {"dms_init",     {"line", "single", "random"}},
         {"dms_poll",     {"first", "random"}},
+        {"de_adapt",     {"none", "shade"}},
+        {"de_adapt_weight", {"equal", "contribution"}},
+        {"de_archive",   {"yes", "no"}},
+        {"portfolio",    {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de",
+                          "de_pbest"}},
+        {"portfolio_credit", {"uniform", "borg"}},
+        {"sa_energy",    {"cmb", "eps", "dom", "tch"}},
+        {"sa_step",      {"mix", "laplace", "de", "sbx", "adaptive"}},
+        {"sa_weights",   {"psa", "fixed"}},
+        {"sa_tch_accept", {"weighted_sum", "chebyshev"}},
     };
     return v;
 }
@@ -110,6 +145,41 @@ inline const std::vector<std::string>* text_knob_words(const std::string& name) 
     for (const auto& kv : text_knobs())
         if (kv.first == name) return &kv.second;
     return nullptr;
+}
+
+// Text knobs that take a comma-separated LIST of their words.
+inline bool is_list_knob(const std::string& name) { return name == "portfolio"; }
+
+// The text knobs a core takes through set_word (above, is_core_param).
+inline bool is_core_word(const std::string& name)
+{
+    for (const char* k : {"de_adapt", "de_adapt_weight", "de_archive", "portfolio",
+                          "portfolio_credit", "sa_energy", "sa_step", "sa_weights",
+                          "sa_tch_accept"})
+        if (name == k) return true;
+    return false;
+}
+
+// Is `value` a valid value of the text knob `name` (one word, or for a list
+// knob a comma-separated list of them)?
+inline bool text_knob_accepts(const std::string& name, const std::string& value)
+{
+    const auto* words = text_knob_words(name);
+    if (!words) return false;
+    auto one = [&](const std::string& w) {
+        return std::find(words->begin(), words->end(), w) != words->end();
+    };
+    if (!is_list_knob(name)) return one(value);
+    std::size_t a = 0;
+    while (a <= value.size()) {
+        const std::size_t b = std::min(value.find(',', a), value.size());
+        std::size_t x = a, y = b;                       // the item without spaces
+        while (x < y && std::isspace(static_cast<unsigned char>(value[x]))) ++x;
+        while (y > x && std::isspace(static_cast<unsigned char>(value[y - 1]))) --y;
+        if (!one(value.substr(x, y - x))) return false;
+        a = b + 1;
+    }
+    return true;
 }
 
 struct Settings {
@@ -187,7 +257,7 @@ struct Settings {
         for (const auto& kv : text_params) {
             const auto* words = text_knob_words(kv.first);
             if (!words) bad("unknown text knob '" + kv.first + "'");
-            if (std::find(words->begin(), words->end(), kv.second) == words->end())
+            if (!text_knob_accepts(kv.first, kv.second))
                 bad(kv.first + " = '" + kv.second + "' is not one of its values");
         }
     }
@@ -333,7 +403,7 @@ inline Settings Settings::from_string(const std::string& text, const std::string
         else if (key == "on_size_mismatch")  s.on_size_mismatch  =
                                                  detail::parse_size_mismatch(val, w);
         else if (const auto* words = text_knob_words(key)) {
-            if (std::find(words->begin(), words->end(), val) == words->end()) {
+            if (!text_knob_accepts(key, val)) {
                 std::string all;
                 for (const auto& w2 : *words) all += (all.empty() ? "" : ", ") + w2;
                 throw std::invalid_argument(where + ": " + key + " = '" + val +

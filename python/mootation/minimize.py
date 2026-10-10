@@ -20,10 +20,18 @@ from . import _core
 # **kwargs-into-setattr so that a typo is an error naming the alternatives,
 # instead of a silently ignored argument — a run configured with an ignored
 # parameter is not the run that was asked for.
+# The knobs after the per-knob setters (settings.hpp, is_core_param and
+# is_core_word) travel in Config.params and Config.words, a list knob
+# (portfolio) as comma-separated words.
+PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio",
+               "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window")
+WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
+              "sa_energy", "sa_step", "sa_weights", "sa_tch_accept")
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
-         "sbx_var_prob", "crowding_space", "dms_init", "dms_poll", "step_share", "F_spread")
+         "sbx_var_prob", "crowding_space", "dms_init", "dms_poll", "step_share",
+         "F_spread") + PARAM_KNOBS + WORD_KNOBS
 
 def minimize(
     fn: Callable[[Sequence[float]], Sequence[float]],
@@ -192,7 +200,14 @@ def minimize(
     cfg.seed = int(seed)
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
+    params, words = {}, {}
     for k, v in knobs.items():
+        if k in PARAM_KNOBS:
+            params[k] = float(v)
+            continue
+        if k in WORD_KNOBS:
+            words[k] = ",".join(v) if isinstance(v, (list, tuple)) else str(v)
+            continue
         try:
             setattr(cfg, k, v)
         except TypeError:
@@ -206,6 +221,10 @@ def minimize(
                 raise TypeError(f"parameter {k} takes an integer, got {v!r}") from None
             else:
                 raise
+    if params:
+        cfg.params = params
+    if words:
+        cfg.words = words
     cfg.operator_stats = bool(operator_stats)
     if on_generation is not None and int(record_every) > 0:
         cfg.on_generation = on_generation

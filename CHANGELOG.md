@@ -29,6 +29,11 @@ always listed under **Changed** or **Removed**.
 
 ### Changed
 
+- `mutation_scale` at 0 or below is an error (task 7, §5.2); it used to
+  fall back to the default silently. "No mutation" is `mutation = "none"`.
+- MSVC: the interface target adds `/bigobj` — `embed.hpp` instantiates every
+  algorithm in one translation unit, which now overruns the section limit
+  even in a Release build.
 - `--cover` reads the coverage criterion against each problem's IGD+ floor:
   `igdp_norm ≤ (1 + τ) × floor`, τ = 1, 0.5, 0.25, 0.1 by default
   (`--cover-floor-taus`). N points on the front itself leave IGD+ above zero —
@@ -211,6 +216,27 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Differential evolution and an operator portfolio in the switchable
+  algorithms (NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA, SMS-EMOA; task 7, §2):
+  `crossover = "de"` (DE/rand/1/bin, the host's pair and two more parents from
+  its own selection, F = 0.5, CR = 1), `"de_pbest"` (JADE's
+  current-to-pbest/1, x_pbest one of the host's best `de_p` by its own order,
+  r2 from the population and the archive of displaced parents), with
+  `de_adapt = "shade"` (a SHADE memory; success = the child survived the
+  host's selection; weights `equal` or `contribution`), and
+  `crossover = "portfolio"` (`portfolio = [...]`, `portfolio_credit = uniform |
+  borg`). Their records — the SHADE memory, the CR and F drawn and kept, every
+  operator's share of the children and of them kept — go to
+  `operator_stats` and the trajectories (`metric_names.DE_STATS`,
+  `portfolio_share_*`, `portfolio_kept_*`). `mutation = "none"`. The knobs
+  `F` and `CR` now reach the five hosts; `pm` is a knob of NSGA-II,
+  SPEA2+SDE, AGE-MOEA and SMS-EMOA too (it was fixed at 1/n and reported as
+  ignored); `ref_delta` gives SMS-EMOA and HypE a reference point relative to
+  the objectives' range (§5.3). The knobs added from now on reach a core
+  through `set_param` / `set_word` (`settings.hpp`, `Config.params` /
+  `Config.words`); docs/embedding.md lists which algorithm takes which
+  operator knob. Every algorithm's defaults are unchanged
+  (`tools/compat_check.py`: 0 fingerprints differ).
 - shiftZDT1-4, shiftZDT6, shiftDTLZ6 and shiftDTLZ7 (`benchmarks/shifted.py`,
   task 6, item 2): ZDT1-3, ZDT6, DTLZ6 and DTLZ7 put the optimum of every
   distance variable on the lower bound, where clipping a variable lands for

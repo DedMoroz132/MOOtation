@@ -24,12 +24,24 @@ _FALLBACK = (
     "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
     "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
     "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob", "step_share", "F_spread",
+    "ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio", "sa_s0",
+    "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
-    "crossover": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx"),
+    "crossover": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de", "de_pbest",
+                  "portfolio"),
     "mutation": ("polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
-                 "mixture_cauchy"),
+                 "mixture_cauchy", "none"),
+    "de_adapt": ("none", "shade"),
+    "de_adapt_weight": ("equal", "contribution"),
+    "de_archive": ("yes", "no"),
+    "portfolio": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de", "de_pbest"),
+    "portfolio_credit": ("uniform", "borg"),
+    "sa_energy": ("cmb", "eps", "dom", "tch"),
+    "sa_step": ("mix", "laplace", "de", "sbx", "adaptive"),
+    "sa_weights": ("psa", "fixed"),
+    "sa_tch_accept": ("weighted_sum", "chebyshev"),
     "crowding_space": ("objectives", "decision"),
     "dms_init": ("line", "single", "random"),
     "dms_poll": ("first", "random"),
@@ -77,6 +89,22 @@ def _read_text() -> dict:
     if not m:
         return dict(_FALLBACK_TEXT)
     return {name: tuple(_STRING.findall(words)) for name, words in _TEXT_ITEM.findall(m.group("body"))}
+
+
+# The text knobs that take a LIST of their words (settings.hpp, is_list_knob):
+# a TOML list, or the words separated by commas.
+LIST_KNOBS = ("portfolio",)
+
+
+def accepts(name: str, value) -> bool:
+    """Is `value` a valid value of the text knob `name`?"""
+    words = text_knobs().get(name)
+    if words is None:
+        return False
+    if name in LIST_KNOBS:
+        items = value if isinstance(value, (list, tuple)) else str(value).split(",")
+        return bool(items) and all(isinstance(w, str) and w in words for w in items)
+    return value in words
 
 
 def text_knobs() -> dict:

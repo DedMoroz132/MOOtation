@@ -19,6 +19,15 @@ METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_
 RUN_STATS = ("oob_share", "oob_var_share", "survival_share", "offspring_nd_share",
              "step_mean")
 
+# The same bookkeeping of crossover = de / de_pbest and portfolio (task 7 of
+# 2026-10-10, §2.2 and §2.4; include/mootation/operators/de_crossover.hpp,
+# real_crossover.hpp): the SHADE memory (its cells' mean and quartiles), the
+# mean CR and F drawn and kept; per operator of a portfolio its share of the
+# children and the share of them the selection kept, PORTFOLIO_STATS + name.
+DE_STATS = ("de_mu_cr_mean", "de_mu_cr_q1", "de_mu_cr_q3", "de_mu_f_mean", "de_mu_f_q1",
+            "de_mu_f_q3", "de_cr_mean", "de_f_mean", "de_cr_success_mean", "de_f_success_mean")
+PORTFOLIO_STATS = ("portfolio_share_", "portfolio_kept_")
+
 # What a run on a constrained problem records besides (task 6 of 2026-10-09,
 # item 5.2), unasked: feas_share wherever an indicator is measured, which is
 # then measured on the feasible part of the answer (metrics.compute), and
@@ -30,7 +39,7 @@ FEASIBILITY = ("feas_share", "fe_first_feas")
 NOISE = ("true_dominated_share",)
 
 # Everything a table can be asked for.
-TABLE_NAMES = METRIC_NAMES + RUN_STATS + FEASIBILITY + NOISE
+TABLE_NAMES = METRIC_NAMES + RUN_STATS + DE_STATS + FEASIBILITY + NOISE
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
@@ -56,9 +65,10 @@ def base_name(name: str) -> str:
 
 
 def is_table_name(name: str) -> bool:
-    """Can a table be asked for `name`: TABLE_NAMES, and the front indicators
-    against the dense reference."""
-    return name in TABLE_NAMES or base_name(name) != name
+    """Can a table be asked for `name`: TABLE_NAMES, the front indicators
+    against the dense reference, and a portfolio's per-operator shares."""
+    return (name in TABLE_NAMES or base_name(name) != name
+            or name.startswith(PORTFOLIO_STATS))
 
 # These look at the decision variables: all of them need the solutions; igdx,
 # cr and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
@@ -137,6 +147,16 @@ DESCRIPTIONS = {
     "survival_share": "share of offspring that entered the next population",
     "offspring_nd_share": "share of offspring no member of the parent population dominates",
     "step_mean": "mean distance from an offspring to the nearest parent, over ||ub - lb||",
+    "de_mu_cr_mean": "crossover de/de_pbest with SHADE: the mean of the memory's mu_CR",
+    "de_mu_cr_q1": "the first quartile of the memory's mu_CR",
+    "de_mu_cr_q3": "the third quartile of the memory's mu_CR",
+    "de_mu_f_mean": "the mean of the memory's mu_F",
+    "de_mu_f_q1": "the first quartile of the memory's mu_F",
+    "de_mu_f_q3": "the third quartile of the memory's mu_F",
+    "de_cr_mean": "the mean CR of the children drawn",
+    "de_f_mean": "the mean F of the children drawn",
+    "de_cr_success_mean": "the mean CR of the children the selection kept",
+    "de_f_success_mean": "the mean F of the children the selection kept",
     "feas_share": "a constrained problem's: the share of the answer that satisfies every "
                   "constraint; every other indicator is measured on that part, and an answer "
                   "without one has no value (an empty run, counted apart and ranked worst)",

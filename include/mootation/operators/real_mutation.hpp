@@ -15,6 +15,12 @@
 //                  probability 1 − q, the gaussian one with probability q
 //                  (q = 0.1 by default); mixture_cauchy the same with the
 //                  Cauchy step
+//   none           no mutation: the children are the crossover's (task 7 of
+//                  2026-10-10, §2.3; before it, a gaussian of scale 1e-12
+//                  stood in for it)
+//
+// mutation_scale must be > 0 (task 7, §5.2): it used to fall back to the
+// default silently at 0 or below; "no mutation" is mutation = "none".
 //
 // Why these (from the task): the pits of g sit 0.05 of the range apart on ZDT4
 // and 0.1 on DTLZ1/3; the polynomial mutation with η = 20 steps further than
@@ -33,6 +39,7 @@
 #include <cmath>
 #include <optional>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -43,7 +50,7 @@
 
 namespace mootation::ops {
 
-enum class Mutation { Polynomial, Gaussian, Cauchy, UniformReset, Mixture, MixtureCauchy };
+enum class Mutation { Polynomial, Gaussian, Cauchy, UniformReset, Mixture, MixtureCauchy, None };
 
 inline const char* mutation_name(Mutation m)
 {
@@ -54,6 +61,7 @@ inline const char* mutation_name(Mutation m)
         case Mutation::UniformReset:  return "uniform_reset";
         case Mutation::Mixture:       return "mixture";
         case Mutation::MixtureCauchy: return "mixture_cauchy";
+        case Mutation::None:          return "none";
     }
     return "?";
 }
@@ -61,7 +69,8 @@ inline const char* mutation_name(Mutation m)
 inline std::optional<Mutation> parse_mutation(const std::string& s)
 {
     for (Mutation m : {Mutation::Polynomial, Mutation::Gaussian, Mutation::Cauchy,
-                       Mutation::UniformReset, Mutation::Mixture, Mutation::MixtureCauchy})
+                       Mutation::UniformReset, Mutation::Mixture, Mutation::MixtureCauchy,
+                       Mutation::None})
         if (s == mutation_name(m)) return m;
     return std::nullopt;
 }
@@ -69,6 +78,15 @@ inline std::optional<Mutation> parse_mutation(const std::string& s)
 // The step scale s when none is set: 0.1 for the gaussian, 0.05 for Cauchy's
 // heavier tails.
 inline double default_mutation_scale(bool cauchy) { return cauchy ? 0.05 : 0.1; }
+
+// The knob mutation_scale, checked: > 0 (§5.2 above).
+inline double checked_mutation_scale(double s)
+{
+    if (!(s > 0.0))
+        throw std::invalid_argument("mutation_scale must be > 0, got " + std::to_string(s) +
+                                    "; for no mutation set mutation = \"none\"");
+    return s;
+}
 
 namespace detail {
 
@@ -222,6 +240,8 @@ struct MutationSpec {
                 mixture_mutation(x, bounds, eta_m, pm, q, false, s(), rep, rng); break;
             case Mutation::MixtureCauchy:
                 mixture_mutation(x, bounds, eta_m, pm, q, true, s(), rep, rng); break;
+            case Mutation::None:
+                note_operator("none", "none"); break;
         }
     }
 };
