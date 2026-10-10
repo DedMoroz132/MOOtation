@@ -292,6 +292,13 @@ always listed under **Changed** or **Removed**.
   `--oracle`: the best N points of every run's archive under IGD+ against the
   reference, beside the population, the archive answer, igdp_self's choice and
   the whole archive (`run/oracle.py`, `<results>/_oracle/oracle.csv`).
+- `python/examples/experiments/ablation_bound_repair.toml` (task 6, item 13),
+  not run: the 17 algorithms with the `bound_repair` knob at each of its
+  values — the 12 whose own operators leave the box at clip, reflect, random,
+  midpoint and wrap (resample is not available to them), the 5 that vary by
+  SBX and polynomial mutation, which stay in the box, with gaussian mutation at
+  all six — on ZDT1, ZDT4, DTLZ1_3D, DTLZ3_3D, their shifted copies and
+  rDTLZ1_3D and rDTLZ2_3D, ten seeds at 25 000 evaluations (9 000 runs).
 - Rotated DTLZ and WFG (`benchmarks/rotated.py`, task 6, item 1 and its
   supplement 2): the distance variables rotated about their optimum, the
   position variables untouched, front and Pareto set exact — rDTLZ1-4 (y =

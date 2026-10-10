@@ -1,0 +1,141 @@
+# Which bound repair, where it matters (task 6 of 2026-10-09, item 13): not
+# run yet — a configuration to run when the owner says so.
+#
+# Every algorithm with the bound_repair knob, at each of its values clip,
+# reflect, random, midpoint, resample and wrap ("native", the paper's own rule
+# where an algorithm has one, is left out). Two groups:
+#   * the 12 whose own operators leave the box (DE, Liu and Li's, the
+#     sine-cosine and difference operators): gde3, moead_de, moead_dra,
+#     moead_m2m, moead_am2m, liu_gu2011, hlmea, emyo_c, dcea, hcca, lis_lcs,
+#     naemo — clip, reflect, random, midpoint and wrap; resample is not
+#     available to them (operators/bound_repair.hpp, require_repair);
+#   * the 5 that vary by SBX and polynomial mutation, which stay in the box by
+#     construction, so that the knob changes nothing there: nsga2, spea2_sde,
+#     agemoea, ibea_eplus, sms_emoa with mutation = "gaussian" (as e3), at all
+#     six values.
+# The problems: ZDT1, ZDT4, DTLZ1_3D, DTLZ3_3D, their shifted copies (the
+# optimum off the centre and the bound), and rDTLZ1_3D and rDTLZ2_3D (the
+# distance variables rotated, the optimum's projection off both). Operator
+# statistics on (oob_share: how often a variable left the box); g_min and
+# g_median read every problem's own distance to the Pareto set.
+#
+#   python -m mootation.run.campaign ablation_bound_repair.toml --list
+#   python -m mootation.run.campaign ablation_bound_repair.toml --workers 16
+#   python -m mootation.run.campaign ablation_bound_repair.toml --compare igdp_norm
+#   python -m mootation.run.campaign ablation_bound_repair.toml --compare oob_share
+#
+# 90 variants (12 x 5 + 5 x 6) x 10 problems x 10 seeds = 9000 runs of
+# 25 000 evaluations.
+
+algorithms = [
+    { name = "gde3", label = "gde3_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "gde3", label = "gde3_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "gde3", label = "gde3_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "gde3", label = "gde3_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "gde3", label = "gde3_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "moead_de", label = "moead_de_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "moead_de", label = "moead_de_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "moead_de", label = "moead_de_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "moead_de", label = "moead_de_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "moead_de", label = "moead_de_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "moead_dra", label = "moead_dra_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "moead_dra", label = "moead_dra_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "moead_dra", label = "moead_dra_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "moead_dra", label = "moead_dra_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "moead_dra", label = "moead_dra_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "moead_m2m", label = "moead_m2m_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "moead_m2m", label = "moead_m2m_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "moead_m2m", label = "moead_m2m_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "moead_m2m", label = "moead_m2m_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "moead_m2m", label = "moead_m2m_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "moead_am2m", label = "moead_am2m_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "moead_am2m", label = "moead_am2m_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "moead_am2m", label = "moead_am2m_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "moead_am2m", label = "moead_am2m_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "moead_am2m", label = "moead_am2m_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "liu_gu2011", label = "liu_gu2011_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "liu_gu2011", label = "liu_gu2011_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "liu_gu2011", label = "liu_gu2011_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "liu_gu2011", label = "liu_gu2011_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "liu_gu2011", label = "liu_gu2011_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "hlmea", label = "hlmea_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "hlmea", label = "hlmea_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "hlmea", label = "hlmea_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "hlmea", label = "hlmea_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "hlmea", label = "hlmea_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "emyo_c", label = "emyo_c_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "emyo_c", label = "emyo_c_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "emyo_c", label = "emyo_c_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "emyo_c", label = "emyo_c_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "emyo_c", label = "emyo_c_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "dcea", label = "dcea_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "dcea", label = "dcea_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "dcea", label = "dcea_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "dcea", label = "dcea_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "dcea", label = "dcea_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "hcca", label = "hcca_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "hcca", label = "hcca_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "hcca", label = "hcca_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "hcca", label = "hcca_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "hcca", label = "hcca_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "lis_lcs", label = "lis_lcs_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "lis_lcs", label = "lis_lcs_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "lis_lcs", label = "lis_lcs_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "lis_lcs", label = "lis_lcs_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "lis_lcs", label = "lis_lcs_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "naemo", label = "naemo_clip", pop = 0, gens = 0, params = { bound_repair = "clip" } },
+    { name = "naemo", label = "naemo_reflect", pop = 0, gens = 0, params = { bound_repair = "reflect" } },
+    { name = "naemo", label = "naemo_random", pop = 0, gens = 0, params = { bound_repair = "random" } },
+    { name = "naemo", label = "naemo_midpoint", pop = 0, gens = 0, params = { bound_repair = "midpoint" } },
+    { name = "naemo", label = "naemo_wrap", pop = 0, gens = 0, params = { bound_repair = "wrap" } },
+    { name = "nsga2", label = "nsga2_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "nsga2", label = "nsga2_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "nsga2", label = "nsga2_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "nsga2", label = "nsga2_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "nsga2", label = "nsga2_gauss_resample", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "resample" } },
+    { name = "nsga2", label = "nsga2_gauss_wrap", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "wrap" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_resample", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "resample" } },
+    { name = "spea2_sde", label = "spea2_sde_gauss_wrap", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "wrap" } },
+    { name = "agemoea", label = "agemoea_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "agemoea", label = "agemoea_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "agemoea", label = "agemoea_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "agemoea", label = "agemoea_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "agemoea", label = "agemoea_gauss_resample", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "resample" } },
+    { name = "agemoea", label = "agemoea_gauss_wrap", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "wrap" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_resample", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "resample" } },
+    { name = "ibea_eplus", label = "ibea_eplus_gauss_wrap", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "wrap" } },
+    { name = "sms_emoa", label = "sms_emoa_gauss_clip", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "clip" } },
+    { name = "sms_emoa", label = "sms_emoa_gauss_reflect", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "reflect" } },
+    { name = "sms_emoa", label = "sms_emoa_gauss_random", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "random" } },
+    { name = "sms_emoa", label = "sms_emoa_gauss_midpoint", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "midpoint" } },
+    { name = "sms_emoa", label = "sms_emoa_gauss_resample", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "resample" } },
+    { name = "sms_emoa", label = "sms_emoa_gauss_wrap", pop = 0, gens = 0, params = { mutation = "gaussian", bound_repair = "wrap" } },
+]
+
+[run]
+name = "ablation_bound_repair"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+runs = 10
+problems = ["ZDT1", "ZDT4", "DTLZ1_3D", "DTLZ3_3D", "shiftZDT1", "shiftZDT4", "shiftDTLZ1_3D",
+            "shiftDTLZ3_3D", "rDTLZ1_3D", "rDTLZ2_3D"]
+
+[campaign]
+out            = "results/{name}"
+budget_fe      = 25000
+record_grid    = "log"
+metrics        = ["igdp_norm", "hv"]
+final_metrics  = ["igd", "igdp", "igdp_norm", "eps_norm", "hv", "hv_h", "gdp_norm", "gdp_min",
+                  "g_min", "g_median", "n_final", "range_cover", "igdx", "pdist"]
+operator_stats = true

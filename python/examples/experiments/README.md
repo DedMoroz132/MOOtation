@@ -12,6 +12,7 @@ statistics on, and every variant is an `[[algorithms]]` entry with its own
 | `e1_sbx_var_prob.toml` | SBX crossing half the variables (0.5) or all (1.0)? |
 | `e2_mutation_step.toml` | polynomial mutation against gaussian steps of 0.025-0.3 of the range and a Cauchy step |
 | `e3_bound_repair.toml` | clip, reflect, random or midpoint for the operators that leave the box |
+| `ablation_bound_repair.toml` | every algorithm with the `bound_repair` knob at clip, reflect, random, midpoint, resample (where available) and wrap, on ZDT1, ZDT4, DTLZ1_3D, DTLZ3_3D, their shifted copies and rDTLZ1/2_3D: ten seeds at 25 000 evaluations (task 6, item 13; not run yet) |
 | `e5_rotation.toml` | GDE3 at CR = 1 (rotation-invariant) against CR = 0.5, MO-CMA-ES and SMS-EMOA, on E1's problems and all of bbob-biobj |
 | `../structural_bias.toml` | where every algorithm searches when the objectives say nothing (A3; Kudela et al.'s f1-f4b since task 6) |
 | `../structural_bias_f5.toml` | the same on f5, every point non-dominated: ten seeds, DMS at 10 000 evaluations |
