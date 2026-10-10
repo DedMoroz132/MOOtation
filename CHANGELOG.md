@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- LIR-CMOP1-14 (`benchmarks/lir_cmop.py`; task 7, §8): Fan et al.'s
+  constrained problems with large infeasible regions (Soft Computing 23(23),
+  2019; the formulas of the preprint's Table 6), fronts built on first use
+  from the problems' geometry and the frame read off them. 1173 problems in
+  42 families.
 - Failed evaluations (task 7, supplement 3, §2; `mootation/failures.py`,
   `data_vault.hpp`, FAILED EVALUATIONS). `minimize(on_failure="infeasible")`,
   the default: an exception of `failure_exceptions` (Exception), a non-finite

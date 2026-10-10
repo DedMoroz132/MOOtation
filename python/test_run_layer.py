@@ -7093,6 +7093,120 @@ def das_cmop_follows_its_table_and_its_fronts_hold():
     assert properties("DAS-CMOP4_t01")["multimodal"] and properties("ZDT1")["difficulty"] is None
 
 
+def _lir_attain(L, i, z):
+    """An x at which LIR-CMOP<i> takes the front point z: x1 and g1, g2 (g1
+    alone for 13-14) read back from the objectives, each g spread evenly
+    over its distance variables."""
+    import math
+    import numpy as np
+    x = np.empty(30)
+    if i >= 13:
+        r = math.sqrt(float(np.sum(np.square(z))))
+        x[0] = math.asin(min(z[2] / r, 1.0)) / (0.5 * math.pi)
+        x[1] = math.atan2(z[1], z[0]) / (0.5 * math.pi)
+        x[2:] = 0.5 + math.sqrt(max(r - 1.7057, 0.0) / 280.0)
+        return x
+    a, b = z
+    if i <= 4:
+        u, g1, g2 = a - 0.5, 0.5, 0.5
+    elif i <= 8:
+        u = min(a - L.SHIFT, 1.0)
+        g1, g2 = (a - L.SHIFT - u) / 10.0, (b - L.SHIFT - float(L.shape(i, u))) / 10.0
+    else:
+        # u in [h^-1(f2 / 1.7057), 1): f2 reachable; and u <= f1 / 1.7057
+        t = min(max(b / 1.7057, 0.0), 1.0)
+        least = (1.0 - t) ** 2 if L._sqrt_shape(i) else math.sqrt(1.0 - t)
+        u = min(a / 1.7057, 0.5 * (least + 1.0))
+        h = float(L.shape(i, u))
+        g1 = (a / (1.7057 * u) - 1.0) / 10.0 if u > 0 else 0.0
+        g2 = (b / (1.7057 * h) - 1.0) / 10.0 if h > 0 else 0.0
+    x[0] = u
+    if i <= 4:
+        x[L.J1], x[L.J2] = math.sin(0.5 * math.pi * u), math.cos(0.5 * math.pi * u)
+    else:
+        x[L.J1] = np.sin(0.5 * (L.J1 + 1) / 30.0 * math.pi * u)
+        x[L.J2] = np.cos(0.5 * (L.J2 + 1) / 30.0 * math.pi * u)
+    for J, g in ((L.J1, g1), (L.J2, g2)):
+        d = math.sqrt(max(g, 0.0) / len(J))
+        x[J] = np.where(x[J] + d <= 1.0, x[J] + d, x[J] - d)
+    return x
+
+
+@test
+def lir_cmop_follows_its_table_and_its_fronts_hold():
+    """Task 7, §8: LIR-CMOP1-14 (Fan et al. 2019, arXiv:1707.08767, Table 6)
+    at hand-checked points; every front point satisfies the constraints and
+    is reached by a feasible x (_lir_attain), and feasible points made on
+    purpose do not beat the front; as the paper's text
+    says, 5's and 6's fronts are the unconstrained ones and 7's and 8's lie
+    on a constraint's boundary, all but their end at f2's floor."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import lir_cmop as L
+    from mootation.benchmarks.properties import properties
+    assert families()["LIR-CMOP"] == sorted(f"LIR-CMOP{i}" for i in range(1, 15))
+    x = np.empty(30)
+    x[0], x[L.J1], x[L.J2] = 0.3, math.sin(0.15 * math.pi), math.cos(0.15 * math.pi)
+    f, c = L.evaluate(1, x)                                  # g1 = g2 = 0: outside the band
+    assert np.allclose(f, [0.3, 0.91]) and np.allclose(c, [0.255, 0.255])
+    y = np.full(30, 0.5)
+    f, c = L.evaluate(13, y)                                 # the sphere of radius 1.7057
+    assert np.allclose(f, 1.7057 * np.array([0.5, 0.5, math.sqrt(0.5)])) and max(c) < 0.0
+    assert L.evaluate(14, y)[1][2] > 0.0                     # 2.56 < g < 3.0625: c3 fails
+    rng = np.random.default_rng(5)
+    for i in range(1, 15):
+        p = get(f"LIR-CMOP{i}")
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert len(Z) > 50 and np.allclose(Z.min(axis=0), p.ideal), i
+        if i >= 5:
+            assert L.constraints_c(i, Z).min() >= -1e-9, i
+        for z in Z:                                          # every point reached
+            x = _lir_attain(L, i, z)
+            f, c = L.evaluate(i, x)
+            assert 0.0 <= x.min() and x.max() <= 1.0, (i, z)
+            assert np.allclose(f, z, rtol=0.0, atol=1e-9) and max(c) <= 1e-9, (i, z, f, c)
+        # feasible points made on purpose: g1, g2 in the band (1-4), the
+        # distance variables near their optimum (5-14)
+        pts = []
+        for _ in range(3000):
+            x = np.empty(30)
+            x[0], x[1] = rng.random(), rng.random()
+            if i <= 4:
+                s, t = math.sin(0.5 * math.pi * x[0]), math.cos(0.5 * math.pi * x[0])
+                x[L.J1], x[L.J2] = s, t
+                for J, v in ((L.J1, s), (L.J2, t)):
+                    d = math.sqrt((0.5 + 0.01 * rng.random()) / 4.0)
+                    x[J[:4]] = v + d if v + d <= 1.0 else v - d
+            elif i <= 12:
+                x[L.J1] = np.sin(0.5 * (L.J1 + 1) / 30.0 * math.pi * x[0])
+                x[L.J2] = np.cos(0.5 * (L.J2 + 1) / 30.0 * math.pi * x[0])
+                x[2:] += rng.normal(0.0, 0.15 * rng.random(), 28)
+            else:
+                x[2:] = 0.5 + rng.normal(0.0, 0.03 * rng.random(), 28)
+            f, c = L.evaluate(i, np.clip(x, 0.0, 1.0))
+            if max(c) <= 0.0:
+                pts.append(f)
+        P = np.asarray(pts)
+        assert len(P) > 50, (i, len(P))
+        span = Z.max(axis=0) - Z.min(axis=0)
+        beaten = [np.any(np.all(P <= z - 1e-3 * span, axis=1)) for z in Z]
+        assert not any(beaten), (i, sum(beaten))
+    for i in (5, 6):
+        Z = L.front(i, 1000)
+        assert np.allclose(Z[:, 1], L._least_f2(i, Z[:, 0]), atol=1e-9), i
+    for i in (7, 8):                                         # but the end at f2's floor
+        Z = L.front(i, 1000)
+        edge = np.abs(L.constraints_c(i, Z)).min(axis=1) < 1e-6
+        floor = np.abs(Z[:, 1] - L._least_f2(i, Z[:, 0])) < 1e-9
+        assert np.all(edge | floor) and floor.sum() == 1, i
+    row = properties("LIR-CMOP3")
+    assert row["front"] == "concave+disconnected" and not row["multimodal"]
+    assert properties("LIR-CMOP13")["front_dim"] == 2
+
+
 # ── task 7, supplement 3, §2: failed evaluations ──────────────────────────────
 
 def _failing_zdt1(x):

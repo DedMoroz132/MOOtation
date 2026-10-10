@@ -414,6 +414,18 @@ def _huband(name: str) -> dict | None:
         if eta > 0 or gamma > 0 or i in (3, 6):
             shape += "+disconnected"
         return _p(shape, 4 <= i <= 8, False, False, False, False, False)
+    if stem.startswith("LIR-CMOP"):
+        # Fan et al. 2019, Table 6 and Fig. 1-2: 1 - x1^2 concave, 1 - sqrt(x1)
+        # convex, the sphere of 13-14; 3-4 and 9-12 cut into pieces (the
+        # window sin(20 pi x1) >= 0.5, the sine constraint), 7-8 on an
+        # ellipse's boundary, which bulges away from the origin
+        i = int(stem[len("LIR-CMOP"):])
+        shape = {1: "concave", 2: "convex", 3: "concave", 4: "convex", 5: "convex",
+                 6: "concave", 7: "concave", 8: "concave", 9: "concave", 10: "convex",
+                 11: "convex", 12: "concave", 13: "concave", 14: "concave"}[i]
+        if i in (3, 4) or 9 <= i <= 12:
+            shape += "+disconnected"
+        return _p(shape, False, False, False, False, False, False)
     if stem == "wideDTLZ3":
         row = dict(_DTLZ["DTLZ3"])
         row["centre"] = False

@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 1159 benchmark problems (needs NumPy) |
+| `--problems` | list the 1173 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -180,8 +180,8 @@ day-long run.
 ## The built-in suites
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
-BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW and DAS-CMOP, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE: 1159 problems across 41 families, each
+BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP and LIR-CMOP, rotated
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE: 1173 problems across 42 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -366,6 +366,22 @@ paper's Table 2, and the values agree with pymoo 0.6.2 at random points to
 ζ = 0 pymoo bounds g by 10^30 (satisfied everywhere either way), and at ζ = 1,
 where the constraint becomes the equality g = d, the library takes the
 paper's tolerance 10^-6 (its Eq. 13), pymoo 10^-4.
+
+**LIR-CMOP1-14** (Fan et al., Soft Computing 23(23), 2019;
+`benchmarks/lir_cmop.py`): constrained problems with large infeasible
+regions, n = 30. In 1-4 each distance function g must lie in the band
+[0.5, 0.51], so the feasible set is small; 5-8 add ellipses in the objective
+space (the front of 5 and 6 is the unconstrained one, that of 7 and 8 lies on
+an ellipse's boundary); 9-12 an ellipse and a sine constraint that cut the
+front into pieces; 13 and 14 have three objectives and spherical shells. The
+formulas are Table 6 of the paper's preprint (arXiv:1707.08767). The fronts
+are built on first use from the problems' geometry — for 5-12 the least
+feasible attainable f2 at every f1 of a fine grid, by bisection — and the
+frame read off them; every front point is reached by a feasible x to 1e-12,
+and feasible points made on purpose do not beat it. Two kinds of point
+belong to 9-12's fronts though they lie apart from the rest: f1 = 0 only at
+x1 = 0 and f2 = 0 only at x1 = 1, so the least feasible point on either axis
+is Pareto-optimal (9: (0, 2.175...)), and the frame takes it.
 
 **Bit strings.** OneMinMax (`OMM_n10`, `_n20`, `_n50`), LOTZ (`LOTZ_n…`) and
 OneJumpZeroJump (`OJZJ_n10_k2`, `OJZJ_n10_k3`, `OJZJ_n20_k3`, `OJZJ_n20_k4`)

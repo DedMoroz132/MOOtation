@@ -31,6 +31,8 @@
 #   OMM, LOTZ, OJZJ     bit-string problems of the runtime theory (binary.py)
 #   DAS-CMOP1-9         Fan et al. 2020, difficulty-adjustable constrained, at
 #                       the paper's sixteen triplets (dascmop.py)
+#   LIR-CMOP1-14        Fan et al. 2019, constrained with large infeasible
+#                       regions (lir_cmop.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -77,6 +79,7 @@ from . import rotated as _rot
 from . import re as _re
 from . import binary as _bin
 from . import dascmop as _das
+from . import lir_cmop as _lir
 from . import mw as _mw
 from . import failing as _fail
 
@@ -1879,6 +1882,31 @@ def _register_dascmop():
 
 DASCMOP: Dict[str, tuple] = {}             # name -> (i, triplet)
 _register_dascmop()
+
+
+# =============================================================
+#  LIR-CMOP1-14 (lir_cmop.py, task 7, §8): Fan et al.'s constrained problems
+#  with large infeasible regions, n = 30, x in [0, 1]. The front is built on
+#  first use from the problems' geometry (lir_cmop.py, THE FRONTS), and the
+#  frame read off it there (_reframe_one).
+# =============================================================
+def _register_lir_cmop():
+    for i in range(1, 15):
+        M = _lir.n_obj(i)
+        pop, ng = _budget(M)
+        def _eval(x, _i=i): return _lir.evaluate(_i, x)[0]
+        def _cons(x, _i=i): return _lir.evaluate(_i, x)[1]
+        def _pf(n=1000, _i=i): return _lir.front(_i, int(n))
+        key = _lir.name(i)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=_lir.N_VARS, bounds=[(0.0, 1.0)] * _lir.N_VARS, n_obj=M,
+            evaluate=_eval, constraints=_cons,
+            hv_ref_raw=tuple([3.3] * M), hv_ref_norm=_ref_norm(M),
+            hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([3.0] * M),
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf)
+
+
+_register_lir_cmop()
 _register_noisy()
 
 
