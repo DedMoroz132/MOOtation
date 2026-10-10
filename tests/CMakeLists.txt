@@ -9,7 +9,10 @@ set(MOOTATION_TESTS
     test_warm_start
     test_scale_invariance
     test_hypervolume
-    test_bound_repair)
+    test_bound_repair
+    test_mosa
+    test_coords
+    test_survival)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

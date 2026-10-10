@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-63 algorithms, one header each under `include/mootation/algorithms/`, registered
+64 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`. Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
@@ -20,6 +20,7 @@ implementation follows; if you publish results, cite that paper.
 | Clustering-based | 11 | disconnected or irregular fronts | cluster counts are parameters the papers tuned per problem |
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
 | Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
+| Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
 Eighteen algorithms require `pop_size` to be an exact Das–Dennis lattice size
 for the objective count (91 at M = 3, 210 at M = 5, ...): A-NSGA-III, AdaW,
@@ -221,15 +222,38 @@ the range. Its answer is the list reduced to `pop_size` by DSS
 (`include/mootation/dss.hpp`), the same selection the run layer uses for
 reference fronts and archives.
 
+## Simulated annealing
+
+| Algorithm | Year | File | DOI |
+|---|---|---|---|
+| MOSA | 2026 | `mosa` | a composition, below |
+
+Not evolutionary and not from one paper: annealing chains over an archive of
+every non-dominated point evaluated, put together from AMOSA's archive and
+informed reseeding ([10.1109/TEVC.2007.900837](https://doi.org/10.1109/TEVC.2007.900837)),
+DBMOSA's energy, the share of the archive dominating a point
+([10.1109/TEVC.2007.904345](https://doi.org/10.1109/TEVC.2007.904345)), and the
+Chebyshev chains of Pareto simulated annealing with weights that adapt to push
+the chains apart (Czyżak & Jaszkiewicz, J. Multi-Crit. Decis. Anal. 7(1), 1998).
+The header lists which parts are whose and which are ours (the default energy,
+`sa_energy = cmb`, and the steps `mix` and `adaptive`), and says plainly that
+the three papers are still to be checked against. One step is one evaluation, so annealing is sequential: there
+is nothing to evaluate in parallel, and `batch=` gets one point at a time.
+The temperature and the step scale fall over the whole budget, so the run
+depends on `max_evaluations` (`run/budget.py`). Its answer is the archive
+reduced to `pop_size` by DSS, published every `pop_size` steps.
+
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 47 of the 63
+Every algorithm works on a real-valued genome with box bounds. 47 of the 64
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
-`Problem<>` specialisation); the other 16 refuse it at `setup()` with a clear
+`Problem<>` specialisation); the other 17 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only: CLIA, DCEA,
 DEA-GNG, DHEA, DMS, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
-MO-CMA-ES, MOEA/D-DS, NAEMO and Two_Arch2. Binary and mixed genomes are a C++ feature: the Python binding,
-the C ABI and the TOML layer expose real-valued variables only.
+MO-CMA-ES, MOEA/D-DS, MOSA, NAEMO and Two_Arch2. The Python binding reaches the binary genome
+through `minimize(var_types=[..., "bin"])` (`mootation/var_types.py`), which also declares
+integer and discrete variables — rounded in the genome by the vault (`DataVault::set_snap`)
+for every algorithm; the C ABI and the TOML layer expose real-valued variables only.
 
 ## Variation operators
 

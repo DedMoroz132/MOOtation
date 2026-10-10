@@ -9,7 +9,8 @@ from __future__ import annotations
 
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
                 "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
-                "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm")
+                "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm",
+                "gdp_min", "g_min", "g_median", "ps_dmin")
 
 # What a run's variation operators did, recorded with [campaign] operator_stats
 # = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
@@ -18,24 +19,90 @@ METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_
 RUN_STATS = ("oob_share", "oob_var_share", "survival_share", "offspring_nd_share",
              "step_mean")
 
+# The same bookkeeping of crossover = de / de_pbest and portfolio (task 7 of
+# 2026-10-10, §2.2 and §2.4; include/mootation/operators/de_crossover.hpp,
+# real_crossover.hpp): the SHADE memory (its cells' mean and quartiles), the
+# mean CR and F drawn and kept; per operator of a portfolio its share of the
+# children and the share of them the selection kept, PORTFOLIO_STATS + name.
+DE_STATS = ("de_mu_cr_mean", "de_mu_cr_q1", "de_mu_cr_q3", "de_mu_f_mean", "de_mu_f_q1",
+            "de_mu_f_q3", "de_cr_mean", "de_f_mean", "de_cr_success_mean", "de_f_success_mean")
+PORTFOLIO_STATS = ("portfolio_share_", "portfolio_kept_")
+
+# mosa's (task 7, §1; algorithms/mosa.hpp), the state at the record: the
+# temperature, the step scale, the archive's size, the reseeds so far; with
+# sa_step = adaptive the three steps' probabilities, with sa_energy = tch the
+# weights' mean and spread over the chains per objective, SA_WEIGHT_STATS + j.
+SA_STATS = ("sa_T", "sa_s", "sa_archive_size", "sa_reseeds", "sa_p_laplace", "sa_p_de",
+            "sa_p_sbx")
+SA_WEIGHT_STATS = ("sa_w_mean_", "sa_w_sd_")
+
+# The learned coordinates' (coords = pca, pca_nd, randrot; task 7, supplement
+# 1): the spectrum with operator_stats, and with [campaign] coords_diag the
+# principal angles against the distance block too (coords_diag.py).
+COORDS_STATS = ("coords_ratio", "coords_lead_share", "coords_updates", "coords_angle_max",
+                "coords_angle_mean")
+
+# What a run on a constrained problem records besides (task 6 of 2026-10-09,
+# item 5.2), unasked: feas_share wherever an indicator is measured, which is
+# then measured on the feasible part of the answer (metrics.compute), and
+# fe_first_feas in `final`.
+FEASIBILITY = ("feas_share", "fe_first_feas")
+
+# What a run on a noisy copy (benchmarks/noisy.py) records besides, its
+# indicators being measured on the noise-free objectives (task 6, item 7).
+NOISE = ("true_dominated_share",)
+# ... and every final indicator twice more (task 7, §4): on the non-dominated
+# set by the noise-free values of every point evaluated (_oracle), and on the
+# noisy values of the answer, as the algorithm saw them (_observed).
+NOISE_MODES = ("_oracle", "_observed")
+
+# Typed variables (mootation.var_types, task 7, §10) and bit strings
+# (benchmarks/binary.py, supplement 2, §3.4), in `final`.
+TYPED = ("dup_x_share", "cover_gen", "cover_evals", "cover_archive_gen", "cover_archive_evals")
+
 # Everything a table can be asked for.
-TABLE_NAMES = METRIC_NAMES + RUN_STATS
+TABLE_NAMES = (METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + COORDS_STATS + FEASIBILITY
+               + NOISE + TYPED)
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
 # oriented the way a healthy run moves.
-HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pdist"})
+HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pdist",
+                              "feas_share"})
 
 # These compare the answer set with a sample of the true Pareto front, so a
 # problem without one gives None for them.
 NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "tau90",
-                         "gap_max", "gdp_norm"})
+                         "gap_max", "gdp_norm", "gdp_min"})
 
-# These look at the decision variables: all of them need the solutions, and
-# igdx and cr a sample of the Pareto SET besides (BenchProblem.pareto_set),
-# which only some problems have.
-NEEDS_X = frozenset({"igdx", "cr", "pdist"})
-NEEDS_SET = frozenset({"igdx", "cr"})
+# The same indicators against the dense reference of four objectives and more
+# (benchmarks.registry.dense_reference, task 6 of 2026-10-09, item 9) are
+# recorded beside them under the name with this suffix: igdp_norm_ref_v3.
+DENSE_SUFFIX = "_ref_v3"
+
+
+def base_name(name: str) -> str:
+    """A metric's name without the dense reference's suffix."""
+    stem = name[:-len(DENSE_SUFFIX)] if name.endswith(DENSE_SUFFIX) else None
+    return stem if stem in NEEDS_FRONT else name
+
+
+def is_table_name(name: str) -> bool:
+    """Can a table be asked for `name`: TABLE_NAMES, the front indicators
+    against the dense reference, a portfolio's per-operator shares and mosa's
+    per-objective weights."""
+    for mode in NOISE_MODES:
+        if name.endswith(mode) and name[:-len(mode)] in METRIC_NAMES + NOISE:
+            return True
+    return (name in TABLE_NAMES or base_name(name) != name
+            or name.startswith(PORTFOLIO_STATS + SA_WEIGHT_STATS))
+
+# These look at the decision variables: all of them need the solutions; igdx,
+# cr and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
+# and g_min and g_median the problem's distance function (BenchProblem.
+# distance_fn), which only some problems have.
+NEEDS_X = frozenset({"igdx", "cr", "pdist", "g_min", "g_median", "ps_dmin"})
+NEEDS_SET = frozenset({"igdx", "cr", "ps_dmin"})
 
 # The hypervolumes: exact above three objectives costs seconds per call, which
 # is why a campaign can keep them off the trajectory (trajectory_hv_max_m).
@@ -90,9 +157,60 @@ DESCRIPTIONS = {
     "nn_cv": "evenness: the coefficient of variation of the nearest-neighbour distances "
              "among the distinct non-dominated points, objectives normalised by ideal and "
              "nadir; 0 = evenly spaced, larger = clumped; no reference front needed",
+    "gdp_min": "convergence without coverage: the smallest IGD+ distance d+(a, Z) of any "
+               "point of the set to the reference, normalised like igdp_norm — has the set "
+               "reached the front anywhere; it cannot go below the reference's resolution, "
+               "given beside it (gdp_min_ref_step, the median distance between neighbouring "
+               "reference points; gdp_min_below_step when lower)",
+    "g_min": "the smallest g(x) - g* in the set, the problem's own distance to the Pareto "
+             "set (BenchProblem.distance_fn: ZDT, DTLZ and their variants): exact, no "
+             "reference sample",
+    "g_median": "the median g(x) - g* over the set (see g_min)",
+    "ps_dmin": "the smallest distance from a solution to a Pareto-set sample, variables "
+               "normalised by the bounds, cyclic ones wrapped, as igdx's: for the problems "
+               "with a Pareto set and no distance function",
     "oob_share": "share of offspring with a variable outside the box before repair",
     "oob_var_share": "share of offspring variables outside the box before repair",
     "survival_share": "share of offspring that entered the next population",
     "offspring_nd_share": "share of offspring no member of the parent population dominates",
     "step_mean": "mean distance from an offspring to the nearest parent, over ||ub - lb||",
+    "de_mu_cr_mean": "crossover de/de_pbest with SHADE: the mean of the memory's mu_CR",
+    "de_mu_cr_q1": "the first quartile of the memory's mu_CR",
+    "de_mu_cr_q3": "the third quartile of the memory's mu_CR",
+    "de_mu_f_mean": "the mean of the memory's mu_F",
+    "de_mu_f_q1": "the first quartile of the memory's mu_F",
+    "de_mu_f_q3": "the third quartile of the memory's mu_F",
+    "de_cr_mean": "the mean CR of the children drawn",
+    "de_f_mean": "the mean F of the children drawn",
+    "de_cr_success_mean": "the mean CR of the children the selection kept",
+    "de_f_success_mean": "the mean F of the children the selection kept",
+    "dup_x_share": "typed variables: the share of the evaluations whose decoded point "
+                   "had been evaluated before",
+    "cover_gen": "a bit-string problem's: the first generation whose population holds every "
+                 "front vector; NaN when none within the budget (cover_reached false)",
+    "cover_evals": "the evaluations spent by then",
+    "cover_archive_gen": "the same for the inner archive (inner_archive = nd)",
+    "cover_archive_evals": "the evaluations spent by then",
+    "coords_ratio": "coords: the largest eigenvalue of the last update over the smallest "
+                    "one above 1e-12 of it",
+    "coords_lead_share": "coords: the share of the first M - 1 components in the spectrum",
+    "coords_updates": "coords: the updates of the learned basis so far",
+    "coords_angle_max": "coords_diag: the largest principal angle, in degrees, between the "
+                        "distance block and the learned minor subspace",
+    "coords_angle_mean": "coords_diag: their mean",
+    "sa_T": "mosa: the temperature at the record",
+    "sa_s": "mosa: the step scale at the record, over ub - lb",
+    "sa_archive_size": "mosa: the archive's size at the record",
+    "sa_reseeds": "mosa: the steps so far that restarted a chain from the archive",
+    "sa_p_laplace": "mosa with sa_step = adaptive: the Laplace step's probability",
+    "sa_p_de": "mosa with sa_step = adaptive: the differential step's probability",
+    "sa_p_sbx": "mosa with sa_step = adaptive: the SBX step's probability",
+    "feas_share": "a constrained problem's: the share of the answer that satisfies every "
+                  "constraint; every other indicator is measured on that part, and an answer "
+                  "without one has no value (an empty run, counted apart and ranked worst)",
+    "fe_first_feas": "a constrained problem's: the evaluation that first gave a feasible "
+                     "point; none when the run found none",
+    "true_dominated_share": "a noisy copy's: the share of the answer that another of its "
+                            "points dominates by the noise-free objectives — what the noise "
+                            "let through",
 }

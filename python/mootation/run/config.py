@@ -85,6 +85,11 @@ class Algorithm:
     # is not a generation of pop evaluations for every core, so a comparison
     # budgets evaluations.
     evaluations: int = 0
+    # The first population (minimize's init and init_share): "uniform", the
+    # algorithm's own, or a design of mootation.designs, and the share of the
+    # budget a larger design, a plan before the optimization, takes.
+    init: str = "uniform"
+    init_share: float = 0.0
 
     @property
     def key(self) -> str:
@@ -284,10 +289,15 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
         if not isinstance(a, dict):
             raise ConfigError(where, "each algorithm must be a table")
         params = _opt(a, "params", {}, where, dict)
-        from .knobs import text_knobs
+        from .knobs import LIST_KNOBS, text_knobs
         words = text_knobs()
         for k, v in params.items():
-            if k in words:
+            if k in LIST_KNOBS:
+                if not (isinstance(v, str) or (isinstance(v, list)
+                                               and all(isinstance(w, str) for w in v))):
+                    raise ConfigError(f"{where}.params.{k}",
+                                      f"expected a list of {', '.join(words[k])}, got {v!r}")
+            elif k in words:
                 if not isinstance(v, str):
                     raise ConfigError(f"{where}.params.{k}",
                                       f"expected one of {', '.join(words[k])}, got {v!r}")
@@ -302,10 +312,12 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             gens=(_opt(a, "gens", 0, where, int) if evaluations else _req(a, "gens", where, int)),
             label=_opt(a, "label", None, where, str),
             evaluations=evaluations,
+            init=_opt(a, "init", "uniform", where, str),
+            init_share=float(_opt(a, "init_share", 0.0, where, (int, float))),
             # A TOML integer stays an integer: T, nr, K, n_clusters and div are
             # ints in the binding, and pybind11 3 refuses 20.0 for them. A
             # boolean stays a boolean (normalize = true).
-            params={k: (v if isinstance(v, (bool, int, str)) else float(v))
+            params={k: (v if isinstance(v, (bool, int, str, list)) else float(v))
                     for k, v in params.items()},
         ))
 
@@ -511,15 +523,25 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
         if a.name in BASELINES and a.params:
             bad(where, f"{a.name} is a baseline and takes no parameters, got: "
                        f"{', '.join(sorted(a.params))}")
+        if a.init != "uniform" or a.init_share:
+            from ..designs import KINDS
+            if a.name in BASELINES:
+                bad(where, f"{a.name} is a baseline: it draws every point itself, no init")
+            elif a.init != "uniform" and a.init not in KINDS:
+                bad(where, f"init = {a.init!r} is not one of: uniform, {', '.join(KINDS)}")
+            elif a.init_share and a.init == "uniform":
+                bad(where, "init_share is the share of the budget a design takes: give init")
+            elif not 0.0 <= a.init_share < 1.0:
+                bad(where, f"init_share must be in [0, 1), got {a.init_share}")
         unknown = sorted(set(a.params) - valid_knobs)
         if unknown:
             bad(where,
                 f"unknown parameter(s): {', '.join(unknown)}. "
                 f"Known: {', '.join(sorted(valid_knobs))}")
-        from .knobs import text_knobs
+        from .knobs import accepts, text_knobs
         for k, v in a.params.items():
             allowed = text_knobs().get(k)
-            if allowed is not None and v not in allowed:
+            if allowed is not None and not accepts(k, v):
                 bad(where, f"{k} = {v!r} is not one of: {', '.join(allowed)}")
 
         if cfg.n_objs >= 1 and a.pop >= 2:
@@ -537,8 +559,12 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
         # The sweep trap: a pop that is a lattice size at M = 3 but not at
         # M = 5 aborts half the campaign at setup. Check every algorithm
         # against every objective count the selection contains, not only
-        # against an external problem's n_objs.
-        if cfg.kind == "builtin" and cfg.benchmark_problems:
+        # against an external problem's n_objs — unless the campaign asks
+        # for every job's pop to be fitted to what its algorithm accepts at
+        # the problem's M ([campaign] pop_fit; campaign.fit_pop), which
+        # meta.json then records.
+        if (cfg.kind == "builtin" and cfg.benchmark_problems
+                and "pop_fit" not in (cfg.campaign or {})):
             try:
                 from ..benchmarks import PROBLEMS as _registry
             except ImportError:

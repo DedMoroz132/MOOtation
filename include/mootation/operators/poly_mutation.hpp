@@ -12,6 +12,16 @@
 
 namespace mootation::ops {
 
+// eta_int (task 7 of 2026-10-10, §10): the distribution index of each
+// variable where it is not eta_m — the integer and discrete ones, a small
+// index for steps of a few units (docs/running.md) — set for a run by the
+// binding, thread-local like the repair counts. Empty: eta_m everywhere.
+inline std::vector<double>& pm_eta_per_variable()
+{
+    thread_local std::vector<double> v;
+    return v;
+}
+
 // ============================================================================
 // Polynomial mutation, bounded variant (highly-disruptive) — matches the
 // NSGA-II reference code (K. Deb, mutation.c) line by line, including δ_q via
@@ -50,8 +60,11 @@ inline void polynomial_mutation(std::vector<double>& x,
 {
     note_operator("polynomial", "none");   // bounded: cannot leave the box
     std::uniform_real_distribution<double> uni(0.0, 1.0);
+    const auto& per = pm_eta_per_variable();
+    const double eta_given = eta_m;
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;
+        eta_m = j < per.size() && per[j] > 0.0 ? per[j] : eta_given;
         double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));
         double hi = sbx_require_bound(bounds[j].second, "upper", static_cast<int>(j));
         double dx = hi - lo;

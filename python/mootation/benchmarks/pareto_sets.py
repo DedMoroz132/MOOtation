@@ -27,6 +27,21 @@ These samplers give that set for:
     region (ZCAT19, ZCAT20). Only strictly dominated candidates are dropped:
     distinct position vectors with EQUAL images — ZCAT17/18's degenerate
     region, where every F_j is y_1 — are all Pareto-optimal.
+  * ZDT1-4, ZDT6 and DTLZ7 (2026-10-09) — `fill`: the position variables are
+    given (the registry takes them from its reference front, where f_1 = x_1,
+    ZDT3's and DTLZ7's disconnected sets already filtered and checked there),
+    every distance variable at its optimum: 0 (Zitzler, Deb & Thiele 2000,
+    "the Pareto-optimal front is formed with g(x) = 1"; DTLZ7's g = 1 + 9/k
+    sum x_i), the shifted centres for shiftZDT and shiftDTLZ7 (shifted.py).
+    ZDT6 needs no filter: on g = 1 every x_1 maps to (f_1, 1 − f_1^2), a point
+    of the front, however often f_1 repeats a value.
+  * DTLZ5 and DTLZ6 at two and three objectives, the IDTLZ and SDTLZ — `dtlz`:
+    at g = 0 every position vector is Pareto-optimal (DTLZ5/6: theta_2 = pi/4
+    whatever x_2). From four objectives DTLZ5's and DTLZ6's fronts have a part
+    with g > 0 (fronts_full.py), whose Pareto set is not sampled: no sampler.
+  * minusDTLZ2 — `minus_dtlz`: f = −(1 + g)·(the DTLZ2 sphere) is best where g
+    is largest, every distance variable at 0 or 1 (g = 0.25 k; Ishibuchi et
+    al. 2017): the positions as for DTLZ, the distance block a random corner.
 
 Every sampler returns an (n, n_vars) array and is deterministic.
 """
@@ -102,6 +117,25 @@ def dtlz(M: int, n_vars: int, n: int, centres=None) -> np.ndarray:
     X = np.empty((n, n_vars))
     X[:, :M - 1] = _cube_positions(M - 1, n)
     X[:, M - 1:] = 0.5 if centres is None else np.asarray(centres, float)
+    return X
+
+
+def fill(P, n_vars: int, rest=0.0) -> np.ndarray:
+    """The position vectors P (rows), every other variable at `rest` (a value
+    or one per variable): the Pareto set of a problem whose distance variables
+    have a constant optimum."""
+    P = np.atleast_2d(np.asarray(P, float))
+    X = np.empty((len(P), n_vars))
+    X[:, :P.shape[1]] = P
+    X[:, P.shape[1]:] = np.asarray(rest, float)
+    return X
+
+
+def minus_dtlz(M: int, n_vars: int, n: int) -> np.ndarray:
+    """minusDTLZ2: positions over [0, 1]^(M-1), each distance variable 0 or 1."""
+    X = dtlz(M, n_vars, n)
+    rng = np.random.default_rng(20261009 + M)
+    X[:, M - 1:] = rng.integers(0, 2, (n, n_vars - M + 1)).astype(float)
     return X
 
 

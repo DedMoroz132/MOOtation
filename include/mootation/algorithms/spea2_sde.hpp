@@ -53,7 +53,9 @@
 #include <cmath>
 #include <limits>
 #include <numeric>
+#include <optional>
 #include <random>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -63,6 +65,7 @@
 #include "../operators/poly_mutation.hpp"
 #include "../operators/real_crossover.hpp"
 #include "../operators/real_mutation.hpp"
+#include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
 
 namespace mootation {
@@ -82,6 +85,7 @@ private:
     // before; the alternatives (real_crossover.hpp, real_mutation.hpp) are for
     // ablations, and bound_repair applies to those that can leave the box.
     ops::CrossoverSpec xover_;
+    std::optional<double> pm_;
     ops::MutationSpec  mut_;
     std::mt19937 rng_{std::random_device{}()};
     int          eff_arch_    = 0;
@@ -354,6 +358,24 @@ private:
         auto draw = [&] {
             return vault.archive_variables_of(static_cast<std::size_t>(tournament_archive(vault)));
         };
+        // de_pbest: a random one of the archive's best ⌈p·|archive|⌉ by fitness
+        // (lower is better)
+        const int na = static_cast<int>(vault.archive_size());
+        std::vector<int> order;
+        auto best = [&](double p) {
+            if (order.empty()) {
+                order.resize(static_cast<std::size_t>(na));
+                std::iota(order.begin(), order.end(), 0);
+                std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+                    return vault.archive_get(static_cast<std::size_t>(a)).fitness
+                         < vault.archive_get(static_cast<std::size_t>(b)).fitness;
+                });
+            }
+            const int k = std::max(1, static_cast<int>(std::ceil(p * na)));
+            std::uniform_int_distribution<int> top(0, k - 1);
+            return vault.archive_variables_of(static_cast<std::size_t>(
+                order[static_cast<std::size_t>(top(rng_))]));
+        };
         std::vector<double> c1, c2;
         for (int i = 0; i < N; i += 2) {
             int ai = tournament_archive(vault);
@@ -361,10 +383,10 @@ private:
             const auto& av = vault.archive_variables_of(static_cast<std::size_t>(ai));
             const auto& bv = vault.archive_variables_of(static_cast<std::size_t>(bi));
             // §III settings paragraph: pc=1.0, pm=1/n
-            double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
-            xover_.apply_any(av, bv, draw, c1, c2, bounds, eta_c_, pc_, rng_);
-            mut_.apply(c1, bounds, eta_m_, pm, rng_);
-            mut_.apply(c2, bounds, eta_m_, pm, rng_);
+            double pm = pm_ ? *pm_ : (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
+            ops::vary(xover_, mut_, av, bv, draw, best, na, c1, c2, bounds,
+                      eta_c_, pc_, eta_m_, pm, rng_, [] { return -1; });
+            xover_.finish(c1, c2, i + 1 < N ? -1 : 0);
             if (vault.bin_vars_n() > 0) {
                 const auto& abv = vault.archive_bin_variables_of(static_cast<std::size_t>(ai));
                 const auto& bbv = vault.archive_bin_variables_of(static_cast<std::size_t>(bi));
@@ -391,9 +413,16 @@ public:
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_crossover(ops::Crossover c)      { xover_.kind = c; }
     void set_mutation(ops::Mutation m)        { mut_.kind = m; }
-    void set_mutation_scale(double s)         { mut_.scale = s; }
+    void set_mutation_scale(double s)         { mut_.scale = ops::checked_mutation_scale(s); }
     void set_mixture_q(double q)              { mut_.q = q; }
     void set_blx_alpha(double a)              { xover_.alpha = a; }
+    // p_m; 1/n when not set (§III). A knob since task 7 (§5.1).
+    void set_pm(double p)                     { pm_ = p; }
+    // crossover = de / de_pbest / portfolio (de_crossover.hpp, real_crossover.hpp)
+    void set_F(double f)                      { xover_.de.set.F  = ops::checked_de_F(f); }
+    void set_CR(double c)                     { xover_.de.set.CR = ops::checked_de_CR(c); }
+    bool set_param(const std::string& k, double v)             { return xover_.set_param(k, v); }
+    bool set_word(const std::string& k, const std::string& w)  { return xover_.set_word(k, w); }
     void set_bound_repair(ops::BoundRepair r) {
         ops::require_repair(r, "spea2_sde", true, false);
         xover_.repair = r; mut_.repair = r;
@@ -471,6 +500,9 @@ public:
         // with selection is what Step 4 needs: every evaluated generation is
         // selected before the run can stop — the last one used to be evaluated and
         // thrown away — and the start costs N evaluations, not 2N.
+        // de, de_pbest, portfolio: the last step's verdict, on P̄_t (published
+        // into the active slots at the end of every step)
+        xover_.observe(vault, std::min<int>(N, static_cast<int>(vault.archive_size())), rng_);
         breed(vault, N);              // Steps 5-6: offspring P_{t+1} from P̄_t
         vault.sync();
         assign_fitness(vault, N);     // Step 2: pool = P_{t+1} ∪ P̄_t (SDE shift inside)

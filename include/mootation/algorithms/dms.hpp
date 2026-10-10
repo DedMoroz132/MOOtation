@@ -4,7 +4,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <numeric>
 #include <optional>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -16,15 +18,34 @@
 
 namespace mootation {
 
-// The initial list of DMS: one point, or n on the diagonal of the box.
-enum class DMSInit { Line, Single };
+// The initial list of DMS: one point, n on the diagonal of the box, or n drawn
+// from the seed (a Latin hypercube; DMS-6).
+enum class DMSInit { Line, Single, Random };
 
-inline const char* dms_init_name(DMSInit i) { return i == DMSInit::Single ? "single" : "line"; }
+inline const char* dms_init_name(DMSInit i)
+{
+    return i == DMSInit::Single ? "single" : i == DMSInit::Random ? "random" : "line";
+}
 
 inline std::optional<DMSInit> parse_dms_init(const std::string& s)
 {
     if (s == "line")   return DMSInit::Line;
     if (s == "single") return DMSInit::Single;
+    if (s == "random") return DMSInit::Random;
+    return std::nullopt;
+}
+
+// Which point of the list is polled next: the first still worth polling
+// (DMS-2), or one of them at random, the poll directions in random order too
+// (DMS-6).
+enum class DMSPoll { First, Random };
+
+inline const char* dms_poll_name(DMSPoll p) { return p == DMSPoll::Random ? "random" : "first"; }
+
+inline std::optional<DMSPoll> parse_dms_poll(const std::string& s)
+{
+    if (s == "first")  return DMSPoll::First;
+    if (s == "random") return DMSPoll::Random;
     return std::nullopt;
 }
 
@@ -80,6 +101,15 @@ inline std::optional<DMSInit> parse_dms_init(const std::string& s)
 //     limits are ignored, as in every core. An initial list with no feasible
 //     point keeps the least violating one, so that polling can start.
 //   DMS-5. Continuous variables only; a problem with binary ones is refused.
+//   DMS-6 (task 5, 2026-10-01; off by default). The method has no random
+//     number, so its ten seeds of a campaign are one run, and the line's
+//     points and their dyadic steps (α = 1, 1/2, 1/4, ... of the range) land
+//     exactly on the middle and the bounds of the box, where DTLZ1-4 and ZDT
+//     have their optima. To tell its search from those two: dms_init = random
+//     starts from a Latin hypercube of n points drawn from the seed (one point
+//     when n < 2), and dms_poll = random polls a point drawn among those still
+//     worth polling, in a random order of the directions. Neither is in the
+//     paper.
 // ============================================================================
 template <typename Ind_t>
 class DMSCore {
@@ -98,9 +128,11 @@ private:
 
     std::vector<Entry> list_;
     DMSInit init_  = DMSInit::Line;
+    DMSPoll poll_  = DMSPoll::First;
     double  alpha0_ = 1.0;
     double  tol_    = 1e-3;
     std::vector<double> lo_, hi_;
+    std::mt19937 rng_{0};           // drawn from only by DMS-6's knobs
 
     static bool dominates(const Entry& a, const Entry& b)
     {
@@ -228,14 +260,15 @@ private:
 
 public:
     // No random number anywhere in the method: the seed is accepted, as every
-    // core's is, and changes nothing (tests/test_reproducibility.cpp holds it
-    // to that).
+    // core's is, and changes nothing at the defaults (tests/
+    // test_reproducibility.cpp holds it to that); only DMS-6's knobs draw.
     static constexpr bool deterministic = true;
 
     DMSCore() = default;
 
-    void set_seed(unsigned)         {}
+    void set_seed(unsigned s)       { rng_.seed(s); }
     void set_init(DMSInit i)        { init_ = i; }
+    void set_poll(DMSPoll p)        { poll_ = p; }
     void set_step_tolerance(double t) { tol_ = t; }
 
     // The list itself (normalised variables, objectives, step sizes).
@@ -254,7 +287,18 @@ public:
         read_bounds(vault);
         const std::size_t n = lo_.size();
         std::vector<std::vector<double>> S;
-        if (init_ == DMSInit::Single || n < 2) {
+        if (init_ == DMSInit::Random) {                  // DMS-6: a Latin hypercube
+            const std::size_t k = n < 2 ? 1 : n;
+            S.assign(k, std::vector<double>(n));
+            std::uniform_real_distribution<double> u(0.0, 1.0);
+            std::vector<std::size_t> perm(k);
+            for (std::size_t j = 0; j < n; ++j) {
+                std::iota(perm.begin(), perm.end(), std::size_t{0});
+                std::shuffle(perm.begin(), perm.end(), rng_);
+                for (std::size_t i = 0; i < k; ++i)
+                    S[i][j] = (static_cast<double>(perm[i]) + u(rng_)) / static_cast<double>(k);
+            }
+        } else if (init_ == DMSInit::Single || n < 2) {
             S.emplace_back(n, 0.5);                      // x_0 = (u + ℓ)/2
         } else {
             for (std::size_t i = 0; i < n; ++i)
@@ -284,11 +328,17 @@ public:
 
     void step(DataVault<Ind_t>& vault)
     {
-        // DMS-2: the first point in list order still worth polling
-        std::size_t k = list_.size();
+        // DMS-2: the first point in list order still worth polling; DMS-6:
+        // one of them at random
+        std::vector<std::size_t> open;
         for (std::size_t i = 0; i < list_.size(); ++i)
-            if (list_[i].alpha >= tol_) { k = i; break; }
-        if (k == list_.size()) return;                     // finished()
+            if (list_[i].alpha >= tol_) {
+                open.push_back(i);
+                if (poll_ == DMSPoll::First) break;
+            }
+        if (open.empty()) return;                          // finished()
+        const std::size_t k = poll_ == DMSPoll::First ? open.front()
+            : open[std::uniform_int_distribution<std::size_t>(0, open.size() - 1)(rng_)];
         const Entry centre = list_[k];
         const std::size_t n = centre.x.size();
         std::vector<std::vector<double>> P;
@@ -299,6 +349,7 @@ public:
                 if (u[j] < 0.0 || u[j] > 1.0) continue;     // extreme barrier (2)
                 P.push_back(std::move(u));
             }
+        if (poll_ == DMSPoll::Random) std::shuffle(P.begin(), P.end(), rng_);
         const bool success = filter(evaluate(vault, P, centre.alpha));
         // the centre: α kept on success, halved on failure; to the end of the list
         for (std::size_t i = 0; i < list_.size(); ++i) {

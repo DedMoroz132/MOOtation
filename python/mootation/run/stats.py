@@ -29,7 +29,12 @@ better for the metric, whichever way it runs.
 A caution that no test fixes: the signed-rank test ranks the SIZE of the
 differences across problems, so on a raw-unit metric (igd, igdp, eps) a
 problem whose values are a thousand times larger decides the result. Use it on
-the scale-free ones — hv, hv_h, igdp_norm, eps_norm.
+the scale-free ones — hv, hv_h, igdp_norm, eps_norm — and on the last two, by
+the logarithm (report.reference_report does): dimensionless is not
+homogeneous, igdp_norm runs over orders of magnitude between problems, and
+the problems where an algorithm fails would decide the ranks of the raw
+differences. sign_test and hodges_lehmann go beside it: the sign test asks
+on how many problems, the signed-rank test how much, and they can disagree.
 """
 
 from __future__ import annotations
@@ -106,8 +111,10 @@ def wilcoxon_signed_rank(a: Sequence[float], b: Sequence[float], *,
         raise ValueError("wilcoxon_signed_rank needs paired samples of equal length")
     d = []
     for x, y in zip(a, b):
-        if x is None or y is None or not (math.isfinite(x) and math.isfinite(y)):
+        if x is None or y is None or math.isnan(x) or math.isnan(y) or x == y:
             continue
+        # an infinite value is an empty run's (report.values): the largest
+        # difference there is, in its direction
         diff = (y - x) if lower_better else (x - y)        # > 0: A better
         if diff != 0.0:
             d.append(diff)
@@ -131,8 +138,8 @@ def rank_sum(a: Sequence[float], b: Sequence[float], *, lower_better: bool = Tru
     "p", "better"}. With 5 seeds a side the smallest attainable p is 1/126 ≈
     0.008, so 5-seed campaigns cannot resolve much below 0.01.
     """
-    a = [float(v) for v in a if v is not None and math.isfinite(v)]
-    b = [float(v) for v in b if v is not None and math.isfinite(v)]
+    a = [float(v) for v in a if v is not None and not math.isnan(v)]   # infinity: an
+    b = [float(v) for v in b if v is not None and not math.isnan(v)]   # empty run, worst
     if not a or not b:
         return {"n_a": len(a), "n_b": len(b), "r_a": None, "p": 1.0, "better": None}
     pooled = a + b
@@ -154,8 +161,8 @@ def a12(a: Sequence[float], b: Sequence[float], *, lower_better: bool = True) ->
     0.5 is no effect; the conventional thresholds are 0.56 / 0.64 / 0.71
     (small / medium / large) on either side of 0.5.
     """
-    a = [float(v) for v in a if v is not None and math.isfinite(v)]
-    b = [float(v) for v in b if v is not None and math.isfinite(v)]
+    a = [float(v) for v in a if v is not None and not math.isnan(v)]
+    b = [float(v) for v in b if v is not None and not math.isnan(v)]
     if not a or not b:
         return None
     wins = 0.0
@@ -186,6 +193,58 @@ def holm(pvalues: Sequence[float]) -> list:
         running = max(running, min(1.0, (m - rank) * pvalues[i]))
         adjusted[i] = running
     return adjusted
+
+
+def benjamini_hochberg(pvalues: Sequence[float]) -> list:
+    """Benjamini & Hochberg's step-up adjusted p-values (J. R. Statist. Soc. B
+    57(1), 1995), in the input order: they hold the false discovery rate where
+    Holm's hold the chance of any false mark."""
+    m = len(pvalues)
+    order = sorted(range(m), key=lambda i: pvalues[i], reverse=True)
+    adjusted = [0.0] * m
+    running = 1.0
+    for k, i in enumerate(order):                 # the largest p first: rank m
+        running = min(running, pvalues[i] * m / (m - k))
+        adjusted[i] = min(1.0, running)
+    return adjusted
+
+
+def smallest_rank_sum_p(n_a: int, n_b: int) -> float:
+    """The smallest two-sided p the exact rank-sum test can give with n_a and
+    n_b runs, the two samples wholly apart: 2 / C(n_a + n_b, n_a)."""
+    return min(1.0, 2.0 / math.comb(n_a + n_b, n_a))
+
+
+# ── across problems, besides the signed-rank test ───────────────────────────
+def sign_test(a: Sequence[float], b: Sequence[float], *, lower_better: bool = True) -> dict:
+    """Paired sign test of a against b: the pairs A wins and loses (equal
+    pairs dropped) and the exact two-sided binomial p."""
+    wins = losses = 0
+    for x, y in zip(a, b):
+        if x is None or y is None or math.isnan(x) or math.isnan(y) or x == y:
+            continue
+        if (x < y) == lower_better:
+            wins += 1
+        else:
+            losses += 1
+    n = wins + losses
+    if n == 0:
+        return {"n": 0, "wins": 0, "losses": 0, "p": 1.0}
+    tail = sum(math.comb(n, i) for i in range(min(wins, losses) + 1))
+    return {"n": n, "wins": wins, "losses": losses, "p": min(1.0, 2.0 * tail / 2.0 ** n)}
+
+
+def hodges_lehmann(d: Sequence[float]) -> float | None:
+    """The Hodges-Lehmann estimate of where the differences d centre: the
+    median of their Walsh averages (d_i + d_j) / 2, i <= j (Hodges & Lehmann,
+    Ann. Math. Statist. 34(2), 1963) — the estimate that goes with the
+    signed-rank test."""
+    d = [float(v) for v in d if v is not None and math.isfinite(v)]
+    if not d:
+        return None
+    w = sorted((d[i] + d[j]) / 2.0 for i in range(len(d)) for j in range(i, len(d)))
+    n = len(w)
+    return w[n // 2] if n % 2 else 0.5 * (w[n // 2 - 1] + w[n // 2])
 
 
 # ── bootstrap of mean ranks ──────────────────────────────────────────────────

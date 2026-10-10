@@ -50,7 +50,7 @@
 // the total violation from those. With n_cons = 0, G is empty and ignored.
 //
 // ── COST ────────────────────────────────────────────────────────────────────
-// Including this header instantiates all 63 algorithms in the translation
+// Including this header instantiates all 64 algorithms in the translation
 // unit, because the dispatch is by string. That is a real compile-time cost
 // (tens of seconds). A program that always uses one algorithm can skip it and
 // build `Optimizer<Ind, Core>` directly — see docs/writing-an-algorithm.md.
@@ -273,8 +273,38 @@ MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,  double)
 MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,  double)
 MOOTATION_OPTIONAL_SETTER(crowding_space, set_crowding_space, CrowdingSpace)
 MOOTATION_OPTIONAL_SETTER(dms_init,   set_init,       DMSInit)
+MOOTATION_OPTIONAL_SETTER(dms_poll,   set_poll,       DMSPoll)
+MOOTATION_OPTIONAL_SETTER(step_share, set_step_share, double)
+MOOTATION_OPTIONAL_SETTER(F_spread,   set_F_spread,   double)
 
 #undef MOOTATION_OPTIONAL_SETTER
+
+// The knobs after the per-knob setters (settings.hpp, is_core_param): a core
+// takes them through set_param / set_word, which answer whether it has them.
+template <typename C, typename = void>
+struct has_set_param : std::false_type {};
+template <typename C>
+struct has_set_param<C, std::void_t<decltype(std::declval<C&>().set_param(
+                            std::declval<const std::string&>(), std::declval<double>()))>>
+    : std::true_type {};
+template <typename C, typename = void>
+struct has_set_word : std::false_type {};
+template <typename C>
+struct has_set_word<C, std::void_t<decltype(std::declval<C&>().set_word(
+                           std::declval<const std::string&>(), std::declval<const std::string&>()))>>
+    : std::true_type {};
+template <typename C>
+bool apply_param(C& core, const std::string& k, double v)
+{
+    if constexpr (has_set_param<C>::value) return core.set_param(k, v);
+    else { (void)core; (void)k; (void)v; return false; }
+}
+template <typename C>
+bool apply_word(C& core, const std::string& k, const std::string& w)
+{
+    if constexpr (has_set_word<C>::value) return core.set_word(k, w);
+    else { (void)core; (void)k; (void)w; return false; }
+}
 
 // A core that can tell it has converged (DMS: every step size below its
 // tolerance) ends the run early instead of stepping on without evaluating.
@@ -319,6 +349,8 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
     if (auto* v = get("mutation_scale")) note(apply_mutation_scale(alg, *v), "mutation_scale");
     if (auto* v = get("mixture_q"))  note(apply_mixture_q(alg, *v), "mixture_q");
     if (auto* v = get("blx_alpha"))  note(apply_blx_alpha(alg, *v), "blx_alpha");
+    if (auto* v = get("step_share")) note(apply_step_share(alg, *v), "step_share");
+    if (auto* v = get("F_spread"))   note(apply_F_spread(alg, *v), "F_spread");
     auto word = [&](const char* k) -> const std::string* {
         auto it = s.text_params.find(k);
         return it == s.text_params.end() ? nullptr : &it->second;
@@ -346,11 +378,20 @@ inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
         if (!i) throw bad_word("dms_init", *v);
         note(apply_dms_init(alg, *i), "dms_init");
     }
+    if (auto* v = word("dms_poll")) {
+        auto p = parse_dms_poll(*v);
+        if (!p) throw bad_word("dms_poll", *v);
+        note(apply_dms_poll(alg, *p), "dms_poll");
+    }
     if (auto* v = word("crowding_space")) {
         auto c = parse_crowding_space(*v);
         if (!c) throw bad_word("crowding_space", *v);
         note(apply_crowding_space(alg, *c), "crowding_space");
     }
+    for (const auto& kv : s.params)
+        if (is_core_param(kv.first)) note(apply_param(alg, kv.first, kv.second), kv.first.c_str());
+    for (const auto& kv : s.text_params)
+        if (is_core_word(kv.first)) note(apply_word(alg, kv.first, kv.second), kv.first.c_str());
     return ignored;
 }
 
@@ -452,6 +493,9 @@ inline Result run_core(const Settings& s, Context& ctx,
         var_prob.emplace(vp->second);
     }
     ops::reset_operator_records();
+    ops::reset_crossover_records();
+    mosa_record().clear();
+    ops::inner_archive_record() = ops::InnerArchiveRecord{};
 
     if (seed) {
         // seed_individual plants variables AND objectives, so the evaluator is

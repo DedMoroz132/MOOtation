@@ -9,5 +9,20 @@ source file names the primary publication it follows, with authors, venue and
 DOI. Those publications remain the intellectual work of their respective
 authors; this project claims copyright only in its own source code.
 
+Third-party data shipped with the library:
+
+  python/mootation/benchmarks/_re/   the approximated Pareto fronts and the
+      ideal and nadir points of the RE problems, copied unchanged from
+      github.com/ryojitanabe/reproblems (R. Tanabe, H. Ishibuchi), MIT
+      License, Copyright (c) 2026 Ryoji Tanabe — see _re/LICENSE.txt. The RE
+      and CRE functions in benchmarks/re.py are ported from the same
+      repository's Python version, under the same license.
+
+  python/mootation/_sobol/new-joe-kuo-6.21201   the Sobol direction numbers
+      of S. Joe and F. Y. Kuo (SIAM J. Sci. Comput. 30, 2008), copied
+      unchanged from https://web.maths.unsw.edu.au/~fkuo/sobol/,
+      Copyright (c) 2008 Frances Y. Kuo and Stephen Joe, BSD-style licence —
+      see _sobol/LICENSE.txt.
+
 If MOOtation contributes to academic work, a citation is appreciated.
 See CITATION.cff.

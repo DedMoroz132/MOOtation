@@ -23,15 +23,34 @@ from pathlib import Path
 _FALLBACK = (
     "eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
     "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
-    "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob",
+    "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob", "step_share", "F_spread",
+    "ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio", "sa_s0",
+    "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window", "coords_warmup",
+    "coords_update", "spu_frac", "inner_archive_cap", "archive_reuse_p",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
-    "crossover": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx"),
+    "crossover": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de", "de_pbest",
+                  "portfolio", "none"),
     "mutation": ("polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
-                 "mixture_cauchy"),
+                 "mixture_cauchy", "none"),
+    "de_adapt": ("none", "shade"),
+    "de_adapt_weight": ("equal", "contribution"),
+    "de_archive": ("yes", "no"),
+    "portfolio": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de", "de_pbest"),
+    "portfolio_credit": ("uniform", "borg"),
+    "sa_energy": ("cmb", "eps", "dom", "tch"),
+    "sa_step": ("mix", "laplace", "de", "sbx", "adaptive"),
+    "sa_weights": ("psa", "fixed"),
+    "sa_tch_accept": ("weighted_sum", "chebyshev"),
+    "coords": ("axis", "pca", "pca_nd", "randrot"),
+    "survival": ("greedy", "stochastic"),
+    "inner_archive": ("off", "nd"),
+    "bin_crossover": ("uniform", "none"),
+    "mating": ("tournament", "each"),
     "crowding_space": ("objectives", "decision"),
-    "dms_init": ("line", "single"),
+    "dms_init": ("line", "single", "random"),
+    "dms_poll": ("first", "random"),
 }
 
 _BLOCK = re.compile(
@@ -78,14 +97,37 @@ def _read_text() -> dict:
     return {name: tuple(_STRING.findall(words)) for name, words in _TEXT_ITEM.findall(m.group("body"))}
 
 
+# The text knobs that take a LIST of their words (settings.hpp, is_list_knob):
+# a TOML list, or the words separated by commas.
+LIST_KNOBS = ("portfolio",)
+
+
+def accepts(name: str, value) -> bool:
+    """Is `value` a valid value of the text knob `name`?"""
+    words = text_knobs().get(name)
+    if words is None:
+        return False
+    if name in LIST_KNOBS:
+        items = value if isinstance(value, (list, tuple)) else str(value).split(",")
+        return bool(items) and all(isinstance(w, str) and w in words for w in items)
+    return value in words
+
+
+# The run layer's own knobs: minimize's keywords, not a core's — the integer
+# and discrete variables' repair and mutation index (mootation/var_types.py;
+# task 7, §10). Not in settings.hpp: a C++ caller declares no variable types.
+PY_KNOBS = ("eta_int",)
+PY_TEXT = {"int_repair": ("lamarck", "baldwin")}
+
+
 def text_knobs() -> dict:
     """{knob: the words it takes} for the knobs whose value is a word."""
-    return _read_text()
+    return {**_read_text(), **PY_TEXT}
 
 
 def knob_names() -> tuple[str, ...]:
     """Every key accepted in `[[algorithms]] params`: the numeric knobs, then the text ones."""
-    return _read()[0] + tuple(k for k in text_knobs() if k not in _read()[0])
+    return _read()[0] + PY_KNOBS + tuple(k for k in text_knobs() if k not in _read()[0])
 
 
 def knob_source() -> str:

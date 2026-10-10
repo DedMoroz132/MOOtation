@@ -58,6 +58,17 @@ last (Singh et al. filter nothing: they select from reference sets). Singh et
 al.'s results on the spacing of the selected points assume the Euclidean
 distance and are not claimed here. include/mootation/dss.hpp is the same
 selection in C++, index for index.
+
+SELECTING FOR IGD+ AGAINST THE ARCHIVE ITSELF ([campaign] answer_select =
+"igdp_self", task 6 of 2026-10-09, item 13). DSS chooses for coverage, not
+for IGD+; the best N points of the same archive under IGD+ against the
+reference (the oracle, campaign --oracle) bound what any choice from it can
+reach. Without a reference, igdp_self_order takes the archive thinned by DSS to
+SELF_REFERENCE = 1 000 points as one (the size of the reference fronts), and
+from the whole archive greedily the N points of the smallest IGD+ against it:
+first the point of the smallest mean d+, then each the one that lowers the
+mean of the reference's smallest d+ most, ties to the lowest index
+(greedy_igdp) — no swaps after. DSS stays the default.
 """
 
 from __future__ import annotations
@@ -187,6 +198,66 @@ def dss_order(F, k=None, ideal=None, nadir=None) -> np.ndarray:
             continue                           # set aside now: look again
         take(i)
     return np.asarray(order, dtype=np.intp)
+
+
+SELF_REFERENCE = 1000      # igdp_self: the archive thinned by DSS to this many points
+ANSWER_SELECT = ("dss", "igdp_self")
+
+
+def dplus_matrix(C, R) -> np.ndarray:
+    """D[c, z] = d+(z, c) = ||max(C_c − R_z, 0)||, how far candidate c leaves
+    reference point z uncovered, a block of candidates at a time."""
+    C, R = np.asarray(C, float), np.asarray(R, float)
+    D = np.empty((len(C), len(R)))
+    step = max(1, 2_000_000 // max(1, len(R) * C.shape[1]))
+    for a in range(0, len(C), step):
+        D[a:a + step] = np.sqrt((np.maximum(C[a:a + step, None, :] - R[None, :, :], 0.0) ** 2)
+                                .sum(axis=2))
+    return D
+
+
+def greedy_igdp(D, k: int) -> np.ndarray:
+    """Indices of k rows of D (candidates x reference points) chosen greedily
+    for the smallest IGD+ against the reference (module docstring): the row of
+    the smallest mean first, then each the row whose gain — the mean over the
+    reference of max(current − d+, 0) — is largest, ties to the lowest index.
+    Lazily: a row's gain only shrinks as the selection grows, so a stale gain
+    bounds the fresh one and only the top of the heap is recomputed — the same
+    rows as recomputing every gain each step."""
+    import heapq
+    D = np.asarray(D, float)
+    n = len(D)
+    k = min(int(k), n)
+    if k <= 0:
+        return np.empty(0, dtype=np.intp)
+    first = int(np.argmin(D.mean(axis=1)))
+    chosen, cur = [first], D[first].copy()
+    heap = [(-float(np.mean(np.maximum(cur - D[c], 0.0))), c) for c in range(n) if c != first]
+    heapq.heapify(heap)
+    while len(chosen) < k and heap:
+        _, c = heapq.heappop(heap)
+        fresh = (-float(np.mean(np.maximum(cur - D[c], 0.0))), c)
+        if not heap or fresh <= heap[0]:
+            chosen.append(c)
+            np.minimum(cur, D[c], out=cur)
+        else:
+            heapq.heappush(heap, fresh)
+    return np.asarray(chosen, dtype=np.intp)
+
+
+def igdp_self_order(F, k: int, ideal=None, nadir=None) -> np.ndarray:
+    """Indices of k points of F chosen for IGD+ against F thinned by DSS to
+    SELF_REFERENCE points (module docstring), in the frame DSS uses: the given
+    one, or that of the points set_aside() keeps. All of F when k >= len(F)."""
+    F = np.asarray(F, float)
+    if len(F) <= k:
+        return np.arange(len(F))
+    if ideal is not None and nadir is not None:
+        G = normalized(F, ideal, nadir)
+    else:
+        G, _ = set_aside(F)
+    ref = dss_order(F, k=SELF_REFERENCE, ideal=ideal, nadir=nadir)
+    return greedy_igdp(dplus_matrix(G, G[ref]), k)
 
 
 def default_delta(n_obj: int) -> float:
@@ -384,20 +455,26 @@ class GridArchive:
             return (F.min(axis=0), F.max(axis=0)) if len(F) else (None, None)
         return self._lo.copy(), self._lo + self._span
 
-    def select(self, k: int):
-        """Indices into points() of a DSS selection of k (all if fewer).
+    def select(self, k: int, method: str = "dss"):
+        """Indices into points() of a selection of k (all if fewer): DSS, or
+        with method "igdp_self" the points of the smallest IGD+ against the
+        archive thinned by DSS (igdp_self_order).
 
         In the problem's frame when there is one; otherwise in the frame of the
         points DSS keeps (set_aside), not in the grid's running estimate, which
         an outlier stretches.
         """
+        if method not in ANSWER_SELECT:
+            raise ValueError(f"answer selection {method!r}: one of {', '.join(ANSWER_SELECT)}")
         F = self.points()[0]
         if len(F) <= k:
             return np.arange(len(F))
+        lo = hi = None
         if self.normalization == "problem":
             lo, hi = self.frame()
-            return dss_order(F, k=k, ideal=lo, nadir=hi)
-        return dss_order(F, k=k)
+        if method == "igdp_self":
+            return igdp_self_order(F, k, ideal=lo, nadir=hi)
+        return dss_order(F, k=k, ideal=lo, nadir=hi)
 
     def info(self) -> dict:
         return {"size": len(self), "delta": self.delta, "normalization": self.normalization,

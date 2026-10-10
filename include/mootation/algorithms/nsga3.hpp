@@ -54,6 +54,23 @@
 //   - NSGA3-N3 (the port's value). The ASF of each axis is formed "with a
 //     weight vector close to ith objective axis"; Part I gives no number, and
 //     the off-axis weights here are 1e-6, the usual choice.
+//   - NSGA3-S (task 7 of 2026-10-10, supplement 2). survival = "stochastic":
+//     the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023,
+//     doi:10.24963/ijcai.2023/612) carried over as in NSGA-II: Q' of
+//     ⌊spu_frac·2N⌋ members of R_t (spu_frac 3/4) drawn uniformly without
+//     replacement (a partial Fisher-Yates shuffle of the slots), steps 2-5 —
+//     the fronts, the normalization, the association and the niching — on Q'
+//     alone keep |Q'| − N of it, and every member of R_t \ Q' survives. For
+//     NSGA-III only the abstract of Opris (IJCAI 2025) was read — an
+//     exponential speed-up on many-objective OJZJ and RRMO "for some parameter
+//     regimes" — so how it draws Q', and at what share, is NOT checked against
+//     it: this is the NSGA-II scheme, to be compared with the paper. The
+//     normalization's history (NSGA3-N1) takes in Q'-only generations too.
+//     spu_frac = 1 draws nothing and is greedy bit for bit; |Q'| < N is
+//     refused. inner_archive, inner_archive_cap, archive_reuse_p
+//     (operators/inner_archive.hpp): an archive of every non-dominated point
+//     evaluated; each parent, with probability archive_reuse_p, a member drawn
+//     uniformly instead of the random (or CV-tournament) choice.
 // FIX 2026-07-08 (internal audit — consistency with a_nsga3.hpp; the changes
 //   manifest ONLY with constraint_mode≠NONE / user points, the default
 //   unconstrained path is NOT changed):
@@ -83,6 +100,7 @@
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
+#include "../operators/inner_archive.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 
@@ -99,6 +117,26 @@ private:
     double       eta_m_ = 20.0;   // polynomial mutation distribution index
     double       pc_    = 1.0;    // SBX crossover probability (paper Table II)
     std::mt19937 rng_{std::random_device{}()};
+    // NSGA3-S
+    ops::InnerArchive arch_;
+    bool   stochastic_ = false;
+    double spu_frac_ = 0.75;
+    std::vector<std::vector<double>> untouched_;
+
+    void archive_point(DataVault<Ind_t>& vault, std::size_t i)
+    {
+        if (!arch_.on) return;
+        if (constraint_mode != ConstraintMode::NONE && vault.get_cv(i) > 0.0) return;
+        arch_.add(vault.objectives_of(i), vault.variables_of(i),
+                  vault.bin_vars_n() > 0 ? vault.binary_variables_of(i) : std::vector<int>{});
+    }
+
+    void start_archive(DataVault<Ind_t>& vault)
+    {
+        arch_.start(vault.pop_size(), vault.vars_n() == 0 && vault.bin_vars_n() > 0);
+        for (std::size_t i = 0; i < static_cast<std::size_t>(vault.pop_size()); ++i)
+            archive_point(vault, i);
+    }
 
     // Reference points on the unit hyperplane, shape [H][m].
     std::vector<std::vector<double>> ref_points_;
@@ -566,6 +604,7 @@ public:
         // Initial rank assignment.
         auto fronts = fast_nondominated_sort(vault, n);
         (void)fronts;
+        start_archive(vault);
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
@@ -574,7 +613,31 @@ public:
         if (ref_points_.empty()) generate_reference_points(n, m);
         auto fronts = fast_nondominated_sort(vault, n);
         (void)fronts;
+        start_archive(vault);
     }
+
+    // NSGA3-S: survival, spu_frac, inner_archive, inner_archive_cap, archive_reuse_p
+    bool set_param(const std::string& k, double v)
+    {
+        if (k == "spu_frac") {
+            if (!(v > 0.0 && v <= 1.0)) throw std::invalid_argument("spu_frac must be in (0, 1]");
+            spu_frac_ = v;
+            return true;
+        }
+        return arch_.set_param(k, v);
+    }
+    bool set_word(const std::string& k, const std::string& w)
+    {
+        if (k == "survival") {
+            if (w != "greedy" && w != "stochastic")
+                throw std::invalid_argument("survival = '" + w + "': greedy or stochastic");
+            stochastic_ = w == "stochastic";
+            return true;
+        }
+        return arch_.set_word(k, w);
+    }
+    const std::vector<ops::InnerArchive::Member>& inner_archive() const { return arch_.members(); }
+    const std::vector<std::vector<double>>& last_untouched() const { return untouched_; }
 
     // ── step: one full generation ──────────────────────────────────────────
     void step(DataVault<Ind_t>& vault) {
@@ -587,25 +650,31 @@ public:
 
         // ── breed n offspring into [n, 2n) ────────────────────────────────
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
-        for (int i = 0; i < n; i += 2) {
-            int p1 = tournament(vault, dist_int);
-            int p2 = tournament(vault, dist_int);
-            for (int j = 0; j < vault.vars_n(); ++j) {
-                pv1[j] = vault.get_variable(p1, j);
-                pv2[j] = vault.get_variable(p2, j);
+        // a parent: the random (CV-tournament) choice, or a member of the
+        // inner archive (NSGA3-S)
+        const bool bin = vault.bin_vars_n() > 0;
+        auto parent = [&](std::vector<double>& x, std::vector<int>& bv) {
+            if (arch_.reuse(rng_)) {
+                const auto& mem = arch_.pick(rng_);
+                x = mem.x;
+                bv = mem.b;
+                return;
             }
+            const int p = tournament(vault, dist_int);
+            for (int j = 0; j < vault.vars_n(); ++j) x[j] = vault.get_variable(p, j);
+            if (bin) bv = vault.binary_variables_of(static_cast<std::size_t>(p));
+        };
+        std::vector<int> bv1, bv2;
+        for (int i = 0; i < n; i += 2) {
+            parent(pv1, bv1);
+            parent(pv2, bv2);
             // Table II: pc=1.0, pm=1/n
             double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
             ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
             ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
             ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
-            if (vault.bin_vars_n() > 0) {
-                std::vector<int> bv1(vault.bin_vars_n()), bv2(vault.bin_vars_n());
+            if (bin) {
                 std::vector<int> bc1, bc2;
-                for (int j = 0; j < vault.bin_vars_n(); ++j) {
-                    bv1[j] = vault.get_bin_variable(p1, j);
-                    bv2[j] = vault.get_bin_variable(p2, j);
-                }
                 ops::binary_crossover(bv1, bv2, bc1, bc2, rng_);
                 ops::bit_flip_mutation(bc1, vault.bin_vars_n(), rng_);
                 if (i + 1 < n) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
@@ -619,18 +688,42 @@ public:
 
         // ── evaluate offspring ─────────────────────────────────────────────
         vault.sync();
+        for (int i = 0; i < n; ++i) archive_point(vault, static_cast<std::size_t>(off_base + i));
+        select(vault);
+    }
+
+    // Steps 2-5 on the 2N active points (NSGA3-S: on Q'). Public for the tests.
+    void select(DataVault<Ind_t>& vault) {
+        const int n = vault.pop_size();
+        int pool = 2 * n, keep = n;
+        if (stochastic_ && spu_frac_ < 1.0) {
+            pool = static_cast<int>(std::floor(spu_frac_ * 2 * n));
+            if (pool < n)
+                throw std::invalid_argument("spu_frac = " + std::to_string(spu_frac_) +
+                                            " makes |Q'| = floor(spu_frac 2N) smaller than the "
+                                            "population " + std::to_string(n));
+            for (int i = 0; i < pool; ++i) {
+                std::uniform_int_distribution<int> any(i, 2 * n - 1);
+                const int j = any(rng_);
+                if (j != i) vault.swap_active(i, j);
+            }
+            keep = pool - n;
+            untouched_.clear();
+            for (int v = pool; v < 2 * n; ++v) untouched_.push_back(vault.objectives_of(v));
+        }
 
         // ── non-dominated sort of Rt = Pt ∪ Qt ────────────────────────────
-        auto fronts = fast_nondominated_sort(vault, n * 2);
+        auto fronts = fast_nondominated_sort(vault, pool);
 
         // ── greedily accept fronts until |St| ≥ n ─────────────────────────
         std::vector<int> St;           // accepted vault indices
         std::vector<int> Fl;           // last (partial) front
         for (auto& front : fronts) {
+            if (keep == 0) break;
             int total = static_cast<int>(St.size() + front.size());
-            if (total <= n) {
+            if (total <= keep) {
                 for (int v : front) St.push_back(v);
-                if (static_cast<int>(St.size()) == n) break;
+                if (static_cast<int>(St.size()) == keep) break;
             } else {
                 Fl = front;
                 break;
@@ -647,7 +740,7 @@ public:
         } else {
             // St\Fl already selected; pick K more from Fl.
             std::vector<int> St_minus_Fl = St;   // does not include Fl yet
-            int K = n - static_cast<int>(St.size());
+            int K = keep - static_cast<int>(St.size());
 
             // Assemble full St for normalisation.
             std::vector<int> St_full = St;
@@ -667,6 +760,7 @@ public:
             for (int v : chosen) survivors.push_back(v);
         }
 
+        for (int v = pool; v < 2 * n; ++v) survivors.push_back(v);   // R_t \ Q'
         // ── move survivors to [0, n), reduce ──────────────────────────────
         rearrange(vault, survivors, n * 2);
     }

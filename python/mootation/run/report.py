@@ -6,16 +6,20 @@ The campaign CLI (python -m mootation.run.campaign) calls these:
   reference_report  --compare/--ranks METRIC --reference ALG. On every
                     problem each algorithm's runs against the reference's:
                     the exact Wilcoxon rank-sum test, Holm-corrected over the
-                    problems, and the Vargha-Delaney A12; across problems the
-                    exact signed-rank test on the per-problem medians,
-                    Holm-corrected over the algorithms (stats.py).
+                    problems (or Benjamini-Hochberg, --adjust bh), and the
+                    Vargha-Delaney A12 with its class; a warning when the
+                    seeds and the problems leave no mark but '=' possible.
+                    Across problems the exact signed-rank test on the
+                    per-problem medians (their logarithms for igdp_norm and
+                    eps_norm), Holm-corrected over the algorithms, with the
+                    sign test and the Hodges-Lehmann estimate (stats.py).
   rank_intervals    --ranks METRIC --ci: a 95 % bootstrap interval for each
                     mean rank, resampling the problems.
   property_ranks    --ranks METRIC --by KEY: mean ranks within each group of
                     problems sharing a property (benchmarks/properties.py:
                     front, multimodal, deceptive, bias, scaled, separable,
-                    centre, degenerate, disconnected, linkage, n_obj, n_vars,
-                    bbob_groups).
+                    centre, boundary, degenerate, disconnected, linkage, n_obj,
+                    n_vars, bbob_groups).
   gap_report        --gap METRIC: each algorithm's distance to the best value
                     any run reached, per problem, in the metric's own units.
   zero_share_report --zero-share: the share of seeds whose hypervolume is 0.
@@ -40,7 +44,10 @@ archive holds, reduced to the problem's population size by DSS
 
 from __future__ import annotations
 
+import json
 import math
+import textwrap
+from pathlib import Path
 
 from . import postprocess as PP
 from . import stats as ST
@@ -51,31 +58,55 @@ def _lower(metric: str) -> bool:
     return metric not in HIGHER_IS_BETTER
 
 
-def _value(row: dict, metric: str, at, scenario: str):
-    """The tables' reading (campaign.value_at) in both scenarios: in the archive
+def _read(row: dict, metrics, at, scenario: str) -> dict:
+    """The tables' reading (campaign.read_row) in both scenarios: in the archive
     one the reduced archive, at `at` from its checkpoints like the population
-    from its trajectory."""
-    from .campaign import value_at
+    from its trajectory. {metric: value or None}."""
+    from .campaign import read_row
     if scenario == "archive" and row.get("scenario") != "archive":
         row = dict(row, final=row.get("final_archive") or {}, scenario="archive")
-    return value_at(row, metric, at)
+    got = read_row(row, tuple(metrics), at)
+    return {m: (None if got[m] is None else float(got[m])) for m in metrics}
 
 
-def values(rows: list, metric: str, *, at=None, scenario: str = "final") -> dict:
-    """{problem: {algorithm: [one value per finished run]}}."""
+def _value(row: dict, metric: str, at, scenario: str):
+    """One metric of one run as the tables read it (_read)."""
+    return _read(row, (metric,), at, scenario)[metric]
+
+
+def values(rows: list, metric: str, *, at=None, scenario: str = "final",
+           empty: dict | None = None) -> dict:
+    """{problem: {algorithm: [one value per finished run]}}.
+
+    An empty run — a constrained problem's whose answer has no feasible point
+    there (feas_share 0, no value) — counts as the worst value, infinitely
+    bad, as in campaign.compare_table (task 6, item 5.2); `empty`, when given,
+    is filled with {algorithm: the number of such runs}. Other runs without a
+    finite value are left out."""
+    worst = math.inf if _lower(metric) else -math.inf
     out: dict = {}
     for r in rows:
         if r.get("status") != "done":
             continue
-        v = _value(r, metric, at, scenario)
-        if v is None or not math.isfinite(v):
+        got = _read(r, (metric, "feas_share"), at, scenario)
+        v = got[metric]
+        if v is None and got["feas_share"] == 0.0:
+            v = worst
+            if empty is not None:
+                empty[r["algorithm"]] = empty.get(r["algorithm"], 0) + 1
+        elif v is None or not math.isfinite(v):
             continue
         out.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(v)
     return out
 
 
 def _median(v):
-    return ST.summarize(v)[0]
+    """The median of the values, an empty run's infinity included."""
+    v = sorted(float(x) for x in v if x is not None and not math.isnan(x))
+    if not v:
+        return float("nan")
+    k = len(v) // 2
+    return v[k] if len(v) % 2 else 0.5 * (v[k - 1] + v[k])
 
 
 def problem_ranks(vals: dict, lower_better: bool) -> dict:
@@ -94,12 +125,40 @@ def mark_budget(name: str) -> str:
 
 
 # ── 3.1 against a reference ─────────────────────────────────────────────────
+# The positive scale-free indicators: across problems they are compared by the
+# logarithm of their medians, so that a problem counts by the ratio of two
+# medians, not by how large its values happen to be (task 6, item 10).
+LOG_METRICS = frozenset({"igdp_norm", "eps_norm"})
+ADJUSTMENTS = ("holm", "bh")
+
+
 def reference_report(rows: list, metric: str, reference: str, *, at=None,
-                     scenario: str = "final", alpha: float = 0.05) -> dict:
+                     scenario: str = "final", alpha: float = 0.05,
+                     adjust: str = "holm") -> dict:
+    """Every algorithm against `reference` (task 6 of 2026-10-09, item 10).
+
+    Per problem: the exact rank-sum test of the seeds, the p-values adjusted
+    over the problems by Holm, or by Benjamini & Hochberg (`adjust` "bh"),
+    a mark +, - or = at `alpha`, and beside it A12 and its class. Whether a
+    mark can be anything but = at all: `labels_possible` — under Holm only if
+    the smallest p a problem can give (both seed samples wholly apart, 2 /
+    C(n_a + n_b, n_a)) times the number of problems is below alpha, so at k
+    seeds a side not beyond 0.025 C(2k, k) problems at alpha 0.05; under BH
+    only if that p is below alpha. Across problems: the exact signed-rank
+    test on the per-problem medians (Holm over the algorithms) — on their
+    logarithms for igdp_norm and eps_norm (LOG_METRICS) — with the sign test
+    and the Hodges-Lehmann estimate of the difference beside it, as a ratio
+    of medians for the logarithmic ones."""
+    if adjust not in ADJUSTMENTS:
+        raise ValueError(f"unknown adjustment '{adjust}'; known: {', '.join(ADJUSTMENTS)}")
+    correct = ST.holm if adjust == "holm" else ST.benjamini_hochberg
     lower = _lower(metric)
-    vals = values(rows, metric, at=at, scenario=scenario)
+    log = metric in LOG_METRICS
+    empty: dict = {}
+    vals = values(rows, metric, at=at, scenario=scenario, empty=empty)
     probs = sorted(p for p, a in vals.items() if reference in a)
     algs = sorted({a for p in probs for a in vals[p]} - {reference})
+    p_min = 1.0
     per_alg = []
     for alg in algs:
         tests = []
@@ -108,64 +167,112 @@ def reference_report(rows: list, metric: str, reference: str, *, at=None,
                 continue
             rs = ST.rank_sum(vals[p][alg], vals[p][reference], lower_better=lower)
             tests.append((p, rs, ST.a12(vals[p][alg], vals[p][reference], lower_better=lower)))
-        adj = ST.holm([t[1]["p"] for t in tests])
+            p_min = min(p_min, ST.smallest_rank_sum_p(len(vals[p][alg]),
+                                                      len(vals[p][reference])))
+        adj = correct([t[1]["p"] for t in tests])
         marks = [ST.mark(pa, t[1]["better"], alpha) for t, pa in zip(tests, adj)]
+        classes = [ST.a12_magnitude(t[2]) for t in tests]
         a = [_median(vals[p][alg]) for p, _, _ in tests]
         b = [_median(vals[p][reference]) for p, _, _ in tests]
+        if log:
+            pairs = [(math.log(x), math.log(y)) for x, y in zip(a, b) if x > 0 and y > 0]
+            a, b = [x for x, _ in pairs], [y for _, y in pairs]
         sr = ST.wilcoxon_signed_rank(a, b, lower_better=lower)
+        hl = ST.hodges_lehmann([x - y for x, y in zip(a, b)])
         a12s = [t[2] for t in tests if t[2] is not None]
+        a12_med = _median(a12s) if a12s else None
         per_alg.append({
             "algorithm": alg, "problems": len(tests),
             "wins": marks.count("+"), "losses": marks.count("-"), "ties": marks.count("="),
-            "signed_rank": sr, "a12_median": _median(a12s) if a12s else None,
-            "per_problem": {p: {"p_holm": pa, "mark": mk, "a12": eff}
-                            for (p, _, eff), pa, mk in zip(tests, adj, marks)},
+            "ties_large": sum(1 for mk, c in zip(marks, classes) if mk == "=" and c == "large"),
+            "a12_classes": {c: classes.count(c)
+                            for c in ("negligible", "small", "medium", "large")},
+            "signed_rank": sr, "sign": ST.sign_test(a, b, lower_better=lower),
+            "hl": hl, "hl_ratio": math.exp(hl) if log and hl is not None else None,
+            "a12_median": a12_med, "a12_median_class": ST.a12_magnitude(a12_med),
+            "empty": empty.get(alg, 0),
+            "per_problem": {p: {"p_adj": pa, "mark": mk, "a12": eff, "a12_class": c}
+                            for (p, _, eff), pa, mk, c in zip(tests, adj, marks, classes)},
         })
     padj = ST.holm([e["signed_rank"]["p"] for e in per_alg])
     for e, pa in zip(per_alg, padj):
         e["p_holm"] = pa
         e["mark"] = ST.mark(pa, e["signed_rank"]["better"], alpha)
     per_alg.sort(key=lambda e: (-(e["wins"] - e["losses"]), e["algorithm"]))
+    m = len(probs)
+    possible = (m * p_min < alpha) if adjust == "holm" else (p_min < alpha)
     return {"metric": metric, "reference": reference, "scenario": scenario, "at": at,
-            "alpha": alpha, "problems": len(probs), "algorithms": per_alg}
+            "alpha": alpha, "adjust": adjust, "log": log, "problems": m,
+            "smallest_p": p_min, "labels_possible": bool(m == 0 or possible),
+            "empty_reference": empty.get(reference, 0), "algorithms": per_alg}
 
 
 def format_reference(rep: dict) -> str:
     at = f" at {rep['at']:.0%} of the budget" if rep.get("at") is not None else ""
-    lines = [
+    adjust = {"holm": "Holm", "bh": "Benjamini-Hochberg"}[rep.get("adjust", "holm")]
+    on = "the logarithms of the medians" if rep.get("log") else "the medians"
+    lines = textwrap.wrap(
         f"{rep['metric']}{at} ({rep['scenario']}) against {rep['reference']} on "
-        f"{rep['problems']} problem(s). Per problem: exact Wilcoxon rank-sum, Holm over the "
-        f"problems, alpha {rep['alpha']}; across problems: exact signed-rank test on the "
-        f"medians, Holm over the algorithms. '+' = better than the reference.",
-        f"{'algorithm':<16}{'+':>5}{'-':>5}{'=':>5}{'W+':>9}{'W-':>9}{'p(Holm)':>10}  "
-        f"{'across':>6}{'A12 med':>9}",
-    ]
+        f"{rep['problems']} problem(s). Per problem: exact Wilcoxon rank-sum, {adjust} over "
+        f"the problems, alpha {rep['alpha']}, with A12 (Vargha-Delaney; classes at 0.06, "
+        f"0.14, 0.21 from 0.5); across problems: exact signed-rank test on {on}, Holm over "
+        f"the algorithms, the sign test and the Hodges-Lehmann estimate beside it. "
+        f"'+' = better than the reference; =L counts the '=' with a large A12. Sorted by + "
+        f"minus -: an order of these counts, not a rating of the algorithms.", 100)
+    if not rep.get("labels_possible", True):
+        lines += textwrap.wrap(
+            f"WARNING: no mark but '=' is possible here: the smallest p a problem can give "
+            f"with these seeds is {rep['smallest_p']:.3g}"
+            + (f", and {adjust} multiplies it by the {rep['problems']} problems"
+               if rep.get("adjust", "holm") == "holm" else "")
+            + f"; that is not below alpha {rep['alpha']}. Read A12 and its class instead.", 100)
+    hl_head = "HL ratio" if rep.get("log") else "HL diff"
+    lines.append("A12 n/s/m/l: the problems whose A12 is negligible / small / medium / large.")
+    lines.append(f"{'algorithm':<16}{'+':>4}{'-':>4}{'=':>4}{'=L':>4}{'A12 n/s/m/l':>14}"
+                 f"{'A12 med':>12}"
+                 f"{'W+':>8}{'W-':>8}{'p(Holm)':>9}{'across':>7}{'sign':>9}{'p':>8}"
+                 f"{hl_head:>10}")
     for e in rep["algorithms"]:
-        sr = e["signed_rank"]
-        a12 = "-" if e["a12_median"] is None else f"{e['a12_median']:.2f}"
-        lines.append(f"{mark_budget(e['algorithm'])[:16]:<16}{e['wins']:>5}{e['losses']:>5}"
-                     f"{e['ties']:>5}{sr['w_plus']:>9.1f}{sr['w_minus']:>9.1f}"
-                     f"{e['p_holm']:>10.3g}  {e['mark']:>6}{a12:>9}")
+        sr, sg = e["signed_rank"], e["sign"]
+        a12 = ("-" if e["a12_median"] is None
+               else f"{e['a12_median']:.2f} {e['a12_median_class'][:3]}")
+        c = e["a12_classes"]
+        classes = f"{c['negligible']}/{c['small']}/{c['medium']}/{c['large']}"
+        hl = e["hl_ratio"] if rep.get("log") else e["hl"]
+        lines.append(f"{mark_budget(e['algorithm'])[:16]:<16}{e['wins']:>4}{e['losses']:>4}"
+                     f"{e['ties']:>4}{e['ties_large']:>4}{classes:>14}{a12:>12}"
+                     f"{sr['w_plus']:>8.1f}{sr['w_minus']:>8.1f}{e['p_holm']:>9.3g}"
+                     f"{e['mark']:>7}{sg['wins']:>5}:{sg['losses']:<3}{sg['p']:>8.3g}"
+                     f"{'-' if hl is None else format(hl, '.3g'):>10}")
     lines.append("* its curve depends on the share of the budget spent (read by fraction).")
+    empties = {e["algorithm"]: e["empty"] for e in rep["algorithms"] if e["empty"]}
+    if empties or rep.get("empty_reference"):
+        lines.append("empty runs (no feasible point; each counted as the worst value): "
+                     + ", ".join(f"{a} {n}" for a, n in sorted(empties.items()))
+                     + (f"; the reference {rep['empty_reference']}"
+                        if rep.get("empty_reference") else ""))
     return "\n".join(lines)
 
 
 def rank_intervals(rows: list, metric: str, *, at=None, scenario: str = "final",
-                   n_boot: int = 2000, level: float = 0.95) -> dict:
-    """{algorithm: (low, high)} of the mean rank, problems resampled."""
-    vals = values(rows, metric, at=at, scenario=scenario)
+                   n_boot: int = 2000, level: float = 0.95, empty: dict | None = None) -> dict:
+    """{algorithm: (low, high)} of the mean rank, problems resampled; an empty
+    run ranks as the worst value, `empty` counting them (values)."""
+    vals = values(rows, metric, at=at, scenario=scenario, empty=empty)
     return ST.bootstrap_mean_ranks(problem_ranks(vals, _lower(metric)), n_boot=n_boot,
                                    level=level)
 
 
 # ── 3.2 by property ─────────────────────────────────────────────────────────
 def property_ranks(rows: list, metric: str, key: str, *, at=None,
-                   scenario: str = "final") -> dict:
-    """{group label: {algorithm: (mean rank, problems)}} for one property."""
+                   scenario: str = "final", empty: dict | None = None) -> dict:
+    """{group label: {algorithm: (mean rank, problems)}} for one property; an
+    empty run ranks as the worst value, `empty` counting them (values)."""
     from ..benchmarks.properties import KEYS, label
     if key not in KEYS:
         raise ValueError(f"unknown property '{key}'; known: {', '.join(KEYS)}")
-    ranks = problem_ranks(values(rows, metric, at=at, scenario=scenario), _lower(metric))
+    ranks = problem_ranks(values(rows, metric, at=at, scenario=scenario, empty=empty),
+                          _lower(metric))
     out: dict = {}
     for prob, per in ranks.items():
         g = label(prob, key)
@@ -175,7 +282,8 @@ def property_ranks(rows: list, metric: str, key: str, *, at=None,
             for g, algs in out.items()}
 
 
-def format_property_ranks(groups: dict, metric: str, key: str) -> str:
+def format_property_ranks(groups: dict, metric: str, key: str,
+                          empty: dict | None = None) -> str:
     labels = sorted(groups)
     algs = sorted({a for g in groups.values() for a in g},
                   key=lambda a: sum(groups[g][a][0] for g in labels if a in groups[g])
@@ -184,10 +292,15 @@ def format_property_ranks(groups: dict, metric: str, key: str) -> str:
     lines = [f"mean rank by median {metric}, problems grouped by {key} "
              f"(problems per group in brackets)",
              f"{'algorithm':<16}" + "".join(f"{(g.split('=', 1)[1] + f'[{n[g]}]')[:13]:>14}"
-                                            for g in labels)]
+                                            for g in labels)
+             + (f"{'empty':>7}" if empty else "")]
     for a in algs:
         lines.append(f"{mark_budget(a)[:16]:<16}" + "".join(
-            f"{groups[g][a][0]:>14.2f}" if a in groups[g] else f"{'-':>14}" for g in labels))
+            f"{groups[g][a][0]:>14.2f}" if a in groups[g] else f"{'-':>14}" for g in labels)
+            + (f"{empty.get(a, 0) or '':>7}" if empty else ""))
+    if empty:
+        lines.append("empty = runs without a feasible point (constrained problems), each "
+                     "ranked as the worst value")
     return "\n".join(lines)
 
 
@@ -311,19 +424,59 @@ def _final_variables(run_dir, m: int, n: int):
     return X
 
 
-def structural_bias(rows: list, *, bins: int = 10) -> dict:
-    """Where each algorithm's final populations sit in the box, per problem.
+BIAS_BINS = 20
 
-    For the uninformative problems (benchmarks/uninformative.py) any
-    preference is the algorithm's own. Per (problem, algorithm), over every
-    finished run's final population, variables mapped to [0, 1] by the bounds:
-      chi2       per variable, 10 equal bins against uniform, then the mean over
-                 the variables; p_min the smallest p-value (9 degrees of freedom)
-      edge       share of coordinates within 10 % of a bound (uniform: 0.2)
-      centre     share in the central 20 % of the range (uniform: 0.2)
-      edge_sd, centre_sd   their spread over the runs
-    The points of one population are not independent draws, so the p-values
-    overstate the evidence; read them as a scale, and the shares as the effect.
+
+def _bin_measures(hist, at_lower: int, at_upper: int, at_half: int) -> dict | None:
+    """Kudela et al.'s binsizes from the counts of one point set's coordinates
+    in BIAS_BINS bins: binsize_k = n_k / (N / K); bound = the mean of the two
+    outer bins, centre of the two middle ones (1 = no bias); with the shares
+    of coordinates exactly on a bound and exactly at 1/2."""
+    import numpy as np
+    h = np.asarray(hist, float)
+    total = h.sum()
+    if total == 0:
+        return None
+    b = h / (total / len(h))
+    k = len(h)
+    return {"bound": float((b[0] + b[-1]) / 2), "centre": float((b[k // 2 - 1] + b[k // 2]) / 2),
+            "at_bound": (at_lower + at_upper) / total, "at_half": at_half / total,
+            "binsizes": [round(float(v), 4) for v in b]}
+
+
+def bias_class(bound: float, centre: float) -> str:
+    """Our thresholds; Kudela et al. give none: "bound" when the outer bins
+    exceed 1.5 and the middle ones do not, "centre" the other way round,
+    "mixed" when both do, "empty edges" when the outer bins fall below 0.67."""
+    if bound > 1.5 and centre > 1.5:
+        return "mixed"
+    if bound > 1.5:
+        return "bound"
+    if centre > 1.5:
+        return "centre"
+    if bound < 0.67:
+        return "empty edges"
+    return "none"
+
+
+def structural_bias(rows: list) -> dict:
+    """Where each algorithm searched, per problem (Kudela, van Stein, Bäck &
+    Kononova, GECCO 2026, Section 3.3; benchmarks/uninformative.py).
+
+    Per (problem, algorithm), over its finished runs, variables mapped to
+    [0, 1] by the bounds, three sets of points:
+      L  the final populations (final.csv): binsizes, the shares exactly on a
+         bound and at 1/2, and its class (bias_class);
+      P  the points non-dominated over each whole run and
+      A  every point evaluated — both from the counts the uninformative
+         problems leave in meta.json (structural_bias), where a run has them;
+      chi2_p   the chi-squared test on ONE point drawn from every run's final
+               population (independent across runs, unlike the points of one
+               population), its coordinates pooled into min(10, max(2, n/5))
+               bins;
+      cei      at two variables, the median over the runs of the Clark-Evans
+               index of the final population: mean nearest-neighbour distance
+               over 0.5 / sqrt(N), ~1 uniform, < 1 clustered, > 1 grid-like.
     """
     import numpy as np
     from ..benchmarks import get as bench_get
@@ -337,51 +490,78 @@ def structural_bias(rows: list, *, bins: int = 10) -> dict:
         p = bench_get(prob)
         lo = np.array([b[0] for b in p.bounds], float)
         hi = np.array([b[1] for b in p.bounds], float)
-        U_all, edge_runs, centre_runs = [], [], []
+        U_all, picks, ceis = [], [], []
+        counts = {"all": None, "nondominated": None}
         for r in runs:
             X = _final_variables(r["dir"], p.n_obj, p.n_vars)
             if X is None or not len(X):
                 continue
-            U = np.clip((X - lo) / (hi - lo), 0.0, 1.0)
+            U = (X - lo) / (hi - lo)
             U_all.append(U)
-            edge_runs.append(float(np.mean((U < 0.1) | (U > 0.9))))
-            centre_runs.append(float(np.mean((U >= 0.4) & (U < 0.6))))
+            picks.append(U[np.random.default_rng(int(r.get("seed") or 0)).integers(len(U))])
+            if U.shape[1] == 2 and len(U) > 1:
+                D = np.sqrt(((U[:, None, :] - U[None, :, :]) ** 2).sum(axis=2))
+                np.fill_diagonal(D, np.inf)
+                ceis.append(float(D.min(axis=1).mean() / (0.5 / np.sqrt(len(U)))))
+            meta_path = Path(r["dir"]) / "meta.json"
+            sb = (json.loads(meta_path.read_text(encoding="utf-8")).get("structural_bias")
+                  if meta_path.is_file() else None)
+            for key in counts:
+                if sb and sb.get(key):
+                    c = sb[key]
+                    old = counts[key] or {"hist": [0] * len(c["hist"]), "at_lower": 0,
+                                          "at_upper": 0, "at_half": 0}
+                    counts[key] = {"hist": [a + b for a, b in zip(old["hist"], c["hist"])],
+                                   **{f: old[f] + c[f] for f in ("at_lower", "at_upper", "at_half")}}
         if not U_all:
             continue
         U = np.vstack(U_all)
-        idx = np.minimum((U * bins).astype(int), bins - 1)
-        chi, pmin = [], 1.0
-        for j in range(U.shape[1]):
-            counts = np.bincount(idx[:, j], minlength=bins)
-            expected = len(U) / bins
-            c2 = float(((counts - expected) ** 2).sum() / expected)
-            chi.append(c2)
-            pmin = min(pmin, _chi2_sf(c2, bins - 1))
+        v = U.ravel()
+        hist = np.histogram(np.clip(v, 0.0, 1.0), bins=BIAS_BINS, range=(0.0, 1.0))[0]
+        L = _bin_measures(hist, int(np.sum(v == 0.0)), int(np.sum(v == 1.0)),
+                          int(np.sum(v == 0.5)))
+        w = np.concatenate(picks)
+        nb = int(min(10, max(2, len(w) // 5)))
+        c = np.histogram(np.clip(w, 0.0, 1.0), bins=nb, range=(0.0, 1.0))[0]
+        expected = len(w) / nb
+        chi = float(((c - expected) ** 2).sum() / expected)
         out[(prob, alg)] = {
-            "runs": len(U_all), "points": int(len(U)), "chi2": float(np.mean(chi)),
-            "p_min": pmin, "edge": float(np.mean((U < 0.1) | (U > 0.9))),
-            "centre": float(np.mean((U >= 0.4) & (U < 0.6))),
-            "edge_sd": float(np.std(edge_runs)), "centre_sd": float(np.std(centre_runs)),
+            "runs": len(U_all), "points": int(len(U)), "L": L, "class": bias_class(L["bound"],
+                                                                               L["centre"]),
+            "P": _bin_measures(**counts["nondominated"]) if counts["nondominated"] else None,
+            "A": _bin_measures(**counts["all"]) if counts["all"] else None,
+            "chi2_p": _chi2_sf(chi, nb - 1), "cei": float(np.median(ceis)) if ceis else None,
         }
     return out
 
 
 def format_bias(rep: dict) -> str:
-    lines = ["where the final populations sit, per problem: 10 bins per variable against "
-             "uniform (chi2: mean over the variables, p_min: the smallest p, 9 dof), the "
-             "share of coordinates within 10 % of a bound and in the central 20 % (both 0.2 "
-             "when uniform), their spread over the runs; strongest bias first"]
+    lines = ["where each algorithm searched, per problem (Kudela et al. 2026): binsizes over 20 "
+             "bins of all coordinates of all runs, bound = the two outer bins, centre = the two "
+             "middle ones, 1 = no bias; L the final populations, P the run's non-dominated "
+             "points, A every evaluated point; '=bd' / '=0.5' the shares exactly on a bound "
+             "and at 1/2; chi2 p on one point per run; CEI the Clark-Evans index at n = 2; "
+             "class by our thresholds (bound or centre > 1.5, edges < 0.67); strongest first"]
+
+    def cell(m, key, digits=2, width=7):
+        return f"{m[key]:>{width}.{digits}f}" if m and m.get(key) is not None else "-".rjust(width)
+
     probs = sorted({p for p, _ in rep})
     for prob in probs:
         rows = [(a, e) for (p, a), e in rep.items() if p == prob]
-        rows.sort(key=lambda t: -(abs(t[1]["edge"] - 0.2) + abs(t[1]["centre"] - 0.2)))
+        rows.sort(key=lambda t: -max(abs(math.log2(max(t[1]["L"]["bound"], 1e-3))),
+                                     abs(math.log2(max(t[1]["L"]["centre"], 1e-3)))))
         lines.append(f"\n{prob}")
-        lines.append(f"  {'algorithm':<20}{'runs':>5}{'chi2':>10}{'p_min':>10}"
-                     f"{'edge':>8}{'sd':>6}{'centre':>8}{'sd':>6}")
+        lines.append(f"  {'algorithm':<20}{'runs':>5}{'class':>13}{'L bd':>7}{'L ctr':>7}"
+                     f"{'=bd':>7}{'=0.5':>7}{'P bd':>7}{'P ctr':>7}{'A bd':>7}{'A ctr':>7}"
+                     f"{'A =bd':>7}{'chi2 p':>9}{'CEI':>6}")
         for a, e in rows:
-            lines.append(f"  {mark_budget(a)[:20]:<20}{e['runs']:>5}{e['chi2']:>10.1f}"
-                         f"{e['p_min']:>10.2g}{e['edge']:>8.3f}{e['edge_sd']:>6.3f}"
-                         f"{e['centre']:>8.3f}{e['centre_sd']:>6.3f}")
+            L, P, A = e["L"], e["P"], e["A"]
+            lines.append(f"  {mark_budget(a)[:20]:<20}{e['runs']:>5}{e['class']:>13}"
+                         + cell(L, "bound") + cell(L, "centre") + cell(L, "at_bound", 3)
+                         + cell(L, "at_half", 3) + cell(P, "bound") + cell(P, "centre")
+                         + cell(A, "bound") + cell(A, "centre") + cell(A, "at_bound", 3)
+                         + f"{e['chi2_p']:>9.2g}" + cell(e, "cei", 2, 6))
     return "\n".join(lines)
 
 

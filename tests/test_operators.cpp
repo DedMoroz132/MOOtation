@@ -11,6 +11,7 @@
 // PM:   NSGA-II reference implementation (mutation.c).
 // DE:   Storn & Price (1997), rand/1/bin.
 // SPX, REX, UNDX, PCX: the sources in operators/multi_parent.hpp.
+// de, de_pbest, SHADE, portfolio: operators/de_crossover.hpp, real_crossover.hpp.
 // ============================================================================
 
 #include <algorithm>
@@ -447,6 +448,268 @@ void test_multi_parent_host_entry()
     check(completed && within(a1, b), "a converged pool still crosses, repeating a parent");
 }
 
+
+// ── task 7 of 2026-10-10, §2: de, de_pbest, SHADE, portfolio, mutation none ──
+
+// A population a CrossoverSpec can observe (variables_of / objectives_of).
+struct FakeVault {
+    std::vector<Vec> X, F;
+    Bounds box;
+    const Vec& variables_of(std::size_t i) const { return X[i]; }
+    const Vec& objectives_of(std::size_t i) const { return F[i]; }
+    const Bounds& get_bounds() const { return box; }
+};
+
+void test_de_crossover()
+{
+    std::cout << "-- de: binomial crossing, F = 0, a rotation of the parents --\n";
+    const std::size_t n = 6;
+    const Bounds wide(n, {-100.0, 100.0});
+    std::mt19937 pool_rng(11);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    std::vector<Vec> pool(30, Vec(n));
+    for (auto& x : pool) for (double& c : x) c = u(pool_rng);
+    std::mt19937 draw_rng(2);
+    std::uniform_int_distribution<std::size_t> any(2, pool.size() - 1);
+    auto draw = [&] { return pool[any(draw_rng)]; };
+    const Vec& p1 = pool[0];
+    const Vec& p2 = pool[1];
+
+    ops::CrossoverSpec de;
+    de.kind = ops::Crossover::DE;
+    Vec c1, c2;
+    std::mt19937 rng(4);
+    bool all = true, one = true;
+    for (int t = 0; t < 200; ++t) {
+        de.de.set.CR = 1.0;
+        de.apply_any(p1, p2, draw, c1, c2, wide, 20.0, 1.0, rng);
+        for (std::size_t j = 0; j < n; ++j) all = all && c1[j] != p1[j] && c2[j] != p2[j];
+        de.de.set.CR = 0.0;
+        de.apply_any(p1, p2, draw, c1, c2, wide, 20.0, 1.0, rng);
+        std::size_t d1 = 0, d2 = 0;
+        for (std::size_t j = 0; j < n; ++j) { d1 += c1[j] != p1[j]; d2 += c2[j] != p2[j]; }
+        one = one && d1 == 1 && d2 == 1;
+    }
+    check(all, "de, CR = 1: every variable of both children differs from its target");
+    check(one, "de, CR = 0: exactly one variable (j_rand) comes from the mutant");
+    de.de.set.CR = 1.0;
+    de.de.set.F = 0.0;
+    de.apply_any(p1, p2, draw, c1, c2, wide, 20.0, 1.0, rng);
+    check(c1 == p2 && c2 == p1, "de, F = 0 and CR = 1: the child is r1 (the other parent of the pair)");
+
+    // A rotation of every parent rotates the children with them (CR = 1): the
+    // same random streams on parents x and on Q x give children c and Q c.
+    de.de.set.F = 0.5;
+    std::mt19937 qrng(17);
+    std::normal_distribution<double> N01(0.0, 1.0);
+    std::vector<Vec> Q(n, Vec(n));
+    for (auto& row : Q) for (double& v : row) v = N01(qrng);
+    for (std::size_t i = 0; i < n; ++i) {                  // Gram-Schmidt
+        for (std::size_t k = 0; k < i; ++k) {
+            double d = 0.0;
+            for (std::size_t j = 0; j < n; ++j) d += Q[i][j] * Q[k][j];
+            for (std::size_t j = 0; j < n; ++j) Q[i][j] -= d * Q[k][j];
+        }
+        double s = 0.0;
+        for (double v : Q[i]) s += v * v;
+        for (double& v : Q[i]) v /= std::sqrt(s);
+    }
+    auto rot = [&](const Vec& x) {
+        Vec y(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i)
+            for (std::size_t j = 0; j < n; ++j) y[i] += Q[i][j] * x[j];
+        return y;
+    };
+    std::vector<Vec> rpool;
+    for (const auto& x : pool) rpool.push_back(rot(x));
+    double worst = 0.0;
+    std::mt19937 ra(5), rb(5), da(8), db(8);
+    for (int t = 0; t < 10000; ++t) {
+        std::uniform_int_distribution<std::size_t> pick(0, pool.size() - 1);
+        auto drawa = [&] { return pool[pick(da)]; };
+        auto drawb = [&] { return rpool[pick(db)]; };
+        const std::size_t a = t % pool.size(), b = (t + 7) % pool.size();
+        ops::CrossoverSpec x1, x2;
+        x1.kind = x2.kind = ops::Crossover::DE;
+        Vec a1, a2, b1, b2;
+        x1.apply_any(pool[a], pool[b], drawa, a1, a2, wide, 20.0, 1.0, ra);
+        x2.apply_any(rpool[a], rpool[b], drawb, b1, b2, wide, 20.0, 1.0, rb);
+        const Vec q1 = rot(a1), q2 = rot(a2);
+        for (std::size_t j = 0; j < n; ++j)
+            worst = std::max({worst, std::abs(q1[j] - b1[j]), std::abs(q2[j] - b2[j])});
+    }
+    check(worst < 1e-12, "de, CR = 1: the children of rotated parents are the rotated children "
+                         "(10 000 applications)");
+
+    bool inside = true;
+    ops::CrossoverSpec boxed;
+    boxed.kind = ops::Crossover::DE;
+    boxed.de.set.F = 1.5;
+    const auto b01 = unit_bounds(static_cast<int>(n));
+    std::vector<Vec> upool(30, Vec(n));
+    std::uniform_real_distribution<double> u01(0.0, 1.0);
+    for (auto& x : upool) for (double& c : x) c = u01(pool_rng);
+    auto udraw = [&] { return upool[any(draw_rng)]; };
+    for (int t = 0; t < 500; ++t) {
+        boxed.apply_any(upool[0], upool[1], udraw, c1, c2, b01, 20.0, 1.0, rng);
+        inside = inside && within(c1, b01) && within(c2, b01);
+    }
+    check(inside, "de: the children are reflected into the box");
+}
+
+void test_de_pbest_and_archive()
+{
+    std::cout << "-- de_pbest: x_pbest from the host's best, r2 from the archive too --\n";
+    const std::size_t n = 4;
+    const auto b = unit_bounds(static_cast<int>(n));
+    std::mt19937 rng(21);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    FakeVault v;
+    for (int i = 0; i < 20; ++i) {
+        v.X.push_back(Vec(n));
+        for (double& c : v.X.back()) c = u(rng);
+        v.F.push_back({u(rng), u(rng)});
+    }
+    ops::CrossoverSpec spec;
+    spec.kind = ops::Crossover::DEPBest;
+    spec.de.set.p = 0.1;
+    std::uniform_int_distribution<int> any(0, 19);
+    auto draw = [&] { return v.X[static_cast<std::size_t>(any(rng))]; };
+    // the host's order: index order; the best 0.1 · 20 = 2 are members 0 and 1
+    int outside_best = 0, calls = 0;
+    auto best = [&](double p) {
+        const int k = std::max(1, static_cast<int>(std::ceil(p * 20)));
+        std::uniform_int_distribution<int> top(0, k - 1);
+        const int i = top(rng);
+        ++calls;
+        if (i >= 2) ++outside_best;
+        return v.X[static_cast<std::size_t>(i)];
+    };
+    Vec c1, c2;
+    spec.observe(v, 20, rng);
+    for (int t = 0; t < 200; ++t) {
+        spec.apply_any(v.X[0], v.X[1], draw, best, 20, c1, c2, b, 20.0, 1.0, rng);
+        spec.finish(c1, c2);
+    }
+    check(calls == 400 && outside_best == 0, "x_pbest always one of the best ceil(p N)");
+    check(spec.de.archive().empty(), "no parent displaced yet: the archive is empty");
+    // the next population: ten members replaced by children
+    FakeVault w = v;
+    for (int i = 0; i < 10; ++i) { w.X[static_cast<std::size_t>(i)] = Vec(n, 0.01 * i); }
+    spec.observe(w, 20, rng);
+    check(spec.de.archive().size() == 10, "the ten displaced parents went to the archive");
+    int from_archive = 0;
+    auto from_pop = [&] { return Vec(n, -1.0); };
+    for (int t = 0; t < 3000; ++t) {
+        const Vec r2 = spec.de.population_or_archive(from_pop, 20, rng);
+        from_archive += r2[0] >= 0.0;
+    }
+    check(from_archive > 700 && from_archive < 1300,
+          "x~_r2 from the archive in about |A| / (N + |A|) = 1/3 of the draws");
+    spec.de.set.archive = false;
+    from_archive = 0;
+    for (int t = 0; t < 300; ++t) from_archive += spec.de.population_or_archive(from_pop, 20, rng)[0] >= 0.0;
+    check(from_archive == 0, "de_archive = no: never from the archive");
+}
+
+void test_shade()
+{
+    std::cout << "-- de_adapt = shade: the draws and the memory's update --\n";
+    ops::DEState st;
+    st.set.adapt = ops::DEAdapt::SHADE;
+    st.set.memory = 5;
+    std::mt19937 rng(31);
+    bool cr_ok = true, f_ok = true;
+    for (int t = 0; t < 20000; ++t) {
+        const auto [CR, F] = st.draw(rng);
+        cr_ok = cr_ok && CR >= 0.0 && CR <= 1.0;
+        f_ok  = f_ok && F > 0.0 && F <= 1.0;
+    }
+    check(cr_ok && f_ok, "CR in [0, 1], F in (0, 1] over 20 000 draws");
+    check(st.memory_cr() == std::vector<double>(5, 0.5) && st.memory_f() == std::vector<double>(5, 0.5),
+          "the memory starts at 0.5 / 0.5 in every cell");
+    st.update({0.2, 0.6}, {0.4, 0.8}, {1.0, 3.0});
+    const double cr = 0.25 * 0.2 + 0.75 * 0.6;
+    const double f  = (0.25 * 0.16 + 0.75 * 0.64) / (0.25 * 0.4 + 0.75 * 0.8);
+    check(std::abs(st.memory_cr()[0] - cr) < 1e-15 && std::abs(st.memory_f()[0] - f) < 1e-15,
+          "cell 1: the weighted mean of S_CR and the weighted Lehmer mean of S_F");
+    st.update({}, {}, {});
+    check(st.memory_cr()[1] == 0.5 && st.memory_f()[1] == 0.5,
+          "an empty success set leaves the next cell alone");
+    st.update({0.9}, {0.3}, {0.0});
+    check(st.memory_cr()[1] == 0.9 && std::abs(st.memory_f()[1] - 0.3) < 1e-15,
+          "the next success set goes to cell 2 (weights all 0: alike)");
+}
+
+void test_portfolio_and_no_mutation()
+{
+    std::cout << "-- portfolio: uniform shares, borg credit; mutation none --\n";
+    const std::size_t n = 4;
+    const auto b = unit_bounds(static_cast<int>(n));
+    std::mt19937 rng(41);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    std::vector<Vec> pool(30, Vec(n));
+    for (auto& x : pool) for (double& c : x) c = u(rng);
+    std::uniform_int_distribution<std::size_t> any(0, pool.size() - 1);
+    auto draw = [&] { return pool[any(rng)]; };
+    ops::reset_crossover_records();
+    ops::CrossoverSpec spec;
+    spec.kind = ops::Crossover::Portfolio;
+    Vec c1, c2;
+    for (int t = 0; t < 4000; ++t) {
+        spec.apply_any(pool[0], pool[1], draw, c1, c2, b, 20.0, 1.0, rng);
+        spec.finish(c1, c2);
+    }
+    bool even = true;
+    std::size_t kinds = 0;
+    for (const auto& kv : ops::crossover_stats(false))
+        if (kv.first.rfind("portfolio_share_", 0) == 0) {
+            ++kinds;
+            even = even && std::abs(kv.second - 0.25) < 0.03;
+        }
+    check(kinds == 4 && even, "uniform: each of sbx, de, pcx, undx about a quarter of the children");
+
+    // borg: ten sbx children survive on a front f2 = 1 - f1 (all non-dominated,
+    // all in the archive); then with undx in the list too, undx gets
+    // 1 / (10 + 2) of the matings, sbx (10 + 1) / (10 + 2)
+    ops::CrossoverSpec borg;
+    borg.kind = ops::Crossover::Portfolio;
+    borg.credit = ops::PortfolioCredit::Borg;
+    borg.portfolio = {ops::Crossover::SBX};
+    FakeVault v;
+    for (int i = 0; i < 10; ++i) { v.X.push_back(pool[static_cast<std::size_t>(i)]); v.F.push_back({2.0, 2.0}); }
+    borg.observe(v, 10, rng);
+    FakeVault next;
+    for (int t = 0; t < 5; ++t) {
+        borg.apply_any(pool[2], pool[3], draw, c1, c2, b, 20.0, 1.0, rng);
+        borg.finish(c1, c2);
+        next.X.push_back(c1);
+        next.X.push_back(c2);
+    }
+    for (int i = 0; i < 10; ++i) next.F.push_back({0.1 * i, 1.0 - 0.1 * i});
+    borg.observe(next, 10, rng);
+    borg.portfolio = {ops::Crossover::SBX, ops::Crossover::UNDX};
+    ops::reset_crossover_records();
+    for (int t = 0; t < 6000; ++t) {
+        borg.apply_any(pool[2], pool[3], draw, c1, c2, b, 20.0, 1.0, rng);
+        borg.finish(c1, c2);
+    }
+    double undx = -1.0;
+    for (const auto& kv : ops::crossover_stats(false))
+        if (kv.first == "portfolio_share_undx") undx = kv.second;
+    check(undx > 0.0 && std::abs(undx - 1.0 / 12.0) < 0.015,
+          "borg: undx, without children in the archive, still about 1/12 of the matings");
+
+    ops::MutationSpec none;
+    none.kind = ops::Mutation::None;
+    Vec x = pool[5];
+    none.apply(x, b, 20.0, 1.0, rng);
+    check(x == pool[5], "mutation none leaves the child as it is, even at p_m = 1");
+    bool refused = false;
+    try { ops::checked_mutation_scale(0.0); } catch (const std::invalid_argument&) { refused = true; }
+    check(refused, "mutation_scale 0 is refused (it used to fall back to the default)");
+}
+
 }   // namespace
 
 int main()
@@ -467,5 +730,9 @@ int main()
     test_undx_pair();
     test_pcx_child();
     test_multi_parent_host_entry();
+    test_de_crossover();
+    test_de_pbest_and_archive();
+    test_shade();
+    test_portfolio_and_no_mutation();
     return mootation::testing::report("operators");
 }

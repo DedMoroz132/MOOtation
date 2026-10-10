@@ -4,7 +4,7 @@
 Three shapes, from the most static to the most portable: the algorithm fixed at
 compile time (`Optimizer<Ind, Core>`), the algorithm chosen by name at run time
 with either the library or you owning the loop (`embed.hpp`), and the same loop
-behind a C ABI for other languages. All three run the same 63 cores from
+behind a C ABI for other languages. All three run the same 64 cores from
 `include/mootation/algorithms.def`.
 
 ## Compile-time choice: `Optimizer<Ind, Core>`
@@ -56,8 +56,8 @@ carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 you; the full WFG / MaF families live on the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
-[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 47 of the 63 cores
-accept one, the other 16 refuse it at `setup()` with a message.
+[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 47 of the 64 cores
+accept one, the other 17 refuse it at `setup()` with a message.
 
 ### External or parallel evaluation
 
@@ -82,7 +82,7 @@ sizes in the message.
 
 ## Run-time choice: `embed.hpp`
 
-`#include <mootation/embed.hpp>` instantiates all 63 cores in that translation
+`#include <mootation/embed.hpp>` instantiates all 64 cores in that translation
 unit so that the algorithm can be picked by name. That is a real compile-time
 cost (about a minute); a program that always runs one algorithm should use
 `Optimizer<Ind, Core>` directly.
@@ -102,15 +102,102 @@ A plain struct, and the same fields as a `key = value` file:
 | `seed_population`, `on_size_mismatch` | warm start: a population file, and `error` / `truncate` / `pad` when its size differs from `pop_size` |
 | `eta_c eta_m pc pm T delta nr kappa K n_clusters theta alpha F CR div` | optional knobs; anything absent keeps the paper's default |
 | `normalize` | 0 or 1: the objective normalization of IBEA, R2-IBEA, Two_Arch2 and MOEA/D-AM2M; each header says which setting is the paper's |
-| `crossover`, `mutation` | words: `sbx` / `uniform` / `blx_alpha` / `spx` / `rex` / `undx` / `pcx`, and `polynomial` / `gaussian` / `cauchy` / `uniform_reset` / `mixture` / `mixture_cauchy` — NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA take both, MOEA/D-DE the mutation; the defaults are the papers' SBX and polynomial mutation |
-| `mutation_scale`, `mixture_q`, `blx_alpha` | their parameters: s of the gaussian (0.1) and Cauchy (0.05) steps as a share of ub − lb, the share of noisy steps in a mixture (0.1), BLX's α (0.5) |
+| `crossover`, `mutation` | words: `sbx` / `uniform` / `blx_alpha` / `spx` / `rex` / `undx` / `pcx` / `de` / `de_pbest` / `portfolio`, and `polynomial` / `gaussian` / `cauchy` / `uniform_reset` / `mixture` / `mixture_cauchy` / `none` — NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA take both, MOEA/D-DE the mutation; the defaults are the papers' SBX and polynomial mutation |
+| `mutation_scale`, `mixture_q`, `blx_alpha` | their parameters: s of the gaussian (0.1) and Cauchy (0.05) steps as a share of ub − lb (> 0: "no mutation" is `mutation = none`), the share of noisy steps in a mixture (0.1), BLX's α (0.5) |
+| `F`, `CR`, `de_p`, `de_archive`, `de_adapt`, `de_adapt_weight`, `de_memory` | `crossover = de`: DE/rand/1/bin, `r0` and `r1` the host's pair and two more parents from its selection; `de_pbest`: current-to-pbest/1 (JADE), x_pbest one of the host's best `de_p` (0.1) by its own order, r2 from the population and the archive of displaced parents (`de_archive = yes`); F = 0.5, CR = 1. `de_adapt = shade`: F and CR from a SHADE memory of `de_memory` (5) cells, success = the child survived the host's selection, weights `equal` or `contribution` (hypervolume) — `operators/de_crossover.hpp`; the memory and the means of CR and F drawn and kept are in `operator_stats` |
+| `survival`, `spu_frac` | `greedy` or `stochastic` (sms_emoa, nsga2, nsga3): Bian et al.'s stochastic population update, Q′ of ⌊`spu_frac`·\|Q\|⌋ (1/2; 3/4) selected alone, the rest kept (docs/running.md) |
+| `inner_archive`, `inner_archive_cap`, `archive_reuse_p` | `off` or `nd` (sms_emoa, nsga2, nsga3, ibea_eplus): an archive of the non-dominated points evaluated, its cap (unset: 10 μ), and the probability that a parent is drawn from it (`operators/inner_archive.hpp`) |
+| `bin_crossover`, `mating` | `uniform` or `none` (sms_emoa, nsga2) for the binary genome; `tournament` or `each` (nsga2) |
+| `coords`, `coords_warmup`, `coords_update` | the variation in learned coordinates of the switchable algorithms and mosa's sbx step: `axis` (default), `pca`, `pca_nd`, `randrot`; R = I for the first `coords_warmup` (10) generations, updated every `coords_update` (1) (`operators/learned_coords.hpp`; docs/running.md) |
+| `portfolio`, `portfolio_credit` | `crossover = portfolio`: every mating's operator drawn from the list (`sbx, de, pcx, undx`), `uniform`ly or as in Borg (`borg`: ∝ the operator's children in the archive of the non-dominated survivors + 1); the share of each operator's children and of them kept are in `operator_stats` |
+| `ref_delta` | SMS-EMOA and HypE: the reference point nad + δ·(nad − ideal), relative, instead of their papers' nad + 1 and max·(1 ± offset), which move with the objectives' scale and shift |
 | `sbx_var_prob` | SBX's share of crossed variables (0.5) for this run |
-| `bound_repair` | a word: `clip`, `reflect`, `random`, `midpoint`, `resample`, `wrap` or `native` — what an operator that can leave the box does with the variables it put outside (DE in MOEA/D-DE, MOEA/D-DRA and LIS/LCS; Liu & Li's operators; DCEA, HLMEA and NAEMO); each keeps its own default, and the others report it as ignored (`operators/bound_repair.hpp`) |
+| `bound_repair` | a word: `clip`, `reflect`, `random`, `midpoint`, `resample`, `wrap` or `native` — what an operator that can leave the box does with the variables it put outside (DE in MOEA/D-DE, MOEA/D-DRA, LIS/LCS and HCCA; Liu & Li's operators; DCEA, HLMEA, NAEMO and EMyO/C); each keeps its own default, and the others report it as ignored (`operators/bound_repair.hpp`). A value still outside when written is clamped by the store and counted as a repair of its own, `vault` in the operator log |
+| `step_share`, `F_spread` | EMyO/C: the clamp of its difference vector as a share of ub − lb (0.5) and the spread of its factor F (0) |
+| `dms_init`, `dms_poll` | words for DMS: the initial list, `line` / `single` / `random`, and the next poll centre, `first` / `random` (`dms.hpp`, DMS-6) |
+| `sa_energy`, `sa_step`, `sa_weights`, `sa_tch_accept` | words for MOSA: the energy `cmb` / `eps` / `dom` / `tch`, the step `mix` / `laplace` / `de` / `sbx` / `adaptive`, with `tch` the weights `psa` / `fixed` and the acceptance `weighted_sum` / `chebyshev` (`mosa.hpp`; [running.md](running.md)) |
+| `p_de`, `sa_chains`, `sa_reseed`, `sa_t_ratio`, `sa_s0`, `sa_s_end`, `sa_archive_cap`, `sa_psa_alpha`, `sa_adapt_window` | MOSA's numbers: the differential step's probability (0.7), the chains (1; 10 with `tch`), the reseeding probability (1/50), T's last over first (10⁻⁴), the Laplace scale first and last (0.2, 0.002), the archive's cap (0: none), PSA's α (1.05), the adaptive step's window (200) |
 
 `Settings::from_file("run.cfg")` reads the file; an unknown key is an error, not
 a silent no-op. [`examples/run.cfg`](../examples/run.cfg) is a commented copy
 of every key. A knob the chosen algorithm does not have is reported in
 `Result::ignored` rather than dropped.
+
+Which algorithm takes the operator knobs (a knob it lacks is reported in
+`Result::ignored`; measured by a short run of every algorithm with all five
+set). `pm` is 1/n by default wherever it is a knob; NSGA-II, SPEA2+SDE,
+AGE-MOEA and SMS-EMOA took it only from task 7 on.
+
+<details><summary>pm, eta_m, eta_c, mutation, crossover per algorithm</summary>
+
+| algorithm | `pm` | `eta_m` | `eta_c` | `mutation` | `crossover` |
+|---|---|---|---|---|---|
+| `nsga2` | yes | yes | yes | yes | yes |
+| `spea2` | no | yes | yes | no | no |
+| `spea2_sde` | yes | yes | yes | yes | yes |
+| `grea` | no | yes | yes | no | no |
+| `vaea` | no | yes | yes | no | no |
+| `agemoea` | yes | yes | yes | yes | yes |
+| `etea` | no | yes | yes | no | no |
+| `gde3` | no | no | no | no | no |
+| `nsga3` | no | yes | yes | no | no |
+| `a_nsga3` | no | yes | yes | no | no |
+| `theta_dea` | yes | yes | yes | no | no |
+| `ar_moea` | yes | yes | yes | no | no |
+| `moead` | yes | yes | yes | no | no |
+| `moead_de` | yes | yes | yes | yes | no |
+| `moead_dra` | yes | yes | yes | no | no |
+| `moead_dd` | yes | yes | yes | no | no |
+| `moead_awa` | no | yes | yes | no | no |
+| `adaw` | no | yes | yes | no | no |
+| `moead_m2m` | yes | yes | yes | no | no |
+| `moead_am2m` | yes | yes | yes | no | no |
+| `sms_m2m` | yes | yes | yes | no | no |
+| `moead_ds` | yes | yes | yes | no | no |
+| `rd_emo` | yes | yes | yes | no | no |
+| `aprd` | yes | yes | yes | no | no |
+| `liu_gu2011` | yes | yes | yes | no | no |
+| `isde_rd` | yes | yes | yes | no | no |
+| `dhea` | yes | yes | yes | no | no |
+| `hlmea` | yes | yes | yes | no | no |
+| `ibea_eplus` | yes | yes | yes | yes | yes |
+| `ibea_hd` | yes | yes | yes | no | no |
+| `mibea` | yes | yes | yes | no | no |
+| `r2ibea` | no | yes | yes | no | no |
+| `hype` | no | yes | yes | no | no |
+| `mombi2` | no | yes | yes | no | no |
+| `nimmo` | yes | yes | yes | no | no |
+| `irea` | yes | yes | yes | no | no |
+| `edv` | no | yes | yes | no | no |
+| `if_maoea` | yes | yes | yes | no | no |
+| `maoea_iamd` | no | yes | yes | no | no |
+| `sms_emoa` | yes | yes | yes | yes | yes |
+| `mo_cma_es` | no | no | no | no | no |
+| `rvea` | yes | yes | yes | no | no |
+| `rvea_star` | yes | yes | yes | no | no |
+| `maoeaarv` | no | yes | yes | no | no |
+| `mbra` | no | yes | yes | no | no |
+| `nrv_moea` | no | yes | yes | no | no |
+| `dea_gng` | yes | yes | yes | no | no |
+| `srv` | no | yes | yes | no | no |
+| `srv_nsga3` | no | yes | yes | no | no |
+| `camoea` | no | yes | yes | no | no |
+| `cava_moea` | no | yes | yes | no | no |
+| `maoea_ac` | no | yes | yes | no | no |
+| `maoea_c` | no | yes | yes | no | no |
+| `maoea_3c` | no | yes | yes | no | no |
+| `emyo_c` | no | yes | yes | no | no |
+| `crea` | no | yes | yes | no | no |
+| `dcea` | yes | yes | yes | no | no |
+| `hcca` | yes | yes | yes | no | no |
+| `lis_lcs` | no | yes | yes | no | no |
+| `clia` | yes | yes | yes | no | no |
+| `two_arch2` | yes | yes | yes | no | no |
+| `naemo` | yes | yes | yes | no | no |
+| `dms` | no | no | no | no | no |
+| `mosa` | yes | yes | yes | no | no |
+
+</details>
 
 ### `run()` and `Session`
 

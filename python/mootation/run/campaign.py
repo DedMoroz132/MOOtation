@@ -61,8 +61,9 @@ from pathlib import Path
 from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
-from .metric_names import (HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES, NEEDS_FRONT, NEEDS_SET,
-                           NEEDS_X, RUN_STATS, TABLE_NAMES)
+from .metric_names import (DENSE_SUFFIX, HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES,
+                           NEEDS_FRONT, NEEDS_SET, NEEDS_X, RUN_STATS, DE_STATS, SA_STATS,
+                           TABLE_NAMES, is_table_name)
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -85,6 +86,9 @@ class Job:
     # a rung of the budget ladder: the label of the full-budget run it
     # shortens ([campaign] ladder); empty for every other job
     ladder_of: str = ""
+    # the first population (config.Algorithm: init, init_share)
+    init: str = "uniform"
+    init_share: float = 0.0
 
     @property
     def key(self) -> str:
@@ -107,6 +111,11 @@ class CampaignSpec:
     metrics: tuple = METRICS_DEFAULT
     final_metrics: tuple = ()          # empty: the same as metrics
     n_ref: int = 1000
+    # The front indicators against the dense reference too, where a problem
+    # has one (registry.dense_reference: 4 to 10 objectives), as
+    # "<indicator>_ref_v3" beside the usual values (task 6, item 9); on by
+    # default — the usual values do not change.
+    dense_reference: bool = True
     seeds: tuple = ()
     # "generations": a trajectory point every record_every generations.
     # "log": at fixed evaluation counts 10^(j/record_per_decade), the SAME
@@ -127,6 +136,9 @@ class CampaignSpec:
     # rung is read off the full run's trajectory (record_at puts a record
     # there). The ladder jobs follow all the others in the job list.
     ladder: tuple = ()
+    # No rung whose budget is under this many populations (task 5, run B1:
+    # a configuration with fewer than three generations is not run); 0: all.
+    ladder_min_gens: int = 0
     # The hypervolumes on the trajectory exactly only up to this many objectives
     # (0 = always). Above it they are recorded as null, or, with
     # trajectory_hv_mc_samples > 0, estimated by Monte Carlo from that many
@@ -142,15 +154,28 @@ class CampaignSpec:
     # archive reduced to the problem's population size by DSS
     # (meta["final_archive"]). Needs archive = true.
     archive_scenario: bool = True
+    # How the archive is reduced to that answer, here and at the checkpoints
+    # and hard budgets: "dss" (archive.dss_order), or "igdp_self", the points of
+    # the smallest IGD+ against the archive thinned by DSS to 1 000
+    # (archive.igdp_self_order; task 6 of 2026-10-09, item 13). The runs
+    # record which in meta["archive"]["answer_select"].
+    answer_select: str = "dss"
     # What the variation operators did (metric_names.RUN_STATS): per trajectory
     # record and over the run in `final`. Off by default; it never changes a
     # run's result. meta["operators"] lists the operators and their bound
     # repair either way.
     operator_stats: bool = False
+    # With coords = pca, pca_nd or randrot: the learned basis's spectrum and
+    # its principal angles against the problem's distance block at every
+    # record (coords_diag.py; task 7, supplement 1).
+    coords_diag: bool = False
     # The run archive (archive.GridArchive -> archive.csv); archive_delta 0 is
     # the default grid step, 1e-3 below five objectives and 1e-2 from five.
     archive: bool = True
     archive_delta: float = 0.0
+    # The cell of the step noise (benchmarks/noisy.py, <base>_s1 and _s5), a
+    # share of every variable's range.
+    noise_cell: float = 0.01
     # Whose variables the archive keeps: "all" — every point's, in archive.csv;
     # "selected" — only those of the N points DSS selects for the archive
     # scenario, in final_archive.csv.gz, with the objectives of every point in
@@ -171,7 +196,26 @@ class CampaignSpec:
     # archive reduced by DSS there, its trajectory metrics in
     # meta["archive_at"] and its points in archive_at.npz, so that --cover and
     # the tables read the archive scenario at those budgets. Needs the archive.
+    # Taken after exactly b evaluations, inside a generation if need be (task
+    # 7, §5.5: at 100 or 300 evaluations a generation is most of the budget;
+    # until then it was the first record at or past b).
     archive_checkpoints: bool = False
+    # Budgets read the hard way (task 5, run B1: at 100-1 000 evaluations a
+    # generation is a large share of the budget). The population at b is the
+    # last trajectory record at or below b evaluations: a generation that
+    # would pass b does not count, where the first record at or after b
+    # (record_at) would add up to a whole population. The archive at b is the
+    # run archive after exactly b evaluations, reduced by DSS to answer_k
+    # points (0: the problem's population size), one answer size for every
+    # configuration. Both in meta["hard_at"], the evaluations of the record
+    # read beside them; a record every generation needed.
+    hard_budgets: tuple = ()
+    answer_k: int = 0
+    # A population an algorithm does not accept (a Das-Dennis lattice, a
+    # multiple of K) is fitted to "below", the largest accepted size up to it,
+    # or "nearest", the accepted size nearest to it (fit_pop); the size run
+    # is in meta.json, pop_note says why.
+    pop_fit: str = "below"
 
 
 def _snapshots_wanted(spec: "CampaignSpec", problem: str) -> bool:
@@ -208,7 +252,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "trajectory_hv_max_m",
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
-             "snapshot_variables", "archive_checkpoints", "operator_stats"}
+             "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
+             "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
+             "noise_cell", "coords_diag"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -230,6 +276,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
                                   f"unknown metric '{m}'; known: {', '.join(METRIC_NAMES)}")
         setattr(spec, key, tuple(names))
     spec.n_ref = int(raw.get("n_ref", 1000))
+    spec.dense_reference = raw.get("dense_reference", True)
+    if not isinstance(spec.dense_reference, bool):
+        raise ConfigError("campaign.dense_reference", "true or false")
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
     spec.record_grid = str(raw.get("record_grid", "generations"))
     spec.record_per_decade = int(raw.get("record_per_decade", 10))
@@ -269,6 +318,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.operator_stats = raw.get("operator_stats", False)
     if not isinstance(spec.operator_stats, bool):
         raise ConfigError("campaign.operator_stats", "true or false")
+    spec.coords_diag = raw.get("coords_diag", False)
+    if not isinstance(spec.coords_diag, bool):
+        raise ConfigError("campaign.coords_diag", "true or false")
     spec.archive_scenario = raw.get("archive_scenario", True)
     if not isinstance(spec.archive_scenario, bool):
         raise ConfigError("campaign.archive_scenario", "true or false")
@@ -278,6 +330,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.archive_delta = float(raw.get("archive_delta", 0.0))
     if spec.archive_delta < 0:
         raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
+    spec.noise_cell = raw.get("noise_cell", 0.01)
+    if (not isinstance(spec.noise_cell, (int, float)) or isinstance(spec.noise_cell, bool)
+            or not 0 < spec.noise_cell <= 1):
+        raise ConfigError("campaign.noise_cell", f"a share in (0, 1], not {spec.noise_cell!r}")
     spec.archive_variables = raw.get("archive_variables", "all")
     if spec.archive_variables not in ("all", "selected"):
         raise ConfigError("campaign.archive_variables",
@@ -298,6 +354,32 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
         raise ConfigError("campaign.archive_checkpoints", "true or false")
     if spec.record_every < 1:
         raise ConfigError("campaign.record_every", "must be >= 1")
+    hard = raw.get("hard_budgets", [])
+    if (not isinstance(hard, (list, tuple))
+            or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in hard)):
+        raise ConfigError("campaign.hard_budgets", f"a list of positive evaluation counts, "
+                                                   f"not {hard!r}")
+    if hard and (spec.record_grid != "generations" or spec.record_every != 1):
+        raise ConfigError("campaign.hard_budgets", "reads the last record at or below each "
+                                                   "budget: needs a record every generation "
+                                                   "(record_grid = \"generations\", "
+                                                   "record_every = 1)")
+    spec.hard_budgets = tuple(sorted(set(hard)))
+    spec.answer_k = raw.get("answer_k", 0)
+    if not isinstance(spec.answer_k, int) or isinstance(spec.answer_k, bool) or spec.answer_k < 0:
+        raise ConfigError("campaign.answer_k", f"an integer >= 0, not {spec.answer_k!r}")
+    spec.answer_select = raw.get("answer_select", "dss")
+    if spec.answer_select not in ("dss", "igdp_self"):      # archive.ANSWER_SELECT, without NumPy
+        raise ConfigError("campaign.answer_select",
+                          f"\"dss\" or \"igdp_self\", not {spec.answer_select!r}")
+    spec.pop_fit = raw.get("pop_fit", "below")
+    if spec.pop_fit not in ("below", "nearest"):
+        raise ConfigError("campaign.pop_fit", f"\"below\" or \"nearest\", not {spec.pop_fit!r}")
+    spec.ladder_min_gens = raw.get("ladder_min_gens", 0)
+    if (not isinstance(spec.ladder_min_gens, int) or isinstance(spec.ladder_min_gens, bool)
+            or spec.ladder_min_gens < 0):
+        raise ConfigError("campaign.ladder_min_gens",
+                          f"an integer >= 0, not {spec.ladder_min_gens!r}")
     if spec.budget_fe < 0:
         raise ConfigError("campaign.budget_fe", "must be >= 0")
     return spec
@@ -325,13 +407,21 @@ def _two_layer_sizes(m: int, limit: int) -> set:
     return sizes
 
 
-def fit_pop(name: str, pop: int, n_objs: int, params: dict) -> tuple[int, str]:
-    """The population size this algorithm will accept, and a note if it changed."""
+def fit_pop(name: str, pop: int, n_objs: int, params: dict,
+            rule: str = "below") -> tuple[int, str]:
+    """The population size this algorithm will accept, and a note if it changed.
+    rule "below": the largest accepted size up to pop (the smallest above when
+    there is none); "nearest": the accepted size nearest to pop, the smaller of
+    two as near (CampaignSpec.pop_fit)."""
     if name in EXACT_LATTICE:
         from .algorithms import lattice_sizes
-        ok = set(lattice_sizes(n_objs, pop)) | _two_layer_sizes(n_objs, pop)
+        ok = set(lattice_sizes(n_objs, 2 * pop)) | _two_layer_sizes(n_objs, 2 * pop)
         if pop in ok:
             return pop, ""
+        if rule == "nearest":
+            _, above = nearest_lattice_sizes(n_objs, pop)
+            near = min(ok | {above}, key=lambda s: (abs(s - pop), s))
+            return near, f"pop {pop} -> {near} (nearest lattice size for M={n_objs})"
         below = max((s for s in ok if s <= pop), default=None)
         if below is None:
             _, above = nearest_lattice_sizes(n_objs, pop)
@@ -342,6 +432,8 @@ def fit_pop(name: str, pop: int, n_objs: int, params: dict) -> tuple[int, str]:
         if pop % k == 0:
             return pop, ""
         new = max(k, (pop // k) * k)
+        if rule == "nearest" and pop - new > new + k - pop:
+            new += k
         return new, f"pop {pop} -> {new} (multiple of K={k})"
     return pop, ""
 
@@ -365,7 +457,7 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
         p = PROBLEMS[pname]
         for a in cfg.algorithms:
             pop = a.pop if a.pop > 0 else p.pop_size
-            pop, note = fit_pop(a.name, pop, p.n_obj, a.params)
+            pop, note = fit_pop(a.name, pop, p.n_obj, a.params, spec.pop_fit)
             if a.evaluations > 0:                  # the algorithm's own budget
                 gens = max(1, math.ceil(a.evaluations / pop))
             elif spec.budget_fe > 0:
@@ -376,7 +468,8 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
                 jobs.append(Job(index=idx, problem=pname, algorithm=a.name, seed=s,
                                 pop=pop, gens=gens, params=dict(a.params),
                                 n_objs=p.n_obj, pop_note=note, label=a.key,
-                                evaluations=a.evaluations))
+                                evaluations=a.evaluations, init=a.init,
+                                init_share=a.init_share))
                 idx += 1
     if spec.ladder:
         # The rungs, after every full-budget job so that the job numbers of a
@@ -385,11 +478,12 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
         full = {(j.problem, j.key): j for j in jobs}
         for pname in problems:
             for a in cfg.algorithms:
-                if a.name not in BUDGET_DEPENDENT or a.evaluations > 0:
+                # a plan taking a share of the budget depends on the budget too
+                if (a.name not in BUDGET_DEPENDENT and not a.init_share) or a.evaluations > 0:
                     continue
                 base = full[(pname, a.key)]
                 for b in spec.ladder:
-                    if b >= base.budget:
+                    if b >= base.budget or b < spec.ladder_min_gens * base.pop:
                         continue
                     gens = max(1, math.ceil(b / base.pop))
                     for s in seeds:
@@ -397,7 +491,8 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
                                         pop=base.pop, gens=gens, params=dict(a.params),
                                         n_objs=base.n_objs, pop_note=base.pop_note,
                                         label=f"{a.key}@{b}", evaluations=b,
-                                        ladder_of=a.key))
+                                        ladder_of=a.key, init=a.init,
+                                        init_share=a.init_share))
                         idx += 1
     return jobs
 
@@ -439,6 +534,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     final_metrics = spec.final_metrics or spec.metrics
     if any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_front):
         ref = np.asarray(p.pareto_front(spec.n_ref), float)
+    ref3 = info3 = None                     # the dense reference ([campaign] dense_reference)
+    if spec.dense_reference and ref is not None:
+        from ..benchmarks.registry import dense_reference, has_dense_reference
+        if has_dense_reference(job.problem):
+            ref3, info3 = dense_reference(job.problem, p.pop_size)
     ideal, nadir = p.ideal, p.nadir
     pset = None
     if any(m in NEEDS_SET for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_set):
@@ -453,9 +553,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "core": job.algorithm,
         # measured in budget.py: a record of this run at a smaller budget is
         # not what a separate run of that budget gives (ladder_of: the full
-        # run a ladder rung shortens)
-        "budget_dependent": job.algorithm in BUDGET_DEPENDENT,
+        # run a ladder rung shortens); so is a plan taking a share of it
+        "budget_dependent": job.algorithm in BUDGET_DEPENDENT or bool(job.init_share),
         "ladder_of": job.ladder_of or None,
+        "init": job.init, "init_share": job.init_share,
         "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
         # the budget asked for: budget_fe rounds it up to whole generations
         # (25 025 at a population of 91), --at and the checkpoints count from it
@@ -469,6 +570,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # REFERENCE_VERSION) and how many rows it had
         "reference_version": REFERENCE_VERSION,
         "reference_rows": None if ref is None else int(len(ref)),
+        # the dense reference's rows and step, and the population's step
+        "reference_v3": info3,
         "has_pareto_set": callable(p.pareto_set),
         "mootation": __version__,
         # the version never changes between commits; these do (provenance.py)
@@ -495,27 +598,115 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     def feasible(x) -> bool:
         return all(c <= 0.0 for c in p.constraints(x))
 
+    # A constrained problem's indicators are measured on the feasible part of
+    # each answer (metrics.compute), which needs its variables; fe_first_feas
+    # is the evaluation that first gave a feasible point (task 6, item 5.2).
+    cons = p.constraints if p.has_cons else None
+    fe_first_feas = None
+    # A noisy copy (benchmarks/noisy.py): the algorithm sees the noisy values,
+    # every indicator is measured on the noise-free ones at the same x, and the
+    # files keep those (task 6, item 7).
+    truth = p.true_objectives
+
+    def true_values(F, X):
+        if truth is None:
+            return F
+        return np.array([truth(list(x)) for x in X], float).reshape(len(X), p.n_obj)
     fe = 0
     # a problem whose values depend on the run (uninformative.py) gets its
     # evaluator from the run's seed; every other problem is its `evaluate`
-    objective = (p.make_evaluator(job.seed) if getattr(p, "make_evaluator", None)
-                 else p.evaluate)
+    from ..benchmarks.noisy import kind_of as noise_kind
+    if noise_kind(job.problem) == "s":
+        objective = p.make_evaluator(job.seed, cell=float(spec.noise_cell))
+    else:
+        objective = (p.make_evaluator(job.seed) if getattr(p, "make_evaluator", None)
+                     else p.evaluate)
+    # A noisy copy's oracle (task 7, §4): every non-dominated point by the
+    # noise-free values of all the points evaluated, as the run archive keeps
+    # the noisy ones.
+    oracle = None
+    if truth is not None:
+        from .archive import GridArchive as _Grid
+        oracle = _Grid(p.n_obj, p.n_vars, ideal=ideal, nadir=nadir,
+                       delta=spec.archive_delta or None)
+    # The hard budgets (CampaignSpec.hard_budgets): the archive after exactly
+    # b evaluations is taken by the evaluator, the population's last record at
+    # or below b by on_gen.
+    hard = [b for b in spec.hard_budgets if b <= job.budget]
+    hard_pop, hard_arc = {}, {}
+
+    def take_hard_archive(b):
+        AF, AX, _ = arc.points()
+        if len(AF) or cons is not None:     # a constrained problem's empty archive: feas_share 0
+            idx = arc.select(spec.answer_k or p.pop_size, spec.answer_select)
+            hard_arc[str(b)] = dict(measure(true_values(AF[idx], AX[idx]), AX[idx], traj_metrics),
+                                    fe=fe, n=int(len(idx)))
+
+    # Typed variables (mootation.var_types, task 7, §10): the points the
+    # algorithm asked for again after the rounding, dup_x_share in final.
+    typed = p.var_types is not None and any(t != "real" for t in p.var_types)
+    seen_x, dup_x = set(), 0
+    # A problem of bits with an exact front (benchmarks/binary.py): the first
+    # generation and evaluation at which the population, and the inner
+    # archive, hold every front vector (supplement 2, §3.4: the paper's
+    # measure), cover_gen and cover_evals in final.
+    cover_front = None
+    if (p.var_types is not None and all(t == "bin" for t in p.var_types)
+            and p.front_exact and callable(p.pareto_front)):
+        cover_front = {tuple(float(v) for v in row) for row in np.asarray(p.pareto_front(1000))}
+    cover = {"gen": None, "fe": None, "archive_gen": None, "archive_fe": None}
+    if cover_front is not None and not baseline:
+        from .. import _core                   # inner_archive_state() at every call
 
     def evaluate(x):
-        nonlocal fe
+        nonlocal fe, fe_first_feas, dup_x
         fe += 1
+        if typed:
+            key = tuple(x)
+            dup_x += key in seen_x
+            seen_x.add(key)
         f = objective(x)
-        if arc is not None and (not p.has_cons or feasible(x)):
+        ok = cons is None or feasible(x)
+        if cons is not None and ok and fe_first_feas is None:
+            fe_first_feas = fe
+        if arc is not None and ok:
             arc.add(f, x)
+        if oracle is not None:
+            t = getattr(objective, "last_true", None)
+            oracle.add(t if t is not None else truth(list(x)), x)
+        if arc is not None and fe in hard:
+            take_hard_archive(fe)
+        if fe in checkpoints and (len(arc) or cons is not None):
+            take_checkpoint(fe)
         return f
 
+    def take_checkpoint(b):
+        """The archive scenario after exactly b evaluations (archive_checkpoints)."""
+        nonlocal record_seconds
+        t_ck = time.perf_counter()
+        AF, AX, _ = arc.points()
+        idx = arc.select(p.pop_size, spec.answer_select)
+        T = true_values(AF[idx], AX[idx])
+        archive_at[str(b)] = dict(measure(T, AX[idx], traj_metrics), fe=b, n=int(len(idx)))
+        ck_budget.append(b); ck_fe.append(b); ck_n.append(len(idx))
+        ck_F.append(T.astype(np.float32))
+        if keep_x:
+            ck_X.append(AX[idx].astype(np.float32))
+        record_seconds += time.perf_counter() - t_ck
+
     snap = _snapshots_wanted(spec, job.problem)
-    # the variables go into the snapshots and checkpoints where snapshot_variables says so
-    keep_x = (spec.snapshot_variables == "all"
+    # the variables go into the snapshots and checkpoints where snapshot_variables
+    # says so, and always on a constrained problem, whose indicators need them
+    keep_x = (spec.snapshot_variables == "all" or cons is not None
               or (spec.snapshot_variables == "pareto_set" and callable(p.pareto_set)))
     op_stats = spec.operator_stats and not baseline
     if op_stats:
         from .. import _core
+    diag = spec.coords_diag and not baseline
+    if diag:
+        from .. import _core
+        from . import coords_diag
+        diag_start = coords_diag.distance_start(job.problem)
     snap_fe, snap_gen, snap_n, snap_F, snap_X = [], [], [], [], []
 
     t0 = time.perf_counter()
@@ -549,22 +740,38 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped,
                 trajectory_metrics_at_record_at=[m for m in traj_metrics
                                                  if m in spec.record_at_metrics])
-    # The archive scenario at the record_at counts below the budget (its end is
-    # final_archive): taken at the record that first reaches each count.
-    checkpoints = ([b for b in spec.record_at if b < budget]
+    # The archive scenario at the record_at counts below the budget, nominal
+    # and actual (its end is final_archive; budget_fe rounded up to whole
+    # generations ends inside the last one): taken after exactly each count of
+    # evaluations (take_checkpoint).
+    checkpoints = ([b for b in spec.record_at if b < min(budget, meta["budget_nominal"])]
                    if spec.archive_checkpoints and arc is not None and grid is not None else [])
     archive_at = {}
     ck_budget, ck_fe, ck_n, ck_F, ck_X = [], [], [], [], []
     last_fe = 0                    # the evaluations of the previous record
     record_seconds = 0.0           # what the records cost: indicators, statistics, snapshots
-    need_x = (snap and keep_x) or any(m in NEEDS_X for m in traj_metrics)
+    need_x = ((snap and keep_x) or any(m in NEEDS_X for m in traj_metrics)
+              or cons is not None or truth is not None)
     if need_x and not baseline:
         from .. import _core                   # current_variables() at the records
+
+    def dense(F, X, which) -> dict:
+        """The front indicators among `which` against the dense reference."""
+        front = [m for m in which if m in NEEDS_FRONT]
+        if ref3 is None or not front or not len(F):
+            return {}
+        got = M.compute(F, ref_front=ref3, ideal=ideal, nadir=nadir, which=front, X=X,
+                        constraints=cons)
+        return {m + DENSE_SUFFIX: got[m] for m in front}
 
     def measure(F, X, which):
         vals = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=which,
                          pop=p.pop_size, hv_options=traj_hv, X=X, pareto_set=pset,
-                         bounds=p.bounds, cyclic=p.cyclic_vars)
+                         bounds=p.bounds, cyclic=p.cyclic_vars, distance_fn=p.distance_fn,
+                         constraints=cons)
+        vals.update(dense(F, X, which))
+        if truth is not None and len(F):
+            vals["true_dominated_share"] = 1.0 - M.nd_share(F)
         for m in hv_skipped:
             vals[m] = None
         return vals
@@ -574,6 +781,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     def on_gen(gen, objectives, variables=None):
         nonlocal n_records, next_i, last_fe, record_seconds
+        if cover_front is not None:            # at every call, before the grid's choice
+            if cover["gen"] is None and cover_front <= {tuple(map(float, r)) for r in objectives}:
+                cover["gen"], cover["fe"] = gen, fe
+            if cover["archive_gen"] is None and not baseline:
+                A = {tuple(map(float, r)) for r in _core.inner_archive_state()}
+                if A and cover_front <= A:
+                    cover["archive_gen"], cover["archive_fe"] = gen, fe
         if grid is not None:
             # Generation 0 and the last call are always recorded; in between,
             # the first call at or past the next count of the grid.
@@ -589,6 +803,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             if variables is None:
                 variables = _core.current_variables()
             X = np.asarray(variables, float).reshape(len(F), p.n_vars)
+        if truth is not None and X is not None:
+            F = true_values(F, X)                 # snapshot and indicators: noise-free
         rec = {"gen": gen, "fe": fe, "t": round(t_rec - t0, 3), "n": int(len(F))}
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
@@ -597,23 +813,17 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             rec.update(measure(F, X, traj_metrics if mark else everywhere))
         if op_stats:
             rec.update(_core.operator_stats())
+        if diag:
+            rec.update(coords_diag.record(job.problem, _core.coords_state(), diag_start))
         if snap:
             snap_fe.append(fe); snap_gen.append(gen); snap_n.append(len(F))
             snap_F.append(F.astype(np.float32).reshape(len(F), p.n_obj))
             if keep_x:
                 snap_X.append(np.zeros((0, p.n_vars), np.float32) if X is None
                               else X.astype(np.float32))
-        crossed = [b for b in checkpoints if last_fe < b <= fe]
-        if crossed and fe < budget and len(arc):         # the end is final_archive
-            AF, AX, _ = arc.points()
-            idx = arc.select(p.pop_size)
-            vals = dict(measure(AF[idx], AX[idx], traj_metrics), fe=fe, n=int(len(idx)))
-            for b in crossed:
-                archive_at[str(b)] = vals
-                ck_budget.append(b); ck_fe.append(fe); ck_n.append(len(idx))
-                ck_F.append(AF[idx].astype(np.float32))
-                if keep_x:
-                    ck_X.append(AX[idx].astype(np.float32))
+        for b in hard:                                   # the last record at or below b
+            if fe <= b:
+                hard_pop[str(b)] = {k: rec.get(k) for k in ("gen", "fe", "n", *traj_metrics)}
         last_fe = fe
         fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
         fh.flush()
@@ -642,6 +852,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 on_generation=on_gen,
                 record_every=(1 if grid is not None else spec.record_every),
                 operator_stats=op_stats,
+                init=job.init, init_share=job.init_share,
+                var_types=p.var_types,
                 **job.params,
             )
     except Exception as e:                       # one bad job must not kill the shard
@@ -659,16 +871,25 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     F = np.asarray(res.objectives, float)
     X = np.asarray(res.variables, float)
+    seen = None
+    if truth is not None and len(F):
+        seen, F = F, true_values(F, X)       # f: noise-free; f_seen: what the algorithm saw
     with (d / "final.csv").open("w", encoding="utf-8") as out:
-        out.write("# mootation campaign final population v1\n")
+        out.write("# mootation campaign final population v1"
+                  + ("; f noise-free, f_seen as the algorithm saw it" if seen is not None
+                     else "") + "\n")
         out.write(",".join([f"f{i+1}" for i in range(F.shape[1] if F.ndim == 2 else 0)]
-                           + [f"x{i+1}" for i in range(X.shape[1] if X.ndim == 2 else 0)]) + "\n")
+                           + [f"x{i+1}" for i in range(X.shape[1] if X.ndim == 2 else 0)]
+                           + ([f"f{i+1}_seen" for i in range(p.n_obj)] if seen is not None
+                              else [])) + "\n")
         for i in range(len(F)):
-            out.write(",".join(f"{v:.10g}" for v in list(F[i]) + list(X[i])) + "\n")
+            row = list(F[i]) + list(X[i]) + (list(seen[i]) if seen is not None else [])
+            out.write(",".join(f"{v:.10g}" for v in row) + "\n")
 
     arc_sel = None                  # the archive scenario's points: indices into arc.points()
     if arc is not None:
         AF, AX, AE = arc.points()
+        AF = true_values(AF, AX)          # a noisy copy's archive is written noise-free
         # "all": every point with its variables; "selected": the objectives of
         # every point, and the variables only of the points DSS selects
         whole = spec.archive_variables == "all"
@@ -686,12 +907,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             for i in range(len(AF)):
                 row = list(AF[i]) + (list(AX[i]) if whole else [])
                 out.write(",".join(f"{v:.10g}" for v in row) + f",{int(AE[i])}\n")
-        if len(AF) and (spec.archive_scenario or not whole):
-            arc_sel = arc.select(p.pop_size)
+        if (len(AF) or cons is not None) and (spec.archive_scenario or not whole):
+            arc_sel = arc.select(p.pop_size, spec.answer_select)
         if not whole and arc_sel is not None:
             with _open_text(d / "final_archive.csv.gz", "w") as out:
-                out.write("# mootation campaign archive selection v1: the points DSS selects "
-                          "from the archive for the archive scenario\n")
+                how = "DSS" if spec.answer_select == "dss" else spec.answer_select
+                out.write(f"# mootation campaign archive selection v1: the points {how} selects "
+                          f"from the archive for the archive scenario\n")
                 out.write(",".join([f"f{i+1}" for i in range(p.n_obj)]
                                    + [f"x{i+1}" for i in range(p.n_vars)]) + "\n")
                 for i in arc_sel:
@@ -700,6 +922,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # The frame DSS normalises by when it reduces the archive (scenario
         # "archive"), so that --recompute --scenario archive selects the same points.
         meta["archive"] = dict(arc.info(), extremes=int(AE.sum()), file=name,
+                               answer_select=spec.answer_select,
                                variables=("all, in archive.csv" if whole else
                                           "the selected points', in final_archive.csv.gz"),
                                feasible_only=bool(p.has_cons),
@@ -725,24 +948,78 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             if keep_x:
                 payload["X"] = np.vstack(ck_X)
             np.savez_compressed(d / "archive_at.npz", **payload)
+    if hard:
+        for b in hard:
+            if str(b) not in hard_arc and arc is not None and (len(arc) or cons is not None):
+                take_hard_archive(b)         # the run stopped before b: its archive at the end
+        meta["hard_at"] = {str(b): {"population": hard_pop.get(str(b)),
+                                    "archive": hard_arc.get(str(b))} for b in hard}
+        meta["answer_k"] = spec.answer_k or p.pop_size
 
     extra = {"pop": p.pop_size, "hv_options": final_hv, "pareto_set": pset,
-             "bounds": p.bounds, "cyclic": p.cyclic_vars}
+             "bounds": p.bounds, "cyclic": p.cyclic_vars, "distance_fn": p.distance_fn,
+             "constraints": cons}
     final = {}
     if F.size and np.all(np.isfinite(F)):
         final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
                           X=X, **extra)
+        final.update(dense(F, X, final_metrics))
+    if cons is not None:
+        final["fe_first_feas"] = fe_first_feas
+    if typed and final:
+        final["dup_x_share"] = dup_x / max(fe, 1)
+    if cover_front is not None:
+        # not covered within the budget: NaN, and cover_reached false
+        nan = float("nan")
+        final.update(cover_gen=nan if cover["gen"] is None else cover["gen"],
+                     cover_evals=nan if cover["fe"] is None else cover["fe"],
+                     cover_reached=cover["gen"] is not None,
+                     cover_archive_gen=(nan if cover["archive_gen"] is None
+                                        else cover["archive_gen"]),
+                     cover_archive_evals=(nan if cover["archive_fe"] is None
+                                          else cover["archive_fe"]))
+    if truth is not None:
+        if final:
+            final["true_dominated_share"] = 1.0 - M.nd_share(F)
+            # the observed answer: its noisy values, as the algorithm saw them
+            obs = M.compute(seen, ref_front=ref, ideal=ideal, nadir=nadir,
+                            which=final_metrics, X=X, **extra)
+            final.update({m + "_observed": v for m, v in obs.items()})
+        OF, OX, _ = oracle.points()
+        if len(OF):
+            # the oracle: the noise-free non-dominated set of every evaluation,
+            # reduced to the answer's size by the archive scenario's rule
+            sel = oracle.select(p.pop_size, spec.answer_select)
+            orc = M.compute(OF[sel], ref_front=ref, ideal=ideal, nadir=nadir,
+                            which=final_metrics, X=OX[sel], **extra)
+            final.update({m + "_oracle": v for m, v in orc.items()})
+        kind = noise_kind(job.problem)
+        meta["noise"] = {"kind": kind, "scale": list(objective.scale),
+                         "cell": float(spec.noise_cell) if kind == "s" else None,
+                         "measured": "every indicator on the noise-free objectives of the "
+                                     "answer; _oracle on the noise-free non-dominated set "
+                                     "of every evaluation; _observed on the noisy values "
+                                     "of the answer",
+                         "oracle_n": int(len(OF))}
     if arc_sel is not None and spec.archive_scenario:
         AF, AX, _ = arc.points()
-        meta["final_archive"] = M.compute(AF[arc_sel], ref_front=ref, ideal=ideal, nadir=nadir,
+        T = true_values(AF[arc_sel], AX[arc_sel])
+        meta["final_archive"] = M.compute(T, ref_front=ref, ideal=ideal, nadir=nadir,
                                           which=final_metrics, X=AX[arc_sel], **extra)
+        meta["final_archive"].update(dense(T, AX[arc_sel], final_metrics))
         meta["final_archive"]["n"] = int(len(arc_sel))
+        if truth is not None and len(T):
+            meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}
                              for o, r in getattr(res, "operators", [])]
     if op_stats and final:
         final.update({k: float(v) for k, v in dict(res.operator_totals).items()})
     meta["operator_stats"] = op_stats
+    if hasattr(objective, "summary"):
+        # the uninformative problems count where every evaluated point and
+        # every non-dominated one fell (benchmarks/uninformative.py; --bias)
+        meta["structural_bias"] = objective.summary()
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -1216,35 +1493,68 @@ def value_at(row: dict, metric: str, at: float | None) -> float | None:
     campaign's `metrics`, which are what a trajectory records. A ladder rung
     put in a full run's place (rungs_in_place) is read at its end.
     """
-    from .cover import needs_trajectory, nominal, read_at
+    v = read_row(row, (metric,), at)[metric]
+    return None if v is None else float(v)
+
+
+def read_row(row: dict, metrics, at: float | None) -> dict:
+    """{metric: value} of a run where value_at reads it, and "n", the size of
+    its answer there (cover.py, THE ANSWER'S SIZE)."""
+    from .cover import answer_size, needs_trajectory, nominal, read_at
     if at is None or row.get("rung_of"):
-        v = row["final"].get(metric)
-        return None if v is None else float(v)
+        return dict({m: row["final"].get(m) for m in metrics}, n=answer_size(row["final"]))
     budget = nominal(row)
     b = int(round(float(at) * budget))
     archive = row.get("scenario") == "archive"
     traj = (read_trajectory(Path(row["dir"]))
             if not archive and needs_trajectory(b, budget, row.get("fe")) else ())
-    v = read_at(b, budget, row.get("fe"), row["final"], traj,
-                (row.get("archive_at") or {}) if archive else None, (metric,))[metric]
-    return None if v is None else float(v)
+    return read_at(b, budget, row.get("fe"), row["final"], traj,
+                   (row.get("archive_at") or {}) if archive else None, tuple(metrics))
 
 
-def compare_table(rows: list[dict], metric: str = "igd", at: float | None = None) -> dict:
+def is_short(size, pop) -> bool:
+    """An answer of fewer than N/2 points, N the population (THE ANSWER'S SIZE)."""
+    return size is not None and bool(pop) and size < int(pop) / 2
+
+
+def compare_table(rows: list[dict], metric: str = "igd", at: float | None = None,
+                  sizes: dict | None = None, empty: dict | None = None) -> dict:
     """{problem: {algorithm: (median, q1, q3, n)}} over finished runs.
 
     `at` reads every run at that fraction of its budget instead of at the end.
+    `sizes`, when given, is filled with {(problem, algorithm): (median answer
+    size, population)} from the same reading.
+
+    An empty run, a constrained problem's whose answer has no feasible point
+    there (feas_share 0, the metric None; metrics.compute), counts as the
+    worst value, infinitely bad, in the median and the quartiles and in n
+    (task 6 of 2026-10-09, item 5.2). `empty`, when given, is filled with
+    {(problem, algorithm): the number of such runs}, where there is any.
     """
     import statistics
     table: dict = {}
     grouped: dict = {}
+    counts: dict = {}
+    worst = -math.inf if metric in HIGHER_IS_BETTER else math.inf
     for r in rows:
         if r["status"] != "done":
             continue
-        v = value_at(r, metric, at)
+        got = read_row(r, (metric, "feas_share"), at)
+        if got["n"] is not None:
+            counts.setdefault((r["problem"], r["algorithm"]), (r.get("pop"), []))[1].append(
+                got["n"])
+        v = got[metric]
+        if v is None and got["feas_share"] == 0:
+            v = worst
+            if empty is not None:
+                key = (r["problem"], r["algorithm"])
+                empty[key] = empty.get(key, 0) + 1
         if v is None:
             continue
         grouped.setdefault(r["problem"], {}).setdefault(r["algorithm"], []).append(float(v))
+    if sizes is not None:
+        for key, (pop, ns) in counts.items():
+            sizes[key] = (statistics.median(ns), pop)
     for prob, algs in grouped.items():
         table[prob] = {}
         for alg, vals in algs.items():
@@ -1272,12 +1582,10 @@ def write_compare_csv(table: dict, path: Path, metric: str) -> None:
 
 
 def problem_family(name: str) -> str:
-    """The family of a registry name: DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT.
-
-    The same stem rule as `mootation.benchmarks.families()`.
-    """
-    stem = name.split("_")[0]
-    return "".join(c for c in stem if not c.isdigit()) or stem
+    """The family of a registry name: DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT
+    (mootation.families, the rule of `mootation.benchmarks.families()`)."""
+    from ..families import family
+    return family(name)
 
 
 def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -> dict:
@@ -1297,14 +1605,25 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
 
     A mean rank rewards consistency, not margin: an algorithm second everywhere
     outranks one that alternates between first and last. Read it next to the
-    medians, not instead of them.
+    medians, not instead of them. "short" counts the problems where the
+    algorithm's median answer has fewer than N/2 points (cover.py, THE
+    ANSWER'S SIZE): a metric such as GD+ does not see it. "empty" counts its
+    runs without a feasible point on the constrained problems, each ranked as
+    the worst value (compare_table): the mark beside a rank that has them.
+
+    The real-world problems (RE, CRE: mootation.families.is_engineering) are
+    ranked apart from the synthetic ones (task 6, item 6): in a campaign with
+    both, "all" averages the synthetic problems only and the group
+    "engineering" the real-world ones.
 
         {"metric": "igd", "lower_better": True, "n_problems": 45,
          "groups": ["DTLZ", "WFG", "ZDT", "M=2", "M=3", "M=5"],
          "algorithms": [(name, {"all": (mean, n), "DTLZ": (mean, n), ...,
-                                "wins": w}), ...]}      # best mean rank first
+                                "wins": w, "short": s, "empty": e}), ...]}   # best first
     """
-    table = compare_table(rows, metric, at)
+    sizes: dict = {}
+    empty: dict = {}
+    table = compare_table(rows, metric, at, sizes, empty)
     lower_better = metric not in HIGHER_IS_BETTER
     n_objs: dict = {}
     for r in rows:
@@ -1316,10 +1635,13 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
             return (1, 0.0)
         return (0, med if lower_better else -med)
 
+    from ..families import is_engineering
+    apart = len({is_engineering(p) for p in table}) == 2
     ranks: dict = {}
     wins: dict = {}
     for prob, algs in table.items():
-        labels = ["all", problem_family(prob)]
+        labels = ["engineering" if apart and is_engineering(prob) else "all",
+                  problem_family(prob)]
         if prob in n_objs:
             labels.append(f"M={n_objs[prob]}")
         order = sorted(algs, key=lambda a: key(algs[a][0]))
@@ -1340,15 +1662,22 @@ def rank_table(rows: list[dict], metric: str = "igd", at: float | None = None) -
     fams = sorted({problem_family(p) for p in table})
     ms = sorted({n_objs[p] for p in table if p in n_objs})
     groups = ((fams if len(fams) > 1 else [])
-              + ([f"M={m}" for m in ms] if len(ms) > 1 else []))
+              + ([f"M={m}" for m in ms] if len(ms) > 1 else [])
+              + (["engineering"] if apart else []))
     out = []
     for a, per in ranks.items():
         entry: dict = {g: (sum(v) / len(v), len(v)) for g, v in per.items()}
+        entry.setdefault("all", (math.nan, 0))       # an algorithm on real-world problems only
         entry["wins"] = wins.get(a, 0)
+        entry["short"] = sum(1 for p in table if a in table[p]
+                             and is_short(*sizes.get((p, a), (None, None))))
+        entry["empty"] = sum(v for (_, alg), v in empty.items() if alg == a)
         out.append((a, entry))
-    out.sort(key=lambda t: (t[1]["all"][0], -t[1]["wins"], t[0]))
+    out.sort(key=lambda t: (t[1]["all"][0] if math.isfinite(t[1]["all"][0]) else math.inf,
+                            -t[1]["wins"], t[0]))
     return {"metric": metric, "at": at, "lower_better": lower_better,
-            "n_problems": len(table), "groups": groups, "algorithms": out}
+            "n_problems": len(table), "groups": groups, "algorithms": out,
+            "n_engineering": sum(1 for p in table if is_engineering(p))}
 
 
 def format_ranks(ranks: dict) -> str:
@@ -1356,22 +1685,38 @@ def format_ranks(ranks: dict) -> str:
     groups = ranks["groups"]
     at = f" at {ranks['at']:.0%} of the budget" if ranks.get("at") is not None else ""
     lines = [f"mean rank by median {ranks['metric']}{at} over {ranks['n_problems']} problem(s): "
-             f"1 = best, ties share the average rank; probs = problems ranked on",
-             f"{'algorithm':<14}{'mean':>7}{'wins':>6}{'probs':>6}"
+             f"1 = best, ties share the average rank; probs = problems ranked on; short = "
+             f"problems where the median answer has fewer than N/2 points",
+             f"{'algorithm':<14}{'mean':>7}{'wins':>6}{'probs':>6}{'short':>6}"
              + "".join(f"{g[:9]:>10}" for g in groups)]
     from .postprocess import budget_note
     marked = False
+    empties = any(e.get("empty") for _, e in ranks["algorithms"])
+    if empties:
+        lines[1] += f"{'empty':>6}"
     for alg, e in ranks["algorithms"]:
         mean, n = e["all"]
         name = alg[:13] + budget_note(alg)
         marked |= name != alg[:13]
-        line = f"{name:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}"
+        line = f"{name:<14}{mean:>7.2f}{e['wins']:>6}{n:>6}{e.get('short', 0):>6}"
+        if empties:
+            line += f"{e.get('empty', 0) or '':>6}"
         for g in groups:
             line += f"{e[g][0]:>10.2f}" if g in e else f"{'-':>10}"
         lines.append(line)
     if marked:
         lines.append("* runs on a schedule of the budget share spent: compare its runs at "
                      "different budgets by fraction of budget, not by evaluations")
+    if empties:
+        lines.append("empty = runs whose answer has no feasible point (constrained problems): "
+                     "no value, ranked as the worst one")
+    if "engineering" in groups:
+        lines.append("all = the synthetic problems; engineering = the real-world RE and CRE, "
+                     "ranked apart")
+    from .metric_names import base_name
+    if ranks.get("n_engineering") and base_name(ranks["metric"]) in NEEDS_FRONT:
+        lines.append(f"on RE and CRE, {ranks['metric']} is the distance to an approximation "
+                     f"of the front, not to the front")
     return "\n".join(lines)
 
 
@@ -1379,12 +1724,14 @@ def write_rank_csv(ranks: dict, path: Path) -> None:
     groups = ranks["groups"]
     with path.open("w", encoding="utf-8") as fh:
         fh.write("algorithm,mean_rank,problems,wins"
-                 + "".join(f",{g}_mean_rank,{g}_problems" for g in groups) + "\n")
+                 + "".join(f",{g}_mean_rank,{g}_problems" for g in groups)
+                 + ",short_answers,empty_runs\n")
         for alg, e in ranks["algorithms"]:
             mean, n = e["all"]
             cells = [alg, f"{mean:.6g}", str(n), str(e["wins"])]
             for g in groups:
                 cells += [f"{e[g][0]:.6g}", str(e[g][1])] if g in e else ["", ""]
+            cells += [str(e.get("short", 0)), str(e.get("empty", 0))]
             fh.write(",".join(cells) + "\n")
 
 
@@ -1416,12 +1763,46 @@ def _read_points(path: Path, m: int, n: int):
     return A[:, :m], X
 
 
+def _archive_answer(run_dir: Path, meta: dict, p, m: int, n: int):
+    """(F, X) of a run's archive scenario, from its files: the selection the
+    run kept (final_archive.csv.gz, archive_variables = "selected"), or
+    archive.csv reduced to the population size in the frame the run used, by
+    DSS or the run's answer_select; None where it has neither, or an empty
+    archive."""
+    import numpy as np
+    from .archive import dss_order, igdp_self_order
+    if (run_dir / "final_archive.csv.gz").is_file():
+        return _read_points(run_dir / "final_archive.csv.gz", m, n)
+    path = run_dir / "archive.csv"
+    if not path.is_file():
+        return None
+    F, X = _read_points(path, m, n)
+    if not len(F):
+        return None
+    arc_meta = meta.get("archive") or {}
+    frame = arc_meta.get("frame")
+    if arc_meta.get("normalization") == "archive":
+        lo = hi = None                   # the kept points' range, as GridArchive.select
+    elif frame:
+        lo, hi = frame
+    elif p.ideal is not None and p.nadir is not None:
+        lo, hi = p.ideal, p.nadir
+    else:
+        lo = hi = None                   # the archive's own range
+    if len(F) <= p.pop_size:
+        idx = np.arange(len(F))
+    elif arc_meta.get("answer_select", "dss") == "igdp_self":
+        idx = igdp_self_order(F, p.pop_size, ideal=lo, nadir=hi)
+    else:
+        idx = dss_order(F, k=p.pop_size, ideal=lo, nadir=hi)
+    return F[idx], (None if X is None else X[idx])
+
+
 def _recompute_one(args) -> str:
     run_dir, names, n_ref, hv_options, scenario = args
     import numpy as np
     from ..benchmarks import get as bench_get
     from . import metrics as M
-    from .archive import dss_order
     run_dir = Path(run_dir)
     meta_path = run_dir / "meta.json"
     try:
@@ -1439,36 +1820,18 @@ def _recompute_one(args) -> str:
             pset = np.asarray(p.pareto_set(k), float)
         kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=names, pop=p.pop_size,
                   hv_options=hv_options, pareto_set=pset, bounds=p.bounds,
-                  cyclic=p.cyclic_vars)
-        if scenario == "archive" and (run_dir / "final_archive.csv.gz").is_file():
-            # archive_variables = "selected": the run kept its selection
-            F, X = _read_points(run_dir / "final_archive.csv.gz", m, n)
+                  cyclic=p.cyclic_vars, distance_fn=p.distance_fn,
+                  constraints=p.constraints if p.has_cons else None)
+        if scenario == "archive":
+            got = _archive_answer(run_dir, meta, p, m, n)
+            if got is None:
+                return "skipped"
+            F, X = got
+            if X is None:
+                kw["constraints"] = None             # the archive keeps feasible points only
             out = dict(meta.get("final_archive") or {})
             out.update(M.compute(F, X=X, **kw))
             out["n"] = int(len(F))
-            meta["final_archive"] = out
-        elif scenario == "archive":
-            path = run_dir / "archive.csv"
-            if not path.is_file():
-                return "skipped"
-            F, X = _read_points(path, m, n)
-            if not len(F):
-                return "skipped"
-            arc_meta = meta.get("archive") or {}
-            frame = arc_meta.get("frame")
-            if arc_meta.get("normalization") == "archive":
-                lo = hi = None                   # the kept points' range, as GridArchive.select
-            elif frame:
-                lo, hi = frame
-            elif p.ideal is not None and p.nadir is not None:
-                lo, hi = p.ideal, p.nadir
-            else:
-                lo = hi = None                   # the archive's own range
-            idx = (np.arange(len(F)) if len(F) <= p.pop_size
-                   else dss_order(F, k=p.pop_size, ideal=lo, nadir=hi))
-            out = dict(meta.get("final_archive") or {})
-            out.update(M.compute(F[idx], X=None if X is None else X[idx], **kw))
-            out["n"] = int(len(idx))
             meta["final_archive"] = out
         else:
             F, X = _read_points(run_dir / "final.csv", m, n)
@@ -1536,9 +1899,9 @@ def _retrajectory_one(args) -> str:
             return "failed"
         # the decision-space indicators only where the snapshots kept the variables
         todo = [m for m in names if m not in NEEDS_X or "X" in S]
-        if not todo:
-            return "skipped"
         p = bench_get(meta["problem"])
+        if not todo or (p.has_cons and "X" not in S):     # feasibility needs them too
+            return "skipped"
         k = int(meta.get("n_ref") or 1000)
         ref = (np.asarray(p.pareto_front(k), float)
                if any(m in NEEDS_FRONT for m in todo) and callable(p.pareto_front) else None)
@@ -1561,7 +1924,9 @@ def _retrajectory_one(args) -> str:
             if n and rec.get("finite", True):
                 rec.update(M.compute(F, ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=todo,
                                      pop=p.pop_size, hv_options=hvo, X=X, pareto_set=pset,
-                                     bounds=p.bounds, cyclic=p.cyclic_vars))
+                                     bounds=p.bounds, cyclic=p.cyclic_vars,
+                                     distance_fn=p.distance_fn,
+                                     constraints=p.constraints if p.has_cons else None))
         tmp = traj_path.with_suffix(".jsonl.tmp")
         tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in recs),
                        encoding="utf-8")
@@ -1624,24 +1989,27 @@ def _rereference_one(args) -> str:
         kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, pop=p.pop_size,
                   bounds=p.bounds, cyclic=p.cyclic_vars)
 
-        def again(F, values: dict) -> dict:
+        def again(F, values: dict, X=None) -> dict:
             """The reference-dependent metrics among `values`, measured on F
-            again: {name: old value}, `values` updated in place."""
+            again: {name: old value}, `values` updated in place. A constrained
+            problem's on the feasible rows, from X (metrics.compute)."""
             names = [x for x in values if x in NEEDS_FRONT]
             if not names or not len(F) or not np.all(np.isfinite(F)):
                 return {}
-            new = M.compute(F, which=names, **kw)
+            cons = p.constraints if p.has_cons and X is not None else None
+            new = M.compute(F, which=names, X=X, constraints=cons, **kw)
+            new.pop("feas_share", None)
             before = {x: values.get(x) for x in new}
             values.update(new)
             return before
 
         kept: dict = {}
         if meta.get("final"):
-            F, _ = _read_points(run_dir / "final.csv", m, n)
-            kept["final"] = again(F, meta["final"])
+            F, X = _read_points(run_dir / "final.csv", m, n)
+            kept["final"] = again(F, meta["final"], X)
         if meta.get("final_archive") and (run_dir / "final_archive.csv.gz").is_file():
             F, _ = _read_points(run_dir / "final_archive.csv.gz", m, n)
-            kept["final_archive"] = again(F, meta["final_archive"])
+            kept["final_archive"] = again(F, meta["final_archive"])   # feasible points only
         if meta.get("archive_at") and (run_dir / "archive_at.npz").is_file():
             with np.load(run_dir / "archive_at.npz") as z:
                 A = {k: z[k] for k in z.files}
@@ -1665,9 +2033,10 @@ def _rereference_one(args) -> str:
             start = 0
             for rec, cnt in zip(recs, S["n"].tolist()):
                 F = S["F"][start:start + cnt].astype(float)
+                X = S["X"][start:start + cnt].astype(float) if "X" in S else None
                 start += cnt
                 if cnt and rec.get("finite", True):
-                    again(F, rec)
+                    again(F, rec, X)
             keep_old = run_dir / f"trajectory.ref_v{old}.jsonl"
             if not keep_old.is_file():
                 shutil.copy2(traj_path, keep_old)
@@ -1730,6 +2099,107 @@ def recompute_reference(root: Path, *, workers: int = 1, problems=None) -> dict:
     return counts
 
 
+def _dense_one(run_dir: str) -> str:
+    """One finished run's front indicators against the dense reference, from
+    its saved answers, as new "<indicator>_ref_v3" values beside the old ones
+    (recompute_dense)."""
+    import numpy as np
+    from ..benchmarks import get as bench_get
+    from ..benchmarks.registry import dense_reference
+    from . import metrics as M
+    run_dir = Path(run_dir)
+    meta_path = run_dir / "meta.json"
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if meta.get("status") != "done" or meta.get("reference_v3"):
+            return "skipped"
+        p = bench_get(meta["problem"])
+        m = int(meta.get("n_objs") or p.n_obj)
+        n = int(meta.get("n_vars") or p.n_vars)
+        ref3, info3 = dense_reference(meta["problem"], p.pop_size)
+        cons = p.constraints if p.has_cons else None
+
+        def add(F, X, values: dict) -> None:
+            names = [x for x in values if x in NEEDS_FRONT]
+            if not names or not len(F) or not np.all(np.isfinite(F)):
+                return
+            # an archive holds feasible points only: without its variables, as it is
+            c = cons if X is not None else None
+            got = M.compute(F, ref_front=ref3, ideal=p.ideal, nadir=p.nadir, which=names, X=X,
+                            constraints=c)
+            values.update({x + DENSE_SUFFIX: got[x] for x in names})
+
+        if meta.get("final") and (run_dir / "final.csv").is_file():
+            F, X = _read_points(run_dir / "final.csv", m, n)
+            add(F, X, meta["final"])
+        got = _archive_answer(run_dir, meta, p, m, n) if meta.get("final_archive") else None
+        if got is not None:
+            F, X = got
+            add(F, X, meta["final_archive"])
+        if meta.get("archive_at") and (run_dir / "archive_at.npz").is_file():
+            with np.load(run_dir / "archive_at.npz") as z:
+                A = {k: z[k] for k in z.files}
+            start = 0
+            for b, cnt in zip(A["budget"].tolist(), A["n"].tolist()):
+                F = A["F"][start:start + cnt].astype(float)
+                X = A["X"][start:start + cnt].astype(float) if "X" in A else None
+                start += cnt
+                if str(b) in meta["archive_at"]:
+                    add(F, X, meta["archive_at"][str(b)])
+        traj_path, snap_path = run_dir / "trajectory.jsonl", run_dir / "snapshots.npz"
+        if traj_path.is_file() and snap_path.is_file():
+            with np.load(snap_path) as z:
+                S = {k: z[k] for k in z.files}
+            recs = [json.loads(line) for line in traj_path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()]
+            if [r.get("fe") for r in recs] != S["fe"].tolist():
+                print(f"{run_dir}: the snapshots and the trajectory do not line up",
+                      file=sys.stderr)
+                return "failed"
+            start = 0
+            for rec, cnt in zip(recs, S["n"].tolist()):
+                F = S["F"][start:start + cnt].astype(float)
+                X = S["X"][start:start + cnt].astype(float) if "X" in S else None
+                start += cnt
+                if cnt and rec.get("finite", True):
+                    add(F, X, rec)
+            tmp = traj_path.with_suffix(".jsonl.tmp")
+            tmp.write_text("".join(json.dumps(r, separators=(",", ":")) + "\n" for r in recs),
+                           encoding="utf-8")
+            os.replace(tmp, traj_path)
+        meta["reference_v3"] = info3
+        _write_json(meta_path, meta)
+        return "done"
+    except Exception as e:                           # noqa: BLE001
+        print(f"{run_dir}: {type(e).__name__}: {e}", file=sys.stderr)
+        return "failed"
+
+
+def recompute_dense(root: Path, *, workers: int = 1, problems=None) -> dict:
+    """Add to every finished run on a problem with a dense reference
+    (registry.dense_reference: 4 to 10 objectives) its front indicators
+    against it — final, archive, archive checkpoints and, from snapshots.npz,
+    the trajectory — as "<indicator>_ref_v3" beside the old values, which stay
+    as they are; meta["reference_v3"] records the reference's rows and step.
+    A run that has them is skipped."""
+    from ..benchmarks.registry import has_dense_reference
+    tasks = [str(m.parent) for m in root.glob("*/*/run_*/meta.json")
+             if (problems is None or m.parents[2].name in problems)
+             and has_dense_reference(m.parents[2].name)]
+    counts: dict = {}
+    if workers > 1 and len(tasks) > 1:
+        import multiprocessing as mp
+        single_threaded_blas()
+        with mp.Pool(processes=workers) as pool:
+            for status in pool.imap_unordered(_dense_one, tasks, chunksize=4):
+                counts[status] = counts.get(status, 0) + 1
+    else:
+        for task in tasks:
+            status = _dense_one(task)
+            counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
 def scenario_rows(rows: list[dict], scenario: str) -> list[dict]:
     """The rows as the tables read them: "archive" puts final_archive in place of
     final, and value_at reads such a row at a smaller budget from its archive
@@ -1785,8 +2255,10 @@ def main(argv: list[str] | None = None) -> int:
                          "since the run (benchmarks registry: REFERENCE_VERSION, "
                          "REFERENCE_CHANGED) again against the current one — final, archive, "
                          "archive checkpoints and trajectory, from the saved answers — keeping "
-                         "the old values beside the new, and exit (honours --workers and "
-                         "--problems)")
+                         "the old values beside the new; and measure every run on a problem "
+                         "with a dense reference (4 to 10 objectives) against it too, as "
+                         "<indicator>_ref_v3, the old values untouched; then exit (honours "
+                         "--workers and --problems)")
     ap.add_argument("--scenario", choices=("final", "archive"), default="final",
                     help="which answer of a run the tables, --cover and --recompute read: "
                          "'final', what the algorithm returned, or 'archive', the run archive "
@@ -1799,14 +2271,17 @@ def main(argv: list[str] | None = None) -> int:
                          "medians across problems (Holm over the algorithms)")
     ap.add_argument("--alpha", type=float, default=0.05,
                     help="significance level for --reference (default 0.05)")
+    ap.add_argument("--adjust", choices=("holm", "bh"), default="holm",
+                    help="with --reference: how the per-problem p-values are adjusted over "
+                         "the problems — Holm (default) or Benjamini-Hochberg")
     ap.add_argument("--ci", action="store_true",
                     help="with --ranks: a 95 %% bootstrap interval for every mean rank, "
                          "resampling the problems")
     ap.add_argument("--by", metavar="KEY",
                     help="with --ranks: mean ranks within groups of problems sharing a "
                          "property: front, multimodal, deceptive, bias, scaled, separable, "
-                         "centre, degenerate, disconnected, linkage, n_obj, n_vars, "
-                         "bbob_groups (benchmarks/properties.py)")
+                         "centre, boundary, degenerate, disconnected, linkage, n_obj, "
+                         "n_vars, bbob_groups (benchmarks/properties.py)")
     ap.add_argument("--gap", metavar="METRIC",
                     help="print each algorithm's median gap to the best final METRIC any run "
                          "reached, per problem, and exit")
@@ -1817,10 +2292,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="print the runtime ECDF of METRIC over (run, target) pairs, targets "
                          "at fixed distances from the best known value, and exit")
     ap.add_argument("--bias", action="store_true",
-                    help="print where each algorithm's final populations sit in the box: "
-                         "per variable a chi-square against uniform over 10 bins, and the "
-                         "shares near the bounds and in the centre (the uninformative "
-                         "problems make any preference the algorithm's own)")
+                    help="print where each algorithm searched (Kudela et al. 2026): binsizes "
+                         "over 20 bins at the bounds and in the centre for the final "
+                         "populations, the non-dominated and all evaluated points, exact "
+                         "hits of a bound and of 1/2, chi-square on one point per run, the "
+                         "Clark-Evans index (the uninformative problems make any preference "
+                         "the algorithm's own)")
     ap.add_argument("--seed-distance", action="store_true",
                     help="print whether each algorithm's seeds find the same solutions: the "
                          "chamfer distance between the non-dominated sets of two runs in "
@@ -1868,11 +2345,36 @@ def main(argv: list[str] | None = None) -> int:
                          "single best solver at 5, 7 and 10 of ten seeds, Shapley values, "
                          "complementarity, the oracle gap per problem, and the matrix problem x "
                          "algorithm x budget (portfolio.py); CSV under <results>/_portfolio/")
+    ap.add_argument("--oracle", action="store_true",
+                    help="the best N points of every run's archive under IGD+ against the "
+                         "reference front, beside the population, the archive answer, "
+                         "answer_select = \"igdp_self\" and the whole archive: what the search "
+                         "found, apart from how the answer was chosen (oracle.py; not "
+                         "--portfolio's oracle, the best algorithm per problem); CSV under "
+                         "<results>/_oracle/")
+    ap.add_argument("--invariance-check", action="store_true",
+                    help="every algorithm entry on every problem of the campaign, at its "
+                         "budget: the trajectory on the objectives times 2^10 and times "
+                         "(2^-6, 1, 2^6, ...) against the original, bit for bit, and the "
+                         "final IGD+ on the objectives plus 2^4 against the original over "
+                         "--inv-seeds seeds, rank-sum and Holm (invariance.py); CSV under "
+                         "<results>/_invariance/")
+    ap.add_argument("--inv-seeds", type=int, default=30, metavar="N",
+                    help="with --invariance-check: the seeds of the shift's comparison (30)")
     ap.add_argument("--instance-space", action="store_true",
                     help="the problems as points of a plane drawn from their properties "
                          "(PILOT), per group of problems, and each algorithm's footprint there "
                          "at --cover's levels and budgets (instance_space.py; needs SciPy); CSV "
                          "under <results>/_instance_space/")
+    ap.add_argument("--is-calibration", choices=("whiten", "preserve"), default="whiten",
+                    help="with --instance-space: the plane's axes, whitened or stretched to "
+                         "the highest topological preservation (instance_space.py, THE PLANE)")
+    ap.add_argument("--is-weight", choices=("blocks", "none"), default="blocks",
+                    help="with --instance-space: the performance rows weighted sqrt(q/a) "
+                         "(q features, a algorithms) or not")
+    ap.add_argument("--is-bbob-features", choices=("sample", "properties"), default="sample",
+                    help="with --instance-space: the bbob-biobj problems' features, from a "
+                         "uniform sample of their box or their properties")
     ap.add_argument("--behaviour", action="store_true",
                     help="describe every run from its trajectory (time to targets, "
                          "convergence slope, converged-then-spreading, collapse, stagnation, "
@@ -1934,7 +2436,7 @@ def main(argv: list[str] | None = None) -> int:
     for flag, metric in (("--compare", args.compare), ("--ranks", args.ranks),
                          ("--gap", args.gap), ("--zero-share", args.zero_share),
                          ("--ecdf", args.ecdf)):
-        if metric is not None and metric not in TABLE_NAMES:
+        if metric is not None and not is_table_name(metric):
             print(f"{flag}: unknown metric '{metric}'; known: {', '.join(TABLE_NAMES)}",
                   file=sys.stderr)
             return 1
@@ -1960,7 +2462,7 @@ def main(argv: list[str] | None = None) -> int:
         names = [m.strip() for m in args.recompute.split(",") if m.strip()]
         bad = [m for m in names if m not in METRIC_NAMES]
         if bad or not names:
-            stats = [m for m in bad if m in RUN_STATS]
+            stats = [m for m in bad if m in RUN_STATS + DE_STATS + SA_STATS]
             why = (f" ({', '.join(stats)} describe the run itself: only a run with "
                    f"operator_stats = true records them)" if stats else "")
             print(f"--recompute: unknown metric(s) {', '.join(bad) or '(none given)'}{why}; "
@@ -1975,7 +2477,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.recompute_reference:
         counts = recompute_reference(root, workers=args.workers, problems=only_problems)
         print(f"measured against the current reference: {counts}", file=sys.stderr)
-        return 0 if counts.get("failed", 0) == 0 else 2
+        dense = recompute_dense(root, workers=args.workers, problems=only_problems)
+        print(f"measured against the dense reference (_ref_v3): {dense}", file=sys.stderr)
+        return 0 if counts.get("failed", 0) == 0 and dense.get("failed", 0) == 0 else 2
     if args.recompute_trajectory:
         names = [m.strip() for m in args.recompute_trajectory.split(",") if m.strip()]
         bad = [m for m in names if m not in METRIC_NAMES]
@@ -1989,6 +2493,10 @@ def main(argv: list[str] | None = None) -> int:
                          spec.trajectory_hv_max_m, spec.trajectory_hv_mc_samples))
         print(f"recomputed {', '.join(names)} along the trajectories: {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
+    if args.oracle:
+        from . import oracle as O
+        print(O.run(root, n_ref=spec.n_ref, workers=args.workers))
+        return 0
     if args.cover:
         from . import cover as C
         try:
@@ -2011,6 +2519,11 @@ def main(argv: list[str] | None = None) -> int:
                     replicates=args.cover_bootstrap, workers=args.workers,
                     scenario=args.scenario, n_ref=spec.n_ref,
                     keep_caveats=args.cover_keep_caveats))
+        return 0
+    if args.invariance_check:
+        from . import invariance as I
+        print(I.run_campaign(cfg, spec, root, seeds=args.inv_seeds, workers=args.workers,
+                             problems=only_problems))
         return 0
     if args.portfolio or args.instance_space:
         try:
@@ -2038,7 +2551,9 @@ def main(argv: list[str] | None = None) -> int:
             print(S.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
                         min_seeds=args.cover_seeds, workers=args.workers,
                         scenario=args.scenario, n_ref=spec.n_ref,
-                        keep_caveats=args.cover_keep_caveats))
+                        keep_caveats=args.cover_keep_caveats,
+                        calibration=args.is_calibration, weight=args.is_weight,
+                        bbob_features=args.is_bbob_features))
         return 0
     if args.behaviour:
         if args.scenario == "archive":
@@ -2064,23 +2579,28 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
                 print(R.format_reference(R.reference_report(
                     rows, metric, args.reference, at=args.at, scenario=args.scenario,
-                    alpha=args.alpha)))
+                    alpha=args.alpha, adjust=args.adjust)))
                 print()
             if args.ranks and args.by:
+                empty: dict = {}
                 print(R.format_property_ranks(R.property_ranks(
-                    rows, args.ranks, args.by, at=args.at, scenario=args.scenario),
-                    args.ranks, args.by))
+                    rows, args.ranks, args.by, at=args.at, scenario=args.scenario, empty=empty),
+                    args.ranks, args.by, empty))
             elif args.ranks:
                 table = rank_table(rows, args.ranks, args.at)
                 print(format_ranks(table))
                 if args.ci:
-                    ci = R.rank_intervals(rows, args.ranks, at=args.at, scenario=args.scenario)
+                    empty: dict = {}
+                    ci = R.rank_intervals(rows, args.ranks, at=args.at, scenario=args.scenario,
+                                          empty=empty)
                     print("\n95 % bootstrap interval of each mean rank (problems resampled "
                           "2000 times)")
                     for alg, _ in table["algorithms"]:
                         if alg in ci:
                             lo, hi = ci[alg]
-                            print(f"  {R.mark_budget(alg)[:16]:<16} [{lo:5.2f}, {hi:5.2f}]")
+                            k = empty.get(alg)
+                            print(f"  {R.mark_budget(alg)[:16]:<16} [{lo:5.2f}, {hi:5.2f}]"
+                                  + (f"  {k} empty, ranked worst" if k else ""))
             if args.gap:
                 print(R.gap_report(rows, args.gap))
             if args.zero_share:
@@ -2104,8 +2624,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.compare:
         from .postprocess import budget_note
         at = f" at {args.at:.0%} of the budget" if args.at is not None else ""
-        print(f"median {args.compare}{at} ({args.scenario}), runs per cell in brackets")
-        table = compare_table(rows, args.compare, args.at)
+        print(f"median {args.compare}{at} ({args.scenario}), runs per cell in brackets; "
+              f"~ the median answer has fewer than N/2 points")
+        sizes: dict = {}
+        empty: dict = {}
+        table = compare_table(rows, args.compare, args.at, sizes, empty)
         algs = sorted({a for d in table.values() for a in d})
         print("problem".ljust(16) + "".join((a[:13] + budget_note(a)).rjust(15) for a in algs))
         for prob in sorted(table):
@@ -2113,10 +2636,16 @@ def main(argv: list[str] | None = None) -> int:
             for a in algs:
                 if a in table[prob]:
                     med, q1, q3, n = table[prob][a]
-                    cells.append(f"{med:.4g} ({n})".rjust(15))
+                    mark = "~" if is_short(*sizes.get((prob, a), (None, None))) else ""
+                    k = empty.get((prob, a))
+                    runs = f"{n}, {k} empty" if k else f"{n}"
+                    cells.append(f"{med:.4g} ({runs}){mark}".rjust(15))
                 else:
                     cells.append("-".rjust(15))
             print(prob.ljust(16) + "".join(cells))
+        if empty:
+            print(f"empty: runs without a feasible point in the answer, {sum(empty.values())} "
+                  f"in all; counted as the worst value (inf) in the median")
         return 0
     if args.emit_slurm:
         script = emit_slurm(cfg, args.emit_slurm, time_limit=args.time,

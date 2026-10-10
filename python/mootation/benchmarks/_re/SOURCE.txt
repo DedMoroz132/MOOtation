@@ -1,0 +1,6 @@
+Copied unchanged from github.com/ryojitanabe/reproblems at commit 7876b4e
+(Tanabe & Ishibuchi, Applied Soft Computing 89:106078, 2020):
+  approximated_Pareto_fronts/reference_points_RE*.dat
+  ideal_nadir_points/ideal_point_RE*.dat, nadir_point_RE*.dat
+(not the bug_* files of RE21, RE25 and RE42, which belong to the code before
+the fixes of the repository's change log). MIT License: LICENSE.txt.

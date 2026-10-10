@@ -12,6 +12,25 @@
 #   Polygon x M={3..6}  Ishibuchi, Akedo, Nojima 2011
 #   MOP1-7, BT1-9, and the inverted / scaled / minus DTLZ variants
 #   shiftDTLZ1-4        DTLZ1-4 with the distance optimum off the centre (ours)
+#   wideDTLZ3 x M={3,5} DTLZ3 with the distance variables in [0, 1.2] (ours)
+#   shiftZDT1-4, shiftZDT6, shiftDTLZ6-7
+#                       the distance optimum off the bound (ours, shifted.py)
+#   C-DTLZ x M={3,5}    Jain & Deb 2014, constrained DTLZ (c_dtlz.py)
+#   MW1-14              Ma & Wang 2019, constrained; MW4, MW8, MW14 at M={3,5} (mw.py)
+#   <base>_n1 .. _h5    noisy copies, four kinds at two levels (n stochastic, d
+#                       deterministic, s a step, h relative), of ZDT1, ZDT4,
+#                       DTLZ1_3D, DTLZ2_3D, DTLZ2_5D, WFG4_3D, WFG7_3D,
+#                       rcDTLZ2_3D, RE21, RE25 and RE34 (ours, noisy.py)
+#   rZDT1-4, rZDT6, rDTLZ1-4, rcDTLZ2, rcDTLZ5, rWFG1-9, rcMaF1, rMaF2-4,
+#   rcMaF5-6, rZCAT1-20, rcPolygon x M={3,5}, rcDTLZ2 at M={6,10}, the Q = I
+#                       controls (r0, c0), and three instances <name>_i1.._i3
+#                       of every rotated one: the distance variables rotated
+#                       (ours, rotated.py)
+#   RE21-91, CRE21-51   Tanabe & Ishibuchi 2020, real-world problems (re.py);
+#                       RE22c, RE33c their corrected copies (task 7, §9)
+#   OMM, LOTZ, OJZJ     bit-string problems of the runtime theory (binary.py)
+#   DAS-CMOP1-9         Fan et al. 2020, difficulty-adjustable constrained, at
+#                       the paper's sixteen triplets (dascmop.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -42,7 +61,7 @@ from .polygon import (polygon_eval, polygon_bounds,
 from .mop     import MOP_SPECS, mop_nadir, mop_ideal
 from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
                            hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz,
-                           shift_centres)
+                           shift_centres, WIDE_M, wide_bounds)
 from .maf     import MAF_FIX, maf_n_vars
 from .bt      import BT_SPECS, N as BT_N
 from . import polygon_ishibuchi as _ipoly
@@ -50,6 +69,15 @@ from . import zcat as _zcat
 from . import bbob_biobj as _bbobbiobj
 from . import uninformative as _uninf
 from . import pareto_sets as _psets
+from . import shifted as _shift
+from . import distances as _dist
+from . import c_dtlz as _cd
+from . import noisy as _noisy
+from . import rotated as _rot
+from . import re as _re
+from . import binary as _bin
+from . import dascmop as _das
+from . import mw as _mw
 
 
 # =============================================================
@@ -74,16 +102,34 @@ class BenchProblem:
     # None where no reference is defined yet; hypervolume still works.
     pareto_front: Optional[Callable[[int], "np.ndarray"]] = None
     # A sampler of the true Pareto SET, in decision space, for IGDX and CR
-    # (benchmarks/pareto_sets.py): IPolygon, Polygon, DTLZ1-4, shiftDTLZ1-4,
-    # ZCAT. None elsewhere, and the decision-space indicators say nothing there.
+    # (benchmarks/pareto_sets.py): IPolygon, Polygon, ZDT1-4 and 6, DTLZ1-4
+    # and 7, DTLZ5-6 up to three objectives, IDTLZ, SDTLZ, minusDTLZ2, the
+    # shift and wide variants, ZCAT, C1-DTLZ1/3 and C2-DTLZ2. None elsewhere,
+    # and the decision-space indicators say nothing there.
     pareto_set: Optional[Callable[[int], "np.ndarray"]] = None
     # Variables whose distance wraps with the period of their range: the
     # problem reads them mod 1 (shiftDTLZ's distance variables).
     cyclic_vars: Tuple[int, ...] = ()
+    # x -> g(x) - g*, the distance to the Pareto set in the problem's own g,
+    # where the problem has one (distances.py: ZDT, DTLZ and their variants);
+    # the metrics g_min and g_median read it. None elsewhere.
+    distance_fn: Optional[Callable[[List[float]], float]] = None
     # A problem whose values depend on the run, not only on x, hands each run
     # its own evaluator: make_evaluator(seed) -> callable (uninformative.py).
     # None for every ordinary problem, where `evaluate` is the function.
     make_evaluator: Optional[Callable[[int], Callable]] = None
+    # False where pareto_front is an approximation, not the front: a verified
+    # sample (C2-ConvexDTLZ2) or a set of good points found by optimizers
+    # (RE, CRE); IGD+ and eps then measure the distance to it.
+    front_exact: bool = True
+    # A noisy copy's noise-free objectives (noisy.py), on which a campaign
+    # measures it; None for every other problem.
+    true_objectives: Optional[Callable[[List[float]], List[float]]] = None
+    # The variables' types (mootation.var_types): "real", "int", "bin" or
+    # ("discrete", values), one per variable; None: all real. RE22, RE23,
+    # RE25, RE35, RE36, CRE24, CRE25 and the corrected RE22c and RE33c (task 7,
+    # §10), and the bit-string problems (binary.py).
+    var_types: Optional[list] = None
 
     @property
     def fevals_max(self) -> int:
@@ -282,12 +328,25 @@ def _pf_dtlz7(M: int, n: int) -> np.ndarray:
 # at all, and at M = 8 the front runs to the bound of g like DTLZ5's (f_7 up
 # to 244.7). (Ishibuchi et al. 2016 predates MaF, 2017; the old entry
 # "MaF6: 4" was carried over from DTLZ5.)
-DEGENERATE_SUBSET_FROM = {"DTLZ5": 4, "DTLZ6": 4, "MaF6": 7, "WFG3": 3}
+DEGENERATE_SUBSET_FROM = {"DTLZ5": 4, "DTLZ6": 4, "shiftDTLZ6": 4, "MaF6": 7, "WFG3": 3}
 
 _DEGENERATE_WARNED: set[str] = set()
 
 # Problem keys whose reference front is the full one (fronts_full).
 FULL_FRONT: set[str] = set()
+
+# A problem whose reference front and frame are another's, row for row: the
+# shifted copies (shifted.py) and the noisy ones (noisy.py) -> their base
+# problem.
+FRAME_OF: Dict[str, str] = {}
+
+# The rotated problems' maps (rotated.py), for the distance functions and the tests.
+ROTATED: Dict[str, "_rot.Rotated"] = {}
+
+# Problems whose ideal and nadir are set at registration and are not read off
+# a front sample (C-DTLZ: c_dtlz.py, FRONTS; MW: mw.py, frame; RE and CRE: the
+# authors' files).
+EXACT_FRAME: set[str] = set()
 
 
 def degenerate_subset_note(name: str) -> str | None:
@@ -763,6 +822,15 @@ PROBLEMS: Dict[str, BenchProblem] = {}
 #  Zitzler, Deb, Thiele. Comparison of Multiobjective Evolutionary
 #  Algorithms: Empirical Results. EMO 2000.
 # =============================================================
+def _ps_zdt(base: str, n: int, rest) -> np.ndarray:
+    """ZDT's Pareto set (pareto_sets.fill): x_1 over [0, 1] — for ZDT3 the f_1
+    = x_1 of its reference front, the disconnected set filtered and checked
+    there — and x_2 .. x_m at `rest` (0 for ZDT, the centres for shiftZDT)."""
+    n_vars = 30 if base in ("ZDT1", "ZDT2", "ZDT3") else 10
+    x1 = _pf_zdt3(n)[:, 0] if base == "ZDT3" else np.linspace(0.0, 1.0, n)
+    return _psets.fill(x1[:, None], n_vars, rest)
+
+
 def _zdt_register():
     pop, ng = _budget(2)
 
@@ -779,7 +847,8 @@ def _zdt_register():
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, 0.0), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-        pareto_front=lambda n: _pf_zdt1(n))
+        pareto_front=lambda n: _pf_zdt1(n),
+        pareto_set=lambda n: _ps_zdt("ZDT1", n, 0.0))
 
     # ── ZDT2 — non-convex PF ─────────────────────────────────────────────────
     def zdt2(x):
@@ -794,7 +863,8 @@ def _zdt_register():
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, 0.0), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-        pareto_front=lambda n: _pf_zdt2(n))
+        pareto_front=lambda n: _pf_zdt2(n),
+        pareto_set=lambda n: _ps_zdt("ZDT2", n, 0.0))
 
     # ── ZDT3 — disconnected PF ───────────────────────────────────────────────
     def zdt3(x):
@@ -809,7 +879,8 @@ def _zdt_register():
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, -0.7731), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-        pareto_front=lambda n: _pf_zdt3(n))
+        pareto_front=lambda n: _pf_zdt3(n),
+        pareto_set=lambda n: _ps_zdt("ZDT3", n, 0.0))
 
     # ── ZDT4 — multimodal ────────────────────────────────────────────────────
     def zdt4(x):
@@ -828,7 +899,8 @@ def _zdt_register():
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, 0.0), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-        pareto_front=lambda n: _pf_zdt4(n))
+        pareto_front=lambda n: _pf_zdt4(n),
+        pareto_set=lambda n: _ps_zdt("ZDT4", n, 0.0))
 
     # ── ZDT6 — biased, non-uniform PF ────────────────────────────────────────
     def zdt6(x):
@@ -844,7 +916,8 @@ def _zdt_register():
         hv_ref_raw=(1.1, 11.0), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.281, 0.0), nadir=(1.0, 0.921),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-        pareto_front=lambda n: _pf_zdt6(n))
+        pareto_front=lambda n: _pf_zdt6(n),
+        pareto_set=lambda n: _ps_zdt("ZDT6", n, 0.0))
 
 
 # =============================================================
@@ -1278,8 +1351,13 @@ def _register_dtlz():
             def _eval(x, _f=func, _M=M): return _f(list(x), _M)
             def _pf(n, _g=_DTLZ_PF[name], _M=M): return _g(_M, n)
             _ps = None
-            if name in ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4"):
+            if name in ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4") or (name == "DTLZ5" and M <= 3):
                 def _ps(n, _M=M, _nv=n_vars): return _psets.dtlz(_M, _nv, n)
+            elif name == "DTLZ6" and M <= 3:            # from four objectives: g > 0 too
+                def _ps(n, _M=M, _nv=n_vars): return _psets.dtlz(_M, _nv, n, 0.0)
+            elif name == "DTLZ7":
+                def _ps(n, _M=M, _nv=n_vars):
+                    return _psets.fill(_pf_dtlz7(_M, n)[:, :_M - 1], _nv, 0.0)
             prob_name = f"{name}_{M}D"
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=n_vars, bounds=bounds, n_obj=M,
@@ -1317,6 +1395,71 @@ def _register_shifted_dtlz():
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
                 pareto_front=_pf, pareto_set=_ps,
                 cyclic_vars=tuple(range(M - 1, n_vars)))
+
+
+# =============================================================
+#  wideDTLZ3 × M={3,5}: DTLZ3 with the distance variables in [0, 1.2]
+#  (dtlz_variants.py). The same function, front, ideal, nadir and Pareto set
+#  as DTLZ3; only the box is wider, its middle on a local optimum of g.
+# =============================================================
+def _register_wide_dtlz3():
+    for M in WIDE_M:
+        pop, ng = _budget(M)
+        n_vars = dtlz_n_vars("DTLZ3", M)
+        nadir  = dtlz_nadir("DTLZ3", M)
+        ideal  = dtlz_ideal("DTLZ3", M)
+        def _eval(x, _M=M): return DTLZ_FUNCS["DTLZ3"](list(x), _M)
+        def _pf(n, _M=M): return _DTLZ_PF["DTLZ3"](_M, n)
+        def _ps(n, _M=M, _nv=n_vars): return _psets.dtlz(_M, _nv, n)
+        prob_name = f"wideDTLZ3_{M}D"
+        PROBLEMS[prob_name] = BenchProblem(
+            name=prob_name, n_vars=n_vars, bounds=wide_bounds(n_vars, M), n_obj=M,
+            evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(v * 1.1 for v in nadir),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+            ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+            pareto_front=_pf, pareto_set=_ps)
+
+
+# =============================================================
+#  shiftZDT1-4, shiftZDT6 and shiftDTLZ6/7 × the DTLZ sizes (shifted.py, task
+#  6 of 2026-10-09): ZDT1-4, ZDT6, DTLZ6 and DTLZ7 with every distance
+#  variable's optimum moved off the bound, the base problem evaluated at the
+#  folded (shiftZDT4: shifted) point. Box, budget, ideal, nadir and reference
+#  front are the base problem's: the front is set to the base's own after the
+#  reference version (_shifted_fronts), the frame read as the base's (FRAME_OF).
+# =============================================================
+def _add_shifted(name: str, b: "BenchProblem", evaluate, pareto_set) -> None:
+    PROBLEMS[name] = BenchProblem(
+        name=name, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
+        evaluate=evaluate, constraints=_no_cons,
+        hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm, hv_norm_divisor=b.hv_norm_divisor,
+        ideal=b.ideal, nadir=b.nadir, pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs,
+        has_cons=False, pareto_front=None, pareto_set=pareto_set)
+    FRAME_OF[name] = b.name
+
+
+def _register_shifted_bound():
+    for base in _shift.ZDT_BASES:
+        b = PROBLEMS[base]
+        c = _shift.zdt_centres(base, b.n_vars)
+        def _eval(x, _b=base, _f=b.evaluate, _c=c): return _f(list(_shift.zdt_input(_b, x, _c)))
+        def _ps(n, _b=base, _c=c): return _ps_zdt(_b, n, _c)
+        _add_shifted(f"shift{base}", b, _eval, _ps)
+    for M in (2, 3, 4, 5, 6, 10, 15):
+        for base in _shift.DTLZ_BASES:
+            b = PROBLEMS[f"{base}_{M}D"]
+            c = shift_centres(b.n_vars - M + 1)
+            def _eval(x, _f=DTLZ_FUNCS[base], _M=M, _c=c):
+                return _f(list(_shift.dtlz_input(x, _M, _c)), _M)
+            _ps = None                                  # shiftDTLZ6 from four objectives
+            if base == "DTLZ7":
+                def _ps(n, _M=M, _nv=b.n_vars, _c=c):
+                    return _psets.fill(_pf_dtlz7(_M, n)[:, :_M - 1], _nv, _c)
+            elif M <= 3:
+                def _ps(n, _M=M, _nv=b.n_vars, _c=c): return _psets.dtlz(_M, _nv, n, _c)
+            _add_shifted(f"shift{base}_{M}D", b, _eval, _ps)
 
 
 # =============================================================
@@ -1399,16 +1542,27 @@ def _register_bbob_biobj():
 
 
 def _register_uninformative():
+    """f1 (the original pair) and Kudela et al.'s f2b-f5 (uninformative.py). The
+    frame of f2b-f5 is the noise-free curve's (z = 0), which the run's
+    non-dominated points approach; there is no reference front."""
     pop, ng = _budget(2)
-    for n in _uninf.SIZES:
-        key = _uninf.name(n)
-        PROBLEMS[key] = BenchProblem(
-            name=key, n_vars=n, bounds=[(0.0, 1.0)] * n, n_obj=2,
-            evaluate=_uninf.evaluate_by_x, constraints=_no_cons,
-            hv_ref_raw=(1.1, 1.1), hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
-            ideal=(0.0, 0.0), nadir=(1.0, 1.0),
-            pop_size=pop, n_gen=ng, K_runs=30, has_cons=False,
-            pareto_front=None, make_evaluator=_uninf.Evaluator)
+    a = np.linspace(0.0, 1.0, 1001)
+    for problem in _uninf.PROBLEMS:
+        if problem == "f1":
+            ideal, nadir = (0.0, 0.0), (1.0, 1.0)
+        else:
+            g2 = np.array([_uninf.objectives(problem, float(v), 0.0)[1] for v in a])
+            ideal, nadir = (0.0, float(g2.min())), (1.0, float(g2.max()))
+        for n in _uninf.SIZES:
+            key = _uninf.name(n, problem)
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=n, bounds=[(0.0, 1.0)] * n, n_obj=2,
+                evaluate=lambda x, _p=problem: _uninf.evaluate_by_x(x, _p),
+                constraints=_no_cons,
+                hv_ref_raw=dv_hv_ref(ideal, nadir), hv_ref_norm=_ref_norm(2),
+                hv_norm_divisor=_divisor(2), ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=30, has_cons=False, pareto_front=None,
+                make_evaluator=lambda seed, _p=problem: _uninf.Evaluator(seed, _p))
 
 
 # =============================================================
@@ -1469,6 +1623,10 @@ def _register_dtlz_variants():
             nadir  = spec["nadir"](M)
             def _eval(x, _f=spec["eval"], _M=M): return _f(list(x), _M)
             def _pf(n, _p=spec["pf"], _M=M): return _p(_M, n)
+            if name == "minusDTLZ2":                 # g at its largest: 0 or 1
+                def _ps(n, _M=M, _nv=n_vars): return _psets.minus_dtlz(_M, _nv, n)
+            else:                                    # g = 0: the distance variables at 1/2
+                def _ps(n, _M=M, _nv=n_vars): return _psets.dtlz(_M, _nv, n)
             prob_name = f"{name}_{M}D"
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
@@ -1477,7 +1635,7 @@ def _register_dtlz_variants():
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-                pareto_front=_pf)
+                pareto_front=_pf, pareto_set=_ps)
 
 
 # =============================================================
@@ -1537,6 +1695,8 @@ _zdt_register()
 _register_wfg()
 _register_dtlz()
 _register_shifted_dtlz()
+_register_wide_dtlz3()
+_register_shifted_bound()
 _register_zcat()
 _register_bbob_biobj()
 _register_uninformative()
@@ -1564,10 +1724,244 @@ def _register_ipolygon():
             pareto_front=_pf, pareto_set=_ps)
 
 
+# =============================================================
+#  C-DTLZ x M={3,5}: Jain & Deb's constrained DTLZ (c_dtlz.py, task 6 of
+#  2026-10-09, item 5). The constraints in the library's sign, <= 0
+#  satisfied; ideal and nadir exact (the fronts' corners, c_dtlz.py FRONTS).
+# =============================================================
+def _register_c_dtlz():
+    for M in _cd.SIZES:
+        pop, ng = _budget(M)
+        for name in _cd.NAMES:
+            n_vars = _cd.n_vars(name, M)
+            top = {"C1-DTLZ1": 0.5, "C3-DTLZ4": 2.0}.get(name, 1.0)
+            ideal, nadir = (0.0,) * M, (top,) * M
+            def _eval(x, _n=name, _M=M): return _cd.objectives(_n, x, _M)
+            def _cons(x, _n=name, _M=M): return _cd.constraints(_n, _cd.objectives(_n, x, _M), _M)
+            def _pf(n, _n=name, _M=M): return _cd.front(_n, _M, n, _dd_simplex, _dd_sphere)
+            _ps = None
+            if name in ("C1-DTLZ1", "C1-DTLZ3", "C2-DTLZ2"):
+                def _ps(n, _n=name, _M=M): return _cd.pareto_set(_n, _M, n, _psets.dtlz)
+            key = f"{name}_{M}D"
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
+                evaluate=_eval, constraints=_cons,
+                hv_ref_raw=tuple(v * 1.1 for v in nadir),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+                ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=True,
+                pareto_front=_pf, pareto_set=_ps, front_exact=name != "C2-ConvexDTLZ2")
+            EXACT_FRAME.add(key)
+
+
+# =============================================================
+#  Noisy copies (noisy.py, task 6 of 2026-10-09, item 7; task 7, §4):
+#  <base>_n1 .. _h5, four kinds at sigma = 0.01 and 0.05. Everything but the
+#  values is the base's: box, budget, frame and front (FRAME_OF), Pareto set,
+#  distance function; true_objectives is the base's evaluate. The bases of
+#  noisy.LATE_BASES exist only after the reference version (rcDTLZ2_3D, RE):
+#  their copies take the base's front, distance function and frame as they are.
+# =============================================================
+def _add_noisy(base: str, level: str, late: bool = False) -> None:
+    b = PROBLEMS[base]
+    kind, sigma = _noisy.LEVELS[level]
+    lower, upper = [lo for lo, _ in b.bounds], [hi for _, hi in b.bounds]
+
+    def _scale(_b=base, _s=sigma):
+        p = get(_b)                             # the base's frame, read when first wanted
+        return [_s * (hi - lo) for lo, hi in zip(p.ideal, p.nadir)]
+
+    def _ideal(_b=base):
+        return list(get(_b).ideal)
+
+    if kind == "n":                             # as since task 6, bit for bit
+        def _eval(x, _f=b.evaluate, _sc=_scale): return _noisy.evaluate_by_x(_f, _sc(), x)
+    else:
+        def _eval(x, _f=b.evaluate, _sc=_scale, _k=kind, _s=sigma):
+            return _noisy.evaluate_by_x(_f, _sc(), x, _k, ideal=_ideal(), sigma=_s,
+                                        lower=lower, upper=upper)
+
+    def _make(seed, cell=_noisy.CELL, _f=b.evaluate, _sc=_scale, _k=kind, _s=sigma):
+        return _noisy.Evaluator(_f, _sc(), seed, _k, ideal=_ideal(), sigma=_s,
+                                lower=lower, upper=upper, cell=cell)
+    key = _noisy.name(base, level)
+    PROBLEMS[key] = BenchProblem(
+        name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
+        evaluate=_eval, constraints=_no_cons,
+        hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+        hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+        pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+        pareto_front=b.pareto_front if late else None, pareto_set=b.pareto_set,
+        cyclic_vars=b.cyclic_vars, make_evaluator=_make, true_objectives=b.evaluate,
+        front_exact=b.front_exact, distance_fn=b.distance_fn if late else None)
+    FRAME_OF[key] = base
+    if late and base in EXACT_FRAME:
+        EXACT_FRAME.add(key)
+    if late and base in FULL_FRONT:
+        FULL_FRONT.add(key)
+
+
+def _register_noisy(bases=_noisy.BASES, late: bool = False):
+    for base in bases:
+        for level in _noisy.LEVELS:
+            _add_noisy(base, level, late)
+
+
+# =============================================================
+#  MW1-14 (mw.py, task 6 of 2026-10-09, item 5): Ma & Wang's constrained
+#  problems, n = 15 (MW4, MW8, MW14 at M = 3 and 5, n = M + 12). The
+#  constraints in the library's sign, <= 0 satisfied; the front built from
+#  the problems' geometry (mw.py, THE FRONTS) and its frame exact (mw.frame);
+#  a Pareto set where the front lies at g = 1.
+# =============================================================
+def _register_mw():
+    for name in _mw.NAMES:
+        for M in (_mw.SIZES if name in _mw.SCALABLE else (2,)):
+            n_vars = _mw.n_vars(name, M)
+            pop, ng = _budget(M)
+            ideal, nadir = _mw.frame(name, M)
+            def _eval(x, _n=name, _M=M): return _mw.objectives(_n, x, _M)
+            def _cons(x, _n=name, _M=M): return _mw.constraints(_n, x, _M)
+            def _pf(n, _n=name, _M=M): return _mw.front(_n, _M, n, _dd_simplex, _dd_sphere)
+            _ps = None
+            if name in _mw.ON_G1:
+                def _ps(n, _n=name, _M=M): return _mw.pareto_set(_n, _M, n, _dd_simplex, _dd_sphere)
+            key = f"{name}_{M}D" if name in _mw.SCALABLE else name
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=n_vars, bounds=[(0.0, _mw.upper(name))] * n_vars, n_obj=M,
+                evaluate=_eval, constraints=_cons,
+                hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=True,
+                pareto_front=_pf, pareto_set=_ps, distance_fn=_mw.distance(name, M))
+            EXACT_FRAME.add(key)
+
+
 _register_dtlz_variants()
 _register_maf_fix()
 _register_bt()
 _register_ipolygon()
+_register_c_dtlz()
+_register_mw()
+
+
+# =============================================================
+#  DAS-CMOP1-9 (dascmop.py, task 7, §8): Fan et al.'s difficulty-adjustable
+#  constrained problems, n = 30, at the sixteen difficulty triplets of their
+#  Table 3 (DAS-CMOP<i>_t01 .. _t16) and, for DAS-CMOP1-3, Figure 6's
+#  (0, 0.5, 0.5) (_f6). The front is built on first use, and the frame read
+#  off it there (_reframe_one), so the registration costs nothing.
+# =============================================================
+def _register_dascmop():
+    for i in range(1, 10):
+        M = _das.n_obj(i)
+        pop, ng = _budget(M)
+        tags = [(f"t{k:02d}", t) for k, t in enumerate(_das.TRIPLETS, start=1)]
+        if i <= 3:
+            tags.append(("f6", _das.FIGURE6))
+        for tag, t in tags:
+            key = _das.name(i, tag)
+            def _eval(x, _i=i, _t=t): return _das.evaluate(_i, x, _t)[0]
+            def _cons(x, _i=i, _t=t): return _das.evaluate(_i, x, _t)[1]
+            def _pf(n=1000, _i=i, _t=t): return _das.front(_i, _t, int(n))
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=_das.N_VARS, bounds=[(0.0, 1.0)] * _das.N_VARS, n_obj=M,
+                evaluate=_eval, constraints=_cons,
+                hv_ref_raw=tuple([2.2] * M), hv_ref_norm=_ref_norm(M),
+                hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([2.0] * M),
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf)
+            DASCMOP[key] = (i, t)
+
+
+DASCMOP: Dict[str, tuple] = {}             # name -> (i, triplet)
+_register_dascmop()
+_register_noisy()
+
+
+# =============================================================
+#  Rotated ZDT, DTLZ and WFG (rotated.py, task 6 of 2026-10-09, item 1, and
+#  task 7, §3): the base problem evaluated at the mapped point. Box, budget,
+#  frame and front are the base's (FRAME_OF); the Pareto set has the base's
+#  positions and the distance variables at their optimum, c or 0.35 * 2i. The
+#  instances <name>_i1.._i3 of rotated.INSTANCED, _i1 the problem itself.
+# =============================================================
+def _register_rotated():
+    for stem, (family, _, _) in _rot.SPECS.items():
+        for M in _rot.sizes(stem):
+            b = PROBLEMS[family if family.startswith("ZDT") else f"{family}_{M}D"]
+            for instance in (0,) + (_rot.INSTANCES if stem in _rot.INSTANCED else ()):
+                r = _rot.Rotated(stem, M, b.n_vars, max(instance, 1))
+                if r.wfg:
+                    k = r.first
+                    def _ps(n, _k=k, _r=r):
+                        P = _psets._cube_positions(_k, n) * 2.0 * np.arange(1, _k + 1)
+                        return _psets.fill(P, _r.n_vars, _r.optimum)
+                    if family == "WFG8":
+                        def _ps(n, _k=k, _r=r):
+                            P = _psets.fill(_psets._cube_positions(_k, n)
+                                            * 2.0 * np.arange(1, _k + 1), _r.n_vars, 0.0)
+                            P[:, _k:] = [_r.distance_optimum(x) for x in P]
+                            return P
+                elif r.zdt:
+                    def _ps(n, _f=family, _r=r): return _ps_zdt(_f, n, _r.optimum)
+                elif r.kind == "zcat":
+                    _ps = b.pareto_set                   # y_II = g(y_I): the map is I there
+                elif r.kind == "polygon":
+                    def _ps(n, _M=M, _r=r):
+                        P = _psets.polygon(_M, _r.n_vars, n)
+                        P[:, 2:] = _r.optimum
+                        return P
+                else:
+                    def _ps(n, _M=M, _r=r): return _psets.dtlz(_M, _r.n_vars, n, _r.optimum)
+                key = _rot.name(stem, M, instance)
+                PROBLEMS[key] = BenchProblem(
+                    name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=M,
+                    evaluate=r.evaluate, constraints=_no_cons,
+                    hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+                    hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+                    pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+                    pareto_front=None, pareto_set=_ps)
+                FRAME_OF[key] = b.name
+                ROTATED[key] = r
+
+
+_register_rotated()
+
+
+def _attach_distances():
+    """distance_fn (distances.py) for every problem built on a g of its own:
+    ZDT1-4 and 6, DTLZ1-4 and 7, DTLZ5/6 up to three objectives, the IDTLZ,
+    SDTLZ and wideDTLZ3, the shift variants read through their shift,
+    C1-DTLZ1/3 and C2-DTLZ2, whose Pareto sets are their DTLZ's g = 0, and the
+    rotated DTLZ and their controls, read at the mapped point."""
+    from .dtlz_variants import cyclic_input
+    for name, p in PROBLEMS.items():
+        stem, M = name.split("_")[0], p.n_obj
+        if stem in _shift.ZDT_BASES:
+            p.distance_fn = _dist.zdt(stem)
+        elif stem.startswith("shiftZDT"):
+            p.distance_fn = _dist.zdt(stem[5:], lambda x, _b=stem[5:]: _shift.zdt_input(_b, x))
+        elif stem in ("DTLZ5", "DTLZ6", "shiftDTLZ6") and M > 3:
+            continue                             # the front has a part with g > 0
+        elif stem in _dist.DTLZ_G:
+            p.distance_fn = _dist.dtlz(stem, M)
+        elif stem in ("IDTLZ1", "IDTLZ2", "SDTLZ1", "SDTLZ2", "wideDTLZ3"):
+            p.distance_fn = _dist.dtlz("DTLZ" + stem[-1], M)
+        elif stem in ("C1-DTLZ1", "C1-DTLZ3", "C2-DTLZ2"):     # their Pareto sets have g = 0
+            p.distance_fn = _dist.dtlz(_cd.BASE[stem], M)
+        elif name in ROTATED and ROTATED[name].zdt:           # g read at the mapped point
+            p.distance_fn = _dist.zdt(ROTATED[name].family, ROTATED[name].map)
+        elif name in ROTATED and ROTATED[name].kind == "dtlz":
+            if ROTATED[name].family == "DTLZ5" and M > 3:
+                continue                         # the front has a part with g > 0
+            p.distance_fn = _dist.dtlz(ROTATED[name].family, M, ROTATED[name].map)
+        elif stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):
+            p.distance_fn = _dist.dtlz(stem[5:], M, lambda x, _M=M: cyclic_input(x, _M))
+        elif stem in ("shiftDTLZ6", "shiftDTLZ7"):
+            p.distance_fn = _dist.dtlz(stem[5:], M, lambda x, _M=M: _shift.dtlz_input(x, _M))
+
+
+_attach_distances()
 
 
 def _attach_full_fronts():
@@ -1680,6 +2074,139 @@ def _version2_references() -> None:
 _version2_references()
 
 
+def _shifted_fronts() -> None:
+    """A shifted or noisy problem's reference front is its base's own (FRAME_OF)."""
+    for name, base in FRAME_OF.items():
+        PROBLEMS[name].pareto_front = PROBLEMS[base].pareto_front
+        if base in FULL_FRONT:
+            FULL_FRONT.add(name)
+
+
+_shifted_fronts()
+
+
+# =============================================================
+#  RE and CRE (re.py, task 6 of 2026-10-09, item 6): Tanabe & Ishibuchi's
+#  real-world problems. Registered after the reference version: the front is
+#  an approximation used whole, whatever size is asked for (the authors' for
+#  RE, read off RE's for CRE), and the frame the authors' ideal and nadir.
+#  RE91 draws four normals at every evaluation: from the run's seed.
+# =============================================================
+def _register_re():
+    for name, (M, (lb, ub), fn) in _re.RE.items():
+        ideal, nadir = _re.frame(name)
+        pop, ng = _budget(M)
+        def _eval(x, _f=fn): return [float(v) for v in _f(x)]
+        def _pf(n=1000, _n=name): return _re.reference(_n)
+        PROBLEMS[name] = BenchProblem(
+            name=name, n_vars=len(lb), bounds=_re.bounds(name), n_obj=M,
+            evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False, pareto_front=_pf,
+            front_exact=False,
+            make_evaluator=(lambda seed: _re.RE91Evaluator(seed)) if name == "RE91" else None,
+            var_types=_re.VAR_TYPES.get(name))
+        EXACT_FRAME.add(name)
+    for name, (base, model) in _re.CRE.items():
+        ideal, nadir = _re.frame(base)
+        ideal, nadir = ideal[:-1], nadir[:-1]        # without the violation objective
+        M = len(ideal)
+        pop, ng = _budget(M)
+        def _eval(x, _m=model): return [float(v) for v in _m(x)[0]]
+        def _cons(x, _m=model): return [float(v) for v in _m(x)[1]]
+        def _pf(n=1000, _n=name): return _re.cre_reference(_n)
+        PROBLEMS[name] = BenchProblem(
+            name=name, n_vars=len(_re.bounds(name)), bounds=_re.bounds(name), n_obj=M,
+            evaluate=_eval, constraints=_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf,
+            front_exact=False, var_types=_re.VAR_TYPES.get(name))
+        EXACT_FRAME.add(name)
+
+
+_register_re()
+
+
+# =============================================================
+#  OneMinMax, LOTZ, OneJumpZeroJump (binary.py, task 7, supplement 2, §3):
+#  bit strings, maximized, registered as their negatives; exact fronts.
+# =============================================================
+def _register_binary():
+    for kind, n, k in _bin.SIZES:
+        key = _bin.name(kind, n, k)
+        ideal, nadir = _bin.frame(kind, n, k)
+        pop, ng = _budget(2)
+        def _eval(x, _kd=kind, _k=k): return _bin.evaluate(_kd, x, _k)
+        def _pf(m=1000, _kd=kind, _n=n, _k=k): return -_bin.front(_kd, _n, _k)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=n, bounds=[(0.0, 1.0)] * n, n_obj=2,
+            evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2), ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False, pareto_front=_pf,
+            var_types=["bin"] * n)
+        EXACT_FRAME.add(key)
+
+
+_register_binary()
+_register_noisy(_noisy.LATE_BASES, late=True)
+
+
+# ── dense references at four objectives and more (task 6 of 2026-10-09, item 9)
+# At M >= 4 a reference of 1 000 points is only 1.5-2 times finer than the
+# population it measures — the median distance from a point to its nearest
+# neighbour, in the problem's frame, against that of N points of the same
+# sampler — so IGD+ there measures the reference as well as the set. For the
+# problems whose front is analytic and cheap to sample (DENSE_STEMS, from 4 to
+# 10 objectives: at 15 the DTLZ grid sampler enumerates 3^14 combinations;
+# not MaF2, whose sampler takes seconds and grows no finer at eight and ten),
+# dense_reference gives the first size of DENSE_SIZES whose step is at most a
+# third of the population's, or the largest, with both steps. A campaign
+# measures the front indicators against it beside the usual reference when
+# asked ([campaign] dense_reference = true), and --recompute-reference adds
+# them to a finished one; either way under the indicator's name with "_ref_v3"
+# after it (metric_names.DENSE_SUFFIX), the usual values left as they are.
+DENSE_STEMS = frozenset({"DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "IDTLZ1", "IDTLZ2", "SDTLZ1",
+                         "SDTLZ2", "minusDTLZ2", "shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3",
+                         "shiftDTLZ4", "WFG4", "WFG5", "WFG6", "WFG7", "WFG8", "WFG9",
+                         "Polygon", "MaF1", "MaF3", "MaF4", "MaF5", "MaF12", "MaF13",
+                         "MW4", "MW8", "MW14", *_rot.SPECS})
+DENSE_SIZES = (1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000)
+DENSE_RATIO = 3.0
+
+
+def has_dense_reference(name: str) -> bool:
+    p = PROBLEMS.get(name)
+    return (p is not None and callable(p.pareto_front) and 4 <= p.n_obj <= 10
+            and name.split("_")[0] in DENSE_STEMS)
+
+
+_DENSE: Dict[Tuple[str, int], tuple] = {}
+
+
+def dense_reference(name: str, pop: int) -> tuple:
+    """(front, info) of the dense reference of `name` for a population of
+    `pop` (see above): info = {"rows", "step", "population_step"}, the steps
+    in the problem's frame. Once per problem, population and process."""
+    from ..run.metrics import reference_step
+    key = (name, int(pop))
+    if key not in _DENSE:
+        p = get(name)
+        lo, hi = np.asarray(p.ideal, float), np.asarray(p.nadir, float)
+        span = np.where(hi > lo, hi - lo, 1.0)
+        pop_step = reference_step((np.asarray(p.pareto_front(int(pop)), float) - lo) / span)
+        for n in DENSE_SIZES:
+            F = np.asarray(p.pareto_front(n), float)
+            step = reference_step((F - lo) / span)
+            if step <= pop_step / DENSE_RATIO:
+                break
+        _DENSE[key] = (F, {"rows": int(len(F)), "step": step, "population_step": pop_step})
+    F, info = _DENSE[key]
+    return F.copy(), dict(info)
+
+
 # ── HV/IGD reference frame = the sampled reference PF (PlatEMO convention) ──
 # Computed LAZILY, per problem, on first lookup.
 #
@@ -1710,13 +2237,14 @@ def _reframe_table() -> dict:
 
 def _reframe_one(name: str, p: "BenchProblem", n: int = 500) -> None:
     """Set p.ideal / p.nadir from the true PF, once."""
-    if name in _REFRAMED:
+    if name in _REFRAMED or name in EXACT_FRAME:
         return
     _REFRAMED.add(name)
 
     table = _reframe_table()
-    if name in table:
-        idl, nad = tuple(table[name][0]), tuple(table[name][1])
+    key = FRAME_OF.get(name, name)              # a shifted copy reads its base's frame
+    if key in table:
+        idl, nad = tuple(table[key][0]), tuple(table[key][1])
     else:
         f = getattr(p, "pareto_front", None)
         if not callable(f):
@@ -1772,10 +2300,11 @@ def get(name: str) -> "BenchProblem":
 
 
 def families() -> dict:
-    """Problem names grouped by family stem: {"DTLZ": [...], "WFG": [...]}."""
+    """Problem names grouped by family: {"DTLZ": [...], "WFG": [...]}, the rule
+    of mootation.families (the noisy copies "noisy", the rotated problems'
+    controls "r0DTLZ" and "c0DTLZ")."""
+    from ..families import family
     out: Dict[str, List[str]] = {}
     for n in sorted(PROBLEMS):
-        stem = n.split("_")[0]
-        stem = "".join(c for c in stem if not c.isdigit()) or stem
-        out.setdefault(stem, []).append(n)
+        out.setdefault(family(n), []).append(n)
     return out

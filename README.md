@@ -5,8 +5,8 @@
 [![DOI](https://zenodo.org/badge/1328202748.svg)](https://doi.org/10.5281/zenodo.21864324)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**63 multi- and many-objective optimization algorithms (62 evolutionary, one
-direct search), each implemented from its paper and checked against it line
+**64 multi- and many-objective optimization algorithms (62 evolutionary, one
+direct search, one simulated annealing), each implemented from its paper and checked against it line
 by line. Header-only C++17, no
 dependencies; also reachable from Python, from a TOML file that drives an
 external solver, and from any language with a C FFI.**
@@ -21,9 +21,10 @@ plus *mutation*, the operator all of these algorithms are built on.
 
 ## What you get
 
-- **63 algorithms** in eight families: Pareto-dominance, NSGA-III-style
+- **64 algorithms** in nine families: Pareto-dominance, NSGA-III-style
   reference points, the MOEA/D family, indicator-based, reference-vector,
-  clustering-based, archive-based and direct search. The full list with
+  clustering-based, archive-based, direct search and simulated annealing.
+  The full list with
   DOIs, and how to choose, is in [docs/algorithms.md](docs/algorithms.md).
 - **A paper trail per file.** Paper defaults, declared deviations, resolved
   ambiguities, and the place where constraint handling attaches, all in the
@@ -31,8 +32,9 @@ plus *mutation*, the operator all of these algorithms are built on.
 - **Five ways in, one algorithm list.** A C++ template, a C++ ask/tell session,
   a Python `minimize`, a TOML run description for external programs, and a C
   ABI. All five are generated from the same `algorithms.def`, so none can drift.
-- **436 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, MOP, BT,
-  the Ishibuchi polygons) with true Pareto fronts where a closed form exists, IGD / IGD+ /
+- **1141 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, MOP, BT,
+  the Ishibuchi polygons, the constrained C-DTLZ, MW and DAS-CMOP, rotated ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy
+  copies, the real-world RE and CRE) with true Pareto fronts where a closed form exists, IGD / IGD+ /
   hypervolume, and a campaign runner that shards across a cluster.
 - **Warm starts**, an evaluation log, constraint handling in every algorithm
   (off by default, as in the papers), and a `--check` that refuses a run ten
@@ -92,7 +94,7 @@ cmake -S . -B build -DMOOTATION_BUILD_C_API=ON && cmake --build build
 | continue a finished run, or switch algorithm mid-study | save and seed a population | [`python/examples/06_restart.py`](python/examples/06_restart.py) |
 | no control over include paths | the single header | [docs/embedding.md](docs/embedding.md#the-single-header) |
 
-All of them reach the same 63 algorithms. They differ in who owns the loop and
+All of them reach the same 64 algorithms. They differ in who owns the loop and
 what crosses the boundary, not in what you can run.
 
 ## Quick start
@@ -168,7 +170,7 @@ print(res.objectives[0], res.ignored)
 Constraints are a second function returning violations (`<= 0` means
 satisfied); `batch=` receives a whole generation in one call, for evaluators
 that cost real time; `save_population=` / `seed_population=` are the warm
-start; `mootation.algorithms()` lists the 63 names. `res.ignored` names any
+start; `mootation.algorithms()` lists the 64 names. `res.ignored` names any
 knob you set that this algorithm does not have. Six worked scripts live in
 [python/examples/](python/examples/README.md); `mootation.Problem` /
 `mootation.Config` / `mootation.run_raw` map onto the C++ API one-to-one when
@@ -234,6 +236,7 @@ have not yet been run by anyone. [docs/embedding.md](docs/embedding.md#the-c-abi
 | Clustering-based | 11 | disconnected or irregular fronts |
 | Archive-based | 2 | the non-dominated history is the answer, not a fixed population |
 | Direct search (DMS) | 1 | few variables, a deterministic answer |
+| Simulated annealing (MOSA) | 1 | one evaluation at a time; the archive of every non-dominated point is the answer |
 
 If your objectives differ by orders of magnitude, read
 [docs/algorithms.md](docs/algorithms.md#if-your-objectives-are-not-commensurate)
@@ -268,7 +271,7 @@ conclusions live in the headers.
 
 ## Benchmarks and campaigns
 
-`mootation.benchmarks` holds 436 problems across 15 families, 2 to 15
+`mootation.benchmarks` holds 535 problems across 27 families, 2 to 15
 objectives, each with bounds, an evaluator, the reference point a hypervolume
 needs and, where a closed form exists, a sampler of the true Pareto front.
 `mootation.run.metrics` computes IGD, IGD+ and hypervolume (exact up to five
@@ -287,7 +290,7 @@ recipe for running it on another machine, or split across several.
 
 ```
 include/mootation/
-  algorithms/        63 headers, one algorithm each; srv_strategy.hpp is a shared helper
+  algorithms/        64 headers, one algorithm each; srv_strategy.hpp is a shared helper
   algorithms.def     the X-macro list every interface is generated from
   operators/         SBX, polynomial mutation, DE, Liu–Li, the switchable crossovers
                      (uniform, BLX-α, SPX, REX, UNDX, PCX) and mutations, bound

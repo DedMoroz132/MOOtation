@@ -9,10 +9,23 @@ converges to is decided by the archiver, not by how the points are drawn
 (Schütze et al. 2008), so the two are built together.
 
   random_search   uniform points of the box
-  sobol_search    a scrambled Sobol sequence (scipy.stats.qmc, Owen-type
-                  scrambling seeded per run): lower discrepancy than uniform,
-                  which matters at budgets of tens to hundreds of points and
-                  not after; needs SciPy
+  sobol_search    a scrambled Sobol sequence (scipy.stats.qmc.Sobol: its
+                  scrambling is a linear matrix scramble with a digital shift,
+                  "LMS+shift" — Matoušek's affine scrambling, not Owen's nested
+                  uniform one — seeded per run): lower discrepancy than
+                  uniform, which matters at budgets of tens to hundreds of
+                  points and not after; needs SciPy
+  lhs_search      a maximin Latin hypercube of the whole budget
+                  (designs.py, after Morris & Mitchell 1995), its points
+                  evaluated in batches of N; laid out for the budget at once, so
+                  a smaller budget is a run of its own (budget.py)
+  halton_search   a randomized Halton sequence (designs.py, after Owen 2017),
+                  seeded per run; a sequence, so a smaller budget is the start
+                  of the same run, as with sobol_search
+  sobol_owen_search
+                  the Sobol sequence with Owen's nested uniform scrambling
+                  (designs.py: Joe & Kuo's direction numbers, Burley's hash),
+                  seeded per run; a sequence too
 
 and two ablations (ablations.py), which take one ingredient of an EA away:
 
@@ -44,6 +57,10 @@ from types import SimpleNamespace
 BASELINES = {
     "random_search": "uniform sampling of the box, archived, N chosen by DSS",
     "sobol_search": "scrambled Sobol sampling (SciPy), archived, N chosen by DSS",
+    "lhs_search": "a maximin Latin hypercube of the whole budget (Morris & Mitchell 1995), "
+                  "archived, N chosen by DSS",
+    "halton_search": "randomized Halton sampling (Owen 2017), archived, N chosen by DSS",
+    "sobol_owen_search": "Owen-scrambled Sobol sampling (Burley 2020), archived, N chosen by DSS",
     "random_selection_ea": "ablation: NSGA-II's SBX and polynomial mutation, survival "
                            "uniformly at random",
     "gsemo": "ablation: global SEMO on real variables, the nondominated set, N chosen by DSS",
@@ -102,6 +119,16 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
             with warnings.catch_warnings():         # "balance properties ... power of 2"
                 warnings.simplefilter("ignore")
                 return engine.random(k)
+    elif name in ("lhs_search", "halton_search", "sobol_owen_search"):
+        from ..designs import design
+        kind = {"lhs_search": "lhs", "halton_search": "halton_rand",
+                "sobol_owen_search": "sobol_owen"}[name]
+        plan = design(kind, max_evaluations, [(0.0, 1.0)] * d, seed)
+        served = [0]
+
+        def draw(k):
+            served[0] += k
+            return plan[served[0] - k:served[0]]
     else:
         rng = np.random.default_rng(seed)
 

@@ -92,7 +92,11 @@ if(MSVC)
     #                    downstream code.
     # /EHsc            — the library throws std::invalid_argument on bad setup;
     #                    MSVC needs standard C++ exception semantics stated.
-    target_compile_options(mootation INTERFACE /Zc:__cplusplus /EHsc)
+    # /bigobj          — embed.hpp instantiates every algorithm in one
+    #                    translation unit (dispatch by name); since the
+    #                    switchable operators grew (task 7) that overruns the
+    #                    COFF section limit even in a Release build (C1128).
+    target_compile_options(mootation INTERFACE /Zc:__cplusplus /EHsc /bigobj)
 endif()
 
 # ── Warning flags, applied to our own targets only ──────────────────────────

@@ -49,6 +49,8 @@ def save_population(result, path: str | os.PathLike, *,
 
     n_vars = len(result.variables[0]) if result.variables else 0
     n_objs = len(result.objectives[0]) if result.objectives else 0
+    bits = list(getattr(result, "binary_variables", None) or [])
+    n_bin = len(bits[0]) if bits else 0
 
     with p.open("w", encoding="utf-8", newline="") as fh:
         fh.write(FORMAT_POPULATION + "\n")
@@ -59,10 +61,10 @@ def save_population(result, path: str | os.PathLike, *,
             fh.write(f"# {note}\n")
         if meta:
             fh.write("#" + "".join(f" {k}={v}" for k, v in sorted(meta.items())) + "\n")
-        fh.write(f"# n_vars={n_vars} n_bin=0 n_objs={n_objs}\n")
+        fh.write(f"# n_vars={n_vars} n_bin={n_bin} n_objs={n_objs}\n")
 
         w = csv.writer(fh)
-        w.writerow([f"x{i+1}" for i in range(n_vars)]
+        w.writerow([f"x{i+1}" for i in range(n_vars)] + [f"b{i+1}" for i in range(n_bin)]
                    + [f"f{i+1}" for i in range(n_objs)] + ["cv"])
         # Sorted by the first objective so a two-objective front reads as one.
         order = sorted(range(len(result.objectives)),
@@ -71,6 +73,7 @@ def save_population(result, path: str | os.PathLike, *,
         for i in order:
             cv = result.cv[i] if i < len(result.cv) else 0.0
             w.writerow([repr(v) for v in result.variables[i]]
+                       + ([str(int(b)) for b in bits[i]] if n_bin else [])
                        + [repr(v) for v in result.objectives[i]] + [repr(cv)])
 
 
@@ -145,13 +148,14 @@ class EvaluationLog:
 class LoadedPopulation:
     """What `load_population` returns: the rows, plus the settings that made them."""
 
-    __slots__ = ("variables", "objectives", "cv", "meta")
+    __slots__ = ("variables", "objectives", "cv", "meta", "binary")
 
-    def __init__(self, variables, objectives, cv, meta):
+    def __init__(self, variables, objectives, cv, meta, binary=None):
         self.variables = variables
         self.objectives = objectives
         self.cv = cv
         self.meta = meta
+        self.binary = binary or []          # the bits, beside variables (n_bin)
 
     def __len__(self):
         return len(self.variables)
@@ -171,6 +175,7 @@ def load_population(path: str | os.PathLike) -> LoadedPopulation:
     n_vars = n_bin = n_objs = None
     header: list[str] | None = None
     variables: list[list[float]] = []
+    binary: list[list[int]] = []
     objectives: list[list[float]] = []
     cvs: list[float] = []
 
@@ -213,19 +218,23 @@ def load_population(path: str | os.PathLike) -> LoadedPopulation:
             try:
                 c = 0
                 x = [float(cells[c + i]) for i in range(n_vars)]
-                c += n_vars + n_bin       # binary columns are read past, not kept
+                c += n_vars
+                b = [int(float(cells[c + i])) for i in range(n_bin)]
+                c += n_bin
                 f = [float(cells[c + i]) for i in range(n_objs)]
                 c += n_objs
                 cv = float(cells[c]) if c < len(cells) else 0.0
             except ValueError as e:
                 raise ValueError(f"{p}: a value is not a number: {e}") from e
             variables.append(x)
+            if n_bin:
+                binary.append(b)
             objectives.append(f)
             cvs.append(cv)
 
     if not variables:
         raise ValueError(f"{p}: no rows")
-    return LoadedPopulation(variables, objectives, cvs, meta)
+    return LoadedPopulation(variables, objectives, cvs, meta, binary)
 
 
 def fit_population(pop: LoadedPopulation, pop_size: int,
@@ -252,14 +261,17 @@ def fit_population(pop: LoadedPopulation, pop_size: int,
     if have > pop_size:
         return LoadedPopulation(pop.variables[:pop_size],
                                 pop.objectives[:pop_size],
-                                pop.cv[:pop_size], pop.meta)
+                                pop.cv[:pop_size], pop.meta, pop.binary[:pop_size])
     if on_size_mismatch == "pad":
         v, o, c = list(pop.variables), list(pop.objectives), list(pop.cv)
+        b = list(pop.binary)
         for i in range(have, pop_size):
             src = i % have
             v.append(list(pop.variables[src]))
             o.append(list(pop.objectives[src]))
             c.append(pop.cv[src])
-        return LoadedPopulation(v, o, c, pop.meta)
+            if pop.binary:
+                b.append(list(pop.binary[src]))
+        return LoadedPopulation(v, o, c, pop.meta, b)
     raise ValueError(
         f"the seed population has {have} individuals but pop_size is {pop_size}")

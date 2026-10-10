@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 63, f"expected 63 algorithms, got {len(names)}"
+    assert len(names) == 64, f"expected 64 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -1395,6 +1395,12 @@ def campaign_fit_pop_rounds_to_what_the_core_accepts():
     assert fit_pop("moead_m2m", 91, 3, {})[0] == 90
     assert fit_pop("moead_m2m", 90, 3, {"K": 7})[0] == 84
     assert fit_pop("nsga2", 77, 3, {}) == (77, "")
+    # pop_fit = "nearest" (task 5, run B1): 21 rather than 6 at six objectives
+    assert fit_pop("nsga3", 20, 6, {})[0] == 6 and fit_pop("nsga3", 20, 6, {}, "nearest")[0] == 21
+    assert fit_pop("nsga3", 50, 6, {}, "nearest")[0] == 56
+    assert fit_pop("moead", 20, 3, {}, "nearest")[0] == 21
+    assert fit_pop("nsga3", 10, 5, {}, "nearest")[0] == 5            # 5 and 15 as near
+    assert fit_pop("moead_m2m", 97, 3, {}, "nearest")[0] == 100
 
 
 @test
@@ -1649,6 +1655,41 @@ def cover_reads_levels_seeds_and_the_hypervolume_gap():
     assert V.successes(V.reached(data, "gdp", (0.01, 0.01), 100, best), 7) == {"a": {"F", "H"},
                                                                                "b": {"F"}}
     assert V.successes(hit, 7, seeds=[1] * 10)["b"] == {"F"}       # a resample of seed 1 only
+
+
+@test
+def a_gdp_level_needs_half_an_answer_and_one_run_each_reads_the_seeds_alone():
+    """Task 5: a gdp level counts only an answer of at least N/2 points; an
+    algorithm whose seeds are all alike is found; 'one run each' covers with
+    one seed at a time."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.run import cover as V
+    vals = {}
+    for s in range(1, 11):
+        # d: every seed alike, on F two points of 100 at GD+ 0 (DMS on BT6-BT8)
+        vals[("F", "d", s)] = {100: {"gdp_norm": 0.0, "igdp_norm": 0.5, "n": 2}}
+        vals[("F", "a", s)] = {100: {"gdp_norm": 0.001, "igdp_norm": 0.5,
+                                     "n": 60 if s <= 5 else 40}}
+        vals[("G", "d", s)] = {100: {"gdp_norm": 0.001, "igdp_norm": 0.5, "n": 80}}
+        vals[("G", "a", s)] = {100: {"gdp_norm": 0.001 if s == 3 else 0.5, "igdp_norm": 0.5,
+                                     "n": 80}}
+    data = {"values": vals, "front": {"F": True, "G": True}, "main": [],
+            "pop": {(p, a): 100 for p in "FG" for a in "da"}}
+    assert V.deterministic(vals) == ["d"]
+    hit = V.reached(data, "gdp", (0.01, 0.01), 100, {})
+    assert not any(hit["F"]["d"].values())                     # two points: not counted
+    assert [hit["F"]["a"][s] for s in range(1, 11)] == [True] * 5 + [False] * 5
+    assert V.successes(hit, 5) == {"a": {"F"}, "d": {"G"}}
+    per = V.one_run(hit, ["F", "G"], list(range(1, 11)), ["d"])
+    assert [r[1] for r in per] == [2] * 5 + [1] * 5, per      # covered by someone
+    assert [r[2] for r in per] == [2, 2, 1, 2, 2, 1, 1, 1, 1, 1], per   # seed 3: a alone
+    assert [r[5]["d"] for r in per] == [1, 1, 0, 1, 1, 1, 1, 1, 1, 1], per
+    short = V.short_answers(data, [100])
+    assert [(r[0], r[1], r[5], r[6]) for r in short] == [("F", "a", 5, 50), ("F", "d", 10, 2)]
+    # the size read at a budget: a final population's n_final, a record's n
+    assert V.read_at(100, 100, 100, {"gdp_norm": 0.1, "n_final": 7})["n"] == 7
+    assert V.read_at(50, 100, 100, {}, [{"fe": 60, "gdp_norm": 0.2, "n": 9}])["n"] == 9
 
 
 @test
@@ -1936,8 +1977,11 @@ def portfolio_runs_on_a_results_tree():
     from mootation.run import portfolio as P
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
-        values = {("DTLZ2_3D", "nsga2"): {"igdp_norm": 0.02, "gdp_norm": 0.01, "eps_norm": 0.05},
-                  ("DTLZ2_3D", "moead"): {"igdp_norm": 0.1, "gdp_norm": 0.2, "eps_norm": 0.3},
+        # moead: every seed alike, and a gdp_norm within the level from 30 points of 91
+        values = {("DTLZ2_3D", "nsga2"): {"igdp_norm": 0.02, "gdp_norm": 0.01, "eps_norm": 0.05,
+                                          "n_final": 91},
+                  ("DTLZ2_3D", "moead"): {"igdp_norm": 0.1, "gdp_norm": 0.05, "eps_norm": 0.3,
+                                          "n_final": 30},
                   ("bbobbiobj01_n05_2D", "nsga2"): {"hv_h": 0.9},
                   ("bbobbiobj01_n05_2D", "moead"): {"hv_h": 1.0}}
         for (prob, alg), final in values.items():
@@ -1953,7 +1997,9 @@ def portfolio_runs_on_a_results_tree():
                      "has_reference_front": prob == "DTLZ2_3D", "reference_version": 2}),
                     encoding="utf-8")
         text = P.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,))
-        assert "1 problems with a front, 1 without" in text, text
+        # DTLZ2's optimum is at the centre: no front_interior group (task 6)
+        assert "1 problems with a front (0 with the optimum neither" in text, text
+        assert "1 without" in text, text
         with (root / "_portfolio" / "portfolio_summary.csv").open(encoding="utf-8") as fh:
             rows = list(csv.DictReader(fh))
         get = lambda g, c, rule: next(r for r in rows if r["group"] == g and r["criterion"] == c  # noqa: E731
@@ -1975,6 +2021,15 @@ def portfolio_runs_on_a_results_tree():
         for name in ("portfolio_shapley.csv", "portfolio_complementarity.csv",
                      "portfolio_oracle_gap.csv", "portfolio_meta.json", "portfolio_report.txt"):
             assert (root / "_portfolio" / name).is_file(), name
+        # task 5: 30 of 91 points do not count for gdp; moead's seeds are one run
+        s = m[("DTLZ2_3D", "moead")]
+        assert (s["gdp_level0_seeds"], s["size_median"], s["seeds_short"]) == ("0", "30", "10"), s
+        assert m[("DTLZ2_3D", "nsga2")]["seeds_short"] == "0"
+        assert "deterministic, every seed the same run on every problem: moead" in text, text
+        assert get("front", "igdp", "one_run")["oracle_covers"] == "0.6"   # 6 seeds of 10 alone
+        with (root / "_portfolio" / "portfolio_shapley.csv").open(encoding="utf-8") as fh:
+            det = {r["algorithm"]: r["deterministic"] for r in csv.DictReader(fh)}
+        assert det == {"nsga2": "False", "moead": "True"}, det
 
 
 def _have_scipy():
@@ -2113,7 +2168,8 @@ def instance_space_runs_on_a_results_tree():
                          "final": final, "budget_nominal": 1000, "budget_fe": 1000,
                          "has_reference_front": prob in front, "reference_version": 2}),
                         encoding="utf-8")
-        text = S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=3)
+        text = S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=3,
+                     bbob_features="properties")
         assert "front: 6 problems" in text and "bbob: 4 problems" in text, text
         out = root / "_instance_space"
         with (out / "is_coordinates.csv").open(encoding="utf-8") as fh:
@@ -2135,6 +2191,61 @@ def instance_space_runs_on_a_results_tree():
         with (out / "is_footprints.csv").open(encoding="utf-8") as fh:
             for r in csv.DictReader(fh):                 # the known region lies in the hull
                 assert float(r["area_share_hull"]) <= float(r["area_share"]) + 1e-12, r
+                if r["area_share_min"]:                  # the main plane is one of the family
+                    assert float(r["area_share_min"]) - 1e-12 <= float(r["area_share"])                         <= float(r["area_share_max"]) + 1e-12, r
+        assert meta["calibration"] == "whiten" and meta["weight"] == "blocks", meta
+        g = meta["groups"]["front"]
+        assert g["pilot"]["method"] == "exact" and len(g["planes"]) == 6, g
+        assert abs(g["planes"]["whitened"] - g["pilot"]["preservation"]) < 1e-12
+        assert g["planes"]["preserving"] >= max(g["planes"].values()) - 1e-12
+        # the bbob-biobj problems' features from a sample, the default
+        S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=0,
+              out_dir=root / "sampled")
+        with (root / "sampled" / "is_coordinates.csv").open(encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        assert all(r["nd_share"] != "" for r in rows if r["group"] == "bbob")
+        assert all(r["nd_share"] == "" for r in rows if r["group"] == "front")
+
+
+@test
+def instance_space_plane_calibration_and_sample_features():
+    """THE PLANE: pilot_exact reaches the optimum's loss, a repeated feature
+    included; every calibration of it keeps the loss and the R^2, the whitened
+    plane has the identity covariance and the preserving one the highest
+    preservation of the family. FEATURES FROM A SAMPLE on made-up samples: a
+    linear trade-off is all non-dominated, its objectives opposed and linear in
+    x; two equal objectives agree; PRELIM drops a repeated and a constant row."""
+    if not _have_numpy() or not _have_scipy():
+        print("  skip  instance_space_plane...: no NumPy or SciPy"); return
+    import numpy as np
+    from mootation.run import instance_space as S
+    rng = np.random.default_rng(5)
+    F = rng.standard_normal((5, 60))
+    F = (F - F.mean(axis=1, keepdims=True)) / F.std(axis=1, keepdims=True)
+    Y = rng.standard_normal((7, 60)) + 0.7 * (rng.standard_normal((7, 5)) @ F)
+    for FF in (F, np.vstack([F, F[:1]])):
+        e = S.pilot_exact(FF, Y)
+        opt = S.pilot_optimum_loss(FF, Y)
+        assert abs(e["loss"] - opt) <= 1e-9 * opt, (e["loss"], opt)
+        assert np.allclose(e["Z"], (e["A"] @ FF).T)
+    fam = S.planes(F, Y, S.pilot_exact(F, Y))
+    for k, v in fam.items():
+        assert abs(v["loss"] - fam["whitened"]["loss"]) <= 1e-9 * v["loss"], k
+        assert np.allclose(v["r2_performance"], fam["whitened"]["r2_performance"]), k
+    Zw = fam["whitened"]["Z"]
+    assert np.allclose(np.cov(Zw.T, bias=True), np.eye(2), atol=1e-9)
+    assert fam["preserving"]["preservation"] >= max(v["preservation"] for v in fam.values()) - 1e-12
+    assert fam["main"] is fam["whitened"]
+    U = rng.random((400, 3))
+    f = S.sample_features(U, np.column_stack([U[:, 0], 1.0 - U[:, 0]]))
+    assert (f["nd_share"], f["dom_pairs"], f["lnd_share"]) == (1.0, 0.0, 1.0), f
+    assert abs(f["rho_mean"] + 1.0) < 1e-12 and f["lin_r2_min"] > 0.999
+    assert abs(f["log_range_ratio"]) < 1e-12, f
+    g = S.sample_features(U, np.column_stack([U[:, 1], 2.0 * U[:, 1]]))
+    assert abs(g["rho_mean"] - 1.0) < 1e-12 and g["nd_share"] == 1 / 400, g
+    assert abs(g["log_range_ratio"] - np.log10(2.0)) < 1e-12, g
+    keep, Z = S.prelim_features([list(U[:, 0]), list(U[:, 0]), [1.0] * 400, list(U[:, 1] ** 3)])
+    assert keep == [0, 3] and np.allclose(Z.mean(axis=1), 0.0) and np.allclose(Z.std(axis=1), 1.0)
 
 
 @test
@@ -2487,28 +2598,195 @@ def baselines_spend_the_budget_exactly_and_answer_with_the_archive():
     from mootation.run.baselines import run_baseline
     from mootation.benchmarks import get
     p = get("ZDT1")
-    for name in ("random_search", "sobol_search"):
+    for name in ("random_search", "sobol_search", "lhs_search", "halton_search",
+                 "sobol_owen_search"):
         if name == "sobol_search":
             try:
                 import scipy  # noqa: F401
             except ImportError:
                 continue
+        budget = 234 if name == "lhs_search" else 1234        # a Latin hypercube costs more
         runs = []
         for _ in range(2):
             arc = GridArchive(2, p.n_vars, ideal=p.ideal, nadir=p.nadir)
-            spent = [0]
+            spent, seen = [0], []
 
-            def ev(x, arc=arc, spent=spent):
+            def ev(x, arc=arc, spent=spent, seen=seen):
                 spent[0] += 1
+                seen.append(x)
                 f = p.evaluate(x)
                 arc.add(f, x)
                 return f
-            res = run_baseline(name, ev, p.bounds, pop=100, max_evaluations=1234, seed=7,
+            res = run_baseline(name, ev, p.bounds, pop=100, max_evaluations=budget, seed=7,
                                archive=arc)
-            assert spent[0] == 1234, (name, spent[0])
+            assert spent[0] == budget, (name, spent[0])
             assert len(res.objectives) == min(100, len(arc)), (name, len(res.objectives))
             runs.append(np.asarray(res.objectives))
         assert np.array_equal(runs[0], runs[1]), name                   # a seed is a seed
+        if name == "lhs_search":                       # one point in each of the n cells
+            cells = np.sort(np.floor(np.asarray(seen) * budget).astype(int), axis=0)
+            assert (cells == np.arange(budget)[:, None]).all()
+
+
+@test
+def a_maximin_latin_hypercube_reaches_the_papers_catalog():
+    """designs.maximin_lhs finds the maximin designs of Morris & Mitchell 1995,
+    Table 2(A) (Euclidean): n = 5, k = 2: d1 = 0.5590 (squared, in levels: 5),
+    J1 = 4; n = 9, k = 2: d1 = 0.3953 (10), J1 = 12; every column a
+    permutation of the levels, and a design the same for a seed."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    for n, k, d1, j1 in ((5, 2, 5, 4), (9, 2, 10, 12)):
+        L = D.maximin_lhs(n, k, np.random.default_rng(3))
+        assert (np.sort(L, axis=0) == np.arange(n)[:, None]).all(), L
+        key = D.maximin_order(D.squared_distances(L))
+        assert (-key[0], key[1]) == (d1, j1), (n, k, key[:4])
+    X = D.design("lhs", 30, [(0.0, 1.0), (-2.0, 2.0)], 11)
+    assert np.array_equal(X, D.design("lhs", 30, [(0.0, 1.0), (-2.0, 2.0)], 11))
+    assert X[:, 1].min() >= -2.0 and X[:, 1].max() <= 2.0 and not (X == 0.5).any()
+
+
+@test
+def a_randomized_halton_plan_is_stratified_seeded_and_off_the_grid():
+    """designs.randomized_halton (task 6, item 12.5): at n = b^m the coordinate
+    of base b has one point in each of its b^m intervals; no coordinate is
+    exactly 0 or 1/2 over 10 seeds of 1 000 points; a seed is a plan and
+    another seed another plan; the first n points of a longer plan are the
+    plan of n; its centred L2 discrepancy, over 20 seeds, is below uniform
+    points' at d = 2 and 10."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    assert D.primes(6) == [2, 3, 5, 7, 11, 13] and D.primes(50)[-1] == 229
+    assert D.halton_digits(2) == 53                    # 1 - 2^-53 < 1 == 1 - 2^-54
+    for j, b, m in ((0, 2, 9), (1, 3, 5), (2, 5, 3)):
+        x = D.randomized_halton(b ** m, 3, 7)[:, j]
+        assert len(np.unique(np.floor(x * b ** m))) == b ** m, (b, m)
+    for seed in range(10):
+        X = D.randomized_halton(1000, 10, seed)
+        assert not ((X == 0.0) | (X == 0.5)).any() and X.min() > 0.0 and X.max() < 1.0, seed
+    A = D.design("halton_rand", 300, [(0.0, 1.0), (-2.0, 2.0)], 11)
+    assert np.array_equal(A, D.design("halton_rand", 300, [(0.0, 1.0), (-2.0, 2.0)], 11))
+    assert not np.array_equal(A, D.design("halton_rand", 300, [(0.0, 1.0), (-2.0, 2.0)], 12))
+    assert A[:, 1].min() >= -2.0 and A[:, 1].max() <= 2.0
+    B = D.randomized_halton(800, 5, 3)
+    assert np.array_equal(B[:500], D.randomized_halton(500, 5, 3))
+    assert np.array_equal(B[500:], D.randomized_halton(300, 5, 3, start=500))
+    if _core_with("max_evaluations") is not None:     # init = "halton_rand": its first points
+        from mootation import minimize
+        seen = []
+
+        def f(x):
+            seen.append(list(x))
+            return [x[0], 1.0 - x[0] ** 0.5 + sum(x[1:])]
+        r = minimize(f, bounds=[(0.0, 1.0)] * 3, n_objs=2, algorithm="nsga2", pop_size=20,
+                     n_gen=3, seed=1, init="halton_rand")
+        assert r.evaluations == 60 and len(r.objectives) == 20, r.evaluations
+        assert np.allclose(seen[:20], D.design("halton_rand", 20, [(0.0, 1.0)] * 3, 1))
+    try:
+        from scipy.stats import qmc
+    except ImportError:
+        return
+    for d in (2, 10):
+        h = np.mean([qmc.discrepancy(D.randomized_halton(256, d, s)) for s in range(20)])
+        u = np.mean([qmc.discrepancy(np.random.default_rng(s).random((256, d)))
+                     for s in range(20)])
+        assert h < u, (d, h, u)
+
+
+@test
+def an_owen_scrambled_sobol_plan_is_stratified_seeded_and_off_the_grid():
+    """designs.sobol_owen (task 6, items 12.2 and 12.5): unscrambled, the
+    points are Joe and Kuo's example and SciPy's Sobol(scramble=False); the
+    Laine-Karras permutation of 0 under Burley's seed is his Table 1's; at
+    n = 2^m each coordinate has one point in each of its 2^m intervals; no
+    coordinate exactly 0 or 1/2 over 10 seeds of 1 000 points; a seed is a
+    plan, another seed another; the plan extends; its centred L2 discrepancy
+    over 20 seeds is below uniform points' at d = 2 and 10."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    # "./sobol 10 3 new-joe-kuo-6.21201" on Joe and Kuo's page
+    page = [[0, 0, 0], [0.5, 0.5, 0.5], [0.75, 0.25, 0.25], [0.25, 0.75, 0.75],
+            [0.375, 0.375, 0.625], [0.875, 0.875, 0.125], [0.625, 0.125, 0.875],
+            [0.125, 0.625, 0.375], [0.1875, 0.3125, 0.9375], [0.6875, 0.8125, 0.4375]]
+    assert (D.sobol_integers(10, 3) / 2.0 ** 32).tolist() == page
+    assert int(D.laine_karras(np.array([0], dtype=np.uint64), 0x552553bc)[0]) == 0x71b1c2ac
+    x = np.arange(1000, dtype=np.uint64) * np.uint64(4294967)
+    assert np.array_equal(D._reverse_bits(D._reverse_bits(x)), x)
+    for m, d in ((10, 5), (7, 30)):
+        U = D.sobol_owen(2 ** m, d, 7)
+        for j in range(d):
+            assert len(np.unique(np.floor(U[:, j] * 2 ** m))) == 2 ** m, (m, j)
+    for seed in range(10):
+        X = D.sobol_owen(1000, 10, seed)
+        assert not ((X == 0.0) | (X == 0.5)).any() and X.min() > 0.0 and X.max() < 1.0, seed
+    A = D.design("sobol_owen", 300, [(0.0, 1.0), (-2.0, 2.0)], 11)
+    assert np.array_equal(A, D.design("sobol_owen", 300, [(0.0, 1.0), (-2.0, 2.0)], 11))
+    assert not np.array_equal(A, D.design("sobol_owen", 300, [(0.0, 1.0), (-2.0, 2.0)], 12))
+    B = D.sobol_owen(800, 5, 3)
+    assert np.array_equal(B[:500], D.sobol_owen(500, 5, 3))
+    assert np.array_equal(B[500:], D.sobol_owen(300, 5, 3, start=500))
+    try:
+        from scipy.stats import qmc
+    except ImportError:
+        return
+    assert np.array_equal(D.sobol_integers(1024, 40) / 2.0 ** 32,
+                          qmc.Sobol(40, scramble=False).random(1024))
+    for d in (2, 10):
+        h = np.mean([qmc.discrepancy(D.sobol_owen(256, d, s)) for s in range(20)])
+        u = np.mean([qmc.discrepancy(np.random.default_rng(s).random((256, d)))
+                     for s in range(20)])
+        assert h < u, (d, h, u)
+
+
+@test
+def the_older_designs_have_not_moved():
+    """The sobol and lhs designs and the draws of random_search, sobol_search
+    and lhs_search are what they were before the randomized Halton came (task
+    6, item 12.5): rows 0, 5 and 11 of 12 points at seed 5, to 1e-12."""
+    try:
+        import numpy as np
+    except ImportError:
+        return
+    from mootation import designs as D
+    from mootation.run.archive import GridArchive
+    from mootation.run.baselines import run_baseline
+    box = [(0.0, 1.0), (-2.0, 2.0), (0.0, 10.0)]
+    was = {
+        "random_search": [[0.80500292374538, 1.23176315894597, 5.15325561042142],
+                          [0.844231037608741, -0.430381342660887, 4.93023018731743],
+                          [0.436667052175653, -1.18698865554174, 3.24942644575606]],
+        "lhs_search": [[0.0671787427199933, 0.87864713808322, 5.03133728213074],
+                       [0.328950833854345, -1.08414312656047, 8.04914019274116],
+                       [0.871689838192273, 0.412373696896755, 2.23928782044247]],
+        "sobol_search": [[0.63135180901736, -1.05258386209607, 5.24911201559007],
+                         [0.149958958849311, 0.586466815322638, 6.30971090868115],
+                         [0.965077580884099, 1.46423656120896, 7.00347781181335]],
+    }
+    try:
+        import scipy  # noqa: F401
+    except ImportError:
+        del was["sobol_search"]
+    for name, rows in was.items():
+        seen, arc = [], GridArchive(2, 3)
+
+        def ev(x, seen=seen, arc=arc):
+            seen.append(x)
+            arc.add([x[0], 1.0 - x[0]], x)
+            return [x[0], 1.0 - x[0]]
+        run_baseline(name, ev, box, pop=12, max_evaluations=12, seed=5, archive=arc)
+        assert np.allclose(np.array(seen)[[0, 5, 11]], rows, rtol=0, atol=1e-12), name
+        if name != "random_search":                    # the design is the baseline's draw
+            X = D.design(name.split("_")[0], 12, box, 5)
+            assert np.allclose(X[[0, 5, 11]], rows, rtol=0, atol=1e-12), name
 
 
 @test
@@ -2720,6 +2998,14 @@ def campaign_rank_table():
         lines = p.read_text(encoding="utf-8").splitlines()
         assert lines[0].startswith("algorithm,mean_rank,problems,wins,DTLZ_mean_rank,DTLZ_problems")
         assert lines[1].startswith("a,1.5,4,3,"), lines[1]
+        assert lines[0].endswith(",short_answers,empty_runs") and lines[1].endswith(",0,0"), \
+            lines[:2]
+    # task 5: an answer of fewer than N/2 points is counted beside the rank
+    short = [dict(x, pop=10, final=dict(x["final"], n_final=3 if x["algorithm"] == "b" else 8))
+             for x in rows]
+    e = dict(C.rank_table(short, "igd")["algorithms"])
+    assert (e["a"]["short"], e["b"]["short"], e["c"]["short"]) == (0, 4, 0), e
+    assert "short" in C.format_ranks(C.rank_table(short, "igd")).splitlines()[1]
 
 
 @test
@@ -2862,8 +3148,8 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 8 and fams[0][1][0] == "nsga2", fams
-    assert fams[-1] == ("Direct search", ("dms",)), fams[-1]
+    assert len(fams) == 9 and fams[0][1][0] == "nsga2", fams
+    assert fams[-2:] == (("Direct search", ("dms",)), ("Simulated annealing", ("mosa",))), fams
     assert all(name and "─" not in name for name, _ in fams), fams
 
 
@@ -2949,6 +3235,173 @@ def pareto_set_samples_land_on_the_front():
         y = X / np.arange(1, X.shape[1] + 1) + 0.5
         alpha = np.array([np.arange(1, M + 1) ** 2 * zcat.F_FUNCS[name](r, M) for r in y])
         assert np.abs(F - alpha).max() < 1e-12, key          # beta = 0: on the front
+
+
+@test
+def pareto_sets_of_zdt_dtlz5_7_and_the_dtlz_variants_land_on_their_fronts():
+    """The samplers added 2026-10-09 (pareto_sets.py): ZDT1-4 and 6 on g = 1,
+    DTLZ5/6 at three objectives and the IDTLZ/SDTLZ on g = 0, DTLZ7 on
+    f_M = 2M - sum f_i (1 + sin 3 pi f_i), minusDTLZ2 on g = 0.25 k."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks.dtlz_variants import scale_base
+
+    def front_error(key, F):
+        M = F.shape[1]
+        if key.startswith("ZDT"):
+            f1, f2 = F[:, 0], F[:, 1]
+            want = {"ZDT1": 1 - np.sqrt(f1), "ZDT2": 1 - f1 ** 2,
+                    "ZDT3": 1 - np.sqrt(f1) - f1 * np.sin(10 * np.pi * f1),
+                    "ZDT4": 1 - np.sqrt(f1), "ZDT6": 1 - f1 ** 2}[key]
+            return np.abs(f2 - want).max()
+        if key.startswith("DTLZ7"):
+            P = F[:, :M - 1]
+            return np.abs(F[:, -1] - (2 * M - np.sum(P * (1 + np.sin(3 * np.pi * P)), 1))).max()
+        if key.startswith("minusDTLZ2"):
+            return np.abs(np.sqrt((F ** 2).sum(1)) - (1 + 0.25 * 10)).max()
+        if key.startswith(("IDTLZ1", "SDTLZ1")):
+            G = 0.5 - F if key.startswith("IDTLZ1") else F / scale_base("SDTLZ1", M) ** np.arange(M)
+            return np.abs(G.sum(1) - 0.5).max()
+        if key.startswith("IDTLZ2"):
+            return np.abs(((1 - F) ** 2).sum(1) - 1).max()
+        if key.startswith("SDTLZ2"):
+            return np.abs(((F / scale_base("SDTLZ2", M) ** np.arange(M)) ** 2).sum(1) - 1).max()
+        return np.abs((F ** 2).sum(1) - 1).max()               # DTLZ5, DTLZ6: the sphere
+
+    for key in ("ZDT1", "ZDT2", "ZDT3", "ZDT4", "ZDT6", "DTLZ5_3D", "DTLZ6_3D", "DTLZ6_2D",
+                "DTLZ7_3D", "DTLZ7_5D", "IDTLZ1_3D", "IDTLZ2_5D", "SDTLZ1_3D", "SDTLZ2_5D",
+                "minusDTLZ2_3D"):
+        p = get(key)
+        X = np.asarray(p.pareto_set(200), float)
+        lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+        assert np.all((X >= lo) & (X <= hi)), key
+        F = np.array([p.evaluate(list(x)) for x in X])
+        assert front_error(key, F) < 1e-9, (key, front_error(key, F))
+    assert get("DTLZ6_4D").pareto_set is None and get("DTLZ5_5D").pareto_set is None
+
+
+@test
+def shifted_zdt_and_dtlz67_move_the_optimum_off_the_bound():
+    """shiftZDT1-4, shiftZDT6, shiftDTLZ6/7 (task 6, shifted.py): the base
+    problem at c = 0, h(c) = 0, the Pareto set on the base's front and at least
+    0.15 from the bounds and the middle, one optimum per variable for
+    shiftZDT4 away from the multiples of 1/2, the base's front and frame."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks import shifted as S
+    from mootation.benchmarks.dtlz import DTLZ_FUNCS
+    from mootation.benchmarks.registry import FULL_FRONT
+    rng = np.random.default_rng(3)
+    for base in S.ZDT_BASES:
+        b, s = get(base), get("shift" + base)
+        lo = np.array([q[0] for q in b.bounds]); hi = np.array([q[1] for q in b.bounds])
+        c = S.zdt_centres(base, b.n_vars)
+        assert np.all(np.abs(S.zdt_input(base, np.concatenate([[0.3], c]), c)[1:]) == 0.0)
+        for x in lo + rng.random((30, b.n_vars)) * (hi - lo):
+            at_zero = S.zdt_input(base, x, np.zeros(b.n_vars - 1))       # c = 0: the base
+            assert b.evaluate(list(at_zero)) == b.evaluate(list(x)), base
+        assert np.array_equal(s.pareto_front(300), b.pareto_front(300)), base
+        assert tuple(s.ideal) == tuple(b.ideal) and tuple(s.nadir) == tuple(b.nadir), base
+        assert s.cyclic_vars == () and s.bounds == b.bounds, base
+    for M in (2, 3, 5):
+        for base in S.DTLZ_BASES:
+            b = get(f"{base}_{M}D")
+            x = rng.random(b.n_vars)
+            zero = S.dtlz_input(x, M, np.zeros(b.n_vars - M + 1))
+            assert DTLZ_FUNCS[base](list(zero), M) == b.evaluate(list(x)), (base, M)
+    assert np.array_equal(get("shiftDTLZ6_5D").pareto_front(500), get("DTLZ6_5D").pareto_front(500))
+    assert "shiftDTLZ6_5D" in FULL_FRONT and get("shiftDTLZ6_5D").pareto_set is None
+    for key in ("shiftZDT1", "shiftZDT3", "shiftZDT4", "shiftZDT6", "shiftDTLZ6_3D",
+                "shiftDTLZ7_3D", "shiftDTLZ7_5D"):
+        p, b = get(key), get(key[5:])
+        X = np.asarray(p.pareto_set(200), float)
+        k = 1 if "ZDT" in key else p.n_obj - 1
+        lo = np.array([q[0] for q in p.bounds])[k:]; hi = np.array([q[1] for q in p.bounds])[k:]
+        U = (X[:, k:] - lo) / (hi - lo)
+        assert np.min(np.minimum(np.minimum(U, 1 - U), np.abs(U - 0.5))) >= 0.15, key
+        base_x = np.asarray(b.pareto_set(200), float)                    # the same positions
+        F = np.array([p.evaluate(list(x)) for x in X])
+        G = np.array([b.evaluate(list(x)) for x in base_x])
+        assert np.abs(F - G).max() < 1e-12, key
+    # shiftZDT4: x = c the only minimum along every variable, c off the 1/2 grid
+    p, c = get("shiftZDT4"), S.zdt_centres("ZDT4", 10)
+    assert np.min(np.abs(2 * c - np.round(2 * c))) / 2 > 0.02, c
+    grid = np.linspace(-5.0, 5.0, 40001)
+    for j in range(9):
+        x = np.tile(np.concatenate([[0.4], c]), (len(grid), 1))
+        x[:, j + 1] = grid
+        f2 = np.array([p.evaluate(list(r))[1] for r in x[::10]])
+        best = grid[::10][f2.argmin()]
+        assert abs(best - c[j]) <= 2.5e-3 and np.sum(f2 <= f2.min() + 1e-12) == 1, (j, best, c[j])
+
+
+@test
+def boundary_and_centre_follow_the_pareto_sets():
+    """properties' boundary agrees with what every Pareto-set sample shows
+    (properties.measured, 99 % of the distance variables within 1e-9 of a
+    bound), and so does centre where the table has a value; interior() is
+    neither."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import names
+    from mootation.benchmarks.properties import interior, measured, properties
+    from mootation.benchmarks.registry import PROBLEMS
+    checked = 0
+    for name in names():
+        if PROBLEMS[name].pareto_set is None or properties(name) is None:
+            continue
+        if name.startswith("ZCAT") and name not in ("ZCAT1_3D", "ZCAT11_3D", "ZCAT14_3D"):
+            continue                                       # seconds each: three of them
+        m, row = measured(name, 100), properties(name)
+        assert row["boundary"] is m["boundary"], (name, m, row["boundary"])
+        assert row["centre"] is None or row["centre"] is m["centre"], (name, m, row["centre"])
+        checked += 1
+    assert checked > 100, checked
+    assert [properties(n)["boundary"] for n in ("ZDT1", "ZDT4", "DTLZ7_3D", "WFG4_3D")] == \
+        [True, False, True, False]
+    assert interior("shiftZDT1") and interior("WFG4_3D") and interior("ZCAT1_3D")
+    assert not interior("ZDT1") and not interior("DTLZ2_3D") and not interior("MaF1_3D")
+
+
+@test
+def convergence_indicators_without_coverage_vanish_on_the_pareto_set():
+    """gdp_min, g_min, g_median and ps_dmin (task 6, item 8): g_min = g_median =
+    ps_dmin = 0 on a Pareto-set sample, gdp_min below the reference's
+    resolution there and flagged so; off the set g_min > 0; no distance
+    function where g is no distance to the Pareto set."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    which = ("gdp_min", "g_min", "g_median", "ps_dmin")
+    for key in ("ZDT1", "ZDT4", "shiftZDT6", "DTLZ1_3D", "DTLZ7_3D", "shiftDTLZ2_3D",
+                "shiftDTLZ7_3D", "IDTLZ1_3D", "wideDTLZ3_3D", "Polygon_3D"):
+        p = get(key)
+        X = np.asarray(p.pareto_set(60), float)
+        F = np.array([p.evaluate(list(x)) for x in X])
+        kw = dict(ref_front=np.asarray(p.pareto_front(500), float), ideal=p.ideal,
+                  nadir=p.nadir, which=which, pareto_set=X, bounds=p.bounds,
+                  cyclic=p.cyclic_vars, distance_fn=p.distance_fn)
+        on = M.compute(F, X=X, **kw)
+        assert on["ps_dmin"] == 0.0, (key, on)
+        assert on["gdp_min"] < on["gdp_min_ref_step"] and on["gdp_min_below_step"], (key, on)
+        if key == "Polygon_3D":                              # no g of its own
+            assert p.distance_fn is None and on["g_min"] is None, on
+            continue
+        assert abs(on["g_min"]) < 1e-12 and abs(on["g_median"]) < 1e-12, (key, on)
+        lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+        k = 1 if "ZDT" in key else p.n_obj - 1
+        Y = X.copy()
+        Y[:, k:] = np.clip(Y[:, k:] + 0.05 * (hi - lo)[k:], lo[k:], hi[k:])
+        off = M.compute(np.array([p.evaluate(list(y)) for y in Y]), X=Y, **kw)
+        assert off["g_min"] > 1e-6 and off["ps_dmin"] > 1e-3, (key, off)
+    assert all(get(k).distance_fn is None for k in ("DTLZ5_5D", "DTLZ6_4D", "shiftDTLZ6_5D",
+                                                    "WFG4_3D", "ZCAT1_3D"))
 
 
 @test
@@ -3147,7 +3600,7 @@ def postprocessing_runtimes_gaps_and_budget_marks():
             for a, v in (("x", 0.0), ("x", 0.4), ("y", 0.5))]
     assert PP.zero_share(rows) == {"P": {"x": 0.5, "y": 0.0}}
     assert PP.gap_to_best(rows, "hv") == {"P": {"x": [0.5, 0.09999999999999998], "y": [0.0]}}
-    assert len(PP.BUDGET_SCHEDULED) == 17 and PP.budget_note("rvea") == "*"
+    assert len(PP.BUDGET_SCHEDULED) == 18 and PP.budget_note("mosa") == "*"
     assert PP.budget_note("nsga2") == "" and set(PP.BUDGET_SCHEDULED) <= set(algorithm_names())
     ecdf = PP.runtime_ecdf([recs], "igdp", [0.3, 0.01], grid=[150, 450])
     assert ecdf["share"] == [0.0, 0.5] and ecdf["pairs"] == 2, ecdf
@@ -3187,6 +3640,64 @@ def the_report_tests_rank_and_group_a_toy_campaign():
     arch = R.values(rows, "igdp", scenario="archive")
     assert set(arch["ZDT1"]) == {"bad"} and arch["ZDT1"]["bad"][0] == 0.0, arch["ZDT1"]
     raises(ValueError, R.property_ranks, rows, "igdp", "colour")
+
+
+@test
+def the_reference_report_warns_when_no_mark_is_possible_and_sizes_its_effects():
+    """--reference (task 6, item 10): at 5 seeds and 110 problems Holm leaves no
+    mark but '=' possible (110 > 0.025 C(10, 5) = 6.3), and the report says so;
+    A12's class on shifts of known size; Benjamini-Hochberg, the sign test and
+    the Hodges-Lehmann estimate on values worked by hand; igdp_norm compared
+    across problems by the logarithm, its HL as a ratio."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    from mootation.run import report as R
+    from mootation.run import stats as ST
+
+    def rows_of(per_problem):
+        out = []
+        for p, by_alg in per_problem.items():
+            for alg, vals in by_alg.items():
+                out += [{"problem": p, "algorithm": alg, "status": "done", "dir": ".",
+                         "final": {"igdp_norm": v}} for v in vals]
+        return out
+
+    ref = [1.0, 2.0, 3.0, 4.0, 5.0]
+    many = rows_of({f"P{i}": {"ref": ref, "x": [v + 10.0 for v in ref]} for i in range(110)})
+    rep = R.reference_report(many, "igdp_norm", "ref")
+    assert rep["smallest_p"] == 2 / math.comb(10, 5) and 110 > 0.025 * math.comb(10, 5)
+    assert not rep["labels_possible"] and rep["algorithms"][0]["ties"] == 110, rep
+    assert rep["algorithms"][0]["ties_large"] == 110
+    assert "WARNING: no mark but '='" in " ".join(R.format_reference(rep).split())
+    assert "0/0/0/110" in R.format_reference(rep)                 # A12 classes: all large
+    assert R.reference_report(many[:6 * 10], "igdp_norm", "ref")["labels_possible"]
+    assert R.reference_report(many, "igdp_norm", "ref", adjust="bh")["labels_possible"]
+    raises(ValueError, R.reference_report, many, "igdp_norm", "ref", adjust="bonferroni")
+
+    # A12 of a against the reference, lower better: 15/25 = 0.6 (small),
+    # 17/25 = 0.68 (medium), 0.5 (negligible), 0 (large, worse)
+    shifts = {"small": [v - 0.5 for v in ref], "medium": [v - 1.0 for v in ref],
+              "negligible": list(ref), "large": [v + 10.0 for v in ref]}
+    rep = R.reference_report(rows_of({"P": dict(shifts, ref=ref)}), "igdp_norm", "ref")
+    for e in rep["algorithms"]:
+        got = e["per_problem"]["P"]
+        assert got["a12_class"] == e["algorithm"], (e["algorithm"], got)
+    a12 = {e["algorithm"]: e["per_problem"]["P"]["a12"] for e in rep["algorithms"]}
+    assert (a12["small"], a12["medium"], a12["negligible"], a12["large"]) == (0.6, 0.68, 0.5, 0.0)
+
+    adj = ST.benjamini_hochberg([0.01, 0.04, 0.03, 0.2])
+    assert all(abs(x - y) < 1e-12 for x, y in zip(adj, [0.04, 0.16 / 3, 0.16 / 3, 0.2])), adj
+    assert ST.sign_test([1.0] * 10, [2.0] * 10)["p"] == 2 / 2 ** 10
+    assert ST.sign_test([1.0, 3.0, 2.0], [2.0, 2.0, 2.0]) == {"n": 2, "wins": 1, "losses": 1,
+                                                             "p": 1.0}
+    assert ST.hodges_lehmann([1.0, 2.0, 3.0]) == 2.0          # Walsh: 1, 1.5, 2, 2, 2.5, 3
+    half = rows_of({f"P{i}": {"ref": [2.0 * (i + 1)] * 3, "x": [1.0 * (i + 1)] * 3}
+                    for i in range(8)})
+    e = R.reference_report(half, "igdp_norm", "ref")["algorithms"][0]
+    assert abs(e["hl_ratio"] - 0.5) < 1e-12 and e["sign"]["wins"] == 8, e
+    text = " ".join(R.format_reference(R.reference_report(half, "igdp_norm", "ref")).split())
+    assert "HL ratio" in text and "not a rating" in text
 
 
 @test
@@ -3243,7 +3754,7 @@ name = "rep"
 kind = "builtin"
 [benchmarks]
 runs = 2
-problems = ["ZDT1", "DTLZ2_3D"]
+problems = ["WFG4_2D", "DTLZ2_3D"]
 [campaign]
 out = "res"
 budget_fe = 500
@@ -3265,8 +3776,8 @@ final_metrics = ["igdp", "hv", "igdx", "pdist"]
         fa = meta["final_archive"]
         assert 0 < fa["n"] <= 91 and fa["igdx"] is not None and fa["pdist"] > 0, fa
         assert meta["final"]["igdx"] is not None and meta["archive"]["frame"], meta["final"]
-        assert json.loads((root / "ZDT1" / "gsemo" / "run_1" / "meta.json").read_text(
-            encoding="utf-8"))["final"]["igdx"] is None             # ZDT1 has no Pareto set
+        assert json.loads((root / "WFG4_2D" / "gsemo" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))["final"]["igdx"] is None             # WFG4_2D has no Pareto set
         # recomputing from archive.csv reproduces what the run wrote (up to the
         # ten digits the csv keeps)
         for key in ("final_archive", "final"):
@@ -3291,10 +3802,12 @@ final_metrics = ["igdp", "hv", "igdx", "pdist"]
         assert code == 0 and "bootstrap" in txt and "rvea*" in txt, txt
         code, txt = cli("--ranks", "hv", "--reference", "nsga2", "--scenario", "archive")
         assert code == 0 and "(archive) against nsga2" in txt, txt
+        code, txt = cli("--ranks", "hv", "--reference", "nsga2", "--adjust", "bh")
+        assert code == 0 and "Benjamini-Hochberg" in " ".join(txt.split()), txt
         code, txt = cli("--ranks", "igdp", "--by", "front")
         assert code == 0 and "grouped by front" in txt, txt
         code, txt = cli("--compare", "igdx")
-        assert code == 0 and "DTLZ2_3D" in txt and "ZDT1" not in txt, txt
+        assert code == 0 and "DTLZ2_3D" in txt and "WFG4_2D" not in txt, txt
         for argv in (("--gap", "igdp"), ("--zero-share",),
                      ("--ecdf", "igdp_norm", "--interpolation", "linear")):
             code, txt = cli(*argv)
@@ -3382,6 +3895,97 @@ archive_variables = "{keep}"
         try:
             C.campaign_spec(load(bad))
             raise AssertionError("archive_variables = \"some\" accepted")
+        except ConfigError:
+            pass
+
+
+@test
+def answer_select_igdp_self_and_the_oracle():
+    """answer_select = "igdp_self" (task 6, item 13): the lazy greedy chooses
+    what the plain one does; on a dense front its N points cover the archive
+    thinned by DSS better than DSS's N; a campaign records the choice and
+    --recompute --scenario archive repeats it; --oracle measures every run's
+    archive against the reference, igdp_self's value the run's own answer and
+    the whole archive a bound for both."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  answer_select_igdp_self...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.run import archive as A, campaign as C, oracle as O
+    from mootation.run.config import ConfigError, load
+    from mootation.run.metrics import igd_plus
+
+    def plain(D, k):
+        chosen = [int(np.argmin(D.mean(axis=1)))]
+        cur = D[chosen[0]].copy()
+        while len(chosen) < k:
+            gain = np.maximum(cur[None, :] - D, 0.0).mean(axis=1)
+            gain[chosen] = -1.0
+            c = int(np.argmax(gain))
+            chosen.append(c)
+            cur = np.minimum(cur, D[c])
+        return chosen
+
+    for seed in range(4):
+        rng = np.random.default_rng(seed)
+        C_ = rng.random((300, 3))
+        C_[150:170] = C_[:20]                                   # ties
+        D = A.dplus_matrix(C_, rng.random((80, 3)))
+        assert A.greedy_igdp(D, 40).tolist() == plain(D, 40), seed
+    t = np.sort(np.random.default_rng(9).random(3000))
+    F = np.column_stack([t, 1.0 - np.sqrt(t)])                  # ZDT1's front
+    proxy = F[A.dss_order(F, k=A.SELF_REFERENCE, ideal=[0, 0], nadir=[1, 1])]
+    mine = A.igdp_self_order(F, 50, ideal=[0, 0], nadir=[1, 1])
+    assert len(set(mine.tolist())) == 50
+    dss = A.dss_order(F, k=50, ideal=[0, 0], nadir=[1, 1])
+    assert igd_plus(F[mine], proxy) < igd_plus(F[dss], proxy)
+    assert A.igdp_self_order(F[:30], 50).tolist() == list(range(30))
+    text = """algorithms = [{ name = "nsga2", pop = 0, gens = 0 }]
+[run]
+name = "self"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 3000
+metrics = ["igdp"]
+final_metrics = ["igdp_norm", "hv"]
+answer_select = "{how}"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text.replace("{how}", "igdp_self"), encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        assert spec.answer_select == "igdp_self"
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "DTLZ2_3D" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        assert meta["archive"]["answer_select"] == "igdp_self", meta["archive"]
+        assert meta["archive"]["size"] > 91 and meta["final_archive"]["n"] == 91, meta["archive"]
+        kept = meta["final_archive"]
+        meta["final_archive"] = {}
+        (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        assert C.recompute_final(root, ["igdp_norm", "hv"], scenario="archive") == {"done": 1}
+        again = json.loads((d / "meta.json").read_text(encoding="utf-8"))["final_archive"]
+        assert abs(again["igdp_norm"] - kept["igdp_norm"]) <= 1e-8, (again, kept)  # 10 digits
+        out = O.run(root)
+        assert "1 runs measured" in out, out
+        with (root / "_oracle" / "oracle.csv").open(encoding="utf-8") as fh:
+            row = next(csv.DictReader(fh))
+        v = {k: float(row[k]) for k in O.COLUMNS if k.startswith("igdp_norm")}
+        assert int(row["n"]) == 91 and int(row["archive_size"]) == meta["archive"]["size"]
+        assert abs(v["igdp_norm_igdp_self"] - kept["igdp_norm"]) <= 1e-8, (v, kept)
+        assert v["igdp_norm_archive_whole"] <= min(v["igdp_norm_oracle"], v["igdp_norm_archive"])
+        cfg_path.write_text(text.replace("{how}", "best"), encoding="utf-8")
+        try:
+            C.campaign_spec(load(cfg_path))
+            raise AssertionError("answer_select = \"best\" accepted")
         except ConfigError:
             pass
 
@@ -3524,6 +4128,162 @@ def gap_max_is_the_largest_hole_and_nn_cv_the_evenness():
 
 
 @test
+def de_and_the_portfolio_record_what_they_do():
+    """Task 7, §2: crossover = de_pbest with SHADE and = portfolio in a
+    campaign — the SHADE memory and the CR and F drawn and kept along the
+    trajectory, every operator's share of the children and of them kept;
+    a TOML list for `portfolio`; the knobs after the per-knob setters reach
+    the binding through Config.params / Config.words, and their lists agree
+    with settings.hpp; mutation_scale 0 is refused."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  de_and_the_portfolio...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import knobs as K
+    from mootation.run.config import load
+    from mootation.run.metric_names import DE_STATS, is_table_name
+    import mootation
+    assert callable(mootation.minimize)                # loads the module behind the function
+    Mz = sys.modules["mootation.minimize"]
+    assert set(Mz.PARAM_KNOBS) <= set(K.knob_names()), set(Mz.PARAM_KNOBS) - set(K.knob_names())
+    assert set(Mz.WORD_KNOBS) <= set(K.text_knobs()), set(Mz.WORD_KNOBS) - set(K.text_knobs())
+    assert K.LIST_KNOBS == ("portfolio",) and K.accepts("portfolio", ["sbx", "de"])
+    assert not K.accepts("portfolio", ["sbx", "nope"]) and K.accepts("portfolio", "sbx, pcx".replace(" ", ""))
+    text = """algorithms = [
+    { name = "nsga2", label = "shade", pop = 20, gens = 0, params = { crossover = "de_pbest", de_adapt = "shade", mutation = "none" } },
+    { name = "sms_emoa", label = "pf", pop = 20, gens = 0, params = { crossover = "portfolio", portfolio = ["sbx", "de", "pcx"], portfolio_credit = "borg" } },
+]
+[run]
+name = "de"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1"]
+[campaign]
+out = "res"
+budget_fe = 1200
+record_grid = "log"
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+operator_stats = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "ZDT1" / "shade" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+        assert {o["operator"] for o in meta["operators"]} == {"de_pbest", "none"}, meta["operators"]
+        assert all(k in meta["final"] for k in DE_STATS), sorted(meta["final"])
+        assert 0.0 <= T[-1]["de_mu_cr_mean"] <= 1.0 and T[-1]["de_mu_f_mean"] > 0.0, T[-1]
+        assert all(is_table_name(k) for k in DE_STATS)
+        d = root / "ZDT1" / "pf" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        shares = {k: v for k, v in meta["final"].items() if k.startswith("portfolio_share_")}
+        assert set(shares) == {"portfolio_share_sbx", "portfolio_share_de", "portfolio_share_pcx"}, shares
+        assert abs(sum(shares.values()) - 1.0) < 1e-12 and is_table_name("portfolio_kept_de")
+        bad = Path(td) / "bad.toml"
+        bad.write_text(text.replace('["sbx", "de", "pcx"]', '["sbx", "nope"]'), encoding="utf-8")
+        assert validate(load(bad)), "a portfolio word that is no crossover passed"
+    p = __import__("mootation.benchmarks", fromlist=["get"]).get("ZDT1")
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="moead", pop_size=20, max_evaluations=200,
+                    seed=1, de_adapt="shade", ref_delta=0.5)
+    assert set(r.ignored) == {"de_adapt", "ref_delta"}, r.ignored
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    mutation="gaussian", mutation_scale=0.0)
+        raise AssertionError("mutation_scale = 0 accepted")
+    except ValueError as e:
+        assert "mutation = \"none\"" in str(e), e
+
+
+@test
+def mosa_spends_its_budget_and_records_its_state():
+    """Task 7, §1: mosa spends exactly its budget, the same seed gives the same
+    run, and it is budget-dependent; its answer is at most N points, mutually
+    non-dominated, inside the box. In a campaign with operator_stats the
+    temperature and the step scale fall along the trajectory, and sa_energy =
+    tch with sa_step = adaptive records the chains' weights and the steps'
+    probabilities."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  mosa_spends...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.run import campaign as C
+    from mootation.run.budget import BUDGET_DEPENDENT
+    from mootation.run.config import load
+    from mootation.run.metric_names import SA_STATS, is_table_name
+    assert callable(mootation.minimize)                # loads the module behind the function
+    Mz = sys.modules["mootation.minimize"]
+    assert "mosa" in BUDGET_DEPENDENT
+    assert all(is_table_name(k) for k in SA_STATS) and is_table_name("sa_w_sd_3")
+    p = __import__("mootation.benchmarks", fromlist=["get"]).get("ZDT1")
+    fe = 0
+
+    def ev(x):
+        nonlocal fe
+        fe += 1
+        return p.evaluate(x)
+    a = Mz.minimize(ev, p.bounds, 2, algorithm="mosa", pop_size=30, max_evaluations=777, seed=5)
+    b = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="mosa", pop_size=30, max_evaluations=777,
+                    seed=5)
+    assert fe == 777 and a.evaluations == 777, (fe, a.evaluations)
+    assert a.objectives == b.objectives and a.variables == b.variables
+    F, X = np.asarray(a.objectives), np.asarray(a.variables)
+    assert 0 < len(F) <= 30, len(F)
+    lb, ub = np.array(p.bounds, float).T
+    assert np.all(X >= lb) and np.all(X <= ub)
+    assert not any((np.all(F <= f, axis=1) & np.any(F < f, axis=1)).any() for f in F)
+    text = """algorithms = [
+    { name = "mosa", label = "cmb", pop = 20, gens = 0 },
+    { name = "mosa", label = "tch", pop = 20, gens = 0, params = { sa_energy = "tch", sa_step = "adaptive", sa_chains = 4 } },
+]
+[run]
+name = "sa"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1500
+record_grid = "log"
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+operator_stats = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for label in ("cmb", "tch"):
+            d = root / "DTLZ2_3D" / label / "run_1"
+            meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+            T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+            temps, scales = [r["sa_T"] for r in T], [r["sa_s"] for r in T]
+            assert len(T) > 3 and temps[-1] < temps[0] and scales[-1] < scales[0], (temps, scales)
+            assert all(u >= v for u, v in zip(temps, temps[1:]))
+            assert 0 < meta["final"]["sa_archive_size"] and "sa_reseeds" in meta["final"]
+        w = {k: v for k, v in T[-1].items() if k.startswith(("sa_w_", "sa_p_"))}
+        assert set(w) == {"sa_w_mean_1", "sa_w_mean_2", "sa_w_mean_3", "sa_w_sd_1", "sa_w_sd_2",
+                          "sa_w_sd_3", "sa_p_laplace", "sa_p_de", "sa_p_sbx"}, sorted(w)
+        assert abs(w["sa_w_mean_1"] + w["sa_w_mean_2"] + w["sa_w_mean_3"] - 1.0) < 1e-9
+        assert abs(w["sa_p_laplace"] + w["sa_p_de"] + w["sa_p_sbx"] - 1.0) < 1e-9
+
+
+@test
 def operator_statistics_leave_the_run_alone_and_describe_it():
     """[campaign] operator_stats: the same populations, the records and meta it adds."""
     if not _have_numpy() or _core_with("operator_stats") is None:
@@ -3617,6 +4377,52 @@ def uninformative_values_come_from_the_seed_and_the_count_not_from_x():
 
 
 @test
+def kudelas_problems_and_where_the_points_fell():
+    """f2b-f5 (task 6, item 11, Kudela et al. 2026, Table 1, variant beta) from
+    the seed and the count; the evaluator's counts of every point and of the
+    non-dominated ones: uniform points give binsizes 1 +- 0.1 and no exact
+    hits, clipped points atoms on the bounds; on f5 every point is
+    non-dominated."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get, names
+    from mootation.benchmarks import uninformative as U
+    from mootation.run import report as R
+    assert len([n for n in names() if n.startswith("uninformative")]) == 10
+    assert U.name(10, "f3b") == "uninformative_f3b_n10_2D"
+    rng = np.random.default_rng(9)
+    X = rng.random((20000, 2))
+    for problem in ("f2b", "f3b", "f4b", "f5"):
+        a, b = U.Evaluator(7, problem), U.Evaluator(7, problem)
+        fa = [a(x) for x in X[:200]]
+        assert fa == [b([0.5, 0.5]) for _ in range(200)], problem     # x never matters
+        assert all(np.isfinite(f).all() for f in fa), problem
+        assert fa != [U.Evaluator(8, problem)([0.1, 0.1]) for _ in range(200)], problem
+        g1 = np.array([f[0] for f in fa])
+        assert 0.0 <= g1.min() and g1.max() < 1.0, problem             # g1 = a = U(0, 1)
+    assert all(f[1] == -f[0] for f in (U.Evaluator(3, "f5")([0.2, 0.3]) for _ in range(5)))
+    assert U.objectives("f4b", 0.25, 0.0) == [0.25, -0.125]
+    assert abs(U.objectives("f3b", 0.35, 0.0)[1] - (0.1 / 1.5 ** 10 + 0.7)) < 1e-15
+    e = get("uninformative_f2b_n02_2D").make_evaluator(1)
+    for x in X:
+        e(x)
+    s = e.summary()
+    assert s["evaluations"] == 20000 and s["all"]["points"] == 20000
+    m = R._bin_measures(s["all"]["hist"], s["all"]["at_lower"], s["all"]["at_upper"],
+                        s["all"]["at_half"])
+    assert np.all(np.abs(np.array(m["binsizes"]) - 1.0) < 0.1), m["binsizes"]
+    assert m["at_bound"] == 0.0 and m["at_half"] == 0.0, m
+    assert 0 < s["nondominated"]["points"] < 2000, s["nondominated"]
+    e = U.Evaluator(2, "f5")
+    for x in np.clip(0.5 + 0.6 * rng.standard_normal((3000, 2)), 0.0, 1.0):
+        e(x)
+    s = e.summary()
+    assert s["nondominated"]["points"] == 3000, s["nondominated"]["points"]  # every one
+    assert s["all"]["at_lower"] + s["all"]["at_upper"] > 1000, s["all"]
+
+
+@test
 def the_chi_square_tail_and_the_bias_shares_are_right():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
@@ -3631,28 +4437,34 @@ def the_chi_square_tail_and_the_bias_shares_are_right():
     rng = np.random.default_rng(4)
     with tempfile.TemporaryDirectory() as td:
         rows = []
-        for alg, maker in (("flat", lambda: rng.random((100, 2))),
-                           ("centre", lambda: 0.45 + 0.1 * rng.random((100, 2))),
-                           ("edges", lambda: np.where(rng.random((100, 2)) < 0.5, 0.0, 1.0))):
-            for seed in (1, 2, 3):
+        for alg, maker in (("flat", lambda: rng.random((400, 2))),
+                           ("centre", lambda: 0.45 + 0.1 * rng.random((400, 2))),
+                           ("clipped", lambda: np.clip(0.5 + 0.6 * rng.standard_normal((400, 2)),
+                                                       0.0, 1.0))):
+            for seed in (1, 2, 3, 4, 5):
                 d = Path(td) / alg / str(seed)
                 d.mkdir(parents=True)
                 X = maker()
-                F = rng.random((100, 2))
+                F = rng.random((400, 2))
                 with (d / "final.csv").open("w", encoding="utf-8") as fh:
                     fh.write("# final\nf1,f2,x1,x2\n")
                     for f, x in zip(F, X):
                         fh.write(",".join(f"{v:.10g}" for v in (*f, *x)) + "\n")
-                rows.append({"problem": "uninformative_n02_2D", "algorithm": alg,
+                rows.append({"problem": "uninformative_n02_2D", "algorithm": alg, "seed": seed,
                              "status": "done", "dir": d})
         rep = R.structural_bias(rows)
-        flat, centre, edges = (rep[("uninformative_n02_2D", a)] for a in ("flat", "centre", "edges"))
-        assert abs(flat["edge"] - 0.2) < 0.05 and abs(flat["centre"] - 0.2) < 0.05, flat
-        assert flat["p_min"] > 1e-3 and flat["runs"] == 3 and flat["points"] == 300, flat
-        assert centre["centre"] == 1.0 and centre["edge"] == 0.0 and centre["p_min"] < 1e-12, centre
-        assert edges["edge"] == 1.0 and edges["centre"] == 0.0, edges
+        flat, centre, clipped = (rep[("uninformative_n02_2D", a)]
+                                 for a in ("flat", "centre", "clipped"))
+        L = flat["L"]                               # 4 000 coordinates, 200 a bin
+        assert abs(L["bound"] - 1) < 0.25 and abs(L["centre"] - 1) < 0.25, L
+        assert L["at_bound"] == 0.0 and L["at_half"] == 0.0 and flat["class"] == "none", flat
+        assert flat["chi2_p"] > 1e-3 and flat["runs"] == 5 and 0.8 < flat["cei"] < 1.2, flat
+        assert flat["P"] is None and flat["A"] is None      # no meta.json counts here
+        assert centre["class"] == "centre" and centre["L"]["bound"] == 0.0, centre
+        assert centre["cei"] < 0.5, centre                  # clustered in the middle
+        assert clipped["class"] == "bound" and clipped["L"]["at_bound"] > 0.3, clipped
         text = R.format_bias(rep)
-        assert text.index("edges") < text.index("flat") and "centre" in text
+        assert all(a in text for a in ("flat", "centre", "clipped")) and "bound" in text
 
 
 @test
@@ -3692,6 +4504,1713 @@ archive = false
                            .read_text() for s in (1, 2)]
         assert finals["a"] == finals["b"], "the same seed gives the same run"
         assert finals["a"][0] != finals["a"][1], "another seed another stream"
+        # the counts --bias reads (task 6, item 11): every evaluated point, and
+        # the run's non-dominated ones
+        meta = json.loads((root / "uninformative_n10_2D" / "nsga2" / "run_1" / "meta.json")
+                          .read_text(encoding="utf-8"))
+        sb = meta["structural_bias"]
+        assert sb["evaluations"] == meta["fe"] == sb["all"]["points"], (sb["evaluations"], meta["fe"])
+        assert sum(sb["all"]["hist"]) == 10 * sb["all"]["points"], sb["all"]
+        assert 0 < sb["nondominated"]["points"] < sb["all"]["points"], sb["nondominated"]
+
+
+# ── task 6, item 5: C-DTLZ and the indicators of a constrained problem ──────
+
+# pymoo 0.6.2's C-DTLZ (problems/many/cdtlz.py, Apache-2.0) at the points of
+# c_dtlz_fixed_points: (objectives, constraints), <= 0 satisfied. The convex
+# C2-DTLZ2, for which pymoo has no class, is its DTLZ2 turned convex (f_i^4,
+# f_M^2) under its constraint_c4_cylindrical, the paper's Eq. 6.
+C_DTLZ_PYMOO = {
+    "C1-DTLZ1_3D": [
+        ([59.7984043146437, 118.137038268974, 69.8737772743156],
+         [471.327180624427]),
+        ([88.9682583664649, 115.05557038731, 45.3836916666593],
+         [482.687143618648]),
+        ([123.325279701835, 106.730020890775, 20.5403237653231],
+         [493.344474127426]),
+        ([11.6481296007396, 23.0119105714592, 13.6107112340644],
+         [91.0045990678383]),
+        ([61.8356237688568, 79.9670926868747, 31.5430349505318],
+         [335.177157829016]),
+    ],
+    "C1-DTLZ3_3D": [
+        ([378.041371309325, 220.432887766739, 922.570821542082],
+         [-1087002992591.2]),
+        ([224.323791039201, 183.254881448657, 985.648141542881],
+         [-1113778974154.13]),
+        ([87.4754767992258, 97.9946256132122, 1014.5968659256],
+         [-1095399201993.48]),
+        ([71.1148807980232, 41.4665159085698, 173.548502838375],
+         [-1357728433.99052]),
+        ([151.186148241474, 123.507183720111, 664.291314581048],
+         [-229772324436.839]),
+    ],
+    "C2-DTLZ2_3D": [
+        ([0.684588560766381, 0.399178092226137, 1.67066749529848],
+         [0.917799536095413]),
+        ([0.41736525869089, 0.340954566824441, 1.83384602082331],
+         [0.825742962243431]),
+        ([0.159784418525468, 0.178998901694088, 1.85328249918289],
+         [0.625662690623007]),
+        ([0.370600175935276, 0.216093986500306, 0.904411354746914],
+         [0.0331782905061725]),
+        ([0.219229662775171, 0.179093379599993, 0.963265236756179],
+         [-0.0785144735123583]),
+    ],
+    "C2-ConvexDTLZ2_3D": [
+        ([0.21964359926911, 0.02539023923308, 2.79112987984688],
+         [-4.71590560624918]),
+        ([0.0303434657310284, 0.0135140663684382, 3.3629912280895],
+         [-7.39131553117562]),
+        ([0.000651835045328287, 0.00102660048460497, 3.43465602177757],
+         [-7.81010696590413]),
+        ([0.0188635090441306, 0.00218057347903423, 0.817959898595148],
+         [-0.384151422473147]),
+        ([0.00230992172400047, 0.00102876961256665, 0.927879916342938],
+         [-0.521286501495012]),
+    ],
+    "C3-DTLZ1_3D": [
+        ([59.7984043146437, 118.137038268974, 69.8737772743156],
+         [-306.607624172577, -364.946258126907, -316.682997132248]),
+        ([88.9682583664649, 115.05557038731, 45.3836916666593],
+         [-337.375778786899, -363.463090807744, -293.791212087093]),
+        ([123.325279701835, 106.730020890775, 20.5403237653231],
+         [-372.920904059768, -356.325645248708, -270.135948123256]),
+        ([11.6481296007396, 23.0119105714592, 13.6107112340644],
+         [-58.9188810070028, -70.2826619777224, -60.8814626403276]),
+        ([61.8356237688568, 79.9670926868747, 31.5430349505318],
+         [-234.18137517512, -252.312844093138, -203.888786356795]),
+    ],
+    "C3-DTLZ4_3D": [
+        ([1.40783736378174, 9.7137204167572e-48, 9.10274982407908e-15],
+         [0.504498489285019, -0.982006042859924, -0.982006042859924]),
+        ([1.43980337503174, 2.04099820292739e-36, 4.28112523765757e-09],
+         [0.481741560311801, -1.0730337587528, -1.0730337587528]),
+        ([1.46356538642609, 1.92096083262571e-27, 0.000444025668062882],
+         [0.464493892755065, -1.14202383750336, -1.14202368963426]),
+        ([1.0005, 6.90319601325218e-48, 6.46900091820764e-15],
+         [0.7497499375, -0.00100024999999992, -0.00100024999999992]),
+        ([1.002, 1.4203885299881e-36, 2.97935646111283e-09],
+         [0.748999, -0.0040039999999999, -0.0040039999999999]),
+    ],
+    "C1-DTLZ1_5D": [
+        ([36.1218374535393, 27.0132218586119, 3.03717546512012, 130.729104259922,
+          77.3215280167352],
+         [521.671891435612]),
+        ([3.54171545726692, 1.72762838741242, 92.1271873706594, 125.955185124205,
+          49.6830467768852],
+         [528.508510640564]),
+        ([16.1633356690998, 4.76994112552867, 114.907149541453, 117.561067574421,
+          22.6247720184261],
+         [543.510941185049]),
+        ([6.35843485552335, 4.75506849967716, 0.53462624553912, 23.0119105714592,
+          13.6107112340644],
+         [91.0045990678383]),
+        ([2.24858300166456, 1.09684582852584, 58.4901949386664, 79.9670926868747,
+          31.5430349505318],
+         [335.177157829016]),
+    ],
+    "C1-DTLZ3_5D": [
+        ([17.5977005666561, 22.1171892212406, 391.349728325773, 228.787232930179,
+          957.535999193056],
+         [-1261322431809.4]),
+        ([114.026429374905, 201.47732425991, 19.7216343864504, 189.807371500353,
+          1020.89112983807],
+         [-1281748885880.08]),
+        ([31.0302444335286, 82.95988644939, 21.8691001705988, 102.204099285361, 1058.18006008785],
+         [-1296018463027.65]),
+        ([3.18949322982626, 4.00862743497276, 70.9301368244946, 41.4665159085698,
+          173.548502838375],
+         [-1354953222.94151]),
+        ([74.196713491333, 131.100792904447, 12.8328183577615, 123.507183720111,
+          664.291314581048],
+         [-229736251225.296]),
+    ],
+    "C2-DTLZ2_5D": [
+        ([0.0304706544058254, 0.0382962095892014, 0.677627300138466, 0.396148160418738,
+          1.65798641714771],
+         [0.801453308495799]),
+        ([0.201216973509685, 0.355537375331783, 0.0348018227498706, 0.334943969152602,
+          1.80151763547293],
+         [0.672724244998741]),
+        ([0.0554638619600905, 0.148283578626342, 0.0390891137081371, 0.182680934617247,
+          1.89140478436634],
+         [0.604567031948086]),
+        ([0.0166213700825164, 0.0208901149237555, 0.369637421750437, 0.216093986500306,
+          0.904411354746914],
+         [-0.0568217094938274]),
+        ([0.107590018443692, 0.19010460252016, 0.0186084140230469, 0.179093379599993,
+          0.963265236756179],
+         [-0.168514473512358]),
+    ],
+    "C2-ConvexDTLZ2_5D": [
+        ([8.62039419848259e-07, 2.1509145888177e-06, 0.21084513170011, 0.0246280810512119,
+          2.74891895944631],
+         [-5.76966973331538]),
+        ([0.00163930004228304, 0.0159786854717592, 1.46692517902439e-06, 0.0125860267358389,
+          3.24546579091998],
+         [-8.33683515985183]),
+        ([9.4632524362562e-06, 0.000483473009898146, 2.33465812654689e-06, 0.00111371200065977,
+          3.57741205832389],
+         [-10.1853751865018]),
+        ([7.63250816372747e-08, 1.90442255662988e-07, 0.0186682552088692, 0.00218057347903423,
+          0.817959898595148],
+         [-0.478066548663102]),
+        ([0.000133994794765356, 0.00130608224558252, 1.19905040706128e-07, 0.00102876961256665,
+          0.927879916342938],
+         [-0.637229112541956]),
+    ],
+    "C3-DTLZ1_5D": [
+        ([36.1218374535393, 27.0132218586119, 3.03717546512012, 130.729104259922,
+          77.3215280167352],
+         [-309.344704507468, -300.23608891254, -276.260042519049, -403.95197131385,
+          -350.544395070664]),
+        ([3.54171545726692, 1.72762838741242, 92.1271873706594, 125.955185124205,
+          49.6830467768852],
+         [-275.576478573696, -273.762391503842, -364.161950487089, -397.989948240635,
+          -321.717809893315]),
+        ([16.1633356690998, 4.76994112552867, 114.907149541453, 117.561067574421,
+          22.6247720184261],
+         [-291.189601598029, -279.796207054458, -389.933415470382, -392.58733350335,
+          -297.651037947355]),
+        ([6.35843485552335, 4.75506849967716, 0.53462624553912, 23.0119105714592,
+          13.6107112340644],
+         [-53.6291862617866, -52.0258199059404, -47.8053776518023, -70.2826619777224,
+          -60.8814626403276]),
+        ([2.24858300166456, 1.09684582852584, 58.4901949386664, 79.9670926868747,
+          31.5430349505318],
+         [-174.594334407928, -173.442597234789, -230.83594634493, -252.312844093138,
+          -203.888786356795]),
+    ],
+    "C3-DTLZ4_5D": [
+        ([1.43031003708889, 1.26320600690361e-24, 0.02046721678758, 9.86978649937e-48,
+          9.24899971033251e-15],
+         [0.488134392487665, -1.04620570916025, -1.04589152893798, -1.04620570916025,
+          -1.04620570916025]),
+        ([1.40669439005996, 1.23036065344279e-17, 4.63046436309942e-127, 1.99406444794389e-36,
+          4.18267866251128e-09],
+         [0.505302723243461, -0.978789107026155, -0.978789107026155, -0.978789107026155,
+          -0.978789107026155]),
+        ([1.46652437881813, 1.35452422387409e-11, 1.39067988622334e-81, 1.92484457334673e-27,
+          0.000444923385777343],
+         [0.462326363626204, -1.15069395162473, -1.15069395162473, -1.15069395162473,
+          -1.15069380315711]),
+        ([1.000397581688, 8.83520496753379e-25, 0.0143153258015671, 6.90319601325218e-48,
+          6.46900091820764e-15],
+         [0.749596241085396, -0.00100024999999992, -0.000846553585396204, -0.00100024999999992,
+          -0.00100024999999992]),
+        ([1.002, 8.76396027069628e-18, 3.29831790374017e-127, 1.4203885299881e-36,
+          2.97935646111283e-09],
+         [0.748999, -0.0040039999999999, -0.0040039999999999, -0.0040039999999999,
+          -0.0040039999999999]),
+    ],
+}
+
+
+def c_dtlz_fixed_points(name: str, M: int) -> list:
+    """Five points of a C-DTLZ problem: x_i = (0.1 j + 0.61803398875 i) mod 1,
+    i = 1..n, for j = 1, 2, 3, and the first two again with the distance
+    variables at 0.5 + 0.01 j, near the front."""
+    import numpy as np
+    from mootation.benchmarks import c_dtlz
+    i = np.arange(1, c_dtlz.n_vars(name, M) + 1)
+    X = [(0.1 * j + 0.61803398875 * i) % 1.0 for j in (1, 2, 3)]
+    for j in (1, 2):
+        x = X[j - 1].copy()
+        x[M - 1:] = 0.5 + 0.01 * j
+        X.append(x)
+    return [list(x) for x in X]
+
+
+@test
+def c_dtlz_matches_pymoo():
+    """C1-DTLZ1, C1-DTLZ3, C2-DTLZ2, C2-ConvexDTLZ2, C3-DTLZ1 and C3-DTLZ4 at
+    three and five objectives give pymoo's objectives and constraints at five
+    points each, to 1e-12 relative (task 6, item 5.3)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import get, names
+    assert sorted(C_DTLZ_PYMOO) == sorted(n for n in names() if n[:3] in ("C1-", "C2-", "C3-"))
+    for key, rows in C_DTLZ_PYMOO.items():
+        name, M = key.split("_")[0], int(key.split("_")[1][:-1])
+        p = get(key)
+        assert p.has_cons and p.n_obj == M, key
+        for x, (f, g) in zip(c_dtlz_fixed_points(name, M), rows):
+            for mine, theirs in ((p.evaluate(x), f), (p.constraints(x), g)):
+                assert len(mine) == len(theirs), key
+                for a, b in zip(mine, theirs):
+                    assert abs(a - b) <= 1e-12 * max(1.0, abs(b)), (key, a, b)
+
+
+@test
+def c_dtlz_fronts_are_feasible_and_the_constraints_point_the_right_way():
+    """Every reference front is feasible (to 1e-12: C3's lies on its
+    constraints) and mutually non-dominated, its extremes the registered
+    frame; the Pareto sets are feasible with g = 0. The sign: C1-DTLZ1 is
+    infeasible just above its band and feasible just below, C3-DTLZ1 and
+    C3-DTLZ4 are feasible off the unconstrained front and infeasible on it
+    (task 6, item 5.3)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import c_dtlz, get
+    from mootation.benchmarks.registry import PROBLEMS, _strictly_dominated_by
+    for key in C_DTLZ_PYMOO:
+        name, p = key.split("_")[0], get(key)
+        F = p.pareto_front(300)
+        worst = max(max(c_dtlz.constraints(name, f, p.n_obj)) for f in F)
+        assert worst <= 1e-12, (key, worst)
+        assert not _strictly_dominated_by(F, F).any(), key
+        assert np.allclose(F.min(0), p.ideal, atol=1e-12), (key, F.min(0))
+        assert np.allclose(F.max(0), p.nadir, atol=1e-12), (key, F.max(0))
+        if p.pareto_set is not None:
+            for x in p.pareto_set(40):
+                assert max(p.constraints(list(x))) <= 0.0 and p.distance_fn(list(x)) == 0.0, key
+    approximate = {n for n in C_DTLZ_PYMOO if not PROBLEMS[n].front_exact}
+    assert approximate == {"C2-ConvexDTLZ2_3D", "C2-ConvexDTLZ2_5D"}, approximate
+    assert [get(k).pareto_set is None for k in ("C2-DTLZ2_3D", "C2-ConvexDTLZ2_3D",
+                                               "C3-DTLZ1_3D", "C3-DTLZ4_5D")] == \
+        [False, True, True, True]
+
+    def dtlz1_x(positions, g, k):
+        """DTLZ1's x with these positions and g(x) = g: one distance variable
+        at 0.5 + d, where g = 100 (1 + d^2 - cos(20 pi d)) grows with d."""
+        lo, hi = 0.0, 0.05
+        for _ in range(100):
+            mid = 0.5 * (lo + hi)
+            if 100.0 * (1.0 + mid * mid - math.cos(20.0 * math.pi * mid)) < g:
+                lo = mid
+            else:
+                hi = mid
+        return list(positions) + [0.5 + hi] + [0.5] * (k - 1)
+
+    def feasible(key, x):
+        return max(get(key).constraints(x)) <= 0.0
+
+    # C1-DTLZ1 at (0, 0, f_3): f_3 = 0.5 (1 + g), the band's top f_3 = 0.6 at g = 0.2
+    above, below = dtlz1_x([0, 0], 0.2 * (1 + 1e-6), 5), dtlz1_x([0, 0], 0.2 * (1 - 1e-6), 5)
+    assert abs(get("C1-DTLZ1_3D").evaluate(above)[2] - 0.6) < 1e-6
+    assert not feasible("C1-DTLZ1_3D", above) and feasible("C1-DTLZ1_3D", below)
+    # C3-DTLZ1 at (f_1, 0, 0), f_1 = 0.5 (1 + g): feasible from g = 1, so at
+    # g = 1.5 (sum f = 1.25, off DTLZ1's front) and not on that front (g = 0)
+    off, on = dtlz1_x([1, 1], 1.5, 5), [1, 1] + [0.5] * 5
+    assert abs(sum(get("C3-DTLZ1_3D").evaluate(off)) - 1.25) < 1e-9
+    assert feasible("C3-DTLZ1_3D", off) and not feasible("C3-DTLZ1_3D", on)
+    # C3-DTLZ4 at (1 + g, 0, 0): feasible from g = 1; g = sum (x - 1/2)^2 = 1.21
+    off = [0, 0, 1, 1, 1, 1, 0.5 + math.sqrt(0.21)]
+    assert abs(get("C3-DTLZ4_3D").evaluate(off)[0] - 2.21) < 1e-9
+    assert feasible("C3-DTLZ4_3D", off) and not feasible("C3-DTLZ4_3D", [0, 0] + [0.5] * 5)
+
+
+MW_PYMOO = {
+    'MW1': [
+        ([0.71803398875, 13.214831471811495],
+         [12.743616327026453]),
+        ([0.8180339887500001, 13.09481618133752],
+         [12.855731607265628]),
+        ([0.9180339887500001, 13.814877542974049],
+         [13.242568908058608]),
+        ([0.71803398875, 0.38967110956249995],
+         [0.10770215142474622]),
+        ([0.8180339887500001, 0.3046711095624999],
+         [-0.33368103776665164]),
+    ],
+    'MW2': [
+        ([0.71803398875, 14.920726860505866],
+         [14.601710630714738]),
+        ([0.8180339887500001, 13.764880051111463],
+         [13.582911114184038]),
+        ([0.9180339887500001, 13.82280391221085],
+         [13.709824366193962]),
+        ([0.71803398875, 0.28196601125],
+         [-0.000898742608043089]),
+        ([0.8180339887500001, 0.1819660112499999],
+         [-0.09410664910208602]),
+    ],
+    'MW3': [
+        ([0.71803398875, 8.094089269929531],
+         [7.7525333686682245, -7.878949123827623]),
+        ([0.8180339887500001, 7.138204286564312],
+         [6.7861287410245765, -6.913081663930229]),
+        ([0.9180339887500001, 8.156576442859906],
+         [7.856933955345026, -8.008732724659035]),
+        ([0.71803398875, 0.28196601125],
+         [-0.4816253562271867, 0.14585987315874788]),
+        ([0.8180339887500001, 0.1819660112499999],
+         [-0.22360051086835128, 0.06839067121440906]),
+    ],
+    'MW4_3D': [
+        ([2.4074764930215173, 1.2186123405254712, 9.233932193356084],
+         [11.860021026820545]),
+        ([1.3129237797123703, 1.0152358695516868, 10.466315721553626],
+         [11.644848895619123]),
+        ([0.517012746240339, 0.5974021274178792, 12.481645940612763],
+         [12.290075651220402]),
+        ([0.1872062641254702, 0.0947597471245298, 0.71803398875],
+         [-1.489914148655162e-05]),
+        ([0.10261646075047019, 0.0793495504995297, 0.8180339887500001],
+         [-0.2889037178347636]),
+    ],
+    'MW4_5D': [
+        ([0.04739098936795808, 0.06337080499585229, 2.302452570484893, 1.2215167266896687, 9.255939934465909],
+         [11.89067079753233]),
+        ([0.41069716640932624, 0.8419475583555581, 0.07164677396970069, 1.0240261102988426, 10.556936470571117],
+         [11.512524415114656]),
+        ([0.09930797108030845, 0.33651318306583444, 0.0793959722184599, 0.5953273098401709, 12.438296348758698],
+         [12.446548287452234]),
+        ([0.003676378775965696, 0.004916020653076532, 0.17861386469642798, 0.0947597471245298, 0.71803398875],
+         [-1.489914148655162e-05]),
+        ([0.03182402794055731, 0.06524068051369647, 0.005551752296216407, 0.0793495504995297, 0.8180339887500001],
+         [-0.2889037178347636]),
+    ],
+    'MW5': [
+        ([9.926935040014042, 9.62242275901668],
+         [188.8847679470211, -190.0403631504468, -190.21662325034885]),
+        ([11.280807378505276, 7.93167611477308],
+         [187.8825721563648, -189.91745381954496, -188.0672890731219]),
+        ([13.398895578694468, 5.787024114788165],
+         [210.60389400344525, -212.1280608171511, -211.9175655505448]),
+        ([0.71803398875, 0.6960080394648935],
+         [-1.2502910948796733, 0.0946958914540002, -0.08156420844805529]),
+        ([0.8180339887500001, 0.5751698820781254],
+         [-1.2855289442360522, -0.7493527189440884, 1.1008120274789635]),
+    ],
+    'MW6': [
+        ([11.302920598355175, 10.956199468473345],
+         [246.52908323706487]),
+        ([11.357296508785744, 7.985456574569011],
+         [189.58652919295434]),
+        ([16.19014304284512, 6.992572459464124],
+         [221.92832259142097]),
+        ([0.7898373876250001, 0.7656088434113829],
+         [0.2087048229945303]),
+        ([0.8998373876250002, 0.632686870285938],
+         [0.19638329499265295]),
+    ],
+    'MW7': [
+        ([6.327404012786312, 6.133308632796529],
+         [76.21351632616076, -76.33101632626463]),
+        ([6.508473331800788, 4.576188630598],
+         [61.86102537267868, -61.991637707042955]),
+        ([8.330800810883202, 3.5980984331826047],
+         [79.82480394647712, -81.44060740484436]),
+        ([0.71803398875, 0.6960080394648935],
+         [-0.43999999999999995, 0.3224999998961307]),
+        ([0.8180339887500001, 0.5751698820781254],
+         [-0.44070212089776883, 0.3100897865334946]),
+    ],
+    'MW8_3D': [
+        ([4.681411400606608, 2.7296933938362153, 11.4244997759788],
+         [158.58258852304203]),
+        ([2.84463371222378, 2.3238418505834115, 12.498932542262645],
+         [169.13740408895842]),
+        ([1.230286073531258, 1.3782311064112025, 14.269649507160745],
+         [206.02309507462743]),
+        ([0.37022994598928705, 0.2158781083919141, 0.9035078469000136],
+         [-0.3034453343802277]),
+        ([0.21835623782387528, 0.17837986015935536, 0.9594275266495808],
+         [0.4219074896832845]),
+    ],
+    'MW8_5D': [
+        ([0.23481972460116143, 0.295126756033352, 5.222082003277305, 3.052884939451789, 12.777143171321576],
+         [198.68442929374217]),
+        ([1.6737812117114785, 2.9574631230744863, 0.2894916668113129, 2.7861611909032566, 14.98554678676917],
+         [243.38315126400357]),
+        ([0.5287627328823229, 1.4136561628624746, 0.3726546594453679, 1.741582118879825, 18.031639475229493],
+         [329.57708892315725]),
+        ([0.016604765317199233, 0.02086924567807744, 0.3692681535968397, 0.2158781083919141, 0.9035078469000136],
+         [-0.3034453343802277]),
+        ([0.10716137295188428, 0.189347213665498, 0.018534276915385315, 0.17837986015935536, 0.9594275266495808],
+         [0.4219074896832845]),
+    ],
+    'MW9': [
+        ([9.926935040014042, 2.4918396422855285],
+         [2386.6352271564665]),
+        ([11.280807378505276, 1.565629891754707],
+         [3803.4543816240634]),
+        ([13.398895578694468, 0.7300268708210166],
+         [7377.665032993134]),
+        ([0.71803398875, 0.18023947476875202],
+         [0.19499677833779422]),
+        ([0.8180339887500001, 0.11353251786735441],
+         [0.09370647090707551]),
+    ],
+    'MW10': [
+        ([0.10873700699655219, 15.638004795959537],
+         [-187.9346745708994, 188.9021876370522, 211.7221534725455]),
+        ([0.7168273152158293, 14.54767818792988],
+         [-243.26348169976345, 281.9485808486947, 196.35910738143915]),
+        ([4.086990035798998, 13.607694204181474],
+         [-11389.61415816595, 12552.948012097924, 951.2029315611368]),
+        ([0.006953044940368545, 0.9999516551660572],
+         [-0.9995166007422546, 0.99922651771526, 0.0]),
+        ([0.0491552863341598, 0.9975837578254068],
+         [-0.9759601810052395, 0.9614276986002024, 0.0]),
+    ],
+    'MW11': [
+        ([6.634571538607728, 6.431053684958233],
+         [-4339.939320138415, 9640.103559079847, -137.63448445036977, 128.66062640287947]),
+        ([7.694093677897531, 5.409813057005904],
+         [-7442.844888359077, 16425.90202386341, -168.79301909553226, 151.30751771089382]),
+        ([9.661293026068458, 4.172742103520482],
+         [-17754.69746426834, 38953.07346433702, -284.80089802791935, 237.51590336924264]),
+        ([1.0154534051351005, 0.9843040089319607],
+         [0.0458753657818632, -7.133581721568655, -0.005312314620440676, -0.3618857058392573]),
+        ([1.1568747613724102, 0.8134130479034185],
+         [0.4157431125729019, -9.696409744459077, -0.0816234580332177, -0.26290088211100365]),
+    ],
+    'MW12': [
+        ([9.926935040014042, 2.9197577317355434],
+         [119.85320432386361, -84.1558877206173]),
+        ([11.280807378505276, 1.6683404972947211],
+         [121.47205850955179, -78.32687616264249]),
+        ([13.398895578694468, 1.4597694412200057],
+         [164.557729705835, -104.22979685950831]),
+        ([0.71803398875, 0.21119159960764278],
+         [0.09592457249788622, -0.12600903533691502]),
+        ([0.8180339887500001, 0.12098063425811212],
+         [0.1374585422943775, -0.1669432390486059]),
+    ],
+    'MW13': [
+        ([13.119270668108797, 21.09677798522716],
+         [10913313.034142453, -2991.6235522750226]),
+        ([15.854995248451887, 15.087514793077155],
+         [130211173.61212951, -3300.9618909869605]),
+        ([16.773277923328017, 10.18988750590217],
+         [256499344.65840703, -3010.964868724286]),
+        ([1.077050983125, 1.7319793184078192],
+         [1.4404102626308757, -1.7408005379080078]),
+        ([1.2270509831250003, 1.1676540780777576],
+         [2.327261319639106, -3.0499043475966925]),
+    ],
+    'MW14_3D': [
+        ([1.077050983125, 0.5041019662500003, 26.383313418832614],
+         [22.432711737395834]),
+        ([1.2270509831250003, 0.65410196625, 25.282511569306422],
+         [21.6917997697786]),
+        ([1.3770509831250002, 0.8041019662500002, 16.168127124799234],
+         [13.585181064266797]),
+        ([1.077050983125, 0.5041019662500003, 3.6989642628867916],
+         [-0.25163741854998767]),
+        ([1.2270509831250003, 0.65410196625, 3.24737935596801],
+         [-0.3433324435598104]),
+    ],
+    'MW14_5D': [
+        ([1.077050983125, 0.5041019662500003, 1.4311529493750001, 0.8582039325000004, 21.10532915902515],
+         [17.978744451635123]),
+        ([1.2270509831250003, 0.65410196625, 0.08115294937500028, 1.0082039325000005, 28.659431827705614],
+         [24.586843647869337]),
+        ([1.3770509831250002, 0.8041019662500002, 0.23115294937499975, 1.1582039325000006, 24.27148321570986],
+         [20.646660622521367]),
+        ([1.077050983125, 0.5041019662500003, 1.4311529493750001, 0.8582039325000004, 2.735584336395335],
+         [-0.39100037099469054]),
+        ([1.2270509831250003, 0.65410196625, 0.08115294937500028, 1.0082039325000005, 3.7948410700682453],
+         [-0.27774710976802996]),
+    ],
+}
+
+
+def mw_fixed_points(name: str, m: int) -> list:
+    """Five points of an MW problem: x_i = top ((0.1 j + 0.61803398875 i) mod
+    1), i = 1..n, for j = 1, 2, 3, top the box's bound, and the first two
+    again with the distance variables at g's optimum (mw.optimal_distance)."""
+    import numpy as np
+    from mootation.benchmarks import mw
+    n, top = mw.n_vars(name, m), mw.upper(name)
+    i = np.arange(1, n + 1)
+    X = [top * ((0.1 * j + 0.61803398875 * i) % 1.0) for j in (1, 2, 3)]
+    for j in (1, 2):
+        x = X[j - 1].copy()
+        x[m - 1:] = mw.optimal_distance(name, x[:m - 1])
+        X.append(x)
+    return [list(x) for x in X]
+
+
+@test
+def mw_matches_pymoo():
+    """MW1-14 (MW4, MW8 and MW14 at three and five objectives) give pymoo's
+    objectives and constraints at five points each, to 1e-12 relative (the
+    literal has pymoo's MW12 and MW13 constraints in the paper's order)
+    (task 6, item 5)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import get, names
+    assert sorted(MW_PYMOO) == sorted(n for n in names() if n.startswith("MW"))
+    for key, rows in MW_PYMOO.items():
+        name = key.split("_")[0]
+        p = get(key)
+        assert p.has_cons, key
+        for x, (f, g) in zip(mw_fixed_points(name, p.n_obj), rows):
+            for mine, theirs in ((p.evaluate(x), f), (p.constraints(x), g)):
+                assert len(mine) == len(theirs), key
+                for a, b in zip(mine, theirs):
+                    assert abs(a - b) <= 1e-12 * max(1.0, abs(b)), (key, a, b)
+
+
+@test
+def mw_fronts_are_feasible_non_dominated_and_framed():
+    """Every MW reference front is feasible (to 1e-12: much of it lies on
+    the constraints) and mutually non-dominated, its extremes the registered
+    frame (mw.frame, to 1e-9), MW11's isolated point (1, 1) on it; the Pareto
+    sets, where the front lies at g = 1, are feasible, at g = 1 and on the
+    front. 10^4 random points of every box, with x1 on its bound for a tenth
+    (reading MW-3), give finite values (task 6, item 5)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get, mw
+    from mootation.benchmarks.registry import _strictly_dominated_by
+    for key in MW_PYMOO:
+        name, p = key.split("_")[0], get(key)
+        F = p.pareto_front(300)
+        assert len(F) == 300, (key, len(F))
+        assert mw.constraints_f(name, F).max() <= 1e-12, key
+        assert not _strictly_dominated_by(F, F).any(), key
+        assert np.allclose(F.min(0), p.ideal, atol=1e-9), (key, F.min(0))
+        assert np.allclose(F.max(0), p.nadir, atol=1e-9), (key, F.max(0))
+        assert (p.pareto_set is not None) == (name in mw.ON_G1), key
+        if p.pareto_set is not None:
+            X = p.pareto_set(40)
+            FX = np.array([p.evaluate(list(x)) for x in X])
+            assert all(max(p.constraints(list(x))) <= 1e-12 for x in X), key
+            assert all(abs(p.distance_fn(list(x))) <= 1e-12 for x in X), key
+            assert not _strictly_dominated_by(FX, p.pareto_front(1000) + 1e-9).any(), key
+        rng = np.random.default_rng(len(key))
+        R = mw.upper(name) * rng.random((10_000, p.n_vars))
+        R[:1000, 0] = mw.upper(name)
+        for x in R:
+            assert np.isfinite(p.evaluate(list(x))).all() and np.isfinite(p.constraints(list(x))).all(), key
+    F = get("MW11").pareto_front(1000)
+    assert np.min(np.abs(F - [1.0, 1.0]).max(axis=1)) == 0.0
+
+
+@test
+def a_constrained_answer_is_measured_on_its_feasible_part():
+    """metrics.compute with constraints: the indicators of the feasible rows
+    and feas_share; no feasible row, no value (None, n_final 0). The tables
+    count such an empty run, rank it as the worst value and say so (task 6,
+    item 5.2)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.run import campaign as C
+    from mootation.run import metrics as M
+
+    def cons(x):                                   # feasible when x_0 <= 0.5
+        return [x[0] - 0.5]
+
+    X = np.array([[0.2, 0.0], [0.4, 0.0], [0.9, 0.0], [0.7, 0.0]])
+    F = np.array([[0.2, 0.8], [0.4, 0.6], [0.0, 0.0], [0.7, 0.3]])
+    ref = np.array([[0.0, 1.0], [0.5, 0.5], [1.0, 0.0]])
+    kw = dict(ref_front=ref, ideal=(0.0, 0.0), nadir=(1.0, 1.0), which=("igdp", "n_final"))
+    got = M.compute(F, X=X, constraints=cons, **kw)
+    assert got["feas_share"] == 0.5 and got["n_final"] == 2, got
+    assert got["igdp"] == M.compute(F[:2], **kw)["igdp"]
+    none = M.compute(F[2:], X=X[2:], constraints=cons, **kw)
+    assert none == {"feas_share": 0.0, "igdp": None, "n_final": 0}, none
+    assert "variables" in str(raises(ValueError, M.compute, F, constraints=cons, **kw))
+
+    def row(problem, alg, seed, v):
+        final = ({"igdp_norm": None, "hv": None, "feas_share": 0.0} if v is None else
+                 {"igdp_norm": v, "hv": 1.0 - v, "feas_share": 1.0})
+        return {"problem": problem, "algorithm": alg, "seed": seed, "status": "done",
+                "final": final, "n_objs": 3}
+
+    rows = [row("P1", "a", s, 0.1) for s in (1, 2, 3)] + \
+           [row("P1", "b", 1, 0.05), row("P1", "b", 2, None), row("P1", "b", 3, None)] + \
+           [row("P2", "a", s, 0.3) for s in (1, 2, 3)] + \
+           [row("P2", "b", s, 0.2) for s in (1, 2)] + [row("P2", "b", 3, None)]
+    for metric in ("igdp_norm", "hv"):
+        empty: dict = {}
+        table = C.compare_table(rows, metric, empty=empty)
+        assert empty == {("P1", "b"): 2, ("P2", "b"): 1}, empty
+        assert table["P1"]["b"][3] == 3 and not math.isfinite(table["P1"]["b"][0]), table
+        assert math.isfinite(table["P2"]["b"][0]), table          # one of three: the median holds
+        e = dict(C.rank_table(rows, metric)["algorithms"])
+        assert e["b"]["empty"] == 3 and e["a"]["empty"] == 0, e
+        assert e["b"]["all"][0] == 1.5 and e["a"]["all"][0] == 1.5, e   # last on P1, first on P2
+    text = C.format_ranks(C.rank_table(rows, "igdp_norm"))
+    assert "empty" in text.splitlines()[1] and "no feasible point" in text, text
+    # the report's tests and groups count them the same way (report.values)
+    from mootation.run import report as R
+    empty: dict = {}
+    vals = R.values(rows, "igdp_norm", empty=empty)
+    assert empty == {"b": 3} and vals["P1"]["b"].count(math.inf) == 2, (empty, vals)
+    assert R.values(rows, "hv")["P1"]["b"].count(-math.inf) == 2
+    rep = R.reference_report(rows, "igdp_norm", "a")
+    e = rep["algorithms"][0]
+    assert e["empty"] == 3 and rep["empty_reference"] == 0, e
+    assert e["per_problem"]["P1"]["a12"] < 0.5, e["per_problem"]         # worse there
+    assert "empty runs" in R.format_reference(rep)
+    ci_empty: dict = {}
+    R.rank_intervals(rows, "igdp_norm", n_boot=50, empty=ci_empty)
+    assert ci_empty == {"b": 3}
+    by_empty: dict = {}
+    g = R.property_ranks(rows, "igdp_norm", "front", empty=by_empty)
+    assert by_empty == {"b": 3} and g["front=?"]["b"] == (1.5, 2), g
+    assert "empty" in R.format_property_ranks(g, "igdp_norm", "front", by_empty).splitlines()[1]
+
+
+@test
+def a_campaign_on_a_constrained_problem_records_feasibility():
+    """A run on C-DTLZ records feas_share wherever it measures, fe_first_feas
+    in final, and its indicators only where the answer has a feasible point;
+    the archive keeps feasible points only (task 6, item 5.2)."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_on_a_constrained...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "c"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["C1-DTLZ3_3D", "C1-DTLZ1_3D"]
+[campaign]
+out = "res"
+budget_fe = 400
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm", "n_final"]
+archive = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for problem in ("C1-DTLZ3_3D", "C1-DTLZ1_3D"):
+            run = root / problem / "nsga2" / "run_1"
+            meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+            final, first = meta["final"], meta["final"]["fe_first_feas"]
+            assert (first is None) == (final["feas_share"] == 0.0), (problem, final)
+            assert (final["igdp_norm"] is None) == (final["feas_share"] == 0.0), (problem, final)
+            assert meta["final_archive"]["feas_share"] == (0.0 if first is None else 1.0), meta
+            traj = C.read_trajectory(run)
+            assert all("feas_share" in t for t in traj), traj[0]
+        # outside the shell 16 <= sum f^2 <= 81 every DTLZ3 point is feasible
+        meta = json.loads((root / "C1-DTLZ3_3D" / "nsga2" / "run_1" / "meta.json")
+                          .read_text(encoding="utf-8"))
+        assert meta["final"]["fe_first_feas"] == 1, meta["final"]
+        assert C.recompute_final(root, ["igdp_norm"]) == {"done": 2}
+
+
+# ── task 6, item 7: noisy copies ────────────────────────────────────────────
+
+@test
+def a_noisy_copy_adds_the_noise_of_its_seed_and_nothing_else():
+    """noisy.py: sigma = 0 gives the base problem; one seed, one stream, another
+    seed another; over 10^5 evaluations the noise has the asked-for standard
+    deviation to 1 % and mean 0; a copy is its base in everything but the
+    values (task 6, item 7)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import families, get, noisy
+    from mootation.benchmarks.properties import properties
+    from mootation.run.campaign import problem_family
+    want = sorted(f"{b}_{lv}" for b in noisy.BASES + noisy.LATE_BASES for lv in noisy.LEVELS)
+    assert sorted(families()["noisy"]) == want
+    assert all(problem_family(n) == "noisy" for n in want)
+    base = get("DTLZ2_3D").evaluate
+    x = [0.2, 0.7] + [0.4] * 10
+    assert noisy.Evaluator(base, [0.0, 0.0, 0.0], 5)(x) == base(x)
+    a, b, c = (noisy.Evaluator(base, [0.05] * 3, s) for s in (5, 5, 6))
+    run_a, run_b, run_c = ([e(x) for _ in range(50)] for e in (a, b, c))
+    assert run_a == run_b and run_a != run_c and len({tuple(f) for f in run_a}) == 50
+    zero = noisy.Evaluator(lambda x: [0.0, 0.0], [0.01, 0.05], 11)
+    Z = np.array([zero(x) for _ in range(100_000)])
+    for i, s in enumerate((0.01, 0.05)):
+        assert abs(Z[:, i].std() / s - 1.0) < 0.01, (i, Z[:, i].std())
+        assert abs(Z[:, i].mean()) < 0.02 * s, (i, Z[:, i].mean())
+    assert abs(np.corrcoef(Z[:, 0], Z[:, 1])[0, 1]) < 0.01
+    for name in want:
+        p, q = get(name), get(noisy.base_of(name))
+        assert (p.n_vars, p.bounds, p.ideal, p.nadir) == (q.n_vars, q.bounds, q.ideal, q.nadir)
+        assert np.array_equal(p.pareto_front(200), q.pareto_front(200)), name
+        assert p.true_objectives is q.evaluate and properties(name) == properties(q.name)
+        assert (p.distance_fn is None) == (q.distance_fn is None), name
+        sigma = noisy.SIGMA[name.rsplit("_", 1)[1]]
+        assert p.make_evaluator(1).scale == [sigma * (h - l) for l, h in zip(q.ideal, q.nadir)]
+        mid = [(lo + hi) / 2 for lo, hi in p.bounds]
+        assert p.evaluate(mid) == p.evaluate(mid) != q.evaluate(mid), name
+
+
+@test
+def deterministic_step_and_relative_noise_and_the_three_report_modes():
+    """Task 7, §4: _d gives the same value for the same x in every run and at
+    every repeat; _s the same inside a cell and another across its border, the
+    cell a share of the range ([campaign] noise_cell); _h's spread is sigma
+    (f - ideal), none at the ideal; sigma = 0 is the base problem for every
+    kind. A campaign records every final indicator _oracle and _observed
+    beside it, and on ZDT1_n5 the observed IGD+ is on average better than the
+    recommended one: the noise flatters the answer the algorithm kept."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  deterministic_step...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.benchmarks import get, noisy
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    from mootation.run.metric_names import is_table_name
+    base = get("DTLZ2_3D").evaluate
+    x = [0.425, 0.705] + [0.405] * 10
+    for kind in "ndsh":
+        e = noisy.Evaluator(base, [0.0] * 3, 5, kind, ideal=[0.0] * 3, sigma=0.0,
+                            lower=[0.0] * 12, upper=[1.0] * 12)
+        assert e(x) == base(x) and e.last_true == base(x), kind
+    p = get("DTLZ2_3D_d5")
+    e1, e2 = p.make_evaluator(1), p.make_evaluator(2)
+    assert [e1(x) for _ in range(3)] == [e2(x)] * 3 == [p.evaluate(x)] * 3 != [base(x)] * 3
+    p = get("DTLZ2_3D_s5")
+    e = p.make_evaluator(1)
+    near = list(x)
+    near[0] = 0.428                                  # the same cell of width 0.01
+    far = list(x)
+    far[0] = 0.435                                   # the next cell
+    a, b, c = e(x), e(near), e(far)
+    assert np.allclose(np.subtract(a, b), np.subtract(base(x), base(near)), atol=1e-15)
+    assert not np.allclose(np.subtract(a, c), np.subtract(base(x), base(far)), atol=1e-6)
+    wide = p.make_evaluator(1, cell=0.1)             # 0.425 and 0.435 share a cell of 0.1
+    a, c = wide(x), wide(far)
+    assert np.allclose(np.subtract(a, c), np.subtract(base(x), base(far)), atol=1e-15)
+    rel = noisy.Evaluator(lambda x: [1.0, 2.0, 0.0], [9.0] * 3, 3, "h", ideal=[0.0] * 3,
+                          sigma=0.05)
+    Z = np.array([rel(x) for _ in range(20_000)])
+    assert abs(Z[:, 0].std() / 0.05 - 1) < 0.03 and abs(Z[:, 1].std() / 0.10 - 1) < 0.03
+    assert np.all(Z[:, 2] == 0.0)                    # at the ideal: no noise
+    assert all(is_table_name(m) for m in ("igdp_norm_oracle", "igdp_norm_observed",
+                                          "hv_oracle", "true_dominated_share_observed"))
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0 } ]
+[run]
+name = "nz"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 6
+problems = ["ZDT1_n5", "ZDT1_s5"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+noise_cell = 0.1
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "nz.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        fin = [json.loads((root / "ZDT1_n5" / "nsga2" / f"run_{k}" / "meta.json").read_text(
+            encoding="utf-8"))["final"] for k in range(1, 7)]
+        rec = [f["igdp_norm"] for f in fin]
+        obs = [f["igdp_norm_observed"] for f in fin]
+        orc = [f["igdp_norm_oracle"] for f in fin]
+        assert np.mean(obs) < np.mean(rec), (obs, rec)
+        assert all(np.isfinite(orc)) and np.mean(orc) <= np.mean(rec), (orc, rec)
+        meta = json.loads((root / "ZDT1_s5" / "nsga2" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))
+        assert (meta["noise"]["kind"], meta["noise"]["cell"]) == ("s", 0.1), meta["noise"]
+        bad = Path(td) / "bad.toml"
+        bad.write_text(text.replace("noise_cell = 0.1", "noise_cell = 0"), encoding="utf-8")
+        try:
+            C.campaign_spec(load(bad))
+            raise AssertionError("noise_cell = 0 accepted")
+        except C.ConfigError:
+            pass
+
+
+@test
+def a_campaign_on_a_noisy_copy_measures_the_noise_free_values():
+    """The algorithm sees the noisy values; the indicators, the files and the
+    snapshots hold the noise-free ones at the same x, final.csv the noisy ones
+    too (f_seen), and true_dominated_share goes beside them (task 6, item 7)."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_on_a_noisy...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run import metrics as M
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "n"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1_n5"]
+[campaign]
+out = "res"
+budget_fe = 400
+metrics = ["igdp"]
+final_metrics = ["igdp"]
+archive = true
+snapshots = true
+snapshot_variables = "all"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "n.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        run = root / "ZDT1_n5" / "nsga2" / "run_1"
+        meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+        assert meta["noise"]["scale"] == [0.05, 0.05], meta["noise"]
+        lines = [r for r in (run / "final.csv").read_text(encoding="utf-8").splitlines()
+                 if not r.startswith("#")]
+        assert lines[0].endswith(",f1_seen,f2_seen"), lines[0]
+        A = np.array([[float(v) for v in r.split(",")] for r in lines[1:]])
+        base = get("ZDT1")
+        F, X, seen = A[:, :2], A[:, 2:2 + base.n_vars], A[:, 2 + base.n_vars:]
+        T = np.array([base.evaluate(list(x)) for x in X])
+        assert np.allclose(F, T, rtol=1e-8, atol=1e-9) and not np.allclose(seen, T)
+        ref = np.asarray(base.pareto_front(1000), float)
+        assert abs(meta["final"]["igdp"] - M.igd_plus(T, ref)) < 1e-6, meta["final"]
+        assert 0.0 <= meta["final"]["true_dominated_share"] <= 1.0
+        assert "true_dominated_share" in meta["final_archive"], meta["final_archive"]
+        AF, AX = C._read_points(run / "archive.csv", 2, base.n_vars)
+        TA = np.array([base.evaluate(list(x)) for x in AX])
+        assert np.allclose(AF, TA, rtol=1e-8, atol=1e-9)           # the archive: noise-free
+        traj = C.read_trajectory(run)
+        assert all("true_dominated_share" in t for t in traj), traj[-1]
+        with np.load(run / "snapshots.npz") as z:
+            last = z["F"][-z["n"][-1]:].astype(float)
+            XL = z["X"][-z["n"][-1]:].astype(float)
+        TL = np.array([base.evaluate(list(x)) for x in XL])
+        assert np.allclose(last, TL, rtol=1e-5, atol=1e-5)          # float32 snapshots
+
+
+# ── task 6, item 9: dense references at four objectives and more ───────────
+
+@test
+def a_dense_reference_is_a_third_of_the_populations_step():
+    """registry.dense_reference: the first size whose step is at most a third
+    of the population's (5 000 rows at DTLZ2_4D, 10 000 at DTLZ2_5D), the
+    largest where none is (DTLZ1_10D); none at three objectives or fifteen.
+    At three objectives a dense sample moves IGD+ by less than the step of the
+    usual one (task 6, item 9)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks.registry import DENSE_SIZES, dense_reference, has_dense_reference
+    from mootation.run import metrics as M
+    from mootation.run.metric_names import base_name, is_table_name
+    for name, rows in (("DTLZ2_4D", 5000), ("DTLZ2_5D", 10_000)):
+        F, info = dense_reference(name, get(name).pop_size)
+        assert len(F) == info["rows"] == rows, (name, info)
+        assert info["step"] <= info["population_step"] / 3.0, info
+        assert np.allclose(M.reference_step(F), info["step"])        # the frame is [0, 1]
+    assert [has_dense_reference(n) for n in ("DTLZ2_3D", "DTLZ2_15D", "WFG4_6D", "ZDT1",
+                                             "MaF7_5D")] == [False, False, True, False, False]
+    p = get("DTLZ2_3D")
+    old = np.asarray(p.pareto_front(1000), float)
+    new = np.asarray(p.pareto_front(DENSE_SIZES[-1]), float)
+    A = 1.02 * np.asarray(p.pareto_front(91), float)
+    assert abs(M.igd_plus(A, new) - M.igd_plus(A, old)) <= M.reference_step(old)
+    assert base_name("igdp_norm_ref_v3") == "igdp_norm" and base_name("hv_ref_v3") == "hv_ref_v3"
+    assert is_table_name("eps_norm_ref_v3") and not is_table_name("hv_ref_v3")
+
+
+@test
+def a_campaign_measures_against_the_dense_reference_and_recompute_adds_it():
+    """[campaign] dense_reference (on by default) records "<indicator>_ref_v3" beside
+    the front indicators — final, archive, trajectory — and the reference's
+    rows and step; on a campaign without it --recompute-reference adds the
+    same values from the saved answers and leaves the old ones as they were;
+    the tables read the new columns (task 6, item 9)."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_measures_against_the_dense...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "d"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_4D"]
+[campaign]
+out = "OUT"
+budget_fe = 500
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm", "hv"]
+archive = true
+snapshots = true
+DENSE
+"""
+    with tempfile.TemporaryDirectory() as td:
+        metas = {}
+        for tag, dense in (("with", ""), ("without", "dense_reference = false")):
+            cfg_path = Path(td) / f"{tag}.toml"
+            cfg_path.write_text(text.replace("OUT", f"res_{tag}").replace("DENSE", dense),
+                                encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+            run = root / "DTLZ2_4D" / "nsga2" / "run_1"
+            metas[tag] = (root, run, json.loads((run / "meta.json").read_text(encoding="utf-8")))
+        root, run, meta = metas["with"]
+        assert meta["reference_v3"]["rows"] == 5000, meta["reference_v3"]
+        assert "igdp_norm_ref_v3" in meta["final"] and "hv_ref_v3" not in meta["final"]
+        assert "igdp_norm_ref_v3" in meta["final_archive"]
+        assert all("igdp_norm_ref_v3" in t for t in C.read_trajectory(run))
+        root2, run2, before = metas["without"]
+        assert before["reference_v3"] is None and "igdp_norm_ref_v3" not in before["final"]
+        assert C.recompute_dense(root2) == {"done": 1}
+        after = json.loads((run2 / "meta.json").read_text(encoding="utf-8"))
+        assert after["reference_v3"] == meta["reference_v3"], after["reference_v3"]
+        for part in ("final", "final_archive"):
+            assert {k: v for k, v in after[part].items() if not k.endswith("_ref_v3")} == \
+                before[part], part                                  # the old values stay
+            assert abs(after[part]["igdp_norm_ref_v3"] - meta[part]["igdp_norm_ref_v3"]) < 1e-9
+        assert all("igdp_norm_ref_v3" in t for t in C.read_trajectory(run2))
+        assert C.recompute_dense(root2) == {"skipped": 1}
+        table = C.compare_table(C.scan_results(root2), "igdp_norm_ref_v3")
+        assert table["DTLZ2_4D"]["nsga2"][3] == 1, table
+
+
+# ── task 6, item 1: rotated DTLZ and WFG ────────────────────────────────────
+
+# sha256 (16 hex digits) of every rotated problem's matrix (Q, Lambda Q, I or
+# Lambda), rounded to 1e-12, and of every rotation of the registered
+# bbob-biobj problems: numpy does not promise its normal stream across
+# versions, and a changed draw must fail here, not move results silently.
+ROTATION_HASHES = {
+    "c0DTLZ2_10D": "1e24edff38434edf", "c0DTLZ2_3D": "1e24edff38434edf",
+    "c0DTLZ2_5D": "1e24edff38434edf", "c0DTLZ2_6D": "1e24edff38434edf",
+    "c0DTLZ5_3D": "1e24edff38434edf", "c0DTLZ5_5D": "1e24edff38434edf",
+    "c0MaF1_3D": "1e24edff38434edf", "c0MaF1_5D": "1e24edff38434edf",
+    "c0MaF5_3D": "1e24edff38434edf", "c0MaF5_5D": "1e24edff38434edf",
+    "c0MaF6_3D": "1e24edff38434edf", "c0MaF6_5D": "1e24edff38434edf",
+    "c0Polygon_3D": "e39f2f1a8fc9cdd7", "c0Polygon_5D": "e39f2f1a8fc9cdd7",
+    "r0DTLZ1_3D": "1a8475b42f5782e9", "r0DTLZ1_5D": "1a8475b42f5782e9",
+    "r0DTLZ3_3D": "a3c81aeea2e1ab58", "r0DTLZ3_5D": "a3c81aeea2e1ab58",
+    "r0MaF2_3D": "a3c81aeea2e1ab58", "r0MaF2_5D": "a3c81aeea2e1ab58",
+    "r0MaF3_3D": "a3c81aeea2e1ab58", "r0MaF3_5D": "a3c81aeea2e1ab58",
+    "r0MaF4_3D": "a3c81aeea2e1ab58", "r0MaF4_5D": "a3c81aeea2e1ab58",
+    "rDTLZ1_3D": "0b3008ed21263fbc", "rDTLZ1_3D_i1": "0b3008ed21263fbc",
+    "rDTLZ1_3D_i2": "9169379bdd28ba11", "rDTLZ1_3D_i3": "7cff97a191d3584c",
+    "rDTLZ1_5D": "ef5a865bfb3c0415", "rDTLZ1_5D_i1": "ef5a865bfb3c0415",
+    "rDTLZ1_5D_i2": "52e4c5a45c668421", "rDTLZ1_5D_i3": "10a6fcf459838f49",
+    "rDTLZ2_3D": "9d2a751088421ed6", "rDTLZ2_5D": "219ddeb235a454a0",
+    "rDTLZ3_3D": "ef85240a1c1c76ee", "rDTLZ3_3D_i1": "ef85240a1c1c76ee",
+    "rDTLZ3_3D_i2": "35b174e4f8807e91", "rDTLZ3_3D_i3": "2087d29a1e52a871",
+    "rDTLZ3_5D": "1f7ffcdb60f9914f", "rDTLZ3_5D_i1": "1f7ffcdb60f9914f",
+    "rDTLZ3_5D_i2": "5a029a3f7dc04e2e", "rDTLZ3_5D_i3": "9b34fd3f50cd4b85",
+    "rDTLZ4_3D": "4767919b46de0568", "rDTLZ4_5D": "6134b078d8446b73",
+    "rMaF2_3D": "29005c03e3fa87d0", "rMaF2_3D_i1": "29005c03e3fa87d0",
+    "rMaF2_3D_i2": "e17045ee438df222", "rMaF2_3D_i3": "8721bb8cbb014fb0",
+    "rMaF2_5D": "3dc9bb2b8cf3dae6", "rMaF2_5D_i1": "3dc9bb2b8cf3dae6",
+    "rMaF2_5D_i2": "8300bc692dc5428b", "rMaF2_5D_i3": "2b52a0b03e485751",
+    "rMaF3_3D": "3b4d546b4c2b2ba6", "rMaF3_3D_i1": "3b4d546b4c2b2ba6",
+    "rMaF3_3D_i2": "896ad8f32e32f911", "rMaF3_3D_i3": "ad498915a8dad1e7",
+    "rMaF3_5D": "73e9987f0bdc23da", "rMaF3_5D_i1": "73e9987f0bdc23da",
+    "rMaF3_5D_i2": "173f357d1a6192ab", "rMaF3_5D_i3": "84e07121db0917e9",
+    "rMaF4_3D": "9f400087949f64e4", "rMaF4_3D_i1": "9f400087949f64e4",
+    "rMaF4_3D_i2": "798ebef01375c9e3", "rMaF4_3D_i3": "8553e134b77f7e91",
+    "rMaF4_5D": "b769ade76b7afd2f", "rMaF4_5D_i1": "b769ade76b7afd2f",
+    "rMaF4_5D_i2": "e4082a3b2d8d35c5", "rMaF4_5D_i3": "df659ae26b4fbda2",
+    "rWFG1_3D": "2248640f866edf98", "rWFG1_3D_i1": "2248640f866edf98",
+    "rWFG1_3D_i2": "4a0ce15897f910b9", "rWFG1_3D_i3": "c46055999f8f4b53",
+    "rWFG1_5D": "b50a2c45ba46ff16", "rWFG1_5D_i1": "b50a2c45ba46ff16",
+    "rWFG1_5D_i2": "56b43c31663b60c5", "rWFG1_5D_i3": "15a4eb7d2b4e59e5",
+    "rWFG2_3D": "a3ae0c35f8f2b164", "rWFG2_3D_i1": "a3ae0c35f8f2b164",
+    "rWFG2_3D_i2": "58378a8692309b9a", "rWFG2_3D_i3": "d841a0ad604a7c11",
+    "rWFG2_5D": "3c5a87edbda3a75d", "rWFG2_5D_i1": "3c5a87edbda3a75d",
+    "rWFG2_5D_i2": "2297e86325dd6120", "rWFG2_5D_i3": "988b9c228f6e670b",
+    "rWFG3_3D": "1560cb7f88859e1b", "rWFG3_3D_i1": "1560cb7f88859e1b",
+    "rWFG3_3D_i2": "310e7c181bc951a3", "rWFG3_3D_i3": "50355e68c8216d79",
+    "rWFG3_5D": "9df6ad6fb58f0ec9", "rWFG3_5D_i1": "9df6ad6fb58f0ec9",
+    "rWFG3_5D_i2": "fc190b8528e90d1a", "rWFG3_5D_i3": "fe38119adc6974e7",
+    "rWFG4_3D": "f52d69d1a9090e8f", "rWFG4_3D_i1": "f52d69d1a9090e8f",
+    "rWFG4_3D_i2": "42d7f7de01070b65", "rWFG4_3D_i3": "c7145d5424bb7270",
+    "rWFG4_5D": "836e2efbfecb0621", "rWFG4_5D_i1": "836e2efbfecb0621",
+    "rWFG4_5D_i2": "ac6e86ffcce94041", "rWFG4_5D_i3": "045b30f710d4c71f",
+    "rWFG5_3D": "786c215ca3c4a44c", "rWFG5_3D_i1": "786c215ca3c4a44c",
+    "rWFG5_3D_i2": "e7646c57a038a9a0", "rWFG5_3D_i3": "ac9c2886d23d7574",
+    "rWFG5_5D": "db857c63767a80d8", "rWFG5_5D_i1": "db857c63767a80d8",
+    "rWFG5_5D_i2": "184e01cffff057ff", "rWFG5_5D_i3": "409ae5e9d4edf270",
+    "rWFG6_3D": "8bd9224b78e079c3", "rWFG6_3D_i1": "8bd9224b78e079c3",
+    "rWFG6_3D_i2": "417c6104d49d79b3", "rWFG6_3D_i3": "4d37f828ab32e0be",
+    "rWFG6_5D": "c19dac79a30b4db7", "rWFG6_5D_i1": "c19dac79a30b4db7",
+    "rWFG6_5D_i2": "aa3b6f68de5fc612", "rWFG6_5D_i3": "81c21bcd83b66508",
+    "rWFG7_3D": "bf02effac24cdcde", "rWFG7_3D_i1": "bf02effac24cdcde",
+    "rWFG7_3D_i2": "960a694dc1baf202", "rWFG7_3D_i3": "e4247c13997367e7",
+    "rWFG7_5D": "45d4935de1c51b2e", "rWFG7_5D_i1": "45d4935de1c51b2e",
+    "rWFG7_5D_i2": "626c534d02b922c3", "rWFG7_5D_i3": "a5a19831e13d2fbc",
+    "rWFG8_3D": "231518110f3b0c39", "rWFG8_3D_i1": "231518110f3b0c39",
+    "rWFG8_3D_i2": "4740e5732c41fde5", "rWFG8_3D_i3": "24e354e755620fb3",
+    "rWFG8_5D": "f041343d90aeaea3", "rWFG8_5D_i1": "f041343d90aeaea3",
+    "rWFG8_5D_i2": "78aab635e951aeb5", "rWFG8_5D_i3": "054c1fd7b8241154",
+    "rWFG9_3D": "6accbc10c06ae5cf", "rWFG9_3D_i1": "6accbc10c06ae5cf",
+    "rWFG9_3D_i2": "413fd625f6e41872", "rWFG9_3D_i3": "01e60d1cd7a31309",
+    "rWFG9_5D": "336b46a6a5d4d6c3", "rWFG9_5D_i1": "336b46a6a5d4d6c3",
+    "rWFG9_5D_i2": "a7d61df08b13bc1c", "rWFG9_5D_i3": "24e19b3cb551a026",
+    "rZCAT10_3D": "b30a7bbdbd7e248b", "rZCAT10_3D_i1": "b30a7bbdbd7e248b",
+    "rZCAT10_3D_i2": "9bb90d12b770ea13", "rZCAT10_3D_i3": "88f55b90a7b3dc37",
+    "rZCAT10_5D": "001d2261a58815ac", "rZCAT10_5D_i1": "001d2261a58815ac",
+    "rZCAT10_5D_i2": "03a6818177276e37", "rZCAT10_5D_i3": "61d593b00b3f0760",
+    "rZCAT11_3D": "cae8aa18019a953f", "rZCAT11_3D_i1": "cae8aa18019a953f",
+    "rZCAT11_3D_i2": "dbb386542e3aa275", "rZCAT11_3D_i3": "7d6be77e28696118",
+    "rZCAT11_5D": "01eeffb952c4d803", "rZCAT11_5D_i1": "01eeffb952c4d803",
+    "rZCAT11_5D_i2": "17e478b64e34c857", "rZCAT11_5D_i3": "a2f93b9564e2cda0",
+    "rZCAT12_3D": "a653abc249819320", "rZCAT12_3D_i1": "a653abc249819320",
+    "rZCAT12_3D_i2": "3afcf2de50f4470f", "rZCAT12_3D_i3": "e1a300f30380a72d",
+    "rZCAT12_5D": "cab1c9a41b1df248", "rZCAT12_5D_i1": "cab1c9a41b1df248",
+    "rZCAT12_5D_i2": "5c21c84a6e54ff39", "rZCAT12_5D_i3": "8a548c5ae00f07de",
+    "rZCAT13_3D": "695d42cbe02bd892", "rZCAT13_3D_i1": "695d42cbe02bd892",
+    "rZCAT13_3D_i2": "c18c1df5905e21cf", "rZCAT13_3D_i3": "a17f7390325abe1c",
+    "rZCAT13_5D": "ec6509234640739f", "rZCAT13_5D_i1": "ec6509234640739f",
+    "rZCAT13_5D_i2": "5b19afc2e954ed1a", "rZCAT13_5D_i3": "0b0fd25b68b7a0ae",
+    "rZCAT14_3D": "a6a41578f50f39c8", "rZCAT14_3D_i1": "a6a41578f50f39c8",
+    "rZCAT14_3D_i2": "a0b89cccd801e0a3", "rZCAT14_3D_i3": "cc8e6146cfce8f0f",
+    "rZCAT14_5D": "fdc644009e7a532a", "rZCAT14_5D_i1": "fdc644009e7a532a",
+    "rZCAT14_5D_i2": "ff54990013512e8e", "rZCAT14_5D_i3": "3d1c539212ef6949",
+    "rZCAT15_3D": "e74e8847642f11dd", "rZCAT15_3D_i1": "e74e8847642f11dd",
+    "rZCAT15_3D_i2": "6c0d48fcba48a58d", "rZCAT15_3D_i3": "69f73c0e4bd5a698",
+    "rZCAT15_5D": "a5295681b071ba68", "rZCAT15_5D_i1": "a5295681b071ba68",
+    "rZCAT15_5D_i2": "7b9cacf2ef1e8de7", "rZCAT15_5D_i3": "959a7cf019d357ad",
+    "rZCAT16_3D": "9820e4a85c0b87a5", "rZCAT16_3D_i1": "9820e4a85c0b87a5",
+    "rZCAT16_3D_i2": "5eb11b1f3b07a93b", "rZCAT16_3D_i3": "6c545a6ae61a7cd7",
+    "rZCAT16_5D": "b4e0397282e2e4b5", "rZCAT16_5D_i1": "b4e0397282e2e4b5",
+    "rZCAT16_5D_i2": "a8d34598bb1fee13", "rZCAT16_5D_i3": "ddbbdf6540aa4ea6",
+    "rZCAT17_3D": "9afadb934b31a0f2", "rZCAT17_3D_i1": "9afadb934b31a0f2",
+    "rZCAT17_3D_i2": "c85ca1066d6f4501", "rZCAT17_3D_i3": "46658721894d4d7f",
+    "rZCAT17_5D": "e973c22a0f4a5e2f", "rZCAT17_5D_i1": "e973c22a0f4a5e2f",
+    "rZCAT17_5D_i2": "5704d001e79a06d9", "rZCAT17_5D_i3": "ceebf901d0dab19b",
+    "rZCAT18_3D": "7546e7ce28aed4b3", "rZCAT18_3D_i1": "7546e7ce28aed4b3",
+    "rZCAT18_3D_i2": "9f6244a7a63b5449", "rZCAT18_3D_i3": "2833be2edacec68b",
+    "rZCAT18_5D": "6b1884887617cfd0", "rZCAT18_5D_i1": "6b1884887617cfd0",
+    "rZCAT18_5D_i2": "5dce5638c0eac9fd", "rZCAT18_5D_i3": "518a97bf49241107",
+    "rZCAT19_3D": "56bbeb8f602006ad", "rZCAT19_3D_i1": "56bbeb8f602006ad",
+    "rZCAT19_3D_i2": "3eb0a537b249fa12", "rZCAT19_3D_i3": "674000f6d63c6d0c",
+    "rZCAT19_5D": "da0c239b305fc77d", "rZCAT19_5D_i1": "da0c239b305fc77d",
+    "rZCAT19_5D_i2": "c32962a710755e05", "rZCAT19_5D_i3": "7b8f5af0f7e74123",
+    "rZCAT1_3D": "0dfce2c033ac62d6", "rZCAT1_3D_i1": "0dfce2c033ac62d6",
+    "rZCAT1_3D_i2": "28f0f181d6b5a62d", "rZCAT1_3D_i3": "172ea6dd1c8ab999",
+    "rZCAT1_5D": "bca919d83bb11d24", "rZCAT1_5D_i1": "bca919d83bb11d24",
+    "rZCAT1_5D_i2": "cb546eb532f1c9f9", "rZCAT1_5D_i3": "ce3542ecae63217c",
+    "rZCAT20_3D": "704b286eb7f5d0a5", "rZCAT20_3D_i1": "704b286eb7f5d0a5",
+    "rZCAT20_3D_i2": "fd4e1ace5bb42803", "rZCAT20_3D_i3": "b76ac4e1f3687416",
+    "rZCAT20_5D": "e1fe567bb5001f12", "rZCAT20_5D_i1": "e1fe567bb5001f12",
+    "rZCAT20_5D_i2": "32c3ed4454196c2d", "rZCAT20_5D_i3": "4b968459dce740fe",
+    "rZCAT2_3D": "2e0fdd8302f50c29", "rZCAT2_3D_i1": "2e0fdd8302f50c29",
+    "rZCAT2_3D_i2": "c14db1825abe865e", "rZCAT2_3D_i3": "0822af60425cb550",
+    "rZCAT2_5D": "54c5462e760d317d", "rZCAT2_5D_i1": "54c5462e760d317d",
+    "rZCAT2_5D_i2": "a4215c7f1364c3d0", "rZCAT2_5D_i3": "6a2d81a89a56187f",
+    "rZCAT3_3D": "a924fd604e45a40c", "rZCAT3_3D_i1": "a924fd604e45a40c",
+    "rZCAT3_3D_i2": "95b4a890f8bb5e4a", "rZCAT3_3D_i3": "ef948b6d4c0c0da8",
+    "rZCAT3_5D": "c494f6c6ed4421be", "rZCAT3_5D_i1": "c494f6c6ed4421be",
+    "rZCAT3_5D_i2": "f5eaaa59aff344d2", "rZCAT3_5D_i3": "74107bc2c9d916d6",
+    "rZCAT4_3D": "a2d02f1804238f87", "rZCAT4_3D_i1": "a2d02f1804238f87",
+    "rZCAT4_3D_i2": "55ce2efdb0319df0", "rZCAT4_3D_i3": "2fa959d928a6012a",
+    "rZCAT4_5D": "d982971b1be3f6a1", "rZCAT4_5D_i1": "d982971b1be3f6a1",
+    "rZCAT4_5D_i2": "ffe48254a6109dda", "rZCAT4_5D_i3": "de82e0043e230715",
+    "rZCAT5_3D": "d3ce8d0934c7a0e1", "rZCAT5_3D_i1": "d3ce8d0934c7a0e1",
+    "rZCAT5_3D_i2": "d92ff96ddf1f1209", "rZCAT5_3D_i3": "6f787bc95443030e",
+    "rZCAT5_5D": "b094e11d97e20867", "rZCAT5_5D_i1": "b094e11d97e20867",
+    "rZCAT5_5D_i2": "12cca01f25b6ed55", "rZCAT5_5D_i3": "75f7dd0bef78e874",
+    "rZCAT6_3D": "fd87ad69e956e1b6", "rZCAT6_3D_i1": "fd87ad69e956e1b6",
+    "rZCAT6_3D_i2": "97e27ce861d6720a", "rZCAT6_3D_i3": "c0cb83a7295d4b72",
+    "rZCAT6_5D": "78af41dbb32c86be", "rZCAT6_5D_i1": "78af41dbb32c86be",
+    "rZCAT6_5D_i2": "1bb604c1806ceb0f", "rZCAT6_5D_i3": "836e5f23009f758d",
+    "rZCAT7_3D": "86a8cfd4437ef3dc", "rZCAT7_3D_i1": "86a8cfd4437ef3dc",
+    "rZCAT7_3D_i2": "8d7a5504b7e4ef81", "rZCAT7_3D_i3": "c40532c477aff6f2",
+    "rZCAT7_5D": "84cd78bafae55dbf", "rZCAT7_5D_i1": "84cd78bafae55dbf",
+    "rZCAT7_5D_i2": "ecd6a851f42f6195", "rZCAT7_5D_i3": "a9d39aa57f393e1f",
+    "rZCAT8_3D": "b060c82c250277b5", "rZCAT8_3D_i1": "b060c82c250277b5",
+    "rZCAT8_3D_i2": "bab58709b0b28abb", "rZCAT8_3D_i3": "8b284e126dd4023f",
+    "rZCAT8_5D": "3060434380249cf6", "rZCAT8_5D_i1": "3060434380249cf6",
+    "rZCAT8_5D_i2": "8bc60e34274c7c80", "rZCAT8_5D_i3": "84ed2ca61f2e81a6",
+    "rZCAT9_3D": "26904b3f65a60468", "rZCAT9_3D_i1": "26904b3f65a60468",
+    "rZCAT9_3D_i2": "0027849d5c404010", "rZCAT9_3D_i3": "b692c0a0272c304d",
+    "rZCAT9_5D": "4410298209e29fc0", "rZCAT9_5D_i1": "4410298209e29fc0",
+    "rZCAT9_5D_i2": "4ddc4af7e4468598", "rZCAT9_5D_i3": "cd8687ed9134f40d",
+    "rZDT1": "b354526c9313ee04", "rZDT1_i1": "b354526c9313ee04",
+    "rZDT1_i2": "f251132fe79365ea", "rZDT1_i3": "8a10a4d2e933faa7",
+    "rZDT2": "e8527dfe55c24d1d", "rZDT2_i1": "e8527dfe55c24d1d",
+    "rZDT2_i2": "dd64eb0e678d8666", "rZDT2_i3": "d8c2c46bbb3590ae",
+    "rZDT3": "9c239dad953e27fe", "rZDT3_i1": "9c239dad953e27fe",
+    "rZDT3_i2": "9b65d08ce7d7919f", "rZDT3_i3": "103042fc17b2d8a4",
+    "rZDT4": "eef32c295837c5e8", "rZDT4_i1": "eef32c295837c5e8",
+    "rZDT4_i2": "29181fefcb905dc1", "rZDT4_i3": "56e3a87b2304ca5c",
+    "rZDT6": "554a0a98d0ae945f", "rZDT6_i1": "554a0a98d0ae945f",
+    "rZDT6_i2": "1bdefaa38dd78620", "rZDT6_i3": "72b05f6f80c8abd9",
+    "rcDTLZ2_10D": "cecbb98a96063808", "rcDTLZ2_10D_i1": "cecbb98a96063808",
+    "rcDTLZ2_10D_i2": "a6c3b4de63f6b45a", "rcDTLZ2_10D_i3": "11b2af6974c4b47f",
+    "rcDTLZ2_3D": "f5494f9446406f34", "rcDTLZ2_3D_i1": "f5494f9446406f34",
+    "rcDTLZ2_3D_i2": "78bac4dcc8d4cc26", "rcDTLZ2_3D_i3": "aee4893d568f62be",
+    "rcDTLZ2_5D": "26423ce721190dfa", "rcDTLZ2_5D_i1": "26423ce721190dfa",
+    "rcDTLZ2_5D_i2": "bd4e8ad2632c9a58", "rcDTLZ2_5D_i3": "dd2cb0ba67a4440e",
+    "rcDTLZ2_6D": "d34c832b084a366a", "rcDTLZ2_6D_i1": "d34c832b084a366a",
+    "rcDTLZ2_6D_i2": "e44fcc9ba80da5cf", "rcDTLZ2_6D_i3": "514f464849d27d36",
+    "rcDTLZ5_3D": "3889499deaebdc26", "rcDTLZ5_3D_i1": "3889499deaebdc26",
+    "rcDTLZ5_3D_i2": "451102b5c3ef5d6d", "rcDTLZ5_3D_i3": "0ac06d43473a175d",
+    "rcDTLZ5_5D": "517e3b871ddc410e", "rcDTLZ5_5D_i1": "517e3b871ddc410e",
+    "rcDTLZ5_5D_i2": "60933deaea640d04", "rcDTLZ5_5D_i3": "a6b3fcff5b72bdf0",
+    "rcMaF1_3D": "09cb1b449177b6ea", "rcMaF1_3D_i1": "09cb1b449177b6ea",
+    "rcMaF1_3D_i2": "cc3ea0b80e3d588a", "rcMaF1_3D_i3": "e5750210e0c4563b",
+    "rcMaF1_5D": "25183d84ff269d1b", "rcMaF1_5D_i1": "25183d84ff269d1b",
+    "rcMaF1_5D_i2": "ed41abe945f93614", "rcMaF1_5D_i3": "499599abbfb00e3a",
+    "rcMaF5_3D": "1486d1d5272b12e6", "rcMaF5_3D_i1": "1486d1d5272b12e6",
+    "rcMaF5_3D_i2": "cffd5899f19495c1", "rcMaF5_3D_i3": "aa3eb87a42abf344",
+    "rcMaF5_5D": "8e55af982be1c5ea", "rcMaF5_5D_i1": "8e55af982be1c5ea",
+    "rcMaF5_5D_i2": "755fd6a88c9d85da", "rcMaF5_5D_i3": "dcd02224261ce8ff",
+    "rcMaF6_3D": "75e536f4ab3de561", "rcMaF6_3D_i1": "75e536f4ab3de561",
+    "rcMaF6_3D_i2": "3b30b8ae52e39f99", "rcMaF6_3D_i3": "782f536392707907",
+    "rcMaF6_5D": "390f4a872dcbb8ff", "rcMaF6_5D_i1": "390f4a872dcbb8ff",
+    "rcMaF6_5D_i2": "b95e803771bccb42", "rcMaF6_5D_i3": "e4fb96a625d0b771",
+    "rcPolygon_3D": "5baf3e7d19605e43", "rcPolygon_3D_i1": "5baf3e7d19605e43",
+    "rcPolygon_3D_i2": "700df10027033b0d", "rcPolygon_3D_i3": "8f8700bdb316d774",
+    "rcPolygon_5D": "3de23de36416c89b", "rcPolygon_5D_i1": "3de23de36416c89b",
+    "rcPolygon_5D_i2": "276109726ae77bc3", "rcPolygon_5D_i3": "ceadba497a9a5642",
+}
+BBOB_ROTATION_HASH = "b20703a7d9b960f5"
+
+
+def _matrix_hash(A, digest=None) -> str:
+    import hashlib
+    import numpy as np
+    d = digest or hashlib.sha256()
+    d.update((np.round(np.asarray(A, float), 12) + 0.0).tobytes())
+    return d.hexdigest()[:16]
+
+
+@test
+def the_rotations_are_rotations_and_numpy_still_draws_them():
+    """Every Q of rotated.py is orthogonal (1e-12), the conditioned ones are
+    Lambda Q with the stated Lambda, the controls I or Lambda; the hash of every
+    matrix, and of bbob-biobj's rotations, is the one recorded (task 6, item
+    1.3; the rZDT, the instances and M = 6 and 10, task 7, §3; the other
+    families, §7, ZCAT19 and ZCAT20 with a matrix per size of the distance
+    block). Instance 1 is the problem without the suffix, 2 and 3 are other
+    matrices."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import hashlib
+    import numpy as np
+    from mootation.benchmarks import bbob_biobj as BB
+    from mootation.benchmarks import names
+    from mootation.benchmarks import rotated as R
+    from mootation.benchmarks.registry import ROTATED
+    from mootation.benchmarks.noisy import is_noisy
+    assert sorted(ROTATED) == sorted(ROTATION_HASHES) == sorted(
+        n for n in names() if n.split("_")[0] in R.SPECS and not is_noisy(n))
+    for name, r in ROTATED.items():
+        family, rotate, condition = R.SPECS[name.split("_")[0]]
+        digest = hashlib.sha256()
+        for A in r.matrices():
+            k = len(A)
+            Q = R.rotation(family, r.M, k, r.instance) if rotate else np.eye(k)
+            assert np.allclose(Q.T @ Q, np.eye(k), atol=1e-12), name
+            L = R.conditioning(k) if condition else np.ones(k)
+            assert np.array_equal(A, L[:, None] * Q), name
+            h = _matrix_hash(A, digest)
+        assert h == ROTATION_HASHES[name], (name, h)
+    assert [len(A) for A in ROTATED["rZCAT19_3D"].matrices()] == [28, 29]
+    assert R.conditioning(10)[[0, -1]].tolist() == [1.0, 1e3 ** 0.5]   # cond(Lambda^2) = 1e3
+    for name in ROTATED:
+        if name.endswith("_i1"):
+            plain = name[:-3]
+            assert ROTATION_HASHES[name] == ROTATION_HASHES[plain], name
+            assert len({ROTATION_HASHES[plain], ROTATION_HASHES[plain + "_i2"],
+                        ROTATION_HASHES[plain + "_i3"]}) == 3, plain
+    d = hashlib.sha256()
+    for n in sorted(names()):
+        if n.startswith("bbobbiobj"):
+            p = BB.problem(int(n[9:11]), int(n[13:15]), 1)
+            for A in (p.alpha.R, p.alpha.Q, p.beta.R, p.beta.Q):
+                if A is not None:
+                    d.update((np.round(A, 12) + 0.0).tobytes())
+    assert d.hexdigest()[:16] == BBOB_ROTATION_HASH, d.hexdigest()[:16]
+
+
+@test
+def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
+    """At Q = I and c = 1/2 rDTLZ and rMaF are DTLZ and MaF, at Q = I rWFG and
+    rZCAT are WFG and ZCAT, at Q = I and c = 0 rZDT and rcPolygon are ZDT and
+    Polygon; rDTLZ2 and rDTLZ4 are their Q = I construction (the isotropic g),
+    rDTLZ1, rDTLZ3, rcDTLZ2, rcDTLZ5, rMaF and rcMaF are not, nor rZDT its
+    shiftZDT; the Pareto set lands on the front (rWFG8 and rWFG9: on the
+    sphere, their optimum computed in order); uniform points give finite
+    values; no point dominates the front; an instance other than the first is
+    another function; the properties (task 6, item 1.3 and supplement 2; task
+    7, §3 and §7). The instances are the same construction: their matrices
+    are checked above, their values here only against instance 1."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import rotated as R
+    from mootation.benchmarks.properties import properties
+    from mootation.benchmarks.registry import ROTATED
+    rng = np.random.default_rng(11)
+
+    def box(p, n):
+        lo = np.array([b[0] for b in p.bounds])
+        hi = np.array([b[1] for b in p.bounds])
+        return lo + (hi - lo) * rng.random((n, p.n_vars))
+
+    task6 = ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "WFG4", "WFG5", "WFG6", "WFG7")
+    for name, r in ROTATED.items():
+        if "_i" in name:
+            continue
+        p, base = get(name), get(r.base)
+        ident = R.Rotated(name.split("_")[0], r.M, p.n_vars)
+        ident.A = np.eye(len(r.A))
+        ident._matrices = {len(A): np.eye(len(A)) for A in r.matrices()}
+        if r.zdt or r.kind == "polygon":
+            ident.optimum = np.zeros(len(r.A))
+            ident.spread = np.ones(len(r.A))
+        elif r.kind in ("dtlz", "maf"):
+            ident.optimum = np.full(len(r.A), 0.5)
+        many = r.family in task6 or r.zdt         # task 7's new kinds: fewer points
+        X = box(p, 2000 if many else 300)
+        assert max(np.abs(np.subtract(ident.evaluate(x), base.evaluate(list(x)))).max()
+                   for x in X) < 1e-12, name
+        F = np.array([p.evaluate(list(x)) for x in box(p, 10_000 if many else 1000)])
+        assert np.all(np.isfinite(F)), name
+        if r.kind == "zcat" and name not in ("rZCAT1_3D", "rZCAT14_3D", "rZCAT19_3D"):
+            continue                   # ZCAT's Pareto-set sampler takes seconds a problem
+        S = np.asarray(p.pareto_set(100), float)
+        FS = np.array([p.evaluate(list(x)) for x in S])
+        if r.wfg or r.kind == "zcat":  # the base's own values at the same point
+            assert np.abs(FS - [base.evaluate(list(x)) for x in S]).max() < 1e-9, name
+            if r.family in ("WFG8", "WFG9"):         # on the sphere: u* is the optimum
+                H = FS / (2.0 * np.arange(1, r.M + 1))
+                assert np.abs((H ** 2).sum(axis=1) - 1.0).max() < 1e-9, name
+        elif r.kind in ("maf", "polygon"):      # the base at its own optimum
+            S0 = S.copy()
+            S0[:, r.first:] = 0.5 if r.kind == "maf" else 0.0
+            assert np.abs(FS - [base.evaluate(list(x)) for x in S0]).max() < 1e-9, name
+        elif r.zdt:                    # the base's own values on its own Pareto set
+            FB = [base.evaluate(list(x)) for x in base.pareto_set(100)]
+            assert np.abs(FS - FB).max() < 1e-9, name
+            assert max(p.distance_fn(list(x)) for x in S) < 1e-12, name
+        else:
+            G = FS if r.family == "DTLZ1" else FS ** 2
+            assert np.abs(G.sum(axis=1) - (0.5 if r.family == "DTLZ1" else 1.0)).max() < 1e-9
+            if p.distance_fn is not None or r.family != "DTLZ5":
+                assert max(p.distance_fn(list(x)) for x in S) < 1e-9, name
+        row = properties(name)
+        assert p.cyclic_vars == () and (row is None) == (r.kind == "maf"), name
+        assert row is None or (row["centre"], row["boundary"]) == (False, False), name
+    for M in R.SIZES:
+        X = box(get(f"DTLZ1_{M}D"), 2000)
+        for stem, other, same in (("rDTLZ2", None, True), ("rDTLZ4", None, True),
+                                  ("rDTLZ1", "r0DTLZ1", False), ("rDTLZ3", "r0DTLZ3", False),
+                                  ("rcDTLZ2", "c0DTLZ2", False)):
+            r = ROTATED[R.name(stem, M)]
+            if other is None:
+                q = R.Rotated(stem, M, r.n_vars)
+                q.A = np.eye(len(r.optimum))
+            else:
+                q = ROTATED[R.name(other, M)]
+            Y = box(get(R.name(stem, M)), 2000)
+            d = max(np.abs(np.subtract(r.evaluate(x), q.evaluate(x))).max() for x in Y)
+            assert (d < 1e-12) == same, (stem, M, d)
+        for stem, other in (("rcDTLZ5", "c0DTLZ5"), ("rcMaF1", "c0MaF1"), ("rMaF2", "r0MaF2"),
+                            ("rMaF3", "r0MaF3"), ("rMaF4", "r0MaF4"), ("rcMaF5", "c0MaF5"),
+                            ("rcMaF6", "c0MaF6"), ("rcPolygon", "c0Polygon"),
+                            ("rWFG8", None), ("rZCAT1", None)):
+            p = get(R.name(stem, M))
+            q = get(R.name(other, M) if other else ROTATED[R.name(stem, M)].base)
+            Y = box(p, 200)
+            d = max(np.abs(np.subtract(p.evaluate(list(x)), q.evaluate(list(x)))).max()
+                    for x in Y)
+            assert d > 1e-6, (stem, M, d)
+    for stem in ("rZDT1", "rZDT2", "rZDT3", "rZDT4", "rZDT6"):
+        p, q = get(stem), get("shift" + stem[1:])
+        Y = box(p, 300)
+        assert max(np.abs(np.subtract(p.evaluate(list(x)), q.evaluate(list(x)))).max()
+                   for x in Y) > 1e-3, stem
+    for name in ("rZDT4", "rDTLZ1_3D", "rcDTLZ2_10D", "rWFG7_5D", "rWFG8_3D", "rcMaF1_5D",
+                 "rZCAT19_3D", "rcPolygon_3D"):
+        p = get(name)
+        Y = box(p, 300)
+        for k, same in ((1, True), (2, False), (3, False)):
+            d = max(np.abs(np.subtract(p.evaluate(list(x)), get(f"{name}_i{k}").evaluate(
+                list(x)))).max() for x in Y)
+            assert (d < 1e-12) == same, (name, k, d)
+    for name in ("rDTLZ1_3D", "rcDTLZ2_3D", "rWFG4_3D", "rWFG7_5D", "rZDT1", "rZDT4",
+                 "rZDT6", "rcDTLZ2_10D", "rWFG1_3D", "rWFG8_3D", "rWFG9_5D", "rcDTLZ5_3D",
+                 "rcMaF1_3D", "rMaF2_3D", "rMaF3_3D", "rcPolygon_3D"):
+        p, r = get(name), ROTATED[name]
+        Z = np.asarray(p.pareto_front(2000), float)
+        near = np.asarray(p.pareto_set(300), float)
+        lo = np.array([b[0] for b in p.bounds])
+        hi = np.array([b[1] for b in p.bounds])
+        near[:, r.first:] += 1e-3 * (hi - lo)[r.first:] * rng.standard_normal(
+            (len(near), p.n_vars - r.first))
+        X = np.vstack([box(p, 500), np.clip(near, lo, hi)])
+        F = np.array([p.evaluate(list(x)) for x in X])
+        D = (F[:, None, :] - Z[None, :, :]) / (Z.max(axis=0) - Z.min(axis=0))
+        assert not np.all(D < -1e-9, axis=2).any(), name     # better than the front everywhere
+    assert properties("rDTLZ1_3D")["separable"] is False
+    assert properties("rDTLZ2_3D")["separable"] is True          # its g ignores the rotation
+    assert properties("r0DTLZ1_3D")["separable"] is True
+    assert properties("rZDT1")["separable"] is False and properties("rZDT4")["multimodal"]
+    assert properties("rDTLZ1_3D_i2")["n_obj"] == 3 and properties("rcDTLZ2_10D")["front_dim"] == 9
+    assert properties("rWFG8_3D")["separable"] is False and properties("rcMaF1_3D") is None
+    assert properties("rcDTLZ5_5D")["front"] == "degenerate+mixed"
+    assert properties("rZCAT1_3D")["linkage"] and properties("rcPolygon_3D")["separable"] is False
+    fam = families()
+    assert sorted(fam["r0DTLZ"]) == ["r0DTLZ1_3D", "r0DTLZ1_5D", "r0DTLZ3_3D", "r0DTLZ3_5D"]
+    counts = {k: len(fam[k]) for k in ("rDTLZ", "rWFG", "c0DTLZ", "rcDTLZ", "rZDT", "rMaF",
+                                       "rcMaF", "r0MaF", "c0MaF", "rZCAT", "rcPolygon",
+                                       "c0Polygon")}
+    assert counts == {"rDTLZ": 20, "rWFG": 72, "c0DTLZ": 6, "rcDTLZ": 24, "rZDT": 20,
+                      "rMaF": 24, "rcMaF": 24, "r0MaF": 6, "c0MaF": 6, "rZCAT": 160,
+                      "rcPolygon": 8, "c0Polygon": 2}, counts
+
+
+# ── task 6, item 6: the RE and CRE real-world problems ─────────────────────
+
+# ryojitanabe/reproblems' Python version (MIT), commit 7876b4e, at the points of
+# re_fixed_points: the objectives, and for CRE (objectives, violations); RE91's
+# four normal draws fixed to (0.3, -1.2, 0.7, 0.1).
+RE_VALUES = {
+    "RE21": [
+        [2296.19966267654, 0.0224006268779211],
+        [2363.81993589829, 0.010694494579839],
+        [2541.29537671572, 0.0103509537974754],
+        [1918.18048446298, 0.0227004216064676],
+        [2094.55106976404, 0.0196141259265501],
+    ],
+    "RE22": [
+        [477.308696700677, 1.67802962571761],
+        [364.124224800677, 281.745089042506],
+        [451.252382100677, 235.10847278545],
+        [90.5165394006772, 175.64552048523],
+        [183.908696700677, 153.773550758615],
+    ],
+    "RE23": [
+        [300027.379122309, 0],
+        [36913.0018192696, 1048415.51346437],
+        [81031.7631339557, 132879.65741633],
+        [25653.5270098798, 0.93729191023875],
+        [59742.035659015, 0.67899191023875],
+    ],
+    "RE24": [
+        [2059.25690531063, 0],
+        [2653.60690531063, 0],
+        [3247.95690531063, 0],
+        [3838.80690531063, 0],
+        [4433.15690531063, 0],
+    ],
+    "RE25": [
+        [45.9848597660687, 15.5915205646927],
+        [2.64270541433649, 3762993.35880804],
+        [6.72943289314108, 1460272.86003018],
+        [0.773714054613419, 675532.331472527],
+        [3.82410835115629, 287947.696876453],
+    ],
+    "RE31": [
+        [458.453388226319, 0.473660842035115, 458.353388226319],
+        [404.63078837806, 0.915709760793062, 404.53078837806],
+        [474.624478403442, 0.700845350202228, 474.524478403442],
+        [122.812713947747, 31.434072279866, 122.712713947747],
+        [197.034781116135, 4.3143962461802, 196.934781116135],
+    ],
+    "RE32": [
+        [73.0834059056722, 0.000866062630698507, 0.711252914531249],
+        [84.4591675474363, 2.51311155360689, 336740.951825653],
+        [132.319695471005, 0.131392118383155, 19039.7531525377],
+        [11.5539710451005, 0.0280293035610294, 6602.68689531989],
+        [22.0491216577812, 0.0096278638027483, 0],
+    ],
+    "RE33": [
+        [1.63745404625136, 1.74121173130994, 6.20833828176535],
+        [1.93022170549791, 4.17074637362964, 5.18847050625],
+        [2.25488047641816, 3.23816992070285, 4.18847050625],
+        [5.58454923875761, 2.94239916699888, 0],
+        [6.24242365117445, 2.38748090528687, 0],
+    ],
+    "RE34": [
+        [1685.90227199309, 9.17707521215899, 0.150723807700163],
+        [1681.04962289309, 10.1512522609983, 0.101379808517313],
+        [1685.33472739309, 10.4337505434367, 0.103990603046463],
+        [1684.90517489309, 10.9881277119835, 0.100638582518613],
+        [1689.19027939309, 11.4407059944219, 0.100297377047763],
+    ],
+    "RE35": [
+        [5393.74023602842, 808.306475716548, 0.621355728680025],
+        [3479.61803219421, 748.683057127226, 0.502699935963833],
+        [3600.72287105523, 1680.05522243232, 380.441221329506],
+        [3346.75389973403, 1517.23889799609, 218.819648324174],
+        [3718.7468016905, 1374.85217637395, 76.3387196713279],
+    ],
+    "RE36": [
+        [5.17478881987578, 58, 0.246615036773305],
+        [6.5388431372549, 51, 0.443419872638133],
+        [6.4935, 56, 0.436877795411918],
+        [4.61257423971377, 54, 0.165499096770131],
+        [4.90854137115839, 59, 0.208201034649891],
+    ],
+    "RE37": [
+        [0.624043399578703, 0.516744080634531, 0.591438973230051],
+        [0.610428282464368, 0.231391524255244, 0.769115649696007],
+        [0.540797977512683, 0.310692287475706, 0.772495311959053],
+        [0.234307449628998, 0.575082868781669, 0.977299636747565],
+        [0.205642744677313, 0.649445632002131, 0.975392573011686],
+    ],
+    "RE41": [
+        [31.5889729782052, 3.97604251910976, 12.1567884813263, 1.51017522147498],
+        [27.3281737782052, 4.04523823722413, 12.0895724654494, 0.222664362503699],
+        [30.0473665782052, 3.96804633118601, 12.3446935959829, 0],
+        [27.8665673782052, 3.88743442514788, 12.4563248602853, 1.93212405354312],
+        [30.5857681782052, 3.80340251910976, 12.2319367070119, 0.59607405354312],
+    ],
+    "RE42": [
+        [-844.039935810605, 12516.8326628499, 6286.87465719817, 8.01425205603963],
+        [-710.446251977143, 11410.6263748209, 7696.70403186347, 7.9104790745108],
+        [-874.697002123148, 12122.8298814322, 6031.1741758049, 7.34566802351604],
+        [-522.869879527343, 5725.29421084565, 7928.31049405119, 1.45957136461411],
+        [-481.327875089567, 6898.29057643774, 9913.60278142385, 0.93830782671353],
+    ],
+    "RE61": [
+        [76239.1115560854, 977.80486515, 1148410.48601048, 4623455.37529136, 12488.9526343154, 0],
+        [68550.9249160854, 1109.80486515, 1405222.69285524, 1449896.74314552, 1743.81213340406,
+         0],
+        [70472.9715760854, 1241.80486515, 1662034.8997, 1108316.66061568, 2389.1477836894, 0],
+        [72395.0182360854, 53.8048651500001, 1918847.10654476, 847209.172656927, 30872.2649998094,
+         0.234890599992375],
+        [74317.0648960854, 185.80486515, 2175659.31338952, 647615.801277689, 10529.5458542863, 0],
+    ],
+    "RE91": [
+        [31.5527390561583, 0.779424460463896, 23.7548090689652, 0.627077664697238,
+         0.991051539019921, 0.996951984194581, 0.988246879476977, 0.981717476528617,
+         0.949194557976996],
+        [27.2866898561583, 0.794398394309973, 27.0282939855199, 0.528812260112356,
+         1.04837678840925, 0.88590636907852, 1.00471630900557, 0.94948381741016,
+         0.952811328264829],
+        [30.0006326561583, 0.638030528156051, 30.3187875101449, 0.473624181980561,
+         0.967492662798577, 0.841486741462459, 0.971533832496039, 0.914709552231096,
+         0.998262894273729],
+        [27.8145834561583, 0.550180062002129, 33.9008230996388, 0.643734877395679,
+         0.898100412187905, 0.950735825731249, 0.950551355986508, 0.964158199693599,
+         0.982314041963281],
+        [30.5285342561583, 0.455638995848206, 37.2326076492638, 0.630573122810798,
+         0.840200036577234, 0.921733460615188, 0.928713879476977, 0.948898681989283,
+         0.964363406213343],
+    ],
+    "CRE21": [
+        ([458.453388226319, 0.473660842035115],
+         [458.353388226319, 0, 0]),
+        ([404.63078837806, 0.915709760793062],
+         [404.53078837806, 0, 0]),
+        ([474.624478403442, 0.700845350202228],
+         [474.524478403442, 0, 0]),
+        ([122.812713947747, 31.434072279866],
+         [122.712713947747, 0, 0]),
+        ([197.034781116135, 4.3143962461802],
+         [196.934781116135, 0, 0]),
+    ],
+    "CRE22": [
+        ([73.0834059056722, 0.000866062630698507],
+         [0, 0, 0.711252914531249, 0]),
+        ([84.4591675474363, 2.51311155360689],
+         [0, 336740.240572739, 0.711252914531249, 0]),
+        ([132.319695471005, 0.131392118383155],
+         [0, 19039.0418996232, 0.711252914531249, 0]),
+        ([11.5539710451005, 0.0280293035610294],
+         [6602.68689531989, 0, 0, 0]),
+        ([22.0491216577812, 0.0096278638027483],
+         [0, 0, 0, 0]),
+    ],
+    "CRE23": [
+        ([1.63745404625136, 1.74121173130994],
+         [6.18847050624998, 0.0198677755153691, 0, 0]),
+        ([1.93022170549791, 4.17074637362964],
+         [5.18847050625, 0, 0, 0]),
+        ([2.25488047641816, 3.23816992070285],
+         [4.18847050625, 0, 0, 0]),
+        ([5.58454923875761, 2.94239916699888],
+         [0, 0, 0, 0]),
+        ([6.24242365117445, 2.38748090528687],
+         [0, 0, 0, 0]),
+    ],
+    "CRE24": [
+        ([5393.74023602842, 808.306475716548],
+         [0, 0, 0, 0, 0, 0, 0.477094815742525, 0, 0.1442609129375, 0, 0]),
+        ([3479.61803219421, 748.683057127226],
+         [0, 0, 0, 0, 0, 0, 0.403439023026332, 0, 0.0992609129375008, 0, 0]),
+        ([3600.72287105523, 1680.05522243232],
+         [0, 0, 0, 0, 0, 0, 0.331737984246441, 0, 0.0542609129375009, 380.055222432322, 0]),
+        ([3346.75389973403, 1517.23889799609],
+         [0, 0, 0, 0, 0, 0, 1.57148941514907, 0, 0.0092609129374992, 217.238897996088, 0]),
+        ([3718.7468016905, 1374.85217637395],
+         [0, 0, 0, 0, 0, 0, 1.48654329737629, 0, 0, 74.8521763739516, 0]),
+    ],
+    "CRE25": [
+        ([5.17478881987578, 58],
+         [0.246615036773305]),
+        ([6.5388431372549, 51],
+         [0.443419872638133]),
+        ([6.4935, 56],
+         [0.436877795411918]),
+        ([4.61257423971377, 54],
+         [0.165499096770131]),
+        ([4.90854137115839, 59],
+         [0.208201034649891]),
+    ],
+    "CRE31": [
+        ([31.5889729782052, 3.97604251910976, 12.1567884813263],
+         [0, 0, 0, 0.0204011679318589, 0, 0, 1.48977405354312, 0, 0, 0]),
+        ([27.3281737782052, 4.04523823722413, 12.0895724654494],
+         [0, 0, 0, 0.0237020717364438, 0, 0, 0.153724053543122, 0.0452382372241331, 0, 0]),
+        ([30.0473665782052, 3.96804633118601, 12.3446935959829],
+         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+        ([27.8665673782052, 3.88743442514788, 12.4563248602853],
+         [0, 0, 0, 0, 0, 0, 1.93212405354312, 0, 0, 0]),
+        ([30.5857681782052, 3.80340251910976, 12.2319367070119],
+         [0, 0, 0, 0, 0, 0, 0.59607405354312, 0, 0, 0]),
+    ],
+    "CRE32": [
+        ([-844.039935810605, 12516.8326628499, 6286.87465719817],
+         [0, 0, 2.79434353659295, 0, 0, 0, 0, 0, 5.21990851944668]),
+        ([-710.446251977143, 11410.6263748209, 7696.70403186347],
+         [0, 3.44046173978733, 3.57512136817347, 0, 0.894895966550003, 0, 0, 0, 0]),
+        ([-874.697002123148, 12122.8298814322, 6031.1741758049],
+         [0, 2.78746099360625, 4.33231106335979, 0, 0.225895966550004, 0, 0, 0, 0]),
+        ([-522.869879527343, 5725.29421084565, 7928.31049405119],
+         [0.52957229715341, 0, 0, 0.929999067460704, 0, 0, 0, 0, 0]),
+        ([-481.327875089567, 6898.29057643774, 9913.60278142385],
+         [0.333505261448607, 0, 0, 0.604802565264922, 0, 0, 0, 0, 0]),
+    ],
+    "CRE51": [
+        ([76239.1115560854, 977.80486515, 1148410.48601048, 4623455.37529136, 12488.9526343154],
+         [0, 0, 0, 0, 0, 0, 0]),
+        ([68550.9249160854, 1109.80486515, 1405222.69285524, 1449896.74314552, 1743.81213340406],
+         [0, 0, 0, 0, 0, 0, 0]),
+        ([70472.9715760854, 1241.80486515, 1662034.8997, 1108316.66061568, 2389.1477836894],
+         [0, 0, 0, 0, 0, 0, 0]),
+        ([72395.0182360854, 53.8048651500001, 1918847.10654476, 847209.172656927,
+          30872.2649998094],
+         [0.234890599992375, 0, 0, 0, 0, 0, 0]),
+        ([74317.0648960854, 185.80486515, 2175659.31338952, 647615.801277689, 10529.5458542863],
+         [0, 0, 0, 0, 0, 0, 0]),
+    ],
+}
+
+
+def re_fixed_points(lb, ub) -> list:
+    """Five points of a box: lb + (ub - lb) u, u_i = (0.1 j + 0.61803398875 i)
+    mod 1, i = 1..n, j = 1..5."""
+    import numpy as np
+    lb, ub = np.asarray(lb, float), np.asarray(ub, float)
+    i = np.arange(1, len(lb) + 1)
+    return [lb + (ub - lb) * ((0.1 * j + 0.61803398875 * i) % 1.0) for j in range(1, 6)]
+
+
+@test
+def re_problems_match_reproblems():
+    """RE21-91 and CRE21-51 give the objectives (and the CRE their constraint
+    violations) of ryojitanabe/reproblems' Python version at five points each,
+    to 1e-12 relative; RE91 with its four normal draws fixed (task 6, item 6)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get, names
+    from mootation.benchmarks import re as RE
+    from mootation.benchmarks.noisy import is_noisy
+    assert sorted(RE_VALUES) == sorted(n for n in names()
+                                       if (n[:2] == "RE" or n[:3] == "CRE") and not is_noisy(n)
+                                       and not n.endswith("c"))         # RE22c, RE33c: ours
+    for name, rows in RE_VALUES.items():
+        p = get(name)
+        lb = [b[0] for b in p.bounds]
+        ub = [b[1] for b in p.bounds]
+        for x, want in zip(re_fixed_points(lb, ub), rows):
+            if name == "RE91":
+                pairs = [(RE.re91(x, [0.3, -1.2, 0.7, 0.1]).tolist(), want)]
+            elif p.has_cons:
+                pairs = [(p.evaluate(list(x)), want[0]), (p.constraints(list(x)), want[1])]
+            else:
+                pairs = [(p.evaluate(list(x)), want)]
+            for mine, theirs in pairs:
+                assert len(mine) == len(theirs), name
+                for a, b in zip(mine, theirs):
+                    assert abs(a - b) <= 1e-12 * max(1.0, abs(b)), (name, a, b)
+
+
+@test
+def re_fronts_frames_and_the_kept_defects():
+    """The reference fronts are mutually non-dominated, CRE's the feasible
+    points of RE's; the frames are the repository's files; 10^4 uniform points
+    give finite values; RE22 keeps the original's "3,10"; RE91 repeats with
+    its seed; RE and CRE are ranked apart and are engineering problems
+    (task 6, item 6)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks import re as RE
+    from mootation.benchmarks.properties import properties
+    from mootation.benchmarks.registry import _strictly_dominated_by
+    from mootation.run import campaign as C
+    rng = np.random.default_rng(12)
+    for name in RE_VALUES:
+        p = get(name)
+        F = np.asarray(p.pareto_front(1000), float)
+        assert len(F) and not _strictly_dominated_by(F, F).any(), name
+        assert p.front_exact is False and properties(name)["family_kind"] == "engineering"
+        if name in RE.CRE:
+            base = RE.CRE[name][0]
+            G = RE.reference(base)
+            feasible = {tuple(r) for r in G[G[:, -1] == 0.0][:, :-1]}
+            assert all(tuple(r) in feasible for r in F), name
+            ideal, nadir = RE.frame(base)
+            assert (p.ideal, p.nadir) == (ideal[:-1], nadir[:-1]), name
+        else:
+            assert len(F) == len(RE.reference(name)) and (p.ideal, p.nadir) == RE.frame(name)
+        lo = np.array([b[0] for b in p.bounds])
+        hi = np.array([b[1] for b in p.bounds])
+        X = lo + (hi - lo) * rng.random((10_000, p.n_vars))
+        assert all(np.all(np.isfinite(p.evaluate(list(x)))) for x in X), name
+        if p.has_cons:
+            assert all(np.all(np.isfinite(p.constraints(list(x)))) for x in X[:2000]), name
+    assert 3.0 in RE.RE22_VALUES and 10.0 in RE.RE22_VALUES and 3.1 not in RE.RE22_VALUES
+    a, b = get("RE91").make_evaluator(4), get("RE91").make_evaluator(4)
+    x = [1.0, 0.9, 1.0, 1.0, 1.75, 0.8, 0.8]
+    run = [a(x) for _ in range(5)]
+    assert run == [b(x) for _ in range(5)] and run[0] != run[1]
+    assert get("RE91").evaluate(x) == get("RE91").evaluate(x)
+    assert properties("ZDT1")["family_kind"] == "synthetic"
+
+    def row(problem, alg, v):
+        return {"problem": problem, "algorithm": alg, "seed": 1, "status": "done",
+                "final": {"igdp_norm": v}, "n_objs": 2}
+
+    rows = [row("ZDT1", "a", 0.1), row("ZDT1", "b", 0.2), row("RE21", "a", 0.3),
+            row("RE21", "b", 0.1)]
+    r = C.rank_table(rows, "igdp_norm")
+    e = dict(r["algorithms"])
+    assert "engineering" in r["groups"] and e["a"]["all"] == (1.0, 1), e
+    assert e["a"]["engineering"] == (2.0, 1) and e["b"]["engineering"] == (1.0, 1), e
+    text = C.format_ranks(r)
+    assert "ranked apart" in text and "approximation" in text, text
+    assert "engineering" not in C.rank_table(rows[2:], "igdp_norm")["groups"]
 
 
 # ── task 2, step 3: operators and switchable variation ──────────────────────
@@ -3700,10 +6219,10 @@ archive = false
 def operator_words_are_knobs_of_the_run_layer():
     from mootation.run.knobs import text_knobs
     words = text_knobs()
-    assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha",
-                                       "spx", "rex", "undx", "pcx"}, words
+    assert set(words["crossover"]) == {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx",
+                                       "pcx", "de", "de_pbest", "portfolio", "none"}, words
     assert {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
-            "mixture_cauchy"} == set(words["mutation"]), words
+            "mixture_cauchy", "none"} == set(words["mutation"]), words
     for k in ("mutation_scale", "mixture_q", "blx_alpha", "crossover", "mutation"):
         assert k in knob_names(), k
     tail = 'gens = 5\n'
@@ -3772,7 +6291,8 @@ def dms_and_crowding_space_are_knobs_of_the_run_layer():
     from mootation.run.knobs import text_knobs
     words = text_knobs()
     assert list(words["crowding_space"]) == ["objectives", "decision"], words
-    assert list(words["dms_init"]) == ["line", "single"], words
+    assert list(words["dms_init"]) == ["line", "single", "random"], words
+    assert list(words["dms_poll"]) == ["first", "random"], words
     assert "dms" in algorithm_names()
     tail = 'gens = 5\n'
     bad = loads(_MIN.replace(tail, tail + 'params = { crowding_space = "genotype" }\n'))
@@ -3842,6 +6362,67 @@ def dms_is_deterministic_stops_by_itself_and_answers_with_a_nondominated_set():
     assert not single.ignored and "dms_init" in minimize(sch, max_evaluations=100, algorithm="nsga2",
                                                          bounds=kw["bounds"], n_objs=2,
                                                          dms_init="single").ignored
+
+
+@test
+def dms_can_start_off_the_grid_and_poll_at_random():
+    """DMS-6 (task 5, run A1): dms_init = random and dms_poll = random make the
+    seed matter — the same seed repeats the run, another changes it — while the
+    defaults stay one run for every seed. The line's grid puts coordinates on
+    exactly 0.5, DTLZ1's optimum; a random start does not."""
+    if not _have_numpy() or _core_with("dms_poll") is None:
+        print("  skip  dms_can_start...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ1_3D")
+    kw = dict(bounds=p.bounds, n_objs=3, algorithm="dms", pop_size=20, max_evaluations=600)
+    rnd = dict(dms_init="random", dms_poll="random")
+    a = minimize(p.evaluate, seed=1, **rnd, **kw)
+    b = minimize(p.evaluate, seed=1, **rnd, **kw)
+    c = minimize(p.evaluate, seed=2, **rnd, **kw)
+    assert not a.ignored and a.objectives == b.objectives and a.objectives != c.objectives
+    d = minimize(p.evaluate, seed=1, **kw)
+    assert d.objectives == minimize(p.evaluate, seed=2, **kw).objectives
+    assert minimize(p.evaluate, seed=1, dms_poll="random", **kw).objectives != d.objectives
+    assert np.any(np.array(d.variables) == 0.5) and not np.any(np.array(a.variables) == 0.5)
+    try:
+        minimize(p.evaluate, seed=1, dms_poll="last", **kw)
+    except ValueError as exc:
+        assert "first or random" in str(exc), exc
+    else:
+        raise AssertionError("an unknown dms_poll must be refused")
+
+
+@test
+def clipping_is_counted_where_emyo_c_hcca_and_maoea_iamd_clip():
+    """Task 5, item 2: EMyO/C's offspring, HCCA's DE/rand/1 and MaOEA-IAMD's
+    noise used to be clipped past the out-of-box counts (the first two by
+    hand, the last by the store); now each is in the operator log, repaired
+    before the store, and counted. EMyO/C's knobs for run A2 (bound_repair,
+    step_share, F, F_spread) change its run; its defaults are the paper's."""
+    if not _have_numpy() or _core_with("step_share") is None:
+        print("  skip  clipping_is_counted...: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ3_3D")
+    kw = dict(bounds=p.bounds, n_objs=3, pop_size=20, max_evaluations=400, seed=3,
+              operator_stats=True)
+    for alg, op in (("emyo_c", "emyo_c_difference"), ("hcca", "hcca_de_rand_1"),
+                    ("maoea_iamd", "maoea_iamd_gaussian")):
+        r = minimize(p.evaluate, algorithm=alg, **kw)
+        ops = dict(r.operators)
+        assert ops.get(op) == "clip" and "vault" not in ops, (alg, r.operators)
+        if alg != "maoea_iamd":                 # its noise is 1 % of the range
+            assert dict(r.operator_totals)["oob_share"] > 0, (alg, r.operator_totals)
+    plain = minimize(p.evaluate, algorithm="emyo_c", **kw)
+    knobs = minimize(p.evaluate, algorithm="emyo_c", bound_repair="reflect", step_share=0.45,
+                     F=0.5, F_spread=0.1, **kw)
+    assert not knobs.ignored and dict(knobs.operators)["emyo_c_difference"] == "reflect"
+    assert knobs.objectives != plain.objectives
+    same = minimize(p.evaluate, algorithm="emyo_c", step_share=0.5, F=1.0, F_spread=0.0, **kw)
+    assert same.objectives == plain.objectives, "the paper's values are the defaults"
+    assert minimize(p.evaluate, algorithm="nsga2", step_share=0.45, **kw).ignored == ["step_share"]
 
 
 @test
@@ -4036,6 +6617,474 @@ def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
 
 
 @test
+def invariance_check_tells_the_two_known_cases_apart():
+    """--invariance-check (task 7, §5.4): NSGA-II runs the same trajectory, bit
+    for bit, on DTLZ2_3D and on its objectives times 2^10 — its crowding
+    distance is normalised; SMS-EMOA at three objectives does not — its
+    reference point nad + 1 is absolute. The shift's outcome from the
+    rank-sum and Holm: the same trajectories are invariant, distributions that
+    cannot be told apart rounding, others not invariant. A campaign writes the
+    table under _invariance/."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  invariance_check...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import invariance as I
+    from mootation.run.config import load
+    nsga2 = I.check("nsga2", "DTLZ2_3D", pop=40, budget=1200, shift=False)
+    sms = I.check("sms_emoa", "DTLZ2_3D", pop=40, budget=1200, shift=False)
+    assert (nsga2["scale"], nsga2["scale_first_diff"]) == ("invariant", None), nsga2
+    assert sms["scale"] == "not invariant" and sms["scale_first_diff"] > 40, sms
+    assert I.first_difference(*[__import__("numpy").zeros((3, 2))] * 2) is None
+    rows = [{"shift_parted": 0, "igdp_plain": [1, 2, 3], "igdp_shifted": [1, 2, 3]},
+            {"shift_parted": 3, "igdp_plain": [1.0, 2.0, 3.0], "igdp_shifted": [1.5, 2.5, 3.5]},
+            {"shift_parted": 9, "igdp_plain": list(range(10)),
+             "igdp_shifted": list(range(100, 110))}]
+    I.classify_shift(rows)
+    assert [r["shift"] for r in rows] == ["invariant", "rounding", "not invariant"], rows
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0 }, { name = "hype", pop = 20, gens = 0 } ]
+[run]
+name = "inv"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1"]
+[campaign]
+out = "res"
+budget_fe = 300
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "inv.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        out = I.run_campaign(cfg, spec, root, seeds=3)
+        assert "_invariance" in out
+        lines = (root / "_invariance" / "invariance.csv").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 3 and lines[0].startswith("problem,label,algorithm"), lines
+
+
+@test
+def archive_checkpoints_are_taken_after_exactly_b_evaluations():
+    """[campaign] archive_checkpoints at record_at = [100, 300, 1000] (task 7,
+    §5.5): the archive scenario after exactly 100, 300 and 1 000 evaluations,
+    the first two inside a generation of 91 (at 100 the initial population is
+    not even evaluated yet), not at the first record past them."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  archive_checkpoints...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "ck"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1500
+record_grid = "log"
+record_at = [100, 300, 1000]
+metrics = ["igdp_norm"]
+archive_checkpoints = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "ck.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "DTLZ2_3D" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        at = meta["archive_at"]
+        assert sorted(at, key=int) == ["100", "300", "1000"], at
+        assert all(at[b]["fe"] == int(b) and 0 < at[b]["n"] <= 91 for b in at), at
+        assert at["100"]["igdp_norm"] >= at["1000"]["igdp_norm"], at
+
+
+@test
+def coords_are_knobs_and_the_diagnostics_find_the_distance_block():
+    """coords (task 7, supplement 1): a knob of the switchable algorithms and of
+    mosa, refused words refused, ignored elsewhere. On rcDTLZ2_3D started from
+    its Pareto set, pca_nd's minor subspace is the distance block: principal
+    angles near 0; a campaign with coords_diag records them and the spectrum."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  coords_are_knobs...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation import _core
+    from mootation.benchmarks import get
+    from mootation.persistence import LoadedPopulation
+    from mootation.run import campaign as C
+    from mootation.run import coords_diag as D
+    from mootation.run.config import load
+    from mootation.run.metric_names import COORDS_STATS, is_table_name
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    assert all(is_table_name(k) for k in COORDS_STATS)
+    p = get("ZDT1")
+    for alg in ("nsga2", "ibea_eplus", "spea2_sde", "agemoea", "sms_emoa", "mosa"):
+        r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20, max_evaluations=400,
+                        seed=1, coords="pca", coords_warmup=0)
+        assert not set(r.ignored) & {"coords", "coords_warmup"}, (alg, r.ignored)
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="moead", pop_size=20, max_evaluations=200,
+                    seed=1, coords="pca")
+    assert "coords" in r.ignored
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    coords="diagonal")
+        raise AssertionError("coords = diagonal accepted")
+    except ValueError:
+        pass
+    q = get("rcDTLZ2_3D")
+    S = np.asarray(q.pareto_set(91), float)
+    seed = LoadedPopulation([list(x) for x in S], [q.evaluate(list(x)) for x in S],
+                            [0.0] * len(S), {})
+    states = []
+
+    def watch(gen, F):
+        states.append(dict(_core.coords_state()))
+    Mz.minimize(q.evaluate, q.bounds, 3, algorithm="nsga2", pop_size=91, max_evaluations=182,
+                seed=1, coords="pca_nd", coords_warmup=0, seed_population=seed,
+                on_generation=watch, record_every=1)
+    st = next(s for s in states if s["active"])
+    assert D.distance_start("rcDTLZ2_3D") == 2 and D.distance_start("rWFG4_3D") == 4
+    assert D.distance_start("bbobbiobj01_n05_2D") is None
+    amax, amean = D.principal_angles(st["R"], 2)
+    assert amax < 1e-4, (amax, amean)
+    rot = D.principal_angles(np.eye(12)[:, ::-1], 2)          # the block's complement
+    assert rot[0] > 89.9, rot
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0, params = { coords = "pca", coords_warmup = 2 } } ]
+[run]
+name = "co"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["rDTLZ1_3D"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm"]
+coords_diag = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "co.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "rDTLZ1_3D" / "nsga2" / "run_1"
+        T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+        late = [t for t in T if "coords_angle_max" in t]
+        assert late and all(0.0 <= t["coords_angle_max"] <= 90.0 and t["coords_ratio"] >= 1.0
+                            for t in late), T[-1]
+        assert "coords_angle_max" not in T[0], T[0]                # warm-up: R = I
+
+
+@test
+def stochastic_survival_and_the_inner_archive_are_knobs():
+    """Task 7, supplement 2: survival, spu_frac, inner_archive, inner_archive_cap,
+    archive_reuse_p, bin_crossover and mating reach their algorithms and no
+    other; the result holds the inner archive, mutually non-dominated, and
+    operator_stats the share of the parents drawn from it."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  stochastic_survival...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    p = get("ZDT1")
+    for alg in ("sms_emoa", "nsga2", "nsga3"):
+        pop = 20 if alg != "nsga3" else 21
+        r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=pop,
+                        max_evaluations=600, seed=1, survival="stochastic", inner_archive="nd",
+                        archive_reuse_p=0.5, operator_stats=True)
+        assert not set(r.ignored) & {"survival", "inner_archive", "archive_reuse_p"}, (alg, r.ignored)
+        A = np.asarray(r.inner_archive)
+        assert len(A) > 0 and len(r.inner_archive_variables) == len(A), alg
+        assert not any((np.all(A <= a, axis=1) & np.any(A < a, axis=1)).any() for a in A), alg
+        share = r.operator_totals["archive_parent_share"]
+        assert 0.3 < share < 0.7, (alg, share)
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="ibea_eplus", pop_size=20,
+                    max_evaluations=400, seed=1, inner_archive="nd", inner_archive_cap=10,
+                    survival="stochastic")
+    assert 0 < len(r.inner_archive) <= 10 and r.ignored == ["survival"], r.ignored
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="moead", pop_size=20, max_evaluations=200,
+                    seed=1, survival="stochastic", inner_archive="nd", mating="each")
+    assert {"survival", "inner_archive", "mating"} <= set(r.ignored) and not r.inner_archive
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    mating="each")
+        raise AssertionError("mating = each with SBX accepted")
+    except ValueError as e:
+        assert "crossover" in str(e), e
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
+                    seed=1, mating="each", crossover="none")
+    assert r.evaluations >= 200 and "mating" not in r.ignored
+
+
+@test
+def integer_and_discrete_variables_are_rounded_after_the_operators():
+    """Task 7, §10: with var_types an integer variable is always an integer and
+    a discrete one always from its list — in the genome (int_repair =
+    lamarck) or only at the evaluation (baldwin, the genome continuous); all
+    real is the run without var_types, bit for bit; the declared RE problems;
+    a campaign records dup_x_share."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  integer_and_discrete...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    p = get("RE25")
+    assert p.var_types[0] == "int" and p.var_types[2][0] == "discrete"
+    assert get("RE22").var_types[0][1][:3] == [0.2, 0.31, 0.4] and get("RE33c").var_types == ["real"] * 4
+    values = set(p.var_types[2][1])
+    seen = []
+
+    def f(x):
+        seen.append(list(x))
+        return p.evaluate(x)
+    for repair in ("lamarck", "baldwin"):
+        seen.clear()
+        r = Mz.minimize(f, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=600,
+                        seed=1, var_types=p.var_types, int_repair=repair)
+        X = np.asarray(r.variables)
+        assert all(isinstance(x[0], int) and x[2] in values for x in seen), repair
+        assert all(p.bounds[0][0] <= x[0] <= p.bounds[0][1] for x in seen)
+        genome_int = bool(np.all(X[:, 0] == np.round(X[:, 0])) and set(X[:, 2]) <= values)
+        assert genome_int == (repair == "lamarck"), (repair, X[:3])
+    q = get("ZDT1")
+    a = Mz.minimize(q.evaluate, q.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=400,
+                    seed=3)
+    b = Mz.minimize(q.evaluate, q.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=400,
+                    seed=3, var_types=["real"] * q.n_vars)
+    assert a.objectives == b.objectives
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0, params = { eta_int = 3.0 } } ]
+[run]
+name = "ty"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["RE36"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "ty.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        meta = json.loads((root / "RE36" / "nsga2" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))
+        assert 0.0 <= meta["final"]["dup_x_share"] < 1.0, meta["final"]
+
+
+@test
+def bit_string_problems_their_fronts_and_the_binary_genome():
+    """Supplement 2, §3: OneMinMax, LOTZ and OJZJ against every one of the 2^n
+    strings (n <= 12): the front, its size; the binary genome reaches the
+    cores and comes back (result.binary_variables, a population file round
+    trip); a core without a binary genome refuses by name; a campaign records
+    cover_gen."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  bit_string...: no NumPy or stale _core"); return
+    import itertools
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import binary as B
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    for kind, n, k in (("OMM", 8, 0), ("LOTZ", 10, 0), ("OJZJ", 10, 3), ("OJZJ", 12, 2)):
+        F = np.array([B.objectives(kind, x, k) for x in itertools.product((0, 1), repeat=n)])
+        nd = {tuple(f) for f in F if not np.any(np.all(F >= f, axis=1) & np.any(F > f, axis=1))}
+        front = {tuple(r) for r in B.front(kind, n, k)}
+        assert nd == front, (kind, n, k, sorted(nd - front), sorted(front - nd))
+        assert len(front) == (n - 2 * k + 3 if kind == "OJZJ" else n + 1)
+    p = get("OJZJ_n10_k3")
+    assert p.var_types == ["bin"] * 10 and len(p.pareto_front(1000)) == 7
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=16, max_evaluations=800,
+                    seed=1, var_types=p.var_types, save_population=None)
+    assert len(r.binary_variables) == 16 and all(set(b) <= {0, 1} for b in r.binary_variables)
+    assert all(np.allclose(p.evaluate(b), f) for b, f in zip(r.binary_variables, r.objectives))
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "pop.csv"
+        r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="sms_emoa", pop_size=8,
+                        max_evaluations=200, seed=2, var_types=p.var_types, save_population=path,
+                        bin_crossover="none")
+        back = mootation.load_population(path)
+        assert sorted(map(tuple, back.binary)) == sorted(map(tuple, r.binary_variables))
+        again = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="sms_emoa", pop_size=8,
+                            max_evaluations=100, seed=2, var_types=p.var_types,
+                            seed_population=back)
+        assert again.evaluations <= 100
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="mosa", pop_size=8, max_evaluations=100,
+                    var_types=p.var_types)
+        raise AssertionError("mosa took a binary genome")
+    except ValueError as e:
+        assert "mosa" in str(e), e
+    text = """algorithms = [ { name = "nsga2", pop = 44, gens = 0, params = { bin_crossover = "none", inner_archive = "nd" } } ]
+[run]
+name = "bits"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["OMM_n10"]
+[campaign]
+out = "res"
+budget_fe = 3000
+record_grid = "generations"
+record_every = 1
+metrics = ["igdp_norm"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "bits.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        fin = json.loads((root / "OMM_n10" / "nsga2" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))["final"]
+        assert fin["cover_reached"] and fin["cover_archive_gen"] <= fin["cover_gen"], fin
+        assert fin["cover_evals"] <= 3000 + 44, fin
+
+
+@test
+def the_corrected_re22c_and_re33c_and_their_fronts():
+    """Task 7, §9: RE22c is RE22 with 3.10 for the original's "3,10" in x1's
+    list (76 values), RE33c is RE33 with x4 in [2, 11]; the originals are
+    unchanged; their fronts, built here, are not beaten by 20 000 random points
+    of the box, and their frames are the fronts' own."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks import re as RE
+    from mootation.benchmarks.properties import properties
+    from mootation.families import family
+    values = list(RE.RE22C_VALUES)
+    assert len(values) == 76 and 3.1 in values and 10.0 not in values and values.count(3.0) == 1
+    a, b = get("RE22c"), get("RE22")
+    assert a.evaluate([3.11, 10.0, 20.0]) != b.evaluate([3.11, 10.0, 20.0])   # 3.10 against 3.0
+    assert a.evaluate([5.0, 10.0, 20.0]) == b.evaluate([5.0, 10.0, 20.0])
+    c, d = get("RE33c"), get("RE33")
+    assert c.bounds[3] == (2.0, 11.0) and d.bounds[3] == (11.0, 20.0)
+    x = [60.0, 90.0, 2000.0, 11.0]
+    assert c.evaluate(x) == d.evaluate(x)
+    rng = np.random.default_rng(5)
+    for p, rows in ((a, 1000), (c, 1500)):
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert Z.shape == (rows, p.n_obj) and not p.front_exact
+        assert np.allclose(Z.min(axis=0), p.ideal) and np.allclose(Z.max(axis=0), p.nadir)
+        lo = np.array([u for u, _ in p.bounds])
+        hi = np.array([v for _, v in p.bounds])
+        F = np.array([p.evaluate(list(lo + (hi - lo) * rng.random(len(lo))))
+                      for _ in range(20_000)])
+        F = F[np.all(np.isfinite(F), axis=1)]
+        span = Z.max(axis=0) - Z.min(axis=0)
+        beaten = [np.any(np.all(F <= z - 1e-6 * span, axis=1)) for z in Z]
+        assert not any(beaten), (p.name, sum(beaten))
+        assert family(p.name) == "RE" and properties(p.name) is not None
+
+
+@test
+def das_cmop_follows_its_table_and_its_fronts_hold():
+    """Task 7, §8: DAS-CMOP1-9 (Fan et al. 2020, Table 2) at hand-checked
+    points; the triplet's parameters (Eq. 7), the equality at zeta = 1; the
+    sixteen triplets of Table 3 and Figure 6's registered; the front's points
+    satisfy every constraint and constructed feasible points do not beat it;
+    the properties name the triplet's kinds of difficulty."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import dascmop as D
+    from mootation.benchmarks.properties import properties
+    assert len(families()["DAS-CMOP"]) == 9 * 16 + 3
+    assert D.params(0.5, 0.5, 0.5) == (0.0, 0.5, 0.5 - math.log(0.5), 0.25)
+    b, d, e, r = D.params(0.0, 0.0, 0.0)
+    assert (b, d, math.isinf(e), r) == (-1.0, 0.0, True, 0.0)
+    assert D.params(0.0, 1.0, 0.0)[2] == 0.5                       # e = d: g = d exactly
+    x = np.full(30, math.sin(0.5 * math.pi * 0.3))
+    x[0] = 0.3
+    assert D.g_value(1, x) == 0.0
+    f, c = D.evaluate(1, x, (0.0, 0.0, 0.0))
+    assert np.allclose(f, [0.3, 1.0 - 0.09]) and max(c) <= 0.0       # all hold at (0, 0, 0)
+    f, c = D.evaluate(2, x, (0.5, 0.5, 0.5))
+    assert np.allclose(f, [0.3, 1.0 - math.sqrt(0.3)]) and c[1] > 0  # g = 0 < d: infeasible
+    z = np.full(30, 0.5)
+    z[0] = 0.2
+    assert D.g_value(4, z) == 0.0                                   # (n - 1) - (n - 1)
+    y = np.full(30, 0.5)
+    y[:2] = [0.2, 0.7]
+    assert D.g_value(7, y) == 0.0
+    f, _ = D.evaluate(7, y, (0.0, 0.0, 0.0))
+    assert np.allclose(f, [0.14, 0.56, 0.3]) and abs(sum(f) - 1.0) < 1e-12
+    rng = np.random.default_rng(3)
+    for name in ("DAS-CMOP1_f6", "DAS-CMOP5_t08", "DAS-CMOP7_t04"):
+        p = get(name)
+        i, t = int(name[8]), D.TRIPLETS[7] if name.endswith("t08") else (
+            D.FIGURE6 if name.endswith("f6") else D.TRIPLETS[3])
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert len(Z) > 100 and np.allclose(Z.min(axis=0), p.ideal)
+        # feasible points made on purpose: x1 (x2) at random, g = d + a little
+        bb, dd, ee, rr = D.params(*t)
+        pts = []
+        for _ in range(4000):
+            x = np.full(30, 0.5)
+            x[0], x[1] = rng.random(), rng.random()
+            if i <= 3:
+                x[1:] = math.sin(0.5 * math.pi * x[0])
+            gx = D.g_value(i, x)
+            f, c = D.evaluate(i, x, t)
+            G = dd + (min(ee, dd + 1.0) - dd) * rng.random() * 0.2 - gx
+            f = list(np.asarray(f) + G)
+            F = np.asarray([f])
+            cc = D.constraints_c(i, F, x[0], x[1], gx + G, t)[0]
+            if np.all(cc >= 0):
+                pts.append(f)
+        P = np.asarray(pts)
+        assert len(P) > 50, name
+        span = Z.max(axis=0) - Z.min(axis=0)
+        beaten = [np.any(np.all(P <= z - 1e-3 * span, axis=1)) for z in Z]
+        assert not any(beaten), (name, sum(beaten))
+    assert properties("DAS-CMOP3_t02")["difficulty"] == "feasibility"
+    assert properties("DAS-CMOP8_t12")["difficulty"] == "diversity+feasibility+convergence"
+    assert properties("DAS-CMOP4_t01")["multimodal"] and properties("ZDT1")["difficulty"] is None
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:
@@ -4046,6 +7095,79 @@ def budget_check_tells_a_schedule_from_none():
     assert not res["nsga2"]["dependent"] and res["nsga2"]["compared"] >= 6, res["nsga2"]
     assert res["rvea"]["dependent"] and res["rvea"]["by_headers"], res["rvea"]
     assert not res["random_search"]["dependent"], res["random_search"]
+
+
+@test
+def small_budgets_read_hard_and_start_from_a_design():
+    """Task 5, run B1: the last record at or below a hard budget and the archive
+    after exactly that many evaluations, reduced to answer_k; a Sobol start and
+    a plan of half the budget before NSGA-II, the plan a budget-dependent run."""
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  small_budgets...: no NumPy or stale _core"); return
+    from mootation import designs
+    from mootation.run import campaign as C
+    from mootation.run.config import ConfigError, load, loads
+    F = [[0, 3], [1, 1], [3, 0], [2, 2], [4, 4], [1, 3.5]]
+    assert list(designs.nondominated(F)) == [0, 1, 2]
+    assert sorted(designs.start_points(F, 4)[:3]) == [0, 1, 2] and len(designs.start_points(F, 4)) == 4
+    assert set(designs.start_points(F, 2)) <= {0, 1, 2}
+    text = "\n".join([
+        '[run]', 'name = "small"', '[problem]', 'kind = "builtin"', '[benchmarks]',
+        'problems = ["ZDT1"]', 'runs = 1', '[campaign]', 'budget_fe = 300',
+        'record_grid = "generations"', 'metrics = ["igdp_norm", "gdp_norm", "hv_h"]',
+        'hard_budgets = [100, 300]', 'answer_k = 10', 'ladder = [100]',
+        '[[algorithms]]', 'name = "nsga2"', 'pop = 20', 'gens = 0',
+        '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_sobol"', 'pop = 20', 'gens = 0',
+        'init = "sobol"',
+        '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_plan"', 'pop = 20', 'gens = 0',
+        'init = "sobol"', 'init_share = 0.5',
+        '[[algorithms]]', 'name = "nsga2"', 'label = "nsga2_lhs"', 'pop = 20', 'gens = 0',
+        'init = "lhs"', ''])
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        jobs = C.expand_jobs(cfg, spec)
+        assert [j.key for j in jobs] == ["nsga2", "nsga2_sobol", "nsga2_plan", "nsga2_lhs",
+                                         "nsga2_plan@100"]
+        for job in jobs:
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+
+        def run(label):
+            d = root / "ZDT1" / label / "run_1"
+            return (json.loads((d / "meta.json").read_text("utf-8")),
+                    [json.loads(t) for t in (d / "trajectory.jsonl").read_text().splitlines()])
+        m, T = run("nsga2")
+        at = m["hard_at"]
+        assert at["100"]["population"]["fe"] == 100 and at["100"]["population"]["gen"] == 4, at
+        rec = next(t for t in T if t["fe"] == 100)
+        assert at["100"]["population"]["igdp_norm"] == rec["igdp_norm"]
+        assert at["100"]["archive"]["fe"] == 100 and 0 < at["100"]["archive"]["n"] <= 10, at
+        assert at["300"]["population"]["fe"] == 300 and m["answer_k"] == 10
+        m, T = run("nsga2_sobol")
+        assert m["init"] == "sobol" and T[0]["fe"] == 20 and T[0]["n"] == 20 and m["fe"] == 300, m
+        m, T = run("nsga2_lhs")
+        assert m["init"] == "lhs" and T[0]["fe"] == 20 and m["fe"] == 300, m
+        # the plan: 150 points, then generations of 20 past 300 (310); read at 290
+        m, T = run("nsga2_plan")
+        assert m["budget_dependent"] and T[0]["fe"] == 150 and m["fe"] == 310, (m, T[0])
+        assert m["hard_at"]["300"]["population"]["fe"] == 290, m["hard_at"]
+        assert m["hard_at"]["300"]["archive"]["fe"] == 300, m["hard_at"]
+        assert m["hard_at"]["100"]["population"] is None       # still planning at 100
+        m, T = run("nsga2_plan@100")
+        assert m["ladder_of"] == "nsga2_plan" and T[0]["fe"] == 50, (m, T[0])
+        assert m["hard_at"]["100"]["population"]["fe"] == 90, m["hard_at"]
+    bad = text.replace('init_share = 0.5', 'init_share = 0.5\n[[algorithms]]\nname = '
+                       '"random_search"\npop = 20\ngens = 0\ninit = "sobol"')
+    assert any("baseline" in e for e in validate(loads(bad))), validate(loads(bad))
+    try:
+        C.campaign_spec(loads(text.replace('record_grid = "generations"', 'record_grid = "log"')))
+        raise AssertionError("hard_budgets on the log grid")
+    except ConfigError:
+        pass
 
 
 @test
@@ -4100,8 +7222,10 @@ def a_ladder_campaign_runs_marks_and_covers():
         assert rows[0]["level"] == "igdp_norm <= 1e+06 x greedy floor | hv_h gap <= 10", rows[0]
         assert rows[0]["analysis_commit"] == meta["analysis"]["commit"][:12] + \
             ("+dirty" if meta["analysis"]["dirty"] else ""), rows[0]
-        # every table over all problems and over the unmarked ones
-        assert [r_["subset"] for r_ in rows[:2]] == ["all", "unmarked"], rows[:2]
+        # every table over all problems, the unmarked ones and the interior ones
+        # (task 6): ZDT1's optimum is on the boundary, so none of those here
+        assert [r_["subset"] for r_ in rows[:3]] == ["all", "unmarked", "interior"], rows[:3]
+        assert (rows[0]["problems"], rows[2]["problems"]) == ("1", "0"), rows[:3]
         assert meta["floor_method"] == "greedy" and meta["reference_version"] >= 2, meta
         with (root / "_cover" / "floor_review.csv").open(encoding="utf-8") as fh:
             review = list(csv.DictReader(fh))
@@ -4261,7 +7385,7 @@ name = "tr"
 kind = "builtin"
 [benchmarks]
 runs = 1
-problems = ["ZDT1", "DTLZ2_3D"]
+problems = ["WFG4_2D", "DTLZ2_3D"]
 [campaign]
 out = "res"
 budget_fe = 1500
@@ -4284,7 +7408,7 @@ snapshot_variables = "pareto_set"
         root = C.out_root(cfg, spec)
         for job in C.expand_jobs(cfg, spec):
             assert C.run_job(job, root, spec, quiet=True) == "done", job
-        for prob, pop, n in (("ZDT1", 100, 30), ("DTLZ2_3D", 91, 12)):
+        for prob, pop, n in (("WFG4_2D", 100, 22), ("DTLZ2_3D", 91, 12)):
             for alg in ("nsga2", "random_search"):
                 d = root / prob / alg / "run_1"
                 meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
@@ -4293,7 +7417,7 @@ snapshot_variables = "pareto_set"
                 # the last record is the answer: the same rows, the same variables
                 for k in ("pdist", "igdx", "cr"):
                     assert T[-1][k] == meta["final"][k], (prob, alg, k, T[-1][k])
-                assert T[-1]["pdist"] > 0 and (T[-1]["igdx"] is None) == (prob == "ZDT1")
+                assert T[-1]["pdist"] > 0 and (T[-1]["igdx"] is None) == (prob == "WFG4_2D")
                 with np.load(d / "snapshots.npz") as z:
                     assert ("X" in z.files) == (prob == "DTLZ2_3D"), (prob, z.files)
                     assert z["F"].shape[0] == int(z["n"].sum()), z["F"].shape
@@ -4319,9 +7443,9 @@ snapshot_variables = "pareto_set"
         assert "igdp <= 1e+06 x floor (hv_h gap <= 10) at 500: 2/2 covered" in out, out
         assert (root / "_cover_archive" / "cover_summary.csv").is_file()
         # --recompute-trajectory: what the snapshots give back (float32 rows);
-        # without the variables (ZDT1) pdist and igdx stay out
+        # without the variables (WFG4_2D) pdist and igdx stay out
         before = {}
-        for prob in ("DTLZ2_3D", "ZDT1"):
+        for prob in ("DTLZ2_3D", "WFG4_2D"):
             d = root / prob / "nsga2" / "run_1"
             before[prob] = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
             blank = [{k: v for k, v in t.items() if k not in ("igdp_norm", "pdist", "igdx")}
@@ -4331,13 +7455,13 @@ snapshot_variables = "pareto_set"
         counts = C.recompute_trajectory(root, ["igdp_norm", "pdist", "igdx"],
                                         hv_settings=(5, 100_000, 0, 0))
         assert counts == {"done": 4}, counts
-        for prob, keys in (("DTLZ2_3D", ("igdp_norm", "pdist", "igdx")), ("ZDT1", ("igdp_norm",))):
+        for prob, keys in (("DTLZ2_3D", ("igdp_norm", "pdist", "igdx")), ("WFG4_2D", ("igdp_norm",))):
             d = root / prob / "nsga2" / "run_1"
             again = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
             for t, u in zip(before[prob], again):
                 for k in keys:
                     assert abs(u[k] - t[k]) <= 1e-5 * max(1.0, abs(t[k])), (prob, k, t[k], u[k])
-                if prob == "ZDT1":
+                if prob == "WFG4_2D":
                     assert "pdist" not in u and "igdx" not in u, u
 
 

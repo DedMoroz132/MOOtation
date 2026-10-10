@@ -29,6 +29,18 @@ always listed under **Changed** or **Removed**.
 
 ### Changed
 
+- `archive_checkpoints` takes the archive scenario after exactly b evaluations
+  of each `record_at` count, inside a generation if need be (task 7, §5.5),
+  not at the first record at or past b: at 100 or 300 evaluations a generation
+  of 91 is much of the budget. `record_at = [100, 300, 1000, ...]` now reads
+  the archive at small budgets as it is.
+- docs/running.md: GDE3 at `CR = 1` keeps the paper's F = 0.2, a small step
+  along every variable at once; give it a larger F (task 7, §5.6).
+- `mutation_scale` at 0 or below is an error (task 7, §5.2); it used to
+  fall back to the default silently. "No mutation" is `mutation = "none"`.
+- MSVC: the interface target adds `/bigobj` — `embed.hpp` instantiates every
+  algorithm in one translation unit, which now overruns the section limit
+  even in a Release build.
 - `--cover` reads the coverage criterion against each problem's IGD+ floor:
   `igdp_norm ≤ (1 + τ) × floor`, τ = 1, 0.5, 0.25, 0.1 by default
   (`--cover-floor-taus`). N points on the front itself leave IGD+ above zero —
@@ -196,9 +208,358 @@ always listed under **Changed** or **Removed**.
 - `campaign_all.toml` also records `igdx`, `cr` and `pdist` on the final
   population and a Monte-Carlo hypervolume (10 000 points) on the
   five-objective trajectories, and runs the two ablations: 62 930 jobs.
+- `--instance-space` (task 6, item 13): the plane is PILOT's optimum computed
+  exactly (`instance_space.pilot_exact`, the reduced-rank regression), with
+  BFGS from `tries` starts kept as a check, no longer the BFGS end of the
+  highest preservation; its axes are fixed — whitened, or with
+  `--is-calibration preserve` stretched to the highest preservation — so that
+  the footprints no longer depend on where BFGS stopped, and every footprint's
+  area share comes with its range over six calibrations of the same optimum
+  (`area_share_min`, `area_share_max`). The performance rows are weighted
+  sqrt(q/a) (`--is-weight none` for the papers' loss); the bbob-biobj
+  problems' features come from a uniform sample of their box, 19 of them
+  (`instance_space.sample_features`; `--is-bbob-features properties` for the
+  old ones). When SIFTED keeps no feature, all stay.
 
 ### Added
 
+- DAS-CMOP1-9 (`benchmarks/dascmop.py`; task 7, §8): Fan et al.'s
+  difficulty-adjustable constrained problems (Evolutionary Computation 28(3),
+  2020, Table 2), at the sixteen difficulty triplets of their Table 3 and
+  Figure 6's, with any other triplet through `dascmop.problem`; fronts built on
+  first use from a dense sample with each point's g bisected to its
+  feasibility boundary; the properties' new key `difficulty` names the
+  triplet's kinds. 1141 problems in 40 families. LIR-CMOP, DOC and RWMOP wait
+  for their papers.
+- Typed variables (`mootation/var_types.py`; task 7, §10): `minimize(var_types=...)`
+  declares each variable "real", "int", ("discrete", values) or "bin"; the vault
+  rounds the integer and discrete ones after every write
+  (`DataVault::set_snap`, `int_repair = "lamarck"`), or only the evaluation sees
+  them rounded (`"baldwin"`); polynomial mutation takes `eta_int` (3) for them.
+  Declared for RE22, RE23, RE25, RE35, RE36, CRE24, CRE25 and RE22c; a run
+  records `dup_x_share`. The binary genome reaches Python (task 7, supplement
+  2, §3): the bits go to the cores' binary genome and back
+  (`result.binary_variables`, population files with b columns, warm starts),
+  and the cores without one refuse it by name.
+- OneMinMax, LOTZ and OneJumpZeroJump (`benchmarks/binary.py`; supplement 2,
+  §3), with exact fronts checked against every string up to n = 12, and the
+  paper's measure `cover_gen` / `cover_evals` (and for the inner archive) in a
+  campaign's `final`. 994 problems in 39 families.
+- RE22c and RE33c (task 7, §9): RE22 with x1's list as meant (3.10 for "3,10")
+  and RE33 with x4 in [2, 11] (reproblems' issue #9), beside the originals;
+  their reference fronts built here from an exhaustive grid refined locally
+  (`benchmarks/re_fronts.py`, `_re/corrected/`).
+- The stochastic population update and an inner archive (task 7, supplement
+  2): `survival = "stochastic"` in SMS-EMOA, NSGA-II and NSGA-III after Bian,
+  Zhou, Li & Qian (IJCAI 2023) — a random Q′ of ⌊`spu_frac`·|Q|⌋ members
+  (1/2; 3/4) selected alone, the rest kept, so any member survives with
+  probability at least 1/2 or 1/4 (tested); `spu_frac = 1` is greedy bit for
+  bit. `inner_archive = "nd"`, `inner_archive_cap` and `archive_reuse_p` in
+  SMS-EMOA, NSGA-II, NSGA-III and IBEA-ε+: the non-dominated points the
+  algorithm evaluated, cut by DSS, and parents drawn from them; the result's
+  `inner_archive`, `operator_stats`' `archive_parent_share`
+  (`operators/inner_archive.hpp`). For the papers' theory runs:
+  `bin_crossover = "none"`, NSGA-II's `mating = "each"`, and
+  `crossover = "none"`. Every default is unchanged.
+- `coords`: the variation in learned coordinates (`operators/learned_coords.hpp`,
+  `variation.hpp`; task 7, supplement 1), in NSGA-II, IBEA-ε+, SPEA2+SDE,
+  AGE-MOEA, SMS-EMOA and mosa's sbx step. `pca` crosses and mutates in
+  y = (x − μ) R, R the eigenvectors of the population's covariance; `pca_nd`
+  from its non-dominated members; `randrot` a fresh random rotation, the
+  control; `axis`, the default, as before, bit for bit. R = I for the first
+  `coords_warmup` generations (10), then updated every `coords_update` (1);
+  no box in y (the crossovers unbounded, the mutation within the projected
+  population's widened range), the children mapped back and repaired. The
+  spectrum goes to `operator_stats`; `[campaign] coords_diag` adds the
+  principal angles between the learned minor subspace and the problem's
+  distance block (`run/coords_diag.py`); `_core.coords_state()` gives the
+  basis. Tests: the basis complete and orthonormal, randrot reproducible, the
+  offspring distribution turning with the population, the children in the
+  box, an endless warm-up identical to axis in NSGA-II, SMS-EMOA and mosa.
+- `--invariance-check` (`run/invariance.py`, task 7, §5.4): every algorithm
+  entry of a campaign on its problems, on the objectives times 2^10 and times
+  (2^-6, 1, 2^6, ...) — exact, so the trajectories are compared bit for bit —
+  and shifted by 2^4 over 30 seeds — rounded, so compared by the rank-sum test
+  with Holm's adjustment: "invariant", "rounding" or "not invariant". The tests
+  hold the two cases known in advance: NSGA-II is invariant to a common
+  power-of-two scale, SMS-EMOA at three objectives is not.
+- Deterministic, step and relative noise, and three ways to measure a noisy
+  run (`benchmarks/noisy.py`, task 7, §4). Besides `_n1`/`_n5`: `_d1`/`_d5`,
+  the noise a hash of x, the same in every run and at every repeat;
+  `_s1`/`_s5`, a hash of the cell ⌊(x − lb)/h⌋, h = `[campaign] noise_cell`
+  (0.01) of the range — a step at every cell border; `_h1`/`_h5`,
+  σ (f − ideal) N(0, 1), a relative error. Every kind at both levels of ZDT1,
+  ZDT4, DTLZ1_3D, DTLZ2_3D, DTLZ2_5D, WFG4_3D, WFG7_3D, rcDTLZ2_3D, RE21,
+  RE25 and RE34. `final` records every indicator as recommended (the
+  noise-free values of the answer, as before), `<metric>_oracle` (the
+  noise-free non-dominated set of every evaluation, reduced to the answer's
+  size) and `<metric>_observed` (the noisy values of the answer);
+  `meta["noise"]` the kind and the cell. `_n1`/`_n5` are unchanged bit for
+  bit. The noisy copies of RE are ranked with the real-world problems.
+  982 problems in 36 families.
+- The rotations of the other families (`benchmarks/rotated.py`, task 7, §7),
+  each turning only the distance block about its own optimum, conditioned
+  only where g is isotropic, each with its Q = I control and three instances:
+  rWFG1-3 (about 0.35, clipped); rWFG8 and rWFG9, whose optimum b_param makes
+  depend on other variables, turned about it — 0.35^(1/e(u)), computed in
+  order for the current positions — and checked on the front's sphere;
+  rcDTLZ5 and c0DTLZ5; MaF by the form of its g (rcMaF1, rcMaF5, rcMaF6
+  conditioned; rMaF2, whose per-objective chunk sums a rotation does change,
+  rMaF3 and rMaF4 rotated; MaF7 not; the table in the header); rZCAT1-20 about
+  the Pareto set y_II = g(y_I), clipped to the box, ZCAT19 and ZCAT20 with a
+  matrix for each size of their distance block; rcPolygon with the optimum
+  moved off the centre first, control c0Polygon. The header records how often
+  rWFG and rZCAT clip. 904 problems in 36 families.
+- Rotated ZDT, rotation instances and more objectives (`benchmarks/rotated.py`,
+  task 7, §3): rZDT1-3 and rZDT6 evaluate ZDT at x' = |Q (z - c)| / m (the
+  sum of absolute values in g is not isotropic, so the rotation changes the
+  function; at Q = I it is shiftZDT, the control), rZDT4 at x' = Q (z - c),
+  ZDT4's Rastrigin term rotated; unclipped. Three instances of Q,
+  `<name>_i1` .. `_i3`, of rZDT1-4, rZDT6, rDTLZ1, rDTLZ3, rcDTLZ2 and
+  rWFG4-7 at every size they have; instance 1 is the problem without the
+  suffix, whose matrix the tests have held since task 6. rcDTLZ2 and c0DTLZ2
+  at six and ten objectives too. The tests hold the hash of every new matrix.
+  624 problems in 29 families.
+- `mosa`, multi-objective simulated annealing (`algorithms/mosa.hpp`; task 7,
+  §1, §1.2a and §6): chains over an archive of every non-dominated point,
+  composed from AMOSA's archive and informed reseeding, DBMOSA's dominance
+  energy and Pareto simulated annealing's Chebyshev chains with adaptive
+  weights. The energies `cmb` (the default), `eps`, `dom`, `tch`; the steps
+  `mix` (the default), `laplace`, `de`, `sbx` and `adaptive` (credit over a
+  window); the temperature and the step scale fall over the whole budget, so it
+  is budget-dependent (`run/budget.py`). One step is one evaluation; the answer
+  is the archive reduced to `pop` by DSS. Its records go to `operator_stats`
+  (`metric_names.SA_STATS`, `sa_w_mean_*`, `sa_w_sd_*`). The public list is 64
+  algorithms. The header says which mechanism is whose and that AMOSA's,
+  DBMOSA's and PSA's papers are still to be checked against.
+- Differential evolution and an operator portfolio in the switchable
+  algorithms (NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA, SMS-EMOA; task 7, §2):
+  `crossover = "de"` (DE/rand/1/bin, the host's pair and two more parents from
+  its own selection, F = 0.5, CR = 1), `"de_pbest"` (JADE's
+  current-to-pbest/1, x_pbest one of the host's best `de_p` by its own order,
+  r2 from the population and the archive of displaced parents), with
+  `de_adapt = "shade"` (a SHADE memory; success = the child survived the
+  host's selection; weights `equal` or `contribution`), and
+  `crossover = "portfolio"` (`portfolio = [...]`, `portfolio_credit = uniform |
+  borg`). Their records — the SHADE memory, the CR and F drawn and kept, every
+  operator's share of the children and of them kept — go to
+  `operator_stats` and the trajectories (`metric_names.DE_STATS`,
+  `portfolio_share_*`, `portfolio_kept_*`). `mutation = "none"`. The knobs
+  `F` and `CR` now reach the five hosts; `pm` is a knob of NSGA-II,
+  SPEA2+SDE, AGE-MOEA and SMS-EMOA too (it was fixed at 1/n and reported as
+  ignored); `ref_delta` gives SMS-EMOA and HypE a reference point relative to
+  the objectives' range (§5.3). The knobs added from now on reach a core
+  through `set_param` / `set_word` (`settings.hpp`, `Config.params` /
+  `Config.words`); docs/embedding.md lists which algorithm takes which
+  operator knob. Every algorithm's defaults are unchanged
+  (`tools/compat_check.py`: 0 fingerprints differ).
+- shiftZDT1-4, shiftZDT6, shiftDTLZ6 and shiftDTLZ7 (`benchmarks/shifted.py`,
+  task 6, item 2): ZDT1-3, ZDT6, DTLZ6 and DTLZ7 put the optimum of every
+  distance variable on the lower bound, where clipping a variable lands for
+  free, and ZDT4 in the middle of [-5, 5]. Each distance variable is read
+  through h(x) = |x − c| / max(c, 1 − c), 0 at c and 1 at the farther bound,
+  so g keeps its range (shiftZDT4: u = x − c in ZDT4's box); c from
+  `shift_centres`, at least 0.15 of the range from both bounds and from the
+  middle. Not shiftDTLZ1-4's cyclic shift: a linear g would jump across the
+  wrap. The front, ideal and nadir are the base problem's, its reference front
+  row for row; with c = 0 every problem is its base. 19 problems, 457 in all.
+- Pareto-set samples for ZDT1-4 and ZDT6, DTLZ7, DTLZ5 and DTLZ6 up to three
+  objectives (from four their fronts have a part with g > 0), IDTLZ1-2,
+  SDTLZ1-2 and minusDTLZ2 (`pareto_sets.fill`, `minus_dtlz`), so `igdx`, `cr`
+  and `ps_dmin` read them too.
+- The problem property `boundary` (task 6, item 4): the optimum on a bound of
+  the box, Huband et al.'s extremal parameters (Tables V, VII and XV) beside
+  `centre`, their medial ones. `properties.measured()` reads both off a
+  problem's Pareto-set sample (the share of the distance variables within
+  1e-9 of a bound or of the middle, a flag from 99 %), and the tests hold the
+  table's `boundary` to it on every problem with a sample. `--cover` writes
+  every table a third time over the problems whose optimum is neither at the
+  centre nor on the boundary (`subset` `interior`), and `--portfolio` gives
+  those as the group `front_interior`; `--ranks --by boundary` groups by it.
+- `--bias` brought to Kudela, van Stein, Bäck & Kononova (GECCO 2026; task 6,
+  item 11). Their problems beside f1 (`uninformative_n02_2D`, unchanged, bit
+  for bit): f2b, f3b and f4b, a disconnected, a stepped and a two-region front
+  under a χ²-shaped noise (Table 1, variant β), and f5, [a, −a], every point
+  non-dominated, in two and ten variables, from the run's seed and the
+  evaluation's number. The problem counts, in 20 bins and exactly on a bound
+  or at ½, the coordinates of every evaluated point and of the run's
+  non-dominated ones, and the campaign writes the counts into `meta.json`
+  (`structural_bias`). `--bias` gives the paper's binsizes at the bounds and in
+  the centre for the final populations, the non-dominated and all evaluated
+  points, the shares exactly on a bound and at ½, a χ² test on one point per
+  run, the Clark-Evans index at two variables and a class by our thresholds,
+  in place of the earlier ten-bin χ² per variable and the shares near the
+  bounds. `structural_bias.toml` runs f1-f4b at the paper's 30 000
+  evaluations; `structural_bias_f5.toml` runs f5 with ten seeds and DMS at
+  10 000, whose run there otherwise takes over ten minutes.
+- Indicators of convergence without coverage (task 6, item 8): `gdp_min`, the
+  smallest d+ of any point of the set to the reference in `igdp_norm`'s frame,
+  with the reference's resolution beside it (`gdp_min_ref_step`,
+  `gdp_min_below_step`); `g_min` and `g_median`, the problem's own g(x) − g*
+  over the set (`BenchProblem.distance_fn`, `benchmarks/distances.py`: ZDT,
+  DTLZ and their variants), exact and without a reference; `ps_dmin`, the
+  smallest distance from a solution to the Pareto-set sample.
+- C-DTLZ (`benchmarks/c_dtlz.py`, task 6, item 5): Jain & Deb's constrained
+  DTLZ (IEEE TEVC 18(4), 2014) — C1-DTLZ1, C1-DTLZ3, C2-DTLZ2,
+  C2-ConvexDTLZ2, C3-DTLZ1, C3-DTLZ4 — at three and five objectives, the
+  registry's first constrained family besides MaF9. Constraints in the
+  library's sign (at most 0 when satisfied, the paper's c >= 0 turned); two
+  equations read as pymoo reads them, written down in the module's header,
+  and the values agree with pymoo 0.6.2 at fixed points to 1e-12. Analytic
+  fronts and exact frames; Pareto sets and g for C1 and C2-DTLZ2. The front of
+  C2-ConvexDTLZ2 is larger than the paper's: behind the hole the cylinder
+  cuts in the convex front, points of larger g are Pareto-optimal too; it is
+  sampled and checked point by point (`BenchProblem.front_exact = False`, a
+  `--cover` caveat).
+- RE and CRE (`benchmarks/re.py`, task 6, item 6): Tanabe & Ishibuchi's
+  real-world problems (Applied Soft Computing 89:106078, 2020), RE21-91 and
+  CRE21-51, ported formula for formula from github.com/ryojitanabe/reproblems
+  (MIT, commit 7876b4e); the values agree with its Python version at fixed
+  points to 1e-12. Defects kept on purpose and those fixed upstream are in
+  the header. The reference fronts are the authors' approximations, shipped
+  as they are in `benchmarks/_re/` with their license, and for CRE the
+  feasible points of RE's; `BenchProblem.front_exact` is False there (and for
+  C2-ConvexDTLZ2, replacing `registry.APPROXIMATE_FRONT`). RE91's normal
+  draws come from the run's seed. The property `family_kind` (engineering /
+  synthetic), and the rank table counts the real-world problems apart.
+  535 problems in 27 families.
+- MW1-14 (`benchmarks/mw.py`, task 6, item 5): Ma & Wang's constrained
+  problems (IEEE TEVC 23(6), 2019), n = 15, MW4, MW8 and MW14 at three and
+  five objectives (n = M + 12). Constraints in the library's sign; the values
+  agree with pymoo 0.6.2 at fixed points to 1e-12 (MW11's distance function
+  g3 as in Table II and pymoo, not the text's g2; the header lists the
+  readings). The fronts are built from the problems' geometry, no file: the
+  least feasible reachable point at every f1 or angle, exactly where the
+  constraints allow it (factors linear in f2) and by bisection elsewhere,
+  refined where the front is steep, ends or leaves the unconstrained one, then
+  the non-dominated part — they match the paper's Figs. 4 and 5, every point
+  is feasible to 1e-12 and reached by a decision vector, and no sampled
+  feasible point beats them by more than the sample's spacing. Exact frames; Pareto sets and g for the six whose front
+  lies at g = 1 (MW1, MW2, MW4, MW6, MW8, MW14). MW4, MW8, MW14 get dense
+  references from four objectives. 552 problems in 28 families.
+- `[campaign] answer_select` (task 6, item 13): how the run archive becomes
+  the archive scenario's answer — `"dss"`, as before and the default, or
+  `"igdp_self"`, the N points of the smallest IGD+ against the archive thinned
+  by DSS to 1 000 points, chosen greedily without a reference
+  (`archive.igdp_self_order`, `archive.greedy_igdp`); recorded in
+  `meta["archive"]`, repeated by `--recompute --scenario archive`. And
+  `--oracle`: the best N points of every run's archive under IGD+ against the
+  reference, beside the population, the archive answer, igdp_self's choice and
+  the whole archive (`run/oracle.py`, `<results>/_oracle/oracle.csv`).
+- `python/examples/experiments/ablation_bound_repair.toml` (task 6, item 13),
+  not run: the 17 algorithms with the `bound_repair` knob at each of its
+  values — the 12 whose own operators leave the box at clip, reflect, random,
+  midpoint and wrap (resample is not available to them), the 5 that vary by
+  SBX and polynomial mutation, which stay in the box, with gaussian mutation at
+  all six — on ZDT1, ZDT4, DTLZ1_3D, DTLZ3_3D, their shifted copies and
+  rDTLZ1_3D and rDTLZ2_3D, ten seeds at 25 000 evaluations (9 000 runs).
+- Rotated DTLZ and WFG (`benchmarks/rotated.py`, task 6, item 1 and its
+  supplement 2): the distance variables rotated about their optimum, the
+  position variables untouched, front and Pareto set exact — rDTLZ1-4 (y =
+  1/2 + Q (z - c), unclipped), rcDTLZ2 (Lambda Q, condition number 10^3),
+  rWFG4-7 (WFG's normalised distance variables about 0.35, clipped to
+  [0, 1]), at three and five objectives, and the Q = I controls r0DTLZ1,
+  r0DTLZ3 and c0DTLZ2. Q a Haar rotation from a fixed seed; the tests hold a
+  hash of every matrix, bbob-biobj's included. The header records the
+  literature and how the construction differs, and how often rWFG clips.
+  `mootation.families` is the one family rule of the registry and the
+  tables. 511 problems in 25 families.
+- `properties`: minusDTLZ2 has a row; ZCAT's centre is False (was None).
+- Noisy copies (`benchmarks/noisy.py`, task 6, item 7): `<base>_n1` and
+  `<base>_n5` add 0.01 and 0.05 (nadir − ideal) N(0, 1) to each objective of
+  ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D and WFG7_3D, the noise from the run's seed and
+  the evaluation's number (`make_evaluator`). A campaign measures them on the
+  noise-free objectives (`BenchProblem.true_objectives`), keeps those in its
+  files and snapshots and the noisy ones in `final.csv` as `f_seen`, and
+  records `true_dominated_share`. A family of their own, `noisy`. 487
+  problems in 20 families.
+- Dense references (task 6, item 9): `registry.dense_reference` gives, for the
+  problems with an analytic front at 4 to 10 objectives, the first of 1 000
+  ... 100 000 points whose step is at most a third of the population's;
+  a campaign measures the front indicators against it beside the usual
+  ones, as `<indicator>_ref_v3` (`[campaign] dense_reference`, on by default:
+  the usual values do not change), and
+  `--recompute-reference` adds those to a finished campaign from its saved
+  answers, the old values untouched (`recompute_dense`); the tables read
+  them. IGD, IGD+ and GD+ are computed in blocks of reference points now (ε,
+  igdp_norm and the others were), with the same values; `reference_step`
+  uses a KD-tree when SciPy is there, with the same value.
+- `--reference` (task 6, item 10): a warning when the seeds and the number of
+  problems leave no mark but `=` possible under Holm (at k seeds a side,
+  beyond 0.025·C(2k, k) problems); `--adjust bh` for Benjamini–Hochberg over
+  the problems; beside the counts the `=` with a large A12, how many
+  problems fall in each class of A12 and the median A12 with its class;
+  across problems, for `igdp_norm` and `eps_norm`, the
+  signed-rank test on the logarithms of the medians, and for every metric
+  the sign test and the Hodges–Lehmann estimate (a ratio of medians for those
+  two). The header says the order is by `+` minus `-`, not a rating.
+- An Owen-scrambled Sobol design (`mootation.designs`, task 6, item 12.2):
+  the Sobol sequence with Joe & Kuo's direction numbers (new-joe-kuo-6.21201,
+  shipped in `mootation/_sobol/` with its BSD licence; unscrambled, the
+  points are SciPy's bit for bit) under Owen's nested uniform scrambling by
+  Burley's hash (JCGT 9(4), 2020: bit reversal, the Laine-Karras
+  permutation, bit reversal), keyed by the run's seed and the coordinate.
+  `init = "sobol_owen"` and the baseline `sobol_owen_search`, not
+  budget-dependent; the header records its correlations and discrepancy
+  beside the randomized Halton's.
+- A randomized Halton design (`mootation.designs`, task 6, item 12.3), after
+  Owen, "A randomized Halton algorithm in R" (arXiv:1706.02808, 2017, Eq. 5
+  and Algorithm 1): every base-b digit of every coordinate through an
+  independent random permutation, as many digits as a double resolves,
+  seeded by the run. `init = "halton_rand"` starts an algorithm from it and
+  the baseline `halton_search` samples it; a sequence, so not
+  budget-dependent. The header records its correlations and discrepancy at
+  10, 30 and 50 variables. Tests hold `sobol`, `lhs` and the baselines' draws
+  to their earlier values.
+- Indicators of a constrained problem (task 6, item 5.2): every indicator is
+  measured on the feasible part of the answer (`metrics.compute(...,
+  constraints=)`), `feas_share` is recorded beside them and `fe_first_feas`,
+  the first evaluation to give a feasible point, in `final`. An answer
+  without a feasible point has no value — none, not 0 or infinity — and is
+  counted apart: `--compare` writes "k empty" in its cell, `--ranks` (and its
+  CSV) and `--ranks --by` an `empty` column, `--ci` and `--reference` their
+  count; in the medians, the tests and the ranks it counts as the worst
+  value. A
+  constrained run keeps its variables in snapshots and checkpoints.
+- Maximin Latin hypercubes (`mootation.designs`, after Morris & Mitchell,
+  "Exploratory designs for computational experiments", 1995): their φ_p
+  criterion and annealing search, once per p of their Section 5, the best by
+  the maximin order; the search cut at 20 000 perturbations (2·10⁷/n above
+  1 000 points) and the point drawn inside its Latin-hypercube cell instead of
+  the paper's grid i/(n − 1), which holds the optima of DTLZ and ZDT. The
+  tests check two designs of the paper's catalog. As a start, `init = "lhs"`;
+  as a baseline, `lhs_search`, one hypercube of the whole budget
+  (budget-dependent).
+- Knobs for DMS and EMyO/C (task 5, runs A1 and A2),
+  every default unchanged: DMS `dms_init = "random"` (a Latin hypercube of n
+  points from the seed) and `dms_poll = "random"` (a poll centre drawn among
+  those still worth polling, the directions in random order), so that its ten
+  seeds are ten runs and its steps leave the dyadic grid that lands on the
+  middle and the bounds of the box; EMyO/C `bound_repair`, `step_share`, `F`
+  and `F_spread` (its offspring's repair, the clamp of the difference vector,
+  and a factor on it, the paper's clip, 0.5 and 1 by default); and the problem
+  `wideDTLZ3_3D`/`_5D`, DTLZ3 with the distance variables in [0, 1.2], whose
+  middle is a local optimum of g (438 problems, 16 families).
+- Small budgets (task 5, run B1): `[campaign] hard_budgets` reads a budget as
+  the last record at or below it and the run archive after exactly that many
+  evaluations reduced to `answer_k` points (`meta.json` `hard_at`);
+  `pop_fit = "nearest"` fits a population to the nearest size its algorithm
+  accepts; `ladder_min_gens` leaves out rungs of too few generations; an
+  algorithm entry's `init = "sobol"` starts it from a scrambled Sobol design
+  and `init_share` from a plan taking that share of the budget (the
+  nondominated points of the plan first, the rest by DSS), through
+  `minimize(init=..., init_share=...)` and the new `mootation.designs`.
+- The analysis rules of task 5, item 2: an
+  algorithm whose seeds are one run (DMS) is named by `--cover`,
+  `--portfolio` and `--instance-space`, which add the sensitivity row "one run
+  each" — every algorithm read from one seed at a time, the mean over the
+  seeds (`cover_one_run.csv`, the portfolio's rule `one_run`, the footprints
+  `good_one_run`); every budget reads the answer's size beside the
+  indicators, a gdp level counts only for an answer of at least N/2 points
+  (GD+ does not see how much of the front two points cover), and the answers
+  shorter than that are marked: `cover_short_answers.csv`, the portfolio
+  matrix's `seeds_short`, the rank tables' `short` column and `~` in
+  `--compare`.
 - `--instance-space` (task 4, item 5): instance space analysis written from
   Smith-Miles & Muñoz 2023 (PRELIM's relative performance, SIFTED's first
   step, PILOT by BFGS with the analytical solution and the exact optimum's loss
@@ -646,6 +1007,16 @@ always listed under **Changed** or **Removed**.
   at 2, 3, 5 and 10 objectives, and runs in CI, where there is no numba. WFG
   values computed without numba before this fix are wrong from three
   objectives on. Every campaign run's `meta.json` now records `numba`.
+- Clipping past the out-of-box counts (`oob_share` = 0 proved nothing where
+  it happened): EMyO/C's offspring (`emyo_c_difference`), HCCA's DE/rand/1
+  (`hcca_de_rand_1`, which was missing from the operator log altogether) and
+  MaOEA-IAMD's noise (`maoea_iamd_gaussian`, clamped by the store) are now
+  repaired, counted and logged where they leave the box, to the same values
+  as before; and the store counts a clamp of its own as a repair, `vault` in
+  the operator log, so that none can go unseen again. A run of every
+  algorithm finds none left for the store.
+- `sobol_search`'s header called SciPy's scrambling Owen-type; it is a linear
+  matrix scramble with a digital shift (Matoušek), not Owen's nested one.
 - The tables read a budget below the end (`--at`) the way `--cover` does, by
   one function (`cover.read_at`): the first trajectory record at or after the
   budget asked for (`budget_nominal`). `value_at` took the last record at or

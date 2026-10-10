@@ -57,8 +57,11 @@ def igd(F: np.ndarray, ref: np.ndarray) -> float:
     ref = np.asarray(ref, float)
     if F.size == 0:
         return float("inf")
-    d = np.sqrt(((ref[:, None, :] - F[None, :, :]) ** 2).sum(axis=2))
-    return float(d.min(axis=1).mean())
+    near = np.empty(len(ref))
+    for a in range(0, len(ref), 512):                 # bounded memory on big fronts
+        R = ref[a:a + 512]
+        near[a:a + 512] = np.sqrt(((R[:, None, :] - F[None, :, :]) ** 2).sum(axis=2)).min(axis=1)
+    return float(near.mean())
 
 
 def igd_plus(F: np.ndarray, ref: np.ndarray) -> float:
@@ -71,8 +74,7 @@ def igd_plus(F: np.ndarray, ref: np.ndarray) -> float:
     ref = np.asarray(ref, float)
     if F.size == 0:
         return float("inf")
-    d = np.sqrt((np.maximum(F[None, :, :] - ref[:, None, :], 0.0) ** 2).sum(axis=2))
-    return float(d.min(axis=1).mean())
+    return float(dplus_distances(F, ref).mean())
 
 
 # ── coverage with a tolerance ────────────────────────────────────────────────
@@ -293,8 +295,7 @@ def gd_plus(F: np.ndarray, ref: np.ndarray) -> float:
     ref = np.asarray(ref, float)
     if F.size == 0:
         return float("inf")
-    d = np.sqrt((np.maximum(F[None, :, :] - ref[:, None, :], 0.0) ** 2).sum(axis=2))
-    return float(d.min(axis=0).mean())
+    return float(front_distances(F, ref)[1].mean())
 
 
 def roi_dist(F: np.ndarray, ideal, nadir) -> float:
@@ -446,6 +447,48 @@ def pairwise_distance(X, *, bounds, cyclic=()) -> float:
     return total / (n * (n - 1))
 
 
+def ps_dmin(X, pareto_set, *, bounds, cyclic=()) -> float:
+    """The smallest distance from a solution to the Pareto-set sample, in
+    variables normalised by the bounds with the cyclic ones wrapped, as for
+    igdx: has any solution reached the Pareto set (task 6 of 2026-10-09)."""
+    U = _unit(X, bounds)
+    R = _unit(pareto_set, bounds)
+    if U.size == 0:
+        return float("inf")
+    best = float("inf")
+    for a in range(0, len(R), 128):
+        D = _unit_diff(U, R[a:a + 128], cyclic)
+        best = min(best, float(np.sqrt((D ** 2).sum(axis=2)).min()))
+    return best
+
+
+_REF_STEP: dict = {}
+
+
+def reference_step(ref) -> float:
+    """The resolution of a reference sample: the median over its points of the
+    distance to the nearest other point, in the frame it is given in. Below it
+    gdp_min says no more than "on the front" (task 6 of 2026-10-09). Once per
+    sample and process."""
+    R = np.asarray(ref, float)
+    key = (R.shape, hash(R.tobytes()))
+    if key not in _REF_STEP:
+        try:                                # Euclidean distance is a metric: a KD-tree is
+            from scipy.spatial import cKDTree        # exact here, and dense samples need it
+        except ImportError:
+            cKDTree = None
+        if cKDTree is not None and len(R) > 1:
+            nearest = cKDTree(R).query(R, k=2)[0][:, 1]
+        else:
+            nearest = np.empty(len(R))
+            for a in range(0, len(R), 256):
+                D = np.sqrt(((R[a:a + 256, None, :] - R[None, :, :]) ** 2).sum(axis=2))
+                D[np.arange(len(D)), np.arange(a, a + len(D))] = np.inf
+                nearest[a:a + 256] = D.min(axis=1)
+        _REF_STEP[key] = float(np.median(nearest))
+    return _REF_STEP[key]
+
+
 def _normalised(F, ref, ideal, nadir):
     ideal = np.asarray(ideal, float)
     span = np.asarray(nadir, float) - ideal
@@ -582,9 +625,17 @@ def eps_mult(A, B):
     return float(R.max(axis=2).min(axis=1).max())
 
 
+def feasible_mask(X, constraints) -> np.ndarray:
+    """Which rows of X satisfy every constraint: constraints(x) is a list of
+    values, each <= 0 when satisfied (the library's sign, BenchProblem)."""
+    X = np.asarray(X, float).reshape(len(X), -1) if len(X) else np.zeros((0, 0))
+    return np.array([all(c <= 0.0 for c in constraints(list(x))) for x in X], bool)
+
+
 def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             pop: int | None = None, hv_options: dict | None = None, X=None,
-            pareto_set=None, bounds=None, cyclic=()) -> dict:
+            pareto_set=None, bounds=None, cyclic=(), distance_fn=None,
+            constraints=None) -> dict:
     """Every requested indicator in one dict; missing inputs give None.
 
     `pop` is the problem's default population size. hv_h places its reference
@@ -592,10 +643,27 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
     measured against the same point whatever population it rounded to.
     `hv_options` goes to hypervolume() (exact_max_m, mc_samples, seed). The
     decision-space indicators need the solutions `X` and the problem's
-    `bounds`, and igdx and cr a `pareto_set` sample besides.
+    `bounds`, igdx, cr and ps_dmin a `pareto_set` sample besides, and g_min
+    and g_median the problem's `distance_fn`.
+
+    `constraints`, a constrained problem's (BenchProblem.constraints), needs
+    `X` too: every indicator is then measured on the feasible part of the set
+    alone, and feas_share, the feasible share of the set, is added (task 6 of
+    2026-10-09, item 5.2). A set without a feasible point, an empty one
+    included, has feas_share 0 and no value for any indicator: None, not 0 and
+    not infinity (n_final 0).
     """
     out: dict = {}
     F = np.asarray(F, float)
+    if constraints is not None:
+        if X is None:
+            raise ValueError("a constrained problem's indicators need the variables X")
+        ok = feasible_mask(X, constraints)
+        out["feas_share"] = float(ok.mean()) if len(ok) else 0.0
+        if not ok.any():
+            out.update({name: (0 if name == "n_final" else None) for name in which})
+            return out
+        F, X = F[ok], np.asarray(X, float)[ok]
     hvo = dict(hv_options or {})
     have_box = ideal is not None and nadir is not None
     # igdp_norm, gdp_norm, eps_norm, tau90 and gap_max read the same normalised
@@ -687,6 +755,32 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
         elif name == "pdist":
             ok = X is not None and bounds is not None and np.size(X)
             out[name] = pairwise_distance(X, bounds=bounds, cyclic=cyclic) if ok else None
+        elif name == "gdp_min":
+            # convergence without coverage: the nearest point of the set to the
+            # front, beside the reference's own resolution
+            if ref_front is None or not have_box:
+                out[name] = None
+            elif not F.size:
+                out[name] = float("inf")
+            else:
+                out[name] = float(dplus_norm()[1].min())
+                step = reference_step(_normalised(F, ref_front, ideal, nadir)[1])
+                out["gdp_min_ref_step"] = step
+                out["gdp_min_below_step"] = bool(out[name] < step)
+        elif name in ("g_min", "g_median"):
+            if X is None or distance_fn is None or not np.size(X):
+                out[name] = None
+            else:
+                if "g" not in shared:
+                    shared["g"] = np.array([distance_fn(list(x))
+                                            for x in np.atleast_2d(np.asarray(X, float))])
+                g = shared["g"]
+                out[name] = float(g.min() if name == "g_min" else np.median(g))
+        elif name == "ps_dmin":
+            if X is None or pareto_set is None or bounds is None or not np.size(X):
+                out[name] = None
+            else:
+                out[name] = ps_dmin(X, pareto_set, bounds=bounds, cyclic=cyclic)
         else:
             from .metric_names import METRIC_NAMES
             raise ValueError(f"unknown metric '{name}'; known: {', '.join(METRIC_NAMES)}")
