@@ -283,6 +283,15 @@ always listed under **Changed** or **Removed**.
   feasible point beats them by more than the sample's spacing. Exact frames; Pareto sets and g for the six whose front
   lies at g = 1 (MW1, MW2, MW4, MW6, MW8, MW14). MW4, MW8, MW14 get dense
   references from four objectives. 552 problems in 28 families.
+- `[campaign] answer_select` (task 6, item 13): how the run archive becomes
+  the archive scenario's answer — `"dss"`, as before and the default, or
+  `"igdp_self"`, the N points of the smallest IGD+ against the archive thinned
+  by DSS to 1 000 points, chosen greedily without a reference
+  (`archive.igdp_self_order`, `archive.greedy_igdp`); recorded in
+  `meta["archive"]`, repeated by `--recompute --scenario archive`. And
+  `--oracle`: the best N points of every run's archive under IGD+ against the
+  reference, beside the population, the archive answer, igdp_self's choice and
+  the whole archive (`run/oracle.py`, `<results>/_oracle/oracle.csv`).
 - Rotated DTLZ and WFG (`benchmarks/rotated.py`, task 6, item 1 and its
   supplement 2): the distance variables rotated about their optimum, the
   position variables untouched, front and Pareto set exact — rDTLZ1-4 (y =

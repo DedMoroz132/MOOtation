@@ -3844,6 +3844,97 @@ archive_variables = "{keep}"
 
 
 @test
+def answer_select_igdp_self_and_the_oracle():
+    """answer_select = "igdp_self" (task 6, item 13): the lazy greedy chooses
+    what the plain one does; on a dense front its N points cover the archive
+    thinned by DSS better than DSS's N; a campaign records the choice and
+    --recompute --scenario archive repeats it; --oracle measures every run's
+    archive against the reference, igdp_self's value the run's own answer and
+    the whole archive a bound for both."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  answer_select_igdp_self...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.run import archive as A, campaign as C, oracle as O
+    from mootation.run.config import ConfigError, load
+    from mootation.run.metrics import igd_plus
+
+    def plain(D, k):
+        chosen = [int(np.argmin(D.mean(axis=1)))]
+        cur = D[chosen[0]].copy()
+        while len(chosen) < k:
+            gain = np.maximum(cur[None, :] - D, 0.0).mean(axis=1)
+            gain[chosen] = -1.0
+            c = int(np.argmax(gain))
+            chosen.append(c)
+            cur = np.minimum(cur, D[c])
+        return chosen
+
+    for seed in range(4):
+        rng = np.random.default_rng(seed)
+        C_ = rng.random((300, 3))
+        C_[150:170] = C_[:20]                                   # ties
+        D = A.dplus_matrix(C_, rng.random((80, 3)))
+        assert A.greedy_igdp(D, 40).tolist() == plain(D, 40), seed
+    t = np.sort(np.random.default_rng(9).random(3000))
+    F = np.column_stack([t, 1.0 - np.sqrt(t)])                  # ZDT1's front
+    proxy = F[A.dss_order(F, k=A.SELF_REFERENCE, ideal=[0, 0], nadir=[1, 1])]
+    mine = A.igdp_self_order(F, 50, ideal=[0, 0], nadir=[1, 1])
+    assert len(set(mine.tolist())) == 50
+    dss = A.dss_order(F, k=50, ideal=[0, 0], nadir=[1, 1])
+    assert igd_plus(F[mine], proxy) < igd_plus(F[dss], proxy)
+    assert A.igdp_self_order(F[:30], 50).tolist() == list(range(30))
+    text = """algorithms = [{ name = "nsga2", pop = 0, gens = 0 }]
+[run]
+name = "self"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 3000
+metrics = ["igdp"]
+final_metrics = ["igdp_norm", "hv"]
+answer_select = "{how}"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text.replace("{how}", "igdp_self"), encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        assert spec.answer_select == "igdp_self"
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "DTLZ2_3D" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        assert meta["archive"]["answer_select"] == "igdp_self", meta["archive"]
+        assert meta["archive"]["size"] > 91 and meta["final_archive"]["n"] == 91, meta["archive"]
+        kept = meta["final_archive"]
+        meta["final_archive"] = {}
+        (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+        assert C.recompute_final(root, ["igdp_norm", "hv"], scenario="archive") == {"done": 1}
+        again = json.loads((d / "meta.json").read_text(encoding="utf-8"))["final_archive"]
+        assert abs(again["igdp_norm"] - kept["igdp_norm"]) <= 1e-8, (again, kept)  # 10 digits
+        out = O.run(root)
+        assert "1 runs measured" in out, out
+        with (root / "_oracle" / "oracle.csv").open(encoding="utf-8") as fh:
+            row = next(csv.DictReader(fh))
+        v = {k: float(row[k]) for k in O.COLUMNS if k.startswith("igdp_norm")}
+        assert int(row["n"]) == 91 and int(row["archive_size"]) == meta["archive"]["size"]
+        assert abs(v["igdp_norm_igdp_self"] - kept["igdp_norm"]) <= 1e-8, (v, kept)
+        assert v["igdp_norm_archive_whole"] <= min(v["igdp_norm_oracle"], v["igdp_norm_archive"])
+        cfg_path.write_text(text.replace("{how}", "best"), encoding="utf-8")
+        try:
+            C.campaign_spec(load(cfg_path))
+            raise AssertionError("answer_select = \"best\" accepted")
+        except ConfigError:
+            pass
+
+
+@test
 def campaign_problems_flag_restricts_every_mode_to_a_subset():
     """--problems: --list, the run, --force, the tables and --recompute see only those problems."""
     if not _have_numpy() or _core_with("max_evaluations") is None:

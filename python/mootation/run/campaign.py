@@ -154,6 +154,12 @@ class CampaignSpec:
     # archive reduced to the problem's population size by DSS
     # (meta["final_archive"]). Needs archive = true.
     archive_scenario: bool = True
+    # How the archive is reduced to that answer, here and at the checkpoints
+    # and hard budgets: "dss" (archive.dss_order), or "igdp_self", the points of
+    # the smallest IGD+ against the archive thinned by DSS to 1 000
+    # (archive.igdp_self_order; task 6 of 2026-10-09, item 13). The runs
+    # record which in meta["archive"]["answer_select"].
+    answer_select: str = "dss"
     # What the variation operators did (metric_names.RUN_STATS): per trajectory
     # record and over the run in `final`. Off by default; it never changes a
     # run's result. meta["operators"] lists the operators and their bound
@@ -237,7 +243,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
-             "answer_k", "pop_fit", "ladder_min_gens", "dense_reference"}
+             "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -344,6 +350,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.answer_k = raw.get("answer_k", 0)
     if not isinstance(spec.answer_k, int) or isinstance(spec.answer_k, bool) or spec.answer_k < 0:
         raise ConfigError("campaign.answer_k", f"an integer >= 0, not {spec.answer_k!r}")
+    spec.answer_select = raw.get("answer_select", "dss")
+    if spec.answer_select not in ("dss", "igdp_self"):      # archive.ANSWER_SELECT, without NumPy
+        raise ConfigError("campaign.answer_select",
+                          f"\"dss\" or \"igdp_self\", not {spec.answer_select!r}")
     spec.pop_fit = raw.get("pop_fit", "below")
     if spec.pop_fit not in ("below", "nearest"):
         raise ConfigError("campaign.pop_fit", f"\"below\" or \"nearest\", not {spec.pop_fit!r}")
@@ -598,7 +608,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     def take_hard_archive(b):
         AF, AX, _ = arc.points()
         if len(AF) or cons is not None:     # a constrained problem's empty archive: feas_share 0
-            idx = arc.select(spec.answer_k or p.pop_size)
+            idx = arc.select(spec.answer_k or p.pop_size, spec.answer_select)
             hard_arc[str(b)] = dict(measure(true_values(AF[idx], AX[idx]), AX[idx], traj_metrics),
                                     fe=fe, n=int(len(idx)))
 
@@ -732,7 +742,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         crossed = [b for b in checkpoints if last_fe < b <= fe]
         if crossed and fe < budget and (len(arc) or cons is not None):   # the end is final_archive
             AF, AX, _ = arc.points()
-            idx = arc.select(p.pop_size)
+            idx = arc.select(p.pop_size, spec.answer_select)
             T = true_values(AF[idx], AX[idx])
             vals = dict(measure(T, AX[idx], traj_metrics), fe=fe, n=int(len(idx)))
             for b in crossed:
@@ -824,11 +834,12 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 row = list(AF[i]) + (list(AX[i]) if whole else [])
                 out.write(",".join(f"{v:.10g}" for v in row) + f",{int(AE[i])}\n")
         if (len(AF) or cons is not None) and (spec.archive_scenario or not whole):
-            arc_sel = arc.select(p.pop_size)
+            arc_sel = arc.select(p.pop_size, spec.answer_select)
         if not whole and arc_sel is not None:
             with _open_text(d / "final_archive.csv.gz", "w") as out:
-                out.write("# mootation campaign archive selection v1: the points DSS selects "
-                          "from the archive for the archive scenario\n")
+                how = "DSS" if spec.answer_select == "dss" else spec.answer_select
+                out.write(f"# mootation campaign archive selection v1: the points {how} selects "
+                          f"from the archive for the archive scenario\n")
                 out.write(",".join([f"f{i+1}" for i in range(p.n_obj)]
                                    + [f"x{i+1}" for i in range(p.n_vars)]) + "\n")
                 for i in arc_sel:
@@ -837,6 +848,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # The frame DSS normalises by when it reduces the archive (scenario
         # "archive"), so that --recompute --scenario archive selects the same points.
         meta["archive"] = dict(arc.info(), extremes=int(AE.sum()), file=name,
+                               answer_select=spec.answer_select,
                                variables=("all, in archive.csv" if whole else
                                           "the selected points', in final_archive.csv.gz"),
                                feasible_only=bool(p.has_cons),
@@ -1650,10 +1662,11 @@ def _read_points(path: Path, m: int, n: int):
 def _archive_answer(run_dir: Path, meta: dict, p, m: int, n: int):
     """(F, X) of a run's archive scenario, from its files: the selection the
     run kept (final_archive.csv.gz, archive_variables = "selected"), or
-    archive.csv reduced to the population size by DSS in the frame the run
-    used; None where it has neither, or an empty archive."""
+    archive.csv reduced to the population size in the frame the run used, by
+    DSS or the run's answer_select; None where it has neither, or an empty
+    archive."""
     import numpy as np
-    from .archive import dss_order
+    from .archive import dss_order, igdp_self_order
     if (run_dir / "final_archive.csv.gz").is_file():
         return _read_points(run_dir / "final_archive.csv.gz", m, n)
     path = run_dir / "archive.csv"
@@ -1672,8 +1685,12 @@ def _archive_answer(run_dir: Path, meta: dict, p, m: int, n: int):
         lo, hi = p.ideal, p.nadir
     else:
         lo = hi = None                   # the archive's own range
-    idx = (np.arange(len(F)) if len(F) <= p.pop_size
-           else dss_order(F, k=p.pop_size, ideal=lo, nadir=hi))
+    if len(F) <= p.pop_size:
+        idx = np.arange(len(F))
+    elif arc_meta.get("answer_select", "dss") == "igdp_self":
+        idx = igdp_self_order(F, p.pop_size, ideal=lo, nadir=hi)
+    else:
+        idx = dss_order(F, k=p.pop_size, ideal=lo, nadir=hi)
     return F[idx], (None if X is None else X[idx])
 
 
@@ -2224,6 +2241,13 @@ def main(argv: list[str] | None = None) -> int:
                          "single best solver at 5, 7 and 10 of ten seeds, Shapley values, "
                          "complementarity, the oracle gap per problem, and the matrix problem x "
                          "algorithm x budget (portfolio.py); CSV under <results>/_portfolio/")
+    ap.add_argument("--oracle", action="store_true",
+                    help="the best N points of every run's archive under IGD+ against the "
+                         "reference front, beside the population, the archive answer, "
+                         "answer_select = \"igdp_self\" and the whole archive: what the search "
+                         "found, apart from how the answer was chosen (oracle.py; not "
+                         "--portfolio's oracle, the best algorithm per problem); CSV under "
+                         "<results>/_oracle/")
     ap.add_argument("--instance-space", action="store_true",
                     help="the problems as points of a plane drawn from their properties "
                          "(PILOT), per group of problems, and each algorithm's footprint there "
@@ -2347,6 +2371,10 @@ def main(argv: list[str] | None = None) -> int:
                          spec.trajectory_hv_max_m, spec.trajectory_hv_mc_samples))
         print(f"recomputed {', '.join(names)} along the trajectories: {counts}", file=sys.stderr)
         return 0 if counts.get("failed", 0) == 0 else 2
+    if args.oracle:
+        from . import oracle as O
+        print(O.run(root, n_ref=spec.n_ref, workers=args.workers))
+        return 0
     if args.cover:
         from . import cover as C
         try:

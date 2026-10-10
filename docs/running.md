@@ -749,6 +749,17 @@ the scenario existed, or with `archive_scenario = false`, selects them for the
 first time: the archive is written either way. With `archive_variables =
 "selected"` it reads the selection the run kept, `final_archive.csv.gz`.
 
+How the archive becomes an answer is `answer_select`: `"dss"` (the default,
+below) or `"igdp_self"`, the N points of the smallest IGD+ against the archive
+itself thinned by DSS to 1 000 points — chosen greedily from the whole
+archive, without a reference (`archive.igdp_self_order`); it applies at the
+checkpoints and hard budgets too, and `meta.json` records it. `--oracle`
+measures what the search found apart from that choice: for every finished
+run, the best N points of its archive under IGD+ against the reference front
+(a greedy choice that knows the reference, so no run could answer with it),
+beside the population, the archive answer, what `"igdp_self"` would choose and
+the whole archive, all as `igdp_norm` (`<results>/_oracle/oracle.csv`).
+
 DSS (`archive.dss_order`, and `dss.hpp` for DMS's answer) starts from the best
 point of every objective and then takes the point the selection covers worst.
 Both steps used to favour *almost-dominated* points — the best value of one
@@ -820,6 +831,7 @@ python -m mootation.run.campaign c.toml --cover --workers 8              # sets 
 python -m mootation.run.campaign c.toml --cover --scenario archive       # the same for the run archives
 python -m mootation.run.campaign c.toml --behaviour --workers 8          # how the runs behave, grouped
 python -m mootation.run.campaign c.toml --portfolio --workers 8          # oracle, Shapley, the matrix
+python -m mootation.run.campaign c.toml --oracle --workers 8             # the archives' best N under IGD+
 python -m mootation.run.campaign c.toml --instance-space --workers 8     # the problems as a plane, footprints
 python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
 python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # against a changed reference front
