@@ -1984,15 +1984,16 @@ _register_mmo()
 
 
 # =============================================================
-#  RCM01-18 and RCM21 (rwmop.py; task 7, §8): RWMOP's mechanical design
+#  RCM01-29 (rwmop.py; task 7, §8): RWMOP's mechanical, chemical and process
 #  problems, Kumar et al. 2021, as the paper prints them but for the readings
-#  rwmop.py lists; RCM19 and RCM20 are not (rwmop.py says why). The budget is
+#  rwmop.py lists; RCM19, 20, 24 and 27 are not (rwmop.py says why). The
+#  equalities of RCM22-28 as DOC's: the last n_eq constraints, |h| - 1e-4. The budget is
 #  the competition's (rwmop.max_evaluations) at the usual population, 25 runs;
 #  the fronts are this library's long runs (rwmop.py, THE FRONTS; front_exact
 #  False) and the frame their corners.
 # =============================================================
 def _register_rwmop():
-    for i in sorted(_rw.PROBLEMS):
+    for i in _rw.REGISTERED:
         _, box, M = _rw.PROBLEMS[i]
         pop, _ = _budget(M)
         key = _rw.name(i)
@@ -2001,13 +2002,16 @@ def _register_rwmop():
         def _eval(x, _i=i): return _rw.evaluate(_i, x)[0]
         def _cons(x, _i=i): return _rw.evaluate(_i, x)[1]
         def _pf(n=1000, _k=key): return _rw.front(_k)
+        def _eqs(x, _i=i): return _rw.equalities(_i, x)
+        n_eq = _rw.N_EQ.get(i, 0)
         PROBLEMS[key] = BenchProblem(
             name=key, n_vars=len(box), bounds=[(float(a), float(b)) for a, b in box], n_obj=M,
             evaluate=_eval, constraints=_cons if has else _no_cons,
             hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
             pop_size=pop, n_gen=round(_rw.max_evaluations(i) / pop), K_runs=25, has_cons=has,
-            pareto_front=_pf, front_exact=False, var_types=_rw.VAR_TYPES.get(i))
+            pareto_front=_pf, front_exact=False, var_types=_rw.VAR_TYPES.get(i),
+            n_eq=n_eq, equalities=_eqs if n_eq else None)
         EXACT_FRAME.add(key)
 
 

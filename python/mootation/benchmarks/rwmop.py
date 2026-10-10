@@ -1,16 +1,27 @@
 # SPDX-License-Identifier: Apache-2.0
-"""RWMOP's mechanical design problems, RCM01-21 (task 7 of 2026-10-10, §8).
+"""RWMOP's mechanical, chemical and process problems, RCM01-29 (task 7 of
+2026-10-10, §8).
 
 A. Kumar, G. Wu, M. Z. Ali, Q. Luo, R. Mallipeddi, P. N. Suganthan, S. Das,
 "A benchmark-suite of real-world constrained multi-objective optimization
 problems and some baseline results", Swarm and Evolutionary Computation 67,
 100961, 2021, doi:10.1016/j.swevo.2021.100961 (source
-rwmop_kumar2021_final-submission, §2.1, read off the rendered pages; the long
-coefficients of RCM21 off the PDF's text). The competition's MATLAB code has
-no licence and is not used: the formulas are the paper's.
+rwmop_kumar2021_final-submission, §2.1-2.3, read off the rendered pages; the
+long coefficients of RCM21 off the PDF's text). The competition's MATLAB code
+has no licence and is not used: the formulas are the paper's.
 
-Every function returns (f, g): the objectives, and the inequality
-constraints in the library's sign, g <= 0 satisfied, in the paper's order.
+RCM30-50, the power electronics and power system problems, are not here:
+the paper does not give what they need — the inverters' switching and
+fundamental frequencies and modulation index, with sign patterns s shorter
+than the angles Table 2 counts (RCM30-35); the networks' admittance matrices
+and loads (RCM36-50).
+
+Every function returns (f, g), or (f, g, h) with equalities h = 0 (RCM22-28):
+the objectives, and the inequality constraints in the library's sign, g <= 0
+satisfied, in the paper's order. evaluate() appends |h| - EQ_EPS to g, as DOC
+does (doc.py); the paper's epsilon has no value, EQ_EPS is 1e-4, the CEC
+competitions' and minimize's eq_tol. RCM24's logarithms are undefined outside
+x8 > 100, x7 < 600, x9 > x7: it raises ValueError there, as RCM02 below.
 RCM02's f1, a square root of EI / mu, is undefined where that is negative,
 which happens only with the layers out of order (g2 or g4 violated): it
 raises ValueError there, which a run counts as a failed evaluation
@@ -35,6 +46,12 @@ THE PAPER AS PRINTED, except where it cannot be read as it stands:
           RE41 and pymoo's Carside have it
   RCM13   x3 "in {17, 28}": the integers 17 ... 28, as RCM06 writes the same
           variable of the same reducer
+  RCM28   h2, h3 "x3 - 0.9 (1 - exp(0.5 x5)) x1": with exp(+) a reactor's
+          output can only be <= 0, so h4 (x3 + x4 = 10) could never hold
+          (whichever reactor h1 picks); exp(-0.5 x5) and exp(-0.4 x6), the
+          conversion 1 - exp(-k t) of a first-order reactor. Then, e.g.,
+          x = (11.19, 0, 10, 0, 10, 0, 1, 0) is feasible
+  RCM29   g2 "x6^3 + x1^2 + x2^2 + x3^2 = 5.5 <= 0": ... - 5.5 <= 0
 Everything else is as printed, the places where the paper differs from the
 classic statement of a problem included (they change the problem, not its
 readability), listed here for whoever compares with other code:
@@ -52,6 +69,9 @@ readability), listed here for whoever compares with other code:
   RCM17   F_n = 0.5144 / (9.8065 L)^0.5, without V_k, F_c = 4.56e-5 P + 0.2
           and W_s with B^0.6 (RE42: 0.5144 V_k / (g L)^0.5, 0.19 * 24 / 1000
           = 4.56e-3, B^0.7)
+  RCM24   f3 = 200 x1 x6 - x5 where h2 has 200 x2 x6 - x5; eight equalities
+          printed, Table 2 says six (the eight are used)
+  RCM28   Table 2 says four equalities, five are printed (five are used)
 THE FRONTS (_rwmop/RCMxx.dat) are this library's, as the task allows for the
 references (2026-10-11; build_front, `python -m mootation.benchmarks.rwmop`):
 per problem ten seeds of NSGA-II (two objectives, N = 500) or NSGA-III (three
@@ -61,12 +81,30 @@ feasible points, the non-dominated ones, at most 2 000 kept by DSS. 2 000
 points for every problem but RCM02 (1 658), RCM07 (17: four integers) and
 RCM15 (64: an integer and a list). An approximation: front_exact is False,
 and IGD+ there is a distance to it; the frame is its corners.
+  RCM22, 23, 25, 26 (reference()): no run meets the equalities to EQ_EPS
+(nor do most of the paper's, Tables 6 and 7), so these join the epsilon-
+constraint method's points (eps_front: SLSQP for the least f2 under f1 <= c,
+every 0/1 setting; two seeds of starts, which agree to 5e-4 in normalised
+IGD+ on RCM22 and exactly on the others) with the long runs' feasible points
+(none on RCM22 and 23; on RCM25 and 26 no point of either is dominated by
+the other's): 472, 524, 2 000 and 687 points.
+  RCM28 is exact (rcm28_front, 1 548 points of its two curves) and RCM29 the
+best of its sixteen 0/1 settings (rcm29_front): two points.
+  RCM27 is not registered: its front is one point, f = (1.0765, -0.0581) at
+x1 = 0.2 + ln 2.1, x3 = 1 (with x3 = 0, g3 holds x1 to 0.2 and gives (1.25,
+0.2), dominated), and a one-point reference frames nothing, as RCM24's.
+RCM24 (heat exchanger network) is defined but not registered: its
+equalities leave one point's worth of front — they force x3 = 0 (h3, h5,
+h7), x7 = 100, x8 = 600, x5 = 2e6, x9 = 700, x1 x4 = 0 and x2 x6 = 1e4, and
+f2 is h1 itself, 0 there; x1 = 0 then minimises f1 and f3, and f1 = 35
+x2^0.6 is least at x2 = 1e4 / 600: the front is the point (35 (50/3)^0.6, 0,
+-2e6) up to EQ_EPS, and a one-point reference frames nothing.
 RCM19 (multi-product batch plant) is not here: the paper never gives the
 demands Q_i its objectives and bounds use.
 RCM20 (hydrostatic thrust bearing) is not here: as printed no point is
 feasible — with R <= R0 (g6) P0 comes out negative, and the least total
 violation of 400 000 points of the box is 1 373 (rcm20 below; the test
-rwmop_mechanical_problems_as_the_paper_prints_them) — while the paper's
+rwmop_problems_as_the_paper_prints_them) — while the paper's
 Table 5 has its algorithms feasible on it: what ran is not what is printed,
 and the source's formulas are not at hand to tell which part is wrong.
 The same tables back the two readings above: every algorithm feasible in
@@ -418,6 +456,90 @@ def rcm21(x):
     return [f1, f2], [f1 - 5.0, -f1, f2 - 28.0, -f2]
 
 
+# ── the chemical and process problems (RCM22-29) ─────────────────────────────
+# Each returns (f, g, h): h the equalities, h = 0 wanted; evaluate() appends
+# |h| - EQ_EPS to g, as DOC does (doc.py), and equalities() gives h itself.
+
+def rcm22(x):
+    """Haverly's pooling problem."""
+    x1, x2, x3, x4, x5, x6, x7, x8, x9 = x
+    f = [-9.0 * x1 - 15.0 * x2 + 6.0 * x3 + 16.0 * x4, 10.0 * (x5 + x6)]
+    h = [x7 + x8 - x4 - x3, x1 - x5 - x7, x2 - x6 - x8, x9 * x7 + x9 * x8 - 3.0 * x3 - x4]
+    g = [x9 * x7 + 2.0 * x5 - 2.5 * x1, x9 * x8 + 2.0 * x6 - 1.5 * x2]
+    return f, g, h
+
+
+def rcm23(x):
+    """Reactor network design."""
+    x1, x2, x3, x4, x5, x6 = x
+    k1 = 0.09755988
+    k2 = 0.99 * k1
+    k3 = 0.0391908
+    k4 = 0.9 * k3
+    f = [-x4, x5 ** 0.5 + x6 ** 0.5]
+    h = [k1 * x5 * x2 + x1 - 1.0, k3 * x5 * x3 + x3 + x1 - 1.0, k2 * x6 * x2 - x1 + x2,
+         k4 * x6 * x4 + x2 - x1 + x4 - x3]
+    return f, [x5 ** 0.5 + x6 ** 0.5 - 4.0], h
+
+
+def rcm24(x):
+    """Heat exchanger network design."""
+    x1, x2, x3, x4, x5, x6, x7, x8, x9 = x
+    f = [35.0 * x1 ** 0.6 + 35.0 * x2 ** 0.6, 200.0 * x1 * x4 - x3, 200.0 * x1 * x6 - x5]
+    h = [200.0 * x1 * x4 - x3, 200.0 * x2 * x6 - x5, x3 - 10000.0 * (x7 - 100.0),
+         x5 - 10000.0 * (300.0 - x7), x3 - 10000.0 * (600.0 - x8), x5 - 10000.0 * (900.0 - x9),
+         x4 * math.log(x8 - 100.0) - x4 * math.log(600.0 - x7) - x8 + x7 + 500.0,
+         x6 * math.log(x9 - x7) - x6 * math.log(600.0) - x9 + x7 + 600.0]
+    return f, [], h
+
+
+def rcm25(x):
+    """Process synthesis: x2 in {0, 1}."""
+    x1, x2 = x[0], round(x[1])
+    return [x2 + 2.0 * x1, -x1 ** 2 - x2], [-x1 ** 2 - x2 + 1.25, x1 + x2 - 1.6], []
+
+
+def rcm26(x):
+    """Process synthesis and design: x3 in {0, 1}."""
+    x1, x2, x3 = x[0], x[1], round(x[2])
+    f = [-x3 + x2 + 2.0 * x1, -x1 ** 2 - x2 + x1 * x3]
+    return f, [x2 - x1 + x3], [-2.0 * math.exp(-x2) + x1]
+
+
+def rcm27(x):
+    """Process flow sheeting: x3 in {0, 1}."""
+    x1, x2, x3 = x[0], x[1], round(x[2])
+    f = [-0.7 * x3 + 0.8 + 5.0 * (0.5 - x1) ** 2, x1 - x3]
+    return f, [-math.exp(x1 - 0.2) - x2, x2 + 1.1 * x3 + 1.0, x1 - x3 - 0.2], []
+
+
+def rcm28(x):
+    """Two reactor problem: x7, x8 in {0, 1}."""
+    x1, x2, x3, x4, x5, x6 = x[:6]
+    x7, x8 = round(x[6]), round(x[7])
+    f = [7.5 * x7 + 5.5 * x8 + 7.0 * x5 + 6.0 * x6 + 5.0 * (x1 + x2), x1 + x2]
+    h = [x7 + x8 - 1.0,
+         x3 - 0.9 * (1.0 - math.exp(-0.5 * x5)) * x1,            # the paper: exp(0.5 x5)
+         x4 - 0.8 * (1.0 - math.exp(-0.4 * x6)) * x2,            # the paper: exp(0.4 x6)
+         x3 + x4 - 10.0,
+         x3 * x7 + x4 * x8 - 10.0]
+    g = [x5 - 10.0 * x7, x6 - 10.0 * x8, x1 - 20.0 * x7, x2 - 20.0 * x8]
+    return f, g, h
+
+
+def rcm29(x):
+    """Process synthesis: x4 ... x7 in {0, 1}."""
+    x1, x2, x3 = x[:3]
+    x4, x5, x6, x7 = (round(v) for v in x[3:])
+    tail = (1.0 - x1) ** 2 + (2.0 - x2) ** 2 + (3.0 - x3) ** 2
+    f = [(1.0 - x4) ** 2 + (1.0 - x5) ** 2 + (1.0 - x6) ** 2 - math.log(1.0 + x7) + tail, tail]
+    g = [x1 + x2 + x3 + x4 + x5 + x6 - 5.0,
+         x6 ** 3 + x1 ** 2 + x2 ** 2 + x3 ** 2 - 5.5,            # the paper: "= 5.5 <= 0"
+         x1 + x4 - 1.2, x2 + x5 - 1.8, x3 + x6 - 2.5, x1 + x7 - 1.2,
+         x5 ** 2 + x2 ** 2 - 1.64, x6 ** 2 + x3 ** 2 - 4.25, x5 ** 2 + x3 ** 2 - 4.64]
+    return f, g, []
+
+
 # number -> (function, bounds, objectives)
 PROBLEMS = {
     1: (rcm01, [(1, 99), (1, 99), (10, 200), (10, 200)], 2),
@@ -440,7 +562,26 @@ PROBLEMS = {
     17: (rcm17, [(150, 274.32), (20, 32.31), (13, 25), (10, 11.71), (14, 18), (0.63, 0.75)], 3),
     18: (rcm18, [(136, 146), (56, 68), (1.4, 2.2)], 2),
     21: (rcm21, [(1.3, 1.7), (2.5, 3.5), (1.3, 1.7), (1.3, 1.7), (1.3, 1.7), (1.3, 1.7)], 2),
+    22: (rcm22, [(0, 100), (0, 200), (0, 100), (0, 100), (0, 100), (0, 100), (0, 200), (0, 100),
+                 (0, 200)], 2),
+    23: (rcm23, [(0, 1)] * 4 + [(1e-5, 16)] * 2, 2),
+    24: (rcm24, [(0, 10), (0, 200), (0, 100), (0, 200), (1000, 2000000), (0, 600), (100, 600),
+                 (100, 600), (100, 900)], 3),
+    25: (rcm25, [(0, 1.6), (0, 1)], 2),
+    26: (rcm26, [(0.5, 1.4), (0.5, 1.4), (0, 1)], 2),
+    27: (rcm27, [(0.2, 1), (-2.22554, -1), (0, 1)], 2),
+    28: (rcm28, [(0, 100)] * 6 + [(0, 1)] * 2, 2),
+    29: (rcm29, [(0, 100)] * 3 + [(0, 1)] * 4, 2),
 }
+
+# the problems in the registry: those with a reference front (_rwmop/)
+REGISTERED = tuple(range(1, 19)) + (21, 22, 23, 25, 26, 28, 29)
+
+# the equalities' count (RCM22-28; evaluate() appends |h| - EQ_EPS to g)
+N_EQ = {22: 4, 23: 4, 24: 8, 26: 1, 28: 5}
+# the paper's epsilon has no value (its Eq. 2): 1e-4, the CEC competitions'
+# and minimize's eq_tol, as DOC's (doc.py)
+EQ_EPS = 1e-4
 
 # the integer and discrete variables (mootation.var_types), the rest real
 VAR_TYPES = {
@@ -449,6 +590,11 @@ VAR_TYPES = {
     7: ["int"] * 4,
     13: ["real", "real", "int", "real", "real", "real", "real"],
     15: ["int", "real", ("discrete", list(WIRE))],
+    25: ["real", "int"],
+    26: ["real", "real", "int"],
+    27: ["real", "real", "int"],
+    28: ["real"] * 6 + ["int"] * 2,
+    29: ["real"] * 3 + ["int"] * 4,
 }
 
 
@@ -457,10 +603,17 @@ def name(i: int) -> str:
 
 
 def evaluate(i: int, x) -> tuple:
-    """(objectives, constraints) of RCM<i> at x."""
-    fn = PROBLEMS[i][0]
-    f, g = fn([float(v) for v in x])
-    return [float(v) for v in f], [float(v) for v in g]
+    """(objectives, constraints) of RCM<i> at x; an equality h counts as
+    |h| - EQ_EPS <= 0, after the inequalities."""
+    out = PROBLEMS[i][0]([float(v) for v in x])
+    g = list(out[1]) + ([abs(v) - EQ_EPS for v in out[2]] if len(out) == 3 else [])
+    return [float(v) for v in out[0]], [float(v) for v in g]
+
+
+def equalities(i: int, x) -> list:
+    """RCM<i>'s equalities h(x) themselves, [] for a problem without."""
+    out = PROBLEMS[i][0]([float(v) for v in x])
+    return [float(v) for v in out[2]] if len(out) == 3 else []
 
 
 def n_cons(i: int) -> int:
@@ -499,11 +652,15 @@ def build_front(i: int, seeds=range(1, 11), budget: int = 200_000) -> np.ndarray
     _, box, m = PROBLEMS[i]
     alg, pop = ("nsga3", 495) if m == 5 else ("nsga3", 496) if m == 3 else ("nsga2", 500)
     k = n_cons(i)
+    neq = N_EQ.get(i, 0)
     X = []
     for seed in seeds:
         kw = dict(algorithm=alg, pop_size=pop, max_evaluations=budget, seed=seed)
-        if k:
-            kw.update(constraints=lambda x: evaluate(i, x)[1], n_cons=k)
+        if k - neq:
+            kw.update(constraints=lambda x: evaluate(i, x)[1][:k - neq], n_cons=k - neq)
+        if neq:          # the equalities' tolerance shrinks from 1 to EQ_EPS over the run
+            kw.update(eq_constraints=lambda x: equalities(i, x), n_eq=neq, eq_tol=EQ_EPS,
+                      eq_tol_schedule="linear", eq_tol0=1.0)
         r = mootation.minimize(lambda x: evaluate(i, x)[0], box, m, **kw)
         X += [list(x) for x, c in zip(r.variables, r.cv) if c <= 0]
     F = []
@@ -511,7 +668,171 @@ def build_front(i: int, seeds=range(1, 11), budget: int = 200_000) -> np.ndarray
         f, g = evaluate(i, x)
         if all(v <= 0 for v in g) and np.all(np.isfinite(f)):
             F.append(f)
+    if not F:
+        return np.zeros((0, m))
     F = np.unique(np.array(F), axis=0)
+    F = F[nondominated_mask(F)]
+    if len(F) > 2000:
+        F = F[dss_order(F, 2000, ideal=F.min(0), nadir=F.max(0))]
+    return F
+
+
+# SLSQP ends on an active constraint up to rounding: a point within this of
+# feasible counts as feasible in eps_front and rcm29_front (only there)
+FEAS_TOL = 1e-9
+
+
+def eps_front(i: int, n: int = 300, starts: int = 8, seed: int = 1) -> np.ndarray:
+    """RCM<i>'s reference front by the epsilon-constraint method, for the small
+    problems with equalities or 0/1 variables (THE FRONTS): for every value of
+    the 0/1 variables, f2 least subject to the constraints and f1 <= c, by
+    SciPy's SLSQP from the previous solution and `starts` random points, c on
+    n steps between f1's least value and its value where f2 is least; a point
+    kept when evaluate() finds it feasible (|h| <= EQ_EPS) up to FEAS_TOL."""
+    import itertools
+    from scipy.optimize import minimize as slsqp
+    fn, box, m = PROBLEMS[i]
+    types = VAR_TYPES.get(i, ["real"] * len(box))
+    ints = [j for j, t in enumerate(types) if t == "int"]
+    cont = [j for j in range(len(box)) if j not in ints]
+    lo = np.array([box[j][0] for j in cont], float)
+    hi = np.array([box[j][1] for j in cont], float)
+    rng = np.random.default_rng(seed)
+    F = []
+
+    def feasible(x):
+        try:
+            f, g = evaluate(i, x)
+        except (ValueError, ZeroDivisionError, OverflowError):
+            return None
+        return f if all(v <= FEAS_TOL for v in g) else None
+
+    for combo in itertools.product(*[range(int(box[j][0]), int(box[j][1]) + 1) for j in ints]):
+        def full(z, _c=combo):
+            x = np.zeros(len(box))
+            x[cont] = z
+            x[ints] = _c
+            return x
+
+        def parts(z):
+            try:
+                out = fn(list(full(z)))
+            except (ValueError, ZeroDivisionError, OverflowError):
+                return None
+            return (np.array(out[0], float), np.array(out[1], float),
+                    np.array(out[2] if len(out) == 3 else [], float))
+
+        # a constraint the 0/1 values alone decide (RCM28's h1) is checked
+        # once here, not handed to SLSQP, whose Jacobian it would make singular
+        probe = [parts(lo + (hi - lo) * rng.random(len(lo))) for _ in range(3)]
+        probe = [q for q in probe if q is not None]
+        if not probe:
+            continue
+        fixed_g = np.all([q[1] == probe[0][1] for q in probe], axis=0)
+        fixed_h = np.all([q[2] == probe[0][2] for q in probe], axis=0)
+        if np.any(probe[0][1][fixed_g] > 0) or np.any(np.abs(probe[0][2][fixed_h]) > EQ_EPS):
+            continue
+        live_g, live_h = ~fixed_g, ~fixed_h
+
+        def solve(obj, cap, z0):
+            cons = [{"type": "ineq", "fun": lambda z: -parts(z)[1][live_g]}] if live_g.any() else []
+            if live_h.any():
+                cons.append({"type": "eq", "fun": lambda z: parts(z)[2][live_h]})
+            if cap is not None:
+                cons.append({"type": "ineq", "fun": lambda z: cap - parts(z)[0][0]})
+            r = slsqp(lambda z: parts(z)[0][obj], z0, method="SLSQP",
+                      bounds=list(zip(lo, hi)), constraints=cons,
+                      options={"maxiter": 300, "ftol": 1e-12})
+            return r.x, feasible(full(r.x))
+
+        def best(obj, cap, warm):
+            found = []
+            for z0 in ([warm] if warm is not None else []) + \
+                    [lo + (hi - lo) * rng.random(len(lo)) for _ in range(starts)]:
+                if parts(z0) is None:
+                    continue
+                try:
+                    z, f = solve(obj, cap, z0)
+                except (ValueError, ZeroDivisionError, OverflowError, TypeError):
+                    continue
+                if f is not None:
+                    found.append((f[obj], f, z))
+            return min(found, key=lambda t: t[0]) if found else None
+
+        a, b = best(0, None, None), best(1, None, None)
+        if a is None or b is None:
+            continue
+        F += [a[1], b[1]]
+        warm = a[2]
+        for c in np.linspace(a[1][0], b[1][0], n):
+            got = best(1, c, warm)
+            if got is not None:
+                F.append(got[1])
+                warm = got[2]
+    if not F:
+        return np.zeros((0, m))
+    from ..run.metrics import nondominated_mask
+    F = np.unique(np.array(F, float), axis=0)
+    return F[nondominated_mask(F)]
+
+
+def rcm28_front(n: int = 2000) -> np.ndarray:
+    """RCM28's front, exact (THE FRONTS): h1 picks one reactor. With x7 = 1,
+    g2 and g4 force x6 = x2 = 0, so x4 = 0 (h3), x3 = 10 (h4, h5) and h2 gives
+    x1 = 10 / (0.9 (1 - exp(-0.5 x5))), within x1 <= 20 (g3) from x5 = -2
+    ln(4/9) to 10 (g1): f = (7.5 + 7 x5 + 5 x1, x1). With x8 = 1, the same
+    with x2 = 10 / (0.8 (1 - exp(-0.4 x6))), x6 from -2.5 ln(3/8) to 10:
+    f = (5.5 + 6 x6 + 5 x2, x2). The non-dominated points of both curves."""
+    from ..run.metrics import nondominated_mask
+    x5 = np.linspace(-2.0 * math.log(4.0 / 9.0), 10.0, n)
+    x1 = 10.0 / (0.9 * (1.0 - np.exp(-0.5 * x5)))
+    x6 = np.linspace(-2.5 * math.log(3.0 / 8.0), 10.0, n)
+    x2 = 10.0 / (0.8 * (1.0 - np.exp(-0.4 * x6)))
+    F = np.vstack([np.column_stack([7.5 + 7.0 * x5 + 5.0 * x1, x1]),
+                   np.column_stack([5.5 + 6.0 * x6 + 5.0 * x2, x2])])
+    return F[nondominated_mask(F)]
+
+
+def rcm29_front() -> np.ndarray:
+    """RCM29's front (THE FRONTS): with the 0/1 variables fixed, f1 is f2
+    plus a constant and the least f2 is a convex problem (a squared distance
+    over linear and convex quadratic constraints), solved by SLSQP from five
+    starts in [0, 2]^3; the front is the non-dominated of the sixteen."""
+    import itertools
+    from scipy.optimize import minimize as slsqp
+    from ..run.metrics import nondominated_mask
+    F = []
+    for c in itertools.product((0, 1), repeat=4):
+        def parts(z, _c=c):
+            f, g, _ = rcm29(list(z) + list(_c))
+            return np.array(f), np.array(g)
+        best = None
+        for s in range(5):
+            z0 = np.random.default_rng(s).random(3) * 2.0
+            r = slsqp(lambda z: parts(z)[0][1], z0, method="SLSQP", bounds=[(0.0, 100.0)] * 3,
+                      constraints=[{"type": "ineq", "fun": lambda z: -parts(z)[1]}],
+                      options={"ftol": 1e-12, "maxiter": 500})
+            f, g = evaluate(29, list(r.x) + list(c))
+            if all(v <= FEAS_TOL for v in g) and (best is None or f[1] < best[1]):
+                best = f
+        if best is not None:
+            F.append(best)
+    F = np.array(F, float)
+    return F[nondominated_mask(F)]
+
+
+def reference(i: int) -> np.ndarray:
+    """RCM<i>'s reference front as THE FRONTS build it."""
+    if i == 28:
+        return rcm28_front()
+    if i == 29:
+        return rcm29_front()
+    if i not in (22, 23, 25, 26):
+        return build_front(i)
+    from ..run.archive import dss_order
+    from ..run.metrics import nondominated_mask
+    F = np.vstack([eps_front(i, seed=1, starts=8), eps_front(i, seed=2, starts=16), build_front(i)])
+    F = np.unique(F, axis=0)
     F = F[nondominated_mask(F)]
     if len(F) > 2000:
         F = F[dss_order(F, 2000, ideal=F.min(0), nadir=F.max(0))]
@@ -540,6 +861,6 @@ if __name__ == "__main__":
     import sys
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else DATA
     out.mkdir(parents=True, exist_ok=True)
-    for i in sorted(PROBLEMS):
-        np.savetxt(out / f"{name(i)}.dat", build_front(i), fmt="%.17g")
+    for i in REGISTERED:
+        np.savetxt(out / f"{name(i)}.dat", reference(i), fmt="%.17g")
         print(name(i), flush=True)

@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- RWMOP's chemical and process problems RCM22, 23, 25, 26, 28, 29 (task 7,
+  §8; `benchmarks/rwmop.py`): equalities counted as DOC's (|h| - 1e-4, n_eq),
+  0/1 variables declared. RCM28's exp(0.5 x5) and exp(0.4 x6) read with the
+  minus sign (as printed a reactor's output is <= 0 and h4 never holds);
+  RCM29's "= 5.5 <= 0" as "- 5.5 <= 0". RCM24 and RCM27 are defined but not
+  registered: their fronts are single points (derived in the header). The
+  references: an epsilon-constraint method (SLSQP, every 0/1 setting, two
+  seeds of starts, agreeing to 5e-4 in normalised IGD+) joined with the long
+  runs' feasible points, RCM28's exact, RCM29's the best of its sixteen 0/1
+  settings. RCM30-50 are not implementable from the paper (the inverters'
+  frequencies and the networks' data are not given). 1340 problems.
+
 - RWMOP's mechanical design problems (task 7, §8; `benchmarks/rwmop.py`):
   RCM01-18 and RCM21 of Kumar et al. (Swarm and Evolutionary Computation 67,
   2021), the formulas as the paper prints them, at the competition's budget.

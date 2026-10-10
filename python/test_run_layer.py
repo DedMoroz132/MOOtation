@@ -7984,8 +7984,8 @@ def dn_nsga2_keeps_more_of_sym_parts_parts_than_nsga2():
 
 
 @test
-def rwmop_mechanical_problems_as_the_paper_prints_them():
-    """Task 7, §8: RWMOP's RCM01-18 and RCM21 (benchmarks/rwmop.py). Where the
+def rwmop_problems_as_the_paper_prints_them():
+    """Task 7, §8: RWMOP's RCM01-18, 21-23, 25, 26, 28, 29 (benchmarks/rwmop.py). Where the
     problem is one of Tanabe and Ishibuchi's (re.py: RE31-33, 35, 36, 41), its
     objectives agree with theirs to 1e-12 and its constraints too (RCM08's in
     the paper's order); values by hand; the readings the header lists (RCM06's
@@ -8000,7 +8000,7 @@ def rwmop_mechanical_problems_as_the_paper_prints_them():
     from mootation.benchmarks import rwmop as RW
     from mootation.run.metrics import nondominated_mask
     names = sorted(families()["RCM"])
-    assert names == [f"RCM{i:02d}" for i in list(range(1, 19)) + [21]], names
+    assert names == [f"RCM{i:02d}" for i in list(range(1, 19)) + [21, 22, 23, 25, 26, 28, 29]], names
     rng = np.random.default_rng(5)
     for i, model, order in ((3, RE._truss, None), (4, RE._weld, None), (5, RE._brake, None),
                             (6, RE._reducer, None), (7, RE._gear, None),
@@ -8040,12 +8040,29 @@ def rwmop_mechanical_problems_as_the_paper_prints_them():
     for key in names:
         p = get(key)
         Z = RW.front(key)                     # the file; pareto_front(n) thins it to n
-        want = {"RCM02": 1658, "RCM07": 17, "RCM15": 64}.get(key, 2000)   # the header's sizes
+        want = {"RCM02": 1658, "RCM07": 17, "RCM15": 64, "RCM22": 472, "RCM23": 524,
+                "RCM26": 687, "RCM28": 1548, "RCM29": 2}.get(key, 2000)  # the header's sizes
         assert len(Z) == want and nondominated_mask(Z).all() and not p.front_exact, key
         assert np.allclose(Z.min(0), p.ideal) and np.allclose(Z.max(0), p.nadir), key
         assert p.n_gen * p.pop_size >= 0.99 * RW.max_evaluations(int(key[3:])), key
     assert get("RCM15").var_types[2][1] == list(RW.WIRE) and get("RCM07").var_types == ["int"] * 4
     assert get("RCM09").has_cons is False and get("RCM08").has_cons is True
+    # the chemical and process problems: the equalities as DOC's, |h| - 1e-4 last
+    assert [get(f"RCM{i}").n_eq for i in (22, 23, 25, 26, 28, 29)] == [4, 4, 0, 1, 5, 0]
+    x1 = 10 / (0.9 * (1 - math.exp(-2.5)))                 # RCM28: reactor 1, x5 = 5
+    f, g = RW.evaluate(28, [x1, 0, 10, 0, 5.0, 0, 1, 0])
+    assert max(g) <= 0 and RW.equalities(28, [x1, 0, 10, 0, 5.0, 0, 1, 0]) == [0.0] * 5
+    Z = RW.front("RCM28")
+    assert np.min(np.abs(Z - np.array(f)).sum(1)) < 0.05      # on the exact front's curve
+    # as printed, exp(+0.5 x5): a reactor's output would be <= 0, h4 never holds
+    assert 0.9 * (1 - math.exp(0.5 * 5.0)) * x1 < 0
+    # RCM24 and RCM27: one-point fronts, not registered
+    f, g = RW.evaluate(24, [0.0, 1e4 / 600, 0.0, 50.0, 2e6, 600.0, 100.0, 600.0, 700.0])
+    assert max(g) <= 0 and f[1] == 0.0 and abs(f[0] - 35 * (50 / 3) ** 0.6) < 1e-9
+    x1 = 0.2 + math.log(2.1)
+    f, g = RW.evaluate(27, [x1, -2.1, 1])
+    assert max(g) <= 1e-12 and abs(f[0] - 1.0765430833) < 1e-9
+    assert "RCM24" not in names and "RCM27" not in names
 
 
 @test

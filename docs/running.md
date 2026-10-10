@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 67 algorithm names |
-| `--problems` | list the 1334 benchmark problems (needs NumPy) |
+| `--problems` | list the 1340 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -222,8 +222,8 @@ day-long run.
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated
 ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE, bbob-biobj-mixint and catZDT1,
-the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition, and RWMOP's mechanical design problems
-RCM01–18 and RCM21: 1334 problems across 49 families, each
+the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition, and RWMOP's mechanical, chemical and process
+problems RCM01–29: 1340 problems across 49 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -377,19 +377,24 @@ grid refined locally and thinned by DSS to 500 M points
 (`python -m mootation.benchmarks.re_fronts`, `benchmarks/_re/corrected/`), the
 frame the front's own.
 
-`RCM01` … `RCM18` and `RCM21` are RWMOP's mechanical design problems (Kumar et
-al., Swarm and Evolutionary Computation 67:100961, 2021; `benchmarks/rwmop.py`),
-constrained, two to five objectives, at the competition's budget (20 000
-evaluations at two objectives and up to ten variables, 26 250 at three, 53 000
-at five). The formulas are the paper's as printed; the module's header lists
-the few places that cannot be read as they stand and how they are read (two
-constants the paper uses without a value, RCM06's g11 and RCM08's g8, which as
-printed leave nothing feasible), and the places where the paper's problem is
-not the classic one, kept. Six of them are Tanabe and Ishibuchi's CRE21–25 and
-CRE31, and agree with `re.py` to 1e-12. RCM19 (its demands are never given) and
-RCM20 (as printed nothing is feasible) are not in the registry. The references
-are this library's: the feasible non-dominated points of ten long runs per
-problem (`front_exact = False`; the header says how they were run).
+`RCM01` … `RCM29` are RWMOP's mechanical, chemical and process problems
+(Kumar et al., Swarm and Evolutionary Computation 67:100961, 2021;
+`benchmarks/rwmop.py`), constrained, two to five objectives, at the
+competition's budget (20 000 evaluations at two objectives and up to ten
+variables, 26 250 at three, 53 000 at five). The formulas are the paper's as
+printed; the module's header lists the few places that cannot be read as they
+stand and how they are read (constants the paper uses without a value, and
+RCM06's g11, RCM08's g8 and RCM28's sign, which as printed leave nothing
+feasible), and the places where the paper's problem is not the classic one,
+kept. Six of them are Tanabe and Ishibuchi's CRE21–25 and CRE31, and agree
+with `re.py` to 1e-12. RCM22–28 have equalities, counted as DOC's
+(`|h| − 1e-4 ≤ 0`, `n_eq`). Not in the registry: RCM19 (its demands are never
+given), RCM20 (as printed nothing is feasible), RCM24 and RCM27 (their fronts
+are single points), and RCM30–50 (the paper leaves out the inverters'
+frequencies and the networks' data). The references are this library's:
+the feasible non-dominated points of ten long runs per problem, and for the
+small problems with equalities or 0/1 variables the epsilon-constraint method
+by SLSQP, or the exact front (`front_exact = False`; the header says how).
 
 **Typed variables.** A problem's `var_types` declares each variable `"real"`,
 `"int"`, `("discrete", values)` or `"bin"`: RE22, RE23, RE25, RE35, RE36, CRE24,
