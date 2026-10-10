@@ -163,7 +163,7 @@ from .rotated import SPECS as _ROTATED
 
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
         "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
-        "bbob_groups", "front_dim", "family_kind")
+        "bbob_groups", "front_dim", "family_kind", "difficulty")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, boundary,
@@ -325,6 +325,15 @@ def properties(name: str) -> dict | None:
     row["front_dim"] = _front_dim(stem, row["n_obj"], front)
     from ..families import is_engineering
     row["family_kind"] = "engineering" if is_engineering(name) else "synthetic"
+    # a constrained problem's kinds of difficulty, where its source names them
+    # (DAS-CMOP's triplet: diversity, feasibility, convergence); None elsewhere
+    row["difficulty"] = None
+    from .registry import DASCMOP
+    if name in DASCMOP:
+        eta, zeta, gamma = DASCMOP[name][1]
+        kinds = [k for k, v in (("diversity", eta), ("feasibility", zeta),
+                                ("convergence", gamma)) if v > 0]
+        row["difficulty"] = "+".join(kinds) if kinds else "none"
     return row
 
 
@@ -388,6 +397,19 @@ def _huband(name: str) -> dict | None:
         if rotate and (condition or family not in ("DTLZ2", "DTLZ4")):
             row["separable"] = False
         return row
+    if stem.startswith("DAS-CMOP"):
+        # Fan et al. 2020, Table 2: the unconstrained shapes (ZDT2-, ZDT1- and
+        # ZDT3-like; DTLZ1-like plane; DTLZ2-like sphere), g Rastrigin-like in
+        # DAS-CMOP4-8; the constraints of Types I and III cut the front
+        from .dascmop import TRIPLETS  # noqa: F401  (the triplets are the registry's)
+        i = int(stem[len("DAS-CMOP"):])
+        shape = {1: "concave", 2: "convex", 3: "mixed", 4: "concave", 5: "convex", 6: "mixed",
+                 7: "linear", 8: "concave", 9: "concave"}[i]
+        from .registry import DASCMOP
+        eta, _, gamma = DASCMOP.get(name, (i, (0.0, 0.0, 0.0)))[1]
+        if eta > 0 or gamma > 0 or i in (3, 6):
+            shape += "+disconnected"
+        return _p(shape, 4 <= i <= 8, False, False, False, False, False)
     if stem == "wideDTLZ3":
         row = dict(_DTLZ["DTLZ3"])
         row["centre"] = False

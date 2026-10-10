@@ -29,6 +29,8 @@
 #   RE21-91, CRE21-51   Tanabe & Ishibuchi 2020, real-world problems (re.py);
 #                       RE22c, RE33c their corrected copies (task 7, §9)
 #   OMM, LOTZ, OJZJ     bit-string problems of the runtime theory (binary.py)
+#   DAS-CMOP1-9         Fan et al. 2020, difficulty-adjustable constrained, at
+#                       the paper's sixteen triplets (dascmop.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -74,6 +76,7 @@ from . import noisy as _noisy
 from . import rotated as _rot
 from . import re as _re
 from . import binary as _bin
+from . import dascmop as _das
 from . import mw as _mw
 
 
@@ -1840,6 +1843,38 @@ _register_bt()
 _register_ipolygon()
 _register_c_dtlz()
 _register_mw()
+
+
+# =============================================================
+#  DAS-CMOP1-9 (dascmop.py, task 7, §8): Fan et al.'s difficulty-adjustable
+#  constrained problems, n = 30, at the sixteen difficulty triplets of their
+#  Table 3 (DAS-CMOP<i>_t01 .. _t16) and, for DAS-CMOP1-3, Figure 6's
+#  (0, 0.5, 0.5) (_f6). The front is built on first use, and the frame read
+#  off it there (_reframe_one), so the registration costs nothing.
+# =============================================================
+def _register_dascmop():
+    for i in range(1, 10):
+        M = _das.n_obj(i)
+        pop, ng = _budget(M)
+        tags = [(f"t{k:02d}", t) for k, t in enumerate(_das.TRIPLETS, start=1)]
+        if i <= 3:
+            tags.append(("f6", _das.FIGURE6))
+        for tag, t in tags:
+            key = _das.name(i, tag)
+            def _eval(x, _i=i, _t=t): return _das.evaluate(_i, x, _t)[0]
+            def _cons(x, _i=i, _t=t): return _das.evaluate(_i, x, _t)[1]
+            def _pf(n=1000, _i=i, _t=t): return _das.front(_i, _t, int(n))
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=_das.N_VARS, bounds=[(0.0, 1.0)] * _das.N_VARS, n_obj=M,
+                evaluate=_eval, constraints=_cons,
+                hv_ref_raw=tuple([2.2] * M), hv_ref_norm=_ref_norm(M),
+                hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([2.0] * M),
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf)
+            DASCMOP[key] = (i, t)
+
+
+DASCMOP: Dict[str, tuple] = {}             # name -> (i, triplet)
+_register_dascmop()
 _register_noisy()
 
 

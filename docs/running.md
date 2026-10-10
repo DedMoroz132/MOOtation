@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 994 benchmark problems (needs NumPy) |
+| `--problems` | list the 1141 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -156,8 +156,8 @@ day-long run.
 ## The built-in suites
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
-BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ and MW, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 994 problems across 39 families, each
+BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW and DAS-CMOP, rotated
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 1141 problems across 40 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -307,6 +307,19 @@ only the evaluation sees it rounded (`"baldwin"`). Polynomial mutation takes
 run records `dup_x_share`, the share of its evaluations whose decoded point had
 been evaluated before. The bits form the cores' binary genome, which 47 of the
 64 cores take; the others refuse it by name.
+
+**DAS-CMOP1-9** (Fan et al., Evolutionary Computation 28(3), 2020;
+`benchmarks/dascmop.py`): constrained problems whose difficulty a triplet
+(η, ζ, γ) sets — diversity (Type I constraints on the positions),
+feasibility (Type II, a band [d, e] for g, an equality at ζ = 1) and
+convergence (Type III, ellipses or spheres in the objective space). Each is
+registered at the paper's sixteen triplets, `DAS-CMOP1_t01` … `DAS-CMOP9_t16`
+(Table 3), and DAS-CMOP1-3 at Figure 6's (0, 0.5, 0.5), `_f6`;
+`dascmop.problem(i, eta, zeta, gamma)` gives any other. Their fronts are built
+on first use from a dense sample of the attainable set, each point's g brought
+down to its feasibility boundary by bisection, and the frame read off them;
+the properties' `difficulty` names the triplet's kinds. The formulas are the
+paper's Table 2; the check against pymoo is still to be done.
 
 **Bit strings.** OneMinMax (`OMM_n10`, `_n20`, `_n50`), LOTZ (`LOTZ_n…`) and
 OneJumpZeroJump (`OJZJ_n10_k2`, `OJZJ_n10_k3`, `OJZJ_n20_k3`, `OJZJ_n20_k4`)

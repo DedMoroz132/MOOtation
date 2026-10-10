@@ -7018,6 +7018,73 @@ def the_corrected_re22c_and_re33c_and_their_fronts():
 
 
 @test
+def das_cmop_follows_its_table_and_its_fronts_hold():
+    """Task 7, §8: DAS-CMOP1-9 (Fan et al. 2020, Table 2) at hand-checked
+    points; the triplet's parameters (Eq. 7), the equality at zeta = 1; the
+    sixteen triplets of Table 3 and Figure 6's registered; the front's points
+    satisfy every constraint and constructed feasible points do not beat it;
+    the properties name the triplet's kinds of difficulty."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import dascmop as D
+    from mootation.benchmarks.properties import properties
+    assert len(families()["DAS-CMOP"]) == 9 * 16 + 3
+    assert D.params(0.5, 0.5, 0.5) == (0.0, 0.5, 0.5 - math.log(0.5), 0.25)
+    b, d, e, r = D.params(0.0, 0.0, 0.0)
+    assert (b, d, math.isinf(e), r) == (-1.0, 0.0, True, 0.0)
+    assert D.params(0.0, 1.0, 0.0)[2] == 0.5                       # e = d: g = d exactly
+    x = np.full(30, math.sin(0.5 * math.pi * 0.3))
+    x[0] = 0.3
+    assert D.g_value(1, x) == 0.0
+    f, c = D.evaluate(1, x, (0.0, 0.0, 0.0))
+    assert np.allclose(f, [0.3, 1.0 - 0.09]) and max(c) <= 0.0       # all hold at (0, 0, 0)
+    f, c = D.evaluate(2, x, (0.5, 0.5, 0.5))
+    assert np.allclose(f, [0.3, 1.0 - math.sqrt(0.3)]) and c[1] > 0  # g = 0 < d: infeasible
+    z = np.full(30, 0.5)
+    z[0] = 0.2
+    assert D.g_value(4, z) == 0.0                                   # (n - 1) - (n - 1)
+    y = np.full(30, 0.5)
+    y[:2] = [0.2, 0.7]
+    assert D.g_value(7, y) == 0.0
+    f, _ = D.evaluate(7, y, (0.0, 0.0, 0.0))
+    assert np.allclose(f, [0.14, 0.56, 0.3]) and abs(sum(f) - 1.0) < 1e-12
+    rng = np.random.default_rng(3)
+    for name in ("DAS-CMOP1_f6", "DAS-CMOP5_t08", "DAS-CMOP7_t04"):
+        p = get(name)
+        i, t = int(name[8]), D.TRIPLETS[7] if name.endswith("t08") else (
+            D.FIGURE6 if name.endswith("f6") else D.TRIPLETS[3])
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert len(Z) > 100 and np.allclose(Z.min(axis=0), p.ideal)
+        # feasible points made on purpose: x1 (x2) at random, g = d + a little
+        bb, dd, ee, rr = D.params(*t)
+        pts = []
+        for _ in range(4000):
+            x = np.full(30, 0.5)
+            x[0], x[1] = rng.random(), rng.random()
+            if i <= 3:
+                x[1:] = math.sin(0.5 * math.pi * x[0])
+            gx = D.g_value(i, x)
+            f, c = D.evaluate(i, x, t)
+            G = dd + (min(ee, dd + 1.0) - dd) * rng.random() * 0.2 - gx
+            f = list(np.asarray(f) + G)
+            F = np.asarray([f])
+            cc = D.constraints_c(i, F, x[0], x[1], gx + G, t)[0]
+            if np.all(cc >= 0):
+                pts.append(f)
+        P = np.asarray(pts)
+        assert len(P) > 50, name
+        span = Z.max(axis=0) - Z.min(axis=0)
+        beaten = [np.any(np.all(P <= z - 1e-3 * span, axis=1)) for z in Z]
+        assert not any(beaten), (name, sum(beaten))
+    assert properties("DAS-CMOP3_t02")["difficulty"] == "feasibility"
+    assert properties("DAS-CMOP8_t12")["difficulty"] == "diversity+feasibility+convergence"
+    assert properties("DAS-CMOP4_t01")["multimodal"] and properties("ZDT1")["difficulty"] is None
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:

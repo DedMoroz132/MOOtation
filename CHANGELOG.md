@@ -223,6 +223,14 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- DAS-CMOP1-9 (`benchmarks/dascmop.py`; task 7, §8): Fan et al.'s
+  difficulty-adjustable constrained problems (Evolutionary Computation 28(3),
+  2020, Table 2), at the sixteen difficulty triplets of their Table 3 and
+  Figure 6's, with any other triplet through `dascmop.problem`; fronts built on
+  first use from a dense sample with each point's g bisected to its
+  feasibility boundary; the properties' new key `difficulty` names the
+  triplet's kinds. 1141 problems in 40 families. LIR-CMOP, DOC and RWMOP wait
+  for their papers.
 - Typed variables (`mootation/var_types.py`; task 7, §10): `minimize(var_types=...)`
   declares each variable "real", "int", ("discrete", values) or "bin"; the vault
   rounds the integer and discrete ones after every write
