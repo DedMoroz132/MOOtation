@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The maximin Latin hypercube (`init = "lhs"`, `lhs_search`) raises the
+  distances to the power −p by multiplications and compares designs by the sum
+  of the terms: numpy's power runs SIMD code on some CPUs (SVML on AVX-512)
+  whose last bits differ, and the annealing turned that into another design
+  from the same seed on another machine. A seed now gives the same design
+  everywhere — a different one from before, once.
+
 ### Removed
 
 - `srv_moead` (SRV on a steady-state MOEA/D). It was an extrapolation rather

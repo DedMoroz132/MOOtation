@@ -319,6 +319,27 @@ def maximin_order(D2, depth: int = 8) -> tuple:
     return tuple(key)
 
 
+def neg_power(D, p: int):
+    """D ** (-p) elementwise for an integer p >= 1, by repeated squaring and one
+    division: IEEE multiplications, the same bits on every CPU. numpy's power
+    dispatches to SIMD code (SVML on AVX-512) whose last bits differ from the
+    scalar pow's, and the annealing below turns one such bit into another
+    design; infinity and overflow give 0, as the power does."""
+    import numpy as np
+    out = np.ones_like(D)
+    base = np.array(D, float)
+    e = p
+    with np.errstate(over="ignore", invalid="ignore"):
+        while e:
+            if e & 1:
+                out = out * base
+            e >>= 1
+            if e:
+                base = base * base
+    with np.errstate(divide="ignore"):
+        return 1.0 / out
+
+
 def maximin_lhs(n: int, k: int, rng):
     """The level matrix (n by k, every column a permutation of 0..n-1) of a
     maximin Latin hypercube by Morris & Mitchell's search (MAXIMIN LHS)."""
@@ -346,14 +367,15 @@ def _anneal(L, p: int, rng):
     D2 = squared_distances(L)
     scale = float(D2.min())
     D2 /= scale
-    with np.errstate(over="ignore", divide="ignore"):
-        T = D2 ** (-p)                         # the pairs' terms, 0 on the diagonal
+    T = neg_power(D2, p)                       # the pairs' terms, 0 on the diagonal
     S = float(T.sum()) / 2
     phi = S ** (1.0 / p)
     t = _initial_temperature(n, k, p, scale)
     i_max = min(10 * k * n * (n - 1) // 2, I_MAX_CAP)
     budget = min(BUDGET, BUDGET_WORK // n)
-    best_cols, best_phi, at_best = cols.copy(), phi, True
+    # the comparisons go by S, which phi orders the same way (phi = S^(1/p)),
+    # and need no root; the acceptance probability takes phi
+    best_cols, best_S, at_best = cols.copy(), S, True
     spent = 0
     while spent < budget:
         accepted, tries = False, 1
@@ -369,19 +391,18 @@ def _anneal(L, p: int, rng):
             delta = ((col[b] - col) ** 2 - (col[a] - col) ** 2) / scale
             delta[a] = delta[b] = 0.0
             new_a, new_b = D2[a] + delta, D2[b] - delta
-            with np.errstate(over="ignore", divide="ignore"):
-                t_a, t_b = new_a ** (-p), new_b ** (-p)
+            t_a, t_b = neg_power(new_a, p), neg_power(new_b, p)
             S_try = S + float(t_a.sum() - T[a].sum() + t_b.sum() - T[b].sum())
             phi_try = S_try ** (1.0 / p) if S_try > 0 else math.inf
-            if phi_try < phi or rng.random() < math.exp(-(phi_try - phi) / t):
-                if at_best and phi_try > best_phi:
+            if S_try < S or rng.random() < math.exp(-(phi_try - phi) / t):
+                if at_best and S_try > best_S:
                     best_cols, at_best = cols.copy(), False     # leaving the best design
                 col[a], col[b] = col[b], col[a]
                 D2[a], D2[b], D2[:, a], D2[:, b] = new_a, new_b, new_a, new_b
                 T[a], T[b], T[:, a], T[:, b] = t_a, t_b, t_a, t_b
                 S, phi, accepted = S_try, phi_try, True
-            if phi_try < best_phi:
-                best_phi, at_best, tries = phi_try, True, 1
+            if S_try < best_S:
+                best_S, at_best, tries = S_try, True, 1
             else:
                 tries += 1
         S = float(T.sum()) / 2                  # again in full, against the drift
@@ -404,11 +425,11 @@ def _initial_temperature(n: int, k: int, p: int, scale: float) -> float:
     total = 0.0
     for start in range(0, m, 1_000_000):             # in pieces: m is 12.5 million at 5 000
         h = lo + (hi - lo) * np.arange(start, min(m, start + 1_000_000)) / max(m - 1, 1)
-        with np.errstate(over="ignore"):
-            total += float((h ** (-p)).sum())
+        total += float(neg_power(h, p).sum())
     smallest = lo
     closer = max(lo - 1.0 / scale, 1e-12)
-    total_try = total - smallest ** (-p) + closer ** (-p)
+    ends = neg_power(np.array([smallest, closer]), p)
+    total_try = total - float(ends[0]) + float(ends[1])
     d_phi = total_try ** (1.0 / p) - total ** (1.0 / p)
     return d_phi / -math.log(ACCEPT)
 

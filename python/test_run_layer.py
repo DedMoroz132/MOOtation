@@ -2751,7 +2751,8 @@ def an_owen_scrambled_sobol_plan_is_stratified_seeded_and_off_the_grid():
 def the_older_designs_have_not_moved():
     """The sobol and lhs designs and the draws of random_search, sobol_search
     and lhs_search are what they were before the randomized Halton came (task
-    6, item 12.5): rows 0, 5 and 11 of 12 points at seed 5, to 1e-12."""
+    6, item 12.5; lhs's since its power became multiplications, 2026-10-11):
+    rows 0, 5 and 11 of 12 points at seed 5, to 1e-12."""
     try:
         import numpy as np
     except ImportError:
@@ -2764,9 +2765,9 @@ def the_older_designs_have_not_moved():
         "random_search": [[0.80500292374538, 1.23176315894597, 5.15325561042142],
                           [0.844231037608741, -0.430381342660887, 4.93023018731743],
                           [0.436667052175653, -1.18698865554174, 3.24942644575606]],
-        "lhs_search": [[0.0671787427199933, 0.87864713808322, 5.03133728213074],
-                       [0.328950833854345, -1.08414312656047, 8.04914019274116],
-                       [0.871689838192273, 0.412373696896755, 2.23928782044247]],
+        "lhs_search": [[0.0729064959603389, 0.813428951982356, 5.22444211878804],
+                       [0.311445991338462, -1.05261810004373, 7.85666928530813],
+                       [0.875990488419677, 0.512934655283951, 1.91795590171167]],
         "sobol_search": [[0.63135180901736, -1.05258386209607, 5.24911201559007],
                          [0.149958958849311, 0.586466815322638, 6.30971090868115],
                          [0.965077580884099, 1.46423656120896, 7.00347781181335]],
