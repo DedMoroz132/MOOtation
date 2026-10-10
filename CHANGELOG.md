@@ -196,6 +196,18 @@ always listed under **Changed** or **Removed**.
 - `campaign_all.toml` also records `igdx`, `cr` and `pdist` on the final
   population and a Monte-Carlo hypervolume (10 000 points) on the
   five-objective trajectories, and runs the two ablations: 62 930 jobs.
+- `--instance-space` (task 6, item 13): the plane is PILOT's optimum computed
+  exactly (`instance_space.pilot_exact`, the reduced-rank regression), with
+  BFGS from `tries` starts kept as a check, no longer the BFGS end of the
+  highest preservation; its axes are fixed — whitened, or with
+  `--is-calibration preserve` stretched to the highest preservation — so that
+  the footprints no longer depend on where BFGS stopped, and every footprint's
+  area share comes with its range over six calibrations of the same optimum
+  (`area_share_min`, `area_share_max`). The performance rows are weighted
+  sqrt(q/a) (`--is-weight none` for the papers' loss); the bbob-biobj
+  problems' features come from a uniform sample of their box, 19 of them
+  (`instance_space.sample_features`; `--is-bbob-features properties` for the
+  old ones). When SIFTED keeps no feature, all stay.
 
 ### Added
 

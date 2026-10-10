@@ -2168,7 +2168,8 @@ def instance_space_runs_on_a_results_tree():
                          "final": final, "budget_nominal": 1000, "budget_fe": 1000,
                          "has_reference_front": prob in front, "reference_version": 2}),
                         encoding="utf-8")
-        text = S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=3)
+        text = S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=3,
+                     bbob_features="properties")
         assert "front: 6 problems" in text and "bbob: 4 problems" in text, text
         out = root / "_instance_space"
         with (out / "is_coordinates.csv").open(encoding="utf-8") as fh:
@@ -2190,6 +2191,61 @@ def instance_space_runs_on_a_results_tree():
         with (out / "is_footprints.csv").open(encoding="utf-8") as fh:
             for r in csv.DictReader(fh):                 # the known region lies in the hull
                 assert float(r["area_share_hull"]) <= float(r["area_share"]) + 1e-12, r
+                if r["area_share_min"]:                  # the main plane is one of the family
+                    assert float(r["area_share_min"]) - 1e-12 <= float(r["area_share"])                         <= float(r["area_share_max"]) + 1e-12, r
+        assert meta["calibration"] == "whiten" and meta["weight"] == "blocks", meta
+        g = meta["groups"]["front"]
+        assert g["pilot"]["method"] == "exact" and len(g["planes"]) == 6, g
+        assert abs(g["planes"]["whitened"] - g["pilot"]["preservation"]) < 1e-12
+        assert g["planes"]["preserving"] >= max(g["planes"].values()) - 1e-12
+        # the bbob-biobj problems' features from a sample, the default
+        S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=0,
+              out_dir=root / "sampled")
+        with (root / "sampled" / "is_coordinates.csv").open(encoding="utf-8") as fh:
+            rows = list(csv.DictReader(fh))
+        assert all(r["nd_share"] != "" for r in rows if r["group"] == "bbob")
+        assert all(r["nd_share"] == "" for r in rows if r["group"] == "front")
+
+
+@test
+def instance_space_plane_calibration_and_sample_features():
+    """THE PLANE: pilot_exact reaches the optimum's loss, a repeated feature
+    included; every calibration of it keeps the loss and the R^2, the whitened
+    plane has the identity covariance and the preserving one the highest
+    preservation of the family. FEATURES FROM A SAMPLE on made-up samples: a
+    linear trade-off is all non-dominated, its objectives opposed and linear in
+    x; two equal objectives agree; PRELIM drops a repeated and a constant row."""
+    if not _have_numpy() or not _have_scipy():
+        print("  skip  instance_space_plane...: no NumPy or SciPy"); return
+    import numpy as np
+    from mootation.run import instance_space as S
+    rng = np.random.default_rng(5)
+    F = rng.standard_normal((5, 60))
+    F = (F - F.mean(axis=1, keepdims=True)) / F.std(axis=1, keepdims=True)
+    Y = rng.standard_normal((7, 60)) + 0.7 * (rng.standard_normal((7, 5)) @ F)
+    for FF in (F, np.vstack([F, F[:1]])):
+        e = S.pilot_exact(FF, Y)
+        opt = S.pilot_optimum_loss(FF, Y)
+        assert abs(e["loss"] - opt) <= 1e-9 * opt, (e["loss"], opt)
+        assert np.allclose(e["Z"], (e["A"] @ FF).T)
+    fam = S.planes(F, Y, S.pilot_exact(F, Y))
+    for k, v in fam.items():
+        assert abs(v["loss"] - fam["whitened"]["loss"]) <= 1e-9 * v["loss"], k
+        assert np.allclose(v["r2_performance"], fam["whitened"]["r2_performance"]), k
+    Zw = fam["whitened"]["Z"]
+    assert np.allclose(np.cov(Zw.T, bias=True), np.eye(2), atol=1e-9)
+    assert fam["preserving"]["preservation"] >= max(v["preservation"] for v in fam.values()) - 1e-12
+    assert fam["main"] is fam["whitened"]
+    U = rng.random((400, 3))
+    f = S.sample_features(U, np.column_stack([U[:, 0], 1.0 - U[:, 0]]))
+    assert (f["nd_share"], f["dom_pairs"], f["lnd_share"]) == (1.0, 0.0, 1.0), f
+    assert abs(f["rho_mean"] + 1.0) < 1e-12 and f["lin_r2_min"] > 0.999
+    assert abs(f["log_range_ratio"]) < 1e-12, f
+    g = S.sample_features(U, np.column_stack([U[:, 1], 2.0 * U[:, 1]]))
+    assert abs(g["rho_mean"] - 1.0) < 1e-12 and g["nd_share"] == 1 / 400, g
+    assert abs(g["log_range_ratio"] - np.log10(2.0)) < 1e-12, g
+    keep, Z = S.prelim_features([list(U[:, 0]), list(U[:, 0]), [1.0] * 400, list(U[:, 1] ** 3)])
+    assert keep == [0, 3] and np.allclose(Z.mean(axis=1), 0.0) and np.allclose(Z.std(axis=1), 1.0)
 
 
 @test

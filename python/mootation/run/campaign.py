@@ -2253,6 +2253,15 @@ def main(argv: list[str] | None = None) -> int:
                          "(PILOT), per group of problems, and each algorithm's footprint there "
                          "at --cover's levels and budgets (instance_space.py; needs SciPy); CSV "
                          "under <results>/_instance_space/")
+    ap.add_argument("--is-calibration", choices=("whiten", "preserve"), default="whiten",
+                    help="with --instance-space: the plane's axes, whitened or stretched to "
+                         "the highest topological preservation (instance_space.py, THE PLANE)")
+    ap.add_argument("--is-weight", choices=("blocks", "none"), default="blocks",
+                    help="with --instance-space: the performance rows weighted sqrt(q/a) "
+                         "(q features, a algorithms) or not")
+    ap.add_argument("--is-bbob-features", choices=("sample", "properties"), default="sample",
+                    help="with --instance-space: the bbob-biobj problems' features, from a "
+                         "uniform sample of their box or their properties")
     ap.add_argument("--behaviour", action="store_true",
                     help="describe every run from its trajectory (time to targets, "
                          "convergence slope, converged-then-spreading, collapse, stagnation, "
@@ -2424,7 +2433,9 @@ def main(argv: list[str] | None = None) -> int:
             print(S.run(root, taus=taus, floor_taus=floor_taus, budgets=budgets,
                         min_seeds=args.cover_seeds, workers=args.workers,
                         scenario=args.scenario, n_ref=spec.n_ref,
-                        keep_caveats=args.cover_keep_caveats))
+                        keep_caveats=args.cover_keep_caveats,
+                        calibration=args.is_calibration, weight=args.is_weight,
+                        bbob_features=args.is_bbob_features))
         return 0
     if args.behaviour:
         if args.scenario == "archive":

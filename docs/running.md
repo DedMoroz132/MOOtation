@@ -1035,19 +1035,31 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   front and the bbob-biobj ones in spaces of their own. The features are the
   problem properties of `--by` (yes/no as 1/0, unknown as 0.5, the front's
   shapes a column each, the bbob-biobj function groups as counts, M, log2 D,
-  the front's dimension), z-scored; the performance is PRELIM's relative one,
+  the front's dimension), z-scored, for the problems with a front; for the
+  bbob-biobj ones, which their properties put on a few tens of points, 19
+  features of a uniform sample of ten populations of their box (non-dominated
+  share, dominated pairs, the objectives' correlation and scale ratios, skew,
+  kurtosis, linear and quadratic R², fitness-distance correlation, local
+  optima and nearest-better ratios, and their multi-objective analogues),
+  through PRELIM's bounding, Box-Cox and z-score (`--is-bbob-features
+  properties` takes the properties there too); the performance is PRELIM's relative one,
   each algorithm's median `igdp_norm` (or `hv_h`) at the full budget against
   the best median on the problem, Box-Cox-transformed and z-scored; SIFTED's
   first step keeps the features correlated with some algorithm's performance.
   PILOT places each problem at Z = A F so that linear models of Z predict the
-  features and the performances best: by BFGS from 30 random starts, keeping
-  the plane that best preserves the distances between the problems, as the
-  authors' toolkit does — among the starts that reach the lowest loss, since
-  some stop short of the optimum — with the analytical solution and the loss of
-  the exact optimum reported beside it. The analytical solution the papers give
-  is not that optimum (it takes the eigenvectors of [F; Y] where those of its
-  part in F's row space are needed) and falls 2–6 % short on stage 3; the exact
-  optimum is a reduced-rank regression. The footprint of an algorithm at each of
+  features and the performances best. Its optimum is a reduced-rank regression
+  and is computed exactly; the authors' toolkit's BFGS from 30 random starts
+  is run beside it as a check, and the analytical solution the papers give —
+  not that optimum: it takes the eigenvectors of [F; Y] where those of its part
+  in F's row space are needed — is reported too. The optimum fixes the plane
+  only up to an invertible linear map, which changes the footprints, so its
+  axes are fixed: whitened (the default) or, with `--is-calibration
+  preserve`, stretched to preserve the problems' distances best; and every
+  footprint's area share comes with its range over six such planes of the
+  same optimum. The performance rows are weighted √(q/a), q features against
+  a algorithms, so that the algorithms do not outweigh the features
+  (`--is-weight none`: the papers' unweighted loss; the other weighting's
+  preservation and R² are reported beside). The footprint of an algorithm at each of
   `--cover`'s levels and budgets (good = the level in `--cover-seeds` seeds) is
   the Delaunay triangulation of the problems where it is good, without
   triangles whose side exceeds a quarter of the largest distance or whose
