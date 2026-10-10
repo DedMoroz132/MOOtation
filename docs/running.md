@@ -287,7 +287,9 @@ with synthetic ones beside them, `all` is the synthetic problems only and
 
 `RE22c` and `RE33c` are their corrected copies, beside the originals, which
 stay for the published fronts: RE22 with x1's list as meant (3.10 for the
-original's "3,10", 76 values), RE33 with x4 in [2, 11] (reproblems' issue #9).
+original's "3,10", and the 7.00 it leaves out: the 77 values of the source's
+table), RE33 with x4 in [2, 11] (reproblems' issue #9; the source's box is
+[2, 20] with a constraint x4 <= 11, which the suite read as x4 >= 11).
 reproblems has no front for them; theirs are built here from an exhaustive
 grid refined locally and thinned by DSS to 500 M points
 (`python -m mootation.benchmarks.re_fronts`, `benchmarks/_re/corrected/`), the
@@ -319,7 +321,11 @@ registered at the paper's sixteen triplets, `DAS-CMOP1_t01` … `DAS-CMOP9_t16`
 on first use from a dense sample of the attainable set, each point's g brought
 down to its feasibility boundary by bisection, and the frame read off them;
 the properties' `difficulty` names the triplet's kinds. The formulas are the
-paper's Table 2; the check against pymoo is still to be done.
+paper's Table 2, and the values agree with pymoo 0.6.2 at random points to
+1e-12, but where the two read the feasibility constraint differently: at
+ζ = 0 pymoo bounds g by 10^30 (satisfied everywhere either way), and at ζ = 1,
+where the constraint becomes the equality g = d, the library takes the
+paper's tolerance 10^-6 (its Eq. 13), pymoo 10^-4.
 
 **Bit strings.** OneMinMax (`OMM_n10`, `_n20`, `_n50`), LOTZ (`LOTZ_n…`) and
 OneJumpZeroJump (`OJZJ_n10_k2`, `OJZJ_n10_k3`, `OJZJ_n20_k3`, `OJZJ_n20_k4`)
@@ -699,7 +705,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `bound_repair` | for the operators above that can leave the box (BLX-α, the four multi-parent crossovers, de, de_pbest, gaussian, Cauchy): `reflect` by default, provisionally, until experiment E3 picks one; the multi-parent crossovers and DE refuse `resample` |
 | `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
-| `survival`, `spu_frac` | SMS-EMOA, NSGA-II and NSGA-III: `greedy` (the default, the papers' selection) or `stochastic`, the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023): a random Q′ of ⌊`spu_frac`·\|Q\|⌋ members of parents and offspring (1/2 in SMS-EMOA, 3/4 in the NSGA's, the paper's) goes through the usual selection alone — its fronts, reference point, extremes, normalisation — and every member outside Q′ survives untouched; any member survives a step with probability at least 1/2 (SMS-EMOA) or 1/4. `spu_frac = 1` is greedy bit for bit. For NSGA-III the scheme is NSGA-II's, not checked against Opris (IJCAI 2025), whose abstract alone was read |
+| `survival`, `spu_frac` | SMS-EMOA, NSGA-II and NSGA-III: `greedy` (the default, the papers' selection) or `stochastic`, the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023): a random Q′ of ⌊`spu_frac`·\|Q\|⌋ members of parents and offspring (1/2 in SMS-EMOA, 3/4 in the NSGA's, the paper's) goes through the usual selection alone — its fronts, reference point, extremes, normalisation — and every member outside Q′ survives untouched; any member survives a step with probability at least 1/2 (SMS-EMOA) or 1/4. `spu_frac = 1` is greedy bit for bit. For NSGA-III Q′ has ⌈`spu_frac`·2N⌉ members, Opris's ⌈3µ/2⌉ (IJCAI 2025, Algorithm 1; NSGA-II takes Bian's floor, the same at an even N) |
 | `inner_archive`, `inner_archive_cap`, `archive_reuse_p` | SMS-EMOA, NSGA-II, NSGA-III, IBEA-ε+: `inner_archive = "nd"` keeps every non-dominated point the algorithm evaluated (an equal objective vector is not added; under constraint handling feasible points only), cut to `inner_archive_cap` by DSS after every addition (0: no cap; unset: 10 μ, none for a purely binary genome); each parent, with probability `archive_reuse_p` (0), is a member drawn uniformly. The result's `inner_archive` holds it; `operator_stats` the share of the parents drawn from it (`archive_parent_share`). The answer's archive (`[campaign] archive`) is apart and unchanged (`operators/inner_archive.hpp`) |
 | `bin_crossover`, `mating` | for the paper's theory runs: `bin_crossover = "none"` (SMS-EMOA, NSGA-II) leaves the binary genome uncrossed (`uniform` by default); NSGA-II's `mating = "each"` makes every member a parent exactly once, its child its mutation (`tournament` by default), and needs no crossover on any part of the genome — `crossover = "none"`, which gives the parents as they are, with real variables |
 | `coords`, `coords_warmup`, `coords_update` | where the crossover and the mutation act: `axis` (the default, as always); `pca`, in y = (x − μ) R, R the eigenvectors of the population's covariance by decreasing eigenvalue, μ its mean; `pca_nd`, the same from its non-dominated members (all of it while fewer than three); `randrot`, a fresh random rotation at every update, the control. R = I for the first `coords_warmup` generations (10) — counted in generations, not in a share of the budget, so the algorithm stays budget-independent — then R and μ every `coords_update` generations (1). In y there is no box: every crossover runs unbounded, SBX in its unbounded form, and the mutation acts there too (else it is axis-wise again), within the projected population's range widened by half its span; the children go back to x, x = y Rᵀ + μ, and through `bound_repair` (reflect by default). The basis is complete with fewer points than variables. mosa's sbx step takes it too, the basis learned from its archive (`operators/learned_coords.hpp`, `variation.hpp`). With `operator_stats` the spectrum is recorded (`coords_ratio`, `coords_lead_share`); `[campaign] coords_diag = true` adds the principal angles between the learned minor subspace and the problem's distance block (`coords_angle_max`, `coords_angle_mean`; 0°: found), where the block is known (ZDT, DTLZ, WFG, MaF, ZCAT, Polygon and their shifted, rotated and noisy copies; `run/coords_diag.py`) |
@@ -747,11 +753,11 @@ in list order), the directions in random order (DMS-6 in `dms.hpp`).
 
 **MOSA.** Multi-objective simulated annealing (`algorithms/mosa.hpp`):
 annealing chains over an archive of every non-dominated point evaluated. It is
-not one paper's algorithm but a composition: AMOSA's archive and informed
-reseeding, DBMOSA's energy (the share of the archive dominating a point) and
-the Chebyshev chains of Pareto simulated annealing with weights that adapt to
-push the chains apart; the header says which part is whose, and that the three
-papers are still to be checked against. One step is one evaluation, so `pop`
+not one paper's algorithm but a composition: DBMOSA's unconstrained archive,
+energy (the share of the archive dominating a point), Laplace move and restarts
+from the archive, and the chains of Pareto simulated annealing with weights that adapt to
+push the chains apart; the header says which part is whose and where it
+departs from the papers. One step is one evaluation, so `pop`
 is the size of the answer — the archive reduced by DSS, published every `pop`
 steps and at the last — not of a population, and annealing is sequential:
 `batch=` and a cluster's evaluators see one point at a time. The temperature
@@ -761,7 +767,7 @@ on it (`run/budget.py`; a ladder runs each rung apart).
 | knob | values |
 |---|---|
 | `sa_energy` | `cmb` (the default: the share of the archive dominating the point where it is above 0, minus the additive ε of the archive against the point elsewhere), `eps`, `dom`, `tch` (Chebyshev, each chain its own weights) |
-| `sa_step` | `mix` (the default: SBX with a random archive member, then polynomial mutation, or a differential step, half and half), `laplace` (AMOSA's move, each variable with probability 1/n, scale s·(ub − lb)), `de` (x + F(x_a − x_b) with probability `p_de` = 0.7, otherwise Laplace), `sbx`, `adaptive` (laplace, de or sbx with probability ∝ its successes in the last `sa_adapt_window` = 200 steps + 1) |
+| `sa_step` | `mix` (the default: SBX with a random archive member, then polynomial mutation, or a differential step, half and half), `laplace` (DBMOSA's move, here each variable with probability 1/n, scale s·(ub − lb)), `de` (x + F(x_a − x_b) with probability `p_de` = 0.7, otherwise Laplace), `sbx`, `adaptive` (laplace, de or sbx with probability ∝ its successes in the last `sa_adapt_window` = 200 steps + 1) |
 | `F`, `p_de` | the differential step's factor (0.5) and, in `de`, its probability (0.7) |
 | `sa_chains` | chains over one archive, advancing in turn: 1, or 10 with `tch` |
 | `sa_reseed` | the probability per step of restarting a chain from the better of two random archive members (1/50) |

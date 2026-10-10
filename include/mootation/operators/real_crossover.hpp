@@ -144,7 +144,7 @@ inline void blx_alpha_crossover(const std::vector<double>& p1, const std::vector
 //            selection kept, each tagged with its operator — after Borg
 //            (Hadka & Reed, Evol. Comput. 21(2):231-259, 2013), whose archive
 //            is an ε-box archive of every offspring: here no ε, and only the
-//            children that survived (the paper is not in the corpus yet).
+//            children that survived (not checked against the paper yet).
 // The operator of every child goes to portfolio_record(): its children and
 // how many of them the selection kept, which operator_stats() reports.
 enum class PortfolioCredit { Uniform, Borg };
@@ -406,7 +406,15 @@ struct CrossoverSpec {
         }
         if (k == Crossover::DE || k == Crossover::DEPBest) {
             auto r2 = [&] { return de.population_or_archive(draw_parent, N, rng); };
-            de_children(P, k == Crossover::DEPBest, [&] { return best(de.set.p); }, r2, c1, c2,
+            // p of current-to-pbest: de_p, or with SHADE rand[2/N, 0.2] per
+            // child (SHADE's Eq. 20; de_crossover.hpp)
+            auto p_of = [&] {
+                if (de.set.adapt != DEAdapt::SHADE) return de.set.p;
+                const double lo = std::min(0.2, 2.0 / static_cast<double>(N));
+                std::uniform_real_distribution<double> u(lo, 0.2);
+                return u(rng);
+            };
+            de_children(P, k == Crossover::DEPBest, [&] { return best(p_of()); }, r2, c1, c2,
                         bounds, repair, de, rng);
             return;
         }

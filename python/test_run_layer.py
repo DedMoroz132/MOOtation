@@ -6983,8 +6983,9 @@ metrics = ["igdp_norm"]
 
 @test
 def the_corrected_re22c_and_re33c_and_their_fronts():
-    """Task 7, §9: RE22c is RE22 with 3.10 for the original's "3,10" in x1's
-    list (76 values), RE33c is RE33 with x4 in [2, 11]; the originals are
+    """Task 7, §9: RE22c is RE22 with x1's list as its source has it, 3.10
+    for the original's "3,10" and the 7.00 it leaves out (77 values), RE33c is
+    RE33 with x4 in [2, 11]; the originals are
     unchanged; their fronts, built here, are not beaten by 20 000 random points
     of the box, and their frames are the fronts' own."""
     if not _have_numpy():
@@ -6995,9 +6996,11 @@ def the_corrected_re22c_and_re33c_and_their_fronts():
     from mootation.benchmarks.properties import properties
     from mootation.families import family
     values = list(RE.RE22C_VALUES)
-    assert len(values) == 76 and 3.1 in values and 10.0 not in values and values.count(3.0) == 1
+    assert len(values) == 77 and 3.1 in values and 7.0 in values and 10.0 not in values
+    assert values.count(3.0) == 1 and values == sorted(values)
     a, b = get("RE22c"), get("RE22")
     assert a.evaluate([3.11, 10.0, 20.0]) != b.evaluate([3.11, 10.0, 20.0])   # 3.10 against 3.0
+    assert a.evaluate([7.01, 10.0, 20.0]) != b.evaluate([7.01, 10.0, 20.0])   # 7.00 against 7.11
     assert a.evaluate([5.0, 10.0, 20.0]) == b.evaluate([5.0, 10.0, 20.0])
     c, d = get("RE33c"), get("RE33")
     assert c.bounds[3] == (2.0, 11.0) and d.bounds[3] == (11.0, 20.0)

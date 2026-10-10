@@ -48,7 +48,8 @@ KNOWN DEFECTS, kept so that the values match the published fronts (the
 repository's change log and issues):
   * RE22: the list of x1's discrete values reads "3.08, 3,10, 3.16" in all
     four language versions — a comma for a point, so the list holds 3 and 10
-    where 3.10 was meant. Not corrected: a corrected RE22 would need a new
+    where 3.10 was meant — and goes from 6.60 to 7.11: the source's 7.00 is
+    missing (RE22c below). Not corrected: a corrected RE22 would need a new
     reference front.
   * RE33 (and CRE23): issue #9 (2023, open) — the range of x4 is given as
     [11, 20] and should be [2, 11], the author agrees. Kept as [11, 20].
@@ -57,15 +58,22 @@ repository's change log and issues):
 
 THE CORRECTED COPIES (task 7 of 2026-10-10, §9), beside the originals, which
 stay as they are for the published fronts:
-  RE22c  RE22 with x1's list as meant: 3.10 where the original has "3,10"
-         (76 values, not 77). The list is RE22's own; its source, Amir and
-         Hasegawa's reinforced concrete beam (J. Struct. Eng. 115(3), 1989),
-         is not openly available and was not checked.
+  RE22c  RE22 with x1's list as its source has it: the 77 areas of Amir
+         and Hasegawa's Table 2 (J. Struct. Eng. 115(3):626-646, 1989; source
+         re22_amir1989, checked on the printed page): 3.10 where the original
+         has "3,10", and 7.00 for x1 = 60, seven #9 bars, whose area the
+         printed table leaves blank (one #9 bar is 1.00, x1 = 11) and which
+         the original list leaves out.
   RE33c  RE33 with x4 in [2, 11] instead of [11, 20], after reproblems'
          issue #9 (opened 2023-02-25, still open; the author confirmed the
          error there on 2023-04-11, and the code still has [11, 20]). The
-         disc brake's source (Ray and Liew, Eng. Optim. 34(2), 2002) is not
-         openly available and was not checked.
+         source, Ray and Liew's disc brake (Eng. Optim. 34(2):141-153, 2002,
+         §3.4; source re33_ray2002), has 2 <= x4 <= 20 and the constraint
+         30 - 2.5 (x4 + 1) >= 0, that is x4 <= 11; the suite's supplement
+         (footnote 4 of S.1.8) read it as "x4 >= 11", whence [11, 20], where
+         only x4 = 11 is feasible. [2, 11] is the source's feasible range.
+         x4 counts friction surfaces (the source calls the problem mixed);
+         it stays real here, as the suite evaluates it.
   Their reference fronts are built here (re_fronts.py: an exhaustive grid,
   then local refinement, thinned by DSS to 500 M points), shipped in
   _re/corrected/ with the fronts' own ideal and nadir points; front_exact is
@@ -126,8 +134,10 @@ RE22_VALUES = np.array([0.20, 0.31, 0.40, 0.44, 0.60, 0.62, 0.79, 0.80, 0.88, 0.
                         4.80, 4.84, 5.0, 5.28, 5.40, 5.53, 5.72, 6.0, 6.16, 6.32, 6.60, 7.11,
                         7.20, 7.80, 7.90, 8.0, 8.40, 8.69, 9.0, 9.48, 10.27, 11.0, 11.06, 11.85,
                         12.0, 13.0, 14.0, 15.0])
-# RE22c: the list as meant, 3.10 for the original's "3,10"
-RE22C_VALUES = np.array([v for v in RE22_VALUES[:33]] + [3.10] + [v for v in RE22_VALUES[35:]])
+# RE22c: the source's list (Amir & Hasegawa 1989, Table 2), 3.10 for the
+# original's "3,10" and the 7.00 the original leaves out between 6.60 and 7.11
+RE22C_VALUES = np.array([v for v in RE22_VALUES[:33]] + [3.10] + [v for v in RE22_VALUES[35:60]]
+                        + [7.00] + [v for v in RE22_VALUES[60:]])
 RE25_VALUES = np.array([0.009, 0.0095, 0.0104, 0.0118, 0.0128, 0.0132, 0.014, 0.015, 0.0162,
                         0.0173, 0.018, 0.02, 0.023, 0.025, 0.028, 0.032, 0.035, 0.041, 0.047,
                         0.054, 0.063, 0.072, 0.08, 0.092, 0.105, 0.12, 0.135, 0.148, 0.162,

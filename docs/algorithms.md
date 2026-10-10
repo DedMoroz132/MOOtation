@@ -229,15 +229,18 @@ reference fronts and archives.
 | MOSA | 2026 | `mosa` | a composition, below |
 
 Not evolutionary and not from one paper: annealing chains over an archive of
-every non-dominated point evaluated, put together from AMOSA's archive and
-informed reseeding ([10.1109/TEVC.2007.900837](https://doi.org/10.1109/TEVC.2007.900837)),
-DBMOSA's energy, the share of the archive dominating a point
-([10.1109/TEVC.2007.904345](https://doi.org/10.1109/TEVC.2007.904345)), and the
-Chebyshev chains of Pareto simulated annealing with weights that adapt to push
-the chains apart (Czyżak & Jaszkiewicz, J. Multi-Crit. Decis. Anal. 7(1), 1998).
-The header lists which parts are whose and which are ours (the default energy,
-`sa_energy = cmb`, and the steps `mix` and `adaptive`), and says plainly that
-the three papers are still to be checked against. One step is one evaluation, so annealing is sequential: there
+every non-dominated point evaluated, put together from DBMOSA's unconstrained
+archive, energy (the share of the archive dominating a point), Laplace move
+and restarts from the archive
+([10.1109/TEVC.2007.904345](https://doi.org/10.1109/TEVC.2007.904345)),
+AMOSA's energies against an archive
+([10.1109/TEVC.2007.900837](https://doi.org/10.1109/TEVC.2007.900837); its
+bounded archive and informed reseeding are not used), and the chains of Pareto
+simulated annealing with weights that adapt to push them apart and its
+weighted-sum acceptance (Czyżak & Jaszkiewicz, J. Multi-Crit. Decis. Anal.
+7(1), 1998). The header lists which parts are whose, where they depart from
+the papers and which are ours (the default energy, `sa_energy = cmb`, the
+Chebyshev energy, and the steps `mix` and `adaptive`). One step is one evaluation, so annealing is sequential: there
 is nothing to evaluate in parallel, and `batch=` gets one point at a time.
 The temperature and the step scale fall over the whole budget, so the run
 depends on `max_evaluations` (`run/budget.py`). Its answer is the archive

@@ -72,9 +72,10 @@ kappa = 10^3), with its Q = I control.
             WFG9's u* depends on no position: a constant vector, from 0.35 at
             the last variable down to 0.001 at the first; WFG8's lies between
             0 and 0.98, median 0.33, at random positions.
-            pymoo builds the same Pareto set (_positional_to_optimal,
-            Apache-2.0); its code was not at hand here, so the tests check the
-            set numerically: its images lie on WFG8's and WFG9's front, the
+            pymoo 0.6.2 builds the same Pareto set (_positional_to_optimal,
+            Apache-2.0): wfg8_optimum and wfg9_optimum agree with it to 1e-14
+            at random positions, M = 2, 3, 5; the tests check the set
+            numerically too: its images lie on WFG8's and WFG9's front, the
             sphere sum (f_m / 2m)^2 = 1. With the optimum near 0 for many of
             the variables, the rotation sends about half of them below 0: every
             uniform point has clipped variables, 9-10.5 of the 20 on average.

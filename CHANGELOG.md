@@ -16,6 +16,31 @@ always listed under **Changed** or **Removed**.
   whose last bits differ, and the annealing turned that into another design
   from the same seed on another machine. A seed now gives the same design
   everywhere — a different one from before, once.
+- Checked against the papers task 7 was written without (sources in the
+  headers). `de_adapt = "shade"` with `crossover = "de_pbest"` draws p for
+  every child from [2/N, 0.2] (SHADE's Eq. 20) instead of using `de_p`; the
+  rest is SHADE's Algorithm 1 as it was. `mosa`'s header names DBMOSA for the
+  unconstrained archive, the Laplace move, T_0 and the restarts from the
+  archive, and says that AMOSA's bounded archive and informed reseeding are
+  not used; with `sa_energy = "tch"` a chain's weight now rises on an
+  objective where it is better than its neighbour or equal to it (it used to
+  fall on a tie) and the weights are drawn at random when it has no
+  non-dominated neighbour (they used to stay), as in PSA's algorithm.
+  NSGA-III's `survival = "stochastic"` draws ⌈`spu_frac`·2N⌉ members, Opris's
+  ⌈3µ/2⌉ (IJCAI 2025, Algorithm 1), where it took ⌊·⌋ as NSGA-II after Bian
+  et al. does; the two differ at an odd N.
+- DAS-CMOP at ζ = 1 (`_t13` … `_t16`): the feasibility constraint is the
+  equality g = d within the paper's 10⁻⁶ (its Eq. 13); it was the product
+  (e − g)(g − d), satisfied at g = d alone. The objectives and the other
+  constraints agree with pymoo 0.6.2 at random points to 1e-12, and so do
+  WFG8's and WFG9's optimal distance variables, about which rWFG8 and rWFG9
+  turn.
+- RE22c's list of x1 is the source's (Amir & Hasegawa 1989, Table 2, read on
+  the printed page): 77 areas, with 7.00 for seven #9 bars, whose area the
+  table leaves blank and the original list leaves out, besides 3.10 for
+  "3,10". Its reference front does not change. RE33c's header records Ray and
+  Liew's box for x4, [2, 20], and their constraint x4 <= 11, which the suite's
+  supplement read as x4 >= 11.
 
 ### Removed
 

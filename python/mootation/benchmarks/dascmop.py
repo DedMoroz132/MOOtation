@@ -5,8 +5,9 @@ Z. Fan, W. Li, X. Cai, H. Li, C. Wei, Q. Zhang, K. Deb, E. Goodman,
 "Difficulty Adjustable and Scalable Constrained Multi-objective Test Problem
 Toolkit", Evolutionary Computation 28(3):339-378, 2020, doi:10.1162/evco_a_00259
 (source das-cmop_fan2019, the arXiv version: Table 2, Eq. 7 and Table 3). The
-formulas are the paper's Table 2, read off the rendered page; the check against
-pymoo the task asks for was not possible here (no pymoo at hand): to be done.
+formulas are the paper's Table 2, read off the rendered page. The objectives
+agree with pymoo 0.6.2 (problems/multi/dascmop.py) at random points to 1e-12 at
+every triplet, and so do the constraints but for the two readings below.
 
   DAS-CMOP1-3  f1 = x1 + g, f2 = 1 - x1^2 + g (1); 1 - sqrt(x1) + g (2);
                1 - sqrt(x1) + 0.5 |sin(5 pi x1)| + g (3);
@@ -34,8 +35,11 @@ THE CONSTRAINTS (c >= 0 satisfied; the library's sign, <= 0 satisfied, is -c):
   a = 20, d = 0.5, and the difficulty triplet (eta, zeta, gamma) in [0, 1]^3
   sets the rest (Eq. 7): b = 2 eta - 1, e = d - ln(zeta), r = gamma / 2; at
   zeta = 0 there is no upper bound e and d = 0 (Eq. 7, "if zeta == 0, d = 0"):
-  c2 always holds. At zeta = 1, e = d: the second constraint is an equality,
-  g = d (the paper's triplets 13-16).
+  c2 = g - d, which always holds (pymoo takes e = 1e30, (e - g)(g - d): the
+  same sign everywhere, values 1e30 times larger). At zeta = 1, e = d: the
+  second constraint is the equality g = d (the paper's triplets 13-16), taken
+  as the paper's experiments take an equality (§7.3, Eq. 13, after Ullah et
+  al. 2012): c2 = EQ_EPS - |g - d| >= 0, EQ_EPS = 1e-6 (pymoo: 1e-4).
 
 THE TRIPLETS: the paper's sixteen (Table 3) are registered, DAS-CMOP<i>_t01 ..
 _t16; any other through problem(i, eta, zeta, gamma), the knobs of an
@@ -62,6 +66,7 @@ import numpy as np
 
 N_VARS = 30
 A, D = 20.0, 0.5
+EQ_EPS = 1e-6                                  # Eq. 13's epsilon, zeta = 1
 P_K = np.array([0, 1, 0, 1, 2, 0, 1, 2, 3], float)
 Q_K = np.array([1.5, 0.5, 2.5, 1.5, 0.5, 3.5, 2.5, 1.5, 0.5])
 AK2, BK2, THETA = 0.3, 1.2, -0.25 * math.pi
@@ -120,8 +125,14 @@ def constraints_c(i: int, F: np.ndarray, x1, x2, g, triplet) -> np.ndarray:
     b, d, e, r = params(*triplet)
     F = np.atleast_2d(F)
     x1, x2, g = np.atleast_1d(x1), np.atleast_1d(x2), np.atleast_1d(g)
-    # zeta = 0: no upper bound, and g >= d = 0 holds everywhere (c2 = g - d)
-    c_g = g - d if math.isinf(e) else (e - g) * (g - d)
+    # zeta = 0: no upper bound, and g >= d = 0 holds everywhere (c2 = g - d);
+    # zeta = 1: the equality g = d within Eq. 13's epsilon
+    if math.isinf(e):
+        c_g = g - d
+    elif e == d:
+        c_g = EQ_EPS - np.abs(g - d)
+    else:
+        c_g = (e - g) * (g - d)
     if n_obj(i) == 2:
         f1 = F[:, 0:1] - P_K
         f2 = F[:, 1:2] - Q_K
@@ -175,7 +186,9 @@ def front(i: int, triplet: tuple, n_points: int = 1000) -> np.ndarray:
     # the least feasible g of every kept point, by bisection between the grid
     # step below (infeasible, or below d) and the grid value
     step = gs[1] - gs[0] if n_obj(i) == 2 else (top - d) / 40.0
-    lo, hi = np.maximum(G - step, d), G.copy()
+    # (zeta = 1: g = d within EQ_EPS, so the least feasible g is d - EQ_EPS)
+    lo = np.full_like(G, d - EQ_EPS) if e == d else np.maximum(G - step, d)
+    hi = G.copy()
     for _ in range(40):
         mid = 0.5 * (lo + hi)
         Fm = shape(i, X1, X2) + mid[:, None]

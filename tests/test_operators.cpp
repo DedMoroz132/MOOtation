@@ -592,6 +592,21 @@ void test_de_pbest_and_archive()
         spec.finish(c1, c2);
     }
     check(calls == 400 && outside_best == 0, "x_pbest always one of the best ceil(p N)");
+    {   // with SHADE, p per child from rand[2/N, 0.2] (SHADE's Eq. 20), not de_p
+        ops::CrossoverSpec s2;
+        s2.kind = ops::Crossover::DEPBest;
+        s2.de.set.p = 0.5;
+        s2.de.set.adapt = ops::DEAdapt::SHADE;
+        double lo = 1.0, hi = 0.0;
+        auto seen = [&](double p) { lo = std::min(lo, p); hi = std::max(hi, p); return v.X[0]; };
+        s2.observe(v, 20, rng);
+        for (int t = 0; t < 500; ++t) {
+            s2.apply_any(v.X[0], v.X[1], draw, seen, 20, c1, c2, b, 20.0, 1.0, rng);
+            s2.finish(c1, c2);
+        }
+        check(lo >= 0.1 && hi <= 0.2 && lo < 0.11 && hi > 0.19,
+              "SHADE: p per child spread over [2/N, 0.2], de_p unused");
+    }
     check(spec.de.archive().empty(), "no parent displaced yet: the archive is empty");
     // the next population: ten members replaced by children
     FakeVault w = v;

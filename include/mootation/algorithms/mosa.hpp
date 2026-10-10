@@ -26,24 +26,40 @@ namespace mootation {
 
 // ============================================================================
 // MOSA — multi-objective simulated annealing over an archive (task 7 of
-// 2026-10-10, §1 and §6): a composition of this library, the mechanisms from
-//   * the archive of every non-dominated point and the informed reseeding
-//     from it — AMOSA (Bandyopadhyay, Saha, Maulik & Deb, IEEE TEVC
-//     12(3):269-283, 2008, doi:10.1109/TEVC.2007.900837);
-//   * the energy "share of the archive dominating the point" — DBMOSA (Smith,
-//     Everson, Fieldsend, Murphy & Misra, IEEE TEVC 12(3):323-342, 2008,
-//     doi:10.1109/TEVC.2007.904345), without their refinement by the
-//     attainment surface;
-//   * the Chebyshev energy of chains with weights that adapt to push the
-//     chains apart — Pareto simulated annealing (Czyżak & Jaszkiewicz, J.
-//     Multi-Crit. Decis. Anal. 7(1):34-47, 1998,
-//     doi:10.1002/(SICI)1099-1360(199801)7:1<34::AID-MCDA161>3.0.CO;2-6);
+// 2026-10-10, §1 and §6): a composition of this library. Which mechanism
+// comes from where, checked against the papers (sources
+// dbmosa_smith2008_final-submission, amosa_bandyopadhyay2008_accepted,
+// psa_czyzak1998):
+//   * DBMOSA (Smith, Everson, Fieldsend, Murphy & Misra, IEEE TEVC
+//     12(3):323-342, 2008, doi:10.1109/TEVC.2007.904345): the archive of
+//     EVERY non-dominated point (unconstrained, §III); the energy "share of
+//     the archive dominating the point" (Eq. 12), here against A' = A
+//     without the point, without their refinement by the attainment surface
+//     (§IV); the Laplace perturbation (§V-B: there one variable at random,
+//     with per-variable scalings adapted to traversal and location moves;
+//     here every variable with probability 1/n and one scale falling over
+//     the budget); T_0 from the energy changes over ln 2 (§V-A: there the
+//     mean positive change over a burn-in; here the median over pairs of
+//     start points); the restart from the archive (§II-C, "periodically
+//     restarting the annealer from a randomly chosen element of F"; here the
+//     better by energy of two random members, with probability sa_reseed);
+//   * AMOSA (Bandyopadhyay, Saha, Maulik & Deb, IEEE TEVC 12(3):269-283,
+//     2008, doi:10.1109/TEVC.2007.900837): the energies against an archive.
+//     Its archive is bounded (HL and SL, single-linkage clustering, §III-B)
+//     — sa_archive_cap > 0 is that idea with DSS — and its "informed
+//     reseeding" (Case 3(a): a new point that dominates the current one but
+//     not the archive points dominating it gives way, with probability
+//     1/(1 + exp(−Δdom_min)), to the closest of those) is NOT used here;
+//   * Pareto simulated annealing (Czyżak & Jaszkiewicz, J. Multi-Crit.
+//     Decis. Anal. 7(1):34-47, 1998,
+//     doi:10.1002/(SICI)1099-1360(199801)7:1<34::AID-MCDA161>3.0.CO;2-6):
+//     chains with weights that adapt to push them apart (the rule of its
+//     Algorithm, with α = 1.05) and the acceptance by the weighted sum of
+//     the objectives' differences (rule SL, which its experiments use);
 //   * the steps: the library's SBX and polynomial mutation, a differential
-//     step, AMOSA's Laplace move;
-//   * the combined energy, the step "SBX or DE" and the adaptive choice of
-//     step: ours.
-// THE PAPERS OF AMOSA, DBMOSA AND PSA ARE NOT CHECKED AGAINST YET: the
-// mechanisms are written from the task, PSA's rules from memory.
+//     step, the Laplace move above;
+//   * the combined energy, the Chebyshev energy against the archive's ideal
+//     point, the step "SBX or DE" and the adaptive choice of step: ours.
 //
 // ONE STEP IS ONE EVALUATION. A run:
 //   1. START: a Latin hypercube of max(n + 2, 20) points, all evaluated and
@@ -56,7 +72,9 @@ namespace mootation {
 //      a zero range counting as 1):
 //        eps  −min_{a∈A'} max_i (a_i − f_i)/span_i, the additive ε of A'
 //             against f — negative where f extends the front;
-//        dom  the share of A' that dominates f (DBMOSA);
+//        dom  the share of A' that dominates f (DBMOSA's Eq. 12 divides
+//             |F̃_x'| − |F̃_x| by one |F̃|, F̃ = A ∪ {x, x'}; here each
+//             share has its own A');
 //        cmb  (the default) dom when it is > 0, eps otherwise: the pressure
 //             of dom on a dominated point, the spread of eps among the rest;
 //        tch  max_i w_k,i (f_i − z_i)/span_i, z A's ideal point, w_k the
@@ -90,22 +108,28 @@ namespace mootation {
 //      point's energy recomputed against today's archive; Metropolis,
 //      exp(−ΔE/T). With tch the default compares the weighted sum of the
 //      objectives' differences, Σ w_k,i (f'_i − f_i)/span_i, as PSA does
-//      (sa_tch_accept = weighted_sum); chebyshev compares the energies.
+//      (sa_tch_accept = weighted_sum: PSA's rule SL, P = min{1, exp(−Σ λ_j
+//      (f_j(y) − f_j(x))/T)} under minimization — the paper prints the sign
+//      of the exponent the other way round, which Fig. 1 contradicts);
+//      chebyshev compares the energies, which is not PSA's rule C (that is
+//      max_j λ_j (f_j(y) − f_j(x)), x itself the reference point).
 //   7. RESEEDING: with probability sa_reseed (1/50) per step the chain's
 //      current point becomes the better by energy of two random archive
-//      members (AMOSA's informed reseeding).
+//      members (DBMOSA's restart from the archive, above).
 //   8. CHAINS: sa_chains (1; 10 with tch) advance in turn over one archive.
 //      With tch their weights start at the corners of the simplex (0.9 e_i
-//      + 0.1/M) and continue Dirichlet; sa_weights = psa (the default with
-//      tch) adapts them after every step of chain k: x' the current point of
-//      another chain nearest to x_k in the span-normalised objectives among
-//      those neither dominating x_k nor dominated by it; every objective
-//      where x_k is better than x' has its weight multiplied by α
-//      (sa_psa_alpha, 1.05), every other divided by it, the sum then put back
-//      to 1 — chain k moves further where it beats its neighbour. Without
-//      such an x' the weights stay. sa_weights = fixed keeps the start
-//      weights. The mean and spread of the
-//      weights over the chains are recorded.
+//      + 0.1/M) and continue Dirichlet (PSA starts every chain from random
+//      weights); sa_weights = psa (the default with tch) adapts them after
+//      every step of chain k as PSA's Algorithm does: x' the current point of
+//      another chain nearest to x_k (here in the span-normalised objectives;
+//      the paper names no distance) among those neither dominating x_k nor
+//      dominated by it; every objective where x_k is better than x' or equal
+//      to it has its weight multiplied by α (sa_psa_alpha, 1.05), every other
+//      divided by it, the sum then put back to 1 — chain k moves further
+//      where it beats its neighbour; without such an x' the weights are
+//      drawn at random again (Dirichlet(1)). sa_weights = fixed keeps the
+//      start weights. The mean and spread of the weights over the chains are
+//      recorded.
 // The schedules (T, s) need the budget in steps: the run's t_max (one
 // evaluation a step; corrected after the first step under an evaluation
 // budget).
@@ -603,12 +627,17 @@ public:
             for (std::size_t j = 0; j < x.size(); ++j) d += (x[j] - y[j]) * (x[j] - y[j]) / (sp[j] * sp[j]);
             if (d < best) { best = d; near = o; }
         }
-        if (near < 0) return;
         auto& w = W_[static_cast<std::size_t>(c)];
-        const auto& y = cur_[static_cast<std::size_t>(near)].f;
         double s = 0.0;
-        for (std::size_t j = 0; j < w.size(); ++j) {
-            w[j] = x[j] < y[j] ? w[j] * psa_alpha_ : w[j] / psa_alpha_;
+        if (near < 0) {                       // no x': random weights (PSA)
+            std::gamma_distribution<double> g(1.0, 1.0);
+            for (auto& v : w) { v = g(rng_); s += v; }
+            for (auto& v : w) v /= s;
+            return;
+        }
+        const auto& y = cur_[static_cast<std::size_t>(near)].f;
+        for (std::size_t j = 0; j < w.size(); ++j) {   // x better or equal on j: up
+            w[j] = x[j] <= y[j] ? w[j] * psa_alpha_ : w[j] / psa_alpha_;
             s += w[j];
         }
         for (auto& v : w) v /= s;
