@@ -78,6 +78,7 @@ from . import re as _re
 from . import binary as _bin
 from . import dascmop as _das
 from . import mw as _mw
+from . import failing as _fail
 
 
 # =============================================================
@@ -130,6 +131,9 @@ class BenchProblem:
     # RE25, RE35, RE36, CRE24, CRE25 and the corrected RE22c and RE33c (task 7,
     # §10), and the bit-string problems (binary.py).
     var_types: Optional[list] = None
+    # A failing copy's (share in per cent, kind) (failing.py): its evaluations
+    # fail in a region of the box, and a campaign records the failures.
+    failing: Optional[tuple] = None
 
     @property
     def fevals_max(self) -> int:
@@ -2152,6 +2156,70 @@ def _register_binary():
 
 _register_binary()
 _register_noisy(_noisy.LATE_BASES, late=True)
+
+
+# =============================================================
+#  Failing copies (failing.py, task 7, supplement 3, §2.4): the base, but NaN
+#  in a failure region of the box. The region and the Pareto-set sample are
+#  built on first use; front and frame are the base's where the region misses
+#  the Pareto set, else the image of the rest of the sample (front_exact
+#  False), or the base's front when nothing is left.
+# =============================================================
+_FAIL_PARTS: Dict[str, tuple] = {}
+
+
+def _failing_parts(key: str):
+    if key not in _FAIL_PARTS:
+        base, share, kind = FAILING[key]
+        b = PROBLEMS[base]
+        if callable(b.pareto_set):
+            S = np.asarray(b.pareto_set(_fail.SAMPLE), float)
+        else:                                   # WFG4
+            k = 2 * (b.n_obj - 1)
+            S = _fail.wfg4_pareto_set(_fail.SAMPLE, k, b.n_vars - k, _fail._rng(key + ":ps"))
+        evaluate, region, kept = _fail.make(b, share, kind, S)
+        p = PROBLEMS[key]
+        exact = len(kept) == len(S) and b.front_exact
+        object.__setattr__(p, "front_exact", exact)
+        if exact:
+            FRAME_OF[key] = base
+        _FAIL_PARTS[key] = (evaluate, kept, len(S))
+    return _FAIL_PARTS[key]
+
+
+def _register_failing():
+    for base in _fail.BASES:
+        b = PROBLEMS[base]
+        for share in _fail.SHARES:
+            for kind in _fail.KINDS:
+                key = _fail.name(base, share, kind)
+
+                def _eval(x, _k=key):
+                    return _failing_parts(_k)[0](x)
+
+                def _pf(n=1000, _k=key, _b=base):
+                    _, kept, total = _failing_parts(_k)
+                    if len(kept) in (0, total):
+                        return PROBLEMS[_b].pareto_front(n)
+                    return np.array([PROBLEMS[_b].evaluate(list(x)) for x in kept])
+
+                def _ps(n=1000, _k=key, _b=base):
+                    _, kept, total = _failing_parts(_k)
+                    return kept if len(kept) else np.empty((0, PROBLEMS[_b].n_vars))
+
+                FAILING[key] = (base, share, kind)
+                PROBLEMS[key] = BenchProblem(
+                    name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
+                    evaluate=_eval, constraints=_no_cons,
+                    hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+                    hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+                    pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+                    pareto_front=_pf, pareto_set=_ps, cyclic_vars=b.cyclic_vars,
+                    front_exact=False, failing=(share, _fail.KINDS[kind]))
+
+
+FAILING: Dict[str, tuple] = {}             # name -> (base, share, kind)
+_register_failing()
 
 
 # ── dense references at four objectives and more (task 6 of 2026-10-09, item 9)

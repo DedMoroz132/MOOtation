@@ -32,9 +32,9 @@ plus *mutation*, the operator all of these algorithms are built on.
 - **Five ways in, one algorithm list.** A C++ template, a C++ ask/tell session,
   a Python `minimize`, a TOML run description for external programs, and a C
   ABI. All five are generated from the same `algorithms.def`, so none can drift.
-- **1141 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, MOP, BT,
+- **1159 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, MOP, BT,
   the Ishibuchi polygons, the constrained C-DTLZ, MW and DAS-CMOP, rotated ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy
-  copies, the real-world RE and CRE) with true Pareto fronts where a closed form exists, IGD / IGD+ /
+  and failing copies, the real-world RE and CRE) with true Pareto fronts where a closed form exists, IGD / IGD+ /
   hypervolume, and a campaign runner that shards across a cluster.
 - **Warm starts**, an evaluation log, constraint handling in every algorithm
   (off by default, as in the papers), and a `--check` that refuses a run ten
@@ -271,7 +271,7 @@ conclusions live in the headers.
 
 ## Benchmarks and campaigns
 
-`mootation.benchmarks` holds 535 problems across 27 families, 2 to 15
+`mootation.benchmarks` holds 1159 problems across 41 families, 2 to 15
 objectives, each with bounds, an evaluator, the reference point a hypervolume
 needs and, where a closed form exists, a sampler of the true Pareto front.
 `mootation.run.metrics` computes IGD, IGD+ and hypervolume (exact up to five

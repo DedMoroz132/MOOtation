@@ -658,14 +658,27 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if cover_front is not None and not baseline:
         from .. import _core                   # inner_archive_state() at every call
 
+    # Failed evaluations (mootation.failures; supplement 3, §2): a non-finite
+    # value is counted, kept out of the run archive and the oracle, and goes to
+    # the core as it is, which marks it failed; the trajectory records the
+    # share of failures since the last record, final n_failed.
+    n_failed, failed_at_record = 0, 0
+
     def evaluate(x):
-        nonlocal fe, fe_first_feas, dup_x
+        nonlocal fe, fe_first_feas, dup_x, n_failed
         fe += 1
         if typed:
             key = tuple(x)
             dup_x += key in seen_x
             seen_x.add(key)
         f = objective(x)
+        if not all(math.isfinite(v) for v in f):
+            n_failed += 1
+            if arc is not None and fe in hard:
+                take_hard_archive(fe)
+            if fe in checkpoints and (len(arc) or cons is not None):
+                take_checkpoint(fe)
+            return f
         ok = cons is None or feasible(x)
         if cons is not None and ok and fe_first_feas is None:
             fe_first_feas = fe
@@ -780,7 +793,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     everywhere = [m for m in traj_metrics if m not in spec.record_at_metrics]
 
     def on_gen(gen, objectives, variables=None):
-        nonlocal n_records, next_i, last_fe, record_seconds
+        nonlocal n_records, next_i, last_fe, record_seconds, failed_at_record
         if cover_front is not None:            # at every call, before the grid's choice
             if cover["gen"] is None and cover_front <= {tuple(map(float, r)) for r in objectives}:
                 cover["gen"], cover["fe"] = gen, fe
@@ -806,6 +819,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         if truth is not None and X is not None:
             F = true_values(F, X)                 # snapshot and indicators: noise-free
         rec = {"gen": gen, "fe": fe, "t": round(t_rec - t0, 3), "n": int(len(F))}
+        if p.failing is not None or n_failed:
+            rec["fail_share"] = (n_failed - failed_at_record) / max(fe - last_fe, 1)
+            failed_at_record = n_failed
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
         mark = fe >= budget or any(last_fe < b <= fe for b in spec.record_at)
@@ -966,6 +982,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         final.update(dense(F, X, final_metrics))
     if cons is not None:
         final["fe_first_feas"] = fe_first_feas
+    if p.failing is not None or n_failed:
+        final["n_failed"] = n_failed
     if typed and final:
         final["dup_x_share"] = dup_x / max(fe, 1)
     if cover_front is not None:

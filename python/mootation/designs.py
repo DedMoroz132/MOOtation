@@ -458,6 +458,11 @@ def start_points(F, k: int):
     F = np.asarray(F, float)
     if k >= len(F):
         return np.arange(len(F))
+    ok = np.flatnonzero(np.all(np.isfinite(F), axis=1))   # failed evaluations last
+    if len(ok) < len(F):
+        if len(ok) <= k:
+            return np.concatenate([ok, np.setdiff1d(np.arange(len(F)), ok)[:k - len(ok)]])
+        return ok[start_points(F[ok], k)]
     nd = nondominated(F)
     if len(nd) >= k:
         return nd[dss_order(F[nd], k)]

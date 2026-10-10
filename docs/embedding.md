@@ -70,6 +70,15 @@ a thread pool, a process pool or a simulator queue plugs in;
 cores still evaluate one candidate per `step()`, because that is how those
 algorithms are defined.
 
+An evaluation that writes a non-finite objective or constraint value — your
+solver crashed and you wrote NaN — has failed. By default the vault gives the
+point a penalty: above the worst finite value of every objective and a
+violation beyond the worst seen, the same for every failure, so that every
+algorithm discards it before any point that did not fail; `failed_n()` counts
+them and `is_failed(v)` marks them, so leave those out of the answer you read.
+`set_fail_raise(true)` throws at the first failure instead
+([`data_vault.hpp`](../include/mootation/data_vault.hpp), FAILED EVALUATIONS).
+
 ### Diagnostics
 
 Some cores substitute a parameter that cannot be honoured: a subregion count

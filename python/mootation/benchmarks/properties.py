@@ -315,6 +315,10 @@ def properties(name: str) -> dict | None:
         row["linkage"] = None
     from .registry import PROBLEMS
     p = PROBLEMS.get(name)
+    if p is not None and p.failing is not None and not len(p.pareto_set(10)):
+        # a failing copy (failing.py) whose region takes all of the base's
+        # Pareto set: the optimum moved to the region's edge, not known here
+        row["boundary"] = row["centre"] = None
     row["n_obj"] = p.n_obj if p is not None else m
     row["n_vars"] = p.n_vars if p is not None else None
     row["bbob_groups"] = None
@@ -474,7 +478,8 @@ def measured(name: str, n: int = 300) -> dict | None:
     """centre and boundary read off the problem's Pareto-set sample (MEASURED
     above): the shares of the distance variables' values within 1e-9 of the
     middle of the range and of a bound, in units of the range, and the flags
-    at 99 %; None where the problem has no sample."""
+    at 99 %; None where the problem has no sample, or an empty one (a failing
+    copy whose region takes all of its base's Pareto set)."""
     import numpy as np
     from .registry import PROBLEMS
     p = PROBLEMS[name]
@@ -482,6 +487,8 @@ def measured(name: str, n: int = 300) -> dict | None:
         return None
     k = _positions(name, p.n_obj)
     X = np.asarray(p.pareto_set(n), float)[:, k:]
+    if not len(X):
+        return None
     lo = np.array([b[0] for b in p.bounds], float)[k:]
     hi = np.array([b[1] for b in p.bounds], float)[k:]
     U = (X - lo) / (hi - lo)

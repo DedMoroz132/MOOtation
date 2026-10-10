@@ -1060,7 +1060,8 @@ def every_benchmark_evaluates_without_raising():
             f = p.evaluate(x)
         except Exception as e:
             broken.append((nm, f"{type(e).__name__}: {e}")); continue
-        if len(f) != p.n_obj or any(v != v for v in f):
+        # a failing copy (benchmarks/failing.py) returns NaN in its region, by design
+        if len(f) != p.n_obj or (any(v != v for v in f) and p.failing is None):
             broken.append((nm, f"bad output {f[:3]}"))
     assert not broken, broken[:5]
 
@@ -3358,6 +3359,9 @@ def boundary_and_centre_follow_the_pareto_sets():
         if name.startswith("ZCAT") and name not in ("ZCAT1_3D", "ZCAT11_3D", "ZCAT14_3D"):
             continue                                       # seconds each: three of them
         m, row = measured(name, 100), properties(name)
+        if m is None:                                      # a failing copy, its set all failed
+            assert PROBLEMS[name].failing is not None and row["boundary"] is None, name
+            continue
         assert row["boundary"] is m["boundary"], (name, m, row["boundary"])
         assert row["centre"] is None or row["centre"] is m["centre"], (name, m, row["centre"])
         checked += 1
@@ -7087,6 +7091,150 @@ def das_cmop_follows_its_table_and_its_fronts_hold():
     assert properties("DAS-CMOP3_t02")["difficulty"] == "feasibility"
     assert properties("DAS-CMOP8_t12")["difficulty"] == "diversity+feasibility+convergence"
     assert properties("DAS-CMOP4_t01")["multimodal"] and properties("ZDT1")["difficulty"] is None
+
+
+# ── task 7, supplement 3, §2: failed evaluations ──────────────────────────────
+
+def _failing_zdt1(x):
+    """ZDT1 failing on about a third of its box: NaN on half of it, an exception
+    on the other half (a hash of x0..x2)."""
+    import math
+    h = (math.sin(12.9898 * x[0] + 78.233 * x[1] + 37.719 * x[2]) * 43758.5453) % 1.0
+    if h < 0.15:
+        return [math.nan, 0.0]
+    if h < 0.30:
+        raise RuntimeError("the solver did not converge")
+    g = 1 + 9 * sum(x[1:]) / (len(x) - 1)
+    return [x[0], g * (1 - math.sqrt(x[0] / g))]
+
+
+@test
+def every_algorithm_survives_a_third_of_its_evaluations_failing():
+    """Supplement 3, §2.5: every algorithm on a function that fails on a third
+    of its box (NaN or an exception) to 2 000 evaluations: no error, an answer
+    of finite values, the failures counted and inside the budget."""
+    import math
+    if _core_with("fail_raise") is None:
+        print("  skip  every_algorithm_survives...: stale _core"); return
+    import mootation
+    bounds = [(0.0, 1.0)] * 10
+    for alg in mootation.algorithms():
+        r = mootation.minimize(_failing_zdt1, bounds, 2, algorithm=alg, pop_size=20,
+                               max_evaluations=2000, seed=1)
+        assert r.objectives and all(math.isfinite(v) for row in r.objectives for v in row), alg
+        assert 0 < r.n_failed < r.evaluations and r.evaluations >= 2000, (alg, r.n_failed)
+
+
+@test
+def a_failure_raises_logs_and_stops_as_asked():
+    """on_failure = raise lets the user's exception through and raises on NaN;
+    max_failure_share stops a run; the evaluation log marks a failed row and
+    keeps its error; a None row of batch and a constraint that raises fail
+    too; a function that never fails runs as without the guard."""
+    import math
+    if _core_with("fail_raise") is None:
+        print("  skip  a_failure_raises...: stale _core"); return
+    import mootation
+    from mootation.failures import FailureShareExceeded
+    bounds = [(0.0, 1.0)] * 10
+    for f, kind in ((_failing_zdt1, (RuntimeError,)),
+                    (lambda x: [math.nan, 1.0], (RuntimeError,))):
+        try:
+            mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=400, seed=1,
+                               on_failure="raise")
+            raise AssertionError("on_failure = raise did not raise")
+        except kind as e:
+            assert "did not converge" in str(e) or "non-finite" in str(e), e
+    try:
+        mootation.minimize(_failing_zdt1, bounds, 2, pop_size=20, max_evaluations=2000,
+                           seed=1, max_failure_share=0.1, failure_window=50)
+        raise AssertionError("max_failure_share did not stop the run")
+    except FailureShareExceeded as e:
+        assert "of the last 50 evaluations failed" in str(e), e
+    with tempfile.TemporaryDirectory() as td:
+        log = Path(td) / "evals.csv"
+        r = mootation.minimize(_failing_zdt1, bounds, 2, pop_size=20, max_evaluations=200,
+                               seed=1, log_evaluations=str(log))
+        rows = [ln.split(",") for ln in log.read_text("utf-8").splitlines()
+                if ln and not ln.startswith("#")]
+        assert rows[0][-3:] == ["cv", "failed", "error"], rows[0]
+        failed = [row for row in rows[1:] if row[-2] == "1"]
+        assert len(failed) == r.n_failed and any("did not converge" in row[-1] for row in failed)
+    def batch(X):
+        return [None if i % 4 == 0 else [x[0], 1.0 - x[0]] for i, x in enumerate(X)]
+    r = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                           max_evaluations=400, seed=1, batch=batch)
+    assert r.n_failed > 0, r.n_failed
+
+    def cons(x):
+        if x[1] > 0.9:
+            raise ValueError("the mesh did not build")
+        return [x[0] - 0.8]
+    r = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                           max_evaluations=400, seed=1, constraints=cons, n_cons=1)
+    assert r.n_failed > 0 and all(c <= 0.0 for c in r.cv), (r.n_failed, r.cv)
+    # no failure: the guard changes nothing
+    plain = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                               max_evaluations=400, seed=3)
+    bare = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                              max_evaluations=400, seed=3, on_failure="raise")
+    assert plain.objectives == bare.objectives and plain.n_failed == 0
+
+
+@test
+def the_failing_problems_fail_where_they_say():
+    """benchmarks/failing.py: the 18 failing copies, their own family; NaN inside
+    the region; random and boundary take about their share of the box,
+    near_front about its share of the Pareto set; the front stays the base's
+    where the region misses the Pareto set and is marked otherwise; a campaign
+    records n_failed in final and fail_share in its trajectory."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import get, names
+    from mootation.benchmarks import failing as FL
+    from mootation.benchmarks.registry import FAILING
+    from mootation.families import family
+    fails = [n for n in names() if family(n) == "failing"]
+    assert sorted(fails) == sorted(FAILING) and len(fails) == 18, fails
+    rng = np.random.default_rng(4)
+    for name in ("ZDT1_fail10r", "ZDT1_fail30b", "DTLZ2_3D_fail30r", "WFG4_3D_fail10b"):
+        p = get(name)
+        lo = np.array([u for u, _ in p.bounds]); hi = np.array([v for _, v in p.bounds])
+        X = lo + (hi - lo) * rng.random((3000, p.n_vars))
+        bad = [not all(math.isfinite(v) for v in p.evaluate(list(x))) for x in X]
+        share = FAILING[name][1] / 100.0
+        assert abs(np.mean(bad) - share) < 0.03, (name, np.mean(bad))
+    assert get("ZDT1_fail10r").front_exact            # the balls miss ZDT1's Pareto set
+    assert not get("ZDT1_fail30b").front_exact         # the band takes all of it
+    assert not get("DTLZ2_3D_fail10n").front_exact
+    n = get("DTLZ2_3D_fail10n")
+    S = np.asarray(get("DTLZ2_3D").pareto_set(FL.SAMPLE))
+    kept = n.pareto_set(1000)
+    assert abs(1 - len(kept) / len(S) - 0.10) < 0.05, len(kept)
+    if _core_with("fail_raise") is None:
+        return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = "\n".join([
+        '[run]', 'name = "fail"', '[problem]', 'kind = "builtin"', '[benchmarks]',
+        'problems = ["ZDT1_fail30r"]', 'runs = 1', '[campaign]', 'budget_fe = 400',
+        'metrics = ["igdp_norm"]', '[[algorithms]]', 'name = "nsga2"', 'pop = 20', 'gens = 0', ''])
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "c.toml"
+        path.write_text(text, encoding="utf-8")
+        cfg = load(path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        job = C.expand_jobs(cfg, spec)[0]
+        assert C.run_job(job, root, spec, quiet=True) == "done"
+        d = root / "ZDT1_fail30r" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text("utf-8"))
+        T = [json.loads(t) for t in (d / "trajectory.jsonl").read_text().splitlines()]
+        assert meta["final"]["n_failed"] > 0 and math.isfinite(meta["final"]["igdp_norm"])
+        assert all("fail_share" in t for t in T) and any(t["fail_share"] > 0 for t in T)
 
 
 @test

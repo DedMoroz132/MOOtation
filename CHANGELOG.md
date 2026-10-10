@@ -10,6 +10,25 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Failed evaluations (task 7, supplement 3, §2; `mootation/failures.py`,
+  `data_vault.hpp`, FAILED EVALUATIONS). `minimize(on_failure="infeasible")`,
+  the default: an exception of `failure_exceptions` (Exception), a non-finite
+  objective or constraint, or a `None` row from `batch` fails the point; the
+  core gives it a penalty above the worst finite value of every objective and
+  a violation beyond the worst seen, the same for every failure and raised
+  when the range moves, keeps it out of the answer and the observers' rows,
+  and counts it (`result.n_failed`, in the budget). `on_failure="raise"`
+  stops at the first. `max_failure_share`, `failure_window` stop a run that
+  fails too often (`FailureShareExceeded`). The evaluation log gains the
+  columns `failed` and `error` (format v2). A campaign records `n_failed` in
+  `final` and `fail_share` in the trajectory, and keeps failed points out of
+  the run archive and the oracle. Every default run without a failure is
+  unchanged bit for bit.
+- Failing copies (`benchmarks/failing.py`): ZDT1, DTLZ2_3D and WFG4_3D
+  returning NaN in a region of 10 or 30 % — random balls (`_fail10r`), the
+  band along the faces (`b`) or part of the Pareto set (`n`) —, 18 problems
+  in the family `failing`; 1159 problems in 41 families.
+
 - The maximin Latin hypercube (`init = "lhs"`, `lhs_search`) raises the
   distances to the power −p by multiplications and compares designs by the sum
   of the terms: numpy's power runs SIMD code on some CPUs (SVML on AVX-512)

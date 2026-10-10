@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 1141 benchmark problems (needs NumPy) |
+| `--problems` | list the 1159 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -127,6 +127,30 @@ that *x* maps to *f* does not require the mesh that produced it, and
 evolutionary algorithms re-propose identical individuals more often than one
 expects.
 
+### Failed evaluations
+
+A finite-element model can crash, not converge or return NaN. `minimize`
+(and so every campaign) runs the objective, the constraints and `batch=`
+through a guard (`mootation/failures.py`): an exception of
+`failure_exceptions` (`Exception` by default), a non-finite value or a row a
+batch returned as `None` is a failed evaluation. With `on_failure =
+"infeasible"`, the default, the core gives the point a penalty
+(`data_vault.hpp`, FAILED EVALUATIONS): every objective one span above the
+worst finite value evaluated so far and every constraint violated beyond the
+worst seen — so it is dominated by every point that did not fail, worse than
+any infeasible one, equal to every other failure — and leaves it out of the
+answer and the observers' rows; outside the core its values are NaN.
+`on_failure = "raise"` stops the run at the first failure, for debugging.
+A failure is an evaluation: it counts in the budget, and `result.n_failed`
+counts them. `max_failure_share = 0.3` with `failure_window = 100` stops the
+run with `FailureShareExceeded` once more than 30 of the last 100 evaluations
+failed. `log_evaluations` marks a failed row (`failed`, `error`). A hung
+evaluation is not handled here: the batch function or the job that runs the
+solver must stop it (a timeout) and return `None` or raise. The penalty
+reaches an algorithm's nadir point only while a failure stays in its
+population, which an elitist selection ends once it holds `pop_size` points
+that did not fail.
+
 ### What `--check` verifies
 
 Before anything expensive starts: unknown keys (an error, never a silent
@@ -157,7 +181,7 @@ day-long run.
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW and DAS-CMOP, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 1141 problems across 40 families, each
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE: 1159 problems across 41 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -266,6 +290,22 @@ run found, recognised or not) and `<metric>_observed` (the noisy values of the
 answer, biased towards better: the size of that bias). They are a family of
 their own, `noisy`, picked by name: `families = ["DTLZ"]` does not bring them
 in; the copies of RE are ranked with the real-world problems.
+
+**The failing copies** fail in part of the box, as a solver that crashes
+would (`benchmarks/failing.py`, a construction of this library):
+`ZDT1_fail10r` is ZDT1 returning NaN in a region `r` holding 10 % of the box's
+volume — four balls at random centres —, `_fail30r` 30 %; `b` the band along
+the box's faces holding that share; `n` the neighbourhood of part of the
+Pareto set, the share being the share of the set that fails. ZDT1, DTLZ2_3D
+and WFG4_3D, 18 problems, a family of their own, `failing`. Where the region
+misses the Pareto set, front and frame are the base's; where it takes part of
+it, the reference is the image of the rest of a Pareto-set sample — a part of
+the copy's front, whose new points at the region's edge are not known — and
+`front_exact` is False (`--cover` says so); where it takes all of it (ZDT1's
+optimum lies on a face, inside the band), the reference is the base's front,
+which no point outside the band reaches. A campaign counts the failures:
+`n_failed` in `final`, `fail_share` (since the previous record) in the
+trajectory, and a failed point never enters the run archive or the oracle.
 
 **The real-world problems** are Tanabe & Ishibuchi's RE and CRE (Applied Soft
 Computing 89:106078, 2020): truss, beam, pressure vessel, welded beam, disc

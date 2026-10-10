@@ -13,12 +13,32 @@
 //
 // Slot contract: init_slot fully resets an individual (including derived
 // fields of Ind subclasses — fitness/rank/...; fix X1 per the 2026-06 audit).
+//
+// FAILED EVALUATIONS (task 7 of 2026-10-10, supplement 3, §2). An evaluation
+// that gives a non-finite objective or constraint value has failed — the
+// binding turns an exception of the user's function, or a row a batch
+// returned as None, into NaN. With set_fail_raise(true) the vault throws.
+// Otherwise (the default) the slot is marked failed and carries, for the
+// algorithm, a penalty: every objective one span above the worst finite value
+// evaluated so far (span = worst − best, 1 while that is 0; 1 before any
+// finite value), every constraint more than twice above the worst value seen
+// (and positive). So a failed point is dominated by every point that did not
+// fail, infeasible beyond any infeasible one, never the ideal, and equal to
+// every other failure; when a finite value moves the worst or the best, every
+// failed slot takes the new penalty. A failure is an evaluation: the binding
+// counts it in the budget. The answer and the observers leave failed slots
+// out (python/mootation_module.cpp), and outside the core their objectives
+// are NaN. The penalty reaches an algorithm's nadir point only while a failure
+// is still in its population, which an elitist selection ends as soon as it
+// holds pop_size points that did not fail.
 // ============================================================================
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -62,6 +82,12 @@ private:
     BatchExecutor         batch_executor_;
     std::function<void()> post_sync_hook_;
     std::function<void(std::vector<double>&)> snap_;   // integer and discrete variables
+
+    // ── Failed evaluations (FAILED EVALUATIONS above) ───────────────────────
+    bool                fail_raise_ = false;
+    long long           failed_n_   = 0;          // evaluations that failed
+    std::vector<double> fin_lo_, fin_hi_;         // per objective: best, worst finite
+    std::vector<double> lim_hi_;                  // per constraint: worst finite value
 
     // ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -113,8 +139,63 @@ private:
         buf_[r].cv = s;
     }
 
+    // The penalty of a failed slot (FAILED EVALUATIONS), its cv included.
+    void penalize(Ind_type& s) const {
+        for (std::size_t j = 0; j < s.objectives.size(); ++j) {
+            if (fin_hi_.empty() || !(fin_hi_[j] >= fin_lo_[j])) { s.objectives[j] = 1.0; continue; }
+            const double span = fin_hi_[j] > fin_lo_[j] ? fin_hi_[j] - fin_lo_[j] : 1.0;
+            s.objectives[j] = fin_hi_[j] + span;
+        }
+        double cv = 0.0;
+        for (std::size_t j = 0; j < s.limits.size(); ++j) {
+            const double worst = lim_hi_.empty() ? 0.0 : lim_hi_[j];
+            s.limits[j] = 2.0 * std::max(worst, 0.0) + 1.0;
+            cv += s.limits[j];
+        }
+        s.cv = cv;
+    }
+
+    // A finite slot widens the finite range; true if the penalty moves.
+    bool widen(const Ind_type& s) {
+        if (fin_lo_.empty()) {
+            fin_lo_.assign(static_cast<std::size_t>(num_objs_), std::numeric_limits<double>::infinity());
+            fin_hi_.assign(static_cast<std::size_t>(num_objs_), -std::numeric_limits<double>::infinity());
+            lim_hi_.assign(static_cast<std::size_t>(num_lims_), -std::numeric_limits<double>::infinity());
+        }
+        bool moved = false;
+        for (std::size_t j = 0; j < s.objectives.size(); ++j) {
+            if (s.objectives[j] < fin_lo_[j]) { fin_lo_[j] = s.objectives[j]; moved = true; }
+            if (s.objectives[j] > fin_hi_[j]) { fin_hi_[j] = s.objectives[j]; moved = true; }
+        }
+        for (std::size_t j = 0; j < s.limits.size(); ++j)
+            if (s.limits[j] > lim_hi_[j]) { lim_hi_[j] = s.limits[j]; moved = true; }
+        return moved;
+    }
+
+    // After every evaluation of slot r (and every seeded one): a finite one
+    // widens the range, a failed one is marked and penalized, or throws.
+    void settle(std::size_t r) {
+        Ind_type& s = buf_[r];
+        bool bad = false;
+        for (double v : s.objectives) bad = bad || !std::isfinite(v);
+        for (double v : s.limits)     bad = bad || !std::isfinite(v);
+        if (!bad) {
+            s.failed = false;
+            if (widen(s) && failed_n_ > 0)
+                for (auto& t : buf_) if (t.failed) penalize(t);
+            return;
+        }
+        if (fail_raise_)
+            throw std::runtime_error("mootation: an evaluation gave a non-finite value "
+                                     "(on_failure = raise)");
+        s.failed = true;
+        ++failed_n_;
+        penalize(s);
+    }
+
     void calc_one(std::size_t r) {
         problem_.calc_objs(buf_[r]);
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
     }
@@ -142,6 +223,7 @@ private:
         } else if (num_lims_ > 0) {
             std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
         }
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
     }
@@ -195,6 +277,7 @@ private:
             } else if (num_lims_ > 0) {
                 std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             }
+            settle(r);
             calc_cv_slot(r);
             dirty_[r] = 0;
         }
@@ -231,6 +314,16 @@ public:
 
     void set_batch_executor(BatchExecutor e)         { batch_executor_ = std::move(e); }
     void set_post_sync_hook(std::function<void()> h) { post_sync_hook_ = std::move(h); }
+
+    // FAILED EVALUATIONS: throw on a non-finite value instead of the penalty.
+    void set_fail_raise(bool r) { fail_raise_ = r; }
+    // How many evaluations failed so far; whether active individual v did.
+    long long failed_n() const { return failed_n_; }
+    bool is_failed(std::size_t v) const { return buf_[real_idx(v)].failed; }
+    bool archive_is_failed(std::size_t i) const {
+        if (i >= archive_.size()) throw std::out_of_range("DataVault::archive_is_failed");
+        return buf_[archive_[i]].failed;
+    }
 
     bool has_batch_executor() const { return static_cast<bool>(batch_executor_); }
 
@@ -508,6 +601,7 @@ public:
             if (lims.empty()) std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             else buf_[r].limits = lims;
         }
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
         archive_.push_back(r);
@@ -617,6 +711,7 @@ public:
             if (lims.empty()) std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             else buf_[r].limits = lims;
         }
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
     }

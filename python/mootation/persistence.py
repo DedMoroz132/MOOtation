@@ -35,7 +35,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 FORMAT_POPULATION = "# mootation population v1"
-FORMAT_EVALUATIONS = "# mootation evaluations v1"
+FORMAT_EVALUATIONS = "# mootation evaluations v2"   # v2: failed, error
 
 
 # ── Writing ─────────────────────────────────────────────────────────────────
@@ -88,7 +88,9 @@ class EvaluationLog:
 
     It records what the ALGORITHM asked for, including re-proposals of points
     it has already seen — that is information, not noise: it tells you how much
-    of the budget went on repeats.
+    of the budget went on repeats. A failed evaluation (mootation.failures) is
+    a row too: failed = 1, its values as the guard handed them on (NaN), and
+    the error's text.
     """
 
     def __init__(self, path: str | os.PathLike, *, meta: dict | None = None):
@@ -99,20 +101,27 @@ class EvaluationLog:
         self.rows = 0
 
     def wrap(self, fn: Callable[[Sequence[float]], Sequence[float]],
-             constraints: Callable | None = None):
+             constraints: Callable | None = None, guard=None):
+        """`guard` (a mootation.failures.Guard that wraps fn and constraints)
+        gives a failed row the text of its error."""
+        from .failures import finite
+
         def logged(x, _f=fn, _c=constraints):
             f = list(_f(x))
             g = list(_c(x)) if _c is not None else []
-            self._append(x, f, g)
+            failed = not finite(f + g)
+            error = ((guard.last_error if guard is not None else None)
+                     or "a non-finite value") if failed else ""
+            self._append(x, f, g, failed, error)
             return f
         return logged
 
-    def _append(self, x, f, g) -> None:
+    def _append(self, x, f, g, failed: bool = False, error: str = "") -> None:
         if self._fh is None:
             self._open(len(x), len(f))
-        cv = sum(v for v in g if v > 0.0)
+        cv = float("nan") if failed else sum(v for v in g if v > 0.0)
         self._w.writerow([self.rows + 1] + [repr(v) for v in x]
-                         + [repr(v) for v in f] + [repr(cv)])
+                         + [repr(v) for v in f] + [repr(cv), int(failed), error])
         self.rows += 1
         # Flushed per row: an evaluation is expensive enough that the write is
         # free by comparison, and a run killed with Ctrl-C keeps everything.
@@ -129,7 +138,7 @@ class EvaluationLog:
         self._fh.write(f"# n_vars={n_vars} n_bin=0 n_objs={n_objs}\n")
         self._w = csv.writer(self._fh)
         self._w.writerow(["eval"] + [f"x{i+1}" for i in range(n_vars)]
-                         + [f"f{i+1}" for i in range(n_objs)] + ["cv"])
+                         + [f"f{i+1}" for i in range(n_objs)] + ["cv", "failed", "error"])
 
     def close(self) -> None:
         if self._fh is not None:

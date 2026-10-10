@@ -90,6 +90,12 @@ def polynomial_mutation(x, lo, hi, rng, eta_m: float = ETA_M, pm: float | None =
     return x
 
 
+def _ok(F, X):
+    """The rows of a failed evaluation (mootation.failures) are no answer."""
+    keep = np.all(np.isfinite(F), axis=1)
+    return F[keep], X[keep]
+
+
 def random_selection_ea(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int,
                         on_generation=None, record_every: int = 1):
     """(answer objectives, answer variables, steps) — see the module docstring."""
@@ -101,7 +107,8 @@ def random_selection_ea(evaluate, lo, hi, *, pop: int, max_evaluations: int, see
     F = np.array([evaluate(list(x)) for x in X], float)
     spent, gen = k0, 0
     if on_generation is not None:
-        on_generation(0, F.tolist(), X)
+        Fo, Xo = _ok(F, X)
+        on_generation(0, Fo.tolist(), Xo)
     while spent < max_evaluations:
         k = min(pop, max_evaluations - spent)
         kids = []
@@ -120,8 +127,10 @@ def random_selection_ea(evaluate, lo, hi, *, pop: int, max_evaluations: int, see
         X, F = Xa[keep], Fa[keep]
         if on_generation is not None and (gen % max(1, record_every) == 0
                                           or spent >= max_evaluations):
-            on_generation(gen, F.tolist(), X)
-    return F, X, gen
+            Fo, Xo = _ok(F, X)
+            on_generation(gen, Fo.tolist(), Xo)
+    Fo, Xo = _ok(F, X)
+    return Fo, Xo, gen
 
 
 def gsemo(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select,
@@ -131,6 +140,10 @@ def gsemo(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select
     d = len(lo)
     x0 = lo + rng.random(d) * (hi - lo)
     f0 = np.array(evaluate(list(x0)), float)
+    # a failed evaluation (mootation.failures) reads as infinitely bad: dominated
+    # by every point that did not fail, and gone once one arrives
+    if not np.all(np.isfinite(f0)):
+        f0 = np.full(len(f0), np.inf)
     # the population in the first `size` rows of two arrays that double when full
     PX = np.empty((64, d))
     PF = np.empty((64, len(f0)))
@@ -148,6 +161,8 @@ def gsemo(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select
         parent = PX[int(rng.integers(0, size))]
         y = polynomial_mutation(parent.copy(), lo, hi, rng)
         fy = np.array(evaluate(list(y)), float)
+        if not np.all(np.isfinite(fy)):
+            fy = np.full(len(fy), np.inf)
         spent += 1
         F = PF[:size]
         if not np.any(np.all(F <= fy, axis=1)):             # nothing weakly dominates y

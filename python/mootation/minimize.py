@@ -61,6 +61,10 @@ def minimize(
     var_types=None,
     int_repair: str = "lamarck",
     eta_int: float | None = None,
+    on_failure: str = "infeasible",
+    failure_exceptions=Exception,
+    max_failure_share: float | None = None,
+    failure_window: int = 100,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -126,11 +130,21 @@ def minimize(
                 before the optimization: the algorithm starts from pop_size of
                 its points, the nondominated first, the rest by DSS
                 (designs.start_points), and has what is left of the budget.
+    on_failure  what a failed evaluation does (mootation.failures): an
+                exception of `failure_exceptions` (Exception) from fn,
+                constraints or batch, a non-finite value or a None row of a
+                batch. "infeasible" (the default): the point is dominated by
+                every point that did not fail and is never in the answer;
+                result.n_failed counts them. "raise": the run stops.
+    max_failure_share, failure_window
+                with "infeasible": stop with FailureShareExceeded once more
+                than this share of the last failure_window (100) evaluations
+                failed; off unless given.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
     Returns the binding's Result: `.objectives`, `.variables`, `.cv`,
-    `.active_n`, `.ignored`, `.evaluations`.
+    `.active_n`, `.ignored`, `.evaluations`, `.n_failed`.
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if not bounds:
@@ -154,13 +168,30 @@ def minimize(
             f"unknown parameter(s): {', '.join(bad)}. "
             f"Known: {', '.join(KNOBS)}")
 
+    # Failed evaluations (mootation.failures; task 7, supplement 3, §2): the
+    # guard turns the user's exceptions and None rows into NaN, which the core
+    # marks failed; with "raise" nothing is caught and the core raises on NaN.
+    if on_failure not in ("infeasible", "raise"):
+        raise ValueError(f"on_failure = '{on_failure}': infeasible or raise")
+    guard = None
+    if on_failure == "infeasible":
+        from .failures import Guard
+        guard = Guard(n_objs, n_cons, failure_exceptions, max_failure_share, failure_window)
+        fn = guard.fn(fn)
+        if constraints is not None:
+            constraints = guard.constraints(constraints)
+        if batch is not None:
+            batch = guard.batch(batch)
+    elif max_failure_share is not None:
+        raise ValueError("max_failure_share needs on_failure = 'infeasible'")
+
     log = None
     if log_evaluations is not None:
         from .persistence import EvaluationLog
         log = EvaluationLog(log_evaluations,
                             meta={"algorithm": algorithm, "pop_size": pop_size,
                                   "n_gen": n_gen, "seed": seed})
-        fn = log.wrap(fn, constraints)
+        fn = log.wrap(fn, constraints, guard)
         if batch is not None:
             # A batched evaluator bypasses `fn`, so the wrapper would never
             # see anything. Refusing is better than writing an empty log and
@@ -208,6 +239,8 @@ def minimize(
             probe = list(constraints([lo for lo, _ in bounds] + [0.0] * n_bin))
             n_cons = len(probe)
         problem.n_limits = int(n_cons)
+        if guard is not None:
+            guard.n_cons = int(n_cons)
 
         def _eval_with_cons(x, _f=fn, _c=constraints):
             return list(_f(x))
@@ -230,6 +263,7 @@ def minimize(
             raise ValueError(f"max_evaluations must be >= 0, got {max_evaluations}")
         cfg.max_evaluations = int(max_evaluations)
     cfg.seed = int(seed)
+    cfg.fail_raise = on_failure == "raise"
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
     if layout is not None:

@@ -513,6 +513,11 @@ struct RunConfig {
     // Operator statistics along the run (the per-step bookkeeping above); read
     // them with operator_stats() from the on_generation observer.
     bool operator_stats = false;
+    // A failed evaluation (a non-finite value; minimize turns the user's
+    // exception into NaN): the vault's penalty (false, on_failure =
+    // "infeasible", the default) or an error (true, "raise"). See
+    // data_vault.hpp, FAILED EVALUATIONS.
+    bool fail_raise = false;
 };
 
 struct PyResult {
@@ -538,6 +543,9 @@ struct PyResult {
     std::vector<std::vector<double>> inner_variables;
     // the bits of the answer, beside variables (PyProblem::n_bin)
     std::vector<std::vector<int>>    binary_variables;
+    // Evaluations that failed (data_vault.hpp, FAILED EVALUATIONS). A failed
+    // member of the final population is not in the answer above.
+    long long                        n_failed = 0;
 };
 
 template <typename Tag, typename Core>
@@ -553,6 +561,7 @@ PyResult run_core(const RunConfig& cfg)
 
     DataVault<Tag>      vault(cfg.pop_size, prob);
     if (g_problem->evaluate_batch) vault.set_batch_executor(&py_run_batch);
+    vault.set_fail_raise(cfg.fail_raise);
     // integer and discrete variables (RunConfig::var_kinds): the Lamarckian
     // rounding at every write — integers to the nearest, ties to even, kept in
     // [ceil lo, floor hi]; discrete ones to the nearest value, ties to the lower
@@ -714,7 +723,8 @@ PyResult run_core(const RunConfig& cfg)
                 v.active_n(), static_cast<std::size_t>(v.pop_size()));
             std::vector<std::vector<double>> X;
             X.reserve(n);
-            for (std::size_t i = 0; i < n; ++i) X.push_back(v.variables_of(i));
+            for (std::size_t i = 0; i < n; ++i)
+                if (!v.is_failed(i)) X.push_back(v.variables_of(i));   // as emit() below
             return X;
         };
         auto one_step = [&]() {
@@ -728,7 +738,10 @@ PyResult run_core(const RunConfig& cfg)
                 v.active_n(), static_cast<std::size_t>(v.pop_size()));
             std::vector<std::vector<double>> P;
             P.reserve(n);
-            for (std::size_t i = 0; i < n; ++i) P.push_back(v.objectives_of(i));
+            for (std::size_t i = 0; i < n; ++i) {
+                const auto& f = v.objectives_of(i);              // evaluates a dirty slot
+                if (!v.is_failed(i)) P.push_back(f);             // a failure is no answer
+            }
             py::gil_scoped_acquire gil;
             cfg.on_generation(g, std::move(P));
         };
@@ -829,12 +842,16 @@ PyResult run_core(const RunConfig& cfg)
     ops::inner_archive_record().live = nullptr;          // the core goes with this scope
     r.objectives.reserve(r.active_n);
     r.variables.reserve(r.active_n);
-    for (std::size_t i = 0; i < r.active_n; ++i) {
-        r.objectives.push_back(v.objectives_of(i));
+    const std::size_t rows = r.active_n;
+    for (std::size_t i = 0; i < rows; ++i) {
+        const auto& f = v.objectives_of(i);
+        if (v.is_failed(i)) { --r.active_n; continue; }  // a failure is no answer
+        r.objectives.push_back(f);
         r.variables.push_back(v.variables_of(i));
         if (v.bin_vars_n() > 0) r.binary_variables.push_back(v.binary_variables_of(i));
         r.cv.push_back(v.get_cv(i));
     }
+    r.n_failed = v.failed_n();
     return r;
 }
 
@@ -954,6 +971,9 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("words",           &RunConfig::words,
                        "the text knobs of the same kind (is_core_word): {name: word}, a "
                        "list knob as comma-separated words; assign the whole dict")
+        .def_readwrite("fail_raise",      &RunConfig::fail_raise,
+                       "A failed evaluation (a non-finite value) raises instead of "
+                       "carrying the vault's penalty (on_failure = raise).")
         .def_readwrite("operator_stats",  &RunConfig::operator_stats,
                        "keep per-step operator statistics; read them with "
                        "operator_stats() from the on_generation observer")
@@ -989,6 +1009,9 @@ PYBIND11_MODULE(_core, m)
         .def_readonly("active_n",   &PyResult::active_n)
         .def_readonly("ignored",    &PyResult::ignored,
                       "Knobs you set that this algorithm does not have.")
+        .def_readonly("n_failed", &PyResult::n_failed,
+                      "Evaluations that failed (a non-finite value); a failed member of "
+                      "the final population is not among the rows.")
         .def_readonly("evaluations", &PyResult::evaluations,
                       "Evaluations the run spent, setup included.")
         .def_readonly("operators", &PyResult::operators,
