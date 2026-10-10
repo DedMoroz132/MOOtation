@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 63, f"expected 63 algorithms, got {len(names)}"
+    assert len(names) == 64, f"expected 64 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -3148,8 +3148,8 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 8 and fams[0][1][0] == "nsga2", fams
-    assert fams[-1] == ("Direct search", ("dms",)), fams[-1]
+    assert len(fams) == 9 and fams[0][1][0] == "nsga2", fams
+    assert fams[-2:] == (("Direct search", ("dms",)), ("Simulated annealing", ("mosa",))), fams
     assert all(name and "─" not in name for name, _ in fams), fams
 
 
@@ -3600,7 +3600,7 @@ def postprocessing_runtimes_gaps_and_budget_marks():
             for a, v in (("x", 0.0), ("x", 0.4), ("y", 0.5))]
     assert PP.zero_share(rows) == {"P": {"x": 0.5, "y": 0.0}}
     assert PP.gap_to_best(rows, "hv") == {"P": {"x": [0.5, 0.09999999999999998], "y": [0.0]}}
-    assert len(PP.BUDGET_SCHEDULED) == 17 and PP.budget_note("rvea") == "*"
+    assert len(PP.BUDGET_SCHEDULED) == 18 and PP.budget_note("mosa") == "*"
     assert PP.budget_note("nsga2") == "" and set(PP.BUDGET_SCHEDULED) <= set(algorithm_names())
     ecdf = PP.runtime_ecdf([recs], "igdp", [0.3, 0.01], grid=[150, 450])
     assert ecdf["share"] == [0.0, 0.5] and ecdf["pairs"] == 2, ecdf
@@ -4201,6 +4201,86 @@ operator_stats = true
         raise AssertionError("mutation_scale = 0 accepted")
     except ValueError as e:
         assert "mutation = \"none\"" in str(e), e
+
+
+@test
+def mosa_spends_its_budget_and_records_its_state():
+    """Task 7, §1: mosa spends exactly its budget, the same seed gives the same
+    run, and it is budget-dependent; its answer is at most N points, mutually
+    non-dominated, inside the box. In a campaign with operator_stats the
+    temperature and the step scale fall along the trajectory, and sa_energy =
+    tch with sa_step = adaptive records the chains' weights and the steps'
+    probabilities."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  mosa_spends...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.run import campaign as C
+    from mootation.run.budget import BUDGET_DEPENDENT
+    from mootation.run.config import load
+    from mootation.run.metric_names import SA_STATS, is_table_name
+    assert callable(mootation.minimize)                # loads the module behind the function
+    Mz = sys.modules["mootation.minimize"]
+    assert "mosa" in BUDGET_DEPENDENT
+    assert all(is_table_name(k) for k in SA_STATS) and is_table_name("sa_w_sd_3")
+    p = __import__("mootation.benchmarks", fromlist=["get"]).get("ZDT1")
+    fe = 0
+
+    def ev(x):
+        nonlocal fe
+        fe += 1
+        return p.evaluate(x)
+    a = Mz.minimize(ev, p.bounds, 2, algorithm="mosa", pop_size=30, max_evaluations=777, seed=5)
+    b = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="mosa", pop_size=30, max_evaluations=777,
+                    seed=5)
+    assert fe == 777 and a.evaluations == 777, (fe, a.evaluations)
+    assert a.objectives == b.objectives and a.variables == b.variables
+    F, X = np.asarray(a.objectives), np.asarray(a.variables)
+    assert 0 < len(F) <= 30, len(F)
+    lb, ub = np.array(p.bounds, float).T
+    assert np.all(X >= lb) and np.all(X <= ub)
+    assert not any((np.all(F <= f, axis=1) & np.any(F < f, axis=1)).any() for f in F)
+    text = """algorithms = [
+    { name = "mosa", label = "cmb", pop = 20, gens = 0 },
+    { name = "mosa", label = "tch", pop = 20, gens = 0, params = { sa_energy = "tch", sa_step = "adaptive", sa_chains = 4 } },
+]
+[run]
+name = "sa"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1500
+record_grid = "log"
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+operator_stats = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for label in ("cmb", "tch"):
+            d = root / "DTLZ2_3D" / label / "run_1"
+            meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+            T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+            temps, scales = [r["sa_T"] for r in T], [r["sa_s"] for r in T]
+            assert len(T) > 3 and temps[-1] < temps[0] and scales[-1] < scales[0], (temps, scales)
+            assert all(u >= v for u, v in zip(temps, temps[1:]))
+            assert 0 < meta["final"]["sa_archive_size"] and "sa_reseeds" in meta["final"]
+        w = {k: v for k, v in T[-1].items() if k.startswith(("sa_w_", "sa_p_"))}
+        assert set(w) == {"sa_w_mean_1", "sa_w_mean_2", "sa_w_mean_3", "sa_w_sd_1", "sa_w_sd_2",
+                          "sa_w_sd_3", "sa_p_laplace", "sa_p_de", "sa_p_sbx"}, sorted(w)
+        assert abs(w["sa_w_mean_1"] + w["sa_w_mean_2"] + w["sa_w_mean_3"] - 1.0) < 1e-9
+        assert abs(w["sa_p_laplace"] + w["sa_p_de"] + w["sa_p_sbx"] - 1.0) < 1e-9
 
 
 @test
@@ -5409,10 +5489,15 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
         return lo + (hi - lo) * rng.random((n, p.n_vars))
 
     for name, r in ROTATED.items():
-        p, base = get(name), get(f"{r.family}_{r.M}D")
+        if "_i" in name:
+            continue
+        p, base = get(name), get(r.family if r.zdt else f"{r.family}_{r.M}D")
         ident = R.Rotated(name.split("_")[0], r.M, p.n_vars)
         ident.A = np.eye(len(r.optimum))
-        if not r.wfg:
+        if r.zdt:
+            ident.optimum = np.zeros(len(r.optimum))
+            ident.spread = np.ones(len(r.optimum))
+        elif not r.wfg:
             ident.optimum = np.full(len(r.optimum), 0.5)
         X = box(p, 2000 if r.wfg else 10_000)
         assert max(np.abs(np.subtract(ident.evaluate(x), base.evaluate(list(x)))).max()
@@ -5423,6 +5508,10 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
         FS = np.array([p.evaluate(list(x)) for x in S])
         if r.wfg:                      # the base's own values at the same point
             assert np.abs(FS - [base.evaluate(list(x)) for x in S]).max() < 1e-9, name
+        elif r.zdt:                    # the base's own values on its own Pareto set
+            FB = [base.evaluate(list(x)) for x in base.pareto_set(100)]
+            assert np.abs(FS - FB).max() < 1e-9, name
+            assert max(p.distance_fn(list(x)) for x in S) < 1e-12, name
         else:
             G = FS if r.family == "DTLZ1" else FS ** 2
             assert np.abs(G.sum(axis=1) - (0.5 if r.family == "DTLZ1" else 1.0)).max() < 1e-9

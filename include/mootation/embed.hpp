@@ -50,7 +50,7 @@
 // the total violation from those. With n_cons = 0, G is empty and ignored.
 //
 // ── COST ────────────────────────────────────────────────────────────────────
-// Including this header instantiates all 63 algorithms in the translation
+// Including this header instantiates all 64 algorithms in the translation
 // unit, because the dispatch is by string. That is a real compile-time cost
 // (tens of seconds). A program that always uses one algorithm can skip it and
 // build `Optimizer<Ind, Core>` directly — see docs/writing-an-algorithm.md.
@@ -494,6 +494,7 @@ inline Result run_core(const Settings& s, Context& ctx,
     }
     ops::reset_operator_records();
     ops::reset_crossover_records();
+    mosa_record().clear();
 
     if (seed) {
         // seed_individual plants variables AND objectives, so the evaluator is

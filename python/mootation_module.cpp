@@ -748,6 +748,7 @@ PyResult run_core(const RunConfig& cfg)
         if (g_ops.t_step_n > 0)
             r.operator_totals["step_mean"] = g_ops.t_step / static_cast<double>(g_ops.t_step_n);
         for (const auto& kv : ops::crossover_stats(true)) r.operator_totals[kv.first] = kv.second;
+        for (const auto& kv : mosa_record()) r.operator_totals[kv.first] = kv.second;
     }
     r.objectives.reserve(r.active_n);
     r.variables.reserve(r.active_n);
@@ -769,6 +770,7 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     g_evaluations = 0;
     mootation::ops::reset_operator_records();
     mootation::ops::reset_crossover_records();
+    mootation::mosa_record().clear();
     g_ops = OpStats{};
     g_ops.on = cfg.operator_stats;
     struct Guard { ~Guard() { g_problem = nullptr; g_answer_variables = nullptr; } } guard;
@@ -997,6 +999,8 @@ PYBIND11_MODULE(_core, m)
                   ? py::cast(g_ops.step / static_cast<double>(g_ops.step_n)) : py::none();
               // de, de_pbest and portfolio (operators/real_crossover.hpp)
               for (const auto& kv : mootation::ops::crossover_stats(false)) d[py::str(kv.first)] = kv.second;
+              // mosa: the annealing's state (algorithms/mosa.hpp)
+              for (const auto& kv : mootation::mosa_record()) d[py::str(kv.first)] = kv.second;
               g_ops.evals_read = g_evaluations.load();
               g_ops.rc_read = rc;
               g_ops.off = g_ops.surv = g_ops.nd = g_ops.step_n = 0;

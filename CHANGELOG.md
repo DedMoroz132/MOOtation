@@ -216,6 +216,18 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `mosa`, multi-objective simulated annealing (`algorithms/mosa.hpp`; task 7,
+  §1, §1.2a and §6): chains over an archive of every non-dominated point,
+  composed from AMOSA's archive and informed reseeding, DBMOSA's dominance
+  energy and Pareto simulated annealing's Chebyshev chains with adaptive
+  weights. The energies `cmb` (the default), `eps`, `dom`, `tch`; the steps
+  `mix` (the default), `laplace`, `de`, `sbx` and `adaptive` (credit over a
+  window); the temperature and the step scale fall over the whole budget, so it
+  is budget-dependent (`run/budget.py`). One step is one evaluation; the answer
+  is the archive reduced to `pop` by DSS. Its records go to `operator_stats`
+  (`metric_names.SA_STATS`, `sa_w_mean_*`, `sa_w_sd_*`). The public list is 64
+  algorithms. The header says which mechanism is whose and that AMOSA's,
+  DBMOSA's and PSA's papers are still to be checked against.
 - Differential evolution and an operator portfolio in the switchable
   algorithms (NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA, SMS-EMOA; task 7, §2):
   `crossover = "de"` (DE/rand/1/bin, the host's pair and two more parents from

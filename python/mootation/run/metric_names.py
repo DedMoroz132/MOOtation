@@ -28,6 +28,14 @@ DE_STATS = ("de_mu_cr_mean", "de_mu_cr_q1", "de_mu_cr_q3", "de_mu_f_mean", "de_m
             "de_mu_f_q3", "de_cr_mean", "de_f_mean", "de_cr_success_mean", "de_f_success_mean")
 PORTFOLIO_STATS = ("portfolio_share_", "portfolio_kept_")
 
+# mosa's (task 7, §1; algorithms/mosa.hpp), the state at the record: the
+# temperature, the step scale, the archive's size, the reseeds so far; with
+# sa_step = adaptive the three steps' probabilities, with sa_energy = tch the
+# weights' mean and spread over the chains per objective, SA_WEIGHT_STATS + j.
+SA_STATS = ("sa_T", "sa_s", "sa_archive_size", "sa_reseeds", "sa_p_laplace", "sa_p_de",
+            "sa_p_sbx")
+SA_WEIGHT_STATS = ("sa_w_mean_", "sa_w_sd_")
+
 # What a run on a constrained problem records besides (task 6 of 2026-10-09,
 # item 5.2), unasked: feas_share wherever an indicator is measured, which is
 # then measured on the feasible part of the answer (metrics.compute), and
@@ -39,7 +47,7 @@ FEASIBILITY = ("feas_share", "fe_first_feas")
 NOISE = ("true_dominated_share",)
 
 # Everything a table can be asked for.
-TABLE_NAMES = METRIC_NAMES + RUN_STATS + DE_STATS + FEASIBILITY + NOISE
+TABLE_NAMES = METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + FEASIBILITY + NOISE
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
@@ -66,9 +74,10 @@ def base_name(name: str) -> str:
 
 def is_table_name(name: str) -> bool:
     """Can a table be asked for `name`: TABLE_NAMES, the front indicators
-    against the dense reference, and a portfolio's per-operator shares."""
+    against the dense reference, a portfolio's per-operator shares and mosa's
+    per-objective weights."""
     return (name in TABLE_NAMES or base_name(name) != name
-            or name.startswith(PORTFOLIO_STATS))
+            or name.startswith(PORTFOLIO_STATS + SA_WEIGHT_STATS))
 
 # These look at the decision variables: all of them need the solutions; igdx,
 # cr and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
@@ -157,6 +166,13 @@ DESCRIPTIONS = {
     "de_f_mean": "the mean F of the children drawn",
     "de_cr_success_mean": "the mean CR of the children the selection kept",
     "de_f_success_mean": "the mean F of the children the selection kept",
+    "sa_T": "mosa: the temperature at the record",
+    "sa_s": "mosa: the step scale at the record, over ub - lb",
+    "sa_archive_size": "mosa: the archive's size at the record",
+    "sa_reseeds": "mosa: the steps so far that restarted a chain from the archive",
+    "sa_p_laplace": "mosa with sa_step = adaptive: the Laplace step's probability",
+    "sa_p_de": "mosa with sa_step = adaptive: the differential step's probability",
+    "sa_p_sbx": "mosa with sa_step = adaptive: the SBX step's probability",
     "feas_share": "a constrained problem's: the share of the answer that satisfies every "
                   "constraint; every other indicator is measured on that part, and an answer "
                   "without one has no value (an empty run, counted apart and ranked worst)",

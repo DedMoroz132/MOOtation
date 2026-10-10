@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 63 algorithm names |
+| `--algorithms` | list the 64 algorithm names |
 | `--problems` | list the 552 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -648,7 +648,8 @@ implemented, so the knob does not make NSGA-II into DN-NSGA-II. Default
 `objectives`, NSGA-II's.
 
 **DMS.** Direct MultiSearch (Custódio, Madeira, Vaz & Vicente, SIAM J.
-Optim. 21(3), 2011) is the one algorithm here that is not evolutionary: a
+Optim. 21(3), 2011) is one of the two algorithms here that are not
+evolutionary (the other is MOSA, below): a
 list of nondominated points, each with its own step size, polled one at a
 time along ±every coordinate (2n evaluations a poll). It is deterministic —
 the seed changes nothing — and stops by itself when every step size is below
@@ -665,6 +666,40 @@ tell its search from both, `dms_init = "random"` starts from a Latin
 hypercube of n points drawn from the seed and `dms_poll = "random"` polls a
 point drawn among those still worth polling (`first`, the default, the first
 in list order), the directions in random order (DMS-6 in `dms.hpp`).
+
+**MOSA.** Multi-objective simulated annealing (`algorithms/mosa.hpp`):
+annealing chains over an archive of every non-dominated point evaluated. It is
+not one paper's algorithm but a composition: AMOSA's archive and informed
+reseeding, DBMOSA's energy (the share of the archive dominating a point) and
+the Chebyshev chains of Pareto simulated annealing with weights that adapt to
+push the chains apart; the header says which part is whose, and that the three
+papers are still to be checked against. One step is one evaluation, so `pop`
+is the size of the answer — the archive reduced by DSS, published every `pop`
+steps and at the last — not of a population, and annealing is sequential:
+`batch=` and a cluster's evaluators see one point at a time. The temperature
+and the step scale fall geometrically over the whole budget, so the run depends
+on it (`run/budget.py`; a ladder runs each rung apart).
+
+| knob | values |
+|---|---|
+| `sa_energy` | `cmb` (the default: the share of the archive dominating the point where it is above 0, minus the additive ε of the archive against the point elsewhere), `eps`, `dom`, `tch` (Chebyshev, each chain its own weights) |
+| `sa_step` | `mix` (the default: SBX with a random archive member, then polynomial mutation, or a differential step, half and half), `laplace` (AMOSA's move, each variable with probability 1/n, scale s·(ub − lb)), `de` (x + F(x_a − x_b) with probability `p_de` = 0.7, otherwise Laplace), `sbx`, `adaptive` (laplace, de or sbx with probability ∝ its successes in the last `sa_adapt_window` = 200 steps + 1) |
+| `F`, `p_de` | the differential step's factor (0.5) and, in `de`, its probability (0.7) |
+| `sa_chains` | chains over one archive, advancing in turn: 1, or 10 with `tch` |
+| `sa_reseed` | the probability per step of restarting a chain from the better of two random archive members (1/50) |
+| `sa_t_ratio` | T at the last step over T_0 (10⁻⁴); T_0 is the median energy difference between start points over ln 2 |
+| `sa_s0`, `sa_s_end` | the Laplace scale over ub − lb at the first and the last step (0.2, 0.002) |
+| `sa_archive_cap` | 0 (the default) keeps every non-dominated point; above 0, DSS thins the archive to it |
+| `sa_weights`, `sa_psa_alpha` | `tch` only: `psa` (the default) multiplies a chain's weight by α = 1.05 where it beats its nearest non-dominated neighbour chain and divides it elsewhere; `fixed` keeps the start weights |
+| `sa_tch_accept` | `tch` only: `weighted_sum` (the default, PSA's) compares the weighted sum of the objectives' differences, `chebyshev` the energies |
+| `eta_c`, `eta_m`, `pm`, `bound_repair` | SBX's and polynomial mutation's (20, 20, 1/n); `reflect` by default, `resample` and `native` refused |
+
+With `operator_stats` a run records the temperature `sa_T`, the step scale
+`sa_s`, `sa_archive_size` and `sa_reseeds`; with `tch` the weights' mean and
+standard deviation over the chains, `sa_w_mean_<j>` and `sa_w_sd_<j>`; with
+`adaptive` the probabilities `sa_p_laplace`, `sa_p_de` and `sa_p_sbx`. Under
+constraints the archive keeps the feasible points (the least violating one
+while none is), and a chain moves from a feasible point to a feasible one only.
 
 **GDE3, SMS-EMOA, MO-CMA-ES.** Three classics the library lacked. GDE3
 (Kukkonen & Lampinen, CEC 2005) builds a DE/rand/1/bin trial for every
@@ -696,7 +731,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-63 cores, so "not dominated by its parents" is read as "by any parent", and
+64 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

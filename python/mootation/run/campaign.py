@@ -62,8 +62,8 @@ from .config import Config, ConfigError, load, validate
 from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
 from .metric_names import (DENSE_SUFFIX, HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES,
-                           NEEDS_FRONT, NEEDS_SET, NEEDS_X, RUN_STATS, DE_STATS, TABLE_NAMES,
-                           is_table_name)
+                           NEEDS_FRONT, NEEDS_SET, NEEDS_X, RUN_STATS, DE_STATS, SA_STATS,
+                           TABLE_NAMES, is_table_name)
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -2349,7 +2349,7 @@ def main(argv: list[str] | None = None) -> int:
         names = [m.strip() for m in args.recompute.split(",") if m.strip()]
         bad = [m for m in names if m not in METRIC_NAMES]
         if bad or not names:
-            stats = [m for m in bad if m in RUN_STATS or m in DE_STATS]
+            stats = [m for m in bad if m in RUN_STATS + DE_STATS + SA_STATS]
             why = (f" ({', '.join(stats)} describe the run itself: only a run with "
                    f"operator_stats = true records them)" if stats else "")
             print(f"--recompute: unknown metric(s) {', '.join(bad) or '(none given)'}{why}; "

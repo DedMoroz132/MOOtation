@@ -131,6 +131,13 @@ const Override OVERRIDES[] = {
      "steady state, one evaluation a step; ~equal evaluations"},
     {"mo_cma_es",  0, 18200, -1.0, -1.0, false,
      "steady state, one evaluation a step; ~equal evaluations"},
+
+    // mosa anneals one point at a time: one step() is one evaluation, and its
+    // schedules end at the last step. Through the Python binding at 18 200
+    // evaluations, seed 20260804 (2026-10-10): mean 0.012 / best 0.003 with
+    // the default energy, 0.020 / 0.006 with tch.
+    {"mosa",       0, 18200, -1.0, -1.0, false,
+     "simulated annealing, one evaluation a step; ~equal evaluations"},
 };
 
 const Override* find_override(const std::string& name)

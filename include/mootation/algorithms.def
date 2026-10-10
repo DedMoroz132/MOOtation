@@ -87,3 +87,6 @@ MOOTATION_ALG(naemo,      NSGAII_Individual,    NAEMOCore)
 
 // ── Direct search ───────────────────────────────────────────────────────────
 MOOTATION_ALG(dms,        DMS_Individual,       DMSCore)
+
+// ── Simulated annealing ─────────────────────────────────────────────────────
+MOOTATION_ALG(mosa,       NSGAII_Individual,    MOSACore)

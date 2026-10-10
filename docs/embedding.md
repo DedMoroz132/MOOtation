@@ -4,7 +4,7 @@
 Three shapes, from the most static to the most portable: the algorithm fixed at
 compile time (`Optimizer<Ind, Core>`), the algorithm chosen by name at run time
 with either the library or you owning the loop (`embed.hpp`), and the same loop
-behind a C ABI for other languages. All three run the same 63 cores from
+behind a C ABI for other languages. All three run the same 64 cores from
 `include/mootation/algorithms.def`.
 
 ## Compile-time choice: `Optimizer<Ind, Core>`
@@ -56,8 +56,8 @@ carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 you; the full WFG / MaF families live on the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
-[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 47 of the 63 cores
-accept one, the other 16 refuse it at `setup()` with a message.
+[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 47 of the 64 cores
+accept one, the other 17 refuse it at `setup()` with a message.
 
 ### External or parallel evaluation
 
@@ -82,7 +82,7 @@ sizes in the message.
 
 ## Run-time choice: `embed.hpp`
 
-`#include <mootation/embed.hpp>` instantiates all 63 cores in that translation
+`#include <mootation/embed.hpp>` instantiates all 64 cores in that translation
 unit so that the algorithm can be picked by name. That is a real compile-time
 cost (about a minute); a program that always runs one algorithm should use
 `Optimizer<Ind, Core>` directly.
@@ -111,6 +111,8 @@ A plain struct, and the same fields as a `key = value` file:
 | `bound_repair` | a word: `clip`, `reflect`, `random`, `midpoint`, `resample`, `wrap` or `native` — what an operator that can leave the box does with the variables it put outside (DE in MOEA/D-DE, MOEA/D-DRA, LIS/LCS and HCCA; Liu & Li's operators; DCEA, HLMEA, NAEMO and EMyO/C); each keeps its own default, and the others report it as ignored (`operators/bound_repair.hpp`). A value still outside when written is clamped by the store and counted as a repair of its own, `vault` in the operator log |
 | `step_share`, `F_spread` | EMyO/C: the clamp of its difference vector as a share of ub − lb (0.5) and the spread of its factor F (0) |
 | `dms_init`, `dms_poll` | words for DMS: the initial list, `line` / `single` / `random`, and the next poll centre, `first` / `random` (`dms.hpp`, DMS-6) |
+| `sa_energy`, `sa_step`, `sa_weights`, `sa_tch_accept` | words for MOSA: the energy `cmb` / `eps` / `dom` / `tch`, the step `mix` / `laplace` / `de` / `sbx` / `adaptive`, with `tch` the weights `psa` / `fixed` and the acceptance `weighted_sum` / `chebyshev` (`mosa.hpp`; [running.md](running.md)) |
+| `p_de`, `sa_chains`, `sa_reseed`, `sa_t_ratio`, `sa_s0`, `sa_s_end`, `sa_archive_cap`, `sa_psa_alpha`, `sa_adapt_window` | MOSA's numbers: the differential step's probability (0.7), the chains (1; 10 with `tch`), the reseeding probability (1/50), T's last over first (10⁻⁴), the Laplace scale first and last (0.2, 0.002), the archive's cap (0: none), PSA's α (1.05), the adaptive step's window (200) |
 
 `Settings::from_file("run.cfg")` reads the file; an unknown key is an error, not
 a silent no-op. [`examples/run.cfg`](../examples/run.cfg) is a commented copy
@@ -189,6 +191,7 @@ AGE-MOEA and SMS-EMOA took it only from task 7 on.
 | `two_arch2` | yes | yes | yes | no | no |
 | `naemo` | yes | yes | yes | no | no |
 | `dms` | no | no | no | no | no |
+| `mosa` | yes | yes | yes | no | no |
 
 </details>
 

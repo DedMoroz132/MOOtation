@@ -11,7 +11,7 @@ needs a separate run per rung for them ([campaign] ladder), and the analysis
 Two lists, and how each was made:
 
   * BY_HEADERS — read off the code: the binding passes the budget to every core
-    that has set_t_max (19 of them), and these use it in a schedule. Of the
+    that has set_t_max (20 of them), and these use it in a schedule. Of the
     other two, IF-MaOEA stores t_max and never reads it, and CLIA uses it once,
     for theta = min(20, max(5, ceil(t_max*N / 2e4))) (§IV-B), which is 5 at
     every budget up to 100 000 evaluations.
@@ -39,7 +39,7 @@ import time
 BY_HEADERS = frozenset({
     "rvea", "rvea_star", "moead_awa", "adaw", "dea_gng", "mbra", "nrv_moea",
     "hlmea", "dhea", "moead_ds", "srv", "srv_nsga3", "dcea", "maoea_3c",
-    "moead_m2m", "moead_am2m", "liu_gu2011",
+    "moead_m2m", "moead_am2m", "liu_gu2011", "mosa",
 })
 
 # check() on DTLZ2_3D, seed 1, 10 000 against 25 000 evaluations, 2026-09-27,
@@ -49,6 +49,8 @@ BY_HEADERS = frozenset({
 # lhs_search (2026-10-01) depends on its budget by construction: its Latin
 # hypercube is laid out for the whole budget at once. halton_search and
 # sobol_owen_search (2026-10-10) do not: like sobol_search they draw sequences.
+# mosa (2026-10-10) cools its temperature and step over the whole budget:
+# measured dependent at 202 evaluations, as its header says.
 BUDGET_DEPENDENT = BY_HEADERS | {"lhs_search"}
 
 
