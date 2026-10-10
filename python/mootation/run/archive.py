@@ -60,17 +60,15 @@ distance and are not claimed here. include/mootation/dss.hpp is the same
 selection in C++, index for index.
 
 SELECTING FOR IGD+ AGAINST THE ARCHIVE ITSELF ([campaign] answer_select =
-"igdp_self", task 6 of 2026-10-09, item 13). On stage 3 the archive scenario
-lost to the population at the strict levels because of DSS's rule, not of
-what the archive held: the best N points of the same archive under IGD+
-against the reference (the oracle, campaign --oracle) beat both. Without a
-reference, igdp_self_order takes the archive thinned by DSS to
+"igdp_self", task 6 of 2026-10-09, item 13). DSS chooses for coverage, not
+for IGD+; the best N points of the same archive under IGD+ against the
+reference (the oracle, campaign --oracle) bound what any choice from it can
+reach. Without a reference, igdp_self_order takes the archive thinned by DSS to
 SELF_REFERENCE = 1 000 points as one (the size of the reference fronts), and
 from the whole archive greedily the N points of the smallest IGD+ against it:
 first the point of the smallest mean d+, then each the one that lowers the
 mean of the reference's smallest d+ most, ties to the lowest index
-(greedy_igdp) — no swaps after. On stage 3 this choice beat DSS in most
-runs but not the population everywhere: DSS stays the default.
+(greedy_igdp) — no swaps after. DSS stays the default.
 """
 
 from __future__ import annotations

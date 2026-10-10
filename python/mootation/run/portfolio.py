@@ -30,8 +30,8 @@ the conclusions hang on --cover's 7):
     counts 1, one all 67 cover 1/67 — and the values add up to the oracle;
   * the problems each algorithm covers alone.
 ONE RUN EACH (task 5, 2026-10-01), where the campaign has a deterministic
-algorithm (cover.py, DETERMINISTIC ALGORITHMS: on stage 3 DMS, whose ten seeds
-are one run): the same per seed, every algorithm covering what it reaches in
+algorithm (cover.py, DETERMINISTIC ALGORITHMS: DMS, whose ten seeds are one
+run): the same per seed, every algorithm covering what it reaches in
 that one seed, and the mean over the seeds (seeds_required "one_run"): the
 oracle, the Shapley values, the problems covered and covered alone; the
 single best is the one covering most on average.

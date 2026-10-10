@@ -530,7 +530,7 @@ always listed under **Changed** or **Removed**.
   tests check two designs of the paper's catalog. As a start, `init = "lhs"`;
   as a baseline, `lhs_search`, one hypercube of the whole budget
   (budget-dependent).
-- Knobs for the runs that test stage 3's artefacts (task 5, runs A1 and A2),
+- Knobs for DMS and EMyO/C (task 5, runs A1 and A2),
   every default unchanged: DMS `dms_init = "random"` (a Latin hypercube of n
   points from the seed) and `dms_poll = "random"` (a poll centre drawn among
   those still worth polling, the directions in random order), so that its ten
@@ -549,7 +549,7 @@ always listed under **Changed** or **Removed**.
   and `init_share` from a plan taking that share of the budget (the
   nondominated points of the plan first, the rest by DSS), through
   `minimize(init=..., init_share=...)` and the new `mootation.designs`.
-- The analysis rules of task 5, item 2, for the runs after stage 3: an
+- The analysis rules of task 5, item 2: an
   algorithm whose seeds are one run (DMS) is named by `--cover`,
   `--portfolio` and `--instance-space`, which add the sensitivity row "one run
   each" — every algorithm read from one seed at a time, the mean over the

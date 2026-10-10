@@ -1,5 +1,5 @@
-# Which bound repair, where it matters (task 6 of 2026-10-09, item 13): not
-# run yet — a configuration to run when the owner says so.
+# Which bound repair, where it matters (task 6 of 2026-10-09, item 13): a
+# configuration, not run here.
 #
 # Every algorithm with the bound_repair knob, at each of its values clip,
 # reflect, random, midpoint, resample and wrap ("native", the paper's own rule

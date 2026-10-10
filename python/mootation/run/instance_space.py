@@ -148,8 +148,8 @@ The 2017 paper also suggests Algorithm 2 between an algorithm's good footprint
 and its unsolved problems taken as a second algorithm; that is not done here.
 
 ONE RUN EACH (task 5, 2026-10-01), where the campaign has a deterministic
-algorithm (cover.py, DETERMINISTIC ALGORITHMS: on stage 3 DMS, whose ten seeds
-are one run): every good footprint once more per seed, good = the level in
+algorithm (cover.py, DETERMINISTIC ALGORITHMS: DMS, whose ten seeds are one
+run): every good footprint once more per seed, good = the level in
 that one seed, and the mean over the seeds of the problems good, the triangles
 and the two area shares (kind "good_one_run" in is_footprints.csv; no
 triangles kept). The gdp levels count only an answer of at least N/2 points
@@ -579,7 +579,7 @@ def _sample_features(X, F) -> dict:
                            if len(ndi) >= 2 else 0.0)}
 
 
-# the fixed transforms (report 08's, chosen before any fit): the rest as they are
+# the fixed transforms (chosen before any fit): the rest as they are
 SAMPLE_TRANSFORMS = {"nd_share": math.log10, "skew_mean": math.asinh,
                      "kurt_mean": lambda v: math.log10(v + 3.0),
                      "lm_share_mean": lambda v: math.log10(v + 0.001),

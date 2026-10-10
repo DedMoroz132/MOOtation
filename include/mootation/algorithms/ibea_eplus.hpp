@@ -70,8 +70,8 @@
 //   supplement 2; operators/inner_archive.hpp): an archive of every
 //   non-dominated point evaluated, the initial population included; each
 //   parent, with probability archive_reuse_p, a member drawn uniformly
-//   instead of the tournament's winner. No theory behind it here: it is for
-//   the corpus's rule that experiments from four objectives run on IBEA-ε+.
+//   instead of the tournament's winner. No theory behind it here: it lets
+//   the indicator-based method run with an archive too.
 // ============================================================================
 
 #include <algorithm>

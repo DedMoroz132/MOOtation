@@ -58,8 +58,7 @@ maximin order itself is the design. Two departures:
     (n = 12 at k = 2, n = 6 at k = 4 in 3 seeds of 3, n = 10 at k = 3 in 1);
   * the paper's levels are i/(n - 1), 0 and 1 included and 1/2 at odd n, and its
     best designs at odd n hold the centre of the box itself (Table 3): exactly
-    the optima of DTLZ1-4's and ZDT's distance variables, the artefact task 5
-    found in DMS (run A1). Here level i is the cell [i/n, (i + 1)/n) of
+    the optima of DTLZ1-4's and ZDT's distance variables. Here level i is the cell [i/n, (i + 1)/n) of
     McKay, Conover & Beckman's Latin hypercube (1979) and the point is drawn
     uniformly in its cell: the maximin arrangement of the cells is the paper's,
     the points are on no grid.

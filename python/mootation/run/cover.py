@@ -106,18 +106,17 @@ THE ANSWER'S SIZE (task 5, 2026-10-01). Beside the indicators every budget
 reads how many points the answer has there ("n": n_final of a final
 population, n of a trajectory record or a reduced archive). GD+ measures only
 how close the answer's points are to the front, not how much of it they
-cover: on stage 3 DMS reached the finest gdp level on BT6-BT8 with 2 points
-of 100. So a gdp level counts only for an answer of at least N/2 points, N
+cover: two points on the front reach the finest gdp level. So a gdp level counts only for an answer of at least N/2 points, N
 the population the algorithm ran with; the igdp levels and the hv_h gap
 penalise a short answer themselves. cover_short_answers.csv lists the runs
 shorter than N/2 at every budget.
 
 DETERMINISTIC ALGORITHMS (task 5, 2026-10-01). An algorithm whose seeds give
-the same values on every problem at every budget (on stage 3 DMS alone,
-which draws no random number) has its ten seeds as one run: "7 of 10" is
+the same values on every problem at every budget (DMS, which draws no
+random number) has its ten seeds as one run: "7 of 10" is
 then "1 of 1" for it and "7 of 10" for everybody else. They are named in the
 report and in cover_meta.json, and beside every level the sensitivity row
-ONE RUN EACH (the fifth variant of report 06 of the stage-3 analysis) reads
+ONE RUN EACH reads
 every algorithm from one seed at a time — covered = the level in that seed — and
 gives the mean over the seeds of what the main rule gives (cover_one_run.csv:
 per seed, the smallest set and the problems each deterministic algorithm

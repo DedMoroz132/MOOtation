@@ -27,7 +27,7 @@
 // With constraints (constraint_mode not NONE) only feasible points enter, as
 // in the answer's archive (archive.py); without, every point.
 //
-// Why (from the abstracts, closed corpus): without an archive the stochastic
+// Why (from the papers' abstracts): without an archive the stochastic
 // population update loses good solutions and needs a large population (Ren,
 // Liang, Li & Qian, IJCAI 2025); an archive lets μ be 2-4 and speeds NSGA-II
 // and SMS-EMOA up by Θ(n) on OneMinMax and LOTZ (Bian, Ren, Li & Qian, IJCAI

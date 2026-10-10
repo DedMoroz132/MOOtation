@@ -237,9 +237,7 @@ Chebyshev chains of Pareto simulated annealing with weights that adapt to push
 the chains apart (Czyżak & Jaszkiewicz, J. Multi-Crit. Decis. Anal. 7(1), 1998).
 The header lists which parts are whose and which are ours (the default energy,
 `sa_energy = cmb`, and the steps `mix` and `adaptive`), and says plainly that
-the three papers are still to be checked against: the mechanisms follow a
-reference implementation of the owner's, which `mosa` reproduces in
-distribution. One step is one evaluation, so annealing is sequential: there
+the three papers are still to be checked against. One step is one evaluation, so annealing is sequential: there
 is nothing to evaluate in parallel, and `batch=` gets one point at a time.
 The temperature and the step scale fall over the whole budget, so the run
 depends on `max_evaluations` (`run/budget.py`). Its answer is the archive

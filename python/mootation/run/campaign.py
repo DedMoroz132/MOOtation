@@ -114,7 +114,7 @@ class CampaignSpec:
     # The front indicators against the dense reference too, where a problem
     # has one (registry.dense_reference: 4 to 10 objectives), as
     # "<indicator>_ref_v3" beside the usual values (task 6, item 9); on by
-    # the owner's word of 2026-10-10 — the usual values do not change.
+    # default — the usual values do not change.
     dense_reference: bool = True
     seeds: tuple = ()
     # "generations": a trajectory point every record_every generations.

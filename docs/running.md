@@ -786,10 +786,8 @@ non-dominated sorting and crowding distance recomputed one removal at a time;
 `F` and `CR` are knobs, 0.2 and 0.2 by default (the paper's setting on its
 test problems), and at `CR = 1` the trial is rotation-invariant. But with the
 paper's F = 0.2 that step is small — a fifth of the difference of two
-members, along every variable at once — and GDE3 at `CR = 1, F = 0.2`
-converges far more slowly on the unrotated problems than at its defaults;
-give `CR = 1` a larger F (0.5, DE's usual) when rotation invariance is the
-point. SMS-EMOA
+members, along every variable at once; give `CR = 1` a larger F (0.5, DE's
+usual) when rotation invariance is the point. SMS-EMOA
 (Emmerich, Beume & Naujoks, EMO 2005) and the steady-state MO-CMA-ES (Voß,
 Hansen & Igel, GECCO 2010) spend one evaluation a step and drop the point
 with the smallest hypervolume contribution in the worst front — exactly at
@@ -1060,8 +1058,8 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   and are read back next time. Criterion `gdp` reads `gdp_norm ≤ τ`, τ in
   `--cover-taus` (0.1, 0.03, 0.01, 0.003): the progress towards the front
   alone, whose floor is 0 — counted only for an answer of at least N/2 points,
-  since GD+ does not see how much of the front the answer covers (on stage 3
-  DMS reached its finest level on BT6–BT8 with 2 points of 100);
+  since GD+ does not see how much of the front the answer covers (two points
+  on the front reach its finest level);
   `cover_short_answers.csv` lists the runs shorter than that at every budget.
   Where there is no front (bbob-biobj), both read the
   relative gap of `hv_h` to the best any run of the campaign reached on it,
@@ -1099,8 +1097,8 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   weighted alike (bbob-biobj is more than half of the problems), with each
   family's count along it. `--cover-bootstrap N` resamples the seeds N times
   and says how often each algorithm is in a smallest set. An algorithm whose
-  seeds give the same values on every problem at every budget (on stage 3 DMS
-  alone) has its ten seeds as one run, so "7 of 10" is "1 of 1" for it: the
+  seeds give the same values on every problem at every budget (DMS, which
+  draws no random number) has its ten seeds as one run, so "7 of 10" is "1 of 1" for it: the
   report names it, and beside every level the row "one run each" reads every
   algorithm from one seed at a time (covered = the level in that seed) and
   gives the mean over the seeds, with the problems the deterministic algorithm

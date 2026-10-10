@@ -45,7 +45,7 @@ THE FRONTS are approximations, not the true fronts (front_exact = False):
 IGD+ and eps on these problems measure the distance to an approximation.
 
 KNOWN DEFECTS, kept so that the values match the published fronts (the
-repository's change log; Optimization notes of 2026-10-09):
+repository's change log and issues):
   * RE22: the list of x1's discrete values reads "3.08, 3,10, 3.16" in all
     four language versions — a comma for a point, so the list holds 3 and 10
     where 3.10 was meant. Not corrected: a corrected RE22 would need a new
@@ -59,13 +59,13 @@ THE CORRECTED COPIES (task 7 of 2026-10-10, §9), beside the originals, which
 stay as they are for the published fronts:
   RE22c  RE22 with x1's list as meant: 3.10 where the original has "3,10"
          (76 values, not 77). The list is RE22's own; its source, Amir and
-         Hasegawa's reinforced concrete beam (1989, as reproblems cites it),
-         is not in the corpus and was not checked.
+         Hasegawa's reinforced concrete beam (J. Struct. Eng. 115(3), 1989),
+         is not openly available and was not checked.
   RE33c  RE33 with x4 in [2, 11] instead of [11, 20], after reproblems'
-         issue #9 (2023, open; the author agrees there) — as recorded in the
-         notes of 2026-10-09: the issue's text itself and the disc brake's
-         source (Ray and Liew, 2002, as reproblems cites it) are to be
-         checked.
+         issue #9 (opened 2023-02-25, still open; the author confirmed the
+         error there on 2023-04-11, and the code still has [11, 20]). The
+         disc brake's source (Ray and Liew, Eng. Optim. 34(2), 2002) is not
+         openly available and was not checked.
   Their reference fronts are built here (re_fronts.py: an exhaustive grid,
   then local refinement, thinned by DSS to 500 M points), shipped in
   _re/corrected/ with the fronts' own ideal and nadir points; front_exact is

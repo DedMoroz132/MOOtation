@@ -3,8 +3,7 @@
 // ============================================================================
 // Variation in learned coordinates (task 7 of 2026-10-10, supplement 1): the
 // knob `coords` of the switchable algorithms (nsga2, ibea_eplus, spea2_sde,
-// agemoea, sms_emoa) and of mosa's sbx step. A construction of this library,
-// after the owner's test stand (oss-bench, pca_ops.py, LearnedSBX).
+// agemoea, sms_emoa) and of mosa's sbx step. A construction of this library.
 //
 //   axis     (the default) the variation as it always was
 //   pca      the crossover and the mutation act on y = (x − μ) R, R the
@@ -18,8 +17,7 @@
 // THE MECHANISM.
 //   * Warm-up: for the first coords_warmup generations (10) R = I and nothing
 //     changes — the population is still random. In generations, not in a share
-//     of the budget as on the stand (10 %), so that the algorithm does not
-//     become budget-dependent. A generation is pop_size offspring (sms_emoa:
+//     of the budget, so that the algorithm does not become budget-dependent. A generation is pop_size offspring (sms_emoa:
 //     pop_size steps).
 //   * Update: R and μ every coords_update generations (1) from then on.
 //   * The basis is complete even with fewer points than variables: Jacobi's

@@ -5031,8 +5031,8 @@ def mw_fixed_points(name: str, m: int) -> list:
 def mw_matches_pymoo():
     """MW1-14 (MW4, MW8 and MW14 at three and five objectives) give pymoo's
     objectives and constraints at five points each, to 1e-12 relative (the
-    literal has pymoo's MW12 and MW13 constraints in the paper's order:
-    TASK6 mw_pymoo_values.py) (task 6, item 5)."""
+    literal has pymoo's MW12 and MW13 constraints in the paper's order)
+    (task 6, item 5)."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     from mootation.benchmarks import get, names

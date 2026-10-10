@@ -47,10 +47,10 @@
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY —
 //   CDP inside the non-dominated sort; binary variables (bit-flip).
 // KNOBS FOR THE MECHANISM (task 5, 2026-10-01; off by default, the defaults
-//   are the paper's). Stage 3 traced EMyO/C's exact hits of DTLZ1/3's
-//   x = 0.5 and of the bounds (ZDT, DTLZ6/7) to the two clips: a parent on a
-//   bound plus a step of exactly half the range lands on the middle, and
-//   Eq. 5 lands on the bounds. To test that by runs:
+//   are the paper's). The two clips put points exactly on the middle and on
+//   the bounds of the box: a parent on a bound plus a step of exactly half
+//   the range lands on the middle, and Eq. 5 lands on the bounds. To take
+//   the two apart:
 //     bound_repair  Eq. 5's repair of the offspring: clip (the paper),
 //                   reflect, random, midpoint, wrap;
 //     step_share    the clamp of v in Eq. 2-3, ±step_share·(ub − lb): 0.5;

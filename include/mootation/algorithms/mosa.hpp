@@ -42,11 +42,10 @@ namespace mootation {
 //     step, AMOSA's Laplace move;
 //   * the combined energy, the step "SBX or DE" and the adaptive choice of
 //     step: ours.
-// THE PAPERS OF AMOSA, DBMOSA AND PSA ARE NOT IN THE CORPUS YET: the
-// mechanisms are the task's and the owner's test stand's (oss-bench,
-// run_sa_var), PSA's rules from memory — to be checked against the papers.
+// THE PAPERS OF AMOSA, DBMOSA AND PSA ARE NOT CHECKED AGAINST YET: the
+// mechanisms are written from the task, PSA's rules from memory.
 //
-// ONE STEP IS ONE EVALUATION. A run (the stand's run_sa_var, step for step):
+// ONE STEP IS ONE EVALUATION. A run:
 //   1. START: a Latin hypercube of max(n + 2, 20) points, all evaluated and
 //      offered to the archive (a seeded population — the campaign's `init` —
 //      instead, when there is one).
@@ -105,7 +104,7 @@ namespace mootation {
 //      (sa_psa_alpha, 1.05), every other divided by it, the sum then put back
 //      to 1 — chain k moves further where it beats its neighbour. Without
 //      such an x' the weights stay. sa_weights = fixed keeps the start
-//      weights (the stand's variant of 08.10). The mean and spread of the
+//      weights. The mean and spread of the
 //      weights over the chains are recorded.
 // The schedules (T, s) need the budget in steps: the run's t_max (one
 // evaluation a step; corrected after the first step under an evaluation

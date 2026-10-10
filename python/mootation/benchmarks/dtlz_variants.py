@@ -39,8 +39,7 @@
 #              box moves to 0.6, 5e-5 from a local minimum of g: (0.1)^2 −
 #              cos(2π) = −0.99 per variable, g = 100(k − 0.99k) = k (10 at
 #              three and at five objectives). A parent on a bound plus a step
-#              of half the range — EMyO/C's exact hits of 0.5 on DTLZ3 — then
-#              lands on 0.6. A control written for this library, at three and
+#              of half the range (EMyO/C's clamp) then lands on 0.6. A control written for this library, at three and
 #              five objectives.
 #
 # The reference fronts are built analytically, with g pinned at the value it
