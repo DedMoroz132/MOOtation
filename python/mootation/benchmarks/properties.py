@@ -279,6 +279,8 @@ _LINKAGE = {"ZDT": False, "DTLZ": False, "ZCAT": True, "MOP": True, "Polygon": F
 
 def _stem_and_m(name: str) -> tuple:
     stem = name.split("_")[0]
+    if name.rsplit("_", 1)[-1][:1] == "i" and name.rsplit("_", 1)[-1][1:].isdigit():
+        name = name.rsplit("_", 1)[0]               # a rotation's instance, rDTLZ1_3D_i2
     tail = name.rsplit("_", 1)[-1]
     m = int(tail[:-1]) if tail.endswith("D") and tail[:-1].isdigit() else 2
     return stem, m
@@ -296,7 +298,8 @@ def properties(name: str) -> dict | None:
     if stem.startswith("BT"):
         row["linkage"] = int(stem[2:]) in _BT_LINKAGE
     elif stem.startswith(("ZDT", "DTLZ", "shiftDTLZ", "shiftZDT", "IDTLZ", "SDTLZ", "wideDTLZ",
-                          "C1-DTLZ", "C2-DTLZ2", "rDTLZ", "rcDTLZ", "r0DTLZ", "c0DTLZ")):
+                          "C1-DTLZ", "C2-DTLZ2", "rDTLZ", "rcDTLZ", "r0DTLZ", "c0DTLZ",
+                          "rZDT")):
         row["linkage"] = False
     elif stem.startswith("ZCAT"):
         row["linkage"] = _LINKAGE["ZCAT"]
@@ -376,7 +379,8 @@ def _huband(name: str) -> dict | None:
         # separable where the rotation mixes an anisotropic g (rDTLZ2 and
         # rDTLZ4 are their Q = I construction: separable as DTLZ2)
         family, rotate, condition = _ROTATED[stem]
-        row = dict((_WFG if family.startswith("WFG") else _DTLZ)[family])
+        row = dict((_WFG if family.startswith("WFG") else
+                    _ZDT if family.startswith("ZDT") else _DTLZ)[family])
         row["centre"] = row["boundary"] = False
         if rotate and (condition or family not in ("DTLZ2", "DTLZ4")):
             row["separable"] = False
@@ -430,7 +434,7 @@ def _positions(name: str, n_obj: int) -> int:
     optimum spans the box; the rest are the distance variables measured()
     reads (IPolygon: none — both of its variables count)."""
     stem, _ = _stem_and_m(name)
-    if stem.startswith(("ZDT", "shiftZDT")):
+    if stem.startswith(("ZDT", "shiftZDT", "rZDT")):
         return 1
     if stem == "Polygon":
         return 2

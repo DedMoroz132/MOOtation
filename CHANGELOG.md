@@ -216,6 +216,16 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Rotated ZDT, rotation instances and more objectives (`benchmarks/rotated.py`,
+  task 7, §3): rZDT1-3 and rZDT6 evaluate ZDT at x' = |Q (z - c)| / m (the
+  sum of absolute values in g is not isotropic, so the rotation changes the
+  function; at Q = I it is shiftZDT, the control), rZDT4 at x' = Q (z - c),
+  ZDT4's Rastrigin term rotated; unclipped. Three instances of Q,
+  `<name>_i1` .. `_i3`, of rZDT1-4, rZDT6, rDTLZ1, rDTLZ3, rcDTLZ2 and
+  rWFG4-7 at every size they have; instance 1 is the problem without the
+  suffix, whose matrix the tests have held since task 6. rcDTLZ2 and c0DTLZ2
+  at six and ten objectives too. The tests hold the hash of every new matrix.
+  624 problems in 29 families.
 - `mosa`, multi-objective simulated annealing (`algorithms/mosa.hpp`; task 7,
   §1, §1.2a and §6): chains over an archive of every non-dominated point,
   composed from AMOSA's archive and informed reseeding, DBMOSA's dominance

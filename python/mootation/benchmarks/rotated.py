@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Rotated DTLZ and WFG: the distance variables rotated about their optimum.
+"""Rotated ZDT, DTLZ and WFG: the distance variables rotated about their optimum.
 
 A control written for this library, not a published suite (task 6 of
 2026-10-09, item 1, with its supplement 2). ZDT, DTLZ and WFG keep every
@@ -34,12 +34,35 @@ distance variables is transformed, about its optimum:
             Measured on 10^5 uniform points of the box (2026-10-10), rWFG4-7
             at three and five objectives: 97-99 % of the points have a clipped
             variable, 2.8-3.7 of the 20 on average, 10-29 % five or more.
+  rZDT1-3, rZDT6 (task 7 of 2026-10-10, §3)
+            z = x_2..x_n, the k = n - 1 distance variables, c =
+            shift_centres(k), m_i = max(c_i, 1 - c_i), and ZDT evaluated at
+            x' = |Q (z - c)| / m, component by component. g is a sum of the
+            x' (ZDT6: its fourth root), a sum of absolute values, which is not
+            isotropic: the rotation changes the function. At Q = I, x' is the
+            fold of shiftZDT (shifted.py), which is the control. x' leaves
+            [0, 1] and is not clipped: g is defined for any x' >= 0, with its
+            only minimum at x' = 0.
+  rZDT4     c = 10 (shift_centres(9) - 1/2), ZDT4 evaluated at x' = Q (z - c):
+            the Rastrigin term of ZDT4 rotated. At Q = I it is shiftZDT4. x'
+            leaves [-5, 5], unclipped, as ZDT4's g allows.
 
 The controls, for "with and without the rotation": the same construction with
 Q = I — r0DTLZ1, r0DTLZ3 (y = 1/2 + (z - c), a shift that is not cyclic) and
 c0DTLZ2 (y = 1/2 + Lambda (z - c)). shiftDTLZ is not one: its shift is cyclic
 and far from the optimum its function is another. For WFG the control is WFG
-itself: at Q = I the map is the identity.
+itself: at Q = I the map is the identity; for rZDT it is shiftZDT.
+
+SIZES. rDTLZ1-4, rcDTLZ2, rWFG4-7 and the controls at M = 3 and 5; rcDTLZ2
+and c0DTLZ2 at M = 6 and 10 too, for a trend over the number of objectives
+(task 7, §3); rZDT at M = 2.
+
+INSTANCES (task 7, §3). rZDT1-4, rZDT6, rDTLZ1, rDTLZ3, rcDTLZ2 and rWFG4-7
+come in three instances of Q, <name>_i1, _i2, _i3 (rDTLZ1_3D_i2, rZDT4_i3), at
+every size they have. Instance k draws Q from SeedSequence([20261009,
+crc32(base family), M, k_dist, k]); instance 1 is the problem without the
+suffix (the same matrix, whose hash the tests have held since task 6), under
+the name with it, so that a campaign over the instances lists all three.
 
 WHAT A ROTATION CANNOT DO. DTLZ2's and DTLZ4's g = |y - 1/2|^2 is isotropic,
 and |Q (z - c)| = |z - c|: rDTLZ2 and rDTLZ4 are the same functions as their
@@ -51,13 +74,13 @@ distance values depend on other variables (b_param) and are not the constant
 0.35, nor WFG1-3.
 
 Q is a Haar rotation: QR of a standard normal matrix with the signs fixed, as
-bbob._rotation, from SeedSequence([20261009, crc32(base family), M, k, 1]) —
-one instance, the same for every run. numpy does not promise its normal stream
+bbob._rotation, from SeedSequence([20261009, crc32(base family), M, k,
+instance]) — the same for every run. numpy does not promise its normal stream
 bit for bit across versions; the tests hold a hash of every Q.
 
 Front, frame and Pareto-set positions are the base problem's; the distance
-variables of the Pareto set are c (rDTLZ, r0, c0) and 0.35 * 2i (rWFG), and
-the shift is not cyclic (cyclic_vars = ()).
+variables of the Pareto set are c (rZDT, rDTLZ, r0, c0) and 0.35 * 2i (rWFG),
+and the shift is not cyclic (cyclic_vars = ()).
 
 THE LITERATURE, and how this differs (task 6, items 1 and supplement 2):
   * Deb, Sinha, Kukkonen, "Multi-objective test problems, linkages, and
@@ -103,10 +126,17 @@ from .dtlz_variants import shift_centres
 from .wfg import WFG_FUNCS
 
 SIZES = (3, 5)
+MORE_SIZES = {"rcDTLZ2": (6, 10), "c0DTLZ2": (6, 10)}
+INSTANCED = ("rZDT1", "rZDT2", "rZDT3", "rZDT4", "rZDT6", "rDTLZ1", "rDTLZ3", "rcDTLZ2",
+             "rWFG4", "rWFG5", "rWFG6", "rWFG7")
+INSTANCES = (1, 2, 3)
 KAPPA = 1.0e3
 L_WFG = 20
 # name stem -> (base family, Q a rotation, Lambda the conditioning)
 SPECS = {
+    "rZDT1": ("ZDT1", True, False), "rZDT2": ("ZDT2", True, False),
+    "rZDT3": ("ZDT3", True, False), "rZDT4": ("ZDT4", True, False),
+    "rZDT6": ("ZDT6", True, False),
     "rDTLZ1": ("DTLZ1", True, False), "rDTLZ2": ("DTLZ2", True, False),
     "rDTLZ3": ("DTLZ3", True, False), "rDTLZ4": ("DTLZ4", True, False),
     "rcDTLZ2": ("DTLZ2", True, True),
@@ -130,23 +160,35 @@ def conditioning(k: int, kappa: float = KAPPA) -> np.ndarray:
     return kappa ** (np.arange(k) / (2.0 * (k - 1)))
 
 
+def sizes(stem: str) -> tuple:
+    """The objective counts a stem is registered at."""
+    if stem.startswith("rZDT"):
+        return (2,)
+    return SIZES + MORE_SIZES.get(stem, ())
+
+
 class Rotated:
     """One rotated problem: map(x) is the point its base problem is evaluated at."""
 
-    def __init__(self, stem: str, M: int, n_vars: int):
+    def __init__(self, stem: str, M: int, n_vars: int, instance: int = 1):
         family, rotate, condition = SPECS[stem]
-        self.family, self.M, self.n_vars = family, M, n_vars
+        self.family, self.M, self.n_vars, self.instance = family, M, n_vars, instance
         self.wfg = family.startswith("WFG")
-        self.first = n_vars - L_WFG if self.wfg else M - 1        # the first distance variable
+        self.zdt = family.startswith("ZDT")
+        # the first distance variable
+        self.first = n_vars - L_WFG if self.wfg else 1 if self.zdt else M - 1
         k = n_vars - self.first
-        self.A = rotation(family, M, k) if rotate else np.eye(k)
+        self.A = rotation(family, M, k, instance) if rotate else np.eye(k)
         if condition:
             self.A = conditioning(k)[:, None] * self.A           # Lambda Q, not Q Lambda
         if self.wfg:
             self.scale = 2.0 * np.arange(self.first + 1, n_vars + 1)
             self.optimum = 0.35 * self.scale
+        elif family == "ZDT4":
+            self.optimum = 10.0 * (shift_centres(k) - 0.5)
         else:
             self.optimum = shift_centres(k)
+            self.spread = np.maximum(self.optimum, 1.0 - self.optimum)    # m (rZDT)
 
     def map(self, x) -> np.ndarray:
         y = np.array(x, dtype=float)
@@ -154,11 +196,18 @@ class Rotated:
             u = y[self.first:] / self.scale
             v = 0.35 + self.A @ (u - 0.35)
             y[self.first:] = self.scale * np.clip(v, 0.0, 1.0)
+        elif self.family == "ZDT4":
+            y[self.first:] = self.A @ (y[self.first:] - self.optimum)
+        elif self.zdt:
+            y[self.first:] = np.abs(self.A @ (y[self.first:] - self.optimum)) / self.spread
         else:
             y[self.first:] = 0.5 + self.A @ (y[self.first:] - self.optimum)
         return y
 
     def evaluate(self, x) -> List[float]:
+        if self.zdt:
+            from .registry import PROBLEMS          # ZDT's functions are the registry's
+            return list(PROBLEMS[self.family].evaluate(list(self.map(x))))
         f = WFG_FUNCS if self.wfg else DTLZ_FUNCS
         return list(f[self.family](list(self.map(x)), self.M))
 
@@ -170,5 +219,7 @@ class Rotated:
         return int(np.sum((v < 0.0) | (v > 1.0)))
 
 
-def name(stem: str, M: int) -> str:
-    return f"{stem}_{M}D"
+def name(stem: str, M: int, instance: int = 0) -> str:
+    """rDTLZ1_3D, rZDT4; with an instance rDTLZ1_3D_i2, rZDT4_i2."""
+    base = stem if stem.startswith("rZDT") else f"{stem}_{M}D"
+    return f"{base}_i{instance}" if instance else base

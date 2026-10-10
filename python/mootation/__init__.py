@@ -22,7 +22,7 @@ Three further pieces, each independent:
 
     mootation.benchmarks   the standard suites: ZDT, DTLZ, WFG, MaF, ZCAT,
                            bbob-biobj, Polygon, MOP, BT, C-DTLZ, MW, rotated
-                           DTLZ and WFG, noisy copies, RE and CRE — 552
+                           ZDT, DTLZ and WFG, noisy copies, RE and CRE — 624
                            problems.
                            Needs NumPy.
     mootation.run          driving a run from a TOML file, with objectives from

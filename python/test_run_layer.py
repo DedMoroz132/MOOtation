@@ -5408,18 +5408,54 @@ DENSE
 # bbob-biobj problems: numpy does not promise its normal stream across
 # versions, and a changed draw must fail here, not move results silently.
 ROTATION_HASHES = {
-    "c0DTLZ2_3D": "1e24edff38434edf", "c0DTLZ2_5D": "1e24edff38434edf",
+    "c0DTLZ2_10D": "1e24edff38434edf", "c0DTLZ2_3D": "1e24edff38434edf",
+    "c0DTLZ2_5D": "1e24edff38434edf", "c0DTLZ2_6D": "1e24edff38434edf",
     "r0DTLZ1_3D": "1a8475b42f5782e9", "r0DTLZ1_5D": "1a8475b42f5782e9",
     "r0DTLZ3_3D": "a3c81aeea2e1ab58", "r0DTLZ3_5D": "a3c81aeea2e1ab58",
-    "rDTLZ1_3D": "0b3008ed21263fbc", "rDTLZ1_5D": "ef5a865bfb3c0415",
+    "rDTLZ1_3D": "0b3008ed21263fbc", "rDTLZ1_3D_i1": "0b3008ed21263fbc",
+    "rDTLZ1_3D_i2": "9169379bdd28ba11", "rDTLZ1_3D_i3": "7cff97a191d3584c",
+    "rDTLZ1_5D": "ef5a865bfb3c0415", "rDTLZ1_5D_i1": "ef5a865bfb3c0415",
+    "rDTLZ1_5D_i2": "52e4c5a45c668421", "rDTLZ1_5D_i3": "10a6fcf459838f49",
     "rDTLZ2_3D": "9d2a751088421ed6", "rDTLZ2_5D": "219ddeb235a454a0",
-    "rDTLZ3_3D": "ef85240a1c1c76ee", "rDTLZ3_5D": "1f7ffcdb60f9914f",
+    "rDTLZ3_3D": "ef85240a1c1c76ee", "rDTLZ3_3D_i1": "ef85240a1c1c76ee",
+    "rDTLZ3_3D_i2": "35b174e4f8807e91", "rDTLZ3_3D_i3": "2087d29a1e52a871",
+    "rDTLZ3_5D": "1f7ffcdb60f9914f", "rDTLZ3_5D_i1": "1f7ffcdb60f9914f",
+    "rDTLZ3_5D_i2": "5a029a3f7dc04e2e", "rDTLZ3_5D_i3": "9b34fd3f50cd4b85",
     "rDTLZ4_3D": "4767919b46de0568", "rDTLZ4_5D": "6134b078d8446b73",
-    "rWFG4_3D": "f52d69d1a9090e8f", "rWFG4_5D": "836e2efbfecb0621",
-    "rWFG5_3D": "786c215ca3c4a44c", "rWFG5_5D": "db857c63767a80d8",
-    "rWFG6_3D": "8bd9224b78e079c3", "rWFG6_5D": "c19dac79a30b4db7",
-    "rWFG7_3D": "bf02effac24cdcde", "rWFG7_5D": "45d4935de1c51b2e",
-    "rcDTLZ2_3D": "f5494f9446406f34", "rcDTLZ2_5D": "26423ce721190dfa",
+    "rWFG4_3D": "f52d69d1a9090e8f", "rWFG4_3D_i1": "f52d69d1a9090e8f",
+    "rWFG4_3D_i2": "42d7f7de01070b65", "rWFG4_3D_i3": "c7145d5424bb7270",
+    "rWFG4_5D": "836e2efbfecb0621", "rWFG4_5D_i1": "836e2efbfecb0621",
+    "rWFG4_5D_i2": "ac6e86ffcce94041", "rWFG4_5D_i3": "045b30f710d4c71f",
+    "rWFG5_3D": "786c215ca3c4a44c", "rWFG5_3D_i1": "786c215ca3c4a44c",
+    "rWFG5_3D_i2": "e7646c57a038a9a0", "rWFG5_3D_i3": "ac9c2886d23d7574",
+    "rWFG5_5D": "db857c63767a80d8", "rWFG5_5D_i1": "db857c63767a80d8",
+    "rWFG5_5D_i2": "184e01cffff057ff", "rWFG5_5D_i3": "409ae5e9d4edf270",
+    "rWFG6_3D": "8bd9224b78e079c3", "rWFG6_3D_i1": "8bd9224b78e079c3",
+    "rWFG6_3D_i2": "417c6104d49d79b3", "rWFG6_3D_i3": "4d37f828ab32e0be",
+    "rWFG6_5D": "c19dac79a30b4db7", "rWFG6_5D_i1": "c19dac79a30b4db7",
+    "rWFG6_5D_i2": "aa3b6f68de5fc612", "rWFG6_5D_i3": "81c21bcd83b66508",
+    "rWFG7_3D": "bf02effac24cdcde", "rWFG7_3D_i1": "bf02effac24cdcde",
+    "rWFG7_3D_i2": "960a694dc1baf202", "rWFG7_3D_i3": "e4247c13997367e7",
+    "rWFG7_5D": "45d4935de1c51b2e", "rWFG7_5D_i1": "45d4935de1c51b2e",
+    "rWFG7_5D_i2": "626c534d02b922c3", "rWFG7_5D_i3": "a5a19831e13d2fbc",
+    "rZDT1": "b354526c9313ee04", "rZDT1_i1": "b354526c9313ee04",
+    "rZDT1_i2": "f251132fe79365ea", "rZDT1_i3": "8a10a4d2e933faa7",
+    "rZDT2": "e8527dfe55c24d1d", "rZDT2_i1": "e8527dfe55c24d1d",
+    "rZDT2_i2": "dd64eb0e678d8666", "rZDT2_i3": "d8c2c46bbb3590ae",
+    "rZDT3": "9c239dad953e27fe", "rZDT3_i1": "9c239dad953e27fe",
+    "rZDT3_i2": "9b65d08ce7d7919f", "rZDT3_i3": "103042fc17b2d8a4",
+    "rZDT4": "eef32c295837c5e8", "rZDT4_i1": "eef32c295837c5e8",
+    "rZDT4_i2": "29181fefcb905dc1", "rZDT4_i3": "56e3a87b2304ca5c",
+    "rZDT6": "554a0a98d0ae945f", "rZDT6_i1": "554a0a98d0ae945f",
+    "rZDT6_i2": "1bdefaa38dd78620", "rZDT6_i3": "72b05f6f80c8abd9",
+    "rcDTLZ2_10D": "cecbb98a96063808", "rcDTLZ2_10D_i1": "cecbb98a96063808",
+    "rcDTLZ2_10D_i2": "a6c3b4de63f6b45a", "rcDTLZ2_10D_i3": "11b2af6974c4b47f",
+    "rcDTLZ2_3D": "f5494f9446406f34", "rcDTLZ2_3D_i1": "f5494f9446406f34",
+    "rcDTLZ2_3D_i2": "78bac4dcc8d4cc26", "rcDTLZ2_3D_i3": "aee4893d568f62be",
+    "rcDTLZ2_5D": "26423ce721190dfa", "rcDTLZ2_5D_i1": "26423ce721190dfa",
+    "rcDTLZ2_5D_i2": "bd4e8ad2632c9a58", "rcDTLZ2_5D_i3": "dd2cb0ba67a4440e",
+    "rcDTLZ2_6D": "d34c832b084a366a", "rcDTLZ2_6D_i1": "d34c832b084a366a",
+    "rcDTLZ2_6D_i2": "e44fcc9ba80da5cf", "rcDTLZ2_6D_i3": "514f464849d27d36",
 }
 BBOB_ROTATION_HASH = "b20703a7d9b960f5"
 
@@ -5437,7 +5473,8 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
     """Every Q of rotated.py is orthogonal (1e-12), the conditioned ones are
     Lambda Q with the stated Lambda, the controls I or Lambda; the hash of every
     matrix, and of bbob-biobj's rotations, is the one recorded (task 6, item
-    1.3)."""
+    1.3; the rZDT, the instances and M = 6 and 10, task 7, §3). Instance 1 is
+    the problem without the suffix, 2 and 3 are other matrices."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import hashlib
@@ -5451,12 +5488,18 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
     for name, r in ROTATED.items():
         family, rotate, condition = R.SPECS[name.split("_")[0]]
         k = len(r.optimum)
-        Q = R.rotation(family, r.M, k) if rotate else np.eye(k)
+        Q = R.rotation(family, r.M, k, r.instance) if rotate else np.eye(k)
         assert np.allclose(Q.T @ Q, np.eye(k), atol=1e-12), name
         L = R.conditioning(k) if condition else np.ones(k)
         assert np.array_equal(r.A, L[:, None] * Q), name
         assert _matrix_hash(r.A) == ROTATION_HASHES[name], (name, _matrix_hash(r.A))
     assert R.conditioning(10)[[0, -1]].tolist() == [1.0, 1e3 ** 0.5]   # cond(Lambda^2) = 1e3
+    for name in ROTATED:
+        if name.endswith("_i1"):
+            plain = name[:-3]
+            assert ROTATION_HASHES[name] == ROTATION_HASHES[plain], name
+            assert len({ROTATION_HASHES[plain], ROTATION_HASHES[plain + "_i2"],
+                        ROTATION_HASHES[plain + "_i3"]}) == 3, plain
     d = hashlib.sha256()
     for n in sorted(names()):
         if n.startswith("bbobbiobj"):
@@ -5469,11 +5512,14 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
 
 @test
 def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
-    """At Q = I and c = 1/2 rDTLZ is DTLZ, at Q = I rWFG is WFG; rDTLZ2 and
-    rDTLZ4 are their Q = I construction (the isotropic g), rDTLZ1, rDTLZ3 and
-    rcDTLZ2 are not; the Pareto set lands on the front; 10^4 uniform points
-    give finite values; no point dominates the front; the properties
-    (task 6, item 1.3 and supplement 2)."""
+    """At Q = I and c = 1/2 rDTLZ is DTLZ, at Q = I rWFG is WFG, at Q = I and
+    c = 0 rZDT is ZDT; rDTLZ2 and rDTLZ4 are their Q = I construction (the
+    isotropic g), rDTLZ1, rDTLZ3 and rcDTLZ2 are not, nor rZDT its shiftZDT; the
+    Pareto set lands on the front; 10^4 uniform points give finite values; no
+    point dominates the front; an instance other than the first is another
+    function; the properties (task 6, item 1.3 and supplement 2; task 7,
+    §3). The instances are the same construction: their matrices are checked
+    above, their values here only against instance 1."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import numpy as np
@@ -5532,7 +5578,20 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
             Y = box(get(R.name(stem, M)), 2000)
             d = max(np.abs(np.subtract(r.evaluate(x), q.evaluate(x))).max() for x in Y)
             assert (d < 1e-12) == same, (stem, M, d)
-    for name in ("rDTLZ1_3D", "rcDTLZ2_3D", "rWFG4_3D", "rWFG7_5D"):
+    for stem in ("rZDT1", "rZDT2", "rZDT3", "rZDT4", "rZDT6"):
+        p, q = get(stem), get("shift" + stem[1:])
+        Y = box(p, 300)
+        assert max(np.abs(np.subtract(p.evaluate(list(x)), q.evaluate(list(x)))).max()
+                   for x in Y) > 1e-3, stem
+    for name in ("rZDT4", "rDTLZ1_3D", "rcDTLZ2_10D", "rWFG7_5D"):
+        p = get(name)
+        Y = box(p, 300)
+        for k, same in ((1, True), (2, False), (3, False)):
+            d = max(np.abs(np.subtract(p.evaluate(list(x)), get(f"{name}_i{k}").evaluate(
+                list(x)))).max() for x in Y)
+            assert (d < 1e-12) == same, (name, k, d)
+    for name in ("rDTLZ1_3D", "rcDTLZ2_3D", "rWFG4_3D", "rWFG7_5D", "rZDT1", "rZDT4",
+                 "rZDT6", "rcDTLZ2_10D"):
         p, r = get(name), ROTATED[name]
         Z = np.asarray(p.pareto_front(2000), float)
         near = np.asarray(p.pareto_set(300), float)
@@ -5547,9 +5606,12 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
     assert properties("rDTLZ1_3D")["separable"] is False
     assert properties("rDTLZ2_3D")["separable"] is True          # its g ignores the rotation
     assert properties("r0DTLZ1_3D")["separable"] is True
+    assert properties("rZDT1")["separable"] is False and properties("rZDT4")["multimodal"]
+    assert properties("rDTLZ1_3D_i2")["n_obj"] == 3 and properties("rcDTLZ2_10D")["front_dim"] == 9
     fam = families()
     assert sorted(fam["r0DTLZ"]) == ["r0DTLZ1_3D", "r0DTLZ1_5D", "r0DTLZ3_3D", "r0DTLZ3_5D"]
-    assert len(fam["rDTLZ"]) == 8 and len(fam["rWFG"]) == 8 and len(fam["c0DTLZ"]) == 2
+    assert (len(fam["rDTLZ"]), len(fam["rWFG"]), len(fam["c0DTLZ"]), len(fam["rcDTLZ"]),
+            len(fam["rZDT"])) == (20, 32, 4, 16, 20), {k: len(v) for k, v in fam.items()}
 
 
 # ── task 6, item 6: the RE and CRE real-world problems ─────────────────────

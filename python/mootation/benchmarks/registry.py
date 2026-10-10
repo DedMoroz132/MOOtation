@@ -19,8 +19,11 @@
 #   MW1-14              Ma & Wang 2019, constrained; MW4, MW8, MW14 at M={3,5} (mw.py)
 #   <base>_n1, _n5      noisy copies of ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D, WFG7_3D
 #                       (ours, noisy.py)
-#   rDTLZ1-4, rcDTLZ2, rWFG4-7 x M={3,5}, and the controls r0DTLZ1, r0DTLZ3,
-#                       c0DTLZ2: the distance variables rotated (ours, rotated.py)
+#   rZDT1-4, rZDT6, rDTLZ1-4, rcDTLZ2, rWFG4-7 x M={3,5}, rcDTLZ2 at M={6,10},
+#                       the controls r0DTLZ1, r0DTLZ3, c0DTLZ2, and three
+#                       instances <name>_i1.._i3 of rZDT, rDTLZ1, rDTLZ3,
+#                       rcDTLZ2, rWFG4-7: the distance variables rotated (ours,
+#                       rotated.py)
 #   RE21-91, CRE21-51   Tanabe & Ishibuchi 2020, real-world problems (re.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
@@ -1805,33 +1808,37 @@ _register_noisy()
 
 
 # =============================================================
-#  Rotated DTLZ and WFG x M={3,5} (rotated.py, task 6 of 2026-10-09, item 1):
-#  the base problem evaluated at the mapped point. Box, budget, frame and front
-#  are the base's (FRAME_OF); the Pareto set has the base's positions and the
-#  distance variables at their optimum, c or 0.35 * 2i.
+#  Rotated ZDT, DTLZ and WFG (rotated.py, task 6 of 2026-10-09, item 1, and
+#  task 7, §3): the base problem evaluated at the mapped point. Box, budget,
+#  frame and front are the base's (FRAME_OF); the Pareto set has the base's
+#  positions and the distance variables at their optimum, c or 0.35 * 2i. The
+#  instances <name>_i1.._i3 of rotated.INSTANCED, _i1 the problem itself.
 # =============================================================
 def _register_rotated():
-    for M in _rot.SIZES:
-        for stem, (family, _, _) in _rot.SPECS.items():
-            b = PROBLEMS[f"{family}_{M}D"]
-            r = _rot.Rotated(stem, M, b.n_vars)
-            if r.wfg:
-                k = r.first
-                def _ps(n, _k=k, _r=r):
-                    P = _psets._cube_positions(_k, n) * 2.0 * np.arange(1, _k + 1)
-                    return _psets.fill(P, _r.n_vars, _r.optimum)
-            else:
-                def _ps(n, _M=M, _r=r): return _psets.dtlz(_M, _r.n_vars, n, _r.optimum)
-            key = _rot.name(stem, M)
-            PROBLEMS[key] = BenchProblem(
-                name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=M,
-                evaluate=r.evaluate, constraints=_no_cons,
-                hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
-                hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
-                pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
-                pareto_front=None, pareto_set=_ps)
-            FRAME_OF[key] = b.name
-            ROTATED[key] = r
+    for stem, (family, _, _) in _rot.SPECS.items():
+        for M in _rot.sizes(stem):
+            b = PROBLEMS[family if family.startswith("ZDT") else f"{family}_{M}D"]
+            for instance in (0,) + (_rot.INSTANCES if stem in _rot.INSTANCED else ()):
+                r = _rot.Rotated(stem, M, b.n_vars, max(instance, 1))
+                if r.wfg:
+                    k = r.first
+                    def _ps(n, _k=k, _r=r):
+                        P = _psets._cube_positions(_k, n) * 2.0 * np.arange(1, _k + 1)
+                        return _psets.fill(P, _r.n_vars, _r.optimum)
+                elif r.zdt:
+                    def _ps(n, _f=family, _r=r): return _ps_zdt(_f, n, _r.optimum)
+                else:
+                    def _ps(n, _M=M, _r=r): return _psets.dtlz(_M, _r.n_vars, n, _r.optimum)
+                key = _rot.name(stem, M, instance)
+                PROBLEMS[key] = BenchProblem(
+                    name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=M,
+                    evaluate=r.evaluate, constraints=_no_cons,
+                    hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+                    hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+                    pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+                    pareto_front=None, pareto_set=_ps)
+                FRAME_OF[key] = b.name
+                ROTATED[key] = r
 
 
 _register_rotated()
@@ -1858,7 +1865,9 @@ def _attach_distances():
             p.distance_fn = _dist.dtlz("DTLZ" + stem[-1], M)
         elif stem in ("C1-DTLZ1", "C1-DTLZ3", "C2-DTLZ2"):     # their Pareto sets have g = 0
             p.distance_fn = _dist.dtlz(_cd.BASE[stem], M)
-        elif name in ROTATED and not ROTATED[name].wfg:      # g read at the mapped point
+        elif name in ROTATED and ROTATED[name].zdt:           # g read at the mapped point
+            p.distance_fn = _dist.zdt(ROTATED[name].family, ROTATED[name].map)
+        elif name in ROTATED and not ROTATED[name].wfg:
             p.distance_fn = _dist.dtlz(ROTATED[name].family, M, ROTATED[name].map)
         elif stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):
             p.distance_fn = _dist.dtlz(stem[5:], M, lambda x, _M=M: cyclic_input(x, _M))
