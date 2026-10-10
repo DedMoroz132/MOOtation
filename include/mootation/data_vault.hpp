@@ -61,6 +61,7 @@ private:
     Problem<Ind_type>     problem_;
     BatchExecutor         batch_executor_;
     std::function<void()> post_sync_hook_;
+    std::function<void(std::vector<double>&)> snap_;   // integer and discrete variables
 
     // ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -319,8 +320,15 @@ public:
             buf_[r].variables[j] = val;
         }
         if (clamped > 0) book_clamp(clamped);
+        if (snap_) snap_(buf_[r].variables);
         dirty_[r] = 1;
     }
+
+    // Integer and discrete variables (task 7 of 2026-10-10, §10): a function
+    // that rounds them in place, applied after the clamp at every write — the
+    // Lamarckian repair, the rounded value written into the genome, for every
+    // algorithm that writes through set_variables. Unset: every variable real.
+    void set_snap(std::function<void(std::vector<double>&)> f) { snap_ = std::move(f); }
 
     void set_all_variables(std::size_t v,
                            const std::vector<double>& rvars,
@@ -338,6 +346,7 @@ public:
             buf_[r].variables[j] = val;
         }
         if (clamped > 0) book_clamp(clamped);
+        if (snap_) snap_(buf_[r].variables);
         if (static_cast<int>(bvars.size()) != num_bin_vars_)
             throw std::invalid_argument("set_all_variables: wrong binary size");
         for (int j = 0; j < num_bin_vars_; ++j)

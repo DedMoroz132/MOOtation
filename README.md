@@ -32,7 +32,7 @@ plus *mutation*, the operator all of these algorithms are built on.
 - **Five ways in, one algorithm list.** A C++ template, a C++ ask/tell session,
   a Python `minimize`, a TOML run description for external programs, and a C
   ABI. All five are generated from the same `algorithms.def`, so none can drift.
-- **982 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, MOP, BT,
+- **994 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, MOP, BT,
   the Ishibuchi polygons, the constrained C-DTLZ and MW, rotated ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy
   copies, the real-world RE and CRE) with true Pareto fronts where a closed form exists, IGD / IGD+ /
   hypervolume, and a campaign runner that shards across a cluster.

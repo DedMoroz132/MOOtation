@@ -6135,7 +6135,8 @@ def re_problems_match_reproblems():
     from mootation.benchmarks import re as RE
     from mootation.benchmarks.noisy import is_noisy
     assert sorted(RE_VALUES) == sorted(n for n in names()
-                                       if (n[:2] == "RE" or n[:3] == "CRE") and not is_noisy(n))
+                                       if (n[:2] == "RE" or n[:3] == "CRE") and not is_noisy(n)
+                                       and not n.endswith("c"))         # RE22c, RE33c: ours
     for name, rows in RE_VALUES.items():
         p = get(name)
         lb = [b[0] for b in p.bounds]
@@ -6832,6 +6833,188 @@ def stochastic_survival_and_the_inner_archive_are_knobs():
     r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=200,
                     seed=1, mating="each", crossover="none")
     assert r.evaluations >= 200 and "mating" not in r.ignored
+
+
+@test
+def integer_and_discrete_variables_are_rounded_after_the_operators():
+    """Task 7, §10: with var_types an integer variable is always an integer and
+    a discrete one always from its list — in the genome (int_repair =
+    lamarck) or only at the evaluation (baldwin, the genome continuous); all
+    real is the run without var_types, bit for bit; the declared RE problems;
+    a campaign records dup_x_share."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  integer_and_discrete...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    p = get("RE25")
+    assert p.var_types[0] == "int" and p.var_types[2][0] == "discrete"
+    assert get("RE22").var_types[0][1][:3] == [0.2, 0.31, 0.4] and get("RE33c").var_types == ["real"] * 4
+    values = set(p.var_types[2][1])
+    seen = []
+
+    def f(x):
+        seen.append(list(x))
+        return p.evaluate(x)
+    for repair in ("lamarck", "baldwin"):
+        seen.clear()
+        r = Mz.minimize(f, p.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=600,
+                        seed=1, var_types=p.var_types, int_repair=repair)
+        X = np.asarray(r.variables)
+        assert all(isinstance(x[0], int) and x[2] in values for x in seen), repair
+        assert all(p.bounds[0][0] <= x[0] <= p.bounds[0][1] for x in seen)
+        genome_int = bool(np.all(X[:, 0] == np.round(X[:, 0])) and set(X[:, 2]) <= values)
+        assert genome_int == (repair == "lamarck"), (repair, X[:3])
+    q = get("ZDT1")
+    a = Mz.minimize(q.evaluate, q.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=400,
+                    seed=3)
+    b = Mz.minimize(q.evaluate, q.bounds, 2, algorithm="nsga2", pop_size=20, max_evaluations=400,
+                    seed=3, var_types=["real"] * q.n_vars)
+    assert a.objectives == b.objectives
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0, params = { eta_int = 3.0 } } ]
+[run]
+name = "ty"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["RE36"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "ty.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        meta = json.loads((root / "RE36" / "nsga2" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))
+        assert 0.0 <= meta["final"]["dup_x_share"] < 1.0, meta["final"]
+
+
+@test
+def bit_string_problems_their_fronts_and_the_binary_genome():
+    """Supplement 2, §3: OneMinMax, LOTZ and OJZJ against every one of the 2^n
+    strings (n <= 12): the front, its size; the binary genome reaches the
+    cores and comes back (result.binary_variables, a population file round
+    trip); a core without a binary genome refuses by name; a campaign records
+    cover_gen."""
+    if not _have_numpy() or _core_with("coords_state") is None:
+        print("  skip  bit_string...: no NumPy or stale _core"); return
+    import itertools
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import binary as B
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    assert callable(mootation.minimize)
+    Mz = sys.modules["mootation.minimize"]
+    for kind, n, k in (("OMM", 8, 0), ("LOTZ", 10, 0), ("OJZJ", 10, 3), ("OJZJ", 12, 2)):
+        F = np.array([B.objectives(kind, x, k) for x in itertools.product((0, 1), repeat=n)])
+        nd = {tuple(f) for f in F if not np.any(np.all(F >= f, axis=1) & np.any(F > f, axis=1))}
+        front = {tuple(r) for r in B.front(kind, n, k)}
+        assert nd == front, (kind, n, k, sorted(nd - front), sorted(front - nd))
+        assert len(front) == (n - 2 * k + 3 if kind == "OJZJ" else n + 1)
+    p = get("OJZJ_n10_k3")
+    assert p.var_types == ["bin"] * 10 and len(p.pareto_front(1000)) == 7
+    r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="nsga2", pop_size=16, max_evaluations=800,
+                    seed=1, var_types=p.var_types, save_population=None)
+    assert len(r.binary_variables) == 16 and all(set(b) <= {0, 1} for b in r.binary_variables)
+    assert all(np.allclose(p.evaluate(b), f) for b, f in zip(r.binary_variables, r.objectives))
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "pop.csv"
+        r = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="sms_emoa", pop_size=8,
+                        max_evaluations=200, seed=2, var_types=p.var_types, save_population=path,
+                        bin_crossover="none")
+        back = mootation.load_population(path)
+        assert sorted(map(tuple, back.binary)) == sorted(map(tuple, r.binary_variables))
+        again = Mz.minimize(p.evaluate, p.bounds, 2, algorithm="sms_emoa", pop_size=8,
+                            max_evaluations=100, seed=2, var_types=p.var_types,
+                            seed_population=back)
+        assert again.evaluations <= 100
+    try:
+        Mz.minimize(p.evaluate, p.bounds, 2, algorithm="mosa", pop_size=8, max_evaluations=100,
+                    var_types=p.var_types)
+        raise AssertionError("mosa took a binary genome")
+    except ValueError as e:
+        assert "mosa" in str(e), e
+    text = """algorithms = [ { name = "nsga2", pop = 44, gens = 0, params = { bin_crossover = "none", inner_archive = "nd" } } ]
+[run]
+name = "bits"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["OMM_n10"]
+[campaign]
+out = "res"
+budget_fe = 3000
+record_grid = "generations"
+record_every = 1
+metrics = ["igdp_norm"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "bits.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        fin = json.loads((root / "OMM_n10" / "nsga2" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))["final"]
+        assert fin["cover_reached"] and fin["cover_archive_gen"] <= fin["cover_gen"], fin
+        assert fin["cover_evals"] <= 3000 + 44, fin
+
+
+@test
+def the_corrected_re22c_and_re33c_and_their_fronts():
+    """Task 7, §9: RE22c is RE22 with 3.10 for the original's "3,10" in x1's
+    list (76 values), RE33c is RE33 with x4 in [2, 11]; the originals are
+    unchanged; their fronts, built here, are not beaten by 20 000 random points
+    of the box, and their frames are the fronts' own."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.benchmarks import re as RE
+    from mootation.benchmarks.properties import properties
+    from mootation.families import family
+    values = list(RE.RE22C_VALUES)
+    assert len(values) == 76 and 3.1 in values and 10.0 not in values and values.count(3.0) == 1
+    a, b = get("RE22c"), get("RE22")
+    assert a.evaluate([3.11, 10.0, 20.0]) != b.evaluate([3.11, 10.0, 20.0])   # 3.10 against 3.0
+    assert a.evaluate([5.0, 10.0, 20.0]) == b.evaluate([5.0, 10.0, 20.0])
+    c, d = get("RE33c"), get("RE33")
+    assert c.bounds[3] == (2.0, 11.0) and d.bounds[3] == (11.0, 20.0)
+    x = [60.0, 90.0, 2000.0, 11.0]
+    assert c.evaluate(x) == d.evaluate(x)
+    rng = np.random.default_rng(5)
+    for p, rows in ((a, 1000), (c, 1500)):
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert Z.shape == (rows, p.n_obj) and not p.front_exact
+        assert np.allclose(Z.min(axis=0), p.ideal) and np.allclose(Z.max(axis=0), p.nadir)
+        lo = np.array([u for u, _ in p.bounds])
+        hi = np.array([v for _, v in p.bounds])
+        F = np.array([p.evaluate(list(lo + (hi - lo) * rng.random(len(lo))))
+                      for _ in range(20_000)])
+        F = F[np.all(np.isfinite(F), axis=1)]
+        span = Z.max(axis=0) - Z.min(axis=0)
+        beaten = [np.any(np.all(F <= z - 1e-6 * span, axis=1)) for z in Z]
+        assert not any(beaten), (p.name, sum(beaten))
+        assert family(p.name) == "RE" and properties(p.name) is not None
 
 
 @test

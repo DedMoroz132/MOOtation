@@ -370,7 +370,7 @@ def _huband(name: str) -> dict | None:
         return dict(_CDTLZ[stem])
     if stem in _MW:
         return dict(_MW[stem])
-    if stem.startswith(("RE", "CRE")) and stem.lstrip("CRE").isdigit():
+    if stem.startswith(("RE", "CRE")) and stem.lstrip("CRE").rstrip("c").isdigit():
         # Tanabe & Ishibuchi 2020: the true fronts are unknown; Section 2.6 and
         # Fig. 2 call RE2-4-3 (RE23) and RE2-3-5 (RE25) disconnected. The rest
         # of Huband's vocabulary is not given for them: None.

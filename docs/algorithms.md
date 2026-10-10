@@ -252,8 +252,10 @@ also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
 `Problem<>` specialisation); the other 17 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only: CLIA, DCEA,
 DEA-GNG, DHEA, DMS, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
-MO-CMA-ES, MOEA/D-DS, MOSA, NAEMO and Two_Arch2. Binary and mixed genomes are a C++ feature: the Python binding,
-the C ABI and the TOML layer expose real-valued variables only.
+MO-CMA-ES, MOEA/D-DS, MOSA, NAEMO and Two_Arch2. The Python binding reaches the binary genome
+through `minimize(var_types=[..., "bin"])` (`mootation/var_types.py`), which also declares
+integer and discrete variables — rounded in the genome by the vault (`DataVault::set_snap`)
+for every algorithm; the C ABI and the TOML layer expose real-valued variables only.
 
 ## Variation operators
 

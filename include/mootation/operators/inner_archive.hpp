@@ -50,10 +50,18 @@
 
 namespace mootation::ops {
 
+struct InnerArchiveMember {
+    std::vector<double> f, x;
+    std::vector<int> b;
+};
+
 struct InnerArchiveRecord {
     long long drawn = 0, from_archive = 0;         // since the last read
     long long t_drawn = 0, t_from_archive = 0;     // over the run
     long long size = -1;                           // -1: no archive
+    // the archive itself while its run lasts (the binding's
+    // inner_archive_state(), for cover_gen); null otherwise
+    const std::vector<InnerArchiveMember>* live = nullptr;
 };
 inline InnerArchiveRecord& inner_archive_record() { thread_local InnerArchiveRecord r; return r; }
 
@@ -71,10 +79,7 @@ inline std::vector<std::pair<std::string, double>> inner_archive_stats(bool tota
 }
 
 struct InnerArchive {
-    struct Member {
-        std::vector<double> f, x;
-        std::vector<int> b;
-    };
+    using Member = InnerArchiveMember;
 
     bool on = false;
     long long cap = -1;              // -1: 10 μ (real genome) or none (binary)
@@ -111,7 +116,10 @@ struct InnerArchive {
             throw std::invalid_argument("archive_reuse_p > 0 needs inner_archive = \"nd\"");
         limit_ = cap >= 0 ? cap : binary_only ? 0 : 10LL * mu;
         members_.clear();
-        if (on) inner_archive_record().size = 0;
+        if (on) {
+            inner_archive_record().size = 0;
+            inner_archive_record().live = &members_;
+        }
     }
 
     // One evaluated point (its objectives, variables, binary variables).

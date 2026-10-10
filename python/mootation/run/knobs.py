@@ -113,14 +113,21 @@ def accepts(name: str, value) -> bool:
     return value in words
 
 
+# The run layer's own knobs: minimize's keywords, not a core's — the integer
+# and discrete variables' repair and mutation index (mootation/var_types.py;
+# task 7, §10). Not in settings.hpp: a C++ caller declares no variable types.
+PY_KNOBS = ("eta_int",)
+PY_TEXT = {"int_repair": ("lamarck", "baldwin")}
+
+
 def text_knobs() -> dict:
     """{knob: the words it takes} for the knobs whose value is a word."""
-    return _read_text()
+    return {**_read_text(), **PY_TEXT}
 
 
 def knob_names() -> tuple[str, ...]:
     """Every key accepted in `[[algorithms]] params`: the numeric knobs, then the text ones."""
-    return _read()[0] + tuple(k for k in text_knobs() if k not in _read()[0])
+    return _read()[0] + PY_KNOBS + tuple(k for k in text_knobs() if k not in _read()[0])
 
 
 def knob_source() -> str:

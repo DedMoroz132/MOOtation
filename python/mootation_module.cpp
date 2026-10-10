@@ -64,6 +64,9 @@ struct PyProblem {
     std::vector<std::pair<double, double>> bounds;
     int    n_objectives = 2;
     int    n_limits     = 0;
+    // Binary variables after the real ones (task 7, supplement 2, §3): the
+    // evaluators receive the real values, then the bits as 0.0 and 1.0.
+    int    n_bin        = 0;
     // One of the two. evaluate_batch is preferred: it crosses the GIL once per
     // generation instead of once per individual.
     std::function<std::vector<double>(std::vector<double>)>               evaluate;
@@ -205,7 +208,11 @@ void ops_after_step(Vault& v)
 inline void ops_log(const std::vector<double>& x, const std::vector<double>& f)
 {
     if (!g_ops.on) return;
-    g_ops.log_x.push_back(x);
+    // the real variables only: the statistics compare them with the parents'
+    g_ops.log_x.push_back(g_problem && g_problem->n_bin > 0
+        ? std::vector<double>(x.begin(), x.begin() + static_cast<std::ptrdiff_t>(
+                                             g_problem->bounds.size()))
+        : x);
     g_ops.log_f.push_back(f);
 }
 
@@ -251,7 +258,12 @@ void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& 
     if (!g_problem) throw std::runtime_error("mootation: no active problem");
     py::gil_scoped_acquire gil;
 
-    auto out = g_problem->evaluate_batch(req.variables);
+    // the bits after the real variables (PyProblem::n_bin)
+    std::vector<std::vector<double>> rows = req.variables;
+    if (g_problem->n_bin > 0)
+        for (std::size_t i = 0; i < rows.size(); ++i)
+            for (int b : req.binary_variables[i]) rows[i].push_back(static_cast<double>(b));
+    auto out = g_problem->evaluate_batch(rows);
     if (out.size() != req.size())
         throw std::runtime_error(
             "evaluate_batch returned " + std::to_string(out.size()) +
@@ -260,13 +272,13 @@ void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& 
         if (static_cast<int>(row.size()) != g_problem->n_objectives)
             throw std::runtime_error("the evaluator returned the wrong number of objectives");
     g_evaluations += static_cast<long long>(req.size());
-    for (std::size_t i = 0; i < req.size(); ++i) ops_log(req.variables[i], out[i]);
+    for (std::size_t i = 0; i < req.size(); ++i) ops_log(rows[i], out[i]);
     resp.objectives = std::move(out);
 
     if (g_problem->n_limits > 0) {
         if (!g_problem->limits_batch)
             throw std::runtime_error("n_limits > 0 requires problem.limits_batch");
-        auto lim = g_problem->limits_batch(req.variables);
+        auto lim = g_problem->limits_batch(rows);
         if (lim.size() != req.size())
             throw std::runtime_error(
                 "limits_batch returned " + std::to_string(lim.size()) +
@@ -296,7 +308,7 @@ void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& 
         std::vector<std::pair<std::optional<double>, std::optional<double>>>   \
             bounds;                                                            \
         int get_vars_n() const { return static_cast<int>(bounds.size()); }     \
-        int get_bin_vars_n() const { return 0; }                               \
+        int get_bin_vars_n() const { return g_problem ? g_problem->n_bin : 0; }\
         int get_objs_n() const                                                 \
         {                                                                      \
             return g_problem ? g_problem->n_objectives : 0;                    \
@@ -307,7 +319,13 @@ void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& 
         }                                                                      \
         void calc_objs(TAG& ind) const                                         \
         {                                                                      \
-            eval_into(ind.variables, ind.objectives, ind.limits);              \
+            if (g_problem && g_problem->n_bin > 0) {                           \
+                std::vector<double> x = ind.variables;                         \
+                for (int b : ind.binary_variables) x.push_back(b);             \
+                eval_into(x, ind.objectives, ind.limits);                      \
+            } else {                                                           \
+                eval_into(ind.variables, ind.objectives, ind.limits);          \
+            }                                                                  \
         }                                                                      \
     };                                                                         \
     }
@@ -450,6 +468,17 @@ struct RunConfig {
     // is_core_word): name -> value, handed to the core's set_param / set_word.
     std::map<std::string, double>      params;
     std::map<std::string, std::string> words;
+    // Integer and discrete variables (task 7, §10): per real variable 0 real,
+    // 1 integer, 2 discrete (its values in discrete_values, sorted); with
+    // lamarck (the default) the vault writes the rounded value into the genome
+    // (DataVault::set_snap), else the evaluator rounds (minimize's wrapper).
+    // eta_int: polynomial mutation's index for them (ops::pm_eta_per_variable).
+    std::vector<int>                 var_kinds;
+    std::vector<std::vector<double>> discrete_values;
+    bool                             lamarck = true;
+    std::optional<double>            eta_int;
+    // the bits of a warm start, beside seed_variables (PyProblem::n_bin)
+    std::vector<std::vector<int>>    seed_binary;
 
     // Warm start. Empty means a fresh random population. Vars and objs are
     // what every algorithm shares — which is what lets a population saved by
@@ -507,6 +536,8 @@ struct PyResult {
     // that keep one and with inner_archive = "nd"; empty otherwise.
     std::vector<std::vector<double>> inner_objectives;
     std::vector<std::vector<double>> inner_variables;
+    // the bits of the answer, beside variables (PyProblem::n_bin)
+    std::vector<std::vector<int>>    binary_variables;
 };
 
 template <typename Tag, typename Core>
@@ -522,6 +553,33 @@ PyResult run_core(const RunConfig& cfg)
 
     DataVault<Tag>      vault(cfg.pop_size, prob);
     if (g_problem->evaluate_batch) vault.set_batch_executor(&py_run_batch);
+    // integer and discrete variables (RunConfig::var_kinds): the Lamarckian
+    // rounding at every write — integers to the nearest, ties to even, kept in
+    // [ceil lo, floor hi]; discrete ones to the nearest value, ties to the lower
+    if (!cfg.var_kinds.empty() && cfg.lamarck) {
+        std::vector<double> lo, hi;
+        for (const auto& b : g_problem->bounds) { lo.push_back(b.first); hi.push_back(b.second); }
+        vault.set_snap([kinds = cfg.var_kinds, values = cfg.discrete_values, lo, hi](
+                           std::vector<double>& x) {
+            for (std::size_t j = 0; j < x.size() && j < kinds.size(); ++j) {
+                if (kinds[j] == 1) {
+                    x[j] = std::clamp(std::nearbyint(x[j]), std::ceil(lo[j]), std::floor(hi[j]));
+                } else if (kinds[j] == 2 && !values[j].empty()) {
+                    const auto& v = values[j];
+                    auto it = std::lower_bound(v.begin(), v.end(), x[j]);
+                    if (it == v.end()) x[j] = v.back();
+                    else if (it == v.begin()) x[j] = v.front();
+                    else x[j] = (x[j] - *(it - 1) <= *it - x[j]) ? *(it - 1) : *it;
+                }
+            }
+        });
+    }
+    {
+        auto& per = ops::pm_eta_per_variable();
+        per.clear();
+        if (cfg.eta_int && !cfg.var_kinds.empty())
+            for (int k : cfg.var_kinds) per.push_back(k != 0 ? *cfg.eta_int : 0.0);
+    }
     Optimizer<Tag, Core> opt(std::move(vault), defer_setup);
 
     auto&                    alg = opt.get_algorithm();
@@ -640,7 +698,7 @@ PyResult run_core(const RunConfig& cfg)
                     " constraints but the seed population carries no per-constraint "
                     "values; pass seed_limits (minimize() recomputes them from "
                     "`constraints`)");
-            opt.setup_with_seed(cfg.seed_variables, cfg.seed_objectives, {},
+            opt.setup_with_seed(cfg.seed_variables, cfg.seed_objectives, cfg.seed_binary,
                                 cfg.seed_limits);
         } else {
             opt.setup();
@@ -768,11 +826,13 @@ PyResult run_core(const RunConfig& cfg)
             r.inner_variables.push_back(m.x);
         }
     }
+    ops::inner_archive_record().live = nullptr;          // the core goes with this scope
     r.objectives.reserve(r.active_n);
     r.variables.reserve(r.active_n);
     for (std::size_t i = 0; i < r.active_n; ++i) {
         r.objectives.push_back(v.objectives_of(i));
         r.variables.push_back(v.variables_of(i));
+        if (v.bin_vars_n() > 0) r.binary_variables.push_back(v.binary_variables_of(i));
         r.cv.push_back(v.get_cv(i));
     }
     return r;
@@ -781,7 +841,7 @@ PyResult run_core(const RunConfig& cfg)
 // ── Dispatch, generated from include/mootation/algorithms.def ───────────────────────────
 PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
 {
-    if (problem.bounds.empty())
+    if (problem.bounds.empty() && problem.n_bin <= 0)
         throw std::invalid_argument("problem.bounds is empty");
 
     g_problem = &problem;
@@ -835,7 +895,8 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("n_limits",       &PyProblem::n_limits)
         .def_readwrite("evaluate",       &PyProblem::evaluate)
         .def_readwrite("evaluate_batch", &PyProblem::evaluate_batch)
-        .def_readwrite("limits_batch",   &PyProblem::limits_batch);
+        .def_readwrite("limits_batch",   &PyProblem::limits_batch)
+        .def_readwrite("n_bin",          &PyProblem::n_bin);
 
     py::class_<RunConfig>(m, "Config")
         .def(py::init<>())
@@ -904,6 +965,11 @@ PYBIND11_MODULE(_core, m)
                        "the objective normalization of ibea_eplus, r2ibea, two_arch2 and "
                        "moead_am2m (their headers say which setting is the paper's)")
         .def_readwrite("seed_variables",  &RunConfig::seed_variables)
+        .def_readwrite("seed_binary",     &RunConfig::seed_binary)
+        .def_readwrite("var_kinds",       &RunConfig::var_kinds)
+        .def_readwrite("discrete_values", &RunConfig::discrete_values)
+        .def_readwrite("lamarck",         &RunConfig::lamarck)
+        .def_readwrite("eta_int",         &RunConfig::eta_int)
         .def_readwrite("seed_objectives", &RunConfig::seed_objectives)
         .def_readwrite("seed_limits",     &RunConfig::seed_limits)
         .def_readwrite("on_generation",   &RunConfig::on_generation,
@@ -933,7 +999,9 @@ PYBIND11_MODULE(_core, m)
                       "the objectives of the inner archive at the end (inner_archive = "
                       "\"nd\"; operators/inner_archive.hpp), empty without one")
         .def_readonly("inner_archive_variables", &PyResult::inner_variables,
-                      "their variables");
+                      "their variables")
+        .def_readonly("binary_variables", &PyResult::binary_variables,
+                      "the answer's bits, beside variables (Problem.n_bin)");
 
     m.def("hypervolume",
           [](py::array_t<double, py::array::c_style | py::array::forcecast> points,
@@ -1055,6 +1123,14 @@ PYBIND11_MODULE(_core, m)
           "The learned coordinates of the run in progress at their last update "
           "(operators/learned_coords.hpp): active, R (columns the basis), mu, eig, m "
           "(the objectives), updates. Call it from on_generation.");
+    m.def("inner_archive_state", []() {
+              std::vector<std::vector<double>> F;
+              const auto* live = mootation::ops::inner_archive_record().live;
+              if (live) for (const auto& mem : *live) F.push_back(mem.f);
+              return F;
+          },
+          "The objectives in the inner archive of the run in progress (inner_archive = "
+          "\"nd\"), empty without one. Call it from on_generation.");
     m.def("current_variables", []() {
               if (!g_answer_variables)
                   throw std::runtime_error("current_variables() answers only from an "

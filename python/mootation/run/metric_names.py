@@ -56,9 +56,13 @@ NOISE = ("true_dominated_share",)
 # noisy values of the answer, as the algorithm saw them (_observed).
 NOISE_MODES = ("_oracle", "_observed")
 
+# Typed variables (mootation.var_types, task 7, §10) and bit strings
+# (benchmarks/binary.py, supplement 2, §3.4), in `final`.
+TYPED = ("dup_x_share", "cover_gen", "cover_evals", "cover_archive_gen", "cover_archive_evals")
+
 # Everything a table can be asked for.
 TABLE_NAMES = (METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + COORDS_STATS + FEASIBILITY
-               + NOISE)
+               + NOISE + TYPED)
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
@@ -180,6 +184,13 @@ DESCRIPTIONS = {
     "de_f_mean": "the mean F of the children drawn",
     "de_cr_success_mean": "the mean CR of the children the selection kept",
     "de_f_success_mean": "the mean F of the children the selection kept",
+    "dup_x_share": "typed variables: the share of the evaluations whose decoded point "
+                   "had been evaluated before",
+    "cover_gen": "a bit-string problem's: the first generation whose population holds every "
+                 "front vector; NaN when none within the budget (cover_reached false)",
+    "cover_evals": "the evaluations spent by then",
+    "cover_archive_gen": "the same for the inner archive (inner_archive = nd)",
+    "cover_archive_evals": "the evaluations spent by then",
     "coords_ratio": "coords: the largest eigenvalue of the last update over the smallest "
                     "one above 1e-12 of it",
     "coords_lead_share": "coords: the share of the first M - 1 components in the spectrum",

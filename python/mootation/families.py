@@ -20,6 +20,8 @@ def family(name: str) -> str:
     if "_" in name and name.rsplit("_", 1)[1] in NOISE_LEVELS:
         return "noisy"
     stem = name.split("_")[0]
+    if stem[:2] == "RE" and stem.endswith("c") and stem[2:-1].isdigit():
+        return "RE"                          # the corrected RE22c, RE33c
     head = stem[:2] if stem[:2] in CONTROLS else ""
     rest = stem[len(head):]
     return head + ("".join(c for c in rest if not c.isdigit()) or rest)

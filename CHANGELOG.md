@@ -223,6 +223,24 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Typed variables (`mootation/var_types.py`; task 7, §10): `minimize(var_types=...)`
+  declares each variable "real", "int", ("discrete", values) or "bin"; the vault
+  rounds the integer and discrete ones after every write
+  (`DataVault::set_snap`, `int_repair = "lamarck"`), or only the evaluation sees
+  them rounded (`"baldwin"`); polynomial mutation takes `eta_int` (3) for them.
+  Declared for RE22, RE23, RE25, RE35, RE36, CRE24, CRE25 and RE22c; a run
+  records `dup_x_share`. The binary genome reaches Python (task 7, supplement
+  2, §3): the bits go to the cores' binary genome and back
+  (`result.binary_variables`, population files with b columns, warm starts),
+  and the cores without one refuse it by name.
+- OneMinMax, LOTZ and OneJumpZeroJump (`benchmarks/binary.py`; supplement 2,
+  §3), with exact fronts checked against every string up to n = 12, and the
+  paper's measure `cover_gen` / `cover_evals` (and for the inner archive) in a
+  campaign's `final`. 994 problems in 39 families.
+- RE22c and RE33c (task 7, §9): RE22 with x1's list as meant (3.10 for "3,10")
+  and RE33 with x4 in [2, 11] (reproblems' issue #9), beside the originals;
+  their reference fronts built here from an exhaustive grid refined locally
+  (`benchmarks/re_fronts.py`, `_re/corrected/`).
 - The stochastic population update and an inner archive (task 7, supplement
   2): `survival = "stochastic"` in SMS-EMOA, NSGA-II and NSGA-III after Bian,
   Zhou, Li & Qian (IJCAI 2023) — a random Q′ of ⌊`spu_frac`·|Q|⌋ members

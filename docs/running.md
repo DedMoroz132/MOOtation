@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 982 benchmark problems (needs NumPy) |
+| `--problems` | list the 994 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -157,7 +157,7 @@ day-long run.
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ and MW, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 982 problems across 36 families, each
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 994 problems across 39 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -284,6 +284,39 @@ the original. RE91 draws four normals at every evaluation; here they come
 from the run's seed. In a rank table the real-world problems count apart:
 with synthetic ones beside them, `all` is the synthetic problems only and
 `engineering` the real-world ones (`--by family_kind` groups the same way).
+
+`RE22c` and `RE33c` are their corrected copies, beside the originals, which
+stay for the published fronts: RE22 with x1's list as meant (3.10 for the
+original's "3,10", 76 values), RE33 with x4 in [2, 11] (reproblems' issue #9).
+reproblems has no front for them; theirs are built here from an exhaustive
+grid refined locally and thinned by DSS to 500 M points
+(`python -m mootation.benchmarks.re_fronts`, `benchmarks/_re/corrected/`), the
+frame the front's own.
+
+**Typed variables.** A problem's `var_types` declares each variable `"real"`,
+`"int"`, `("discrete", values)` or `"bin"`: RE22, RE23, RE25, RE35, RE36, CRE24,
+CRE25 and RE22c (RE33c's x4 stays real, as reproblems evaluates it), and the
+bit-string problems below. A campaign hands it to `minimize`, whose operators
+then work on reals and the vault rounds after every write — the integer
+variables to the nearest integer (ties to even) in an operator space widened to
+[lo − 0.5, hi + 0.5), the discrete ones to the nearest value of their list —
+so the genome holds the rounded value (`int_repair = "lamarck"`, the default,
+for every algorithm that writes through the vault) or keeps the real one and
+only the evaluation sees it rounded (`"baldwin"`). Polynomial mutation takes
+`eta_int` (3) for those variables. Both are `params` of an algorithm entry. A
+run records `dup_x_share`, the share of its evaluations whose decoded point had
+been evaluated before. The bits form the cores' binary genome, which 47 of the
+64 cores take; the others refuse it by name.
+
+**Bit strings.** OneMinMax (`OMM_n10`, `_n20`, `_n50`), LOTZ (`LOTZ_n…`) and
+OneJumpZeroJump (`OJZJ_n10_k2`, `OJZJ_n10_k3`, `OJZJ_n20_k3`, `OJZJ_n20_k4`)
+of the runtime theory (`benchmarks/binary.py`; maximized there, registered as
+their negatives), with exact fronts checked against every string up to n = 12.
+A run on one records the paper's measure (Bian et al., IJCAI 2023): `cover_gen`
+and `cover_evals`, the first generation and evaluation at which the population
+holds every front vector, and `cover_archive_gen`, `cover_archive_evals` for the
+inner archive (`inner_archive = "nd"`) — NaN, with `cover_reached` false, when
+the budget ran out first. Read them at every generation: `record_every = 1`.
 
 **The rotated problems** mix the distance variables, which ZDT, DTLZ and WFG
 keep each on its own axis — a gift to operators that work coordinate by

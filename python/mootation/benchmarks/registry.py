@@ -26,7 +26,9 @@
 #                       controls (r0, c0), and three instances <name>_i1.._i3
 #                       of every rotated one: the distance variables rotated
 #                       (ours, rotated.py)
-#   RE21-91, CRE21-51   Tanabe & Ishibuchi 2020, real-world problems (re.py)
+#   RE21-91, CRE21-51   Tanabe & Ishibuchi 2020, real-world problems (re.py);
+#                       RE22c, RE33c their corrected copies (task 7, §9)
+#   OMM, LOTZ, OJZJ     bit-string problems of the runtime theory (binary.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -71,6 +73,7 @@ from . import c_dtlz as _cd
 from . import noisy as _noisy
 from . import rotated as _rot
 from . import re as _re
+from . import binary as _bin
 from . import mw as _mw
 
 
@@ -119,6 +122,11 @@ class BenchProblem:
     # A noisy copy's noise-free objectives (noisy.py), on which a campaign
     # measures it; None for every other problem.
     true_objectives: Optional[Callable[[List[float]], List[float]]] = None
+    # The variables' types (mootation.var_types): "real", "int", "bin" or
+    # ("discrete", values), one per variable; None: all real. RE22, RE23,
+    # RE25, RE35, RE36, CRE24, CRE25 and the corrected RE22c and RE33c (task 7,
+    # §10), and the bit-string problems (binary.py).
+    var_types: Optional[list] = None
 
     @property
     def fevals_max(self) -> int:
@@ -2062,7 +2070,8 @@ def _register_re():
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=False, pareto_front=_pf,
             front_exact=False,
-            make_evaluator=(lambda seed: _re.RE91Evaluator(seed)) if name == "RE91" else None)
+            make_evaluator=(lambda seed: _re.RE91Evaluator(seed)) if name == "RE91" else None,
+            var_types=_re.VAR_TYPES.get(name))
         EXACT_FRAME.add(name)
     for name, (base, model) in _re.CRE.items():
         ideal, nadir = _re.frame(base)
@@ -2078,11 +2087,35 @@ def _register_re():
             hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf,
-            front_exact=False)
+            front_exact=False, var_types=_re.VAR_TYPES.get(name))
         EXACT_FRAME.add(name)
 
 
 _register_re()
+
+
+# =============================================================
+#  OneMinMax, LOTZ, OneJumpZeroJump (binary.py, task 7, supplement 2, §3):
+#  bit strings, maximized, registered as their negatives; exact fronts.
+# =============================================================
+def _register_binary():
+    for kind, n, k in _bin.SIZES:
+        key = _bin.name(kind, n, k)
+        ideal, nadir = _bin.frame(kind, n, k)
+        pop, ng = _budget(2)
+        def _eval(x, _kd=kind, _k=k): return _bin.evaluate(_kd, x, _k)
+        def _pf(m=1000, _kd=kind, _n=n, _k=k): return -_bin.front(_kd, _n, _k)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=n, bounds=[(0.0, 1.0)] * n, n_obj=2,
+            evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2), ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False, pareto_front=_pf,
+            var_types=["bin"] * n)
+        EXACT_FRAME.add(key)
+
+
+_register_binary()
 _register_noisy(_noisy.LATE_BASES, late=True)
 
 

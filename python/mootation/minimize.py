@@ -58,6 +58,9 @@ def minimize(
     operator_stats: bool = False,
     init: str = "uniform",
     init_share: float = 0.0,
+    var_types=None,
+    int_repair: str = "lamarck",
+    eta_int: float | None = None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -167,16 +170,42 @@ def minimize(
                 "evaluator replaces the per-point function the log wraps. "
                 "Log inside your batch function instead.")
 
+    # Integer, discrete and binary variables (var_types.py; task 7, §10 and
+    # supplement 2, §3): the core sees the real, integer and discrete ones as
+    # its real genome and the bits as its binary genome; fn, constraints and
+    # batch get the caller's decoded variables in the caller's order.
+    if int_repair not in ("lamarck", "baldwin"):
+        raise ValueError(f"int_repair = '{int_repair}': lamarck or baldwin")
+    layout = None
+    if var_types is not None:
+        from .var_types import Layout
+        layout = Layout(var_types, list(bounds))
+        if layout.trivial():
+            layout = None
+    n_bin = 0
+    if layout is not None:
+        user_fn, user_cons, user_batch = fn, constraints, batch
+        fn = lambda xc, _f=user_fn: _f(layout.to_user(xc))                  # noqa: E731
+        if user_cons is not None:
+            constraints = lambda xc, _c=user_cons: _c(layout.to_user(xc))   # noqa: E731
+        if user_batch is not None:
+            batch = lambda X, _b=user_batch: _b([layout.to_user(x) for x in X])  # noqa: E731
+        bounds = layout.core_bounds()
+        n_bin = len(layout.bits)
+        if n_bin and init != "uniform":
+            raise ValueError("init designs are real-valued: not with binary variables")
+
     problem = _core.Problem()
     problem.bounds = bounds
     problem.n_objectives = int(n_objs)
+    problem.n_bin = n_bin
 
     if constraints is not None:
         if n_cons < 1:
             # Counted once rather than guessed per call: the binding needs the
             # width up front, and calling the user's function during setup to
             # find it out would spend an evaluation they did not ask for.
-            probe = list(constraints([lo for lo, _ in bounds]))
+            probe = list(constraints([lo for lo, _ in bounds] + [0.0] * n_bin))
             n_cons = len(probe)
         problem.n_limits = int(n_cons)
 
@@ -203,6 +232,12 @@ def minimize(
     cfg.seed = int(seed)
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
+    if layout is not None:
+        cfg.var_kinds = layout.var_kinds()
+        cfg.discrete_values = layout.discrete_values()
+        cfg.lamarck = int_repair == "lamarck"
+        if any(k != 0 for k in cfg.var_kinds):
+            cfg.eta_int = 3.0 if eta_int is None else float(eta_int)
     params, words = {}, {}
     for k, v in knobs.items():
         if k in PARAM_KNOBS:
@@ -270,6 +305,13 @@ def minimize(
                if isinstance(seed_population, (str, bytes)) or
                hasattr(seed_population, "__fspath__")
                else seed_population)
+        if layout is not None and len(pop.variables[0]) == len(layout.kinds) and \
+                not getattr(pop, "binary", None):
+            # the caller's variables, bits included: the core's reals and bits
+            parts = [layout.split(x) for x in pop.variables]
+            from .persistence import LoadedPopulation
+            pop = LoadedPopulation([p[0] for p in parts], pop.objectives, pop.cv, pop.meta,
+                                   [p[1] for p in parts])
         if len(pop.variables[0]) != len(bounds):
             raise ValueError(
                 f"the seed population has {len(pop.variables[0])} variables "
@@ -282,6 +324,10 @@ def minimize(
                 "number of objectives")
         pop = fit_population(pop, int(pop_size), on_size_mismatch)
         cfg.seed_variables = [list(v) for v in pop.variables]
+        if n_bin:
+            if not getattr(pop, "binary", None):
+                raise ValueError("the seed population carries no bits for the binary variables")
+            cfg.seed_binary = [list(b) for b in pop.binary]
         cfg.seed_objectives = [list(v) for v in pop.objectives]
         if constraints is not None:
             # The population file carries x, f and the aggregate cv only; the
@@ -301,4 +347,6 @@ def minimize(
         _save(result, save_population,
               meta={"algorithm": algorithm, "pop_size": pop_size,
                     "n_gen": n_gen, "seed": seed, "n_objs": n_objs})
+    # the result's variables are the core's real genome (integer and discrete
+    # values as floats), its binary_variables the bits (var_types.py)
     return result

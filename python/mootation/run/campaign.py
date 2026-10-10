@@ -642,9 +642,29 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             hard_arc[str(b)] = dict(measure(true_values(AF[idx], AX[idx]), AX[idx], traj_metrics),
                                     fe=fe, n=int(len(idx)))
 
+    # Typed variables (mootation.var_types, task 7, §10): the points the
+    # algorithm asked for again after the rounding, dup_x_share in final.
+    typed = p.var_types is not None and any(t != "real" for t in p.var_types)
+    seen_x, dup_x = set(), 0
+    # A problem of bits with an exact front (benchmarks/binary.py): the first
+    # generation and evaluation at which the population, and the inner
+    # archive, hold every front vector (supplement 2, §3.4: the paper's
+    # measure), cover_gen and cover_evals in final.
+    cover_front = None
+    if (p.var_types is not None and all(t == "bin" for t in p.var_types)
+            and p.front_exact and callable(p.pareto_front)):
+        cover_front = {tuple(float(v) for v in row) for row in np.asarray(p.pareto_front(1000))}
+    cover = {"gen": None, "fe": None, "archive_gen": None, "archive_fe": None}
+    if cover_front is not None and not baseline:
+        from .. import _core                   # inner_archive_state() at every call
+
     def evaluate(x):
-        nonlocal fe, fe_first_feas
+        nonlocal fe, fe_first_feas, dup_x
         fe += 1
+        if typed:
+            key = tuple(x)
+            dup_x += key in seen_x
+            seen_x.add(key)
         f = objective(x)
         ok = cons is None or feasible(x)
         if cons is not None and ok and fe_first_feas is None:
@@ -761,6 +781,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     def on_gen(gen, objectives, variables=None):
         nonlocal n_records, next_i, last_fe, record_seconds
+        if cover_front is not None:            # at every call, before the grid's choice
+            if cover["gen"] is None and cover_front <= {tuple(map(float, r)) for r in objectives}:
+                cover["gen"], cover["fe"] = gen, fe
+            if cover["archive_gen"] is None and not baseline:
+                A = {tuple(map(float, r)) for r in _core.inner_archive_state()}
+                if A and cover_front <= A:
+                    cover["archive_gen"], cover["archive_fe"] = gen, fe
         if grid is not None:
             # Generation 0 and the last call are always recorded; in between,
             # the first call at or past the next count of the grid.
@@ -826,6 +853,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 record_every=(1 if grid is not None else spec.record_every),
                 operator_stats=op_stats,
                 init=job.init, init_share=job.init_share,
+                var_types=p.var_types,
                 **job.params,
             )
     except Exception as e:                       # one bad job must not kill the shard
@@ -938,6 +966,18 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         final.update(dense(F, X, final_metrics))
     if cons is not None:
         final["fe_first_feas"] = fe_first_feas
+    if typed and final:
+        final["dup_x_share"] = dup_x / max(fe, 1)
+    if cover_front is not None:
+        # not covered within the budget: NaN, and cover_reached false
+        nan = float("nan")
+        final.update(cover_gen=nan if cover["gen"] is None else cover["gen"],
+                     cover_evals=nan if cover["fe"] is None else cover["fe"],
+                     cover_reached=cover["gen"] is not None,
+                     cover_archive_gen=(nan if cover["archive_gen"] is None
+                                        else cover["archive_gen"]),
+                     cover_archive_evals=(nan if cover["archive_fe"] is None
+                                          else cover["archive_fe"]))
     if truth is not None:
         if final:
             final["true_dominated_share"] = 1.0 - M.nd_share(F)

@@ -54,6 +54,22 @@ repository's change log; Optimization notes of 2026-10-09):
     [11, 20] and should be [2, 11], the author agrees. Kept as [11, 20].
   * RE22: the violation sign (issue #5) — max(-g, 0) where some write
     max(g, 0); at x2 = 0, RE22's first constraint is -inf. Kept.
+
+THE CORRECTED COPIES (task 7 of 2026-10-10, §9), beside the originals, which
+stay as they are for the published fronts:
+  RE22c  RE22 with x1's list as meant: 3.10 where the original has "3,10"
+         (76 values, not 77). The list is RE22's own; its source, Amir and
+         Hasegawa's reinforced concrete beam (1989, as reproblems cites it),
+         is not in the corpus and was not checked.
+  RE33c  RE33 with x4 in [2, 11] instead of [11, 20], after reproblems'
+         issue #9 (2023, open; the author agrees there) — as recorded in the
+         notes of 2026-10-09: the issue's text itself and the disc brake's
+         source (Ray and Liew, 2002, as reproblems cites it) are to be
+         checked.
+  Their reference fronts are built here (re_fronts.py: an exhaustive grid,
+  then local refinement, thinned by DSS to 500 M points), shipped in
+  _re/corrected/ with the fronts' own ideal and nadir points; front_exact is
+  False, as for every RE problem.
   * Fixed upstream before this port, so already in the code taken here: RE21
     and RE25's E = 2 * 10e5 and G = 11.5 * 10e+6 (issue #1: now 2e5 and
     11.5e6 — consistent with the original definitions but not with the
@@ -98,6 +114,7 @@ _CAR = ([0.5, 0.45, 0.5, 0.5, 0.875, 0.4, 0.4], [1.5, 1.35, 1.5, 1.5, 2.625, 1.2
 _TRUSS = ([0.00001, 0.00001, 1.0], [100.0, 100.0, 3.0])
 _WELD = ([0.125, 0.1, 0.1, 0.125], [5.0, 10.0, 10.0, 5.0])
 _BRAKE = ([55, 75, 1000, 11], [80, 110, 3000, 20])
+RE33C_BOUNDS = ([55, 75, 1000, 2], [80, 110, 3000, 11])     # RE33c: issue #9
 _REDUCER = ([2.6, 0.7, 17, 7.3, 7.3, 2.9, 5.0], [3.6, 0.8, 28, 8.3, 8.3, 3.9, 5.5])
 _GEAR = ([12] * 4, [60] * 4)
 _WATER = ([0.01, 0.01, 0.01], [0.45, 0.10, 0.10])
@@ -109,6 +126,8 @@ RE22_VALUES = np.array([0.20, 0.31, 0.40, 0.44, 0.60, 0.62, 0.79, 0.80, 0.88, 0.
                         4.80, 4.84, 5.0, 5.28, 5.40, 5.53, 5.72, 6.0, 6.16, 6.32, 6.60, 7.11,
                         7.20, 7.80, 7.90, 8.0, 8.40, 8.69, 9.0, 9.48, 10.27, 11.0, 11.06, 11.85,
                         12.0, 13.0, 14.0, 15.0])
+# RE22c: the list as meant, 3.10 for the original's "3,10"
+RE22C_VALUES = np.array([v for v in RE22_VALUES[:33]] + [3.10] + [v for v in RE22_VALUES[35:]])
 RE25_VALUES = np.array([0.009, 0.0095, 0.0104, 0.0118, 0.0128, 0.0132, 0.014, 0.015, 0.0162,
                         0.0173, 0.018, 0.02, 0.023, 0.025, 0.028, 0.032, 0.035, 0.041, 0.047,
                         0.054, 0.063, 0.072, 0.08, 0.092, 0.105, 0.12, 0.135, 0.148, 0.162,
@@ -343,11 +362,11 @@ def re21(x):
     return f
 
 
-def re22(x):
+def re22(x, values=RE22_VALUES):
     f = np.zeros(2)
     g = np.zeros(2)
-    idx = np.abs(np.asarray(RE22_VALUES) - x[0]).argmin()
-    x1 = RE22_VALUES[idx]
+    idx = np.abs(np.asarray(values) - x[0]).argmin()
+    x1 = values[idx]
     x2 = x[1]
     x3 = x[2]
     f[0] = (29.4 * x1) + (0.6 * x2 * x3)
@@ -499,6 +518,25 @@ def re91_by_x(x) -> List[float]:
     return re91(x, z).tolist()
 
 
+# ── the variables' types (task 7, §10) ─────────────────────────────────────
+# What the functions above round inside, declared, so that the operators can
+# round too (mootation.var_types): RE22's x1 and RE25's x3 from their lists,
+# RE23's x1 and x2 integers (the multiples of 0.0625 are 0.0625 times them),
+# RE25's x1, RE35's x3 and RE36's four integers. RE33c's x4 stays real, as
+# RE33's: reproblems does not round it.
+VAR_TYPES = {
+    "RE22": [("discrete", sorted(set(float(v) for v in RE22_VALUES))), "real", "real"],
+    "RE22c": [("discrete", sorted(float(v) for v in RE22C_VALUES)), "real", "real"],
+    "RE23": ["int", "int", "real", "real"],
+    "RE25": ["int", "real", ("discrete", sorted(float(v) for v in RE25_VALUES))],
+    "RE33c": ["real"] * 4,
+    "RE35": ["real", "real", "int", "real", "real", "real", "real"],
+    "RE36": ["int"] * 4,
+    "CRE24": ["real", "real", "int", "real", "real", "real", "real"],
+    "CRE25": ["int"] * 4,
+}
+
+
 # ── the suite ────────────────────────────────────────────────────────────────
 # name -> (objectives, (lower, upper), evaluate) for RE; for CRE evaluate
 # returns (f, g) and the entry names its RE counterpart.
@@ -519,6 +557,9 @@ RE = {
     "RE42": (4, _SHIP, _reformulated(_ship)),
     "RE61": (6, _WATER, _reformulated(_water)),
     "RE91": (9, _CAR, re91_by_x),
+    # the corrected copies (above)
+    "RE22c": (2, ([0.2, 0.0, 0.0], [15, 20, 40]), lambda x: re22(x, RE22C_VALUES)),
+    "RE33c": (3, RE33C_BOUNDS, _reformulated(_brake)),
 }
 CRE = {
     "CRE21": ("RE31", _truss), "CRE22": ("RE32", _weld), "CRE23": ("RE33", _brake),
@@ -534,9 +575,14 @@ def bounds(name: str):
     return [(float(a), float(b)) for a, b in zip(lb, ub)]
 
 
+def _data(name: str) -> Path:
+    """Where a problem's files are: reproblems' own, or ours for RE22c, RE33c."""
+    return DATA / "corrected" if name.endswith("c") else DATA
+
+
 @functools.lru_cache(maxsize=None)
 def _reference(name: str) -> np.ndarray:
-    return np.loadtxt(DATA / f"reference_points_{name}.dat", ndmin=2)
+    return np.loadtxt(_data(name) / f"reference_points_{name}.dat", ndmin=2)
 
 
 def reference(name: str) -> np.ndarray:
@@ -546,8 +592,8 @@ def reference(name: str) -> np.ndarray:
 
 def frame(name: str):
     """(ideal, nadir) of an RE problem: the repository's files."""
-    ideal = np.loadtxt(DATA / f"ideal_point_{name}.dat", ndmin=1)
-    nadir = np.loadtxt(DATA / f"nadir_point_{name}.dat", ndmin=1)
+    ideal = np.loadtxt(_data(name) / f"ideal_point_{name}.dat", ndmin=1)
+    nadir = np.loadtxt(_data(name) / f"nadir_point_{name}.dat", ndmin=1)
     return tuple(float(v) for v in ideal), tuple(float(v) for v in nadir)
 
 

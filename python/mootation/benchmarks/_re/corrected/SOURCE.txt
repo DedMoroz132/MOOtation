@@ -1,0 +1,4 @@
+Built by this library (python -m mootation.benchmarks.re_fronts; task 7 of
+2026-10-10, section 9), not copied: the reference fronts of RE22c and RE33c,
+the corrected copies of RE22 and RE33 (re.py), and the fronts' own ideal and
+nadir points. The method is in re_fronts.py's docstring.
