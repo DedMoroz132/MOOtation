@@ -10,6 +10,20 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- RWMOP's mechanical design problems (task 7, §8; `benchmarks/rwmop.py`):
+  RCM01-18 and RCM21 of Kumar et al. (Swarm and Evolutionary Computation 67,
+  2021), the formulas as the paper prints them, at the competition's budget.
+  The header lists what cannot be read as printed and how it is read — RCM04's
+  G and tau'', RCM14's rho (used, never given), RCM06's g11 and RCM08's g8
+  (as printed nothing is feasible; the paper's own tables have every run
+  feasible), RCM15's wire list out of order — and where the paper's problem is
+  not the classic one (kept). RCM03-08 agree with the CRE port to 1e-12 (RCM08
+  in the paper's order of constraints). RCM19 (no demands given) and RCM20 (no
+  feasible point as printed) are not registered. Reference fronts from ten
+  long runs per problem (`benchmarks/_rwmop/`, `front_exact = False`).
+  `family_kind` "engineering" and `difficulty` "low" (the paper's level) in the
+  property table. 1334 problems in 49 families.
+
 - Multimodal problems (supplement 3, §5): SYM-PART simple and rotated,
   Omni-test and MMF1-15 with MMF1_z, MMF1_e, MMF14_a and MMF15_a, the 22
   problems of the CEC 2019 competition (`benchmarks/mmo.py`, from Liang, Qu,

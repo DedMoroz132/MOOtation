@@ -9,7 +9,7 @@ from __future__ import annotations
 # the noisy copies' suffixes (benchmarks/noisy.py, LEVELS)
 NOISE_LEVELS = ("n1", "n5", "d1", "d5", "s1", "s5", "h1", "h5")
 CONTROLS = ("r0", "c0")          # the Q = I controls of benchmarks/rotated.py
-ENGINEERING = ("RE", "CRE")      # the real-world problems of benchmarks/re.py
+ENGINEERING = ("RE", "CRE", "RCM")   # the real-world problems: re.py, rwmop.py
 
 
 def family(name: str) -> str:

@@ -142,6 +142,12 @@ Besides Huband's vocabulary (task 4, item 5):
               f2), moderate (f6, f8: low or moderate conditioning),
               ill-conditioned (f13, f14), multimodal (f15, f17: adequate
               global structure), weakly-structured (f20, f21); None elsewhere
+  family_kind "engineering" for the real-world problems (RE, CRE, RCM),
+              "synthetic" for the rest
+  difficulty  a constrained problem's difficulty where its source names one:
+              DAS-CMOP's kinds (diversity, feasibility, convergence, from its
+              triplet), RWMOP's level ("low" for the mechanical RCM, every
+              algorithm of the paper feasible in every run, §3.3.1)
   multimodal_ps, ps_parts
               the Pareto set is several parts that each map onto the whole
               front (supplement 3 of task 7, §5.4), and how many: the
@@ -354,6 +360,10 @@ def properties(name: str) -> dict | None:
         kinds = [k for k, v in (("diversity", eta), ("feasibility", zeta),
                                 ("convergence", gamma)) if v > 0]
         row["difficulty"] = "+".join(kinds) if kinds else "none"
+    elif stem.startswith("RCM") and stem[3:].isdigit():
+        # RWMOP's level (Kumar et al. 2021, §3.3.1): every algorithm of the
+        # paper feasible in every run on the mechanical problems, so "low"
+        row["difficulty"] = "low"
     row["multimodal_ps"] = row["ps_parts"] = None
     from . import mmo
     if name in mmo.NAMES:
@@ -452,6 +462,9 @@ def _huband(name: str) -> dict | None:
         if i in (3, 4) or 9 <= i <= 12:
             shape += "+disconnected"
         return _p(shape, False, False, False, False, False, False)
+    if stem.startswith("RCM") and stem[3:].isdigit():
+        # RWMOP's mechanical problems (rwmop.py): nothing of Huband's classified
+        return _p(None, None, None, None, None, None, None)
     if stem.startswith("DOC") and stem[3:].isdigit():
         # Liu and Wang 2019, Table I: the front's shape, and "multimodal"
         # where the table names the problem so (DOC3, 5, 6, 7, 9)

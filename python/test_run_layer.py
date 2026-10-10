@@ -7984,6 +7984,71 @@ def dn_nsga2_keeps_more_of_sym_parts_parts_than_nsga2():
 
 
 @test
+def rwmop_mechanical_problems_as_the_paper_prints_them():
+    """Task 7, §8: RWMOP's RCM01-18 and RCM21 (benchmarks/rwmop.py). Where the
+    problem is one of Tanabe and Ishibuchi's (re.py: RE31-33, 35, 36, 41), its
+    objectives agree with theirs to 1e-12 and its constraints too (RCM08's in
+    the paper's order); values by hand; the readings the header lists (RCM06's
+    g11, RCM08's g8, RCM15's list); RCM20 as printed has no feasible point;
+    the reference fronts are non-dominated and frame the problems."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import re as RE
+    from mootation.benchmarks import rwmop as RW
+    from mootation.run.metrics import nondominated_mask
+    names = sorted(families()["RCM"])
+    assert names == [f"RCM{i:02d}" for i in list(range(1, 19)) + [21]], names
+    rng = np.random.default_rng(5)
+    for i, model, order in ((3, RE._truss, None), (4, RE._weld, None), (5, RE._brake, None),
+                            (6, RE._reducer, None), (7, RE._gear, None),
+                            (8, RE._car, [0, 1, 3, 2, 5, 4, 6, 7, 8, 9])):
+        lo, hi = np.array(RW.PROBLEMS[i][1], float).T
+        for x in lo + (hi - lo) * rng.random((200, len(lo))):
+            f, g = RW.evaluate(i, x)
+            rf, rv = model(x)
+            assert np.allclose(f, rf, rtol=1e-12, atol=0), (i, f, rf)
+            v = np.maximum(np.array(g), 0.0)[order or slice(None)]
+            assert np.allclose(v, rv, rtol=1e-12, atol=1e-9), (i, v, rv)
+    # by hand: RCM09 at its lower bounds, RCM16 at (0.05, 0.2)
+    f, g = RW.evaluate(9, [1.0, math.sqrt(2), math.sqrt(2), 1.0])
+    assert abs(f[0] - 1400.0) < 1e-9 and abs(f[1] - 0.04) < 1e-15 and g == []
+    f, g = RW.evaluate(16, [0.05, 0.2])
+    assert abs(f[0] - 0.25 * 7800 * math.pi * 0.2 * 0.05 ** 2) < 1e-12
+    assert abs(f[1] - 64 * 0.2 ** 3 / (3 * 307e8 * math.pi * 0.05 ** 4)) < 1e-18
+    # the readings: RCM06's g11 against 1100 (as printed, 110, nothing is feasible:
+    # its left side is at least 754 in the box); RCM08's g8 bounds f2 (f1 >= 15.58)
+    lo, hi = np.array(RW.PROBLEMS[6][1], float).T
+    X = lo + (hi - lo) * rng.random((2000, 7))
+    lhs = [RW.evaluate(6, x)[1][10] + 1100.0 for x in X]
+    assert min(lhs) > 754 and min(RW.evaluate(8, x)[0][0] for x in
+                                  np.array(RW.PROBLEMS[8][1]).T[0][None]) > 15.5
+    assert RW.WIRE == tuple(sorted(RW.WIRE)) and len(RW.WIRE) == 42
+    raises(ValueError, RW.rcm02, [0.05, 0.5, 0.4, 0.4, 4.0])         # the layers out of order
+    # RCM20 as printed: no feasible point (the paper's Table 5 has its algorithms
+    # feasible, so what ran was not what is printed; not registered)
+    best = math.inf
+    for x in np.column_stack([rng.uniform(1, 16, 20000), rng.uniform(1, 16, 20000),
+                              rng.uniform(1e-6, 16e-6, 20000), rng.uniform(1, 16, 20000)]):
+        try:
+            best = min(best, sum(max(c, 0.0) for c in RW.rcm20(x)[1]))
+        except (ValueError, ZeroDivisionError):
+            pass
+    assert best > 100, best
+    for key in names:
+        p = get(key)
+        Z = RW.front(key)                     # the file; pareto_front(n) thins it to n
+        want = {"RCM02": 1658, "RCM07": 17, "RCM15": 64}.get(key, 2000)   # the header's sizes
+        assert len(Z) == want and nondominated_mask(Z).all() and not p.front_exact, key
+        assert np.allclose(Z.min(0), p.ideal) and np.allclose(Z.max(0), p.nadir), key
+        assert p.n_gen * p.pop_size >= 0.99 * RW.max_evaluations(int(key[3:])), key
+    assert get("RCM15").var_types[2][1] == list(RW.WIRE) and get("RCM07").var_types == ["int"] * 4
+    assert get("RCM09").has_cons is False and get("RCM08").has_cons is True
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:
