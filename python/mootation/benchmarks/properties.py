@@ -324,7 +324,7 @@ def properties(name: str) -> dict | None:
     row["bbob_groups"] = None
     if stem.startswith("bbobbiobj"):
         from .bbob_biobj import PAIRS
-        fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
+        fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
     row["front_dim"] = _front_dim(stem, row["n_obj"], front)
     from ..families import is_engineering
@@ -453,10 +453,16 @@ def _huband(name: str) -> dict | None:
     if stem.startswith("ZCAT") and stem[4:].isdigit():
         return _p(_ZCAT_FRONT[int(stem[4:])], False, False, True, False, False, False)
     if stem.startswith("bbobbiobj"):
+        # bbob-biobj-mixint (bbobbiobjmixint..) as its continuous pair: a
+        # discretized separable function stays separable
         from .bbob_biobj import PAIRS
-        fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
+        fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         return _p(None, fa in _BBOB_MULTIMODAL or fb in _BBOB_MULTIMODAL, False, None,
                   fa in _BBOB_SEPARABLE and fb in _BBOB_SEPARABLE, False, False)
+    if stem == "catZDT1":
+        # categorical.py: ZDT1's front, held by the multimodal g only, the
+        # easy ones just above it (deceptive); its optimum y = 0.5, medial
+        return _p("convex", True, False, False, False, True, False, deceptive=True)
     if stem.startswith("MOP") and stem[3:].isdigit():
         i = int(stem[3:])
         return _p(_MOP_FRONT[i], _MOP_MULTIMODAL[i], None, False, False, False, False)

@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 1182 benchmark problems (needs NumPy) |
+| `--problems` | list the 1293 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -202,7 +202,7 @@ day-long run.
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE: 1182 problems across 43 families, each
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE, bbob-biobj-mixint and catZDT1: 1293 problems across 45 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -392,6 +392,21 @@ and counts `max_evaluations` in distinct points — what a solver run costs; a
 run whose algorithm asks for nothing new in 10 000 steps ends there (a space
 smaller than the budget). The default, `"calls"`, calls `fn` every time, as
 before. The run journal's cache (`run/ledger.py`) keys the decoded point too.
+
+**bbob-biobj-mixint** (Tušar, Brockhoff and Hansen, GECCO 2019;
+`benchmarks/bbob_biobj_mixint.py`): the 55 bbob-biobj pairs at n = 5 and 10
+with the first four fifths of the variables integer, n/5 each of arities 2,
+4, 8 and 16, the rest continuous — `bbobbiobjmixint07_n10_2D`. The integer
+value j stands for z_{j+1}, l equidistant points in (−4, 4) shifted so that
+one is the objective's optimum (the paper's §3.1.1), each objective about its
+own; the ideal and nadir are the pair's at its mixed-integer optima, and there
+is no front. The paper's scaling factors are left out (a factor on one
+objective changes neither dominance nor a normalized indicator), and the
+instances are bbob-biobj's own, not COCO's, so nothing here compares with
+COCO's archives. **catZDT1** (`benchmarks/categorical.py`, ours): ZDT1 whose
+distance function g a categorical variable picks — ZDT4's multimodal one,
+which alone reaches ZDT1's front, or one of two easy ones whose least g is
+1.02 and 1.05, just above it.
 
 **DAS-CMOP1-9** (Fan et al., Evolutionary Computation 28(3), 2020;
 `benchmarks/dascmop.py`): constrained problems whose difficulty a triplet

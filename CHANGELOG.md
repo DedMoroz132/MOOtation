@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- bbob-biobj-mixint (`benchmarks/bbob_biobj_mixint.py`; supplement 3, §1.4):
+  the 55 bbob-biobj pairs at n = 5 and 10 with four fifths of the variables
+  integer (arities 2, 4, 8, 16), discretized as Tušar et al. (GECCO 2019,
+  §3.1.1) do, each objective about its own optimum; and catZDT1
+  (`benchmarks/categorical.py`), ZDT1 with a categorical choice of g. 1293
+  problems in 45 families.
 - Categorical variables (task 7, supplement 3, §1; `var_types.py`,
   `operators/bit_flip.hpp`): `("cat", labels)` or `("cat", k)`; `fn` gets the
   label. Bits and categorical variables form the integer genome

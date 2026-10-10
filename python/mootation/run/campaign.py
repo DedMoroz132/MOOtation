@@ -646,6 +646,12 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # algorithm asked for again after the rounding, dup_x_share in final.
     typed = p.var_types is not None and any(t != "real" for t in p.var_types)
     seen_x, dup_x = set(), 0
+    # a categorical variable reaches the objective as its label and the run
+    # archive as its index (var_types.Layout.numeric; supplement 3, §1)
+    numeric = None
+    if typed and any(isinstance(t, (tuple, list)) and t[0] == "cat" for t in p.var_types):
+        from ..var_types import Layout
+        numeric = Layout(p.var_types, p.bounds).numeric
     # A problem of bits with an exact front (benchmarks/binary.py): the first
     # generation and evaluation at which the population, and the inner
     # archive, hold every front vector (supplement 2, §3.4: the paper's
@@ -682,11 +688,12 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         ok = cons is None or feasible(x)
         if cons is not None and ok and fe_first_feas is None:
             fe_first_feas = fe
+        xn = numeric(x) if numeric is not None else x
         if arc is not None and ok:
-            arc.add(f, x)
+            arc.add(f, xn)
         if oracle is not None:
             t = getattr(objective, "last_true", None)
-            oracle.add(t if t is not None else truth(list(x)), x)
+            oracle.add(t if t is not None else truth(list(x)), xn)
         if arc is not None and fe in hard:
             take_hard_archive(fe)
         if fe in checkpoints and (len(arc) or cons is not None):

@@ -5743,7 +5743,7 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
                         ROTATION_HASHES[plain + "_i3"]}) == 3, plain
     d = hashlib.sha256()
     for n in sorted(names()):
-        if n.startswith("bbobbiobj"):
+        if n.startswith("bbobbiobj") and not n.startswith("bbobbiobjmixint"):   # same matrices
             p = BB.problem(int(n[9:11]), int(n[13:15]), 1)
             for A in (p.alpha.R, p.alpha.Q, p.beta.R, p.beta.Q):
                 if A is not None:
@@ -7558,6 +7558,62 @@ def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
                                seed_population=Path(d) / "pop.csv")
         assert all(0 <= b[0] < 4 for b in r.binary_variables) and pop.binary_variables
         assert Layout(vt, bounds).split(seed_rows[0]) == ([0.5, 2.0], [3])
+
+
+@test
+def mixed_integer_and_categorical_problems_keep_their_optima():
+    """Supplement 3, §1.4: bbob-biobj-mixint (Tusar et al. 2019, §3.1.1): n/5
+    variables of each arity 2, 4, 8, 16, the rest continuous; the levels
+    equidistant, 8/(l+1) apart, one of them the optimum; each objective takes
+    its optimal value at its mixed-integer optimum, the ideal; the nadir is
+    the other's value there. catZDT1: ZDT1's front from "rastrigin" alone,
+    the easy labels' best curves above it."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import bbob_biobj_mixint as M
+    from mootation.benchmarks import categorical as C
+    from mootation.benchmarks.properties import properties
+    assert len(families()["bbobbiobjmixint"]) == 110 and families()["catZDT"] == ["catZDT1"]
+    assert M.arities(10) == [2, 2, 4, 4, 8, 8, 16, 16]
+    z = M.levels(0.3, 4)
+    assert np.allclose(np.diff(z), 1.6) and np.isclose(z, 0.3).sum() == 1
+    for D in (5, 10):
+        for fnum in (1, 7, 30, 55):
+            p = get(M.name(fnum, D))
+            mi = p.evaluate
+            assert p.var_types == ["int"] * (4 * D // 5) + ["real"] * (D // 5)
+            a = mi.optimum(mi.alpha, mi.z_alpha)
+            b = mi.optimum(mi.beta, mi.z_beta)
+            assert math.isclose(mi(a)[0], p.ideal[0], abs_tol=1e-12)
+            assert math.isclose(mi(b)[1], p.ideal[1], abs_tol=1e-12)
+            assert p.nadir == (mi(b)[0], mi(a)[1])
+            rng = np.random.default_rng(fnum)
+            for _ in range(200):                      # nothing beats the ideal
+                x = [int(rng.integers(0, l)) for l in mi.arities] + list(rng.uniform(-5, 5, D // 5))
+                f = mi(x)
+                assert f[0] >= p.ideal[0] - 1e-9 and f[1] >= p.ideal[1] - 1e-9
+    assert properties("bbobbiobjmixint07_n10_2D")["bbob_groups"] == \
+        properties("bbobbiobj07_n10_2D")["bbob_groups"]
+    # catZDT1
+    p = get("catZDT1")
+    y_best = {"rastrigin": 0.5, "linear": 0.0, "quadratic": 0.75}
+    for label, g0 in C.LEAST_G.items():
+        assert math.isclose(C.g(label, [y_best[label]] * 9), g0, abs_tol=1e-12)
+    f1 = np.linspace(0.0, 1.0, 101)
+    curves = {c: np.array([p.evaluate([c, u] + [y_best[c]] * 9)[1] for u in f1])
+              for c in C.LABELS}
+    assert np.allclose(curves["rastrigin"], 1.0 - np.sqrt(f1), atol=1e-12)
+    assert np.all(curves["linear"] > curves["rastrigin"])
+    assert np.all(curves["quadratic"] > curves["linear"])
+    assert np.allclose(p.pareto_front(101), np.column_stack([f1, 1.0 - np.sqrt(f1)]))
+    assert p.evaluate([0, 0.3] + [0.5] * 9) == p.evaluate(["rastrigin", 0.3] + [0.5] * 9)
+    row = properties("catZDT1")
+    assert row["front"] == "convex" and row["multimodal"] and row["deceptive"]
+    from mootation.var_types import Layout                    # the run archive's numbers
+    assert Layout(C.var_types(), C.bounds()).numeric(["linear"] + [0.5] * 10)[0] == 1.0
 
 
 @test

@@ -35,6 +35,9 @@
 #                       regions (lir_cmop.py)
 #   DOC1-9              Liu & Wang 2019, constraints in the decision and the
 #                       objective space, equalities in DOC3, 5, 7 (doc.py)
+#   bbob-biobj-mixint   Tusar et al. 2019: bbob-biobj with 4/5 of the variables
+#     x n=5,10          integer, of arities 2, 4, 8, 16 (bbob_biobj_mixint.py)
+#   catZDT1             ZDT1 with a categorical choice of g (ours, categorical.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -83,6 +86,8 @@ from . import binary as _bin
 from . import dascmop as _das
 from . import lir_cmop as _lir
 from . import doc as _doc
+from . import bbob_biobj_mixint as _mixint
+from . import categorical as _cat
 from . import mw as _mw
 from . import failing as _fail
 
@@ -1945,6 +1950,40 @@ def _register_doc():
 
 
 _register_doc()
+
+
+# =============================================================
+#  bbob-biobj-mixint x n={5,10} (bbob_biobj_mixint.py; supplement 3, §1.4):
+#  the 55 bbob-biobj pairs with the first 4/5 of the variables integer, of
+#  arities 2, 4, 8 and 16, each objective discretized about its own optimum
+#  (Tusar et al. 2019, §3.1.1). Ideal and nadir as bbob-biobj's, at the
+#  mixed-integer optima; no front.
+#  catZDT1 (categorical.py): ZDT1 whose g a categorical variable picks among a
+#  multimodal one, which holds the front, and two easy ones just above it.
+# =============================================================
+def _register_mixed():
+    pop, ng = _budget(2)
+    for D in (5, 10):
+        for fnum in range(1, 56):
+            p = _mixint.MixedInteger(fnum, D)
+            key = _mixint.name(fnum, D)
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=D, bounds=_mixint.bounds(D), n_obj=2,
+                evaluate=p, constraints=_no_cons,
+                hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(p.ideal, p.nadir)),
+                hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
+                ideal=p.ideal, nadir=p.nadir, pop_size=pop, n_gen=ng, K_runs=21,
+                has_cons=False, pareto_front=None, var_types=_mixint.var_types(D))
+    PROBLEMS["catZDT1"] = BenchProblem(
+        name="catZDT1", n_vars=1 + _cat.N_REAL, bounds=_cat.bounds(), n_obj=2,
+        evaluate=_cat.evaluate, constraints=_no_cons,
+        hv_ref_raw=(1.1, 1.1), hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
+        ideal=(0.0, 0.0), nadir=(1.0, 1.0), pop_size=pop, n_gen=ng, K_runs=21,
+        has_cons=False, pareto_front=_cat.front, var_types=_cat.var_types())
+    EXACT_FRAME.add("catZDT1")
+
+
+_register_mixed()
 _register_noisy()
 
 

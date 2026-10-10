@@ -24,7 +24,8 @@ Three further pieces, each independent:
                            bbob-biobj, Polygon, MOP, BT, C-DTLZ, MW, DAS-CMOP, LIR-CMOP,
                            DOC, rotated
                            ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy
-                           and failing copies, RE and CRE — 1182 problems.
+                           and failing copies, RE and CRE, bbob-biobj-mixint, catZDT1 —
+                           1293 problems.
                            Needs NumPy.
     mootation.run          driving a run from a TOML file, with objectives from
                            external programs. Needs nothing.

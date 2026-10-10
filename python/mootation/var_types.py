@@ -139,6 +139,17 @@ class Layout:
                 x[i] = int(g != 0)
         return x
 
+    def numeric(self, user_x) -> list:
+        """The caller's variables as numbers, in their order: a categorical
+        variable as its label's index (for an archive of floats)."""
+        out = []
+        for i, v in enumerate(user_x):
+            if self.kinds[i] == "cat":
+                out.append(float(next(k for k, a in enumerate(self.values[i]) if a == v)))
+            else:
+                out.append(float(v))
+        return out
+
     def split(self, user_x):
         """The caller's variables as the core's (reals, genes)."""
         genes = []
