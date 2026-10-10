@@ -5,7 +5,7 @@
 [![DOI](https://zenodo.org/badge/1328202748.svg)](https://doi.org/10.5281/zenodo.21864324)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**66 multi- and many-objective optimization algorithms (64 evolutionary, one
+**67 multi- and many-objective optimization algorithms (65 evolutionary, one
 direct search, one simulated annealing), each implemented from its paper and checked against it line
 by line. Header-only C++17, no
 dependencies; also reachable from Python, from a TOML file that drives an
@@ -21,7 +21,7 @@ plus *mutation*, the operator all of these algorithms are built on.
 
 ## What you get
 
-- **66 algorithms** in ten families: Pareto-dominance, NSGA-III-style
+- **67 algorithms** in ten families: Pareto-dominance, NSGA-III-style
   reference points, the MOEA/D family, indicator-based, reference-vector,
   clustering-based, archive-based, two-archive constrained, direct search and
   simulated annealing.
@@ -33,9 +33,10 @@ plus *mutation*, the operator all of these algorithms are built on.
 - **Five ways in, one algorithm list.** A C++ template, a C++ ask/tell session,
   a Python `minimize`, a TOML run description for external programs, and a C
   ABI. All five are generated from the same `algorithms.def`, so none can drift.
-- **1293 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj and its mixed-integer copy, MOP, BT,
+- **1315 benchmark problems** (ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj and its mixed-integer copy, MOP, BT,
   the Ishibuchi polygons, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy
-  and failing copies, the real-world RE and CRE) with true Pareto fronts where a closed form exists, IGD / IGD+ /
+  and failing copies, the real-world RE and CRE, the multimodal SYM-PART, Omni-test and MMF with every part of
+  their Pareto sets) with true Pareto fronts where a closed form exists, IGD / IGD+ /
   hypervolume, and a campaign runner that shards across a cluster.
 - **Warm starts**, an evaluation log, constraint handling in every algorithm
   (off by default, as in the papers), and a `--check` that refuses a run ten
@@ -95,7 +96,7 @@ cmake -S . -B build -DMOOTATION_BUILD_C_API=ON && cmake --build build
 | continue a finished run, or switch algorithm mid-study | save and seed a population | [`python/examples/06_restart.py`](python/examples/06_restart.py) |
 | no control over include paths | the single header | [docs/embedding.md](docs/embedding.md#the-single-header) |
 
-All of them reach the same 66 algorithms. They differ in who owns the loop and
+All of them reach the same 67 algorithms. They differ in who owns the loop and
 what crosses the boundary, not in what you can run.
 
 ## Quick start
@@ -171,7 +172,7 @@ print(res.objectives[0], res.ignored)
 Constraints are a second function returning violations (`<= 0` means
 satisfied); `batch=` receives a whole generation in one call, for evaluators
 that cost real time; `save_population=` / `seed_population=` are the warm
-start; `mootation.algorithms()` lists the 66 names. `res.ignored` names any
+start; `mootation.algorithms()` lists the 67 names. `res.ignored` names any
 knob you set that this algorithm does not have. Six worked scripts live in
 [python/examples/](python/examples/README.md); `mootation.Problem` /
 `mootation.Config` / `mootation.run_raw` map onto the C++ API one-to-one when
@@ -272,7 +273,7 @@ conclusions live in the headers.
 
 ## Benchmarks and campaigns
 
-`mootation.benchmarks` holds 1293 problems across 45 families, 2 to 15
+`mootation.benchmarks` holds 1315 problems across 48 families, 2 to 15
 objectives, each with bounds, an evaluator, the reference point a hypervolume
 needs and, where a closed form exists, a sampler of the true Pareto front.
 `mootation.run.metrics` computes IGD, IGD+ and hypervolume (exact up to five
@@ -291,7 +292,7 @@ recipe for running it on another machine, or split across several.
 
 ```
 include/mootation/
-  algorithms/        66 headers, one algorithm each; srv_strategy.hpp is a shared helper
+  algorithms/        67 headers, one algorithm each; srv_strategy.hpp is a shared helper
   algorithms.def     the X-macro list every interface is generated from
   operators/         SBX, polynomial mutation, DE, Liu–Li, the switchable crossovers
                      (uniform, BLX-α, SPX, REX, UNDX, PCX) and mutations, bound

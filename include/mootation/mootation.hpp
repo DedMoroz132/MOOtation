@@ -19,6 +19,7 @@
 #include "dss.hpp"
 #include "hv_contribution.hpp"
 #include "algorithms/nsga2.hpp"
+#include "algorithms/dn_nsga2.hpp"
 #include "algorithms/nsga3.hpp"
 #include "algorithms/spea2.hpp"
 #include "algorithms/spea2_sde.hpp"

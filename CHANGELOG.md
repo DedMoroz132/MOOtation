@@ -10,6 +10,28 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Multimodal problems (supplement 3, §5): SYM-PART simple and rotated,
+  Omni-test and MMF1-15 with MMF1_z, MMF1_e, MMF14_a and MMF15_a, the 22
+  problems of the CEC 2019 competition (`benchmarks/mmo.py`, from Liang, Qu,
+  Gong and Yue's report), each with its front and every part of its Pareto
+  set, the sets derived from the formulas and checked on a fine grid (the
+  module's header lists where the report's figures and the formulas part);
+  `multimodal_ps` and `ps_parts` in the property table. 1315 problems in 48
+  families.
+- `psp` (`run/metrics.py`): Yue, Qu and Liang's Pareto sets proximity, CR
+  over IGDX (IEEE TEVC 22(5), 2018, Eq. 8). A campaign records `igdx`, `cr`
+  and `psp` along the trajectory and in `final` wherever the problem has a
+  Pareto-set sample (`[campaign] set_metrics`, on by default);
+  `--cec2019-ranks` gives the competition's mean ranks by IGD, IGDX and 1/PSP.
+- DN-NSGA-II (`algorithms/dn_nsga2.hpp`, `dn_nsga2`; supplement 3, §5.1):
+  Liang, Yue and Qu's NSGA-II with a niched mating pool — a random member
+  against the nearest of `dn_cf` others in the variables, the better of the
+  two a parent — and crowding in the variables (CEC 2016). The crowding factor
+  is left open by the paper: `dn_cf`, 20 by default. `nsga2` is unchanged, bit
+  for bit. On SYM-PART simple at the competition's budget, 10 seeds, it keeps
+  all nine parts on every seed, NSGA-II 5 to 9 (mean cover rate 0.999 against
+  0.967). 67 algorithms; DN-NSGA-II refuses the integer genome (18 do).
+
 - `i_cmop` (supplement 3, §4.4; `run/metrics.py`): Vodopija, Tušar and
   Filipič's indicator for a constrained problem (IEEE TEVC 29(1), 2025, Eq.
   12), one number for runs with and without a feasible point: at most 1 with

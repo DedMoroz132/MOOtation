@@ -18,8 +18,8 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 66 algorithm names |
-| `--problems` | list the 1293 benchmark problems (needs NumPy) |
+| `--algorithms` | list the 67 algorithm names |
+| `--problems` | list the 1315 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -221,7 +221,8 @@ day-long run.
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE, bbob-biobj-mixint and catZDT1: 1293 problems across 45 families, each
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE, bbob-biobj-mixint and catZDT1,
+and the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition: 1315 problems across 48 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -398,8 +399,8 @@ probability 1/(number of genes) but at most 1/2 (pymoo's cap; with a single
 gene 1 would change every child's), one of its other values, each alike —
 a bit flips (`operators/bit_flip.hpp`). SBX, DE and polynomial mutation never
 see them, and with more than two genes a binary run is what it was, bit for
-bit. 49 of the 66 cores take the integer genome; these 17 refuse it by name:
-`clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `etea`, `gde3`, `hcca`, `hlmea`,
+bit. 49 of the 67 cores take the integer genome; these 18 refuse it by name:
+`clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `dn_nsga2`, `etea`, `gde3`, `hcca`, `hlmea`,
 `if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`, `moead_ds`, `mosa`, `naemo`
 and `two_arch2` (`minimize` says so, naming the variables).
 
@@ -571,6 +572,7 @@ final population (the same list when omitted):
 | `nd_share`, `dup_share` | the share of the set no other member dominates, and the share that repeats an objective vector already in it: stagnation and duplicates | — |
 | `igdx` | IGD in the decision space: the mean distance from a Pareto-SET sample to the nearest solution, variables normalised by the bounds (Tanabe & Ishibuchi 2019, Eq. 5) | lower |
 | `cr` | cover rate: how much of the Pareto set's extent in each variable the solutions span, geometric mean over the variables, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7–8) | higher |
+| `psp` | Pareto sets proximity, `cr` / `igdx` (Yue, Qu & Liang, IEEE TEVC 22(5), 2018, Eq. 8): near the Pareto set and over all of its extent, in the variables. `igdx` is normalised by the bounds here, the paper's is in the raw variables, so with one range r for every variable the paper's PSP is this one over r; inf where `igdx` is 0. The CEC 2019 competition ranks by 1/PSP | higher |
 | `pdist` | the mean distance between two solutions in normalised variables: spread in the decision space, no reference needed | — |
 | `tau90` | the 0.9 quantile of the IGD+ distances d⁺(z, A) = min over a of ‖max(a − z, 0)‖ over the reference sample, normalised like `igdp_norm`: 90 % of the front lies within `tau90` of the set. `igdp_norm` is the mean of the same distances; one reference point far from everything moves their maximum and not this. Weakly Pareto-compliant, like IGD+. With it, `coverage_curve` gives the share of the sample within 0.01, 0.02, 0.05, 0.1 and 0.2 | lower |
 | `n_final` | the number of points in the answer. `hv`, IGD+ and ε never get worse when points are added, so when two algorithms answer with sets of different sizes, read them next to this | — |
@@ -635,10 +637,13 @@ the coverage indicators fall only as the set spreads over it (`nn_cv` needs no
 front, and sees the spacing but not the extent). The hypervolume and ε cannot
 tell a set that is close but narrow from one that is wide but far.
 
-`igdx` and `cr` need a sample of the Pareto SET, which only some problems
+`igdx`, `cr` and `psp` need a sample of the Pareto SET, which only some problems
 have: the Ishibuchi polygons (Polygon, IPolygon), ZDT1–4 and ZDT6, DTLZ1–4 and
 DTLZ7, DTLZ5–6 up to three objectives, IDTLZ, SDTLZ, minusDTLZ2, the shift and
-wide variants and ZCAT1–20. On shiftDTLZ1–4 the distance variables are
+wide variants, ZCAT1–20, and the multimodal problems below, every part of
+their sets. Where a problem has one, a campaign records the three along the
+trajectory and in `final` without being asked (`[campaign] set_metrics`, on
+by default; `false` records `metrics` alone). On shiftDTLZ1–4 the distance variables are
 **cyclic** — the optimum
 moved off the centre wraps around the box — so their differences are taken as
 ((x − c + 0.5) mod 1) − 0.5 in normalised units; a plain difference would call
@@ -647,6 +652,20 @@ positions with every distance variable at its optimum g(y_I). Elsewhere they
 are null. `pdist` needs nothing but the solutions. All three read the final
 population (`final_metrics`), whose variables `final.csv` keeps, so
 `--recompute igdx,cr,pdist` adds them to a campaign that ran without them.
+
+**Multimodal problems.** Several parts of the variables map onto one front:
+SYM-PART simple and rotated (nine parts), Omni-test (27 at three variables)
+and MMF1–15 with MMF1_z, MMF1_e, MMF14_a and MMF15_a, the 22 problems of the
+CEC 2019 competition on multimodal multiobjective optimization (Liang, Qu,
+Gong & Yue's technical report; `benchmarks/mmo.py`), at its parameters and
+its budget: a population of 100 per variable, 5 000 evaluations per variable.
+Each has its front and a sample of every part of its Pareto set, derived from
+the formulas and checked against a fine grid; where the report's own pictures
+or set descriptions disagree with its formulas, the formulas win and the
+module's header lists the cases (MMF2 and MMF3's second branch is a local set,
+MMF8's front is the quarter circle, MMF13's printed set lies outside its box,
+and so on). `dn_nsga2` is NSGA-II with a niched mating pool and crowding in
+the variables, built for them (DN-NSGA-II, Liang, Yue & Qu, CEC 2016).
 
 The hypervolume is exact up to `hv_exact_max_m` objectives (5 by default) and
 a Monte-Carlo estimate from `hv_mc_samples` points (100 000) above. The exact
@@ -858,6 +877,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `bound_repair` | for the operators above that can leave the box (BLX-α, the four multi-parent crossovers, de, de_pbest, gaussian, Cauchy): `reflect` by default, provisionally, until experiment E3 picks one; the multi-parent crossovers and DE refuse `resample` |
 | `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
+| `dn_cf` | DN-NSGA-II: the crowding factor of its niched mating pool — a random member meets the nearest, by Euclidean distance in the variables, of `dn_cf` others drawn without replacement (all of them from N − 1 on), and the better of the two by rank and crowding distance becomes a parent; a whole number ≥ 1, 20 by default (`algorithms/dn_nsga2.hpp`, DN-1) |
 | `survival`, `spu_frac` | SMS-EMOA, NSGA-II and NSGA-III: `greedy` (the default, the papers' selection) or `stochastic`, the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023): a random Q′ of ⌊`spu_frac`·\|Q\|⌋ members of parents and offspring (1/2 in SMS-EMOA, 3/4 in the NSGA's, the paper's) goes through the usual selection alone — its fronts, reference point, extremes, normalisation — and every member outside Q′ survives untouched; any member survives a step with probability at least 1/2 (SMS-EMOA) or 1/4. `spu_frac = 1` is greedy bit for bit. For NSGA-III Q′ has ⌈`spu_frac`·2N⌉ members, Opris's ⌈3µ/2⌉ (IJCAI 2025, Algorithm 1; NSGA-II takes Bian's floor, the same at an even N) |
 | `inner_archive`, `inner_archive_cap`, `archive_reuse_p` | SMS-EMOA, NSGA-II, NSGA-III, IBEA-ε+: `inner_archive = "nd"` keeps every non-dominated point the algorithm evaluated (an equal objective vector is not added; under constraint handling feasible points only), cut to `inner_archive_cap` by DSS after every addition (0: no cap; unset: 10 μ, none for a purely binary genome); each parent, with probability `archive_reuse_p` (0), is a member drawn uniformly. The result's `inner_archive` holds it; `operator_stats` the share of the parents drawn from it (`archive_parent_share`). The answer's archive (`[campaign] archive`) is apart and unchanged (`operators/inner_archive.hpp`) |
 | `bin_crossover`, `mating` | for the paper's theory runs: `bin_crossover = "none"` (SMS-EMOA, NSGA-II) leaves the binary genome uncrossed (`uniform` by default); NSGA-II's `mating = "each"` makes every member a parent exactly once, its child its mutation (`tournament` by default), and needs no crossover on any part of the genome — `crossover = "none"`, which gives the parents as they are, with real variables |
@@ -880,9 +900,12 @@ PARAMETERS, so that different parameter sets with the same objective values
 survive side by side. It is one of the two changes of DN-NSGA-II (Liang, Yue
 & Qu, CEC 2016), which swaps the crowding in the objectives for crowding in
 the decision space without giving a formula; the other, a niched mating pool
-(a random solution competes with the nearest of a few random others), is not
-implemented, so the knob does not make NSGA-II into DN-NSGA-II. Default
-`objectives`, NSGA-II's.
+(a random solution competes with the nearest of a few random others), is
+DN-NSGA-II's own algorithm, `dn_nsga2`: NSGA-II with both, the mating pool's
+crowding factor `dn_cf` (20 by default; the paper leaves it open,
+`algorithms/dn_nsga2.hpp` argues the value). The knob alone does not make
+NSGA-II into DN-NSGA-II. Default `objectives`, NSGA-II's (`decision` in
+`dn_nsga2`).
 
 **DMS.** Direct MultiSearch (Custódio, Madeira, Vaz & Vicente, SIAM J.
 Optim. 21(3), 2011) is one of the two algorithms here that are not
@@ -971,7 +994,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-66 cores, so "not dominated by its parents" is read as "by any parent", and
+67 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`
@@ -1157,7 +1180,13 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   tests hold the table to that. Besides these: `degenerate` and `disconnected`
   (read off the front), `linkage` (a distance variable's optimum depends on the
   position variables: a curved Pareto set), `n_obj`, `n_vars`, and for
-  bbob-biobj `bbob_groups`, the function groups of the pair.
+  bbob-biobj `bbob_groups`, the function groups of the pair; `multimodal_ps`
+  and `ps_parts`, a Pareto set of several parts that each map onto the whole
+  front and how many (the multimodal problems, IPolygon, minusDTLZ2; unknown
+  elsewhere).
+- `--cec2019-ranks`: the CEC 2019 multimodal competition's protocol — each
+  algorithm's mean rank by median IGD, by median IGDX and by median 1/PSP,
+  and the mean of the three, over the problems with a Pareto-set sample.
 - `--gap METRIC`: every algorithm's median distance to the best final value
   any run reached on each problem — a common zero across problems whose raw
   values differ by orders of magnitude.

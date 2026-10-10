@@ -432,6 +432,18 @@ def cover_rate(X, pareto_set) -> float:
     return float(np.prod(np.clip(delta, 0.0, 1.0)) ** (1.0 / (2 * X.shape[1])))
 
 
+def psp(X, pareto_set, *, bounds, cyclic=()) -> float:
+    """PSP, the Pareto sets proximity (Yue, Qu & Liang, IEEE TEVC 22(5),
+    2018, Eq. 8; source mmf_yue2018): the cover rate over IGDX, larger
+    better; the CEC 2019 competition ranks by 1/PSP. IGDX as igdx measures it,
+    in variables normalised by the bounds — the paper's Eq. 13 is in the raw
+    variables, so on a box with one range r for every variable the paper's
+    PSP is this one over r. inf where IGDX is 0."""
+    d = igdx(X, pareto_set, bounds=bounds, cyclic=cyclic)
+    c = cover_rate(X, pareto_set)
+    return float("inf") if d == 0.0 else c / d
+
+
 def pairwise_distance(X, *, bounds, cyclic=()) -> float:
     """The mean distance between two solutions in normalised variables (the
     cyclic ones wrapped): how spread the set is in the decision space, with no
@@ -789,13 +801,15 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 h = lattice_h(F.shape[1], int(pop))
                 out["r2"] = r2_discrete(F, ideal, nadir, h)
                 out["r2_h"] = h
-        elif name in ("igdx", "cr"):
+        elif name in ("igdx", "cr", "psp"):
             if X is None or pareto_set is None or bounds is None or not np.size(X):
                 out[name] = None
             elif name == "igdx":
                 out[name] = igdx(X, pareto_set, bounds=bounds, cyclic=cyclic)
-            else:
+            elif name == "cr":
                 out[name] = cover_rate(X, pareto_set)
+            else:
+                out[name] = psp(X, pareto_set, bounds=bounds, cyclic=cyclic)
         elif name == "pdist":
             ok = X is not None and bounds is not None and np.size(X)
             out[name] = pairwise_distance(X, bounds=bounds, cyclic=cyclic) if ok else None

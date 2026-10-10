@@ -63,7 +63,7 @@ from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
                          nearest_lattice_sizes)
 from .metric_names import (DENSE_SUFFIX, HIGHER_IS_BETTER, HV_NAMES, METRIC_NAMES,
                            NEEDS_FRONT, NEEDS_SET, NEEDS_X, RUN_STATS, DE_STATS, SA_STATS,
-                           TABLE_NAMES, is_table_name)
+                           SET_METRICS, TABLE_NAMES, is_table_name)
 
 METRICS_DEFAULT = ("igd", "igdp", "hv")
 
@@ -116,6 +116,10 @@ class CampaignSpec:
     # "<indicator>_ref_v3" beside the usual values (task 6, item 9); on by
     # default — the usual values do not change.
     dense_reference: bool = True
+    # IGDX, CR and PSP along the trajectory and in `final` wherever the
+    # problem has a Pareto-set sample, besides `metrics` (supplement 3 of task
+    # 7, §5.3); on by default.
+    set_metrics: bool = True
     seeds: tuple = ()
     # "generations": a trajectory point every record_every generations.
     # "log": at fixed evaluation counts 10^(j/record_per_decade), the SAME
@@ -254,7 +258,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
-             "noise_cell", "coords_diag"}
+             "noise_cell", "coords_diag", "set_metrics"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -279,6 +283,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.dense_reference = raw.get("dense_reference", True)
     if not isinstance(spec.dense_reference, bool):
         raise ConfigError("campaign.dense_reference", "true or false")
+    spec.set_metrics = raw.get("set_metrics", True)
+    if not isinstance(spec.set_metrics, bool):
+        raise ConfigError("campaign.set_metrics", "true or false")
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
     spec.record_grid = str(raw.get("record_grid", "generations"))
     spec.record_per_decade = int(raw.get("record_per_decade", 10))
@@ -532,6 +539,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     p = bench_get(job.problem)
     ref = None
     final_metrics = spec.final_metrics or spec.metrics
+    # IGDX, CR and PSP wherever the problem has a Pareto set ([campaign] set_metrics)
+    set_extra = []
+    if spec.set_metrics and callable(p.pareto_set):
+        set_extra = [m for m in SET_METRICS if m not in spec.metrics]
+        final_metrics = (*final_metrics, *(m for m in SET_METRICS if m not in final_metrics))
     if any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_front):
         ref = np.asarray(p.pareto_front(spec.n_ref), float)
     ref3 = info3 = None                     # the dense reference ([campaign] dense_reference)
@@ -562,7 +574,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # (25 025 at a population of 91), --at and the checkpoints count from it
         "budget_nominal": job.evaluations or spec.budget_fe or job.budget,
         "params": job.params, "n_objs": p.n_obj, "n_vars": p.n_vars,
-        "pop_note": job.pop_note, "metrics": list(spec.metrics),
+        "pop_note": job.pop_note, "metrics": [*spec.metrics, *set_extra],
         "final_metrics": list(final_metrics),
         "record_every": spec.record_every, "n_ref": spec.n_ref,
         "has_reference_front": ref is not None,
@@ -737,7 +749,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # Above trajectory_hv_max_m objectives the hypervolumes stay off the
     # trajectory (recorded as null, so the absence is explicit), or are
     # estimated by Monte Carlo when trajectory_hv_mc_samples asks for it.
-    traj_metrics = list(spec.metrics)
+    traj_metrics = [*spec.metrics, *set_extra]
     hv_skipped = []
     traj_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
     if spec.trajectory_hv_max_m and p.n_obj > spec.trajectory_hv_max_m:
@@ -2306,10 +2318,15 @@ def main(argv: list[str] | None = None) -> int:
                     help="with --ranks: mean ranks within groups of problems sharing a "
                          "property: front, multimodal, deceptive, bias, scaled, separable, "
                          "centre, boundary, degenerate, disconnected, linkage, n_obj, "
-                         "n_vars, bbob_groups (benchmarks/properties.py)")
+                         "n_vars, bbob_groups, multimodal_ps, ps_parts "
+                         "(benchmarks/properties.py)")
     ap.add_argument("--gap", metavar="METRIC",
                     help="print each algorithm's median gap to the best final METRIC any run "
                          "reached, per problem, and exit")
+    ap.add_argument("--cec2019-ranks", action="store_true",
+                    help="print each algorithm's mean rank by median IGD, IGDX and 1/PSP and "
+                         "their mean, the CEC 2019 multimodal competition's protocol (the "
+                         "problems with a Pareto-set sample)")
     ap.add_argument("--zero-share", nargs="?", const="hv", metavar="METRIC",
                     help="print the share of seeds whose final METRIC (default hv) is exactly "
                          "0, per problem, and exit")
@@ -2589,7 +2606,7 @@ def main(argv: list[str] | None = None) -> int:
         print(B.run(root, workers=args.workers, problems=only_problems))
         return 0
     rows = None
-    if args.bias or set_tables or any(v is not None for v in (
+    if args.bias or args.cec2019_ranks or set_tables or any(v is not None for v in (
             args.ranks, args.compare, args.gap, args.zero_share, args.ecdf)):
         from . import report as R
         rows = rungs_in_place(scenario_rows(scan_results(root), args.scenario), args.at)
@@ -2626,6 +2643,9 @@ def main(argv: list[str] | None = None) -> int:
                             k = empty.get(alg)
                             print(f"  {R.mark_budget(alg)[:16]:<16} [{lo:5.2f}, {hi:5.2f}]"
                                   + (f"  {k} empty, ranked worst" if k else ""))
+            if args.cec2019_ranks:
+                print(R.format_cec2019_ranks(R.cec2019_ranks(rows, at=args.at,
+                                                             scenario=args.scenario)))
             if args.gap:
                 print(R.gap_report(rows, args.gap))
             if args.zero_share:

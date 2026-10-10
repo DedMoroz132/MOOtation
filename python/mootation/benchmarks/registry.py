@@ -86,6 +86,7 @@ from . import binary as _bin
 from . import dascmop as _das
 from . import lir_cmop as _lir
 from . import doc as _doc
+from . import mmo as _mmo
 from . import bbob_biobj_mixint as _mixint
 from . import categorical as _cat
 from . import mw as _mw
@@ -116,7 +117,8 @@ class BenchProblem:
     # A sampler of the true Pareto SET, in decision space, for IGDX and CR
     # (benchmarks/pareto_sets.py): IPolygon, Polygon, ZDT1-4 and 6, DTLZ1-4
     # and 7, DTLZ5-6 up to three objectives, IDTLZ, SDTLZ, minusDTLZ2, the
-    # shift and wide variants, ZCAT, C1-DTLZ1/3 and C2-DTLZ2. None elsewhere,
+    # shift and wide variants, ZCAT, C1-DTLZ1/3 and C2-DTLZ2, and every part
+    # of the multimodal problems' (mmo.py: SYM-PART, Omni-test, MMF). None elsewhere,
     # and the decision-space indicators say nothing there.
     pareto_set: Optional[Callable[[int], "np.ndarray"]] = None
     # Variables whose distance wraps with the period of their range: the
@@ -1950,6 +1952,34 @@ def _register_doc():
 
 
 _register_doc()
+
+
+# =============================================================
+#  SYM-PART simple and rotated, Omni-test and MMF1-15 (mmo.py; supplement
+#  3, §5.4): the 22 problems of the CEC 2019 competition on multimodal
+#  multiobjective optimization, each with its front and every part of its
+#  Pareto set. The competition's budget: a population of 100 per variable,
+#  5 000 evaluations per variable (50 generations), 21 runs. The frame is the
+#  front's corners, exact (mmo.frame).
+# =============================================================
+def _register_mmo():
+    for key in _mmo.NAMES:
+        bounds = list(_mmo.BOUNDS[key])
+        n, M = len(bounds), _mmo.n_obj(key)
+        ideal, nadir = _mmo.frame(key)
+        def _eval(x, _k=key): return _mmo.evaluate(_k, x)
+        def _pf(n=1000, _k=key): return _mmo.front(_k, int(n))
+        def _ps(n=1000, _k=key): return _mmo.pareto_set(_k, int(n))
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=n, bounds=bounds, n_obj=M, evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+            pop_size=100 * n, n_gen=50, K_runs=21, has_cons=False,
+            pareto_front=_pf, pareto_set=_ps)
+        EXACT_FRAME.add(key)
+
+
+_register_mmo()
 
 
 # =============================================================

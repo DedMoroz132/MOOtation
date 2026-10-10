@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 66, f"expected 66 algorithms, got {len(names)}"
+    assert len(names) == 67, f"expected 67 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -7516,7 +7516,7 @@ def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
         assert seen <= set(labels) and len(seen) >= 2, (alg, seen)
         assert all(0 <= b[0] < 4 for b in r.binary_variables), alg
         assert 0 < r.unique_evaluations <= r.evaluations, alg
-    assert len(refused) == 17, refused
+    assert len(refused) == 18, refused
     # the best label wins, as the decoded rows show
     r = mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=2000, seed=1, var_types=vt)
     lay = Layout(vt, bounds)
@@ -7774,6 +7774,213 @@ def i_cmop_puts_every_feasible_set_before_every_infeasible_one():
                     which=["i_cmop", "hv"], X=X, constraints=p.constraints)
     v = M.violations(X, p.constraints)
     assert got["hv"] is None and got["i_cmop"] == min(v) + 1.0
+
+
+@test
+def multimodal_problems_have_every_part_of_their_pareto_sets():
+    """Supplement 3, §5.4-5.5: the CEC 2019 problems (benchmarks/mmo.py) at the
+    report's own points, their Pareto-set samples on the front's equation to
+    1e-9 and inside the box, every part present (as many separate pieces as
+    mmo.parts says for SYM-PART, Omni-test, MMF1, MMF4, MMF8, MMF9 and MMF14),
+    and the property table's multimodal_ps and ps_parts."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get, mmo
+    from mootation.benchmarks.properties import properties
+    assert len(mmo.NAMES) == 22
+    assert sorted(families()["MMF"]) == sorted(n for n in mmo.NAMES if n.startswith("MMF"))
+    # by hand: SYM-PART's middle and corner parts, Omni-test's corner, MMF1's middle
+    assert get("SYM-PART_simple").evaluate([0.0, 0.0]) == [1.0, 1.0]
+    assert get("SYM-PART_simple").evaluate([10.0, 10.0]) == [1.0, 1.0]
+    f = get("SYM-PART_rotated").evaluate([10 / math.sqrt(2), -10 / math.sqrt(2)])
+    assert abs(f[0] - 1.0) < 1e-12 and abs(f[1] - 1.0) < 1e-12, f   # r = (10, 0)
+    f = get("Omni-test").evaluate([1.25, 3.25, 5.25])
+    assert abs(f[0] + 3 / math.sqrt(2)) < 1e-12 and abs(f[1] + 3 / math.sqrt(2)) < 1e-12, f
+    assert get("MMF1").evaluate([2.0, 0.0]) == [0.0, 1.0 + 2 * math.sin(math.pi) ** 2]
+    assert get("MMF14").n_obj == 3 and get("MMF14").pop_size == 300 and get("MMF1").n_gen == 50
+    for name in mmo.NAMES:
+        p = get(name)
+        X = np.asarray(p.pareto_set(400), float)
+        lo, hi = np.array(p.bounds, float).T
+        assert len(X) >= 100 and np.all((X >= lo) & (X <= hi)), name
+        F = np.array([p.evaluate(list(x)) for x in X])
+        assert mmo.front_gap(name, F).max() < 1e-9, (name, mmo.front_gap(name, F).max())
+        Z = np.asarray(p.pareto_front(500), float)
+        assert mmo.front_gap(name, Z).max() < 1e-9, name
+        assert np.allclose(Z.min(0), p.ideal, atol=1e-9) and np.allclose(Z.max(0), p.nadir,
+                                                                         atol=1e-9), name
+        row = properties(name)
+        assert row["multimodal_ps"] is True and row["ps_parts"] == mmo.parts(name), name
+    # the parts apart: single linkage at a tenth of the box's diagonal
+    for name in ("SYM-PART_simple", "SYM-PART_rotated", "Omni-test", "MMF1", "MMF4", "MMF8",
+                 "MMF9", "MMF14"):
+        p = get(name)
+        X = np.asarray(p.pareto_set(400), float)
+        lo, hi = np.array(p.bounds, float).T
+        U = (X - lo) / (hi - lo)
+        label = list(range(len(U)))
+        def root(i):
+            while label[i] != i:
+                label[i] = label[label[i]]
+                i = label[i]
+            return i
+        D = np.sqrt(((U[:, None, :] - U[None, :, :]) ** 2).sum(-1))
+        for i, j in zip(*np.nonzero(D < 0.1 * math.sqrt(U.shape[1]) / 2)):
+            label[root(i)] = root(j)
+        pieces = len({root(i) for i in range(len(U))})
+        # MMF1's two parts meet at x1 = 2, MMF4's and MMF8's pairs at x1 = 0
+        want = {"MMF1": 1, "MMF4": 2, "MMF8": 2}.get(name, mmo.parts(name))
+        assert pieces == want, (name, pieces, want)
+    assert properties("IPolygon_3D")["ps_parts"] == 4 and properties("ZDT1")["multimodal_ps"] is None
+
+
+@test
+def psp_sees_the_lost_parts_of_a_pareto_set():
+    """Supplement 3, §5.3 and 5.5: on a Pareto-set sample IGDX = 0, CR = 1 and
+    PSP = CR / IGDX is infinite; on ONE part of it (SYM-PART's middle one,
+    MMF1's left one, MMF14's lower one) CR < 1 and IGDX > 0, while IGD+ is 0
+    to the front's sampling — the decision-space indicators see what the
+    objectives cannot."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    from mootation.run.metric_names import HIGHER_IS_BETTER, NEEDS_SET, SET_METRICS
+    assert "psp" in NEEDS_SET and "psp" in HIGHER_IS_BETTER and SET_METRICS == ("igdx", "cr", "psp")
+    for name, part in (("SYM-PART_simple", lambda X: (np.abs(X[:, 0]) <= 1) & (X[:, 1] == 0)),
+                       ("MMF1", lambda X: X[:, 0] <= 2.0),
+                       ("MMF14", lambda X: X[:, 2] < 0.5)):
+        p = get(name)
+        S = np.asarray(p.pareto_set(600), float)
+        kw = dict(ref_front=np.asarray(p.pareto_front(2000), float), ideal=p.ideal,
+                  nadir=p.nadir, pareto_set=S, bounds=p.bounds,
+                  which=("igdx", "cr", "psp", "igdp_norm"))
+        whole = M.compute(np.array([p.evaluate(list(x)) for x in S]), X=S, **kw)
+        assert whole["igdx"] == 0.0 and whole["cr"] == 1.0 and whole["psp"] == float("inf"), whole
+        X = S[part(S)]
+        assert 0 < len(X) < len(S), name
+        one = M.compute(np.array([p.evaluate(list(x)) for x in X]), X=X, **kw)
+        assert one["cr"] < 1.0 and one["igdx"] > 0.05, (name, one)
+        assert abs(one["psp"] - one["cr"] / one["igdx"]) < 1e-12, one
+        assert one["igdp_norm"] < 0.02, (name, one)
+
+
+@test
+def a_campaign_records_igdx_cr_and_psp_where_there_is_a_pareto_set():
+    """[campaign] set_metrics (on by default): igdx, cr and psp along the
+    trajectory and in `final` for a problem with a Pareto-set sample, beside
+    `metrics`; none for one without (RE21); off with set_metrics = false. The
+    CEC 2019 ranks read them."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  a_campaign_records_igdx...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import report as R
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "mm"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["MMF1", "RE21"]
+[campaign]
+out = "res"
+budget_fe = 1000
+metrics = ["igd"]
+"""
+    for on in (True, False):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "c.toml"
+            cfg_path.write_text(text + ("" if on else "set_metrics = false\n"), encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            assert spec.set_metrics is on
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+                d = root / job.rel_dir
+                meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+                T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+                has = on and job.problem == "MMF1"
+                assert all(("psp" in t) is has and ("cr" in t) is has for t in T), (job.problem, T[-1])
+                assert ("psp" in meta["final"]) is has and (("igdx" in meta["metrics"]) is has)
+                if has:
+                    f = meta["final"]
+                    assert 0 < f["cr"] <= 1 and f["igdx"] > 0 and abs(f["psp"] - f["cr"] / f["igdx"]) < 1e-9
+            if on:
+                rows = C.scan_results(root)
+                table = R.cec2019_ranks(rows)
+                assert table["nsga2"]["igdx"] == (1.0, 1) and table["nsga2"]["igd"] == (1.0, 2)
+                assert table["nsga2"]["mean"] == 1.0, table
+                assert "1/psp" in R.format_cec2019_ranks(table)
+    raises(ConfigError, C.campaign_spec, loads(text + "set_metrics = 1\n"))
+
+
+@test
+def cec2019_ranks_average_igd_igdx_and_one_over_psp():
+    """report.cec2019_ranks: per problem the medians ranked, 1/PSP as PSP
+    reversed (higher PSP better), and the mean of the three mean ranks."""
+    from mootation.run import report as R
+    def row(prob, alg, igd, igdx, psp):
+        return {"status": "done", "problem": prob, "algorithm": alg,
+                "final": {"igd": igd, "igdx": igdx, "psp": psp}}
+    rows = [row("P", "a", 1.0, 0.1, 5.0), row("P", "b", 2.0, 0.05, 9.0),
+            row("Q", "a", 1.0, 0.1, 5.0), row("Q", "b", 0.5, 0.2, 1.0)]
+    t = R.cec2019_ranks(rows)
+    assert t["a"]["igd"] == (1.5, 2) and t["b"]["igd"] == (1.5, 2)
+    assert t["a"]["igdx"] == (1.5, 2) and t["a"]["psp"] == (1.5, 2)
+    assert t["b"]["psp"] == (1.5, 2) and t["a"]["mean"] == 1.5
+    rows.append(row("P", "c", 0.1, 0.01, 99.0))
+    t = R.cec2019_ranks(rows)
+    assert t["c"]["igd"] == (1.0, 1) and t["c"]["psp"] == (1.0, 1) and t["c"]["mean"] == 1.0
+
+
+@test
+def dn_nsga2_keeps_more_of_sym_parts_parts_than_nsga2():
+    """Supplement 3, §5.1 and 5.5: DN-NSGA-II (algorithms/dn_nsga2.hpp) on
+    SYM-PART simple at the competition's budget keeps more of the nine parts
+    than NSGA-II, by the cover rate over 10 seeds, and on every seed at least
+    as many parts within 0.1 of a part; dn_cf reaches it and only it, and the
+    integer genome is refused."""
+    if not _have_numpy() or "dn_nsga2" not in __import__("mootation").algorithms():
+        print("  skip  dn_nsga2...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    p = get("SYM-PART_simple")
+    S = np.asarray(p.pareto_set(900), float)
+    centres = [(t1 * 10.0, t2 * 10.0) for t1 in (-1, 0, 1) for t2 in (-1, 0, 1)]
+    def parts(X):
+        return sum(any(abs(x[0] - a) <= 1.1 and abs(x[1] - b) <= 0.1 for x in X)
+                   for a, b in centres)
+    cr = {"nsga2": [], "dn_nsga2": []}
+    kept = {"nsga2": [], "dn_nsga2": []}
+    for seed in range(1, 11):
+        for alg in cr:
+            r = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=p.pop_size,
+                                   n_gen=p.n_gen, seed=seed)
+            X = np.asarray(r.variables, float)
+            cr[alg].append(M.cover_rate(X, S))
+            kept[alg].append(parts(X))
+    print(f"    SYM-PART simple, 10 seeds: CR nsga2 {np.mean(cr['nsga2']):.3f}, dn_nsga2 "
+          f"{np.mean(cr['dn_nsga2']):.3f}; parts kept {kept['nsga2']} vs {kept['dn_nsga2']}")
+    assert np.mean(cr["dn_nsga2"]) > np.mean(cr["nsga2"]), cr
+    assert sum(kept["dn_nsga2"]) > sum(kept["nsga2"]), kept
+    f = lambda x: [x[0], 1.0 - x[0] + x[1]]
+    r = mootation.minimize(f, [(0.0, 1.0)] * 2, 2, algorithm="dn_nsga2", pop_size=20, n_gen=3,
+                           seed=1, dn_cf=5)
+    assert "dn_cf" not in r.ignored and r.evaluations == 80
+    r = mootation.minimize(f, [(0.0, 1.0)] * 2, 2, algorithm="nsga2", pop_size=20, n_gen=3,
+                           seed=1, dn_cf=5)
+    assert "dn_cf" in r.ignored
+    raises(ValueError, mootation.minimize, f, [(0.0, 1.0)] * 2, 2, algorithm="dn_nsga2",
+           pop_size=20, n_gen=3, seed=1, dn_cf=0.5)
 
 
 @test

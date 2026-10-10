@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-66 algorithms, one header each under `include/mootation/algorithms/`, registered
+67 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`. Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
@@ -12,7 +12,7 @@ implementation follows; if you publish results, cite that paper.
 
 | family | count | reach for it when | watch out for |
 |---|---|---|---|
-| Pareto-dominance & diversity | 8 | 2–3 objectives, a baseline everyone recognises | crowding distance degrades above 3 objectives |
+| Pareto-dominance & diversity | 9 | 2–3 objectives, a baseline everyone recognises; DN-NSGA-II when several parts of the variables map onto one front | crowding distance degrades above 3 objectives |
 | Reference-point (NSGA-III family) | 4 | many objectives with a regular front | `pop_size` must be an exact Das–Dennis lattice size |
 | Decomposition & region division (MOEA/D family) | 16 | scalarisable problems, many objectives, cheap per-generation cost | most members need an exact lattice size too (the weights are a Das–Dennis set); the steady-state members hand over one candidate at a time; the M2M members want `pop` divisible by `K` |
 | Indicator-based | 13 | you care about one quality indicator (ε+, hypervolume, R2) | cost grows fast with the objective count (HypE, R2-IBEA, SMS-EMOA, MO-CMA-ES) |
@@ -112,6 +112,7 @@ problem that is both skewed and drifting is not covered by this test.
 | Algorithm | Year | File | DOI |
 |---|---|---|---|
 | NSGA-II | 2002 | `nsga2` | [10.1109/4235.996017](https://doi.org/10.1109/4235.996017) |
+| DN-NSGA-II | 2016 | `dn_nsga2` | [10.1109/CEC.2016.7744093](https://doi.org/10.1109/CEC.2016.7744093) |
 | SPEA2 | 2001 | `spea2` | [10.3929/ethz-a-004284029](https://doi.org/10.3929/ethz-a-004284029) |
 | SPEA2+SDE | 2014 | `spea2_sde` | [10.1109/TEVC.2013.2262178](https://doi.org/10.1109/TEVC.2013.2262178) |
 | GrEA | 2013 | `grea` | [10.1109/TEVC.2012.2227145](https://doi.org/10.1109/TEVC.2012.2227145) |
@@ -270,11 +271,12 @@ reduced to `pop_size` by DSS, published every `pop_size` steps.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 49 of the 66
+Every algorithm works on a real-valued genome with box bounds. 49 of the 67
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
-`Problem<>` specialisation); the other 17 refuse it at `setup()` with a clear
-message, because their reproduction operator is real-valued only: CLIA, DCEA,
-DEA-GNG, DHEA, DMS, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
+`Problem<>` specialisation); the other 18 refuse it at `setup()` with a clear
+message, because their reproduction operator is real-valued only, or, for
+DN-NSGA-II, its niche is a distance in the real variables: CLIA, DCEA,
+DEA-GNG, DHEA, DMS, DN-NSGA-II, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
 MO-CMA-ES, MOEA/D-DS, MOSA, NAEMO and Two_Arch2. The Python binding reaches the binary genome
 through `minimize(var_types=[..., "bin"])` (`mootation/var_types.py`), which also declares
 integer and discrete variables — rounded in the genome by the vault (`DataVault::set_snap`)

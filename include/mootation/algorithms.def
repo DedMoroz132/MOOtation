@@ -11,6 +11,7 @@
 
 // ── Pareto-dominance & diversity ────────────────────────────────────────────
 MOOTATION_ALG(nsga2,      NSGAII_Individual,    NSGAIICore)
+MOOTATION_ALG(dn_nsga2,   NSGAII_Individual,    DNNSGAIICore)
 MOOTATION_ALG(spea2,      SPEA2_Individual,     SPEA2Core)
 MOOTATION_ALG(spea2_sde,  SPEA2SDE_Individual,  SPEA2SDECore)
 MOOTATION_ALG(grea,       GrEA_Individual,      GrEACore)

@@ -103,6 +103,14 @@ Huband analyses:
               variables whose optimum is 0, the middle of [-1, 1] (medial). The
               Pareto set is 2-dimensional, so the front is a 2-dimensional
               manifold whatever M: degenerate from four objectives.
+  SYM-PART, Omni-test, MMF
+              the CEC 2019 competition's multimodal problems (mmo.py; Liang,
+              Qu, Gong & Yue's report, Table I): the front as the table has
+              it, MMF12's pieces read as disconnected; multimodal, every one
+              having several global optima of its objectives; scaled where
+              one objective's range on the front is at least twice another's
+              (MMF9, 10, 11, 13); bias, separable and centre left open (the
+              table has no column for them); boundary as measured() reads it.
   IPolygon    Ishibuchi, Akedo & Nojima, GECCO 2011: m = 4 identical polygons
               in [0, 100]^2, each objective the distance to the nearest copy
               of a vertex, so every objective has four minima and the Pareto
@@ -134,6 +142,13 @@ Besides Huband's vocabulary (task 4, item 5):
               f2), moderate (f6, f8: low or moderate conditioning),
               ill-conditioned (f13, f14), multimodal (f15, f17: adequate
               global structure), weakly-structured (f20, f21); None elsewhere
+  multimodal_ps, ps_parts
+              the Pareto set is several parts that each map onto the whole
+              front (supplement 3 of task 7, §5.4), and how many: the
+              multimodal problems (mmo.parts; MMF6's pieces of a third and
+              fourth part not counted), IPolygon (its four polygons), and
+              minusDTLZ2 (2^k, every distance variable at 0 or 1). None
+              elsewhere — not classified, though most have one part
   front_dim   d, the dimension of the Pareto front (reviewer, 2026-09-29: to
               read a ratio to the IGD+ floor alike across M as ratio^(-d)):
               M - 1 for a regular front, 1 at two objectives; 1 for the curves
@@ -163,7 +178,8 @@ from .rotated import SPECS as _ROTATED
 
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
         "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
-        "bbob_groups", "front_dim", "family_kind", "difficulty")
+        "bbob_groups", "front_dim", "family_kind", "difficulty", "multimodal_ps",
+        "ps_parts")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, boundary,
@@ -338,6 +354,14 @@ def properties(name: str) -> dict | None:
         kinds = [k for k, v in (("diversity", eta), ("feasibility", zeta),
                                 ("convergence", gamma)) if v > 0]
         row["difficulty"] = "+".join(kinds) if kinds else "none"
+    row["multimodal_ps"] = row["ps_parts"] = None
+    from . import mmo
+    if name in mmo.NAMES:
+        row["multimodal_ps"], row["ps_parts"] = True, mmo.parts(name)
+    elif stem == "IPolygon":
+        row["multimodal_ps"], row["ps_parts"] = True, 4
+    elif stem == "minusDTLZ2" and p is not None:
+        row["multimodal_ps"], row["ps_parts"] = True, 2 ** (p.n_vars - p.n_obj + 1)
     return row
 
 
@@ -475,7 +499,20 @@ def _huband(name: str) -> dict | None:
     if stem == "IPolygon":
         return _p("linear+degenerate" if m >= 4 else "linear", True, False, False, False, False,
                   False)
+    from . import mmo
+    if name in mmo.NAMES:
+        ideal, nadir = mmo.frame(name)
+        span = [b - a for a, b in zip(ideal, nadir)]
+        return _p(_MMO_FRONT.get(name, "convex"), True, None, max(span) >= 2 * min(span), None,
+                  None, False)
     return None
+
+
+# the CEC 2019 report's Table I, "Pareto front geometry"; MMF12's pieces
+# disconnected besides
+_MMO_FRONT = {"MMF4": "concave", "MMF8": "concave", "MMF12": "convex+disconnected",
+              "MMF14": "concave", "MMF14_a": "concave", "MMF15": "concave",
+              "MMF15_a": "concave"}
 
 
 def interior(name: str) -> bool:

@@ -26,7 +26,7 @@ from . import _core
 PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio",
                "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
                "coords_warmup", "coords_update", "spu_frac", "inner_archive_cap",
-               "archive_reuse_p")
+               "archive_reuse_p", "dn_cf")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
               "inner_archive", "bin_crossover", "mating")
@@ -501,7 +501,7 @@ def minimize(
         result = _core.run(algorithm, problem, cfg)
     except ValueError as e:
         if n_bin and ("binary" in str(e) or "continuous" in str(e)):
-            # the 17 cores without an integer genome refuse it by name
+            # the 18 cores without an integer genome refuse it by name
             raise ValueError(f"{algorithm} takes no binary or categorical variables (the "
                              f"integer genome; docs/running.md lists the cores that do): "
                              f"{e}") from e

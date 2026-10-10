@@ -23,6 +23,8 @@ The campaign CLI (python -m mootation.run.campaign) calls these:
   gap_report        --gap METRIC: each algorithm's distance to the best value
                     any run reached, per problem, in the metric's own units.
   zero_share_report --zero-share: the share of seeds whose hypervolume is 0.
+  cec2019_ranks     --cec2019-ranks: mean ranks by median IGD, IGDX and 1/PSP,
+                    the CEC 2019 multimodal competition's protocol.
   ecdf_report       --ecdf METRIC: the COCO-style runtime ECDF over (run,
                     target) pairs, targets at fixed distances from the best
                     known value, with the interpolation between records named.
@@ -261,6 +263,51 @@ def rank_intervals(rows: list, metric: str, *, at=None, scenario: str = "final",
     vals = values(rows, metric, at=at, scenario=scenario, empty=empty)
     return ST.bootstrap_mean_ranks(problem_ranks(vals, _lower(metric)), n_boot=n_boot,
                                    level=level)
+
+
+# The CEC 2019 competition on multimodal multiobjective optimization (Liang,
+# Qu, Gong & Yue's report, §2.1): IGD in the objectives, IGDX and 1/PSP in the
+# variables, smaller better; ranking by 1/PSP is ranking by PSP, larger better.
+CEC2019_INDICATORS = ("igd", "igdx", "psp")
+
+
+def cec2019_ranks(rows: list, *, at=None, scenario: str = "final") -> dict:
+    """{algorithm: {indicator: (mean rank, problems), "mean": the mean of the
+    three}} by the median of each indicator per problem (supplement 3 of task
+    7, §5.3): the problems with a Pareto-set sample only, where all three are
+    recorded."""
+    out: dict = {}
+    for ind in CEC2019_INDICATORS:
+        ranks = problem_ranks(values(rows, ind, at=at, scenario=scenario), _lower(ind))
+        for per in ranks.values():
+            for alg, r in per.items():
+                out.setdefault(alg, {}).setdefault(ind, []).append(r)
+    table = {}
+    for alg, per in out.items():
+        row = {ind: (sum(v) / len(v), len(v)) for ind, v in per.items()}
+        got = [row[ind][0] for ind in CEC2019_INDICATORS if ind in row]
+        row["mean"] = sum(got) / len(got) if len(got) == len(CEC2019_INDICATORS) else None
+        table[alg] = row
+    return table
+
+
+def format_cec2019_ranks(table: dict) -> str:
+    lines = ["mean rank by median IGD, IGDX and 1/PSP (the CEC 2019 multimodal "
+             "competition's indicators; problems with a Pareto-set sample, count in brackets)",
+             f"{'algorithm':<16}" + "".join(f"{('1/psp' if i == 'psp' else i):>14}"
+                                             for i in CEC2019_INDICATORS) + f"{'mean':>10}"]
+    if not table:
+        lines.append("(no finished run records them: igdx and psp need a problem with a "
+                     "Pareto set, [campaign] set_metrics)")
+        return "\n".join(lines)
+    order = sorted(table, key=lambda a: (table[a]["mean"] is None, table[a]["mean"] or 0.0))
+    for alg in order:
+        row = table[alg]
+        cells = "".join(f"{row[i][0]:>9.2f} [{row[i][1]:>2}]" if i in row else f"{'-':>14}"
+                        for i in CEC2019_INDICATORS)
+        mean = f"{row['mean']:>10.2f}" if row["mean"] is not None else f"{'-':>10}"
+        lines.append(f"{mark_budget(alg)[:16]:<16}{cells}{mean}")
+    return "\n".join(lines)
 
 
 # ── 3.2 by property ─────────────────────────────────────────────────────────

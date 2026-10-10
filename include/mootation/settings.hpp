@@ -76,7 +76,8 @@ inline const std::vector<std::string>& knob_names() {
         "p_de", "sa_chains", "sa_reseed", "sa_t_ratio", "sa_s0", "sa_s_end",
         "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
         "coords_warmup", "coords_update",
-        "spu_frac", "inner_archive_cap", "archive_reuse_p"
+        "spu_frac", "inner_archive_cap", "archive_reuse_p",
+        "dn_cf"
     };
     return v;
 }
@@ -103,12 +104,13 @@ inline const std::vector<std::string>& knob_names() {
 //                  (operators/inner_archive.hpp)
 //   bin_crossover  sms_emoa, nsga2: uniform or none for the binary genome
 //   mating         nsga2: tournament, or each member a parent once
+//   dn_cf          dn_nsga2: the crowding factor of its niching mating pool
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
                           "sa_t_ratio", "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha",
                           "sa_adapt_window", "coords_warmup", "coords_update", "spu_frac",
-                          "inner_archive_cap", "archive_reuse_p"})
+                          "inner_archive_cap", "archive_reuse_p", "dn_cf"})
         if (name == k) return true;
     return false;
 }

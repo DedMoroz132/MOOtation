@@ -10,7 +10,7 @@ from __future__ import annotations
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
                 "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
                 "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm",
-                "gdp_min", "g_min", "g_median", "ps_dmin", "i_cmop")
+                "gdp_min", "g_min", "g_median", "ps_dmin", "i_cmop", "psp")
 
 # What a run's variation operators did, recorded with [campaign] operator_stats
 # = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
@@ -67,7 +67,7 @@ TABLE_NAMES = (METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + COORDS_STATS + F
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
 # oriented the way a healthy run moves.
-HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pdist",
+HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "psp", "pdist",
                               "feas_share"})
 
 # These compare the answer set with a sample of the true Pareto front, so a
@@ -98,11 +98,16 @@ def is_table_name(name: str) -> bool:
             or name.startswith(PORTFOLIO_STATS + SA_WEIGHT_STATS))
 
 # These look at the decision variables: all of them need the solutions; igdx,
-# cr and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
+# cr, psp and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
 # and g_min and g_median the problem's distance function (BenchProblem.
 # distance_fn), which only some problems have.
-NEEDS_X = frozenset({"igdx", "cr", "pdist", "g_min", "g_median", "ps_dmin"})
-NEEDS_SET = frozenset({"igdx", "cr", "ps_dmin"})
+NEEDS_X = frozenset({"igdx", "cr", "psp", "pdist", "g_min", "g_median", "ps_dmin"})
+NEEDS_SET = frozenset({"igdx", "cr", "psp", "ps_dmin"})
+
+# What a campaign records unasked, along the trajectory and in `final`,
+# wherever the problem has a Pareto-set sample ([campaign] set_metrics,
+# supplement 3 of task 7, §5.3).
+SET_METRICS = ("igdx", "cr", "psp")
 
 # The hypervolumes: exact above three objectives costs seconds per call, which
 # is why a campaign can keep them off the trajectory (trajectory_hv_max_m).
@@ -139,6 +144,9 @@ DESCRIPTIONS = {
             "by the bounds, cyclic ones wrapped (Tanabe & Ishibuchi 2019, Eq. 5)",
     "cr": "cover rate: how much of the Pareto set's extent in each variable the solutions "
           "span, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7-8)",
+    "psp": "Pareto sets proximity, cr / igdx (Yue, Qu & Liang, IEEE TEVC 2018, Eq. 8): "
+           "covering the set's extent and near it in the variables; higher is better, "
+           "inf at igdx 0; the CEC 2019 competition ranks by 1/psp",
     "pdist": "mean pairwise distance between solutions in normalised variables: spread in "
              "the decision space; no reference needed",
     "tau90": "the 0.9 quantile of the IGD+ distances d+(z, A) over the reference sample, "
