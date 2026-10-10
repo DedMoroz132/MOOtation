@@ -10,7 +10,7 @@ from __future__ import annotations
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
                 "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
                 "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm",
-                "gdp_min", "g_min", "g_median", "ps_dmin")
+                "gdp_min", "g_min", "g_median", "ps_dmin", "i_cmop")
 
 # What a run's variation operators did, recorded with [campaign] operator_stats
 # = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
@@ -122,6 +122,10 @@ DESCRIPTIONS = {
     "hv": "hypervolume, objectives normalised by ideal and nadir, reference point 1.1",
     "hv_h": "hypervolume with the reference point at 1 + 1/H, H from the problem's default "
             "population (Ishibuchi, Imada, Setoguchi & Nojima, GECCO 2017)",
+    "i_cmop": "Vodopija et al.'s indicator for a constrained problem (IEEE TEVC 2025, "
+              "Eq. 12): at most 1 with a feasible point (minus the normalised hypervolume, "
+              "or the distance to [ideal, nadir]), 1 + the least violation without one; "
+              "lower is better",
     "roi_dist": "distance from the set to the box [ideal, nadir] in normalised units, "
                 "0 once any point is inside; separates runs whose hypervolume is 0 "
                 "(the COCO bbob-biobj convention); no reference front needed",

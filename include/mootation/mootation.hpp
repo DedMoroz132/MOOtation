@@ -78,6 +78,7 @@
 #include "algorithms/nrv_moea.hpp"
 #include "algorithms/two_arch2.hpp"
 #include "algorithms/ctaea.hpp"
+#include "algorithms/ccmo.hpp"
 #include "algorithms/dms.hpp"
 #include "algorithms/mosa.hpp"
 #include "algorithms/gde3.hpp"

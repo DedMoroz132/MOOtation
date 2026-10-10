@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 65 algorithm names |
+| `--algorithms` | list the 66 algorithm names |
 | `--problems` | list the 1293 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -398,7 +398,7 @@ probability 1/(number of genes) but at most 1/2 (pymoo's cap; with a single
 gene 1 would change every child's), one of its other values, each alike —
 a bit flips (`operators/bit_flip.hpp`). SBX, DE and polynomial mutation never
 see them, and with more than two genes a binary run is what it was, bit for
-bit. 48 of the 65 cores take the integer genome; these 17 refuse it by name:
+bit. 49 of the 66 cores take the integer genome; these 17 refuse it by name:
 `clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `etea`, `gde3`, `hcca`, `hlmea`,
 `if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`, `moead_ds`, `mosa`, `naemo`
 and `two_arch2` (`minimize` says so, naming the variables).
@@ -566,6 +566,7 @@ final population (the same list when omitted):
 | `hv_h` | hypervolume with the reference point at 1 + 1/H, H from the problem's default population (1.0101, 1.0833 and 1.2 at 2, 3 and 5 objectives), which evens out the contributions of a uniformly spread set (Ishibuchi, Imada, Setoguchi & Nojima, GECCO 2017) | higher |
 | `gdp` | GD+: IGD+'s distance averaged over the set instead of the front — convergence only; beside IGD+ it tells "still converging" (both fall) from "converged, now spreading" (GD+ flat, IGD+ falling) | lower |
 | `roi_dist` | distance from the set to the box [ideal, nadir] in normalised units, 0 once any point is inside; tells apart the runs whose hypervolume is exactly 0 (COCO scores bbob-biobj this way) | lower |
+| `i_cmop` | Vodopija, Tušar and Filipič's indicator for a constrained problem (IEEE TEVC 29(1), 2025, Eq. 12), on the whole answer: with a feasible point, at most 1 — minus the normalised hypervolume (reference point 1) of the feasible points inside [ideal, nadir], or their distance to that box while none is; without one, 1 plus the least violation. One number for runs with and without feasible points, any feasible set better than any infeasible one | lower |
 | `range_cover` | the worst objective's covered share of [ideal, nadir]; falls early when a population collapses onto part of the front, as on DTLZ4; per objective in `range_cover_each` | higher |
 | `nd_share`, `dup_share` | the share of the set no other member dominates, and the share that repeats an objective vector already in it: stagnation and duplicates | — |
 | `igdx` | IGD in the decision space: the mean distance from a Pareto-SET sample to the nearest solution, variables normalised by the bounds (Tanabe & Ishibuchi 2019, Eq. 5) | lower |
@@ -970,7 +971,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-65 cores, so "not dominated by its parents" is read as "by any parent", and
+66 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

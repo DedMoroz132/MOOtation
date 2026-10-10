@@ -10,6 +10,23 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `i_cmop` (supplement 3, §4.4; `run/metrics.py`): Vodopija, Tušar and
+  Filipič's indicator for a constrained problem (IEEE TEVC 29(1), 2025, Eq.
+  12), one number for runs with and without a feasible point: at most 1 with
+  one (the negative normalised hypervolume, or the distance to the region of
+  interest), 1 plus the least violation without. The other feasibility
+  measures of the supplement were there: `feas_share`, `fe_first_feas`, the
+  runs without a feasible answer (`empty` in the tables), the archive's
+  indicators on its feasible points at the hard budgets.
+- CCMO (`algorithms/ccmo.hpp`; supplement 3, §4.2): Tian, Zhang, Xiao, Zhang
+  and Jin's coevolution of the problem and its unconstrained helper (IEEE TEVC
+  25(1), 2021, Algorithm 1), in the paper's NSGA-II form with SPEA2's
+  truncation: N/2 children from each population, both cut from themselves and
+  all N children, N evaluations a generation, 2N at the start. Not a wrapper
+  over any core, as asked: none hands its children over before its selection.
+  Mean IGD of 5 runs of 100 000 evaluations against the paper's Table I: MW1
+  0.00160 (0.00161), MW3 0.00463 (0.00469), MW11 0.00714 (0.00610), C1-DTLZ1
+  0.0194 (0.0199). 66 algorithms.
 - C-TAEA (`algorithms/ctaea.hpp`; supplement 3, §4.3): Li, Chen, Fu and Yao's
   two-archive algorithm for constrained problems (IEEE TEVC 23(2), 2019),
   Algorithms 1-5, with the authors' code (as pymoo carries it) where it

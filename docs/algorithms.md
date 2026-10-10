@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-65 algorithms, one header each under `include/mootation/algorithms/`, registered
+66 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`. Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
@@ -19,7 +19,7 @@ implementation follows; if you publish results, cite that paper.
 | Reference-vector / angle-based | 8 | irregular or scaled fronts, where a fixed lattice misses | adaptive variants (RVEA*, DEA-GNG, NRV-MOEA, SRV) need a few generations before they help |
 | Clustering-based | 11 | disconnected or irregular fronts | cluster counts are parameters the papers tuned per problem |
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
-| Constrained, two archives or populations | 1 | a constrained problem whose feasible region is small, scattered or behind infeasible barriers | `pop_size` must be an exact Das–Dennis lattice size; at 2N per generation in memory, N evaluations |
+| Constrained, two archives or populations | 2 | a constrained problem whose feasible region is small, scattered or behind infeasible barriers | `pop_size` must be an exact Das–Dennis lattice size; at 2N per generation in memory, N evaluations |
 | Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
 | Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
@@ -215,6 +215,7 @@ on 2026-09-09.
 | Algorithm | Year | File | DOI |
 |---|---|---|---|
 | C-TAEA | 2019 | `ctaea` | [10.1109/TEVC.2018.2855411](https://doi.org/10.1109/TEVC.2018.2855411) |
+| CCMO | 2021 | `ccmo` | [10.1109/TEVC.2020.3004012](https://doi.org/10.1109/TEVC.2020.3004012) |
 
 C-TAEA keeps a convergence archive, which is the population and the answer,
 feasible first, and a diversity archive that ignores the constraints and fills
@@ -223,6 +224,13 @@ share of non-dominated points each holds. The header lists where it follows
 the authors' code over the paper's text (the normalization, one child per
 pair) and the IGD+ medians against pymoo's port on C1-DTLZ1 and MW1.
 
+CCMO evolves the problem and a helper — the same objectives without the
+constraints — in two populations of N; each breeds N/2 children and both are
+cut from themselves and all N children, so a generation costs N evaluations
+(2N at the start). The paper's framework takes any algorithm; this is its
+NSGA-II form, with SPEA2's truncation of the last front, as the paper's
+experiments run it — none of the other cores hands its children over before
+its own selection (header, CCMO-1).
 ## Direct search
 
 | Algorithm | Year | File | DOI |
@@ -262,7 +270,7 @@ reduced to `pop_size` by DSS, published every `pop_size` steps.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 48 of the 65
+Every algorithm works on a real-valued genome with box bounds. 49 of the 66
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
 `Problem<>` specialisation); the other 17 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only: CLIA, DCEA,
@@ -300,5 +308,5 @@ any feasibility-first core. Each header states where the handling
 attaches: the non-dominated sort, the scalarising comparison, the archive
 filter or the truncation rule, whichever is that algorithm's actual preference
 relation. For the 64 that were written for unconstrained problems this is
-constraint handling bolted on, and the headers say so; C-TAEA is built for
-constraints.
+constraint handling bolted on, and the headers say so; C-TAEA and CCMO are
+built for constraints.

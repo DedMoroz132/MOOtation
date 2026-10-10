@@ -87,6 +87,7 @@ MOOTATION_ALG(naemo,      NSGAII_Individual,    NAEMOCore)
 
 // ── Constrained, two archives or populations ───────────────────────────────
 MOOTATION_ALG(ctaea,      NSGAII_Individual,    CTAEACore)
+MOOTATION_ALG(ccmo,       NSGAII_Individual,    CCMOCore)
 
 // ── Direct search ───────────────────────────────────────────────────────────
 MOOTATION_ALG(dms,        DMS_Individual,       DMSCore)

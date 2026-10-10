@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 65, f"expected 65 algorithms, got {len(names)}"
+    assert len(names) == 66, f"expected 66 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -7713,6 +7713,67 @@ def ctaea_runs_feasible_spends_n_per_generation_and_wants_a_lattice():
         assert "91" in str(e) or "lattice" in str(e).lower() or "das" in str(e).lower(), e
     else:
         raise AssertionError("ctaea took pop_size = 90 at three objectives")
+
+
+@test
+def ccmo_spends_n_per_generation_and_finds_mw1s_feasible_front():
+    """Supplement 3, §4.2: CCMO costs 2N at the start and N a generation (N/2
+    children from each population); on a problem without constraints both
+    populations solve the same problem and it runs as any core; on MW1 the
+    answer is feasible and near the front."""
+    if _core_with("eps_level") is None or "ccmo" not in __import__("mootation").algorithms():
+        print("  skip  ccmo...: stale _core"); return
+    import math
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    r = mootation.minimize(lambda x: [x[0], 1.0 - math.sqrt(x[0]) + sum(x[1:])],
+                           [(0.0, 1.0)] * 5, 2, algorithm="ccmo", pop_size=40, n_gen=25, seed=1)
+    assert r.evaluations == 2 * 40 + 25 * 40 and len(r.objectives) == 40
+    assert min(f[1] + math.sqrt(f[0]) for f in r.objectives) < 1.2
+    p = get("MW1")
+    r = mootation.minimize(p.evaluate, p.bounds, 2, algorithm="ccmo", pop_size=100,
+                           max_evaluations=20000, seed=2, constraints=p.constraints)
+    assert r.evaluations == 20000
+    F = np.asarray([f for f, c in zip(r.objectives, r.cv) if c <= 0])
+    assert len(F) == 100
+    igdp = M.compute(F, ref_front=np.asarray(p.pareto_front(1000)), ideal=p.ideal,
+                     nadir=p.nadir, which=["igdp"])["igdp"]
+    assert igdp < 0.01, igdp
+
+
+@test
+def i_cmop_puts_every_feasible_set_before_every_infeasible_one():
+    """Supplement 3, §4.4: Vodopija et al.'s I_CMOP (Eq. 12): minus the
+    normalised hypervolume with the reference point 1 when a feasible point is
+    inside [ideal, nadir], the distance to that box while none is, capped at
+    1; 1 plus the least violation without a feasible point; so any feasible
+    set scores below any infeasible one (their Eq. 11); in compute on the
+    whole answer, infeasible points included."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    ideal, nadir = (0.0, 0.0), (1.0, 1.0)
+    F = np.array([[0.5, 0.5], [0.2, 2.0]])
+    assert M.i_cmop(F, [0.0, 0.0], ideal, nadir) == -0.25
+    assert M.i_cmop(np.array([[1.5, 0.5]]), [0.0], ideal, nadir) == 0.5
+    assert M.i_cmop(np.array([[3.0, 3.0]]), [0.0], ideal, nadir) == 1.0
+    assert M.i_cmop(F, [0.3, 0.7], ideal, nadir) == 1.3
+    assert M.i_cmop(F, [0.0, 0.7], ideal, nadir) == M.i_cmop(F[:1], [0.0], ideal, nadir)
+    rng = np.random.default_rng(1)
+    feas = [M.i_cmop(rng.uniform(0, 5, (8, 2)), np.zeros(8), ideal, nadir) for _ in range(50)]
+    infeas = [M.i_cmop(rng.uniform(0, 5, (8, 2)), rng.uniform(1e-9, 1, 8), ideal, nadir)
+              for _ in range(50)]
+    assert max(feas) <= 1.0 < min(infeas)
+    from mootation.benchmarks import get
+    p = get("MW1")
+    X = [[0.5] * 15, [0.1] * 15]
+    got = M.compute([p.evaluate(x) for x in X], ideal=p.ideal, nadir=p.nadir,
+                    which=["i_cmop", "hv"], X=X, constraints=p.constraints)
+    v = M.violations(X, p.constraints)
+    assert got["hv"] is None and got["i_cmop"] == min(v) + 1.0
 
 
 @test

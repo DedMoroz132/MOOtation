@@ -625,11 +625,49 @@ def eps_mult(A, B):
     return float(R.max(axis=2).min(axis=1).max())
 
 
+def violations(X, constraints) -> np.ndarray:
+    """Every row's overall violation, the sum of its constraints' positive
+    values (the library's sign: <= 0 satisfied)."""
+    X = np.asarray(X, float).reshape(len(X), -1) if len(X) else np.zeros((0, 0))
+    return np.array([sum(max(c, 0.0) for c in constraints(list(x))) for x in X], float)
+
+
+def i_cmop(F, V, ideal, nadir, tau: float = 1.0, **hv_options) -> float | None:
+    """Vodopija, Tusar and Filipic's quality indicator for a constrained
+    problem (IEEE TEVC 29(1), 2025, Eq. 12; source
+    cmop-performance-space_vodopija2025_arxiv), smaller better. With a
+    feasible point (violation V = 0): min(I_MOP, tau), I_MOP (Eq. 8) the
+    negative hypervolume of the feasible points that dominate the nadir, in
+    objectives normalised to [ideal, nadir] with the reference point 1
+    (Eq. 9), or, while none does, their distance to that box (Eq. 10,
+    roi_dist). Without one: the least violation plus tau. tau = 1, COCO's
+    largest target, so every set with a feasible point scores at most 1 and
+    every set without one more (their Eq. 11). None for an empty set."""
+    F = np.asarray(F, float)
+    V = np.asarray(V, float)
+    if not len(V):
+        return None
+    ok = V <= 0.0
+    if not ok.any():
+        return float(V.min() + tau)
+    G = (F[ok] - np.asarray(ideal, float)) / (np.asarray(nadir, float) - np.asarray(ideal, float))
+    inside = np.all(G <= 1.0, axis=1) & np.any(G < 1.0, axis=1)      # dominates the nadir
+    if inside.any():
+        I = -hypervolume(F[ok][inside], ideal, nadir, ref_scale=1.0, **hv_options)[0]
+    else:
+        I = roi_dist(F[ok], ideal, nadir)
+    return float(min(I, tau))
+
+
 def feasible_mask(X, constraints) -> np.ndarray:
     """Which rows of X satisfy every constraint: constraints(x) is a list of
     values, each <= 0 when satisfied (the library's sign, BenchProblem)."""
     X = np.asarray(X, float).reshape(len(X), -1) if len(X) else np.zeros((0, 0))
     return np.array([all(c <= 0.0 for c in constraints(list(x))) for x in X], bool)
+
+
+def have_frame(ideal, nadir) -> bool:
+    return ideal is not None and nadir is not None
 
 
 def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
@@ -655,13 +693,19 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
     """
     out: dict = {}
     F = np.asarray(F, float)
+    if "i_cmop" in which and have_frame(ideal, nadir) and len(F):
+        # the whole set, infeasible points included (Vodopija et al., Eq. 12)
+        V = (violations(X, constraints) if constraints is not None and X is not None
+             else np.zeros(len(F)))
+        out["i_cmop"] = i_cmop(F, V, ideal, nadir, **(hv_options or {}))
     if constraints is not None:
         if X is None:
             raise ValueError("a constrained problem's indicators need the variables X")
         ok = feasible_mask(X, constraints)
         out["feas_share"] = float(ok.mean()) if len(ok) else 0.0
         if not ok.any():
-            out.update({name: (0 if name == "n_final" else None) for name in which})
+            out.update({name: (0 if name == "n_final" else None)
+                        for name in which if name != "i_cmop"})
             return out
         F, X = F[ok], np.asarray(X, float)[ok]
     hvo = dict(hv_options or {})
@@ -781,6 +825,8 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 out[name] = None
             else:
                 out[name] = ps_dmin(X, pareto_set, bounds=bounds, cyclic=cyclic)
+        elif name == "i_cmop":
+            out.setdefault(name, None)              # taken above, on the whole set
         else:
             from .metric_names import METRIC_NAMES
             raise ValueError(f"unknown metric '{name}'; known: {', '.join(METRIC_NAMES)}")
