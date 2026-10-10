@@ -12,7 +12,11 @@
 #   DTLZ5, DTLZ6   g* = 0 at two and three objectives only: from four their
 #                  fronts have a part with g > 0 (fronts_full.py), where g is no
 #                  distance to the Pareto set;
-#   DTLZ7          g* = 1 (g = 1 + 9/k sum x_i).
+#   DTLZ7          g* = 1 (g = 1 + 9/k sum x_i);
+#   MW1, MW2, MW4, MW6, MW8, MW14
+#                  g* = 1 (Ma & Wang 2019, Eqs. 12-14; mw.py, mw.distance):
+#                  their constrained fronts lie at g = 1, the others' need
+#                  g > 1, where g is no distance to the Pareto set.
 # The shifted variants read g after the transformation the problem applies:
 # shiftDTLZ1-4 through the cyclic shift (dtlz_variants.shift_dtlz), shiftZDT
 # and shiftDTLZ6/7 through the fold (shifted.py), so g - g* is 0 exactly at

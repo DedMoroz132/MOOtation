@@ -269,6 +269,20 @@ always listed under **Changed** or **Removed**.
   draws come from the run's seed. The property `family_kind` (engineering /
   synthetic), and the rank table counts the real-world problems apart.
   535 problems in 27 families.
+- MW1-14 (`benchmarks/mw.py`, task 6, item 5): Ma & Wang's constrained
+  problems (IEEE TEVC 23(6), 2019), n = 15, MW4, MW8 and MW14 at three and
+  five objectives (n = M + 12). Constraints in the library's sign; the values
+  agree with pymoo 0.6.2 at fixed points to 1e-12 (MW11's distance function
+  g3 as in Table II and pymoo, not the text's g2; the header lists the
+  readings). The fronts are built from the problems' geometry, no file: the
+  least feasible reachable point at every f1 or angle, exactly where the
+  constraints allow it (factors linear in f2) and by bisection elsewhere,
+  refined where the front is steep, ends or leaves the unconstrained one, then
+  the non-dominated part — they match the paper's Figs. 4 and 5, every point
+  is feasible to 1e-12 and reached by a decision vector, and no sampled
+  feasible point beats them by more than the sample's spacing. Exact frames; Pareto sets and g for the six whose front
+  lies at g = 1 (MW1, MW2, MW4, MW6, MW8, MW14). MW4, MW8, MW14 get dense
+  references from four objectives. 552 problems in 28 families.
 - Rotated DTLZ and WFG (`benchmarks/rotated.py`, task 6, item 1 and its
   supplement 2): the distance variables rotated about their optimum, the
   position variables untouched, front and Pareto set exact — rDTLZ1-4 (y =

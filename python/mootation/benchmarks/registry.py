@@ -16,6 +16,7 @@
 #   shiftZDT1-4, shiftZDT6, shiftDTLZ6-7
 #                       the distance optimum off the bound (ours, shifted.py)
 #   C-DTLZ x M={3,5}    Jain & Deb 2014, constrained DTLZ (c_dtlz.py)
+#   MW1-14              Ma & Wang 2019, constrained; MW4, MW8, MW14 at M={3,5} (mw.py)
 #   <base>_n1, _n5      noisy copies of ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D, WFG7_3D
 #                       (ours, noisy.py)
 #   rDTLZ1-4, rcDTLZ2, rWFG4-7 x M={3,5}, and the controls r0DTLZ1, r0DTLZ3,
@@ -65,6 +66,7 @@ from . import c_dtlz as _cd
 from . import noisy as _noisy
 from . import rotated as _rot
 from . import re as _re
+from . import mw as _mw
 
 
 # =============================================================
@@ -326,7 +328,8 @@ FRAME_OF: Dict[str, str] = {}
 ROTATED: Dict[str, "_rot.Rotated"] = {}
 
 # Problems whose ideal and nadir are set at registration and are not read off
-# a front sample (C-DTLZ: c_dtlz.py, FRONTS; RE and CRE: the authors' files).
+# a front sample (C-DTLZ: c_dtlz.py, FRONTS; MW: mw.py, frame; RE and CRE: the
+# authors' files).
 EXACT_FRAME: set[str] = set()
 
 
@@ -1762,11 +1765,42 @@ def _register_noisy():
             FRAME_OF[key] = base
 
 
+# =============================================================
+#  MW1-14 (mw.py, task 6 of 2026-10-09, item 5): Ma & Wang's constrained
+#  problems, n = 15 (MW4, MW8, MW14 at M = 3 and 5, n = M + 12). The
+#  constraints in the library's sign, <= 0 satisfied; the front built from
+#  the problems' geometry (mw.py, THE FRONTS) and its frame exact (mw.frame);
+#  a Pareto set where the front lies at g = 1.
+# =============================================================
+def _register_mw():
+    for name in _mw.NAMES:
+        for M in (_mw.SIZES if name in _mw.SCALABLE else (2,)):
+            n_vars = _mw.n_vars(name, M)
+            pop, ng = _budget(M)
+            ideal, nadir = _mw.frame(name, M)
+            def _eval(x, _n=name, _M=M): return _mw.objectives(_n, x, _M)
+            def _cons(x, _n=name, _M=M): return _mw.constraints(_n, x, _M)
+            def _pf(n, _n=name, _M=M): return _mw.front(_n, _M, n, _dd_simplex, _dd_sphere)
+            _ps = None
+            if name in _mw.ON_G1:
+                def _ps(n, _n=name, _M=M): return _mw.pareto_set(_n, _M, n, _dd_simplex, _dd_sphere)
+            key = f"{name}_{M}D" if name in _mw.SCALABLE else name
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=n_vars, bounds=[(0.0, _mw.upper(name))] * n_vars, n_obj=M,
+                evaluate=_eval, constraints=_cons,
+                hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=True,
+                pareto_front=_pf, pareto_set=_ps, distance_fn=_mw.distance(name, M))
+            EXACT_FRAME.add(key)
+
+
 _register_dtlz_variants()
 _register_maf_fix()
 _register_bt()
 _register_ipolygon()
 _register_c_dtlz()
+_register_mw()
 _register_noisy()
 
 
@@ -2017,7 +2051,7 @@ DENSE_STEMS = frozenset({"DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "IDTLZ1", "IDTLZ2",
                          "SDTLZ2", "minusDTLZ2", "shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3",
                          "shiftDTLZ4", "WFG4", "WFG5", "WFG6", "WFG7", "WFG8", "WFG9",
                          "Polygon", "MaF1", "MaF3", "MaF4", "MaF5", "MaF12", "MaF13",
-                         *_rot.SPECS})
+                         "MW4", "MW8", "MW14", *_rot.SPECS})
 DENSE_SIZES = (1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000)
 DENSE_RATIO = 3.0
 

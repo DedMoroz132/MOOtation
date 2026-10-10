@@ -42,6 +42,21 @@ Huband analyses:
               but not medial (the optimum at 0.5, the middle of the box at 0.6)
   C-DTLZ      Jain & Deb 2014 (c_dtlz.py): C1 and C2-DTLZ2 their DTLZ's row,
               the rest ours (see _CDTLZ below)
+  MW1-14      Ma & Wang, IEEE TEVC 23(6), 2019, Table II (mw.py): the front is
+              the table's constrained PF ("Discrete", MW5's, read as
+              disconnected), with the unconstrained PF's geometry where the
+              one is a part of the other (MW1, MW6, MW8). Multimodal where the
+              distance function is g2 (MW2, 6, 8, 10, 13) or a sine makes f2 or
+              f_m rise and fall along the positions (MW12, MW13, MW14, as
+              ZDT3's and DTLZ7's in Huband's tables); bias where it is g1, the
+              paper's "biased" one (MW1, 4, 5, 9, 12), and MW10's f1 = g x1^n
+              (its "polynomial bias"); linkage, and not separable, where it is
+              g3 (MW3, 7, 11, 14). Where the front lies at g = 1 (mw.ON_G1) the
+              distance variables' optimum is a constant (g1, g2: separable) or
+              g3's chain, inside the box: neither medial nor extremal; where it
+              needs g > 1 they lie on level sets of g: separable, centre and
+              boundary None (as C3-DTLZ's). Scaled where one objective's range
+              on the front is at least twice another's (MW13, MW14; mw.frame).
   shiftZDT1-4, shiftZDT6, shiftDTLZ6-7
               the base problem's row with every distance variable's optimum
               0.15-0.35 from the centre and from the bounds (shifted.py):
@@ -199,6 +214,25 @@ _CDTLZ = {
     "C3-DTLZ4": _p("mixed", False, True, False, None, False, False),
 }
 
+# MW1-14 (Ma & Wang 2019, Table II; see the module docstring)
+_MW = {
+    "MW1": _p("linear+disconnected", False, True, False, True, False, False),
+    "MW2": _p("linear", True, False, False, True, False, False),
+    "MW3": _p("mixed", False, False, False, False, None, None),
+    "MW4": _p("linear", False, True, False, True, False, False),
+    "MW5": _p("disconnected", False, True, False, None, None, None),
+    "MW6": _p("concave+disconnected", True, False, False, True, False, False),
+    "MW7": _p("disconnected", False, False, False, False, None, None),
+    "MW8": _p("concave+disconnected", True, False, False, True, False, False),
+    "MW9": _p("concave", False, True, False, None, None, None),
+    "MW10": _p("disconnected", True, True, False, None, None, None),
+    "MW11": _p("disconnected", False, False, False, False, None, None),
+    "MW12": _p("mixed", True, True, False, None, None, None),
+    "MW13": _p("disconnected", True, False, True, None, None, None),
+    "MW14": _p("disconnected", True, False, True, False, False, False),
+}
+_MW_LINKAGE = {"MW3", "MW7", "MW11", "MW14"}             # g3
+
 # Table XV; its caption: no extremal nor medial parameters, dissimilar
 # tradeoff magnitudes for every WFG problem.
 _WFG = {
@@ -270,6 +304,8 @@ def properties(name: str) -> dict | None:
         row["linkage"] = _LINKAGE["MOP"]
     elif stem == "Polygon":
         row["linkage"] = _LINKAGE["Polygon"]
+    elif stem in _MW:
+        row["linkage"] = stem in _MW_LINKAGE
     else:
         row["linkage"] = None
     from .registry import PROBLEMS
@@ -327,6 +363,8 @@ def _huband(name: str) -> dict | None:
         return row
     if stem in _CDTLZ:
         return dict(_CDTLZ[stem])
+    if stem in _MW:
+        return dict(_MW[stem])
     if stem.startswith(("RE", "CRE")) and stem.lstrip("CRE").isdigit():
         # Tanabe & Ishibuchi 2020: the true fronts are unknown; Section 2.6 and
         # Fig. 2 call RE2-4-3 (RE23) and RE2-3-5 (RE25) disconnected. The rest

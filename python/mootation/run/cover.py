@@ -154,10 +154,11 @@ METRICS = ("igdp_norm", "gdp_norm", "hv_h", "eps_norm")  # read at every budget 
 
 IDEAL_FLOOR_TAU = 0.1                                    # 1.1 x floor: the ideal level
 # the reference fronts built on a Das-Dennis lattice topped up with Dirichlet
-# points (dtlz_variants._simplex), coarse from four objectives (MARKED PROBLEMS)
+# points (dtlz_variants._simplex), coarse from four objectives (MARKED PROBLEMS);
+# MW4's is the simplex, MW8's the sphere's lattice where feasible (mw.py)
 LATTICE_FAMILIES = ("DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "IDTLZ1", "IDTLZ2", "SDTLZ1", "SDTLZ2",
                     "shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4", "WFG4", "WFG5",
-                    "WFG6", "WFG7", "WFG8", "WFG9")
+                    "WFG6", "WFG7", "WFG8", "WFG9", "MW4", "MW8")
 
 
 def reference_caveat(problem: str, version: int | None = None) -> str | None:
