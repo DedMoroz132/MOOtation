@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 64 algorithm names |
-| `--problems` | list the 904 benchmark problems (needs NumPy) |
+| `--problems` | list the 982 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -157,7 +157,7 @@ day-long run.
 
 ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ and MW, rotated
-ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 904 problems across 36 families, each
+ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy copies and the real-world RE and CRE: 982 problems across 36 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -242,15 +242,30 @@ objectives is constrained too.
 
 **The noisy copies** stand in for the noise of a mesh and a solver: `ZDT1_n1`
 returns ZDT1's objectives plus 0.01 (nadir − ideal) N(0, 1) in each, and `_n5`
-0.05; of ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D and WFG7_3D (`benchmarks/noisy.py`, a
-construction of this library). The noise is drawn from the run's seed and the
-evaluation's number, so a seed repeats a run exactly. The algorithm sees the
-noisy values; a campaign measures every indicator on the noise-free ones at
-the same x, keeps those in its files and snapshots — `final.csv` the noisy
-ones too, as `f1_seen`, ... — and records `true_dominated_share` beside them,
-the share of the answer another of its points dominates by the true values.
-They are a family of their own, `noisy`, picked by name: `families = ["DTLZ"]`
-does not bring them in.
+0.05 (`benchmarks/noisy.py`, a construction of this library). The noise is
+drawn from the run's seed and the evaluation's number, so a seed repeats a run
+exactly. Three more kinds, at the same two levels: `_d1`/`_d5`, deterministic —
+the noise is a hash of x, the same in every run and at every repeat, as a
+solver's tolerance gives, which repeats do not average away; `_s1`/`_s5`, a
+step — the hash of the cell ⌊(x − lb)/h⌋, h = `noise_cell` (0.01, a
+`[campaign]` key) of every variable's range, constant inside a cell and a jump
+at its border, as a remeshing gives; `_h1`/`_h5`, relative — σ (f − ideal)
+N(0, 1), as a solver with a relative tolerance gives. All four kinds of ZDT1,
+ZDT4, DTLZ1_3D, DTLZ2_3D, DTLZ2_5D, WFG4_3D, WFG7_3D, rcDTLZ2_3D and of RE21,
+RE25 and RE34, whose objectives differ in scale by orders of magnitude.
+
+The algorithm sees the noisy values; a campaign measures every indicator on
+the noise-free ones at the same x, keeps those in its files and snapshots —
+`final.csv` the noisy ones too, as `f1_seen`, ... — and records
+`true_dominated_share` beside them, the share of the answer another of its
+points dominates by the true values. `final` then holds every indicator three
+ways: as recommended (the noise-free values of the answer the algorithm chose,
+without a suffix), `<metric>_oracle` (the noise-free non-dominated set of every
+point evaluated, reduced to the answer's size by the archive's rule — what the
+run found, recognised or not) and `<metric>_observed` (the noisy values of the
+answer, biased towards better: the size of that bias). They are a family of
+their own, `noisy`, picked by name: `families = ["DTLZ"]` does not bring them
+in; the copies of RE are ranked with the real-world problems.
 
 **The real-world problems** are Tanabe & Ishibuchi's RE and CRE (Applied Soft
 Computing 89:106078, 2020): truss, beam, pressure vessel, welded beam, disc

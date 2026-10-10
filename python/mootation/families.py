@@ -6,14 +6,15 @@ it."""
 
 from __future__ import annotations
 
-NOISE_LEVELS = ("n1", "n5")      # the noisy copies' suffixes (benchmarks/noisy.py, SIGMA)
+# the noisy copies' suffixes (benchmarks/noisy.py, LEVELS)
+NOISE_LEVELS = ("n1", "n5", "d1", "d5", "s1", "s5", "h1", "h5")
 CONTROLS = ("r0", "c0")          # the Q = I controls of benchmarks/rotated.py
 ENGINEERING = ("RE", "CRE")      # the real-world problems of benchmarks/re.py
 
 
 def family(name: str) -> str:
     """DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT: the name's stem without
-    its digits. A noisy copy (ZDT1_n1) -> noisy; a control of the rotated
+    its digits. A noisy copy (ZDT1_n1, DTLZ2_3D_s5) -> noisy; a control of the rotated
     problems keeps its prefix, r0DTLZ1 -> r0DTLZ and c0DTLZ2 -> c0DTLZ, apart
     from rDTLZ and rcDTLZ."""
     if "_" in name and name.rsplit("_", 1)[1] in NOISE_LEVELS:
@@ -25,6 +26,8 @@ def family(name: str) -> str:
 
 
 def is_engineering(name: str) -> bool:
-    """A real-world problem (RE, CRE): ranked apart from the synthetic ones
-    (task 6, item 6), its front an approximation."""
+    """A real-world problem (RE, CRE), or a noisy copy of one (RE21_n5): ranked
+    apart from the synthetic ones (task 6, item 6), its front an approximation."""
+    if "_" in name and name.rsplit("_", 1)[1] in NOISE_LEVELS:
+        name = name.rsplit("_", 1)[0]
     return family(name) in ENGINEERING

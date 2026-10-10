@@ -216,6 +216,20 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- Deterministic, step and relative noise, and three ways to measure a noisy
+  run (`benchmarks/noisy.py`, task 7, §4). Besides `_n1`/`_n5`: `_d1`/`_d5`,
+  the noise a hash of x, the same in every run and at every repeat;
+  `_s1`/`_s5`, a hash of the cell ⌊(x − lb)/h⌋, h = `[campaign] noise_cell`
+  (0.01) of the range — a step at every cell border; `_h1`/`_h5`,
+  σ (f − ideal) N(0, 1), a relative error. Every kind at both levels of ZDT1,
+  ZDT4, DTLZ1_3D, DTLZ2_3D, DTLZ2_5D, WFG4_3D, WFG7_3D, rcDTLZ2_3D, RE21,
+  RE25 and RE34. `final` records every indicator as recommended (the
+  noise-free values of the answer, as before), `<metric>_oracle` (the
+  noise-free non-dominated set of every evaluation, reduced to the answer's
+  size) and `<metric>_observed` (the noisy values of the answer);
+  `meta["noise"]` the kind and the cell. `_n1`/`_n5` are unchanged bit for
+  bit. The noisy copies of RE are ranked with the real-world problems.
+  982 problems in 36 families.
 - The rotations of the other families (`benchmarks/rotated.py`, task 7, §7),
   each turning only the distance block about its own optimum, conditioned
   only where g is isotropic, each with its Q = I control and three instances:

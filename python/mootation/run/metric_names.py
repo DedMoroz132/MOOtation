@@ -45,6 +45,10 @@ FEASIBILITY = ("feas_share", "fe_first_feas")
 # What a run on a noisy copy (benchmarks/noisy.py) records besides, its
 # indicators being measured on the noise-free objectives (task 6, item 7).
 NOISE = ("true_dominated_share",)
+# ... and every final indicator twice more (task 7, §4): on the non-dominated
+# set by the noise-free values of every point evaluated (_oracle), and on the
+# noisy values of the answer, as the algorithm saw them (_observed).
+NOISE_MODES = ("_oracle", "_observed")
 
 # Everything a table can be asked for.
 TABLE_NAMES = METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + FEASIBILITY + NOISE
@@ -76,6 +80,9 @@ def is_table_name(name: str) -> bool:
     """Can a table be asked for `name`: TABLE_NAMES, the front indicators
     against the dense reference, a portfolio's per-operator shares and mosa's
     per-objective weights."""
+    for mode in NOISE_MODES:
+        if name.endswith(mode) and name[:-len(mode)] in METRIC_NAMES + NOISE:
+            return True
     return (name in TABLE_NAMES or base_name(name) != name
             or name.startswith(PORTFOLIO_STATS + SA_WEIGHT_STATS))
 

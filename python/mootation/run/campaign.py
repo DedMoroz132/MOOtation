@@ -169,6 +169,9 @@ class CampaignSpec:
     # the default grid step, 1e-3 below five objectives and 1e-2 from five.
     archive: bool = True
     archive_delta: float = 0.0
+    # The cell of the step noise (benchmarks/noisy.py, <base>_s1 and _s5), a
+    # share of every variable's range.
+    noise_cell: float = 0.01
     # Whose variables the archive keeps: "all" — every point's, in archive.csv;
     # "selected" — only those of the N points DSS selects for the archive
     # scenario, in final_archive.csv.gz, with the objectives of every point in
@@ -243,7 +246,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
-             "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select"}
+             "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
+             "noise_cell"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -316,6 +320,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.archive_delta = float(raw.get("archive_delta", 0.0))
     if spec.archive_delta < 0:
         raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
+    spec.noise_cell = raw.get("noise_cell", 0.01)
+    if (not isinstance(spec.noise_cell, (int, float)) or isinstance(spec.noise_cell, bool)
+            or not 0 < spec.noise_cell <= 1):
+        raise ConfigError("campaign.noise_cell", f"a share in (0, 1], not {spec.noise_cell!r}")
     spec.archive_variables = raw.get("archive_variables", "all")
     if spec.archive_variables not in ("all", "selected"):
         raise ConfigError("campaign.archive_variables",
@@ -597,8 +605,20 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     fe = 0
     # a problem whose values depend on the run (uninformative.py) gets its
     # evaluator from the run's seed; every other problem is its `evaluate`
-    objective = (p.make_evaluator(job.seed) if getattr(p, "make_evaluator", None)
-                 else p.evaluate)
+    from ..benchmarks.noisy import kind_of as noise_kind
+    if noise_kind(job.problem) == "s":
+        objective = p.make_evaluator(job.seed, cell=float(spec.noise_cell))
+    else:
+        objective = (p.make_evaluator(job.seed) if getattr(p, "make_evaluator", None)
+                     else p.evaluate)
+    # A noisy copy's oracle (task 7, §4): every non-dominated point by the
+    # noise-free values of all the points evaluated, as the run archive keeps
+    # the noisy ones.
+    oracle = None
+    if truth is not None:
+        from .archive import GridArchive as _Grid
+        oracle = _Grid(p.n_obj, p.n_vars, ideal=ideal, nadir=nadir,
+                       delta=spec.archive_delta or None)
     # The hard budgets (CampaignSpec.hard_budgets): the archive after exactly
     # b evaluations is taken by the evaluator, the population's last record at
     # or below b by on_gen.
@@ -621,6 +641,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             fe_first_feas = fe
         if arc is not None and ok:
             arc.add(f, x)
+        if oracle is not None:
+            t = getattr(objective, "last_true", None)
+            oracle.add(t if t is not None else truth(list(x)), x)
         if arc is not None and fe in hard:
             take_hard_archive(fe)
         return f
@@ -895,8 +918,26 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if truth is not None:
         if final:
             final["true_dominated_share"] = 1.0 - M.nd_share(F)
-        meta["noise"] = {"scale": list(objective.scale),
-                         "measured": "every indicator on the noise-free objectives"}
+            # the observed answer: its noisy values, as the algorithm saw them
+            obs = M.compute(seen, ref_front=ref, ideal=ideal, nadir=nadir,
+                            which=final_metrics, X=X, **extra)
+            final.update({m + "_observed": v for m, v in obs.items()})
+        OF, OX, _ = oracle.points()
+        if len(OF):
+            # the oracle: the noise-free non-dominated set of every evaluation,
+            # reduced to the answer's size by the archive scenario's rule
+            sel = oracle.select(p.pop_size, spec.answer_select)
+            orc = M.compute(OF[sel], ref_front=ref, ideal=ideal, nadir=nadir,
+                            which=final_metrics, X=OX[sel], **extra)
+            final.update({m + "_oracle": v for m, v in orc.items()})
+        kind = noise_kind(job.problem)
+        meta["noise"] = {"kind": kind, "scale": list(objective.scale),
+                         "cell": float(spec.noise_cell) if kind == "s" else None,
+                         "measured": "every indicator on the noise-free objectives of the "
+                                     "answer; _oracle on the noise-free non-dominated set "
+                                     "of every evaluation; _observed on the noisy values "
+                                     "of the answer",
+                         "oracle_n": int(len(OF))}
     if arc_sel is not None and spec.archive_scenario:
         AF, AX, _ = arc.points()
         T = true_values(AF[arc_sel], AX[arc_sel])

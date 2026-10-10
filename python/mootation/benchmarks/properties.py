@@ -278,9 +278,11 @@ _LINKAGE = {"ZDT": False, "DTLZ": False, "ZCAT": True, "MOP": True, "Polygon": F
 
 
 def _stem_and_m(name: str) -> tuple:
+    from ..families import NOISE_LEVELS
     stem = name.split("_")[0]
-    if name.rsplit("_", 1)[-1][:1] == "i" and name.rsplit("_", 1)[-1][1:].isdigit():
-        name = name.rsplit("_", 1)[0]               # a rotation's instance, rDTLZ1_3D_i2
+    last = name.rsplit("_", 1)[-1]
+    if (last[:1] == "i" and last[1:].isdigit()) or last in NOISE_LEVELS:
+        name = name.rsplit("_", 1)[0]       # a rotation's instance or a noisy copy, ..._3D_i2
     tail = name.rsplit("_", 1)[-1]
     m = int(tail[:-1]) if tail.endswith("D") and tail[:-1].isdigit() else 2
     return stem, m

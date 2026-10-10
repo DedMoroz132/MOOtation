@@ -17,8 +17,10 @@
 #                       the distance optimum off the bound (ours, shifted.py)
 #   C-DTLZ x M={3,5}    Jain & Deb 2014, constrained DTLZ (c_dtlz.py)
 #   MW1-14              Ma & Wang 2019, constrained; MW4, MW8, MW14 at M={3,5} (mw.py)
-#   <base>_n1, _n5      noisy copies of ZDT1, ZDT4, DTLZ1_3D, DTLZ2_3D, WFG7_3D
-#                       (ours, noisy.py)
+#   <base>_n1 .. _h5    noisy copies, four kinds at two levels (n stochastic, d
+#                       deterministic, s a step, h relative), of ZDT1, ZDT4,
+#                       DTLZ1_3D, DTLZ2_3D, DTLZ2_5D, WFG4_3D, WFG7_3D,
+#                       rcDTLZ2_3D, RE21, RE25 and RE34 (ours, noisy.py)
 #   rZDT1-4, rZDT6, rDTLZ1-4, rcDTLZ2, rcDTLZ5, rWFG1-9, rcMaF1, rMaF2-4,
 #   rcMaF5-6, rZCAT1-20, rcPolygon x M={3,5}, rcDTLZ2 at M={6,10}, the Q = I
 #                       controls (r0, c0), and three instances <name>_i1.._i3
@@ -1742,30 +1744,56 @@ def _register_c_dtlz():
 
 
 # =============================================================
-#  Noisy copies (noisy.py, task 6 of 2026-10-09, item 7): <base>_n1 and _n5,
-#  sigma = 0.01 and 0.05 of the base's nadir - ideal. Everything but the
+#  Noisy copies (noisy.py, task 6 of 2026-10-09, item 7; task 7, §4):
+#  <base>_n1 .. _h5, four kinds at sigma = 0.01 and 0.05. Everything but the
 #  values is the base's: box, budget, frame and front (FRAME_OF), Pareto set,
-#  distance function; true_objectives is the base's evaluate.
+#  distance function; true_objectives is the base's evaluate. The bases of
+#  noisy.LATE_BASES exist only after the reference version (rcDTLZ2_3D, RE):
+#  their copies take the base's front, distance function and frame as they are.
 # =============================================================
-def _register_noisy():
-    for base in _noisy.BASES:
-        b = PROBLEMS[base]
-        for level, sigma in _noisy.SIGMA.items():
-            def _scale(_b=base, _s=sigma):
-                p = get(_b)                     # the base's frame, read when first wanted
-                return [_s * (hi - lo) for lo, hi in zip(p.ideal, p.nadir)]
-            def _eval(x, _f=b.evaluate, _sc=_scale): return _noisy.evaluate_by_x(_f, _sc(), x)
-            def _make(seed, _f=b.evaluate, _sc=_scale): return _noisy.Evaluator(_f, _sc(), seed)
-            key = _noisy.name(base, level)
-            PROBLEMS[key] = BenchProblem(
-                name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
-                evaluate=_eval, constraints=_no_cons,
-                hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
-                hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
-                pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
-                pareto_front=None, pareto_set=b.pareto_set, cyclic_vars=b.cyclic_vars,
-                make_evaluator=_make, true_objectives=b.evaluate)
-            FRAME_OF[key] = base
+def _add_noisy(base: str, level: str, late: bool = False) -> None:
+    b = PROBLEMS[base]
+    kind, sigma = _noisy.LEVELS[level]
+    lower, upper = [lo for lo, _ in b.bounds], [hi for _, hi in b.bounds]
+
+    def _scale(_b=base, _s=sigma):
+        p = get(_b)                             # the base's frame, read when first wanted
+        return [_s * (hi - lo) for lo, hi in zip(p.ideal, p.nadir)]
+
+    def _ideal(_b=base):
+        return list(get(_b).ideal)
+
+    if kind == "n":                             # as since task 6, bit for bit
+        def _eval(x, _f=b.evaluate, _sc=_scale): return _noisy.evaluate_by_x(_f, _sc(), x)
+    else:
+        def _eval(x, _f=b.evaluate, _sc=_scale, _k=kind, _s=sigma):
+            return _noisy.evaluate_by_x(_f, _sc(), x, _k, ideal=_ideal(), sigma=_s,
+                                        lower=lower, upper=upper)
+
+    def _make(seed, cell=_noisy.CELL, _f=b.evaluate, _sc=_scale, _k=kind, _s=sigma):
+        return _noisy.Evaluator(_f, _sc(), seed, _k, ideal=_ideal(), sigma=_s,
+                                lower=lower, upper=upper, cell=cell)
+    key = _noisy.name(base, level)
+    PROBLEMS[key] = BenchProblem(
+        name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
+        evaluate=_eval, constraints=_no_cons,
+        hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+        hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+        pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+        pareto_front=b.pareto_front if late else None, pareto_set=b.pareto_set,
+        cyclic_vars=b.cyclic_vars, make_evaluator=_make, true_objectives=b.evaluate,
+        front_exact=b.front_exact, distance_fn=b.distance_fn if late else None)
+    FRAME_OF[key] = base
+    if late and base in EXACT_FRAME:
+        EXACT_FRAME.add(key)
+    if late and base in FULL_FRONT:
+        FULL_FRONT.add(key)
+
+
+def _register_noisy(bases=_noisy.BASES, late: bool = False):
+    for base in bases:
+        for level in _noisy.LEVELS:
+            _add_noisy(base, level, late)
 
 
 # =============================================================
@@ -2055,6 +2083,7 @@ def _register_re():
 
 
 _register_re()
+_register_noisy(_noisy.LATE_BASES, late=True)
 
 
 # ── dense references at four objectives and more (task 6 of 2026-10-09, item 9)

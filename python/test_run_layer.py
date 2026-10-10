@@ -5216,7 +5216,7 @@ def a_noisy_copy_adds_the_noise_of_its_seed_and_nothing_else():
     from mootation.benchmarks import families, get, noisy
     from mootation.benchmarks.properties import properties
     from mootation.run.campaign import problem_family
-    want = sorted(f"{b}_{lv}" for b in noisy.BASES for lv in ("n1", "n5"))
+    want = sorted(f"{b}_{lv}" for b in noisy.BASES + noisy.LATE_BASES for lv in noisy.LEVELS)
     assert sorted(families()["noisy"]) == want
     assert all(problem_family(n) == "noisy" for n in want)
     base = get("DTLZ2_3D").evaluate
@@ -5239,7 +5239,95 @@ def a_noisy_copy_adds_the_noise_of_its_seed_and_nothing_else():
         assert (p.distance_fn is None) == (q.distance_fn is None), name
         sigma = noisy.SIGMA[name.rsplit("_", 1)[1]]
         assert p.make_evaluator(1).scale == [sigma * (h - l) for l, h in zip(q.ideal, q.nadir)]
-        assert p.evaluate(x[:p.n_vars]) == p.evaluate(x[:p.n_vars]) != q.evaluate(x[:p.n_vars])
+        mid = [(lo + hi) / 2 for lo, hi in p.bounds]
+        assert p.evaluate(mid) == p.evaluate(mid) != q.evaluate(mid), name
+
+
+@test
+def deterministic_step_and_relative_noise_and_the_three_report_modes():
+    """Task 7, §4: _d gives the same value for the same x in every run and at
+    every repeat; _s the same inside a cell and another across its border, the
+    cell a share of the range ([campaign] noise_cell); _h's spread is sigma
+    (f - ideal), none at the ideal; sigma = 0 is the base problem for every
+    kind. A campaign records every final indicator _oracle and _observed
+    beside it, and on ZDT1_n5 the observed IGD+ is on average better than the
+    recommended one: the noise flatters the answer the algorithm kept."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  deterministic_step...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.benchmarks import get, noisy
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    from mootation.run.metric_names import is_table_name
+    base = get("DTLZ2_3D").evaluate
+    x = [0.425, 0.705] + [0.405] * 10
+    for kind in "ndsh":
+        e = noisy.Evaluator(base, [0.0] * 3, 5, kind, ideal=[0.0] * 3, sigma=0.0,
+                            lower=[0.0] * 12, upper=[1.0] * 12)
+        assert e(x) == base(x) and e.last_true == base(x), kind
+    p = get("DTLZ2_3D_d5")
+    e1, e2 = p.make_evaluator(1), p.make_evaluator(2)
+    assert [e1(x) for _ in range(3)] == [e2(x)] * 3 == [p.evaluate(x)] * 3 != [base(x)] * 3
+    p = get("DTLZ2_3D_s5")
+    e = p.make_evaluator(1)
+    near = list(x)
+    near[0] = 0.428                                  # the same cell of width 0.01
+    far = list(x)
+    far[0] = 0.435                                   # the next cell
+    a, b, c = e(x), e(near), e(far)
+    assert np.allclose(np.subtract(a, b), np.subtract(base(x), base(near)), atol=1e-15)
+    assert not np.allclose(np.subtract(a, c), np.subtract(base(x), base(far)), atol=1e-6)
+    wide = p.make_evaluator(1, cell=0.1)             # 0.425 and 0.435 share a cell of 0.1
+    a, c = wide(x), wide(far)
+    assert np.allclose(np.subtract(a, c), np.subtract(base(x), base(far)), atol=1e-15)
+    rel = noisy.Evaluator(lambda x: [1.0, 2.0, 0.0], [9.0] * 3, 3, "h", ideal=[0.0] * 3,
+                          sigma=0.05)
+    Z = np.array([rel(x) for _ in range(20_000)])
+    assert abs(Z[:, 0].std() / 0.05 - 1) < 0.03 and abs(Z[:, 1].std() / 0.10 - 1) < 0.03
+    assert np.all(Z[:, 2] == 0.0)                    # at the ideal: no noise
+    assert all(is_table_name(m) for m in ("igdp_norm_oracle", "igdp_norm_observed",
+                                          "hv_oracle", "true_dominated_share_observed"))
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0 } ]
+[run]
+name = "nz"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 6
+problems = ["ZDT1_n5", "ZDT1_s5"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+noise_cell = 0.1
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "nz.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        fin = [json.loads((root / "ZDT1_n5" / "nsga2" / f"run_{k}" / "meta.json").read_text(
+            encoding="utf-8"))["final"] for k in range(1, 7)]
+        rec = [f["igdp_norm"] for f in fin]
+        obs = [f["igdp_norm_observed"] for f in fin]
+        orc = [f["igdp_norm_oracle"] for f in fin]
+        assert np.mean(obs) < np.mean(rec), (obs, rec)
+        assert all(np.isfinite(orc)) and np.mean(orc) <= np.mean(rec), (orc, rec)
+        meta = json.loads((root / "ZDT1_s5" / "nsga2" / "run_1" / "meta.json").read_text(
+            encoding="utf-8"))
+        assert (meta["noise"]["kind"], meta["noise"]["cell"]) == ("s", 0.1), meta["noise"]
+        bad = Path(td) / "bad.toml"
+        bad.write_text(text.replace("noise_cell = 0.1", "noise_cell = 0"), encoding="utf-8")
+        try:
+            C.campaign_spec(load(bad))
+            raise AssertionError("noise_cell = 0 accepted")
+        except C.ConfigError:
+            pass
 
 
 @test
@@ -5625,8 +5713,9 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
     from mootation.benchmarks import names
     from mootation.benchmarks import rotated as R
     from mootation.benchmarks.registry import ROTATED
+    from mootation.benchmarks.noisy import is_noisy
     assert sorted(ROTATED) == sorted(ROTATION_HASHES) == sorted(
-        n for n in names() if n.split("_")[0] in R.SPECS)
+        n for n in names() if n.split("_")[0] in R.SPECS and not is_noisy(n))
     for name, r in ROTATED.items():
         family, rotate, condition = R.SPECS[name.split("_")[0]]
         digest = hashlib.sha256()
@@ -6044,7 +6133,9 @@ def re_problems_match_reproblems():
     import numpy as np
     from mootation.benchmarks import get, names
     from mootation.benchmarks import re as RE
-    assert sorted(RE_VALUES) == sorted(n for n in names() if n[:2] == "RE" or n[:3] == "CRE")
+    from mootation.benchmarks.noisy import is_noisy
+    assert sorted(RE_VALUES) == sorted(n for n in names()
+                                       if (n[:2] == "RE" or n[:3] == "CRE") and not is_noisy(n))
     for name, rows in RE_VALUES.items():
         p = get(name)
         lb = [b[0] for b in p.bounds]
