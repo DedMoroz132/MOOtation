@@ -29,6 +29,13 @@ always listed under **Changed** or **Removed**.
 
 ### Changed
 
+- `archive_checkpoints` takes the archive scenario after exactly b evaluations
+  of each `record_at` count, inside a generation if need be (task 7, §5.5),
+  not at the first record at or past b: at 100 or 300 evaluations a generation
+  of 91 is much of the budget. `record_at = [100, 300, 1000, ...]` now reads
+  the archive at small budgets as it is.
+- docs/running.md: GDE3 at `CR = 1` keeps the paper's F = 0.2, a small step
+  along every variable at once; give it a larger F (task 7, §5.6).
 - `mutation_scale` at 0 or below is an error (task 7, §5.2); it used to
   fall back to the default silently. "No mutation" is `mutation = "none"`.
 - MSVC: the interface target adds `/bigobj` — `embed.hpp` instantiates every
@@ -216,6 +223,13 @@ always listed under **Changed** or **Removed**.
 
 ### Added
 
+- `--invariance-check` (`run/invariance.py`, task 7, §5.4): every algorithm
+  entry of a campaign on its problems, on the objectives times 2^10 and times
+  (2^-6, 1, 2^6, ...) — exact, so the trajectories are compared bit for bit —
+  and shifted by 2^4 over 30 seeds — rounded, so compared by the rank-sum test
+  with Holm's adjustment: "invariant", "rounding" or "not invariant". The tests
+  hold the two cases known in advance: NSGA-II is invariant to a common
+  power-of-two scale, SMS-EMOA at three objectives is not.
 - Deterministic, step and relative noise, and three ways to measure a noisy
   run (`benchmarks/noisy.py`, task 7, §4). Besides `_n1`/`_n5`: `_d1`/`_d5`,
   the noise a hash of x, the same in every run and at every repeat;

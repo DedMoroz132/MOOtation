@@ -513,7 +513,9 @@ read a rung at the record `record_at` puts there, which has them, and
   rows are float32, so a recomputed value agrees with one recorded during the
   run to about 1e-6 relative, not bit for bit.
 - `archive_checkpoints = true` takes the archive scenario (below) also at the
-  `record_at` counts below the budget, at the record that first reaches each:
+  `record_at` counts below the budget, after exactly that many evaluations —
+  inside a generation if need be, so that `record_at = [100, 300, 1000, 2500,
+  ...]` reads small budgets too, where a generation is much of the budget:
   its trajectory indicators go to `meta.json` (`archive_at`, keyed by the
   count) and its points to `archive_at.npz` (objectives, and variables by the
   snapshots' rule). The end of the run is `final_archive`.
@@ -732,7 +734,12 @@ while none is), and a chain moves from a feasible point to a feasible one only.
 member and keeps both when neither dominates, pruning back to `pop` by
 non-dominated sorting and crowding distance recomputed one removal at a time;
 `F` and `CR` are knobs, 0.2 and 0.2 by default (the paper's setting on its
-test problems), and at `CR = 1` the trial is rotation-invariant. SMS-EMOA
+test problems), and at `CR = 1` the trial is rotation-invariant. But with the
+paper's F = 0.2 that step is small — a fifth of the difference of two
+members, along every variable at once — and GDE3 at `CR = 1, F = 0.2`
+converges far more slowly on the unrotated problems than at its defaults;
+give `CR = 1` a larger F (0.5, DE's usual) when rotation invariance is the
+point. SMS-EMOA
 (Emmerich, Beume & Naujoks, EMO 2005) and the steady-state MO-CMA-ES (Voß,
 Hansen & Igel, GECCO 2010) spend one evaluation a step and drop the point
 with the smallest hypervolume contribution in the worst front — exactly at
@@ -894,6 +901,7 @@ python -m mootation.run.campaign c.toml --behaviour --workers 8          # how t
 python -m mootation.run.campaign c.toml --portfolio --workers 8          # oracle, Shapley, the matrix
 python -m mootation.run.campaign c.toml --oracle --workers 8             # the archives' best N under IGD+
 python -m mootation.run.campaign c.toml --instance-space --workers 8     # the problems as a plane, footprints
+python -m mootation.run.campaign c.toml --invariance-check --workers 8   # scale and shift of the objectives
 python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
 python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # against a changed reference front
 ```
@@ -1089,6 +1097,18 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   averaged over the seeds, and the report sets the deterministic algorithm's
   Shapley value and place under 7 of 10 beside them. CSV in
   `<results>/_portfolio/` (`_portfolio_archive/`).
+- `--invariance-check`: is each algorithm entry invariant to the scale and to
+  a shift of the objectives? It runs, rather than reads: every entry on every
+  problem of the campaign at its budget, on the problem and on two copies with
+  the objectives times 2^10 and times (2^-6, 1, 2^6, ...) — exact in floating
+  point, so an invariant algorithm runs the same trajectory, compared bit for
+  bit (the points evaluated, in order; the first evaluation where they part)
+  — and on a copy shifted by 2^4 over `--inv-seeds` seeds (30). A shift is
+  rounded, so trajectories may part without any hidden constant: the final
+  IGD+ (the shift taken off) is compared by the rank-sum test, Holm-adjusted
+  over the entries of a problem, and the shift is "invariant" (the same
+  trajectories), "rounding" (they part, the distributions cannot be told
+  apart) or "not invariant". CSV in `<results>/_invariance/` (`invariance.py`).
 - `--instance-space`: instance space analysis (Smith-Miles & Muñoz, ACM
   Computing Surveys 55(12), 2023; the projection of Muñoz, Villanova, Baatar &
   Smith-Miles, Machine Learning 107(1), 2018; the footprints of Muñoz &

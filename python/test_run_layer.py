@@ -6616,6 +6616,99 @@ def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
 
 
 @test
+def invariance_check_tells_the_two_known_cases_apart():
+    """--invariance-check (task 7, §5.4): NSGA-II runs the same trajectory, bit
+    for bit, on DTLZ2_3D and on its objectives times 2^10 — its crowding
+    distance is normalised; SMS-EMOA at three objectives does not — its
+    reference point nad + 1 is absolute. The shift's outcome from the
+    rank-sum and Holm: the same trajectories are invariant, distributions that
+    cannot be told apart rounding, others not invariant. A campaign writes the
+    table under _invariance/."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  invariance_check...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import invariance as I
+    from mootation.run.config import load
+    nsga2 = I.check("nsga2", "DTLZ2_3D", pop=40, budget=1200, shift=False)
+    sms = I.check("sms_emoa", "DTLZ2_3D", pop=40, budget=1200, shift=False)
+    assert (nsga2["scale"], nsga2["scale_first_diff"]) == ("invariant", None), nsga2
+    assert sms["scale"] == "not invariant" and sms["scale_first_diff"] > 40, sms
+    assert I.first_difference(*[__import__("numpy").zeros((3, 2))] * 2) is None
+    rows = [{"shift_parted": 0, "igdp_plain": [1, 2, 3], "igdp_shifted": [1, 2, 3]},
+            {"shift_parted": 3, "igdp_plain": [1.0, 2.0, 3.0], "igdp_shifted": [1.5, 2.5, 3.5]},
+            {"shift_parted": 9, "igdp_plain": list(range(10)),
+             "igdp_shifted": list(range(100, 110))}]
+    I.classify_shift(rows)
+    assert [r["shift"] for r in rows] == ["invariant", "rounding", "not invariant"], rows
+    text = """algorithms = [ { name = "nsga2", pop = 20, gens = 0 }, { name = "hype", pop = 20, gens = 0 } ]
+[run]
+name = "inv"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1"]
+[campaign]
+out = "res"
+budget_fe = 300
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "inv.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        out = I.run_campaign(cfg, spec, root, seeds=3)
+        assert "_invariance" in out
+        lines = (root / "_invariance" / "invariance.csv").read_text(encoding="utf-8").splitlines()
+        assert len(lines) == 3 and lines[0].startswith("problem,label,algorithm"), lines
+
+
+@test
+def archive_checkpoints_are_taken_after_exactly_b_evaluations():
+    """[campaign] archive_checkpoints at record_at = [100, 300, 1000] (task 7,
+    §5.5): the archive scenario after exactly 100, 300 and 1 000 evaluations,
+    the first two inside a generation of 91 (at 100 the initial population is
+    not even evaluated yet), not at the first record past them."""
+    if not _have_numpy() or _core_with("params") is None:
+        print("  skip  archive_checkpoints...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "ck"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1500
+record_grid = "log"
+record_at = [100, 300, 1000]
+metrics = ["igdp_norm"]
+archive_checkpoints = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "ck.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        d = root / "DTLZ2_3D" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        at = meta["archive_at"]
+        assert sorted(at, key=int) == ["100", "300", "1000"], at
+        assert all(at[b]["fe"] == int(b) and 0 < at[b]["n"] <= 91 for b in at), at
+        assert at["100"]["igdp_norm"] >= at["1000"]["igdp_norm"], at
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:

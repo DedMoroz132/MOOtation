@@ -192,6 +192,9 @@ class CampaignSpec:
     # archive reduced by DSS there, its trajectory metrics in
     # meta["archive_at"] and its points in archive_at.npz, so that --cover and
     # the tables read the archive scenario at those budgets. Needs the archive.
+    # Taken after exactly b evaluations, inside a generation if need be (task
+    # 7, §5.5: at 100 or 300 evaluations a generation is most of the budget;
+    # until then it was the first record at or past b).
     archive_checkpoints: bool = False
     # Budgets read the hard way (task 5, run B1: at 100-1 000 evaluations a
     # generation is a large share of the budget). The population at b is the
@@ -646,7 +649,23 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             oracle.add(t if t is not None else truth(list(x)), x)
         if arc is not None and fe in hard:
             take_hard_archive(fe)
+        if fe in checkpoints and (len(arc) or cons is not None):
+            take_checkpoint(fe)
         return f
+
+    def take_checkpoint(b):
+        """The archive scenario after exactly b evaluations (archive_checkpoints)."""
+        nonlocal record_seconds
+        t_ck = time.perf_counter()
+        AF, AX, _ = arc.points()
+        idx = arc.select(p.pop_size, spec.answer_select)
+        T = true_values(AF[idx], AX[idx])
+        archive_at[str(b)] = dict(measure(T, AX[idx], traj_metrics), fe=b, n=int(len(idx)))
+        ck_budget.append(b); ck_fe.append(b); ck_n.append(len(idx))
+        ck_F.append(T.astype(np.float32))
+        if keep_x:
+            ck_X.append(AX[idx].astype(np.float32))
+        record_seconds += time.perf_counter() - t_ck
 
     snap = _snapshots_wanted(spec, job.problem)
     # the variables go into the snapshots and checkpoints where snapshot_variables
@@ -689,9 +708,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped,
                 trajectory_metrics_at_record_at=[m for m in traj_metrics
                                                  if m in spec.record_at_metrics])
-    # The archive scenario at the record_at counts below the budget (its end is
-    # final_archive): taken at the record that first reaches each count.
-    checkpoints = ([b for b in spec.record_at if b < budget]
+    # The archive scenario at the record_at counts below the budget, nominal
+    # and actual (its end is final_archive; budget_fe rounded up to whole
+    # generations ends inside the last one): taken after exactly each count of
+    # evaluations (take_checkpoint).
+    checkpoints = ([b for b in spec.record_at if b < min(budget, meta["budget_nominal"])]
                    if spec.archive_checkpoints and arc is not None and grid is not None else [])
     archive_at = {}
     ck_budget, ck_fe, ck_n, ck_F, ck_X = [], [], [], [], []
@@ -762,18 +783,6 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         for b in hard:                                   # the last record at or below b
             if fe <= b:
                 hard_pop[str(b)] = {k: rec.get(k) for k in ("gen", "fe", "n", *traj_metrics)}
-        crossed = [b for b in checkpoints if last_fe < b <= fe]
-        if crossed and fe < budget and (len(arc) or cons is not None):   # the end is final_archive
-            AF, AX, _ = arc.points()
-            idx = arc.select(p.pop_size, spec.answer_select)
-            T = true_values(AF[idx], AX[idx])
-            vals = dict(measure(T, AX[idx], traj_metrics), fe=fe, n=int(len(idx)))
-            for b in crossed:
-                archive_at[str(b)] = vals
-                ck_budget.append(b); ck_fe.append(fe); ck_n.append(len(idx))
-                ck_F.append(T.astype(np.float32))
-                if keep_x:
-                    ck_X.append(AX[idx].astype(np.float32))
         last_fe = fe
         fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
         fh.flush()
@@ -2289,6 +2298,15 @@ def main(argv: list[str] | None = None) -> int:
                          "found, apart from how the answer was chosen (oracle.py; not "
                          "--portfolio's oracle, the best algorithm per problem); CSV under "
                          "<results>/_oracle/")
+    ap.add_argument("--invariance-check", action="store_true",
+                    help="every algorithm entry on every problem of the campaign, at its "
+                         "budget: the trajectory on the objectives times 2^10 and times "
+                         "(2^-6, 1, 2^6, ...) against the original, bit for bit, and the "
+                         "final IGD+ on the objectives plus 2^4 against the original over "
+                         "--inv-seeds seeds, rank-sum and Holm (invariance.py); CSV under "
+                         "<results>/_invariance/")
+    ap.add_argument("--inv-seeds", type=int, default=30, metavar="N",
+                    help="with --invariance-check: the seeds of the shift's comparison (30)")
     ap.add_argument("--instance-space", action="store_true",
                     help="the problems as points of a plane drawn from their properties "
                          "(PILOT), per group of problems, and each algorithm's footprint there "
@@ -2447,6 +2465,11 @@ def main(argv: list[str] | None = None) -> int:
                     replicates=args.cover_bootstrap, workers=args.workers,
                     scenario=args.scenario, n_ref=spec.n_ref,
                     keep_caveats=args.cover_keep_caveats))
+        return 0
+    if args.invariance_check:
+        from . import invariance as I
+        print(I.run_campaign(cfg, spec, root, seeds=args.inv_seeds, workers=args.workers,
+                             problems=only_problems))
         return 0
     if args.portfolio or args.instance_space:
         try:
