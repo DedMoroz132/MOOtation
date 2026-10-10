@@ -79,6 +79,15 @@ them and `is_failed(v)` marks them, so leave those out of the answer you read.
 `set_fail_raise(true)` throws at the first failure instead
 ([`data_vault.hpp`](../include/mootation/data_vault.hpp), FAILED EVALUATIONS).
 
+Equalities h(x) = 0 are the last constraint values your problem writes, with
+`set_equalities(n, delta)` on the vault before the first evaluation: the vault
+turns each h into |h| - delta, so `limits_of` keeps the meaning "<= 0
+satisfied" and cv adds max(|h| - delta, 0). `set_eq_tol(delta)` moves the
+tolerance between steps and rewrites every evaluated point from its |h|.
+Limits you hand to `setup_with_seed` are your problem's own, h included; an
+algorithm writing values back through `seed_individual` writes the vault's
+(EQUALITY CONSTRAINTS).
+
 ### Diagnostics
 
 Some cores substitute a parameter that cannot be honoured: a subregion count

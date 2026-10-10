@@ -7352,6 +7352,69 @@ def the_failing_problems_fail_where_they_say():
 
 
 @test
+def equalities_hold_within_their_tolerance_and_its_schedule():
+    """Supplement 3, §3: minimize(eq_constraints=..., n_eq=...): every row's
+    cv is max(|h| - eq_tol, 0) beside the inequalities' max(g, 0), so a point
+    with |h| <= eq_tol is feasible; under eq_tol_schedule = "linear" the
+    tolerance falls from eq_tol0 to eq_tol in proportion to the evaluations
+    spent and the answer is taken at eq_tol; the misuses are refused."""
+    import math
+    if _core_with("eq_tol") is None:
+        print("  skip  equalities_hold...: stale _core"); return
+    import mootation
+    from mootation import _core
+
+    def f(x):
+        return [x[0], 1.0 - math.sqrt(x[0]) + x[1] + x[2]]
+
+    def h(x):
+        return [x[1] - 0.25]
+
+    def g(x):
+        return [x[0] - 0.8]
+
+    bounds = [(0.0, 1.0)] * 3
+    r = mootation.minimize(f, bounds, 2, pop_size=20, n_gen=40, seed=1,
+                           eq_constraints=h, n_eq=1, eq_tol=0.01)
+    assert r.eq_tol == 0.01 and len(r.cv) == len(r.variables) > 0
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(abs(x[1] - 0.25) - 0.01, 0.0), (x, cv)
+    assert any(cv == 0.0 and abs(x[1] - 0.25) > 0.0 for x, cv in zip(r.variables, r.cv))
+    r = mootation.minimize(f, bounds, 2, pop_size=20, n_gen=40, seed=1, constraints=g,
+                           eq_constraints=h, n_eq=1, eq_tol=0.01)
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(x[0] - 0.8, 0.0) + max(abs(x[1] - 0.25) - 0.01, 0.0), (x, cv)
+    # the linear schedule, read by an observer after every step: the tolerance
+    # of a step is the one set before it, from the evaluations spent so far
+    seen = []
+    r = mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=1000, seed=2,
+                           eq_constraints=h, n_eq=1, eq_tol=1e-4,
+                           eq_tol_schedule="linear", eq_tol0=0.5,
+                           on_generation=lambda gen, F: seen.append((gen, _core.current_eq_tol())),
+                           record_every=1)
+    assert seen[0] == (0, 0.5), seen[0]
+    for gen, tol in seen[1:]:
+        spent = 20 * gen                         # setup and the steps before this one
+        assert tol == 0.5 + (1e-4 - 0.5) * min(1.0, spent / 1000.0), (gen, tol)
+    assert seen[-1][1] < 0.02 and r.eq_tol == 1e-4
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(abs(x[1] - 0.25) - 1e-4, 0.0), (x, cv)
+    for kw, what in ((dict(eq_constraints=h), "n_eq"),
+                     (dict(eq_constraints=h, n_eq=1, eq_tol_schedule="linear", eq_tol0=0.5),
+                      "max_evaluations"),
+                     (dict(eq_constraints=h, n_eq=1, eq_tol_schedule="linear",
+                           max_evaluations=500), "eq_tol0"),
+                     (dict(n_eq=1), "eq_constraints"),
+                     (dict(eq_constraints=h, n_eq=1, eq_tol_schedule="cosine"), "fixed or linear")):
+        try:
+            mootation.minimize(f, bounds, 2, pop_size=10, n_gen=2, **kw)
+        except ValueError as e:
+            assert what in str(e), (kw, e)
+        else:
+            raise AssertionError(f"{kw} was accepted")
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:

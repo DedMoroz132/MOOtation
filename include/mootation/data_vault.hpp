@@ -31,6 +31,24 @@
 // are NaN. The penalty reaches an algorithm's nadir point only while a failure
 // is still in its population, which an elitist selection ends as soon as it
 // holds pop_size points that did not fail.
+//
+// EQUALITY CONSTRAINTS (task 7 of 2026-10-10, supplement 3, §3). With
+// set_equalities(n, delta) the last n of the problem's constraint values are
+// equalities h = 0. An evaluation's h becomes the inequality value |h| - delta
+// in limits, so that every reader of limits_of keeps the meaning "<= 0
+// satisfied" and cv adds max(|h| - delta, 0); |h| itself stays in the slot
+// (eq_abs). set_eq_tol(delta) moves the tolerance — the binding's linear
+// schedule does so between steps — and rewrites the equalities' values and
+// cv of every evaluated slot from |h|, exactly. Raw values enter only from an
+// evaluation and from seed_individual(..., raw = true), the seed population
+// the caller hands over; an algorithm writing back values it read from
+// limits_of (seed_individual, archive_push_data) writes them in the vault's
+// convention, and |h| is taken as that value + delta. A core that keeps its
+// own copies of the values sees the tolerance of the moment it read them.
+// Without equalities (n = 0) nothing here runs. The violation max(|h| - delta,
+// 0) and delta = 1e-4, the binding's default, are Liu and Wang's (IEEE TEVC
+// 23(5), 2019, Eq. 3, the DOC problems); the RWMOP competition's guidelines
+// (Kumar et al. 2021) take 1e-4 too, but count |h| itself beyond it.
 // ============================================================================
 
 #include <algorithm>
@@ -88,6 +106,10 @@ private:
     long long           failed_n_   = 0;          // evaluations that failed
     std::vector<double> fin_lo_, fin_hi_;         // per objective: best, worst finite
     std::vector<double> lim_hi_;                  // per constraint: worst finite value
+
+    // ── Equality constraints (EQUALITY CONSTRAINTS above) ───────────────────
+    std::size_t eq_n_   = 0;                      // the last eq_n_ limits are equalities
+    double      eq_tol_ = 0.0;                    // their tolerance delta
 
     // ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -193,8 +215,30 @@ private:
         penalize(s);
     }
 
+    // The equalities' raw values h of slot s: |h| kept, |h| - delta in limits.
+    void equalize(Ind_type& s) const {
+        if (eq_n_ == 0) return;
+        const std::size_t first = s.limits.size() - eq_n_;
+        s.eq_abs.resize(eq_n_);
+        for (std::size_t k = 0; k < eq_n_; ++k) {
+            s.eq_abs[k] = std::abs(s.limits[first + k]);
+            s.limits[first + k] = s.eq_abs[k] - eq_tol_;
+        }
+    }
+
+    // The equalities' values of slot s in the vault's convention (written back
+    // by an algorithm): |h| = value + delta; none given (all 0), none kept.
+    void adopt(Ind_type& s, bool given) const {
+        if (eq_n_ == 0) return;
+        if (!given) { s.eq_abs.clear(); return; }
+        const std::size_t first = s.limits.size() - eq_n_;
+        s.eq_abs.resize(eq_n_);
+        for (std::size_t k = 0; k < eq_n_; ++k) s.eq_abs[k] = s.limits[first + k] + eq_tol_;
+    }
+
     void calc_one(std::size_t r) {
         problem_.calc_objs(buf_[r]);
+        equalize(buf_[r]);
         settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
@@ -223,6 +267,7 @@ private:
         } else if (num_lims_ > 0) {
             std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
         }
+        equalize(buf_[r]);
         settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
@@ -277,6 +322,7 @@ private:
             } else if (num_lims_ > 0) {
                 std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             }
+            equalize(buf_[r]);
             settle(r);
             calc_cv_slot(r);
             dirty_[r] = 0;
@@ -326,6 +372,31 @@ public:
     }
 
     bool has_batch_executor() const { return static_cast<bool>(batch_executor_); }
+
+    // EQUALITY CONSTRAINTS: the last n constraint values are equalities, with
+    // the tolerance delta. Set before the first evaluation.
+    void set_equalities(std::size_t n, double delta) {
+        if (n > static_cast<std::size_t>(num_lims_))
+            throw std::invalid_argument("DataVault::set_equalities: " + std::to_string(n) +
+                                        " equalities of " + std::to_string(num_lims_) +
+                                        " constraints");
+        eq_n_   = n;
+        eq_tol_ = delta;
+    }
+    // A new tolerance: every evaluated slot's equalities and cv follow it.
+    void set_eq_tol(double delta) {
+        if (eq_n_ == 0 || delta == eq_tol_) { eq_tol_ = delta; return; }
+        eq_tol_ = delta;
+        const std::size_t first = static_cast<std::size_t>(num_lims_) - eq_n_;
+        for (std::size_t r = 0; r < buf_.size(); ++r) {
+            Ind_type& s = buf_[r];
+            if (dirty_[r] || s.failed || s.eq_abs.size() != eq_n_) continue;
+            for (std::size_t k = 0; k < eq_n_; ++k) s.limits[first + k] = s.eq_abs[k] - eq_tol_;
+            calc_cv_slot(r);
+        }
+    }
+    std::size_t eq_n()   const { return eq_n_; }
+    double      eq_tol() const { return eq_tol_; }
 
     // ── Dimensions ───────────────────────────────────────────────────────────
 
@@ -601,6 +672,7 @@ public:
             if (lims.empty()) std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             else buf_[r].limits = lims;
         }
+        adopt(buf_[r], !lims.empty());
         settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
@@ -673,12 +745,17 @@ public:
     //
     // Writes an individual without calling Problem.calc_objs.
     // dirty_[r] = 0 → ensure_ready will not trigger evaluation.
+    // raw: lims are the problem's own values, as an evaluation gives them (a
+    // seed population from outside); otherwise the vault's, as limits_of
+    // returns them (an algorithm writing back). They differ only in the
+    // equalities (EQUALITY CONSTRAINTS).
 
     void seed_individual(std::size_t v,
                          const std::vector<double>& vars,
                          const std::vector<double>& objs,
                          const std::vector<int>&    bvars = {},
-                         const std::vector<double>& lims  = {})
+                         const std::vector<double>& lims  = {},
+                         bool                       raw   = false)
     {
         std::size_t r = real_idx(v);
         if (static_cast<int>(vars.size()) != num_vars_)
@@ -711,6 +788,8 @@ public:
             if (lims.empty()) std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             else buf_[r].limits = lims;
         }
+        if (raw) equalize(buf_[r]);
+        else     adopt(buf_[r], !lims.empty());
         settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;

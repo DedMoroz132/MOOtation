@@ -151,6 +151,27 @@ reaches an algorithm's nadir point only while a failure stays in its
 population, which an elitist selection ends once it holds `pop_size` points
 that did not fail.
 
+### Equality constraints
+
+`minimize(eq_constraints=h, n_eq=k)` takes equalities h(x) = 0 beside the
+inequalities of `constraints`. An equality holds where |h| <= `eq_tol` (1e-4
+by default) and adds max(|h| - `eq_tol`, 0) to the violation cv: Liu and
+Wang's rule (IEEE TEVC 23(5), 2019, Eq. 3, with their DOC problems); the RWMOP
+competition's guidelines (Kumar et al. 2021) take the same 1e-4 but count |h|
+itself beyond it. The core does the arithmetic (`data_vault.hpp`, EQUALITY
+CONSTRAINTS), so every algorithm sees an equality as the inequality
+|h| - `eq_tol` <= 0, and with a fixed tolerance a run is, bit for bit, the run
+with that inequality in its place. `eq_tol_schedule = "linear"` with
+`eq_tol0` lets the tolerance fall from `eq_tol0` to `eq_tol` in proportion to
+the evaluations spent (it needs `max_evaluations`): before every step the
+core rewrites every point's violation from its |h|, and the answer's cv is
+taken at `eq_tol` (`result.eq_tol`); an observer reads the tolerance of the
+moment from `mootation._core.current_eq_tol()`. A core that keeps its own
+copies of the constraint values (LIS-LCS, MOSA's archive) judges a point by
+the tolerance of the moment it read them, so under the linear schedule its
+answer can hold points that meet only a looser one; check them against
+`eq_tol` there.
+
 ### What `--check` verifies
 
 Before anything expensive starts: unknown keys (an error, never a silent

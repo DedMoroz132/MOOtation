@@ -48,6 +48,11 @@ def minimize(
     seed: int = 0,
     constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
     n_cons: int = 0,
+    eq_constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
+    n_eq: int = 0,
+    eq_tol: float = 1e-4,
+    eq_tol_schedule: str = "fixed",
+    eq_tol0: float | None = None,
     batch: Callable[[list], list] | None = None,
     seed_population=None,
     on_size_mismatch: str = "truncate",
@@ -75,6 +80,24 @@ def minimize(
     algorithm   any name from `mootation.algorithms()`.
     constraints takes one decision vector, returns `n_cons` values; each <= 0
                 means satisfied. Supplying it turns constraint handling on.
+    eq_constraints, n_eq
+                equalities h(x) = 0: takes one decision vector, returns n_eq
+                values (n_eq must be given). An equality holds where
+                |h| <= eq_tol and adds max(|h| - eq_tol, 0) to the violation
+                cv, beside the inequalities' (data_vault.hpp, EQUALITY
+                CONSTRAINTS). Turns constraint handling on.
+    eq_tol      the equalities' tolerance, 1e-4 by default: Liu and Wang's,
+                with the same violation (the DOC problems, IEEE TEVC 23(5),
+                2019, Eq. 3); the RWMOP competition's guidelines (Kumar et
+                al. 2021) take 1e-4 too, but count |h| itself beyond it.
+    eq_tol_schedule, eq_tol0
+                "fixed" (the default): eq_tol throughout. "linear": the
+                tolerance falls from eq_tol0 to eq_tol in proportion to the
+                evaluations spent (it needs max_evaluations; with a design,
+                over the evaluations left to the algorithm); every point's
+                violation follows the current tolerance, and the answer's cv
+                is taken at eq_tol (result.eq_tol). An observer reads the
+                tolerance of the moment from mootation._core.current_eq_tol().
     batch       an optional vectorized evaluator: takes a list of decision
                 vectors, returns a list of objective vectors. It crosses into
                 Python once per generation instead of once per individual,
@@ -144,7 +167,7 @@ def minimize(
                 reported in `result.ignored` rather than dropped.
 
     Returns the binding's Result: `.objectives`, `.variables`, `.cv`,
-    `.active_n`, `.ignored`, `.evaluations`, `.n_failed`.
+    `.active_n`, `.ignored`, `.evaluations`, `.n_failed`, `.eq_tol`.
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if not bounds:
@@ -167,6 +190,33 @@ def minimize(
         raise TypeError(
             f"unknown parameter(s): {', '.join(bad)}. "
             f"Known: {', '.join(KNOBS)}")
+
+    # Equality constraints (task 7, supplement 3, §3): the core takes them after
+    # the inequalities, as one function of n_cons + n_eq values, and turns each
+    # h into |h| - eq_tol itself, so that a moving tolerance reaches every point.
+    if eq_tol_schedule not in ("fixed", "linear"):
+        raise ValueError(f"eq_tol_schedule = '{eq_tol_schedule}': fixed or linear")
+    has_ineq = constraints is not None
+    if eq_constraints is not None:
+        if int(n_eq) < 1:
+            raise ValueError("eq_constraints needs n_eq, the number of equalities it returns")
+        if not float(eq_tol) >= 0.0:
+            raise ValueError(f"eq_tol must be >= 0, got {eq_tol}")
+        if eq_tol_schedule == "linear":
+            if eq_tol0 is None or not float(eq_tol0) >= float(eq_tol):
+                raise ValueError("eq_tol_schedule = 'linear' needs eq_tol0 >= eq_tol, "
+                                 "the tolerance at the start")
+            if not max_evaluations:
+                raise ValueError("eq_tol_schedule = 'linear' runs over the evaluation "
+                                 "budget: give max_evaluations")
+        if has_ineq:
+            constraints = lambda x, _c=constraints, _h=eq_constraints: (    # noqa: E731
+                list(_c(x)) + list(_h(x)))
+        else:
+            constraints = lambda x, _h=eq_constraints: list(_h(x))         # noqa: E731
+    elif n_eq or eq_tol_schedule != "fixed" or eq_tol0 is not None:
+        raise ValueError("n_eq, eq_tol_schedule and eq_tol0 go with eq_constraints")
+    n_eq = int(n_eq) if eq_constraints is not None else 0
 
     # Failed evaluations (mootation.failures; task 7, supplement 3, §2): the
     # guard turns the user's exceptions and None rows into NaN, which the core
@@ -232,12 +282,16 @@ def minimize(
     problem.n_bin = n_bin
 
     if constraints is not None:
-        if n_cons < 1:
+        if not has_ineq:
+            n_cons = n_eq                   # the equalities alone
+        elif n_cons < 1:
             # Counted once rather than guessed per call: the binding needs the
             # width up front, and calling the user's function during setup to
             # find it out would spend an evaluation they did not ask for.
             probe = list(constraints([lo for lo, _ in bounds] + [0.0] * n_bin))
-            n_cons = len(probe)
+            n_cons = len(probe)             # with the equalities, if any
+        else:
+            n_cons = int(n_cons) + n_eq
         problem.n_limits = int(n_cons)
         if guard is not None:
             guard.n_cons = int(n_cons)
@@ -266,6 +320,12 @@ def minimize(
     cfg.fail_raise = on_failure == "raise"
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
+    if n_eq:
+        cfg.n_eq = n_eq
+        cfg.eq_tol = float(eq_tol)
+        if eq_tol_schedule == "linear":
+            cfg.eq_linear = True
+            cfg.eq_tol0 = float(eq_tol0)
     if layout is not None:
         cfg.var_kinds = layout.var_kinds()
         cfg.discrete_values = layout.discrete_values()

@@ -83,7 +83,7 @@ public:
                 seed_lims .empty() ? EMPTY_LM : seed_lims [i];
             vault_.seed_individual(static_cast<std::size_t>(i),
                                    seed_vars[i], seed_objs[i],
-                                   bv, lm);
+                                   bv, lm, /*raw=*/true);
         }
         algorithm_.setup_seeded(vault_);
         setup_done_ = true;

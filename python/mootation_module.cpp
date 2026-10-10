@@ -127,6 +127,8 @@ OpStats g_ops;
 // variables). Set by run_core, cleared by run(); asked for only at the
 // records, so a run that never asks pays nothing.
 std::function<std::vector<std::vector<double>>()> g_answer_variables;
+// The equalities' tolerance of the run in progress, for current_eq_tol().
+std::function<double()> g_eq_tol;
 
 inline std::string vec_key(const std::vector<double>& x)
 {
@@ -518,6 +520,15 @@ struct RunConfig {
     // "infeasible", the default) or an error (true, "raise"). See
     // data_vault.hpp, FAILED EVALUATIONS.
     bool fail_raise = false;
+    // Equality constraints (data_vault.hpp, EQUALITY CONSTRAINTS): the last
+    // n_eq of the problem's n_limits values are equalities h = 0, satisfied
+    // within eq_tol. eq_linear: the tolerance falls from eq_tol0 to eq_tol in
+    // proportion to the evaluations spent, set before every step (it needs
+    // max_evaluations); at the end it is eq_tol either way.
+    int    n_eq      = 0;
+    double eq_tol    = 1e-4;
+    double eq_tol0   = 1e-4;
+    bool   eq_linear = false;
 };
 
 struct PyResult {
@@ -546,6 +557,9 @@ struct PyResult {
     // Evaluations that failed (data_vault.hpp, FAILED EVALUATIONS). A failed
     // member of the final population is not in the answer above.
     long long                        n_failed = 0;
+    // The equalities' tolerance the answer's cv was taken with (RunConfig::
+    // eq_tol); 0 without equalities.
+    double                           eq_tol = 0.0;
 };
 
 template <typename Tag, typename Core>
@@ -562,6 +576,13 @@ PyResult run_core(const RunConfig& cfg)
     DataVault<Tag>      vault(cfg.pop_size, prob);
     if (g_problem->evaluate_batch) vault.set_batch_executor(&py_run_batch);
     vault.set_fail_raise(cfg.fail_raise);
+    if (cfg.n_eq > 0) {
+        if (cfg.eq_linear && cfg.max_evaluations <= 0)
+            throw std::invalid_argument("mootation: the linear schedule of eq_tol runs over "
+                                        "the evaluation budget; set max_evaluations");
+        vault.set_equalities(static_cast<std::size_t>(cfg.n_eq),
+                             cfg.eq_linear ? cfg.eq_tol0 : cfg.eq_tol);
+    }
     // integer and discrete variables (RunConfig::var_kinds): the Lamarckian
     // rounding at every write — integers to the nearest, ties to even, kept in
     // [ceil lo, floor hi]; discrete ones to the nearest value, ties to the lower
@@ -727,7 +748,14 @@ PyResult run_core(const RunConfig& cfg)
                 if (!v.is_failed(i)) X.push_back(v.variables_of(i));   // as emit() below
             return X;
         };
+        g_eq_tol = [&opt]() { return opt.get_vault().eq_tol(); };
         auto one_step = [&]() {
+            if (cfg.n_eq > 0 && cfg.eq_linear) {
+                // the share of the budget spent so far, setup included
+                const double t = std::min(1.0, static_cast<double>(g_evaluations.load()) /
+                                                   static_cast<double>(cfg.max_evaluations));
+                opt.get_vault().set_eq_tol(cfg.eq_tol0 + (cfg.eq_tol - cfg.eq_tol0) * t);
+            }
             if (g_ops.on) ops_before_step(opt.get_vault());
             opt.step();
             if (g_ops.on) ops_after_step(opt.get_vault());
@@ -796,6 +824,7 @@ PyResult run_core(const RunConfig& cfg)
     }
 
     auto&    v = opt.get_vault();
+    if (cfg.n_eq > 0) v.set_eq_tol(cfg.eq_tol);   // the answer at the final tolerance
     PyResult r;
     // NOT active_n(): steady-state cores (moead_de, moead_dd, hlmea, adaw,
     // ...) park a persistent scratch slot at active index pop_size(), so
@@ -852,6 +881,7 @@ PyResult run_core(const RunConfig& cfg)
         r.cv.push_back(v.get_cv(i));
     }
     r.n_failed = v.failed_n();
+    r.eq_tol   = cfg.n_eq > 0 ? v.eq_tol() : 0.0;
     return r;
 }
 
@@ -869,7 +899,9 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     mootation::ops::inner_archive_record() = mootation::ops::InnerArchiveRecord{};
     g_ops = OpStats{};
     g_ops.on = cfg.operator_stats;
-    struct Guard { ~Guard() { g_problem = nullptr; g_answer_variables = nullptr; } } guard;
+    struct Guard {
+        ~Guard() { g_problem = nullptr; g_answer_variables = nullptr; g_eq_tol = nullptr; }
+    } guard;
 
 #define MOOTATION_ALG(KEY, IND, CORE) \
     if (name == #KEY) return run_core<PyTag_##KEY, mootation::CORE<PyTag_##KEY>>(cfg);
@@ -974,6 +1006,16 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("fail_raise",      &RunConfig::fail_raise,
                        "A failed evaluation (a non-finite value) raises instead of "
                        "carrying the vault's penalty (on_failure = raise).")
+        .def_readwrite("n_eq",            &RunConfig::n_eq,
+                       "the last n_eq of the n_limits constraint values are equalities h = 0")
+        .def_readwrite("eq_tol",          &RunConfig::eq_tol,
+                       "an equality holds where |h| <= eq_tol; its violation is "
+                       "max(|h| - eq_tol, 0)")
+        .def_readwrite("eq_tol0",         &RunConfig::eq_tol0,
+                       "with eq_linear: the tolerance at the start")
+        .def_readwrite("eq_linear",       &RunConfig::eq_linear,
+                       "the tolerance falls from eq_tol0 to eq_tol in proportion to the "
+                       "evaluations spent (needs max_evaluations)")
         .def_readwrite("operator_stats",  &RunConfig::operator_stats,
                        "keep per-step operator statistics; read them with "
                        "operator_stats() from the on_generation observer")
@@ -1012,6 +1054,8 @@ PYBIND11_MODULE(_core, m)
         .def_readonly("n_failed", &PyResult::n_failed,
                       "Evaluations that failed (a non-finite value); a failed member of "
                       "the final population is not among the rows.")
+        .def_readonly("eq_tol", &PyResult::eq_tol,
+                      "The equalities' tolerance cv was taken with; 0 without equalities.")
         .def_readonly("evaluations", &PyResult::evaluations,
                       "Evaluations the run spent, setup included.")
         .def_readonly("operators", &PyResult::operators,
@@ -1162,6 +1206,13 @@ PYBIND11_MODULE(_core, m)
           },
           "The variables of the rows the on_generation observer has just received, in "
           "the same order, for the run in progress (call it from on_generation).");
+    m.def("current_eq_tol", []() {
+              if (!g_eq_tol)
+                  throw std::runtime_error("current_eq_tol() answers only during a run");
+              return g_eq_tol();
+          },
+          "The equalities' tolerance of the run in progress (call it from on_generation); "
+          "it moves only under eq_linear.");
     m.def("algorithms", &algorithm_names,
           "Names accepted by run(), straight from include/mootation/algorithms.def.");
     m.def("run", &run, py::arg("name"), py::arg("problem"), py::arg("config"),

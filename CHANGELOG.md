@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Equality constraints (task 7, supplement 3, §3; `data_vault.hpp`,
+  EQUALITY CONSTRAINTS): `minimize(eq_constraints=..., n_eq=...)`; an
+  equality holds where |h| <= `eq_tol` (1e-4) and adds max(|h| - eq_tol, 0)
+  to cv, Liu and Wang's rule (IEEE TEVC 2019, Eq. 3). `eq_tol_schedule =
+  "linear"` lowers the tolerance from `eq_tol0` to `eq_tol` over the
+  evaluation budget, every point's violation rewritten from |h| before each
+  step; `result.eq_tol`, `_core.current_eq_tol()`. The vault gains
+  `set_equalities` and `set_eq_tol`, and `seed_individual` a flag `raw` for
+  the caller's own values (`setup_with_seed` passes it). Every run without
+  equalities is unchanged bit for bit.
 - LIR-CMOP1-14 (`benchmarks/lir_cmop.py`; task 7, §8): Fan et al.'s
   constrained problems with large infeasible regions (Soft Computing 23(23),
   2019; the formulas of the preprint's Table 6), fronts built on first use

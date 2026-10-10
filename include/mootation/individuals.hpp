@@ -18,6 +18,7 @@ private:
     std::vector<int>    binary_variables;   // 0 or 1
     double              cv = 0.0;           // sum max(0, limits[k]) — cache
     bool                failed = false;     // the evaluation failed (DataVault, FAILED EVALUATIONS)
+    std::vector<double> eq_abs;             // |h| of the equalities (DataVault, EQUALITY CONSTRAINTS)
 
     template <typename T> friend class DataVault;
     template <typename T> friend class Problem;
