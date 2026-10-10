@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- C-TAEA (`algorithms/ctaea.hpp`; supplement 3, §4.3): Li, Chen, Fu and Yao's
+  two-archive algorithm for constrained problems (IEEE TEVC 23(2), 2019),
+  Algorithms 1-5, with the authors' code (as pymoo carries it) where it
+  departs from the text: objectives taken from the ideal point without Eq. 8's
+  division, one child per pair. Median IGD+ of 10 runs of 30 000
+  evaluations: C1-DTLZ1 (3 objectives) 0.0152, pymoo 0.0158; MW1 0.0067,
+  pymoo 0.0026. 65 algorithms.
 - The epsilon level (supplement 3, §4.1; `data_vault.hpp`, EPSILON LEVEL):
   `minimize(constraint_mode="eps_level")`. The vault counts a violation up to
   ε as none for the algorithm, so every feasibility-first core does the

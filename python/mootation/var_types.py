@@ -40,7 +40,7 @@ categorical variables as their labels. The result's variables are the core's
 real genome (the integer and discrete values as floats), its binary_variables
 the integer genome (bits, and labels' indices); Layout.to_user decodes a row.
 
-The integer genome is a C++ feature of 47 of the 64 cores; the 17 others
+The integer genome is a C++ feature of 48 of the 65 cores; the 17 others
 refuse it at setup, by name (docs/running.md lists them).
 """
 

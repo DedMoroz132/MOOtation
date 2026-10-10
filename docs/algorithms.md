@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-64 algorithms, one header each under `include/mootation/algorithms/`, registered
+65 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`. Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
@@ -19,12 +19,13 @@ implementation follows; if you publish results, cite that paper.
 | Reference-vector / angle-based | 8 | irregular or scaled fronts, where a fixed lattice misses | adaptive variants (RVEA*, DEA-GNG, NRV-MOEA, SRV) need a few generations before they help |
 | Clustering-based | 11 | disconnected or irregular fronts | cluster counts are parameters the papers tuned per problem |
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
+| Constrained, two archives or populations | 1 | a constrained problem whose feasible region is small, scattered or behind infeasible barriers | `pop_size` must be an exact Das–Dennis lattice size; at 2N per generation in memory, N evaluations |
 | Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
 | Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
-Eighteen algorithms require `pop_size` to be an exact Das–Dennis lattice size
+Nineteen algorithms require `pop_size` to be an exact Das–Dennis lattice size
 for the objective count (91 at M = 3, 210 at M = 5, ...): A-NSGA-III, AdaW,
-crEA, EDV, IREA, MBRA, MOEA/D, MOEA/D-AWA, MOEA/DD, MOEA/D-DE, MOEA/D-DRA,
+C-TAEA, crEA, EDV, IREA, MBRA, MOEA/D, MOEA/D-AWA, MOEA/DD, MOEA/D-DE, MOEA/D-DRA,
 MOMBI-II, NSGA-III, RVEA, RVEA*, MaOEA/SRV, SRV-NSGA-III and θ-DEA; the
 M2M family needs `pop` divisible by its subregion count `K`; the others round
 an unattainable request to the nearest lattice and say so through
@@ -209,6 +210,19 @@ on 2026-09-09.
 | Two_Arch2 | 2015 | `two_arch2` | [10.1109/TEVC.2014.2350987](https://doi.org/10.1109/TEVC.2014.2350987) |
 | NAEMO | 2019 | `naemo` | [10.1016/j.swevo.2018.12.002](https://doi.org/10.1016/j.swevo.2018.12.002) |
 
+## Constrained, two archives or populations
+
+| Algorithm | Year | File | DOI |
+|---|---|---|---|
+| C-TAEA | 2019 | `ctaea` | [10.1109/TEVC.2018.2855411](https://doi.org/10.1109/TEVC.2018.2855411) |
+
+C-TAEA keeps a convergence archive, which is the population and the answer,
+feasible first, and a diversity archive that ignores the constraints and fills
+the subregions the first one leaves thin; parents come from either, by the
+share of non-dominated points each holds. The header lists where it follows
+the authors' code over the paper's text (the normalization, one child per
+pair) and the IGD+ medians against pymoo's port on C1-DTLZ1 and MW1.
+
 ## Direct search
 
 | Algorithm | Year | File | DOI |
@@ -248,7 +262,7 @@ reduced to `pop_size` by DSS, published every `pop_size` steps.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 47 of the 64
+Every algorithm works on a real-valued genome with box bounds. 48 of the 65
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
 `Problem<>` specialisation); the other 17 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only: CLIA, DCEA,
@@ -280,9 +294,11 @@ Every core carries a `constraint_mode` switch, off by default because the
 papers are unconstrained. `FEASIBILITY` (feasible-first, then the algorithm's
 own comparison; the mode the papers with a constrained section describe),
 `CDP` (Deb's constrained domination) and `EPS_CONSTRAINT` (the ε+ indicator
-with a violation shift, IBEA only). Each header states where the handling
+with a violation shift, IBEA only); the Python layer adds the ε level
+(`constraint_mode = "eps_level"`, docs/running.md), which the vault applies to
+any feasibility-first core. Each header states where the handling
 attaches: the non-dominated sort, the scalarising comparison, the archive
 filter or the truncation rule, whichever is that algorithm's actual preference
-relation. There is no dedicated constrained-optimisation algorithm in the
-library; this is constraint handling bolted onto unconstrained methods, and the
-headers say so.
+relation. For the 64 that were written for unconstrained problems this is
+constraint handling bolted on, and the headers say so; C-TAEA is built for
+constraints.

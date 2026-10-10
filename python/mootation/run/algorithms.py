@@ -98,7 +98,7 @@ def algorithm_families() -> tuple[tuple[str, tuple[str, ...]], ...]:
 #
 # Derived from: grep -l generate_exact include/mootation/algorithms/*.hpp
 EXACT_LATTICE = frozenset({
-    "a_nsga3", "adaw", "crea", "edv", "irea", "mbra", "moead", "moead_awa",
+    "a_nsga3", "adaw", "crea", "ctaea", "edv", "irea", "mbra", "moead", "moead_awa",
     "moead_dd", "moead_de", "moead_dra", "mombi2", "nsga3", "rvea", "rvea_star",
     "srv", "srv_nsga3", "theta_dea",
 })

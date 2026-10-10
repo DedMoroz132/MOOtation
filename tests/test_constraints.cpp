@@ -8,7 +8,7 @@
 // half: g = x0 - 0.5 <= 0. Roughly half of any uniformly drawn population is
 // infeasible, so the constraint is not a formality the search can ignore.
 //
-// For each of the 64 algorithms the same seed is run twice — once with
+// For each of the 65 algorithms the same seed is run twice — once with
 // ConstraintMode::NONE and once with ConstraintMode::FEASIBILITY — and the test
 // requires:
 //

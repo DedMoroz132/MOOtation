@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 64, f"expected 64 algorithms, got {len(names)}"
+    assert len(names) == 65, f"expected 65 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -3150,7 +3150,7 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 9 and fams[0][1][0] == "nsga2", fams
+    assert len(fams) == 10 and fams[0][1][0] == "nsga2", fams
     assert fams[-2:] == (("Direct search", ("dms",)), ("Simulated annealing", ("mosa",))), fams
     assert all(name and "─" not in name for name, _ in fams), fams
 
@@ -7679,6 +7679,40 @@ def eps_level_follows_fans_rule_and_is_feasibility_at_zero():
             pass
         else:
             raise AssertionError(f"{bad} was accepted")
+
+
+@test
+def ctaea_runs_feasible_spends_n_per_generation_and_wants_a_lattice():
+    """Supplement 3, §4.3: C-TAEA on C2-DTLZ2 (3 objectives) answers with
+    feasible points near the front; a generation costs N evaluations (one
+    child of each of N pairs), the start N; pop_size must be a Das-Dennis
+    lattice size (91 at three objectives), and the run layer knows it."""
+    if _core_with("eps_level") is None or "ctaea" not in __import__("mootation").algorithms():
+        print("  skip  ctaea...: stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    from mootation.run.algorithms import EXACT_LATTICE
+    p = get("C2-DTLZ2_3D")
+    seen = []
+    r = mootation.minimize(p.evaluate, p.bounds, 3, algorithm="ctaea", pop_size=91, n_gen=60,
+                           seed=1, constraints=p.constraints,
+                           on_generation=lambda g, F: seen.append(len(F)), record_every=1)
+    assert r.evaluations == 91 * 61 and len(r.objectives) == 91, r.evaluations
+    F = np.asarray([f for f, c in zip(r.objectives, r.cv) if c <= 0])
+    assert len(F) == 91
+    igdp = M.compute(F, ref_front=np.asarray(p.pareto_front(1000)), ideal=p.ideal, nadir=p.nadir,
+                     which=["igdp"])["igdp"]
+    assert igdp < 0.1, igdp
+    assert "ctaea" in EXACT_LATTICE
+    try:
+        mootation.minimize(p.evaluate, p.bounds, 3, algorithm="ctaea", pop_size=90, n_gen=2,
+                           seed=1, constraints=p.constraints)
+    except (ValueError, RuntimeError) as e:
+        assert "91" in str(e) or "lattice" in str(e).lower() or "das" in str(e).lower(), e
+    else:
+        raise AssertionError("ctaea took pop_size = 90 at three objectives")
 
 
 @test
