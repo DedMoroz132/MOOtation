@@ -373,12 +373,11 @@ public:
         int scratch=0;            // use active slot 0 as scratch
         const auto& b=vault.get_bounds();
         std::uniform_real_distribution<double> d(0.0,1.0);
-        std::uniform_int_distribution<int> dbn(0,1);
         std::vector<Sol> pool; pool.reserve(5*N_);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<5*N_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=b[j].first.value_or(0.0),hi=b[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
-            for(int j=0;j<vault.bin_vars_n();++j) bv[j]=dbn(rng_);
+            for(int j=0;j<vault.bin_vars_n();++j) bv[j] = ops::random_gene(j, rng_);
             Sol s; s.vars=vars; s.bvars=bv;
             if(vault.bin_vars_n()>0) vault.set_all_variables(scratch,vars,bv); else vault.set_variables(scratch,vars);
             vault.refresh_objectives(scratch); s.objs=vault.objectives_of(scratch);

@@ -463,11 +463,10 @@ public:
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         const auto& bounds=vault.get_bounds();
         std::uniform_real_distribution<double> d(0.0,1.0);
-        std::uniform_int_distribution<int> db(0,1);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<N_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=bounds[j].first.value_or(0.0),hi=bounds[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
-            for(int j=0;j<vault.bin_vars_n();++j) bv[j]=db(rng_);
+            for(int j=0;j<vault.bin_vars_n();++j) bv[j] = ops::random_gene(j, rng_);
             if(vault.bin_vars_n()>0) vault.set_all_variables(i,vars,bv); else vault.set_variables(i,vars);
         }
         vault.sync();

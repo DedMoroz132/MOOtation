@@ -64,6 +64,7 @@ def minimize(
     init: str = "uniform",
     init_share: float = 0.0,
     var_types=None,
+    budget_counts: str = "calls",
     int_repair: str = "lamarck",
     eta_int: float | None = None,
     on_failure: str = "infeasible",
@@ -163,17 +164,33 @@ def minimize(
                 with "infeasible": stop with FailureShareExceeded once more
                 than this share of the last failure_window (100) evaluations
                 failed; off unless given.
+    var_types   one entry per variable: "real", "int", ("discrete", values),
+                "bin" or ("cat", labels) (mootation.var_types); fn gets the
+                decoded point, a categorical variable as its label.
+    budget_counts
+                "calls" (the default): max_evaluations counts calls, and fn
+                runs for every one. "unique": a decoded point evaluated before
+                is answered from memory, and max_evaluations counts distinct
+                points — what a solver run costs (mootation.unique); a
+                run whose core asks for nothing new in 10 000 steps ends
+                there (a space smaller than the budget).
+                result.unique_evaluations counts the distinct points either
+                way, result.evaluations the calls.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
     Returns the binding's Result: `.objectives`, `.variables`, `.cv`,
-    `.active_n`, `.ignored`, `.evaluations`, `.n_failed`, `.eq_tol`.
+    `.active_n`, `.ignored`, `.evaluations`, `.unique_evaluations`,
+    `.n_failed`, `.eq_tol`.
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if not bounds:
         raise ValueError("bounds is empty — there are no decision variables")
     for i, (lo, hi) in enumerate(bounds):
-        if not lo < hi:
+        gene = (var_types is not None and i < len(var_types)
+                and (var_types[i] == "bin" or (isinstance(var_types[i], (tuple, list))
+                                               and var_types[i][0] == "cat")))
+        if not lo < hi and not gene:            # a bit's or a label's bounds are ignored
             raise ValueError(
                 f"bounds[{i}] = ({lo}, {hi}): lower must be < upper")
     if n_objs < 1:
@@ -251,10 +268,24 @@ def minimize(
                 "evaluator replaces the per-point function the log wraps. "
                 "Log inside your batch function instead.")
 
-    # Integer, discrete and binary variables (var_types.py; task 7, §10 and
-    # supplement 2, §3): the core sees the real, integer and discrete ones as
-    # its real genome and the bits as its binary genome; fn, constraints and
-    # batch get the caller's decoded variables in the caller's order.
+    # Distinct decoded points (unique.py; supplement 3, §1.2): counted at the
+    # caller's side of var_types, so that the key is the decoded point; with
+    # budget_counts = "unique" a repeat is answered from memory.
+    if budget_counts not in ("calls", "unique"):
+        raise ValueError(f"budget_counts = '{budget_counts}': calls or unique")
+    from .unique import Points
+    points = Points(cache=budget_counts == "unique")
+    fn = points.fn(fn)
+    if constraints is not None:
+        constraints = points.constraints(constraints)
+    if batch is not None:
+        batch = points.batch(batch)
+
+    # Integer, discrete, binary and categorical variables (var_types.py; task 7,
+    # §10, supplement 2, §3, supplement 3, §1): the core sees the real, integer
+    # and discrete ones as its real genome and the bits and categorical ones as
+    # its integer genome; fn, constraints and batch get the caller's decoded
+    # variables in the caller's order.
     if int_repair not in ("lamarck", "baldwin"):
         raise ValueError(f"int_repair = '{int_repair}': lamarck or baldwin")
     layout = None
@@ -272,9 +303,10 @@ def minimize(
         if user_batch is not None:
             batch = lambda X, _b=user_batch: _b([layout.to_user(x) for x in X])  # noqa: E731
         bounds = layout.core_bounds()
-        n_bin = len(layout.bits)
+        n_bin = len(layout.genes)
         if n_bin and init != "uniform":
-            raise ValueError("init designs are real-valued: not with binary variables")
+            raise ValueError("init designs are real-valued: not with binary or categorical "
+                             "variables")
 
     problem = _core.Problem()
     problem.bounds = bounds
@@ -318,6 +350,8 @@ def minimize(
         cfg.max_evaluations = int(max_evaluations)
     cfg.seed = int(seed)
     cfg.fail_raise = on_failure == "raise"
+    cfg.unique_evaluations = lambda: points.count
+    cfg.budget_unique = budget_counts == "unique"
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
     if n_eq:
@@ -329,6 +363,7 @@ def minimize(
     if layout is not None:
         cfg.var_kinds = layout.var_kinds()
         cfg.discrete_values = layout.discrete_values()
+        cfg.gene_levels = layout.gene_levels()
         cfg.lamarck = int_repair == "lamarck"
         if any(k != 0 for k in cfg.var_kinds):
             cfg.eta_int = 3.0 if eta_int is None else float(eta_int)
@@ -389,7 +424,8 @@ def minimize(
             if left <= 0:
                 raise ValueError(f"the design takes {n_design} of the {max_evaluations} "
                                  f"evaluations and leaves none to {algorithm}")
-            cfg.max_evaluations = left
+            # the core counts its own calls; distinct points include the design's
+            cfg.max_evaluations = left if budget_counts == "calls" else int(max_evaluations)
     elif init_share:
         raise ValueError("init_share needs a design: init = 'sobol'")
 
@@ -432,6 +468,13 @@ def minimize(
 
     try:
         result = _core.run(algorithm, problem, cfg)
+    except ValueError as e:
+        if n_bin and ("binary" in str(e) or "continuous" in str(e)):
+            # the 17 cores without an integer genome refuse it by name
+            raise ValueError(f"{algorithm} takes no binary or categorical variables (the "
+                             f"integer genome; docs/running.md lists the cores that do): "
+                             f"{e}") from e
+        raise
     finally:
         if log is not None:
             log.close()
@@ -442,5 +485,6 @@ def minimize(
               meta={"algorithm": algorithm, "pop_size": pop_size,
                     "n_gen": n_gen, "seed": seed, "n_objs": n_objs})
     # the result's variables are the core's real genome (integer and discrete
-    # values as floats), its binary_variables the bits (var_types.py)
+    # values as floats), its binary_variables the integer genome: bits, and
+    # categorical variables' label indices (var_types.py; Layout.to_user)
     return result

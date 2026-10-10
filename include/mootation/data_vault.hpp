@@ -65,6 +65,7 @@
 
 #include "batch_executor.hpp"
 #include "individuals.hpp"
+#include "operators/bit_flip.hpp"
 #include "operators/bound_repair.hpp"
 #include "problem.hpp"
 
@@ -514,7 +515,7 @@ public:
         if (static_cast<int>(bvars.size()) != num_bin_vars_)
             throw std::invalid_argument("set_all_variables: wrong binary size");
         for (int j = 0; j < num_bin_vars_; ++j)
-            buf_[r].binary_variables[j] = (bvars[j] != 0) ? 1 : 0;
+            buf_[r].binary_variables[j] = ops::clamp_gene(j, bvars[j]);
         dirty_[r] = 1;
     }
 
@@ -665,7 +666,7 @@ public:
         }
         if (num_bin_vars_ > 0) {
             if (bvars.empty()) std::fill(buf_[r].binary_variables.begin(), buf_[r].binary_variables.end(), 0);
-            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = (bvars[j] != 0) ? 1 : 0;
+            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = ops::clamp_gene(j, bvars[j]);
         }
         buf_[r].objectives = objs;
         if (num_lims_ > 0) {
@@ -781,7 +782,7 @@ public:
         }
         if (num_bin_vars_ > 0) {
             if (bvars.empty()) std::fill(buf_[r].binary_variables.begin(), buf_[r].binary_variables.end(), 0);
-            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = (bvars[j] != 0) ? 1 : 0;
+            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = ops::clamp_gene(j, bvars[j]);
         }
         buf_[r].objectives = objs;
         if (num_lims_ > 0) {

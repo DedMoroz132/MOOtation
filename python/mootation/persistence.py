@@ -120,7 +120,8 @@ class EvaluationLog:
         if self._fh is None:
             self._open(len(x), len(f))
         cv = float("nan") if failed else sum(v for v in g if v > 0.0)
-        self._w.writerow([self.rows + 1] + [repr(v) for v in x]
+        # a categorical variable's label as it is (var_types.py), a number by repr
+        self._w.writerow([self.rows + 1] + [v if isinstance(v, str) else repr(v) for v in x]
                          + [repr(v) for v in f] + [repr(cv), int(failed), error])
         self.rows += 1
         # Flushed per row: an evaluation is expensive enough that the write is

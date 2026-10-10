@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import numbers
 import os
 from dataclasses import dataclass, asdict, field
 from pathlib import Path
@@ -39,9 +40,13 @@ from typing import Iterator
 _HASH_DIGITS = 12
 
 
-def hash_x(x: list[float]) -> str:
-    """Stable content hash of a decision vector."""
-    payload = ",".join(f"{v:.{_HASH_DIGITS}g}" for v in x)
+def hash_x(x: list) -> str:
+    """Stable content hash of a decision vector: of the point as the evaluator
+    receives it, decoded (var_types: integers rounded, discrete values from
+    their list, a categorical variable as its label, by repr), so that two
+    reals that round to one integer hash alike."""
+    payload = ",".join(f"{v:.{_HASH_DIGITS}g}" if isinstance(v, numbers.Real) else repr(v)
+                       for v in x)
     return hashlib.blake2b(payload.encode("utf-8"), digest_size=16).hexdigest()
 
 

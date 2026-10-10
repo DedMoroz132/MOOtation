@@ -368,8 +368,30 @@ for every algorithm that writes through the vault) or keeps the real one and
 only the evaluation sees it rounded (`"baldwin"`). Polynomial mutation takes
 `eta_int` (3) for those variables. Both are `params` of an algorithm entry. A
 run records `dup_x_share`, the share of its evaluations whose decoded point had
-been evaluated before. The bits form the cores' binary genome, which 47 of the
-64 cores take; the others refuse it by name.
+been evaluated before.
+
+`("cat", labels)` — or `("cat", k)` for the labels 0 .. k−1 — is a
+categorical variable: k ≥ 2 unordered values, which `fn` receives as the
+label itself. Bits and categorical variables form the cores' integer genome
+(DataVault's `binary_variables`: a bit 0 or 1, a label its index): uniform
+crossover takes the genes as they are, and mutation gives each gene, with
+probability 1/(number of genes) but at most 1/2 (pymoo's cap; with a single
+gene 1 would change every child's), one of its other values, each alike —
+a bit flips (`operators/bit_flip.hpp`). SBX, DE and polynomial mutation never
+see them, and with more than two genes a binary run is what it was, bit for
+bit. 47 of the 64 cores take the integer genome; these 17 refuse it by name:
+`clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `etea`, `gde3`, `hcca`, `hlmea`,
+`if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`, `moead_ds`, `mosa`, `naemo`
+and `two_arch2` (`minimize` says so, naming the variables).
+
+`result.evaluations` counts the calls, `result.unique_evaluations` the
+distinct decoded points among them (`mootation/unique.py`; the key is the
+point `fn` receives, so two reals that round onto one integer are one point).
+`budget_counts = "unique"` answers a repeat from memory without calling `fn`
+and counts `max_evaluations` in distinct points — what a solver run costs; a
+run whose algorithm asks for nothing new in 10 000 steps ends there (a space
+smaller than the budget). The default, `"calls"`, calls `fn` every time, as
+before. The run journal's cache (`run/ledger.py`) keys the decoded point too.
 
 **DAS-CMOP1-9** (Fan et al., Evolutionary Computation 28(3), 2020;
 `benchmarks/dascmop.py`): constrained problems whose difficulty a triplet

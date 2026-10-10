@@ -479,6 +479,9 @@ struct RunConfig {
     std::vector<std::vector<double>> discrete_values;
     bool                             lamarck = true;
     std::optional<double>            eta_int;
+    // Categorical variables (supplement 3, §1): the levels of every gene of
+    // the integer genome, 2 for a bit (ops::gene_levels); empty: all bits.
+    std::vector<int>                 gene_levels;
     // the bits of a warm start, beside seed_variables (PyProblem::n_bin)
     std::vector<std::vector<int>>    seed_binary;
 
@@ -529,6 +532,12 @@ struct RunConfig {
     double eq_tol    = 1e-4;
     double eq_tol0   = 1e-4;
     bool   eq_linear = false;
+    // Distinct decoded points (supplement 3, §1.2; mootation/unique.py): the
+    // caller's count of them, and whether the evaluation budget, its schedules
+    // and the observer's stride count them instead of calls (budget_counts =
+    // "unique": a repeat answered from memory costs nothing).
+    std::function<long long()> unique_evaluations;
+    bool                       budget_unique = false;
 };
 
 struct PyResult {
@@ -560,6 +569,9 @@ struct PyResult {
     // The equalities' tolerance the answer's cv was taken with (RunConfig::
     // eq_tol); 0 without equalities.
     double                           eq_tol = 0.0;
+    // Distinct decoded points evaluated (RunConfig::unique_evaluations); -1
+    // where the caller did not count them.
+    long long                        unique_evaluations = -1;
 };
 
 template <typename Tag, typename Core>
@@ -610,6 +622,7 @@ PyResult run_core(const RunConfig& cfg)
         if (cfg.eta_int && !cfg.var_kinds.empty())
             for (int k : cfg.var_kinds) per.push_back(k != 0 ? *cfg.eta_int : 0.0);
     }
+    ops::gene_levels() = cfg.gene_levels;
     Optimizer<Tag, Core> opt(std::move(vault), defer_setup);
 
     auto&                    alg = opt.get_algorithm();
@@ -749,10 +762,16 @@ PyResult run_core(const RunConfig& cfg)
             return X;
         };
         g_eq_tol = [&opt]() { return opt.get_vault().eq_tol(); };
+        // the evaluations the budget counts: calls, or distinct points
+        auto spent = [&]() -> long long {
+            if (!cfg.budget_unique || !cfg.unique_evaluations) return g_evaluations.load();
+            py::gil_scoped_acquire gil;
+            return cfg.unique_evaluations();
+        };
         auto one_step = [&]() {
             if (cfg.n_eq > 0 && cfg.eq_linear) {
                 // the share of the budget spent so far, setup included
-                const double t = std::min(1.0, static_cast<double>(g_evaluations.load()) /
+                const double t = std::min(1.0, static_cast<double>(spent()) /
                                                    static_cast<double>(cfg.max_evaluations));
                 opt.get_vault().set_eq_tol(cfg.eq_tol0 + (cfg.eq_tol - cfg.eq_tol0) * t);
             }
@@ -787,18 +806,21 @@ PyResult run_core(const RunConfig& cfg)
             }
         } else {
             if (observe) emit(0);
-            const long long start  = g_evaluations.load();
+            const long long start  = spent();
             const long long stride = static_cast<long long>(cfg.record_every) *
                                      std::max(1, cfg.pop_size);
             long long next_record  = start + stride;
             long long idle         = 0;   // consecutive steps that evaluated nothing
-            for (int g = 1; g_evaluations.load() < cfg.max_evaluations; ++g) {
-                const long long before = g_evaluations.load();
+            for (int g = 1; spent() < cfg.max_evaluations; ++g) {
+                const long long before = spent();
                 one_step();
-                const long long now = g_evaluations.load();
+                const long long now = spent();
                 if (now > before) {
                     idle = 0;
                 } else if (++idle >= 10000) {
+                    // counting distinct points: the core asks only for points it
+                    // has seen, a space too small for the budget; the run ends
+                    if (cfg.budget_unique) break;
                     throw std::runtime_error(
                         "mootation: 10000 steps in a row evaluated nothing; this core "
                         "cannot run on an evaluation budget, use n_gen");
@@ -882,6 +904,7 @@ PyResult run_core(const RunConfig& cfg)
     }
     r.n_failed = v.failed_n();
     r.eq_tol   = cfg.n_eq > 0 ? v.eq_tol() : 0.0;
+    r.unique_evaluations = cfg.unique_evaluations ? cfg.unique_evaluations() : -1;
     return r;
 }
 
@@ -1013,6 +1036,12 @@ PYBIND11_MODULE(_core, m)
                        "max(|h| - eq_tol, 0)")
         .def_readwrite("eq_tol0",         &RunConfig::eq_tol0,
                        "with eq_linear: the tolerance at the start")
+        .def_readwrite("unique_evaluations", &RunConfig::unique_evaluations,
+                       "a callable giving the number of distinct decoded points evaluated "
+                       "so far (mootation/unique.py)")
+        .def_readwrite("budget_unique",   &RunConfig::budget_unique,
+                       "max_evaluations counts distinct points, not calls "
+                       "(budget_counts = unique)")
         .def_readwrite("eq_linear",       &RunConfig::eq_linear,
                        "the tolerance falls from eq_tol0 to eq_tol in proportion to the "
                        "evaluations spent (needs max_evaluations)")
@@ -1032,6 +1061,9 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("discrete_values", &RunConfig::discrete_values)
         .def_readwrite("lamarck",         &RunConfig::lamarck)
         .def_readwrite("eta_int",         &RunConfig::eta_int)
+        .def_readwrite("gene_levels",     &RunConfig::gene_levels,
+                       "the levels of every gene of the integer genome, 2 for a bit "
+                       "(categorical variables); empty: all bits")
         .def_readwrite("seed_objectives", &RunConfig::seed_objectives)
         .def_readwrite("seed_limits",     &RunConfig::seed_limits)
         .def_readwrite("on_generation",   &RunConfig::on_generation,
@@ -1054,6 +1086,9 @@ PYBIND11_MODULE(_core, m)
         .def_readonly("n_failed", &PyResult::n_failed,
                       "Evaluations that failed (a non-finite value); a failed member of "
                       "the final population is not among the rows.")
+        .def_readonly("unique_evaluations", &PyResult::unique_evaluations,
+                      "Distinct decoded points evaluated (minimize counts them); -1 "
+                      "where nobody counted.")
         .def_readonly("eq_tol", &PyResult::eq_tol,
                       "The equalities' tolerance cv was taken with; 0 without equalities.")
         .def_readonly("evaluations", &PyResult::evaluations,

@@ -352,7 +352,6 @@ public:
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> U01(0.0, 1.0);
-        std::uniform_int_distribution<int> bit(0, 1);
         std::vector<double> x(static_cast<std::size_t>(vault.vars_n()));
         std::vector<int> bx(static_cast<std::size_t>(vault.bin_vars_n()));
         for (int i = 0; i < n; ++i) {
@@ -361,7 +360,8 @@ public:
                 const double hi = bounds[j].second.value_or(1.0);
                 x[static_cast<std::size_t>(j)] = lo + U01(rng_) * (hi - lo);
             }
-            for (auto& b : bx) b = bit(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j)
+                bx[static_cast<std::size_t>(j)] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(static_cast<std::size_t>(i), x, bx);
             else                        vault.set_variables(static_cast<std::size_t>(i), x);
         }

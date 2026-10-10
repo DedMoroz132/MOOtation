@@ -357,7 +357,6 @@ public:
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist_real(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin (0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -368,7 +367,7 @@ public:
                 vars[j] = lo + dist_real(rng_) * (hi - lo);
             }
             for (int j = 0; j < vault.bin_vars_n(); ++j)
-                bvars[j] = dist_bin(rng_);
+                bvars[j] = ops::random_gene(j, rng_);
 
             if (vault.bin_vars_n() > 0)
                 vault.set_all_variables(i, vars, bvars);

@@ -252,10 +252,10 @@ private:
         if (nb > 0) {
             std::vector<int> y_bvars(nb);
             std::uniform_real_distribution<double> Ub(0.0, 1.0);
-            double p_bin = 1.0 / static_cast<double>(nb);
+            double p_bin = ops::gene_mutation_rate(nb);
             for (int j = 0; j < nb; ++j) {
                 y_bvars[j] = vault.get_bin_variable(i, j);
-                if (Ub(rng_) < p_bin) y_bvars[j] ^= 1;
+                if (Ub(rng_) < p_bin) ops::mutate_gene(y_bvars, j, rng_);
             }
             vault.set_all_variables(scratch, y_vars, y_bvars);
         } else {
@@ -343,7 +343,6 @@ public:
         // Step 1.2: random initialisation.
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist_real(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin (0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -353,7 +352,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dist_real(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = dist_bin(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }

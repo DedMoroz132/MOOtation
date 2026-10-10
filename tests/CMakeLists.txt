@@ -14,7 +14,8 @@ set(MOOTATION_TESTS
     test_coords
     test_survival
     test_failures
-    test_equalities)
+    test_equalities
+    test_genes)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

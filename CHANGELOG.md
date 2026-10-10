@@ -10,6 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Categorical variables (task 7, supplement 3, §1; `var_types.py`,
+  `operators/bit_flip.hpp`): `("cat", labels)` or `("cat", k)`; `fn` gets the
+  label. Bits and categorical variables form the integer genome
+  (`ops::gene_levels`, `RunConfig.gene_levels`): uniform crossover, and a
+  mutation that gives a gene one of its other values, each alike, with
+  probability 1/(number of genes), at most 1/2 (pymoo's cap; this changes a
+  run with a single bit, which used to flip in every child). The 47 cores
+  that take the genome draw their first genes through `ops::random_gene`; with
+  two or more bits a binary run is unchanged bit for bit. The 17 others refuse
+  it, and `minimize` says so. `result.unique_evaluations` counts the distinct
+  decoded points (`mootation/unique.py`); `budget_counts = "unique"` answers a
+  repeat from memory and counts the budget in distinct points. The run
+  journal's hash keys the decoded point, labels included.
 - DOC1-9 (`benchmarks/doc.py`; task 7, §8): Liu and Wang's problems with
   constraints in both the decision and the objective space (IEEE TEVC 23(5),
   2019, supplementary file S-I), on CEC 2006's g04, g19, g23, g09, g21, g07,

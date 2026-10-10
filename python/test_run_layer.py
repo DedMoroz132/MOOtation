@@ -7479,6 +7479,88 @@ def doc_follows_its_supplement_and_its_fronts_hold():
 
 
 @test
+def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
+    """Supplement 3, §1: ("cat", labels) reaches fn as a label, never anything
+    else, on every core that takes the integer genome, and the 17 others
+    refuse it by name; the result's genes are label indices; with
+    budget_counts = "unique" a decoded point is evaluated once however its
+    real underlay differs (int_repair = "baldwin"), and the budget counts
+    distinct points; unique_evaluations <= evaluations; the labels survive the
+    evaluation log and a seed population."""
+    import math
+    if _core_with("gene_levels") is None:
+        print("  skip  categorical_variables...: stale _core"); return
+    import mootation
+    from mootation.var_types import Layout
+    labels = ["steel", "titanium", "cfrp", "glass"]
+    pen = {"steel": 0.3, "titanium": 0.0, "cfrp": 0.6, "glass": 0.9}
+    seen = set()
+
+    def f(x):
+        a, m, k = x
+        seen.add(m)
+        return [a + pen[m] + 0.05 * k, 1 - math.sqrt(a) + pen[m]]
+
+    vt = ["real", ("cat", labels), "int"]
+    bounds = [(0.0, 1.0), (0.0, 0.0), (0.0, 4.0)]          # a label's bounds are ignored
+    refused = []
+    for alg in mootation.algorithms():
+        seen.clear()
+        try:
+            r = mootation.minimize(f, bounds, 2, algorithm=alg, pop_size=20,
+                                   max_evaluations=400, seed=1, var_types=vt)
+        except ValueError as e:
+            assert "takes no binary or categorical variables" in str(e), (alg, e)
+            refused.append(alg)
+            continue
+        assert seen <= set(labels) and len(seen) >= 2, (alg, seen)
+        assert all(0 <= b[0] < 4 for b in r.binary_variables), alg
+        assert 0 < r.unique_evaluations <= r.evaluations, alg
+    assert len(refused) == 17, refused
+    # the best label wins, as the decoded rows show
+    r = mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=2000, seed=1, var_types=vt)
+    lay = Layout(vt, bounds)
+    rows = [lay.to_user(list(x) + list(b)) for x, b in zip(r.variables, r.binary_variables)]
+    assert {row[1] for row in rows} == {"titanium"}, rows[:3]
+    # a repeat is evaluated once: the real underlay of an integer differs
+    # (baldwin), the decoded point does not
+    calls = []
+
+    def g(x):
+        calls.append(tuple(x))
+        return [x[0] + 0.1 * x[1], 1.0 - x[0] + 0.1 * (6 - x[1])]
+
+    r = mootation.minimize(g, [(0.0, 1.0), (0.0, 6.0)], 2, pop_size=20, max_evaluations=600,
+                           seed=2, var_types=[("discrete", [0.0, 0.5, 1.0]), "int"],
+                           int_repair="baldwin", budget_counts="unique")
+    assert len(calls) == len(set(calls)) == r.unique_evaluations, (len(calls), r.unique_evaluations)
+    assert r.evaluations > r.unique_evaluations
+    calls.clear()
+    r = mootation.minimize(g, [(0.0, 1.0), (0.0, 6.0)], 2, pop_size=20, max_evaluations=200,
+                           seed=2, var_types=[("discrete", [0.0, 0.5, 1.0]), "int"],
+                           int_repair="baldwin")
+    assert len(calls) == r.evaluations == 200 and r.unique_evaluations == len(set(calls)) < 200
+    # real variables only: a fresh float each call, unique as many as calls (or fewer)
+    r = mootation.minimize(lambda x: [x[0], 1 - x[0] + x[1]], [(0, 1), (0, 1)], 2,
+                           pop_size=20, max_evaluations=400, seed=3)
+    assert 0 < r.unique_evaluations <= r.evaluations
+    # the labels in the evaluation log and back through a seed population
+    with tempfile.TemporaryDirectory() as d:
+        log = Path(d) / "log.csv"
+        mootation.minimize(f, bounds, 2, pop_size=10, n_gen=3, seed=4, var_types=vt,
+                           log_evaluations=log)
+        text = log.read_text(encoding="utf-8")
+        assert any(m in text for m in labels) and "'steel'" not in text
+        seed_rows = [[0.5, "glass", 2], [0.1, "steel", 0]] * 5
+        pop = mootation.minimize(f, bounds, 2, pop_size=10, n_gen=1, seed=4, var_types=vt,
+                                 save_population=Path(d) / "pop.csv")
+        r = mootation.minimize(f, bounds, 2, pop_size=10, n_gen=2, seed=5, var_types=vt,
+                               seed_population=Path(d) / "pop.csv")
+        assert all(0 <= b[0] < 4 for b in r.binary_variables) and pop.binary_variables
+        assert Layout(vt, bounds).split(seed_rows[0]) == ([0.5, 2.0], [3])
+
+
+@test
 def budget_check_tells_a_schedule_from_none():
     """budget.check: RVEA's APD reads t/t_max, NSGA-II reads nothing of the budget."""
     if not _have_numpy() or _core_with("on_generation") is None:
