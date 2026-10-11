@@ -69,7 +69,7 @@ def main(path):
             "cases": cases}
     out = ROOT / "tests" / "data" / "reproblems-7876b4e_re.json"
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+    out.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8", newline="\n")
     print(out.name, len(cases))
 
 

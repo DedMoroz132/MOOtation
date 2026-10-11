@@ -50,7 +50,7 @@ def write(what, module, about, tolerance, cases):
             "command": COMMAND, "date": datetime.date.today().isoformat(),
             "points": len(cases), "tolerance": tolerance, "about": about, "cases": cases}
     path = OUT / f"pymoo-0.6.2_{what}.json"
-    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8", newline="\n")
     print(path.name, len(cases))
 
 
