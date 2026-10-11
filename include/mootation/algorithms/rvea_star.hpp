@@ -63,18 +63,10 @@
 //   all-infeasible -> minimum CV, otherwise feasible-only -> minimum APD. For
 //   RVEA*-1 a feasible member goes before an infeasible one at the same place,
 //   and infeasible members are ordered by CV. Off by default (NONE).
-// What to expect, measured 2026-09-27 against rvea (pop x 500 generations,
-//   median IGD over seeds 1-5): the population stays N where RVEA's shrinks —
-//   55-57 of 91 on DTLZ5 (M = 3), 12-18 of 126 on IDTLZ1 (M = 5) — and IGD
-//   falls from 0.070 to 0.018 on DTLZ5, 0.145 to 0.068 on IDTLZ1 (M = 5),
-//   0.104 to 0.090 and 0.675 to 0.398 on DTLZ7 at M = 3 and 6, where the
-//   hypervolume is slightly lower (0.385 against 0.401 at M = 3, 0.243
-//   against 0.246 at M = 6); on DTLZ2 (M = 3) the two agree (0.0545). The
-//   price is speed: 2N vectors split a pool of 2N, so most subpopulations hold
-//   one candidate and the pull towards the front is weaker than RVEA's — ZDT1
-//   0.031 against 0.0095, DTLZ6 (M = 3) 0.77 against 0.43 at that budget; at
-//   four times the budget ZDT1 is 0.0064 against 0.0049 and on DTLZ6 RVEA* is
-//   ahead, 0.094 against 0.136.
+// What to expect from the construction: the population stays N where RVEA's
+//   shrinks on an irregular front; but 2N vectors split a pool of 2N, so most
+//   subpopulations hold one candidate and the pull towards the front is
+//   weaker than RVEA's.
 // ============================================================================
 
 #include <algorithm>

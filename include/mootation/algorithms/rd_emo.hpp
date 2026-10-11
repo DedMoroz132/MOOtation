@@ -38,8 +38,8 @@
 //     pinned at the origin those points fall into a different orthant, the
 //     angular region division misassigns them and PF segments are lost. The
 //     running ideal coincides with the origin whenever f ≥ 0 and the minimum
-//     is attained at 0, and stays well-defined otherwise. Verified: ZDT3 spread
-//     0.43 -> 0.84. A caller who wants the paper's letter on an f ≥ 0 problem
+//     is attained at 0, and stays well-defined otherwise. A caller who wants
+//     the paper's letter on an f ≥ 0 problem
 //     loses nothing; on a problem with f < 0 the letter is the broken choice.
 //   RDE-3b (MINOR). Alg.1 line 18 draws the second parent's region from the
 //     T-neighbourhood U_n restricted to regions with RD > 0; when every

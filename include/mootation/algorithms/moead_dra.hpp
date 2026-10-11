@@ -33,16 +33,13 @@
 // Defaults = Sec.III: T = 0.1N, n_r = 0.01N (computed in setup; the
 //   set_T/set_nr setters override), δ = 0.9; CR = 1.0, F = 0.5, η = 20,
 //   p_m = 1/n; π update period = 50 (Step 5).
-// Fixed 2026-09-05 (full-paper checklist, VERIFY_2026-09-05/checklists/moead_dra.md):
+// Fixed 2026-09-05 (full-paper checklist):
 //   - DRA-6: the j_rand gene of de_rand_1_bin (absent from Eq.4) — removed.
 //   - DRA-7: r2, r3 were forced distinct from i and from each other (up to 10
 //     rejections) — now two plain draws, as Step 3.2 says.
 //   - DRA-8 / G3: the repair was applied to the DE mutant before the
 //     crossover select and before a BOUNDED (NSGA-II-code) polynomial
 //     mutation — now Eq.4 → literal Eq.5 → Step 3.3 repair of the final y.
-//   Measured on the 30 000-FE sanity runs (3 seeds, median IGD): before /
-//   after — DTLZ2 (M=3, N=91) 0.0813 / 0.0787, ZDT1 (N=100) 0.2649 / 0.2779;
-//   within seed scatter — the ZDT1 level is set by the Step 3.3 reset (below).
 // Deviations:
 //   - DRA-5 (MINOR): weights — Das–Dennis lattice (N must be a lattice size,
 //     Path-A) instead of the authors' maximin selection of N out of 5000
@@ -71,25 +68,17 @@
 //     sign) — against the paper's own gloss on Step 5: "If Δ^i is smaller
 //     than 0.001, the value of π^i will be reduced." The factor is floored at
 //     0, so π^i stays in [0, 1] and never rises without an improvement.
-//     Measured (median IGD over 11 seeds, 30 000 FE, literal → floored): ZDT1
-//     0.259 → 0.209 (lower on all 11 seeds), WFG4 0.389 → 0.381 (8 of 11);
-//     DTLZ2 0.0792 → 0.0805, DTLZ7 0.427 → 0.432 and scaled DTLZ2 22.0 → 23.3
-//     stay within the seed scatter. Inverted DTLZ1 is bimodal either way — a
-//     run ends near 0.04 or above 0.1 — and 6 of 11 seeds converge under the
-//     literal update, 5 under the floor, so its median jumps 0.048 → 0.268 on
-//     one seed. moead_awa takes this step from MOEA/D-DRA and gets the same
-//     floor (AWA-14).
+//     moead_awa takes this step from MOEA/D-DRA and gets the same floor
+//     (AWA-14).
 // Extensions beyond the paper (disabled by default):
 //   - EP archive (vault.archive_*): in the paper Output = {x^1..x^N};
 //     enabled via set_use_ep(true), adds no extra FE.
 //   - ConstraintMode::FEASIBILITY — g^te + penalty·cv.
 //   - Binary variables: inheritance from x^i + bit-flip 1/n_bin.
-// MEASURED (2026-09-05 FE-trajectory audit, literal pipeline): the random-
-// reset repair of Step 3.3 is the paper's and stays the default, but on ZDT1
-// (n = 30, N = 100, 30 000 FE, 3 seeds) it converges to median IGD 0.2779
-// where clamping to the bound (PlatEMO / jMetal) reaches 0.0179; see MDE-6 in
-// moead_de.hpp. set_de_repair(ops::DERepair::Clip) selects the clamping
-// variant.
+// The random-reset repair of Step 3.3 is the paper's and stays the default;
+// it is expensive on a Pareto set at a bound, see MDE-6 in moead_de.hpp.
+// set_de_repair(ops::DERepair::Clip) selects clamping to the bound (the
+// PlatEMO / jMetal convention).
 // ============================================================================
 
 #include <algorithm>

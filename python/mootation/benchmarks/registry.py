@@ -1990,7 +1990,8 @@ _register_mmo()
 #  equalities of RCM22-28 as DOC's: the last n_eq constraints, |h| - 1e-4. The budget is
 #  the competition's (rwmop.max_evaluations) at the usual population, 25 runs;
 #  the fronts are this library's long runs (rwmop.py, THE FRONTS; front_exact
-#  False) and the frame their corners.
+#  False but for RCM28's, whose two curves are exact) and the frame their
+#  corners.
 # =============================================================
 def _register_rwmop():
     for i in _rw.REGISTERED:
@@ -2010,7 +2011,7 @@ def _register_rwmop():
             hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
             pop_size=pop, n_gen=round(_rw.max_evaluations(i) / pop), K_runs=25, has_cons=has,
-            pareto_front=_pf, front_exact=False, var_types=_rw.VAR_TYPES.get(i),
+            pareto_front=_pf, front_exact=i == 28, var_types=_rw.VAR_TYPES.get(i),
             n_eq=n_eq, equalities=_eqs if n_eq else None)
         EXACT_FRAME.add(key)
 
@@ -2162,17 +2163,17 @@ _attach_full_fronts()
 
 
 # ── reference version 2 (2026-09-29) ───────────────────────────────────────
-# What the stage-3 review found in the reference fronts (TASK4, reference
-# audit): rows repeated up to 216 times, which IGD+ counts as many times, and
-# 259 to 6 399 rows where 1 000 were asked for. Version 2: every pareto_front(n)
+# Version 1's reference fronts had rows repeated up to 216 times, which IGD+
+# counts as many times, and 259 to 6 399 rows where 1 000 were asked for.
+# Version 2: every pareto_front(n)
 # returns distinct rows and exactly n of them where its sampler can give as
 # many (_exactly_n); besides, WFG1 and WFG2 sample their positions at random,
 # not on an aliasing grid (_wfg12_positions), and IPolygon is a new instance
 # (polygon_ishibuchi.py). A campaign writes the version into every run's
 # meta.json; --recompute-reference brings older runs up to date, keeping their
 # old values beside the new. REFERENCE_CHANGED lists, per version, the problems
-# whose pareto_front(1000) changed with it (measured: TASK4
-# reference_changes.py); a run measured against an older reference of one of
+# whose pareto_front(1000) changed with it; a run measured against an older
+# reference of one of
 # them is set aside by --cover until recomputed.
 REFERENCE_VERSION = 2
 REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({

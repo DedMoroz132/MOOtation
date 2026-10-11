@@ -23,8 +23,7 @@
 //      normalization, r and D(p) are recomputed on the reduced set after
 //      every removal: §3.2 "iteratively deletes the solution having the
 //      biggest crowding degree in the set", and each quantity is defined on
-//      "the set" as it stands (a comparison with PlatEMO, 2026-09, flagged the
-//      recomputation; it is the letter).
+//      "the set" as it stands (the letter).
 //   6. Weight update every 5% of the generations, never in the last 10%
 //      (Steps 21–25): addition §3.3–3.4 (undeveloped: a niche of radius r_a
 //      containing no population solution, with r_a the median NN distance of
@@ -79,14 +78,11 @@
 //   scale-dependent per objective.
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY —
 //   an additive penalty*cv term on g; binary variables.
-// SCALE DEPENDENCE (the paper's own, measured 2026-09-09). Footnote 2 fixes
+// SCALE DEPENDENCE (the paper's own). Footnote 2 fixes
 //   z* = best - 1e-4, an ABSOLUTE offset in objective space, so the algorithm
-//   is not invariant to the units of the objectives: multiplying every
-//   objective of DTLZ2 (M=3) by 2^10 moves the final IGD by 10.3 % (0.0688 ->
-//   0.0617 at 5000 FE), and the offset is the same at 2^20 and 2^30, i.e. it
-//   is this constant being crossed and not a growing failure. This is a
-//   property of the published algorithm, not a porting choice, so the constant
-//   is left as written; scale your objectives if it matters to you.
+//   is not invariant to the units of the objectives. This is a property of
+//   the published algorithm, not a porting choice, so the constant is left
+//   as written; scale your objectives if it matters to you.
 // ============================================================================
 
 #include <algorithm>

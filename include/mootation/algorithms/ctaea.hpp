@@ -56,16 +56,14 @@ namespace mootation {
 //     them so.
 //   CTAEA-2. Eq. 8 divides by z_nad - z*; the authors' code (as pymoo
 //     carries it) only subtracts z*, and so does this: with the division, the
-//     DA's far infeasible members squeeze the front onto a few weights — on
-//     MW1 the median IGD+ of 10 runs of 30 000 evaluations was 0.031, without
-//     it 0.0067, pymoo 0.0026 (C1-DTLZ1, three objectives: 0.0152 here,
-//     0.0158 pymoo). z* is the least of each objective over the set at hand;
+//     DA's far infeasible members squeeze the front onto a few weights. z* is
+//     the least of each objective over the set at hand;
 //     g_tch (Eq. 11) and Eq. 9's distances are taken from it. A zero weight
 //     counts as 1e-4 (pymoo's ASF).
 //   CTAEA-3. The supplement with the operators' settings is not at hand:
 //     SBX (eta_c 30, pc 1) and polynomial mutation (eta_m 20, pm 1/n), and
 //     one child of each pair, N pairs per generation — the authors' code as
-//     pymoo carries it (two children per pair: MW1 0.0065). The DA starts as
+//     pymoo carries it. The DA starts as
 //     a copy of the first CA.
 //   CTAEA-4. Feasibility is cv == 0 by the vault (so EPS_LEVEL relaxes it);
 //     with constraint_mode NONE every point is feasible.

@@ -79,17 +79,22 @@ NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "
 # (benchmarks.registry.dense_reference, task 6 of 2026-10-09, item 9) are
 # recorded beside them under the name with this suffix: igdp_norm_ref_v3.
 DENSE_SUFFIX = "_ref_v3"
+# ... and against the campaign's own reference, the non-dominated points of all
+# its runs on the problem (campaign.pooled_reference): igdp_norm_pooled.
+POOLED_SUFFIX = "_pooled"
 
 
 def base_name(name: str) -> str:
-    """A metric's name without the dense reference's suffix."""
-    stem = name[:-len(DENSE_SUFFIX)] if name.endswith(DENSE_SUFFIX) else None
-    return stem if stem in NEEDS_FRONT else name
+    """A metric's name without the dense or the campaign reference's suffix."""
+    for suffix in (DENSE_SUFFIX, POOLED_SUFFIX):
+        if name.endswith(suffix) and name[:-len(suffix)] in NEEDS_FRONT:
+            return name[:-len(suffix)]
+    return name
 
 
 def is_table_name(name: str) -> bool:
     """Can a table be asked for `name`: TABLE_NAMES, the front indicators
-    against the dense reference, a portfolio's per-operator shares and mosa's
+    against the dense reference or the campaign's own, a portfolio's per-operator shares and mosa's
     per-objective weights."""
     for mode in NOISE_MODES:
         if name.endswith(mode) and name[:-len(mode)] in METRIC_NAMES + NOISE:

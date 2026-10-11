@@ -185,8 +185,8 @@ violation of the initial population's (0.05 N)-th worst point, then 0.9 of
 itself while fewer than 95 % of the population are feasible, 1.1 times the
 largest violation seen once that many are, and 0 from 80 % of the budget on.
 The paper's Tc is 800 of its 1 000 generations; here it is 80 % of whatever
-budget the run has — jMetal's fixed 800 generations never reach ε = 0 on a
-short budget. `eps_schedule = {"tau", "alpha", "theta", "tc"}` replaces any
+budget the run has — a fixed 800 generations would never reach ε = 0 on a
+shorter budget. `eps_schedule = {"tau", "alpha", "theta", "tc"}` replaces any
 of the four; with `tc = 0` ε stays 0 and the run is the feasibility-first one
 bit for bit. `result.cv` is the violation itself; an observer reads ε from
 `mootation._core.current_cv_level()`.
@@ -298,11 +298,12 @@ doi:10.1109/TEVC.2013.2281534) at three and five objectives: `C1-DTLZ1_3D`,
 feasible) and `C3-DTLZ1_3D`, `C3-DTLZ4_3D` (the front on the constraints), and
 the same at `_5D`. A constraint is a value that is at most 0 when satisfied,
 as everywhere in the library: the paper's c(x) >= 0 with the sign turned. Two
-of the paper's equations are read as pymoo reads them (`c_dtlz.py`, READINGS),
-and the values agree with pymoo 0.6.2 at fixed points to 1e-12. The fronts
+of the paper's equations are read as pymoo reads them (`c_dtlz.py`, READINGS);
+values checked against pymoo 0.6.2 at 60 points, reference in
+`python/test_run_layer.py`. The fronts
 are analytic but for C2-ConvexDTLZ2's: behind the hole the cylinder cuts in
 the convex front lie points of larger g that nothing feasible dominates, which
-the paper's and pymoo's front leave out; that front is a sample checked point
+the paper's front leaves out; that front is a sample checked point
 by point (`BenchProblem.front_exact` is False, and `--cover` says so). MaF9 from five
 objectives is constrained too.
 
@@ -459,11 +460,10 @@ registered at the paper's sixteen triplets, `DAS-CMOP1_t01` … `DAS-CMOP9_t16`
 on first use from a dense sample of the attainable set, each point's g brought
 down to its feasibility boundary by bisection, and the frame read off them;
 the properties' `difficulty` names the triplet's kinds. The formulas are the
-paper's Table 2, and the values agree with pymoo 0.6.2 at random points to
-1e-12, but where the two read the feasibility constraint differently: at
-ζ = 0 pymoo bounds g by 10^30 (satisfied everywhere either way), and at ζ = 1,
-where the constraint becomes the equality g = d, the library takes the
-paper's tolerance 10^-6 (its Eq. 13), pymoo 10^-4.
+paper's Table 2; values checked against pymoo 0.6.2 at 36 points, reference
+in `python/test_run_layer.py`; at
+ζ = 1, where the feasibility constraint becomes the equality g = d, the
+library takes the paper's tolerance 10^-6 (its Eq. 13).
 
 **LIR-CMOP1-14** (Fan et al., Soft Computing 23(23), 2019;
 `benchmarks/lir_cmop.py`): constrained problems with large infeasible
@@ -743,8 +743,8 @@ read a rung at the record `record_at` puts there, which has them, and
   the normalisation used. `archive_variables = "selected"` keeps the variables
   only of the points the archive scenario selects (below): the objectives of
   every archive point go to `archive.csv.gz`, and the selected points,
-  objectives and variables, to `final_archive.csv.gz`. Over the stage-3
-  problems that is a tenth of the room of `archive.csv` (a quarter of it
+  objectives and variables, to `final_archive.csv.gz`. On a large campaign
+  that is about a tenth of the room of `archive.csv` (a quarter of it
   gzipped); the default `"all"` writes `archive.csv` as before.
 - `snapshots = true`, or a list of problem names, stores the population's
   objectives at every trajectory point in `snapshots.npz` (float32), to see how
@@ -1154,6 +1154,7 @@ python -m mootation.run.campaign c.toml --instance-space --workers 8     # the p
 python -m mootation.run.campaign c.toml --invariance-check --workers 8   # scale and shift of the objectives
 python -m mootation.run.campaign c.toml --recompute-trajectory r2,pdist --workers 8   # from the snapshots
 python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # against a changed reference front
+python -m mootation.run.campaign c.toml --pooled-reference --workers 8      # against the campaign's own front
 ```
 
 - `--reference ALG` (with `--ranks` or `--compare`): on every problem, each
@@ -1185,6 +1186,21 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   dense reference against it (below), from the saved answers, into new values
   `<indicator>_ref_v3` beside the old ones, which stay as they are; a run that
   has them is skipped.
+- `--pooled-reference`: the campaign's own reference, for problems whose
+  reference front is an approximation (`--by front_ref`) or to read every
+  problem alike. Per problem, the non-dominated points of all its finished
+  runs — their final answers, feasible rows only, and their run archives —
+  go to `pooled_reference/<problem>.csv`; `<problem>.json` beside it lists the
+  runs that went into it (entry, seed, budget, the commit each ran on, the rows
+  each gave), the code that built it and the file's sha256, which is the
+  pool's version. Every run is measured against it from its saved answers —
+  final, archive, archive checkpoints, trajectory — as `<indicator>_pooled`
+  beside the old values, in the pool's own frame (its corners), and records
+  the version in `meta.json` (`reference_pooled`). The tables read the new
+  names (`--ranks igdp_norm_pooled`). Runs added later change the pool: the
+  next call builds it again and measures again every run that names another
+  version; a run already measured against the same one is skipped. The pool
+  depends on which algorithms ran: compare values against one pool only.
 - `--ci`: a 95 % percentile interval for each mean rank, resampling the
   problems 2000 times. Two algorithms whose intervals overlap widely are not
   ordered by this campaign.
@@ -1203,7 +1219,13 @@ python -m mootation.run.campaign c.toml --recompute-reference --workers 8   # ag
   bbob-biobj `bbob_groups`, the function groups of the pair; `multimodal_ps`
   and `ps_parts`, a Pareto set of several parts that each map onto the whole
   front and how many (the multimodal problems, IPolygon, minusDTLZ2; unknown
-  elsewhere).
+  elsewhere); `front_ref`, `exact` or `approximate`, whether the reference
+  front lies on the true front, and `front_built`, how an approximate one was
+  built (RE and CRE: the authors'; RCM: this library's long runs, RCM28's
+  exact; C2-ConvexDTLZ2: a checked sample; the failing copies). For a metric
+  that reads the reference front or its frame, `--ranks` sets the synthetic
+  problems with an approximate front apart, as the group `approx_front`, where
+  the campaign has both kinds; `all` keeps those with an exact front.
 - `--cec2019-ranks`: the CEC 2019 multimodal competition's protocol — each
   algorithm's mean rank by median IGD, by median IGDX and by median 1/PSP,
   and the mean of the three, over the problems with a Pareto-set sample.

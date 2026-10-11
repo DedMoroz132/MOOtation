@@ -80,8 +80,9 @@ inline std::optional<CrowdingSpace> parse_crowding_space(const std::string& s)
 // survival = "stochastic" (task 7 of 2026-10-10, supplement 2): Bian, Zhou,
 //   Li & Qian, "Stochastic Population Update Can Provably Be Helpful in
 //   Multi-Objective Evolutionary Algorithms", IJCAI 2023,
-//   doi:10.24963/ijcai.2023/612 (arXiv 2306.02611 v3), Algorithm 6 — written
-//   from the task, the paper to be checked against: Q' of ⌊spu_frac·2μ⌋
+//   doi:10.24963/ijcai.2023/612 (Artificial Intelligence 341:104308, 2025;
+//   arXiv 2306.02611 v3; source sp-update_bian2025_arxiv), Algorithm 6,
+//   checked against the paper: Q' of ⌊spu_frac·2μ⌋
 //   members of Q = P ∪ P' (spu_frac 3/4, the paper's) drawn uniformly
 //   without replacement, by a partial Fisher-Yates shuffle of the slots into
 //   [0, |Q'|); the usual selection — fronts and crowding distance over Q'

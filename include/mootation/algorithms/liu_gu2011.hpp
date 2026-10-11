@@ -124,35 +124,24 @@
 //   RESOLVED 2026-09 (second primary-source pass) — was "OPEN — UNDER
 //   INVESTIGATION" since 2026-08-04.
 //   ---------------------------------------------------------------------
-//   Symptom: on DTLZ2 (M=3, n=12, N=91) at 200 generations the population
-//   mean distance to the front was 1.01 while the best was 0.003.
+//   Symptom: at the suite's 200 generations the population's mean distance
+//   to the front stayed far above its best.
 //
 //   Finding: not a defect of this port. The port was re-verified line by line
 //   against liu2011 §II-B..D and §IV-A, and the operator against liu2009
-//   §III-A Eq.(5)-(6) including the sign of the exponent in rm (an A/B with
-//   the +a reading made things slightly WORSE, so the paper's -a stands).
-//   What the number measures is a budget mismatch: the paper stops after
-//   300,000 evaluations, i.e. Max_gen = ⌈(300000 − 5N)/N⌉ ≈ 3300 generations,
-//   and the annealing schedule of the operator is calibrated to that.
+//   §III-A Eq.(5)-(6) including the sign of the exponent in rm (the paper's
+//   -a stands). It is a budget mismatch: the paper stops after 300,000
+//   evaluations, i.e. Max_gen = ⌈(300000 − 5N)/N⌉ ≈ 3300 generations, and
+//   the annealing schedule of the operator is calibrated to that.
 //
-//   Measured at the same settings, varying only the budget (seed 20260804):
-//       gens    mean    median   best     distance vars at a box bound
-//        200    0.939   0.762    0.0031   28.5 %
-//       1000    0.633   0.014    0.0006   16.9 %
-//       3000    0.028   0.000    0.0000    1.1 %
-//   The population is bimodal: most members converge early (the median is
-//   0.014 by 1000 generations) while a shrinking minority sits at the box
-//   bounds of the distance variables and dominates the MEAN. That minority
+//   Short of that budget the population is bimodal: most members converge
+//   early while a shrinking minority sits at the box bounds of the distance
+//   variables and dominates the MEAN. That minority
 //   is produced by the extrapolating crossover of Eq.(5), x + rc·(x − y),
 //   whose out-of-bound repair lands between the bound and the parent, and it
 //   is displaced slowly because selection inside a sub-region (NDS + crowding
 //   distance, as the paper prescribes) exerts little convergence pressure
-//   among mutually non-dominated members. moead_am2m, which shares the
-//   operator but selects by scalarization, shows none of it — consistent with
-//   the mechanism, not with a bug in the operator.
-//   Cone width is NOT the lever: for the sibling moead_m2m, narrower cones
-//   (K=30, S=3) made it catastrophically worse, and the paper's own K=S=17
-//   no better than K=10.
+//   among mutually non-dominated members.
 //
 //   Consequence for the convergence suite: this algorithm is run at the
 //   paper's budget (3000 generations) rather than the suite's default 200,

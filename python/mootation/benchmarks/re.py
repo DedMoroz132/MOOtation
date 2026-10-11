@@ -8,8 +8,8 @@ authors' Python version, github.com/ryojitanabe/reproblems (MIT License,
 Copyright (c) 2020 Ryoji Tanabe; the license is in _re/LICENSE.txt),
 reproblem_python_ver/reproblem.py at commit 7876b4e (2026), formula for
 formula: the expressions, constants and the order of the operations are the
-file's, so that the values agree with it (the tests hold five points of every
-problem to 1e-12). Names are the repository's: RE21 is the paper's RE2-4-1.
+file's. Values checked against it at five points of every problem (120) to
+1e-12, reference in python/test_run_layer.py (RE_VALUES). Names are the repository's: RE21 is the paper's RE2-4-1.
 
   RE21-25, RE31-37, RE41, RE42, RE61, RE91   16 problems without constraints:
       where the engineering problem has constraints, the last objective is

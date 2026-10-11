@@ -41,71 +41,49 @@ wrong, and they are worth separating.
 
 **The units of all objectives at once.** Multiplying every objective by the
 same constant must change nothing, and `tests/test_scale_invariance.cpp`
-enforces exactly that on every push: 53 of the 59 algorithms then in the tree
-reproduced their result bit for bit, the two that did not for a reason of their
-own were fixed, and the four that depend on a constant of their own paper are
-listed there by name with the measured size.
+enforces exactly that on every push; the algorithms that depend on a constant
+of their own paper are listed there by name.
 
 **The ratio between axes.** That is a different property and most of these
 algorithms do not have it, by design rather than by defect: a weight vector on
 the simplex, a penalty-based boundary intersection, an angle between objective
 vectors and a niche radius all mean something only when the axes are
-comparable. Measured the same way (DTLZ2 with per-axis factors 1, 32 and 1024,
-each exact in binary, the objectives divided back before IGD), 18 of 56 were
-bit-identical:
-
-> NSGA-II, GrEA, VaEA, θ-DEA, MOEA/D-AM2M, DHEA, IBEA-ε+, IBEA-HD, mIBEA,
-> HypE, NIMMO, IF-MaOEA, MaOEA-IAMD, MaOEA/SRV, CA-MOEA, CAVA-MOEA, MaOEA/C, crEA
-
-The rest respond to the ratio, some strongly (NAEMO, RD-EMO, CLIA and RVEA
-moved their IGD by an order of magnitude at those factors). This is not a
-ranking: it says which methods carry their own normalisation and which expect
-you to supply it. If your objectives differ by orders of magnitude, either pick
-from the list above or scale them yourself before the run — the `SDTLZ` family
-in the benchmark registry exists to test exactly this, and RVEA's own paper
-introduces itself on scaled problems.
+comparable. Some algorithms carry their own normalisation, the rest expect you
+to supply it. If your objectives differ by orders of magnitude, scale them
+yourself before the run — the `SDTLZ` family in the benchmark registry exists
+to test exactly this, and RVEA's own paper introduces itself on scaled
+problems.
 
 **Scaling is not free, so ask what the spread means.** The ranges of your
 objectives can differ for two unrelated reasons, and they call for opposite
 answers. If they differ because of the units you chose — a mass in grams beside
 a length in metres — the spread carries nothing and removing it can only help:
-R2-IBEA with `set_normalize(true)` is 27 % better than the letter on DTLZ2
-skewed by per-axis factors 1, 10 and 100, and lands on the same IGD it reaches
-unskewed. If they differ because of the problem, removing the spread throws
-information away: on ZDT1 the wide axis is the direction of convergence (`g`
-falls from 10 towards 1 as the population approaches the front), and the same
-switch is then 25 times *worse*. Both numbers are in `r2ibea.hpp`, with the
-seeds.
+R2-IBEA's `set_normalize(true)` removes such a skew. If they differ because of
+the problem, removing the spread throws information away: on ZDT1 the wide
+axis is the direction of convergence (`g` falls towards 1 as the population
+approaches the front), and the same switch is then the wrong trade
+(`r2ibea.hpp`, R2I-NORM).
 
-**What the cost actually is, and who inherits it.** It is not convergence. On
-ZDT1 the two readings put the population equally close to the front (mean
-distance 8e-5 against 1e-4); what changes is which part of the front they
-occupy — the span of `f1` in the final population is 0.94, 0.99 and 0.80 over
-three seeds for the letter against 0.49, 0.45 and 0.54 for the scaled reading,
-on a front that runs the whole of [0, 1], with holes of the same size inside
-the covered stretch either way. The scaled reading spreads evenly over half the
-front.
-
-That is a re-mapping, and it belongs to a whole class of methods. R2 allocates
-effort by direction: each weight vector on the simplex owns a piece of the
-front, and rescaling the axes moves the pieces. The MOEA/D family, the
-NSGA-III family, RVEA and θ-DEA all allocate the same way, which is why almost
-everything in the skew list above is a weight-vector or angle method. IBEA-ε+
-owns no such partition — it compares two solutions and decides an *order*, and
-an order survives rescaling far better — and measured, its own unconditional
-scaling costs it nothing on either problem. So this is not a property of
-normalisation in general: it is what happens when you rescale the axes of a
-method that has divided the front between directions.
+**What the cost actually is, and who inherits it.** It is not convergence: the
+scaled reading still brings the population to the front, over another part of
+it. That is a re-mapping, and it belongs to a whole class of methods. R2
+allocates effort by direction: each weight vector on the simplex owns a piece
+of the front, and rescaling the axes moves the pieces. The MOEA/D family, the
+NSGA-III family, RVEA and θ-DEA all allocate the same way. IBEA-ε+ owns no such
+partition — it compares two solutions and decides an *order*, and an order
+survives rescaling far better. So this is not a property of normalisation in
+general: it is what happens when you rescale the axes of a method that has
+divided the front between directions.
 
 **Which case are you in? There is a cheap test.** Watch the ratio between the
 per-objective ranges of the answer set over the first few generations. A unit
 is a constant and the ratio holds steady; a property of the problem moves as
-the search closes on the front. On ZDT1 the ratio slides from 3.7 to 1.03 over
-a run — `f2`'s range is set by `g`, which falls towards 1 as the population
-reaches the front, so the slide *is* the convergence. On DTLZ2 it sits at 1.00
-throughout, and skewing the axes by constant factors multiplies a flat ratio by
-a constant, leaving it flat. Steady ratio: scale. Sliding ratio: do not. A
-problem that is both skewed and drifting is not covered by this test.
+the search closes on the front. On ZDT1 the ratio slides towards 1 over a run —
+`f2`'s range is set by `g`, which falls towards 1 as the population reaches the
+front, so the slide *is* the convergence — while constant factors on the axes
+multiply a steady ratio by a constant and leave it steady. Steady ratio: scale.
+Sliding ratio: do not. A problem that is both skewed and drifting is not
+covered by this test.
 
 ## Pareto-dominance & diversity-based
 
@@ -184,9 +162,8 @@ problem that is both skewed and drifting is not covered by this test.
 
 Every file in these tables transcribes a paper. An SRV variant on a
 steady-state MOEA/D carrier used to sit here as an experiment; liu2022 defines
-the strategy on an NSGA-III carrier only, and measured it did not converge
-(median IGD 0.41 on DTLZ2 against 0.060 for `srv`), so it left the public tree
-on 2026-09-09.
+the strategy on an NSGA-III carrier only, so it left the public tree on
+2026-09-09.
 
 ## Clustering-based
 
@@ -223,7 +200,7 @@ feasible first, and a diversity archive that ignores the constraints and fills
 the subregions the first one leaves thin; parents come from either, by the
 share of non-dominated points each holds. The header lists where it follows
 the authors' code over the paper's text (the normalization, one child per
-pair) and the IGD+ medians against pymoo's port on C1-DTLZ1 and MW1.
+pair).
 
 CCMO evolves the problem and a helper — the same objectives without the
 constraints — in two populations of N; each breeds N/2 children and both are

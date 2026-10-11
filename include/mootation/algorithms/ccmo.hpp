@@ -42,14 +42,10 @@ namespace mootation {
 // neighbours (Zitzler et al.'s k-th nearest in turn). SBX (pc 1) and
 // polynomial mutation (pm 1/D), both eta 20 (§IV-A).
 //
-// Against the paper's Table I (mean IGD of 30 runs of 100 000 evaluations,
-// N = 100, 105 at three objectives), 5 runs here: MW1 0.00160 (0.00161),
-// MW3 0.00463 (0.00469), MW11 0.00714 (0.00610), C1-DTLZ1 0.0194 (0.0199).
-//
 // READINGS (declared):
 //   CCMO-1. The supplement asks for a wrapper over any core; CCMO needs a
 //     core that hands over its children before its environmental selection
-//     and takes the other population's into it, which none of the 64 does
+//     and takes the other population's into it, which none of the others does
 //     (each step breeds, evaluates and selects at once). So this is CCMO as
 //     the paper instantiates it, on NSGA-II.
 //   CCMO-2. The SPEA2 truncation runs within the last front, as the crowding

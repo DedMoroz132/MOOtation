@@ -115,8 +115,8 @@ namespace mootation {
 //     Bian, Zhou, Li & Qian, "Stochastic Population Update Can Provably Be
 //     Helpful in Multi-Objective Evolutionary Algorithms", IJCAI 2023,
 //     doi:10.24963/ijcai.2023/612 (Artificial Intelligence 341:104308, 2025;
-//     arXiv 2306.02611 v3), Algorithm 5 — WRITTEN FROM THE TASK, the paper is
-//     to be checked against: Q' of ⌊spu_frac·|Q|⌋ members of Q = P ∪ {x'},
+//     arXiv 2306.02611 v3; source sp-update_bian2025_arxiv), Algorithm 5,
+//     checked against the paper: Q' of ⌊spu_frac·|Q|⌋ members of Q = P ∪ {x'},
 //     drawn uniformly without replacement (spu_frac 1/2, the paper's), and
 //     Reduce on Q' alone — its fronts, its reference point nad(Q') + 1 (or
 //     ref_delta's from Q'), SMS-4's extremes of Q', the Monte Carlo from M = 4;

@@ -163,6 +163,15 @@ Besides Huband's vocabulary (task 4, item 5):
               a degenerate front is not one of those (DTLZ5/6 from four
               objectives and WFG3, which have a non-degenerate part besides,
               ZCAT17-20, part degenerate)
+  front_ref   "exact" where the registry's reference front lies on the true
+              front (BenchProblem.front_exact), "approximate" where it is an
+              approximation: RE and CRE (the authors' fronts), RE22c and
+              RE33c, RCM but RCM28 (this library's long runs), C2-ConvexDTLZ2
+              (a checked sample) and the failing copies whose region takes
+              some of the Pareto set; None without a reference front. A rank
+              table sets the approximate ones apart (campaign.rank_table)
+  front_built how an approximate reference front was built, in a sentence
+              (front_built below); None for an exact one
 
 MEASURED (task 6 of 2026-10-09). Where a problem has a Pareto-set sample
 (pareto_sets.py), measured() reads centre and boundary off it: the share of
@@ -185,7 +194,7 @@ from .rotated import SPECS as _ROTATED
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
         "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
         "bbob_groups", "front_dim", "family_kind", "difficulty", "multimodal_ps",
-        "ps_parts")
+        "ps_parts", "front_ref", "front_built")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, boundary,
@@ -372,7 +381,50 @@ def properties(name: str) -> dict | None:
         row["multimodal_ps"], row["ps_parts"] = True, 4
     elif stem == "minusDTLZ2" and p is not None:
         row["multimodal_ps"], row["ps_parts"] = True, 2 ** (p.n_vars - p.n_obj + 1)
+    row["front_ref"] = (None if p is None or not callable(p.pareto_front)
+                        else "approximate" if approximate_front(name) else "exact")
+    row["front_built"] = front_built(name)
     return row
+
+
+def approximate_front(name: str) -> bool:
+    """Is the registry's reference front of `name` an approximation
+    (BenchProblem.front_exact False)? False without one."""
+    from .registry import PROBLEMS
+    p = PROBLEMS.get(name)
+    return p is not None and callable(p.pareto_front) and not p.front_exact
+
+
+def front_built(name: str) -> str | None:
+    """How the approximate reference front of `name` was built (front_built
+    above); None for an exact one."""
+    if not approximate_front(name):
+        return None
+    from .registry import PROBLEMS
+    p = PROBLEMS[name]
+    if p.failing is not None:
+        if len(p.pareto_set(10)):
+            return ("the image of the base's Pareto-set sample outside the failing region "
+                    "(failing.py, THE FRONT)")
+        return ("the base's front, which no point outside the failing region reaches "
+                "(failing.py, THE FRONT)")
+    stem = name.split("_")[0]
+    if stem.startswith("RCM"):
+        from .rwmop import front_built as rcm_front_built
+        return rcm_front_built(int(stem[3:]))
+    if stem in ("RE22c", "RE33c"):
+        return ("an exhaustive grid, then local refinement, thinned by DSS to 500 M points "
+                "(re_fronts.py, benchmarks/_re/corrected/)")
+    if stem.startswith("CRE"):
+        return ("the feasible points of the authors' front of the RE problem it constrains "
+                "(reproblems, benchmarks/_re/)")
+    if stem.startswith("RE"):
+        return ("the authors' approximation, at most 500 M points of every non-dominated "
+                "point their optimizers found, as shipped (reproblems, benchmarks/_re/)")
+    if stem == "C2-ConvexDTLZ2":
+        return ("a sample of the convex front outside the cylinder and of the points behind "
+                "its hole that nothing dominates, each checked (c_dtlz.py, FRONTS)")
+    return "an approximation: the problem's module says how it was built"
 
 
 def _front_dim(stem: str, m: int, front: str | None) -> int | None:

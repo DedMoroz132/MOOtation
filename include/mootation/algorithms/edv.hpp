@@ -46,13 +46,8 @@
 //     the algorithm". The port used 1/n_vars (the Deb polynomial-mutation
 //     convention the paper cites) and called the text a slip; the gap is
 //     large (at the paper's m=3 setting, pop_size 300 and DTLZ n=7: 1/300
-//     against 1/7). Measured 2026-09-06 (FE-trajectory driver, DTLZ2 M=3 N=91
-//     n=12 / ZDT1 N=100 n=30, 30 000 FE, median IGD of 3 seeds, 1/n_vars ->
-//     1/pop_size): DTLZ2 0.0546 -> 0.0545 (seeds 0.0546/0.0545/0.0547 ->
-//     0.0545/0.0546/0.0544); ZDT1 0.0039 -> 0.0040 (0.0039/0.0039/0.0039 ->
-//     0.0040/0.0040/0.0040); ZDT1 converges more slowly mid-run (IGD at
-//     5k/10k FE 0.066/0.013 -> 0.174/0.040) and ends level, so the letter
-//     is the default. set_pm_literal(false) restores 1/n_vars. Compare
+//     against 1/7). The letter is the default; set_pm_literal(false)
+//     restores 1/n_vars. Compare
 //     sms_m2m.hpp (SMSM2M-2), which meets the same phrasing in a different
 //     paper and also implements it literally.
 //   EDV-2 (FIXED 2026-09-05, second primary-source pass). Alg.3 lines 2-11
@@ -62,16 +57,12 @@
 //     tournament pairs (N tournaments in total); it now runs N iterations
 //     with two tournaments each and keeps the first SBX child, as printed.
 //     The RNG stream differs from the previous release.
-//   EDV-3 (READING, measured). Alg.4 line 8 takes the angle between F(x) and
+//   EDV-3 (READING). Alg.4 line 8 takes the angle between F(x) and
 //     d^i; Fig.3 draws F(x) from the origin O, while §3.2 keeps z* "used to
 //     the evolution process to some extent" without saying where. The only
 //     geometric use z* can have is that angle, so it is measured from f − z*
-//     by default; set_ideal_shift(false) measures it from the origin.
-//     Measured 2026-09-06 (protocol as in EDV-1, f − z* -> origin):
-//     DTLZ2 0.0546 -> 0.0548 (seeds 0.0546/0.0545/0.0547 -> 0.0548/0.0548/
-//     0.0548); ZDT1 0.0039 -> 0.0039 (0.0039/0.0039/0.0039 -> 0.0039/0.0039/
-//     0.0039) — within the seed scatter; the default stays f − z*, the reading
-//     under which z* has a use.
+//     by default, the reading under which z* has a use;
+//     set_ideal_shift(false) measures it from the origin.
 //   EDV-4 (DECLARED). Table 3 lists N = 276 at m = 10 for the (3,2) two-layer
 //     lattice, whose size is C(12,9) + C(11,9) = 275; this port requires
 //     |D| = N exactly (generate_exact), so 276 throws and 275 is the size to

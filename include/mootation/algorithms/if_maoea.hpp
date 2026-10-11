@@ -122,12 +122,6 @@
 //     the schedule (every environmental selection that reaches the critical
 //     front) and the pool (the critical-front candidates, the same pool the
 //     optimally distributed individuals are drawn from).
-//     Measured 2026-09-06 (FE-trajectory driver, DTLZ2 M=3 N=91 / ZDT1 N=100,
-//     30 000 FE, median IGD of 3 seeds, Operation 3 -> AdjustLocation):
-//     DTLZ2 0.0545 -> 0.0545 (seeds 0.0544/0.0545/0.0546 -> 0.0545/0.0544/
-//     0.0547); ZDT1 0.0066 -> 0.0050 (0.0063/0.0066/0.0066 -> 0.0050/0.0049/
-//     0.0050) — the convex ZDT1 front, where §2.4 says the adjustment
-//     matters, improves beyond the seed scatter.
 //   IF-MaOEA-11 (FIXED 2026-09-06). Step 5 writes the inner layer as
 //     w_ij = ½·w_ij + (M−1)/(2M)·π/2 for w_ij ∈ W_2 — a contraction of the
 //     ANGULAR coordinates toward their mean (M−1)π/(2M), applied before the
@@ -170,8 +164,8 @@
 //     selection. Any trimming key that is comparable across reference points
 //     is biased on a curved front — the distance from a simplex vertex to
 //     the sphere is 0 at the corners and 0.42 at the centre — and the
-//     population drifted to the corners and edges of the DTLZ2 front (IGD
-//     0.32-0.54 with zero convergence error, seeds 1-3). Table 2 of the paper
+//     population drifted to the corners and edges of the DTLZ2 front. Table 2
+//     of the paper
 //     sizes the set as (p1, p2) = (12,0), (5,0), (3,2), (3,1) for M = 3, 5,
 //     8, 10 with N = 100, 126, 156, 230: one lattice of at most N points, so
 //     the overflow branch is the exception and the fitness top-up (Eq.7) is

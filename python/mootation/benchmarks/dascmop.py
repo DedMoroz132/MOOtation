@@ -5,9 +5,9 @@ Z. Fan, W. Li, X. Cai, H. Li, C. Wei, Q. Zhang, K. Deb, E. Goodman,
 "Difficulty Adjustable and Scalable Constrained Multi-objective Test Problem
 Toolkit", Evolutionary Computation 28(3):339-378, 2020, doi:10.1162/evco_a_00259
 (source das-cmop_fan2019, the arXiv version: Table 2, Eq. 7 and Table 3). The
-formulas are the paper's Table 2, read off the rendered page. The objectives
-agree with pymoo 0.6.2 (problems/multi/dascmop.py) at random points to 1e-12 at
-every triplet, and so do the constraints but for the two readings below.
+formulas are the paper's Table 2, read off the rendered page. Values checked
+against pymoo 0.6.2 (problems/multi/dascmop.py) at 36 points, reference in
+python/test_run_layer.py (DAS_CMOP_PYMOO).
 
   DAS-CMOP1-3  f1 = x1 + g, f2 = 1 - x1^2 + g (1); 1 - sqrt(x1) + g (2);
                1 - sqrt(x1) + 0.5 |sin(5 pi x1)| + g (3);
@@ -35,11 +35,10 @@ THE CONSTRAINTS (c >= 0 satisfied; the library's sign, <= 0 satisfied, is -c):
   a = 20, d = 0.5, and the difficulty triplet (eta, zeta, gamma) in [0, 1]^3
   sets the rest (Eq. 7): b = 2 eta - 1, e = d - ln(zeta), r = gamma / 2; at
   zeta = 0 there is no upper bound e and d = 0 (Eq. 7, "if zeta == 0, d = 0"):
-  c2 = g - d, which always holds (pymoo takes e = 1e30, (e - g)(g - d): the
-  same sign everywhere, values 1e30 times larger). At zeta = 1, e = d: the
-  second constraint is the equality g = d (the paper's triplets 13-16), taken
-  as the paper's experiments take an equality (§7.3, Eq. 13, after Ullah et
-  al. 2012): c2 = EQ_EPS - |g - d| >= 0, EQ_EPS = 1e-6 (pymoo: 1e-4).
+  c2 = g - d, which always holds. At zeta = 1, e = d: the second constraint
+  is the equality g = d (the paper's triplets 13-16), taken as the paper's
+  experiments take an equality (§7.3, Eq. 13, after Ullah et al. 2012):
+  c2 = EQ_EPS - |g - d| >= 0, EQ_EPS = 1e-6.
 
 THE TRIPLETS: the paper's sixteen (Table 3) are registered, DAS-CMOP<i>_t01 ..
 _t16; any other through problem(i, eta, zeta, gamma), the knobs of an

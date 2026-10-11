@@ -32,12 +32,10 @@ improves — a local optimum, an upper bound on the best N-subset. N is the
 run's population: the problem's, or a multiple of K for the M2M-like cores
 (campaign.fit_pop), whose floor is then its own. Beside it the IGD+ of the N
 points DSS selects, "an ideal archive reduced by DSS", and the ratio of the
-two, DSS's tax (on stage 3 1.05-3.7, median 1.39). The population scenario's
-levels read the greedy floor; the archive scenario's the DSS floor, since that
-answer is itself a DSS selection (on DTLZ2 the best archives stand at 0.97-0.99
-of the DSS floor, 1.36-1.41 of the greedy one). 1.1 x floor (tau = 0.1) is the
-ideal level: in stage 3 the min_seeds-th best seed reached it on 4 of 39 clean
-regular problems; read it as the best attainable, not as a target. GD+ has a
+two, DSS's tax. The population scenario's levels read the greedy floor; the
+archive scenario's the DSS floor, since that answer is itself a DSS selection.
+1.1 x floor (tau = 0.1) is the ideal level: read it as the best attainable,
+not as a target. GD+ has a
 floor of 0, so its levels stay absolute. The floors are written out
 (igdp_floor.csv, with the reference version) and read back by the next
 analysis of the same results.
@@ -93,8 +91,8 @@ evaluations spent round it up to whole generations); for a budget-dependent
 algorithm (budget.py), the final value of its ladder rung of nominal budget b;
 for any other, the first trajectory record at or after b evaluations
 ([campaign] record_at puts one at every rung). A run that stopped before
-spending b evaluations (DMS once its step is small enough: on BT6 and BT8 of
-stage 3 after 630) is read at its end: its answer did not change after.
+spending b evaluations (DMS once its step is small enough) is read at its
+end: its answer did not change after.
 
 SCENARIO. With --scenario archive every value is the run archive reduced by
 DSS instead of the population: final_archive at a run's own budget, the

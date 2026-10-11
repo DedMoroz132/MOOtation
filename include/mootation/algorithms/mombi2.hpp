@@ -79,13 +79,11 @@
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY
 // (CDP dominance when estimating the nadir, feasible-first in the tournament),
 // binary variables.
-// SCALE DEPENDENCE (the paper's own, measured 2026-09-09). Alg. line 9 tests
+// SCALE DEPENDENCE (the paper's own). Alg. line 9 tests
 //   |z^max_j - z^min_j| < eps with eps = 1e-3 from §5.1, i.e. an ABSOLUTE
 //   threshold against a RAW objective range, so which axes are treated as
-//   degenerate depends on the units. Multiplying every objective of DTLZ2
-//   (M=3) by 2^10 moves the final IGD by 2.3 % (5000 FE) and by 1.0 % at 2^20
-//   and beyond - a threshold being crossed once, not a growing failure. The
-//   paper's constant is left as written.
+//   degenerate depends on the units. The paper's constant is left as
+//   written.
 // ============================================================================
 
 #include <algorithm>
@@ -216,8 +214,7 @@ private:
         // holds REC_ and is aged before the line-15 test, so it blocks t+1 ..
         // t+REC_−1 and expires at t+REC_ — exactly when the nadir stored at t
         // leaves the record. Counting the marking generation itself, that is
-        // REC_ generations. A comparison with PlatEMO (2026-09) reads it as one
-        // generation too short; the reading here is the one tied to the record.
+        // REC_ generations, the reading tied to the record.
         for (int j = 0; j < m; ++j) if (mark_[j] > 0) --mark_[j];
 
         // Line 5: global variance test, α = 0.5.

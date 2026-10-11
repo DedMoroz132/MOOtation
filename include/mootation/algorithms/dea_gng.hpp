@@ -51,9 +51,7 @@
 //     association against the current R, then per reference vector the
 //     closest solution while c_J = 0, the farthest ones while c_J < c_max = M,
 //     and a random one after that. It used to be an FPS max-min selection in
-//     objective space, declared here as an approximation. Measured on DTLZ2
-//     (M=3, n=12, pop 91, 200 generations, seeds 20260804/1/2/3): mean front
-//     error 0.000345 -> 0.000226, lower on every seed.
+//     objective space, declared here as an approximation.
 //   GNG-2 (MINOR). sub-networks = the connected components of the edges (BFS).
 //   GNG-3 (MINOR). NSGA-III selection: normalization by z*/z' (max over F_1);
 //     association by angle; niches c_j; PBI f^S_J for the critical front.
@@ -70,9 +68,8 @@
 //   GNG-θ. ζ_k is the angle between r and the EDGE (r_nb − r) per Eq.8 — not
 //     the angle between two node positions, which is what an earlier version
 //     computed. The direction is the paper's letter: "v_edge,k can be obtained
-//     by r_k^nb − r" (§III-F, under Eq.8). A comparison with PlatEMO (2026-09)
-//     reports that the authors' MATLAB code takes r − r_nb instead; that code
-//     is not read here. The two readings turn ζ into π − ζ, and because ζ_min
+//     by r_k^nb − r" (§III-F, under Eq.8). The opposite edge, r − r_nb, turns
+//     ζ into π − ζ, and because ζ_min
 //     is taken over all edges of a node they give nearly the same θ wherever a
 //     node has neighbours on opposite sides of it; they part only at the ends
 //     of a chain and at nodes whose neighbours all lie to one side.
@@ -81,12 +78,7 @@
 //     g < (1−α)·G_max with g = 0 in the first generation; the port incremented
 //     g before the test, so the learning model stopped one generation early
 //     (⌈0.9·G_max⌉ − 1 adapting generations instead of ⌈0.9·G_max⌉). g is now
-//     incremented at the end of step(). Measured (FE-trajectory driver, DTLZ2
-//     M=3 N=91 / ZDT1 N=100, 30 000 FE, median IGD of 3 seeds, before ->
-//     after): DTLZ2 0.0551 -> 0.0547 (0.0554/0.0552/0.0541 ->
-//     0.0547/0.0551/0.0540), ZDT1 0.0044 -> 0.0042 (0.0044/0.0045/0.0042 ->
-//     0.0042/0.0046/0.0042) - within the seed scatter, as expected from one
-//     extra adapting generation.
+//     incremented at the end of step().
 //   GNG-6 (AMBIGUOUS — the paper mixes two frames; the raw one is chosen).
 //     ζ (Eq.8) is measured on the RAW, un-expanded GNG node geometry: both the
 //     reference vector and the edge come from node_obj, matching V_edge as
@@ -97,17 +89,14 @@
 //     not invariant under it. The pre-expansion reading is adopted because it
 //     is the only one in which both operands live in the same frame. The same
 //     mixing affects the raw-vs-normalized scale of R'_node.
-//   GNG-9 (AMBIGUOUS, measured 2026-09-16). Alg.2 line 12 writes
+//   GNG-9 (AMBIGUOUS). Alg.2 line 12 writes
 //     J = argmin_{j∈C} c_j and says nothing about ties. The port takes the
 //     FIRST minimal index, here and in the A_S update (§III-C), and R lists
 //     R'_u ahead of R'_node, so a tie goes to a surviving uniform vector
 //     before any GNG node. §III-B calls the selection "similar to that in
 //     NSGA-III", whose niching draws at random among the minimal ρ_j (deb2014
-//     Alg.4 lines 3-4), so random ties were tried in both places. They are
-//     worse (median IGD over 11 seeds, 30 000 FE, first index → random):
-//     DTLZ7 0.099 → 0.130 (worse on 10 of 11 seeds), WFG4 0.275 → 0.284,
-//     scaled DTLZ2 1.94 → 2.05; DTLZ2 0.0545 → 0.0545, ZDT1 0.0043 → 0.0044
-//     and inverted DTLZ1 0.0259 → 0.0255 do not move. First index stays.
+//     Alg.4 lines 3-4), so random ties were tried in both places; the first
+//     index, the letter of argmin, stays.
 //   GNG-10 (LETTER + GUARDS, noted 2026-09-16). Eq.5 (Alg.3 line 12) maps each
 //     sub-network's node box [f^q_min,node, f^q_max,node] onto the box of its
 //     signals [f^q_min,A_S, f^q_max,A_S]. Alg.3 does not discuss three cases:

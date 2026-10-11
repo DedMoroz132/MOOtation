@@ -121,11 +121,7 @@
 //     (Min-Max, Euclidean, maxmin_euclid) is a different procedure from the
 //     ARCHIVE truncation (Max-Min, angle); the two statements are consistent
 //     and Algorithm 2's generic d(x_i, x_j) is the angle. Angles are taken
-//     from the origin (§I assumes non-negative objectives). MEASURED (DTLZ2
-//     M=3 N=91 / ZDT1 N=100, 30 000 FE, median IGD of 3 seeds, together with
-//     the APRD-6 change): DTLZ2 0.1993 -> 0.1379
-//     (per seed 0.1845/0.2095/0.1563 -> 0.1304/0.1407/0.1345), ZDT1 0.0179 ->
-//     0.0191 (0.0179/0.0190/0.0179 -> 0.0191/0.0161/0.0221, within scatter).
+//     from the origin (§I assumes non-negative objectives).
 //
 //   APRD-10 (ARBITRATION — the printed PBI equations are misprinted).
 //     Eq.(7)-(8) as printed are dimensionally inconsistent (d1 already divided

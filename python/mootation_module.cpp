@@ -550,8 +550,8 @@ struct RunConfig {
     // feasible, (1 + eps_tau) times the largest violation seen once that many
     // are, and 0 from eps_tc of the budget on. The paper: tau 0.1, alpha 0.95,
     // theta 0.05, Tc 800 of its 1000 generations — eps_tc = 0.8 here, of the
-    // budget the run has, not 800 generations of any budget (the jMetal trap:
-    // a short budget never reaches eps = 0). The answer's cv is the violation.
+    // budget the run has, not 800 generations of any budget (a shorter budget
+    // would never reach eps = 0). The answer's cv is the violation.
     bool   eps_level = false;
     double eps_tau = 0.1, eps_alpha = 0.95, eps_theta = 0.05, eps_tc = 0.8;
 };

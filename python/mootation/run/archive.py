@@ -53,7 +53,7 @@ on 2026-09-22 and departs from Algo. 1 three times: the seeds are the M
 per-objective minima (the rule of Tanabe, Ishibuchi & Oyama 2017, which Singh
 et al. replace by ONE extreme point); the distance is d+ (Ishibuchi, Masuda,
 Tanigaki & Nojima, EMO 2015, Eq. 18; in DSS after Chen, Ishibuchi & Shang
-2020, not in the corpus), not the Euclidean; the almost-dominated points go
+2020), not the Euclidean; the almost-dominated points go
 last (Singh et al. filter nothing: they select from reference sets). Singh et
 al.'s results on the spacing of the selected points assume the Euclidean
 distance and are not claimed here. include/mootation/dss.hpp is the same

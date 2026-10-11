@@ -123,15 +123,8 @@
 //     default. MF is the switch between the two regimes: MF > 1 gives
 //     r0 = NFE/NFEmax + 1 > 1 (exploration), MF = 1 gives r0 = 1 − NFE/NFEmax
 //     < 1 (exploitation). The whole-population alternative is kept only as an
-//     experiment behind set_mf_scope_global(true) and is NOT the paper.
-//     Measured on DTLZ2 (M=3, n=12, pop 91, 200 generations, seed 20260804):
-//       per-subspace  mean 0.1108  best 0.0101
-//       global        mean 0.0863  best 0.0065
-//     The global reading scores better here, but not by enough to overturn the
-//     textual one on the strength of a single problem and seed, so the default
-//     follows the pseudocode's nesting. Worth knowing when comparing this port
-//     against the paper's tables: DCEA is one of the weaker performers in this
-//     library's smoke suite under either reading.
+//     experiment behind set_mf_scope_global(true) and is NOT the paper; the
+//     default follows the pseudocode's nesting.
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP makes every non-dominated sort a constrained one — the
 //   ESM/ESD front accumulation and the mating rank both read it — so an

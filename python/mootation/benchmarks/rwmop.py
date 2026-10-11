@@ -8,13 +8,14 @@ problems and some baseline results", Swarm and Evolutionary Computation 67,
 100961, 2021, doi:10.1016/j.swevo.2021.100961 (source
 rwmop_kumar2021_final-submission, §2.1-2.3, read off the rendered pages; the
 long coefficients of RCM21 off the PDF's text). The competition's MATLAB code
-has no licence and is not used: the formulas are the paper's.
+has no licence and nothing of it is used: the formulas are the paper's (THE
+COMPETITION'S CODE below).
 
 RCM30-50, the power electronics and power system problems, are not here:
 the paper does not give what they need — the inverters' switching and
 fundamental frequencies and modulation index, with sign patterns s shorter
 than the angles Table 2 counts (RCM30-35); the networks' admittance matrices
-and loads (RCM36-50).
+and loads (RCM36-50). The competition's code has them.
 
 Every function returns (f, g), or (f, g, h) with equalities h = 0 (RCM22-28):
 the objectives, and the inequality constraints in the library's sign, g <= 0
@@ -80,7 +81,8 @@ competition's budget and more, feasibility first; the final populations'
 feasible points, the non-dominated ones, at most 2 000 kept by DSS. 2 000
 points for every problem but RCM02 (1 658), RCM07 (17: four integers) and
 RCM15 (64: an integer and a list). An approximation: front_exact is False,
-and IGD+ there is a distance to it; the frame is its corners.
+and IGD+ there is a distance to it; the frame is its corners. Each problem's
+construction is its properties' front_built (front_built below).
   RCM22, 23, 25, 26 (reference()): no run meets the equalities to EQ_EPS
 (nor do most of the paper's, Tables 6 and 7), so these join the epsilon-
 constraint method's points (eps_front: SLSQP for the least f2 under f1 <= c,
@@ -88,8 +90,9 @@ every 0/1 setting; two seeds of starts, which agree to 5e-4 in normalised
 IGD+ on RCM22 and exactly on the others) with the long runs' feasible points
 (none on RCM22 and 23; on RCM25 and 26 no point of either is dominated by
 the other's): 472, 524, 2 000 and 687 points.
-  RCM28 is exact (rcm28_front, 1 548 points of its two curves) and RCM29 the
-best of its sixteen 0/1 settings (rcm29_front): two points.
+  RCM28 is exact (rcm28_front, 1 548 points of its two curves; front_exact
+True) and RCM29 the best of its sixteen 0/1 settings (rcm29_front): two
+points.
   RCM27 is not registered: its front is one point, f = (1.0765, -0.0581) at
 x1 = 0.2 + ln 2.1, x3 = 1 (with x3 = 0, g3 holds x1 to 0.2 and gives (1.25,
 0.2), dominated), and a one-point reference frames nothing, as RCM24's.
@@ -110,6 +113,42 @@ and the source's formulas are not at hand to tell which part is wrong.
 The same tables back the two readings above: every algorithm feasible in
 every run on RCM06 and RCM08 (Table 3), which as printed have no feasible
 point.
+
+THE COMPETITION'S CODE (github.com/P-N-Suganthan/2021-RW-MOP, commit 1e2e7d7,
+CEC2021-RWCMOP.zip: CEC2021_func.m, Cal_par.m) was read only to compare
+values at points, 200 uniform points of the box per problem (2026-10-11).
+Where the code and the paper differ:
+  RCM10, RCM12  no difference
+  RCM11   f3 = 305700 * 2289 x2 / (0.06 * 2289)^0.65, f4's exponent -39.75 x2
+          and g4's 2.098 (the paper: 2.62314586e3 x2, -3.975 x2, 12.098)
+  RCM13   f1's terms 14.933 x3 and 10 x3^2 / 3 (the paper: 14.9334 / x3 and
+          3.3333 x3^2), f2's constant 1.69e7 (16.91e6), the limits on f2 and
+          f3 1300 and 1100 (1100 and 850), and the constraints in the order
+          g1-g4, x2 x3 - 40, x1 / x2 - 12, 5 - x1 / x2, the two on x4 and x5,
+          then f2's and f3's
+  RCM14   the constraints in the order of the paper's g3, g4, g1, g2, g7, g8,
+          g5, g6; the values the same
+  RCM15   the third variable an index into the list, in [0.51, 42.49] and
+          rounded (the paper's is the diameter); the list's 25th value 0.0105,
+          as printed in the paper, and its 38th 0.331 (the paper: 0.0331); the
+          values otherwise the same
+  RCM16   E = 2.07e8 and delta_max = 0.005 (the paper: 307e8 and 0.05)
+  RCM17   P with the exponent 2/3 and F_c = 0.19 * 24 P / 1000 + 0.2 (the
+          paper: 0.67 and 4.56e-5 P + 0.2)
+  RCM19   the demands Q1 = 40 000 and Q2 = 20 000, which the paper does not
+          give
+  RCM20   P = (log10 log10(8.122e6 mu + 0.8) - 10.04) / -3.55 and dT =
+          2 (10^P - 560) (the paper: (... + 3.55) / 10.04 and 559.7); h and W
+          with offsets of 1e-5; the constraints W >= 101 000, P0 <= 1000,
+          dT <= 50, h >= 0.001, R >= R0, f2 <= 0.001 and W / (pi (R^2 - R0^2))
+          <= 5000 (the paper's g1-g7 point the other way, and its g4 bounds P0
+          where the code bounds dT). 366 of 400 000 uniform points of the box
+          satisfy the code's constraints
+  RCM30-50  the code has the data the paper does not give: the modulation
+          index, sign patterns and harmonic orders (RCM30-35), the networks'
+          conductance and susceptance matrices and loads (RCM36-46), line
+          data and loads (RCM47-49) and the cost and emission coefficients
+          (RCM50)
 """
 
 from __future__ import annotations
@@ -819,6 +858,23 @@ def rcm29_front() -> np.ndarray:
             F.append(best)
     F = np.array(F, float)
     return F[nondominated_mask(F)]
+
+
+def front_built(i: int) -> str | None:
+    """How RCM<i>'s reference front was built (THE FRONTS), for the
+    properties' front_built; None for RCM28's, which is exact."""
+    if i == 28:
+        return None
+    if i == 29:
+        return ("the least f2 of each of the sixteen 0/1 settings, by SLSQP from five starts, "
+                "and the non-dominated of them: two points (rwmop.rcm29_front)")
+    if i in (22, 23, 25, 26):
+        return ("the epsilon-constraint method (SLSQP for the least f2 under f1 <= c, every 0/1 "
+                "setting, two seeds of starts) joined with the feasible points of ten long "
+                "runs (rwmop.eps_front, rwmop.build_front)")
+    return ("ten runs of NSGA-II (two objectives, N = 500) or NSGA-III (three and five), 200 000 "
+            "evaluations each, feasibility first: the final populations' feasible "
+            "non-dominated points, at most 2 000 kept by DSS (rwmop.build_front)")
 
 
 def reference(i: int) -> np.ndarray:

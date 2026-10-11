@@ -48,10 +48,9 @@ MMF6's second branch where it is optimal (above), and MMF14_a's g = 1 on the
 segments x2 = 1/2, x3 = 0 and x2 in {0, 1}, x3 = 1 of the box's faces, where
 x3 - sin(pi x2) / 2 is -1/2 or 1.
 
-CHECKED against pymoo 0.6.2 (Apache-2.0), at 2 000 random points each:
-Omni-test to 4e-16, SYM-PART simple to 2e-15 within 4 of a part's centre
-(pymoo's regions are wider, its box [-100, 100]); pymoo's rotated problem
-turns the other way, so it is not compared.
+Omni-test and SYM-PART simple: values checked against pymoo 0.6.2
+(Apache-2.0) at five points each, reference in python/test_run_layer.py
+(OMNI_TEST_PYMOO, SYM_PART_PYMOO).
 
 parts(name): how many parts of the global set each map onto the whole front
 (MMF6's pieces of a third and fourth not counted: PARTS_NOTE).

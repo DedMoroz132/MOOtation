@@ -56,9 +56,8 @@
 //
 // DECLARED DEVIATIONS:
 //   SMSM2M-1 (DEVIATION, letter of the paper). Algorithm 2: refill with RANDOM
-//     solutions from Q (as in the M2M primary source). The M2M reference in
-//     PlatEMO refills by angle; we follow the letter of the paper. This is also
-//     ablation point A3.
+//     solutions from Q (as in the M2M primary source), the letter of the
+//     paper. This is also ablation point A3.
 //   SMSM2M-2 (DEVIATION, letter of the paper). §2.7 sets p_m=1/popsiz (and NOT
 //     the usual 1/n_vars). Implemented literally: pm=1/pop_size. It can be
 //     overridden to 1/n_vars via set_pm if desired.

@@ -58,7 +58,7 @@
 //     The lattice path also warns loudly when it substitutes K; it used to be
 //     silent, and setup_seeded used to skip the warning entirely (both entry
 //     points now share build_directions).
-//   ISDE-3 (DEVIATION, kept by measurement 2026-09-06, full-paper checklist).
+//   ISDE-3 (DEVIATION, full-paper checklist).
 //     The angular association is computed in the shifted space f − z*, z* the
 //     per-objective minimum over the pool being allocated (the cone apex sits
 //     at the pool's ideal point). The LETTER is the decomposition of
@@ -66,19 +66,10 @@
 //     Eq.2, objectives assumed non-negative; [4] footnote 1 shifts a negative
 //     objective by a constant M) — the rule used by moead_m2m (M2M-4),
 //     sms_m2m and hlmea, implemented here as set_ideal_shift(false) (only an
-//     objective whose pool minimum is negative is shifted, by −min). It is
-//     NOT the default because it measures worse: DTLZ2 (M=3, N=91, K=10,
-//     30 000 FE, 6 seeds) median IGD 0.0934 under the letter
-//     (0.0919/0.0992/0.0936/0.0962/0.0855/0.0866, trajectory non-monotone:
-//     0.077 at 5k FE -> 0.093 at 30k) against 0.0797 under the shift
-//     (0.0801/0.0820/0.0813/0.0750/0.0795/0.0791) — disjoint ranges; ZDT1
-//     (N=100) 0.0109 (0.0109/0.0108/0.0108/0.0119/0.0112/0.0076) against
-//     0.0091 (0.0087/0.0190/0.0050/0.0096/0.0261/0.0073) — overlapping. The
-//     older evidence stands too: without any shift ZDT3 (f2 < 0) loses PF
-//     segments (spread 0.42 -> 0.84 with the shift). The WS ordering and the
-//     SDE distance are translation-invariant either way, so only the cone
-//     membership is affected. The same A/B on hlmea showed no difference, so
-//     hlmea keeps the letter; the two defaults differ on purpose.
+//     objective whose pool minimum is negative is shifted, by −min); the
+//     default is the shift. The WS ordering and the SDE distance are
+//     translation-invariant either way, so only the cone membership is
+//     affected. hlmea keeps the letter; the two defaults differ on purpose.
 //   ISDE-4 (MINOR). Above S, removal proceeds one at a time with I_SDE^+
 //     recomputed; P_WS = empty gives +inf.
 //   ISDE-5 (MINOR). One offspring per member (SBX, first child); real-valued
@@ -157,7 +148,7 @@ public:
 private:
     int    K_req_=10;
     bool   exact_K_=false;   // ISDE-2: opt out of the Das-Dennis round-up
-    bool   ideal_shift_=true;  // ISDE-3: shift every objective by its pool minimum (default, measured); false = [4] letter
+    bool   ideal_shift_=true;  // ISDE-3: shift every objective by its pool minimum (default); false = [4] letter
     double inprob_=0.7;
     double eta_c_=20.0, eta_m_=20.0, pc_=1.0, pm_=-1.0;
     std::mt19937 rng_{std::random_device{}()};

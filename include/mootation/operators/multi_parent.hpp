@@ -27,7 +27,7 @@
 //         x = g + α·Σ ξ_j (x_j − g), ξ_j ~ N(0, σ²) independent, α = 1,
 //         σ² = 1/(μ − 1) — mean g and covariance (1/(μ − 1))·Σ (x_j − g)(x_j − g)ᵀ.
 //   undx  UNIMODAL NORMAL DISTRIBUTION crossover (Ono & Kobayashi, ICGA-7,
-//         1997, pp. 246-253 — not in the corpus; restated in Ono, Kita &
+//         1997, pp. 246-253; restated in Ono, Kita &
 //         Kobayashi, GECCO 1999, §2.1, Eqs. 1-2, source undx_ono1999): from
 //         x_1, x_2 and a third parent x_3, the pair
 //         c = m ± (z_1 e_1 + Σ_{k≥2} z_k e_k), m = (x_1 + x_2)/2,

@@ -37,17 +37,14 @@
 //   population, as §V-C does. It still keeps EP (Step 2.5) in vault.archive_*
 //   for C++ callers who want the output of §III; the Python layer does not
 //   return it.
-// ZERO WEIGHTS (the letter, measured 2026-09-16). The weights of §V-E are
+// ZERO WEIGHTS (the letter). The weights of §V-E are
 //   those of §IV-E, every λ_j taken from {0/H, 1/H, ..., H/H}, so boundary
 //   subproblems have zero components and g^te ignores those objectives: such
 //   a subproblem cannot tell a Pareto-optimal point from a weakly
 //   Pareto-optimal one beside it, and the ≤ of Step 2.4 lets the weaker one
-//   in. A floor of 1e-6 on λ_j, a common implementation convention the paper
-//   does not have, was measured against the letter and moves nothing outside
-//   the seed scatter (median IGD, 3 seeds, 30 000 FE, letter / floor): DTLZ2
-//   (M = 3) 0.0770 / 0.0770, ZDT1 0.0040 / 0.0039, DTLZ7 0.208 / 0.203,
-//   inverted DTLZ1 0.0323 / 0.0323, WFG4 0.351 / 0.353, scaled DTLZ2
-//   18.5 / 18.2. The letter stays; moead_de and moead_dra share it.
+//   in. A floor of 1e-6 on λ_j is a common implementation convention the
+//   paper does not have; the letter stays, and moead_de and moead_dra share
+//   it.
 // Deviations:
 //   - EP may contain duplicate F-vectors (does not contradict the letter of Step 2.5).
 //   (MOEAD-2, the former "up to 5 attempts to ensure k ≠ l", was removed on
