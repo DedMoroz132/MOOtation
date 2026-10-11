@@ -12,9 +12,15 @@
 //   * The archive: mutually non-dominated, every non-dominated point seen
 //     (no cap), at most the cap after every addition; archive_reuse_p = 1
 //     draws every parent from it.
+//   * The cut: dss::order (the fast one) leaves the archive's members, in
+//     their order, bit for bit as a cut by dss::order_plain after every
+//     addition of long streams; and orders random sets (dominated points,
+//     duplicates, ties) as order_plain does, at every k.
 // ============================================================================
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <random>
 #include <set>
@@ -271,6 +277,118 @@ void test_archive()
     check(std::abs(share - 0.5) < 0.15, "sms_emoa, archive_reuse_p = 1/2: about half");
 }
 
+// InnerArchive::add as first written: every addition beyond the cap cut by
+// dss::order_plain, the selection written out plainly.
+struct PlainCutArchive {
+    std::size_t cap;
+    std::vector<ops::InnerArchiveMember> members;
+    long long cuts = 0;
+
+    void add(const Vec& f, const Vec& x)
+    {
+        auto dominates = [](const Vec& a, const Vec& c) {
+            bool lt = false;
+            for (std::size_t j = 0; j < a.size(); ++j) {
+                if (a[j] > c[j]) return false;
+                lt = lt || a[j] < c[j];
+            }
+            return lt;
+        };
+        for (const auto& m : members)
+            if (m.f == f || dominates(m.f, f)) return;
+        members.erase(std::remove_if(members.begin(), members.end(),
+                                     [&](const ops::InnerArchiveMember& m) { return dominates(f, m.f); }),
+                      members.end());
+        members.push_back({f, x, {}});
+        if (members.size() > cap) {
+            ++cuts;
+            std::vector<Vec> F;
+            for (const auto& m : members) F.push_back(m.f);
+            std::vector<ops::InnerArchiveMember> kept;
+            for (std::size_t i : dss::order_plain(F, cap)) kept.push_back(members[i]);
+            members = std::move(kept);
+        }
+    }
+};
+
+bool same_bits(const Vec& a, const Vec& b)
+{
+    return a.size() == b.size() &&
+           (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(double)) == 0);
+}
+
+void test_archive_cut()
+{
+    std::cout << "-- the archive cut: dss::order as dss::order_plain, bit for bit --\n";
+    std::mt19937 rng(11);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    // Two objectives: a front with a flat tail and far outliers (points set
+    // aside); three: values on a grid of 1/40 (ties); five objectives.
+    const int ms[] = {2, 3, 5};
+    const std::size_t caps[] = {100, 80, 50};
+    const int adds[] = {4000, 3000, 2000};
+    for (int s = 0; s < 3; ++s) {
+        const int m = ms[s];
+        ops::InnerArchive fast;
+        fast.on = true;
+        fast.cap = static_cast<long long>(caps[s]);
+        fast.start(10, false);
+        PlainCutArchive plain{caps[s], {}};
+        bool same = true;
+        for (int t = 0; t < adds[s] && same; ++t) {
+            Vec f(static_cast<std::size_t>(m));
+            if (m == 2) {
+                const double a = u(rng);
+                f = {a, 1.0 - std::sqrt(a) + 0.01 * u(rng)};
+                if (a > 0.8) f[1] = 1e-4 * (1.0 - a);
+                if (u(rng) < 0.01) f = {3.0 + u(rng), -1e-3 * u(rng)};
+            } else {
+                double norm = 0.0;
+                for (auto& v : f) {
+                    v = -std::log(u(rng) + 1e-300);
+                    norm += v * v;
+                }
+                const double r = (1.0 + 0.05 * u(rng)) / std::sqrt(norm);
+                for (auto& v : f) v = m == 3 ? std::round(v * r * 40.0) / 40.0 : v * r;
+            }
+            const Vec x = {u(rng), u(rng)};
+            fast.add(f, x);
+            plain.add(f, x);
+            const auto& got = fast.members();
+            same = got.size() == plain.members.size();
+            for (std::size_t i = 0; same && i < got.size(); ++i)
+                same = same_bits(got[i].f, plain.members[i].f) && same_bits(got[i].x, plain.members[i].x);
+        }
+        const std::string what = std::to_string(m) + " objectives, cap " + std::to_string(caps[s]) + ", " +
+                                 std::to_string(plain.cuts) + " cuts";
+        std::cout << "   " << what << '\n';
+        check(same && plain.cuts > 1000, what + ": the same members after every addition");
+    }
+
+    // Sets an archive never holds: dominated points, exact duplicates, a
+    // constant objective, large values; every k.
+    bool same = true;
+    for (int trial = 0; trial < 400 && same; ++trial) {
+        const std::size_t m = 1 + rng() % 5, n = 1 + rng() % 120;
+        const unsigned kind = rng() % 4;
+        std::vector<Vec> F(n, Vec(m));
+        for (auto& f : F) {
+            for (auto& v : f) v = u(rng);
+            if (kind == 1)
+                for (auto& v : f) v = std::round(v * 4.0) / 4.0;
+            if (kind == 2 && u(rng) < 0.3) f[0] = 0.25;
+            if (kind == 3)
+                for (auto& v : f) v = 1e8 + std::round(v * 3.0);
+        }
+        if (n > 3) F[n - 1] = F[0];
+        for (std::size_t k : {std::size_t(0), std::size_t(1), n / 2, n - 1, n, n + 3})
+            same = same && dss::order(F, k) == dss::order_plain(F, k);
+    }
+    check(same, "400 sets of up to 120 points, 1 to 5 objectives: the same order at every k");
+    std::vector<Vec> F = {{0.1, 0.9}, {0.5, 0.5}, {0.9, 0.1}, {0.3, std::nan("")}};
+    check(dss::order(F, 4) == dss::order_plain(F, 4), "a value not finite: order_plain's order");
+}
+
 }   // namespace
 
 int main()
@@ -282,5 +400,6 @@ int main()
     test_nsga3_odd_population();
     test_bounds_of_spu_frac();
     test_archive();
+    test_archive_cut();
     return mootation::testing::report("survival");
 }

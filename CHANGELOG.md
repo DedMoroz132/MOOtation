@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The inner archive's cut after every addition (`inner_archive_cap`) is
+  cheaper: `dss::order` holds the points in a k-d tree and computes only the
+  pairs that can change the order (a point against those that could set it
+  aside; a greedy step against the candidates whose cover it can lower), and
+  returns, bit for bit, the order of `dss::order_plain`, the selection written
+  out as before (tested on long archive streams and on arbitrary sets,
+  `tests/test_survival.cpp`). DMS's answer and MOSA's archive use the same
+  function. Every result is unchanged.
 - The campaign's own reference (`--pooled-reference`, `campaign.pooled_reference`):
   per problem, the non-dominated points of all the campaign's finished runs
   (final answers, feasible rows only, and run archives) in
