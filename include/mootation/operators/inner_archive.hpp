@@ -15,7 +15,12 @@
 //                  (dss.hpp, as the answer is) after every addition, not at
 //                  the end — Cui et al. (2025, from the abstract): that way is
 //                  usually better. Unset: 10 μ for a real-valued genome, none
-//                  for a purely binary one.
+//                  for a purely binary one. A cut orders all N + 1 members by
+//                  dss::order, which gives dss::order_plain's order bit for
+//                  bit but asks a k-d tree which points a step can change
+//                  instead of computing every pair (dss.hpp): the members and
+//                  their order after every addition are those of the plain
+//                  cut (tests/test_survival.cpp), only cheaper.
 //   archive_reuse_p        each parent, with this probability, is a member of
 //                  the archive drawn uniformly, otherwise the host's own
 //                  choice; 0 by default. p = 1/2 is Ren, Liang, Li & Qian's
