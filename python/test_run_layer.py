@@ -7793,6 +7793,8 @@ def doc_follows_its_supplement_and_its_fronts_hold():
     assert np.allclose(D.front(9)[:, 2], 0.0) and properties("DOC9")["front"].startswith("degenerate")
     assert properties("DOC9")["front_dim"] == 1 and properties("DOC5")["multimodal"]
     # the equalities as such or as |h| - 1e-4: the same run
+    if _core_with("Config") is None:
+        print("    (the runs skipped: no compiled core)"); return
     from mootation.benchmarks import solve
     from mootation import minimize
     p = get("DOC3")
@@ -8271,7 +8273,8 @@ def dn_nsga2_keeps_more_of_sym_parts_parts_than_nsga2():
     than NSGA-II, by the cover rate over 10 seeds, and on every seed at least
     as many parts within 0.1 of a part; dn_cf reaches it and only it, and the
     integer genome is refused."""
-    if not _have_numpy() or "dn_nsga2" not in __import__("mootation").algorithms():
+    if (not _have_numpy() or _core_with("Config") is None
+            or "dn_nsga2" not in __import__("mootation").algorithms()):
         print("  skip  dn_nsga2...: no NumPy or stale _core"); return
     import numpy as np
     import mootation
