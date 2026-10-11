@@ -346,7 +346,6 @@ private:
         vault.refresh_objectives(scratch);
 
         std::vector<double> f_y  = vault.objectives_of(scratch);
-        std::vector<double> lm_y = vault.limits_of(scratch);
         double cv_y = (constraint_mode != ConstraintMode::NONE)
                       ? vault.get_cv(scratch) : 0.0;
 
@@ -365,7 +364,7 @@ private:
                                          ? vault.get_cv(j) : 0.0);
             if (g_y <= g_xj) {
                 // move vars+objs without re-evaluating, to respect the FE budget.
-                vault.seed_individual(j, c1, f_y, bc1, lm_y);
+                vault.copy_point(scratch, j);
                 vault.get_ind(j).scalar_fitness = g_y;
                 ++c;
             }
@@ -377,20 +376,15 @@ private:
 
     // ── Weight update (Steps 21–25; §3.3–3.5) ──────────────────────────────
     struct Entry {
-        std::vector<double> w, vars, objs, lims;
-        std::vector<int>    bvars;
+        std::vector<double> w, objs;
+        VaultPoint          pt;      // the point (data_vault.hpp, WRITING BACK)
     };
 
     Entry gather_slot(DataVault<Ind_t>& vault, int i) {
         Entry e;
         e.w    = W_[i];
         e.objs = vault.objectives_of(i);
-        e.lims = vault.limits_of(i);
-        int nv = vault.vars_n(), nb = vault.bin_vars_n();
-        e.vars.resize(nv);
-        for (int j = 0; j < nv; ++j) e.vars[j] = vault.get_variable(i, j);
-        e.bvars.resize(nb);
-        for (int j = 0; j < nb; ++j) e.bvars[j] = vault.get_bin_variable(i, j);
+        e.pt   = vault.point_of(i);
         return e;
     }
 
@@ -488,20 +482,15 @@ private:
             Entry e;
             e.w    = wq;
             e.objs = AF[a];
-            e.vars = vault.archive_variables_of(a);
-            e.lims = vault.archive_limits_of(a);
-            if (vault.bin_vars_n() > 0) e.bvars = vault.archive_bin_variables_of(a);
-            else                        e.bvars.clear();
+            e.pt   = vault.archive_point_of(a);
 
             // «neighbouring information of q's weight is updated by q»
             // — with no cap on the number of replacements.
             for (int k = 0; k < Tn; ++k) {
                 Entry& nb = entries[dist[k].second];
                 if (tchebycheff(e.objs, nb.w) <= tchebycheff(nb.objs, nb.w)) {
-                    nb.vars  = e.vars;
-                    nb.objs  = e.objs;
-                    nb.lims  = e.lims;
-                    nb.bvars = e.bvars;
+                    nb.objs = e.objs;
+                    nb.pt   = e.pt;
                 }
             }
             entries.push_back(std::move(e));
@@ -553,8 +542,7 @@ private:
         // write back, then Step 24: rebuild the neighbourhoods.
         for (int i = 0; i < n; ++i) {
             W_[i] = entries[i].w;
-            vault.seed_individual(i, entries[i].vars, entries[i].objs,
-                                  entries[i].bvars, entries[i].lims);
+            vault.put_point(i, entries[i].pt);
         }
         build_neighbourhoods(n);
         for (int i = 0; i < n; ++i)

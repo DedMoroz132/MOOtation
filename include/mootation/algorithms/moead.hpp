@@ -273,11 +273,7 @@ private:
                 g_xj = tchebycheff(vault.objectives_of(j), lam_j);
             }
             if (g_y <= g_xj) {
-                vault.seed_individual(j,
-                                      vault.variables_of(scratch),
-                                      vault.objectives_of(scratch),
-                                      vault.binary_variables_of(scratch),
-                                      vault.limits_of(scratch));
+                vault.copy_point(scratch, j);
                 vault.get_ind(j).scalar_fitness = g_y;
             }
         }

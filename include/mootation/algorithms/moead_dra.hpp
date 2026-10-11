@@ -350,11 +350,7 @@ private:
                           ? tche_feas(vault.objectives_of(j), W_[j], cv_j)
                           : tche(vault.objectives_of(j), W_[j]);
             if (g_y <= g_xj) {
-                vault.seed_individual(j,
-                                      vault.variables_of(scratch),
-                                      vault.objectives_of(scratch),
-                                      vault.binary_variables_of(scratch),
-                                      vault.limits_of(scratch));
+                vault.copy_point(scratch, j);
                 vault.get_ind(j).scalar_fitness = g_y;
                 ++c;
             }

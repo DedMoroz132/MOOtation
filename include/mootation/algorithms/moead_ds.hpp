@@ -108,7 +108,7 @@ private:
     int    t_max_=1000;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
     std::vector<Sol> pop_;
     std::vector<std::vector<double>> R_last_;   // reference points R of pop_ from the last DDS (DDS-7)
     int N_=0, m_=0, gen_=0, K_=10;
@@ -224,12 +224,12 @@ private:
         std::vector<double> c1,c2;
         ops::sbx(x.vars,y.vars,c1,c2,b,eta_c_,pc_,rng_);
         ops::polynomial_mutation(c1,b,eta_m_,pm_eff(nv),rng_);
-        Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch);
+        Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         return z;
     }
     void store_arch(DataVault<Ind_t>& vault){ vault.reduce(0); vault.expand((int)pop_.size());
-        for(int i=0;i<(int)pop_.size();++i) vault.seed_individual((std::size_t)i,pop_[i].vars,pop_[i].objs,{},{}); }
+        for(int i=0;i<(int)pop_.size();++i) vault.put_point((std::size_t)i, pop_[i].pt); }
 
 public:
     MOEADDSCore() = default;
@@ -251,7 +251,7 @@ public:
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
-        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
         pop_=dds(pop_);   // Alg.1 line 3: [P, d1, d2] = DDS(P, N, 0)
@@ -262,13 +262,16 @@ public:
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("MOEA/D-DS: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=std::max(2,(int)std::floor(std::sqrt((double)N_)));
-        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
         pop_=dds(pop_);   // Alg.1 line 3 (a seeded pool larger than N is reduced to N here)
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
         // Alg.1 line 8 / Alg.4: mating d2 from the R of the last DDS (DDS-7);
         // a fresh normalization only if none is available (size mismatch).

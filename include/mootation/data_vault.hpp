@@ -58,6 +58,20 @@
 // the violation otherwise. The violation itself stays in the slot (cv_raw);
 // raw_cv(v) and max_raw_cv() read it. The binding's EPS_LEVEL schedule moves
 // eps between steps; at 0, the default, cv is the violation, as before.
+//
+// WRITING BACK (task 8 of 2026-10-12). A core that keeps its own copies of
+// points and writes its population back from them keeps a VaultPoint for each
+// — everything the slot held: the variables and the integer genome, the
+// objectives, the constraint values, |h| of the equalities, whether the
+// evaluation failed — taken by point_of(v) and written back whole by
+// put_point(v, p), so that no core lists the fields itself. put_point brings
+// the point to the vault's present: the equalities from |h| at the current
+// tolerance, a failed point to the current penalty, cv at the current level;
+// refresh_point(p) does the same to a copy the core still holds, for a core
+// that compares its copies by their cv. seed_individual writes a point from
+// outside (a seed population, a resume); with constraints it needs their
+// values: without them it throws, where it used to write zeros, a violating
+// point passing for a feasible one.
 // ============================================================================
 
 #include <algorithm>
@@ -79,6 +93,38 @@
 #include "problem.hpp"
 
 namespace mootation {
+
+// A point as a slot holds it (WRITING BACK above).
+struct VaultPoint {
+    std::vector<double> variables, objectives, limits;
+    std::vector<int>    binary_variables;
+    std::vector<double> eq_abs;           // |h| of the equalities
+    bool                failed = false;
+    double              cv = 0.0, cv_raw = 0.0;
+};
+
+// A copy a core keeps of a point, brought to the vault's present before the
+// core compares it again (WRITING BACK): its cv, where the core reads one
+// (with_cv: constraint handling on), and a failed point's objectives, the
+// current penalty.
+template <typename Vault>
+void refresh_copy(const Vault& vault, VaultPoint& pt, std::vector<double>& objs, double& cv,
+                  bool with_cv) {
+    const double c = vault.refresh_point(pt);
+    if (with_cv) cv = c;
+    if (pt.failed) objs = pt.objectives;
+}
+
+// The same for every copy a core keeps in a container of its own (members pt,
+// objs and cv, as the cores name them), or in a container of such containers.
+template <typename Vault, typename Copy>
+void refresh_copies(const Vault& vault, std::vector<Copy>& copies, bool with_cv) {
+    for (auto& c : copies) refresh_copy(vault, c.pt, c.objs, c.cv, with_cv);
+}
+template <typename Vault, typename Copy>
+void refresh_copies(const Vault& vault, std::vector<std::vector<Copy>>& copies, bool with_cv) {
+    for (auto& c : copies) refresh_copies(vault, c, with_cv);
+}
 
 template <typename Ind_type>
 class DataVault {
@@ -124,6 +170,9 @@ private:
     // ── Epsilon level (EPSILON LEVEL above) ─────────────────────────────────
     double      cv_level_ = 0.0;                  // a violation up to this counts as none
     double      cv_max_   = 0.0;                  // the largest violation evaluated so far
+
+    // ── Writing back (WRITING BACK above) ───────────────────────────────────
+    unsigned long long present_ = 0;              // moves with the tolerance, level, penalty
 
     // ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -177,8 +226,10 @@ private:
         if (!buf_[r].failed && s > cv_max_) cv_max_ = s;
     }
 
-    // The penalty of a failed slot (FAILED EVALUATIONS), its cv included.
-    void penalize(Ind_type& s) const {
+    // The penalty of a failed slot (FAILED EVALUATIONS), its cv included; of a
+    // slot or of a VaultPoint.
+    template <typename P>
+    void penalize(P& s) const {
         for (std::size_t j = 0; j < s.objectives.size(); ++j) {
             if (fin_hi_.empty() || !(fin_hi_[j] >= fin_lo_[j])) { s.objectives[j] = 1.0; continue; }
             const double span = fin_hi_[j] > fin_lo_[j] ? fin_hi_[j] - fin_lo_[j] : 1.0;
@@ -219,8 +270,10 @@ private:
         for (double v : s.limits)     bad = bad || !std::isfinite(v);
         if (!bad) {
             s.failed = false;
-            if (widen(s) && failed_n_ > 0)
+            if (widen(s) && failed_n_ > 0) {
                 for (auto& t : buf_) if (t.failed) penalize(t);
+                ++present_;
+            }
             return;
         }
         if (fail_raise_)
@@ -250,6 +303,59 @@ private:
         const std::size_t first = s.limits.size() - eq_n_;
         s.eq_abs.resize(eq_n_);
         for (std::size_t k = 0; k < eq_n_; ++k) s.eq_abs[k] = s.limits[first + k] + eq_tol_;
+    }
+
+    // A point evaluated earlier, brought to the vault's present (WRITING
+    // BACK): a failed one to the current penalty, otherwise the equalities
+    // from |h| at the current tolerance; cv at the current level.
+    template <typename P>
+    void bring_up(P& p) const {
+        if (p.failed) {
+            penalize(p);
+        } else if (eq_n_ > 0 && p.eq_abs.size() == eq_n_) {
+            const std::size_t first = p.limits.size() - eq_n_;
+            for (std::size_t k = 0; k < eq_n_; ++k) p.limits[first + k] = p.eq_abs[k] - eq_tol_;
+        }
+        double s = 0.0;
+        for (double g : p.limits) if (g > 0.0) s += g;
+        p.cv_raw = s;
+        p.cv = s > cv_level_ ? s : 0.0;
+    }
+
+    void check_point(const VaultPoint& p, const char* who) const {
+        if (static_cast<int>(p.variables.size()) != num_vars_ ||
+                static_cast<int>(p.objectives.size()) != num_objs_ ||
+                static_cast<int>(p.limits.size()) != num_lims_ ||
+                static_cast<int>(p.binary_variables.size()) != num_bin_vars_)
+            throw std::invalid_argument(std::string(who) +
+                                        ": the point is not one of this vault's (point_of)");
+    }
+
+    void write_point(std::size_t r, const VaultPoint& p) {
+        Ind_type& s = buf_[r];
+        s.variables        = p.variables;
+        s.binary_variables = p.binary_variables;
+        s.objectives       = p.objectives;
+        s.limits           = p.limits;
+        s.eq_abs           = p.eq_abs;
+        s.failed           = p.failed;
+        bring_up(s);
+        if (!s.failed && s.cv_raw > cv_max_) cv_max_ = s.cv_raw;
+        dirty_[r] = 0;
+    }
+
+    VaultPoint read_point(std::size_t r) const {
+        const Ind_type& s = buf_[r];
+        VaultPoint p;
+        p.variables        = s.variables;
+        p.binary_variables = s.binary_variables;
+        p.objectives       = s.objectives;
+        p.limits           = s.limits;
+        p.eq_abs           = s.eq_abs;
+        p.failed           = s.failed;
+        p.cv               = s.cv;
+        p.cv_raw           = s.cv_raw;
+        return p;
     }
 
     void calc_one(std::size_t r) {
@@ -403,6 +509,7 @@ public:
     void set_eq_tol(double delta) {
         if (eq_n_ == 0 || delta == eq_tol_) { eq_tol_ = delta; return; }
         eq_tol_ = delta;
+        ++present_;
         const std::size_t first = static_cast<std::size_t>(num_lims_) - eq_n_;
         for (std::size_t r = 0; r < buf_.size(); ++r) {
             Ind_type& s = buf_[r];
@@ -418,6 +525,7 @@ public:
     void set_cv_level(double eps) {
         if (eps == cv_level_) return;
         cv_level_ = eps;
+        ++present_;
         for (std::size_t r = 0; r < buf_.size(); ++r) {
             if (dirty_[r]) continue;
             Ind_type& s = buf_[r];
@@ -629,6 +737,39 @@ public:
     Ind_type&       get_ind(std::size_t v)       { return buf_[real_idx(v)]; }
     const Ind_type& get_ind(std::size_t v) const { return buf_[real_idx(v)]; }
 
+    // ── Points a core keeps (WRITING BACK) ───────────────────────────────────
+
+    // Everything active individual v holds, evaluated first.
+    VaultPoint point_of(std::size_t v) {
+        std::size_t r = real_idx(v); ensure_ready(r); return read_point(r);
+    }
+    VaultPoint archive_point_of(std::size_t i) const {
+        if (i >= archive_.size()) throw std::out_of_range("DataVault::archive_point_of");
+        return read_point(archive_[i]);
+    }
+    // Writes p into active slot v whole, brought to the vault's present.
+    void put_point(std::size_t v, const VaultPoint& p) {
+        check_point(p, "put_point");
+        write_point(real_idx(v), p);
+    }
+    // Appends p to the archive, as put_point writes a slot.
+    std::size_t archive_push_point(const VaultPoint& p) {
+        check_point(p, "archive_push_point");
+        std::size_t r = alloc_slot();
+        write_point(r, p);
+        archive_.push_back(r);
+        return archive_.size() - 1;
+    }
+    // Copies active individual `from` into active slot `to` whole: the
+    // "move without re-evaluating" of the MOEA/D family.
+    void copy_point(std::size_t from, std::size_t to) { put_point(to, point_of(from)); }
+    // A count that moves whenever the vault's present does (the tolerance, the
+    // level or the failures' penalty): a core whose copies are many and whose
+    // steps are short refreshes them only when it moved.
+    unsigned long long present() const { return present_; }
+    // Brings a copy the core holds to the vault's present; its cv.
+    double refresh_point(VaultPoint& p) const { bring_up(p); return p.cv; }
+
     // ── Archive ──────────────────────────────────────────────────────────────
     //
     // The archive is a separate pool of slots within the same buf_.
@@ -686,6 +827,10 @@ public:
             throw std::invalid_argument("archive_push_data: bvars size mismatch");
         if (!lims.empty() && static_cast<int>(lims.size()) != num_lims_)
             throw std::invalid_argument("archive_push_data: lims size mismatch");
+        if (lims.empty() && num_lims_ > 0)
+            throw std::invalid_argument(
+                "archive_push_data: this problem has " + std::to_string(num_lims_) +
+                " constraints and the point carries no values for them (archive_push_point)");
 
         std::size_t r = alloc_slot();
         // vars + clip
@@ -804,6 +949,11 @@ public:
             throw std::invalid_argument("seed_individual: bvars size mismatch");
         if (!lims.empty() && static_cast<int>(lims.size()) != num_lims_)
             throw std::invalid_argument("seed_individual: lims size mismatch");
+        if (lims.empty() && num_lims_ > 0)
+            throw std::invalid_argument(
+                "seed_individual: this problem has " + std::to_string(num_lims_) +
+                " constraints and the point carries no values for them; a core writing "
+                "back a point it read keeps it whole (point_of / put_point)");
 
         for (int j = 0; j < num_vars_; ++j) {
             double val = vars[j];

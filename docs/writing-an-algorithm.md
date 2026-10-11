@@ -144,6 +144,16 @@ same way. Leave the geometry alone: angles, clusters, hypervolume and
 normalisation are measures, not preferences — constraining them twice distorts
 the search instead of directing it.
 
+If your core keeps copies of points outside the vault and writes the
+population back from them, keep a `VaultPoint` for each (`vault.point_of(i)`)
+and write it with `vault.put_point(i, p)` (`copy_point(from, to)` for a slot
+to slot move, `archive_push_point` for the archive). Do not rebuild a point
+from its variables and objectives: its constraint values, |h| of the
+equalities and its failure would be lost. Copies the core compares again in a
+later step go through `refresh_copies(vault, copies, with_cv)` at the start of
+`step()`, because the equalities' tolerance, the ε level and the failure
+penalty move between steps (`data_vault.hpp`, WRITING BACK).
+
 ## The header block
 
 The header comment is the product, as much as the code. Ship:

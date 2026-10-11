@@ -289,3 +289,15 @@ filter or the truncation rule, whichever is that algorithm's actual preference
 relation. For the 64 that were written for unconstrained problems this is
 constraint handling bolted on, and the headers say so; C-TAEA and CCMO are
 built for constraints.
+
+Every core carries a point's violation through every rewrite of its
+population. A core that keeps its own copies of points and writes its
+population back from them keeps each point whole (`VaultPoint`: the
+variables and the integer genome, the objectives, the constraint values, |h|
+of the equalities, whether the evaluation failed) and writes it back whole,
+at the tolerance, ε level and failure penalty of the moment
+(`data_vault.hpp`, WRITING BACK); the copies it compares again in a later
+step are brought to that moment first. A point written without its
+constraint values is refused. A test checks every core after every step on
+problems with inequalities, equalities (under the linear tolerance schedule
+too) and failed evaluations.

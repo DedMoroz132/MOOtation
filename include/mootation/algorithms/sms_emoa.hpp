@@ -179,9 +179,11 @@ private:
     void archive_point(DataVault<Ind_t>& vault, std::size_t i)
     {
         if (!arch_.on) return;
-        if (constraint_mode != ConstraintMode::NONE && vault.get_cv(i) > 0.0) return;
+        const bool constrained = constraint_mode != ConstraintMode::NONE;
+        if (vault.is_failed(i) || (constrained && vault.get_cv(i) > 0.0)) return;
         arch_.add(vault.objectives_of(i), vault.variables_of(i),
-                  vault.bin_vars_n() > 0 ? vault.binary_variables_of(i) : std::vector<int>{});
+                  vault.bin_vars_n() > 0 ? vault.binary_variables_of(i) : std::vector<int>{},
+                  constrained ? vault.point_of(i) : VaultPoint{});
     }
 
     static bool dominates(const std::vector<double>& a, const std::vector<double>& b)
@@ -380,6 +382,9 @@ public:
 
     void step(DataVault<Ind_t>& vault)
     {
+        // the inner archive judged again where the vault's present moved
+        // (operators/inner_archive.hpp)
+        if (constraint_mode != ConstraintMode::NONE) arch_.refresh(vault);
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_int_distribution<int> pick(0, n - 1);

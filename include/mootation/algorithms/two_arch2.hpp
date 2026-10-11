@@ -147,7 +147,7 @@ private:
     double pm_       = -1.0;    // <0 => 1/n
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv = 0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv = 0.0; VaultPoint pt; };
 
     std::vector<Sol> CA_;       // Convergence Archive (I_eps+)
     std::vector<Sol> DA_;       // Diversity Archive (Pareto) — final output
@@ -327,7 +327,7 @@ private:
         Sol s; s.vars = std::move(vars);
         vault.set_variables(scratch, s.vars);
         vault.refresh_objectives(scratch);
-        s.objs = vault.objectives_of(scratch);
+        s.objs = vault.objectives_of(scratch); s.pt = vault.point_of(scratch);
         if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(scratch);
         return s;
     }
@@ -397,8 +397,7 @@ private:
         vault.reduce(0);
         vault.expand(static_cast<int>(out.size()));
         for (int i = 0; i < static_cast<int>(out.size()); ++i)
-            vault.seed_individual(static_cast<std::size_t>(i),
-                                  out[i].vars, out[i].objs, {}, {});
+            vault.put_point(static_cast<std::size_t>(i), out[i].pt);
     }
 
 public:
@@ -427,7 +426,7 @@ public:
         std::vector<Sol> P;
         P.reserve(N);
         for (int i = 0; i < N; ++i) {
-            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
             if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
             P.push_back(std::move(s));
         }
@@ -448,7 +447,7 @@ public:
         int na = static_cast<int>(vault.active_n());
         P.reserve(na);
         for (int i = 0; i < na; ++i) {
-            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
             if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
             P.push_back(std::move(s));
         }
@@ -458,6 +457,10 @@ public:
 
     // One generation (Fig. 2): reproduce -> update CA (I_eps+) -> update DA.
     void step(DataVault<Ind_t>& vault) {
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, CA_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, DA_, constraint_mode != ConstraintMode::NONE);
         int scratch = vault.expand(1);
 
         // 1. Reproduction: independent crossover (CA×DA) + mutation (CA) streams.

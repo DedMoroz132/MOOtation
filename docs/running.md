@@ -300,8 +300,7 @@ the same at `_5D`. A constraint is a value that is at most 0 when satisfied,
 as everywhere in the library: the paper's c(x) >= 0 with the sign turned. Two
 of the paper's equations are read as pymoo reads them (`c_dtlz.py`, READINGS);
 values checked against pymoo 0.6.2 at 60 points, reference in
-`python/test_run_layer.py`. The fronts
-are analytic but for C2-ConvexDTLZ2's: behind the hole the cylinder cuts in
+`tests/data/pymoo-0.6.2_c-dtlz.json`. The fronts are analytic but for C2-ConvexDTLZ2's: behind the hole the cylinder cuts in
 the convex front lie points of larger g that nothing feasible dominates, which
 the paper's front leaves out; that front is a sample checked point
 by point (`BenchProblem.front_exact` is False, and `--cover` says so). MaF9 from five
@@ -461,8 +460,7 @@ on first use from a dense sample of the attainable set, each point's g brought
 down to its feasibility boundary by bisection, and the frame read off them;
 the properties' `difficulty` names the triplet's kinds. The formulas are the
 paper's Table 2; values checked against pymoo 0.6.2 at 36 points, reference
-in `python/test_run_layer.py`; at
-ζ = 1, where the feasibility constraint becomes the equality g = d, the
+in `tests/data/pymoo-0.6.2_das-cmop.json`; at ζ = 1, where the feasibility constraint becomes the equality g = d, the
 library takes the paper's tolerance 10^-6 (its Eq. 13).
 
 **LIR-CMOP1-14** (Fan et al., Soft Computing 23(23), 2019;

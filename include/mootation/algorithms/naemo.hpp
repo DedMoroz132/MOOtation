@@ -178,7 +178,7 @@ private:
     // adaptive means
     double mu_etac_ = 30.0, mu_F_ = 0.5, mu_CR_ = 0.2;
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt; };
     std::vector<Sol> arch_;                      // source of truth (the archive)
 
     double pm_eff(int nv) const {
@@ -386,7 +386,7 @@ private:
         for (int i = 0; i < N; ++i) {
             Sol s;
             s.vars  = vault.variables_of(i);
-            s.objs  = vault.objectives_of(i);
+            s.objs  = vault.objectives_of(i); s.pt  = vault.point_of(i);
             s.bvars = vault.binary_variables_of(i);
             if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
             arch_.push_back(std::move(s));
@@ -398,8 +398,7 @@ private:
         vault.reduce(0);
         vault.expand((int)arch_.size());
         for (int i = 0; i < (int)arch_.size(); ++i) {
-            vault.seed_individual((std::size_t)i, arch_[i].vars, arch_[i].objs,
-                                  arch_[i].bvars, {});
+            vault.put_point((std::size_t)i, arch_[i].pt);
         }
     }
 
@@ -464,6 +463,9 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault) {
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, arch_, constraint_mode != ConstraintMode::NONE);
         const auto& bounds = vault.get_bounds();
         int L_hard = n_;
 
@@ -536,6 +538,7 @@ public:
 
             // insert the child
             Sol child; child.vars = cv; child.objs = co; child.cv = ccv;
+            child.pt = vault.point_of(scratch);
             int cline = associate(co, z);
             arch_.push_back(std::move(child));
             line_of.push_back(cline);

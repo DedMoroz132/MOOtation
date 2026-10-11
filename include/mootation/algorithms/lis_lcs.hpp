@@ -167,7 +167,7 @@ private:
         std::vector<double> x;        // real variables
         std::vector<int>    b;        // binary variables (extension)
         std::vector<double> f;        // objectives
-        std::vector<double> g;        // limits
+        VaultPoint          pt;       // the point whole (data_vault.hpp, WRITING BACK)
         double cv       = 0.0;        // constraint violation
         int    widx     = 0;          // associated weight (Eq.5)
         int    parent   = -1;         // DP parent (OffspringPool_1 only)
@@ -444,7 +444,7 @@ private:
         for (int i = 0; i < cnt; ++i) {
             sols[i].x  = vault.variables_of(i);     // after bound clamping
             sols[i].f  = vault.objectives_of(i);
-            sols[i].g  = vault.limits_of(i);
+            sols[i].pt = vault.point_of(i);
             sols[i].cv = vault.get_cv(i);
             update_z(sols[i].f);
         }
@@ -610,7 +610,7 @@ public:
 
         // present PP in the vault (CCD is not informative on a random start)
         for (int i = 0; i < N; ++i)
-            vault.seed_individual(i, pp_[i].x, pp_[i].f, pp_[i].b, pp_[i].g);
+            vault.put_point(i, pp_[i].pt);
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
@@ -626,7 +626,7 @@ public:
             pp_[i].x    = vault.variables_of(i);
             pp_[i].b    = vault.binary_variables_of(i);
             pp_[i].f    = vault.objectives_of(i);
-            pp_[i].g    = vault.limits_of(i);
+            pp_[i].pt   = vault.point_of(i);
             pp_[i].cv   = vault.get_cv(i);
             pp_[i].widx = i;
             update_z(pp_[i].f);
@@ -636,6 +636,11 @@ public:
 
     // ── step: one generation of Algorithm 1 (N evaluations) ────────────────
     void step(DataVault<Ind_t>& vault) {
+        // DP and PP kept from the last step, brought to the vault's present
+        // (data_vault.hpp, WRITING BACK): the tolerance, the level and the
+        // failures' penalty move between steps
+        for (auto* pop : {&dp_, &pp_})
+            for (auto& s : *pop) refresh_copy(vault, s.pt, s.f, s.cv, true);
         const int N  = vault.pop_size();
         const int nv = vault.vars_n();
         const int nb = vault.bin_vars_n();
@@ -829,7 +834,7 @@ public:
         }
         for (int i = 0; i < N; ++i) {
             const Sol& s = *all[keep[i]];
-            vault.seed_individual(i, s.x, s.f, s.b, s.g);
+            vault.put_point(i, s.pt);
         }
     }
 };

@@ -171,7 +171,7 @@ public:
     struct Point {
         std::vector<double> x, f;
         double cv = 0.0;
-        std::vector<double> g{};          // the constraint values (empty without)
+        VaultPoint pt{};                  // the point whole (data_vault.hpp, WRITING BACK)
     };
     using Bounds = std::vector<std::pair<std::optional<double>, std::optional<double>>>;
 
@@ -194,6 +194,7 @@ private:
 
     std::vector<Point> archive_;
     std::vector<Point> cur_;              // the chains' current points
+    unsigned long long present_seen_ = 0; // the vault's present() they are brought to
     std::vector<std::vector<double>> W_;  // tch: each chain's weights
     std::vector<double> lo_, hi_;
     double   T0_ = 1e-3, T_ = 1e-3, s_ = 0.2;
@@ -359,7 +360,7 @@ private:
         vault.expand(static_cast<int>(idx.size()));
         for (std::size_t i = 0; i < idx.size(); ++i) {
             const Point& p = archive_[idx[i]];
-            vault.seed_individual(i, p.x, p.f, {}, p.g);
+            vault.put_point(i, p.pt);
         }
     }
 
@@ -374,7 +375,7 @@ private:
         for (std::size_t i = 0; i < X.size(); ++i) {
             const std::size_t v = static_cast<std::size_t>(base) + i;
             out.push_back({X[i], vault.objectives_of(v), constrained() ? vault.get_cv(v) : 0.0,
-                           vault.lims_n() > 0 ? vault.limits_of(v) : std::vector<double>{}});
+                           vault.point_of(v)});
         }
         vault.reduce(keep);
         return out;
@@ -706,13 +707,19 @@ public:
         std::vector<Point> first;
         for (std::size_t v = 0; v < vault.active_n(); ++v)
             first.push_back({vault.variables_of(v), vault.objectives_of(v),
-                             constrained() ? vault.get_cv(v) : 0.0,
-                             vault.lims_n() > 0 ? vault.limits_of(v) : std::vector<double>{}});
+                             constrained() ? vault.get_cv(v) : 0.0, vault.point_of(v)});
         start(vault, first);
     }
 
     void step(DataVault<Ind_t>& vault)
     {
+        // the archive and the chains' points, brought to the vault's present
+        // when it moved (data_vault.hpp, WRITING BACK)
+        if (vault.present() != present_seen_) {
+            for (auto* pts : {&archive_, &cur_})
+                for (auto& p : *pts) refresh_copy(vault, p.pt, p.f, p.cv, constrained());
+            present_seen_ = vault.present();
+        }
         const int c = static_cast<int>(k_ % static_cast<long long>(cur_.size()));
         const double frac = t_max_ > 1 ? std::min(1.0, static_cast<double>(k_) / static_cast<double>(t_max_ - 1)) : 1.0;
         T_ = T0_ * std::pow(t_ratio_, frac);

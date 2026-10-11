@@ -175,7 +175,7 @@ private:
     ops::BoundRepair repair_ = ops::BoundRepair::Native;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt; };
 
     std::vector<std::vector<double>>                 V_;     // [K] direction vectors (unit, in normalized space)
     std::vector<std::vector<std::vector<double>>>    Wk_;    // [K][S_k] weights (Σ=1, in normalized space)
@@ -318,7 +318,7 @@ private:
             vault.set_variables(scratch,c1);
         }
         vault.refresh_objectives(scratch);
-        z.objs=vault.objectives_of(scratch);
+        z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         upd_ideal(z.objs);
         return z;
@@ -469,7 +469,7 @@ public:
         vault.sync();
         z_.assign(m_,std::numeric_limits<double>::max());
         std::vector<Sol> P; P.reserve(N_);
-        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.bvars=vault.binary_variables_of(i);
+        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             upd_ideal(s.objs); P.push_back(s); }
         uniform_init(P);   // FIX 2026-07-07: Alg.1/§V-C (was adapt(P))
@@ -480,7 +480,7 @@ public:
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         z_.assign(m_,std::numeric_limits<double>::max());
         std::vector<Sol> P; P.reserve(N_);
-        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.bvars=vault.binary_variables_of(i);
+        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             upd_ideal(s.objs); P.push_back(s); }
         uniform_init(P);   // FIX 2026-07-07: Alg.1/§V-C (was adapt(P))
@@ -491,10 +491,13 @@ public:
         std::vector<Sol> P=flat_pop();
         vault.reduce(0); vault.expand((int)P.size());
         for(int i=0;i<(int)P.size();++i)
-            vault.seed_individual((std::size_t)i,P[i].vars,P[i].objs,P[i].bvars,{});
+            vault.put_point((std::size_t)i, P[i].pt);
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, hold_, constraint_mode != ConstraintMode::NONE);
         ++gen_;
         std::uniform_real_distribution<double> uni(0.0,1.0);
         int scratch=vault.expand(1);

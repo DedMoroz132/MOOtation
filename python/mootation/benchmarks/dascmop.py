@@ -7,7 +7,7 @@ Toolkit", Evolutionary Computation 28(3):339-378, 2020, doi:10.1162/evco_a_00259
 (source das-cmop_fan2019, the arXiv version: Table 2, Eq. 7 and Table 3). The
 formulas are the paper's Table 2, read off the rendered page. Values checked
 against pymoo 0.6.2 (problems/multi/dascmop.py) at 36 points, reference in
-python/test_run_layer.py (DAS_CMOP_PYMOO).
+tests/data/pymoo-0.6.2_das-cmop.json.
 
   DAS-CMOP1-3  f1 = x1 + g, f2 = 1 - x1^2 + g (1); 1 - sqrt(x1) + g (2);
                1 - sqrt(x1) + 0.5 |sin(5 pi x1)| + g (3);

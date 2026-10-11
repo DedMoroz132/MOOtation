@@ -263,15 +263,14 @@ private:
         // the old archive (idx >= n), because archive_clear() below will
         // invalidate those entries before we can read them.
         // IMPORTANT: also snapshot the fitness fields (strength/raw_fitness/
-        // density/fitness) — archive_push_data does not carry them over, while
+        // density/fitness) — archive_push_point does not carry them over, while
         // the Step 5 tournament (tournament_archive) compares exactly
         // F(i) = R + D computed in Step 2 for all members of P̄_{t+1}
         // The fitness travels WITH the archive entry: otherwise a carried-over
         // member would be judged by the fitness of whatever previously occupied
         // its slot.
         struct ArchiveEntry {
-            std::vector<double> vars, objs, lims;
-            std::vector<int>    bvars;
+            VaultPoint pt;               // the point whole (data_vault.hpp, WRITING BACK)
             int    strength    = 0;
             int    raw_fitness = 0;
             double density     = 0.0;
@@ -282,12 +281,7 @@ private:
             if (idx >= n) {
                 std::size_t ai = static_cast<std::size_t>(idx - n);
                 ArchiveEntry e;
-                e.vars  = vault.archive_variables_of(ai);
-                e.objs  = vault.archive_objectives_of(ai);
-                if (vault.bin_vars_n() > 0)
-                    e.bvars = vault.archive_bin_variables_of(ai);
-                if (vault.lims_n() > 0)
-                    e.lims  = vault.archive_limits_of(ai);
+                e.pt = vault.archive_point_of(ai);
                 const auto& ind = vault.archive_get(ai);
                 e.strength    = ind.strength;
                 e.raw_fitness = ind.raw_fitness;
@@ -306,8 +300,8 @@ private:
                 vault.archive_push(idx);   // full slot copy, fitness fields OK
             } else {
                 const auto& e = old_arch_data[arch_entry];
-                vault.archive_push_data(e.vars, e.objs, e.bvars, e.lims);
-                // Restore the fitness fields (archive_push_data does not write them).
+                vault.archive_push_point(e.pt);
+                // Restore the fitness fields (archive_push_point does not write them).
                 auto& ind = vault.archive_get(vault.archive_size() - 1);
                 ind.strength    = e.strength;
                 ind.raw_fitness = e.raw_fitness;
@@ -387,12 +381,7 @@ public:
                                     static_cast<int>(vault.archive_size()));
         for (int i = 0; i < n; ++i) {
             const auto a = static_cast<std::size_t>(i);
-            vault.seed_individual(a, vault.archive_variables_of(a),
-                                  vault.archive_objectives_of(a),
-                                  vault.bin_vars_n() > 0 ? vault.archive_bin_variables_of(a)
-                                                         : std::vector<int>{},
-                                  vault.lims_n() > 0 ? vault.archive_limits_of(a)
-                                                     : std::vector<double>{});
+            vault.put_point(a, vault.archive_point_of(a));
         }
     }
 

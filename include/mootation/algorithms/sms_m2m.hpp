@@ -297,15 +297,13 @@ private:
         int m     = vault.objs_n();
         int N     = K_ * S_;
 
-        std::vector<std::vector<double>> objs(M_act), vars(M_act), lims(M_act);
-        std::vector<std::vector<int>>    bvars(M_act);
+        std::vector<std::vector<double>> objs(M_act);
+        std::vector<VaultPoint>          pts(M_act);   // the points whole (data_vault.hpp)
         std::vector<double>              cvs(M_act, 0.0);
         for (int i = 0; i < M_act; ++i) {
             if (constraint_mode != ConstraintMode::NONE) cvs[i] = vault.get_cv(i);
             objs[i]  = vault.objectives_of(i);
-            vars[i]  = vault.variables_of(i);
-            bvars[i] = vault.binary_variables_of(i);
-            lims[i]  = vault.limits_of(i);
+            pts[i]   = vault.point_of(i);
         }
 
         // Eq.2 angles from the ORIGIN (§2.2: f ≥ 0); a negative objective is
@@ -352,11 +350,8 @@ private:
         }
 
         vault.reduce(N);
-        for (int p = 0; p < N; ++p) {
-            int src = order[p];
-            vault.seed_individual((std::size_t)p,
-                                  vars[src], objs[src], bvars[src], lims[src]);
-        }
+        for (int p = 0; p < N; ++p)
+            vault.put_point((std::size_t)p, pts[order[p]]);
     }
 
     void breed(DataVault<Ind_t>& vault, int x, int y, int dst) {

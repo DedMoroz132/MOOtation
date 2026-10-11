@@ -385,25 +385,12 @@ public:
                 seen_b.push_back(std::move(b));
             }
             auto keep = eps_archive_select(F, items, N);
-            // rewrite the archive: keep vars/objs/lims of the non-dominated survivors
-            std::vector<std::vector<double>> kv, ko, kl;
-            std::vector<std::vector<int>> kb;
-            for (int idx : keep) {
-                if (idx < A) { kv.push_back(vault.archive_variables_of(idx));
-                               ko.push_back(vault.archive_objectives_of(idx));
-                               kl.push_back(vault.archive_limits_of(idx));
-                               kb.push_back(vault.bin_vars_n() ? vault.archive_bin_variables_of(idx) : std::vector<int>()); }
-                else { int pi = idx - A; std::vector<double> vv(vault.vars_n());
-                       for (int j = 0; j < vault.vars_n(); ++j) vv[j] = vault.get_variable(pi, j);
-                       kv.push_back(vv); ko.push_back(vault.objectives_of(pi));
-                       kl.push_back(vault.limits_of(pi));
-                       std::vector<int> bb(vault.bin_vars_n());
-                       for (int j = 0; j < vault.bin_vars_n(); ++j) bb[j] = vault.get_bin_variable(pi, j);
-                       kb.push_back(bb); }
-            }
+            // rewrite the archive: keep the non-dominated survivors whole
+            std::vector<VaultPoint> kp;
+            for (int idx : keep)
+                kp.push_back(idx < A ? vault.archive_point_of(idx) : vault.point_of(idx - A));
             vault.archive_clear();
-            for (std::size_t i = 0; i < kv.size(); ++i)
-                vault.archive_push_data(kv[i], ko[i], kb[i], kl[i]);
+            for (const auto& p : kp) vault.archive_push_point(p);
         }
         int A = static_cast<int>(vault.archive_size());
 
@@ -567,27 +554,16 @@ public:
             for (int i = 0; i < A; ++i) { F[Pc.size()+i] = vault.archive_objectives_of(i); src[Pc.size()+i] = -(i+1); }
             std::vector<int> items(total); std::iota(items.begin(), items.end(), 0);
             auto keep = eps_archive_select(F, items, N);
-            // materialize the survivors into the active slots [0,N) via
-            // seed_individual (objs are known — no repeated evaluations).
-            std::vector<std::vector<double>> kv, ko, kl;
-            std::vector<std::vector<int>> kb;
+            // materialize the survivors into the active slots [0,N) whole
+            // (put_point: the points are known — no repeated evaluations).
+            std::vector<VaultPoint> kp;
             for (int it : keep) {
                 int s = src[it];
-                if (s >= 0) { std::vector<double> vv(vault.vars_n());
-                              for (int j = 0; j < vault.vars_n(); ++j) vv[j] = vault.get_variable(s, j);
-                              kv.push_back(vv); ko.push_back(vault.objectives_of(s));
-                              kl.push_back(vault.limits_of(s));
-                              std::vector<int> bb(vault.bin_vars_n());
-                              for (int j = 0; j < vault.bin_vars_n(); ++j) bb[j] = vault.get_bin_variable(s, j);
-                              kb.push_back(bb); }
-                else { int ai = -s - 1; kv.push_back(vault.archive_variables_of(ai));
-                       ko.push_back(vault.archive_objectives_of(ai));
-                       kl.push_back(vault.archive_limits_of(ai));
-                       kb.push_back(vault.bin_vars_n() ? vault.archive_bin_variables_of(ai) : std::vector<int>()); }
+                kp.push_back(s >= 0 ? vault.point_of(s) : vault.archive_point_of(-s - 1));
             }
             // framework guard: top up to N from the rest of the pool, by the
             // Σ of normalized objectives
-            if (static_cast<int>(kv.size()) < N) {
+            if (static_cast<int>(kp.size()) < N) {
                 std::vector<char> used(pool, 0);
                 for (int v : Pc) used[v] = 1;
                 std::vector<int> rest;
@@ -595,19 +571,13 @@ public:
                 std::sort(rest.begin(), rest.end(), [&](int a, int b){
                     double na=0,nb=0; for(int j=0;j<m;++j){na+=Fn[a][j];nb+=Fn[b][j];} return na<nb; });
                 for (int v : rest) {
-                    if (static_cast<int>(kv.size()) >= N) break;
-                    std::vector<double> vv(vault.vars_n());
-                    for (int j = 0; j < vault.vars_n(); ++j) vv[j] = vault.get_variable(v, j);
-                    kv.push_back(vv); ko.push_back(vault.objectives_of(v));
-                    kl.push_back(vault.limits_of(v));
-                    std::vector<int> bb(vault.bin_vars_n());
-                    for (int j = 0; j < vault.bin_vars_n(); ++j) bb[j] = vault.get_bin_variable(v, j);
-                    kb.push_back(bb);
+                    if (static_cast<int>(kp.size()) >= N) break;
+                    kp.push_back(vault.point_of(v));
                 }
             }
-            int kept = static_cast<int>(kv.size());
+            int kept = static_cast<int>(kp.size());
             for (int i = 0; i < kept; ++i) {
-                vault.seed_individual(i, kv[i], ko[i], kb[i], kl[i]);
+                vault.put_point(i, kp[i]);
                 finalP.push_back(i);
             }
         }
