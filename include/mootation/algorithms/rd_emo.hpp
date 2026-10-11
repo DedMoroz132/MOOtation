@@ -124,7 +124,7 @@ private:
     double eta_c_ = 30.0, eta_m_ = 20.0, pc_ = 0.9, pm_ = -1.0;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt{}; };
 
     std::vector<std::vector<double>> R_;          // [N] reference points (lambda directions)
     std::vector<double>              Rnorm_;      // ‖λ_i‖

@@ -154,7 +154,7 @@ private:
     std::mt19937 rng_{std::random_device{}()};
     static constexpr double INF_THETA=1e6;
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt{}; };
     struct GNode { std::vector<double> pos; double err=0; int hp=0; bool alive=true; };
     std::vector<GNode> gn_;
     std::vector<std::map<int,int>> gadj_;   // node→(node→age)

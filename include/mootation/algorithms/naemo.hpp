@@ -178,7 +178,7 @@ private:
     // adaptive means
     double mu_etac_ = 30.0, mu_F_ = 0.5, mu_CR_ = 0.2;
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt{}; };
     std::vector<Sol> arch_;                      // source of truth (the archive)
 
     double pm_eff(int nv) const {

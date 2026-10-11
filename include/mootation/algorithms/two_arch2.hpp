@@ -147,7 +147,7 @@ private:
     double pm_       = -1.0;    // <0 => 1/n
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv = 0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv = 0.0; VaultPoint pt{}; };
 
     std::vector<Sol> CA_;       // Convergence Archive (I_eps+)
     std::vector<Sol> DA_;       // Diversity Archive (Pareto) — final output

@@ -169,7 +169,7 @@ private:
     ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt{}; };
     std::vector<std::vector<double>> V_;
     std::vector<std::vector<Sol>> subpop_;
     std::vector<double> z_;                    // HLMEA-5: per-objective shift (≤ 0): min f_i when negative, else 0

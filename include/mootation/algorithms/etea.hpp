@@ -189,7 +189,7 @@ public:
     }
 
 private:
-    struct Sol { std::vector<double> vars, objs; double cv = 0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv = 0.0; VaultPoint pt{}; };
 
     std::mt19937 rng_{std::random_device{}()};
     int          m_ = 0, N_ = 0;

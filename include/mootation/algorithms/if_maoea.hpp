@@ -227,7 +227,7 @@ private:
     int    t_max_ = 250, t_ = 0;
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;  // §3.1 Table 2
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt{}; };
 
     int m_ = 0, N_ = 0;
     std::vector<std::vector<double>> Ref_;   // reference points (unit-norm rows)

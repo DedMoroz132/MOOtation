@@ -162,7 +162,7 @@ private:
     int H_base_ = 0;              // base lattice density (divisions)
     int extra_density_ = 0;       // D (Alg.2): extra divisions added by RPIL
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt{}; };
 
     // Reference vectors (Z), normalized to unit length for the angles.
     std::vector<std::vector<double>> Z_;        // active / current reference vectors

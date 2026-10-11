@@ -153,7 +153,7 @@ private:
     double eta_c_=20.0, eta_m_=20.0, pc_=1.0, pm_=-1.0;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt{}; };
     std::vector<std::vector<double>> V_;
     std::vector<std::vector<Sol>> subpop_;
     int K_=0, m_=0, N_=0, S_=0;

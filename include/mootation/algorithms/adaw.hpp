@@ -377,7 +377,7 @@ private:
     // ── Weight update (Steps 21–25; §3.3–3.5) ──────────────────────────────
     struct Entry {
         std::vector<double> w, objs;
-        VaultPoint          pt;      // the point (data_vault.hpp, WRITING BACK)
+        VaultPoint          pt{};      // the point (data_vault.hpp, WRITING BACK)
     };
 
     Entry gather_slot(DataVault<Ind_t>& vault, int i) {

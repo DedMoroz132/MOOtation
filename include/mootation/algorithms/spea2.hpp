@@ -270,7 +270,7 @@ private:
         // member would be judged by the fitness of whatever previously occupied
         // its slot.
         struct ArchiveEntry {
-            VaultPoint pt;               // the point whole (data_vault.hpp, WRITING BACK)
+            VaultPoint pt{};               // the point whole (data_vault.hpp, WRITING BACK)
             int    strength    = 0;
             int    raw_fitness = 0;
             double density     = 0.0;

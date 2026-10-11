@@ -419,7 +419,7 @@ private:
     // ── AWA: Alg.2 + Alg.3 ────────────────────────────────────────────────
     struct Entry {
         std::vector<double> w, objs;
-        VaultPoint          pt;      // the point (data_vault.hpp, WRITING BACK)
+        VaultPoint          pt{};      // the point (data_vault.hpp, WRITING BACK)
     };
 
     Entry gather_slot(DataVault<Ind_t>& vault, int i) {
@@ -486,7 +486,7 @@ private:
         }
 
         // ── Alg.3 Step 1: drop EP members dominated by the population ─────
-        struct EpCand { std::vector<double> objs; VaultPoint pt; };
+        struct EpCand { std::vector<double> objs; VaultPoint pt{}; };
         std::vector<EpCand> ep;
         for (std::size_t k = 0; k < vault.archive_size(); ++k) {
             const auto& fo = vault.archive_objectives_of(k);

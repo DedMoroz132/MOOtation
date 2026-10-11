@@ -167,7 +167,7 @@ private:
         std::vector<double> x;        // real variables
         std::vector<int>    b;        // binary variables (extension)
         std::vector<double> f;        // objectives
-        VaultPoint          pt;       // the point whole (data_vault.hpp, WRITING BACK)
+        VaultPoint          pt{};       // the point whole (data_vault.hpp, WRITING BACK)
         double cv       = 0.0;        // constraint violation
         int    widx     = 0;          // associated weight (Eq.5)
         int    parent   = -1;         // DP parent (OffspringPool_1 only)

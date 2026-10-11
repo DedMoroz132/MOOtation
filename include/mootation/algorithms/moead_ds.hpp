@@ -108,7 +108,7 @@ private:
     int    t_max_=1000;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt{}; };
     std::vector<Sol> pop_;
     std::vector<std::vector<double>> R_last_;   // reference points R of pop_ from the last DDS (DDS-7)
     int N_=0, m_=0, gen_=0, K_=10;

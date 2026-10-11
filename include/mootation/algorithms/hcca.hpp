@@ -152,7 +152,7 @@ private:
         std::vector<double> parent_objs;  // objectives of the associated parent x (Eq.4)
         double              cv = 0.0;      // constraint violation (0 when unconstrained)
         int                 sp = -1;       // associated subproblem/weight index for g^tch (Eq.4/5)
-        VaultPoint          pt;            // the point as the vault holds it (data_vault.hpp, WRITING BACK)
+        VaultPoint          pt{};            // the point as the vault holds it (data_vault.hpp, WRITING BACK)
     };
 
     int m_ = 0, N_ = 0, K_ = 0;

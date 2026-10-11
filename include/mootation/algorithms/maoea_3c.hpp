@@ -155,7 +155,7 @@ private:
         double cv = 0.0;      // constraint violation (0 when unconstrained)
         int    ndfront = 0;   // NDFrontNo
         int    fitfront = 0;  // FitFrontNo
-        VaultPoint pt;        // the point as the vault holds it (data_vault.hpp, WRITING BACK)
+        VaultPoint pt{};        // the point as the vault holds it (data_vault.hpp, WRITING BACK)
     };
 
     int                m_ = 0, N_ = 0;

@@ -175,7 +175,7 @@ private:
     ops::BoundRepair repair_ = ops::BoundRepair::Native;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt{}; };
 
     std::vector<std::vector<double>>                 V_;     // [K] direction vectors (unit, in normalized space)
     std::vector<std::vector<std::vector<double>>>    Wk_;    // [K][S_k] weights (Σ=1, in normalized space)

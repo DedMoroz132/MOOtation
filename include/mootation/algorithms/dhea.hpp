@@ -131,7 +131,7 @@ private:
     int    t_max_=1000;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; bool knee=false; double div=0.0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; bool knee=false; double div=0.0; VaultPoint pt{}; };
     std::vector<Sol> pop_;
     int N_=0, m_=0, gen_=0;
 

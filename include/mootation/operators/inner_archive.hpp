@@ -63,7 +63,7 @@ namespace mootation::ops {
 struct InnerArchiveMember {
     std::vector<double> f, x;
     std::vector<int> b;
-    VaultPoint pt;          // under constraint handling: the point whole, judged again
+    VaultPoint pt{};        // under constraint handling: the point whole, judged again
 };
 
 struct InnerArchiveRecord {

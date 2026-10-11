@@ -203,7 +203,7 @@ private:
     ops::BoundRepair repair_ = ops::BoundRepair::Native;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; int rank=0; VaultPoint pt; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; int rank=0; VaultPoint pt{}; };
 
     std::vector<std::vector<double>> W_;          // [S] central vectors (unit)
     std::vector<std::vector<Sol>>    internal_;   // [S]

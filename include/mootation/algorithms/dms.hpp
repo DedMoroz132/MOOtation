@@ -124,7 +124,7 @@ private:
         std::vector<double> f;
         double cv = 0.0;
         double alpha = 1.0;
-        VaultPoint pt;           // the point as the vault holds it (data_vault.hpp, WRITING BACK)
+        VaultPoint pt{};           // the point as the vault holds it (data_vault.hpp, WRITING BACK)
     };
 
     std::vector<Entry> list_;
