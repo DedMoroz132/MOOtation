@@ -152,6 +152,7 @@ private:
         std::vector<double> parent_objs;  // objectives of the associated parent x (Eq.4)
         double              cv = 0.0;      // constraint violation (0 when unconstrained)
         int                 sp = -1;       // associated subproblem/weight index for g^tch (Eq.4/5)
+        VaultPoint          pt;            // the point as the vault holds it (data_vault.hpp, WRITING BACK)
     };
 
     int m_ = 0, N_ = 0, K_ = 0;
@@ -410,7 +411,7 @@ private:
         ops::polynomial_mutation(child, bnd, eta_m_, pm_eff(nv), rng_);
         Sol o; o.vars = child;
         vault.set_variables(scratch, child); vault.refresh_objectives(scratch);
-        o.objs = vault.objectives_of(scratch);
+        o.objs = vault.objectives_of(scratch); o.pt = vault.point_of(scratch);
         if (constraint_mode != ConstraintMode::NONE) o.cv = vault.get_cv(scratch);
         o.parent_objs = base.objs;   // parent x for Eq.4 (DE target)
         o.sp = base_sp;              // subproblem/weight of the DP parent (DP[i] <-> W_[i])
@@ -425,7 +426,7 @@ private:
         ops::polynomial_mutation(c1, bnd, eta_m_, pm_eff(nv), rng_);
         Sol o; o.vars = c1;
         vault.set_variables(scratch, c1); vault.refresh_objectives(scratch);
-        o.objs = vault.objectives_of(scratch);
+        o.objs = vault.objectives_of(scratch); o.pt = vault.point_of(scratch);
         if (constraint_mode != ConstraintMode::NONE) o.cv = vault.get_cv(scratch);
         o.parent_objs = a.objs;   // parent x for Eq.4 (first SBX parent)
         o.sp = -1;                // PP individuals are not bound to a subproblem; pick weight in adapt_K
@@ -819,7 +820,7 @@ private:
         std::vector<Sol> base;
         if (seeded) {
             for (int i = 0; i < (int)vault.active_n(); ++i) {
-                Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+                Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
                 if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
                 base.push_back(s);
             }
@@ -836,7 +837,7 @@ private:
             }
             vault.sync();
             for (int i = 0; i < Nreq; ++i) {
-                Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+                Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
                 if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
                 base.push_back(s);
             }
@@ -856,7 +857,7 @@ private:
         vault.reduce(0);
         vault.expand((int)P.size());
         for (int i = 0; i < (int)P.size(); ++i)
-            vault.seed_individual((std::size_t)i, P[i].vars, P[i].objs, {}, {});
+            vault.put_point((std::size_t)i, P[i].pt);
     }
 
 public:
@@ -894,6 +895,10 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault) {
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, DP_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, PP_, constraint_mode != ConstraintMode::NONE);
         int scratch = vault.expand(1);
 
         // (Alg.1 l.4) M <- random N-K solutions from DP

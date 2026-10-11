@@ -184,8 +184,11 @@
 //     front contributes the optimally distributed individuals first, trimmed by
 //     smallest ||f'|| when they overflow and topped up by descending fitness
 //     (Eq.7) when they fall short.
-// EXTENSIONS BEYOND THE PAPER (off by default): constraint_mode exists for API
-//   uniformity and does not change the IF-MaOEA logic (NONE).
+// CONSTRAINTS (beyond the paper, off by default). constraint_mode
+//   FEASIBILITY/CDP makes the Alg.3 non-dominated sort a constrained one (Deb's
+//   rule): a feasible solution before an infeasible one, two infeasible by CV.
+//   The fitness, the reference points and the angles are untouched. The paper
+//   is unconstrained.
 // ============================================================================
 
 #include <algorithm>
@@ -224,7 +227,7 @@ private:
     int    t_max_ = 250, t_ = 0;
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;  // §3.1 Table 2
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
 
     int m_ = 0, N_ = 0;
     std::vector<std::vector<double>> Ref_;   // reference points (unit-norm rows)
@@ -534,7 +537,7 @@ private:
         ops::polynomial_mutation(c1, b, eta_m_, pm_eff(nv), rng_);
         Sol z; z.vars = c1;
         vault.set_variables(scratch, c1); vault.refresh_objectives(scratch);
-        z.objs = vault.objectives_of(scratch);
+        z.objs = vault.objectives_of(scratch); z.pt = vault.point_of(scratch);
         if (constraint_mode != ConstraintMode::NONE) z.cv = vault.get_cv(scratch);
         return z;
     }
@@ -635,7 +638,7 @@ private:
     void read_pop(DataVault<Ind_t>& vault, std::vector<Sol>& P) {
         P.clear();
         for (std::size_t i = 0; i < vault.active_n(); ++i) {
-            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
             if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
             P.push_back(s);
         }
@@ -643,7 +646,7 @@ private:
     void write_pop(DataVault<Ind_t>& vault, const std::vector<Sol>& P) {
         vault.reduce(0); vault.expand((int)P.size());
         for (int i = 0; i < (int)P.size(); ++i)
-            vault.seed_individual((std::size_t)i, P[i].vars, P[i].objs, {}, {});
+            vault.put_point((std::size_t)i, P[i].pt);
     }
 
 public:
@@ -683,6 +686,10 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault) {
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, P_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, AS_, constraint_mode != ConstraintMode::NONE);
         int scratch = vault.expand(1);
 
         // ASS = [P, AS]  (Alg.1 line 8)

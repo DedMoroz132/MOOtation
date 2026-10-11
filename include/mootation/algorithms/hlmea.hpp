@@ -169,7 +169,7 @@ private:
     ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
     std::vector<std::vector<double>> V_;
     std::vector<std::vector<Sol>> subpop_;
     std::vector<double> z_;                    // HLMEA-5: per-objective shift (≤ 0): min f_i when negative, else 0
@@ -296,7 +296,7 @@ private:
 
     std::vector<Sol> flat() const { std::vector<Sol> P; for(auto&s:subpop_) for(auto&x:s) P.push_back(x); return P; }
     void store_arch(DataVault<Ind_t>& vault){ auto P=flat(); vault.reduce(0); vault.expand((int)P.size());
-        for(int i=0;i<(int)P.size();++i) vault.seed_individual((std::size_t)i,P[i].vars,P[i].objs,{},{}); }
+        for(int i=0;i<(int)P.size();++i) vault.put_point((std::size_t)i, P[i].pt); }
 
     Sol eval(std::vector<double> y, const std::vector<std::pair<std::optional<double>,std::optional<double>>>& bd,
              DataVault<Ind_t>& vault, int scratch, const std::vector<double>& parent){
@@ -306,7 +306,7 @@ private:
               if(y[t]<lo||y[t]>hi){ tally.out(); y[t]=ops::repair_value(y[t],lo,hi,parent[t],repair_,rng_); } } }
         ops::polynomial_mutation(y,bd,eta_m_,pm_eff((int)y.size()),rng_);
         vault.set_variables(scratch,y); vault.refresh_objectives(scratch);
-        Sol z; z.vars=y; z.objs=vault.objectives_of(scratch);
+        Sol z; z.vars=y; z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         return z;
     }
@@ -350,7 +350,7 @@ public:
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
         std::vector<Sol> P;
-        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             P.push_back(s);}
         allocate(P);
@@ -373,13 +373,16 @@ public:
                            std::to_string(N_) + " (see HLMEA-9). "
                            "set_W with a divisor of pop_size to avoid it"; });
         std::vector<Sol> P;
-        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             P.push_back(s);}
         allocate(P);
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, subpop_, constraint_mode != ConstraintMode::NONE);
         ++gen_;
         int scratch=vault.expand(1);
         const auto& bd=vault.get_bounds();

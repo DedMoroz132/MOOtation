@@ -30,6 +30,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -127,6 +128,12 @@ OpStats g_ops;
 // variables). Set by run_core, cleared by run(); asked for only at the
 // records, so a run that never asks pays nothing.
 std::function<std::vector<std::vector<double>>()> g_answer_variables;
+// The points of the population and of the vault's archive as the vault holds
+// them, for current_points(): (variables, objectives, constraint values,
+// violation, failed). The run layer's tests check every core with it (task 8).
+using PointRow = std::tuple<std::vector<double>, std::vector<double>, std::vector<double>,
+                            double, bool>;
+std::function<std::pair<std::vector<PointRow>, std::vector<PointRow>>()> g_points;
 // The equalities' tolerance of the run in progress, for current_eq_tol().
 std::function<double()> g_eq_tol;
 // The vault's epsilon level of the run in progress, for current_cv_level().
@@ -792,6 +799,20 @@ PyResult run_core(const RunConfig& cfg)
                 if (!v.is_failed(i)) X.push_back(v.variables_of(i));   // as emit() below
             return X;
         };
+        g_points = [&opt]() {
+            auto& v = opt.get_vault();
+            auto row = [](const mootation::VaultPoint& p) {
+                return PointRow{p.variables, p.objectives, p.limits, p.cv_raw, p.failed};
+            };
+            std::pair<std::vector<PointRow>, std::vector<PointRow>> out;
+            const std::size_t n = std::min<std::size_t>(
+                v.active_n(), static_cast<std::size_t>(v.pop_size()));
+            for (std::size_t i = 0; i < n; ++i)
+                if (!v.is_dirty(i)) out.first.push_back(row(v.point_of(i)));   // never evaluate
+            for (std::size_t i = 0; i < v.archive_size(); ++i)
+                out.second.push_back(row(v.archive_point_of(i)));
+            return out;
+        };
         g_eq_tol = [&opt]() { return opt.get_vault().eq_tol(); };
         // the evaluations the budget counts: calls, or distinct points
         auto spent = [&]() -> long long {
@@ -985,6 +1006,7 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     struct Guard {
         ~Guard() {
             g_problem = nullptr; g_answer_variables = nullptr; g_eq_tol = nullptr;
+            g_points = nullptr;
             g_cv_level = nullptr;
         }
     } guard;
@@ -1312,6 +1334,15 @@ PYBIND11_MODULE(_core, m)
           },
           "The variables of the rows the on_generation observer has just received, in "
           "the same order, for the run in progress (call it from on_generation).");
+    m.def("current_points", []() {
+              if (!g_points)
+                  throw std::runtime_error("current_points() answers only from an "
+                                           "on_generation observer of a run in progress");
+              return g_points();
+          },
+          "The points of the population and of the vault's archive, as the vault holds "
+          "them, for the run in progress: two lists of (variables, objectives, constraint "
+          "values, violation, failed). Call it from on_generation.");
     m.def("current_cv_level", []() {
               if (!g_cv_level)
                   throw std::runtime_error("current_cv_level() answers only during a run");

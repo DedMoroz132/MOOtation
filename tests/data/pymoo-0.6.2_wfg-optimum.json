@@ -1,0 +1,78 @@
+{
+ "library": "pymoo",
+ "version": "0.6.2",
+ "license": "Apache-2.0",
+ "module": "pymoo/problems/many/wfg.py (_positional_to_optimal)",
+ "generated_by": "tools/refs/gen_pymoo_refs.py",
+ "command": "uv run --no-project --python 3.13 --with pymoo==0.6.2 python tools/refs/gen_pymoo_refs.py",
+ "date": "2026-10-12",
+ "points": 4,
+ "tolerance": {
+  "kind": "relative",
+  "value": 1e-12
+ },
+ "about": "WFG8's optimal distance variables for three position vectors (k = 4, l = 4) and WFG9's (l = 6), normalised (divided by 2i): y = mootation.benchmarks.rotated.wfg8_optimum(positions, l), wfg9_optimum(l).",
+ "cases": [
+  {
+   "function": "wfg8_optimum",
+   "positions": [
+    0.71803398875,
+    0.33606797750000017,
+    0.9541019662500001,
+    0.5721359550000003
+   ],
+   "l": 4,
+   "y": [
+    0.9333415497690648,
+    0.9509370868153694,
+    0.9587507543598278,
+    0.9631063612893065
+   ]
+  },
+  {
+   "function": "wfg8_optimum",
+   "positions": [
+    0.04427190999999997,
+    0.6623058987499997,
+    0.2803398875000003,
+    0.89837387625
+   ],
+   "l": 4,
+   "y": [
+    0.328787453466308,
+    0.306560547020398,
+    0.2880167057248068,
+    0.27203503946132185
+   ]
+  },
+  {
+   "function": "wfg8_optimum",
+   "positions": [
+    0.3705098312500006,
+    0.9885438200000003,
+    0.60657780875,
+    0.2246117974999997
+   ],
+   "l": 4,
+   "y": [
+    0.8307307925243241,
+    0.9106092618120033,
+    0.9373107107018972,
+    0.9492692064001119
+   ]
+  },
+  {
+   "function": "wfg9_optimum",
+   "positions": null,
+   "l": 6,
+   "y": [
+    0.07098221916533858,
+    0.09440747742913053,
+    0.1249594936026037,
+    0.16595899954812574,
+    0.22604974883548415,
+    0.35
+   ]
+  }
+ ]
+}

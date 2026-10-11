@@ -124,6 +124,7 @@ private:
         std::vector<double> f;
         double cv = 0.0;
         double alpha = 1.0;
+        VaultPoint pt;           // the point as the vault holds it (data_vault.hpp, WRITING BACK)
     };
 
     std::vector<Entry> list_;
@@ -173,6 +174,7 @@ private:
             e.x = U[i];
             e.f = vault.objectives_of(v);
             e.cv = vault.get_cv(v);
+            e.pt = vault.point_of(v);
             e.alpha = alpha;
             out.push_back(std::move(e));
         }
@@ -221,7 +223,7 @@ private:
         vault.expand(static_cast<int>(idx.size()));
         for (std::size_t i = 0; i < idx.size(); ++i) {
             const Entry& e = list_[idx[i]];
-            vault.seed_individual(i, denorm(e.x), e.f);
+            vault.put_point(i, e.pt);
             if constexpr (std::is_base_of_v<DMS_Individual, Ind_t>)
                 vault.get_ind(i).alpha = e.alpha;
         }
@@ -321,6 +323,7 @@ public:
                 e.x[j] = (x[j] - lo_[j]) / (hi_[j] - lo_[j]);
             e.f = vault.objectives_of(v);
             e.cv = vault.get_cv(v);
+            e.pt = vault.point_of(v);
             first.push_back(std::move(e));
         }
         start(vault, std::move(first));
@@ -328,6 +331,10 @@ public:
 
     void step(DataVault<Ind_t>& vault)
     {
+        // the list kept from the last step, brought to the vault's present
+        // (data_vault.hpp, WRITING BACK): the tolerance, the level and the
+        // failures' penalty move between steps
+        for (auto& e : list_) refresh_copy(vault, e.pt, e.f, e.cv, true);
         // DMS-2: the first point in list order still worth polling; DMS-6:
         // one of them at random
         std::vector<std::size_t> open;

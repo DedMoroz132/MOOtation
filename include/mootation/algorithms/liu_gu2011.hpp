@@ -203,7 +203,7 @@ private:
     ops::BoundRepair repair_ = ops::BoundRepair::Native;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; int rank=0; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; int rank=0; VaultPoint pt; };
 
     std::vector<std::vector<double>> W_;          // [S] central vectors (unit)
     std::vector<std::vector<Sol>>    internal_;   // [S]
@@ -324,7 +324,7 @@ private:
             vault.set_variables(scratch,c1);
         }
         vault.refresh_objectives(scratch);
-        z.objs=vault.objectives_of(scratch);
+        z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         return z;
     }
@@ -334,7 +334,7 @@ private:
         for(int k=0;k<S_;++k) for(auto& s:internal_[k]) P.push_back(s);
         vault.reduce(0); vault.expand((int)P.size());
         for(int i=0;i<(int)P.size();++i)
-            vault.seed_individual((std::size_t)i,P[i].vars,P[i].objs,P[i].bvars,{});
+            vault.put_point((std::size_t)i, P[i].pt);
     }
 
 public:
@@ -369,7 +369,7 @@ public:
             for(int j=0;j<vault.bin_vars_n();++j) bv[j] = ops::random_gene(j, rng_);
             Sol s; s.vars=vars; s.bvars=bv;
             if(vault.bin_vars_n()>0) vault.set_all_variables(scratch,vars,bv); else vault.set_variables(scratch,vars);
-            vault.refresh_objectives(scratch); s.objs=vault.objectives_of(scratch);
+            vault.refresh_objectives(scratch); s.objs=vault.objectives_of(scratch); s.pt=vault.point_of(scratch);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(scratch);
             pool.push_back(std::move(s));
         }
@@ -398,7 +398,7 @@ public:
         W_.clear(); for(auto& w:Wr) W_.push_back(unit(w)); S_=(int)W_.size();
         l_.assign(S_,(int)std::ceil((double)N_/S_));
         std::vector<Sol> pool;
-        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.bvars=vault.binary_variables_of(i);
+        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pool.push_back(s); }
         upd_ideal_from(pool);
@@ -418,6 +418,10 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, internal_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, external_, constraint_mode != ConstraintMode::NONE);
         ++gen_;
         int scratch=vault.expand(1);
         std::vector<std::pair<int,int>> R1;

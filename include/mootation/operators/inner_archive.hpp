@@ -30,7 +30,11 @@
 //                  part of the genome go the same way. p > 0 without the
 //                  archive is an error.
 // With constraints (constraint_mode not NONE) only feasible points enter, as
-// in the answer's archive (archive.py); without, every point.
+// in the answer's archive (archive.py); without, every point. A failed
+// evaluation (data_vault.hpp, FAILED EVALUATIONS) never enters. Under
+// constraint handling a member keeps its point whole and is judged again
+// whenever the vault's present moves (data_vault.hpp, WRITING BACK: the
+// equalities' tolerance, the epsilon level): one no longer feasible leaves.
 //
 // Why (from the papers' abstracts): without an archive the stochastic
 // population update loses good solutions and needs a large population (Ren,
@@ -51,6 +55,7 @@
 #include <utility>
 #include <vector>
 
+#include "../data_vault.hpp"
 #include "../dss.hpp"
 
 namespace mootation::ops {
@@ -58,6 +63,7 @@ namespace mootation::ops {
 struct InnerArchiveMember {
     std::vector<double> f, x;
     std::vector<int> b;
+    VaultPoint pt;          // under constraint handling: the point whole, judged again
 };
 
 struct InnerArchiveRecord {
@@ -127,9 +133,10 @@ struct InnerArchive {
         }
     }
 
-    // One evaluated point (its objectives, variables, binary variables).
+    // One evaluated point (its objectives, variables, binary variables; under
+    // constraint handling the point whole, to judge it again later).
     void add(const std::vector<double>& f, const std::vector<double>& x,
-             const std::vector<int>& b = {})
+             const std::vector<int>& b = {}, VaultPoint pt = {})
     {
         if (!on) return;
         auto dominates = [](const std::vector<double>& a, const std::vector<double>& c) {
@@ -145,7 +152,7 @@ struct InnerArchive {
         members_.erase(std::remove_if(members_.begin(), members_.end(),
                                       [&](const Member& m) { return dominates(f, m.f); }),
                        members_.end());
-        members_.push_back({f, x, b});
+        members_.push_back({f, x, b, std::move(pt)});
         if (limit_ > 0 && static_cast<long long>(members_.size()) > limit_) {
             std::vector<std::vector<double>> F;
             F.reserve(members_.size());
@@ -184,9 +191,23 @@ struct InnerArchive {
 
     const std::vector<Member>& members() const { return members_; }
 
+    // Under constraint handling, before a step: when the vault's present moved,
+    // every member judged again at it; one no longer feasible leaves.
+    template <typename Vault>
+    void refresh(const Vault& vault)
+    {
+        if (!on || vault.present() == present_seen_) return;
+        present_seen_ = vault.present();
+        members_.erase(std::remove_if(members_.begin(), members_.end(),
+                                      [&](Member& m) { return vault.refresh_point(m.pt) > 0.0; }),
+                       members_.end());
+        inner_archive_record().size = static_cast<long long>(members_.size());
+    }
+
 private:
     long long limit_ = 0;
     std::vector<Member> members_;
+    unsigned long long present_seen_ = 0;   // the vault's present() the members are judged at
 };
 
 }   // namespace mootation::ops

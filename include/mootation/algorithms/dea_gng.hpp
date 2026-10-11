@@ -109,8 +109,12 @@
 //         (a single-node or flat sub-network): Eq.5 divides 0 by 0, and those
 //         nodes go to f^q_min,A_S in that component — a guard.
 //
-// EXTENSIONS BEYOND THE PAPER: constraint_mode exists for API uniformity and
-//   does not change the DEA-GNG logic (NONE).
+// CONSTRAINTS (beyond the paper, off by default). constraint_mode
+//   FEASIBILITY/CDP makes every non-dominated sort a constrained one (Deb's
+//   rule): the archive's non-dominated filter and the ranks of the
+//   environmental selection and of the mating tournament. The GNG network, the
+//   reference vectors and the angles are untouched. The paper is
+//   unconstrained.
 // ============================================================================
 
 #include <algorithm>
@@ -150,7 +154,7 @@ private:
     std::mt19937 rng_{std::random_device{}()};
     static constexpr double INF_THETA=1e6;
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
     struct GNode { std::vector<double> pos; double err=0; int hp=0; bool alive=true; };
     std::vector<GNode> gn_;
     std::vector<std::map<int,int>> gadj_;   // node→(node→age)
@@ -392,12 +396,12 @@ private:
         const auto& b=vault.get_bounds(); int nv=vault.vars_n();
         std::vector<double> c1,c2; ops::sbx(x.vars,y.vars,c1,c2,b,eta_c_,pc_,rng_);
         ops::polynomial_mutation(c1,b,eta_m_,pm_eff(nv),rng_);
-        Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch);
+        Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         upd_ideal(z.objs); return z;
     }
     void store_arch(DataVault<Ind_t>& vault){ vault.reduce(0); vault.expand((int)pop_.size());
-        for(int i=0;i<(int)pop_.size();++i) vault.seed_individual((std::size_t)i,pop_[i].vars,pop_[i].objs,{},{}); }
+        for(int i=0;i<(int)pop_.size();++i) vault.put_point((std::size_t)i, pop_[i].pt); }
 
     // Keys of the mating tournament (§III-B): primary — the non-dominated
     //   sorting rank of pop_ (rank[i], smaller=better); secondary — the c_j of
@@ -449,7 +453,7 @@ public:
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
         pop_.clear(); z_.assign(m_,std::numeric_limits<double>::max());
-        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             upd_ideal(s.objs); pop_.push_back(s);}
         AS_.clear(); gn_.clear(); gadj_.clear(); sig_count_=0;
@@ -465,13 +469,17 @@ public:
         if(!eps_user_set_) eps_theta_=(m_<5)?0.05*M_PI:0.15*M_PI;
         auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA);
         pop_.clear(); z_.assign(m_,std::numeric_limits<double>::max());
-        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             upd_ideal(s.objs); pop_.push_back(s);}
         AS_.clear(); gn_.clear(); gadj_.clear(); sig_count_=0;
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, AS_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
         std::uniform_int_distribution<int> di(0,(int)pop_.size()-1);
         // Mating tournament per §III-B — primary the non-dominated sorting

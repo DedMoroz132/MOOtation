@@ -131,7 +131,7 @@ private:
     int    t_max_=1000;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; bool knee=false; double div=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; bool knee=false; double div=0.0; VaultPoint pt; };
     std::vector<Sol> pop_;
     int N_=0, m_=0, gen_=0;
 
@@ -179,7 +179,7 @@ private:
         ops::sbx(x.vars,y.vars,c1,c2,b,eta_c_,pc_,rng_);
         auto finish=[&](std::vector<double>& c){
             ops::polynomial_mutation(c,b,eta_m_,pm_eff(nv),rng_);
-            Sol z; z.vars=c; vault.set_variables(scratch,c); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch);
+            Sol z; z.vars=c; vault.set_variables(scratch,c); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
             if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
             O.push_back(std::move(z));
         };
@@ -187,7 +187,7 @@ private:
         if(!first_only) finish(c2);
     }
     void store_arch(DataVault<Ind_t>& vault){ vault.reduce(0); vault.expand((int)pop_.size());
-        for(int i=0;i<(int)pop_.size();++i) vault.seed_individual((std::size_t)i,pop_[i].vars,pop_[i].objs,{},{}); }
+        for(int i=0;i<(int)pop_.size();++i) vault.put_point((std::size_t)i, pop_[i].pt); }
 
     void compute_div(std::vector<Sol>& P, const std::vector<std::vector<double>>& F) const {
         int n=(int)P.size();
@@ -235,7 +235,7 @@ public:
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
-        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
         auto F=normalize(pop_); compute_div(pop_,F);
@@ -247,7 +247,7 @@ public:
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("DHEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
-        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
         auto F=normalize(pop_); compute_div(pop_,F);
@@ -255,6 +255,9 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         ++gen_;
         int scratch=vault.expand(1);
         std::uniform_int_distribution<int> di(0,N_-1);

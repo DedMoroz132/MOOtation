@@ -5,6 +5,9 @@
 // |h| - delta, an inequality value; a new tolerance rewrites every evaluated
 // slot from |h| exactly; a seed from outside carries raw values, a write-back
 // the vault's; a failure stays a failure; without equalities nothing moves.
+// WRITING BACK (task 8 of 2026-10-12): a point written back is the point read,
+// whole — constraint values, |h|, the failure — at the vault's present, and a
+// point without its constraint values is refused.
 
 #include <cmath>
 #include <iostream>
@@ -102,10 +105,10 @@ void test_seeds_and_failures()
     v.set_eq_tol(2e-4);
     check(std::abs(v.limits_of(1)[1] - (h - 2e-4)) < 1e-18 && v.limits_of(0)[1] == h - 2e-4,
           "and both follow a new delta");
-    v.seed_individual(2, {0.2, 0.5}, {0.2, 0.8});
-    v.set_eq_tol(1e-6);
-    check(v.limits_of(2)[1] == 0.0 && v.get_cv(2) == 0.0,
-          "a write-back without values (all 0) stays 0");
+    bool refused = false;
+    try { v.seed_individual(2, {0.95, 0.7}, {0.95, 0.75}); }
+    catch (const std::invalid_argument&) { refused = true; }
+    check(refused, "a point without its constraint values: refused, not taken as all 0");
     // a failure: NaN h
     DataVault<EqTag> f(2, Problem<EqTag>{});
     f.set_equalities(1, 1e-4);
@@ -118,6 +121,39 @@ void test_seeds_and_failures()
     try { DataVault<EqTag>(1, Problem<EqTag>{}).set_equalities(3, 1e-4); }
     catch (const std::invalid_argument&) { threw = true; }
     check(threw, "more equalities than constraints: refused");
+}
+
+void test_write_back()
+{
+    std::cout << "-- a point written back is the point read --\n";
+    DataVault<EqTag> v(4, Problem<EqTag>{});
+    v.set_equalities(1, 1e-4);
+    const double h = 3e-4;
+    put(v, {{0.95, 0.5 + h}, {0.995, 0.5}, {0.2, 0.5}, {0.3, 0.5}});
+    const double cv0 = v.get_cv(0), pen = v.get_cv(1);
+    const double habs = std::abs((0.5 + h) - 0.5);
+    check(cv0 == (0.95 - 0.9) + (habs - 1e-4) && v.is_failed(1), "read: a violating point, a failure");
+    VaultPoint p0 = v.point_of(0), p1 = v.point_of(1);
+    v.put_point(2, p0);
+    v.put_point(3, p1);
+    check(v.get_cv(2) == cv0 && v.limits_of(2) == v.limits_of(0) && !v.is_failed(2),
+          "put_point: the constraint values and the violation travel");
+    check(v.is_failed(3) && v.get_cv(3) == pen && v.objectives_of(3) == v.objectives_of(1),
+          "put_point: a failure stays a failure, with the penalty");
+    v.set_eq_tol(2e-4);
+    check(v.get_cv(2) == (0.95 - 0.9) + (habs - 2e-4) && v.get_cv(2) == v.get_cv(0),
+          "a written-back point follows a new delta");
+    check(v.refresh_point(p0) == v.get_cv(0) && p0.limits == v.limits_of(0),
+          "refresh_point: a copy the core holds follows it too");
+    v.copy_point(0, 1);
+    check(!v.is_failed(1) && v.get_cv(1) == v.get_cv(0) && v.variables_of(1) == v.variables_of(0),
+          "copy_point: slot to slot, whole");
+    const auto before = v.present();
+    v.set_eq_tol(1e-4);
+    check(v.present() != before, "present() moves with the tolerance");
+    bool refused = false;
+    try { v.put_point(0, VaultPoint{}); } catch (const std::invalid_argument&) { refused = true; }
+    check(refused, "put_point: a point that is not this vault's is refused");
 }
 
 void test_without()
@@ -152,6 +188,7 @@ int main()
     std::cout << "equality constraints\n";
     test_tolerance();
     test_seeds_and_failures();
+    test_write_back();
     test_without();
     test_optimizer_seed();
     return mootation::testing::report("equalities");

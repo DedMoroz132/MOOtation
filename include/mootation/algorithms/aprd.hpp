@@ -195,7 +195,7 @@ private:
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt; };
 
     std::vector<Sol> pop_;        // population (N)
     std::vector<Sol> arc_;        // archive (<= N_a)
@@ -392,7 +392,7 @@ private:
             z.bvars=bc1; vault.set_all_variables(scratch,c1,bc1);
         } else { vault.set_variables(scratch,c1); }
         vault.refresh_objectives(scratch);
-        z.objs=vault.objectives_of(scratch);
+        z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         return z;
     }
@@ -409,7 +409,7 @@ private:
     void store_arch(DataVault<Ind_t>& vault){
         vault.reduce(0); vault.expand((int)pop_.size());
         for(int i=0;i<(int)pop_.size();++i)
-            vault.seed_individual((std::size_t)i,pop_[i].vars,pop_[i].objs,pop_[i].bvars,{});
+            vault.put_point((std::size_t)i, pop_[i].pt);
     }
 
     // Algorithm 3: build new subpopulations from the pool R (~2N) -> new pop_ (N)
@@ -510,7 +510,7 @@ public:
             if(vault.bin_vars_n()>0) vault.set_all_variables(i,vars,bv); else vault.set_variables(i,vars);
         }
         vault.sync();
-        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.bvars=vault.binary_variables_of(i);
+        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s); }
         update_archive(pop_);
@@ -520,7 +520,7 @@ public:
 
     void setup_seeded(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); N_=vault.pop_size(); Na_=2*N_;
-        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.bvars=vault.binary_variables_of(i);
+        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s); }
         update_archive(pop_);
@@ -529,6 +529,10 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, arc_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
         std::uniform_real_distribution<double> uni(0.0,1.0);
 

@@ -162,7 +162,7 @@ private:
     int H_base_ = 0;              // base lattice density (divisions)
     int extra_density_ = 0;       // D (Alg.2): extra divisions added by RPIL
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
 
     // Reference vectors (Z), normalized to unit length for the angles.
     std::vector<std::vector<double>> Z_;        // active / current reference vectors
@@ -232,7 +232,7 @@ private:
         ops::polynomial_mutation(c1, b, eta_m_, pm_eff(nv), rng_);       // PM
         Sol z; z.vars = c1;
         vault.set_variables(scratch, c1); vault.refresh_objectives(scratch);
-        z.objs = vault.objectives_of(scratch);
+        z.objs = vault.objectives_of(scratch); z.pt = vault.point_of(scratch);
         if (constraint_mode != ConstraintMode::NONE) z.cv = vault.get_cv(scratch);
         return z;
     }
@@ -424,7 +424,7 @@ private:
     void write_pop(DataVault<Ind_t>& vault, const std::vector<Sol>& P) {
         vault.reduce(0); vault.expand((int)P.size());
         for (int i = 0; i < (int)P.size(); ++i)
-            vault.seed_individual((std::size_t)i, P[i].vars, P[i].objs, {}, {});
+            vault.put_point((std::size_t)i, P[i].pt);
     }
 
     std::vector<Sol> pop_;   // current population (N)
@@ -452,7 +452,7 @@ void CLIACore<Ind_t>::setup(DataVault<Ind_t>& vault) {
     vault.sync();
     pop_.clear();
     for (int i = 0; i < N_; ++i) {
-        Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+        Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
         if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
         pop_.push_back(std::move(s));
     }
@@ -468,7 +468,7 @@ void CLIACore<Ind_t>::setup_seeded(DataVault<Ind_t>& vault) {
     init_refs(); compute_theta(); t_ = 0;
     pop_.clear();
     for (int i = 0; i < (int)vault.active_n(); ++i) {
-        Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+        Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
         if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
         pop_.push_back(std::move(s));
     }
@@ -477,6 +477,9 @@ void CLIACore<Ind_t>::setup_seeded(DataVault<Ind_t>& vault) {
 // ── step (one generation) ──────────────────────────────────────────────────
 template <typename Ind_t>
 void CLIACore<Ind_t>::step(DataVault<Ind_t>& vault) {
+    // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+    // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+    refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
     int scratch = vault.expand(1);
     int sz = (int)pop_.size();
     if (sz == 0) return;

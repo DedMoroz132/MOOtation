@@ -10,6 +10,40 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- A point's constraint values were lost when a core rewrote its population.
+  ETEA, MOEA/D-AM2M, MOEA/D-DS, RD-EMO, APRD, Liu & Gu 2011, ISDE+RD, DHEA,
+  HLMEA, IF-MaOEA, DEA-GNG, MaOEA-3C, DCEA, HCCA, CLIA, Two_Arch2, NAEMO and
+  DMS wrote it back with `seed_individual(v, vars, objs, {}, {})`, which took
+  every constraint as 0: a violating point passed for a feasible one — for the
+  core's own selection, the feasibility rules, the epsilon level, the archive,
+  the answer and every feasibility measure. Every write-back also dropped a
+  failed evaluation's mark (its penalty is finite, so it counted as a good
+  point and widened the penalty's range), and |h| of the equalities. Now:
+  - the vault keeps a point whole as a `VaultPoint` (variables, integer
+    genome, objectives, constraint values, |h|, the failure): `point_of`,
+    `archive_point_of`, `put_point`, `copy_point` (slot to slot, the MOEA/D
+    family's move), `archive_push_point`; a point written back is brought to
+    the vault's present — the equalities from |h| at the current tolerance, a
+    failure to the current penalty, cv at the current epsilon level
+    (`data_vault.hpp`, WRITING BACK);
+  - `seed_individual` and `archive_push_data` refuse a point without its
+    constraint values on a constrained problem, where they wrote zeros;
+  - every core that writes back points it kept does so whole (the eighteen,
+    and ADAW, MOEA/D, MOEA/D-DE, MOEA/D-DRA, MOEA/D-AWA, MOEA/D-M2M, SMS-M2M,
+    NRV-MOEA, SPEA2, SPEA2+SDE, LIS-LCS, MOSA), and the copies a core compares
+    again in a later step are brought to the vault's present first
+    (`refresh_copies`; MOSA when `present()` moved);
+  - the inner archive takes no failed point, and under constraint handling
+    judges its members again when the tolerance or the level moves.
+  Results on problems without constraints and failures are unchanged bit for
+  bit; on constrained problems the eighteen cores change, on problems with
+  failures the cores that write back.
+- `mootation._core.current_points()`: the population and the vault's archive
+  as the vault holds them (variables, objectives, constraint values,
+  violation, failed), from an `on_generation` observer. A run-layer test
+  checks with it every core after every step on C1-DTLZ1_3D, DOC3 (also under
+  the linear tolerance schedule) and DTLZ2_3D_fail30r.
+
 - The inner archive's cut after every addition (`inner_archive_cap`) is
   cheaper: `dss::order` holds the points in a k-d tree and computes only the
   pairs that can change the order (a point against those that could set it
@@ -33,12 +67,15 @@ always listed under **Changed** or **Removed**.
   rank table puts the synthetic problems with an approximate front in a group
   of their own, `approx_front`, where a campaign has both kinds. RCM28's front,
   two exact curves, is now `front_exact`.
-- Stored reference values for the checks against pymoo 0.6.2 that had none:
-  DAS-CMOP1-9 at two triplets (36 points), Omni-test and SYM-PART simple (five
-  points each), WFG8's and WFG9's optimal distance variables (four vectors), in
-  `python/test_run_layer.py`. Module headers and docs name, for every such
-  check, the library and version, the number of points and where the
-  reference is.
+- Reference values of other implementations live apart from the tests, in
+  `tests/data/<source>_<subject>.json` (library, version, license, the
+  command that made the file, date, points, tolerance), made by hand with
+  `tools/refs/gen_pymoo_refs.py` and `gen_reproblems_refs.py`; CI never runs
+  them and no test imports pymoo. Checks that had no stored reference now have
+  one: DAS-CMOP1-9 at two triplets (36 points), Omni-test and SYM-PART simple
+  (five each), WFG8's and WFG9's optimal distance variables (four vectors).
+  Module headers and docs name, for every such check, the library and
+  version, the number of points and the file.
 - `rwmop.py`'s header lists where the competition's MATLAB code and the paper
   differ (RCM10-17, 19, 20, read at 200 points per problem; RCM30-50's data).
   Nothing of the code is used.
@@ -205,8 +242,8 @@ always listed under **Changed** or **Removed**.
   (e − g)(g − d), satisfied at g = d alone. The objectives and the other
   constraints, and WFG8's and WFG9's optimal distance variables, about which
   rWFG8 and rWFG9 turn: values checked against pymoo 0.6.2 at 36 points and
-  four vectors of the optimum, reference in `python/test_run_layer.py`. Omni-test and SYM-PART
-  simple: at five points each, the same file.
+  four vectors of the optimum (`tests/data/`). Omni-test and SYM-PART simple:
+  at five points each.
 - RE22c's list of x1 is the source's (Amir & Hasegawa 1989, Table 2, read on
   the printed page): 77 areas, with 7.00 for seven #9 bars, whose area the
   table leaves blank and the original list leaves out, besides 3.10 for
@@ -604,9 +641,8 @@ always listed under **Changed** or **Removed**.
   registry's first constrained family besides MaF9. Constraints in the
   library's sign (at most 0 when satisfied, the paper's c >= 0 turned); two
   equations read as pymoo reads them, written down in the module's header;
-  values checked against pymoo 0.6.2 at 60 points to 1e-12, reference in
-  `python/test_run_layer.py`. Analytic
-  fronts and exact frames; Pareto sets and g for C1 and C2-DTLZ2. The front of
+  values checked against pymoo 0.6.2 at 60 points to 1e-12 (`tests/data/`).
+  Analytic fronts and exact frames; Pareto sets and g for C1 and C2-DTLZ2. The front of
   C2-ConvexDTLZ2 is larger than the paper's: behind the hole the cylinder
   cuts in the convex front, points of larger g are Pareto-optimal too; it is
   sampled and checked point by point (`BenchProblem.front_exact = False`, a
@@ -615,8 +651,8 @@ always listed under **Changed** or **Removed**.
   real-world problems (Applied Soft Computing 89:106078, 2020), RE21-91 and
   CRE21-51, ported formula for formula from github.com/ryojitanabe/reproblems
   (MIT, commit 7876b4e); values checked against its Python version at 120
-  points to 1e-12, reference in `python/test_run_layer.py`. Defects kept on purpose and those fixed upstream are in
-  the header. The reference fronts are the authors' approximations, shipped
+  points to 1e-12 (`tests/data/`). Defects kept on purpose and those fixed
+  upstream are in the header. The reference fronts are the authors' approximations, shipped
   as they are in `benchmarks/_re/` with their license, and for CRE the
   feasible points of RE's; `BenchProblem.front_exact` is False there (and for
   C2-ConvexDTLZ2, replacing `registry.APPROXIMATE_FRONT`). RE91's normal
@@ -626,9 +662,9 @@ always listed under **Changed** or **Removed**.
 - MW1-14 (`benchmarks/mw.py`, task 6, item 5): Ma & Wang's constrained
   problems (IEEE TEVC 23(6), 2019), n = 15, MW4, MW8 and MW14 at three and
   five objectives (n = M + 12). Constraints in the library's sign; values
-  checked against pymoo 0.6.2 at 85 points to 1e-12, reference in
-  `python/test_run_layer.py` (MW11's distance function g3 as in Table II, not the text's g2; the
-  header lists the readings). The fronts are built from the problems' geometry, no file: the
+  checked against pymoo 0.6.2 at 85 points to 1e-12 (`tests/data/`; MW11's
+  distance function g3 as in Table II, not the text's g2; the header lists
+  the readings). The fronts are built from the problems' geometry, no file: the
   least feasible reachable point at every f1 or angle, exactly where the
   constraints allow it (factors linear in f2) and by bisection elsewhere,
   refined where the front is steep, ends or leaves the unconstrained one, then
@@ -1197,9 +1233,8 @@ always listed under **Changed** or **Removed**.
   kernels, compiled by numba where it is installed and interpreted where it is
   not, at the same cost. A new test holds both paths — the second in a child
   process with `NUMBA_DISABLE_JIT=1` — to pymoo 0.6.2's values at 36 points,
-  WFG1-9 at 2, 3, 5 and 10 objectives (reference in `python/test_run_layer.py`), and runs in CI,
-  where there is no numba. WFG
-  values computed without numba before this fix are wrong from three
+  WFG1-9 at 2, 3, 5 and 10 objectives (`tests/data/`), and runs in CI, where
+  there is no numba. WFG values computed without numba before this fix are wrong from three
   objectives on. Every campaign run's `meta.json` now records `numba`.
 - Clipping past the out-of-box counts (`oob_share` = 0 proved nothing where
   it happened): EMyO/C's offspring (`emyo_c_difference`), HCCA's DE/rand/1

@@ -348,15 +348,14 @@ private:
         int m     = vault.objs_n();
         int N     = K_ * S_;
 
-        // snapshot of the pool (vars/objs/bvars/lims) BEFORE any restructuring
-        std::vector<std::vector<double>> objs(M_act), vars(M_act), lims(M_act);
-        std::vector<std::vector<int>>    bvars(M_act);
+        // snapshot of the pool (the points whole, data_vault.hpp WRITING BACK)
+        // BEFORE any restructuring
+        std::vector<std::vector<double>> objs(M_act);
+        std::vector<VaultPoint>          pts(M_act);
         std::vector<double>              cvs(M_act, 0.0);
         for (int i = 0; i < M_act; ++i) {
             objs[i]  = vault.objectives_of(i);
-            vars[i]  = vault.variables_of(i);
-            bvars[i] = vault.binary_variables_of(i);
-            lims[i]  = vault.limits_of(i);
+            pts[i]   = vault.point_of(i);
             if (constraint_mode != ConstraintMode::NONE) cvs[i] = vault.get_cv(i);
         }
 
@@ -416,14 +415,11 @@ private:
             }
         }
 
-        // materialization: keep N slots and seed them in block order
-        // (seed_individual does not re-evaluate — objs are taken from the snapshot)
+        // materialization: keep N slots and write them in block order
+        // (put_point does not re-evaluate — the points are the snapshot's)
         vault.reduce(N);
-        for (int p = 0; p < N; ++p) {
-            int src = order[p];
-            vault.seed_individual(static_cast<std::size_t>(p),
-                                  vars[src], objs[src], bvars[src], lims[src]);
-        }
+        for (int p = 0; p < N; ++p)
+            vault.put_point(static_cast<std::size_t>(p), pts[order[p]]);
     }
 
     // ── one offspring: operator [20] Eq.(5)-(6), base x ∈ P_k, partner y ─────

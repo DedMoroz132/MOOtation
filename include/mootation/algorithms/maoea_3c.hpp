@@ -155,6 +155,7 @@ private:
         double cv = 0.0;      // constraint violation (0 when unconstrained)
         int    ndfront = 0;   // NDFrontNo
         int    fitfront = 0;  // FitFrontNo
+        VaultPoint pt;        // the point as the vault holds it (data_vault.hpp, WRITING BACK)
     };
 
     int                m_ = 0, N_ = 0;
@@ -363,7 +364,7 @@ private:
         Sol z; z.vars = c1;
         vault.set_variables(scratch, c1);
         vault.refresh_objectives(scratch);
-        z.objs = vault.objectives_of(scratch);
+        z.objs = vault.objectives_of(scratch); z.pt = vault.point_of(scratch);
         if (constraint_mode != ConstraintMode::NONE) z.cv = vault.get_cv(scratch);
         return z;
     }
@@ -582,7 +583,7 @@ private:
     void read_pop(DataVault<Ind_t>& vault) {
         P_.clear();
         for (int i = 0; i < N_; ++i) {
-            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i);
+            Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
             if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
             P_.push_back(s);
         }
@@ -592,7 +593,7 @@ private:
         vault.reduce(0);
         vault.expand((int)P_.size());
         for (int i = 0; i < (int)P_.size(); ++i)
-            vault.seed_individual((std::size_t)i, P_[i].vars, P_[i].objs, {}, {});
+            vault.put_point((std::size_t)i, P_[i].pt);
     }
 
     // initialize EA and front numbers after population is set
@@ -642,6 +643,10 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault) {
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, P_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, EA_, constraint_mode != ConstraintMode::NONE);
         int scratch = vault.expand(1);
 
         // FE bookkeeping (3C-1): FE = consumed evals BEFORE this generation.

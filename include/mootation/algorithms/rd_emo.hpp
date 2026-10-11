@@ -124,7 +124,7 @@ private:
     double eta_c_ = 30.0, eta_m_ = 20.0, pc_ = 0.9, pm_ = -1.0;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt; };
 
     std::vector<std::vector<double>> R_;          // [N] reference points (lambda directions)
     std::vector<double>              Rnorm_;      // ‖λ_i‖
@@ -206,7 +206,7 @@ private:
             if(vault.bin_vars_n()>0){ z.bvars=bc; vault.set_all_variables(scratch,c,bc); }
             else                     { vault.set_variables(scratch,c); }
             vault.refresh_objectives(scratch);
-            z.objs=vault.objectives_of(scratch);
+            z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
             if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         };
         finish(c1,bc1,z1);
@@ -216,7 +216,7 @@ private:
     void store_arch(DataVault<Ind_t>& vault){
         vault.reduce(0); vault.expand((int)pop_.size());
         for(int i=0;i<(int)pop_.size();++i)
-            vault.seed_individual((std::size_t)i,pop_[i].vars,pop_[i].objs,pop_[i].bvars,{});
+            vault.put_point((std::size_t)i, pop_[i].pt);
     }
 
     // Worst member of a region: largest PBI (Alg.2). Under FEASIBILITY/CDP the
@@ -267,7 +267,7 @@ public:
         }
         vault.sync();
         pop_.clear(); region_of_.clear();
-        for(int i=0;i<popsiz_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.bvars=vault.binary_variables_of(i);
+        for(int i=0;i<popsiz_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s); }
         upd_ideal_pop();
@@ -279,7 +279,7 @@ public:
         z_.assign(m_,std::numeric_limits<double>::max());
         build_regions(m_);
         pop_.clear(); region_of_.clear();
-        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.bvars=vault.binary_variables_of(i);
+        for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s); }
         upd_ideal_pop();
@@ -287,6 +287,9 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
         std::uniform_int_distribution<int> dp(0,(int)pop_.size()-1);
 

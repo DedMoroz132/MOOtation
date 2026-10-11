@@ -153,7 +153,7 @@ private:
     double eta_c_=20.0, eta_m_=20.0, pc_=1.0, pm_=-1.0;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
     std::vector<std::vector<double>> V_;
     std::vector<std::vector<Sol>> subpop_;
     int K_=0, m_=0, N_=0, S_=0;
@@ -193,13 +193,13 @@ private:
         std::vector<double> c1,c2;
         ops::sbx(x.vars,y.vars,c1,c2,b,eta_c_,pc_,rng_);
         ops::polynomial_mutation(c1,b,eta_m_,pm_eff(nv),rng_);
-        Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch);
+        Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
         return z;
     }
     std::vector<Sol> flat() const { std::vector<Sol> P; for(auto&s:subpop_) for(auto&x:s) P.push_back(x); return P; }
     void store_arch(DataVault<Ind_t>& vault){ auto P=flat(); vault.reduce(0); vault.expand((int)P.size());
-        for(int i=0;i<(int)P.size();++i) vault.seed_individual((std::size_t)i,P[i].vars,P[i].objs,{},{}); }
+        for(int i=0;i<(int)P.size();++i) vault.put_point((std::size_t)i, P[i].pt); }
 
     // Alg.3 line 2: association only (no quota selection) — ISDE-9.
     void assign_only(const std::vector<Sol>& pool){
@@ -306,7 +306,7 @@ public:
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
-        std::vector<Sol> P; for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        std::vector<Sol> P; for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             P.push_back(s);}
         assign_only(P);   // Alg.3 line 2 (ISDE-9)
@@ -318,13 +318,16 @@ public:
             throw std::invalid_argument("ISDE+RD: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size();
         build_directions();
-        std::vector<Sol> P; for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        std::vector<Sol> P; for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             P.push_back(s);}
         assign_only(P);   // Alg.3 line 2 (ISDE-9)
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, subpop_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
         std::uniform_real_distribution<double> uni(0,1);
         // Alg.3 lines 4-15. Line 13 (P = P ∪ o) sits INSIDE the per-member

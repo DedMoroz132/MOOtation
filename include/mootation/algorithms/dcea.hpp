@@ -170,7 +170,7 @@ private:
     ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     std::mt19937 rng_{std::random_device{}()};
 
-    struct Sol { std::vector<double> vars, objs; double cv=0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt; };
 
     std::vector<std::vector<double>> V_, Lambda_;   // [W],[N] unit
     std::vector<Sol> pop_;
@@ -268,7 +268,7 @@ private:
 
     void store_arch(DataVault<Ind_t>& vault){
         vault.reduce(0); vault.expand((int)pop_.size());
-        for(int i=0;i<(int)pop_.size();++i) vault.seed_individual((std::size_t)i,pop_[i].vars,pop_[i].objs,{},{});
+        for(int i=0;i<(int)pop_.size();++i) vault.put_point((std::size_t)i, pop_[i].pt);
     }
 
     // DCEA-6: the initial decomposition (Alg.3 l.6-7): the Eq.2 association by
@@ -331,7 +331,7 @@ public:
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars); }
         vault.sync();
-        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
         z_.assign(m_,std::numeric_limits<double>::max()); for(auto&s:pop_) upd_ideal(s.objs);
@@ -346,7 +346,7 @@ public:
         auto Vr=das_dennis::generate_auto(m_,W_req_); V_.clear(); for(auto&v:Vr) V_.push_back(unit(v)); W_=(int)V_.size();
         S_=N_/W_; if(S_<1) S_=1;
         auto Lr=das_dennis::generate_auto(m_,N_); Lambda_.clear(); for(auto&v:Lr) Lambda_.push_back(unit(v));
-        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i);
+        pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
         z_.assign(m_,std::numeric_limits<double>::max()); for(auto&s:pop_) upd_ideal(s.objs);
@@ -354,6 +354,9 @@ public:
     }
 
     void step(DataVault<Ind_t>& vault){
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         ++gen_;
         int scratch=vault.expand(1);
         const auto& bd=vault.get_bounds();
@@ -413,7 +416,7 @@ public:
                 }
                 ops::polynomial_mutation(y,bd,eta_m_,pm_eff(vault.vars_n()),rng_);
                 vault.set_variables(scratch,y); vault.refresh_objectives(scratch);
-                Sol z; z.vars=y; z.objs=vault.objectives_of(scratch);
+                Sol z; z.vars=y; z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
                 if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
                 Q.push_back(z);   // z_min is NOT touched here (Eq.7 gloss, DCEA-2)
             }

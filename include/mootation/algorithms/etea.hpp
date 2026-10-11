@@ -122,7 +122,7 @@ public:
         P_.clear();
         for (int i = 0; i < N_; ++i)
             P_.push_back(Sol{vault.variables_of(i), vault.objectives_of(i),
-                             cv_of(vault, i)});
+                             cv_of(vault, i), vault.point_of(i)});
         Q_.clear();
     }
 
@@ -136,11 +136,15 @@ public:
         P_.clear();
         for (int i = 0; i < (int)vault.active_n(); ++i)
             P_.push_back(Sol{vault.variables_of(i), vault.objectives_of(i),
-                             cv_of(vault, i)});
+                             cv_of(vault, i), vault.point_of(i)});
         Q_.clear();
     }
 
     void step(DataVault<Ind_t>& vault) {
+        // the copies kept from the last step, brought to the vault's present (data_vault.hpp,
+        // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
+        refresh_copies(vault, P_, constraint_mode != ConstraintMode::NONE);
+        refresh_copies(vault, Q_, constraint_mode != ConstraintMode::NONE);
         // ── R = Copy(P, Q) (Alg.1 line 3) ────────────────────────────────
         std::vector<Sol> R;
         R.reserve(P_.size() + Q_.size());
@@ -185,7 +189,7 @@ public:
     }
 
 private:
-    struct Sol { std::vector<double> vars, objs; double cv = 0.0; };
+    struct Sol { std::vector<double> vars, objs; double cv = 0.0; VaultPoint pt; };
 
     std::mt19937 rng_{std::random_device{}()};
     int          m_ = 0, N_ = 0;
@@ -456,12 +460,12 @@ private:
             vault.set_variables(scratch, c1);
             vault.refresh_objectives(scratch);
             newP.push_back(Sol{c1, vault.objectives_of(scratch),
-                               cv_of(vault, scratch)});
+                               cv_of(vault, scratch), vault.point_of(scratch)});
             if ((int)newP.size() < N_) {
                 vault.set_variables(scratch, c2);
                 vault.refresh_objectives(scratch);
                 newP.push_back(Sol{c2, vault.objectives_of(scratch),
-                                   cv_of(vault, scratch)});
+                                   cv_of(vault, scratch), vault.point_of(scratch)});
             }
         }
         P_ = std::move(newP);
@@ -472,7 +476,7 @@ private:
         vault.reduce(0);
         vault.expand((int)Q_.size());
         for (int i = 0; i < (int)Q_.size(); ++i)
-            vault.seed_individual((std::size_t)i, Q_[i].vars, Q_[i].objs, {}, {});
+            vault.put_point((std::size_t)i, Q_[i].pt);
     }
 };
 

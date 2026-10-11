@@ -388,7 +388,6 @@ private:
         vault.refresh_objectives(scratch);
 
         std::vector<double> f_y  = vault.objectives_of(scratch);
-        std::vector<double> lm_y = vault.limits_of(scratch);
         double cv_y = (constraint_mode != ConstraintMode::NONE)
                       ? vault.get_cv(scratch) : 0.0;
 
@@ -407,7 +406,7 @@ private:
                                          ? vault.get_cv(j) : 0.0);
             if (g_y <= g_xj) {
                 // X2: transfer vars+objs without re-evaluation (FE budget).
-                vault.seed_individual(j, c1, f_y, bc1, lm_y);
+                vault.copy_point(scratch, j);
                 vault.get_ind(j).scalar_fitness = g_y;
                 ++c;
             }
@@ -419,20 +418,15 @@ private:
 
     // ── AWA: Alg.2 + Alg.3 ────────────────────────────────────────────────
     struct Entry {
-        std::vector<double> w, vars, objs, lims;
-        std::vector<int>    bvars;
+        std::vector<double> w, objs;
+        VaultPoint          pt;      // the point (data_vault.hpp, WRITING BACK)
     };
 
     Entry gather_slot(DataVault<Ind_t>& vault, int i) {
         Entry e;
         e.w    = W_[i];
         e.objs = vault.objectives_of(i);
-        e.lims = vault.limits_of(i);
-        int nv = vault.vars_n(), nb = vault.bin_vars_n();
-        e.vars.resize(nv);
-        for (int j = 0; j < nv; ++j) e.vars[j] = vault.get_variable(i, j);
-        e.bvars.resize(nb);
-        for (int j = 0; j < nb; ++j) e.bvars[j] = vault.get_bin_variable(i, j);
+        e.pt   = vault.point_of(i);
         return e;
     }
 
@@ -471,10 +465,8 @@ private:
                 if (gi < gbest) { gbest = gi; best = i; }
             }
             if (best >= 0) {
-                pop[j].vars  = before[best].vars;
-                pop[j].objs  = before[best].objs;
-                pop[j].lims  = before[best].lims;
-                pop[j].bvars = before[best].bvars;
+                pop[j].objs = before[best].objs;
+                pop[j].pt   = before[best].pt;
             }
         }
 
@@ -494,7 +486,7 @@ private:
         }
 
         // ── Alg.3 Step 1: drop EP members dominated by the population ─────
-        struct EpCand { std::vector<double> vars, objs, lims; std::vector<int> bvars; };
+        struct EpCand { std::vector<double> objs; VaultPoint pt; };
         std::vector<EpCand> ep;
         for (std::size_t k = 0; k < vault.archive_size(); ++k) {
             const auto& fo = vault.archive_objectives_of(k);
@@ -504,9 +496,7 @@ private:
             if (dominated) continue;
             EpCand cand;
             cand.objs = fo;
-            cand.vars = vault.archive_variables_of(k);
-            cand.lims = vault.archive_limits_of(k);
-            if (vault.bin_vars_n() > 0) cand.bvars = vault.archive_bin_variables_of(k);
+            cand.pt   = vault.archive_point_of(k);
             ep.push_back(std::move(cand));
         }
 
@@ -524,10 +514,8 @@ private:
             // Step 3.1: the new subproblem's weight from the solution (Eq.5/6).
             Entry e;
             e.w     = weight_from_solution(ep[best].objs);
-            e.vars  = std::move(ep[best].vars);
             e.objs  = std::move(ep[best].objs);
-            e.lims  = std::move(ep[best].lims);
-            e.bvars = std::move(ep[best].bvars);
+            e.pt    = std::move(ep[best].pt);
             pop.push_back(std::move(e));
             ep.erase(ep.begin() + best);
         }
@@ -541,8 +529,7 @@ private:
         // ── write back + Step 4.4 ──────────────────────────────────────────
         for (int i = 0; i < n; ++i) {
             W_[i] = pop[i].w;
-            vault.seed_individual(i, pop[i].vars, pop[i].objs,
-                                  pop[i].bvars, pop[i].lims);
+            vault.put_point(i, pop[i].pt);
         }
         build_neighbourhoods(n);
         for (int i = 0; i < n; ++i)
