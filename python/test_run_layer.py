@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 64, f"expected 64 algorithms, got {len(names)}"
+    assert len(names) == 67, f"expected 67 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -1060,7 +1060,8 @@ def every_benchmark_evaluates_without_raising():
             f = p.evaluate(x)
         except Exception as e:
             broken.append((nm, f"{type(e).__name__}: {e}")); continue
-        if len(f) != p.n_obj or any(v != v for v in f):
+        # a failing copy (benchmarks/failing.py) returns NaN in its region, by design
+        if len(f) != p.n_obj or (any(v != v for v in f) and p.failing is None):
             broken.append((nm, f"bad output {f[:3]}"))
     assert not broken, broken[:5]
 
@@ -3149,7 +3150,7 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 9 and fams[0][1][0] == "nsga2", fams
+    assert len(fams) == 10 and fams[0][1][0] == "nsga2", fams
     assert fams[-2:] == (("Direct search", ("dms",)), ("Simulated annealing", ("mosa",))), fams
     assert all(name and "─" not in name for name, _ in fams), fams
 
@@ -3358,6 +3359,9 @@ def boundary_and_centre_follow_the_pareto_sets():
         if name.startswith("ZCAT") and name not in ("ZCAT1_3D", "ZCAT11_3D", "ZCAT14_3D"):
             continue                                       # seconds each: three of them
         m, row = measured(name, 100), properties(name)
+        if m is None:                                      # a failing copy, its set all failed
+            assert PROBLEMS[name].failing is not None and row["boundary"] is None, name
+            continue
         assert row["boundary"] is m["boundary"], (name, m, row["boundary"])
         assert row["centre"] is None or row["centre"] is m["centre"], (name, m, row["centre"])
         checked += 1
@@ -5490,6 +5494,85 @@ DENSE
         assert table["DTLZ2_4D"]["nsga2"][3] == 1, table
 
 
+
+@test
+def a_campaign_measures_against_its_own_reference_and_ranks_approximate_fronts_apart():
+    """--pooled-reference: per problem, the non-dominated points of all the
+    campaign's runs (feasible ones), with the runs that went into it, the code
+    that built it and its sha256; every run measured against it as
+    <indicator>_pooled, the old values untouched, and again only when the pool
+    changes. The rank table sets the problems with an approximate reference
+    front apart, and the properties say which those are and how their fronts
+    were built (owner's decision of 2026-10-11, item 4)."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  a_campaign_measures_against_its_own_reference...: no NumPy or stale _core")
+        return
+    import numpy as np
+    from mootation.benchmarks.properties import properties
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    from mootation.run.metrics import feasible_mask, nondominated_mask
+    from mootation.benchmarks import get
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 }, { name = "spea2", pop = 0, gens = 0 } ]
+[run]
+name = "p"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["ZDT1", "C2-ConvexDTLZ2_3D"]
+[campaign]
+out = "OUT"
+budget_fe = 2000
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm", "igd", "hv"]
+archive = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "p.toml"
+        cfg_path.write_text(text.replace("OUT", "res"), encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        before = {m: json.loads(m.read_text(encoding="utf-8"))
+                  for m in root.glob("*/*/run_*/meta.json")}
+        assert C.pooled_reference(root) == {"pools": 2, "done": 8}
+        for prob in ("ZDT1", "C2-ConvexDTLZ2_3D"):
+            ref, info = C.pooled_reference_of(root, prob)
+            p = get(prob)
+            assert info["n_runs"] == 4 and len(ref) == info["rows"] and nondominated_mask(ref).all()
+            assert sorted(r["run"] for r in info["runs"]) ==                 ["nsga2/run_1", "nsga2/run_2", "spea2/run_1", "spea2/run_2"], info["runs"]
+            assert info["analysis"]["mootation"] and info["ideal"] == ref.min(0).tolist()
+            for m in root.glob(f"{prob}/*/run_*/meta.json"):
+                meta = json.loads(m.read_text(encoding="utf-8"))
+                assert meta["reference_pooled"]["sha256"] == info["sha256"]
+                old = before[m]["final"]
+                assert {k: v for k, v in meta["final"].items() if not k.endswith("_pooled")} == old
+                assert "igdp_norm_pooled" in meta["final"] and "hv_pooled" not in meta["final"]
+                F, X = C._read_points(m.parent / "final.csv", p.n_obj, p.n_vars)
+                if p.has_cons:
+                    F = F[feasible_mask(X, p.constraints)]
+                # every feasible answer point is weakly dominated by a point of the pool
+                assert all((ref <= f + 1e-12).all(axis=1).any() for f in F), prob
+        assert C.pooled_reference(root) == {"pools": 2, "skipped": 8}   # the same pool
+        rows = C.scan_results(root)
+        assert C.compare_table(rows, "igdp_norm_pooled")["ZDT1"]["nsga2"][3] == 2
+        for metric in ("igdp_norm", "igdp_norm_pooled", "hv"):
+            ranks = C.rank_table(rows, metric)
+            assert ranks["groups"][-1] == "approx_front" and ranks["n_approx_front"] == 1, ranks
+            assert dict(ranks["algorithms"])["nsga2"]["all"][1] == 1           # ZDT1 alone
+            assert "approx_front = " in C.format_ranks(ranks)
+        assert "approx_front" not in C.rank_table(rows, "n_final")["groups"]
+    assert properties("ZDT1")["front_ref"] == "exact" and properties("ZDT1")["front_built"] is None
+    row = properties("C2-ConvexDTLZ2_3D")
+    assert row["front_ref"] == "approximate" and "c_dtlz.py" in row["front_built"]
+    assert "rwmop.build_front" in properties("RCM01")["front_built"]
+    assert properties("RCM28")["front_ref"] == "exact"
+    assert properties("bbobbiobj01_n05_2D")["front_ref"] is None
+
 # ── task 6, item 1: rotated DTLZ and WFG ────────────────────────────────────
 
 # sha256 (16 hex digits) of every rotated problem's matrix (Q, Lambda Q, I or
@@ -5739,7 +5822,7 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
                         ROTATION_HASHES[plain + "_i3"]}) == 3, plain
     d = hashlib.sha256()
     for n in sorted(names()):
-        if n.startswith("bbobbiobj"):
+        if n.startswith("bbobbiobj") and not n.startswith("bbobbiobjmixint"):   # same matrices
             p = BB.problem(int(n[9:11]), int(n[13:15]), 1)
             for A in (p.alpha.R, p.alpha.Q, p.beta.R, p.beta.Q):
                 if A is not None:
@@ -6983,8 +7066,9 @@ metrics = ["igdp_norm"]
 
 @test
 def the_corrected_re22c_and_re33c_and_their_fronts():
-    """Task 7, §9: RE22c is RE22 with 3.10 for the original's "3,10" in x1's
-    list (76 values), RE33c is RE33 with x4 in [2, 11]; the originals are
+    """Task 7, §9: RE22c is RE22 with x1's list as its source has it, 3.10
+    for the original's "3,10" and the 7.00 it leaves out (77 values), RE33c is
+    RE33 with x4 in [2, 11]; the originals are
     unchanged; their fronts, built here, are not beaten by 20 000 random points
     of the box, and their frames are the fronts' own."""
     if not _have_numpy():
@@ -6995,9 +7079,11 @@ def the_corrected_re22c_and_re33c_and_their_fronts():
     from mootation.benchmarks.properties import properties
     from mootation.families import family
     values = list(RE.RE22C_VALUES)
-    assert len(values) == 76 and 3.1 in values and 10.0 not in values and values.count(3.0) == 1
+    assert len(values) == 77 and 3.1 in values and 7.0 in values and 10.0 not in values
+    assert values.count(3.0) == 1 and values == sorted(values)
     a, b = get("RE22c"), get("RE22")
     assert a.evaluate([3.11, 10.0, 20.0]) != b.evaluate([3.11, 10.0, 20.0])   # 3.10 against 3.0
+    assert a.evaluate([7.01, 10.0, 20.0]) != b.evaluate([7.01, 10.0, 20.0])   # 7.00 against 7.11
     assert a.evaluate([5.0, 10.0, 20.0]) == b.evaluate([5.0, 10.0, 20.0])
     c, d = get("RE33c"), get("RE33")
     assert c.bounds[3] == (2.0, 11.0) and d.bounds[3] == (11.0, 20.0)
@@ -7084,6 +7170,1224 @@ def das_cmop_follows_its_table_and_its_fronts_hold():
     assert properties("DAS-CMOP3_t02")["difficulty"] == "feasibility"
     assert properties("DAS-CMOP8_t12")["difficulty"] == "diversity+feasibility+convergence"
     assert properties("DAS-CMOP4_t01")["multimodal"] and properties("ZDT1")["difficulty"] is None
+
+
+# pymoo 0.6.2 (Apache-2.0): DAS-CMOP1-9 (problems/multi/dascmop.py) at two
+# triplets, two points each (pymoo_fixed_points); Omni-test and SYM-PART simple at
+# five points; WFG8's optimal distance variables for three position vectors and
+# WFG9's (problems/many/wfg.py, _positional_to_optimal), normalised.
+DAS_CMOP_PYMOO = {
+    (1, (0.25, 0.25, 0.25)): [
+        ([7.728148292338458, 7.494541494588223],
+         [-1.4057342725584132, 33.35665349647641, -314.9809385342056, -313.7582605379552,
+          -272.76664490924185, -269.8773002463247, -270.321288916741, -234.71901795094473,
+          -230.163006621361, -228.94032862511062, -231.05098396219356]),
+        ([8.386302931654402, 9.340071019639355],
+         [-0.8521867340509739, 50.626087159543246, -438.82467322108425,
+          -439.58095336772567, -387.27528664345095, -386.36490012342585,
+          -388.7878469367341, -339.8925667324843, -337.3155135457925, -338.07179369243414,
+          -342.16140717240904]),
+    ],
+    (1, (0.5, 1.0, 0.5)): [
+        ([7.728148292338458, 7.494541494588223],
+         [-0.9057342725584132, 6.510014303588458, -314.8559385342056, -313.6332605379552,
+          -272.64164490924185, -269.7523002463247, -270.196288916741, -234.59401795094473,
+          -230.038006621361, -228.81532862511062, -230.92598396219356]),
+        ([8.386302931654402, 9.340071019639355],
+         [-0.35218673405097384, 7.841931021654403, -438.69967322108425,
+          -439.45595336772567, -387.15028664345095, -386.23990012342585,
+          -388.6628469367341, -339.7675667324843, -337.1905135457925, -337.94679369243414,
+          -342.03640717240904]),
+    ],
+    (2, (0.25, 0.25, 0.25)): [
+        ([7.728148292338458, 7.162745441315363],
+         [-1.4057342725584132, 33.35665349647641, -300.5125120337713, -298.73684061539944,
+          -259.68070196411117, -256.23836387907266, -256.12935912736754,
+          -223.01555856111764, -217.9065538094125, -216.13088239104079,
+          -217.68854430600217]),
+        ([8.386302931654402, 9.131622110246164],
+         [-0.8521867340509739, 50.626087159543246, -427.73551405582606, -428.144379353479,
+          -377.05466460066435, -375.79686323165066, -377.8723951959702,
+          -330.54048181216945, -327.616013776489, -328.02487907414195, -331.76707770512826]),
+    ],
+    (2, (0.5, 1.0, 0.5)): [
+        ([7.728148292338458, 7.162745441315363],
+         [-0.9057342725584132, 6.510014303588458, -300.3875120337713, -298.61184061539944,
+          -259.55570196411117, -256.11336387907266, -256.00435912736754,
+          -222.89055856111764, -217.7815538094125, -216.00588239104079,
+          -217.56354430600217]),
+        ([8.386302931654402, 9.131622110246164],
+         [-0.35218673405097384, 7.841931021654403, -427.61051405582606, -428.019379353479,
+          -376.92966460066435, -375.67186323165066, -377.7473951959702,
+          -330.41548181216945, -327.491013776489, -327.89987907414195, -331.64207770512826]),
+    ],
+    (3, (0.25, 0.25, 0.25)): [
+        ([7.728148292338458, 7.642817739882285],
+         [-1.4057342725584132, 33.35665349647641, -321.59502817859914, -320.6194772578388,
+          -278.7629168649101, -276.12069927748314, -276.8118150233896, -240.0974722178877,
+          -235.7885879637941, -234.8130370430338, -237.17081945560685]),
+        ([8.386302931654402, 9.451976682733083],
+         [-0.8521867340509739, 50.626087159543246, -444.85256763422535, -445.7953572193565,
+          -392.83690746036814, -392.1130303788326, -394.72248663063056, -344.9879139531776,
+          -342.5973702049754, -343.54015979010654, -347.816282708571]),
+    ],
+    (3, (0.5, 1.0, 0.5)): [
+        ([7.728148292338458, 7.642817739882285],
+         [-0.9057342725584132, 6.510014303588458, -321.47002817859914, -320.4944772578388,
+          -278.6379168649101, -275.99569927748314, -276.6868150233896, -239.9724722178877,
+          -235.6635879637941, -234.6880370430338, -237.04581945560685]),
+        ([8.386302931654402, 9.451976682733083],
+         [-0.35218673405097384, 7.841931021654403, -444.72756763422535, -445.6703572193565,
+          -392.71190746036814, -391.9880303788326, -394.59748663063056, -344.8629139531776,
+          -342.4723702049754, -343.41515979010654, -347.691282708571]),
+    ],
+    (4, (0.25, 0.25, 0.25)): [
+        ([33.06779465626367, 32.83418785851344],
+         [-1.4057342725584132, 970.2541109615086, -6913.819499943264, -6912.596821947014,
+          -6702.674230558798, -6699.784885895882, -6700.228874566299, -6495.695627841002,
+          -6491.139616511418, -6489.916938515168, -6492.027593852251]),
+        ([32.207521047588955, 33.16128913557391],
+         [-0.8521867340509739, 958.666762214854, -6798.707510897192, -6799.463791043834,
+          -6588.3500035466595, -6587.439617026635, -6589.862563839945, -6382.159162862797,
+          -6379.5821096761065, -6380.3383898227485, -6384.4280033027235]),
+    ],
+    (4, (0.5, 1.0, 0.5)): [
+        ([33.06779465626367, 32.83418785851344],
+         [-0.9057342725584132, 31.84966066751367, -6913.694499943264, -6912.471821947014,
+          -6702.549230558798, -6699.659885895882, -6700.103874566299, -6495.570627841002,
+          -6491.014616511418, -6489.791938515168, -6491.902593852251]),
+        ([32.207521047588955, 33.16128913557391],
+         [-0.35218673405097384, 31.663149137588956, -6798.582510897192, -6799.338791043834,
+          -6588.2250035466595, -6587.314617026635, -6589.737563839945, -6382.034162862797,
+          -6379.4571096761065, -6380.2133898227485, -6384.3030033027235]),
+    ],
+    (5, (0.25, 0.25, 0.25)): [
+        ([33.06779465626367, 32.50239180524058],
+         [-1.4057342725584132, 970.2541109615086, -6843.300442410296, -6841.524770991924,
+          -6633.537656581131, -6630.095318496093, -6629.98631374439, -6427.9415374186365,
+          -6422.832532666934, -6421.056861248562, -6422.614523163524]),
+        ([32.207521047588955, 32.95284022618072],
+         [-0.8521867340509739, 958.666762214854, -6754.514972154039, -6754.923837451695,
+          -6545.026001925982, -6543.768200556968, -6545.843732521288, -6339.70369836459,
+          -6336.77923032891, -6337.188095626563, -6340.93029425755]),
+    ],
+    (5, (0.5, 1.0, 0.5)): [
+        ([33.06779465626367, 32.50239180524058],
+         [-0.9057342725584132, 31.84966066751367, -6843.175442410296, -6841.399770991924,
+          -6633.412656581131, -6629.970318496093, -6629.86131374439, -6427.8165374186365,
+          -6422.707532666934, -6420.931861248562, -6422.489523163524]),
+        ([32.207521047588955, 32.95284022618072],
+         [-0.35218673405097384, 31.663149137588956, -6754.389972154039, -6754.798837451695,
+          -6544.901001925982, -6543.643200556968, -6545.718732521288, -6339.57869836459,
+          -6336.65423032891, -6337.063095626563, -6340.80529425755]),
+    ],
+    (6, (0.25, 0.25, 0.25)): [
+        ([33.06779465626367, 32.982464103807494],
+         [-1.4057342725584132, 970.2541109615086, -6945.482040387137, -6944.506489466377,
+          -6733.718953313948, -6731.076735726521, -6731.7678514724275, -6526.122532907422,
+          -6521.8136486533285, -6520.8380977325705, -6523.195880145142]),
+        ([32.207521047588955, 33.27319479866763],
+         [-0.8521867340509739, 958.666762214854, -6822.506933370091, -6823.449722955223,
+          -6611.683152423338, -6610.959275341802, -6613.5687315936, -6405.026038143249,
+          -6402.635494395046, -6403.57828398018, -6407.854406898642]),
+    ],
+    (6, (0.5, 1.0, 0.5)): [
+        ([33.06779465626367, 32.982464103807494],
+         [-0.9057342725584132, 31.84966066751367, -6945.357040387137, -6944.381489466377,
+          -6733.593953313948, -6730.951735726521, -6731.6428514724275, -6525.997532907422,
+          -6521.6886486533285, -6520.7130977325705, -6523.070880145142]),
+        ([32.207521047588955, 33.27319479866763],
+         [-0.35218673405097384, 31.663149137588956, -6822.381933370091, -6823.324722955223,
+          -6611.558152423338, -6610.834275341802, -6613.4437315936, -6404.901038143249,
+          -6402.510494395046, -6403.45328398018, -6407.729406898642]),
+    ],
+    (7, (0.25, 0.25, 0.25)): [
+        ([30.92348604491436, 30.77693756166342, 31.346109837038888],
+         [-1.4057342725584132, 0.14070914497384335, 869.1224747178304, -2825.1978796704193,
+          -2825.490976636921, -2824.35263208617, -2779.6039694985807]),
+        ([30.450549806732457, 31.054212611198597, 30.75892236084053],
+         [-0.8521867340509739, 0.21567767322938158, 853.8002705484673, -2777.7946846205705,
+          -2776.5873590116385, -2777.1779395123544, -2732.1588577471343]),
+    ],
+    (7, (0.5, 1.0, 0.5)): [
+        ([30.92348604491436, 30.77693756166342, 31.346109837038888],
+         [-0.9057342725584132, 0.6407091449738433, 30.18207781453889, -2825.1510046704193,
+          -2825.444101636921, -2824.30575708617, -2779.5570944985807]),
+        ([30.450549806732457, 31.054212611198597, 30.75892236084053],
+         [-0.35218673405097384, 0.7156776732293816, 29.921128259590528,
+          -2777.7478096205705, -2776.5404840116385, -2777.1310645123544,
+          -2732.1119827471343]),
+    ],
+    (8, (0.25, 0.25, 0.25)): [
+        ([31.052407760528176, 30.8980559229308, 31.5856856614389],
+         [-1.4057342725584132, 0.14070914497384335, 869.1224747178304, -2855.4769857248407,
+          -2855.785689400035, -2854.410429923019, -2809.5755592394207]),
+        ([30.925925800914708, 31.281723507466953, 30.490714374487084],
+         [-0.8521867340509739, 0.21567767322938158, 853.8002705484673, -2803.7752987060167,
+          -2803.063703292912, -2804.6457215588716, -2758.5882998563616]),
+    ],
+    (8, (0.5, 1.0, 0.5)): [
+        ([31.052407760528176, 30.8980559229308, 31.5856856614389],
+         [-0.9057342725584132, 0.6407091449738433, 30.18207781453889, -2855.4301107248407,
+          -2855.738814400035, -2854.363554923019, -2809.5286842394207]),
+        ([30.925925800914708, 31.281723507466953, 30.490714374487084],
+         [-0.35218673405097384, 0.7156776732293816, 29.921128259590528,
+          -2803.7284237060167, -2803.016828292912, -2804.5988465588716,
+          -2758.5414248563616]),
+    ],
+    (9, (0.25, 0.25, 0.25)): [
+        ([6.5811929204362665, 6.4268410828388935, 7.114470821346993],
+         [-1.4057342725584132, 0.14070914497384335, 24.698022327463963,
+          -123.05407078699146, -123.36277446218621, -121.98751498517001,
+          -112.9809894733337]),
+        ([8.059747414976272, 8.415545121528517, 7.624535988548647],
+         [-0.8521867340509739, 0.21567767322938158, 39.9933528624549, -178.77935729642007,
+          -178.0677618833156, -179.64978014927533, -167.07076715364573]),
+    ],
+    (9, (0.5, 1.0, 0.5)): [
+        ([6.5811929204362665, 6.4268410828388935, 7.114470821346993],
+         [-0.9057342725584132, 0.6407091449738433, 5.71086297444698, -123.00719578699146,
+          -123.31589946218621, -121.94063998517001, -112.9341144733337]),
+        ([8.059747414976272, 8.415545121528517, 7.624535988548647],
+         [-0.35218673405097384, 0.7156776732293816, 7.054949873652092, -178.73248229642007,
+          -178.0208868833156, -179.60290514927533, -167.02389215364573]),
+    ],
+}
+OMNI_TEST_PYMOO = [
+    [0.11422241633738861, 2.2139331683075856],
+    [-0.18201897598535066, 2.2093926601008875],
+    [-0.4750092956102227, 2.1653898039868613],
+    [-0.7595153913028669, 2.082710542658396],
+    [-1.0304556500331123, 1.9628316248321476],
+]
+SYM_PART_PYMOO = [
+    [9.250945628075238, 2.273857988075237],
+    [8.68635355418197, 23.26965243418197],
+    [15.276494443238153, 19.420179843238135],
+    [8.820954855243738, 2.525026775243728],
+    [9.203240390198639, 24.467698830198522],
+]
+WFG8_OPTIMUM_PYMOO = [
+    [0.9333415497690648, 0.9509370868153694, 0.9587507543598278, 0.9631063612893065],
+    [0.328787453466308, 0.306560547020398, 0.2880167057248068, 0.27203503946132185],
+    [0.8307307925243241, 0.9106092618120033, 0.9373107107018972, 0.9492692064001119],
+]
+WFG9_OPTIMUM_PYMOO = [0.07098221916533858, 0.09440747742913053, 0.1249594936026037, 0.16595899954812574,
+ 0.22604974883548415, 0.35]
+
+
+def pymoo_fixed_points(n: int, count: int, lo: float = 0.0, hi: float = 1.0):
+    """Point p, coordinate j: lo + (hi - lo) ((0.1 + 0.61803398875 (j + 1 + 7 p)) mod 1)."""
+    return [[lo + (hi - lo) * ((0.1 + 0.61803398875 * (j + 1 + 7 * p)) % 1.0) for j in range(n)]
+            for p in range(count)]
+
+
+@test
+def das_cmop_mmo_and_the_wfg8_wfg9_optimum_match_pymoo():
+    """DAS-CMOP1-9's objectives and constraints, Omni-test's and SYM-PART
+    simple's objectives and WFG8's and WFG9's optimal distance variables give
+    pymoo 0.6.2's values at fixed points, to 1e-12 relative. At zeta = 1 the
+    equality constraint is not compared: its tolerance here is the paper's
+    10^-6 (Eq. 13)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import dascmop as D, mmo, rotated
+
+    def close(mine, theirs, what):
+        assert len(mine) == len(theirs), what
+        for a, b in zip(mine, theirs):
+            assert abs(a - b) <= 1e-12 * max(1.0, abs(b)), (what, a, b)
+
+    for (i, triplet), rows in DAS_CMOP_PYMOO.items():
+        for x, (f, c) in zip(pymoo_fixed_points(30, len(rows)), rows):
+            fo, co = D.evaluate(i, x, triplet)
+            co, c = list(co), list(c)
+            if triplet[1] == 1.0:
+                k = 1 if i <= 6 else 2          # the equality g = d
+                del co[k], c[k]
+            close(list(fo), f, (i, triplet))
+            close(co, c, (i, triplet))
+    for x, f in zip(pymoo_fixed_points(3, 5, 0.0, 6.0), OMNI_TEST_PYMOO):
+        close(mmo.evaluate("Omni-test", x), f, "Omni-test")
+    centres = [(-10.0, -10.0), (0.0, 0.0), (10.0, 10.0), (-10.0, 10.0), (10.0, -10.0)]
+    for (cx, cy), d, f in zip(centres, pymoo_fixed_points(2, 5, -4.0, 4.0), SYM_PART_PYMOO):
+        close(mmo.evaluate("SYM-PART_simple", [cx + d[0], cy + d[1]]), f, "SYM-PART")
+    for pos, y in zip(pymoo_fixed_points(4, 3), WFG8_OPTIMUM_PYMOO):
+        close(list(rotated.wfg8_optimum(pos, 4)), y, "WFG8")
+    close(list(rotated.wfg9_optimum(6)), WFG9_OPTIMUM_PYMOO, "WFG9")
+
+
+def _lir_attain(L, i, z):
+    """An x at which LIR-CMOP<i> takes the front point z: x1 and g1, g2 (g1
+    alone for 13-14) read back from the objectives, each g spread evenly
+    over its distance variables."""
+    import math
+    import numpy as np
+    x = np.empty(30)
+    if i >= 13:
+        r = math.sqrt(float(np.sum(np.square(z))))
+        x[0] = math.asin(min(z[2] / r, 1.0)) / (0.5 * math.pi)
+        x[1] = math.atan2(z[1], z[0]) / (0.5 * math.pi)
+        x[2:] = 0.5 + math.sqrt(max(r - 1.7057, 0.0) / 280.0)
+        return x
+    a, b = z
+    if i <= 4:
+        u, g1, g2 = a - 0.5, 0.5, 0.5
+    elif i <= 8:
+        u = min(a - L.SHIFT, 1.0)
+        g1, g2 = (a - L.SHIFT - u) / 10.0, (b - L.SHIFT - float(L.shape(i, u))) / 10.0
+    else:
+        # u in [h^-1(f2 / 1.7057), 1): f2 reachable; and u <= f1 / 1.7057
+        t = min(max(b / 1.7057, 0.0), 1.0)
+        least = (1.0 - t) ** 2 if L._sqrt_shape(i) else math.sqrt(1.0 - t)
+        u = min(a / 1.7057, 0.5 * (least + 1.0))
+        h = float(L.shape(i, u))
+        g1 = (a / (1.7057 * u) - 1.0) / 10.0 if u > 0 else 0.0
+        g2 = (b / (1.7057 * h) - 1.0) / 10.0 if h > 0 else 0.0
+    x[0] = u
+    if i <= 4:
+        x[L.J1], x[L.J2] = math.sin(0.5 * math.pi * u), math.cos(0.5 * math.pi * u)
+    else:
+        x[L.J1] = np.sin(0.5 * (L.J1 + 1) / 30.0 * math.pi * u)
+        x[L.J2] = np.cos(0.5 * (L.J2 + 1) / 30.0 * math.pi * u)
+    for J, g in ((L.J1, g1), (L.J2, g2)):
+        d = math.sqrt(max(g, 0.0) / len(J))
+        x[J] = np.where(x[J] + d <= 1.0, x[J] + d, x[J] - d)
+    return x
+
+
+@test
+def lir_cmop_follows_its_table_and_its_fronts_hold():
+    """Task 7, §8: LIR-CMOP1-14 (Fan et al. 2019, arXiv:1707.08767, Table 6)
+    at hand-checked points; every front point satisfies the constraints and
+    is reached by a feasible x (_lir_attain), and feasible points made on
+    purpose do not beat the front; as the paper's text
+    says, 5's and 6's fronts are the unconstrained ones and 7's and 8's lie
+    on a constraint's boundary, all but their end at f2's floor."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import lir_cmop as L
+    from mootation.benchmarks.properties import properties
+    assert families()["LIR-CMOP"] == sorted(f"LIR-CMOP{i}" for i in range(1, 15))
+    x = np.empty(30)
+    x[0], x[L.J1], x[L.J2] = 0.3, math.sin(0.15 * math.pi), math.cos(0.15 * math.pi)
+    f, c = L.evaluate(1, x)                                  # g1 = g2 = 0: outside the band
+    assert np.allclose(f, [0.3, 0.91]) and np.allclose(c, [0.255, 0.255])
+    y = np.full(30, 0.5)
+    f, c = L.evaluate(13, y)                                 # the sphere of radius 1.7057
+    assert np.allclose(f, 1.7057 * np.array([0.5, 0.5, math.sqrt(0.5)])) and max(c) < 0.0
+    assert L.evaluate(14, y)[1][2] > 0.0                     # 2.56 < g < 3.0625: c3 fails
+    rng = np.random.default_rng(5)
+    for i in range(1, 15):
+        p = get(f"LIR-CMOP{i}")
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert len(Z) > 50 and np.allclose(Z.min(axis=0), p.ideal), i
+        if i >= 5:
+            assert L.constraints_c(i, Z).min() >= -1e-9, i
+        for z in Z:                                          # every point reached
+            x = _lir_attain(L, i, z)
+            f, c = L.evaluate(i, x)
+            assert 0.0 <= x.min() and x.max() <= 1.0, (i, z)
+            assert np.allclose(f, z, rtol=0.0, atol=1e-9) and max(c) <= 1e-9, (i, z, f, c)
+        # feasible points made on purpose: g1, g2 in the band (1-4), the
+        # distance variables near their optimum (5-14)
+        pts = []
+        for _ in range(3000):
+            x = np.empty(30)
+            x[0], x[1] = rng.random(), rng.random()
+            if i <= 4:
+                s, t = math.sin(0.5 * math.pi * x[0]), math.cos(0.5 * math.pi * x[0])
+                x[L.J1], x[L.J2] = s, t
+                for J, v in ((L.J1, s), (L.J2, t)):
+                    d = math.sqrt((0.5 + 0.01 * rng.random()) / 4.0)
+                    x[J[:4]] = v + d if v + d <= 1.0 else v - d
+            elif i <= 12:
+                x[L.J1] = np.sin(0.5 * (L.J1 + 1) / 30.0 * math.pi * x[0])
+                x[L.J2] = np.cos(0.5 * (L.J2 + 1) / 30.0 * math.pi * x[0])
+                x[2:] += rng.normal(0.0, 0.15 * rng.random(), 28)
+            else:
+                x[2:] = 0.5 + rng.normal(0.0, 0.03 * rng.random(), 28)
+            f, c = L.evaluate(i, np.clip(x, 0.0, 1.0))
+            if max(c) <= 0.0:
+                pts.append(f)
+        P = np.asarray(pts)
+        assert len(P) > 50, (i, len(P))
+        span = Z.max(axis=0) - Z.min(axis=0)
+        beaten = [np.any(np.all(P <= z - 1e-3 * span, axis=1)) for z in Z]
+        assert not any(beaten), (i, sum(beaten))
+    for i in (5, 6):
+        Z = L.front(i, 1000)
+        assert np.allclose(Z[:, 1], L._least_f2(i, Z[:, 0]), atol=1e-9), i
+    for i in (7, 8):                                         # but the end at f2's floor
+        Z = L.front(i, 1000)
+        edge = np.abs(L.constraints_c(i, Z)).min(axis=1) < 1e-6
+        floor = np.abs(Z[:, 1] - L._least_f2(i, Z[:, 0])) < 1e-9
+        assert np.all(edge | floor) and floor.sum() == 1, i
+    row = properties("LIR-CMOP3")
+    assert row["front"] == "concave+disconnected" and not row["multimodal"]
+    assert properties("LIR-CMOP13")["front_dim"] == 2
+
+
+# ── task 7, supplement 3, §2: failed evaluations ──────────────────────────────
+
+def _failing_zdt1(x):
+    """ZDT1 failing on about a third of its box: NaN on half of it, an exception
+    on the other half (a hash of x0..x2)."""
+    import math
+    h = (math.sin(12.9898 * x[0] + 78.233 * x[1] + 37.719 * x[2]) * 43758.5453) % 1.0
+    if h < 0.15:
+        return [math.nan, 0.0]
+    if h < 0.30:
+        raise RuntimeError("the solver did not converge")
+    g = 1 + 9 * sum(x[1:]) / (len(x) - 1)
+    return [x[0], g * (1 - math.sqrt(x[0] / g))]
+
+
+@test
+def every_algorithm_survives_a_third_of_its_evaluations_failing():
+    """Supplement 3, §2.5: every algorithm on a function that fails on a third
+    of its box (NaN or an exception) to 2 000 evaluations: no error, an answer
+    of finite values, the failures counted and inside the budget."""
+    import math
+    if _core_with("fail_raise") is None:
+        print("  skip  every_algorithm_survives...: stale _core"); return
+    import mootation
+    bounds = [(0.0, 1.0)] * 10
+    for alg in mootation.algorithms():
+        r = mootation.minimize(_failing_zdt1, bounds, 2, algorithm=alg, pop_size=20,
+                               max_evaluations=2000, seed=1)
+        assert r.objectives and all(math.isfinite(v) for row in r.objectives for v in row), alg
+        assert 0 < r.n_failed < r.evaluations and r.evaluations >= 2000, (alg, r.n_failed)
+
+
+@test
+def a_failure_raises_logs_and_stops_as_asked():
+    """on_failure = raise lets the user's exception through and raises on NaN;
+    max_failure_share stops a run; the evaluation log marks a failed row and
+    keeps its error; a None row of batch and a constraint that raises fail
+    too; a function that never fails runs as without the guard."""
+    import math
+    if _core_with("fail_raise") is None:
+        print("  skip  a_failure_raises...: stale _core"); return
+    import mootation
+    from mootation.failures import FailureShareExceeded
+    bounds = [(0.0, 1.0)] * 10
+    for f, kind in ((_failing_zdt1, (RuntimeError,)),
+                    (lambda x: [math.nan, 1.0], (RuntimeError,))):
+        try:
+            mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=400, seed=1,
+                               on_failure="raise")
+            raise AssertionError("on_failure = raise did not raise")
+        except kind as e:
+            assert "did not converge" in str(e) or "non-finite" in str(e), e
+    try:
+        mootation.minimize(_failing_zdt1, bounds, 2, pop_size=20, max_evaluations=2000,
+                           seed=1, max_failure_share=0.1, failure_window=50)
+        raise AssertionError("max_failure_share did not stop the run")
+    except FailureShareExceeded as e:
+        assert "of the last 50 evaluations failed" in str(e), e
+    with tempfile.TemporaryDirectory() as td:
+        log = Path(td) / "evals.csv"
+        r = mootation.minimize(_failing_zdt1, bounds, 2, pop_size=20, max_evaluations=200,
+                               seed=1, log_evaluations=str(log))
+        rows = [ln.split(",") for ln in log.read_text("utf-8").splitlines()
+                if ln and not ln.startswith("#")]
+        assert rows[0][-3:] == ["cv", "failed", "error"], rows[0]
+        failed = [row for row in rows[1:] if row[-2] == "1"]
+        assert len(failed) == r.n_failed and any("did not converge" in row[-1] for row in failed)
+    def batch(X):
+        return [None if i % 4 == 0 else [x[0], 1.0 - x[0]] for i, x in enumerate(X)]
+    r = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                           max_evaluations=400, seed=1, batch=batch)
+    assert r.n_failed > 0, r.n_failed
+
+    def cons(x):
+        if x[1] > 0.9:
+            raise ValueError("the mesh did not build")
+        return [x[0] - 0.8]
+    r = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                           max_evaluations=400, seed=1, constraints=cons, n_cons=1)
+    assert r.n_failed > 0 and all(c <= 0.0 for c in r.cv), (r.n_failed, r.cv)
+    # no failure: the guard changes nothing
+    plain = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                               max_evaluations=400, seed=3)
+    bare = mootation.minimize(lambda x: [x[0], 1.0 - x[0]], bounds, 2, pop_size=20,
+                              max_evaluations=400, seed=3, on_failure="raise")
+    assert plain.objectives == bare.objectives and plain.n_failed == 0
+
+
+@test
+def the_failing_problems_fail_where_they_say():
+    """benchmarks/failing.py: the 18 failing copies, their own family; NaN inside
+    the region; random and boundary take about their share of the box,
+    near_front about its share of the Pareto set; the front stays the base's
+    where the region misses the Pareto set and is marked otherwise; a campaign
+    records n_failed in final and fail_share in its trajectory."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import get, names
+    from mootation.benchmarks import failing as FL
+    from mootation.benchmarks.registry import FAILING
+    from mootation.families import family
+    fails = [n for n in names() if family(n) == "failing"]
+    assert sorted(fails) == sorted(FAILING) and len(fails) == 18, fails
+    rng = np.random.default_rng(4)
+    for name in ("ZDT1_fail10r", "ZDT1_fail30b", "DTLZ2_3D_fail30r", "WFG4_3D_fail10b"):
+        p = get(name)
+        lo = np.array([u for u, _ in p.bounds]); hi = np.array([v for _, v in p.bounds])
+        X = lo + (hi - lo) * rng.random((3000, p.n_vars))
+        bad = [not all(math.isfinite(v) for v in p.evaluate(list(x))) for x in X]
+        share = FAILING[name][1] / 100.0
+        assert abs(np.mean(bad) - share) < 0.03, (name, np.mean(bad))
+    assert get("ZDT1_fail10r").front_exact            # the balls miss ZDT1's Pareto set
+    assert not get("ZDT1_fail30b").front_exact         # the band takes all of it
+    assert not get("DTLZ2_3D_fail10n").front_exact
+    n = get("DTLZ2_3D_fail10n")
+    S = np.asarray(get("DTLZ2_3D").pareto_set(FL.SAMPLE))
+    kept = n.pareto_set(1000)
+    assert abs(1 - len(kept) / len(S) - 0.10) < 0.05, len(kept)
+    if _core_with("fail_raise") is None:
+        return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = "\n".join([
+        '[run]', 'name = "fail"', '[problem]', 'kind = "builtin"', '[benchmarks]',
+        'problems = ["ZDT1_fail30r"]', 'runs = 1', '[campaign]', 'budget_fe = 400',
+        'metrics = ["igdp_norm"]', '[[algorithms]]', 'name = "nsga2"', 'pop = 20', 'gens = 0', ''])
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "c.toml"
+        path.write_text(text, encoding="utf-8")
+        cfg = load(path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        job = C.expand_jobs(cfg, spec)[0]
+        assert C.run_job(job, root, spec, quiet=True) == "done"
+        d = root / "ZDT1_fail30r" / "nsga2" / "run_1"
+        meta = json.loads((d / "meta.json").read_text("utf-8"))
+        T = [json.loads(t) for t in (d / "trajectory.jsonl").read_text().splitlines()]
+        assert meta["final"]["n_failed"] > 0 and math.isfinite(meta["final"]["igdp_norm"])
+        assert all("fail_share" in t for t in T) and any(t["fail_share"] > 0 for t in T)
+
+
+@test
+def equalities_hold_within_their_tolerance_and_its_schedule():
+    """Supplement 3, §3: minimize(eq_constraints=..., n_eq=...): every row's
+    cv is max(|h| - eq_tol, 0) beside the inequalities' max(g, 0), so a point
+    with |h| <= eq_tol is feasible; under eq_tol_schedule = "linear" the
+    tolerance falls from eq_tol0 to eq_tol in proportion to the evaluations
+    spent and the answer is taken at eq_tol; the misuses are refused."""
+    import math
+    if _core_with("eq_tol") is None:
+        print("  skip  equalities_hold...: stale _core"); return
+    import mootation
+    from mootation import _core
+
+    def f(x):
+        return [x[0], 1.0 - math.sqrt(x[0]) + x[1] + x[2]]
+
+    def h(x):
+        return [x[1] - 0.25]
+
+    def g(x):
+        return [x[0] - 0.8]
+
+    bounds = [(0.0, 1.0)] * 3
+    r = mootation.minimize(f, bounds, 2, pop_size=20, n_gen=40, seed=1,
+                           eq_constraints=h, n_eq=1, eq_tol=0.01)
+    assert r.eq_tol == 0.01 and len(r.cv) == len(r.variables) > 0
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(abs(x[1] - 0.25) - 0.01, 0.0), (x, cv)
+    assert any(cv == 0.0 and abs(x[1] - 0.25) > 0.0 for x, cv in zip(r.variables, r.cv))
+    r = mootation.minimize(f, bounds, 2, pop_size=20, n_gen=40, seed=1, constraints=g,
+                           eq_constraints=h, n_eq=1, eq_tol=0.01)
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(x[0] - 0.8, 0.0) + max(abs(x[1] - 0.25) - 0.01, 0.0), (x, cv)
+    # the linear schedule, read by an observer after every step: the tolerance
+    # of a step is the one set before it, from the evaluations spent so far
+    seen = []
+    r = mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=1000, seed=2,
+                           eq_constraints=h, n_eq=1, eq_tol=1e-4,
+                           eq_tol_schedule="linear", eq_tol0=0.5,
+                           on_generation=lambda gen, F: seen.append((gen, _core.current_eq_tol())),
+                           record_every=1)
+    assert seen[0] == (0, 0.5), seen[0]
+    for gen, tol in seen[1:]:
+        spent = 20 * gen                         # setup and the steps before this one
+        assert tol == 0.5 + (1e-4 - 0.5) * min(1.0, spent / 1000.0), (gen, tol)
+    assert seen[-1][1] < 0.02 and r.eq_tol == 1e-4
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(abs(x[1] - 0.25) - 1e-4, 0.0), (x, cv)
+    for kw, what in ((dict(eq_constraints=h), "n_eq"),
+                     (dict(eq_constraints=h, n_eq=1, eq_tol_schedule="linear", eq_tol0=0.5),
+                      "max_evaluations"),
+                     (dict(eq_constraints=h, n_eq=1, eq_tol_schedule="linear",
+                           max_evaluations=500), "eq_tol0"),
+                     (dict(n_eq=1), "eq_constraints"),
+                     (dict(eq_constraints=h, n_eq=1, eq_tol_schedule="cosine"), "fixed or linear")):
+        try:
+            mootation.minimize(f, bounds, 2, pop_size=10, n_gen=2, **kw)
+        except ValueError as e:
+            assert what in str(e), (kw, e)
+        else:
+            raise AssertionError(f"{kw} was accepted")
+
+
+@test
+def doc_follows_its_supplement_and_its_fronts_hold():
+    """Task 7, §8: DOC1-9 (Liu and Wang 2019, supplementary file S-I): the
+    sizes of Table I (D, inequalities, equalities), hand-checked points at
+    g = 1, the share of feasible random points of DOC1 and DOC4 (Table I:
+    26.97 %, 0.53 %), the fronts inside the objective constraints with the
+    pieces and points the paper states, and the equalities: |h| - 1e-4 in
+    constraints, h in equalities, the same run either way."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import doc as D
+    from mootation.benchmarks.properties import properties
+    assert families()["DOC"] == [f"DOC{i}" for i in range(1, 10)]
+    table = {1: (6, 7, 0), 2: (16, 7, 0), 3: (10, 6, 4), 4: (8, 6, 0), 5: (8, 4, 5),
+             6: (11, 10, 0), 7: (11, 3, 3), 8: (10, 7, 0), 9: (11, 14, 0)}
+    for i, (n, nic, nec) in table.items():
+        lo = [b[0] for b in D.BOUNDS[i]]
+        _, ineq, eq = D.evaluate(i, lo)
+        p = get(f"DOC{i}")
+        assert (p.n_vars, len(ineq), len(eq), p.n_eq) == (n, nic, nec, nec), i
+        c = p.constraints(lo)
+        assert c[:nic] == ineq and c[nic:] == [abs(h) - 1e-4 for h in eq], i
+    # at g = 1 the objectives are the unconstrained front's
+    x = [0.25, 193.724510070035, 20.0, 20.0, 200.0, 6.5, 6.0, 5.0]
+    assert np.allclose(D.evaluate(5, x)[0], [0.25, 0.5], atol=1e-12)
+    x = [0.3, 0.6, 600.0, 1400.0, 7048.2480205286 + 1.0 - 2000.0] + [300.0] * 5
+    assert np.allclose(D.evaluate(8, x)[0], [0.18, 0.12, 0.7], atol=1e-9)
+    x = [0.0, 0.5] + [0.0] * 9                                 # g = 1.8660254038
+    assert np.allclose(D.evaluate(9, x)[0], [1.8660254038 * math.sqrt(0.5)] * 2 + [0.0])
+    rng = np.random.default_rng(11)
+    for i, lo_hi in ((1, (25.5, 28.5)), (4, (0.33, 0.75))):
+        b = np.array(D.BOUNDS[i])
+        X = b[:, 0] + (b[:, 1] - b[:, 0]) * rng.random((20000, len(b)))
+        share = 100.0 * np.mean([max(D.constraints(i, x)) <= 0.0 for x in X])
+        assert lo_hi[0] < share < lo_hi[1], (i, share)
+    for i in range(1, 10):
+        p = get(f"DOC{i}")
+        Z = np.asarray(p.pareto_front(1000), float)
+        assert np.allclose(Z.min(axis=0), p.ideal) and np.allclose(Z.max(axis=0), p.nadir), i
+        assert max(max(D.objective_constraints(i, z)) for z in Z) <= 1e-12, i
+    assert len(D.front(4)) == 21 and len(D.front(5)) == 14
+    assert sorted(np.round(D.front(5)[:, 0] * 20).astype(int)) == list(range(9)) + list(range(16, 21))
+    ends = [D._circle_ends(p) for p, _ in D.CIRCLES]          # the paper: 0.050, 0.2202, 0.3830 (sic),
+    assert np.allclose(ends, [(0.0500, 0.2203), (0.3803, 0.6247), (0.7439, 1.0)], atol=1e-4)
+    Z = D.front(3, 10 ** 6)
+    Z = Z[np.argsort(Z[:, 0])]
+    cut = np.flatnonzero(np.diff(Z[:, 0]) > 0.01)
+    pieces = [Z[0, 0]] + [v for k in cut for v in (Z[k, 0], Z[k + 1, 0])] + [Z[-1, 0]]
+    assert np.allclose(pieces, [0, 0.3403, 0.4782, 0.6553, 0.7553, 0.8782, 0.9403, 1], atol=1e-4)
+    assert np.allclose(D.front(9)[:, 2], 0.0) and properties("DOC9")["front"].startswith("degenerate")
+    assert properties("DOC9")["front_dim"] == 1 and properties("DOC5")["multimodal"]
+    # the equalities as such or as |h| - 1e-4: the same run
+    from mootation.benchmarks import solve
+    from mootation import minimize
+    p = get("DOC3")
+    a = solve("DOC3", "nsga2", pop_size=20, max_evaluations=600, seed=3)
+    b = minimize(p.evaluate, p.bounds, 2, pop_size=20, max_evaluations=600, seed=3,
+                 constraints=p.constraints)
+    assert a.objectives == b.objectives and a.cv == b.cv and a.eq_tol == 1e-4
+
+
+@test
+def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
+    """Supplement 3, §1: ("cat", labels) reaches fn as a label, never anything
+    else, on every core that takes the integer genome, and the 17 others
+    refuse it by name; the result's genes are label indices; with
+    budget_counts = "unique" a decoded point is evaluated once however its
+    real underlay differs (int_repair = "baldwin"), and the budget counts
+    distinct points; unique_evaluations <= evaluations; the labels survive the
+    evaluation log and a seed population."""
+    import math
+    if _core_with("gene_levels") is None:
+        print("  skip  categorical_variables...: stale _core"); return
+    import mootation
+    from mootation.var_types import Layout
+    labels = ["steel", "titanium", "cfrp", "glass"]
+    pen = {"steel": 0.3, "titanium": 0.0, "cfrp": 0.6, "glass": 0.9}
+    seen = set()
+
+    def f(x):
+        a, m, k = x
+        seen.add(m)
+        return [a + pen[m] + 0.05 * k, 1 - math.sqrt(a) + pen[m]]
+
+    vt = ["real", ("cat", labels), "int"]
+    bounds = [(0.0, 1.0), (0.0, 0.0), (0.0, 4.0)]          # a label's bounds are ignored
+    refused = []
+    for alg in mootation.algorithms():
+        seen.clear()
+        try:
+            r = mootation.minimize(f, bounds, 2, algorithm=alg, pop_size=20,
+                                   max_evaluations=400, seed=1, var_types=vt)
+        except ValueError as e:
+            assert "takes no binary or categorical variables" in str(e), (alg, e)
+            refused.append(alg)
+            continue
+        assert seen <= set(labels) and len(seen) >= 2, (alg, seen)
+        assert all(0 <= b[0] < 4 for b in r.binary_variables), alg
+        assert 0 < r.unique_evaluations <= r.evaluations, alg
+    assert len(refused) == 18, refused
+    # the best label wins, as the decoded rows show
+    r = mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=2000, seed=1, var_types=vt)
+    lay = Layout(vt, bounds)
+    rows = [lay.to_user(list(x) + list(b)) for x, b in zip(r.variables, r.binary_variables)]
+    assert {row[1] for row in rows} == {"titanium"}, rows[:3]
+    # a repeat is evaluated once: the real underlay of an integer differs
+    # (baldwin), the decoded point does not
+    calls = []
+
+    def g(x):
+        calls.append(tuple(x))
+        return [x[0] + 0.1 * x[1], 1.0 - x[0] + 0.1 * (6 - x[1])]
+
+    r = mootation.minimize(g, [(0.0, 1.0), (0.0, 6.0)], 2, pop_size=20, max_evaluations=600,
+                           seed=2, var_types=[("discrete", [0.0, 0.5, 1.0]), "int"],
+                           int_repair="baldwin", budget_counts="unique")
+    assert len(calls) == len(set(calls)) == r.unique_evaluations, (len(calls), r.unique_evaluations)
+    assert r.evaluations > r.unique_evaluations
+    calls.clear()
+    r = mootation.minimize(g, [(0.0, 1.0), (0.0, 6.0)], 2, pop_size=20, max_evaluations=200,
+                           seed=2, var_types=[("discrete", [0.0, 0.5, 1.0]), "int"],
+                           int_repair="baldwin")
+    assert len(calls) == r.evaluations == 200 and r.unique_evaluations == len(set(calls)) < 200
+    # real variables only: a fresh float each call, unique as many as calls (or fewer)
+    r = mootation.minimize(lambda x: [x[0], 1 - x[0] + x[1]], [(0, 1), (0, 1)], 2,
+                           pop_size=20, max_evaluations=400, seed=3)
+    assert 0 < r.unique_evaluations <= r.evaluations
+    # the labels in the evaluation log and back through a seed population
+    with tempfile.TemporaryDirectory() as d:
+        log = Path(d) / "log.csv"
+        mootation.minimize(f, bounds, 2, pop_size=10, n_gen=3, seed=4, var_types=vt,
+                           log_evaluations=log)
+        text = log.read_text(encoding="utf-8")
+        assert any(m in text for m in labels) and "'steel'" not in text
+        seed_rows = [[0.5, "glass", 2], [0.1, "steel", 0]] * 5
+        pop = mootation.minimize(f, bounds, 2, pop_size=10, n_gen=1, seed=4, var_types=vt,
+                                 save_population=Path(d) / "pop.csv")
+        r = mootation.minimize(f, bounds, 2, pop_size=10, n_gen=2, seed=5, var_types=vt,
+                               seed_population=Path(d) / "pop.csv")
+        assert all(0 <= b[0] < 4 for b in r.binary_variables) and pop.binary_variables
+        assert Layout(vt, bounds).split(seed_rows[0]) == ([0.5, 2.0], [3])
+
+
+@test
+def mixed_integer_and_categorical_problems_keep_their_optima():
+    """Supplement 3, §1.4: bbob-biobj-mixint (Tusar et al. 2019, §3.1.1): n/5
+    variables of each arity 2, 4, 8, 16, the rest continuous; the levels
+    equidistant, 8/(l+1) apart, one of them the optimum; each objective takes
+    its optimal value at its mixed-integer optimum, the ideal; the nadir is
+    the other's value there. catZDT1: ZDT1's front from "rastrigin" alone,
+    the easy labels' best curves above it."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import bbob_biobj_mixint as M
+    from mootation.benchmarks import categorical as C
+    from mootation.benchmarks.properties import properties
+    assert len(families()["bbobbiobjmixint"]) == 110 and families()["catZDT"] == ["catZDT1"]
+    assert M.arities(10) == [2, 2, 4, 4, 8, 8, 16, 16]
+    z = M.levels(0.3, 4)
+    assert np.allclose(np.diff(z), 1.6) and np.isclose(z, 0.3).sum() == 1
+    for D in (5, 10):
+        for fnum in (1, 7, 30, 55):
+            p = get(M.name(fnum, D))
+            mi = p.evaluate
+            assert p.var_types == ["int"] * (4 * D // 5) + ["real"] * (D // 5)
+            a = mi.optimum(mi.alpha, mi.z_alpha)
+            b = mi.optimum(mi.beta, mi.z_beta)
+            assert math.isclose(mi(a)[0], p.ideal[0], abs_tol=1e-12)
+            assert math.isclose(mi(b)[1], p.ideal[1], abs_tol=1e-12)
+            assert p.nadir == (mi(b)[0], mi(a)[1])
+            rng = np.random.default_rng(fnum)
+            for _ in range(200):                      # nothing beats the ideal
+                x = [int(rng.integers(0, l)) for l in mi.arities] + list(rng.uniform(-5, 5, D // 5))
+                f = mi(x)
+                assert f[0] >= p.ideal[0] - 1e-9 and f[1] >= p.ideal[1] - 1e-9
+    assert properties("bbobbiobjmixint07_n10_2D")["bbob_groups"] == \
+        properties("bbobbiobj07_n10_2D")["bbob_groups"]
+    # catZDT1
+    p = get("catZDT1")
+    y_best = {"rastrigin": 0.5, "linear": 0.0, "quadratic": 0.75}
+    for label, g0 in C.LEAST_G.items():
+        assert math.isclose(C.g(label, [y_best[label]] * 9), g0, abs_tol=1e-12)
+    f1 = np.linspace(0.0, 1.0, 101)
+    curves = {c: np.array([p.evaluate([c, u] + [y_best[c]] * 9)[1] for u in f1])
+              for c in C.LABELS}
+    assert np.allclose(curves["rastrigin"], 1.0 - np.sqrt(f1), atol=1e-12)
+    assert np.all(curves["linear"] > curves["rastrigin"])
+    assert np.all(curves["quadratic"] > curves["linear"])
+    assert np.allclose(p.pareto_front(101), np.column_stack([f1, 1.0 - np.sqrt(f1)]))
+    assert p.evaluate([0, 0.3] + [0.5] * 9) == p.evaluate(["rastrigin", 0.3] + [0.5] * 9)
+    row = properties("catZDT1")
+    assert row["front"] == "convex" and row["multimodal"] and row["deceptive"]
+    from mootation.var_types import Layout                    # the run archive's numbers
+    assert Layout(C.var_types(), C.bounds()).numeric(["linear"] + [0.5] * 10)[0] == 1.0
+
+
+@test
+def eps_level_follows_fans_rule_and_is_feasibility_at_zero():
+    """Supplement 3, §4.1: constraint_mode = "eps_level" with eps held at 0
+    (eps_schedule tc = 0) is the feasibility-first run bit for bit, on every
+    core; otherwise eps follows Fan et al.'s Eq. 8 once per generation — 0.9
+    of itself while the population is mostly infeasible, 1.1 times the largest
+    violation seen once 95 % of it is feasible, 0 from 80 % of the budget on;
+    the answer's cv is the violation itself."""
+    if _core_with("eps_level") is None:
+        print("  skip  eps_level...: stale _core"); return
+    import math
+    import mootation
+    from mootation import _core
+    from mootation.benchmarks import get
+    p = get("LIR-CMOP2")
+    for alg in mootation.algorithms():
+        a = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20,
+                               max_evaluations=600, seed=1, constraints=p.constraints)
+        b = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20,
+                               max_evaluations=600, seed=1, constraints=p.constraints,
+                               constraint_mode="eps_level", eps_schedule={"tc": 0.0})
+        assert a.objectives == b.objectives and a.cv == b.cv, alg
+    # the schedule on a mostly infeasible start: rule 2, then rule 4
+    levels = []
+    mootation.minimize(p.evaluate, p.bounds, 2, pop_size=50, max_evaluations=5000, seed=2,
+                       constraints=p.constraints, constraint_mode="eps_level",
+                       on_generation=lambda g, F: levels.append(_core.current_cv_level()),
+                       record_every=1)
+    assert levels[0] > 0.0 and len(levels) == 100
+    for g in range(1, 10):
+        assert levels[g] == (1.0 - 0.1) * levels[g - 1], g
+    assert all(v == 0.0 for v in levels[80:]) and levels[79] > 0.0
+    # rule 3 where 95 % are feasible: 1.1 times the largest violation so far
+    seen = {"max": 0.0}
+    hist = []
+
+    def g(x):
+        v = x[0] - 0.96
+        seen["max"] = max(seen["max"], v)
+        return [v]
+
+    def f(x):
+        return [x[0], 1.0 - math.sqrt(x[0]) + sum(x[1:])]
+
+    r = mootation.minimize(f, [(0.0, 1.0)] * 4, 2, pop_size=100, max_evaluations=4000, seed=3,
+                           constraints=g, constraint_mode="eps_level",
+                           on_generation=lambda gen, F: hist.append((_core.current_cv_level(),
+                                                                     seen["max"])),
+                           record_every=1)
+    rises = [k for k in range(1, len(hist)) if hist[k][0] > hist[k - 1][0]]
+    assert rises, hist[:5]
+    for k in rises:
+        assert hist[k][0] == (1.0 + 0.1) * hist[k - 1][1], (k, hist[k - 1], hist[k])
+    for x, cv in zip(r.variables, r.cv):
+        assert cv == max(x[0] - 0.96, 0.0)
+    for bad in (dict(constraint_mode="eps"), dict(constraint_mode="eps_level"),
+                dict(eps_schedule={"tc": 0.5})):
+        try:
+            mootation.minimize(f, [(0.0, 1.0)] * 4, 2, pop_size=10, n_gen=2, **bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"{bad} was accepted")
+
+
+@test
+def ctaea_runs_feasible_spends_n_per_generation_and_wants_a_lattice():
+    """Supplement 3, §4.3: C-TAEA on C2-DTLZ2 (3 objectives) answers with
+    feasible points near the front; a generation costs N evaluations (one
+    child of each of N pairs), the start N; pop_size must be a Das-Dennis
+    lattice size (91 at three objectives), and the run layer knows it."""
+    if _core_with("eps_level") is None or "ctaea" not in __import__("mootation").algorithms():
+        print("  skip  ctaea...: stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    from mootation.run.algorithms import EXACT_LATTICE
+    p = get("C2-DTLZ2_3D")
+    seen = []
+    r = mootation.minimize(p.evaluate, p.bounds, 3, algorithm="ctaea", pop_size=91, n_gen=60,
+                           seed=1, constraints=p.constraints,
+                           on_generation=lambda g, F: seen.append(len(F)), record_every=1)
+    assert r.evaluations == 91 * 61 and len(r.objectives) == 91, r.evaluations
+    F = np.asarray([f for f, c in zip(r.objectives, r.cv) if c <= 0])
+    assert len(F) == 91
+    igdp = M.compute(F, ref_front=np.asarray(p.pareto_front(1000)), ideal=p.ideal, nadir=p.nadir,
+                     which=["igdp"])["igdp"]
+    assert igdp < 0.1, igdp
+    assert "ctaea" in EXACT_LATTICE
+    try:
+        mootation.minimize(p.evaluate, p.bounds, 3, algorithm="ctaea", pop_size=90, n_gen=2,
+                           seed=1, constraints=p.constraints)
+    except (ValueError, RuntimeError) as e:
+        assert "91" in str(e) or "lattice" in str(e).lower() or "das" in str(e).lower(), e
+    else:
+        raise AssertionError("ctaea took pop_size = 90 at three objectives")
+
+
+@test
+def ccmo_spends_n_per_generation_and_finds_mw1s_feasible_front():
+    """Supplement 3, §4.2: CCMO costs 2N at the start and N a generation (N/2
+    children from each population); on a problem without constraints both
+    populations solve the same problem and it runs as any core; on MW1 the
+    answer is feasible and near the front."""
+    if _core_with("eps_level") is None or "ccmo" not in __import__("mootation").algorithms():
+        print("  skip  ccmo...: stale _core"); return
+    import math
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    r = mootation.minimize(lambda x: [x[0], 1.0 - math.sqrt(x[0]) + sum(x[1:])],
+                           [(0.0, 1.0)] * 5, 2, algorithm="ccmo", pop_size=40, n_gen=25, seed=1)
+    assert r.evaluations == 2 * 40 + 25 * 40 and len(r.objectives) == 40
+    assert min(f[1] + math.sqrt(f[0]) for f in r.objectives) < 1.2
+    p = get("MW1")
+    r = mootation.minimize(p.evaluate, p.bounds, 2, algorithm="ccmo", pop_size=100,
+                           max_evaluations=20000, seed=2, constraints=p.constraints)
+    assert r.evaluations == 20000
+    F = np.asarray([f for f, c in zip(r.objectives, r.cv) if c <= 0])
+    assert len(F) == 100
+    igdp = M.compute(F, ref_front=np.asarray(p.pareto_front(1000)), ideal=p.ideal,
+                     nadir=p.nadir, which=["igdp"])["igdp"]
+    assert igdp < 0.01, igdp
+
+
+@test
+def i_cmop_puts_every_feasible_set_before_every_infeasible_one():
+    """Supplement 3, §4.4: Vodopija et al.'s I_CMOP (Eq. 12): minus the
+    normalised hypervolume with the reference point 1 when a feasible point is
+    inside [ideal, nadir], the distance to that box while none is, capped at
+    1; 1 plus the least violation without a feasible point; so any feasible
+    set scores below any infeasible one (their Eq. 11); in compute on the
+    whole answer, infeasible points included."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    ideal, nadir = (0.0, 0.0), (1.0, 1.0)
+    F = np.array([[0.5, 0.5], [0.2, 2.0]])
+    assert M.i_cmop(F, [0.0, 0.0], ideal, nadir) == -0.25
+    assert M.i_cmop(np.array([[1.5, 0.5]]), [0.0], ideal, nadir) == 0.5
+    assert M.i_cmop(np.array([[3.0, 3.0]]), [0.0], ideal, nadir) == 1.0
+    assert M.i_cmop(F, [0.3, 0.7], ideal, nadir) == 1.3
+    assert M.i_cmop(F, [0.0, 0.7], ideal, nadir) == M.i_cmop(F[:1], [0.0], ideal, nadir)
+    rng = np.random.default_rng(1)
+    feas = [M.i_cmop(rng.uniform(0, 5, (8, 2)), np.zeros(8), ideal, nadir) for _ in range(50)]
+    infeas = [M.i_cmop(rng.uniform(0, 5, (8, 2)), rng.uniform(1e-9, 1, 8), ideal, nadir)
+              for _ in range(50)]
+    assert max(feas) <= 1.0 < min(infeas)
+    from mootation.benchmarks import get
+    p = get("MW1")
+    X = [[0.5] * 15, [0.1] * 15]
+    got = M.compute([p.evaluate(x) for x in X], ideal=p.ideal, nadir=p.nadir,
+                    which=["i_cmop", "hv"], X=X, constraints=p.constraints)
+    v = M.violations(X, p.constraints)
+    assert got["hv"] is None and got["i_cmop"] == min(v) + 1.0
+
+
+@test
+def multimodal_problems_have_every_part_of_their_pareto_sets():
+    """Supplement 3, §5.4-5.5: the CEC 2019 problems (benchmarks/mmo.py) at the
+    report's own points, their Pareto-set samples on the front's equation to
+    1e-9 and inside the box, every part present (as many separate pieces as
+    mmo.parts says for SYM-PART, Omni-test, MMF1, MMF4, MMF8, MMF9 and MMF14),
+    and the property table's multimodal_ps and ps_parts."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get, mmo
+    from mootation.benchmarks.properties import properties
+    assert len(mmo.NAMES) == 22
+    assert sorted(families()["MMF"]) == sorted(n for n in mmo.NAMES if n.startswith("MMF"))
+    # by hand: SYM-PART's middle and corner parts, Omni-test's corner, MMF1's middle
+    assert get("SYM-PART_simple").evaluate([0.0, 0.0]) == [1.0, 1.0]
+    assert get("SYM-PART_simple").evaluate([10.0, 10.0]) == [1.0, 1.0]
+    f = get("SYM-PART_rotated").evaluate([10 / math.sqrt(2), -10 / math.sqrt(2)])
+    assert abs(f[0] - 1.0) < 1e-12 and abs(f[1] - 1.0) < 1e-12, f   # r = (10, 0)
+    f = get("Omni-test").evaluate([1.25, 3.25, 5.25])
+    assert abs(f[0] + 3 / math.sqrt(2)) < 1e-12 and abs(f[1] + 3 / math.sqrt(2)) < 1e-12, f
+    assert get("MMF1").evaluate([2.0, 0.0]) == [0.0, 1.0 + 2 * math.sin(math.pi) ** 2]
+    assert get("MMF14").n_obj == 3 and get("MMF14").pop_size == 300 and get("MMF1").n_gen == 50
+    for name in mmo.NAMES:
+        p = get(name)
+        X = np.asarray(p.pareto_set(400), float)
+        lo, hi = np.array(p.bounds, float).T
+        assert len(X) >= 100 and np.all((X >= lo) & (X <= hi)), name
+        F = np.array([p.evaluate(list(x)) for x in X])
+        assert mmo.front_gap(name, F).max() < 1e-9, (name, mmo.front_gap(name, F).max())
+        Z = np.asarray(p.pareto_front(500), float)
+        assert mmo.front_gap(name, Z).max() < 1e-9, name
+        assert np.allclose(Z.min(0), p.ideal, atol=1e-9) and np.allclose(Z.max(0), p.nadir,
+                                                                         atol=1e-9), name
+        row = properties(name)
+        assert row["multimodal_ps"] is True and row["ps_parts"] == mmo.parts(name), name
+    # the parts apart: single linkage at a tenth of the box's diagonal
+    for name in ("SYM-PART_simple", "SYM-PART_rotated", "Omni-test", "MMF1", "MMF4", "MMF8",
+                 "MMF9", "MMF14"):
+        p = get(name)
+        X = np.asarray(p.pareto_set(400), float)
+        lo, hi = np.array(p.bounds, float).T
+        U = (X - lo) / (hi - lo)
+        label = list(range(len(U)))
+        def root(i):
+            while label[i] != i:
+                label[i] = label[label[i]]
+                i = label[i]
+            return i
+        D = np.sqrt(((U[:, None, :] - U[None, :, :]) ** 2).sum(-1))
+        for i, j in zip(*np.nonzero(D < 0.1 * math.sqrt(U.shape[1]) / 2)):
+            label[root(i)] = root(j)
+        pieces = len({root(i) for i in range(len(U))})
+        # MMF1's two parts meet at x1 = 2, MMF4's and MMF8's pairs at x1 = 0
+        want = {"MMF1": 1, "MMF4": 2, "MMF8": 2}.get(name, mmo.parts(name))
+        assert pieces == want, (name, pieces, want)
+    assert properties("IPolygon_3D")["ps_parts"] == 4 and properties("ZDT1")["multimodal_ps"] is None
+
+
+@test
+def psp_sees_the_lost_parts_of_a_pareto_set():
+    """Supplement 3, §5.3 and 5.5: on a Pareto-set sample IGDX = 0, CR = 1 and
+    PSP = CR / IGDX is infinite; on ONE part of it (SYM-PART's middle one,
+    MMF1's left one, MMF14's lower one) CR < 1 and IGDX > 0, while IGD+ is 0
+    to the front's sampling — the decision-space indicators see what the
+    objectives cannot."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    from mootation.run.metric_names import HIGHER_IS_BETTER, NEEDS_SET, SET_METRICS
+    assert "psp" in NEEDS_SET and "psp" in HIGHER_IS_BETTER and SET_METRICS == ("igdx", "cr", "psp")
+    for name, part in (("SYM-PART_simple", lambda X: (np.abs(X[:, 0]) <= 1) & (X[:, 1] == 0)),
+                       ("MMF1", lambda X: X[:, 0] <= 2.0),
+                       ("MMF14", lambda X: X[:, 2] < 0.5)):
+        p = get(name)
+        S = np.asarray(p.pareto_set(600), float)
+        kw = dict(ref_front=np.asarray(p.pareto_front(2000), float), ideal=p.ideal,
+                  nadir=p.nadir, pareto_set=S, bounds=p.bounds,
+                  which=("igdx", "cr", "psp", "igdp_norm"))
+        whole = M.compute(np.array([p.evaluate(list(x)) for x in S]), X=S, **kw)
+        assert whole["igdx"] == 0.0 and whole["cr"] == 1.0 and whole["psp"] == float("inf"), whole
+        X = S[part(S)]
+        assert 0 < len(X) < len(S), name
+        one = M.compute(np.array([p.evaluate(list(x)) for x in X]), X=X, **kw)
+        assert one["cr"] < 1.0 and one["igdx"] > 0.05, (name, one)
+        assert abs(one["psp"] - one["cr"] / one["igdx"]) < 1e-12, one
+        assert one["igdp_norm"] < 0.02, (name, one)
+
+
+@test
+def a_campaign_records_igdx_cr_and_psp_where_there_is_a_pareto_set():
+    """[campaign] set_metrics (on by default): igdx, cr and psp along the
+    trajectory and in `final` for a problem with a Pareto-set sample, beside
+    `metrics`; none for one without (RE21); off with set_metrics = false. The
+    CEC 2019 ranks read them."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  a_campaign_records_igdx...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import report as R
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "mm"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["MMF1", "RE21"]
+[campaign]
+out = "res"
+budget_fe = 1000
+metrics = ["igd"]
+"""
+    for on in (True, False):
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "c.toml"
+            cfg_path.write_text(text + ("" if on else "set_metrics = false\n"), encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            assert spec.set_metrics is on
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+                d = root / job.rel_dir
+                meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+                T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+                has = on and job.problem == "MMF1"
+                assert all(("psp" in t) is has and ("cr" in t) is has for t in T), (job.problem, T[-1])
+                assert ("psp" in meta["final"]) is has and (("igdx" in meta["metrics"]) is has)
+                if has:
+                    f = meta["final"]
+                    assert 0 < f["cr"] <= 1 and f["igdx"] > 0 and abs(f["psp"] - f["cr"] / f["igdx"]) < 1e-9
+            if on:
+                rows = C.scan_results(root)
+                table = R.cec2019_ranks(rows)
+                assert table["nsga2"]["igdx"] == (1.0, 1) and table["nsga2"]["igd"] == (1.0, 2)
+                assert table["nsga2"]["mean"] == 1.0, table
+                assert "1/psp" in R.format_cec2019_ranks(table)
+    raises(ConfigError, C.campaign_spec, loads(text + "set_metrics = 1\n"))
+
+
+@test
+def cec2019_ranks_average_igd_igdx_and_one_over_psp():
+    """report.cec2019_ranks: per problem the medians ranked, 1/PSP as PSP
+    reversed (higher PSP better), and the mean of the three mean ranks."""
+    from mootation.run import report as R
+    def row(prob, alg, igd, igdx, psp):
+        return {"status": "done", "problem": prob, "algorithm": alg,
+                "final": {"igd": igd, "igdx": igdx, "psp": psp}}
+    rows = [row("P", "a", 1.0, 0.1, 5.0), row("P", "b", 2.0, 0.05, 9.0),
+            row("Q", "a", 1.0, 0.1, 5.0), row("Q", "b", 0.5, 0.2, 1.0)]
+    t = R.cec2019_ranks(rows)
+    assert t["a"]["igd"] == (1.5, 2) and t["b"]["igd"] == (1.5, 2)
+    assert t["a"]["igdx"] == (1.5, 2) and t["a"]["psp"] == (1.5, 2)
+    assert t["b"]["psp"] == (1.5, 2) and t["a"]["mean"] == 1.5
+    rows.append(row("P", "c", 0.1, 0.01, 99.0))
+    t = R.cec2019_ranks(rows)
+    assert t["c"]["igd"] == (1.0, 1) and t["c"]["psp"] == (1.0, 1) and t["c"]["mean"] == 1.0
+
+
+@test
+def dn_nsga2_keeps_more_of_sym_parts_parts_than_nsga2():
+    """Supplement 3, §5.1 and 5.5: DN-NSGA-II (algorithms/dn_nsga2.hpp) on
+    SYM-PART simple at the competition's budget keeps more of the nine parts
+    than NSGA-II, by the cover rate over 10 seeds, and on every seed at least
+    as many parts within 0.1 of a part; dn_cf reaches it and only it, and the
+    integer genome is refused."""
+    if not _have_numpy() or "dn_nsga2" not in __import__("mootation").algorithms():
+        print("  skip  dn_nsga2...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    p = get("SYM-PART_simple")
+    S = np.asarray(p.pareto_set(900), float)
+    centres = [(t1 * 10.0, t2 * 10.0) for t1 in (-1, 0, 1) for t2 in (-1, 0, 1)]
+    def parts(X):
+        return sum(any(abs(x[0] - a) <= 1.1 and abs(x[1] - b) <= 0.1 for x in X)
+                   for a, b in centres)
+    cr = {"nsga2": [], "dn_nsga2": []}
+    kept = {"nsga2": [], "dn_nsga2": []}
+    for seed in range(1, 11):
+        for alg in cr:
+            r = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=p.pop_size,
+                                   n_gen=p.n_gen, seed=seed)
+            X = np.asarray(r.variables, float)
+            cr[alg].append(M.cover_rate(X, S))
+            kept[alg].append(parts(X))
+    print(f"    SYM-PART simple, 10 seeds: CR nsga2 {np.mean(cr['nsga2']):.3f}, dn_nsga2 "
+          f"{np.mean(cr['dn_nsga2']):.3f}; parts kept {kept['nsga2']} vs {kept['dn_nsga2']}")
+    assert np.mean(cr["dn_nsga2"]) > np.mean(cr["nsga2"]), cr
+    assert sum(kept["dn_nsga2"]) > sum(kept["nsga2"]), kept
+    f = lambda x: [x[0], 1.0 - x[0] + x[1]]
+    r = mootation.minimize(f, [(0.0, 1.0)] * 2, 2, algorithm="dn_nsga2", pop_size=20, n_gen=3,
+                           seed=1, dn_cf=5)
+    assert "dn_cf" not in r.ignored and r.evaluations == 80
+    r = mootation.minimize(f, [(0.0, 1.0)] * 2, 2, algorithm="nsga2", pop_size=20, n_gen=3,
+                           seed=1, dn_cf=5)
+    assert "dn_cf" in r.ignored
+    raises(ValueError, mootation.minimize, f, [(0.0, 1.0)] * 2, 2, algorithm="dn_nsga2",
+           pop_size=20, n_gen=3, seed=1, dn_cf=0.5)
+
+
+@test
+def rwmop_problems_as_the_paper_prints_them():
+    """Task 7, §8: RWMOP's RCM01-18, 21-23, 25, 26, 28, 29 (benchmarks/rwmop.py). Where the
+    problem is one of Tanabe and Ishibuchi's (re.py: RE31-33, 35, 36, 41), its
+    objectives agree with theirs to 1e-12 and its constraints too (RCM08's in
+    the paper's order); values by hand; the readings the header lists (RCM06's
+    g11, RCM08's g8, RCM15's list); RCM20 as printed has no feasible point;
+    the reference fronts are non-dominated and frame the problems."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import families, get
+    from mootation.benchmarks import re as RE
+    from mootation.benchmarks import rwmop as RW
+    from mootation.run.metrics import nondominated_mask
+    names = sorted(families()["RCM"])
+    assert names == [f"RCM{i:02d}" for i in list(range(1, 19)) + [21, 22, 23, 25, 26, 28, 29]], names
+    rng = np.random.default_rng(5)
+    for i, model, order in ((3, RE._truss, None), (4, RE._weld, None), (5, RE._brake, None),
+                            (6, RE._reducer, None), (7, RE._gear, None),
+                            (8, RE._car, [0, 1, 3, 2, 5, 4, 6, 7, 8, 9])):
+        lo, hi = np.array(RW.PROBLEMS[i][1], float).T
+        for x in lo + (hi - lo) * rng.random((200, len(lo))):
+            f, g = RW.evaluate(i, x)
+            rf, rv = model(x)
+            assert np.allclose(f, rf, rtol=1e-12, atol=0), (i, f, rf)
+            v = np.maximum(np.array(g), 0.0)[order or slice(None)]
+            assert np.allclose(v, rv, rtol=1e-12, atol=1e-9), (i, v, rv)
+    # by hand: RCM09 at its lower bounds, RCM16 at (0.05, 0.2)
+    f, g = RW.evaluate(9, [1.0, math.sqrt(2), math.sqrt(2), 1.0])
+    assert abs(f[0] - 1400.0) < 1e-9 and abs(f[1] - 0.04) < 1e-15 and g == []
+    f, g = RW.evaluate(16, [0.05, 0.2])
+    assert abs(f[0] - 0.25 * 7800 * math.pi * 0.2 * 0.05 ** 2) < 1e-12
+    assert abs(f[1] - 64 * 0.2 ** 3 / (3 * 307e8 * math.pi * 0.05 ** 4)) < 1e-18
+    # the readings: RCM06's g11 against 1100 (as printed, 110, nothing is feasible:
+    # its left side is at least 754 in the box); RCM08's g8 bounds f2 (f1 >= 15.58)
+    lo, hi = np.array(RW.PROBLEMS[6][1], float).T
+    X = lo + (hi - lo) * rng.random((2000, 7))
+    lhs = [RW.evaluate(6, x)[1][10] + 1100.0 for x in X]
+    assert min(lhs) > 754 and min(RW.evaluate(8, x)[0][0] for x in
+                                  np.array(RW.PROBLEMS[8][1]).T[0][None]) > 15.5
+    assert RW.WIRE == tuple(sorted(RW.WIRE)) and len(RW.WIRE) == 42
+    raises(ValueError, RW.rcm02, [0.05, 0.5, 0.4, 0.4, 4.0])         # the layers out of order
+    # RCM20 as printed: no feasible point (the paper's Table 5 has its algorithms
+    # feasible, so what ran was not what is printed; not registered)
+    best = math.inf
+    for x in np.column_stack([rng.uniform(1, 16, 20000), rng.uniform(1, 16, 20000),
+                              rng.uniform(1e-6, 16e-6, 20000), rng.uniform(1, 16, 20000)]):
+        try:
+            best = min(best, sum(max(c, 0.0) for c in RW.rcm20(x)[1]))
+        except (ValueError, ZeroDivisionError):
+            pass
+    assert best > 100, best
+    for key in names:
+        p = get(key)
+        Z = RW.front(key)                     # the file; pareto_front(n) thins it to n
+        want = {"RCM02": 1658, "RCM07": 17, "RCM15": 64, "RCM22": 472, "RCM23": 524,
+                "RCM26": 687, "RCM28": 1548, "RCM29": 2}.get(key, 2000)  # the header's sizes
+        assert len(Z) == want and nondominated_mask(Z).all(), key
+        assert p.front_exact is (key == "RCM28"), key                 # its curves are exact
+        assert np.allclose(Z.min(0), p.ideal) and np.allclose(Z.max(0), p.nadir), key
+        assert p.n_gen * p.pop_size >= 0.99 * RW.max_evaluations(int(key[3:])), key
+    assert get("RCM15").var_types[2][1] == list(RW.WIRE) and get("RCM07").var_types == ["int"] * 4
+    assert get("RCM09").has_cons is False and get("RCM08").has_cons is True
+    # the chemical and process problems: the equalities as DOC's, |h| - 1e-4 last
+    assert [get(f"RCM{i}").n_eq for i in (22, 23, 25, 26, 28, 29)] == [4, 4, 0, 1, 5, 0]
+    x1 = 10 / (0.9 * (1 - math.exp(-2.5)))                 # RCM28: reactor 1, x5 = 5
+    f, g = RW.evaluate(28, [x1, 0, 10, 0, 5.0, 0, 1, 0])
+    assert max(g) <= 0 and RW.equalities(28, [x1, 0, 10, 0, 5.0, 0, 1, 0]) == [0.0] * 5
+    Z = RW.front("RCM28")
+    assert np.min(np.abs(Z - np.array(f)).sum(1)) < 0.05      # on the exact front's curve
+    # as printed, exp(+0.5 x5): a reactor's output would be <= 0, h4 never holds
+    assert 0.9 * (1 - math.exp(0.5 * 5.0)) * x1 < 0
+    # RCM24 and RCM27: one-point fronts, not registered
+    f, g = RW.evaluate(24, [0.0, 1e4 / 600, 0.0, 50.0, 2e6, 600.0, 100.0, 600.0, 700.0])
+    assert max(g) <= 0 and f[1] == 0.0 and abs(f[0] - 35 * (50 / 3) ** 0.6) < 1e-9
+    x1 = 0.2 + math.log(2.1)
+    f, g = RW.evaluate(27, [x1, -2.1, 1])
+    assert max(g) <= 1e-12 and abs(f[0] - 1.0765430833) < 1e-9
+    assert "RCM24" not in names and "RCM27" not in names
 
 
 @test

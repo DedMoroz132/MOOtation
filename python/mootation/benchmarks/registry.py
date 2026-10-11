@@ -31,6 +31,13 @@
 #   OMM, LOTZ, OJZJ     bit-string problems of the runtime theory (binary.py)
 #   DAS-CMOP1-9         Fan et al. 2020, difficulty-adjustable constrained, at
 #                       the paper's sixteen triplets (dascmop.py)
+#   LIR-CMOP1-14        Fan et al. 2019, constrained with large infeasible
+#                       regions (lir_cmop.py)
+#   DOC1-9              Liu & Wang 2019, constraints in the decision and the
+#                       objective space, equalities in DOC3, 5, 7 (doc.py)
+#   bbob-biobj-mixint   Tusar et al. 2019: bbob-biobj with 4/5 of the variables
+#     x n=5,10          integer, of arities 2, 4, 8, 16 (bbob_biobj_mixint.py)
+#   catZDT1             ZDT1 with a categorical choice of g (ours, categorical.py)
 #
 # Reference data follow Tanabe & Oyama, GECCO 2017, so that numbers produced
 # here are comparable with the literature rather than merely self-consistent:
@@ -77,7 +84,14 @@ from . import rotated as _rot
 from . import re as _re
 from . import binary as _bin
 from . import dascmop as _das
+from . import lir_cmop as _lir
+from . import doc as _doc
+from . import mmo as _mmo
+from . import rwmop as _rw
+from . import bbob_biobj_mixint as _mixint
+from . import categorical as _cat
 from . import mw as _mw
+from . import failing as _fail
 
 
 # =============================================================
@@ -104,7 +118,8 @@ class BenchProblem:
     # A sampler of the true Pareto SET, in decision space, for IGDX and CR
     # (benchmarks/pareto_sets.py): IPolygon, Polygon, ZDT1-4 and 6, DTLZ1-4
     # and 7, DTLZ5-6 up to three objectives, IDTLZ, SDTLZ, minusDTLZ2, the
-    # shift and wide variants, ZCAT, C1-DTLZ1/3 and C2-DTLZ2. None elsewhere,
+    # shift and wide variants, ZCAT, C1-DTLZ1/3 and C2-DTLZ2, and every part
+    # of the multimodal problems' (mmo.py: SYM-PART, Omni-test, MMF). None elsewhere,
     # and the decision-space indicators say nothing there.
     pareto_set: Optional[Callable[[int], "np.ndarray"]] = None
     # Variables whose distance wraps with the period of their range: the
@@ -130,6 +145,16 @@ class BenchProblem:
     # RE25, RE35, RE36, CRE24, CRE25 and the corrected RE22c and RE33c (task 7,
     # §10), and the bit-string problems (binary.py).
     var_types: Optional[list] = None
+    # A failing copy's (share in per cent, kind) (failing.py): its evaluations
+    # fail in a region of the box, and a campaign records the failures.
+    failing: Optional[tuple] = None
+    # Equality constraints (DOC3, 5, 7): the last n_eq values of
+    # `constraints` are equalities, there as |h| - 1e-4 <= 0, which is what
+    # minimize's eq_constraints does at eq_tol = 1e-4, bit for bit;
+    # `equalities` gives h itself, for a run with another tolerance or the
+    # linear schedule (benchmarks.solve passes it on). 0 and None elsewhere.
+    n_eq: int = 0
+    equalities: Optional[Callable[[List[float]], List[float]]] = None
 
     @property
     def fevals_max(self) -> int:
@@ -1875,6 +1900,157 @@ def _register_dascmop():
 
 DASCMOP: Dict[str, tuple] = {}             # name -> (i, triplet)
 _register_dascmop()
+
+
+# =============================================================
+#  LIR-CMOP1-14 (lir_cmop.py, task 7, §8): Fan et al.'s constrained problems
+#  with large infeasible regions, n = 30, x in [0, 1]. The front is built on
+#  first use from the problems' geometry (lir_cmop.py, THE FRONTS), and the
+#  frame read off it there (_reframe_one).
+# =============================================================
+def _register_lir_cmop():
+    for i in range(1, 15):
+        M = _lir.n_obj(i)
+        pop, ng = _budget(M)
+        def _eval(x, _i=i): return _lir.evaluate(_i, x)[0]
+        def _cons(x, _i=i): return _lir.evaluate(_i, x)[1]
+        def _pf(n=1000, _i=i): return _lir.front(_i, int(n))
+        key = _lir.name(i)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=_lir.N_VARS, bounds=[(0.0, 1.0)] * _lir.N_VARS, n_obj=M,
+            evaluate=_eval, constraints=_cons,
+            hv_ref_raw=tuple([3.3] * M), hv_ref_norm=_ref_norm(M),
+            hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([3.0] * M),
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf)
+
+
+_register_lir_cmop()
+
+
+# =============================================================
+#  DOC1-9 (doc.py, task 7, §8): Liu and Wang's problems with constraints in
+#  both the decision and the objective space, each on a CEC 2006 problem.
+#  The fronts are the paper's (doc.py, THE FRONTS); the frame is read off
+#  them on first use (_reframe_one).
+# =============================================================
+def _register_doc():
+    for i in range(1, 10):
+        M = _doc.n_obj(i)
+        pop, ng = _budget(M)
+        def _eval(x, _i=i): return _doc.evaluate(_i, x)[0]
+        def _cons(x, _i=i): return _doc.constraints(_i, x)
+        def _eqs(x, _i=i): return _doc.equalities(_i, x)
+        def _pf(n=1000, _i=i): return _doc.front(_i, int(n))
+        key = _doc.name(i)
+        n_eq = _doc.N_EQ.get(i, 0)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=_doc.n_vars(i), bounds=list(_doc.BOUNDS[i]), n_obj=M,
+            evaluate=_eval, constraints=_cons,
+            hv_ref_raw=tuple([1.1] * M), hv_ref_norm=_ref_norm(M),
+            hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([1.0] * M),
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf,
+            n_eq=n_eq, equalities=_eqs if n_eq else None)
+
+
+_register_doc()
+
+
+# =============================================================
+#  SYM-PART simple and rotated, Omni-test and MMF1-15 (mmo.py; supplement
+#  3, §5.4): the 22 problems of the CEC 2019 competition on multimodal
+#  multiobjective optimization, each with its front and every part of its
+#  Pareto set. The competition's budget: a population of 100 per variable,
+#  5 000 evaluations per variable (50 generations), 21 runs. The frame is the
+#  front's corners, exact (mmo.frame).
+# =============================================================
+def _register_mmo():
+    for key in _mmo.NAMES:
+        bounds = list(_mmo.BOUNDS[key])
+        n, M = len(bounds), _mmo.n_obj(key)
+        ideal, nadir = _mmo.frame(key)
+        def _eval(x, _k=key): return _mmo.evaluate(_k, x)
+        def _pf(n=1000, _k=key): return _mmo.front(_k, int(n))
+        def _ps(n=1000, _k=key): return _mmo.pareto_set(_k, int(n))
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=n, bounds=bounds, n_obj=M, evaluate=_eval, constraints=_no_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+            pop_size=100 * n, n_gen=50, K_runs=21, has_cons=False,
+            pareto_front=_pf, pareto_set=_ps)
+        EXACT_FRAME.add(key)
+
+
+_register_mmo()
+
+
+# =============================================================
+#  RCM01-29 (rwmop.py; task 7, §8): RWMOP's mechanical, chemical and process
+#  problems, Kumar et al. 2021, as the paper prints them but for the readings
+#  rwmop.py lists; RCM19, 20, 24 and 27 are not (rwmop.py says why). The
+#  equalities of RCM22-28 as DOC's: the last n_eq constraints, |h| - 1e-4. The budget is
+#  the competition's (rwmop.max_evaluations) at the usual population, 25 runs;
+#  the fronts are this library's long runs (rwmop.py, THE FRONTS; front_exact
+#  False but for RCM28's, whose two curves are exact) and the frame their
+#  corners.
+# =============================================================
+def _register_rwmop():
+    for i in _rw.REGISTERED:
+        _, box, M = _rw.PROBLEMS[i]
+        pop, _ = _budget(M)
+        key = _rw.name(i)
+        has = _rw.n_cons(i) > 0
+        ideal, nadir = _rw.frame(key)
+        def _eval(x, _i=i): return _rw.evaluate(_i, x)[0]
+        def _cons(x, _i=i): return _rw.evaluate(_i, x)[1]
+        def _pf(n=1000, _k=key): return _rw.front(_k)
+        def _eqs(x, _i=i): return _rw.equalities(_i, x)
+        n_eq = _rw.N_EQ.get(i, 0)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=len(box), bounds=[(float(a), float(b)) for a, b in box], n_obj=M,
+            evaluate=_eval, constraints=_cons if has else _no_cons,
+            hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=round(_rw.max_evaluations(i) / pop), K_runs=25, has_cons=has,
+            pareto_front=_pf, front_exact=i == 28, var_types=_rw.VAR_TYPES.get(i),
+            n_eq=n_eq, equalities=_eqs if n_eq else None)
+        EXACT_FRAME.add(key)
+
+
+_register_rwmop()
+
+
+# =============================================================
+#  bbob-biobj-mixint x n={5,10} (bbob_biobj_mixint.py; supplement 3, §1.4):
+#  the 55 bbob-biobj pairs with the first 4/5 of the variables integer, of
+#  arities 2, 4, 8 and 16, each objective discretized about its own optimum
+#  (Tusar et al. 2019, §3.1.1). Ideal and nadir as bbob-biobj's, at the
+#  mixed-integer optima; no front.
+#  catZDT1 (categorical.py): ZDT1 whose g a categorical variable picks among a
+#  multimodal one, which holds the front, and two easy ones just above it.
+# =============================================================
+def _register_mixed():
+    pop, ng = _budget(2)
+    for D in (5, 10):
+        for fnum in range(1, 56):
+            p = _mixint.MixedInteger(fnum, D)
+            key = _mixint.name(fnum, D)
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=D, bounds=_mixint.bounds(D), n_obj=2,
+                evaluate=p, constraints=_no_cons,
+                hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(p.ideal, p.nadir)),
+                hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
+                ideal=p.ideal, nadir=p.nadir, pop_size=pop, n_gen=ng, K_runs=21,
+                has_cons=False, pareto_front=None, var_types=_mixint.var_types(D))
+    PROBLEMS["catZDT1"] = BenchProblem(
+        name="catZDT1", n_vars=1 + _cat.N_REAL, bounds=_cat.bounds(), n_obj=2,
+        evaluate=_cat.evaluate, constraints=_no_cons,
+        hv_ref_raw=(1.1, 1.1), hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
+        ideal=(0.0, 0.0), nadir=(1.0, 1.0), pop_size=pop, n_gen=ng, K_runs=21,
+        has_cons=False, pareto_front=_cat.front, var_types=_cat.var_types())
+    EXACT_FRAME.add("catZDT1")
+
+
+_register_mixed()
 _register_noisy()
 
 
@@ -1987,17 +2163,17 @@ _attach_full_fronts()
 
 
 # ── reference version 2 (2026-09-29) ───────────────────────────────────────
-# What the stage-3 review found in the reference fronts (TASK4, reference
-# audit): rows repeated up to 216 times, which IGD+ counts as many times, and
-# 259 to 6 399 rows where 1 000 were asked for. Version 2: every pareto_front(n)
+# Version 1's reference fronts had rows repeated up to 216 times, which IGD+
+# counts as many times, and 259 to 6 399 rows where 1 000 were asked for.
+# Version 2: every pareto_front(n)
 # returns distinct rows and exactly n of them where its sampler can give as
 # many (_exactly_n); besides, WFG1 and WFG2 sample their positions at random,
 # not on an aliasing grid (_wfg12_positions), and IPolygon is a new instance
 # (polygon_ishibuchi.py). A campaign writes the version into every run's
 # meta.json; --recompute-reference brings older runs up to date, keeping their
 # old values beside the new. REFERENCE_CHANGED lists, per version, the problems
-# whose pareto_front(1000) changed with it (measured: TASK4
-# reference_changes.py); a run measured against an older reference of one of
+# whose pareto_front(1000) changed with it; a run measured against an older
+# reference of one of
 # them is set aside by --cover until recomputed.
 REFERENCE_VERSION = 2
 REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
@@ -2152,6 +2328,70 @@ def _register_binary():
 
 _register_binary()
 _register_noisy(_noisy.LATE_BASES, late=True)
+
+
+# =============================================================
+#  Failing copies (failing.py, task 7, supplement 3, §2.4): the base, but NaN
+#  in a failure region of the box. The region and the Pareto-set sample are
+#  built on first use; front and frame are the base's where the region misses
+#  the Pareto set, else the image of the rest of the sample (front_exact
+#  False), or the base's front when nothing is left.
+# =============================================================
+_FAIL_PARTS: Dict[str, tuple] = {}
+
+
+def _failing_parts(key: str):
+    if key not in _FAIL_PARTS:
+        base, share, kind = FAILING[key]
+        b = PROBLEMS[base]
+        if callable(b.pareto_set):
+            S = np.asarray(b.pareto_set(_fail.SAMPLE), float)
+        else:                                   # WFG4
+            k = 2 * (b.n_obj - 1)
+            S = _fail.wfg4_pareto_set(_fail.SAMPLE, k, b.n_vars - k, _fail._rng(key + ":ps"))
+        evaluate, region, kept = _fail.make(b, share, kind, S)
+        p = PROBLEMS[key]
+        exact = len(kept) == len(S) and b.front_exact
+        object.__setattr__(p, "front_exact", exact)
+        if exact:
+            FRAME_OF[key] = base
+        _FAIL_PARTS[key] = (evaluate, kept, len(S))
+    return _FAIL_PARTS[key]
+
+
+def _register_failing():
+    for base in _fail.BASES:
+        b = PROBLEMS[base]
+        for share in _fail.SHARES:
+            for kind in _fail.KINDS:
+                key = _fail.name(base, share, kind)
+
+                def _eval(x, _k=key):
+                    return _failing_parts(_k)[0](x)
+
+                def _pf(n=1000, _k=key, _b=base):
+                    _, kept, total = _failing_parts(_k)
+                    if len(kept) in (0, total):
+                        return PROBLEMS[_b].pareto_front(n)
+                    return np.array([PROBLEMS[_b].evaluate(list(x)) for x in kept])
+
+                def _ps(n=1000, _k=key, _b=base):
+                    _, kept, total = _failing_parts(_k)
+                    return kept if len(kept) else np.empty((0, PROBLEMS[_b].n_vars))
+
+                FAILING[key] = (base, share, kind)
+                PROBLEMS[key] = BenchProblem(
+                    name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
+                    evaluate=_eval, constraints=_no_cons,
+                    hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
+                    hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
+                    pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
+                    pareto_front=_pf, pareto_set=_ps, cyclic_vars=b.cyclic_vars,
+                    front_exact=False, failing=(share, _fail.KINDS[kind]))
+
+
+FAILING: Dict[str, tuple] = {}             # name -> (base, share, kind)
+_register_failing()
 
 
 # ── dense references at four objectives and more (task 6 of 2026-10-09, item 9)

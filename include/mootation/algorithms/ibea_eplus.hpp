@@ -47,20 +47,14 @@
 //     + bit-flip 0.04 (footnote 3). Binary genomes are an extension here.
 //   IEP-3 (EXTENSION). The constraint modes above are not in the paper and are
 //     off by default.
-// IEP-4 (MEASURED 2026-09-10, no change to the default). Alg.2 steps 2.1-2.2
-//   scale the objectives to [0,1] over the pool before I_eps+, and that is the
-//   letter, so it is on. set_normalize(false) drops it and exists only to
-//   answer what the scaling buys, because the question came up next door: in
-//   R2-IBEA the analogous per-axis scaling costs a factor of 25 on ZDT1.
-//   Here it costs nothing either way. 3 seeds, 30 000 FE, median IGD:
-//     ZDT1   0.00393 normalised   0.00398 raw     a tie
-//     DTLZ2  0.09315 normalised   0.08831 raw     raw 5 % better, seeds apart
-//   The reason the two differ is worth stating, because it stops "normalisation
-//   is bad for indicators" from being read into this. R2 allocates effort by
+// IEP-4 (no change to the default). Alg.2 steps 2.1-2.2 scale the objectives
+//   to [0,1] over the pool before I_eps+, and that is the letter, so it is on.
+//   set_normalize(false) drops it, to see what the scaling buys; in R2-IBEA
+//   the analogous per-axis scaling is a different matter (r2ibea.hpp,
+//   R2I-NORM). Why the two differ: R2 allocates effort by
 //   DIRECTION: every weight vector on the simplex owns a piece of the front,
-//   and rescaling the axes moves the pieces, so on ZDT1 the same uniform grid
-//   of weights ends up covering half the front (span of f1 0.49 against 0.94,
-//   with the population equally converged either way). I_eps+ owns no such
+//   and rescaling the axes moves the pieces, so the same uniform grid of
+//   weights ends up covering another part of the front. I_eps+ owns no such
 //   partition: it compares two solutions and decides an ORDER, and an order
 //   survives rescaling far better than a partition does. The caution therefore
 //   belongs to the methods that distribute effort by direction — MOEA/D,
@@ -274,7 +268,6 @@ public:
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist(0.0, 1.0);
-        std::uniform_int_distribution<int>    dist_bin(0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -285,7 +278,7 @@ public:
                 vars[j] = lo + dist(rng_) * (hi - lo);
             }
             for (int j = 0; j < vault.bin_vars_n(); ++j)
-                bvars[j] = dist_bin(rng_);
+                bvars[j] = ops::random_gene(j, rng_);
 
             if (vault.bin_vars_n() > 0)
                 vault.set_all_variables(i, vars, bvars);

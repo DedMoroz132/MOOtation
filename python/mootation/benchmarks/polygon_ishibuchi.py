@@ -23,11 +23,11 @@
 # nearest vertices in one polygon Q (two of them in different polygons would
 # put their centres within 2r + r + 2r + r = 6r), so y dominating x would make
 # y moved by c_P - c_Q dominate x in the one-polygon problem, where the
-# polygon itself is the Pareto set. Checked the paper's way on a dense grid
-# (TASK4 ipolygon_v2_check): the grid's non-dominated points are exactly
+# polygon itself is the Pareto set. Checked the paper's way on a dense grid:
+# the grid's non-dominated points are exactly
 # those inside the four polygons, and pf(1000) has no dominated point.
 #
-# The instance before it (version 1, stage 3 ran it): m = 2 polygons of radius
+# The instance before it (version 1): m = 2 polygons of radius
 # 20 centred at (30, 50) and (70, 50) — too close: the squares shared the vertex
 # (50, 50), the triangles' lower vertices were 5.4 apart. At three objectives
 # the Pareto set was a region between the triangles and 862 of pf(1000)'s

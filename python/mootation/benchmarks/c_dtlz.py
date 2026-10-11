@@ -4,8 +4,9 @@
 # Many-Objective Optimization Algorithm Using Reference-point Based
 # Non-dominated Sorting Approach, Part II: Handling Constraints and Extending
 # to an Adaptive Approach", IEEE TEVC 18(4):602-622, 2014,
-# doi:10.1109/TEVC.2013.2281534 (task 6 of 2026-10-09, item 5). Checked
-# against pymoo 0.6.2's cdtlz.py (Apache-2.0) at fixed points.
+# doi:10.1109/TEVC.2013.2281534 (task 6 of 2026-10-09, item 5). Values
+# checked against pymoo 0.6.2's cdtlz.py (Apache-2.0) at 60 points, reference
+# in python/test_run_layer.py (C_DTLZ_PYMOO).
 #
 #   C1-DTLZ1  DTLZ1, k = 5, c = 1 - f_M/0.6 - sum_{i<M} f_i/0.5 >= 0 (Eq. 4):
 #             a feasible band next to the front, which is DTLZ1's
@@ -172,8 +173,7 @@ def convex_c2_front(M: int, n: int, seed: int = 20261009) -> np.ndarray:
     (1 + g)^2) until the point leaves the cylinder: B = for every direction in
     the hole the first such point (every point beyond it in that direction it
     dominates). The front is A and those of B that nothing in A or B
-    dominates — found 2026-10-09 (task 6): Jain & Deb's and pymoo's front is
-    A alone. Directions: the M corners, feasible, and 20 n draws
+    dominates — found 2026-10-09 (task 6): Jain & Deb's front is A alone. Directions: the M corners, feasible, and 20 n draws
     |N(0, I)|/norm from a fixed seed; g on a grid of step 1e-3 up to DTLZ2's
     largest, 0.25 k = 2.5, then bisected."""
     rng = np.random.default_rng(seed + M)

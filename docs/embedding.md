@@ -4,7 +4,7 @@
 Three shapes, from the most static to the most portable: the algorithm fixed at
 compile time (`Optimizer<Ind, Core>`), the algorithm chosen by name at run time
 with either the library or you owning the loop (`embed.hpp`), and the same loop
-behind a C ABI for other languages. All three run the same 64 cores from
+behind a C ABI for other languages. All three run the same 67 cores from
 `include/mootation/algorithms.def`.
 
 ## Compile-time choice: `Optimizer<Ind, Core>`
@@ -56,8 +56,8 @@ carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 you; the full WFG / MaF families live on the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
-[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 47 of the 64 cores
-accept one, the other 17 refuse it at `setup()` with a message.
+[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 49 of the 67 cores
+accept one, the other 18 refuse it at `setup()` with a message.
 
 ### External or parallel evaluation
 
@@ -69,6 +69,27 @@ a thread pool, a process pool or a simulator queue plugs in;
 [`examples/batch_demo.cpp`](../examples/batch_demo.cpp) shows it. Steady-state
 cores still evaluate one candidate per `step()`, because that is how those
 algorithms are defined.
+
+An evaluation that writes a non-finite objective or constraint value — your
+solver crashed and you wrote NaN — has failed. By default the vault gives the
+point a penalty: above the worst finite value of every objective and a
+violation beyond the worst seen, the same for every failure, so that every
+algorithm discards it before any point that did not fail; `failed_n()` counts
+them and `is_failed(v)` marks them, so leave those out of the answer you read.
+`set_fail_raise(true)` throws at the first failure instead
+([`data_vault.hpp`](../include/mootation/data_vault.hpp), FAILED EVALUATIONS).
+
+Equalities h(x) = 0 are the last constraint values your problem writes, with
+`set_equalities(n, delta)` on the vault before the first evaluation: the vault
+turns each h into |h| - delta, so `limits_of` keeps the meaning "<= 0
+satisfied" and cv adds max(|h| - delta, 0). `set_eq_tol(delta)` moves the
+tolerance between steps and rewrites every evaluated point from its |h|.
+Limits you hand to `setup_with_seed` are your problem's own, h included; an
+algorithm writing values back through `seed_individual` writes the vault's
+(EQUALITY CONSTRAINTS). `set_cv_level(eps)` makes a violation up to eps count
+as none for the algorithm — the ε-level comparison on any feasibility-first
+core — while `raw_cv(v)` and `max_raw_cv()` keep the violation itself
+(EPSILON LEVEL); set it back to 0 before you read the answer's cv.
 
 ### Diagnostics
 
@@ -82,7 +103,7 @@ sizes in the message.
 
 ## Run-time choice: `embed.hpp`
 
-`#include <mootation/embed.hpp>` instantiates all 64 cores in that translation
+`#include <mootation/embed.hpp>` instantiates all 67 cores in that translation
 unit so that the algorithm can be picked by name. That is a real compile-time
 cost (about a minute); a program that always runs one algorithm should use
 `Optimizer<Ind, Core>` directly.
@@ -105,6 +126,7 @@ A plain struct, and the same fields as a `key = value` file:
 | `crossover`, `mutation` | words: `sbx` / `uniform` / `blx_alpha` / `spx` / `rex` / `undx` / `pcx` / `de` / `de_pbest` / `portfolio`, and `polynomial` / `gaussian` / `cauchy` / `uniform_reset` / `mixture` / `mixture_cauchy` / `none` — NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA take both, MOEA/D-DE the mutation; the defaults are the papers' SBX and polynomial mutation |
 | `mutation_scale`, `mixture_q`, `blx_alpha` | their parameters: s of the gaussian (0.1) and Cauchy (0.05) steps as a share of ub − lb (> 0: "no mutation" is `mutation = none`), the share of noisy steps in a mixture (0.1), BLX's α (0.5) |
 | `F`, `CR`, `de_p`, `de_archive`, `de_adapt`, `de_adapt_weight`, `de_memory` | `crossover = de`: DE/rand/1/bin, `r0` and `r1` the host's pair and two more parents from its selection; `de_pbest`: current-to-pbest/1 (JADE), x_pbest one of the host's best `de_p` (0.1) by its own order, r2 from the population and the archive of displaced parents (`de_archive = yes`); F = 0.5, CR = 1. `de_adapt = shade`: F and CR from a SHADE memory of `de_memory` (5) cells, success = the child survived the host's selection, weights `equal` or `contribution` (hypervolume) — `operators/de_crossover.hpp`; the memory and the means of CR and F drawn and kept are in `operator_stats` |
+| `dn_cf` | dn_nsga2: the crowding factor of its niched mating pool, a whole number ≥ 1 (20) |
 | `survival`, `spu_frac` | `greedy` or `stochastic` (sms_emoa, nsga2, nsga3): Bian et al.'s stochastic population update, Q′ of ⌊`spu_frac`·\|Q\|⌋ (1/2; 3/4) selected alone, the rest kept (docs/running.md) |
 | `inner_archive`, `inner_archive_cap`, `archive_reuse_p` | `off` or `nd` (sms_emoa, nsga2, nsga3, ibea_eplus): an archive of the non-dominated points evaluated, its cap (unset: 10 μ), and the probability that a parent is drawn from it (`operators/inner_archive.hpp`) |
 | `bin_crossover`, `mating` | `uniform` or `none` (sms_emoa, nsga2) for the binary genome; `tournament` or `each` (nsga2) |

@@ -29,28 +29,21 @@
 // PAPER DEFAULTS (Part I, Tables I-II): eta_c=30, eta_m=20, pc=1.0, pm=1/n.
 // DECLARED DEVIATIONS:
 //   - Path-A: pop_size = the Das-Dennis lattice size (see nsga3.hpp);
-// READING OF §VII (set_adaptation_mode; default 3 = the paper's letter,
-//   measured 2026-09-05, details in VERIFY_2026-09-05/checklists/a_nsga3.md):
+// READING OF §VII (set_adaptation_mode; default 3 = the paper's letter):
 //   bit 0 — §VII-B deletion runs ONLY when exactly N reference points have
 //   rho_j = 1 (the "perfect scenario" the paper names); bit 1 — the §VII-A
 //   cooldown lasts exactly one generation ("not allowed to have another
 //   inclusion operation until all original reference points have a chance to
 //   be operated" — every original point is scanned once per generation).
 //   The pre-2026-09-05 port (mode 0: deletion every generation, a point
-//   blocked until ALL originals had fired) left the adaptation inert: on the
-//   inverted DTLZ1 of §VIII-A (M=3, N=91, 40 000 FE, 3 seeds) it occupied 28
-//   reference points with IGD 0.030 — identical to plain NSGA-III — while the
-//   literal reading occupies 77 and reaches IGD 0.0227; on DTLZ2 (regular
-//   front) the two readings differ by < 0.002 IGD (0.0560 vs 0.0550).
-//   Mode 0 remains available for comparison.
+//   blocked until ALL originals had fired) left the adaptation inert. Mode 0
+//   remains available for comparison.
 //   - set_reference_points does not project the aspiration points through
 //     Eq.4 — supply points already on the unit simplex; the M extreme points
 //     (1,0,...,0)^T, ... are appended per §VI.
 // EXTENSIONS BEYOND THE PAPER: a safety cap on |Z| (the paper sets no limit).
-//   Under the literal §VII reading the default cap IS reached on irregular
-//   fronts (inverted DTLZ1: |Z| = 182 = 2N); set_ref_cap(1000) lets the set
-//   settle at ~232 points with the same outcome (IGD 0.0223-0.0227, 71-81
-//   occupied points vs 0.0227 / 77 at the default), so the cap is kept.
+//   Under the literal §VII reading the default cap can be reached on
+//   irregular fronts (inverted DTLZ1: |Z| = 2N); set_ref_cap raises it.
 //   The cap is 2·max(N, |Z_0|), where |Z_0| is the initial reference set AFTER
 //   the M extreme points of §VI are appended — set_reference_points runs before
 //   setup() and has no access to pop_size, so at that moment it can only scale
@@ -732,7 +725,6 @@ public:
 
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -741,7 +733,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dr(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }

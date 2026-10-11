@@ -10,7 +10,7 @@ from __future__ import annotations
 METRIC_NAMES = ("igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "hv", "hv_h",
                 "roi_dist", "range_cover", "nd_share", "dup_share", "igdx", "cr", "pdist",
                 "tau90", "n_final", "r2", "gap_max", "nn_cv", "gdp_norm",
-                "gdp_min", "g_min", "g_median", "ps_dmin")
+                "gdp_min", "g_min", "g_median", "ps_dmin", "i_cmop", "psp")
 
 # What a run's variation operators did, recorded with [campaign] operator_stats
 # = true (the binding's per-step bookkeeping, mootation._core.operator_stats):
@@ -67,7 +67,7 @@ TABLE_NAMES = (METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + COORDS_STATS + F
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
 # oriented the way a healthy run moves.
-HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "pdist",
+HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "psp", "pdist",
                               "feas_share"})
 
 # These compare the answer set with a sample of the true Pareto front, so a
@@ -79,17 +79,22 @@ NEEDS_FRONT = frozenset({"igd", "igdp", "igdp_norm", "gdp", "eps", "eps_norm", "
 # (benchmarks.registry.dense_reference, task 6 of 2026-10-09, item 9) are
 # recorded beside them under the name with this suffix: igdp_norm_ref_v3.
 DENSE_SUFFIX = "_ref_v3"
+# ... and against the campaign's own reference, the non-dominated points of all
+# its runs on the problem (campaign.pooled_reference): igdp_norm_pooled.
+POOLED_SUFFIX = "_pooled"
 
 
 def base_name(name: str) -> str:
-    """A metric's name without the dense reference's suffix."""
-    stem = name[:-len(DENSE_SUFFIX)] if name.endswith(DENSE_SUFFIX) else None
-    return stem if stem in NEEDS_FRONT else name
+    """A metric's name without the dense or the campaign reference's suffix."""
+    for suffix in (DENSE_SUFFIX, POOLED_SUFFIX):
+        if name.endswith(suffix) and name[:-len(suffix)] in NEEDS_FRONT:
+            return name[:-len(suffix)]
+    return name
 
 
 def is_table_name(name: str) -> bool:
     """Can a table be asked for `name`: TABLE_NAMES, the front indicators
-    against the dense reference, a portfolio's per-operator shares and mosa's
+    against the dense reference or the campaign's own, a portfolio's per-operator shares and mosa's
     per-objective weights."""
     for mode in NOISE_MODES:
         if name.endswith(mode) and name[:-len(mode)] in METRIC_NAMES + NOISE:
@@ -98,11 +103,16 @@ def is_table_name(name: str) -> bool:
             or name.startswith(PORTFOLIO_STATS + SA_WEIGHT_STATS))
 
 # These look at the decision variables: all of them need the solutions; igdx,
-# cr and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
+# cr, psp and ps_dmin a sample of the Pareto SET besides (BenchProblem.pareto_set),
 # and g_min and g_median the problem's distance function (BenchProblem.
 # distance_fn), which only some problems have.
-NEEDS_X = frozenset({"igdx", "cr", "pdist", "g_min", "g_median", "ps_dmin"})
-NEEDS_SET = frozenset({"igdx", "cr", "ps_dmin"})
+NEEDS_X = frozenset({"igdx", "cr", "psp", "pdist", "g_min", "g_median", "ps_dmin"})
+NEEDS_SET = frozenset({"igdx", "cr", "psp", "ps_dmin"})
+
+# What a campaign records unasked, along the trajectory and in `final`,
+# wherever the problem has a Pareto-set sample ([campaign] set_metrics,
+# supplement 3 of task 7, §5.3).
+SET_METRICS = ("igdx", "cr", "psp")
 
 # The hypervolumes: exact above three objectives costs seconds per call, which
 # is why a campaign can keep them off the trajectory (trajectory_hv_max_m).
@@ -122,6 +132,10 @@ DESCRIPTIONS = {
     "hv": "hypervolume, objectives normalised by ideal and nadir, reference point 1.1",
     "hv_h": "hypervolume with the reference point at 1 + 1/H, H from the problem's default "
             "population (Ishibuchi, Imada, Setoguchi & Nojima, GECCO 2017)",
+    "i_cmop": "Vodopija et al.'s indicator for a constrained problem (IEEE TEVC 2025, "
+              "Eq. 12): at most 1 with a feasible point (minus the normalised hypervolume, "
+              "or the distance to [ideal, nadir]), 1 + the least violation without one; "
+              "lower is better",
     "roi_dist": "distance from the set to the box [ideal, nadir] in normalised units, "
                 "0 once any point is inside; separates runs whose hypervolume is 0 "
                 "(the COCO bbob-biobj convention); no reference front needed",
@@ -135,6 +149,9 @@ DESCRIPTIONS = {
             "by the bounds, cyclic ones wrapped (Tanabe & Ishibuchi 2019, Eq. 5)",
     "cr": "cover rate: how much of the Pareto set's extent in each variable the solutions "
           "span, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7-8)",
+    "psp": "Pareto sets proximity, cr / igdx (Yue, Qu & Liang, IEEE TEVC 2018, Eq. 8): "
+           "covering the set's extent and near it in the variables; higher is better, "
+           "inf at igdx 0; the CEC 2019 competition ranks by 1/psp",
     "pdist": "mean pairwise distance between solutions in normalised variables: spread in "
              "the decision space; no reference needed",
     "tau90": "the 0.9 quantile of the IGD+ distances d+(z, A) over the reference sample, "

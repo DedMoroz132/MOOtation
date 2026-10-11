@@ -38,12 +38,7 @@
 //      ε-select P_c ∪ Arc into the POPULATION as well ("the textual
 //      reading"), which made P and Arc near-identical sets and emptied the
 //      archive of its role; set_population_pruning(true) restores it.
-//      Measured (FE-trajectory driver, DTLZ2 M=3 N=91 / ZDT1 N=100, 30 000
-//      FE, median IGD of 3 seeds, pruned -> letter): DTLZ2 0.0880 -> 0.0610
-//      (per seed 0.0882/0.0882/0.0862 -> 0.0601/0.0600/0.0602), ZDT1
-//      0.0039 -> 0.0040 (0.0039/0.0038/0.0039 -> 0.0040/0.0040/0.0040).
-//      The letter is the default: it is clearly better on DTLZ2 and level
-//      on ZDT1.
+//      The letter is the default.
 //      NRV-2 (FIXED 2026-09-16): Arc ∪ P kept a solution twice when it sat in
 //      both — every member at the first generation, since Arc starts as a
 //      copy of P. Copies never dominate each other, so both stayed, and
@@ -313,7 +308,6 @@ public:
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -322,7 +316,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dr(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables(i, vars);
         }

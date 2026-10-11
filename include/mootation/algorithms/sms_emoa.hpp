@@ -115,8 +115,8 @@ namespace mootation {
 //     Bian, Zhou, Li & Qian, "Stochastic Population Update Can Provably Be
 //     Helpful in Multi-Objective Evolutionary Algorithms", IJCAI 2023,
 //     doi:10.24963/ijcai.2023/612 (Artificial Intelligence 341:104308, 2025;
-//     arXiv 2306.02611 v3), Algorithm 5 — WRITTEN FROM THE TASK, the paper is
-//     to be checked against: Q' of ⌊spu_frac·|Q|⌋ members of Q = P ∪ {x'},
+//     arXiv 2306.02611 v3; source sp-update_bian2025_arxiv), Algorithm 5,
+//     checked against the paper: Q' of ⌊spu_frac·|Q|⌋ members of Q = P ∪ {x'},
 //     drawn uniformly without replacement (spu_frac 1/2, the paper's), and
 //     Reduce on Q' alone — its fronts, its reference point nad(Q') + 1 (or
 //     ref_delta's from Q'), SMS-4's extremes of Q', the Monte Carlo from M = 4;
@@ -352,7 +352,6 @@ public:
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> U01(0.0, 1.0);
-        std::uniform_int_distribution<int> bit(0, 1);
         std::vector<double> x(static_cast<std::size_t>(vault.vars_n()));
         std::vector<int> bx(static_cast<std::size_t>(vault.bin_vars_n()));
         for (int i = 0; i < n; ++i) {
@@ -361,7 +360,8 @@ public:
                 const double hi = bounds[j].second.value_or(1.0);
                 x[static_cast<std::size_t>(j)] = lo + U01(rng_) * (hi - lo);
             }
-            for (auto& b : bx) b = bit(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j)
+                bx[static_cast<std::size_t>(j)] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(static_cast<std::size_t>(i), x, bx);
             else                        vault.set_variables(static_cast<std::size_t>(i), x);
         }

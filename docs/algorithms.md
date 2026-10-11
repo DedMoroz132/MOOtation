@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-64 algorithms, one header each under `include/mootation/algorithms/`, registered
+67 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`. Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
@@ -12,19 +12,20 @@ implementation follows; if you publish results, cite that paper.
 
 | family | count | reach for it when | watch out for |
 |---|---|---|---|
-| Pareto-dominance & diversity | 8 | 2–3 objectives, a baseline everyone recognises | crowding distance degrades above 3 objectives |
+| Pareto-dominance & diversity | 9 | 2–3 objectives, a baseline everyone recognises; DN-NSGA-II when several parts of the variables map onto one front | crowding distance degrades above 3 objectives |
 | Reference-point (NSGA-III family) | 4 | many objectives with a regular front | `pop_size` must be an exact Das–Dennis lattice size |
 | Decomposition & region division (MOEA/D family) | 16 | scalarisable problems, many objectives, cheap per-generation cost | most members need an exact lattice size too (the weights are a Das–Dennis set); the steady-state members hand over one candidate at a time; the M2M members want `pop` divisible by `K` |
 | Indicator-based | 13 | you care about one quality indicator (ε+, hypervolume, R2) | cost grows fast with the objective count (HypE, R2-IBEA, SMS-EMOA, MO-CMA-ES) |
 | Reference-vector / angle-based | 8 | irregular or scaled fronts, where a fixed lattice misses | adaptive variants (RVEA*, DEA-GNG, NRV-MOEA, SRV) need a few generations before they help |
 | Clustering-based | 11 | disconnected or irregular fronts | cluster counts are parameters the papers tuned per problem |
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
+| Constrained, two archives or populations | 2 | a constrained problem whose feasible region is small, scattered or behind infeasible barriers | `pop_size` must be an exact Das–Dennis lattice size; at 2N per generation in memory, N evaluations |
 | Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
 | Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
-Eighteen algorithms require `pop_size` to be an exact Das–Dennis lattice size
+Nineteen algorithms require `pop_size` to be an exact Das–Dennis lattice size
 for the objective count (91 at M = 3, 210 at M = 5, ...): A-NSGA-III, AdaW,
-crEA, EDV, IREA, MBRA, MOEA/D, MOEA/D-AWA, MOEA/DD, MOEA/D-DE, MOEA/D-DRA,
+C-TAEA, crEA, EDV, IREA, MBRA, MOEA/D, MOEA/D-AWA, MOEA/DD, MOEA/D-DE, MOEA/D-DRA,
 MOMBI-II, NSGA-III, RVEA, RVEA*, MaOEA/SRV, SRV-NSGA-III and θ-DEA; the
 M2M family needs `pop` divisible by its subregion count `K`; the others round
 an unattainable request to the nearest lattice and say so through
@@ -40,77 +41,56 @@ wrong, and they are worth separating.
 
 **The units of all objectives at once.** Multiplying every objective by the
 same constant must change nothing, and `tests/test_scale_invariance.cpp`
-enforces exactly that on every push: 53 of the 59 algorithms then in the tree
-reproduced their result bit for bit, the two that did not for a reason of their
-own were fixed, and the four that depend on a constant of their own paper are
-listed there by name with the measured size.
+enforces exactly that on every push; the algorithms that depend on a constant
+of their own paper are listed there by name.
 
 **The ratio between axes.** That is a different property and most of these
 algorithms do not have it, by design rather than by defect: a weight vector on
 the simplex, a penalty-based boundary intersection, an angle between objective
 vectors and a niche radius all mean something only when the axes are
-comparable. Measured the same way (DTLZ2 with per-axis factors 1, 32 and 1024,
-each exact in binary, the objectives divided back before IGD), 18 of 56 were
-bit-identical:
-
-> NSGA-II, GrEA, VaEA, θ-DEA, MOEA/D-AM2M, DHEA, IBEA-ε+, IBEA-HD, mIBEA,
-> HypE, NIMMO, IF-MaOEA, MaOEA-IAMD, MaOEA/SRV, CA-MOEA, CAVA-MOEA, MaOEA/C, crEA
-
-The rest respond to the ratio, some strongly (NAEMO, RD-EMO, CLIA and RVEA
-moved their IGD by an order of magnitude at those factors). This is not a
-ranking: it says which methods carry their own normalisation and which expect
-you to supply it. If your objectives differ by orders of magnitude, either pick
-from the list above or scale them yourself before the run — the `SDTLZ` family
-in the benchmark registry exists to test exactly this, and RVEA's own paper
-introduces itself on scaled problems.
+comparable. Some algorithms carry their own normalisation, the rest expect you
+to supply it. If your objectives differ by orders of magnitude, scale them
+yourself before the run — the `SDTLZ` family in the benchmark registry exists
+to test exactly this, and RVEA's own paper introduces itself on scaled
+problems.
 
 **Scaling is not free, so ask what the spread means.** The ranges of your
 objectives can differ for two unrelated reasons, and they call for opposite
 answers. If they differ because of the units you chose — a mass in grams beside
 a length in metres — the spread carries nothing and removing it can only help:
-R2-IBEA with `set_normalize(true)` is 27 % better than the letter on DTLZ2
-skewed by per-axis factors 1, 10 and 100, and lands on the same IGD it reaches
-unskewed. If they differ because of the problem, removing the spread throws
-information away: on ZDT1 the wide axis is the direction of convergence (`g`
-falls from 10 towards 1 as the population approaches the front), and the same
-switch is then 25 times *worse*. Both numbers are in `r2ibea.hpp`, with the
-seeds.
+R2-IBEA's `set_normalize(true)` removes such a skew. If they differ because of
+the problem, removing the spread throws information away: on ZDT1 the wide
+axis is the direction of convergence (`g` falls towards 1 as the population
+approaches the front), and the same switch is then the wrong trade
+(`r2ibea.hpp`, R2I-NORM).
 
-**What the cost actually is, and who inherits it.** It is not convergence. On
-ZDT1 the two readings put the population equally close to the front (mean
-distance 8e-5 against 1e-4); what changes is which part of the front they
-occupy — the span of `f1` in the final population is 0.94, 0.99 and 0.80 over
-three seeds for the letter against 0.49, 0.45 and 0.54 for the scaled reading,
-on a front that runs the whole of [0, 1], with holes of the same size inside
-the covered stretch either way. The scaled reading spreads evenly over half the
-front.
-
-That is a re-mapping, and it belongs to a whole class of methods. R2 allocates
-effort by direction: each weight vector on the simplex owns a piece of the
-front, and rescaling the axes moves the pieces. The MOEA/D family, the
-NSGA-III family, RVEA and θ-DEA all allocate the same way, which is why almost
-everything in the skew list above is a weight-vector or angle method. IBEA-ε+
-owns no such partition — it compares two solutions and decides an *order*, and
-an order survives rescaling far better — and measured, its own unconditional
-scaling costs it nothing on either problem. So this is not a property of
-normalisation in general: it is what happens when you rescale the axes of a
-method that has divided the front between directions.
+**What the cost actually is, and who inherits it.** It is not convergence: the
+scaled reading still brings the population to the front, over another part of
+it. That is a re-mapping, and it belongs to a whole class of methods. R2
+allocates effort by direction: each weight vector on the simplex owns a piece
+of the front, and rescaling the axes moves the pieces. The MOEA/D family, the
+NSGA-III family, RVEA and θ-DEA all allocate the same way. IBEA-ε+ owns no such
+partition — it compares two solutions and decides an *order*, and an order
+survives rescaling far better. So this is not a property of normalisation in
+general: it is what happens when you rescale the axes of a method that has
+divided the front between directions.
 
 **Which case are you in? There is a cheap test.** Watch the ratio between the
 per-objective ranges of the answer set over the first few generations. A unit
 is a constant and the ratio holds steady; a property of the problem moves as
-the search closes on the front. On ZDT1 the ratio slides from 3.7 to 1.03 over
-a run — `f2`'s range is set by `g`, which falls towards 1 as the population
-reaches the front, so the slide *is* the convergence. On DTLZ2 it sits at 1.00
-throughout, and skewing the axes by constant factors multiplies a flat ratio by
-a constant, leaving it flat. Steady ratio: scale. Sliding ratio: do not. A
-problem that is both skewed and drifting is not covered by this test.
+the search closes on the front. On ZDT1 the ratio slides towards 1 over a run —
+`f2`'s range is set by `g`, which falls towards 1 as the population reaches the
+front, so the slide *is* the convergence — while constant factors on the axes
+multiply a steady ratio by a constant and leave it steady. Steady ratio: scale.
+Sliding ratio: do not. A problem that is both skewed and drifting is not
+covered by this test.
 
 ## Pareto-dominance & diversity-based
 
 | Algorithm | Year | File | DOI |
 |---|---|---|---|
 | NSGA-II | 2002 | `nsga2` | [10.1109/4235.996017](https://doi.org/10.1109/4235.996017) |
+| DN-NSGA-II | 2016 | `dn_nsga2` | [10.1109/CEC.2016.7744093](https://doi.org/10.1109/CEC.2016.7744093) |
 | SPEA2 | 2001 | `spea2` | [10.3929/ethz-a-004284029](https://doi.org/10.3929/ethz-a-004284029) |
 | SPEA2+SDE | 2014 | `spea2_sde` | [10.1109/TEVC.2013.2262178](https://doi.org/10.1109/TEVC.2013.2262178) |
 | GrEA | 2013 | `grea` | [10.1109/TEVC.2012.2227145](https://doi.org/10.1109/TEVC.2012.2227145) |
@@ -182,9 +162,8 @@ problem that is both skewed and drifting is not covered by this test.
 
 Every file in these tables transcribes a paper. An SRV variant on a
 steady-state MOEA/D carrier used to sit here as an experiment; liu2022 defines
-the strategy on an NSGA-III carrier only, and measured it did not converge
-(median IGD 0.41 on DTLZ2 against 0.060 for `srv`), so it left the public tree
-on 2026-09-09.
+the strategy on an NSGA-III carrier only, so it left the public tree on
+2026-09-09.
 
 ## Clustering-based
 
@@ -209,6 +188,27 @@ on 2026-09-09.
 | Two_Arch2 | 2015 | `two_arch2` | [10.1109/TEVC.2014.2350987](https://doi.org/10.1109/TEVC.2014.2350987) |
 | NAEMO | 2019 | `naemo` | [10.1016/j.swevo.2018.12.002](https://doi.org/10.1016/j.swevo.2018.12.002) |
 
+## Constrained, two archives or populations
+
+| Algorithm | Year | File | DOI |
+|---|---|---|---|
+| C-TAEA | 2019 | `ctaea` | [10.1109/TEVC.2018.2855411](https://doi.org/10.1109/TEVC.2018.2855411) |
+| CCMO | 2021 | `ccmo` | [10.1109/TEVC.2020.3004012](https://doi.org/10.1109/TEVC.2020.3004012) |
+
+C-TAEA keeps a convergence archive, which is the population and the answer,
+feasible first, and a diversity archive that ignores the constraints and fills
+the subregions the first one leaves thin; parents come from either, by the
+share of non-dominated points each holds. The header lists where it follows
+the authors' code over the paper's text (the normalization, one child per
+pair).
+
+CCMO evolves the problem and a helper — the same objectives without the
+constraints — in two populations of N; each breeds N/2 children and both are
+cut from themselves and all N children, so a generation costs N evaluations
+(2N at the start). The paper's framework takes any algorithm; this is its
+NSGA-II form, with SPEA2's truncation of the last front, as the paper's
+experiments run it — none of the other cores hands its children over before
+its own selection (header, CCMO-1).
 ## Direct search
 
 | Algorithm | Year | File | DOI |
@@ -229,15 +229,18 @@ reference fronts and archives.
 | MOSA | 2026 | `mosa` | a composition, below |
 
 Not evolutionary and not from one paper: annealing chains over an archive of
-every non-dominated point evaluated, put together from AMOSA's archive and
-informed reseeding ([10.1109/TEVC.2007.900837](https://doi.org/10.1109/TEVC.2007.900837)),
-DBMOSA's energy, the share of the archive dominating a point
-([10.1109/TEVC.2007.904345](https://doi.org/10.1109/TEVC.2007.904345)), and the
-Chebyshev chains of Pareto simulated annealing with weights that adapt to push
-the chains apart (Czyżak & Jaszkiewicz, J. Multi-Crit. Decis. Anal. 7(1), 1998).
-The header lists which parts are whose and which are ours (the default energy,
-`sa_energy = cmb`, and the steps `mix` and `adaptive`), and says plainly that
-the three papers are still to be checked against. One step is one evaluation, so annealing is sequential: there
+every non-dominated point evaluated, put together from DBMOSA's unconstrained
+archive, energy (the share of the archive dominating a point), Laplace move
+and restarts from the archive
+([10.1109/TEVC.2007.904345](https://doi.org/10.1109/TEVC.2007.904345)),
+AMOSA's energies against an archive
+([10.1109/TEVC.2007.900837](https://doi.org/10.1109/TEVC.2007.900837); its
+bounded archive and informed reseeding are not used), and the chains of Pareto
+simulated annealing with weights that adapt to push them apart and its
+weighted-sum acceptance (Czyżak & Jaszkiewicz, J. Multi-Crit. Decis. Anal.
+7(1), 1998). The header lists which parts are whose, where they depart from
+the papers and which are ours (the default energy, `sa_energy = cmb`, the
+Chebyshev energy, and the steps `mix` and `adaptive`). One step is one evaluation, so annealing is sequential: there
 is nothing to evaluate in parallel, and `batch=` gets one point at a time.
 The temperature and the step scale fall over the whole budget, so the run
 depends on `max_evaluations` (`run/budget.py`). Its answer is the archive
@@ -245,11 +248,12 @@ reduced to `pop_size` by DSS, published every `pop_size` steps.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 47 of the 64
+Every algorithm works on a real-valued genome with box bounds. 49 of the 67
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
-`Problem<>` specialisation); the other 17 refuse it at `setup()` with a clear
-message, because their reproduction operator is real-valued only: CLIA, DCEA,
-DEA-GNG, DHEA, DMS, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
+`Problem<>` specialisation); the other 18 refuse it at `setup()` with a clear
+message, because their reproduction operator is real-valued only, or, for
+DN-NSGA-II, its niche is a distance in the real variables: CLIA, DCEA,
+DEA-GNG, DHEA, DMS, DN-NSGA-II, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
 MO-CMA-ES, MOEA/D-DS, MOSA, NAEMO and Two_Arch2. The Python binding reaches the binary genome
 through `minimize(var_types=[..., "bin"])` (`mootation/var_types.py`), which also declares
 integer and discrete variables — rounded in the genome by the vault (`DataVault::set_snap`)
@@ -277,9 +281,11 @@ Every core carries a `constraint_mode` switch, off by default because the
 papers are unconstrained. `FEASIBILITY` (feasible-first, then the algorithm's
 own comparison; the mode the papers with a constrained section describe),
 `CDP` (Deb's constrained domination) and `EPS_CONSTRAINT` (the ε+ indicator
-with a violation shift, IBEA only). Each header states where the handling
+with a violation shift, IBEA only); the Python layer adds the ε level
+(`constraint_mode = "eps_level"`, docs/running.md), which the vault applies to
+any feasibility-first core. Each header states where the handling
 attaches: the non-dominated sort, the scalarising comparison, the archive
 filter or the truncation rule, whichever is that algorithm's actual preference
-relation. There is no dedicated constrained-optimisation algorithm in the
-library; this is constraint handling bolted onto unconstrained methods, and the
-headers say so.
+relation. For the 64 that were written for unconstrained problems this is
+constraint handling bolted on, and the headers say so; C-TAEA and CCMO are
+built for constraints.

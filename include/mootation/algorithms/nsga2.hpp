@@ -73,17 +73,16 @@ inline std::optional<CrowdingSpace> parse_crowding_space(const std::string& s)
 //   source dn-nsga2_liang2016). Its §IV says only that "the crowding in objective
 //   space is replaced by crowding in decision space", with no formula, so
 //   §III-B over the (real) variables is this library's reading. The other
-//   change is not here: DN-NSGA-II fills the mating pool by niching — a
-//   random solution meets the nearest, by Euclidean distance in the
-//   variables, of CF random others and the better of the two enters (CF
-//   and "better" left open) — where this tournament draws its rival at
-//   random. So this is not DN-NSGA-II. Default `objectives`.
+//   change, the mating pool filled by niching, is DN-NSGA-II's own core
+//   (dn_nsga2.hpp), which switches niche_cf_ on below; nsga2 never does, so
+//   its tournament draws the rival at random. Default `objectives`.
 //
 // survival = "stochastic" (task 7 of 2026-10-10, supplement 2): Bian, Zhou,
 //   Li & Qian, "Stochastic Population Update Can Provably Be Helpful in
 //   Multi-Objective Evolutionary Algorithms", IJCAI 2023,
-//   doi:10.24963/ijcai.2023/612 (arXiv 2306.02611 v3), Algorithm 6 — written
-//   from the task, the paper to be checked against: Q' of ⌊spu_frac·2μ⌋
+//   doi:10.24963/ijcai.2023/612 (Artificial Intelligence 341:104308, 2025;
+//   arXiv 2306.02611 v3; source sp-update_bian2025_arxiv), Algorithm 6,
+//   checked against the paper: Q' of ⌊spu_frac·2μ⌋
 //   members of Q = P ∪ P' (spu_frac 3/4, the paper's) drawn uniformly
 //   without replacement, by a partial Fisher-Yates shuffle of the slots into
 //   [0, |Q'|); the usual selection — fronts and crowding distance over Q'
@@ -272,6 +271,13 @@ private:
                    std::uniform_int_distribution<int>& dist)
     {
         int a = dist(rng_), b = dist(rng_);
+        return better(vault, a, b);
+    }
+
+    // ≺_n of the tournament: feasibility first under constraint handling,
+    // then the lower rank, then the larger crowding distance; on a tie b.
+    int better(DataVault<Ind_t>& vault, int a, int b)
+    {
         const auto& ia = vault.get_ind(a);
         const auto& ib = vault.get_ind(b);
 
@@ -357,7 +363,6 @@ public:
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist_real(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin (0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -368,7 +373,7 @@ public:
                 vars[j] = lo + dist_real(rng_) * (hi - lo);
             }
             for (int j = 0; j < vault.bin_vars_n(); ++j)
-                bvars[j] = dist_bin(rng_);
+                bvars[j] = ops::random_gene(j, rng_);
 
             if (vault.bin_vars_n() > 0)
                 vault.set_all_variables(i, vars, bvars);
@@ -424,7 +429,7 @@ public:
         // one more parent, for the crossovers that take more than two (B2)
         auto draw = [&] {
             if (arch_.reuse(rng_)) return arch_.pick(rng_).x;
-            return vault.variables_of(tournament(vault, dist_int));
+            return vault.variables_of(mate(vault, dist_int));
         };
         // a parent: the tournament's winner (mating = each: member k itself),
         // or a member of the inner archive
@@ -436,7 +441,7 @@ public:
                 bv = m.b;
                 return;
             }
-            const int p = mating_each_ ? std::min(k, n - 1) : tournament(vault, dist_int);
+            const int p = mating_each_ ? std::min(k, n - 1) : mate(vault, dist_int);
             for (int j = 0; j < vault.vars_n(); ++j) x[j] = vault.get_variable(p, j);
             if (bin) bv = vault.binary_variables_of(static_cast<std::size_t>(p));
         };
@@ -543,8 +548,49 @@ public:
         }
     }
 
+protected:
+    // DN-NSGA-II's crowding factor (dn_nsga2.hpp): above 0 a parent comes
+    // from niche(), not from the tournament. nsga2 leaves it at 0.
+    int niche_cf_ = 0;
+
+    // A parent: the tournament's winner, or with niche_cf_ the niching one.
+    int mate(DataVault<Ind_t>& vault, std::uniform_int_distribution<int>& dist)
+    {
+        return niche_cf_ > 0 ? niche(vault, dist) : tournament(vault, dist);
+    }
+
+    // DN-NSGA-II's mating pool, one member of it (Liang, Yue & Qu 2016, §IV):
+    // a random member meets the nearest, by Euclidean distance in the
+    // variables, of niche_cf_ others drawn without replacement (all of them
+    // when niche_cf_ >= n - 1; on equal distances the first drawn), and the
+    // better of the two by ≺_n enters the pool.
+    int niche(DataVault<Ind_t>& vault, std::uniform_int_distribution<int>& dist)
+    {
+        const int n = dist.b() + 1;
+        const int a = dist(rng_);
+        others_.resize(static_cast<std::size_t>(n - 1));
+        for (int i = 0, k = 0; i < n; ++i)
+            if (i != a) others_[static_cast<std::size_t>(k++)] = i;
+        const int cf = std::min(niche_cf_, n - 1);
+        const auto& xa = vault.variables_of(a);
+        int nearest = -1;
+        double best = std::numeric_limits<double>::infinity();
+        for (int t = 0; t < cf; ++t) {          // a partial Fisher-Yates draw
+            std::uniform_int_distribution<int> any(t, n - 2);
+            std::swap(others_[static_cast<std::size_t>(t)],
+                      others_[static_cast<std::size_t>(any(rng_))]);
+            const int c = others_[static_cast<std::size_t>(t)];
+            const auto& xc = vault.variables_of(c);
+            double d = 0.0;
+            for (std::size_t j = 0; j < xa.size(); ++j) d += (xa[j] - xc[j]) * (xa[j] - xc[j]);
+            if (d < best) { best = d; nearest = c; }
+        }
+        return nearest < 0 ? a : better(vault, a, nearest);
+    }
+
 private:
     std::vector<std::vector<double>> untouched_;
+    std::vector<int> others_;                  // niche(): the members other than a
 };
 
 } // namespace mootation

@@ -10,21 +10,208 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The campaign's own reference (`--pooled-reference`, `campaign.pooled_reference`):
+  per problem, the non-dominated points of all the campaign's finished runs
+  (final answers, feasible rows only, and run archives) in
+  `pooled_reference/<problem>.csv`, with a `.json` of the runs that went into
+  it, the code that built it and its sha256, the pool's version; every run
+  measured against it from its saved answers as `<indicator>_pooled`, in the
+  pool's frame, the old values untouched, and measured again only when the
+  pool changes. The dense reference's measurement shares the code
+  (`_measure_saved`).
+- Properties `front_ref` (`exact` / `approximate`, from
+  `BenchProblem.front_exact`) and `front_built` (how an approximate reference
+  was built). For a metric that reads the reference front or its frame, the
+  rank table puts the synthetic problems with an approximate front in a group
+  of their own, `approx_front`, where a campaign has both kinds. RCM28's front,
+  two exact curves, is now `front_exact`.
+- Stored reference values for the checks against pymoo 0.6.2 that had none:
+  DAS-CMOP1-9 at two triplets (36 points), Omni-test and SYM-PART simple (five
+  points each), WFG8's and WFG9's optimal distance variables (four vectors), in
+  `python/test_run_layer.py`. Module headers and docs name, for every such
+  check, the library and version, the number of points and where the
+  reference is.
+- `rwmop.py`'s header lists where the competition's MATLAB code and the paper
+  differ (RCM10-17, 19, 20, read at 200 points per problem; RCM30-50's data).
+  Nothing of the code is used.
+- The stochastic population update (NSGA-II, SMS-EMOA) checked against Bian
+  et al.'s Algorithms 5 and 6: the subset sizes are ⌊|Q|/2⌋ and ⌊3|Q|/4⌋ drawn
+  without replacement, as implemented.
+- Run results and comparisons between algorithms moved out of the headers,
+  `docs/` and this file; what remains describes the choices and their knobs.
+
+- RWMOP's chemical and process problems RCM22, 23, 25, 26, 28, 29 (task 7,
+  §8; `benchmarks/rwmop.py`): equalities counted as DOC's (|h| - 1e-4, n_eq),
+  0/1 variables declared. RCM28's exp(0.5 x5) and exp(0.4 x6) read with the
+  minus sign (as printed a reactor's output is <= 0 and h4 never holds);
+  RCM29's "= 5.5 <= 0" as "- 5.5 <= 0". RCM24 and RCM27 are defined but not
+  registered: their fronts are single points (derived in the header). The
+  references: an epsilon-constraint method (SLSQP, every 0/1 setting, two
+  seeds of starts, agreeing to 5e-4 in normalised IGD+) joined with the long
+  runs' feasible points, RCM28's exact, RCM29's the best of its sixteen 0/1
+  settings. RCM30-50 are not implementable from the paper (the inverters'
+  frequencies and the networks' data are not given). 1340 problems.
+
+- RWMOP's mechanical design problems (task 7, §8; `benchmarks/rwmop.py`):
+  RCM01-18 and RCM21 of Kumar et al. (Swarm and Evolutionary Computation 67,
+  2021), the formulas as the paper prints them, at the competition's budget.
+  The header lists what cannot be read as printed and how it is read — RCM04's
+  G and tau'', RCM14's rho (used, never given), RCM06's g11 and RCM08's g8
+  (as printed nothing is feasible; the paper's own tables have every run
+  feasible), RCM15's wire list out of order — and where the paper's problem is
+  not the classic one (kept). RCM03-08 agree with the CRE port to 1e-12 (RCM08
+  in the paper's order of constraints). RCM19 (no demands given) and RCM20 (no
+  feasible point as printed) are not registered. Reference fronts from ten
+  long runs per problem (`benchmarks/_rwmop/`, `front_exact = False`).
+  `family_kind` "engineering" and `difficulty` "low" (the paper's level) in the
+  property table. 1334 problems in 49 families.
+
+- Multimodal problems (supplement 3, §5): SYM-PART simple and rotated,
+  Omni-test and MMF1-15 with MMF1_z, MMF1_e, MMF14_a and MMF15_a, the 22
+  problems of the CEC 2019 competition (`benchmarks/mmo.py`, from Liang, Qu,
+  Gong and Yue's report), each with its front and every part of its Pareto
+  set, the sets derived from the formulas and checked on a fine grid (the
+  module's header lists where the report's figures and the formulas part);
+  `multimodal_ps` and `ps_parts` in the property table. 1315 problems in 48
+  families.
+- `psp` (`run/metrics.py`): Yue, Qu and Liang's Pareto sets proximity, CR
+  over IGDX (IEEE TEVC 22(5), 2018, Eq. 8). A campaign records `igdx`, `cr`
+  and `psp` along the trajectory and in `final` wherever the problem has a
+  Pareto-set sample (`[campaign] set_metrics`, on by default);
+  `--cec2019-ranks` gives the competition's mean ranks by IGD, IGDX and 1/PSP.
+- DN-NSGA-II (`algorithms/dn_nsga2.hpp`, `dn_nsga2`; supplement 3, §5.1):
+  Liang, Yue and Qu's NSGA-II with a niched mating pool — a random member
+  against the nearest of `dn_cf` others in the variables, the better of the
+  two a parent — and crowding in the variables (CEC 2016). The crowding factor
+  is left open by the paper: `dn_cf`, 20 by default. `nsga2` is unchanged, bit
+  for bit. 67 algorithms; DN-NSGA-II refuses the integer genome (18 do).
+
+- `i_cmop` (supplement 3, §4.4; `run/metrics.py`): Vodopija, Tušar and
+  Filipič's indicator for a constrained problem (IEEE TEVC 29(1), 2025, Eq.
+  12), one number for runs with and without a feasible point: at most 1 with
+  one (the negative normalised hypervolume, or the distance to the region of
+  interest), 1 plus the least violation without. The other feasibility
+  measures of the supplement were there: `feas_share`, `fe_first_feas`, the
+  runs without a feasible answer (`empty` in the tables), the archive's
+  indicators on its feasible points at the hard budgets.
+- CCMO (`algorithms/ccmo.hpp`; supplement 3, §4.2): Tian, Zhang, Xiao, Zhang
+  and Jin's coevolution of the problem and its unconstrained helper (IEEE TEVC
+  25(1), 2021, Algorithm 1), in the paper's NSGA-II form with SPEA2's
+  truncation: N/2 children from each population, both cut from themselves and
+  all N children, N evaluations a generation, 2N at the start. Not a wrapper
+  over any core, as asked: none hands its children over before its selection.
+  66 algorithms.
+- C-TAEA (`algorithms/ctaea.hpp`; supplement 3, §4.3): Li, Chen, Fu and Yao's
+  two-archive algorithm for constrained problems (IEEE TEVC 23(2), 2019),
+  Algorithms 1-5, with the authors' code (as pymoo carries it) where it
+  departs from the text: objectives taken from the ideal point without Eq. 8's
+  division, one child per pair. 65 algorithms.
+- The epsilon level (supplement 3, §4.1; `data_vault.hpp`, EPSILON LEVEL):
+  `minimize(constraint_mode="eps_level")`. The vault counts a violation up to
+  ε as none for the algorithm, so every feasibility-first core does the
+  ε-level comparison; ε follows MOEA/D-IEpsilon's rule (Fan et al. 2019,
+  Eq. 8) once per generation and is 0 from 80 % of the budget on
+  (`eps_schedule`). With ε held at 0 every core's run is the feasibility one
+  bit for bit; without the mode nothing changes. `_core.current_cv_level()`.
+- bbob-biobj-mixint (`benchmarks/bbob_biobj_mixint.py`; supplement 3, §1.4):
+  the 55 bbob-biobj pairs at n = 5 and 10 with four fifths of the variables
+  integer (arities 2, 4, 8, 16), discretized as Tušar et al. (GECCO 2019,
+  §3.1.1) do, each objective about its own optimum; and catZDT1
+  (`benchmarks/categorical.py`), ZDT1 with a categorical choice of g. 1293
+  problems in 45 families.
+- Categorical variables (task 7, supplement 3, §1; `var_types.py`,
+  `operators/bit_flip.hpp`): `("cat", labels)` or `("cat", k)`; `fn` gets the
+  label. Bits and categorical variables form the integer genome
+  (`ops::gene_levels`, `RunConfig.gene_levels`): uniform crossover, and a
+  mutation that gives a gene one of its other values, each alike, with
+  probability 1/(number of genes), at most 1/2 (pymoo's cap; this changes a
+  run with a single bit, which used to flip in every child). The 47 cores
+  that take the genome draw their first genes through `ops::random_gene`; with
+  two or more bits a binary run is unchanged bit for bit. The 17 others refuse
+  it, and `minimize` says so. `result.unique_evaluations` counts the distinct
+  decoded points (`mootation/unique.py`); `budget_counts = "unique"` answers a
+  repeat from memory and counts the budget in distinct points. The run
+  journal's hash keys the decoded point, labels included.
+- DOC1-9 (`benchmarks/doc.py`; task 7, §8): Liu and Wang's problems with
+  constraints in both the decision and the objective space (IEEE TEVC 23(5),
+  2019, supplementary file S-I), on CEC 2006's g04, g19, g23, g09, g21, g07,
+  g14, g10 and g18; the equalities of DOC3, 5 and 7 as |h| - 1e-4 in
+  `constraints` and as h in the new `BenchProblem.equalities` (`n_eq`), which
+  `benchmarks.solve` hands to `eq_constraints`; the paper's fronts. 1182
+  problems in 43 families.
+- Equality constraints (task 7, supplement 3, §3; `data_vault.hpp`,
+  EQUALITY CONSTRAINTS): `minimize(eq_constraints=..., n_eq=...)`; an
+  equality holds where |h| <= `eq_tol` (1e-4) and adds max(|h| - eq_tol, 0)
+  to cv, Liu and Wang's rule (IEEE TEVC 2019, Eq. 3). `eq_tol_schedule =
+  "linear"` lowers the tolerance from `eq_tol0` to `eq_tol` over the
+  evaluation budget, every point's violation rewritten from |h| before each
+  step; `result.eq_tol`, `_core.current_eq_tol()`. The vault gains
+  `set_equalities` and `set_eq_tol`, and `seed_individual` a flag `raw` for
+  the caller's own values (`setup_with_seed` passes it). Every run without
+  equalities is unchanged bit for bit.
+- LIR-CMOP1-14 (`benchmarks/lir_cmop.py`; task 7, §8): Fan et al.'s
+  constrained problems with large infeasible regions (Soft Computing 23(23),
+  2019; the formulas of the preprint's Table 6), fronts built on first use
+  from the problems' geometry and the frame read off them. 1173 problems in
+  42 families.
+- Failed evaluations (task 7, supplement 3, §2; `mootation/failures.py`,
+  `data_vault.hpp`, FAILED EVALUATIONS). `minimize(on_failure="infeasible")`,
+  the default: an exception of `failure_exceptions` (Exception), a non-finite
+  objective or constraint, or a `None` row from `batch` fails the point; the
+  core gives it a penalty above the worst finite value of every objective and
+  a violation beyond the worst seen, the same for every failure and raised
+  when the range moves, keeps it out of the answer and the observers' rows,
+  and counts it (`result.n_failed`, in the budget). `on_failure="raise"`
+  stops at the first. `max_failure_share`, `failure_window` stop a run that
+  fails too often (`FailureShareExceeded`). The evaluation log gains the
+  columns `failed` and `error` (format v2). A campaign records `n_failed` in
+  `final` and `fail_share` in the trajectory, and keeps failed points out of
+  the run archive and the oracle. Every default run without a failure is
+  unchanged bit for bit.
+- Failing copies (`benchmarks/failing.py`): ZDT1, DTLZ2_3D and WFG4_3D
+  returning NaN in a region of 10 or 30 % — random balls (`_fail10r`), the
+  band along the faces (`b`) or part of the Pareto set (`n`) —, 18 problems
+  in the family `failing`; 1159 problems in 41 families.
+
 - The maximin Latin hypercube (`init = "lhs"`, `lhs_search`) raises the
   distances to the power −p by multiplications and compares designs by the sum
   of the terms: numpy's power runs SIMD code on some CPUs (SVML on AVX-512)
   whose last bits differ, and the annealing turned that into another design
   from the same seed on another machine. A seed now gives the same design
   everywhere — a different one from before, once.
+- Checked against the papers task 7 was written without (sources in the
+  headers). `de_adapt = "shade"` with `crossover = "de_pbest"` draws p for
+  every child from [2/N, 0.2] (SHADE's Eq. 20) instead of using `de_p`; the
+  rest is SHADE's Algorithm 1 as it was. `mosa`'s header names DBMOSA for the
+  unconstrained archive, the Laplace move, T_0 and the restarts from the
+  archive, and says that AMOSA's bounded archive and informed reseeding are
+  not used; with `sa_energy = "tch"` a chain's weight now rises on an
+  objective where it is better than its neighbour or equal to it (it used to
+  fall on a tie) and the weights are drawn at random when it has no
+  non-dominated neighbour (they used to stay), as in PSA's algorithm.
+  NSGA-III's `survival = "stochastic"` draws ⌈`spu_frac`·2N⌉ members, Opris's
+  ⌈3µ/2⌉ (IJCAI 2025, Algorithm 1), where it took ⌊·⌋ as NSGA-II after Bian
+  et al. does; the two differ at an odd N.
+- DAS-CMOP at ζ = 1 (`_t13` … `_t16`): the feasibility constraint is the
+  equality g = d within the paper's 10⁻⁶ (its Eq. 13); it was the product
+  (e − g)(g − d), satisfied at g = d alone. The objectives and the other
+  constraints, and WFG8's and WFG9's optimal distance variables, about which
+  rWFG8 and rWFG9 turn: values checked against pymoo 0.6.2 at 36 points and
+  four vectors of the optimum, reference in `python/test_run_layer.py`. Omni-test and SYM-PART
+  simple: at five points each, the same file.
+- RE22c's list of x1 is the source's (Amir & Hasegawa 1989, Table 2, read on
+  the printed page): 77 areas, with 7.00 for seven #9 bars, whose area the
+  table leaves blank and the original list leaves out, besides 3.10 for
+  "3,10". Its reference front does not change. RE33c's header records Ray and
+  Liew's box for x4, [2, 20], and their constraint x4 <= 11, which the suite's
+  supplement read as x4 >= 11.
 
 ### Removed
 
 - `srv_moead` (SRV on a steady-state MOEA/D). It was an extrapolation rather
   than a transcription — liu2022 puts the SRV strategy on an NSGA-III carrier
   (§III-C) and says nothing about a steady-state one, so no part of it could be
-  checked against a paper — and measured it did not converge: median IGD over 3
-  seeds at 30 000 FE was 0.41 on DTLZ2 and 0.35 on ZDT1, against 0.060 and
-  0.005 for `srv` on the same budget. It is maintained outside the public tree.
+  checked against a paper. It is maintained outside the public tree.
   The SRV strategy itself is unaffected: `srv`, `srv_nsga3` and the shared
   `srv_strategy.hpp` stay. The `SRVMOEAD_Individual` alias left `individuals.hpp`
   with it. The public list is 58 algorithms.
@@ -68,9 +255,8 @@ always listed under **Changed** or **Removed**.
   the best algorithm's median and the value that decides coverage.
 - `--cover`, after the review of the floor (2026-09-29): the floor is the
   greedy one — N reference points added one at a time for the smallest IGD+,
-  then single swaps — since DSS picks for coverage, not IGD+: on stage 3 the
-  best run stood below the DSS floor on 28 of 106 problems and below the greedy
-  one on 2 (curves, by 1-2 %). N is the population the algorithm ran with, so
+  then single swaps — since DSS picks for coverage, not IGD+. N is the
+  population the algorithm ran with, so
   MOEA/D-M2M's and SMS-M2M's multiples of K have their own floors. The DSS
   floor stays beside it with their ratio, DSS's tax (`igdp_floor.csv`:
   `floor_greedy`, `floor_dss`, `dss_tax`, the reference version and its row
@@ -88,8 +274,8 @@ always listed under **Changed** or **Removed**.
   `pareto_front(n)` returns distinct rows, exactly n of them where its sampler
   can give as many — a shortfall drawn again from a larger sample, a surplus
   thinned at random with every objective's extremes kept, so the frame stays.
-  The stage-3 audit had found rows repeated up to 216 times and 259 to 6 399
-  rows where 1 000 were asked for. WFG1 and WFG2 sample their positions at
+  Version 1 had rows repeated up to 216 times and 259 to 6 399 rows where
+  1 000 were asked for. WFG1 and WFG2 sample their positions at
   random with the cube's corners instead of a grid whose x1 levels fell on the
   zeros of the last shape at five objectives (both fronts came out as the same
   linear slices). 82 of the 324 references changed (`REFERENCE_CHANGED`); IGD+,
@@ -154,14 +340,12 @@ always listed under **Changed** or **Removed**.
   accept it and run with every offspring bit silently left at zero.
 - Four reported defects that turned out to be the papers' own letter, each
   traced, measured and now described in its header rather than changed.
-  **Two_Arch2** returns 7, 5, 26, 7 and 51 solutions on ZDT2 over seeds 1-5 at
-  10 000 evaluations: the diversity archive admits only nondominated points,
-  and the search has collapsed to x1 = 0 in three of them — as it does for
-  IBEA (largest f1 0.105 and 0.25 in two seeds) and NSGA-II (0.064) on the
-  same budget. The archive's selection never ran and its output is §III-A's.
+  **Two_Arch2** can return far fewer than n_DA solutions (on ZDT2, where the
+  search collapses to x1 = 0): the diversity archive admits only nondominated
+  points, and its output is §III-A's.
   **RVEA** keeps one solution per non-empty reference vector (§III-C, Alg. 2);
   on IDTLZ1_5D only 21 of the 126 vectors are the nearest to any point of the
-  front, so the population stays at 8-27. **LIS/LCS** breeds N − K offspring
+  front, so the population stays far below N. **LIS/LCS** breeds N − K offspring
   with the old K and K with the new one (Alg. 1, lines 4-10), so a step costs
   N − K_old + K_new while line 16 books N; the binding counts what was spent.
   **MaOEA-IAMD** spends exactly N per step; its only extra is the 8·D
@@ -411,8 +595,9 @@ always listed under **Changed** or **Removed**.
   C2-ConvexDTLZ2, C3-DTLZ1, C3-DTLZ4 — at three and five objectives, the
   registry's first constrained family besides MaF9. Constraints in the
   library's sign (at most 0 when satisfied, the paper's c >= 0 turned); two
-  equations read as pymoo reads them, written down in the module's header,
-  and the values agree with pymoo 0.6.2 at fixed points to 1e-12. Analytic
+  equations read as pymoo reads them, written down in the module's header;
+  values checked against pymoo 0.6.2 at 60 points to 1e-12, reference in
+  `python/test_run_layer.py`. Analytic
   fronts and exact frames; Pareto sets and g for C1 and C2-DTLZ2. The front of
   C2-ConvexDTLZ2 is larger than the paper's: behind the hole the cylinder
   cuts in the convex front, points of larger g are Pareto-optimal too; it is
@@ -421,8 +606,8 @@ always listed under **Changed** or **Removed**.
 - RE and CRE (`benchmarks/re.py`, task 6, item 6): Tanabe & Ishibuchi's
   real-world problems (Applied Soft Computing 89:106078, 2020), RE21-91 and
   CRE21-51, ported formula for formula from github.com/ryojitanabe/reproblems
-  (MIT, commit 7876b4e); the values agree with its Python version at fixed
-  points to 1e-12. Defects kept on purpose and those fixed upstream are in
+  (MIT, commit 7876b4e); values checked against its Python version at 120
+  points to 1e-12, reference in `python/test_run_layer.py`. Defects kept on purpose and those fixed upstream are in
   the header. The reference fronts are the authors' approximations, shipped
   as they are in `benchmarks/_re/` with their license, and for CRE the
   feasible points of RE's; `BenchProblem.front_exact` is False there (and for
@@ -432,10 +617,10 @@ always listed under **Changed** or **Removed**.
   535 problems in 27 families.
 - MW1-14 (`benchmarks/mw.py`, task 6, item 5): Ma & Wang's constrained
   problems (IEEE TEVC 23(6), 2019), n = 15, MW4, MW8 and MW14 at three and
-  five objectives (n = M + 12). Constraints in the library's sign; the values
-  agree with pymoo 0.6.2 at fixed points to 1e-12 (MW11's distance function
-  g3 as in Table II and pymoo, not the text's g2; the header lists the
-  readings). The fronts are built from the problems' geometry, no file: the
+  five objectives (n = M + 12). Constraints in the library's sign; values
+  checked against pymoo 0.6.2 at 85 points to 1e-12, reference in
+  `python/test_run_layer.py` (MW11's distance function g3 as in Table II, not the text's g2; the
+  header lists the readings). The fronts are built from the problems' geometry, no file: the
   least feasible reachable point at every f1 or angle, exactly where the
   constraints allow it (factors linear in f2) and by bisection elsewhere,
   refined where the front is steep, ends or leaves the unconstrained one, then
@@ -677,15 +862,8 @@ always listed under **Changed** or **Removed**.
   one solution per non-empty vector, so its population can reach 2N; here
   every generation keeps N: all of V's best, then V*'s by APD, the runners-up
   when fewer than N vectors are occupied (RVEA*-1). Algorithm 4's "for j = 1
-  to N" runs over the M objectives (RVEA*-2). Measured against RVEA over
-  seeds 1-5 at 500 generations: the population stays N where RVEA's shrinks
-  (55-57 of 91 on DTLZ5, 12-18 of 126 on IDTLZ1 at five objectives) and the
-  median IGD falls from 0.070 to 0.018 on DTLZ5, 0.145 to 0.068 on IDTLZ1
-  (M = 5) and 0.675 to 0.398 on DTLZ7 (M = 6); on DTLZ2 the two agree. It
-  converges more slowly where convergence is the whole task — ZDT1 0.031
-  against 0.0095, DTLZ6 0.77 against 0.43 — and at four times the budget is
-  close on ZDT1 (0.0064 against 0.0049) and ahead on DTLZ6 (0.094 against
-  0.136). `rvea` is unchanged. The public list is 63 algorithms.
+  to N" runs over the M objectives (RVEA*-2). `rvea` is unchanged. The public
+  list is 63 algorithms.
 - Set comparisons and two indicators (task 2, D4-D7). `r2`, the discrete R2 on
   `hv_h`'s Das-Dennis lattice, a final or trajectory metric for four
   objectives and more (`--recompute r2` adds it to a finished campaign).
@@ -1006,12 +1184,13 @@ always listed under **Changed** or **Removed**.
   too few in the middle objectives — `prod(s[:M-2-m]) * c[M-1-m]` where Huband
   et al.'s Table X multiplies M − m sines, likewise for the convex and linear
   shapes — so f_2 … f_{M−1} were wrong from three objectives on (by up to 18 at
-  ten objectives against pymoo), while f_1, f_M and every value at two
+  ten objectives), while f_1, f_M and every value at two
   objectives were right. The copies are gone: every WFG function runs the
   kernels, compiled by numba where it is installed and interpreted where it is
   not, at the same cost. A new test holds both paths — the second in a child
-  process with `NUMBA_DISABLE_JIT=1` — to pymoo's values at fixed points, WFG1-9
-  at 2, 3, 5 and 10 objectives, and runs in CI, where there is no numba. WFG
+  process with `NUMBA_DISABLE_JIT=1` — to pymoo 0.6.2's values at 36 points,
+  WFG1-9 at 2, 3, 5 and 10 objectives (reference in `python/test_run_layer.py`), and runs in CI,
+  where there is no numba. WFG
   values computed without numba before this fix are wrong from three
   objectives on. Every campaign run's `meta.json` now records `numba`.
 - Clipping past the out-of-box counts (`oob_share` = 0 proved nothing where
@@ -1031,8 +1210,7 @@ always listed under **Changed** or **Removed**.
   at a population of 91 "2 500" was read at 2 002 evaluations, while the
   budget-dependent algorithms' rungs had spent 2 548. The tables at 10 % of
   the budget therefore put the ordinary algorithms a fifth of a budget
-  behind (on stage 3 the 17 budget-dependent ones stood 8.5 places too high
-  by `igdp_norm` at 2 500). A run that stopped before the budget (DMS, once
+  behind. A run that stopped before the budget (DMS, once
   its steps are below tolerance) is now read at its end, in `--cover` too,
   instead of having no value there; a rung is found by its nominal budget;
   and `report._value` (`--ci`, `--by`, `--reference`) reads the archive
@@ -1085,11 +1263,10 @@ always listed under **Changed** or **Removed**.
 
 - `test_constraints` decided its feasibility check — the constrained run ends
   with at least as many feasible solutions as the unconstrained one — on one
-  seed, and under MSVC crEA's run on that seed went 68 -> 66 of 91 although
-  crEA gains on every one of seeds 1-20 (61.4 -> 67.2 on average): its
-  constraint handling works, the seed was unlucky. A regression on the
+  seed, and under MSVC crEA's run on that seed fell short although its
+  constraint handling works: the seed was unlucky. A regression on the
   suite's seed is now measured again on four more seeds and the mean over
-  the five decides (crEA: 62.8 -> 67). The algorithms that pass on the
+  the five decides. The algorithms that pass on the
   suite's seed cost no more time; RVEA stays exempt.
 
 - `MOOTATION_DEFINE_PROBLEM` tested its compile-time constraint count with a
@@ -1163,58 +1340,42 @@ always listed under **Changed** or **Removed**.
   slots, and everything that reads a result — `minimize()`, the binding, `run()`
   and campaigns — reads the active population, which held the freshly bred
   offspring that no selection had seen. The archive is now copied into the
-  active slots after `setup()` and every `step()`. Median IGD at 30 000
-  evaluations, before → after: SPEA2 (3 seeds) DTLZ2 0.0788 → 0.0579, ZDT1
-  0.0105 → 0.0040, DTLZ7 0.097 → 0.068, inverted DTLZ1 0.0437 → 0.0220, WFG4
-  0.303 → 0.237; SPEA2+SDE (11 seeds) DTLZ2 0.085 → 0.077, ZDT1
-  0.0115 → 0.0043, DTLZ7 0.082 → 0.063, inverted DTLZ1 0.0427 → 0.0218, but
-  WFG4 0.315 → 0.326 (worse on 9 seeds) and scaled DTLZ2 2.53 → 2.96 (worse on
-  10). Campaign results for both were measured on the offspring and need
-  rerunning.
+  active slots after `setup()` and every `step()`. Campaign results for both
+  were measured on the offspring and need rerunning.
 - RVEA's reference vector adaptation (Algorithm 3, lines 5-7) rescaled only as
   many vectors as there were survivors instead of all N, so whenever the
   population fell short of N the vectors at the end of the list never followed
-  the front. ZDT1 0.0228 → 0.0202 and DTLZ7 0.148 → 0.103; DTLZ2, scaled
-  DTLZ2, inverted DTLZ1 and WFG4 are unchanged.
+  the front.
 - MOEA/DD associated each offspring with its subregion once, against the
   ideal point of that moment, and never again, so the niche counts it compares
   mixed subregions measured from different ideal points. The population is now
-  re-associated whenever an offspring moves the ideal point. ZDT1 0.0052 →
-  0.0040, inverted DTLZ1 0.056 → 0.039, DTLZ7 0.129 → 0.121; DTLZ2, scaled
-  DTLZ2 and WFG4 are unchanged.
+  re-associated whenever an offspring moves the ideal point.
 - NRV-MOEA's union of archive and population kept a solution twice when it
   was in both — every member at the first generation, since the archive starts
   as a copy of the population — and copies never dominate each other, so
   reproduction drew such a solution twice as often. The union now holds each
-  solution once. No clear change in the results: DTLZ7 0.060 → 0.065, WFG4
-  0.243 → 0.238, the other four within 1 %.
+  solution once.
 - A-NSGA-III's size cap on the reference set (an extension beyond the paper)
   trimmed the newest points first without looking at them, so it could drop a
   point that had just attracted a member while an empty one stayed. It now
-  drops empty added points first. DTLZ2 0.0552 → 0.0542, inverted DTLZ1
-  0.0230 → 0.0224, DTLZ7 0.069 → 0.071.
+  drops empty added points first.
 - MOEA/D-DRA's utility could go negative and then climb. Step 5 multiplies
   π by 0.95 + 0.05·Δ/0.001, which is negative once Δ < −0.019, and Δ gets
   there: it compares scalarized values across a moving ideal point. A
   negative π then rose on every later update without an improvement, where
-  the paper says it "will be reduced". The factor is floored at 0. Median IGD
-  over 11 seeds at 30 000 evaluations: ZDT1 0.259 → 0.209 (lower on every
-  seed), WFG4 0.389 → 0.381; DTLZ2, DTLZ7 and scaled DTLZ2 stay within the
-  seed scatter, and inverted DTLZ1 is bimodal either way. MOEA/D-AWA takes
-  this step from MOEA/D-DRA and gets the same floor, which there changes
-  nothing outside the seed scatter on the same six problems.
+  the paper says it "will be reduced". The factor is floored at 0. MOEA/D-AWA
+  takes this step from MOEA/D-DRA and gets the same floor.
 - MOEA/D-AWA's reallocation (Algorithm 2, Step 1) gave each subproblem the
   best solution for its weight while reading from the population it was
   overwriting, so a slot already replaced could be copied again. It reads
-  from a copy taken before the step. The six measured problems are unchanged
-  except DTLZ7, which moves within the seed scatter (0.103 → 0.107).
+  from a copy taken before the step.
 - Algorithm headers that misdescribed the code or the paper, found by
-  checking a comparison with PlatEMO against the papers: MOEA/D-AWA's note
-  on corner subproblems (the code was right), MOEA/D-M2M's claim about what
-  PlatEMO does (withdrawn), and in the benchmark registry the conventions (no
+  checking them against the papers: MOEA/D-AWA's note on corner subproblems
+  (the code was right), a claim in MOEA/D-M2M's (withdrawn), and in the
+  benchmark registry the conventions (no
   unbounded archive is kept; `K_runs` is 21) and the MaF attribution.
-  Readings the papers leave open are now declared, with a measurement where
-  one was taken: MOEA/D's zero weights and result set, DEA-GNG's tie-breaking
+  Readings the papers leave open are now declared: MOEA/D's zero weights and
+  result set, DEA-GNG's tie-breaking
   and sub-network expansion, the last generation of the Liu–Li operator,
   CLIA's reference-point relearning, HypE's reference point, and notes in
   CA-MOEA, VaEA, AR-MOEA, MOMBI-II, AdaW and Two_Arch2.
@@ -1280,67 +1441,47 @@ always listed under **Changed** or **Removed**.
 - **Scale invariance.** A new test (`tests/test_scale_invariance.cpp`) runs
   every algorithm on DTLZ2 and on the same problem with every objective
   multiplied by 2^10, a power of two so the scaling is exact and a
-  scale-equivariant algorithm has to reproduce its result bit for bit. 53 of
-  the 59 did (the count before `srv_moead` was moved out). Of the six that did not:
+  scale-equivariant algorithm has to reproduce its result bit for bit. Those
+  that did not:
   - `two_arch2` computed I_eps+ on raw objectives, so its fitness
     `-exp(-I/0.05)` underflowed to exactly zero for every pair once the
-    objectives grew, and the convergence archive stopped ordering anything
-    (IGD 0.0667 -> 0.2712 at 2^10, 0.5130 at 2^20 — the saturation value).
+    objectives grew, and the convergence archive stopped ordering anything.
     The paper is silent on scaling while the IBEA fitness it reuses verbatim
     does scale (Alg.2 steps 2.1-2.2), so the scaled reading is now the
-    default; `set_normalize(false)` restores Eq.1. At the native scale the two
-    are indistinguishable (3 seeds, 30 000 FE: DTLZ2 0.0605 vs 0.0603, ZDT1
-    0.00397 vs 0.00399).
+    default; `set_normalize(false)` restores Eq.1.
   - `ar_moea` initialised the adapted reference set R' from the unit-simplex
     points while consuming it in translated objective coordinates, so the
     first generation compared a simplex against objectives of whatever
     magnitude the problem used. R' is now built in the coordinates it is used
-    in. Free at the native scale (DTLZ2 0.05432, ZDT1 0.00395, unchanged).
+    in.
   - `r2ibea` keeps the paper's letter: Eq.4 is written on raw objectives.
     `set_normalize(true)` transports the whole of Eq.5 into normalised
     coordinates — every normalised range is 1, so z* is -1 on every axis — and
-    makes the run bit-identical at every scale factor. It is still not the
-    default: 3 seeds, 30 000 FE, median IGD on ZDT1 is 0.0059 for the letter
-    against 0.1489 for the scaled reading, with no overlap between seeds,
-    while DTLZ2 is a tie. Eq.5's single shift by the largest range is exactly
+    makes the run bit-identical at every scale factor. It is not the default:
+    Eq.5's single shift by the largest range is exactly
     what makes an improvement on a narrow axis worth less than one on a wide
     axis, and normalising per axis discards that. The first version of this
     switch was wrong — it divided by the per-axis range but left z* shifted by
     the largest one, leaving a constant `max_range/range_j` inside the
     Tchebycheff max that was largest on the NARROWEST axis, inverting the skew
-    instead of removing it. The verdict above is measured against the
-    corrected version. The underflow of `exp(-I_R2/kappa)` is detected at run
+    instead of removing it. The underflow of `exp(-I_R2/kappa)` is detected at run
     time and reported through `set_warn_handler`, on the FRACTION of dead
     pairs over the population rather than on all of them being dead: a total
     underflow is obvious from the output, a partial one looks like a working
-    run and is not. Measured afterwards, the switch also has a positive
-    indication and it is the mirror image: on DTLZ2 skewed by per-axis factors
-    1, 10 and 100 the letter degrades to a median IGD of 0.0937 while the
-    scaled reading holds at 0.0735, the value it reaches unskewed. So the rule
-    is what the spread of ranges MEANS — units, and scaling helps; the
-    problem, and it throws information away. On ZDT1 the wide axis is the
-    direction of convergence, which is why the letter wins there by 25.
+    run and is not. The rule is what the spread of ranges MEANS — units, and
+    scaling helps; the problem, and it throws information away. On ZDT1 the
+    wide axis is the direction of convergence.
 - `ibea_eplus` gains `set_normalize(false)`, an experiment switch only: the
-  paper's own Alg.2 scaling stays the default. It answers whether the cost
-  measured in R2-IBEA is a property of per-axis scaling in general. It is not
-  — for IBEA the scaling is free (median IGD on ZDT1 0.00393 against 0.00398
-  raw, a tie). Separating the two halves of IGD says why: on ZDT1 the scaled
-  R2-IBEA converges exactly as well (mean distance to the front 1e-4 against
-  8e-5) but covers half the front (span of f1 0.49 against 0.94 over three
-  seeds), spread evenly inside that half. R2 allocates effort by direction and
+  paper's own Alg.2 scaling stays the default. R2 allocates effort by direction and
   rescaling the axes moves which piece of the front each weight vector owns;
   IBEA has no such partition, it only decides an order. The caution therefore
   belongs to the MOEA/D and NSGA-III families, RVEA and θ-DEA rather than to
-  indicator methods, which is also why nearly every algorithm in the skew list
-  in `docs/algorithms.md` is a weight-vector or angle method. Which of the two cases
+  indicator methods. Which of the two cases
   you are in has a cheap test, now written up: the ratio between the
   per-objective ranges of the answer set holds steady when the spread is a
-  unit and slides toward 1 when it is the problem (ZDT1 3.7 -> 1.03 over a
-  run, DTLZ2 flat at 1.00). Freezing the divisor at the first pool's ranges
-  was tried as a way to separate the two automatically and is recorded in the
-  header as rejected: it halves the cost on ZDT1 but is worse than both
-  alternatives on a skewed problem, because a frozen divisor freezes the
-  resolution as well.
+  unit and slides toward 1 when it is the problem. Freezing the divisor at
+  the first pool's ranges is recorded in the header as rejected: a frozen
+  divisor freezes the resolution as well.
   - `adaw`, `moead_awa` and `mombi2` depend on the magnitude of the objectives
     through a constant of their own papers (z* = best - 1e-4 in AdaW's
     footnote 2, z* = min f - 1e-7 in MOEA/D-AWA's Step 1.2, eps = 1e-3
@@ -1385,9 +1526,9 @@ always listed under **Changed** or **Removed**.
   was 10 at every M instead of Table VIII's per-M values; the BT5 and MOP4
   reference fronts kept the dominated part of the curve; the reference-frame
   cache was never read (file name mismatch). The cache is regenerated.
-- Algorithms, from a second paper-fidelity pass plus a convergence audit on
-  DTLZ2/ZDT1 (30000 evaluations, 3 seeds): MOMBI-II (the |.| in the ASF froze
-  ZDT1), MOEA/D-AM2M (frozen normalisation stalled ZDT1), IF-MaOEA (reference
+- Algorithms, from a second paper-fidelity pass plus a convergence audit:
+  MOMBI-II (the |.| in the ASF froze ZDT1), MOEA/D-AM2M (frozen normalisation
+  stalled ZDT1), IF-MaOEA (reference
   set of ~2N points forced a biased trimming path every generation), DCEA
   (K-means iterations, V update period in NFE, z_min from the previous R),
   MaOEA-3C (front discard before angle selection), RD-EMO / mIBEA / EDV /
@@ -1404,16 +1545,16 @@ always listed under **Changed** or **Removed**.
   `set_de_repair(Clip)` keeps the previous clamping); MOEA/D-M2M, SMS-M2M,
   HLMEA and ISDE+RD measure subregion angles from the origin and shift only
   objectives with a negative minimum (ISDE+RD keeps the ideal shift by default
-  and puts the letter behind `set_ideal_shift(false)`, with the measured reason
-  in its header); MOEA/D-M2M, SMS-M2M, MOEA/D-AM2M, APRD and Liu & Gu 2011
+  and puts the letter behind `set_ideal_shift(false)`); MOEA/D-M2M, SMS-M2M,
+  MOEA/D-AM2M, APRD and Liu & Gu 2011
   draw mates once (self allowed) instead of rejection loops and top up without
   replacement; MOEA/D-AM2M builds the exact two equal-layer lattices of §V-C
   (110 = 55 + 55) instead of a silently truncated 220-point one; A-NSGA-III
   deletes reference points only in the paper's "ideal scenario" with a
   one-generation cooldown (`set_adaptation_mode`); APRD truncates its archive
   by angle, not Euclidean distance; NRV-MOEA sets P <- P_c as Alg.1 line 15
-  says (`set_population_pruning(true)` restores the old behaviour; DTLZ2 IGD
-  0.088 -> 0.061); DEA-GNG increments g after selection; SRV inserts the
+  says (`set_population_pruning(true)` restores the old behaviour); DEA-GNG
+  increments g after selection; SRV inserts the
   duplicate extreme twice and runs k-means for 2m iterations; R2-IBEA applies
   the P_c gate of Alg.2; EDV uses p_m = 1/pop_size; IF-MaOEA adjusts reference
   points per §2.4 of its cited source; MOEA/DDS increments G after the DDS and

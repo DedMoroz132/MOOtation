@@ -9,7 +9,7 @@ were made — every non-dominated point found, thinned to 500 M points (here by
 DSS, dss.hpp's rule, as the library's references) — but from an exhaustive
 search instead of optimizers' runs:
 
-  RE22c  x1 takes each of the list's 76 values; x2 and x3 a grid of 1 001 x
+  RE22c  x1 takes each of the list's 77 values; x2 and x3 a grid of 1 001 x
          2 001 points over [0, 20] x [0, 40] (x2 = 0 left out: the first
          constraint is -inf there); the non-dominated points of each x1, then
          of all; then twice a local grid of 21 x 21 points around 4 000 of

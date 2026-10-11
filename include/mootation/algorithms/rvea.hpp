@@ -34,9 +34,7 @@
 //   |P_{t+1}| is the number of reference vectors that have at least one
 //   solution closest to them. On a regular front that is close to N; on an
 //   irregular one it can stay far below N for good — which is exactly what §VI
-//   and RVEA* (rvea_star.hpp) are for. Measured 2026-09-22 on IDTLZ1_5D,
-//   10 000 evaluations: 126 at generation 0, then 10-27 for the rest of the
-//   run, ending at 22, 8, 23, 14 and 11 over seeds 1-5. The bound is geometric:
+//   and RVEA* (rvea_star.hpp) are for. On IDTLZ1_5D the bound is geometric:
 //   every normalized direction on that inverted front has all its components
 //   <= 1/4, and of the 126 lattice vectors exactly 21 are the nearest vector to
 //   some point of the front (20 000 sampled points), so a population on the
@@ -50,12 +48,9 @@
 //   otherwise feasible-only -> minimum APD), and elitism keeps exactly one
 //   survivor per non-empty reference vector. It therefore cannot place a
 //   feasible individual into a subspace that has none, and its effect on the
-//   count of feasible solutions is small. Measured on the constraint suite's
-//   problem (DTLZ2 m=3 n=7, x0 <= 0.5, pop 91, 60 generations) over 20 seeds:
-//   mean feasible 63.4 -> 64.1 of 91, better on 13 seeds and worse on 6. The
-//   direction is right; the magnitude is below the seed-to-seed spread, which
-//   is why tests/test_constraints.cpp exempts rvea from its per-seed
-//   feasibility comparison and says so.
+//   count of feasible solutions is small, which is why
+//   tests/test_constraints.cpp exempts rvea from its per-seed feasibility
+//   comparison and says so.
 // ============================================================================
 
 #include <algorithm>
@@ -340,7 +335,6 @@ public:
 
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -349,7 +343,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dr(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }

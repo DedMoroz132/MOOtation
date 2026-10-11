@@ -182,6 +182,27 @@ std::vector<Vec> run(const std::string& survival, double frac, const std::string
     return out;
 }
 
+// NSGA-III at an odd N: Opris's |Q'| = ceil(3N/2), so floor(N/2) members of
+// R_t stay untouched (NSGA-II's floor would leave ceil(N/2)).
+void test_nsga3_odd_population()
+{
+    std::cout << "-- NSGA-III at N = 11: |Q'| = ceil(3N/2) = 17 (Opris) --\n";
+    const int n = 11;
+    NSGAIIICore<SpuNS3> core;
+    core.set_seed(3);
+    core.set_word("survival", "stochastic");
+    DataVault<SpuNS3> v(n, Problem<SpuNS3>{});
+    core.setup(v);
+    const auto P = front(2 * n);
+    for (int i = 0; i < n; ++i) v.set_variables(static_cast<std::size_t>(i), P[i]);
+    const int base = v.expand(n);
+    for (int i = 0; i < n; ++i) v.set_variables(static_cast<std::size_t>(base + i), P[n + i]);
+    v.sync();
+    core.select(v);
+    check(core.last_untouched().size() == 5 && v.active_n() == static_cast<std::size_t>(n),
+          "five of the 22 untouched, eleven left");
+}
+
 void test_bounds_of_spu_frac()
 {
     std::cout << "-- spu_frac = 1 is greedy, too small a Q' refused --\n";
@@ -258,6 +279,7 @@ int main()
     test_lemma_sms();
     test_lemma_nsga();
     test_within_subset();
+    test_nsga3_odd_population();
     test_bounds_of_spu_frac();
     test_archive();
     return mootation::testing::report("survival");

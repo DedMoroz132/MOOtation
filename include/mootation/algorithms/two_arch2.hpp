@@ -44,38 +44,25 @@
 //     them to [0,1] over the pool in its own Alg.2 (steps 2.1-2.2). The
 //     reading taken is IBEA's: per-objective 1/range over the CA pool, frozen
 //     for the truncation loop. set_normalize(false) restores Eq.1 verbatim.
-//     WHY, MEASURED (2026-09-09): with raw values the fitness is
-//     -exp(-I_eps+/0.05) = -exp(-20*I), which underflows to exactly 0 once
-//     I_eps+ exceeds ~37, so on objectives of ordinary engineering magnitude
-//     every pair contributes zero and the CA truncation becomes arbitrary.
-//     On DTLZ2 (M=3) multiplied by 2^10 the raw reading moved the final IGD
-//     from 0.0667 to 0.2712, and at 2^20 to 0.5130 — the saturation value,
-//     i.e. total loss of ordering; the scaled reading is bit-identical at
-//     every factor. At the native scale the two are indistinguishable
-//     (3 seeds, 30 000 FE, median IGD: DTLZ2 0.0605 raw vs 0.0603 scaled,
-//     ZDT1 0.00397 vs 0.00399), so the reading costs nothing where the paper
-//     was tested and prevents collapse everywhere else.
+//     WHY: with raw values the fitness is -exp(-I_eps+/0.05) = -exp(-20*I),
+//     which underflows to exactly 0 once I_eps+ exceeds ~37, so on objectives
+//     of ordinary engineering magnitude every pair contributes zero and the
+//     CA truncation becomes arbitrary; the scaled reading is bit-identical at
+//     every common scale factor.
 //   TA2-2 (MINOR). DA "boundary solutions with maximal or minimal objective
 //     values" (Alg. 3 line 3) implemented as, per objective i, the argmin and
 //     argmax of f_i (up to 2m points, de-duplicated). If that already fills DA
 //     it is truncated; the paper does not specify a tie/overflow rule here.
-//   TA2-3 (reading; measured 2026-09-22). If after Pareto filtering
+//   TA2-3 (reading). If after Pareto filtering
 //     |DA| <= n_DA, DA is kept as-is, with no padding. The paper says both
 //     that DA has "a fixed size" (§III-A, §IV-C) and that "only non-dominated
 //     solutions can be added to DA" (§III-C.1), which cannot both hold when the
 //     search has fewer than n_DA nondominated solutions to offer; the port
 //     reads the size as a capacity, since padding would need dominated
-//     solutions. The OUTPUT is then smaller than n_DA, and not only early on.
-//     On ZDT2 at 10 000 evaluations it ends at 7, 5, 26, 7 and 51 solutions
-//     over seeds 1-5, three of them with every f1 below 1e-14: the search has
-//     collapsed to x1 = 0, and there the nondominated set is a handful of
-//     near-identical points. The collapse is ZDT2's rather than this port's —
-//     the same budget and seeds take IBEA (the same I_eps+ fitness as CA) to a
-//     largest f1 of 0.105, 0.51, 1.0, 1.0 and 0.25, and NSGA-II to 0.66, 0.71,
-//     0.064, 0.39 and 0.99 — and Two_Arch2 only makes it visible, because the
-//     others hand back a whole population whose spread is just as lost. The
-//     Alg. 3 selection never ran in those runs (the largest DA was 51), so
-//     neither it nor the final output (DA, §III-A) is involved.
+//     solutions. The OUTPUT is then smaller than n_DA, and not only early on:
+//     where the search collapses (on ZDT2 to x1 = 0) the nondominated set is
+//     a handful of near-identical points, and Two_Arch2 hands it back as it
+//     is, where a population-based core hands back a whole population.
 //     Objective-identical solutions are also collapsed to one before the Alg. 3
 //     selection, which is a second way |DA| can fall below n_DA. The paper
 //     never mentions duplicates; the collapse is provably neutral for the
@@ -104,9 +91,7 @@
 //   TA2-8 (letter, noted 2026-09-16). Parents are drawn uniformly: §V-E-2
 //     describes the crossover as "one parent from CA and the other from DA"
 //     and names no mating selection, and Eq.(2) is -e^{-I/0.05} with no
-//     c = max|I| factor (the scaling IBEA adds is handled by TA2-1). A
-//     comparison with PlatEMO (2026-09) reports a tournament for the CA
-//     parent in the authors' code; that code is not read here.
+//     c = max|I| factor (the scaling IBEA adds is handled by TA2-1).
 //   TA2-6 (MINOR). Real genome only; binary is out of scope.
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP switches BOTH archives to Deb's feasibility rules:

@@ -121,11 +121,7 @@
 //     (Min-Max, Euclidean, maxmin_euclid) is a different procedure from the
 //     ARCHIVE truncation (Max-Min, angle); the two statements are consistent
 //     and Algorithm 2's generic d(x_i, x_j) is the angle. Angles are taken
-//     from the origin (§I assumes non-negative objectives). MEASURED (DTLZ2
-//     M=3 N=91 / ZDT1 N=100, 30 000 FE, median IGD of 3 seeds, together with
-//     the APRD-6 change): DTLZ2 0.1993 -> 0.1379
-//     (per seed 0.1845/0.2095/0.1563 -> 0.1304/0.1407/0.1345), ZDT1 0.0179 ->
-//     0.0191 (0.0179/0.0190/0.0179 -> 0.0191/0.0161/0.0221, within scatter).
+//     from the origin (§I assumes non-negative objectives).
 //
 //   APRD-10 (ARBITRATION — the printed PBI equations are misprinted).
 //     Eq.(7)-(8) as printed are dimensionally inconsistent (d1 already divided
@@ -507,11 +503,10 @@ public:
         m_=vault.objs_n(); N_=vault.pop_size(); Na_=2*N_;
         const auto& b=vault.get_bounds();
         std::uniform_real_distribution<double> d(0.0,1.0);
-        std::uniform_int_distribution<int> dbn(0,1);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<N_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=b[j].first.value_or(0.0),hi=b[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
-            for(int j=0;j<vault.bin_vars_n();++j) bv[j]=dbn(rng_);
+            for(int j=0;j<vault.bin_vars_n();++j) bv[j] = ops::random_gene(j, rng_);
             if(vault.bin_vars_n()>0) vault.set_all_variables(i,vars,bv); else vault.set_variables(i,vars);
         }
         vault.sync();

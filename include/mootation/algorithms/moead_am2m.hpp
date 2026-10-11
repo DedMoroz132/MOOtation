@@ -95,12 +95,9 @@
 //     The frame is fixed at init and at adaptations (since 2026-07-07 — without
 //     drift). set_normalize(false) selects the LETTER of the paper: angles of
 //     §II-B/§III on the raw objective vectors (f > 0 assumed), Eq.4 on f − z.
-//     MEASURED 2026-09-05 (30 000 FE, 3 seeds, median IGD@30k, K = 10, G = 100):
-//     DTLZ2 (M = 3, N = 91) 0.0640 normalized vs 0.0660 letter — no difference;
-//     ZDT1 (N = 100) 0.0140 normalized vs 0.4120 letter (seeds 0.4189 / 0.1108 /
-//     0.4120): with f_2 ≫ f_1 early in the run the raw-angle directions
-//     collapse onto one axis and never recover. The normalization stays the
-//     default; the letter is available for problems with comparable scales.
+//     With f_2 ≫ f_1 early in a run (ZDT1) the raw-angle directions collapse
+//     onto one axis. The normalization stays the default; the letter is
+//     available for problems with comparable scales.
 //   AM2M-5 (MINOR). S_k>|P̃_k| → Max-Min fill-up by repetition; S_k=0 → the
 //     subregion is empty (after the uniform initialization this is possible
 //     even before the first adaptation: an empty weight bucket of a direction).
@@ -463,11 +460,10 @@ public:
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         const auto& bounds=vault.get_bounds();
         std::uniform_real_distribution<double> d(0.0,1.0);
-        std::uniform_int_distribution<int> db(0,1);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<N_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=bounds[j].first.value_or(0.0),hi=bounds[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
-            for(int j=0;j<vault.bin_vars_n();++j) bv[j]=db(rng_);
+            for(int j=0;j<vault.bin_vars_n();++j) bv[j] = ops::random_gene(j, rng_);
             if(vault.bin_vars_n()>0) vault.set_all_variables(i,vars,bv); else vault.set_variables(i,vars);
         }
         vault.sync();

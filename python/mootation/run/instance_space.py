@@ -29,8 +29,7 @@ SAMPLE below, or with bbob_features = "properties" these): each shape of the fro
 the front is unknown), every yes/no property 1 or 0 (0.5 when unknown), the
 bbob-biobj function groups as counts (0, 1 or 2 of the pair), M, log2 D and the
 front's dimension (M - 1 when unknown). Many problems share a feature vector
-and so a position in the plane (on stage 3 the 110 problems with a front have
-77 vectors and 73 positions). Constant columns are dropped and the rest
+and so a position in the plane. Constant columns are dropped and the rest
 z-scored. Not PRELIM's bounding (median +- 5 IQR), meant for measured features:
 it would flatten a rare yes (deceptive: two problems) to a constant; nor its
 Box-Cox transform, which after the z-score changes nothing on a yes/no column.
@@ -40,8 +39,8 @@ median over the seeds at the full budget of igdp_norm ("front") or hv_h
 ("bbob"), as median / best - 1 or 1 - median / best, best the best median of
 any algorithm there; zeros replaced by the machine epsilon, then Box-Cox (lambda
 by maximum likelihood) and z-score per algorithm. A missing median takes the
-worst value of the algorithm's row (the survey sets the instance to +-infinity;
-stage 3 has none missing). The best algorithm of a problem: the first by name
+worst value of the algorithm's row (the survey sets the instance to
++-infinity). The best algorithm of a problem: the first by name
 with the best median (the survey breaks ties at random).
 
 SIFTED, its first step (Algorithm 2, lines 2-8): a feature stays when it is the
@@ -351,8 +350,7 @@ def pilot_numerical(F, Y, tries: int = PILOT_TRIES, seed: int = 0) -> dict:
     """PILOT's numerical solution (Algorithm 3, lines 11-25): BFGS from `tries`
     random starts; of the results at the lowest loss, the one of the highest
     topological preservation. The survey takes every BFGS result for a global
-    optimum; on stage 3 up to a quarter stopped short of it, by up to 1 %, and
-    one of those had the highest preservation. The same dict as pilot_analytic,
+    optimum; a start can stop short of it. The same dict as pilot_analytic,
     and "short": how many starts stopped above the lowest loss, "imprecise":
     how many ended on BFGS's loss of precision rather than its tolerance."""
     import numpy as np

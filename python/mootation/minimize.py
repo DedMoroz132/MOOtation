@@ -26,7 +26,7 @@ from . import _core
 PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio",
                "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
                "coords_warmup", "coords_update", "spu_frac", "inner_archive_cap",
-               "archive_reuse_p")
+               "archive_reuse_p", "dn_cf")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
               "inner_archive", "bin_crossover", "mating")
@@ -48,6 +48,13 @@ def minimize(
     seed: int = 0,
     constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
     n_cons: int = 0,
+    eq_constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
+    n_eq: int = 0,
+    eq_tol: float = 1e-4,
+    eq_tol_schedule: str = "fixed",
+    eq_tol0: float | None = None,
+    constraint_mode: str = "feasibility",
+    eps_schedule: dict | None = None,
     batch: Callable[[list], list] | None = None,
     seed_population=None,
     on_size_mismatch: str = "truncate",
@@ -59,8 +66,13 @@ def minimize(
     init: str = "uniform",
     init_share: float = 0.0,
     var_types=None,
+    budget_counts: str = "calls",
     int_repair: str = "lamarck",
     eta_int: float | None = None,
+    on_failure: str = "infeasible",
+    failure_exceptions=Exception,
+    max_failure_share: float | None = None,
+    failure_window: int = 100,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -71,6 +83,38 @@ def minimize(
     algorithm   any name from `mootation.algorithms()`.
     constraints takes one decision vector, returns `n_cons` values; each <= 0
                 means satisfied. Supplying it turns constraint handling on.
+    eq_constraints, n_eq
+                equalities h(x) = 0: takes one decision vector, returns n_eq
+                values (n_eq must be given). An equality holds where
+                |h| <= eq_tol and adds max(|h| - eq_tol, 0) to the violation
+                cv, beside the inequalities' (data_vault.hpp, EQUALITY
+                CONSTRAINTS). Turns constraint handling on.
+    eq_tol      the equalities' tolerance, 1e-4 by default: Liu and Wang's,
+                with the same violation (the DOC problems, IEEE TEVC 23(5),
+                2019, Eq. 3); the RWMOP competition's guidelines (Kumar et
+                al. 2021) take 1e-4 too, but count |h| itself beyond it.
+    constraint_mode
+                with constraints: "feasibility" (the default) ranks a feasible
+                point above every infeasible one and infeasible ones by their
+                violation; "eps_level" counts a violation up to a level eps as
+                none (Takahama and Sakai's epsilon-level comparison), eps set
+                once per generation by Fan et al.'s improved rule (Soft
+                Computing 23(23), 2019, Eq. 8) and 0 from 80 % of the budget
+                on (python/mootation_module.cpp, RunConfig::eps_level). Every
+                core that takes constraints takes it; result.cv is the
+                violation itself.
+    eps_schedule
+                with "eps_level": {"tau": 0.1, "alpha": 0.95, "theta": 0.05,
+                "tc": 0.8}, the paper's values, any of them replaced; tc is
+                the share of the budget from which eps is 0.
+    eq_tol_schedule, eq_tol0
+                "fixed" (the default): eq_tol throughout. "linear": the
+                tolerance falls from eq_tol0 to eq_tol in proportion to the
+                evaluations spent (it needs max_evaluations; with a design,
+                over the evaluations left to the algorithm); every point's
+                violation follows the current tolerance, and the answer's cv
+                is taken at eq_tol (result.eq_tol). An observer reads the
+                tolerance of the moment from mootation._core.current_eq_tol().
     batch       an optional vectorized evaluator: takes a list of decision
                 vectors, returns a list of objective vectors. It crosses into
                 Python once per generation instead of once per individual,
@@ -126,17 +170,43 @@ def minimize(
                 before the optimization: the algorithm starts from pop_size of
                 its points, the nondominated first, the rest by DSS
                 (designs.start_points), and has what is left of the budget.
+    on_failure  what a failed evaluation does (mootation.failures): an
+                exception of `failure_exceptions` (Exception) from fn,
+                constraints or batch, a non-finite value or a None row of a
+                batch. "infeasible" (the default): the point is dominated by
+                every point that did not fail and is never in the answer;
+                result.n_failed counts them. "raise": the run stops.
+    max_failure_share, failure_window
+                with "infeasible": stop with FailureShareExceeded once more
+                than this share of the last failure_window (100) evaluations
+                failed; off unless given.
+    var_types   one entry per variable: "real", "int", ("discrete", values),
+                "bin" or ("cat", labels) (mootation.var_types); fn gets the
+                decoded point, a categorical variable as its label.
+    budget_counts
+                "calls" (the default): max_evaluations counts calls, and fn
+                runs for every one. "unique": a decoded point evaluated before
+                is answered from memory, and max_evaluations counts distinct
+                points — what a solver run costs (mootation.unique); a
+                run whose core asks for nothing new in 10 000 steps ends
+                there (a space smaller than the budget).
+                result.unique_evaluations counts the distinct points either
+                way, result.evaluations the calls.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
     Returns the binding's Result: `.objectives`, `.variables`, `.cv`,
-    `.active_n`, `.ignored`, `.evaluations`.
+    `.active_n`, `.ignored`, `.evaluations`, `.unique_evaluations`,
+    `.n_failed`, `.eq_tol`.
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if not bounds:
         raise ValueError("bounds is empty — there are no decision variables")
     for i, (lo, hi) in enumerate(bounds):
-        if not lo < hi:
+        gene = (var_types is not None and i < len(var_types)
+                and (var_types[i] == "bin" or (isinstance(var_types[i], (tuple, list))
+                                               and var_types[i][0] == "cat")))
+        if not lo < hi and not gene:            # a bit's or a label's bounds are ignored
             raise ValueError(
                 f"bounds[{i}] = ({lo}, {hi}): lower must be < upper")
     if n_objs < 1:
@@ -154,13 +224,57 @@ def minimize(
             f"unknown parameter(s): {', '.join(bad)}. "
             f"Known: {', '.join(KNOBS)}")
 
+    # Equality constraints (task 7, supplement 3, §3): the core takes them after
+    # the inequalities, as one function of n_cons + n_eq values, and turns each
+    # h into |h| - eq_tol itself, so that a moving tolerance reaches every point.
+    if eq_tol_schedule not in ("fixed", "linear"):
+        raise ValueError(f"eq_tol_schedule = '{eq_tol_schedule}': fixed or linear")
+    has_ineq = constraints is not None
+    if eq_constraints is not None:
+        if int(n_eq) < 1:
+            raise ValueError("eq_constraints needs n_eq, the number of equalities it returns")
+        if not float(eq_tol) >= 0.0:
+            raise ValueError(f"eq_tol must be >= 0, got {eq_tol}")
+        if eq_tol_schedule == "linear":
+            if eq_tol0 is None or not float(eq_tol0) >= float(eq_tol):
+                raise ValueError("eq_tol_schedule = 'linear' needs eq_tol0 >= eq_tol, "
+                                 "the tolerance at the start")
+            if not max_evaluations:
+                raise ValueError("eq_tol_schedule = 'linear' runs over the evaluation "
+                                 "budget: give max_evaluations")
+        if has_ineq:
+            constraints = lambda x, _c=constraints, _h=eq_constraints: (    # noqa: E731
+                list(_c(x)) + list(_h(x)))
+        else:
+            constraints = lambda x, _h=eq_constraints: list(_h(x))         # noqa: E731
+    elif n_eq or eq_tol_schedule != "fixed" or eq_tol0 is not None:
+        raise ValueError("n_eq, eq_tol_schedule and eq_tol0 go with eq_constraints")
+    n_eq = int(n_eq) if eq_constraints is not None else 0
+
+    # Failed evaluations (mootation.failures; task 7, supplement 3, §2): the
+    # guard turns the user's exceptions and None rows into NaN, which the core
+    # marks failed; with "raise" nothing is caught and the core raises on NaN.
+    if on_failure not in ("infeasible", "raise"):
+        raise ValueError(f"on_failure = '{on_failure}': infeasible or raise")
+    guard = None
+    if on_failure == "infeasible":
+        from .failures import Guard
+        guard = Guard(n_objs, n_cons, failure_exceptions, max_failure_share, failure_window)
+        fn = guard.fn(fn)
+        if constraints is not None:
+            constraints = guard.constraints(constraints)
+        if batch is not None:
+            batch = guard.batch(batch)
+    elif max_failure_share is not None:
+        raise ValueError("max_failure_share needs on_failure = 'infeasible'")
+
     log = None
     if log_evaluations is not None:
         from .persistence import EvaluationLog
         log = EvaluationLog(log_evaluations,
                             meta={"algorithm": algorithm, "pop_size": pop_size,
                                   "n_gen": n_gen, "seed": seed})
-        fn = log.wrap(fn, constraints)
+        fn = log.wrap(fn, constraints, guard)
         if batch is not None:
             # A batched evaluator bypasses `fn`, so the wrapper would never
             # see anything. Refusing is better than writing an empty log and
@@ -170,10 +284,24 @@ def minimize(
                 "evaluator replaces the per-point function the log wraps. "
                 "Log inside your batch function instead.")
 
-    # Integer, discrete and binary variables (var_types.py; task 7, §10 and
-    # supplement 2, §3): the core sees the real, integer and discrete ones as
-    # its real genome and the bits as its binary genome; fn, constraints and
-    # batch get the caller's decoded variables in the caller's order.
+    # Distinct decoded points (unique.py; supplement 3, §1.2): counted at the
+    # caller's side of var_types, so that the key is the decoded point; with
+    # budget_counts = "unique" a repeat is answered from memory.
+    if budget_counts not in ("calls", "unique"):
+        raise ValueError(f"budget_counts = '{budget_counts}': calls or unique")
+    from .unique import Points
+    points = Points(cache=budget_counts == "unique")
+    fn = points.fn(fn)
+    if constraints is not None:
+        constraints = points.constraints(constraints)
+    if batch is not None:
+        batch = points.batch(batch)
+
+    # Integer, discrete, binary and categorical variables (var_types.py; task 7,
+    # §10, supplement 2, §3, supplement 3, §1): the core sees the real, integer
+    # and discrete ones as its real genome and the bits and categorical ones as
+    # its integer genome; fn, constraints and batch get the caller's decoded
+    # variables in the caller's order.
     if int_repair not in ("lamarck", "baldwin"):
         raise ValueError(f"int_repair = '{int_repair}': lamarck or baldwin")
     layout = None
@@ -191,9 +319,10 @@ def minimize(
         if user_batch is not None:
             batch = lambda X, _b=user_batch: _b([layout.to_user(x) for x in X])  # noqa: E731
         bounds = layout.core_bounds()
-        n_bin = len(layout.bits)
+        n_bin = len(layout.genes)
         if n_bin and init != "uniform":
-            raise ValueError("init designs are real-valued: not with binary variables")
+            raise ValueError("init designs are real-valued: not with binary or categorical "
+                             "variables")
 
     problem = _core.Problem()
     problem.bounds = bounds
@@ -201,13 +330,19 @@ def minimize(
     problem.n_bin = n_bin
 
     if constraints is not None:
-        if n_cons < 1:
+        if not has_ineq:
+            n_cons = n_eq                   # the equalities alone
+        elif n_cons < 1:
             # Counted once rather than guessed per call: the binding needs the
             # width up front, and calling the user's function during setup to
             # find it out would spend an evaluation they did not ask for.
             probe = list(constraints([lo for lo, _ in bounds] + [0.0] * n_bin))
-            n_cons = len(probe)
+            n_cons = len(probe)             # with the equalities, if any
+        else:
+            n_cons = int(n_cons) + n_eq
         problem.n_limits = int(n_cons)
+        if guard is not None:
+            guard.n_cons = int(n_cons)
 
         def _eval_with_cons(x, _f=fn, _c=constraints):
             return list(_f(x))
@@ -230,11 +365,36 @@ def minimize(
             raise ValueError(f"max_evaluations must be >= 0, got {max_evaluations}")
         cfg.max_evaluations = int(max_evaluations)
     cfg.seed = int(seed)
+    cfg.fail_raise = on_failure == "raise"
+    cfg.unique_evaluations = lambda: points.count
+    cfg.budget_unique = budget_counts == "unique"
+    if constraint_mode not in ("feasibility", "eps_level"):
+        raise ValueError(f"constraint_mode = '{constraint_mode}': feasibility or eps_level")
+    if constraint_mode == "eps_level" and constraints is None:
+        raise ValueError("constraint_mode = 'eps_level' needs constraints")
+    if eps_schedule is not None and constraint_mode != "eps_level":
+        raise ValueError("eps_schedule goes with constraint_mode = 'eps_level'")
     if constraints is not None:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
+    if constraint_mode == "eps_level":
+        # the vault's epsilon level on the feasibility-first ranking
+        cfg.eps_level = True
+        sched = dict(eps_schedule or {})
+        bad = sorted(set(sched) - {"tau", "alpha", "theta", "tc"})
+        if bad:
+            raise ValueError(f"eps_schedule: unknown key(s) {bad}; tau, alpha, theta, tc")
+        for k, v in sched.items():
+            setattr(cfg, "eps_" + k, float(v))
+    if n_eq:
+        cfg.n_eq = n_eq
+        cfg.eq_tol = float(eq_tol)
+        if eq_tol_schedule == "linear":
+            cfg.eq_linear = True
+            cfg.eq_tol0 = float(eq_tol0)
     if layout is not None:
         cfg.var_kinds = layout.var_kinds()
         cfg.discrete_values = layout.discrete_values()
+        cfg.gene_levels = layout.gene_levels()
         cfg.lamarck = int_repair == "lamarck"
         if any(k != 0 for k in cfg.var_kinds):
             cfg.eta_int = 3.0 if eta_int is None else float(eta_int)
@@ -295,7 +455,8 @@ def minimize(
             if left <= 0:
                 raise ValueError(f"the design takes {n_design} of the {max_evaluations} "
                                  f"evaluations and leaves none to {algorithm}")
-            cfg.max_evaluations = left
+            # the core counts its own calls; distinct points include the design's
+            cfg.max_evaluations = left if budget_counts == "calls" else int(max_evaluations)
     elif init_share:
         raise ValueError("init_share needs a design: init = 'sobol'")
 
@@ -338,6 +499,13 @@ def minimize(
 
     try:
         result = _core.run(algorithm, problem, cfg)
+    except ValueError as e:
+        if n_bin and ("binary" in str(e) or "continuous" in str(e)):
+            # the 18 cores without an integer genome refuse it by name
+            raise ValueError(f"{algorithm} takes no binary or categorical variables (the "
+                             f"integer genome; docs/running.md lists the cores that do): "
+                             f"{e}") from e
+        raise
     finally:
         if log is not None:
             log.close()
@@ -348,5 +516,6 @@ def minimize(
               meta={"algorithm": algorithm, "pop_size": pop_size,
                     "n_gen": n_gen, "seed": seed, "n_objs": n_objs})
     # the result's variables are the core's real genome (integer and discrete
-    # values as floats), its binary_variables the bits (var_types.py)
+    # values as floats), its binary_variables the integer genome: bits, and
+    # categorical variables' label indices (var_types.py; Layout.to_user)
     return result

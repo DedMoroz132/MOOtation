@@ -33,13 +33,11 @@
 // the maximum, it also depends on where the origin is: shifting every
 // objective by a constant moves r relative to the front, and an objective
 // whose pool maximum is exactly 0 gets r_i = 0, with no margin at all.
-// MEASURED (2026-09-05 FE-trajectory audit): with the offset at 0.1 the
-// exclusive hypervolume of the two extreme points on ZDT1 was the smallest
-// in the last front, they were truncated first, the maximum shrank, the
-// reference point followed it, and the front contracted step by step: median
-// IGD 0.085 at 30000 FE with a converged population. Offset 1.0 (r = 2·max)
-// gives 0.0037, a fixed R = (2, 2) 0.0037; on DTLZ2 (M = 3) the two offsets
-// are indistinguishable (0.079 vs 0.078). The default is now 1.0.
+// With the offset at 0.1 the exclusive hypervolume of the two extreme points
+// on ZDT1 is the smallest in the last front, they are truncated first, the
+// maximum shrinks, the reference point follows it, and the front contracts
+// step by step. Offset 1.0 (r = 2·max) leaves the extremes room. The default
+// is 1.0.
 // AND A LIMIT THAT NO OFFSET LIFTS: where the front's derivative diverges at
 // the edge (lim -f'(x) = +inf as x -> x_min, which is the case for ZDT1 and
 // ZDT4), the extreme point is in NO optimal mu-distribution for ANY finite
@@ -92,8 +90,8 @@ private:
     // ── hyperparameters ────────────────────────────────────────────────────
     int          n_samples_  = 10000;  // M: MC sample count (paper §6.1)
     // Adaptive reference point offset (deviation, see header): r_i =
-    // max_i·(1 + ref_offset_). Was 0.1 until 2026-09-05 — measured to strip
-    // the extremes and shrink the front (ZDT1 IGD 0.085 vs 0.0037 at 1.0).
+    // max_i·(1 + ref_offset_). Was 0.1 until 2026-09-05, which strips the
+    // extremes and shrinks the front (see the header).
     double       ref_offset_ = 1.0;
     // task 7 of 2026-10-10, §5.3: the knob ref_delta puts the reference point
     // relative, r = nad + δ (nad − ideal) over the pool (a zero range: an
@@ -476,7 +474,6 @@ public:
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist_real(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin (0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -486,7 +483,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dist_real(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = dist_bin(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }

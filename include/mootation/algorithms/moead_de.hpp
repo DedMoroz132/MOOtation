@@ -28,29 +28,25 @@
 //   T = 20, δ = 0.9, n_r = 2. N is set by the user (paper: N=300 for
 //   2-objective, 595 for 3-objective problems); weights — Das–Dennis lattice
 //   (= scheme H of the paper, §IV-A-4; N must be a lattice size, Path-A).
-// Fixed 2026-09-05 (full-paper checklist, VERIFY_2026-09-05/checklists/moead_de.md):
+// Fixed 2026-09-05 (full-paper checklist):
 //   - MDE-3: the j_rand gene of de_rand_1_bin (absent from Eq.6) — removed.
 //   - MDE-4: r2, r3 were forced distinct from i and from each other (up to 10
 //     rejections) — now two plain draws, as Step 2.2 says.
 //   - MDE-5 / G3: the repair was applied to the DE mutant before the
 //     crossover select and before a BOUNDED (NSGA-II-code) polynomial
 //     mutation — now Eq.6 → literal Eq.7 → Step 2.3 repair of the final y.
-//   Measured on the 30 000-FE sanity runs (3 seeds, median IGD): before /
-//   after — DTLZ2 (M=3, N=91) 0.0802 / 0.0786, ZDT1 (N=100) 0.0776 / 0.0955;
-//   DTLZ2 unchanged; ZDT1 worse by the letter: its PS sits on the lower bound
-//   (x_2..x_n = 0), the literal Eq.7 moves such a gene out of the box with
-//   probability ≈ 1/2 and Step 2.3 then resets it to a uniform draw — the
-//   bounded PM never left the box. With Clip the same pipeline reaches 0.0063.
+//   On a problem whose Pareto set sits on a bound (ZDT1: x_2..x_n = 0) the
+//   literal Eq.7 moves such a gene out of the box with probability ≈ 1/2 and
+//   Step 2.3 then resets it to a uniform draw — the bounded PM never left the
+//   box (MDE-6).
 // Deviations:
-//   - MDE-6 (MEASURED, 2026-09-05). Step 2.3's RANDOM RESET is the paper's
-//     and stays the default, but it is expensive: with CR = 1 every
-//     out-of-box gene of the final y is replaced by a fresh uniform draw, and
-//     early in a run that is a large fraction of the genes. On ZDT1 (n = 30,
-//     N = 100, 30 000 FE) the median IGD over 3 seeds is 0.0955 with the
-//     random reset and 0.0063 with clamping to the bound (the PlatEMO /
-//     jMetal convention); MOEA/D-DRA shows the same gap (0.2779 vs 0.0179).
-//     set_de_repair(ops::DERepair::Clip) selects the clamping variant; the
-//     paper default stays.
+//   - MDE-6. Step 2.3's RANDOM RESET is the paper's and stays the default,
+//     but it is expensive: with CR = 1 every out-of-box gene of the final y
+//     is replaced by a fresh uniform draw, and early in a run that is a large
+//     fraction of the genes — on a Pareto set at a bound it keeps throwing
+//     converged genes away. set_de_repair(ops::DERepair::Clip) selects
+//     clamping to the bound (the PlatEMO / jMetal convention); MOEA/D-DRA has
+//     the same knob.
 // Extensions beyond the paper (disabled by default):
 //   - EP archive (vault.archive_*): the 2009 paper keeps NO archive
 //     (Output = {x^1..x^N}); enabled via set_use_ep(true), adds no extra FE.
@@ -252,10 +248,10 @@ private:
         if (nb > 0) {
             std::vector<int> y_bvars(nb);
             std::uniform_real_distribution<double> Ub(0.0, 1.0);
-            double p_bin = 1.0 / static_cast<double>(nb);
+            double p_bin = ops::gene_mutation_rate(nb);
             for (int j = 0; j < nb; ++j) {
                 y_bvars[j] = vault.get_bin_variable(i, j);
-                if (Ub(rng_) < p_bin) y_bvars[j] ^= 1;
+                if (Ub(rng_) < p_bin) ops::mutate_gene(y_bvars, j, rng_);
             }
             vault.set_all_variables(scratch, y_vars, y_bvars);
         } else {
@@ -343,7 +339,6 @@ public:
         // Step 1.2: random initialisation.
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist_real(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin (0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -353,7 +348,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dist_real(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = dist_bin(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }

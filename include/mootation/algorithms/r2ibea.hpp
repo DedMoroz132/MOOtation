@@ -50,10 +50,7 @@
 //   tournament draws, not offspring. The port used to run jMetal's SBX
 //   semantics — with probability 1 − P_c the children were copies of the
 //   parents and were still added. An odd mu keeps only o1 of the last pair
-//   (the paper's {o1, o2} would overshoot mu by one). MEASURED (DTLZ2 M=3
-//   N=91 / ZDT1 N=100, 30 000 FE, median IGD of 3 seeds): DTLZ2 0.0750 -> 0.0761 (seeds 0.0733/0.0744/0.0779 ->
-//   0.0726/0.0798/0.0744), ZDT1 0.0242 -> 0.0059 (0.0043/0.0242/0.0277 ->
-//   0.0059/0.0039/0.0232) - within the seed scatter.
+//   (the paper's {o1, o2} would overshoot mu by one).
 //   (FIXED 2026-09-05, second primary-source pass) the binary tournament
 //   used to draw two DISTINCT individuals by rejection sampling; §IV-C says
 //   only "randomly draws two individuals from P_g", i.e. with replacement,
@@ -69,14 +66,13 @@
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY
 // (CDP preference in the tournament and a fitness penalty), binary variables
 // (uniform crossover + bit-flip).
-// R2I-NORM (AMBIGUOUS, measured 2026-09-09, corrected the same day). Eq.4
+// R2I-NORM (AMBIGUOUS). Eq.4
 //   computes the Tchebycheff value on RAW objectives and the paper prescribes
 //   no scaling, so the run depends on the units: the fitness is
 //   -exp(-I_R2/kappa) with kappa = 0.005, i.e. exp(-200*I_R2), which
-//   underflows to exactly 0 once I_R2 exceeds ~3.7. Multiplying every
-//   objective of DTLZ2 (M=3) by 2^10 moved the final IGD by 1.2 %, by 2^20 by
-//   29 % and by 2^30 by 89 % - a failure that grows without bound as the
-//   ordering is lost pair by pair.
+//   underflows to exactly 0 once I_R2 exceeds ~3.7: a common scale factor on
+//   the objectives changes the run, more the larger it is, as the ordering is
+//   lost pair by pair.
 //
 //   set_normalize(true) transports the WHOLE construction of Eq.5 into
 //   normalised coordinates: f^_j = (f_j - fmin_j)/range_j and, since every
@@ -91,13 +87,7 @@
 //   term on the narrow axis sits near 500 while the entire discriminating
 //   span across that axis is 0.5.
 //
-//   The letter is STILL the default, and now for a reason measured against a
-//   correct alternative rather than a broken one. 3 seeds, 30 000 FE, median
-//   IGD: DTLZ2 0.0744 (letter) against 0.0732 (scaled), a tie; ZDT1 0.0059
-//   against 0.1489, a factor of 25 with no overlap between the seeds
-//   (0.0039/0.0059/0.0232 against 0.1256/0.1489/0.1785). Fixing z* improved
-//   the scaled reading on ZDT1 from 0.2050 to 0.1489 and did not change the
-//   verdict. Why it still loses is the paper's own geometry: Eq.5 shifts z* by
+//   The letter stays the default, for the paper's own geometry: Eq.5 shifts z* by
 //   the LARGEST range over all objectives, one shift for all axes, so the
 //   scalarisation deliberately keeps a small absolute improvement on a narrow
 //   axis worth less than a large one on a wide axis. Normalising per axis
@@ -112,61 +102,39 @@
 //       wide axis is the direction of convergence. The letter's discriminating
 //       span on axis j is v_j*range_j, i.e. proportional to that axis's own
 //       range, which weights exactly that direction; normalising makes the
-//       span v_j on every axis and mutes it. Hence the factor of 25 above.
+//       span v_j on every axis and mutes it.
 //     * When the spread is a choice of UNITS it carries nothing, and the
-//       letter has no reason to weight one axis over another. On DTLZ2 with
-//       per-axis factors 1, 10, 100 (the SDTLZ convention), 3 seeds, 30 000 FE,
-//       objectives divided back before IGD: the letter degrades from 0.0744 to
-//       a median 0.0937 (0.0988/0.0936/0.0937) while the scaled reading holds
-//       at 0.0735 (0.0768/0.0727/0.0735) — the same value it reaches on the
-//       unskewed problem, i.e. it removes the skew completely. 27 % better,
-//       no overlap between seeds.
+//       letter has no reason to weight one axis over another; the scaled
+//       reading removes such a skew, reading each axis as
+//       (f_j - fmin_j)/range_j.
 //   So: turn set_normalize(true) on when the ranges differ because of the
 //   units you chose, and leave it off when they differ because of the problem.
 //
 //   HOW TO TELL WHICH ONE YOU HAVE, without running both. Watch the RATIO of
 //   the per-objective ranges of the answer set over the first few generations.
 //   A unit is a constant and the ratio holds; a property of the problem moves
-//   as the search closes on the front. Measured on the two cases above, over
-//   three seeds, at 0 / 500 / 2000 / 10000 / 30000 evaluations:
-//     ZDT1   3.7 -> 3.4 -> 2.6 -> 1.04 -> 1.03    drifts by a factor of 3.6
-//     DTLZ2  1.09 -> 1.34 -> 1.01 -> 1.00 -> 1.00 flat
-//   and skewing DTLZ2 by constant per-axis factors multiplies that flat ratio
-//   by a constant, leaving it flat. So: ratio steady, normalise; ratio sliding
-//   toward 1 as you converge, do not. On ZDT1 the slide IS the convergence —
-//   f2's range is set by g, which falls from about 5.5 to 1 — which is why
-//   removing it costs so much. A case that is both skewed AND drifting is not
-//   covered by this test and has not been measured.
+//   as the search closes on the front; constant per-axis factors multiply a
+//   steady ratio by a constant and leave it steady. So: ratio steady,
+//   normalise; ratio sliding toward 1 as you converge, do not. On ZDT1 the
+//   slide IS the convergence — f2's range is set by g, which falls to 1. A
+//   case that is both skewed AND drifting is not covered by this test.
 //
 //   REJECTED VARIANT, recorded so it is not retried. Freezing the divisor at
 //   the first pool's ranges looks like it should separate the two: it removes
-//   a constant spread while leaving a shrinking one visible. It half works and
-//   is dominated. 3 seeds, 30 000 FE, median IGD: on ZDT1 it costs 1.9x
-//   instead of 25x (0.0110 against the letter's 0.0059), so the drift signal
-//   really is preserved; but on DTLZ2 skewed by 1, 10, 100 it reaches 0.1174,
-//   worse than BOTH the letter (0.0937) and the per-generation scaling
-//   (0.0735). A frozen divisor freezes the resolution too: as the pool
+//   a constant spread while leaving a shrinking one visible, but a frozen
+//   divisor freezes the resolution too: as the pool
 //   contracts, (f_j - fmin_j)/range_j(0) vanishes against the +1 and the
 //   Tchebycheff term stops separating anything.
 //
-//   WHAT EXACTLY THE COST IS, separated by measurement. It is not convergence.
-//   On ZDT1 the mean analytic distance of the final population to the front is
-//   8e-5 for the letter and 1e-4 for the scaled reading — the same, both are
-//   ON the front. What differs is which part of it they occupy: the span of f1
-//   in the final population is 0.94 / 0.99 / 0.80 for the letter over the
-//   three seeds and 0.49 / 0.45 / 0.54 for the scaled reading, on a front that
-//   runs the whole of [0,1]. The largest hole inside the covered stretch is
-//   comparable either way (0.015-0.043 against 0.014-0.053), so the scaled
-//   reading spreads evenly — over half the front.
-//   That is a re-mapping, not a failure to search. R2 allocates effort by
+//   WHAT THE COST IS. Not convergence: with the scaled reading the population
+//   still reaches the front, over another stretch of it. That is a
+//   re-mapping, not a failure to search. R2 allocates effort by
 //   direction: each weight vector on the simplex owns a piece of the front,
 //   and rescaling the axes moves the pieces. Normalising maps a uniform grid
-//   of weights onto a region that, on ZDT1, is half of what the raw axes map
-//   it onto. IBEA-eps+ has nothing of the kind to move: I_eps+ compares two
+//   of weights onto another region of the front than the raw axes do.
+//   IBEA-eps+ has nothing of the kind to move: I_eps+ compares two
 //   solutions and only decides an ORDER, which survives rescaling far better
-//   than a partition does. Measured, its own unconditional Alg.2 scaling
-//   indeed costs it nothing — median IGD on ZDT1 0.00393 scaled against
-//   0.00398 raw, a tie, and DTLZ2 0.0932 against 0.0883.
+//   than a partition does.
 //   So the caution generalises to methods that distribute effort by direction
 //   — the MOEA/D family, the NSGA-III family, RVEA, theta-DEA — and not to
 //   indicator methods that merely rank. (An earlier version of this note put
@@ -638,7 +606,6 @@ public:
 
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist_real(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin (0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -648,7 +615,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dist_real(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = dist_bin(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }

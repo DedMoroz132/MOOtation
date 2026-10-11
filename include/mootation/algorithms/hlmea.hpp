@@ -70,14 +70,7 @@
 //     ([17] footnote 1: f_i + M) — the rule of moead_m2m (M2M-4), sms_m2m and
 //     isde_rd. Previously every objective was shifted by the running minimum
 //     (cone apex at the ideal point of the pool), which is not in the paper.
-//     MEASURED (DTLZ2 M=3 N=91 W=15 / ZDT1 N=100 W=10, 30 000 FE, median IGD
-//     of 3 seeds, together with the HLMEA-2 refill change): DTLZ2 0.0865 -> 0.0904
-//     (per seed 0.0892/0.0843/0.0861 -> 0.0906/0.0911/0.0890), ZDT1 0.0062 ->
-//     0.0066 (0.0062/0.0061/0.0071 -> 0.0066/0.0068/0.0063). A/B on the same
-//     code with set_ideal_shift(true) (the old rule): DTLZ2 0.0878
-//     (0.0868/0.0819/0.0890), ZDT1 0.0064 (0.0064/0.0064/0.0067). All within
-//     the seed scatter; the letter stays the default, the old rule is the
-//     switch.
+//     The letter is the default; set_ideal_shift(true) is the old rule.
 //   HLMEA-6 (MINOR). Real-valued genome; binary is out of scope.
 //   HLMEA-9 (MINOR, consequence of the sizing formula). The Alg.1 allocation
 //     fills every subregion to exactly S = floor(N/W), so the active

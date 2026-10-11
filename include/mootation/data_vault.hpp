@@ -13,12 +13,59 @@
 //
 // Slot contract: init_slot fully resets an individual (including derived
 // fields of Ind subclasses — fitness/rank/...; fix X1 per the 2026-06 audit).
+//
+// FAILED EVALUATIONS (task 7 of 2026-10-10, supplement 3, §2). An evaluation
+// that gives a non-finite objective or constraint value has failed — the
+// binding turns an exception of the user's function, or a row a batch
+// returned as None, into NaN. With set_fail_raise(true) the vault throws.
+// Otherwise (the default) the slot is marked failed and carries, for the
+// algorithm, a penalty: every objective one span above the worst finite value
+// evaluated so far (span = worst − best, 1 while that is 0; 1 before any
+// finite value), every constraint more than twice above the worst value seen
+// (and positive). So a failed point is dominated by every point that did not
+// fail, infeasible beyond any infeasible one, never the ideal, and equal to
+// every other failure; when a finite value moves the worst or the best, every
+// failed slot takes the new penalty. A failure is an evaluation: the binding
+// counts it in the budget. The answer and the observers leave failed slots
+// out (python/mootation_module.cpp), and outside the core their objectives
+// are NaN. The penalty reaches an algorithm's nadir point only while a failure
+// is still in its population, which an elitist selection ends as soon as it
+// holds pop_size points that did not fail.
+//
+// EQUALITY CONSTRAINTS (task 7 of 2026-10-10, supplement 3, §3). With
+// set_equalities(n, delta) the last n of the problem's constraint values are
+// equalities h = 0. An evaluation's h becomes the inequality value |h| - delta
+// in limits, so that every reader of limits_of keeps the meaning "<= 0
+// satisfied" and cv adds max(|h| - delta, 0); |h| itself stays in the slot
+// (eq_abs). set_eq_tol(delta) moves the tolerance — the binding's linear
+// schedule does so between steps — and rewrites the equalities' values and
+// cv of every evaluated slot from |h|, exactly. Raw values enter only from an
+// evaluation and from seed_individual(..., raw = true), the seed population
+// the caller hands over; an algorithm writing back values it read from
+// limits_of (seed_individual, archive_push_data) writes them in the vault's
+// convention, and |h| is taken as that value + delta. A core that keeps its
+// own copies of the values sees the tolerance of the moment it read them.
+// Without equalities (n = 0) nothing here runs. The violation max(|h| - delta,
+// 0) and delta = 1e-4, the binding's default, are Liu and Wang's (IEEE TEVC
+// 23(5), 2019, Eq. 3, the DOC problems); the RWMOP competition's guidelines
+// (Kumar et al. 2021) take 1e-4 too, but count |h| itself beyond it.
+//
+// EPSILON LEVEL (supplement 3, §4.1). set_cv_level(eps): a point whose
+// violation is at most eps has cv 0 for the algorithm, any other its
+// violation — so every core that ranks by feasibility first (FEASIBILITY,
+// CDP) does Takahama and Sakai's epsilon-level comparison (2006; Fan et al.
+// 2019, Eq. 6): by the objectives where both violations are at most eps, by
+// the violation otherwise. The violation itself stays in the slot (cv_raw);
+// raw_cv(v) and max_raw_cv() read it. The binding's EPS_LEVEL schedule moves
+// eps between steps; at 0, the default, cv is the violation, as before.
 // ============================================================================
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <deque>
 #include <functional>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -27,6 +74,7 @@
 
 #include "batch_executor.hpp"
 #include "individuals.hpp"
+#include "operators/bit_flip.hpp"
 #include "operators/bound_repair.hpp"
 #include "problem.hpp"
 
@@ -62,6 +110,20 @@ private:
     BatchExecutor         batch_executor_;
     std::function<void()> post_sync_hook_;
     std::function<void(std::vector<double>&)> snap_;   // integer and discrete variables
+
+    // ── Failed evaluations (FAILED EVALUATIONS above) ───────────────────────
+    bool                fail_raise_ = false;
+    long long           failed_n_   = 0;          // evaluations that failed
+    std::vector<double> fin_lo_, fin_hi_;         // per objective: best, worst finite
+    std::vector<double> lim_hi_;                  // per constraint: worst finite value
+
+    // ── Equality constraints (EQUALITY CONSTRAINTS above) ───────────────────
+    std::size_t eq_n_   = 0;                      // the last eq_n_ limits are equalities
+    double      eq_tol_ = 0.0;                    // their tolerance delta
+
+    // ── Epsilon level (EPSILON LEVEL above) ─────────────────────────────────
+    double      cv_level_ = 0.0;                  // a violation up to this counts as none
+    double      cv_max_   = 0.0;                  // the largest violation evaluated so far
 
     // ── Internal helpers ─────────────────────────────────────────────────────
 
@@ -110,11 +172,90 @@ private:
     void calc_cv_slot(std::size_t r) {
         double s = 0.0;
         for (double g : buf_[r].limits) if (g > 0.0) s += g;
-        buf_[r].cv = s;
+        buf_[r].cv_raw = s;
+        buf_[r].cv = s > cv_level_ ? s : 0.0;
+        if (!buf_[r].failed && s > cv_max_) cv_max_ = s;
+    }
+
+    // The penalty of a failed slot (FAILED EVALUATIONS), its cv included.
+    void penalize(Ind_type& s) const {
+        for (std::size_t j = 0; j < s.objectives.size(); ++j) {
+            if (fin_hi_.empty() || !(fin_hi_[j] >= fin_lo_[j])) { s.objectives[j] = 1.0; continue; }
+            const double span = fin_hi_[j] > fin_lo_[j] ? fin_hi_[j] - fin_lo_[j] : 1.0;
+            s.objectives[j] = fin_hi_[j] + span;
+        }
+        double cv = 0.0;
+        for (std::size_t j = 0; j < s.limits.size(); ++j) {
+            const double worst = lim_hi_.empty() ? 0.0 : lim_hi_[j];
+            s.limits[j] = 2.0 * std::max(worst, 0.0) + 1.0;
+            cv += s.limits[j];
+        }
+        s.cv = s.cv_raw = cv;
+    }
+
+    // A finite slot widens the finite range; true if the penalty moves.
+    bool widen(const Ind_type& s) {
+        if (fin_lo_.empty()) {
+            fin_lo_.assign(static_cast<std::size_t>(num_objs_), std::numeric_limits<double>::infinity());
+            fin_hi_.assign(static_cast<std::size_t>(num_objs_), -std::numeric_limits<double>::infinity());
+            lim_hi_.assign(static_cast<std::size_t>(num_lims_), -std::numeric_limits<double>::infinity());
+        }
+        bool moved = false;
+        for (std::size_t j = 0; j < s.objectives.size(); ++j) {
+            if (s.objectives[j] < fin_lo_[j]) { fin_lo_[j] = s.objectives[j]; moved = true; }
+            if (s.objectives[j] > fin_hi_[j]) { fin_hi_[j] = s.objectives[j]; moved = true; }
+        }
+        for (std::size_t j = 0; j < s.limits.size(); ++j)
+            if (s.limits[j] > lim_hi_[j]) { lim_hi_[j] = s.limits[j]; moved = true; }
+        return moved;
+    }
+
+    // After every evaluation of slot r (and every seeded one): a finite one
+    // widens the range, a failed one is marked and penalized, or throws.
+    void settle(std::size_t r) {
+        Ind_type& s = buf_[r];
+        bool bad = false;
+        for (double v : s.objectives) bad = bad || !std::isfinite(v);
+        for (double v : s.limits)     bad = bad || !std::isfinite(v);
+        if (!bad) {
+            s.failed = false;
+            if (widen(s) && failed_n_ > 0)
+                for (auto& t : buf_) if (t.failed) penalize(t);
+            return;
+        }
+        if (fail_raise_)
+            throw std::runtime_error("mootation: an evaluation gave a non-finite value "
+                                     "(on_failure = raise)");
+        s.failed = true;
+        ++failed_n_;
+        penalize(s);
+    }
+
+    // The equalities' raw values h of slot s: |h| kept, |h| - delta in limits.
+    void equalize(Ind_type& s) const {
+        if (eq_n_ == 0) return;
+        const std::size_t first = s.limits.size() - eq_n_;
+        s.eq_abs.resize(eq_n_);
+        for (std::size_t k = 0; k < eq_n_; ++k) {
+            s.eq_abs[k] = std::abs(s.limits[first + k]);
+            s.limits[first + k] = s.eq_abs[k] - eq_tol_;
+        }
+    }
+
+    // The equalities' values of slot s in the vault's convention (written back
+    // by an algorithm): |h| = value + delta; none given (all 0), none kept.
+    void adopt(Ind_type& s, bool given) const {
+        if (eq_n_ == 0) return;
+        if (!given) { s.eq_abs.clear(); return; }
+        const std::size_t first = s.limits.size() - eq_n_;
+        s.eq_abs.resize(eq_n_);
+        for (std::size_t k = 0; k < eq_n_; ++k) s.eq_abs[k] = s.limits[first + k] + eq_tol_;
     }
 
     void calc_one(std::size_t r) {
         problem_.calc_objs(buf_[r]);
+        equalize(buf_[r]);
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
     }
@@ -142,6 +283,8 @@ private:
         } else if (num_lims_ > 0) {
             std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
         }
+        equalize(buf_[r]);
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
     }
@@ -195,6 +338,8 @@ private:
             } else if (num_lims_ > 0) {
                 std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             }
+            equalize(buf_[r]);
+            settle(r);
             calc_cv_slot(r);
             dirty_[r] = 0;
         }
@@ -232,7 +377,59 @@ public:
     void set_batch_executor(BatchExecutor e)         { batch_executor_ = std::move(e); }
     void set_post_sync_hook(std::function<void()> h) { post_sync_hook_ = std::move(h); }
 
+    // FAILED EVALUATIONS: throw on a non-finite value instead of the penalty.
+    void set_fail_raise(bool r) { fail_raise_ = r; }
+    // How many evaluations failed so far; whether active individual v did.
+    long long failed_n() const { return failed_n_; }
+    bool is_failed(std::size_t v) const { return buf_[real_idx(v)].failed; }
+    bool archive_is_failed(std::size_t i) const {
+        if (i >= archive_.size()) throw std::out_of_range("DataVault::archive_is_failed");
+        return buf_[archive_[i]].failed;
+    }
+
     bool has_batch_executor() const { return static_cast<bool>(batch_executor_); }
+
+    // EQUALITY CONSTRAINTS: the last n constraint values are equalities, with
+    // the tolerance delta. Set before the first evaluation.
+    void set_equalities(std::size_t n, double delta) {
+        if (n > static_cast<std::size_t>(num_lims_))
+            throw std::invalid_argument("DataVault::set_equalities: " + std::to_string(n) +
+                                        " equalities of " + std::to_string(num_lims_) +
+                                        " constraints");
+        eq_n_   = n;
+        eq_tol_ = delta;
+    }
+    // A new tolerance: every evaluated slot's equalities and cv follow it.
+    void set_eq_tol(double delta) {
+        if (eq_n_ == 0 || delta == eq_tol_) { eq_tol_ = delta; return; }
+        eq_tol_ = delta;
+        const std::size_t first = static_cast<std::size_t>(num_lims_) - eq_n_;
+        for (std::size_t r = 0; r < buf_.size(); ++r) {
+            Ind_type& s = buf_[r];
+            if (dirty_[r] || s.failed || s.eq_abs.size() != eq_n_) continue;
+            for (std::size_t k = 0; k < eq_n_; ++k) s.limits[first + k] = s.eq_abs[k] - eq_tol_;
+            calc_cv_slot(r);
+        }
+    }
+    std::size_t eq_n()   const { return eq_n_; }
+    double      eq_tol() const { return eq_tol_; }
+
+    // EPSILON LEVEL: a new level; every evaluated slot's cv follows it.
+    void set_cv_level(double eps) {
+        if (eps == cv_level_) return;
+        cv_level_ = eps;
+        for (std::size_t r = 0; r < buf_.size(); ++r) {
+            if (dirty_[r]) continue;
+            Ind_type& s = buf_[r];
+            s.cv = s.cv_raw > cv_level_ ? s.cv_raw : 0.0;
+        }
+    }
+    double cv_level()   const { return cv_level_; }
+    double max_raw_cv() const { return cv_max_; }
+    // Active individual v's violation, whatever the level.
+    double raw_cv(std::size_t v) {
+        std::size_t r = real_idx(v); ensure_ready(r); return buf_[r].cv_raw;
+    }
 
     // ── Dimensions ───────────────────────────────────────────────────────────
 
@@ -350,7 +547,7 @@ public:
         if (static_cast<int>(bvars.size()) != num_bin_vars_)
             throw std::invalid_argument("set_all_variables: wrong binary size");
         for (int j = 0; j < num_bin_vars_; ++j)
-            buf_[r].binary_variables[j] = (bvars[j] != 0) ? 1 : 0;
+            buf_[r].binary_variables[j] = ops::clamp_gene(j, bvars[j]);
         dirty_[r] = 1;
     }
 
@@ -501,13 +698,15 @@ public:
         }
         if (num_bin_vars_ > 0) {
             if (bvars.empty()) std::fill(buf_[r].binary_variables.begin(), buf_[r].binary_variables.end(), 0);
-            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = (bvars[j] != 0) ? 1 : 0;
+            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = ops::clamp_gene(j, bvars[j]);
         }
         buf_[r].objectives = objs;
         if (num_lims_ > 0) {
             if (lims.empty()) std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             else buf_[r].limits = lims;
         }
+        adopt(buf_[r], !lims.empty());
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
         archive_.push_back(r);
@@ -579,12 +778,17 @@ public:
     //
     // Writes an individual without calling Problem.calc_objs.
     // dirty_[r] = 0 → ensure_ready will not trigger evaluation.
+    // raw: lims are the problem's own values, as an evaluation gives them (a
+    // seed population from outside); otherwise the vault's, as limits_of
+    // returns them (an algorithm writing back). They differ only in the
+    // equalities (EQUALITY CONSTRAINTS).
 
     void seed_individual(std::size_t v,
                          const std::vector<double>& vars,
                          const std::vector<double>& objs,
                          const std::vector<int>&    bvars = {},
-                         const std::vector<double>& lims  = {})
+                         const std::vector<double>& lims  = {},
+                         bool                       raw   = false)
     {
         std::size_t r = real_idx(v);
         if (static_cast<int>(vars.size()) != num_vars_)
@@ -610,13 +814,16 @@ public:
         }
         if (num_bin_vars_ > 0) {
             if (bvars.empty()) std::fill(buf_[r].binary_variables.begin(), buf_[r].binary_variables.end(), 0);
-            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = (bvars[j] != 0) ? 1 : 0;
+            else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = ops::clamp_gene(j, bvars[j]);
         }
         buf_[r].objectives = objs;
         if (num_lims_ > 0) {
             if (lims.empty()) std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             else buf_[r].limits = lims;
         }
+        if (raw) equalize(buf_[r]);
+        else     adopt(buf_[r], !lims.empty());
+        settle(r);
         calc_cv_slot(r);
         dirty_[r] = 0;
     }

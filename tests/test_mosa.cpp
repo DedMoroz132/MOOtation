@@ -156,6 +156,21 @@ void test_psa_weights()
         ok = ok && std::abs(s - 1.0) < 1e-12;
     }
     check(ok, "the weights stay positive and sum to 1");
+    // objective 3, where the two are equal, goes up for both: PSA's "f_j(x) >=
+    // f_j(x')" under maximization, here f_j(x) <= f_j(x')
+    check(W[0][2] > w0[2] * 1.0 && W[1][2] > w0[2] * 1.0, "an equal objective counts as better: its weight up");
+    // no x' (chain 1 dominated by chain 0): PSA sets random weights
+    MOSACore<MosaDTLZ2> lone;
+    lone.set_word("sa_energy", "tch");
+    lone.offer({{0.0}, {0.1, 0.2, 0.3}});
+    lone.set_weights({w0, w0});
+    lone.set_current({{{0.0}, {0.1, 0.2, 0.3}}, {{0.0}, {0.5, 0.6, 0.7}}});
+    lone.psa_update(1);
+    const auto& V = lone.weights();
+    double sv = 0.0;
+    for (double v : V[1]) sv += v;
+    check(V[1] != w0 && std::abs(sv - 1.0) < 1e-12 && V[0] == w0,
+          "no non-dominated neighbour: random weights (PSA), summing to 1");
 
     // a run: psa moves the weights, fixed does not
     for (const char* mode : {"psa", "fixed"}) {

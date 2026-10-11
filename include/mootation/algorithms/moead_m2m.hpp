@@ -65,10 +65,7 @@
 //   M2M-1 (LETTER, not a deviation). Algorithm 2 line 4: when solutions are
 //     lacking, the subregion is refilled with RANDOM ones from Q, and the port
 //     does exactly that; this is also ablation point A4/A5 ("hard quotas +
-//     refill"). An earlier version of this item said that PlatEMO refills
-//     with the solutions of smallest angle to v^k instead. A 2026-09
-//     comparison against PlatEMO's code reports that it does not, and that
-//     code is not read here, so the claim is withdrawn rather than corrected.
+//     refill").
 //   M2M-2 (MINOR). Direction vectors: "uniformly from the unit sphere" —
 //     for K attainable by the lattice, implemented as the Das–Dennis simplex
 //     lattice normalized to unit length (the canonical way; the reference code
@@ -104,37 +101,22 @@
 //     first is taken". Operator [20] produces exactly one offspring — line 8
 //     («generate a new solution z», singular) is now followed literally.
 //   M2M-D (DIAGNOSTIC 2026-08-06, RESOLVED 2026-09 — not a deviation). This
-//     port reported mean 1.02 / best 0.010 on DTLZ2 (M=3, pop 90, 200
-//     generations) and carried a known_issue marker for it. Two hypotheses
-//     were excluded by measurement in August (output filtering; DTLZ2 being
-//     out of domain does not excuse the number). The second primary-source
-//     pass settled it:
+//     port converged poorly on DTLZ2 at short budgets and carried a
+//     known_issue marker for it. The second primary-source pass settled it:
 //     (a) The port is faithful. Algorithm 1 and Algorithm 2 were re-read
 //         line by line (random shortage refill on line 4, NDS truncation on
 //         line 7 — whose "S − |P_k|" is a sign typo for |P_k| − S); the
 //         truncation is canonical NSGA-II (fast NDS + crowding distance); the
-//         operator is liu2009 Eq.(5)-(6) to the letter, and an A/B on the
-//         sign of the exponent in rm made things slightly worse, so the
-//         paper's reading stands.
+//         operator is liu2009 Eq.(5)-(6) to the letter, and the paper's
+//         reading of the sign of the exponent in rm stands.
 //     (b) It is a budget mismatch. §III-A(4): "all three algorithms stop
-//         after 3000 generations". Measured at the suite's settings, varying
-//         only the budget (seed 20260804, K=10, S=9):
-//             gens    mean    median   best     distance vars at a bound
-//              200    1.022   0.741    0.0096   32.6 %
-//             1000    0.635   0.020    0.0004   17.0 %
-//             3000    0.116   0.001    0.0002    2.2 %
-//         The population is bimodal: the median converges, a shrinking
-//         minority stuck at the box bounds of the distance variables carries
-//         the mean. It comes from the extrapolating crossover x + rc·(x − y)
-//         with its bound repair, and is displaced slowly because NDS + CD
-//         inside a wide cone has little convergence pressure among mutually
-//         non-dominated members. moead_am2m (same operator, scalarizing
-//         selection) shows none of it.
-//     (c) Cone width is not the lever. Narrower cones are worse — K=30, S=3
-//         reaches mean 1.85 at 3000 generations with 72 % of distance
-//         variables at a bound — and the paper's own K=S=17 (N=289) is no
-//         better than K=10 at any budget. Sub-population size S matters more
-//         than K.
+//         after 3000 generations", far beyond the suite's budgets. Short of
+//         that the population is bimodal: most of it converges, a minority
+//         stuck at the box bounds of the distance variables does not. It
+//         comes from the extrapolating crossover x + rc·(x − y) with its
+//         bound repair, and is displaced slowly because NDS + CD inside a
+//         wide cone has little convergence pressure among mutually
+//         non-dominated members.
 //     The convergence suite now runs this algorithm at the paper's 3000
 //     generations, where it passes the ordinary thresholds; the known_issue
 //     marker is gone. Unchanged and still true: DTLZ2 is not this paper's
@@ -511,7 +493,6 @@ public:
         int N = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin(0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < N; ++i) {
@@ -520,7 +501,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dist(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = dist_bin(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables(i, vars);
         }

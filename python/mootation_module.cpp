@@ -127,6 +127,10 @@ OpStats g_ops;
 // variables). Set by run_core, cleared by run(); asked for only at the
 // records, so a run that never asks pays nothing.
 std::function<std::vector<std::vector<double>>()> g_answer_variables;
+// The equalities' tolerance of the run in progress, for current_eq_tol().
+std::function<double()> g_eq_tol;
+// The vault's epsilon level of the run in progress, for current_cv_level().
+std::function<double()> g_cv_level;
 
 inline std::string vec_key(const std::vector<double>& x)
 {
@@ -477,6 +481,9 @@ struct RunConfig {
     std::vector<std::vector<double>> discrete_values;
     bool                             lamarck = true;
     std::optional<double>            eta_int;
+    // Categorical variables (supplement 3, §1): the levels of every gene of
+    // the integer genome, 2 for a bit (ops::gene_levels); empty: all bits.
+    std::vector<int>                 gene_levels;
     // the bits of a warm start, beside seed_variables (PyProblem::n_bin)
     std::vector<std::vector<int>>    seed_binary;
 
@@ -513,6 +520,40 @@ struct RunConfig {
     // Operator statistics along the run (the per-step bookkeeping above); read
     // them with operator_stats() from the on_generation observer.
     bool operator_stats = false;
+    // A failed evaluation (a non-finite value; minimize turns the user's
+    // exception into NaN): the vault's penalty (false, on_failure =
+    // "infeasible", the default) or an error (true, "raise"). See
+    // data_vault.hpp, FAILED EVALUATIONS.
+    bool fail_raise = false;
+    // Equality constraints (data_vault.hpp, EQUALITY CONSTRAINTS): the last
+    // n_eq of the problem's n_limits values are equalities h = 0, satisfied
+    // within eq_tol. eq_linear: the tolerance falls from eq_tol0 to eq_tol in
+    // proportion to the evaluations spent, set before every step (it needs
+    // max_evaluations); at the end it is eq_tol either way.
+    int    n_eq      = 0;
+    double eq_tol    = 1e-4;
+    double eq_tol0   = 1e-4;
+    bool   eq_linear = false;
+    // Distinct decoded points (supplement 3, §1.2; mootation/unique.py): the
+    // caller's count of them, and whether the evaluation budget, its schedules
+    // and the observer's stride count them instead of calls (budget_counts =
+    // "unique": a repeat answered from memory costs nothing).
+    std::function<long long()> unique_evaluations;
+    bool                       budget_unique = false;
+    // EPS_LEVEL (supplement 3, §4.1; data_vault.hpp, EPSILON LEVEL): the core
+    // ranks by feasibility (constraint_mode), the vault counts a violation up
+    // to eps as none, and eps follows Fan et al.'s improved setting (Soft
+    // Computing 23(23), 2019, Eq. 8) once per generation — pop_size
+    // evaluations under max_evaluations, a step under n_gen: eps(0) the
+    // violation of the initial population's (eps_theta N)-th worst point,
+    // then (1 - eps_tau) eps while fewer than eps_alpha of the population are
+    // feasible, (1 + eps_tau) times the largest violation seen once that many
+    // are, and 0 from eps_tc of the budget on. The paper: tau 0.1, alpha 0.95,
+    // theta 0.05, Tc 800 of its 1000 generations — eps_tc = 0.8 here, of the
+    // budget the run has, not 800 generations of any budget (a shorter budget
+    // would never reach eps = 0). The answer's cv is the violation.
+    bool   eps_level = false;
+    double eps_tau = 0.1, eps_alpha = 0.95, eps_theta = 0.05, eps_tc = 0.8;
 };
 
 struct PyResult {
@@ -538,6 +579,15 @@ struct PyResult {
     std::vector<std::vector<double>> inner_variables;
     // the bits of the answer, beside variables (PyProblem::n_bin)
     std::vector<std::vector<int>>    binary_variables;
+    // Evaluations that failed (data_vault.hpp, FAILED EVALUATIONS). A failed
+    // member of the final population is not in the answer above.
+    long long                        n_failed = 0;
+    // The equalities' tolerance the answer's cv was taken with (RunConfig::
+    // eq_tol); 0 without equalities.
+    double                           eq_tol = 0.0;
+    // Distinct decoded points evaluated (RunConfig::unique_evaluations); -1
+    // where the caller did not count them.
+    long long                        unique_evaluations = -1;
 };
 
 template <typename Tag, typename Core>
@@ -553,6 +603,14 @@ PyResult run_core(const RunConfig& cfg)
 
     DataVault<Tag>      vault(cfg.pop_size, prob);
     if (g_problem->evaluate_batch) vault.set_batch_executor(&py_run_batch);
+    vault.set_fail_raise(cfg.fail_raise);
+    if (cfg.n_eq > 0) {
+        if (cfg.eq_linear && cfg.max_evaluations <= 0)
+            throw std::invalid_argument("mootation: the linear schedule of eq_tol runs over "
+                                        "the evaluation budget; set max_evaluations");
+        vault.set_equalities(static_cast<std::size_t>(cfg.n_eq),
+                             cfg.eq_linear ? cfg.eq_tol0 : cfg.eq_tol);
+    }
     // integer and discrete variables (RunConfig::var_kinds): the Lamarckian
     // rounding at every write — integers to the nearest, ties to even, kept in
     // [ceil lo, floor hi]; discrete ones to the nearest value, ties to the lower
@@ -580,6 +638,7 @@ PyResult run_core(const RunConfig& cfg)
         if (cfg.eta_int && !cfg.var_kinds.empty())
             for (int k : cfg.var_kinds) per.push_back(k != 0 ? *cfg.eta_int : 0.0);
     }
+    ops::gene_levels() = cfg.gene_levels;
     Optimizer<Tag, Core> opt(std::move(vault), defer_setup);
 
     auto&                    alg = opt.get_algorithm();
@@ -703,6 +762,21 @@ PyResult run_core(const RunConfig& cfg)
         } else {
             opt.setup();
         }
+        // EPS_LEVEL: eps(0) from the initial population (Eq. 8, rule 1)
+        int eps_gen = 0;                      // generations whose eps is set
+        long long steps_done = 0;
+        if (cfg.eps_level) {
+            auto& v = opt.get_vault();
+            const std::size_t n = std::min<std::size_t>(v.active_n(),
+                                                        static_cast<std::size_t>(v.pop_size()));
+            std::vector<double> cv;
+            for (std::size_t i = 0; i < n; ++i)
+                if (!v.is_dirty(i)) cv.push_back(v.raw_cv(i));
+            std::sort(cv.begin(), cv.end(), std::greater<double>());
+            const std::size_t theta = static_cast<std::size_t>(
+                std::max(1L, std::lround(cfg.eps_theta * static_cast<double>(v.pop_size()))));
+            v.set_cv_level(cv.empty() ? 0.0 : cv[std::min(theta, cv.size()) - 1]);
+        }
         // the initial population is not offspring: the counts start here
         g_ops.setup_evals = g_ops.evals_read = g_evaluations.load();
         g_ops.rc_read = ops::repair_counts();
@@ -714,12 +788,54 @@ PyResult run_core(const RunConfig& cfg)
                 v.active_n(), static_cast<std::size_t>(v.pop_size()));
             std::vector<std::vector<double>> X;
             X.reserve(n);
-            for (std::size_t i = 0; i < n; ++i) X.push_back(v.variables_of(i));
+            for (std::size_t i = 0; i < n; ++i)
+                if (!v.is_failed(i)) X.push_back(v.variables_of(i));   // as emit() below
             return X;
         };
+        g_eq_tol = [&opt]() { return opt.get_vault().eq_tol(); };
+        // the evaluations the budget counts: calls, or distinct points
+        auto spent = [&]() -> long long {
+            if (!cfg.budget_unique || !cfg.unique_evaluations) return g_evaluations.load();
+            py::gil_scoped_acquire gil;
+            return cfg.unique_evaluations();
+        };
+        g_cv_level = [&opt]() { return opt.get_vault().cv_level(); };
+        // EPS_LEVEL, Eq. 8 rules 2-4, once for every generation reached
+        auto eps_update = [&]() {
+            auto& v = opt.get_vault();
+            const double pop = static_cast<double>(std::max(1, cfg.pop_size));
+            const double gens_total = by_evaluations
+                ? static_cast<double>(cfg.max_evaluations) / pop : static_cast<double>(cfg.n_gen);
+            const int gen_now = by_evaluations
+                ? static_cast<int>(static_cast<double>(spent()) / pop)
+                : static_cast<int>(steps_done);
+            for (; eps_gen < gen_now; ++eps_gen) {
+                const double k = static_cast<double>(eps_gen + 1);
+                if (k >= cfg.eps_tc * gens_total) { v.set_cv_level(0.0); continue; }
+                const std::size_t n = std::min<std::size_t>(
+                    v.active_n(), static_cast<std::size_t>(v.pop_size()));
+                std::size_t feasible = 0, seen = 0;
+                for (std::size_t i = 0; i < n; ++i) {
+                    if (v.is_dirty(i)) continue;
+                    ++seen;
+                    feasible += v.raw_cv(i) <= 0.0;
+                }
+                const double r = seen ? static_cast<double>(feasible) / static_cast<double>(seen) : 0.0;
+                v.set_cv_level(r < cfg.eps_alpha ? (1.0 - cfg.eps_tau) * v.cv_level()
+                                                 : (1.0 + cfg.eps_tau) * v.max_raw_cv());
+            }
+        };
         auto one_step = [&]() {
+            if (cfg.eps_level) eps_update();
+            if (cfg.n_eq > 0 && cfg.eq_linear) {
+                // the share of the budget spent so far, setup included
+                const double t = std::min(1.0, static_cast<double>(spent()) /
+                                                   static_cast<double>(cfg.max_evaluations));
+                opt.get_vault().set_eq_tol(cfg.eq_tol0 + (cfg.eq_tol - cfg.eq_tol0) * t);
+            }
             if (g_ops.on) ops_before_step(opt.get_vault());
             opt.step();
+            ++steps_done;
             if (g_ops.on) ops_after_step(opt.get_vault());
         };
         auto emit = [&](int g) {
@@ -728,7 +844,10 @@ PyResult run_core(const RunConfig& cfg)
                 v.active_n(), static_cast<std::size_t>(v.pop_size()));
             std::vector<std::vector<double>> P;
             P.reserve(n);
-            for (std::size_t i = 0; i < n; ++i) P.push_back(v.objectives_of(i));
+            for (std::size_t i = 0; i < n; ++i) {
+                const auto& f = v.objectives_of(i);              // evaluates a dirty slot
+                if (!v.is_failed(i)) P.push_back(f);             // a failure is no answer
+            }
             py::gil_scoped_acquire gil;
             cfg.on_generation(g, std::move(P));
         };
@@ -746,18 +865,21 @@ PyResult run_core(const RunConfig& cfg)
             }
         } else {
             if (observe) emit(0);
-            const long long start  = g_evaluations.load();
+            const long long start  = spent();
             const long long stride = static_cast<long long>(cfg.record_every) *
                                      std::max(1, cfg.pop_size);
             long long next_record  = start + stride;
             long long idle         = 0;   // consecutive steps that evaluated nothing
-            for (int g = 1; g_evaluations.load() < cfg.max_evaluations; ++g) {
-                const long long before = g_evaluations.load();
+            for (int g = 1; spent() < cfg.max_evaluations; ++g) {
+                const long long before = spent();
                 one_step();
-                const long long now = g_evaluations.load();
+                const long long now = spent();
                 if (now > before) {
                     idle = 0;
                 } else if (++idle >= 10000) {
+                    // counting distinct points: the core asks only for points it
+                    // has seen, a space too small for the budget; the run ends
+                    if (cfg.budget_unique) break;
                     throw std::runtime_error(
                         "mootation: 10000 steps in a row evaluated nothing; this core "
                         "cannot run on an evaluation budget, use n_gen");
@@ -783,6 +905,8 @@ PyResult run_core(const RunConfig& cfg)
     }
 
     auto&    v = opt.get_vault();
+    if (cfg.n_eq > 0) v.set_eq_tol(cfg.eq_tol);   // the answer at the final tolerance
+    v.set_cv_level(0.0);                          // and its cv the violation itself
     PyResult r;
     // NOT active_n(): steady-state cores (moead_de, moead_dd, hlmea, adaw,
     // ...) park a persistent scratch slot at active index pop_size(), so
@@ -829,12 +953,18 @@ PyResult run_core(const RunConfig& cfg)
     ops::inner_archive_record().live = nullptr;          // the core goes with this scope
     r.objectives.reserve(r.active_n);
     r.variables.reserve(r.active_n);
-    for (std::size_t i = 0; i < r.active_n; ++i) {
-        r.objectives.push_back(v.objectives_of(i));
+    const std::size_t rows = r.active_n;
+    for (std::size_t i = 0; i < rows; ++i) {
+        const auto& f = v.objectives_of(i);
+        if (v.is_failed(i)) { --r.active_n; continue; }  // a failure is no answer
+        r.objectives.push_back(f);
         r.variables.push_back(v.variables_of(i));
         if (v.bin_vars_n() > 0) r.binary_variables.push_back(v.binary_variables_of(i));
         r.cv.push_back(v.get_cv(i));
     }
+    r.n_failed = v.failed_n();
+    r.eq_tol   = cfg.n_eq > 0 ? v.eq_tol() : 0.0;
+    r.unique_evaluations = cfg.unique_evaluations ? cfg.unique_evaluations() : -1;
     return r;
 }
 
@@ -852,7 +982,12 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     mootation::ops::inner_archive_record() = mootation::ops::InnerArchiveRecord{};
     g_ops = OpStats{};
     g_ops.on = cfg.operator_stats;
-    struct Guard { ~Guard() { g_problem = nullptr; g_answer_variables = nullptr; } } guard;
+    struct Guard {
+        ~Guard() {
+            g_problem = nullptr; g_answer_variables = nullptr; g_eq_tol = nullptr;
+            g_cv_level = nullptr;
+        }
+    } guard;
 
 #define MOOTATION_ALG(KEY, IND, CORE) \
     if (name == #KEY) return run_core<PyTag_##KEY, mootation::CORE<PyTag_##KEY>>(cfg);
@@ -954,6 +1089,33 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("words",           &RunConfig::words,
                        "the text knobs of the same kind (is_core_word): {name: word}, a "
                        "list knob as comma-separated words; assign the whole dict")
+        .def_readwrite("fail_raise",      &RunConfig::fail_raise,
+                       "A failed evaluation (a non-finite value) raises instead of "
+                       "carrying the vault's penalty (on_failure = raise).")
+        .def_readwrite("n_eq",            &RunConfig::n_eq,
+                       "the last n_eq of the n_limits constraint values are equalities h = 0")
+        .def_readwrite("eq_tol",          &RunConfig::eq_tol,
+                       "an equality holds where |h| <= eq_tol; its violation is "
+                       "max(|h| - eq_tol, 0)")
+        .def_readwrite("eq_tol0",         &RunConfig::eq_tol0,
+                       "with eq_linear: the tolerance at the start")
+        .def_readwrite("unique_evaluations", &RunConfig::unique_evaluations,
+                       "a callable giving the number of distinct decoded points evaluated "
+                       "so far (mootation/unique.py)")
+        .def_readwrite("eps_level",       &RunConfig::eps_level,
+                       "EPS_LEVEL: the vault's epsilon level on a feasibility-first core, "
+                       "set by Fan et al.'s improved rule (Eq. 8) once per generation")
+        .def_readwrite("eps_tau",         &RunConfig::eps_tau)
+        .def_readwrite("eps_alpha",       &RunConfig::eps_alpha)
+        .def_readwrite("eps_theta",       &RunConfig::eps_theta)
+        .def_readwrite("eps_tc",          &RunConfig::eps_tc,
+                       "the share of the budget from which eps is 0")
+        .def_readwrite("budget_unique",   &RunConfig::budget_unique,
+                       "max_evaluations counts distinct points, not calls "
+                       "(budget_counts = unique)")
+        .def_readwrite("eq_linear",       &RunConfig::eq_linear,
+                       "the tolerance falls from eq_tol0 to eq_tol in proportion to the "
+                       "evaluations spent (needs max_evaluations)")
         .def_readwrite("operator_stats",  &RunConfig::operator_stats,
                        "keep per-step operator statistics; read them with "
                        "operator_stats() from the on_generation observer")
@@ -970,6 +1132,9 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("discrete_values", &RunConfig::discrete_values)
         .def_readwrite("lamarck",         &RunConfig::lamarck)
         .def_readwrite("eta_int",         &RunConfig::eta_int)
+        .def_readwrite("gene_levels",     &RunConfig::gene_levels,
+                       "the levels of every gene of the integer genome, 2 for a bit "
+                       "(categorical variables); empty: all bits")
         .def_readwrite("seed_objectives", &RunConfig::seed_objectives)
         .def_readwrite("seed_limits",     &RunConfig::seed_limits)
         .def_readwrite("on_generation",   &RunConfig::on_generation,
@@ -989,6 +1154,14 @@ PYBIND11_MODULE(_core, m)
         .def_readonly("active_n",   &PyResult::active_n)
         .def_readonly("ignored",    &PyResult::ignored,
                       "Knobs you set that this algorithm does not have.")
+        .def_readonly("n_failed", &PyResult::n_failed,
+                      "Evaluations that failed (a non-finite value); a failed member of "
+                      "the final population is not among the rows.")
+        .def_readonly("unique_evaluations", &PyResult::unique_evaluations,
+                      "Distinct decoded points evaluated (minimize counts them); -1 "
+                      "where nobody counted.")
+        .def_readonly("eq_tol", &PyResult::eq_tol,
+                      "The equalities' tolerance cv was taken with; 0 without equalities.")
         .def_readonly("evaluations", &PyResult::evaluations,
                       "Evaluations the run spent, setup included.")
         .def_readonly("operators", &PyResult::operators,
@@ -1139,6 +1312,19 @@ PYBIND11_MODULE(_core, m)
           },
           "The variables of the rows the on_generation observer has just received, in "
           "the same order, for the run in progress (call it from on_generation).");
+    m.def("current_cv_level", []() {
+              if (!g_cv_level)
+                  throw std::runtime_error("current_cv_level() answers only during a run");
+              return g_cv_level();
+          },
+          "The vault's epsilon level of the run in progress (EPS_LEVEL); 0 otherwise.");
+    m.def("current_eq_tol", []() {
+              if (!g_eq_tol)
+                  throw std::runtime_error("current_eq_tol() answers only during a run");
+              return g_eq_tol();
+          },
+          "The equalities' tolerance of the run in progress (call it from on_generation); "
+          "it moves only under eq_linear.");
     m.def("algorithms", &algorithm_names,
           "Names accepted by run(), straight from include/mootation/algorithms.def.");
     m.def("run", &run, py::arg("name"), py::arg("problem"), py::arg("config"),

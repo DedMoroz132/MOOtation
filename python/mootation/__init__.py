@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""MOOtation — 64 multi- and many-objective optimization algorithms.
+"""MOOtation — 67 multi- and many-objective optimization algorithms.
 
 The library is C++; this package is the Python face of it.
 
@@ -21,9 +21,11 @@ The library is C++; this package is the Python face of it.
 Three further pieces, each independent:
 
     mootation.benchmarks   the standard suites: ZDT, DTLZ, WFG, MaF, ZCAT,
-                           bbob-biobj, Polygon, MOP, BT, C-DTLZ, MW, DAS-CMOP, rotated
+                           bbob-biobj, Polygon, MOP, BT, C-DTLZ, MW, DAS-CMOP, LIR-CMOP,
+                           DOC, rotated
                            ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy
-                           copies, RE and CRE — 1141 problems.
+                           and failing copies, RE and CRE, bbob-biobj-mixint, catZDT1 —
+                           1293 problems.
                            Needs NumPy.
     mootation.run          driving a run from a TOML file, with objectives from
                            external programs. Needs nothing.

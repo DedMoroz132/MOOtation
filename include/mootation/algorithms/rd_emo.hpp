@@ -38,8 +38,8 @@
 //     pinned at the origin those points fall into a different orthant, the
 //     angular region division misassigns them and PF segments are lost. The
 //     running ideal coincides with the origin whenever f ≥ 0 and the minimum
-//     is attained at 0, and stays well-defined otherwise. Verified: ZDT3 spread
-//     0.43 -> 0.84. A caller who wants the paper's letter on an f ≥ 0 problem
+//     is attained at 0, and stays well-defined otherwise. A caller who wants
+//     the paper's letter on an f ≥ 0 problem
 //     loses nothing; on a problem with f < 0 the letter is the broken choice.
 //   RDE-3b (MINOR). Alg.1 line 18 draws the second parent's region from the
 //     T-neighbourhood U_n restricted to regions with RD > 0; when every
@@ -259,11 +259,10 @@ public:
         build_regions(m_);
         const auto& b=vault.get_bounds();
         std::uniform_real_distribution<double> d(0.0,1.0);
-        std::uniform_int_distribution<int> dbn(0,1);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<popsiz_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=b[j].first.value_or(0.0),hi=b[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
-            for(int j=0;j<vault.bin_vars_n();++j) bv[j]=dbn(rng_);
+            for(int j=0;j<vault.bin_vars_n();++j) bv[j] = ops::random_gene(j, rng_);
             if(vault.bin_vars_n()>0) vault.set_all_variables(i,vars,bv); else vault.set_variables(i,vars);
         }
         vault.sync();

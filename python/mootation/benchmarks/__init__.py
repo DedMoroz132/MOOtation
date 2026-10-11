@@ -61,6 +61,12 @@ def solve(problem, algorithm="nsga2", *, pop_size=None, n_gen=None,
     from .. import minimize
 
     p = get(problem) if isinstance(problem, str) else problem
+    cons, eq = (p.constraints if p.has_cons else None), {}
+    if p.n_eq:
+        # the equalities as such (DOC3, 5, 7), so that eq_tol and
+        # eq_tol_schedule among the knobs reach them
+        cons = lambda x, _c=p.constraints, _n=p.n_eq: list(_c(x))[:-_n]   # noqa: E731
+        eq = dict(eq_constraints=p.equalities, n_eq=p.n_eq)
     return minimize(
         p.evaluate,
         bounds=p.bounds,
@@ -69,7 +75,8 @@ def solve(problem, algorithm="nsga2", *, pop_size=None, n_gen=None,
         pop_size=p.pop_size if pop_size is None else pop_size,
         n_gen=p.n_gen if n_gen is None else n_gen,
         seed=seed,
-        constraints=(p.constraints if p.has_cons else None),
+        constraints=cons,
+        **eq,
         **knobs,
     )
 

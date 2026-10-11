@@ -223,7 +223,6 @@ public:
         int n = vault.pop_size(), m = vault.objs_n();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -232,7 +231,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dr(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables(i, vars);
         }

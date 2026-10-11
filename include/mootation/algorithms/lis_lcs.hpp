@@ -570,7 +570,6 @@ private:
     std::vector<Sol> random_population(DataVault<Ind_t>& vault, int N) {
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<Sol> P(N);
         for (int i = 0; i < N; ++i) {
             P[i].x.resize(vault.vars_n());
@@ -580,7 +579,7 @@ private:
                 P[i].x[j] = lo + dr(rng_) * (hi - lo);
             }
             P[i].b.resize(vault.bin_vars_n());
-            for (int j = 0; j < vault.bin_vars_n(); ++j) P[i].b[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) P[i].b[j] = ops::random_gene(j, rng_);
             P[i].widx = i;
         }
         return P;

@@ -76,12 +76,7 @@
 //     (Zhang et al., 2009)" and repeats its formula — so it inherits the same
 //     contradiction: a factor below 0 makes π negative, and a negative π then
 //     rises on every non-improving update, against the DRA paper's "the value
-//     of π^i will be reduced". The factor is floored at 0 here too. Measured
-//     (median IGD over 11 seeds, 30 000 FE, literal → floored): DTLZ2 and
-//     scaled DTLZ2 unchanged (bit-identical on 11 and 10 seeds), ZDT1
-//     0.00398 → 0.00399, DTLZ7 0.103 → 0.105, WFG4 0.257 → 0.255, inverted
-//     DTLZ1 0.0294 → 0.0302 — all within the seed scatter; the floor rarely
-//     acts in this algorithm.
+//     of π^i will be reduced". The factor is floored at 0 here too.
 //   (AWA-1…AWA-11 were closed by the internal audit.)
 // Assumption made explicit: EP maintenance runs EVERY generation. Alg.4 nests
 //   Step 4.1 inside the gate (gen >= rate_evol·G_max AND gen mod wag == 0), but
@@ -91,12 +86,11 @@
 // Extensions beyond the paper (disabled by default): ConstraintMode::FEASIBILITY —
 //   an additive penalty·cv term added to g^tc; binary variables (uniform
 //   crossover + bit-flip).
-// SCALE DEPENDENCE (the paper's own, measured 2026-09-09). Step 1.2/3.4 fixes
+// SCALE DEPENDENCE (the paper's own). Step 1.2/3.4 fixes
 //   z*_j = min f_j - 1e-7 and Eq.6 divides by (f_j - z*_j) with an epsilon,
-//   both ABSOLUTE in objective space, so the run is not invariant to the units:
-//   multiplying every objective of DTLZ2 (M=3) by 2^10 moves the final IGD by
-//   2.1 % (5000 FE), by 5.4 % at 2^30 - small and slowly growing, unlike an
-//   exponential fitness, but real. The paper's constants are left as written.
+//   both ABSOLUTE in objective space, so the run is not invariant to the
+//   units: a common factor on the objectives changes it. The paper's
+//   constants are left as written.
 // ============================================================================
 
 #include <algorithm>
@@ -601,7 +595,6 @@ public:
 
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist_real(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin (0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -610,7 +603,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dist_real(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = dist_bin(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }

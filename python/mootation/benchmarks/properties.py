@@ -103,6 +103,14 @@ Huband analyses:
               variables whose optimum is 0, the middle of [-1, 1] (medial). The
               Pareto set is 2-dimensional, so the front is a 2-dimensional
               manifold whatever M: degenerate from four objectives.
+  SYM-PART, Omni-test, MMF
+              the CEC 2019 competition's multimodal problems (mmo.py; Liang,
+              Qu, Gong & Yue's report, Table I): the front as the table has
+              it, MMF12's pieces read as disconnected; multimodal, every one
+              having several global optima of its objectives; scaled where
+              one objective's range on the front is at least twice another's
+              (MMF9, 10, 11, 13); bias, separable and centre left open (the
+              table has no column for them); boundary as measured() reads it.
   IPolygon    Ishibuchi, Akedo & Nojima, GECCO 2011: m = 4 identical polygons
               in [0, 100]^2, each objective the distance to the nearest copy
               of a vertex, so every objective has four minima and the Pareto
@@ -134,6 +142,19 @@ Besides Huband's vocabulary (task 4, item 5):
               f2), moderate (f6, f8: low or moderate conditioning),
               ill-conditioned (f13, f14), multimodal (f15, f17: adequate
               global structure), weakly-structured (f20, f21); None elsewhere
+  family_kind "engineering" for the real-world problems (RE, CRE, RCM),
+              "synthetic" for the rest
+  difficulty  a constrained problem's difficulty where its source names one:
+              DAS-CMOP's kinds (diversity, feasibility, convergence, from its
+              triplet), RWMOP's level ("low" for the mechanical RCM, every
+              algorithm of the paper feasible in every run, §3.3.1)
+  multimodal_ps, ps_parts
+              the Pareto set is several parts that each map onto the whole
+              front (supplement 3 of task 7, §5.4), and how many: the
+              multimodal problems (mmo.parts; MMF6's pieces of a third and
+              fourth part not counted), IPolygon (its four polygons), and
+              minusDTLZ2 (2^k, every distance variable at 0 or 1). None
+              elsewhere — not classified, though most have one part
   front_dim   d, the dimension of the Pareto front (reviewer, 2026-09-29: to
               read a ratio to the IGD+ floor alike across M as ratio^(-d)):
               M - 1 for a regular front, 1 at two objectives; 1 for the curves
@@ -142,6 +163,15 @@ Besides Huband's vocabulary (task 4, item 5):
               a degenerate front is not one of those (DTLZ5/6 from four
               objectives and WFG3, which have a non-degenerate part besides,
               ZCAT17-20, part degenerate)
+  front_ref   "exact" where the registry's reference front lies on the true
+              front (BenchProblem.front_exact), "approximate" where it is an
+              approximation: RE and CRE (the authors' fronts), RE22c and
+              RE33c, RCM but RCM28 (this library's long runs), C2-ConvexDTLZ2
+              (a checked sample) and the failing copies whose region takes
+              some of the Pareto set; None without a reference front. A rank
+              table sets the approximate ones apart (campaign.rank_table)
+  front_built how an approximate reference front was built, in a sentence
+              (front_built below); None for an exact one
 
 MEASURED (task 6 of 2026-10-09). Where a problem has a Pareto-set sample
 (pareto_sets.py), measured() reads centre and boundary off it: the share of
@@ -163,7 +193,8 @@ from .rotated import SPECS as _ROTATED
 
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
         "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
-        "bbob_groups", "front_dim", "family_kind", "difficulty")
+        "bbob_groups", "front_dim", "family_kind", "difficulty", "multimodal_ps",
+        "ps_parts", "front_ref", "front_built")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, boundary,
@@ -315,12 +346,16 @@ def properties(name: str) -> dict | None:
         row["linkage"] = None
     from .registry import PROBLEMS
     p = PROBLEMS.get(name)
+    if p is not None and p.failing is not None and not len(p.pareto_set(10)):
+        # a failing copy (failing.py) whose region takes all of the base's
+        # Pareto set: the optimum moved to the region's edge, not known here
+        row["boundary"] = row["centre"] = None
     row["n_obj"] = p.n_obj if p is not None else m
     row["n_vars"] = p.n_vars if p is not None else None
     row["bbob_groups"] = None
     if stem.startswith("bbobbiobj"):
         from .bbob_biobj import PAIRS
-        fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
+        fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
     row["front_dim"] = _front_dim(stem, row["n_obj"], front)
     from ..families import is_engineering
@@ -334,7 +369,62 @@ def properties(name: str) -> dict | None:
         kinds = [k for k, v in (("diversity", eta), ("feasibility", zeta),
                                 ("convergence", gamma)) if v > 0]
         row["difficulty"] = "+".join(kinds) if kinds else "none"
+    elif stem.startswith("RCM") and stem[3:].isdigit():
+        # RWMOP's level (Kumar et al. 2021, §3.3.1): every algorithm of the
+        # paper feasible in every run on the mechanical problems, so "low"
+        row["difficulty"] = "low"
+    row["multimodal_ps"] = row["ps_parts"] = None
+    from . import mmo
+    if name in mmo.NAMES:
+        row["multimodal_ps"], row["ps_parts"] = True, mmo.parts(name)
+    elif stem == "IPolygon":
+        row["multimodal_ps"], row["ps_parts"] = True, 4
+    elif stem == "minusDTLZ2" and p is not None:
+        row["multimodal_ps"], row["ps_parts"] = True, 2 ** (p.n_vars - p.n_obj + 1)
+    row["front_ref"] = (None if p is None or not callable(p.pareto_front)
+                        else "approximate" if approximate_front(name) else "exact")
+    row["front_built"] = front_built(name)
     return row
+
+
+def approximate_front(name: str) -> bool:
+    """Is the registry's reference front of `name` an approximation
+    (BenchProblem.front_exact False)? False without one."""
+    from .registry import PROBLEMS
+    p = PROBLEMS.get(name)
+    return p is not None and callable(p.pareto_front) and not p.front_exact
+
+
+def front_built(name: str) -> str | None:
+    """How the approximate reference front of `name` was built (front_built
+    above); None for an exact one."""
+    if not approximate_front(name):
+        return None
+    from .registry import PROBLEMS
+    p = PROBLEMS[name]
+    if p.failing is not None:
+        if len(p.pareto_set(10)):
+            return ("the image of the base's Pareto-set sample outside the failing region "
+                    "(failing.py, THE FRONT)")
+        return ("the base's front, which no point outside the failing region reaches "
+                "(failing.py, THE FRONT)")
+    stem = name.split("_")[0]
+    if stem.startswith("RCM"):
+        from .rwmop import front_built as rcm_front_built
+        return rcm_front_built(int(stem[3:]))
+    if stem in ("RE22c", "RE33c"):
+        return ("an exhaustive grid, then local refinement, thinned by DSS to 500 M points "
+                "(re_fronts.py, benchmarks/_re/corrected/)")
+    if stem.startswith("CRE"):
+        return ("the feasible points of the authors' front of the RE problem it constrains "
+                "(reproblems, benchmarks/_re/)")
+    if stem.startswith("RE"):
+        return ("the authors' approximation, at most 500 M points of every non-dominated "
+                "point their optimizers found, as shipped (reproblems, benchmarks/_re/)")
+    if stem == "C2-ConvexDTLZ2":
+        return ("a sample of the convex front outside the cylinder and of the points behind "
+                "its hole that nothing dominates, each checked (c_dtlz.py, FRONTS)")
+    return "an approximation: the problem's module says how it was built"
 
 
 def _front_dim(stem: str, m: int, front: str | None) -> int | None:
@@ -346,6 +436,8 @@ def _front_dim(stem: str, m: int, front: str | None) -> int | None:
     if stem in ("DTLZ5", "DTLZ6") and m == 3:
         return 1
     if stem in ("ZCAT14", "ZCAT15", "ZCAT16"):
+        return 1
+    if stem == "DOC9":                               # the quarter circle at f3 = 0
         return 1
     if front is not None and "degenerate" in front:
         return None
@@ -410,6 +502,29 @@ def _huband(name: str) -> dict | None:
         if eta > 0 or gamma > 0 or i in (3, 6):
             shape += "+disconnected"
         return _p(shape, 4 <= i <= 8, False, False, False, False, False)
+    if stem.startswith("LIR-CMOP"):
+        # Fan et al. 2019, Table 6 and Fig. 1-2: 1 - x1^2 concave, 1 - sqrt(x1)
+        # convex, the sphere of 13-14; 3-4 and 9-12 cut into pieces (the
+        # window sin(20 pi x1) >= 0.5, the sine constraint), 7-8 on an
+        # ellipse's boundary, which bulges away from the origin
+        i = int(stem[len("LIR-CMOP"):])
+        shape = {1: "concave", 2: "convex", 3: "concave", 4: "convex", 5: "convex",
+                 6: "concave", 7: "concave", 8: "concave", 9: "concave", 10: "convex",
+                 11: "convex", 12: "concave", 13: "concave", 14: "concave"}[i]
+        if i in (3, 4) or 9 <= i <= 12:
+            shape += "+disconnected"
+        return _p(shape, False, False, False, False, False, False)
+    if stem.startswith("RCM") and stem[3:].isdigit():
+        # RWMOP's mechanical problems (rwmop.py): nothing of Huband's classified
+        return _p(None, None, None, None, None, None, None)
+    if stem.startswith("DOC") and stem[3:].isdigit():
+        # Liu and Wang 2019, Table I: the front's shape, and "multimodal"
+        # where the table names the problem so (DOC3, 5, 6, 7, 9)
+        i = int(stem[3:])
+        shape = {1: "concave", 2: "convex+disconnected", 3: "concave+disconnected",
+                 4: "linear+disconnected", 5: "linear+disconnected", 6: "mixed",
+                 7: "mixed", 8: "linear+disconnected", 9: "degenerate+concave"}[i]
+        return _p(shape, i in (3, 5, 6, 7, 9), False, False, False, False, False)
     if stem == "wideDTLZ3":
         row = dict(_DTLZ["DTLZ3"])
         row["centre"] = False
@@ -427,10 +542,16 @@ def _huband(name: str) -> dict | None:
     if stem.startswith("ZCAT") and stem[4:].isdigit():
         return _p(_ZCAT_FRONT[int(stem[4:])], False, False, True, False, False, False)
     if stem.startswith("bbobbiobj"):
+        # bbob-biobj-mixint (bbobbiobjmixint..) as its continuous pair: a
+        # discretized separable function stays separable
         from .bbob_biobj import PAIRS
-        fa, fb = PAIRS[int(stem[len("bbobbiobj"):]) - 1]
+        fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         return _p(None, fa in _BBOB_MULTIMODAL or fb in _BBOB_MULTIMODAL, False, None,
                   fa in _BBOB_SEPARABLE and fb in _BBOB_SEPARABLE, False, False)
+    if stem == "catZDT1":
+        # categorical.py: ZDT1's front, held by the multimodal g only, the
+        # easy ones just above it (deceptive); its optimum y = 0.5, medial
+        return _p("convex", True, False, False, False, True, False, deceptive=True)
     if stem.startswith("MOP") and stem[3:].isdigit():
         i = int(stem[3:])
         return _p(_MOP_FRONT[i], _MOP_MULTIMODAL[i], None, False, False, False, False)
@@ -443,7 +564,20 @@ def _huband(name: str) -> dict | None:
     if stem == "IPolygon":
         return _p("linear+degenerate" if m >= 4 else "linear", True, False, False, False, False,
                   False)
+    from . import mmo
+    if name in mmo.NAMES:
+        ideal, nadir = mmo.frame(name)
+        span = [b - a for a, b in zip(ideal, nadir)]
+        return _p(_MMO_FRONT.get(name, "convex"), True, None, max(span) >= 2 * min(span), None,
+                  None, False)
     return None
+
+
+# the CEC 2019 report's Table I, "Pareto front geometry"; MMF12's pieces
+# disconnected besides
+_MMO_FRONT = {"MMF4": "concave", "MMF8": "concave", "MMF12": "convex+disconnected",
+              "MMF14": "concave", "MMF14_a": "concave", "MMF15": "concave",
+              "MMF15_a": "concave"}
 
 
 def interior(name: str) -> bool:
@@ -474,7 +608,8 @@ def measured(name: str, n: int = 300) -> dict | None:
     """centre and boundary read off the problem's Pareto-set sample (MEASURED
     above): the shares of the distance variables' values within 1e-9 of the
     middle of the range and of a bound, in units of the range, and the flags
-    at 99 %; None where the problem has no sample."""
+    at 99 %; None where the problem has no sample, or an empty one (a failing
+    copy whose region takes all of its base's Pareto set)."""
     import numpy as np
     from .registry import PROBLEMS
     p = PROBLEMS[name]
@@ -482,6 +617,8 @@ def measured(name: str, n: int = 300) -> dict | None:
         return None
     k = _positions(name, p.n_obj)
     X = np.asarray(p.pareto_set(n), float)[:, k:]
+    if not len(X):
+        return None
     lo = np.array([b[0] for b in p.bounds], float)[k:]
     hi = np.array([b[1] for b in p.bounds], float)[k:]
     U = (X - lo) / (hi - lo)

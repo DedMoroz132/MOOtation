@@ -16,7 +16,8 @@
 //   de_pbest  current-to-pbest/1/bin (JADE, Eqs. 6-7 and Table I): v = x +
 //             F·(x_pbest − x) + F·(x_r1 − x̃_r2), x the target (p1 for the first
 //             child, p2 for the second), x_pbest a random member of the best
-//             ⌈p·N⌉ (de_p, 0.1; JADE's p, "5-20 %"), x_r1 from the host's mating
+//             ⌈p·N⌉ (de_p, 0.1; JADE's p, "5-20 %"; with SHADE p is drawn
+//             per child, below), x_r1 from the host's mating
 //             selection and x̃_r2 from the population ∪ the archive. WHAT "BEST"
 //             MEANS IS THE HOST'S OWN ORDER, the one its selection uses (nsga2:
 //             rank, then crowding distance; ibea_eplus: fitness; spea2_sde:
@@ -33,18 +34,19 @@
 //
 // ADAPTATION (de_adapt = "shade"; "none" by default, F and CR fixed) after
 // SHADE (Tanabe & Fukunaga, "Success-history based parameter adaptation for
-// differential evolution", CEC 2013, pp. 71-78, doi:10.1109/CEC.2013.6557555)
-// — WRITTEN FROM THE TASK AND FROM MEMORY: the paper is not in the corpus yet,
-// to be checked against it.
-//   memory   H cells (μ_CR, μ_F), H = de_memory (5), all 0.5 at the start
-//   draw     per child a random cell r; CR ~ N(μ_CR[r], 0.1) clipped to [0, 1];
-//            F ~ Cauchy(μ_F[r], 0.1), drawn again while F ≤ 0, cut to 1 above
-//            1 (JADE's Eqs. 8 and 10, cell by cell)
+// differential evolution", CEC 2013, pp. 71-78, doi:10.1109/CEC.2013.6557555;
+// source shade_tanabe2013: §V and Algorithm 1):
+//   memory   H cells (M_CR, M_F), H = de_memory (5), all 0.5 at the start
+//   draw     per child a random cell r; CR ~ N(M_CR[r], 0.1) clipped to [0, 1];
+//            F ~ Cauchy(M_F[r], 0.1), drawn again while F ≤ 0, cut to 1 above
+//            1 (Eqs. 15-16, out-of-range values as in JADE, §IV-C)
+//   p        de_pbest only: per child p = rand[p_min, 0.2], p_min = 2/N (Eq.
+//            20, Algorithm 1 line 12), in place of de_p
 //   update   after every generation of the host (as many children judged as
 //            the population has members) with at least one success:
-//            cell k = μ_CR ← Σ w·CR (weighted mean), μ_F ← Σ w·F² / Σ w·F
-//            (weighted Lehmer mean), k cycling through the cells; an empty
-//            success set leaves the memory alone
+//            cell k = M_CR ← Σ w·CR (weighted mean), M_F ← Σ w·F² / Σ w·F
+//            (weighted Lehmer mean, Eqs. 17-19), k cycling through the cells
+//            (lines 27-30); an empty success set leaves the memory alone
 // SUCCESS here is multi-objective: the child is in the next population, the
 // host's selection kept it (found by its variables) — SHADE's f(u) < f(x) has
 // no meaning with several objectives. The weights (de_adapt_weight): "equal"

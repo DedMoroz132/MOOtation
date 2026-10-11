@@ -96,8 +96,7 @@ private:
     // introduce a scale of their own: an absolute 1e-12 compared against a
     // norm in objective space fires at different points depending on the
     // magnitude of the objectives, which made the algorithm's result depend
-    // on the units (measured 2026-09-09: IGD moved 1.6 % on DTLZ2 scaled by
-    // 2^10, and the offset stayed at every larger factor). The test is now
+    // on the units. The test is now
     // "is it exactly zero", which is scale-free and guards the same division.
 
     double       eta_c_ = 20.0;   // §IV-A.3
@@ -478,9 +477,7 @@ private:
         // translates by its minimum, while line 9 hands this selection P ∪ O
         // and line 3 translates by the minimum of that; when an offspring
         // improves an objective's minimum, reference points and solutions sit
-        // one offset apart. That is the letter of Alg.1, 3 and 5 and is kept. A
-        // comparison with PlatEMO (2026-09) reports that the authors' code uses
-        // one accumulated minimum throughout. The offset is one generation's
+        // one offset apart. That is the letter of Alg.1, 3 and 5 and is kept. The offset is one generation's
         // improvement, so it matters early in a run and fades as it converges.
         std::vector<double> zmin(m, std::numeric_limits<double>::max());
         for (int i = 0; i < pool; ++i) {
@@ -564,13 +561,9 @@ public:
     // "R' <- R" of Alg.1 line 4 has to land in the same coordinates, or the
     // first generation compares unit-simplex points against objectives of
     // whatever magnitude the problem happens to use. FIX 2026-09-09: this was
-    // the last scale dependence in the file - with the raw copy, multiplying
-    // every objective of DTLZ2 (M=3) by 2^10 moved the final IGD by 1.6 %, and
-    // by the same 1.6 % at 2^20 and 2^30, the signature of a one-off mismatch
-    // rather than a growing failure. The paper's R' and R live in one space;
-    // only this port kept them in two. At the native scale the fix is free:
-    // 3 seeds, 30 000 FE, median IGD DTLZ2 0.05432 and ZDT1 0.00395, the
-    // same numbers as before it.
+    // the last scale dependence in the file — with the raw copy a common
+    // factor on the objectives changed the run. The paper's R' and R live in
+    // one space; only this port kept them in two.
     std::vector<std::vector<double>> scaled_reference(DataVault<Ind_t>& vault,
                                                       int n) const {
         const int m = vault.objs_n();
@@ -597,7 +590,6 @@ public:
         R0_ = das_dennis::generate_auto(m, target);
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -606,7 +598,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dr(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables(i, vars);
         }

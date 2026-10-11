@@ -4,9 +4,9 @@
 Z. Ma, Y. Wang, "Evolutionary constrained multiobjective optimization: test
 suite construction and performance comparisons", IEEE TEVC 23(6):972-986,
 2019, doi:10.1109/TEVC.2019.2896967 (task 6 of 2026-10-09, item 5), Eqs.
-12-28, read on the PDF's pages 6-8, and checked against pymoo 0.6.2's mw.py
-(Apache-2.0, "based on the C++ implementation by Ma and Wang") at fixed
-points. n = 15 variables, as in the paper's experiments (Section IV-C); MW4,
+12-28, read on the PDF's pages 6-8. Values checked against pymoo 0.6.2's
+mw.py (Apache-2.0, "based on the C++ implementation by Ma and Wang") at 85
+points, reference in python/test_run_layer.py (MW_PYMOO). n = 15 variables, as in the paper's experiments (Section IV-C); MW4,
 MW8 and MW14 at m = 3 and 5 objectives with n = m + 12 (Section IV-H: n =
 m - 1 + 13). Boxes: [0, 1]^n, MW6 [0, 1.1]^n, MW11 [0, sqrt 2]^n, MW13 and
 MW14 [0, 1.5]^n (Table II).
@@ -19,8 +19,7 @@ The distance functions, i = m..n counted from 1 (Eqs. 12-14):
 
 THE SIGN. The paper writes each constraint as c >= 0 or c <= 0; the
 library's convention is a value <= 0 when satisfied: -c for the first kind,
-c for the second, in the paper's order. (pymoo puts MW12's and MW13's two
-constraints the other way round.)
+c for the second, in the paper's order.
 
 READINGS:
   MW-1  MW11's distance function is g3 in Table II and in the authors' code
@@ -30,8 +29,8 @@ READINGS:
         outside), as in pymoo.
   MW-3  The square roots of MW5, MW6, MW7 and MW11 are taken of max(0, .):
         at x1 on its upper bound, (f1/g)^2 can exceed the constant by one
-        rounding (MW11: (g sqrt 2 / g)^2 = 2.0000000000000004), and pymoo's
-        code returns NaN there — where a clipping repair puts points.
+        rounding (MW11: (g sqrt 2 / g)^2 = 2.0000000000000004), and the root
+        would be NaN there — where a clipping repair puts points.
 
 THE FRONTS. The objective vectors a problem can reach are those of x1 (the
 positions) and of every g from 1 up: MW1-3's front moved up by g - 1 (f2 =

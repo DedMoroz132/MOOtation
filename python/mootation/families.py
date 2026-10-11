@@ -9,16 +9,19 @@ from __future__ import annotations
 # the noisy copies' suffixes (benchmarks/noisy.py, LEVELS)
 NOISE_LEVELS = ("n1", "n5", "d1", "d5", "s1", "s5", "h1", "h5")
 CONTROLS = ("r0", "c0")          # the Q = I controls of benchmarks/rotated.py
-ENGINEERING = ("RE", "CRE")      # the real-world problems of benchmarks/re.py
+ENGINEERING = ("RE", "CRE", "RCM")   # the real-world problems: re.py, rwmop.py
 
 
 def family(name: str) -> str:
     """DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT: the name's stem without
-    its digits. A noisy copy (ZDT1_n1, DTLZ2_3D_s5) -> noisy; a control of the rotated
+    its digits. A noisy copy (ZDT1_n1, DTLZ2_3D_s5) -> noisy, a failing one
+    (ZDT1_fail10r, benchmarks/failing.py) -> failing; a control of the rotated
     problems keeps its prefix, r0DTLZ1 -> r0DTLZ and c0DTLZ2 -> c0DTLZ, apart
     from rDTLZ and rcDTLZ."""
     if "_" in name and name.rsplit("_", 1)[1] in NOISE_LEVELS:
         return "noisy"
+    if "_" in name and name.rsplit("_", 1)[1].startswith("fail"):
+        return "failing"
     stem = name.split("_")[0]
     if stem[:2] == "RE" and stem.endswith("c") and stem[2:-1].isdigit():
         return "RE"                          # the corrected RE22c, RE33c

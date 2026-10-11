@@ -54,20 +54,21 @@
 //   - NSGA3-N3 (the port's value). The ASF of each axis is formed "with a
 //     weight vector close to ith objective axis"; Part I gives no number, and
 //     the off-axis weights here are 1e-6, the usual choice.
-//   - NSGA3-S (task 7 of 2026-10-10, supplement 2). survival = "stochastic":
-//     the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023,
-//     doi:10.24963/ijcai.2023/612) carried over as in NSGA-II: Q' of
-//     ⌊spu_frac·2N⌋ members of R_t (spu_frac 3/4) drawn uniformly without
+//   - NSGA3-S (task 7 of 2026-10-10, supplements 2 and 3). survival =
+//     "stochastic": the stochastic population update of Opris, "A First
+//     Runtime Analysis of NSGA-III on a Many-Objective Multimodal Problem:
+//     Provable Exponential Speedup via Stochastic Population Update", IJCAI
+//     2025, doi:10.24963/ijcai.2025/990 (source nsga3-sp-update_opris2025_arxiv,
+//     Algorithm 1, lines 9-18), after Bian, Zhou, Li & Qian (IJCAI 2023): Q' of
+//     ⌈spu_frac·2N⌉ members of R_t (spu_frac 3/4: Opris's ⌈3µ/2⌉; NSGA-II
+//     takes Bian's ⌊3|Q|/4⌋, the same at an even N) drawn uniformly without
 //     replacement (a partial Fisher-Yates shuffle of the slots), steps 2-5 —
 //     the fronts, the normalization, the association and the niching — on Q'
-//     alone keep |Q'| − N of it, and every member of R_t \ Q' survives. For
-//     NSGA-III only the abstract of Opris (IJCAI 2025) was read — an
-//     exponential speed-up on many-objective OJZJ and RRMO "for some parameter
-//     regimes" — so how it draws Q', and at what share, is NOT checked against
-//     it: this is the NSGA-II scheme, to be compared with the paper. The
-//     normalization's history (NSGA3-N1) takes in Q'-only generations too.
-//     spu_frac = 1 draws nothing and is greedy bit for bit; |Q'| < N is
-//     refused. inner_archive, inner_archive_cap, archive_reuse_p
+//     alone keep |Q'| − N of it (Opris's ⌈µ/2⌉), and every member of R_t \ Q'
+//     survives. Opris's normalization is Wietheger & Doerr's (2023), here the
+//     library's NSGA-III one; the normalization's history (NSGA3-N1) takes in
+//     Q'-only generations too. spu_frac = 1 draws nothing and is greedy bit
+//     for bit; |Q'| < N is refused. inner_archive, inner_archive_cap, archive_reuse_p
 //     (operators/inner_archive.hpp): an archive of every non-dominated point
 //     evaluated; each parent, with probability archive_reuse_p, a member drawn
 //     uniformly instead of the random (or CV-tournament) choice.
@@ -586,7 +587,6 @@ public:
 
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -595,7 +595,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dr(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables    (i, vars);
         }
@@ -697,10 +697,11 @@ public:
         const int n = vault.pop_size();
         int pool = 2 * n, keep = n;
         if (stochastic_ && spu_frac_ < 1.0) {
-            pool = static_cast<int>(std::floor(spu_frac_ * 2 * n));
+            // Opris's ceil(3 mu / 2); the 1e-9 keeps 0.75 * 20 = 15 at 15
+            pool = static_cast<int>(std::ceil(spu_frac_ * 2 * n - 1e-9));
             if (pool < n)
                 throw std::invalid_argument("spu_frac = " + std::to_string(spu_frac_) +
-                                            " makes |Q'| = floor(spu_frac 2N) smaller than the "
+                                            " makes |Q'| = ceil(spu_frac 2N) smaller than the "
                                             "population " + std::to_string(n));
             for (int i = 0; i < pool; ++i) {
                 std::uniform_int_distribution<int> any(i, 2 * n - 1);

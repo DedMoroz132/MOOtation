@@ -56,9 +56,8 @@
 //
 // DECLARED DEVIATIONS:
 //   SMSM2M-1 (DEVIATION, letter of the paper). Algorithm 2: refill with RANDOM
-//     solutions from Q (as in the M2M primary source). The M2M reference in
-//     PlatEMO refills by angle; we follow the letter of the paper. This is also
-//     ablation point A3.
+//     solutions from Q (as in the M2M primary source), the letter of the
+//     paper. This is also ablation point A3.
 //   SMSM2M-2 (DEVIATION, letter of the paper). §2.7 sets p_m=1/popsiz (and NOT
 //     the usual 1/n_vars). Implemented literally: pm=1/pop_size. It can be
 //     overridden to 1/n_vars via set_pm if desired.
@@ -415,7 +414,6 @@ public:
         int N = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dist(0.0, 1.0);
-        std::uniform_int_distribution<int>     dist_bin(0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < N; ++i) {
@@ -424,7 +422,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dist(rng_)*(hi-lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = dist_bin(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables(i, vars);
         }

@@ -36,10 +36,7 @@
 //       (NSGA-III / PlatEMO).
 //   (d) The reference set is the K Ward centroids and nothing else: Algorithm 2
 //       computes the centres of the K clusters of the normalized f_l (lines
-//       2-6) and returns them. A comparison with PlatEMO (2026-09) reports
-//       that its CA-MOEA adds the extreme points of the last front on every
-//       objective to the centres; Algorithm 2 does not, and the letter is
-//       kept. That code is not read here.
+//       2-6) and returns them; the letter is kept.
 //
 // Formulas:
 //   (2) C_i^c = (Sum_j p_{j,i}^c)/n   — the centroid of cluster c
@@ -295,7 +292,6 @@ public:
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int>     db(0, 1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -304,7 +300,7 @@ public:
                 double hi = bounds[j].second.value_or(1.0);
                 vars[j] = lo + dr(rng_) * (hi - lo);
             }
-            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = db(rng_);
+            for (int j = 0; j < vault.bin_vars_n(); ++j) bvars[j] = ops::random_gene(j, rng_);
             if (vault.bin_vars_n() > 0) vault.set_all_variables(i, vars, bvars);
             else                        vault.set_variables(i, vars);
         }
