@@ -1061,6 +1061,9 @@ std::vector<std::string> algorithm_names()
 
 } // namespace
 
+// python/run_layer_module.cpp: the run layer's numerics
+void bind_run_layer(py::module_& m);
+
 PYBIND11_MODULE(_core, m)
 {
     m.doc() = "MOOtation — multi- and many-objective evolutionary algorithms";
@@ -1280,6 +1283,7 @@ PYBIND11_MODULE(_core, m)
           "The first k indices of `points` in DSS order, as DMS selects its answer "
           "(include/mootation/dss.hpp); the same order as "
           "mootation.run.archive.dss_order in the set's own frame.");
+    bind_run_layer(m);
     m.def("hv_contributions",
           [](const std::vector<std::vector<double>>& points, const std::vector<double>& ref,
              std::size_t samples_per_point, unsigned seed) {

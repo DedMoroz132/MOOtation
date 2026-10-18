@@ -461,14 +461,10 @@ def nadir(M: int) -> tuple:
 
 # ---- reference front ------------------------------------------------
 def _nondominated_mask(F: np.ndarray) -> np.ndarray:
-    keep = np.ones(len(F), bool)
-    for i in range(len(F)):
-        if not keep[i]:
-            continue
-        dom = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
-        if np.any(dom):
-            keep[i] = False
-    return keep
+    """Which rows no other row dominates, copies all kept (run.metrics, in C++
+    where the extension is built)."""
+    from ..run.metrics import nondominated_mask
+    return nondominated_mask(F)
 
 
 def _nondominated(F: np.ndarray) -> np.ndarray:

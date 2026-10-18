@@ -17,6 +17,14 @@ settings of hypervolume() and of a campaign (hv_exact_max_m, hv_mc_samples).
 The exact value comes from the compiled extension (include/mootation/
 hypervolume.hpp, about a thousand times faster) when it is built, and from
 the Python recursion below otherwise; the two agree to rounding.
+
+THE COMPILED HALF (task 10 of 2026-10-18). The nondominated filter, the
+distances behind IGD, IGD+, GD+ and the additive epsilon, and the discrete R2
+are computed in C++ when the extension is built (include/mootation/
+nondominated.hpp and indicators.hpp; python/run_layer_module.cpp), with the
+same expressions and NumPy's order of summation, so the values are the same
+bit for bit; the NumPy code below stays as the reference the tests compare
+with (the functions named *_numpy) and runs where the extension is not built.
 """
 
 from __future__ import annotations
@@ -27,15 +35,43 @@ HV_EXACT_MAX_M = 5
 HV_MC_SAMPLES = 100_000
 
 
+def _compiled(name: str):
+    """The extension's function `name`, or None where the extension is not
+    built (or is older than this module)."""
+    try:
+        from .. import _core
+    except ImportError:                              # pragma: no cover - no extension
+        return None
+    return getattr(_core, name, None)
+
+
+def _plain(*arrays) -> bool:
+    """Every array 2-D with rows and columns, the shape the compiled functions take."""
+    return all(a.ndim == 2 and len(a) and a.shape[1] for a in arrays)
+
+
 def nondominated(F: np.ndarray) -> np.ndarray:
-    """Distinct rows of F that no other row dominates (minimisation).
+    """Distinct rows of F that no other row dominates (minimisation), in
+    lexicographic order (np.unique's).
 
     Each distinct row is kept once. Equal rows do not dominate each other, so
     without this every copy survives, and the WFG recursion below — whose
     limit sets are full of rows clipped to the same values — branches on every
     copy: a 126-point set with 11 distinct rows, which a MOEA/D-AM2M population
     at generation 0 is, ran for more than ten minutes instead of milliseconds.
+    In C++ (include/mootation/nondominated.hpp) when the extension is built:
+    O(n log n) at two and three objectives; of two rows equal but for the sign
+    of a zero the first is kept, where np.unique keeps either.
     """
+    F = np.asarray(F, float)
+    fn = _compiled("nondominated")
+    if fn is not None and len(F) > 1 and _plain(F):
+        return F[fn(F)]
+    return _nondominated_numpy(F)
+
+
+def _nondominated_numpy(F: np.ndarray) -> np.ndarray:
+    """nondominated() in NumPy: the reference."""
     F = np.asarray(F, float)
     if len(F) > 1:
         F = np.unique(F, axis=0)
@@ -53,6 +89,18 @@ def nondominated(F: np.ndarray) -> np.ndarray:
 
 def igd(F: np.ndarray, ref: np.ndarray) -> float:
     """Mean over the reference front of the distance to the nearest point of F."""
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
+    if F.size == 0:
+        return float("inf")
+    fn = _compiled("igd_distances")
+    if fn is not None and _plain(F, ref) and F.shape[1] == ref.shape[1]:
+        return float(fn(F, ref).mean())
+    return _igd_numpy(F, ref)
+
+
+def _igd_numpy(F: np.ndarray, ref: np.ndarray) -> float:
+    """igd() in NumPy: the reference."""
     F = np.asarray(F, float)
     ref = np.asarray(ref, float)
     if F.size == 0:
@@ -97,6 +145,16 @@ def dplus_distances(F: np.ndarray, ref: np.ndarray) -> np.ndarray:
     """d+(z, F) for every reference point z: the vector IGD+ is the mean of."""
     F = np.asarray(F, float)
     ref = np.asarray(ref, float)
+    fn = _compiled("front_distances")
+    if fn is not None and _plain(F, ref) and F.shape[1] == ref.shape[1]:
+        return fn(F, ref)[0]
+    return _dplus_distances_numpy(F, ref)
+
+
+def _dplus_distances_numpy(F: np.ndarray, ref: np.ndarray) -> np.ndarray:
+    """dplus_distances() in NumPy: the reference."""
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
     out = np.empty(len(ref))
     for a in range(0, len(ref), 512):                 # bounded memory on big fronts
         R = ref[a:a + 512]
@@ -113,6 +171,16 @@ def front_distances(F: np.ndarray, ref: np.ndarray) -> tuple:
     for every z (eps_plus's). The same arithmetic as igd_plus, gd_plus,
     dplus_distances and eps_plus, element for element, so the values are the
     same."""
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
+    fn = _compiled("front_distances")
+    if fn is not None and _plain(F, ref) and F.shape[1] == ref.shape[1]:
+        return fn(F, ref)
+    return _front_distances_numpy(F, ref)
+
+
+def _front_distances_numpy(F: np.ndarray, ref: np.ndarray) -> tuple:
+    """front_distances() in NumPy: the reference."""
     F = np.asarray(F, float)
     ref = np.asarray(ref, float)
     to_set = np.empty(len(ref))
@@ -190,15 +258,37 @@ def _hv_exact(pl: np.ndarray, ref: np.ndarray) -> float:
     return _hv_wfg(pl, ref)
 
 
+_MC_DRAWS: dict = {}
+_MC_DRAWS_KEPT = 8                 # (objectives, samples, seed) kept per process
+
+
+def _mc_draws(m: int, samples: int, seed: int) -> list:
+    """The uniform draws behind _hv_mc, in [0, 1)^m: NumPy's generator with
+    `seed`, in chunks of 20 000 rows. Drawn once per (m, samples, seed) and
+    process and kept (a trajectory asks for the same points at every record),
+    the same numbers as drawing them on every call."""
+    key = (int(m), int(samples), int(seed))
+    if key not in _MC_DRAWS:
+        if len(_MC_DRAWS) >= _MC_DRAWS_KEPT:
+            _MC_DRAWS.pop(next(iter(_MC_DRAWS)))
+        rng = np.random.default_rng(seed)
+        chunks, done = [], 0
+        while done < samples:
+            k = min(20_000, samples - done)
+            chunks.append(rng.random((k, m)))
+            done += k
+        _MC_DRAWS[key] = chunks
+    return _MC_DRAWS[key]
+
+
 def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: int) -> float:
     """Monte-Carlo hypervolume: the box [lo, ref] times the share of `samples`
     uniform points in it that some row of `pl` weakly dominates.
 
-    The points are drawn here, from NumPy's generator with `seed`, and only
-    counted by the compiled hv_covered when the extension is built, so the
-    estimate does not depend on which of the two counted it.
+    The points are drawn from NumPy's generator with `seed` (_mc_draws), and
+    only counted by the compiled hv_covered when the extension is built, so
+    the estimate does not depend on which of the two counted it.
     """
-    rng = np.random.default_rng(seed)
     box = np.prod(ref - lo)
     if box <= 0:
         return 0.0
@@ -209,11 +299,9 @@ def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: 
         count = None
     pl = np.ascontiguousarray(pl, float)
     hit = 0
-    chunk = 20_000
-    done = 0
-    while done < samples:
-        k = min(chunk, samples - done)
-        s = lo + rng.random((k, len(ref))) * (ref - lo)
+    for U in _mc_draws(len(ref), samples, seed):
+        k = len(U)
+        s = lo + U * (ref - lo)
         if count is not None:
             hit += int(count(pl, np.ascontiguousarray(s)))
         else:
@@ -222,7 +310,6 @@ def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: 
             for row in pl:
                 covered |= np.all(row[None, :] <= s, axis=1)
             hit += int(covered.sum())
-        done += k
     return float(box * hit / samples)
 
 
@@ -270,6 +357,18 @@ def eps_plus(F: np.ndarray, ref: np.ndarray) -> float:
     IGD+, not instead of it — but it is the one indicator whose value reads
     directly: no worse than the front by more than eps in any objective.
     """
+    F = np.asarray(F, float)
+    ref = np.asarray(ref, float)
+    if F.size == 0:
+        return float("inf")
+    fn = _compiled("front_distances")
+    if fn is not None and _plain(F, ref) and F.shape[1] == ref.shape[1]:
+        return float(fn(F, ref)[2].max())
+    return _eps_plus_numpy(F, ref)
+
+
+def _eps_plus_numpy(F: np.ndarray, ref: np.ndarray) -> float:
+    """eps_plus() in NumPy: the reference."""
     F = np.asarray(F, float)
     ref = np.asarray(ref, float)
     if F.size == 0:
@@ -357,6 +456,9 @@ def nd_share(F: np.ndarray) -> float:
     n = len(F)
     if n == 0:
         return 0.0
+    fn = _compiled("nondominated_mask")
+    if fn is not None and _plain(F):
+        return float(1.0 - (~fn(F)).mean())
     le = np.all(F[:, None, :] <= F[None, :, :], axis=2)      # le[j, i]: F_j <= F_i
     lt = np.any(F[:, None, :] < F[None, :, :], axis=2)
     dominated = np.any(le & lt, axis=0)
@@ -555,6 +657,14 @@ def r2_discrete(F, ideal, nadir, h: int) -> float:
     span[span <= 0] = 1.0
     G = (np.asarray(F, float) - ideal) / span
     W = das_dennis(G.shape[1], h)
+    fn = _compiled("r2_mean")
+    if fn is not None and _plain(W) and G.ndim == 2 and G.shape[1] == W.shape[1]:
+        return float(fn(np.ascontiguousarray(G), W))
+    return _r2_numpy(G, W)
+
+
+def _r2_numpy(G: np.ndarray, W: np.ndarray) -> float:
+    """r2_discrete()'s mean over the weights in NumPy: the reference."""
     best = np.full(len(W), np.inf)
     for a in range(0, len(G), 256):                  # (weights, points) in blocks
         u = (W[:, None, :] * G[None, a:a + 256, :]).max(axis=2)
@@ -596,7 +706,17 @@ def magnitude(F, ideal, nadir, *, ref_scale: float) -> float:
 
 
 def nondominated_mask(F) -> np.ndarray:
-    """Which rows of F no other row dominates (minimisation); copies all kept."""
+    """Which rows of F no other row dominates (minimisation); copies all kept.
+    In C++ when the extension is built (nondominated())."""
+    F = np.asarray(F, float)
+    fn = _compiled("nondominated_mask")
+    if fn is not None and _plain(F):
+        return fn(F)
+    return _nondominated_mask_numpy(F)
+
+
+def _nondominated_mask_numpy(F) -> np.ndarray:
+    """nondominated_mask() in NumPy: the reference."""
     F = np.asarray(F, float)
     keep = np.ones(len(F), bool)
     for i in range(len(F)):

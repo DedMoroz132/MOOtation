@@ -1429,7 +1429,11 @@ def campaign_record_at_and_ladder_expand_as_documented():
                      ("record_at = [10000, 2500, 5000]", "record_at = 2500"),
                      ("ladder = [2500, 10000, 30000]", 'ladder = ["x"]')):
         raises(ConfigError, C.campaign_spec, loads(_LADDER.replace(old, bad)))
-    raises(ConfigError, C.campaign_spec, loads(_LADDER.replace('record_grid = "log"' + nl, "")))
+    # record_at needs a grid of evaluation counts: "budgets" (the default) or "log"
+    no_grid = loads(_LADDER.replace('record_grid = "log"' + nl, ""))
+    assert C.campaign_spec(no_grid).record_grid == "budgets"
+    raises(ConfigError, C.campaign_spec,
+           loads(_LADDER.replace('record_grid = "log"', 'record_grid = "generations"')))
     # without a ladder the job list is the one it always was
     plain = loads(_LADDER.replace("ladder = [2500, 10000, 30000]" + nl, ""))
     assert validate(plain) == []
@@ -6136,6 +6140,7 @@ out = "res"
 budget_fe = 600
 metrics = ["igdp_norm"]
 coords_diag = true
+record_grid = "generations"
 """
     with tempfile.TemporaryDirectory() as td:
         cfg_path = Path(td) / "co.toml"
@@ -7901,6 +7906,304 @@ snapshot_variables = "pareto_set"
                     assert abs(u[k] - t[k]) <= 1e-5 * max(1.0, abs(t[k])), (prob, k, t[k], u[k])
                 if prob == "WFG4_2D":
                     assert "pdist" not in u and "igdx" not in u, u
+
+
+# ── task 10: the run layer's numerics in C++, against their NumPy reference ──
+
+def _sets(rng, count, m_values, n_max):
+    """Random point sets with the cases that break filters: copies of rows,
+    equal coordinates (values on a coarse grid), a constant objective."""
+    import numpy as np
+    for t in range(count):
+        m = int(m_values[t % len(m_values)])
+        n = int(rng.integers(2, n_max + 1))
+        kind = t % 4
+        if kind == 0:
+            F = rng.random((n, m))
+        elif kind == 1:
+            F = rng.integers(0, 4, (n, m)).astype(float)              # many ties and copies
+        elif kind == 2:
+            F = rng.random((n, m))
+            F[rng.integers(0, n, n // 3)] = F[rng.integers(0, n, n // 3)]   # copies
+        else:
+            F = rng.random((n, m))
+            F[:, int(rng.integers(0, m))] = 0.5                       # a constant objective
+            # a front: rows on a simplex, none dominating another
+            if m >= 2 and n > 3:
+                W = rng.random((n // 2, m))
+                F[: n // 2] = W / W.sum(axis=1, keepdims=True)
+        yield F
+
+
+@test
+def the_compiled_nondominated_filter_is_the_numpy_one():
+    if not _have_numpy() or _core_with("nondominated") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(10)
+    for F in _sets(rng, 10_000, range(2, 11), 40):
+        got, want = M.nondominated(F), M._nondominated_numpy(F)
+        assert got.shape == want.shape and got.tobytes() == want.tobytes(), (F, got, want)
+        assert (M.nondominated_mask(F) == M._nondominated_mask_numpy(F)).all(), F
+    for m in (2, 3, 4, 6):                            # larger sets: the O(n log n) paths
+        F = np.vstack([rng.random((1500, m)), rng.integers(0, 5, (500, m)).astype(float)])
+        assert M.nondominated(F).tobytes() == M._nondominated_numpy(F).tobytes(), m
+        assert (M.nondominated_mask(F) == M._nondominated_mask_numpy(F)).all(), m
+    # rows with a NaN: kept, and neither dominating nor dominated
+    F = np.array([[0.2, 0.3], [np.nan, 0.0], [0.1, np.nan], [0.5, 0.5], [0.2, 0.3], [0.0, 1.0]])
+    got, want = M.nondominated(F), M._nondominated_numpy(F)
+    assert np.array_equal(got, want, equal_nan=True), (got, want)
+    assert (M.nondominated_mask(F) == M._nondominated_mask_numpy(F)).all()
+    try:                                              # cross-check, where moocore is installed
+        import moocore
+    except ImportError:
+        moocore = None
+    if moocore is not None:
+        for m in (2, 3, 5):
+            F = rng.random((800, m))
+            ours = {tuple(r) for r in M.nondominated(F)}
+            theirs = {tuple(r) for r in np.asarray(moocore.filter_dominated(F))}
+            assert ours == theirs, m
+
+
+def _stream(rng, m, n, kind):
+    """A sequence of points for an archive: moving towards a front, with copies,
+    points outside the frame, and integer values where cells and corners tie."""
+    import numpy as np
+    out = []
+    for i in range(n):
+        if kind == "int":
+            f = rng.integers(0, 6, m).astype(float)
+        else:
+            w = rng.random(m)
+            w /= w.sum()
+            scale = 1.0 + 3.0 * (1.0 - i / n) * rng.random()
+            f = w * scale + 0.002 * rng.standard_normal(m)
+            if rng.random() < 0.02:
+                f = f * 50.0                               # an outlier: the frame drifts
+        out.append(f)
+        if rng.random() < 0.05:
+            out.append(out[int(rng.integers(0, len(out)))].copy())   # a copy
+    return np.array(out)
+
+
+@test
+def the_compiled_archive_keeps_the_python_archives_points():
+    if not _have_numpy() or _core_with("GridArchive") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.run.archive import GridArchive, PyGridArchive
+    rng = np.random.default_rng(11)
+    cases = [(2, "real", True), (2, "real", False), (3, "real", True), (3, "real", False),
+             (3, "int", False), (4, "int", True), (5, "real", True), (5, "real", False),
+             (8, "real", False), (10, "int", False)]
+    for m, kind, framed in cases:
+        F = _stream(rng, m, 3000 if m <= 3 else 1500, kind)
+        X = rng.random((len(F), 3))
+        frame = dict(ideal=np.zeros(m), nadir=np.full(m, 1.5)) if framed else {}
+        a = GridArchive(m, 3, **frame)
+        b = PyGridArchive(m, 3, **frame)
+        c = GridArchive(m, 3, **frame)
+        for i in range(len(F)):
+            assert a.add(F[i], X[i]) == b.add(F[i], X[i]), (m, kind, i)
+            if i % 97 == 0 or i == len(F) - 1:
+                pa, pb = a.points(), b.points()
+                for u, v in zip(pa, pb):
+                    assert u.tobytes() == v.tobytes(), (m, kind, framed, i)
+                fa, fb = a.frame(), b.frame()
+                assert all(np.array_equal(u, v) for u, v in zip(fa, fb)), (m, kind, i)
+        c.add_many(F[:1000], X[:1000])
+        c.add_many(F[1000:], X[1000:])
+        for u, v in zip(c.points(), b.points()):
+            assert u.tobytes() == v.tobytes(), (m, kind, framed, "add_many")
+        assert a.info() == c.info() == b.info(), (a.info(), b.info())
+        for method in ("dss", "igdp_self"):
+            k = min(len(a), 30)
+            assert a.select(k, method).tolist() == b.select(k, method).tolist(), (m, method)
+    # what is not a point of the archive's shape is counted, not stored
+    a, b = GridArchive(2), PyGridArchive(2)
+    for f in ([0.1, 0.2, 0.3], [np.nan, 0.0], [np.inf, 1.0], [0.4, 0.4]):
+        assert a.add(f) == b.add(f)
+    assert a.info() == b.info(), (a.info(), b.info())
+
+
+@test
+def the_compiled_dss_is_the_numpy_dss():
+    if not _have_numpy() or _core_with("dss_select") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.run import archive as A
+    rng = np.random.default_rng(12)
+    for t, F in enumerate(_sets(rng, 200, (2, 3, 5, 8, 9, 12), 120)):
+        m = F.shape[1]
+        if t % 3 == 0:                              # almost dominated points, to set aside
+            F = np.vstack([F, F[:3] + np.r_[2e-4, np.full(m - 1, 0.5)]])
+        G = A.normalized(F)
+        assert (A.almost_dominated(G) == A._almost_dominated_numpy(G)).all(), t
+        rows = rng.integers(0, len(F), 5)
+        assert (A.almost_dominated(G, rows) == A._almost_dominated_numpy(G, rows)).all(), t
+        for lo, hi in ((None, None), (F.min(0), F.max(0)), (np.zeros(m), None),
+                       (np.zeros(m), np.full(m, 2.0))):
+            g1, k1 = A.set_aside(F, lo, hi)
+            g2, k2 = A._set_aside_numpy(F, lo, hi)
+            assert g1.tobytes() == g2.tobytes() and (k1 == k2).all(), (t, lo, hi)
+            for k in (1, m, len(F) // 2, len(F)):
+                got = A.dss_order(F, k, ideal=lo, nadir=hi).tolist()
+                want = A._dss_order_numpy(F, k, ideal=lo, nadir=hi).tolist()
+                assert got == want, (t, k, lo, hi)
+    for m in (2, 3, 5, 9):                          # igdp_self: a reference of SELF_REFERENCE
+        F = rng.random((1300, m))
+        F = F / F.sum(axis=1, keepdims=True)
+        for lo, hi in ((None, None), (np.zeros(m), np.ones(m))):
+            got = A.igdp_self_order(F, 40, ideal=lo, nadir=hi).tolist()
+            want = A._igdp_self_order_numpy(F, 40, ideal=lo, nadir=hi).tolist()
+            assert got == want, (m, lo)
+        R = F[:200]
+        assert (A.greedy_igdp_rows(F[200:700], R, 25).tolist()
+                == A.greedy_igdp(A.dplus_matrix(F[200:700], R), 25).tolist()), m
+
+
+@test
+def the_compiled_indicators_are_the_numpy_ones():
+    if not _have_numpy() or _core_with("front_distances") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(13)
+    for m in (2, 3, 5, 7, 8, 9, 12, 15):
+        for n, r in ((1, 50), (37, 300), (200, 1000), (90, 7)):
+            F = rng.random((n, m)) * 1.3
+            R = rng.random((r, m))
+            R /= R.sum(axis=1, keepdims=True)
+            same = lambda a, b: np.asarray(a).tobytes() == np.asarray(b).tobytes()  # noqa: E731
+            assert same(M.igd(F, R), M._igd_numpy(F, R)), (m, n)
+            assert same(M.dplus_distances(F, R), M._dplus_distances_numpy(F, R)), (m, n)
+            for u, v in zip(M.front_distances(F, R), M._front_distances_numpy(F, R)):
+                assert same(u, v), (m, n)
+            for u, v in zip(_core.front_distances(F, R, threads=4), M._front_distances_numpy(F, R)):
+                assert same(u, v), (m, n, "threads")
+            assert same(_core.igd_distances(F, R, threads=3).mean(), M._igd_numpy(F, R))
+            assert same(M.eps_plus(F, R), M._eps_plus_numpy(F, R)), (m, n)
+            assert same(M.igd_plus(F, R), M._dplus_distances_numpy(F, R).mean())
+            assert same(M.gd_plus(F, R), M._front_distances_numpy(F, R)[1].mean())
+            ideal, nadir = np.zeros(m), np.ones(m)
+            G = F - ideal
+            W = M.das_dennis(m, M.lattice_h(m, 100))
+            assert same(M.r2_discrete(F, ideal, nadir, M.lattice_h(m, 100)), M._r2_numpy(G, W))
+    # the Monte-Carlo points, drawn once and kept: the value of drawing them every time
+    pl = rng.random((60, 8)) * 0.8
+    ref, lo = np.full(8, 1.1), np.zeros(8)
+    v = M._hv_mc(pl, ref, lo, 50_000, 3)
+    g = np.random.default_rng(3)
+    hit = 0
+    for k in (20_000, 20_000, 10_000):
+        s = lo + g.random((k, 8)) * (ref - lo)
+        hit += int(_core.hv_covered(pl, s))
+    assert v == float(np.prod(ref - lo) * hit / 50_000) == M._hv_mc(pl, ref, lo, 50_000, 3)
+
+
+@test
+def incremental_front_matches_a_full_recomputation():
+    if not _have_numpy() or _core_with("IncrementalFront") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(14)
+    for m in (2, 3, 5, 9):
+        Z = rng.random((150, m))
+        Z /= Z.sum(axis=1, keepdims=True)
+        ideal, nadir = np.zeros(m), np.full(m, 1.0)
+        levels = [2.0, 0.5, 0.2, 0.1, 0.05, 1e-9]
+        inc = _core.IncrementalFront(Z, ideal, nadir, levels)
+        seen, fe, first = [], 0, {}
+        G_ref, R = M._normalised(np.zeros((1, m)), Z, ideal, nadir)
+        for batch in range(20):
+            B = rng.random((15, m)) * (2.0 - batch / 12.0)
+            counts = np.arange(fe + 1, fe + 16, dtype=np.int64) * 2      # not every count
+            inc.update(B, counts)
+            for i in range(len(B)):
+                seen.append(B[i])
+                G, _ = M._normalised(np.array(seen), Z, ideal, nadir)
+                val = float(M._front_distances_numpy(G, R)[0].mean())
+                for lv in levels:
+                    if lv not in first and val <= lv:
+                        first[lv] = int(counts[i])
+            fe += 15
+            G, _ = M._normalised(np.array(seen), Z, ideal, nadir)
+            to_set, _, eps = M._front_distances_numpy(G, R)
+            assert inc.igd_plus() == float(to_set.mean()), (m, batch)
+            assert inc.eps_plus() == float(eps.max()), (m, batch)
+            assert inc.distances().tobytes() == to_set.tobytes()
+        assert list(inc.reached) == [first.get(lv, -1) for lv in levels], (inc.reached, first)
+
+
+@test
+def the_budget_grid_records_the_population_at_exactly_b():
+    """record_grid = "budgets" (task 10, §5.1): a record at every count of the
+    grid and at the end; the population there is the one the "generations"
+    grid recorded at the last generation that did not pass b (fe_pop), the
+    same values; IGD+ of everything evaluated (§5.2) never rises and is never
+    above the population's."""
+    if not _have_numpy() or _core_with("IncrementalFront") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    assert C.budget_grid(25_000)[:8] == [100, 150, 200, 300, 500, 700, 1000, 1500]
+    assert 25_000 in C.budget_grid(25_000) and 30_000 in C.budget_grid(40_000)
+    assert C.budget_grid(2000, (250, 1234)) == [100, 150, 200, 250, 300, 500, 700, 1000, 1234,
+                                                 1500, 2000]
+    runs = {}
+    for grid in ("budgets", "generations"):
+        text = f"""algorithms = [{{ name = "nsga2", pop = 0, gens = 0 }},
+                      {{ name = "moead_de", pop = 0, gens = 0 }}]
+[run]
+name = "g"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D", "C2-DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1600
+metrics = ["igdp", "igdp_norm", "hv"]
+record_grid = "{grid}"
+"""
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "c.toml"
+            cfg_path.write_text(text, encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            assert spec.record_grid == grid
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+                d = root / job.rel_dir
+                runs[(grid, job.problem, job.algorithm)] = (
+                    json.loads((d / "meta.json").read_text(encoding="utf-8")),
+                    [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()])
+    for prob in ("DTLZ2_3D", "C2-DTLZ2_3D"):
+        for alg in ("nsga2", "moead_de"):
+            meta, T = runs[("budgets", prob, alg)]
+            _, G = runs[("generations", prob, alg)]
+            by_fe = {r["fe"]: r for r in G}
+            want = [b for b in C.budget_grid(1600) if b >= 91]
+            assert [r["fe"] for r in T] == want + [meta["fe"]], [r["fe"] for r in T]
+            for r in T:
+                g = by_fe[r.get("fe_pop", r["fe"])]
+                assert r.get("fe_pop", r["fe"]) <= r["fe"]
+                for k in ("gen", "n", "igdp", "igdp_norm", "hv"):
+                    assert r[k] == g[k], (prob, alg, r["fe"], k, r[k], g[k])
+            all_ = [r["igdp_norm_all"] for r in T if r["igdp_norm_all"] is not None]
+            assert all(a >= b for a, b in zip(all_, all_[1:])), all_
+            assert meta["final"]["igdp_norm_all"] <= meta["final"]["igdp_norm"]
+            assert meta["final"]["igdp_norm_all"] == all_[-1]
+            reached = meta["all_evaluated"]["fe_to_level"]
+            assert reached[0] is not None and reached[0] <= meta["fe"]
 
 
 def main() -> int:

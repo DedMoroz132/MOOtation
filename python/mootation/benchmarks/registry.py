@@ -395,15 +395,10 @@ def degenerate_subset_note(name: str) -> str | None:
 
 
 def _nondominated_mask(F: np.ndarray) -> np.ndarray:
-    n = len(F)
-    keep = np.ones(n, bool)
-    for i in range(n):
-        if not keep[i]:
-            continue
-        dom = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
-        if np.any(dom):
-            keep[i] = False
-    return keep
+    """Which rows no other row dominates, copies all kept (run.metrics, in C++
+    where the extension is built)."""
+    from ..run.metrics import nondominated_mask
+    return nondominated_mask(F)
 
 
 def _nondominated(F: np.ndarray) -> np.ndarray:
