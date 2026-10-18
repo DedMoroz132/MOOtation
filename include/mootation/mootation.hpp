@@ -18,6 +18,7 @@
 #include "operators/real_mutation.hpp"
 #include "dss.hpp"
 #include "hv_contribution.hpp"
+#include "hvc.hpp"
 #include "algorithms/nsga2.hpp"
 #include "algorithms/dn_nsga2.hpp"
 #include "algorithms/nsga3.hpp"

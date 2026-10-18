@@ -15,6 +15,7 @@
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../hv_contribution.hpp"
+#include "../hvc.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 #include "../operators/real_crossover.hpp"
@@ -85,6 +86,18 @@ namespace mootation {
 //     hv_algo = box: the exact contributions' hypervolumes by box
 //     decomposition (hv_box.hpp) instead of WFG — the same values up to the
 //     order of the sums, so a near tie may go the other way.
+//     hv_contrib = hvc (task 12 of 2026-10-19, §5): the exact contributions
+//     at M = 3 and 4 by HVC3D and HVC4D of Guerreiro & Fonseca (IEEE TEVC
+//     22(3), 2018; hvc.hpp) instead of WFG (wfg, the default). At M = 3 the
+//     HVC3D structure is kept from step to step and brought to the next F_v
+//     by the paper's single-point updates — in a population that is one
+//     front, the offspring added and the last step's removed point taken out
+//     — then all contributions in linear time; at M = 4 HVC4D in O(μ²) a
+//     step, and only with set_n_samples(0): by default M = 4 is Monte-Carlo
+//     and the knob changes nothing there, nor at M = 2 or M ≥ 5. The values
+//     are WFG's up to the order of the sums, not bit for bit: a near tie may
+//     go the other way and the run take ANOTHER TRAJECTORY. hv_contrib = hvc
+//     takes M = 3 and 4 from hv_algo.
 //   SMS-3. A tie in the smallest contribution removes the point that comes
 //     first in the population, the offspring last.
 //   SMS-4. Two objectives, two points. When F_v holds only two points at
@@ -150,6 +163,8 @@ private:
     double pc_    = 1.0;    // thesis §3.4.1
     int    n_samples_ = 10000;   // SMS-2
     bool   hv_box_ = false;      // hv_algo = box: the exact contributions by box decomposition
+    bool   hvc_on_ = false;      // hv_contrib = hvc: M = 3 and 4 by HVC3D / HVC4D (SMS-2)
+    hv::HvcKept hvc_;            // the HVC3D structure between steps
     std::optional<double> pm_;            // 1/n when not set (thesis §3.4.1)
     std::optional<double> ref_delta_;     // SMS-7: r = nad + δ (nad − ideal)
     ops::CrossoverSpec xover_;
@@ -281,7 +296,8 @@ private:
         const std::size_t per = mc ? std::max<std::size_t>(
             1, static_cast<std::size_t>(n_samples_) / Fv.size()) : 0;
         auto c = mc ? hv::contributions_mc(Fv, r, per, rng_)
-                    : hv_box_ ? hv::contributions_box(Fv, r) : hv::contributions_exact(Fv, r);
+               : hvc_on_ && (m == 3 || m == 4) ? hvc_.contributions(Fv, r)
+               : hv_box_ ? hv::contributions_box(Fv, r) : hv::contributions_exact(Fv, r);
         if (m == 2 && Fv.size() > 2) {                     // SMS-4: the two extremes stay
             std::size_t a = 0, b = 0;
             for (std::size_t t = 1; t < Fv.size(); ++t) {
@@ -376,8 +392,17 @@ public:
             hv_box_ = w == "box";
             return true;
         }
+        if (k == "hv_contrib") {                           // SMS-2
+            if (w != "wfg" && w != "hvc")
+                throw std::invalid_argument("hv_contrib = '" + w + "': wfg or hvc");
+            hvc_on_ = w == "hvc";
+            return true;
+        }
         return arch_.set_word(k, w) || xover_.set_word(k, w);
     }
+
+    // The HVC3D structure kept between steps (SMS-2), for the tests.
+    const hv::HvcKept& hvc_kept() const { return hvc_; }
 
     // The inner archive's members (SMS-9), for the binding's result.
     const std::vector<ops::InnerArchive::Member>& inner_archive() const { return arch_.members(); }

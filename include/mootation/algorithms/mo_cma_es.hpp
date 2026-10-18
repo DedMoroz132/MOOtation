@@ -13,6 +13,7 @@
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../hv_contribution.hpp"
+#include "../hvc.hpp"
 
 namespace mootation {
 
@@ -78,7 +79,12 @@ namespace mootation {
 //     M = 2, more at M ≥ 3.
 //   MOCMA-5. Contributions as SMS-EMOA's (hv_contribution.hpp): exact for
 //     M ≤ 3, Monte-Carlo for M ≥ 4 (10 000 samples a step; set_n_samples, 0
-//     = exact at every M); hv_algo = box as SMS-EMOA's.
+//     = exact at every M); hv_algo = box as SMS-EMOA's. hv_contrib = hvc as
+//     SMS-EMOA's (SMS-2; hvc.hpp): M = 3 by the HVC3D structure kept from
+//     step to step and updated a point at a time, M = 4 by HVC4D, only with
+//     set_n_samples(0) — by default M = 4 is Monte-Carlo and the knob changes
+//     nothing there, nor at M = 2 or M ≥ 5. WFG's values up to the order of
+//     the sums, not bit for bit: the run may take ANOTHER TRAJECTORY.
 //   MOCMA-6. C is factorised by Cholesky for every offspring (O(n³)); the
 //     paper's implementation updates the factor incrementally (Suttorp,
 //     Hansen & Igel 2009), which samples the same distribution faster.
@@ -105,6 +111,8 @@ private:
     double p_thresh_  = 0.44;     // §2
     int    n_samples_ = 10000;    // MOCMA-5
     bool   hv_box_ = false;       // hv_algo = box: the exact contributions by box decomposition
+    bool   hvc_on_ = false;       // hv_contrib = hvc: M = 3 and 4 by HVC3D / HVC4D (MOCMA-5)
+    hv::HvcKept hvc_;             // the HVC3D structure between steps
     std::vector<double> lo_, hi_;
     std::mt19937 rng_{std::random_device{}()};
 
@@ -264,7 +272,8 @@ private:
         const bool mc = m >= 4 && n_samples_ > 0;
         auto c = mc ? hv::contributions_mc(Fv, r, std::max<std::size_t>(
                           1, static_cast<std::size_t>(n_samples_) / Fv.size()), rng_)
-                    : hv_box_ ? hv::contributions_box(Fv, r) : hv::contributions_exact(Fv, r);
+               : hvc_on_ && (m == 3 || m == 4) ? hvc_.contributions(Fv, r)
+               : hv_box_ ? hv::contributions_box(Fv, r) : hv::contributions_exact(Fv, r);
         for (std::size_t k = 0; k < m; ++k) {                  // boundary elements
             std::size_t b = 0;
             for (std::size_t t = 1; t < Fv.size(); ++t) if (Fv[t][k] < Fv[b][k]) b = t;
@@ -299,6 +308,8 @@ public:
     MOCMAESCore() = default;
 
     void set_seed(unsigned s)       { rng_.seed(s); }
+    // The HVC3D structure kept between steps (MOCMA-5), for the tests.
+    const hv::HvcKept& hvc_kept() const { return hvc_; }
     void set_n_samples(int s)       { n_samples_ = s; }
     void set_initial_sigma(double s){ sigma0_ = s; }
     bool set_param(const std::string& k, double v)
@@ -311,6 +322,11 @@ public:
     }
     bool set_word(const std::string& k, const std::string& w)
     {
+        if (k == "hv_contrib") {                           // MOCMA-5
+            if (w != "wfg" && w != "hvc") throw std::invalid_argument("hv_contrib = '" + w + "': wfg or hvc");
+            hvc_on_ = w == "hvc";
+            return true;
+        }
         if (k != "hv_algo") return false;
         if (w != "wfg" && w != "box") throw std::invalid_argument("hv_algo = '" + w + "': wfg or box");
         hv_box_ = w == "box";

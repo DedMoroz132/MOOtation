@@ -9532,6 +9532,46 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
     assert "hv_algo" in r.ignored, r.ignored
 
 
+@test
+def hv_contrib_takes_its_words_and_refuses_others():
+    """hv_contrib (HVC3D and HVC4D, Guerreiro & Fonseca 2018; hvc.hpp): SMS-EMOA
+    and MO-CMA-ES take "wfg" and "hvc" at three objectives and at four with
+    n_samples = 0, and refuse any other word, as a config does before the run;
+    "wfg" is the run without the knob, bit for bit; R2-EMOA and HypE, which
+    select by no hypervolume contribution, report it ignored."""
+    if not _have_numpy() or _core_with("hypervolume") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.run.knobs import accepts, text_knobs
+    from mootation.benchmarks import get
+    assert text_knobs()["hv_contrib"] == ("wfg", "hvc"), text_knobs()["hv_contrib"]
+    assert accepts("hv_contrib", "hvc") and accepts("hv_contrib", "wfg")
+    assert not accepts("hv_contrib", "box") and not accepts("hv_contrib", "HVC")
+    text = _MIN.replace("gens = 5", 'gens = 5\nparams = { hv_contrib = "box" }')
+    probs = validate(loads(text), base=Path(tempfile.gettempdir()))
+    assert any("hv_contrib" in p and "hvc" in p for p in probs), probs
+    text = _MIN.replace("gens = 5", 'gens = 5\nparams = { hv_contrib = "hvc" }')
+    probs = validate(loads(text), base=Path(tempfile.gettempdir()))
+    assert not any("hv_contrib" in p for p in probs), probs
+    for name, m, extra in (("DTLZ2_3D", 3, {}), ("DTLZ2_4D", 4, {"n_samples": 0})):
+        p = get(name)
+
+        def run(alg, **kw):
+            return minimize(p.evaluate, p.bounds, m, algorithm=alg, pop_size=20,
+                            max_evaluations=400, seed=2, **extra, **kw)
+        for alg in ("sms_emoa", "mo_cma_es"):
+            base, w, h = run(alg), run(alg, hv_contrib="wfg"), run(alg, hv_contrib="hvc")
+            assert "hv_contrib" not in h.ignored and len(h.objectives) == 20, (alg, h.ignored)
+            assert np.array_equal(base.objectives, w.objectives), (name, alg)
+            assert raises(ValueError, run, alg, hv_contrib="box") is not None, (name, alg)
+    p = get("DTLZ2_3D")
+    for alg in ("r2_emoa", "hype"):
+        r = minimize(p.evaluate, p.bounds, 3, algorithm=alg, pop_size=20, max_evaluations=400,
+                     seed=2, hv_contrib="hvc")
+        assert "hv_contrib" in r.ignored, (alg, r.ignored)
+
+
 def main() -> int:
     import os
     failed = []

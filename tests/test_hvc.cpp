@@ -1,0 +1,259 @@
+// SPDX-License-Identifier: Apache-2.0
+// ============================================================================
+// hvc.hpp: HVC3D and HVC4D (Guerreiro & Fonseca, IEEE TEVC 2018) against
+// contributions_exact (WFG, hv_contribution.hpp) on 10 000 random sets at 3
+// and 4 objectives — fronts, dominated points, copies, equal coordinates,
+// points on the reference point's faces and outside it — every contribution
+// within 1e-12 of the set's hypervolume. The kept structure (HvcKept) through
+// streams of single-point additions and removals, SMS-EMOA's add one and
+// remove the least among them: its contributions equal those of a structure
+// built from scratch for the same set bit for bit. The knob hv_contrib of
+// SMS-EMOA and MO-CMA-ES. Small cases by hand.
+// ============================================================================
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <random>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+#include <mootation/hv_contribution.hpp>
+#include <mootation/hvc.hpp>
+#include <mootation/hypervolume.hpp>
+
+#include "harness.hpp"
+
+MOOTATION_TEST_PROBLEM(HvcSMS, NSGAII_Individual, DTLZ2Spec)
+MOOTATION_TEST_PROBLEM(HvcCMA, MOCMAES_Individual, DTLZ2Spec)
+
+namespace {
+
+int checks = 0, failed = 0;
+
+void check(bool ok, const std::string& what)
+{
+    ++checks;
+    if (!ok) {
+        ++failed;
+        if (failed <= 20) std::printf("  FAIL  %s\n", what.c_str());
+    }
+}
+
+using Set = std::vector<std::vector<double>>;
+
+// n points at m objectives: on the sphere's positive part, some behind it,
+// some copies, some on a grid of q steps (equal coordinates)
+Set random_set(std::mt19937_64& rng, std::size_t m, std::size_t n, double behind, double grid)
+{
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    std::normal_distribution<double> g(0.0, 1.0);
+    const int q = 1 << (2 + rng() % 4);
+    Set F;
+    for (std::size_t i = 0; i < n; ++i) {
+        const double kind = u(rng);
+        if (i > 0 && kind < 0.1) { F.push_back(F[rng() % F.size()]); continue; }   // a copy
+        std::vector<double> f(m);
+        double s = 0.0;
+        for (auto& v : f) { v = std::abs(g(rng)); s += v * v; }
+        for (auto& v : f) {
+            v = (1.0 + 0.3 * u(rng) * (kind < behind)) * v / std::sqrt(s);
+            if (kind > 1.0 - grid) v = std::floor(v * q) / q;
+        }
+        F.push_back(f);
+    }
+    return F;
+}
+
+// A run of 3000 steps on DTLZ2 at three objectives with hv_contrib = hvc:
+// how many of its steps the kept structure took by updates
+template <typename Ind, typename Core>
+void run_with_hvc(const char* name)
+{
+    mootation::Problem<Ind> prob;
+    mootation::DataVault<Ind> vault(50, prob);
+    mootation::Optimizer<Ind, Core> opt(std::move(vault), mootation::defer_setup);
+    auto& alg = opt.get_algorithm();
+    alg.set_seed(3);
+    alg.set_word("hv_contrib", "hvc");
+    opt.setup();
+    opt.optimize(3000);
+    const auto& k = alg.hvc_kept();
+    std::printf("%s, DTLZ2 at M = 3, 3000 steps: %ld builds, %ld single-point updates\n",
+                name, k.builds(), k.updates());
+    check(k.updates() > 2 * k.builds(), std::string(name) + ": the structure kept by updates");
+    bool finite = true;
+    for (std::size_t i = 0; i < 50; ++i)
+        for (double f : opt.get_vault().objectives_of(i)) finite = finite && std::isfinite(f);
+    check(finite, std::string(name) + ": a run with hvc");
+}
+
+double largest_gap(const std::vector<double>& a, const std::vector<double>& b)
+{
+    double d = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i) d = std::max(d, std::abs(a[i] - b[i]));
+    return d;
+}
+
+}   // namespace
+
+int main()
+{
+    namespace hv = mootation::hv;
+    namespace H = mootation::hypervolume;
+
+    // ── by hand ─────────────────────────────────────────────────────────────
+    {
+        const std::vector<double> r3 = {1.0, 1.0, 1.0}, r4 = {1.0, 1.0, 1.0, 1.0};
+        auto c = hv::contributions_hvc({{0.5, 0.5, 0.5}}, r3);
+        check(c.size() == 1 && c[0] == 0.125, "one point at M = 3");
+        c = hv::contributions_hvc({{0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}}, r3);
+        check(c[0] == 0.125 && c[1] == 0.125 && c[2] == 0.125, "the 3-D staircase: 1/8 each");
+        c = hv::contributions_hvc({{0.5, 0.5, 0.5}, {0.6, 0.6, 0.6}}, r3);
+        check(std::abs(c[0] - (0.125 - 0.064)) < 1e-15 && c[1] == 0.0,
+              "a point dominated by one: the other's contribution less its box");
+        c = hv::contributions_hvc({{0.0, 0.5, 0.5}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}}, r3);
+        check(c[0] == 0.0 && c[1] == 0.0 && std::abs(c[2] - 0.125) < 1e-15,
+              "two copies contribute nothing, the third point its own");
+        c = hv::contributions_hvc({{0.5, 0.5, 1.0}, {0.2, 0.2, 2.0}, {0.5, 0.5, 0.5}}, r3);
+        check(c[0] == 0.0 && c[1] == 0.0 && c[2] == 0.125, "on the face and outside: nothing");
+        c = hv::contributions_hvc({{0.5, 0.5, 0.5, 0.5}}, r4);
+        check(c[0] == 0.0625, "one point at M = 4");
+        c = hv::contributions_hvc({{0.5, 0.5, 0.5, 0.5}, {0.5, 0.5, 0.5, 0.6}}, r4);
+        check(std::abs(c[0] - 0.0625 * 0.2) < 1e-15 && c[1] == 0.0,
+              "M = 4: equal in x, y, z, the lower w dominates");
+        c = hv::contributions_hvc({{0.0, 0.5, 0.5, 0.5}, {0.5, 0.0, 0.5, 0.5},
+                                   {0.5, 0.5, 0.0, 0.5}, {0.5, 0.5, 0.5, 0.0}}, r4);
+        bool all = true;
+        for (double x : c) all = all && std::abs(x - 0.0625) < 1e-15;
+        check(all, "the 4-D staircase: 1/16 each");
+    }
+
+    // ── 10 000 random sets against WFG ──────────────────────────────────────
+    std::mt19937_64 rng(20261019);
+    std::uniform_real_distribution<double> u(0.0, 1.0);
+    double worst = 0.0, worst_rel = 0.0;
+    long compared = 0, equal_bits = 0;
+    for (int t = 0; t < 10000; ++t) {
+        const std::size_t m = 3 + t % 2;
+        std::size_t n = 1 + rng() % (m == 3 ? 80 : 60);
+        if (t % 500 == 0) n = m == 3 ? 400 : 150;          // a few large ones
+        Set F = random_set(rng, m, n, 0.3, 0.2);
+        std::vector<double> r(m, 1.1);
+        if (t % 7 == 0) r[0] = F[0][0];                      // a point on the reference's face
+        if (t % 11 == 0) r[1] = 0.9;                         // some points outside
+        const double Hs = H::wfg(F, r);
+        const auto ch = hv::contributions_hvc(F, r), cw = hv::contributions_exact(F, r);
+        const double d = largest_gap(ch, cw);
+        worst = std::max(worst, Hs > 0.0 ? d / Hs : d);
+        check(Hs > 0.0 ? d <= 1e-12 * Hs : d == 0.0,
+              "set " + std::to_string(t) + " (M = " + std::to_string(m) + ", n = " +
+                  std::to_string(n) + "): largest difference " + std::to_string(d / Hs));
+        for (std::size_t i = 0; i < n; ++i) {
+            if (cw[i] > 1e-6 * Hs) {
+                worst_rel = std::max(worst_rel, std::abs(ch[i] - cw[i]) / cw[i]);
+                ++compared;
+            }
+            equal_bits += ch[i] == cw[i];
+        }
+    }
+    std::printf("hvc against wfg: largest difference %.3g of the set's hypervolume; "
+                "largest relative difference %.3g over %ld contributions above 1e-6 of it; "
+                "%ld equal bit for bit\n", worst, worst_rel, compared, equal_bits);
+
+    // ── the kept structure: single-point updates against a fresh build ──────
+    long steps = 0, same = 0;
+    long builds = 0, updates = 0, builds_front = 0, updates_front = 0;
+    double worst_k = 0.0;
+    for (int stream = 0; stream < 60; ++stream) {
+        const std::size_t mu = 5 + rng() % 120;
+        const double grid = stream % 3 == 0 ? 0.5 : 0.0;     // equal coordinates in a third
+        Set P = random_set(rng, 3, mu, 0.0, grid);
+        hv::HvcKept kept;
+        for (int s = 0; s < 300; ++s) {
+            // SMS-EMOA's step: one in; the contributions; the least out
+            Set Q = P;
+            const double kind = u(rng);
+            if (kind < 0.05) Q.push_back(Q[rng() % Q.size()]);                 // a copy
+            else if (kind < 0.10) {                                            // dominated or dominating
+                auto f = Q[rng() % Q.size()];
+                for (auto& v : f) v *= kind < 0.075 ? 1.05 : 0.95;
+                Q.push_back(f);
+            } else Q.push_back(random_set(rng, 3, 1, 0.0, grid)[0]);
+            std::vector<double> r(3, -1e300);
+            for (const auto& f : Q)
+                for (std::size_t k = 0; k < 3; ++k) r[k] = std::max(r[k], f[k]);
+            for (auto& x : r) x += stream % 2 == 0 ? 1.0 : 0.01;              // r = nad + 1, or tight
+            const auto ck = kept.contributions(Q, r);
+            const auto cf = hv::contributions_hvc(Q, r);
+            ++steps;
+            bool bits = ck.size() == cf.size();
+            for (std::size_t i = 0; bits && i < ck.size(); ++i) bits = ck[i] == cf[i];
+            same += bits;
+            check(bits, "stream " + std::to_string(stream) + ", step " + std::to_string(s) +
+                            ": the updated structure's contributions are the rebuilt one's");
+            if (s % 3 == 0) {                                // and against WFG
+                const auto cw = hv::contributions_exact(Q, r);
+                const double Hs = H::wfg(Q, r);
+                const double d = largest_gap(ck, cw);
+                worst_k = std::max(worst_k, d / Hs);
+                check(d <= 1e-12 * Hs, "stream " + std::to_string(stream) + ", step " +
+                                           std::to_string(s) + ": against wfg");
+            }
+            std::size_t arg = 0;
+            for (std::size_t i = 1; i < ck.size(); ++i) if (ck[i] < ck[arg]) arg = i;
+            Q.erase(Q.begin() + static_cast<std::ptrdiff_t>(arg));
+            P = Q;
+        }
+        // single changes away from SMS-EMOA's pattern: two out, one in, none
+        for (int s = 0; s < 20; ++s) {
+            Set Q = P;
+            if (Q.size() > 3 && s % 3 != 2) Q.erase(Q.begin() + static_cast<std::ptrdiff_t>(rng() % Q.size()));
+            if (Q.size() > 3 && s % 3 == 0) Q.erase(Q.begin() + static_cast<std::ptrdiff_t>(rng() % Q.size()));
+            if (s % 3 == 1) Q.push_back(random_set(rng, 3, 1, 0.0, grid)[0]);
+            std::vector<double> r(3, 1.5);
+            const auto ck = kept.contributions(Q, r);
+            const auto cf = hv::contributions_hvc(Q, r);
+            bool bits = true;
+            for (std::size_t i = 0; i < ck.size(); ++i) bits = bits && ck[i] == cf[i];
+            ++steps;
+            same += bits;
+            check(bits, "stream " + std::to_string(stream) + ", change " + std::to_string(s));
+            P = Q;
+        }
+        builds += kept.builds();
+        updates += kept.updates();
+        if (grid == 0.0) { builds_front += kept.builds(); updates_front += kept.updates(); }
+    }
+    // without equal coordinates a dominated point comes only with the 5 % of
+    // offspring made so (a dominating one makes several, removed a step at a
+    // time, each step a rebuild): the other steps are updates
+    check(updates_front > 5 * builds_front, "the streams without ties ran on updates");
+    std::printf("kept structure: %ld/%ld steps equal to a fresh build bit for bit "
+                "(%ld builds, %ld single-point updates; without equal coordinates %ld and "
+                "%ld); largest difference to wfg %.3g of the set's hypervolume\n",
+                same, steps, builds, updates, builds_front, updates_front, worst_k);
+
+    // ── the knob ────────────────────────────────────────────────────────────
+    {
+        mootation::SMSEMOACore<mootation::NSGAII_Individual> sms;
+        check(sms.set_word("hv_contrib", "hvc") && sms.set_word("hv_contrib", "wfg"),
+              "sms_emoa takes hv_contrib = hvc and wfg");
+        bool refused = false;
+        try { sms.set_word("hv_contrib", "box"); } catch (const std::invalid_argument&) { refused = true; }
+        check(refused, "sms_emoa refuses hv_contrib = box");
+        mootation::MOCMAESCore<mootation::MOCMAES_Individual> cma;
+        check(cma.set_word("hv_contrib", "hvc"), "mo_cma_es takes hv_contrib = hvc");
+        refused = false;
+        try { cma.set_word("hv_contrib", "HVC"); } catch (const std::invalid_argument&) { refused = true; }
+        check(refused, "mo_cma_es refuses hv_contrib = HVC");
+        mootation::R2EMOACore<mootation::NSGAII_Individual> r2;
+        check(!r2.set_word("hv_contrib", "hvc"), "r2_emoa has no hypervolume: hv_contrib not taken");
+    }
+    run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");
+    run_with_hvc<mootation::testing::HvcCMA, mootation::MOCMAESCore<mootation::testing::HvcCMA>>("mo_cma_es");
+
+    std::printf("hvc: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");
+    return failed == 0 ? 0 : 1;
+}
