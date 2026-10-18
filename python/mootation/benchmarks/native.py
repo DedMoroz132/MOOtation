@@ -8,6 +8,8 @@ MaF1-7, MaF9 and MaF13; ZCAT1-20; shiftZDT1-4 and 6; and the rotations over
 them (rotated.py: rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF, r0/c0MaF,
 rZCAT). Not moved: MaF8, whose distances are math.hypot's (CPython's own
 algorithm, not the C library's hypot), MaF10-12 (WFG), and every other family.
+Task 12 of 2026-10-19, §1, added bbob-biobj and bbob-biobj-mixint (the 110
+problems of each; include/mootation/suite/bbob.hpp).
 
 With the extension built, such a problem's evaluate, evaluate_batch,
 constraints, constraints_batch and evaluate_with_constraints are C++ (attach):
@@ -16,11 +18,13 @@ and minimize and a campaign hand it to the core, which then evaluates it
 without calling Python (minimize's native). The NumPy code of these modules
 stays as the reference, in BenchProblem.reference: the tests hold the two
 equal bit for bit wherever NumPy's sin, cos, exp and pow are the C library's
-(_rows.agrees), and without the extension it is what runs.
+(_rows.agrees) — bbob-biobj's, where its BLAS also adds in the order bbob.hpp
+writes out — and without the extension it is what runs.
 
 spec(name) is what C++ needs of a problem: its family and sizes and the
 numbers NumPy made for it (centres, rotations, MaF9's polygons, the constants
-of C-DTLZ and SDTLZ), as include/mootation/suite/suite.hpp, Spec, reads them.
+of C-DTLZ and SDTLZ, what a bbob instance draws), as
+include/mootation/suite/suite.hpp, Spec, reads them.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2
                     r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-7]|9|13)|"
                     r"ZCAT([1-9]|1[0-9]|20))_(\d+)D")
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
+_BBOB = re.compile(r"bbobbiobj(mixint)?\d\d_n\d\d_2D")
 
 
 def _base(family: str, n_var: int, n_obj: int, **extra) -> dict:
@@ -65,12 +70,42 @@ def _rotated(r) -> dict | None:
     return d
 
 
+def _bbob_function(f, levels=()) -> dict:
+    """One objective of a bbob-biobj problem: what the bbob.Instance f drew,
+    and the levels its integer variables stand for (bbob-biobj-mixint)."""
+    d = {"fid": f.fid, "x_opt": _array(f.x_opt), "f_opt": float(f.f_opt)}
+    for key in ("R", "Q", "l10"):
+        if getattr(f, key) is not None:
+            d[key] = _array(getattr(f, key))
+    if f.fid == 20:
+        d["sign"] = _array(f.peaks["sign"])
+    if f.fid == 21:
+        d.update(w=_array(f.peaks["w"]), C=_array(f.peaks["C"]), y=_array(f.peaks["y"]))
+    if len(levels):
+        d["levels"] = [_array(z) for z in levels]
+    return d
+
+
+def _bbob(name: str, p) -> dict:
+    """A bbob-biobj problem (its evaluate the bbob_biobj.BiObjective the
+    registry made) or a bbob-biobj-mixint one (a bbob_biobj_mixint.MixedInteger)."""
+    obj = p.evaluate
+    if name.startswith("bbobbiobjmixint"):
+        return _base("bbob-biobj-mixint", p.n_vars, 2,
+                     bbob=[_bbob_function(obj.alpha, obj.z_alpha),
+                           _bbob_function(obj.beta, obj.z_beta)])
+    return _base("bbob-biobj", p.n_vars, 2,
+                 bbob=[_bbob_function(obj.alpha), _bbob_function(obj.beta)])
+
+
 def spec(name: str, p, rotated=None) -> dict | None:
     """The spec of _core.Native for the registered problem `name` (its
     BenchProblem p; rotated: its rotated.Rotated, if it is one), None for a
     problem the suite does not have."""
     if rotated is not None:
         return _rotated(rotated)
+    if _BBOB.fullmatch(name):
+        return _bbob(name, p)
     n = p.n_vars
     if _ZDT.fullmatch(name):
         base = name.replace("shift", "")

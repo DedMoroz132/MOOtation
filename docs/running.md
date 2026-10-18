@@ -300,6 +300,19 @@ constraint from five objectives, its dot products of two coordinates written
 out. The controls r0 and c0 are unchanged. MaF8 stays in Python (its
 distances are CPython's `math.hypot`), and so do MaF10–12 (WFG).
 
+**In C++: bbob-biobj and bbob-biobj-mixint** (task 12 of 2026-10-19). Their
+110 + 110 problems are computed in C++ as well (`include/mootation/suite/bbob.hpp`),
+from the numbers each instance drew in Python (x_opt, f_opt, the rotations R
+and Q, Λ¹⁰, f20's signs, f21's peaks, the integer variables' levels), with the
+values of the NumPy code (`benchmarks/bbob.py`), bit for bit. That code takes
+its products of vectors and matrices (R·x, x·x, the peaks' (x − y)·Rᵀ) through
+NumPy's BLAS, which adds in an order of its own, with fused multiply-adds; the
+C++ writes that order out — OpenBLAS's kernels as NumPy 2.5 ships them
+(scipy-openblas 0.3.34, SkylakeX) — so it gives the same values on every
+machine, and the NumPy code those values wherever its BLAS adds the same way
+(the tests check which). bbob-biobj takes the direct path; bbob-biobj-mixint,
+whose integers `minimize` decodes before the call, does not (typed variables).
+
 **Where a problem is not defined.** RCM02 (EI / μ < 0, the layers out of
 order) and RCM24 (the logarithms of its equalities, outside x8 > 100,
 x7 < 600, x9 > x7) return NaN there — a failed evaluation (below), counted in

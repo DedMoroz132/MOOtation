@@ -12,6 +12,10 @@
 // C-DTLZ and SDTLZ. The registry's names of the problems themselves
 // (rDTLZ1_3D_i2, shiftZDT4) stay in Python, which builds the spec of each.
 //
+// bbob-biobj and bbob-biobj-mixint (bbob.hpp; task 12 of 2026-10-19, §1):
+// family "bbob-biobj" or "bbob-biobj-mixint", the numbers of its two
+// functions in `bbob`.
+//
 // THE MAPS (dtlz_variants.py, shifted.py, rotated.py): the point the family
 // is evaluated at, its variables from `first` on read as
 //   cyclic       y = (x - c + 1/2) mod 1          shiftDTLZ1-4
@@ -31,6 +35,7 @@
 #include <utility>
 #include <vector>
 
+#include "bbob.hpp"
 #include "common.hpp"
 #include "dtlz.hpp"
 #include "maf.hpp"
@@ -51,6 +56,7 @@ struct Spec {
     double centre_m = 0.0;                        // C2-DTLZ2: 1/sqrt(M)
     std::vector<double> lines;                    // MaF9: (ax, ay, dx, dy, |d|) per edge
     std::vector<std::vector<double>> polygons;    // MaF9: the forbidden polygons, x0 y0 x1 y1 ...
+    std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta
 };
 
 namespace detail {
@@ -98,6 +104,7 @@ public:
         else if (f == "C2-ConvexDTLZ2") set_cdtlz(2, dtlz::Cons::C2_Convex, 1);
         else if (f == "C3-DTLZ1") set_cdtlz(1, dtlz::Cons::C3_DTLZ1, n_obj);
         else if (f == "C3-DTLZ4") set_cdtlz(4, dtlz::Cons::C3_DTLZ4, n_obj);
+        else if (f == "bbob-biobj" || f == "bbob-biobj-mixint") kind_ = Kind::BBOB;
         else throw std::invalid_argument("suite: unknown family '" + f + "'");
         check();
     }
@@ -147,13 +154,16 @@ public:
             case Kind::ZCAT:
                 zcat_.evaluate(p, f);
                 return;
+            case Kind::BBOB:
+                bbob_.evaluate(p, f);
+                return;
         }
     }
 
     const Spec& spec() const { return s_; }
 
 private:
-    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT };
+    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, BBOB };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat };
 
     Spec s_;
@@ -162,6 +172,7 @@ private:
     int which_ = 0;
     dtlz::Cons cons_ = dtlz::Cons::C1_DTLZ1;
     zcat::Problem zcat_;
+    bbob::Pair bbob_;
 
     void set_cdtlz(int base, dtlz::Cons cons, int n_cons)
     {
@@ -216,6 +227,12 @@ private:
                 zcat_.which = which_;
                 zcat_.M = M;
                 zcat_.n = n;
+                break;
+            case Kind::BBOB:
+                if (M != 2) fail("two objectives");
+                bbob_ = bbob::Pair(s_.bbob, n);
+                if ((bbob_.integers() > 0) != (s_.family == "bbob-biobj-mixint"))
+                    fail("integer variables in bbob-biobj-mixint only");
                 break;
         }
         const std::string& map = s_.map;

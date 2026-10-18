@@ -3,7 +3,8 @@
 # The ten single-objective bbob functions the bbob-biobj suite is built from.
 # N. Hansen, S. Finck, R. Ros, A. Auger. "Real-Parameter Black-Box
 # Optimization Benchmarking 2009: Noiseless Functions Definitions."
-# INRIA RR-6829, with the 2019 errata.        (source: ReadyMarkdown/RR-6829v2)
+# INRIA RR-6829, with the 2019 errata.
+#        (source: bbob-functions_hansen2009, bbob-functions-def_hansen2009)
 #
 # Written from the report. Only the ten f1, f2, f6, f8, f13, f14, f15, f17,
 # f20, f21 that Brockhoff et al. select for bbob-biobj are here; the other

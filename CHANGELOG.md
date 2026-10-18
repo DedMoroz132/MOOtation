@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- bbob-biobj and bbob-biobj-mixint in the C++ suite (task 12 of 2026-10-19,
+  §1; `include/mootation/suite/bbob.hpp`): the ten bbob functions of the
+  pairs (Hansen et al., INRIA RR-6829), the 55 pairs (Brockhoff et al., Evol.
+  Comput. 30(2), 2022) and the integer variables of the mixed-integer suite
+  (Tušar et al., GECCO 2019), from the numbers the instances draw in Python;
+  their values are the NumPy code's, bit for bit, on all 110 + 110 registered
+  problems. The NumPy code's products of vectors and matrices go through BLAS,
+  and the C++ writes out the order of OpenBLAS's kernels that NumPy 2.5 ships
+  with, so the values are the same on every machine with the extension.
+  bbob-biobj takes the direct path from the core; bbob-biobj-mixint, with its
+  typed variables, does not.
 - An ND-tree (Jaszkiewicz & Lust, IEEE TEVC 22(5), 2018; `nd_tree.hpp`)
   behind the run archive's dominance checks from three objectives and the
   nondominated filter from four (task 11 of 2026-10-18, §2): the same answers
