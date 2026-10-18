@@ -5395,7 +5395,10 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
             ident.optimum = np.full(len(r.A), 0.5)
         many = r.family in task6 or r.zdt         # task 7's new kinds: fewer points
         X = box(p, 2000 if many else 300)
-        assert max(np.abs(np.subtract(ident.evaluate(x), base.evaluate(list(x)))).max()
+        # the base's NumPy function, as the rotation's own code is NumPy's (where
+        # NumPy's maths is not the C library's, C++ parts from it in the last bits)
+        base_numpy = (base.reference or {}).get("evaluate") or base.evaluate
+        assert max(np.abs(np.subtract(ident.evaluate(x), base_numpy(list(x)))).max()
                    for x in X) < 1e-12, name
         F = np.array([p.evaluate(list(x)) for x in box(p, 10_000 if many else 1000)])
         assert np.all(np.isfinite(F)), name

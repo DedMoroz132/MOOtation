@@ -11,10 +11,10 @@ always listed under **Changed** or **Removed**.
 ## [Unreleased]
 
 - An ND-tree (Jaszkiewicz & Lust, IEEE TEVC 22(5), 2018; `nd_tree.hpp`)
-  behind the run archive's dominance checks and the nondominated filter from
-  four objectives (task 11 of 2026-10-18, §2): the same answers as comparing a
-  point with every stored one, so the same archive and the same filter, bit
-  for bit; without the pass over every stored point.
+  behind the run archive's dominance checks from three objectives and the
+  nondominated filter from four (task 11 of 2026-10-18, §2): the same answers
+  as comparing a point with every stored one, so the same archive and the same
+  filter, bit for bit; without the pass over every stored point.
 - mosa's core cheaper with the same runs (§3): the archive's objectives kept
   by columns for the energies' and the archive's passes, its span and ideal
   point updated as members come and go, the energies' ε only where it is the

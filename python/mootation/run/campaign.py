@@ -47,6 +47,7 @@ being started again; `--force` reruns everything.
 from __future__ import annotations
 
 import argparse
+import bisect
 import json
 import math
 import os
@@ -1031,13 +1032,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         G = p.constraints_batch(X) if cons is not None else None
         return F, G, T
 
+    read_at = None          # the counts where account reads something, sorted
+
     def account(X, F, G, T):
         """The rows X evaluated, (F, G, T) their values (objectives_of), in
         order (THE EVALUATOR above): the counts, the failures and the points of
         a batch at once, which every row is pended in order, and at each count
         where something is read (the grid of everything evaluated, the hard
         budgets, the checkpoints) the reading after exactly that many."""
-        nonlocal fe, fe_first_feas, n_failed
+        nonlocal fe, fe_first_feas, n_failed, read_at
         n = len(X)
         F = np.asarray(F, float).reshape(n, p.n_obj)
         finite = np.isfinite(F).all(axis=1)
@@ -1064,8 +1067,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                     pend_o.append((t_true, xn))
                 if inc is not None and ok[i]:
                     pend_i.append((F[i] if t_true is None else t_true, start + 1 + i))
-        reads = sorted(b for b in set(checkpoints) | (set(hard) if arc is not None else set())
-                       | (grid_set if inc is not None else set()) if start < b <= start + n)
+        if read_at is None:     # made at the first call: they are all set before the run
+            read_at = sorted(set(checkpoints) | (set(hard) if arc is not None else set())
+                             | (grid_set if inc is not None else set()))
+        reads = read_at[bisect.bisect_right(read_at, start):bisect.bisect_right(read_at, start + n)]
         lo = 0
         for b in reads:
             pend(lo, b - start)

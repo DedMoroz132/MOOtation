@@ -21,10 +21,10 @@
 //
 // Dominance is checked against the stored points kept sorted by the first
 // objective at two objectives: only those at or below f_1 can weakly dominate
-// f, only those at or above it can be dominated by it; at three, against
-// every stored point in one pass; from four (kTreeFrom), through an ND-tree
-// of the stored points (nd_tree.hpp; task 11 of 2026-10-18, §2), which gives
-// the same answers without comparing f with every one of them.
+// f, only those at or above it can be dominated by it; from three
+// (kTreeFrom), through an ND-tree of the stored points (nd_tree.hpp; task 11
+// of 2026-10-18, §2), which gives the same answers as the pass over every
+// stored point (set_tree(false)) without comparing f with every one of them.
 // ============================================================================
 
 #include <algorithm>
@@ -108,7 +108,7 @@ public:
     static double default_delta(int n_obj) { return n_obj >= 5 ? 1e-2 : 1e-3; }
 
     // From how many objectives the dominance checks go through the ND-tree.
-    static constexpr std::size_t kTreeFrom = 4;
+    static constexpr std::size_t kTreeFrom = 3;
 
     // ideal and nadir both given: the problem's frame; else the archive's own.
     GridArchive(int n_obj, int n_vars, const std::vector<double>& ideal,
