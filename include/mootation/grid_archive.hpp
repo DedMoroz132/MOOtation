@@ -365,7 +365,7 @@ private:
 
     double corner(const double* f, const std::vector<std::int64_t>& c) const
     {
-        double buf[64];
+        double buf[64] = {};                 // gcc cannot see that t[0..m) is written below
         std::vector<double> big;
         double* t = buf;
         if (m_ > 64) { big.resize(m_); t = big.data(); }
