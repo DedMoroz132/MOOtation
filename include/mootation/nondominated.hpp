@@ -22,8 +22,9 @@
 //   * three objectives: against the staircase of the earlier rows' (f2, f3),
 //     kept in a balanced tree (Kung, Luccio & Preparata, J. ACM 22(4), 1975;
 //     O(n log n));
-//   * more: against every nondominated row so far, stopping at the first that
-//     dominates (O(n k m), k the nondominated rows).
+//   * more: against the nondominated rows so far in an ND-tree (nd_tree.hpp;
+//     task 11 of 2026-10-18, §2), which answers whether one of them dominates
+//     the row as comparing it with each of them would.
 // A row with a NaN neither dominates nor is dominated (every comparison with
 // NaN is false), as in the NumPy loop: it is kept, and left out of the pass.
 //
@@ -37,6 +38,8 @@
 #include <iterator>
 #include <map>
 #include <vector>
+
+#include "nd_tree.hpp"
 
 namespace mootation::nd {
 
@@ -144,15 +147,12 @@ inline std::vector<char> nondominated_sorted(const double* F, std::size_t m,
         }
         return keep;
     }
-    std::vector<const double*> front;             // the nondominated rows so far
+    NDTree front(m);                              // the nondominated rows so far
     for (std::size_t t = 0; t < n; ++t) {
         const double* f = F + rows[t] * m;
         if (has_nan(f, m)) continue;
-        bool dominated = false;
-        for (const double* p : front)
-            if (weakly_dominates(p, f, m)) { dominated = true; break; }
-        if (dominated) { keep[t] = 0; continue; }
-        front.push_back(f);
+        if (front.covered(f, nullptr)) { keep[t] = 0; continue; }
+        front.insert(t, f);
     }
     return keep;
 }

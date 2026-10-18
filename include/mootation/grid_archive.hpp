@@ -20,8 +20,11 @@
 // tie for a cell, and then the first placed keeps it.
 //
 // Dominance is checked against the stored points kept sorted by the first
-// objective: only those at or below f_1 can weakly dominate f, only those at
-// or above it can be dominated by it.
+// objective at two objectives: only those at or below f_1 can weakly dominate
+// f, only those at or above it can be dominated by it; at three, against
+// every stored point in one pass; from four (kTreeFrom), through an ND-tree
+// of the stored points (nd_tree.hpp; task 11 of 2026-10-18, §2), which gives
+// the same answers without comparing f with every one of them.
 // ============================================================================
 
 #include <algorithm>
@@ -35,6 +38,7 @@
 #include <utility>
 #include <vector>
 
+#include "nd_tree.hpp"
 #include "numpy_sum.hpp"
 
 namespace mootation {
@@ -103,12 +107,16 @@ public:
     // archive.default_delta: 1e-3, and 1e-2 from five objectives up
     static double default_delta(int n_obj) { return n_obj >= 5 ? 1e-2 : 1e-3; }
 
+    // From how many objectives the dominance checks go through the ND-tree.
+    static constexpr std::size_t kTreeFrom = 4;
+
     // ideal and nadir both given: the problem's frame; else the archive's own.
     GridArchive(int n_obj, int n_vars, const std::vector<double>& ideal,
                 const std::vector<double>& nadir, double delta)
         : m_(static_cast<std::size_t>(n_obj)), d_(static_cast<std::size_t>(n_vars)),
           delta_(delta != 0.0 ? delta : default_delta(n_obj)),
-          problem_frame_(!ideal.empty() && !nadir.empty()), ext_(m_, -1)
+          problem_frame_(!ideal.empty() && !nadir.empty()), ext_(m_, -1),
+          use_tree_(m_ >= kTreeFrom), tree_(m_)
     {
         if (m_ != 2) cols_.resize(m_);
         if (problem_frame_) {
@@ -158,6 +166,15 @@ public:
 
     // An offer of the wrong shape: counted, not stored (add() would return false).
     void add_invalid() { ++offered_; }
+
+    // The dominance checks through the ND-tree (true) or against every stored
+    // point (false), from three objectives; before the first offer only. The
+    // archive is the same either way (the tests compare the two).
+    void set_tree(bool on)
+    {
+        if (offered_ == 0 && m_ > 2) use_tree_ = on;
+    }
+    bool tree() const { return use_tree_ && m_ > 2; }
 
     // The stored points in insertion order: objectives, variables, and whether
     // each is an objective's best (archive.GridArchive.points).
@@ -210,6 +227,9 @@ private:
     std::vector<std::vector<double>> cols_;
     std::vector<double> above_, below_;
     long long offered_ = 0, accepted_ = 0;
+    // from kTreeFrom objectives: the live slots in an ND-tree (nd_tree.hpp)
+    bool use_tree_;
+    nd::NDTree tree_;
 
     const double* f_of(std::size_t s) const { return F_.data() + s * m_; }
 
@@ -232,6 +252,10 @@ private:
                 if (p[1] < f[1]) break;                 // the staircase: none further on
                 if (f[0] <= p[0] && f[1] <= p[1]) beaten_.push_back(it->second);
             }
+        } else if (use_tree_) {
+            // the ND-tree: the same answers, the beaten slots ascending as
+            // the pass below finds them
+            if (tree_.covered(f, &beaten_)) return false;
         } else {
             // one pass over each objective's column, every slot: p does not
             // weakly dominate f where max_j (p_j - f_j) > 0, f does not weakly
@@ -285,6 +309,7 @@ private:
         slot_cell_.emplace_back();
         in_cell_.push_back(0);
         if (m_ == 2) by_f1_.emplace(f[0], s);
+        else if (use_tree_) tree_.insert(s, f);
         else
             for (std::size_t j = 0; j < m_; ++j) cols_[j].push_back(f[j]);
         ++live_;
@@ -304,6 +329,7 @@ private:
         alive_[s] = 0;
         --live_;
         forget_f1(s);
+        if (use_tree_ && m_ > 2) tree_.erase(s);
         if (in_cell_[s]) {
             auto it = cell_.find(slot_cell_[s]);
             if (it != cell_.end() && it->second == s) cell_.erase(it);
@@ -344,7 +370,10 @@ private:
         by_f1_.clear();
         if (m_ == 2)
             for (std::size_t s = 0; s < k; ++s) by_f1_.emplace(F_[s * m_], s);
-        else
+        else if (use_tree_) {
+            tree_.clear();                        // the slots are numbered anew
+            for (std::size_t s = 0; s < k; ++s) tree_.insert(s, F_.data() + s * m_);
+        } else
             for (std::size_t j = 0; j < m_; ++j) {
                 cols_[j].resize(k);
                 for (std::size_t s = 0; s < k; ++s) cols_[j][s] = F_[s * m_ + j];

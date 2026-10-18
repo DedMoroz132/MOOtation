@@ -103,6 +103,16 @@ class Job:
         return Path(self.problem) / self.key / f"run_{self.seed}"
 
 
+def shard_of(job: Job, k: int) -> int:
+    """The part of k a job belongs to (--shard i/k; task 11 of 2026-10-18, §5):
+    a hash of its problem, algorithm and seed (its rel_dir), the same on every
+    machine and whatever else the campaign holds, so that k machines running
+    parts 0..k-1 of one config run every job once."""
+    import hashlib
+    digest = hashlib.sha256(job.rel_dir.as_posix().encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") % k
+
+
 @dataclass
 class CampaignSpec:
     out: str = "results/{name}"
@@ -638,6 +648,25 @@ def _code_stamp() -> str:
     return _CODE_STAMP[0]
 
 
+def reference_hash(p, ref, ref3, pset) -> str:
+    """A hash of everything a run is measured against: the frame, the reference
+    front, the dense reference and the Pareto-set sample (None where absent), as
+    the run reads them (meta.json; --merge checks that the parts agree)."""
+    import hashlib
+    import numpy as np
+    h = hashlib.sha256()
+    for name, a in (("ideal", p.ideal), ("nadir", p.nadir), ("ref", ref), ("ref3", ref3),
+                    ("pset", pset)):
+        h.update(name.encode())
+        if a is None:
+            h.update(b"none")
+        else:
+            a = np.ascontiguousarray(a, dtype=float)
+            h.update(str(a.shape).encode())
+            h.update(a.tobytes())
+    return h.hexdigest()[:16]
+
+
 def reference_data(root: Path, name: str, n_ref: int, front: bool, dense: bool, pset: bool):
     """(problem, ref, (ref3, info3), pareto_set) of a registry problem for a
     run: the problem with its frame read off its front where the registry does
@@ -784,6 +813,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         front=any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)),
         dense=spec.dense_reference,
         pset=any(m in NEEDS_SET for m in (*spec.metrics, *final_metrics)))
+    ref_hash = reference_hash(p, ref, ref3, pset)
     ideal, nadir = p.ideal, p.nadir
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
@@ -814,6 +844,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # the problem's version (registry.py, PROBLEM_VERSION): a run of an
         # older one answered another problem
         "problem_version": problem_version(job.problem),
+        # what the run was measured against and with (reference_hash), and the
+        # benchmark sources' stamp: --merge compares them across the parts
+        "reference_hash": ref_hash, "code_stamp": _code_stamp(),
         "reference_rows": None if ref is None else int(len(ref)),
         # the dense reference's rows and step, and the population's step
         "reference_v3": info3,
@@ -999,38 +1032,56 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         return F, G, T
 
     def account(X, F, G, T):
-        """The rows X evaluated, (F, G, T) their values (objectives_of), every
-        row in order (THE EVALUATOR above)."""
+        """The rows X evaluated, (F, G, T) their values (objectives_of), in
+        order (THE EVALUATOR above): the counts, the failures and the points of
+        a batch at once, which every row is pended in order, and at each count
+        where something is read (the grid of everything evaluated, the hard
+        budgets, the checkpoints) the reading after exactly that many."""
         nonlocal fe, fe_first_feas, n_failed
-        for i, x in enumerate(X):
-            fe += 1
-            f = F[i]
-            read_now = (arc is not None and fe in hard) or fe in checkpoints
-            if not np.all(np.isfinite(f)):
-                n_failed += 1
-                failed_fe.append(fe)
-            else:
-                ok = G is None or bool(np.all(np.asarray(G[i], float) <= 0.0))
-                if cons is not None and ok and fe_first_feas is None:
-                    fe_first_feas = fe
+        n = len(X)
+        F = np.asarray(F, float).reshape(n, p.n_obj)
+        finite = np.isfinite(F).all(axis=1)
+        ok = finite if G is None else \
+            finite & (np.asarray(G, float).reshape(n, -1) <= 0.0).all(axis=1)
+        start = fe
+        failed = np.flatnonzero(~finite)
+        if len(failed):
+            n_failed += len(failed)
+            failed_fe.extend((start + 1 + failed).tolist())
+        if cons is not None and fe_first_feas is None and ok.any():
+            fe_first_feas = start + 1 + int(np.argmax(ok))
+
+        def pend(lo, hi):
+            """rows lo..hi-1 to the archive, the oracle and everything evaluated"""
+            for i in (lo + np.flatnonzero(finite[lo:hi])).tolist():
+                x = X[i]
                 xn = numeric(x) if numeric is not None else x
-                if arc is not None and ok:
-                    pend_a.append((f, xn))
+                if arc is not None and ok[i]:
+                    pend_a.append((F[i], xn))
                 t_true = None
                 if oracle is not None:
                     t_true = T[i] if T is not None else truth(list(x))
                     pend_o.append((t_true, xn))
-                if inc is not None and ok:
-                    pend_i.append((f if t_true is None else t_true, fe))
+                if inc is not None and ok[i]:
+                    pend_i.append((F[i] if t_true is None else t_true, start + 1 + i))
+        reads = sorted(b for b in set(checkpoints) | (set(hard) if arc is not None else set())
+                       | (grid_set if inc is not None else set()) if start < b <= start + n)
+        lo = 0
+        for b in reads:
+            pend(lo, b - start)
+            lo = b - start
+            fe = b
             if inc is not None and fe in grid_set:
                 flush()
                 all_at[fe] = (inc.igd_plus(), inc.eps_plus())
-            if read_now:
+            if (arc is not None and fe in hard) or fe in checkpoints:
                 flush(read=True)
                 if arc is not None and fe in hard:
                     take_hard_archive(fe)
                 if fe in checkpoints and (len(arc) or cons is not None):
                     take_checkpoint(fe)
+        pend(lo, n)
+        fe = start + n
         flush()
 
     def evaluate_rows(X):
@@ -1070,7 +1121,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     def on_rows(X, F, G):
         t_in = time.perf_counter()
-        account(X.tolist(), F, G if cons is not None else None, None)
+        account(X, F, G if cons is not None else None, None)
         tm["evaluator"] += time.perf_counter() - t_in
 
     def take_checkpoint(b):
@@ -1802,6 +1853,69 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
     return counts
 
 
+# ── the queue: the longest runs first (task 11 of 2026-10-18, §6.2) ─────────
+# A campaign of many workers ends when its last run ends: a long run started
+# last keeps all but one worker idle. The queue is ordered by the expected
+# seconds of every run, the longest first; the runs are independent, so the
+# order changes when the campaign ends, not what it finds. Expected: the
+# seconds per evaluation of the finished runs of the same algorithm and
+# problem in this results directory (a campaign resumed, or run again with
+# --force), times the run's budget; without such runs a model, per evaluation:
+# the core's (CORE_US: the cores that compute hypervolumes cost the most and
+# grow fastest with the objectives) and the problem's (PROBLEM_US, by family:
+# the C++ suite's cost nearly nothing, a family evaluated row by row in Python
+# the most), both rough, measured with tools/perf in task 10 and 11.
+CORE_US = {"sms_emoa": 300.0, "hype": 300.0, "mo_cma_es": 300.0, "sms_m2m": 300.0,
+           "r2ibea": 150.0, "mosa": 120.0}
+CORE_US_DEFAULT = 50.0
+PROBLEM_US = (("WFG", 20.0), ("MaF10", 1000.0), ("MaF11", 1000.0), ("MaF12", 1000.0),
+              ("MaF8", 50.0), ("bbobbiobj", 30.0), ("RE", 50.0), ("CRE", 50.0), ("RCM", 80.0),
+              ("RWMOP", 80.0), ("DOC", 50.0), ("MW", 20.0), ("DAS-CMOP", 20.0),
+              ("LIR-CMOP", 20.0), ("BT", 20.0), ("MOP", 20.0), ("MMF", 30.0),
+              ("SYM-PART", 30.0), ("Omni", 30.0), ("IPolygon", 30.0), ("Polygon", 20.0))
+PROBLEM_US_DEFAULT = 5.0
+
+
+def expected_seconds(root: Path, jobs: list) -> dict:
+    """{job index: the run's expected seconds} (the comment above)."""
+    import re
+    # a noisy copy (<base>_n1 .. _h5, benchmarks/noisy.py) or a failing one
+    # (<base>_fail...): its own evaluator, row by row; read off the name, so
+    # that ordering the queue needs no NumPy
+    own_evaluator = re.compile(r".*_([ndsh][15]|fail\w+)$")
+    rate: dict = {}
+    for m in root.glob("*/*/run_*/meta.json"):
+        try:
+            meta = json.loads(m.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if meta.get("status") != "done" or not meta.get("fe") or not meta.get("seconds"):
+            continue
+        key = (m.parents[2].name, m.parents[1].name)
+        rate.setdefault(key, []).append(float(meta["seconds"]) / float(meta["fe"]))
+    out = {}
+    for j in jobs:
+        seen = rate.get((j.problem, j.key))
+        if seen:
+            per = sum(seen) / len(seen)
+        else:
+            core = CORE_US.get(j.algorithm, CORE_US_DEFAULT) * (1.0 + j.n_objs / 3.0)
+            prob = next((us for stem, us in PROBLEM_US if j.problem.startswith(stem)),
+                        PROBLEM_US_DEFAULT)
+            if own_evaluator.fullmatch(j.problem):
+                prob = max(prob, 100.0)             # a run's own evaluator, row by row
+            per = 1e-6 * (core + prob)
+        out[j.index] = per * j.budget
+    return out
+
+
+def longest_first(root: Path, jobs: list) -> list:
+    """The jobs in the order a campaign runs them: the longest expected first,
+    ties in the order of the campaign."""
+    est = expected_seconds(root, jobs)
+    return sorted(jobs, key=lambda j: (-est[j.index], j.index))
+
+
 def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
                  only: list[int] | None = None, workers: int = 1,
                  force: bool = False) -> dict:
@@ -1821,8 +1935,8 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
         selected = [jobs[i] for i in only if 0 <= i < len(jobs)]
     elif shard is not None:
         i, n = shard
-        selected = [j for j in jobs if j.index % n == i]
-    todo = [j for j in selected if force or job_status(root, j) != "done"]
+        selected = [j for j in jobs if shard_of(j, n) == i]
+    todo = longest_first(root, [j for j in selected if force or job_status(root, j) != "done"])
     print(f"{cfg.name}: {len(jobs)} jobs total, {len(selected)} in this slice, "
           f"{len(todo)} to run -> {root}", file=sys.stderr)
 
@@ -1846,6 +1960,109 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
             counts[status] = counts.get(status, 0) + 1
     print(f"finished: {counts}", file=sys.stderr)
     return counts
+
+
+# ── the parts of a campaign run apart (task 11 of 2026-10-18, §5) ─────────────
+
+
+def merge_parts(cfg: Config, parts: list, *, out: Path | None = None) -> dict:
+    """--merge: a campaign run in parts (--shard i/k, each part on its own
+    machine into its own results directory) gathered into one results directory
+    (the config's, or `out`): every job's run copied from the one part that has
+    it finished, the parts' reference caches (_references/) from the first that
+    has each, campaign.json, and merge.json saying where each run came from.
+    The parts stay as they are. Nothing is written, and ValueError says why,
+    when a job has no finished run or has one in two parts, when the parts' runs
+    were made by different code (revision, the benchmark sources' code stamp, a
+    problem's version, the reference version), were measured against different
+    references (reference_hash) or have different reference caches, or when
+    the target already holds a run of the campaign."""
+    import shutil
+    from ..benchmarks.registry import REFERENCE_VERSION, problem_version
+    spec = campaign_spec(cfg)
+    jobs = expand_jobs(cfg, spec)
+    root = Path(out) if out is not None else out_root(cfg, spec)
+    parts = [Path(q) for q in parts]
+    problems: list = []
+    found: dict = {}
+    for j in jobs:
+        have = []
+        for q in parts:
+            mp = q / j.rel_dir / "meta.json"
+            if mp.is_file():
+                m = json.loads(mp.read_text(encoding="utf-8"))
+                if m.get("status") == "done":
+                    have.append((q, m))
+        if not have:
+            problems.append(f"{j.rel_dir.as_posix()}: no part has it finished")
+        elif len(have) > 1:
+            problems.append(f"{j.rel_dir.as_posix()}: in {len(have)} parts "
+                            f"({', '.join(str(q) for q, _ in have)})")
+        else:
+            found[j.index] = have[0]
+    same = {"revision": set(), "code_stamp": set(), "reference_version": set()}
+    ref_of: dict = {}
+    for j in jobs:
+        if j.index not in found:
+            continue
+        q, m = found[j.index]
+        for k in same:
+            same[k].add(json.dumps(m.get(k), sort_keys=True))
+        if int(m.get("problem_version") or 1) != problem_version(j.problem):
+            problems.append(f"{j.rel_dir.as_posix()}: problem version "
+                            f"{m.get('problem_version') or 1}, now {problem_version(j.problem)}")
+        ref_of.setdefault(j.problem, set()).add(m.get("reference_hash"))
+    for k, vals in same.items():
+        if len(vals) > 1:
+            problems.append(f"the parts' runs differ in {k}: {', '.join(sorted(vals))}")
+    if same["reference_version"] and same["reference_version"] != {json.dumps(REFERENCE_VERSION)}:
+        problems.append(f"reference version {', '.join(sorted(same['reference_version']))}, "
+                        f"now {REFERENCE_VERSION}")
+    for name, hashes in sorted(ref_of.items()):
+        if len(hashes) > 1:
+            problems.append(f"{name}: measured against {len(hashes)} different references")
+    caches: dict = {}                                 # a reference cache's file -> its part
+    for q in parts:
+        d = q / REFERENCES_DIR
+        if not d.is_dir():
+            continue
+        for f in sorted(d.glob("*.npz")):
+            if f.name in caches:
+                if f.read_bytes() != (caches[f.name] / REFERENCES_DIR / f.name).read_bytes():
+                    problems.append(f"{REFERENCES_DIR}/{f.name} differs between {caches[f.name]} "
+                                    f"and {q}")
+            else:
+                caches[f.name] = q
+    for j in jobs:
+        if (root / j.rel_dir).exists():
+            problems.append(f"{root}: holds {j.rel_dir.as_posix()} already")
+            break
+    if problems:
+        raise ValueError("--merge: " + "; ".join(problems[:20]) +
+                         (f"; and {len(problems) - 20} more" if len(problems) > 20 else ""))
+    root.mkdir(parents=True, exist_ok=True)
+    origin: dict = {}
+    for j in jobs:
+        q, _ = found[j.index]
+        shutil.copytree(q / j.rel_dir, root / j.rel_dir)
+        origin[str(q)] = origin.get(str(q), 0) + 1
+    if caches:
+        (root / REFERENCES_DIR).mkdir(parents=True, exist_ok=True)
+        for name, q in caches.items():
+            target = root / REFERENCES_DIR / name
+            if not target.exists():
+                shutil.copy2(q / REFERENCES_DIR / name, target)
+    _write_json(root / "campaign.json", {
+        "name": cfg.name, "config": str(cfg.source_path or ""),
+        "problems": sorted({j.problem for j in jobs}),
+        "algorithms": [a.key for a in cfg.algorithms],
+        "seeds": sorted({j.seed for j in jobs}),
+        "jobs": len(jobs), "spec": asdict(spec),
+    })
+    _write_json(root / "merge.json", {"parts": [str(q) for q in parts], "runs": len(jobs),
+                                      "from": origin,
+                                      "merged": time.strftime("%Y-%m-%dT%H:%M:%S")})
+    return {"runs": len(jobs), "from": origin}
 
 
 # ── cluster helpers ─────────────────────────────────────────────────────────
@@ -2895,7 +3112,13 @@ def main(argv: list[str] | None = None) -> int:
                                  description="Run a benchmark campaign described in TOML.")
     ap.add_argument("config")
     ap.add_argument("--list", action="store_true", help="print the job list and exit")
-    ap.add_argument("--shard", help="i/n: run the jobs with index %% n == i")
+    ap.add_argument("--shard", help="i/n: run part i of n (a job's part: a hash of its problem, "
+                                    "algorithm and seed; every machine of n runs one part)")
+    ap.add_argument("--merge", nargs="+", metavar="PART",
+                    help="gather the results directories of the parts (--shard i/n, run "
+                         "apart) into the config's results directory, after checking that "
+                         "every run is there once and that the parts agree (code, problem "
+                         "versions, references)")
     ap.add_argument("--job", type=int, action="append", help="run one job by index (repeatable)")
     ap.add_argument("--workers", type=int, default=1,
                     help="worker processes to start with; change it while the campaign runs by "
@@ -3359,6 +3582,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {script} and {script.parent / 'jobs.txt'} ({len(jobs)} jobs)")
         return 0
 
+    if args.merge:
+        try:
+            got = merge_parts(cfg, args.merge)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+        print(f"merged {got['runs']} runs into {out_root(cfg, campaign_spec(cfg))}: "
+              + ", ".join(f"{n} from {q}" for q, n in got["from"].items()))
+        return 0
     shard = None
     if args.shard:
         try:
@@ -3374,7 +3606,7 @@ def main(argv: list[str] | None = None) -> int:
     if only_problems is not None:
         # the problems' jobs, by their indices in the whole campaign, so that
         # --shard i/n splits them the same way on every machine
-        only = [j.index for j in jobs if shard is None or j.index % shard[1] == shard[0]]
+        only = [j.index for j in jobs if shard is None or shard_of(j, shard[1]) == shard[0]]
         shard = None
     counts = run_campaign(cfg, shard=shard, only=only, workers=args.workers,
                           force=args.force)

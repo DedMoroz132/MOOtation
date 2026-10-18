@@ -19,7 +19,9 @@ set(MOOTATION_TESTS
     test_r2_emoa
     test_sobol
     test_run_layer_numerics
-    test_suite)
+    test_suite
+    test_nd_tree
+    test_hv_box)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

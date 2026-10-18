@@ -9293,8 +9293,9 @@ def minimize_evaluates_a_suite_problem_in_the_core_and_gives_the_same_run():
     assert raises(ValueError, minimize, p.evaluate, p.bounds, 3, native="sometimes") is not None
 
 
-def _same_run_files(a, b) -> list:
-    """The files of two campaign trees that differ, clocks and provenance aside."""
+def _same_run_files(a, b, only=None) -> list:
+    """The files of two campaign trees that differ, clocks and provenance aside
+    (only: the top-level directories to compare, all but _references if None)."""
     import gzip
     import numpy as np
     clocks = {"started", "finished", "seconds", "record_seconds", "timing", "pid"}
@@ -9316,8 +9317,14 @@ def _same_run_files(a, b) -> list:
             with np.load(p) as z:
                 return {k: (z[k].tobytes(), z[k].dtype.str, z[k].shape) for k in z.files}
         return p.read_bytes()
-    fa = {p.relative_to(a) for p in a.rglob("*") if p.is_file() and "_references" not in p.parts}
-    fb = {p.relative_to(b) for p in b.rglob("*") if p.is_file() and "_references" not in p.parts}
+    def files(root):
+        out = set()
+        for p in root.rglob("*"):
+            rel = p.relative_to(root)
+            if p.is_file() and "_references" not in p.parts and (only is None or rel.parts[0] in only):
+                out.add(rel)
+        return out
+    fa, fb = files(a), files(b)
     assert fa == fb, sorted(fa ^ fb)[:10]
     return [str(r) for r in sorted(fa) if content(a / r) != content(b / r)]
 
@@ -9381,6 +9388,145 @@ gens = 0
         bad = Path(td) / "bad.toml"
         bad.write_text(text.replace("NATIVE", "maybe").replace("GRID", ""), encoding="utf-8")
         assert raises(C.ConfigError, C.campaign_spec, load(bad)) is not None
+
+
+@test
+def a_campaign_in_three_parts_merged_is_the_whole_campaign():
+    """--shard i/3 on three "machines" (three results directories) and
+    --merge: the same runs as the campaign run whole, file for file, the
+    references the same; the parts split the jobs without overlap. The merge
+    refuses a run missing or in two parts, parts measured against different
+    references, and a target that holds runs already."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import shutil
+    import numpy as np
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """
+[run]
+name = "sh"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["ZDT1", "DTLZ2_3D", "C2-DTLZ2_3D"]
+[campaign]
+out = "OUT"
+budget_fe = 800
+metrics = ["igdp_norm", "hv_h"]
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+[[algorithms]]
+name = "moead_de"
+pop = 0
+gens = 0
+"""
+    with tempfile.TemporaryDirectory() as td:
+        def config(out):
+            path = Path(td) / f"{out}.toml"
+            path.write_text(text.replace("OUT", out), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            return cfg
+        whole = config("whole")
+        spec = C.campaign_spec(whole)
+        jobs = C.expand_jobs(whole, spec)
+        for job in jobs:
+            assert C.run_job(job, C.out_root(whole, spec), spec, quiet=True) == "done"
+        parts = []
+        for i in range(3):
+            cfg = config(f"part{i}")
+            root = C.out_root(cfg, C.campaign_spec(cfg))
+            mine = [j for j in C.expand_jobs(cfg, spec) if C.shard_of(j, 3) == i]
+            for job in mine:
+                assert C.run_job(job, root, spec, quiet=True) == "done"
+            parts.append((root, {j.index for j in mine}))
+        assert set().union(*(s for _, s in parts)) == {j.index for j in jobs}
+        assert sum(len(s) for _, s in parts) == len(jobs)            # no job twice
+        merged = config("merged")
+        got = C.merge_parts(merged, [r for r, _ in parts])
+        assert got["runs"] == len(jobs), got
+        top = {j.problem for j in jobs}
+        a, b = C.out_root(whole, spec), C.out_root(merged, C.campaign_spec(merged))
+        assert _same_run_files(a, b, only=top) == []
+        for f in sorted((a / C.REFERENCES_DIR).glob("*.npz")):
+            with np.load(f) as x, np.load(b / C.REFERENCES_DIR / f.name) as y:
+                assert x.files == y.files and all(
+                    np.array_equal(x[k], y[k]) for k in x.files), f.name
+        meta = json.loads((b / jobs[0].rel_dir / "meta.json").read_text(encoding="utf-8"))
+        assert meta["reference_hash"] and meta["code_stamp"], meta
+        # the refusals: nothing written
+        again = config("again")
+        assert raises(ValueError, C.merge_parts, again, [r for r, _ in parts[:2]]) is not None
+        assert raises(ValueError, C.merge_parts, again,
+                      [parts[0][0], parts[0][0], parts[1][0], parts[2][0]]) is not None
+        assert not C.out_root(again, C.campaign_spec(again)).exists()
+        assert raises(ValueError, C.merge_parts, merged, [r for r, _ in parts]) is not None
+        bent = Path(td) / "bent"
+        shutil.copytree(parts[1][0], bent)
+        m_path = next(bent.glob("*/*/run_*/meta.json"))
+        m = json.loads(m_path.read_text(encoding="utf-8"))
+        m["reference_hash"] = "0" * 16
+        m_path.write_text(json.dumps(m), encoding="utf-8")
+        e = raises(ValueError, C.merge_parts, again, [parts[0][0], bent, parts[2][0]])
+        assert "different references" in str(e), e
+
+
+@test
+def the_campaign_runs_the_longest_first():
+    """The queue (campaign.longest_first): by expected seconds, the longest
+    first — the cores that compute hypervolumes and more objectives first
+    without history, the seconds per evaluation of the finished runs of the
+    same algorithm and problem where there are some."""
+    from mootation.run import campaign as C
+    jobs = [C.Job(0, "ZDT1", "nsga2", 1, 100, 100, {}, 2),
+            C.Job(1, "DTLZ2_5D", "sms_emoa", 1, 126, 100, {}, 5),
+            C.Job(2, "WFG4_3D", "nsga2", 1, 91, 100, {}, 3),
+            C.Job(3, "DTLZ2_3D", "sms_emoa", 1, 91, 100, {}, 3),
+            C.Job(4, "ZDT1", "nsga2", 2, 100, 100, {}, 2)]
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        order = [j.index for j in C.longest_first(root, jobs)]
+        assert order[:2] == [1, 3] and order[-2:] == [0, 4], order
+        d = root / "ZDT1" / "nsga2" / "run_9"                 # a finished run: slow
+        d.mkdir(parents=True)
+        (d / "meta.json").write_text(json.dumps({"status": "done", "fe": 1000, "seconds": 100.0}),
+                                     encoding="utf-8")
+        order = [j.index for j in C.longest_first(root, jobs)]
+        assert order[:2] == [0, 4], order
+
+
+@test
+def hv_algo_box_is_the_hypervolume_by_boxes():
+    """hv_algo = "box" (Lacour, Klamroth & Fonseca 2017): metrics.hypervolume
+    gives WFG's value within 1e-12, and the cores that select by exact
+    contributions take it (SMS-EMOA, MO-CMA-ES); HypE, whose exact part is not
+    a hypervolume, reports it ignored."""
+    if not _have_numpy() or _core_with("hypervolume") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.run import metrics as M
+    from mootation.benchmarks import get
+    rng = np.random.default_rng(6)
+    for m in (3, 4, 5, 6):
+        G = np.abs(rng.standard_normal((80, m)))
+        G /= np.linalg.norm(G, axis=1, keepdims=True)
+        a, _ = M.hypervolume(G, np.zeros(m), np.ones(m))
+        b, _ = M.hypervolume(G, np.zeros(m), np.ones(m), hv_algo="box")
+        assert abs(a - b) <= 1e-12 * a, (m, a, b)
+    assert raises(ValueError, M.hypervolume, G, np.zeros(6), np.ones(6), hv_algo="qhv")
+    p = get("DTLZ2_3D")
+    for alg in ("sms_emoa", "mo_cma_es"):
+        r = minimize(p.evaluate, p.bounds, 3, algorithm=alg, pop_size=20, max_evaluations=400,
+                     seed=2, hv_algo="box")
+        assert "hv_algo" not in r.ignored and len(r.objectives), (alg, r.ignored)
+    r = minimize(p.evaluate, p.bounds, 3, algorithm="hype", pop_size=20, max_evaluations=400,
+                 seed=2, hv_algo="box")
+    assert "hv_algo" in r.ignored, r.ignored
 
 
 def main() -> int:

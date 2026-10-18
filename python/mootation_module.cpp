@@ -43,6 +43,7 @@
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
+#include <mootation/hv_box.hpp>
 #include <mootation/hypervolume.hpp>
 #include <mootation/mootation.hpp>
 #include <mootation/settings.hpp>
@@ -1389,7 +1390,10 @@ PYBIND11_MODULE(_core, m)
 
     m.def("hypervolume",
           [](py::array_t<double, py::array::c_style | py::array::forcecast> points,
-             py::array_t<double, py::array::c_style | py::array::forcecast> ref) {
+             py::array_t<double, py::array::c_style | py::array::forcecast> ref,
+             const std::string& algo) {
+              if (algo != "wfg" && algo != "box")
+                  throw std::invalid_argument("hypervolume: algo = '" + algo + "': wfg or box");
               if (points.ndim() != 2)
                   throw std::invalid_argument("hypervolume: points must be a 2-D array");
               if (ref.ndim() != 1 || ref.shape(0) != points.shape(1))
@@ -1400,12 +1404,15 @@ PYBIND11_MODULE(_core, m)
               const double* f = points.data();
               const double* r = ref.data();
               py::gil_scoped_release unlock;
-              return mootation::hypervolume::wfg(f, n, m, r);
+              return algo == "box" ? mootation::hypervolume::box(f, n, m, r)
+                                   : mootation::hypervolume::wfg(f, n, m, r);
           },
-          py::arg("points"), py::arg("ref"),
+          py::arg("points"), py::arg("ref"), py::arg("algo") = "wfg",
           "Exact hypervolume (minimisation) of the rows of `points` against `ref`, by "
-          "the WFG algorithm (While, Bradstreet & Barone 2012). Rows not strictly "
-          "better than `ref` in every objective, and rows with a NaN, add nothing.");
+          "the WFG algorithm (While, Bradstreet & Barone 2012), or with algo = \"box\" "
+          "by box decomposition (Lacour, Klamroth & Fonseca 2017; hv_box.hpp), the "
+          "same value up to the order of the sums. Rows not strictly better than "
+          "`ref` in every objective, and rows with a NaN, add nothing.");
     m.def("hv_covered",
           [](py::array_t<double, py::array::c_style | py::array::forcecast> points,
              py::array_t<double, py::array::c_style | py::array::forcecast> samples) {

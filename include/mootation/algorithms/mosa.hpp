@@ -139,6 +139,18 @@ namespace mootation {
 // an observer reads it. Annealing is sequential: one evaluation at a time,
 // nothing to evaluate in parallel.
 //
+// THE ARCHIVE'S PASSES (task 11 of 2026-10-18, §3): the archive's objectives
+// are kept beside it by columns (ac_), which the energies and the archive's
+// rule read objective by objective over all the members at once instead of
+// member by member; its span and ideal point are computed again only when it
+// changed (a member joining moves the bounds by itself; one leaving from the
+// upper bound has them computed again: one leaving from the lower bound cannot,
+// the point that drove it out being at or below it); the energies' ε only
+// where it is the answer (eps, and cmb with no
+// member dominating f). The same comparisons and the same expressions, each
+// member's maximum over the objectives in their order and the minimum over the
+// members in theirs: the same run, bit for bit.
+//
 // MOSA-c. Constraints (constraint_mode not NONE): the archive keeps feasible
 // points only, or, while none is feasible, the least violating one; an
 // infeasible new point is accepted only from an infeasible current point
@@ -193,6 +205,11 @@ private:
     std::mt19937 rng_{0};
 
     std::vector<Point> archive_;
+    std::vector<std::vector<double>> ac_;  // archive_'s objectives by columns (THE ARCHIVE'S PASSES)
+    mutable bool stale_ = true;           // the bounds to be computed again from ac_
+    mutable std::vector<double> lo_c_, hi_c_, span_c_, ideal_c_;
+    mutable std::vector<char> same_, weak_, strict_;   // the passes' flags, one per member
+    mutable std::vector<double> mx_;
     std::vector<Point> cur_;              // the chains' current points
     unsigned long long present_seen_ = 0; // the vault's present() they are brought to
     std::vector<std::vector<double>> W_;  // tch: each chain's weights
@@ -222,23 +239,51 @@ private:
 
     int K() const { return chains_ > 0 ? chains_ : (energy_ == SAEnergy::Tch ? 10 : 1); }
 
-    std::vector<double> span() const
+    std::size_t n_obj() const { return archive_.empty() ? 0 : archive_[0].f.size(); }
+
+    // the archive changed: ac_ from archive_ again, span and ideal to be computed
+    void archive_changed()
     {
-        const std::size_t m = archive_.empty() ? 0 : archive_[0].f.size();
-        std::vector<double> lo(m, std::numeric_limits<double>::infinity()), hi(m, -lo[0]);
-        for (const auto& a : archive_)
-            for (std::size_t j = 0; j < m; ++j) { lo[j] = std::min(lo[j], a.f[j]); hi[j] = std::max(hi[j], a.f[j]); }
-        std::vector<double> s(m);
-        for (std::size_t j = 0; j < m; ++j) s[j] = hi[j] > lo[j] ? hi[j] - lo[j] : 1.0;
-        return s;
+        const std::size_t m = n_obj();
+        ac_.assign(m, std::vector<double>(archive_.size()));
+        for (std::size_t i = 0; i < archive_.size(); ++i)
+            for (std::size_t j = 0; j < m; ++j) ac_[j][i] = archive_[i].f[j];
+        stale_ = true;
     }
-    std::vector<double> ideal() const
+
+    void bounds_of_archive() const
     {
-        const std::size_t m = archive_.empty() ? 0 : archive_[0].f.size();
-        std::vector<double> z(m, std::numeric_limits<double>::infinity());
-        for (const auto& a : archive_)
-            for (std::size_t j = 0; j < m; ++j) z[j] = std::min(z[j], a.f[j]);
-        return z;
+        const std::size_t m = n_obj();
+        std::vector<double> lo(m, std::numeric_limits<double>::infinity()), hi(m, -std::numeric_limits<double>::infinity());
+        for (std::size_t j = 0; j < m; ++j)
+            for (double v : ac_[j]) {
+                lo[j] = std::min(lo[j], v);
+                hi[j] = std::max(hi[j], v);
+            }
+        lo_c_ = lo;
+        hi_c_ = hi;
+        stale_ = false;
+        bounds_derived();
+    }
+
+    // span and ideal from the bounds
+    void bounds_derived() const
+    {
+        const std::size_t m = lo_c_.size();
+        span_c_.assign(m, 0.0);
+        for (std::size_t j = 0; j < m; ++j) span_c_[j] = hi_c_[j] > lo_c_[j] ? hi_c_[j] - lo_c_[j] : 1.0;
+        ideal_c_ = lo_c_;
+    }
+
+    const std::vector<double>& span() const
+    {
+        if (stale_) bounds_of_archive();
+        return span_c_;
+    }
+    const std::vector<double>& ideal() const
+    {
+        if (stale_) bounds_of_archive();
+        return ideal_c_;
     }
 
     // ── the steps ────────────────────────────────────────────────────────────
@@ -341,7 +386,7 @@ private:
     double delta(const Point& from, const Point& to, int k) const
     {
         if (energy_ == SAEnergy::Tch && weighted_sum_) {
-            const auto sp = span();
+            const auto& sp = span();
             double d = 0.0;
             for (std::size_t j = 0; j < to.f.size(); ++j)
                 d += W_[static_cast<std::size_t>(k)][j] * (to.f[j] - from.f[j]) / sp[j];
@@ -400,6 +445,7 @@ private:
     void start(DataVault<Ind_t>& vault, const std::vector<Point>& first)
     {
         archive_.clear();
+        archive_changed();
         for (const auto& p : first) offer(p);
         const int k = K();
         const std::size_t m = first.empty() ? 0 : first[0].f.size();
@@ -580,24 +626,73 @@ public:
             if (p.cv > 0.0) {
                 if (archive_.empty() || (holds_infeasible && p.cv < archive_[0].cv)) {
                     archive_.assign(1, p);
+                    archive_changed();
                     return true;
                 }
                 return false;
             }
-            if (holds_infeasible) { archive_.assign(1, p); return true; }
+            if (holds_infeasible) { archive_.assign(1, p); archive_changed(); return true; }
         }
-        for (const auto& a : archive_) if (weakly(a.f, p.f)) return false;
-        archive_.erase(std::remove_if(archive_.begin(), archive_.end(),
-                                      [&](const Point& a) { return weakly(p.f, a.f); }),
-                       archive_.end());
+        const std::size_t m = p.f.size(), n = archive_.size();
+        if (ac_.size() != m) {                                   // the first point: m columns
+            ac_.assign(m, std::vector<double>());
+            for (const auto& a : archive_)
+                for (std::size_t j = 0; j < m; ++j) ac_[j].push_back(a.f[j]);
+        }
+        // weak_: the member weakly dominates p; strict_ (reused): p weakly dominates it
+        weak_.assign(n, 1);
+        strict_.assign(n, 1);
+        for (std::size_t j = 0; j < m; ++j) {
+            const double* c = ac_[j].data();
+            const double fj = p.f[j];
+            char* w = weak_.data();
+            char* b = strict_.data();
+            for (std::size_t i = 0; i < n; ++i) {
+                w[i] = static_cast<char>(w[i] & !(c[i] > fj));
+                b[i] = static_cast<char>(b[i] & !(fj > c[i]));
+            }
+        }
+        for (std::size_t i = 0; i < n; ++i)
+            if (weak_[i]) return false;
+        bool finite = true;
+        for (double v : p.f) finite = finite && std::isfinite(v);
+        bool keep_bounds = !stale_ && finite && lo_c_.size() == m;
+        std::size_t kept = 0;                                    // the members p weakly dominates go
+        for (std::size_t i = 0; i < n; ++i) {
+            if (strict_[i]) {
+                for (std::size_t j = 0; j < m && keep_bounds; ++j)
+                    keep_bounds = !(ac_[j][i] == hi_c_[j]);      // it held an upper bound
+                continue;
+            }
+            if (kept != i) {
+                archive_[kept] = std::move(archive_[i]);
+                for (std::size_t j = 0; j < m; ++j) ac_[j][kept] = ac_[j][i];
+            }
+            ++kept;
+        }
+        archive_.resize(kept);
         archive_.push_back(p);
+        for (std::size_t j = 0; j < m; ++j) {
+            ac_[j].resize(kept);
+            ac_[j].push_back(p.f[j]);
+        }
+        if (keep_bounds) {
+            for (std::size_t j = 0; j < m; ++j) {
+                lo_c_[j] = std::min(lo_c_[j], p.f[j]);
+                hi_c_[j] = std::max(hi_c_[j], p.f[j]);
+            }
+            bounds_derived();
+        } else {
+            stale_ = true;
+        }
         if (cap_ > 0 && static_cast<int>(archive_.size()) > cap_) {
             std::vector<std::vector<double>> F;
             for (const auto& a : archive_) F.push_back(a.f);
             const auto idx = dss::order(F, static_cast<std::size_t>(cap_));
-            std::vector<Point> kept;
-            for (std::size_t i : idx) kept.push_back(archive_[i]);
-            archive_ = std::move(kept);
+            std::vector<Point> kept_points;
+            for (std::size_t i : idx) kept_points.push_back(archive_[i]);
+            archive_ = std::move(kept_points);
+            archive_changed();
         }
         return true;
     }
@@ -616,7 +711,7 @@ public:
 
     void psa_update(int c)
     {
-        const auto sp = span();
+        const auto& sp = span();
         const auto& x = cur_[static_cast<std::size_t>(c)].f;
         int near = -1;
         double best = std::numeric_limits<double>::infinity();
@@ -661,22 +756,46 @@ public:
     double energy(const std::vector<double>& f, int k) const
     {
         if (archive_.empty()) return 0.0;
-        const auto sp = span();
+        const auto& sp = span();
         if (energy_ == SAEnergy::Tch) return chebyshev(f, k, sp, ideal());
+        const std::size_t m = f.size(), n = archive_.size();
+        // the members other than f (same_ not set) and those dominating it
+        same_.assign(n, 1);
+        weak_.assign(n, 1);
+        strict_.assign(n, 0);
+        for (std::size_t j = 0; j < m; ++j) {
+            const double* c = ac_[j].data();
+            const double fj = f[j];
+            char* sa = same_.data();
+            char* w = weak_.data();
+            char* st = strict_.data();
+            for (std::size_t i = 0; i < n; ++i) {
+                sa[i] = static_cast<char>(sa[i] & (c[i] == fj));
+                w[i] = static_cast<char>(w[i] & !(c[i] > fj));
+                st[i] = static_cast<char>(st[i] | (c[i] < fj));
+            }
+        }
         std::size_t others = 0, dom = 0;
-        double eps = std::numeric_limits<double>::infinity();
-        for (const auto& a : archive_) {
-            if (a.f == f) continue;
-            ++others;
-            if (dominates(a.f, f)) ++dom;
-            double mx = -std::numeric_limits<double>::infinity();
-            for (std::size_t j = 0; j < f.size(); ++j) mx = std::max(mx, (a.f[j] - f[j]) / sp[j]);
-            eps = std::min(eps, mx);
+        for (std::size_t i = 0; i < n; ++i) {
+            others += !same_[i];
+            dom += !same_[i] && weak_[i] && strict_[i];
         }
         if (others == 0) return 0.0;
         const double share = static_cast<double>(dom) / static_cast<double>(others);
         if (energy_ == SAEnergy::Dom) return share;
         if (energy_ == SAEnergy::Cmb && share > 0.0) return share;
+        // ε of the members other than f against f: each member's maximum over
+        // the objectives in their order, then the minimum over the members
+        mx_.assign(n, -std::numeric_limits<double>::infinity());
+        for (std::size_t j = 0; j < m; ++j) {
+            const double* c = ac_[j].data();
+            const double fj = f[j], sj = sp[j];
+            double* x = mx_.data();
+            for (std::size_t i = 0; i < n; ++i) x[i] = std::max(x[i], (c[i] - fj) / sj);
+        }
+        double eps = std::numeric_limits<double>::infinity();
+        for (std::size_t i = 0; i < n; ++i)
+            if (!same_[i]) eps = std::min(eps, mx_[i]);
         return -eps;
     }
 
@@ -719,6 +838,7 @@ public:
             for (auto* pts : {&archive_, &cur_})
                 for (auto& p : *pts) refresh_copy(vault, p.pt, p.f, p.cv, constrained());
             present_seen_ = vault.present();
+            archive_changed();
         }
         const int c = static_cast<int>(k_ % static_cast<long long>(cur_.size()));
         const double frac = t_max_ > 1 ? std::min(1.0, static_cast<double>(k_) / static_cast<double>(t_max_ - 1)) : 1.0;

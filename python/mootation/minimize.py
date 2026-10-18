@@ -40,7 +40,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfol
               "turbulence", "r_per_dim", "archive_prune", "leader_select", "leader_offer", "r2_mode",
               "r2_space", "bc_selection", "mads_select", "mads_poll", "mads_search",
               "boost_scalarization", "scalarization",
-              "local", "sub_plan", "tch_weights")
+              "local", "sub_plan", "tch_weights", "hv_algo")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")

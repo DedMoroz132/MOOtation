@@ -997,6 +997,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
 | `dn_cf` | DN-NSGA-II: the crowding factor of its niched mating pool — a random member meets the nearest, by Euclidean distance in the variables, of `dn_cf` others drawn without replacement (all of them from N − 1 on), and the better of the two by rank and crowding distance becomes a parent; a whole number ≥ 1, 20 by default (`algorithms/dn_nsga2.hpp`, DN-1) |
+| `hv_algo` | SMS-EMOA and MO-CMA-ES: the exact contributions' hypervolumes by WFG (`wfg`, the default) or by box decomposition (`box`; Lacour, Klamroth & Fonseca, Comput. Oper. Res. 79, 2017; `hv_box.hpp`) — the same values up to the order of the sums, so two nearly equal contributions may compare the other way and the run take another path; `metrics.hypervolume(..., hv_algo=)` and `_core.hypervolume(points, ref, algo)` likewise. HypE's exact part is not a hypervolume (its I_h^k): it reports the knob ignored |
 | `n_samples` | SMS-EMOA, MO-CMA-ES and HypE from four objectives: the Monte-Carlo sample points of a step, from which the hypervolume contributions (HypE: its fitness) are estimated — 10 000 by default, shared out over the points of the last front, each sampled in its own box. A step costs in proportion to it and the estimate's noise falls as its square root; SMS-EMOA and MO-CMA-ES take 0 for the exact contributions at every M (WFG, whose cost grows steeply with M and the front), HypE a whole number ≥ 1 (`sms_emoa.hpp` SMS-2, `mo_cma_es.hpp` MOCMA-5, `hype.hpp`) |
 | `survival`, `spu_frac` | SMS-EMOA, NSGA-II and NSGA-III: `greedy` (the default, the papers' selection) or `stochastic`, the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023): a random Q′ of ⌊`spu_frac`·\|Q\|⌋ members of parents and offspring (1/2 in SMS-EMOA, 3/4 in the NSGA's, the paper's) goes through the usual selection alone — its fronts, reference point, extremes, normalisation — and every member outside Q′ survives untouched; any member survives a step with probability at least 1/2 (SMS-EMOA) or 1/4. `spu_frac = 1` is greedy bit for bit. For NSGA-III Q′ has ⌈`spu_frac`·2N⌉ members, Opris's ⌈3µ/2⌉ (IJCAI 2025, Algorithm 1; NSGA-II takes Bian's floor, the same at an even N) |
 | `inner_archive`, `inner_archive_cap`, `archive_reuse_p` | SMS-EMOA, NSGA-II, NSGA-III, IBEA-ε+: `inner_archive = "nd"` keeps every non-dominated point the algorithm evaluated (an equal objective vector is not added; under constraint handling feasible points only), cut to `inner_archive_cap` by DSS after every addition (0: no cap; unset: 10 μ, none for a purely binary genome); each parent, with probability `archive_reuse_p` (0), is a member drawn uniformly. The result's `inner_archive` holds it; `operator_stats` the share of the parents drawn from it (`archive_parent_share`). The answer's archive (`[campaign] archive`) is apart and unchanged (`operators/inner_archive.hpp`) |
@@ -1840,12 +1841,31 @@ python -m mootation.run.campaign campaign_all.toml --shard 1/3 --workers 16   # 
 python -m mootation.run.campaign campaign_all.toml --shard 2/3 --workers 16   # machine 3
 ```
 
-then copy every machine's `results/all58/` into one directory. The trees do not
-overlap — a job writes only its own `<problem>/<algorithm>/run_<seed>/` — and
-Compare, `--compare` and `--ranks` read whatever `meta.json` files sit under the
-results root, wherever they were produced. Use the same commit everywhere; each
-`meta.json` records the library version, the host and the Python it ran under.
-A killed shard resumes when started again, and `--force` reruns finished jobs.
+A job's part is a hash of its problem, algorithm and seed: the same on every
+machine and whatever else the campaign holds, the k parts together every job
+once. Then copy every machine's `results/all58/` to one machine and merge them
+into the config's results directory:
+
+```bash
+python -m mootation.run.campaign campaign_all.toml --merge part1/all58 part2/all58 part3/all58
+```
+
+`--merge` copies every run from the one part that has it finished, the parts'
+reference caches (`_references/`) and writes `campaign.json` and `merge.json`
+(where each run came from); the parts stay as they are. It refuses, writing
+nothing, when a run is missing or in two parts, when the parts ran different
+code (the revision, the benchmark sources' `code_stamp`, a problem's version,
+the reference version) or measured against different references (each
+`meta.json`'s `reference_hash`, a hash of the frame, the reference front, the
+dense reference and the Pareto-set sample), or when the target already holds a
+run of the campaign. A killed shard resumes when started again, and `--force`
+reruns finished jobs.
+
+The queue runs the longest jobs first (`campaign.longest_first`): the
+expected seconds of every job, from the finished runs of the same algorithm
+and problem in the results directory where there are some, else from a model
+of the core's and the problem's cost per evaluation. The runs are independent:
+the order changes when the campaign ends, not what it finds.
 
 `--problems` narrows everything to part of the selection — `--list`, the run
 (with `--shard` and `--force`), the tables and `--recompute` — which is how a

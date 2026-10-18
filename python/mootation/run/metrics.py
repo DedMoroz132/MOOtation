@@ -246,15 +246,20 @@ def _hv_wfg(pl: np.ndarray, ref: np.ndarray) -> float:
     return float(total)
 
 
-def _hv_exact(pl: np.ndarray, ref: np.ndarray) -> float:
-    """Exact hypervolume of `pl` (nondominated, inside `ref`): C++ when built."""
+def _hv_exact(pl: np.ndarray, ref: np.ndarray, hv_algo: str = "wfg") -> float:
+    """Exact hypervolume of `pl` (nondominated, inside `ref`): C++ when built,
+    by WFG or by box decomposition (hv_algo; the same value up to the order of
+    the sums); without the extension WFG in Python, either way."""
+    if hv_algo not in ("wfg", "box"):
+        raise ValueError(f"hv_algo = '{hv_algo}': wfg or box")
     try:
         from .. import _core
         fn = getattr(_core, "hypervolume", None)
     except ImportError:                              # pragma: no cover - no extension
         fn = None
     if fn is not None:
-        return float(fn(np.ascontiguousarray(pl, float), np.ascontiguousarray(ref, float)))
+        P, R = np.ascontiguousarray(pl, float), np.ascontiguousarray(ref, float)
+        return float(fn(P, R) if hv_algo == "wfg" else fn(P, R, hv_algo))
     return _hv_wfg(pl, ref)
 
 
@@ -315,14 +320,19 @@ def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: 
 
 def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
                 mc_samples: int = HV_MC_SAMPLES, seed: int = 0,
-                exact_max_m: int = HV_EXACT_MAX_M) -> tuple[float, str]:
+                exact_max_m: int = HV_EXACT_MAX_M, hv_algo: str = "wfg") -> tuple[float, str]:
     """Normalised hypervolume and the method used ("exact" or "mc").
 
     F is normalised to (F - ideal) / (nadir - ideal); the reference point is
     ref_scale in every objective; the result is divided by ref_scale^M. Exact
     up to `exact_max_m` objectives, a Monte-Carlo estimate from `mc_samples`
-    points (the same points on every call with the same seed) above.
+    points (the same points on every call with the same seed) above. The exact
+    value by WFG (hv_algo = "wfg", the default) or by box decomposition ("box";
+    task 11 of 2026-10-18, §6.1: Lacour, Klamroth & Fonseca 2017), the same up
+    to the last bits.
     """
+    if hv_algo not in ("wfg", "box"):
+        raise ValueError(f"hv_algo = '{hv_algo}': wfg or box")
     F = np.asarray(F, float)
     ideal = np.asarray(ideal, float)
     nadir = np.asarray(nadir, float)
@@ -338,7 +348,7 @@ def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
         return 0.0, "none"
     G = nondominated(G)
     if m <= exact_max_m:
-        v = _hv_exact(G, ref)
+        v = _hv_exact(G, ref, hv_algo)
         method = "exact"
     else:
         lo = np.minimum(G.min(axis=0), 0.0)

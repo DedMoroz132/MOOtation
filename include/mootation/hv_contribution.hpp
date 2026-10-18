@@ -14,7 +14,9 @@
 //   M ≥ 3, exact: ΔS(p) = Hyp({p}) − Hyp({limit(q, p) : q ≠ p}), limit taking
 //     the worse of the two values in every objective — the exclusive
 //     hypervolume of While, Bradstreet & Barone (TEVC 16(1), 2012, Eqs. 5-7),
-//     computed with hypervolume.hpp's WFG.
+//     computed with hypervolume.hpp's WFG; contributions_box computes the
+//     limited sets' hypervolumes by box decomposition instead (hv_box.hpp,
+//     hv_algo = "box"), the same values up to the order of the sums.
 //   Any M, Monte-Carlo: p's exclusive region lies in the box [p, b] with
 //     b_k = min(r_k, min{q_k : q ≠ p, q_j ≤ p_j for every j ≠ k}) — a point no
 //     worse than p in all objectives but k caps p's region in k. Samples
@@ -30,6 +32,7 @@
 #include <random>
 #include <vector>
 
+#include "hv_box.hpp"
 #include "hypervolume.hpp"
 
 namespace mootation::hv {
@@ -88,6 +91,40 @@ inline std::vector<double> contributions_exact(const std::vector<std::vector<dou
             rows = w.nds(L, rows, m);
             sub = w.hv(L, rows, m);
         }
+        c[i] = std::max(0.0, own - sub);
+    }
+    return c;
+}
+
+// contributions_exact() with every limited set's hypervolume by box
+// decomposition (hv_box.hpp): the same values up to the last bits.
+inline std::vector<double> contributions_box(const std::vector<std::vector<double>>& F,
+                                             const std::vector<double>& r)
+{
+    const std::size_t n = F.size(), m = r.size();
+    if (m <= 2) return contributions_exact(F, r);          // Eq. 4: nothing to decompose
+    std::vector<double> c(n, 0.0);
+    auto inside = [&](const double* p) {
+        for (std::size_t k = 0; k < m; ++k) if (!(p[k] < r[k])) return false;
+        return true;
+    };
+    std::vector<double> L;
+    L.reserve(n * m);
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto& p = F[i];
+        if (!inside(p.data())) continue;
+        double own = 1.0;
+        for (std::size_t k = 0; k < m; ++k) own *= r[k] - p[k];
+        L.clear();
+        std::size_t rows = 0;
+        for (std::size_t q = 0; q < n; ++q) {
+            if (q == i) continue;
+            const std::size_t at = L.size();
+            for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], p[k]));
+            if (inside(L.data() + at)) ++rows;
+            else L.resize(at);
+        }
+        const double sub = rows > 0 ? hypervolume::box(L.data(), rows, m, r.data()) : 0.0;
         c[i] = std::max(0.0, own - sub);
     }
     return c;

@@ -82,6 +82,9 @@ namespace mootation {
 //     M = 5 — Монте-Карло, как у HypE"), 10 000 samples a step shared out
 //     over the points of F_v, each point sampled in its own bounding box.
 //     set_n_samples changes the number; set_n_samples(0) makes every M exact.
+//     hv_algo = box: the exact contributions' hypervolumes by box
+//     decomposition (hv_box.hpp) instead of WFG — the same values up to the
+//     order of the sums, so a near tie may go the other way.
 //   SMS-3. A tie in the smallest contribution removes the point that comes
 //     first in the population, the offspring last.
 //   SMS-4. Two objectives, two points. When F_v holds only two points at
@@ -146,6 +149,7 @@ private:
     double eta_m_ = 20.0;   // thesis §3.4.1
     double pc_    = 1.0;    // thesis §3.4.1
     int    n_samples_ = 10000;   // SMS-2
+    bool   hv_box_ = false;      // hv_algo = box: the exact contributions by box decomposition
     std::optional<double> pm_;            // 1/n when not set (thesis §3.4.1)
     std::optional<double> ref_delta_;     // SMS-7: r = nad + δ (nad − ideal)
     ops::CrossoverSpec xover_;
@@ -277,7 +281,7 @@ private:
         const std::size_t per = mc ? std::max<std::size_t>(
             1, static_cast<std::size_t>(n_samples_) / Fv.size()) : 0;
         auto c = mc ? hv::contributions_mc(Fv, r, per, rng_)
-                    : hv::contributions_exact(Fv, r);
+                    : hv_box_ ? hv::contributions_box(Fv, r) : hv::contributions_exact(Fv, r);
         if (m == 2 && Fv.size() > 2) {                     // SMS-4: the two extremes stay
             std::size_t a = 0, b = 0;
             for (std::size_t t = 1; t < Fv.size(); ++t) {
@@ -364,6 +368,12 @@ public:
             if (w != "uniform" && w != "none")
                 throw std::invalid_argument("bin_crossover = '" + w + "': uniform or none");
             bin_cross_ = w == "uniform";
+            return true;
+        }
+        if (k == "hv_algo") {
+            if (w != "wfg" && w != "box")
+                throw std::invalid_argument("hv_algo = '" + w + "': wfg or box");
+            hv_box_ = w == "box";
             return true;
         }
         return arch_.set_word(k, w) || xover_.set_word(k, w);

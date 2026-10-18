@@ -10,6 +10,26 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- An ND-tree (Jaszkiewicz & Lust, IEEE TEVC 22(5), 2018; `nd_tree.hpp`)
+  behind the run archive's dominance checks and the nondominated filter from
+  four objectives (task 11 of 2026-10-18, §2): the same answers as comparing a
+  point with every stored one, so the same archive and the same filter, bit
+  for bit; without the pass over every stored point.
+- mosa's core cheaper with the same runs (§3): the archive's objectives kept
+  by columns for the energies' and the archive's passes, its span and ideal
+  point updated as members come and go, the energies' ε only where it is the
+  answer.
+- Campaigns across machines (§5): `--shard i/k` takes a job's part from a
+  hash of its problem, algorithm and seed (no longer its index), and
+  `--merge PART ...` gathers the parts' results into the config's results
+  directory after checking that every run is there once and that the parts
+  ran the same code against the same references; `meta.json` has
+  `reference_hash` and `code_stamp`. The queue runs the longest jobs first
+  (§6.2).
+- `hv_algo` (§6.1): `box`, the hypervolume by box decomposition (Lacour,
+  Klamroth & Fonseca, Comput. Oper. Res. 79, 2017; `hv_box.hpp`), for
+  SMS-EMOA's and MO-CMA-ES's exact contributions, `metrics.hypervolume` and
+  `_core.hypervolume`; `wfg` stays the default.
 - The C++ suite of benchmark problems (task 11 of 2026-10-18, §1): ZDT1–4 and
   6, DTLZ1–7 and its variants (wide, shift, I, minus, S), C-DTLZ, MaF1–7, MaF9
   and MaF13, ZCAT1–20, shiftZDT and the rotations over them are computed in

@@ -188,6 +188,8 @@ inline bool is_core_param(const std::string& name)
 //   scalarization, local, sub_plan, tch_weights, boost_scalarization, polish
 //                 the Python-level methods of task 9 (python/mootation/scalar):
 //                 no core has them, every core reports them ignored
+//   hv_algo       sms_emoa, mo_cma_es: the exact contributions' hypervolumes by
+//                 WFG (default) or by box decomposition (hv_box.hpp)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -234,6 +236,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"local",        {"sqp", "nm", "cmaes"}},
         {"sub_plan",     {"grid", "laumanns", "gap"}},
         {"tch_weights",  {"inverse", "lattice"}},
+        {"hv_algo",      {"wfg", "box"}},
         {"polish",       {"off", "sqp", "nm"}},
     };
     return v;
@@ -260,7 +263,7 @@ inline bool is_core_word(const std::string& name)
                           "bc_selection", "mads_select", "mads_poll", "mads_search",
                           "boost_scalarization",
                           "scalarization",
-                          "local", "sub_plan", "tch_weights", "polish"})
+                          "local", "sub_plan", "tch_weights", "polish", "hv_algo"})
         if (name == k) return true;
     return false;
 }

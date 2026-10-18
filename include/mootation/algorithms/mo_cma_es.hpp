@@ -78,7 +78,7 @@ namespace mootation {
 //     M = 2, more at M ≥ 3.
 //   MOCMA-5. Contributions as SMS-EMOA's (hv_contribution.hpp): exact for
 //     M ≤ 3, Monte-Carlo for M ≥ 4 (10 000 samples a step; set_n_samples, 0
-//     = exact at every M).
+//     = exact at every M); hv_algo = box as SMS-EMOA's.
 //   MOCMA-6. C is factorised by Cholesky for every offspring (O(n³)); the
 //     paper's implementation updates the factor incrementally (Suttorp,
 //     Hansen & Igel 2009), which samples the same distribution faster.
@@ -104,6 +104,7 @@ private:
     double alpha_pen_ = 1e-6;     // §2, Eq. 5
     double p_thresh_  = 0.44;     // §2
     int    n_samples_ = 10000;    // MOCMA-5
+    bool   hv_box_ = false;       // hv_algo = box: the exact contributions by box decomposition
     std::vector<double> lo_, hi_;
     std::mt19937 rng_{std::random_device{}()};
 
@@ -263,7 +264,7 @@ private:
         const bool mc = m >= 4 && n_samples_ > 0;
         auto c = mc ? hv::contributions_mc(Fv, r, std::max<std::size_t>(
                           1, static_cast<std::size_t>(n_samples_) / Fv.size()), rng_)
-                    : hv::contributions_exact(Fv, r);
+                    : hv_box_ ? hv::contributions_box(Fv, r) : hv::contributions_exact(Fv, r);
         for (std::size_t k = 0; k < m; ++k) {                  // boundary elements
             std::size_t b = 0;
             for (std::size_t t = 1; t < Fv.size(); ++t) if (Fv[t][k] < Fv[b][k]) b = t;
@@ -306,6 +307,13 @@ public:
         if (!(v >= 0.0 && v <= 1e9 && v == std::floor(v)))
             throw std::invalid_argument("n_samples must be a whole number >= 0");
         n_samples_ = static_cast<int>(v);
+        return true;
+    }
+    bool set_word(const std::string& k, const std::string& w)
+    {
+        if (k != "hv_algo") return false;
+        if (w != "wfg" && w != "box") throw std::invalid_argument("hv_algo = '" + w + "': wfg or box");
+        hv_box_ = w == "box";
         return true;
     }
 
