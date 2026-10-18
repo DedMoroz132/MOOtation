@@ -556,12 +556,12 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
     if spec.ladder:
         # The rungs, after every full-budget job so that the job numbers of a
         # campaign without them stay as they were.
-        from .budget import BUDGET_DEPENDENT
+        from .budget import depends_on_budget
         full = {(j.problem, j.key): j for j in jobs}
         for pname in problems:
             for a in cfg.algorithms:
                 # a plan taking a share of the budget depends on the budget too
-                if (a.name not in BUDGET_DEPENDENT and not a.init_share) or a.evaluations > 0:
+                if (not depends_on_budget(a.name, a.params) and not a.init_share)                         or a.evaluations > 0:
                     continue
                 base = full[(pname, a.key)]
                 for b in spec.ladder:
@@ -777,7 +777,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     ideal, nadir = p.ideal, p.nadir
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
-    from .budget import BUDGET_DEPENDENT
+    from .budget import depends_on_budget
     from ..benchmarks.registry import REFERENCE_VERSION
     from ..benchmarks.wfg import numba_enabled as wfg_numba_enabled
     meta = {
@@ -786,7 +786,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # measured in budget.py: a record of this run at a smaller budget is
         # not what a separate run of that budget gives (ladder_of: the full
         # run a ladder rung shortens); so is a plan taking a share of it
-        "budget_dependent": job.algorithm in BUDGET_DEPENDENT or bool(job.init_share),
+        "budget_dependent": depends_on_budget(job.algorithm, job.params) or bool(job.init_share),
         "ladder_of": job.ladder_of or None,
         "init": job.init, "init_share": job.init_share,
         "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
@@ -819,7 +819,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     from .archive import GridArchive
     from .baselines import BASELINES, run_baseline
+    from ..scalar import NAMES as SCALAR_NAMES
     baseline = job.algorithm in BASELINES
+    # the scalarization methods run in Python (mootation.scalar): no core
+    # state to read at the records
+    in_python = baseline or job.algorithm in SCALAR_NAMES
     # Every nondominated point the run evaluates, whatever the algorithm keeps
     # in its population (archive.GridArchive; archive.csv). A baseline's
     # answer IS its archive, so it gets one even when archiving is off.
@@ -1054,10 +1058,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # says so, and always on a constrained problem, whose indicators need them
     keep_x = (spec.snapshot_variables == "all" or cons is not None
               or (spec.snapshot_variables == "pareto_set" and callable(p.pareto_set)))
-    op_stats = spec.operator_stats and not baseline
+    op_stats = spec.operator_stats and not in_python
     if op_stats:
         from .. import _core
-    diag = spec.coords_diag and not baseline
+    diag = spec.coords_diag and not in_python
     if diag:
         from .. import _core
         from . import coords_diag
@@ -1152,7 +1156,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         if cover_front is not None:            # at every call, before the grid's choice
             if cover["gen"] is None and cover_front <= {tuple(map(float, r)) for r in objectives}:
                 cover["gen"], cover["fe"] = gen, fe
-            if cover["archive_gen"] is None and not baseline:
+            if cover["archive_gen"] is None and not in_python:
                 A = {tuple(map(float, r)) for r in _core.inner_archive_state()}
                 if A and cover_front <= A:
                     cover["archive_gen"], cover["archive_fe"] = gen, fe
@@ -1442,6 +1446,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}
                              for o, r in getattr(res, "operators", [])]
+        # a core with presets (smpso): every knob as the run used it
+        if getattr(res, "settings", None):
+            meta["settings"] = dict(res.settings)
     if op_stats and final:
         final.update({k: float(v) for k, v in dict(res.operator_totals).items()})
     meta["operator_stats"] = op_stats

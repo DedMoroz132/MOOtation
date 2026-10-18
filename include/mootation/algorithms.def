@@ -12,6 +12,8 @@
 // ── Pareto-dominance & diversity ────────────────────────────────────────────
 MOOTATION_ALG(nsga2,      NSGAII_Individual,    NSGAIICore)
 MOOTATION_ALG(dn_nsga2,   NSGAII_Individual,    DNNSGAIICore)
+MOOTATION_ALG(bc_spx,     NSGAII_Individual,    BCSPXCore)
+MOOTATION_ALG(bc_rex,     NSGAII_Individual,    BCREXCore)
 MOOTATION_ALG(spea2,      SPEA2_Individual,     SPEA2Core)
 MOOTATION_ALG(spea2_sde,  SPEA2SDE_Individual,  SPEA2SDECore)
 MOOTATION_ALG(grea,       GrEA_Individual,      GrEACore)
@@ -57,6 +59,7 @@ MOOTATION_ALG(edv,              EDV_Individual,       EDVCore)
 MOOTATION_ALG(if_maoea,         NSGAII_Individual,    IFMaOEACore)
 MOOTATION_ALG(maoea_iamd,       MaOEAIAMD_Individual, MaOEAIAMDCore)
 MOOTATION_ALG(sms_emoa,         NSGAII_Individual,    SMSEMOACore)
+MOOTATION_ALG(r2_emoa,          NSGAII_Individual,    R2EMOACore)
 MOOTATION_ALG(mo_cma_es,        MOCMAES_Individual,   MOCMAESCore)
 
 // ── Reference-vector / angle-based ──────────────────────────────────────────
@@ -85,6 +88,7 @@ MOOTATION_ALG(clia,       NSGAII_Individual,    CLIACore)
 // ── Archive-based ───────────────────────────────────────────────────────────
 MOOTATION_ALG(two_arch2,  NSGAII_Individual,    Two_Arch2Core)
 MOOTATION_ALG(naemo,      NSGAII_Individual,    NAEMOCore)
+MOOTATION_ALG(paes,       NSGAII_Individual,    PAESCore)
 
 // ── Constrained, two archives or populations ───────────────────────────────
 MOOTATION_ALG(ctaea,      NSGAII_Individual,    CTAEACore)
@@ -92,6 +96,11 @@ MOOTATION_ALG(ccmo,       NSGAII_Individual,    CCMOCore)
 
 // ── Direct search ───────────────────────────────────────────────────────────
 MOOTATION_ALG(dms,        DMS_Individual,       DMSCore)
+MOOTATION_ALG(dmulti_mads, NSGAII_Individual,   DMultiMADSCore)
+MOOTATION_ALG(multiglods, NSGAII_Individual,    MultiGLODSCore)
+
+// ── Particle swarm ──────────────────────────────────────────────────────────
+MOOTATION_ALG(smpso,      SMPSO_Individual,     SMPSOCore)
 
 // ── Simulated annealing ─────────────────────────────────────────────────────
 MOOTATION_ALG(mosa,       NSGAII_Individual,    MOSACore)

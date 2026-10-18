@@ -141,11 +141,12 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.algorithms:
+        from ..scalar import NAMES as SCALAR_NAMES
         names = algorithm_names()
-        for n in names:
+        for n in names + SCALAR_NAMES:
             print(n)
-        print(f"\n{len(names)} algorithms; knobs read from {knob_source()}",
-              file=sys.stderr)
+        print(f"\n{len(names)} C++ algorithms and {len(SCALAR_NAMES)} scalarization methods "
+              f"(mootation.scalar); knobs read from {knob_source()}", file=sys.stderr)
         return 0
 
     if args.problems:

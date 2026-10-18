@@ -242,6 +242,18 @@ private:
         std::vector<int> last;
         for (int i = 0; i < n; ++i) if (rank[i] == v) last.push_back(i);
         if (last.size() == 1) return last[0];
+        if (other_) {                                      // R2-EMOA (r2_emoa.hpp)
+            std::vector<std::vector<double>> Fv, Q;
+            for (int i : last) Fv.push_back(vault.objectives_of(static_cast<std::size_t>(i)));
+            for (int i = 0; i < n; ++i) Q.push_back(vault.objectives_of(static_cast<std::size_t>(i)));
+            const auto c = other_contributions(Fv, Q);
+            std::size_t arg = 0;
+            for (std::size_t t = 1; t < c.size(); ++t)
+                if (c[t] < c[arg]) arg = t;
+            for (std::size_t t = 0; t < last.size(); ++t)
+                vault.get_ind(static_cast<std::size_t>(last[t])).fitness = c[t];
+            return last[arg];
+        }
         const std::size_t m = static_cast<std::size_t>(vault.objs_n());
         std::vector<double> r(m, -std::numeric_limits<double>::infinity());
         for (int i = 0; i < n; ++i) {
@@ -282,8 +294,25 @@ private:
         return last[arg];
     }
 
+protected:
+    // R2-EMOA (r2_emoa.hpp): the worst front's points by another indicator's
+    // contributions, the least of which goes (ties: the first). sms_emoa
+    // leaves other_ false and takes the hypervolume's.
+    bool other_ = false;
+    virtual std::vector<double> other_contributions(const std::vector<std::vector<double>>& Fv,
+                                                    const std::vector<std::vector<double>>& Q)
+    {
+        (void)Q;
+        return std::vector<double>(Fv.size(), 0.0);
+    }
+
 public:
     SMSEMOACore() = default;
+    virtual ~SMSEMOACore() = default;
+    SMSEMOACore(const SMSEMOACore&) = default;
+    SMSEMOACore& operator=(const SMSEMOACore&) = default;
+    SMSEMOACore(SMSEMOACore&&) = default;
+    SMSEMOACore& operator=(SMSEMOACore&&) = default;
 
     void set_seed(unsigned s)             { rng_.seed(s); }
     void set_eta_crossover(double e)      { eta_c_ = e; }

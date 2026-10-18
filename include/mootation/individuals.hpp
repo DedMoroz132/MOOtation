@@ -196,6 +196,10 @@ struct DMS_Individual : public Based_Individual {
     double alpha = 0.0;
 };
 
+// SMPSO (Nebro et al., MCDM 2009): the particles, their bests and the leaders
+// live in the core (smpso.hpp); the population holds the answer only
+struct SMPSO_Individual : public Based_Individual {};
+
 // MO-CMA-ES (Igel, Hansen & Roth 2007; Voß, Hansen & Igel 2010)
 // x      — the search point in coordinates normalised to the box, unclipped
 //          (the population's variables are its clip, mo_cma_es.hpp MOCMA-2)

@@ -16,7 +16,7 @@ build-backend = "scikit_build_core.build"
 [project]
 name = "mootation"
 version = "0.1.0"
-description = "67 multi- and many-objective algorithms (65 evolutionary, one direct search, one simulated annealing), implemented from their primary publications"
+description = "74 multi- and many-objective algorithms (69 evolutionary, one particle swarm, three direct search, one simulated annealing) and nine scalarization, SQP and model-based methods, implemented from their primary publications"
 readme = "README.md"
 requires-python = ">=3.11"          # tomllib, used by mootation.run
 license = { file = "LICENSE" }
@@ -42,7 +42,9 @@ dependencies = []                   # the optimizer itself needs nothing
 # lets a machine that only drives an external solver install nothing extra.
 bench = ["numpy>=1.21"]
 tui   = ["textual>=0.50", "rich>=13.0"]
-all   = ["numpy>=1.21", "textual>=0.50", "rich>=13.0"]
+# the scalarization methods and the polishing (mootation.scalar)
+scalar = ["numpy>=1.21", "scipy>=1.7"]
+all   = ["numpy>=1.21", "scipy>=1.7", "textual>=0.50", "rich>=13.0"]
 
 [project.scripts]
 mootation-run = "mootation.run.cli:main"

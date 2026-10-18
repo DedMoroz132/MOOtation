@@ -26,15 +26,29 @@ from . import _core
 PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio",
                "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
                "coords_warmup", "coords_update", "spu_frac", "inner_archive_cap",
-               "archive_reuse_p", "dn_cf", "n_samples")
+               "archive_reuse_p", "dn_cf", "vmax_frac", "vel_on_bound_low", "vel_on_bound_up",
+               "w_min", "w_max", "c_min", "c_max", "turbulence_k", "turbulence_p",
+               "archive_size", "eps_archive_eta", "r2_weights", "r2_offset", "bc_lambda",
+               "paes_depth", "mads_tau", "mads_delta0", "glods_search_every",
+               "glods_local_tol", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
+               "n_sub",
+               "sub_budget", "fd_step",
+               "local_tol", "cma_sigma0", "eps_objective", "n_samples")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
-              "inner_archive", "bin_crossover", "mating")
+              "inner_archive", "bin_crossover", "mating", "smpso_preset", "chi_mode",
+              "turbulence", "r_per_dim", "archive_prune", "leader_select", "r2_mode",
+              "r2_space", "bc_selection", "mads_select", "mads_poll", "mads_search",
+              "boost_scalarization", "scalarization",
+              "local", "sub_plan", "tch_weights")
+# Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
+# every algorithm takes them, and minimize() does the polishing itself.
+POLISH_KNOBS = ("polish", "polish_share", "polish_points")
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
          "sbx_var_prob", "crowding_space", "dms_init", "dms_poll", "step_share",
-         "F_spread") + PARAM_KNOBS + WORD_KNOBS
+         "F_spread") + PARAM_KNOBS + WORD_KNOBS + POLISH_KNOBS
 
 def minimize(
     fn: Callable[[Sequence[float]], Sequence[float]],
@@ -227,7 +241,8 @@ def minimize(
     if n_objs < 1:
         raise ValueError(f"n_objs must be >= 1, got {n_objs}")
 
-    known = set(_core.algorithms())
+    from .scalar import NAMES as SCALAR_NAMES
+    known = set(_core.algorithms()) | set(SCALAR_NAMES)
     if algorithm not in known:
         near = sorted(n for n in known if n.startswith(algorithm[:3]))
         hint = f"; did you mean: {', '.join(near[:5])}" if near else ""
@@ -238,6 +253,9 @@ def minimize(
         raise TypeError(
             f"unknown parameter(s): {', '.join(bad)}. "
             f"Known: {', '.join(KNOBS)}")
+    # polishing at the end of the budget (task 9, A2; mootation.scalar.polish)
+    from .scalar import polish as _polish
+    polish_how, polish_share, polish_points = _polish.check(knobs, max_evaluations)
 
     # Equality constraints (task 7, supplement 3, §3): the core takes them after
     # the inequalities, as one function of n_cons + n_eq values, and turns each
@@ -363,6 +381,18 @@ def minimize(
             raise ValueError("init designs are real-valued: not with binary or categorical "
                              "variables")
 
+    # polishing: every evaluation recorded, the algorithm on the budget without
+    # the polishing's share
+    recorder, total_evaluations = None, int(max_evaluations or 0)
+    if polish_how is not None:
+        if layout is not None:
+            raise ValueError("polish takes real variables only: no var_types other than 'real'")
+        recorder = _polish.Recorder()
+        fn = recorder.fn(fn)
+        constraints = recorder.constraints(constraints)
+        batch = recorder.batch(batch)
+        max_evaluations = total_evaluations - int(round(polish_share * total_evaluations))
+
     problem = _core.Problem()
     problem.bounds = bounds
     problem.n_objectives = int(n_objs)
@@ -395,6 +425,72 @@ def minimize(
         problem.evaluate_batch = lambda X, _b=batch: [list(r) for r in _b(X)]
     if constraints is None:
         problem.evaluate = lambda x, _f=fn: list(_f(x))
+
+    def _polished(result):
+        """The algorithm's result, polished when polish is on (scalar/polish.py)."""
+        if polish_how is None:
+            return result
+        knobs_s = {k: v for k, v in knobs.items() if k in ("fd_step", "local_tol")}
+        return _polish.run(
+            result, recorder, how=polish_how, points=polish_points, fn=fn,
+            constraints=constraints, bounds=bounds, n_objs=int(n_objs),
+            n_cons=int(n_cons) if constraints is not None else 0, n_eq=n_eq,
+            eq_tol=float(eq_tol), pop_size=int(pop_size),
+            budget=max(0, total_evaluations - recorder.calls),
+            on_generation=on_generation if int(record_every) > 0 else None,
+            record_every=int(record_every), guard=guard,
+            **{k: float(v) for k, v in knobs_s.items()})
+
+    if algorithm in SCALAR_NAMES:
+        # scalarization with a local solver (mootation.scalar): Python, not a core
+        if layout is not None:
+            raise ValueError(f"{algorithm} takes real variables only: no var_types other "
+                             "than 'real'")
+        if constraint_mode != "feasibility":
+            raise ValueError(f"{algorithm} takes constraint_mode = 'feasibility' only")
+        if init != "uniform":
+            from . import designs
+            if init not in designs.KINDS:
+                raise ValueError(f"init = '{init}': uniform, or a design: "
+                                 f"{', '.join(designs.KINDS)}")
+            if seed_population is not None:
+                raise ValueError("init and seed_population both give the first population")
+        elif init_share:
+            raise ValueError("init_share needs a design: init = 'sobol'")
+        if int(max_evaluations) < 0:
+            raise ValueError(f"max_evaluations must be >= 0, got {max_evaluations}")
+        seeds = None
+        if seed_population is not None:
+            from .persistence import fit_population, load_population
+            pop = (load_population(seed_population)
+                   if isinstance(seed_population, (str, bytes)) or
+                   hasattr(seed_population, "__fspath__") else seed_population)
+            pop = fit_population(pop, int(pop_size), on_size_mismatch)
+            seeds = [(list(x), list(f), list(constraints(list(x))) if constraints is not None
+                      else []) for x, f in zip(pop.variables, pop.objectives)]
+        from . import scalar
+        try:
+            result = scalar.run(
+                algorithm, fn, constraints, bounds=bounds, n_objs=int(n_objs),
+                n_cons=int(n_cons) if constraints is not None else 0, n_eq=n_eq,
+                eq_tol=float(eq_tol),
+                eq_tol0=float(eq_tol0) if eq_tol_schedule == "linear" else None,
+                pop_size=int(pop_size),
+                budget=int(max_evaluations) if max_evaluations else int(pop_size) * int(n_gen),
+                seed=int(seed), knobs={k: v for k, v in knobs.items() if k not in POLISH_KNOBS},
+                on_generation=on_generation, record_every=int(record_every),
+                init=init, init_share=float(init_share), seed_points=seeds,
+                unique_count=lambda: points.count, guard=guard)
+            result = _polished(result)
+        finally:
+            if log is not None:
+                log.close()
+        if save_population is not None:
+            from .persistence import save_population as _save
+            _save(result, save_population,
+                  meta={"algorithm": algorithm, "pop_size": pop_size,
+                        "n_gen": n_gen, "seed": seed, "n_objs": n_objs})
+        return result
 
     cfg = _core.Config()
     cfg.pop_size = int(pop_size)
@@ -439,6 +535,8 @@ def minimize(
             cfg.eta_int = 3.0 if eta_int is None else float(eta_int)
     params, words = {}, {}
     for k, v in knobs.items():
+        if k in POLISH_KNOBS:
+            continue                        # minimize's own (task 9, A2)
         if k in PARAM_KNOBS:
             params[k] = float(v)
             continue
@@ -537,10 +635,10 @@ def minimize(
             cfg.seed_limits = [list(constraints(list(x))) for x in pop.variables]
 
     try:
-        result = _core.run(algorithm, problem, cfg)
+        result = _polished(_core.run(algorithm, problem, cfg))
     except ValueError as e:
         if n_bin and ("binary" in str(e) or "continuous" in str(e)):
-            # the 18 cores without an integer genome refuse it by name
+            # the 24 cores without an integer genome refuse it by name
             raise ValueError(f"{algorithm} takes no binary or categorical variables (the "
                              f"integer genome; docs/running.md lists the cores that do): "
                              f"{e}") from e
