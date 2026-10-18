@@ -11,11 +11,13 @@ the moment (the clocks, the host, the revision, the process), the trajectory
 record by record without its clock ("t"), final.csv, the archive files, the
 archive checkpoints and snapshots (.npz, array by array). Beside the runs, the
 CSV files the analyses wrote (--cover, --portfolio, ...: every *.csv under a
-directory whose name starts with "_") are compared line by line.
+directory whose name starts with "_") are compared line by line, without the
+column naming the code that wrote them (analysis_commit).
 
 --common-grid compares the trajectories only at the evaluation counts both
 have (a run recorded on another grid, [campaign] record_grid), and reads the
-trajectory settings in meta.json as the grid's, not as results. --ignore-added
+trajectory settings in meta.json, and a record's share of the evaluations
+since the record before it (fail_share), as the grid's, not as results. --ignore-added
 leaves out what only AFTER has (the values of a feature BEFORE did not have):
 keys of meta.json and of the records, files, tables.
 
@@ -36,6 +38,9 @@ VOLATILE = {"started", "finished", "seconds", "record_seconds", "pid", "host", "
 # meta.json keys that describe the trajectory's grid (--common-grid)
 GRID_KEYS = {"record_grid", "record_per_decade", "record_every", "records", "record_at",
              "trajectory_metrics_at_record_at"}
+# keys of a trajectory record that are a share of the evaluations since the
+# record before it, and so depend on the grid (--common-grid)
+INTERVAL_KEYS = {"fail_share"}
 
 
 def _text(path: Path) -> str:
@@ -46,6 +51,18 @@ def _text(path: Path) -> str:
 
 
 IGNORE_ADDED = False
+# columns of the analyses' tables that name the code that wrote them, not a result
+VOLATILE_COLUMNS = {"analysis_commit"}
+
+
+def _table(path: Path) -> list:
+    """An analysis table's rows without its VOLATILE_COLUMNS."""
+    import csv
+    rows = list(csv.reader(_text(path).splitlines()))
+    if not rows:
+        return rows
+    keep = [i for i, c in enumerate(rows[0]) if c not in VOLATILE_COLUMNS]
+    return [[r[i] for i in keep if i < len(r)] for r in rows]
 
 
 def _diff_json(a, b, where: str, out: list, skip=frozenset()) -> None:
@@ -108,7 +125,8 @@ def compare_run(a: Path, b: Path, common_grid: bool) -> list:
         if not shared:
             out.append(f"{rel} trajectory: no evaluation count in common")
         for r in shared:
-            _diff_json(r, by_fe[r["fe"]], f"{rel} trajectory@{r['fe']}", out)
+            _diff_json(r, by_fe[r["fe"]], f"{rel} trajectory@{r['fe']}", out,
+                       frozenset(INTERVAL_KEYS))
     else:
         _diff_json(ra, rb, f"{rel} trajectory", out)
     names = {p.name for p in a.iterdir()} | {p.name for p in b.iterdir()}
@@ -140,7 +158,7 @@ def compare(before: Path, after: Path, common_grid: bool = False) -> list:
             continue
         out.append(f"{t}: only in {'before' if t in tables_a else 'after'}")
     for t in sorted(tables_a & tables_b):
-        if _text(before / t) != _text(after / t):
+        if _table(before / t) != _table(after / t):
             out.append(f"{t}: the contents differ")
     return out
 

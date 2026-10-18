@@ -98,8 +98,12 @@ class BiObjective:
     nadir: Tuple[float, float]
 
     def __call__(self, x) -> List[float]:
-        x = np.asarray(x, dtype=float)
-        return [self.alpha(x), self.beta(x)]
+        return self.batch(np.asarray(x, dtype=float)[None, :])[0].tolist()
+
+    def batch(self, X) -> np.ndarray:
+        """(f_alpha, f_beta) at every row of X: n x 2."""
+        X = np.asarray(X, dtype=float).reshape(-1, self.D)
+        return np.column_stack([self.alpha.batch(X), self.beta.batch(X)])
 
 
 def problem(fnum: int, D: int, iid: int = 1) -> BiObjective:

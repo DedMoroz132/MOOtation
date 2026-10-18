@@ -224,26 +224,28 @@ private:
         } else {
             // Truncate: iteratively remove most crowded.
             std::vector<int> cand = nd;
+            auto dist_of = [&](int a, int b) {
+                const auto& oi = obj_of(a);
+                const auto& oj = obj_of(b);
+                double dist=0.0;
+                for(int q=0;q<m;++q){double diff=oi[q]-oj[q];dist+=diff*diff;}
+                return std::sqrt(dist);
+            };
+            // Sorted distances per candidate (lex compare to find worst
+            // diversity), once: a pair's distance does not depend on who else
+            // is left, so a candidate that goes takes exactly its value out of
+            // every other row, which stays the sorted list a recomputation
+            // would give (task 10 of 2026-10-18; the same truncation, without
+            // the O(n^2 log n) recomputation at every removal).
+            std::vector<std::vector<double>> sd(cand.size());
+            for(std::size_t ci=0;ci<cand.size();++ci){
+                sd[ci].reserve(cand.size());
+                for(std::size_t cj=0;cj<cand.size();++cj)
+                    if(ci!=cj) sd[ci].push_back(dist_of(cand[ci], cand[cj]));
+                std::sort(sd[ci].begin(),sd[ci].end());
+            }
             while (static_cast<int>(cand.size()) > eff_arch_) {
                 int sz = static_cast<int>(cand.size());
-                // Build pairwise distances.
-                std::vector<std::vector<double>> d(sz, std::vector<double>(sz, 0.0));
-                for (int ci=0;ci<sz;++ci) {
-                    const auto& oi = obj_of(cand[ci]);
-                    for (int cj=ci+1;cj<sz;++cj) {
-                        const auto& oj = obj_of(cand[cj]);
-                        double dist=0.0;
-                        for(int q=0;q<m;++q){double diff=oi[q]-oj[q];dist+=diff*diff;}
-                        d[ci][cj]=d[cj][ci]=std::sqrt(dist);
-                    }
-                }
-                // Sorted distances per candidate (lex compare to find worst diversity).
-                std::vector<std::vector<double>> sd(sz);
-                for(int ci=0;ci<sz;++ci){
-                    sd[ci]=d[ci]; sd[ci][ci]=std::numeric_limits<double>::max();
-                    std::sort(sd[ci].begin(),sd[ci].end());
-                    sd[ci].pop_back();
-                }
                 int rm=0;
                 for(int ci=1;ci<sz;++ci){
                     const auto& a=sd[ci]; const auto& b=sd[rm];
@@ -253,7 +255,13 @@ private:
                         if(a[kk]>b[kk]) break;
                     }
                 }
+                const int gone = cand[rm];
                 cand[rm]=cand.back(); cand.pop_back();
+                sd[rm].swap(sd.back()); sd.pop_back();
+                for(std::size_t ci=0;ci<cand.size();++ci){
+                    auto& row = sd[ci];
+                    row.erase(std::lower_bound(row.begin(), row.end(), dist_of(cand[ci], gone)));
+                }
             }
             chosen=cand;
         }

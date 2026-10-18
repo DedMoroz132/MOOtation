@@ -46,6 +46,8 @@ from typing import Callable, Dict, List, Tuple
 
 import numpy as np
 
+from ._rows import pow_each, rows_dot, rows_matvec, spow
+
 # The ten the bbob-biobj suite selects (Brockhoff et al., Section 5.1).
 BASE_IDS: Tuple[int, ...] = (1, 2, 6, 8, 13, 14, 15, 17, 20, 21)
 
@@ -69,8 +71,9 @@ def t_osz(x):
 
 
 def t_asy(x: np.ndarray, beta: float) -> np.ndarray:
-    """Asymmetry. The identity for negative entries, so 1/2^D of the box is untouched."""
-    D = len(x)
+    """Asymmetry. The identity for negative entries, so 1/2^D of the box is
+    untouched. x a point, or a batch of them (rows)."""
+    D = x.shape[-1]
     if D < 2:
         return x.copy()
     e = 1.0 + beta * (np.arange(D) / (D - 1.0)) * np.sqrt(np.abs(x))
@@ -84,8 +87,9 @@ def lam(alpha: float, D: int) -> np.ndarray:
     return alpha ** (0.5 * np.arange(D) / (D - 1.0))
 
 
-def f_pen(x: np.ndarray) -> float:
-    return float(np.sum(np.maximum(0.0, np.abs(x) - 5.0) ** 2))
+def f_pen(x: np.ndarray) -> np.ndarray:
+    """The penalty outside [-5, 5]^D, of every row of x."""
+    return np.sum(np.maximum(0.0, np.abs(x) - 5.0) ** 2, axis=-1)
 
 
 # ---- what an instance is (Section 0.1) ------------------------------
@@ -130,7 +134,12 @@ class Instance:
     peaks: dict = field(default=None, repr=False)
 
     def __call__(self, x) -> float:
-        return _EVAL[self.fid](self, np.asarray(x, dtype=float))
+        return float(self.batch(np.asarray(x, dtype=float)[None, :])[0])
+
+    def batch(self, X) -> np.ndarray:
+        """The values at the rows of X (n x D): the same, bit for bit, as at
+        each row alone (_rows.py says what that takes)."""
+        return _EVAL[self.fid](self, np.asarray(X, dtype=float).reshape(-1, self.D))
 
 
 def instance(fid: int, iid: int, D: int) -> Instance:
@@ -178,74 +187,81 @@ def _gallagher(rng: np.random.Generator, D: int) -> dict:
 
 
 # ---- the ten functions ----------------------------------------------
-def _f1(s: Instance, x: np.ndarray) -> float:
-    z = x - s.x_opt
-    return float(z @ z) + s.f_opt
+# ---- the ten functions, of a batch X (one point per row) -----------
+# Every row's value is computed by the expressions of the function at one
+# point; where one point's computation was a matrix product, a dot product or
+# a power of a scalar, the batch takes it row by row (_rows.py).
+def _f1(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = X - s.x_opt
+    return rows_dot(Z) + s.f_opt
 
 
-def _f2(s: Instance, x: np.ndarray) -> float:
-    z = t_osz(x - s.x_opt)
-    return float(np.sum(10.0 ** (6.0 * np.arange(s.D) / (s.D - 1.0)) * z * z)) + s.f_opt
+def _f2(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = t_osz(X - s.x_opt)
+    return np.sum(10.0 ** (6.0 * np.arange(s.D) / (s.D - 1.0)) * Z * Z, axis=1) + s.f_opt
 
 
-def _f6(s: Instance, x: np.ndarray) -> float:
-    z = s.Q @ (s.l10 * (s.R @ (x - s.x_opt)))
-    si = np.where(z * s.x_opt > 0.0, 100.0, 1.0)
-    return float(t_osz(float(np.sum((si * z) ** 2))) ** 0.9) + s.f_opt
+def _f6(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = rows_matvec(s.Q, s.l10 * rows_matvec(s.R, X - s.x_opt))
+    si = np.where(Z * s.x_opt > 0.0, 100.0, 1.0)
+    return spow(t_osz(np.sum((si * Z) ** 2, axis=1)), 0.9) + s.f_opt
 
 
-def _f8(s: Instance, x: np.ndarray) -> float:
-    z = max(1.0, math.sqrt(s.D) / 8.0) * (x - s.x_opt) + 1.0
-    a = z[:-1] ** 2 - z[1:]
-    b = z[:-1] - 1.0
-    return float(np.sum(100.0 * a * a + b * b)) + s.f_opt
+def _f8(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = max(1.0, math.sqrt(s.D) / 8.0) * (X - s.x_opt) + 1.0
+    a = Z[:, :-1] ** 2 - Z[:, 1:]
+    b = Z[:, :-1] - 1.0
+    return np.sum(100.0 * a * a + b * b, axis=1) + s.f_opt
 
 
-def _f13(s: Instance, x: np.ndarray) -> float:
-    z = s.Q @ (s.l10 * (s.R @ (x - s.x_opt)))
-    return float(z[0] ** 2 + 100.0 * math.sqrt(float(z[1:] @ z[1:]))) + s.f_opt
+def _f13(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = rows_matvec(s.Q, s.l10 * rows_matvec(s.R, X - s.x_opt))
+    return pow_each(Z[:, 0], 2) + 100.0 * np.sqrt(rows_dot(Z[:, 1:])) + s.f_opt
 
 
-def _f14(s: Instance, x: np.ndarray) -> float:
-    z = s.R @ (x - s.x_opt)
+def _f14(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = rows_matvec(s.R, X - s.x_opt)
     e = 2.0 + 4.0 * np.arange(s.D) / (s.D - 1.0)
-    return float(math.sqrt(float(np.sum(np.abs(z) ** e)))) + s.f_opt
+    return np.sqrt(np.sum(np.abs(Z) ** e, axis=1)) + s.f_opt
 
 
-def _f15(s: Instance, x: np.ndarray) -> float:
-    z = s.R @ (s.l10 * (s.Q @ t_asy(t_osz(s.R @ (x - s.x_opt)), 0.2)))
-    return float(10.0 * (s.D - np.sum(np.cos(2.0 * math.pi * z))) + z @ z) + s.f_opt
+def _f15(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = rows_matvec(s.R, s.l10 * rows_matvec(s.Q, t_asy(t_osz(rows_matvec(s.R, X - s.x_opt)),
+                                                          0.2)))
+    return (10.0 * (s.D - np.sum(np.cos(2.0 * math.pi * Z), axis=1)) + rows_dot(Z)) + s.f_opt
 
 
-def _f17(s: Instance, x: np.ndarray) -> float:
-    z = s.l10 * (s.Q @ t_asy(s.R @ (x - s.x_opt), 0.5))
-    si = np.sqrt(z[:-1] ** 2 + z[1:] ** 2)                    # BBOB-3: i = 1..D-1
+def _f17(s: Instance, X: np.ndarray) -> np.ndarray:
+    Z = s.l10 * rows_matvec(s.Q, t_asy(rows_matvec(s.R, X - s.x_opt), 0.5))
+    si = np.sqrt(Z[:, :-1] ** 2 + Z[:, 1:] ** 2)                 # BBOB-3: i = 1..D-1
     rt = np.sqrt(si)
-    inner = float(np.sum(rt + rt * np.sin(50.0 * si ** 0.2) ** 2)) / (s.D - 1.0)
-    return inner * inner + 10.0 * f_pen(x) + s.f_opt
+    inner = np.sum(rt + rt * np.sin(50.0 * si ** 0.2) ** 2, axis=1) / (s.D - 1.0)
+    return inner * inner + 10.0 * f_pen(X) + s.f_opt
 
 
-def _f20(s: Instance, x: np.ndarray) -> float:
+def _f20(s: Instance, X: np.ndarray) -> np.ndarray:
     sign = s.peaks["sign"]
-    xh = 2.0 * sign * x
+    xh = 2.0 * sign * X
     two_abs = 2.0 * np.abs(s.x_opt)                           # BBOB-2
-    zh = np.empty(s.D)
-    zh[0] = xh[0]
-    zh[1:] = xh[1:] + 0.25 * (xh[:-1] - two_abs[:-1])
-    z = 100.0 * (s.l10 * (zh - two_abs) + two_abs)
-    term = -float(np.sum(z * np.sin(np.sqrt(np.abs(z))))) / (100.0 * s.D)
-    return term + 4.189828872724339 + 100.0 * f_pen(z / 100.0) + s.f_opt
+    zh = np.empty_like(xh)
+    zh[:, 0] = xh[:, 0]
+    zh[:, 1:] = xh[:, 1:] + 0.25 * (xh[:, :-1] - two_abs[:-1])
+    Z = 100.0 * (s.l10 * (zh - two_abs) + two_abs)
+    term = -np.sum(Z * np.sin(np.sqrt(np.abs(Z))), axis=1) / (100.0 * s.D)
+    return term + 4.189828872724339 + 100.0 * f_pen(Z / 100.0) + s.f_opt
 
 
-def _f21(s: Instance, x: np.ndarray) -> float:
+def _f21(s: Instance, X: np.ndarray) -> np.ndarray:
     p = s.peaks
-    U = (x - p["y"]) @ s.R.T                                   # (101, D)
-    quad = np.sum(p["C"] * U * U, axis=1)
-    best = float(np.max(p["w"] * np.exp(-quad / (2.0 * s.D))))
-    return float(t_osz(10.0 - best)) ** 2 + f_pen(x) + s.f_opt
+    best = np.empty(len(X))
+    for i in range(len(X)):
+        U = (X[i] - p["y"]) @ s.R.T                            # (101, D), one point's product
+        quad = np.sum(p["C"] * U * U, axis=1)
+        best[i] = np.max(p["w"] * np.exp(-quad / (2.0 * s.D)))
+    return pow_each(t_osz(10.0 - best), 2) + f_pen(X) + s.f_opt
 
 
-_EVAL: Dict[int, Callable[[Instance, np.ndarray], float]] = {
+_EVAL: Dict[int, Callable[[Instance, np.ndarray], np.ndarray]] = {
     1: _f1, 2: _f2, 6: _f6, 8: _f8, 13: _f13,
     14: _f14, 15: _f15, 17: _f17, 20: _f20, 21: _f21,
 }

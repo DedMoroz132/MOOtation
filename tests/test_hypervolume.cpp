@@ -20,6 +20,7 @@
 #include <random>
 #include <vector>
 
+#include <mootation/hv_contribution.hpp>
 #include <mootation/hypervolume.hpp>
 
 namespace {
@@ -71,6 +72,71 @@ double inclusion_exclusion(const Rows& P, const std::vector<double>& r) {
 }
 
 }  // namespace
+
+// hv::contributions_mc as it was before task 10 (every other point in the
+// count, not only those that can reach the box): the reference the leaner
+// count must equal, value for value, with the same generator.
+template <typename RNG>
+std::vector<double> contributions_mc_all(const std::vector<std::vector<double>>& F,
+                                         const std::vector<double>& r, std::size_t per, RNG& rng)
+{
+    const std::size_t n = F.size(), m = r.size();
+    std::vector<double> c(n, 0.0);
+    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    std::vector<double> others, S(per * m), b(m);
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto& p = F[i];
+        for (std::size_t k = 0; k < m; ++k) b[k] = r[k];
+        others.clear();
+        bool covered_whole = false;
+        for (std::size_t q = 0; q < n && !covered_whole; ++q) {
+            if (q == i) continue;
+            std::size_t worse = 0, at = m;
+            for (std::size_t j = 0; j < m; ++j)
+                if (F[q][j] > p[j]) { ++worse; at = j; }
+            covered_whole = worse == 0;
+            if (worse == 1) b[at] = std::min(b[at], F[q][at]);
+            others.insert(others.end(), F[q].begin(), F[q].end());
+        }
+        if (covered_whole) continue;
+        double vol = 1.0;
+        for (std::size_t k = 0; k < m; ++k) vol *= std::max(0.0, b[k] - p[k]);
+        if (vol <= 0.0) continue;
+        for (std::size_t s = 0; s < per; ++s)
+            for (std::size_t k = 0; k < m; ++k) S[s * m + k] = p[k] + U01(rng) * (b[k] - p[k]);
+        const std::size_t hit = others.empty() ? 0
+            : mootation::hypervolume::covered(others.data(), others.size() / m, m, S.data(), per);
+        c[i] = vol * static_cast<double>(per - hit) / static_cast<double>(per);
+    }
+    return c;
+}
+
+// hv::contributions_exact (M >= 3) as it was before task 10: a vector per
+// row and hypervolume::wfg per point; the reference for the flat buffer.
+std::vector<double> contributions_exact_rows(const std::vector<std::vector<double>>& F,
+                                             const std::vector<double>& r)
+{
+    const std::size_t n = F.size(), m = r.size();
+    std::vector<double> c(n, 0.0);
+    std::vector<std::vector<double>> L;
+    for (std::size_t i = 0; i < n; ++i) {
+        const auto& p = F[i];
+        bool in = true;
+        for (std::size_t k = 0; k < m; ++k) in = in && p[k] < r[k];
+        if (!in) continue;
+        double own = 1.0;
+        for (std::size_t k = 0; k < m; ++k) own *= r[k] - p[k];
+        L.clear();
+        for (std::size_t q = 0; q < n; ++q) {
+            if (q == i) continue;
+            std::vector<double> l(m);
+            for (std::size_t k = 0; k < m; ++k) l[k] = std::max(F[q][k], p[k]);
+            L.push_back(std::move(l));
+        }
+        c[i] = std::max(0.0, own - (L.empty() ? 0.0 : mootation::hypervolume::wfg(L, r)));
+    }
+    return c;
+}
 
 int main() {
     using mootation::hypervolume::covered;
@@ -156,6 +222,46 @@ int main() {
         check_close(est, exact, 4.0 * box * std::sqrt(p * (1 - p) / k),
                     "the Monte-Carlo estimate lands within four standard errors");
         check(covered(F.data(), n, m, S.data(), 0) == 0, "no samples, no hits");
+    }
+
+    // the Monte-Carlo contributions count only the points that can reach a
+    // point's box: the same values as counting every point, the same draws
+    {
+        std::mt19937 gen(31);
+        std::uniform_real_distribution<double> unit(0.0, 1.0);
+        bool same = true;
+        for (int t = 0; t < 40 && same; ++t) {
+            const std::size_t m = 4 + static_cast<std::size_t>(t % 4);
+            const std::size_t n = 20 + static_cast<std::size_t>(t);
+            std::vector<std::vector<double>> P(n, std::vector<double>(m));
+            for (auto& row : P) {
+                double s2 = 0.0;
+                for (auto& v : row) { v = unit(gen); s2 += v * v; }
+                for (auto& v : row) v /= std::sqrt(s2);           // a front on the sphere
+            }
+            if (t % 5 == 0) P[3] = P[2];                          // a copy
+            const std::vector<double> ref(m, 1.2);
+            std::mt19937 a(static_cast<unsigned>(t)), b(static_cast<unsigned>(t));
+            same = mootation::hv::contributions_mc(P, ref, 500, a) ==
+                   contributions_mc_all(P, ref, 500, b);
+        }
+        check(same, "the Monte-Carlo contributions with the reaching points alone");
+        // the exact ones, from one flat buffer and one evaluator
+        for (int t = 0; t < 60 && same; ++t) {
+            const std::size_t m = 3 + static_cast<std::size_t>(t % 3);
+            const std::size_t n = 2 + static_cast<std::size_t>(t);
+            std::vector<std::vector<double>> P(n, std::vector<double>(m));
+            for (auto& row : P) {
+                double s2 = 0.0;
+                for (auto& v : row) { v = unit(gen); s2 += v * v; }
+                for (auto& v : row) v /= std::sqrt(s2);
+            }
+            if (t % 4 == 0) P[1] = P[0];                          // a copy
+            if (t % 7 == 0) P[0][0] = 5.0;                        // a point beyond r
+            const std::vector<double> ref(m, 1.1);
+            same = mootation::hv::contributions_exact(P, ref) == contributions_exact_rows(P, ref);
+        }
+        check(same, "the exact contributions from one flat buffer");
     }
 
     std::printf("hypervolume: %d/%d checks passed%s\n", g_checks - g_failed, g_checks,

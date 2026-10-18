@@ -26,7 +26,7 @@ _FALLBACK = (
     "mutation_scale", "mixture_q", "blx_alpha", "sbx_var_prob", "step_share", "F_spread",
     "ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio", "sa_s0",
     "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window", "coords_warmup",
-    "coords_update", "spu_frac", "inner_archive_cap", "archive_reuse_p", "dn_cf",
+    "coords_update", "spu_frac", "inner_archive_cap", "archive_reuse_p", "dn_cf", "n_samples",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),

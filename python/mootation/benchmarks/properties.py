@@ -172,6 +172,14 @@ Besides Huband's vocabulary (task 4, item 5):
               table sets the approximate ones apart (campaign.rank_table)
   front_built how an approximate reference front was built, in a sentence
               (front_built below); None for an exact one
+  undefined   where the problem is not defined in part of its box (its
+              evaluation fails there: NaN, which a run counts as a failed
+              evaluation), the sentence saying where: RCM02 and RCM24
+              (rwmop.UNDEFINED, task 10 of 2026-10-18, §6); None elsewhere
+  undefined_share
+              the share of the box where it is not defined, from 100 000
+              uniform points (rwmop.undefined_share); 0 elsewhere among the
+              RCM, None for the rest (not measured)
 
 MEASURED (task 6 of 2026-10-09). Where a problem has a Pareto-set sample
 (pareto_sets.py), measured() reads centre and boundary off it: the share of
@@ -194,7 +202,7 @@ from .rotated import SPECS as _ROTATED
 KEYS = ("front", "multimodal", "deceptive", "bias", "scaled", "separable", "centre",
         "boundary", "degenerate", "disconnected", "linkage", "n_obj", "n_vars",
         "bbob_groups", "front_dim", "family_kind", "difficulty", "multimodal_ps",
-        "ps_parts", "front_ref", "front_built")
+        "ps_parts", "front_ref", "front_built", "undefined", "undefined_share")
 
 
 def _p(front, multimodal, bias, scaled, separable, centre, boundary,
@@ -384,6 +392,12 @@ def properties(name: str) -> dict | None:
     row["front_ref"] = (None if p is None or not callable(p.pareto_front)
                         else "approximate" if approximate_front(name) else "exact")
     row["front_built"] = front_built(name)
+    row["undefined"] = row["undefined_share"] = None
+    if stem.startswith("RCM") and stem[3:].isdigit():
+        from . import rwmop
+        i = int(stem[3:])
+        row["undefined"] = rwmop.UNDEFINED.get(i)
+        row["undefined_share"] = rwmop.undefined_share(i)
     return row
 
 

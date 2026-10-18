@@ -195,7 +195,8 @@ from typing import List
 import numpy as np
 
 from . import zcat as _zcat
-from .dtlz import DTLZ_FUNCS
+from ._rows import rows_matvec
+from .dtlz import DTLZ_FUNCS, DTLZ_ROWS
 from .dtlz_variants import shift_centres
 from .wfg import WFG_FUNCS
 
@@ -376,6 +377,36 @@ class Rotated:
         else:
             y[self.first:] = 0.5 + self.A @ (y[self.first:] - self.optimum)
         return y
+
+    def map_rows(self, X) -> np.ndarray:
+        """map of every row of X: one product with the matrix per row (gemv, as
+        map does), the rest elementwise; rWFG's and rZCAT's row by row."""
+        Y = np.array(X, dtype=float).reshape(-1, self.n_vars)
+        if self.wfg or self.kind == "zcat":
+            for i in range(len(Y)):
+                Y[i] = self.map(Y[i])
+            return Y
+        D = rows_matvec(self.A, Y[:, self.first:] - self.optimum)
+        if self.family == "ZDT4" or self.kind == "polygon":
+            Y[:, self.first:] = D
+        elif self.zdt:
+            Y[:, self.first:] = np.abs(D) / self.spread
+        else:
+            Y[:, self.first:] = 0.5 + D
+        return Y
+
+    def evaluate_batch(self, X) -> np.ndarray:
+        """evaluate of every row of X (task 10 of 2026-10-18)."""
+        Y = self.map_rows(X)
+        if self.kind == "dtlz":
+            return DTLZ_ROWS[self.family](Y, self.M)
+        if self.wfg:
+            out = np.empty((len(Y), self.M))
+            for i, y in enumerate(Y):
+                out[i] = WFG_FUNCS[self.family](y.tolist(), self.M)
+            return out
+        from .registry import PROBLEMS
+        return PROBLEMS[self.base].evaluate_batch(Y)
 
     def evaluate(self, x) -> List[float]:
         if self.wfg:

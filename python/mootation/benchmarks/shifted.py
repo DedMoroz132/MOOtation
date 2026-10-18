@@ -75,16 +75,18 @@ def zdt_centres(base: str, n_vars: int) -> np.ndarray:
 
 
 def zdt_input(base: str, x, centres=None) -> np.ndarray:
-    """The point the base ZDT is evaluated at: x_2..x_n folded (ZDT4: shifted)."""
+    """The point the base ZDT is evaluated at: x_2..x_n folded (ZDT4: shifted);
+    of every row, for a batch."""
     y = np.array(x, dtype=float)
-    c = zdt_centres(base, len(y)) if centres is None else np.asarray(centres, float)
-    y[1:] = y[1:] - c if base == "ZDT4" else fold(y[1:], c)
+    c = zdt_centres(base, y.shape[-1]) if centres is None else np.asarray(centres, float)
+    y[..., 1:] = y[..., 1:] - c if base == "ZDT4" else fold(y[..., 1:], c)
     return y
 
 
 def dtlz_input(x, M: int, centres=None) -> np.ndarray:
-    """The point DTLZ6 or DTLZ7 is evaluated at: the distance variables folded."""
+    """The point DTLZ6 or DTLZ7 is evaluated at: the distance variables folded;
+    of every row, for a batch."""
     y = np.array(x, dtype=float)
-    c = shift_centres(len(y) - M + 1) if centres is None else np.asarray(centres, float)
-    y[M - 1:] = fold(y[M - 1:], c)
+    c = shift_centres(y.shape[-1] - M + 1) if centres is None else np.asarray(centres, float)
+    y[..., M - 1:] = fold(y[..., M - 1:], c)
     return y

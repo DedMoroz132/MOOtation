@@ -247,17 +247,23 @@ private:
         } else {
             // Truncation: iteratively remove the most crowded one by SDE.
             std::vector<int> cand = nd;
+            // Every candidate's sorted shifted distances to the others, once:
+            // a pair's distance does not depend on who else is left, so when
+            // a candidate goes, every other row loses exactly the value it
+            // had for it, and stays the sorted list a recomputation would give
+            // (task 10 of 2026-10-18: the same truncation, without the
+            // O(n^2 log n) recomputation at every removal).
+            std::vector<std::vector<double>> sdists(cand.size());
+            for(std::size_t i=0;i<cand.size();++i) {
+                sdists[i].reserve(cand.size());
+                for(std::size_t j=0;j<cand.size();++j) {
+                    if(i==j) continue;
+                    sdists[i].push_back(sde_dist(obj_of(cand[i]), obj_of(cand[j])));
+                }
+                std::sort(sdists[i].begin(), sdists[i].end());
+            }
             while(static_cast<int>(cand.size()) > eff_arch_) {
                 int sz = static_cast<int>(cand.size());
-                std::vector<std::vector<double>> sdists(sz);
-                for(int i=0;i<sz;++i) {
-                    for(int j=0;j<sz;++j) {
-                        if(i==j) continue;
-                        sdists[i].push_back(
-                            sde_dist(obj_of(cand[i]), obj_of(cand[j])));
-                    }
-                    std::sort(sdists[i].begin(), sdists[i].end());
-                }
                 int worst=0;
                 for(int i=1;i<sz;++i) {
                     const auto& da=sdists[worst];
@@ -268,7 +274,14 @@ private:
                         if(db[kk]>da[kk])   break;
                     }
                 }
+                const int gone = cand[worst];
                 cand[worst]=cand.back(); cand.pop_back();
+                sdists[worst].swap(sdists.back()); sdists.pop_back();
+                for(std::size_t i=0;i<cand.size();++i) {
+                    const double d = sde_dist(obj_of(cand[i]), obj_of(gone));
+                    auto& row = sdists[i];
+                    row.erase(std::lower_bound(row.begin(), row.end(), d));
+                }
             }
             chosen = cand;
         }

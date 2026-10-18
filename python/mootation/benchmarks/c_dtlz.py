@@ -67,6 +67,7 @@ from typing import List
 import numpy as np
 
 from . import dtlz as _d
+from ._rows import spow
 
 NAMES = ("C1-DTLZ1", "C1-DTLZ3", "C2-DTLZ2", "C2-ConvexDTLZ2", "C3-DTLZ1", "C3-DTLZ4")
 SIZES = (3, 5)
@@ -91,37 +92,58 @@ def convex(f) -> np.ndarray:
     return f
 
 
+# Of a batch, one point per row (task 10 of 2026-10-18): the point functions
+# are the batches of one row. A scalar's ** 2 at one point was the C library's
+# pow, so it is that at every element (spow).
+def objectives_rows(name: str, X, M: int) -> np.ndarray:
+    F = _d.DTLZ_ROWS[BASE[name]](X, M)
+    return convex(F) if name == "C2-ConvexDTLZ2" else F
+
+
 def objectives(name: str, x, M: int) -> List[float]:
-    f = _d.DTLZ_FUNCS[BASE[name]](list(x), M)
-    return convex(f).tolist() if name == "C2-ConvexDTLZ2" else f
+    return objectives_rows(name, [list(x)], M)[0].tolist()
+
+
+def constraints_rows(name: str, F, M: int) -> np.ndarray:
+    """The paper's constraints as the library reads them: <= 0 satisfied."""
+    F = np.ascontiguousarray(F, dtype=float).reshape(-1, M)
+    s2 = np.sum(F * F, axis=1)
+    if name == "C1-DTLZ1":
+        head = np.ascontiguousarray(F[:, :-1])
+        return (-(1.0 - F[:, -1] / 0.6 - np.sum(head, axis=1) / 0.5))[:, None]
+    if name == "C1-DTLZ3":
+        return (-((s2 - 16.0) * (s2 - C1_DTLZ3_R[M] ** 2)))[:, None]
+    if name == "C2-DTLZ2":
+        r2 = C2_DTLZ2_R[M] ** 2
+        corners = np.column_stack([spow(F[:, i] - 1.0, 2) + (s2 - spow(F[:, i], 2)) - r2
+                                   for i in range(M)])
+        middle = np.sum((F - 1.0 / np.sqrt(M)) ** 2, axis=1) - r2
+        return np.minimum(corners.min(axis=1), middle)[:, None]          # CDTLZ-1
+    if name == "C2-ConvexDTLZ2":
+        mean = F.mean(axis=1, keepdims=True)
+        return (-(np.sum((F - mean) ** 2, axis=1) - C2_CONVEX_R[M] ** 2))[:, None]
+    if name == "C3-DTLZ1":
+        s = np.sum(F, axis=1)[:, None]
+        return -(F / 0.5 + (s - F) - 1.0)                                # CDTLZ-2
+    if name == "C3-DTLZ4":
+        P = np.column_stack([spow(F[:, j], 2) for j in range(M)])
+        return -(P / 4.0 + (s2[:, None] - P) - 1.0)
+    raise KeyError(name)
 
 
 def constraints(name: str, f, M: int) -> List[float]:
-    """The paper's constraints as the library reads them: <= 0 satisfied."""
-    f = np.asarray(f, float)
-    s2 = float(np.sum(f * f))
-    if name == "C1-DTLZ1":
-        return [-(1.0 - f[-1] / 0.6 - float(np.sum(f[:-1])) / 0.5)]
-    if name == "C1-DTLZ3":
-        return [-((s2 - 16.0) * (s2 - C1_DTLZ3_R[M] ** 2))]
-    if name == "C2-DTLZ2":
-        r2 = C2_DTLZ2_R[M] ** 2
-        corners = [(f[i] - 1.0) ** 2 + (s2 - f[i] ** 2) - r2 for i in range(M)]
-        middle = float(np.sum((f - 1.0 / np.sqrt(M)) ** 2)) - r2
-        return [min(min(corners), middle)]                       # CDTLZ-1
-    if name == "C2-ConvexDTLZ2":
-        return [-(float(np.sum((f - f.mean()) ** 2)) - C2_CONVEX_R[M] ** 2)]
-    if name == "C3-DTLZ1":
-        s = float(np.sum(f))
-        return [-(f[j] / 0.5 + (s - f[j]) - 1.0) for j in range(M)]   # CDTLZ-2
-    if name == "C3-DTLZ4":
-        return [-(f[j] ** 2 / 4.0 + (s2 - f[j] ** 2) - 1.0) for j in range(M)]
-    raise KeyError(name)
+    return constraints_rows(name, [list(f)], M)[0].tolist()
+
+
+def evaluate_batch(name: str, X, M: int) -> tuple:
+    """(objectives, constraints) of every row of X."""
+    F = objectives_rows(name, X, M)
+    return F, constraints_rows(name, F, M)
 
 
 def feasible(name: str, F, M: int) -> np.ndarray:
     """Which rows of F satisfy every constraint."""
-    return np.array([max(constraints(name, f, M)) <= 0.0 for f in np.atleast_2d(F)])
+    return np.max(constraints_rows(name, np.atleast_2d(F), M), axis=1) <= 0.0
 
 
 def front(name: str, M: int, n: int, unit_simplex, unit_sphere) -> np.ndarray:

@@ -63,6 +63,8 @@ from typing import List
 
 import numpy as np
 
+from ._rows import math_sin
+
 N_VARS = 30
 A, D = 20.0, 0.5
 EQ_EPS = 1e-6                                  # Eq. 13's epsilon, zeta = 1
@@ -89,18 +91,23 @@ def params(eta: float, zeta: float, gamma: float):
 
 
 def g_value(i: int, x) -> float:
-    x = np.asarray(x, float)
-    n = len(x)
+    return float(g_values(i, np.asarray(x, float)[None, :])[0])
+
+
+def g_values(i: int, X: np.ndarray) -> np.ndarray:
+    """g of every row of X."""
+    n = X.shape[1]
     if i <= 3:
-        return float(np.sum((x[1:] - math.sin(0.5 * math.pi * x[0])) ** 2))
+        return np.sum((X[:, 1:] - math_sin(0.5 * math.pi * X[:, 0])[:, None]) ** 2, axis=1)
     if i <= 6:
-        z = x[1:] - 0.5
-        return float((n - 1) + np.sum(z * z - np.cos(20.0 * math.pi * z)))
+        Z = X[:, 1:] - 0.5
+        return (n - 1) + np.sum(Z * Z - np.cos(20.0 * math.pi * Z), axis=1)
     if i <= 8:
-        z = x[2:] - 0.5
-        return float((n - 2) + np.sum(z * z - np.cos(20.0 * math.pi * z)))
+        Z = X[:, 2:] - 0.5
+        return (n - 2) + np.sum(Z * Z - np.cos(20.0 * math.pi * Z), axis=1)
     j = np.arange(3, n + 1)
-    return float(np.sum((x[2:] - np.cos(0.25 * j / n * math.pi * (x[0] + x[1]))) ** 2))
+    return np.sum((X[:, 2:] - np.cos(0.25 * j / n * math.pi * (X[:, 0] + X[:, 1])[:, None])) ** 2,
+                  axis=1)
 
 
 def shape(i: int, x1: np.ndarray, x2=None) -> np.ndarray:
@@ -148,11 +155,17 @@ def constraints_c(i: int, F: np.ndarray, x1, x2, g, triplet) -> np.ndarray:
 
 def evaluate(i: int, x, triplet) -> tuple:
     """(objectives, the library's constraints: <= 0 satisfied)."""
-    x = np.asarray(x, float)
-    g = g_value(i, x)
-    F = shape(i, np.array([x[0]]), np.array([x[1]])) + g
-    c = constraints_c(i, F, x[0], x[1], g, triplet)[0]
-    return F[0].tolist(), [float(-v) for v in c]
+    F, G = evaluate_batch(i, [x], triplet)
+    return F[0].tolist(), G[0].tolist()
+
+
+def evaluate_batch(i: int, X, triplet) -> tuple:
+    """(objectives, constraints) of every row of X, one computation for both:
+    n x M and n x (number of constraints)."""
+    X = np.asarray(X, float).reshape(-1, N_VARS)
+    g = g_values(i, X)
+    F = shape(i, X[:, 0], X[:, 1]) + g[:, None]
+    return F, -constraints_c(i, F, X[:, 0], X[:, 1], g, triplet)
 
 
 def name(i: int, tag: str) -> str:

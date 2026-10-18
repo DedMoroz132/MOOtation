@@ -26,75 +26,89 @@ A = 2.0       # scale factor (MaF4, MaF5)
 ALPHA = 100.0 # bias (MaF5)
 
 
-# ---- g functions ---------------------------------------------------
-def _g_quad(xm: np.ndarray) -> float:
-    return float(np.sum((xm - 0.5) ** 2))
-
-
-def _g_rastrigin(xm: np.ndarray) -> float:
-    return 100.0 * (len(xm) + float(np.sum(
-        (xm - 0.5) ** 2 - np.cos(20.0 * np.pi * (xm - 0.5)))))
-
-
-# ---- position products ---------------------------------------------------
-def _dtlz1_products(pos: np.ndarray, M: int) -> np.ndarray:
-    """pr_i: the linear DTLZ1 position products, summing to 1."""
-    pr = np.empty(M)
-    pr[0] = np.prod(pos) if M > 1 else 1.0
-    for i in range(1, M):
-        pre = np.prod(pos[:M - 1 - i]) if (M - 1 - i) > 0 else 1.0
-        pr[i] = pre * (1.0 - pos[M - 1 - i])
-    return pr
-
-
-def _dtlz2_dirs(pos: np.ndarray, M: int) -> np.ndarray:
-    """d_i: the DTLZ2 directions, with sum d^2 = 1."""
-    c = np.cos(0.5 * np.pi * pos)
-    s = np.sin(0.5 * np.pi * pos)
-    d = np.empty(M)
-    d[0] = np.prod(c) if M > 1 else 1.0
-    for i in range(1, M):
-        pre = np.prod(c[:M - 1 - i]) if (M - 1 - i) > 0 else 1.0
-        d[i] = pre * s[M - 1 - i]
-    return d
-
-
 def _exps(M: int) -> np.ndarray:
     e = np.full(M, 4.0)
     e[M - 1] = 2.0
     return e
 
 
-# ---- eval ----------------------------------------------------------
-def maf1(x: List[float], M: int) -> List[float]:
-    x = np.asarray(x, float)
-    g = _g_quad(x[M - 1:])
-    pr = _dtlz1_products(x[:M - 1], M)
-    return ((1.0 - pr) * (1.0 + g)).tolist()
+# ---- eval, of a batch (task 10 of 2026-10-18) -----------------------
+# X holds one point per row; mafN_rows(X, M) is the (n, M) array of their
+# objectives, and mafN(x, M) its batch of one row. The expressions are those
+# of the point code before, elementwise and summed along the row, so that a
+# row's values are bit for bit what that code gave the point.
+def _rows(X, M: int) -> np.ndarray:
+    return np.ascontiguousarray(X, dtype=float).reshape(-1, M + K - 1)
 
 
-def maf3(x: List[float], M: int) -> List[float]:
-    x = np.asarray(x, float)
-    g = _g_rastrigin(x[M - 1:])
-    d = _dtlz2_dirs(x[:M - 1], M)
-    return ((d * (1.0 + g)) ** _exps(M)).tolist()
+# g: the quadratic (MaF1, MaF5) and the Rastrigin-like (MaF3, MaF4) distance
+# functions; pr: the linear DTLZ1 position products, summing to 1; d: the
+# DTLZ2 directions, with sum d^2 = 1
 
 
-def maf4(x: List[float], M: int) -> List[float]:
-    x = np.asarray(x, float)
-    g = _g_rastrigin(x[M - 1:])
-    d = _dtlz2_dirs(x[:M - 1], M)
-    a = A ** np.arange(1, M + 1)
-    return (a * (1.0 - d) * (1.0 + g)).tolist()
+def _g_quad_rows(XM: np.ndarray) -> np.ndarray:
+    return np.sum((XM - 0.5) ** 2, axis=1)
 
 
-def maf5(x: List[float], M: int) -> List[float]:
-    x = np.asarray(x, float)
-    g = _g_quad(x[M - 1:])
-    pos = x[:M - 1] ** ALPHA
-    d = _dtlz2_dirs(pos, M)
-    a = A ** np.arange(M, 0, -1)
-    return (a * (d * (1.0 + g)) ** 4).tolist()
+def _g_rastrigin_rows(XM: np.ndarray) -> np.ndarray:
+    return 100.0 * (XM.shape[1] + np.sum(
+        (XM - 0.5) ** 2 - np.cos(20.0 * np.pi * (XM - 0.5)), axis=1))
+
+
+def _dtlz1_products_rows(P: np.ndarray, M: int) -> np.ndarray:
+    pr = np.empty((len(P), M))
+    pr[:, 0] = np.prod(P, axis=1) if M > 1 else 1.0
+    for i in range(1, M):
+        pre = np.prod(P[:, :M - 1 - i], axis=1) if (M - 1 - i) > 0 else 1.0
+        pr[:, i] = pre * (1.0 - P[:, M - 1 - i])
+    return pr
+
+
+def _dtlz2_dirs_rows(P: np.ndarray, M: int) -> np.ndarray:
+    c = np.cos(0.5 * np.pi * P)
+    s = np.sin(0.5 * np.pi * P)
+    d = np.empty((len(P), M))
+    d[:, 0] = np.prod(c, axis=1) if M > 1 else 1.0
+    for i in range(1, M):
+        pre = np.prod(c[:, :M - 1 - i], axis=1) if (M - 1 - i) > 0 else 1.0
+        d[:, i] = pre * s[:, M - 1 - i]
+    return d
+
+
+def maf1_rows(X, M: int) -> np.ndarray:
+    X = _rows(X, M)
+    g = _g_quad_rows(X[:, M - 1:])
+    return (1.0 - _dtlz1_products_rows(X[:, :M - 1], M)) * (1.0 + g)[:, None]
+
+
+def maf3_rows(X, M: int) -> np.ndarray:
+    X = _rows(X, M)
+    g = _g_rastrigin_rows(X[:, M - 1:])
+    return (_dtlz2_dirs_rows(X[:, :M - 1], M) * (1.0 + g)[:, None]) ** _exps(M)
+
+
+def maf4_rows(X, M: int) -> np.ndarray:
+    X = _rows(X, M)
+    g = _g_rastrigin_rows(X[:, M - 1:])
+    d = _dtlz2_dirs_rows(X[:, :M - 1], M)
+    return A ** np.arange(1, M + 1) * (1.0 - d) * (1.0 + g)[:, None]
+
+
+def maf5_rows(X, M: int) -> np.ndarray:
+    X = _rows(X, M)
+    g = _g_quad_rows(X[:, M - 1:])
+    d = _dtlz2_dirs_rows(X[:, :M - 1] ** ALPHA, M)
+    return A ** np.arange(M, 0, -1) * (d * (1.0 + g)[:, None]) ** 4
+
+
+def _one(rows_fn):
+    def one(x: List[float], M: int) -> List[float]:
+        return rows_fn([x], M)[0].tolist()
+    one.__name__ = rows_fn.__name__.replace("_rows", "")
+    return one
+
+
+maf1, maf3, maf4, maf5 = (_one(fn) for fn in (maf1_rows, maf3_rows, maf4_rows, maf5_rows))
 
 
 # ---- simplex and sphere samplers -----------------------------------
@@ -168,6 +182,8 @@ MAF_FIX = {
     "MaF4": (maf4, pf_maf4),
     "MaF5": (maf5, pf_maf5),
 }
+# name -> the batch eval
+MAF_FIX_ROWS = {"MaF1": maf1_rows, "MaF3": maf3_rows, "MaF4": maf4_rows, "MaF5": maf5_rows}
 
 
 def maf_n_vars(M: int) -> int:

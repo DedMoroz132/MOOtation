@@ -72,34 +72,38 @@ def scale_base(name: str, M: int) -> float:
 
 
 # ---- eval ----------------------------------------------------------
-def idtlz1(x: List[float], M: int) -> List[float]:
-    x = np.asarray(x, float)
-    g = _d._g_dtlz1(x[M - 1:])
-    f = np.asarray(_d.dtlz1(x, M))
-    return (0.5 * (1.0 + g) - f).tolist()
+# Of a batch X, one point per row, as in dtlz.py (task 10 of 2026-10-18); the
+# point functions are the batches of one row.
+def idtlz1_rows(X: np.ndarray, M: int) -> np.ndarray:
+    X = _d._rows(X)
+    g = _d._g_dtlz1(X[:, M - 1:])
+    return (0.5 * (1.0 + g))[:, None] - _d.dtlz1_rows(X, M)
 
 
-def idtlz2(x: List[float], M: int) -> List[float]:
-    x = np.asarray(x, float)
-    g = _d._g_dtlz2(x[M - 1:])
-    f = np.asarray(_d.dtlz2(x, M))
-    return ((1.0 + g) - f).tolist()
+def idtlz2_rows(X: np.ndarray, M: int) -> np.ndarray:
+    X = _d._rows(X)
+    g = _d._g_dtlz2(X[:, M - 1:])
+    return (1.0 + g)[:, None] - _d.dtlz2_rows(X, M)
 
 
-def minus_dtlz2(x: List[float], M: int) -> List[float]:
-    return (-np.asarray(_d.dtlz2(x, M))).tolist()
+def minus_dtlz2_rows(X: np.ndarray, M: int) -> np.ndarray:
+    return -_d.dtlz2_rows(X, M)
 
 
 def _scale(M: int, name: str = "SDTLZ1") -> np.ndarray:
     return scale_base(name, M) ** np.arange(M, dtype=float)
 
 
-def sdtlz1(x: List[float], M: int) -> List[float]:
-    return (np.asarray(_d.dtlz1(x, M)) * _scale(M, "SDTLZ1")).tolist()
+def sdtlz1_rows(X: np.ndarray, M: int) -> np.ndarray:
+    return _d.dtlz1_rows(X, M) * _scale(M, "SDTLZ1")
 
 
-def sdtlz2(x: List[float], M: int) -> List[float]:
-    return (np.asarray(_d.dtlz2(x, M)) * _scale(M, "SDTLZ2")).tolist()
+def sdtlz2_rows(X: np.ndarray, M: int) -> np.ndarray:
+    return _d.dtlz2_rows(X, M) * _scale(M, "SDTLZ2")
+
+
+idtlz1, idtlz2, minus_dtlz2, sdtlz1, sdtlz2 = (
+    _d._one(fn) for fn in (idtlz1_rows, idtlz2_rows, minus_dtlz2_rows, sdtlz1_rows, sdtlz2_rows))
 
 
 # ---- samplers for the base fronts (g = 0) --------------------------
@@ -170,19 +174,19 @@ SPECS = {}  # filled in below: name -> dict
 
 def build_specs():
     out = {}
-    out["IDTLZ1"] = dict(eval=idtlz1, base="DTLZ1", pf=pf_idtlz1,
+    out["IDTLZ1"] = dict(eval=idtlz1, rows=idtlz1_rows, base="DTLZ1", pf=pf_idtlz1,
                          ideal=lambda M: tuple([0.0] * M),
                          nadir=lambda M: tuple([0.5] * M))
-    out["IDTLZ2"] = dict(eval=idtlz2, base="DTLZ2", pf=pf_idtlz2,
+    out["IDTLZ2"] = dict(eval=idtlz2, rows=idtlz2_rows, base="DTLZ2", pf=pf_idtlz2,
                          ideal=lambda M: tuple([0.0] * M),
                          nadir=lambda M: tuple([1.0] * M))
-    out["minusDTLZ2"] = dict(eval=minus_dtlz2, base="DTLZ2", pf=pf_minus_dtlz2,
+    out["minusDTLZ2"] = dict(eval=minus_dtlz2, rows=minus_dtlz2_rows, base="DTLZ2", pf=pf_minus_dtlz2,
                          ideal=lambda M: tuple([-(1.0 + 0.25 * _kd("DTLZ2"))] * M),
                          nadir=lambda M: tuple([0.0] * M))
-    out["SDTLZ1"] = dict(eval=sdtlz1, base="DTLZ1", pf=pf_sdtlz1,
+    out["SDTLZ1"] = dict(eval=sdtlz1, rows=sdtlz1_rows, base="DTLZ1", pf=pf_sdtlz1,
                          ideal=lambda M: tuple([0.0] * M),
                          nadir=lambda M: tuple((0.5 * _scale(M, "SDTLZ1")).tolist()))
-    out["SDTLZ2"] = dict(eval=sdtlz2, base="DTLZ2", pf=pf_sdtlz2,
+    out["SDTLZ2"] = dict(eval=sdtlz2, rows=sdtlz2_rows, base="DTLZ2", pf=pf_sdtlz2,
                          ideal=lambda M: tuple([0.0] * M),
                          nadir=lambda M: tuple((_scale(M, "SDTLZ2")).tolist()))
     return out
@@ -218,15 +222,20 @@ def shift_centres(k: int) -> np.ndarray:
 
 def cyclic_input(x, M: int) -> np.ndarray:
     """The point DTLZ1-4 are evaluated at: y = (x - c + 1/2) mod 1 for every
-    distance variable."""
+    distance variable (of every row, for a batch)."""
     y = np.array(x, dtype=float)
-    y[M - 1:] = np.mod(y[M - 1:] - shift_centres(len(y) - M + 1) + 0.5, 1.0)
+    y[..., M - 1:] = np.mod(y[..., M - 1:] - shift_centres(y.shape[-1] - M + 1) + 0.5, 1.0)
     return y
 
 
 def shift_dtlz(name: str, x: List[float], M: int) -> List[float]:
     """DTLZ1-4 with every distance variable read through y = (x - c + 1/2) mod 1."""
     return _d.DTLZ_FUNCS[name](cyclic_input(x, M), M)
+
+
+def shift_dtlz_rows(name: str, X: np.ndarray, M: int) -> np.ndarray:
+    """shift_dtlz of every row of X."""
+    return _d.DTLZ_ROWS[name](cyclic_input(_d._rows(X), M), M)
 
 
 # ---- wideDTLZ3: the distance variables in [0, 1.2] ------------------------

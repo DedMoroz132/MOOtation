@@ -79,17 +79,23 @@ class MixedInteger:
         ints = [int(np.argmin(np.abs(zi - f.x_opt[i]))) for i, zi in enumerate(z)]
         return ints + list(f.x_opt[self.k:])
 
-    def continuous(self, x, z) -> np.ndarray:
-        """x with every integer value j replaced by z_{j+1} (a real there is
-        rounded and kept in 0 .. l-1, for a caller that does not decode)."""
-        out = np.asarray(x, dtype=float).copy()
+    def continuous(self, X, z) -> np.ndarray:
+        """The rows of X with every integer value j replaced by z_{j+1} (a real
+        there is rounded, half to even, and kept in 0 .. l-1, for a caller that
+        does not decode)."""
+        out = np.array(X, dtype=float).reshape(-1, self.D)
         for i, zi in enumerate(z):
-            out[i] = zi[min(max(int(round(out[i])), 0), len(zi) - 1)]
+            j = np.clip(np.rint(out[:, i]), 0, len(zi) - 1).astype(int)
+            out[:, i] = zi[j]
         return out
 
     def __call__(self, x) -> List[float]:
-        return [self.alpha(self.continuous(x, self.z_alpha)),
-                self.beta(self.continuous(x, self.z_beta))]
+        return self.batch([x])[0].tolist()
+
+    def batch(self, X) -> np.ndarray:
+        """(f_alpha, f_beta) at every row of X (integers and reals): n x 2."""
+        return np.column_stack([self.alpha.batch(self.continuous(X, self.z_alpha)),
+                                self.beta.batch(self.continuous(X, self.z_beta))])
 
 
 def name(fnum: int, D: int) -> str:

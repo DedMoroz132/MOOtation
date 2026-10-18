@@ -110,6 +110,7 @@ public:
           delta_(delta != 0.0 ? delta : default_delta(n_obj)),
           problem_frame_(!ideal.empty() && !nadir.empty()), ext_(m_, -1)
     {
+        if (m_ != 2) cols_.resize(m_);
         if (problem_frame_) {
             lo_ = ideal;
             span_.resize(m_);
@@ -135,8 +136,7 @@ public:
         ++offered_;
         for (std::size_t j = 0; j < m_; ++j)
             if (!std::isfinite(f[j])) return false;
-        if (dominated(f)) return false;              // dominated or a duplicate
-        remove_beaten(f);
+        if (!take(f)) return false;                  // dominated or a duplicate
         const std::size_t s = append(f, x);
         ++accepted_;
         if (!problem_frame_ && frame_drifted(f)) regrid(static_cast<long long>(s));
@@ -203,41 +203,72 @@ private:
     std::vector<std::vector<std::int64_t>> slot_cell_;        // slot -> its cell, if any
     std::vector<char> in_cell_;
     std::vector<long long> ext_;                    // slot of each objective's best, -1 none
-    std::multimap<double, std::size_t> by_f1_;      // live slots by f_1
+    std::multimap<double, std::size_t> by_f1_;      // live slots by f_1 (two objectives)
+    std::vector<std::size_t> beaten_;               // take()'s, kept for its storage
+    // from three objectives: objective j of every slot, F_ by columns, and
+    // take()'s max_j (p_j - f_j) and max_j (f_j - p_j) of every slot
+    std::vector<std::vector<double>> cols_;
+    std::vector<double> above_, below_;
     long long offered_ = 0, accepted_ = 0;
 
     const double* f_of(std::size_t s) const { return F_.data() + s * m_; }
 
-    // The stored points are mutually nondominated; at two objectives they form
-    // a staircase, f_2 falling as f_1 rises, and one look decides.
-    bool dominated(const double* f) const
+    // Whether f is to be stored: no stored point weakly dominates it (p <= f
+    // everywhere, a copy included); if so, the stored points it weakly
+    // dominates are removed. The stored points are mutually nondominated, so
+    // a dominated f weakly dominates none of them, and the order of the
+    // removals does not matter (each touches its own slot). At two objectives
+    // they form a staircase, f_2 falling as f_1 rises, and one look decides;
+    // from three, one pass over the slots in memory.
+    bool take(const double* f)
     {
+        beaten_.clear();
         if (m_ == 2) {
             auto it = by_f1_.upper_bound(f[0]);         // the last p with p_1 <= f_1 ...
-            if (it == by_f1_.begin()) return false;
-            return f_of(std::prev(it)->second)[1] <= f[1];   // ... has the smallest p_2 of them
+            if (it != by_f1_.begin() && f_of(std::prev(it)->second)[1] <= f[1])
+                return false;                           // ... has the smallest p_2 of them
+            for (it = by_f1_.lower_bound(f[0]); it != by_f1_.end(); ++it) {
+                const double* p = f_of(it->second);
+                if (p[1] < f[1]) break;                 // the staircase: none further on
+                if (f[0] <= p[0] && f[1] <= p[1]) beaten_.push_back(it->second);
+            }
+        } else {
+            // one pass over each objective's column, every slot: p does not
+            // weakly dominate f where max_j (p_j - f_j) > 0, f does not weakly
+            // dominate p where max_j (f_j - p_j) > 0 — a positive difference
+            // means the strict inequality. Where a maximum is not positive
+            // the comparisons decide: a difference of two unequal doubles can
+            // be flushed to 0 where the processor drops subnormals.
+            above_.assign(n_, -std::numeric_limits<double>::infinity());
+            below_.assign(n_, -std::numeric_limits<double>::infinity());
+            double* up = above_.data();
+            double* dn = below_.data();
+            for (std::size_t j = 0; j < m_; ++j) {
+                const double* c = cols_[j].data();
+                const double fj = f[j];
+                for (std::size_t s = 0; s < n_; ++s) {
+                    const double d = c[s] - fj;
+                    up[s] = up[s] < d ? d : up[s];
+                    dn[s] = dn[s] < -d ? -d : dn[s];
+                }
+            }
+            for (std::size_t s = 0; s < n_; ++s) {
+                if (!alive_[s]) continue;
+                bool above = up[s] > 0.0, below = dn[s] > 0.0;
+                if (!above || !below) {
+                    const double* p = f_of(s);
+                    above = below = false;
+                    for (std::size_t j = 0; j < m_; ++j) {
+                        above = above || p[j] > f[j];
+                        below = below || f[j] > p[j];
+                    }
+                }
+                if (!above) return false;
+                if (!below) beaten_.push_back(s);
+            }
         }
-        // a stored p with p <= f everywhere has p_1 <= f_1
-        for (auto it = by_f1_.begin(); it != by_f1_.end() && it->first <= f[0]; ++it) {
-            const double* p = f_of(it->second);
-            bool le = true;
-            for (std::size_t j = 0; j < m_ && le; ++j) le = p[j] <= f[j];
-            if (le) return true;
-        }
-        return false;
-    }
-
-    void remove_beaten(const double* f)
-    {
-        std::vector<std::size_t> beaten;
-        for (auto it = by_f1_.lower_bound(f[0]); it != by_f1_.end(); ++it) {
-            const double* p = f_of(it->second);
-            if (m_ == 2 && p[1] < f[1]) break;          // the staircase: none further on
-            bool ge = true;
-            for (std::size_t j = 0; j < m_ && ge; ++j) ge = f[j] <= p[j];
-            if (ge) beaten.push_back(it->second);
-        }
-        for (std::size_t s : beaten) remove(s);
+        for (std::size_t s : beaten_) remove(s);
+        return true;
     }
 
     std::size_t append(const double* f, const double* x)
@@ -253,13 +284,16 @@ private:
         alive_.push_back(1);
         slot_cell_.emplace_back();
         in_cell_.push_back(0);
-        by_f1_.emplace(f[0], s);
+        if (m_ == 2) by_f1_.emplace(f[0], s);
+        else
+            for (std::size_t j = 0; j < m_; ++j) cols_[j].push_back(f[j]);
         ++live_;
         return s;
     }
 
     void forget_f1(std::size_t s)
     {
+        if (m_ != 2) return;
         auto range = by_f1_.equal_range(F_[s * m_]);
         for (auto it = range.first; it != range.second; ++it)
             if (it->second == s) { by_f1_.erase(it); return; }
@@ -308,7 +342,13 @@ private:
         for (auto& e : ext_)
             e = e >= 0 ? static_cast<long long>(remap[static_cast<std::size_t>(e)]) : -1;
         by_f1_.clear();
-        for (std::size_t s = 0; s < k; ++s) by_f1_.emplace(F_[s * m_], s);
+        if (m_ == 2)
+            for (std::size_t s = 0; s < k; ++s) by_f1_.emplace(F_[s * m_], s);
+        else
+            for (std::size_t j = 0; j < m_; ++j) {
+                cols_[j].resize(k);
+                for (std::size_t s = 0; s < k; ++s) cols_[j][s] = F_[s * m_ + j];
+            }
     }
 
     std::vector<std::int64_t> key(const double* f) const

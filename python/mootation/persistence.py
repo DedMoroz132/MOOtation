@@ -116,7 +116,28 @@ class EvaluationLog:
             return f
         return logged
 
-    def _append(self, x, f, g, failed: bool = False, error: str = "") -> None:
+    def wrap_batch(self, batch: Callable, constraints: Callable | None = None, guard=None):
+        """The same for a batch function (minimize's batch=, task 10 of
+        2026-10-18, §4.2): every row of a batch, in order, one flush a batch.
+        The constraints are asked row by row, as wrap asks them."""
+        from .failures import finite
+
+        def logged(X, _b=batch, _c=constraints):
+            F = _b(X)
+            for x, f in zip(X, F):
+                f = list(f)
+                g = list(_c(x)) if _c is not None else []
+                failed = not finite(f + g)
+                error = ((guard.last_error if guard is not None else None)
+                         or "a non-finite value") if failed else ""
+                self._append(x, f, g, failed, error, flush=False)
+            if self._fh is not None:
+                self._fh.flush()
+            return F
+        return logged
+
+    def _append(self, x, f, g, failed: bool = False, error: str = "",
+                flush: bool = True) -> None:
         if self._fh is None:
             self._open(len(x), len(f))
         cv = float("nan") if failed else sum(v for v in g if v > 0.0)
@@ -124,9 +145,11 @@ class EvaluationLog:
         self._w.writerow([self.rows + 1] + [v if isinstance(v, str) else repr(v) for v in x]
                          + [repr(v) for v in f] + [repr(cv), int(failed), error])
         self.rows += 1
-        # Flushed per row: an evaluation is expensive enough that the write is
-        # free by comparison, and a run killed with Ctrl-C keeps everything.
-        self._fh.flush()
+        # Flushed per row (per batch, wrap_batch): an evaluation is expensive
+        # enough that the write is free by comparison, and a run killed with
+        # Ctrl-C keeps everything.
+        if flush:
+            self._fh.flush()
 
     def _open(self, n_vars: int, n_objs: int) -> None:
         if self.path.parent != Path(""):

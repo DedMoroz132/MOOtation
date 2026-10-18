@@ -456,6 +456,12 @@ public:
     void set_ref_offset   (double r)  { ref_offset_ = r; }
     bool set_param(const std::string& k, double v)
     {
+        if (k == "n_samples") {                 // the M of the paper's Algorithm 3
+            if (!(v >= 1.0 && v <= 1e9 && v == std::floor(v)))
+                throw std::invalid_argument("n_samples must be a whole number >= 1");
+            n_samples_ = static_cast<int>(v);
+            return true;
+        }
         if (k != "ref_delta") return false;
         if (!(v > 0.0)) throw std::invalid_argument("ref_delta must be > 0");
         ref_delta_ = v;

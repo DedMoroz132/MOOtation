@@ -190,6 +190,7 @@ public:
         for (std::size_t z = 0; z < r; ++z)
             for (std::size_t j = 0; j < m; ++j) Z_[z * m + j] = (Z[z * m + j] - lo_[j]) / span_[j];
         dmin_.assign(r, std::numeric_limits<double>::infinity());
+        dsq_.assign(r, std::numeric_limits<double>::infinity());
         emin_.assign(r, std::numeric_limits<double>::infinity());
         buf_.resize(m);
         g_.resize(m);
@@ -211,11 +212,21 @@ public:
                     buf_[j] = t * t;
                     worst = j == 0 ? d : detail::nan_max(worst, d);
                 }
-                const double dp = std::sqrt(np::sum(buf_.data(), m_));
-                const double nd = n_seen_ == 0 ? dp : detail::nan_min(dmin_[z], dp);
-                const double ne = n_seen_ == 0 ? worst : detail::nan_min(emin_[z], worst);
-                if (!(nd == dmin_[z])) { dmin_[z] = nd; lower = true; }
-                emin_[z] = ne;
+                // dmin_[z] = sqrt(dsq_[z]), dsq_[z] the least sum of squares
+                // so far (a NaN for good once one is met): sqrt keeps the
+                // order, so the least distance is the root of the least
+                // sum, taken only when that sum falls
+                const double sq = np::sum(buf_.data(), m_);
+                if (std::isnan(dsq_[z])) {
+                } else if (std::isnan(sq)) {
+                    dsq_[z] = dmin_[z] = sq;
+                    lower = true;
+                } else if (sq < dsq_[z]) {
+                    dsq_[z] = sq;
+                    const double dp = std::sqrt(sq);
+                    if (!(dp == dmin_[z])) { dmin_[z] = dp; lower = true; }
+                }
+                emin_[z] = n_seen_ == 0 ? worst : detail::nan_min(emin_[z], worst);
             }
             ++n_seen_;
             if (lower) check_levels(fe[a]);
@@ -244,7 +255,7 @@ private:
     std::vector<double> lo_, span_, Z_;
     std::vector<double> levels_;
     std::vector<long long> reached_;
-    std::vector<double> dmin_, emin_, buf_, g_;
+    std::vector<double> dmin_, dsq_, emin_, buf_, g_;
     std::size_t n_seen_ = 0;
 
     void check_levels(long long fe)

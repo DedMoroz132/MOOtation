@@ -72,6 +72,8 @@ def main(argv=None) -> int:
     ap.add_argument("--pop", type=int, default=100)
     args = ap.parse_args(argv)
     names = args.algorithms.split(",") if args.algorithms else list(mootation.algorithms())
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")         # the table's dash on any console
     print("| core | population | calls | evaluations | in single calls | batch size (median, max) |")
     print("|---|---|---|---|---|---|")
     for n in names:

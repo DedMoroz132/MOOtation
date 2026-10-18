@@ -23,7 +23,9 @@ clocks into components:
     records    the trajectory records: indicators, snapshots, checkpoints
     final      the final indicators and the archive's selection
     write      the files after the run
-    other      the rest of the job (the reference fronts, the setup)
+    setup      the reference data before the run (the front, the frame, the
+               Pareto set: built, or read from the campaign's cache)
+    other      the rest of the job
 
 OUT gets profile.toml (the campaign), results/ (its runs), profile.csv (one
 row per run, seconds) and profile.md (median over the seeds per algorithm and
@@ -48,7 +50,8 @@ PROBLEMS = ("ZDT1", "DTLZ2_3D", "DTLZ2_5D", "WFG4_3D", "ZCAT9_10D", "bbobbiobj55
             "DAS-CMOP8_t01", "MaF9_10D")
 SEEDS = (1, 2, 3)
 BUDGET = 25_000
-COMPONENTS = ("evaluation", "crossing", "core", "archive", "records", "final", "write", "other")
+COMPONENTS = ("evaluation", "crossing", "core", "archive", "records", "final", "write", "setup",
+              "other")
 
 
 def toml_value(v) -> str:
@@ -62,12 +65,16 @@ def toml_value(v) -> str:
 
 
 def parse_set(items) -> dict:
-    """KEY=VALUE pairs for [campaign], VALUE read as TOML would read it."""
+    """KEY=VALUE pairs for [campaign], VALUE read as TOML would read it (a bare
+    word, as a shell leaves a quoted one, as a string)."""
     import tomllib
     out = {}
     for item in items or ():
         key, _, value = item.partition("=")
-        out[key.strip()] = tomllib.loads(f"v = {value.strip()}")["v"]
+        try:
+            out[key.strip()] = tomllib.loads(f"v = {value.strip()}")["v"]
+        except tomllib.TOMLDecodeError:
+            out[key.strip()] = value.strip()
     return out
 
 
@@ -103,7 +110,8 @@ def components(meta: dict) -> dict | None:
         "write": t["write"],
     }
     c["other"] = max(0.0, total - t["minimize"] - t["final"] - t["write"])
-    c["total"] = total
+    c["setup"] = float(t.get("setup", 0.0))       # before the run's own clock starts
+    c["total"] = total + c["setup"]
     c["calls"] = int(t.get("calls", 0))
     return c
 

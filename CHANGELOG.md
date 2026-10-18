@@ -10,6 +10,58 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Batches through the whole chain (task 10 of 2026-10-18). Every built-in
+  problem has `evaluate_batch(X)` and `constraints_batch(X)` (n rows to n × M
+  and n × K), and a constrained problem whose objectives and constraints come
+  out of one computation `evaluate_with_constraints(X)` → `(F, G)`. ZDT, DTLZ
+  and its variants, C-DTLZ, MaF (but MaF8 and MaF10–12), ZCAT, bbob-biobj and
+  its mixint, DAS-CMOP, LIR-CMOP, MW, BT and MOP are written for batches: one
+  implementation, `evaluate(x)` its batch of one row; the rotated, shifted and
+  noisy copies take their base's batch; everything else loops over its point
+  function. A row's values are those the point code gave, bit for bit
+  (`benchmarks/_rows.py` names what has to stay one point at a time for that:
+  BLAS's product per point, the C library's `pow`, and its `sin`, `cos` and
+  `exp` of one float wherever NumPy's of an array differ on the machine), and
+  a row that fails is NaN alone. `minimize` takes `batch_with_constraints`
+  (the batch returns objectives and constraints of the rows, one call for
+  both) and logs a batch (`log_evaluations` with `batch=`, refused before);
+  `benchmarks.solve` and the campaign hand the batches on.
+  `tools/compat_problems.py` compares every problem of the registry, point and
+  batch, with a commit of before.
+- The run layer's own work in C++ (`_core`): the nondominated filter, the run
+  archive (`GridArchive`, with `add_many`), DSS and the greedy IGD+ selection,
+  and the IGD, IGD+, GD+, ε+ and R2 indicators, each the Python version's
+  values (the Python versions stay, the reference in the tests and the
+  fallback without the extension). `_core.IncrementalFront` keeps IGD+ and ε+
+  of every point a run evaluated up to date a batch at a time.
+- Campaigns: `record_grid = "budgets"`, now the default for a new results
+  directory (one started under another grid keeps it), records at 100, 150,
+  200, 300, 500, 700, 1 000, … and 25 000, at exactly b evaluations (`fe_pop`
+  where the population was complete before b); `all_evaluated` (on) gives
+  every record and `final` `igdp_norm_all` and `eps_norm_all`, and
+  `meta.json` the evaluation at which each of `all_levels` was first reached;
+  `archive_mode = "posthoc"` fills the archive only when it is read, the same
+  archive; the reference data of a problem (frame, front, dense reference,
+  Pareto-set sample) are built once a campaign (by one of the workers that
+  start on it together, the others waiting for its file) and kept in
+  `<results>/_references/`, stamped with the reference version and a hash of
+  the benchmark sources; `meta.json` has `timing`, the seconds of a run by
+  component. `tools/perf/profile.py` and `tools/perf/batches.py` read where a
+  campaign's time goes and which cores evaluate a generation at a time
+  (`docs/algorithms.md`, "Batches and single points").
+- `n_samples` reaches SMS-EMOA, MO-CMA-ES and HypE: the Monte-Carlo sample
+  points of a step from four objectives (10 000; 0, exact contributions, for
+  SMS-EMOA and MO-CMA-ES).
+- Cheaper with the same results: the exact hypervolume contributions from
+  three objectives (one WFG workspace for all the points) and the Monte-Carlo
+  ones (each sample tested against the points that can cover it), SPEA2's and
+  SPEA2+SDE's truncation (the distance rows computed once and kept sorted),
+  and MaF9's constraint (the forbidden polygons tested for a whole batch).
+- Changed: RCM02 (where EI / μ < 0), RCM24 (outside the domain of its
+  logarithms) and RE22, RE22c (at x2 = 0) return NaN — a failed evaluation —
+  where they raised; a campaign now counts those points in `n_failed`.
+  `benchmarks.properties` has `undefined` and `undefined_share`.
+
 - A point's constraint values were lost when a core rewrote its population.
   ETEA, MOEA/D-AM2M, MOEA/D-DS, RD-EMO, APRD, Liu & Gu 2011, ISDE+RD, DHEA,
   HLMEA, IF-MaOEA, DEA-GNG, MaOEA-3C, DCEA, HCCA, CLIA, Two_Arch2, NAEMO and

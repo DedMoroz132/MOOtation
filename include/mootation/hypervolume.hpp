@@ -209,6 +209,26 @@ inline double wfg(const double* F, std::size_t n, std::size_t m, const double* r
     return w.hv(P, k, m);
 }
 
+// covered() of rows P already in increasing first objective.
+inline std::size_t covered_sorted(const double* P, std::size_t n, std::size_t m,
+                                  const double* S, std::size_t k) {
+    std::size_t hits = 0;
+    for (std::size_t i = 0; i < k; ++i) {
+        const double* s = S + i * m;
+        for (std::size_t r = 0; r < n; ++r) {
+            const double* p = P + r * m;
+            if (!(p[0] <= s[0])) break;              // sorted: no later row covers s
+            std::size_t j = 1;
+            while (j < m && p[j] <= s[j]) ++j;
+            if (j == m) {
+                ++hits;
+                break;
+            }
+        }
+    }
+    return hits;
+}
+
 // How many of the k rows of S (m coordinates each, row-major) at least one of
 // the n rows of F weakly dominates (no worse in every objective). The rows of
 // F are visited in increasing first objective, so a sample stops at the first
@@ -223,21 +243,7 @@ inline std::size_t covered(const double* F, std::size_t n, std::size_t m,
     std::vector<double> P(n * m);
     for (std::size_t r = 0; r < n; ++r)
         std::copy(F + order[r] * m, F + order[r] * m + m, P.data() + r * m);
-    std::size_t hits = 0;
-    for (std::size_t i = 0; i < k; ++i) {
-        const double* s = S + i * m;
-        for (std::size_t r = 0; r < n; ++r) {
-            const double* p = P.data() + r * m;
-            if (!(p[0] <= s[0])) break;              // sorted: no later row covers s
-            std::size_t j = 1;
-            while (j < m && p[j] <= s[j]) ++j;
-            if (j == m) {
-                ++hits;
-                break;
-            }
-        }
-    }
-    return hits;
+    return covered_sorted(P.data(), n, m, S, k);
 }
 
 inline double wfg(const std::vector<std::vector<double>>& rows, const std::vector<double>& ref) {

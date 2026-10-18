@@ -15,78 +15,56 @@ from __future__ import annotations
 from typing import List
 import numpy as np
 
+from ._rows import spow
+
 N_VARS = 10
 
 
 # ---- shared g kernels ----------------------------------------------
-def _g_a(t: np.ndarray) -> float:
-    # Σ (-0.9 t_i^2 + |t_i|^0.6)   (MOP1, MOP5, MOP6, MOP7)
-    return float(np.sum(-0.9 * t * t + np.abs(t) ** 0.6))
+# ---- eval, of a batch (task 10 of 2026-10-18) -----------------------
+# mop_rows(name, X): the (n, M) objectives of the rows of X, and mopN(x) its
+# batch of one row, by the expressions of the point code before, bit for bit;
+# a scalar's ** as pow gives it (spow). g_a = sum(-0.9 t^2 + |t|^0.6) (MOP1,
+# 5, 6, 7), g_b = sum(|t| / (1 + e^|t|)) (MOP2, 3, 4).
+def mop_rows(name: str, X) -> np.ndarray:
+    X = np.ascontiguousarray(X, dtype=float).reshape(-1, N_VARS)
+    x1 = X[:, 0]
+    if name in ("MOP6", "MOP7"):
+        x2 = X[:, 1]
+        T = X[:, 2:] - (x1 * x2)[:, None]
+        g = 2.0 * np.sin(np.pi * x1) * np.sum(-0.9 * T * T + np.abs(T) ** 0.6, axis=1)
+        if name == "MOP6":
+            return np.column_stack([(1 + g) * x1 * x2, (1 + g) * x1 * (1 - x2), (1 + g) * (1 - x1)])
+        c1, c2 = np.cos(0.5 * np.pi * x1), np.cos(0.5 * np.pi * x2)
+        s1, s2 = np.sin(0.5 * np.pi * x1), np.sin(0.5 * np.pi * x2)
+        return np.column_stack([(1 + g) * c1 * c2, (1 + g) * c1 * s2, (1 + g) * s1])
+    T = X[:, 1:] - np.sin(0.5 * np.pi * x1)[:, None]
+    if name in ("MOP1", "MOP5"):
+        ga = np.sum(-0.9 * T * T + np.abs(T) ** 0.6, axis=1)
+        g = (2.0 * np.sin(np.pi * x1) if name == "MOP1" else 2.0 * np.abs(np.cos(np.pi * x1))) * ga
+        return np.column_stack([(1 + g) * x1, (1 + g) * (1 - np.sqrt(x1))])
+    at = np.abs(T)
+    gb = np.sum(at / (1.0 + np.exp(at)), axis=1)
+    if name == "MOP3":
+        g = 10.0 * np.sin(0.5 * np.pi * x1) * gb
+        return np.column_stack([(1 + g) * np.cos(0.5 * np.pi * x1), (1 + g) * np.sin(0.5 * np.pi * x1)])
+    g = 10.0 * np.sin(np.pi * x1) * gb
+    if name == "MOP2":
+        return np.column_stack([(1 + g) * x1, (1 + g) * (1 - x1 * x1)])
+    return np.column_stack([(1 + g) * x1,                                       # MOP4
+                            (1 + g) * (1 - spow(x1, 0.5) * spow(np.cos(2 * np.pi * x1), 2))])
 
 
-def _g_b(t: np.ndarray) -> float:
-    # Σ |t_i| / (1 + e^|t_i|)      (MOP2, MOP3, MOP4)
-    at = np.abs(t)
-    return float(np.sum(at / (1.0 + np.exp(at))))
+def _one(name: str):
+    def one(x: List[float]) -> List[float]:
+        return mop_rows(name, [list(x)])[0].tolist()
+    one.__name__ = name.lower()
+    return one
 
 
-# ---- eval ----------------------------------------------------------
-def mop1(x: List[float]) -> List[float]:
-    x = np.asarray(x, float); x1 = x[0]
-    t = x[1:] - np.sin(0.5 * np.pi * x1)
-    g = 2.0 * np.sin(np.pi * x1) * _g_a(t)
-    return [(1 + g) * x1, (1 + g) * (1 - np.sqrt(x1))]
+mop1, mop2, mop3, mop4, mop5, mop6, mop7 = (_one(f"MOP{i}") for i in range(1, 8))
 
 
-def mop2(x: List[float]) -> List[float]:
-    x = np.asarray(x, float); x1 = x[0]
-    t = x[1:] - np.sin(0.5 * np.pi * x1)
-    g = 10.0 * np.sin(np.pi * x1) * _g_b(t)
-    return [(1 + g) * x1, (1 + g) * (1 - x1 * x1)]
-
-
-def mop3(x: List[float]) -> List[float]:
-    x = np.asarray(x, float); x1 = x[0]
-    t = x[1:] - np.sin(0.5 * np.pi * x1)
-    g = 10.0 * np.sin(0.5 * np.pi * x1) * _g_b(t)
-    return [(1 + g) * np.cos(0.5 * np.pi * x1),
-            (1 + g) * np.sin(0.5 * np.pi * x1)]
-
-
-def mop4(x: List[float]) -> List[float]:
-    x = np.asarray(x, float); x1 = x[0]
-    t = x[1:] - np.sin(0.5 * np.pi * x1)
-    g = 10.0 * np.sin(np.pi * x1) * _g_b(t)
-    return [(1 + g) * x1,
-            (1 + g) * (1 - x1 ** 0.5 * np.cos(2 * np.pi * x1) ** 2)]
-
-
-def mop5(x: List[float]) -> List[float]:
-    x = np.asarray(x, float); x1 = x[0]
-    t = x[1:] - np.sin(0.5 * np.pi * x1)
-    g = 2.0 * np.abs(np.cos(np.pi * x1)) * _g_a(t)
-    return [(1 + g) * x1, (1 + g) * (1 - np.sqrt(x1))]
-
-
-def mop6(x: List[float]) -> List[float]:
-    x = np.asarray(x, float); x1, x2 = x[0], x[1]
-    t = x[2:] - x1 * x2
-    g = 2.0 * np.sin(np.pi * x1) * _g_a(t)
-    return [(1 + g) * x1 * x2,
-            (1 + g) * x1 * (1 - x2),
-            (1 + g) * (1 - x1)]
-
-
-def mop7(x: List[float]) -> List[float]:
-    x = np.asarray(x, float); x1, x2 = x[0], x[1]
-    t = x[2:] - x1 * x2
-    g = 2.0 * np.sin(np.pi * x1) * _g_a(t)
-    c1, c2 = np.cos(0.5 * np.pi * x1), np.cos(0.5 * np.pi * x2)
-    s1, s2 = np.sin(0.5 * np.pi * x1), np.sin(0.5 * np.pi * x2)
-    return [(1 + g) * c1 * c2, (1 + g) * c1 * s2, (1 + g) * s1]
-
-
-# ---- true fronts (g = 0) -------------------------------------------
 def _nd_filter(F: np.ndarray) -> np.ndarray:
     # keep the nondominated subset (MOP4 is disconnected).
     # FIX 2026-09-05: the previous version computed the rows that DOMINATE

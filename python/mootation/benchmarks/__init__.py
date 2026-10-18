@@ -55,18 +55,25 @@ def solve(problem, algorithm="nsga2", *, pop_size=None, n_gen=None,
     paper used — a benchmark run with an arbitrary budget compares nothing.
 
     Returns the binding's Result. This is the bridge between the Python suites
-    and the C++ algorithms: 552 problems on one side, 58 algorithms on the
-    other, and the objective function crosses the boundary once per individual.
+    and the C++ algorithms: the problems on one side, the algorithms on the
+    other, and the problem is evaluated a batch at a time (BenchProblem.
+    evaluate_batch, with the constraints in the same computation where it has
+    them): a generation per call for the cores that evaluate one, a point for
+    the others.
     """
     from .. import minimize
 
     p = get(problem) if isinstance(problem, str) else problem
     cons, eq = (p.constraints if p.has_cons else None), {}
+    batch = dict(batch=p.evaluate_batch)
     if p.n_eq:
         # the equalities as such (DOC3, 5, 7), so that eq_tol and
         # eq_tol_schedule among the knobs reach them
         cons = lambda x, _c=p.constraints, _n=p.n_eq: list(_c(x))[:-_n]   # noqa: E731
         eq = dict(eq_constraints=p.equalities, n_eq=p.n_eq)
+    elif p.has_cons:
+        cons = None
+        batch = dict(batch=p.evaluate_with_constraints, batch_with_constraints=True)
     return minimize(
         p.evaluate,
         bounds=p.bounds,
@@ -76,6 +83,7 @@ def solve(problem, algorithm="nsga2", *, pop_size=None, n_gen=None,
         n_gen=p.n_gen if n_gen is None else n_gen,
         seed=seed,
         constraints=cons,
+        **batch,
         **eq,
         **knobs,
     )

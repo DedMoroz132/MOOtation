@@ -19,6 +19,8 @@ from __future__ import annotations
 from typing import List
 import numpy as np
 
+from ._rows import spow
+
 N = 30
 
 
@@ -32,14 +34,16 @@ def D2(g, theta):
 
 
 def S1(x, gamma):
-    return np.abs(x) ** gamma
+    # x_1 at every row; its power as of one float (spow), as at one point
+    return spow(np.abs(x), gamma)
 
 
 def S2(x, gamma):
     # np.where evaluates BOTH branches, so the bases are guarded against
-    # negatives; the unselected branch cannot affect the result.
+    # negatives; the unselected branch cannot affect the result. The powers
+    # as of one float (spow), as at one point.
     x = np.asarray(x, float)
-    p = lambda base: np.maximum(base, 0.0) ** gamma
+    p = lambda base: spow(np.maximum(base, 0.0), gamma)          # noqa: E731
     return np.where(x < 0.25, (1 - p(1 - 4 * x)) / 4.0,
            np.where(x < 0.50, (1 + p(4 * x - 1)) / 4.0,
            np.where(x < 0.75, (3 - p(3 - 4 * x)) / 4.0,
@@ -62,85 +66,70 @@ _I2 = _idx_sets(N, 2)
 _I3 = _idx_sets(N, 3)
 
 
-def _yvec(x, idx, offset):
-    """y_j = x_j - offset(j) for j in idx (1-indexed)."""
-    return np.array([x[j - 1] - offset(j) for j in idx])
-
-
-# ---- eval (M=2) ----------------------------------------------------
 def _sin_off(j):  return np.sin(j * np.pi / (2 * N))
 
 
-def bt1(x):
-    x = np.asarray(x, float)
-    a = D1(_yvec(x, _I2[0], _sin_off), 1e-10).sum()
-    b = D1(_yvec(x, _I2[1], _sin_off), 1e-10).sum()
-    return [x[0] + a, 1 - np.sqrt(x[0]) + b]
+# ---- eval, of a batch (task 10 of 2026-10-18) -----------------------
+# X holds one point per row; bt_rows(name, X) is the (n, M) array of their
+# objectives, and btN(x) its batch of one row, by the expressions of the point
+# code before, so that a row's values are bit for bit what it gave the point:
+# the y_j = x_j - offset(j) as C-ordered rows (a row's sum then runs as the
+# point's did), a scalar's ** at every element as pow gives it (spow).
+def _ycols(X, idx, off):
+    """y_j = x_j - off_j for j in idx (1-indexed), every row; off the offsets
+    of the columns (one per j), or a function of j giving a column."""
+    Y = np.ascontiguousarray(X[:, [j - 1 for j in idx]])
+    if callable(off):
+        return Y - np.column_stack([off(j) for j in idx])
+    return Y - np.array([off[j] for j in idx])
 
 
-def bt2(x):
-    x = np.asarray(x, float)
-    a = D2(_yvec(x, _I2[0], _sin_off), 0.2).sum()
-    b = D2(_yvec(x, _I2[1], _sin_off), 0.2).sum()
-    return [x[0] + a, 1 - np.sqrt(x[0]) + b]
+_SIN_OFF = {j: _sin_off(j) for j in range(1, N + 1)}       # the point's offsets, as computed
 
 
-def bt3(x):
-    x = np.asarray(x, float); s = S1(x[0], 0.02)
-    a = D1(_yvec(x, _I2[0], _sin_off), 1e-8).sum()
-    b = D1(_yvec(x, _I2[1], _sin_off), 1e-8).sum()
-    return [s + a, 1 - np.sqrt(s) + b]
+def bt_rows(name: str, X) -> np.ndarray:
+    X = np.ascontiguousarray(X, dtype=float).reshape(-1, N)
+    x1 = X[:, 0]
+    if name == "BT9":
+        x2 = X[:, 1]
+        s = [10.0 * D1(_ycols(X, _I3[k], _SIN_OFF), 1e-9).sum(axis=1) for k in range(3)]
+        c1, c2 = np.cos(0.5 * np.pi * x1), np.cos(0.5 * np.pi * x2)
+        s1, s2 = np.sin(0.5 * np.pi * x1), np.sin(0.5 * np.pi * x2)
+        return np.column_stack([c1 * c2 + s[0], c1 * s2 + s[1], s1 + s[2]])
+    theta = {"BT1": 1e-10, "BT3": 1e-8, "BT4": 1e-8, "BT5": 1e-10, "BT6": 1e-4,
+             "BT7": 1e-3, "BT8": 1e-3}.get(name)
+    if name in ("BT6", "BT8"):
+        off = lambda j: spow(x1, 0.5 + 1.5 * (j - 1) / (N - 1))   # noqa: E731
+    elif name == "BT7":
+        s7 = np.sin(6 * np.pi * x1)
+        off = lambda j: s7                                         # noqa: E731
+    else:
+        off = _SIN_OFF
+    if name == "BT2":
+        a, b = (D2(_ycols(X, _I2[k], off), 0.2).sum(axis=1) for k in range(2))
+    elif name == "BT8":
+        a, b = (Q(D1(_ycols(X, _I2[k], off), theta)).sum(axis=1) for k in range(2))
+    else:
+        a, b = (D1(_ycols(X, _I2[k], off), theta).sum(axis=1) for k in range(2))
+    if name == "BT3":
+        s = S1(x1, 0.02)
+        return np.column_stack([s + a, 1 - np.sqrt(s) + b])
+    if name == "BT4":
+        s = S2(x1, 0.06)
+        return np.column_stack([s + a, 1 - np.sqrt(s) + b])
+    if name == "BT5":
+        return np.column_stack([x1 + a, (1 - x1) * (1 - x1 * np.sin(8.5 * np.pi * x1)) + b])
+    return np.column_stack([x1 + a, 1 - np.sqrt(x1) + b])
 
 
-def bt4(x):
-    x = np.asarray(x, float); s = float(S2(x[0], 0.06))
-    a = D1(_yvec(x, _I2[0], _sin_off), 1e-8).sum()
-    b = D1(_yvec(x, _I2[1], _sin_off), 1e-8).sum()
-    return [s + a, 1 - np.sqrt(s) + b]
+def _one(name: str):
+    def one(x: List[float]) -> List[float]:
+        return bt_rows(name, [list(x)])[0].tolist()
+    one.__name__ = name.lower()
+    return one
 
 
-def bt5(x):
-    x = np.asarray(x, float); x1 = x[0]
-    a = D1(_yvec(x, _I2[0], _sin_off), 1e-10).sum()
-    b = D1(_yvec(x, _I2[1], _sin_off), 1e-10).sum()
-    return [x1 + a, (1 - x1) * (1 - x1 * np.sin(8.5 * np.pi * x1)) + b]
-
-
-def _pow_off(j, x1):  # BT6/BT8: x_j = x1^(0.5+1.5(j-1)/(n-1))
-    return x1 ** (0.5 + 1.5 * (j - 1) / (N - 1))
-
-
-def bt6(x):
-    x = np.asarray(x, float); x1 = x[0]
-    off = lambda j: _pow_off(j, x1)
-    a = D1(_yvec(x, _I2[0], off), 1e-4).sum()
-    b = D1(_yvec(x, _I2[1], off), 1e-4).sum()
-    return [x1 + a, 1 - np.sqrt(x1) + b]
-
-
-def bt7(x):
-    x = np.asarray(x, float); x1 = x[0]
-    off = lambda j: np.sin(6 * np.pi * x1)
-    a = D1(_yvec(x, _I2[0], off), 1e-3).sum()
-    b = D1(_yvec(x, _I2[1], off), 1e-3).sum()
-    return [x1 + a, 1 - np.sqrt(x1) + b]
-
-
-def bt8(x):
-    x = np.asarray(x, float); x1 = x[0]
-    off = lambda j: _pow_off(j, x1)
-    a = Q(D1(_yvec(x, _I2[0], off), 1e-3)).sum()
-    b = Q(D1(_yvec(x, _I2[1], off), 1e-3)).sum()
-    return [x1 + a, 1 - np.sqrt(x1) + b]
-
-
-def bt9(x):
-    x = np.asarray(x, float); x1, x2 = x[0], x[1]
-    off = _sin_off
-    s = [10.0 * D1(_yvec(x, _I3[k], off), 1e-9).sum() for k in range(3)]
-    c1, c2 = np.cos(0.5 * np.pi * x1), np.cos(0.5 * np.pi * x2)
-    s1, s2 = np.sin(0.5 * np.pi * x1), np.sin(0.5 * np.pi * x2)
-    return [c1 * c2 + s[0], c1 * s2 + s[1], s1 + s[2]]
+bt1, bt2, bt3, bt4, bt5, bt6, bt7, bt8, bt9 = (_one(f"BT{i}") for i in range(1, 10))
 
 
 # ---- reference Pareto fronts ---------------------------------------
