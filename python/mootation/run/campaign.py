@@ -607,8 +607,29 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                        delta=spec.archive_delta or None)
            if (spec.archive or baseline) else None)
 
+    # Where the run's time goes (meta["timing"], seconds; tools/perf reads it):
+    # the problem's objectives, its constraints as the core asks for them and
+    # as the archive asks again (feasible), the run archive and the oracle, the
+    # evaluator around all that, the checkpoints taken inside it, the
+    # trajectory records, minimize() as a whole, the final indicators and the
+    # files. The core's own share is minimize less the evaluator calls
+    # (Result.callback_seconds) and the records.
+    tm = dict(evaluate=0.0, constraints=0.0, feasible=0.0, archive=0.0, evaluator=0.0,
+              checkpoints=0.0, records=0.0, minimize=0.0, final=0.0, write=0.0)
+
+    def constraints_of(x):
+        t = time.perf_counter()
+        try:
+            return p.constraints(x)
+        finally:
+            tm["constraints"] += time.perf_counter() - t
+
     def feasible(x) -> bool:
-        return all(c <= 0.0 for c in p.constraints(x))
+        t = time.perf_counter()
+        try:
+            return all(c <= 0.0 for c in p.constraints(x))
+        finally:
+            tm["feasible"] += time.perf_counter() - t
 
     # A constrained problem's indicators are measured on the feasible part of
     # each answer (metrics.compute), which needs its variables; fe_first_feas
@@ -648,11 +669,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     hard_pop, hard_arc = {}, {}
 
     def take_hard_archive(b):
+        t_hd = time.perf_counter()
         AF, AX, _ = arc.points()
         if len(AF) or cons is not None:     # a constrained problem's empty archive: feas_share 0
             idx = arc.select(spec.answer_k or p.pop_size, spec.answer_select)
             hard_arc[str(b)] = dict(measure(true_values(AF[idx], AX[idx]), AX[idx], traj_metrics),
                                     fe=fe, n=int(len(idx)))
+        tm["checkpoints"] += time.perf_counter() - t_hd
 
     # Typed variables (mootation.var_types, task 7, §10): the points the
     # algorithm asked for again after the rounding, dup_x_share in final.
@@ -684,32 +707,39 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     def evaluate(x):
         nonlocal fe, fe_first_feas, dup_x, n_failed
+        t_in = time.perf_counter()
         fe += 1
         if typed:
             key = tuple(x)
             dup_x += key in seen_x
             seen_x.add(key)
         f = objective(x)
+        t_f = time.perf_counter()
+        tm["evaluate"] += t_f - t_in
         if not all(math.isfinite(v) for v in f):
             n_failed += 1
             if arc is not None and fe in hard:
                 take_hard_archive(fe)
             if fe in checkpoints and (len(arc) or cons is not None):
                 take_checkpoint(fe)
+            tm["evaluator"] += time.perf_counter() - t_in
             return f
         ok = cons is None or feasible(x)
         if cons is not None and ok and fe_first_feas is None:
             fe_first_feas = fe
         xn = numeric(x) if numeric is not None else x
+        t_a = time.perf_counter()
         if arc is not None and ok:
             arc.add(f, xn)
         if oracle is not None:
             t = getattr(objective, "last_true", None)
             oracle.add(t if t is not None else truth(list(x)), xn)
+        tm["archive"] += time.perf_counter() - t_a
         if arc is not None and fe in hard:
             take_hard_archive(fe)
         if fe in checkpoints and (len(arc) or cons is not None):
             take_checkpoint(fe)
+        tm["evaluator"] += time.perf_counter() - t_in
         return f
 
     def take_checkpoint(b):
@@ -725,6 +755,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         if keep_x:
             ck_X.append(AX[idx].astype(np.float32))
         record_seconds += time.perf_counter() - t_ck
+        tm["checkpoints"] += time.perf_counter() - t_ck
 
     snap = _snapshots_wanted(spec, job.problem)
     # the variables go into the snapshots and checkpoints where snapshot_variables
@@ -864,7 +895,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         fh.flush()
         n_records += 1
         record_seconds += time.perf_counter() - t_rec
+        tm["records"] += time.perf_counter() - t_rec
 
+    t_min = time.perf_counter()
     try:
         if baseline:
             res = run_baseline(job.algorithm, evaluate, p.bounds, pop=job.pop,
@@ -876,7 +909,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 evaluate, bounds=p.bounds, n_objs=p.n_obj,
                 algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens,
                 seed=job.seed,
-                constraints=(p.constraints if p.has_cons else None),
+                constraints=(constraints_of if p.has_cons else None),
                 # The budget is spent in evaluations, not steps. NIMMO
                 # evaluates one offspring per step and MOEA/D-DRA and -AWA a
                 # fifth of the population, so a budget in generations gave them
@@ -903,6 +936,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                   file=sys.stderr)
         return "failed"
     fh.close()
+    tm["minimize"] = time.perf_counter() - t_min
+    t_out = time.perf_counter()
 
     F = np.asarray(res.objectives, float)
     X = np.asarray(res.variables, float)
@@ -943,7 +978,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 row = list(AF[i]) + (list(AX[i]) if whole else [])
                 out.write(",".join(f"{v:.10g}" for v in row) + f",{int(AE[i])}\n")
         if (len(AF) or cons is not None) and (spec.archive_scenario or not whole):
+            t_sel = time.perf_counter()
             arc_sel = arc.select(p.pop_size, spec.answer_select)
+            tm["final"] += time.perf_counter() - t_sel
         if not whole and arc_sel is not None:
             with _open_text(d / "final_archive.csv.gz", "w") as out:
                 how = "DSS" if spec.answer_select == "dss" else spec.answer_select
@@ -995,6 +1032,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
              "bounds": p.bounds, "cyclic": p.cyclic_vars, "distance_fn": p.distance_fn,
              "constraints": cons}
     final = {}
+    t_fin = time.perf_counter()
     if F.size and np.all(np.isfinite(F)):
         final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
                           X=X, **extra)
@@ -1047,6 +1085,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         meta["final_archive"]["n"] = int(len(arc_sel))
         if truth is not None and len(T):
             meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
+    tm["final"] += time.perf_counter() - t_fin
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}
                              for o, r in getattr(res, "operators", [])]
@@ -1057,6 +1096,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # the uninformative problems count where every evaluated point and
         # every non-dominated one fell (benchmarks/uninformative.py; --bias)
         meta["structural_bias"] = objective.summary()
+    # the files and the rest after the run: what is not the final indicators
+    tm["write"] = time.perf_counter() - t_out - tm["final"]
+    meta["timing"] = dict({k: round(v, 4) for k, v in tm.items()},
+                          callbacks=round(float(getattr(res, "callback_seconds", 0.0)), 4),
+                          calls=int(getattr(res, "callbacks", 0)))
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),

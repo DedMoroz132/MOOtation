@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <climits>
 #include <cmath>
 #include <functional>
@@ -88,6 +89,25 @@ PyProblem* g_problem = nullptr;
 // py_run_batch. A warm start plants objectives without evaluating and costs
 // nothing. Atomic because the step loop reads it with the GIL released.
 std::atomic<long long> g_evaluations{0};
+
+// The wall time the current run spends in the Python evaluators, and how many
+// times it calls them: from before the GIL is taken to after the answer is
+// copied back, so the crossing and the list conversions are inside, the
+// on_generation observer is not. Result.callback_seconds and .callbacks;
+// tools/perf takes the crossing as this time minus the time Python measures
+// inside the evaluator. Touched only by the thread that runs the core.
+double    g_callback_seconds = 0.0;
+long long g_callbacks        = 0;
+
+struct CallbackClock {
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    ~CallbackClock()
+    {
+        g_callback_seconds +=
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        ++g_callbacks;
+    }
+};
 
 // ── Operator statistics (the 2026-09-23 task, A2/B4/D2) ─────────────────────
 // Asked for with RunConfig::operator_stats; nothing below runs otherwise, and
@@ -233,6 +253,7 @@ inline void eval_into(const std::vector<double>& vars,
                       std::vector<double>&       lims)
 {
     if (!g_problem) throw std::runtime_error("mootation: no active problem");
+    CallbackClock clock;
     py::gil_scoped_acquire gil;
 
     if (g_problem->evaluate_batch) {
@@ -267,6 +288,7 @@ inline void eval_into(const std::vector<double>& vars,
 void py_run_batch(const mootation::BatchRequest& req, mootation::BatchResponse& resp)
 {
     if (!g_problem) throw std::runtime_error("mootation: no active problem");
+    CallbackClock clock;
     py::gil_scoped_acquire gil;
 
     // the bits after the real variables (PyProblem::n_bin)
@@ -595,6 +617,11 @@ struct PyResult {
     // Distinct decoded points evaluated (RunConfig::unique_evaluations); -1
     // where the caller did not count them.
     long long                        unique_evaluations = -1;
+    // The time spent in the Python evaluators and the number of calls (the
+    // counters beside g_evaluations): what a run of cheap problems pays for
+    // the crossing; tools/perf reads them.
+    double                           callback_seconds = 0.0;
+    long long                        callbacks = 0;
 };
 
 template <typename Tag, typename Core>
@@ -986,6 +1013,8 @@ PyResult run_core(const RunConfig& cfg)
     r.n_failed = v.failed_n();
     r.eq_tol   = cfg.n_eq > 0 ? v.eq_tol() : 0.0;
     r.unique_evaluations = cfg.unique_evaluations ? cfg.unique_evaluations() : -1;
+    r.callback_seconds = g_callback_seconds;
+    r.callbacks = g_callbacks;
     return r;
 }
 
@@ -997,6 +1026,8 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
 
     g_problem = &problem;
     g_evaluations = 0;
+    g_callback_seconds = 0.0;
+    g_callbacks = 0;
     mootation::ops::reset_operator_records();
     mootation::ops::reset_crossover_records();
     mootation::mosa_record().clear();
@@ -1186,6 +1217,12 @@ PYBIND11_MODULE(_core, m)
                       "The equalities' tolerance cv was taken with; 0 without equalities.")
         .def_readonly("evaluations", &PyResult::evaluations,
                       "Evaluations the run spent, setup included.")
+        .def_readonly("callback_seconds", &PyResult::callback_seconds,
+                      "Wall time the run spent in the Python evaluators (objectives and "
+                      "constraints), the crossing and the list conversions included.")
+        .def_readonly("callbacks", &PyResult::callbacks,
+                      "How many times the run called the Python evaluators (a batch is one "
+                      "call).")
         .def_readonly("operators", &PyResult::operators,
                       "(operator, bound repair) for every variation operator the run used")
         .def_readonly("operator_totals", &PyResult::operator_totals,
