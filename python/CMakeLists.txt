@@ -28,7 +28,7 @@ if(NOT pybind11_FOUND)
     FetchContent_MakeAvailable(pybind11)
 endif()
 
-pybind11_add_module(mootation_python mootation_module.cpp)
+pybind11_add_module(mootation_python mootation_module.cpp run_layer_module.cpp)
 
 # The extension is mootation._core, not a top-level `mootation`: the package
 # of that name is the Python source next door, and it re-exports from here.

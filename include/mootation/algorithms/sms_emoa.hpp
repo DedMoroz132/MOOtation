@@ -344,6 +344,12 @@ public:
             spu_frac_ = v;
             return true;
         }
+        if (k == "n_samples") {                            // SMS-2
+            if (!(v >= 0.0 && v <= 1e9 && v == std::floor(v)))
+                throw std::invalid_argument("n_samples must be a whole number >= 0");
+            n_samples_ = static_cast<int>(v);
+            return true;
+        }
         return arch_.set_param(k, v) || xover_.set_param(k, v);
     }
     bool set_word(const std::string& k, const std::string& w)

@@ -69,11 +69,34 @@ from the whole archive greedily the N points of the smallest IGD+ against it:
 first the point of the smallest mean d+, then each the one that lowers the
 mean of the reference's smallest d+ most, ties to the lowest index
 (greedy_igdp) — no swaps after. DSS stays the default.
+
+THE COMPILED HALF (task 10 of 2026-10-18). almost_dominated, set_aside,
+dss_order, igdp_self_order, greedy_igdp_rows and the archive's points are
+computed in C++ when the extension is built (include/mootation/
+archive_select.hpp and grid_archive.hpp), by the same expressions and in
+NumPy's order of summation: the same values, the same indices, the same
+points. The NumPy code here stays as the reference the tests compare with (the
+functions named *_numpy and PyGridArchive) and runs where the extension is not
+built.
 """
 
 from __future__ import annotations
 
 import numpy as np
+
+
+def _compiled(name: str):
+    """The extension's function or class `name`, or None where the extension
+    is not built (or is older than this module)."""
+    try:
+        from .. import _core
+    except ImportError:                              # pragma: no cover - no extension
+        return None
+    return getattr(_core, name, None)
+
+
+def _frame(v):
+    return None if v is None else np.asarray(v, float)
 
 
 def normalized(F, ideal=None, nadir=None):
@@ -98,6 +121,15 @@ def almost_dominated(G, rows=None) -> np.ndarray:
     q better than p by more than DRS_LOSS somewhere, p better than q by at
     most DRS_GAIN everywhere. All rows, or only `rows` (indices into G),
     compared with every row, a block of rows at a time."""
+    G = np.asarray(G, float)
+    fn = _compiled("almost_dominated")
+    if fn is not None and G.ndim == 2 and G.shape[1]:
+        return fn(G, None if rows is None else np.asarray(rows, dtype=np.intp).tolist())
+    return _almost_dominated_numpy(G, rows)
+
+
+def _almost_dominated_numpy(G, rows=None) -> np.ndarray:
+    """almost_dominated() in NumPy: the reference."""
     G = np.asarray(G, float)
     rows = np.arange(len(G)) if rows is None else np.asarray(rows, dtype=np.intp)
     out = np.zeros(len(rows), bool)
@@ -124,6 +156,15 @@ def set_aside(F, ideal=None, nadir=None):
     aside. A round never sets aside every point left.
     """
     F = np.asarray(F, float)
+    fn = _compiled("set_aside")
+    if fn is not None and F.ndim == 2 and len(F) and F.shape[1]:
+        return fn(F, _frame(ideal), _frame(nadir))
+    return _set_aside_numpy(F, ideal, nadir)
+
+
+def _set_aside_numpy(F, ideal=None, nadir=None):
+    """set_aside() in NumPy: the reference."""
+    F = np.asarray(F, float)
     kept = np.ones(len(F), bool)
     if not len(F):
         return F.copy(), kept
@@ -132,7 +173,7 @@ def set_aside(F, ideal=None, nadir=None):
         hi = F[kept].max(0) if nadir is None else nadir
         G = normalized(F, lo, hi)
         idx = np.flatnonzero(kept)
-        drop = almost_dominated(G[idx])
+        drop = _almost_dominated_numpy(G[idx])
         if not drop.any() or drop.all():
             return G, kept
         kept[idx[drop]] = False
@@ -152,6 +193,19 @@ def dss_order(F, k=None, ideal=None, nadir=None) -> np.ndarray:
     k = n if k is None else min(int(k), n)
     if k <= 0:
         return np.empty(0, dtype=np.intp)
+    fn = _compiled("dss_select")
+    if fn is not None and F.ndim == 2 and F.shape[1]:
+        return fn(F, k, _frame(ideal), _frame(nadir))
+    return _dss_order_numpy(F, k, ideal, nadir)
+
+
+def _dss_order_numpy(F, k=None, ideal=None, nadir=None) -> np.ndarray:
+    """dss_order() in NumPy: the reference."""
+    F = np.asarray(F, float)
+    n = len(F)
+    k = n if k is None else min(int(k), n)
+    if k <= 0:
+        return np.empty(0, dtype=np.intp)
     # state: 1 kept, -1 set aside, 0 not known yet
     if ideal is not None and nadir is not None:
         # In a given frame whether a point is set aside does not depend on the
@@ -161,12 +215,12 @@ def dss_order(F, k=None, ideal=None, nadir=None) -> np.ndarray:
         G = normalized(F, ideal, nadir)
         state = np.zeros(n, np.int8)
     else:
-        G, kept = set_aside(F, ideal, nadir)
+        G, kept = _set_aside_numpy(F, ideal, nadir)
         state = np.where(kept, 1, -1).astype(np.int8)
 
     def is_kept(i):
         if state[i] == 0:
-            state[i] = -1 if almost_dominated(G, [i])[0] else 1
+            state[i] = -1 if _almost_dominated_numpy(G, [i])[0] else 1
         return state[i] == 1
 
     order = []
@@ -245,6 +299,17 @@ def greedy_igdp(D, k: int) -> np.ndarray:
     return np.asarray(chosen, dtype=np.intp)
 
 
+def greedy_igdp_rows(C, R, k: int) -> np.ndarray:
+    """greedy_igdp(dplus_matrix(C, R), k), the matrix's rows computed as they
+    are needed where the extension is built (an archive times a reference of a
+    thousand points does not always fit)."""
+    C, R = np.asarray(C, float), np.asarray(R, float)
+    fn = _compiled("greedy_igdp")
+    if fn is not None and C.ndim == 2 and R.ndim == 2 and len(R) and C.shape[1]:
+        return fn(C, R, int(max(k, 0)))
+    return greedy_igdp(dplus_matrix(C, R), k)
+
+
 def igdp_self_order(F, k: int, ideal=None, nadir=None) -> np.ndarray:
     """Indices of k points of F chosen for IGD+ against F thinned by DSS to
     SELF_REFERENCE points (module docstring), in the frame DSS uses: the given
@@ -252,11 +317,22 @@ def igdp_self_order(F, k: int, ideal=None, nadir=None) -> np.ndarray:
     F = np.asarray(F, float)
     if len(F) <= k:
         return np.arange(len(F))
+    fn = _compiled("igdp_self_order")
+    if fn is not None and F.ndim == 2 and F.shape[1]:
+        return fn(F, int(k), _frame(ideal), _frame(nadir))
+    return _igdp_self_order_numpy(F, k, ideal, nadir)
+
+
+def _igdp_self_order_numpy(F, k: int, ideal=None, nadir=None) -> np.ndarray:
+    """igdp_self_order() in NumPy: the reference."""
+    F = np.asarray(F, float)
+    if len(F) <= k:
+        return np.arange(len(F))
     if ideal is not None and nadir is not None:
         G = normalized(F, ideal, nadir)
     else:
-        G, _ = set_aside(F)
-    ref = dss_order(F, k=SELF_REFERENCE, ideal=ideal, nadir=nadir)
+        G, _ = _set_aside_numpy(F)
+    ref = _dss_order_numpy(F, k=SELF_REFERENCE, ideal=ideal, nadir=nadir)
     return greedy_igdp(dplus_matrix(G, G[ref]), k)
 
 
@@ -265,32 +341,10 @@ def default_delta(n_obj: int) -> float:
     return 1e-2 if n_obj >= 5 else 1e-3
 
 
-class GridArchive:
-    """Every nondominated point seen, thinned to one per δ-cell, plus the extremes.
-
-    add() accepts a point unless a stored point weakly dominates it (dominates
-    or equals it), and removes the stored points it dominates — dominance is
-    checked against the CURRENT archive only, so the archive holds what beats
-    everything still in it, not a certificate against all history. Accepted
-    points then compete for their cell of an additive grid of step δ in
-    normalized coordinates, (f − ideal)/(nadir − ideal): one point per cell,
-    the one nearer the cell's lower corner, as in the ε-archives of Laumanns,
-    Thiele, Deb & Zitzler (2002) but without their box-dominance — the grid
-    only prunes points too close to matter, it does not bound the archive to a
-    fixed ε-approximation.
-
-    THE EXTREMES LIVE OUTSIDE THE GRID. The best point of each objective is
-    kept whatever its cell holds; a grid alone loses the ends of the front,
-    measured on HypE populations even at δ = 1e-3, and the ends are exactly
-    what IGD and the hypervolume weigh most. A replaced extreme goes back
-    through the grid like any other point.
-
-    The frame is the problem's ideal and nadir when given ("problem"). Without
-    them it is estimated from the archive itself ("archive"): the current
-    minimum and maximum of the stored points, re-gridding everything when the
-    estimate drifts by more than a quarter of its span, so the cells stay
-    meaningful while the front is still moving.
-    """
+class PyGridArchive:
+    """GridArchive in Python (GridArchive's docstring says what it keeps): the
+    reference the compiled archive is compared with, and the archive where the
+    extension is not built."""
 
     def __init__(self, n_obj: int, n_vars: int = 0, *, ideal=None, nadir=None,
                  delta: float | None = None):
@@ -441,6 +495,12 @@ class GridArchive:
             return True
         return self._place(s)
 
+    def add_many(self, F, X=None) -> np.ndarray:
+        """add() for every row of F (and X) in order; whether each was stored."""
+        F = np.asarray(F, float)
+        return np.array([self.add(F[i], None if X is None else X[i]) for i in range(len(F))],
+                        bool)
+
     def points(self):
         """(F, X, is_extreme) of the stored points, in insertion order."""
         live = np.flatnonzero(self._alive[:self._n])
@@ -448,12 +508,125 @@ class GridArchive:
         return (self._F[live].copy(), self._X[live].copy(),
                 np.array([int(s) in ext for s in live], bool))
 
+    def grid_frame(self):
+        """(lo, lo + span) of the grid, or None before the archive's own frame
+        is first estimated."""
+        if self._lo is None:
+            return None
+        return self._lo.copy(), self._lo + self._span
+
     def frame(self):
         """(ideal, nadir) the grid uses — the problem's, or the current estimate."""
         if self._lo is None:
             F = self.points()[0]
             return (F.min(axis=0), F.max(axis=0)) if len(F) else (None, None)
         return self._lo.copy(), self._lo + self._span
+
+    def select(self, k: int, method: str = "dss"):
+        """Indices into points() of a selection of k (all if fewer): DSS, or
+        with method "igdp_self" the points of the smallest IGD+ against the
+        archive thinned by DSS (igdp_self_order).
+
+        In the problem's frame when there is one; otherwise in the frame of the
+        points DSS keeps (set_aside), not in the grid's running estimate, which
+        an outlier stretches.
+        """
+        if method not in ANSWER_SELECT:
+            raise ValueError(f"answer selection {method!r}: one of {', '.join(ANSWER_SELECT)}")
+        F = self.points()[0]
+        if len(F) <= k:
+            return np.arange(len(F))
+        lo = hi = None
+        if self.normalization == "problem":
+            lo, hi = self.frame()
+        if method == "igdp_self":
+            return igdp_self_order(F, k, ideal=lo, nadir=hi)
+        return dss_order(F, k=k, ideal=lo, nadir=hi)
+
+    def info(self) -> dict:
+        return {"size": len(self), "delta": self.delta, "normalization": self.normalization,
+                "offered": self.offered, "accepted": self.accepted}
+
+
+class GridArchive:
+    """Every nondominated point seen, thinned to one per δ-cell, plus the extremes.
+
+    add() accepts a point unless a stored point weakly dominates it (dominates
+    or equals it), and removes the stored points it dominates — dominance is
+    checked against the CURRENT archive only, so the archive holds what beats
+    everything still in it, not a certificate against all history. Accepted
+    points then compete for their cell of an additive grid of step δ in
+    normalized coordinates, (f − ideal)/(nadir − ideal): one point per cell,
+    the one nearer the cell's lower corner, as in the ε-archives of Laumanns,
+    Thiele, Deb & Zitzler (2002) but without their box-dominance — the grid
+    only prunes points too close to matter, it does not bound the archive to a
+    fixed ε-approximation.
+
+    THE EXTREMES LIVE OUTSIDE THE GRID. The best point of each objective is
+    kept whatever its cell holds; a grid alone loses the ends of the front,
+    measured on HypE populations even at δ = 1e-3, and the ends are exactly
+    what IGD and the hypervolume weigh most. A replaced extreme goes back
+    through the grid like any other point.
+
+    The frame is the problem's ideal and nadir when given ("problem"). Without
+    them it is estimated from the archive itself ("archive"): the current
+    minimum and maximum of the stored points, re-gridding everything when the
+    estimate drifts by more than a quarter of its span, so the cells stay
+    meaningful while the front is still moving.
+
+    The points are kept by the compiled archive (include/mootation/
+    grid_archive.hpp) where the extension is built, by PyGridArchive
+    otherwise: the same points in the same order, the same extremes, the same
+    counts. add_many offers a batch, as add() one point after the other would.
+    """
+
+    def __init__(self, n_obj: int, n_vars: int = 0, *, ideal=None, nadir=None,
+                 delta: float | None = None):
+        self.m = int(n_obj)
+        self.n_vars = int(n_vars)
+        self.delta = float(delta) if delta else default_delta(self.m)
+        self.normalization = "problem" if ideal is not None and nadir is not None else "archive"
+        compiled = _compiled("GridArchive")
+        if compiled is not None:
+            self._a = compiled(self.m, self.n_vars, ideal=_frame(ideal), nadir=_frame(nadir),
+                               delta=self.delta)
+        else:
+            self._a = PyGridArchive(self.m, self.n_vars, ideal=ideal, nadir=nadir,
+                                    delta=self.delta)
+
+    @property
+    def offered(self) -> int:
+        return int(self._a.offered)
+
+    @property
+    def accepted(self) -> int:
+        return int(self._a.accepted)
+
+    def __len__(self) -> int:
+        return len(self._a)
+
+    def add(self, f, x=None) -> bool:
+        """Offer one evaluated point; True if it is stored."""
+        return bool(self._a.add(f, x))
+
+    def add_many(self, F, X=None) -> np.ndarray:
+        """Offer the rows of F (and their variables X) in order; whether each was stored."""
+        F = np.asarray(F, float).reshape(-1, self.m)
+        if X is not None:
+            X = np.asarray(X, float).reshape(len(F), self.n_vars)
+        return np.asarray(self._a.add_many(F, X), bool)
+
+    def points(self):
+        """(F, X, is_extreme) of the stored points, in insertion order."""
+        return self._a.points()
+
+    def frame(self):
+        """(ideal, nadir) the grid uses — the problem's, or the current estimate."""
+        got = self._a.grid_frame()
+        if got is None:
+            F = self.points()[0]
+            return (F.min(axis=0), F.max(axis=0)) if len(F) else (None, None)
+        return got
 
     def select(self, k: int, method: str = "dss"):
         """Indices into points() of a selection of k (all if fewer): DSS, or

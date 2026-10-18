@@ -17,7 +17,8 @@ set(MOOTATION_TESTS
     test_equalities
     test_genes
     test_r2_emoa
-    test_sobol)
+    test_sobol
+    test_run_layer_numerics)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

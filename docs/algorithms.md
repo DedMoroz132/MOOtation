@@ -380,3 +380,113 @@ step are brought to that moment first. A point written without its
 constraint values is refused. A test checks every core after every step on
 problems with inequalities, equalities (under the linear tolerance schedule
 too) and failed evaluations.
+
+## Batches and single points
+
+A core asks for its evaluations either a generation at a time — the vault
+evaluates every new point of a step in one call, `sync()` — or one point at a
+time, because what it does next depends on that point (a steady-state or a
+decomposition scheme, annealing). `minimize(batch=...)` hands the evaluator
+whatever the core asks for at once: a whole generation, where the rows can be
+spread over processes or the nodes of a cluster, or a single row, where
+nothing can. The order a core evaluates in is its paper's, and is not changed
+to make batches. `tools/perf/batches.py` writes this table (DTLZ2 at three
+objectives, 3 000 evaluations; the share of the evaluations that came one at
+a time, and the size of the other calls):
+
+| core | population | calls | evaluations | in single calls | batch size (median, max) |
+|---|---|---|---|---|---|
+| nsga2 | 100 | 30 | 3000 | 0 % | 100, 100 |
+| dn_nsga2 | 100 | 30 | 3000 | 0 % | 100, 100 |
+| spea2 | 100 | 30 | 3000 | 0 % | 100, 100 |
+| spea2_sde | 100 | 30 | 3000 | 0 % | 100, 100 |
+| grea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| vaea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| agemoea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| etea | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| gde3 | 100 | 30 | 3000 | 0 % | 100, 100 |
+| nsga3 | 91 | 33 | 3003 | 0 % | 91, 91 |
+| a_nsga3 | 91 | 33 | 3003 | 0 % | 91, 91 |
+| theta_dea | 91 | 33 | 3003 | 0 % | 91, 91 |
+| ar_moea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| moead | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| moead_de | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| moead_dra | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| moead_dd | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| moead_awa | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| adaw | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| moead_m2m | 100 | 30 | 3000 | 0 % | 100, 100 |
+| moead_am2m | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| sms_m2m | 100 | 30 | 3000 | 0 % | 100, 100 |
+| moead_ds | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| rd_emo | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| aprd | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| liu_gu2011 | 100 | 3000 | 3000 | 100 % | — |
+| isde_rd | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| dhea | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| hlmea | 100 | 2971 | 3070 | 97 % | 100, 100 |
+| ibea_eplus | 100 | 30 | 3000 | 0 % | 100, 100 |
+| ibea_hd | 100 | 30 | 3000 | 0 % | 100, 100 |
+| mibea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| r2ibea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| hype | 100 | 30 | 3000 | 0 % | 100, 100 |
+| mombi2 | 91 | 33 | 3003 | 0 % | 91, 91 |
+| nimmo | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| irea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| edv | 100 | 30 | 3000 | 0 % | 100, 100 |
+| if_maoea | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| maoea_iamd | 100 | 42 | 3096 | 0 % | 100, 100 |
+| sms_emoa | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| mo_cma_es | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| rvea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| rvea_star | 100 | 30 | 3000 | 0 % | 100, 100 |
+| maoeaarv | 100 | 30 | 3000 | 0 % | 100, 100 |
+| mbra | 100 | 30 | 3000 | 0 % | 100, 100 |
+| nrv_moea | 91 | 33 | 3003 | 0 % | 91, 91 |
+| dea_gng | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| srv | 100 | 30 | 3000 | 0 % | 100, 100 |
+| srv_nsga3 | 91 | 33 | 3003 | 0 % | 91, 91 |
+| camoea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| cava_moea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| maoea_ac | 100 | 30 | 3000 | 0 % | 100, 100 |
+| maoea_c | 100 | 30 | 3000 | 0 % | 100, 100 |
+| maoea_3c | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| emyo_c | 100 | 30 | 3000 | 0 % | 100, 100 |
+| crea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| dcea | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| hcca | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| lis_lcs | 100 | 60 | 3061 | 0 % | 50, 100 |
+| clia | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| two_arch2 | 100 | 2901 | 3000 | 97 % | 100, 100 |
+| naemo | 100 | 2913 | 3012 | 97 % | 100, 100 |
+| ctaea | 100 | 30 | 3000 | 0 % | 100, 100 |
+| ccmo | 100 | 30 | 3000 | 0 % | 100, 100 |
+| dms | 100 | 250 | 3000 | 0 % | 12, 12 |
+| mosa | 100 | 2981 | 3000 | 99 % | 20, 20 |
+
+A model whose objectives and constraints come out of one computation is given
+as one function, `minimize(batch=fn, batch_with_constraints=True)`, `fn(X)`
+returning the pair (objective rows, constraint rows): it runs once per point.
+For an expensive model the batch can be spread over processes outside the
+core, without changing it:
+
+```python
+from concurrent.futures import ProcessPoolExecutor
+import mootation
+
+def model(x):                      # one run of the solver: seconds or more
+    ...
+    return [f1, f2]
+
+if __name__ == "__main__":
+    with ProcessPoolExecutor(max_workers=8) as pool:
+        res = mootation.minimize(
+            model, bounds=[(0.0, 1.0)] * 10, n_objs=2, algorithm="nsga2",
+            pop_size=40, max_evaluations=2000,
+            batch=lambda X: list(pool.map(model, X)))
+```
+
+The rows come back in the order they were sent (`pool.map` keeps it), which
+is what the core expects. A core of the second kind still works with it, a
+point per call.
+

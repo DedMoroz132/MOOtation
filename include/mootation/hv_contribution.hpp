@@ -57,20 +57,38 @@ inline std::vector<double> contributions_exact(const std::vector<std::vector<dou
         }
         return c;
     }
-    std::vector<std::vector<double>> L;
+    // Every point's limited set in one flat buffer and one WFG evaluator for
+    // them all: hypervolume::wfg on the same rows, which keeps the rows
+    // strictly better than r, drops the dominated ones and recurses — the
+    // same operations, without a vector per row and an evaluator per point.
+    auto inside_row = [m](const double* p, const std::vector<double>& ref) {
+        std::size_t j = 0;
+        while (j < m && p[j] < ref[j]) ++j;           // false for NaN as well, as in wfg
+        return j == m;
+    };
+    hypervolume::detail::Wfg w(r.data(), m);
+    std::vector<double> L;
+    L.reserve(n * m);
     for (std::size_t i = 0; i < n; ++i) {
         const auto& p = F[i];
         if (!inside(p)) continue;
         double own = 1.0;
         for (std::size_t k = 0; k < m; ++k) own *= r[k] - p[k];
         L.clear();
+        std::size_t rows = 0;
         for (std::size_t q = 0; q < n; ++q) {
             if (q == i) continue;
-            std::vector<double> l(m);
-            for (std::size_t k = 0; k < m; ++k) l[k] = std::max(F[q][k], p[k]);
-            L.push_back(std::move(l));
+            const std::size_t at = L.size();
+            for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], p[k]));
+            if (inside_row(L.data() + at, r)) ++rows;
+            else L.resize(at);                        // as wfg drops it
         }
-        c[i] = std::max(0.0, own - (L.empty() ? 0.0 : hypervolume::wfg(L, r)));
+        double sub = 0.0;
+        if (rows > 0) {
+            rows = w.nds(L, rows, m);
+            sub = w.hv(L, rows, m);
+        }
+        c[i] = std::max(0.0, own - sub);
     }
     return c;
 }
@@ -85,10 +103,15 @@ inline std::vector<double> contributions_mc(const std::vector<std::vector<double
     if (n == 0 || samples_per_point == 0) return c;
     std::uniform_real_distribution<double> U01(0.0, 1.0);
     std::vector<double> others, S(samples_per_point * m), b(m);
+    // the points in increasing first objective, once: the order the count
+    // reads them in (hypervolume::covered), whichever of them it reads
+    std::vector<std::size_t> by_f1(n);
+    for (std::size_t q = 0; q < n; ++q) by_f1[q] = q;
+    std::stable_sort(by_f1.begin(), by_f1.end(),
+                     [&F](std::size_t a, std::size_t b2) { return F[a][0] < F[b2][0]; });
     for (std::size_t i = 0; i < n; ++i) {
         const auto& p = F[i];
         for (std::size_t k = 0; k < m; ++k) b[k] = r[k];
-        others.clear();
         bool covered_whole = false;
         for (std::size_t q = 0; q < n && !covered_whole; ++q) {
             if (q == i) continue;
@@ -97,17 +120,27 @@ inline std::vector<double> contributions_mc(const std::vector<std::vector<double
                 if (F[q][j] > p[j]) { ++worse; at = j; }
             covered_whole = worse == 0;               // a copy of p: no region of its own
             if (worse == 1) b[at] = std::min(b[at], F[q][at]);
-            others.insert(others.end(), F[q].begin(), F[q].end());
         }
         if (covered_whole) continue;
+        // Only a point no worse than b in every objective can cover a sample
+        // of the box [p, b]; the others are left out of the count, which
+        // they could not change.
+        others.clear();
+        for (std::size_t q : by_f1) {
+            if (q == i) continue;
+            bool reach = true;
+            for (std::size_t j = 0; j < m && reach; ++j) reach = F[q][j] <= b[j];
+            if (reach) others.insert(others.end(), F[q].begin(), F[q].end());
+        }
         double vol = 1.0;
         for (std::size_t k = 0; k < m; ++k) vol *= std::max(0.0, b[k] - p[k]);
         if (vol <= 0.0) continue;
         for (std::size_t s = 0; s < samples_per_point; ++s)
             for (std::size_t k = 0; k < m; ++k)
                 S[s * m + k] = p[k] + U01(rng) * (b[k] - p[k]);
-        const std::size_t hit =
-            others.empty() ? 0 : hypervolume::covered(others.data(), others.size() / m, m, S.data(), samples_per_point);
+        const std::size_t hit = others.empty() ? 0
+            : hypervolume::covered_sorted(others.data(), others.size() / m, m, S.data(),
+                                          samples_per_point);
         c[i] = vol * static_cast<double>(samples_per_point - hit) /
                static_cast<double>(samples_per_point);
     }

@@ -85,6 +85,8 @@ from typing import List
 
 import numpy as np
 
+from ._rows import math_exp, math_sin, spow
+
 N_VARS = 15
 SCALABLE = ("MW4", "MW8", "MW14")
 SIZES = (3, 5)
@@ -104,29 +106,47 @@ def upper(name: str) -> float:
     return UPPER.get(name, 1.0)
 
 
-# ── distance functions (Eqs. 12-14) ──────────────────────────────────────────
-def g1(x, m: int) -> float:
-    x = np.asarray(x, float)
-    n = len(x)
+# ── distance functions (Eqs. 12-14), of one point or of the rows of X ──────
+def _rows_of(X) -> np.ndarray:
+    X = np.asarray(X, float)
+    return X.reshape(1, -1) if X.ndim == 1 else X
+
+
+def g1_rows(X, m: int) -> np.ndarray:
+    X = _rows_of(X)
+    n = X.shape[1]
     i = np.arange(m, n + 1)
-    z = x[m - 1:] ** (n - m)
-    return float(1.0 + np.sum(1.0 - np.exp(-10.0 * (z - 0.5 - (i - 1) / (2.0 * n)) ** 2)))
+    Z = X[:, m - 1:] ** (n - m)
+    return 1.0 + np.sum(1.0 - np.exp(-10.0 * (Z - 0.5 - (i - 1) / (2.0 * n)) ** 2), axis=1)
+
+
+def g2_rows(X, m: int) -> np.ndarray:
+    X = _rows_of(X)
+    n = X.shape[1]
+    i = np.arange(m, n + 1)
+    Z = 1.0 - np.exp(-10.0 * (X[:, m - 1:] - (i - 1) / n) ** 2)
+    return 1.0 + np.sum(1.5 + (0.1 / n) * Z * Z - 1.5 * np.cos(2.0 * np.pi * Z), axis=1)
+
+
+def g3_rows(X, m: int) -> np.ndarray:
+    X = _rows_of(X)
+    return 1.0 + np.sum(2.0 * (X[:, m - 1:] + (X[:, m - 2:-1] - 0.5) ** 2 - 1.0) ** 2, axis=1)
+
+
+def g1(x, m: int) -> float:
+    return float(g1_rows(x, m)[0])
 
 
 def g2(x, m: int) -> float:
-    x = np.asarray(x, float)
-    n = len(x)
-    i = np.arange(m, n + 1)
-    z = 1.0 - np.exp(-10.0 * (x[m - 1:] - (i - 1) / n) ** 2)
-    return float(1.0 + np.sum(1.5 + (0.1 / n) * z * z - 1.5 * np.cos(2.0 * np.pi * z)))
+    return float(g2_rows(x, m)[0])
 
 
 def g3(x, m: int) -> float:
-    x = np.asarray(x, float)
-    return float(1.0 + np.sum(2.0 * (x[m - 1:] + (x[m - 2:-1] - 0.5) ** 2 - 1.0) ** 2))
+    return float(g3_rows(x, m)[0])
 
 
 G = {"g1": g1, "g2": g2, "g3": g3}
+G_ROWS = {"g1": g1_rows, "g2": g2_rows, "g3": g3_rows}
 
 
 def optimal_distance(name: str, positions) -> np.ndarray:
@@ -148,49 +168,58 @@ def optimal_distance(name: str, positions) -> np.ndarray:
 
 
 # ── objectives ───────────────────────────────────────────────────────────────
-def _root(v: float) -> float:
-    return math.sqrt(max(0.0, v))                 # MW-3
+def _root(v):
+    """sqrt(max(0, v)) elementwise, max as Python's (a NaN gives 0; MW-3)."""
+    return np.sqrt(np.where(v > 0.0, v, 0.0))
 
 
 def objectives(name: str, x, m: int = 2) -> List[float]:
-    x = np.asarray(x, float)
-    g = G[DISTANCE[name]](x, m)
-    x1 = x[0]
+    return objectives_rows(name, [x], m)[0].tolist()
+
+
+def objectives_rows(name: str, X, m: int = 2) -> np.ndarray:
+    """The objectives of every row of X: n x m. Where the point's formula
+    raised a scalar to the power 2 the batch keeps pow's value (_rows.spow)."""
+    X = _rows_of(X)
+    g = G_ROWS[DISTANCE[name]](X, m)
+    x1 = X[:, 0]
     if name == "MW1":
-        return [x1, g * (1.0 - 0.85 * x1 / g)]
+        return np.column_stack([x1, g * (1.0 - 0.85 * x1 / g)])
     if name in ("MW2", "MW3"):
-        return [x1, g * (1.0 - x1 / g)]
+        return np.column_stack([x1, g * (1.0 - x1 / g)])
     if name == "MW4":
-        f = np.full(m, g)
-        f[1:] *= x[m - 2::-1]
-        f[:-1] *= np.cumprod(1.0 - x[:m - 1])[::-1]
-        return f.tolist()
+        F = np.repeat(g[:, None], m, axis=1)
+        F[:, 1:] *= X[:, m - 2::-1] if m > 1 else X[:, :0]
+        F[:, :-1] *= np.cumprod(1.0 - X[:, :m - 1], axis=1)[:, ::-1]
+        return F
     if name == "MW8":
-        f = np.full(m, g)
-        f[1:] *= np.sin(0.5 * np.pi * x[m - 2::-1])
-        f[:-1] *= np.cumprod(np.cos(0.5 * np.pi * x[:m - 1]))[::-1]
-        return f.tolist()
+        F = np.repeat(g[:, None], m, axis=1)
+        F[:, 1:] *= np.sin(0.5 * np.pi * X[:, m - 2::-1])
+        F[:, :-1] *= np.cumprod(np.cos(0.5 * np.pi * X[:, :m - 1]), axis=1)[:, ::-1]
+        return F
     if name == "MW14":
-        f = list(x[:m - 1])
-        h = 6.0 - np.exp(x[:m - 1]) - 1.5 * np.sin(1.1 * np.pi * x[:m - 1] ** 2)
-        return f + [g / (m - 1) * float(np.sum(h))]
-    f1 = g * x1 ** N_VARS if name == "MW10" else g * x1
+        P = X[:, :m - 1]
+        h = 6.0 - np.exp(P) - 1.5 * np.sin(1.1 * np.pi * P ** 2)
+        return np.column_stack([P, g / (m - 1) * np.sum(h, axis=1)])
+    f1 = g * spow(x1, N_VARS) if name == "MW10" else g * x1
     t = f1 / g
     if name in ("MW5", "MW7"):
-        return [f1, g * _root(1.0 - t ** 2)]
-    if name == "MW6":
-        return [f1, g * _root(1.1 * 1.1 - t ** 2)]
-    if name == "MW9":
-        return [f1, g * (1.0 - t ** 0.6)]
-    if name == "MW10":
-        return [f1, g * (1.0 - t ** 2)]
-    if name == "MW11":
-        return [f1, g * _root(2.0 - t ** 2)]
-    if name == "MW12":
-        return [f1, g * (0.85 - 0.8 * t - 0.08 * abs(math.sin(3.2 * math.pi * t)))]
-    if name == "MW13":
-        return [f1, g * (5.0 - math.exp(t) - 0.5 * abs(math.sin(3.0 * math.pi * t)))]
-    raise KeyError(name)
+        f2 = g * _root(1.0 - spow(t, 2))
+    elif name == "MW6":
+        f2 = g * _root(1.1 * 1.1 - spow(t, 2))
+    elif name == "MW9":
+        f2 = g * (1.0 - spow(t, 0.6))
+    elif name == "MW10":
+        f2 = g * (1.0 - spow(t, 2))
+    elif name == "MW11":
+        f2 = g * _root(2.0 - spow(t, 2))
+    elif name == "MW12":
+        f2 = g * (0.85 - 0.8 * t - 0.08 * np.abs(math_sin(3.2 * math.pi * t)))
+    elif name == "MW13":
+        f2 = g * (5.0 - math_exp(t) - 0.5 * np.abs(math_sin(3.0 * math.pi * t)))
+    else:
+        raise KeyError(name)
+    return np.column_stack([f1, f2])
 
 
 # ── constraints, in objective space, the library's sign ──────────────────────
@@ -270,6 +299,12 @@ def constraints_f(name: str, F) -> np.ndarray:
 
 def constraints(name: str, x, m: int = 2) -> List[float]:
     return constraints_f(name, objectives(name, x, m))[0].tolist()
+
+
+def evaluate_rows(name: str, X, m: int = 2) -> tuple:
+    """(objectives, constraints) of every row of X, the objectives computed once."""
+    F = objectives_rows(name, X, m)
+    return F, constraints_f(name, F)
 
 
 # ── the fronts ───────────────────────────────────────────────────────────────

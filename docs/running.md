@@ -251,6 +251,34 @@ gens = 500
 `--check` expands the cross product against the real registry and names what
 does not exist, with near misses; the names are `DTLZ2_3D`, not `DTLZ2_M3`.
 
+**A batch at a time.** Every problem evaluates a batch of points:
+`p.evaluate_batch(X)` takes n rows of `n_vars` values and gives the n × M
+objectives, `p.constraints_batch(X)` the n × K constraints, and a constrained
+problem whose objectives and constraints come out of one computation (DAS-CMOP,
+LIR-CMOP, MW, C-DTLZ, DOC, RWMOP, CRE) gives both at once,
+`p.evaluate_with_constraints(X)` → `(F, G)`. A family written for batches
+(ZDT, DTLZ and its variants, C-DTLZ, MaF but MaF8 and MaF10–12, ZCAT,
+bbob-biobj and its mixint, DAS-CMOP, LIR-CMOP, MW, BT, MOP, and the rotated,
+shifted and noisy copies of those) has one implementation, the batch, and
+`p.evaluate(x)` is its batch of one row; every other problem's batch is the
+loop over its point function. Either way a row's values are, bit for bit, what
+the point code gave that point before batches existed (`tools/compat_problems.py`
+compares the whole registry with a commit of before; `_rows.py` lists what had
+to be kept one point at a time for that: BLAS's product per point, the C
+library's `pow`, `sin`, `cos` and `exp` of one float where NumPy's of an array
+may differ). A row whose evaluation fails is NaN in that row; the batch goes on.
+`benchmarks.solve` and every campaign hand the batch to `minimize` (`batch=`,
+`batch_with_constraints=`), so a generational core's whole generation is one
+call.
+
+**Where a problem is not defined.** RCM02 (EI / μ < 0, the layers out of
+order) and RCM24 (the logarithms of its equalities, outside x8 > 100,
+x7 < 600, x9 > x7) return NaN there — a failed evaluation (below), counted in
+a run's `n_failed`; RE22 and RE22c, at x2 = 0, the face of the box where
+their stress divides by zero, too. `benchmarks.properties` says so,
+`undefined = true` and `undefined_share`, the share of the box estimated from
+100 000 uniform points (`rwmop.undefined_share`).
+
 **Four problems use their FULL fronts, and three of them have very long ones.**
 DTLZ5, DTLZ6, MaF6 and WFG3 were designed with a degenerate, curve-shaped
 Pareto front, but the true fronts of DTLZ5 and DTLZ6 from 4 objectives and of
@@ -715,8 +743,20 @@ The same C++ is available to a C++ program as `mootation/hypervolume.hpp`:
 `hypervolume::wfg(F, n, m, ref)` for the exact value and
 `hypervolume::covered(F, n, m, S, k)` for the Monte-Carlo count.
 
-**Where the trajectory is recorded.** `record_every = k` records every k
-generations. `record_grid = "log"` records instead at fixed evaluation counts,
+**Where the trajectory is recorded.** By default (`record_grid = "budgets"`)
+at a grid of evaluation counts — 100, 150, 200, 300, 500, 700, 1 000, 1 500,
+…, 7 000, 10 000, … per decade, 25 000, the counts of `record_at`, and the
+end of the run — and at exactly b evaluations: the population the run had at
+b, the last one the observer reported without passing b (a generational core
+reports one a generation, a core of one point at a time one a population of
+evaluations); a record whose population was complete before b says at how many
+in `fe_pop`. Runs of every budget and every population size share every count,
+and nothing between them costs a record. A campaign whose results directory
+was started under another grid keeps it when the config does not name one, so
+older campaigns read and resume as they were; `hard_budgets` (which read every
+generation) default to `"generations"`. `record_grid = "generations"` with
+`record_every = k` records every k generations. `record_grid = "log"` records
+at fixed evaluation counts,
 round(10^(j / `record_per_decade`)), 10 per decade by default: 100, 126, 158,
 200, … The counts are absolute, so a 10 000- and a 25 000-evaluation run share
 every point up to 10 000 and a budget ladder compares point by point, without
@@ -734,6 +774,15 @@ read a rung at the record `record_at` puts there, which has them, and
   differed from it, for the source tree and, separately, for the compiled
   extension — a pulled commit whose C++ was never rebuilt shows as a mismatch.
   The version string alone never changes between commits.
+- `all_evaluated = true` (the default; it needs a reference front) keeps IGD+
+  and the additive ε of EVERY point the run evaluated — the feasible ones,
+  noise-free on a noisy copy, in `igdp_norm`'s frame — up to date at every
+  evaluation (`_core.IncrementalFront`: for each reference point the least
+  d⁺ and ε so far, O(|Z| M) a point): every record has them as
+  `igdp_norm_all` and `eps_norm_all`, `final` too, and `meta.json`'s
+  `all_evaluated` gives, for each level of `all_levels` (1, 0.5, 0.2, …,
+  0.001), the evaluation at which `igdp_norm_all` first reached it — the
+  evaluations-to-level an ECDF reads.
 - `archive.csv` holds every nondominated point the run evaluated, whatever the
   algorithm kept: at most one per cell of a grid in normalised objectives
   (step 1e-3, or 1e-2 from five objectives; `archive_delta`), with each
@@ -744,7 +793,11 @@ read a rung at the record `record_at` puts there, which has them, and
   every archive point go to `archive.csv.gz`, and the selected points,
   objectives and variables, to `final_archive.csv.gz`. On a large campaign
   that is about a tenth of the room of `archive.csv` (a quarter of it
-  gzipped); the default `"all"` writes `archive.csv` as before.
+  gzipped); the default `"all"` writes `archive.csv` as before. The archive is
+  C++ (`_core.GridArchive`, the same points as the Python archive point for
+  point) and takes a batch at a time; `archive_mode = "posthoc"` hands it the
+  points only when it is read (the checkpoints, the hard budgets, the end),
+  the same archive either way, for a campaign that reads it only at the end.
 - `snapshots = true`, or a list of problem names, stores the population's
   objectives at every trajectory point in `snapshots.npz` (float32), to see how
   the front's shape moved or to compute an indicator the run did not record.
@@ -781,6 +834,16 @@ read a rung at the record `record_at` puts there, which has them, and
   objective count; `pop_note` in `meta.json` says what was run.
   `ladder_min_gens = 3` leaves out the rungs whose budget is under three
   populations.
+
+**What a campaign keeps between runs.** The worker processes live for the
+whole campaign, each taking one job after another, so imports and numba's
+compiled WFG kernels (cached on disk) are paid once a process. A problem's
+frame, reference front, dense reference and Pareto-set sample are built the
+first time a run needs them and kept in `<results>/_references/<problem>.npz`,
+read back by every later run while the reference version and a hash of the
+benchmark sources stay the same; the same arrays, so the same values. Of the
+workers that start on a problem together one builds them (it holds
+`<problem>.lock`) and the others wait for its file.
 
 **The first population.** `init = "sobol"` in an algorithm's entry starts it
 from a scrambled Sobol design (`mootation.designs`), `init = "lhs"` from a
@@ -897,6 +960,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
 | `dn_cf` | DN-NSGA-II: the crowding factor of its niched mating pool — a random member meets the nearest, by Euclidean distance in the variables, of `dn_cf` others drawn without replacement (all of them from N − 1 on), and the better of the two by rank and crowding distance becomes a parent; a whole number ≥ 1, 20 by default (`algorithms/dn_nsga2.hpp`, DN-1) |
+| `n_samples` | SMS-EMOA, MO-CMA-ES and HypE from four objectives: the Monte-Carlo sample points of a step, from which the hypervolume contributions (HypE: its fitness) are estimated — 10 000 by default, shared out over the points of the last front, each sampled in its own box. A step costs in proportion to it and the estimate's noise falls as its square root; SMS-EMOA and MO-CMA-ES take 0 for the exact contributions at every M (WFG, whose cost grows steeply with M and the front), HypE a whole number ≥ 1 (`sms_emoa.hpp` SMS-2, `mo_cma_es.hpp` MOCMA-5, `hype.hpp`) |
 | `survival`, `spu_frac` | SMS-EMOA, NSGA-II and NSGA-III: `greedy` (the default, the papers' selection) or `stochastic`, the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023): a random Q′ of ⌊`spu_frac`·\|Q\|⌋ members of parents and offspring (1/2 in SMS-EMOA, 3/4 in the NSGA's, the paper's) goes through the usual selection alone — its fronts, reference point, extremes, normalisation — and every member outside Q′ survives untouched; any member survives a step with probability at least 1/2 (SMS-EMOA) or 1/4. `spu_frac = 1` is greedy bit for bit. For NSGA-III Q′ has ⌈`spu_frac`·2N⌉ members, Opris's ⌈3µ/2⌉ (IJCAI 2025, Algorithm 1; NSGA-II takes Bian's floor, the same at an even N) |
 | `inner_archive`, `inner_archive_cap`, `archive_reuse_p` | SMS-EMOA, NSGA-II, NSGA-III, IBEA-ε+: `inner_archive = "nd"` keeps every non-dominated point the algorithm evaluated (an equal objective vector is not added; under constraint handling feasible points only), cut to `inner_archive_cap` by DSS after every addition (0: no cap; unset: 10 μ, none for a purely binary genome); each parent, with probability `archive_reuse_p` (0), is a member drawn uniformly. The result's `inner_archive` holds it; `operator_stats` the share of the parents drawn from it (`archive_parent_share`). The answer's archive (`[campaign] archive`) is apart and unchanged (`operators/inner_archive.hpp`) |
 | `bin_crossover`, `mating` | for the paper's theory runs: `bin_crossover = "none"` (SMS-EMOA, NSGA-II) leaves the binary genome uncrossed (`uniform` by default); NSGA-II's `mating = "each"` makes every member a parent exactly once, its child its mutation (`tournament` by default), and needs no crossover on any part of the genome — `crossover = "none"`, which gives the parents as they are, with real variables |

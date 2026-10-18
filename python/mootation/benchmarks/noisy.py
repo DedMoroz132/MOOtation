@@ -125,11 +125,16 @@ class Evaluator:
     draw of the stream at the k-th call, `scale` sigma (nadir - ideal) per
     objective; kind h: the same stream, the scale sigma (f - ideal); kinds d
     and s: the draw of x or of its cell, whatever the seed. `last_true` keeps
-    the noise-free values of the last call, for the oracle."""
+    the noise-free values of the last call, for the oracle; batch(X) is the
+    calls at the rows of X in order (the base's batch where it is given,
+    base_batch), and keeps theirs in last_true_rows."""
 
     def __init__(self, base: Callable, scale, seed: int, kind: str = "n", *, ideal=None,
-                 sigma: float = 0.0, lower=None, upper=None, cell: float = CELL):
+                 sigma: float = 0.0, lower=None, upper=None, cell: float = CELL,
+                 base_batch: Callable | None = None):
         self.base = base
+        self.base_batch = base_batch
+        self.last_true_rows = None
         self.scale = [float(s) for s in scale]
         self.seed = int(seed)
         self.kind = kind
@@ -143,7 +148,19 @@ class Evaluator:
         self.last_true = None
 
     def __call__(self, x) -> List[float]:
-        f = self.base(list(x))
+        return self._noisy(x, self.base(list(x)))
+
+    def batch(self, X) -> List[List[float]]:
+        X = [list(x) for x in X]
+        F = (self.base_batch(X).tolist() if self.base_batch is not None
+             else [self.base(x) for x in X])
+        out = [self._noisy(x, f) for x, f in zip(X, F)]
+        self.last_true_rows = [list(map(float, f)) for f in F]
+        return out
+
+    def _noisy(self, x, f) -> List[float]:
+        """The noisy values at x of the noise-free f, the next draw of the stream."""
+        f = [float(v) for v in f]
         self.last_true = list(f)
         if self.kind in ("n", "h"):
             z = [normal(self.seed, self.k, i) for i in range(len(f))]

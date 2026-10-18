@@ -61,16 +61,19 @@ import warnings
 import numpy as np
 
 from .wfg     import WFG_FUNCS, wfg_bounds, wfg_nadir, wfg1, wfg2, wfg9
-from .dtlz    import (DTLZ_FUNCS, DTLZ_K, dtlz_n_vars,
+from .dtlz    import (DTLZ_FUNCS, DTLZ_ROWS, DTLZ_K, dtlz_n_vars,
                      dtlz_nadir, dtlz_ideal)
 from .polygon import (polygon_eval, polygon_bounds,
                      polygon_nadir, polygon_ideal)
 from .mop     import MOP_SPECS, mop_nadir, mop_ideal
+from . import mop as _mop
 from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
-                           hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz,
+                           hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz, shift_dtlz_rows,
                            shift_centres, WIDE_M, wide_bounds)
-from .maf     import MAF_FIX, maf_n_vars
+from .maf     import MAF_FIX, MAF_FIX_ROWS, maf_n_vars
+from ._rows   import math_cos, math_exp, math_sin, spow
 from .bt      import BT_SPECS, N as BT_N
+from . import bt as _bt
 from . import polygon_ishibuchi as _ipoly
 from . import zcat as _zcat
 from . import bbob_biobj as _bbobbiobj
@@ -155,10 +158,92 @@ class BenchProblem:
     # linear schedule (benchmarks.solve passes it on). 0 and None elsewhere.
     n_eq: int = 0
     equalities: Optional[Callable[[List[float]], List[float]]] = None
+    # A batch of points at once (task 10 of 2026-10-18, §4.1): X, n rows of
+    # n_vars values, to an (n, n_obj) array of objectives, and to an
+    # (n, n_cons) array of constraint values. The same values as evaluate and
+    # constraints row by row, bit for bit; a row whose evaluation fails is NaN
+    # (it does not fail the batch). A family written for batches gives its
+    # own (and its evaluate is its batch of one row); every other problem gets
+    # the loop over its rows (batch_rows). A constrained problem whose
+    # objectives and constraints come out of one computation gives
+    # evaluate_with_constraints, X to the pair (F, G), and a campaign asks it
+    # once for both; otherwise the pair is the two batches.
+    evaluate_batch: Optional[Callable] = None
+    constraints_batch: Optional[Callable] = None
+    evaluate_with_constraints: Optional[Callable] = None
+    equalities_batch: Optional[Callable] = None
+
+    def __post_init__(self):
+        both = self.evaluate_with_constraints
+        if self.evaluate_batch is None:
+            self.evaluate_batch = ((lambda X, _b=both: _b(X)[0]) if both is not None
+                                   else batch_rows(self.evaluate, self.n_obj))
+        if self.constraints_batch is None and self.has_cons:
+            self.constraints_batch = ((lambda X, _b=both: _b(X)[1]) if both is not None
+                                      else batch_rows(self.constraints, None))
+        if self.equalities_batch is None and self.equalities is not None:
+            self.equalities_batch = batch_rows(self.equalities, self.n_eq)
+        if both is None and self.has_cons:
+            self.evaluate_with_constraints = (
+                lambda X, _f=self.evaluate_batch, _g=self.constraints_batch: (_f(X), _g(X)))
 
     @property
     def fevals_max(self) -> int:
         return self.pop_size * self.n_gen
+
+
+def batch_rows(fn: Callable, width: Optional[int]) -> Callable:
+    """A batch function made of a point function: fn at every row, in order;
+    a row where fn raises, or returns NaN, is NaN (its width: `width`, or that
+    of the other rows). For categorical variables the rows may hold labels:
+    they reach fn as they are. A NumPy batch's rows reach fn as lists of
+    Python floats, as one point's do."""
+    def batch(X):
+        out, bad = [], []
+        if isinstance(X, np.ndarray) and X.dtype != object:
+            X = X.tolist()
+        for i, x in enumerate(X):
+            try:
+                out.append([float(v) for v in fn(list(x))])
+            except Exception:                       # noqa: BLE001 - a failed row
+                out.append(None)
+                bad.append(i)
+        w = width if width is not None else next((len(r) for r in out if r is not None), 0)
+        for i in bad:
+            out[i] = [math.nan] * w
+        return np.asarray(out, dtype=float).reshape(len(out), w)
+    batch.rows_loop = True          # a loop over the point function, not a batch of its own
+    return batch
+
+
+def batch_both(fn: Callable) -> Callable:
+    """evaluate_with_constraints made of a point function fn(x) -> (f, g) that
+    computes both at once: one call per row; a row where fn raises is NaN in
+    both (their widths those of the other rows)."""
+    def batch(X):
+        out, bad = [], []
+        for i, x in enumerate(X):
+            try:
+                f, g = fn(list(x))
+                out.append(([float(v) for v in f], [float(v) for v in g]))
+            except Exception:                       # noqa: BLE001 - a failed row
+                out.append(None)
+                bad.append(i)
+        good = next((r for r in out if r is not None), None)
+        if good is None:
+            raise ValueError("no row of the batch could be evaluated")
+        for i in bad:
+            out[i] = ([math.nan] * len(good[0]), [math.nan] * len(good[1]))
+        F = np.asarray([r[0] for r in out], dtype=float).reshape(len(out), len(good[0]))
+        G = np.asarray([r[1] for r in out], dtype=float).reshape(len(out), len(good[1]))
+        return F, G
+    batch.rows_loop = True
+    return batch
+
+
+def _doc_both(i: int, x) -> tuple:
+    f, ineq, eq = _doc.evaluate(i, x)
+    return f, ineq + [abs(h) - _doc.EQ_TOL for h in eq]
 
 
 def _no_cons(x: List[float]) -> List[float]:
@@ -395,15 +480,10 @@ def degenerate_subset_note(name: str) -> str | None:
 
 
 def _nondominated_mask(F: np.ndarray) -> np.ndarray:
-    n = len(F)
-    keep = np.ones(n, bool)
-    for i in range(n):
-        if not keep[i]:
-            continue
-        dom = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
-        if np.any(dom):
-            keep[i] = False
-    return keep
+    """Which rows no other row dominates, copies all kept (run.metrics, in C++
+    where the extension is built)."""
+    from ..run.metrics import nondominated_mask
+    return nondominated_mask(F)
 
 
 def _nondominated(F: np.ndarray) -> np.ndarray:
@@ -787,6 +867,39 @@ def _maf9_forbidden_regions(M: int) -> list:
     return out
 
 
+class _InsidePolygons:
+    """Which of several polygons the rows of X lie in: _point_in_poly's ray
+    test, every edge of every polygon at once. The crossing of an edge is the
+    same elementwise expression as there, and a point is inside where an odd
+    number of its polygon's edges are crossed — the parity _point_in_poly's
+    XOR keeps — so the answers are the same; MaF9's constraint at M = 15 asks
+    90 polygons of up to 15 vertices, which one point at a time cost NumPy
+    thousands of calls."""
+
+    def __init__(self, polys: list):
+        xi, yi, xj, yj, owner = [], [], [], [], []
+        for k, P in enumerate(polys):
+            n = len(P)
+            for i in range(n):
+                j = (i - 1) % n                    # _point_in_poly's j: the previous vertex
+                xi.append(P[i][0]); yi.append(P[i][1])
+                xj.append(P[j][0]); yj.append(P[j][1])
+                owner.append(k)
+        self.xi, self.yi = np.asarray(xi, float), np.asarray(yi, float)
+        self.xj, self.yj = np.asarray(xj, float), np.asarray(yj, float)
+        self.owner = np.asarray(owner, int)
+        self.n = len(polys)
+
+    def inside(self, X: np.ndarray) -> np.ndarray:
+        """(rows, polygons) booleans."""
+        px, py = X[:, :1], X[:, 1:2]
+        cond = ((self.yi > py) != (self.yj > py)) & \
+               (px < (self.xj - self.xi) * (py - self.yi) / (self.yj - self.yi + 1e-30) + self.xi)
+        count = np.zeros((len(X), self.n), int)
+        np.add.at(count.T, self.owner, cond.T)
+        return (count % 2) == 1
+
+
 def _poly_edge_distance(x: np.ndarray, P: np.ndarray) -> float:
     """Distance from x to the nearest edge of polygon P."""
     best = float("inf")
@@ -860,15 +973,26 @@ def _zdt_register():
     pop, ng = _budget(2)
 
     # ── ZDT1 — convex PF ─────────────────────────────────────────────────────
+    # One implementation, of a batch (task 10 of 2026-10-18): zdtN_rows(X) is
+    # the (n, 2) array of the rows' objectives and zdtN(x) its batch of one
+    # row, by the expressions of the point code before, bit for bit: math's
+    # sin, cos and exp of one float and a float's ** at every element
+    # (_rows.math_sin, math_cos, math_exp, spow), the sum of ZDT4 term by
+    # term as Python's sum added it.
+    def _zdt_g(X):
+        return 1.0 + 9.0 * np.sum(X[:, 1:], axis=1) / (X.shape[1] - 1)
+
+    def zdt1_rows(X):
+        X = np.ascontiguousarray(X, dtype=float).reshape(-1, 30); f1 = X[:, 0]
+        g = _zdt_g(X)
+        return np.column_stack([f1, g * (1.0 - np.sqrt(f1 / g))])
+
     def zdt1(x):
-        x = np.asarray(x); f1 = x[0]
-        g = 1.0 + 9.0 * np.sum(x[1:]) / (len(x) - 1)
-        f2 = g * (1.0 - math.sqrt(f1 / g))
-        return [float(f1), float(f2)]
+        return zdt1_rows([list(x)])[0].tolist()
 
     PROBLEMS["ZDT1"] = BenchProblem(
         name="ZDT1", n_vars=30, bounds=[(0.0,1.0)]*30, n_obj=2,
-        evaluate=zdt1, constraints=_no_cons,
+        evaluate=zdt1, constraints=_no_cons, evaluate_batch=zdt1_rows,
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, 0.0), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
@@ -876,15 +1000,17 @@ def _zdt_register():
         pareto_set=lambda n: _ps_zdt("ZDT1", n, 0.0))
 
     # ── ZDT2 — non-convex PF ─────────────────────────────────────────────────
+    def zdt2_rows(X):
+        X = np.ascontiguousarray(X, dtype=float).reshape(-1, 30); f1 = X[:, 0]
+        g = _zdt_g(X)
+        return np.column_stack([f1, g * (1.0 - spow(f1 / g, 2))])
+
     def zdt2(x):
-        x = np.asarray(x); f1 = x[0]
-        g = 1.0 + 9.0 * np.sum(x[1:]) / (len(x) - 1)
-        f2 = g * (1.0 - (f1/g)**2)
-        return [float(f1), float(f2)]
+        return zdt2_rows([list(x)])[0].tolist()
 
     PROBLEMS["ZDT2"] = BenchProblem(
         name="ZDT2", n_vars=30, bounds=[(0.0,1.0)]*30, n_obj=2,
-        evaluate=zdt2, constraints=_no_cons,
+        evaluate=zdt2, constraints=_no_cons, evaluate_batch=zdt2_rows,
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, 0.0), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
@@ -892,15 +1018,18 @@ def _zdt_register():
         pareto_set=lambda n: _ps_zdt("ZDT2", n, 0.0))
 
     # ── ZDT3 — disconnected PF ───────────────────────────────────────────────
+    def zdt3_rows(X):
+        X = np.ascontiguousarray(X, dtype=float).reshape(-1, 30); f1 = X[:, 0]
+        g = _zdt_g(X)
+        return np.column_stack(
+            [f1, g * (1.0 - np.sqrt(f1/g) - (f1/g)*math_sin(10*math.pi*f1))])
+
     def zdt3(x):
-        x = np.asarray(x); f1 = x[0]
-        g = 1.0 + 9.0 * np.sum(x[1:]) / (len(x) - 1)
-        f2 = g * (1.0 - math.sqrt(f1/g) - (f1/g)*math.sin(10*math.pi*f1))
-        return [float(f1), float(f2)]
+        return zdt3_rows([list(x)])[0].tolist()
 
     PROBLEMS["ZDT3"] = BenchProblem(
         name="ZDT3", n_vars=30, bounds=[(0.0,1.0)]*30, n_obj=2,
-        evaluate=zdt3, constraints=_no_cons,
+        evaluate=zdt3, constraints=_no_cons, evaluate_batch=zdt3_rows,
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, -0.7731), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
@@ -908,19 +1037,24 @@ def _zdt_register():
         pareto_set=lambda n: _ps_zdt("ZDT3", n, 0.0))
 
     # ── ZDT4 — multimodal ────────────────────────────────────────────────────
+    def zdt4_rows(X):
+        X = np.ascontiguousarray(X, dtype=float).reshape(-1, 10); n = X.shape[1]; f1 = X[:, 0]
+        T = spow(X[:, 1:], 2) - 10*math_cos(4*math.pi*X[:, 1:])
+        s = 0
+        for j in range(n - 1):
+            s = s + T[:, j]
+        g = 1.0 + 10*(n-1) + s
+        return np.column_stack([f1, g * (1.0 - np.sqrt(f1/g))])
+
     def zdt4(x):
-        x = np.asarray(x); n = len(x); f1 = x[0]
-        g = 1.0 + 10*(n-1) + sum(xi**2 - 10*math.cos(4*math.pi*xi)
-                                  for xi in x[1:])
-        f2 = g * (1.0 - math.sqrt(f1/g))
-        return [float(f1), float(f2)]
+        return zdt4_rows([list(x)])[0].tolist()
 
     # Zitzler, Deb & Thiele 2000, Eq. 10: m = 10 for T4 (ZDT1-3 use m = 30).
     # FIX 2026-09-05: this entry used to register 30 variables.
     bnd4 = [(0.0,1.0)] + [(-5.0,5.0)]*9
     PROBLEMS["ZDT4"] = BenchProblem(
         name="ZDT4", n_vars=10, bounds=bnd4, n_obj=2,
-        evaluate=zdt4, constraints=_no_cons,
+        evaluate=zdt4, constraints=_no_cons, evaluate_batch=zdt4_rows,
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, 0.0), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
@@ -928,16 +1062,18 @@ def _zdt_register():
         pareto_set=lambda n: _ps_zdt("ZDT4", n, 0.0))
 
     # ── ZDT6 — biased, non-uniform PF ────────────────────────────────────────
+    def zdt6_rows(X):
+        X = np.ascontiguousarray(X, dtype=float).reshape(-1, 10)
+        f1 = 1.0 - math_exp(-4.0*X[:, 0]) * spow(math_sin(6*math.pi*X[:, 0]), 6)
+        g  = 1.0 + 9.0*spow(np.sum(X[:, 1:], axis=1)/9.0, 0.25)
+        return np.column_stack([f1, g * (1.0 - spow(f1/g, 2))])
+
     def zdt6(x):
-        x = np.asarray(x)
-        f1 = 1.0 - math.exp(-4.0*x[0]) * (math.sin(6*math.pi*x[0])**6)
-        g  = 1.0 + 9.0*(float(np.sum(x[1:]))/9.0)**0.25
-        f2 = g * (1.0 - (f1/g)**2)
-        return [float(f1), float(f2)]
+        return zdt6_rows([list(x)])[0].tolist()
 
     PROBLEMS["ZDT6"] = BenchProblem(
         name="ZDT6", n_vars=10, bounds=[(0.0,1.0)]*10, n_obj=2,
-        evaluate=zdt6, constraints=_no_cons,
+        evaluate=zdt6, constraints=_no_cons, evaluate_batch=zdt6_rows,
         hv_ref_raw=(1.1, 11.0), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.281, 0.0), nadir=(1.0, 0.921),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
@@ -995,31 +1131,34 @@ def _maf_register():
         # FIX 2026-09-05: this entry used to evaluate plain DTLZ2 (single g,
         # theta = pi/2 * x_i), so the whole "partially concave" character —
         # and the front — was wrong.
-        def maf2(x, M=M):
-            x = np.asarray(x, dtype=float)
-            D = len(x)
-            K = D - M + 1
-            c = K // M
-            th = 0.5 * math.pi * (0.5 * x[:M-1] + 0.25)
+        # One implementation, of a batch (task 10 of 2026-10-18): each mafN_rows
+        # below gives the rows of X the values the point code before gave each
+        # point, bit for bit, and mafN is its batch of one row.
+        def maf2_rows(X, M=M, D=n_vars):
+            X = np.ascontiguousarray(X, dtype=float).reshape(-1, D)
+            c = (D - M + 1) // M
+            th = 0.5 * math.pi * (0.5 * X[:, :M-1] + 0.25)
             cos = np.cos(th); sin = np.sin(th)
-            g = np.empty(M)
+            g = np.zeros((len(X), M))
             for i in range(M - 1):
                 lo = (M - 1) + i * c; hi = lo + c
-                seg = x[lo:hi]
-                g[i] = float(np.sum((0.5 * seg + 0.25 - 0.5) ** 2)) if hi > lo else 0.0
-            seg = x[(M - 1) + (M - 1) * c:]
-            g[M-1] = float(np.sum((0.5 * seg + 0.25 - 0.5) ** 2))
-            f = np.empty(M)
-            f[0] = float(np.prod(cos)) * (1.0 + g[0])
+                if hi > lo:
+                    g[:, i] = np.sum((0.5 * X[:, lo:hi] + 0.25 - 0.5) ** 2, axis=1)
+            g[:, M-1] = np.sum((0.5 * X[:, (M - 1) + (M - 1) * c:] + 0.25 - 0.5) ** 2, axis=1)
+            F = np.empty((len(X), M))
+            F[:, 0] = np.prod(cos, axis=1) * (1.0 + g[:, 0])
             for i in range(2, M):
-                f[i-1] = float(np.prod(cos[:M-i])) * sin[M-i] * (1.0 + g[i-1])
-            f[M-1] = sin[0] * (1.0 + g[M-1])
-            return f.tolist()
+                F[:, i-1] = np.prod(cos[:, :M-i], axis=1) * sin[:, M-i] * (1.0 + g[:, i-1])
+            F[:, M-1] = sin[:, 0] * (1.0 + g[:, M-1])
+            return F
+
+        def maf2(x, _rows=maf2_rows):
+            return _rows([list(x)])[0].tolist()
 
         PROBLEMS[f"MaF2_{M}D"] = BenchProblem(
             name=f"MaF2_{M}D", n_vars=n_vars,
             bounds=[(0.0,1.0)]*n_vars, n_obj=M,
-            evaluate=maf2, constraints=_no_cons,
+            evaluate=maf2, constraints=_no_cons, evaluate_batch=maf2_rows,
             hv_ref_raw=tuple([1.1]*M), hv_ref_norm=_ref_norm(M),
             hv_norm_divisor=_divisor(M),
             ideal=tuple([0.0]*M), nadir=tuple([1.0]*M),
@@ -1099,56 +1238,58 @@ def _maf_register():
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=False)
 
         # ── MaF6 — degenerate (m−1 dimensional PF embedded in M-space) ───────
-        def maf6(x, M=M):
-            x = np.asarray(x, dtype=float)
-            xm = x[M-1:]
-            g  = float(np.sum((xm-0.5)**2))
-            # Degenerate: theta_i modified like DTLZ5
-            theta = np.empty(M-1)
-            theta[0] = x[0]*math.pi/2
+        def maf6_rows(X, M=M, D=n_vars):
+            X = np.ascontiguousarray(X, dtype=float).reshape(-1, D)
+            g = np.sum((X[:, M-1:] - 0.5) ** 2, axis=1)
+            theta = np.empty((len(X), M-1))
+            theta[:, 0] = X[:, 0]*math.pi/2
             if M > 2:
                 denom = 4.0*(1+g)
                 for i in range(1, M-1):
-                    theta[i] = (math.pi/denom)*(1+2*g*x[i])
+                    theta[:, i] = (math.pi/denom)*(1+2*g*X[:, i])
             cos = np.cos(theta); sin = np.sin(theta)
-            # Eq. 11: the objectives carry (1 + 100 g); Eq. 12's theta uses g
-            # itself. FIX 2026-09-05: this used to be (1 + g).
-            base = 1.0 + 100.0*g; f = np.empty(M)
-            f[0] = base*float(np.prod(cos))
+            base = 1.0 + 100.0*g
+            F = np.empty((len(X), M))
+            F[:, 0] = base*np.prod(cos, axis=1)
             for i in range(2, M):
-                f[i-1] = base*float(np.prod(cos[:M-i]))*sin[M-i]
-            f[M-1] = base*sin[0]
-            return f.tolist()
+                F[:, i-1] = base*np.prod(cos[:, :M-i], axis=1)*sin[:, M-i]
+            F[:, M-1] = base*sin[:, 0]
+            return F
+
+        def maf6(x, _rows=maf6_rows):
+            return _rows([list(x)])[0].tolist()
 
         PROBLEMS[f"MaF6_{M}D"] = BenchProblem(
             name=f"MaF6_{M}D", n_vars=n_vars,
             bounds=[(0.0,1.0)]*n_vars, n_obj=M,
-            evaluate=maf6, constraints=_no_cons,
+            evaluate=maf6, constraints=_no_cons, evaluate_batch=maf6_rows,
             hv_ref_raw=tuple([1.1]*M), hv_ref_norm=_ref_norm(M),
             hv_norm_divisor=_divisor(M),
             ideal=tuple([0.0]*M), nadir=tuple([1.0]*M),
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=False)
 
         # ── MaF7 — disconnected PF (DTLZ7-like) ──────────────────────────────
-        def maf7(x, M=M):
-            x = np.asarray(x, dtype=float)
-            xm = x[M-1:]
-            g = 1.0 + 9.0/len(xm)*float(np.sum(xm))
-            f = np.empty(M)
-            for i in range(M-1):
-                f[i] = x[i]
-            h = float(M) - float(np.sum(
-                (f[:M-1]/(1+g))*(1+np.sin(3*math.pi*f[:M-1]))))
-            f[M-1] = (1+g)*h
-            return f.tolist()
-
         # MaF7 is the one MaF problem with K = 20 distance variables
         # (D = M + 19); the others use K = 10. FIX 2026-09-05: it used K = 10.
         n7 = M + 19
+
+        def maf7_rows(X, M=M, D=n7):
+            X = np.ascontiguousarray(X, dtype=float).reshape(-1, D)
+            g = 1.0 + 9.0/(D - M + 1)*np.sum(X[:, M-1:], axis=1)
+            F = np.empty((len(X), M))
+            F[:, :M-1] = X[:, :M-1]
+            P = F[:, :M-1]
+            h = float(M) - np.sum((P/(1+g)[:, None])*(1+np.sin(3*math.pi*P)), axis=1)
+            F[:, M-1] = (1+g)*h
+            return F
+
+        def maf7(x, _rows=maf7_rows):
+            return _rows([list(x)])[0].tolist()
+
         PROBLEMS[f"MaF7_{M}D"] = BenchProblem(
             name=f"MaF7_{M}D", n_vars=n7,
             bounds=[(0.0,1.0)]*n7, n_obj=M,
-            evaluate=maf7, constraints=_no_cons,
+            evaluate=maf7, constraints=_no_cons, evaluate_batch=maf7_rows,
             hv_ref_raw=tuple([1.0]*(M-1) + [2.0*M*1.1]),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=tuple([0.0]*M), nadir=tuple([1.0]*(M-1)+[2.0*M]),
@@ -1208,33 +1349,45 @@ def _maf_register():
             return [(math.cos(2*math.pi*m/M), math.sin(2*math.pi*m/M))
                     for m in range(M)]
 
-        def maf9(x, M=M):
-            x = np.asarray(x, dtype=float)
+        def maf9_rows(X, M=M):
+            X = np.asarray(X, dtype=float).reshape(-1, 2)
             V = _maf9_vertices(M)
-            f = np.empty(M)
+            F = np.empty((len(X), M))
             for m in range(M):
                 ax, ay = V[m]
                 bx, by = V[(m+1) % M]
-                # distance from the point to the line through (ax,ay),(bx,by)
                 dx, dy = bx-ax, by-ay
                 norm = math.hypot(dx, dy)
-                f[m] = abs(dy*(x[0]-ax) - dx*(x[1]-ay)) / norm
-            return f.tolist()
+                F[:, m] = np.abs(dy*(X[:, 0]-ax) - dx*(X[:, 1]-ay)) / norm
+            return F
+
+        def maf9(x, _rows=maf9_rows):
+            return _rows([list(x)])[0].tolist()
 
         _phi9 = _maf9_forbidden_regions(M)
+        _in9 = _InsidePolygons(_phi9) if _phi9 else None
 
-        def maf9_cons(x, M=M, _phi=_phi9):
-            x = np.asarray(x, dtype=float)[:2]
-            cv = 0.0
-            for P in _phi:
-                if _point_in_poly(x[None, :], P)[0]:
-                    cv += _poly_edge_distance(x, P)
-            return [cv]
+        def maf9_cons_rows(X, _phi=_phi9, _in=_in9):
+            """MaF9's constraint at every row of X: the distance to the nearest
+            edge of every forbidden polygon the point lies in, added in the
+            polygons' order (task 10, §6: every polygon's test at once)."""
+            X = np.asarray(X, dtype=float).reshape(len(X), -1)[:, :2]
+            inside = _in.inside(X)
+            cv = np.zeros(len(X))
+            for k, P in enumerate(_phi):
+                for i in np.flatnonzero(inside[:, k]):
+                    cv[i] += _poly_edge_distance(X[i], P)
+            return cv[:, None]
+
+        def maf9_cons(x, _rows=maf9_cons_rows):
+            return [float(_rows([x])[0, 0])]
 
         PROBLEMS[f"MaF9_{M}D"] = BenchProblem(
             name=f"MaF9_{M}D", n_vars=2,
             bounds=[(-10000.0,10000.0)]*2, n_obj=M,
             evaluate=maf9, constraints=(maf9_cons if _phi9 else _no_cons),
+            evaluate_batch=maf9_rows,
+            constraints_batch=maf9_cons_rows if _phi9 else None,
             hv_ref_raw=tuple([2.0]*M),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=tuple([0.0]*M), nadir=tuple([1.0]*M),
@@ -1293,35 +1446,42 @@ def _maf_register():
         # Cheng et al. 2017, section 2.13. D = 5 is fixed and does not depend
         # on M. The front is always the unit sphere. Decision space: x1, x2 in
         # [0,1] and x3..x5 in [-2,2], coupled non-linearly through y_i.
-        def maf13(x, M=M):
-            x = np.asarray(x, dtype=float)
-            D = len(x)
-            y = np.empty(D)
+        def maf13_rows(X, M=M):
+            # math's sin of one float and a float's ** at every element
+            # (_rows.math_sin, spow), as at one point
+            X = np.ascontiguousarray(X, dtype=float).reshape(-1, 5)
+            D = 5
+            Y = np.empty_like(X)
             for i in range(D):
-                y[i] = x[i] - 2.0*x[1]*math.sin(2*math.pi*x[0] + (i+1)*math.pi/D)
+                Y[:, i] = X[:, i] - 2.0*X[:, 1]*math_sin(2*math.pi*X[:, 0] + (i+1)*math.pi/D)
             J1 = [j for j in range(2, D) if (j+1) % 3 == 1]
             J2 = [j for j in range(2, D) if (j+1) % 3 == 2]
             J3 = [j for j in range(2, D) if (j+1) % 3 == 0]
             J4 = [j for j in range(3, D)]
-            def s(J): return float(np.sum(y[J]**2)) if J else 0.0
-            f = np.empty(M)
-            f1 = math.sin(math.pi/2*x[0]) + 2.0/max(len(J1),1)*s(J1)
-            f2 = (math.cos(math.pi/2*x[0])*math.sin(math.pi/2*x[1])
+            def s(J):
+                if not J:
+                    return np.zeros(len(X))
+                return np.sum(np.ascontiguousarray(Y[:, J])**2, axis=1)
+            F = np.empty((len(X), M))
+            f1 = math_sin(math.pi/2*X[:, 0]) + 2.0/max(len(J1),1)*s(J1)
+            f2 = (math_cos(math.pi/2*X[:, 0])*math_sin(math.pi/2*X[:, 1])
                   + 2.0/max(len(J2),1)*s(J2))
-            f3 = (math.cos(math.pi/2*x[0])*math.cos(math.pi/2*x[1])
+            f3 = (math_cos(math.pi/2*X[:, 0])*math_cos(math.pi/2*X[:, 1])
                   + 2.0/max(len(J3),1)*s(J3))
-            f[0], f[1], f[2] = f1, f2, f3
-            # f4..fM are all identical: the front degenerates to a 2-D manifold
-            tail = f1**2 + f2**10 + f3**10 + 2.0/max(len(J4),1)*s(J4)
+            F[:, 0], F[:, 1], F[:, 2] = f1, f2, f3
+            tail = spow(f1, 2) + spow(f2, 10) + spow(f3, 10) + 2.0/max(len(J4),1)*s(J4)
             for i in range(3, M):
-                f[i] = tail
-            return f.tolist()
+                F[:, i] = tail
+            return F
+
+        def maf13(x, _rows=maf13_rows):
+            return _rows([list(x)])[0].tolist()
 
         maf13_bounds = [(0.0,1.0), (0.0,1.0), (-2.0,2.0), (-2.0,2.0), (-2.0,2.0)]
         PROBLEMS[f"MaF13_{M}D"] = BenchProblem(
             name=f"MaF13_{M}D", n_vars=5,
             bounds=maf13_bounds, n_obj=M,
-            evaluate=maf13, constraints=_no_cons,
+            evaluate=maf13, constraints=_no_cons, evaluate_batch=maf13_rows,
             hv_ref_raw=tuple([1.1]*M),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=tuple([0.0]*M), nadir=tuple([1.0]*M),
@@ -1387,6 +1547,7 @@ def _register_dtlz():
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=n_vars, bounds=bounds, n_obj=M,
                 evaluate=_eval, constraints=_no_cons,
+                evaluate_batch=lambda X, _f=DTLZ_ROWS[name], _M=M: _f(X, _M),
                 hv_ref_raw=tuple(v*1.1 for v in nadir),
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
@@ -1414,6 +1575,7 @@ def _register_shifted_dtlz():
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
                 evaluate=_eval, constraints=_no_cons,
+                evaluate_batch=lambda X, _b=base, _M=M: shift_dtlz_rows(_b, X, _M),
                 hv_ref_raw=tuple(v * 1.1 for v in nadir),
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
@@ -1440,6 +1602,7 @@ def _register_wide_dtlz3():
         PROBLEMS[prob_name] = BenchProblem(
             name=prob_name, n_vars=n_vars, bounds=wide_bounds(n_vars, M), n_obj=M,
             evaluate=_eval, constraints=_no_cons,
+            evaluate_batch=lambda X, _M=M: DTLZ_ROWS["DTLZ3"](X, _M),
             hv_ref_raw=tuple(v * 1.1 for v in nadir),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=ideal, nadir=nadir,
@@ -1455,10 +1618,11 @@ def _register_wide_dtlz3():
 #  front are the base problem's: the front is set to the base's own after the
 #  reference version (_shifted_fronts), the frame read as the base's (FRAME_OF).
 # =============================================================
-def _add_shifted(name: str, b: "BenchProblem", evaluate, pareto_set) -> None:
+def _add_shifted(name: str, b: "BenchProblem", evaluate, pareto_set,
+                 evaluate_batch=None) -> None:
     PROBLEMS[name] = BenchProblem(
         name=name, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
-        evaluate=evaluate, constraints=_no_cons,
+        evaluate=evaluate, constraints=_no_cons, evaluate_batch=evaluate_batch,
         hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm, hv_norm_divisor=b.hv_norm_divisor,
         ideal=b.ideal, nadir=b.nadir, pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs,
         has_cons=False, pareto_front=None, pareto_set=pareto_set)
@@ -1470,8 +1634,9 @@ def _register_shifted_bound():
         b = PROBLEMS[base]
         c = _shift.zdt_centres(base, b.n_vars)
         def _eval(x, _b=base, _f=b.evaluate, _c=c): return _f(list(_shift.zdt_input(_b, x, _c)))
+        def _batch(X, _b=base, _f=b.evaluate_batch, _c=c): return _f(_shift.zdt_input(_b, X, _c))
         def _ps(n, _b=base, _c=c): return _ps_zdt(_b, n, _c)
-        _add_shifted(f"shift{base}", b, _eval, _ps)
+        _add_shifted(f"shift{base}", b, _eval, _ps, _batch)
     for M in (2, 3, 4, 5, 6, 10, 15):
         for base in _shift.DTLZ_BASES:
             b = PROBLEMS[f"{base}_{M}D"]
@@ -1484,7 +1649,9 @@ def _register_shifted_bound():
                     return _psets.fill(_pf_dtlz7(_M, n)[:, :_M - 1], _nv, _c)
             elif M <= 3:
                 def _ps(n, _M=M, _nv=b.n_vars, _c=c): return _psets.dtlz(_M, _nv, n, _c)
-            _add_shifted(f"shift{base}_{M}D", b, _eval, _ps)
+            def _batch(X, _f=DTLZ_ROWS[base], _M=M, _c=c):
+                return _f(_shift.dtlz_input(X, _M, _c), _M)
+            _add_shifted(f"shift{base}_{M}D", b, _eval, _ps, _batch)
 
 
 # =============================================================
@@ -1519,7 +1686,7 @@ def _register_zcat():
             prob_name = f"{name}_{M}D"
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=sp["n_vars"], bounds=sp["bounds"], n_obj=M,
-                evaluate=sp["evaluate"], constraints=_no_cons,
+                evaluate=sp["evaluate"], constraints=_no_cons, evaluate_batch=sp["evaluate_batch"],
                 hv_ref_raw=tuple(v * 1.1 for v in sp["nadir"]),
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=sp["ideal"], nadir=sp["nadir"],
@@ -1558,6 +1725,7 @@ def _register_bbob_biobj():
             PROBLEMS[key] = BenchProblem(
                 name=key, n_vars=sp["n_vars"], bounds=sp["bounds"], n_obj=2,
                 evaluate=sp["evaluate"], constraints=_no_cons,
+                evaluate_batch=sp["problem"].batch,
                 hv_ref_raw=tuple(nd + 0.1 * (nd - id_)
                                  for id_, nd in zip(ideal, nadir)),
                 hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
@@ -1627,6 +1795,7 @@ def _register_mop():
         PROBLEMS[name] = BenchProblem(
             name=name, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
             evaluate=_eval, constraints=_no_cons,
+            evaluate_batch=lambda X, _n=name: _mop.mop_rows(_n, X),
             hv_ref_raw=tuple(v * 1.1 for v in nadir),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=ideal, nadir=nadir,
@@ -1647,6 +1816,7 @@ def _register_dtlz_variants():
             ideal  = spec["ideal"](M)
             nadir  = spec["nadir"](M)
             def _eval(x, _f=spec["eval"], _M=M): return _f(list(x), _M)
+            def _batch(X, _f=spec["rows"], _M=M): return _f(X, _M)
             def _pf(n, _p=spec["pf"], _M=M): return _p(_M, n)
             if name == "minusDTLZ2":                 # g at its largest: 0 or 1
                 def _ps(n, _M=M, _nv=n_vars): return _psets.minus_dtlz(_M, _nv, n)
@@ -1655,7 +1825,7 @@ def _register_dtlz_variants():
             prob_name = f"{name}_{M}D"
             PROBLEMS[prob_name] = BenchProblem(
                 name=prob_name, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
-                evaluate=_eval, constraints=_no_cons,
+                evaluate=_eval, constraints=_no_cons, evaluate_batch=_batch,
                 hv_ref_raw=dv_hv_ref(ideal, nadir),
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
@@ -1681,11 +1851,12 @@ def _register_maf_fix():
             ideal = tuple(float(v) for v in Z.min(0))
             nadir = tuple(float(v) for v in Z.max(0))
             def _eval(x, _f=ev, _M=M): return _f(list(x), _M)
+            def _batch(X, _f=MAF_FIX_ROWS[name], _M=M): return _f(X, _M)
             def _pf(n, _p=pf, _M=M): return _p(_M, n)
             key = f"{name}_{M}D"
             PROBLEMS[key] = BenchProblem(
                 name=key, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
-                evaluate=_eval, constraints=_no_cons,
+                evaluate=_eval, constraints=_no_cons, evaluate_batch=_batch,
                 hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
@@ -1709,6 +1880,7 @@ def _register_bt():
         PROBLEMS[name] = BenchProblem(
             name=name, n_vars=BT_N, bounds=bounds, n_obj=M,
             evaluate=_eval, constraints=_no_cons,
+            evaluate_batch=lambda X, _n=name: _bt.bt_rows(_n, X),
             hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=ideal, nadir=nadir,
@@ -1771,6 +1943,8 @@ def _register_c_dtlz():
             PROBLEMS[key] = BenchProblem(
                 name=key, n_vars=n_vars, bounds=[(0.0, 1.0)] * n_vars, n_obj=M,
                 evaluate=_eval, constraints=_cons,
+                evaluate_batch=lambda X, _n=name, _M=M: _cd.objectives_rows(_n, X, _M),
+                evaluate_with_constraints=lambda X, _n=name, _M=M: _cd.evaluate_batch(_n, X, _M),
                 hv_ref_raw=tuple(v * 1.1 for v in nadir),
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
                 ideal=ideal, nadir=nadir,
@@ -1808,7 +1982,8 @@ def _add_noisy(base: str, level: str, late: bool = False) -> None:
 
     def _make(seed, cell=_noisy.CELL, _f=b.evaluate, _sc=_scale, _k=kind, _s=sigma):
         return _noisy.Evaluator(_f, _sc(), seed, _k, ideal=_ideal(), sigma=_s,
-                                lower=lower, upper=upper, cell=cell)
+                                lower=lower, upper=upper, cell=cell,
+                                base_batch=b.evaluate_batch)
     key = _noisy.name(base, level)
     PROBLEMS[key] = BenchProblem(
         name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=b.n_obj,
@@ -1855,6 +2030,7 @@ def _register_mw():
             PROBLEMS[key] = BenchProblem(
                 name=key, n_vars=n_vars, bounds=[(0.0, _mw.upper(name))] * n_vars, n_obj=M,
                 evaluate=_eval, constraints=_cons,
+                evaluate_with_constraints=lambda X, _n=name, _M=M: _mw.evaluate_rows(_n, X, _M),
                 hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
                 hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=True,
@@ -1892,6 +2068,7 @@ def _register_dascmop():
             PROBLEMS[key] = BenchProblem(
                 name=key, n_vars=_das.N_VARS, bounds=[(0.0, 1.0)] * _das.N_VARS, n_obj=M,
                 evaluate=_eval, constraints=_cons,
+                evaluate_with_constraints=lambda X, _i=i, _t=t: _das.evaluate_batch(_i, X, _t),
                 hv_ref_raw=tuple([2.2] * M), hv_ref_norm=_ref_norm(M),
                 hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([2.0] * M),
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf)
@@ -1919,6 +2096,7 @@ def _register_lir_cmop():
         PROBLEMS[key] = BenchProblem(
             name=key, n_vars=_lir.N_VARS, bounds=[(0.0, 1.0)] * _lir.N_VARS, n_obj=M,
             evaluate=_eval, constraints=_cons,
+            evaluate_with_constraints=lambda X, _i=i: _lir.evaluate_batch(_i, X),
             hv_ref_raw=tuple([3.3] * M), hv_ref_norm=_ref_norm(M),
             hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([3.0] * M),
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf)
@@ -1946,6 +2124,7 @@ def _register_doc():
         PROBLEMS[key] = BenchProblem(
             name=key, n_vars=_doc.n_vars(i), bounds=list(_doc.BOUNDS[i]), n_obj=M,
             evaluate=_eval, constraints=_cons,
+            evaluate_with_constraints=batch_both(lambda x, _i=i: _doc_both(_i, x)),
             hv_ref_raw=tuple([1.1] * M), hv_ref_norm=_ref_norm(M),
             hv_norm_divisor=_divisor(M), ideal=tuple([0.0] * M), nadir=tuple([1.0] * M),
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf,
@@ -2008,6 +2187,8 @@ def _register_rwmop():
         PROBLEMS[key] = BenchProblem(
             name=key, n_vars=len(box), bounds=[(float(a), float(b)) for a, b in box], n_obj=M,
             evaluate=_eval, constraints=_cons if has else _no_cons,
+            evaluate_with_constraints=(batch_both(lambda x, _i=i: _rw.evaluate(_i, x)) if has
+                                       else None),
             hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
             pop_size=pop, n_gen=round(_rw.max_evaluations(i) / pop), K_runs=25, has_cons=has,
@@ -2036,7 +2217,7 @@ def _register_mixed():
             key = _mixint.name(fnum, D)
             PROBLEMS[key] = BenchProblem(
                 name=key, n_vars=D, bounds=_mixint.bounds(D), n_obj=2,
-                evaluate=p, constraints=_no_cons,
+                evaluate=p, constraints=_no_cons, evaluate_batch=p.batch,
                 hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(p.ideal, p.nadir)),
                 hv_ref_norm=_ref_norm(2), hv_norm_divisor=_divisor(2),
                 ideal=p.ideal, nadir=p.nadir, pop_size=pop, n_gen=ng, K_runs=21,
@@ -2092,7 +2273,7 @@ def _register_rotated():
                 key = _rot.name(stem, M, instance)
                 PROBLEMS[key] = BenchProblem(
                     name=key, n_vars=b.n_vars, bounds=list(b.bounds), n_obj=M,
-                    evaluate=r.evaluate, constraints=_no_cons,
+                    evaluate=r.evaluate, constraints=_no_cons, evaluate_batch=r.evaluate_batch,
                     hv_ref_raw=b.hv_ref_raw, hv_ref_norm=b.hv_ref_norm,
                     hv_norm_divisor=b.hv_norm_divisor, ideal=b.ideal, nadir=b.nadir,
                     pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
@@ -2295,6 +2476,7 @@ def _register_re():
         PROBLEMS[name] = BenchProblem(
             name=name, n_vars=len(_re.bounds(name)), bounds=_re.bounds(name), n_obj=M,
             evaluate=_eval, constraints=_cons,
+            evaluate_with_constraints=batch_both(lambda x, _m=model: _m(x)),
             hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M), ideal=ideal, nadir=nadir,
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=True, pareto_front=_pf,
@@ -2373,7 +2555,7 @@ def _register_failing():
                     _, kept, total = _failing_parts(_k)
                     if len(kept) in (0, total):
                         return PROBLEMS[_b].pareto_front(n)
-                    return np.array([PROBLEMS[_b].evaluate(list(x)) for x in kept])
+                    return np.asarray(PROBLEMS[_b].evaluate_batch(kept), float)
 
                 def _ps(n=1000, _k=key, _b=base):
                     _, kept, total = _failing_parts(_k)
@@ -2534,6 +2716,20 @@ def get(name: str) -> "BenchProblem":
         # Once per problem per process: a caveat that scrolls past on every
         # call is a caveat nobody reads, and this one changes how the number
         # may be used, not whether the run works.
+        _DEGENERATE_WARNED.add(name)
+        warnings.warn(note, stacklevel=2)
+    return p
+
+
+def get_framed(name: str, ideal, nadir) -> "BenchProblem":
+    """get(name) with the frame given instead of read off the front: a frame
+    get() set before and a caller kept (a campaign's reference cache)."""
+    p = PROBLEMS[name]
+    if name not in EXACT_FRAME:
+        _REFRAMED.add(name)
+        p.ideal, p.nadir = tuple(float(v) for v in ideal), tuple(float(v) for v in nadir)
+    note = degenerate_subset_note(name)
+    if note and name not in _DEGENERATE_WARNED:
         _DEGENERATE_WARNED.add(name)
         warnings.warn(note, stacklevel=2)
     return p

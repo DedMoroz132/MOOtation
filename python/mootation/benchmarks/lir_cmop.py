@@ -70,6 +70,8 @@ from functools import lru_cache
 
 import numpy as np
 
+from ._rows import math_cos, math_sin
+
 N_VARS = 30
 J1 = np.arange(3, 30, 2) - 1                  # 0-based
 J2 = np.arange(2, 31, 2) - 1
@@ -105,32 +107,38 @@ def shape(i: int, u):
     return 1.0 - np.sqrt(u) if _sqrt_shape(i) else 1.0 - u * u
 
 
-def g_values(i: int, x):
-    x = np.asarray(x, float)
+def g_values(i: int, X):
+    """(g1, g2) of every row of X (n x 30). The odd and even variables are
+    taken as C-ordered copies: picked by index they lie by columns, and NumPy
+    would add a row's terms one by one instead of pairwise."""
+    X = np.asarray(X, float).reshape(-1, N_VARS)
+    X1, X2, u = np.ascontiguousarray(X[:, J1]), np.ascontiguousarray(X[:, J2]), X[:, :1]
     if i <= 4:
-        g1 = np.sum((x[J1] - math.sin(0.5 * math.pi * x[0])) ** 2)
-        g2 = np.sum((x[J2] - math.cos(0.5 * math.pi * x[0])) ** 2)
+        g1 = np.sum((X1 - math_sin(0.5 * math.pi * u)) ** 2, axis=1)
+        g2 = np.sum((X2 - math_cos(0.5 * math.pi * u)) ** 2, axis=1)
     else:
-        g1 = np.sum((x[J1] - np.sin(0.5 * (J1 + 1) / 30.0 * math.pi * x[0])) ** 2)
-        g2 = np.sum((x[J2] - np.cos(0.5 * (J2 + 1) / 30.0 * math.pi * x[0])) ** 2)
-    return float(g1), float(g2)
+        g1 = np.sum((X1 - np.sin(0.5 * (J1 + 1) / 30.0 * math.pi * u)) ** 2, axis=1)
+        g2 = np.sum((X2 - np.cos(0.5 * (J2 + 1) / 30.0 * math.pi * u)) ** 2, axis=1)
+    return g1, g2
 
 
-def objectives(i: int, x) -> list:
-    x = np.asarray(x, float)
+def objectives(i: int, X) -> np.ndarray:
+    """The objectives of every row of X: n x M."""
+    X = np.asarray(X, float).reshape(-1, N_VARS)
     if i >= 13:
-        g1 = float(np.sum(10.0 * (x[2:] - 0.5) ** 2))
-        c1, s1 = math.cos(0.5 * math.pi * x[0]), math.sin(0.5 * math.pi * x[0])
+        g1 = np.sum(10.0 * (X[:, 2:] - 0.5) ** 2, axis=1)
+        c1, s1 = math_cos(0.5 * math.pi * X[:, 0]), math_sin(0.5 * math.pi * X[:, 0])
         rad = SHIFT + 1.0 + g1                 # 1.7057 + g1
-        return [rad * c1 * math.cos(0.5 * math.pi * x[1]),
-                rad * c1 * math.sin(0.5 * math.pi * x[1]), rad * s1]
-    g1, g2 = g_values(i, x)
-    h = float(shape(i, x[0]))
+        return np.column_stack([rad * c1 * math_cos(0.5 * math.pi * X[:, 1]),
+                                rad * c1 * math_sin(0.5 * math.pi * X[:, 1]), rad * s1])
+    g1, g2 = g_values(i, X)
+    h = shape(i, X[:, 0])
     if i <= 4:
-        return [x[0] + g1, h + g2]
+        return np.column_stack([X[:, 0] + g1, h + g2])
     if i <= 8:
-        return [x[0] + 10.0 * g1 + SHIFT, h + 10.0 * g2 + SHIFT]
-    return [(1.0 + SHIFT) * x[0] * (10.0 * g1 + 1.0), (1.0 + SHIFT) * h * (10.0 * g2 + 1.0)]
+        return np.column_stack([X[:, 0] + 10.0 * g1 + SHIFT, h + 10.0 * g2 + SHIFT])
+    return np.column_stack([(1.0 + SHIFT) * X[:, 0] * (10.0 * g1 + 1.0),
+                            (1.0 + SHIFT) * h * (10.0 * g2 + 1.0)])
 
 
 def _ellipse(F1, F2, i):
@@ -165,10 +173,15 @@ def constraints_c(i: int, F, x1=None, g=None):
 
 def evaluate(i: int, x) -> tuple:
     """(objectives, the library's constraints: <= 0 satisfied)."""
-    x = np.asarray(x, float)
-    f = objectives(i, x)
-    c = constraints_c(i, [f], x[0], g_values(i, x) if i <= 4 else None)[0]
-    return f, [float(-v) for v in c]
+    F, G = evaluate_batch(i, [x])
+    return F[0].tolist(), G[0].tolist()
+
+
+def evaluate_batch(i: int, X) -> tuple:
+    """(objectives, constraints) of every row of X, one computation for both."""
+    X = np.asarray(X, float).reshape(-1, N_VARS)
+    F = objectives(i, X)
+    return F, -constraints_c(i, F, X[:, 0], g_values(i, X) if i <= 4 else None)
 
 
 def name(i: int) -> str:

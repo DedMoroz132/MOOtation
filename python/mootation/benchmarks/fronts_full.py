@@ -199,15 +199,15 @@ def _own(name: str, U: np.ndarray, M: int) -> np.ndarray:
     from .registry import PROBLEMS
     p = PROBLEMS[f"{name}_{M}D"]
     k = p.n_vars - (M - 1)
-    out = np.empty((len(U), M))
-    for r, u in enumerate(np.asarray(U, float)):
+    rows = []
+    for u in np.asarray(U, float):
         g = float(u[M - 1])
         if name == "DTLZ6":
             dist = [(g / k) ** 10] * k                   # g = sum x^0.1
         else:
             dist = [0.5 + math.sqrt(g / k)] * k          # g = sum (x - 1/2)^2
-        out[r] = p.evaluate(list(u[:M - 1]) + dist)
-    return out
+        rows.append(list(u[:M - 1]) + dist)
+    return np.asarray(p.evaluate_batch(rows), float).reshape(len(rows), M)
 
 
 # ── dominance ───────────────────────────────────────────────────────────────

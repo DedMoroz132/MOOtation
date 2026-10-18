@@ -21,12 +21,18 @@ Every function returns (f, g), or (f, g, h) with equalities h = 0 (RCM22-28):
 the objectives, and the inequality constraints in the library's sign, g <= 0
 satisfied, in the paper's order. evaluate() appends |h| - EQ_EPS to g, as DOC
 does (doc.py); the paper's epsilon has no value, EQ_EPS is 1e-4, the CEC
-competitions' and minimize's eq_tol. RCM24's logarithms are undefined outside
-x8 > 100, x7 < 600, x9 > x7: it raises ValueError there, as RCM02 below.
-RCM02's f1, a square root of EI / mu, is undefined where that is negative,
-which happens only with the layers out of order (g2 or g4 violated): it
-raises ValueError there, which a run counts as a failed evaluation
-(minimize's on_failure).
+competitions' and minimize's eq_tol.
+
+WHERE A PROBLEM IS NOT DEFINED (task 10 of 2026-10-18, §6). RCM02's f1, a
+square root of EI / mu, is undefined where that is negative, which happens
+only with the layers out of order (g2 or g4 violated), and RCM24's
+equalities, logarithms, outside x8 > 100, x7 < 600, x9 > x7. There the
+function returns NaN for every objective and constraint — a failed
+evaluation, which minimize's on_failure and a campaign count as such (until
+task 10 it raised ValueError, which the core counted and a campaign did not),
+and a batch fails in that row alone. UNDEFINED names them;
+undefined_share(i) estimates the share of the box where it happens from
+100 000 uniform points, and benchmarks.properties carries it.
 Integer and discrete variables are rounded inside the function, as the RE
 problems do (re.py), and declared in VAR_TYPES for a typed run.
 
@@ -192,8 +198,8 @@ def rcm02(x):
     c1, c2, c3 = 500.0, 1500.0, 800.0
     EI = 2.0 * b / 3.0 * (E1 * d1 ** 3 + E2 * (d2 ** 3 - d1 ** 3) + E3 * (d3 ** 3 - d2 ** 3))
     mu = 2.0 * b * (r1 * d1 + r2 * (d2 - d1) + r3 * (d3 - d2))
-    if EI / mu < 0.0:                       # only where d1 > d2 or d2 > d3 (g2, g4)
-        raise ValueError("RCM02: EI / mu < 0, f1 undefined (the layers out of order)")
+    if mu == 0.0 or EI / mu < 0.0:          # only where d1 > d2 or d2 > d3 (g2, g4)
+        return [math.nan] * 2, [math.nan] * 5     # undefined: a failed evaluation
     f1 = -math.pi / (2.0 * L ** 2) * math.sqrt(EI / mu)
     f2 = 2.0 * b * L * (c1 * d1 + c2 * (d2 - d1) + c3 * (d3 - d2))
     return [f1, f2], [mu * L - 2800.0, d1 - d2, d2 - d1 - 0.15, d2 - d3, d3 - d2 - 0.01]
@@ -524,6 +530,8 @@ def rcm23(x):
 def rcm24(x):
     """Heat exchanger network design."""
     x1, x2, x3, x4, x5, x6, x7, x8, x9 = x
+    if not (x8 > 100.0 and x7 < 600.0 and x9 > x7):
+        return [math.nan] * 3, [], [math.nan] * 8   # the logarithms undefined: a failed evaluation
     f = [35.0 * x1 ** 0.6 + 35.0 * x2 ** 0.6, 200.0 * x1 * x4 - x3, 200.0 * x1 * x6 - x5]
     h = [200.0 * x1 * x4 - x3, 200.0 * x2 * x6 - x5, x3 - 10000.0 * (x7 - 100.0),
          x5 - 10000.0 * (300.0 - x7), x3 - 10000.0 * (600.0 - x8), x5 - 10000.0 * (900.0 - x9),
@@ -653,6 +661,24 @@ def equalities(i: int, x) -> list:
     """RCM<i>'s equalities h(x) themselves, [] for a problem without."""
     out = PROBLEMS[i][0]([float(v) for v in x])
     return [float(v) for v in out[2]] if len(out) == 3 else []
+
+
+# The problems that are not defined in part of their box (WHERE A PROBLEM IS NOT
+# DEFINED above), and where.
+UNDEFINED = {2: "f1 = sqrt(EI / mu) where EI / mu < 0: the layers out of order",
+             24: "the logarithms of h7 and h8 outside x8 > 100, x7 < 600, x9 > x7"}
+
+
+@lru_cache(maxsize=None)
+def undefined_share(i: int, n: int = 100_000, seed: int = 0) -> float:
+    """The share of n uniform points of RCM<i>'s box where it is not defined
+    (its objectives NaN); 0 for a problem defined everywhere (not in UNDEFINED)."""
+    if i not in UNDEFINED:
+        return 0.0
+    box = np.asarray(PROBLEMS[i][1], float)
+    X = box[:, 0] + np.random.default_rng(seed).random((n, len(box))) * (box[:, 1] - box[:, 0])
+    bad = sum(not math.isfinite(PROBLEMS[i][0](list(map(float, x)))[0][0]) for x in X)
+    return bad / n
 
 
 def n_cons(i: int) -> int:

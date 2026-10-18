@@ -380,6 +380,11 @@ def re22(x, values=RE22_VALUES):
     x1 = values[idx]
     x2 = x[1]
     x3 = x[2]
+    if x2 == 0.0:
+        # g divides by x2: at the box's face x2 = 0 the problem is not defined,
+        # a failed evaluation (task 10 of 2026-10-18, §6; it raised
+        # ZeroDivisionError there before)
+        return np.full(2, np.nan)
     f[0] = (29.4 * x1) + (0.6 * x2 * x3)
     g[0] = (x1 * x3) - 7.735 * ((x1 * x1) / x2) - 180.0
     g[1] = 4.0 - (x3 / x2)

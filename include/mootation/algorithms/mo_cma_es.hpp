@@ -7,6 +7,7 @@
 #include <limits>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -299,6 +300,14 @@ public:
     void set_seed(unsigned s)       { rng_.seed(s); }
     void set_n_samples(int s)       { n_samples_ = s; }
     void set_initial_sigma(double s){ sigma0_ = s; }
+    bool set_param(const std::string& k, double v)
+    {
+        if (k != "n_samples") return false;                // MOCMA-5
+        if (!(v >= 0.0 && v <= 1e9 && v == std::floor(v)))
+            throw std::invalid_argument("n_samples must be a whole number >= 0");
+        n_samples_ = static_cast<int>(v);
+        return true;
+    }
 
     void setup(DataVault<Ind_t>& vault)
     {

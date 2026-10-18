@@ -94,7 +94,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 9: the scalarization methods (python/mootation/scalar) and the
         // polishing every algorithm takes (minimize.py); no core has them
         "n_sub", "sub_budget", "fd_step", "local_tol", "cma_sigma0", "eps_objective",
-        "polish_share", "polish_points", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread"
+        "polish_share", "polish_points", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
+        // task 10 of 2026-10-18, §7
+        "n_samples"
     };
     return v;
 }
@@ -138,6 +140,9 @@ inline const std::vector<std::string>& knob_names() {
 //                  multiglods: the failures before a search, and α of a
 //                  local point
 //   rm_extension   rm_meda: how far each model extends past its points
+//   n_samples      sms_emoa, mo_cma_es, hype: the Monte-Carlo sample points a
+//                  step from four objectives (10 000; sms_emoa and mo_cma_es
+//                  take 0 for the exact contributions at every M)
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
@@ -151,7 +156,8 @@ inline bool is_core_param(const std::string& name)
                           "glods_local_tol", "rm_extension", "n_sub",
                           "sub_budget", "fd_step", "local_tol",
                           "cma_sigma0", "eps_objective", "polish_share", "polish_points",
-                          "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread"})
+                          "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
+                          "n_samples"})
         if (name == k) return true;
     return false;
 }

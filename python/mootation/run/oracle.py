@@ -42,7 +42,7 @@ def run_values(run_dir: Path, n_ref: int = 1000) -> dict | str:
     """The row of one run (module docstring), or why it has none."""
     import numpy as np
     from ..benchmarks import get as bench_get
-    from .archive import dplus_matrix, greedy_igdp, igdp_self_order
+    from .archive import greedy_igdp_rows, igdp_self_order
     from .campaign import _read_points
     from .metrics import _normalised, igd_plus
     run_dir = Path(run_dir)
@@ -64,7 +64,7 @@ def run_values(run_dir: Path, n_ref: int = 1000) -> dict | str:
     ref = np.asarray(p.pareto_front(int(meta.get("n_ref") or n_ref)), float)
     G, R = _normalised(F, ref, p.ideal, p.nadir)
     n = int((meta.get("final_archive") or {}).get("n") or min(p.pop_size, len(F)))
-    oracle = greedy_igdp(dplus_matrix(G, R), n)
+    oracle = greedy_igdp_rows(G, R, n)
     frame = arc.get("frame")
     lo, hi = (frame if frame and arc.get("normalization") != "archive" else (None, None))
     own = igdp_self_order(F, n, ideal=lo, nadir=hi)

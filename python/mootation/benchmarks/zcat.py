@@ -74,6 +74,8 @@ from typing import List
 
 import numpy as np
 
+from ._rows import math_cos, math_exp, math_sin, spow
+
 K = 5           # Table 4: the number of disconnections (Sections 4.1.2-4.1.3)
 A = 5           # ZCAT19, see ZCAT-2 above
 GAMMA = 0.05    # Eq. 11, the bias exponent
@@ -85,217 +87,216 @@ REGION_M = {"ZCAT19": ((0.0, 0.2), (0.4, 0.6)),      # m = 1 inside these
 
 
 # ---- position functions F (Table 2) ---------------------------------
-def _wavy(y1: float) -> float:
-    """The disconnected F_M of ZCAT11-13, 15, 16."""
-    return (math.cos((2 * K - 1) * y1 * math.pi) + 2 * y1 + 4 * K * (1 - y1) - 1) / (4 * K)
+# Of a batch Y (one normalised point per row): an (n_rows, M) array. Every
+# row's value is computed by the expressions of the function at one point;
+# where that raised a scalar to a power the batch keeps pow's value
+# (_rows.spow), where it took math's sin, cos or exp of one float, math's
+# (_rows.math_sin, math_cos, math_exp).
+def _wavy(y1):
+    """The disconnected F_M of ZCAT11-13, 15, 16, of y_1 (a column)."""
+    return (math_cos((2 * K - 1) * y1 * math.pi) + 2 * y1 + 4 * K * (1 - y1) - 1) / (4 * K)
 
 
-def _f_zcat1(y: np.ndarray, M: int) -> np.ndarray:
-    s = np.sin(y * HALF_PI)
-    c = np.cos(y * HALF_PI)
-    F = np.empty(M)
-    F[0] = float(np.prod(s[:M - 1])) if M > 1 else 1.0
+def _prods(a: np.ndarray, M: int, last: np.ndarray, F: np.ndarray) -> None:
+    """F_j = prod(a_1..a_{M-j}) * last_{M-j+1} for j = 2..M-1, and F_1 = prod(a_1..a_{M-1})."""
+    F[:, 0] = np.prod(a[:, :M - 1], axis=1) if M > 1 else 1.0
     for j in range(2, M):
-        F[j - 1] = float(np.prod(s[:M - j])) * c[M - j]
-    F[M - 1] = 1.0 - s[0]
+        F[:, j - 1] = np.prod(a[:, :M - j], axis=1) * last[:, M - j]
+
+
+def _f_zcat1(Y: np.ndarray, M: int) -> np.ndarray:
+    s = np.sin(Y * HALF_PI)
+    c = np.cos(Y * HALF_PI)
+    F = np.empty((len(Y), M))
+    _prods(s, M, c, F)
+    F[:, M - 1] = 1.0 - s[:, 0]
     return F
 
 
-def _f_zcat2(y: np.ndarray, M: int) -> np.ndarray:
-    a = 1.0 - np.cos(y * HALF_PI)
-    b = 1.0 - np.sin(y * HALF_PI)
-    F = np.empty(M)
-    F[0] = float(np.prod(a[:M - 1])) if M > 1 else 1.0
+def _f_zcat2(Y: np.ndarray, M: int) -> np.ndarray:
+    a = 1.0 - np.cos(Y * HALF_PI)
+    b = 1.0 - np.sin(Y * HALF_PI)
+    F = np.empty((len(Y), M))
+    _prods(a, M, b, F)
+    F[:, M - 1] = 1.0 - math_sin(Y[:, 0] * HALF_PI)
+    return F
+
+
+def _f_zcat3(Y: np.ndarray, M: int) -> np.ndarray:
+    F = np.empty((len(Y), M))
+    F[:, 0] = np.sum(Y[:, :M - 1], axis=1) / (M - 1)
     for j in range(2, M):
-        F[j - 1] = float(np.prod(a[:M - j])) * b[M - j]
-    F[M - 1] = 1.0 - math.sin(y[0] * HALF_PI)
+        F[:, j - 1] = (np.sum(Y[:, :M - j], axis=1) + (1.0 - Y[:, M - j])) / (M - j + 1)
+    F[:, M - 1] = 1.0 - Y[:, 0]
     return F
 
 
-def _f_zcat3(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    F[0] = float(np.sum(y[:M - 1])) / (M - 1)
-    for j in range(2, M):
-        F[j - 1] = (float(np.sum(y[:M - j])) + (1.0 - y[M - j])) / (M - j + 1)
-    F[M - 1] = 1.0 - y[0]
+def _f_zcat4(Y: np.ndarray, M: int) -> np.ndarray:
+    F = np.empty((len(Y), M))
+    F[:, :M - 1] = Y[:, :M - 1]
+    F[:, M - 1] = 1.0 - np.sum(Y[:, :M - 1], axis=1) / (M - 1)
     return F
 
 
-def _f_zcat4(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    F[:M - 1] = y[:M - 1]
-    F[M - 1] = 1.0 - float(np.sum(y[:M - 1])) / (M - 1)
+def _f_zcat5(Y: np.ndarray, M: int) -> np.ndarray:
+    F = np.empty((len(Y), M))
+    F[:, :M - 1] = Y[:, :M - 1]
+    mu = np.sum(1.0 - Y[:, :M - 1], axis=1) / (M - 1)
+    F[:, M - 1] = (math_exp(8.0 * mu) - 1.0) / (math.exp(8.0) - 1.0)
     return F
 
 
-def _f_zcat5(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    F[:M - 1] = y[:M - 1]
-    mu = float(np.sum(1.0 - y[:M - 1])) / (M - 1)
-    F[M - 1] = (math.exp(8.0 * mu) - 1.0) / (math.exp(8.0) - 1.0)
-    return F
-
-
-def _f_zcat6(y: np.ndarray, M: int) -> np.ndarray:
+def _f_zcat6(Y: np.ndarray, M: int) -> np.ndarray:
     kappa, rho = 40.0, 0.05
-    mu = float(np.sum(y[:M - 1])) / (M - 1)
-    num = (1 + math.exp(2 * kappa * mu - kappa)) ** -1 - rho * mu \
+    mu = np.sum(Y[:, :M - 1], axis=1) / (M - 1)
+    num = spow(1 + math_exp(2 * kappa * mu - kappa), -1) - rho * mu \
         - (1 + math.exp(kappa)) ** -1 + rho
     den = (1 + math.exp(-kappa)) ** -1 - (1 + math.exp(kappa)) ** -1 + rho
-    F = np.empty(M)
-    F[:M - 1] = y[:M - 1]
-    F[M - 1] = num / den
+    F = np.empty((len(Y), M))
+    F[:, :M - 1] = Y[:, :M - 1]
+    F[:, M - 1] = num / den
     return F
 
 
-def _f_zcat7(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    F[:M - 1] = y[:M - 1]
-    F[M - 1] = float(np.sum((0.5 - y[:M - 1]) ** 5)) / (2 * (M - 1) * 0.5 ** 5) + 0.5
+def _quintic_sum(Y: np.ndarray, M: int) -> np.ndarray:
+    """F_M of ZCAT7 (and of ZCAT18 and ZCAT20 outside their regions)."""
+    return np.sum((0.5 - Y[:, :M - 1]) ** 5, axis=1) / (2 * (M - 1) * 0.5 ** 5) + 0.5
+
+
+def _f_zcat7(Y: np.ndarray, M: int) -> np.ndarray:
+    F = np.empty((len(Y), M))
+    F[:, :M - 1] = Y[:, :M - 1]
+    F[:, M - 1] = _quintic_sum(Y, M)
     return F
 
 
-def _f_zcat8(y: np.ndarray, M: int) -> np.ndarray:
-    a = 1.0 - np.sin(y * HALF_PI)
-    b = 1.0 - np.cos(y * HALF_PI)
-    F = np.empty(M)
-    F[0] = 1.0 - (float(np.prod(a[:M - 1])) if M > 1 else 1.0)
+def _f_zcat8(Y: np.ndarray, M: int) -> np.ndarray:
+    a = 1.0 - np.sin(Y * HALF_PI)
+    b = 1.0 - np.cos(Y * HALF_PI)
+    F = np.empty((len(Y), M))
+    _prods(a, M, b, F)
+    F[:, :M - 1] = 1.0 - F[:, :M - 1]
+    F[:, M - 1] = math_cos(Y[:, 0] * HALF_PI)
+    return F
+
+
+def _f_zcat9(Y: np.ndarray, M: int) -> np.ndarray:
+    s = np.sin(Y * HALF_PI)
+    c = np.cos(Y * HALF_PI)
+    F = np.empty((len(Y), M))
+    F[:, 0] = np.sum(s[:, :M - 1], axis=1) / (M - 1)
     for j in range(2, M):
-        F[j - 1] = 1.0 - float(np.prod(a[:M - j])) * b[M - j]
-    F[M - 1] = math.cos(y[0] * HALF_PI)
+        F[:, j - 1] = (np.sum(s[:, :M - j], axis=1) + c[:, M - j]) / (M - j + 1)
+    F[:, M - 1] = math_cos(Y[:, 0] * HALF_PI)
     return F
 
 
-def _f_zcat9(y: np.ndarray, M: int) -> np.ndarray:
-    s = np.sin(y * HALF_PI)
-    c = np.cos(y * HALF_PI)
-    F = np.empty(M)
-    F[0] = float(np.sum(s[:M - 1])) / (M - 1)
-    for j in range(2, M):
-        F[j - 1] = (float(np.sum(s[:M - j])) + c[M - j]) / (M - j + 1)
-    F[M - 1] = math.cos(y[0] * HALF_PI)
-    return F
-
-
-def _f_zcat10(y: np.ndarray, M: int) -> np.ndarray:
+def _f_zcat10(Y: np.ndarray, M: int) -> np.ndarray:
     rho = 0.02
-    mu = float(np.sum(1.0 - y[:M - 1])) / (M - 1)
-    F = np.empty(M)
-    F[:M - 1] = y[:M - 1]
-    F[M - 1] = (rho ** -1 - (mu + rho) ** -1) / (rho ** -1 - (1 + rho) ** -1)
+    mu = np.sum(1.0 - Y[:, :M - 1], axis=1) / (M - 1)
+    F = np.empty((len(Y), M))
+    F[:, :M - 1] = Y[:, :M - 1]
+    F[:, M - 1] = (rho ** -1 - spow(mu + rho, -1)) / (rho ** -1 - (1 + rho) ** -1)
     return F
 
 
-def _f_zcat11(y: np.ndarray, M: int) -> np.ndarray:
-    F = _f_zcat3(y, M)
-    F[M - 1] = _wavy(y[0])
+def _f_zcat11(Y: np.ndarray, M: int) -> np.ndarray:
+    F = _f_zcat3(Y, M)
+    F[:, M - 1] = _wavy(Y[:, 0])
     return F
 
 
-def _f_zcat12(y: np.ndarray, M: int) -> np.ndarray:
-    a = 1.0 - y
-    F = np.empty(M)
-    F[0] = 1.0 - (float(np.prod(a[:M - 1])) if M > 1 else 1.0)
-    for j in range(2, M):
-        F[j - 1] = 1.0 - float(np.prod(a[:M - j])) * y[M - j]
-    F[M - 1] = _wavy(y[0])
+def _f_zcat12(Y: np.ndarray, M: int) -> np.ndarray:
+    a = 1.0 - Y
+    F = np.empty((len(Y), M))
+    _prods(a, M, Y, F)
+    F[:, :M - 1] = 1.0 - F[:, :M - 1]
+    F[:, M - 1] = _wavy(Y[:, 0])
     return F
 
 
-def _f_zcat13(y: np.ndarray, M: int) -> np.ndarray:
-    s = np.sin(y * HALF_PI)
-    c = np.cos(y * HALF_PI)
-    F = np.empty(M)
-    F[0] = 1.0 - float(np.sum(s[:M - 1])) / (M - 1)
-    for j in range(2, M):
-        F[j - 1] = 1.0 - (float(np.sum(s[:M - j])) + c[M - j]) / (M - j + 1)
-    F[M - 1] = 1.0 - _wavy(y[0])
+def _f_zcat13(Y: np.ndarray, M: int) -> np.ndarray:
+    F = _f_zcat9(Y, M)
+    F[:, :M - 1] = 1.0 - F[:, :M - 1]
+    F[:, M - 1] = 1.0 - _wavy(Y[:, 0])
     return F
 
 
-def _f_zcat14(y: np.ndarray, M: int) -> np.ndarray:
-    s1 = math.sin(y[0] * HALF_PI)
-    F = np.empty(M)
-    F[0] = s1 ** 2
+def _f_zcat14(Y: np.ndarray, M: int) -> np.ndarray:
+    s1 = math_sin(Y[:, 0] * HALF_PI)
+    F = np.empty((len(Y), M))
+    F[:, 0] = spow(s1, 2)
     for j in range(2, M - 1):
-        F[j - 1] = s1 ** (2.0 + (j - 1) / (M - 2))
+        F[:, j - 1] = spow(s1, 2.0 + (j - 1) / (M - 2))
     if M > 2:
-        F[M - 2] = 0.5 * (1.0 + math.sin(6.0 * y[0] * HALF_PI - HALF_PI))
-    F[M - 1] = math.cos(y[0] * HALF_PI)
+        F[:, M - 2] = 0.5 * (1.0 + math_sin(6.0 * Y[:, 0] * HALF_PI - HALF_PI))
+    F[:, M - 1] = math_cos(Y[:, 0] * HALF_PI)
     return F
 
 
-def _f_zcat15(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
+def _f_zcat15(Y: np.ndarray, M: int) -> np.ndarray:
+    F = np.empty((len(Y), M))
     for j in range(1, M):
-        F[j - 1] = y[0] ** (1.0 + (j - 1) / (4.0 * M))
-    F[M - 1] = _wavy(y[0])
+        F[:, j - 1] = spow(Y[:, 0], 1.0 + (j - 1) / (4.0 * M))
+    F[:, M - 1] = _wavy(Y[:, 0])
     return F
 
 
-def _f_zcat16(y: np.ndarray, M: int) -> np.ndarray:
-    s1 = math.sin(y[0] * HALF_PI)
-    F = np.empty(M)
-    F[0] = s1
+def _f_zcat16(Y: np.ndarray, M: int) -> np.ndarray:
+    s1 = math_sin(Y[:, 0] * HALF_PI)
+    F = np.empty((len(Y), M))
+    F[:, 0] = s1
     for j in range(2, M - 1):
-        F[j - 1] = s1 ** (1.0 + (j - 1) / (M - 2))
+        F[:, j - 1] = spow(s1, 1.0 + (j - 1) / (M - 2))
     if M > 2:
-        F[M - 2] = 0.5 * (1.0 + math.sin(10.0 * y[0] * HALF_PI - HALF_PI))
-    F[M - 1] = _wavy(y[0])
+        F[:, M - 2] = 0.5 * (1.0 + math_sin(10.0 * Y[:, 0] * HALF_PI - HALF_PI))
+    F[:, M - 1] = _wavy(Y[:, 0])
     return F
 
 
-def _f_zcat17(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    if np.all(y[:M - 1] <= 0.5):                       # ZCAT-4: the degenerate region
-        F[:M - 1] = y[0]
-        F[M - 1] = (math.exp(8.0 * (1.0 - y[0])) - 1.0) / (math.exp(8.0) - 1.0)
-        return F
-    F[:M - 1] = y[:M - 1]
-    mu = float(np.sum(1.0 - y[:M - 1])) / (M - 1)
-    F[M - 1] = (math.exp(8.0 * mu) - 1.0) / (math.exp(8.0) - 1.0)
+def _f_zcat17(Y: np.ndarray, M: int) -> np.ndarray:
+    F = _f_zcat5(Y, M)
+    flat = np.all(Y[:, :M - 1] <= 0.5, axis=1)          # ZCAT-4: the degenerate region
+    F[flat, :M - 1] = Y[flat, :1]
+    F[flat, M - 1] = (math_exp(8.0 * (1.0 - Y[flat, 0])) - 1.0) / (math.exp(8.0) - 1.0)
     return F
 
 
-def _quintic(v: float) -> float:
-    return ((0.5 - v) ** 5 + 0.5 ** 5) / (2.0 * 0.5 ** 5)
+def _quintic(v):
+    return (spow(0.5 - v, 5) + 0.5 ** 5) / (2.0 * 0.5 ** 5)
 
 
-def _f_zcat18(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    if np.all(y[:M - 1] <= 0.4) or np.all(y[:M - 1] >= 0.6):
-        F[:M - 1] = y[0]
-        F[M - 1] = _quintic(y[0])
-        return F
-    F[:M - 1] = y[:M - 1]
-    F[M - 1] = float(np.sum((0.5 - y[:M - 1]) ** 5)) / (2 * (M - 1) * 0.5 ** 5) + 0.5
+def _f_zcat18(Y: np.ndarray, M: int) -> np.ndarray:
+    F = _f_zcat7(Y, M)
+    flat = np.all(Y[:, :M - 1] <= 0.4, axis=1) | np.all(Y[:, :M - 1] >= 0.6, axis=1)
+    F[flat, :M - 1] = Y[flat, :1]
+    F[flat, M - 1] = _quintic(Y[flat, 0])
     return F
 
 
-def _f_zcat19(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    if _region_m("ZCAT19", y, M) == 1:
-        F[:M - 1] = y[0]
-        ybar = y[0]
-    else:
-        F[:M - 1] = y[:M - 1]
-        ybar = float(np.sum(y[:M - 1])) / (M - 1)
-    F[M - 1] = 1.0 - ybar - math.cos(2 * A * math.pi * ybar + HALF_PI) / (2 * A * math.pi)
+def _in_regions(name: str, y1: np.ndarray) -> np.ndarray:
+    (lo1, hi1), (lo2, hi2) = REGION_M[name]
+    return ((lo1 <= y1) & (y1 <= hi1)) | ((lo2 <= y1) & (y1 <= hi2))
+
+
+def _f_zcat19(Y: np.ndarray, M: int) -> np.ndarray:
+    F = np.empty((len(Y), M))
+    one = _in_regions("ZCAT19", Y[:, 0]) | (M == 2)      # at M = 2, m = M - 1 = 1 everywhere
+    F[:, :M - 1] = np.where(one[:, None], Y[:, :1], Y[:, :M - 1])
+    ybar = np.where(one, Y[:, 0], np.sum(Y[:, :M - 1], axis=1) / (M - 1))
+    F[:, M - 1] = 1.0 - ybar - math_cos(2 * A * math.pi * ybar + HALF_PI) / (2 * A * math.pi)
     return F
 
 
-def _f_zcat20(y: np.ndarray, M: int) -> np.ndarray:
-    F = np.empty(M)
-    if _region_m("ZCAT20", y, M) == 1:
-        F[:M - 1] = y[0]
-        F[M - 1] = _quintic(y[0])
-        return F
-    F[:M - 1] = y[:M - 1]
-    F[M - 1] = float(np.sum((0.5 - y[:M - 1]) ** 5)) / (2 * (M - 1) * 0.5 ** 5) + 0.5
+def _f_zcat20(Y: np.ndarray, M: int) -> np.ndarray:
+    F = _f_zcat7(Y, M)
+    one = _in_regions("ZCAT20", Y[:, 0]) | (M == 2)
+    F[one, :M - 1] = Y[one, :1]
+    F[one, M - 1] = _quintic(Y[one, 0])
     return F
 
 
-F_FUNCS: dict = {
+F_BATCH: dict = {
     "ZCAT1": _f_zcat1, "ZCAT2": _f_zcat2, "ZCAT3": _f_zcat3, "ZCAT4": _f_zcat4,
     "ZCAT5": _f_zcat5, "ZCAT6": _f_zcat6, "ZCAT7": _f_zcat7, "ZCAT8": _f_zcat8,
     "ZCAT9": _f_zcat9, "ZCAT10": _f_zcat10, "ZCAT11": _f_zcat11,
@@ -303,6 +304,15 @@ F_FUNCS: dict = {
     "ZCAT15": _f_zcat15, "ZCAT16": _f_zcat16, "ZCAT17": _f_zcat17,
     "ZCAT18": _f_zcat18, "ZCAT19": _f_zcat19, "ZCAT20": _f_zcat20,
 }
+
+
+def _one(fn):
+    """A batch function of the problems' F as a function of one point y."""
+    return lambda y, M, _fn=fn: _fn(np.asarray(y, dtype=float)[None, :], M)[0]
+
+
+# F(y, M) of one normalised point, as the front sampler asks for it
+F_FUNCS: dict = {name: _one(fn) for name, fn in F_BATCH.items()}
 
 # Table 2: which Pareto set topology each problem uses when Complicated_PS.
 G_OF = {
@@ -330,11 +340,21 @@ def position_count(name: str, y: np.ndarray, M: int) -> int:
     return M - 1
 
 
+def _position_counts(name: str, Y: np.ndarray, M: int) -> np.ndarray:
+    """position_count of every row of Y."""
+    if name in DEGENERATE:
+        return np.ones(len(Y), dtype=int)
+    if name in REGION_M:
+        return np.where(_in_regions(name, Y[:, 0]), 1, M - 1)
+    return np.full(len(Y), M - 1)
+
+
 # ---- Pareto set topologies g0..g10 (Table 3) ------------------------
 # Each g_j sums over the m position variables, so the whole vector is one sum
 # over the (n - m) x m matrix theta_j + c*y_i rather than a Python loop of tiny
 # numpy calls: at M = 10 that loop ran 91 times per evaluation, and an
-# evaluation is what a run spends its whole budget on.
+# evaluation is what a run spends its whole budget on. A batch adds one more
+# axis, the rows, before them.
 @lru_cache(maxsize=64)
 def _theta(m: int, n: int) -> np.ndarray:
     j = np.arange(m + 1, n + 1, dtype=float)          # 1-based j, as printed
@@ -345,62 +365,72 @@ def _theta(m: int, n: int) -> np.ndarray:
 
 def topology(which: int, y_I: np.ndarray, m: int, n: int) -> np.ndarray:
     """g_j for j = m+1..n; `which` is 0..10 of Table 3."""
+    return topology_batch(which, np.asarray(y_I, dtype=float)[None, :], m, n)[0]
+
+
+def topology_batch(which: int, YI: np.ndarray, m: int, n: int) -> np.ndarray:
+    """topology() of every row of YI (n_rows x m): n_rows x (n - m)."""
     t = _theta(m, n)                                  # (n-m, 1)
-    y = y_I.reshape(1, -1)                            # (1, m)
+    y = YI[:, None, :]                                # (rows, 1, m)
     if which == 0:
-        return np.full(n - m, 0.2210)
+        return np.full((len(YI), n - m), 0.2210)
     if which == 1:
-        return np.sin(1.5 * np.pi * y + t).sum(1) / (2 * m) + 0.5
+        return np.sin(1.5 * np.pi * y + t).sum(2) / (2 * m) + 0.5
     if which == 2:
-        return (y ** 2 * np.sin(4.5 * np.pi * y + t)).sum(1) / (2 * m) + 0.5
+        return (y ** 2 * np.sin(4.5 * np.pi * y + t)).sum(2) / (2 * m) + 0.5
     if which == 3:
-        return (np.cos(np.pi * y + t) ** 2).sum(1) / m
+        return (np.cos(np.pi * y + t) ** 2).sum(2) / m
     if which == 4:
-        s = float(np.sum(y_I))
-        return (y * np.cos(4.0 * np.pi * s / m + t)).sum(1) / (2 * m) + 0.5
+        s = np.sum(YI, axis=1)[:, None, None]
+        return (y * np.cos(4.0 * np.pi * s / m + t)).sum(2) / (2 * m) + 0.5
     if which == 5:
-        return (np.sin(2.0 * np.pi * y - 1.0 + t) ** 3).sum(1) / (2 * m) + 0.5
+        return (np.sin(2.0 * np.pi * y - 1.0 + t) ** 3).sum(2) / (2 * m) + 0.5
     if which == 6:
-        rms = math.sqrt(float(np.sum(y_I ** 2)) / m)
-        num0 = -10.0 * math.exp(-0.4 * rms) + 10.0 + math.e
+        rms = np.sqrt(np.sum(YI ** 2, axis=1) / m)
+        num0 = -10.0 * math_exp(-0.4 * rms) + 10.0 + math.e
         den = -10.0 * math.exp(-0.4) - math.exp(-1.0) + 10.0 + math.e
-        return (num0 - np.exp((np.cos(11.0 * np.pi * y + t) ** 3).sum(1) / m)) / den
+        return (num0[:, None] - np.exp((np.cos(11.0 * np.pi * y + t) ** 3).sum(2) / m)) / den
     if which == 7:
-        mu = float(np.sum(y_I)) / m
+        mu = (np.sum(YI, axis=1) / m)[:, None]
         den = 1.0 + math.e - math.exp(-1.0)
         return (mu + np.exp(np.sin(7.0 * np.pi * mu - HALF_PI + t[:, 0]))
                 - math.exp(-1.0)) / den
     if which == 8:
-        return np.abs(np.sin(2.5 * np.pi * (y - 0.5) + t)).sum(1) / m
+        return np.abs(np.sin(2.5 * np.pi * (y - 0.5) + t)).sum(2) / m
     if which == 9:
-        s = float(np.sum(y_I)) / (2 * m)
-        return (s - np.abs(np.sin(2.5 * np.pi * y - HALF_PI + t)).sum(1) / (2 * m)
+        s = (np.sum(YI, axis=1) / (2 * m))[:, None]
+        return (s - np.abs(np.sin(2.5 * np.pi * y - HALF_PI + t)).sum(2) / (2 * m)
                 + 0.5)
     if which == 10:
-        return np.sin((4.0 * y - 2.0) * np.pi + t).sum(1) ** 3 / (2.0 * m ** 3) + 0.5
+        return np.sin((4.0 * y - 2.0) * np.pi + t).sum(2) ** 3 / (2.0 * m ** 3) + 0.5
     raise ValueError(f"unknown ZCAT topology g{which}")
 
 
 # ---- difficulty levels Z_1..Z_6 (Table 4) ---------------------------
 def level_value(level: int, w: np.ndarray) -> float:
     """Z_level over the w of one index set J_i; zero exactly at w = 0."""
-    if len(w) == 0:
-        return 0.0
-    aw = np.abs(w)                                    # ZCAT-1
+    return float(level_values(level, np.asarray(w, dtype=float)[None, :])[0])
+
+
+def level_values(level: int, W: np.ndarray) -> np.ndarray:
+    """level_value() of every row of W (n_rows x |J_i|)."""
+    if W.shape[1] == 0:
+        return np.zeros(len(W))
+    aw = np.abs(W)                                    # ZCAT-1
     if level == 1:
-        return 10.0 * float(np.mean(w ** 2))
+        return 10.0 * np.mean(W ** 2, axis=1)
     if level == 2:
-        return 10.0 * float(np.max(aw))
+        return 10.0 * np.max(aw, axis=1)
     if level == 3:
-        return 10.0 * float(np.mean((w ** 2 - np.cos((2 * K - 1) * np.pi * w) + 1.0) / 3.0))
+        return 10.0 * np.mean((W ** 2 - np.cos((2 * K - 1) * np.pi * W) + 1.0) / 3.0, axis=1)
     if level == 4:
-        left = math.exp(float(np.max(aw)) ** 0.5)
-        right = math.exp(float(np.mean(0.5 * (np.cos((2 * K - 1) * np.pi * w) + 1.0))))
+        left = math_exp(spow(np.max(aw, axis=1), 0.5))
+        right = math_exp(np.mean(0.5 * (np.cos((2 * K - 1) * np.pi * W) + 1.0), axis=1))
         return 10.0 / (2 * math.e - 2) * (left - right - 1.0 + math.e)
     if level == 5:
-        return -0.7 * level_value(3, w) + 10.0 * float(np.mean(aw ** 0.002))
+        return -0.7 * level_values(3, W) + 10.0 * np.mean(aw ** 0.002, axis=1)
     if level == 6:
-        return -0.7 * level_value(4, w) + 10.0 * float(np.mean(aw)) ** 0.002
+        return -0.7 * level_values(4, W) + 10.0 * spow(np.mean(aw, axis=1), 0.002)
     raise ValueError(f"unknown ZCAT level {level}")
 
 
@@ -417,28 +447,41 @@ def _scales(M: int, n: int) -> tuple:
     return (np.arange(1, M + 1, dtype=float) ** 2, np.arange(1, n + 1, dtype=float))
 
 
-# ---- one evaluation -------------------------------------------------
+# ---- one evaluation, of one point or of a batch ---------------------
 def evaluate(name: str, x, M: int, *, level: int = 1, complicated_ps: bool = True,
              bias: bool = False, imbalance: bool = False) -> List[float]:
-    x = np.asarray(x, dtype=float)
-    n = len(x)
+    return evaluate_batch(name, [x], M, level=level, complicated_ps=complicated_ps,
+                          bias=bias, imbalance=imbalance)[0].tolist()
+
+
+def evaluate_batch(name: str, X, M: int, *, level: int = 1, complicated_ps: bool = True,
+                   bias: bool = False, imbalance: bool = False) -> np.ndarray:
+    """f(x) of every row of X (n_rows x n): n_rows x M. The rows are taken in
+    groups of the same m (ZCAT19 and ZCAT20 decide it per point)."""
+    X = np.asarray(X, dtype=float)
+    X = X.reshape(len(X), -1)
+    n = X.shape[1]
     scale, idx = _scales(M, n)
-    y = np.clip(x / idx + 0.5, 0.0, 1.0)              # a_i = -i/2, b_i - a_i = i
-    m = position_count(name, y, M)
-    y_I, y_II = y[:m], y[m:]
-
-    # Every F reads y_1..y_{M-1} only, and the two region problems decide their
-    # own m from y_1, so the whole y goes in.
-    alpha = scale * F_FUNCS[name](y, M)
-    g = topology(G_OF[name] if complicated_ps else 0, y_I, m, n)   # ZCAT-3
-    z = y_II - g
-    w = np.abs(z) ** GAMMA if bias else z
-
-    beta = np.empty(M)
-    for i, js in enumerate(_index_sets(M, m, n), start=1):
-        lv = (4 if i % 2 == 0 else 1) if imbalance else level      # Eq. 9
-        beta[i - 1] = (i ** 2) * level_value(lv, w[js])
-    return (alpha + beta).tolist()
+    Y = np.clip(X / idx + 0.5, 0.0, 1.0)              # a_i = -i/2, b_i - a_i = i
+    ms = _position_counts(name, Y, M)
+    out = np.empty((len(X), M))
+    for m in sorted(set(ms.tolist())):
+        rows = np.flatnonzero(ms == m)
+        Yg = Y[rows]
+        # Every F reads y_1..y_{M-1} only, and the two region problems decide
+        # their own m from y_1, so the whole y goes in.
+        alpha = scale * F_BATCH[name](Yg, M)
+        g = topology_batch(G_OF[name] if complicated_ps else 0, Yg[:, :m], m, n)   # ZCAT-3
+        Z = Yg[:, m:] - g
+        W = np.abs(Z) ** GAMMA if bias else Z
+        beta = np.empty((len(rows), M))
+        for i, js in enumerate(_index_sets(M, m, n), start=1):
+            lv = (4 if i % 2 == 0 else 1) if imbalance else level      # Eq. 9
+            # a C-ordered copy: W[:, js] is laid out by columns, and NumPy adds
+            # the rows of that one after the other instead of pairwise
+            beta[:, i - 1] = (i ** 2) * level_values(lv, np.ascontiguousarray(W[:, js]))
+        out[rows] = alpha + beta
+    return out
 
 
 def n_vars(M: int) -> int:
@@ -461,14 +504,10 @@ def nadir(M: int) -> tuple:
 
 # ---- reference front ------------------------------------------------
 def _nondominated_mask(F: np.ndarray) -> np.ndarray:
-    keep = np.ones(len(F), bool)
-    for i in range(len(F)):
-        if not keep[i]:
-            continue
-        dom = np.all(F <= F[i], axis=1) & np.any(F < F[i], axis=1)
-        if np.any(dom):
-            keep[i] = False
-    return keep
+    """Which rows no other row dominates, copies all kept (run.metrics, in C++
+    where the extension is built)."""
+    from ..run.metrics import nondominated_mask
+    return nondominated_mask(F)
 
 
 def _nondominated(F: np.ndarray) -> np.ndarray:
@@ -647,6 +686,7 @@ def spec(name: str, M: int) -> dict:
         "n_vars": n_vars(M),
         "bounds": bounds(n_vars(M)),
         "evaluate": (lambda x, _n=name, _M=M: evaluate(_n, x, _M)),
+        "evaluate_batch": (lambda X, _n=name, _M=M: evaluate_batch(_n, X, _M)),
         "pareto_front": (lambda k, _n=name, _M=M: pareto_front(_n, _M, k)),
         "ideal": ideal(M),
         "nadir": nadir(M),

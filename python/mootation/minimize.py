@@ -33,7 +33,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "glods_local_tol", "rm_extension", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                "n_sub",
                "sub_budget", "fd_step",
-               "local_tol", "cma_sigma0", "eps_objective")
+               "local_tol", "cma_sigma0", "eps_objective", "n_samples")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
               "inner_archive", "bin_crossover", "mating", "smpso_preset", "chi_mode",
@@ -70,6 +70,7 @@ def minimize(
     constraint_mode: str = "feasibility",
     eps_schedule: dict | None = None,
     batch: Callable[[list], list] | None = None,
+    batch_with_constraints: bool = False,
     seed_population=None,
     on_size_mismatch: str = "truncate",
     save_population=None,
@@ -132,7 +133,20 @@ def minimize(
     batch       an optional vectorized evaluator: takes a list of decision
                 vectors, returns a list of objective vectors. It crosses into
                 Python once per generation instead of once per individual,
-                which is the difference that matters when `fn` is cheap.
+                which is the difference that matters when `fn` is cheap. A
+                core that evaluates a whole generation at once hands it the
+                whole generation (docs/running.md lists which do), so `batch`
+                may spread the rows over processes; the points of a core that
+                evaluates one at a time come one row at a time. With
+                `constraints`, those are asked for every row of the batch
+                (one call of `constraints` per row).
+    batch_with_constraints
+                True: `batch` computes the constraints too, and returns the
+                pair (objective rows, constraint rows) — for a model whose
+                objectives and constraints come out of ONE computation, which
+                then runs once per point. No `constraints` then; n_cons as
+                with them (without it, one point at the lower bounds is
+                computed to count them).
     seed_population
                 start from a previous run instead of a random population: a
                 path written by `save_population`, or the object
@@ -149,7 +163,8 @@ def minimize(
                 `seed_population` reads.
     log_evaluations
                 path to a CSV of EVERY evaluation, including the ones the
-                optimizer discarded. Off unless given: no file is opened and
+                optimizer discarded; of a `batch`, its rows in order, written
+                a batch at a time. Off unless given: no file is opened and
                 nothing is wrapped.
     max_evaluations
                 stop once this many evaluations have been spent instead of
@@ -269,6 +284,36 @@ def minimize(
         raise ValueError("n_eq, eq_tol_schedule and eq_tol0 go with eq_constraints")
     n_eq = int(n_eq) if eq_constraints is not None else 0
 
+    # One computation for the objectives and the constraints (task 10, §4.2):
+    # the batch's constraint rows are kept, by point, until the core asks for
+    # them right after the objectives (the binding asks limits_batch for the
+    # rows it has just evaluated); a point asked for outside a batch (a warm
+    # start's, a design's) is computed alone.
+    if batch_with_constraints:
+        if batch is None:
+            raise ValueError("batch_with_constraints needs batch, returning (objectives, "
+                             "constraints)")
+        if constraints is not None or eq_constraints is not None:
+            raise ValueError("batch_with_constraints: the constraints come from batch; give "
+                             "no constraints or eq_constraints")
+        from .unique import _key
+        both, last = batch, {}
+
+        def objectives_part(X, _b=both):
+            F, G = _b(X)
+            last.clear()
+            for x, g in zip(X, G):
+                last[_key(x)] = None if g is None else list(g)
+            return F
+
+        def constraints_part(x, _b=both):
+            k = _key(x)
+            if k in last and last[k] is not None:
+                return last[k]
+            return list(_b([x])[1][0])
+
+        batch, constraints, has_ineq = objectives_part, constraints_part, True
+
     # Failed evaluations (mootation.failures; task 7, supplement 3, §2): the
     # guard turns the user's exceptions and None rows into NaN, which the core
     # marks failed; with "raise" nothing is caught and the core raises on NaN.
@@ -293,14 +338,8 @@ def minimize(
                             meta={"algorithm": algorithm, "pop_size": pop_size,
                                   "n_gen": n_gen, "seed": seed})
         fn = log.wrap(fn, constraints, guard)
-        if batch is not None:
-            # A batched evaluator bypasses `fn`, so the wrapper would never
-            # see anything. Refusing is better than writing an empty log and
-            # letting the caller believe the run was recorded.
-            raise ValueError(
-                "log_evaluations cannot be combined with batch=: the batched "
-                "evaluator replaces the per-point function the log wraps. "
-                "Log inside your batch function instead.")
+        if batch is not None:                       # the rows of a batch, a batch at a time
+            batch = log.wrap_batch(batch, constraints, guard)
 
     # Distinct decoded points (unique.py; supplement 3, §1.2): counted at the
     # caller's side of var_types, so that the key is the decoded point; with

@@ -121,14 +121,28 @@ class CampaignSpec:
     # 7, §5.3); on by default.
     set_metrics: bool = True
     seeds: tuple = ()
+    # "budgets" (the default since task 10 of 2026-10-18): a trajectory point
+    # at each count of budget_grid — 100, 150, 200, 300, 500, 700, 1 000, ...,
+    # 25 000 among them — and at the end, taken at exactly that many
+    # evaluations: the population the run had after at most b evaluations (the
+    # last generation that did not pass b), the run archive and everything
+    # evaluated after exactly b (the population of a core that evaluates one
+    # point at a time: as the observer last saw it, every population size of
+    # evaluations; operator statistics and coordinate diagnostics: as they are
+    # when the record is taken, at the first generation past b).
     # "generations": a trajectory point every record_every generations.
-    # "log": at fixed evaluation counts 10^(j/record_per_decade), the SAME
-    # counts at every budget, so runs of a budget ladder line up (log_grid).
-    record_grid: str = "generations"
+    # "log": at fixed evaluation counts
+    # 10^(j/record_per_decade), the SAME counts at every budget, so runs of a
+    # budget ladder line up (log_grid), at the first generation that reaches
+    # each. A campaign whose results directory was started under another grid
+    # keeps it when the config does not say (campaign_spec); one with
+    # hard_budgets defaults to "generations", which they need.
+    record_grid: str = "budgets"
     record_per_decade: int = 10
-    # Extra evaluation counts for the "log" grid — a budget ladder's rungs
-    # (2 500, 5 000, 10 000), which 10^(j/10) misses: a record is taken at the
-    # first generation that reaches each, like the grid's own counts.
+    # Extra evaluation counts for the "log" and "budgets" grids — a budget
+    # ladder's rungs (2 500, 5 000, 10 000), which the grid misses: under
+    # "log" a record is taken at the first generation that reaches each, like
+    # the grid's own counts; under "budgets" at exactly each.
     record_at: tuple = ()
     # Trajectory indicators (of `metrics`) recorded only at the record_at
     # counts and at the end of a run, not on the whole grid: the costly ones.
@@ -177,6 +191,12 @@ class CampaignSpec:
     # the default grid step, 1e-3 below five objectives and 1e-2 from five.
     archive: bool = True
     archive_delta: float = 0.0
+    # When the archive takes the points: "online", after every batch the core
+    # evaluates (a generation, or a point), or "posthoc", only when it is read
+    # (the checkpoints, the hard budgets, the end), all the points since the
+    # last read at once. The same archive either way, point for point; posthoc
+    # saves the calls of a campaign that reads it only at the end.
+    archive_mode: str = "online"
     # The cell of the step noise (benchmarks/noisy.py, <base>_s1 and _s5), a
     # share of every variable's range.
     noise_cell: float = 0.01
@@ -186,6 +206,14 @@ class CampaignSpec:
     # archive.csv.gz. On a large campaign "selected" takes about a tenth of the
     # room of "all" (a quarter of it gzipped).
     archive_variables: str = "all"
+    # IGD+ and the additive epsilon of EVERY point the run evaluated (the
+    # feasible ones, noise-free on a noisy copy), in igdp_norm's frame, kept up
+    # to date at every evaluation (_core.IncrementalFront; task 10, §5.2): in
+    # every trajectory record as igdp_norm_all and eps_norm_all, in `final`,
+    # and in meta["all_evaluated"] the evaluation at which igdp_norm_all first
+    # reached each of all_levels. Needs a reference front and the extension.
+    all_evaluated: bool = True
+    all_levels: tuple = (1.0, 0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.005, 0.002, 0.001)
     # Population objectives at every trajectory record (snapshots.npz, float32),
     # to look at the front's shape later or compute a metric the run did not
     # record (--recompute-trajectory): False, True, or a list of the problems to
@@ -227,6 +255,33 @@ def _snapshots_wanted(spec: "CampaignSpec", problem: str) -> bool:
     return s if isinstance(s, bool) else problem in s
 
 
+BUDGET_STEPS = (1.0, 1.5, 2.0, 3.0, 5.0, 7.0)     # per decade, from 100 on
+
+
+def budget_grid(limit: int, extra=()) -> list:
+    """The evaluation counts of record_grid = "budgets" up to `limit`: 100,
+    150, 200, 300, 500, 700 and the same per decade on, 25 000 besides (the
+    budget most campaigns run at), and the `extra` counts (record_at)."""
+    out = {25_000} | {int(v) for v in extra}
+    k = 2
+    while 10 ** k <= limit:
+        out |= {int(round(s * 10 ** k)) for s in BUDGET_STEPS}
+        k += 1
+    return sorted(v for v in out if 0 < v <= limit)
+
+
+def _started_grid(cfg: Config, spec: "CampaignSpec") -> str | None:
+    """The record_grid the results directory was started with, if it was."""
+    try:
+        path = out_root(cfg, spec) / "campaign.json"
+        if path.is_file():
+            got = json.loads(path.read_text(encoding="utf-8")).get("spec", {})
+            return str(got.get("record_grid") or "generations")
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
 def log_grid(limit: int, per_decade: int) -> list:
     """Evaluation counts round(10^(j/per_decade)) up to `limit`, without repeats.
 
@@ -258,7 +313,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
-             "noise_cell", "coords_diag", "set_metrics"}
+             "noise_cell", "coords_diag", "set_metrics", "all_evaluated", "all_levels",
+             "archive_mode"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -287,20 +343,26 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if not isinstance(spec.set_metrics, bool):
         raise ConfigError("campaign.set_metrics", "true or false")
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
-    spec.record_grid = str(raw.get("record_grid", "generations"))
+    # the default grid: "budgets"; "generations" with hard budgets (they read
+    # every generation); the grid a results directory was started with, so
+    # that a resumed campaign does not mix two grids
+    default_grid = "generations" if raw.get("hard_budgets") else "budgets"
+    if "record_grid" not in raw:
+        default_grid = _started_grid(cfg, spec) or default_grid
+    spec.record_grid = str(raw.get("record_grid", default_grid))
     spec.record_per_decade = int(raw.get("record_per_decade", 10))
     spec.trajectory_hv_max_m = int(raw.get("trajectory_hv_max_m", 0))
-    if spec.record_grid not in ("generations", "log"):
+    if spec.record_grid not in ("budgets", "generations", "log"):
         raise ConfigError("campaign.record_grid",
-                          f"'generations' or 'log', not '{spec.record_grid}'")
+                          f"'budgets', 'generations' or 'log', not '{spec.record_grid}'")
     if spec.record_per_decade < 1:
         raise ConfigError("campaign.record_per_decade", "must be >= 1")
     at = raw.get("record_at", [])
     if (not isinstance(at, (list, tuple))
             or not all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in at)):
         raise ConfigError("campaign.record_at", f"a list of positive evaluation counts, not {at!r}")
-    if at and spec.record_grid != "log":
-        raise ConfigError("campaign.record_at", "needs record_grid = \"log\"")
+    if at and spec.record_grid not in ("log", "budgets"):
+        raise ConfigError("campaign.record_at", "needs record_grid = \"budgets\" or \"log\"")
     spec.record_at = tuple(sorted(set(at)))
     sparse = raw.get("record_at_metrics", [])
     if not isinstance(sparse, (list, tuple)) or any(m not in spec.metrics for m in sparse):
@@ -335,6 +397,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if not isinstance(spec.archive, bool):
         raise ConfigError("campaign.archive", "true or false")
     spec.archive_delta = float(raw.get("archive_delta", 0.0))
+    spec.archive_mode = raw.get("archive_mode", "online")
+    if spec.archive_mode not in ("online", "posthoc"):
+        raise ConfigError("campaign.archive_mode",
+                          f"\"online\" or \"posthoc\", not {spec.archive_mode!r}")
     if spec.archive_delta < 0:
         raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
     spec.noise_cell = raw.get("noise_cell", 0.01)
@@ -359,6 +425,15 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.archive_checkpoints = raw.get("archive_checkpoints", False)
     if not isinstance(spec.archive_checkpoints, bool):
         raise ConfigError("campaign.archive_checkpoints", "true or false")
+    spec.all_evaluated = raw.get("all_evaluated", True)
+    if not isinstance(spec.all_evaluated, bool):
+        raise ConfigError("campaign.all_evaluated", "true or false")
+    levels = raw.get("all_levels", list(spec.all_levels))
+    if (not isinstance(levels, (list, tuple)) or not levels
+            or not all(isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
+                       for v in levels)):
+        raise ConfigError("campaign.all_levels", f"a list of levels of igdp_norm >= 0, not {levels!r}")
+    spec.all_levels = tuple(float(v) for v in levels)
     if spec.record_every < 1:
         raise ConfigError("campaign.record_every", "must be >= 1")
     hard = raw.get("hard_budgets", [])
@@ -504,6 +579,152 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
     return jobs
 
 
+def constraint_count(p) -> int:
+    """How many constraint values the problem gives: its constraints at the
+    point minimize() probed before (the lower bounds of the core's genome,
+    decoded), which is not an evaluation of the run."""
+    bounds = list(p.bounds)
+    n_bin, decode = 0, None
+    if p.var_types is not None:
+        from ..var_types import Layout
+        layout = Layout(p.var_types, bounds)
+        if not layout.trivial():
+            bounds, n_bin, decode = layout.core_bounds(), len(layout.genes), layout.to_user
+    x = [lo for lo, _ in bounds] + [0.0] * n_bin
+    return len(list(p.constraints(decode(x) if decode else x)))
+
+
+# ── the reference data, once per campaign (task 10 of 2026-10-18, §8) ────────
+# A problem's frame, reference front, dense reference and Pareto-set sample are
+# the same for every run of it, and some take long to build (ZCAT's front and
+# set at ten objectives, DAS-CMOP's frame), which every worker process paid
+# again for every problem it met. They are
+# kept in <results>/_references/<problem>.npz the first time and read from
+# there after, as long as the stamp matches: the reference version and a hash
+# of the benchmark code (mootation/benchmarks/), so that a change of the code
+# builds them again. The same arrays, so the same values.
+REFERENCES_DIR = "_references"
+# Workers that start on the same problem at once: the first takes
+# <problem>.lock and builds, the others wait for the file it writes (checked
+# every REFERENCE_POLL seconds) and read it; a lock older than REFERENCE_WAIT
+# seconds (its worker gone) is taken over, and a waiter that sees no file in
+# that time builds its own.
+REFERENCE_POLL = 0.5
+REFERENCE_WAIT = 900.0
+_CODE_STAMP: list = []
+
+
+def _code_stamp() -> str:
+    """REFERENCE_VERSION and a hash of every source file of the benchmarks."""
+    if not _CODE_STAMP:
+        import hashlib
+        from ..benchmarks.registry import REFERENCE_VERSION
+        h = hashlib.sha256()
+        base = Path(__file__).resolve().parent.parent / "benchmarks"
+        for f in sorted(base.rglob("*.py")):
+            h.update(f.relative_to(base).as_posix().encode())
+            h.update(f.read_bytes())
+        _CODE_STAMP.append(f"v{REFERENCE_VERSION}-{h.hexdigest()[:16]}")
+    return _CODE_STAMP[0]
+
+
+def reference_data(root: Path, name: str, n_ref: int, front: bool, dense: bool, pset: bool):
+    """(problem, ref, (ref3, info3), pareto_set) of a registry problem for a
+    run: the problem with its frame read off its front where the registry does
+    that, the reference front of n_ref points, the dense reference (or None,
+    None) and the Pareto-set sample, each only if asked for and if the problem
+    has it — from the campaign's cache when it holds them (REFERENCES_DIR)."""
+    import numpy as np
+    from ..benchmarks import registry as R
+    path = root / REFERENCES_DIR / f"{name}.npz"
+    lock = path.with_suffix(".lock")
+    stamp = _code_stamp()
+    want = f"n{int(n_ref)}-f{int(front)}-d{int(dense)}-s{int(pset)}"
+
+    def cached():
+        if not path.is_file():
+            return None
+        try:
+            with np.load(path, allow_pickle=False) as z:
+                if str(z["stamp"]) == stamp and str(z["want"]) == want:
+                    p = R.get_framed(name, z["ideal"], z["nadir"])
+                    get = lambda k: z[k] if k in z.files else None       # noqa: E731
+                    info = json.loads(str(z["info3"])) if "info3" in z.files else None
+                    return p, get("ref"), (get("ref3"), info), get("pset")
+        except (OSError, ValueError, KeyError):
+            pass                                  # unreadable: build it again
+        return None
+
+    got = cached()
+    if got is not None:
+        return got
+    mine = False                                  # this worker holds the lock
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        waited = 0.0
+        while not mine:
+            try:
+                os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                mine = True
+            except FileExistsError:
+                try:
+                    stale = time.time() - lock.stat().st_mtime > REFERENCE_WAIT
+                except OSError:
+                    stale = False                 # just released: look again
+                if stale or waited > REFERENCE_WAIT:
+                    break                         # build without it
+                time.sleep(REFERENCE_POLL)
+                waited += REFERENCE_POLL
+                got = cached()
+                if got is not None:
+                    return got
+        if mine:
+            got = cached()                        # written while this one waited
+            if got is not None:
+                return got
+    except OSError:
+        pass                                      # no lock to be had: build
+    try:
+        return _build_reference(path, name, n_ref, front, dense, pset, stamp, want)
+    finally:
+        if mine:
+            try:
+                lock.unlink()
+            except OSError:
+                pass
+
+
+def _build_reference(path: Path, name: str, n_ref: int, front: bool, dense: bool, pset: bool,
+                     stamp: str, want: str):
+    """reference_data's arrays built, and written to the cache (path)."""
+    import numpy as np
+    from ..benchmarks import registry as R
+    p = R.get(name)
+    ref = np.asarray(p.pareto_front(n_ref), float) if front and callable(p.pareto_front) else None
+    ref3 = info3 = None
+    if dense and ref is not None and R.has_dense_reference(name):
+        ref3, info3 = R.dense_reference(name, p.pop_size)
+    ps = np.asarray(p.pareto_set(n_ref), float) if pset and callable(p.pareto_set) else None
+    payload = dict(stamp=np.asarray(stamp), want=np.asarray(want),
+                   ideal=np.asarray(p.ideal, float), nadir=np.asarray(p.nadir, float))
+    for k, v in (("ref", ref), ("ref3", ref3), ("pset", ps)):
+        if v is not None:
+            payload[k] = np.asarray(v, float)
+    if info3 is not None:
+        payload["info3"] = np.asarray(json.dumps(info3))
+    tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp.npz")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(tmp, **payload)
+        os.replace(tmp, path)
+    except OSError:                               # another worker's copy will do
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+    return p, ref, (ref3, info3), ps
+
+
 def job_status(root: Path, job: Job) -> str:
     meta = root / job.rel_dir / "meta.json"
     if not meta.is_file():
@@ -536,25 +757,24 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     if traj_path.exists():
         traj_path.unlink()
 
-    p = bench_get(job.problem)
-    ref = None
+    t_setup = time.perf_counter()
+    from ..benchmarks.registry import PROBLEMS as _registry
+    p = _registry[job.problem]               # the problem's own fields; its frame comes below
     final_metrics = spec.final_metrics or spec.metrics
     # IGDX, CR and PSP wherever the problem has a Pareto set ([campaign] set_metrics)
     set_extra = []
     if spec.set_metrics and callable(p.pareto_set):
         set_extra = [m for m in SET_METRICS if m not in spec.metrics]
         final_metrics = (*final_metrics, *(m for m in SET_METRICS if m not in final_metrics))
-    if any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_front):
-        ref = np.asarray(p.pareto_front(spec.n_ref), float)
-    ref3 = info3 = None                     # the dense reference ([campaign] dense_reference)
-    if spec.dense_reference and ref is not None:
-        from ..benchmarks.registry import dense_reference, has_dense_reference
-        if has_dense_reference(job.problem):
-            ref3, info3 = dense_reference(job.problem, p.pop_size)
+    # the frame, the reference front, the dense reference ([campaign]
+    # dense_reference) and the Pareto-set sample, from the campaign's cache
+    # (reference_data)
+    p, ref, (ref3, info3), pset = reference_data(
+        root, job.problem, spec.n_ref,
+        front=any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)),
+        dense=spec.dense_reference,
+        pset=any(m in NEEDS_SET for m in (*spec.metrics, *final_metrics)))
     ideal, nadir = p.ideal, p.nadir
-    pset = None
-    if any(m in NEEDS_SET for m in (*spec.metrics, *final_metrics)) and callable(p.pareto_set):
-        pset = np.asarray(p.pareto_set(spec.n_ref), float)
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
     from .budget import depends_on_budget
@@ -611,8 +831,17 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                        delta=spec.archive_delta or None)
            if (spec.archive or baseline) else None)
 
-    def feasible(x) -> bool:
-        return all(c <= 0.0 for c in p.constraints(x))
+    # Where the run's time goes (meta["timing"], seconds; tools/perf reads it):
+    # the problem's objectives with its constraints (one computation, the
+    # batch's), the run archive, the oracle and everything evaluated, the
+    # evaluator around all that, the checkpoints taken inside it, the
+    # trajectory records, minimize() as a whole, the final indicators and the
+    # files. The core's own share is minimize less the evaluator calls
+    # (Result.callback_seconds) and the records. (constraints and feasible:
+    # the constraints asked for apart, which no run does any more.)
+    tm = dict(evaluate=0.0, constraints=0.0, feasible=0.0, archive=0.0, evaluator=0.0,
+              checkpoints=0.0, records=0.0, minimize=0.0, final=0.0, write=0.0,
+              setup=time.perf_counter() - t_setup)
 
     # A constrained problem's indicators are measured on the feasible part of
     # each answer (metrics.compute), which needs its variables; fe_first_feas
@@ -652,11 +881,13 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     hard_pop, hard_arc = {}, {}
 
     def take_hard_archive(b):
+        t_hd = time.perf_counter()
         AF, AX, _ = arc.points()
         if len(AF) or cons is not None:     # a constrained problem's empty archive: feas_share 0
             idx = arc.select(spec.answer_k or p.pop_size, spec.answer_select)
             hard_arc[str(b)] = dict(measure(true_values(AF[idx], AX[idx]), AX[idx], traj_metrics),
                                     fe=fe, n=int(len(idx)))
+        tm["checkpoints"] += time.perf_counter() - t_hd
 
     # Typed variables (mootation.var_types, task 7, §10): the points the
     # algorithm asked for again after the rounding, dup_x_share in final.
@@ -685,36 +916,127 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # the core as it is, which marks it failed; the trajectory records the
     # share of failures since the last record, final n_failed.
     n_failed, failed_at_record = 0, 0
+    failed_fe: list = []                 # the counts of the failed evaluations ("budgets")
+
+    # Everything evaluated (CampaignSpec.all_evaluated): IGD+ and epsilon of all
+    # the feasible, finite points so far (noise-free on a noisy copy), and their
+    # values at exactly each count of the "budgets" grid.
+    inc = None
+    if spec.all_evaluated and ref is not None and ideal is not None and nadir is not None:
+        from .. import _core as _c
+        if hasattr(_c, "IncrementalFront"):
+            inc = _c.IncrementalFront(np.ascontiguousarray(ref, float), np.asarray(ideal, float),
+                                      np.asarray(nadir, float), list(spec.all_levels))
+    all_at: dict = {}
+    grid_set: set = set()
+
+    # THE EVALUATOR, A BATCH AT A TIME (task 10, §4.2). The core hands over
+    # every batch it evaluates — a generation, or one point — and the rows are
+    # computed together: the problem's batch, with its constraints in the same
+    # computation where it has them (evaluate_with_constraints; the core gets
+    # them from there, the archive's feasibility too); a run's own evaluator
+    # (a noisy or an uninformative copy) row by row, its state following the
+    # points in order. Then every row in order, as one point at a time before:
+    # its count, a failure, its feasibility, the archive, the oracle,
+    # everything evaluated, the hard budgets and the checkpoints at exactly
+    # their count. The archive and the oracle take their points a batch at a
+    # time (add_many; "posthoc": when they are read), which keeps them point
+    # for point what adding one at a time gave.
+    both = p.evaluate_with_constraints if (cons is not None and objective is p.evaluate) else None
+    if objective is p.evaluate:
+        rows_of = p.evaluate_batch
+    else:
+        rows_of = getattr(objective, "batch", None)
+    posthoc = spec.archive_mode == "posthoc" and not baseline    # a baseline reads its archive
+    pend_a, pend_o, pend_i = [], [], []          # (f, x) for the archive and oracle, (f, fe)
+
+    def flush(read: bool = False) -> None:
+        """Hand the pending points over: to the archive and the oracle after
+        every batch online and when they are read posthoc, to everything
+        evaluated always (its values are read at the grid)."""
+        t_a = time.perf_counter()
+        if pend_a and (read or not posthoc):
+            arc.add_many([f for f, _ in pend_a], [x for _, x in pend_a] if p.n_vars else None)
+            pend_a.clear()
+        if pend_o and (read or not posthoc):
+            oracle.add_many([f for f, _ in pend_o], [x for _, x in pend_o] if p.n_vars else None)
+            pend_o.clear()
+        if pend_i:
+            inc.update(np.asarray([f for f, _ in pend_i], float),
+                       np.asarray([n for _, n in pend_i], np.int64))
+            pend_i.clear()
+        tm["archive"] += time.perf_counter() - t_a
+
+    def objectives_of(X):
+        """(F, G, T) of the rows X: objectives, constraints (None without),
+        noise-free values (None but on a noisy copy)."""
+        if both is not None:
+            F, G = both(X)
+            return F, G, None
+        if rows_of is not None:
+            F = rows_of(X)
+            T = getattr(objective, "last_true_rows", None) if truth is not None else None
+        else:
+            F, T = [], []
+            for x in X:
+                F.append(objective(x))
+                T.append(getattr(objective, "last_true", None))
+            T = None if truth is None or any(t is None for t in T) else T
+        G = p.constraints_batch(X) if cons is not None else None
+        return F, G, T
+
+    def evaluate_rows(X):
+        nonlocal fe, fe_first_feas, dup_x, n_failed
+        t_in = time.perf_counter()
+        X = [list(x) for x in X]
+        if typed:
+            for x in X:
+                key = tuple(x)
+                dup_x += key in seen_x
+                seen_x.add(key)
+        F, G, T = objectives_of(X)
+        F = np.asarray(F, float).reshape(len(X), p.n_obj)
+        tm["evaluate"] += time.perf_counter() - t_in
+        for i, x in enumerate(X):
+            fe += 1
+            f = F[i]
+            read_now = (arc is not None and fe in hard) or fe in checkpoints
+            if not np.all(np.isfinite(f)):
+                n_failed += 1
+                failed_fe.append(fe)
+            else:
+                ok = G is None or bool(np.all(np.asarray(G[i], float) <= 0.0))
+                if cons is not None and ok and fe_first_feas is None:
+                    fe_first_feas = fe
+                xn = numeric(x) if numeric is not None else x
+                if arc is not None and ok:
+                    pend_a.append((f, xn))
+                t_true = None
+                if oracle is not None:
+                    t_true = T[i] if T is not None else truth(list(x))
+                    pend_o.append((t_true, xn))
+                if inc is not None and ok:
+                    pend_i.append((f if t_true is None else t_true, fe))
+            if inc is not None and fe in grid_set:
+                flush()
+                all_at[fe] = (inc.igd_plus(), inc.eps_plus())
+            if read_now:
+                flush(read=True)
+                if arc is not None and fe in hard:
+                    take_hard_archive(fe)
+                if fe in checkpoints and (len(arc) or cons is not None):
+                    take_checkpoint(fe)
+        flush()
+        tm["evaluator"] += time.perf_counter() - t_in
+        rows = F.tolist()
+        if cons is not None:
+            return rows, [list(map(float, g)) for g in G]
+        return rows
 
     def evaluate(x):
-        nonlocal fe, fe_first_feas, dup_x, n_failed
-        fe += 1
-        if typed:
-            key = tuple(x)
-            dup_x += key in seen_x
-            seen_x.add(key)
-        f = objective(x)
-        if not all(math.isfinite(v) for v in f):
-            n_failed += 1
-            if arc is not None and fe in hard:
-                take_hard_archive(fe)
-            if fe in checkpoints and (len(arc) or cons is not None):
-                take_checkpoint(fe)
-            return f
-        ok = cons is None or feasible(x)
-        if cons is not None and ok and fe_first_feas is None:
-            fe_first_feas = fe
-        xn = numeric(x) if numeric is not None else x
-        if arc is not None and ok:
-            arc.add(f, xn)
-        if oracle is not None:
-            t = getattr(objective, "last_true", None)
-            oracle.add(t if t is not None else truth(list(x)), xn)
-        if arc is not None and fe in hard:
-            take_hard_archive(fe)
-        if fe in checkpoints and (len(arc) or cons is not None):
-            take_checkpoint(fe)
-        return f
+        """One point (a baseline's, or a core's single evaluation)."""
+        got = evaluate_rows([x])
+        return got[0][0] if cons is not None else got[0]
 
     def take_checkpoint(b):
         """The archive scenario after exactly b evaluations (archive_checkpoints)."""
@@ -729,6 +1051,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         if keep_x:
             ck_X.append(AX[idx].astype(np.float32))
         record_seconds += time.perf_counter() - t_ck
+        tm["checkpoints"] += time.perf_counter() - t_ck
 
     snap = _snapshots_wanted(spec, job.problem)
     # the variables go into the snapshots and checkpoints where snapshot_variables
@@ -762,12 +1085,17 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         else:
             hv_skipped = [m for m in traj_metrics if m in HV_NAMES]
             traj_metrics = [m for m in traj_metrics if m not in HV_NAMES]
-    grid = (sorted(set(log_grid(budget, spec.record_per_decade))
-                   | {v for v in spec.record_at if v <= budget})
-            if spec.record_grid == "log" else None)
+    if spec.record_grid == "log":
+        grid = sorted(set(log_grid(budget, spec.record_per_decade))
+                      | {v for v in spec.record_at if v <= budget})
+    elif spec.record_grid == "budgets":
+        grid = budget_grid(budget, spec.record_at)
+        grid_set.update(grid)
+    else:
+        grid = None
     next_i = 0
     meta.update(record_grid=spec.record_grid,
-                record_per_decade=spec.record_per_decade if grid is not None else None,
+                record_per_decade=spec.record_per_decade if spec.record_grid == "log" else None,
                 record_at=list(spec.record_at),
                 trajectory_hv_max_m=spec.trajectory_hv_max_m,
                 trajectory_hv=("not recorded" if hv_skipped else
@@ -815,8 +1143,16 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # the costly indicators only at the record_at counts and at the end
     everywhere = [m for m in traj_metrics if m not in spec.record_at_metrics]
 
+    held = None     # "budgets": the last call's (gen, fe, rows, variables), not recorded yet
+
+    def variables_of(objectives, variables):
+        """The variables of the rows on_generation hands over, when the record needs them."""
+        if need_x and len(objectives) and variables is None:
+            variables = _core.current_variables()         # a baseline hands them over
+        return variables
+
     def on_gen(gen, objectives, variables=None):
-        nonlocal n_records, next_i, last_fe, record_seconds, failed_at_record
+        nonlocal next_i, held
         if cover_front is not None:            # at every call, before the grid's choice
             if cover["gen"] is None and cover_front <= {tuple(map(float, r)) for r in objectives}:
                 cover["gen"], cover["fe"] = gen, fe
@@ -824,6 +1160,22 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 A = {tuple(map(float, r)) for r in _core.inner_archive_state()}
                 if A and cover_front <= A:
                     cover["archive_gen"], cover["archive_fe"] = gen, fe
+        if spec.record_grid == "budgets":
+            # Every count b of the grid passed since the previous call gets the
+            # population the run had at b: this call's when it is at exactly b,
+            # else the previous call's, the last that did not pass b (none
+            # before the first population is complete). The end of the run is
+            # recorded after minimize() returns (held).
+            variables = variables_of(objectives, variables)
+            while next_i < len(grid) and grid[next_i] <= fe:
+                b = grid[next_i]
+                next_i += 1
+                if b == fe:
+                    record(gen, b, objectives, variables)
+                elif held is not None:
+                    record(held[0], b, held[2], held[3], fe_pop=held[1])
+            held = (gen, fe, objectives, variables)
+            return
         if grid is not None:
             # Generation 0 and the last call are always recorded; in between,
             # the first call at or past the next count of the grid.
@@ -831,44 +1183,61 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 return
             while next_i < len(grid) and grid[next_i] <= fe:
                 next_i += 1
+        record(gen, fe, objectives, variables_of(objectives, variables))
+
+    def record(gen, fe_rec, objectives, variables, fe_pop=None):
+        """One trajectory record: the population (objective rows, variables)
+        at fe_rec evaluations; fe_pop, the evaluations it cost when that is
+        fewer (the "budgets" grid)."""
+        nonlocal n_records, last_fe, record_seconds, failed_at_record
         t_rec = time.perf_counter()
         F = np.asarray(objectives, float)
         X = None
         if need_x and F.size:
-            # a baseline hands its variables over; a core is asked for them
-            if variables is None:
-                variables = _core.current_variables()
             X = np.asarray(variables, float).reshape(len(F), p.n_vars)
         if truth is not None and X is not None:
             F = true_values(F, X)                 # snapshot and indicators: noise-free
-        rec = {"gen": gen, "fe": fe, "t": round(t_rec - t0, 3), "n": int(len(F))}
-        if p.failing is not None or n_failed:
-            rec["fail_share"] = (n_failed - failed_at_record) / max(fe - last_fe, 1)
+        rec = {"gen": gen, "fe": fe_rec, "t": round(t_rec - t0, 3), "n": int(len(F))}
+        if fe_pop is not None:
+            rec["fe_pop"] = fe_pop
+        if spec.record_grid == "budgets":
+            if p.failing is not None or failed_fe:
+                k = sum(1 for v in failed_fe if last_fe < v <= fe_rec)
+                rec["fail_share"] = k / max(fe_rec - last_fe, 1)
+        elif p.failing is not None or n_failed:
+            rec["fail_share"] = (n_failed - failed_at_record) / max(fe_rec - last_fe, 1)
             failed_at_record = n_failed
         finite = bool(np.all(np.isfinite(F))) if F.size else True
         rec["finite"] = finite
-        mark = fe >= budget or any(last_fe < b <= fe for b in spec.record_at)
+        mark = fe_rec >= budget or any(last_fe < b <= fe_rec for b in spec.record_at)
         if finite and F.size:
             rec.update(measure(F, X, traj_metrics if mark else everywhere))
+        if inc is not None:
+            v = all_at.get(fe_rec) if fe_rec != fe else None
+            v = v or (inc.igd_plus(), inc.eps_plus())
+            rec["igdp_norm_all"], rec["eps_norm_all"] = (None if not math.isfinite(u) else u
+                                                         for u in v)
         if op_stats:
             rec.update(_core.operator_stats())
         if diag:
             rec.update(coords_diag.record(job.problem, _core.coords_state(), diag_start))
         if snap:
-            snap_fe.append(fe); snap_gen.append(gen); snap_n.append(len(F))
+            snap_fe.append(fe_rec); snap_gen.append(gen); snap_n.append(len(F))
             snap_F.append(F.astype(np.float32).reshape(len(F), p.n_obj))
             if keep_x:
                 snap_X.append(np.zeros((0, p.n_vars), np.float32) if X is None
                               else X.astype(np.float32))
         for b in hard:                                   # the last record at or below b
-            if fe <= b:
+            if fe_rec <= b:
                 hard_pop[str(b)] = {k: rec.get(k) for k in ("gen", "fe", "n", *traj_metrics)}
-        last_fe = fe
+        last_fe = fe_rec
         fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
         fh.flush()
         n_records += 1
         record_seconds += time.perf_counter() - t_rec
+        tm["records"] += time.perf_counter() - t_rec
 
+    t_min = time.perf_counter()
     try:
         if baseline:
             res = run_baseline(job.algorithm, evaluate, p.bounds, pop=job.pop,
@@ -880,7 +1249,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 evaluate, bounds=p.bounds, n_objs=p.n_obj,
                 algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens,
                 seed=job.seed,
-                constraints=(p.constraints if p.has_cons else None),
+                # every batch the core evaluates, with the constraints in the
+                # same call (THE EVALUATOR above)
+                batch=evaluate_rows, batch_with_constraints=p.has_cons,
+                n_cons=constraint_count(p) if p.has_cons else 0,
                 # The budget is spent in evaluations, not steps. NIMMO
                 # evaluates one offspring per step and MOEA/D-DRA and -AWA a
                 # fifth of the population, so a budget in generations gave them
@@ -906,7 +1278,12 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             print(f"[{job.index}] {job.problem} {job.key} seed {job.seed}: FAILED {e}",
                   file=sys.stderr)
         return "failed"
+    if spec.record_grid == "budgets" and held is not None and held[1] > last_fe:
+        record(held[0], held[1], held[2], held[3])
+    flush(read=True)                   # posthoc: the archive takes its points now
     fh.close()
+    tm["minimize"] = time.perf_counter() - t_min
+    t_out = time.perf_counter()
 
     F = np.asarray(res.objectives, float)
     X = np.asarray(res.variables, float)
@@ -947,7 +1324,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 row = list(AF[i]) + (list(AX[i]) if whole else [])
                 out.write(",".join(f"{v:.10g}" for v in row) + f",{int(AE[i])}\n")
         if (len(AF) or cons is not None) and (spec.archive_scenario or not whole):
+            t_sel = time.perf_counter()
             arc_sel = arc.select(p.pop_size, spec.answer_select)
+            tm["final"] += time.perf_counter() - t_sel
         if not whole and arc_sel is not None:
             with _open_text(d / "final_archive.csv.gz", "w") as out:
                 how = "DSS" if spec.answer_select == "dss" else spec.answer_select
@@ -999,10 +1378,22 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
              "bounds": p.bounds, "cyclic": p.cyclic_vars, "distance_fn": p.distance_fn,
              "constraints": cons}
     final = {}
+    t_fin = time.perf_counter()
     if F.size and np.all(np.isfinite(F)):
         final = M.compute(F, ref_front=ref, ideal=ideal, nadir=nadir, which=final_metrics,
                           X=X, **extra)
         final.update(dense(F, X, final_metrics))
+    if inc is not None and final:
+        final["igdp_norm_all"] = inc.igd_plus() if inc.seen else None
+        final["eps_norm_all"] = inc.eps_plus() if inc.seen else None
+    if inc is not None:
+        meta["all_evaluated"] = {
+            "points": int(inc.seen), "levels": list(spec.all_levels),
+            "fe_to_level": [None if v < 0 else int(v) for v in inc.reached],
+            "measured": "IGD+ and the additive epsilon of every feasible, finite point "
+                        "evaluated (noise-free on a noisy copy) against the reference, in "
+                        "igdp_norm's frame; fe_to_level: the evaluation at which igdp_norm_all "
+                        "first reached each level"}
     if cons is not None:
         final["fe_first_feas"] = fe_first_feas
     if p.failing is not None or n_failed:
@@ -1051,6 +1442,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         meta["final_archive"]["n"] = int(len(arc_sel))
         if truth is not None and len(T):
             meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
+    tm["final"] += time.perf_counter() - t_fin
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}
                              for o, r in getattr(res, "operators", [])]
@@ -1064,6 +1456,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # the uninformative problems count where every evaluated point and
         # every non-dominated one fell (benchmarks/uninformative.py; --bias)
         meta["structural_bias"] = objective.summary()
+    # the files and the rest after the run: what is not the final indicators
+    tm["write"] = time.perf_counter() - t_out - tm["final"]
+    meta["timing"] = dict({k: round(v, 4) for k, v in tm.items()},
+                          callbacks=round(float(getattr(res, "callback_seconds", 0.0)), 4),
+                          calls=int(getattr(res, "callbacks", 0)))
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),

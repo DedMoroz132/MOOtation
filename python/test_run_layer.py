@@ -1429,7 +1429,11 @@ def campaign_record_at_and_ladder_expand_as_documented():
                      ("record_at = [10000, 2500, 5000]", "record_at = 2500"),
                      ("ladder = [2500, 10000, 30000]", 'ladder = ["x"]')):
         raises(ConfigError, C.campaign_spec, loads(_LADDER.replace(old, bad)))
-    raises(ConfigError, C.campaign_spec, loads(_LADDER.replace('record_grid = "log"' + nl, "")))
+    # record_at needs a grid of evaluation counts: "budgets" (the default) or "log"
+    no_grid = loads(_LADDER.replace('record_grid = "log"' + nl, ""))
+    assert C.campaign_spec(no_grid).record_grid == "budgets"
+    raises(ConfigError, C.campaign_spec,
+           loads(_LADDER.replace('record_grid = "log"', 'record_grid = "generations"')))
     # without a ladder the job list is the one it always was
     plain = loads(_LADDER.replace("ladder = [2500, 10000, 30000]" + nl, ""))
     assert validate(plain) == []
@@ -6138,6 +6142,7 @@ out = "res"
 budget_fe = 600
 metrics = ["igdp_norm"]
 coords_diag = true
+record_grid = "generations"
 """
     with tempfile.TemporaryDirectory() as td:
         cfg_path = Path(td) / "co.toml"
@@ -7017,6 +7022,46 @@ def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
 
 
 @test
+def the_evaluation_log_takes_a_batch_a_batch_at_a_time():
+    """Task 10, §4.2: log_evaluations with batch= (refused before) logs every
+    row of every batch, in order, its constraints too (with
+    batch_with_constraints from the batch's own computation), and the run is
+    the run without the log."""
+    if _core_with("Config") is None:
+        print("  skip  the_evaluation_log...: no _core"); return
+    import csv
+    import tempfile
+    import mootation
+    f = lambda x: [x[0], 1.0 - x[0] + x[1] * x[1]]                         # noqa: E731
+    seen = []
+
+    def batch(X):
+        seen.extend(list(x) for x in X)
+        return [f(x) for x in X]
+
+    def both(X):
+        seen.extend(list(x) for x in X)
+        return [f(x) for x in X], [[x[1] - 0.5] for x in X]
+    with tempfile.TemporaryDirectory() as d:
+        for kw in ({"batch": batch}, {"batch": both, "batch_with_constraints": True, "n_cons": 1}):
+            seen.clear()
+            plain = mootation.minimize(f, [(0.0, 1.0)] * 2, 2, pop_size=12, n_gen=4, seed=2, **kw)
+            seen.clear()
+            log = Path(d) / "log.csv"
+            r = mootation.minimize(f, [(0.0, 1.0)] * 2, 2, pop_size=12, n_gen=4, seed=2,
+                                   log_evaluations=log, **kw)
+            assert r.objectives == plain.objectives and r.evaluations == 60, kw
+            rows = [row for row in csv.reader(l for l in log.read_text(encoding="utf-8")
+                                              .splitlines() if not l.startswith("#"))][1:]
+            assert len(rows) == len(seen) == 60, (len(rows), len(seen))
+            for row, x in zip(rows, seen):
+                assert [float(v) for v in row[1:3]] == x
+                assert [float(v) for v in row[3:5]] == f(x)
+                cv = max(0.0, x[1] - 0.5) if "batch_with_constraints" in kw else 0.0
+                assert float(row[5]) == cv
+
+
+@test
 def mixed_integer_and_categorical_problems_keep_their_optima():
     """Supplement 3, §1.4: bbob-biobj-mixint (Tusar et al. 2019, §3.1.1): n/5
     variables of each arity 2, 4, 8, 16, the rest continuous; the levels
@@ -7442,6 +7487,75 @@ def dn_nsga2_keeps_more_of_sym_parts_parts_than_nsga2():
 
 
 @test
+def a_campaigns_reference_data_are_built_once():
+    """Task 10, §8: a problem's reference data (campaign.reference_data) are
+    built by the first of the workers that start on it together, the others
+    wait for its file and read it, the same arrays; a second campaign run
+    reads the file; no lock or temporary file is left."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import tempfile
+    import threading
+    import time as _time
+    from mootation.run import campaign as C
+    built = []
+    real = C._build_reference
+
+    def counting(*a, **k):
+        built.append(1)
+        _time.sleep(0.3)                    # long enough for the others to find the lock
+        return real(*a, **k)
+    C._build_reference = counting
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            out = [None] * 3
+
+            def go(i):
+                out[i] = C.reference_data(Path(d), "DTLZ2_3D", 200, True, False, True)
+            threads = [threading.Thread(target=go, args=(i,)) for i in range(3)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            assert len(built) == 1, built
+            again = C.reference_data(Path(d), "DTLZ2_3D", 200, True, False, True)
+            assert len(built) == 1
+            for o in out[1:] + [again]:
+                assert o[1].tobytes() == out[0][1].tobytes()
+                assert o[3].tobytes() == out[0][3].tobytes()
+                assert tuple(o[0].ideal) == tuple(out[0][0].ideal)
+            left = sorted(q.name for q in (Path(d) / C.REFERENCES_DIR).iterdir())
+            assert left == ["DTLZ2_3D.npz"], left
+    finally:
+        C._build_reference = real
+
+
+@test
+def n_samples_reaches_the_monte_carlo_of_sms_emoa_mo_cma_es_and_hype():
+    """Task 10, §7: n_samples, the Monte-Carlo sample points of a step from four
+    objectives, reaches SMS-EMOA, MO-CMA-ES and HypE and only them; 0 makes
+    SMS-EMOA's and MO-CMA-ES's contributions exact (a run of its own, not the
+    default's), HypE refuses it, and a fraction is refused everywhere."""
+    if _core_with("Config") is None:
+        print("  skip  n_samples...: stale _core"); return
+    import mootation
+    f = lambda x: [x[0], x[1], x[2], 3.0 - x[0] - x[1] - x[2] + x[3] * x[3]]    # noqa: E731
+    box = [(0.0, 1.0)] * 4
+    run = lambda alg, **kw: mootation.minimize(f, box, 4, algorithm=alg, pop_size=12,  # noqa: E731
+                                               n_gen=4, seed=3, **kw)
+    for alg in ("sms_emoa", "mo_cma_es"):
+        a, b, c = run(alg), run(alg, n_samples=10000), run(alg, n_samples=0)
+        assert "n_samples" not in b.ignored and "n_samples" not in c.ignored, alg
+        assert a.objectives == b.objectives, alg              # 10 000 is the default
+        assert a.objectives != c.objectives, alg              # exact: another run
+        raises(ValueError, run, alg, n_samples=0.5)
+    r = run("hype", n_samples=500)
+    assert "n_samples" not in r.ignored and r.objectives != run("hype").objectives
+    raises(ValueError, run, "hype", n_samples=0)
+    assert "n_samples" in run("nsga2", n_samples=100).ignored
+
+
+@test
 def rwmop_problems_as_the_paper_prints_them():
     """Task 7, §8: RWMOP's RCM01-18, 21-23, 25, 26, 28, 29 (benchmarks/rwmop.py). Where the
     problem is one of Tanabe and Ishibuchi's (re.py: RE31-33, 35, 36, 41), its
@@ -7484,7 +7598,18 @@ def rwmop_problems_as_the_paper_prints_them():
     assert min(lhs) > 754 and min(RW.evaluate(8, x)[0][0] for x in
                                   np.array(RW.PROBLEMS[8][1]).T[0][None]) > 15.5
     assert RW.WIRE == tuple(sorted(RW.WIRE)) and len(RW.WIRE) == 42
-    raises(ValueError, RW.rcm02, [0.05, 0.5, 0.4, 0.4, 4.0])         # the layers out of order
+    # where a problem is not defined, a failed evaluation: NaN, not an exception
+    # (task 10, §6), and its share of the box in the properties
+    f, g = RW.rcm02([0.05, 0.5, 0.4, 0.4, 4.0])                      # the layers out of order
+    assert all(math.isnan(v) for v in f + g), (f, g)
+    f, g, h = RW.rcm24([1.0] * 6 + [700.0, 50.0, 800.0])            # x7 >= 600: log undefined
+    assert all(math.isnan(v) for v in f + h) and g == [], (f, h)
+    from mootation.benchmarks.properties import properties
+    row = properties("RCM02")
+    assert row["undefined"] and 0.03 < row["undefined_share"] < 0.08, row
+    assert properties("RCM01")["undefined"] is None and properties("RCM01")["undefined_share"] == 0
+    from mootation.benchmarks import registry as R
+    assert all(math.isnan(v) for v in R.PROBLEMS["RE22"].evaluate([0.2, 0.0, 0.0]))   # x2 = 0
     # RCM20 as printed: no feasible point (the paper's Table 5 has its algorithms
     # feasible, so what ran was not what is printed; not registered)
     best = math.inf
@@ -7906,6 +8031,501 @@ snapshot_variables = "pareto_set"
                     assert "pdist" not in u and "igdx" not in u, u
 
 
+# ── task 10: the run layer's numerics in C++, against their NumPy reference ──
+
+def _sets(rng, count, m_values, n_max):
+    """Random point sets with the cases that break filters: copies of rows,
+    equal coordinates (values on a coarse grid), a constant objective."""
+    import numpy as np
+    for t in range(count):
+        m = int(m_values[t % len(m_values)])
+        n = int(rng.integers(2, n_max + 1))
+        kind = t % 4
+        if kind == 0:
+            F = rng.random((n, m))
+        elif kind == 1:
+            F = rng.integers(0, 4, (n, m)).astype(float)              # many ties and copies
+        elif kind == 2:
+            F = rng.random((n, m))
+            F[rng.integers(0, n, n // 3)] = F[rng.integers(0, n, n // 3)]   # copies
+        else:
+            F = rng.random((n, m))
+            F[:, int(rng.integers(0, m))] = 0.5                       # a constant objective
+            # a front: rows on a simplex, none dominating another
+            if m >= 2 and n > 3:
+                W = rng.random((n // 2, m))
+                F[: n // 2] = W / W.sum(axis=1, keepdims=True)
+        yield F
+
+
+@test
+def the_compiled_nondominated_filter_is_the_numpy_one():
+    if not _have_numpy() or _core_with("nondominated") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(10)
+    for F in _sets(rng, 10_000, range(2, 11), 40):
+        got, want = M.nondominated(F), M._nondominated_numpy(F)
+        assert got.shape == want.shape and got.tobytes() == want.tobytes(), (F, got, want)
+        assert (M.nondominated_mask(F) == M._nondominated_mask_numpy(F)).all(), F
+    for m in (2, 3, 4, 6):                            # larger sets: the O(n log n) paths
+        F = np.vstack([rng.random((1500, m)), rng.integers(0, 5, (500, m)).astype(float)])
+        assert M.nondominated(F).tobytes() == M._nondominated_numpy(F).tobytes(), m
+        assert (M.nondominated_mask(F) == M._nondominated_mask_numpy(F)).all(), m
+    # rows with a NaN: kept, and neither dominating nor dominated
+    F = np.array([[0.2, 0.3], [np.nan, 0.0], [0.1, np.nan], [0.5, 0.5], [0.2, 0.3], [0.0, 1.0]])
+    got, want = M.nondominated(F), M._nondominated_numpy(F)
+    assert np.array_equal(got, want, equal_nan=True), (got, want)
+    assert (M.nondominated_mask(F) == M._nondominated_mask_numpy(F)).all()
+    try:                                              # cross-check, where moocore is installed
+        import moocore
+    except ImportError:
+        moocore = None
+    if moocore is not None:
+        for m in (2, 3, 5):
+            F = rng.random((800, m))
+            ours = {tuple(r) for r in M.nondominated(F)}
+            theirs = {tuple(r) for r in np.asarray(moocore.filter_dominated(F))}
+            assert ours == theirs, m
+
+
+def _stream(rng, m, n, kind):
+    """A sequence of points for an archive: moving towards a front, with copies,
+    points outside the frame, and integer values where cells and corners tie."""
+    import numpy as np
+    out = []
+    for i in range(n):
+        if kind == "int":
+            f = rng.integers(0, 6, m).astype(float)
+        else:
+            w = rng.random(m)
+            w /= w.sum()
+            scale = 1.0 + 3.0 * (1.0 - i / n) * rng.random()
+            f = w * scale + 0.002 * rng.standard_normal(m)
+            if rng.random() < 0.02:
+                f = f * 50.0                               # an outlier: the frame drifts
+        out.append(f)
+        if rng.random() < 0.05:
+            out.append(out[int(rng.integers(0, len(out)))].copy())   # a copy
+    return np.array(out)
+
+
+@test
+def the_compiled_archive_keeps_the_python_archives_points():
+    if not _have_numpy() or _core_with("GridArchive") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.run.archive import GridArchive, PyGridArchive
+    rng = np.random.default_rng(11)
+    cases = [(2, "real", True), (2, "real", False), (3, "real", True), (3, "real", False),
+             (3, "int", False), (4, "int", True), (5, "real", True), (5, "real", False),
+             (8, "real", False), (10, "int", False)]
+    for m, kind, framed in cases:
+        F = _stream(rng, m, 3000 if m <= 3 else 1500, kind)
+        X = rng.random((len(F), 3))
+        frame = dict(ideal=np.zeros(m), nadir=np.full(m, 1.5)) if framed else {}
+        a = GridArchive(m, 3, **frame)
+        b = PyGridArchive(m, 3, **frame)
+        c = GridArchive(m, 3, **frame)
+        for i in range(len(F)):
+            assert a.add(F[i], X[i]) == b.add(F[i], X[i]), (m, kind, i)
+            if i % 97 == 0 or i == len(F) - 1:
+                pa, pb = a.points(), b.points()
+                for u, v in zip(pa, pb):
+                    assert u.tobytes() == v.tobytes(), (m, kind, framed, i)
+                fa, fb = a.frame(), b.frame()
+                assert all(np.array_equal(u, v) for u, v in zip(fa, fb)), (m, kind, i)
+        c.add_many(F[:1000], X[:1000])
+        c.add_many(F[1000:], X[1000:])
+        for u, v in zip(c.points(), b.points()):
+            assert u.tobytes() == v.tobytes(), (m, kind, framed, "add_many")
+        assert a.info() == c.info() == b.info(), (a.info(), b.info())
+        for method in ("dss", "igdp_self"):
+            k = min(len(a), 30)
+            assert a.select(k, method).tolist() == b.select(k, method).tolist(), (m, method)
+    # what is not a point of the archive's shape is counted, not stored
+    a, b = GridArchive(2), PyGridArchive(2)
+    for f in ([0.1, 0.2, 0.3], [np.nan, 0.0], [np.inf, 1.0], [0.4, 0.4]):
+        assert a.add(f) == b.add(f)
+    assert a.info() == b.info(), (a.info(), b.info())
+
+
+@test
+def the_compiled_dss_is_the_numpy_dss():
+    if not _have_numpy() or _core_with("dss_select") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.run import archive as A
+    rng = np.random.default_rng(12)
+    for t, F in enumerate(_sets(rng, 200, (2, 3, 5, 8, 9, 12), 120)):
+        m = F.shape[1]
+        if t % 3 == 0:                              # almost dominated points, to set aside
+            F = np.vstack([F, F[:3] + np.r_[2e-4, np.full(m - 1, 0.5)]])
+        G = A.normalized(F)
+        assert (A.almost_dominated(G) == A._almost_dominated_numpy(G)).all(), t
+        rows = rng.integers(0, len(F), 5)
+        assert (A.almost_dominated(G, rows) == A._almost_dominated_numpy(G, rows)).all(), t
+        for lo, hi in ((None, None), (F.min(0), F.max(0)), (np.zeros(m), None),
+                       (np.zeros(m), np.full(m, 2.0))):
+            g1, k1 = A.set_aside(F, lo, hi)
+            g2, k2 = A._set_aside_numpy(F, lo, hi)
+            assert g1.tobytes() == g2.tobytes() and (k1 == k2).all(), (t, lo, hi)
+            for k in (1, m, len(F) // 2, len(F)):
+                got = A.dss_order(F, k, ideal=lo, nadir=hi).tolist()
+                want = A._dss_order_numpy(F, k, ideal=lo, nadir=hi).tolist()
+                assert got == want, (t, k, lo, hi)
+    for m in (2, 3, 5, 9):                          # igdp_self: a reference of SELF_REFERENCE
+        F = rng.random((1300, m))
+        F = F / F.sum(axis=1, keepdims=True)
+        for lo, hi in ((None, None), (np.zeros(m), np.ones(m))):
+            got = A.igdp_self_order(F, 40, ideal=lo, nadir=hi).tolist()
+            want = A._igdp_self_order_numpy(F, 40, ideal=lo, nadir=hi).tolist()
+            assert got == want, (m, lo)
+        R = F[:200]
+        assert (A.greedy_igdp_rows(F[200:700], R, 25).tolist()
+                == A.greedy_igdp(A.dplus_matrix(F[200:700], R), 25).tolist()), m
+
+
+@test
+def the_compiled_indicators_are_the_numpy_ones():
+    if not _have_numpy() or _core_with("front_distances") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(13)
+    for m in (2, 3, 5, 7, 8, 9, 12, 15):
+        for n, r in ((1, 50), (37, 300), (200, 1000), (90, 7)):
+            F = rng.random((n, m)) * 1.3
+            R = rng.random((r, m))
+            R /= R.sum(axis=1, keepdims=True)
+            same = lambda a, b: np.asarray(a).tobytes() == np.asarray(b).tobytes()  # noqa: E731
+            assert same(M.igd(F, R), M._igd_numpy(F, R)), (m, n)
+            assert same(M.dplus_distances(F, R), M._dplus_distances_numpy(F, R)), (m, n)
+            for u, v in zip(M.front_distances(F, R), M._front_distances_numpy(F, R)):
+                assert same(u, v), (m, n)
+            for u, v in zip(_core.front_distances(F, R, threads=4), M._front_distances_numpy(F, R)):
+                assert same(u, v), (m, n, "threads")
+            assert same(_core.igd_distances(F, R, threads=3).mean(), M._igd_numpy(F, R))
+            assert same(M.eps_plus(F, R), M._eps_plus_numpy(F, R)), (m, n)
+            assert same(M.igd_plus(F, R), M._dplus_distances_numpy(F, R).mean())
+            assert same(M.gd_plus(F, R), M._front_distances_numpy(F, R)[1].mean())
+            ideal, nadir = np.zeros(m), np.ones(m)
+            G = F - ideal
+            W = M.das_dennis(m, M.lattice_h(m, 100))
+            assert same(M.r2_discrete(F, ideal, nadir, M.lattice_h(m, 100)), M._r2_numpy(G, W))
+    # the Monte-Carlo points, drawn once and kept: the value of drawing them every time
+    pl = rng.random((60, 8)) * 0.8
+    ref, lo = np.full(8, 1.1), np.zeros(8)
+    v = M._hv_mc(pl, ref, lo, 50_000, 3)
+    g = np.random.default_rng(3)
+    hit = 0
+    for k in (20_000, 20_000, 10_000):
+        s = lo + g.random((k, 8)) * (ref - lo)
+        hit += int(_core.hv_covered(pl, s))
+    assert v == float(np.prod(ref - lo) * hit / 50_000) == M._hv_mc(pl, ref, lo, 50_000, 3)
+
+
+@test
+def incremental_front_matches_a_full_recomputation():
+    if not _have_numpy() or _core_with("IncrementalFront") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(14)
+    for m in (2, 3, 5, 9):
+        Z = rng.random((150, m))
+        Z /= Z.sum(axis=1, keepdims=True)
+        ideal, nadir = np.zeros(m), np.full(m, 1.0)
+        levels = [2.0, 0.5, 0.2, 0.1, 0.05, 1e-9]
+        inc = _core.IncrementalFront(Z, ideal, nadir, levels)
+        seen, fe, first = [], 0, {}
+        G_ref, R = M._normalised(np.zeros((1, m)), Z, ideal, nadir)
+        for batch in range(20):
+            B = rng.random((15, m)) * (2.0 - batch / 12.0)
+            counts = np.arange(fe + 1, fe + 16, dtype=np.int64) * 2      # not every count
+            inc.update(B, counts)
+            for i in range(len(B)):
+                seen.append(B[i])
+                G, _ = M._normalised(np.array(seen), Z, ideal, nadir)
+                val = float(M._front_distances_numpy(G, R)[0].mean())
+                for lv in levels:
+                    if lv not in first and val <= lv:
+                        first[lv] = int(counts[i])
+            fe += 15
+            G, _ = M._normalised(np.array(seen), Z, ideal, nadir)
+            to_set, _, eps = M._front_distances_numpy(G, R)
+            assert inc.igd_plus() == float(to_set.mean()), (m, batch)
+            assert inc.eps_plus() == float(eps.max()), (m, batch)
+            assert inc.distances().tobytes() == to_set.tobytes()
+        assert list(inc.reached) == [first.get(lv, -1) for lv in levels], (inc.reached, first)
+
+
+@test
+def the_budget_grid_records_the_population_at_exactly_b():
+    """record_grid = "budgets" (task 10, §5.1): a record at every count of the
+    grid and at the end; the population there is the one the "generations"
+    grid recorded at the last generation that did not pass b (fe_pop), the
+    same values; IGD+ of everything evaluated (§5.2) never rises and is never
+    above the population's."""
+    if not _have_numpy() or _core_with("IncrementalFront") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    assert C.budget_grid(25_000)[:8] == [100, 150, 200, 300, 500, 700, 1000, 1500]
+    assert 25_000 in C.budget_grid(25_000) and 30_000 in C.budget_grid(40_000)
+    assert C.budget_grid(2000, (250, 1234)) == [100, 150, 200, 250, 300, 500, 700, 1000, 1234,
+                                                 1500, 2000]
+    runs = {}
+    for grid in ("budgets", "generations"):
+        text = f"""algorithms = [{{ name = "nsga2", pop = 0, gens = 0 }},
+                      {{ name = "moead_de", pop = 0, gens = 0 }}]
+[run]
+name = "g"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D", "C2-DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 1600
+metrics = ["igdp", "igdp_norm", "hv"]
+record_grid = "{grid}"
+"""
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "c.toml"
+            cfg_path.write_text(text, encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            assert spec.record_grid == grid
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+                d = root / job.rel_dir
+                runs[(grid, job.problem, job.algorithm)] = (
+                    json.loads((d / "meta.json").read_text(encoding="utf-8")),
+                    [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()])
+    for prob in ("DTLZ2_3D", "C2-DTLZ2_3D"):
+        for alg in ("nsga2", "moead_de"):
+            meta, T = runs[("budgets", prob, alg)]
+            _, G = runs[("generations", prob, alg)]
+            by_fe = {r["fe"]: r for r in G}
+            want = [b for b in C.budget_grid(1600) if b >= 91]
+            assert [r["fe"] for r in T] == want + [meta["fe"]], [r["fe"] for r in T]
+            for r in T:
+                g = by_fe[r.get("fe_pop", r["fe"])]
+                assert r.get("fe_pop", r["fe"]) <= r["fe"]
+                for k in ("gen", "n", "igdp", "igdp_norm", "hv"):
+                    assert r[k] == g[k], (prob, alg, r["fe"], k, r[k], g[k])
+            all_ = [r["igdp_norm_all"] for r in T if r["igdp_norm_all"] is not None]
+            assert all(a >= b for a, b in zip(all_, all_[1:])), all_
+            assert meta["final"]["igdp_norm_all"] <= meta["final"]["igdp_norm"]
+            assert meta["final"]["igdp_norm_all"] == all_[-1]
+            reached = meta["all_evaluated"]["fe_to_level"]
+            assert reached[0] is not None and reached[0] <= meta["fe"]
+
+
+def _box_points(p, n, rng):
+    """n points of the problem's box, its integer, discrete, binary and
+    categorical variables drawn from their values, the corners first."""
+    import math
+    lo = [float(b[0]) for b in p.bounds]
+    hi = [float(b[1]) for b in p.bounds]
+    out = []
+    for t in range(n):
+        row = []
+        for j in range(len(lo)):
+            v = lo[j] if t == 0 else hi[j] if t == 1 else lo[j] + rng.random() * (hi[j] - lo[j])
+            k = p.var_types[j] if p.var_types is not None else "real"
+            if k == "int":
+                row.append(int(round(min(max(v, math.ceil(lo[j])), math.floor(hi[j])))))
+            elif k == "bin":
+                row.append(int(rng.integers(0, 2)))
+            elif isinstance(k, (tuple, list)) and k[0] == "discrete":
+                row.append(float(k[1][int(rng.integers(0, len(k[1])))]))
+            elif isinstance(k, (tuple, list)) and k[0] == "cat":
+                labels = k[1] if isinstance(k[1], (list, tuple)) else list(range(int(k[1])))
+                row.append(labels[int(rng.integers(0, len(labels)))])
+            else:
+                row.append(v)
+        out.append(row)
+    return out
+
+
+@test
+def every_problem_evaluates_a_batch_as_its_points():
+    """BenchProblem.evaluate_batch, constraints_batch, equalities_batch and
+    evaluate_with_constraints (task 10, §4.1) against evaluate, constraints and
+    equalities point by point, bit for bit, on every problem of the registry:
+    1 000 points where the family has a batch of its own, 50 where the batch is
+    the loop over the point function; a point that raises is NaN in the batch."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import registry as R
+    rng = np.random.default_rng(15)
+
+    def rows(fn, X):
+        out = []
+        for x in X:
+            try:
+                out.append(np.asarray(fn(list(x)), float))
+            except Exception:                         # noqa: BLE001
+                out.append(None)
+        return out
+
+    def same(batch, points):
+        batch = np.asarray(batch, float)
+        for b, r in zip(batch, points):
+            if r is None:
+                assert np.isnan(b).all(), b
+            else:
+                assert b.tobytes() == r.tobytes(), (b, r)
+
+    own = 0
+    for name in R.names():
+        p = R.PROBLEMS[name]
+        loop = getattr(p.evaluate_batch, "rows_loop", False)
+        own += not loop
+        X = _box_points(p, 50 if loop else 1000, rng)
+        F = rows(p.evaluate, X)
+        same(p.evaluate_batch(X), F)
+        if p.has_cons:
+            G = rows(p.constraints, X)
+            same(p.constraints_batch(X), G)
+            BF, BG = p.evaluate_with_constraints(X)
+            same(BF, F)
+            same(BG, G)
+        if p.equalities is not None:
+            same(p.equalities_batch(X), rows(p.equalities, X))
+        if p.make_evaluator is not None:              # a run's own evaluator: its calls in order
+            one, many = p.make_evaluator(1), p.make_evaluator(1)
+            if hasattr(many, "batch"):
+                Y = X[:40]
+                seq, true = [], []
+                for x in Y:
+                    seq.append(np.asarray(one(list(x)), float))
+                    true.append(np.asarray(getattr(one, "last_true", None) or [], float))
+                same(many.batch(Y), seq)
+                if getattr(many, "last_true_rows", None) is not None:
+                    same(many.last_true_rows, true)
+    assert own >= 200, own                            # bbob-biobj, ZCAT, DAS-CMOP, ...
+
+
+@test
+def a_batch_keeps_maths_values_where_numpy_differs():
+    """Where the point code takes math's sin, cos or exp of one float, or
+    raises a float to a power, the batch takes NumPy's only where it agrees
+    with math's on the machine (_rows.agrees), and math's at every element
+    where it does not: forced to the second, the batches are still the point
+    values, bit for bit."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import _rows
+    from mootation.benchmarks import registry as R
+    names = ("ZDT3", "ZDT4", "ZDT6", "MaF13_5D", "MOP4", "BT3", "BT4", "BT6", "C2-DTLZ2_3D",
+             "C3-DTLZ4_5D", "ZCAT5_3D", "ZCAT14_5D", "ZCAT19_3D", "MW12", "MW13", "LIR-CMOP1",
+             "LIR-CMOP13", "DAS-CMOP1_t01", "bbobbiobj17_n05_2D", "bbobbiobj55_n05_2D")
+    rng = np.random.default_rng(18)
+    points = {n: _box_points(R.PROBLEMS[n], 300, rng) for n in names}
+    want = {n: [list(R.PROBLEMS[n].evaluate(list(x))) for x in points[n]] for n in names}
+    agrees = _rows.agrees
+    _rows.agrees = lambda *a, **k: False
+    try:
+        for n in names:
+            p = R.PROBLEMS[n]
+            F = np.asarray(p.evaluate_batch(points[n]), float)
+            assert F.tobytes() == np.asarray(want[n], float).tobytes(), n
+            if p.has_cons:
+                G = np.asarray(p.constraints_batch(points[n]), float)
+                assert G.tobytes() == np.asarray([p.constraints(list(x)) for x in points[n]],
+                                                 float).tobytes(), n
+        assert _rows.spow(np.array([2.0, 3.0]), 0.7).tolist() == [2.0 ** 0.7, 3.0 ** 0.7]
+    finally:
+        _rows.agrees = agrees
+
+
+@test
+def one_computation_gives_the_objectives_and_the_constraints():
+    """minimize(batch=..., batch_with_constraints=True): the model runs once
+    per point, and the run is the run with constraints given apart."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import registry as R
+    for name, alg in (("C2-DTLZ2_3D", "nsga2"), ("DAS-CMOP3_t04", "moead_de"),
+                      ("DOC2", "nsga2"), ("MW3", "ibea_eplus")):
+        p = R.get(name)
+        calls = [0]
+
+        def both(X, _p=p):
+            calls[0] += len(X)
+            return _p.evaluate_with_constraints(X)
+        kw = dict(bounds=p.bounds, n_objs=p.n_obj, algorithm=alg, pop_size=p.pop_size,
+                  max_evaluations=600, seed=3)
+        a = minimize(p.evaluate, constraints=p.constraints, **kw)
+        n_cons = len(p.constraints([lo for lo, _ in p.bounds]))
+        b = minimize(p.evaluate, batch=both, batch_with_constraints=True, n_cons=n_cons, **kw)
+        assert calls[0] == b.evaluations, (name, calls[0], b.evaluations)
+        assert np.asarray(a.objectives).tobytes() == np.asarray(b.objectives).tobytes(), name
+        assert np.asarray(a.variables).tobytes() == np.asarray(b.variables).tobytes(), name
+        assert list(a.cv) == list(b.cv), name
+
+
+@test
+def the_archive_posthoc_is_the_archive_online():
+    """[campaign] archive_mode = "posthoc" takes the points only when the
+    archive is read (checkpoints, the end): the same files."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    import importlib.util
+    spec_ = importlib.util.spec_from_file_location(
+        "compare_results", HERE.parent / "tools" / "compare_results.py")
+    if spec_ is None:
+        print("    (skipped: no tools/compare_results.py)"); return
+    cmp = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(cmp)
+    roots = {}
+    for mode in ("online", "posthoc"):
+        text = f"""algorithms = [{{ name = "nsga2", pop = 0, gens = 0 }},
+                      {{ name = "moead_de", pop = 0, gens = 0 }}]
+[run]
+name = "{mode}"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D", "C2-DTLZ2_3D", "DTLZ2_3D_n1"]
+[campaign]
+out = "res"
+budget_fe = 1200
+metrics = ["igdp_norm", "hv"]
+record_at = [250, 600]
+archive_checkpoints = true
+archive_mode = "{mode}"
+"""
+        td = tempfile.mkdtemp()
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        roots[mode] = root
+    diffs = cmp.compare(roots["online"], roots["posthoc"])
+    assert diffs == [], diffs[:10]
+
+
 @test
 def smpso_presets_knobs_and_refusals():
     """Task 9, B1: SMPSO (algorithms/smpso.hpp) — each preset resolves to its
@@ -8198,6 +8818,7 @@ budget_fe = 1500
 metrics = ["igdp_norm"]
 final_metrics = ["igdp_norm"]
 operator_stats = true
+record_grid = "generations"
 """
     with tempfile.TemporaryDirectory() as td:
         cfg_path = Path(td) / "c.toml"
