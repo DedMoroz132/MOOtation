@@ -77,7 +77,22 @@ inline const std::vector<std::string>& knob_names() {
         "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
         "coords_warmup", "coords_update",
         "spu_frac", "inner_archive_cap", "archive_reuse_p",
-        "dn_cf"
+        "dn_cf",
+        // task 9 of 2026-10-18: smpso (algorithms/smpso.hpp)
+        "vmax_frac", "vel_on_bound_low", "vel_on_bound_up", "w_min", "w_max", "c_min", "c_max",
+        "turbulence_k", "turbulence_p", "archive_size", "eps_archive_eta",
+        // task 9: r2_emoa (algorithms/r2_emoa.hpp)
+        "r2_weights", "r2_offset",
+        // task 9: bc_spx, bc_rex (algorithms/bc_spx.hpp, bc_rex.hpp); paes (algorithms/paes.hpp)
+        "bc_lambda", "paes_depth",
+        // task 9: dmulti_mads (algorithms/dmulti_mads.hpp)
+        "mads_tau", "mads_delta0",
+        // task 9: multiglods (algorithms/multiglods.hpp)
+        "glods_search_every", "glods_local_tol",
+        // task 9: the scalarization methods (python/mootation/scalar) and the
+        // polishing every algorithm takes (minimize.py); no core has them
+        "n_sub", "sub_budget", "fd_step", "local_tol", "cma_sigma0", "eps_objective",
+        "polish_share", "polish_points", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread"
     };
     return v;
 }
@@ -105,12 +120,35 @@ inline const std::vector<std::string>& knob_names() {
 //   bin_crossover  sms_emoa, nsga2: uniform or none for the binary genome
 //   mating         nsga2: tournament, or each member a parent once
 //   dn_cf          dn_nsga2: the crowding factor of its niching mating pool
+//   vmax_frac, vel_on_bound_low, vel_on_bound_up, w_min, w_max, c_min, c_max,
+//   turbulence_k, turbulence_p, archive_size, eps_archive_eta
+//                  smpso: the velocity bound and the velocity at the box, the
+//                  inertia and acceleration ranges, the turbulence, the
+//                  leaders' bound and omopso's ε (algorithms/smpso.hpp)
+//   r2_weights, r2_offset
+//                  r2_emoa: the number of weights and the utopian point's
+//                  offset (algorithms/r2_emoa.hpp)
+//   bc_lambda      bc_spx, bc_rex: the children of one step, 0: 10n (bc_spx.hpp)
+//   paes_depth     paes: the grid's recursive halvings per objective (paes.hpp)
+//   mads_tau, mads_delta0
+//                  dmulti_mads: the frame size's factor and its start
+//   glods_search_every, glods_local_tol
+//                  multiglods: the failures before a search, and α of a
+//                  local point
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
                           "sa_t_ratio", "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha",
                           "sa_adapt_window", "coords_warmup", "coords_update", "spu_frac",
-                          "inner_archive_cap", "archive_reuse_p", "dn_cf"})
+                          "inner_archive_cap", "archive_reuse_p", "dn_cf", "vmax_frac",
+                          "vel_on_bound_low", "vel_on_bound_up", "w_min", "w_max", "c_min",
+                          "c_max", "turbulence_k", "turbulence_p", "archive_size",
+                          "eps_archive_eta", "r2_weights", "r2_offset", "bc_lambda", "paes_depth",
+                          "mads_tau", "mads_delta0", "glods_search_every",
+                          "glods_local_tol", "n_sub",
+                          "sub_budget", "fd_step", "local_tol",
+                          "cma_sigma0", "eps_objective", "polish_share", "polish_points",
+                          "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread"})
         if (name == k) return true;
     return false;
 }
@@ -129,6 +167,18 @@ inline bool is_core_param(const std::string& name)
 //                 drawn from the seed
 //   dms_poll      dms: the next poll centre, the first still worth polling or
 //                 one of them at random
+//   smpso_preset, chi_mode, turbulence, r_per_dim, archive_prune, leader_select
+//                 smpso: the preset and the readings it fixes (smpso.hpp)
+//   r2_mode, r2_space
+//                 r2_emoa: the exact or the discrete R2, weights uniform in
+//                 weight or in angle space (r2_emoa.hpp)
+//   bc_selection  bc_spx, bc_rex: BC (default), or the paper's BF and BA
+//   mads_select, mads_poll, mads_search
+//                 dmulti_mads: the incumbent by spread or first, the poll
+//                 complete or opportunistic, the speculative search or none
+//   scalarization, local, sub_plan, tch_weights, boost_scalarization, polish
+//                 the Python-level methods of task 9 (python/mootation/scalar):
+//                 no core has them, every core reports them ignored
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -157,6 +207,24 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"inner_archive", {"off", "nd"}},
         {"bin_crossover", {"uniform", "none"}},
         {"mating",       {"tournament", "each"}},
+        {"smpso_preset", {"jmetal", "platemo", "fair", "omopso"}},
+        {"chi_mode", {"signed", "abs", "none"}},
+        {"turbulence", {"every_k", "prob", "thirds", "off"}},
+        {"r_per_dim", {"no", "yes"}},
+        {"archive_prune", {"one_by_one", "one_shot"}},
+        {"leader_select", {"crowding_tournament", "random"}},
+        {"r2_mode",      {"exact", "discrete"}},
+        {"r2_space",     {"weight", "angle"}},
+        {"bc_selection", {"bc", "bf", "ba"}},
+        {"mads_select",  {"spread", "first"}},
+        {"mads_poll",    {"complete", "opportunistic"}},
+        {"mads_search",  {"speculative", "none"}},
+        {"boost_scalarization", {"eps", "minmax"}},
+        {"scalarization", {"eps", "tch", "nbi", "nnc", "ps"}},
+        {"local",        {"sqp", "nm", "cmaes"}},
+        {"sub_plan",     {"grid", "laumanns", "gap"}},
+        {"tch_weights",  {"inverse", "lattice"}},
+        {"polish",       {"off", "sqp", "nm"}},
     };
     return v;
 }
@@ -177,7 +245,12 @@ inline bool is_core_word(const std::string& name)
     for (const char* k : {"de_adapt", "de_adapt_weight", "de_archive", "portfolio",
                           "portfolio_credit", "sa_energy", "sa_step", "sa_weights",
                           "sa_tch_accept", "coords", "survival", "inner_archive",
-                          "bin_crossover", "mating"})
+                          "bin_crossover", "mating", "smpso_preset", "chi_mode", "turbulence",
+                          "r_per_dim", "archive_prune", "leader_select", "r2_mode", "r2_space",
+                          "bc_selection", "mads_select", "mads_poll", "mads_search",
+                          "boost_scalarization",
+                          "scalarization",
+                          "local", "sub_plan", "tch_weights", "polish"})
         if (name == k) return true;
     return false;
 }

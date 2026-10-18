@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 67 algorithm names |
+| `--algorithms` | list the 74 algorithm names and the nine Python methods |
 | `--problems` | list the 1340 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -419,10 +419,11 @@ probability 1/(number of genes) but at most 1/2 (pymoo's cap; with a single
 gene 1 would change every child's), one of its other values, each alike —
 a bit flips (`operators/bit_flip.hpp`). SBX, DE and polynomial mutation never
 see them, and with more than two genes a binary run is what it was, bit for
-bit. 49 of the 67 cores take the integer genome; these 18 refuse it by name:
-`clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `dn_nsga2`, `etea`, `gde3`, `hcca`, `hlmea`,
-`if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`, `moead_ds`, `mosa`, `naemo`
-and `two_arch2` (`minimize` says so, naming the variables).
+bit. 50 of the 74 cores take the integer genome; these 24 refuse it by name:
+`bc_rex`, `bc_spx`, `clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `dmulti_mads`, `dn_nsga2`,
+`etea`, `gde3`, `hcca`, `hlmea`, `if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`,
+`moead_ds`, `mosa`, `multiglods`, `naemo`, `paes`, `smpso` and `two_arch2`
+(`minimize` says so, naming the variables); so do the Python methods.
 
 `result.evaluations` counts the calls, `result.unique_evaluations` the
 distinct decoded points among them (`mootation/unique.py`; the key is the
@@ -945,6 +946,167 @@ hypercube of n points drawn from the seed and `dms_poll = "random"` polls a
 point drawn among those still worth polling (`first`, the default, the first
 in list order), the directions in random order (DMS-6 in `dms.hpp`).
 
+**SMPSO.** Speed-constrained multi-objective PSO (Nebro et al., MCDM 2009;
+`algorithms/smpso.hpp`): `pop` particles, a leaders archive of `pop`
+non-dominated points by crowding distance, and the archive as the answer.
+Each step moves the whole swarm (one batch of `pop` evaluations): a leader by
+a binary tournament on crowding, the velocity of Eq. 2 times the
+constriction factor χ, bounded to ±`vmax_frac`·(ub − lb), the position put
+back on the box with the velocity multiplied by a factor, a turbulence on a
+share of the swarm. What the paper leaves open is a preset:
+
+| preset | χ | w | velocity bound | at the bound | turbulence | answer |
+|---|---|---|---|---|---|---|
+| `jmetal` (default) | as Eq. 3 prints it (negative for C1 + C2 > 4) | 0.1 | ½ width | clip, velocity × −1 | polynomial (η = 20, 1/n) on i % 6 == 0 | leaders, crowding, one removed at a time |
+| `platemo` | its modulus | U[0.1, 0.5] | ½ width | clip, velocity × 0.001 | polynomial on each particle with probability 0.15 | leaders |
+| `fair` | its modulus | 0.1 | ½ width | `bound_repair = reflect`, velocity × −1 | as jmetal | as jmetal |
+| `omopso` | 1 | U[0.1, 0.5], C1, C2 ~ U[1.5, 2.0] | none | clip, velocity × −1 | non-uniform / uniform / none by thirds | an ε-dominance archive (ε = 0.0075) of every leader accepted |
+
+Every cell is a knob (`chi_mode`, `w_min`/`w_max`, `c_min`/`c_max`,
+`vmax_frac`, `bound_repair`, `vel_on_bound_low`/`vel_on_bound_up`,
+`turbulence` with `turbulence_k`/`turbulence_p`, `eta_m`, `pm`,
+`archive_size`, `archive_prune`, `leader_select`, `r_per_dim`,
+`eps_archive_eta`), applied over the preset whatever the order. The run
+reports every knob as it used it in `Result.settings`, and a campaign writes
+them to `meta.json` under `settings`. The omopso preset's non-uniform mutation
+narrows over the whole budget, so with `turbulence = thirds` the run depends
+on `max_evaluations` (`run/budget.py`, `depends_on_budget`); the other
+presets do not. Real variables with finite bounds only.
+
+**R2-EMOA** (`algorithms/r2_emoa.hpp`): SMS-EMOA's steady state — two
+parents uniformly, SBX and polynomial mutation, one offspring a step — with
+the worst front's point of least R2 contribution removed instead of the least
+hypervolume (Brockhoff, Wagner & Trautmann, Evol. Comput. 23(3), 2015,
+Algorithm 1). The paper's settings: crossover probability 0.9, η_c = 15,
+η_m = 20, 500 weights. `r2_mode = "exact"` (the default, two objectives) takes
+the R2 of a continuous uniform distribution of weights (Schäpermeier et al.,
+2024); `"discrete"` the paper's `r2_weights` weights, uniform in weight or,
+with `r2_space = "angle"`, in angle space; from three objectives always
+discrete, on a Das–Dennis lattice. The utopian point is the ideal point of
+every evaluation so far, less `r2_offset` of the range; `normalize = true`
+scales the objectives first.
+
+**BC** (`bc_spx`, `bc_rex`; `algorithms/bc_spx.hpp`, `bc_rex.hpp`): Tanabe & Ishibuchi's
+non-elitist best-children selection (GECCO 2019): k = n + 1 parents drawn
+from the population, λ = 10n children of the same parents by SPX
+(ε = √(n + 2)) or REX (σ² = 1/(k − 1)); the parents always leave, and the k
+best children by non-domination level and crowding distance — ranked among
+the rest of the population — take their places. `bc_selection = "bf"` (the
+best k of children and parents) and `"ba"` (the best μ of all) are the
+paper's two elitist comparisons; `bc_lambda` sets λ, `crossover` switches
+spx and rex. The paper's population is ⌊100 ln n⌋, and pop_size must be at
+least n + 1. The population is not elitist: the paper measures an unbounded
+archive of every non-dominated point, a campaign's archive scenario here.
+
+**PAES** (`algorithms/paes.hpp`): the (1 + 1) Pareto archived evolution
+strategy of Knowles & Corne — one mutant of the current solution a step,
+accepted by dominance and, between mutually non-dominated ones, by the
+crowding of an adaptive grid over the archive (2^`paes_depth` intervals per
+objective; 5, the paper's). The archive, bounded by `archive_size`
+(pop_size), is the answer. Polynomial mutation (`eta_m`, `pm`) for the
+papers' bit flips. A grid of 2^(5·M) cells is far finer than an archive of a
+hundred points from three objectives on, where every point has a cell of its
+own and a full archive loses its first member: a smaller `paes_depth` there.
+
+**Scalarization with a local solver** (`python/mootation/scalar/`, task 9):
+the algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
+`nnc_sqp`, `eps_nm`, `eps_cmaes`, Python with NumPy and SciPy. A run is a plan
+of single-objective subproblems:
+
+1. the initial plan — `pop_size` uniform points, or the design of `init`
+   (with `init_share`), or the seed population;
+2. the anchors: for each objective the lexicographic minimum of (f_k,
+   f_{k+1}, ...), which gives the normalization (z* the utopia point, z^N the
+   pseudo-nadir of the anchors);
+3. the subproblems of `sub_plan`, each started from the archive's best point
+   for it (feasible first, then its value; again from the initial plan's best
+   when the solver does not move): `grid` the lattice in order, so that a
+   subproblem starts next to its neighbour's solution; `laumanns` the adaptive
+   ε-constraint scheme of Laumanns, Thiele & Zitzler (eps only); `gap` ours:
+   of a lattice four times finer, the subproblem farthest from the points found.
+
+| knob | values |
+|---|---|
+| `scalarization` | `eps` min f_k with the others bounded; `tch` the smooth Chebyshev form min t, w_i F̄_i <= t (`tch_weights`: `inverse`, w ∝ 1/d so that the solutions lie on the lattice's rays, or `lattice`, w = d); `nbi` Das & Dennis's max t, Φβ + t·n̂ = F̄ with the quasi-normal; `nnc` min F̄_m under the normal constraints; `ps` Pascoletti–Serafini, min t with F̄ <= Φβ + t·r |
+| `local` | `sqp` (SLSQP; the problem's inequalities and equalities as its constraints), `nm`, `cmaes` (both with a penalty in which a feasible point is always better) |
+| `n_sub` | subproblems after the anchors; 0: from the budget — what is left over 10 (n + 1) evaluations for sqp, 100 n for the others, at most `pop_size` |
+| `sub_budget` | evaluations a subproblem may take; 0: what is left over the subproblems left (what one does not use, the next get) |
+| `fd_step`, `local_tol`, `cma_sigma0`, `eps_objective` | sqp's forward-difference step in the box normalized to [0, 1] (1.49e-8); the solvers' tolerance (1e-14); CMA-ES's first step in the normalized box (0.3); the objective eps minimizes (1) |
+
+The run ends when the plan is done or the budget spent: a plan that ends
+early leaves evaluations unspent, as DMS does. `result.solutions` holds every
+subproblem's solution in the order solved — the anchors first —, a diagnostic
+beside the answer, which is the archive's feasible non-dominated points by
+DSS. The plan is laid out over the budget, so these runs depend on
+`max_evaluations` (`run/budget.py`). Only `constraint_mode = "feasibility"`;
+real variables only. The header of each module lists what it reads where the
+sources are silent (SCALAR-1 ... 12 in `scalar/__init__.py`).
+
+**MOSQP** (`python/mootation/scalar/mosqp.py`; Fliege & Vaz, SIAM J.
+Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the
+constraints); then `mosqp_spread` (20) iterations that spread a set of
+pop_size points from the line between the bounds — every point gives, for
+every objective, the SQP direction of that objective under the linearized
+constraints and a step by Armijo's rule on an ℓ1 merit function — the set
+kept non-dominated and cut by crowding distance; then every point refined
+along the direction that improves all the objectives' quadratic models at
+once, until the directions or the steps are below √`mosqp_tau`. Gradients by
+forward differences (`fd_step`), counted; H_i = I; `mosqp_mu` (10⁻⁴) and
+`mosqp_beta` (1/2) are Armijo's constant and factor. The preprint leaves τ,
+μ, β and the set's size open: the header says what is chosen. Equalities and
+inequalities go to the subproblems as constraints; an infeasible
+subproblem sends the point to a restoration.
+
+**Polishing** (`polish`, every algorithm; `scalar/polish.py`): `polish = "sqp"`
+or `"nm"` keeps `polish_share` (0.2) of `max_evaluations` for the end. The
+algorithm runs on the rest; then `polish_points` (0: from what the share buys,
+at most `pop_size`) of the feasible non-dominated points of everything it
+evaluated, chosen by DSS, are each improved in one objective — round the
+objectives from one point to the next — with the others no worse than they
+were (to the subproblem's slack), and every point it evaluates is counted.
+The answer is the non-dominated points of the algorithm's answer and the
+polished points; cut to `pop_size` when there are more, it keeps first a
+point weakly dominating each point of the algorithm's answer, then the rest
+by DSS, so nothing of that answer is lost. `polish = "off"` (the default)
+changes nothing. A run with polishing depends on its budget; real variables
+only.
+
+**DMulti-MADS** (`algorithms/dmulti_mads.hpp`; Bigeon, Le Digabel & Salomon,
+Comput. Optim. Appl. 2021): a list of non-dominated points, each with its own
+frame size Δ (mesh δ = min(Δ, Δ²)) in the box normalized to [0, 1]^n. A step
+polls the point of the largest Δ — of several, the one in the least crowded
+part of the list (`mads_select = "spread"`, or `"first"`) — along n + 1
+directions rounded to the mesh, after a speculative point along the direction
+that found it (`mads_search`); success is a point dominating it; new points
+that dominate or extend the list get the frame Δ/τ, those that fill it Δ, a
+failure shrinks the poll centre's frame to τΔ (`mads_tau` 1/2, `mads_delta0`
+0.1). `mads_poll = "opportunistic"` stops a poll at its first success. The
+poll directions come from the seed; the run ends when the mesh is below 1e-9.
+The paper's granular mesh and its n + 1 directions with a target direction
+come from papers that were not at hand; the header says what stands in for
+them. Constraints by the extreme barrier.
+
+**MultiGLODS** (`algorithms/multiglods.hpp`; Custódio & Madeira, J. Glob.
+Optim. 2018): DMS's list with a comparison radius and an active flag for each
+point. A new point far from every point of the list starts a search of its own;
+one that dominates a nearby active point takes over, and a dominated one is
+kept inactive (the searches merge). The search step — the next n points of a
+Sobol sequence — runs after `glods_search_every` (3) failures in a row; the
+poll centre is the active point of the largest step that is not yet local
+(`glods_local_tol` 10⁻³). The answer is the non-dominated part of the list.
+Deterministic, as dms: no random number below 101 variables.
+
+**BoostDMS** (`python/mootation/scalar/boostdms.py`; Brás & Custódio,
+Comput. Optim. Appl. 2020): DMS with a search step before each poll — quadratic
+models of every objective from up to (n + 1)(n + 2) evaluated points, 80 %
+from the ball of three trust radii around the poll centre; each model by
+regression, minimum Frobenius norm or linear interpolation as the points
+allow; minimized in the trust region by the adapted ε-constraint of Custódio,
+Pozzi & Silva (2026; `boost_scalarization = "eps"`, the default: one
+objective, the others no worse than at the centre) or by the paper's min-max
+levels (`"minmax"`). A new non-dominated point skips the poll. Python with
+SciPy; deterministic.
+
 **MOSA.** Multi-objective simulated annealing (`algorithms/mosa.hpp`):
 annealing chains over an archive of every non-dominated point evaluated. It is
 not one paper's algorithm but a composition: DBMOSA's unconstrained archive,
@@ -1012,7 +1174,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-67 cores, so "not dominated by its parents" is read as "by any parent", and
+74 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

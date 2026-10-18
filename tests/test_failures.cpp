@@ -152,19 +152,20 @@ void test_constraints_and_raise()
     check(threw, "set_fail_raise(true): a non-finite value throws");
 }
 
-// Every algorithm, 2 000 evaluations (about 60 generations of 30), on the
-// problem that fails on a third of its box: no exception, and no non-finite
-// value in the population, its answer included.
+// Every algorithm, 2 000 evaluations (about 60 generations of 30; 2 000
+// steps for paes, whose step is one evaluation from one starting point), on
+// the problem that fails on a third of its box: no exception, and no
+// non-finite value in the population, its answer included.
 template <typename Ind, typename Core>
-bool runs_through(int pop)
+bool runs_through(int pop, int steps)
 {
     Problem<Ind> prob;
     DataVault<Ind> vault(pop, prob);
     Optimizer<Ind, Core> opt(std::move(vault), defer_setup);
     opt.get_algorithm().set_seed(7);
-    if constexpr (has_set_t_max<Core>::value) opt.get_algorithm().set_t_max(60);
+    if constexpr (has_set_t_max<Core>::value) opt.get_algorithm().set_t_max(steps);
     opt.setup();
-    opt.optimize(60);
+    opt.optimize(steps);
     auto& v = opt.get_vault();
     const std::size_t n = std::min<std::size_t>(v.active_n(), static_cast<std::size_t>(v.pop_size()));
     for (std::size_t i = 0; i < n; ++i)
@@ -184,7 +185,8 @@ void test_every_algorithm()
         const std::string k = #key;                                           \
         const int pop = (k == "moead_m2m" || k == "sms_m2m") ? 30 : 31;       \
         bool good = false;                                                    \
-        try { good = runs_through<testing::FTag_##key, CORE<testing::FTag_##key>>(pop); } \
+        const int steps = k == "paes" ? 2000 : 60;                            \
+        try { good = runs_through<testing::FTag_##key, CORE<testing::FTag_##key>>(pop, steps); } \
         catch (const std::exception& e) { bad += k + " (" + e.what() + ") "; } \
         if (good) ++ok; else if (bad.find(k) == std::string::npos) bad += k + " "; \
     }

@@ -484,8 +484,9 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
 
     # ── algorithms ──────────────────────────────────────────────────────────
     from .baselines import BASELINES
+    from ..scalar import NAMES as SCALAR_NAMES
     try:
-        known = set(algorithm_names()) | set(BASELINES)
+        known = set(algorithm_names()) | set(BASELINES) | set(SCALAR_NAMES)
     except (FileNotFoundError, ValueError) as e:
         known = set()
         bad("algorithms", f"cannot read the algorithm registry: {e}")

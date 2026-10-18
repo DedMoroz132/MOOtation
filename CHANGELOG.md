@@ -10,6 +10,76 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- SMPSO (Nebro, Durillo, García-Nieto, Coello Coello, Luna & Alba, IEEE MCDM
+  2009), `smpso`: a swarm with a bounded leaders archive by crowding distance,
+  the constriction factor and the velocity bound of Eqs. 3-6, polynomial
+  turbulence; Algorithm 1 in jMetal's order. What the paper leaves open is a
+  preset, `smpso_preset`: `jmetal` (default), `platemo`, `fair` and `omopso`
+  (OMOPSO, Reyes Sierra & Coello Coello, EMO 2005: no constriction, uniform
+  and non-uniform mutation by thirds, an epsilon-dominance archive as the
+  answer), and each of its parts a knob (`chi_mode`, `vmax_frac`,
+  `vel_on_bound_low`/`_up`, `w_min`/`w_max`, `c_min`/`c_max`, `r_per_dim`,
+  `turbulence`, `turbulence_k`, `turbulence_p`, `archive_size`,
+  `archive_prune`, `leader_select`, `eps_archive_eta`, with `eta_m`, `pm` and
+  `bound_repair`). Real variables with finite bounds only.
+- R2-EMOA (Trautmann, Wagner & Brockhoff, LION 2013; Brockhoff et al.,
+  Evol. Comput. 2015), `r2_emoa`: SMS-EMOA's steady state with the worst
+  front's least R2 contribution removed; the exact R2 at two objectives
+  (Schäpermeier et al. 2024) or the paper's discrete weights (`r2_mode`,
+  `r2_space`, `r2_weights`, `r2_offset`, `normalize`). SMS-EMOA gains a
+  protected hook for it and is unchanged.
+- BC (Tanabe & Ishibuchi, GECCO 2019), `bc_spx` and `bc_rex`: the non-elitist
+  best-children selection with SPX or REX, the paper's BF and BA as
+  `bc_selection`, `bc_lambda`.
+- PAES (Knowles & Corne, Evol. Comput. 2000), `paes`: the (1 + 1) Pareto
+  archived evolution strategy with its adaptive grid (`paes_depth`,
+  `archive_size`).
+- DMulti-MADS (Bigeon, Le Digabel & Salomon, Comput. Optim. Appl. 2021),
+  `dmulti_mads`: a list of points with a frame size each, the incumbent of the
+  largest frame chosen by spread, a speculative search, n + 1 poll directions
+  on a mesh, the list updated by dominance and extent (`mads_tau`,
+  `mads_delta0`, `mads_select`, `mads_poll`, `mads_search`).
+- MultiGLODS (Custódio & Madeira, J. Glob. Optim. 2018), `multiglods`: DMS's
+  list with comparison radii and active flags, searches started from a Sobol
+  sequence and merged (`glods_search_every`, `glods_local_tol`).
+  `include/mootation/sobol.hpp`: the Sobol sequence of Joe & Kuo's direction
+  numbers, 100 dimensions.
+- BoostDMS (Brás & Custódio, Comput. Optim. Appl. 2020), `boostdms`
+  (Python): DMS with a search step on quadratic models, minimized by the
+  adapted ε-constraint of Custódio, Pozzi & Silva (2026) or the paper's
+  min-max levels (`boost_scalarization`).
+- MOSQP (Fliege & Vaz, SIAM J. Optim. 2016), `mosqp` (Python): a set of
+  points spread by single-objective SQP steps and refined by the
+  all-objectives step, Armijo's rule on ℓ1 merit functions, a restoration for
+  infeasible subproblems (`mosqp_tau`, `mosqp_mu`, `mosqp_beta`,
+  `mosqp_spread`).
+- Scalarization with a local solver (`python/mootation/scalar/`): the
+  algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
+  `nnc_sqp`, `eps_nm`, `eps_cmaes`, run by name through `minimize()` and in
+  campaigns. Anchors as lexicographic minima, then a plan of subproblems —
+  ε-constraint, smooth Chebyshev, NBI (Das & Dennis 1998), NNC (Messac et al.
+  2003), Pascoletti–Serafini — on a lattice, by the adaptive ε-constraint
+  scheme of Laumanns, Thiele & Zitzler, or into the largest gap; each from the
+  archive's best point for it, solved by SciPy's SLSQP with finite-difference
+  gradients, SciPy's adaptive Nelder–Mead, or a CMA-ES written from Hansen's
+  tutorial. Every evaluation, finite differences included, counted and
+  archived; equalities to SLSQP as such; `result.solutions` lists the
+  subproblems' solutions. Needs SciPy: the extra `scalar`.
+- `polish` (`off`, `sqp`, `nm`) for every algorithm: `polish_share` of the
+  budget kept for the end, `polish_points` points of the archive (DSS) each
+  improved in one objective with the others no worse; the answer the
+  non-dominated union of the algorithm's and the polished points, cut to
+  pop_size without losing cover of the algorithm's answer. Off by default,
+  and off changes nothing.
+- `constraint_mode = "eps_level"` with `eps_schedule = {"tc": 0}`: the level is
+  0 from the first step, as the rule says, also for a core whose setup spends
+  fewer than `pop_size` evaluations (PAES starts from one point); it used to
+  stay at eps(0) until the first `pop_size` evaluations were spent.
+- `Result.settings`: every knob as the run used it, for a core whose knobs
+  come from a preset (SMPSO); a campaign writes it to `meta.json` under
+  `settings`. `run.budget.depends_on_budget(name, params)`: the budget
+  dependence of a run by its settings as well (SMPSO's `turbulence = thirds`),
+  which the campaign's `budget_dependent` and ladder now use.
 - A point's constraint values were lost when a core rewrote its population.
   ETEA, MOEA/D-AM2M, MOEA/D-DS, RD-EMO, APRD, Liu & Gu 2011, ISDE+RD, DHEA,
   HLMEA, IF-MaOEA, DEA-GNG, MaOEA-3C, DCEA, HCCA, CLIA, Two_Arch2, NAEMO and
