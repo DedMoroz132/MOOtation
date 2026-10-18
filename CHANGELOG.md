@@ -68,8 +68,9 @@ always listed under **Changed** or **Removed**.
 - `polish` (`off`, `sqp`, `nm`) for every algorithm: `polish_share` of the
   budget kept for the end, `polish_points` points of the archive (DSS) each
   improved in one objective with the others no worse; the answer the
-  non-dominated union of the algorithm's and the polished points. Off by
-  default, and off changes nothing.
+  non-dominated union of the algorithm's and the polished points, cut to
+  pop_size without losing cover of the algorithm's answer. Off by default,
+  and off changes nothing.
 - `constraint_mode = "eps_level"` with `eps_schedule = {"tc": 0}`: the level is
   0 from the first step, as the rule says, also for a core whose setup spends
   fewer than `pop_size` evaluations (PAES starts from one point); it used to

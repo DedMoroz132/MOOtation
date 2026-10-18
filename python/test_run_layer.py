@@ -8238,17 +8238,18 @@ def polish_improves_and_loses_nothing():
     assert off.objectives == plain.objectives and off.variables == plain.variables
     core = mootation.minimize(p.evaluate, p.bounds, 3, algorithm="nsga2", pop_size=91,
                               max_evaluations=4000, seed=3)
-    for how in ("sqp", "nm"):
+    # 91 points: the union outgrows pop_size and is cut (POLISH-2)
+    for how, k in (("sqp", 10), ("nm", 10), ("sqp", 91)):
         calls[0] = 0
         r = mootation.minimize(f, p.bounds, 3, algorithm="nsga2", pop_size=91,
                                max_evaluations=5000, seed=3, polish=how, polish_share=0.2,
-                               polish_points=10)
+                               polish_points=k)
         s = dict(r.settings)
-        assert s["polish"] == how and s["polish_points"] == "10", s
+        assert s["polish"] == how and s["polish_points"] == str(k), s
         assert r.evaluations == calls[0] <= 5000 + 91, (r.evaluations, calls[0])
         A, B = np.asarray(r.objectives), np.asarray(core.objectives)
         assert len(A) <= 91
-        assert all(np.any(np.all(A <= b + 1e-12, axis=1)) for b in B), how
+        assert all(np.any(np.all(A <= b, axis=1)) for b in B), (how, k)
     for kw in ({"polish": "sqp", "n_gen": 5}, {"polish": "sqp", "max_evaluations": 900,
                                                "polish_share": 1.0},
                {"polish": "bfgs", "max_evaluations": 900}):

@@ -1063,11 +1063,13 @@ algorithm runs on the rest; then `polish_points` (0: from what the share buys,
 at most `pop_size`) of the feasible non-dominated points of everything it
 evaluated, chosen by DSS, are each improved in one objective — round the
 objectives from one point to the next — with the others no worse than they
-were. A polished point is never worse than where it started, and every point
-it evaluates is counted. The answer is the non-dominated points of the
-algorithm's answer and the polished points, reduced by DSS to `pop_size` when
-there are more. `polish = "off"` (the default) changes nothing. A run with
-polishing depends on its budget; real variables only.
+were (to the subproblem's slack), and every point it evaluates is counted.
+The answer is the non-dominated points of the algorithm's answer and the
+polished points; cut to `pop_size` when there are more, it keeps first a
+point weakly dominating each point of the algorithm's answer, then the rest
+by DSS, so nothing of that answer is lost. `polish = "off"` (the default)
+changes nothing. A run with polishing depends on its budget; real variables
+only.
 
 **DMulti-MADS** (`algorithms/dmulti_mads.hpp`; Bigeon, Le Digabel & Salomon,
 Comput. Optim. Appl. 2021): a list of non-dominated points, each with its own

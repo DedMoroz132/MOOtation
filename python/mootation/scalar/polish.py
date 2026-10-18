@@ -15,21 +15,29 @@ feasible point, the least violating ones.
 POLISHING a point a is the ε-constraint subproblem "improve one objective,
 the others no worse than at a": min f_k  s.t.  f_i <= f_i(a) for every i,
 started at a, with k going round the objectives from one point to the next
-(POLISH-1). Every point it evaluates goes to the archive, and its result is
-never worse than a: a itself is feasible for it.
+(POLISH-1). Every point it evaluates goes to the archive; a itself is
+feasible for it, and its result is no worse than a up to the subproblem's
+slack (POLISH-3).
 
 THE ANSWER is the non-dominated points of the algorithm's answer and the
-polished points, reduced to pop_size by DSS when there are more (POLISH-2):
-a polished point replaces what it dominates and nothing is lost. The observer
-goes on after the algorithm's last record, every record_every * pop_size
-evaluations.
+polished points; when there are more than pop_size, first one point weakly
+dominating each point of the algorithm's answer, then the rest in DSS order
+(POLISH-2). A polished point replaces what it dominates and nothing of the
+algorithm's answer is lost. The observer goes on after the algorithm's last
+record, every record_every * pop_size evaluations.
 
 READINGS:
   POLISH-1. The objective improved goes round the objectives (the first point
     f_1, the second f_2, ...) in DSS order; the objectives are normalized by
     the range of the points chosen.
   POLISH-2. The answer after polishing is the non-dominated union of the
-    algorithm's answer and the polished points, not the archive's.
+    algorithm's answer and the polished points, not the archive's; cut to
+    pop_size, it keeps a point weakly dominating each point of the
+    algorithm's answer first (so it can hold more than pop_size when the
+    algorithm's answer does).
+  POLISH-3. The subproblem's constraints f_i <= f_i(a) hold to a slack
+    (solvers.SLACK, in the normalized objectives): a result a hair worse
+    than a in one objective does not dominate a, and both stay.
 """
 
 from __future__ import annotations
@@ -190,8 +198,19 @@ def run(base, recorder, *, how, points, fn, constraints, bounds, n_objs, n_cons,
               if not np.any(np.all(F <= F[a], axis=1) & np.any(F < F[a], axis=1))]
         nd = list(dict.fromkeys(nd))
         if len(nd) > pop_size:
+            # first, for every feasible point of the algorithm's answer, one
+            # point that weakly dominates it; the rest in DSS order (POLISH-2)
             from ..run.archive import dss_order
-            nd = [nd[a] for a in dss_order(np.array([ev.F[i] for i in nd]), pop_size)]
+            Fn = np.array([ev.F[i] for i in nd])
+            keep = []
+            for b in base_idx:
+                if ev.failed[b] or ev.cv(b) > 0.0:
+                    continue
+                cover = np.flatnonzero(np.all(Fn <= np.asarray(ev.F[b]), axis=1))
+                if not any(int(j) in keep for j in cover):
+                    keep.append(int(cover[0]))
+            rest = [int(j) for j in dss_order(Fn) if int(j) not in keep]
+            nd = [nd[j] for j in keep + rest[:max(0, pop_size - len(keep))]]
         idx = nd
     else:
         idx = sorted(ok, key=lambda i: (ev.cv(i), i))[:pop_size]
