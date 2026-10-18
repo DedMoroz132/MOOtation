@@ -29,6 +29,10 @@ _FALLBACK = (
     "coords_update", "spu_frac", "inner_archive_cap", "archive_reuse_p", "dn_cf",
     "vmax_frac", "vel_on_bound_low", "vel_on_bound_up", "w_min", "w_max", "c_min",
     "c_max", "turbulence_k", "turbulence_p", "archive_size", "eps_archive_eta",
+    "r2_weights", "r2_offset", "bc_lambda", "paes_depth", "mads_tau", "mads_delta0",
+    "glods_search_every", "glods_local_tol", "n_sub",
+    "sub_budget", "fd_step",
+    "local_tol", "cma_sigma0", "eps_objective", "polish_share", "polish_points",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
@@ -59,6 +63,18 @@ _FALLBACK_TEXT = {
     "r_per_dim": ("no", "yes"),
     "archive_prune": ("one_by_one", "one_shot"),
     "leader_select": ("crowding_tournament", "random"),
+    "r2_mode": ("exact", "discrete"),
+    "r2_space": ("weight", "angle"),
+    "bc_selection": ("bc", "bf", "ba"),
+    "mads_select": ("spread", "first"),
+    "mads_poll": ("complete", "opportunistic"),
+    "mads_search": ("speculative", "none"),
+    "boost_scalarization": ("eps", "minmax"),
+    "scalarization": ("eps", "tch", "nbi", "nnc", "ps"),
+    "local": ("sqp", "nm", "cmaes"),
+    "sub_plan": ("grid", "laumanns", "gap"),
+    "tch_weights": ("inverse", "lattice"),
+    "polish": ("off", "sqp", "nm"),
 }
 
 _BLOCK = re.compile(

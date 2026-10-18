@@ -16,12 +16,14 @@ point `x` and the values `f`, `g`, or what the file names), at full precision.
 | `pymoo-0.6.2_omni-sympart.json` | pymoo 0.6.2, Omni-test and SYM-PART simple | 10 |
 | `pymoo-0.6.2_wfg-optimum.json` | pymoo 0.6.2, WFG8's and WFG9's optimal distance variables | 4 |
 | `reproblems-7876b4e_re.json` | reproblems' Python version, commit 7876b4e, RE21-91 and CRE21-51 | 120 |
+| `scipy-1.18.1_sobol.txt` | SciPy 1.18.1, `qmc.Sobol(d=100, scramble=False)`: `include/mootation/sobol.hpp` (tests/test_sobol.cpp) | 40 |
 
 To make them again (by hand; CI does neither, and no test imports pymoo):
 
 ```
 uv run --no-project --python 3.13 --with pymoo==0.6.2 python tools/refs/gen_pymoo_refs.py
 python tools/refs/gen_reproblems_refs.py <reproblems>/reproblem_python_ver/reproblem.py
+python tools/refs/gen_sobol_ref.py
 ```
 
 The other reference data of the tests stay where they were: the problems'

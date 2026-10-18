@@ -21,6 +21,7 @@ implementation follows; if you publish results, cite that paper.
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
 | Constrained, two archives or populations | 2 | a constrained problem whose feasible region is small, scattered or behind infeasible barriers | `pop_size` must be an exact Das–Dennis lattice size; at 2N per generation in memory, N evaluations |
 | Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
+| Scalarization + local solver | 7 | smooth problems, equality constraints a population cannot hold, a front to be traced point by point | local solvers: a multimodal problem (DTLZ1, DTLZ3) gives local fronts; NBI and NNC lean on the anchors, and a front whose individual minima coincide (DTLZ2) flattens NNC's simplex |
 | Particle swarm | 1 | 2–3 objectives, a cheap step and one batch of evaluations per step | the reference codes disagree on what SMPSO is; the presets are their readings, and the default's clamp lands exactly on the middle and the bounds of the box |
 | Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
@@ -92,6 +93,7 @@ covered by this test.
 |---|---|---|---|
 | NSGA-II | 2002 | `nsga2` | [10.1109/4235.996017](https://doi.org/10.1109/4235.996017) |
 | DN-NSGA-II | 2016 | `dn_nsga2` | [10.1109/CEC.2016.7744093](https://doi.org/10.1109/CEC.2016.7744093) |
+| BC (best-children), SPX / REX | 2019 | `bc_spx`, `bc_rex` | [10.1145/3321707.3321754](https://doi.org/10.1145/3321707.3321754) |
 | SPEA2 | 2001 | `spea2` | [10.3929/ethz-a-004284029](https://doi.org/10.3929/ethz-a-004284029) |
 | SPEA2+SDE | 2014 | `spea2_sde` | [10.1109/TEVC.2013.2262178](https://doi.org/10.1109/TEVC.2013.2262178) |
 | GrEA | 2013 | `grea` | [10.1109/TEVC.2012.2227145](https://doi.org/10.1109/TEVC.2012.2227145) |
@@ -146,6 +148,7 @@ covered by this test.
 | IF-MaOEA | 2024 | `if_maoea` | [10.1016/j.asoc.2024.111881](https://doi.org/10.1016/j.asoc.2024.111881) |
 | MaOEA-IAMD | 2026 | `maoea_iamd` | [10.1007/s11227-026-08362-3](https://doi.org/10.1007/s11227-026-08362-3) |
 | SMS-EMOA | 2005 | `sms_emoa` | [10.1007/978-3-540-31880-4_5](https://doi.org/10.1007/978-3-540-31880-4_5) |
+| R2-EMOA | 2013 | `r2_emoa` | [10.1007/978-3-642-44973-4_8](https://doi.org/10.1007/978-3-642-44973-4_8) |
 | MO-CMA-ES (μ+1, success by population) | 2010 | `mo_cma_es` | [10.1145/1830483.1830573](https://doi.org/10.1145/1830483.1830573) |
 
 ## Reference-vector / angle-based
@@ -188,6 +191,7 @@ the strategy on an NSGA-III carrier only, so it left the public tree on
 |---|---|---|---|
 | Two_Arch2 | 2015 | `two_arch2` | [10.1109/TEVC.2014.2350987](https://doi.org/10.1109/TEVC.2014.2350987) |
 | NAEMO | 2019 | `naemo` | [10.1016/j.swevo.2018.12.002](https://doi.org/10.1016/j.swevo.2018.12.002) |
+| PAES | 2000 | `paes` | [10.1162/106365600568167](https://doi.org/10.1162/106365600568167) |
 
 ## Constrained, two archives or populations
 
@@ -215,9 +219,18 @@ its own selection (header, CCMO-1).
 | Algorithm | Year | File | DOI |
 |---|---|---|---|
 | DMS | 2011 | `dms` | [10.1137/10079731X](https://doi.org/10.1137/10079731X) |
+| DMulti-MADS | 2021 | `dmulti_mads` | [10.1007/s10589-021-00272-9](https://doi.org/10.1007/s10589-021-00272-9) |
+| MultiGLODS | 2018 | `multiglods` | [10.1007/s10898-018-0618-1](https://doi.org/10.1007/s10898-018-0618-1) |
+| BoostDMS | 2020 | `boostdms` (Python) | [10.1007/s10589-020-00233-8](https://doi.org/10.1007/s10589-020-00233-8) |
 
 Not evolutionary: a list of nondominated points with a step size each, polled
 along the coordinate directions, the step halved where a poll finds nothing.
+DMulti-MADS polls n + 1 directions on a mesh around the point of the largest
+frame in the least crowded part of the list, and grows the frames of the points
+that dominate or extend it; MultiGLODS keeps the points of every search it has
+started, active or merged, and starts new ones from a Sobol sequence after
+three failures in a row; BoostDMS (Python, SciPy) is DMS with a search step that
+minimizes quadratic models of the objectives built from the evaluated points.
 Deterministic, and it stops on its own when every step size is below 10⁻³ of
 the range. Its answer is the list reduced to `pop_size` by DSS
 (`include/mootation/dss.hpp`), the same selection the run layer uses for
@@ -238,6 +251,31 @@ read them differently: `smpso_preset` picks one reading (`jmetal`, the
 default; `platemo`; `fair`; `omopso`, its predecessor OMOPSO of Reyes Sierra &
 Coello Coello, EMO 2005), and every part of it is a knob of its own
 ([running.md](running.md)).
+
+## Scalarization with a local solver
+
+| Algorithm | Year | Name | DOI |
+|---|---|---|---|
+| ε-constraint | 1971 | `eps_sqp`, `eps_nm`, `eps_cmaes` | [10.1109/TSMC.1971.4308298](https://doi.org/10.1109/TSMC.1971.4308298) |
+| ε-constraint, adaptive (`sub_plan = laumanns`) | 2006 | `scalar` | [10.1016/j.ejor.2004.08.029](https://doi.org/10.1016/j.ejor.2004.08.029) |
+| Chebyshev, smooth form | — | `tch_sqp` | — |
+| Normal Boundary Intersection | 1998 | `nbi_sqp` | [10.1137/S1052623496307510](https://doi.org/10.1137/S1052623496307510) |
+| Normalized Normal Constraint | 2003 | `nnc_sqp` | [10.1007/s00158-002-0276-1](https://doi.org/10.1007/s00158-002-0276-1) |
+| Pascoletti–Serafini (`scalarization = ps`) | 1984 | `scalar` | [10.1007/BF00934564](https://doi.org/10.1007/BF00934564) |
+
+Not evolutionary and not C++ cores: Python (`python/mootation/scalar/`), run by
+name through `minimize()` and in campaigns like any algorithm, with NumPy and
+SciPy. The front is a sequence of single-objective subproblems — the anchors
+first (each objective's lexicographic minimum), then a plan of subproblems over
+the normalized objectives — each solved by a local method from the best point
+the archive holds for it: SciPy's SLSQP with finite-difference gradients
+(`sqp`), SciPy's Nelder–Mead with adaptive parameters (`nm`) or a CMA-ES
+written from Hansen's tutorial, arXiv:1604.00772 (`cmaes`). Every evaluation,
+finite differences included, is counted and archived; the answer is the
+archive's feasible non-dominated points, reduced to `pop_size` by DSS. Real
+variables only. `scalar` with its knobs covers all of them; the six names are
+its presets. [running.md](running.md) has the knobs and what each part reads
+from its source.
 
 ## Simulated annealing
 

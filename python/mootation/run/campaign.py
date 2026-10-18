@@ -599,7 +599,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     from .archive import GridArchive
     from .baselines import BASELINES, run_baseline
+    from ..scalar import NAMES as SCALAR_NAMES
     baseline = job.algorithm in BASELINES
+    # the scalarization methods run in Python (mootation.scalar): no core
+    # state to read at the records
+    in_python = baseline or job.algorithm in SCALAR_NAMES
     # Every nondominated point the run evaluates, whatever the algorithm keeps
     # in its population (archive.GridArchive; archive.csv). A baseline's
     # answer IS its archive, so it gets one even when archiving is off.
@@ -731,10 +735,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # says so, and always on a constrained problem, whose indicators need them
     keep_x = (spec.snapshot_variables == "all" or cons is not None
               or (spec.snapshot_variables == "pareto_set" and callable(p.pareto_set)))
-    op_stats = spec.operator_stats and not baseline
+    op_stats = spec.operator_stats and not in_python
     if op_stats:
         from .. import _core
-    diag = spec.coords_diag and not baseline
+    diag = spec.coords_diag and not in_python
     if diag:
         from .. import _core
         from . import coords_diag
@@ -816,7 +820,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         if cover_front is not None:            # at every call, before the grid's choice
             if cover["gen"] is None and cover_front <= {tuple(map(float, r)) for r in objectives}:
                 cover["gen"], cover["fe"] = gen, fe
-            if cover["archive_gen"] is None and not baseline:
+            if cover["archive_gen"] is None and not in_python:
                 A = {tuple(map(float, r)) for r in _core.inner_archive_state()}
                 if A and cover_front <= A:
                     cover["archive_gen"], cover["archive_fe"] = gen, fe

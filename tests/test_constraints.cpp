@@ -128,6 +128,9 @@ CRun run_constrained(int pop, int gens, unsigned seed, ConstraintMode mode)
     auto& alg = opt.get_algorithm();
     alg.set_seed(seed);
     alg.constraint_mode = mode;
+    // paes: one evaluation a step from one starting point — the generations'
+    // evaluations, pop a generation, are its steps
+    if constexpr (std::is_same_v<Core, PAESCore<Ind>>) gens *= pop;
     if constexpr (has_set_t_max<Core>::value) alg.set_t_max(gens);
 
     opt.setup();

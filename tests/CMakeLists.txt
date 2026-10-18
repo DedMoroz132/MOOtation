@@ -15,7 +15,9 @@ set(MOOTATION_TESTS
     test_survival
     test_failures
     test_equalities
-    test_genes)
+    test_genes
+    test_r2_emoa
+    test_sobol)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -24,6 +26,8 @@ foreach(_t IN LISTS MOOTATION_TESTS)
         mootation_warnings
         mootation_sanitize)
     target_include_directories(${_t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_definitions(${_t} PRIVATE
+        MOOTATION_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
     set_target_properties(${_t} PROPERTIES FOLDER tests)
 
     if(MSVC)

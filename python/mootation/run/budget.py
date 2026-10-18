@@ -57,10 +57,17 @@ BUDGET_DEPENDENT = BY_HEADERS | {"lhs_search"}
 def depends_on_budget(name: str, params: dict | None = None) -> bool:
     """BUDGET_DEPENDENT, and the settings that make an algorithm so: smpso with
     turbulence "thirds" (its omopso preset) mutates by OMOPSO's non-uniform
-    mutation, which shrinks over the whole budget (smpso.hpp)."""
+    mutation, which shrinks over the whole budget (smpso.hpp); any algorithm
+    with polish on keeps a share of the budget for the end; the scalarization
+    methods lay their plan out over it."""
     if name in BUDGET_DEPENDENT:
         return True
+    from ..scalar import NAMES as SCALAR_NAMES, OTHERS
+    if name in SCALAR_NAMES and name not in OTHERS:
+        return True                 # its plan is laid out over the budget (scalar, SCALAR-1)
     p = params or {}
+    if str(p.get("polish", "off")) != "off":
+        return True                 # the polishing takes a share of the budget (scalar/polish.py)
     if name == "smpso":
         turbulence = p.get("turbulence") or ("thirds" if p.get("smpso_preset") == "omopso"
                                              else "every_k")
@@ -166,8 +173,9 @@ def main(argv=None) -> int:
     ap.add_argument("--algorithms", help="comma-separated; default every algorithm and baseline")
     ap.add_argument("--json", help="write the per-algorithm results here")
     args = ap.parse_args(argv)
+    from ..scalar import NAMES as SCALAR_NAMES
     algs = (args.algorithms.split(",") if args.algorithms
-            else list(algorithm_names()) + list(BASELINES))
+            else list(algorithm_names()) + list(BASELINES) + list(SCALAR_NAMES))
     res = check(algs, problem=args.problem, seed=args.seed, short=args.short,
                 long=args.long, workers=args.workers)
     print(f"{args.problem}, seed {args.seed}: every record up to {args.short} evaluations "

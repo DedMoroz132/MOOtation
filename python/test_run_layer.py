@@ -8042,6 +8042,316 @@ def smpso_reaches_the_zdt4_front():
         assert len(seen) == 10000 and M.igd_plus((A - lo) / (hi - lo), ref) < 0.005, seed
 
 
+def _have_scipy():
+    try:
+        import scipy.optimize  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+@test
+def scalar_presets_budget_and_refusals():
+    """Task 9, A1: the scalarization methods (mootation.scalar) — every preset
+    runs through minimize(), spends evaluations only through fn (calls =
+    result.evaluations, the finite differences counted) and never past the
+    budget; the answer is non-dominated and pop_size at most; a knob it lacks
+    is reported, its own knobs are reported by the cores; a binary genome,
+    eps_level, laumanns with nbi and a bad word are refused; a failing fn does
+    not stop the run."""
+    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
+        print("  skip  scalar_presets...: no NumPy, SciPy or _core"); return
+    import math
+    import mootation
+    from mootation.run.metrics import nondominated
+    from mootation.scalar import NAMES
+    assert NAMES == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm", "eps_cmaes")
+    calls = [0]
+    def f(x):
+        calls[0] += 1
+        return [x[0], 1.0 - math.sqrt(x[0]) + sum(v * v for v in x[1:])]
+    box = [(0.0, 1.0)] * 4
+    for name in NAMES:
+        calls[0] = 0
+        r = mootation.minimize(f, box, 2, algorithm=name, pop_size=20, max_evaluations=1500,
+                               seed=2)
+        F = r.objectives
+        assert r.evaluations == calls[0] <= 1500, (name, r.evaluations, calls[0])
+        assert 0 < len(F) <= 20 and len(nondominated(F)) == len(F), (name, len(F))
+        s = dict(r.settings)
+        assert s["local"] in ("sqp", "nm", "cmaes") and not r.ignored, (name, r.ignored)
+    assert dict(mootation.minimize(f, box, 2, algorithm="nbi_sqp", pop_size=10,
+                                   max_evaluations=600, seed=1).settings)["scalarization"] == "nbi"
+    r = mootation.minimize(f, box, 2, algorithm="scalar", pop_size=10, max_evaluations=600,
+                           seed=1, eta_c=15, sub_plan="gap", scalarization="tch")
+    assert r.ignored == ["eta_c"] and dict(r.settings)["sub_plan"] == "gap", r.ignored
+    r = mootation.minimize(f, box, 2, algorithm="nsga2", pop_size=10, n_gen=2, seed=1,
+                           scalarization="nbi", n_sub=5)
+    assert {"scalarization", "n_sub"} <= set(r.ignored), r.ignored
+    for kw in ({"var_types": ["real", "bin", "real", "real"]},
+               {"constraint_mode": "eps_level", "constraints": lambda x: [x[0] - 0.5]},
+               {"sub_plan": "laumanns", "scalarization": "nbi"}, {"local": "bfgs"},
+               {"eps_objective": 3}, {"n_sub": 2.5}):
+        assert raises((ValueError, TypeError), mootation.minimize, f, box, 2,
+                      algorithm="scalar", pop_size=10, max_evaluations=300, seed=1,
+                      **kw) is not None, kw
+    k = [0]
+    def g(x):
+        k[0] += 1
+        if k[0] % 9 == 0:
+            raise RuntimeError("the model did not converge")
+        return f(x)
+    for name in ("eps_sqp", "eps_nm", "eps_cmaes"):
+        k[0] = 0
+        r = mootation.minimize(g, box, 2, algorithm=name, pop_size=10, max_evaluations=800,
+                               seed=1)
+        assert r.n_failed > 0 and len(r.objectives) > 0, (name, r.n_failed)
+        assert all(math.isfinite(v) for row in r.objectives for v in row)
+
+
+@test
+def scalar_anchors_constraints_and_the_front():
+    """Task 9, A4: eps_sqp's anchors on ZDT1 within 1e-12 of the true minima
+    (0, 0); on DOC3 every point of the answer within eq_tol of the equalities
+    and feasible; nbi_sqp's subproblem solutions on DTLZ2_3D on the front
+    (| ||F|| - 1 | < 1e-8) and evenly spread (Spacing < 0.06); laumanns on ZDT1
+    finds points on the front; the observer sees gen 0, the records and the end."""
+    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
+        print("  skip  scalar_anchors...: no NumPy, SciPy or _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get, solve
+    p = get("ZDT1")
+    seen = []
+    def f(x):
+        y = p.evaluate(x)
+        seen.append(y)
+        return y
+    gens = []
+    r = mootation.minimize(f, p.bounds, 2, algorithm="eps_sqp", pop_size=50,
+                           max_evaluations=3000, seed=1,
+                           on_generation=lambda g, F, X: gens.append((g, len(F), len(X))),
+                           record_every=1)
+    assert np.max(np.abs(np.min(np.asarray(seen), axis=0))) < 1e-12, np.min(seen, axis=0)
+    assert gens[0][0] == 0 and gens[-1][0] == -(-r.evaluations // 50), gens[-3:]
+    assert all(n == x for _, n, x in gens) and len(gens) >= r.evaluations // 50, len(gens)
+    S = np.asarray(r.solutions)       # n_sub 5 at this budget (SCALAR-1), and the anchors
+    assert len(S) == 7 and np.max(np.abs(S[:, 1] - (1 - np.sqrt(S[:, 0])))) < 1e-6, len(S)
+    d = get("DOC3")
+    r = solve(d, "eps_sqp", max_evaluations=6000, seed=1)
+    H = np.abs(np.array([d.equalities(x) for x in r.variables]))
+    G = np.array([list(d.constraints(x))[:-d.n_eq] for x in r.variables])
+    assert len(H) and H.max() <= 1e-4 and G.max() <= 0.0 and max(r.cv) == 0.0, (H.max(), G.max())
+    q = get("DTLZ2_3D")
+    r = mootation.minimize(q.evaluate, q.bounds, 3, algorithm="nbi_sqp", pop_size=91,
+                           max_evaluations=10000, seed=1)
+    S = np.asarray(r.solutions)
+    D = np.abs(S[:, None, :] - S[None, :, :]).sum(axis=2)
+    np.fill_diagonal(D, np.inf)
+    near = D.min(axis=1)
+    spacing = np.sqrt(np.sum((near - near.mean()) ** 2) / (len(near) - 1))
+    assert len(S) > 50 and np.max(np.abs(np.linalg.norm(S, axis=1) - 1)) < 1e-8, len(S)
+    assert spacing < 0.06, spacing
+    r = mootation.minimize(p.evaluate, p.bounds, 2, algorithm="scalar", sub_plan="laumanns",
+                           pop_size=50, max_evaluations=10000, seed=1)
+    S = np.asarray(r.solutions)
+    assert len(S) > 10 and np.max(np.abs(S[:, 1] - (1 - np.sqrt(S[:, 0])))) < 1e-6
+
+
+@test
+def scalar_runs_in_a_campaign():
+    """Task 9, A1: a campaign runs the presets by name; meta.json carries the
+    settings and marks the run budget-dependent."""
+    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
+        print("  skip  scalar_runs...: no NumPy, SciPy or _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "eps_sqp", pop = 20, gens = 0 },
+    { name = "scalar", label = "ps_gap", pop = 20, gens = 0, params = { scalarization = "ps", sub_plan = "gap" } },
+]
+[run]
+name = "scalar"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1"]
+[campaign]
+out = "res"
+budget_fe = 1500
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+operator_stats = true
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        for key, sc in (("eps_sqp", "eps"), ("ps_gap", "ps")):
+            meta = json.loads((root / "ZDT1" / key / "run_1" / "meta.json").read_text(encoding="utf-8"))
+            assert meta["settings"]["scalarization"] == sc and meta["budget_dependent"] is True
+            assert meta["fe"] <= 1500 and meta["status"] == "done", meta["fe"]
+            T = [json.loads(l) for l in (root / "ZDT1" / key / "run_1" / "trajectory.jsonl")
+                 .read_text().splitlines()]
+            assert T[0]["gen"] == 0 and T[-1]["igdp_norm"] < 0.1, T[-1]
+
+
+@test
+def polish_improves_and_loses_nothing():
+    """Task 9, A2: polish = sqp / nm after a core — the budget split exactly
+    (the core's share, then the polishing's), every point of the core's own
+    answer weakly dominated by the polished answer, the settings reported;
+    polish = off is the plain run, bit for bit; without max_evaluations, or
+    with a share out of (0, 1), refused."""
+    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
+        print("  skip  polish...: no NumPy, SciPy or _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    p = get("DTLZ2_3D")
+    calls = [0]
+    def f(x):
+        calls[0] += 1
+        return p.evaluate(x)
+    plain = mootation.minimize(p.evaluate, p.bounds, 3, algorithm="nsga2", pop_size=91,
+                               max_evaluations=4000, seed=3)
+    off = mootation.minimize(p.evaluate, p.bounds, 3, algorithm="nsga2", pop_size=91,
+                             max_evaluations=4000, seed=3, polish="off")
+    assert off.objectives == plain.objectives and off.variables == plain.variables
+    core = mootation.minimize(p.evaluate, p.bounds, 3, algorithm="nsga2", pop_size=91,
+                              max_evaluations=4000, seed=3)
+    for how in ("sqp", "nm"):
+        calls[0] = 0
+        r = mootation.minimize(f, p.bounds, 3, algorithm="nsga2", pop_size=91,
+                               max_evaluations=5000, seed=3, polish=how, polish_share=0.2,
+                               polish_points=10)
+        s = dict(r.settings)
+        assert s["polish"] == how and s["polish_points"] == "10", s
+        assert r.evaluations == calls[0] <= 5000 + 91, (r.evaluations, calls[0])
+        A, B = np.asarray(r.objectives), np.asarray(core.objectives)
+        assert len(A) <= 91
+        assert all(np.any(np.all(A <= b + 1e-12, axis=1)) for b in B), how
+    for kw in ({"polish": "sqp", "n_gen": 5}, {"polish": "sqp", "max_evaluations": 900,
+                                               "polish_share": 1.0},
+               {"polish": "bfgs", "max_evaluations": 900}):
+        kw.setdefault("max_evaluations", 0)
+        assert raises(ValueError, mootation.minimize, p.evaluate, p.bounds, 3,
+                      algorithm="nsga2", pop_size=91, seed=1, **kw) is not None, kw
+    from mootation.run.budget import depends_on_budget
+    assert depends_on_budget("nsga2", {"polish": "nm"}) and not depends_on_budget("nsga2")
+
+
+@test
+def r2_emoa_bc_and_paes_take_their_knobs():
+    """Task 9, B3-B5: r2_emoa takes r2_mode, r2_space, r2_weights, r2_offset
+    and normalize, refuses a bad word and keeps SMS-EMOA's binary genome;
+    bc_spx and bc_rex take bc_selection, bc_lambda and crossover spx or rex,
+    spend λ evaluations a step and refuse sbx, a population below n + 1 and a
+    binary genome; paes spends one evaluation a step, bounds its answer by
+    archive_size, takes paes_depth and refuses a binary genome."""
+    if not _have_numpy() or _core_with("Config") is None or \
+            "paes" not in __import__("mootation").algorithms():
+        print("  skip  r2_emoa_bc_and_paes...: no NumPy or stale _core"); return
+    import math
+    import mootation
+    f = lambda x: [x[0], 1.0 - math.sqrt(x[0]) + sum(v * v for v in x[1:])]
+    box = [(0.0, 1.0)] * 4
+    def run(alg, **kw):
+        kw.setdefault("max_evaluations", 1000)
+        return mootation.minimize(f, box, 2, algorithm=alg, pop_size=20, seed=4, **kw)
+    for kw in ({}, {"r2_mode": "discrete", "r2_weights": 50}, {"r2_space": "angle"},
+               {"r2_offset": 0.1, "normalize": True}):
+        r = run("r2_emoa", **kw)
+        assert not r.ignored and r.evaluations == 1000 and len(r.objectives) == 20, (kw, r.ignored)
+    assert run("r2_emoa", r2_mode="discrete").objectives != run("r2_emoa").objectives
+    for kw in ({"r2_mode": "integral"}, {"r2_weights": 1}, {"r2_offset": -1}):
+        assert raises(ValueError, run, "r2_emoa", **kw) is not None, kw
+    r = mootation.minimize(lambda x: [x[0] + x[2], 1.0 - x[0] + x[1]], [(0.0, 1.0)] * 3, 2,
+                           algorithm="r2_emoa", pop_size=10, max_evaluations=200, seed=1,
+                           var_types=["real", "bin", "real"])
+    assert r.evaluations == 200
+    for alg in ("bc_spx", "bc_rex"):
+        r = run(alg)
+        assert not r.ignored and len(r.objectives) == 20, r.ignored
+        assert 1000 <= r.evaluations < 1000 + 40, r.evaluations          # λ = 10n = 40
+        for kw in ({"bc_selection": "bf"}, {"bc_selection": "ba"}, {"bc_lambda": 7},
+                   {"crossover": "rex" if alg == "bc_spx" else "spx"}):
+            r = run(alg, **kw)
+            assert not r.ignored and len(r.objectives) == 20, (alg, kw, r.ignored)
+        assert run(alg, bc_lambda=7).evaluations < 1000 + 7
+        for kw in ({"crossover": "sbx"}, {"bc_selection": "bx"}):
+            assert raises(ValueError, run, alg, **kw) is not None, (alg, kw)
+        assert raises(ValueError, mootation.minimize, f, box, 2, algorithm=alg, pop_size=4,
+                      max_evaluations=200, seed=1) is not None
+        assert raises(ValueError, run, alg, var_types=["real", "bin", "real", "real"]) is not None
+    r = run("paes")
+    assert r.evaluations == 1000 and 0 < len(r.objectives) <= 20 and not r.ignored
+    assert len(run("paes", archive_size=7).objectives) <= 7
+    assert not run("paes", paes_depth=3).ignored
+    assert raises(ValueError, run, "paes", paes_depth=0) is not None
+    assert raises(ValueError, run, "paes", var_types=["real", "bin", "real", "real"]) is not None
+
+
+@test
+def direct_search_methods_are_deterministic_and_take_their_knobs():
+    """Task 9, C1-C4: dmulti_mads, multiglods and boostdms — one seed, one
+    trajectory; multiglods and boostdms (as dms) draw nothing at their
+    defaults, dmulti_mads draws its poll directions from the seed; the knobs
+    reach them, a bad word is refused, a binary genome refused; the budget is
+    not overrun by more than one poll; a run that converges ends early."""
+    if not _have_numpy() or _core_with("Config") is None or \
+            "multiglods" not in __import__("mootation").algorithms():
+        print("  skip  direct_search...: no NumPy or stale _core"); return
+    import math
+    import mootation
+    f = lambda x: [x[0], 1.0 - math.sqrt(x[0]) + sum((v - 0.3) ** 2 for v in x[1:])]
+    box = [(0.0, 1.0)] * 3
+    def run(alg, seed=1, **kw):
+        kw.setdefault("max_evaluations", 600)
+        return mootation.minimize(f, box, 2, algorithm=alg, pop_size=20, seed=seed, **kw)
+    for alg in ("dmulti_mads", "multiglods"):
+        a, b = run(alg), run(alg)
+        assert a.objectives == b.objectives, alg
+        assert a.evaluations <= 600 + 2 * 3 + 1 and len(a.objectives) <= 20, (alg, a.evaluations)
+        assert raises(ValueError, run, alg, var_types=["real", "bin", "real"]) is not None, alg
+    assert run("dmulti_mads").objectives != run("dmulti_mads", seed=2).objectives
+    assert run("multiglods").objectives == run("multiglods", seed=2).objectives
+    for kw in ({"mads_tau": 0.25}, {"mads_delta0": 0.3}, {"mads_select": "first"},
+               {"mads_poll": "opportunistic"}, {"mads_search": "none"}):
+        assert not run("dmulti_mads", **kw).ignored, kw
+    for kw in ({"mads_tau": 1.0}, {"mads_select": "crowding"}):
+        assert raises(ValueError, run, "dmulti_mads", **kw) is not None, kw
+    for kw in ({"glods_search_every": 1}, {"glods_local_tol": 0.01}):
+        assert not run("multiglods", **kw).ignored, kw
+    r = run("multiglods", max_evaluations=200000, glods_local_tol=0.05)
+    assert r.evaluations < 200000                     # every active point local: the end
+    if _have_scipy():
+        a, b = run("boostdms", max_evaluations=400), run("boostdms", max_evaluations=400, seed=5)
+        assert a.objectives == b.objectives and a.evaluations <= 400 + 6
+        assert dict(a.settings)["boost_scalarization"] == "eps"
+        r = run("boostdms", max_evaluations=400, boost_scalarization="minmax")
+        assert dict(r.settings)["boost_scalarization"] == "minmax" and not r.ignored
+        assert raises(ValueError, run, "boostdms", boost_scalarization="nbi") is not None
+        assert run("boostdms", max_evaluations=200, eta_c=10).ignored == ["eta_c"]
+        from mootation.scalar.boostdms import models
+        import numpy as np
+        rng = np.random.default_rng(3)
+        S = rng.uniform(-1, 1, (40, 3))                 # regression: 40 > 10 coefficients
+        q = lambda s: 1.0 + s @ [1.0, -2.0, 0.5] + 0.5 * s @ np.diag([2.0, 1.0, 4.0]) @ s
+        (c, g, H), = models(S, np.array([[q(s)] for s in S]))
+        assert abs(c - 1) < 1e-10 and np.allclose(g, [1, -2, 0.5]) and \
+            np.allclose(H, np.diag([2.0, 1.0, 4.0]))   # a quadratic is its own model
+        S = rng.uniform(-1, 1, (7, 3))                  # minimum Frobenius norm: 4 < 7 < 10
+        (c, g, H), = models(S, np.array([[1.0 + s @ [1.0, -2.0, 0.5]] for s in S]))
+        assert np.allclose(H, 0, atol=1e-9) and np.allclose(g, [1, -2, 0.5])   # linear: H = 0
+
+
 def main() -> int:
     import os
     failed = []

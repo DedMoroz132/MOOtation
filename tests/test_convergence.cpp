@@ -138,6 +138,24 @@ const Override OVERRIDES[] = {
     // the default energy, 0.020 / 0.006 with tch.
     {"mosa",       0, 18200, -1.0, -1.0, false,
      "simulated annealing, one evaluation a step; ~equal evaluations"},
+
+    // Task 9: the same evaluations as 200 generations of 91 (18 200).
+    // r2_emoa is SMS-EMOA's steady state and paes a (1+1) strategy, one
+    // evaluation a step; dmulti_mads polls n + 1 = 13 points and may add one
+    // speculative point a step; multiglods polls the 2n = 24 coordinate
+    // directions, as dms.
+    {"r2_emoa",    0, 18200, -1.0, -1.0, false,
+     "steady state, one evaluation a step; ~equal evaluations"},
+    {"paes",       0, 18200, -1.0, -1.0, false,
+     "(1+1), one evaluation a step; ~equal evaluations"},
+    {"dmulti_mads", 0, 1300, -1.0, -1.0, false,
+     "one poll a step (<= n + 2 evaluations); ~equal evaluations"},
+    // multiglods starts from α_0 = n·max range (§4), twelve times the box
+    // here, so its first polls are spent at the scale of the box; the paper
+    // reports its DTLZ2 runs short of the front at 20 000 evaluations for
+    // the same reason (§4.2). The mean is relaxed, the best is not.
+    {"multiglods", 0, 1000, 0.45, -1.0, false,
+     "one poll a step (<= 2n evaluations); alpha_0 = n * range (paper §4)"},
 };
 
 const Override* find_override(const std::string& name)

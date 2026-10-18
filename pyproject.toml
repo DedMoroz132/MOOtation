@@ -42,7 +42,9 @@ dependencies = []                   # the optimizer itself needs nothing
 # lets a machine that only drives an external solver install nothing extra.
 bench = ["numpy>=1.21"]
 tui   = ["textual>=0.50", "rich>=13.0"]
-all   = ["numpy>=1.21", "textual>=0.50", "rich>=13.0"]
+# the scalarization methods and the polishing (mootation.scalar)
+scalar = ["numpy>=1.21", "scipy>=1.7"]
+all   = ["numpy>=1.21", "scipy>=1.7", "textual>=0.50", "rich>=13.0"]
 
 [project.scripts]
 mootation-run = "mootation.run.cli:main"
