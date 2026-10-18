@@ -6,7 +6,8 @@
 #   ZDT1-6              Zitzler, Deb, Thiele 2000 (M = 2)
 #   DTLZ1-7 x M={2..6}  Deb, Thiele, Laumanns, Zitzler 2002
 #   WFG1-9  x M={2..6}  Huband et al. 2006
-#   MaF1-13 x M={3,5,8} Cheng et al. 2017 (irregular fronts)
+#   MaF1-15 x M={3,5,8,10,15}
+#                       Cheng et al. 2017 (irregular fronts; MaF14, 15 large-scale)
 #   ZCAT1-20 x 4 sizes  Zapotecas-Martinez et al. 2023 (tunable difficulty)
 #   bbob-biobj x n=5,10 Brockhoff et al. 2022 (55 pairs of bbob functions)
 #   Polygon x M={3..6}  Ishibuchi, Akedo, Nojima 2011
@@ -71,6 +72,7 @@ from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
                            hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz, shift_dtlz_rows,
                            shift_centres, WIDE_M, wide_bounds)
 from .maf     import MAF_FIX, MAF_FIX_ROWS, maf_n_vars
+from . import maf as _maf
 from ._rows   import math_cos, math_exp, math_sin, spow
 from .bt      import BT_SPECS, N as BT_N
 from . import bt as _bt
@@ -930,6 +932,13 @@ def _poly_edge_distance(x: np.ndarray, P: np.ndarray) -> float:
     return best
 
 
+def _maf8_vertices(M: int) -> list:
+    """MaF8's targets: (x, y) of vertex m of the regular M-gon on the unit
+    circle, at the angle 2 pi m / M (registry.maf8_rows; the C++ suite takes
+    them as they are, suite/maf.hpp)."""
+    return [(math.cos(2.0 * math.pi * m / M), math.sin(2.0 * math.pi * m / M)) for m in range(M)]
+
+
 def _maf9_lines(M: int) -> list:
     """MaF9's target lines: (ax, ay, dx, dy, |d|) of each edge A_m A_{m+1} of
     the regular M-gon (registry.maf9_rows; the C++ suite takes them as they
@@ -1333,20 +1342,27 @@ def _maf_register():
         # Decision space x in [-10000, 10000]^2, as the paper states; the
         # huge box IS the difficulty (a random point starts ~10^4 away from
         # the front). FIX 2026-09-05: this used to register [-2, 2]^2.
-        def maf8(x, M=M):
-            x = np.asarray(x, dtype=float)
-            f = np.empty(M)
-            for m in range(M):
-                th = 2.0*math.pi*m/M
-                vx, vy = math.cos(th), math.sin(th)
-                f[m] = math.hypot(x[0]-vx, x[1]-vy)
-            return f.tolist()
+        # Version 2 (task 12 of 2026-10-19, §6): the distances are the C
+        # library's hypot (np.hypot, and std::hypot in the C++ suite) where
+        # version 1 took CPython's math.hypot, an algorithm of its own: the
+        # values changed in the last bit.
+        def maf8_rows(X, M=M, _V=_maf8_vertices(M)):
+            X = np.asarray(X, dtype=float).reshape(-1, 2)
+            F = np.empty((len(X), M))
+            for m, (vx, vy) in enumerate(_V):
+                F[:, m] = np.hypot(X[:, 0]-vx, X[:, 1]-vy)
+            return F
+
+        def maf8(x, _rows=maf8_rows):
+            return _rows([list(x)])[0].tolist()
 
         PROBLEMS[f"MaF8_{M}D"] = BenchProblem(
             name=f"MaF8_{M}D", n_vars=2,
             bounds=[(-10000.0,10000.0)]*2, n_obj=M,
-            evaluate=maf8, constraints=_no_cons,
-            hv_ref_raw=tuple([3.0]*M),       # max distance on [-2,2]^2 is 2*sqrt(2)+1 < 3
+            evaluate=maf8, constraints=_no_cons, evaluate_batch=maf8_rows,
+            # beyond the front, whose distances are at most 2 (the M-gon's
+            # diameter); a point of the box lies up to ~14 143 from a vertex
+            hv_ref_raw=tuple([3.0]*M),
             hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
             ideal=tuple([0.0]*M), nadir=tuple([2.0]*M),
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=False)
@@ -1886,6 +1902,42 @@ def _register_maf_fix():
 
 
 # =============================================================
+#  MaF14 and MaF15 (task 12 of 2026-10-19, §2): LSMOP3 and the inverted
+#  LSMOP8, Cheng et al. 2017, Eq. 41-50, at M = {3,5,8,10,15}, D = 20 M and
+#  N_k = 2 (maf.py: the definitions, and the readings where the paper is
+#  silent). The budget is the paper's, max{100 000, 10 000 D} evaluations
+#  ("General settings"), at the usual population; the frame is the
+#  reference's, the corners of the simplex and of the inverted octant: ideal
+#  0, nadir 1. MaF14's reference from eight objectives on is the simplex where
+#  part of it is out of reach (maf.py, THE FRONT OF MaF14): front_exact False
+#  there.
+# =============================================================
+def _register_maf14_15():
+    for M in (3, 5, 8, 10, 15):
+        pop, _ = _budget(M)
+        D = _maf.lsmop_n_vars(M)
+        for which in (14, 15):
+            key = f"MaF{which}_{M}D"
+            link = _maf.lsmop_link(M, which)
+            bounds = [(0.0, 1.0)] * (M - 1) + [(float(l), float(l + w)) for _, l, w in link]
+            ideal, nadir = (0.0,) * M, (1.0,) * M
+            def _batch(X, _M=M, _w=which): return _maf.lsmop_rows(X, _M, _w)
+            def _eval(x, _b=_batch): return _b([list(x)])[0].tolist()
+            def _pf(n=1000, _M=M, _w=which): return _maf.pf_lsmop(_M, _w, n)
+            def _ps(n=1000, _M=M, _w=which): return _maf.ps_lsmop(_M, _w, n)
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=D, bounds=bounds, n_obj=M,
+                evaluate=_eval, constraints=_no_cons, evaluate_batch=_batch,
+                hv_ref_raw=tuple(nd + 0.1 * (nd - id_) for id_, nd in zip(ideal, nadir)),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+                ideal=ideal, nadir=nadir,
+                pop_size=pop, n_gen=round(max(100_000, 10_000 * D) / pop), K_runs=21,
+                has_cons=False, pareto_front=_pf, pareto_set=_ps,
+                front_exact=which == 15 or _maf.lsmop_x1_max(M) >= 1.0)
+            EXACT_FRAME.add(key)
+
+
+# =============================================================
 #  BT1-9 — biased suite (Li, Zhang, Deng 2017). BT1-8: M=2, BT9: M=3.
 #  n = 30. The front, ideal and nadir come from sampling the true front.
 # =============================================================
@@ -2061,6 +2113,7 @@ def _register_mw():
 
 _register_dtlz_variants()
 _register_maf_fix()
+_register_maf14_15()
 _register_bt()
 _register_ipolygon()
 _register_c_dtlz()
@@ -2614,10 +2667,13 @@ _register_failing()
 # matvec_pairwise instead of BLAS's gemv, and MaF9's constraint, from five
 # objectives, its products and sums of two coordinates written out instead of
 # BLAS's ddot (_poly_edge_distance); with them the noisy copies of such a base.
+# MaF8 from 2026-10-19 (task 12, §6, owner's decision): its distances the C
+# library's hypot, which the C++ suite calls, instead of CPython's math.hypot.
 PROBLEM_VERSION: Dict[str, int] = {
     **{name: 2 for name, r in ROTATED.items()
        if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
-    **{f"MaF9_{M}D": 2 for M in (5, 8, 10, 15)}}
+    **{f"MaF9_{M}D": 2 for M in (5, 8, 10, 15)},
+    **{f"MaF8_{M}D": 2 for M in (3, 5, 8, 10, 15)}}
 PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
                         for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
                         for level in _noisy.LEVELS})
@@ -2646,6 +2702,7 @@ DENSE_STEMS = frozenset({"DTLZ1", "DTLZ2", "DTLZ3", "DTLZ4", "IDTLZ1", "IDTLZ2",
                          "SDTLZ2", "minusDTLZ2", "shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3",
                          "shiftDTLZ4", "WFG4", "WFG5", "WFG6", "WFG7", "WFG8", "WFG9",
                          "Polygon", "MaF1", "MaF3", "MaF4", "MaF5", "MaF12", "MaF13",
+                         "MaF14", "MaF15",
                          "MW4", "MW8", "MW14", *_rot.SPECS})
 DENSE_SIZES = (1000, 2000, 5000, 10_000, 20_000, 50_000, 100_000)
 DENSE_RATIO = 3.0

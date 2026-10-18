@@ -69,6 +69,9 @@ suite::Spec spec_of(const py::dict& d)
     if (d.contains("centre_m")) s.centre_m = d["centre_m"].cast<double>();
     s.lines = flat_of(d, "lines");
     s.polygons = list_of(d, "polygons");
+    s.vertices = flat_of(d, "vertices");
+    s.link = flat_of(d, "link");
+    s.parts = flat_of(d, "parts");
     return s;
 }
 
@@ -88,6 +91,9 @@ py::dict dict_of(const suite::Spec& s)
     d["centre_m"] = s.centre_m;
     d["lines"] = s.lines;
     d["polygons"] = s.polygons;
+    d["vertices"] = s.vertices;
+    d["link"] = s.link;
+    d["parts"] = s.parts;
     return d;
 }
 

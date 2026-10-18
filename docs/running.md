@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 75 algorithm names and the nine Python methods |
-| `--problems` | list the 1340 benchmark problems (needs NumPy) |
+| `--problems` | list the 1350 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -223,7 +223,7 @@ ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated
 ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE, bbob-biobj-mixint and catZDT1,
 the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition, and RWMOP's mechanical, chemical and process
-problems RCM01–29: 1340 problems across 49 families, each
+problems RCM01–29: 1350 problems across 49 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -257,7 +257,7 @@ objectives, `p.constraints_batch(X)` the n × K constraints, and a constrained
 problem whose objectives and constraints come out of one computation (DAS-CMOP,
 LIR-CMOP, MW, C-DTLZ, DOC, RWMOP, CRE) gives both at once,
 `p.evaluate_with_constraints(X)` → `(F, G)`. A family written for batches
-(ZDT, DTLZ and its variants, C-DTLZ, MaF but MaF8 and MaF10–12, ZCAT,
+(ZDT, DTLZ and its variants, C-DTLZ, MaF but MaF10–12, ZCAT,
 bbob-biobj and its mixint, DAS-CMOP, LIR-CMOP, MW, BT, MOP, and the rotated,
 shifted and noisy copies of those) has one implementation, the batch, and
 `p.evaluate(x)` is its batch of one row; every other problem's batch is the
@@ -272,7 +272,7 @@ may differ). A row whose evaluation fails is NaN in that row; the batch goes on.
 call.
 
 **In C++: the suite.** ZDT1–4 and ZDT6, DTLZ1–7 and wideDTLZ3, shiftDTLZ,
-IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–7, MaF9 and MaF13, ZCAT1–20, shiftZDT
+IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–9 and MaF13–15, ZCAT1–20, shiftZDT
 and the rotations over them (rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF,
 r0/c0MaF, rZCAT) are computed in C++ when the extension is built
 (`include/mootation/suite`, `benchmarks/native.py`): `p.evaluate`,
@@ -297,8 +297,22 @@ the rotated problems whose matrix is not diagonal, which now take A·d as
 NumPy's pairwise sums of the rows of A ⊙ d (`_rows.matvec_pairwise`, an order
 C++ repeats) instead of BLAS's product, whose order is its own, and MaF9's
 constraint from five objectives, its dot products of two coordinates written
-out. The controls r0 and c0 are unchanged. MaF8 stays in Python (its
-distances are CPython's `math.hypot`), and so do MaF10–12 (WFG).
+out. The controls r0 and c0 are unchanged. MaF8 joined the suite later (task
+12 of 2026-10-19) as version 2 of itself: its distances are the C library's
+`hypot` (`np.hypot`, `std::hypot`) where version 1 took CPython's `math.hypot`,
+an algorithm of its own: the values changed in the last bit. MaF10–12 (WFG)
+stay in Python.
+
+**MaF14 and MaF15** (Cheng et al. 2017, Eq. 41–50; task 12 of 2026-10-19):
+LSMOP3 and the inverted LSMOP8, the suite's two large-scale problems, at 3, 5,
+8, 10 and 15 objectives with the paper's D = 20 M variables, N_k = 2
+subcomponents per group and budget, max{100 000, 10 000 D} evaluations.
+The paper leaves the sizes of the variable groups to the LSMOP paper; here
+they are its non-uniform ones (`benchmarks/maf.py` says how they are read, as
+it does for the bounds of MaF14's positions). The front is the simplex for
+MaF14 and 1 minus the sphere's octant for MaF15, both with a Pareto-set
+sampler; from eight objectives MaF14's box keeps part of the simplex out of
+reach (`front_exact` False there, `maf.py`, THE FRONT OF MaF14).
 
 **Where a problem is not defined.** RCM02 (EI / μ < 0, the layers out of
 order) and RCM24 (the logarithms of its equalities, outside x8 > 100,
@@ -665,7 +679,7 @@ only 1.5–2 times finer than the population it measures (the median distance
 from a point to its nearest neighbour, in the problem's frame, against that of
 N points of the same sampler), so IGD+ there measures the reference as well
 as the set. For the problems with an analytic front — DTLZ1–4, IDTLZ, SDTLZ,
-minusDTLZ2, shiftDTLZ1–4, WFG4–9, Polygon, MaF1, 3, 4, 5, 12 and 13, and the
+minusDTLZ2, shiftDTLZ1–4, WFG4–9, Polygon, MaF1, 3, 4, 5 and 12–15, and the
 rotated DTLZ and WFG, at 4 to 10 objectives — a campaign measures the front
 indicators also against a dense reference (`[campaign] dense_reference`, on
 by default; `false` switches it off): the first of 1 000, 2 000, 5 000,

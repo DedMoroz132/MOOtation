@@ -203,9 +203,65 @@ int main()
         check(std::abs(g[0] - 0.25) < 1e-15, "MaF9: inside a polygon, the distance to its nearest edge");
     }
 
+    // MaF8: the distances to the M-gon's vertices
+    {
+        const int M = 4;
+        S::Spec s = spec("MaF8", 2, M);
+        for (int m = 0; m < M; ++m) s.vertices.insert(s.vertices.end(), {std::cos(2 * S::kPi * m / M), std::sin(2 * S::kPi * m / M)});
+        auto p = S::make(s);
+        bool unit = true;
+        for (double v : eval(*p, {0.0, 0.0})) unit = unit && v == 1.0;
+        const auto f = eval(*p, {s.vertices[0], s.vertices[1]});
+        check(unit && f[0] == 0.0 && std::abs(f[2] - 2.0) < 1e-15, "MaF8: 1 from the centre, 0 and 2 at a vertex");
+    }
+
+    // MaF14 and MaF15 on their Pareto sets: the simplex, and 1 minus the sphere
+    {
+        const int M = 3, n = 60, ns = n - M + 1;
+        const std::vector<double> parts = {6, 6, 15, 15, 8, 8};
+        for (int which : {14, 15}) {
+            S::Spec s = spec(which == 14 ? "MaF14" : "MaF15", n, M);
+            s.parts = parts;
+            for (int i = 1; i <= ns; ++i) {
+                const double r = static_cast<double>(i) / ns;
+                s.link.insert(s.link.end(), {which == 14 ? 1.0 + r : 1.0 + std::cos(0.5 * S::kPi * r), 0.0,
+                                             which == 14 ? 10.0 : 1.0});
+            }
+            auto p = S::make(s);
+            std::vector<double> x(static_cast<std::size_t>(n));
+            x[0] = 0.3;
+            x[1] = 0.6;
+            for (int i = 0; i < ns; ++i) {
+                // MaF14's group 2 (columns 12 .. 41) is Rosenbrock's, its optimum z = 1
+                const double z = which == 14 && i >= 12 && i < 42 ? 1.0 : 0.0;
+                const double* l = s.link.data() + 3 * i;
+                x[static_cast<std::size_t>(M - 1 + i)] = l[1] + (z + x[0] * l[2]) / l[0];
+            }
+            const auto f = eval(*p, x);
+            double sum = 0.0, sq = 0.0;
+            for (double v : f) {
+                sum += v;
+                sq += (1.0 - v) * (1.0 - v);
+            }
+            check(which == 14 ? std::abs(sum - 1.0) < 1e-14 : std::abs(sq - 1.0) < 1e-14,
+                  which == 14 ? "MaF14 on its Pareto set: the simplex" : "MaF15 on its Pareto set: 1 - the sphere");
+            x[30] += 0.5;
+            const auto g = eval(*p, x);
+            check(g[1] > f[1] && (which == 14 ? g[0] == f[0] : g[0] > f[0]) && g[2] == f[2],
+                  "MaF" + std::to_string(which) + ": group 2 read by objective 2 (MaF15: and 1)");
+            S::Spec bad = s;
+            bad.parts.back() = 7.0;
+            check(refused(bad), "MaF" + std::to_string(which) + " whose subcomponents do not take x^s");
+            bad = s;
+            bad.link.pop_back();
+            check(refused(bad), "MaF" + std::to_string(which) + " without a link per variable");
+        }
+    }
+
     // what make() refuses
     check(refused(spec("WFG1", 6, 2)), "a family the suite does not have");
-    check(refused(spec("MaF8", 2, 3)), "MaF8 stays in Python");
+    check(refused(spec("MaF8", 2, 3)), "MaF8 without its vertices");
+    check(refused(spec("MaF11", 12, 3)), "MaF11 (WFG2) stays in Python");
     check(refused(spec("DTLZ2", 2, 3)), "fewer variables than objectives");
     check(refused(spec("ZDT1", 30, 3)), "ZDT at three objectives");
     {

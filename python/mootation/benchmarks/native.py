@@ -6,8 +6,9 @@ simplest families to C++ (include/mootation/suite): ZDT1-4 and ZDT6; DTLZ1-7,
 wideDTLZ3, shiftDTLZ1-4, 6, 7, IDTLZ1/2, minusDTLZ2, SDTLZ1/2 and C-DTLZ;
 MaF1-7, MaF9 and MaF13; ZCAT1-20; shiftZDT1-4 and 6; and the rotations over
 them (rotated.py: rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF, r0/c0MaF,
-rZCAT). Not moved: MaF8, whose distances are math.hypot's (CPython's own
-algorithm, not the C library's hypot), MaF10-12 (WFG), and every other family.
+rZCAT). Task 12 of 2026-10-19 added MaF8 (§6: version 2, the C library's
+hypot) and the new MaF14 and MaF15 (§2). Not moved: MaF10-12 (WFG), and every
+other family.
 
 With the extension built, such a problem's evaluate, evaluate_batch,
 constraints, constraints_batch and evaluate_with_constraints are C++ (attach):
@@ -19,8 +20,9 @@ equal bit for bit wherever NumPy's sin, cos, exp and pow are the C library's
 (_rows.agrees), and without the extension it is what runs.
 
 spec(name) is what C++ needs of a problem: its family and sizes and the
-numbers NumPy made for it (centres, rotations, MaF9's polygons, the constants
-of C-DTLZ and SDTLZ), as include/mootation/suite/suite.hpp, Spec, reads them.
+numbers NumPy made for it (centres, rotations, MaF9's polygons, MaF8's
+vertices, MaF14's and MaF15's groups and linkage, the constants of C-DTLZ and
+SDTLZ), as include/mootation/suite/suite.hpp, Spec, reads them.
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ from . import shifted as _shift
 
 # the stems of the problems with an objective count (<stem>_<M>D), and of ZDT
 _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2|SDTLZ[12]|"
-                    r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-7]|9|13)|"
+                    r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-9]|1[345])|"
                     r"ZCAT([1-9]|1[0-9]|20))_(\d+)D")
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
 
@@ -92,6 +94,13 @@ def spec(name: str, p, rotated=None) -> dict | None:
             from .registry import _maf9_forbidden_regions, _maf9_lines
             d.update(lines=_array(_maf9_lines(M)),
                      polygons=[_array(P) for P in _maf9_forbidden_regions(M)])
+        elif stem.startswith("MaF8"):
+            from .registry import _maf8_vertices
+            d.update(vertices=_array(_maf8_vertices(M)))
+        elif stem in ("MaF14", "MaF15"):
+            from . import maf
+            d.update(link=_array(maf.lsmop_link(M, int(stem[3:]))),
+                     parts=_array(maf.lsmop_parts(M)))
         return d
     if stem == "wideDTLZ3":
         return _base("DTLZ3", n, M)

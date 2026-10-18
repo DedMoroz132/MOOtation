@@ -8,8 +8,9 @@
 // A Spec is what benchmarks/native.py reads off a registered problem: the
 // family (the registry's family names: ZDT1, DTLZ3, IDTLZ1, SDTLZ2,
 // minusDTLZ2, C2-DTLZ2, MaF5, ZCAT12, ...), the sizes, and the numbers NumPy
-// made for it — shift centres, rotations, MaF9's polygons, the constants of
-// C-DTLZ and SDTLZ. The registry's names of the problems themselves
+// made for it — shift centres, rotations, MaF9's polygons, MaF8's vertices,
+// MaF14's and MaF15's groups and linkage, the constants of C-DTLZ and
+// SDTLZ. The registry's names of the problems themselves
 // (rDTLZ1_3D_i2, shiftZDT4) stay in Python, which builds the spec of each.
 //
 // THE MAPS (dtlz_variants.py, shifted.py, rotated.py): the point the family
@@ -51,6 +52,9 @@ struct Spec {
     double centre_m = 0.0;                        // C2-DTLZ2: 1/sqrt(M)
     std::vector<double> lines;                    // MaF9: (ax, ay, dx, dy, |d|) per edge
     std::vector<std::vector<double>> polygons;    // MaF9: the forbidden polygons, x0 y0 x1 y1 ...
+    std::vector<double> vertices;                 // MaF8: (x, y) per vertex
+    std::vector<double> link;                     // MaF14, MaF15: (a, l, u - l) per variable of x^s
+    std::vector<double> parts;                    // MaF14, MaF15: the subcomponents' sizes, group by group
 };
 
 namespace detail {
@@ -138,6 +142,10 @@ public:
                 if (which_ == 9) {
                     maf::maf9(p, n_obj, s_.lines, f);
                     if (n_con > 0) g[0] = maf::maf9_constraint(p, s_.polygons);
+                } else if (which_ == 8) {
+                    maf::maf8(p, n_obj, s_.vertices, f);
+                } else if (which_ == 14 || which_ == 15) {
+                    maf::lsmop(which_, p, n_var, n_obj, s_.link, s_.parts, f);
                 } else if (which_ == 13) {
                     maf::maf13(p, n_obj, f);
                 } else {
@@ -205,10 +213,14 @@ private:
                     for (const auto& P : s_.polygons)
                         if (P.size() < 6 || P.size() % 2 != 0) fail("MaF9: a polygon of fewer than three vertices");
                     n_con = s_.polygons.empty() ? 0 : 1;
+                } else if (which_ == 8) {
+                    if (n != 2 || static_cast<int>(s_.vertices.size()) != 2 * M) fail("MaF8: two variables, M vertices");
+                } else if (which_ == 14 || which_ == 15) {
+                    check_lsmop();
                 } else if (which_ == 13) {
                     if (n != 5 || M < 3) fail("MaF13: five variables, M >= 3");
                 } else if (which_ < 1 || which_ > 7 || M < 2 || n < M) {
-                    fail("MaF1-7, 9 and 13 (MaF8 and MaF10-12 are not in the suite)");
+                    fail("MaF1-9 and 13-15 (MaF10-12 are not in the suite)");
                 }
                 break;
             case Kind::ZCAT:
@@ -252,6 +264,24 @@ private:
         } else {
             fail("unknown map '" + map + "'");
         }
+    }
+
+    // MaF14 and MaF15: x^s of n - M + 1 variables, a link triple each, and M
+    // groups of the same number of subcomponents, of one variable or more,
+    // that take all of x^s.
+    void check_lsmop() const
+    {
+        const int M = n_obj, ns = n_var - M + 1;
+        if (M < 2 || ns < M) fail("MaF14, MaF15: M >= 2 and a variable of x^s per group at least");
+        if (static_cast<int>(s_.link.size()) != 3 * ns) fail("MaF14, MaF15: a link (a, l, u - l) per variable of x^s");
+        if (s_.parts.empty() || s_.parts.size() % static_cast<std::size_t>(M) != 0)
+            fail("MaF14, MaF15: the same number of subcomponents in every group");
+        double total = 0.0;
+        for (double v : s_.parts) {
+            if (!(v >= 1.0) || v != std::floor(v)) fail("MaF14, MaF15: a subcomponent of no variables");
+            total += v;
+        }
+        if (total != static_cast<double>(ns)) fail("MaF14, MaF15: the subcomponents do not take x^s");
     }
 
     void map(const double* x, double* y) const
