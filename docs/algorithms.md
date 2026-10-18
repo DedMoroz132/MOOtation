@@ -1,8 +1,9 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-67 algorithms, one header each under `include/mootation/algorithms/`, registered
-in `include/mootation/algorithms.def`. Every header opens with the paper
+74 algorithms, one header each under `include/mootation/algorithms/`, registered
+in `include/mootation/algorithms.def`, and nine Python methods (scalarization
+with a local solver, MOSQP, BoostDMS; `python/mootation/scalar/`). Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
 symbols, the paper's defaults with the section they come from, and a numbered
 list of declared deviations. The DOI in each table is the primary source the
@@ -12,16 +13,16 @@ implementation follows; if you publish results, cite that paper.
 
 | family | count | reach for it when | watch out for |
 |---|---|---|---|
-| Pareto-dominance & diversity | 9 | 2–3 objectives, a baseline everyone recognises; DN-NSGA-II when several parts of the variables map onto one front | crowding distance degrades above 3 objectives |
+| Pareto-dominance & diversity | 11 | 2–3 objectives, a baseline everyone recognises; DN-NSGA-II when several parts of the variables map onto one front; BC with SPX or REX for many variables and a large budget | crowding distance degrades above 3 objectives; BC's population is not elitist |
 | Reference-point (NSGA-III family) | 4 | many objectives with a regular front | `pop_size` must be an exact Das–Dennis lattice size |
 | Decomposition & region division (MOEA/D family) | 16 | scalarisable problems, many objectives, cheap per-generation cost | most members need an exact lattice size too (the weights are a Das–Dennis set); the steady-state members hand over one candidate at a time; the M2M members want `pop` divisible by `K` |
-| Indicator-based | 13 | you care about one quality indicator (ε+, hypervolume, R2) | cost grows fast with the objective count (HypE, R2-IBEA, SMS-EMOA, MO-CMA-ES) |
+| Indicator-based | 14 | you care about one quality indicator (ε+, hypervolume, R2) | cost grows fast with the objective count (HypE, R2-IBEA, SMS-EMOA, MO-CMA-ES) |
 | Reference-vector / angle-based | 8 | irregular or scaled fronts, where a fixed lattice misses | adaptive variants (RVEA*, DEA-GNG, NRV-MOEA, SRV) need a few generations before they help |
 | Clustering-based | 11 | disconnected or irregular fronts | cluster counts are parameters the papers tuned per problem |
-| Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
+| Archive-based | 3 | you want the whole non-dominated history, not a fixed population; PAES: one point at a time | the archive is the output, not the working population; PAES's grid has 2^(5m) cells by default (`paes_depth` 5), many more than archive points from three objectives on |
 | Constrained, two archives or populations | 2 | a constrained problem whose feasible region is small, scattered or behind infeasible barriers | `pop_size` must be an exact Das–Dennis lattice size; at 2N per generation in memory, N evaluations |
-| Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
-| Scalarization + local solver | 7 | smooth problems, equality constraints a population cannot hold, a front to be traced point by point | local solvers: a multimodal problem (DTLZ1, DTLZ3) gives local fronts; NBI and NNC lean on the anchors, and a front whose individual minima coincide (DTLZ2) flattens NNC's simplex |
+| Direct search | 3 | few variables, no population to tune; DMS and MultiGLODS deterministic | a poll costs n + 1 (DMulti-MADS) to 2n evaluations; DMS and MultiGLODS poll coordinate directions only, strong on separable problems and slow on rotated ones, and their dyadic steps land exactly on the box's centre and bounds |
+| Scalarization + local solver, SQP | 8 | smooth problems, equality constraints a population cannot hold, a front to be traced point by point | local solvers: a multimodal problem (DTLZ1, DTLZ3) gives local fronts; NBI and NNC lean on the anchors, and a front whose individual minima coincide (DTLZ2) flattens NNC's simplex |
 | Particle swarm | 1 | 2–3 objectives, a cheap step and one batch of evaluations per step | the reference codes disagree on what SMPSO is; the presets are their readings, and the default's clamp lands exactly on the middle and the bounds of the box |
 | Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
@@ -262,6 +263,7 @@ Coello Coello, EMO 2005), and every part of it is a knob of its own
 | Normal Boundary Intersection | 1998 | `nbi_sqp` | [10.1137/S1052623496307510](https://doi.org/10.1137/S1052623496307510) |
 | Normalized Normal Constraint | 2003 | `nnc_sqp` | [10.1007/s00158-002-0276-1](https://doi.org/10.1007/s00158-002-0276-1) |
 | Pascoletti–Serafini (`scalarization = ps`) | 1984 | `scalar` | [10.1007/BF00934564](https://doi.org/10.1007/BF00934564) |
+| Multiobjective SQP | 2016 | `mosqp` | [10.1137/15M1016424](https://doi.org/10.1137/15M1016424) |
 
 Not evolutionary and not C++ cores: Python (`python/mootation/scalar/`), run by
 name through `minimize()` and in campaigns like any algorithm, with NumPy and
@@ -274,8 +276,10 @@ written from Hansen's tutorial, arXiv:1604.00772 (`cmaes`). Every evaluation,
 finite differences included, is counted and archived; the answer is the
 archive's feasible non-dominated points, reduced to `pop_size` by DSS. Real
 variables only. `scalar` with its knobs covers all of them; the six names are
-its presets. [running.md](running.md) has the knobs and what each part reads
-from its source.
+its presets. `mosqp` (Fliege & Vaz) is beside them without a scalarization: a
+set of points spread by one SQP step per objective, then each moved along the
+step that improves all objectives at once. [running.md](running.md) has the
+knobs and what each part reads from its source.
 
 ## Simulated annealing
 
@@ -303,13 +307,15 @@ reduced to `pop_size` by DSS, published every `pop_size` steps.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 49 of the 67
+Every algorithm works on a real-valued genome with box bounds. 50 of the 74
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
-`Problem<>` specialisation); the other 18 refuse it at `setup()` with a clear
+`Problem<>` specialisation); the other 24 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only, or, for
-DN-NSGA-II, its niche is a distance in the real variables: CLIA, DCEA,
-DEA-GNG, DHEA, DMS, DN-NSGA-II, ETEA, GDE3, HCCA, HLMEA, IF-MaOEA, ISDE+RD, MaOEA-3C,
-MO-CMA-ES, MOEA/D-DS, MOSA, NAEMO and Two_Arch2. The Python binding reaches the binary genome
+DN-NSGA-II, its niche is a distance in the real variables: BC (SPX, REX), CLIA,
+DCEA, DEA-GNG, DHEA, DMS, DMulti-MADS, DN-NSGA-II, ETEA, GDE3, HCCA, HLMEA,
+IF-MaOEA, ISDE+RD, MaOEA-3C, MO-CMA-ES, MOEA/D-DS, MOSA, MultiGLODS, NAEMO, PAES,
+SMPSO and Two_Arch2. The Python methods (`python/mootation/scalar/`) take real
+variables only. The Python binding reaches the binary genome
 through `minimize(var_types=[..., "bin"])` (`mootation/var_types.py`), which also declares
 integer and discrete variables — rounded in the genome by the vault (`DataVault::set_snap`)
 for every algorithm; the C ABI and the TOML layer expose real-valued variables only.

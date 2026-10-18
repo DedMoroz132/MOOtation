@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 67 algorithm names |
+| `--algorithms` | list the 74 algorithm names and the nine Python methods |
 | `--problems` | list the 1340 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -419,10 +419,11 @@ probability 1/(number of genes) but at most 1/2 (pymoo's cap; with a single
 gene 1 would change every child's), one of its other values, each alike —
 a bit flips (`operators/bit_flip.hpp`). SBX, DE and polynomial mutation never
 see them, and with more than two genes a binary run is what it was, bit for
-bit. 49 of the 67 cores take the integer genome; these 18 refuse it by name:
-`clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `dn_nsga2`, `etea`, `gde3`, `hcca`, `hlmea`,
-`if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`, `moead_ds`, `mosa`, `naemo`
-and `two_arch2` (`minimize` says so, naming the variables).
+bit. 50 of the 74 cores take the integer genome; these 24 refuse it by name:
+`bc_rex`, `bc_spx`, `clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `dmulti_mads`, `dn_nsga2`,
+`etea`, `gde3`, `hcca`, `hlmea`, `if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`,
+`moead_ds`, `mosa`, `multiglods`, `naemo`, `paes`, `smpso` and `two_arch2`
+(`minimize` says so, naming the variables); so do the Python methods.
 
 `result.evaluations` counts the calls, `result.unique_evaluations` the
 distinct decoded points among them (`mootation/unique.py`; the key is the
@@ -1041,6 +1042,21 @@ DSS. The plan is laid out over the budget, so these runs depend on
 real variables only. The header of each module lists what it reads where the
 sources are silent (SCALAR-1 ... 12 in `scalar/__init__.py`).
 
+**MOSQP** (`python/mootation/scalar/mosqp.py`; Fliege & Vaz, SIAM J.
+Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the
+constraints); then `mosqp_spread` (20) iterations that spread a set of
+pop_size points from the line between the bounds — every point gives, for
+every objective, the SQP direction of that objective under the linearized
+constraints and a step by Armijo's rule on an ℓ1 merit function — the set
+kept non-dominated and cut by crowding distance; then every point refined
+along the direction that improves all the objectives' quadratic models at
+once, until the directions or the steps are below √`mosqp_tau`. Gradients by
+forward differences (`fd_step`), counted; H_i = I; `mosqp_mu` (10⁻⁴) and
+`mosqp_beta` (1/2) are Armijo's constant and factor. The preprint leaves τ,
+μ, β and the set's size open: the header says what is chosen. Equalities and
+inequalities go to the subproblems as constraints; an infeasible
+subproblem sends the point to a restoration.
+
 **Polishing** (`polish`, every algorithm; `scalar/polish.py`): `polish = "sqp"`
 or `"nm"` keeps `polish_share` (0.2) of `max_evaluations` for the end. The
 algorithm runs on the rest; then `polish_points` (0: from what the share buys,
@@ -1156,7 +1172,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-67 cores, so "not dominated by its parents" is read as "by any parent", and
+74 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

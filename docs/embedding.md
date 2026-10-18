@@ -4,7 +4,7 @@
 Three shapes, from the most static to the most portable: the algorithm fixed at
 compile time (`Optimizer<Ind, Core>`), the algorithm chosen by name at run time
 with either the library or you owning the loop (`embed.hpp`), and the same loop
-behind a C ABI for other languages. All three run the same 67 cores from
+behind a C ABI for other languages. All three run the same 74 cores from
 `include/mootation/algorithms.def`.
 
 ## Compile-time choice: `Optimizer<Ind, Core>`
@@ -56,7 +56,7 @@ carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 you; the full WFG / MaF families live on the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
-[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 49 of the 67 cores
+[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 50 of the 74 cores
 accept one, the other 18 refuse it at `setup()` with a message.
 
 ### External or parallel evaluation
@@ -103,7 +103,7 @@ sizes in the message.
 
 ## Run-time choice: `embed.hpp`
 
-`#include <mootation/embed.hpp>` instantiates all 67 cores in that translation
+`#include <mootation/embed.hpp>` instantiates all 74 cores in that translation
 unit so that the algorithm can be picked by name. That is a real compile-time
 cost (about a minute); a program that always runs one algorithm should use
 `Optimizer<Ind, Core>` directly.
@@ -143,7 +143,7 @@ A plain struct, and the same fields as a `key = value` file:
 | `paes_depth` | PAES: the grid's recursive halvings per objective (5) (`paes.hpp`) |
 | `mads_tau`, `mads_delta0`, `mads_select`, `mads_poll`, `mads_search` | DMulti-MADS: τ (1/2), Δ_0 (0.1), the incumbent `spread` / `first`, the poll `complete` / `opportunistic`, the search `speculative` / `none` (`dmulti_mads.hpp`) |
 | `glods_search_every`, `glods_local_tol` | MultiGLODS: failures in a row before a search (3), the step below which a point is local (10⁻³) (`multiglods.hpp`) |
-| `scalarization`, `local`, `sub_plan`, `tch_weights`, `n_sub`, `sub_budget`, `fd_step`, `local_tol`, `cma_sigma0`, `eps_objective`, `boost_scalarization`, `polish`, `polish_share`, `polish_points` | Python only: the scalarization methods, boostdms and the polishing (`python/mootation/scalar/`, [running.md](running.md)); a core reports them ignored |
+| `scalarization`, `local`, `sub_plan`, `tch_weights`, `n_sub`, `sub_budget`, `fd_step`, `local_tol`, `cma_sigma0`, `eps_objective`, `boost_scalarization`, `mosqp_tau`, `mosqp_mu`, `mosqp_beta`, `mosqp_spread`, `polish`, `polish_share`, `polish_points` | Python only: the scalarization methods, boostdms, mosqp and the polishing (`python/mootation/scalar/`, [running.md](running.md)); a core reports them ignored |
 | `dms_init`, `dms_poll` | words for DMS: the initial list, `line` / `single` / `random`, and the next poll centre, `first` / `random` (`dms.hpp`, DMS-6) |
 | `sa_energy`, `sa_step`, `sa_weights`, `sa_tch_accept` | words for MOSA: the energy `cmb` / `eps` / `dom` / `tch`, the step `mix` / `laplace` / `de` / `sbx` / `adaptive`, with `tch` the weights `psa` / `fixed` and the acceptance `weighted_sum` / `chebyshev` (`mosa.hpp`; [running.md](running.md)) |
 | `p_de`, `sa_chains`, `sa_reseed`, `sa_t_ratio`, `sa_s0`, `sa_s_end`, `sa_archive_cap`, `sa_psa_alpha`, `sa_adapt_window` | MOSA's numbers: the differential step's probability (0.7), the chains (1; 10 with `tch`), the reseeding probability (1/50), T's last over first (10⁻⁴), the Laplace scale first and last (0.2, 0.002), the archive's cap (0: none), PSA's α (1.05), the adaptive step's window (200) |

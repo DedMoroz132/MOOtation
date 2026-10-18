@@ -92,7 +92,7 @@ inline const std::vector<std::string>& knob_names() {
         // task 9: the scalarization methods (python/mootation/scalar) and the
         // polishing every algorithm takes (minimize.py); no core has them
         "n_sub", "sub_budget", "fd_step", "local_tol", "cma_sigma0", "eps_objective",
-        "polish_share", "polish_points"
+        "polish_share", "polish_points", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread"
     };
     return v;
 }
@@ -147,7 +147,8 @@ inline bool is_core_param(const std::string& name)
                           "mads_tau", "mads_delta0", "glods_search_every",
                           "glods_local_tol", "n_sub",
                           "sub_budget", "fd_step", "local_tol",
-                          "cma_sigma0", "eps_objective", "polish_share", "polish_points"})
+                          "cma_sigma0", "eps_objective", "polish_share", "polish_points",
+                          "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread"})
         if (name == k) return true;
     return false;
 }

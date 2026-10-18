@@ -48,6 +48,11 @@ always listed under **Changed** or **Removed**.
   (Python): DMS with a search step on quadratic models, minimized by the
   adapted ε-constraint of Custódio, Pozzi & Silva (2026) or the paper's
   min-max levels (`boost_scalarization`).
+- MOSQP (Fliege & Vaz, SIAM J. Optim. 2016), `mosqp` (Python): a set of
+  points spread by single-objective SQP steps and refined by the
+  all-objectives step, Armijo's rule on ℓ1 merit functions, a restoration for
+  infeasible subproblems (`mosqp_tau`, `mosqp_mu`, `mosqp_beta`,
+  `mosqp_spread`).
 - Scalarization with a local solver (`python/mootation/scalar/`): the
   algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
   `nnc_sqp`, `eps_nm`, `eps_cmaes`, run by name through `minimize()` and in
@@ -65,6 +70,10 @@ always listed under **Changed** or **Removed**.
   improved in one objective with the others no worse; the answer the
   non-dominated union of the algorithm's and the polished points. Off by
   default, and off changes nothing.
+- `constraint_mode = "eps_level"` with `eps_schedule = {"tc": 0}`: the level is
+  0 from the first step, as the rule says, also for a core whose setup spends
+  fewer than `pop_size` evaluations (PAES starts from one point); it used to
+  stay at eps(0) until the first `pop_size` evaluations were spent.
 - `Result.settings`: every knob as the run used it, for a core whose knobs
   come from a preset (SMPSO); a campaign writes it to `meta.json` under
   `settings`. `run.budget.depends_on_budget(name, params)`: the budget

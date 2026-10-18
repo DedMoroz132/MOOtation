@@ -30,7 +30,8 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "w_min", "w_max", "c_min", "c_max", "turbulence_k", "turbulence_p",
                "archive_size", "eps_archive_eta", "r2_weights", "r2_offset", "bc_lambda",
                "paes_depth", "mads_tau", "mads_delta0", "glods_search_every",
-               "glods_local_tol", "n_sub",
+               "glods_local_tol", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
+               "n_sub",
                "sub_budget", "fd_step",
                "local_tol", "cma_sigma0", "eps_objective")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
@@ -598,7 +599,7 @@ def minimize(
         result = _polished(_core.run(algorithm, problem, cfg))
     except ValueError as e:
         if n_bin and ("binary" in str(e) or "continuous" in str(e)):
-            # the 18 cores without an integer genome refuse it by name
+            # the 24 cores without an integer genome refuse it by name
             raise ValueError(f"{algorithm} takes no binary or categorical variables (the "
                              f"integer genome; docs/running.md lists the cores that do): "
                              f"{e}") from e

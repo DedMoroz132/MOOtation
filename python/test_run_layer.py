@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 67, f"expected 67 algorithms, got {len(names)}"
+    assert len(names) == 74, f"expected 74 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -3101,8 +3101,9 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 10 and fams[0][1][0] == "nsga2", fams
-    assert fams[-2:] == (("Direct search", ("dms",)), ("Simulated annealing", ("mosa",))), fams
+    assert len(fams) == 11 and fams[0][1][0] == "nsga2", fams
+    assert dict(fams)["Direct search"] == ("dms", "dmulti_mads", "multiglods"), fams
+    assert fams[-2:] == (("Particle swarm", ("smpso",)), ("Simulated annealing", ("mosa",))), fams
     assert all(name and "─" not in name for name, _ in fams), fams
 
 
@@ -6970,7 +6971,7 @@ def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
         assert seen <= set(labels) and len(seen) >= 2, (alg, seen)
         assert all(0 <= b[0] < 4 for b in r.binary_variables), alg
         assert 0 < r.unique_evaluations <= r.evaluations, alg
-    assert len(refused) == 18, refused
+    assert len(refused) == 24, refused
     # the best label wins, as the decoded rows show
     r = mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=2000, seed=1, var_types=vt)
     lay = Layout(vt, bounds)
@@ -7086,9 +7087,10 @@ def eps_level_follows_fans_rule_and_is_feasibility_at_zero():
     from mootation.benchmarks import get
     p = get("LIR-CMOP2")
     for alg in mootation.algorithms():
-        a = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20,
+        pop = max(20, len(p.bounds) + 1) if alg.startswith("bc_") else 20   # bc: n + 1 parents
+        a = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=pop,
                                max_evaluations=600, seed=1, constraints=p.constraints)
-        b = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=20,
+        b = mootation.minimize(p.evaluate, p.bounds, 2, algorithm=alg, pop_size=pop,
                                max_evaluations=600, seed=1, constraints=p.constraints,
                                constraint_mode="eps_level", eps_schedule={"tc": 0.0})
         assert a.objectives == b.objectives and a.cv == b.cv, alg
@@ -8064,14 +8066,15 @@ def scalar_presets_budget_and_refusals():
     import math
     import mootation
     from mootation.run.metrics import nondominated
-    from mootation.scalar import NAMES
-    assert NAMES == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm", "eps_cmaes")
+    from mootation.scalar import NAMES, PRESETS
+    assert tuple(PRESETS) == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm",
+                              "eps_cmaes") and NAMES == tuple(PRESETS) + ("boostdms", "mosqp")
     calls = [0]
     def f(x):
         calls[0] += 1
         return [x[0], 1.0 - math.sqrt(x[0]) + sum(v * v for v in x[1:])]
     box = [(0.0, 1.0)] * 4
-    for name in NAMES:
+    for name in PRESETS:
         calls[0] = 0
         r = mootation.minimize(f, box, 2, algorithm=name, pop_size=20, max_evaluations=1500,
                                seed=2)
@@ -8118,25 +8121,34 @@ def scalar_anchors_constraints_and_the_front():
     finds points on the front; the observer sees gen 0, the records and the end."""
     if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
         print("  skip  scalar_anchors...: no NumPy, SciPy or _core"); return
+    import math
     import numpy as np
     import mootation
     from mootation.benchmarks import get, solve
-    p = get("ZDT1")
+    def zdt1(x):                                      # the formula, not a shared registry object
+        g = 1.0 + 9.0 * sum(x[1:]) / (len(x) - 1)
+        return [x[0], g * (1.0 - math.sqrt(x[0] / g))]
+    class p:                                          # noqa: N801
+        bounds, evaluate = [(0.0, 1.0)] * 30, staticmethod(zdt1)
     seen = []
     def f(x):
         y = p.evaluate(x)
         seen.append(y)
         return y
     gens = []
+    # 4000, not 3000: at 3000 an anchor's stage has about six SQP iterations,
+    # too few to reach its minimum with every BLAS thread count (a campaign's
+    # workers run one)
     r = mootation.minimize(f, p.bounds, 2, algorithm="eps_sqp", pop_size=50,
-                           max_evaluations=3000, seed=1,
+                           max_evaluations=4000, n_sub=5, seed=1,
                            on_generation=lambda g, F, X: gens.append((g, len(F), len(X))),
                            record_every=1)
     assert np.max(np.abs(np.min(np.asarray(seen), axis=0))) < 1e-12, np.min(seen, axis=0)
     assert gens[0][0] == 0 and gens[-1][0] == -(-r.evaluations // 50), gens[-3:]
     assert all(n == x for _, n, x in gens) and len(gens) >= r.evaluations // 50, len(gens)
-    S = np.asarray(r.solutions)       # n_sub 5 at this budget (SCALAR-1), and the anchors
-    assert len(S) == 7 and np.max(np.abs(S[:, 1] - (1 - np.sqrt(S[:, 0])))) < 1e-6, len(S)
+    S = np.asarray(r.solutions)       # n_sub 5 and the anchors
+    err = np.abs(S[:, 1] - (1 - np.sqrt(S[:, 0])))
+    assert len(S) == 7 and err.max() < 1e-6, (len(S), err, S)
     d = get("DOC3")
     r = solve(d, "eps_sqp", max_evaluations=6000, seed=1)
     H = np.abs(np.array([d.equalities(x) for x in r.variables]))
@@ -8350,6 +8362,38 @@ def direct_search_methods_are_deterministic_and_take_their_knobs():
         S = rng.uniform(-1, 1, (7, 3))                  # minimum Frobenius norm: 4 < 7 < 10
         (c, g, H), = models(S, np.array([[1.0 + s @ [1.0, -2.0, 0.5]] for s in S]))
         assert np.allclose(H, 0, atol=1e-9) and np.allclose(g, [1, -2, 0.5])   # linear: H = 0
+
+
+@test
+def mosqp_spreads_refines_and_keeps_its_budget():
+    """Task 9, A3: mosqp — every evaluation through fn and counted, never past
+    the budget; the answer non-dominated and on ZDT2's front (f2 = 1 - f1²)
+    within 1e-3 for most of its points; DOC3's equalities held within eq_tol;
+    its knobs reported, a bad value refused."""
+    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
+        print("  skip  mosqp...: no NumPy, SciPy or _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get, solve
+    from mootation.run.metrics import nondominated
+    p = get("ZDT2")
+    calls = [0]
+    def f(x):
+        calls[0] += 1
+        return p.evaluate(x)
+    r = mootation.minimize(f, p.bounds, 2, algorithm="mosqp", pop_size=30, max_evaluations=6000,
+                           seed=1)
+    F = np.asarray(r.objectives)
+    assert r.evaluations == calls[0] <= 6000 and len(nondominated(F)) == len(F)
+    assert np.mean(np.abs(F[:, 1] - (1 - F[:, 0] ** 2)) <= 1e-3) > 0.5, F
+    s = dict(r.settings)
+    assert s["mosqp_tau"] == "1e-08" and s["mosqp_spread"] == "20" and not r.ignored, s
+    d = get("DOC3")
+    r = solve(d, "mosqp", max_evaluations=8000, seed=1)
+    H = np.abs(np.array([d.equalities(x) for x in r.variables]))
+    assert len(H) and H.max() <= 1e-4 and max(r.cv) == 0.0, H.max()
+    assert raises(ValueError, mootation.minimize, f, p.bounds, 2, algorithm="mosqp",
+                  pop_size=10, max_evaluations=100, seed=1, mosqp_beta=1.5) is not None
 
 
 def main() -> int:

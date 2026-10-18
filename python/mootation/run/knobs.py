@@ -32,7 +32,8 @@ _FALLBACK = (
     "r2_weights", "r2_offset", "bc_lambda", "paes_depth", "mads_tau", "mads_delta0",
     "glods_search_every", "glods_local_tol", "n_sub",
     "sub_budget", "fd_step",
-    "local_tol", "cma_sigma0", "eps_objective", "polish_share", "polish_points",
+    "local_tol", "cma_sigma0", "eps_objective", "polish_share", "polish_points", "mosqp_tau",
+    "mosqp_mu", "mosqp_beta", "mosqp_spread",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),

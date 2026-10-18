@@ -793,6 +793,10 @@ PyResult run_core(const RunConfig& cfg)
             const std::size_t theta = static_cast<std::size_t>(
                 std::max(1L, std::lround(cfg.eps_theta * static_cast<double>(v.pop_size()))));
             v.set_cv_level(cv.empty() ? 0.0 : cv[std::min(theta, cv.size()) - 1]);
+            // rule 4 from generation 0 when tc = 0: a core whose setup spends
+            // fewer than pop_size evaluations (paes: one) would otherwise run
+            // its first steps at eps(0) before the first update
+            if (cfg.eps_tc <= 0.0) v.set_cv_level(0.0);
         }
         // the initial population is not offspring: the counts start here
         g_ops.setup_evals = g_ops.evals_read = g_evaluations.load();

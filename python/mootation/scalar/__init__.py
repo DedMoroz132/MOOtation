@@ -120,7 +120,7 @@ PRESETS = {
 }
 # Python-level algorithms of task 9 beside the scalarization methods, on the
 # same evaluator, answer and observer (boostdms.py)
-OTHERS = ("boostdms",)
+OTHERS = ("boostdms", "mosqp")
 NAMES = tuple(PRESETS) + OTHERS
 
 WORDS = {
@@ -218,6 +218,11 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
     from . import subproblems as P
     from .evaluator import BudgetSpent, Evaluator, SubBudgetSpent
 
+    if name == "mosqp":
+        return _run_mosqp(fn, constraints, bounds=bounds, n_objs=n_objs, n_cons=n_cons,
+                          n_eq=n_eq, eq_tol=eq_tol, eq_tol0=eq_tol0, pop_size=pop_size,
+                          budget=budget, knobs=knobs, on_generation=on_generation,
+                          record_every=record_every, unique_count=unique_count, guard=guard)
     if name == "boostdms":
         return _run_boostdms(fn, constraints, bounds=bounds, n_objs=n_objs, n_cons=n_cons,
                              n_eq=n_eq, eq_tol=eq_tol, eq_tol0=eq_tol0, pop_size=pop_size,
@@ -457,6 +462,36 @@ def _run_boostdms(fn, constraints, *, bounds, n_objs, n_cons, n_eq, eq_tol, eq_t
     n_failed = guard.n_failed if guard is not None else int(sum(ev.failed))
     unique = unique_count() if unique_count is not None else ev.spent
     return ScalarResult(ev, idx, ignored, [("boost_scalarization", how)], n_failed,
+                        ev.eq_tol_end if n_eq else 0.0, unique)
+
+
+MOSQP_KNOBS = {"mosqp_tau": 1e-8, "mosqp_mu": 1e-4, "mosqp_beta": 0.5, "mosqp_spread": 20,
+               "fd_step": 1.4901161193847656e-08}
+
+
+def _run_mosqp(fn, constraints, *, bounds, n_objs, n_cons, n_eq, eq_tol, eq_tol0, pop_size,
+               budget, knobs, on_generation, record_every, unique_count, guard):
+    """mosqp.py on the evaluator: knobs, answer (the archive's, as scalar's)."""
+    from .evaluator import Evaluator
+    from .mosqp import run_mosqp
+    ignored = sorted(k for k in knobs if k not in MOSQP_KNOBS)
+    s = dict(MOSQP_KNOBS)
+    s.update({k: float(v) for k, v in knobs.items() if k in MOSQP_KNOBS})
+    if not (s["mosqp_tau"] > 0 and 0 < s["mosqp_mu"] < 1 and 0 < s["mosqp_beta"] < 1
+            and s["mosqp_spread"] >= 0 and s["fd_step"] > 0):
+        raise ValueError("mosqp: mosqp_tau > 0, mosqp_mu and mosqp_beta in (0, 1), "
+                         "mosqp_spread >= 0, fd_step > 0")
+    ev = Evaluator(fn, constraints, bounds=bounds, n_objs=n_objs, n_cons=n_cons, n_eq=n_eq,
+                   eq_tol=eq_tol, eq_tol0=eq_tol0, budget=budget, pop_size=pop_size,
+                   on_generation=on_generation, record_every=record_every)
+    ev.recorded = False
+    run_mosqp(ev, n_objs=n_objs, n_eq=n_eq, pop_size=pop_size, knobs=s, fd_step=s["fd_step"])
+    ev.over = True
+    idx = ev.answer()
+    ev.record(final=True)
+    n_failed = guard.n_failed if guard is not None else int(sum(ev.failed))
+    unique = unique_count() if unique_count is not None else ev.spent
+    return ScalarResult(ev, idx, ignored, [(k, f"{v:g}") for k, v in s.items()], n_failed,
                         ev.eq_tol_end if n_eq else 0.0, unique)
 
 
