@@ -7903,6 +7903,145 @@ snapshot_variables = "pareto_set"
                     assert "pdist" not in u and "igdx" not in u, u
 
 
+@test
+def smpso_presets_knobs_and_refusals():
+    """Task 9, B1: SMPSO (algorithms/smpso.hpp) — each preset resolves to its
+    table row and Result.settings reports every knob as the run used it; a
+    knob overrides its preset whatever the order; the budget is spent to the
+    evaluation; a binary genome, a bad word or a bad value is refused; the
+    knobs are smpso's alone; the omopso preset (turbulence thirds) is
+    budget-dependent, the others are not."""
+    if (not _have_numpy() or _core_with("Config") is None
+            or "smpso" not in __import__("mootation").algorithms()):
+        print("  skip  smpso...: no NumPy or stale _core"); return
+    import mootation
+    from mootation.run.budget import depends_on_budget
+    f = lambda x: [x[0], 1.0 - x[0] ** 0.5 + sum(x[1:])]
+    box = [(0.0, 1.0)] * 4
+    def run(**kw):
+        kw.setdefault("max_evaluations", 1000)
+        return mootation.minimize(f, box, 2, algorithm="smpso", pop_size=20, seed=3, **kw)
+    rows = {
+        "jmetal":  {"chi_mode": "signed", "w_min": "0.1", "w_max": "0.1", "c_max": "2.5",
+                    "vmax_frac": "0.5", "bound_repair": "clip", "vel_on_bound_low": "-1",
+                    "turbulence": "every_k", "turbulence_k": "6", "archive_size": "20",
+                    "archive_prune": "one_by_one", "answer": "leaders"},
+        "platemo": {"chi_mode": "abs", "w_min": "0.1", "w_max": "0.5", "vel_on_bound_up": "0.001",
+                    "turbulence": "prob", "turbulence_p": "0.15", "bound_repair": "clip"},
+        "fair":    {"chi_mode": "abs", "w_max": "0.1", "bound_repair": "reflect",
+                    "vel_on_bound_low": "-1", "turbulence": "every_k"},
+        "omopso":  {"chi_mode": "none", "w_max": "0.5", "c_min": "1.5", "c_max": "2",
+                    "vmax_frac": "0", "turbulence": "thirds", "answer": "eps_archive",
+                    "eps_archive_eta": "0.0075"},
+    }
+    for preset, row in rows.items():
+        r = run(smpso_preset=preset)
+        s = dict(r.settings)
+        assert s["smpso_preset"] == preset and not r.ignored, (preset, r.ignored)
+        assert {k: s[k] for k in row} == row, (preset, s)
+        assert r.evaluations == 1000 and 0 < len(r.objectives) <= 20, (preset, r.evaluations)
+    # an override wins over the preset, given before or after it
+    for kw in ({"chi_mode": "signed", "smpso_preset": "platemo"},
+               {"smpso_preset": "platemo", "chi_mode": "signed"}):
+        s = dict(run(**kw).settings)
+        assert s["chi_mode"] == "signed" and s["w_max"] == "0.5", s
+    s = dict(run(vmax_frac=0.25, w_min=0.2, w_max=0.4, archive_size=7, r_per_dim="yes",
+                 leader_select="random", archive_prune="one_shot", turbulence="off").settings)
+    assert (s["vmax_frac"], s["w_min"], s["w_max"], s["archive_size"], s["r_per_dim"],
+            s["leader_select"], s["archive_prune"], s["turbulence"]) == \
+        ("0.25", "0.2", "0.4", "7", "yes", "random", "one_shot", "off"), s
+    assert len(run(archive_size=7).objectives) <= 7
+    # the same seed, the same run
+    a, b = run(smpso_preset="omopso"), run(smpso_preset="omopso")
+    assert a.objectives == b.objectives and a.variables == b.variables
+    for kw in ({"smpso_preset": "pso"}, {"chi_mode": "plus"}, {"turbulence": "half"},
+               {"vmax_frac": -0.1}, {"turbulence_p": 1.5}, {"archive_size": 0},
+               {"w_min": 0.6, "w_max": 0.5}):
+        assert raises(ValueError, run, **kw) is not None, kw
+    e = raises(ValueError, mootation.minimize, lambda x: [x[0], 1.0 - x[0] + x[1]],
+               [(0.0, 1.0), (0.0, 1.0)], 2, algorithm="smpso", pop_size=10,
+               max_evaluations=100, seed=1, var_types=["real", "bin"])
+    assert e is not None and "smpso" in str(e), e
+    r = mootation.minimize(f, box, 2, algorithm="nsga2", pop_size=20, n_gen=2, seed=1,
+                           vmax_frac=0.3, smpso_preset="fair")
+    assert {"vmax_frac", "smpso_preset"} <= set(r.ignored) and list(r.settings) == [], r.ignored
+    assert not depends_on_budget("smpso") and not depends_on_budget("smpso", {"smpso_preset": "fair"})
+    assert depends_on_budget("smpso", {"smpso_preset": "omopso"})
+    assert depends_on_budget("smpso", {"turbulence": "thirds"})
+    assert not depends_on_budget("smpso", {"smpso_preset": "omopso", "turbulence": "every_k"})
+    assert depends_on_budget("rvea") and not depends_on_budget("nsga2", {"turbulence": "thirds"})
+
+
+@test
+def smpso_settings_reach_meta_json():
+    """Task 9, B1: every knob of an smpso run goes into its meta.json, the
+    preset resolved; the omopso preset's run is marked budget-dependent."""
+    if (not _have_numpy() or _core_with("Config") is None
+            or "smpso" not in __import__("mootation").algorithms()):
+        print("  skip  smpso_settings...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [
+    { name = "smpso", label = "jm", pop = 20, gens = 0 },
+    { name = "smpso", label = "om", pop = 20, gens = 0, params = { smpso_preset = "omopso", archive_size = 10 } },
+]
+[run]
+name = "pso"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm"]
+final_metrics = ["igdp_norm"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        jm = json.loads((root / "ZDT1" / "jm" / "run_1" / "meta.json").read_text(encoding="utf-8"))
+        om = json.loads((root / "ZDT1" / "om" / "run_1" / "meta.json").read_text(encoding="utf-8"))
+        assert jm["settings"]["smpso_preset"] == "jmetal" and jm["settings"]["chi_mode"] == "signed"
+        assert om["settings"]["answer"] == "eps_archive" and om["settings"]["archive_size"] == "10"
+        assert len(jm["settings"]) == len(om["settings"]) >= 20, jm["settings"]
+        assert jm["budget_dependent"] is False and om["budget_dependent"] is True
+
+
+@test
+def smpso_reaches_the_zdt4_front():
+    """Task 9, B1, acceptance 1: the jmetal preset, swarm and leaders 20,
+    10 000 evaluations on ZDT4 — the non-dominated of every evaluation within
+    IGD+ 0.005 (normalised) of the front on each of three seeds."""
+    if (not _have_numpy() or _core_with("Config") is None
+            or "smpso" not in __import__("mootation").algorithms()):
+        print("  skip  smpso_reaches...: no NumPy or stale _core"); return
+    import numpy as np
+    import mootation
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    p = get("ZDT4")
+    lo, hi = np.asarray(p.ideal, float), np.asarray(p.nadir, float)
+    ref = (np.asarray(p.pareto_front(1000), float) - lo) / (hi - lo)
+    for seed in (1, 2, 3):
+        seen = []
+        def f(x):
+            y = p.evaluate(x)
+            seen.append(list(y))
+            return y
+        mootation.minimize(f, p.bounds, 2, algorithm="smpso", pop_size=20,
+                           max_evaluations=10000, seed=seed)
+        A = M.nondominated(np.asarray(seen, float))
+        assert len(seen) == 10000 and M.igd_plus((A - lo) / (hi - lo), ref) < 0.005, seed
+
+
 def main() -> int:
     import os
     failed = []

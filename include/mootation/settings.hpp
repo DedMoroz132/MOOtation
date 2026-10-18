@@ -77,7 +77,10 @@ inline const std::vector<std::string>& knob_names() {
         "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
         "coords_warmup", "coords_update",
         "spu_frac", "inner_archive_cap", "archive_reuse_p",
-        "dn_cf"
+        "dn_cf",
+        // task 9 of 2026-10-18: smpso (algorithms/smpso.hpp)
+        "vmax_frac", "vel_on_bound_low", "vel_on_bound_up", "w_min", "w_max", "c_min", "c_max",
+        "turbulence_k", "turbulence_p", "archive_size", "eps_archive_eta"
     };
     return v;
 }
@@ -105,12 +108,20 @@ inline const std::vector<std::string>& knob_names() {
 //   bin_crossover  sms_emoa, nsga2: uniform or none for the binary genome
 //   mating         nsga2: tournament, or each member a parent once
 //   dn_cf          dn_nsga2: the crowding factor of its niching mating pool
+//   vmax_frac, vel_on_bound_low, vel_on_bound_up, w_min, w_max, c_min, c_max,
+//   turbulence_k, turbulence_p, archive_size, eps_archive_eta
+//                  smpso: the velocity bound and the velocity at the box, the
+//                  inertia and acceleration ranges, the turbulence, the
+//                  leaders' bound and omopso's ε (algorithms/smpso.hpp)
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
                           "sa_t_ratio", "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha",
                           "sa_adapt_window", "coords_warmup", "coords_update", "spu_frac",
-                          "inner_archive_cap", "archive_reuse_p", "dn_cf"})
+                          "inner_archive_cap", "archive_reuse_p", "dn_cf", "vmax_frac",
+                          "vel_on_bound_low", "vel_on_bound_up", "w_min", "w_max", "c_min",
+                          "c_max", "turbulence_k", "turbulence_p", "archive_size",
+                          "eps_archive_eta"})
         if (name == k) return true;
     return false;
 }
@@ -129,6 +140,8 @@ inline bool is_core_param(const std::string& name)
 //                 drawn from the seed
 //   dms_poll      dms: the next poll centre, the first still worth polling or
 //                 one of them at random
+//   smpso_preset, chi_mode, turbulence, r_per_dim, archive_prune, leader_select
+//                 smpso: the preset and the readings it fixes (smpso.hpp)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -157,6 +170,12 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"inner_archive", {"off", "nd"}},
         {"bin_crossover", {"uniform", "none"}},
         {"mating",       {"tournament", "each"}},
+        {"smpso_preset", {"jmetal", "platemo", "fair", "omopso"}},
+        {"chi_mode", {"signed", "abs", "none"}},
+        {"turbulence", {"every_k", "prob", "thirds", "off"}},
+        {"r_per_dim", {"no", "yes"}},
+        {"archive_prune", {"one_by_one", "one_shot"}},
+        {"leader_select", {"crowding_tournament", "random"}},
     };
     return v;
 }
@@ -177,7 +196,8 @@ inline bool is_core_word(const std::string& name)
     for (const char* k : {"de_adapt", "de_adapt_weight", "de_archive", "portfolio",
                           "portfolio_credit", "sa_energy", "sa_step", "sa_weights",
                           "sa_tch_accept", "coords", "survival", "inner_archive",
-                          "bin_crossover", "mating"})
+                          "bin_crossover", "mating", "smpso_preset", "chi_mode", "turbulence",
+                          "r_per_dim", "archive_prune", "leader_select"})
         if (name == k) return true;
     return false;
 }

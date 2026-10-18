@@ -10,6 +10,23 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- SMPSO (Nebro, Durillo, García-Nieto, Coello Coello, Luna & Alba, IEEE MCDM
+  2009), `smpso`: a swarm with a bounded leaders archive by crowding distance,
+  the constriction factor and the velocity bound of Eqs. 3-6, polynomial
+  turbulence; Algorithm 1 in jMetal's order. What the paper leaves open is a
+  preset, `smpso_preset`: `jmetal` (default), `platemo`, `fair` and `omopso`
+  (OMOPSO, Reyes Sierra & Coello Coello, EMO 2005: no constriction, uniform
+  and non-uniform mutation by thirds, an epsilon-dominance archive as the
+  answer), and each of its parts a knob (`chi_mode`, `vmax_frac`,
+  `vel_on_bound_low`/`_up`, `w_min`/`w_max`, `c_min`/`c_max`, `r_per_dim`,
+  `turbulence`, `turbulence_k`, `turbulence_p`, `archive_size`,
+  `archive_prune`, `leader_select`, `eps_archive_eta`, with `eta_m`, `pm` and
+  `bound_repair`). Real variables with finite bounds only.
+- `Result.settings`: every knob as the run used it, for a core whose knobs
+  come from a preset (SMPSO); a campaign writes it to `meta.json` under
+  `settings`. `run.budget.depends_on_budget(name, params)`: the budget
+  dependence of a run by its settings as well (SMPSO's `turbulence = thirds`),
+  which the campaign's `budget_dependent` and ladder now use.
 - A point's constraint values were lost when a core rewrote its population.
   ETEA, MOEA/D-AM2M, MOEA/D-DS, RD-EMO, APRD, Liu & Gu 2011, ISDE+RD, DHEA,
   HLMEA, IF-MaOEA, DEA-GNG, MaOEA-3C, DCEA, HCCA, CLIA, Two_Arch2, NAEMO and

@@ -54,6 +54,20 @@ BY_HEADERS = frozenset({
 BUDGET_DEPENDENT = BY_HEADERS | {"lhs_search"}
 
 
+def depends_on_budget(name: str, params: dict | None = None) -> bool:
+    """BUDGET_DEPENDENT, and the settings that make an algorithm so: smpso with
+    turbulence "thirds" (its omopso preset) mutates by OMOPSO's non-uniform
+    mutation, which shrinks over the whole budget (smpso.hpp)."""
+    if name in BUDGET_DEPENDENT:
+        return True
+    p = params or {}
+    if name == "smpso":
+        turbulence = p.get("turbulence") or ("thirds" if p.get("smpso_preset") == "omopso"
+                                             else "every_k")
+        return turbulence == "thirds"
+    return False
+
+
 def _records(name: str, problem: str, seed: int, budget: int, pop: int) -> list:
     """[(gen, fe, F)] of every record of one run: the answer set after setup and
     after every pop_size evaluations, and at the end."""

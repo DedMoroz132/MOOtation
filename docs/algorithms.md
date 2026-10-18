@@ -21,6 +21,7 @@ implementation follows; if you publish results, cite that paper.
 | Archive-based | 2 | you want the whole non-dominated history, not a fixed population | the archive is the output, not the working population |
 | Constrained, two archives or populations | 2 | a constrained problem whose feasible region is small, scattered or behind infeasible barriers | `pop_size` must be an exact Das–Dennis lattice size; at 2N per generation in memory, N evaluations |
 | Direct search | 1 | few variables, a deterministic answer, no population to tune | one poll costs 2n evaluations; it polls coordinate directions only, so it is strong on separable problems and slow on rotated ones |
+| Particle swarm | 1 | 2–3 objectives, a cheap step and one batch of evaluations per step | the reference codes disagree on what SMPSO is; the presets are their readings, and the default's clamp lands exactly on the middle and the bounds of the box |
 | Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
 Nineteen algorithms require `pop_size` to be an exact Das–Dennis lattice size
@@ -221,6 +222,22 @@ Deterministic, and it stops on its own when every step size is below 10⁻³ of
 the range. Its answer is the list reduced to `pop_size` by DSS
 (`include/mootation/dss.hpp`), the same selection the run layer uses for
 reference fronts and archives.
+
+## Particle swarm
+
+| Algorithm | Year | File | DOI |
+|---|---|---|---|
+| SMPSO | 2009 | `smpso` | [10.1109/MCDM.2009.4938830](https://doi.org/10.1109/MCDM.2009.4938830) |
+
+A swarm of `pop_size` particles, each pulled towards its own best and a leader
+drawn from a bounded archive of non-dominated points, its velocity multiplied
+by a constriction factor and bounded per variable; the archive is the answer.
+The paper leaves the inertia weight, the sign of the constriction factor, the
+velocity at the bound and the exact turbulence open, and the reference codes
+read them differently: `smpso_preset` picks one reading (`jmetal`, the
+default; `platemo`; `fair`; `omopso`, its predecessor OMOPSO of Reyes Sierra &
+Coello Coello, EMO 2005), and every part of it is a knob of its own
+([running.md](running.md)).
 
 ## Simulated annealing
 

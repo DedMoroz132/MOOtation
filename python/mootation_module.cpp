@@ -428,6 +428,13 @@ template <typename C>
 struct has_inner_archive<C, std::void_t<decltype(std::declval<const C&>().inner_archive())>>
     : std::true_type {};
 
+// A core whose knobs come from a preset (smpso): every knob as the run used it.
+template <typename C, typename = void>
+struct has_effective_settings : std::false_type {};
+template <typename C>
+struct has_effective_settings<C, std::void_t<decltype(std::declval<const C&>().effective_settings())>>
+    : std::true_type {};
+
 // A core that can tell it has converged (DMS: every step size below its
 // tolerance) ends the run early instead of stepping on without evaluating.
 template <typename C, typename = void>
@@ -577,6 +584,9 @@ struct PyResult {
     // Every variation operator the run used, with its bound repair ("none" for
     // one that cannot leave the box), in order of first use.
     std::vector<std::pair<std::string, std::string>> operators;
+    // Every knob as the run used it, for a core whose knobs come from a preset
+    // (smpso); empty for the others.
+    std::vector<std::pair<std::string, std::string>> settings;
     // The run's operator statistics (operator_stats() over the whole run);
     // empty unless RunConfig::operator_stats.
     std::map<std::string, double>    operator_totals;
@@ -941,6 +951,7 @@ PyResult run_core(const RunConfig& cfg)
     r.ignored  = std::move(ignored);
     r.evaluations = g_evaluations.load();
     for (const auto& u : ops::operators_used()) r.operators.emplace_back(u.op, u.repair);
+    if constexpr (has_effective_settings<Core>::value) r.settings = alg.effective_settings();
     if (var_prob) {
         bool used = false;
         for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";
@@ -1188,6 +1199,9 @@ PYBIND11_MODULE(_core, m)
                       "Evaluations the run spent, setup included.")
         .def_readonly("operators", &PyResult::operators,
                       "(operator, bound repair) for every variation operator the run used")
+        .def_readonly("settings", &PyResult::settings,
+                      "(knob, value) for every knob as the run used it, its preset "
+                      "resolved (smpso); empty for the other algorithms")
         .def_readonly("operator_totals", &PyResult::operator_totals,
                       "the operator statistics over the whole run (operator_stats)")
         .def_readonly("inner_archive", &PyResult::inner_objectives,

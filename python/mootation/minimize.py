@@ -26,10 +26,13 @@ from . import _core
 PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio",
                "sa_s0", "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window",
                "coords_warmup", "coords_update", "spu_frac", "inner_archive_cap",
-               "archive_reuse_p", "dn_cf")
+               "archive_reuse_p", "dn_cf", "vmax_frac", "vel_on_bound_low", "vel_on_bound_up",
+               "w_min", "w_max", "c_min", "c_max", "turbulence_k", "turbulence_p",
+               "archive_size", "eps_archive_eta")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
-              "inner_archive", "bin_crossover", "mating")
+              "inner_archive", "bin_crossover", "mating", "smpso_preset", "chi_mode",
+              "turbulence", "r_per_dim", "archive_prune", "leader_select")
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",

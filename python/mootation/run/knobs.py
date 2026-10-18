@@ -27,6 +27,8 @@ _FALLBACK = (
     "ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed", "sa_t_ratio", "sa_s0",
     "sa_s_end", "sa_archive_cap", "sa_psa_alpha", "sa_adapt_window", "coords_warmup",
     "coords_update", "spu_frac", "inner_archive_cap", "archive_reuse_p", "dn_cf",
+    "vmax_frac", "vel_on_bound_low", "vel_on_bound_up", "w_min", "w_max", "c_min",
+    "c_max", "turbulence_k", "turbulence_p", "archive_size", "eps_archive_eta",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
@@ -51,6 +53,12 @@ _FALLBACK_TEXT = {
     "crowding_space": ("objectives", "decision"),
     "dms_init": ("line", "single", "random"),
     "dms_poll": ("first", "random"),
+    "smpso_preset": ("jmetal", "platemo", "fair", "omopso"),
+    "chi_mode": ("signed", "abs", "none"),
+    "turbulence": ("every_k", "prob", "thirds", "off"),
+    "r_per_dim": ("no", "yes"),
+    "archive_prune": ("one_by_one", "one_shot"),
+    "leader_select": ("crowding_tournament", "random"),
 }
 
 _BLOCK = re.compile(

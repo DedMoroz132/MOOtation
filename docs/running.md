@@ -945,6 +945,33 @@ hypercube of n points drawn from the seed and `dms_poll = "random"` polls a
 point drawn among those still worth polling (`first`, the default, the first
 in list order), the directions in random order (DMS-6 in `dms.hpp`).
 
+**SMPSO.** Speed-constrained multi-objective PSO (Nebro et al., MCDM 2009;
+`algorithms/smpso.hpp`): `pop` particles, a leaders archive of `pop`
+non-dominated points by crowding distance, and the archive as the answer.
+Each step moves the whole swarm (one batch of `pop` evaluations): a leader by
+a binary tournament on crowding, the velocity of Eq. 2 times the
+constriction factor χ, bounded to ±`vmax_frac`·(ub − lb), the position put
+back on the box with the velocity multiplied by a factor, a turbulence on a
+share of the swarm. What the paper leaves open is a preset:
+
+| preset | χ | w | velocity bound | at the bound | turbulence | answer |
+|---|---|---|---|---|---|---|
+| `jmetal` (default) | as Eq. 3 prints it (negative for C1 + C2 > 4) | 0.1 | ½ width | clip, velocity × −1 | polynomial (η = 20, 1/n) on i % 6 == 0 | leaders, crowding, one removed at a time |
+| `platemo` | its modulus | U[0.1, 0.5] | ½ width | clip, velocity × 0.001 | polynomial on each particle with probability 0.15 | leaders |
+| `fair` | its modulus | 0.1 | ½ width | `bound_repair = reflect`, velocity × −1 | as jmetal | as jmetal |
+| `omopso` | 1 | U[0.1, 0.5], C1, C2 ~ U[1.5, 2.0] | none | clip, velocity × −1 | non-uniform / uniform / none by thirds | an ε-dominance archive (ε = 0.0075) of every leader accepted |
+
+Every cell is a knob (`chi_mode`, `w_min`/`w_max`, `c_min`/`c_max`,
+`vmax_frac`, `bound_repair`, `vel_on_bound_low`/`vel_on_bound_up`,
+`turbulence` with `turbulence_k`/`turbulence_p`, `eta_m`, `pm`,
+`archive_size`, `archive_prune`, `leader_select`, `r_per_dim`,
+`eps_archive_eta`), applied over the preset whatever the order. The run
+reports every knob as it used it in `Result.settings`, and a campaign writes
+them to `meta.json` under `settings`. The omopso preset's non-uniform mutation
+narrows over the whole budget, so with `turbulence = thirds` the run depends
+on `max_evaluations` (`run/budget.py`, `depends_on_budget`); the other
+presets do not. Real variables with finite bounds only.
+
 **MOSA.** Multi-objective simulated annealing (`algorithms/mosa.hpp`):
 annealing chains over an archive of every non-dominated point evaluated. It is
 not one paper's algorithm but a composition: DBMOSA's unconstrained archive,

@@ -81,6 +81,7 @@
 #include "algorithms/ctaea.hpp"
 #include "algorithms/ccmo.hpp"
 #include "algorithms/dms.hpp"
+#include "algorithms/smpso.hpp"
 #include "algorithms/mosa.hpp"
 #include "algorithms/gde3.hpp"
 #include "algorithms/sms_emoa.hpp"
