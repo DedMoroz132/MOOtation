@@ -619,7 +619,10 @@ def constraint_count(p) -> int:
 # A problem's frame, reference front, dense reference and Pareto-set sample are
 # the same for every run of it, and some take long to build (ZCAT's front and
 # set at ten objectives, DAS-CMOP's frame), which every worker process paid
-# again for every problem it met. They are
+# again for every problem it met. Those of the registry's problems with an
+# exact front are kept in the user's cache of references (refs.py; task 12 of
+# 2026-10-19, §3), built before a campaign's first run where missing. The
+# others (approximate fronts: RE, CRE, RWMOP; a problem without a front) are
 # kept in <results>/_references/<problem>.npz the first time and read from
 # there after, as long as the stamp matches: the reference version and a hash
 # of the benchmark code (mootation/benchmarks/), so that a change of the code
@@ -673,9 +676,13 @@ def reference_data(root: Path, name: str, n_ref: int, front: bool, dense: bool, 
     run: the problem with its frame read off its front where the registry does
     that, the reference front of n_ref points, the dense reference (or None,
     None) and the Pareto-set sample, each only if asked for and if the problem
-    has it — from the campaign's cache when it holds them (REFERENCES_DIR)."""
+    has it — from the cache of references (refs.py) for a problem with an exact
+    front, from the campaign's cache (REFERENCES_DIR) for the others."""
     import numpy as np
     from ..benchmarks import registry as R
+    from . import refs
+    if refs.shared(name):
+        return _shared_reference(name, n_ref, front, dense, pset)
     path = root / REFERENCES_DIR / f"{name}.npz"
     lock = path.with_suffix(".lock")
     stamp = _code_stamp()
@@ -732,6 +739,25 @@ def reference_data(root: Path, name: str, n_ref: int, front: bool, dense: bool, 
                 lock.unlink()
             except OSError:
                 pass
+
+
+def _shared_reference(name: str, n_ref: int, front: bool, dense: bool, pset: bool):
+    """reference_data from the cache of references: the entry of `name` at
+    n_ref (built here if it is missing or old — a campaign builds them before
+    its first run, so this is a run started on its own), and of it what the
+    run asks for, as _build_reference gives it."""
+    from ..benchmarks import registry as R
+    from . import refs
+    got = refs.load_entry(name, n_ref)
+    if got is None or refs.status(name, got[1]) != "ok":
+        refs.build_entry(name, n_ref)
+        got = refs.load_entry(name, n_ref)
+    a, meta = got
+    p = R.get_framed(name, a["ideal"], a["nadir"])
+    ref = a["ref"] if front else None
+    with3 = dense and ref is not None and "ref3" in a
+    return (p, ref, (a["ref3"], meta["info3"]) if with3 else (None, None),
+            a.get("pset") if pset else None)
 
 
 def _build_reference(path: Path, name: str, n_ref: int, front: bool, dense: bool, pset: bool,
@@ -1659,6 +1685,25 @@ def _pool_worker(args):
         return index, _job_crashed(index, e)
 
 
+def prepare_references(todo: list, n_ref: int, *, workers: int = 1, build: bool = True) -> None:
+    """The entries of the cache of references (refs.py) of every problem of
+    `todo` with an exact front, current before the first run: the missing and
+    old ones built here, `workers` at a time; build=False (--no-build-refs)
+    raises refs.MissingReferences listing them instead."""
+    from . import refs
+    need = sorted({j.problem for j in todo if refs.shared(j.problem)})
+    if not need:
+        return
+    st = refs.check(need, n_ref)
+    missing = [n for n in need if st[n] != "ok"]
+    if not missing:
+        return
+    if not build:
+        raise refs.MissingReferences(missing, n_ref, st)
+    refs.build(missing, n_ref, workers=max(1, workers),
+               log=lambda line: print(line, file=sys.stderr))
+
+
 def single_threaded_blas() -> None:
     """One BLAS thread in every worker process started after this call.
 
@@ -1923,7 +1968,7 @@ def longest_first(root: Path, jobs: list) -> list:
 
 def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
                  only: list[int] | None = None, workers: int = 1,
-                 force: bool = False) -> dict:
+                 force: bool = False, build_refs: bool = True) -> dict:
     spec = campaign_spec(cfg)
     jobs = expand_jobs(cfg, spec)
     root = out_root(cfg, spec)
@@ -1944,6 +1989,7 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
     todo = longest_first(root, [j for j in selected if force or job_status(root, j) != "done"])
     print(f"{cfg.name}: {len(jobs)} jobs total, {len(selected)} in this slice, "
           f"{len(todo)} to run -> {root}", file=sys.stderr)
+    prepare_references(todo, spec.n_ref, workers=workers, build=build_refs)
 
     counts = {"done": 0, "failed": 0, "skipped": len(selected) - len(todo)}
     if len(todo) > 1 and cfg.source_path is not None:
@@ -3129,6 +3175,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="worker processes to start with; change it while the campaign runs by "
                          "writing the number into <results>/_workers.txt (0 drains and stops)")
     ap.add_argument("--force", action="store_true", help="rerun jobs already marked done")
+    ap.add_argument("--no-build-refs", action="store_true",
+                    help="stop with the list where the cache of references (mootation refs) lacks "
+                         "a problem's entry, instead of building it before the first run")
+    ap.add_argument("--refs-dir", default="", metavar="DIR",
+                    help="the cache of references' root (default: the user's cache; "
+                         "MOOTATION_REFS_DIR)")
     ap.add_argument("--emit-slurm", type=int, metavar="N",
                     help="write <out>/submit.sh (an array of N shards) and jobs.txt, then exit")
     ap.add_argument("--time", default="24:00:00", help="SLURM time limit for --emit-slurm")
@@ -3300,6 +3352,9 @@ def main(argv: list[str] | None = None) -> int:
                          "duplicates, igdx), and group the algorithms by those profiles beside "
                          "their declared families (behaviour.py); CSV under <results>/_behaviour/")
     args = ap.parse_args(argv)
+    if args.refs_dir:
+        from .refs import ENV_DIR
+        os.environ[ENV_DIR] = args.refs_dir           # the workers inherit it
 
     try:
         cfg = load(args.config)
@@ -3613,8 +3668,13 @@ def main(argv: list[str] | None = None) -> int:
         # --shard i/n splits them the same way on every machine
         only = [j.index for j in jobs if shard is None or shard_of(j, shard[1]) == shard[0]]
         shard = None
-    counts = run_campaign(cfg, shard=shard, only=only, workers=args.workers,
-                          force=args.force)
+    from .refs import MissingReferences
+    try:
+        counts = run_campaign(cfg, shard=shard, only=only, workers=args.workers,
+                              force=args.force, build_refs=not args.no_build_refs)
+    except MissingReferences as e:
+        print(e, file=sys.stderr)
+        return 2
     return 0 if counts.get("failed", 0) == 0 else 2
 
 

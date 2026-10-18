@@ -386,10 +386,11 @@ def greedy_subset(G, n: int, sweeps: int = FLOOR_SWEEPS) -> list:
     return chosen
 
 
-def igdp_floors(problem: str, n_ref: int, sizes) -> dict | None:
+def igdp_floors(problem: str, n_ref: int, sizes, ref=None) -> dict | None:
     """The floors of a problem (THE FLOOR) at every population size N in
     `sizes`: {N: (greedy, dss)}, and under "rows" and "distinct" how many rows
-    the reference front has and how many of them differ; None without a front."""
+    the reference front has and how many of them differ; None without a front.
+    `ref`: its reference front of n_ref points where the caller has it."""
     import numpy as np
     from ..benchmarks import get as bench_get
     from .archive import dss_order
@@ -397,7 +398,7 @@ def igdp_floors(problem: str, n_ref: int, sizes) -> dict | None:
     p = bench_get(problem)
     if not callable(p.pareto_front):
         return None
-    ref = np.asarray(p.pareto_front(n_ref), float)
+    ref = np.asarray(p.pareto_front(n_ref) if ref is None else ref, float)
     G, _ = _normalised(ref, ref, p.ideal, p.nadir)
     out: dict = {"rows": len(ref), "distinct": len(np.unique(np.round(ref, 12), axis=0))}
     for n in sorted(set(sizes)):
@@ -425,8 +426,9 @@ def floors(sizes: dict, n_ref: int, path: Path, workers: int = 1) -> dict:
     """{(problem, N): {"greedy", "dss", "rows", "distinct"}} for sizes =
     {problem: the population sizes its runs used}, over the problems with a
     reference front: from the CSV at `path` where it has them for this n_ref
-    and the current reference version, computed and added otherwise (a
-    reference front takes up to a minute to sample: ZCAT's are verified)."""
+    and the current reference version, else from the cache of references
+    (refs.py) where it holds them, computed and added otherwise (a reference
+    front takes up to a minute to sample: ZCAT's are verified)."""
     from ..benchmarks import get as bench_get
     from ..benchmarks.registry import REFERENCE_VERSION
     have: dict = {}
@@ -438,8 +440,16 @@ def floors(sizes: dict, n_ref: int, path: Path, workers: int = 1) -> dict:
                     have[(row["problem"], int(row["pop"]))] = {
                         "greedy": float(row["floor_greedy"]), "dss": float(row["floor_dss"]),
                         "rows": int(row["ref_rows"]), "distinct": int(row["ref_distinct"])}
-    todo = []
+    from .refs import floor_of, shared
+    todo, cached = [], False
     for prob in sorted(sizes):
+        if shared(prob):
+            for n in sizes[prob]:
+                got = None if (prob, n) in have else floor_of(prob, n_ref, n)
+                if got is not None:
+                    have[(prob, n)] = {"greedy": got[0], "dss": got[1],
+                                       "rows": got[2], "distinct": got[3]}
+                    cached = True
         missing = sorted(n for n in sizes[prob] if (prob, n) not in have)
         if missing and callable(bench_get(prob).pareto_front):
             todo.append((prob, n_ref, tuple(missing)))
@@ -456,7 +466,7 @@ def floors(sizes: dict, n_ref: int, path: Path, workers: int = 1) -> dict:
             for n in (k for k in res if isinstance(k, int)):
                 have[(prob, n)] = {"greedy": res[n][0], "dss": res[n][1],
                                    "rows": res["rows"], "distinct": res["distinct"]}
-    if done:
+    if done or cached:
         with path.open("w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
             w.writerow(FLOOR_COLUMNS)

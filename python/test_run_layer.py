@@ -7494,7 +7494,9 @@ def a_campaigns_reference_data_are_built_once():
     """Task 10, §8: a problem's reference data (campaign.reference_data) are
     built by the first of the workers that start on it together, the others
     wait for its file and read it, the same arrays; a second campaign run
-    reads the file; no lock or temporary file is left."""
+    reads the file; no lock or temporary file is left. Since task 12 this is
+    the campaign's own cache of the problems without an exact front (RE21);
+    those with one are in the cache of references (refs.py)."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import tempfile
@@ -7514,23 +7516,174 @@ def a_campaigns_reference_data_are_built_once():
             out = [None] * 3
 
             def go(i):
-                out[i] = C.reference_data(Path(d), "DTLZ2_3D", 200, True, False, True)
+                out[i] = C.reference_data(Path(d), "RE21", 200, True, False, True)
             threads = [threading.Thread(target=go, args=(i,)) for i in range(3)]
             for t in threads:
                 t.start()
             for t in threads:
                 t.join()
             assert len(built) == 1, built
-            again = C.reference_data(Path(d), "DTLZ2_3D", 200, True, False, True)
+            again = C.reference_data(Path(d), "RE21", 200, True, False, True)
             assert len(built) == 1
             for o in out[1:] + [again]:
                 assert o[1].tobytes() == out[0][1].tobytes()
-                assert o[3].tobytes() == out[0][3].tobytes()
+                assert (o[3] is None) == (out[0][3] is None)
                 assert tuple(o[0].ideal) == tuple(out[0][0].ideal)
             left = sorted(q.name for q in (Path(d) / C.REFERENCES_DIR).iterdir())
-            assert left == ["DTLZ2_3D.npz"], left
+            assert left == ["RE21.npz"], left
+            # a problem with an exact front: nothing in the campaign's folder
+            C.reference_data(Path(d), "DTLZ2_3D", 200, True, False, True)
+            assert sorted(q.name for q in (Path(d) / C.REFERENCES_DIR).iterdir()) == left
     finally:
         C._build_reference = real
+
+
+@test
+def the_cache_of_references_holds_what_a_campaign_built():
+    """Task 12, §3: an entry of the cache of references (refs.py) holds the
+    arrays the campaign built for itself before — frame, front, dense
+    reference, Pareto-set sample — and cover's IGD+ floors at the problem's
+    population; reference_data reads what a run asks for and nothing else;
+    the problems with an approximate front stay out of the cache."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import os
+    import numpy as np
+    from mootation.benchmarks import registry as R
+    from mootation.run import campaign as C, cover, refs
+    assert refs.shared("DTLZ2_5D") and not refs.shared("RE21") and not refs.shared("bbobbiobj01_n01_2D")
+    assert refs.store_dir().parent == Path(os.environ["MOOTATION_REFS_DIR"])
+    for name in ("DTLZ2_5D", "ZCAT5_3D", "Polygon_3D"):
+        p = R.get(name)
+        ref = np.asarray(p.pareto_front(200), float)
+        ref3, info3 = (R.dense_reference(name, p.pop_size) if R.has_dense_reference(name)
+                       else (None, None))
+        ps = np.asarray(p.pareto_set(200), float) if callable(p.pareto_set) else None
+        with tempfile.TemporaryDirectory() as d:
+            q, r, (r3, i3), s = C.reference_data(Path(d), name, 200, True, True, True)
+            q2, r_, (r3_, i3_), s_ = C.reference_data(Path(d), name, 200, False, True, False)
+            assert not (Path(d) / C.REFERENCES_DIR).exists()
+        assert tuple(q.ideal) == tuple(p.ideal) and tuple(q.nadir) == tuple(p.nadir)
+        assert np.array_equal(r, ref) and r.dtype == ref.dtype, name
+        assert (r3 is None) == (ref3 is None) and (r3 is None or np.array_equal(r3, ref3))
+        assert i3 == info3 and (s is None) == (ps is None)
+        assert s is None or np.array_equal(s, ps)
+        assert (r_, r3_, i3_, s_) == (None, None, None, None)      # no front: no dense either
+        f = cover.igdp_floors(name, 200, (p.pop_size,))
+        assert refs.floor_of(name, 200, p.pop_size) == (*f[p.pop_size], f["rows"], f["distinct"])
+        a, meta = refs.load_entry(name, 200)
+        assert meta["reference_hash"] == C.reference_hash(p, ref, ref3, ps)
+        assert meta["problem_version"] == R.problem_version(name)
+        assert refs.status(name, meta) == "ok"
+
+
+@test
+def a_campaign_gives_the_same_runs_with_an_empty_cache_a_full_one_and_rebuilt():
+    """Task 12, §3: a campaign builds the missing entries of the cache of
+    references before its first run (prepare_references); with the cache
+    empty, filled, and rebuilt (refs build --rebuild) its runs are the same,
+    file for file. --no-build-refs stops with the list; an entry of an older
+    problem version is built again; refs check says which are current."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import os
+    from mootation.benchmarks import registry as R
+    from mootation.run import campaign as C, refs
+    from mootation.run.config import load
+    text = """
+[run]
+name = "rc"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1", "DTLZ2_4D", "RE21"]
+[campaign]
+out = "OUT"
+budget_fe = 600
+n_ref = 150
+dense_reference = true
+metrics = ["igdp_norm", "hv_h"]
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+[[algorithms]]
+name = "moead_de"
+pop = 0
+gens = 0
+"""
+    old_dir = os.environ.get(refs.ENV_DIR)
+    with tempfile.TemporaryDirectory() as td:
+        os.environ[refs.ENV_DIR] = str(Path(td) / "cache")
+        try:
+            def config(out):
+                path = Path(td) / f"{out}.toml"
+                path.write_text(text.replace("OUT", out), encoding="utf-8")
+                cfg = load(path)
+                assert validate(cfg) == [], validate(cfg)
+                return cfg
+            # --no-build-refs on an empty cache: the list, no run started
+            cfg = config("stopped")
+            e = raises(refs.MissingReferences, C.run_campaign, cfg, workers=1, build_refs=False)
+            assert e is not None and set(e.names) == {"ZDT1", "DTLZ2_4D"}, e
+            assert not list(C.out_root(cfg, C.campaign_spec(cfg)).rglob("meta.json"))
+            # empty -> built before the first run; then full; then rebuilt
+            roots = []
+            for out in ("empty", "full", "rebuilt"):
+                if out == "rebuilt":
+                    assert refs.main(["build", "--rebuild", "--n-ref", "150",
+                                      "--problems", "ZDT1,DTLZ2_4D"]) == 0
+                cfg = config(out)
+                counts = C.run_campaign(cfg, workers=2)
+                assert counts["done"] == 6 and counts["failed"] == 0, counts
+                roots.append(C.out_root(cfg, C.campaign_spec(cfg)))
+            assert refs.check(["ZDT1", "DTLZ2_4D"], 150) == {"ZDT1": "ok", "DTLZ2_4D": "ok"}
+            for other in roots[1:]:
+                diff = _same_run_files(roots[0], other, only={"ZDT1", "DTLZ2_4D", "RE21"})
+                assert diff == [], (other, diff)
+            # the problem with an approximate front: in the campaign's folder
+            assert [q.name for q in (roots[0] / C.REFERENCES_DIR).iterdir()] == ["RE21.npz"]
+            # an entry built for another problem version is old and built again
+            R.PROBLEM_VERSION["ZDT1"] = R.problem_version("ZDT1") + 1
+            try:
+                assert refs.check(["ZDT1"], 150)["ZDT1"].startswith("old: problem version")
+                assert refs.main(["check", "--n-ref", "150", "--problems", "ZDT1"]) == 1
+                cfg = config("again")
+                jobs = C.expand_jobs(cfg, C.campaign_spec(cfg))
+                C.prepare_references([j for j in jobs if j.problem == "ZDT1"], 150)
+                assert refs.check(["ZDT1"], 150)["ZDT1"] == "ok"
+            finally:
+                R.PROBLEM_VERSION["ZDT1"] -= 1
+                if R.PROBLEM_VERSION["ZDT1"] == 1:
+                    del R.PROBLEM_VERSION["ZDT1"]
+                refs.build(["ZDT1"], 150, rebuild=True, log=lambda line: None)
+        finally:
+            if old_dir is None:
+                os.environ.pop(refs.ENV_DIR, None)
+            else:
+                os.environ[refs.ENV_DIR] = old_dir
+
+
+@test
+def refs_build_extend_keeps_a_smaller_sample_where_the_builder_does():
+    """Task 12, §3: refs build --extend --n-ref N beside an entry of n < N
+    points: where the builder's n points are the first of its N (Polygon:
+    DSS order) the entry says the smaller sample is kept, elsewhere (DTLZ2: a
+    sample of its own) that it was built anew; both entries stay."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.run import refs
+    names = ["Polygon_3D", "DTLZ2_3D"]
+    assert refs.main(["build", "--n-ref", "100", "--problems", ",".join(names)]) == 0
+    assert refs.main(["build", "--extend", "--n-ref", "200", "--problems", ",".join(names)]) == 0
+    got = {n: refs.load_entry(n, 200)[1]["extends"] for n in names}
+    assert got == {"Polygon_3D": {"n_ref": 100, "prefix": True},
+                   "DTLZ2_3D": {"n_ref": 100, "prefix": False}}, got
+    assert refs.load_entry("Polygon_3D", 100) is not None
+    assert refs.main(["check", "--n-ref", "200", "--problems", ",".join(names)]) == 0
+    assert refs.main(["check", "--n-ref", "300", "--problems", "Polygon_3D"]) == 1
+    assert refs.main(["build", "--problems", "RE21"]) == 2           # not in the cache
 
 
 @test
@@ -9533,6 +9686,18 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
 
 
 def main() -> int:
+    import os
+    import shutil
+    # a cache of references of the tests' own (refs.py), never the user's
+    refs_dir = tempfile.mkdtemp(prefix="mootation-refs-")
+    os.environ["MOOTATION_REFS_DIR"] = refs_dir
+    try:
+        return _run_tests()
+    finally:
+        shutil.rmtree(refs_dir, ignore_errors=True)
+
+
+def _run_tests() -> int:
     import os
     failed = []
     for fn in TESTS:

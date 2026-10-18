@@ -167,9 +167,12 @@ namespace detail {
 // at every level. visit(open, each) walks the nodes that open(node) accepts
 // and hands every point of an accepted leaf to each(). For the greedy steps a
 // node also holds its best point: the largest value (the cover) of its points,
-// on a tie the lowest index; rank() is visit() that sets them again.
+// on a tie the lowest index; rank() is visit() that sets them again. Given
+// SUMS sums of every point (`sums`, SUMS per point), a node holds the smallest
+// of each over its points (sums_min).
 struct KdTree {
     static constexpr std::size_t LEAF = 16;
+    static constexpr std::size_t SUMS = 3;
     struct Node { std::size_t l, r, left, right; };   // left == 0: a leaf
     std::size_t m = 0;
     std::vector<std::size_t> idx;
@@ -177,14 +180,19 @@ struct KdTree {
     std::vector<double> lo, hi;                       // the boxes, m per node
     std::vector<double> best;                         // the best point's value
     std::vector<std::size_t> best_at;                 // and index
+    const std::vector<double>* sums = nullptr;
+    std::vector<double> sums_min;                     // SUMS per node
 
-    void reset(const std::vector<double>& G, std::size_t m_, std::vector<std::size_t> points)
+    void reset(const std::vector<double>& G, std::size_t m_, std::vector<std::size_t> points,
+               const std::vector<double>* sums_ = nullptr)
     {
         m = m_;
         idx = std::move(points);
+        sums = sums_;
         nodes.clear();
         lo.clear();
         hi.clear();
+        sums_min.clear();
         if (!idx.empty()) build(G, 0, idx.size(), 0);
         best.assign(nodes.size(), std::numeric_limits<double>::infinity());
         best_at.assign(nodes.size(), 0);
@@ -196,12 +204,18 @@ struct KdTree {
         nodes.push_back({l, r, 0, 0});
         lo.resize(lo.size() + m, std::numeric_limits<double>::infinity());
         hi.resize(hi.size() + m, -std::numeric_limits<double>::infinity());
+        if (sums) sums_min.resize(sums_min.size() + SUMS, std::numeric_limits<double>::infinity());
         if (r - l <= LEAF) {
-            for (std::size_t t = l; t < r; ++t)
+            for (std::size_t t = l; t < r; ++t) {
                 for (std::size_t j = 0; j < m; ++j) {
                     lo[id * m + j] = std::min(lo[id * m + j], G[idx[t] * m + j]);
                     hi[id * m + j] = std::max(hi[id * m + j], G[idx[t] * m + j]);
                 }
+                if (sums)
+                    for (std::size_t a = 0; a < SUMS; ++a)
+                        sums_min[id * SUMS + a] = std::min(sums_min[id * SUMS + a],
+                                                           (*sums)[idx[t] * SUMS + a]);
+            }
             return id;
         }
         const std::size_t mid = l + (r - l) / 2;
@@ -217,6 +231,9 @@ struct KdTree {
             lo[id * m + j] = std::min(lo[left * m + j], lo[right * m + j]);
             hi[id * m + j] = std::max(hi[left * m + j], hi[right * m + j]);
         }
+        if (sums)
+            for (std::size_t a = 0; a < SUMS; ++a)
+                sums_min[id * SUMS + a] = std::min(sums_min[left * SUMS + a], sums_min[right * SUMS + a]);
         return id;
     }
 
@@ -267,7 +284,17 @@ struct KdTree {
 // them are computed, the points being held in a k-d tree:
 //   * setting aside: p can be set aside only by a q with q_j <= p_j + DRS_GAIN
 //     in every objective and q_j < p_j - DRS_LOSS in some, so p asks only the
-//     points of the boxes that reach there;
+//     points of the boxes that reach there; and since the kept points'
+//     coordinates are not negative, such a q has, for w increasing on
+//     [0, inf), sum_k w(q_k) <= sum_{k != j} w(p_k + DRS_GAIN) + w(p_j -
+//     DRS_LOSS): p asks only the boxes whose smallest sum of w = sqrt, x and
+//     x^2 is within that for the j (task 12 of 2026-10-19, §4). On a front
+//     where one of the sums hardly changes (a simplex: the sum; a sphere: the
+//     squares) no box passes, and p is decided at the root. A p with no
+//     coordinate above DRS_LOSS cannot lose more than that to anyone;
+//   * a round that sets points aside but leaves the kept points' range as it
+//     was leaves every coordinate as it was: the next round would set none
+//     aside, so there is none;
 //   * the greedy steps: a candidate c whose cover is at most B changes nothing
 //     when the point taken, i, has c_j < i_j - B in some objective j, since then
 //     d+(c, i) > B; so a step updates only the boxes that reach above i - B, B
@@ -299,7 +326,10 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
     std::vector<double> G(n * m);
     std::vector<std::size_t> kept_list;
     detail::KdTree tree;
-    std::vector<double> bound(m), beaten(m);
+    constexpr std::size_t SUMS = detail::KdTree::SUMS;
+    std::vector<double> bound(m), beaten(m), most(m * SUMS), sums(n * SUMS);
+    // w = sqrt, x, x^2: increasing on [0, inf), where the kept points lie
+    auto w = [](std::size_t a, double v) { return a == 0 ? std::sqrt(v) : a == 1 ? v : v * v; };
     for (;;) {
         std::vector<double> lo(m, inf), hi(m, -inf);
         for (std::size_t i = 0; i < n; ++i) {
@@ -318,13 +348,29 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
         kept_list.clear();
         for (std::size_t i = 0; i < n; ++i)
             if (kept[i]) kept_list.push_back(i);
-        tree.reset(G, m, kept_list);
+        for (std::size_t i : kept_list)
+            for (std::size_t a = 0; a < SUMS; ++a) {
+                double s = 0.0;
+                for (std::size_t j = 0; j < m; ++j) s += w(a, G[i * m + j]);
+                sums[i * SUMS + a] = s;
+            }
+        tree.reset(G, m, kept_list, &sums);
         std::vector<char> drop(n, 0);
         std::size_t n_drop = 0;
+        const double tol = MARGIN * static_cast<double>(m + 1);   // far above a sum's rounding
         for (std::size_t p : kept_list) {
+            bool can = false;
             for (std::size_t j = 0; j < m; ++j) {
                 bound[j] = G[p * m + j] + DRS_GAIN + MARGIN;       // q_j above: p gains too much
                 beaten[j] = G[p * m + j] - DRS_LOSS + MARGIN;      // q_j below: p loses enough
+                can = can || G[p * m + j] > DRS_LOSS;
+            }
+            if (!can) continue;                                    // q >= 0: p loses at most p_j
+            for (std::size_t a = 0; a < SUMS; ++a) {
+                double up = 0.0;                                   // sum_k w(p_k + DRS_GAIN)
+                for (std::size_t j = 0; j < m; ++j) up += w(a, bound[j]);
+                for (std::size_t j = 0; j < m; ++j)
+                    most[j * SUMS + a] = up - w(a, bound[j]) + w(a, std::max(beaten[j], 0.0)) + tol;
             }
             tree.visit(
                 [&](std::size_t node) {
@@ -332,7 +378,10 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
                     bool loses = false;
                     for (std::size_t j = 0; j < m; ++j) {
                         if (tree.lo[node * m + j] > bound[j]) return false;
-                        loses = loses || tree.lo[node * m + j] < beaten[j];
+                        if (loses || !(tree.lo[node * m + j] < beaten[j])) continue;
+                        loses = tree.sums_min[node * SUMS] <= most[j * SUMS]
+                                && tree.sums_min[node * SUMS + 1] <= most[j * SUMS + 1]
+                                && tree.sums_min[node * SUMS + 2] <= most[j * SUMS + 2];
                     }
                     return loses;
                 },
@@ -352,6 +401,21 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
         if (n_drop == 0 || n_drop == kept_list.size()) break;
         for (std::size_t i = 0; i < n; ++i)
             if (drop[i]) kept[i] = 0;
+        std::vector<double> lo2(m, inf), hi2(m, -inf);         // the range of the points left
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!kept[i]) continue;
+            for (std::size_t j = 0; j < m; ++j) {
+                lo2[j] = std::min(lo2[j], F[i][j]);
+                hi2[j] = std::max(hi2[j], F[i][j]);
+            }
+        }
+        if (lo2 == lo && hi2 == hi) {               // the same coordinates: none more set aside
+            kept_list.clear();
+            for (std::size_t i = 0; i < n; ++i)
+                if (kept[i]) kept_list.push_back(i);
+            tree.reset(G, m, kept_list);
+            break;
+        }
     }
 
     // d+(c, s), as order_plain computes it

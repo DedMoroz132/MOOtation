@@ -48,6 +48,7 @@ all   = ["numpy>=1.21", "scipy>=1.7", "textual>=0.50", "rich>=13.0"]
 
 [project.scripts]
 mootation-run = "mootation.run.cli:main"
+mootation = "mootation.__main__:main"
 
 [project.urls]
 Homepage = "https://github.com/DedMoroz132/MOOtation"

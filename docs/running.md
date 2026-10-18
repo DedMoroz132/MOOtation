@@ -874,13 +874,47 @@ read a rung at the record `record_at` puts there, which has them, and
 
 **What a campaign keeps between runs.** The worker processes live for the
 whole campaign, each taking one job after another, so imports and numba's
-compiled WFG kernels (cached on disk) are paid once a process. A problem's
-frame, reference front, dense reference and Pareto-set sample are built the
-first time a run needs them and kept in `<results>/_references/<problem>.npz`,
-read back by every later run while the reference version and a hash of the
-benchmark sources stay the same; the same arrays, so the same values. Of the
-workers that start on a problem together one builds them (it holds
-`<problem>.lock`) and the others wait for its file.
+compiled WFG kernels (cached on disk) are paid once a process.
+
+**The cache of references.** A problem's frame, reference front of `n_ref`
+points, dense reference (four to ten objectives), Pareto-set sample and the
+IGD+ floors of `--cover` at its population are the same for every run of it,
+and some take minutes to build (ZCAT's at ten objectives, DAS-CMOP's). For
+every registry problem with an exact reference front they are built once per
+machine into the user's cache — `%LOCALAPPDATA%\mootation\references\v<reference
+version>\` on Windows, `~/.cache/mootation/references/v<...>/` elsewhere
+(`$XDG_CACHE_HOME` if set), or wherever `MOOTATION_REFS_DIR` (`--refs-dir`)
+says — one file per problem and `n_ref`:
+
+```bash
+mootation refs build --workers 20                 # every problem with an exact front, n_ref = 1000
+mootation refs build --problems ZDT1,DTLZ2_5D --n-ref 2000
+mootation refs build --rebuild                    # build them again
+mootation refs build --extend --n-ref 5000        # larger samples beside the smaller ones
+mootation refs check                              # which are missing or old
+```
+
+(`python -m mootation refs ...` where the console script is not installed.)
+`build` builds only what is missing or old: an entry is old when the problem's
+version or the reference builder's version is not the one it was built with,
+and `check` lists those, and the entries built by other benchmark sources of
+the same versions. With `--extend`, where the builder's sample of n points is
+the first n of its larger sample (the fronts taken in DSS order: DAS-CMOP,
+DOC, LIR-CMOP, Polygon) the entry records that the smaller sample is kept in
+the larger one, elsewhere that the larger was built anew. Each entry holds a
+hash of its arrays; every machine builds the same arrays, so a cache can be
+copied between machines.
+
+A campaign checks before its first run that the entries of all its problems
+are there and current, and builds the missing ones itself, in parallel on its
+workers, before any run starts; `--no-build-refs` stops it instead with the
+list. The problems without an exact front — the approximate fronts of RE,
+CRE, RCM, their noisy and failing copies — keep theirs in the campaign's
+`<results>/_references/<problem>.npz`, read back by every later run while the
+reference version and a hash of the benchmark sources stay the same; of the
+workers that start on such a problem together one builds it (it holds
+`<problem>.lock`) and the others wait for its file. Either way the same arrays,
+so the same values.
 
 **The first population.** `init = "sobol"` in an algorithm's entry starts it
 from a scrambled Sobol design (`mootation.designs`), `init = "lhs"` from a
