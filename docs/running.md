@@ -986,7 +986,7 @@ discrete, on a Das–Dennis lattice. The utopian point is the ideal point of
 every evaluation so far, less `r2_offset` of the range; `normalize = true`
 scales the objectives first.
 
-**BC** (`bc_spx`, `bc_rex`; `algorithms/bc.hpp`): Tanabe & Ishibuchi's
+**BC** (`bc_spx`, `bc_rex`; `algorithms/bc_spx.hpp`, `bc_rex.hpp`): Tanabe & Ishibuchi's
 non-elitist best-children selection (GECCO 2019): k = n + 1 parents drawn
 from the population, λ = 10n children of the same parents by SPX
 (ε = √(n + 2)) or REX (σ² = 1/(k − 1)); the parents always leave, and the k

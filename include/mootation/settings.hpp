@@ -83,7 +83,7 @@ inline const std::vector<std::string>& knob_names() {
         "turbulence_k", "turbulence_p", "archive_size", "eps_archive_eta",
         // task 9: r2_emoa (algorithms/r2_emoa.hpp)
         "r2_weights", "r2_offset",
-        // task 9: bc_spx, bc_rex (algorithms/bc.hpp); paes (algorithms/paes.hpp)
+        // task 9: bc_spx, bc_rex (algorithms/bc_spx.hpp, bc_rex.hpp); paes (algorithms/paes.hpp)
         "bc_lambda", "paes_depth",
         // task 9: dmulti_mads (algorithms/dmulti_mads.hpp)
         "mads_tau", "mads_delta0",
@@ -128,7 +128,7 @@ inline const std::vector<std::string>& knob_names() {
 //   r2_weights, r2_offset
 //                  r2_emoa: the number of weights and the utopian point's
 //                  offset (algorithms/r2_emoa.hpp)
-//   bc_lambda      bc_spx, bc_rex: the children of one step, 0: 10n (bc.hpp)
+//   bc_lambda      bc_spx, bc_rex: the children of one step, 0: 10n (bc_spx.hpp)
 //   paes_depth     paes: the grid's recursive halvings per objective (paes.hpp)
 //   mads_tau, mads_delta0
 //                  dmulti_mads: the frame size's factor and its start

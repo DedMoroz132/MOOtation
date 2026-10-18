@@ -43,8 +43,8 @@ namespace mootation {
 // ε = √(n + 2), REX with ξ ~ N(0, 1/(k − 1)) (operators/multi_parent.hpp,
 // which already follows Table 1). The paper's μ = ⌊100 ln n⌋ is the run's
 // pop_size here (BC-1). No mutation (§2.2: SPX and REX need none).
-// The two registry names: bc_spx (crossover spx) and bc_rex (rex); the
-// knob crossover switches between them.
+// The two registry names: bc_spx (crossover spx, this header) and bc_rex
+// (rex, bc_rex.hpp); the knob crossover switches between them.
 //
 // READINGS (declared):
 //   BC-1. μ is pop_size; ⌊100 ln n⌋ (Tušar & Filipič, as §3 takes it) is the
@@ -269,12 +269,6 @@ template <typename Ind_t>
 class BCSPXCore : public BCCore<Ind_t> {
 public:
     BCSPXCore() : BCCore<Ind_t>(ops::Crossover::SPX) {}
-};
-
-template <typename Ind_t>
-class BCREXCore : public BCCore<Ind_t> {
-public:
-    BCREXCore() : BCCore<Ind_t>(ops::Crossover::REX) {}
 };
 
 }   // namespace mootation
