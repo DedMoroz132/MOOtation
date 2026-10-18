@@ -30,14 +30,14 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "w_min", "w_max", "c_min", "c_max", "turbulence_k", "turbulence_p",
                "archive_size", "eps_archive_eta", "r2_weights", "r2_offset", "bc_lambda",
                "paes_depth", "mads_tau", "mads_delta0", "glods_search_every",
-               "glods_local_tol", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
+               "glods_local_tol", "rm_extension", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                "n_sub",
                "sub_budget", "fd_step",
                "local_tol", "cma_sigma0", "eps_objective")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
               "inner_archive", "bin_crossover", "mating", "smpso_preset", "chi_mode",
-              "turbulence", "r_per_dim", "archive_prune", "leader_select", "r2_mode",
+              "turbulence", "r_per_dim", "archive_prune", "leader_select", "leader_offer", "r2_mode",
               "r2_space", "bc_selection", "mads_select", "mads_poll", "mads_search",
               "boost_scalarization", "scalarization",
               "local", "sub_plan", "tch_weights")

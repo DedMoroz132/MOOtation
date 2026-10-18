@@ -76,7 +76,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 74, f"expected 74 algorithms, got {len(names)}"
+    assert len(names) == 75, f"expected 75 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -3101,9 +3101,10 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 11 and fams[0][1][0] == "nsga2", fams
+    assert len(fams) == 12 and fams[0][1][0] == "nsga2", fams
     assert dict(fams)["Direct search"] == ("dms", "dmulti_mads", "multiglods"), fams
-    assert fams[-2:] == (("Particle swarm", ("smpso",)), ("Simulated annealing", ("mosa",))), fams
+    assert fams[-3:] == (("Particle swarm", ("smpso",)), ("Estimation of distribution", ("rm_meda",)),
+                         ("Simulated annealing", ("mosa",))), fams
     assert all(name and "─" not in name for name, _ in fams), fams
 
 
@@ -6971,7 +6972,7 @@ def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
         assert seen <= set(labels) and len(seen) >= 2, (alg, seen)
         assert all(0 <= b[0] < 4 for b in r.binary_variables), alg
         assert 0 < r.unique_evaluations <= r.evaluations, alg
-    assert len(refused) == 24, refused
+    assert len(refused) == 25, refused
     # the best label wins, as the decoded rows show
     r = mootation.minimize(f, bounds, 2, pop_size=20, max_evaluations=2000, seed=1, var_types=vt)
     lay = Layout(vt, bounds)
@@ -7934,7 +7935,8 @@ def smpso_presets_knobs_and_refusals():
                     "vel_on_bound_low": "-1", "turbulence": "every_k"},
         "omopso":  {"chi_mode": "none", "w_max": "0.5", "c_min": "1.5", "c_max": "2",
                     "vmax_frac": "0", "turbulence": "thirds", "answer": "eps_archive",
-                    "eps_archive_eta": "0.0075"},
+                    "eps_archive_eta": "0.0075", "archive_prune": "one_shot",
+                    "leader_offer": "improved"},
     }
     for preset, row in rows.items():
         r = run(smpso_preset=preset)
@@ -7948,10 +7950,11 @@ def smpso_presets_knobs_and_refusals():
         s = dict(run(**kw).settings)
         assert s["chi_mode"] == "signed" and s["w_max"] == "0.5", s
     s = dict(run(vmax_frac=0.25, w_min=0.2, w_max=0.4, archive_size=7, r_per_dim="yes",
-                 leader_select="random", archive_prune="one_shot", turbulence="off").settings)
+                 leader_select="random", archive_prune="one_shot", turbulence="off",
+                 leader_offer="improved").settings)
     assert (s["vmax_frac"], s["w_min"], s["w_max"], s["archive_size"], s["r_per_dim"],
-            s["leader_select"], s["archive_prune"], s["turbulence"]) == \
-        ("0.25", "0.2", "0.4", "7", "yes", "random", "one_shot", "off"), s
+            s["leader_select"], s["archive_prune"], s["turbulence"], s["leader_offer"]) == \
+        ("0.25", "0.2", "0.4", "7", "yes", "random", "one_shot", "off", "improved"), s
     assert len(run(archive_size=7).objectives) <= 7
     # the same seed, the same run
     a, b = run(smpso_preset="omopso"), run(smpso_preset="omopso")
@@ -8363,6 +8366,55 @@ def direct_search_methods_are_deterministic_and_take_their_knobs():
         S = rng.uniform(-1, 1, (7, 3))                  # minimum Frobenius norm: 4 < 7 < 10
         (c, g, H), = models(S, np.array([[1.0 + s @ [1.0, -2.0, 0.5]] for s in S]))
         assert np.allclose(H, 0, atol=1e-9) and np.allclose(g, [1, -2, 0.5])   # linear: H = 0
+
+
+@test
+def rm_meda_models_its_clusters_and_takes_its_knobs():
+    """Task 9, B2: rm_meda spends exactly its budget (N a generation); one seed,
+    one trajectory; n_clusters and rm_extension reach it, pop_size <= K and a
+    binary genome refused; on F1 of its paper (n = 30, N = 100, 10 000
+    evaluations) the non-dominated population comes within the D-metric the
+    paper's Fig. 3 shows (the default, clip; RM-8); three objectives (a 2-D
+    model) run."""
+    if not _have_numpy() or _core_with("Config") is None or \
+            "rm_meda" not in __import__("mootation").algorithms():
+        print("  skip  rm_meda...: no NumPy or stale _core"); return
+    import math
+    import numpy as np
+    import mootation
+    n = 30
+    def F1(x):                                        # Table I: linear variable linkage
+        g = 1.0 + 9.0 * sum((x[i] - x[0]) ** 2 for i in range(1, n)) / (n - 1)
+        return [x[0], g * (1.0 - math.sqrt(x[0] / g))]
+    box = [(0.0, 1.0)] * n
+    run = lambda **kw: mootation.minimize(F1, box, 2, algorithm="rm_meda",
+                                          **{"pop_size": 100, "max_evaluations": 3000, "seed": 1,
+                                             **kw})
+    a, b = run(), run()
+    assert a.evaluations == 3000 and a.objectives == b.objectives and a.variables == b.variables
+    assert run(seed=2).objectives != a.objectives
+    for kw in ({"n_clusters": 1}, {"n_clusters": 9}, {"rm_extension": 0.0}, {"bound_repair": "random"}):
+        r = run(**kw)
+        assert not r.ignored and r.objectives != a.objectives, (kw, r.ignored)
+    assert run(bound_repair="clip").objectives == a.objectives            # the default
+    assert run(bound_repair="native").objectives == run(bound_repair="random").objectives  # §V-B's
+    assert raises(ValueError, run, pop_size=5) is not None                # K = 5
+    assert raises(ValueError, run, bound_repair="resample") is not None
+    assert raises(ValueError, mootation.minimize, F1, box[:4], 2, algorithm="rm_meda",
+                  pop_size=20, max_evaluations=200, var_types=["real", "bin", "real", "real"]) \
+        is not None
+    r = run(max_evaluations=10000)
+    P = np.asarray(r.objectives)
+    P = P[[not np.any(np.all(P <= p, axis=1) & np.any(P < p, axis=1)) for p in P]]
+    t = np.linspace(0.0, 1.0, 500)
+    front = np.c_[t, 1 - np.sqrt(t)]
+    D = np.mean(np.min(np.linalg.norm(front[:, None, :] - P[None, :, :], axis=2), axis=1))
+    assert D < 0.008, D                               # Fig. 3: about 0.005 at 10 000
+    from mootation.benchmarks import get
+    q = get("DTLZ2_3D")
+    r = mootation.minimize(q.evaluate, q.bounds, 3, algorithm="rm_meda", pop_size=91,
+                           max_evaluations=2002, seed=1)
+    assert r.evaluations == 2002 and len(r.objectives) == 91
 
 
 @test

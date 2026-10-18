@@ -4,7 +4,7 @@
 Three shapes, from the most static to the most portable: the algorithm fixed at
 compile time (`Optimizer<Ind, Core>`), the algorithm chosen by name at run time
 with either the library or you owning the loop (`embed.hpp`), and the same loop
-behind a C ABI for other languages. All three run the same 74 cores from
+behind a C ABI for other languages. All three run the same 75 cores from
 `include/mootation/algorithms.def`.
 
 ## Compile-time choice: `Optimizer<Ind, Core>`
@@ -56,7 +56,7 @@ carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 you; the full WFG / MaF families live on the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
-[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 50 of the 74 cores
+[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 50 of the 75 cores
 accept one, the other 18 refuse it at `setup()` with a message.
 
 ### External or parallel evaluation
@@ -103,7 +103,7 @@ sizes in the message.
 
 ## Run-time choice: `embed.hpp`
 
-`#include <mootation/embed.hpp>` instantiates all 74 cores in that translation
+`#include <mootation/embed.hpp>` instantiates all 75 cores in that translation
 unit so that the algorithm can be picked by name. That is a real compile-time
 cost (about a minute); a program that always runs one algorithm should use
 `Optimizer<Ind, Core>` directly.
@@ -136,13 +136,14 @@ A plain struct, and the same fields as a `key = value` file:
 | `sbx_var_prob` | SBX's share of crossed variables (0.5) for this run |
 | `bound_repair` | a word: `clip`, `reflect`, `random`, `midpoint`, `resample`, `wrap` or `native` — what an operator that can leave the box does with the variables it put outside (DE in MOEA/D-DE, MOEA/D-DRA, LIS/LCS and HCCA; Liu & Li's operators; DCEA, HLMEA, NAEMO and EMyO/C); each keeps its own default, and the others report it as ignored (`operators/bound_repair.hpp`). A value still outside when written is clamped by the store and counted as a repair of its own, `vault` in the operator log |
 | `step_share`, `F_spread` | EMyO/C: the clamp of its difference vector as a share of ub − lb (0.5) and the spread of its factor F (0) |
-| `smpso_preset`, `chi_mode`, `turbulence`, `r_per_dim`, `archive_prune`, `leader_select` | words for SMPSO: the preset `jmetal` / `platemo` / `fair` / `omopso` and the readings it fixes — χ `signed` / `abs` / `none`, the turbulence `every_k` / `prob` / `thirds` / `off`, r1 and r2 per particle or per variable (`no` / `yes`), the leaders' truncation `one_by_one` / `one_shot`, the leader `crowding_tournament` / `random` (`smpso.hpp`; [running.md](running.md)) |
+| `smpso_preset`, `chi_mode`, `turbulence`, `r_per_dim`, `archive_prune`, `leader_select`, `leader_offer` | words for SMPSO: the preset `jmetal` / `platemo` / `fair` / `omopso` and the readings it fixes — χ `signed` / `abs` / `none`, the turbulence `every_k` / `prob` / `thirds` / `off`, r1 and r2 per particle or per variable (`no` / `yes`), the leaders' truncation `one_by_one` / `one_shot`, the leader `crowding_tournament` / `random`, the particles offered as leaders `all` / `improved` (`smpso.hpp`; [running.md](running.md)) |
 | `vmax_frac`, `vel_on_bound_low`, `vel_on_bound_up`, `w_min`, `w_max`, `c_min`, `c_max`, `turbulence_k`, `turbulence_p`, `archive_size`, `eps_archive_eta` | SMPSO's numbers: the velocity bound as a share of ub − lb (0.5; 0: none), the velocity's factor at each bound (−1), the inertia weight's and C1, C2's ranges (0.1; 1.5–2.5), every k-th particle mutated (6) or each with a probability (0.15), the leaders' bound (pop_size), omopso's ε (0.0075); each overrides its preset |
 | `r2_mode`, `r2_space`, `r2_weights`, `r2_offset` | R2-EMOA: the exact or the discrete R2, weights uniform in weight or angle space, their number (500), the utopian point's offset (0) (`r2_emoa.hpp`) |
 | `bc_selection`, `bc_lambda` | BC: `bc` (default), `bf` or `ba`; the children of one step (0: 10n) (`bc_spx.hpp`) |
 | `paes_depth` | PAES: the grid's recursive halvings per objective (5) (`paes.hpp`) |
 | `mads_tau`, `mads_delta0`, `mads_select`, `mads_poll`, `mads_search` | DMulti-MADS: τ (1/2), Δ_0 (0.1), the incumbent `spread` / `first`, the poll `complete` / `opportunistic`, the search `speculative` / `none` (`dmulti_mads.hpp`) |
 | `glods_search_every`, `glods_local_tol` | MultiGLODS: failures in a row before a search (3), the step below which a point is local (10⁻³) (`multiglods.hpp`) |
+| `rm_extension` | RM-MEDA: how far each cluster's model extends past its points along each direction, a share of their range (0.25); its K is `n_clusters` (5) (`rm_meda.hpp`) |
 | `scalarization`, `local`, `sub_plan`, `tch_weights`, `n_sub`, `sub_budget`, `fd_step`, `local_tol`, `cma_sigma0`, `eps_objective`, `boost_scalarization`, `mosqp_tau`, `mosqp_mu`, `mosqp_beta`, `mosqp_spread`, `polish`, `polish_share`, `polish_points` | Python only: the scalarization methods, boostdms, mosqp and the polishing (`python/mootation/scalar/`, [running.md](running.md)); a core reports them ignored |
 | `dms_init`, `dms_poll` | words for DMS: the initial list, `line` / `single` / `random`, and the next poll centre, `first` / `random` (`dms.hpp`, DMS-6) |
 | `sa_energy`, `sa_step`, `sa_weights`, `sa_tch_accept` | words for MOSA: the energy `cmb` / `eps` / `dom` / `tch`, the step `mix` / `laplace` / `de` / `sbx` / `adaptive`, with `tch` the weights `psa` / `fixed` and the acceptance `weighted_sum` / `chebyshev` (`mosa.hpp`; [running.md](running.md)) |

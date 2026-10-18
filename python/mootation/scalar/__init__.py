@@ -71,13 +71,14 @@ READINGS (declared):
     that the solutions lie on the rays F̄ ∝ d the lattice spreads evenly;
     the reference point is z*.
   SCALAR-4. nnc: the normal constraints (Ā_m − Ā_i)ᵀ(F̄ − X̄) <= 0 and min F̄_m,
-    as the materials of task 9 give the 2003 paper (its text was not
-    available). The 2026 summary's Eq. (80), (F̄ − X̄)ᵀ(A_i − X̄) <= 0 with
-    min F̄_k, leads at m = 2 and k = m straight to the anchor of f_m, so it is
-    not read as the method.
+    Problem P3 of the 2003 paper (Eqs. 36-41). Its points X̄ on the utopia
+    plane are spaced along each N̄_k in proportion to ‖N̄_k‖ (Eq. 32); here
+    they are the sub_plan's lattice of α. (The 2026 summary's Eq. (80),
+    (F̄ − X̄)ᵀ(A_i − X̄) <= 0 with min F̄_k, is not the 2003 constraint.)
   SCALAR-5. ps: ā on the anchors' simplex, r its quasi-normal reversed (NBI's
-    geometry; Eichfelder's adaptive choice of ā could not be checked against
-    her texts and is not implemented).
+    geometry); the 1984 paper leaves (p, q) to the user. Eichfelder's
+    adaptive choice of ā could not be checked against her texts and is not
+    implemented.
   SCALAR-6. sqp stops a subproblem at a failed evaluation of an iterate, and
     at a finite-difference step that fails both ways.
   SCALAR-7. cmaes: a point outside the box is evaluated at its clip, plus the

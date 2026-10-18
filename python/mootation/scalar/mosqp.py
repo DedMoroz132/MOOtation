@@ -7,21 +7,22 @@ doi:10.1137/15M1016424 (the preprint, Optimization Online 2015:
 mosqp_fliege2016_draft; §2.1, §3 problems (8)-(9), Algorithm 4.1, §6).
 
   stage 1  the extreme points: min f_i under the constraints, from the
-           box's centre (10) — SLSQP with finite differences (solvers.py);
+           box's centre ((10), MS-7) — SLSQP with finite differences
+           (solvers.py);
   stage 2  "spread", at most mosqp_spread (20, §6) iterations over a set X of
            n̄ = pop_size points, first on the line between the bounds (§6,
            "line"): every point not yet stopped gives, for every objective i,
            the direction d of the QP (8) — min ∇f_iᵀd + ½dᵀH_i d under the
            linearized constraints and the box — and, when ‖d‖ >= τ^(1/4), the
            point x + αd, α the first of 1, β, β², ... with Armijo's decrease of
-           the ℓ1 merit φ_i(x, σ) = f_i + σ(Σ g⁺ + Σ|h|) (§2.1) and α >= τ^(1/4);
+           the ℓ1 merit φ_i(x, σ) = f_i + σ(Σ g⁺ + Σ|h|) (§2.1) and α >= τ^(1/2);
            the point is then stopped; X becomes the non-dominated points of X
            and the new ones (dominance extended to (f, g⁺, |h|), §2.1), cut to
            n̄ by crowding distance (§4: ten of the most crowded at a time);
   stage 3  "refining", on X and the extreme points: every point not yet
            stopped moves along the solution v of (9) — min Σζ_i,
            ∇f_iᵀv + ½vᵀH_i v <= ζ_i, the linearized constraints, the box — by
-           Armijo on the merit Φ = Σf_i + σ(Σg⁺ + Σ|h|), until ‖v‖ < τ^(1/2)
+           Armijo on the merit Φ = Σf_i + σ(Σg⁺ + Σ|h|), until ‖v‖ < τ
            or α < τ^(1/2); points dominated by feasible points leave X.
 A QP without a feasible point sends the point to a restoration: min
 Σ(g⁺)² + Σh² + 10⁻⁶‖x − x_l‖² from x_l (SLSQP, finite differences); a feasible
@@ -42,6 +43,8 @@ READINGS (the preprint gives no numbers for τ, μ, β, n̄; §6 is MATLAB-speci
   MS-6. The QPs (8) and (9) are solved by SciPy's SLSQP with exact
     derivatives of the quadratic models (no evaluation of fn); "no feasible
     solution" is SLSQP's report of incompatible constraints.
+  MS-7. (10) prints (u_j − ℓ_j)/2 for a finite box, which lies outside
+    [ℓ_j, u_j] whenever ℓ_j > (u_j − ℓ_j)/2; read as the centre (u_j + ℓ_j)/2.
 """
 
 from __future__ import annotations
@@ -204,8 +207,8 @@ def run_mosqp(ev, *, n_objs: int, n_eq: int, pop_size: int, knobs: dict, fd_step
             S.sqp(run_, np.full(n, 0.5), 0.0, fd_step=fd_step, tol=1e-12)
             extremes.append(S.best_of(run_, run_.touched))
         # stage 2: spread
-        tol2 = tau ** 0.25
-        min_step = tol2
+        tol2 = tau ** 0.25                                   # 3(a)iC
+        min_step = math.sqrt(tau)                            # 3(a)iE
         X = [at(np.full(n, (l + 1) / (nbar + 1))) for l in range(nbar)]          # MS-5
         stopped = set()
         for _ in range(spread_its):
@@ -235,8 +238,8 @@ def run_mosqp(ev, *, n_objs: int, n_eq: int, pop_size: int, knobs: dict, fd_step
         # stage 3: refining
         X = list(dict.fromkeys(X + [e for e in extremes if e is not None]))
         stopped = set()
-        tol3 = math.sqrt(tau)
-        min_step = tol3
+        tol3 = tau                                           # 4(a)iii
+        min_step = math.sqrt(tau)                            # 4(a)v
         while any(x not in stopped for x in X):
             newX = []
             for xl in X:

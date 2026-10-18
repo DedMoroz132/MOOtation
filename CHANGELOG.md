@@ -16,12 +16,14 @@ always listed under **Changed** or **Removed**.
   turbulence; Algorithm 1 in jMetal's order. What the paper leaves open is a
   preset, `smpso_preset`: `jmetal` (default), `platemo`, `fair` and `omopso`
   (OMOPSO, Reyes Sierra & Coello Coello, EMO 2005: no constriction, uniform
-  and non-uniform mutation by thirds, an epsilon-dominance archive as the
-  answer), and each of its parts a knob (`chi_mode`, `vmax_frac`,
-  `vel_on_bound_low`/`_up`, `w_min`/`w_max`, `c_min`/`c_max`, `r_per_dim`,
-  `turbulence`, `turbulence_k`, `turbulence_p`, `archive_size`,
-  `archive_prune`, `leader_select`, `eps_archive_eta`, with `eta_m`, `pm` and
-  `bound_repair`). Real variables with finite bounds only.
+  and non-uniform mutation by thirds, only the particles that replaced their
+  best offered as leaders and the leaders cut once a step, an
+  epsilon-dominance archive as the answer), and each of its parts a knob
+  (`chi_mode`, `vmax_frac`, `vel_on_bound_low`/`_up`, `w_min`/`w_max`,
+  `c_min`/`c_max`, `r_per_dim`, `turbulence`, `turbulence_k`,
+  `turbulence_p`, `archive_size`, `archive_prune`, `leader_select`,
+  `leader_offer`, `eps_archive_eta`, with `eta_m`, `pm` and `bound_repair`).
+  Real variables with finite bounds only.
 - R2-EMOA (Trautmann, Wagner & Brockhoff, LION 2013; Brockhoff et al.,
   Evol. Comput. 2015), `r2_emoa`: SMS-EMOA's steady state with the worst
   front's least R2 contribution removed; the exact R2 at two objectives
@@ -34,6 +36,14 @@ always listed under **Changed** or **Removed**.
 - PAES (Knowles & Corne, Evol. Comput. 2000), `paes`: the (1 + 1) Pareto
   archived evolution strategy with its adaptive grid (`paes_depth`,
   `archive_size`).
+- RM-MEDA (Zhang, Zhou & Jin, IEEE TEVC 2008), `rm_meda`: an estimation of
+  distribution algorithm — an (m − 1)-dimensional local principal component
+  analysis splits the population into clusters, each modelled by a box along
+  its principal components plus Gaussian noise, the offspring sampled from
+  the models and selected by non-dominated sorting with a crowding distance
+  recomputed after every removal (`n_clusters`, `rm_extension`,
+  `bound_repair`: clip by default, the text's random reset as `native`). A
+  twelfth family, estimation of distribution. Real variables only.
 - DMulti-MADS (Bigeon, Le Digabel & Salomon, Comput. Optim. Appl. 2021),
   `dmulti_mads`: a list of points with a frame size each, the incumbent of the
   largest frame chosen by spread, a speculative search, n + 1 poll directions

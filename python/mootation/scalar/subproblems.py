@@ -24,15 +24,16 @@ gives it). Before the anchors are known the frame is the identity.
   nbi   NBI (Das & Dennis, SIAM J. Optim. 8(3), 1998, Eq. (1) and §4.3):
         max t  s.t.  Φ̄β + t·n̂ = F̄,  n̂ = -Φ̄e the quasi-normal
   nnc   NNC (Messac, Ismail-Yahaya & Mattson, Struct. Multidisc. Optim.
-        25(2), 2003, as gnc_messac2026 §3.2 summarizes it): min F̄_m  s.t.
+        25(2), 2003, Problem P3, Eqs. 36-41): min F̄_m  s.t.
         (Ā_m - Ā_i)ᵀ(F̄ - X̄) <= 0, i = 1..m-1, X̄ = Σ α_i Ā_i (SCALAR-4)
-  ps    Pascoletti-Serafini (J. Optim. Theory Appl. 42(4), 1984; the formula
-        as the materials of task 9 give it, the text was not available):
-        min t  s.t.  ā + t·r - F̄ >= 0 (the ordering cone
-        R^m_+), ā = Φ̄β on the anchors' simplex and r = Φ̄e: NBI's targets and
-        its quasi-normal reversed, with an inequality where NBI has an equality
-        (SCALAR-5). ε-constraint (r = e_k, ā_j = ε_j) and Chebyshev (ā = 0,
-        r_i = 1/w_i) are its special cases.
+  ps    Pascoletti-Serafini (J. Optim. Theory Appl. 42(4), 1984, Problem
+        P(p, q): max ξ s.t. F(x) = p + ξq + λ, λ in the cone, written for
+        maximization; here its minimization form): min t  s.t.
+        ā + t·r - F̄ >= 0 (the ordering cone R^m_+), ā = Φ̄β on the anchors'
+        simplex and r = Φ̄e: NBI's targets and its quasi-normal reversed, with
+        an inequality where NBI has an equality (SCALAR-5). ε-constraint
+        (r = e_k, ā_j = ε_j) and Chebyshev (ā = 0, r_i = 1/w_i) are its
+        special cases.
 """
 
 from __future__ import annotations
