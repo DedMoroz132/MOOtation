@@ -14,9 +14,11 @@ always listed under **Changed** or **Removed**.
   dominated points aside with less work and the same order, bit for bit
   (task 12 of 2026-10-19, §4): every node of its k-d tree holds the smallest
   sums of sqrt(q), q and q^2 of its points, and a point asks only the nodes
-  whose sums a point that sets it aside could have; and there is no round
-  after one that leaves the kept points' range as it was. `tests/test_dss.cpp`:
-  10 000 random sets against the order before and `order_plain`.
+  whose sums a point that sets it aside could have; there is no round after
+  one that leaves the kept points' range as it was; and the tree is built
+  once, fitted to the points left after a round that sets points aside.
+  `tests/test_dss.cpp`: 10 000 random sets against the order before and
+  `order_plain`.
 - The cache of references (task 12 of 2026-10-19, §3; `mootation.run.refs`,
   the console script `mootation refs build|check`): the frame, reference
   front, dense reference, Pareto-set sample and IGD+ floors of every registry

@@ -2,7 +2,8 @@
 // ============================================================================
 // dss.hpp: dss::order gives the order it gave before task 12 of 2026-10-19
 // (§4: the bound on three sums per node of the k-d tree in the setting aside,
-// no round after one that leaves the kept points' range as it was), bit for
+// no round after one that leaves the kept points' range as it was, the tree
+// built once and fitted to the points left after a round), bit for
 // bit, and order_plain's. 10 000 random sets at 2 to 10 objectives, of up to
 // 25 000 points: fronts (simplex, sphere, convex, with a little depth),
 // clouds of dominated points, flat tails and far points (set aside), copies,

@@ -169,7 +169,9 @@ namespace detail {
 // node also holds its best point: the largest value (the cover) of its points,
 // on a tie the lowest index; rank() is visit() that sets them again. Given
 // SUMS sums of every point (`sums`, SUMS per point), a node holds the smallest
-// of each over its points (sums_min).
+// of each over its points (sums_min). refit() keeps the partition and fits the
+// boxes and sums to the points of `member` only (after some left the set);
+// rank() then skips the others, and so must the callers of visit().
 struct KdTree {
     static constexpr std::size_t LEAF = 16;
     static constexpr std::size_t SUMS = 3;
@@ -182,6 +184,7 @@ struct KdTree {
     std::vector<std::size_t> best_at;                 // and index
     const std::vector<double>* sums = nullptr;
     std::vector<double> sums_min;                     // SUMS per node
+    const std::vector<char>* member = nullptr;        // null: every point of idx
 
     void reset(const std::vector<double>& G, std::size_t m_, std::vector<std::size_t> points,
                const std::vector<double>* sums_ = nullptr)
@@ -189,6 +192,7 @@ struct KdTree {
         m = m_;
         idx = std::move(points);
         sums = sums_;
+        member = nullptr;
         nodes.clear();
         lo.clear();
         hi.clear();
@@ -196,6 +200,51 @@ struct KdTree {
         if (!idx.empty()) build(G, 0, idx.size(), 0);
         best.assign(nodes.size(), std::numeric_limits<double>::infinity());
         best_at.assign(nodes.size(), 0);
+    }
+
+    void refit(const std::vector<double>& G, const std::vector<char>& member_,
+               const std::vector<double>* sums_)
+    {
+        member = &member_;
+        sums = sums_;
+        sums_min.assign(sums ? nodes.size() * SUMS : 0, std::numeric_limits<double>::infinity());
+        if (!nodes.empty()) fit(G, 0);
+        best.assign(nodes.size(), std::numeric_limits<double>::infinity());
+        best_at.assign(nodes.size(), 0);
+    }
+
+    // the box (and sums) of node id over its member points; none: an empty box
+    void fit(const std::vector<double>& G, std::size_t id)
+    {
+        const Node& node = nodes[id];
+        for (std::size_t j = 0; j < m; ++j) {
+            lo[id * m + j] = std::numeric_limits<double>::infinity();
+            hi[id * m + j] = -std::numeric_limits<double>::infinity();
+        }
+        if (node.left == 0) {
+            for (std::size_t t = node.l; t < node.r; ++t) {
+                const std::size_t c = idx[t];
+                if (!(*member)[c]) continue;
+                for (std::size_t j = 0; j < m; ++j) {
+                    lo[id * m + j] = std::min(lo[id * m + j], G[c * m + j]);
+                    hi[id * m + j] = std::max(hi[id * m + j], G[c * m + j]);
+                }
+                if (sums)
+                    for (std::size_t a = 0; a < SUMS; ++a)
+                        sums_min[id * SUMS + a] = std::min(sums_min[id * SUMS + a], (*sums)[c * SUMS + a]);
+            }
+            return;
+        }
+        fit(G, node.left);
+        fit(G, node.right);
+        for (std::size_t j = 0; j < m; ++j) {
+            lo[id * m + j] = std::min(lo[node.left * m + j], lo[node.right * m + j]);
+            hi[id * m + j] = std::max(hi[node.left * m + j], hi[node.right * m + j]);
+        }
+        if (sums)
+            for (std::size_t a = 0; a < SUMS; ++a)
+                sums_min[id * SUMS + a] = std::min(sums_min[node.left * SUMS + a],
+                                                   sums_min[node.right * SUMS + a]);
     }
 
     std::size_t build(const std::vector<double>& G, std::size_t l, std::size_t r, std::size_t dim)
@@ -260,6 +309,7 @@ struct KdTree {
             best_at[id] = idx[node.l];
             for (std::size_t t = node.l; t < node.r; ++t) {
                 const std::size_t c = idx[t];
+                if (member && !(*member)[c]) continue;
                 each(c);
                 if (value[c] > best[id] || (value[c] == best[id] && c < best_at[id])) {
                     best[id] = value[c];
@@ -294,7 +344,9 @@ struct KdTree {
 //     coordinate above DRS_LOSS cannot lose more than that to anyone;
 //   * a round that sets points aside but leaves the kept points' range as it
 //     was leaves every coordinate as it was: the next round would set none
-//     aside, so there is none;
+//     aside, so there is none; the tree is built once, and after a round that
+//     sets points aside it is fitted to the points left (KdTree::refit: the
+//     same partition, the boxes and sums of the kept points);
 //   * the greedy steps: a candidate c whose cover is at most B changes nothing
 //     when the point taken, i, has c_j < i_j - B in some objective j, since then
 //     d+(c, i) > B; so a step updates only the boxes that reach above i - B, B
@@ -354,7 +406,8 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
                 for (std::size_t j = 0; j < m; ++j) s += w(a, G[i * m + j]);
                 sums[i * SUMS + a] = s;
             }
-        tree.reset(G, m, kept_list, &sums);
+        if (tree.nodes.empty()) tree.reset(G, m, kept_list, &sums);    // every point kept
+        else tree.refit(G, kept, &sums);
         std::vector<char> drop(n, 0);
         std::size_t n_drop = 0;
         const double tol = MARGIN * static_cast<double>(m + 1);   // far above a sum's rounding
@@ -386,7 +439,7 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
                     return loses;
                 },
                 [&](std::size_t q) {
-                    if (drop[p] || q == p) return;
+                    if (drop[p] || q == p || !kept[q]) return;
                     double loss = -inf;
                     bool small_gain = true;
                     for (std::size_t j = 0; j < m; ++j) {
@@ -413,7 +466,7 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
             kept_list.clear();
             for (std::size_t i = 0; i < n; ++i)
                 if (kept[i]) kept_list.push_back(i);
-            tree.reset(G, m, kept_list);
+            tree.refit(G, kept, nullptr);
             break;
         }
     }
