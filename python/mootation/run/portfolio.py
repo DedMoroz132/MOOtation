@@ -27,7 +27,7 @@ the conclusions hang on --cover's 7):
     covering p are symmetric and the others null, so each gets 1 / c_p
     (Shapley's symmetry, null-player and additivity axioms). Hence
     phi_a = sum of 1 / c_p over the problems a covers — a problem a covers alone
-    counts 1, one all 74 cover 1/74 — and the values add up to the oracle;
+    counts 1, one all 75 cover 1/75 — and the values add up to the oracle;
   * the problems each algorithm covers alone.
 ONE RUN EACH (task 5, 2026-10-01), where the campaign has a deterministic
 algorithm (cover.py, DETERMINISTIC ALGORITHMS: DMS, whose ten seeds are one

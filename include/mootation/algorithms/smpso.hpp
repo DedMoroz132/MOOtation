@@ -30,8 +30,8 @@
 // (source smpso_nebro2009, §II and Algorithm 1). Its departure point, OMOPSO:
 // M. Reyes Sierra, C.A. Coello Coello, "Improving PSO-based multi-objective
 // optimization using crowding, mutation and ε-dominance", EMO 2005, LNCS 3410,
-// pp. 505-519, doi:10.1007/978-3-540-31880-4_35 (no open text: as §II-C of
-// the SMPSO paper and jMetal's OMOPSO describe it).
+// pp. 505-519, doi:10.1007/978-3-540-31880-4_35 (source
+// omopso_reyes-sierra2005, §3 and Fig. 1).
 //
 // Algorithm 1 (one step() = lines 5-11, the swarm evaluated in one batch):
 //   for each particle i: a leader g from the leaders archive (a binary
@@ -63,15 +63,17 @@
 //   fair              χ with the modulus; w = 0.1; the position put back by
 //                     bound_repair = reflect (operators/bound_repair.hpp);
 //                     velocity × (−1); turbulence and archive as jmetal.
-//   omopso            OMOPSO: no χ (1); w ~ U[0.1, 0.5]; C1, C2 ~
+//   omopso            OMOPSO (its §3): no χ (1); w ~ U[0.1, 0.5]; C1, C2 ~
 //                     U[1.5, 2.0]; no velocity bound; clip, velocity × (−1);
 //                     turbulence by thirds — non-uniform mutation on
 //                     i % 3 == 0, uniform on i % 3 == 1, none on the rest
-//                     (both with probability 1/n per variable and
-//                     perturbation 0.5, as jMetal's OMOPSO); the leaders by
-//                     crowding, and the answer an ε-dominance archive of
-//                     every leader accepted (η = 0.0075). Its non-uniform
-//                     mutation follows the run's progress: budget-dependent.
+//                     (both with probability 1/n per variable; perturbation
+//                     0.5, as jMetal's OMOPSO); only the particles that
+//                     replaced their p_i offered as leaders, the leaders cut
+//                     once a step by crowding; the answer an ε-dominance
+//                     archive of every leader accepted (η = 0.0075, the
+//                     value its §4 uses on ZDT). Its non-uniform mutation
+//                     follows the run's progress: budget-dependent.
 // Common to all: swarm = pop_size, r1, r2 ~ U[0, 1] and C1, C2 ~ U[c_min,
 // c_max] = U[1.5, 2.5] (§II-C) drawn once per particle, the leaders archive
 // of size pop_size (§IV-A: 100 particles, archive 100).
@@ -96,6 +98,8 @@
 //                     addition, crowding recomputed) | one_shot (the whole
 //                     swarm added, then one crowding and the tail cut)
 //   leader_select     crowding_tournament | random
+//   leader_offer      all | improved: every particle offered as a leader, or
+//                     only those that replaced their p_i (OMOPSO §3)
 //   eps_archive_eta   the ε of the omopso answer archive (0.0075)
 //
 // READINGS (declared):
@@ -113,11 +117,18 @@
 //     line 1).
 //   SMPSO-6. Eq. 4 sets φ = 1 for C1 + C2 <= 4, which makes Eq. 3 complex;
 //     χ = 1 there, as jMetal has it (and the modulus form gives at φ = 4).
-//   SMPSO-7. OMOPSO's mutation (§II-C): uniform on the first 30 % of the
-//     swarm, non-uniform on the next 30 %, none on the rest; the thirds here
-//     interleave by index as jMetal's OMOPSO does (i % 3), a third each.
+//   SMPSO-7. OMOPSO's mutation: three parts of equal size, none, uniform and
+//     non-uniform (OMOPSO §3; the SMPSO paper's §II-C says 30 % each and none
+//     on the rest); here interleaved by index as jMetal's OMOPSO does
+//     (i % 3). The ranges of the uniform and non-uniform mutation are not in
+//     the paper: jMetal's perturbation 0.5.
 //   SMPSO-8. platemo's turbulence draws for each particle (probability 0.15),
 //     jmetal's mutates i % 6 == 0, a sixth: §II-C's "15 %" read both ways.
+//   SMPSO-9. OMOPSO's ε-dominance is relative, f_i(x1)/(1 + ε) <= f_i(x2)
+//     (§3), and its archive procedure is not given; the archive here is
+//     jMetal's: additive boxes floor(f/η), in one box the point nearer the
+//     corner. The relative form has no box for f = 0, which the ZDT fronts
+//     reach.
 // Continuous variables only: a binary or categorical genome is refused.
 // ============================================================================
 
@@ -145,6 +156,7 @@ public:
         bool r_per_dim = false;
         bool one_shot = false;
         bool leader_random = false;
+        bool offer_improved = false;
         bool eps_answer = false;
         double eps_eta = 0.0075;
     };
@@ -171,6 +183,8 @@ public:
             s.c_min = 1.5; s.c_max = 2.0;
             s.vmax_frac = 0.0;
             s.turbulence = SMPSOTurbulence::Thirds;
+            s.one_shot = true;
+            s.offer_improved = true;
             s.eps_answer = true;
             return s;
         }
@@ -193,7 +207,7 @@ private:
     std::optional<ops::BoundRepair> o_repair_;
     std::optional<SMPSOTurbulence> o_turb_;
     std::optional<int> o_turb_k_, o_archive_size_;
-    std::optional<bool> o_r_per_dim_, o_one_shot_, o_leader_random_;
+    std::optional<bool> o_r_per_dim_, o_one_shot_, o_leader_random_, o_offer_improved_;
     double eta_m_ = 20.0, pm_ = -1.0;    // pm < 0: 1/n
 
     Settings s_;
@@ -450,6 +464,7 @@ private:
         if (o_r_per_dim_) s_.r_per_dim = *o_r_per_dim_;
         if (o_one_shot_) s_.one_shot = *o_one_shot_;
         if (o_leader_random_) s_.leader_random = *o_leader_random_;
+        if (o_offer_improved_) s_.offer_improved = *o_offer_improved_;
         if (o_eps_eta_) s_.eps_eta = *o_eps_eta_;
         if (s_.w_min > s_.w_max || s_.c_min > s_.c_max)
             throw std::invalid_argument("smpso: w_min <= w_max and c_min <= c_max");
@@ -501,6 +516,7 @@ public:
             {"archive_size", num(archive_size_)},
             {"archive_prune", s_.one_shot ? "one_shot" : "one_by_one"},
             {"leader_select", s_.leader_random ? "random" : "crowding_tournament"},
+            {"leader_offer", s_.offer_improved ? "improved" : "all"},
             {"answer", s_.eps_answer ? "eps_archive" : "leaders"},
             {"eps_archive_eta", num(s_.eps_eta)},
         };
@@ -568,6 +584,10 @@ public:
         if (k == "leader_select") {
             if (w != "crowding_tournament" && w != "random") throw bad("crowding_tournament or random");
             o_leader_random_ = w == "random"; return true;
+        }
+        if (k == "leader_offer") {
+            if (w != "all" && w != "improved") throw bad("all or improved");
+            o_offer_improved_ = w == "improved"; return true;
         }
         return false;
     }
@@ -644,7 +664,10 @@ public:
         }
         for (std::size_t i = 0; i < S; ++i) turbulence(i, X[i], vault);
         std::vector<Point> next = evaluate(vault, X);
-        add_leaders(next);
+        std::vector<Point> offered;                          // leader_offer
+        for (std::size_t i = 0; i < S; ++i)
+            if (!s_.offer_improved || !dominates(best_[i], next[i])) offered.push_back(next[i]);
+        add_leaders(offered);
         for (std::size_t i = 0; i < S; ++i)                  // SMPSO-3
             if (!dominates(best_[i], next[i])) best_[i] = next[i];
         swarm_ = std::move(next);

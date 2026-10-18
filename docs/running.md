@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 74 algorithm names and the nine Python methods |
+| `--algorithms` | list the 75 algorithm names and the nine Python methods |
 | `--problems` | list the 1340 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -419,10 +419,10 @@ probability 1/(number of genes) but at most 1/2 (pymoo's cap; with a single
 gene 1 would change every child's), one of its other values, each alike —
 a bit flips (`operators/bit_flip.hpp`). SBX, DE and polynomial mutation never
 see them, and with more than two genes a binary run is what it was, bit for
-bit. 50 of the 74 cores take the integer genome; these 24 refuse it by name:
+bit. 50 of the 75 cores take the integer genome; these 25 refuse it by name:
 `bc_rex`, `bc_spx`, `clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `dmulti_mads`, `dn_nsga2`,
 `etea`, `gde3`, `hcca`, `hlmea`, `if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`,
-`moead_ds`, `mosa`, `multiglods`, `naemo`, `paes`, `smpso` and `two_arch2`
+`moead_ds`, `mosa`, `multiglods`, `naemo`, `paes`, `rm_meda`, `smpso` and `two_arch2`
 (`minimize` says so, naming the variables); so do the Python methods.
 
 `result.evaluations` counts the calls, `result.unique_evaluations` the
@@ -960,12 +960,12 @@ share of the swarm. What the paper leaves open is a preset:
 | `jmetal` (default) | as Eq. 3 prints it (negative for C1 + C2 > 4) | 0.1 | ½ width | clip, velocity × −1 | polynomial (η = 20, 1/n) on i % 6 == 0 | leaders, crowding, one removed at a time |
 | `platemo` | its modulus | U[0.1, 0.5] | ½ width | clip, velocity × 0.001 | polynomial on each particle with probability 0.15 | leaders |
 | `fair` | its modulus | 0.1 | ½ width | `bound_repair = reflect`, velocity × −1 | as jmetal | as jmetal |
-| `omopso` | 1 | U[0.1, 0.5], C1, C2 ~ U[1.5, 2.0] | none | clip, velocity × −1 | non-uniform / uniform / none by thirds | an ε-dominance archive (ε = 0.0075) of every leader accepted |
+| `omopso` | 1 | U[0.1, 0.5], C1, C2 ~ U[1.5, 2.0] | none | clip, velocity × −1 | non-uniform / uniform / none by thirds | leaders: only the particles that replaced their best, cut once a step; the answer an ε-dominance archive (ε = 0.0075) of every leader accepted |
 
 Every cell is a knob (`chi_mode`, `w_min`/`w_max`, `c_min`/`c_max`,
 `vmax_frac`, `bound_repair`, `vel_on_bound_low`/`vel_on_bound_up`,
 `turbulence` with `turbulence_k`/`turbulence_p`, `eta_m`, `pm`,
-`archive_size`, `archive_prune`, `leader_select`, `r_per_dim`,
+`archive_size`, `archive_prune`, `leader_select`, `leader_offer`, `r_per_dim`,
 `eps_archive_eta`), applied over the preset whatever the order. The run
 reports every knob as it used it in `Result.settings`, and a campaign writes
 them to `meta.json` under `settings`. The omopso preset's non-uniform mutation
@@ -1007,6 +1007,24 @@ objective; 5, the paper's). The archive, bounded by `archive_size`
 papers' bit flips. A grid of 2^(5·M) cells is far finer than an archive of a
 hundred points from three objectives on, where every point has a cell of its
 own and a full archive loses its first member: a smaller `paes_depth` there.
+
+**RM-MEDA** (`algorithms/rm_meda.hpp`; Zhang, Zhou & Jin, IEEE TEVC 2008):
+an estimation of distribution algorithm. Each generation an (m − 1)-dimensional
+local principal component analysis splits the population into `n_clusters`
+(5) clusters; each cluster's model is the box spanned by its points along its
+first m − 1 principal components, extended by `rm_extension` (0.25) of that
+span on each side, plus Gaussian noise whose variance is the mean of the
+other eigenvalues. `pop_size` offspring are sampled, a cluster drawn in
+proportion to its box's volume, and `pop_size` survive from parents and
+offspring by non-dominated sorting, the last front cut one member at a time by
+the paper's crowding distance (the average side of the cuboid, not
+normalized). A variable sampled outside the box is put on the bound
+(`bound_repair = "clip"`); the paper's text resets it at random inside the
+box (`native`, the same as `random`), but its own curves are reached with the
+variable kept at the bound, and a random reset keeps the population off a
+Pareto set that lies on a bound (RM-8 in the header). `pop_size` must exceed
+`n_clusters`; the paper uses 100 at two objectives and 200 at three. Real
+variables only.
 
 **Scalarization with a local solver** (`python/mootation/scalar/`, task 9):
 the algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
@@ -1050,8 +1068,10 @@ every objective, the SQP direction of that objective under the linearized
 constraints and a step by Armijo's rule on an ℓ1 merit function — the set
 kept non-dominated and cut by crowding distance; then every point refined
 along the direction that improves all the objectives' quadratic models at
-once, until the directions or the steps are below √`mosqp_tau`. Gradients by
-forward differences (`fd_step`), counted; H_i = I; `mosqp_mu` (10⁻⁴) and
+once, until the direction is below `mosqp_tau` or the step below
+√`mosqp_tau` (in the spread, a direction below `mosqp_tau`^(1/4) or a step
+below √`mosqp_tau` gives no point). Gradients by forward differences
+(`fd_step`), counted; H_i = I; `mosqp_mu` (10⁻⁴) and
 `mosqp_beta` (1/2) are Armijo's constant and factor. The preprint leaves τ,
 μ, β and the set's size open: the header says what is chosen. Equalities and
 inequalities go to the subproblems as constraints; an infeasible
@@ -1174,7 +1194,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-74 cores, so "not dominated by its parents" is read as "by any parent", and
+75 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

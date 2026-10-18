@@ -84,6 +84,7 @@
 #include "algorithms/dmulti_mads.hpp"
 #include "algorithms/multiglods.hpp"
 #include "algorithms/smpso.hpp"
+#include "algorithms/rm_meda.hpp"
 #include "algorithms/mosa.hpp"
 #include "algorithms/gde3.hpp"
 #include "algorithms/sms_emoa.hpp"

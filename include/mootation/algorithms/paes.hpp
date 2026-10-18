@@ -23,11 +23,9 @@ namespace mootation {
 // Pareto Archived Evolution Strategy", Evol. Comput. 8(2):149-172, 2000,
 // doi:10.1162/106365600568167, and its first paper, "The Pareto Archived
 // Evolution Strategy: A New Baseline Algorithm for Pareto Multiobjective
-// Optimisation", CEC 1999, pp. 98-105, doi:10.1109/CEC.1999.781913. Neither
-// text was available: the algorithm as the materials of task 9 give the
-// CEC'99 paper (§3, Figures 1-2; §4), the adaptive grid as jMetal's
-// AdaptiveGrid and AdaptiveGridArchive (MIT; main 67de131d591a), which PAES
-// there uses.
+// Optimisation", CEC 1999, pp. 98-105, doi:10.1109/CEC.1999.781913. Source:
+// paes_knowles2000 (§2.2 Figures 1-2, §2.3 the adaptive grid, §4 Table 2);
+// the grid's arithmetic as jMetal's AdaptiveGrid (MIT; main 67de131d591a).
 //
 // One step, one evaluation: a mutant m of the current solution c,
 //   c dominates m        → m is discarded;
@@ -37,29 +35,33 @@ namespace mootation {
 //                          the archive, and m becomes c if its grid cell is
 //                          less crowded than c's.
 // The archive keeps non-dominated points only; a new one removes those it
-// dominates; when the archive is full, m enters only if its cell is not the
-// most crowded, and then a member of the most crowded cell leaves.
+// dominates; when the archive is full, m enters only if its cell holds fewer
+// members than the most crowded cell (Figure 2, line 7), and then a member of
+// the most crowded cell leaves.
 // THE GRID divides the archive's objective range — its least and greatest
 // value per objective, widened and rebuilt when a point falls outside —
 // into 2^depth intervals per objective by recursive halving (depth bisections:
-// 2^(depth·M) cells), CEC'99 §4: depth 5, archive 100. The answer is the
+// 2^(depth·M) cells), §2.3: l = 5; Table 2: archive 100. The answer is the
 // archive, written into the active slots after every step.
 //
-// Parameters: paes_depth (5, CEC'99 §4; Platypus's "divisions" is 2^depth,
-// not the depth); the archive's bound archive_size (pop_size, CEC'99's 100
-// at pop_size 100); polynomial mutation, η_m = 20, p_m = 1/n (eta_m, pm), as
-// jMetal's PAESRunner — the papers mutate bit strings.
+// Parameters: paes_depth (5, §2.3; Platypus's "divisions" is 2^depth, not
+// the depth); the archive's bound archive_size (pop_size; Table 2's 100 at
+// pop_size 100); polynomial mutation, η_m = 20, p_m = 1/n (eta_m, pm), as
+// jMetal's PAESRunner — the paper flips bits with p_m = 1/k (Table 2).
 //
 // READINGS (declared):
 //   PAES-1. c's density when c lies outside the current grid (it is not in
 //     the archive): m becomes c; m outside: c stays (jMetal 4/5's test()).
 //   PAES-2. The member that leaves a full archive: the first, in archive
-//     order, of the most crowded cell (jMetal's prune()).
+//     order, of the most crowded cell (jMetal's prune()); m's cell is located
+//     on the grid widened to m when m lies outside it.
 //   PAES-3. Equal objectives count as mutually non-dominated; the archive
 //     takes no copy of a member's objectives.
 //   PAES-4. Constraints: Deb's constrained domination wherever domination is
 //     asked (constraint_mode not NONE), as jMetal's comparator.
 //   PAES-5. The first c: a uniform random point (seeded: the first seed).
+//   PAES-6. The grid follows the archive's range at every change; §2.3
+//     recomputes it when the range moves by a threshold it does not give.
 // Real variables only.
 // ============================================================================
 
@@ -279,8 +281,8 @@ private:
         grid_rebuild();
         std::swap(arch_, with);
         const int lp = location(p.f);
-        if (lp == most_crowded()) { grid_rebuild(); return false; }
         const int crowded = most_crowded();
+        if (density(lp) >= density(crowded)) { grid_rebuild(); return false; }   // Figure 2, 7
         for (auto it = arch_.begin(); it != arch_.end(); ++it)
             if (location(it->f) == crowded) { arch_.erase(it); break; }
         arch_.push_back(p);

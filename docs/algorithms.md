@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-74 algorithms, one header each under `include/mootation/algorithms/`, registered
+75 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`, and nine Python methods (scalarization
 with a local solver, MOSQP, BoostDMS; `python/mootation/scalar/`). Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
@@ -24,6 +24,7 @@ implementation follows; if you publish results, cite that paper.
 | Direct search | 3 | few variables, no population to tune; DMS and MultiGLODS deterministic | a poll costs n + 1 (DMulti-MADS) to 2n evaluations; DMS and MultiGLODS poll coordinate directions only, strong on separable problems and slow on rotated ones, and their dyadic steps land exactly on the box's centre and bounds |
 | Scalarization + local solver, SQP | 8 | smooth problems, equality constraints a population cannot hold, a front to be traced point by point | local solvers: a multimodal problem (DTLZ1, DTLZ3) gives local fronts; NBI and NNC lean on the anchors, and a front whose individual minima coincide (DTLZ2) flattens NNC's simplex |
 | Particle swarm | 1 | 2–3 objectives, a cheap step and one batch of evaluations per step | the reference codes disagree on what SMPSO is; the presets are their readings, and the default's clamp lands exactly on the middle and the bounds of the box |
+| Estimation of distribution | 1 | continuous variables linked along a Pareto set that is a smooth (m − 1)-dimensional manifold | a set that is not one (disconnected, full-dimensional, discrete) is outside its model; many local fronts hold it (its paper's F10 is not solved); a principal component analysis per cluster each generation costs O(n³) |
 | Simulated annealing | 1 | one evaluation at a time, an archive of every non-dominated point as the answer | the schedules are laid out over the whole budget, so a run of 10 000 evaluations is not the first 10 000 of a longer one; nothing to evaluate in parallel |
 
 Nineteen algorithms require `pop_size` to be an exact Das–Dennis lattice size
@@ -253,6 +254,23 @@ default; `platemo`; `fair`; `omopso`, its predecessor OMOPSO of Reyes Sierra &
 Coello Coello, EMO 2005), and every part of it is a knob of its own
 ([running.md](running.md)).
 
+## Estimation of distribution
+
+| Algorithm | Year | File | DOI |
+|---|---|---|---|
+| RM-MEDA | 2008 | `rm_meda` | [10.1109/TEVC.2007.894202](https://doi.org/10.1109/TEVC.2007.894202) |
+
+No crossover or mutation: each generation the population is split into
+`n_clusters` (5) clusters by a local principal component analysis, each
+cluster's points are modelled as an (m − 1)-dimensional box along its first
+principal components, extended by `rm_extension` (a quarter) of its range on
+each side, plus Gaussian noise with the variance left in the other
+components; `pop_size` offspring are sampled from the models, a cluster drawn
+in proportion to its box's volume, and the population is selected from both by
+non-dominated sorting and a crowding distance recomputed after every removal.
+The model rests on the regularity of the Pareto set, an (m − 1)-dimensional
+manifold in the variables under the Karush–Kuhn–Tucker conditions.
+
 ## Scalarization with a local solver
 
 | Algorithm | Year | Name | DOI |
@@ -307,14 +325,14 @@ reduced to `pop_size` by DSS, published every `pop_size` steps.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 50 of the 74
+Every algorithm works on a real-valued genome with box bounds. 50 of the 75
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
-`Problem<>` specialisation); the other 24 refuse it at `setup()` with a clear
+`Problem<>` specialisation); the other 25 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only, or, for
 DN-NSGA-II, its niche is a distance in the real variables: BC (SPX, REX), CLIA,
 DCEA, DEA-GNG, DHEA, DMS, DMulti-MADS, DN-NSGA-II, ETEA, GDE3, HCCA, HLMEA,
 IF-MaOEA, ISDE+RD, MaOEA-3C, MO-CMA-ES, MOEA/D-DS, MOSA, MultiGLODS, NAEMO, PAES,
-SMPSO and Two_Arch2. The Python methods (`python/mootation/scalar/`) take real
+RM-MEDA, SMPSO and Two_Arch2. The Python methods (`python/mootation/scalar/`) take real
 variables only. The Python binding reaches the binary genome
 through `minimize(var_types=[..., "bin"])` (`mootation/var_types.py`), which also declares
 integer and discrete variables — rounded in the genome by the vault (`DataVault::set_snap`)

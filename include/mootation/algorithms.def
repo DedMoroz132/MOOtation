@@ -102,5 +102,8 @@ MOOTATION_ALG(multiglods, NSGAII_Individual,    MultiGLODSCore)
 // ── Particle swarm ──────────────────────────────────────────────────────────
 MOOTATION_ALG(smpso,      SMPSO_Individual,     SMPSOCore)
 
+// ── Estimation of distribution ──────────────────────────────────────────────
+MOOTATION_ALG(rm_meda,    NSGAII_Individual,    RMMEDACore)
+
 // ── Simulated annealing ─────────────────────────────────────────────────────
 MOOTATION_ALG(mosa,       NSGAII_Individual,    MOSACore)

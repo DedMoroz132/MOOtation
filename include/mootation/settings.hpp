@@ -89,6 +89,8 @@ inline const std::vector<std::string>& knob_names() {
         "mads_tau", "mads_delta0",
         // task 9: multiglods (algorithms/multiglods.hpp)
         "glods_search_every", "glods_local_tol",
+        // task 9: rm_meda (algorithms/rm_meda.hpp)
+        "rm_extension",
         // task 9: the scalarization methods (python/mootation/scalar) and the
         // polishing every algorithm takes (minimize.py); no core has them
         "n_sub", "sub_budget", "fd_step", "local_tol", "cma_sigma0", "eps_objective",
@@ -135,6 +137,7 @@ inline const std::vector<std::string>& knob_names() {
 //   glods_search_every, glods_local_tol
 //                  multiglods: the failures before a search, and α of a
 //                  local point
+//   rm_extension   rm_meda: how far each model extends past its points
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
@@ -145,7 +148,7 @@ inline bool is_core_param(const std::string& name)
                           "c_max", "turbulence_k", "turbulence_p", "archive_size",
                           "eps_archive_eta", "r2_weights", "r2_offset", "bc_lambda", "paes_depth",
                           "mads_tau", "mads_delta0", "glods_search_every",
-                          "glods_local_tol", "n_sub",
+                          "glods_local_tol", "rm_extension", "n_sub",
                           "sub_budget", "fd_step", "local_tol",
                           "cma_sigma0", "eps_objective", "polish_share", "polish_points",
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread"})
@@ -167,8 +170,8 @@ inline bool is_core_param(const std::string& name)
 //                 drawn from the seed
 //   dms_poll      dms: the next poll centre, the first still worth polling or
 //                 one of them at random
-//   smpso_preset, chi_mode, turbulence, r_per_dim, archive_prune, leader_select
-//                 smpso: the preset and the readings it fixes (smpso.hpp)
+//   smpso_preset, chi_mode, turbulence, r_per_dim, archive_prune, leader_select,
+//   leader_offer  smpso: the preset and the readings it fixes (smpso.hpp)
 //   r2_mode, r2_space
 //                 r2_emoa: the exact or the discrete R2, weights uniform in
 //                 weight or in angle space (r2_emoa.hpp)
@@ -213,6 +216,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"r_per_dim", {"no", "yes"}},
         {"archive_prune", {"one_by_one", "one_shot"}},
         {"leader_select", {"crowding_tournament", "random"}},
+        {"leader_offer", {"all", "improved"}},
         {"r2_mode",      {"exact", "discrete"}},
         {"r2_space",     {"weight", "angle"}},
         {"bc_selection", {"bc", "bf", "ba"}},
@@ -246,7 +250,7 @@ inline bool is_core_word(const std::string& name)
                           "portfolio_credit", "sa_energy", "sa_step", "sa_weights",
                           "sa_tch_accept", "coords", "survival", "inner_archive",
                           "bin_crossover", "mating", "smpso_preset", "chi_mode", "turbulence",
-                          "r_per_dim", "archive_prune", "leader_select", "r2_mode", "r2_space",
+                          "r_per_dim", "archive_prune", "leader_select", "leader_offer", "r2_mode", "r2_space",
                           "bc_selection", "mads_select", "mads_poll", "mads_search",
                           "boost_scalarization",
                           "scalarization",
