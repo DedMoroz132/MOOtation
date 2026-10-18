@@ -271,6 +271,35 @@ may differ). A row whose evaluation fails is NaN in that row; the batch goes on.
 `batch_with_constraints=`), so a generational core's whole generation is one
 call.
 
+**In C++: the suite.** ZDT1–4 and ZDT6, DTLZ1–7 and wideDTLZ3, shiftDTLZ,
+IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–7, MaF9 and MaF13, ZCAT1–20, shiftZDT
+and the rotations over them (rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF,
+r0/c0MaF, rZCAT) are computed in C++ when the extension is built
+(`include/mootation/suite`, `benchmarks/native.py`): `p.evaluate`,
+`p.evaluate_batch` and the constraints call it, the loop over a batch runs in
+C++, and `p.native` is the `_core.Native` behind them. The NumPy code stays,
+the reference in the tests (`p.reference`) and what runs without the
+extension; the two give the same values bit for bit wherever NumPy's `sin`,
+`cos`, `exp` and `pow` are the C library's (`_rows.agrees`), which the tests
+check on every problem of these families. `minimize` hands such a problem to
+the core, which then evaluates it without calling Python (`native = "auto"`,
+the default; `"off"` calls it as any function), wherever nothing of the
+caller's stands between (`minimize.direct_path` says what does: a batch or
+constraints of the caller's own, `log_evaluations`, typed variables,
+`budget_counts = "unique"`, `max_failure_share`, a seed population, polishing,
+a scalarization method); `on_rows` then observes every evaluation a batch at a
+time, and `result.native_seconds` is the time the evaluations took. A campaign
+does the same (`[campaign] native`, below) and writes the same files either
+way. Two parts of these families changed in the last bits with it and are
+version 2 of themselves (`registry.PROBLEM_VERSION`, in every run's
+`meta.json` as `problem_version`; `--list` marks a run of an older version):
+the rotated problems whose matrix is not diagonal, which now take A·d as
+NumPy's pairwise sums of the rows of A ⊙ d (`_rows.matvec_pairwise`, an order
+C++ repeats) instead of BLAS's product, whose order is its own, and MaF9's
+constraint from five objectives, its dot products of two coordinates written
+out. The controls r0 and c0 are unchanged. MaF8 stays in Python (its
+distances are CPython's `math.hypot`), and so do MaF10–12 (WFG).
+
 **Where a problem is not defined.** RCM02 (EI / μ < 0, the layers out of
 order) and RCM24 (the logarithms of its equalities, outside x8 > 100,
 x7 < 600, x9 > x7) return NaN there — a failed evaluation (below), counted in
@@ -815,6 +844,14 @@ read a rung at the record `record_at` puts there, which has them, and
   its trajectory indicators go to `meta.json` (`archive_at`, keyed by the
   count) and its points to `archive_at.npz` (objectives, and variables by the
   snapshots' rule). The end of the run is `final_archive`.
+- `native = "auto"` (the default) lets the core evaluate a problem of the C++
+  suite itself, without calling Python, where the run has no evaluator of its
+  own (no noise, typed variables, baseline or scalarization method,
+  `minimize.direct_path`); the rows reach the campaign's counts, archive,
+  checkpoints and hard budgets a batch at a time, before every record and at
+  the end, and the files are those of `native = "off"`, which evaluates
+  through the campaign's evaluator as before. `meta.json`'s `timing.native` is
+  the time of the C++ evaluations.
 - `hard_budgets = [100, 300, 1000]` reads those budgets the hard way, for
   budgets of a few generations, where the first record at or after b (the
   rule of `record_at` and `--at`) can add a whole population — at N = 200

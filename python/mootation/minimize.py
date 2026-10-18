@@ -44,6 +44,40 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfol
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")
+
+
+def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constraints=None,
+                eq_constraints=None, batch=None, log_evaluations=None, var_types=None,
+                budget_counts: str = "calls", max_failure_share=None, seed_population=None,
+                **knobs):
+    """(the _core.Native the core evaluates fn as, why not): minimize's direct
+    path (task 11 of 2026-10-18, §1.3). fn is a problem of the C++ suite when
+    it carries one (a benchmark's evaluate, benchmarks/native.py), and the core
+    evaluates it itself where nothing of the caller's stands between: no batch
+    or constraints but the problem's own, no eq_constraints, log_evaluations,
+    var_types other than real, budget_counts = "unique", max_failure_share,
+    seed_population or polishing, and a core, not a scalarization method.
+    Takes minimize's arguments; a campaign asks it before it runs one."""
+    if native not in ("auto", "off"):
+        raise ValueError(f"native = '{native}': auto or off")
+    obj = getattr(fn, "native", None)
+    if obj is None:
+        return None, "fn is not a problem of the C++ suite"
+    if native == "off":
+        return None, "native = 'off'"
+    from .scalar import NAMES as SCALAR_NAMES
+    own = (constraints is None or getattr(constraints, "native", None) is obj) and \
+          (batch is None or getattr(batch, "__self__", None) is obj)
+    why = ("a scalarization method runs in Python" if algorithm in SCALAR_NAMES else
+           "batch or constraints of the caller's" if not own else
+           "eq_constraints" if eq_constraints is not None else
+           "log_evaluations" if log_evaluations is not None else
+           "var_types" if var_types is not None and any(t != "real" for t in var_types) else
+           "budget_counts = 'unique'" if budget_counts != "calls" else
+           "max_failure_share" if max_failure_share is not None else
+           "seed_population" if seed_population is not None else
+           "polish" if str(knobs.get("polish", "off")) != "off" else None)
+    return (None, why) if why else (obj, None)
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
@@ -88,6 +122,8 @@ def minimize(
     failure_exceptions=Exception,
     max_failure_share: float | None = None,
     failure_window: int = 100,
+    native: str = "auto",
+    on_rows=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -221,6 +257,22 @@ def minimize(
                 there (a space smaller than the budget).
                 result.unique_evaluations counts the distinct points either
                 way, result.evaluations the calls.
+    native      "auto" (the default): fn a problem of the C++ suite (the
+                evaluate of a benchmark of mootation.benchmarks: ZDT, DTLZ and
+                its variants, MaF, ZCAT and the rotations over them), the core
+                evaluates it itself, without calling Python, wherever nothing
+                of the caller's stands between (direct_path says what does).
+                The values are the same; the crossing into Python goes, and
+                result.native_seconds is the time the evaluations took. "off":
+                fn is called as any function.
+    on_rows     with the core evaluating the problem itself (native): an
+                observer of every evaluation, on_rows(X, F, G), arrays of the
+                points evaluated, their objectives and their constraint values
+                (no columns without constraints), in the order evaluated, a
+                batch at a time — before every on_generation call, at the end
+                and every few thousand rows in between; a design's points at
+                once, before the run. An error where the core does not evaluate
+                the problem itself.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -256,6 +308,21 @@ def minimize(
     # polishing at the end of the budget (task 9, A2; mootation.scalar.polish)
     from .scalar import polish as _polish
     polish_how, polish_share, polish_points = _polish.check(knobs, max_evaluations)
+
+    # A problem of the C++ suite the core evaluates itself (direct_path)
+    direct, why = direct_path(fn, native=native, algorithm=algorithm, constraints=constraints,
+                              eq_constraints=eq_constraints, batch=batch,
+                              log_evaluations=log_evaluations, var_types=var_types,
+                              budget_counts=budget_counts, max_failure_share=max_failure_share,
+                              seed_population=seed_population, **knobs)
+    if on_rows is not None and direct is None:
+        raise ValueError(f"on_rows observes a problem the core evaluates itself; here it "
+                         f"does not: {why}")
+    if direct is not None:
+        if int(n_objs) != direct.n_obj or len(bounds) != direct.n_var:
+            raise ValueError(f"the problem of the C++ suite has {direct.n_var} variables and "
+                             f"{direct.n_obj} objectives")
+        constraints, batch, batch_with_constraints = None, None, False
 
     # Equality constraints (task 7, supplement 3, §3): the core takes them after
     # the inequalities, as one function of n_cons + n_eq values, and turns each
@@ -398,7 +465,16 @@ def minimize(
     problem.n_objectives = int(n_objs)
     problem.n_bin = n_bin
 
-    if constraints is not None:
+    if direct is not None:
+        problem.native = direct
+        problem.n_limits = n_cons = direct.n_con
+
+        def rows_seen(X, F, G, _user=on_rows):
+            points.seen.update(map(tuple, X.tolist()))      # result.unique_evaluations
+            if _user is not None:
+                _user(X, F, G)
+        problem.on_rows = rows_seen
+    elif constraints is not None:
         if not has_ineq:
             n_cons = n_eq                   # the equalities alone
         elif n_cons < 1:
@@ -505,11 +581,12 @@ def minimize(
     cfg.budget_unique = budget_counts == "unique"
     if constraint_mode not in ("feasibility", "eps_level"):
         raise ValueError(f"constraint_mode = '{constraint_mode}': feasibility or eps_level")
-    if constraint_mode == "eps_level" and constraints is None:
+    constrained = constraints is not None or (direct is not None and direct.n_con > 0)
+    if constraint_mode == "eps_level" and not constrained:
         raise ValueError("constraint_mode = 'eps_level' needs constraints")
     if eps_schedule is not None and constraint_mode != "eps_level":
         raise ValueError("eps_schedule goes with constraint_mode = 'eps_level'")
-    if constraints is not None:
+    if constrained:
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
     if constraint_mode == "eps_level":
         # the vault's epsilon level on the feasibility-first ranking
@@ -580,12 +657,21 @@ def minimize(
                 raise ValueError("init_share is a share of max_evaluations, which is not given")
             n_design = max(n_design, int(round(float(init_share) * int(max_evaluations))))
         rows = [list(x) for x in designs.design(init, n_design, bounds, seed)]
-        F = ([list(r) for r in batch(rows)] if batch is not None
-             else [list(fn(x)) for x in rows])
+        if direct is not None:
+            import numpy as np
+            XD = np.asarray(rows, dtype=float).reshape(len(rows), len(bounds))
+            FD, GD = direct.evaluate_with_constraints(XD)
+            problem.on_rows(XD, FD, GD)                    # the design's points, before the run
+            F, G = FD.tolist(), GD.tolist()
+        else:
+            F = ([list(r) for r in batch(rows)] if batch is not None
+                 else [list(fn(x)) for x in rows])
         pick = designs.start_points(F, int(pop_size))
         cfg.seed_variables = [rows[i] for i in pick]
         cfg.seed_objectives = [F[i] for i in pick]
-        if constraints is not None:
+        if direct is not None and direct.n_con > 0:
+            cfg.seed_limits = [G[i] for i in pick]
+        elif constraints is not None:
             cfg.seed_limits = [list(constraints(rows[i])) for i in pick]
         if max_evaluations:
             left = int(max_evaluations) - n_design

@@ -8433,18 +8433,23 @@ def a_batch_keeps_maths_values_where_numpy_differs():
              "LIR-CMOP13", "DAS-CMOP1_t01", "bbobbiobj17_n05_2D", "bbobbiobj55_n05_2D")
     rng = np.random.default_rng(18)
     points = {n: _box_points(R.PROBLEMS[n], 300, rng) for n in names}
-    want = {n: [list(R.PROBLEMS[n].evaluate(list(x))) for x in points[n]] for n in names}
+
+    def numpys(p, what):
+        """the NumPy function: the reference of a problem the C++ suite evaluates"""
+        return (p.reference or {}).get(what) or getattr(p, what)
+    want = {n: [list(numpys(R.PROBLEMS[n], "evaluate")(list(x))) for x in points[n]]
+            for n in names}
     agrees = _rows.agrees
     _rows.agrees = lambda *a, **k: False
     try:
         for n in names:
             p = R.PROBLEMS[n]
-            F = np.asarray(p.evaluate_batch(points[n]), float)
+            F = np.asarray(numpys(p, "evaluate_batch")(points[n]), float)
             assert F.tobytes() == np.asarray(want[n], float).tobytes(), n
             if p.has_cons:
-                G = np.asarray(p.constraints_batch(points[n]), float)
-                assert G.tobytes() == np.asarray([p.constraints(list(x)) for x in points[n]],
-                                                 float).tobytes(), n
+                G = np.asarray(numpys(p, "constraints_batch")(points[n]), float)
+                assert G.tobytes() == np.asarray([numpys(p, "constraints")(list(x))
+                                                  for x in points[n]], float).tobytes(), n
         assert _rows.spow(np.array([2.0, 3.0]), 0.7).tolist() == [2.0 ** 0.7, 3.0 ** 0.7]
     finally:
         _rows.agrees = agrees
@@ -9068,6 +9073,314 @@ def mosqp_spreads_refines_and_keeps_its_budget():
     assert len(H) and H.max() <= 1e-4 and max(r.cv) == 0.0, H.max()
     assert raises(ValueError, mootation.minimize, f, p.bounds, 2, algorithm="mosqp",
                   pop_size=10, max_evaluations=100, seed=1, mosqp_beta=1.5) is not None
+
+
+# ── the C++ suite of benchmark problems (task 11 of 2026-10-18, §1) ─────────
+
+# The families the C++ suite evaluates (benchmarks/native.py): every
+# registered problem of them must be native when the extension is built.
+_SUITE_STEMS = (r"(shift)?ZDT[12346]", r"DTLZ[1-7]_\d+D", r"wideDTLZ3_\d+D",
+                r"shiftDTLZ[1-467]_\d+D", r"IDTLZ[12]_\d+D", r"minusDTLZ2_\d+D",
+                r"SDTLZ[12]_\d+D", r"C1-DTLZ[13]_\d+D", r"C2-DTLZ2_\d+D", r"C2-ConvexDTLZ2_\d+D",
+                r"C3-DTLZ[14]_\d+D", r"MaF([1-7]|9|13)_\d+D", r"ZCAT\d+_\d+D")
+
+
+def _suite_names(R):
+    import re
+    out = []
+    for name in sorted(R.PROBLEMS):
+        r = R.ROTATED.get(name)
+        if any(re.fullmatch(s, name) for s in _SUITE_STEMS) or (
+                r is not None and r.kind in ("dtlz", "maf", "zdt", "zcat")):
+            out.append(name)
+    return out
+
+
+def _suite_points(p, rng, n=200):
+    """n uniform points of the box, its corners and middle, 30 points with
+    every coordinate at a bound or the middle, MaF9's near its polygons, and
+    up to 20 points of the Pareto set."""
+    import numpy as np
+    lo = np.array([b[0] for b in p.bounds], float)
+    hi = np.array([b[1] for b in p.bounds], float)
+    mid = 0.5 * (lo + hi)
+    pick = rng.integers(0, 3, (30, len(lo)))
+    parts = [lo + (hi - lo) * rng.random((n, len(lo))), np.vstack([lo, hi, mid]),
+             np.where(pick == 0, lo, np.where(pick == 1, hi, mid))]
+    if np.all(hi - lo > 100.0):                        # MaF9: the polygons sit near the origin
+        parts.append(np.clip(6.0 * (rng.random((100, len(lo))) - 0.5), lo, hi))
+    if callable(p.pareto_set):
+        parts.append(np.asarray(p.pareto_set(20), float).reshape(-1, len(lo))[:20])
+    return np.ascontiguousarray(np.vstack(parts))
+
+
+def _numpy_is_the_c_library():
+    """Whether NumPy's sin, cos, exp and pow are the C library's here
+    (_rows.agrees): where they are, the suite must be NumPy's bit for bit."""
+    import math
+    import numpy as np
+    from mootation.benchmarks import _rows
+    ok = (_rows.agrees("sin", np.sin, math.sin, "trig") and
+          _rows.agrees("cos", np.cos, math.cos, "trig") and
+          _rows.agrees("exp", np.exp, math.exp, "exp"))
+    for e in (3.0, 4.0, 5.0, 6.0, 10.0, 100.0):
+        ok = ok and _rows.agrees(("pow", e), lambda x, e=e: np.power(x, e), lambda v, e=e: v ** e,
+                                 "pow")
+    for e in (0.1, 0.25, 1.25, 4 / 3):
+        ok = ok and _rows.agrees(("pow", e), lambda x, e=e: np.power(x, e), lambda v, e=e: v ** e,
+                                 "pow+")
+    return ok
+
+
+@test
+def the_suite_gives_numpys_values_bit_for_bit():
+    """Every problem of the C++ suite's families is C++ with the extension
+    built, and C++ gives the NumPy reference's values (p.reference) at a few
+    hundred points of its box, its corners, its Pareto set: the batch, one
+    point at a time, the constraints. Bit for bit where NumPy's sin, cos, exp
+    and pow are the C library's (here: CI's machines with AVX-512 have their
+    own), within 1e-9 elsewhere."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation.benchmarks import registry as R
+    exact = _numpy_is_the_c_library()
+    names = _suite_names(R)
+    assert len(names) >= 550, len(names)
+    rng = np.random.default_rng(20261018)
+
+    def check(mine, ref, what):
+        mine, ref = np.asarray(mine, float), np.asarray(ref, float)
+        assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
+        if exact:
+            assert mine.tobytes() == ref.tobytes(), (what, np.argwhere(mine != ref)[:5])
+        else:
+            assert np.allclose(mine, ref, rtol=1e-9, atol=1e-12, equal_nan=True), what
+
+    for name in names:
+        p = R.PROBLEMS[name]
+        assert p.native is not None and p.reference is not None, name
+        X = _suite_points(p, rng)
+        ref = p.reference
+        check(p.evaluate_batch(X), ref["evaluate_batch"](X), name)
+        check([p.evaluate(list(x)) for x in X[:8]], [ref["evaluate"](list(x)) for x in X[:8]],
+              name + " point")
+        if p.has_cons:
+            G = ref["constraints_batch"](X)
+            check(p.constraints_batch(X), G, name + " constraints")
+            F2, G2 = p.evaluate_with_constraints(X)
+            check(F2, ref["evaluate_batch"](X), name + " both")
+            check(G2, G, name + " both")
+            check([p.constraints(list(x)) for x in X[:8]],
+                  [ref["constraints"](list(x)) for x in X[:8]], name + " constraints, point")
+    if not exact:
+        print("    (NumPy's functions are not the C library's here: compared within 1e-9)")
+
+
+@test
+def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
+    """_core.Native refuses a family it does not have, sizes and parameters
+    that do not fit; a problem pickles by its spec and evaluates the same."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import pickle
+    import numpy as np
+    from mootation import _core
+    from mootation.benchmarks import registry as R
+    for bad in ({"family": "WFG1", "n_var": 6, "n_obj": 2},
+                {"family": "MaF8", "n_var": 2, "n_obj": 3},
+                {"family": "DTLZ2", "n_var": 2, "n_obj": 3},
+                {"family": "ZDT5", "n_var": 30, "n_obj": 2},
+                {"family": "SDTLZ1", "n_var": 7, "n_obj": 3, "scale": [1.0, 10.0]},
+                {"family": "MaF9", "n_var": 2, "n_obj": 5, "lines": [0.0] * 10},
+                {"family": "DTLZ2", "n_var": 12, "n_obj": 3, "map": "rotate_half", "first": 2,
+                 "centre": [0.5] * 10, "matrices": [np.eye(9)]},
+                {"family": "DTLZ2", "n_var": 12, "n_obj": 3, "map": "turn", "first": 2,
+                 "centre": [0.5] * 10}):
+        assert raises(ValueError, _core.Native, bad) is not None, bad
+    rng = np.random.default_rng(3)
+    for name in ("rDTLZ1_3D_i2", "C2-DTLZ2_3D", "MaF9_8D", "rZCAT19_3D", "shiftZDT4"):
+        p = R.PROBLEMS[name]
+        X = _suite_points(p, rng, 50)
+        q = pickle.loads(pickle.dumps(p.native))
+        assert q.spec["family"] == p.native.spec["family"], name
+        assert np.asarray(q.evaluate_batch(X)).tobytes() == \
+            np.asarray(p.evaluate_batch(X)).tobytes(), name
+        assert pickle.loads(pickle.dumps(p.evaluate))(list(X[0])) == p.evaluate(list(X[0]))
+    assert raises(ValueError, R.PROBLEMS["DTLZ2_3D"].native.evaluate, [0.5] * 3) is not None
+
+
+@test
+def rotations_and_maf9_take_an_order_of_numpys():
+    """The rotated problems of the suite's families turn by A d as
+    matvec_pairwise sums it (np.sum(A * d, axis=1), not BLAS's gemv), MaF9's
+    constraint writes its dot products out; both changed the values in the
+    last bits, and their PROBLEM_VERSION is 2; the controls r0 and c0, whose
+    matrix is diagonal, are version 1."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import registry as R
+    from mootation.benchmarks._rows import matvec_pairwise
+    r = R.ROTATED["rDTLZ3_5D_i2"]
+    x = np.random.default_rng(4).random(r.n_vars)
+    d = x[r.first:] - r.optimum
+    assert r.map(x)[r.first:].tobytes() == (0.5 + np.sum(r.A * d, axis=1)).tobytes()
+    assert matvec_pairwise(r.A, np.vstack([d, d]))[1].tobytes() == np.sum(r.A * d, axis=1).tobytes()
+    assert r.map_rows(x[None, :])[0].tobytes() == r.map(x).tobytes()
+    assert R.problem_version("rDTLZ3_5D_i2") == 2 and R.problem_version("rZCAT7_5D") == 2
+    assert R.problem_version("rZDT4") == 2 and R.problem_version("MaF9_5D") == 2
+    assert R.problem_version("rcDTLZ2_3D_n1") == 2
+    for name in ("r0DTLZ1_3D", "c0DTLZ2_6D", "r0MaF3_5D", "c0MaF6_3D", "MaF9_3D", "DTLZ2_3D",
+                 "rWFG4_3D", "rcPolygon_3D", "shiftDTLZ1_3D"):
+        assert name in R.PROBLEMS and R.problem_version(name) == 1, name
+    P = R._maf9_forbidden_regions(5)[0]
+    want = R._poly_edge_distance(np.array([0.3, 2.0]), P)
+    a, b = P[0], P[1]
+    t = min(max(((0.3 - a[0]) * (b[0] - a[0]) + (2.0 - a[1]) * (b[1] - a[1]))
+                / ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2), 0.0), 1.0)
+    assert want <= float(np.hypot(0.3 - (a[0] + t * (b[0] - a[0])),
+                                  2.0 - (a[1] + t * (b[1] - a[1])))) + 1e-12
+
+
+@test
+def minimize_evaluates_a_suite_problem_in_the_core_and_gives_the_same_run():
+    """native = "auto": the core evaluates a problem of the suite itself, the
+    rows reach on_rows; the run is native = "off"'s, bit for bit, with a
+    design first and with constraints too. on_rows without the direct path
+    is an error."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import registry as R
+    from mootation.minimize import direct_path
+    cases = (("DTLZ2_3D", "nsga2", {}), ("ZDT1", "moead", {}),
+             ("C2-DTLZ2_3D", "nsga3", {}), ("rDTLZ1_3D_i2", "sms_emoa", {}),
+             ("ZCAT5_3D", "moead_de", {"init": "sobol"}), ("MaF9_5D", "nsga2", {}),
+             ("C3-DTLZ4_3D", "ibea_eplus", {"constraint_mode": "eps_level"}))
+    for name, alg, extra in cases:
+        p = R.get(name)
+        kw = dict(bounds=p.bounds, n_objs=p.n_obj, algorithm=alg, pop_size=p.pop_size,
+                  max_evaluations=1500, seed=5, **extra)
+        if p.has_cons:
+            kw.update(constraints=p.constraints, n_cons=p.native.n_con)
+        rows = []
+        auto = minimize(p.evaluate, native="auto", on_rows=lambda X, F, G: rows.append((X, F, G)),
+                        **kw)
+        off = minimize(p.evaluate, native="off", **kw)
+        for a, b in ((auto.objectives, off.objectives), (auto.variables, off.variables),
+                     (auto.cv, off.cv)):
+            assert np.asarray(a).tobytes() == np.asarray(b).tobytes(), name
+        assert auto.evaluations == off.evaluations and \
+            auto.unique_evaluations == off.unique_evaluations, name
+        X = np.vstack([r[0] for r in rows])
+        F = np.vstack([r[1] for r in rows])
+        G = np.vstack([r[2] for r in rows])
+        design = 0 if "init" not in extra else p.pop_size
+        assert len(X) == auto.evaluations + design, (name, len(X), auto.evaluations)
+        assert F.tobytes() == np.asarray(p.evaluate_batch(X)).tobytes(), name
+        assert G.shape == (len(X), p.native.n_con), name
+        assert auto.native_seconds > 0.0 and off.native_seconds == 0.0, name
+        assert auto.callbacks < off.callbacks, name
+    p = R.get("DTLZ2_3D")
+    assert direct_path(p.evaluate, algorithm="nsga2")[0] is p.native
+    assert direct_path(p.evaluate, algorithm="nsga2", var_types=["int"] * p.n_vars)[0] is None
+    assert direct_path(p.evaluate, algorithm="nsga2", polish="sqp")[0] is None
+    assert direct_path(lambda x: p.evaluate(x), algorithm="nsga2")[0] is None
+    assert raises(ValueError, minimize, p.evaluate, p.bounds, 3, native="off", max_evaluations=200,
+                  on_rows=lambda X, F, G: None) is not None
+    assert raises(ValueError, minimize, p.evaluate, p.bounds, 3, native="sometimes") is not None
+
+
+def _same_run_files(a, b) -> list:
+    """The files of two campaign trees that differ, clocks and provenance aside."""
+    import gzip
+    import numpy as np
+    clocks = {"started", "finished", "seconds", "record_seconds", "timing", "pid"}
+
+    def content(p):
+        if p.name == "meta.json":
+            return {k: v for k, v in json.loads(p.read_text(encoding="utf-8")).items()
+                    if k not in clocks}
+        if p.suffix == ".jsonl":
+            out = []
+            for line in p.read_text(encoding="utf-8").splitlines():
+                r = json.loads(line)
+                r.pop("t", None)
+                out.append(r)
+            return out
+        if p.suffix == ".gz":
+            return gzip.decompress(p.read_bytes())
+        if p.suffix == ".npz":
+            with np.load(p) as z:
+                return {k: (z[k].tobytes(), z[k].dtype.str, z[k].shape) for k in z.files}
+        return p.read_bytes()
+    fa = {p.relative_to(a) for p in a.rglob("*") if p.is_file() and "_references" not in p.parts}
+    fb = {p.relative_to(b) for p in b.rglob("*") if p.is_file() and "_references" not in p.parts}
+    assert fa == fb, sorted(fa ^ fb)[:10]
+    return [str(r) for r in sorted(fa) if content(a / r) != content(b / r)]
+
+
+@test
+def a_campaign_with_native_auto_and_off_writes_the_same_files():
+    """[campaign] native: the direct path's runs are the evaluator's, file for
+    file (trajectories, finals, archives, checkpoints, hard budgets, everything
+    evaluated); meta.json records the problem's version."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    from mootation.benchmarks import registry as REG
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """
+[run]
+name = "ab"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["ZDT1", "C2-DTLZ2_3D", "rDTLZ1_3D_i2"]
+[campaign]
+out = "res_NATIVE"
+native = "NATIVE"
+budget_fe = 1500
+GRID
+metrics = ["igdp_norm", "hv_h"]
+all_evaluated = true
+snapshots = true
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+[[algorithms]]
+name = "moead_de"
+pop = 0
+gens = 0
+"""
+    grids = ('record_grid = "budgets"\nrecord_at = [500, 1000]\narchive_checkpoints = true',
+             'record_grid = "generations"\nrecord_every = 1\nhard_budgets = [700]')
+    with tempfile.TemporaryDirectory() as td:
+        for g, grid in enumerate(grids):
+            roots = {}
+            for mode in ("auto", "off"):
+                cfg_path = Path(td) / f"{mode}{g}.toml"
+                cfg_path.write_text(text.replace("NATIVE", f"{mode}").replace("GRID", grid)
+                                    .replace(f"res_{mode}", f"res_{mode}{g}"), encoding="utf-8")
+                cfg = load(cfg_path)
+                assert validate(cfg) == [], validate(cfg)
+                spec = C.campaign_spec(cfg)
+                roots[mode] = C.out_root(cfg, spec)
+                for job in C.expand_jobs(cfg, spec):
+                    assert C.run_job(job, roots[mode], spec, quiet=True) == "done", job
+            assert _same_run_files(roots["auto"], roots["off"]) == [], grid
+            for mode, want in (("auto", True), ("off", False)):
+                meta = json.loads((roots[mode] / "rDTLZ1_3D_i2" / "moead_de" / "run_1" /
+                                   "meta.json").read_text(encoding="utf-8"))
+                assert meta["problem_version"] == REG.problem_version("rDTLZ1_3D_i2") == 2
+                assert (meta["timing"]["native"] > 0.0) == want, meta["timing"]
+        bad = Path(td) / "bad.toml"
+        bad.write_text(text.replace("NATIVE", "maybe").replace("GRID", ""), encoding="utf-8")
+        assert raises(C.ConfigError, C.campaign_spec, load(bad)) is not None
 
 
 def main() -> int:

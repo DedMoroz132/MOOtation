@@ -84,6 +84,7 @@ from . import distances as _dist
 from . import c_dtlz as _cd
 from . import noisy as _noisy
 from . import rotated as _rot
+from . import native as _native
 from . import re as _re
 from . import binary as _bin
 from . import dascmop as _das
@@ -172,6 +173,13 @@ class BenchProblem:
     constraints_batch: Optional[Callable] = None
     evaluate_with_constraints: Optional[Callable] = None
     equalities_batch: Optional[Callable] = None
+    # A problem of the C++ suite's families (native.py; task 11 of 2026-10-18,
+    # §1): its _core.Native, behind evaluate, evaluate_batch and the
+    # constraints, which a run hands to the core; reference: the NumPy
+    # functions it replaced, by name, which the tests hold it equal to. None
+    # for every other problem, and for all without the extension.
+    native: Optional[object] = None
+    reference: Optional[dict] = None
 
     def __post_init__(self):
         both = self.evaluate_with_constraints
@@ -901,17 +909,39 @@ class _InsidePolygons:
 
 
 def _poly_edge_distance(x: np.ndarray, P: np.ndarray) -> float:
-    """Distance from x to the nearest edge of polygon P."""
+    """Distance from x to the nearest edge of polygon P. The products and sums
+    of the two coordinates are written out, in the order the C++ suite repeats
+    (suite/maf.hpp, poly_edge_distance): a dot product of NumPy's, and its
+    norm, are BLAS's ddot, whose order is its own (task 11 of 2026-10-18)."""
     best = float("inf")
     n = len(P)
+    x0, x1 = float(x[0]), float(x[1])
     for i in range(n):
-        a = P[i]; b = P[(i + 1) % n]
-        ab = b - a; L2 = float(ab @ ab)
-        t = 0.0 if L2 == 0.0 else float(np.clip(((x - a) @ ab) / L2, 0.0, 1.0))
-        d = float(np.linalg.norm(x - (a + t * ab)))
+        a0, a1 = float(P[i][0]), float(P[i][1])
+        b0, b1 = float(P[(i + 1) % n][0]), float(P[(i + 1) % n][1])
+        ab0, ab1 = b0 - a0, b1 - a1
+        L2 = ab0 * ab0 + ab1 * ab1
+        t = 0.0 if L2 == 0.0 else float(np.clip(((x0 - a0) * ab0 + (x1 - a1) * ab1) / L2,
+                                                0.0, 1.0))
+        e0, e1 = x0 - (a0 + t * ab0), x1 - (a1 + t * ab1)
+        d = math.sqrt(e0 * e0 + e1 * e1)
         if d < best:
             best = d
     return best
+
+
+def _maf9_lines(M: int) -> list:
+    """MaF9's target lines: (ax, ay, dx, dy, |d|) of each edge A_m A_{m+1} of
+    the regular M-gon (registry.maf9_rows; the C++ suite takes them as they
+    are, suite/maf.hpp)."""
+    V = [(math.cos(2 * math.pi * m / M), math.sin(2 * math.pi * m / M)) for m in range(M)]
+    out = []
+    for m in range(M):
+        ax, ay = V[m]
+        bx, by = V[(m + 1) % M]
+        dx, dy = bx - ax, by - ay
+        out.append((ax, ay, dx, dy, math.hypot(dx, dy)))
+    return out
 
 
 def _sample_poly_interior(V: np.ndarray, n: int) -> np.ndarray:
@@ -1345,19 +1375,10 @@ def _maf_register():
         # FIX 2026-09-05: this used to register [-2, 2]^2 and to declare the
         # WHOLE exterior of the polygon infeasible at every M, which is a
         # different (much easier) problem.
-        def _maf9_vertices(M):
-            return [(math.cos(2*math.pi*m/M), math.sin(2*math.pi*m/M))
-                    for m in range(M)]
-
         def maf9_rows(X, M=M):
             X = np.asarray(X, dtype=float).reshape(-1, 2)
-            V = _maf9_vertices(M)
             F = np.empty((len(X), M))
-            for m in range(M):
-                ax, ay = V[m]
-                bx, by = V[(m+1) % M]
-                dx, dy = bx-ax, by-ay
-                norm = math.hypot(dx, dy)
+            for m, (ax, ay, dx, dy, norm) in enumerate(_maf9_lines(M)):
                 F[:, m] = np.abs(dy*(X[:, 0]-ax) - dx*(X[:, 1]-ay)) / norm
             return F
 
@@ -2232,6 +2253,10 @@ def _register_mixed():
 
 
 _register_mixed()
+# The problems of the suite's families evaluated by C++ from here on (native.py),
+# before the noisy copies take their bases' functions; the rotated ones and the
+# late bases below.
+_native.attach(PROBLEMS, ROTATED)
 _register_noisy()
 
 
@@ -2509,6 +2534,7 @@ def _register_binary():
 
 
 _register_binary()
+_native.attach(PROBLEMS, ROTATED)
 _register_noisy(_noisy.LATE_BASES, late=True)
 
 
@@ -2574,6 +2600,32 @@ def _register_failing():
 
 FAILING: Dict[str, tuple] = {}             # name -> (base, share, kind)
 _register_failing()
+
+
+# ── problem versions (task 11 of 2026-10-18, §1.2) ─────────────────────────
+# A problem whose values changed is a new version of it: a run of an older one
+# answered another problem, in the last bits, and is run again rather than
+# compared (a campaign writes the version into every run's meta.json and lists
+# the older ones; --list). Version 1 is every problem as it was until task 11.
+# Version 2, from 2026-10-18, owner's decision: the problems the C++ suite
+# evaluates whose NumPy order C++ could not repeat. The rotations of rZDT,
+# rDTLZ, rcDTLZ, rMaF, rcMaF and rZCAT (not the controls r0 and c0, whose
+# matrix is diagonal: unchanged bit for bit) take A d as the pairwise sums of
+# matvec_pairwise instead of BLAS's gemv, and MaF9's constraint, from five
+# objectives, its products and sums of two coordinates written out instead of
+# BLAS's ddot (_poly_edge_distance); with them the noisy copies of such a base.
+PROBLEM_VERSION: Dict[str, int] = {
+    **{name: 2 for name, r in ROTATED.items()
+       if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
+    **{f"MaF9_{M}D": 2 for M in (5, 8, 10, 15)}}
+PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
+                        for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
+                        for level in _noisy.LEVELS})
+
+
+def problem_version(name: str) -> int:
+    """The version of the problem `name` (PROBLEM_VERSION; 1 for most)."""
+    return PROBLEM_VERSION.get(name, 1)
 
 
 # ── dense references at four objectives and more (task 6 of 2026-10-09, item 9)

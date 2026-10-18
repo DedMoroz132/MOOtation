@@ -13,11 +13,14 @@ is measured is what a campaign spends. The job records its own clocks in
 meta["timing"]; this script writes the campaign config, runs it and turns the
 clocks into components:
 
-    evaluation the problem's objectives and constraints (Python)
+    evaluation the problem's objectives and constraints: Python's, or the C++
+               suite's inside the core (the direct path, timing native)
     crossing   the calls from the core into Python and back: Result.callback_seconds
                less the time measured inside them — the binding's conversions,
                minimize()'s wrappers and the campaign evaluator's own bookkeeping
-    core       the algorithm: minimize() less the evaluator calls and the records
+               (on the direct path, the rows handed over a batch at a time)
+    core       the algorithm: minimize() less the evaluator calls, the C++
+               evaluations and the records
     archive    the run archive and the oracle (and the constraints the archive
                asks for again)
     records    the trajectory records: indicators, snapshots, checkpoints
@@ -99,11 +102,13 @@ def components(meta: dict) -> dict | None:
     if not t:
         return None
     total = float(meta.get("seconds", 0.0))
-    inside = t["evaluate"] + t["constraints"] + t["feasible"] + t["archive"] + t["checkpoints"]
+    native = float(t.get("native", 0.0))          # the C++ evaluations, outside the callbacks
+    inside = (t["evaluate"] - native + t["constraints"] + t["feasible"] + t["archive"]
+              + t["checkpoints"])
     c = {
         "evaluation": t["evaluate"] + t["constraints"],
         "crossing": max(0.0, t["callbacks"] - inside),
-        "core": max(0.0, t["minimize"] - t["callbacks"] - t["records"]),
+        "core": max(0.0, t["minimize"] - t["callbacks"] - native - t["records"]),
         "archive": t["archive"] + t["feasible"],
         "records": t["records"] + t["checkpoints"],
         "final": t["final"],

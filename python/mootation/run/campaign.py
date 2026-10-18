@@ -197,6 +197,13 @@ class CampaignSpec:
     # last read at once. The same archive either way, point for point; posthoc
     # saves the calls of a campaign that reads it only at the end.
     archive_mode: str = "online"
+    # "auto": a problem of the C++ suite (benchmarks/native.py) is evaluated by
+    # the core itself, without calling Python, where nothing of the run's
+    # stands between (minimize.direct_path; no noise, typed variables, own
+    # evaluator or baseline); the evaluator below then takes its rows a batch
+    # at a time. "off": every evaluation through the evaluator, as before task
+    # 11. The same files either way.
+    native: str = "auto"
     # The cell of the step noise (benchmarks/noisy.py, <base>_s1 and _s5), a
     # share of every variable's range.
     noise_cell: float = 0.01
@@ -314,7 +321,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
              "noise_cell", "coords_diag", "set_metrics", "all_evaluated", "all_levels",
-             "archive_mode"}
+             "archive_mode", "native"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -401,6 +408,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if spec.archive_mode not in ("online", "posthoc"):
         raise ConfigError("campaign.archive_mode",
                           f"\"online\" or \"posthoc\", not {spec.archive_mode!r}")
+    spec.native = raw.get("native", "auto")
+    if spec.native not in ("auto", "off"):
+        raise ConfigError("campaign.native", f"\"auto\" or \"off\", not {spec.native!r}")
     if spec.archive_delta < 0:
         raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
     spec.noise_cell = raw.get("noise_cell", 0.01)
@@ -778,7 +788,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
 
     from .budget import depends_on_budget
-    from ..benchmarks.registry import REFERENCE_VERSION
+    from ..benchmarks.registry import REFERENCE_VERSION, problem_version
     from ..benchmarks.wfg import numba_enabled as wfg_numba_enabled
     meta = {
         "status": "running", "problem": job.problem, "algorithm": job.key,
@@ -801,6 +811,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # which reference the metrics were measured against (registry.py,
         # REFERENCE_VERSION) and how many rows it had
         "reference_version": REFERENCE_VERSION,
+        # the problem's version (registry.py, PROBLEM_VERSION): a run of an
+        # older one answered another problem
+        "problem_version": problem_version(job.problem),
         "reference_rows": None if ref is None else int(len(ref)),
         # the dense reference's rows and step, and the population's step
         "reference_v3": info3,
@@ -985,18 +998,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         G = p.constraints_batch(X) if cons is not None else None
         return F, G, T
 
-    def evaluate_rows(X):
-        nonlocal fe, fe_first_feas, dup_x, n_failed
-        t_in = time.perf_counter()
-        X = [list(x) for x in X]
-        if typed:
-            for x in X:
-                key = tuple(x)
-                dup_x += key in seen_x
-                seen_x.add(key)
-        F, G, T = objectives_of(X)
-        F = np.asarray(F, float).reshape(len(X), p.n_obj)
-        tm["evaluate"] += time.perf_counter() - t_in
+    def account(X, F, G, T):
+        """The rows X evaluated, (F, G, T) their values (objectives_of), every
+        row in order (THE EVALUATOR above)."""
+        nonlocal fe, fe_first_feas, n_failed
         for i, x in enumerate(X):
             fe += 1
             f = F[i]
@@ -1027,6 +1032,20 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 if fe in checkpoints and (len(arc) or cons is not None):
                     take_checkpoint(fe)
         flush()
+
+    def evaluate_rows(X):
+        nonlocal dup_x
+        t_in = time.perf_counter()
+        X = [list(x) for x in X]
+        if typed:
+            for x in X:
+                key = tuple(x)
+                dup_x += key in seen_x
+                seen_x.add(key)
+        F, G, T = objectives_of(X)
+        F = np.asarray(F, float).reshape(len(X), p.n_obj)
+        tm["evaluate"] += time.perf_counter() - t_in
+        account(X, F, G, T)
         tm["evaluator"] += time.perf_counter() - t_in
         rows = F.tolist()
         if cons is not None:
@@ -1037,6 +1056,22 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         """One point (a baseline's, or a core's single evaluation)."""
         got = evaluate_rows([x])
         return got[0][0] if cons is not None else got[0]
+
+    # THE DIRECT PATH (task 11 of 2026-10-18, §1.3): a problem of the C++ suite
+    # the core evaluates itself (minimize.direct_path), where the run has no
+    # evaluator of its own; its rows come to account a batch at a time, before
+    # every observer call and at the end, so that the counts, the archive, the
+    # hard budgets and the checkpoints are what the evaluator above gives.
+    from ..minimize import direct_path
+    direct = None
+    if not baseline and objective is p.evaluate and truth is None and not typed:
+        direct, _ = direct_path(objective, native=spec.native, algorithm=job.algorithm,
+                                **job.params)
+
+    def on_rows(X, F, G):
+        t_in = time.perf_counter()
+        account(X.tolist(), F, G if cons is not None else None, None)
+        tm["evaluator"] += time.perf_counter() - t_in
 
     def take_checkpoint(b):
         """The archive scenario after exactly b evaluations (archive_checkpoints)."""
@@ -1245,14 +1280,15 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                                on_generation=on_gen,
                                record_every=(1 if grid is not None else spec.record_every))
         else:
+            # every batch the core evaluates, with the constraints in the same
+            # call (THE EVALUATOR above); or the problem itself (THE DIRECT PATH)
+            how = (dict(native="auto", on_rows=on_rows) if direct is not None else
+                   dict(batch=evaluate_rows, batch_with_constraints=p.has_cons,
+                        n_cons=constraint_count(p) if p.has_cons else 0))
             res = minimize(
-                evaluate, bounds=p.bounds, n_objs=p.n_obj,
-                algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens,
-                seed=job.seed,
-                # every batch the core evaluates, with the constraints in the
-                # same call (THE EVALUATOR above)
-                batch=evaluate_rows, batch_with_constraints=p.has_cons,
-                n_cons=constraint_count(p) if p.has_cons else 0,
+                objective if direct is not None else evaluate, bounds=p.bounds,
+                n_objs=p.n_obj, algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens,
+                seed=job.seed, **how,
                 # The budget is spent in evaluations, not steps. NIMMO
                 # evaluates one offspring per step and MOEA/D-DRA and -AWA a
                 # fifth of the population, so a budget in generations gave them
@@ -1458,9 +1494,14 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         meta["structural_bias"] = objective.summary()
     # the files and the rest after the run: what is not the final indicators
     tm["write"] = time.perf_counter() - t_out - tm["final"]
+    # the direct path: the evaluations' time is C++'s inside the core
+    native_s = float(getattr(res, "native_seconds", 0.0))
+    if direct is not None:
+        tm["evaluate"] = native_s
+        tm["evaluator"] += native_s
     meta["timing"] = dict({k: round(v, 4) for k, v in tm.items()},
                           callbacks=round(float(getattr(res, "callback_seconds", 0.0)), 4),
-                          calls=int(getattr(res, "callbacks", 0)))
+                          calls=int(getattr(res, "callbacks", 0)), native=round(native_s, 4))
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -3076,9 +3117,16 @@ def main(argv: list[str] | None = None) -> int:
         jobs = [j for j in jobs if j.problem in only_problems]
 
     if args.list:
+        from ..benchmarks.registry import problem_version
         for j in jobs:
             st = job_status(root, j)
             note = f"  [{j.pop_note}]" if j.pop_note else ""
+            if st == "done":
+                meta = json.loads((root / j.rel_dir / "meta.json").read_text(encoding="utf-8"))
+                ran = int(meta.get("problem_version") or 1)
+                if ran < problem_version(j.problem):
+                    note += (f"  [problem v{ran}, now v{problem_version(j.problem)}: to run "
+                             f"again, --job {j.index} --force]")
             print(f"{j.index:5d} {j.problem:<14} {j.key:<14} seed {j.seed:<3} "
                   f"pop {j.pop:<4} gens {j.gens:<5} fe {j.budget:<8} {st}{note}")
         print(f"\n{len(jobs)} jobs -> {root}", file=sys.stderr)

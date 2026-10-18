@@ -18,7 +18,8 @@ set(MOOTATION_TESTS
     test_genes
     test_r2_emoa
     test_sobol
-    test_run_layer_numerics)
+    test_run_layer_numerics
+    test_suite)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -42,6 +43,13 @@ foreach(_t IN LISTS MOOTATION_TESTS)
 
     add_test(NAME ${_t} COMMAND ${_t})
 endforeach()
+
+# The suite of benchmark problems (include/mootation/suite) as the extension
+# compiles it: without contraction into fused multiply-adds
+# (python/CMakeLists.txt).
+if(NOT MSVC)
+    target_compile_options(test_suite PRIVATE -ffp-contract=off)
+endif()
 
 # ── Labels: which tests every push pays for, and which run nightly ──────────
 # test_convergence and test_constraints each instantiate all 58 algorithms and

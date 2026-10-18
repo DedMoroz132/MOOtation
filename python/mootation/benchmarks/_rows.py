@@ -7,7 +7,9 @@ values the point-by-point code gave before. Elementwise arithmetic and sums
 along a row are the same either way. These are not:
 
   * a matrix times a vector is BLAS's gemv, a matrix times the batch its gemm,
-    which adds in another order: rows_matvec keeps one gemv per point;
+    which adds in another order: rows_matvec keeps one gemv per point (rWFG,
+    rcPolygon); the rotations of the C++ suite's families take matvec_pairwise,
+    an order of NumPy's that C++ repeats;
   * a dot product x @ x is BLAS's ddot, np.sum(x * x) a pairwise sum:
     rows_dot keeps one ddot per point;
   * x ** 2, x ** 0.5 and x ** -1 of an array are NumPy's x * x, sqrt and 1/x,
@@ -46,6 +48,23 @@ def rows_matvec(M: np.ndarray, X: np.ndarray) -> np.ndarray:
     out = np.empty((len(X), M.shape[0]))
     for i in range(len(X)):
         out[i] = M @ X[i]
+    return out
+
+
+def matvec_pairwise(A: np.ndarray, D: np.ndarray) -> np.ndarray:
+    """A d for a vector d, or for every row d of D, each entry the pairwise sum
+    of its row's products, np.sum(A * d, axis=1): NumPy's order, which the C++
+    suite repeats (include/mootation/suite/common.hpp, matvec). A @ d is BLAS's
+    gemv, whose order is its own and may change with the machine and the
+    library; the rotated problems of the suite's families take this one
+    (task 11 of 2026-10-18; rotated.py)."""
+    A = np.ascontiguousarray(A, dtype=float)
+    D = np.asarray(D, dtype=float)
+    if D.ndim == 1:
+        return np.sum(A * D, axis=1)
+    out = np.empty((len(D), A.shape[0]))
+    for i in range(len(D)):
+        out[i] = np.sum(A * D[i], axis=1)
     return out
 
 

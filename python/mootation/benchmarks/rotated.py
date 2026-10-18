@@ -195,7 +195,7 @@ from typing import List
 import numpy as np
 
 from . import zcat as _zcat
-from ._rows import rows_matvec
+from ._rows import matvec_pairwise, rows_matvec
 from .dtlz import DTLZ_FUNCS, DTLZ_ROWS
 from .dtlz_variants import shift_centres
 from .wfg import WFG_FUNCS
@@ -290,6 +290,13 @@ def sizes(stem: str) -> tuple:
     return SIZES + MORE_SIZES.get(stem, ())
 
 
+def _reference(p, what: str):
+    """The base problem's NumPy function `what`: its reference where the C++
+    suite evaluates it (native.py), so that a rotated problem's NumPy code is
+    NumPy's throughout."""
+    return (p.reference or {}).get(what) or getattr(p, what)
+
+
 class Rotated:
     """One rotated problem: map(x) is the point its base problem is evaluated at."""
 
@@ -359,7 +366,7 @@ class Rotated:
         u = np.clip(x / idx + 0.5, 0.0, 1.0)
         m = _zcat.position_count(self.family, u, self.M)
         g = _zcat.topology(_zcat.G_OF[self.family], u[:m], m, len(x))
-        return idx, m, g + self.matrix(len(x) - m) @ (u[m:] - g)
+        return idx, m, g + matvec_pairwise(self.matrix(len(x) - m), u[m:] - g)
 
     def map(self, x) -> np.ndarray:
         y = np.array(x, dtype=float)
@@ -369,13 +376,13 @@ class Rotated:
             idx, m, v = self._zcat_v(x)
             y[m:] = (np.clip(v, 0.0, 1.0) - 0.5) * idx[m:]
         elif self.family == "ZDT4":
-            y[self.first:] = self.A @ (y[self.first:] - self.optimum)
+            y[self.first:] = matvec_pairwise(self.A, y[self.first:] - self.optimum)
         elif self.zdt:
-            y[self.first:] = np.abs(self.A @ (y[self.first:] - self.optimum)) / self.spread
+            y[self.first:] = np.abs(matvec_pairwise(self.A, y[self.first:] - self.optimum)) / self.spread
         elif self.kind == "polygon":
             y[self.first:] = self.A @ (y[self.first:] - self.optimum)
         else:
-            y[self.first:] = 0.5 + self.A @ (y[self.first:] - self.optimum)
+            y[self.first:] = 0.5 + matvec_pairwise(self.A, y[self.first:] - self.optimum)
         return y
 
     def map_rows(self, X) -> np.ndarray:
@@ -386,7 +393,10 @@ class Rotated:
             for i in range(len(Y)):
                 Y[i] = self.map(Y[i])
             return Y
-        D = rows_matvec(self.A, Y[:, self.first:] - self.optimum)
+        if self.kind == "polygon":
+            D = rows_matvec(self.A, Y[:, self.first:] - self.optimum)
+        else:
+            D = matvec_pairwise(self.A, Y[:, self.first:] - self.optimum)
         if self.family == "ZDT4" or self.kind == "polygon":
             Y[:, self.first:] = D
         elif self.zdt:
@@ -406,7 +416,7 @@ class Rotated:
                 out[i] = WFG_FUNCS[self.family](y.tolist(), self.M)
             return out
         from .registry import PROBLEMS
-        return PROBLEMS[self.base].evaluate_batch(Y)
+        return _reference(PROBLEMS[self.base], "evaluate_batch")(Y)
 
     def evaluate(self, x) -> List[float]:
         if self.wfg:
@@ -414,7 +424,7 @@ class Rotated:
         if self.kind == "dtlz":
             return list(DTLZ_FUNCS[self.family](list(self.map(x)), self.M))
         from .registry import PROBLEMS     # ZDT's, MaF's, ZCAT's and Polygon's are the registry's
-        return list(PROBLEMS[self.base].evaluate(list(self.map(x))))
+        return list(_reference(PROBLEMS[self.base], "evaluate")(list(self.map(x))))
 
     def distance_optimum(self, x) -> np.ndarray:
         """The distance block of the Pareto set at the positions of x, in x's units."""

@@ -28,7 +28,20 @@ if(NOT pybind11_FOUND)
     FetchContent_MakeAvailable(pybind11)
 endif()
 
-pybind11_add_module(mootation_python mootation_module.cpp run_layer_module.cpp)
+pybind11_add_module(mootation_python mootation_module.cpp run_layer_module.cpp suite_module.cpp)
+
+# The C++ suite of benchmark problems (include/mootation/suite) gives NumPy's
+# values bit for bit, which a fused multiply-add would not: NumPy rounds a * b
+# and then a * b + c. GCC contracts by default in its GNU dialects and Clang
+# within an expression (AArch64 has the instruction in its base set), so the
+# file that compiles the suite says no; MSVC's /fp:precise, its default, does
+# not contract without /fp:contract. Only that file: the cores' own arithmetic
+# stays as it was built before.
+if(MSVC)
+    set_source_files_properties(suite_module.cpp PROPERTIES COMPILE_OPTIONS "/fp:precise")
+else()
+    set_source_files_properties(suite_module.cpp PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
 
 # The extension is mootation._core, not a top-level `mootation`: the package
 # of that name is the Python source next door, and it re-exports from here.

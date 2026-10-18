@@ -10,6 +10,30 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The C++ suite of benchmark problems (task 11 of 2026-10-18, §1): ZDT1–4 and
+  6, DTLZ1–7 and its variants (wide, shift, I, minus, S), C-DTLZ, MaF1–7, MaF9
+  and MaF13, ZCAT1–20, shiftZDT and the rotations over them are computed in
+  C++ (`include/mootation/suite`, compiled without contraction into fused
+  multiply-adds; `_core.Native`) when the extension is built. Their
+  `evaluate`, `evaluate_batch` and constraints call it; the NumPy code stays
+  as the reference (`BenchProblem.reference`), equal bit for bit wherever
+  NumPy's `sin`, `cos`, `exp` and `pow` are the C library's, and runs without
+  the extension. `minimize(native="auto")`, the default, has the core
+  evaluate such a problem itself, without calling Python, where nothing of
+  the caller's stands between (`minimize.direct_path`); `on_rows` observes
+  those evaluations, `Result.native_seconds` times them; `native="off"` calls
+  the problem as any function. Campaigns: `[campaign] native` (`"auto"`, the
+  default, or `"off"`), the same files either way, `timing.native` in
+  `meta.json`. The binding: `Problem.native` and `Problem.on_rows`.
+- Changed: the rotated problems of these families whose matrix is not
+  diagonal (rZDT, rDTLZ, rcDTLZ, rMaF, rcMaF, rZCAT) take A·d as NumPy's
+  pairwise sums (`_rows.matvec_pairwise`), not BLAS's product, and MaF9's
+  constraint from five objectives writes its dot products out: their values
+  changed in the last bits, and they are version 2 of themselves
+  (`registry.PROBLEM_VERSION`, `problem_version` in a run's `meta.json`;
+  `campaign --list` marks the runs of version 1). The controls r0 and c0 are
+  unchanged.
+
 - Batches through the whole chain (task 10 of 2026-10-18). Every built-in
   problem has `evaluate_batch(X)` and `constraints_batch(X)` (n rows to n × M
   and n × K), and a constrained problem whose objectives and constraints come
