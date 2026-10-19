@@ -9566,7 +9566,6 @@ def maf14_and_maf15_as_the_paper_defines_them():
         print("    (skipped: no NumPy)"); return
     import math
     import numpy as np
-    from mootation import minimize
     from mootation.benchmarks import maf as MAF
     from mootation.benchmarks import registry as R
     from mootation.benchmarks.properties import properties
@@ -9642,7 +9641,8 @@ def maf14_and_maf15_as_the_paper_defines_them():
             assert p.front_exact is (which == 15 or M < 8), name
     assert MAF.lsmop_x1_max(5) == 1.0 and MAF.lsmop_x1_max(8) < 1.0
     p = R.get("MaF15_3D")
-    if p.native is not None:
+    if p.native is not None:                # the extension is there
+        from mootation import minimize
         kw = dict(bounds=p.bounds, n_objs=3, algorithm="nsga2", pop_size=p.pop_size,
                   max_evaluations=1000, seed=3)
         auto = minimize(p.evaluate, native="auto", **kw)
