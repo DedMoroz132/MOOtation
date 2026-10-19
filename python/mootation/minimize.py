@@ -55,9 +55,11 @@ def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constrain
     it carries one (a benchmark's evaluate, benchmarks/native.py), and the core
     evaluates it itself where nothing of the caller's stands between: no batch
     or constraints but the problem's own, no eq_constraints, log_evaluations,
-    var_types other than real, budget_counts = "unique", max_failure_share,
-    seed_population or polishing, and a core, not a scalarization method.
-    Takes minimize's arguments; a campaign asks it before it runs one."""
+    binary or categorical var_types (integer and discrete ones the core decodes
+    as the Python path does: task 13 of 2026-10-19, §3b), budget_counts =
+    "unique", max_failure_share, seed_population or polishing, and a core, not
+    a scalarization method. Takes minimize's arguments; a campaign asks it
+    before it runs one."""
     if native not in ("auto", "off"):
         raise ValueError(f"native = '{native}': auto or off")
     obj = getattr(fn, "native", None)
@@ -72,7 +74,9 @@ def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constrain
            "batch or constraints of the caller's" if not own else
            "eq_constraints" if eq_constraints is not None else
            "log_evaluations" if log_evaluations is not None else
-           "var_types" if var_types is not None and any(t != "real" for t in var_types) else
+           "binary or categorical var_types" if var_types is not None and any(
+               t == "bin" or (isinstance(t, (tuple, list)) and t[0] == "cat")
+               for t in var_types) else
            "budget_counts = 'unique'" if budget_counts != "calls" else
            "max_failure_share" if max_failure_share is not None else
            "seed_population" if seed_population is not None else

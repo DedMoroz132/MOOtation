@@ -1151,12 +1151,18 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # hard budgets and the checkpoints are what the evaluator above gives.
     from ..minimize import direct_path
     direct = None
-    if not baseline and objective is p.evaluate and truth is None and not typed:
+    if not baseline and objective is p.evaluate and truth is None:
         direct, _ = direct_path(objective, native=spec.native, algorithm=job.algorithm,
                                 **job.params)
 
     def on_rows(X, F, G):
+        nonlocal dup_x
         t_in = time.perf_counter()
+        if typed:                   # the decoded rows, as evaluate_rows counts them
+            for x in X.tolist():
+                key = tuple(x)
+                dup_x += key in seen_x
+                seen_x.add(key)
         account(X, F, G if cons is not None else None, None)
         tm["evaluator"] += time.perf_counter() - t_in
 

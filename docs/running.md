@@ -285,8 +285,10 @@ check on every problem of these families. `minimize` hands such a problem to
 the core, which then evaluates it without calling Python (`native = "auto"`,
 the default; `"off"` calls it as any function), wherever nothing of the
 caller's stands between (`minimize.direct_path` says what does: a batch or
-constraints of the caller's own, `log_evaluations`, typed variables,
-`budget_counts = "unique"`, `max_failure_share`, a seed population, polishing,
+constraints of the caller's own, `log_evaluations`, binary or categorical
+variables — integer and discrete ones the core decodes itself, as `minimize`
+does: an integer to the nearest, ties to even, within its bounds, a discrete
+value to the nearest of its values, ties to the lower — `budget_counts = "unique"`, `max_failure_share`, a seed population, polishing,
 a scalarization method); `on_rows` then observes every evaluation a batch at a
 time, and `result.native_seconds` is the time the evaluations took. A campaign
 does the same (`[campaign] native`, below) and writes the same files either
@@ -324,8 +326,8 @@ NumPy's BLAS, which adds in an order of its own, with fused multiply-adds; the
 C++ writes that order out — OpenBLAS's kernels as NumPy 2.5 ships them
 (scipy-openblas 0.3.34, SkylakeX) — so it gives the same values on every
 machine, and the NumPy code those values wherever its BLAS adds the same way
-(the tests check which). bbob-biobj takes the direct path; bbob-biobj-mixint,
-whose integers `minimize` decodes before the call, does not (typed variables).
+(the tests check which). bbob-biobj takes the direct path, and so does
+bbob-biobj-mixint, whose integers the core decodes as `minimize` does.
 
 **Where a problem is not defined.** RCM02 (EI / μ < 0, the layers out of
 order) and RCM24 (the logarithms of its equalities, outside x8 > 100,
@@ -873,10 +875,11 @@ read a rung at the record `record_at` puts there, which has them, and
   snapshots' rule). The end of the run is `final_archive`.
 - `native = "auto"` (the default) lets the core evaluate a problem of the C++
   suite itself, without calling Python, where the run has no evaluator of its
-  own (no noise, typed variables, baseline or scalarization method,
-  `minimize.direct_path`); the rows reach the campaign's counts, archive,
+  own (no noise, binary or categorical variables, baseline or scalarization
+  method, `minimize.direct_path`); the rows reach the campaign's counts, archive,
   checkpoints and hard budgets a batch at a time, before every record and at
-  the end, and the files are those of `native = "off"`, which evaluates
+  the end (with integer and discrete variables, decoded: the points the
+  campaign's evaluator receives), and the files are those of `native = "off"`, which evaluates
   through the campaign's evaluator as before. `meta.json`'s `timing.native` is
   the time of the C++ evaluations.
 - `hard_budgets = [100, 300, 1000]` reads those budgets the hard way, for

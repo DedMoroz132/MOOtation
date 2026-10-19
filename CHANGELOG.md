@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The direct path (the core evaluates a problem of the C++ suite itself) also
+  for integer and discrete variables (task 13 of 2026-10-19, §3b):
+  bbob-biobj-mixint and any suite problem given such `var_types`. The binding
+  decodes the core's genome as `minimize` does (an integer to the nearest,
+  ties to even, within [ceil lo, floor hi]; a discrete value to the nearest,
+  ties to the lower) and hands the decoded rows to `on_rows`, the points the
+  Python path's evaluator receives. The same runs as `native = "off"`, file
+  for file. Binary and categorical variables keep the Python path.
+
 - RVEA* takes RVEA's random pairs of parents (task 13 of 2026-10-19; RVEA*-6
   in `rvea_star.hpp`, `rvea_parent_order` in `rvea.hpp`): the survivors
   shuffled anew for every round while they are fewer than N. **Changed

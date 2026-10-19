@@ -172,6 +172,44 @@ void keep_native_row(const std::vector<double>& x, const std::vector<double>& f,
     }
 }
 
+// Integer and discrete variables of a suite problem (task 13 of 2026-10-19,
+// §3b; RunConfig::var_kinds): the core's genome decoded before the problem
+// sees it, as minimize's Python path decodes it (var_types.Layout.decode_one)
+// — an integer to the nearest, ties to even, kept in [ceil lo, floor hi]; a
+// discrete value to the nearest of its values, ties to the lower — whether
+// or not the vault has already rounded the genome (int_repair). The decoded
+// row is the one on_rows receives, as the Python path's evaluator receives
+// it; the core keeps its genome. Binary and categorical variables are not
+// decoded here: minimize.direct_path leaves them to the Python path.
+struct NativeDecode {
+    std::vector<int>                 kinds;     // per variable: 0 real, 1 integer, 2 discrete; empty: none
+    std::vector<std::vector<double>> values;    // a discrete variable's values, sorted
+    std::vector<double>              lo, hi;    // an integer's ceil lo and floor hi
+    std::vector<double>              x;         // the point decoded
+};
+NativeDecode g_decode;
+
+// The point the suite problem is evaluated at: vars, or vars decoded.
+const std::vector<double>& native_point(const std::vector<double>& vars)
+{
+    if (g_decode.kinds.empty()) return vars;
+    std::vector<double>& x = g_decode.x;
+    x = vars;
+    for (std::size_t j = 0; j < x.size() && j < g_decode.kinds.size(); ++j) {
+        if (g_decode.kinds[j] == 1) {
+            // + 0.0: a -0 rounded from (-0.5, 0) is Python's int 0, i.e. +0
+            x[j] = std::clamp(std::nearbyint(x[j]), g_decode.lo[j], g_decode.hi[j]) + 0.0;
+        } else if (g_decode.kinds[j] == 2 && !g_decode.values[j].empty()) {
+            const auto& v = g_decode.values[j];
+            auto it = std::lower_bound(v.begin(), v.end(), x[j]);
+            if (it == v.end()) x[j] = v.back();
+            else if (it == v.begin()) x[j] = v.front();
+            else x[j] = (x[j] - *(it - 1) <= *it - x[j]) ? *(it - 1) : *it;
+        }
+    }
+    return x;
+}
+
 // One point of a suite problem, evaluated here without the GIL.
 void native_eval(const std::vector<double>& vars, std::vector<double>& objs,
                  std::vector<double>& lims)
@@ -330,10 +368,11 @@ inline void eval_into(const std::vector<double>& vars,
 {
     if (!g_problem) throw std::runtime_error("mootation: no active problem");
     if (g_problem->native) {
-        native_eval(vars, objs, lims);
+        const std::vector<double>& x = native_point(vars);
+        native_eval(x, objs, lims);
         ++g_evaluations;
         ops_log(vars, objs);
-        keep_native_row(vars, objs, lims);
+        keep_native_row(x, objs, lims);
         return;
     }
     CallbackClock clock;
@@ -418,10 +457,11 @@ void native_run_batch(const mootation::BatchRequest& req, mootation::BatchRespon
     std::vector<double> none;
     for (std::size_t i = 0; i < req.size(); ++i) {
         std::vector<double>& lims = p.n_con > 0 ? resp.limits[i] : none;
-        native_eval(req.variables[i], resp.objectives[i], lims);
+        const std::vector<double>& x = native_point(req.variables[i]);
+        native_eval(x, resp.objectives[i], lims);
         ++g_evaluations;
         ops_log(req.variables[i], resp.objectives[i]);
-        keep_native_row(req.variables[i], resp.objectives[i], lims);
+        keep_native_row(x, resp.objectives[i], lims);
     }
 }
 
@@ -1160,6 +1200,16 @@ PyResult run(const std::string& name, PyProblem& problem, const RunConfig& cfg)
     g_callbacks = 0;
     g_native_seconds = 0.0;
     g_rows = NativeRows{};
+    g_decode = NativeDecode{};
+    if (problem.native && !cfg.var_kinds.empty()) {
+        g_decode.kinds  = cfg.var_kinds;
+        g_decode.values = cfg.discrete_values;
+        g_decode.values.resize(cfg.var_kinds.size());
+        for (const auto& b : problem.bounds) {          // var_types.Layout.core_bounds
+            g_decode.lo.push_back(std::ceil(b.first) + 0.0);
+            g_decode.hi.push_back(std::floor(b.second));
+        }
+    }
     mootation::ops::reset_operator_records();
     mootation::ops::reset_crossover_records();
     mootation::mosa_record().clear();

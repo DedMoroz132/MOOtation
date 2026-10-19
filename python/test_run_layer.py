@@ -9247,6 +9247,58 @@ def r2_emoa_bc_and_paes_take_their_knobs():
 
 
 @test
+def the_direct_path_decodes_integer_and_discrete_variables_as_minimize():
+    """Task 13, §3b: a problem of the C++ suite with integer or discrete
+    variables takes the direct path, and the core decodes them as minimize's
+    Python path does: native = "auto" gives what "off" gives, bit for bit
+    (objectives, variables, evaluations, distinct points), with int_repair
+    lamarck and baldwin; on_rows sees the decoded points (whole numbers, no
+    -0). bbob-biobj-mixint, and ZDT1 given integer and discrete variables
+    (whose rounding near 0 gives -0 in C++, +0 in Python). Binary and
+    categorical variables keep the Python path."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.minimize import direct_path
+    from mootation.benchmarks import get
+    zdt = get("ZDT1")
+    zdt_types = ["int"] * 3 + [("discrete", [0.0, 0.25, 0.5, 1.0])] * 3 + \
+        ["real"] * (zdt.n_vars - 6)
+    cases = [(get("bbobbiobjmixint21_n05_2D"), None), (zdt, zdt_types)]
+    for p, types in cases:
+        types = types or p.var_types
+        assert direct_path(p.evaluate, var_types=types) == (p.evaluate.native, None)
+        for alg in ("nsga2", "moead_de", "mosa"):
+            for repair in ("lamarck", "baldwin"):
+                got, rows = {}, []
+                for native in ("off", "auto"):
+                    kw = dict(algorithm=alg, pop_size=20, max_evaluations=600, seed=4,
+                              var_types=types, int_repair=repair, native=native)
+                    if native == "auto":
+                        kw["on_rows"] = lambda X, F, G: rows.append(np.array(X))
+                    r = minimize(p.evaluate, p.bounds, p.n_obj, **kw)
+                    got[native] = r
+                a, b = got["off"], got["auto"]
+                for k in ("objectives", "variables"):
+                    x, y = np.asarray(getattr(a, k)), np.asarray(getattr(b, k))
+                    assert x.dtype == y.dtype and x.tobytes() == y.tobytes(), (p.name, alg, repair, k)
+                assert (a.evaluations, a.unique_evaluations) == \
+                    (b.evaluations, b.unique_evaluations), (p.name, alg, repair)
+                assert a.native_seconds == 0 and b.native_seconds > 0, (p.name, alg)
+                X = np.vstack(rows)
+                assert len(X) == b.evaluations, (len(X), b.evaluations)
+                ints = [i for i, t in enumerate(types) if t == "int"]
+                xi = X[:, ints]
+                assert np.array_equal(xi, np.round(xi)) and not np.signbit(xi).any(), p.name
+                disc = [i for i, t in enumerate(types) if isinstance(t, tuple)]
+                assert all(set(X[:, i]) <= {0.0, 0.25, 0.5, 1.0} for i in disc), p.name
+    for kinds in (["bin"] + ["real"] * (zdt.n_vars - 1),
+                  [("cat", 2)] + ["real"] * (zdt.n_vars - 1)):
+        assert direct_path(zdt.evaluate, var_types=kinds)[1] == "binary or categorical var_types"
+
+
+@test
 def direct_search_methods_are_deterministic_and_take_their_knobs():
     """Task 9, C1-C4: dmulti_mads, multiglods and boostdms — one seed, one
     trajectory; multiglods and boostdms (as dms) draw nothing at their
@@ -9844,7 +9896,9 @@ def minimize_evaluates_a_suite_problem_in_the_core_and_gives_the_same_run():
         assert auto.callbacks < off.callbacks, name
     p = R.get("DTLZ2_3D")
     assert direct_path(p.evaluate, algorithm="nsga2")[0] is p.native
-    assert direct_path(p.evaluate, algorithm="nsga2", var_types=["int"] * p.n_vars)[0] is None
+    # integers the core decodes itself (task 13, §3b); bits and labels stay in Python
+    assert direct_path(p.evaluate, algorithm="nsga2", var_types=["int"] * p.n_vars)[0] is p.native
+    assert direct_path(p.evaluate, algorithm="nsga2", var_types=["bin"] * p.n_vars)[0] is None
     assert direct_path(p.evaluate, algorithm="nsga2", polish="sqp")[0] is None
     assert direct_path(lambda x: p.evaluate(x), algorithm="nsga2")[0] is None
     assert raises(ValueError, minimize, p.evaluate, p.bounds, 3, native="off", max_evaluations=200,
