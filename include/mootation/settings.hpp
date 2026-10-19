@@ -167,9 +167,9 @@ inline bool is_core_param(const std::string& name)
 // it out of this file), an algorithm without the knob reports it as ignored.
 //   bound_repair  what an operator that can leave the box does with the
 //                 variables it put outside (operators/bound_repair.hpp)
-//   crossover     nsga2, ibea_eplus, spea2_sde, agemoea, sms_emoa
+//   crossover     nsga2, nsga2_sdr, ibea_eplus, spea2_sde, agemoea, sms_emoa
 //                 (operators/real_crossover.hpp, multi_parent.hpp)
-//   mutation      the same five and moead_de (operators/real_mutation.hpp)
+//   mutation      the same six and moead_de (operators/real_mutation.hpp)
 //   crowding_space nsga2: its crowding distance over the objectives or the
 //                 decision variables
 //   dms_init      dms: the initial list, n points on the diagonal, one, or n

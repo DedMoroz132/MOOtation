@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // Variation in learned coordinates (task 7 of 2026-10-10, supplement 1): the
-// knob `coords` of the switchable algorithms (nsga2, ibea_eplus, spea2_sde,
-// agemoea, sms_emoa) and of mosa's sbx step. A construction of this library.
+// knob `coords` of the switchable algorithms (nsga2, nsga2_sdr, ibea_eplus,
+// spea2_sde, agemoea, sms_emoa) and of mosa's sbx step. A construction of this library.
 //
 //   axis     (the default) the variation as it always was
 //   pca      the crossover and the mutation act on y = (x − μ) R, R the

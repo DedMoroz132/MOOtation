@@ -5,7 +5,7 @@
 [![DOI](https://zenodo.org/badge/1328202748.svg)](https://doi.org/10.5281/zenodo.21864324)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**75 multi- and many-objective optimization algorithms (70 evolutionary, one
+**76 multi- and many-objective optimization algorithms (71 evolutionary, one
 particle swarm, three direct search, one simulated annealing), each implemented from its paper and
 checked against it line by line, and nine scalarization, SQP and model-based methods in Python. Header-only C++17, no
 dependencies; also reachable from Python, from a TOML file that drives an
@@ -21,7 +21,7 @@ plus *mutation*, the operator all of these algorithms are built on.
 
 ## What you get
 
-- **75 algorithms** in twelve families: Pareto-dominance, NSGA-III-style
+- **76 algorithms** in twelve families: Pareto-dominance, NSGA-III-style
   reference points, the MOEA/D family, indicator-based, reference-vector,
   clustering-based, archive-based, two-archive constrained, direct search,
   particle swarm, estimation of distribution and simulated annealing; and in
@@ -98,7 +98,7 @@ cmake -S . -B build -DMOOTATION_BUILD_C_API=ON && cmake --build build
 | continue a finished run, or switch algorithm mid-study | save and seed a population | [`python/examples/06_restart.py`](python/examples/06_restart.py) |
 | no control over include paths | the single header | [docs/embedding.md](docs/embedding.md#the-single-header) |
 
-All of them reach the same 75 algorithms. They differ in who owns the loop and
+All of them reach the same 76 algorithms. They differ in who owns the loop and
 what crosses the boundary, not in what you can run.
 
 ## Quick start
@@ -174,7 +174,7 @@ print(res.objectives[0], res.ignored)
 Constraints are a second function returning violations (`<= 0` means
 satisfied); `batch=` receives a whole generation in one call, for evaluators
 that cost real time; `save_population=` / `seed_population=` are the warm
-start; `mootation.algorithms()` lists the 75 names. `res.ignored` names any
+start; `mootation.algorithms()` lists the 76 names. `res.ignored` names any
 knob you set that this algorithm does not have. Six worked scripts live in
 [python/examples/](python/examples/README.md); `mootation.Problem` /
 `mootation.Config` / `mootation.run_raw` map onto the C++ API one-to-one when
@@ -294,7 +294,7 @@ recipe for running it on another machine, or split across several.
 
 ```
 include/mootation/
-  algorithms/        75 headers, one algorithm each; srv_strategy.hpp is a shared helper
+  algorithms/        76 headers, one algorithm each; srv_strategy.hpp is a shared helper
   algorithms.def     the X-macro list every interface is generated from
   operators/         SBX, polynomial mutation, DE, Liu–Li, the switchable crossovers
                      (uniform, BLX-α, SPX, REX, UNDX, PCX) and mutations, bound

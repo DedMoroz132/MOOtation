@@ -92,7 +92,7 @@ def raises(exc, fn, *a, **kw):
 @test
 def registry_is_read_from_the_def_file():
     names = algorithm_names()
-    assert len(names) == 75, f"expected 75 algorithms, got {len(names)}"
+    assert len(names) == 76, f"expected 76 algorithms, got {len(names)}"
     assert "nsga2" in names and "naemo" in names
     assert len(set(names)) == len(names), "duplicate name in algorithms.def"
 
@@ -3121,7 +3121,7 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 12 and fams[0][1][0] == "nsga2", fams
+    assert len(fams) == 12 and fams[0][1][:2] == ("nsga2", "nsga2_sdr"), fams
     assert dict(fams)["Direct search"] == ("dms", "dmulti_mads", "multiglods"), fams
     assert fams[-3:] == (("Particle swarm", ("smpso",)), ("Estimation of distribution", ("rm_meda",)),
                          ("Simulated annealing", ("mosa",))), fams
@@ -6001,6 +6001,146 @@ def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
     assert not r.ignored, r.ignored
     r = minimize(p.evaluate, algorithm="mo_cma_es", seed=3, eta_c=20.0, **kw)
     assert r.ignored == ["eta_c"], r.ignored
+
+
+# ── task 13, §1: NSGA-II/SDR ────────────────────────────────────────────────
+
+def _sdr_reference(F):
+    """(theta_bar, rank) of a set by the strengthened dominance relation, from
+    the paper (Tian, Cheng, Zhang, Su & Jin, IEEE TEVC 23(2), 2019, §III-A,
+    (12)-(15)) and the library's rules SDR-1..3 for what it leaves open
+    (include/mootation/sdr.hpp); the layers by peeling, as Deb's fast
+    non-dominated sort defines them. Sums run over the objectives in order and
+    the angle is math.acos, so that the values are the core's bit for bit."""
+    import math
+    import numpy as np
+    F = np.asarray(F, dtype=float)
+    n = len(F)
+    if n == 0:
+        return 0.0, []
+    m = F.shape[1]
+    lo, hi = F.min(0), F.max(0)
+    Fb = np.zeros_like(F)                    # the set's minima and maxima; a zero range: 0
+    for k in range(m):
+        if hi[k] - lo[k] > 0:
+            Fb[:, k] = (F[:, k] - lo[k]) / (hi[k] - lo[k])
+    con, sq, dot = np.zeros(n), np.zeros(n), np.zeros((n, n))
+    for k in range(m):                       # (13), the lengths and the dot products
+        con = con + Fb[:, k]
+        sq = sq + Fb[:, k] * Fb[:, k]
+        dot = dot + Fb[:, k, None] * Fb[None, :, k]
+    length = np.sqrt(sq)
+    i, j = np.triu_indices(n, 1)             # (14); with f̄ = 0 no angle: 0 in (12)
+    ok = (length[i] > 0) & (length[j] > 0)
+    c = np.clip(dot[i, j][ok] / length[i][ok] / length[j][ok], -1.0, 1.0)
+    t = np.zeros(len(i))
+    t[ok] = [math.acos(v) for v in c.tolist()]
+    theta = np.zeros((n, n))
+    theta[i, j] = t
+    theta[j, i] = t
+    tb = 0.0                                 # (15): the ⌊n/2⌋-th distinct nearest angle,
+    nz = np.flatnonzero(length > 0)          # over the points with f̄ ≠ 0 alone
+    if len(nz) > 1:
+        sub = theta[np.ix_(nz, nz)]
+        nearest = np.where(np.eye(len(nz), dtype=bool), np.inf, sub).min(1)
+        values = np.unique(nearest)
+        k = len(nz) // 2
+        tb = values[k - 1] if k <= len(values) else values[-1]
+        if tb == 0.0:
+            tb = values[1] if len(values) > 1 else 0.0
+    cx = np.broadcast_to(con[:, None], (n, n))
+    if tb > 0.0:                             # (12), its two cases
+        cx = np.where(theta <= tb, con[:, None], con[:, None] * (theta / tb))
+    D = cx < con[None, :]                    # D[x, y]: x dominates y
+    rank = np.full(n, -1)
+    count = D.sum(0)
+    left = np.ones(n, dtype=bool)
+    k = 0
+    while True:
+        front = left & (count == 0)
+        if not front.any():
+            break
+        rank[front] = k
+        left &= ~front
+        count = count - D[front].sum(0)
+        k += 1
+    return float(tb), rank.tolist()
+
+
+def _sdr_random_set(rng, n, m):
+    """A random set for the SDR tests: a cloud, near a simplex, on a grid
+    (ties), with a copy and a point on another's ray, a constant objective."""
+    import numpy as np
+    F = rng.random((n, m))
+    kind = int(rng.integers(5))
+    if kind == 1:
+        F = F / F.sum(1, keepdims=True) * (1.0 + 0.3 * rng.random((n, 1)))
+    elif kind == 2:
+        F = np.round(F * 4.0) / 4.0
+    elif kind == 3 and n > 2:
+        F[1] = F[0]
+        F[2] = 2.0 * F[0]
+    elif kind == 4:
+        F = 10.0 ** rng.uniform(-3, 3, m) * F     # badly scaled
+    if rng.random() < 0.2:
+        F[:, 0] = 1.5
+    return F
+
+
+@test
+def sdr_layers_match_the_reference():
+    """sdr.hpp against _sdr_reference on random sets of 2 to 15 objectives and
+    up to 550 points: θ̄ bit for bit, the same layers; the paper's Property 3
+    and Fig. 4 by the reference too."""
+    if not _have_numpy() or _core_with("sdr_layers") is None:
+        print("  skip  sdr_layers_match_the_reference: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import _core
+    rng = np.random.default_rng(13)
+    for t in range(120):
+        n = int(rng.integers(1, 551)) if t % 4 else int(rng.integers(1, 12))
+        F = _sdr_random_set(rng, n, int(rng.integers(2, 16)))
+        tb, rank = _core.sdr_layers(F.tolist())
+        rtb, rrank = _sdr_reference(F)
+        assert np.float64(tb).tobytes() == np.float64(rtb).tobytes(), (t, n, tb, rtb)
+        assert list(rank) == rrank, (t, n)
+    # a point at z^min: left out of θ̄, alone in the first layer
+    tb, rank = _core.sdr_layers([[0, 0, 0], [1, 0.2, 0.5], [0.2, 1, 0.4], [0.5, 0.5, 1]])
+    assert tb > 0.0 and rank[0] == 0 and min(rank[1:]) == 1, (tb, rank)
+    assert (tb, list(rank)) == _sdr_reference([[0, 0, 0], [1, 0.2, 0.5], [0.2, 1, 0.4], [0.5, 0.5, 1]])
+    # copies: one layer
+    tb, rank = _core.sdr_layers([[0.3, 0.7], [0.3, 0.7], [0.7, 0.3], [1, 1]])
+    assert rank[0] == rank[1] == 0, rank
+
+
+@test
+def nsga2_sdr_runs_like_the_other_cores():
+    """nsga2_sdr: reproducible by its seed; nsga2's operator knobs; a knob of
+    no core of its kind reported ignored; the direct path (native = auto) and
+    a batch give the run of native = off, bit for bit."""
+    if not _have_numpy() or _core_with("sdr_layers") is None:
+        print("  skip  nsga2_sdr_runs_like_the_other_cores: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import registry as R
+    p = R.get("DTLZ2_5D")
+    kw = dict(bounds=p.bounds, n_objs=5, algorithm="nsga2_sdr", pop_size=40,
+              max_evaluations=1200, seed=4)
+    a = minimize(p.evaluate, native="off", **kw)
+    b = minimize(p.evaluate, native="off", **kw)
+    c = minimize(p.evaluate, native="off", **{**kw, "seed": 5})
+    assert a.objectives == b.objectives != c.objectives
+    assert len(a.objectives) == 40 and not a.ignored, a.ignored
+    if p.native is not None:
+        d = minimize(p.evaluate, native="auto", **kw)
+        assert np.asarray(d.objectives).tobytes() == np.asarray(a.objectives).tobytes()
+        assert d.native_seconds > 0.0
+    e = minimize(p.evaluate, native="off", batch=p.evaluate_batch, **kw)
+    assert np.asarray(e.objectives).tobytes() == np.asarray(a.objectives).tobytes()
+    r = minimize(p.evaluate, native="off", pc=1.0, crossover="uniform", mutation="gaussian",
+                 bound_repair="clip", theta=5.0, **kw)
+    assert r.ignored == ["theta"], r.ignored
+    assert r.objectives != a.objectives
 
 
 @test

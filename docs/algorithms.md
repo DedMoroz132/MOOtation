@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The algorithms
 
-75 algorithms, one header each under `include/mootation/algorithms/`, registered
+76 algorithms, one header each under `include/mootation/algorithms/`, registered
 in `include/mootation/algorithms.def`, and nine Python methods (scalarization
 with a local solver, MOSQP, BoostDMS; `python/mootation/scalar/`). Every header opens with the paper
 (authors, venue, DOI), a short scheme of one generation in the paper's own
@@ -13,7 +13,7 @@ implementation follows; if you publish results, cite that paper.
 
 | family | count | reach for it when | watch out for |
 |---|---|---|---|
-| Pareto-dominance & diversity | 11 | 2–3 objectives, a baseline everyone recognises; DN-NSGA-II when several parts of the variables map onto one front; BC with SPX or REX for many variables and a large budget | crowding distance degrades above 3 objectives; BC's population is not elitist |
+| Pareto-dominance & diversity | 12 | 2–3 objectives, a baseline everyone recognises; NSGA-II/SDR, NSGA-II with the strengthened dominance relation, for many objectives; DN-NSGA-II when several parts of the variables map onto one front; BC with SPX or REX for many variables and a large budget | crowding distance degrades above 3 objectives; BC's population is not elitist; NSGA-II/SDR's sort compares every pair directly, an angle per pair, since its relation is not transitive |
 | Reference-point (NSGA-III family) | 4 | many objectives with a regular front | `pop_size` must be an exact Das–Dennis lattice size |
 | Decomposition & region division (MOEA/D family) | 16 | scalarisable problems, many objectives, cheap per-generation cost | most members need an exact lattice size too (the weights are a Das–Dennis set); the steady-state members hand over one candidate at a time; the M2M members want `pop` divisible by `K` |
 | Indicator-based | 14 | you care about one quality indicator (ε+, hypervolume, R2) | cost grows fast with the objective count (HypE, R2-IBEA, SMS-EMOA, MO-CMA-ES) |
@@ -94,6 +94,7 @@ covered by this test.
 | Algorithm | Year | File | DOI |
 |---|---|---|---|
 | NSGA-II | 2002 | `nsga2` | [10.1109/4235.996017](https://doi.org/10.1109/4235.996017) |
+| NSGA-II/SDR | 2019 | `nsga2_sdr` | [10.1109/TEVC.2018.2866854](https://doi.org/10.1109/TEVC.2018.2866854) |
 | DN-NSGA-II | 2016 | `dn_nsga2` | [10.1109/CEC.2016.7744093](https://doi.org/10.1109/CEC.2016.7744093) |
 | BC (best-children), SPX / REX | 2019 | `bc_spx`, `bc_rex` | [10.1145/3321707.3321754](https://doi.org/10.1145/3321707.3321754) |
 | SPEA2 | 2001 | `spea2` | [10.3929/ethz-a-004284029](https://doi.org/10.3929/ethz-a-004284029) |
@@ -325,7 +326,7 @@ reduced to `pop_size` by DSS, published every `pop_size` steps.
 
 ## Genomes
 
-Every algorithm works on a real-valued genome with box bounds. 50 of the 75
+Every algorithm works on a real-valued genome with box bounds. 51 of the 76
 also take a binary or mixed real + binary genome (`get_bin_vars_n() > 0` in the
 `Problem<>` specialisation); the other 25 refuse it at `setup()` with a clear
 message, because their reproduction operator is real-valued only, or, for
@@ -397,6 +398,7 @@ a time, and the size of the other calls):
 | core | population | calls | evaluations | in single calls | batch size (median, max) |
 |---|---|---|---|---|---|
 | nsga2 | 100 | 30 | 3000 | 0 % | 100, 100 |
+| nsga2_sdr | 100 | 30 | 3000 | 0 % | 100, 100 |
 | dn_nsga2 | 100 | 30 | 3000 | 0 % | 100, 100 |
 | spea2 | 100 | 30 | 3000 | 0 % | 100, 100 |
 | spea2_sde | 100 | 30 | 3000 | 0 % | 100, 100 |
