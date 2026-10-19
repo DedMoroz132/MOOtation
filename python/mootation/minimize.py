@@ -721,8 +721,13 @@ def minimize(
             # The population file carries x, f and the aggregate cv only; the
             # algorithms compare the individual constraint values, so they are
             # recomputed here from `constraints`. That costs one constraint
-            # call per seed individual and no objective evaluations.
-            cfg.seed_limits = [list(constraints(list(x))) for x in pop.variables]
+            # call per seed individual and no objective evaluations. With
+            # binary or categorical variables `constraints` takes the core's
+            # whole genome, the reals and then the integer genome, as the core
+            # hands a point to it (var_types.Layout.to_user).
+            genes = pop.binary if n_bin else [[]] * len(pop.variables)
+            cfg.seed_limits = [list(constraints(list(x) + list(b)))
+                               for x, b in zip(pop.variables, genes)]
 
     try:
         result = _polished(_core.run(algorithm, problem, cfg))

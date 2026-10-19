@@ -7181,6 +7181,45 @@ def categorical_variables_keep_to_their_labels_and_repeats_cost_nothing():
 
 
 @test
+def a_seed_population_with_bits_and_labels_takes_constraints():
+    """A warm start with binary and categorical variables and constraints (a
+    user's report, 2026-10-19): the seed points' constraint values were
+    computed from the reals alone, and decoding them failed (IndexError in
+    Layout.to_user). Now from the whole genome: the run starts, and the
+    constraints see each seed point decoded, its bit and its label too, as
+    the run evaluates it."""
+    if _core_with("Config") is None:
+        print("  skip  a_seed_population_with_bits...: no _core"); return
+    import mootation
+    from mootation.persistence import LoadedPopulation
+    from mootation.var_types import Layout
+    labels = ["a", "b", "c"]
+    vt = ["real", "real", "bin", ("cat", labels)]
+    bounds = [(0.0, 1.0)] * 4
+    seen = []
+
+    def f(x):
+        return [x[0] + 0.1 * x[2], 1.0 - x[0] + x[1] + 0.1 * labels.index(x[3])]
+
+    def cons(x):
+        seen.append(list(x))
+        return [x[0] + x[1] - 1.5 + 0.1 * x[2] + 0.05 * labels.index(x[3])]
+
+    first = mootation.minimize(f, bounds, 2, pop_size=12, n_gen=3, seed=1, var_types=vt,
+                               constraints=cons, n_cons=1)
+    pop = LoadedPopulation(first.variables, first.objectives, [0.0] * len(first.objectives), {},
+                           first.binary_variables)
+    seen.clear()
+    r = mootation.minimize(f, bounds, 2, pop_size=12, n_gen=2, seed=2, var_types=vt,
+                           constraints=cons, n_cons=1, seed_population=pop)
+    layout = Layout(vt, bounds)
+    want = [layout.to_user(list(x) + list(b)) for x, b in zip(first.variables,
+                                                              first.binary_variables)]
+    assert seen[:12] == want, (seen[:3], want[:3])
+    assert {x[3] for x in want} <= set(labels) and len(r.objectives) > 0
+
+
+@test
 def the_evaluation_log_takes_a_batch_a_batch_at_a_time():
     """Task 10, §4.2: log_evaluations with batch= (refused before) logs every
     row of every batch, in order, its constraints too (with

@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `minimize` with `seed_population`, binary or categorical `var_types` and
+  `constraints` failed before the run (IndexError in `Layout.to_user`): the
+  seed points' constraint values were computed from the real variables
+  alone. They are now computed from the whole genome, the bits and labels
+  too, as the run evaluates the points (reported by a user).
+
 - `nsga2_sdr` (task 13 of 2026-10-19, §1): NSGA-II/SDR, NSGA-II with Pareto
   dominance replaced by the strengthened dominance relation of Tian, Cheng,
   Zhang, Su & Jin (IEEE TEVC 23(2), 2019): R normalised by its own minima
