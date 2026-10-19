@@ -319,8 +319,9 @@ jobs:
   # catches an algorithm whose individual type or setters changed shape.
   python:
     # The run layer's tests take most of this job: they run in three parts at
-    # once (test_run_layer.py --shard i/3), each part building the extension;
-    # the steps that need it once run in the first.
+    # once (test_run_layer.py --shard i/3), each part building the extension and
+    # installing the package (NumPy and the extras the tests use); the smoke
+    # test and the examples run in the first.
     name: python binding · ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
     strategy:
@@ -373,7 +374,7 @@ jobs:
         run: PYTHONPATH=python python python/test_binding.py
 
       - name: pip install, then use it the way a user would
-        if: matrix.shard == 0
+        # every part: it installs NumPy and the optional extras the tests use
         run: |
           # The build above proves the extension compiles. This proves the
           # PACKAGE works: that pyproject.toml declares the right thing, that

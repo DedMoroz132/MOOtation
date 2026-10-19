@@ -63,6 +63,22 @@ def test(fn):
     return fn
 
 
+# A long test over many problems in PARTS tests of its own, part k taking the
+# problems k, k + PARTS, ...: the same checks, spread over --shard's processes.
+PARTS = 6
+
+
+def in_parts(body):
+    """Register body(part, parts) as PARTS tests named <body>_<k>_of_<PARTS>."""
+    for k in range(PARTS):
+        def fn(k=k):
+            body(k, PARTS)
+        fn.__name__ = f"{body.__name__}_{k + 1}_of_{PARTS}"
+        fn.__doc__ = body.__doc__
+        TESTS.append(fn)
+    return body
+
+
 def raises(exc, fn, *a, **kw):
     try:
         fn(*a, **kw)
@@ -3298,8 +3314,8 @@ def shifted_zdt_and_dtlz67_move_the_optimum_off_the_bound():
         assert abs(best - c[j]) <= 2.5e-3 and np.sum(f2 <= f2.min() + 1e-12) == 1, (j, best, c[j])
 
 
-@test
-def boundary_and_centre_follow_the_pareto_sets():
+@in_parts
+def boundary_and_centre_follow_the_pareto_sets(part, parts):
     """properties' boundary agrees with what every Pareto-set sample shows
     (properties.measured, 99 % of the distance variables within 1e-9 of a
     bound), and so does centre where the table has a value; interior() is
@@ -3310,8 +3326,8 @@ def boundary_and_centre_follow_the_pareto_sets():
     from mootation.benchmarks.properties import interior, measured, properties
     from mootation.benchmarks.registry import PROBLEMS
     checked = 0
-    for name in names():
-        if PROBLEMS[name].pareto_set is None or properties(name) is None:
+    for i, name in enumerate(names()):
+        if i % parts != part or PROBLEMS[name].pareto_set is None or properties(name) is None:
             continue
         if name.startswith("ZCAT") and name not in ("ZCAT1_3D", "ZCAT11_3D", "ZCAT14_3D"):
             continue                                       # seconds each: three of them
@@ -3322,7 +3338,7 @@ def boundary_and_centre_follow_the_pareto_sets():
         assert row["boundary"] is m["boundary"], (name, m, row["boundary"])
         assert row["centre"] is None or row["centre"] is m["centre"], (name, m, row["centre"])
         checked += 1
-    assert checked > 100, checked
+    assert checked > 100 // parts, checked
     assert [properties(n)["boundary"] for n in ("ZDT1", "ZDT4", "DTLZ7_3D", "WFG4_3D")] == \
         [True, False, True, False]
     assert interior("shiftZDT1") and interior("WFG4_3D") and interior("ZCAT1_3D")
@@ -9288,22 +9304,23 @@ def _numpy_is_the_c_library():
     return ok
 
 
-@test
-def the_suite_gives_numpys_values_bit_for_bit():
+@in_parts
+def the_suite_gives_numpys_values_bit_for_bit(part, parts):
     """Every problem of the C++ suite's families is C++ with the extension
     built, and C++ gives the NumPy reference's values (p.reference) at a few
     hundred points of its box, its corners, its Pareto set: the batch, one
     point at a time, the constraints. Bit for bit where NumPy's sin, cos, exp
     and pow are the C library's (here: CI's machines with AVX-512 have their
-    own), within 1e-9 elsewhere."""
+    own), within 1e-9 elsewhere. In parts, each problem's points drawn from a
+    generator of its own, seeded by its name."""
     if not _have_numpy() or _core_with("Native") is None:
         print("    (skipped: no NumPy or no extension)"); return
+    import zlib
     import numpy as np
     from mootation.benchmarks import registry as R
     exact = _numpy_is_the_c_library()
     names = _suite_names(R)
     assert len(names) >= 550, len(names)
-    rng = np.random.default_rng(20261018)
 
     def check(mine, ref, what):
         mine, ref = np.asarray(mine, float), np.asarray(ref, float)
@@ -9313,10 +9330,10 @@ def the_suite_gives_numpys_values_bit_for_bit():
         else:
             assert np.allclose(mine, ref, rtol=1e-9, atol=1e-12, equal_nan=True), what
 
-    for name in names:
+    for name in names[part::parts]:
         p = R.PROBLEMS[name]
+        X = _suite_points(p, np.random.default_rng([20261018, zlib.crc32(name.encode())]))
         assert p.native is not None and p.reference is not None, name
-        X = _suite_points(p, rng)
         ref = p.reference
         check(p.evaluate_batch(X), ref["evaluate_batch"](X), name)
         check([p.evaluate(list(x)) for x in X[:8]], [ref["evaluate"](list(x)) for x in X[:8]],
@@ -10003,14 +10020,17 @@ def main(argv=None) -> int:
 
 def _run_tests(tests) -> int:
     import os
-    failed = []
+    import time
+    failed, seconds = [], []
     for fn in tests:
+        t0 = time.perf_counter()
         try:
             fn()
-            print(f"  ok    {fn.__name__}")
+            seconds.append((time.perf_counter() - t0, fn.__name__))
+            print(f"  ok    {fn.__name__}  {seconds[-1][0]:.1f} s")
         except Exception as e:
             failed.append(fn.__name__)
-            print(f"  FAIL  {fn.__name__}")
+            print(f"  FAIL  {fn.__name__}  {time.perf_counter() - t0:.1f} s")
             traceback.print_exc()
             if os.environ.get("GITHUB_ACTIONS"):
                 # an annotation of the run, readable where the log is not
@@ -10018,7 +10038,9 @@ def _run_tests(tests) -> int:
                 what = f"{type(e).__name__}: {e}".replace("\n", " ")[:300]
                 print(f"::error title=run layer: {fn.__name__}::line {where.lineno} of "
                       f"{Path(where.filename).name}: {what}", flush=True)
-    print(f"\n{len(tests) - len(failed)}/{len(tests)} passed")
+    slowest = sorted(seconds, reverse=True)[:8]
+    print("\nslowest: " + ", ".join(f"{name} {s:.0f} s" for s, name in slowest))
+    print(f"{len(tests) - len(failed)}/{len(tests)} passed")
     if failed:
         print("failed: " + ", ".join(failed), file=sys.stderr)
         return 1
