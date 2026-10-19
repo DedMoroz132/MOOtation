@@ -8,6 +8,7 @@
 // ============================================================================
 
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <stdexcept>
 #include <string>
@@ -258,7 +259,147 @@ int main()
         }
     }
 
+    // bbob: the products fuse where OpenBLAS's kernels do. a b = 1 - 2^-60
+    // rounds to 1; fused, -1 + a b keeps the -2^-60
+    {
+        namespace B = S::bbob;
+        const double a = 1.0 + std::ldexp(1.0, -30), b = 1.0 - std::ldexp(1.0, -30), tiny = -std::ldexp(1.0, -60);
+        const double u[2] = {1.0, a}, v[2] = {-1.0, b};
+        check(B::dot(u, v, 2) == tiny, "bbob: x . y in fused multiply-adds");
+        // fused (the instruction, where MSVC has it) = std::fma, products near their sums
+        std::uint64_t state = 20261019;
+        auto next = [&]() {
+            state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+            return std::ldexp(static_cast<double>(state >> 11), -53) - 0.5;
+        };
+        bool same = true;
+        for (int i = 0; i < 100000; ++i) {
+            const double x = std::ldexp(next(), static_cast<int>(40 * next())),
+                         y = std::ldexp(next(), static_cast<int>(40 * next()));
+            const double z = i % 2 ? -x * y * (1.0 + std::ldexp(next(), -40)) : next();
+            same = same && B::fused(x, y, z) == std::fma(x, y, z);
+        }
+        check(same, "bbob: fused = std::fma on 100 000 triples");
+        std::vector<double> d(2), R2 = {1.0, 0.0, 0.0, 1.0};
+        B::gemm_row(u, R2, 2, d.data());
+        check(d[0] == 1.0 && d[1] == a, "bbob: (x - y) R^T, the identity");
+        // D = 5: rows 0-3 a block of four (fused lanes), row 4 the single (products)
+        std::vector<double> M(25, 0.0);
+        const double x[5] = {-1.0, 0.0, 0.0, 0.0, b};
+        M[0] = 1.0;
+        M[4] = a;                                       // row 0: -1 + a b, the fifth term fused
+        M[20] = 1.0;
+        M[24] = a;                                      // row 4: the same
+        check(B::matvec_row(M.data(), x, 5, 0) == tiny && B::matvec_row(M.data() + 20, x, 5, 4) == tiny,
+              "bbob: M x, a lone fifth term fused onto the sum");
+        const double x8[8] = {-1.0, 0.0, 0.0, 0.0, b, 0.0, 0.0, 0.0};
+        std::vector<double> M8(64, 0.0);
+        M8[0] = 1.0;
+        M8[4] = a;
+        check(B::matvec_row(M8.data(), x8, 8, 0) == tiny, "bbob: M x, a block row's lane fused");
+        M8[56] = 1.0;
+        M8[60] = a;
+        check(B::matvec_row(M8.data() + 56, x8, 8, 7) == tiny, "bbob: M x, the four lanes of the block");
+        const double x6[6] = {-1.0, 0.0, b, 0.0, 0.0, 0.0};
+        std::vector<double> M6(36, 0.0);
+        M6[24] = 1.0;
+        M6[26] = a;                                     // row 4 of D = 6: the pair, products then sums
+        check(B::matvec_row(M6.data() + 24, x6, 6, 4) == 0.0, "bbob: M x, the pair's lanes not fused");
+    }
+
+    // bbob: every one of the ten at its optimum is f_opt, on instances made up
+    // here (the identity and a permutation for R and Q); F = (f_a, f_b)
+    {
+        namespace B = S::bbob;
+        const int D = 5;
+        auto function = [&](int fid) {
+            B::Function f;
+            f.fid = fid;
+            f.f_opt = fid - 40.25;
+            for (int i = 0; i < D; ++i) f.x_opt.push_back(0.5 * i - 1.25);
+            f.R.assign(D * D, 0.0);
+            f.Q.assign(D * D, 0.0);
+            for (int i = 0; i < D; ++i) {
+                f.R[static_cast<std::size_t>(i * D + i)] = 1.0;
+                f.Q[static_cast<std::size_t>(i * D + (i + 2) % D)] = 1.0;
+                f.l10.push_back(std::pow(10.0, 0.5 * i / (D - 1.0)));
+                f.sign.push_back(i % 2 ? -1.0 : 1.0);
+            }
+            if (fid == 20)
+                for (int i = 0; i < D; ++i) f.x_opt[static_cast<std::size_t>(i)] = 0.5 * 4.2096874633 * f.sign[static_cast<std::size_t>(i)];
+            for (int k = 0; k < B::kPeaks; ++k) {
+                f.w.push_back(k == 0 ? 10.0 : 1.1 + 8.0 * (k - 1) / 99.0);
+                for (int i = 0; i < D; ++i) {
+                    f.C.push_back(1.0);
+                    f.y.push_back(k == 0 ? f.x_opt[static_cast<std::size_t>(i)] : 4.5 - 0.09 * k);
+                }
+            }
+            return f;
+        };
+        bool all = true;
+        for (int fid : {1, 2, 6, 8, 13, 14, 15, 17, 20, 21}) {
+            const B::Objective o(function(fid), D);
+            const double v = o(o.function().x_opt.data());
+            const bool ok = fid == 20 ? std::abs(v - o.function().f_opt) < 1e-9 : v == o.function().f_opt;
+            if (!ok) std::printf("  f%d at x_opt: %.17g, f_opt %.17g\n", fid, v, o.function().f_opt);
+            all = all && ok;
+        }
+        check(all, "bbob: f(x_opt) = f_opt for the ten");
+
+        S::Spec s = spec("bbob-biobj", D, 2);
+        s.bbob = {function(1), function(2)};
+        s.bbob[1].x_opt[0] += 1.0;
+        auto p = S::make(s);
+        const auto f = eval(*p, s.bbob[0].x_opt);
+        check(f[0] == s.bbob[0].f_opt && f[1] > s.bbob[1].f_opt, "bbob-biobj: (f_alpha, f_beta)");
+
+        // mixint: the integer j stands for the level z_{j+1}, j rounded half to even into 0 .. l-1
+        S::Spec m = spec("bbob-biobj-mixint", D, 2);
+        m.bbob = {function(1), function(1)};
+        for (int o = 0; o < 2; ++o)
+            for (int i = 0; i < 4; ++i)
+                m.bbob[static_cast<std::size_t>(o)].levels.push_back({o - 1.0, o + 0.0, o + 1.0});
+        auto q = S::make(m);
+        const auto at = [&](std::vector<double> x) { return eval(*q, x); };
+        const double last = s.bbob[0].x_opt[4];
+        check(at({0.5, 1.5, 2.5, -7.0, last}) == at({0.0, 2.0, 2.0, 0.0, last}),
+              "bbob-biobj-mixint: the integers rounded half to even and kept in their range");
+        S::Spec plain = spec("bbob-biobj", D, 2);
+        plain.bbob = {function(1), function(1)};
+        auto r = S::make(plain);
+        const std::vector<double> lv = {-1.0, 0.0, 1.0, 1.0, last};
+        check(at({0.0, 1.0, 2.0, 2.0, last})[0] == eval(*r, lv)[0], "bbob-biobj-mixint: each value its level");
+    }
+
     // what make() refuses
+    {
+        namespace B = S::bbob;
+        B::Function f;
+        f.fid = 1;
+        f.x_opt.assign(5, 0.0);
+        S::Spec s = spec("bbob-biobj", 5, 2);
+        s.bbob = {f};
+        check(refused(s), "bbob-biobj with one function");
+        s.bbob = {f, f};
+        check(!refused(s), "bbob-biobj of two spheres");
+        s.n_var = 16;
+        s.bbob[0].x_opt.assign(16, 0.0);
+        s.bbob[1].x_opt.assign(16, 0.0);
+        check(refused(s), "bbob-biobj beyond the sizes its products were read off for");
+        S::Spec t = spec("bbob-biobj", 5, 2);
+        f.fid = 6;
+        t.bbob = {f, f};
+        check(refused(t), "bbob f6 without its rotations");
+        f.fid = 3;
+        t.bbob = {f, f};
+        check(refused(t), "bbob f3: not one of the ten");
+        f.fid = 1;
+        t.bbob = {f, f};
+        t.family = "bbob-biobj-mixint";
+        check(refused(t), "bbob-biobj-mixint without integer variables");
+        t.bbob[0].levels = {{0.0, 1.0}};
+        check(refused(t), "bbob-biobj-mixint with levels in one objective only");
+    }
     check(refused(spec("WFG1", 6, 2)), "a family the suite does not have");
     check(refused(spec("MaF8", 2, 3)), "MaF8 without its vertices");
     check(refused(spec("MaF11", 12, 3)), "MaF11 (WFG2) stays in Python");

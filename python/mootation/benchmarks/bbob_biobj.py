@@ -5,7 +5,7 @@
 # D. Brockhoff, A. Auger, N. Hansen, T. Tusar. "Using Well-Understood
 # Single-Objective Functions in Multiobjective Black-Box Optimization Test
 # Suites." Evolutionary Computation 30(2):165-193, 2022.
-#                                    (source: ReadyMarkdown/evco_a_00298)
+#      (source: bbob-biobj_brockhoff2022, bbob-biobj_brockhoff2022_arxiv)
 #
 # THE CONSTRUCTION (Section 5.1). Ten bbob functions are chosen, two from each
 # of the five bbob groups, so no group is over-weighted: f1 and f2 (separable),

@@ -53,6 +53,42 @@ std::vector<std::vector<double>> list_of(const py::dict& d, const char* key)
     return out;
 }
 
+// one bbob function of a bbob-biobj spec (benchmarks/native.py, _bbob)
+suite::bbob::Function bbob_of(const py::handle& o)
+{
+    const py::dict d = py::reinterpret_borrow<py::dict>(o);
+    suite::bbob::Function f;
+    f.fid = d["fid"].cast<int>();
+    f.x_opt = flat_of(d, "x_opt");
+    f.f_opt = d["f_opt"].cast<double>();
+    f.R = flat_of(d, "R");
+    f.Q = flat_of(d, "Q");
+    f.l10 = flat_of(d, "l10");
+    f.sign = flat_of(d, "sign");
+    f.w = flat_of(d, "w");
+    f.C = flat_of(d, "C");
+    f.y = flat_of(d, "y");
+    f.levels = list_of(d, "levels");
+    return f;
+}
+
+py::dict dict_of(const suite::bbob::Function& f)
+{
+    py::dict d;
+    d["fid"] = f.fid;
+    d["x_opt"] = f.x_opt;
+    d["f_opt"] = f.f_opt;
+    d["R"] = f.R;
+    d["Q"] = f.Q;
+    d["l10"] = f.l10;
+    d["sign"] = f.sign;
+    d["w"] = f.w;
+    d["C"] = f.C;
+    d["y"] = f.y;
+    d["levels"] = f.levels;
+    return d;
+}
+
 suite::Spec spec_of(const py::dict& d)
 {
     suite::Spec s;
@@ -72,6 +108,8 @@ suite::Spec spec_of(const py::dict& d)
     s.vertices = flat_of(d, "vertices");
     s.link = flat_of(d, "link");
     s.parts = flat_of(d, "parts");
+    if (d.contains("bbob") && !d["bbob"].is_none())
+        for (const auto& item : d["bbob"]) s.bbob.push_back(bbob_of(item));
     return s;
 }
 
@@ -94,6 +132,9 @@ py::dict dict_of(const suite::Spec& s)
     d["vertices"] = s.vertices;
     d["link"] = s.link;
     d["parts"] = s.parts;
+    py::list fs;
+    for (const auto& f : s.bbob) fs.append(dict_of(f));
+    d["bbob"] = fs;
     return d;
 }
 
@@ -153,9 +194,11 @@ void bind_suite(py::module_& m)
 {
     py::class_<suite::Native, std::shared_ptr<suite::Native>>(m, "Native",
         "A benchmark problem of the C++ suite (include/mootation/suite): ZDT, DTLZ and its "
-        "variants, C-DTLZ, MaF, ZCAT and the shifts and rotations over them, made from the "
+        "variants, C-DTLZ, MaF, ZCAT and the shifts and rotations over them, bbob-biobj and "
+        "bbob-biobj-mixint, made from the "
         "spec benchmarks/native.py builds. Its values are NumPy's bit for bit, where NumPy's "
-        "sin, cos, exp and pow are the C library's (benchmarks/_rows.py, agrees). Hand it to "
+        "sin, cos, exp, log and pow are the C library's (benchmarks/_rows.py, agrees) and, for "
+        "bbob-biobj, its BLAS adds in the order suite/bbob.hpp writes out. Hand it to "
         "a run as Problem.native and the core evaluates it without calling Python.")
         .def(py::init([](const py::dict& spec) {
                  return std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));

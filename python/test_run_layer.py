@@ -7087,7 +7087,7 @@ def mixed_integer_and_categorical_problems_keep_their_optima():
     for D in (5, 10):
         for fnum in (1, 7, 30, 55):
             p = get(M.name(fnum, D))
-            mi = p.evaluate
+            mi = (p.reference or {}).get("evaluate") or p.evaluate    # the MixedInteger
             assert p.var_types == ["int"] * (4 * D // 5) + ["real"] * (D // 5)
             a = mi.optimum(mi.alpha, mi.z_alpha)
             b = mi.optimum(mi.beta, mi.z_beta)
@@ -9364,6 +9364,125 @@ def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
             np.asarray(p.evaluate_batch(X)).tobytes(), name
         assert pickle.loads(pickle.dumps(p.evaluate))(list(X[0])) == p.evaluate(list(X[0]))
     assert raises(ValueError, R.PROBLEMS["DTLZ2_3D"].native.evaluate, [0.5] * 3) is not None
+
+
+def _numpy_blas_is_bbobs_order():
+    """Whether NumPy's @ adds here as include/mootation/suite/bbob.hpp writes
+    out (OpenBLAS's SkylakeX kernels): x . x, M x and (x - Y) R^T at the
+    registry's sizes, on a fixed sample, written out with math.fma (from
+    Python 3.13; before it, the answer is no)."""
+    import math
+    import numpy as np
+    fma = getattr(math, "fma", None)
+    if fma is None:
+        return False
+
+    def dot(a, b):
+        s = 0.0
+        for u, v in zip(a, b):
+            s = fma(u, v, s)
+        return 0.0 + s
+
+    def row(m, x, D, r):
+        main, left = D - D % 4, D % 4
+        blocks, pair = 4 * (D // 4), (D % 4) // 2 * 2
+        lanes = [0.0] * 4
+        for i in range(main):
+            if r < blocks:
+                lanes[i % 4] = fma(m[i], x[i], lanes[i % 4])
+            elif r < blocks + pair:
+                lanes[i % 2] = lanes[i % 2] + m[i] * x[i]
+            else:
+                lanes[i % 4] = lanes[i % 4] + m[i] * x[i]
+        s = 0.0 + ((lanes[0] + lanes[1]) if blocks <= r < blocks + pair
+                   else (lanes[0] + lanes[2]) + (lanes[1] + lanes[3]))
+        t = main
+        if left == 1:
+            return fma(m[t], x[t], s)
+        if left == 2:
+            return s + fma(m[t], x[t], m[t + 1] * x[t + 1])
+        if left == 3:
+            return s + fma(m[t + 2], x[t + 2], fma(m[t], x[t], m[t + 1] * x[t + 1]))
+        return s
+
+    rng = np.random.default_rng(20261019)
+    for D in (5, 10):
+        for _ in range(40):
+            M = rng.standard_normal((D, D))
+            x = rng.standard_normal(D) * 4.0
+            y = M @ x
+            if any(float(y[r]) != row(M[r].tolist(), x.tolist(), D, r) for r in range(D)):
+                return False
+            if float(x @ x) != dot(x.tolist(), x.tolist()) or \
+                    float(x[1:] @ x[1:]) != dot(x[1:].tolist(), x[1:].tolist()):
+                return False
+            Y = rng.uniform(-5.0, 5.0, (101, D))
+            U = (x - Y) @ M.T
+            for k in range(0, 101, 10):
+                d = (x - Y[k]).tolist()
+                if any(float(U[k, j]) != dot(d, M[j].tolist()) for j in range(D)):
+                    return False
+    return True
+
+
+@test
+def bbob_biobj_gives_numpys_values_bit_for_bit():
+    """bbob-biobj and bbob-biobj-mixint (task 12 of 2026-10-19, §1): all 110 +
+    110 problems are C++ with the extension built, and give the NumPy
+    reference's values (p.reference) at points of the box, at its bounds and
+    middle, at and near each objective's optimum and, mixint, at integer and
+    half-way values: the batch and one point at a time; a problem pickles by
+    its spec. Bit for bit where NumPy's functions are the C library's and its
+    BLAS adds in bbob.hpp's order; within 1e-9 elsewhere."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import math
+    import pickle
+    import numpy as np
+    from mootation.benchmarks import _rows
+    from mootation.benchmarks import registry as R
+    exact = (_numpy_is_the_c_library() and _rows.agrees("log", np.log, math.log, "pow+")
+             and _numpy_blas_is_bbobs_order())
+    from mootation.benchmarks.native import _BBOB
+    names = [n for n in sorted(R.PROBLEMS) if _BBOB.fullmatch(n)]
+    assert len(names) == 220, len(names)
+    rng = np.random.default_rng(20261019)
+
+    def check(mine, ref, what):
+        mine, ref = np.asarray(mine, float), np.asarray(ref, float)
+        assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
+        if exact:
+            assert mine.tobytes() == ref.tobytes(), (what, np.argwhere(mine != ref)[:5])
+        else:
+            assert np.allclose(mine, ref, rtol=1e-9, atol=1e-12, equal_nan=True), what
+
+    for name in names:
+        p = R.PROBLEMS[name]
+        assert p.native is not None and p.reference is not None, name
+        obj = p.reference["evaluate"]                      # the BiObjective or MixedInteger
+        lo = np.array([b[0] for b in p.bounds], float)
+        hi = np.array([b[1] for b in p.bounds], float)
+        pick = rng.integers(0, 3, (10, len(lo)))
+        parts = [lo + (hi - lo) * rng.random((40, len(lo))), np.vstack([lo, hi, 0.5 * (lo + hi)]),
+                 np.where(pick == 0, lo, np.where(pick == 1, hi, 0.5 * (lo + hi)))]
+        for f in (obj.alpha, obj.beta):
+            opt = np.array(obj.optimum(f, obj.z_alpha if f is obj.alpha else obj.z_beta), float) \
+                if hasattr(obj, "optimum") else f.x_opt
+            parts += [opt[None, :], opt + 1e-3 * rng.standard_normal((5, len(lo)))]
+        X = np.ascontiguousarray(np.vstack(parts))
+        check(p.evaluate_batch(X), p.reference["evaluate_batch"](X), name)
+        check([p.evaluate(list(x)) for x in X[:6]], [obj(list(x)) for x in X[:6]], name + " point")
+    for name in ("bbobbiobj55_n10_2D", "bbobbiobjmixint21_n05_2D"):
+        p = R.PROBLEMS[name]
+        X = np.ascontiguousarray(rng.random((20, p.n_vars)) * 4.0)
+        q = pickle.loads(pickle.dumps(p.native))
+        assert q.spec["family"] == p.native.spec["family"], name
+        assert np.asarray(q.evaluate_batch(X)).tobytes() == np.asarray(p.evaluate_batch(X)).tobytes()
+    assert raises(ValueError, _core_with("Native").Native,
+                  {"family": "bbob-biobj", "n_var": 5, "n_obj": 2,
+                   "bbob": [{"fid": 3, "x_opt": [0.0] * 5, "f_opt": 0.0}] * 2}) is not None
+    if not exact:
+        print("    (NumPy's functions or its BLAS are not bbob.hpp's here: compared within 1e-9)")
 
 
 @test
