@@ -10,14 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- RVEA* takes RVEA's random pairs of parents (task 13 of 2026-10-19; RVEA*-6
+  in `rvea_star.hpp`, `rvea_parent_order` in `rvea.hpp`): the survivors
+  shuffled anew for every round while they are fewer than N. **Changed
+  results** only where its population fell below N; with N survivors, which
+  RVEA*-1 keeps whenever the pool allows, the runs are the same.
+
 - RVEA: the random pairs of parents (§III-B) are drawn anew for every round
   through the survivors when the population has shrunk below N (task 13 of
   2026-10-19, §2; RVEA-3 in `rvea.hpp`); before, one shuffle was gone through
   again and again, so the same pairs came back (at 20 of 126 survivors, 10
   distinct pairs of 63). **Changed results**: runs of `rvea` whose population
   shrank (irregular fronts) are not reproduced by earlier versions; with a
-  full population the runs are the same. `rvea_star` keeps its own loop,
-  unchanged. `tests/test_rvea.cpp`.
+  full population the runs are the same. `tests/test_rvea.cpp`.
 
 - R2-EMOA reports `hv_algo` ignored, as it does `hv_contrib` (task 13 of
   2026-10-19, §6): its selection computes no hypervolume. The same runs.

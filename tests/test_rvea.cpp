@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
-// rvea.hpp, RVEA's parents (task 13 of 2026-10-19, §2; RVEA-3):
+// rvea.hpp, the parents of RVEA and RVEA* (task 13 of 2026-10-19, §2; RVEA-3,
+// RVEA*-6; rvea_parent_order):
 //   * a full population (n_parents = n, n even and odd): the order of one
 //     shuffle gone through once, as before RVEA-3, the same random numbers
 //     drawn — so the same runs;
@@ -18,7 +19,6 @@
 #include <vector>
 
 #include <mootation/algorithms/rvea.hpp>
-#include <mootation/individuals.hpp>
 
 namespace {
 
@@ -32,8 +32,6 @@ void check(bool ok, const char* what)
         std::printf("FAIL: %s\n", what);
     }
 }
-
-using RVEA = mootation::RVEACore<mootation::NSGAII_Individual>;
 
 // The order before RVEA-3: one shuffle, gone through round after round.
 std::vector<int> one_shuffle(int n_parents, int n, std::mt19937& rng)
@@ -61,7 +59,8 @@ int main()
     for (int n : {90, 91, 126, 210, 275}) {
         for (unsigned seed = 1; seed <= 20; ++seed) {
             std::mt19937 a(seed), b(seed);
-            const bool same = RVEA::parent_order(n, n, a) == one_shuffle(n, n, b) && a() == b();
+            const bool same = mootation::rvea_parent_order(n, n, a) == one_shuffle(n, n, b) &&
+                              a() == b();
             check(same, "full population: the order and the draws of one shuffle");
         }
     }
@@ -72,7 +71,7 @@ int main()
     double now = 0.0, before = 0.0, random = 0.0;
     bool rounds = true;
     for (int g = 0; g < gens; ++g) {
-        const auto order = RVEA::parent_order(np, n, rng);
+        const auto order = mootation::rvea_parent_order(np, n, rng);
         for (int r = 0; r * np < n; ++r) {
             std::vector<int> part(order.begin() + r * np,
                                   order.begin() + std::min<int>((r + 1) * np, n));

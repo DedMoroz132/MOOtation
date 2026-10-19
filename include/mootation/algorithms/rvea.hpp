@@ -32,7 +32,8 @@
 //   when the population had shrunk below N (an irregular front, POPULATION
 //   SIZE below) the same pairs came again every round — at 20 of 126, 10
 //   distinct pairs of 63. Now the survivors are shuffled anew for every
-//   round after the first while the population is below N (parent_order), so
+//   round after the first while the population is below N
+//   (rvea_parent_order, RVEA*'s too), so
 //   the pairs are random as §III-B has them. A full population is gone
 //   through once, as before (at an odd N the last pair's second parent is
 //   still the first of the shuffle): its runs are unchanged; runs whose
@@ -79,6 +80,25 @@
 #include "../operators/sbx.hpp"
 
 namespace mootation {
+
+// The parents of a generation's n offspring in RVEA and RVEA* (§III-B: random
+// pairs, no mating selection), pairs (order[i], order[i + 1]) for i = 0, 2,
+// ...: the n_parents survivors shuffled, gone through in that order, and
+// shuffled anew for every further round while they are fewer than n (RVEA-3).
+inline std::vector<int> rvea_parent_order(int n_parents, int n, std::mt19937& rng)
+{
+    const int slots = n + n % 2;              // an odd n: its last pair's second parent too
+    std::vector<int> perm(static_cast<std::size_t>(n_parents)), order;
+    std::iota(perm.begin(), perm.end(), 0);
+    std::shuffle(perm.begin(), perm.end(), rng);
+    order.reserve(static_cast<std::size_t>(slots));
+    for (int k = 0; k < slots; ++k) {
+        if (k > 0 && k % n_parents == 0 && n_parents < n)
+            std::shuffle(perm.begin(), perm.end(), rng);
+        order.push_back(perm[static_cast<std::size_t>(k % n_parents)]);
+    }
+    return order;
+}
 
 template <typename Ind_t>
 class RVEACore {
@@ -367,25 +387,6 @@ public:
         if (V0_.empty()) generate_reference_vectors(n, m);
     }
 
-    // The parents of a generation's n offspring (§III-B: random pairs, no
-    // mating selection), pairs (order[i], order[i + 1]) for i = 0, 2, ...: the
-    // n_parents survivors shuffled, gone through in that order, and shuffled
-    // anew for every further round while they are fewer than n (RVEA-3).
-    static std::vector<int> parent_order(int n_parents, int n, std::mt19937& rng)
-    {
-        const int slots = n + n % 2;          // an odd n: its last pair's second parent too
-        std::vector<int> perm(static_cast<std::size_t>(n_parents)), order;
-        std::iota(perm.begin(), perm.end(), 0);
-        std::shuffle(perm.begin(), perm.end(), rng);
-        order.reserve(static_cast<std::size_t>(slots));
-        for (int k = 0; k < slots; ++k) {
-            if (k > 0 && k % n_parents == 0 && n_parents < n)
-                std::shuffle(perm.begin(), perm.end(), rng);
-            order.push_back(perm[static_cast<std::size_t>(k % n_parents)]);
-        }
-        return order;
-    }
-
     // ── step: one full generation (Algorithm 1) ────────────────────────────
     void step(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
@@ -399,7 +400,7 @@ public:
         vault.expand(n);
 
         // ── breed n offspring into [n_parents, n_parents+n) ───────────────
-        const std::vector<int> order = parent_order(n_parents, n, rng_);
+        const std::vector<int> order = rvea_parent_order(n_parents, n, rng_);
 
         // §IV-C-1: p_c = 1.0, p_m = 1/n (n is the number of real-valued variables).
         double pm = (pm_ >= 0.0) ? pm_

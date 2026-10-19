@@ -36,6 +36,11 @@
 //
 // Defaults = RVEA's, §IV-C: α=2, fr=0.1; η_c=30, p_c=1.0, η_m=20, p_m=1/n.
 // DECLARED READINGS:
+//   RVEA*-6 (resolved, task 13 of 2026-10-19): the random pairs of parents
+//     are RVEA's (rvea.hpp, RVEA-3, rvea_parent_order): the survivors shuffled
+//     anew for every round while they are fewer than N, not one shuffle gone
+//     through again (which brought the same pairs back). With N survivors —
+//     what RVEA*-1 keeps whenever the pool allows — the runs are unchanged.
 //   RVEA*-1 POPULATION N. With one elitist per non-empty vector of V ∪ V* the
 //     paper's population can grow to 2N (Table VII gives RVEA a second, random
 //     set of vectors too, "for fair comparisons"). Here every generation keeps
@@ -80,6 +85,7 @@
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
 #include "../detail/constrained.hpp"
+#include "rvea.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
@@ -394,9 +400,7 @@ public:
         vault.expand(n);
 
         // ── breed n offspring into [n_parents, n_parents+n) ───────────────
-        std::vector<int> perm(n_parents);
-        std::iota(perm.begin(), perm.end(), 0);
-        std::shuffle(perm.begin(), perm.end(), rng_);
+        const std::vector<int> order = rvea_parent_order(n_parents, n, rng_);   // RVEA*-6
 
         // §IV-C-1: p_c = 1.0, p_m = 1/n (n is the number of real-valued variables).
         double pm = (pm_ >= 0.0) ? pm_
@@ -404,8 +408,8 @@ public:
 
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         for (int i = 0; i < n; i += 2) {
-            int p1 = perm[i % n_parents];
-            int p2 = perm[(i + 1) % n_parents];
+            int p1 = order[i];
+            int p2 = order[i + 1];
             for (int j = 0; j < vault.vars_n(); ++j) {
                 pv1[j] = vault.get_variable(p1, j);
                 pv2[j] = vault.get_variable(p2, j);
