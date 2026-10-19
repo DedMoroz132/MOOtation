@@ -10,6 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `nsga2_sdr` (task 13 of 2026-10-19, §1): NSGA-II/SDR, NSGA-II with Pareto
+  dominance replaced by the strengthened dominance relation of Tian, Cheng,
+  Zhang, Su & Jin (IEEE TEVC 23(2), 2019): R normalised by its own minima
+  and maxima, Con = Σ f̄, the niche size θ̄ the ⌊|R|/2⌋-th distinct nearest
+  angle, x ≺ y ⟺ Con(x)·max(1, θ_xy/θ̄) < Con(y), the layers by Deb's fast
+  non-dominated sort with every pair compared (the relation is not
+  transitive). A family of its own in `algorithms.def`, "Modified dominance
+  relation"; NSGA-II's operators and defaults; feasibility first under
+  constraints, SDR among the feasible points. The relation and the sort are
+  `sdr.hpp` (in Python `_core.sdr_layers`); `tests/test_sdr.cpp` checks the
+  paper's Fig. 4 and Property 3, the relation's properties and the core,
+  and `test_run_layer.py` the layers and θ̄ against a reference written from
+  the paper, bit for bit. The other algorithms are unchanged.
 - `dss::order` (mosa's answer, DMS, the inner archive) sets the almost
   dominated points aside with less work and the same order, bit for bit
   (task 12 of 2026-10-19, §4): every node of its k-d tree holds the smallest

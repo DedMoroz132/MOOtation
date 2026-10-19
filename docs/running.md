@@ -18,7 +18,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 |---|---|
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
-| `--algorithms` | list the 75 algorithm names and the nine Python methods |
+| `--algorithms` | list the 76 algorithm names and the nine Python methods |
 | `--problems` | list the 1350 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
@@ -503,7 +503,7 @@ probability 1/(number of genes) but at most 1/2 (pymoo's cap; with a single
 gene 1 would change every child's), one of its other values, each alike —
 a bit flips (`operators/bit_flip.hpp`). SBX, DE and polynomial mutation never
 see them, and with more than two genes a binary run is what it was, bit for
-bit. 50 of the 75 cores take the integer genome; these 25 refuse it by name:
+bit. 51 of the 76 cores take the integer genome; these 25 refuse it by name:
 `bc_rex`, `bc_spx`, `clia`, `dcea`, `dea_gng`, `dhea`, `dms`, `dmulti_mads`, `dn_nsga2`,
 `etea`, `gde3`, `hcca`, `hlmea`, `if_maoea`, `isde_rd`, `maoea_3c`, `mo_cma_es`,
 `moead_ds`, `mosa`, `multiglods`, `naemo`, `paes`, `rm_meda`, `smpso` and `two_arch2`
@@ -1072,7 +1072,7 @@ does. The operators live in `operators/real_crossover.hpp`,
 `operators/multi_parent.hpp` and `operators/real_mutation.hpp`, with
 DE/rand/2/bin and DE/best/1/bin (Storn & Price's DE/x/y/z notation) in
 `operators/de_mutation.hpp`. The crossover and mutation are switchable in
-NSGA-II, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA; MOEA/D-DE takes the
+NSGA-II, NSGA-II/SDR, IBEA-ε+, SPEA2+SDE, AGE-MOEA and SMS-EMOA; MOEA/D-DE takes the
 mutation.
 
 **Crowding in the decision space.** `crowding_space = "decision"` makes
@@ -1358,7 +1358,7 @@ and to `final` for the whole run:
 
 The relations are to the parent POPULATION, the one before the step: the
 library does not track which individuals an offspring came from across its
-75 cores, so "not dominated by its parents" is read as "by any parent", and
+76 cores, so "not dominated by its parents" is read as "by any parent", and
 the nearest parent as the nearest member. The statistics cost milliseconds
 and never change a run: the populations are the same with them on or off.
 They are off by default and not computable afterwards, so `--recompute`

@@ -589,7 +589,7 @@ struct RunConfig {
     // What an operator that can leave the box does there (text_knobs() in
     // settings.hpp); the algorithms without such an operator report it ignored.
     std::optional<std::string> bound_repair;
-    // Switchable operators (nsga2, ibea_eplus, spea2_sde, agemoea; moead_de the
+    // Switchable operators (nsga2, nsga2_sdr, ibea_eplus, spea2_sde, agemoea; moead_de the
     // mutation only) and their parameters: text_knobs() / knob_names().
     std::optional<std::string> crossover, mutation;
     // nsga2: crowding distance over the objectives or the decision variables
@@ -1257,10 +1257,10 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("crossover",       &RunConfig::crossover,
                        "sbx (the default), uniform, blx_alpha, the multi-parent spx, rex, "
                        "undx, pcx, differential evolution de, de_pbest, or portfolio: nsga2, "
-                       "ibea_eplus, spea2_sde, agemoea, sms_emoa")
+                       "nsga2_sdr, ibea_eplus, spea2_sde, agemoea, sms_emoa")
         .def_readwrite("mutation",        &RunConfig::mutation,
                        "polynomial (the default), gaussian, cauchy, uniform_reset, mixture, "
-                       "mixture_cauchy or none: the same five and moead_de")
+                       "mixture_cauchy or none: the same six and moead_de")
         .def_readwrite("dms_init",        &RunConfig::dms_init,
                        "dms: the initial list, line (n points on the diagonal, the paper's "
                        "best), single (the centre of the box) or random (a Latin hypercube "
@@ -1439,6 +1439,17 @@ PYBIND11_MODULE(_core, m)
           "The first k indices of `points` in DSS order, as DMS selects its answer "
           "(include/mootation/dss.hpp); the same order as "
           "mootation.run.archive.dss_order in the set's own frame.");
+    m.def("sdr_layers",
+          [](const std::vector<std::vector<double>>& points) {
+              double theta_bar = 0.0;
+              auto rank = mootation::sdr::layers(points, &theta_bar);
+              return py::make_tuple(theta_bar, rank);
+          },
+          py::arg("points"),
+          "(theta_bar, rank): the niche size and every point's layer, 0 for the "
+          "non-dominated, by the strengthened dominance relation of NSGA-II/SDR "
+          "over the set normalised by its own minima and maxima "
+          "(include/mootation/sdr.hpp).");
     bind_run_layer(m);
     m.def("hv_contributions",
           [](const std::vector<std::vector<double>>& points, const std::vector<double>& ref,

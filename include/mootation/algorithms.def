@@ -22,6 +22,9 @@ MOOTATION_ALG(agemoea,    AGEMOEA_Individual,   AGEMOEACore)
 MOOTATION_ALG(etea,       NSGAII_Individual,    ETEACore)
 MOOTATION_ALG(gde3,       NSGAII_Individual,    GDE3Core)
 
+// ── Modified dominance relation ─────────────────────────────────────────────
+MOOTATION_ALG(nsga2_sdr,  NSGAII_Individual,    NSGAIISDRCore)
+
 // ── Reference-point (NSGA-III family) ───────────────────────────────────────
 MOOTATION_ALG(nsga3,      NSGAIII_Individual,   NSGAIIICore)
 MOOTATION_ALG(a_nsga3,    ANSGA3_Individual,    ANSGA3Core)

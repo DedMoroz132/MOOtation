@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // Differential evolution as the crossover of the switchable algorithms
-// (task 7 of 2026-10-10, §2.1-2.2): nsga2, ibea_eplus, spea2_sde, agemoea and
-// sms_emoa take crossover = "de" or "de_pbest" (real_crossover.hpp).
+// (task 7 of 2026-10-10, §2.1-2.2): nsga2, nsga2_sdr, ibea_eplus, spea2_sde,
+// agemoea and sms_emoa take crossover = "de" or "de_pbest" (real_crossover.hpp).
 //
 //   de        DE/rand/1/bin: the mutant v = r1 + F·(r2 − r3), crossed
 //             binomially with the target r0 — each variable from v with
@@ -19,8 +19,8 @@
 //             ⌈p·N⌉ (de_p, 0.1; JADE's p, "5-20 %"; with SHADE p is drawn
 //             per child, below), x_r1 from the host's mating
 //             selection and x̃_r2 from the population ∪ the archive. WHAT "BEST"
-//             MEANS IS THE HOST'S OWN ORDER, the one its selection uses (nsga2:
-//             rank, then crowding distance; ibea_eplus: fitness; spea2_sde:
+//             MEANS IS THE HOST'S OWN ORDER, the one its selection uses (nsga2,
+//             nsga2_sdr: rank, then crowding distance; ibea_eplus: fitness; spea2_sde:
 //             fitness; agemoea: rank, then survival score; sms_emoa: rank, then
 //             hypervolume contribution in the last front) — JADE has one scalar f.
 //   archive   (de_archive, on by default) the parents the host's selection

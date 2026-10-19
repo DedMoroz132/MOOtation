@@ -4,7 +4,7 @@
 Three shapes, from the most static to the most portable: the algorithm fixed at
 compile time (`Optimizer<Ind, Core>`), the algorithm chosen by name at run time
 with either the library or you owning the loop (`embed.hpp`), and the same loop
-behind a C ABI for other languages. All three run the same 75 cores from
+behind a C ABI for other languages. All three run the same 76 cores from
 `include/mootation/algorithms.def`.
 
 ## Compile-time choice: `Optimizer<Ind, Core>`
@@ -56,7 +56,7 @@ carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 you; the full WFG / MaF families live on the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
-[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 50 of the 75 cores
+[`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 51 of the 76 cores
 accept one, the other 18 refuse it at `setup()` with a message.
 
 ### External or parallel evaluation
@@ -103,7 +103,7 @@ sizes in the message.
 
 ## Run-time choice: `embed.hpp`
 
-`#include <mootation/embed.hpp>` instantiates all 75 cores in that translation
+`#include <mootation/embed.hpp>` instantiates all 76 cores in that translation
 unit so that the algorithm can be picked by name. That is a real compile-time
 cost (about a minute); a program that always runs one algorithm should use
 `Optimizer<Ind, Core>` directly.
@@ -167,6 +167,7 @@ AGE-MOEA and SMS-EMOA took it only from task 7 on.
 | algorithm | `pm` | `eta_m` | `eta_c` | `mutation` | `crossover` |
 |---|---|---|---|---|---|
 | `nsga2` | yes | yes | yes | yes | yes |
+| `nsga2_sdr` | yes | yes | yes | yes | yes |
 | `spea2` | no | yes | yes | no | no |
 | `spea2_sde` | yes | yes | yes | yes | yes |
 | `grea` | no | yes | yes | no | no |
