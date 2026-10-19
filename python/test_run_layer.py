@@ -9977,22 +9977,34 @@ def hv_contrib_takes_its_words_and_refuses_others():
         assert "hv_contrib" in r.ignored, (alg, r.ignored)
 
 
-def main() -> int:
+def main(argv=None) -> int:
+    """python test_run_layer.py [--shard i/n]: every test, or the i-th of n
+    parts (the tests i, i + n, i + 2n, ...; 0 <= i < n), so that n processes
+    run them all at once."""
     import os
     import shutil
+    argv = sys.argv[1:] if argv is None else argv
+    tests = TESTS
+    if argv[:1] == ["--shard"] and len(argv) == 2:
+        i, n = (int(v) for v in argv[1].split("/"))
+        assert 0 <= i < n, argv
+        tests = TESTS[i::n]
+    elif argv:
+        print("usage: test_run_layer.py [--shard i/n]", file=sys.stderr)
+        return 2
     # a cache of references of the tests' own (refs.py), never the user's
     refs_dir = tempfile.mkdtemp(prefix="mootation-refs-")
     os.environ["MOOTATION_REFS_DIR"] = refs_dir
     try:
-        return _run_tests()
+        return _run_tests(tests)
     finally:
         shutil.rmtree(refs_dir, ignore_errors=True)
 
 
-def _run_tests() -> int:
+def _run_tests(tests) -> int:
     import os
     failed = []
-    for fn in TESTS:
+    for fn in tests:
         try:
             fn()
             print(f"  ok    {fn.__name__}")
@@ -10006,7 +10018,7 @@ def _run_tests() -> int:
                 what = f"{type(e).__name__}: {e}".replace("\n", " ")[:300]
                 print(f"::error title=run layer: {fn.__name__}::line {where.lineno} of "
                       f"{Path(where.filename).name}: {what}", flush=True)
-    print(f"\n{len(TESTS) - len(failed)}/{len(TESTS)} passed")
+    print(f"\n{len(tests) - len(failed)}/{len(tests)} passed")
     if failed:
         print("failed: " + ", ".join(failed), file=sys.stderr)
         return 1
