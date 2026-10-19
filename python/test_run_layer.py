@@ -7755,6 +7755,67 @@ gens = 0
 
 
 @test
+def an_empty_pareto_set_sample_measures_no_decision_space_indicator():
+    """Task 13, owner's decision 1: the failed band of ZDT1_fail10b and
+    _fail30b takes all of ZDT1's Pareto set, whose sample is then empty; their
+    runs end (CR took the minimum of no rows before), IGDX, CR and PSP are
+    None as for a problem without a Pareto set, and meta.json says why; the
+    other indicators as for any run."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import os
+    from mootation.benchmarks import registry as R
+    from mootation.run import campaign as C, refs
+    from mootation.run.config import load
+    names = ["ZDT1_fail10b", "ZDT1_fail30b"]
+    assert all(len(R.PROBLEMS[n].pareto_set(100)) == 0 for n in names)
+    text = """
+[run]
+name = "ep"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = NAMES
+[campaign]
+out = "runs"
+budget_fe = 600
+n_ref = 150
+metrics = ["igdp_norm", "hv_h", "igdx"]
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+""".replace("NAMES", json.dumps(names))
+    old_dir = os.environ.get(refs.ENV_DIR)
+    with tempfile.TemporaryDirectory() as td:
+        os.environ[refs.ENV_DIR] = str(Path(td) / "cache")
+        try:
+            path = Path(td) / "ep.toml"
+            path.write_text(text, encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            counts = C.run_campaign(cfg, workers=2)
+            assert counts["done"] == 2 and counts["failed"] == 0, counts
+            root = C.out_root(cfg, C.campaign_spec(cfg))
+            for n in names:
+                d = root / n / "nsga2" / "run_1"
+                meta = json.loads((d / "meta.json").read_text("utf-8"))
+                assert "Pareto-set sample is empty" in meta["pareto_set_empty"], meta
+                final = meta["final"]
+                assert all(final[k] is None for k in ("igdx", "cr", "psp")), final
+                assert final["igdp_norm"] is not None and final["hv_h"] is not None, final
+                recs = [json.loads(line) for line in (d / "trajectory.jsonl").read_text(
+                    "utf-8").splitlines()]
+                assert recs and all(r.get("igdx") is None for r in recs)
+        finally:
+            if old_dir is None:
+                os.environ.pop(refs.ENV_DIR, None)
+            else:
+                os.environ[refs.ENV_DIR] = old_dir
+
+
+@test
 def refs_build_extend_keeps_a_smaller_sample_where_the_builder_does():
     """Task 12, §3: refs build --extend --n-ref N beside an entry of n < N
     points: where the builder's n points are the first of its N (Polygon:

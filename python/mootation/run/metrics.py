@@ -932,7 +932,10 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 out["r2"] = r2_discrete(F, ideal, nadir, h)
                 out["r2_h"] = h
         elif name in ("igdx", "cr", "psp"):
-            if X is None or pareto_set is None or bounds is None or not np.size(X):
+            # an empty sample (a failing copy whose failed region takes all of
+            # the Pareto set: failing.py) as no sample
+            if X is None or pareto_set is None or not np.size(pareto_set) \
+                    or bounds is None or not np.size(X):
                 out[name] = None
             elif name == "igdx":
                 out[name] = igdx(X, pareto_set, bounds=bounds, cyclic=cyclic)
@@ -965,7 +968,8 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 g = shared["g"]
                 out[name] = float(g.min() if name == "g_min" else np.median(g))
         elif name == "ps_dmin":
-            if X is None or pareto_set is None or bounds is None or not np.size(X):
+            if X is None or pareto_set is None or not np.size(pareto_set) \
+                    or bounds is None or not np.size(X):
                 out[name] = None
             else:
                 out[name] = ps_dmin(X, pareto_set, bounds=bounds, cyclic=cyclic)

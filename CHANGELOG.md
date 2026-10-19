@@ -16,6 +16,13 @@ always listed under **Changed** or **Removed**.
   results** only where its population fell below N; with N survivors, which
   RVEA*-1 keeps whenever the pool allows, the runs are the same.
 
+- A campaign's runs of ZDT1_fail10b and ZDT1_fail30b end again (task 13 of
+  2026-10-19): the failed band takes all of ZDT1's Pareto set, whose sample
+  is then empty, and CR took the minimum of no rows. An empty sample now
+  measures no decision-space indicator (IGDX, CR, PSP, ps_dmin: None, as for a
+  problem without a Pareto set), and meta.json says why (`pareto_set_empty`).
+  Every other run's files are unchanged.
+
 - RVEA: the random pairs of parents (§III-B) are drawn anew for every round
   through the survivors when the population has shrunk below N (task 13 of
   2026-10-19, §2; RVEA-3 in `rvea.hpp`); before, one shuffle was gone through

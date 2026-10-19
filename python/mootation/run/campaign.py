@@ -888,6 +888,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         "numba": wfg_numba_enabled(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
+    if pset is not None and not len(pset):
+        # the decision-space indicators measure nothing (metrics.compute: None)
+        meta["pareto_set_empty"] = ("the Pareto-set sample is empty (a failing copy whose "
+                                    "failed region takes all of it): no decision-space "
+                                    "indicators")
     _write_json(meta_path, meta)
 
     from .archive import GridArchive
