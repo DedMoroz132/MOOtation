@@ -76,7 +76,7 @@ _FALLBACK_TEXT = {
     "local": ("sqp", "nm", "cmaes"),
     "sub_plan": ("grid", "laumanns", "gap"),
     "tch_weights": ("inverse", "lattice"),
-    "hv_algo": ("wfg", "box"),
+    "hv_algo": ("auto", "wfg", "box"),
     "hv_contrib": ("wfg", "hvc"),
     "polish": ("off", "sqp", "nm"),
 }

@@ -328,7 +328,8 @@ public:
             return true;
         }
         if (k != "hv_algo") return false;
-        if (w != "wfg" && w != "box") throw std::invalid_argument("hv_algo = '" + w + "': wfg or box");
+        if (w != "auto" && w != "wfg" && w != "box")      // auto: WFG (MOCMA-5)
+            throw std::invalid_argument("hv_algo = '" + w + "': auto, wfg or box");
         hv_box_ = w == "box";
         return true;
     }

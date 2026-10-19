@@ -7,7 +7,15 @@
 // doi:10.1016/j.cor.2016.06.021 (source hv-box-decomposition_lacour2017_arxiv;
 // task 11 of 2026-10-18, §6.1) — the hv_algo = "box" of the cores that
 // select by hypervolume and of metrics.hypervolume; "wfg" (hypervolume.hpp)
-// stays their default.
+// stays the cores' contributions' default.
+//
+// hv_algo = "auto" (automatic(); task 13 of 2026-10-19, §3a), the default for
+// a SET's hypervolume (metrics.hypervolume, _core.hypervolume): box at 3 to 8
+// objectives, where it is faster than WFG (task 11: x1.1-3.6 at M = 3-6;
+// task 13: x1.6-3.2 at M = 7 and 8, up to 1000 points), WFG at 2 objectives
+// and from 9 on, where box's local upper bounds outgrow the memory (M = 10,
+// 275 points: more than nine million at once). The values agree with WFG's
+// within 1e-11 relative (tests/test_hv_box.cpp), not bit for bit.
 //
 // THE DECOMPOSITION (§2.1, after Kaplan et al. 2008). The region the points
 // dominate, below the reference point r, is the disjoint union of the boxes
@@ -41,6 +49,8 @@
 #include <numeric>
 #include <stdexcept>
 #include <vector>
+
+#include "hypervolume.hpp"
 
 namespace mootation::hypervolume {
 
@@ -202,6 +212,14 @@ inline double box(const double* F, std::size_t n, std::size_t m, const double* r
     k = detail::stable_rows(P, k, m);
     detail::Boxes b(ref, m);
     return b.hv(P.data(), k);
+}
+
+// hv_algo = "auto": box at 3 to 8 objectives, WFG elsewhere (above).
+inline bool auto_takes_box(std::size_t m) { return m >= 3 && m <= 8; }
+
+inline double automatic(const double* F, std::size_t n, std::size_t m, const double* ref)
+{
+    return auto_takes_box(m) ? box(F, n, m, ref) : wfg(F, n, m, ref);
 }
 
 inline double box(const std::vector<std::vector<double>>& rows, const std::vector<double>& ref)

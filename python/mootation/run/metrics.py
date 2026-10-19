@@ -246,12 +246,13 @@ def _hv_wfg(pl: np.ndarray, ref: np.ndarray) -> float:
     return float(total)
 
 
-def _hv_exact(pl: np.ndarray, ref: np.ndarray, hv_algo: str = "wfg") -> float:
+def _hv_exact(pl: np.ndarray, ref: np.ndarray, hv_algo: str = "auto") -> float:
     """Exact hypervolume of `pl` (nondominated, inside `ref`): C++ when built,
-    by WFG or by box decomposition (hv_algo; the same value up to the order of
-    the sums); without the extension WFG in Python, either way."""
-    if hv_algo not in ("wfg", "box"):
-        raise ValueError(f"hv_algo = '{hv_algo}': wfg or box")
+    by box decomposition at 3 to 8 objectives and WFG elsewhere ("auto"), by
+    WFG or by boxes (hv_algo; the same value up to the order of the sums);
+    without the extension WFG in Python, whatever hv_algo says."""
+    if hv_algo not in ("auto", "wfg", "box"):
+        raise ValueError(f"hv_algo = '{hv_algo}': auto, wfg or box")
     try:
         from .. import _core
         fn = getattr(_core, "hypervolume", None)
@@ -259,7 +260,7 @@ def _hv_exact(pl: np.ndarray, ref: np.ndarray, hv_algo: str = "wfg") -> float:
         fn = None
     if fn is not None:
         P, R = np.ascontiguousarray(pl, float), np.ascontiguousarray(ref, float)
-        return float(fn(P, R) if hv_algo == "wfg" else fn(P, R, hv_algo))
+        return float(fn(P, R, hv_algo))
     return _hv_wfg(pl, ref)
 
 
@@ -320,19 +321,20 @@ def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: 
 
 def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
                 mc_samples: int = HV_MC_SAMPLES, seed: int = 0,
-                exact_max_m: int = HV_EXACT_MAX_M, hv_algo: str = "wfg") -> tuple[float, str]:
+                exact_max_m: int = HV_EXACT_MAX_M, hv_algo: str = "auto") -> tuple[float, str]:
     """Normalised hypervolume and the method used ("exact" or "mc").
 
     F is normalised to (F - ideal) / (nadir - ideal); the reference point is
     ref_scale in every objective; the result is divided by ref_scale^M. Exact
     up to `exact_max_m` objectives, a Monte-Carlo estimate from `mc_samples`
     points (the same points on every call with the same seed) above. The exact
-    value by WFG (hv_algo = "wfg", the default) or by box decomposition ("box";
-    task 11 of 2026-10-18, §6.1: Lacour, Klamroth & Fonseca 2017), the same up
-    to the last bits.
+    value by box decomposition at 3 to 8 objectives and WFG elsewhere
+    (hv_algo = "auto", the default; task 13 of 2026-10-19, §3a), by WFG
+    ("wfg") or by box decomposition ("box"; task 11 of 2026-10-18, §6.1:
+    Lacour, Klamroth & Fonseca 2017), the same up to the last bits.
     """
-    if hv_algo not in ("wfg", "box"):
-        raise ValueError(f"hv_algo = '{hv_algo}': wfg or box")
+    if hv_algo not in ("auto", "wfg", "box"):
+        raise ValueError(f"hv_algo = '{hv_algo}': auto, wfg or box")
     F = np.asarray(F, float)
     ideal = np.asarray(ideal, float)
     nadir = np.asarray(nadir, float)

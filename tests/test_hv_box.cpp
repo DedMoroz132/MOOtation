@@ -5,7 +5,9 @@
 // objectives — fronts, dominated points, copies, equal coordinates, points on
 // the reference point's faces — within 1e-12 relative; the contributions
 // (hv_contribution.hpp) within 1e-12 of the set's hypervolume. Small cases by
-// hand.
+// hand. hv_algo = "auto" (automatic, task 13 of 2026-10-19, §3a) on 10 000
+// random sets at 2 to 10 objectives: box's value bit for bit at 3 to 8, WFG's
+// elsewhere, and within 1e-11 of WFG everywhere.
 // ============================================================================
 
 #include <algorithm>
@@ -104,8 +106,39 @@ int main()
                   "contributions of set " + std::to_string(t));
         }
     }
+    // ── hv_algo = "auto" ────────────────────────────────────────────────────
+    double worst_a = 0.0;
+    {
+        std::mt19937_64 rng(20261020);
+        std::uniform_real_distribution<double> u(0.0, 1.0);
+        std::normal_distribution<double> g(0.0, 1.0);
+        for (int t = 0; t < 10000; ++t) {
+            const std::size_t m = 2 + t % 9;
+            const std::size_t n = 1 + rng() % (m <= 6 ? 40 : m <= 8 ? 20 : 10);
+            std::vector<double> F, r(m, 1.1);
+            for (std::size_t i = 0; i < n; ++i) {
+                std::vector<double> f(m);
+                double s = 0.0;
+                for (auto& v : f) { v = std::abs(g(rng)); s += v * v; }
+                for (auto& v : f) v = (1.0 + 0.2 * u(rng)) * v / std::sqrt(s);
+                F.insert(F.end(), f.begin(), f.end());
+            }
+            const double a = H::automatic(F.data(), n, m, r.data());
+            const double w = H::wfg(F.data(), n, m, r.data());
+            const double same = H::auto_takes_box(m) ? H::box(F.data(), n, m, r.data()) : w;
+            check(a == same, "auto takes " + std::string(H::auto_takes_box(m) ? "box" : "wfg") +
+                                 " at m = " + std::to_string(m) + ", set " + std::to_string(t));
+            const double d = std::abs(a - w);
+            worst_a = std::max(worst_a, w > 0.0 ? d / w : d);
+            check(d <= 1e-11 * std::max(w, 1e-300) || (w == 0.0 && d == 0.0),
+                  "auto within 1e-11 of wfg, set " + std::to_string(t));
+        }
+    }
+    check(!H::auto_takes_box(2) && H::auto_takes_box(3) && H::auto_takes_box(8) &&
+              !H::auto_takes_box(9), "auto: box at 3 to 8 objectives");
+
     std::printf("hv_box: %d/%d checks passed (largest relative difference %.3g, of the "
-                "contributions %.3g)%s\n", checks - failed, checks, worst, worst_c,
-                failed ? ", FAILED" : "");
+                "contributions %.3g; auto against wfg %.3g)%s\n", checks - failed, checks,
+                worst, worst_c, worst_a, failed ? ", FAILED" : "");
     return failed == 0 ? 0 : 1;
 }

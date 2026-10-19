@@ -1442,8 +1442,8 @@ PYBIND11_MODULE(_core, m)
           [](py::array_t<double, py::array::c_style | py::array::forcecast> points,
              py::array_t<double, py::array::c_style | py::array::forcecast> ref,
              const std::string& algo) {
-              if (algo != "wfg" && algo != "box")
-                  throw std::invalid_argument("hypervolume: algo = '" + algo + "': wfg or box");
+              if (algo != "auto" && algo != "wfg" && algo != "box")
+                  throw std::invalid_argument("hypervolume: algo = '" + algo + "': auto, wfg or box");
               if (points.ndim() != 2)
                   throw std::invalid_argument("hypervolume: points must be a 2-D array");
               if (ref.ndim() != 1 || ref.shape(0) != points.shape(1))
@@ -1454,15 +1454,17 @@ PYBIND11_MODULE(_core, m)
               const double* f = points.data();
               const double* r = ref.data();
               py::gil_scoped_release unlock;
-              return algo == "box" ? mootation::hypervolume::box(f, n, m, r)
-                                   : mootation::hypervolume::wfg(f, n, m, r);
+              return algo == "box"  ? mootation::hypervolume::box(f, n, m, r)
+                   : algo == "wfg"  ? mootation::hypervolume::wfg(f, n, m, r)
+                                    : mootation::hypervolume::automatic(f, n, m, r);
           },
-          py::arg("points"), py::arg("ref"), py::arg("algo") = "wfg",
-          "Exact hypervolume (minimisation) of the rows of `points` against `ref`, by "
-          "the WFG algorithm (While, Bradstreet & Barone 2012), or with algo = \"box\" "
-          "by box decomposition (Lacour, Klamroth & Fonseca 2017; hv_box.hpp), the "
-          "same value up to the order of the sums. Rows not strictly better than "
-          "`ref` in every objective, and rows with a NaN, add nothing.");
+          py::arg("points"), py::arg("ref"), py::arg("algo") = "auto",
+          "Exact hypervolume (minimisation) of the rows of `points` against `ref`: "
+          "algo = \"auto\" (the default) by box decomposition at 3 to 8 objectives and "
+          "by WFG elsewhere, \"wfg\" by the WFG algorithm (While, Bradstreet & Barone "
+          "2012), \"box\" by box decomposition (Lacour, Klamroth & Fonseca 2017; "
+          "hv_box.hpp) — the same value up to the order of the sums. Rows not strictly "
+          "better than `ref` in every objective, and rows with a NaN, add nothing.");
     m.def("hv_covered",
           [](py::array_t<double, py::array::c_style | py::array::forcecast> points,
              py::array_t<double, py::array::c_style | py::array::forcecast> samples) {

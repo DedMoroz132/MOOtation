@@ -85,7 +85,10 @@ namespace mootation {
 //     set_n_samples changes the number; set_n_samples(0) makes every M exact.
 //     hv_algo = box: the exact contributions' hypervolumes by box
 //     decomposition (hv_box.hpp) instead of WFG — the same values up to the
-//     order of the sums, so a near tie may go the other way.
+//     order of the sums, so a near tie may go the other way. hv_algo = auto
+//     (the default since task 13 of 2026-10-19, §3a) is WFG here: box is
+//     chosen automatically only for a set's hypervolume, never for the
+//     contributions, where it is not faster.
 //     hv_contrib = hvc (task 12 of 2026-10-19, §5): the exact contributions
 //     at M = 3 and 4 by HVC3D and HVC4D of Guerreiro & Fonseca (IEEE TEVC
 //     22(3), 2018; hvc.hpp) instead of WFG (wfg, the default). At M = 3 the
@@ -386,9 +389,9 @@ public:
             bin_cross_ = w == "uniform";
             return true;
         }
-        if (k == "hv_algo") {
-            if (w != "wfg" && w != "box")
-                throw std::invalid_argument("hv_algo = '" + w + "': wfg or box");
+        if (k == "hv_algo") {                              // auto: WFG (SMS-2)
+            if (w != "auto" && w != "wfg" && w != "box")
+                throw std::invalid_argument("hv_algo = '" + w + "': auto, wfg or box");
             hv_box_ = w == "box";
             return true;
         }

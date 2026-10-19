@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `hv_algo = "auto"`, the new default (task 13 of 2026-10-19, §3a). For a
+  set's hypervolume (`metrics.hypervolume`, the campaign's `hv`/`hv_h`,
+  `_core.hypervolume`): box decomposition at 3 to 8 objectives, where it is
+  the faster, WFG at 2 and from 9 on (`hypervolume::automatic`, `hv_box.hpp`).
+  The values agree with WFG's within 1e-11 relative, not bit for bit: the
+  hypervolumes in metric files may differ from earlier runs in the last bits.
+  For the contributions of SMS-EMOA and MO-CMA-ES `auto` is WFG, as before:
+  the runs are unchanged. `wfg` and `box` stay available.
+
 - `minimize` with `seed_population`, binary or categorical `var_types` and
   `constraints` failed before the run (IndexError in `Layout.to_user`): the
   seed points' constraint values were computed from the real variables

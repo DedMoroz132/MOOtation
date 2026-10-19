@@ -10311,6 +10311,15 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
         b, _ = M.hypervolume(G, np.zeros(m), np.ones(m), hv_algo="box")
         assert abs(a - b) <= 1e-12 * a, (m, a, b)
     assert raises(ValueError, M.hypervolume, G, np.zeros(6), np.ones(6), hv_algo="qhv")
+    # hv_algo = "auto" (task 13, §3a), the default: box at 3 to 8 objectives, WFG elsewhere
+    from mootation import _core
+    for m in (2, 3, 6, 8, 9):
+        G = np.abs(rng.standard_normal((30, m)))
+        G /= np.linalg.norm(G, axis=1, keepdims=True)
+        R = np.full(m, 1.1)
+        want = _core.hypervolume(G, R, "box" if 3 <= m <= 8 else "wfg")
+        assert _core.hypervolume(G, R) == _core.hypervolume(G, R, "auto") == want, m
+        assert M._hv_exact(G, R) == want, m
     p = get("DTLZ2_3D")
     for alg in ("sms_emoa", "mo_cma_es"):
         r = minimize(p.evaluate, p.bounds, 3, algorithm=alg, pop_size=20, max_evaluations=400,
