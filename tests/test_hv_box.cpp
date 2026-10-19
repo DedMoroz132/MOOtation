@@ -109,18 +109,18 @@ int main()
     // ── hv_algo = "auto" ────────────────────────────────────────────────────
     double worst_a = 0.0;
     {
-        std::mt19937_64 rng(20261020);
-        std::uniform_real_distribution<double> u(0.0, 1.0);
-        std::normal_distribution<double> g(0.0, 1.0);
+        std::mt19937_64 rng_a(20261020);
+        std::uniform_real_distribution<double> ua(0.0, 1.0);
+        std::normal_distribution<double> ga(0.0, 1.0);
         for (int t = 0; t < 10000; ++t) {
             const std::size_t m = 2 + t % 9;
-            const std::size_t n = 1 + rng() % (m <= 6 ? 40 : m <= 8 ? 20 : 10);
+            const std::size_t n = 1 + rng_a() % (m <= 6 ? 40 : m <= 8 ? 20 : 10);
             std::vector<double> F, r(m, 1.1);
             for (std::size_t i = 0; i < n; ++i) {
                 std::vector<double> f(m);
                 double s = 0.0;
-                for (auto& v : f) { v = std::abs(g(rng)); s += v * v; }
-                for (auto& v : f) v = (1.0 + 0.2 * u(rng)) * v / std::sqrt(s);
+                for (auto& v : f) { v = std::abs(ga(rng_a)); s += v * v; }
+                for (auto& v : f) v = (1.0 + 0.2 * ua(rng_a)) * v / std::sqrt(s);
                 F.insert(F.end(), f.begin(), f.end());
             }
             const double a = H::automatic(F.data(), n, m, r.data());
