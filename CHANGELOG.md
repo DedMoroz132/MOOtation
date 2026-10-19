@@ -38,6 +38,18 @@ always listed under **Changed** or **Removed**.
   bit, so a run may take another trajectory; `wfg` stays the default.
   `tests/test_hvc.cpp` checks them against WFG on 10 000 random sets and the
   updated structure against one built from scratch, bit for bit.
+- MaF14 and MaF15 (Cheng et al. 2017, Eq. 41–50; task 12 of 2026-10-19,
+  §2): LSMOP3 and the inverted LSMOP8 at 3, 5, 8, 10 and 15 objectives, with
+  the paper's D = 20 M variables, N_k = 2 and budget (max{100 000, 10 000 D}
+  evaluations), their fronts (the simplex; 1 minus the sphere's octant) and
+  Pareto sets, and Table 1's properties. Where the paper refers to the LSMOP
+  paper (the sizes of the variable groups) or prints MaF14's positions in
+  [0, 10], `benchmarks/maf.py` says how it is read. In the C++ suite from the
+  start, the NumPy code (`maf.lsmop_rows`) the reference, bit for bit.
+- Changed: MaF8 is computed in the C++ suite (§6) and is version 2 of itself:
+  its distances are the C library's `hypot` (`np.hypot`, `std::hypot`), not
+  CPython's `math.hypot`, an algorithm of its own: the values changed in the
+  last bit (`registry.PROBLEM_VERSION`).
 - An ND-tree (Jaszkiewicz & Lust, IEEE TEVC 22(5), 2018; `nd_tree.hpp`)
   behind the run archive's dominance checks from three objectives and the
   nondominated filter from four (task 11 of 2026-10-18, §2): the same answers

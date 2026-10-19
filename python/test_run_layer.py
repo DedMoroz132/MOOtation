@@ -9238,7 +9238,7 @@ def mosqp_spreads_refines_and_keeps_its_budget():
 _SUITE_STEMS = (r"(shift)?ZDT[12346]", r"DTLZ[1-7]_\d+D", r"wideDTLZ3_\d+D",
                 r"shiftDTLZ[1-467]_\d+D", r"IDTLZ[12]_\d+D", r"minusDTLZ2_\d+D",
                 r"SDTLZ[12]_\d+D", r"C1-DTLZ[13]_\d+D", r"C2-DTLZ2_\d+D", r"C2-ConvexDTLZ2_\d+D",
-                r"C3-DTLZ[14]_\d+D", r"MaF([1-7]|9|13)_\d+D", r"ZCAT\d+_\d+D")
+                r"C3-DTLZ[14]_\d+D", r"MaF([1-9]|1[345])_\d+D", r"ZCAT\d+_\d+D")
 
 
 def _suite_names(R):
@@ -9397,6 +9397,139 @@ def rotations_and_maf9_take_an_order_of_numpys():
                 / ((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2), 0.0), 1.0)
     assert want <= float(np.hypot(0.3 - (a[0] + t * (b[0] - a[0])),
                                   2.0 - (a[1] + t * (b[1] - a[1])))) + 1e-12
+
+
+@test
+def maf8_version_2_takes_the_c_librarys_hypot():
+    """MaF8 (task 12 of 2026-10-19, §6): its distances are np.hypot's, the C
+    library's hypot, which the C++ suite calls, and it is version 2 of itself.
+    Version 1 took CPython's math.hypot, an algorithm of its own (kept here
+    as its reference): the two differ by one ulp at most."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import registry as R
+
+    def version1(x, M):
+        x = np.asarray(x, dtype=float)
+        f = np.empty(M)
+        for m in range(M):
+            th = 2.0 * math.pi * m / M
+            vx, vy = math.cos(th), math.sin(th)
+            f[m] = math.hypot(x[0] - vx, x[1] - vy)
+        return f.tolist()
+
+    rng = np.random.default_rng(8)
+    X = np.vstack([rng.uniform(-1e4, 1e4, (300, 2)), rng.uniform(-3.0, 3.0, (300, 2))])
+    for M in (3, 5, 8, 10, 15):
+        name = f"MaF8_{M}D"
+        p = R.PROBLEMS[name]
+        assert R.problem_version(name) == 2, name
+        ref = (p.reference or {}).get("evaluate_batch", p.evaluate_batch)
+        F = np.asarray(ref(X), float)
+        H = np.column_stack([np.hypot(X[:, 0] - vx, X[:, 1] - vy) for vx, vy in R._maf8_vertices(M)])
+        assert F.tobytes() == H.tobytes(), name
+        old = np.array([version1(x, M) for x in X])
+        assert np.all(np.abs(old - F) <= np.spacing(np.maximum(old, F))), name
+    assert R.problem_version("MaF9_3D") == 1 and R.problem_version("MaF7_3D") == 1
+
+
+@test
+def maf14_and_maf15_as_the_paper_defines_them():
+    """MaF14 (LSMOP3) and MaF15 (the inverted LSMOP8), Cheng et al. 2017,
+    Eq. 41-50 (task 12 of 2026-10-19, §2): D = 20 M, N_k = 2, the groups
+    taking all of x^s; points recomputed term by term by the equations in
+    plain Python against lsmop_rows; the Pareto set's values on the front
+    (the simplex, 1 minus the sphere) and no point dominating it; the paper's
+    budget; Table 1's properties; native = "auto" the run of "off"."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import math
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import maf as MAF
+    from mootation.benchmarks import registry as R
+    from mootation.benchmarks.properties import properties
+
+    def by_the_equations(x, M, which):
+        xf, xs = x[:M - 1], x[M - 1:]
+        ns, up = len(xs), (10.0 if which == 14 else 1.0)
+        z = [(1 + i / ns if which == 14 else 1 + math.cos(0.5 * math.pi * i / ns)) * (v - 0.0)
+             - xf[0] * (up - 0.0) for i, v in enumerate(xs, start=1)]          # Eq. 45, 50
+        groups, at = [], 0
+        for sizes in MAF.lsmop_parts(M):
+            groups.append([z[at + sum(sizes[:s]):at + sum(sizes[:s + 1])] for s in range(len(sizes))])
+            at += sum(sizes)
+
+        def eta(odd, u):                                                         # Eq. 44, 49
+            if which == 14 and odd:
+                return sum(t * t - 10 * math.cos(2 * math.pi * t) + 10 for t in u)
+            if which == 14:
+                return sum(100 * (u[i] ** 2 - u[i + 1]) ** 2 + (u[i] - 1) ** 2 for i in range(len(u) - 1))
+            if odd:
+                return (sum(t * t / 4000 for t in u)
+                        - math.prod(math.cos(t / math.sqrt(i + 1)) for i, t in enumerate(u)) + 1)
+            return sum(t * t for t in u)
+
+        def gbar(j, k):                                                          # Eq. 43, 48
+            return sum(eta(j % 2 == 1, u) / len(u) for u in groups[k - 1]) / 2
+
+        f = []
+        for j in range(1, M + 1):
+            if which == 14:                                                      # Eq. 41, 42
+                h = math.prod(xf[:M - j]) * (1 - xf[M - j] if j > 1 else 1)
+                g = gbar(j, j)
+            else:                                                                # Eq. 46, 47
+                th = [math.pi / 2 * t for t in xf]
+                h = 1 - math.prod(math.cos(t) for t in th[:M - j]) * (math.sin(th[M - j]) if j > 1 else 1)
+                g = gbar(j, j) + (gbar(j, j + 1) if j < M else 0.0)
+            f.append(h * (1 + g))
+        return f
+
+    rng = np.random.default_rng(14)
+    for M in (3, 5, 8, 10, 15):
+        D = 20 * M
+        assert sum(map(sum, MAF.lsmop_parts(M))) == D - M + 1, M
+        for which in (14, 15):
+            name = f"MaF{which}_{M}D"
+            p = R.get(name)
+            assert p.n_vars == D and p.n_obj == M and R.problem_version(name) == 1, name
+            assert p.bounds == [(0.0, 1.0)] * (M - 1) + [(0.0, 10.0 if which == 14 else 1.0)] * (D - M + 1)
+            assert p.ideal == (0.0,) * M and p.nadir == (1.0,) * M, name
+            assert abs(p.pop_size * p.n_gen - max(100_000, 10_000 * D)) <= p.pop_size / 2, name
+            lo = np.array([b[0] for b in p.bounds])
+            hi = np.array([b[1] for b in p.bounds])
+            S = np.asarray(p.pareto_set(300), float)
+            X = np.vstack([lo + (hi - lo) * rng.random((3, D)), S[:3] + 0.01 * (hi - lo) * rng.random((3, D))])
+            F = np.asarray(MAF.lsmop_rows(X, M, which), float)
+            for x, f in zip(X.tolist(), F):
+                assert np.allclose(by_the_equations(x, M, which), f, rtol=1e-12, atol=1e-14), (name, x[:3])
+            FS = np.asarray(p.evaluate_batch(S), float)
+            assert np.all((S >= lo) & (S <= hi)), name
+            on = (np.abs(FS.sum(1) - 1.0) if which == 14
+                  else np.abs(np.sqrt(((1.0 - FS) ** 2).sum(1)) - 1.0))
+            assert on.max() <= 1e-12, (name, on.max())
+            PF = np.asarray(p.pareto_front(300), float)
+            A = np.vstack([lo + (hi - lo) * rng.random((1000, D)),
+                           np.clip(S + 1e-3 * (hi - lo) * (rng.random(S.shape) - 0.5), lo, hi)])
+            FA = np.asarray(p.evaluate_batch(A), float)
+            dom = np.any(np.all(FA[:, None, :] <= PF[None], axis=2) &
+                         np.any(FA[:, None, :] < PF[None], axis=2), axis=1)
+            assert not dom.any(), name
+            row = properties(name)
+            assert row["front"] == ("linear" if which == 14 else "convex"), name
+            assert row["separable"] is False and row["linkage"] is True and row["multimodal"], name
+            assert p.front_exact is (which == 15 or M < 8), name
+    assert MAF.lsmop_x1_max(5) == 1.0 and MAF.lsmop_x1_max(8) < 1.0
+    p = R.get("MaF15_3D")
+    if p.native is not None:
+        kw = dict(bounds=p.bounds, n_objs=3, algorithm="nsga2", pop_size=p.pop_size,
+                  max_evaluations=1000, seed=3)
+        auto = minimize(p.evaluate, native="auto", **kw)
+        off = minimize(p.evaluate, native="off", **kw)
+        assert np.asarray(auto.objectives).tobytes() == np.asarray(off.objectives).tobytes()
+        assert auto.native_seconds > 0.0 and off.native_seconds == 0.0
 
 
 @test

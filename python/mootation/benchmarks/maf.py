@@ -14,12 +14,18 @@
 #   pr — the linear position products of DTLZ1
 #   d  — the DTLZ2 directions, with sum d^2 = 1
 # The reference front is built from uniform points on the simplex or sphere.
+#
+# MaF14 and MaF15, the two large-scale problems, are at the end of the module
+# (task 12 of 2026-10-19, §2).
 # ============================================================================
 from __future__ import annotations
 from typing import List
 import itertools
+import math
 from functools import lru_cache as _lru_cache
 import numpy as np
+
+from ._rows import math_cos, math_sin
 
 K = 10
 A = 2.0       # scale factor (MaF4, MaF5)
@@ -64,9 +70,9 @@ def _dtlz1_products_rows(P: np.ndarray, M: int) -> np.ndarray:
     return pr
 
 
-def _dtlz2_dirs_rows(P: np.ndarray, M: int) -> np.ndarray:
-    c = np.cos(0.5 * np.pi * P)
-    s = np.sin(0.5 * np.pi * P)
+def _dtlz2_dirs_rows(P: np.ndarray, M: int, cos=np.cos, sin=np.sin) -> np.ndarray:
+    c = cos(0.5 * np.pi * P)
+    s = sin(0.5 * np.pi * P)
     d = np.empty((len(P), M))
     d[:, 0] = np.prod(c, axis=1) if M > 1 else 1.0
     for i in range(1, M):
@@ -188,3 +194,187 @@ MAF_FIX_ROWS = {"MaF1": maf1_rows, "MaF3": maf3_rows, "MaF4": maf4_rows, "MaF5":
 
 def maf_n_vars(M: int) -> int:
     return M + K - 1
+
+
+# ---- MaF14 and MaF15 (task 12 of 2026-10-19, §2) ---------------------------
+# MaF14 is LSMOP3 and MaF15 the inverted LSMOP8 (Cheng et al. 2017, Eq. 41-50).
+# M objectives and D = 20 M variables (the paper's setting): x^f = x_1 ..
+# x_{M-1}, the positions, in [0, 1]; x^s = x_M .. x_D, in [0, 10] for MaF14
+# and [0, 1] for MaF15, split into M groups x^s_1 .. x^s_M of N_k = 2
+# subcomponents each. Every variable of x^s is linked to x_1 first (Eq. 45, 50):
+#     z_i = a_i (x^s_i - l_i) - x_1 (u_i - l_i),     i = 1 .. |x^s|,
+#     a_i = 1 + i / |x^s| (MaF14),   1 + cos(0.5 pi i / |x^s|) (MaF15),
+# and objective j reads a group through (Eq. 43, 48)
+#     gbar_j(x^s_k) = 1/N_k  sum over the subcomponents s of x^s_k of  eta(z_s) / |s|,
+# eta = eta_1 for an odd j and eta_2 for an even one: Rastrigin and Rosenbrock
+# in MaF14 (Eq. 44), Griewank and the sphere in MaF15 (Eq. 49).
+#   MaF14: f_j = h_j (1 + gbar_j(x^s_j)) (c = I, Eq. 42), h the position
+#          products of DTLZ1 without its 1/2: the front is the simplex
+#          sum f = 1 (Eq. 41).
+#   MaF15: f_j = h_j (1 + (gbar_j(x^s_j) + gbar_j(x^s_{j+1}))), the second
+#          term for j < M only (c_jk = 1 for k = j, j + 1, Eq. 47), h = 1 - the
+#          DTLZ2 directions: the front is 1 minus the sphere's octant (Eq. 46).
+# The terms of c that are 0 are left out of the sums.
+#
+# What the paper leaves open (the LSMOP paper, Cheng, Jin, Olhofer & Sendhoff,
+# IEEE Trans. Cybern. 47(12), 2017, defines it), and the readings here:
+#   * x^f and x^s: the first M - 1 variables and the rest, LSMOP's split;
+#   * the bounds: Eq. 41 prints x in [0, 10]^|x| for MaF14, but positions
+#     beyond 1 make h negative, and the front would not be the simplex of
+#     Fig. 14 and Table 1: [0, 10] is read for x^s, [0, 1] for x^f. MaF15 as
+#     printed (Eq. 46), every variable in [0, 1];
+#   * the sizes of the groups and subcomponents: the LSMOP construction's
+#     non-uniform groups, group k the share c_k / sum(c) of |x^s| by the
+#     logistic map c_1 = 3.8 * 0.1 * (1 - 0.1), c_{k+1} = 3.8 c_k (1 - c_k),
+#     rounded to whole variables by the largest remainders so that D stays
+#     20 M, and cut into N_k subcomponents as equal as they come, the first
+#     the larger (lsmop_parts);
+#   * MaF15's second term reads group j + 1 through objective j's eta, as
+#     printed (c_jk gbar_j(x^s_k)).
+#
+# THE FRONT OF MaF14. The optimum of a Rosenbrock subcomponent (an even
+# group) is z = 1, x_i = l_i + (1 + 10 x_1) / a_i, inside the box while
+# x_1 <= a_i - 1/10. Group 2 starts after group 1, whose share falls below a
+# tenth of |x^s| from eight objectives on: there positions with x_1 above
+# lsmop_x1_max leave some of group 2 off its optimum, and the front (f_2 =
+# h_2 (1 + gbar_2) with gbar_2 > 0) leaves the simplex in the strip f_M <
+# 1 - lsmop_x1_max, its f_2 reaching beyond 1 at the corner. pareto_front
+# gives the simplex, as the paper's Fig. 14 (no point reaches below it), with
+# its frame, ideal 0 and nadir 1, front_exact False there (registry.py); and
+# pareto_set positions with x_1 up to lsmop_x1_max.
+NK = 2              # N_k, the subcomponents of a group
+
+
+def lsmop_n_vars(M: int) -> int:
+    return 20 * M
+
+
+def lsmop_parts(M: int) -> list:
+    """The sizes of the N_k subcomponents of each of the M groups of x^s,
+    group by group: [[|x^s_11|, |x^s_12|], [|x^s_21|, |x^s_22|], ...]."""
+    ns = lsmop_n_vars(M) - M + 1
+    c = [3.8 * 0.1 * (1.0 - 0.1)]
+    while len(c) < M:
+        c.append(3.8 * c[-1] * (1.0 - c[-1]))
+    share = [v / sum(c) * ns for v in c]
+    size = [math.floor(v) for v in share]
+    for k in sorted(range(M), key=lambda k: (size[k] - share[k], k))[:ns - sum(size)]:
+        size[k] += 1
+    parts = [[s // NK + (1 if j < s % NK else 0) for j in range(NK)] for s in size]
+    assert sum(map(sum, parts)) == ns and min(map(min, parts)) >= 1, parts
+    return parts
+
+
+def lsmop_link(M: int, which: int) -> np.ndarray:
+    """(a_i, l_i, u_i - l_i) of every variable of x^s, an (|x^s|, 3) array:
+    MaF14's a_i = 1 + i / |x^s| over [0, 10], MaF15's 1 + cos(0.5 pi i / |x^s|)
+    over [0, 1] (Eq. 45, 50)."""
+    ns = lsmop_n_vars(M) - M + 1
+    r = np.arange(1, ns + 1) / ns
+    a = 1.0 + r if which == 14 else 1.0 + math_cos(0.5 * np.pi * r)
+    span = 10.0 if which == 14 else 1.0
+    return np.column_stack([a, np.zeros(ns), np.full(ns, span)])
+
+
+def _lsmop_columns(M: int) -> list:
+    """The columns of x^s each subcomponent takes, group by group: [[(start,
+    stop), ...], ...]."""
+    out, at = [], 0
+    for sizes in lsmop_parts(M):
+        group = []
+        for s in sizes:
+            group.append((at, at + s))
+            at += s
+        out.append(group)
+    return out
+
+
+def lsmop_x1_max(M: int) -> float:
+    """MaF14: the largest x_1 at which every Rosenbrock subcomponent (of two
+    variables or more) can reach its optimum z = 1 inside the box (THE FRONT
+    OF MaF14 above); 1 where all can."""
+    link = lsmop_link(M, 14)
+    limit = 1.0
+    for k, group in enumerate(_lsmop_columns(M)):
+        if k % 2 == 1:                                  # groups 2, 4, ...: eta_2
+            for s, t in group:
+                if t - s >= 2:
+                    a, w = link[s:t, 0], link[s:t, 2]
+                    limit = min(limit, float(np.min(a - 1.0 / w)))
+    return limit
+
+
+def _eta_rastrigin(Z: np.ndarray) -> np.ndarray:
+    return np.sum(Z ** 2 - 10.0 * math_cos(2 * np.pi * Z) + 10.0, axis=1)
+
+
+def _eta_rosenbrock(Z: np.ndarray) -> np.ndarray:
+    a, b = Z[:, :-1], Z[:, 1:]
+    return np.sum(100.0 * (a ** 2 - b) ** 2 + (a - 1.0) ** 2, axis=1)
+
+
+def _eta_griewank(Z: np.ndarray) -> np.ndarray:
+    root = np.sqrt(np.arange(1, Z.shape[1] + 1))
+    return (np.sum(Z ** 2 / 4000.0, axis=1)
+            - np.prod(math_cos(Z / root), axis=1) + 1.0)
+
+
+def _eta_sphere(Z: np.ndarray) -> np.ndarray:
+    return np.sum(Z ** 2, axis=1)
+
+
+def lsmop_rows(X, M: int, which: int) -> np.ndarray:
+    """MaF14 (which = 14) or MaF15 (15) at the rows of X: an (n, M) array.
+    cos and sin are the C library's at every element (_rows.math_cos)."""
+    D = lsmop_n_vars(M)
+    X = np.ascontiguousarray(X, dtype=float).reshape(-1, D)
+    link = lsmop_link(M, which)
+    Z = link[:, 0] * (X[:, M - 1:] - link[:, 1]) - X[:, :1] * link[:, 2]
+    cols = _lsmop_columns(M)
+    eta = (_eta_rastrigin, _eta_rosenbrock) if which == 14 else (_eta_griewank, _eta_sphere)
+
+    def gbar(j, k):
+        """gbar_(j+1) of group k + 1: eta_1 for objective 1, 3, ..."""
+        acc = np.zeros(len(X))
+        for s, t in cols[k]:
+            acc = acc + eta[j % 2](np.ascontiguousarray(Z[:, s:t])) / (t - s)
+        return acc / NK
+
+    P = X[:, :M - 1]
+    if which == 14:
+        h = _dtlz1_products_rows(P, M)
+    else:
+        h = 1.0 - _dtlz2_dirs_rows(P, M, math_cos, math_sin)
+    F = np.empty((len(X), M))
+    for j in range(M):
+        g = gbar(j, j) if which == 14 or j == M - 1 else gbar(j, j) + gbar(j, j + 1)
+        F[:, j] = h[:, j] * (1.0 + g)
+    return F
+
+
+def pf_lsmop(M: int, which: int, n: int = 1000) -> np.ndarray:
+    """MaF14: the simplex sum f = 1; MaF15: 1 minus the sphere's octant."""
+    return _simplex(M, n) if which == 14 else 1.0 - _sphere(M, n)
+
+
+def ps_lsmop(M: int, which: int, n: int = 1000) -> np.ndarray:
+    """n points of the Pareto set: positions over [0, 1]^(M-1) (corners, then
+    Halton; MaF14's x_1 scaled to [0, lsmop_x1_max]), every subcomponent at
+    its eta's optimum, z = 0 (Rastrigin, Griewank, the sphere) or z = 1
+    (Rosenbrock), x_i = l_i + (z + x_1 (u_i - l_i)) / a_i, kept in the box."""
+    from .pareto_sets import _cube_positions
+    D = lsmop_n_vars(M)
+    P = _cube_positions(M - 1, n)
+    if which == 14:
+        P[:, 0] *= lsmop_x1_max(M)
+    link = lsmop_link(M, which)
+    z = np.zeros(D - M + 1)
+    if which == 14:
+        for k, group in enumerate(_lsmop_columns(M)):
+            if k % 2 == 1:
+                z[group[0][0]:group[-1][1]] = 1.0
+    X = np.empty((len(P), D))
+    X[:, :M - 1] = P
+    X[:, M - 1:] = np.minimum(link[:, 1] + (z + P[:, :1] * link[:, 2]) / link[:, 0],
+                              link[:, 1] + link[:, 2])
+    return X

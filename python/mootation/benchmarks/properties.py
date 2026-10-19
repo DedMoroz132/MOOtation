@@ -98,6 +98,15 @@ Huband analyses:
               and BT8 have simple nonlinear Pareto sets and BT7 a complicated
               one (linkage), the others constant optima sin(j pi / 2n)
               (separable, not medial); BT8 is multimodal.
+  MaF14, MaF15
+              Cheng et al. 2017, Table 1 (maf.py): MaF14 "Linear, partially
+              separable, large scale", MaF15 "Convex, partially separable,
+              large scale". Partially separable is not separable (F2 asks it
+              of every parameter). The rest read off the definitions:
+              multimodal by eta_1, Rastrigin's and Griewank's (Eq. 44, 49);
+              every variable of x^s linked to x_1 (Eq. 45, 50: linkage, the
+              optimum neither in the middle nor on a bound); the objectives
+              alike over [0, 1], no bias built in. The other MaF have no row.
   Polygon     a MOOtation construction (polygon.py): MaF8 of Cheng et al. 2017
               — "Linear, degenerate" in their Table 1 — with extra distance
               variables whose optimum is 0, the middle of [-1, 1] (medial). The
@@ -296,6 +305,12 @@ _ZCAT_FRONT[15] = _ZCAT_FRONT[16] = "degenerate+disconnected"
 for _i in (17, 18, 19, 20):
     _ZCAT_FRONT[_i] = "degenerate+mixed"
 
+# Cheng et al. 2017, Table 1, and the definitions (see the module docstring)
+_MAF_LSMOP = {
+    "MaF14": _p("linear", True, False, False, False, False, False),
+    "MaF15": _p("convex", True, False, False, False, False, False),
+}
+
 _BBOB_SEPARABLE = {1, 2}
 _BBOB_MULTIMODAL = {15, 17, 20, 21}
 _BBOB_GROUP = {1: "separable", 2: "separable", 6: "moderate", 8: "moderate",
@@ -350,6 +365,8 @@ def properties(name: str) -> dict | None:
         row["linkage"] = _LINKAGE["Polygon"]
     elif stem in _MW:
         row["linkage"] = stem in _MW_LINKAGE
+    elif stem in _MAF_LSMOP:
+        row["linkage"] = True
     else:
         row["linkage"] = None
     from .registry import PROBLEMS
@@ -438,6 +455,9 @@ def front_built(name: str) -> str | None:
     if stem == "C2-ConvexDTLZ2":
         return ("a sample of the convex front outside the cylinder and of the points behind "
                 "its hole that nothing dominates, each checked (c_dtlz.py, FRONTS)")
+    if stem == "MaF14":
+        return ("the simplex sum f = 1, the paper's front (Fig. 14), whose strip f_M < 1 - "
+                "lsmop_x1_max no point reaches (maf.py, THE FRONT OF MaF14)")
     return "an approximation: the problem's module says how it was built"
 
 
@@ -485,6 +505,8 @@ def _huband(name: str) -> dict | None:
         return dict(_CDTLZ[stem])
     if stem in _MW:
         return dict(_MW[stem])
+    if stem in _MAF_LSMOP:
+        return dict(_MAF_LSMOP[stem])
     if stem.startswith(("RE", "CRE")) and stem.lstrip("CRE").rstrip("c").isdigit():
         # Tanabe & Ishibuchi 2020: the true fronts are unknown; Section 2.6 and
         # Fig. 2 call RE2-4-3 (RE23) and RE2-3-5 (RE25) disconnected. The rest

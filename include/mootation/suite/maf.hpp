@@ -1,10 +1,12 @@
 #pragma once
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
-// MaF1-7, MaF9 and MaF13 (Cheng et al. 2017) as the library evaluates them:
-// MaF1, 3, 4 and 5 as benchmarks/maf.py, MaF2, 6, 7, 9 and 13 as registry.py,
-// _maf_register. MaF8 stays in Python: its distances are math.hypot's, which
-// is CPython's own algorithm, not the C library's hypot. MaF10-12 are WFG's.
+// MaF1-9 and MaF13-15 (Cheng et al. 2017) as the library evaluates them:
+// MaF1, 3, 4 and 5 as benchmarks/maf.py, MaF2, 6, 7, 8, 9 and 13 as
+// registry.py, _maf_register, and MaF14 and MaF15 as maf.py, lsmop_rows
+// (task 12 of 2026-10-19). MaF8's distances are the C library's hypot, as
+// np.hypot's (its version 2; version 1 took CPython's math.hypot, an
+// algorithm of its own). MaF10-12 are WFG's.
 // The order of every operation is that of the NumPy rows (common.hpp).
 // ============================================================================
 
@@ -12,6 +14,17 @@
 #include <vector>
 
 #include "common.hpp"
+
+namespace mootation::suite {
+namespace lm {
+// hypot of the C library, as np.hypot calls it (common.hpp, lm)
+MOOTATION_SUITE_NOINLINE inline double hypot(double x, double y)
+{
+    volatile double v = x, w = y;
+    return std::hypot(v, w);
+}
+}   // namespace lm
+}   // namespace mootation::suite
 
 namespace mootation::suite::maf {
 
@@ -37,6 +50,20 @@ inline double g_rastrigin(const double* xm, int k)
         t[static_cast<std::size_t>(j)] = d * d - lm::cos(20.0 * kPi * d);
     }
     return 100.0 * (k + row_sum(t));
+}
+
+// The DTLZ1 products of positions P, summing to 1 (maf._dtlz1_products_rows):
+// M values.
+inline void products(const double* P, int M, double* pr)
+{
+    for (int i = 0; i < M; ++i) {
+        if (i == 0) {
+            pr[i] = row_prod(P, static_cast<std::size_t>(M - 1));
+        } else {
+            const double pre = M - 1 - i > 0 ? row_prod(P, static_cast<std::size_t>(M - 1 - i)) : 1.0;
+            pr[i] = pre * (1.0 - P[M - 1 - i]);
+        }
+    }
 }
 
 // The DTLZ2 directions of positions P (maf._dtlz2_dirs_rows): M values.
@@ -116,17 +143,8 @@ inline void evaluate(int which, const double* y, int n, int M, double* f)
     switch (which) {
         case 1: {
             const double g = g_quad(xm, k);
-            const double* P = y;
-            for (int i = 0; i < M; ++i) {
-                double pr;
-                if (i == 0) {
-                    pr = row_prod(P, static_cast<std::size_t>(M - 1));
-                } else {
-                    const double pre = M - 1 - i > 0 ? row_prod(P, static_cast<std::size_t>(M - 1 - i)) : 1.0;
-                    pr = pre * (1.0 - P[M - 1 - i]);
-                }
-                f[i] = (1.0 - pr) * (1.0 + g);
-            }
+            products(y, M, d.data());
+            for (int i = 0; i < M; ++i) f[i] = (1.0 - d[static_cast<std::size_t>(i)]) * (1.0 + g);
             return;
         }
         case 2: maf2(y, n, M, f); return;
@@ -199,6 +217,99 @@ inline void maf9(const double* x, int M, const Vec& lines, double* f)
     for (int m = 0; m < M; ++m) {
         const double* l = lines.data() + 5 * static_cast<std::size_t>(m);
         f[m] = std::abs(l[3] * (x[0] - l[0]) - l[2] * (x[1] - l[1])) / l[4];
+    }
+}
+
+// MaF8 (registry.maf8_rows): the distance from x to each vertex of the
+// regular M-gon; vertices holds (x, y) per vertex, computed in Python.
+inline void maf8(const double* x, int M, const Vec& vertices, double* f)
+{
+    for (int m = 0; m < M; ++m) {
+        const double* v = vertices.data() + 2 * static_cast<std::size_t>(m);
+        f[m] = lm::hypot(x[0] - v[0], x[1] - v[1]);
+    }
+}
+
+// ---- MaF14 and MaF15 (maf.py, lsmop_rows) -----------------------------------
+// The eta of a subcomponent z of k values (maf._eta_*).
+inline double rastrigin(const double* z, std::size_t k)
+{
+    Vec t(k);
+    for (std::size_t i = 0; i < k; ++i) t[i] = z[i] * z[i] - 10.0 * lm::cos(2 * kPi * z[i]) + 10.0;
+    return row_sum(t);
+}
+
+inline double rosenbrock(const double* z, std::size_t k)
+{
+    if (k < 2) return 0.0;                          // np.sum of no terms
+    Vec t(k - 1);
+    for (std::size_t i = 0; i + 1 < k; ++i) {
+        const double a = z[i] * z[i] - z[i + 1], b = z[i] - 1.0;
+        t[i] = 100.0 * (a * a) + b * b;
+    }
+    return row_sum(t);
+}
+
+inline double griewank(const double* z, std::size_t k)
+{
+    Vec t(k), c(k);
+    for (std::size_t i = 0; i < k; ++i) {
+        t[i] = z[i] * z[i] / 4000.0;
+        c[i] = lm::cos(z[i] / std::sqrt(static_cast<double>(i + 1)));
+    }
+    return row_sum(t) - row_prod(c.data(), k) + 1.0;
+}
+
+inline double sphere(const double* z, std::size_t k)
+{
+    Vec t(k);
+    for (std::size_t i = 0; i < k; ++i) t[i] = z[i] * z[i];
+    return row_sum(t);
+}
+
+// MaF14 (which = 14: Rastrigin and Rosenbrock, c = I, the DTLZ1 products) or
+// MaF15 (15: Griewank and the sphere, objective j reading groups j and j + 1,
+// 1 minus the DTLZ2 directions) of x, n variables, M objectives. link holds
+// (a_i, l_i, u_i - l_i) per variable of x^s, parts the sizes of the
+// subcomponents group by group, N_k per group: both computed in Python.
+inline void lsmop(int which, const double* x, int n, int M, const Vec& link, const Vec& parts, double* f)
+{
+    const std::size_t ns = static_cast<std::size_t>(n - M + 1), nk = parts.size() / static_cast<std::size_t>(M);
+    Vec z(ns);
+    for (std::size_t i = 0; i < ns; ++i) {
+        const double* l = link.data() + 3 * i;
+        z[i] = l[0] * (x[M - 1 + static_cast<int>(i)] - l[1]) - x[0] * l[2];
+    }
+    std::vector<std::size_t> first(static_cast<std::size_t>(M) + 1, 0);   // each group's first column
+    for (std::size_t k = 0; k < static_cast<std::size_t>(M); ++k) {
+        first[k + 1] = first[k];
+        for (std::size_t s = 0; s < nk; ++s) first[k + 1] += static_cast<std::size_t>(parts[k * nk + s]);
+    }
+    // gbar of objective j (eta_1 for j = 0, 2, ...) over group k
+    auto gbar = [&](int j, int k) {
+        double acc = 0.0;
+        std::size_t at = first[static_cast<std::size_t>(k)];
+        for (std::size_t s = 0; s < nk; ++s) {
+            const std::size_t size = static_cast<std::size_t>(parts[static_cast<std::size_t>(k) * nk + s]);
+            const double* zs = z.data() + at;
+            const double e = which == 14 ? (j % 2 == 0 ? rastrigin(zs, size) : rosenbrock(zs, size))
+                                         : (j % 2 == 0 ? griewank(zs, size) : sphere(zs, size));
+            acc = acc + e / static_cast<double>(size);
+            at += size;
+        }
+        return acc / static_cast<double>(nk);
+    };
+    Vec h(static_cast<std::size_t>(M));
+    if (which == 14) {
+        products(x, M, h.data());
+    } else {
+        Vec d(static_cast<std::size_t>(M));
+        directions(x, M, d.data());
+        for (int j = 0; j < M; ++j) h[static_cast<std::size_t>(j)] = 1.0 - d[static_cast<std::size_t>(j)];
+    }
+    for (int j = 0; j < M; ++j) {
+        const double g = which == 14 || j == M - 1 ? gbar(j, j) : gbar(j, j) + gbar(j, j + 1);
+        f[j] = h[static_cast<std::size_t>(j)] * (1.0 + g);
     }
 }
 
