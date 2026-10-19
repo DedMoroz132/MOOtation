@@ -10,6 +10,20 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- SMS-EMOA and MO-CMA-ES compute the hypervolume contributions exactly up to
+  `hv_exact_max_m` objectives (new knob, 5 by default), Monte-Carlo above
+  (task 13 of 2026-10-19, §3): at M = 3 and 4 by HVC3D / HVC4D
+  (`hv_contrib = hvc` is now the default), at M = 5 by WFG. `n_samples`
+  given decides from M = 4 (0 exact, N > 0 Monte-Carlo with N). **Changed
+  results**: runs of both at M = 3 to 5 take other trajectories; at M = 4
+  and 5 the contributions are exact instead of estimated. The previous
+  defaults are `n_samples = 10000` with `hv_contrib = wfg`, which give the
+  earlier runs again. `Result.settings` (and a campaign's `meta.json`) now
+  names the contributions' knobs and method of the run. R2-EMOA reports
+  `n_samples` and `hv_exact_max_m` ignored. The headers of `sms_emoa.hpp`,
+  `mo_cma_es.hpp`, `hv_contribution.hpp` and `docs/running.md` describe what
+  the Monte-Carlo estimate does near the front's edges.
+
 - `hv_algo = "auto"`, the new default (task 13 of 2026-10-19, §3a). For a
   set's hypervolume (`metrics.hypervolume`, the campaign's `hv`/`hv_h`,
   `_core.hypervolume`): box decomposition at 3 to 8 objectives, where it is

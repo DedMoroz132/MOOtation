@@ -21,15 +21,22 @@
 //     b_k = min(r_k, min{q_k : q ≠ p, q_j ≤ p_j for every j ≠ k}) — a point no
 //     worse than p in all objectives but k caps p's region in k. Samples
 //     uniform in that box; the share no other point weakly dominates, times
-//     the box's volume, estimates ΔS(p). Each point gets its own samples, so
-//     the small contributions — the ones a selection compares — are measured
-//     as finely as the large ones.
+//     the box's volume, estimates ΔS(p), without bias. Each point gets its
+//     own samples, but how finely its contribution is measured depends on the
+//     contribution's share of the box: near the front's edges the box can be
+//     far larger than the contribution, few samples or none fall in it, and
+//     the estimate is often 0 though the contribution is not small.
 // A point not strictly better than r in every objective contributes nothing.
 // ============================================================================
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <optional>
 #include <random>
+#include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "hv_box.hpp"
@@ -183,5 +190,93 @@ inline std::vector<double> contributions_mc(const std::vector<std::vector<double
     }
     return c;
 }
+
+// How SMS-EMOA and MO-CMA-ES compute a step's contributions (task 13 of
+// 2026-10-19, §3; sms_emoa.hpp SMS-2, mo_cma_es.hpp MOCMA-5), from their knobs:
+//   M = 2, 3                exact (M = 3: HVC3D unless hv_contrib = wfg)
+//   4 <= M <= hv_exact_max_m exact (default threshold 5): M = 4 HVC4D unless
+//                           hv_contrib = wfg, else WFG (hv_algo = box: boxes)
+//   M > hv_exact_max_m      Monte-Carlo, 10 000 samples a step
+//   n_samples given         from M = 4 it decides: > 0 Monte-Carlo with that
+//                           many samples, 0 exact, at every M
+// The exact contributions' cost grows steeply with M, hence the threshold.
+struct ContribChoice {
+    static constexpr int kSamples = 10000;
+    std::optional<int> n_samples;       // given by the caller
+    int  exact_max_m = 5;               // hv_exact_max_m
+    bool hvc = true;                    // hv_contrib: hvc (default) or wfg
+    bool box = false;                   // hv_algo = box
+    std::size_t m = 0;                  // the objectives of the last step (settings())
+
+    bool mc(std::size_t M) const
+    {
+        if (M < 4) return false;
+        if (n_samples) return *n_samples > 0;
+        return static_cast<int>(M) > exact_max_m;
+    }
+    std::size_t samples() const { return static_cast<std::size_t>(n_samples.value_or(kSamples)); }
+    bool use_hvc(std::size_t M) const { return hvc && (M == 3 || M == 4); }
+
+    // The contributions of F against r, as the knobs say (rng: Monte-Carlo's).
+    template <typename Hvc, typename Rng>
+    std::vector<double> compute(const std::vector<std::vector<double>>& F,
+                                const std::vector<double>& r, Hvc& kept, Rng& rng)
+    {
+        m = r.size();
+        if (mc(m)) return contributions_mc(F, r, std::max<std::size_t>(1, samples() / F.size()), rng);
+        if (use_hvc(m)) return kept.contributions(F, r);
+        return box ? contributions_box(F, r) : contributions_exact(F, r);
+    }
+
+    bool set_param(const std::string& k, double v)
+    {
+        if (k == "n_samples") {
+            if (!(v >= 0.0 && v <= 1e9 && v == std::floor(v)))
+                throw std::invalid_argument("n_samples must be a whole number >= 0");
+            n_samples = static_cast<int>(v);
+            return true;
+        }
+        if (k == "hv_exact_max_m") {
+            if (!(v >= 0.0 && v <= 1000.0 && v == std::floor(v)))
+                throw std::invalid_argument("hv_exact_max_m must be a whole number >= 0");
+            exact_max_m = static_cast<int>(v);
+            return true;
+        }
+        return false;
+    }
+    bool set_word(const std::string& k, const std::string& w)
+    {
+        if (k == "hv_contrib") {
+            if (w != "wfg" && w != "hvc")
+                throw std::invalid_argument("hv_contrib = '" + w + "': wfg or hvc");
+            hvc = w == "hvc";
+            return true;
+        }
+        if (k == "hv_algo") {                           // auto: WFG for the contributions
+            if (w != "auto" && w != "wfg" && w != "box")
+                throw std::invalid_argument("hv_algo = '" + w + "': auto, wfg or box");
+            box = w == "box";
+            return true;
+        }
+        return false;
+    }
+
+    // The knobs and the method of the run (Result.settings, a campaign's meta.json).
+    std::vector<std::pair<std::string, std::string>> settings() const
+    {
+        std::string how;
+        if (m == 0)           how = "none (no step compared contributions)";
+        else if (m == 2)      how = "exact (two objectives)";
+        else if (mc(m))       how = "monte-carlo, " + std::to_string(samples()) + " samples a step (" +
+                                    (n_samples ? "n_samples given" : "above hv_exact_max_m") + ")";
+        else if (use_hvc(m))  how = m == 3 ? "exact, hvc3d" : "exact, hvc4d";
+        else                  how = box ? "exact, box" : "exact, wfg";
+        return {{"hv_exact_max_m", std::to_string(exact_max_m)},
+                {"n_samples", n_samples ? std::to_string(*n_samples) : "default"},
+                {"hv_contrib", hvc ? "hvc" : "wfg"},
+                {"hv_algo", box ? "box" : "auto"},
+                {"contributions", how + " at M = " + std::to_string(m)}};
+    }
+};
 
 }   // namespace mootation::hv

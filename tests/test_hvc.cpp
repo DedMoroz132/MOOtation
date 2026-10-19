@@ -251,7 +251,49 @@ int main()
         mootation::R2EMOACore<mootation::NSGAII_Individual> r2;
         check(!r2.set_word("hv_contrib", "hvc"), "r2_emoa has no hypervolume: hv_contrib not taken");
         check(!r2.set_word("hv_algo", "box"), "r2_emoa has no hypervolume: hv_algo not taken");
+        check(!r2.set_param("n_samples", 0) && !r2.set_param("hv_exact_max_m", 3),
+              "r2_emoa has no hypervolume: n_samples and hv_exact_max_m not taken");
     }
+    // ── exact or Monte-Carlo: hv::ContribChoice (task 13 of 2026-10-19, §3) ──
+    {
+        hv::ContribChoice c;                                   // the defaults
+        check(!c.mc(2) && !c.mc(3) && !c.mc(4) && !c.mc(5) && c.mc(6) && c.mc(10),
+              "default: exact up to M = 5, Monte-Carlo above");
+        check(c.use_hvc(3) && c.use_hvc(4) && !c.use_hvc(5), "default: hvc at M = 3 and 4");
+        check(c.samples() == 10000, "default: 10 000 samples a step");
+        c.set_param("hv_exact_max_m", 6);
+        check(!c.mc(6) && c.mc(7), "hv_exact_max_m = 6: exact at M = 6");
+        c.set_param("n_samples", 0);
+        check(!c.mc(10), "n_samples = 0: exact at every M");
+        c.set_param("n_samples", 500);
+        check(!c.mc(3) && c.mc(4) && c.samples() == 500, "n_samples = 500: Monte-Carlo from M = 4");
+        c.set_word("hv_contrib", "wfg");
+        check(!c.use_hvc(3) && !c.use_hvc(4), "hv_contrib = wfg");
+        bool refused = false;
+        try { c.set_param("hv_exact_max_m", 2.5); } catch (const std::invalid_argument&) { refused = true; }
+        check(refused, "hv_exact_max_m must be whole");
+        check(!c.set_param("ref_delta", 1.0) && !c.set_word("survival", "greedy"),
+              "other knobs are not ContribChoice's");
+        // the method named in the settings, at the M of the last step
+        hv::ContribChoice d;
+        std::mt19937 g(1);
+        hv::HvcKept kept;
+        const std::vector<std::vector<double>> F4 = {{0.1, 0.5, 0.6, 0.7}, {0.5, 0.1, 0.6, 0.7},
+                                                    {0.6, 0.5, 0.1, 0.7}, {0.7, 0.6, 0.5, 0.1}};
+        const std::vector<double> r4(4, 1.0);
+        const auto exact = d.compute(F4, r4, kept, g);
+        const auto want = hv::contributions_exact(F4, r4);
+        double gap = 0.0;
+        for (std::size_t i = 0; i < 4; ++i) gap = std::max(gap, std::abs(exact[i] - want[i]));
+        check(gap <= 1e-15, "default at M = 4: the exact contributions (HVC4D)");
+        check(d.settings().back().second == "exact, hvc4d at M = 4", "settings: exact, hvc4d");
+        d.set_param("n_samples", 1000);
+        d.compute(F4, r4, kept, g);
+        check(d.settings().back().second ==
+                  "monte-carlo, 1000 samples a step (n_samples given) at M = 4",
+              "settings: monte-carlo, n_samples given");
+    }
+
     run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");
     run_with_hvc<mootation::testing::HvcCMA, mootation::MOCMAESCore<mootation::testing::HvcCMA>>("mo_cma_es");
 

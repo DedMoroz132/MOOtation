@@ -75,32 +75,40 @@ namespace mootation {
 //     Both are benchmarked (Tables 1-2); the thesis (§3.1, "Variants",
 //     Eq. 3.1) credits dp to Naujoks et al. (CEC 2005) and leaves it out.
 //     Implemented: the basic one (the thesis's Algorithm 3.1); dp is not.
-//   SMS-2. Contributions (hv_contribution.hpp): exact for M ≤ 3 (EJOR Eq. 6,
-//     the 2005 paper's Eq. 4, at M = 2; the exclusive hypervolume by WFG at
-//     M = 3, where EJOR §2.3 uses the exact O(μ³) grid algorithm of Naujoks
-//     et al.); Monte-Carlo for M ≥ 4, which EJOR does not cover (it calls
-//     SMS-EMOA "hardly applicable" there, §5), as HypE does (task: "при
-//     M = 5 — Монте-Карло, как у HypE"), 10 000 samples a step shared out
-//     over the points of F_v, each point sampled in its own bounding box.
-//     set_n_samples changes the number; set_n_samples(0) makes every M exact.
-//     hv_algo = box: the exact contributions' hypervolumes by box
-//     decomposition (hv_box.hpp) instead of WFG — the same values up to the
-//     order of the sums, so a near tie may go the other way. hv_algo = auto
-//     (the default since task 13 of 2026-10-19, §3a) is WFG here: box is
-//     chosen automatically only for a set's hypervolume, never for the
-//     contributions, where it is not faster.
-//     hv_contrib = hvc (task 12 of 2026-10-19, §5): the exact contributions
-//     at M = 3 and 4 by HVC3D and HVC4D of Guerreiro & Fonseca (IEEE TEVC
-//     22(3), 2018; hvc.hpp) instead of WFG (wfg, the default). At M = 3 the
-//     HVC3D structure is kept from step to step and brought to the next F_v
-//     by the paper's single-point updates — in a population that is one
-//     front, the offspring added and the last step's removed point taken out
-//     — then all contributions in linear time; at M = 4 HVC4D in O(μ²) a
-//     step, and only with set_n_samples(0): by default M = 4 is Monte-Carlo
-//     and the knob changes nothing there, nor at M = 2 or M ≥ 5. The values
-//     are WFG's up to the order of the sums, not bit for bit: a near tie may
-//     go the other way and the run take ANOTHER TRAJECTORY. hv_contrib = hvc
-//     takes M = 3 and 4 from hv_algo.
+//   SMS-2. Contributions (hv_contribution.hpp; hv::ContribChoice decides):
+//     exact up to hv_exact_max_m objectives (5 by default; task 13 of
+//     2026-10-19, §3 — before it, Monte-Carlo from M = 4), Monte-Carlo above:
+//
+//       M      hv_contrib   n_samples   computed
+//       2      any          any         exact, EJOR Eq. 6 (the 2005 paper's Eq. 4)
+//       3      hvc (dflt)   any         exact, HVC3D (hvc.hpp), kept between steps
+//       3      wfg          any         exact, WFG (hv_algo = box: boxes)
+//       4      hvc (dflt)   not given   exact, HVC4D (4 <= hv_exact_max_m)
+//       4      wfg          not given   exact, WFG / boxes
+//       5..t   any          not given   exact, WFG / boxes (t = hv_exact_max_m)
+//       > t    any          not given   Monte-Carlo, 10 000 samples a step
+//       >= 4   any          0           exact at every M (hvc at M = 4)
+//       >= 4   any          N > 0       Monte-Carlo, N samples a step
+//
+//     EJOR §2.3 computes them exactly (the O(μ³) grid algorithm of Naujoks et
+//     al. at M = 3) and calls SMS-EMOA "hardly applicable" above three
+//     objectives (§5): the exact contributions' cost grows steeply with M,
+//     hence the threshold. The Monte-Carlo estimate (each point sampled in
+//     its own bounding box) is unbiased, but a point near the front's edges
+//     has a box far larger than its contribution, few samples fall in the
+//     contribution and its estimate is often 0: the selection is then close
+//     to random among the small contributions. HVC3D and HVC4D (hv_contrib =
+//     hvc, Guerreiro & Fonseca, IEEE TEVC 22(3), 2018) and box decomposition
+//     (hv_algo = box, hv_box.hpp) give WFG's values up to the order of the
+//     sums, not bit for bit: a near tie may go the other way and the run take
+//     ANOTHER TRAJECTORY. At M = 3
+//     the HVC3D structure is kept from step to step and brought to the next
+//     F_v by the paper's single-point updates — in a population that is one
+//     front, the offspring added and the last step's removed point taken out —
+//     then all contributions in linear time; at M = 4 HVC4D in O(μ²) a step.
+//     hv_algo = auto (the default) is WFG here. The previous defaults are
+//     n_samples = 10000 with hv_contrib = wfg. Result.settings names the knobs
+//     and the method the run used.
 //   SMS-3. A tie in the smallest contribution removes the point that comes
 //     first in the population, the offspring last.
 //   SMS-4. Two objectives, two points. When F_v holds only two points at
@@ -164,9 +172,7 @@ private:
     double eta_c_ = 15.0;   // thesis §3.4.1
     double eta_m_ = 20.0;   // thesis §3.4.1
     double pc_    = 1.0;    // thesis §3.4.1
-    int    n_samples_ = 10000;   // SMS-2
-    bool   hv_box_ = false;      // hv_algo = box: the exact contributions by box decomposition
-    bool   hvc_on_ = false;      // hv_contrib = hvc: M = 3 and 4 by HVC3D / HVC4D (SMS-2)
+    hv::ContribChoice how_;      // SMS-2: exact or Monte-Carlo, and how
     hv::HvcKept hvc_;            // the HVC3D structure between steps
     std::optional<double> pm_;            // 1/n when not set (thesis §3.4.1)
     std::optional<double> ref_delta_;     // SMS-7: r = nad + δ (nad − ideal)
@@ -295,12 +301,7 @@ private:
         }
         std::vector<std::vector<double>> Fv;
         for (int i : last) Fv.push_back(vault.objectives_of(static_cast<std::size_t>(i)));
-        const bool mc = m >= 4 && n_samples_ > 0;
-        const std::size_t per = mc ? std::max<std::size_t>(
-            1, static_cast<std::size_t>(n_samples_) / Fv.size()) : 0;
-        auto c = mc ? hv::contributions_mc(Fv, r, per, rng_)
-               : hvc_on_ && (m == 3 || m == 4) ? hvc_.contributions(Fv, r)
-               : hv_box_ ? hv::contributions_box(Fv, r) : hv::contributions_exact(Fv, r);
+        auto c = how_.compute(Fv, r, hvc_, rng_);           // SMS-2
         if (m == 2 && Fv.size() > 2) {                     // SMS-4: the two extremes stay
             std::size_t a = 0, b = 0;
             for (std::size_t t = 1; t < Fv.size(); ++t) {
@@ -341,7 +342,7 @@ public:
     void set_eta_crossover(double e)      { eta_c_ = e; }
     void set_eta_mutation(double e)       { eta_m_ = e; }
     void set_pc(double p)                 { pc_ = p; }
-    void set_n_samples(int s)             { n_samples_ = s; }
+    void set_n_samples(int s)             { how_.n_samples = s; }
     void set_crossover(ops::Crossover c)  { xover_.kind = c; }
     void set_mutation(ops::Mutation m)    { mut_.kind = m; }
     void set_mutation_scale(double s)     { mut_.scale = ops::checked_mutation_scale(s); }
@@ -367,13 +368,8 @@ public:
             spu_frac_ = v;
             return true;
         }
-        if (k == "n_samples") {                            // SMS-2
-            if (!(v >= 0.0 && v <= 1e9 && v == std::floor(v)))
-                throw std::invalid_argument("n_samples must be a whole number >= 0");
-            n_samples_ = static_cast<int>(v);
-            return true;
-        }
-        return arch_.set_param(k, v) || xover_.set_param(k, v);
+        return how_.set_param(k, v)                         // SMS-2: n_samples, hv_exact_max_m
+            || arch_.set_param(k, v) || xover_.set_param(k, v);
     }
     bool set_word(const std::string& k, const std::string& w)
     {
@@ -389,19 +385,14 @@ public:
             bin_cross_ = w == "uniform";
             return true;
         }
-        if (k == "hv_algo") {                              // auto: WFG (SMS-2)
-            if (w != "auto" && w != "wfg" && w != "box")
-                throw std::invalid_argument("hv_algo = '" + w + "': auto, wfg or box");
-            hv_box_ = w == "box";
-            return true;
-        }
-        if (k == "hv_contrib") {                           // SMS-2
-            if (w != "wfg" && w != "hvc")
-                throw std::invalid_argument("hv_contrib = '" + w + "': wfg or hvc");
-            hvc_on_ = w == "hvc";
-            return true;
-        }
-        return arch_.set_word(k, w) || xover_.set_word(k, w);
+        return how_.set_word(k, w)                          // SMS-2: hv_algo, hv_contrib
+            || arch_.set_word(k, w) || xover_.set_word(k, w);
+    }
+
+    // The contributions' knobs and method of the run (SMS-2; Result.settings).
+    std::vector<std::pair<std::string, std::string>> effective_settings() const
+    {
+        return how_.settings();
     }
 
     // The HVC3D structure kept between steps (SMS-2), for the tests.

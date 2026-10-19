@@ -96,7 +96,9 @@ inline const std::vector<std::string>& knob_names() {
         "n_sub", "sub_budget", "fd_step", "local_tol", "cma_sigma0", "eps_objective",
         "polish_share", "polish_points", "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
         // task 10 of 2026-10-18, §7
-        "n_samples"
+        "n_samples",
+        // task 13 of 2026-10-19, §3
+        "hv_exact_max_m"
     };
     return v;
 }
@@ -141,8 +143,12 @@ inline const std::vector<std::string>& knob_names() {
 //                  local point
 //   rm_extension   rm_meda: how far each model extends past its points
 //   n_samples      sms_emoa, mo_cma_es, hype: the Monte-Carlo sample points a
-//                  step from four objectives (10 000; sms_emoa and mo_cma_es
-//                  take 0 for the exact contributions at every M)
+//                  step from four objectives (10 000); sms_emoa and mo_cma_es:
+//                  given, it decides from M = 4 (0 exact at every M, N > 0
+//                  Monte-Carlo with N), not given hv_exact_max_m does
+//   hv_exact_max_m sms_emoa, mo_cma_es: the exact contributions up to that
+//                  many objectives, Monte-Carlo above (5; hv_contribution.hpp,
+//                  hv::ContribChoice)
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
@@ -157,7 +163,7 @@ inline bool is_core_param(const std::string& name)
                           "sub_budget", "fd_step", "local_tol",
                           "cma_sigma0", "eps_objective", "polish_share", "polish_points",
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
-                          "n_samples"})
+                          "n_samples", "hv_exact_max_m"})
         if (name == k) return true;
     return false;
 }
@@ -192,7 +198,8 @@ inline bool is_core_param(const std::string& name)
 //                 WFG (auto, the default, and wfg) or by box decomposition
 //                 (box; hv_box.hpp)
 //   hv_contrib    sms_emoa, mo_cma_es: the exact contributions at 3 and 4
-//                 objectives by WFG (default) or by HVC3D / HVC4D (hvc.hpp)
+//                 objectives by HVC3D / HVC4D (hvc, the default; hvc.hpp) or by
+//                 WFG (wfg)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).

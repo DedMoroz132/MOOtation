@@ -8018,9 +8018,11 @@ def refs_build_extend_keeps_a_smaller_sample_where_the_builder_does():
 @test
 def n_samples_reaches_the_monte_carlo_of_sms_emoa_mo_cma_es_and_hype():
     """Task 10, §7: n_samples, the Monte-Carlo sample points of a step from four
-    objectives, reaches SMS-EMOA, MO-CMA-ES and HypE and only them; 0 makes
-    SMS-EMOA's and MO-CMA-ES's contributions exact (a run of its own, not the
-    default's), HypE refuses it, and a fraction is refused everywhere."""
+    objectives, reaches SMS-EMOA, MO-CMA-ES and HypE and only them; given, it
+    decides SMS-EMOA's and MO-CMA-ES's contributions: at four objectives,
+    exact by default since task 13 (§3), 0 is the default's run and 10 000
+    Monte-Carlo, a run of its own; HypE refuses 0, and a fraction is refused
+    everywhere."""
     if _core_with("Config") is None:
         print("  skip  n_samples...: stale _core"); return
     import mootation
@@ -8031,8 +8033,8 @@ def n_samples_reaches_the_monte_carlo_of_sms_emoa_mo_cma_es_and_hype():
     for alg in ("sms_emoa", "mo_cma_es"):
         a, b, c = run(alg), run(alg, n_samples=10000), run(alg, n_samples=0)
         assert "n_samples" not in b.ignored and "n_samples" not in c.ignored, alg
-        assert a.objectives == b.objectives, alg              # 10 000 is the default
-        assert a.objectives != c.objectives, alg              # exact: another run
+        assert a.objectives == c.objectives, alg              # exact at M = 4 by default
+        assert a.objectives != b.objectives, alg              # Monte-Carlo: another run
         raises(ValueError, run, alg, n_samples=0.5)
     r = run("hype", n_samples=500)
     assert "n_samples" not in r.ignored and r.objectives != run("hype").objectives
@@ -10332,11 +10334,49 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
 
 
 @test
+def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
+    """Task 13, §3: by default SMS-EMOA and MO-CMA-ES compute the hypervolume
+    contributions exactly up to hv_exact_max_m = 5 objectives (HVC4D at M = 4)
+    and by Monte-Carlo above: the default run at M = 4 is the run with
+    n_samples = 0 and hv_contrib = hvc, at M = 6 the one with n_samples =
+    10000, bit for bit; hv_exact_max_m = 6 makes M = 6 exact; Result.settings
+    names the method; R2-EMOA reports the knobs ignored."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+
+    def run(name, alg, **kw):
+        p = get(name)
+        return minimize(p.evaluate, p.bounds, p.n_obj, algorithm=alg, pop_size=20,
+                        max_evaluations=300, seed=3, **kw)
+
+    def same(a, b):
+        return a.objectives == b.objectives and a.variables == b.variables
+
+    for alg in ("sms_emoa", "mo_cma_es"):
+        d4 = run("DTLZ2_4D", alg)
+        assert same(d4, run("DTLZ2_4D", alg, n_samples=0, hv_contrib="hvc")), alg
+        assert dict(d4.settings)["contributions"] == "exact, hvc4d at M = 4", d4.settings
+        d6 = run("DTLZ2_6D", alg)
+        assert same(d6, run("DTLZ2_6D", alg, n_samples=10000)), alg
+        assert dict(d6.settings)["contributions"].startswith("monte-carlo, 10000 samples a step "
+                                                             "(above hv_exact_max_m)"), d6.settings
+        e6 = run("DTLZ2_6D", alg, hv_exact_max_m=6)
+        assert same(e6, run("DTLZ2_6D", alg, n_samples=0)) and not same(e6, d6), alg
+        assert dict(e6.settings)["contributions"] == "exact, wfg at M = 6", e6.settings
+        assert "hv_exact_max_m" not in d4.ignored, d4.ignored
+    r = run("DTLZ2_4D", "r2_emoa", hv_exact_max_m=6, n_samples=0)
+    assert {"hv_exact_max_m", "n_samples"} <= set(r.ignored) and list(r.settings) == [], r.ignored
+
+
+@test
 def hv_contrib_takes_its_words_and_refuses_others():
     """hv_contrib (HVC3D and HVC4D, Guerreiro & Fonseca 2018; hvc.hpp): SMS-EMOA
     and MO-CMA-ES take "wfg" and "hvc" at three objectives and at four with
     n_samples = 0, and refuse any other word, as a config does before the run;
-    "wfg" is the run without the knob, bit for bit; R2-EMOA and HypE, which
+    "hvc" is the run without the knob, bit for bit (the default since task 13,
+    §3); R2-EMOA and HypE, which
     select by no hypervolume contribution, report it ignored."""
     if not _have_numpy() or _core_with("hypervolume") is None:
         print("    (skipped: no NumPy or no extension)"); return
@@ -10362,7 +10402,8 @@ def hv_contrib_takes_its_words_and_refuses_others():
         for alg in ("sms_emoa", "mo_cma_es"):
             base, w, h = run(alg), run(alg, hv_contrib="wfg"), run(alg, hv_contrib="hvc")
             assert "hv_contrib" not in h.ignored and len(h.objectives) == 20, (alg, h.ignored)
-            assert np.array_equal(base.objectives, w.objectives), (name, alg)
+            assert np.array_equal(base.objectives, h.objectives), (name, alg)
+            assert "hv_contrib" not in w.ignored and len(w.objectives) == 20, (alg, w.ignored)
             assert raises(ValueError, run, alg, hv_contrib="box") is not None, (name, alg)
     p = get("DTLZ2_3D")
     for alg in ("r2_emoa", "hype"):
