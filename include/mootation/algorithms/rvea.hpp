@@ -27,6 +27,16 @@
 //   RVEA-2 (resolved 2026-09-16): the adaptation updated only as many vectors
 //   as there were survivors, not all N of Alg.3 lines 5-7 (see
 //   adapt_reference_vectors).
+//   RVEA-3 (resolved, task 13 of 2026-10-19): the ⌊N/2⌋ random pairs were
+//   taken from ONE shuffle of the survivors, gone through round after round;
+//   when the population had shrunk below N (an irregular front, POPULATION
+//   SIZE below) the same pairs came again every round — at 20 of 126, 10
+//   distinct pairs of 63. Now the survivors are shuffled anew for every
+//   round after the first while the population is below N (parent_order), so
+//   the pairs are random as §III-B has them. A full population is gone
+//   through once, as before (at an odd N the last pair's second parent is
+//   still the first of the shuffle): its runs are unchanged; runs whose
+//   population shrank are not reproduced by versions before this one.
 //   RVEA* (§VI, Alg. 4, vector regeneration for irregular PFs) is a separate
 //   algorithm, rvea_star.hpp; this file is the baseline RVEA.
 //   POPULATION SIZE, the letter of §III-C: "one elitist can be selected from
@@ -357,6 +367,25 @@ public:
         if (V0_.empty()) generate_reference_vectors(n, m);
     }
 
+    // The parents of a generation's n offspring (§III-B: random pairs, no
+    // mating selection), pairs (order[i], order[i + 1]) for i = 0, 2, ...: the
+    // n_parents survivors shuffled, gone through in that order, and shuffled
+    // anew for every further round while they are fewer than n (RVEA-3).
+    static std::vector<int> parent_order(int n_parents, int n, std::mt19937& rng)
+    {
+        const int slots = n + n % 2;          // an odd n: its last pair's second parent too
+        std::vector<int> perm(static_cast<std::size_t>(n_parents)), order;
+        std::iota(perm.begin(), perm.end(), 0);
+        std::shuffle(perm.begin(), perm.end(), rng);
+        order.reserve(static_cast<std::size_t>(slots));
+        for (int k = 0; k < slots; ++k) {
+            if (k > 0 && k % n_parents == 0 && n_parents < n)
+                std::shuffle(perm.begin(), perm.end(), rng);
+            order.push_back(perm[static_cast<std::size_t>(k % n_parents)]);
+        }
+        return order;
+    }
+
     // ── step: one full generation (Algorithm 1) ────────────────────────────
     void step(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
@@ -370,9 +399,7 @@ public:
         vault.expand(n);
 
         // ── breed n offspring into [n_parents, n_parents+n) ───────────────
-        std::vector<int> perm(n_parents);
-        std::iota(perm.begin(), perm.end(), 0);
-        std::shuffle(perm.begin(), perm.end(), rng_);
+        const std::vector<int> order = parent_order(n_parents, n, rng_);
 
         // §IV-C-1: p_c = 1.0, p_m = 1/n (n is the number of real-valued variables).
         double pm = (pm_ >= 0.0) ? pm_
@@ -380,8 +407,8 @@ public:
 
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         for (int i = 0; i < n; i += 2) {
-            int p1 = perm[i % n_parents];
-            int p2 = perm[(i + 1) % n_parents];
+            int p1 = order[i];
+            int p2 = order[i + 1];
             for (int j = 0; j < vault.vars_n(); ++j) {
                 pv1[j] = vault.get_variable(p1, j);
                 pv2[j] = vault.get_variable(p2, j);
