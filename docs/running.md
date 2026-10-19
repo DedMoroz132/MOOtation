@@ -907,8 +907,9 @@ compiled WFG kernels (cached on disk) are paid once a process.
 points, dense reference (four to ten objectives), Pareto-set sample and the
 IGD+ floors of `--cover` at its population are the same for every run of it,
 and some take minutes to build (ZCAT's at ten objectives, DAS-CMOP's). For
-every registry problem with an exact reference front they are built once per
-machine into the user's cache — `%LOCALAPPDATA%\mootation\references\v<reference
+every registry problem with an exact reference front, and for the failing
+copies and C2-ConvexDTLZ2, whose approximate fronts depend on the problem
+alone, they are built once per machine into the user's cache — `%LOCALAPPDATA%\mootation\references\v<reference
 version>\` on Windows, `~/.cache/mootation/references/v<...>/` elsewhere
 (`$XDG_CACHE_HOME` if set), or wherever `MOOTATION_REFS_DIR` (`--refs-dir`)
 says — one file per problem and `n_ref`:
@@ -935,8 +936,8 @@ copied between machines.
 A campaign checks before its first run that the entries of all its problems
 are there and current, and builds the missing ones itself, in parallel on its
 workers, before any run starts; `--no-build-refs` stops it instead with the
-list. The problems without an exact front — the approximate fronts of RE,
-CRE, RCM, their noisy and failing copies — keep theirs in the campaign's
+list. The other problems with an approximate front — RE, CRE, RCM and their
+noisy copies — keep theirs in the campaign's
 `<results>/_references/<problem>.npz`, read back by every later run while the
 reference version and a hash of the benchmark sources stay the same; of the
 workers that start on such a problem together one builds it (it holds
@@ -1058,7 +1059,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
 | `dn_cf` | DN-NSGA-II: the crowding factor of its niched mating pool — a random member meets the nearest, by Euclidean distance in the variables, of `dn_cf` others drawn without replacement (all of them from N − 1 on), and the better of the two by rank and crowding distance becomes a parent; a whole number ≥ 1, 20 by default (`algorithms/dn_nsga2.hpp`, DN-1) |
-| `hv_algo` | SMS-EMOA and MO-CMA-ES: the exact contributions' hypervolumes by WFG (`wfg`, the default) or by box decomposition (`box`; Lacour, Klamroth & Fonseca, Comput. Oper. Res. 79, 2017; `hv_box.hpp`) — the same values up to the order of the sums, so two nearly equal contributions may compare the other way and the run take another path; `metrics.hypervolume(..., hv_algo=)` and `_core.hypervolume(points, ref, algo)` likewise. HypE's exact part is not a hypervolume (its I_h^k): it reports the knob ignored |
+| `hv_algo` | SMS-EMOA and MO-CMA-ES: the exact contributions' hypervolumes by WFG (`wfg`, the default) or by box decomposition (`box`; Lacour, Klamroth & Fonseca, Comput. Oper. Res. 79, 2017; `hv_box.hpp`) — the same values up to the order of the sums, so two nearly equal contributions may compare the other way and the run take another path; `metrics.hypervolume(..., hv_algo=)` and `_core.hypervolume(points, ref, algo)` likewise. HypE's exact part is not a hypervolume (its I_h^k) and R2-EMOA computes none: they report the knob ignored |
 | `hv_contrib` | SMS-EMOA and MO-CMA-ES: the exact contributions at three and four objectives by WFG (`wfg`, the default) or by HVC3D and HVC4D (`hvc`; Guerreiro & Fonseca, IEEE TEVC 22(3), 2018; `hvc.hpp`). At M = 3 the HVC3D structure is kept from step to step and brought to the next worst front by the paper's single-point updates (one offspring in, one point out), then all contributions in linear time; at M = 4 HVC4D, O(μ²) a step. It acts only where the contributions are exact: at M = 3, and at M = 4 with `n_samples = 0` — by default M = 4 is Monte-Carlo and the knob changes nothing there, nor at M = 2 (EJOR's Eq. 6) or M ≥ 5. The values are WFG's up to the order of the sums, not bit for bit, so two nearly equal contributions may compare the other way and the run take another trajectory; at M = 3 and 4 it takes over from `hv_algo`. R2-EMOA and HypE report it ignored |
 | `n_samples` | SMS-EMOA, MO-CMA-ES and HypE from four objectives: the Monte-Carlo sample points of a step, from which the hypervolume contributions (HypE: its fitness) are estimated — 10 000 by default, shared out over the points of the last front, each sampled in its own box. A step costs in proportion to it and the estimate's noise falls as its square root; SMS-EMOA and MO-CMA-ES take 0 for the exact contributions at every M (WFG, whose cost grows steeply with M and the front), HypE a whole number ≥ 1 (`sms_emoa.hpp` SMS-2, `mo_cma_es.hpp` MOCMA-5, `hype.hpp`) |
 | `survival`, `spu_frac` | SMS-EMOA, NSGA-II and NSGA-III: `greedy` (the default, the papers' selection) or `stochastic`, the stochastic population update of Bian, Zhou, Li & Qian (IJCAI 2023): a random Q′ of ⌊`spu_frac`·\|Q\|⌋ members of parents and offspring (1/2 in SMS-EMOA, 3/4 in the NSGA's, the paper's) goes through the usual selection alone — its fronts, reference point, extremes, normalisation — and every member outside Q′ survives untouched; any member survives a step with probability at least 1/2 (SMS-EMOA) or 1/4. `spu_frac = 1` is greedy bit for bit. For NSGA-III Q′ has ⌈`spu_frac`·2N⌉ members, Opris's ⌈3µ/2⌉ (IJCAI 2025, Algorithm 1; NSGA-II takes Bian's floor, the same at an even N) |

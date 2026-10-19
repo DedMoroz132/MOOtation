@@ -7682,6 +7682,79 @@ gens = 0
 
 
 @test
+def failing_copies_and_c2_convex_dtlz2_keep_their_references_in_the_cache():
+    """Task 13, §5: a failing copy's reference and C2-ConvexDTLZ2's depend on
+    the problem alone and are kept in the cache of references, as the exact
+    fronts: the cache holds the arrays the campaign's folder held before
+    (_build_reference), bit for bit, a campaign's runs carry their
+    reference_hash, and its folder holds no reference; refs check says they
+    are current. (Task 13's report: the runs file for file as before.)"""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import os
+    import numpy as np
+    from mootation.benchmarks import registry as R
+    from mootation.run import campaign as C, refs
+    from mootation.run.config import load
+    fixed = sorted(n for n, q in R.PROBLEMS.items()
+                   if q.failing is not None or n.startswith("C2-ConvexDTLZ2_"))
+    assert len(fixed) == 20 and all(refs.shared(n) for n in fixed), fixed
+    assert set(fixed) <= set(refs.shared_problems())
+    assert not refs.shared("RE21") and not refs.shared("bbobbiobj01_n05_2D")
+    names = ["DTLZ2_3D_fail10r", "WFG4_3D_fail30b", "ZDT1_fail10n", "C2-ConvexDTLZ2_3D"]
+    text = """
+[run]
+name = "fx"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = NAMES
+[campaign]
+out = "OUT"
+budget_fe = 600
+n_ref = 150
+metrics = ["igdp_norm", "hv_h"]
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+""".replace("NAMES", json.dumps(names))
+    old_dir = os.environ.get(refs.ENV_DIR)
+    with tempfile.TemporaryDirectory() as td:
+        os.environ[refs.ENV_DIR] = str(Path(td) / "cache")
+        try:
+            path = Path(td) / "fx.toml"
+            path.write_text(text.replace("OUT", "runs"), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            counts = C.run_campaign(cfg, workers=2)
+            assert counts["done"] == 4 and counts["failed"] == 0, counts
+            root = C.out_root(cfg, C.campaign_spec(cfg))
+            folder = root / C.REFERENCES_DIR
+            assert not folder.is_dir() or not list(folder.iterdir()), list(folder.iterdir())
+            assert refs.check(names, 150) == {n: "ok" for n in names}
+            for n in names:
+                a, _ = refs.load_entry(n, 150)
+                q, ref, _, pset = C._build_reference(Path(td) / "folder" / f"{n}.npz", n, 150,
+                                                     True, False, True, "stamp", "want")
+                for k, v in (("ideal", q.ideal), ("nadir", q.nadir), ("ref", ref), ("pset", pset)):
+                    if v is None:                   # C2-ConvexDTLZ2: no Pareto-set sample
+                        assert k not in a, (n, k)
+                        continue
+                    v = np.asarray(v, float)
+                    assert a[k].dtype == v.dtype and a[k].shape == v.shape \
+                        and a[k].tobytes() == v.tobytes(), (n, k)
+                meta = json.loads((root / n / "nsga2" / "run_1" / "meta.json").read_text("utf-8"))
+                assert meta["reference_hash"] == C.reference_hash(q, ref, None, pset), n
+        finally:
+            if old_dir is None:
+                os.environ.pop(refs.ENV_DIR, None)
+            else:
+                os.environ[refs.ENV_DIR] = old_dir
+
+
+@test
 def refs_build_extend_keeps_a_smaller_sample_where_the_builder_does():
     """Task 12, §3: refs build --extend --n-ref N beside an entry of n < N
     points: where the builder's n points are the first of its N (Polygon:
@@ -9929,7 +10002,7 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
     """hv_algo = "box" (Lacour, Klamroth & Fonseca 2017): metrics.hypervolume
     gives WFG's value within 1e-12, and the cores that select by exact
     contributions take it (SMS-EMOA, MO-CMA-ES); HypE, whose exact part is not
-    a hypervolume, reports it ignored."""
+    a hypervolume, and R2-EMOA, which computes none, report it ignored."""
     if not _have_numpy() or _core_with("hypervolume") is None:
         print("    (skipped: no NumPy or no extension)"); return
     import numpy as np
@@ -9949,9 +10022,10 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
         r = minimize(p.evaluate, p.bounds, 3, algorithm=alg, pop_size=20, max_evaluations=400,
                      seed=2, hv_algo="box")
         assert "hv_algo" not in r.ignored and len(r.objectives), (alg, r.ignored)
-    r = minimize(p.evaluate, p.bounds, 3, algorithm="hype", pop_size=20, max_evaluations=400,
-                 seed=2, hv_algo="box")
-    assert "hv_algo" in r.ignored, r.ignored
+    for alg in ("hype", "r2_emoa"):
+        r = minimize(p.evaluate, p.bounds, 3, algorithm=alg, pop_size=20, max_evaluations=400,
+                     seed=2, hv_algo="box")
+        assert "hv_algo" in r.ignored, (alg, r.ignored)
 
 
 @test

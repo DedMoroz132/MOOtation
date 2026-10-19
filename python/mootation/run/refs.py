@@ -7,10 +7,13 @@
     python -m mootation.run.refs ...          (the same, without the console script)
 
 WHAT IS KEPT (task 12 of 2026-10-19, §3). For every problem of the registry
-whose reference front is exact (BenchProblem.front_exact; the approximate
-fronts of RE, CRE and RWMOP, and the pooled references, depend on a campaign
-and stay in its folder, campaign.REFERENCES_DIR), one file per problem and
-reference size n_ref: the frame (ideal, nadir), the reference front of n_ref
+whose reference front is exact (BenchProblem.front_exact) or an approximation
+fixed by the problem alone — a failing copy's (failing.py: the base's front,
+or the base's values at the sample points outside the failed region) and
+C2-ConvexDTLZ2's verified sample (task 13 of 2026-10-19, §5) — one file per
+problem and reference size n_ref (the approximate fronts of RE, CRE and RWMOP,
+and the pooled references, depend on a campaign and stay in its folder,
+campaign.REFERENCES_DIR): the frame (ideal, nadir), the reference front of n_ref
 points, the dense reference (registry.has_dense_reference: from four to ten
 objectives), the Pareto-set sample of n_ref points, and the IGD+ floors of
 cover.py at the problem's population — the greedy floor, DSS's and their
@@ -98,13 +101,17 @@ def entry_path(name: str, n_ref: int) -> Path:
 
 def shared(name: str) -> bool:
     """Does `name` keep its reference in this cache: a registry problem with an
-    exact reference front (none without NumPy, which the registry needs)."""
+    exact reference front, a failing copy or C2-ConvexDTLZ2 (none without
+    NumPy, which the registry needs). A failing copy by its kind, not by
+    front_exact, which the copy sets only once its sample is tested."""
     try:
         from ..benchmarks.registry import PROBLEMS
     except ImportError:
         return False
     p = PROBLEMS.get(name)
-    return p is not None and callable(p.pareto_front) and bool(p.front_exact)
+    if p is None or not callable(p.pareto_front):
+        return False
+    return bool(p.front_exact) or p.failing is not None or name.startswith("C2-ConvexDTLZ2_")
 
 
 def shared_problems() -> list:

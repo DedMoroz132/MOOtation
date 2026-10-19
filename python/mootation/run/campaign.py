@@ -1919,7 +1919,7 @@ CORE_US = {"sms_emoa": 300.0, "hype": 300.0, "mo_cma_es": 300.0, "sms_m2m": 300.
            "r2ibea": 150.0, "mosa": 120.0}
 CORE_US_DEFAULT = 50.0
 PROBLEM_US = (("WFG", 20.0), ("MaF10", 1000.0), ("MaF11", 1000.0), ("MaF12", 1000.0),
-              ("MaF8", 50.0), ("bbobbiobj", 30.0), ("RE", 50.0), ("CRE", 50.0), ("RCM", 80.0),
+              ("bbobbiobj", 30.0), ("RE", 50.0), ("CRE", 50.0), ("RCM", 80.0),
               ("RWMOP", 80.0), ("DOC", 50.0), ("MW", 20.0), ("DAS-CMOP", 20.0),
               ("LIR-CMOP", 20.0), ("BT", 20.0), ("MOP", 20.0), ("MMF", 30.0),
               ("SYM-PART", 30.0), ("Omni", 30.0), ("IPolygon", 30.0), ("Polygon", 20.0))

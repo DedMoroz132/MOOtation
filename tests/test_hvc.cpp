@@ -250,6 +250,7 @@ int main()
         check(refused, "mo_cma_es refuses hv_contrib = HVC");
         mootation::R2EMOACore<mootation::NSGAII_Individual> r2;
         check(!r2.set_word("hv_contrib", "hvc"), "r2_emoa has no hypervolume: hv_contrib not taken");
+        check(!r2.set_word("hv_algo", "box"), "r2_emoa has no hypervolume: hv_algo not taken");
     }
     run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");
     run_with_hvc<mootation::testing::HvcCMA, mootation::MOCMAESCore<mootation::testing::HvcCMA>>("mo_cma_es");

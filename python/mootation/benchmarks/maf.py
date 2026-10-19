@@ -232,6 +232,30 @@ def maf_n_vars(M: int) -> int:
 #   * MaF15's second term reads group j + 1 through objective j's eta, as
 #     printed (c_jk gbar_j(x^s_k)).
 #
+# CROSS-CHECK WITH LSMOP (task 13 of 2026-10-19, §4; the authors' version of
+# Cheng et al. 2017, LSMOP_Final Sept 2016). The MaF paper rules where it
+# speaks, LSMOP where it does not:
+#   * groups: MaF fixes N_k = 2 and D = 20 M (after Eq. 45); the shares are
+#     LSMOP's logistic map, Eq. 9-10 with alpha = 3.8, c_0 = 0.1. LSMOP Eq. 9
+#     rounds each group up, |x^s_i| = ceil(r_i n_s), so its D may exceed the
+#     nominal one; here the largest remainders keep D = 20 M exactly — a
+#     declared difference from LSMOP;
+#   * linkage: i / |x^s| over the whole x^s, as MaF Eq. 45 and 50 and LSMOP
+#     L_1 (Eq. 22, MaF14) and L_2 (Eq. 23, MaF15);
+#   * bounds: LSMOP uses l_i = 0, u_i = 10 for x^s (after Eq. 23), as MaF14
+#     here; MaF15 keeps [0, 1] for every variable as MaF Eq. 46 prints it,
+#     self-consistent with its formula;
+#   * landscapes: LSMOP Table II, LSMOP3 = (L_1, H_1, g^I = eta_4 Rastrigin,
+#     g^II = eta_3 Rosenbrock, C_1 = I of Eq. 19) is MaF14; LSMOP8 = (L_2,
+#     H_2, eta_5 Griewank, eta_1 sphere, C_2 of Eq. 20, objective j reading
+#     groups j and j + 1) is MaF15's g (MaF Eq. 47-49), MaF15's front the
+#     inverted H_2;
+#   * the normalisation by the subcomponent's length and N_k: LSMOP Eq. 17,
+#     odd and even objectives by Eq. 18, as here;
+#   * MaF14's front at M = 8, 10, 15: the simplex with front_exact False
+#     (THE FRONT OF MaF14 below), the strip off it stays, the linkage being
+#     the paper's.
+#
 # THE FRONT OF MaF14. The optimum of a Rosenbrock subcomponent (an even
 # group) is z = 1, x_i = l_i + (1 + 10 x_1) / a_i, inside the box while
 # x_1 <= a_i - 1/10. Group 2 starts after group 1, whose share falls below a

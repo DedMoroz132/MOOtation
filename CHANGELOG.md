@@ -10,6 +10,23 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- R2-EMOA reports `hv_algo` ignored, as it does `hv_contrib` (task 13 of
+  2026-10-19, §6): its selection computes no hypervolume. The same runs.
+- MaF14 and MaF15: the header of `benchmarks/maf.py` records the cross-check
+  with the LSMOP paper (task 13 of 2026-10-19, §4: the logistic map of
+  Eq. 9-10, the linkages of Eq. 22-23, Table II's landscapes, the bounds; the
+  groups rounded by the largest remainders, D = 20 M exactly, where LSMOP
+  rounds up). The values are unchanged.
+- The cache of references (`mootation refs`) also keeps the failing copies'
+  and C2-ConvexDTLZ2's references (task 13 of 2026-10-19, §5): approximate
+  fronts, but fixed by the problem alone, not by a campaign. The same arrays
+  as the campaign's folder held, so the same runs; RE, CRE, RCM and their
+  noisy copies stay in the campaign's folder. A failing copy is kept by its
+  kind, not by `front_exact`, which it sets only once its sample is tested.
+- The campaign's queue no longer counts MaF8 among the families evaluated in
+  Python (task 13 of 2026-10-19, §7): it is C++ since task 12. Only the order
+  of the queue may change, not the runs.
+
 - `dss::order` (mosa's answer, DMS, the inner archive) sets the almost
   dominated points aside with less work and the same order, bit for bit
   (task 12 of 2026-10-19, §4): every node of its k-d tree holds the smallest

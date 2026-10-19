@@ -77,7 +77,8 @@ namespace mootation {
 //   R2E-5. Everything else — the parents, the variation, constraints (CDP
 //     through the non-dominated sorting), the binary genome, survival =
 //     stochastic, the inner archive — is SMS-EMOA's (sms_emoa.hpp, SMS-5,
-//     -6, -8, -9).
+//     -6, -8, -9). SMS-EMOA's hypervolume knobs hv_contrib and hv_algo are
+//     not taken (reported ignored): the selection computes no hypervolume.
 // ============================================================================
 
 // The exact R2 of a two-objective set for weights uniform on [0, 1]
@@ -152,7 +153,7 @@ public:
             weights_.clear();
             return true;
         }
-        if (k == "hv_contrib") return false;               // R2 contributions: no hypervolume
+        if (k == "hv_contrib" || k == "hv_algo") return false;  // R2 contributions: no hypervolume
         return SMSEMOACore<Ind_t>::set_word(k, w);
     }
 
