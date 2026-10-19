@@ -22,7 +22,8 @@ set(MOOTATION_TESTS
     test_suite
     test_nd_tree
     test_hv_box
-    test_dss)
+    test_dss
+    test_hvc)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

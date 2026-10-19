@@ -28,6 +28,16 @@ always listed under **Changed** or **Removed**.
   missing entries of its problems in parallel before its first run
   (`--no-build-refs` stops with the list instead) and reads them without
   locks; the same arrays as it built for itself before, so the same runs.
+- `hv_contrib` (task 12 of 2026-10-19, §5): `hvc`, SMS-EMOA's and
+  MO-CMA-ES's exact contributions at three and four objectives by HVC3D and
+  HVC4D (Guerreiro & Fonseca, IEEE TEVC 22(3), 2018; `hvc.hpp`). At M = 3 the
+  HVC3D structure is kept between steps and updated a point at a time (one
+  offspring in, one point out), then every contribution in linear time; at
+  M = 4 HVC4D in O(n²), only with `n_samples = 0` (M = 4 is Monte-Carlo by
+  default). The values are WFG's up to the order of the sums, not bit for
+  bit, so a run may take another trajectory; `wfg` stays the default.
+  `tests/test_hvc.cpp` checks them against WFG on 10 000 random sets and the
+  updated structure against one built from scratch, bit for bit.
 - An ND-tree (Jaszkiewicz & Lust, IEEE TEVC 22(5), 2018; `nd_tree.hpp`)
   behind the run archive's dominance checks from three objectives and the
   nondominated filter from four (task 11 of 2026-10-18, §2): the same answers

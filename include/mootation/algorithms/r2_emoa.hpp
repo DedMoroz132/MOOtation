@@ -152,6 +152,7 @@ public:
             weights_.clear();
             return true;
         }
+        if (k == "hv_contrib") return false;               // R2 contributions: no hypervolume
         return SMSEMOACore<Ind_t>::set_word(k, w);
     }
 
