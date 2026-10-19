@@ -45,7 +45,9 @@ namespace mootation {
 //
 // Defaults: NSGA-II's, as the core nsga2 has them (Deb et al. 2002, §IV-A):
 //   pc = 0.9, pm = 1/n, eta_c = eta_m = 20. The paper's runs (§IV-A.3) used
-//   pc = 1 for every algorithm; set pc = 1 for them.
+//   pc = 1 for every algorithm; set pc = 1 for them. Whether the default
+//   should be the paper's pc = 1 is an open question, to be settled by a
+//   separate check; until then it stays nsga2's 0.9.
 // The sort is Deb's with every pair compared directly, O(M N²) for the
 //   angles and O(N²) comparisons: SDR is not transitive (Property 3), so no
 //   faster sort applies (the paper, after Property 3).

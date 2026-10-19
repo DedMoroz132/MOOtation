@@ -3121,8 +3121,7 @@ def algorithm_families_cover_the_registry():
     fams = algorithm_families()
     names = [a for _, members in fams for a in members]
     assert names == list(algorithm_names()), "families must list the registry in order"
-    assert len(fams) == 13 and fams[0][1][0] == "nsga2", fams
-    assert dict(fams)["Modified dominance relation"] == ("nsga2_sdr",), fams
+    assert len(fams) == 12 and fams[0][1][:2] == ("nsga2", "nsga2_sdr"), fams
     assert dict(fams)["Direct search"] == ("dms", "dmulti_mads", "multiglods"), fams
     assert fams[-3:] == (("Particle swarm", ("smpso",)), ("Estimation of distribution", ("rm_meda",)),
                          ("Simulated annealing", ("mosa",))), fams
@@ -6031,7 +6030,7 @@ def _sdr_reference(F):
         sq = sq + Fb[:, k] * Fb[:, k]
         dot = dot + Fb[:, k, None] * Fb[None, :, k]
     length = np.sqrt(sq)
-    i, j = np.triu_indices(n, 1)             # (14); with f̄ = 0 the angle is 0
+    i, j = np.triu_indices(n, 1)             # (14); with f̄ = 0 no angle: 0 in (12)
     ok = (length[i] > 0) & (length[j] > 0)
     c = np.clip(dot[i, j][ok] / length[i][ok] / length[j][ok], -1.0, 1.0)
     t = np.zeros(len(i))
@@ -6039,11 +6038,14 @@ def _sdr_reference(F):
     theta = np.zeros((n, n))
     theta[i, j] = t
     theta[j, i] = t
-    tb = 0.0                                 # (15): the ⌊n/2⌋-th distinct nearest angle
-    if n > 1:
-        nearest = np.where(np.eye(n, dtype=bool), np.inf, theta).min(1)
+    tb = 0.0                                 # (15): the ⌊n/2⌋-th distinct nearest angle,
+    nz = np.flatnonzero(length > 0)          # over the points with f̄ ≠ 0 alone
+    if len(nz) > 1:
+        sub = theta[np.ix_(nz, nz)]
+        nearest = np.where(np.eye(len(nz), dtype=bool), np.inf, sub).min(1)
         values = np.unique(nearest)
-        tb = values[n // 2 - 1] if n // 2 <= len(values) else values[-1]
+        k = len(nz) // 2
+        tb = values[k - 1] if k <= len(values) else values[-1]
         if tb == 0.0:
             tb = values[1] if len(values) > 1 else 0.0
     cx = np.broadcast_to(con[:, None], (n, n))
@@ -6102,10 +6104,10 @@ def sdr_layers_match_the_reference():
         rtb, rrank = _sdr_reference(F)
         assert np.float64(tb).tobytes() == np.float64(rtb).tobytes(), (t, n, tb, rtb)
         assert list(rank) == rrank, (t, n)
-    # a point at z^min: every angle 0, Con alone
+    # a point at z^min: left out of θ̄, alone in the first layer
     tb, rank = _core.sdr_layers([[0, 0, 0], [1, 0.2, 0.5], [0.2, 1, 0.4], [0.5, 0.5, 1]])
-    assert tb == 0.0 and (tb, list(rank)) == _sdr_reference(
-        [[0, 0, 0], [1, 0.2, 0.5], [0.2, 1, 0.4], [0.5, 0.5, 1]])
+    assert tb > 0.0 and rank[0] == 0 and min(rank[1:]) == 1, (tb, rank)
+    assert (tb, list(rank)) == _sdr_reference([[0, 0, 0], [1, 0.2, 0.5], [0.2, 1, 0.4], [0.5, 0.5, 1]])
     # copies: one layer
     tb, rank = _core.sdr_layers([[0.3, 0.7], [0.3, 0.7], [0.7, 0.3], [1, 1]])
     assert rank[0] == rank[1] == 0, rank

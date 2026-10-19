@@ -11,7 +11,7 @@
 //     with Con(x) < Con(y) (so no cycle), and layers as Deb's sort defines
 //     them — every point in one, none dominated within its layer, each one
 //     after the first dominated from the layer before;
-//   - a point at z^min (SDR-2) and copies of a point;
+//   - a point at z^min (SDR-2: left out of θ̄) and copies of a point;
 //   - the core: its ranks after setup are sdr::layers of the population, θ̄
 //     and the first layer's share the sort's; under constraints the feasible
 //     points come first, sorted by SDR among themselves alone, the infeasible
@@ -180,20 +180,25 @@ void properties()
 
 void degenerate()
 {
-    // a point at z^min: every angle with it 0, θ̄ = 0, Con alone
+    // a point at z^min (SDR-2): left out of θ̄'s estimate, which is that of
+    // the other points in the same frame; it dominates every other point
     const std::vector<std::vector<double>> F = {{0.0, 0.0, 0.0}, {1.0, 0.2, 0.5}, {0.2, 1.0, 0.4},
                                                 {0.5, 0.5, 1.0}, {0.9, 0.9, 0.1}};
     double tb = -1.0;
     const auto rank = sdr::layers(F, &tb);
-    check(tb == 0.0, "a point at z^min: θ̄ = 0");
-    // Con: 0, 1.7/1.0 ... by Con alone the layers follow the sums of f̄
+    auto rest = sdr::normalize(F);
+    rest.erase(rest.begin());
+    check(tb > 0.0 && tb == sdr::frame_of(rest).theta_bar,
+          "a point at z^min: θ̄ of the other points");
     const sdr::Frame fr = sdr::make_frame(F);
-    bool by_con = true;
-    for (std::size_t i = 0; i < F.size(); ++i)
-        for (std::size_t j = 0; j < F.size(); ++j)
-            by_con = by_con && (sdr::dominates(fr, i, j) == (fr.con[i] < fr.con[j]));
-    check(by_con, "a point at z^min: the relation is Con alone");
-    check(rank[0] == 0, "the point at z^min is in the first layer");
+    bool over_all = true;
+    for (std::size_t j = 1; j < F.size(); ++j)
+        over_all = over_all && sdr::dominates(fr, 0, j) && !sdr::dominates(fr, j, 0);
+    check(over_all, "a point at z^min dominates every other one");
+    check(rank[0] == 0 && rank[1] == 1, "the point at z^min alone in the first layer");
+    // two copies at z^min and a single other point: θ̄ = 0, Con alone
+    check(sdr::make_frame({{0.0, 0.0}, {0.0, 0.0}, {1.0, 1.0}}).theta_bar == 0.0,
+          "one point with f̄ ≠ 0: θ̄ = 0");
 
     // copies never dominate each other
     const std::vector<std::vector<double>> C = {{0.3, 0.7}, {0.3, 0.7}, {0.7, 0.3}, {1.0, 1.0}};

@@ -21,8 +21,7 @@ plus *mutation*, the operator all of these algorithms are built on.
 
 ## What you get
 
-- **76 algorithms** in thirteen families: Pareto-dominance, a modified dominance
-  relation (NSGA-II/SDR), NSGA-III-style
+- **76 algorithms** in twelve families: Pareto-dominance, NSGA-III-style
   reference points, the MOEA/D family, indicator-based, reference-vector,
   clustering-based, archive-based, two-archive constrained, direct search,
   particle swarm, estimation of distribution and simulated annealing; and in
@@ -234,7 +233,6 @@ have not yet been run by anyone. [docs/embedding.md](docs/embedding.md#the-c-abi
 | family | count | reach for it when |
 |---|---|---|
 | Pareto-dominance & diversity (NSGA-II, SPEA2, ...) | 8 | two or three objectives, a baseline everyone recognises |
-| Modified dominance relation (NSGA-II/SDR) | 1 | many objectives with NSGA-II's layered selection; the niche size adapts to the population |
 | Reference-point, NSGA-III family | 4 | many objectives, a regular front; `pop_size` must be a Das–Dennis lattice size |
 | Decomposition, MOEA/D family | 16 | scalarisable problems, many objectives, cheap generations |
 | Indicator-based (IBEA, HypE, R2, ...) | 13 | one quality indicator is what you care about; cost grows with the objective count |

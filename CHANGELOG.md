@@ -16,8 +16,8 @@ always listed under **Changed** or **Removed**.
   and maxima, Con = Σ f̄, the niche size θ̄ the ⌊|R|/2⌋-th distinct nearest
   angle, x ≺ y ⟺ Con(x)·max(1, θ_xy/θ̄) < Con(y), the layers by Deb's fast
   non-dominated sort with every pair compared (the relation is not
-  transitive). A family of its own in `algorithms.def`, "Modified dominance
-  relation"; NSGA-II's operators and defaults; feasibility first under
+  transitive). In the family "Pareto-dominance & diversity", next to
+  `nsga2`; NSGA-II's operators and defaults; feasibility first under
   constraints, SDR among the feasible points. The relation and the sort are
   `sdr.hpp` (in Python `_core.sdr_layers`); `tests/test_sdr.cpp` checks the
   paper's Fig. 4 and Property 3, the relation's properties and the core,

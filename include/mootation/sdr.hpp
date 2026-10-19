@@ -27,16 +27,17 @@
 // The library's rules where the paper says nothing:
 //   SDR-1 an objective with z^max = z^min (zero range) has f̄_i = 0 for every
 //         point;
-//   SDR-2 θ is computed as acos of the cosine clipped to [−1, 1]; a point with
-//         f̄ = 0 (it is z^min in every objective) has θ = 0 with every point,
-//         in (15) too: with such a point in the set every minimum angle is 0
-//         and SDR-3 leaves Con alone to decide (the point itself, Con = 0,
-//         dominates every point with Con > 0 under any θ̄);
+//   SDR-2 θ is computed as acos of the cosine clipped to [−1, 1]. A point
+//         with f̄ = 0 (it is z^min in every objective) has no angle with any
+//         point: it is left out of θ̄'s estimate — (15) runs over the n points
+//         with f̄ ≠ 0 alone, each one's minimum angle to the others of them —
+//         and in (12) its θ is taken as 0, a factor of 1: with Con = 0 it
+//         dominates every point with Con > 0, and nothing dominates it;
 //   SDR-3 fewer than ⌊n/2⌋ distinct minimum angles: θ̄ is the largest of them;
 //         θ̄ = 0 (the ⌊n/2⌋-th is 0, which happens for n = 2 or 3): the
 //         smallest positive one; none positive (every point on one ray, or
-//         n = 1): θ̄ = 0, and the relation compares Con alone — the same as
-//         (12) with every θ_xy = 0.
+//         fewer than two points with f̄ ≠ 0): θ̄ = 0, and the relation compares
+//         Con alone — the same as (12) with every θ_xy = 0.
 // The arithmetic is fixed so that a reference can repeat it bit for bit:
 // sums and dot products run over the objectives in order, the cosine is
 // (f̄(x)·f̄(y) / |f̄(x)|) / |f̄(y)|, the angle std::acos of it.
@@ -126,11 +127,16 @@ inline Frame frame_of(const std::vector<std::vector<double>>& fbar)
             fr.theta[i * n + j] = t;
             fr.theta[j * n + i] = t;
         }
-    std::vector<double> nearest(n, std::numeric_limits<double>::infinity());
-    for (std::size_t i = 0; i < n; ++i)
+    // (15) over the points with f̄ ≠ 0 (SDR-2)
+    std::vector<double> nearest;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!(len[i] > 0.0)) continue;
+        double t = std::numeric_limits<double>::infinity();
         for (std::size_t j = 0; j < n; ++j)
-            if (j != i) nearest[i] = std::min(nearest[i], fr.theta[i * n + j]);
-    fr.theta_bar = niche_size(n > 1 ? nearest : std::vector<double>{}, n);
+            if (j != i && len[j] > 0.0) t = std::min(t, fr.theta[i * n + j]);
+        nearest.push_back(t);
+    }
+    fr.theta_bar = nearest.size() > 1 ? niche_size(nearest, nearest.size()) : 0.0;
     return fr;
 }
 
