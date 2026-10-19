@@ -225,7 +225,7 @@ inline void t_asy(const double* x, int D, double beta, double* out)
 // f_pen: sum_i max(0, |x_i| - 5)^2
 inline double f_pen(const double* x, int D)
 {
-    double t[kMaxD];
+    double t[kMaxD] = {};
     for (int i = 0; i < D; ++i) {
         const double m = np_maximum(0.0, std::abs(x[i]) - 5.0);
         t[i] = m * m;
@@ -250,7 +250,7 @@ public:
     // the value at x (D values, real)
     double operator()(const double* x) const
     {
-        double d[kMaxD];
+        double d[kMaxD] = {};
         for (int i = 0; i < D_; ++i) d[i] = x[i] - f_.x_opt[static_cast<std::size_t>(i)];
         switch (f_.fid) {
             case 1: return dot(d, d, D_) + f_.f_opt;
@@ -311,7 +311,7 @@ private:
     // Q Lambda^10 R d
     void qlr(const double* d, double* z) const
     {
-        double a[kMaxD];
+        double a[kMaxD] = {};
         matvec(f_.R, D_, d, a);
         for (int i = 0; i < D_; ++i) a[i] = f_.l10[static_cast<std::size_t>(i)] * a[i];
         matvec(f_.Q, D_, a, z);
@@ -319,7 +319,7 @@ private:
 
     double f2(const double* d) const
     {
-        double t[kMaxD];
+        double t[kMaxD] = {};
         for (int i = 0; i < D_; ++i) {
             const double z = t_osz(d[i]);
             t[i] = cond_[static_cast<std::size_t>(i)] * z * z;
@@ -329,7 +329,7 @@ private:
 
     double f6(const double* d) const
     {
-        double z[kMaxD], t[kMaxD];
+        double z[kMaxD] = {}, t[kMaxD] = {};
         qlr(d, z);
         for (int i = 0; i < D_; ++i) {
             const double s = z[i] * f_.x_opt[static_cast<std::size_t>(i)] > 0.0 ? 100.0 : 1.0;
@@ -342,7 +342,7 @@ private:
     double f8(const double* d) const
     {
         const double c = std::max(1.0, std::sqrt(static_cast<double>(D_)) / 8.0);
-        double z[kMaxD], t[kMaxD];
+        double z[kMaxD] = {}, t[kMaxD] = {};
         for (int i = 0; i < D_; ++i) z[i] = c * d[i] + 1.0;
         for (int i = 0; i < D_ - 1; ++i) {
             const double a = z[i] * z[i] - z[i + 1];
@@ -354,14 +354,14 @@ private:
 
     double f13(const double* d) const
     {
-        double z[kMaxD];
+        double z[kMaxD] = {};
         qlr(d, z);
         return py_square(z[0]) + 100.0 * std::sqrt(dot(z + 1, z + 1, D_ - 1)) + f_.f_opt;
     }
 
     double f14(const double* d) const
     {
-        double z[kMaxD], t[kMaxD];
+        double z[kMaxD] = {}, t[kMaxD] = {};
         matvec(f_.R, D_, d, z);
         for (int i = 0; i < D_; ++i) t[i] = lm::pow(std::abs(z[i]), cond_[static_cast<std::size_t>(i)]);
         return std::sqrt(row_sum(t, static_cast<std::size_t>(D_))) + f_.f_opt;
@@ -369,7 +369,7 @@ private:
 
     double f15(const double* d) const
     {
-        double a[kMaxD], b[kMaxD], z[kMaxD], c[kMaxD];
+        double a[kMaxD] = {}, b[kMaxD] = {}, z[kMaxD] = {}, c[kMaxD] = {};
         matvec(f_.R, D_, d, a);
         for (int i = 0; i < D_; ++i) a[i] = t_osz(a[i]);
         t_asy(a, D_, 0.2, b);
@@ -382,7 +382,7 @@ private:
 
     double f17(const double* x, const double* d) const
     {
-        double a[kMaxD], b[kMaxD], z[kMaxD], t[kMaxD];
+        double a[kMaxD] = {}, b[kMaxD] = {}, z[kMaxD] = {}, t[kMaxD] = {};
         matvec(f_.R, D_, d, a);
         t_asy(a, D_, 0.5, b);
         matvec(f_.Q, D_, b, a);
@@ -399,7 +399,7 @@ private:
 
     double f20(const double* x) const
     {
-        double xh[kMaxD], z[kMaxD], t[kMaxD];
+        double xh[kMaxD] = {}, z[kMaxD] = {}, t[kMaxD] = {};
         for (int i = 0; i < D_; ++i) xh[i] = 2.0 * f_.sign[static_cast<std::size_t>(i)] * x[i];
         for (int i = 0; i < D_; ++i) {
             const double two_abs = two_abs_[static_cast<std::size_t>(i)];
@@ -414,7 +414,7 @@ private:
 
     double f21(const double* x) const
     {
-        double d[kMaxD], u[kMaxD], q[kMaxD];
+        double d[kMaxD] = {}, u[kMaxD] = {}, q[kMaxD] = {};
         double best = 0.0;
         for (int k = 0; k < kPeaks; ++k) {
             const double* y = f_.y.data() + static_cast<std::size_t>(k) * D_;
@@ -462,7 +462,7 @@ public:
                 f[o] = objective_[o](x);
                 continue;
             }
-            double z[kMaxD];
+            double z[kMaxD] = {};
             bool nan = false;
             for (int i = 0; i < n_; ++i) z[i] = x[i];
             const auto& levels = objective_[o].function().levels;
