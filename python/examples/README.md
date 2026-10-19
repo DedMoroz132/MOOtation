@@ -22,7 +22,7 @@ res = mootation.minimize(my_objectives, bounds=[(0, 1)] * 10, n_objs=2,
                          algorithm="nsga3", pop_size=91, n_gen=250)
 ```
 
-`mootation.algorithms()` lists all 75 names (the C++ cores; `mootation.scalar.NAMES`
+`mootation.algorithms()` lists all 76 names (the C++ cores; `mootation.scalar.NAMES`
 the nine Python methods). A knob the chosen algorithm does
 not have comes back in `res.ignored` rather than being silently dropped — a run
 configured with an ignored parameter is not the run you asked for.

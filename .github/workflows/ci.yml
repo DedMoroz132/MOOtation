@@ -89,8 +89,8 @@ jobs:
         run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
 
   # ── The long tests ────────────────────────────────────────────────────────
-  # test_convergence runs all 75 algorithms to convergence; test_constraints
-  # runs all 75 twice, with constraint handling off and on. Together they are
+  # test_convergence runs all 76 algorithms to convergence; test_constraints
+  # runs all 76 twice, with constraint handling off and on. Together they are
   # the bulk of the suite's runtime, so every push skips them (-LE nightly) and
   # this job runs them on a schedule instead.
   #
@@ -269,7 +269,7 @@ jobs:
               auto b = sess.result();
               std::printf("installed embed OK: run=%zu session=%zu algorithms=%zu\n",
                           a.size(), b.size(), mootation::algorithm_names().size());
-              if (mootation::algorithm_names().size() != 75) return 1;
+              if (mootation::algorithm_names().size() != 76) return 1;
               if (a.size() != b.size() || a.size() == 0) return 1;
               for (std::size_t i = 0; i < a.size(); ++i)
                   for (std::size_t j = 0; j < 2; ++j)
@@ -385,7 +385,7 @@ jobs:
           cd /tmp     # outside the source tree, so nothing resolves by accident
           python -c "
           import mootation
-          assert len(mootation.algorithms()) == 75
+          assert len(mootation.algorithms()) == 76
           res = mootation.minimize(lambda x: [x[0], 1 - x[0]**0.5],
                                    bounds=[(0.0, 1.0)] * 3, n_objs=2,
                                    pop_size=20, n_gen=10, seed=1)
@@ -398,7 +398,7 @@ jobs:
           # single campaign.
           from mootation.run.algorithms import algorithm_names
           from mootation.run.knobs import knob_source
-          assert len(algorithm_names()) == 75, algorithm_names()
+          assert len(algorithm_names()) == 76, algorithm_names()
           assert 'fallback' not in knob_source(), knob_source()
           print('installed package works:', len(mootation.algorithms()), 'algorithms')
           "
@@ -613,7 +613,7 @@ jobs:
               const std::size_t n_alg = mootation::algorithm_names().size();
               std::printf("run=%zu session=%zu algorithms=%zu\n",
                           a.size(), b.size(), n_alg);
-              if (n_alg != 75) return 1;
+              if (n_alg != 76) return 1;
               if (a.size() != b.size()) return 1;
               for (std::size_t i = 0; i < a.size(); ++i)
                   for (std::size_t j = 0; j < 2; ++j)

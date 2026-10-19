@@ -138,7 +138,7 @@ def main(argv):
 
     moo = MOOtation(argv[1])
     print(f"MOOtation {moo.version}, {len(moo.algorithms())} algorithms")
-    assert len(moo.algorithms()) == 75, "expected 75 algorithms"
+    assert len(moo.algorithms()) == 76, "expected 76 algorithms"
     assert "nsga2" in moo.algorithms()
 
     settings = """
