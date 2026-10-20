@@ -152,6 +152,7 @@
 // required by §V-C of liu2018 via M2M [8] (see header, REPRODUCTION OPERATOR
 // block).
 #include "../operators/liuli_crossover.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -252,7 +253,7 @@ private:
         std::vector<int> sel;
         if (n==0||cnt<=0) return sel;
         std::vector<char> used(n,0);
-        std::uniform_int_distribution<int> ri(0,n-1);
+        rnd::uniform_int_distribution<int> ri(0,n-1);
         int r=ri(rng_);
         int best=-1; double bc=2.0;
         for(int i=0;i<n;++i){ double c=cosine(pts[i],pts[r]); if(c<bc){bc=c;best=i;} }
@@ -459,7 +460,7 @@ public:
     void setup(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         const auto& bounds=vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0,1.0);
+        rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<N_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=bounds[j].first.value_or(0.0),hi=bounds[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
@@ -499,7 +500,7 @@ public:
         // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
         refresh_copies(vault, hold_, constraint_mode != ConstraintMode::NONE);
         ++gen_;
-        std::uniform_real_distribution<double> uni(0.0,1.0);
+        rnd::uniform_real_distribution<double> uni(0.0,1.0);
         int scratch=vault.expand(1);
 
         std::vector<Sol> Q; Q.reserve(N_);
@@ -523,10 +524,10 @@ public:
                 // draw from P_k (y = x admitted); otherwise — uniform over the
                 // members of ANY OTHER subpopulation (none → P_k).
                 if(uni(rng_)<alpha_ || others==0){
-                    std::uniform_int_distribution<int> dj(0,nk-1);
+                    rnd::uniform_int_distribution<int> dj(0,nk-1);
                     y=hold_[k][dj(rng_)];
                 } else {
-                    std::uniform_int_distribution<int> dp(0,others-1);
+                    rnd::uniform_int_distribution<int> dp(0,others-1);
                     int r=dp(rng_); if(r>=off[k]) r+=nk;
                     y=Pflat[r];
                 }
@@ -563,7 +564,7 @@ public:
                         if(better) beat.push_back(j);
                     }
                     if(!beat.empty()){
-                        std::uniform_int_distribution<int> dbi(0,(int)beat.size()-1);
+                        rnd::uniform_int_distribution<int> dbi(0,(int)beat.size()-1);
                         hold_[k][beat[dbi(rng_)]]=z;
                     }
                 }

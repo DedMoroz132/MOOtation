@@ -125,6 +125,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -371,8 +372,8 @@ private:
 
     // ── Mating selection (3.2): produce N parents (indices into P_) ──────
     std::vector<int> mating_selection() {
-        std::uniform_int_distribution<int> pick(0, N_ - 1);
-        std::uniform_real_distribution<double> coin(0.0, 1.0);
+        rnd::uniform_int_distribution<int> pick(0, N_ - 1);
+        rnd::uniform_real_distribution<double> coin(0.0, 1.0);
         std::vector<int> pool(N_);
         for (int i = 0; i < N_; ++i) {
             int a = pick(rng_), b = pick(rng_);
@@ -615,7 +616,7 @@ public:
         m_ = vault.objs_n();
         N_ = vault.pop_size();
         const auto& bd = vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0, 1.0);
+        rnd::uniform_real_distribution<double> d(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         for (int i = 0; i < N_; ++i) {
             for (int j = 0; j < vault.vars_n(); ++j) {

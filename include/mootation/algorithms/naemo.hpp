@@ -134,6 +134,7 @@
 #include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -327,12 +328,12 @@ private:
                                const std::vector<std::pair<std::optional<double>,
                                                            std::optional<double>>>& bounds) {
         int nv = (int)parent.size();
-        std::uniform_real_distribution<double> uni(0.0, 1.0);
+        rnd::uniform_real_distribution<double> uni(0.0, 1.0);
         std::vector<double> child;
 
         if (uni(rng_) > mut_prob_ && pool.size() >= 3) {
             // DE /rand/1/bin (Eq.18) + binomial crossover
-            std::uniform_int_distribution<int> pk(0, (int)pool.size()-1);
+            rnd::uniform_int_distribution<int> pk(0, (int)pool.size()-1);
             int a=pk(rng_), b=pk(rng_), c=pk(rng_);
             for (int t=0; t<10 && (a==b||a==c||b==c); ++t){ b=pk(rng_); c=pk(rng_);}
             const auto& r1 = arch_[pool[a]].vars;
@@ -341,7 +342,7 @@ private:
             child = parent;
             ops::note_operator("naemo_de_rand_1_bin", ops::bound_repair_name(repair_));
             ops::RepairTally tally;
-            std::uniform_int_distribution<int> jr(0, nv-1);
+            rnd::uniform_int_distribution<int> jr(0, nv-1);
             int jrand = jr(rng_);
             for (int j=0; j<nv; ++j) {
                 if (uni(rng_) < CR || j == jrand)   // Eq.18 + binomial: j_rand ∈ [0,nv)
@@ -365,7 +366,7 @@ private:
             // SBX (Eq.16-17), the second parent comes from the neighbourhood
             std::vector<double> p2;
             if (!pool.empty()) {
-                std::uniform_int_distribution<int> pk(0, (int)pool.size()-1);
+                rnd::uniform_int_distribution<int> pk(0, (int)pool.size()-1);
                 p2 = arch_[pool[pk(rng_)]].vars;
             } else {
                 p2 = parent;
@@ -435,7 +436,7 @@ public:
         // random initialization of L_soft individuals
         int N = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < vault.vars_n(); ++j) {
@@ -483,10 +484,10 @@ public:
         // scratch slot for evaluating offspring
         int scratch = vault.expand(1);
 
-        std::normal_distribution<double> gec(mu_etac_, std::sqrt(5.0));
-        std::normal_distribution<double> gF (mu_F_,    std::sqrt(0.1));
-        std::normal_distribution<double> gCR(mu_CR_,   std::sqrt(0.1));
-        std::uniform_real_distribution<double> uni(0.0, 1.0);
+        rnd::normal_distribution<double> gec(mu_etac_, std::sqrt(5.0));
+        rnd::normal_distribution<double> gF (mu_F_,    std::sqrt(0.1));
+        rnd::normal_distribution<double> gCR(mu_CR_,   std::sqrt(0.1));
+        rnd::uniform_real_distribution<double> uni(0.0, 1.0);
 
         std::vector<double> Setac, SF, SCR;
 
@@ -498,7 +499,7 @@ public:
                 // resolved dynamically from cnt.
                 std::vector<int> ne = neighbors_nonempty(j, cnt);
                 if (ne.empty()) continue;  // archive empty (should not happen)
-                std::uniform_int_distribution<int> pe(0, (int)ne.size()-1);
+                rnd::uniform_int_distribution<int> pe(0, (int)ne.size()-1);
                 ind = ne[pe(rng_)];
             }
             // parent: a random member of sub_arch[ind]
@@ -506,7 +507,7 @@ public:
             for (int i = 0; i < (int)arch_.size(); ++i)
                 if (line_of[i] == ind) members.push_back(i);
             if (members.empty()) continue;
-            std::uniform_int_distribution<int> pm(0, (int)members.size()-1);
+            rnd::uniform_int_distribution<int> pm(0, (int)members.size()-1);
             int parent_idx = members[pm(rng_)];
 
             // mating neighbourhood pool: ind plus the k nearest NON-EMPTY

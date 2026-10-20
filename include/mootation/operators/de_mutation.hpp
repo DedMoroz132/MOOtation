@@ -33,6 +33,7 @@
 
 #include "bound_repair.hpp"
 #include "sbx.hpp"   // sbx_require_bound
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -74,14 +75,14 @@ inline void de_rand_1_bin(
     require_de_repair(repair, "de_rand_1_bin");
     note_operator("de_rand_1_bin", bound_repair_name(repair));
     RepairTally tally;
-    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
     int nv = static_cast<int>(x_i.size());
     // FIX 2026-07-08: OP-1 (BUG).
     // Guard nv==0 (purely binary genome, num_vars=0): without it
     // uniform_int_distribution(0,-1) is UB (a<=b is required). Clear the
     // output and return (following the liuli_mutation pattern).
     if (nv == 0) { y.clear(); return; }
-    std::uniform_int_distribution<int> rand_dim(0, nv - 1);
+    rnd::uniform_int_distribution<int> rand_dim(0, nv - 1);
     int j_rand = rand_dim(rng);
 
     y.resize(nv);
@@ -153,10 +154,10 @@ inline void de_bin(Mutant mutant, const std::vector<double>& x_i, std::vector<do
     require_de_repair(repair, op);
     note_operator(op, bound_repair_name(repair));
     RepairTally tally;
-    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
     const int nv = static_cast<int>(x_i.size());
     if (nv == 0) { y.clear(); return; }
-    std::uniform_int_distribution<int> rand_dim(0, nv - 1);
+    rnd::uniform_int_distribution<int> rand_dim(0, nv - 1);
     const int j_rand = rand_dim(rng);
     y.resize(nv);
     for (int j = 0; j < nv; ++j) {
@@ -213,7 +214,7 @@ inline void de_eq6(const std::vector<double>& x_r1,
                    double F, double CR, RNG& rng)
 {
     note_operator("de_eq6", "box repair after mutation");
-    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
     std::size_t nv = x_r1.size();
     y.resize(nv);
     for (std::size_t k = 0; k < nv; ++k)

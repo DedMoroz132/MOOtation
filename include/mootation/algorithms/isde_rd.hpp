@@ -137,6 +137,7 @@
 #include "../warn.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -212,7 +213,7 @@ private:
         set_shift(pool);                       // ISDE-3 (shift rule per ideal_shift_)
         std::vector<std::vector<int>> bk(K_);
         for(int i=0;i<(int)pool.size();++i) bk[assoc(pool[i].objs)].push_back(i);
-        std::uniform_int_distribution<int> dp(0,(int)pool.size()-1);
+        rnd::uniform_int_distribution<int> dp(0,(int)pool.size()-1);
         subpop_.assign(K_,{});
         for(int k=0;k<K_;++k){
             std::vector<Sol> G; for(int i:bk[k]) G.push_back(pool[i]);
@@ -224,7 +225,7 @@ private:
                 std::vector<int> others; others.reserve(pool.size());
                 for(int i=0;i<(int)pool.size();++i) if(!in[i]) others.push_back(i);
                 int n_o=(int)others.size();
-                for(int t=0;t<need && t<n_o;++t){ int r=std::uniform_int_distribution<int>(t,n_o-1)(rng_); std::swap(others[t],others[r]); subpop_[k].push_back(pool[others[t]]); }
+                for(int t=0;t<need && t<n_o;++t){ int r=rnd::uniform_int_distribution<int>(t,n_o-1)(rng_); std::swap(others[t],others[r]); subpop_[k].push_back(pool[others[t]]); }
                 for(int t=n_o;t<need;++t) subpop_[k].push_back(pool[dp(rng_)]);   // degenerate: fewer outsiders than needed
             }
             else { // above S: remove one at a time by I_SDE^+
@@ -302,7 +303,7 @@ public:
             throw std::invalid_argument("ISDE+RD: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size();
         build_directions();
-        const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
+        const auto& bd=vault.get_bounds(); rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
@@ -329,7 +330,7 @@ public:
         // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
         refresh_copies(vault, subpop_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
-        std::uniform_real_distribution<double> uni(0,1);
+        rnd::uniform_real_distribution<double> uni(0,1);
         // Alg.3 lines 4-15. Line 13 (P = P ∪ o) sits INSIDE the per-member
         // loop, so the line-10 partner is drawn from P as it grows within the
         // generation (ISDE-8); line 8 draws q from P_k with no q != p
@@ -339,8 +340,8 @@ public:
             auto& Pk=subpop_[k]; int sz=(int)Pk.size(); if(sz==0) continue;
             for(int j=0;j<sz;++j){
                 Sol q;
-                if(uni(rng_)<inprob_) q=Pk[std::uniform_int_distribution<int>(0,sz-1)(rng_)];
-                else q=P[std::uniform_int_distribution<int>(0,(int)P.size()-1)(rng_)];
+                if(uni(rng_)<inprob_) q=Pk[rnd::uniform_int_distribution<int>(0,sz-1)(rng_)];
+                else q=P[rnd::uniform_int_distribution<int>(0,(int)P.size()-1)(rng_)];
                 P.push_back(breed(Pk[j],q,vault,scratch));
             }
         }

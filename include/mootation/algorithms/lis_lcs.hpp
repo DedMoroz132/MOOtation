@@ -130,6 +130,7 @@
 #include "../operators/de_mutation.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -290,7 +291,7 @@ private:
         int m = static_cast<int>(X[0].size());
         std::vector<int> perm(n);
         std::iota(perm.begin(), perm.end(), 0);
-        std::shuffle(perm.begin(), perm.end(), rng_);
+        rnd::shuffle(perm.begin(), perm.end(), rng_);
         std::vector<std::vector<double>> cen(K);
         for (int c = 0; c < K; ++c) cen[c] = X[perm[c]];
         for (int iter = 0; iter < 20; ++iter) {
@@ -317,7 +318,7 @@ private:
                 if (cnt[c] > 0)
                     for (int j = 0; j < m; ++j) cen[c][j] = sum[c][j] / cnt[c];
                 else
-                    cen[c] = X[std::uniform_int_distribution<int>(0, n - 1)(rng_)];
+                    cen[c] = X[rnd::uniform_int_distribution<int>(0, n - 1)(rng_)];
             }
             if (!changed && iter > 0) break;
         }
@@ -399,7 +400,7 @@ private:
             scope.resize(dp_.size());
             std::iota(scope.begin(), scope.end(), 0);
         }
-        std::shuffle(scope.begin(), scope.end(), rng_);
+        rnd::shuffle(scope.begin(), scope.end(), rng_);
         int c = 0;
         for (int j : scope) {
             if (gtch(y.f, W_[j]) < gtch(dp_[j].f, W_[j])) {
@@ -421,7 +422,7 @@ private:
             std::iota(fallback.begin(), fallback.end(), 0);
             scope = &fallback;
         }
-        std::uniform_int_distribution<int> d(0, static_cast<int>(scope->size()) - 1);
+        rnd::uniform_int_distribution<int> d(0, static_cast<int>(scope->size()) - 1);
         if (static_cast<int>(scope->size()) < 4) {           // tiny DP
             a = (*scope)[d(rng_)]; b = (*scope)[d(rng_)]; c = (*scope)[d(rng_)];
             return;
@@ -518,7 +519,7 @@ private:
             std::vector<int> cands;
             for (int i = 0; i < nQ; ++i)
                 if (alive[i] && D[i] >= best - 1e-12) cands.push_back(i);
-            int rem = cands[std::uniform_int_distribution<int>(
+            int rem = cands[rnd::uniform_int_distribution<int>(
                 0, static_cast<int>(cands.size()) - 1)(rng_)];
             alive[rem] = 0;
             --na;
@@ -569,7 +570,7 @@ private:
 
     std::vector<Sol> random_population(DataVault<Ind_t>& vault, int N) {
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<Sol> P(N);
         for (int i = 0; i < N; ++i) {
             P[i].x.resize(vault.vars_n());
@@ -646,7 +647,7 @@ public:
         const int nb = vault.bin_vars_n();
         const auto& bounds = vault.get_bounds();
         const double pm = (nv > 0) ? 1.0 / nv : 0.0;   // §4.1: pm = 1/n
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
 
         const int K_l = K_;   // K of the previous generation (Eq.4: K_l)
 
@@ -654,7 +655,7 @@ public:
         int n1 = std::max(0, N - K_l);
         std::vector<int> permDP(dp_.size());
         std::iota(permDP.begin(), permDP.end(), 0);
-        std::shuffle(permDP.begin(), permDP.end(), rng_);
+        rnd::shuffle(permDP.begin(), permDP.end(), rng_);
         std::vector<int> allDP = permDP;   // full scope (same contents)
 
         std::vector<Sol> off1;
@@ -732,7 +733,7 @@ public:
         std::vector<const Sol*> par2;                    // the actual parents
         off2.reserve(n2);
         par2.reserve(n2);
-        std::uniform_int_distribution<int> dm(0, static_cast<int>(M.size()) - 1);
+        rnd::uniform_int_distribution<int> dm(0, static_cast<int>(M.size()) - 1);
         std::vector<double> c1, c2;
         for (int i = 0; i < n2; i += 2) {
             const Sol* p1 = M[dm(rng_)];

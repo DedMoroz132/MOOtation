@@ -86,6 +86,7 @@
 #include "../operators/real_mutation.hpp"
 #include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -269,7 +270,7 @@ public:
     {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -433,7 +434,7 @@ public:
         if (constraint_mode != ConstraintMode::NONE) arch_.refresh(vault);
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n - 1);
         xover_.observe(vault, n, rng_);  // de, de_pbest, portfolio: the last step's verdict
         // de_pbest: a random one of the best ⌈p·n⌉ by fitness (higher is better)
         std::vector<int> order;
@@ -446,7 +447,7 @@ public:
                 });
             }
             const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
-            std::uniform_int_distribution<int> top(0, k - 1);
+            rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
         };
         int off_base = vault.expand(n);  // [off_base, off_base+n) — offspring slots

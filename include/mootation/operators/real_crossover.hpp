@@ -51,6 +51,7 @@
 #include "learned_coords.hpp"
 #include "multi_parent.hpp"
 #include "sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -91,7 +92,7 @@ inline void uniform_crossover(const std::vector<double>& p1, const std::vector<d
                               double pc, RNG& rng)
 {
     note_operator("uniform", "none");
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     c1 = p1; c2 = p2;
     if (pc < 1.0 && uni(rng) > pc) return;
     for (std::size_t j = 0; j < p1.size(); ++j)
@@ -107,7 +108,7 @@ inline void blx_alpha_crossover(const std::vector<double>& p1, const std::vector
 {
     require_repair(repair, "blx_alpha", true, false);
     note_operator("blx_alpha", bound_repair_name(repair));
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     c1 = p1; c2 = p2;
     if (pc < 1.0 && uni(rng) > pc) return;
     RepairTally t1, t2;
@@ -391,7 +392,7 @@ struct CrossoverSpec {
         note_operator(crossover_name(k), bound_repair_name(repair));
         c1 = p1; c2 = p2;
         if (pc < 1.0) {
-            std::uniform_real_distribution<double> uni(0.0, 1.0);
+            rnd::uniform_real_distribution<double> uni(0.0, 1.0);
             if (uni(rng) > pc) return;
         }
         crossed_ = true;
@@ -411,7 +412,7 @@ struct CrossoverSpec {
             auto p_of = [&] {
                 if (de.set.adapt != DEAdapt::SHADE) return de.set.p;
                 const double lo = std::min(0.2, 2.0 / static_cast<double>(N));
-                std::uniform_real_distribution<double> u(lo, 0.2);
+                rnd::uniform_real_distribution<double> u(lo, 0.2);
                 return u(rng);
             };
             de_children(P, k == Crossover::DEPBest, [&] { return best(p_of()); }, r2, c1, c2,
@@ -489,7 +490,7 @@ private:
         if (credit == PortfolioCredit::Borg)
             for (std::size_t i = 0; i < portfolio.size(); ++i)
                 for (const auto& a : archive_) w[i] += a.op == portfolio[i] ? 1.0 : 0.0;
-        std::discrete_distribution<std::size_t> d(w.begin(), w.end());
+        rnd::discrete_distribution<std::size_t> d(w.begin(), w.end());
         return portfolio[d(rng)];
     }
 

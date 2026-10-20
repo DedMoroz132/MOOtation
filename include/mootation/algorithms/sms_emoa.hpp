@@ -22,6 +22,7 @@
 #include "../operators/real_mutation.hpp"
 #include "../operators/inner_archive.hpp"
 #include "../operators/variation.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -195,7 +196,7 @@ private:
                                         std::to_string(n) + ": |Q'| = floor(spu_frac (n + 1)) "
                                         "must be at least 1");
         for (int i = 0; i < k; ++i) {                      // Q' into [0, k)
-            std::uniform_int_distribution<int> any(i, n);
+            rnd::uniform_int_distribution<int> any(i, n);
             const int j = any(rng_);
             if (j != i) vault.swap_active(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
         }
@@ -417,7 +418,7 @@ public:
     {
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         std::vector<double> x(static_cast<std::size_t>(vault.vars_n()));
         std::vector<int> bx(static_cast<std::size_t>(vault.bin_vars_n()));
         for (int i = 0; i < n; ++i) {
@@ -451,7 +452,7 @@ public:
         if (constraint_mode != ConstraintMode::NONE) arch_.refresh(vault);
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> pick(0, n - 1);
+        rnd::uniform_int_distribution<int> pick(0, n - 1);
         // de, de_pbest, portfolio: the last step's verdict; coords: one offspring a step
         xover_.observe(vault, n, rng_, 1);
         // de_pbest: a random one of the best ⌈p·n⌉ by front, ties by position
@@ -466,7 +467,7 @@ public:
                 });
             }
             const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
-            std::uniform_int_distribution<int> top(0, k - 1);
+            rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(static_cast<std::size_t>(
                 order[static_cast<std::size_t>(top(rng_))]));
         };
@@ -495,7 +496,7 @@ public:
         };
         std::vector<double> c1, c2;
         const double pm = pm_ ? *pm_ : vault.vars_n() > 0 ? 1.0 / vault.vars_n() : 0.0;
-        std::uniform_int_distribution<int> coin(0, 1);
+        rnd::uniform_int_distribution<int> coin(0, 1);
         // the coin between the crossover and the mutation of the child kept
         const bool second = ops::vary(xover_, mut_, x1, x2, draw, best, n, c1, c2, bounds,
                                       eta_c_, pc_, eta_m_, pm, rng_,

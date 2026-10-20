@@ -14,6 +14,7 @@
 #include "../data_vault.hpp"
 #include "../detail/constrained.hpp"
 #include "../operators/poly_mutation.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -95,7 +96,7 @@ public:
     {
         start(vault);
         const auto& b = vault.get_bounds();
-        std::uniform_real_distribution<double> U(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U(0.0, 1.0);
         std::vector<double> x(b.size());
         for (std::size_t j = 0; j < b.size(); ++j) x[j] = *b[j].first + U(rng_) * (*b[j].second - *b[j].first);
         vault.reduce(0);

@@ -57,6 +57,7 @@
 
 #include "../data_vault.hpp"
 #include "../dss.hpp"
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -175,7 +176,7 @@ struct InnerArchive {
         auto& r = inner_archive_record();
         ++r.drawn; ++r.t_drawn;
         if (!(reuse_p > 0.0) || members_.empty()) return false;
-        std::uniform_real_distribution<double> u(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u(0.0, 1.0);
         if (u(rng) >= reuse_p) return false;
         ++r.from_archive; ++r.t_from_archive;
         return true;
@@ -185,7 +186,7 @@ struct InnerArchive {
     template <typename RNG>
     const Member& pick(RNG& rng) const
     {
-        std::uniform_int_distribution<std::size_t> any(0, members_.size() - 1);
+        rnd::uniform_int_distribution<std::size_t> any(0, members_.size() - 1);
         return members_[any(rng)];
     }
 

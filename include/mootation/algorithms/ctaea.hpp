@@ -18,6 +18,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -206,7 +207,7 @@ private:
                 std::vector<int> crowded;
                 for (std::size_t k = 0; k < count.size(); ++k)
                     if (count[k] == most) crowded.push_back(static_cast<int>(k));
-                std::uniform_int_distribution<std::size_t> pick(0, crowded.size() - 1);
+                rnd::uniform_int_distribution<std::size_t> pick(0, crowded.size() - 1);
                 const int k = crowded[pick(rng_)];                         // ties at random
                 std::vector<int> in;
                 for (int i : alive) if (region[static_cast<std::size_t>(i)] == k) in.push_back(i);
@@ -302,14 +303,14 @@ private:
     // Algorithm 5 over the points `pool`
     const Pt& tournament(const std::vector<const Pt*>& pool)
     {
-        std::uniform_int_distribution<std::size_t> pick(0, pool.size() - 1);
+        rnd::uniform_int_distribution<std::size_t> pick(0, pool.size() - 1);
         const std::size_t a = pick(rng_);
         std::size_t b = pick(rng_);
         if (pool.size() > 1) while (b == a) b = pick(rng_);
         const Pt& x = *pool[a];
         const Pt& y = *pool[b];
         const bool fx = x.cv <= 0.0, fy = y.cv <= 0.0;
-        std::uniform_int_distribution<int> coin(0, 1);
+        rnd::uniform_int_distribution<int> coin(0, 1);
         if (fx && fy) {
             if (dominates(x.f, y.f)) return x;
             if (dominates(y.f, x.f)) return y;
@@ -349,7 +350,7 @@ public:
         require(vault);
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         Vec x(static_cast<std::size_t>(vault.vars_n()));
         std::vector<int> bx(static_cast<std::size_t>(vault.bin_vars_n()));
         for (int i = 0; i < n; ++i) {
@@ -409,7 +410,7 @@ public:
         };
 
         // Q: N children, one of each pair (CTAEA-3)
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         std::vector<Vec> qx;
         std::vector<std::vector<int>> qb;
         while (static_cast<int>(qx.size()) < N) {

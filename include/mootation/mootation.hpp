@@ -7,6 +7,7 @@
 #include "problem.hpp"
 #include "batch_executor.hpp"
 #include "data_vault.hpp"
+#include "random.hpp"
 #include "operators/binary_crossover.hpp"
 #include "operators/bit_flip.hpp"
 #include "operators/poly_mutation.hpp"

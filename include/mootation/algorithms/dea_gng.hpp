@@ -134,6 +134,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -168,7 +169,7 @@ private:
     int N_=0, m_=0, NS_=0, g_=0;
 
     double pm_eff(int nv) const { return (pm_>0.0)?pm_:(nv>0?1.0/nv:0.0); }
-    double uni01(){ return std::uniform_real_distribution<double>(0,1)(rng_); }
+    double uni01(){ return rnd::uniform_real_distribution<double>(0,1)(rng_); }
     bool dom(const Sol& a, const Sol& b) const {
         return detail::dominates(constraint_mode, a.objs, a.cv, b.objs, b.cv); }
     static double edist(const std::vector<double>& a, const std::vector<double>& b){ double s=0; for(std::size_t k=0;k<a.size();++k){double d=a[k]-b[k];s+=d*d;} return std::sqrt(s); }
@@ -214,7 +215,7 @@ private:
             int pick=0;
             if(cj[J]==0){ for(int t=1;t<(int)D.size();++t) if(D[t].first<D[pick].first) pick=t; }        // closest
             else if(cj[J]<m_){ for(int t=1;t<(int)D.size();++t) if(D[t].first>D[pick].first) pick=t; }  // farthest, c_max = M
-            else pick=std::uniform_int_distribution<int>(0,(int)D.size()-1)(rng_);                      // random
+            else pick=rnd::uniform_int_distribution<int>(0,(int)D.size()-1)(rng_);                      // random
             out.push_back(F0[D[pick].second]); D.erase(D.begin()+pick); ++cj[J];
         }
         AS_=out;
@@ -228,10 +229,10 @@ private:
         int HPmax=2*(int)AS_.size();
         if((int)gn_.size()<2){
             gn_.clear(); gadj_.clear();
-            for(int t=0;t<2;++t){ GNode nd; nd.pos=norm(AS_[std::uniform_int_distribution<int>(0,(int)AS_.size()-1)(rng_)].objs); nd.hp=HPmax; gn_.push_back(nd); gadj_.push_back({}); }
+            for(int t=0;t<2;++t){ GNode nd; nd.pos=norm(AS_[rnd::uniform_int_distribution<int>(0,(int)AS_.size()-1)(rng_)].objs); nd.hp=HPmax; gn_.push_back(nd); gadj_.push_back({}); }
             gadj_[0][1]=0; gadj_[1][0]=0;
         }
-        std::vector<int> order(AS_.size()); std::iota(order.begin(),order.end(),0); std::shuffle(order.begin(),order.end(),rng_);
+        std::vector<int> order(AS_.size()); std::iota(order.begin(),order.end(),0); rnd::shuffle(order.begin(),order.end(),rng_);
         for(int si:order){
             std::vector<double> xi=norm(AS_[si].objs);
             ++sig_count_;
@@ -382,13 +383,13 @@ private:
             if(Delta[J].empty()){ Cact[J]=0; continue; }
             int pick;
             if(cj[J]==0){ int best=-1; double bg=1e300; for(int p:Delta[J]){ auto fp=fnorm(U[p].objs); double g=pbi(fp,R_[J],Rtheta_[J]); if(g<bg){bg=g;best=p;} } pick=best; }
-            else { pick=Delta[J][std::uniform_int_distribution<int>(0,(int)Delta[J].size()-1)(rng_)]; }
+            else { pick=Delta[J][rnd::uniform_int_distribution<int>(0,(int)Delta[J].size()-1)(rng_)]; }
             Delta[J].erase(std::remove(Delta[J].begin(),Delta[J].end(),pick),Delta[J].end());
             chosen.push_back(pick); ++cj[J];
         }
         while((int)chosen.size()<N_ && fi<(int)fr.size()){ for(int p:fr[fi]){ if((int)chosen.size()>=N_) break; if(std::find(chosen.begin(),chosen.end(),p)==chosen.end()) chosen.push_back(p);} ++fi; }
         std::vector<Sol> out; for(int t=0;t<N_ && t<(int)chosen.size();++t) out.push_back(U[chosen[t]]);
-        while((int)out.size()<N_) out.push_back(U[std::uniform_int_distribution<int>(0,n-1)(rng_)]);
+        while((int)out.size()<N_) out.push_back(U[rnd::uniform_int_distribution<int>(0,n-1)(rng_)]);
         return out;
     }
 
@@ -448,7 +449,7 @@ public:
         // ε from the number of objectives (§IV-A) unless set explicitly.
         if(!eps_user_set_) eps_theta_=(m_<5)?0.05*M_PI:0.15*M_PI;
         auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA);
-        const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
+        const auto& bd=vault.get_bounds(); rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
@@ -481,7 +482,7 @@ public:
         refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         refresh_copies(vault, AS_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
-        std::uniform_int_distribution<int> di(0,(int)pop_.size()-1);
+        rnd::uniform_int_distribution<int> di(0,(int)pop_.size()-1);
         // Mating tournament per §III-B — primary the non-dominated sorting
         //   rank, secondary the c_j of the reference vector (smaller=better);
         //   a tie on both criteria is broken at random. Notable fix: it used to

@@ -47,6 +47,7 @@
 #include "bound_repair.hpp"
 #include "poly_mutation.hpp"
 #include "sbx.hpp"   // sbx_require_bound
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -136,8 +137,8 @@ inline void gaussian_mutation(std::vector<double>& x,
 {
     note_operator("gaussian", repair ? bound_repair_name(*repair) : "repaired by the caller");
     RepairTally tally;
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
-    std::normal_distribution<double> N01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::normal_distribution<double> N01(0.0, 1.0);
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;
         const double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));
@@ -155,8 +156,8 @@ inline void cauchy_mutation(std::vector<double>& x,
 {
     note_operator("cauchy", repair ? bound_repair_name(*repair) : "repaired by the caller");
     RepairTally tally;
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
-    std::cauchy_distribution<double> C01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::cauchy_distribution<double> C01(0.0, 1.0);
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;
         const double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));
@@ -172,12 +173,12 @@ inline void uniform_reset_mutation(std::vector<double>& x,
                                    double pm, RNG& rng)
 {
     note_operator("uniform_reset", "none");
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;
         const double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));
         const double hi = sbx_require_bound(bounds[j].second, "upper", static_cast<int>(j));
-        std::uniform_real_distribution<double> dom(lo, hi);
+        rnd::uniform_real_distribution<double> dom(lo, hi);
         x[j] = dom(rng);
     }
 }
@@ -192,9 +193,9 @@ inline void mixture_mutation(std::vector<double>& x,
     note_operator(cauchy ? "mixture_cauchy" : "mixture",
                   repair ? bound_repair_name(*repair) : "repaired by the caller");
     RepairTally tally;
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
-    std::normal_distribution<double> N01(0.0, 1.0);
-    std::cauchy_distribution<double> C01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::normal_distribution<double> N01(0.0, 1.0);
+    rnd::cauchy_distribution<double> C01(0.0, 1.0);
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;
         const double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));

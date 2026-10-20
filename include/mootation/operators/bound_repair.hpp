@@ -44,6 +44,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -144,7 +145,7 @@ inline double repair_value(double v, double lo, double hi, double parent,
 {
     switch (how) {
         case BoundRepair::Random: {
-            std::uniform_real_distribution<double> dom(lo, hi);
+            rnd::uniform_real_distribution<double> dom(lo, hi);
             return dom(rng);
         }
         case BoundRepair::Reflect: {

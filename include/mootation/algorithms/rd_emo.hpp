@@ -110,6 +110,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -258,7 +259,7 @@ public:
         z_.assign(m_,std::numeric_limits<double>::max());  // z* = running ideal
         build_regions(m_);
         const auto& b=vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0,1.0);
+        rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<popsiz_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=b[j].first.value_or(0.0),hi=b[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
@@ -291,7 +292,7 @@ public:
         // WRITING BACK): the tolerance, the level and the failures' penalty move between steps
         refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
-        std::uniform_int_distribution<int> dp(0,(int)pop_.size()-1);
+        rnd::uniform_int_distribution<int> dp(0,(int)pop_.size()-1);
 
         // update the running ideal and re-associate (z* may have dropped)
         upd_ideal_pop();
@@ -317,8 +318,8 @@ public:
             for(int rg:U_[nwin]) if(RD[rg]>0) cand.push_back(rg);
             int x2;
             if(!cand.empty()){
-                int rg=cand[std::uniform_int_distribution<int>(0,(int)cand.size()-1)(rng_)];
-                x2=members[rg][std::uniform_int_distribution<int>(0,(int)members[rg].size()-1)(rng_)];
+                int rg=cand[rnd::uniform_int_distribution<int>(0,(int)cand.size()-1)(rng_)];
+                x2=members[rg][rnd::uniform_int_distribution<int>(0,(int)members[rg].size()-1)(rng_)];
             } else {
                 x2=dp(rng_);
             }

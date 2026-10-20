@@ -38,7 +38,7 @@ std::vector<int> one_shuffle(int n_parents, int n, std::mt19937& rng)
 {
     std::vector<int> perm(static_cast<std::size_t>(n_parents)), order;
     std::iota(perm.begin(), perm.end(), 0);
-    std::shuffle(perm.begin(), perm.end(), rng);
+    mootation::rnd::shuffle(perm.begin(), perm.end(), rng);       // as rvea.hpp
     for (int k = 0; k < n + n % 2; ++k) order.push_back(perm[static_cast<std::size_t>(k % n_parents)]);
     return order;
 }

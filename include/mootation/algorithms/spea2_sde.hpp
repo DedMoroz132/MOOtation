@@ -67,6 +67,7 @@
 #include "../operators/real_mutation.hpp"
 #include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -341,7 +342,7 @@ private:
     // CDP branch (FEASIBILITY) — unified with spea2.hpp (extension beyond the paper).
     int tournament_archive(DataVault<Ind_t>& vault) {
         int sz = static_cast<int>(vault.archive_size());
-        std::uniform_int_distribution<int> dist(0, sz-1);
+        rnd::uniform_int_distribution<int> dist(0, sz-1);
         int ai = dist(rng_), bi = dist(rng_);
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double ca = vault.archive_cv(ai), cb = vault.archive_cv(bi);
@@ -379,7 +380,7 @@ private:
                 });
             }
             const int k = std::max(1, static_cast<int>(std::ceil(p * na)));
-            std::uniform_int_distribution<int> top(0, k - 1);
+            rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.archive_variables_of(static_cast<std::size_t>(
                 order[static_cast<std::size_t>(top(rng_))]));
         };
@@ -459,8 +460,8 @@ public:
         eff_arch_ = (archive_size_>0) ? archive_size_ : N;
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0,1.0);
-        std::uniform_int_distribution<int>     db(0,1);
+        rnd::uniform_real_distribution<double> dr(0.0,1.0);
+        rnd::uniform_int_distribution<int>     db(0,1);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for(int i=0;i<N;++i) {

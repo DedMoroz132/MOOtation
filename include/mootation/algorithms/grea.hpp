@@ -58,6 +58,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -396,13 +397,13 @@ private:
     // under FEASIBILITY. (The tournament used to run on a scalarized GR
     // fitness.)
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist) {
+                   rnd::uniform_int_distribution<int>& dist) {
         int p = dist(rng_), q = dist(rng_);
         if (pareto_dominates(vault, p, q) || grid_dominates(vault, p, q)) return p;
         if (pareto_dominates(vault, q, p) || grid_dominates(vault, q, p)) return q;
         if (vault.get_ind(p).gcd < vault.get_ind(q).gcd) return p;
         if (vault.get_ind(q).gcd < vault.get_ind(p).gcd) return q;
-        std::uniform_real_distribution<double> u(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u(0.0, 1.0);
         return (u(rng_) < 0.5) ? p : q;
     }
 
@@ -434,7 +435,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0,1.0);
+        rnd::uniform_real_distribution<double> dr(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i=0;i<n;++i) {
@@ -461,7 +462,7 @@ public:
     void step(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n-1);
+        rnd::uniform_int_distribution<int> dist_int(0, n-1);
 
         // (Algorithm 1, lines 3-4) Grid setting + fitness assignment on the
         // current population P=[0,n), feeding mating (Algorithm 2 uses grid

@@ -114,6 +114,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/bound_repair.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -487,11 +488,11 @@ private:
         int ns = std::max(1, std::min(nsel_, n));
         std::vector<int> samp(n);
         std::iota(samp.begin(), samp.end(), 0);
-        std::shuffle(samp.begin(), samp.end(), rng_);
+        rnd::shuffle(samp.begin(), samp.end(), rng_);
         samp.resize(ns);
 
         int base = vault.expand(ns * nper_);
-        std::uniform_real_distribution<double> uni(0.0, 1.0);
+        rnd::uniform_real_distribution<double> uni(0.0, 1.0);
         std::vector<double> vars(D);
         std::vector<std::vector<double>> angle(D, std::vector<double>(ns, 0.0));
         for (int j = 0; j < D; ++j) {
@@ -586,8 +587,8 @@ private:
                                       const std::vector<std::vector<double>>& Fn,
                                       const std::vector<double>& fit,
                                       const std::vector<double>& lphi) {
-        std::uniform_int_distribution<int> di(0, n - 1);
-        std::uniform_int_distribution<int> coin(0, 1);
+        rnd::uniform_int_distribution<int> di(0, n - 1);
+        rnd::uniform_int_distribution<int> coin(0, 1);
         std::vector<int> P1;
         P1.reserve(n);
         for (int i = 0; i < n; ++i) {
@@ -612,16 +613,16 @@ private:
     // ── Alg. 4: KPCM mutation of a single offspring ────────────────────────
     void kpcm_mutate(std::vector<double>& c, DataVault<Ind_t>& vault,
                      int ec, const std::vector<int>& ed) {
-        std::uniform_real_distribution<double> uni(0.0, 1.0);
+        rnd::uniform_real_distribution<double> uni(0.0, 1.0);
         bool conv = (uni(rng_) <= 0.5);                   // line 5
         bool can_conv = (ec >= 0 && !cv_.empty());
         bool can_div  = (!ed.empty() && !dv_.empty());
         if ((conv && can_conv) || (!can_div && can_conv)) {
-            std::uniform_int_distribution<int> dv(0, static_cast<int>(cv_.size()) - 1);
+            rnd::uniform_int_distribution<int> dv(0, static_cast<int>(cv_.size()) - 1);
             int v = cv_[dv(rng_)];                        // lines 6–7
             c[v] = vault.get_variable(ec, v);
         } else if (can_div) {                             // lines 9–10
-            std::uniform_int_distribution<int> dy(0, static_cast<int>(ed.size()) - 1);
+            rnd::uniform_int_distribution<int> dy(0, static_cast<int>(ed.size()) - 1);
             int y = ed[dy(rng_)];
             for (int v : dv_) c[v] = vault.get_variable(y, v);
         }
@@ -635,7 +636,7 @@ private:
             const double hi = bnd[j].second.value_or(1.0);
             const double sd = noise_frac_ * (hi - lo);
             if (sd <= 0.0) continue;
-            std::normal_distribution<double> gauss(0.0, sd);
+            rnd::normal_distribution<double> gauss(0.0, sd);
             c[j] += gauss(rng_);
         }
         // Clipped into the box here, counted and logged (task 5, 2026-10-01);
@@ -787,7 +788,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {

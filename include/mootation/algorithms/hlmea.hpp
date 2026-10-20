@@ -142,6 +142,7 @@
 #include "../data_vault.hpp"
 #include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -225,7 +226,7 @@ private:
         set_shift(pool);                       // HLMEA-5
         std::vector<std::vector<int>> bk(W_);
         for(int i=0;i<(int)pool.size();++i) bk[assoc(pool[i].objs)].push_back(i);
-        std::uniform_int_distribution<int> dp(0,(int)pool.size()-1);
+        rnd::uniform_int_distribution<int> dp(0,(int)pool.size()-1);
         subpop_.assign(W_,{});
         for(int w=0;w<W_;++w){
             if((int)bk[w].size()==S_){ for(int i:bk[w]) subpop_[w].push_back(pool[i]); }
@@ -241,7 +242,7 @@ private:
                 std::vector<int> others; others.reserve(pool.size());
                 for(int i=0;i<(int)pool.size();++i) if(!in[i]) others.push_back(i);
                 int n_o=(int)others.size();
-                for(int t=0;t<need && t<n_o;++t){ int r=std::uniform_int_distribution<int>(t,n_o-1)(rng_); std::swap(others[t],others[r]); subpop_[w].push_back(pool[others[t]]); }
+                for(int t=0;t<need && t<n_o;++t){ int r=rnd::uniform_int_distribution<int>(t,n_o-1)(rng_); std::swap(others[t],others[r]); subpop_[w].push_back(pool[others[t]]); }
                 for(int t=n_o;t<need;++t) subpop_[w].push_back(pool[dp(rng_)]);   // degenerate: fewer outsiders than needed
             }
         }
@@ -251,7 +252,7 @@ private:
         int n=(int)P.size(); int nv=(int)P[0].vars.size();
         K=std::min(K,n);
         std::vector<std::vector<double>> cen(K);
-        std::vector<int> perm(n); std::iota(perm.begin(),perm.end(),0); std::shuffle(perm.begin(),perm.end(),rng_);
+        std::vector<int> perm(n); std::iota(perm.begin(),perm.end(),0); rnd::shuffle(perm.begin(),perm.end(),rng_);
         for(int k=0;k<K;++k) cen[k]=P[perm[k]].vars;
         assign.assign(n,0);
         for(int it=0;it<kmeans_it_;++it){ bool ch=false;
@@ -345,7 +346,7 @@ public:
                            std::to_string(W_*S_) + " individuals, not " +
                            std::to_string(N_) + " (see HLMEA-9). "
                            "set_W with a divisor of pop_size to avoid it"; });
-        const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
+        const auto& bd=vault.get_bounds(); rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
@@ -397,8 +398,8 @@ public:
             for(int w=0;w<W_;++w){
                 auto& Pw=subpop_[w]; int sz=(int)Pw.size(); if(sz==0) continue;
                 for(int j=0;j<sz;++j){
-                    int rr=std::uniform_int_distribution<int>(0,sz-1)(rng_);
-                    double rv=std::uniform_real_distribution<double>(0,1)(rng_);
+                    int rr=rnd::uniform_int_distribution<int>(0,sz-1)(rng_);
+                    double rv=rnd::uniform_real_distribution<double>(0,1)(rng_);
                     double F0=(2*rv-1)*std::pow(std::max(1e-12,1-rv), -std::pow(1.0-(double)gen_/std::max(1,t_max_),0.8));
                     std::vector<double> y(vault.vars_n());
                     for(int t=0;t<vault.vars_n();++t) y[t]=Pw[j].vars[t]+F0*(Pw[j].vars[t]-Pw[rr].vars[t]);
@@ -421,22 +422,22 @@ public:
                 for(int j=0;j<sz;++j){
                     int ci=kasg[j];
                     std::vector<int> Cidx; for(int i=0;i<sz;++i) if(kasg[i]==ci) Cidx.push_back(i);
-                    bool useC = std::uniform_real_distribution<double>(0,1)(rng_)<beta_;
+                    bool useC = rnd::uniform_real_distribution<double>(0,1)(rng_)<beta_;
                     std::vector<int> Pwall(sz); std::iota(Pwall.begin(),Pwall.end(),0);
                     std::vector<int>& pool = useC? Cidx : Pwall;   // mating pool B (Alg.2)
-                    auto pick=[&](){ return pool[std::uniform_int_distribution<int>(0,(int)pool.size()-1)(rng_)]; };
+                    auto pick=[&](){ return pool[rnd::uniform_int_distribution<int>(0,(int)pool.size()-1)(rng_)]; };
                     std::vector<double> y(vault.vars_n());
                     if(delta_>=0){
                         int r1=pick(),r2=pick(),r3=pick();
                         for(int t=0;t<vault.vars_n();++t){
-                            if(std::uniform_real_distribution<double>(0,1)(rng_)<=CR1_)
+                            if(rnd::uniform_real_distribution<double>(0,1)(rng_)<=CR1_)
                                 y[t]=Pw[r1].vars[t]+F1_*(Pw[r2].vars[t]-Pw[r3].vars[t]);
                             else y[t]=Pw[j].vars[t];
                         }
                     } else {
                         int r1=pick(),r2=pick();
                         for(int t=0;t<vault.vars_n();++t){
-                            if(std::uniform_real_distribution<double>(0,1)(rng_)<=CR2_)
+                            if(rnd::uniform_real_distribution<double>(0,1)(rng_)<=CR2_)
                                 y[t]=Pw[j].vars[t]+F2_*(Pw[r1].vars[t]-Pw[r2].vars[t]);
                             else y[t]=Pw[j].vars[t];
                         }

@@ -206,6 +206,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -547,7 +548,7 @@ private:
         auto F = normalize(ASS);
         auto fit = fitness_all(F);
         std::vector<Sol> Pp;
-        std::uniform_int_distribution<int> di(0, (int)ASS.size() - 1);
+        rnd::uniform_int_distribution<int> di(0, (int)ASS.size() - 1);
         for (int j = 0; j < N_; ++j) {
             int p = di(rng_), q = di(rng_);
             Pp.push_back(fit[p] > fit[q] ? ASS[p] : ASS[q]);
@@ -658,7 +659,7 @@ public:
         m_ = vault.objs_n(); N_ = vault.pop_size();
         build_refpoints();
         const auto& bd = vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0, 1.0);
+        rnd::uniform_real_distribution<double> d(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         for (int i = 0; i < N_; ++i) {
             for (int j = 0; j < vault.vars_n(); ++j) {

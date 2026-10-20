@@ -68,6 +68,7 @@
 #include "../operators/de_mutation.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/real_mutation.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -193,7 +194,7 @@ private:
     std::vector<double> de_offspring(DataVault<Ind_t>& vault, int i,
                                      const std::vector<int>& mating_pool) {
         int pool_sz = static_cast<int>(mating_pool.size());
-        std::uniform_int_distribution<int> dist_pool(0, pool_sz - 1);
+        rnd::uniform_int_distribution<int> dist_pool(0, pool_sz - 1);
         int b = mating_pool[dist_pool(rng_)];
         int c = mating_pool[dist_pool(rng_)];
         int nv = vault.vars_n();
@@ -212,7 +213,7 @@ private:
 
     // ── Update step for one subproblem i (Steps 2.1–2.5) ──────────────────
     void update_subproblem(DataVault<Ind_t>& vault, int i, int n) {
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         const auto& bounds = vault.get_bounds();
 
         // Step 2.1: mating/update range P.
@@ -247,7 +248,7 @@ private:
         int scratch = n;
         if (nb > 0) {
             std::vector<int> y_bvars(nb);
-            std::uniform_real_distribution<double> Ub(0.0, 1.0);
+            rnd::uniform_real_distribution<double> Ub(0.0, 1.0);
             double p_bin = ops::gene_mutation_rate(nb);
             for (int j = 0; j < nb; ++j) {
                 y_bvars[j] = vault.get_bin_variable(i, j);
@@ -272,7 +273,7 @@ private:
         // re-evaluation: re-evaluating would spend one extra FE per
         // replacement, so a generation would cost N + (replacements), not N.
         std::vector<int> upd_order = mating_pool;
-        std::shuffle(upd_order.begin(), upd_order.end(), rng_);
+        rnd::shuffle(upd_order.begin(), upd_order.end(), rng_);
 
         int count = 0;
         for (int j : upd_order) {
@@ -334,7 +335,7 @@ public:
 
         // Step 1.2: random initialisation.
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist_real(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist_real(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 

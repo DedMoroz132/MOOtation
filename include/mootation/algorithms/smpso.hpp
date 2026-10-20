@@ -19,6 +19,7 @@
 #include "../detail/constrained.hpp"
 #include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
+#include "../random.hpp"
 
 // ============================================================================
 // SMPSO — Speed-constrained Multi-objective PSO (task 9 of 2026-10-18, B1).
@@ -223,7 +224,7 @@ private:
         return detail::dominates(constraint_mode, a.f, a.cv, b.f, b.cv);
     }
 
-    double uni(double a, double b) { return std::uniform_real_distribution<double>(a, b)(rng_); }
+    double uni(double a, double b) { return rnd::uniform_real_distribution<double>(a, b)(rng_); }
 
     double chi(double c1, double c2) const
     {
@@ -339,7 +340,7 @@ private:
 
     const Point& leader()
     {
-        std::uniform_int_distribution<std::size_t> any(0, leaders_.size() - 1);
+        rnd::uniform_int_distribution<std::size_t> any(0, leaders_.size() - 1);
         const std::size_t a = any(rng_);
         if (s_.leader_random) return leaders_[a];
         const std::size_t b = any(rng_);

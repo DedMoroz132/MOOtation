@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <random>
 #include <vector>
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -34,7 +35,7 @@ inline void mutate_gene(std::vector<int>& g, int j, RNG& rng)
     int& gene = g[static_cast<std::size_t>(j)];
     const int k = gene_levels_of(j);
     if (k <= 2) { gene ^= 1; return; }
-    std::uniform_int_distribution<int> other(0, k - 2);
+    rnd::uniform_int_distribution<int> other(0, k - 2);
     const int v = other(rng);
     gene = v < gene ? v : v + 1;
 }
@@ -44,7 +45,7 @@ inline void mutate_gene(std::vector<int>& g, int j, RNG& rng)
 template <typename RNG>
 inline int random_gene(int j, RNG& rng)
 {
-    std::uniform_int_distribution<int> level(0, gene_levels_of(j) - 1);
+    rnd::uniform_int_distribution<int> level(0, gene_levels_of(j) - 1);
     return level(rng);
 }
 
@@ -70,7 +71,7 @@ inline double gene_mutation_rate(int n_genes)
 template <typename RNG>
 inline void bit_flip_mutation(std::vector<int>& bvars, int n_bits, RNG& rng)
 {
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     const double p = gene_mutation_rate(n_bits);
     for (int j = 0; j < n_bits; ++j)
         if (uni(rng) < p) mutate_gene(bvars, j, rng);

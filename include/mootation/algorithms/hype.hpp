@@ -78,6 +78,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -295,7 +296,7 @@ private:
         int keff = std::min(k, NF);
         auto alpha = alpha_coeffs(k, NF);
 
-        std::vector<std::uniform_real_distribution<double>> dists;
+        std::vector<rnd::uniform_real_distribution<double>> dists;
         dists.reserve(m);
         for (int j = 0; j < m; ++j) dists.emplace_back(lo[j], ref[j]);
 
@@ -356,7 +357,7 @@ private:
 
     // ── binary tournament on fitness (Alg. 5: if v_a > v_b then a else b) ──
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist) {
+                   rnd::uniform_int_distribution<int>& dist) {
         int a = dist(rng_), b = dist(rng_);
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double cva = vault.get_cv(a), cvb = vault.get_cv(b);
@@ -413,7 +414,7 @@ private:
                 for (int li = 0; li < static_cast<int>(last_front.size()); ++li)
                     if (vault.get_ind(last_front[li]).fitness == worst_fit)
                         ties.push_back(li);
-                int worst_li = ties[std::uniform_int_distribution<int>(
+                int worst_li = ties[rnd::uniform_int_distribution<int>(
                     0, static_cast<int>(ties.size()) - 1)(rng_)];
 
                 last_front[worst_li] = last_front.back();
@@ -479,7 +480,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist_real(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist_real(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -509,7 +510,7 @@ public:
     void step(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
         // ── expand: active = 2n ────────────────────────────────────────────
         vault.expand(vault.pop_size());

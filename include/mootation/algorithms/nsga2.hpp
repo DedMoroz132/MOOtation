@@ -21,6 +21,7 @@
 #include "../operators/real_mutation.hpp"
 #include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -270,7 +271,7 @@ private:
     }
 
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist)
+                   rnd::uniform_int_distribution<int>& dist)
     {
         int a = dist(rng_), b = dist(rng_);
         return better(vault, a, b);
@@ -364,7 +365,7 @@ public:
     {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist_real(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist_real(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -409,7 +410,7 @@ public:
         if (constraint_mode != ConstraintMode::NONE) arch_.refresh(vault);
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
         xover_.observe(vault, n, rng_);  // de, de_pbest, portfolio: the last step's verdict
         // de_pbest: a random one of the best ⌈p·n⌉, by rank, then crowding distance
@@ -426,7 +427,7 @@ public:
                 });
             }
             const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
-            std::uniform_int_distribution<int> top(0, k - 1);
+            rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
         };
 
@@ -492,7 +493,7 @@ public:
                                             " makes |Q'| = floor(spu_frac 2n) smaller than the "
                                             "population " + std::to_string(n));
             for (int i = 0; i < m; ++i) {      // Q' into [0, m)
-                std::uniform_int_distribution<int> any(i, 2 * n - 1);
+                rnd::uniform_int_distribution<int> any(i, 2 * n - 1);
                 const int j = any(rng_);
                 if (j != i) vault.swap_active(i, j);
             }
@@ -561,7 +562,7 @@ protected:
     int niche_cf_ = 0;
 
     // A parent: the tournament's winner, or with niche_cf_ the niching one.
-    int mate(DataVault<Ind_t>& vault, std::uniform_int_distribution<int>& dist)
+    int mate(DataVault<Ind_t>& vault, rnd::uniform_int_distribution<int>& dist)
     {
         return niche_cf_ > 0 ? niche(vault, dist) : tournament(vault, dist);
     }
@@ -571,7 +572,7 @@ protected:
     // variables, of niche_cf_ others drawn without replacement (all of them
     // when niche_cf_ >= n - 1; on equal distances the first drawn), and the
     // better of the two by ≺_n enters the pool.
-    int niche(DataVault<Ind_t>& vault, std::uniform_int_distribution<int>& dist)
+    int niche(DataVault<Ind_t>& vault, rnd::uniform_int_distribution<int>& dist)
     {
         const int n = dist.b() + 1;
         const int a = dist(rng_);
@@ -583,7 +584,7 @@ protected:
         int nearest = -1;
         double best = std::numeric_limits<double>::infinity();
         for (int t = 0; t < cf; ++t) {          // a partial Fisher-Yates draw
-            std::uniform_int_distribution<int> any(t, n - 2);
+            rnd::uniform_int_distribution<int> any(t, n - 2);
             std::swap(others_[static_cast<std::size_t>(t)],
                       others_[static_cast<std::size_t>(any(rng_))]);
             const int c = others_[static_cast<std::size_t>(t)];

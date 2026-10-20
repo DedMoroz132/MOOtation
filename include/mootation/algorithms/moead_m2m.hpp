@@ -179,6 +179,7 @@
 // FIX 2026-07-07 (source-fidelity review): SBX/PM replaced with the
 // Liu & Li 2009 [20] operator Eq.(5)-(6), as required by §III-A(1) of the paper.
 #include "../operators/liuli_crossover.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -409,7 +410,7 @@ private:
                 std::vector<int> others;
                 others.reserve(M_act);
                 for (int i = 0; i < M_act; ++i) if (!in_mem[i]) others.push_back(i);
-                std::shuffle(others.begin(), others.end(), rng_);
+                rnd::shuffle(others.begin(), others.end(), rng_);
                 for (int t = 0; t < need && t < static_cast<int>(others.size()); ++t)
                     order.push_back(others[t]);
             }
@@ -488,7 +489,7 @@ public:
         gen_ = 0;                          // FIX 2026-07-07: annealing of [20]
         int N = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < N; ++i) {
@@ -522,7 +523,7 @@ public:
                 int x = k * S_ + j;
                 // line 7: "Randomly choose y from P_k" — one plain draw, y = x
                 // admitted (M2M-5 retired 2026-09-05)
-                std::uniform_int_distribution<int> dy(0, S_ - 1);
+                rnd::uniform_int_distribution<int> dy(0, S_ - 1);
                 int y = k * S_ + dy(rng_);
                 breed(vault, x, y, N + k * S_ + j);
             }

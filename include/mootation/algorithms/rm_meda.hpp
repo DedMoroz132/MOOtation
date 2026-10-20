@@ -16,6 +16,7 @@
 #include "../detail/constrained.hpp"
 #include "../operators/bound_repair.hpp"
 #include "../operators/learned_coords.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -119,7 +120,7 @@ public:
     {
         check(vault);
         const auto& b = vault.get_bounds();
-        std::uniform_real_distribution<double> U(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U(0.0, 1.0);
         std::vector<double> x(b.size());
         for (int i = 0; i < vault.pop_size(); ++i) {
             for (std::size_t j = 0; j < b.size(); ++j)
@@ -146,9 +147,9 @@ public:
             if (models[j].ok) { with.push_back(j); vol.push_back(models[j].vol); }
         const double total = std::accumulate(vol.begin(), vol.end(), 0.0);
         if (!(total > 0.0)) std::fill(vol.begin(), vol.end(), 1.0);        // RM-5
-        std::discrete_distribution<std::size_t> pick(vol.begin(), vol.end());
-        std::uniform_real_distribution<double> U(0.0, 1.0);
-        std::normal_distribution<double> N01(0.0, 1.0);
+        rnd::discrete_distribution<std::size_t> pick(vol.begin(), vol.end());
+        rnd::uniform_real_distribution<double> U(0.0, 1.0);
+        rnd::normal_distribution<double> N01(0.0, 1.0);
         const auto& bounds = vault.get_bounds();
         const std::size_t n = bounds.size();
         const int q0 = vault.expand(N);
@@ -259,8 +260,8 @@ private:
         const std::size_t N = X.size(), n = X.front().size();
         const std::size_t K = static_cast<std::size_t>(K_);
         std::vector<Model> L(K);
-        std::uniform_int_distribution<std::size_t> any(0, N - 1);
-        std::normal_distribution<double> N01(0.0, 1.0);
+        rnd::uniform_int_distribution<std::size_t> any(0, N - 1);
+        rnd::normal_distribution<double> N01(0.0, 1.0);
         for (auto& M : L) {
             M.mean = X[any(rng_)];
             M.U.assign(static_cast<std::size_t>(d), std::vector<double>(n));
@@ -366,7 +367,7 @@ private:
             const double least = *std::min_element(dc.begin(), dc.end());
             std::vector<std::size_t> ties;
             for (std::size_t t = 0; t < dc.size(); ++t) if (dc[t] == least) ties.push_back(t);
-            std::uniform_int_distribution<std::size_t> one(0, ties.size() - 1);
+            rnd::uniform_int_distribution<std::size_t> one(0, ties.size() - 1);
             front.erase(front.begin() + static_cast<std::ptrdiff_t>(ties[one(rng_)]));
         }
         for (std::size_t i : front) keep.push_back(static_cast<int>(i));

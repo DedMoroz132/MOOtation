@@ -183,6 +183,7 @@
 // FIX 2026-07-07 (source-fidelity review): SBX/PM replaced with the
 // Liu & Li 2009 [1] operator Eq.(5)-(6), as required by §II-C of the paper.
 #include "../operators/liuli_crossover.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -252,7 +253,7 @@ private:
     std::vector<int> sample_idx(int n, int k){
         std::vector<int> idx(n); std::iota(idx.begin(),idx.end(),0);
         k=std::clamp(k,0,n);
-        for(int t=0;t<k;++t){ int r=std::uniform_int_distribution<int>(t,n-1)(rng_); std::swap(idx[t],idx[r]); }
+        for(int t=0;t<k;++t){ int r=rnd::uniform_int_distribution<int>(t,n-1)(rng_); std::swap(idx[t],idx[r]); }
         idx.resize(k); return idx;
     }
 
@@ -361,7 +362,7 @@ public:
 
         int scratch=0;            // use active slot 0 as scratch
         const auto& b=vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0,1.0);
+        rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<Sol> pool; pool.reserve(5*N_);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<5*N_;++i){
@@ -438,13 +439,13 @@ public:
             for(auto& pr:all_int) if(internal_[pr.first][pr.second].rank!=0) rest.push_back(pr);
             int need=N_-(int)mating.size();
             for(int i:sample_idx((int)rest.size(),std::min(need,(int)rest.size()))) mating.push_back(rest[i]);
-            std::uniform_int_distribution<int> da(0,(int)all_int.size()-1);
+            rnd::uniform_int_distribution<int> da(0,(int)all_int.size()-1);
             while((int)mating.size()<N_) mating.push_back(all_int[da(rng_)]);
         } else if((int)mating.size()>N_){
             // FIX 2026-07-07 (LG-7): the paper does not specify the truncation
             // order — random N instead of "the first N in region-major order"
             // (the former deterministic truncation cut off the tail regions).
-            std::shuffle(mating.begin(),mating.end(),rng_);
+            rnd::shuffle(mating.begin(),mating.end(),rng_);
             mating.resize(N_);
         }
         std::vector<Sol> Q; Q.reserve(N_);
@@ -453,7 +454,7 @@ public:
             int t=pr.first, j=pr.second;
             const Sol& xi = internal_[t][j];
             const Sol& xj = external_[t].empty() ? xi
-                            : external_[t][std::uniform_int_distribution<int>(0,(int)external_[t].size()-1)(rng_)];
+                            : external_[t][rnd::uniform_int_distribution<int>(0,(int)external_[t].size()-1)(rng_)];
             Q.push_back(breed(xi,xj,vault,scratch));
         }
         std::vector<Sol> allp;
@@ -480,7 +481,7 @@ public:
                     // |rej| > |external_k|: a random |external_k| of them replace the
                     // whole set (the paper has no rule for this case).
                     int ne=(int)external_[k].size(), nr=(int)rej.size();
-                    if(nr>ne){ std::shuffle(rej.begin(),rej.end(),rng_); nr=ne; }
+                    if(nr>ne){ rnd::shuffle(rej.begin(),rej.end(),rng_); nr=ne; }
                     auto slots=sample_idx(ne,nr);
                     for(int t=0;t<nr;++t) external_[k][slots[t]]=rej[t];
                 }

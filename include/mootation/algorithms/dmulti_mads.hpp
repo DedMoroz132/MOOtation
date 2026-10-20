@@ -14,6 +14,7 @@
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../dss.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -222,13 +223,13 @@ private:
                                                  const std::vector<double>& w)
     {
         const std::size_t n = x.size();
-        std::normal_distribution<double> N(0.0, 1.0);
+        rnd::normal_distribution<double> N(0.0, 1.0);
         std::vector<double> v(n);
         double vv = 0.0;
         for (auto& c : v) { c = N(rng_); vv += c * c; }
         std::vector<std::vector<double>> dirs;
         std::vector<double> neg(n, 0.0);
-        std::bernoulli_distribution coin(0.5);
+        rnd::bernoulli_distribution coin(0.5);
         for (std::size_t c = 0; c < n; ++c) {
             std::vector<double> h(n);
             for (std::size_t r = 0; r < n; ++r)

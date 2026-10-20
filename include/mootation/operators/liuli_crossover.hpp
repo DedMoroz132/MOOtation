@@ -12,6 +12,7 @@
 
 #include "bound_repair.hpp"
 #include "sbx.hpp"   // sbx_require_bound
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -116,8 +117,8 @@ inline void liuli_crossover(const std::vector<double>& x,
                                     "single variable; bound_repair 'resample' is not available");
     note_operator("liuli_crossover", bound_repair_name(repair));
     RepairTally tally;
-    std::uniform_real_distribution<double> uni01(0.0, 1.0);
-    std::uniform_real_distribution<double> uni11(-1.0, 1.0);
+    rnd::uniform_real_distribution<double> uni01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni11(-1.0, 1.0);
     const double a = liuli_anneal(gen, max_gen);
 
     const double u  = uni11(rng);                       // rand ∈ [−1,1] (LL-1)
@@ -156,8 +157,8 @@ inline void liuli_mutation(std::vector<double>& x,
     if (nv == 0) return;
     note_operator("liuli_mutation", bound_repair_name(repair));
     RepairTally tally;
-    std::uniform_real_distribution<double> uni01(0.0, 1.0);
-    std::uniform_real_distribution<double> uni11(-1.0, 1.0);
+    rnd::uniform_real_distribution<double> uni01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni11(-1.0, 1.0);
     const double a = liuli_anneal(gen, max_gen);
 
     auto mutate_one = [&](int h) {
@@ -190,7 +191,7 @@ inline void liuli_mutation(std::vector<double>& x,
         if (uni01(rng) <= pm) { mutate_one(h); any = true; }
     }
     if (!any) {                                         // "once at least" (LL-4)
-        std::uniform_int_distribution<int> dh(0, nv - 1);
+        rnd::uniform_int_distribution<int> dh(0, nv - 1);
         mutate_one(dh(rng));
     }
 }

@@ -25,7 +25,8 @@ set(MOOTATION_TESTS
     test_dss
     test_hvc
     test_rvea
-    test_sdr)
+    test_sdr
+    test_random)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

@@ -15,6 +15,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -189,13 +190,13 @@ private:
     // NSGA-II's binary tournament: the lower rank, then the larger crowding
     int tournament(const std::vector<Pt>& P)
     {
-        std::uniform_int_distribution<int> pick(0, static_cast<int>(P.size()) - 1);
+        rnd::uniform_int_distribution<int> pick(0, static_cast<int>(P.size()) - 1);
         const int a = pick(rng_), b = pick(rng_);
         const Pt& x = P[static_cast<std::size_t>(a)];
         const Pt& y = P[static_cast<std::size_t>(b)];
         if (x.rank != y.rank) return x.rank < y.rank ? a : b;
         if (x.crowd != y.crowd) return x.crowd > y.crowd ? a : b;
-        std::uniform_int_distribution<int> coin(0, 1);
+        rnd::uniform_int_distribution<int> coin(0, 1);
         return coin(rng_) ? a : b;
     }
 
@@ -214,7 +215,7 @@ private:
     void randomize(DataVault<Ind_t>& vault, int from, int n)
     {
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         Vec x(static_cast<std::size_t>(vault.vars_n()));
         std::vector<int> bx(static_cast<std::size_t>(vault.bin_vars_n()));
         for (int i = from; i < from + n; ++i) {

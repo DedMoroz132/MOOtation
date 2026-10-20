@@ -180,6 +180,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -238,7 +239,7 @@ private:
         int n=(int)pts.size(); std::vector<int> sel;
         if(n==0||cnt<=0) return sel;
         std::vector<char> used(n,0);
-        int r=std::uniform_int_distribution<int>(0,n-1)(rng_);
+        int r=rnd::uniform_int_distribution<int>(0,n-1)(rng_);
         sel.push_back(r); used[r]=1;
         while((int)sel.size()<cnt){
             int b=-1; double bd=-1.0;
@@ -266,7 +267,7 @@ private:
         int n=(int)pts.size(); std::vector<int> sel;
         if(n==0||cnt<=0) return sel;
         std::vector<char> used(n,0);
-        int r=std::uniform_int_distribution<int>(0,n-1)(rng_);
+        int r=rnd::uniform_int_distribution<int>(0,n-1)(rng_);
         sel.push_back(r); used[r]=1;
         while((int)sel.size()<cnt){
             int b=-1; double bd=-1.0;
@@ -502,7 +503,7 @@ public:
     void setup(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); N_=vault.pop_size(); Na_=2*N_;
         const auto& b=vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0,1.0);
+        rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bv(vault.bin_vars_n());
         for(int i=0;i<N_;++i){
             for(int j=0;j<vault.vars_n();++j){double lo=b[j].first.value_or(0.0),hi=b[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);}
@@ -534,7 +535,7 @@ public:
         refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         refresh_copies(vault, arc_, constraint_mode != ConstraintMode::NONE);
         int scratch=vault.expand(1);
-        std::uniform_real_distribution<double> uni(0.0,1.0);
+        rnd::uniform_real_distribution<double> uni(0.0,1.0);
 
         if((int)arc_.size()<Na_){
             // ── Case I: NSGA-II ──
@@ -542,7 +543,7 @@ public:
             auto ord=nsga2_order(pop_);
             std::vector<int> rankpos((int)pop_.size());
             for(int r=0;r<(int)ord.size();++r) rankpos[ord[r]]=r;
-            std::uniform_int_distribution<int> dp(0,(int)pop_.size()-1);
+            rnd::uniform_int_distribution<int> dp(0,(int)pop_.size()-1);
             auto tour=[&](){ int a=dp(rng_),b=dp(rng_); return rankpos[a]<rankpos[b]?a:b; };
             for(int i=0;i<N_;++i){ int x=tour(),y=tour(); Q.push_back(breed(pop_[x],pop_[y],vault,scratch)); }
             // FIX 2026-07-07, APRD-7:
@@ -569,14 +570,14 @@ public:
             }
             int n=(int)pop_.size();
             std::vector<Sol> Q; Q.reserve(N_);
-            std::uniform_int_distribution<int> dall(0,n-1);
+            rnd::uniform_int_distribution<int> dall(0,n-1);
             for(int k=0;k<(int)Pk_.size();++k){
                 int sz=(int)Pk_[k].size();
                 for(int j=0;j<sz;++j){
                     int x=Pk_[k][j], y;
                     // Alg.1: rand < p → "Randomly choose y from P_k" (one plain
                     // draw, y = x admitted); else "Randomly choose y from P" (APRD-6).
-                    if(uni(rng_)<p_) y=Pk_[k][std::uniform_int_distribution<int>(0,sz-1)(rng_)];
+                    if(uni(rng_)<p_) y=Pk_[k][rnd::uniform_int_distribution<int>(0,sz-1)(rng_)];
                     else             y=dall(rng_);
                     Q.push_back(breed(pop_[x],pop_[y],vault,scratch));
                 }

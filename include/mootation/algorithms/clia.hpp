@@ -126,6 +126,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -442,7 +443,7 @@ void CLIACore<Ind_t>::setup(DataVault<Ind_t>& vault) {
     m_ = vault.objs_n(); N_ = vault.pop_size();
     init_refs(); compute_theta(); t_ = 0;
     const auto& bd = vault.get_bounds();
-    std::uniform_real_distribution<double> d(0.0, 1.0);
+    rnd::uniform_real_distribution<double> d(0.0, 1.0);
     std::vector<double> vars(vault.vars_n());
     for (int i = 0; i < N_; ++i) {
         for (int j = 0; j < vault.vars_n(); ++j) {
@@ -485,7 +486,7 @@ void CLIACore<Ind_t>::step(DataVault<Ind_t>& vault) {
     int scratch = vault.expand(1);
     int sz = (int)pop_.size();
     if (sz == 0) return;
-    std::uniform_int_distribution<int> pick(0, sz - 1);
+    rnd::uniform_int_distribution<int> pick(0, sz - 1);
 
     // (1) Evolve: offspring of size N (§III-C). Random mating over population.
     std::vector<Sol> O; O.reserve(sz);

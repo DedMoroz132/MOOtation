@@ -91,6 +91,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -307,7 +308,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -396,7 +397,7 @@ public:
 
         // ── [code B] Q ← Reproduction(P ∪ Arc, N): SBX+PM, Alg.1 line 4 ────
         // Parents chosen uniformly from population [0,n) ∪ archive [0,A).
-        std::uniform_int_distribution<int> dist_PA(0, n + A - 1);
+        rnd::uniform_int_distribution<int> dist_PA(0, n + A - 1);
         auto parent_vars = [&](int k, std::vector<double>& out) {
             int nv = vault.vars_n();
             out.resize(nv);

@@ -21,6 +21,7 @@
 #include "../operators/learned_coords.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -300,12 +301,12 @@ private:
     std::vector<double> laplace(const std::vector<double>& x)
     {
         const std::size_t n = x.size();
-        std::uniform_real_distribution<double> u(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u(0.0, 1.0);
         std::vector<char> mask(n, 0);
         bool any = false;
         for (std::size_t j = 0; j < n; ++j) { mask[j] = u(rng_) < 1.0 / static_cast<double>(n); any = any || mask[j]; }
-        if (!any) mask[std::uniform_int_distribution<std::size_t>(0, n - 1)(rng_)] = 1;
-        std::exponential_distribution<double> ex(1.0);
+        if (!any) mask[rnd::uniform_int_distribution<std::size_t>(0, n - 1)(rng_)] = 1;
+        rnd::exponential_distribution<double> ex(1.0);
         std::vector<double> y(x);
         for (std::size_t j = 0; j < n; ++j)
             if (mask[j]) {
@@ -322,7 +323,7 @@ private:
     // a generation being pop_size steps.
     std::vector<double> sbx_move(const std::vector<double>& x, const Bounds& bounds, int N)
     {
-        std::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
+        rnd::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
         const std::vector<double> xa = archive_[any(rng_)].x;
         const long long gen = k_ / std::max(1, N);
         if (coords_.due(gen)) {
@@ -339,7 +340,7 @@ private:
         } else {
             ops::sbx(x, xa, c1, c2, bounds, eta_c_, 1.0, rng_);
         }
-        std::uniform_real_distribution<double> u(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u(0.0, 1.0);
         std::vector<double> y = u(rng_) < 0.5 ? c1 : c2;
         const double pm = pm_ ? *pm_ : 1.0 / static_cast<double>(x.size());
         if (!learned) {
@@ -351,7 +352,7 @@ private:
     }
 
     // 0 laplace, 1 de, 2 sbx — the step actually taken
-    int choose(std::uniform_real_distribution<double>& u)
+    int choose(rnd::uniform_real_distribution<double>& u)
     {
         const std::size_t na = archive_.size();
         switch (step_kind_) {
@@ -364,7 +365,7 @@ private:
                 return na >= 3 ? 1 : 0;
             }
             case SAStep::Adaptive: {
-                std::discrete_distribution<int> d(probs_.begin(), probs_.end());
+                rnd::discrete_distribution<int> d(probs_.begin(), probs_.end());
                 const int op = d(rng_);
                 if (op == 1 && na < 3) return 0;
                 if (op == 2 && na < 2) return 0;
@@ -451,7 +452,7 @@ private:
         const std::size_t m = first.empty() ? 0 : first[0].f.size();
         W_.assign(static_cast<std::size_t>(k), std::vector<double>(m, 1.0 / static_cast<double>(std::max<std::size_t>(1, m))));
         if (energy_ == SAEnergy::Tch) {
-            std::gamma_distribution<double> g(1.0, 1.0);
+            rnd::gamma_distribution<double> g(1.0, 1.0);
             for (int c = 0; c < k; ++c) {
                 auto& w = W_[static_cast<std::size_t>(c)];
                 if (static_cast<std::size_t>(c) < m) {
@@ -494,7 +495,7 @@ private:
                     if (e < best) { best = e; j = i; }
                 }
             } else {
-                j = std::uniform_int_distribution<std::size_t>(0, archive_.size() - 1)(rng_);
+                j = rnd::uniform_int_distribution<std::size_t>(0, archive_.size() - 1)(rng_);
             }
             cur_.push_back(archive_[j]);
         }
@@ -699,7 +700,7 @@ public:
 
     std::vector<double> differential(const std::vector<double>& x)
     {
-        std::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
+        rnd::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
         const std::size_t a = any(rng_);
         std::size_t b = any(rng_);
         while (b == a) b = any(rng_);
@@ -726,7 +727,7 @@ public:
         auto& w = W_[static_cast<std::size_t>(c)];
         double s = 0.0;
         if (near < 0) {                       // no x': random weights (PSA)
-            std::gamma_distribution<double> g(1.0, 1.0);
+            rnd::gamma_distribution<double> g(1.0, 1.0);
             for (auto& v : w) { v = g(rng_); s += v; }
             for (auto& v : w) v /= s;
             return;
@@ -806,11 +807,11 @@ public:
         const std::size_t n = lo_.size();
         const std::size_t S = std::max<std::size_t>(n + 2, 20);
         std::vector<std::vector<double>> X(S, std::vector<double>(n));
-        std::uniform_real_distribution<double> u(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u(0.0, 1.0);
         std::vector<std::size_t> perm(S);
         for (std::size_t j = 0; j < n; ++j) {                 // a Latin hypercube
             std::iota(perm.begin(), perm.end(), std::size_t{0});
-            std::shuffle(perm.begin(), perm.end(), rng_);
+            rnd::shuffle(perm.begin(), perm.end(), rng_);
             for (std::size_t i = 0; i < S; ++i)
                 X[i][j] = lo_[j] + (static_cast<double>(perm[i]) + u(rng_)) / static_cast<double>(S) * (hi_[j] - lo_[j]);
         }
@@ -844,7 +845,7 @@ public:
         const double frac = t_max_ > 1 ? std::min(1.0, static_cast<double>(k_) / static_cast<double>(t_max_ - 1)) : 1.0;
         T_ = T0_ * std::pow(t_ratio_, frac);
         s_ = s0_ * std::pow(s_end_ / s0_, frac);
-        std::uniform_real_distribution<double> u(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u(0.0, 1.0);
         Point& x = cur_[static_cast<std::size_t>(c)];
         const int op = choose(u);
         std::vector<double> y;
@@ -867,7 +868,7 @@ public:
         }
         if (accept) x = p;
         if (u(rng_) < reseed_ && archive_.size() > 1) {               // 7
-            std::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
+            rnd::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
             const std::size_t a = any(rng_);
             std::size_t b = any(rng_);
             while (b == a) b = any(rng_);

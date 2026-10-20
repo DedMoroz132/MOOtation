@@ -90,6 +90,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -203,7 +204,7 @@ public:
         D_ = das_dennis::generate_exact(m, n);   // Alg.2: two-layer lattice
         compute_min_angles();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -253,7 +254,7 @@ public:
                 fit[i] = s;
             }
         }
-        std::uniform_int_distribution<int> dist_ea(0, n_ea - 1);
+        rnd::uniform_int_distribution<int> dist_ea(0, n_ea - 1);
         auto tournament = [&]() {
             int a = dist_ea(rng_), b = dist_ea(rng_);
             return (fit[a] >= fit[b]) ? a : b;

@@ -99,6 +99,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -302,7 +303,7 @@ private:
 
     // ── one subproblem step for i (Steps 9–16) ─────────────────────────────
     void evolve_subproblem(DataVault<Ind_t>& vault, int i, int n) {
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u01(0.0, 1.0);
         bool local = (u01(rng_) < delta_);
         std::vector<int> pool_all;
         if (!local) {
@@ -313,7 +314,7 @@ private:
 
         // parents: x^i plus ONE plain draw from the pool (Li & Zhang 2009
         // practice; r2 = i admitted — ASSUMPTION (2) in the file header).
-        std::uniform_int_distribution<int> pickP(0, static_cast<int>(P.size()) - 1);
+        rnd::uniform_int_distribution<int> pickP(0, static_cast<int>(P.size()) - 1);
         int r2 = P[pickP(rng_)];
 
         const auto& bounds = vault.get_bounds();
@@ -354,7 +355,7 @@ private:
 
         // Step 12: population update, at most n_r replacements from the pool.
         std::vector<int> Pp = P;
-        std::shuffle(Pp.begin(), Pp.end(), rng_);
+        rnd::shuffle(Pp.begin(), Pp.end(), rng_);
         int c = 0, nrmax = nr_eff(n);
         for (int j : Pp) {
             if (c >= nrmax) break;
@@ -585,7 +586,7 @@ public:
         build_neighbourhoods(n);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist_real(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist_real(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {

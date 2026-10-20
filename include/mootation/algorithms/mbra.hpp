@@ -70,6 +70,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -284,7 +285,7 @@ private:
             if (rmax == 0) break;
             std::vector<int> ties;
             for (int j = 0; j < Nref; ++j) if (rho[j] == rmax) ties.push_back(j);
-            int wmost = ties[std::uniform_int_distribution<int>(0, static_cast<int>(ties.size()) - 1)(rng_)];
+            int wmost = ties[rnd::uniform_int_distribution<int>(0, static_cast<int>(ties.size()) - 1)(rng_)];
             // the farthest solution in the subregion of wmost (max angular distance)
             int    xf = -1; double far = -1.0;
             for (int s = 0; s < n; ++s) {
@@ -321,7 +322,7 @@ public:
         W_ = das_dennis::generate_exact(m, n);
         current_gen_ = 0;
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -352,7 +353,7 @@ public:
         int N = n;
         int m = vault.objs_n();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_N(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_N(0, n - 1);
         ++current_gen_;
 
         // ── MatingSelection (dominance + objective sum) → N parents ──────────
@@ -369,7 +370,7 @@ public:
                 for (double v : vault.objectives_of(s2)) sum2 += v;
                 if      (sum1 < sum2) win = s1;
                 else if (sum2 < sum1) win = s2;
-                else win = (std::uniform_real_distribution<double>(0.0,1.0)(rng_) < 0.5) ? s1 : s2;
+                else win = (rnd::uniform_real_distribution<double>(0.0,1.0)(rng_) < 0.5) ? s1 : s2;
             }
             parents.push_back(win);
         }

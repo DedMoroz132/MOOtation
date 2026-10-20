@@ -93,6 +93,7 @@
 #include "../data_vault.hpp"
 #include "../operators/de_mutation.hpp"
 #include "../operators/poly_mutation.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -253,7 +254,7 @@ private:
 
         for (int pick = 0; pick < extra && !candidates.empty(); ++pick) {
             int t_size = std::min(10, static_cast<int>(candidates.size()));
-            std::uniform_int_distribution<int> dc(0, static_cast<int>(candidates.size())-1);
+            rnd::uniform_int_distribution<int> dc(0, static_cast<int>(candidates.size())-1);
             int winner_idx = candidates[dc(rng_)];
             for (int t = 1; t < t_size; ++t) {
                 int cand_idx = candidates[dc(rng_)];
@@ -272,7 +273,7 @@ private:
     // ── Step 3 for one subproblem i ─────────────────────────────────────────
     void update_subproblem(DataVault<Ind_t>& vault, int i, int scratch) {
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         int N = static_cast<int>(W_.size());
 
         // Step 3.1: mating/update range P.
@@ -289,7 +290,7 @@ private:
         // r2 = i are admitted; 2026-09-05 — the former rejection loop DRA-7
         // is gone).
         int psz = static_cast<int>(P.size());
-        std::uniform_int_distribution<int> dP(0, psz - 1);
+        rnd::uniform_int_distribution<int> dP(0, psz - 1);
         int r2 = P[dP(rng_)];
         int r3 = P[dP(rng_)];
 
@@ -313,7 +314,7 @@ private:
             // Binary variables (beyond the paper): inherited from x_i + bit-flip.
             int nb = vault.bin_vars_n();
             std::vector<int> by(nb);
-            std::uniform_real_distribution<double> Ub(0.0, 1.0);
+            rnd::uniform_real_distribution<double> Ub(0.0, 1.0);
             double pb = ops::gene_mutation_rate(nb);
             for (int j = 0; j < nb; ++j) {
                 by[j] = vault.get_bin_variable(i, j);
@@ -337,7 +338,7 @@ private:
         // x^j ← y, FV^j ← F(y) — by COPYING (seed_individual), without
         // re-evaluation (fix G1 / X2, internal audit: DRA-6).
         std::vector<int> upd = P;
-        std::shuffle(upd.begin(), upd.end(), rng_);
+        rnd::shuffle(upd.begin(), upd.end(), rng_);
         int c = 0;
         for (int j : upd) {
             if (c >= nr_eff_) break;
@@ -406,7 +407,7 @@ public:
 
         // Step 1.2: random initialisation.
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {

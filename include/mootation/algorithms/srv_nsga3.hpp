@@ -65,6 +65,7 @@
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 #include "srv_strategy.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -260,19 +261,19 @@ private:
             if (rwf.empty()) break;
             int min_rho=std::numeric_limits<int>::max(); for (int r:rwf) min_rho=std::min(min_rho,rho[r]);
             std::vector<int> cands; for (int r:rwf) if(rho[r]==min_rho) cands.push_back(r);
-            std::uniform_int_distribution<int> dc(0,(int)cands.size()-1);
+            rnd::uniform_int_distribution<int> dc(0,(int)cands.size()-1);
             int j_star=cands[dc(rng_)];
             std::vector<int> assoc; for (int v:fl_rem) if(vault.get_ind(v).ref_point_idx==j_star) assoc.push_back(v);
             int sel;
             if (rho[j_star]==0) sel=*std::min_element(assoc.begin(),assoc.end(),[&](int a,int b){ return vault.get_ind(a).norm_distance<vault.get_ind(b).norm_distance; });
-            else { std::uniform_int_distribution<int> da(0,(int)assoc.size()-1); sel=assoc[da(rng_)]; }
+            else { rnd::uniform_int_distribution<int> da(0,(int)assoc.size()-1); sel=assoc[da(rng_)]; }
             chosen.push_back(sel); ++rho[j_star];
             fl_rem.erase(std::find(fl_rem.begin(),fl_rem.end(),sel));
         }
     }
 
     // ── Tournament (random when both feasible — NSGA-III style) ───────────
-    int tournament(DataVault<Ind_t>& vault, std::uniform_int_distribution<int>& dist) {
+    int tournament(DataVault<Ind_t>& vault, rnd::uniform_int_distribution<int>& dist) {
         int a=dist(rng_), b=dist(rng_);
         if (constraint_mode==ConstraintMode::FEASIBILITY) {
             double ca=vault.get_cv(a), cb=vault.get_cv(b);
@@ -281,7 +282,7 @@ private:
             if(!af&&bf) return b;
             if(!af&&!bf) return (ca<cb)?a:b;
         }
-        std::uniform_int_distribution<int> coin(0,1); return coin(rng_)?a:b;
+        rnd::uniform_int_distribution<int> coin(0,1); return coin(rng_)?a:b;
     }
 
     void rearrange(DataVault<Ind_t>& vault, const std::vector<int>& sv, int pool) {
@@ -319,7 +320,7 @@ public:
         zmin_hist_.clear(); extreme_hist_.clear();
         init_V(n,m);   // also computes theta_min_c_ (Eq.16)
         const auto& bounds=vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0,1.0);
+        rnd::uniform_real_distribution<double> dr(0.0,1.0);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bvars(vault.bin_vars_n());
         for (int i=0;i<n;++i) {
             for (int j=0;j<vault.vars_n();++j) {
@@ -348,7 +349,7 @@ public:
 
     void step(DataVault<Ind_t>& vault) {
         int n=vault.pop_size(); const auto& bounds=vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0,n-1);
+        rnd::uniform_int_distribution<int> dist_int(0,n-1);
 
         // Liu et al. 2022, §III-C: the SRVs are refreshed EVERY generation
         // from St (below, after the non-dominated sort), not once per 10% of

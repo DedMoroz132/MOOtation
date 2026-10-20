@@ -75,6 +75,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -230,7 +231,7 @@ private:
         int T_eff = static_cast<int>(B.size());
 
         // Step 2.1: pick two indexes k, l from B(i).
-        std::uniform_int_distribution<int> dist_B(0, T_eff - 1);
+        rnd::uniform_int_distribution<int> dist_B(0, T_eff - 1);
         // Two independent draws from B(i); k = l is allowed by the letter of
         // Step 2.1 (then SBX reproduces the parent and only PM acts).
         int k_idx = dist_B(rng_);
@@ -310,7 +311,7 @@ public:
 
         // Step 1.3: random initialisation.
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist_real(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist_real(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 

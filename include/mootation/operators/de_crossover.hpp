@@ -84,6 +84,7 @@
 #include "../hv_contribution.hpp"
 #include "bound_repair.hpp"
 #include "sbx.hpp"   // sbx_require_bound
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -155,8 +156,8 @@ inline std::vector<double> binomial(const std::vector<double>& x, const std::vec
                                     BoundRepair repair, RNG& rng)
 {
     const std::size_t n = x.size();
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
-    std::uniform_int_distribution<std::size_t> pick(0, n - 1);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_int_distribution<std::size_t> pick(0, n - 1);
     const std::size_t jr = pick(rng);
     std::vector<double> u(x);
     for (std::size_t j = 0; j < n; ++j)
@@ -188,11 +189,11 @@ public:
         double CR = set.CR, F = set.F;
         if (set.adapt == DEAdapt::SHADE) {
             ensure_memory();
-            std::uniform_int_distribution<int> cell(0, static_cast<int>(mcr_.size()) - 1);
+            rnd::uniform_int_distribution<int> cell(0, static_cast<int>(mcr_.size()) - 1);
             const int r = cell(rng);
-            std::normal_distribution<double> N(mcr_[static_cast<std::size_t>(r)], 0.1);
+            rnd::normal_distribution<double> N(mcr_[static_cast<std::size_t>(r)], 0.1);
             CR = std::clamp(N(rng), 0.0, 1.0);
-            std::cauchy_distribution<double> C(mf_[static_cast<std::size_t>(r)], 0.1);
+            rnd::cauchy_distribution<double> C(mf_[static_cast<std::size_t>(r)], 0.1);
             do { F = C(rng); } while (!(F > 0.0));
             F = std::min(F, 1.0);
         }
@@ -229,7 +230,7 @@ public:
     std::vector<double> population_or_archive(Draw&& from_population, int N, RNG& rng)
     {
         if (!set.archive || archive_.empty()) return from_population();
-        std::uniform_int_distribution<int> any(0, N + static_cast<int>(archive_.size()) - 1);
+        rnd::uniform_int_distribution<int> any(0, N + static_cast<int>(archive_.size()) - 1);
         const int i = any(rng);
         if (i < N) return from_population();
         const auto& a = archive_[static_cast<std::size_t>(i - N)];
@@ -304,7 +305,7 @@ public:
             }
             const std::size_t N = X.size();
             while (archive_.size() > N) {
-                std::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
+                rnd::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
                 const std::size_t i = any(rng);
                 archive_[i] = std::move(archive_.back());
                 archive_.pop_back();

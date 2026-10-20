@@ -90,6 +90,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -160,7 +161,7 @@ private:
     // v = u/‖u‖ with u_j = U[0, 1)·scale_j (Alg. 4 line 13; RVEA*-4 with scale 1).
     // Returns false and leaves v as it is when u = 0 (RVEA*-5).
     bool random_direction(const std::vector<double>& scale, std::vector<double>& v) {
-        std::uniform_real_distribution<double> U(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U(0.0, 1.0);
         std::vector<double> u(scale.size());
         for (std::size_t j = 0; j < scale.size(); ++j) u[j] = U(rng_) * scale[j];
         const double n = norm_of(u);
@@ -368,7 +369,7 @@ public:
         make_vectors(n, m);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {

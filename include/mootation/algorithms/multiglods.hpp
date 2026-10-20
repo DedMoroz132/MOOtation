@@ -15,6 +15,7 @@
 #include "../data_vault.hpp"
 #include "../dss.hpp"
 #include "../sobol.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -327,7 +328,7 @@ public:
         if (failures_ >= search_every_) {
             failures_ = 0;                                                       // MG-6
             std::vector<std::vector<double>> A;
-            std::uniform_real_distribution<double> U(0.0, 1.0);
+            rnd::uniform_real_distribution<double> U(0.0, 1.0);
             for (std::size_t i = 0; i < n; ++i) {
                 if (sobol_) A.push_back(sobol_->next());
                 else {                                                           // MG-2

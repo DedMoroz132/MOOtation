@@ -166,6 +166,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -296,7 +297,7 @@ private:
                     std::vector<double>& contrib) {
         int K = static_cast<int>(W.size());
         std::vector<long long> cnt(K, 0);
-        std::uniform_real_distribution<double> U(0.0, WREF_);
+        rnd::uniform_real_distribution<double> U(0.0, WREF_);
         const long long base =
             std::max<long long>(20000, 200LL * static_cast<long long>(K));
         long long total = 0, chunk = base;
@@ -335,7 +336,7 @@ private:
         double mn = *std::min_element(contrib.begin(), contrib.end());
         std::vector<int> ties;
         for (int i = 0; i < K; ++i) if (contrib[i] == mn) ties.push_back(i);
-        int pick = ties[std::uniform_int_distribution<int>(
+        int pick = ties[rnd::uniform_int_distribution<int>(
             0, static_cast<int>(ties.size()) - 1)(rng_)];
         W.erase(W.begin() + pick);
     }
@@ -344,7 +345,7 @@ private:
     void generate_weight_vectors(int n_vectors, int m) {
         std::vector<std::vector<double>> W;
         W.reserve(n_vectors + 1);
-        std::uniform_real_distribution<double> U(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U(0.0, 1.0);
 
         auto draw_simplex = [&]() {
             std::vector<double> x(m - 1);
@@ -560,7 +561,7 @@ private:
     //  FEASIBILITY mode (extension): feasible beats infeasible first.
     // ------------------------------------------------------------------ //
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist) {
+                   rnd::uniform_int_distribution<int>& dist) {
         // §IV-C: "randomly draws two individuals from P_g" — with
         // replacement, two plain uniform picks (see the header note).
         int a = dist(rng_);
@@ -578,7 +579,7 @@ private:
         double iba = ir2(fb, fa, zstar_);
         if (iab < iba) return a;
         if (iba < iab) return b;
-        return (std::uniform_int_distribution<int>(0, 1)(rng_) == 0) ? a : b;
+        return (rnd::uniform_int_distribution<int>(0, 1)(rng_) == 0) ? a : b;
     }
 
 public:
@@ -605,7 +606,7 @@ public:
         generate_weight_vectors(n, m);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist_real(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist_real(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
 
@@ -643,14 +644,14 @@ public:
     void step(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
         // ---- expand: active = 2n ----
         vault.expand(vault.pop_size());
 
         // ---- breed n offspring into slots [n, 2n) ----
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
-        std::uniform_real_distribution<double> uni(0.0, 1.0);
+        rnd::uniform_real_distribution<double> uni(0.0, 1.0);
         for (int i = 0; i < n; ) {
             int p1 = tournament(vault, dist_int);
             int p2 = tournament(vault, dist_int);

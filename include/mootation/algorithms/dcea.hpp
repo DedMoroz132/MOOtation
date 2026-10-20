@@ -148,6 +148,7 @@
 #include "../data_vault.hpp"
 #include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -250,7 +251,7 @@ private:
         for(int i=0;i<n;++i) X[i]=shifted(pop_[i].objs);
         // init: the first W_ distinct ones (shuffle)
         std::vector<int> perm(n); std::iota(perm.begin(),perm.end(),0);
-        std::shuffle(perm.begin(),perm.end(),rng_);
+        rnd::shuffle(perm.begin(),perm.end(),rng_);
         centers.assign(W_,std::vector<double>(m_,0.0));
         for(int k=0;k<W_;++k) centers[k]=X[perm[k]];
         assign.assign(n,0);
@@ -284,7 +285,7 @@ private:
         if(n==0) return;
         std::vector<std::vector<int>> Yt(W_);
         for(int i=0;i<n;++i) Yt[assoc(pop_[i].objs,V_)].push_back(i);
-        std::uniform_int_distribution<int> dr(0,n-1);
+        rnd::uniform_int_distribution<int> dr(0,n-1);
         int total=0;
         for(int w=0;w<W_;++w){
             std::vector<int> Yw=Yt[w];
@@ -327,7 +328,7 @@ public:
         S_=N_/W_; if(S_<1) S_=1;
         auto Lr=das_dennis::generate_auto(m_,N_); Lambda_.clear(); for(auto&v:Lr) Lambda_.push_back(unit(v));
         const auto& bd=vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0,1.0);
+        rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars); }
         vault.sync();
@@ -378,7 +379,7 @@ public:
 
         // ── SCAGO: offspring ──
         double mu=1.0-std::sqrt(frac);
-        std::uniform_real_distribution<double> uni(0.0,1.0);
+        rnd::uniform_real_distribution<double> uni(0.0,1.0);
         // DCEA-7: r1, r2 — ONE draw per generation (Alg.5 l.4: "Set r1=2π*rnd
         // and r2=2*rnd", before the loops over w and j); it used to be one draw
         // per offspring. The sin/cos choice stays per offspring
@@ -400,7 +401,7 @@ public:
             int mf = mf_global_ ? mf_all : max_front(SP_[w],pop_);
             for(int idx:SP_[w]){
                 const std::vector<int>& pool = !CS[w].empty()? CS[w] : SP_[w];
-                int p=pool[std::uniform_int_distribution<int>(0,(int)pool.size()-1)(rng_)];
+                int p=pool[rnd::uniform_int_distribution<int>(0,(int)pool.size()-1)(rng_)];
                 double r0 = (mf>1)? frac+1.0 : 1.0-frac;
                 std::vector<double> y(vault.vars_n());
                 bool sgn = uni(rng_)<0.5;
@@ -448,9 +449,9 @@ public:
                 int bb=std::min(b_,(int)dd.size()); std::partial_sort(dd.begin(),dd.begin()+bb,dd.end());
                 std::vector<int> DC;
                 for(int t=0;t<bb;++t) for(int i:tau[dd[t].second]) if(!inYw[i]) DC.push_back(i);
-                std::uniform_int_distribution<int> dr(0,(int)R.size()-1);
+                rnd::uniform_int_distribution<int> dr(0,(int)R.size()-1);
                 if((int)DC.size()>need){
-                    std::shuffle(DC.begin(),DC.end(),rng_);
+                    rnd::shuffle(DC.begin(),DC.end(),rng_);
                     for(int t=0;t<need;++t){ newpop.push_back(R[DC[t]]); owner.push_back(w); }
                 } else {
                     for(int t=0;t<need;++t){ newpop.push_back(R[dr(rng_)]); owner.push_back(w); }
@@ -461,7 +462,7 @@ public:
         while((int)newpop.size()<N_){
             // extension beyond the paper (N%W≠0): top up with a random
             // individual, the owner assigned by Eq.2
-            int ri=std::uniform_int_distribution<int>(0,(int)R.size()-1)(rng_);
+            int ri=rnd::uniform_int_distribution<int>(0,(int)R.size()-1)(rng_);
             newpop.push_back(R[ri]); owner.push_back(assoc(R[ri].objs,V_));
         }
         pop_=newpop;

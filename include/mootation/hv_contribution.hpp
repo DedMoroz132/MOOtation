@@ -41,6 +41,7 @@
 
 #include "hv_box.hpp"
 #include "hypervolume.hpp"
+#include "random.hpp"
 
 namespace mootation::hv {
 
@@ -145,7 +146,7 @@ inline std::vector<double> contributions_mc(const std::vector<std::vector<double
     const std::size_t n = F.size(), m = r.size();
     std::vector<double> c(n, 0.0);
     if (n == 0 || samples_per_point == 0) return c;
-    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
     std::vector<double> others, S(samples_per_point * m), b(m);
     // the points in increasing first objective, once: the order the count
     // reads them in (hypervolume::covered), whichever of them it reads

@@ -100,6 +100,7 @@
 #include "../operators/real_mutation.hpp"
 #include "../operators/variation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -401,7 +402,7 @@ private:
     // ── Binary tournament ─────────────────────────────────────────────────
     // Rank first, then survival score (higher wins).
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist) {
+                   rnd::uniform_int_distribution<int>& dist) {
         int a = dist(rng_), b = dist(rng_);
         int ra = vault.get_ind(a).rank, rb = vault.get_ind(b).rank;
         if (ra != rb) return (ra < rb) ? a : b;
@@ -456,7 +457,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -489,7 +490,7 @@ public:
         int n = vault.pop_size();
         int m = vault.objs_n();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
         xover_.observe(vault, n, rng_);  // de, de_pbest, portfolio: the last step's verdict
         // de_pbest: a random one of the best ⌈p·n⌉, by rank, then survival score
@@ -506,7 +507,7 @@ public:
                 });
             }
             const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
-            std::uniform_int_distribution<int> top(0, k - 1);
+            rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
         };
 

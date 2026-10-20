@@ -57,6 +57,7 @@
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 #include "srv_strategy.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -253,7 +254,7 @@ private:
                 for (int v : level) survivors.push_back(v);
             } else {
                 // Random selection from this level (Algorithm 4, line 18)
-                std::shuffle(level.begin(), level.end(), rng_);
+                rnd::shuffle(level.begin(), level.end(), rng_);
                 for (int i=0; i<remaining; ++i) survivors.push_back(level[i]);
             }
         }
@@ -294,7 +295,7 @@ public:
         init_V0(n, m);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0,1.0);
+        rnd::uniform_real_distribution<double> dr(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i=0; i<n; ++i) {
@@ -321,7 +322,7 @@ public:
         // ── Breed N offspring ─────────────────────────────────────────────────
         vault.expand(vault.pop_size());
         std::vector<int> perm(n); std::iota(perm.begin(),perm.end(),0);
-        std::shuffle(perm.begin(), perm.end(), rng_);
+        rnd::shuffle(perm.begin(), perm.end(), rng_);
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;  // 1/n
         for (int i=0; i<n; i+=2) {
@@ -332,7 +333,7 @@ public:
                 // With an odd n the last "pair" was p1==p2, i.e. SBX of an
                 // individual with its own clone. The partner is re-drawn at
                 // random from the other n−1 individuals.
-                std::uniform_int_distribution<int> dp(0, n-2);
+                rnd::uniform_int_distribution<int> dp(0, n-2);
                 int r = dp(rng_);
                 p2 = perm[(r >= i) ? r+1 : r];
             } else {

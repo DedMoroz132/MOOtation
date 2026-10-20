@@ -129,6 +129,7 @@
 #include "../operators/bound_repair.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -273,7 +274,7 @@ private:
         int m = static_cast<int>(X[0].size());
         std::vector<int> perm(n);
         std::iota(perm.begin(), perm.end(), 0);
-        std::shuffle(perm.begin(), perm.end(), rng_);
+        rnd::shuffle(perm.begin(), perm.end(), rng_);
         std::vector<std::vector<double>> cen(K);
         for (int c = 0; c < K; ++c) cen[c] = X[perm[c]];
         for (int iter = 0; iter < 20; ++iter) {
@@ -300,7 +301,7 @@ private:
                 if (cnt[c] > 0)
                     for (int j = 0; j < m; ++j) cen[c][j] = sum[c][j] / cnt[c];
                 else
-                    cen[c] = X[std::uniform_int_distribution<int>(0, n - 1)(rng_)];
+                    cen[c] = X[rnd::uniform_int_distribution<int>(0, n - 1)(rng_)];
             }
             if (!changed && iter > 0) break;
         }
@@ -388,11 +389,11 @@ private:
     Sol de_breed(const Sol& base, int base_sp, DataVault<Ind_t>& vault, int scratch) {
         int nv = vault.vars_n();
         const auto& bnd = vault.get_bounds();
-        std::uniform_int_distribution<int> di(0, (int)DP_.size() - 1);
+        rnd::uniform_int_distribution<int> di(0, (int)DP_.size() - 1);
         int r1 = di(rng_), r2 = di(rng_), r3 = di(rng_);
-        std::uniform_real_distribution<double> ur(0.0, 1.0);
+        rnd::uniform_real_distribution<double> ur(0.0, 1.0);
         std::vector<double> child(nv);
-        int jrand = std::uniform_int_distribution<int>(0, nv - 1)(rng_);
+        int jrand = rnd::uniform_int_distribution<int>(0, nv - 1)(rng_);
         ops::note_operator("hcca_de_rand_1", ops::bound_repair_name(repair_));
         ops::RepairTally tally;
         for (int j = 0; j < nv; ++j) {
@@ -446,7 +447,7 @@ private:
         z_.assign(m_, std::numeric_limits<double>::max());
         update_ideal(cur_DP);
         update_ideal(Q);
-        std::uniform_real_distribution<double> ur(0.0, 1.0);
+        rnd::uniform_real_distribution<double> ur(0.0, 1.0);
         for (const auto& off : Q) {
             // The offspring updates the neighbourhood OF THE SUBPROBLEM IT WAS
             // BRED FOR (MOEA/D Step 2.4), not a random one. DE children carry
@@ -457,14 +458,14 @@ private:
             // computed and stored — see HCCA-9.
             int sp = (off.sp >= 0 && off.sp < N_)
                          ? off.sp
-                         : std::uniform_int_distribution<int>(0, N_ - 1)(rng_);
+                         : rnd::uniform_int_distribution<int>(0, N_ - 1)(rng_);
             const std::vector<int>& pool = (ur(rng_) < delta_) ? B_[sp]
                                           : [&]{ static thread_local std::vector<int> all;
                                                  all.resize(N_); std::iota(all.begin(), all.end(), 0);
                                                  return all; }();
             int replaced = 0;
             std::vector<int> order(pool.begin(), pool.end());
-            std::shuffle(order.begin(), order.end(), rng_);
+            rnd::shuffle(order.begin(), order.end(), rng_);
             for (int idx : order) {
                 if (replaced >= nr_) break;
                 double go = gtch(off.objs, W_[idx], z_);
@@ -641,7 +642,7 @@ private:
         }
         // fill OFP up to K from OP (Alg.2 l.21-27)
         if (!OP.empty()) {
-            std::uniform_int_distribution<int> dop(0, (int)OP.size() - 1);
+            rnd::uniform_int_distribution<int> dop(0, (int)OP.size() - 1);
             while ((int)OFP.size() < K) {
                 int a = dop(rng_), b = dop(rng_);
                 OFP.push_back(sbx_breed(OP[a], OP[b], vault, scratch));
@@ -775,7 +776,7 @@ private:
             std::vector<int> cands;
             for (int i = 0; i < nQ; ++i)
                 if (alive[i] && D[i] >= best - 1e-12) cands.push_back(i);
-            int rem = cands[std::uniform_int_distribution<int>(
+            int rem = cands[rnd::uniform_int_distribution<int>(
                 0, static_cast<int>(cands.size()) - 1)(rng_)];
             alive[rem] = 0;
             --na;
@@ -826,7 +827,7 @@ private:
             }
         } else {
             const auto& bnd = vault.get_bounds();
-            std::uniform_real_distribution<double> ur(0.0, 1.0);
+            rnd::uniform_real_distribution<double> ur(0.0, 1.0);
             std::vector<double> vars(vault.vars_n());
             for (int i = 0; i < Nreq; ++i) {
                 for (int j = 0; j < vault.vars_n(); ++j) {
@@ -844,7 +845,7 @@ private:
         }
         // DP and PP both initialized from the same sampled population, sized N_.
         DP_.clear(); PP_.clear();
-        std::uniform_int_distribution<int> db(0, (int)base.size() - 1);
+        rnd::uniform_int_distribution<int> db(0, (int)base.size() - 1);
         for (int i = 0; i < N_; ++i) {
             DP_.push_back(base[i % base.size()]);
             PP_.push_back(base[i % base.size()]);
@@ -904,7 +905,7 @@ public:
         // (Alg.1 l.4) M <- random N-K solutions from DP
         int nM = std::max(0, N_ - K_);
         std::vector<int> didx(DP_.size()); std::iota(didx.begin(), didx.end(), 0);
-        std::shuffle(didx.begin(), didx.end(), rng_);
+        rnd::shuffle(didx.begin(), didx.end(), rng_);
         nM = std::min(nM, (int)DP_.size());
 
         // (Alg.1 l.5-8) DE offspring Q1 from DP

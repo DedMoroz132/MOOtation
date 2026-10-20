@@ -102,6 +102,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -249,7 +250,7 @@ private:
     // Criterion (documented choice): lower R2-rank, then lower L2, then
     // uniformly at random. FEASIBILITY (extension): feasible-first.
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist) {
+                   rnd::uniform_int_distribution<int>& dist) {
         int a = dist(rng_);
         int b = dist(rng_);   // with replacement (see the header)
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
@@ -263,7 +264,7 @@ private:
         const auto& ib = vault.get_ind(b);
         if (ia.rank != ib.rank) return (ia.rank < ib.rank) ? a : b;
         if (ia.l2   != ib.l2)   return (ia.l2   < ib.l2)   ? a : b;
-        return (std::uniform_int_distribution<int>(0, 1)(rng_) == 0) ? a : b;
+        return (rnd::uniform_int_distribution<int>(0, 1)(rng_) == 0) ? a : b;
     }
 
     void rearrange(DataVault<Ind_t>& vault,
@@ -297,7 +298,7 @@ public:
         record_.clear();
         mark_.assign(m, 0);
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -344,7 +345,7 @@ public:
         int n = vault.pop_size();
         int N = n, m = vault.objs_n();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_N(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_N(0, n - 1);
 
         // ── Lines 6-8: parent selection (binary tournament) + variation ────
         int off_base = vault.expand(n);

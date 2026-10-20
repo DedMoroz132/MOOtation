@@ -93,6 +93,7 @@
 
 #include "bound_repair.hpp"
 #include "sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -123,7 +124,7 @@ template <typename RNG>
 inline std::vector<double> perpendicular_normal(std::size_t n, double s,
                                                 const std::vector<double>& e, RNG& rng)
 {
-    std::normal_distribution<double> N01(0.0, 1.0);
+    rnd::normal_distribution<double> N01(0.0, 1.0);
     std::vector<double> h(n);
     for (auto& v : h) v = s * N01(rng);
     if (!e.empty()) {
@@ -155,7 +156,7 @@ template <typename RNG>
 inline std::vector<double> spx_child(const ParentSet& P, double eps, RNG& rng)
 {
     const auto g = mp_detail::centre(P);
-    std::uniform_real_distribution<double> U(0.0, 1.0);
+    rnd::uniform_real_distribution<double> U(0.0, 1.0);
     std::vector<double> w(P.size());
     double sum = 0.0;
     for (auto& v : w) { v = -std::log(1.0 - U(rng)); sum += v; }
@@ -170,7 +171,7 @@ template <typename RNG>
 inline std::vector<double> rex_child(const ParentSet& P, RNG& rng)
 {
     const auto g = mp_detail::centre(P);
-    std::normal_distribution<double> xi(0.0, std::sqrt(1.0 / static_cast<double>(P.size() - 1)));
+    rnd::normal_distribution<double> xi(0.0, std::sqrt(1.0 / static_cast<double>(P.size() - 1)));
     std::vector<double> y = g;
     for (const auto& x : P) {
         const double e = xi(rng);
@@ -198,7 +199,7 @@ undx_pair(const std::vector<double>& x1, const std::vector<double>& x2, const st
         for (std::size_t j = 0; j < n; ++j) v[j] -= dot * e1[j];
     }
     const double d2 = mp_detail::norm(v);
-    std::normal_distribution<double> z1(0.0, 1.0);
+    rnd::normal_distribution<double> z1(0.0, 1.0);
     const double a = alpha * d1 * z1(rng);
     const auto h = mp_detail::perpendicular_normal(n, beta * d2 / std::sqrt(static_cast<double>(n)), e1, rng);
     std::vector<double> c1(n), c2(n);
@@ -215,7 +216,7 @@ inline std::pair<std::vector<double>, std::size_t>
 pcx_child(const ParentSet& P, double sigma_zeta, double sigma_eta, RNG& rng)
 {
     const std::size_t n = P[0].size();
-    std::uniform_int_distribution<std::size_t> pick(0, P.size() - 1);
+    rnd::uniform_int_distribution<std::size_t> pick(0, P.size() - 1);
     const std::size_t p = pick(rng);
     const auto g = mp_detail::centre(P);
     std::vector<double> d(n);
@@ -236,7 +237,7 @@ pcx_child(const ParentSet& P, double sigma_zeta, double sigma_eta, RNG& rng)
         Dbar += mp_detail::norm(r);
     }
     Dbar /= static_cast<double>(P.size() - 1);
-    std::normal_distribution<double> N01(0.0, 1.0);
+    rnd::normal_distribution<double> N01(0.0, 1.0);
     const double wz = sigma_zeta * N01(rng);
     const auto h = mp_detail::perpendicular_normal(n, sigma_eta * Dbar, e, rng);
     std::vector<double> y(n);

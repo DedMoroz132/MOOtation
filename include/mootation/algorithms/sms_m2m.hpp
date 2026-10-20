@@ -147,6 +147,7 @@
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 #include "../hv_contribution.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -344,7 +345,7 @@ private:
                 for (int i : mem) in_mem[i] = 1;
                 std::vector<int> others; others.reserve(M_act);
                 for (int i = 0; i < M_act; ++i) if (!in_mem[i]) others.push_back(i);
-                std::shuffle(others.begin(), others.end(), rng_);
+                rnd::shuffle(others.begin(), others.end(), rng_);
                 for (int t = 0; t < need && t < (int)others.size(); ++t) order.push_back(others[t]);
             }
         }
@@ -408,7 +409,7 @@ public:
         init_S_and_dirs(vault);
         int N = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < N; ++i) {
@@ -432,7 +433,7 @@ public:
 
     void step(DataVault<Ind_t>& vault) {
         int N = K_ * S_;
-        std::uniform_real_distribution<double> uni(0.0, 1.0);
+        rnd::uniform_real_distribution<double> uni(0.0, 1.0);
         vault.expand(N);
         for (int k = 0; k < K_; ++k) {
             for (int j = 0; j < S_; ++j) {
@@ -440,13 +441,13 @@ public:
                 int y;
                 if (uni(rng_) < Pc_cross_ && K_ > 1) {
                     // y from Q\P_k: an index outside block k
-                    std::uniform_int_distribution<int> dout(0, N - S_ - 1);
+                    rnd::uniform_int_distribution<int> dout(0, N - S_ - 1);
                     int r = dout(rng_);
                     if (r >= k*S_) r += S_;
                     y = r;
                 } else {
                     // "Randomly choose y from P_k" — one plain draw, y = x admitted
-                    std::uniform_int_distribution<int> din(0, S_ - 1);
+                    rnd::uniform_int_distribution<int> din(0, S_ - 1);
                     y = k*S_ + din(rng_);
                 }
                 breed(vault, x, y, N + k*S_ + j);

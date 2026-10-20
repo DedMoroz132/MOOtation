@@ -73,6 +73,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -335,7 +336,7 @@ private:
 
     // ── Tournament (larger fitness is better) ───────────────────────────
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist) {
+                   rnd::uniform_int_distribution<int>& dist) {
         int a = dist(rng_), b = dist(rng_);
         return (vault.get_ind(a).fitness > vault.get_ind(b).fitness) ? a : b;
     }
@@ -363,7 +364,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -399,7 +400,7 @@ public:
         // BEFORE expand(), and offspring go into the floating slots
         // n_parents+i.
         int n_parents = vault.parents_n();
-        std::uniform_int_distribution<int> dist_int(0, n_parents - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n_parents - 1);
 
         vault.expand(n);   // n offspring slots: [n_parents, n_parents+n)
         double pm = resolved_pm(vault);

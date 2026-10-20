@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "bound_repair.hpp"
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -79,7 +80,7 @@ inline void sbx(const std::vector<double>& p1,
                 RNG& rng)
 {
     note_operator("sbx", "none");      // bounded: cannot leave the box
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     int nv = static_cast<int>(p1.size());
     c1 = p1; c2 = p2;
 

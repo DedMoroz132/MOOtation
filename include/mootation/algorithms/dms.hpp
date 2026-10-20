@@ -15,6 +15,7 @@
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../dss.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -292,11 +293,11 @@ public:
         if (init_ == DMSInit::Random) {                  // DMS-6: a Latin hypercube
             const std::size_t k = n < 2 ? 1 : n;
             S.assign(k, std::vector<double>(n));
-            std::uniform_real_distribution<double> u(0.0, 1.0);
+            rnd::uniform_real_distribution<double> u(0.0, 1.0);
             std::vector<std::size_t> perm(k);
             for (std::size_t j = 0; j < n; ++j) {
                 std::iota(perm.begin(), perm.end(), std::size_t{0});
-                std::shuffle(perm.begin(), perm.end(), rng_);
+                rnd::shuffle(perm.begin(), perm.end(), rng_);
                 for (std::size_t i = 0; i < k; ++i)
                     S[i][j] = (static_cast<double>(perm[i]) + u(rng_)) / static_cast<double>(k);
             }
@@ -345,7 +346,7 @@ public:
             }
         if (open.empty()) return;                          // finished()
         const std::size_t k = poll_ == DMSPoll::First ? open.front()
-            : open[std::uniform_int_distribution<std::size_t>(0, open.size() - 1)(rng_)];
+            : open[rnd::uniform_int_distribution<std::size_t>(0, open.size() - 1)(rng_)];
         const Entry centre = list_[k];
         const std::size_t n = centre.x.size();
         std::vector<std::vector<double>> P;
@@ -356,7 +357,7 @@ public:
                 if (u[j] < 0.0 || u[j] > 1.0) continue;     // extreme barrier (2)
                 P.push_back(std::move(u));
             }
-        if (poll_ == DMSPoll::Random) std::shuffle(P.begin(), P.end(), rng_);
+        if (poll_ == DMSPoll::Random) rnd::shuffle(P.begin(), P.end(), rng_);
         const bool success = filter(evaluate(vault, P, centre.alpha));
         // the centre: α kept on success, halved on failure; to the end of the list
         for (std::size_t i = 0; i < list_.size(); ++i) {

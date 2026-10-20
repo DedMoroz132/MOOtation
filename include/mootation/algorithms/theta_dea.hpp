@@ -56,6 +56,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -461,7 +462,7 @@ public:
         if (ref_points_.empty()) generate_reference_points(n, m);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -496,7 +497,7 @@ public:
         int n_parents = vault.parents_n();
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n_parents - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n_parents - 1);
 
         // ── expand: add n offspring slots ─────────────────────────────────
         vault.expand(n);
@@ -568,7 +569,7 @@ public:
                 // §III-A: «we just randomly select solutions in the last
                 // accepted level … because θ-dominance has stressed both
                 // convergence and diversity».
-                std::shuffle(front.begin(), front.end(), rng_);
+                rnd::shuffle(front.begin(), front.end(), rng_);
                 int K = n - static_cast<int>(survivors.size());
                 for (int k = 0; k < K; ++k) survivors.push_back(front[k]);
                 break;

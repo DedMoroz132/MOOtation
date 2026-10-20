@@ -68,6 +68,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -277,7 +278,7 @@ public:
         int n = vault.pop_size(), m = vault.objs_n();
         W_ = das_dennis::generate_exact(m, n);
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -311,7 +312,7 @@ public:
         int n = vault.pop_size();
         int N = n;
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_N(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_N(0, n - 1);
 
         // (7) MatingSelection: binary tournament -> N parents (Algorithm 2).
         std::vector<int> parents;
@@ -326,7 +327,7 @@ public:
                 if (p1 == p2)
                     win = (vault.get_ind(s1).dperp < vault.get_ind(s2).dperp) ? s1 : s2;
                 else
-                    win = (std::uniform_real_distribution<double>(0.0,1.0)(rng_) < 0.5) ? s1 : s2;
+                    win = (rnd::uniform_real_distribution<double>(0.0,1.0)(rng_) < 0.5) ? s1 : s2;
             }
             parents.push_back(win);
         }

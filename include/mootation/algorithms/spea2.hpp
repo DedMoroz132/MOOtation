@@ -73,6 +73,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -323,7 +324,7 @@ private:
     // ── Binary tournament on archive (lower fitness = better) ─────────────
     int tournament_archive(DataVault<Ind_t>& vault) {
         int sz = static_cast<int>(vault.archive_size());
-        std::uniform_int_distribution<int> dist(0, sz-1);
+        rnd::uniform_int_distribution<int> dist(0, sz-1);
         int ai = dist(rng_), bi = dist(rng_);
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             double ca = vault.archive_cv(ai), cb = vault.archive_cv(bi);
@@ -401,7 +402,7 @@ public:
         eff_arch_ = (archive_size_ > 0) ? archive_size_ : N;
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0,1.0);
+        rnd::uniform_real_distribution<double> dr(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i=0;i<N;++i) {

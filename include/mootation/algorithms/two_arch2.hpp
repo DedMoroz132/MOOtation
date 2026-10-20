@@ -114,6 +114,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -354,8 +355,8 @@ private:
         const std::vector<Sol>& B = !DA_.empty() ? DA_ : CA_;  // DA side
         if (A.empty() || B.empty()) return off;
 
-        std::uniform_int_distribution<int> dA(0, static_cast<int>(A.size()) - 1);
-        std::uniform_int_distribution<int> dB(0, static_cast<int>(B.size()) - 1);
+        rnd::uniform_int_distribution<int> dA(0, static_cast<int>(A.size()) - 1);
+        rnd::uniform_int_distribution<int> dB(0, static_cast<int>(B.size()) - 1);
 
         // Split the n_DA offspring budget between the two independent streams
         // (article gives pop/FE budget but no stream ratio; ~50/50 keeps the
@@ -412,7 +413,7 @@ public:
 
         int N = vault.pop_size();
         const auto& bd = vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0, 1.0);
+        rnd::uniform_real_distribution<double> d(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < vault.vars_n(); ++j) {

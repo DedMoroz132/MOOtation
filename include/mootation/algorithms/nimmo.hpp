@@ -50,6 +50,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -183,7 +184,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -212,7 +213,7 @@ public:
                                // selection of §4.3
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_pop(0, mu - 1);
+        rnd::uniform_int_distribution<int> dist_pop(0, mu - 1);
         double pm = resolved_pm(vault);
 
         // ── Alg.1 lines 3–5: reproduce one child ───────────────────────────

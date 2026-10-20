@@ -117,6 +117,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -231,7 +232,7 @@ public:
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("DHEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
-        const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
+        const auto& bd=vault.get_bounds(); rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
@@ -260,8 +261,8 @@ public:
         refresh_copies(vault, pop_, constraint_mode != ConstraintMode::NONE);
         ++gen_;
         int scratch=vault.expand(1);
-        std::uniform_int_distribution<int> di(0,N_-1);
-        std::uniform_real_distribution<double> uni(0.0,1.0);
+        rnd::uniform_int_distribution<int> di(0,N_-1);
+        rnd::uniform_real_distribution<double> uni(0.0,1.0);
         // mating: binary tournament (dominance → knee → div → random), §Mating selection
         auto tour=[&](){ int a=di(rng_),b=di(rng_);
             if(dom(pop_[a],pop_[b])) return a;
@@ -354,7 +355,7 @@ public:
         // knee label — an explicit reset, so that a stale knee flag does not leak
         // into the mating tournament (Alg.3 l.2/l.28: knee only on the ones
         // selected by the algorithm).
-        while((int)next.size()<N_ && np>0){ int ri=std::uniform_int_distribution<int>(0,np-1)(rng_); Sol s=P[ri]; s.knee=false; next.push_back(s); nextIdx.push_back(ri); }
+        while((int)next.size()<N_ && np>0){ int ri=rnd::uniform_int_distribution<int>(0,np-1)(rng_); Sol s=P[ri]; s.knee=false; next.push_back(s); nextIdx.push_back(ri); }
         if((int)next.size()>N_){ next.resize(N_); nextIdx.resize(N_); }
         pop_=next;
         // Alg.2 line 14: Div on the line-3 normalization of the retained pool (DHEA-5)

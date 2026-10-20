@@ -14,6 +14,7 @@
 #include "../data_vault.hpp"
 #include "../hv_contribution.hpp"
 #include "../hvc.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -285,7 +286,7 @@ private:
         std::vector<int> tied;
         for (std::size_t t = 0; t < c.size(); ++t) if (c[t] == least) tied.push_back(last[t]);
         if (tied.size() == 1) return tied[0];
-        std::uniform_int_distribution<std::size_t> pick(0, tied.size() - 1);  // "at random"
+        rnd::uniform_int_distribution<std::size_t> pick(0, tied.size() - 1);  // "at random"
         return tied[pick(rng_)];
     }
 
@@ -325,7 +326,7 @@ public:
     {
         read_bounds(vault);
         const int mu = vault.pop_size();
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         std::vector<double> u(static_cast<std::size_t>(n_));
         for (int i = 0; i < mu; ++i) {
             for (auto& x : u) x = U01(rng_);
@@ -362,14 +363,14 @@ public:
         // 1. a parent from ndom(Q) (line 4a)
         std::vector<int> nd;
         for (int i = 0; i < mu; ++i) if (vault.get_ind(static_cast<std::size_t>(i)).rank == 0) nd.push_back(i);
-        std::uniform_int_distribution<std::size_t> pick(0, nd.size() - 1);
+        rnd::uniform_int_distribution<std::size_t> pick(0, nd.size() - 1);
         const int p = nd[pick(rng_)];
         // 2. the offspring (lines 5-6)
         const int q = vault.expand(1);
         {
             const Ind_t parent = vault.get_ind(static_cast<std::size_t>(p));
             const auto A = cholesky(parent.C, n);
-            std::normal_distribution<double> N01(0.0, 1.0);
+            rnd::normal_distribution<double> N01(0.0, 1.0);
             std::vector<double> z(n), u = parent.x;
             for (auto& v : z) v = N01(rng_);
             for (std::size_t i = 0; i < n; ++i) {

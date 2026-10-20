@@ -50,6 +50,7 @@
 #include <vector>
 
 #include "bound_repair.hpp"
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -147,7 +148,7 @@ inline void jacobi(std::vector<std::vector<double>> A, std::vector<double>& eig,
 template <typename RNG>
 inline std::vector<std::vector<double>> haar(std::size_t n, RNG& rng)
 {
-    std::normal_distribution<double> N01(0.0, 1.0);
+    rnd::normal_distribution<double> N01(0.0, 1.0);
     std::vector<std::vector<double>> Q(n, std::vector<double>(n));
     for (std::size_t i = 0; i < n; ++i)
         for (std::size_t j = 0; j < n; ++j) Q[i][j] = N01(rng);

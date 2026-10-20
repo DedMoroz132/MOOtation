@@ -3,6 +3,7 @@
 
 #include <random>
 #include <vector>
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -14,7 +15,7 @@ inline void binary_crossover(const std::vector<int>& p1,
                              std::vector<int>& c2,
                              RNG& rng)
 {
-    std::uniform_int_distribution<int> coin(0, 1);
+    rnd::uniform_int_distribution<int> coin(0, 1);
     int nb = static_cast<int>(p1.size());
     c1.resize(nb); c2.resize(nb);
     for (int j = 0; j < nb; ++j) {

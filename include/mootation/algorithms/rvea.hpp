@@ -78,6 +78,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -90,11 +91,11 @@ inline std::vector<int> rvea_parent_order(int n_parents, int n, std::mt19937& rn
     const int slots = n + n % 2;              // an odd n: its last pair's second parent too
     std::vector<int> perm(static_cast<std::size_t>(n_parents)), order;
     std::iota(perm.begin(), perm.end(), 0);
-    std::shuffle(perm.begin(), perm.end(), rng);
+    rnd::shuffle(perm.begin(), perm.end(), rng);
     order.reserve(static_cast<std::size_t>(slots));
     for (int k = 0; k < slots; ++k) {
         if (k > 0 && k % n_parents == 0 && n_parents < n)
-            std::shuffle(perm.begin(), perm.end(), rng);
+            rnd::shuffle(perm.begin(), perm.end(), rng);
         order.push_back(perm[static_cast<std::size_t>(k % n_parents)]);
     }
     return order;
@@ -364,7 +365,7 @@ public:
         if (V0_.empty()) generate_reference_vectors(n, m);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {

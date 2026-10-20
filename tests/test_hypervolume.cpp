@@ -82,7 +82,7 @@ std::vector<double> contributions_mc_all(const std::vector<std::vector<double>>&
 {
     const std::size_t n = F.size(), m = r.size();
     std::vector<double> c(n, 0.0);
-    std::uniform_real_distribution<double> U01(0.0, 1.0);
+    mootation::rnd::uniform_real_distribution<double> U01(0.0, 1.0);   // as hv_contribution.hpp
     std::vector<double> others, S(per * m), b(m);
     for (std::size_t i = 0; i < n; ++i) {
         const auto& p = F[i];

@@ -61,6 +61,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -163,7 +164,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -185,7 +186,7 @@ public:
         int n = vault.pop_size();
         int N = n, m = vault.objs_n();
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_N(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_N(0, n - 1);
 
         // ── Mating (random parents) + Variation -> offspring [N, 2N) ───────
         int off_base = vault.expand(n);

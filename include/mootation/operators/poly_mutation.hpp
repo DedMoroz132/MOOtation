@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "sbx.hpp"   // sbx_require_bound
+#include "../random.hpp"
 
 namespace mootation::ops {
 
@@ -59,7 +60,7 @@ inline void polynomial_mutation(std::vector<double>& x,
                                 RNG& rng)
 {
     note_operator("polynomial", "none");   // bounded: cannot leave the box
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     const auto& per = pm_eta_per_variable();
     const double eta_given = eta_m;
     for (std::size_t j = 0; j < x.size(); ++j) {
@@ -119,7 +120,7 @@ inline void polynomial_mutation_eq7(std::vector<double>& x,
                                     double eta_m, double pm, RNG& rng)
 {
     note_operator("polynomial_eq7", "box repair after mutation");
-    std::uniform_real_distribution<double> uni(0.0, 1.0);
+    rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     for (std::size_t j = 0; j < x.size(); ++j) {
         if (uni(rng) > pm) continue;
         double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));

@@ -17,6 +17,7 @@
 #include "../operators/bound_repair.hpp"
 #include "../operators/multi_parent.hpp"
 #include "../operators/real_crossover.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -109,7 +110,7 @@ public:
     {
         check(vault);
         const auto& b = vault.get_bounds();
-        std::uniform_real_distribution<double> U(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U(0.0, 1.0);
         std::vector<double> x(b.size());
         for (int i = 0; i < vault.pop_size(); ++i) {
             for (std::size_t j = 0; j < b.size(); ++j)
@@ -131,7 +132,7 @@ public:
         std::vector<int> idx(static_cast<std::size_t>(mu));
         std::iota(idx.begin(), idx.end(), 0);
         for (int t = 0; t < k; ++t) {
-            std::uniform_int_distribution<int> any(t, mu - 1);
+            rnd::uniform_int_distribution<int> any(t, mu - 1);
             std::swap(idx[static_cast<std::size_t>(t)], idx[static_cast<std::size_t>(any(rng_))]);
         }
         std::vector<int> R(idx.begin(), idx.begin() + k);

@@ -94,6 +94,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -212,7 +213,7 @@ private:
         }
         // if there were >N extremes (rare) — truncate
         std::vector<int> sel; for(int i=0;i<(int)Q.size() && (int)sel.size()<N_;++i) sel.push_back(Q[i]);
-        while((int)sel.size()<N_) sel.push_back(std::uniform_int_distribution<int>(0,n-1)(rng_));
+        while((int)sel.size()<N_) sel.push_back(rnd::uniform_int_distribution<int>(0,n-1)(rng_));
         std::vector<Sol> out; out.reserve(N_);
         R_last_.clear(); R_last_.reserve(N_);
         for(int i:sel){ out.push_back(pool[i]); R_last_.push_back(R[i]); }   // d2 frame of this DDS (DDS-7)
@@ -247,7 +248,7 @@ public:
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("MOEA/D-DS: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=std::max(2,(int)std::floor(std::sqrt((double)N_)));
-        const auto& bd=vault.get_bounds(); std::uniform_real_distribution<double> d(0.0,1.0);
+        const auto& bd=vault.get_bounds(); rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
@@ -278,8 +279,8 @@ public:
         std::vector<std::vector<double>> R;
         if((int)R_last_.size()==(int)pop_.size()) R=R_last_;
         else { std::vector<double> d1; normalize(pop_,R,d1); }
-        std::uniform_real_distribution<double> uni(0,1);
-        std::uniform_int_distribution<int> di(0,N_-1);
+        rnd::uniform_real_distribution<double> uni(0,1);
+        rnd::uniform_int_distribution<int> di(0,N_-1);
         std::vector<Sol> O; O.reserve(N_);
         for(int i=0;i<N_;++i){
             int p1=i, p2;
@@ -288,7 +289,7 @@ public:
                 std::vector<std::pair<double,int>> dd;
                 for(int j=0;j<N_;++j){ if(j==i) continue; dd.emplace_back(d2(R[i],R[j]),j); }
                 int kk=std::min(K_,(int)dd.size()); std::partial_sort(dd.begin(),dd.begin()+kk,dd.end());
-                p2=dd[std::uniform_int_distribution<int>(0,kk-1)(rng_)].second;
+                p2=dd[rnd::uniform_int_distribution<int>(0,kk-1)(rng_)].second;
             } else { p1=di(rng_); p2=di(rng_); }
             O.push_back(breed(pop_[p1],pop_[p2],vault,scratch));
         }

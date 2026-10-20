@@ -64,6 +64,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -249,12 +250,12 @@ private:
         if (need <= 0) { R.resize(K); return R; }
 
         if (static_cast<int>(T2.size()) >= need) {
-            std::shuffle(T2.begin(), T2.end(), rng_);
+            rnd::shuffle(T2.begin(), T2.end(), rng_);
             for (int i = 0; i < need; ++i) R.push_back(T2[i]);
         } else {
             for (int v : T2) R.push_back(v);
             need -= static_cast<int>(T2.size());
-            std::shuffle(T3.begin(), T3.end(), rng_);
+            rnd::shuffle(T3.begin(), T3.end(), rng_);
             for (int i = 0; i < need && i < static_cast<int>(T3.size()); ++i)
                 R.push_back(T3[i]);
         }
@@ -291,7 +292,7 @@ public:
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -314,7 +315,7 @@ public:
         int n = vault.pop_size();
         int N = n;
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
         // (3-4) Reproduction: random parent pairing + SBX + polynomial mutation.
         int off_base = vault.expand(n);

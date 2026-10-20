@@ -93,6 +93,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -233,7 +234,7 @@ private:
         int N = static_cast<int>(W_.size());
         std::vector<int> perm(N);
         std::iota(perm.begin(), perm.end(), 0);
-        std::shuffle(perm.begin(), perm.end(), rng_);
+        rnd::shuffle(perm.begin(), perm.end(), rng_);
         for (int i=0;i<n;++i) {
             int r = perm[i % N];
             vault.get_ind(i).subregion_idx = r;
@@ -439,13 +440,13 @@ private:
 
     // ── MATING_SELECTION (Alg.3): candidates ──────────────────────────────
     std::vector<int> mating_candidates(DataVault<Ind_t>& vault, int i, int n) {
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         std::vector<int> cand;
         if (U01(rng_) < delta_) {
             // k random SUBREGION indexes from E(i) — subregion indexes, not
             // individual slot numbers; the two are not interchangeable here.
             std::vector<int> sel = B_[i];
-            std::shuffle(sel.begin(), sel.end(), rng_);
+            rnd::shuffle(sel.begin(), sel.end(), rng_);
             int k = std::min<int>(mating_k_, static_cast<int>(sel.size()));
             sel.resize(k);
             for (int s = 0; s < n; ++s) {
@@ -465,13 +466,13 @@ private:
 
     // One parent from the candidates; under FEASIBILITY — CV tournament (Alg.8).
     int pick_parent(DataVault<Ind_t>& vault, const std::vector<int>& cand) {
-        std::uniform_int_distribution<int> d(0, static_cast<int>(cand.size())-1);
+        rnd::uniform_int_distribution<int> d(0, static_cast<int>(cand.size())-1);
         if (constraint_mode == ConstraintMode::FEASIBILITY) {
             int a = cand[d(rng_)], b = cand[d(rng_)];
             double ca = vault.get_cv(a), cb = vault.get_cv(b);
             if (ca < cb) return a;
             if (cb < ca) return b;
-            std::uniform_int_distribution<int> coin(0, 1);
+            rnd::uniform_int_distribution<int> coin(0, 1);
             return coin(rng_) ? a : b;           // RANDOM_PICK (Alg.8 line 6)
         }
         return cand[d(rng_)];
@@ -566,7 +567,7 @@ public:
 
         // Alg.2 line 1: random sampling from Ω.
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0,1.0);
+        rnd::uniform_real_distribution<double> dr(0.0,1.0);
         std::vector<double> vars(vault.vars_n()); std::vector<int> bvars(vault.bin_vars_n());
         for (int i=0;i<n;++i) {
             for(int j=0;j<vault.vars_n();++j){double lo=bounds[j].first.value_or(0.0),hi=bounds[j].second.value_or(1.0);vars[j]=lo+dr(rng_)*(hi-lo);}

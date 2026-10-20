@@ -107,6 +107,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -323,7 +324,7 @@ private:
         for (int i = 0; i < n; ++i) if (!in_I[i]) candidates.push_back(i);
         while (static_cast<int>(I.size()) < total && !candidates.empty()) {
             int t_size = std::min(10, static_cast<int>(candidates.size()));
-            std::uniform_int_distribution<int> dc(0, static_cast<int>(candidates.size()) - 1);
+            rnd::uniform_int_distribution<int> dc(0, static_cast<int>(candidates.size()) - 1);
             int winner = candidates[dc(rng_)];
             for (int k = 1; k < t_size; ++k) {
                 int cand = candidates[dc(rng_)];
@@ -339,7 +340,7 @@ private:
     // ── Step 3: evolve one subproblem i ────────────────────────────────────
     void evolve_subproblem(DataVault<Ind_t>& vault, int i, int n) {
         // Step 3.1: mating pool.
-        std::uniform_real_distribution<double> u01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> u01(0.0, 1.0);
         bool local = (u01(rng_) < delta_);
         const std::vector<int>* poolB = &B_[i];
         std::vector<int> pool_all;
@@ -352,7 +353,7 @@ private:
         // Step 3.2: r1 = i; r2, r3 — two plain draws from P (no distinctness
         // required). SBX(x^{r1}, x^{r2}) + PM; r3 is unused (SBX is binary —
         // ASSUMPTION (1) in the file header).
-        std::uniform_int_distribution<int> pickP(0, static_cast<int>(P.size()) - 1);
+        rnd::uniform_int_distribution<int> pickP(0, static_cast<int>(P.size()) - 1);
         int r2 = P[pickP(rng_)];
         int r3 = P[pickP(rng_)];
         (void)r3;
@@ -396,7 +397,7 @@ private:
 
         // Step 3.5: replacements — random j from P, at most n_r.
         std::vector<int> Pp = P;
-        std::shuffle(Pp.begin(), Pp.end(), rng_);
+        rnd::shuffle(Pp.begin(), Pp.end(), rng_);
         int c = 0;
         for (int j : Pp) {
             if (c >= nr_) break;
@@ -581,7 +582,7 @@ public:
         build_neighbourhoods(n);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dist_real(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dist_real(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {

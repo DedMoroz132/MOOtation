@@ -79,6 +79,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -299,7 +300,7 @@ private:
         // line 4: fitness per Eq.4
         std::vector<double> fit = igdns_drop_one(Pt, Rp_);
         // lines 6-11: binary tournament, the larger contribution wins
-        std::uniform_int_distribution<int> di(0, n - 1);
+        rnd::uniform_int_distribution<int> di(0, n - 1);
         std::vector<int> mpool(n);
         for (int i = 0; i < n; ++i) {
             int a = di(rng_), b = di(rng_);
@@ -589,7 +590,7 @@ public:
         const int target = (n_ref_ > 0) ? n_ref_ : n;
         R0_ = das_dennis::generate_auto(m, target);
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {

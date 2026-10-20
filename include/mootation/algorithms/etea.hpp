@@ -87,6 +87,7 @@
 #include "../data_vault.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -108,7 +109,7 @@ public:
         m_ = vault.objs_n();
         N_ = vault.pop_size();
         const auto& bd = vault.get_bounds();
-        std::uniform_real_distribution<double> d(0.0, 1.0);
+        rnd::uniform_real_distribution<double> d(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         for (int i = 0; i < N_; ++i) {
             for (int j = 0; j < vault.vars_n(); ++j) {
@@ -442,7 +443,7 @@ private:
             assign_fitness(Q_, Fq, dc, nd);
         }
         int qn = (int)Q_.size();
-        std::uniform_int_distribution<int> pick(0, qn - 1);
+        rnd::uniform_int_distribution<int> pick(0, qn - 1);
         auto tourn = [&]() -> int {
             int a = pick(rng_), b = pick(rng_);
             return (Fq[a] <= Fq[b]) ? a : b;   // smaller F = better

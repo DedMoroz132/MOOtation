@@ -104,6 +104,7 @@
 #include "../operators/inner_archive.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -453,7 +454,7 @@ private:
                 if (rho[r] == min_rho) candidates.push_back(r);
 
             // Pick one at random.
-            std::uniform_int_distribution<int> dist_c(
+            rnd::uniform_int_distribution<int> dist_c(
                 0, static_cast<int>(candidates.size()) - 1);
             int j_star = candidates[dist_c(rng_)];
 
@@ -471,7 +472,7 @@ private:
                              < vault.get_ind(b).norm_distance;
                     });
             } else {
-                std::uniform_int_distribution<int> dist_a(
+                rnd::uniform_int_distribution<int> dist_a(
                     0, static_cast<int>(assoc.size()) - 1);
                 selected = assoc[dist_a(rng_)];
             }
@@ -487,7 +488,7 @@ private:
     // When one feasible and other not: feasible wins.
     // When both infeasible: smaller CV wins.
     int tournament(DataVault<Ind_t>& vault,
-                   std::uniform_int_distribution<int>& dist) {
+                   rnd::uniform_int_distribution<int>& dist) {
         int a = dist(rng_), b = dist(rng_);
         if (constraint_mode == ConstraintMode::CDP ||
             constraint_mode == ConstraintMode::FEASIBILITY) {
@@ -499,16 +500,16 @@ private:
                 // Part II Alg.1 lines 6-9: smaller CV; lines 10-11: equal CV — random.
                 if (cva < cvb) return a;
                 if (cvb < cva) return b;
-                std::uniform_int_distribution<int> coin(0, 1);
+                rnd::uniform_int_distribution<int> coin(0, 1);
                 return coin(rng_) ? a : b;
             }
             // Both feasible: random.
-            std::uniform_int_distribution<int> coin(0, 1);
+            rnd::uniform_int_distribution<int> coin(0, 1);
             return coin(rng_) ? a : b;
         }
         // No constraint handling: random between any two (NSGA-III uses
         // no tournament pressure on feasible population).
-        std::uniform_int_distribution<int> coin(0, 1);
+        rnd::uniform_int_distribution<int> coin(0, 1);
         return coin(rng_) ? a : b;
     }
 
@@ -588,7 +589,7 @@ public:
         if (ref_points_.empty()) generate_reference_points(n, m);
 
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars (vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -648,7 +649,7 @@ public:
         // (operators/inner_archive.hpp)
         if (constraint_mode != ConstraintMode::NONE) arch_.refresh(vault);
         const auto& bounds = vault.get_bounds();
-        std::uniform_int_distribution<int> dist_int(0, n - 1);
+        rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
         // ── expand: active = 2n ────────────────────────────────────────────
         int off_base = vault.expand(n);  // [off_base, off_base+n) — offspring slots
@@ -709,7 +710,7 @@ public:
                                             " makes |Q'| = ceil(spu_frac 2N) smaller than the "
                                             "population " + std::to_string(n));
             for (int i = 0; i < pool; ++i) {
-                std::uniform_int_distribution<int> any(i, 2 * n - 1);
+                rnd::uniform_int_distribution<int> any(i, 2 * n - 1);
                 const int j = any(rng_);
                 if (j != i) vault.swap_active(i, j);
             }

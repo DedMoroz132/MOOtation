@@ -59,6 +59,7 @@
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -207,7 +208,7 @@ private:
         int cs = total / m;
         std::vector<int> order(m);
         std::iota(order.begin(), order.end(), 0);
-        std::shuffle(order.begin(), order.end(), rng_);
+        rnd::shuffle(order.begin(), order.end(), rng_);
         for (int a = 0; a < m; ++a) {
             int axis = order[a];
             if (a == m - 1) { clusters[axis] = remaining; break; }
@@ -295,7 +296,7 @@ public:
         int n = vault.pop_size();
         vault_objs_ = vault.objs_n();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
         std::vector<double> vars(vault.vars_n());
         std::vector<int>    bvars(vault.bin_vars_n());
         for (int i = 0; i < n; ++i) {
@@ -320,8 +321,8 @@ public:
         int m = vault.objs_n();
         vault_objs_ = m;
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> dr(0.0, 1.0);
-        std::uniform_int_distribution<int> dist_N(0, n - 1);
+        rnd::uniform_real_distribution<double> dr(0.0, 1.0);
+        rnd::uniform_int_distribution<int> dist_N(0, n - 1);
 
         // ── Mating (Alg.4 lines 4-17): PCM(P,m) + similarity-mating ────────
         std::vector<int> P_idx(n);
@@ -340,8 +341,8 @@ public:
             for (int j = 0; j < cz && off < n; ++j) {
                 int p1, p2;
                 if (dr(rng_) < delta_ && cz >= 1) {       // similarity-mating
-                    p1 = Ci[std::uniform_int_distribution<int>(0, cz - 1)(rng_)];
-                    p2 = Ci[std::uniform_int_distribution<int>(0, cz - 1)(rng_)];
+                    p1 = Ci[rnd::uniform_int_distribution<int>(0, cz - 1)(rng_)];
+                    p2 = Ci[rnd::uniform_int_distribution<int>(0, cz - 1)(rng_)];
                 } else {                                   // global pairing
                     p1 = dist_N(rng_); p2 = dist_N(rng_);
                 }

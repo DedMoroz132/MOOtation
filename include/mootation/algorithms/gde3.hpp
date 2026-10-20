@@ -13,6 +13,7 @@
 #include "../data_vault.hpp"
 #include "../operators/bound_repair.hpp"
 #include "../operators/de_mutation.hpp"
+#include "../random.hpp"
 
 namespace mootation {
 
@@ -241,7 +242,7 @@ public:
         require(vault);
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
-        std::uniform_real_distribution<double> U01(0.0, 1.0);
+        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         std::vector<double> x(static_cast<std::size_t>(vault.vars_n()));
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < vault.vars_n(); ++j) {
@@ -261,7 +262,7 @@ public:
         const int n = vault.pop_size();
         const auto& bounds = vault.get_bounds();
         const int base = vault.expand(n);                  // u_i in slot base + i
-        std::uniform_int_distribution<int> pick(0, n - 1);
+        rnd::uniform_int_distribution<int> pick(0, n - 1);
         std::vector<double> u;
         for (int i = 0; i < n; ++i) {
             int r1, r2, r3;
