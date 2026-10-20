@@ -1560,10 +1560,11 @@ def _register_wfg():
 
 
 # =============================================================
-#  DTLZ1-7 × M={2,3,4,5,6}
+#  DTLZ1-7 × M = {2, 3, 4, 5, 6, 8, 10, 15} (8 from task 14 of 2026-10-20:
+#  the atlas wants problems at eight objectives)
 # =============================================================
 def _register_dtlz():
-    for M in (2, 3, 4, 5, 6, 10, 15):
+    for M in (2, 3, 4, 5, 6, 8, 10, 15):
         pop, ng = _budget(M)
         for name, func in DTLZ_FUNCS.items():
             n_vars = dtlz_n_vars(name, M)

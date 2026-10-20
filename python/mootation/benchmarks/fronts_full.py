@@ -123,8 +123,8 @@ FRONT_DIR = Path(__file__).with_name("_fronts")
 # The sizes with a non-degenerate part among those the registry has (MaF6 at
 # 5 has none, see the header). Lower sizes keep their exact curve.
 SIZES = {
-    "DTLZ5": (4, 5, 6, 10, 15),
-    "DTLZ6": (4, 5, 6, 10, 15),
+    "DTLZ5": (4, 5, 6, 8, 10, 15),
+    "DTLZ6": (4, 5, 6, 8, 10, 15),
     "MaF6":  (8, 10, 15),
     "WFG3":  (3, 4, 5, 6, 10),
 }

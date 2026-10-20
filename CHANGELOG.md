@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- DTLZ1-7 at eight objectives (`DTLZ1_8D` ... `DTLZ7_8D`; 1357 problems):
+  DTLZ was registered at 2-6, 10 and 15 objectives only. Evaluated in C++ as
+  the other sizes; their frames in the shipped cache, and the full fronts of
+  DTLZ5 and DTLZ6 at eight objectives (`fronts_full`, built and verified as
+  the other sizes).
+
 - `hv_contrib = iwfg`, the default of SMS-EMOA and MO-CMA-ES (task 14 of
   2026-10-20, supplement 3, Д8.2): from six objectives the least
   hypervolume contributor by IWFG (While & Bradstreet, IEEE CEC 2012; the

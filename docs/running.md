@@ -19,7 +19,7 @@ python -m mootation.run --tui          python/examples/demo.toml   # watch it
 | `--check` | validate and exit 1 if the run cannot start; every complaint at once |
 | `--show` | print the configuration as it resolved (paths, platform-specific steps) |
 | `--algorithms` | list the 76 algorithm names and the nine Python methods |
-| `--problems` | list the 1350 benchmark problems (needs NumPy) |
+| `--problems` | list the 1357 benchmark problems (needs NumPy) |
 | `--tui` | the terminal interface (needs Textual) |
 | `--campaign` | run the benchmark campaign the file describes; sharding flags live in `python -m mootation.run.campaign --help` |
 
@@ -223,7 +223,7 @@ ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated
 ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE, bbob-biobj-mixint and catZDT1,
 the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition, and RWMOP's mechanical, chemical and process
-problems RCM01–29: 1350 problems across 49 families, each
+problems RCM01–29: 1357 problems across 49 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
