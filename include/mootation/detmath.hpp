@@ -38,8 +38,9 @@
 //            parts); kernels on |r| <= pi/4; tan as the quotient of the two
 //            kernels in double-word arithmetic
 //   acos     Cody & Waite, ch. 10 (asin of the half angle near +-1)
-//   hypot    scaling by a power of two, the sum of squares as a double-word
-//            number, one Newton correction of the square root
+//   hypot    C. F. Borges, Algorithm 1014, ACM TOMS 47(1), 2020: scaling by a
+//            power of two, h = sqrt(x^2 + y^2) corrected by tau / (2h) as in
+//            his Algorithm 5, with Dekker's exact products for his FMAs
 // Double-word arithmetic without a fused multiply-add: Joldes, Muller &
 // Popescu, ACM TOMS 44(2), 2017 (Algorithms 1, 2, 4, 6, 7, 17), with the
 // bounds of Muller & Rideau, ACM TOMS 48(1), 2022; Veltkamp's splitting and
@@ -372,10 +373,11 @@ inline double acos(double x)
 
 // ── hypot ───────────────────────────────────────────────────────────────────
 
-// sqrt(x^2 + y^2) without overflow or underflow in between: the larger scaled
-// into [1, 2) by a power of two, the squares and their sum as double-word
-// numbers, the square root corrected by one step of Newton's iteration on the
-// double-word sum.
+// sqrt(x^2 + y^2) without overflow or underflow in between (Borges 2020): the
+// larger scaled into [1, 2) by a power of two, the squares and their sum as
+// double-word numbers, h = sqrt of the sum corrected by tau / (2h), tau =
+// x^2 + y^2 - h^2 from the exact parts (his Algorithm 5, with Dekker's products
+// where he takes FMAs). ay < ax 2^-27: ax itself (his section 3).
 inline double hypot(double x, double y)
 {
     constexpr double inf = std::numeric_limits<double>::infinity();
