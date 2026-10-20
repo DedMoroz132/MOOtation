@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `hv_incremental` (SMS-EMOA, MO-CMA-ES; task 14 of 2026-10-20, supplement 3,
+  Д8.3): the exact contributions by WFG keep every point's count from the
+  step before and take it again when the point's input to WFG is the same
+  bit for bit, so the run is the same and only the time differs. 0 by
+  default; `Result.settings` reports the share of counts reused.
+
 - **MO-CMA-ES computes the hypervolume contributions exactly at every number
   of objectives** (task 14 of 2026-10-20, supplement 3, Д8.1). Its step-size
   adaptation counts an offspring that survives as a success, so a wrongly

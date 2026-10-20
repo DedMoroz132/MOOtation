@@ -32,7 +32,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <limits>
+#include <map>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -46,8 +48,32 @@
 
 namespace mootation::hv {
 
+// TASK 14, SUPPLEMENT 3, Д8.3. Between the steps of SMS-EMOA and MO-CMA-ES
+// ((mu + 1): one offspring in, one point out) most points' exact counts do
+// not change. A point's count below is its box less WFG's hypervolume of its
+// limited set (every other point raised to it, the dominated rows dropped by
+// nds); WFG's answer depends on nothing but those rows in that order and the
+// reference point. ExactKept keeps, for every point of the step before, that
+// input and the answer; a point whose input is the same this step, bit for
+// bit (the point, r, the rows after nds), takes the answer without WFG. So
+// the contributions — and the run — are those without it, bit for bit; only
+// the time differs. A point the offspring's or the removed point's row
+// touches, or any point when r moves (SMS-EMOA: r = nad(Q) + 1), is counted
+// again.
+struct ExactKept {
+    std::vector<double> r;                                          // the last step's
+    std::map<std::vector<double>, std::pair<std::vector<double>, double>> prev, next;
+    std::size_t counted = 0, reused = 0;                            // over the run
+};
+
+inline bool same_bits(const double* a, const double* b, std::size_t n)
+{
+    return std::memcmp(a, b, n * sizeof(double)) == 0;
+}
+
 inline std::vector<double> contributions_exact(const std::vector<std::vector<double>>& F,
-                                               const std::vector<double>& r)
+                                               const std::vector<double>& r,
+                                               ExactKept* kept = nullptr)
 {
     const std::size_t n = F.size(), m = r.size();
     std::vector<double> c(n, 0.0);
@@ -98,9 +124,29 @@ inline std::vector<double> contributions_exact(const std::vector<std::vector<dou
         double sub = 0.0;
         if (rows > 0) {
             rows = w.nds(L, rows, m);
-            sub = w.hv(L, rows, m);
+            if (!kept) {
+                sub = w.hv(L, rows, m);
+            } else {                                                // Д8.3
+                std::vector<double> in(L.begin(), L.begin() + static_cast<std::ptrdiff_t>(rows * m));
+                const auto it = kept->prev.find(p);
+                if (it != kept->prev.end() && kept->r.size() == m && same_bits(kept->r.data(), r.data(), m) &&
+                    same_bits(it->first.data(), p.data(), m) && it->second.first.size() == in.size() &&
+                    same_bits(it->second.first.data(), in.data(), in.size())) {
+                    sub = it->second.second;
+                    ++kept->reused;
+                } else {
+                    sub = w.hv(L, rows, m);                         // hv may reorder L: in is the copy
+                    ++kept->counted;
+                }
+                kept->next[p] = {std::move(in), sub};
+            }
         }
         c[i] = std::max(0.0, own - sub);
+    }
+    if (kept) {
+        kept->r = r;
+        kept->prev.swap(kept->next);
+        kept->next.clear();
     }
     return c;
 }
@@ -474,6 +520,8 @@ struct ContribChoice {
     std::size_t race_steps = 0, race_samples = 0, race_exact = 0, race_capped = 0;
     std::size_t steps = 0;              // every step that compared contributions
     bool exact_only = false;            // MO-CMA-ES (Д8.1): exact at every M
+    bool incremental = false;           // hv_incremental (Д8.3): WFG's counts kept
+    ExactKept kept_exact;               // between the steps (ExactKept)
 
     enum class Way { exact, mc, race };
     Way way(std::size_t M) const
@@ -510,7 +558,7 @@ struct ContribChoice {
         }
         if (w == Way::mc) return contributions_mc(F, r, std::max<std::size_t>(1, samples() / F.size()), rng);
         if (use_hvc(m)) return kept.contributions(F, r);
-        return box ? contributions_box(F, r) : contributions_exact(F, r);
+        return box ? contributions_box(F, r) : contributions_exact(F, r, incremental ? &kept_exact : nullptr);
     }
 
     bool set_param(const std::string& k, double v)
@@ -539,6 +587,11 @@ struct ContribChoice {
         if (k == "race_delta") {
             if (!(v > 0.0 && v < 1.0)) throw std::invalid_argument("race_delta must be in (0, 1)");
             race.delta = v;
+            return true;
+        }
+        if (k == "hv_incremental") {
+            if (v != 0.0 && v != 1.0) throw std::invalid_argument("hv_incremental must be 0 or 1");
+            incremental = v == 1.0;
             return true;
         }
         if (k == "race_abs_tol") {
@@ -605,6 +658,11 @@ struct ContribChoice {
         out.emplace_back("hv_contrib", std::string(hvc ? "hvc" : "wfg") +
                                            (exact_only ? "" : approx == Approx::race ? ", race" : ", mc"));
         out.emplace_back("hv_algo", box ? "box" : "auto");
+        out.emplace_back("hv_incremental", incremental ? "1" : "0");
+        if (kept_exact.counted + kept_exact.reused > 0)
+            out.emplace_back("hv_incremental_reused",
+                             num(static_cast<double>(kept_exact.reused) /
+                                 static_cast<double>(kept_exact.counted + kept_exact.reused)));
         out.emplace_back("contributions", how + " at M = " + std::to_string(m));
         if (race_steps > 0) {
             // the steps the guarantee does not cover; a campaign warns above 1 %

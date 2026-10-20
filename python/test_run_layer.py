@@ -10461,6 +10461,33 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
 
 
 @test
+def hv_incremental_keeps_the_exact_counts_and_the_run():
+    """Task 14, supplement 3, Д8.3: hv_incremental = 1 takes a point's exact
+    count from the step before when its input to WFG is the same bit for bit;
+    the run is the run without it (SMS-EMOA, MO-CMA-ES at five objectives),
+    Result.settings reports the knob and the share of counts reused; R2-EMOA
+    reports it ignored; only 0 and 1 are taken."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ2_5D")
+
+    def run(alg, **kw):
+        return minimize(p.evaluate, p.bounds, 5, algorithm=alg, pop_size=20,
+                        max_evaluations=400, seed=4, **kw)
+    for alg in ("sms_emoa", "mo_cma_es"):
+        a, b = run(alg, hv_incremental=0), run(alg, hv_incremental=1)
+        assert a.objectives == b.objectives and a.variables == b.variables, alg
+        sa, sb = dict(a.settings), dict(b.settings)
+        assert sa["hv_incremental"] == "0" and sb["hv_incremental"] == "1", (sa, sb)
+        assert 0.0 < float(sb["hv_incremental_reused"]) <= 1.0, sb
+        assert "hv_incremental_reused" not in sa, sa
+        raises(ValueError, run, alg, hv_incremental=2)
+    assert "hv_incremental" in run("r2_emoa", hv_incremental=1).ignored
+
+
+@test
 def hv_contrib_takes_its_words_and_refuses_others():
     """hv_contrib (HVC3D and HVC4D, Guerreiro & Fonseca 2018; hvc.hpp): SMS-EMOA
     and MO-CMA-ES take "wfg" and "hvc" at three objectives and at four with

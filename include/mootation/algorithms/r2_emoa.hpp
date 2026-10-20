@@ -137,7 +137,7 @@ public:
             return true;
         }
         if (k == "n_samples" || k == "hv_exact_max_m" || k == "race_eps" || k == "race_delta" ||
-            k == "race_max_samples" || k == "race_abs_tol") return false;                   // no hypervolume
+            k == "race_max_samples" || k == "race_abs_tol" || k == "hv_incremental") return false;                   // no hypervolume
         return SMSEMOACore<Ind_t>::set_param(k, v);
     }
 

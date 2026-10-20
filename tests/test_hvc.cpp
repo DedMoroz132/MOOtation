@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -430,6 +431,50 @@ int main()
             check(cst.capped && cst.samples == 0 && cc == box && pick == small,
                   "the race stopped at race_max_samples: the least upper bound, here the least box (Д8.5)");
         }
+    }
+
+    // ── the kept exact counts (task 14, supplement 3, Д8.3) ─────────────────
+    // a (mu + 1) sequence: one point in, the least contributor out, now and
+    // then r moved; with ExactKept the contributions are those without it,
+    // bit for bit, and some counts are taken from the step before (random
+    // points on the sphere touch most others' limited sets: about a tenth
+    // here; on SMS-EMOA's and MO-CMA-ES's runs 37-54 %)
+    {
+        std::mt19937 gen(8301);
+        std::normal_distribution<double> nd(0.0, 1.0);
+        int kept_same = 0, kept_steps = 0;
+        std::size_t reused = 0, counted = 0;
+        for (std::size_t m : {std::size_t(5), std::size_t(6)}) {
+            auto point = [&] {
+                std::vector<double> row(m);
+                double s2 = 0.0;
+                for (auto& v : row) { v = std::abs(nd(gen)) + 1e-3; s2 += v * v; }
+                for (auto& v : row) v /= std::sqrt(s2);
+                return row;
+            };
+            std::vector<std::vector<double>> F;
+            for (int i = 0; i < 30; ++i) F.push_back(point());
+            std::vector<double> r(m, 1.1);
+            hv::ExactKept kept;
+            for (int t = 0; t < 150; ++t) {
+                F.push_back(point());
+                if (t % 50 == 49) r[static_cast<std::size_t>(t) % m] += 0.01;
+                const auto a = hv::contributions_exact(F, r);
+                const auto b = hv::contributions_exact(F, r, &kept);
+                kept_same += a.size() == b.size() &&
+                        std::memcmp(a.data(), b.data(), a.size() * sizeof(double)) == 0;
+                ++kept_steps;
+                std::size_t least = 0;
+                for (std::size_t i = 1; i < a.size(); ++i) if (a[i] < a[least]) least = i;
+                F.erase(F.begin() + static_cast<std::ptrdiff_t>(least));
+            }
+            reused += kept.reused;
+            counted += kept.counted;
+        }
+        std::printf("kept exact counts: %d of %d steps the same bit for bit, %zu counts reused, %zu counted\n",
+                    kept_same, kept_steps, reused, counted);
+        check(kept_same == kept_steps, "ExactKept: the contributions without it, bit for bit (Д8.3)");
+        check(reused > 0, "ExactKept: counts reused between (mu + 1) steps");
     }
 
     run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");

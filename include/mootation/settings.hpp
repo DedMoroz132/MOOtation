@@ -100,7 +100,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 13 of 2026-10-19, §3
         "hv_exact_max_m",
         // task 14 of 2026-10-20, §11
-        "race_eps", "race_delta", "race_max_samples", "race_abs_tol"
+        "race_eps", "race_delta", "race_max_samples", "race_abs_tol",
+        // task 14, supplement 3, Д8.3
+        "hv_incremental"
     };
     return v;
 }
@@ -173,7 +175,7 @@ inline bool is_core_param(const std::string& name)
                           "cma_sigma0", "eps_objective", "polish_share", "polish_points",
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
-                          "race_max_samples", "race_abs_tol"})
+                          "race_max_samples", "race_abs_tol", "hv_incremental"})
         if (name == k) return true;
     return false;
 }
