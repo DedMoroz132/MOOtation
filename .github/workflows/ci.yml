@@ -639,8 +639,23 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0          # the baseline commit's headers
-      - name: Every algorithm at its defaults returns the baseline's population
-        run: python3 tools/compat_check.py --cxx g++
+      - name: Every algorithm at its defaults gives the stored fingerprints
+        run: python3 tools/compat_check.py --golden --cxx g++
+      # Since task 14 the fingerprints are also stored (tests/golden_fingerprints.txt)
+      # and every platform's ctest compares with them (golden_fingerprints); here
+      # every algorithm built for a CPU with fused multiply-adds through the
+      # MOOtation target must contain none (-ffp-contract=off).
+      - name: No fused multiply-adds through the MOOtation target
+        run: |
+          for cxx in g++ clang++; do
+            cmake -S . -B build-fma-$cxx -DCMAKE_CXX_COMPILER=$cxx -DCMAKE_BUILD_TYPE=Release \
+                  -DMOOTATION_BUILD_TESTS=ON -DMOOTATION_FMA_PROBE=ON > /dev/null
+            cmake --build build-fma-$cxx --target fma_probe > /dev/null
+            n=$(find build-fma-$cxx -name 'compat_dump.cpp.o' -path '*fma_probe*' -exec objdump -d {} \; \
+                | grep -ciE 'vfn?m(add|sub)[0-9]+[sp]d' || true)
+            echo "$cxx: $n fused multiply-adds"
+            test "$n" -eq 0
+          done
 
   # ── Hygiene ───────────────────────────────────────────────────────────────
   hygiene:
@@ -668,6 +683,22 @@ jobs:
             exit 1
           fi
           echo "clean"
+
+      # Task 14 of 2026-10-20: the numbers made from the generator's words are
+      # the library's own (random.hpp), the same on every platform; a std::
+      # distribution or shuffle elsewhere would bring the standard library's own
+      # back. long double is 64, 80 or 128 bits depending on the platform.
+      - name: No std:: distributions, shuffles or long double in include/
+        run: |
+          bad=0
+          if grep -rnE 'std::[a-z_]+_distribution|std::(random_)?shuffle' include --include='*.hpp' \
+               | grep -v '^include/mootation/random.hpp:'; then
+            echo "use mootation::rnd (random.hpp) instead"; bad=1
+          fi
+          if grep -rn 'long double' include --include='*.hpp'; then
+            echo "long double differs between platforms"; bad=1
+          fi
+          exit $bad
 
       - name: Every algorithm header is listed in include/mootation/algorithms.def
         run: |

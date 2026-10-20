@@ -5,14 +5,13 @@
 //
 // The library adds options — bound repair, operators, diagnostics — under
 // the rule that every algorithm at its defaults keeps producing exactly the
-// population it produced before. No tolerance can check that across
-// platforms: the standard library's distributions and the compiler's
-// floating-point code differ between MSVC, libstdc++ and libc++, so a stored
-// "golden" population holds on the machine that wrote it only. This driver
-// is therefore compiled TWICE on the same machine, against the headers of a
-// baseline commit and against the headers under test, and the two outputs
-// must be identical (tools/compat_check.py builds both and compares them;
-// the "default behaviour" CI job runs it).
+// population it produced before. Since task 14 of 2026-10-20 a run is the
+// same on every supported platform (random.hpp, detmath.hpp, no fused
+// multiply-adds, sorts with one result), so the fingerprints are stored:
+// tests/golden_fingerprints.txt, and `compat_dump --check <file>` (the ctest
+// golden_fingerprints, on every CI platform) compares this build with it.
+// tools/compat_check.py writes the list (--write-golden) and still compares
+// two trees on one machine (--baseline).
 //
 // Output: one line per algorithm and problem,
 //   <key> <problem> <n> <fnv1a-64 of the returned rows' variables and objectives>
@@ -20,12 +19,17 @@
 //
 // The probes: DTLZ2 at M = 3 and ZDT1, 30 generations, a fixed seed. Both
 // make DE mutants and every other unbounded operator leave the box, which is
-// where the repair options live.
+// where the repair options live. A third, zdt1_nan: ZDT1 whose objectives are
+// NaN in a band of x_1 — failed evaluations reach every core's comparisons and
+// sorts, which must give one result everywhere (task 14, §4).
 // ============================================================================
 
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <limits>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -41,6 +45,24 @@ inline std::uint64_t fnv1a(std::uint64_t h, const void* data, std::size_t n)
         h *= 1099511628211ULL;
     }
     return h;
+}
+
+// ZDT1 with NaN objectives where 0.30 <= x_1 < 0.32: failed evaluations.
+struct ZDT1NanSpec {
+    static constexpr int NVARS = ZDT1Spec::NVARS;
+    static constexpr int NOBJS = 2;
+    static void eval(const std::vector<double>& x, std::vector<double>& f)
+    {
+        ZDT1Spec::eval(x, f);
+        if (x[0] >= 0.30 && x[0] < 0.32) f[0] = f[1] = std::numeric_limits<double>::quiet_NaN();
+    }
+};
+
+// The lines of this run, by "<key> <problem>" (main collects them).
+inline std::map<std::string, std::string>& lines()
+{
+    static std::map<std::string, std::string> m;
+    return m;
 }
 
 inline int pop_for(const char* name, int m)
@@ -75,10 +97,13 @@ void dump(const char* key, const char* problem, int m)
             h = fnv1a(h, x.data(), x.size() * sizeof(double));
             h = fnv1a(h, f.data(), f.size() * sizeof(double));
         }
-        std::printf("%s %s %zu %016llx\n", key, problem, n,
-                    static_cast<unsigned long long>(h));
+        char buf[256];
+        std::snprintf(buf, sizeof buf, "%s %s %zu %016llx", key, problem, n,
+                      static_cast<unsigned long long>(h));
+        lines()[std::string(key) + " " + problem] = buf;
     } catch (const std::exception& e) {
-        std::printf("%s %s refused: %s\n", key, problem, e.what());
+        lines()[std::string(key) + " " + problem] =
+            std::string(key) + " " + problem + " refused: " + e.what();
     }
 }
 
@@ -86,18 +111,48 @@ void dump(const char* key, const char* problem, int m)
 
 #define MOOTATION_ALG(key, IND, CORE)                                        \
     MOOTATION_TEST_PROBLEM(CD_##key, IND, DTLZ2Spec)                         \
-    MOOTATION_TEST_PROBLEM(CZ_##key, IND, ZDT1Spec)
+    MOOTATION_TEST_PROBLEM(CZ_##key, IND, ZDT1Spec)                          \
+    MOOTATION_TEST_PROBLEM(CN_##key, IND, ZDT1NanSpec)
 #include "mootation/algorithms.def"
 #undef MOOTATION_ALG
 
-int main()
+// compat_dump                 the fingerprints, one line a run
+// compat_dump --check <file>  compared with a stored list (golden_fingerprints.txt):
+//                             every line equal, or the differences and exit 1
+int main(int argc, char** argv)
 {
     using namespace mootation;
     using namespace mootation::testing;
 #define MOOTATION_ALG(key, IND, CORE)                                        \
     dump<testing::CD_##key, CORE<testing::CD_##key>, DTLZ2Spec>(#key, "dtlz2_3", 3); \
-    dump<testing::CZ_##key, CORE<testing::CZ_##key>, ZDT1Spec>(#key, "zdt1", 2);
+    dump<testing::CZ_##key, CORE<testing::CZ_##key>, ZDT1Spec>(#key, "zdt1", 2); \
+    dump<testing::CN_##key, CORE<testing::CN_##key>, ZDT1NanSpec>(#key, "zdt1_nan", 2);
 #include "mootation/algorithms.def"
 #undef MOOTATION_ALG
+    if (argc == 3 && std::strcmp(argv[1], "--check") == 0) {
+        std::ifstream f(argv[2], std::ios::binary);
+        std::map<std::string, std::string> want;
+        std::string l;
+        while (std::getline(f, l)) {
+            if (!l.empty() && l.back() == '\r') l.pop_back();
+            if (l.empty() || l[0] == '#') continue;
+            const auto a = l.find(' '), b = l.find(' ', a + 1);
+            want[l.substr(0, b)] = l;
+        }
+        int bad = 0;
+        for (const auto& [k, v] : lines()) {
+            const auto it = want.find(k);
+            if (it == want.end()) { std::printf("new      %s\n", v.c_str()); ++bad; }
+            else if (it->second != v) {
+                std::printf("CHANGED  %s  (golden: %s)\n", v.c_str(), it->second.c_str());
+                ++bad;
+            }
+        }
+        for (const auto& [k, v] : want)
+            if (!lines().count(k)) { std::printf("missing  %s\n", v.c_str()); ++bad; }
+        std::printf("%zu fingerprints against %s: %d differ\n", lines().size(), argv[2], bad);
+        return bad == 0 ? 0 : 1;
+    }
+    for (const auto& [k, v] : lines()) std::printf("%s\n", v.c_str());
     return 0;
 }

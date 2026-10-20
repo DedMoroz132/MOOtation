@@ -140,6 +140,29 @@ target_link_libraries(test_umbrella_selfcontained PRIVATE
 set_target_properties(test_umbrella_selfcontained PROPERTIES FOLDER tests)
 add_test(NAME test_umbrella_selfcontained COMMAND test_umbrella_selfcontained)
 
+# Every algorithm's fingerprints against the list in the repository (task 14
+# of 2026-10-20, §8): the same on every platform, built here with the
+# MOOtation target's flags, as a consumer builds it.
+add_executable(compat_dump compat_dump.cpp)
+target_link_libraries(compat_dump PRIVATE MOOtation::MOOtation)
+target_include_directories(compat_dump PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+if(MSVC)
+    target_compile_options(compat_dump PRIVATE /bigobj)
+endif()
+add_test(NAME golden_fingerprints
+         COMMAND compat_dump --check ${CMAKE_CURRENT_SOURCE_DIR}/golden_fingerprints.txt)
+
+# MOOTATION_FMA_PROBE (CI, Linux): every algorithm compiled for a CPU with
+# fused multiply-adds (-march=haswell) through the MOOtation target, whose
+# -ffp-contract=off must leave the object without one (CI counts them).
+option(MOOTATION_FMA_PROBE "an object of every algorithm for -march=haswell (CI's FMA check)" OFF)
+if(MOOTATION_FMA_PROBE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_library(fma_probe OBJECT compat_dump.cpp)
+    target_link_libraries(fma_probe PRIVATE MOOtation::MOOtation)
+    target_include_directories(fma_probe PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_options(fma_probe PRIVATE -march=haswell)
+endif()
+
 # ── The TOML/runner layer (pure Python, no dependencies) ────────────────────
 # Registered here rather than under python/ because it needs no pybind11 and no
 # build step: it is a plain interpreter run, and skipping it when Python is

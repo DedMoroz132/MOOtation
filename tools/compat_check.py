@@ -63,11 +63,12 @@ def export_include(ref: str, dest: Path) -> Path:
 def build(cxx: str, include: Path, out: Path) -> None:
     src = ROOT / "tests" / "compat_dump.cpp"
     if cxx == "cl":
-        cmd = ["cl", "/nologo", "/std:c++17", "/O2", "/EHsc", "/bigobj", "/DNDEBUG",
+        cmd = ["cl", "/nologo", "/std:c++17", "/O2", "/EHsc", "/bigobj", "/DNDEBUG", "/fp:precise",
                f"/I{include}", f"/I{ROOT / 'tests'}", str(src), f"/Fe:{out}",
                f"/Fo:{out.parent}\\"]
     else:
-        cmd = [cxx, "-std=c++17", "-O2", "-DNDEBUG", f"-I{include}", f"-I{ROOT / 'tests'}",
+        cmd = [cxx, "-std=c++17", "-O2", "-DNDEBUG", "-ffp-contract=off",   # as the target
+               f"-I{include}", f"-I{ROOT / 'tests'}",
                str(src), "-o", str(out)]
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
 
@@ -88,7 +89,29 @@ def main(argv=None) -> int:
     ap.add_argument("--keep", help="write both fingerprint lists into this directory")
     ap.add_argument("--cache", help="keep the baseline's driver here and reuse it while the "
                                     "baseline and the compiler stay the same")
+    ap.add_argument("--golden", action="store_true",
+                    help="compare this tree with tests/golden_fingerprints.txt (the list every "
+                         "platform must give since task 14) instead of a baseline commit")
+    ap.add_argument("--write-golden", action="store_true",
+                    help="write this tree's fingerprints to tests/golden_fingerprints.txt "
+                         "(only with a change that changes runs, its reason in CHANGELOG)")
     args = ap.parse_args(argv)
+
+    golden = ROOT / "tests" / "golden_fingerprints.txt"
+    if args.golden or args.write_golden:
+        with tempfile.TemporaryDirectory() as td:
+            exe = Path(td) / ("dump.exe" if os.name == "nt" else "dump")
+            build(args.cxx, ROOT / "include", exe)
+            if args.write_golden:
+                out = subprocess.run([str(exe)], capture_output=True, text=True, check=True).stdout
+                head = ("# The fingerprints of every algorithm at its defaults (tests/compat_dump.cpp),\n"
+                        "# the same on every supported platform since task 14 of 2026-10-20; the\n"
+                        "# ctest golden_fingerprints compares a build with them. Rewritten only by\n"
+                        "# tools/compat_check.py --write-golden with a change that changes runs.\n")
+                golden.write_text(head + out, encoding="utf-8", newline="\n")
+                print(f"wrote {len(out.splitlines())} fingerprints to {golden}")
+                return 0
+            return subprocess.run([str(exe), "--check", str(golden)]).returncode
 
     ref, allowed = baseline()
     ref = args.baseline or ref
