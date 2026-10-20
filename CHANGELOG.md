@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- DMulti-MADS: the initial list keeps only its non-dominated points, as
+  Algorithm 3 assumes of every list. The filter moved each kept point out of
+  the list it was still comparing against, so a point dominated only by an
+  earlier one stayed (on DTLZ7 and ZDT1 every point of the box's diagonal).
+  A later copy of a listed point could then enter through such a dominated
+  member, and the failed iteration shrank the frame of the other copy: the
+  incumbent kept its frame, polled outside the box and evaluated nothing,
+  forever (DTLZ7_3D, seed 13, 10 000 evaluations: "10000 steps in a row
+  evaluated nothing"). **Changed results**: `dmulti_mads` runs take other
+  trajectories wherever the diagonal holds a dominated point.
+
 - SMS-EMOA and MO-CMA-ES compute the hypervolume contributions exactly up to
   `hv_exact_max_m` objectives (new knob, 5 by default), Monte-Carlo above
   (task 13 of 2026-10-19, §3): at M = 3 and 4 by HVC3D / HVC4D

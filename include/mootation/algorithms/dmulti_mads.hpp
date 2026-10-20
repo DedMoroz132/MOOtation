@@ -45,7 +45,8 @@ namespace mootation {
 //      (a better value of some objective than every member) — τ⁻¹Δ_k;
 //      filling L — Δ_k. A failure shrinks the incumbent's Δ to τΔ.
 // The list starts from DMS's line (n points on the box's diagonal, §6.3:
-// "the linesearch starting strategy exposed in [21]"). The run stops when
+// "the linesearch starting strategy exposed in [21]"), its non-dominated
+// points only: Algorithm 3 assumes every L^k non-dominated. The run stops when
 // the incumbent's mesh size is below 1e-9 (§6.3), which is every member's,
 // or at the budget. The answer: the list reduced to pop_size by DSS, as dms.
 //
@@ -282,12 +283,18 @@ private:
             best->cv = 0.0;
             ok.push_back(*best);
         }
+        // L^0 non-dominated, as Algorithm 3 assumes of every L^k: a point
+        // dominated by another, or with the objectives of an earlier one, is
+        // left out (copied, not moved: every point is compared with every other)
         std::vector<Entry> nd;
-        for (auto& e : ok) {
+        for (std::size_t a = 0; a < ok.size(); ++a) {
             bool beaten = false;
-            for (const auto& o : ok) beaten = beaten || dominates(o, e);
-            for (const auto& o : nd) beaten = beaten || o.f == e.f;
-            if (!beaten) { e.delta = delta0_; nd.push_back(std::move(e)); }
+            for (std::size_t b = 0; b < ok.size() && !beaten; ++b)
+                beaten = b != a && (dominates(ok[b], ok[a]) || (b < a && ok[b].f == ok[a].f));
+            if (!beaten) {
+                nd.push_back(ok[a]);
+                nd.back().delta = delta0_;
+            }
         }
         list_ = std::move(nd);
         publish(vault);
