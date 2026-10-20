@@ -200,6 +200,7 @@ struct RaceSettings {
     std::size_t max_samples = 1000000; // race_max_samples: the samples of one step, at most
     double gamma = 1.0;                // gamma of Eq. (3), in (0, 1]: not given in the paper
     double alpha = 0.2;                // §3.4.1: the current least sampled to alpha * Delta
+    double abs_tol = 1e-12;            // race_abs_tol: a share of prod(r - ideal), see below
 };
 
 // What the last race did (the cores' settings report sums of these).
@@ -237,6 +238,16 @@ struct RaceStats {
 // samples a round needs is computed from (3), not tested sample by sample (the
 // same count); at max_samples a step the race stops and the current least is
 // taken (stats.capped).
+// TASK 14, SUPPLEMENT 1, Д5. Before any sample a point that contributes
+// nothing — a copy, or one another point weakly dominates, or one not
+// strictly better than r — is known exactly (0); when there is one the race
+// is over: 0 is the least possible, and the zero points are the answer,
+// their tie left to the caller's rule (SMS-EMOA: the first; MO-CMA-ES: one
+// at random). A relative eps means nothing when the least contribution is
+// about 0, so the race also stops when every other candidate's lower bound is
+// within abs_tol * prod(r - ideal) of the current least's upper bound (ideal:
+// the set's least value in every objective) — 1e-12 of the region the
+// reference point spans, the scale of the rounding in an exact count.
 // Returns V~ for the candidates left in the race and +inf for the others and
 // for the points `skip` marks (they still cover the others' boxes): its
 // argmin is the race's answer, ties left to the caller's rule.
@@ -345,6 +356,22 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
         a.v = static_cast<double>(a.hits) / static_cast<double>(a.samples) * a.vol;
     };
 
+    // a contribution known to be 0: the least possible, the race is over
+    {
+        bool zero = false;
+        for (const auto& a : S) zero = zero || (a.exact && a.v == 0.0);
+        if (zero) {
+            for (const auto& a : S) if (a.exact && a.v == 0.0) c[a.i] = 0.0;
+            if (stats) *stats = st;
+            return c;
+        }
+    }
+    double tol = set.abs_tol;                       // abs_tol * prod(r - ideal)
+    for (std::size_t k = 0; k < m; ++k) {
+        double lo_k = inf;
+        for (const auto& f : F) lo_k = std::min(lo_k, f[k]);
+        tol *= std::max(0.0, r[k] - lo_k);
+    }
     const double nn = static_cast<double>(S.size());
     double D = 0.0;
     for (const auto& a : S) D = std::max(D, a.vol);
@@ -391,7 +418,7 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
             all_exact = all_exact && S[t].exact;
             if (t == lc) continue;
             const double down = S[t].v - S[t].dev;
-            done = done && down > 0.0 && up / down <= 1.0 + set.eps;
+            done = done && ((down > 0.0 && up / down <= 1.0 + set.eps) || up - down <= tol);
         }
         if (done || all_exact) break;
     }
@@ -426,6 +453,7 @@ struct ContribChoice {
     RaceSettings race;                  // race_eps, race_delta, race_max_samples
     std::size_t m = 0;                  // the objectives of the last step (settings())
     std::size_t race_steps = 0, race_samples = 0, race_exact = 0, race_capped = 0;
+    std::size_t steps = 0;              // every step that compared contributions
 
     enum class Way { exact, mc, race };
     Way way(std::size_t M) const
@@ -449,6 +477,7 @@ struct ContribChoice {
                                 const std::vector<char>* skip = nullptr)
     {
         m = r.size();
+        ++steps;
         const Way w = way(m);
         if (w == Way::race) {
             RaceStats st;
@@ -486,6 +515,11 @@ struct ContribChoice {
         if (k == "race_delta") {
             if (!(v > 0.0 && v < 1.0)) throw std::invalid_argument("race_delta must be in (0, 1)");
             race.delta = v;
+            return true;
+        }
+        if (k == "race_abs_tol") {
+            if (!(v >= 0.0 && v < 1.0)) throw std::invalid_argument("race_abs_tol must be in [0, 1)");
+            race.abs_tol = v;
             return true;
         }
         if (k == "race_max_samples") {
@@ -538,12 +572,20 @@ struct ContribChoice {
                                           approx_given ? "hv_contrib = mc" : "above hv_exact_max_m") + ")";
         else if (use_hvc(m))       how = m == 3 ? "exact, hvc3d" : "exact, hvc4d";
         else                       how = box ? "exact, box" : "exact, wfg";
-        return {{"hv_exact_max_m", std::to_string(exact_max_m)},
+        std::vector<std::pair<std::string, std::string>> out = {
+                {"hv_exact_max_m", std::to_string(exact_max_m)},
                 {"n_samples", n_samples ? std::to_string(*n_samples) : "default"},
                 {"hv_contrib", std::string(hvc ? "hvc" : "wfg") + ", " +
                                    (approx == Approx::race ? "race" : "mc")},
                 {"hv_algo", box ? "box" : "auto"},
                 {"contributions", how + " at M = " + std::to_string(m)}};
+        if (race_steps > 0) {
+            // the steps the guarantee does not cover; a campaign warns above 1 %
+            out.emplace_back("race_capped_steps", std::to_string(race_capped));
+            out.emplace_back("race_capped_share",
+                             num(static_cast<double>(race_capped) / static_cast<double>(steps)));
+        }
+        return out;
     }
 };
 

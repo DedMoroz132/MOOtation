@@ -104,7 +104,12 @@ namespace mootation {
 //     (10^6; reaching it takes the current least, which the guarantee no
 //     longer covers; Result.settings counts such steps). The race returns
 //     the estimates of the points left in it: their least is removed, a tie
-//     as SMS-3.
+//     as SMS-3. A point known to contribute nothing (a copy, one weakly
+//     dominated, one not better than r) ends the race at once, and with
+//     race_abs_tol (1e-12 of prod(r - ideal)) a race also ends when the
+//     candidates' bounds are that close in absolute terms (task 14,
+//     supplement 1, Д5). Result.settings: race_capped_steps and their share;
+//     a campaign warns above 1 %.
 //
 //     EJOR §2.3 computes them exactly (the O(μ³) grid algorithm of Naujoks et
 //     al. at M = 3) and calls SMS-EMOA "hardly applicable" above three

@@ -370,8 +370,10 @@ int main()
                                               {0.5, 0.5, 0.2, 0.6}, {0.5, 0.5, 0.2, 0.6},
                                               {0.6, 0.6, 0.6, 0.1}};
         std::mt19937 g(3);
-        const auto c = hv::contributions_race(F, std::vector<double>(4, 1.0), set, g);
-        check((c[2] == 0.0 || c[3] == 0.0), "the race: a copy contributes 0");
+        hv::RaceStats zst;
+        const auto c = hv::contributions_race(F, std::vector<double>(4, 1.0), set, g, nullptr, &zst);
+        check(c[2] == 0.0 && c[3] == 0.0 && zst.samples == 0 && std::isinf(c[0]),
+              "the race: copies contribute 0, known without a sample, and are the answer (Д5)");
     }
 
     run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");

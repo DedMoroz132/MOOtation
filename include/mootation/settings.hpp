@@ -100,7 +100,7 @@ inline const std::vector<std::string>& knob_names() {
         // task 13 of 2026-10-19, §3
         "hv_exact_max_m",
         // task 14 of 2026-10-20, §11
-        "race_eps", "race_delta", "race_max_samples"
+        "race_eps", "race_delta", "race_max_samples", "race_abs_tol"
     };
     return v;
 }
@@ -151,11 +151,12 @@ inline const std::vector<std::string>& knob_names() {
 //   hv_exact_max_m sms_emoa, mo_cma_es: the exact contributions up to that
 //                  many objectives, the race (or Monte-Carlo) above (5;
 //                  hv_contribution.hpp, hv::ContribChoice)
-//   race_eps, race_delta, race_max_samples
+//   race_eps, race_delta, race_max_samples, race_abs_tol
 //                  sms_emoa, mo_cma_es: the race for the least contributor
 //                  above hv_exact_max_m (Bringmann & Friedrich 2012): the
 //                  answer within (1 + eps) of the least with probability
-//                  1 - delta; 0.01, 1e-6, 10^6 samples a step at most
+//                  1 - delta, or within abs_tol * prod(r - ideal) of it;
+//                  0.01, 1e-6, 10^6 samples a step at most, 1e-12
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
@@ -171,7 +172,7 @@ inline bool is_core_param(const std::string& name)
                           "cma_sigma0", "eps_objective", "polish_share", "polish_points",
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
-                          "race_max_samples"})
+                          "race_max_samples", "race_abs_tol"})
         if (name == k) return true;
     return false;
 }

@@ -17,7 +17,12 @@ always listed under **Changed** or **Removed**.
   dropped once surely not the least, until the answer is within (1 +
   `race_eps`) of the least contribution with probability 1 − `race_delta`
   (0.01, 1e-6), at most `race_max_samples` (10^6) samples a step. The
-  equal-share Monte-Carlo of before stays as `hv_contrib = mc`.
+  equal-share Monte-Carlo of before stays as `hv_contrib = mc`. A point
+  known to contribute nothing (a copy, a weakly dominated one) ends the race
+  without a sample; `race_abs_tol` (1e-12 of the region prod(r - ideal))
+  ends it when the bounds are that close; `Result.settings` and `meta.json`
+  count the steps stopped at `race_max_samples` (`race_capped_steps`,
+  `race_capped_share`) and a campaign warns when a run's share exceeds 1 %.
   **Changed results**: both at more than five objectives.
 
 - SMS-EMOA and MO-CMA-ES compute the hypervolume contributions exactly up to
