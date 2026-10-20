@@ -688,7 +688,7 @@ jobs:
       # the library's own (random.hpp), the same on every platform; a std::
       # distribution or shuffle elsewhere would bring the standard library's own
       # back. long double is 64, 80 or 128 bits depending on the platform.
-      - name: No std:: distributions, shuffles or long double in include/
+      - name: "No std:: distributions, shuffles or long double in include/"
         run: |
           bad=0
           if grep -rnE 'std::[a-z_]+_distribution|std::(random_)?shuffle' include --include='*.hpp' \
