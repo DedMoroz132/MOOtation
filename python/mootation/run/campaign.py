@@ -628,6 +628,42 @@ def constraint_count(p) -> int:
 # of the benchmark code (mootation/benchmarks/), so that a change of the code
 # builds them again. The same arrays, so the same values.
 REFERENCES_DIR = "_references"
+
+# The version of the algorithms' trajectories (task 14 of 2026-10-20, §10): a
+# run at a seed is the same run only within one version. 1 — before task 14
+# (the standard library's distributions, the C library's mathematics: the runs
+# differed between platforms); 2 — task 14: the library's own random numbers
+# and mathematics, the same runs on every supported platform. meta.json holds
+# it (absent: 1); a campaign refuses to put runs of two versions in one folder
+# and to merge parts of two versions.
+TRAJECTORY_VERSION = 2
+
+
+def trajectory_version_of(meta: dict) -> int:
+    return int(meta.get("trajectory_version") or 1)
+
+
+def check_trajectory_versions(root: Path, jobs: list) -> None:
+    """RuntimeError when the folder holds finished runs of these jobs made with
+    another trajectory version than this one's: a campaign would mix them."""
+    other = []
+    for j in jobs:
+        mp = root / j.rel_dir / "meta.json"
+        if not mp.is_file():
+            continue
+        try:
+            m = json.loads(mp.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if m.get("status") == "done" and trajectory_version_of(m) != TRAJECTORY_VERSION:
+            other.append(f"{j.rel_dir.as_posix()} (v{trajectory_version_of(m)})")
+    if other:
+        raise RuntimeError(
+            f"{root} holds {len(other)} finished run(s) of another trajectory version than "
+            f"this library's ({TRAJECTORY_VERSION}): {', '.join(other[:5])}"
+            + (" ..." if len(other) > 5 else "")
+            + ". Runs of two versions are not comparable seed by seed; use another folder, "
+              "or run them again (--force).")
 # Workers that start on the same problem at once: the first takes
 # <problem>.lock and builds, the others wait for the file it writes (checked
 # every REFERENCE_POLL seconds) and read it; a lock older than REFERENCE_WAIT
@@ -874,6 +910,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # what the run was measured against and with (reference_hash), and the
         # benchmark sources' stamp: --merge compares them across the parts
         "reference_hash": ref_hash, "code_stamp": _code_stamp(),
+        "trajectory_version": TRAJECTORY_VERSION,
         "reference_rows": None if ref is None else int(len(ref)),
         # the dense reference's rows and step, and the population's step
         "reference_v3": info3,
@@ -2010,6 +2047,8 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
           f"{len(todo)} to run -> {root}", file=sys.stderr)
     prepare_references(todo, spec.n_ref, workers=workers, build=build_refs)
 
+    if todo and not force:
+        check_trajectory_versions(root, selected)       # task 14, §10: no mixing
     counts = {"done": 0, "failed": 0, "skipped": len(selected) - len(todo)}
     if len(todo) > 1 and cfg.source_path is not None:
         # Worker processes whenever there is more than one job, even with
@@ -2120,14 +2159,16 @@ def merge_parts(cfg: Config, parts: list, *, out: Path | None = None) -> dict:
                             f"({', '.join(str(q) for q, _ in have)})")
         else:
             found[j.index] = have[0]
-    same = {"revision": set(), "code_stamp": set(), "reference_version": set()}
+    same = {"revision": set(), "code_stamp": set(), "reference_version": set(),
+            "trajectory_version": set()}
     ref_of: dict = {}
     for j in jobs:
         if j.index not in found:
             continue
         q, m = found[j.index]
         for k in same:
-            same[k].add(json.dumps(m.get(k), sort_keys=True))
+            v = trajectory_version_of(m) if k == "trajectory_version" else m.get(k)
+            same[k].add(json.dumps(v, sort_keys=True))
         if int(m.get("problem_version") or 1) != problem_version(j.problem):
             problems.append(f"{j.rel_dir.as_posix()}: problem version "
                             f"{m.get('problem_version') or 1}, now {problem_version(j.problem)}")
@@ -2135,6 +2176,9 @@ def merge_parts(cfg: Config, parts: list, *, out: Path | None = None) -> dict:
     for k, vals in same.items():
         if len(vals) > 1:
             problems.append(f"the parts' runs differ in {k}: {', '.join(sorted(vals))}")
+    if same["trajectory_version"] and same["trajectory_version"] != {json.dumps(TRAJECTORY_VERSION)}:
+        problems.append(f"trajectory version {', '.join(sorted(same['trajectory_version']))}, "
+                        f"now {TRAJECTORY_VERSION}")
     if same["reference_version"] and same["reference_version"] != {json.dumps(REFERENCE_VERSION)}:
         problems.append(f"reference version {', '.join(sorted(same['reference_version']))}, "
                         f"now {REFERENCE_VERSION}")
@@ -3479,6 +3523,9 @@ def main(argv: list[str] | None = None) -> int:
                 if ran < problem_version(j.problem):
                     note += (f"  [problem v{ran}, now v{problem_version(j.problem)}: to run "
                              f"again, --job {j.index} --force]")
+                tv = trajectory_version_of(meta)
+                if tv != TRAJECTORY_VERSION:
+                    note += f"  [trajectory v{tv}, now v{TRAJECTORY_VERSION}]"
             print(f"{j.index:5d} {j.problem:<14} {j.key:<14} seed {j.seed:<3} "
                   f"pop {j.pop:<4} gens {j.gens:<5} fe {j.budget:<8} {st}{note}")
         print(f"\n{len(jobs)} jobs -> {root}", file=sys.stderr)

@@ -7220,6 +7220,59 @@ def a_seed_population_with_bits_and_labels_takes_constraints():
 
 
 @test
+def a_campaign_does_not_mix_trajectory_versions():
+    """Task 14, §10: every run's meta.json holds trajectory_version; a campaign
+    whose folder holds a finished run of another version refuses to run more
+    there (--force runs them again), and --merge refuses parts of two versions."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import os
+    from mootation.run import campaign as C, refs
+    from mootation.run.config import load
+    text = """
+[run]
+name = "tv"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["ZDT1"]
+[campaign]
+out = "runs"
+budget_fe = 300
+metrics = ["igdp_norm"]
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+"""
+    old_dir = os.environ.get(refs.ENV_DIR)
+    with tempfile.TemporaryDirectory() as td:
+        os.environ[refs.ENV_DIR] = str(Path(td) / "cache")
+        try:
+            path = Path(td) / "tv.toml"
+            path.write_text(text, encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            jobs = C.expand_jobs(cfg, spec)
+            root = C.out_root(cfg, spec)
+            assert C.run_campaign(cfg, workers=1, only=[jobs[0].index])["done"] == 1
+            mp = root / jobs[0].rel_dir / "meta.json"
+            meta = json.loads(mp.read_text(encoding="utf-8"))
+            assert meta["trajectory_version"] == C.TRAJECTORY_VERSION == 2, meta
+            meta.pop("trajectory_version")                  # as a run before task 14 wrote it
+            mp.write_text(json.dumps(meta), encoding="utf-8")
+            e = raises(RuntimeError, C.run_campaign, cfg, workers=1)
+            assert e is not None and "trajectory version" in str(e), e
+        finally:
+            if old_dir is None:
+                os.environ.pop(refs.ENV_DIR, None)
+            else:
+                os.environ[refs.ENV_DIR] = old_dir
+
+
+@test
 def the_floating_point_environment_is_read_and_recorded():
     """Task 14, §5 item 3: _core.fp_env reads whether denormals are flushed to
     zero or read as zero (MXCSR, FPCR) — not here, normally — and a campaign
