@@ -41,7 +41,11 @@ always listed under **Changed** or **Removed**.
   new default there. Samples in every point's bounding box in rounds, points
   dropped once surely not the least, until the answer is within (1 +
   `race_eps`) of the least contribution with probability 1 − `race_delta`
-  (0.01, 1e-6), at most `race_max_samples` (10^6) samples a step. The
+  (0.01, 1e-6), at most `race_max_samples` (10^6) samples a step; a race
+  stopped there takes the point of the least upper bound on its
+  contribution (its box's volume where it has no sample), not the first of
+  the least estimates, which at five objectives and more are mostly 0 at
+  the cap (supplement 3, Д8.5). The
   equal-share Monte-Carlo of before stays as `hv_contrib = mc`. A point
   known to contribute nothing (a copy, a weakly dominated one) ends the race
   without a sample; `race_abs_tol` (1e-12 of the region prod(r - ideal))

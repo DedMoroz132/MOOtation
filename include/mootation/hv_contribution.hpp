@@ -236,8 +236,14 @@ struct RaceStats {
 // to the exact count is checked before a candidate's samples of a round are
 // drawn (the comparisons they would cost included), not after; the number of
 // samples a round needs is computed from (3), not tested sample by sample (the
-// same count); at max_samples a step the race stops and the current least is
-// taken (stats.capped).
+// same count); at max_samples a step the race stops (stats.capped).
+// TASK 14, SUPPLEMENT 3, Д8.5. A race stopped at max_samples answers with the
+// candidate of the least upper bound on its contribution — V~ + Delta for one
+// with samples (the bound (3) at its samples), its box's volume for one
+// without, V for one counted exactly — not with the least estimate: where the
+// least contributions are tiny shares of their boxes (M >= 5, measured on task
+// 13's sets) most candidates have no hit at the cap, their estimates are all
+// 0, and the first of them was an arbitrary choice.
 // TASK 14, SUPPLEMENT 1, Д5. Before any sample a point that contributes
 // nothing — a copy, or one another point weakly dominates, or one not
 // strictly better than r — is known exactly (0); when there is one the race
@@ -248,9 +254,10 @@ struct RaceStats {
 // within abs_tol * prod(r - ideal) of the current least's upper bound (ideal:
 // the set's least value in every objective) — 1e-12 of the region the
 // reference point spans, the scale of the rounding in an exact count.
-// Returns V~ for the candidates left in the race and +inf for the others and
-// for the points `skip` marks (they still cover the others' boxes): its
-// argmin is the race's answer, ties left to the caller's rule.
+// Returns V~ for the candidates left in the race (stopped at max_samples:
+// their upper bounds) and +inf for the others and for the points `skip` marks
+// (they still cover the others' boxes): its argmin is the race's answer, ties
+// left to the caller's rule.
 template <typename RNG>
 inline std::vector<double> contributions_race(const std::vector<std::vector<double>>& F,
                                               const std::vector<double>& r,
@@ -422,7 +429,11 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
         }
         if (done || all_exact) break;
     }
-    for (std::size_t t : live) c[S[t].i] = S[t].v;
+    for (std::size_t t : live) {
+        const Cand& a = S[t];
+        if (!st.capped || a.exact) c[a.i] = a.v;
+        else c[a.i] = a.samples == 0 ? a.vol : std::min(a.vol, a.v + a.dev);   // Д8.5
+    }
     if (stats) *stats = st;
     return c;
 }

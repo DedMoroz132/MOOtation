@@ -101,8 +101,9 @@ namespace mootation {
 //     1 - race_delta (0.01 and 1e-6, the paper's experiments; Voss, Friedrich,
 //     Bringmann & Igel, GECCO 2010 companion, built it into SMS-EMOA and
 //     MO-CMA-ES with 1e-6 and 1e-4), at most race_max_samples samples a step
-//     (10^6; reaching it takes the current least, which the guarantee no
-//     longer covers; Result.settings counts such steps). The race returns
+//     (10^6; reaching it takes the candidate of the least upper bound on
+//     its contribution, which the guarantee no longer covers — task 14,
+//     supplement 3, Д8.5; Result.settings counts such steps). The race returns
 //     the estimates of the points left in it: their least is removed, a tie
 //     as SMS-3. A point known to contribute nothing (a copy, one weakly
 //     dominated, one not better than r) ends the race at once, and with

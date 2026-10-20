@@ -374,6 +374,43 @@ int main()
         const auto c = hv::contributions_race(F, std::vector<double>(4, 1.0), set, g, nullptr, &zst);
         check(c[2] == 0.0 && c[3] == 0.0 && zst.samples == 0 && std::isinf(c[0]),
               "the race: copies contribute 0, known without a sample, and are the answer (Д5)");
+        // stopped at race_max_samples, the race answers with the least upper
+        // bound (Д8.5): at a cap of 1 no candidate has a sample, every bound is
+        // the volume of the candidate's box [p, b] — b cut by every point no
+        // worse than p in all objectives but one
+        {
+            const std::size_t m = 6, n = 40;
+            std::vector<std::vector<double>> G(n, std::vector<double>(m));
+            for (auto& row : G) {
+                double s2 = 0.0;
+                for (auto& v : row) { v = std::abs(nd(gen)) + 1e-3; s2 += v * v; }
+                for (auto& v : row) v /= std::sqrt(s2);
+            }
+            const std::vector<double> r(m, 1.1);
+            std::vector<double> box(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                std::vector<double> hi = r;
+                for (std::size_t q = 0; q < n; ++q) {
+                    std::size_t worse = 0, at = 0;
+                    for (std::size_t j = 0; j < m; ++j) if (G[q][j] > G[i][j]) { ++worse; at = j; }
+                    if (q != i && worse == 1) hi[at] = std::min(hi[at], G[q][at]);
+                }
+                box[i] = 1.0;
+                for (std::size_t j = 0; j < m; ++j) box[i] *= hi[j] - G[i][j];
+            }
+            hv::RaceSettings one;
+            one.max_samples = 1;
+            std::mt19937 h(5);
+            hv::RaceStats cst;
+            const auto cc = hv::contributions_race(G, r, one, h, nullptr, &cst);
+            std::size_t pick = 0, small = 0;
+            for (std::size_t i = 1; i < n; ++i) {
+                if (cc[i] < cc[pick]) pick = i;
+                if (box[i] < box[small]) small = i;
+            }
+            check(cst.capped && cst.samples == 0 && cc == box && pick == small,
+                  "the race stopped at race_max_samples: the least upper bound, here the least box (Д8.5)");
+        }
     }
 
     run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");
