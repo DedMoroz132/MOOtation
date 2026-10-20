@@ -56,14 +56,23 @@ namespace mootation {
 // list order), mads_poll (complete | opportunistic: stop the poll at the
 // first success), mads_search (speculative | none).
 //
-// READINGS (declared): [6] (Audet, Ianni, Le Digabel, Tribes, SIAM J. Optim.
-// 24(2), 2014: n + 1 directions) and [8] (Audet, Le Digabel, Tribes, Optim.
-// Eng. 2019: the granular mesh) were not available.
+// READINGS (declared). [6] = Audet, Ianni, Le Digabel, Tribes, SIAM J. Optim.
+// 24(2):621-642, 2014 (n + 1 directions), checked; [8] = Audet, Le Digabel,
+// Tribes, SIAM J. Optim. 29(2):1164-1189, 2019 (the granular mesh) and [1]
+// (OrthoMADS) not available; the NOMAD 4.6.0 user guide read, not its code.
+// PRELIMINARY: the poll (DMM-1, DMM-2) and the bounds (DMM-6, DMM-7) are our
+// reading until checked against [8] and [1] as well.
 //   DMM-1. The poll directions: an orthonormal basis H = I − 2vvᵀ (a
 //     Householder matrix of a unit vector v drawn from the seed, as
 //     OrthoMADS's [1] Halton vector, here from the run's generator), each
 //     column turned towards the target direction w_k (at random without
 //     one), and their negative sum: n + 1 directions, a positive basis.
+//     This is [6]'s MADS(suc,neg) (§3.2: d kept where dᵀw_k >= 0, else -d;
+//     d_k = −Σ d, (3.1)), NOMAD's ORTHO N+1 NEG; the paper's "n + 1
+//     directions without models" (§6.3) and the guide's "DMulti-MADS ...
+//     cannot use the ORTHO N+1 QUAD strategy" agree. Ours: a real Householder
+//     basis rounded to the mesh, not OrthoMADS's integer one, and random
+//     turns without w_k ([6] names H_k itself the simplest choice).
 //   DMM-2. The mesh: the classic MADS one, δ = min(Δ, Δ²) (Algorithm 2), in
 //     the normalized box; a direction u becomes the mesh vector
 //     z = round(u / ‖u‖_∞ · Δ/δ), so that ‖δz‖_∞ = Δ. Not the granular mesh
@@ -76,7 +85,11 @@ namespace mootation {
 //     ignores them). An initial list without a feasible point keeps the
 //     least violating one, as dms (DMS-4). The progressive barrier of
 //     DMulti-MADS-PB (Bigeon et al. 2024) is not implemented.
-//   DMM-6. Points outside the box: the extreme barrier, not evaluated.
+//   DMM-6. Points outside the box: the extreme barrier, not evaluated. So
+//     the sources: [6] §1 (after MADS), "infeasible trial points are
+//     immediately rejected from consideration"; the NOMAD guide has bounds
+//     set in the parameters, never in the blackbox, and lists NOMAD 3's
+//     SNAP_TO_BOUNDS as "Not implemented" in NOMAD 4 (no projection).
 //   DMM-7. A poll step that would leave the box stops at its last mesh point
 //     inside: z_r is cut to the integers with 0 <= x_r + δz_r <= 1, so the
 //     point stays on the mesh and in the frame; a point equal to x_k or to an
@@ -85,7 +98,10 @@ namespace mootation {
 //     every coordinate, so from a poll centre with k active bounds a direction
 //     stays in the box with probability about 2^-k: a list on a vertex
 //     (ZDT1's and DTLZ7's diagonal leave only x = 0) shrank to the stop of
-//     §6.3 in a dozen iterations, after some 40 evaluations.
+//     §6.3 in a dozen iterations, after some 40 evaluations. Ours: neither
+//     [6] nor the NOMAD guide cuts a step to the box; why the paper's runs
+//     do not stop at such a vertex ([1]'s integer basis, [8]'s mesh?) is
+//     open until those are read.
 // Continuous variables only.
 // ============================================================================
 

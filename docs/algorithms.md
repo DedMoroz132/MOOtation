@@ -230,7 +230,11 @@ Not evolutionary: a list of nondominated points with a step size each, polled
 along the coordinate directions, the step halved where a poll finds nothing.
 DMulti-MADS polls n + 1 directions on a mesh around the point of the largest
 frame in the least crowded part of the list, and grows the frames of the points
-that dominate or extend it; MultiGLODS keeps the points of every search it has
+that dominate or extend it (preliminary: its poll directions and its handling of
+the bounds, a poll step cut to the last mesh point inside the box, are our
+reading until checked against the granular-mesh and OrthoMADS papers it cites;
+the cut is ours, not in the n + 1 directions paper or the NOMAD 4 guide);
+MultiGLODS keeps the points of every search it has
 started, active or merged, and starts new ones from a Sobol sequence after
 three failures in a row; BoostDMS (Python, SciPy) is DMS with a search step that
 minimizes quadratic models of the objectives built from the evaluated points.

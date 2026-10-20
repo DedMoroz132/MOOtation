@@ -28,7 +28,15 @@ always listed under **Changed** or **Removed**.
   left the box. WFG4_3D does worse than before at 10 000 evaluations (IGD+
   about 0.6 against 0.3): the dominated diagonal points the filter kept lay
   near WFG4's optimal distance values, and the paper's start (the
-  non-dominated points of the line, DMS) drops them.
+  non-dominated points of the line, DMS) drops them. DMM-7 is our reading:
+  the DMulti-MADS implementation is preliminary until its poll and bounds
+  are checked against Audet, Le Digabel, Tribes (SIAM J. Optim. 2019, the
+  granular mesh; the header had cited it as Optim. Eng., corrected) and
+  OrthoMADS. Checked so far: Audet, Ianni, Le Digabel, Tribes (SIAM J.
+  Optim. 2014) and the NOMAD 4.6.0 user guide give the poll directions as
+  implemented (MADS(suc,neg), NOMAD's ORTHO N+1 NEG) and reject points
+  outside the bounds without projecting them; neither cuts a poll step to
+  the box, so DMM-7 stays ours.
 
 - DTLZ1-7 at eight objectives (`DTLZ1_8D` ... `DTLZ7_8D`; 1357 problems):
   DTLZ was registered at 2-6, 10 and 15 objectives only. Evaluated in C++ as
