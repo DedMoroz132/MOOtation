@@ -63,7 +63,11 @@ def export_include(ref: str, dest: Path) -> Path:
 def build(cxx: str, include: Path, out: Path) -> None:
     src = ROOT / "tests" / "compat_dump.cpp"
     if cxx == "cl":
-        cmd = ["cl", "/nologo", "/std:c++17", "/O2", "/EHsc", "/bigobj", "/DNDEBUG", "/fp:precise",
+        # /MD as the CMake target and the Python extension: the C runtime's
+        # mathematics in the DLL (ucrtbase) and in the static library (/MT, cl's
+        # default) differ in the last bits, and so do the runs (task 14: 79 of
+        # 228 fingerprints until the library has its own mathematics, §2)
+        cmd = ["cl", "/nologo", "/std:c++17", "/O2", "/EHsc", "/bigobj", "/DNDEBUG", "/fp:precise", "/MD",
                f"/I{include}", f"/I{ROOT / 'tests'}", str(src), f"/Fe:{out}",
                f"/Fo:{out.parent}\\"]
     else:
