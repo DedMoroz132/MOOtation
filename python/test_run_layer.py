@@ -10472,9 +10472,10 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
         assert dict(d4.settings)["contributions"] == "exact, hvc4d at M = 4", d4.settings
     c6 = run("DTLZ2_6D", "mo_cma_es")
     assert same(c6, run("DTLZ2_6D", "mo_cma_es", n_samples=0, hv_contrib="wfg"))
-    assert dict(c6.settings)["contributions"] == "exact, iwfg at M = 6", c6.settings
-    w6 = run("DTLZ2_6D", "mo_cma_es", hv_contrib="hvc")             # Д8.2: WFG for every point
-    assert same(c6, w6) and dict(w6.settings)["contributions"] == "exact, wfg at M = 6", w6.settings
+    assert dict(c6.settings)["contributions"] == "exact, wfg at M = 6", c6.settings
+    assert dict(c6.settings)["hv_incremental"] == "1", c6.settings  # Д8.3: the default
+    w6 = run("DTLZ2_6D", "mo_cma_es", hv_contrib="iwfg")            # Д8.2: the same run
+    assert same(c6, w6) and dict(w6.settings)["contributions"] == "exact, iwfg at M = 6", w6.settings
     assert "hv_exact_max_m" not in dict(c6.settings), c6.settings
     i6 = run("DTLZ2_6D", "mo_cma_es", hv_exact_max_m=3, race_eps=0.1)
     assert same(c6, i6) and {"hv_exact_max_m", "race_eps"} <= set(i6.ignored), i6.ignored
@@ -10492,9 +10493,9 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
             "monte-carlo, 10000 samples a step (hv_contrib = mc)"), m6.settings
         e6 = run("DTLZ2_6D", alg, hv_exact_max_m=6)
         assert same(e6, run("DTLZ2_6D", alg, n_samples=0)) and not same(e6, d6), alg
-        assert dict(e6.settings)["contributions"] == "exact, iwfg at M = 6", e6.settings
-        h6 = run("DTLZ2_6D", alg, hv_exact_max_m=6, hv_contrib="hvc")
-        assert same(e6, h6) and dict(h6.settings)["contributions"] == "exact, wfg at M = 6", h6.settings
+        assert dict(e6.settings)["contributions"] == "exact, wfg at M = 6", e6.settings
+        h6 = run("DTLZ2_6D", alg, hv_exact_max_m=6, hv_contrib="iwfg", hv_incremental=0)
+        assert same(e6, h6) and dict(h6.settings)["contributions"] == "exact, iwfg at M = 6", h6.settings
     r = run("DTLZ2_4D", "r2_emoa", hv_exact_max_m=6, n_samples=0, race_eps=0.1)
     assert {"hv_exact_max_m", "n_samples", "race_eps"} <= set(r.ignored) and \
         list(r.settings) == [], r.ignored

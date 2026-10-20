@@ -82,14 +82,15 @@ namespace mootation {
 //
 //       M      hv_contrib   n_samples   computed
 //       2      any          any         exact, EJOR Eq. 6 (the 2005 paper's Eq. 4)
-//       3      iwfg (dflt)  any         exact, HVC3D (hvc.hpp), kept between steps
-//              or hvc
+//       3      hvc (dflt)   any         exact, HVC3D (hvc.hpp), kept between steps
+//              or iwfg
 //       3      wfg          any         exact, WFG (hv_algo = box: boxes)
-//       4      iwfg, hvc    not given   exact, HVC4D (4 <= hv_exact_max_m)
+//       4      hvc, iwfg    not given   exact, HVC4D (4 <= hv_exact_max_m)
 //       4      wfg          not given   exact, WFG / boxes
 //       5      any          not given   exact, WFG / boxes (t = hv_exact_max_m)
-//       6..t   iwfg (dflt)  not given   exact, the least by IWFG
-//       6..t   hvc, wfg     not given   exact, WFG for every point / boxes
+//       6..t   hvc (dflt)   not given   exact, WFG for every point / boxes
+//       6..t   wfg          not given   exact, WFG for every point / boxes
+//       6..t   iwfg         not given   exact, the least by IWFG
 //       > t    not race/mc  not given   the race for the least contributor
 //       > t    mc           any         Monte-Carlo, n_samples (10 000) a step
 //       >= 4   any          0           exact at every M as above
@@ -99,8 +100,11 @@ namespace mootation {
 //     the least contributor by While & Bradstreet's IWFG with Cox & While's
 //     adaptive slicing; the points that may be the least are counted by
 //     WFG as for every point, so the removed point and the run are those of
-//     hv_contrib = hvc (WFG for every point), bit for bit, faster. The other
-//     points' contributions are left +inf (fitness: only the contenders').
+//     hv_contrib = hvc (WFG for every point), bit for bit. The other points'
+//     contributions are left +inf (fitness: only the contenders'). Not the
+//     default: on the populations exact selection makes the contributions
+//     grow alike, and IWFG has to take nearly every point deep before the
+//     least is proved — slower than WFG with hv_incremental (task 14, Д8).
 //
 //     The race (hv_contrib = race, the default above t; task 14 of
 //     2026-10-20, §11; hv::contributions_race): Bringmann & Friedrich, Theor.

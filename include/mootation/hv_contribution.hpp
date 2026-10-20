@@ -763,7 +763,10 @@ struct ContribChoice {
     std::optional<int> n_samples;       // given by the caller
     int  exact_max_m = 5;               // hv_exact_max_m
     bool hvc = true;                    // hv_contrib: hvc (default) or wfg, the exact way
-    bool iwfg = true;                   // hv_contrib = iwfg (default, Д8.2): from M = 6 the least by IWFG
+    bool iwfg = false;                  // hv_contrib = iwfg (Д8.2): from M = 6 the least by IWFG; not the
+                                        // default: on populations of exact selection the contributions grow
+                                        // alike and IWFG drops few points early (task 14, the owner's word of
+                                        // 21.10: WFG with the kept counts)
     static constexpr std::size_t kIwfgFrom = 6; // at M = 5 IWFG took 2-3 times WFG's time (task 13's sets)
     Approx approx = Approx::race;       // hv_contrib: race (default) or mc, above the threshold
     bool approx_given = false;
@@ -773,7 +776,7 @@ struct ContribChoice {
     std::size_t race_steps = 0, race_samples = 0, race_exact = 0, race_capped = 0;
     std::size_t steps = 0;              // every step that compared contributions
     bool exact_only = false;            // MO-CMA-ES (Д8.1): exact at every M
-    bool incremental = false;           // hv_incremental (Д8.3): WFG's counts kept
+    bool incremental = true;            // hv_incremental (Д8.3, the default): WFG's counts kept
     ExactKept kept_exact;               // between the steps (ExactKept)
 
     enum class Way { exact, mc, race };
