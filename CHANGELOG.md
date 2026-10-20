@@ -28,7 +28,15 @@ always listed under **Changed** or **Removed**.
   left the box. WFG4_3D does worse than before at 10 000 evaluations (IGD+
   about 0.6 against 0.3): the dominated diagonal points the filter kept lay
   near WFG4's optimal distance values, and the paper's start (the
-  non-dominated points of the line, DMS) drops them.
+  non-dominated points of the line, DMS) drops them. DMM-7 is our reading:
+  the DMulti-MADS implementation is preliminary until its poll and bounds
+  are checked against Audet, Le Digabel, Tribes (SIAM J. Optim. 2019, the
+  granular mesh; the header had cited it as Optim. Eng., corrected) and
+  OrthoMADS. Checked so far: Audet, Ianni, Le Digabel, Tribes (SIAM J.
+  Optim. 2014) and the NOMAD 4.6.0 user guide give the poll directions as
+  implemented (MADS(suc,neg), NOMAD's ORTHO N+1 NEG) and reject points
+  outside the bounds without projecting them; neither cuts a poll step to
+  the box, so DMM-7 stays ours.
 
 - SMS-EMOA and MO-CMA-ES compute the hypervolume contributions exactly up to
   `hv_exact_max_m` objectives (new knob, 5 by default), Monte-Carlo above
