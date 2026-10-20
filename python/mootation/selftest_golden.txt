@@ -1,0 +1,22 @@
+# mootation selftest: the fingerprints of short runs (selftest.py), the same on every
+# supported platform; rewritten only with a change that changes runs (CHANGELOG).
+ibea_eplus DTLZ2_3D c2537b57a3aa249d
+ibea_eplus ZDT1 2011ed2dc0e88fdf
+mo_cma_es DTLZ2_3D 3dd015b267c57c0e
+mo_cma_es ZDT1 a157d9b4838e7494
+moead_de DTLZ2_3D f9e6869c238f2772
+moead_de ZDT1 4c58a2ec888f9ad7
+mosa DTLZ2_3D cb79eebee6f7dc2f
+mosa ZDT1 b105807578730b48
+nsga2 DTLZ2_3D c014f97580d71f77
+nsga2 ZDT1 d46ebcbebb56b361
+nsga2_sdr DTLZ2_3D bfd60db8b06f805b
+nsga2_sdr ZDT1 2797358ab6367639
+nsga3 DTLZ2_3D e0fa3053a8f75b09
+nsga3 ZDT1 06c823f8f8c6a8ba
+rvea DTLZ2_3D 0c1edd8f9fc58bd8
+rvea ZDT1 bf53b58cf5e7cdfc
+sms_emoa DTLZ2_3D 2bd110eaae54bffb
+sms_emoa ZDT1 cff591f9f334f1e5
+spea2_sde DTLZ2_3D 8c784bf185ec0852
+spea2_sde ZDT1 6d8c2a86c4c49230
