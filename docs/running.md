@@ -279,9 +279,15 @@ r0/c0MaF, rZCAT) are computed in C++ when the extension is built
 `p.evaluate_batch` and the constraints call it, the loop over a batch runs in
 C++, and `p.native` is the `_core.Native` behind them. The NumPy code stays,
 the reference in the tests (`p.reference`) and what runs without the
-extension; the two give the same values bit for bit wherever NumPy's `sin`,
-`cos`, `exp` and `pow` are the C library's (`_rows.agrees`), which the tests
-check on every problem of these families. `minimize` hands such a problem to
+extension. The C++ suite's `exp`, `log`, `pow`, `sin`, `cos`, `tan` and
+`hypot` are the library's own (`include/mootation/detmath.hpp`, task 14 of
+2026-10-20): the same bits on every platform. The NumPy code calls the C
+library instead, whose last bit may differ between machines: the two agree to
+4 ulps (near zero, to 2·10⁻¹⁵ of the problem's scale; bbob-biobj 4·10⁻¹⁵) wherever
+NumPy's `sin`, `cos`, `exp` and `pow` are the C library's (`_rows.agrees`),
+which the tests check on every problem of these families. Without the
+extension a run takes the NumPy code, and with it the last bits of that
+machine's C library. `minimize` hands such a problem to
 the core, which then evaluates it without calling Python (`native = "auto"`,
 the default; `"off"` calls it as any function), wherever nothing of the
 caller's stands between (`minimize.direct_path` says what does: a batch or
@@ -302,8 +308,13 @@ constraint from five objectives, its dot products of two coordinates written
 out. The controls r0 and c0 are unchanged. MaF8 joined the suite later (task
 12 of 2026-10-19) as version 2 of itself: its distances are the C library's
 `hypot` (`np.hypot`, `std::hypot`) where version 1 took CPython's `math.hypot`,
-an algorithm of its own: the values changed in the last bit. MaF10–12 (WFG)
-stay in Python.
+an algorithm of its own: the values changed in the last bit. Task 14
+(2026-10-20) raised the version of every problem of these families whose code
+calls `exp`, `log`, `pow`, `sin`, `cos`, `tan` or `hypot` once more (the
+library's own functions now; ZDT2's and bbob f13's x² is x·x, which the C
+library's `pow` missed for a few points in a million); unchanged are ZDT1,
+MaF1 and MaF9, their shifts and rotations, and the bbob-biobj pairs of f1 and
+f8 alone (`registry._DETMATH_SAME`). MaF10–12 (WFG) stay in Python.
 
 **MaF14 and MaF15** (Cheng et al. 2017, Eq. 41–50; task 12 of 2026-10-19):
 LSMOP3 and the inverted LSMOP8, the suite's two large-scale problems, at 3, 5,
@@ -320,7 +331,8 @@ reach (`front_exact` False there, `maf.py`, THE FRONT OF MaF14).
 110 + 110 problems are computed in C++ as well (`include/mootation/suite/bbob.hpp`),
 from the numbers each instance drew in Python (x_opt, f_opt, the rotations R
 and Q, Λ¹⁰, f20's signs, f21's peaks, the integer variables' levels), with the
-values of the NumPy code (`benchmarks/bbob.py`), bit for bit. That code takes
+values of the NumPy code (`benchmarks/bbob.py`) up to the last bits of the
+elementary functions (above). That code takes
 its products of vectors and matrices (R·x, x·x, the peaks' (x − y)·Rᵀ) through
 NumPy's BLAS, which adds in an order of its own, with fused multiply-adds; the
 C++ writes that order out — OpenBLAS's kernels as NumPy 2.5 ships them

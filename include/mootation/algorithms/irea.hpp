@@ -60,6 +60,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
@@ -380,7 +381,7 @@ public:
             for (int j = 0; j < pool; ++j) {
                 if (i == j) continue;
                 double ind = eps_plus(Fn[i], Fn[j]);
-                s += -std::exp(-ind / KAPPA_);
+                s += -dm::exp(-ind / KAPPA_);
             }
             F[i] = s;
             vault.get_ind(i).F = s;

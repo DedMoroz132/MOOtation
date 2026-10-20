@@ -49,6 +49,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
@@ -186,7 +187,7 @@ private:
                 if (i == j) continue;
                 if (constraint_mode == ConstraintMode::FEASIBILITY && cvs[j] > 0.0)
                     continue;
-                sum += -std::exp(-ihd(fn[j], fn[i]) / (c * kappa_));
+                sum += -dm::exp(-ihd(fn[j], fn[i]) / (c * kappa_));
             }
             vault.get_ind(i).fitness = sum;
         }
@@ -251,7 +252,7 @@ private:
                     (cv_worst > 0.0 || vault.get_cv(i) > 0.0)) continue;
                 std::vector<double> fni = normalise(vault.objectives_of(i), fmin, fmax);
                 vault.get_ind(i).fitness +=
-                    std::exp(-ihd(fnw, fni) / (c * kappa_));
+                    dm::exp(-ihd(fnw, fni) / (c * kappa_));
             }
 
             vault.swap_active(worst, curr - 1);

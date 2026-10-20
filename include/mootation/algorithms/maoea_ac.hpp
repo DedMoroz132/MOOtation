@@ -61,6 +61,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../individuals.hpp"
@@ -132,8 +133,8 @@ private:
     // ── L^p projection onto H_p (Eq.9) ─────────────────────────────────────
     static std::vector<double> project(const std::vector<double>& f, double p) {
         double s = 0.0;
-        for (double fk : f) s += std::pow(std::max(0.0, fk), p);
-        double lp = std::pow(s, 1.0 / p);
+        for (double fk : f) s += dm::pow(std::max(0.0, fk), p);
+        double lp = dm::pow(s, 1.0 / p);
         std::vector<double> pr(f.size());
         if (lp < 1e-30) return f;
         for (std::size_t i = 0; i < f.size(); ++i) pr[i] = f[i] / lp;
@@ -245,8 +246,10 @@ private:
         }
         double sd = std::sqrt(var);
 
-        double d05 = (std::pow(static_cast<double>(M), 1.0 - 1.0 / 0.5) - 1.0) / sm;
-        double d20 = (std::pow(static_cast<double>(M), 1.0 - 1.0 / 2.0) - 1.0) / sm;
+        // M^(1 - 1/0.5) = 1/M and M^(1 - 1/2) = sqrt(M): a division and a square
+        // root, each correctly rounded (what a correctly rounding pow gives)
+        double d05 = (1.0 / static_cast<double>(M) - 1.0) / sm;
+        double d20 = (std::sqrt(static_cast<double>(M)) - 1.0) / sm;
         double mu  = 0.5 - M * 0.02;
 
         double p;

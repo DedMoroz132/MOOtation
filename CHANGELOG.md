@@ -10,6 +10,22 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/detmath.hpp` (task 14 of 2026-10-20, §2): the library's
+  own `exp`, `log`, `pow`, `sin`, `cos`, `tan`, `acos` and `hypot`
+  (namespace `mootation::dm`), built from +, −, ×, ÷ and sqrt alone, so the
+  same bits on every platform: Tang's table-driven exp and log, Cody & Waite's
+  reduction for the trigonometric ones, double-word arithmetic without FMA
+  (Joldes et al. 2017), Remez coefficients from `tools/detmath/`. Within 1 ulp
+  for exp, log, sin, cos, within 2 for the others (measured below 0.96 on
+  10⁶ points each); special values as C23 Annex F. `_core.detmath.<f>` from
+  Python. The cores, operators, `random.hpp`'s distributions, the hypervolume
+  race and the C++ suite of problems call them instead of the C library's.
+  **Changed results**: every core whose run reaches one of these functions
+  (the operators SBX and polynomial mutation among them); the problems of the
+  C++ suite that call them are one version up (`registry.PROBLEM_VERSION`;
+  not ZDT1, MaF1, MaF9 and the bbob-biobj pairs of f1 and f8), and agree with
+  their NumPy code to a few ulps instead of bit for bit.
+
 - SMS-EMOA and MO-CMA-ES above `hv_exact_max_m` find the least hypervolume
   contributor by the race of Bringmann & Friedrich (Theor. Comput. Sci. 425,
   2012, Algorithm 1; task 14 of 2026-10-20, §11): `hv_contrib = race`, the

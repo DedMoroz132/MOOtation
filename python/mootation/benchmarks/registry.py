@@ -52,6 +52,7 @@
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -2669,14 +2670,45 @@ _register_failing()
 # BLAS's ddot (_poly_edge_distance); with them the noisy copies of such a base.
 # MaF8 from 2026-10-19 (task 12, §6, owner's decision): its distances the C
 # library's hypot, which the C++ suite calls, instead of CPython's math.hypot.
+#
+# One more, from 2026-10-20 (task 14, supplement 1, D1): every problem the C++
+# suite evaluates whose code calls exp, log, pow, sin, cos, tan or hypot —
+# now the library's own (include/mootation/detmath.hpp), the same bits on
+# every platform, where they were the C library's of the machine. Not those
+# that call none of them: ZDT1, MaF1 and MaF9 (and their shifts and
+# rotations), and the bbob-biobj pairs of f1 and f8 alone (_DETMATH_SAME).
+# ZDT2 and bbob's f13 change too: their x ** 2 is x * x now, and MSVC's
+# pow(x, 2) differed from it in the last bit for a few points in a million.
+# The noisy and failing copies follow their bases.
 PROBLEM_VERSION: Dict[str, int] = {
     **{name: 2 for name, r in ROTATED.items()
        if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
     **{f"MaF9_{M}D": 2 for M in (5, 8, 10, 15)},
     **{f"MaF8_{M}D": 2 for M in (3, 5, 8, 10, 15)}}
+
+_DETMATH_SAME = re.compile(r"(?:r|rc|r0|c0|shift)?(?:ZDT1|MaF1_\d+D|MaF9_\d+D)(?:_i\d)?|"
+                           r"bbobbiobj(?:mixint)?(?:01|04|28)_n\d\d_2D")
+
+
+def _in_suite(name: str) -> bool:
+    """Whether the C++ suite evaluates `name` (native.spec's families), with
+    or without the extension."""
+    r = ROTATED.get(name)
+    if r is not None:
+        return r.kind in ("dtlz", "maf", "zdt", "zcat")
+    return bool(_native._BBOB.fullmatch(name) or _native._ZDT.fullmatch(name)
+                or _native._STEMS.fullmatch(name))
+
+
+for _name in list(PROBLEMS):
+    if _in_suite(_name) and not _DETMATH_SAME.fullmatch(_name):
+        PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
 PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
                         for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
                         for level in _noisy.LEVELS})
+PROBLEM_VERSION.update({_fail.name(base, share, kind): PROBLEM_VERSION[base]
+                        for base in _fail.BASES if base in PROBLEM_VERSION
+                        for share in _fail.SHARES for kind in _fail.KINDS})
 
 
 def problem_version(name: str) -> int:

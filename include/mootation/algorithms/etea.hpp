@@ -82,6 +82,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../data_vault.hpp"
@@ -268,7 +269,7 @@ private:
         }
         for (int v = 0; v < s; ++v)
             etcd[v] = (degree[v] > 0)
-                ? std::pow(sumSqrt[v] / degree[v], 2.0)
+                ? dm::pow(sumSqrt[v] / degree[v], 2.0)
                 : 0.0;
     }
 
@@ -416,9 +417,9 @@ private:
             } else {
                 // modified ETCD' without edge L_{pq} (Alg.3 line 12-13).
                 double sq = std::sqrt(emin);
-                double ep_p = std::pow(
+                double ep_p = dm::pow(
                     (std::sqrt(etcd[ep]) * degree[ep] - sq) / (degree[ep] - 1), 2.0);
-                double eq_p = std::pow(
+                double eq_p = dm::pow(
                     (std::sqrt(etcd[eq]) * degree[eq] - sq) / (degree[eq] - 1), 2.0);
                 // remove the individual with the SMALLER ETCD' (the more
                 // crowded one, line 14-18).

@@ -76,6 +76,7 @@
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
@@ -331,7 +332,7 @@ public:
                 }
                 for (int j = 0; j < n; ++j) {
                     if (i == j || cvs[j] > 0.0) continue;
-                    sum += -std::exp(
+                    sum += -dm::exp(
                         -eps_indicator_norm(vault.objectives_of(j), oi, fmin, fmax)
                         / (c * kappa_));
                 }
@@ -341,12 +342,12 @@ public:
                     double ind = eps_indicator_with_cv(
                         vault.objectives_of(j), oi,
                         cvs[j], cvs[i], fmin, fmax);
-                    sum += -std::exp(-ind / (c * kappa_));
+                    sum += -dm::exp(-ind / (c * kappa_));
                 }
             } else {
                 for (int j = 0; j < n; ++j) {
                     if (i == j) continue;
-                    sum += -std::exp(
+                    sum += -dm::exp(
                         -eps_indicator_norm(vault.objectives_of(j), oi, fmin, fmax)
                         / (c * kappa_));
                 }
@@ -420,7 +421,7 @@ public:
                     ind_val = eps_indicator_norm(ow, vault.objectives_of(i),
                                                  fmin, fmax);
                 }
-                vault.get_ind(i).fitness += std::exp(-ind_val / (c * kappa_));
+                vault.get_ind(i).fitness += dm::exp(-ind_val / (c * kappa_));
             }
             vault.swap_active(worst, curr - 1);
             vault.reduce(curr - 1);

@@ -135,6 +135,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
@@ -400,7 +401,7 @@ public:
                 for(int j=0;j<sz;++j){
                     int rr=rnd::uniform_int_distribution<int>(0,sz-1)(rng_);
                     double rv=rnd::uniform_real_distribution<double>(0,1)(rng_);
-                    double F0=(2*rv-1)*std::pow(std::max(1e-12,1-rv), -std::pow(1.0-(double)gen_/std::max(1,t_max_),0.8));
+                    double F0=(2*rv-1)*dm::pow(std::max(1e-12,1-rv), -dm::pow(1.0-(double)gen_/std::max(1,t_max_),0.8));
                     std::vector<double> y(vault.vars_n());
                     for(int t=0;t<vault.vars_n();++t) y[t]=Pw[j].vars[t]+F0*(Pw[j].vars[t]-Pw[rr].vars[t]);
                     Q.push_back(eval(y,bd,vault,scratch,Pw[j].vars));

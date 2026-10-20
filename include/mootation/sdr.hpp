@@ -49,6 +49,8 @@
 #include <limits>
 #include <vector>
 
+#include "detmath.hpp"
+
 namespace mootation {
 namespace sdr {
 
@@ -122,7 +124,7 @@ inline Frame frame_of(const std::vector<std::vector<double>>& fbar)
                 double d = 0.0;
                 for (std::size_t k = 0; k < fbar[i].size(); ++k) d += fbar[i][k] * fbar[j][k];
                 const double c = d / len[i] / len[j];
-                t = std::acos(std::min(1.0, std::max(-1.0, c)));
+                t = dm::acos(std::min(1.0, std::max(-1.0, c)));
             }
             fr.theta[i * n + j] = t;
             fr.theta[j * n + i] = t;

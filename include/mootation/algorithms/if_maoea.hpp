@@ -199,6 +199,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../detail/math_compat.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
@@ -273,7 +274,7 @@ private:
                 for (int j = 0; j < M; ++j) ang[j] = 0.5 * ang[j] + shrink;
             // W_concave: cosine projection, normalized onto the simplex (Steps 3-4)
             std::vector<double> wc(M); double sc = 0.0;
-            for (int j = 0; j < M; ++j) { wc[j] = std::cos(ang[j]); if (wc[j] < 0) wc[j] = 0; sc += wc[j]; }
+            for (int j = 0; j < M; ++j) { wc[j] = dm::cos(ang[j]); if (wc[j] < 0) wc[j] = 0; sc += wc[j]; }
             if (sc < 1e-12) return;
             for (int j = 0; j < M; ++j) wc[j] /= sc;
             // FIX 2026-07-07: W_unit —

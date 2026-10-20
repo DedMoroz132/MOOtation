@@ -10,6 +10,7 @@
 
 #include <vector>
 
+#include "../detmath.hpp"
 #include "common.hpp"
 
 namespace mootation::suite::dtlz {
@@ -20,7 +21,7 @@ inline double g1(const double* xm, int k)
     std::vector<double> t(static_cast<std::size_t>(k));
     for (int j = 0; j < k; ++j) {
         const double d = xm[j] - 0.5;
-        t[static_cast<std::size_t>(j)] = d * d - lm::cos(20.0 * kPi * d);
+        t[static_cast<std::size_t>(j)] = d * d - dm::cos(20.0 * kPi * d);
     }
     return 100.0 * (k + row_sum(t));
 }
@@ -40,7 +41,7 @@ inline double g2(const double* xm, int k)
 inline double g6(const double* xm, int k)
 {
     std::vector<double> t(static_cast<std::size_t>(k));
-    for (int j = 0; j < k; ++j) t[static_cast<std::size_t>(j)] = lm::pow(xm[j], 0.1);
+    for (int j = 0; j < k; ++j) t[static_cast<std::size_t>(j)] = dm::pow(xm[j], 0.1);
     return row_sum(t);
 }
 
@@ -59,9 +60,9 @@ inline void concave(const double* y, double g, int M, double alpha, double* f)
 {
     std::vector<double> c(static_cast<std::size_t>(M - 1)), s(static_cast<std::size_t>(M - 1));
     for (int i = 0; i < M - 1; ++i) {
-        const double xp = alpha != 1.0 ? lm::pow(y[i], alpha) : y[i];
-        c[static_cast<std::size_t>(i)] = lm::cos(xp * kPi / 2.0);
-        s[static_cast<std::size_t>(i)] = lm::sin(xp * kPi / 2.0);
+        const double xp = alpha != 1.0 ? dm::pow(y[i], alpha) : y[i];
+        c[static_cast<std::size_t>(i)] = dm::cos(xp * kPi / 2.0);
+        s[static_cast<std::size_t>(i)] = dm::sin(xp * kPi / 2.0);
     }
     products(c.data(), s.data(), 1.0 + g, M, f);
 }
@@ -78,8 +79,8 @@ inline void degenerate(const double* y, double g, int M, double* f)
             theta[static_cast<std::size_t>(i)] = (kPi / denom) * (1.0 + 2.0 * g * y[i]);
     }
     for (int i = 0; i < M - 1; ++i) {
-        c[static_cast<std::size_t>(i)] = lm::cos(theta[static_cast<std::size_t>(i)]);
-        s[static_cast<std::size_t>(i)] = lm::sin(theta[static_cast<std::size_t>(i)]);
+        c[static_cast<std::size_t>(i)] = dm::cos(theta[static_cast<std::size_t>(i)]);
+        s[static_cast<std::size_t>(i)] = dm::sin(theta[static_cast<std::size_t>(i)]);
     }
     products(c.data(), s.data(), 1.0 + g, M, f);
 }
@@ -107,7 +108,7 @@ inline void evaluate(int which, const double* y, int n, int M, double* f)
             std::vector<double> t(static_cast<std::size_t>(M - 1));
             for (int i = 0; i < M - 1; ++i) {
                 f[i] = y[i];
-                t[static_cast<std::size_t>(i)] = (y[i] / (1.0 + g)) * (1.0 + lm::sin(3.0 * kPi * y[i]));
+                t[static_cast<std::size_t>(i)] = (y[i] / (1.0 + g)) * (1.0 + dm::sin(3.0 * kPi * y[i]));
             }
             const double h = static_cast<double>(M) - row_sum(t);
             f[M - 1] = (1.0 + g) * h;
@@ -135,7 +136,7 @@ enum class Cons { C1_DTLZ1, C1_DTLZ3, C2_DTLZ2, C2_Convex, C3_DTLZ1, C3_DTLZ4 };
 // Part I's convex DTLZ2: f_i^4 (i < M), f_M^2 (c_dtlz.convex).
 inline void convex(double* f, int M)
 {
-    for (int i = 0; i < M - 1; ++i) f[i] = lm::pow(f[i], 4.0);
+    for (int i = 0; i < M - 1; ++i) f[i] = dm::pow(f[i], 4.0);
     f[M - 1] = f[M - 1] * f[M - 1];
 }
 
@@ -156,7 +157,7 @@ inline void constraints(Cons which, const double* f, int M, double r2, double ce
         case Cons::C2_DTLZ2: {
             double best = 0.0;
             for (int i = 0; i < M; ++i) {
-                const double corner = lm::pow(f[i] - 1.0, 2.0) + (s2 - lm::pow(f[i], 2.0)) - r2;
+                const double corner = dm::pow(f[i] - 1.0, 2.0) + (s2 - dm::pow(f[i], 2.0)) - r2;
                 best = i == 0 ? corner : nan_min(best, corner);
             }
             std::vector<double> d(static_cast<std::size_t>(M));
@@ -184,7 +185,7 @@ inline void constraints(Cons which, const double* f, int M, double r2, double ce
         }
         case Cons::C3_DTLZ4:
             for (int j = 0; j < M; ++j) {
-                const double p = lm::pow(f[j], 2.0);
+                const double p = dm::pow(f[j], 2.0);
                 g[j] = -(p / 4.0 + (s2 - p) - 1.0);
             }
             return;

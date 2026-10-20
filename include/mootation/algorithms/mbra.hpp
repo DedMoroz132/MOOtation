@@ -62,6 +62,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
@@ -421,7 +422,7 @@ public:
             for (int j = 0; j < pool; ++j) {
                 if (i == j) continue;
                 double ind = eps_plus(Fn[j], Fn[i]);     // I_{ε+}(x2=j, x1=i)
-                s += -std::exp(-ind / KAPPA_);
+                s += -dm::exp(-ind / KAPPA_);
             }
             F[i] = s;
         }

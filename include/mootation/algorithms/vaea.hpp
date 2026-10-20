@@ -53,6 +53,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../detail/math_compat.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
@@ -133,7 +134,7 @@ private:
         if (denom < 1e-30) return M_PI / 2.0;
         double c = dot / denom;
         c = std::max(-1.0, std::min(1.0, c));
-        return std::acos(c);
+        return dm::acos(c);
     }
 
     void rearrange(DataVault<Ind_t>& vault,

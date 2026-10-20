@@ -44,6 +44,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "bound_repair.hpp"
 #include "poly_mutation.hpp"
 #include "sbx.hpp"   // sbx_require_bound
@@ -99,12 +100,12 @@ inline double poly_step(double x, double lo, double hi, double eta_m, double u)
     double dq;
     if (u < 0.5) {
         const double b   = std::clamp((x - lo) / dx, 0.0, 1.0);
-        const double tmp = 2.0 * u + (1.0 - 2.0 * u) * std::pow(1.0 - b, eta_m + 1.0);
-        dq = std::pow(tmp, 1.0 / (eta_m + 1.0)) - 1.0;
+        const double tmp = 2.0 * u + (1.0 - 2.0 * u) * dm::pow(1.0 - b, eta_m + 1.0);
+        dq = dm::pow(tmp, 1.0 / (eta_m + 1.0)) - 1.0;
     } else {
         const double b   = std::clamp((hi - x) / dx, 0.0, 1.0);
-        const double tmp = 2.0 * (1.0 - u) + (2.0 * u - 1.0) * std::pow(1.0 - b, eta_m + 1.0);
-        dq = 1.0 - std::pow(tmp, 1.0 / (eta_m + 1.0));
+        const double tmp = 2.0 * (1.0 - u) + (2.0 * u - 1.0) * dm::pow(1.0 - b, eta_m + 1.0);
+        dq = 1.0 - dm::pow(tmp, 1.0 / (eta_m + 1.0));
     }
     return std::clamp(x + dq * dx, lo, hi);
 }

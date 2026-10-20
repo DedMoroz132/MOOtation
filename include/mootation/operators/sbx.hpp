@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "bound_repair.hpp"
 #include "../random.hpp"
 
@@ -105,19 +106,19 @@ inline void sbx(const std::vector<double>& p1,
         // Lower child (near y1)
         {
             double bl = 1.0 + 2.0 * (y1 - lo) / dy;
-            double al = 2.0 - std::pow(bl, -(eta_c + 1.0));
+            double al = 2.0 - dm::pow(bl, -(eta_c + 1.0));
             double bq = (u <= 1.0 / al)
-                ? std::pow(u * al,            1.0 / (eta_c + 1.0))
-                : std::pow(1.0 / (2.0 - u * al), 1.0 / (eta_c + 1.0));
+                ? dm::pow(u * al,            1.0 / (eta_c + 1.0))
+                : dm::pow(1.0 / (2.0 - u * al), 1.0 / (eta_c + 1.0));
             c1[j] = std::clamp(0.5 * ((y1 + y2) - bq * dy), lo, hi);
         }
         // Upper child (near y2)
         {
             double bh = 1.0 + 2.0 * (hi - y2) / dy;
-            double ah = 2.0 - std::pow(bh, -(eta_c + 1.0));
+            double ah = 2.0 - dm::pow(bh, -(eta_c + 1.0));
             double bq = (u <= 1.0 / ah)
-                ? std::pow(u * ah,            1.0 / (eta_c + 1.0))
-                : std::pow(1.0 / (2.0 - u * ah), 1.0 / (eta_c + 1.0));
+                ? dm::pow(u * ah,            1.0 / (eta_c + 1.0))
+                : dm::pow(1.0 / (2.0 - u * ah), 1.0 / (eta_c + 1.0));
             c2[j] = std::clamp(0.5 * ((y1 + y2) + bq * dy), lo, hi);
         }
         if (uni(rng) < 0.5) std::swap(c1[j], c2[j]);

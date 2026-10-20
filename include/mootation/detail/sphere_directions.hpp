@@ -25,6 +25,7 @@
 #include <cmath>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../das_dennis.hpp"
 
 namespace mootation {
@@ -80,7 +81,7 @@ uniform_sphere_directions(int m, int K) {
                         double t = R[a][j] - R[b][j]; d2 += t*t;
                     }
                     double d = std::sqrt(std::max(d2, 1e-6));
-                    double w = 1.0 / std::pow(d, s + 1.0);
+                    double w = 1.0 / dm::pow(d, s + 1.0);
                     for (int j = 0; j < m; ++j)
                         Frc[a][j] += (R[a][j] - R[b][j]) / d * w;
                 }

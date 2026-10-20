@@ -52,6 +52,7 @@
 #include <numeric>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../data_vault.hpp"
 
 namespace mootation {
@@ -84,7 +85,7 @@ public:
                 if (denom < 1e-14) continue;
                 // Eq.6/8: theta = arccos|a·b / (||a||·||b||)| — the acute angle.
                 double c = std::min(1.0, std::abs(dot) / denom);
-                tmin = std::min(tmin, std::acos(c));
+                tmin = std::min(tmin, dm::acos(c));
             }
         return (N <= 1 || tmin == std::numeric_limits<double>::max())
             ? (SRV_PI / 4.0) : tmin;
@@ -158,7 +159,7 @@ public:
                 double dot = 0.0;
                 for (int k = 0; k < m; ++k) dot += fstar[i][k] * fstar[j][k];
                 float a = static_cast<float>(
-                    std::acos(std::max(-1.0, std::min(1.0, dot))));
+                    dm::acos(std::max(-1.0, std::min(1.0, dot))));
                 ang[i][j] = ang[j][i] = a;
             }
 
@@ -170,7 +171,7 @@ public:
                 if (i == j) continue;
                 if (ang[i][j] <= tc) {
                     double r = ang[i][j] / tc;
-                    rho[i] += std::exp(-(r * r));
+                    rho[i] += dm::exp(-(r * r));
                 }
             }
 

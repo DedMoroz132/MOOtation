@@ -50,11 +50,13 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
+
 namespace mootation::problems {
 
 namespace detail {
 
-inline double half_pi() { return std::acos(-1.0) / 2.0; }
+inline double half_pi() { return dm::kPi / 2.0; }
 
 // g of the DTLZ "distance" block: sum of (x_i - 0.5)^2 over the tail.
 inline double g_sphere(const std::vector<double>& x, int m)
@@ -70,11 +72,11 @@ inline double g_sphere(const std::vector<double>& x, int m)
 // g of DTLZ1/DTLZ3: the multimodal variant.
 inline double g_multimodal(const std::vector<double>& x, int m)
 {
-    const double pi = std::acos(-1.0);
+    const double pi = dm::kPi;
     double s = 0.0;
     for (std::size_t i = static_cast<std::size_t>(m) - 1; i < x.size(); ++i) {
         const double d = x[i] - 0.5;
-        s += d * d - std::cos(20.0 * pi * d);
+        s += d * d - dm::cos(20.0 * pi * d);
     }
     const double k = static_cast<double>(x.size()) - (static_cast<double>(m) - 1.0);
     return 100.0 * (k + s);
@@ -120,9 +122,9 @@ struct DTLZ2 {
         for (int j = 0; j < M; ++j) {
             double v = 1.0 + g;
             for (int i = 0; i < M - 1 - j; ++i)
-                v *= std::cos(x[static_cast<std::size_t>(i)] * hp);
+                v *= dm::cos(x[static_cast<std::size_t>(i)] * hp);
             if (j > 0)
-                v *= std::sin(x[static_cast<std::size_t>(M - 1 - j)] * hp);
+                v *= dm::sin(x[static_cast<std::size_t>(M - 1 - j)] * hp);
             f[static_cast<std::size_t>(j)] = v;
         }
     }
@@ -144,9 +146,9 @@ struct DTLZ3 {
         for (int j = 0; j < M; ++j) {
             double v = 1.0 + g;
             for (int i = 0; i < M - 1 - j; ++i)
-                v *= std::cos(x[static_cast<std::size_t>(i)] * hp);
+                v *= dm::cos(x[static_cast<std::size_t>(i)] * hp);
             if (j > 0)
-                v *= std::sin(x[static_cast<std::size_t>(M - 1 - j)] * hp);
+                v *= dm::sin(x[static_cast<std::size_t>(M - 1 - j)] * hp);
             f[static_cast<std::size_t>(j)] = v;
         }
     }
@@ -169,9 +171,9 @@ struct DTLZ4 {
         for (int j = 0; j < M; ++j) {
             double v = 1.0 + g;
             for (int i = 0; i < M - 1 - j; ++i)
-                v *= std::cos(std::pow(x[static_cast<std::size_t>(i)], ALPHA) * hp);
+                v *= dm::cos(dm::pow(x[static_cast<std::size_t>(i)], ALPHA) * hp);
             if (j > 0)
-                v *= std::sin(std::pow(x[static_cast<std::size_t>(M - 1 - j)], ALPHA) * hp);
+                v *= dm::sin(dm::pow(x[static_cast<std::size_t>(M - 1 - j)], ALPHA) * hp);
             f[static_cast<std::size_t>(j)] = v;
         }
     }
@@ -229,13 +231,13 @@ struct ZDT3 {
 
     static void eval(const std::vector<double>& x, std::vector<double>& f)
     {
-        const double pi = std::acos(-1.0);
+        const double pi = dm::kPi;
         double s = 0.0;
         for (std::size_t i = 1; i < x.size(); ++i) s += x[i];
         const double g = 1.0 + 9.0 * s / (static_cast<double>(x.size()) - 1.0);
         f[0] = x[0];
         const double r = f[0] / g;
-        f[1] = g * (1.0 - std::sqrt(r) - r * std::sin(10.0 * pi * f[0]));
+        f[1] = g * (1.0 - std::sqrt(r) - r * dm::sin(10.0 * pi * f[0]));
     }
     static void eval_limits(const std::vector<double>&, std::vector<double>&) {}
 };

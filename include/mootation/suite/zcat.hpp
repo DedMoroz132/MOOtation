@@ -11,6 +11,7 @@
 
 #include <vector>
 
+#include "../detmath.hpp"
 #include "common.hpp"
 
 namespace mootation::suite::zcat {
@@ -50,19 +51,19 @@ inline void prods(const double* a, int M, const double* last, double* F)
 
 inline double wavy(double y1)
 {
-    return (lm::cos((2 * kK - 1) * y1 * kPi) + 2 * y1 + 4 * kK * (1 - y1) - 1) / (4 * kK);
+    return (dm::cos((2 * kK - 1) * y1 * kPi) + 2 * y1 + 4 * kK * (1 - y1) - 1) / (4 * kK);
 }
 
 inline double quintic_sum(const double* Y, int M)
 {
     Vec t(static_cast<std::size_t>(M - 1));
-    for (int i = 0; i < M - 1; ++i) t[static_cast<std::size_t>(i)] = lm::pow(0.5 - Y[i], 5.0);
-    return row_sum(t) / (2 * (M - 1) * lm::pow(0.5, 5.0)) + 0.5;
+    for (int i = 0; i < M - 1; ++i) t[static_cast<std::size_t>(i)] = dm::pow(0.5 - Y[i], 5.0);
+    return row_sum(t) / (2 * (M - 1) * 0x1p-5) + 0.5;                // 0.5^5
 }
 
 inline double quintic(double v)
 {
-    return (lm::pow(0.5 - v, 5.0) + lm::pow(0.5, 5.0)) / (2.0 * lm::pow(0.5, 5.0));
+    return (dm::pow(0.5 - v, 5.0) + 0x1p-5) / (2.0 * 0x1p-5);   // 0.5^5
 }
 
 // sin and cos of Y * pi/2 over the first M - 1 variables
@@ -71,8 +72,8 @@ inline void sin_cos(const double* Y, int M, Vec& s, Vec& c)
     s.resize(static_cast<std::size_t>(M - 1));
     c.resize(static_cast<std::size_t>(M - 1));
     for (int i = 0; i < M - 1; ++i) {
-        s[static_cast<std::size_t>(i)] = lm::sin(Y[i] * kHalfPi);
-        c[static_cast<std::size_t>(i)] = lm::cos(Y[i] * kHalfPi);
+        s[static_cast<std::size_t>(i)] = dm::sin(Y[i] * kHalfPi);
+        c[static_cast<std::size_t>(i)] = dm::cos(Y[i] * kHalfPi);
     }
 }
 
@@ -95,7 +96,7 @@ inline void position_functions(int which, const double* Y, int M, double* F)
                 b[i] = 1.0 - s[i];
             }
             prods(a.data(), M, b.data(), F);
-            F[M - 1] = 1.0 - lm::sin(Y[0] * kHalfPi);
+            F[M - 1] = 1.0 - dm::sin(Y[0] * kHalfPi);
             return;
         case 3:
         case 11:
@@ -114,13 +115,13 @@ inline void position_functions(int which, const double* Y, int M, double* F)
             for (std::size_t i = 0; i < p; ++i) a[i] = 1.0 - Y[i];
             const double mu = row_sum(a) / (M - 1);
             for (int i = 0; i < M - 1; ++i) F[i] = Y[i];
-            F[M - 1] = (lm::exp(8.0 * mu) - 1.0) / (lm::exp(8.0) - 1.0);
+            F[M - 1] = (dm::exp(8.0 * mu) - 1.0) / (dm::kExp8 - 1.0);
             if (which == 17) {                               // ZCAT-4: the degenerate region
                 bool flat = true;
                 for (int i = 0; i < M - 1; ++i) flat = flat && Y[i] <= 0.5;
                 if (flat) {
                     for (int i = 0; i < M - 1; ++i) F[i] = Y[0];
-                    F[M - 1] = (lm::exp(8.0 * (1.0 - Y[0])) - 1.0) / (lm::exp(8.0) - 1.0);
+                    F[M - 1] = (dm::exp(8.0 * (1.0 - Y[0])) - 1.0) / (dm::kExp8 - 1.0);
                 }
             }
             return;
@@ -128,9 +129,9 @@ inline void position_functions(int which, const double* Y, int M, double* F)
         case 6: {
             const double kappa = 40.0, rho = 0.05;
             const double mu = row_sum(Y, p) / (M - 1);
-            const double num = lm::pow(1 + lm::exp(2 * kappa * mu - kappa), -1.0) - rho * mu
-                             - lm::pow(1 + lm::exp(kappa), -1.0) + rho;
-            const double den = lm::pow(1 + lm::exp(-kappa), -1.0) - lm::pow(1 + lm::exp(kappa), -1.0) + rho;
+            const double num = dm::pow(1 + dm::exp(2 * kappa * mu - kappa), -1.0) - rho * mu
+                             - dm::pow(1 + dm::kExp40, -1.0) + rho;
+            const double den = dm::pow(1 + dm::kExpMinus40, -1.0) - dm::pow(1 + dm::kExp40, -1.0) + rho;
             for (int i = 0; i < M - 1; ++i) F[i] = Y[i];
             F[M - 1] = num / den;
             return;
@@ -167,7 +168,7 @@ inline void position_functions(int which, const double* Y, int M, double* F)
             }
             prods(a.data(), M, b.data(), F);
             for (int i = 0; i < M - 1; ++i) F[i] = 1.0 - F[i];
-            F[M - 1] = lm::cos(Y[0] * kHalfPi);
+            F[M - 1] = dm::cos(Y[0] * kHalfPi);
             return;
         case 9:
         case 13:
@@ -176,7 +177,7 @@ inline void position_functions(int which, const double* Y, int M, double* F)
             for (int j = 2; j < M; ++j)
                 F[j - 1] = (row_sum(s.data(), static_cast<std::size_t>(M - j)) + c[static_cast<std::size_t>(M - j)]) /
                            (M - j + 1);
-            F[M - 1] = lm::cos(Y[0] * kHalfPi);
+            F[M - 1] = dm::cos(Y[0] * kHalfPi);
             if (which == 13) {
                 for (int i = 0; i < M - 1; ++i) F[i] = 1.0 - F[i];
                 F[M - 1] = 1.0 - wavy(Y[0]);
@@ -188,8 +189,8 @@ inline void position_functions(int which, const double* Y, int M, double* F)
             for (std::size_t i = 0; i < p; ++i) a[i] = 1.0 - Y[i];
             const double mu = row_sum(a) / (M - 1);
             for (int i = 0; i < M - 1; ++i) F[i] = Y[i];
-            F[M - 1] = (lm::pow(rho, -1.0) - lm::pow(mu + rho, -1.0)) /
-                       (lm::pow(rho, -1.0) - lm::pow(1 + rho, -1.0));
+            F[M - 1] = (dm::pow(rho, -1.0) - dm::pow(mu + rho, -1.0)) /
+                       (dm::pow(rho, -1.0) - dm::pow(1 + rho, -1.0));
             return;
         }
         case 12:
@@ -201,24 +202,24 @@ inline void position_functions(int which, const double* Y, int M, double* F)
             return;
         case 14:
         case 16: {
-            const double s1 = lm::sin(Y[0] * kHalfPi);
-            F[0] = which == 14 ? lm::pow(s1, 2.0) : s1;
+            const double s1 = dm::sin(Y[0] * kHalfPi);
+            F[0] = which == 14 ? dm::pow(s1, 2.0) : s1;
             for (int j = 2; j < M - 1; ++j)
-                F[j - 1] = lm::pow(s1, (which == 14 ? 2.0 : 1.0) + static_cast<double>(j - 1) / (M - 2));
+                F[j - 1] = dm::pow(s1, (which == 14 ? 2.0 : 1.0) + static_cast<double>(j - 1) / (M - 2));
             if (M > 2)
-                F[M - 2] = 0.5 * (1.0 + lm::sin((which == 14 ? 6.0 : 10.0) * Y[0] * kHalfPi - kHalfPi));
-            F[M - 1] = which == 14 ? lm::cos(Y[0] * kHalfPi) : wavy(Y[0]);
+                F[M - 2] = 0.5 * (1.0 + dm::sin((which == 14 ? 6.0 : 10.0) * Y[0] * kHalfPi - kHalfPi));
+            F[M - 1] = which == 14 ? dm::cos(Y[0] * kHalfPi) : wavy(Y[0]);
             return;
         }
         case 15:
-            for (int j = 1; j < M; ++j) F[j - 1] = lm::pow(Y[0], 1.0 + static_cast<double>(j - 1) / (4.0 * M));
+            for (int j = 1; j < M; ++j) F[j - 1] = dm::pow(Y[0], 1.0 + static_cast<double>(j - 1) / (4.0 * M));
             F[M - 1] = wavy(Y[0]);
             return;
         case 19: {
             const bool one = in_regions(19, Y[0]) || M == 2;
             for (int i = 0; i < M - 1; ++i) F[i] = one ? Y[0] : Y[i];
             const double ybar = one ? Y[0] : row_sum(Y, p) / (M - 1);
-            F[M - 1] = 1.0 - ybar - lm::cos(2 * kA * kPi * ybar + kHalfPi) / (2 * kA * kPi);
+            F[M - 1] = 1.0 - ybar - dm::cos(2 * kA * kPi * ybar + kHalfPi) / (2 * kA * kPi);
             return;
         }
         default:
@@ -241,67 +242,67 @@ inline void topology(int which, const double* YI, int m, int n, double* out)
     switch (which) {
         case 1:
             for (int p = 0; p < k; ++p)
-                out[p] = sum_terms([](double y, double t) { return lm::sin(1.5 * kPi * y + t); }, p) / (2 * m) + 0.5;
+                out[p] = sum_terms([](double y, double t) { return dm::sin(1.5 * kPi * y + t); }, p) / (2 * m) + 0.5;
             return;
         case 2:
             for (int p = 0; p < k; ++p)
-                out[p] = sum_terms([](double y, double t) { return y * y * lm::sin(4.5 * kPi * y + t); }, p) /
+                out[p] = sum_terms([](double y, double t) { return y * y * dm::sin(4.5 * kPi * y + t); }, p) /
                              (2 * m) + 0.5;
             return;
         case 3:
             for (int p = 0; p < k; ++p)
                 out[p] = sum_terms([](double y, double t) {
-                             const double c = lm::cos(kPi * y + t);
+                             const double c = dm::cos(kPi * y + t);
                              return c * c;
                          }, p) / m;
             return;
         case 4: {
             const double s = row_sum(YI, static_cast<std::size_t>(m));
             for (int p = 0; p < k; ++p)
-                out[p] = sum_terms([&](double y, double t) { return y * lm::cos(4.0 * kPi * s / m + t); }, p) /
+                out[p] = sum_terms([&](double y, double t) { return y * dm::cos(4.0 * kPi * s / m + t); }, p) /
                              (2 * m) + 0.5;
             return;
         }
         case 5:
             for (int p = 0; p < k; ++p)
                 out[p] = sum_terms([](double y, double t) {
-                             return lm::pow(lm::sin(2.0 * kPi * y - 1.0 + t), 3.0);
+                             return dm::pow(dm::sin(2.0 * kPi * y - 1.0 + t), 3.0);
                          }, p) / (2 * m) + 0.5;
             return;
         case 6: {
             Vec sq(static_cast<std::size_t>(m));
             for (int q = 0; q < m; ++q) sq[static_cast<std::size_t>(q)] = YI[q] * YI[q];
             const double rms = std::sqrt(row_sum(sq) / m);
-            const double num0 = -10.0 * lm::exp(-0.4 * rms) + 10.0 + kE;
-            const double den = -10.0 * lm::exp(-0.4) - lm::exp(-1.0) + 10.0 + kE;
+            const double num0 = -10.0 * dm::exp(-0.4 * rms) + 10.0 + kE;
+            const double den = -10.0 * dm::kExpMinus04 - dm::kExpMinus1 + 10.0 + kE;
             for (int p = 0; p < k; ++p)
-                out[p] = (num0 - lm::exp(sum_terms([](double y, double t) {
-                                                return lm::pow(lm::cos(11.0 * kPi * y + t), 3.0);
+                out[p] = (num0 - dm::exp(sum_terms([](double y, double t) {
+                                                return dm::pow(dm::cos(11.0 * kPi * y + t), 3.0);
                                             }, p) / m)) / den;
             return;
         }
         case 7: {
             const double mu = row_sum(YI, static_cast<std::size_t>(m)) / m;
-            const double den = 1.0 + kE - lm::exp(-1.0);
+            const double den = 1.0 + kE - dm::kExpMinus1;
             for (int p = 0; p < k; ++p)
-                out[p] = (mu + lm::exp(lm::sin(7.0 * kPi * mu - kHalfPi + theta(p))) - lm::exp(-1.0)) / den;
+                out[p] = (mu + dm::exp(dm::sin(7.0 * kPi * mu - kHalfPi + theta(p))) - dm::kExpMinus1) / den;
             return;
         }
         case 8:
             for (int p = 0; p < k; ++p)
-                out[p] = sum_terms([](double y, double t) { return std::abs(lm::sin(2.5 * kPi * (y - 0.5) + t)); }, p) /
+                out[p] = sum_terms([](double y, double t) { return std::abs(dm::sin(2.5 * kPi * (y - 0.5) + t)); }, p) /
                          m;
             return;
         case 9: {
             const double s = row_sum(YI, static_cast<std::size_t>(m)) / (2 * m);
             for (int p = 0; p < k; ++p)
-                out[p] = s - sum_terms([](double y, double t) { return std::abs(lm::sin(2.5 * kPi * y - kHalfPi + t)); }, p) /
+                out[p] = s - sum_terms([](double y, double t) { return std::abs(dm::sin(2.5 * kPi * y - kHalfPi + t)); }, p) /
                                  (2 * m) + 0.5;
             return;
         }
         case 10:
             for (int p = 0; p < k; ++p)
-                out[p] = lm::pow(sum_terms([](double y, double t) { return lm::sin((4.0 * y - 2.0) * kPi + t); }, p), 3.0) /
+                out[p] = dm::pow(sum_terms([](double y, double t) { return dm::sin((4.0 * y - 2.0) * kPi + t); }, p), 3.0) /
                              (2.0 * (m * m * m)) + 0.5;
             return;
         default:

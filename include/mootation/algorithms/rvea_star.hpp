@@ -81,6 +81,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
@@ -140,7 +141,7 @@ private:
             const double c = dot / fp_norm;   // the vectors are unit vectors
             if (c > best_cos) { best_cos = c; best = r; }
         }
-        angle = std::acos(std::max(-1.0, std::min(1.0, best_cos)));
+        angle = dm::acos(std::max(-1.0, std::min(1.0, best_cos)));
         return best;
     }
 
@@ -153,7 +154,7 @@ private:
                 if (i == j) continue;
                 double dot = 0.0;
                 for (std::size_t k = 0; k < vecs[i].size(); ++k) dot += vecs[i][k] * vecs[j][k];
-                gamma[i] = std::min(gamma[i], std::acos(std::max(-1.0, std::min(1.0, dot))));
+                gamma[i] = std::min(gamma[i], dm::acos(std::max(-1.0, std::min(1.0, dot))));
             }
         return gamma;
     }
@@ -243,7 +244,7 @@ private:
             double theta = 0.0;
             vec[i] = nearest(fp, fp_norm, W, theta);
             const double gamma_v = (gamma[vec[i]] > 1e-14) ? gamma[vec[i]] : 1.0;
-            const double P = static_cast<double>(m) * std::pow(t_frac, alpha_) * theta / gamma_v;
+            const double P = static_cast<double>(m) * dm::pow(t_frac, alpha_) * theta / gamma_v;
             apd[i] = (1.0 + P) * fp_norm;
             vault.get_ind(i).ref_vector_idx = vec[i];
             vault.get_ind(i).apd            = apd[i];

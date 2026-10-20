@@ -8,19 +8,18 @@
 // evaluate_batch and constraints_batch, and a run that evaluates without
 // crossing into Python, call this code.
 //
-// BIT FOR BIT WITH NUMPY. The values must be those the NumPy code of
-// benchmarks/ gives (it stays as the reference in the tests), so every
-// expression repeats the order of its NumPy counterpart:
+// NUMPY'S ORDER. The values follow the NumPy code of benchmarks/ (it stays
+// as the reference in the tests, and is what runs without the extension), so
+// every expression repeats the order of its NumPy counterpart:
 //   * a sum along a row (np.sum(..., axis=1), np.mean) is NumPy's pairwise sum
 //     of the row from 0.0 (numpy_sum.hpp);
 //   * a product along a row (np.prod(..., axis=1)) is sequential, left to
 //     right;
-//   * x ** 2 of an array is x * x, ** 0.5 its sqrt; every other power, of an
-//     array or of a Python float, and sin, cos and exp are the C library's,
-//     called one value at a time (lm below): what NumPy computes on the
-//     machines where its functions agree with math's (benchmarks/_rows.py,
-//     agrees; with AVX-512 NumPy has an exp, and on Linux a sin, cos and pow,
-//     of its own, and there the two differ in the last bit now and then);
+//   * x ** 2 of an array is x * x, ** 0.5 its sqrt; every other power, and
+//     sin, cos, exp, log and hypot, are the library's own (dm::,
+//     detmath.hpp; task 14 of 2026-10-20, supplement 1, D1), the same bits on
+//     every platform. NumPy calls the C library instead, so the two agree to
+//     a few ulps, not to the bit (the tests compare them with a tolerance);
 //   * a Python expression a * b / c is (a * b) / c and 2 * pi * x is
 //     (2 * pi) * x: each line below keeps the grouping of the one it follows;
 //   * np.clip and np.minimum as NumPy's scalar loops decide (clip, nan_min).
@@ -30,7 +29,8 @@
 //
 // Built without contraction into fused multiply-adds (-ffp-contract=off,
 // /fp:precise; python/CMakeLists.txt): a fused a * b + c rounds once where
-// NumPy rounds twice.
+// NumPy rounds twice. Problem version 2 (task 14): the values of version 1
+// were the C library's of the machine.
 // ============================================================================
 
 #include <cmath>
@@ -45,34 +45,11 @@
 #pragma clang fp contract(off)
 #endif
 
-#if defined(_MSC_VER)
-#define MOOTATION_SUITE_NOINLINE __declspec(noinline)
-#else
-#define MOOTATION_SUITE_NOINLINE __attribute__((noinline))
-#endif
-
 namespace mootation::suite {
 
 constexpr double kPi = 3.141592653589793;           // math.pi
 constexpr double kHalfPi = kPi / 2.0;               // zcat.HALF_PI
 constexpr double kE = 2.718281828459045;            // math.e
-
-// The C library's functions of one value, as math's and (where they agree)
-// NumPy's call them. Not inlined, and the argument read through a volatile,
-// so that no compiler vectorises a loop around them with a vector library of
-// its own (MSVC's __vdecl_sin and the like) or folds a call on a constant at
-// compile time with an arithmetic of its own: either may differ in the last
-// bit from the library Python calls at run time.
-namespace lm {
-MOOTATION_SUITE_NOINLINE inline double sin(double x) { volatile double v = x; return std::sin(v); }
-MOOTATION_SUITE_NOINLINE inline double cos(double x) { volatile double v = x; return std::cos(v); }
-MOOTATION_SUITE_NOINLINE inline double exp(double x) { volatile double v = x; return std::exp(v); }
-MOOTATION_SUITE_NOINLINE inline double pow(double x, double e)
-{
-    volatile double v = x, w = e;
-    return std::pow(v, w);
-}
-}   // namespace lm
 
 // np.sum of n values in a row (0.0 plus the pairwise sum).
 inline double row_sum(const double* a, std::size_t n) { return np::sum(a, n); }
