@@ -10,6 +10,31 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- **The trajectories of all algorithms changed once (task 14 of 2026-10-20);
+  a run at a given seed is now the same on Windows, Linux and macOS.**
+  Version 2 of the trajectories (`trajectory_version` in every run's
+  `meta.json`; a campaign refuses to mix versions in one folder or in
+  `--merge`). Runs made before are not reproduced. The parts:
+  - `random.hpp`: the library's own distributions and shuffle over
+    `std::mt19937` (53-bit uniforms by genrand_res53, integers by Lemire's
+    method, normals by the polar method, gamma by Marsaglia & Tsang), in
+    place of the standard library's, which differ between implementations;
+  - every `std::sort` stable, the tied `partial_sort`s and `nth_element`s
+    with one result;
+  - no contraction into fused multiply-adds: `-ffp-contract=off` /
+    `/fp:precise` on the CMake target (it reaches the consumer's code in the
+    translation units that link it) and pragmas in `fp_contract.hpp`; a build
+    with `-ffast-math`, `-Ofast` or `/fp:fast` is warned of, 32-bit x86 with
+    x87 arithmetic refused;
+  - `_core.fp_env()` and `fp_env` in `meta.json`: denormals flushed to zero
+    in the process are recorded and warned of;
+  - `tests/golden_fingerprints.txt`, checked by the ctest
+    `golden_fingerprints` on every platform; a probe with NaN objectives;
+    `tools/compat_check.py --golden / --write-golden`;
+  - `mootation selftest` / `mootation.selftest()`: does this build give the
+    library's runs bit for bit;
+  - README: "Reproducibility across platforms".
+
 - SMS-EMOA and MO-CMA-ES above `hv_exact_max_m` find the least hypervolume
   contributor by the race of Bringmann & Friedrich (Theor. Comput. Sci. 425,
   2012, Algorithm 1; task 14 of 2026-10-20, §11): `hv_contrib = race`, the

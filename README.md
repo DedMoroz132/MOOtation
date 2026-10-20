@@ -273,6 +273,43 @@ that constraint handling is live, nothing more. The verification reports quote
 the papers at length and are therefore kept outside the repository; the
 conclusions live in the headers.
 
+## Reproducibility across platforms
+
+A run at a given seed is the same run, bit for bit, on Windows (MSVC), Linux
+(GCC, Clang) and macOS (Apple Clang on ARM64): the same population, the same
+archive, the same trajectory. What makes it so:
+
+- the random numbers are the library's own (`random.hpp`): `std::mt19937`,
+  which the standard defines bit for bit, and every distribution and shuffle
+  written out in the library, not taken from the standard library, whose
+  distributions differ between implementations;
+- the elementary functions of the cores, the operators and the C++ benchmark
+  suite are the library's own (`detmath.hpp`), built from the operations
+  IEEE 754 rounds exactly;
+- no contraction into fused multiply-adds: the CMake target `MOOtation::MOOtation`
+  carries `-ffp-contract=off` (GCC, Clang) or `/fp:precise` (MSVC), and
+  `fp_contract.hpp` says the same with pragmas. The option is on the INTERFACE
+  target, so it applies to the consumer's own code in the translation units
+  that link it, too;
+- sorts with one result where elements tie;
+- the CI compares every algorithm's fingerprints with the list in the
+  repository (`tests/golden_fingerprints.txt`) on all four platforms.
+
+`mootation selftest` (or `mootation.selftest()`) checks a build in seconds.
+
+Not covered: the benchmark problems evaluated in Python (RE, RCM, CRE,
+RWMOP — NumPy), the nine Python-level scalarization and SQP methods
+(NumPy's generators are portable, `np.exp` and `np.sin` are not), the
+metrics computed with NumPy and BLAS (the last bits; they do not steer the
+algorithms), and builds that change floating-point semantics: `-ffast-math`,
+`-Ofast`, `/fp:fast`, contraction allowed (for example the headers used
+without the CMake target and with `-march=native`), or 32-bit x86 with the
+x87 unit's arithmetic (refused at compile time; use `-msse2 -mfpmath=sse`).
+A process where another library switched on flushing denormals to zero gives
+other runs too; a campaign records it (`fp_env` in `meta.json`) and warns.
+Runs before version 2 of the trajectories (`trajectory_version` in
+`meta.json`) are not reproduced by this one.
+
 ## Benchmarks and campaigns
 
 `mootation.benchmarks` holds 1350 problems across 49 families, 2 to 15
