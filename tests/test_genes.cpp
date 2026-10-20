@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include <mootation/random.hpp>
+
 #include "harness.hpp"
 
 namespace {
@@ -49,10 +51,13 @@ void test_random_and_clamp()
     std::cout << "-- a random gene, the clamp, the rate --\n";
     ops::gene_levels() = {3, 2};
     std::mt19937 a(11), b(11);
-    std::uniform_int_distribution<int> old(0, 1);
+    // the library's own distribution (random.hpp, task 14): the standard
+    // library's draws differ between implementations (libc++ from libstdc++
+    // and MSVC's), the library's do not
+    mootation::rnd::uniform_int_distribution<int> old(0, 1);
     bool same = true;
     for (int t = 0; t < 1000; ++t) same = same && ops::random_gene(1, a) == old(b);
-    check(same, "a random bit is the draw of uniform_int_distribution<int>(0, 1), as before");
+    check(same, "a random bit is the draw of rnd::uniform_int_distribution<int>(0, 1)");
     std::vector<int> seen(3, 0);
     for (int t = 0; t < 3000; ++t) ++seen[static_cast<std::size_t>(ops::random_gene(0, a))];
     check(seen[0] > 900 && seen[1] > 900 && seen[2] > 900, "a gene of 3 levels: all three");
