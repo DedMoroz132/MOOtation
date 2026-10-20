@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- **MO-CMA-ES computes the hypervolume contributions exactly at every number
+  of objectives** (task 14 of 2026-10-20, supplement 3, Д8.1). Its step-size
+  adaptation counts an offspring that survives as a success, so a wrongly
+  removed point inflates sigma and the population drifts from the front;
+  measured on DTLZ2 at six objectives, the race gave HV 0 and sigma 1.13,
+  the exact contributions HV 0.71 and sigma 0.145. `n_samples` > 0 and
+  `hv_contrib = race` or `mc` are now refused with that reason (a
+  `ValueError`), `hv_exact_max_m` and `race_*` reported ignored.
+  **Changed results**: MO-CMA-ES's runs above five objectives (the race
+  before) are exact; the exact cost grows steeply with M.
+
 - **The trajectories of all algorithms changed once (task 14 of 2026-10-20);
   a run at a given seed is now the same on Windows, Linux and macOS.**
   Version 2 of the trajectories (`trajectory_version` in every run's
@@ -35,7 +46,7 @@ always listed under **Changed** or **Removed**.
     library's runs bit for bit;
   - README: "Reproducibility across platforms".
 
-- SMS-EMOA and MO-CMA-ES above `hv_exact_max_m` find the least hypervolume
+- SMS-EMOA above `hv_exact_max_m` finds the least hypervolume
   contributor by the race of Bringmann & Friedrich (Theor. Comput. Sci. 425,
   2012, Algorithm 1; task 14 of 2026-10-20, §11): `hv_contrib = race`, the
   new default there. Samples in every point's bounding box in rounds, points
@@ -52,7 +63,8 @@ always listed under **Changed** or **Removed**.
   ends it when the bounds are that close; `Result.settings` and `meta.json`
   count the steps stopped at `race_max_samples` (`race_capped_steps`,
   `race_capped_share`) and a campaign warns when a run's share exceeds 1 %.
-  **Changed results**: both at more than five objectives.
+  **Changed results**: SMS-EMOA at more than five objectives (MO-CMA-ES:
+  exact, above).
 
 - SMS-EMOA and MO-CMA-ES compute the hypervolume contributions exactly up to
   `hv_exact_max_m` objectives (new knob, 5 by default), Monte-Carlo above

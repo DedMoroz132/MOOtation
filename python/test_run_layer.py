@@ -8087,10 +8087,11 @@ def refs_build_extend_keeps_a_smaller_sample_where_the_builder_does():
 def n_samples_reaches_the_monte_carlo_of_sms_emoa_mo_cma_es_and_hype():
     """Task 10, §7: n_samples, the Monte-Carlo sample points of a step from four
     objectives, reaches SMS-EMOA, MO-CMA-ES and HypE and only them; given, it
-    decides SMS-EMOA's and MO-CMA-ES's contributions: at four objectives,
-    exact by default since task 13 (§3), 0 is the default's run and 10 000
-    Monte-Carlo, a run of its own; HypE refuses 0, and a fraction is refused
-    everywhere."""
+    decides SMS-EMOA's contributions: at four objectives, exact by default
+    since task 13 (§3), 0 is the default's run and 10 000 Monte-Carlo, a run
+    of its own; MO-CMA-ES takes 0 (the default's run) and refuses more, its
+    contributions exact at every M (task 14, supplement 3, Д8.1); HypE
+    refuses 0, and a fraction is refused everywhere."""
     if _core_with("Config") is None:
         print("  skip  n_samples...: stale _core"); return
     import mootation
@@ -8099,11 +8100,14 @@ def n_samples_reaches_the_monte_carlo_of_sms_emoa_mo_cma_es_and_hype():
     run = lambda alg, **kw: mootation.minimize(f, box, 4, algorithm=alg, pop_size=12,  # noqa: E731
                                                n_gen=4, seed=3, **kw)
     for alg in ("sms_emoa", "mo_cma_es"):
-        a, b, c = run(alg), run(alg, n_samples=10000), run(alg, n_samples=0)
-        assert "n_samples" not in b.ignored and "n_samples" not in c.ignored, alg
+        a, c = run(alg), run(alg, n_samples=0)
+        assert "n_samples" not in c.ignored, alg
         assert a.objectives == c.objectives, alg              # exact at M = 4 by default
-        assert a.objectives != b.objectives, alg              # Monte-Carlo: another run
         raises(ValueError, run, alg, n_samples=0.5)
+    b = run("sms_emoa", n_samples=10000)
+    assert "n_samples" not in b.ignored and b.objectives != run("sms_emoa").objectives
+    e = raises(ValueError, run, "mo_cma_es", n_samples=10000)   # Monte-Carlo: another run
+    assert e is not None and "step-size adaptation" in str(e), e
     r = run("hype", n_samples=500)
     assert "n_samples" not in r.ignored and r.objectives != run("hype").objectives
     raises(ValueError, run, "hype", n_samples=0)
@@ -10403,14 +10407,16 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
 
 @test
 def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
-    """Task 13, §3: by default SMS-EMOA and MO-CMA-ES compute the hypervolume
-    contributions exactly up to hv_exact_max_m = 5 objectives (HVC4D at M = 4)
-    and above by the race for the least contributor (task 14, §11): the default
-    run at M = 4 is the run with n_samples = 0 and hv_contrib = hvc, at M = 6
-    the one with hv_contrib = race, bit for bit; hv_contrib = mc is the
-    Monte-Carlo of before, the run with n_samples = 10000; hv_exact_max_m = 6
-    makes M = 6 exact; Result.settings names the method; R2-EMOA reports the
-    knobs ignored."""
+    """Task 13, §3: by default SMS-EMOA computes the hypervolume contributions
+    exactly up to hv_exact_max_m = 5 objectives (HVC4D at M = 4) and above by
+    the race for the least contributor (task 14, §11): the default run at M = 4
+    is the run with n_samples = 0 and hv_contrib = hvc, at M = 6 the one with
+    hv_contrib = race, bit for bit; hv_contrib = mc is the Monte-Carlo of
+    before, the run with n_samples = 10000; hv_exact_max_m = 6 makes M = 6
+    exact. MO-CMA-ES is exact at every M (task 14, supplement 3, Д8.1): at
+    M = 6 its default is the run with n_samples = 0, WFG; it refuses
+    hv_contrib = race and mc and reports hv_exact_max_m and race_* ignored.
+    Result.settings names the method; R2-EMOA reports the knobs ignored."""
     if not _have_numpy() or _core_with("max_evaluations") is None:
         print("    (skipped: no NumPy or no extension)"); return
     from mootation import minimize
@@ -10428,6 +10434,16 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
         d4 = run("DTLZ2_4D", alg)
         assert same(d4, run("DTLZ2_4D", alg, n_samples=0, hv_contrib="hvc")), alg
         assert dict(d4.settings)["contributions"] == "exact, hvc4d at M = 4", d4.settings
+    c6 = run("DTLZ2_6D", "mo_cma_es")
+    assert same(c6, run("DTLZ2_6D", "mo_cma_es", n_samples=0, hv_contrib="wfg"))
+    assert dict(c6.settings)["contributions"] == "exact, wfg at M = 6", c6.settings
+    assert "hv_exact_max_m" not in dict(c6.settings), c6.settings
+    i6 = run("DTLZ2_6D", "mo_cma_es", hv_exact_max_m=3, race_eps=0.1)
+    assert same(c6, i6) and {"hv_exact_max_m", "race_eps"} <= set(i6.ignored), i6.ignored
+    for w in ("race", "mc"):
+        e = raises(ValueError, run, "DTLZ2_6D", "mo_cma_es", hv_contrib=w)
+        assert e is not None and "step-size adaptation" in str(e), (w, e)
+    for alg in ("sms_emoa",):
         d6 = run("DTLZ2_6D", alg)
         assert same(d6, run("DTLZ2_6D", alg, hv_contrib="race")), alg
         assert dict(d6.settings)["contributions"].startswith("race (eps 0.01, delta 0.000001; "), \
@@ -10439,7 +10455,6 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
         e6 = run("DTLZ2_6D", alg, hv_exact_max_m=6)
         assert same(e6, run("DTLZ2_6D", alg, n_samples=0)) and not same(e6, d6), alg
         assert dict(e6.settings)["contributions"] == "exact, wfg at M = 6", e6.settings
-        assert "hv_exact_max_m" not in d4.ignored, d4.ignored
     r = run("DTLZ2_4D", "r2_emoa", hv_exact_max_m=6, n_samples=0, race_eps=0.1)
     assert {"hv_exact_max_m", "n_samples", "race_eps"} <= set(r.ignored) and \
         list(r.settings) == [], r.ignored

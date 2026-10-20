@@ -148,11 +148,12 @@ inline const std::vector<std::string>& knob_names() {
 //                  step from four objectives (10 000); sms_emoa and mo_cma_es:
 //                  given, it decides from M = 4 (0 exact at every M, N > 0
 //                  Monte-Carlo with N), not given hv_exact_max_m does
-//   hv_exact_max_m sms_emoa, mo_cma_es: the exact contributions up to that
-//                  many objectives, the race (or Monte-Carlo) above (5;
-//                  hv_contribution.hpp, hv::ContribChoice)
+//   hv_exact_max_m sms_emoa: the exact contributions up to that many
+//                  objectives, the race (or Monte-Carlo) above (5;
+//                  hv_contribution.hpp, hv::ContribChoice); mo_cma_es is
+//                  exact at every M and does not take it (nor race_*)
 //   race_eps, race_delta, race_max_samples, race_abs_tol
-//                  sms_emoa, mo_cma_es: the race for the least contributor
+//                  sms_emoa: the race for the least contributor
 //                  above hv_exact_max_m (Bringmann & Friedrich 2012): the
 //                  answer within (1 + eps) of the least with probability
 //                  1 - delta, or within abs_tol * prod(r - ideal) of it;

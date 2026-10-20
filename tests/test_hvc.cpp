@@ -249,6 +249,25 @@ int main()
         refused = false;
         try { cma.set_word("hv_contrib", "HVC"); } catch (const std::invalid_argument&) { refused = true; }
         check(refused, "mo_cma_es refuses hv_contrib = HVC");
+        // MO-CMA-ES: exact at every M (task 14, supplement 3, Д8.1)
+        for (const char* w : {"race", "mc"}) {
+            refused = false;
+            try { cma.set_word("hv_contrib", w); } catch (const std::invalid_argument&) { refused = true; }
+            check(refused, "mo_cma_es refuses hv_contrib = race and mc");
+        }
+        refused = false;
+        try { cma.set_param("n_samples", 10000); } catch (const std::invalid_argument&) { refused = true; }
+        check(refused && cma.set_param("n_samples", 0), "mo_cma_es refuses n_samples > 0, takes 0");
+        check(!cma.set_param("hv_exact_max_m", 6) && !cma.set_param("race_eps", 0.1) &&
+                  !cma.set_param("race_max_samples", 100),
+              "mo_cma_es does not take hv_exact_max_m and race_*");
+        {
+            hv::ContribChoice e;
+            e.exact_only = true;
+            check(e.way(4) == hv::ContribChoice::Way::exact && e.way(10) == hv::ContribChoice::Way::exact &&
+                      e.use_hvc(4),
+                  "exact_only: exact at every M, HVC4D at M = 4");
+        }
         mootation::R2EMOACore<mootation::NSGAII_Individual> r2;
         check(!r2.set_word("hv_contrib", "hvc"), "r2_emoa has no hypervolume: hv_contrib not taken");
         check(!r2.set_word("hv_algo", "box"), "r2_emoa has no hypervolume: hv_algo not taken");

@@ -452,7 +452,15 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
 //                            from M = 4 n_samples decides, as before task 14:
 //                            0 exact at every M, N > 0 Monte-Carlo with N
 // The exact contributions' cost grows steeply with M, hence the threshold.
+// exact_only (MO-CMA-ES; task 14, supplement 3, Д8.1): exact at every M;
+// n_samples > 0 and hv_contrib = race | mc are refused (kExactOnly says why),
+// hv_exact_max_m and race_* are not taken (the caller reports them ignored).
 struct ContribChoice {
+    static constexpr const char* kExactOnly =
+        "MO-CMA-ES's step-size adaptation needs exact hypervolume contributions: an "
+        "offspring that survives counts as a success, and a wrongly chosen point inflates "
+        "sigma (task 14, measurement of section 11: DTLZ2 at 6 objectives, the race gave "
+        "HV 0 and sigma 1.13, the exact contributions HV 0.71 and sigma 0.145)";
     static constexpr int kSamples = 10000;
     enum class Approx { race, mc };
     std::optional<int> n_samples;       // given by the caller
@@ -465,11 +473,12 @@ struct ContribChoice {
     std::size_t m = 0;                  // the objectives of the last step (settings())
     std::size_t race_steps = 0, race_samples = 0, race_exact = 0, race_capped = 0;
     std::size_t steps = 0;              // every step that compared contributions
+    bool exact_only = false;            // MO-CMA-ES (Д8.1): exact at every M
 
     enum class Way { exact, mc, race };
     Way way(std::size_t M) const
     {
-        if (M < 4) return Way::exact;
+        if (M < 4 || exact_only) return Way::exact;
         if (n_samples && !approx_given) return *n_samples > 0 ? Way::mc : Way::exact;
         if (static_cast<int>(M) <= exact_max_m) return Way::exact;
         return approx == Approx::race ? Way::race : Way::mc;
@@ -506,9 +515,13 @@ struct ContribChoice {
 
     bool set_param(const std::string& k, double v)
     {
+        if (exact_only && (k == "hv_exact_max_m" || k.rfind("race_", 0) == 0)) return false;
         if (k == "n_samples") {
             if (!(v >= 0.0 && v <= 1e9 && v == std::floor(v)))
                 throw std::invalid_argument("n_samples must be a whole number >= 0");
+            if (exact_only && v > 0.0)
+                throw std::invalid_argument(std::string("n_samples > 0: ") + kExactOnly +
+                                            "; n_samples must be 0 or not given");
             n_samples = static_cast<int>(v);
             return true;
         }
@@ -546,6 +559,9 @@ struct ContribChoice {
         if (k == "hv_contrib") {
             if (w == "hvc" || w == "wfg") { hvc = w == "hvc"; return true; }
             if (w == "race" || w == "mc") {
+                if (exact_only)
+                    throw std::invalid_argument("hv_contrib = '" + w + "': " + kExactOnly +
+                                                "; hv_contrib must be hvc or wfg");
                 approx = w == "race" ? Approx::race : Approx::mc;
                 approx_given = true;
                 return true;
@@ -583,13 +599,13 @@ struct ContribChoice {
                                           approx_given ? "hv_contrib = mc" : "above hv_exact_max_m") + ")";
         else if (use_hvc(m))       how = m == 3 ? "exact, hvc3d" : "exact, hvc4d";
         else                       how = box ? "exact, box" : "exact, wfg";
-        std::vector<std::pair<std::string, std::string>> out = {
-                {"hv_exact_max_m", std::to_string(exact_max_m)},
-                {"n_samples", n_samples ? std::to_string(*n_samples) : "default"},
-                {"hv_contrib", std::string(hvc ? "hvc" : "wfg") + ", " +
-                                   (approx == Approx::race ? "race" : "mc")},
-                {"hv_algo", box ? "box" : "auto"},
-                {"contributions", how + " at M = " + std::to_string(m)}};
+        std::vector<std::pair<std::string, std::string>> out;
+        if (!exact_only) out.emplace_back("hv_exact_max_m", std::to_string(exact_max_m));
+        out.emplace_back("n_samples", n_samples ? std::to_string(*n_samples) : "default");
+        out.emplace_back("hv_contrib", std::string(hvc ? "hvc" : "wfg") +
+                                           (exact_only ? "" : approx == Approx::race ? ", race" : ", mc"));
+        out.emplace_back("hv_algo", box ? "box" : "auto");
+        out.emplace_back("contributions", how + " at M = " + std::to_string(m));
         if (race_steps > 0) {
             // the steps the guarantee does not cover; a campaign warns above 1 %
             out.emplace_back("race_capped_steps", std::to_string(race_capped));

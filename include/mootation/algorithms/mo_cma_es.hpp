@@ -78,25 +78,24 @@ namespace mootation {
 //     objective); the 2007 paper (§3.2.3) calls boundary every element whose
 //     contribution depends on the reference point — the same two points at
 //     M = 2, more at M ≥ 3.
-//   MOCMA-5. Contributions as SMS-EMOA's (sms_emoa.hpp SMS-2, the table
-//     there; hv::ContribChoice): exact up to hv_exact_max_m objectives (5 by
-//     default; task 13 of 2026-10-19, §3 — before it, Monte-Carlo from
-//     M = 4), M = 3 and 4 by HVC3D / HVC4D unless hv_contrib = wfg, WFG
-//     above (hv_algo = box: boxes); above the threshold the race for the
-//     least contributor (task 14 of 2026-10-20, §11; SMS-2 there), or with
-//     hv_contrib = mc Monte-Carlo (10 000 samples a step); n_samples given
-//     without race or mc decides from M = 4 (0 exact, N > 0 Monte-Carlo). The
-//     boundary elements, kept whatever their contributions, are not
-//     candidates in the race but still cover the others' boxes (Voss et al.,
-//     GECCO 2010, put the race into this algorithm). The paper (Igel, Hansen &
-//     Roth 2007) computes them exactly. With the Monte-Carlo estimate the removed point is close to
-//     random among the small contributions (SMS-2), and since an offspring
-//     that survives counts as a success (Eq. 9) the step sizes then grow and
-//     the population can drift from the front: a property of the estimate,
-//     not a fault. HVC and boxes give WFG's values up to the order of the
-//     sums, not bit for bit: the run may take ANOTHER TRAJECTORY. The
-//     previous defaults are n_samples = 10000 with hv_contrib = wfg.
-//     Result.settings names the knobs and the method.
+//   MOCMA-5. The contributions are EXACT AT EVERY M (task 14 of
+//     2026-10-20, supplement 3, Д8.1; hv::ContribChoice with exact_only), as
+//     the paper (Igel, Hansen & Roth 2007) computes them: M = 3 and 4 by
+//     HVC3D / HVC4D unless hv_contrib = wfg, WFG above (hv_algo = box:
+//     boxes). The step-size adaptation counts an offspring that survives as a
+//     success (Eq. 9): a wrongly removed point inflates sigma, and the
+//     population drifts from the front. Measured (task 14, §11): DTLZ2 at
+//     M = 6, the race for the least contributor (Voss et al., GECCO 2010, put
+//     it into this algorithm) gave HV 0 and sigma 1.13 against the exact
+//     contributions' 0.71 and 0.145; Monte-Carlo (task 13) did the same. So
+//     n_samples > 0 and hv_contrib = race | mc are REFUSED with that reason,
+//     not ignored; hv_exact_max_m and race_* are reported ignored; n_samples
+//     = 0 is the default's run. Before task 13 the default was Monte-Carlo
+//     from M = 4 (n_samples = 10000 with hv_contrib = wfg), from task 13
+//     exact up to M = 5: those runs are not given again. HVC and boxes give
+//     WFG's values up to the order of the sums, not bit for bit: the run may
+//     take ANOTHER TRAJECTORY. Result.settings names the knobs and the
+//     method.
 //   MOCMA-6. C is factorised by Cholesky for every offspring (O(n³)); the
 //     paper's implementation updates the factor incrementally (Suttorp,
 //     Hansen & Igel 2009), which samples the same distribution faster.
@@ -121,7 +120,7 @@ private:
     double sigma0_    = 0.6;      // §2
     double alpha_pen_ = 1e-6;     // §2, Eq. 5
     double p_thresh_  = 0.44;     // §2
-    hv::ContribChoice how_;       // MOCMA-5: exact or Monte-Carlo, and how
+    hv::ContribChoice how_;       // MOCMA-5: exact at every M (exact_only), and how
     hv::HvcKept hvc_;             // the HVC3D structure between steps
     std::vector<double> lo_, hi_;
     std::mt19937 rng_{std::random_device{}()};
@@ -285,7 +284,7 @@ private:
             for (std::size_t t = 1; t < Fv.size(); ++t) if (Fv[t][k] < Fv[b][k]) b = t;
             boundary[b] = 1;
         }
-        auto c = how_.compute(Fv, r, hvc_, rng_, &boundary);  // MOCMA-5 (race: not candidates)
+        auto c = how_.compute(Fv, r, hvc_, rng_, &boundary);  // MOCMA-5 (exact)
         for (std::size_t t = 0; t < Fv.size(); ++t) if (boundary[t]) c[t] = inf;
         double least = inf;
         for (double x : c) least = std::min(least, x);
@@ -313,14 +312,15 @@ private:
     }
 
 public:
-    MOCMAESCore() = default;
+    MOCMAESCore() { how_.exact_only = true; }              // MOCMA-5
 
     void set_seed(unsigned s)       { rng_.seed(s); }
     // The HVC3D structure kept between steps (MOCMA-5), for the tests.
     const hv::HvcKept& hvc_kept() const { return hvc_; }
-    void set_n_samples(int s)       { how_.n_samples = s; }
+    void set_n_samples(int s)       { how_.set_param("n_samples", s); }   // MOCMA-5: 0 only
     void set_initial_sigma(double s){ sigma0_ = s; }
-    // MOCMA-5: n_samples, hv_exact_max_m; hv_contrib, hv_algo
+    // MOCMA-5: n_samples (0), hv_contrib (hvc, wfg), hv_algo; hv_exact_max_m and
+    // race_* not taken
     bool set_param(const std::string& k, double v)       { return how_.set_param(k, v); }
     bool set_word(const std::string& k, const std::string& w) { return how_.set_word(k, w); }
     std::vector<std::pair<std::string, std::string>> effective_settings() const
