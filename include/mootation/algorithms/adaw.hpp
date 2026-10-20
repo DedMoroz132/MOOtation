@@ -246,7 +246,7 @@ private:
             std::nth_element(d.begin(), d.begin() + (k - 1), d.end());
             kth[i] = d[k - 1];
         }
-        std::sort(kth.begin(), kth.end());
+        std::stable_sort(kth.begin(), kth.end());
         double r = kth[n / 2];
         if (r < 1e-12) r = 1e-12;
         // D(p) = 1 − Prod R(p,q), with R = d/r when d <= r and 1 otherwise (Eq.1–2)
@@ -436,7 +436,7 @@ private:
                     if (a == b) continue;
                     nn[a] = std::min(nn[a], edist(AFn[a], AFn[b]));
                 }
-            std::sort(nn.begin(), nn.end());
+            std::stable_sort(nn.begin(), nn.end());
             ra = nn[A / 2];
             if (ra < 1e-12) ra = 1e-12;
         }

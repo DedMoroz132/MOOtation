@@ -145,7 +145,7 @@ private:
                 vault.get_ind(static_cast<std::size_t>(i)).rank = rank;
                 for (int j : S[i]) if (--count[j] == 0) next.push_back(j);
             }
-            std::sort(next.begin(), next.end());
+            std::stable_sort(next.begin(), next.end());
             fronts.push_back(std::move(cur));
             cur = std::move(next);
             ++rank;

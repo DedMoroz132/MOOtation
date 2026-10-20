@@ -271,7 +271,10 @@ struct KdTree {
         std::nth_element(idx.begin() + static_cast<std::ptrdiff_t>(l),
                          idx.begin() + static_cast<std::ptrdiff_t>(mid),
                          idx.begin() + static_cast<std::ptrdiff_t>(r),
-                         [&](std::size_t a, std::size_t b) { return G[a * m + dim] < G[b * m + dim]; });
+                         [&](std::size_t a, std::size_t b) {   // equal values by index: one tree
+                             return G[a * m + dim] < G[b * m + dim] ||
+                                    (G[a * m + dim] == G[b * m + dim] && a < b);
+                         });
         const std::size_t left = build(G, l, mid, (dim + 1) % m);
         const std::size_t right = build(G, mid, r, (dim + 1) % m);
         nodes[id].left = left;

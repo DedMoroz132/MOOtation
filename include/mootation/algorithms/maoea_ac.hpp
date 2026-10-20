@@ -492,7 +492,7 @@ public:
             for (int v : P) inP[v] = 1;
             std::vector<int> rest;
             for (int v = 0; v < pool; ++v) if (!inP[v]) rest.push_back(v);
-            std::sort(rest.begin(), rest.end(),
+            std::stable_sort(rest.begin(), rest.end(),
                       [&](int a, int b){ return CF[a] < CF[b]; });
             for (int v : rest) {
                 if (static_cast<int>(P.size()) >= N) break;
@@ -500,7 +500,7 @@ public:
             }
         }
         if (static_cast<int>(P.size()) > N) {
-            std::sort(P.begin(), P.end(),
+            std::stable_sort(P.begin(), P.end(),
                       [&](int a, int b){ return CF[a] < CF[b]; });
             P.resize(N);
         }

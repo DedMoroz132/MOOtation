@@ -214,7 +214,7 @@ private:
             chosen = nd;
             if (static_cast<int>(nd.size()) < eff_arch_) {
                 // Fill with best dominated.
-                std::sort(dom_idx.begin(), dom_idx.end(), [&](int a, int b){
+                std::stable_sort(dom_idx.begin(), dom_idx.end(), [&](int a, int b){
                     return ind_of(a).fitness < ind_of(b).fitness;
                 });
                 int needed = eff_arch_ - static_cast<int>(nd.size());
@@ -242,7 +242,7 @@ private:
                 sd[ci].reserve(cand.size());
                 for(std::size_t cj=0;cj<cand.size();++cj)
                     if(ci!=cj) sd[ci].push_back(dist_of(cand[ci], cand[cj]));
-                std::sort(sd[ci].begin(),sd[ci].end());
+                std::stable_sort(sd[ci].begin(),sd[ci].end());
             }
             while (static_cast<int>(cand.size()) > eff_arch_) {
                 int sz = static_cast<int>(cand.size());

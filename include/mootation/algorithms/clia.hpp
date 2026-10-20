@@ -268,7 +268,7 @@ private:
             if (cl_F[r].empty()) continue;
             Cluster c;
             c.F = cl_F[r];
-            std::sort(c.F.begin(), c.F.end(), [&](int a, int b) {
+            std::stable_sort(c.F.begin(), c.F.end(), [&](int a, int b) {
                 return pdm(pool[a].objs, osin[a]) < pdm(pool[b].objs, osin[b]);
             });
             c.center = c.F.front();          // smallest PDM
@@ -278,7 +278,7 @@ private:
         int C = (int)clusters.size();
         if (C == 0) {  // degenerate: no frontier attached anywhere — keep best N by mean
             std::vector<int> idx(n); std::iota(idx.begin(), idx.end(), 0);
-            std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+            std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
                 double ma=0,mb=0; for(double v:pool[a].objs) ma+=v; for(double v:pool[b].objs) mb+=v; return ma<mb; });
             std::vector<Sol> out; for (int k = 0; k < std::min(N_, n); ++k) out.push_back(pool[idx[k]]);
             return out;
@@ -295,7 +295,7 @@ private:
             clusters[best].NF.push_back(i);
         }
         for (auto& c : clusters) {
-            std::sort(c.NF.begin(), c.NF.end(), [&](int a, int b) {
+            std::stable_sort(c.NF.begin(), c.NF.end(), [&](int a, int b) {
                 return l2(pool[a].objs, pool[c.center].objs)
                      < l2(pool[b].objs, pool[c.center].objs);
             });
@@ -388,7 +388,9 @@ private:
         std::vector<int> ord(dense.size()); std::iota(ord.begin(), ord.end(), 0);
         if ((int)ord.size() > n_keep)
             std::nth_element(ord.begin(), ord.begin() + n_keep, ord.end(),
-                             [&](int a, int b) { return score[a] > score[b]; });
+                             [&](int a, int b) {        // equal scores by index: one result
+                                 return score[a] > score[b] || (score[a] == score[b] && a < b);
+                             });
         int keep = std::min<int>(n_keep, (int)ord.size());
 
         std::vector<std::vector<double>> newZ;

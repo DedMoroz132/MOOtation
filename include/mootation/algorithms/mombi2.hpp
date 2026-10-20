@@ -417,7 +417,7 @@ public:
                 mu[i] = best;
             }
             std::iota(order.begin(), order.end(), 0);
-            std::sort(order.begin(), order.end(), [&](int a, int b){
+            std::stable_sort(order.begin(), order.end(), [&](int a, int b){
                 if (mu[a] != mu[b]) return mu[a] < mu[b];
                 return vault.get_ind(a).l2 < vault.get_ind(b).l2;
             });
@@ -430,7 +430,7 @@ public:
         // ── Line 12: reduce — N best by (rank, L2) ─────────────────────────
         std::vector<int> all(pool);
         std::iota(all.begin(), all.end(), 0);
-        std::sort(all.begin(), all.end(), [&](int a, int b){
+        std::stable_sort(all.begin(), all.end(), [&](int a, int b){
             if (rank[a] != rank[b]) return rank[a] < rank[b];
             return vault.get_ind(a).l2 < vault.get_ind(b).l2;
         });

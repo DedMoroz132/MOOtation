@@ -214,7 +214,7 @@ public:
         // Sort all by δ descending, pick first N−m that are not yet centroids
         std::vector<int> by_delta(n);
         std::iota(by_delta.begin(), by_delta.end(), 0);
-        std::sort(by_delta.begin(), by_delta.end(),
+        std::stable_sort(by_delta.begin(), by_delta.end(),
                   [&](int a, int b){ return delta[a] > delta[b]; });
         for (int idx : by_delta) {
             if (static_cast<int>(centroids.size()) >= N) break;

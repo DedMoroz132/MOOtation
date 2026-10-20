@@ -123,7 +123,7 @@ private:
                 for (int b : S[static_cast<std::size_t>(a)])
                     if (--count[static_cast<std::size_t>(b)] == 0) next.push_back(b);
             }
-            std::sort(next.begin(), next.end());
+            std::stable_sort(next.begin(), next.end());
             out.push_back(std::move(front));
             cur = std::move(next);
         }

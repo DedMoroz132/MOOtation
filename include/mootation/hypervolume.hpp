@@ -154,7 +154,7 @@ private:
         idx.resize(k);
         std::iota(idx.begin(), idx.end(), std::size_t{0});
         const double* base = P.data();
-        std::sort(idx.begin(), idx.end(), [base, d](std::size_t a, std::size_t b) {
+        std::stable_sort(idx.begin(), idx.end(), [base, d](std::size_t a, std::size_t b) {
             const double* x = base + a * d;
             const double* y = base + b * d;
             for (std::size_t j = d; j-- > 0;)
@@ -173,7 +173,7 @@ private:
     double hv2(const std::vector<double>& P, std::size_t k) {
         pairs_.resize(k);
         for (std::size_t i = 0; i < k; ++i) pairs_[i] = {P[2 * i], P[2 * i + 1]};
-        std::sort(pairs_.begin(), pairs_.end());
+        std::stable_sort(pairs_.begin(), pairs_.end());
         double area = 0.0, low = ref_[1];
         for (const auto& q : pairs_) {
             if (q.second < low) {
@@ -238,7 +238,7 @@ inline std::size_t covered(const double* F, std::size_t n, std::size_t m,
     if (m == 0) throw std::invalid_argument("hypervolume: no objectives");
     std::vector<std::size_t> order(n);
     std::iota(order.begin(), order.end(), std::size_t{0});
-    std::sort(order.begin(), order.end(),
+    std::stable_sort(order.begin(), order.end(),
               [F, m](std::size_t a, std::size_t b) { return F[a * m] < F[b * m]; });
     std::vector<double> P(n * m);
     for (std::size_t r = 0; r < n; ++r)

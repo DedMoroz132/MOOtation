@@ -296,7 +296,7 @@ public:
             // therefore always lands in an earlier layer than an infeasible
             // one from the same cluster, and earlier layers are taken first.
             const bool cm = (constraint_mode != ConstraintMode::NONE);
-            std::sort(cl.begin(), cl.end(), [&](int a, int b) {
+            std::stable_sort(cl.begin(), cl.end(), [&](int a, int b) {
                 if (cm) {
                     double ca = vault.get_cv(a), cb = vault.get_cv(b);
                     bool fa = (ca <= 0.0), fb = (cb <= 0.0);

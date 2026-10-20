@@ -212,7 +212,7 @@ private:
             int axis = order[a];
             if (a == m - 1) { clusters[axis] = remaining; break; }
             // the cs individuals nearest by angle (2) to the axis
-            std::sort(remaining.begin(), remaining.end(), [&](int p, int q) {
+            std::stable_sort(remaining.begin(), remaining.end(), [&](int p, int q) {
                 return angle_to_axis(Fn[p], axis) < angle_to_axis(Fn[q], axis);
             });
             int take = std::min(cs, static_cast<int>(remaining.size()));
@@ -462,7 +462,7 @@ public:
         if (static_cast<int>(survivors.size()) < N) {
             std::vector<int> rest;
             for (int v = 0; v < pool; ++v) if (!used[v]) rest.push_back(v);
-            std::sort(rest.begin(), rest.end(),
+            std::stable_sort(rest.begin(), rest.end(),
                       [&](int a, int b){ return conv[a] < conv[b]; });
             for (int v : rest) {
                 if (static_cast<int>(survivors.size()) >= N) break;
@@ -470,7 +470,7 @@ public:
             }
         }
         if (static_cast<int>(survivors.size()) > N) {
-            std::sort(survivors.begin(), survivors.end(),
+            std::stable_sort(survivors.begin(), survivors.end(),
                       [&](int a, int b){ return conv[a] < conv[b]; });
             survivors.resize(N);
         }

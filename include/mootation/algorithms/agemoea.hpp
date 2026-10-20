@@ -579,7 +579,7 @@ public:
                 // Partial front: score and sort descending, take first K.
                 survival_score(vault, fronts[d], d + 1, p_geom, np);
                 std::vector<int> sorted_front = fronts[d];
-                std::sort(sorted_front.begin(), sorted_front.end(),
+                std::stable_sort(sorted_front.begin(), sorted_front.end(),
                     [&](int a, int b) {
                         return vault.get_ind(a).survival_score
                              > vault.get_ind(b).survival_score;

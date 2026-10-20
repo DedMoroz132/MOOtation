@@ -247,7 +247,7 @@ private:
 
         for (int obj = 0; obj < m; ++obj) {
             std::vector<int> sorted = front;
-            std::sort(sorted.begin(), sorted.end(), [&](int a, int b) {
+            std::stable_sort(sorted.begin(), sorted.end(), [&](int a, int b) {
                 return at(a, obj) < at(b, obj);
             });
 
@@ -512,7 +512,9 @@ public:
                 for (int v : front) survivors.push_back(v);
             } else {
                 int needed = keep - static_cast<int>(survivors.size());
-                std::partial_sort(front.begin(), front.begin() + needed, front.end(),
+                // stable: equal crowding distances keep the front's order, the
+                // same with every standard library (task 14 of 2026-10-20, §4)
+                std::stable_sort(front.begin(), front.end(),
                     [&](int a, int b) {
                         return vault.get_ind(a).crowding_distance
                              > vault.get_ind(b).crowding_distance;

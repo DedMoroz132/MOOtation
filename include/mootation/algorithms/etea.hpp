@@ -375,7 +375,7 @@ private:
                 if (D[p][q] <= rad) T.push_back(q);
             }
             // Sort(T,p): decreasing distance from p (Alg.2 line 5).
-            std::sort(T.begin(), T.end(),
+            std::stable_sort(T.begin(), T.end(),
                       [&](int a, int b){ return D[p][a] > D[p][b]; });
             // F(q_i) += i  (Alg.2 line 6-8): far ones (small i) — mild penalty.
             for (int i = 0; i < (int)T.size(); ++i)

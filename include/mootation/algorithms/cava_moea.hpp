@@ -461,7 +461,7 @@ public:
                         for (int v : SP) P.push_back(v);
                         int need = N - static_cast<int>(P.size());
                         if (need > 0) {
-                            std::sort(GP.begin(), GP.end(),
+                            std::stable_sort(GP.begin(), GP.end(),
                                       [&](int a, int b){ return Fit[a] < Fit[b]; });
                             for (int k = 0; k < need && k < static_cast<int>(GP.size()); ++k)
                                 P.push_back(GP[k]);
@@ -477,7 +477,7 @@ public:
                     for (int v : P) inP[v] = 1;
                     std::vector<int> rest;
                     for (int v : fl) if (inP[v] == 0) rest.push_back(v);
-                    std::sort(rest.begin(), rest.end(),
+                    std::stable_sort(rest.begin(), rest.end(),
                               [&](int a, int b){ return Fit[a] < Fit[b]; });
                     for (int v : rest) {
                         if (static_cast<int>(P.size()) >= N) break;

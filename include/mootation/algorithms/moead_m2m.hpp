@@ -318,7 +318,7 @@ private:
             for (int k = 0; k < m; ++k) {
                 std::vector<int> order(fn);
                 std::iota(order.begin(), order.end(), 0);
-                std::sort(order.begin(), order.end(),
+                std::stable_sort(order.begin(), order.end(),
                           [&](int a, int b){ return objs[F[a]][k] < objs[F[b]][k]; });
                 cd[order.front()] = std::numeric_limits<double>::infinity();
                 cd[order.back()]  = std::numeric_limits<double>::infinity();
@@ -332,7 +332,7 @@ private:
             }
             std::vector<int> order(fn);
             std::iota(order.begin(), order.end(), 0);
-            std::sort(order.begin(), order.end(),
+            std::stable_sort(order.begin(), order.end(),
                       [&](int a, int b){ return cd[a] > cd[b]; });
             int need = S - static_cast<int>(kept.size());
             for (int t = 0; t < need; ++t) kept.push_back(F[order[t]]);

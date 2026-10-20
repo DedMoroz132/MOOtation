@@ -282,7 +282,7 @@ private:
                 }
                 d.emplace_back(std::sqrt(s), j);
             }
-            std::sort(d.begin(), d.end());
+            std::stable_sort(d.begin(), d.end());
             line_rank_[i].reserve(d.size());
             for (auto& pr : d) line_rank_[i].push_back(pr.second);
         }

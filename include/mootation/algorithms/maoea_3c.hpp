@@ -461,7 +461,7 @@ private:
         std::vector<std::vector<int>> groups(EA_.size());
         for (std::size_t i = 0; i < Q.size(); ++i) groups[clust[i]].push_back((int)i);
         for (auto& g : groups) {
-            std::sort(g.begin(), g.end(), [&](int a, int b) { return fit[a] < fit[b]; });
+            std::stable_sort(g.begin(), g.end(), [&](int a, int b) { return fit[a] < fit[b]; });
             for (std::size_t r = 0; r < g.size(); ++r) Q[g[r]].fitfront = (int)r + 1;
         }
 
@@ -552,7 +552,7 @@ private:
                 for (int i = 0; i < na; ++i) {
                     std::vector<double> row;
                     for (int j = 0; j < na; ++j) if (j != i) row.push_back(dist[i][j]);
-                    std::sort(row.begin(), row.end());
+                    std::stable_sort(row.begin(), row.end());
                     rsum += row[std::min((int)row.size() - 1, kk - 1)];
                 }
                 double r = (na > 0) ? rsum / na : 1.0;

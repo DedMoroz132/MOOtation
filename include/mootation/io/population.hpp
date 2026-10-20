@@ -93,7 +93,7 @@ void save_population(DataVault<Ind_t>& vault,
         // Sorted by the first objective so a two-objective front reads as a
         // front. With no objectives there is nothing to sort by, and indexing
         // objectives_of(a)[0] would be an out-of-bounds read.
-        std::sort(order.begin(), order.end(), [&](int a, int b) {
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
             return vault.objectives_of(a)[0] < vault.objectives_of(b)[0];
         });
     }

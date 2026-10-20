@@ -959,7 +959,7 @@ PyResult run_core(const RunConfig& cfg)
             std::vector<double> cv;
             for (std::size_t i = 0; i < n; ++i)
                 if (!v.is_dirty(i)) cv.push_back(v.raw_cv(i));
-            std::sort(cv.begin(), cv.end(), std::greater<double>());
+            std::stable_sort(cv.begin(), cv.end(), std::greater<double>());
             const std::size_t theta = static_cast<std::size_t>(
                 std::max(1L, std::lround(cfg.eps_theta * static_cast<double>(v.pop_size()))));
             v.set_cv_level(cv.empty() ? 0.0 : cv[std::min(theta, cv.size()) - 1]);

@@ -194,7 +194,7 @@ private:
         for(int i=0;i<n;++i){
             std::vector<double> ang; ang.reserve(n);
             for(int j=0;j<n;++j) if(j!=i) ang.push_back(angle(F[i],F[j]));
-            std::sort(ang.begin(),ang.end());
+            std::stable_sort(ang.begin(),ang.end());
             int kk=std::min(m_,(int)ang.size()); double s=0; for(int t=0;t<kk;++t) s+=ang[t];
             P[i].div = kk>0? s/kk : 0.0;
         }

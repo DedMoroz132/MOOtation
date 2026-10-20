@@ -211,7 +211,7 @@ private:
         contrib.assign(K, 0.0);
         std::vector<int> order(K);
         std::iota(order.begin(), order.end(), 0);
-        std::sort(order.begin(), order.end(), [&](int a, int b) {
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
             if (W[a][0] != W[b][0]) return W[a][0] < W[b][0];
             return W[a][1] < W[b][1];
         });
@@ -232,7 +232,7 @@ private:
     // with a 2D non-dominated staircase (minimisation). Points must be <= ref.
     static double hv3d(std::vector<std::array<double, 3>>& pts) {
         if (pts.empty()) return 0.0;
-        std::sort(pts.begin(), pts.end(),
+        std::stable_sort(pts.begin(), pts.end(),
                   [](const auto& a, const auto& b) { return a[2] < b[2]; });
         // staircase: sorted by x ascending, y strictly descending
         std::vector<std::pair<double, double>> st;
@@ -349,7 +349,7 @@ private:
         auto draw_simplex = [&]() {
             std::vector<double> x(m - 1);
             for (int j = 0; j < m - 1; ++j) x[j] = U(rng_);
-            std::sort(x.begin(), x.end());
+            std::stable_sort(x.begin(), x.end());
             std::vector<double> w(m);
             w[0] = x[0];
             for (int j = 1; j < m - 1; ++j) w[j] = x[j] - x[j - 1];

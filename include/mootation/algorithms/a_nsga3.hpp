@@ -128,7 +128,7 @@ private:
             if (best < std::numeric_limits<double>::max()) nn.push_back(std::sqrt(best));
         }
         if (nn.empty()) return 1.0 / std::max(1, m);
-        std::sort(nn.begin(), nn.end());
+        std::stable_sort(nn.begin(), nn.end());
         return nn[nn.size() / 2];
     }
 

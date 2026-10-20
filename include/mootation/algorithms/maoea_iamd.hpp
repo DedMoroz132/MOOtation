@@ -414,7 +414,7 @@ private:
 
         std::vector<int> order(n);
         std::iota(order.begin(), order.end(), 0);
-        std::sort(order.begin(), order.end(), [&](int a, int b) { return d[a] > d[b]; });
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return d[a] > d[b]; });
         std::vector<char> removed(n, 0);
         std::vector<int> KP;
         for (int x : order) {
@@ -678,7 +678,7 @@ private:
 
         // Alg. 6 lines 12–13: bootstrap with the M best by Fit when P is empty
         if (P.empty()) {
-            std::sort(Fk.begin(), Fk.end(), [&](int a, int b) { return fit[a] > fit[b]; });
+            std::stable_sort(Fk.begin(), Fk.end(), [&](int a, int b) { return fit[a] > fit[b]; });
             int take = std::min({m, static_cast<int>(Fk.size()), N});
             P.assign(Fk.begin(), Fk.begin() + take);
             Fk.erase(Fk.begin(), Fk.begin() + take);
@@ -746,7 +746,7 @@ private:
             for (int v : P) in[v] = 1;
             std::vector<int> rest;
             for (int i = 0; i < pool; ++i) if (in[i] == 0) rest.push_back(i);
-            std::sort(rest.begin(), rest.end(), [&](int a, int b) { return fit[a] > fit[b]; });
+            std::stable_sort(rest.begin(), rest.end(), [&](int a, int b) { return fit[a] > fit[b]; });
             for (int v : rest) {
                 if (static_cast<int>(P.size()) >= N) break;
                 P.push_back(v);
@@ -844,7 +844,7 @@ public:
         int ec = -1;
         for (int v : KP) if (ec < 0 || fitP[v] > fitP[ec]) ec = v;        // E_c
         std::vector<int> ed = KP;                                         // E_d
-        std::sort(ed.begin(), ed.end(),
+        std::stable_sort(ed.begin(), ed.end(),
                   [&](int a, int b) { return lphiP[a] > lphiP[b]; });
         int edn = std::min<int>(static_cast<int>(ed.size()), (n + 1) / 2);
         ed.resize(edn);

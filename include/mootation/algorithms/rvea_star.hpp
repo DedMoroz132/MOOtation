@@ -262,7 +262,7 @@ private:
         for (int i = 0; i < pool_size; ++i) members[vec[i]].push_back(i);
         std::vector<int> place(pool_size, 0);
         for (auto& sub : members) {
-            std::sort(sub.begin(), sub.end(), [&](int a, int b) {
+            std::stable_sort(sub.begin(), sub.end(), [&](int a, int b) {
                 if (infeasible[a] != infeasible[b]) return infeasible[a] < infeasible[b];
                 if (value[a] != value[b]) return value[a] < value[b];
                 return a < b;
@@ -273,7 +273,7 @@ private:
         // RVEA*-1: (place, feasible first, V before V*, APD or CV); first n_keep.
         std::vector<int> order(pool_size);
         std::iota(order.begin(), order.end(), 0);
-        std::sort(order.begin(), order.end(), [&](int a, int b) {
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
             if (place[a] != place[b]) return place[a] < place[b];
             if (infeasible[a] != infeasible[b]) return infeasible[a] < infeasible[b];
             const bool a_star = vec[a] >= n_v, b_star = vec[b] >= n_v;

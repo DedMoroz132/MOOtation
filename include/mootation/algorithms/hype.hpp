@@ -237,7 +237,7 @@ private:
         }
         int d = level - 1;                      // scan dimension (Lines 18-26)
         std::vector<int> order = cand;
-        std::sort(order.begin(), order.end(), [&](int a, int b) {
+        std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
             return pts[a][d] < pts[b][d];
         });
         std::vector<int> child;

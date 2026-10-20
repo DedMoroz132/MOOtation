@@ -369,12 +369,12 @@ private:
         std::vector<int> order;
         for(auto& F:fr){ int fn=(int)F.size(); std::vector<double> cd(fn,0.0);
             for(int k=0;k<m_;++k){ std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-                std::sort(o.begin(),o.end(),[&](int a,int b){return P[F[a]].objs[k]<P[F[b]].objs[k];});
+                std::stable_sort(o.begin(),o.end(),[&](int a,int b){return P[F[a]].objs[k]<P[F[b]].objs[k];});
                 cd[o.front()]=cd[o.back()]=std::numeric_limits<double>::infinity();
                 double rg=P[F[o.back()]].objs[k]-P[F[o.front()]].objs[k]; if(rg<1e-300) continue;
                 for(int t=1;t<fn-1;++t) cd[o[t]]+=(P[F[o[t+1]]].objs[k]-P[F[o[t-1]]].objs[k])/rg; }
             std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-            std::sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
+            std::stable_sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
             for(int t:o) order.push_back(F[t]); }
         return order;
     }
@@ -428,7 +428,7 @@ private:
         for(int k=0;k<K;++k){ cnt[k]=(int)bucket[k].size(); if(cnt[k]>0) S[k]=1; }
         int sum=0; for(int s:S) sum+=s;
         std::vector<int> ord(K); std::iota(ord.begin(),ord.end(),0);
-        std::sort(ord.begin(),ord.end(),[&](int a,int b){return cnt[a]>cnt[b];});
+        std::stable_sort(ord.begin(),ord.end(),[&](int a,int b){return cnt[a]>cnt[b];});
         int guard=0;
         while(sum<N_ && guard<100*N_+100){
             bool any=false;

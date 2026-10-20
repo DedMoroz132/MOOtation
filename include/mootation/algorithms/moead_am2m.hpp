@@ -352,13 +352,13 @@ private:
         if(sum<N_){
             std::vector<int> order;
             for(int k=0;k<K_;++k) if(S[k]>0) order.push_back(k);
-            std::sort(order.begin(),order.end(),[&](int a,int b){return S[a]<S[b];});
+            std::stable_sort(order.begin(),order.end(),[&](int a,int b){return S[a]<S[b];});
             if(order.empty()) order.push_back(0);
             int idx=0; while(sum<N_){ ++S[order[idx%order.size()]]; ++sum; ++idx; }
         } else if(sum>N_){
             std::vector<int> order;
             for(int k=0;k<K_;++k) order.push_back(k);
-            std::sort(order.begin(),order.end(),[&](int a,int b){return S[a]>S[b];});
+            std::stable_sort(order.begin(),order.end(),[&](int a,int b){return S[a]>S[b];});
             int idx=0; while(sum>N_){ if(S[order[idx%order.size()]]>1){--S[order[idx%order.size()]];--sum;} ++idx; if(idx>10*K_+10) break; }
         }
 

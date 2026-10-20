@@ -139,7 +139,7 @@ public:
     {
         qhead_ = qtail_ = -1;
         dominated_ = false;
-        std::sort(nodes.begin(), nodes.end(), [this](int a, int b) { return lz(a, b); });
+        std::stable_sort(nodes.begin(), nodes.end(), [this](int a, int b) { return lz(a, b); });
         std::set<int, ByY> T(ByY{this});                     // line 2
         T.insert(SX);
         T.insert(SY);
@@ -482,7 +482,7 @@ inline bool hvc_rows(const std::vector<std::vector<double>>& F, const std::vecto
         }
         if (inside) in.push_back(i);
     }
-    std::sort(in.begin(), in.end(), [&](std::size_t a, std::size_t b) {
+    std::stable_sort(in.begin(), in.end(), [&](std::size_t a, std::size_t b) {
         for (std::size_t k = 0; k < m; ++k)
             if (F[a][k] != F[b][k]) return F[a][k] < F[b][k];
         return a < b;
@@ -526,7 +526,7 @@ inline std::vector<double> contributions_hvc(const std::vector<std::vector<doubl
         // the slice's height
         static const std::size_t W_FIRST[] = {3, 2, 1, 0};
         std::vector<std::size_t> order = rows;
-        std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
             for (std::size_t k : W_FIRST)
                 if (F[a][k] != F[b][k]) return F[a][k] < F[b][k];
             return false;
@@ -586,7 +586,7 @@ public:
         }
         std::vector<int> gone;
         for (const auto& kv : at_) if (!seen[static_cast<std::size_t>(kv.second)]) gone.push_back(kv.second);
-        std::sort(gone.begin(), gone.end());                // an order of the map's own: fixed
+        std::stable_sort(gone.begin(), gone.end());                // an order of the map's own: fixed
         const bool update = !S_.dominated() && add.size() + gone.size() <= most;
         if (update) {
             for (int g : gone) {

@@ -66,7 +66,7 @@ struct Frame {
 inline double niche_size(std::vector<double> nearest, std::size_t n)
 {
     if (nearest.empty() || n < 2) return 0.0;
-    std::sort(nearest.begin(), nearest.end());
+    std::stable_sort(nearest.begin(), nearest.end());
     nearest.erase(std::unique(nearest.begin(), nearest.end()), nearest.end());
     const std::size_t k = n / 2;                               // ⌊n/2⌋, from 1
     const double t = k <= nearest.size() ? nearest[k - 1] : nearest.back();

@@ -568,7 +568,7 @@ public:
                 for (int v : Pc) used[v] = 1;
                 std::vector<int> rest;
                 for (int v = 0; v < pool; ++v) if (!used[v]) rest.push_back(v);
-                std::sort(rest.begin(), rest.end(), [&](int a, int b){
+                std::stable_sort(rest.begin(), rest.end(), [&](int a, int b){
                     double na=0,nb=0; for(int j=0;j<m;++j){na+=Fn[a][j];nb+=Fn[b][j];} return na<nb; });
                 for (int v : rest) {
                     if (static_cast<int>(kp.size()) >= N) break;

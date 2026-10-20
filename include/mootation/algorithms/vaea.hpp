@@ -292,7 +292,7 @@ public:
                 std::vector<int> ord;
                 ord.reserve(T);
                 for (int j = 0; j < T; ++j) if (!flag[j]) ord.push_back(j);
-                std::sort(ord.begin(), ord.end(),
+                std::stable_sort(ord.begin(), ord.end(),
                           [&](int a, int b) { return fit[Fl[a]] < fit[Fl[b]]; });
                 for (int i = 0; i < m && i < static_cast<int>(ord.size()) &&
                                 static_cast<int>(P.size()) < N; ++i) {

@@ -390,7 +390,7 @@ public:
 
         // (14) IndicatorBasedSelection: layers by F within clusters (Alg. 4).
         for (auto& cl : clusters)
-            std::sort(cl.begin(), cl.end(),
+            std::stable_sort(cl.begin(), cl.end(),
                       [&](int a, int b){ return F[a] < F[b]; });
         int Nf = 0;
         for (const auto& cl : clusters) Nf = std::max(Nf, static_cast<int>(cl.size()));
@@ -410,7 +410,7 @@ public:
                 for (int v : layers[l]) survivors.push_back(v);
             } else {
                 // the last layer overflows: AscendingSort by F (Alg. 4).
-                std::sort(layers[l].begin(), layers[l].end(),
+                std::stable_sort(layers[l].begin(), layers[l].end(),
                           [&](int a, int b){ return F[a] < F[b]; });
                 for (int k = 0; k < room; ++k) survivors.push_back(layers[l][k]);
             }

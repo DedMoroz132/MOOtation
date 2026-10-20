@@ -237,7 +237,7 @@ private:
         if(static_cast<int>(nd.size()) <= eff_arch_) {
             chosen = nd;
             if(static_cast<int>(nd.size()) < eff_arch_) {
-                std::sort(dom_idx.begin(),dom_idx.end(),[&](int a,int b){
+                std::stable_sort(dom_idx.begin(),dom_idx.end(),[&](int a,int b){
                     return ind_of(a).fitness < ind_of(b).fitness;
                 });
                 int needed = eff_arch_ - static_cast<int>(nd.size());
@@ -260,7 +260,7 @@ private:
                     if(i==j) continue;
                     sdists[i].push_back(sde_dist(obj_of(cand[i]), obj_of(cand[j])));
                 }
-                std::sort(sdists[i].begin(), sdists[i].end());
+                std::stable_sort(sdists[i].begin(), sdists[i].end());
             }
             while(static_cast<int>(cand.size()) > eff_arch_) {
                 int sz = static_cast<int>(cand.size());

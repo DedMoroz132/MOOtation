@@ -234,7 +234,7 @@ private:
             std::vector<std::size_t> next;
             for (std::size_t i : front)
                 for (std::size_t j : dom[i]) if (--count[j] == 0) next.push_back(j);
-            std::sort(next.begin(), next.end());
+            std::stable_sort(next.begin(), next.end());
             front = std::move(next);
         }
         return key;

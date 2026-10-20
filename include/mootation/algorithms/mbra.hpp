@@ -438,7 +438,7 @@ public:
         }
         std::vector<int> FitNo(pool, 0);
         for (auto& sr : sub) {
-            std::sort(sr.begin(), sr.end(), [&](int a, int b){ return F[a] > F[b]; });
+            std::stable_sort(sr.begin(), sr.end(), [&](int a, int b){ return F[a] > F[b]; });
             for (int r = 0; r < static_cast<int>(sr.size()); ++r) FitNo[sr[r]] = r;
         }
 

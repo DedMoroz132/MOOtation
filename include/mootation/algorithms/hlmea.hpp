@@ -209,12 +209,12 @@ private:
         std::vector<int> order;
         for(auto&F:fr){ int fn=(int)F.size(); std::vector<double> cd(fn,0.0);
             for(int k=0;k<m_;++k){ std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-                std::sort(o.begin(),o.end(),[&](int a,int b){return P[F[a]].objs[k]<P[F[b]].objs[k];});
+                std::stable_sort(o.begin(),o.end(),[&](int a,int b){return P[F[a]].objs[k]<P[F[b]].objs[k];});
                 cd[o.front()]=cd[o.back()]=std::numeric_limits<double>::infinity();
                 double rg=P[F[o.back()]].objs[k]-P[F[o.front()]].objs[k]; if(rg<1e-300) continue;
                 for(int t=1;t<fn-1;++t) cd[o[t]]+=(P[F[o[t+1]]].objs[k]-P[F[o[t-1]]].objs[k])/rg; }
             std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-            std::sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
+            std::stable_sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
             for(int t:o) order.push_back(F[t]); }
         return order;
     }
@@ -269,7 +269,7 @@ private:
         if(q.empty()) return 0.0;
         int m=(int)q[0].size();
         if(m==1){ double mx=0; for(auto&p:q) mx=std::max(mx,p[0]); return mx; }
-        std::sort(q.begin(),q.end(),[m](const std::vector<double>&a,const std::vector<double>&b){return a[m-1]>b[m-1];});
+        std::stable_sort(q.begin(),q.end(),[m](const std::vector<double>&a,const std::vector<double>&b){return a[m-1]>b[m-1];});
         double vol=0; int n=(int)q.size();
         for(int i=0;i<n;++i){ double nx=(i+1<n)?q[i+1][m-1]:0.0; double th=q[i][m-1]-nx; if(th<=0) continue;
             std::vector<std::vector<double>> pr; for(int t=0;t<=i;t++) pr.emplace_back(q[t].begin(),q[t].begin()+(m-1));

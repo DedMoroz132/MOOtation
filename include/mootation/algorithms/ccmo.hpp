@@ -116,7 +116,7 @@ private:
                 for (int b : S[static_cast<std::size_t>(a)])
                     if (--count[static_cast<std::size_t>(b)] == 0) next.push_back(b);
             }
-            std::sort(next.begin(), next.end());
+            std::stable_sort(next.begin(), next.end());
             fronts.push_back(std::move(cur));
             cur = std::move(next);
         }
@@ -159,7 +159,7 @@ private:
                     for (std::size_t j = 0; j < fa.size(); ++j) s += (fa[j] - fb[j]) * (fa[j] - fb[j]);
                     d[a].push_back(std::sqrt(s));
                 }
-                std::sort(d[a].begin(), d[a].end());
+                std::stable_sort(d[a].begin(), d[a].end());
             }
             // the one whose nearest is nearest, then second nearest, ...
             std::size_t worst = 0;

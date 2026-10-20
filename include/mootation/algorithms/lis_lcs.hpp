@@ -342,7 +342,7 @@ private:
             if (range < 1e-14) continue;
             std::vector<int> ord(n);
             std::iota(ord.begin(), ord.end(), 0);
-            std::sort(ord.begin(), ord.end(), [&](int a, int b) {
+            std::stable_sort(ord.begin(), ord.end(), [&](int a, int b) {
                 return Q[a]->f[j] < Q[b]->f[j];
             });
             for (int p = 0; p < n; ++p) {
@@ -806,7 +806,7 @@ public:
                 std::vector<int> rest;
                 for (int i = 0; i < static_cast<int>(Qs2.size()); ++i)
                     if (!taken[i]) rest.push_back(i);
-                std::sort(rest.begin(), rest.end(),
+                std::stable_sort(rest.begin(), rest.end(),
                           [&](int a, int b) { return cd[a] > cd[b]; });
                 for (int ri : rest) {
                     if (static_cast<int>(newPP.size()) >= N) break;

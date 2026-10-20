@@ -342,7 +342,7 @@ private:
         if (l <= 2) { for (auto& v : cd) v = std::numeric_limits<double>::infinity(); return cd; }
         for (int k = 0; k < m_; ++k) {
             std::vector<int> ord(l); std::iota(ord.begin(), ord.end(), 0);
-            std::sort(ord.begin(), ord.end(), [&](int a, int b) {
+            std::stable_sort(ord.begin(), ord.end(), [&](int a, int b) {
                 return S[idx[a]].objs[k] < S[idx[b]].objs[k];
             });
             cd[ord.front()] = cd[ord.back()] = std::numeric_limits<double>::infinity();
@@ -574,7 +574,7 @@ private:
         std::vector<int> kept;
         for (int c = 0; c < C; ++c) {
             std::vector<int> ids = clu[c];
-            std::sort(ids.begin(), ids.end(), [&](int a, int b) {
+            std::stable_sort(ids.begin(), ids.end(), [&](int a, int b) {
                 return cd[a] > cd[b];
             });
             for (int t = 0; t < num[c] && t < (int)ids.size(); ++t) kept.push_back(ids[t]);
@@ -582,13 +582,13 @@ private:
 
         // adjust to exactly N: trim worst-crowding or add best leftover.
         if ((int)kept.size() > N_) {
-            std::sort(kept.begin(), kept.end(), [&](int a, int b) { return cd[a] > cd[b]; });
+            std::stable_sort(kept.begin(), kept.end(), [&](int a, int b) { return cd[a] > cd[b]; });
             kept.resize(N_);
         } else if ((int)kept.size() < N_) {
             std::vector<char> in(Q.size(), 0); for (int v : kept) in[v] = 1;
             std::vector<int> rest;
             for (int i = 0; i < (int)Q.size(); ++i) if (!in[i]) rest.push_back(i);
-            std::sort(rest.begin(), rest.end(), [&](int a, int b) { return cd[a] > cd[b]; });
+            std::stable_sort(rest.begin(), rest.end(), [&](int a, int b) { return cd[a] > cd[b]; });
             for (int i = 0; i < (int)rest.size() && (int)kept.size() < N_; ++i)
                 kept.push_back(rest[i]);
         }
@@ -632,7 +632,7 @@ private:
             // Eq.2: "a smaller convergence fitness value implies a better
             // convergence". Sorting in DESCENDING order would take ids[0] = the
             // least converged individual, i.e. pressure AGAINST convergence.
-            std::sort(ids.begin(), ids.end(), [&](int a, int b) { return fit[a] < fit[b]; });
+            std::stable_sort(ids.begin(), ids.end(), [&](int a, int b) { return fit[a] < fit[b]; });
             OP.push_back(Q[ids[0]]);
             if ((int)ids.size() >= 2) {
                 Sol o = sbx_breed(Q[ids[0]], Q[ids[1]], vault, scratch);
@@ -803,7 +803,7 @@ private:
         B_.assign(N_, {});
         for (int i = 0; i < N_; ++i) {
             std::vector<int> idx(N_); std::iota(idx.begin(), idx.end(), 0);
-            std::sort(idx.begin(), idx.end(), [&](int a, int b) {
+            std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
                 return euclid(W_[i], W_[a]) < euclid(W_[i], W_[b]);
             });
             for (int t = 0; t < Tnb_ && t < N_; ++t) B_[i].push_back(idx[t]);

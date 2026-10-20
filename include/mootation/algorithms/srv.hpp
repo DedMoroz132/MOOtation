@@ -230,7 +230,7 @@ private:
 
         // Sort each subset by d1 ascending
         for (auto& sub : subsets)
-            std::sort(sub.begin(), sub.end(), [&](int a, int b){ return d1[a]<d1[b]; });
+            std::stable_sort(sub.begin(), sub.end(), [&](int a, int b){ return d1[a]<d1[b]; });
 
         // Ic rank: position within subset (0 = best)
         std::vector<int> ic_rank(pool, 0);

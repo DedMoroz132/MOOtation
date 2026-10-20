@@ -233,7 +233,7 @@ private:
             d.push_back(dist);
         }
         if (d.empty()) return std::numeric_limits<double>::max();
-        std::sort(d.begin(), d.end());
+        std::stable_sort(d.begin(), d.end());
         int L = std::min<int>(m, static_cast<int>(d.size()));
         double prod = 1.0;
         for (int i = 0; i < L; ++i) prod *= d[i];

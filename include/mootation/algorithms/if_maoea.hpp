@@ -614,7 +614,7 @@ private:
                 // drifted there, the nadir estimate followed, and on DTLZ2
                 // (M = 3) the population collapsed to a patch of the sphere
                 // (IGD 0.5 with zero convergence error).
-                std::sort(od.begin(), od.end(), [&](const std::pair<int,double>& a, const std::pair<int,double>& b) {
+                std::stable_sort(od.begin(), od.end(), [&](const std::pair<int,double>& a, const std::pair<int,double>& b) {
                     return a.second < b.second;
                 });
                 for (int t = 0; t < need; ++t) Q.push_back(od[t].first);
@@ -626,7 +626,7 @@ private:
                 auto fit = fitness_all(Fnorm);
                 std::vector<int> rest;
                 for (int i : Fk) if (!taken[i]) rest.push_back(i);
-                std::sort(rest.begin(), rest.end(), [&](int a, int b) { return fit[a] > fit[b]; });
+                std::stable_sort(rest.begin(), rest.end(), [&](int a, int b) { return fit[a] > fit[b]; });
                 for (int t = 0; t < still && t < (int)rest.size(); ++t) Q.push_back(rest[t]);
             }
         }

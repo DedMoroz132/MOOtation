@@ -427,7 +427,7 @@ private:
             double cv = vault.get_cv(slot);
             if (cv > 0.0) S.emplace_back(cv, slot);
         }
-        std::sort(S.begin(), S.end(),
+        std::stable_sort(S.begin(), S.end(),
                   [](const auto& a, const auto& b){ return a.first > b.first; });
         for (const auto& [cv, slot] : S) {
             (void)cv;

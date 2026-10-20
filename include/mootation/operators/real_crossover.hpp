@@ -189,7 +189,7 @@ inline std::vector<std::pair<std::string, double>> crossover_stats(bool totals)
     if (d.used) {
         auto quart = [&](std::vector<double> v, const char* name) {
             if (v.empty()) return;
-            std::sort(v.begin(), v.end());
+            std::stable_sort(v.begin(), v.end());
             auto q = [&](double t) {
                 const double x = t * static_cast<double>(v.size() - 1);
                 const std::size_t i = static_cast<std::size_t>(x);

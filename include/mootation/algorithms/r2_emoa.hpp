@@ -93,7 +93,7 @@ namespace mootation {
 //     = y2 ((1 − lo)² − (1 − w_n)²) / 2 + y1 (hi² − w_n²) / 2.
 inline double r2_exact_2d(std::vector<std::pair<double, double>> Y)
 {
-    std::sort(Y.begin(), Y.end());
+    std::stable_sort(Y.begin(), Y.end());
     std::vector<std::pair<double, double>> nd;
     for (const auto& y : Y)
         if (nd.empty() || y.second < nd.back().second) nd.push_back(y);

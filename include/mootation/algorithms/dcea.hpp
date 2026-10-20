@@ -232,12 +232,12 @@ private:
         std::vector<int> order;
         for(auto& F:fr){ int fn=(int)F.size(); std::vector<double> cd(fn,0.0);
             for(int k=0;k<m_;++k){ std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-                std::sort(o.begin(),o.end(),[&](int a,int b){return pool[idx[F[a]]].objs[k]<pool[idx[F[b]]].objs[k];});
+                std::stable_sort(o.begin(),o.end(),[&](int a,int b){return pool[idx[F[a]]].objs[k]<pool[idx[F[b]]].objs[k];});
                 cd[o.front()]=cd[o.back()]=std::numeric_limits<double>::infinity();
                 double rg=pool[idx[F[o.back()]]].objs[k]-pool[idx[F[o.front()]]].objs[k]; if(rg<1e-300) continue;
                 for(int t=1;t<fn-1;++t) cd[o[t]]+=(pool[idx[F[o[t+1]]]].objs[k]-pool[idx[F[o[t-1]]]].objs[k])/rg; }
             std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-            std::sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
+            std::stable_sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
             for(int t:o) order.push_back(idx[F[t]]); }
         return order;
     }

@@ -173,7 +173,7 @@ private:
             for(int j=0;j<N_;++j){ if(j==i) continue;
                 double s=0; for(int k=0;k<m;++k){double df=R_[i][k]-R_[j][k];s+=df*df;}
                 d.emplace_back(std::sqrt(s),j); }
-            std::sort(d.begin(),d.end());
+            std::stable_sort(d.begin(),d.end());
             for(int t=0;t<Te;++t) U_[i].push_back(d[t].second);
             for(int t=0;t<We;++t) V_[i].push_back(d[t].second);
         }

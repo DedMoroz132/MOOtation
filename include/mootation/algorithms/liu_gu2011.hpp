@@ -280,14 +280,14 @@ private:
             std::vector<double> cd(fn,0.0);
             for(int k=0;k<m_;++k){
                 std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-                std::sort(o.begin(),o.end(),[&](int a,int b){return P[F[a]].objs[k]<P[F[b]].objs[k];});
+                std::stable_sort(o.begin(),o.end(),[&](int a,int b){return P[F[a]].objs[k]<P[F[b]].objs[k];});
                 cd[o.front()]=cd[o.back()]=std::numeric_limits<double>::infinity();
                 double rng=P[F[o.back()]].objs[k]-P[F[o.front()]].objs[k];
                 if(rng<1e-300) continue;
                 for(int t=1;t<fn-1;++t) cd[o[t]]+=(P[F[o[t+1]]].objs[k]-P[F[o[t-1]]].objs[k])/rng;
             }
             std::vector<int> o(fn); std::iota(o.begin(),o.end(),0);
-            std::sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
+            std::stable_sort(o.begin(),o.end(),[&](int a,int b){return cd[a]>cd[b];});
             for(int t:o) order.push_back(F[t]);
         }
         return order;
