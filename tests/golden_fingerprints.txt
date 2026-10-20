@@ -53,9 +53,9 @@ dhea zdt1_nan 100 c30d01349bba6a75
 dms dtlz2_3 91 240ed73dc69a984d
 dms zdt1 14 a8c8613b9c4b8198
 dms zdt1_nan 14 a8c8613b9c4b8198
-dmulti_mads dtlz2_3 14 4131106e088652b5
-dmulti_mads zdt1 15 43cdf89bde87789d
-dmulti_mads zdt1_nan 15 43cdf89bde87789d
+dmulti_mads dtlz2_3 17 4d70b006c8c20244
+dmulti_mads zdt1 15 5786ee726c0d2aa1
+dmulti_mads zdt1_nan 15 5786ee726c0d2aa1
 dn_nsga2 dtlz2_3 91 95f5dbe082161f55
 dn_nsga2 zdt1 100 2ebc237189e24716
 dn_nsga2 zdt1_nan 100 23ecab9acfd28a4b
