@@ -49,7 +49,7 @@ _CORE_NAMES = ("Config", "ConstraintMode", "Problem", "Result", "algorithms",
 
 __all__ = ["minimize", "algorithms", "Problem", "Config", "Result",
            "ConstraintMode", "run_raw",
-           "save_population", "load_population", "EvaluationLog"]
+           "save_population", "load_population", "EvaluationLog", "selftest"]
 
 
 def _load_core():
@@ -87,6 +87,13 @@ def __getattr__(name: str):
         from . import persistence
         value = getattr(persistence, name)
         globals()[name] = value
+        return value
+    if name == "selftest":
+        # mootation.selftest(): this build gives the library's runs bit for bit?
+        # (task 14 of 2026-10-20, §7; the module is _selftest, so that the
+        # function is not shadowed by a submodule of its name)
+        from ._selftest import selftest as value
+        globals()["selftest"] = value
         return value
     if name in _CORE_NAMES:
         value = getattr(_load_core(), name)

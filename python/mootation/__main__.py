@@ -2,6 +2,8 @@
 """The console script `mootation` (python -m mootation):
 
     mootation refs build|check ...    the cache of references (mootation.run.refs)
+    mootation selftest [-v]           this build gives the library's runs bit for bit?
+                                      (mootation.selftest(), task 14 of 2026-10-20, §7)
 
 Campaigns have their own: python -m mootation.run.campaign, mootation-run.
 """
@@ -11,9 +13,12 @@ import sys
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "selftest":
+        from ._selftest import main as selftest_main
+        return selftest_main(argv[1:])
     if not argv or argv[0] != "refs":
-        print("usage: mootation refs {build,check} ...  (python -m mootation.run.refs -h)",
-              file=sys.stderr)
+        print("usage: mootation refs {build,check} ...  (python -m mootation.run.refs -h)\n"
+              "       mootation selftest [-v]", file=sys.stderr)
         return 2
     from .run.refs import main as refs_main
     return refs_main(argv[1:])
