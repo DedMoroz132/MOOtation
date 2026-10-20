@@ -81,8 +81,10 @@ namespace mootation {
 //   MOCMA-5. The contributions are EXACT AT EVERY M (task 14 of
 //     2026-10-20, supplement 3, Д8.1; hv::ContribChoice with exact_only), as
 //     the paper (Igel, Hansen & Roth 2007) computes them: M = 3 and 4 by
-//     HVC3D / HVC4D unless hv_contrib = wfg, WFG above (hv_algo = box:
-//     boxes). The step-size adaptation counts an offspring that survives as a
+//     HVC3D / HVC4D unless hv_contrib = wfg, WFG at M = 5; from M = 6 the least and its
+//     ties by IWFG (hv_contrib = iwfg, the default; Д8.2: the same points as
+//     WFG's bit for bit, the rest +inf), with hvc or wfg by WFG for every
+//     point (hv_algo = box: boxes). The step-size adaptation counts an offspring that survives as a
 //     success (Eq. 9): a wrongly removed point inflates sigma, and the
 //     population drifts from the front. Measured (task 14, §11): DTLZ2 at
 //     M = 6, the race for the least contributor (Voss et al., GECCO 2010, put

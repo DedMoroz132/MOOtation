@@ -10436,7 +10436,9 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
         assert dict(d4.settings)["contributions"] == "exact, hvc4d at M = 4", d4.settings
     c6 = run("DTLZ2_6D", "mo_cma_es")
     assert same(c6, run("DTLZ2_6D", "mo_cma_es", n_samples=0, hv_contrib="wfg"))
-    assert dict(c6.settings)["contributions"] == "exact, wfg at M = 6", c6.settings
+    assert dict(c6.settings)["contributions"] == "exact, iwfg at M = 6", c6.settings
+    w6 = run("DTLZ2_6D", "mo_cma_es", hv_contrib="hvc")             # Д8.2: WFG for every point
+    assert same(c6, w6) and dict(w6.settings)["contributions"] == "exact, wfg at M = 6", w6.settings
     assert "hv_exact_max_m" not in dict(c6.settings), c6.settings
     i6 = run("DTLZ2_6D", "mo_cma_es", hv_exact_max_m=3, race_eps=0.1)
     assert same(c6, i6) and {"hv_exact_max_m", "race_eps"} <= set(i6.ignored), i6.ignored
@@ -10454,7 +10456,9 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
             "monte-carlo, 10000 samples a step (hv_contrib = mc)"), m6.settings
         e6 = run("DTLZ2_6D", alg, hv_exact_max_m=6)
         assert same(e6, run("DTLZ2_6D", alg, n_samples=0)) and not same(e6, d6), alg
-        assert dict(e6.settings)["contributions"] == "exact, wfg at M = 6", e6.settings
+        assert dict(e6.settings)["contributions"] == "exact, iwfg at M = 6", e6.settings
+        h6 = run("DTLZ2_6D", alg, hv_exact_max_m=6, hv_contrib="hvc")
+        assert same(e6, h6) and dict(h6.settings)["contributions"] == "exact, wfg at M = 6", h6.settings
     r = run("DTLZ2_4D", "r2_emoa", hv_exact_max_m=6, n_samples=0, race_eps=0.1)
     assert {"hv_exact_max_m", "n_samples", "race_eps"} <= set(r.ignored) and \
         list(r.settings) == [], r.ignored
@@ -10464,9 +10468,10 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
 def hv_incremental_keeps_the_exact_counts_and_the_run():
     """Task 14, supplement 3, Д8.3: hv_incremental = 1 takes a point's exact
     count from the step before when its input to WFG is the same bit for bit;
-    the run is the run without it (SMS-EMOA, MO-CMA-ES at five objectives),
-    Result.settings reports the knob and the share of counts reused; R2-EMOA
-    reports it ignored; only 0 and 1 are taken."""
+    the run is the run without it (SMS-EMOA, MO-CMA-ES at five objectives,
+    hv_contrib = hvc: WFG for every point; with IWFG only the contenders are
+    counted and kept), Result.settings reports the knob and the share of
+    counts reused; R2-EMOA reports it ignored; only 0 and 1 are taken."""
     if not _have_numpy() or _core_with("max_evaluations") is None:
         print("    (skipped: no NumPy or no extension)"); return
     from mootation import minimize
@@ -10477,7 +10482,7 @@ def hv_incremental_keeps_the_exact_counts_and_the_run():
         return minimize(p.evaluate, p.bounds, 5, algorithm=alg, pop_size=20,
                         max_evaluations=400, seed=4, **kw)
     for alg in ("sms_emoa", "mo_cma_es"):
-        a, b = run(alg, hv_incremental=0), run(alg, hv_incremental=1)
+        a, b = run(alg, hv_incremental=0, hv_contrib="hvc"), run(alg, hv_incremental=1, hv_contrib="hvc")
         assert a.objectives == b.objectives and a.variables == b.variables, alg
         sa, sb = dict(a.settings), dict(b.settings)
         assert sa["hv_incremental"] == "0" and sb["hv_incremental"] == "1", (sa, sb)
@@ -10501,7 +10506,7 @@ def hv_contrib_takes_its_words_and_refuses_others():
     from mootation import minimize
     from mootation.run.knobs import accepts, text_knobs
     from mootation.benchmarks import get
-    assert text_knobs()["hv_contrib"] == ("hvc", "wfg", "race", "mc"), text_knobs()["hv_contrib"]
+    assert text_knobs()["hv_contrib"] == ("iwfg", "hvc", "wfg", "race", "mc"), text_knobs()["hv_contrib"]
     assert accepts("hv_contrib", "hvc") and accepts("hv_contrib", "wfg")
     assert not accepts("hv_contrib", "box") and not accepts("hv_contrib", "HVC")
     text = _MIN.replace("gens = 5", 'gens = 5\nparams = { hv_contrib = "box" }')

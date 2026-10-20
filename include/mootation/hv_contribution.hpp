@@ -33,8 +33,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <deque>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -71,6 +73,71 @@ inline bool same_bits(const double* a, const double* b, std::size_t n)
     return std::memcmp(a, b, n * sizeof(double)) == 0;
 }
 
+namespace detail {
+
+// One point's exact contribution as contributions_exact counts it: its box
+// less WFG's hypervolume of its limited set (every other point raised to it,
+// the rows not strictly better than r and the dominated ones dropped); with
+// kept, Д8.3's count of the step before when the input is the same. w: an
+// evaluator with reference r; L: a buffer. 0 for a point not strictly
+// better than r.
+inline double exact_one(const std::vector<std::vector<double>>& F, const std::vector<double>& r,
+                        std::size_t i, hypervolume::detail::Wfg& w, std::vector<double>& L,
+                        ExactKept* kept)
+{
+    const std::size_t n = F.size(), m = r.size();
+    const auto& p = F[i];
+    for (std::size_t k = 0; k < m; ++k) if (!(p[k] < r[k])) return 0.0;
+    auto inside_row = [m](const double* x, const std::vector<double>& ref) {
+        std::size_t j = 0;
+        while (j < m && x[j] < ref[j]) ++j;           // false for NaN as well, as in wfg
+        return j == m;
+    };
+    double own = 1.0;
+    for (std::size_t k = 0; k < m; ++k) own *= r[k] - p[k];
+    L.clear();
+    std::size_t rows = 0;
+    for (std::size_t q = 0; q < n; ++q) {
+        if (q == i) continue;
+        const std::size_t at = L.size();
+        for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], p[k]));
+        if (inside_row(L.data() + at, r)) ++rows;
+        else L.resize(at);                            // as wfg drops it
+    }
+    double sub = 0.0;
+    if (rows > 0) {
+        rows = w.nds(L, rows, m);
+        if (!kept) {
+            sub = w.hv(L, rows, m);
+        } else {                                                    // Д8.3
+            std::vector<double> in(L.begin(), L.begin() + static_cast<std::ptrdiff_t>(rows * m));
+            const auto it = kept->prev.find(p);
+            if (it != kept->prev.end() && kept->r.size() == m && same_bits(kept->r.data(), r.data(), m) &&
+                same_bits(it->first.data(), p.data(), m) && it->second.first.size() == in.size() &&
+                same_bits(it->second.first.data(), in.data(), in.size())) {
+                sub = it->second.second;
+                ++kept->reused;
+            } else {
+                sub = w.hv(L, rows, m);                             // hv may reorder L: in is the copy
+                ++kept->counted;
+            }
+            kept->next[p] = {std::move(in), sub};
+        }
+    }
+    return std::max(0.0, own - sub);
+}
+
+// The end of a step for the kept counts: this step's become the last step's.
+inline void end_step(ExactKept* kept, const std::vector<double>& r)
+{
+    if (!kept) return;
+    kept->r = r;
+    kept->prev.swap(kept->next);
+    kept->next.clear();
+}
+
+}   // namespace detail
+
 inline std::vector<double> contributions_exact(const std::vector<std::vector<double>>& F,
                                                const std::vector<double>& r,
                                                ExactKept* kept = nullptr)
@@ -96,58 +163,15 @@ inline std::vector<double> contributions_exact(const std::vector<std::vector<dou
         return c;
     }
     // Every point's limited set in one flat buffer and one WFG evaluator for
-    // them all: hypervolume::wfg on the same rows, which keeps the rows
-    // strictly better than r, drops the dominated ones and recurses — the
-    // same operations, without a vector per row and an evaluator per point.
-    auto inside_row = [m](const double* p, const std::vector<double>& ref) {
-        std::size_t j = 0;
-        while (j < m && p[j] < ref[j]) ++j;           // false for NaN as well, as in wfg
-        return j == m;
-    };
+    // them all (detail::exact_one): hypervolume::wfg on the same rows, which
+    // keeps the rows strictly better than r, drops the dominated ones and
+    // recurses — the same operations, without a vector per row and an
+    // evaluator per point.
     hypervolume::detail::Wfg w(r.data(), m);
     std::vector<double> L;
     L.reserve(n * m);
-    for (std::size_t i = 0; i < n; ++i) {
-        const auto& p = F[i];
-        if (!inside(p)) continue;
-        double own = 1.0;
-        for (std::size_t k = 0; k < m; ++k) own *= r[k] - p[k];
-        L.clear();
-        std::size_t rows = 0;
-        for (std::size_t q = 0; q < n; ++q) {
-            if (q == i) continue;
-            const std::size_t at = L.size();
-            for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], p[k]));
-            if (inside_row(L.data() + at, r)) ++rows;
-            else L.resize(at);                        // as wfg drops it
-        }
-        double sub = 0.0;
-        if (rows > 0) {
-            rows = w.nds(L, rows, m);
-            if (!kept) {
-                sub = w.hv(L, rows, m);
-            } else {                                                // Д8.3
-                std::vector<double> in(L.begin(), L.begin() + static_cast<std::ptrdiff_t>(rows * m));
-                const auto it = kept->prev.find(p);
-                if (it != kept->prev.end() && kept->r.size() == m && same_bits(kept->r.data(), r.data(), m) &&
-                    same_bits(it->first.data(), p.data(), m) && it->second.first.size() == in.size() &&
-                    same_bits(it->second.first.data(), in.data(), in.size())) {
-                    sub = it->second.second;
-                    ++kept->reused;
-                } else {
-                    sub = w.hv(L, rows, m);                         // hv may reorder L: in is the copy
-                    ++kept->counted;
-                }
-                kept->next[p] = {std::move(in), sub};
-            }
-        }
-        c[i] = std::max(0.0, own - sub);
-    }
-    if (kept) {
-        kept->r = r;
-        kept->prev.swap(kept->next);
-        kept->next.clear();
-    }
+    for (std::size_t i = 0; i < n; ++i) c[i] = detail::exact_one(F, r, i, w, L, kept);
+    detail::end_step(kept, r);
     return c;
 }
 
@@ -183,6 +207,232 @@ inline std::vector<double> contributions_box(const std::vector<std::vector<doubl
         c[i] = std::max(0.0, own - sub);
     }
     return c;
+}
+
+// TASK 14, SUPPLEMENT 3, Д8.2. The least contributor by IWFG: While &
+// Bradstreet, "Applying the WFG algorithm to calculate incremental
+// hypervolumes", IEEE CEC 2012 (source hv-incremental-iwfg_while2012, Fig.
+// 7), with the adaptive slicing SD_k and the Rank order of the objectives of
+// Cox & While, "Improving the IWFG algorithm for calculating incremental
+// hypervolume", IEEE CEC 2016 (hv-incremental-iwfg-improved_cox2016, §IV,
+// Fig. 10), the slice of IHSO (Bradstreet, While & Barone, IEEE TEVC 12(6),
+// 2008, hv-incremental-ihso_bradstreet2008_uwa, Fig. 4). Minimising, r the
+// reference point.
+//   A point p's exclusive volume is cut along an objective k into slabs
+// [t_i, t_i+1) between p_k and r_k at the other points' values in k; in a
+// slab the points with q_k <= t_i are active, and the slab's volume is its
+// thickness times p's exclusive volume among them in the other objectives,
+// counted by WFG's bounding trick; once an active point is no worse than p
+// in the other objectives, that slab and every one after it contribute
+// nothing. SD_3: the first slab is cut again along the next objective, and
+// that one's first again — so the first chunks are small and the rest large.
+// The objectives in the order of Rank: first the one where the fewest points
+// beat p. Every point starts with its first chunk; then, best first, the
+// point with the least partial sum takes its next chunk, until the least is
+// complete.
+// READINGS AND OUR PART: SD_k with k = 3 (the paper's experiments); a point
+// not strictly better than r contributes 0 (as contributions_exact); copies
+// and weakly dominating points end a point's chunks at once. The partial
+// sums are lower bounds of the contributions; IWFG's answer is NOT taken
+// from them: every point whose partial sum is within (1 + 1e-9) of the least
+// complete one, plus 1e-12 of the region prod(r - ideal) (the race's abs_tol),
+// is taken further by at most 4 M chunks; every one still within that bound
+// is a contender, and every contender is counted by contributions_exact's own
+// code (detail::exact_one). So the contenders' values are contributions_
+// exact's bit for bit, the least and its ties among them are the least of
+// all (the others' lower bounds are above it), and a run with IWFG is the run
+// with WFG, bit for bit; only the time differs. The rounding of the partial
+// sums (one product and one difference a chunk) is far inside the margin.
+// Returns the contenders' contributions and +inf for every other point and
+// for the points skip marks (MO-CMA-ES's boundary elements: not candidates,
+// still covering the others).
+struct IwfgStats {
+    std::size_t chunks = 0, contenders = 0;
+};
+
+inline std::vector<double> contributions_iwfg(const std::vector<std::vector<double>>& F,
+                                              const std::vector<double>& r,
+                                              const std::vector<char>* skip = nullptr,
+                                              ExactKept* kept = nullptr, IwfgStats* stats = nullptr)
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    const std::size_t n = F.size(), m = r.size();
+    std::vector<double> c(n, inf);
+    if (n == 0) return c;
+    auto candidate = [&](std::size_t i) { return !(skip && (*skip)[i]); };
+    if (m < 3) {                                       // nothing to slice
+        const auto e = contributions_exact(F, r, kept);
+        for (std::size_t i = 0; i < n; ++i) if (candidate(i)) c[i] = e[i];
+        return c;
+    }
+    constexpr std::size_t kDepth = 3;                  // SD_3
+    struct Chunk {
+        double w;                                      // the product of the slabs' thicknesses
+        std::vector<std::size_t> dims;                 // the objectives left
+        std::shared_ptr<const std::vector<std::size_t>> pts;
+        std::size_t count;                             // active: the first count of pts
+    };
+    // IHSO's slice of chunk a of point z along objective k
+    auto slice = [&](const Chunk& a, std::size_t z, std::size_t k) {
+        const auto& p = F[z];
+        std::vector<std::size_t> rest;
+        for (std::size_t d : a.dims) if (d != k) rest.push_back(d);
+        auto no_worse = [&](std::size_t q) {          // q <= p in the objectives left
+            for (std::size_t d : rest) if (!(F[q][d] <= p[d])) return false;
+            return true;
+        };
+        auto pts = std::make_shared<std::vector<std::size_t>>();
+        std::vector<std::size_t> later;
+        bool covered = false;
+        for (std::size_t t = 0; t < a.count; ++t) {
+            const std::size_t q = (*a.pts)[t];
+            if (F[q][k] <= p[k]) { pts->push_back(q); covered = covered || no_worse(q); }
+            else if (F[q][k] < r[k]) later.push_back(q);
+        }
+        std::stable_sort(later.begin(), later.end(),
+                         [&](std::size_t x, std::size_t y) { return F[x][k] < F[y][k]; });
+        const std::size_t first = pts->size();
+        pts->insert(pts->end(), later.begin(), later.end());
+        std::vector<Chunk> out;
+        double lo = p[k];
+        std::size_t t = first;
+        while (!covered) {
+            const double hi = t < pts->size() ? F[(*pts)[t]][k] : r[k];
+            if (hi > lo) out.push_back({a.w * (hi - lo), rest, pts, t});
+            if (t >= pts->size()) break;
+            const double v = F[(*pts)[t]][k];
+            while (t < pts->size() && F[(*pts)[t]][k] == v) {
+                covered = covered || no_worse((*pts)[t]);
+                ++t;
+            }
+            lo = v;
+        }
+        return out;
+    };
+    std::vector<double> L;
+    std::map<std::vector<std::size_t>, hypervolume::detail::Wfg> wfgs;   // by the objectives left
+    // a chunk's volume: its thickness times p's exclusive volume among its
+    // active points in the objectives left, by WFG's bounding trick
+    auto volume = [&](const Chunk& a, std::size_t z) {
+        const auto& p = F[z];
+        const std::size_t d = a.dims.size();
+        std::vector<double> ref(d);
+        double own = 1.0;
+        for (std::size_t j = 0; j < d; ++j) {
+            ref[j] = r[a.dims[j]];
+            own *= ref[j] - p[a.dims[j]];
+        }
+        L.clear();
+        std::size_t rows = 0;
+        for (std::size_t t = 0; t < a.count; ++t) {
+            const std::size_t q = (*a.pts)[t];
+            const std::size_t at = L.size();
+            bool in = true;
+            for (std::size_t j = 0; j < d; ++j) {
+                L.push_back(std::max(F[q][a.dims[j]], p[a.dims[j]]));
+                in = in && L.back() < ref[j];
+            }
+            if (in) ++rows;
+            else L.resize(at);
+        }
+        double sub = 0.0;
+        if (rows > 0) {
+            auto it = wfgs.find(a.dims);
+            if (it == wfgs.end()) it = wfgs.emplace(a.dims, hypervolume::detail::Wfg(ref.data(), d)).first;
+            rows = it->second.nds(L, rows, d);
+            sub = it->second.hv(L, rows, d);
+        }
+        if (stats) ++stats->chunks;
+        return a.w * std::max(0.0, own - sub);
+    };
+
+    std::vector<std::deque<Chunk>> todo(n);
+    std::vector<double> partial(n, 0.0);
+    std::vector<char> live(n, 0);                      // a candidate with chunks left
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!candidate(i)) continue;
+        const auto& p = F[i];
+        bool inside = true;
+        for (std::size_t k = 0; k < m; ++k) inside = inside && p[k] < r[k];
+        if (!inside) continue;                         // 0, complete
+        std::vector<std::size_t> beaten(m, 0), order(m);
+        for (std::size_t q = 0; q < n; ++q)
+            for (std::size_t k = 0; k < m; ++k) beaten[k] += F[q][k] < p[k];
+        for (std::size_t k = 0; k < m; ++k) order[k] = k;
+        std::stable_sort(order.begin(), order.end(),
+                         [&](std::size_t x, std::size_t y) { return beaten[x] < beaten[y]; });
+        auto next_objective = [&](const Chunk& a) {    // Rank: the first of the order left
+            for (std::size_t k : order)
+                if (std::find(a.dims.begin(), a.dims.end(), k) != a.dims.end()) return k;
+            return a.dims.front();
+        };
+        auto all = std::make_shared<std::vector<std::size_t>>();
+        for (std::size_t q = 0; q < n; ++q) if (q != i) all->push_back(q);
+        const Chunk top{1.0, order, all, all->size()};
+        auto first = slice(top, i, order[0]);
+        auto& q = todo[i];
+        q.assign(first.begin(), first.end());
+        for (std::size_t level = 1; level < kDepth && !q.empty() && q.front().dims.size() > 2; ++level) {
+            const Chunk head = q.front();
+            q.pop_front();
+            const auto deeper = slice(head, i, next_objective(head));
+            q.insert(q.begin(), deeper.begin(), deeper.end());
+        }
+        if (q.empty()) continue;
+        partial[i] = volume(q.front(), i);
+        q.pop_front();
+        live[i] = !q.empty();
+    }
+    // best first: the least partial sum takes its next chunk (the first of
+    // equal ones), until the least is complete
+    auto least = [&] {
+        std::size_t s = n;
+        for (std::size_t i = 0; i < n; ++i)
+            if (candidate(i) && (s == n || partial[i] < partial[s])) s = i;
+        return s;
+    };
+    std::size_t s = least();
+    if (s == n) return c;                              // no candidate
+    while (live[s]) {
+        partial[s] += volume(todo[s].front(), s);
+        todo[s].pop_front();
+        live[s] = !todo[s].empty();
+        s = least();
+    }
+    double tol = 1e-12;                                // as the race's abs_tol
+    for (std::size_t k = 0; k < m; ++k) {
+        double lo = inf;
+        for (const auto& f : F) lo = std::min(lo, f[k]);
+        tol *= std::max(0.0, r[k] - lo);
+    }
+    const double bound = partial[s] * (1.0 + 1e-9) + tol;
+    // a point still below the bound is taken further, by at most 4 M chunks
+    // (more cost more than its count by WFG): every one still within the
+    // bound, complete or not, is a contender
+    for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t more = 0; candidate(i) && live[i] && partial[i] <= bound && more < 4 * m; ++more) {
+            partial[i] += volume(todo[i].front(), i);
+            todo[i].pop_front();
+            live[i] = !todo[i].empty();
+        }
+    hypervolume::detail::Wfg w(r.data(), m);
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!candidate(i) || !(partial[i] <= bound)) continue;
+        c[i] = detail::exact_one(F, r, i, w, L, kept);
+        if (stats) ++stats->contenders;
+    }
+    detail::end_step(kept, r);
+    return c;
+}
+
+// The index of the least contributor by IWFG (the first of equal ones).
+inline std::size_t least_contributor_iwfg(const std::vector<std::vector<double>>& F,
+                                          const std::vector<double>& r)
+{
+    const auto c = contributions_iwfg(F, r);
+    std::size_t a = 0;
+    for (std::size_t i = 1; i < c.size(); ++i) if (c[i] < c[a]) a = i;
+    return a;
 }
 
 template <typename RNG>
@@ -512,6 +762,8 @@ struct ContribChoice {
     std::optional<int> n_samples;       // given by the caller
     int  exact_max_m = 5;               // hv_exact_max_m
     bool hvc = true;                    // hv_contrib: hvc (default) or wfg, the exact way
+    bool iwfg = true;                   // hv_contrib = iwfg (default, Д8.2): from M = 6 the least by IWFG
+    static constexpr std::size_t kIwfgFrom = 6; // at M = 5 IWFG took 2-3 times WFG's time (task 13's sets)
     Approx approx = Approx::race;       // hv_contrib: race (default) or mc, above the threshold
     bool approx_given = false;
     bool box = false;                   // hv_algo = box
@@ -558,7 +810,9 @@ struct ContribChoice {
         }
         if (w == Way::mc) return contributions_mc(F, r, std::max<std::size_t>(1, samples() / F.size()), rng);
         if (use_hvc(m)) return kept.contributions(F, r);
-        return box ? contributions_box(F, r) : contributions_exact(F, r, incremental ? &kept_exact : nullptr);
+        if (box) return contributions_box(F, r);
+        if (iwfg && m >= kIwfgFrom) return contributions_iwfg(F, r, skip, incremental ? &kept_exact : nullptr);
+        return contributions_exact(F, r, incremental ? &kept_exact : nullptr);
     }
 
     bool set_param(const std::string& k, double v)
@@ -610,16 +864,20 @@ struct ContribChoice {
     bool set_word(const std::string& k, const std::string& w)
     {
         if (k == "hv_contrib") {
-            if (w == "hvc" || w == "wfg") { hvc = w == "hvc"; return true; }
+            if (w == "iwfg" || w == "hvc" || w == "wfg") {
+                hvc = w != "wfg";                       // HVC3D / HVC4D at M = 3, 4
+                iwfg = w == "iwfg";                     // from M = 5: IWFG, or WFG for every point
+                return true;
+            }
             if (w == "race" || w == "mc") {
                 if (exact_only)
                     throw std::invalid_argument("hv_contrib = '" + w + "': " + kExactOnly +
-                                                "; hv_contrib must be hvc or wfg");
+                                                "; hv_contrib must be iwfg, hvc or wfg");
                 approx = w == "race" ? Approx::race : Approx::mc;
                 approx_given = true;
                 return true;
             }
-            throw std::invalid_argument("hv_contrib = '" + w + "': hvc, wfg, race or mc");
+            throw std::invalid_argument("hv_contrib = '" + w + "': iwfg, hvc, wfg, race or mc");
         }
         if (k == "hv_algo") {                           // auto: WFG for the contributions
             if (w != "auto" && w != "wfg" && w != "box")
@@ -651,11 +909,11 @@ struct ContribChoice {
                                          (n_samples && !approx_given ? "n_samples given" :
                                           approx_given ? "hv_contrib = mc" : "above hv_exact_max_m") + ")";
         else if (use_hvc(m))       how = m == 3 ? "exact, hvc3d" : "exact, hvc4d";
-        else                       how = box ? "exact, box" : "exact, wfg";
+        else                       how = box ? "exact, box" : iwfg && m >= kIwfgFrom ? "exact, iwfg" : "exact, wfg";
         std::vector<std::pair<std::string, std::string>> out;
         if (!exact_only) out.emplace_back("hv_exact_max_m", std::to_string(exact_max_m));
         out.emplace_back("n_samples", n_samples ? std::to_string(*n_samples) : "default");
-        out.emplace_back("hv_contrib", std::string(hvc ? "hvc" : "wfg") +
+        out.emplace_back("hv_contrib", std::string(iwfg ? "iwfg" : hvc ? "hvc" : "wfg") +
                                            (exact_only ? "" : approx == Approx::race ? ", race" : ", mc"));
         out.emplace_back("hv_algo", box ? "box" : "auto");
         out.emplace_back("hv_incremental", incremental ? "1" : "0");

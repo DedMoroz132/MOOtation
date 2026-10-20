@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `hv_contrib = iwfg`, the default of SMS-EMOA and MO-CMA-ES (task 14 of
+  2026-10-20, supplement 3, Д8.2): from six objectives the least
+  hypervolume contributor by IWFG (While & Bradstreet, IEEE CEC 2012; the
+  adaptive slicing and the Rank order of Cox & While, IEEE CEC 2016):
+  every point's contribution in slabs, best first, until the least is
+  complete; the points that may be the least are then counted by WFG as for
+  every point. The removed point is WFG's bit for bit, so the runs do not
+  change. `hvc` (WFG for every point from five objectives)
+  and `wfg` stay. `hv::contributions_iwfg`, `hv::least_contributor_iwfg`.
+
 - `hv_incremental` (SMS-EMOA, MO-CMA-ES; task 14 of 2026-10-20, supplement 3,
   Д8.3): the exact contributions by WFG keep every point's count from the
   step before and take it again when the point's input to WFG is the same

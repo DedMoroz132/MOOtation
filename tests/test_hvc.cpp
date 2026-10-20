@@ -12,6 +12,7 @@
 // ============================================================================
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -431,6 +432,75 @@ int main()
             check(cst.capped && cst.samples == 0 && cc == box && pick == small,
                   "the race stopped at race_max_samples: the least upper bound, here the least box (Д8.5)");
         }
+    }
+
+    // ── IWFG (task 14, supplement 3, Д8.2) ─────────────────────────────────
+    // 10 000 random sets at M = 5 to 10: fronts on the sphere, fronts with
+    // dominated points, with copies, on a coarse grid (equal coordinates);
+    // IWFG's least, its ties and its contenders' values against
+    // contributions_exact, bit for bit; one set in four with a point skipped
+    {
+        std::mt19937 gen(8202);
+        std::normal_distribution<double> nd(0.0, 1.0);
+        std::uniform_real_distribution<double> ud(0.0, 1.0);
+        int sets = 0, same_least = 0, same_ties = 0, same_values = 0;
+        std::size_t contenders = 0, points = 0;
+        double t_exact = 0.0, t_iwfg = 0.0;
+        using clk = std::chrono::steady_clock;
+        for (int t = 0; t < 10000; ++t) {
+            const std::size_t m = 5 + static_cast<std::size_t>(t % 6);
+            const std::size_t n = 5 + static_cast<std::size_t>(gen() % 36);
+            const int kind = t % 4;                     // 0 front, 1 dominated, 2 copies, 3 grid
+            std::vector<std::vector<double>> F(n, std::vector<double>(m));
+            for (auto& row : F) {
+                double s2 = 0.0;
+                for (auto& v : row) { v = std::abs(nd(gen)) + 1e-3; s2 += v * v; }
+                for (auto& v : row) v /= std::sqrt(s2);
+                if (kind == 1 && ud(gen) < 0.3)
+                    for (auto& v : row) v += 0.2 * ud(gen);
+                if (kind == 3)
+                    for (auto& v : row) v = std::round(v * 4.0) / 4.0;
+            }
+            if (kind == 2)
+                for (std::size_t i = 0; i + 1 < n; i += 3) F[i + 1] = F[i];
+            const std::vector<double> r(m, 1.3);
+            std::vector<char> skip(n, 0);
+            if (t % 4 == 3) skip[static_cast<std::size_t>(t) % n] = 1;
+            auto t0 = clk::now();
+            const auto ex = hv::contributions_exact(F, r);
+            t_exact += std::chrono::duration<double>(clk::now() - t0).count();
+            t0 = clk::now();
+            hv::IwfgStats st;
+            const auto iw = hv::contributions_iwfg(F, r, &skip, nullptr, &st);
+            t_iwfg += std::chrono::duration<double>(clk::now() - t0).count();
+            double least = std::numeric_limits<double>::infinity();
+            std::size_t a = n, b = n;
+            for (std::size_t i = 0; i < n; ++i) {
+                if (skip[i]) continue;
+                if (a == n || ex[i] < ex[a]) a = i;
+                if (b == n || iw[i] < iw[b]) b = i;
+                least = std::min(least, ex[i]);
+            }
+            bool ties = true, values = true;
+            for (std::size_t i = 0; i < n; ++i) {
+                if (skip[i]) { ties = ties && std::isinf(iw[i]); continue; }
+                ties = ties && ((ex[i] == least) == (iw[i] == least));
+                if (!std::isinf(iw[i]))
+                    values = values && std::memcmp(&iw[i], &ex[i], sizeof(double)) == 0;
+            }
+            ++sets;
+            same_least += a == b;
+            same_ties += ties;
+            same_values += values;
+            contenders += st.contenders;
+            points += n;
+        }
+        std::printf("iwfg, 10 000 random sets at M = 5 to 10: the least as WFG's %d, its ties %d, the "
+                    "contenders' values bit for bit %d; contenders %.3f of the points; time %.2f s "
+                    "(WFG for every point %.2f s)\n",
+                    same_least, same_ties, same_values, double(contenders) / double(points), t_iwfg, t_exact);
+        check(same_least == sets && same_ties == sets && same_values == sets,
+              "IWFG: the least contributor, its ties and the contenders' values are WFG's, bit for bit");
     }
 
     // ── the kept exact counts (task 14, supplement 3, Д8.3) ─────────────────
