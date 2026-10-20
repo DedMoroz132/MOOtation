@@ -16,10 +16,15 @@ constraints, constraints_batch and evaluate_with_constraints are C++ (attach):
 one implementation, called through the binding, its loop over a batch in C++,
 and minimize and a campaign hand it to the core, which then evaluates it
 without calling Python (minimize's native). The NumPy code of these modules
-stays as the reference, in BenchProblem.reference: the tests hold the two
-equal bit for bit wherever NumPy's sin, cos, exp and pow are the C library's
+stays as the reference, in BenchProblem.reference, and without the extension
+it is what runs. The C++ suite's exp, log, pow, sin, cos, tan and hypot are the
+library's own (include/mootation/detmath.hpp; task 14 of 2026-10-20), the same
+bits on every platform; the NumPy code stays on NumPy, that is on the C
+library, whose last bits may differ from machine to machine. The tests hold
+the two within 4 ulps (near zero, within 2e-15 of the problem's scale; bbob
+4e-15) wherever NumPy's sin, cos, exp and pow are the C library's
 (_rows.agrees) — bbob-biobj's, where its BLAS also adds in the order bbob.hpp
-writes out — and without the extension it is what runs.
+writes out.
 
 spec(name) is what C++ needs of a problem: its family and sizes and the
 numbers NumPy made for it (centres, rotations, MaF9's polygons, MaF8's

@@ -91,6 +91,7 @@
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
@@ -267,16 +268,16 @@ private:
     // ── Lp norm ────────────────────────────────────────────────────────────
     double lp_norm(const std::vector<double>& v, double p) const {
         double s = 0.0;
-        for (double x : v) s += std::pow(std::max(x, 0.0), p);
-        return std::pow(s, 1.0 / p);
+        for (double x : v) s += dm::pow(std::max(x, 0.0), p);
+        return dm::pow(s, 1.0 / p);
     }
 
     double lp_dist(const std::vector<double>& a,
                    const std::vector<double>& b, double p) const {
         double s = 0.0;
         int m = static_cast<int>(a.size());
-        for (int j = 0; j < m; ++j) s += std::pow(std::abs(a[j] - b[j]), p);
-        return std::pow(s, 1.0 / p);
+        for (int j = 0; j < m; ++j) s += dm::pow(std::abs(a[j] - b[j]), p);
+        return dm::pow(s, 1.0 / p);
     }
 
     // ── Geometry estimation (§3.3, Eq. 6 + Eq. 8) ──────────────────────────
@@ -311,8 +312,8 @@ private:
         // there is no geometry to estimate, so the answer is the linear one,
         // p = 1, as in the no-central-point branch above.
         if (!(sum_C > 1e-12) || !(sum_C < static_cast<double>(m) - 1e-12)) return 1.0;
-        double log_M    = std::log(static_cast<double>(m));
-        double log_sumC = std::log(sum_C);
+        double log_M    = dm::log(static_cast<double>(m));
+        double log_sumC = dm::log(sum_C);
         double p = log_M / (log_M - log_sumC);
         // Numerical guard only: a valid ΣC within 1e-12 of M still gives a p
         // in the thousands.

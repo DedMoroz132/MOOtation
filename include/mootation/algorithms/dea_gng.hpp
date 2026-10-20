@@ -127,6 +127,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../detail/math_compat.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
@@ -175,7 +176,7 @@ private:
     static double edist(const std::vector<double>& a, const std::vector<double>& b){ double s=0; for(std::size_t k=0;k<a.size();++k){double d=a[k]-b[k];s+=d*d;} return std::sqrt(s); }
     static double ang(const std::vector<double>& a, const std::vector<double>& b){
         double d=0,na=0,nb=0; for(std::size_t k=0;k<a.size();++k){d+=a[k]*b[k];na+=a[k]*a[k];nb+=b[k]*b[k];}
-        double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 0.0; return std::acos(std::clamp(d/q,-1.0,1.0));
+        double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 0.0; return dm::acos(std::clamp(d/q,-1.0,1.0));
     }
     void upd_ideal(const std::vector<double>& f){ for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],f[k]); }
 
@@ -340,7 +341,7 @@ private:
                 // Eq.7 exactly. ζ'=max(0,ζ_min−ε).
                 //   ζ'≈0 (edge ∥ r) ⇒ tan→0 ⇒ θ→∞; ζ'∈(0,π/2) ⇒ θ=1/tanζ'>0;
                 //   ζ'≥π/2 (obtuse angle) ⇒ 1/tanζ'≤0 ⇒ max(0,·)=0.
-                else { double zp=std::max(0.0,zmin-eps_theta_); theta = (zp>1e-9)? std::max(0.0,1.0/std::tan(zp)) : INF_THETA; }
+                else { double zp=std::max(0.0,zmin-eps_theta_); theta = (zp>1e-9)? std::max(0.0,1.0/dm::tan(zp)) : INF_THETA; }
                 R_.push_back(Rnode[ri]); Rtheta_.push_back(theta);
                 ++ri;
             }

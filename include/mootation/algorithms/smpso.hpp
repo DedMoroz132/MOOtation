@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../detail/constrained.hpp"
@@ -308,8 +309,8 @@ private:
             double da = 0.0, db = 0.0;
             for (std::size_t k = 0; k < a.f.size(); ++k) {
                 const double ia = std::floor(a.f[k] / s_.eps_eta), ib = std::floor(b.f[k] / s_.eps_eta);
-                da += std::pow(a.f[k] - ia * s_.eps_eta, 2.0);
-                db += std::pow(b.f[k] - ib * s_.eps_eta, 2.0);
+                da += dm::pow(a.f[k] - ia * s_.eps_eta, 2.0);
+                db += dm::pow(b.f[k] - ib * s_.eps_eta, 2.0);
             }
             return da < db ? -1 : 1;
         }
@@ -365,8 +366,8 @@ private:
     {
         ops::note_operator("omopso_non_uniform", "clip");
         const double p = 1.0 / static_cast<double>(x.size());
-        const double shrink = std::pow(1.0 - static_cast<double>(t_) / static_cast<double>(t_max_), 0.5);
-        auto delta = [&](double y) { return y * (1.0 - std::pow(uni(0.0, 1.0), shrink)); };
+        const double shrink = dm::pow(1.0 - static_cast<double>(t_) / static_cast<double>(t_max_), 0.5);
+        auto delta = [&](double y) { return y * (1.0 - dm::pow(uni(0.0, 1.0), shrink)); };
         for (std::size_t j = 0; j < x.size(); ++j) {
             if (!(uni(0.0, 1.0) < p)) continue;
             const double r = uni(0.0, 1.0);

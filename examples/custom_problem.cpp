@@ -56,6 +56,10 @@ public:
     int get_objs_n()     const { return 2; }     // f1, f2
     int get_lims_n()     const { return 0; }     // unconstrained
 
+    // The C library's exp, pow and sin, as a user's own problem would call
+    // them: their last bits may differ between platforms, and so may a run's
+    // results with one seed (the library's cores, operators and suite use
+    // their own, mootation::dm, which do not).
     void calc_objs(problems::Kursawe_NSGAII& ind) const {
         const auto& x = ind.variables;
 

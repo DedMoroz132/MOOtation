@@ -137,6 +137,7 @@
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
@@ -185,7 +186,7 @@ private:
         double c = dot / denom;
         if (c >  1.0) c =  1.0;
         if (c < -1.0) c = -1.0;
-        return std::acos(c);
+        return dm::acos(c);
     }
 
     // ── Exactly K uniform directions on the first-octant sphere (SMSM2M-5) ──

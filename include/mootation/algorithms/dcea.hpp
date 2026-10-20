@@ -141,6 +141,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../detail/math_compat.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
@@ -409,7 +410,7 @@ public:
                 ops::RepairTally tally;
                 for(int t=0;t<vault.vars_n();++t){
                     double xv=pop_[idx].vars[t], pv=pop_[p].vars[t];
-                    double mv = (sgn? std::sin(r1):std::cos(r1)) * std::abs(r2*pv - xv);
+                    double mv = (sgn? dm::sin(r1):dm::cos(r1)) * std::abs(r2*pv - xv);
                     double yt = xv + r0*mv;
                     y[t] = yt + mu*(pv - xv);
                     double lo=bd[t].first.value_or(0.0),hi=bd[t].second.value_or(1.0);

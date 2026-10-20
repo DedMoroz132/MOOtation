@@ -44,6 +44,7 @@
 #include <utility>
 #include <vector>
 
+#include "detmath.hpp"
 #include "hv_box.hpp"
 #include "hypervolume.hpp"
 #include "random.hpp"
@@ -685,7 +686,7 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
         st.rounds = R;
         D *= 0.5;
         const double g = set.gamma;
-        const double logterm = std::log(2.0 * nn * std::pow(static_cast<double>(R), 1.0 + g) *
+        const double logterm = dm::log(2.0 * nn * dm::pow(static_cast<double>(R), 1.0 + g) *
                                         (1.0 + g) / (g * set.delta));
         for (std::size_t t : live) {
             Cand& a = S[t];

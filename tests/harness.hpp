@@ -32,6 +32,7 @@
 #include <utility>
 #include <vector>
 
+#include <mootation/detmath.hpp>
 #include <mootation/mootation.hpp>
 
 namespace mootation::testing {
@@ -97,7 +98,9 @@ struct DTLZ2Spec {
 
     static void eval(const std::vector<double>& x, std::vector<double>& f)
     {
-        const double pi_2 = std::acos(-1.0) / 2.0;
+        // dm:: (detmath.hpp): the same bits on every platform, so this problem
+        // probes the cores alike everywhere (compat_dump, golden fingerprints)
+        const double pi_2 = mootation::dm::kPi / 2.0;
 
         double g = 0.0;
         for (int i = M - 1; i < NVARS; ++i) {
@@ -107,8 +110,8 @@ struct DTLZ2Spec {
 
         for (int j = 0; j < M; ++j) {
             double v = 1.0 + g;
-            for (int i = 0; i < M - 1 - j; ++i) v *= std::cos(x[i] * pi_2);
-            if (j > 0) v *= std::sin(x[M - 1 - j] * pi_2);
+            for (int i = 0; i < M - 1 - j; ++i) v *= mootation::dm::cos(x[i] * pi_2);
+            if (j > 0) v *= mootation::dm::sin(x[M - 1 - j] * pi_2);
             f[j] = v;
         }
     }

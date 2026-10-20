@@ -4,7 +4,8 @@
 // bbob-biobj and bbob-biobj-mixint (task 12 of 2026-10-19, §1): the ten bbob
 // functions of benchmarks/bbob.py, paired as benchmarks/bbob_biobj.py pairs
 // them, and the integer variables of benchmarks/bbob_biobj_mixint.py, with the
-// values those modules compute, bit for bit.
+// values those modules compute (to a few ulps: the elementary functions here
+// are the library's own, dm::, those of the modules the C library's).
 //
 // N. Hansen, S. Finck, R. Ros, A. Auger. "Real-Parameter Black-Box
 // Optimization Benchmarking 2009: Noiseless Functions Definitions." INRIA
@@ -25,9 +26,9 @@
 //
 // THE ORDER OF THE ARITHMETIC is that of the NumPy code, as in the rest of the
 // suite (common.hpp): sums along a row pairwise, x ** 2 of an array x * x,
-// log, exp, sin, cos and pow the C library's one value at a time, and the
-// grouping of every Python expression kept. Python's v ** 2 of a float
-// (pow_each) is the C library's pow of |v| (py_square), not v * v.
+// log, exp, sin, cos and pow the library's own (dm::, detmath.hpp; task 14 of
+// 2026-10-20), and the grouping of every Python expression kept. Python's
+// v ** 2 of a float (pow_each) is pow of |v| (py_square), not v * v.
 //
 // THE PRODUCTS OF VECTORS AND MATRICES. bbob.py takes R x, x . x and the
 // peaks' (x - y_i) R^T through NumPy's @, that is through the BLAS NumPy is
@@ -54,6 +55,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "common.hpp"
 
 #if defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
@@ -62,10 +64,6 @@
 #endif
 
 namespace mootation::suite {
-
-namespace lm {
-MOOTATION_SUITE_NOINLINE inline double log(double x) { volatile double v = x; return std::log(v); }
-}   // namespace lm
 
 namespace bbob {
 
@@ -195,11 +193,11 @@ inline double np_maximum(double a, double b)
 }
 
 // Python's v ** 2 of a float (bbob.py's pow_each): CPython takes the sign off
-// a negative base itself, then calls the C library's pow
+// a negative base itself, then calls pow (here dm::pow, which gives |v| |v|)
 inline double py_square(double v)
 {
     if (std::isnan(v)) return v;
-    return lm::pow(std::abs(v), 2.0);
+    return dm::pow(std::abs(v), 2.0);
 }
 
 // ---- the transformations (Hansen et al., Section 0.2) -----------------------
@@ -207,10 +205,10 @@ inline double py_square(double v)
 // T_osz of one value: sign(x) exp(x^ + 0.049 (sin(c1 x^) + sin(c2 x^)))
 inline double t_osz(double x)
 {
-    const double xh = x != 0.0 ? lm::log(std::abs(x)) : 0.0;
+    const double xh = x != 0.0 ? dm::log(std::abs(x)) : 0.0;
     const double c1 = x > 0.0 ? 10.0 : 5.5;
     const double c2 = x > 0.0 ? 7.9 : 3.1;
-    return np_sign(x) * lm::exp(xh + 0.049 * (lm::sin(c1 * xh) + lm::sin(c2 * xh)));
+    return np_sign(x) * dm::exp(xh + 0.049 * (dm::sin(c1 * xh) + dm::sin(c2 * xh)));
 }
 
 // T_asy^beta of a D-vector: x_i^(1 + beta (i-1)/(D-1) sqrt(x_i)) where x_i > 0
@@ -218,7 +216,7 @@ inline void t_asy(const double* x, int D, double beta, double* out)
 {
     for (int i = 0; i < D; ++i) {
         const double e = 1.0 + beta * (i / (D - 1.0)) * std::sqrt(std::abs(x[i]));
-        out[i] = x[i] > 0.0 ? lm::pow(std::abs(x[i]), e) : x[i];
+        out[i] = x[i] > 0.0 ? dm::pow(std::abs(x[i]), e) : x[i];
     }
 }
 
@@ -301,7 +299,7 @@ private:
     {
         const int D = D_;
         if (f_.fid == 2)
-            for (int i = 0; i < D; ++i) cond_.push_back(lm::pow(10.0, 6.0 * i / (D - 1.0)));
+            for (int i = 0; i < D; ++i) cond_.push_back(dm::pow(10.0, 6.0 * i / (D - 1.0)));
         if (f_.fid == 14)
             for (int i = 0; i < D; ++i) cond_.push_back(2.0 + 4.0 * i / (D - 1.0));
         if (f_.fid == 20)
@@ -336,7 +334,7 @@ private:
             const double v = s * z[i];
             t[i] = v * v;
         }
-        return lm::pow(t_osz(row_sum(t, static_cast<std::size_t>(D_))), 0.9) + f_.f_opt;
+        return dm::pow(t_osz(row_sum(t, static_cast<std::size_t>(D_))), 0.9) + f_.f_opt;
     }
 
     double f8(const double* d) const
@@ -363,7 +361,7 @@ private:
     {
         double z[kMaxD] = {}, t[kMaxD] = {};
         matvec(f_.R, D_, d, z);
-        for (int i = 0; i < D_; ++i) t[i] = lm::pow(std::abs(z[i]), cond_[static_cast<std::size_t>(i)]);
+        for (int i = 0; i < D_; ++i) t[i] = dm::pow(std::abs(z[i]), cond_[static_cast<std::size_t>(i)]);
         return std::sqrt(row_sum(t, static_cast<std::size_t>(D_))) + f_.f_opt;
     }
 
@@ -376,7 +374,7 @@ private:
         matvec(f_.Q, D_, b, a);
         for (int i = 0; i < D_; ++i) a[i] = f_.l10[static_cast<std::size_t>(i)] * a[i];
         matvec(f_.R, D_, a, z);
-        for (int i = 0; i < D_; ++i) c[i] = lm::cos(kTwoPi * z[i]);
+        for (int i = 0; i < D_; ++i) c[i] = dm::cos(kTwoPi * z[i]);
         return (10.0 * (D_ - row_sum(c, static_cast<std::size_t>(D_))) + dot(z, z, D_)) + f_.f_opt;
     }
 
@@ -390,7 +388,7 @@ private:
         for (int i = 0; i < D_ - 1; ++i) {                    // BBOB-3: i = 1 .. D-1
             const double s = std::sqrt(z[i] * z[i] + z[i + 1] * z[i + 1]);
             const double rt = std::sqrt(s);
-            const double sn = lm::sin(50.0 * lm::pow(s, 0.2));
+            const double sn = dm::sin(50.0 * dm::pow(s, 0.2));
             t[i] = rt + rt * (sn * sn);
         }
         const double inner = row_sum(t, static_cast<std::size_t>(D_ - 1)) / (D_ - 1.0);
@@ -406,7 +404,7 @@ private:
             const double zh = i == 0 ? xh[0] : xh[i] + 0.25 * (xh[i - 1] - two_abs_[static_cast<std::size_t>(i - 1)]);
             z[i] = 100.0 * (f_.l10[static_cast<std::size_t>(i)] * (zh - two_abs) + two_abs);
         }
-        for (int i = 0; i < D_; ++i) t[i] = z[i] * lm::sin(std::sqrt(std::abs(z[i])));
+        for (int i = 0; i < D_; ++i) t[i] = z[i] * dm::sin(std::sqrt(std::abs(z[i])));
         const double term = -row_sum(t, static_cast<std::size_t>(D_)) / (100.0 * D_);
         for (int i = 0; i < D_; ++i) z[i] = z[i] / 100.0;
         return term + kSchwefel + 100.0 * f_pen(z, D_) + f_.f_opt;
@@ -423,7 +421,7 @@ private:
             gemm_row(d, f_.R, D_, u);
             for (int i = 0; i < D_; ++i) q[i] = C[i] * u[i] * u[i];
             const double quad = row_sum(q, static_cast<std::size_t>(D_));
-            const double v = f_.w[static_cast<std::size_t>(k)] * lm::exp(-quad / (2.0 * D_));
+            const double v = f_.w[static_cast<std::size_t>(k)] * dm::exp(-quad / (2.0 * D_));
             best = k == 0 ? v : np_maximum(best, v);
         }
         return py_square(t_osz(10.0 - best)) + f_pen(x, D_) + f_.f_opt;

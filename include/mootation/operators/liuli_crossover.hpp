@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "bound_repair.hpp"
 #include "sbx.hpp"   // sbx_require_bound
 #include "../random.hpp"
@@ -97,7 +98,7 @@ inline double liuli_anneal(int gen, int max_gen)
             " < 1 (a real generation budget is required, see set_t_max)");
     double ratio = static_cast<double>(gen) / static_cast<double>(max_gen);
     ratio = std::clamp(ratio, 0.0, 1.0);
-    return std::pow(1.0 - ratio, 0.7);
+    return dm::pow(1.0 - ratio, 0.7);
 }
 
 // ── Crossover Eq.(5): one offspring from base parent x and partner y ─────────
@@ -123,7 +124,7 @@ inline void liuli_crossover(const std::vector<double>& x,
 
     const double u  = uni11(rng);                       // rand ∈ [−1,1] (LL-1)
     const double r  = uni01(rng);                       // base ∈ [0,1] (LL-1)
-    const double rc = u * (1.0 - std::pow(r, a));       // Eq.(5), exponent +a
+    const double rc = u * (1.0 - dm::pow(r, a));       // Eq.(5), exponent +a
 
     int nv = static_cast<int>(x.size());
     child.resize(nv);
@@ -168,7 +169,7 @@ inline void liuli_mutation(std::vector<double>& x,
         auto draw = [&]() {
             double u   = uni11(rng);                    // rand ∈ [−1,1] (LL-1)
             double r   = std::max(uni01(rng), 1e-12);   // base, guard LL-5
-            double rm  = 0.15 * u * (1.0 - std::pow(r, -a));   // Eq.(6), exponent −a
+            double rm  = 0.15 * u * (1.0 - dm::pow(r, -a));   // Eq.(6), exponent −a
             return old + rm * (hi - lo);
         };
         double c = draw();

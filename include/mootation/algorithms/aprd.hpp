@@ -173,6 +173,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../data_vault.hpp"
@@ -261,7 +262,7 @@ private:
         for(std::size_t k=0;k<a.size();++k){dot+=a[k]*b[k];na+=a[k]*a[k];nb+=b[k]*b[k];}
         double d=std::sqrt(na)*std::sqrt(nb);
         if(d<1e-300) return 0.0;
-        return std::acos(std::clamp(dot/d,-1.0,1.0));
+        return dm::acos(std::clamp(dot/d,-1.0,1.0));
     }
     std::vector<int> maxmin_angle(const std::vector<std::vector<double>>& pts, int cnt){
         int n=(int)pts.size(); std::vector<int> sel;

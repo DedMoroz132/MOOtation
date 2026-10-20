@@ -81,6 +81,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../detail/math_compat.hpp"
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
@@ -146,7 +147,7 @@ private:
         if (denom < 1e-30) return M_PI / 2.0;
         double c = dot / denom;
         c = std::max(-1.0, std::min(1.0, c));
-        return std::acos(c);
+        return dm::acos(c);
     }
 
     static double eps_plus(const std::vector<double>& a, const std::vector<double>& b) {
@@ -249,7 +250,7 @@ public:
                 double s = 0.0;
                 for (int j = 0; j < n_ea; ++j)
                     if (i != j)
-                        s += -std::exp(-eps_plus(vault.objectives_of(j),
+                        s += -dm::exp(-eps_plus(vault.objectives_of(j),
                                                  vault.objectives_of(i)) / (c * KAPPA_));
                 fit[i] = s;
             }
@@ -354,7 +355,7 @@ public:
                 for (int i : rem) {
                     double s = 0;
                     for (int j : rem) if (i != j)
-                        s += -std::exp(-eps_plus(Fp[j], Fp[i]) / (c * KAPPA_));
+                        s += -dm::exp(-eps_plus(Fp[j], Fp[i]) / (c * KAPPA_));
                     F[i] = s;
                 }
                 for (int t = 0; t < need_remove; ++t) {
@@ -363,7 +364,7 @@ public:
                     if (worst < 0) break;
                     alive[worst] = 0;
                     for (int v : rem) if (alive[v] && v != worst)
-                        F[v] += std::exp(-eps_plus(Fp[worst], Fp[v]) / (c * KAPPA_));
+                        F[v] += dm::exp(-eps_plus(Fp[worst], Fp[v]) / (c * KAPPA_));
                 }
             }
             survivors = retained;

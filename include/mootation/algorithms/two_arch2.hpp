@@ -109,6 +109,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../data_vault.hpp"
@@ -200,8 +201,8 @@ private:
     double lp_dist(const std::vector<double>& a, const std::vector<double>& b) const {
         double p = (m_ > 0) ? 1.0 / static_cast<double>(m_) : 1.0;
         double s = 0.0;
-        for (int i = 0; i < m_; ++i) s += std::pow(std::abs(a[i] - b[i]), p);
-        return std::pow(s, 1.0 / p);
+        for (int i = 0; i < m_; ++i) s += dm::pow(std::abs(a[i] - b[i]), p);
+        return dm::pow(s, 1.0 / p);
     }
 
     // ── CA update by I_eps+ (Eq. 2 fitness, Alg. 2 truncation) ──────────────
@@ -223,7 +224,7 @@ private:
         for (int i = 0; i < sz; ++i)
             for (int j = 0; j < sz; ++j) {
                 if (i == j) continue;
-                F[i] += -std::exp(-i_eps_plus(CA_[j].objs, CA_[i].objs, inv) / kappa_);
+                F[i] += -dm::exp(-i_eps_plus(CA_[j].objs, CA_[i].objs, inv) / kappa_);
             }
         if (constraint_mode != ConstraintMode::NONE)
             for (int i = 0; i < sz; ++i)
@@ -239,7 +240,7 @@ private:
             // Alg. 2 line 5: update remaining F(x) += e^{ -I_eps+(x*,x)/kappa }.
             for (int i = 0; i < sz; ++i)
                 if (alive[i] && i != worst)
-                    F[i] += std::exp(-i_eps_plus(CA_[worst].objs, CA_[i].objs, inv) / kappa_);
+                    F[i] += dm::exp(-i_eps_plus(CA_[worst].objs, CA_[i].objs, inv) / kappa_);
             alive[worst] = 0;
             --live;
         }

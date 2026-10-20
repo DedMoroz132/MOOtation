@@ -52,6 +52,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../individuals.hpp"
@@ -183,7 +184,7 @@ private:
         if (nf < 1e-30) return PI_ / 2.0;
         double c = f[axis] / nf;
         c = std::max(-1.0, std::min(1.0, c));
-        return std::acos(c);
+        return dm::acos(c);
     }
 
     // ── Angle between two vectors (Eq.4): arccos|cos|, absolute per the paper ─
@@ -195,7 +196,7 @@ private:
         if (denom < 1e-30) return PI_ / 2.0;
         double c = std::abs(dot) / denom;
         c = std::min(1.0, c);
-        return std::acos(c);
+        return dm::acos(c);
     }
 
     // ── Algorithm 1: PCM(idx, m) -> m clusters (index = axis) ───────────────

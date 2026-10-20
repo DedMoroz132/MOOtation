@@ -120,6 +120,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
@@ -378,8 +379,8 @@ private:
         std::vector<double> score(dense.size(), 0.0);
         for (std::size_t k = 0; k < dense.size(); ++k) {
             double pos = 0, neg = 0;
-            for (const auto& a : samp_active_)   { double d = l2(dense[k], a); pos += std::exp(-d*d*inv2s2); }
-            for (const auto& a : samp_inactive_) { double d = l2(dense[k], a); neg += std::exp(-d*d*inv2s2); }
+            for (const auto& a : samp_active_)   { double d = l2(dense[k], a); pos += dm::exp(-d*d*inv2s2); }
+            for (const auto& a : samp_inactive_) { double d = l2(dense[k], a); neg += dm::exp(-d*d*inv2s2); }
             double na = (double)samp_active_.size(), ni = (double)samp_inactive_.size();
             score[k] = (na > 0 ? pos/na : 0.0) - (ni > 0 ? neg/ni : 0.0);
         }

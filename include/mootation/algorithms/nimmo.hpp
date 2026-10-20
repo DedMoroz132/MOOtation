@@ -44,6 +44,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
@@ -155,7 +156,7 @@ private:
             }
             for (int j = 0; j < sz; ++j) {
                 if (i == j || !feas[j]) continue;
-                F[i] += std::exp(-indicator(R[j], R[i]) / (kappa_ * I_max));
+                F[i] += dm::exp(-indicator(R[j], R[i]) / (kappa_ * I_max));
             }
         }
         return F;

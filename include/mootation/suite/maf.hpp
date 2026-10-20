@@ -4,27 +4,17 @@
 // MaF1-9 and MaF13-15 (Cheng et al. 2017) as the library evaluates them:
 // MaF1, 3, 4 and 5 as benchmarks/maf.py, MaF2, 6, 7, 8, 9 and 13 as
 // registry.py, _maf_register, and MaF14 and MaF15 as maf.py, lsmop_rows
-// (task 12 of 2026-10-19). MaF8's distances are the C library's hypot, as
-// np.hypot's (its version 2; version 1 took CPython's math.hypot, an
-// algorithm of its own). MaF10-12 are WFG's.
+// (task 12 of 2026-10-19). MaF8's distances are hypot (dm::hypot; np.hypot
+// in the NumPy code; version 1 took CPython's math.hypot, an algorithm of its
+// own, version 2 the C library's). MaF10-12 are WFG's.
 // The order of every operation is that of the NumPy rows (common.hpp).
 // ============================================================================
 
 #include <cstdlib>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "common.hpp"
-
-namespace mootation::suite {
-namespace lm {
-// hypot of the C library, as np.hypot calls it (common.hpp, lm)
-MOOTATION_SUITE_NOINLINE inline double hypot(double x, double y)
-{
-    volatile double v = x, w = y;
-    return std::hypot(v, w);
-}
-}   // namespace lm
-}   // namespace mootation::suite
 
 namespace mootation::suite::maf {
 
@@ -47,7 +37,7 @@ inline double g_rastrigin(const double* xm, int k)
     Vec t(static_cast<std::size_t>(k));
     for (int j = 0; j < k; ++j) {
         const double d = xm[j] - 0.5;
-        t[static_cast<std::size_t>(j)] = d * d - lm::cos(20.0 * kPi * d);
+        t[static_cast<std::size_t>(j)] = d * d - dm::cos(20.0 * kPi * d);
     }
     return 100.0 * (k + row_sum(t));
 }
@@ -71,8 +61,8 @@ inline void directions(const double* P, int M, double* d)
 {
     Vec c(static_cast<std::size_t>(M - 1)), s(static_cast<std::size_t>(M - 1));
     for (int i = 0; i < M - 1; ++i) {
-        c[static_cast<std::size_t>(i)] = lm::cos(0.5 * kPi * P[i]);
-        s[static_cast<std::size_t>(i)] = lm::sin(0.5 * kPi * P[i]);
+        c[static_cast<std::size_t>(i)] = dm::cos(0.5 * kPi * P[i]);
+        s[static_cast<std::size_t>(i)] = dm::sin(0.5 * kPi * P[i]);
     }
     d[0] = row_prod(c.data(), static_cast<std::size_t>(M - 1));
     for (int i = 1; i < M; ++i) {
@@ -93,8 +83,8 @@ inline void maf6(const double* y, int n, int M, double* f)
             theta[static_cast<std::size_t>(i)] = (kPi / denom) * (1 + 2 * g * y[i]);
     }
     for (std::size_t i = 0; i < theta.size(); ++i) {
-        c[i] = lm::cos(theta[i]);
-        s[i] = lm::sin(theta[i]);
+        c[i] = dm::cos(theta[i]);
+        s[i] = dm::sin(theta[i]);
     }
     const double base = 1.0 + 100.0 * g;
     f[0] = base * row_prod(c.data(), static_cast<std::size_t>(M - 1));
@@ -111,8 +101,8 @@ inline void maf2(const double* y, int n, int M, double* f)
     Vec cs(static_cast<std::size_t>(M - 1)), sn(cs.size()), g(static_cast<std::size_t>(M), 0.0);
     for (int i = 0; i < M - 1; ++i) {
         const double th = 0.5 * kPi * (0.5 * y[i] + 0.25);
-        cs[static_cast<std::size_t>(i)] = lm::cos(th);
-        sn[static_cast<std::size_t>(i)] = lm::sin(th);
+        cs[static_cast<std::size_t>(i)] = dm::cos(th);
+        sn[static_cast<std::size_t>(i)] = dm::sin(th);
     }
     auto chunk = [&](int lo, int hi) {
         Vec t(static_cast<std::size_t>(hi - lo));
@@ -152,7 +142,7 @@ inline void evaluate(int which, const double* y, int n, int M, double* f)
             const double g = g_rastrigin(xm, k);
             directions(y, M, d.data());
             for (int i = 0; i < M; ++i)
-                f[i] = lm::pow(d[static_cast<std::size_t>(i)] * (1.0 + g), i < M - 1 ? 4.0 : 2.0);
+                f[i] = dm::pow(d[static_cast<std::size_t>(i)] * (1.0 + g), i < M - 1 ? 4.0 : 2.0);
             return;
         }
         case 4: {
@@ -165,10 +155,10 @@ inline void evaluate(int which, const double* y, int n, int M, double* f)
         case 5: {
             const double g = g_quad(xm, k);
             Vec P(static_cast<std::size_t>(M - 1));
-            for (int i = 0; i < M - 1; ++i) P[static_cast<std::size_t>(i)] = lm::pow(y[i], 100.0);
+            for (int i = 0; i < M - 1; ++i) P[static_cast<std::size_t>(i)] = dm::pow(y[i], 100.0);
             directions(P.data(), M, d.data());
             for (int i = 0; i < M; ++i)
-                f[i] = std::ldexp(1.0, M - i) * lm::pow(d[static_cast<std::size_t>(i)] * (1.0 + g), 4.0);
+                f[i] = std::ldexp(1.0, M - i) * dm::pow(d[static_cast<std::size_t>(i)] * (1.0 + g), 4.0);
             return;
         }
         case 6: maf6(y, n, M, f); return;
@@ -177,7 +167,7 @@ inline void evaluate(int which, const double* y, int n, int M, double* f)
             Vec t(static_cast<std::size_t>(M - 1));
             for (int i = 0; i < M - 1; ++i) {
                 f[i] = y[i];
-                t[static_cast<std::size_t>(i)] = (y[i] / (1 + g)) * (1 + lm::sin(3 * kPi * y[i]));
+                t[static_cast<std::size_t>(i)] = (y[i] / (1 + g)) * (1 + dm::sin(3 * kPi * y[i]));
             }
             f[M - 1] = (1 + g) * (static_cast<double>(M) - row_sum(t));
             return;
@@ -193,19 +183,19 @@ inline void maf13(const double* x, int M, double* f)
     constexpr int D = 5;
     double Y[D];
     for (int i = 0; i < D; ++i)
-        Y[i] = x[i] - 2.0 * x[1] * lm::sin(2 * kPi * x[0] + (i + 1) * kPi / D);
+        Y[i] = x[i] - 2.0 * x[1] * dm::sin(2 * kPi * x[0] + (i + 1) * kPi / D);
     // J1 = {3}, J2 = {4}, J3 = {2}, J4 = {3, 4}: (j + 1) % 3 of j = 2..4
     const double s1 = 0.0 + Y[3] * Y[3];
     const double s2 = 0.0 + Y[4] * Y[4];
     const double s3 = 0.0 + Y[2] * Y[2];
     const double s4 = 0.0 + Y[3] * Y[3] + Y[4] * Y[4];
-    const double f1 = lm::sin(kPi / 2 * x[0]) + 2.0 / 1 * s1;
-    const double f2 = lm::cos(kPi / 2 * x[0]) * lm::sin(kPi / 2 * x[1]) + 2.0 / 1 * s2;
-    const double f3 = lm::cos(kPi / 2 * x[0]) * lm::cos(kPi / 2 * x[1]) + 2.0 / 1 * s3;
+    const double f1 = dm::sin(kPi / 2 * x[0]) + 2.0 / 1 * s1;
+    const double f2 = dm::cos(kPi / 2 * x[0]) * dm::sin(kPi / 2 * x[1]) + 2.0 / 1 * s2;
+    const double f3 = dm::cos(kPi / 2 * x[0]) * dm::cos(kPi / 2 * x[1]) + 2.0 / 1 * s3;
     f[0] = f1;
     f[1] = f2;
     f[2] = f3;
-    const double tail = lm::pow(f1, 2.0) + lm::pow(f2, 10.0) + lm::pow(f3, 10.0) + 2.0 / 2 * s4;
+    const double tail = dm::pow(f1, 2.0) + dm::pow(f2, 10.0) + dm::pow(f3, 10.0) + 2.0 / 2 * s4;
     for (int i = 3; i < M; ++i) f[i] = tail;
 }
 
@@ -226,7 +216,7 @@ inline void maf8(const double* x, int M, const Vec& vertices, double* f)
 {
     for (int m = 0; m < M; ++m) {
         const double* v = vertices.data() + 2 * static_cast<std::size_t>(m);
-        f[m] = lm::hypot(x[0] - v[0], x[1] - v[1]);
+        f[m] = dm::hypot(x[0] - v[0], x[1] - v[1]);
     }
 }
 
@@ -235,7 +225,7 @@ inline void maf8(const double* x, int M, const Vec& vertices, double* f)
 inline double rastrigin(const double* z, std::size_t k)
 {
     Vec t(k);
-    for (std::size_t i = 0; i < k; ++i) t[i] = z[i] * z[i] - 10.0 * lm::cos(2 * kPi * z[i]) + 10.0;
+    for (std::size_t i = 0; i < k; ++i) t[i] = z[i] * z[i] - 10.0 * dm::cos(2 * kPi * z[i]) + 10.0;
     return row_sum(t);
 }
 
@@ -255,7 +245,7 @@ inline double griewank(const double* z, std::size_t k)
     Vec t(k), c(k);
     for (std::size_t i = 0; i < k; ++i) {
         t[i] = z[i] * z[i] / 4000.0;
-        c[i] = lm::cos(z[i] / std::sqrt(static_cast<double>(i + 1)));
+        c[i] = dm::cos(z[i] / std::sqrt(static_cast<double>(i + 1)));
     }
     return row_sum(t) - row_prod(c.data(), k) + 1.0;
 }

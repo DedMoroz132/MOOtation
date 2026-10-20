@@ -71,6 +71,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
@@ -155,7 +156,7 @@ private:
         for (std::size_t j = 0; j < a.size(); ++j) dot += a[j] * b[j];
         // Clamp to [-1,1] for numerical safety.
         dot = std::max(-1.0, std::min(1.0, dot));
-        return std::acos(dot);
+        return dm::acos(dot);
     }
 
     void precompute_gamma() {
@@ -257,7 +258,7 @@ private:
                     for (int j = 0; j < m; ++j) dot += fp[j] * Vt_[best_ref][j];
                     return dot / fp_norm;   // Vt_ already unit
                 }()));
-            theta[i] = std::acos(clamped);
+            theta[i] = dm::acos(clamped);
         }
 
         // Collect constraint violations if needed.
@@ -308,7 +309,7 @@ private:
 
             for (int i : subpop) {
                 double P = static_cast<double>(m)
-                         * std::pow(t_frac, alpha_)
+                         * dm::pow(t_frac, alpha_)
                          * theta[i] / gamma_r;
                 double apd_val = (1.0 + P) * fnorm[i];
                 vault.get_ind(i).ref_vector_idx = r;

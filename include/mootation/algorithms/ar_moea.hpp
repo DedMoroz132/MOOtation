@@ -71,6 +71,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
@@ -131,7 +132,7 @@ private:
         if (!(na > 0.0) || !(nb > 0.0)) return 0.0;
         double c = dot(a, b) / (na * nb);
         c = std::min(1.0, std::max(-1.0, c));
-        return std::acos(c);
+        return dm::acos(c);
     }
 
     // ── IGD-NS (Eq.2-3) ─────────────────────────────────────────────────────

@@ -107,6 +107,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../individuals.hpp"
@@ -242,7 +243,7 @@ private:
             double s = 0.0;
             for (int b : members) {
                 if (a == b) continue;
-                s -= std::exp(-eps_plus(Fn[b], Fn[a]) / KAPPA_);
+                s -= dm::exp(-eps_plus(Fn[b], Fn[a]) / KAPPA_);
             }
             fit[a] = s;
         }
@@ -263,12 +264,12 @@ public:
             double S = 0.0, T = 0.0;
             for (double fi : f) {
                 if (fi <= 0.0) continue;                  // zero contribution (paper)
-                double t = std::pow(fi, q);
+                double t = dm::pow(fi, q);
                 S += t;
-                T += t * std::log(fi);                    // log(1) = 0 — safe
+                T += t * dm::log(fi);                    // log(1) = 0 — safe
             }
             if (S <= 0.0 || std::abs(T) < 1e-300) return 1.0;
-            double qn = q - std::log(S) / (T / S);        // Eq. 8
+            double qn = q - dm::log(S) / (T / S);        // Eq. 8
             if (!std::isfinite(qn) || qn <= 0.0) return 1.0;
             if (std::abs(qn - q) <= NR_TOL_) return qn;
             q = qn;
@@ -298,9 +299,9 @@ private:
     // Eq. 9: radial projection onto the estimated PF, Σ f_bar^q = 1
     static std::vector<double> map_point(const std::vector<double>& f, double q) {
         double s = 0.0;
-        for (double fi : f) if (fi > 0.0) s += std::pow(fi, q);
+        for (double fi : f) if (fi > 0.0) s += dm::pow(fi, q);
         if (s <= 1e-300) return f;                        // point at the ideal (guard)
-        double denom = std::pow(s, 1.0 / q);
+        double denom = dm::pow(s, 1.0 / q);
         std::vector<double> out(f.size());
         for (std::size_t j = 0; j < f.size(); ++j) out[j] = f[j] / denom;
         return out;
@@ -340,7 +341,7 @@ private:
             for (int j = 0; j < n; ++j) {
                 if (j == i) continue;
                 if (dam[i][j] < r)
-                    s += std::log(std::max(dam[i][j] / r, 1e-300));
+                    s += dm::log(std::max(dam[i][j] / r, 1e-300));
             }
             lp[i] = s;
         }
@@ -409,7 +410,7 @@ private:
             }
         }
         // KnEA: r_g = r_{g−1}·e^{−(1−t_{g−1}/T)/M};  R_i = (f_i^max−f_i^min)·r_g
-        knee_r_ *= std::exp(-(1.0 - knee_t_prev_ / KNEE_T_) / static_cast<double>(m));
+        knee_r_ *= dm::exp(-(1.0 - knee_t_prev_ / KNEE_T_) / static_cast<double>(m));
         std::vector<double> R(m);
         for (int j = 0; j < m; ++j) R[j] = (fmax[j] - fmin[j]) * knee_r_;
 
@@ -467,7 +468,7 @@ private:
         double dot = 0.0, u = 1.0 / std::sqrt(static_cast<double>(m));
         for (int a = 0; a < m; ++a) dot += v[a] * u;
         double c = std::min(std::abs(dot), 1.0);
-        return std::acos(c);
+        return dm::acos(c);
     }
 
     void classify_variables(DataVault<Ind_t>& vault) {
@@ -736,8 +737,8 @@ private:
                     }
                 }
                 // line 9: recompute Fit over P ∪ F_k without p_t (incrementally exact)
-                for (int a : P)  fit[a] += std::exp(-eps_plus(Fn[pt], Fn[a]) / KAPPA_);
-                for (int a : Fk) fit[a] += std::exp(-eps_plus(Fn[pt], Fn[a]) / KAPPA_);
+                for (int a : P)  fit[a] += dm::exp(-eps_plus(Fn[pt], Fn[a]) / KAPPA_);
+                for (int a : Fk) fit[a] += dm::exp(-eps_plus(Fn[pt], Fn[a]) / KAPPA_);
             }
         }
 

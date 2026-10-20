@@ -84,6 +84,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../individuals.hpp"
@@ -250,7 +251,7 @@ private:
         for (int i : nd) alive[i] = 1;
         for (int i : nd) {
             double s = 0.0;
-            for (int j : nd) if (i != j) s += -std::exp(-eps_plus(F[j], F[i])/(c*KAPPA_));
+            for (int j : nd) if (i != j) s += -dm::exp(-eps_plus(F[j], F[i])/(c*KAPPA_));
             fit[i] = s;
         }
         int rem = static_cast<int>(nd.size()) - N;
@@ -259,7 +260,7 @@ private:
             for (int i : nd) if (alive[i] && fit[i] < wf) { wf = fit[i]; worst = i; }
             if (worst < 0) break;
             alive[worst] = 0;
-            for (int i : nd) if (alive[i] && i != worst) fit[i] += std::exp(-eps_plus(F[worst], F[i])/(c*KAPPA_));
+            for (int i : nd) if (alive[i] && i != worst) fit[i] += dm::exp(-eps_plus(F[worst], F[i])/(c*KAPPA_));
         }
         std::vector<int> out;
         for (int i : nd) if (alive[i]) out.push_back(i);

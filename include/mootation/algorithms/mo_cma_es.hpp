@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../hv_contribution.hpp"
@@ -184,7 +185,7 @@ private:
     void update_step(Ind_t& a, double succ) const
     {
         a.p_succ = (1.0 - c_p_) * a.p_succ + c_p_ * succ;
-        a.sigma *= std::exp((a.p_succ - p_target_) / (d_ * (1.0 - p_target_)));
+        a.sigma *= dm::exp((a.p_succ - p_target_) / (d_ * (1.0 - p_target_)));
     }
 
     // Lower-triangular A with A·Aᵀ = C (row-major); a tiny ridge if C has

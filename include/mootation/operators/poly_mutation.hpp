@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "sbx.hpp"   // sbx_require_bound
 #include "../random.hpp"
 
@@ -79,12 +80,12 @@ inline void polynomial_mutation(std::vector<double>& x,
         // inputs b is already in [0,1], so the behavior does not change.
         if (u < 0.5) {
             double b   = std::clamp((x[j] - lo) / dx, 0.0, 1.0);
-            double tmp = 2.0 * u + (1.0 - 2.0 * u) * std::pow(1.0 - b, eta_m + 1.0);
-            dq = std::pow(tmp, 1.0 / (eta_m + 1.0)) - 1.0;
+            double tmp = 2.0 * u + (1.0 - 2.0 * u) * dm::pow(1.0 - b, eta_m + 1.0);
+            dq = dm::pow(tmp, 1.0 / (eta_m + 1.0)) - 1.0;
         } else {
             double b   = std::clamp((hi - x[j]) / dx, 0.0, 1.0);
-            double tmp = 2.0 * (1.0 - u) + (2.0 * u - 1.0) * std::pow(1.0 - b, eta_m + 1.0);
-            dq = 1.0 - std::pow(tmp, 1.0 / (eta_m + 1.0));
+            double tmp = 2.0 * (1.0 - u) + (2.0 * u - 1.0) * dm::pow(1.0 - b, eta_m + 1.0);
+            dq = 1.0 - dm::pow(tmp, 1.0 / (eta_m + 1.0));
         }
         x[j] = std::clamp(x[j] + dq * dx, lo, hi);
     }
@@ -127,8 +128,8 @@ inline void polynomial_mutation_eq7(std::vector<double>& x,
         double hi = sbx_require_bound(bounds[j].second, "upper", static_cast<int>(j));
         double u = uni(rng);
         double sigma = (u < 0.5)
-            ? std::pow(2.0 * u, 1.0 / (eta_m + 1.0)) - 1.0
-            : 1.0 - std::pow(2.0 - 2.0 * u, 1.0 / (eta_m + 1.0));
+            ? dm::pow(2.0 * u, 1.0 / (eta_m + 1.0)) - 1.0
+            : 1.0 - dm::pow(2.0 - 2.0 * u, 1.0 / (eta_m + 1.0));
         x[j] += sigma * (hi - lo);
     }
 }

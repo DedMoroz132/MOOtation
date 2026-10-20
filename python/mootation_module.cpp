@@ -1253,6 +1253,8 @@ std::vector<std::string> algorithm_names()
 void bind_run_layer(py::module_& m);
 // python/suite_module.cpp: the C++ suite of benchmark problems
 void bind_suite(py::module_& m);
+// python/detmath_module.cpp: _core.detmath, the library's elementary functions
+void bind_detmath(py::module_& m);
 
 PYBIND11_MODULE(_core, m)
 {
@@ -1270,6 +1272,7 @@ PYBIND11_MODULE(_core, m)
         .value("CDP",            mootation::ConstraintMode::CDP);
 
     bind_suite(m);                    // _core.Native, which Problem.native holds
+    bind_detmath(m);                  // _core.detmath.exp, log, pow, ...
 
     py::class_<PyProblem>(m, "Problem")
         .def(py::init<>())

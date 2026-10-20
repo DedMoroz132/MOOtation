@@ -120,6 +120,7 @@
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
@@ -275,7 +276,7 @@ private:
             double s = 0.0;
             for (int j = 0; j < n; ++j) {
                 if (i == j) continue;
-                s += -std::exp(eps_plus(Fn[j], Fn[i]) / KAPPA_);
+                s += -dm::exp(eps_plus(Fn[j], Fn[i]) / KAPPA_);
             }
             cf[i] = s;
         }

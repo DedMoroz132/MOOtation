@@ -112,6 +112,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../data_vault.hpp"
@@ -141,7 +142,7 @@ private:
         return detail::dominates(constraint_mode, a.objs, a.cv, b.objs, b.cv); }
     static double angle(const std::vector<double>& a, const std::vector<double>& b){
         double d=0,na=0,nb=0; for(std::size_t k=0;k<a.size();++k){d+=a[k]*b[k];na+=a[k]*a[k];nb+=b[k]*b[k];}
-        double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 0.0; return std::acos(std::clamp(d/q,-1.0,1.0));
+        double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 0.0; return dm::acos(std::clamp(d/q,-1.0,1.0));
     }
 
     // normalization: F' = (f-ideal)/(nadir-ideal)
@@ -311,7 +312,7 @@ public:
         std::vector<char> isExt(np,0); for(int e:ext) isExt[e]=1;
         std::vector<Sol> next; next.reserve(N_);
         std::vector<int> nextIdx; nextIdx.reserve(N_);   // rows of F kept (DHEA-5)
-        double Pt=std::pow(std::min(1.0,(double)gen_/std::max(1,t_max_)),alpha_);
+        double Pt=dm::pow(std::min(1.0,(double)gen_/std::max(1,t_max_)),alpha_);
         for(int c=0;c<P_ && (int)next.size()<N_;++c){
             auto& cl=cluster[c];
             // if the pivot is an extreme: auto-select the extreme
@@ -343,7 +344,7 @@ public:
                 double cosw = (nft*std::sqrt(nw)>1e-300)? std::clamp(dotw/(nft*std::sqrt(nw)),-1.0,1.0):0.0;
                 double dh = nft*cosw;
                 double th = angle(FT,FTpiv);   // local frame: ∠(F_T(solution),F_T(pivot))
-                double Pth = m_*Pt*std::sin(th);
+                double Pth = m_*Pt*dm::sin(th);
                 double hapd=(1.0+Pth)*dh;
                 if(dh<bdh){bdh=dh;kneeIdx=idx;}          // Alg.3 l.19: Knee on argmin d_h
                 if(hapd<bg){bg=hapd;best=idx;}           // Alg.3 l.23: finalChoose at min hAPD

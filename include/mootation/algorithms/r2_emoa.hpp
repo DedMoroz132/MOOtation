@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../das_dennis.hpp"
 #include "sms_emoa.hpp"
 
@@ -216,7 +217,7 @@ private:
         weights_.clear();
         const int k = n_weights_;
         if (m == 2) {
-            const double pi = std::acos(-1.0);
+            const double pi = dm::kPi;
             for (int i = 0; i < k; ++i) {
                 if (!angle_) {                                   // Λ_{w,k}
                     const double w = static_cast<double>(i) / (k - 1);
@@ -224,7 +225,7 @@ private:
                 } else {                                         // Λ_{φ,k}
                     const double phi = (pi / 2.0) * i / (k - 1);
                     if (i == k - 1) { weights_.push_back({1.0, 0.0}); continue; }
-                    const double t = std::tan(phi);
+                    const double t = dm::tan(phi);
                     weights_.push_back({t / (t + 1.0), 1.0 / (t + 1.0)});
                 }
             }

@@ -159,6 +159,7 @@
 #include <random>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../warn.hpp"
@@ -472,7 +473,7 @@ private:
                 const double t = ir2(vault.objectives_of(j), fi, zstar) / kappa_;
                 ++pairs;
                 if (t > 745.0) ++dead;          // exp(-t) is exactly 0 from here
-                sum += -std::exp(-t);
+                sum += -dm::exp(-t);
             }
             vault.get_ind(i).fitness = sum;
             pairs_total += pairs;
@@ -544,7 +545,7 @@ private:
                     if (cv_worst > 0.0) continue;          // worst was infeasible
                 }
                 double val = ir2(fw, vault.objectives_of(i), zstar);
-                vault.get_ind(i).fitness += std::exp(-val / kappa_);
+                vault.get_ind(i).fitness += dm::exp(-val / kappa_);
             }
 
             vault.swap_active(worst, curr - 1);

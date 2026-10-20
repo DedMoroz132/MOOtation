@@ -91,6 +91,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "bound_repair.hpp"
 #include "sbx.hpp"
 #include "../random.hpp"
@@ -159,7 +160,7 @@ inline std::vector<double> spx_child(const ParentSet& P, double eps, RNG& rng)
     rnd::uniform_real_distribution<double> U(0.0, 1.0);
     std::vector<double> w(P.size());
     double sum = 0.0;
-    for (auto& v : w) { v = -std::log(1.0 - U(rng)); sum += v; }
+    for (auto& v : w) { v = -dm::log(1.0 - U(rng)); sum += v; }
     std::vector<double> y = g;
     for (std::size_t i = 0; i < P.size(); ++i)
         for (std::size_t j = 0; j < y.size(); ++j)

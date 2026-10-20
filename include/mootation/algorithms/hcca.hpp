@@ -122,6 +122,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../detail/constrained.hpp"
 #include "../das_dennis.hpp"
@@ -378,7 +379,7 @@ private:
             double s = 0.0;
             for (int j = 0; j < n; ++j) {
                 if (i == j) continue;
-                s += -std::exp(Ieps(norm[j], norm[i]) / 0.05);
+                s += -dm::exp(Ieps(norm[j], norm[i]) / 0.05);
             }
             fit[i] = s;
         }

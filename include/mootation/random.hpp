@@ -30,12 +30,12 @@
 // changed `std::` to `rnd::` and nothing else. The repository's CI refuses
 // std:: distributions and std::shuffle anywhere in include/ but here.
 //
-// What the values still depend on: the elementary functions (std::log, sqrt,
-// tan, pow in normal01, exponential, cauchy, gamma) — sqrt is exact by IEEE,
-// the others go to detmath.hpp (§2) — and the floating-point environment: no
-// contraction into fused multiply-adds (§3), no flush-to-zero. A run is
-// reproducible only with a seed given (set_seed); without one the cores seed
-// from std::random_device.
+// The elementary functions in normal01, exponential, cauchy and gamma (log,
+// tan, pow) are the library's own (dm::, detmath.hpp, §2), sqrt is exact by
+// IEEE: the values are the same on every platform, given the floating-point
+// environment: no contraction into fused multiply-adds (§3), no
+// flush-to-zero. A run is reproducible only with a seed given (set_seed);
+// without one the cores seed from std::random_device.
 // ============================================================================
 
 #include <cmath>
@@ -47,6 +47,7 @@
 #include <utility>
 #include <vector>
 
+#include "detmath.hpp"
 #include "fp_contract.hpp"
 
 namespace mootation::rnd {
@@ -138,14 +139,14 @@ inline double normal01(G& g)
         v = 2.0 * uniform01(g) - 1.0;
         s = u * u + v * v;
     } while (s >= 1.0 || s == 0.0);
-    return u * std::sqrt(-2.0 * std::log(s) / s);
+    return u * std::sqrt(-2.0 * dm::log(s) / s);
 }
 
 // Exponential of rate lambda: -log(1 - U) / lambda, 1 - U in (0, 1].
 template <typename G>
 inline double exponential(G& g, double lambda)
 {
-    return -std::log(1.0 - uniform01(g)) / lambda;
+    return -dm::log(1.0 - uniform01(g)) / lambda;
 }
 
 // Cauchy of location a and scale b: a + b tan(pi (U - 1/2)).
@@ -153,7 +154,7 @@ template <typename G>
 inline double cauchy(G& g, double a, double b)
 {
     const double pi = 3.141592653589793238462643383279502884;
-    return a + b * std::tan(pi * (uniform01(g) - 0.5));
+    return a + b * dm::tan(pi * (uniform01(g) - 0.5));
 }
 
 // Gamma of shape alpha and scale beta: Marsaglia & Tsang 2000 (§2; alpha < 1
@@ -163,7 +164,7 @@ inline double gamma(G& g, double alpha, double beta)
 {
     if (alpha < 1.0) {
         const double x = gamma(g, alpha + 1.0, 1.0);
-        return beta * x * std::pow(uniform01(g), 1.0 / alpha);
+        return beta * x * dm::pow(uniform01(g), 1.0 / alpha);
     }
     const double d = alpha - 1.0 / 3.0, c = 1.0 / std::sqrt(9.0 * d);
     for (;;) {
@@ -176,7 +177,7 @@ inline double gamma(G& g, double alpha, double beta)
         const double u = uniform01(g);
         const double x2 = x * x;
         if (u < 1.0 - 0.0331 * x2 * x2) return beta * d * v;
-        if (std::log(u) < 0.5 * x2 + d * (1.0 - v + std::log(v))) return beta * d * v;
+        if (dm::log(u) < 0.5 * x2 + d * (1.0 - v + dm::log(v))) return beta * d * v;
     }
 }
 

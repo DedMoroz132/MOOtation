@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../constraint_mode.hpp"
 #include "../data_vault.hpp"
 #include "../dss.hpp"
@@ -479,7 +480,7 @@ private:
                 const double lower = *std::max_element(d.begin(), d.begin() + static_cast<std::ptrdiff_t>(d.size() / 2));
                 med = 0.5 * (med + lower);
             }
-            T0_ = med / std::log(2.0);
+            T0_ = med / dm::kLn2;
         } else {
             T0_ = 1e-3;
         }
@@ -843,8 +844,8 @@ public:
         }
         const int c = static_cast<int>(k_ % static_cast<long long>(cur_.size()));
         const double frac = t_max_ > 1 ? std::min(1.0, static_cast<double>(k_) / static_cast<double>(t_max_ - 1)) : 1.0;
-        T_ = T0_ * std::pow(t_ratio_, frac);
-        s_ = s0_ * std::pow(s_end_ / s0_, frac);
+        T_ = T0_ * dm::pow(t_ratio_, frac);
+        s_ = s0_ * dm::pow(s_end_ / s0_, frac);
         rnd::uniform_real_distribution<double> u(0.0, 1.0);
         Point& x = cur_[static_cast<std::size_t>(c)];
         const int op = choose(u);
@@ -864,7 +865,7 @@ public:
             accept = p.cv > 0.0 ? (x.cv > 0.0 && p.cv <= x.cv) : true;
         } else {
             const double d = ws ? before : before - energy(x.f, c);
-            accept = d <= 0.0 || u(rng_) < std::exp(-d / std::max(T_, 1e-300));
+            accept = d <= 0.0 || u(rng_) < dm::exp(-d / std::max(T_, 1e-300));
         }
         if (accept) x = p;
         if (u(rng_) < reseed_ && archive_.size() > 1) {               // 7

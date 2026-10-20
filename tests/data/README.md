@@ -29,3 +29,29 @@ python tools/refs/gen_sobol_ref.py
 The other reference data of the tests stay where they were: the problems'
 fronts inside the package (`python/mootation/benchmarks/`) and the defaults'
 fingerprints (`tools/compat_check.py`).
+
+## The library's elementary functions
+
+`detmath_reference.txt` holds, for every function of
+`include/mootation/detmath.hpp`, 2·10⁴ test points (made from integers by
+`tools/detmath/points.py`, and the same in `tests/test_detmath.cpp`) and the
+hard inputs of `tools/detmath/hard_inputs.txt`: the value to 60 digits
+(`tools/detmath/reference.py`, Python's `decimal`) as its correctly rounded
+double and the rest in thousandths of an ulp, and the bits `dm::` gives. The
+test checks both: the error within the tolerance below, and the bits — one file
+for every platform. Made by `tools/detmath/make_data.py` (with the extension
+built); `tools/detmath/check.py` measures 10⁶ points a function the same way.
+
+| function | tolerance, ulp | largest error, 2·10⁴ points | largest error, 10⁶ points |
+|---|---|---|---|
+| `exp` | 1 | 0.704 | 0.748 |
+| `log` | 1 | 0.520 | 0.533 |
+| `pow` | 2 | 0.524 | 0.726 |
+| `sin` | 1 | 0.705 | 0.755 |
+| `cos` | 1 | 0.736 | 0.753 |
+| `tan` | 2 | 0.867 | 0.957 |
+| `acos` | 2 | 0.573 | 0.629 |
+| `hypot` | 2 | 0.500 | 0.740 |
+
+The polynomial coefficients and constants (`include/mootation/detmath_coeffs.hpp`)
+come from `tools/detmath/gen_coeffs.py` (`--check` compares).

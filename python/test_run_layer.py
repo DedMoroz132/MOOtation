@@ -6011,7 +6011,11 @@ def _sdr_reference(F):
     (12)-(15)) and the library's rules SDR-1..3 for what it leaves open
     (include/mootation/sdr.hpp); the layers by peeling, as Deb's fast
     non-dominated sort defines them. Sums run over the objectives in order and
-    the angle is math.acos, so that the values are the core's bit for bit."""
+    the angle is the core's own acos (_core.detmath, include/mootation/
+    detmath.hpp; task 14 of 2026-10-20, §6), so that the values are the core's
+    bit for bit; without the extension math.acos, within 2 ulps of it (the
+    C library's, whose last bit may differ), which no comparison with the core
+    then needs."""
     import math
     import numpy as np
     F = np.asarray(F, dtype=float)
@@ -6034,7 +6038,12 @@ def _sdr_reference(F):
     ok = (length[i] > 0) & (length[j] > 0)
     c = np.clip(dot[i, j][ok] / length[i][ok] / length[j][ok], -1.0, 1.0)
     t = np.zeros(len(i))
-    t[ok] = [math.acos(v) for v in c.tolist()]
+    try:
+        from mootation import _core
+        acos = _core.detmath.acos
+    except (ImportError, AttributeError):
+        acos = math.acos
+    t[ok] = [float(acos(v)) for v in c.tolist()]
     theta = np.zeros((n, n))
     theta[i, j] = t
     theta[j, i] = t
@@ -9727,7 +9736,8 @@ def _suite_points(p, rng, n=200):
 
 def _numpy_is_the_c_library():
     """Whether NumPy's sin, cos, exp and pow are the C library's here
-    (_rows.agrees): where they are, the suite must be NumPy's bit for bit."""
+    (_rows.agrees): where they are, the suite must be NumPy's to a few ulps
+    (_close_to_numpy)."""
     import math
     import numpy as np
     from mootation.benchmarks import _rows
@@ -9743,15 +9753,34 @@ def _numpy_is_the_c_library():
     return ok
 
 
+def _close_to_numpy(mine, ref, what, scale=2e-15):
+    """C++ against the NumPy reference (task 14 of 2026-10-20, supplement 1,
+    D1): the suite's elementary functions are the library's own (detmath.hpp),
+    NumPy's the C library's, so the two agree to a few ulps, not to the bit.
+    Each value within 4 ulps of the reference's, or, where the value is near 0
+    (a constraint, f - f_opt), within `scale` times the largest |value| of its
+    column at these points."""
+    import numpy as np
+    mine, ref = np.asarray(mine, float), np.asarray(ref, float)
+    assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
+    m = mine.reshape(len(mine), -1)
+    r = ref.reshape(len(ref), -1)
+    d = np.abs(m - r)
+    col = np.max(np.where(np.isfinite(r), np.abs(r), 0.0), axis=0)
+    ok = (m == r) | (np.isnan(m) & np.isnan(r)) | (d <= 4 * np.spacing(np.abs(r))) | (d <= scale * col)
+    assert ok.all(), (what, np.argwhere(~ok)[:5], m[~ok][:3], r[~ok][:3])
+
+
 @in_parts
-def the_suite_gives_numpys_values_bit_for_bit(part, parts):
+def the_suite_gives_numpys_values(part, parts):
     """Every problem of the C++ suite's families is C++ with the extension
     built, and C++ gives the NumPy reference's values (p.reference) at a few
     hundred points of its box, its corners, its Pareto set: the batch, one
-    point at a time, the constraints. Bit for bit where NumPy's sin, cos, exp
-    and pow are the C library's (here: CI's machines with AVX-512 have their
-    own), within 1e-9 elsewhere. In parts, each problem's points drawn from a
-    generator of its own, seeded by its name."""
+    point at a time, the constraints. Within 4 ulps or 2e-15 of the column's
+    scale (_close_to_numpy) where NumPy's sin, cos, exp and pow are the C
+    library's (here: CI's machines with AVX-512 have their own), within 1e-9
+    elsewhere. In parts, each problem's points drawn from a generator of its
+    own, seeded by its name."""
     if not _have_numpy() or _core_with("Native") is None:
         print("    (skipped: no NumPy or no extension)"); return
     import zlib
@@ -9762,11 +9791,11 @@ def the_suite_gives_numpys_values_bit_for_bit(part, parts):
     assert len(names) >= 550, len(names)
 
     def check(mine, ref, what):
-        mine, ref = np.asarray(mine, float), np.asarray(ref, float)
-        assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
         if exact:
-            assert mine.tobytes() == ref.tobytes(), (what, np.argwhere(mine != ref)[:5])
+            _close_to_numpy(mine, ref, what)
         else:
+            mine, ref = np.asarray(mine, float), np.asarray(ref, float)
+            assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
             assert np.allclose(mine, ref, rtol=1e-9, atol=1e-12, equal_nan=True), what
 
     for name in names[part::parts]:
@@ -9882,14 +9911,17 @@ def _numpy_blas_is_bbobs_order():
 
 
 @test
-def bbob_biobj_gives_numpys_values_bit_for_bit():
+def bbob_biobj_gives_numpys_values():
     """bbob-biobj and bbob-biobj-mixint (task 12 of 2026-10-19, §1): all 110 +
     110 problems are C++ with the extension built, and give the NumPy
     reference's values (p.reference) at points of the box, at its bounds and
     middle, at and near each objective's optimum and, mixint, at integer and
     half-way values: the batch and one point at a time; a problem pickles by
-    its spec. Bit for bit where NumPy's functions are the C library's and its
-    BLAS adds in bbob.hpp's order; within 1e-9 elsewhere."""
+    its spec. Within 4 ulps or 4e-15 of the column's scale (_close_to_numpy:
+    T_osz, T_asy and the sums of f15, f17 and f21 carry a last-bit difference
+    of the elementary functions further than the other families) where
+    NumPy's functions are the C library's and its BLAS adds in bbob.hpp's
+    order; within 1e-9 elsewhere."""
     if not _have_numpy() or _core_with("Native") is None:
         print("    (skipped: no NumPy or no extension)"); return
     import math
@@ -9905,11 +9937,11 @@ def bbob_biobj_gives_numpys_values_bit_for_bit():
     rng = np.random.default_rng(20261019)
 
     def check(mine, ref, what):
-        mine, ref = np.asarray(mine, float), np.asarray(ref, float)
-        assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
         if exact:
-            assert mine.tobytes() == ref.tobytes(), (what, np.argwhere(mine != ref)[:5])
+            _close_to_numpy(mine, ref, what, scale=4e-15)
         else:
+            mine, ref = np.asarray(mine, float), np.asarray(ref, float)
+            assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
             assert np.allclose(mine, ref, rtol=1e-9, atol=1e-12, equal_nan=True), what
 
     for name in names:
@@ -9946,8 +9978,10 @@ def rotations_and_maf9_take_an_order_of_numpys():
     """The rotated problems of the suite's families turn by A d as
     matvec_pairwise sums it (np.sum(A * d, axis=1), not BLAS's gemv), MaF9's
     constraint writes its dot products out; both changed the values in the
-    last bits, and their PROBLEM_VERSION is 2; the controls r0 and c0, whose
-    matrix is diagonal, are version 1."""
+    last bits, and their PROBLEM_VERSION went up by one (2); the controls r0
+    and c0, whose matrix is diagonal, did not. Task 14 (detmath.hpp) raised
+    every problem of the suite that calls an elementary function by one more:
+    the rotated ones to 3, the controls and DTLZ2_3D to 2; MaF9 calls none."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import numpy as np
@@ -9959,12 +9993,13 @@ def rotations_and_maf9_take_an_order_of_numpys():
     assert r.map(x)[r.first:].tobytes() == (0.5 + np.sum(r.A * d, axis=1)).tobytes()
     assert matvec_pairwise(r.A, np.vstack([d, d]))[1].tobytes() == np.sum(r.A * d, axis=1).tobytes()
     assert r.map_rows(x[None, :])[0].tobytes() == r.map(x).tobytes()
-    assert R.problem_version("rDTLZ3_5D_i2") == 2 and R.problem_version("rZCAT7_5D") == 2
-    assert R.problem_version("rZDT4") == 2 and R.problem_version("MaF9_5D") == 2
-    assert R.problem_version("rcDTLZ2_3D_n1") == 2
-    for name in ("r0DTLZ1_3D", "c0DTLZ2_6D", "r0MaF3_5D", "c0MaF6_3D", "MaF9_3D", "DTLZ2_3D",
-                 "rWFG4_3D", "rcPolygon_3D", "shiftDTLZ1_3D"):
-        assert name in R.PROBLEMS and R.problem_version(name) == 1, name
+    assert R.problem_version("rDTLZ3_5D_i2") == 3 and R.problem_version("rZCAT7_5D") == 3
+    assert R.problem_version("rZDT4") == 3 and R.problem_version("MaF9_5D") == 2
+    assert R.problem_version("rcDTLZ2_3D_n1") == 3 and R.problem_version("rZDT1") == 2
+    for name, v in (("r0DTLZ1_3D", 2), ("c0DTLZ2_6D", 2), ("r0MaF3_5D", 2), ("c0MaF6_3D", 2),
+                    ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 1), ("rcPolygon_3D", 1),
+                    ("shiftDTLZ1_3D", 2), ("c0MaF1_3D", 1)):
+        assert name in R.PROBLEMS and R.problem_version(name) == v, name
     P = R._maf9_forbidden_regions(5)[0]
     want = R._poly_edge_distance(np.array([0.3, 2.0]), P)
     a, b = P[0], P[1]
@@ -9975,11 +10010,12 @@ def rotations_and_maf9_take_an_order_of_numpys():
 
 
 @test
-def maf8_version_2_takes_the_c_librarys_hypot():
-    """MaF8 (task 12 of 2026-10-19, §6): its distances are np.hypot's, the C
-    library's hypot, which the C++ suite calls, and it is version 2 of itself.
-    Version 1 took CPython's math.hypot, an algorithm of its own (kept here
-    as its reference): the two differ by one ulp at most."""
+def maf8_takes_hypot():
+    """MaF8 (task 12 of 2026-10-19, §6): its distances are np.hypot's in the
+    NumPy code; version 2 of itself took the C library's hypot in C++ too,
+    version 3 (task 14) the library's own (dm::hypot). Version 1 took
+    CPython's math.hypot, an algorithm of its own (kept here as its
+    reference): the two differ by one ulp at most."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import math
@@ -10000,14 +10036,14 @@ def maf8_version_2_takes_the_c_librarys_hypot():
     for M in (3, 5, 8, 10, 15):
         name = f"MaF8_{M}D"
         p = R.PROBLEMS[name]
-        assert R.problem_version(name) == 2, name
+        assert R.problem_version(name) == 3, name
         ref = (p.reference or {}).get("evaluate_batch", p.evaluate_batch)
         F = np.asarray(ref(X), float)
         H = np.column_stack([np.hypot(X[:, 0] - vx, X[:, 1] - vy) for vx, vy in R._maf8_vertices(M)])
         assert F.tobytes() == H.tobytes(), name
         old = np.array([version1(x, M) for x in X])
         assert np.all(np.abs(old - F) <= np.spacing(np.maximum(old, F))), name
-    assert R.problem_version("MaF9_3D") == 1 and R.problem_version("MaF7_3D") == 1
+    assert R.problem_version("MaF9_3D") == 1 and R.problem_version("MaF7_3D") == 2
 
 
 @test
@@ -10068,7 +10104,7 @@ def maf14_and_maf15_as_the_paper_defines_them():
         for which in (14, 15):
             name = f"MaF{which}_{M}D"
             p = R.get(name)
-            assert p.n_vars == D and p.n_obj == M and R.problem_version(name) == 1, name
+            assert p.n_vars == D and p.n_obj == M and R.problem_version(name) == 2, name
             assert p.bounds == [(0.0, 1.0)] * (M - 1) + [(0.0, 10.0 if which == 14 else 1.0)] * (D - M + 1)
             assert p.ideal == (0.0,) * M and p.nadir == (1.0,) * M, name
             assert abs(p.pop_size * p.n_gen - max(100_000, 10_000 * D)) <= p.pop_size / 2, name
@@ -10249,7 +10285,7 @@ gens = 0
             for mode, want in (("auto", True), ("off", False)):
                 meta = json.loads((roots[mode] / "rDTLZ1_3D_i2" / "moead_de" / "run_1" /
                                    "meta.json").read_text(encoding="utf-8"))
-                assert meta["problem_version"] == REG.problem_version("rDTLZ1_3D_i2") == 2
+                assert meta["problem_version"] == REG.problem_version("rDTLZ1_3D_i2") == 3
                 assert (meta["timing"]["native"] > 0.0) == want, meta["timing"]
         bad = Path(td) / "bad.toml"
         bad.write_text(text.replace("NATIVE", "maybe").replace("GRID", ""), encoding="utf-8")
