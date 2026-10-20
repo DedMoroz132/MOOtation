@@ -114,6 +114,15 @@ else()
     target_compile_options(mootation INTERFACE -ffp-contract=off)
 endif()
 
+# 32-bit x86: only SSE2 arithmetic, not the x87 unit's (task 14, §5 item 4;
+# fp_contract.hpp refuses it at compile time as well). 64-bit builds and
+# MSVC's default /arch:SSE2 are fine.
+if(CMAKE_SIZEOF_VOID_P EQUAL 4 AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|x86|X86)$"
+   AND NOT MSVC AND NOT CMAKE_CXX_FLAGS MATCHES "-mfpmath=sse")
+    message(FATAL_ERROR "MOOtation on 32-bit x86 needs SSE2 floating point: configure with "
+                        "CMAKE_CXX_FLAGS=\"-msse2 -mfpmath=sse\" (64-bit builds need nothing)")
+endif()
+
 # ── Warning flags, applied to our own targets only ──────────────────────────
 # Deliberately NOT on the INTERFACE target: a consumer chooses their own warning
 # level and should never inherit ours.

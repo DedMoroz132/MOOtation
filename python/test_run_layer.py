@@ -7220,6 +7220,21 @@ def a_seed_population_with_bits_and_labels_takes_constraints():
 
 
 @test
+def the_floating_point_environment_is_read_and_recorded():
+    """Task 14, §5 item 3: _core.fp_env reads whether denormals are flushed to
+    zero or read as zero (MXCSR, FPCR) — not here, normally — and a campaign
+    records it in meta.json (campaign._fp_env), warning when either is on."""
+    core = _core_with("fp_env")
+    if core is None:
+        print("    (skipped: no extension)"); return
+    env = dict(core.fp_env())
+    assert env["arch"] in ("x86", "arm64", "other") and set(env) >= {"arch", "ftz", "daz"}, env
+    assert env["ftz"] is False and env["daz"] is False, env
+    from mootation.run import campaign as C
+    assert C._fp_env() == env
+
+
+@test
 def the_evaluation_log_takes_a_batch_a_batch_at_a_time():
     """Task 10, §4.2: log_evaluations with batch= (refused before) logs every
     row of every batch, in order, its constraints too (with

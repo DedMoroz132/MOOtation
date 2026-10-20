@@ -886,6 +886,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # whether the WFG kernels ran compiled (benchmarks/wfg.py: until
         # 2026-10-09 the path without numba computed WFG wrong from M = 3)
         "numba": wfg_numba_enabled(),
+        # denormals flushed or read as zero change results (task 14, §5 item 3)
+        "fp_env": _fp_env(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     if pset is not None and not len(pset):
@@ -2031,6 +2033,22 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
     return counts
 
 
+def _fp_env() -> dict | None:
+    """The floating-point environment of this process (_core.fp_env), with a
+    warning when denormals are flushed to zero or read as zero: a library
+    built with -ffast-math, loaded into the same process, can switch that on
+    for everything. None without the extension."""
+    try:
+        from .. import _core
+        env = dict(_core.fp_env())
+    except (ImportError, AttributeError):
+        return None
+    if env.get("ftz") or env.get("daz"):
+        print("warning: denormals are flushed to zero or read as zero in this process "
+              f"({env}): results differ from a process without it", file=sys.stderr)
+    return env
+
+
 # A run whose race for the least hypervolume contributor (SMS-EMOA, MO-CMA-ES
 # above hv_exact_max_m; task 14, supplement 1, Д5) stopped at race_max_samples
 # in more than this share of its steps is named in the campaign's summary.
@@ -2038,9 +2056,10 @@ RACE_CAPPED_WARN = 0.01
 
 
 def _warn_race_capped(root: Path, jobs: list) -> None:
-    """The summary's warning: the runs whose race stopped at race_max_samples in
-    more than RACE_CAPPED_WARN of their steps."""
-    many = []
+    """The summary's warnings: the runs whose race stopped at race_max_samples in
+    more than RACE_CAPPED_WARN of their steps, and the runs with denormals
+    flushed to zero (fp_env)."""
+    many, flushed = [], []
     for j in jobs:
         meta = root / j.rel_dir / "meta.json"
         try:
@@ -2050,10 +2069,17 @@ def _warn_race_capped(root: Path, jobs: list) -> None:
         share = float((d.get("settings") or {}).get("race_capped_share", 0.0) or 0.0)
         if share > RACE_CAPPED_WARN:
             many.append(f"{j.problem} {j.key} seed {j.seed} ({share:.1%})")
+        env = d.get("fp_env") or {}
+        if env.get("ftz") or env.get("daz"):
+            flushed.append(f"{j.problem} {j.key} seed {j.seed}")
     if many:
         print(f"warning: the race stopped at race_max_samples in more than "
               f"{RACE_CAPPED_WARN:.0%} of the steps of {len(many)} run(s): " + "; ".join(many[:10])
               + (" ..." if len(many) > 10 else ""), file=sys.stderr)
+    if flushed:
+        print(f"warning: {len(flushed)} run(s) ran with denormals flushed to zero or read as "
+              f"zero (meta.json fp_env): " + "; ".join(flushed[:10])
+              + (" ..." if len(flushed) > 10 else ""), file=sys.stderr)
 
 
 # ── the parts of a campaign run apart (task 11 of 2026-10-18, §5) ─────────────
