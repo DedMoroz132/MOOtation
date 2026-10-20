@@ -99,6 +99,21 @@ if(MSVC)
     target_compile_options(mootation INTERFACE /Zc:__cplusplus /EHsc /bigobj)
 endif()
 
+# No contraction into fused multiply-adds (task 14 of 2026-10-20, §3;
+# include/mootation/fp_contract.hpp): a fused a * b + c rounds once where the
+# source rounds twice, and GCC (GNU dialects), Clang (within an expression)
+# and AArch64 targets fuse by default, so one seed gave other runs elsewhere.
+# On the INTERFACE target: it reaches every translation unit that links
+# MOOtation::MOOtation, the consumer's own expressions there included. MSVC
+# does not contract under /fp:precise, its default, stated here so that a
+# /fp:fast elsewhere does not win silently. -ffast-math, -Ofast and /fp:fast
+# break the guarantee (README).
+if(MSVC)
+    target_compile_options(mootation INTERFACE /fp:precise)
+else()
+    target_compile_options(mootation INTERFACE -ffp-contract=off)
+endif()
+
 # ── Warning flags, applied to our own targets only ──────────────────────────
 # Deliberately NOT on the INTERFACE target: a consumer chooses their own warning
 # level and should never inherit ours.

@@ -91,6 +91,7 @@
 #include "operators/bit_flip.hpp"
 #include "operators/bound_repair.hpp"
 #include "problem.hpp"
+#include "fp_contract.hpp"
 
 namespace mootation {
 

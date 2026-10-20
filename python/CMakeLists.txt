@@ -32,11 +32,9 @@ pybind11_add_module(mootation_python mootation_module.cpp run_layer_module.cpp s
 
 # The C++ suite of benchmark problems (include/mootation/suite) gives NumPy's
 # values bit for bit, which a fused multiply-add would not: NumPy rounds a * b
-# and then a * b + c. GCC contracts by default in its GNU dialects and Clang
-# within an expression (AArch64 has the instruction in its base set), so the
-# file that compiles the suite says no; MSVC's /fp:precise, its default, does
-# not contract without /fp:contract. Only that file: the cores' own arithmetic
-# stays as it was built before.
+# and then a * b + c. Since task 14 (§3) the MOOtation target says no to
+# contraction for every file (CMakeLists.txt); the suite's file keeps saying
+# it here as well, as it did before.
 if(MSVC)
     set_source_files_properties(suite_module.cpp PROPERTIES COMPILE_OPTIONS "/fp:precise")
 else()

@@ -47,6 +47,8 @@
 #include <utility>
 #include <vector>
 
+#include "fp_contract.hpp"
+
 namespace mootation::rnd {
 
 // One 32-bit word of a generator of 32 or 64 bits (std::mt19937, mt19937_64;
