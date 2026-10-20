@@ -20,6 +20,15 @@ always listed under **Changed** or **Removed**.
   forever (DTLZ7_3D, seed 13, 10 000 evaluations: "10000 steps in a row
   evaluated nothing"). **Changed results**: `dmulti_mads` runs take other
   trajectories wherever the diagonal holds a dominated point.
+  With the list right, ZDT1's, ZDT3's and DTLZ7's diagonal leave one point,
+  x = 0, a vertex of the box, and from there almost every poll point left the
+  box: the run met §6.3's stop after some 40 evaluations. A poll step that
+  would leave the box now stops at its last mesh point inside (DMM-7), and a
+  repeated poll point is dropped; trajectories change wherever a poll point
+  left the box. WFG4_3D does worse than before at 10 000 evaluations (IGD+
+  about 0.6 against 0.3): the dominated diagonal points the filter kept lay
+  near WFG4's optimal distance values, and the paper's start (the
+  non-dominated points of the line, DMS) drops them.
 
 - SMS-EMOA and MO-CMA-ES compute the hypervolume contributions exactly up to
   `hv_exact_max_m` objectives (new knob, 5 by default), Monte-Carlo above

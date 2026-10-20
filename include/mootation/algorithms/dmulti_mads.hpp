@@ -38,7 +38,7 @@ namespace mootation {
 //      x_k, when no failure has been seen at x_k; if s dominates x_k, the
 //      iteration succeeds without a poll;
 //   3. the poll: n + 1 directions (§6.3, after [6]) scaled to the frame and
-//      rounded to the mesh, P = {x_k + δ z};
+//      rounded to the mesh, P = {x_k + δ z}, each step cut to the box (DMM-7);
 //   4. success when a new point dominates x_k (the strict strategy, §6.3's
 //      best); the new non-dominated points enter L by updateList (Algorithm
 //      3): dominating part of L — they replace it, frame τ⁻¹Δ_k; extending L
@@ -76,6 +76,15 @@ namespace mootation {
 //     least violating one, as dms (DMS-4). The progressive barrier of
 //     DMulti-MADS-PB (Bigeon et al. 2024) is not implemented.
 //   DMM-6. Points outside the box: the extreme barrier, not evaluated.
+//   DMM-7. A poll step that would leave the box stops at its last mesh point
+//     inside: z_r is cut to the integers with 0 <= x_r + δz_r <= 1, so the
+//     point stays on the mesh and in the frame; a point equal to x_k or to an
+//     earlier poll point is dropped. The paper leaves the bounds to the
+//     extreme barrier (§4.1) and to [6], [8]. Every direction of DMM-1 moves
+//     every coordinate, so from a poll centre with k active bounds a direction
+//     stays in the box with probability about 2^-k: a list on a vertex
+//     (ZDT1's and DTLZ7's diagonal leave only x = 0) shrank to the stop of
+//     §6.3 in a dozen iterations, after some 40 evaluations.
 // Continuous variables only.
 // ============================================================================
 
@@ -252,12 +261,15 @@ private:
             std::vector<double> u = x;
             bool inside = true, moved = false;
             for (std::size_t r = 0; r < n; ++r) {
-                const double z = std::round(d[r] / inf * steps);
+                double z = std::round(d[r] / inf * steps);
+                z = std::min(z, std::floor((1.0 - x[r]) / delta));    // DMM-7: the last
+                z = std::max(z, std::ceil(-x[r] / delta));            // mesh point inside
                 moved = moved || z != 0.0;
                 u[r] = x[r] + delta * z;
                 inside = inside && u[r] >= 0.0 && u[r] <= 1.0;
             }
-            if (inside && moved) P.push_back(std::move(u));          // DMM-6
+            const bool again = std::find(P.begin(), P.end(), u) != P.end();
+            if (inside && moved && !again) P.push_back(std::move(u));  // DMM-6
         }
         return P;
     }

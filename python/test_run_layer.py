@@ -9551,6 +9551,25 @@ def dmulti_mads_starts_from_a_non_dominated_list():
 
 
 @test
+def dmulti_mads_spends_its_budget_from_a_vertex():
+    """On ZDT1 and ZDT3 the diagonal leaves one point, x = 0, a vertex of the
+    box. Its poll steps are cut to the box (DMM-7), so the run spends its
+    budget; it may end earlier only by §6.3's rule, the poll centre's mesh
+    below 1e-9, which 3000 evaluations do not reach here. Without the cut every
+    poll point left the box and the run stopped after 36 evaluations."""
+    if _core_with("Config") is None:
+        print("  skip  dmulti_mads_spends...: stale _core"); return
+    import mootation
+    from mootation.benchmarks import get
+    for name in ("ZDT1", "ZDT3"):
+        p = get(name)
+        for seed in (1, 2, 3):
+            r = mootation.minimize(p.evaluate, p.bounds, 2, algorithm="dmulti_mads",
+                                   max_evaluations=3000, seed=seed)
+            assert r.evaluations >= 3000, (name, seed, r.evaluations)
+
+
+@test
 def rm_meda_models_its_clusters_and_takes_its_knobs():
     """Task 9, B2: rm_meda spends exactly its budget (N a generation); one seed,
     one trajectory; n_clusters and rm_extension reach it, pop_size <= K and a
