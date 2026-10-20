@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -254,15 +255,34 @@ int main()
         check(!r2.set_param("n_samples", 0) && !r2.set_param("hv_exact_max_m", 3),
               "r2_emoa has no hypervolume: n_samples and hv_exact_max_m not taken");
     }
-    // ── exact or Monte-Carlo: hv::ContribChoice (task 13 of 2026-10-19, §3) ──
+    // ── exact, race or Monte-Carlo: hv::ContribChoice (task 13, §3; task 14, §11) ──
     {
+        using Way = hv::ContribChoice::Way;
         hv::ContribChoice c;                                   // the defaults
-        check(!c.mc(2) && !c.mc(3) && !c.mc(4) && !c.mc(5) && c.mc(6) && c.mc(10),
-              "default: exact up to M = 5, Monte-Carlo above");
+        check(c.way(2) == Way::exact && c.way(3) == Way::exact && c.way(4) == Way::exact &&
+                  c.way(5) == Way::exact && c.way(6) == Way::race && c.way(10) == Way::race,
+              "default: exact up to M = 5, the race above");
         check(c.use_hvc(3) && c.use_hvc(4) && !c.use_hvc(5), "default: hvc at M = 3 and 4");
         check(c.samples() == 10000, "default: 10 000 samples a step");
         c.set_param("hv_exact_max_m", 6);
-        check(!c.mc(6) && c.mc(7), "hv_exact_max_m = 6: exact at M = 6");
+        check(c.way(6) == Way::exact && c.way(7) == Way::race, "hv_exact_max_m = 6: exact at M = 6");
+        {
+            hv::ContribChoice e;
+            e.set_word("hv_contrib", "mc");
+            check(e.way(5) == Way::exact && e.way(6) == Way::mc && e.use_hvc(4),
+                  "hv_contrib = mc: exact up to the threshold, Monte-Carlo above (task 13's defaults)");
+            e.set_param("hv_exact_max_m", 3);
+            e.set_word("hv_contrib", "race");
+            check(e.way(4) == Way::race, "hv_exact_max_m = 3 with race: the race from M = 4");
+            e.set_param("n_samples", 500);
+            check(e.way(4) == Way::race, "n_samples with hv_contrib = race: still the race");
+            bool refused = false;
+            try { e.set_word("hv_contrib", "box"); } catch (const std::invalid_argument&) { refused = true; }
+            check(refused, "hv_contrib refuses a word it does not know");
+            refused = false;
+            try { e.set_param("race_eps", 0.0); } catch (const std::invalid_argument&) { refused = true; }
+            check(refused, "race_eps must be > 0");
+        }
         c.set_param("n_samples", 0);
         check(!c.mc(10), "n_samples = 0: exact at every M");
         c.set_param("n_samples", 500);
@@ -292,6 +312,66 @@ int main()
         check(d.settings().back().second ==
                   "monte-carlo, 1000 samples a step (n_samples given) at M = 4",
               "settings: monte-carlo, n_samples given");
+    }
+
+    // ── the race (Bringmann & Friedrich 2012; task 14, §11) ─────────────────
+    {
+        std::mt19937 gen(20261020);
+        std::normal_distribution<double> nd(0.0, 1.0);
+        std::uniform_real_distribution<double> ud(0.0, 1.0);
+        int sets = 0, within = 0, twice = 0, never_skipped = 0, capped = 0, full = 0, full_within = 0;
+        hv::RaceSettings set;
+        for (int t = 0; t < 400; ++t) {
+            const std::size_t m = 4 + static_cast<std::size_t>(t % 5);       // 4 to 8 objectives
+            const std::size_t n = 10 + static_cast<std::size_t>(t % 31);
+            std::vector<std::vector<double>> F(n, std::vector<double>(m));
+            for (auto& row : F) {                                            // a front on the sphere
+                double s2 = 0.0;
+                for (auto& v : row) { v = std::abs(nd(gen)) + 1e-3; s2 += v * v; }
+                for (auto& v : row) v /= std::sqrt(s2);
+            }
+            const std::vector<double> r(m, 1.1);
+            const auto exact = hv::contributions_exact(F, r);
+            double least = exact[0];
+            for (double v : exact) least = std::min(least, v);
+            std::vector<char> skip(n, 0);
+            skip[static_cast<std::size_t>(t) % n] = 1;                       // one point kept whatever
+            double least_left = std::numeric_limits<double>::infinity();
+            for (std::size_t i = 0; i < n; ++i) if (!skip[i]) least_left = std::min(least_left, exact[i]);
+            std::mt19937 a(static_cast<unsigned>(t)), b(static_cast<unsigned>(t));
+            hv::RaceStats st;
+            const auto c1 = hv::contributions_race(F, r, set, a, &skip, &st);
+            const auto c2 = hv::contributions_race(F, r, set, b, &skip);
+            std::size_t pick = 0;
+            for (std::size_t i = 1; i < n; ++i) if (c1[i] < c1[pick]) pick = i;
+            ++sets;
+            const bool ok = exact[pick] <= (1.0 + set.eps) * least_left + 1e-15;
+            within += ok;
+            full += !st.capped;
+            full_within += !st.capped && ok;
+            twice += c1 == c2;
+            never_skipped += !skip[pick];
+            capped += st.capped;
+            (void)least;
+            (void)ud;
+        }
+        std::printf("race, 400 random sets at M = 4 to 8: within (1 + eps) of the least %d "
+                    "(of the %d races that ended by the paper's rule: %d), the same answer twice %d, "
+                    "a skipped point never %d, stopped at race_max_samples %d\n",
+                    within, full, full_within, twice, never_skipped, capped);
+        // the guarantee (Corollary 5) holds for a race that ends by its rule;
+        // one stopped at race_max_samples takes the current least
+        check(full_within == full && full > sets / 2,
+              "the race: the answer within (1 + eps) of the least contribution");
+        check(twice == sets, "the race: the same answer at the same seed");
+        check(never_skipped == sets, "the race: a skipped point is never the answer");
+        // a copy contributes nothing: the race finds it exactly
+        std::vector<std::vector<double>> F = {{0.2, 0.5, 0.5, 0.6}, {0.5, 0.2, 0.5, 0.6},
+                                              {0.5, 0.5, 0.2, 0.6}, {0.5, 0.5, 0.2, 0.6},
+                                              {0.6, 0.6, 0.6, 0.1}};
+        std::mt19937 g(3);
+        const auto c = hv::contributions_race(F, std::vector<double>(4, 1.0), set, g);
+        check((c[2] == 0.0 || c[3] == 0.0), "the race: a copy contributes 0");
     }
 
     run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");

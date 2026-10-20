@@ -98,7 +98,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 10 of 2026-10-18, §7
         "n_samples",
         // task 13 of 2026-10-19, §3
-        "hv_exact_max_m"
+        "hv_exact_max_m",
+        // task 14 of 2026-10-20, §11
+        "race_eps", "race_delta", "race_max_samples"
     };
     return v;
 }
@@ -147,8 +149,13 @@ inline const std::vector<std::string>& knob_names() {
 //                  given, it decides from M = 4 (0 exact at every M, N > 0
 //                  Monte-Carlo with N), not given hv_exact_max_m does
 //   hv_exact_max_m sms_emoa, mo_cma_es: the exact contributions up to that
-//                  many objectives, Monte-Carlo above (5; hv_contribution.hpp,
-//                  hv::ContribChoice)
+//                  many objectives, the race (or Monte-Carlo) above (5;
+//                  hv_contribution.hpp, hv::ContribChoice)
+//   race_eps, race_delta, race_max_samples
+//                  sms_emoa, mo_cma_es: the race for the least contributor
+//                  above hv_exact_max_m (Bringmann & Friedrich 2012): the
+//                  answer within (1 + eps) of the least with probability
+//                  1 - delta; 0.01, 1e-6, 10^6 samples a step at most
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
@@ -163,7 +170,8 @@ inline bool is_core_param(const std::string& name)
                           "sub_budget", "fd_step", "local_tol",
                           "cma_sigma0", "eps_objective", "polish_share", "polish_points",
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
-                          "n_samples", "hv_exact_max_m"})
+                          "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
+                          "race_max_samples"})
         if (name == k) return true;
     return false;
 }
@@ -199,7 +207,8 @@ inline bool is_core_param(const std::string& name)
 //                 (box; hv_box.hpp)
 //   hv_contrib    sms_emoa, mo_cma_es: the exact contributions at 3 and 4
 //                 objectives by HVC3D / HVC4D (hvc, the default; hvc.hpp) or by
-//                 WFG (wfg)
+//                 WFG (wfg); above hv_exact_max_m the race (race, the default)
+//                 or Monte-Carlo shared out equally (mc)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -247,7 +256,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"sub_plan",     {"grid", "laumanns", "gap"}},
         {"tch_weights",  {"inverse", "lattice"}},
         {"hv_algo",      {"auto", "wfg", "box"}},
-        {"hv_contrib",   {"wfg", "hvc"}},
+        {"hv_contrib",   {"hvc", "wfg", "race", "mc"}},
         {"polish",       {"off", "sqp", "nm"}},
     };
     return v;

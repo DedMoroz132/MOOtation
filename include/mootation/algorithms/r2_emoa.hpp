@@ -78,8 +78,8 @@ namespace mootation {
 //     through the non-dominated sorting), the binary genome, survival =
 //     stochastic, the inner archive — is SMS-EMOA's (sms_emoa.hpp, SMS-5,
 //     -6, -8, -9). SMS-EMOA's hypervolume knobs hv_contrib, hv_algo,
-//     n_samples and hv_exact_max_m are not taken (reported ignored): the
-//     selection computes no hypervolume.
+//     n_samples, hv_exact_max_m and race_* are not taken (reported
+//     ignored): the selection computes no hypervolume.
 // ============================================================================
 
 // The exact R2 of a two-objective set for weights uniform on [0, 1]
@@ -136,7 +136,8 @@ public:
             offset_ = v;
             return true;
         }
-        if (k == "n_samples" || k == "hv_exact_max_m") return false;   // no hypervolume
+        if (k == "n_samples" || k == "hv_exact_max_m" || k == "race_eps" || k == "race_delta" ||
+            k == "race_max_samples") return false;                   // no hypervolume
         return SMSEMOACore<Ind_t>::set_param(k, v);
     }
 

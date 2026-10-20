@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- SMS-EMOA and MO-CMA-ES above `hv_exact_max_m` find the least hypervolume
+  contributor by the race of Bringmann & Friedrich (Theor. Comput. Sci. 425,
+  2012, Algorithm 1; task 14 of 2026-10-20, §11): `hv_contrib = race`, the
+  new default there. Samples in every point's bounding box in rounds, points
+  dropped once surely not the least, until the answer is within (1 +
+  `race_eps`) of the least contribution with probability 1 − `race_delta`
+  (0.01, 1e-6), at most `race_max_samples` (10^6) samples a step. The
+  equal-share Monte-Carlo of before stays as `hv_contrib = mc`.
+  **Changed results**: both at more than five objectives.
+
 - SMS-EMOA and MO-CMA-ES compute the hypervolume contributions exactly up to
   `hv_exact_max_m` objectives (new knob, 5 by default), Monte-Carlo above
   (task 13 of 2026-10-19, §3): at M = 3 and 4 by HVC3D / HVC4D

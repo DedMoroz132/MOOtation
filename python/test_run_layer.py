@@ -10337,10 +10337,12 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
 def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
     """Task 13, §3: by default SMS-EMOA and MO-CMA-ES compute the hypervolume
     contributions exactly up to hv_exact_max_m = 5 objectives (HVC4D at M = 4)
-    and by Monte-Carlo above: the default run at M = 4 is the run with
-    n_samples = 0 and hv_contrib = hvc, at M = 6 the one with n_samples =
-    10000, bit for bit; hv_exact_max_m = 6 makes M = 6 exact; Result.settings
-    names the method; R2-EMOA reports the knobs ignored."""
+    and above by the race for the least contributor (task 14, §11): the default
+    run at M = 4 is the run with n_samples = 0 and hv_contrib = hvc, at M = 6
+    the one with hv_contrib = race, bit for bit; hv_contrib = mc is the
+    Monte-Carlo of before, the run with n_samples = 10000; hv_exact_max_m = 6
+    makes M = 6 exact; Result.settings names the method; R2-EMOA reports the
+    knobs ignored."""
     if not _have_numpy() or _core_with("max_evaluations") is None:
         print("    (skipped: no NumPy or no extension)"); return
     from mootation import minimize
@@ -10359,15 +10361,20 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
         assert same(d4, run("DTLZ2_4D", alg, n_samples=0, hv_contrib="hvc")), alg
         assert dict(d4.settings)["contributions"] == "exact, hvc4d at M = 4", d4.settings
         d6 = run("DTLZ2_6D", alg)
-        assert same(d6, run("DTLZ2_6D", alg, n_samples=10000)), alg
-        assert dict(d6.settings)["contributions"].startswith("monte-carlo, 10000 samples a step "
-                                                             "(above hv_exact_max_m)"), d6.settings
+        assert same(d6, run("DTLZ2_6D", alg, hv_contrib="race")), alg
+        assert dict(d6.settings)["contributions"].startswith("race (eps 0.01, delta 0.000001; "), \
+            d6.settings
+        m6 = run("DTLZ2_6D", alg, hv_contrib="mc")
+        assert same(m6, run("DTLZ2_6D", alg, n_samples=10000)) and not same(m6, d6), alg
+        assert dict(m6.settings)["contributions"].startswith(
+            "monte-carlo, 10000 samples a step (hv_contrib = mc)"), m6.settings
         e6 = run("DTLZ2_6D", alg, hv_exact_max_m=6)
         assert same(e6, run("DTLZ2_6D", alg, n_samples=0)) and not same(e6, d6), alg
         assert dict(e6.settings)["contributions"] == "exact, wfg at M = 6", e6.settings
         assert "hv_exact_max_m" not in d4.ignored, d4.ignored
-    r = run("DTLZ2_4D", "r2_emoa", hv_exact_max_m=6, n_samples=0)
-    assert {"hv_exact_max_m", "n_samples"} <= set(r.ignored) and list(r.settings) == [], r.ignored
+    r = run("DTLZ2_4D", "r2_emoa", hv_exact_max_m=6, n_samples=0, race_eps=0.1)
+    assert {"hv_exact_max_m", "n_samples", "race_eps"} <= set(r.ignored) and \
+        list(r.settings) == [], r.ignored
 
 
 @test
@@ -10384,7 +10391,7 @@ def hv_contrib_takes_its_words_and_refuses_others():
     from mootation import minimize
     from mootation.run.knobs import accepts, text_knobs
     from mootation.benchmarks import get
-    assert text_knobs()["hv_contrib"] == ("wfg", "hvc"), text_knobs()["hv_contrib"]
+    assert text_knobs()["hv_contrib"] == ("hvc", "wfg", "race", "mc"), text_knobs()["hv_contrib"]
     assert accepts("hv_contrib", "hvc") and accepts("hv_contrib", "wfg")
     assert not accepts("hv_contrib", "box") and not accepts("hv_contrib", "HVC")
     text = _MIN.replace("gens = 5", 'gens = 5\nparams = { hv_contrib = "box" }')

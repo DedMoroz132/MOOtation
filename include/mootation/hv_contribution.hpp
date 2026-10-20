@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -192,39 +193,273 @@ inline std::vector<double> contributions_mc(const std::vector<std::vector<double
     return c;
 }
 
+// The settings of the race for the least contributor (contributions_race).
+struct RaceSettings {
+    double eps = 1e-2;                 // race_eps: (1 + eps) times the least contribution
+    double delta = 1e-6;               // race_delta: the probability of a wrong answer
+    std::size_t max_samples = 1000000; // race_max_samples: the samples of one step, at most
+    double gamma = 1.0;                // gamma of Eq. (3), in (0, 1]: not given in the paper
+    double alpha = 0.2;                // §3.4.1: the current least sampled to alpha * Delta
+};
+
+// What the last race did (the cores' settings report sums of these).
+struct RaceStats {
+    std::size_t samples = 0, exact = 0, rounds = 0;
+    bool capped = false;
+};
+
+// The least hypervolume contributor by the race of Bringmann & Friedrich,
+// "Approximating the least hypervolume contributor: NP-hard in general, but
+// fast in practice", Theor. Comput. Sci. 425:104-116, 2012 (source
+// hv-least-contributor_bringmann2012), Algorithm 1 with the heuristics of
+// §3.4: for every candidate the bounding box [p, b] of its exclusive region
+// (§3.1: b cut by every point no worse than p in all objectives but one — the
+// box of contributions_mc), samples uniform in it, the estimate
+//   V~_A = hits / samples * VOL(BB_A)                                   (2)
+// and its deviation bound
+//   Delta_R(A) = sqrt(log(2 n R^(1+gamma) (1+gamma) / (gamma delta)) / (2 samples)) VOL(BB_A)   (3)
+// In round R every candidate still in the race is sampled until
+// Delta_R(A) <= Delta_R = Delta_{R-1} / 2 (Delta_0 = the largest box), the
+// current least one until alpha * Delta_R (§3.4.1, alpha = 0.2); a candidate
+// with V~_A - Delta_R(A) > V~_LC + Delta_R(LC) leaves the race (4). The race
+// ends with one candidate left, or when V~_A - Delta_R(A) > 0 and
+// (V~_LC + Delta_R(LC)) / (V~_A - Delta_R(A)) <= 1 + eps for every other A:
+// then with probability at least 1 - delta the current least contributes at
+// most (1 + eps) times the least (Corollary 5). §3.4.2: a sample is tested
+// only against the points that can cover part of the box, the largest share
+// first. §3.4.3: a candidate whose sampling has cost more coordinate
+// comparisons than the exact count of its few covering points would (the
+// paper's bound for HSO, n_A C(n_A + d - 2, d - 1)) is counted exactly
+// instead (WFG of those points clipped to its box), its Delta then 0.
+// READINGS: gamma is not given in the paper — 1, the bound's end; the switch
+// to the exact count is checked before a candidate's samples of a round are
+// drawn (the comparisons they would cost included), not after; the number of
+// samples a round needs is computed from (3), not tested sample by sample (the
+// same count); at max_samples a step the race stops and the current least is
+// taken (stats.capped).
+// Returns V~ for the candidates left in the race and +inf for the others and
+// for the points `skip` marks (they still cover the others' boxes): its
+// argmin is the race's answer, ties left to the caller's rule.
+template <typename RNG>
+inline std::vector<double> contributions_race(const std::vector<std::vector<double>>& F,
+                                              const std::vector<double>& r,
+                                              const RaceSettings& set, RNG& rng,
+                                              const std::vector<char>* skip = nullptr,
+                                              RaceStats* stats = nullptr)
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    const std::size_t n = F.size(), m = r.size();
+    std::vector<double> c(n, inf);
+    RaceStats st;
+    if (n == 0) { if (stats) *stats = st; return c; }
+
+    struct Cand {
+        std::size_t i;
+        std::vector<double> lo, hi;            // the box [p, b]
+        double vol = 0.0;
+        std::vector<std::size_t> cover;        // the points that can cover part of it
+        double hso = 0.0;                      // §3.4.3: the exact count's estimated cost
+        std::size_t samples = 0, hits = 0;
+        double ops = 0.0;
+        bool exact = false;
+        double v = 0.0, dev = 0.0;             // V~ and Delta_R
+    };
+    std::vector<Cand> S;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (skip && (*skip)[i]) continue;
+        const auto& p = F[i];
+        Cand a;
+        a.i = i;
+        a.lo = p;
+        a.hi = r;
+        bool inside = true;
+        for (std::size_t k = 0; k < m; ++k) inside = inside && p[k] < r[k];
+        bool covered_whole = !inside;
+        for (std::size_t q = 0; q < n && !covered_whole; ++q) {
+            if (q == i) continue;
+            std::size_t worse = 0, at = m;
+            for (std::size_t j = 0; j < m; ++j)
+                if (F[q][j] > p[j]) { ++worse; at = j; }
+            covered_whole = worse == 0;            // a copy of p: no region of its own
+            if (worse == 1) a.hi[at] = std::min(a.hi[at], F[q][at]);
+        }
+        if (!covered_whole) {
+            a.vol = 1.0;
+            for (std::size_t k = 0; k < m; ++k) a.vol *= std::max(0.0, a.hi[k] - a.lo[k]);
+        }
+        if (a.vol <= 0.0) {                         // nothing of its own: exactly 0
+            a.exact = true;
+            S.push_back(std::move(a));
+            continue;
+        }
+        std::vector<std::pair<double, std::size_t>> share;   // §3.4.2: the largest share first
+        for (std::size_t q = 0; q < n; ++q) {
+            if (q == i) continue;
+            bool reach = true;
+            double v = 1.0;
+            for (std::size_t j = 0; j < m && reach; ++j) {
+                reach = F[q][j] < a.hi[j];
+                v *= a.hi[j] - std::max(F[q][j], a.lo[j]);
+            }
+            if (reach) share.emplace_back(-v, q);
+        }
+        std::stable_sort(share.begin(), share.end());
+        for (const auto& s : share) a.cover.push_back(s.second);
+        const double na = static_cast<double>(a.cover.size());
+        double binom = 1.0;                         // C(n_A + d - 2, d - 1)
+        for (std::size_t t = 1; t + 1 <= m; ++t)
+            binom = binom * (na + static_cast<double>(m) - 2.0 - static_cast<double>(t) + 1.0) /
+                    static_cast<double>(t);
+        a.hso = na * binom;
+        S.push_back(std::move(a));
+    }
+
+    // the exact contribution of a: its box less what its covering points take of it
+    auto count_exactly = [&](Cand& a) {
+        std::vector<double> L;
+        L.reserve(a.cover.size() * m);
+        for (std::size_t q : a.cover)
+            for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], a.lo[k]));
+        const double taken = a.cover.empty() ? 0.0
+            : hypervolume::wfg(L.data(), a.cover.size(), m, a.hi.data());
+        a.v = std::max(0.0, a.vol - taken);
+        a.dev = 0.0;
+        a.exact = true;
+        ++st.exact;
+    };
+    auto sample = [&](Cand& a, std::size_t k) {
+        std::vector<double> x(m);
+        for (std::size_t s = 0; s < k; ++s) {
+            for (std::size_t j = 0; j < m; ++j) x[j] = a.lo[j] + rnd::uniform01(rng) * (a.hi[j] - a.lo[j]);
+            bool covered = false;
+            for (std::size_t q : a.cover) {
+                std::size_t j = 0;
+                while (j < m && F[q][j] <= x[j]) ++j;
+                a.ops += static_cast<double>(j + 1);
+                if (j == m) { covered = true; break; }
+            }
+            if (!covered) ++a.hits;
+        }
+        a.samples += k;
+        st.samples += k;
+        a.v = static_cast<double>(a.hits) / static_cast<double>(a.samples) * a.vol;
+    };
+
+    const double nn = static_cast<double>(S.size());
+    double D = 0.0;
+    for (const auto& a : S) D = std::max(D, a.vol);
+    std::vector<std::size_t> live(S.size());
+    for (std::size_t t = 0; t < S.size(); ++t) live[t] = t;
+    std::size_t lc = S.size();                      // the current least: none before round 1
+    for (std::size_t R = 1; !live.empty(); ++R) {
+        st.rounds = R;
+        D *= 0.5;
+        const double g = set.gamma;
+        const double logterm = std::log(2.0 * nn * std::pow(static_cast<double>(R), 1.0 + g) *
+                                        (1.0 + g) / (g * set.delta));
+        for (std::size_t t : live) {
+            Cand& a = S[t];
+            if (a.exact) continue;
+            const double target = (t == lc ? set.alpha : 1.0) * D;
+            // (3) solved for the samples: Delta_R(a) <= target
+            const double want = std::ceil(logterm * a.vol * a.vol / (2.0 * target * target));
+            if (want > static_cast<double>(a.samples)) {
+                const double more = want - static_cast<double>(a.samples);
+                if (a.ops + more * (static_cast<double>(a.cover.size()) + 1.0) > a.hso) {
+                    count_exactly(a);                 // §3.4.3
+                    continue;
+                }
+                if (static_cast<double>(st.samples) + more > static_cast<double>(set.max_samples)) {
+                    st.capped = true;
+                    break;
+                }
+                sample(a, static_cast<std::size_t>(more));
+            }
+            a.dev = std::sqrt(logterm / (2.0 * static_cast<double>(a.samples))) * a.vol;
+        }
+        lc = live.front();
+        for (std::size_t t : live) if (S[t].v < S[lc].v) lc = t;   // the first of equal ones
+        if (st.capped) break;
+        const double up = S[lc].v + S[lc].dev;
+        std::vector<std::size_t> keep;
+        for (std::size_t t : live)
+            if (t == lc || !(S[t].v - S[t].dev > up)) keep.push_back(t);
+        live.swap(keep);
+        if (live.size() == 1) break;
+        bool done = true, all_exact = true;
+        for (std::size_t t : live) {
+            all_exact = all_exact && S[t].exact;
+            if (t == lc) continue;
+            const double down = S[t].v - S[t].dev;
+            done = done && down > 0.0 && up / down <= 1.0 + set.eps;
+        }
+        if (done || all_exact) break;
+    }
+    for (std::size_t t : live) c[S[t].i] = S[t].v;
+    if (stats) *stats = st;
+    return c;
+}
+
 // How SMS-EMOA and MO-CMA-ES compute a step's contributions (task 13 of
-// 2026-10-19, §3; sms_emoa.hpp SMS-2, mo_cma_es.hpp MOCMA-5), from their knobs:
-//   M = 2, 3                exact (M = 3: HVC3D unless hv_contrib = wfg)
+// 2026-10-19, §3; task 14 of 2026-10-20, §11; sms_emoa.hpp SMS-2, mo_cma_es.hpp
+// MOCMA-5), from their knobs:
+//   M = 2, 3                 exact (M = 3: HVC3D unless hv_contrib = wfg)
 //   4 <= M <= hv_exact_max_m exact (default threshold 5): M = 4 HVC4D unless
-//                           hv_contrib = wfg, else WFG (hv_algo = box: boxes)
-//   M > hv_exact_max_m      Monte-Carlo, 10 000 samples a step
-//   n_samples given         from M = 4 it decides: > 0 Monte-Carlo with that
-//                           many samples, 0 exact, at every M
+//                            hv_contrib = wfg, else WFG (hv_algo = box: boxes)
+//   M > hv_exact_max_m       the race for the least contributor (race, the
+//                            default; contributions_race) or, with
+//                            hv_contrib = mc, Monte-Carlo with n_samples
+//                            (10 000) a step shared out equally
+//   n_samples given, hv_contrib neither race nor mc
+//                            from M = 4 n_samples decides, as before task 14:
+//                            0 exact at every M, N > 0 Monte-Carlo with N
 // The exact contributions' cost grows steeply with M, hence the threshold.
 struct ContribChoice {
     static constexpr int kSamples = 10000;
+    enum class Approx { race, mc };
     std::optional<int> n_samples;       // given by the caller
     int  exact_max_m = 5;               // hv_exact_max_m
-    bool hvc = true;                    // hv_contrib: hvc (default) or wfg
+    bool hvc = true;                    // hv_contrib: hvc (default) or wfg, the exact way
+    Approx approx = Approx::race;       // hv_contrib: race (default) or mc, above the threshold
+    bool approx_given = false;
     bool box = false;                   // hv_algo = box
+    RaceSettings race;                  // race_eps, race_delta, race_max_samples
     std::size_t m = 0;                  // the objectives of the last step (settings())
+    std::size_t race_steps = 0, race_samples = 0, race_exact = 0, race_capped = 0;
 
-    bool mc(std::size_t M) const
+    enum class Way { exact, mc, race };
+    Way way(std::size_t M) const
     {
-        if (M < 4) return false;
-        if (n_samples) return *n_samples > 0;
-        return static_cast<int>(M) > exact_max_m;
+        if (M < 4) return Way::exact;
+        if (n_samples && !approx_given) return *n_samples > 0 ? Way::mc : Way::exact;
+        if (static_cast<int>(M) <= exact_max_m) return Way::exact;
+        return approx == Approx::race ? Way::race : Way::mc;
     }
+    bool mc(std::size_t M) const { return way(M) == Way::mc; }
     std::size_t samples() const { return static_cast<std::size_t>(n_samples.value_or(kSamples)); }
     bool use_hvc(std::size_t M) const { return hvc && (M == 3 || M == 4); }
 
-    // The contributions of F against r, as the knobs say (rng: Monte-Carlo's).
+    // The contributions of F against r, as the knobs say (rng: the samples').
+    // skip marks the points the caller keeps whatever (MO-CMA-ES's boundary
+    // elements): the race leaves them out of the candidates; the other ways
+    // compute them as any.
     template <typename Hvc, typename Rng>
     std::vector<double> compute(const std::vector<std::vector<double>>& F,
-                                const std::vector<double>& r, Hvc& kept, Rng& rng)
+                                const std::vector<double>& r, Hvc& kept, Rng& rng,
+                                const std::vector<char>* skip = nullptr)
     {
         m = r.size();
-        if (mc(m)) return contributions_mc(F, r, std::max<std::size_t>(1, samples() / F.size()), rng);
+        const Way w = way(m);
+        if (w == Way::race) {
+            RaceStats st;
+            auto c = contributions_race(F, r, race, rng, skip, &st);
+            ++race_steps;
+            race_samples += st.samples;
+            race_exact += st.exact;
+            race_capped += st.capped ? 1 : 0;
+            return c;
+        }
+        if (w == Way::mc) return contributions_mc(F, r, std::max<std::size_t>(1, samples() / F.size()), rng);
         if (use_hvc(m)) return kept.contributions(F, r);
         return box ? contributions_box(F, r) : contributions_exact(F, r);
     }
@@ -243,15 +478,34 @@ struct ContribChoice {
             exact_max_m = static_cast<int>(v);
             return true;
         }
+        if (k == "race_eps") {
+            if (!(v > 0.0 && v <= 1.0)) throw std::invalid_argument("race_eps must be in (0, 1]");
+            race.eps = v;
+            return true;
+        }
+        if (k == "race_delta") {
+            if (!(v > 0.0 && v < 1.0)) throw std::invalid_argument("race_delta must be in (0, 1)");
+            race.delta = v;
+            return true;
+        }
+        if (k == "race_max_samples") {
+            if (!(v >= 1.0 && v <= 1e12 && v == std::floor(v)))
+                throw std::invalid_argument("race_max_samples must be a whole number >= 1");
+            race.max_samples = static_cast<std::size_t>(v);
+            return true;
+        }
         return false;
     }
     bool set_word(const std::string& k, const std::string& w)
     {
         if (k == "hv_contrib") {
-            if (w != "wfg" && w != "hvc")
-                throw std::invalid_argument("hv_contrib = '" + w + "': wfg or hvc");
-            hvc = w == "hvc";
-            return true;
+            if (w == "hvc" || w == "wfg") { hvc = w == "hvc"; return true; }
+            if (w == "race" || w == "mc") {
+                approx = w == "race" ? Approx::race : Approx::mc;
+                approx_given = true;
+                return true;
+            }
+            throw std::invalid_argument("hv_contrib = '" + w + "': hvc, wfg, race or mc");
         }
         if (k == "hv_algo") {                           // auto: WFG for the contributions
             if (w != "auto" && w != "wfg" && w != "box")
@@ -265,16 +519,29 @@ struct ContribChoice {
     // The knobs and the method of the run (Result.settings, a campaign's meta.json).
     std::vector<std::pair<std::string, std::string>> settings() const
     {
+        auto num = [](double v) {
+            std::string s = std::to_string(v);
+            s.erase(s.find_last_not_of('0') + 1);
+            if (!s.empty() && s.back() == '.') s.pop_back();
+            return s;
+        };
         std::string how;
-        if (m == 0)           how = "none (no step compared contributions)";
-        else if (m == 2)      how = "exact (two objectives)";
-        else if (mc(m))       how = "monte-carlo, " + std::to_string(samples()) + " samples a step (" +
-                                    (n_samples ? "n_samples given" : "above hv_exact_max_m") + ")";
-        else if (use_hvc(m))  how = m == 3 ? "exact, hvc3d" : "exact, hvc4d";
-        else                  how = box ? "exact, box" : "exact, wfg";
+        const Way w = m == 0 ? Way::exact : way(m);
+        if (m == 0)                how = "none (no step compared contributions)";
+        else if (m == 2)           how = "exact (two objectives)";
+        else if (w == Way::race)   how = "race (eps " + num(race.eps) + ", delta " + num(race.delta) + "; " +
+                                         std::to_string(race_steps) + " steps, " + std::to_string(race_samples) +
+                                         " samples, " + std::to_string(race_exact) + " counted exactly, " +
+                                         std::to_string(race_capped) + " stopped at race_max_samples)";
+        else if (w == Way::mc)     how = "monte-carlo, " + std::to_string(samples()) + " samples a step (" +
+                                         (n_samples && !approx_given ? "n_samples given" :
+                                          approx_given ? "hv_contrib = mc" : "above hv_exact_max_m") + ")";
+        else if (use_hvc(m))       how = m == 3 ? "exact, hvc3d" : "exact, hvc4d";
+        else                       how = box ? "exact, box" : "exact, wfg";
         return {{"hv_exact_max_m", std::to_string(exact_max_m)},
                 {"n_samples", n_samples ? std::to_string(*n_samples) : "default"},
-                {"hv_contrib", hvc ? "hvc" : "wfg"},
+                {"hv_contrib", std::string(hvc ? "hvc" : "wfg") + ", " +
+                                   (approx == Approx::race ? "race" : "mc")},
                 {"hv_algo", box ? "box" : "auto"},
                 {"contributions", how + " at M = " + std::to_string(m)}};
     }

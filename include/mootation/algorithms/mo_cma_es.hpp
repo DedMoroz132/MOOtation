@@ -82,10 +82,14 @@ namespace mootation {
 //     there; hv::ContribChoice): exact up to hv_exact_max_m objectives (5 by
 //     default; task 13 of 2026-10-19, §3 — before it, Monte-Carlo from
 //     M = 4), M = 3 and 4 by HVC3D / HVC4D unless hv_contrib = wfg, WFG
-//     above (hv_algo = box: boxes), Monte-Carlo (10 000 samples a step) above
-//     the threshold; n_samples given decides from M = 4 (0 exact, N > 0
-//     Monte-Carlo). The paper (Igel, Hansen & Roth 2007) computes them
-//     exactly. With the Monte-Carlo estimate the removed point is close to
+//     above (hv_algo = box: boxes); above the threshold the race for the
+//     least contributor (task 14 of 2026-10-20, §11; SMS-2 there), or with
+//     hv_contrib = mc Monte-Carlo (10 000 samples a step); n_samples given
+//     without race or mc decides from M = 4 (0 exact, N > 0 Monte-Carlo). The
+//     boundary elements, kept whatever their contributions, are not
+//     candidates in the race but still cover the others' boxes (Voss et al.,
+//     GECCO 2010, put the race into this algorithm). The paper (Igel, Hansen &
+//     Roth 2007) computes them exactly. With the Monte-Carlo estimate the removed point is close to
 //     random among the small contributions (SMS-2), and since an offspring
 //     that survives counts as a success (Eq. 9) the step sizes then grow and
 //     the population can drift from the front: a property of the estimate,
@@ -275,12 +279,14 @@ private:
             r[k] = hi[k] > lo[k] ? hi[k] + (hi[k] - lo[k]) : hi[k] + 1.0;
         std::vector<std::vector<double>> Fv;
         for (int i : last) Fv.push_back(vault.get_ind(static_cast<std::size_t>(i)).fpen);
-        auto c = how_.compute(Fv, r, hvc_, rng_);           // MOCMA-5
-        for (std::size_t k = 0; k < m; ++k) {                  // boundary elements
+        std::vector<char> boundary(Fv.size(), 0);              // boundary elements
+        for (std::size_t k = 0; k < m; ++k) {
             std::size_t b = 0;
             for (std::size_t t = 1; t < Fv.size(); ++t) if (Fv[t][k] < Fv[b][k]) b = t;
-            c[b] = inf;
+            boundary[b] = 1;
         }
+        auto c = how_.compute(Fv, r, hvc_, rng_, &boundary);  // MOCMA-5 (race: not candidates)
+        for (std::size_t t = 0; t < Fv.size(); ++t) if (boundary[t]) c[t] = inf;
         double least = inf;
         for (double x : c) least = std::min(least, x);
         std::vector<int> tied;

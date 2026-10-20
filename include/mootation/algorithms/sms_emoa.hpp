@@ -87,9 +87,24 @@ namespace mootation {
 //       4      hvc (dflt)   not given   exact, HVC4D (4 <= hv_exact_max_m)
 //       4      wfg          not given   exact, WFG / boxes
 //       5..t   any          not given   exact, WFG / boxes (t = hv_exact_max_m)
-//       > t    any          not given   Monte-Carlo, 10 000 samples a step
+//       > t    hvc/wfg/race not given   the race for the least contributor
+//       > t    mc           any         Monte-Carlo, n_samples (10 000) a step
 //       >= 4   any          0           exact at every M (hvc at M = 4)
-//       >= 4   any          N > 0       Monte-Carlo, N samples a step
+//       >= 4   hvc/wfg      N > 0       Monte-Carlo, N samples a step
+//
+//     The race (hv_contrib = race, the default above t; task 14 of
+//     2026-10-20, §11; hv::contributions_race): Bringmann & Friedrich, Theor.
+//     Comput. Sci. 425, 2012, Algorithm 1 — samples in every point's bounding
+//     box in rounds, a point leaving the race once its contribution is surely
+//     larger than the current least one's, until the answer is within
+//     (1 + race_eps) of the least contribution with probability
+//     1 - race_delta (0.01 and 1e-6, the paper's experiments; Voss, Friedrich,
+//     Bringmann & Igel, GECCO 2010 companion, built it into SMS-EMOA and
+//     MO-CMA-ES with 1e-6 and 1e-4), at most race_max_samples samples a step
+//     (10^6; reaching it takes the current least, which the guarantee no
+//     longer covers; Result.settings counts such steps). The race returns
+//     the estimates of the points left in it: their least is removed, a tie
+//     as SMS-3.
 //
 //     EJOR §2.3 computes them exactly (the O(μ³) grid algorithm of Naujoks et
 //     al. at M = 3) and calls SMS-EMOA "hardly applicable" above three
