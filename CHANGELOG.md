@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- DMulti-MADS: the initial list keeps only its non-dominated points, as
+  Algorithm 3 assumes of every list. The filter moved each kept point out of
+  the list it was still comparing against, so a point dominated only by an
+  earlier one stayed (on DTLZ7 and ZDT1 every point of the box's diagonal).
+  A later copy of a listed point could then enter through such a dominated
+  member, and the failed iteration shrank the frame of the other copy: the
+  incumbent kept its frame, polled outside the box and evaluated nothing,
+  forever (DTLZ7_3D, seed 13, 10 000 evaluations: "10000 steps in a row
+  evaluated nothing"). **Changed results**: `dmulti_mads` runs take other
+  trajectories wherever the diagonal holds a dominated point.
+
 - DTLZ1-7 at eight objectives (`DTLZ1_8D` ... `DTLZ7_8D`; 1357 problems):
   DTLZ was registered at 2-6, 10 and 15 objectives only. Evaluated in C++ as
   the other sizes; their frames in the shipped cache, and the full fronts of

@@ -9615,6 +9615,23 @@ def direct_search_methods_are_deterministic_and_take_their_knobs():
 
 
 @test
+def dmulti_mads_starts_from_a_non_dominated_list():
+    """dmulti_mads's initial list holds the non-dominated points of the box's
+    diagonal only (Algorithm 3 assumes every list non-dominated). Of the
+    diagonal (0, 0, 0), (.5, .5, .5), (1, 1, 1) the last, (1, 0.98), is
+    dominated by the middle one, (0.5, 0.37); the filter used to keep it,
+    and a later copy of a listed point stalled DTLZ7_3D, seed 13."""
+    if _core_with("Config") is None:
+        print("  skip  dmulti_mads_starts...: stale _core"); return
+    import math
+    import mootation
+    f = lambda x: [x[0], 1.0 - math.sqrt(x[0]) + sum((v - 0.3) ** 2 for v in x[1:])]
+    r = mootation.minimize(f, [(0.0, 1.0)] * 3, 2, algorithm="dmulti_mads", seed=1, n_gen=0)
+    F = sorted(tuple(p) for p in r.objectives)
+    assert len(F) == 2 and F[0][0] == 0.0 and F[1][0] == 0.5, F
+
+
+@test
 def rm_meda_models_its_clusters_and_takes_its_knobs():
     """Task 9, B2: rm_meda spends exactly its budget (N a generation); one seed,
     one trajectory; n_clusters and rm_extension reach it, pop_size <= K and a
