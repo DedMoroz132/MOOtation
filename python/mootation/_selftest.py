@@ -31,7 +31,7 @@ CASES = ("nsga2", "nsga3", "moead_de", "sms_emoa", "mo_cma_es", "spea2_sde", "ib
          "rvea", "mosa", "nsga2_sdr")
 PROBLEMS = ("ZDT1", "DTLZ2_3D")
 EVALUATIONS = 300
-POP = 20
+POP = {"ZDT1": 20, "DTLZ2_3D": 21}     # 21: a Das-Dennis size at three objectives
 SEED = 1
 GOLDEN = Path(__file__).with_name("selftest_golden.txt")
 
@@ -54,7 +54,7 @@ def fingerprints() -> dict:
     for name in PROBLEMS:
         p = get(name)
         for alg in CASES:
-            r = minimize(p.evaluate, p.bounds, p.n_obj, algorithm=alg, pop_size=POP,
+            r = minimize(p.evaluate, p.bounds, p.n_obj, algorithm=alg, pop_size=POP[name],
                          max_evaluations=EVALUATIONS, seed=SEED)
             out[(alg, name)] = _fnv1a(list(r.variables) + list(r.objectives))
     return out
