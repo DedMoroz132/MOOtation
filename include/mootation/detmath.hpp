@@ -89,6 +89,15 @@ inline double from_bits(std::uint64_t u)
     return x;
 }
 
+// v rounded to the nearest integer, ties to even, for |v| < 2^51: adding and
+// subtracting 1.5 2^52 leaves no fraction bits (two IEEE additions; no call
+// into the C library, as std::floor or std::nearbyint may be).
+inline double round_to_integer(double v)
+{
+    constexpr double shift = 0x1.8p52;
+    return (v + shift) - shift;
+}
+
 // 2^k for -1022 <= k <= 1023, from its bits (exact).
 inline double pow2i(std::int32_t k)
 {
@@ -210,7 +219,7 @@ inline Reduced reduce_pio2(double x)
 {
     if (x <= kQuarterPi)
         return {{x, 0.0}, 0};
-    const double k = std::floor(x * coeffs::kTwoOverPi + 0.5);
+    const double k = round_to_integer(x * coeffs::kTwoOverPi);
     const double* P = coeffs::kPio2Part;
     // k * P[0], k * P[1], k * P[2] are exact (k <= 2^20, 33-bit parts);
     // x - k P[0] is exact by Sterbenz's lemma (k P[0] is within a factor 2 of x)
@@ -413,7 +422,7 @@ namespace detail {
 // e^x = 2^M (S_lead(J) + (S_trail(J) + S (R1 + (R2 + Q)))).
 inline double exp_dw(double xh, double xl)
 {
-    const double N = std::floor(xh * coeffs::kExpInvL + 0.5);
+    const double N = round_to_integer(xh * coeffs::kExpInvL);
     const std::int32_t n = static_cast<std::int32_t>(N);
     const std::int32_t j = n & 31;                      // N mod 32, >= 0
     const std::int32_t m = (n - j) / 32;
@@ -493,7 +502,7 @@ inline LogSplit log_split(double x)
     m += exponent_of(x);
     // Y: x's significand with the exponent of 1 (exact; also for x >= 2^1023)
     const double Y = from_bits((bits(x) & ((std::uint64_t{1} << 52) - 1)) | (std::uint64_t{1023} << 52));
-    const double J = std::floor(Y * 128.0 + 0.5);       // 128..256
+    const double J = round_to_integer(Y * 128.0);         // 128..256
     const double F = J * 0x1p-7;
     return {m, static_cast<std::int32_t>(J) - 128, F, Y - F};
 }
