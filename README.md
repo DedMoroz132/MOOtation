@@ -285,7 +285,9 @@ archive, the same trajectory. What makes it so:
   distributions differ between implementations;
 - the elementary functions of the cores, the operators and the C++ benchmark
   suite are the library's own (`detmath.hpp`), built from the operations
-  IEEE 754 rounds exactly;
+  IEEE 754 rounds exactly: the suite's problems evaluated in C++ give the same
+  bits everywhere; without the extension the registry falls back to their
+  NumPy code, whose last bits come from the machine's C library;
 - no contraction into fused multiply-adds: the CMake target `MOOtation::MOOtation`
   carries `-ffp-contract=off` (GCC, Clang) or `/fp:precise` (MSVC), and
   `fp_contract.hpp` says the same with pragmas. The option is on the INTERFACE
