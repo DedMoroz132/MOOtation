@@ -10,6 +10,28 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `constraint_mode = "none"`: the algorithm ranks by the objectives only,
+  while the constraints are still evaluated and reported (`result.cv`), so a
+  campaign measures the feasible part of the answer — the control of Tanabe &
+  Oyama (CEC 2017) for whether a problem tests constraint handling at all.
+
+- NSGA-III, A-NSGA-III, θ-DEA and SRV-NSGA-III take the number of children
+  (`n_offspring`, λ) and of reference points (`n_ref_points`, H) apart from
+  the population size μ, after Tanabe & Oyama (EMO 2017): λ children a
+  generation, μ survivors from the μ + λ; H reference points from
+  `mootation.reference_points(n_objs, h)` (C++ `das_dennis::reference_points`):
+  the lattice when h is a lattice size, else their greedy farthest-point
+  choice from a dense lattice. Not set, λ = μ and H = μ's lattice, as before.
+
+- MOEA/D-DE and MOEA/D-DRA take the three components of the DE mutation
+  after Tanabe & Ishibuchi (Soft Computing 2019) as knobs: `de_base`
+  (`current1`, the default; `rand1`; `current_to_pbest1` with `de_p`),
+  `de_index` (`wr`, the default; `wor`; `wpr`) and `bound_repair` (`random`,
+  the default; `clip`, `reflect`, the new `r_reflect`, and `resample`, which
+  draws the mutant again). `bound_repair = r_reflect` (randomized reflection,
+  their Eq. 11) is open to every operator. The defaults are the runs of
+  before, bit for bit.
+
 - `docs/deviations.md`: every departure from its paper that a core's header
   names, gathered by `tools/deviations.py` (algorithm, item, what, whether the
   default run departs); CI checks the table against the headers.

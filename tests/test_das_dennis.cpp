@@ -15,6 +15,8 @@
 #include <cstddef>
 #include <iostream>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "harness.hpp"
@@ -175,6 +177,45 @@ void test_degenerate()
     }
 }
 
+
+// Task 15, §2: reference_points(m, h) — any h. A lattice size gives the
+// lattice itself (as a set); any other h gives h points on the simplex, none
+// twice, the centre first, the same points on a second call (Tanabe & Oyama,
+// EMO 2017, Algorithm 1).
+void test_reference_points_any_h()
+{
+    std::cout << "-- reference_points: any number --\n";
+    auto keys = [](const std::vector<std::vector<double>>& pts) {
+        std::set<std::vector<long long>> seen;
+        for (const auto& p : pts) {
+            std::vector<long long> key;
+            for (double c : p) key.push_back(static_cast<long long>(std::llround(c * 1e9)));
+            seen.insert(key);
+        }
+        return seen;
+    };
+    for (auto [m, h] : {std::pair<int, long long>{3, 91}, {5, 210}, {8, 156}, {2, 11}}) {
+        const auto rp = das_dennis::reference_points(m, h);
+        check(keys(rp) == keys(das_dennis::generate_exact(m, h)),
+              "m=" + std::to_string(m) + ", h=" + std::to_string(h) + ": the lattice");
+    }
+    for (auto [m, h] : {std::pair<int, long long>{3, 20}, {4, 50}, {6, 30}, {8, 80}, {10, 100}}) {
+        const auto rp = das_dennis::reference_points(m, h);
+        bool on = static_cast<long long>(rp.size()) == h;
+        for (const auto& p : rp) {
+            double sum = 0.0;
+            for (double c : p) { on = on && c >= 0.0; sum += c; }
+            on = on && std::abs(sum - 1.0) < 1e-12;
+        }
+        const std::string w = "m=" + std::to_string(m) + ", h=" + std::to_string(h);
+        check(on, w + ": h points on the unit simplex");
+        check(static_cast<long long>(keys(rp).size()) == h, w + ": no point twice");
+        bool centre = true;
+        for (double c : rp[0]) centre = centre && c == 1.0 / m;
+        check(centre, w + ": the centre first");
+        check(rp == das_dennis::reference_points(m, h), w + ": the same points again");
+    }
+}
 }   // namespace
 
 int main()
@@ -187,5 +228,6 @@ int main()
     test_exact_and_attainable();
     test_two_layer();
     test_degenerate();
+    test_reference_points_any_h();
     return mootation::testing::report("das_dennis");
 }

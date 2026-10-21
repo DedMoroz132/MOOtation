@@ -51,7 +51,7 @@ inline void require_de_repair(BoundRepair b, const char* op)
     if (b == BoundRepair::Resample || b == BoundRepair::Native)
         throw std::invalid_argument(std::string(op) + ": bound_repair '" +
                                     bound_repair_name(b) + "' is not available for DE "
-                                    "(clip, reflect, random, midpoint, wrap)");
+                                    "(clip, reflect, random, midpoint, wrap, r_reflect)");
 }
 
 // The mutant is repaired BEFORE the crossover coin, as it always was, so the
@@ -219,6 +219,124 @@ inline void de_eq6(const std::vector<double>& x_r1,
     y.resize(nv);
     for (std::size_t k = 0; k < nv; ++k)
         y[k] = (U01(rng) < CR) ? x_r1[k] + F * (x_r2[k] - x_r3[k]) : x_r1[k];
+}
+
+// ── The three components of the DE mutation in MOEA/D-DE ────────────────────
+// Tanabe & Ishibuchi, "Review and analysis of three components of the
+// differential evolution mutation operator in MOEA/D-DE", Soft Computing,
+// 2019 (source moead-de-mutation-components_tanabe2019, §3):
+//   the strategy (de_base)
+//     rand1              v = x_r1 + F·(x_r2 − x_r3)                  (Eq. 6)
+//     current1           v = x_i + F·(x_r1 − x_r2)                   (Eq. 7)
+//     current_to_pbest1  v = x_i + F·(x_pbest − x_i) + F·(x_r1 − x_r2), x_pbest
+//                        one of the ⌈p·|R|⌉ best of R (JADE, Zhang & Sanderson
+//                        2009, Eq. 6; source jade_zhang2009); "best" is the
+//                        host's own order, no archive
+//   the index selection (de_index), the indices drawn from the mating range R
+//     wor   each different from i and from those drawn before   (Algorithm 2)
+//     wr    independent draws: any may equal another or i       (Algorithm 3)
+//     wpr   each different from those drawn before, any may equal i
+//           (Algorithm 4; the authors' C++ code of MOEA/D-DE does this)
+//   the bound handling: bound_repair (bound_repair.hpp) — clip is the paper's
+//     replacement, random its reinitialization, reflect its reflection,
+//     r_reflect its randomized reflection; its resampling is resample (the
+//     host draws the indices and the mutant again).
+// Algorithm 2 as printed reads "while r2 = i and r2 = r1" in line 6; its text
+// ("r1 ≠ r2, r1 ≠ i, and r2 ≠ i") is what wor does.
+enum class DEBase  { Rand1, Current1, CurrentToPBest1 };
+enum class DEIndex { WOR, WR, WPR };
+
+inline const char* de_base_name(DEBase b)
+{
+    switch (b) {
+        case DEBase::Rand1:           return "rand1";
+        case DEBase::Current1:        return "current1";
+        case DEBase::CurrentToPBest1: return "current_to_pbest1";
+    }
+    return "?";
+}
+inline const char* de_index_name(DEIndex x)
+{
+    switch (x) {
+        case DEIndex::WOR: return "wor";
+        case DEIndex::WR:  return "wr";
+        case DEIndex::WPR: return "wpr";
+    }
+    return "?";
+}
+inline std::optional<DEBase> parse_de_base(const std::string& s)
+{
+    for (DEBase b : {DEBase::Rand1, DEBase::Current1, DEBase::CurrentToPBest1})
+        if (s == de_base_name(b)) return b;
+    return std::nullopt;
+}
+inline std::optional<DEIndex> parse_de_index(const std::string& s)
+{
+    for (DEIndex x : {DEIndex::WOR, DEIndex::WR, DEIndex::WPR})
+        if (s == de_index_name(x)) return x;
+    return std::nullopt;
+}
+
+// k indices from R for the target i, in out[0..k). A rule R cannot satisfy
+// (wor needs k members besides i, wpr k members) falls back to the next looser
+// one, wor → wpr → wr, so a small R never loops forever.
+template <typename RNG>
+inline void de_pick(const std::vector<int>& R, int i, DEIndex how, int k, int* out, RNG& rng)
+{
+    const int n = static_cast<int>(R.size());
+    const int others = n - static_cast<int>(std::count(R.begin(), R.end(), i));
+    if (how == DEIndex::WOR && others < k) how = DEIndex::WPR;
+    if (how == DEIndex::WPR && n < k) how = DEIndex::WR;
+    rnd::uniform_int_distribution<int> pick(0, n - 1);
+    for (int t = 0; t < k; ++t) {
+        for (;;) {
+            const int r = R[static_cast<std::size_t>(pick(rng))];
+            bool ok = true;
+            if (how == DEIndex::WOR && r == i) ok = false;
+            if (how != DEIndex::WR)
+                for (int s = 0; s < t; ++s) if (out[s] == r) ok = false;
+            if (ok) { out[t] = r; break; }
+        }
+    }
+}
+
+// rand1 and current_to_pbest1 in the form of de_eq6 above (Li & Zhang Eq. 6): each variable from
+// the mutant with probability CR, from the target x_i otherwise, no j_rand
+// and no repair (the host repairs the finished offspring). current1 is
+// de_eq6(x_i, x_r1, x_r2, ...).
+template <typename RNG>
+inline void de_eq6_rand1(const std::vector<double>& x_i, const std::vector<double>& x_r1,
+                         const std::vector<double>& x_r2, const std::vector<double>& x_r3,
+                         std::vector<double>& y, double F, double CR, RNG& rng)
+{
+    note_operator("de_eq6 rand1", "box repair after mutation");
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
+    y.resize(x_i.size());
+    for (std::size_t k = 0; k < x_i.size(); ++k)
+        y[k] = (U01(rng) < CR) ? x_r1[k] + F * (x_r2[k] - x_r3[k]) : x_i[k];
+}
+
+template <typename RNG>
+inline void de_eq6_pbest(const std::vector<double>& x_i, const std::vector<double>& x_pbest,
+                         const std::vector<double>& x_r1, const std::vector<double>& x_r2,
+                         std::vector<double>& y, double F, double CR, RNG& rng)
+{
+    note_operator("de_eq6 current_to_pbest1", "box repair after mutation");
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
+    y.resize(x_i.size());
+    for (std::size_t k = 0; k < x_i.size(); ++k)
+        y[k] = (U01(rng) < CR) ? x_i[k] + F * (x_pbest[k] - x_i[k]) + F * (x_r1[k] - x_r2[k]) : x_i[k];
+}
+
+// Whether every variable of y is inside its bounds (resample: draw again).
+inline bool inside_box(const std::vector<double>& y,
+                       const std::vector<std::pair<std::optional<double>, std::optional<double>>>& bounds)
+{
+    for (std::size_t k = 0; k < y.size(); ++k) {
+        if (bounds[k].first && y[k] < *bounds[k].first) return false;
+        if (bounds[k].second && y[k] > *bounds[k].second) return false;
+    }
+    return true;
 }
 
 // ── Repair of a finished offspring (MOEA/D-DE Step 2.3, MOEA/D-DRA Step 3.3):

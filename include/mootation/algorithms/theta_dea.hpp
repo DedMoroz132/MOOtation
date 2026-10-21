@@ -32,6 +32,11 @@
 //   proposed theta-DEA, theta is also set to 5"); eta_c=30 (§IV-D-3: "As for
 //   NSGA-III and theta-DEA, the settings are only a bit different according to
 //   [28], where eta_c is set to 30"); p_c=1.0, eta_m=20, p_m=1/n (Table V).
+//   TDEA-L (task 15 of 2026-10-21, §2; off by default). n_offspring (λ children a
+//     generation, μ survivors from the μ + λ) and n_ref_points (H reference
+//     points, das_dennis::reference_points) apart from pop_size, as NSGA3-L
+//     in nsga3.hpp; not set, λ = μ and H = μ's lattice, as before.
+//
 // DECLARED DEVIATIONS: none. Reading of §III-D: in any invalid case ALL
 //   components of z^nad are rolled back ("In all the above cases, z_i^nad is
 //   assigned ... for each i"). das_dennis::generate_exact requires N to equal
@@ -87,8 +92,10 @@ private:
     std::vector<double>              theta_per_ref_; // θ value per reference point
 
     // ── Das-Dennis reference point generation ─────────────────────────────
+    int n_offspring_ = 0, n_ref_points_ = 0;          // TDEA-L: λ and H; 0 = μ and μ's lattice
     void generate_reference_points(int n, int m) {
-        ref_points_ = das_dennis::generate_exact(m, n);
+        ref_points_ = n_ref_points_ > 0 ? das_dennis::reference_points(m, n_ref_points_)
+                                        : das_dennis::generate_exact(m, n);
         // CRITICAL: theta_per_ref_ must be filled here.
         // theta_dominates() reads theta_per_ref_[ra]; without this call the
         // vector is empty and the first step() segfaults. This logic used to
@@ -449,6 +456,14 @@ public:
     void set_pc           (double p)  { pc_            = p; }
     void set_pm           (double p)  { pm_            = p; }
     void set_seed         (unsigned s){ rng_.seed(s); }
+    // TDEA-L: λ and H apart from μ (n_offspring, n_ref_points; nsga3.hpp, NSGA3-L)
+    bool set_param(const std::string& k, double v) {
+        if (k != "n_offspring" && k != "n_ref_points") return false;
+        if (!(v >= 1.0 && v == std::floor(v) && v <= 1e7))
+            throw std::invalid_argument(k + " must be a whole number >= 1");
+        (k == "n_offspring" ? n_offspring_ : n_ref_points_) = static_cast<int>(v);
+        return true;
+    }
 
     void set_reference_points(std::vector<std::vector<double>> rp) {
         ref_points_ = std::move(rp);
@@ -499,8 +514,9 @@ public:
         const auto& bounds = vault.get_bounds();
         rnd::uniform_int_distribution<int> dist_int(0, n_parents - 1);
 
-        // ── expand: add n offspring slots ─────────────────────────────────
-        vault.expand(n);
+        // ── expand: add λ offspring slots (TDEA-L; λ = n by default) ──────
+        const int lam = n_offspring_ > 0 ? n_offspring_ : n;
+        vault.expand(lam);
 
         // Table V: p_c = 1.0, p_m = 1/n, with n the number of real variables.
         double pm = (pm_ >= 0.0) ? pm_
@@ -510,7 +526,7 @@ public:
         // §III-C: «two parent solutions are randomly selected from the
         // current population P_t" — with no binary tournament.
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
-        for (int i = 0; i < n; i += 2) {
+        for (int i = 0; i < lam; i += 2) {
             int p1 = dist_int(rng_);
             int p2 = dist_int(rng_);
             for (int j = 0; j < vault.vars_n(); ++j) {
@@ -529,19 +545,19 @@ public:
                 }
                 ops::binary_crossover(bv1, bv2, bc1, bc2, rng_);
                 ops::bit_flip_mutation(bc1, vault.bin_vars_n(), rng_);
-                if (i + 1 < n) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
+                if (i + 1 < lam) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
                 vault.set_all_variables(n_parents + i,     c1, bc1);
-                if (i + 1 < n) vault.set_all_variables(n_parents + i + 1, c2, bc2);
+                if (i + 1 < lam) vault.set_all_variables(n_parents + i + 1, c2, bc2);
             } else {
                 vault.set_variables(n_parents + i, c1);
-                if (i + 1 < n) vault.set_variables(n_parents + i + 1, c2);
+                if (i + 1 < lam) vault.set_variables(n_parents + i + 1, c2);
             }
         }
 
         // ── evaluate offspring ─────────────────────────────────────────────
         vault.sync();
 
-        int pool_size = n_parents + n;
+        int pool_size = n_parents + lam;
 
         // ── Step 9: Pareto prefilter of S_t out of R_t ────────────────────
         std::vector<int> st, first_front;

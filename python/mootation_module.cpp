@@ -1557,6 +1557,13 @@ PYBIND11_MODULE(_core, m)
           "ref, as SMS-EMOA and MO-CMA-ES select by it (include/mootation/"
           "hv_contribution.hpp): exact, or a Monte-Carlo estimate with that many "
           "samples per point.");
+    m.def("reference_points",
+          [](int n_objs, long long h) { return mootation::das_dennis::reference_points(n_objs, h); },
+          py::arg("n_objs"), py::arg("h"),
+          "h reference points on the unit simplex (include/mootation/das_dennis.hpp): the "
+          "Das-Dennis lattice when h is a lattice size, else Algorithm 1 of Tanabe & Oyama "
+          "(EMO 2017) — the farthest points of a dense lattice, from the centre on. "
+          "Deterministic; what n_ref_points gives nsga3, a_nsga3, theta_dea and srv_nsga3.");
     m.def("operator_stats", []() {
               // Since the previous call: offspring evaluated, the shares of them
               // that left the box before repair (and of their variables), that

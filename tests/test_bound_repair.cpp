@@ -17,7 +17,11 @@
 //       nothing moves at p_m = 0, the polynomial choice is polynomial_mutation;
 //   (7) the crossovers of real_crossover.hpp: uniform children are complementary,
 //       BLX-alpha's inside the box, SBX is ops::sbx;
-//   (8) DE/rand/2/bin and DE/best/1/bin are Storn & Price's formulas at CR = 1.
+//   (8) DE/rand/2/bin and DE/best/1/bin are Storn & Price's formulas at CR = 1;
+//   (9) task 15, §1: r_reflect is Tanabe & Ishibuchi's Eq. 11; the DE index
+//       selections wor, wr and wpr (de_pick) over 10^6 draws: wor never draws
+//       i or a repeat, wpr never a repeat but i a tenth of the time, wr both;
+//       rand1 and current_to_pbest1 at CR = 1 are their formulas.
 // ============================================================================
 
 #include <cmath>
@@ -74,7 +78,7 @@ int main() {
     for (int i = 0; i < 1000; ++i) {
         for (BoundRepair b : {BoundRepair::Clip, BoundRepair::Reflect, BoundRepair::Random,
                               BoundRepair::Midpoint, BoundRepair::Wrap, BoundRepair::Resample,
-                              BoundRepair::Native}) {
+                              BoundRepair::Native, BoundRepair::RReflect}) {
             const double v = std::uniform_real_distribution<double>(-10.0, 10.0)(rng);
             if (v >= -1.0 && v <= 2.0) continue;
             const double r = repair_value(v, -1.0, 2.0, 0.3, b, rng);
@@ -84,7 +88,7 @@ int main() {
     check(inside, "every repair lands inside [-1, 2] from anywhere in [-10, 10]");
     for (BoundRepair b : {BoundRepair::Clip, BoundRepair::Reflect, BoundRepair::Random,
                           BoundRepair::Midpoint, BoundRepair::Resample, BoundRepair::Wrap,
-                          BoundRepair::Native}) {
+                          BoundRepair::Native, BoundRepair::RReflect}) {
         auto back = parse_bound_repair(bound_repair_name(b));
         check(back && *back == b, std::string("name round trip: ") + bound_repair_name(b));
     }
@@ -270,6 +274,67 @@ int main() {
         f = true;
         for (int j = 0; j < 3; ++j) f = f && std::abs(y[j] - (r1[j] + 0.5 * (r2[j] - r3[j]))) < 1e-12;
         check(f, "DE/best/1: v = x_best + F(x_r1 - x_r2)");
+    }
+
+    // ── (9) r_reflect and the DE index selection (task 15, §1) ──────────────
+    {
+        std::mt19937 a(5u), b(5u);
+        const double r = mootation::rnd::uniform_real_distribution<double>(0.0, 1.0)(b);
+        check(repair_value(-0.2, 0.0, 1.0, 0.5, BoundRepair::RReflect, a) == 0.0 + r * 0.2,
+              "r_reflect below: lb + U (lb - v)");
+        const double r2 = mootation::rnd::uniform_real_distribution<double>(0.0, 1.0)(b);
+        check(repair_value(1.3, 0.0, 1.0, 0.5, BoundRepair::RReflect, a) == 1.0 + r2 * (1.0 - 1.3),
+              "r_reflect above: ub + U (ub - v)");
+
+        const std::vector<int> R = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+        const int i = 3, n = 1000000;
+        for (DEIndex how : {DEIndex::WOR, DEIndex::WR, DEIndex::WPR}) {
+            std::mt19937 g(17u);
+            long long same = 0, self = 0, first_is[10] = {0};
+            for (int t = 0; t < n; ++t) {
+                int o[2];
+                de_pick(R, i, how, 2, o, g);
+                same += o[0] == o[1];
+                self += (o[0] == i) + (o[1] == i);
+                ++first_is[o[0]];
+            }
+            const double p_same = double(same) / n, p_self = double(self) / (2.0 * n);
+            const std::string w = de_index_name(how);
+            if (how == DEIndex::WOR) {
+                check(same == 0 && self == 0, w + ": never i, never a repeat");
+                bool flat = first_is[i] == 0;
+                for (int v = 0; v < 10; ++v)
+                    if (v != i) flat = flat && std::abs(double(first_is[v]) / n - 1.0 / 9.0) < 0.003;
+                check(flat, w + ": r1 uniform over R without i");
+            } else if (how == DEIndex::WR) {
+                check(std::abs(p_same - 0.1) < 0.003 && std::abs(p_self - 0.1) < 0.003,
+                      w + ": a repeat and i each a tenth of the time");
+            } else {
+                check(same == 0 && std::abs(p_self - 0.1) < 0.003, w + ": never a repeat, i a tenth of the time");
+            }
+            check(parse_de_index(w) && *parse_de_index(w) == how, w + ": name round trip");
+        }
+        // a range too small for the rule falls back instead of looping: wor needs 2 besides i
+        std::mt19937 g(3u);
+        int o[2];
+        de_pick(std::vector<int>{3, 5}, 3, DEIndex::WOR, 2, o, g);
+        check(o[0] != o[1], "wor on {i, j}: falls back to wpr");
+        de_pick(std::vector<int>{3}, 3, DEIndex::WOR, 2, o, g);
+        check(o[0] == 3 && o[1] == 3, "wor on {i}: falls back to wr");
+
+        const std::vector<double> xi = {0.5, 0.5}, a1 = {0.9, 0.1}, a2 = {0.3, 0.6}, a3 = {0.2, 0.2};
+        std::vector<double> y;
+        std::mt19937 g2(1u);
+        de_eq6_rand1(xi, a1, a2, a3, y, 0.5, 1.0, g2);
+        check(std::abs(y[0] - (0.9 + 0.5 * 0.1)) < 1e-15 && std::abs(y[1] - (0.1 + 0.5 * 0.4)) < 1e-15,
+              "rand1: v = x_r1 + F (x_r2 - x_r3)");
+        de_eq6_pbest(xi, a1, a2, a3, y, 0.5, 1.0, g2);
+        check(std::abs(y[0] - (0.5 + 0.5 * 0.4 + 0.5 * 0.1)) < 1e-15 &&
+              std::abs(y[1] - (0.5 - 0.5 * 0.4 + 0.5 * 0.4)) < 1e-15,
+              "current_to_pbest1: v = x_i + F (x_pbest - x_i) + F (x_r1 - x_r2)");
+        for (DEBase bb : {DEBase::Rand1, DEBase::Current1, DEBase::CurrentToPBest1})
+            check(parse_de_base(de_base_name(bb)) && *parse_de_base(de_base_name(bb)) == bb,
+                  std::string(de_base_name(bb)) + ": name round trip");
     }
 
     std::printf("bound repair: %d/%d checks passed%s\n", g_checks - g_failed, g_checks,

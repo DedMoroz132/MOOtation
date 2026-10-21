@@ -112,6 +112,11 @@ EXACT_LATTICE = frozenset({
 # throwing, so they are not listed.
 K_DIVISIBLE = {"moead_m2m": 10, "sms_m2m": 10}
 
+# The cores whose number of reference points (n_ref_points) and of children
+# (n_offspring) can be set apart from the population size (task 15, §2;
+# NSGA3-L in nsga3.hpp and its kin).
+FREE_H = frozenset({"nsga3", "a_nsga3", "theta_dea", "srv_nsga3"})
+
 
 def das_dennis_count(m: int, h: int) -> int:
     """Number of points in the m-objective Das-Dennis lattice with h divisions."""
@@ -175,6 +180,10 @@ def check_pop(name: str, pop: int, n_objs: int, params: dict | None = None
     """
     params = params or {}
 
+    # Task 15, §2: given n_ref_points, these take any population size (their
+    # reference points no longer come from it)
+    if name in FREE_H and params.get("n_ref_points"):
+        return None
     if name in EXACT_LATTICE:
         below, above = nearest_lattice_sizes(n_objs, pop)
         if below == pop:

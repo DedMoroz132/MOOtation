@@ -27,6 +27,7 @@
 //   auto V = das_dennis::generate(M, H);                 // single-layer
 //   auto V = das_dennis::generate_two_layer(M, Hb, Hi);  // Hb=boundary>Hi
 //   auto V = das_dennis::generate_auto(M, n);            // layer auto-selection
+//   auto V = das_dennis::reference_points(M, h);         // any h (task 15, §2)
 //
 // All vectors lie on the unit simplex: w_i >= 0, sum(w_i) = 1.
 // ============================================================================
@@ -319,6 +320,56 @@ inline std::vector<std::vector<double>> generate_exact(int m, long long n) {
 inline std::vector<std::vector<double>> generate_layers(int m, int H1, int H2) {
     if (H2 <= 0) return generate(m, H1);
     return generate_two_layer(m, H1, H2);
+}
+
+// Any number h of reference points on the unit simplex (task 15 of
+// 2026-10-21, §2). A lattice size (single or two-layer, classify_size) gives
+// that lattice, generate_exact's points. Any other h: Algorithm 1 of Tanabe &
+// Oyama, "The impact of population size, number of children, and number of
+// reference points on the performance of NSGA-III", EMO 2017 (source
+// nsga3-popsize-children-refpoints_tanabe2017, §4): a dense simplex lattice
+// W_tmp (here the fewest divisions giving at least 100 000 points — their
+// 10^5, 83, 24 and 14 divisions for M = 2, 4, 6, 8), then from the centre
+// (1/M, ..., 1/M) the point of W_tmp farthest (Euclidean) from those taken,
+// again and again, until there are h. A tie goes to the first in W_tmp's
+// order, so the points are the same on every run and platform. Their
+// Algorithm 1 for a lattice size would not give the lattice (the dense one
+// need not contain it); the lattice is taken there instead.
+inline std::vector<std::vector<double>> reference_points(int m, long long h) {
+    if (m < 1 || h < 1)
+        throw std::invalid_argument("das_dennis::reference_points: m and h must be >= 1");
+    if (classify_size(m, h).size == h) return generate_exact(m, h);
+    if (m == 1) return std::vector<std::vector<double>>(1, std::vector<double>{1.0});
+    int p = 1;
+    while (n_vectors(m, p) < 100000) ++p;
+    const std::vector<std::vector<double>> dense = generate(m, p);
+    if (static_cast<long long>(dense.size()) + 1 < h)
+        throw std::invalid_argument("das_dennis::reference_points: h = " + std::to_string(h) +
+                                    " is more than the dense lattice holds");
+    // the squared distance: the same farthest point, no square root
+    auto dist = [m](const std::vector<double>& a, const std::vector<double>& b) {
+        double s = 0.0;
+        for (int j = 0; j < m; ++j) s += (a[j] - b[j]) * (a[j] - b[j]);
+        return s;
+    };
+    std::vector<std::vector<double>> W;
+    W.push_back(std::vector<double>(static_cast<std::size_t>(m), 1.0 / m));
+    std::vector<double> d(dense.size());
+    std::vector<char> free(dense.size(), 1);
+    for (std::size_t i = 0; i < dense.size(); ++i) {
+        d[i] = dist(dense[i], W[0]);
+        if (d[i] == 0.0) free[i] = 0;                    // the centre itself: taken
+    }
+    while (static_cast<long long>(W.size()) < h) {
+        std::size_t k = dense.size();
+        for (std::size_t i = 0; i < dense.size(); ++i)
+            if (free[i] && (k == dense.size() || d[i] > d[k])) k = i;
+        free[k] = 0;
+        W.push_back(dense[k]);
+        for (std::size_t i = 0; i < dense.size(); ++i)
+            if (free[i]) d[i] = std::min(d[i], dist(dense[i], dense[k]));
+    }
+    return W;
 }
 
 } // namespace das_dennis

@@ -35,8 +35,10 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "n_sub",
                "sub_budget", "fd_step",
                "local_tol", "cma_sigma0", "eps_objective", "n_samples", "hv_exact_max_m",
-               "race_eps", "race_delta", "race_max_samples", "race_abs_tol", "hv_incremental")
-WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "portfolio", "portfolio_credit",
+               "race_eps", "race_delta", "race_max_samples", "race_abs_tol", "hv_incremental",
+               "n_offspring", "n_ref_points")
+WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
+              "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
               "inner_archive", "bin_crossover", "mating", "smpso_preset", "chi_mode",
               "turbulence", "r_per_dim", "archive_prune", "leader_select", "leader_offer", "r2_mode",
@@ -162,7 +164,12 @@ def minimize(
                 Computing 23(23), 2019, Eq. 8) and 0 from 80 % of the budget
                 on (python/mootation_module.cpp, RunConfig::eps_level). Every
                 core that takes constraints takes it; result.cv is the
-                violation itself.
+                violation itself. "none" (task 15, §5): the algorithm sees the
+                objectives only — the constraints are still evaluated, and
+                result.cv is the violation, so the feasible part of the answer
+                can be measured (Tanabe & Oyama, CEC 2017: NSGA-II without any
+                handling approximates C1-DTLZ1's, C1-DTLZ3's and C2-DTLZ2's
+                feasible fronts well).
     eps_schedule
                 with "eps_level": {"tau": 0.1, "alpha": 0.95, "theta": 0.05,
                 "tc": 0.8}, the paper's values, any of them replaced; tc is
@@ -591,14 +598,14 @@ def minimize(
     cfg.fail_raise = on_failure == "raise"
     cfg.unique_evaluations = lambda: points.count
     cfg.budget_unique = budget_counts == "unique"
-    if constraint_mode not in ("feasibility", "eps_level"):
-        raise ValueError(f"constraint_mode = '{constraint_mode}': feasibility or eps_level")
+    if constraint_mode not in ("feasibility", "eps_level", "none"):
+        raise ValueError(f"constraint_mode = '{constraint_mode}': feasibility, eps_level or none")
     constrained = constraints is not None or (direct is not None and direct.n_con > 0)
     if constraint_mode == "eps_level" and not constrained:
         raise ValueError("constraint_mode = 'eps_level' needs constraints")
     if eps_schedule is not None and constraint_mode != "eps_level":
         raise ValueError("eps_schedule goes with constraint_mode = 'eps_level'")
-    if constrained:
+    if constrained and constraint_mode != "none":     # none: the core ranks by the objectives
         cfg.constraint_mode = _core.ConstraintMode.FEASIBILITY
     if constraint_mode == "eps_level":
         # the vault's epsilon level on the feasibility-first ranking

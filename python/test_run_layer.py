@@ -4761,6 +4761,55 @@ archive = true
         assert C.recompute_final(root, ["igdp_norm"]) == {"done": 2}
 
 
+@test
+def constraint_mode_none_runs_on_the_objectives_and_measures_the_feasible_part():
+    """Task 15, §5 (Tanabe & Oyama, CEC 2017): constraint_mode = none in a
+    campaign's params — the core ranks by the objectives only, the run is
+    another than the default's, the answer's feasibility is still measured
+    (feas_share, between 0 and 1 on MW1) and its indicators on the feasible
+    part; an unknown mode is refused."""
+    if not _have_numpy() or _core_with("operator_stats") is None:
+        print("  skip  constraint_mode_none...: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 },
+    { name = "nsga2", label = "nocons", pop = 0, gens = 0, params = { constraint_mode = "none" } } ]
+[run]
+name = "c"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["MW1"]
+[campaign]
+out = "res"
+budget_fe = 5000
+metrics = ["igdp_norm"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+        answers = [(root / "MW1" / k / "run_1" / "final.csv").read_text(encoding="utf-8") for k in ("nsga2", "nocons")]
+        assert answers[0] != answers[1]
+        final = {k: json.loads((root / "MW1" / k / "run_1" / "meta.json").read_text(encoding="utf-8"))["final"]
+                 for k in ("nsga2", "nocons")}
+        assert 0.0 < final["nocons"]["feas_share"] < 1.0, final
+        assert (final["nocons"]["igdp_norm"] is None) == (final["nocons"]["feas_share"] == 0.0), final
+    try:
+        minimize(lambda x: [x[0], 1 - x[0]], [(0.0, 1.0)] * 2, 2, constraint_mode="off", max_evaluations=20)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("constraint_mode = 'off' was taken")
+
+
 # ── task 6, item 7: noisy copies ────────────────────────────────────────────
 
 @test
@@ -6015,6 +6064,85 @@ def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
     assert not r.ignored, r.ignored
     r = minimize(p.evaluate, algorithm="mo_cma_es", seed=3, eta_c=20.0, **kw)
     assert r.ignored == ["eta_c"], r.ignored
+
+
+@test
+def moead_de_and_dra_take_the_three_de_components():
+    """Task 15, §1 (Tanabe & Ishibuchi 2019): de_base, de_index, de_p and the
+    bound handling. The default is the explicit current1, wr, random bit for
+    bit; every combination runs inside the box, takes every knob and gives the
+    same run from the same seed; an unknown word is refused."""
+    if not _have_numpy() or _core_with("hv_contributions") is None:
+        print("  skip  moead_de_and_dra_take...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("ZDT4")                         # x_1 in [0, 1], the rest in [-5, 5]: DE leaves the box
+    lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+    kw = dict(bounds=p.bounds, n_objs=2, pop_size=20, max_evaluations=400)
+    for alg in ("moead_de", "moead_dra"):
+        d = minimize(p.evaluate, algorithm=alg, seed=5, **kw)
+        e = minimize(p.evaluate, algorithm=alg, seed=5, de_base="current1", de_index="wr",
+                     bound_repair="random", **kw)
+        assert d.objectives == e.objectives and not e.ignored, (alg, e.ignored)
+        differs = 0
+        for base in ("rand1", "current1", "current_to_pbest1"):
+            for index in ("wor", "wr", "wpr"):
+                for rep in ("clip", "random", "reflect", "r_reflect", "resample", "midpoint"):
+                    k = dict(de_base=base, de_index=index, bound_repair=rep, **kw)
+                    if base == "current_to_pbest1":
+                        k["de_p"] = 0.2
+                    a = minimize(p.evaluate, algorithm=alg, seed=7, **k)
+                    b = minimize(p.evaluate, algorithm=alg, seed=7, **k)
+                    assert a.objectives == b.objectives and not a.ignored, (alg, base, index, rep, a.ignored)
+                    X = np.array(a.variables)
+                    assert np.all((X >= lo) & (X <= hi)), (alg, base, index, rep)
+                    differs += a.objectives != minimize(p.evaluate, algorithm=alg, seed=7, **kw).objectives
+        assert differs >= 45, (alg, differs)          # all but the default and a few alike
+        for bad in (dict(de_base="best1"), dict(de_index="wo"), dict(de_p=0.0)):
+            try:
+                minimize(p.evaluate, algorithm=alg, seed=1, **bad, **kw)
+            except (ValueError, RuntimeError):
+                continue
+            raise AssertionError((alg, bad))
+
+
+@test
+def nsga3_family_takes_lambda_and_h_apart_from_mu():
+    """Task 15, §2 (Tanabe & Oyama, EMO 2017): n_offspring (λ) and
+    n_ref_points (H) apart from pop_size (μ) in nsga3, a_nsga3, theta_dea and
+    srv_nsga3. λ = μ and H = μ's lattice given explicitly is the default run
+    bit for bit; with them set μ need not be a lattice size, a run keeps μ
+    points and gives the same run from the same seed, and spends λ
+    evaluations a generation; reference_points is in the package."""
+    if not _have_numpy() or _core_with("reference_points") is None:
+        print("  skip  nsga3_family_takes_lambda...: no NumPy or stale _core"); return
+    import mootation
+    from mootation import minimize
+    from mootation.benchmarks import get
+    from mootation.run.algorithms import FREE_H, check_pop
+    p = get("DTLZ2_3D")
+    kw = dict(bounds=p.bounds, n_objs=3, max_evaluations=600)
+    for alg in sorted(FREE_H):
+        d = minimize(p.evaluate, algorithm=alg, seed=2, pop_size=15, **kw)
+        e = minimize(p.evaluate, algorithm=alg, seed=2, pop_size=15, n_offspring=15, n_ref_points=15, **kw)
+        assert d.objectives == e.objectives and not e.ignored, (alg, e.ignored)
+        assert check_pop(alg, 17, 3) and check_pop(alg, 17, 3, {"n_ref_points": 20}) is None, alg
+        for lam, h in ((7, 20), (40, 12), (1, 9)):
+            a = minimize(p.evaluate, algorithm=alg, seed=4, pop_size=17, n_offspring=lam, n_ref_points=h, **kw)
+            b = minimize(p.evaluate, algorithm=alg, seed=4, pop_size=17, n_offspring=lam, n_ref_points=h, **kw)
+            assert a.objectives == b.objectives and len(a.objectives) == 17 and not a.ignored, (alg, lam, h)
+            assert a.evaluations <= 600 + lam, (alg, lam, a.evaluations)
+    try:
+        minimize(p.evaluate, algorithm="nsga3", seed=1, pop_size=15, n_offspring=7,
+                 survival="stochastic", **kw)
+    except (ValueError, RuntimeError):
+        pass
+    else:
+        raise AssertionError("survival = stochastic took n_offspring != pop_size")
+    rp = mootation.reference_points(3, 20)
+    assert len(rp) == 20 and rp == mootation.reference_points(3, 20)
+    assert rp[0] == [1 / 3] * 3                                    # the centre first
 
 
 # ── task 13, §1: NSGA-II/SDR ────────────────────────────────────────────────

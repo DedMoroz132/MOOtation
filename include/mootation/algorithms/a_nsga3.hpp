@@ -27,6 +27,11 @@
 //      are removed; original points are always kept (§VII-B).
 //
 // PAPER DEFAULTS (Part I, Tables I-II): eta_c=30, eta_m=20, pc=1.0, pm=1/n.
+//   ANSGA3-L (task 15 of 2026-10-21, §2; off by default). n_offspring (λ children a
+//     generation, μ survivors from the μ + λ) and n_ref_points (H reference
+//     points, das_dennis::reference_points) apart from pop_size, as NSGA3-L
+//     in nsga3.hpp; not set, λ = μ and H = μ's lattice, as before.
+//
 // DECLARED DEVIATIONS:
 //   - Path-A: pop_size = the Das-Dennis lattice size (see nsga3.hpp);
 // READING OF §VII (set_adaptation_mode; default 3 = the paper's letter):
@@ -145,8 +150,10 @@ private:
     }
 
     // ── Das-Dennis reference point generation ─────────────────────────────
+    int n_offspring_ = 0, n_ref_points_ = 0;          // ANSGA3-L: λ and H; 0 = μ and μ's lattice
     void generate_reference_points(int n, int m) {
-        ref_points_ = das_dennis::generate_exact(m, n);
+        ref_points_ = n_ref_points_ > 0 ? das_dennis::reference_points(m, n_ref_points_)
+                                        : das_dennis::generate_exact(m, n);
         init_adaptation_state(m, n);
     }
 
@@ -663,6 +670,14 @@ public:
     void set_eta_mutation (double e)  { eta_m_ = e; }
     void set_pc           (double p)  { pc_ = p; }
     void set_seed         (unsigned s){ rng_.seed(s); }
+    // ANSGA3-L: λ and H apart from μ (n_offspring, n_ref_points; nsga3.hpp, NSGA3-L)
+    bool set_param(const std::string& k, double v) {
+        if (k != "n_offspring" && k != "n_ref_points") return false;
+        if (!(v >= 1.0 && v == std::floor(v) && v <= 1e7))
+            throw std::invalid_argument(k + " must be a whole number >= 1");
+        (k == "n_offspring" ? n_offspring_ : n_ref_points_) = static_cast<int>(v);
+        return true;
+    }
     // Reading of §VII (bit mask): bit 0 — deletion gated on the perfect
     // scenario (§VII-B); bit 1 — one-generation cooldown (§VII-A).
     // 3 = the paper's letter (default); 0 = unconditional deletion +
@@ -759,15 +774,16 @@ public:
     // ── step: one full generation ──────────────────────────────────────────
     void step(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
+        const int lam = n_offspring_ > 0 ? n_offspring_ : n;             // λ (ANSGA3-L)
         const auto& bounds = vault.get_bounds();
         rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
-        // ── expand: active = 2n ────────────────────────────────────────────
-        int off_base = vault.expand(n);  // [off_base, off_base+n) = offspring slots
+        // ── expand: active = n + λ ─────────────────────────────────────────
+        int off_base = vault.expand(lam);  // [off_base, off_base+λ) = offspring slots
 
-        // ── breed n offspring into [n, 2n) ────────────────────────────────
+        // ── breed λ offspring into [n, n + λ) ─────────────────────────────
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
-        for (int i = 0; i < n; i += 2) {
+        for (int i = 0; i < lam; i += 2) {
             int p1 = tournament(vault, dist_int);
             int p2 = tournament(vault, dist_int);
             for (int j = 0; j < vault.vars_n(); ++j) {
@@ -788,12 +804,12 @@ public:
                 }
                 ops::binary_crossover(bv1, bv2, bc1, bc2, rng_);
                 ops::bit_flip_mutation(bc1, vault.bin_vars_n(), rng_);
-                if (i + 1 < n) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
+                if (i + 1 < lam) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
                 vault.set_all_variables(off_base + i,     c1, bc1);
-                if (i + 1 < n) vault.set_all_variables(off_base + i + 1, c2, bc2);
+                if (i + 1 < lam) vault.set_all_variables(off_base + i + 1, c2, bc2);
             } else {
                 vault.set_variables(off_base + i, c1);
-                if (i + 1 < n) vault.set_variables(off_base + i + 1, c2);
+                if (i + 1 < lam) vault.set_variables(off_base + i + 1, c2);
             }
         }
 
@@ -801,7 +817,7 @@ public:
         vault.sync();
 
         // ── non-dominated sort of Rt = Pt ∪ Qt ────────────────────────────
-        auto fronts = fast_nondominated_sort(vault, n * 2);
+        auto fronts = fast_nondominated_sort(vault, n + lam);
 
         // ── greedily accept fronts until |St| ≥ n ─────────────────────────
         std::vector<int> St;           // accepted vault indices
@@ -848,7 +864,7 @@ public:
         }
 
         // ── move survivors to [0, n), reduce ──────────────────────────────
-        rearrange(vault, survivors, n * 2);
+        rearrange(vault, survivors, n + lam);
 
         // ── Adaptive reference-point add-and-delete (Section VII) ──────────
         adapt_reference_points(vault, n);

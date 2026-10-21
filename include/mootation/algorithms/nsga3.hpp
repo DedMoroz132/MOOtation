@@ -84,6 +84,16 @@
 //       vertices) — no duplication there.
 // Extensions beyond the paper: constraint_mode FEASIBILITY ≡ CDP (off by
 //   default; CDP — Part II §III-A); mixed real+binary genome.
+//   - NSGA3-L (task 15 of 2026-10-21, §2; off by default). The population
+//     size μ, the number of children λ and of reference points H apart, after
+//     Tanabe & Oyama, EMO 2017 (source nsga3-popsize-children-refpoints_
+//     tanabe2017): n_offspring = λ children a generation, bred as μ's are (the
+//     paper: "randomly selected individuals from P"), and μ survivors chosen
+//     from the μ + λ of P ∪ Q (their §2); n_ref_points = H reference points
+//     (das_dennis::reference_points: the lattice when H is a lattice size,
+//     else their Algorithm 1), and then μ need not be a lattice size. Not
+//     set, λ = μ and H = μ's lattice, as before. survival = stochastic takes
+//     λ = μ only.
 //
 // Individual: NSGAIII_Individual (individuals.hpp): rank, ref_point_idx,
 //   niche_count, norm_distance.
@@ -124,6 +134,9 @@ private:
     bool   stochastic_ = false;
     double spu_frac_ = 0.75;
     std::vector<std::vector<double>> untouched_;
+    // NSGA3-L: λ and H; 0 = μ and μ's lattice
+    int n_offspring_ = 0;
+    int n_ref_points_ = 0;
 
     void archive_point(DataVault<Ind_t>& vault, std::size_t i)
     {
@@ -154,7 +167,8 @@ private:
 
     // ── Das-Dennis reference point generation ─────────────────────────────
     void generate_reference_points(int n, int m) {
-        ref_points_ = das_dennis::generate_exact(m, n);
+        ref_points_ = n_ref_points_ > 0 ? das_dennis::reference_points(m, n_ref_points_)   // NSGA3-L
+                                        : das_dennis::generate_exact(m, n);
     }
 
     // ── Dominance helpers ──────────────────────────────────────────────────
@@ -627,6 +641,12 @@ public:
             spu_frac_ = v;
             return true;
         }
+        if (k == "n_offspring" || k == "n_ref_points") {                    // NSGA3-L
+            if (!(v >= 1.0 && v == std::floor(v) && v <= 1e7))
+                throw std::invalid_argument(k + " must be a whole number >= 1");
+            (k == "n_offspring" ? n_offspring_ : n_ref_points_) = static_cast<int>(v);
+            return true;
+        }
         return arch_.set_param(k, v);
     }
     bool set_word(const std::string& k, const std::string& w)
@@ -645,16 +665,19 @@ public:
     // ── step: one full generation ──────────────────────────────────────────
     void step(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
+        const int lam = n_offspring_ > 0 ? n_offspring_ : n;             // λ (NSGA3-L)
+        if (stochastic_ && lam != n)
+            throw std::invalid_argument("nsga3: survival = stochastic takes n_offspring = pop_size only");
         // the inner archive judged again where the vault's present moved
         // (operators/inner_archive.hpp)
         if (constraint_mode != ConstraintMode::NONE) arch_.refresh(vault);
         const auto& bounds = vault.get_bounds();
         rnd::uniform_int_distribution<int> dist_int(0, n - 1);
 
-        // ── expand: active = 2n ────────────────────────────────────────────
-        int off_base = vault.expand(n);  // [off_base, off_base+n) — offspring slots
+        // ── expand: active = n + λ ─────────────────────────────────────────
+        int off_base = vault.expand(lam);  // [off_base, off_base+λ) — offspring slots
 
-        // ── breed n offspring into [n, 2n) ────────────────────────────────
+        // ── breed λ offspring into [n, n + λ) ─────────────────────────────
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         // a parent: the random (CV-tournament) choice, or a member of the
         // inner archive (NSGA3-S)
@@ -671,7 +694,7 @@ public:
             if (bin) bv = vault.binary_variables_of(static_cast<std::size_t>(p));
         };
         std::vector<int> bv1, bv2;
-        for (int i = 0; i < n; i += 2) {
+        for (int i = 0; i < lam; i += 2) {
             parent(pv1, bv1);
             parent(pv2, bv2);
             // Table II: pc=1.0, pm=1/n
@@ -683,25 +706,26 @@ public:
                 std::vector<int> bc1, bc2;
                 ops::binary_crossover(bv1, bv2, bc1, bc2, rng_);
                 ops::bit_flip_mutation(bc1, vault.bin_vars_n(), rng_);
-                if (i + 1 < n) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
+                if (i + 1 < lam) ops::bit_flip_mutation(bc2, vault.bin_vars_n(), rng_);
                 vault.set_all_variables(off_base + i,     c1, bc1);
-                if (i + 1 < n) vault.set_all_variables(off_base + i + 1, c2, bc2);
+                if (i + 1 < lam) vault.set_all_variables(off_base + i + 1, c2, bc2);
             } else {
                 vault.set_variables(off_base + i, c1);
-                if (i + 1 < n) vault.set_variables(off_base + i + 1, c2);
+                if (i + 1 < lam) vault.set_variables(off_base + i + 1, c2);
             }
         }
 
         // ── evaluate offspring ─────────────────────────────────────────────
         vault.sync();
-        for (int i = 0; i < n; ++i) archive_point(vault, static_cast<std::size_t>(off_base + i));
+        for (int i = 0; i < lam; ++i) archive_point(vault, static_cast<std::size_t>(off_base + i));
         select(vault);
     }
 
-    // Steps 2-5 on the 2N active points (NSGA3-S: on Q'). Public for the tests.
+    // Steps 2-5 on the N + λ active points (NSGA3-S: on Q'). Public for the tests.
     void select(DataVault<Ind_t>& vault) {
         const int n = vault.pop_size();
-        int pool = 2 * n, keep = n;
+        const int n_all = static_cast<int>(vault.active_n());           // n + λ (NSGA3-L)
+        int pool = n_all, keep = n;
         if (stochastic_ && spu_frac_ < 1.0) {
             // Opris's ceil(3 mu / 2); the 1e-9 keeps 0.75 * 20 = 15 at 15
             pool = static_cast<int>(std::ceil(spu_frac_ * 2 * n - 1e-9));
@@ -767,9 +791,9 @@ public:
             for (int v : chosen) survivors.push_back(v);
         }
 
-        for (int v = pool; v < 2 * n; ++v) survivors.push_back(v);   // R_t \ Q'
+        for (int v = pool; v < n_all; ++v) survivors.push_back(v);   // R_t \ Q'
         // ── move survivors to [0, n), reduce ──────────────────────────────
-        rearrange(vault, survivors, n * 2);
+        rearrange(vault, survivors, n_all);
     }
 };
 

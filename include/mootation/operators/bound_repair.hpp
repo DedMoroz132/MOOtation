@@ -23,6 +23,13 @@
 //             (resample_tries()), then clips; an operator that cannot redraw
 //             one variable on its own refuses it
 //   wrap      the box as a torus: lb + ((v − lb) mod (ub − lb))
+//   r_reflect mirrored back across the violated bound by a random share of
+//             the overshoot: lb + U·(lb − v) below, ub + U·(ub − v) above, U
+//             uniform on [0, 1) (randomized reflection, Tanabe & Ishibuchi,
+//             Soft Computing 2019, Eq. 11; source
+//             moead-de-mutation-components_tanabe2019); an overshoot wider
+//             than the box can land beyond the other bound, which the paper
+//             leaves open: there it is clipped
 //   native    the rule the operator's own paper gives (Liu & Li's crossover
 //             and mutation); meaningless for an operator without one
 //
@@ -48,7 +55,7 @@
 
 namespace mootation::ops {
 
-enum class BoundRepair { Clip, Reflect, Random, Midpoint, Resample, Wrap, Native };
+enum class BoundRepair { Clip, Reflect, Random, Midpoint, Resample, Wrap, Native, RReflect };
 
 inline const char* bound_repair_name(BoundRepair b)
 {
@@ -60,6 +67,7 @@ inline const char* bound_repair_name(BoundRepair b)
         case BoundRepair::Resample: return "resample";
         case BoundRepair::Wrap:     return "wrap";
         case BoundRepair::Native:   return "native";
+        case BoundRepair::RReflect: return "r_reflect";
     }
     return "?";
 }
@@ -68,7 +76,7 @@ inline std::optional<BoundRepair> parse_bound_repair(const std::string& s)
 {
     for (BoundRepair b : {BoundRepair::Clip, BoundRepair::Reflect, BoundRepair::Random,
                           BoundRepair::Midpoint, BoundRepair::Resample, BoundRepair::Wrap,
-                          BoundRepair::Native})
+                          BoundRepair::Native, BoundRepair::RReflect})
         if (s == bound_repair_name(b)) return b;
     return std::nullopt;
 }
@@ -159,6 +167,11 @@ inline double repair_value(double v, double lo, double hi, double parent,
         case BoundRepair::Midpoint: {
             const double p = std::clamp(parent, lo, hi);
             return 0.5 * (p + (v < lo ? lo : hi));
+        }
+        case BoundRepair::RReflect: {
+            rnd::uniform_real_distribution<double> u(0.0, 1.0);
+            const double r = u(rng);
+            return std::clamp(v < lo ? lo + r * (lo - v) : hi + r * (hi - v), lo, hi);
         }
         case BoundRepair::Wrap: {
             const double d = hi - lo;

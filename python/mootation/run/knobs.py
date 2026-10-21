@@ -36,12 +36,14 @@ _FALLBACK = (
     "mosqp_mu", "mosqp_beta", "mosqp_spread", "n_samples",
 )
 _FALLBACK_TEXT = {
-    "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native"),
+    "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"),
     "crossover": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de", "de_pbest",
                   "portfolio", "none"),
     "mutation": ("polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                  "mixture_cauchy", "none"),
     "de_adapt": ("none", "shade"),
+    "de_base": ("rand1", "current1", "current_to_pbest1"),
+    "de_index": ("wor", "wr", "wpr"),
     "de_adapt_weight": ("equal", "contribution"),
     "de_archive": ("yes", "no"),
     "portfolio": ("sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de", "de_pbest"),
@@ -73,6 +75,7 @@ _FALLBACK_TEXT = {
     "mads_search": ("speculative", "none"),
     "boost_scalarization": ("eps", "minmax"),
     "scalarization": ("eps", "tch", "nbi", "nnc", "ps"),
+    "constraint_mode": ("feasibility", "eps_level", "none"),
     "local": ("sqp", "nm", "cmaes"),
     "sub_plan": ("grid", "laumanns", "gap"),
     "tch_weights": ("inverse", "lattice"),

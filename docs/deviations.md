@@ -8,7 +8,7 @@ is given in full, with its reasons and references.
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-362 items: 300 yes, 6 no: option, 56 no: fixed. Headers that declare none: `spea2_sde`, `theta_dea`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+368 items: 300 yes, 12 no: option, 56 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -52,7 +52,10 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `nsga3` | NSGA3-N2 (the port's own rule, declared 2026-09-22) | All §IV-C says of the hard cases is "Special care is taken to handle degenerate cases and nonnegative intercepts" — that care is taken, not what it is — and Alg.2 line 6 only says "Compute intercepts". | yes | `nsga3.hpp` |
 | `nsga3` | NSGA3-N3 (the port's value) | The ASF of each axis is formed "with a weight vector close to ith objective axis"; | yes | `nsga3.hpp` |
 | `nsga3` | NSGA3-S (task 7 of 2026-10-10, supplements 2 and 3) | survival = "stochastic": the stochastic population update of Opris, "A First Runtime Analysis of NSGA-III on a Many-Objective Multimodal Problem: Provable Exponential Speedup via Stochastic Population Update", IJCAI 2... | no: option | `nsga3.hpp` |
+| `nsga3` | NSGA3-L (task 15 of 2026-10-21, §2; off by default) | The population size μ, the number of children λ and of reference points H apart, after Tanabe & Oyama, EMO 2017 (source nsga3-popsize-children-refpoints_ tanabe2017): n_offspring = λ children a generation, bred as μ's... | no: option | `nsga3.hpp` |
+| `a_nsga3` | ANSGA3-L (task 15 of 2026-10-21, §2; off by default) | n_offspring (λ children a generation, μ survivors from the μ + λ) and n_ref_points (H reference points, das_dennis::reference_points) apart from pop_size, as NSGA3-L in nsga3.hpp; not set, λ = μ and H = μ's lattice, a... | no: option | `a_nsga3.hpp` |
 | `a_nsga3` | a_nsga3.1 | Path-A: pop_size = the Das-Dennis lattice size (see nsga3.hpp); | yes | `a_nsga3.hpp` |
+| `theta_dea` | TDEA-L (task 15 of 2026-10-21, §2; off by default) | n_offspring (λ children a generation, μ survivors from the μ + λ) and n_ref_points (H reference points, das_dennis::reference_points) apart from pop_size, as NSGA3-L in nsga3.hpp; not set, λ = μ and H = μ's lattice, a... | no: option | `theta_dea.hpp` |
 | `ar_moea` | IGD-NS (Eq.2-3) | IGD-NS(X,Y) = Sum_{y in Y} min_{x in X} dis(y,x) + Sum_{x' in X*} min_{y in Y} dis(y,x'), where X* is the set of noncontributing solutions: those x' that are nearest to no reference point y in Y (Eq.2). | yes | `ar_moea.hpp` |
 | `ar_moea` | ar_moea.1 | argmin/argmax ties are broken deterministically (the first extremum); on an exact distance tie there is a single contributing carrier; | yes | `ar_moea.hpp` |
 | `ar_moea` | ar_moea.2 | ENS/T-ENS (§III-D) is replaced by a fast NDS with an equivalent result; | yes | `ar_moea.hpp` |
@@ -63,6 +66,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `moead_de` | MDE-3 | the j_rand gene of de_rand_1_bin (absent from Eq.6) — removed. | yes | `moead_de.hpp` |
 | `moead_de` | MDE-4 | r2, r3 were forced distinct from i and from each other (up to 10 rejections) — now two plain draws, as Step 2.2 says. | yes | `moead_de.hpp` |
 | `moead_de` | MDE-6 | Step 2.3's RANDOM RESET is the paper's and stays the default, but it is expensive: with CR = 1 every out-of-box gene of the final y is replaced by a fresh uniform draw, and early in a run that is a large fraction of t... | yes | `moead_de.hpp` |
+| `moead_de` | MDE-7 (task 15 of 2026-10-21, §1; off by default) | The three components of the DE mutation after Tanabe & Ishibuchi, Soft Computing 2019 (source moead-de-mutation-components_tanabe2019; operators/de_mutation.hpp): de_base (current1, the default: Eq.6 with r1 = i; rand... | no: option | `moead_de.hpp` |
 | `moead_dra` | DRA-6 | the j_rand gene of de_rand_1_bin (absent from Eq.4) — removed. | yes | `moead_dra.hpp` |
 | `moead_dra` | DRA-7 | r2, r3 were forced distinct from i and from each other (up to 10 rejections) — now two plain draws, as Step 3.2 says. | yes | `moead_dra.hpp` |
 | `moead_dra` | DRA-5 (MINOR) | weights — Das–Dennis lattice (N must be a lattice size, Path-A) instead of the authors' maximin selection of N out of 5000 random vectors (Sec.III: W starts from the unit vectors, then the vector of W_1 farthest from... | yes | `moead_dra.hpp` |
@@ -70,6 +74,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `moead_dra` | DRA-9 (MINOR) | the 10-tournament draws WITHOUT replacement from the not-yet-selected indexes (Step 2 says "select OTHER ⌊N/5⌋ − m indexes", which reads as "not already in I"); it shrinks to min(10, \|candidates\|) when fewer than ten... | yes | `moead_dra.hpp` |
 | `moead_dra` | DRA-10 (READING) | Δ^i = (old − new)/old compares the g^te snapshot taken at the previous Step-5 update (with the z of THAT moment) against the current g^te (current z); the paper says only "old function value − new function value" and... | yes | `moead_dra.hpp` |
 | `moead_dra` | DRA-11 (READING, the paper against itself; 2026-09-16) | Step 5's factor 0.95 + 0.05·Δ^i/0.001 is negative once Δ^i < −0.019, and that happens: Δ^i compares g^te across a moving z (DRA-10), so a subproblem that did not improve can read as worse. | yes | `moead_dra.hpp` |
+| `moead_dra` | DRA-12 (task 15 of 2026-10-21, §1; off by default) | de_base, de_index, de_p and bound_repair = r_reflect or resample, as MDE-7 in moead_de.hpp (the pbest by subproblem i's Tchebycheff value, Eq.3); the defaults are Step 3.2's current1 and wr and Step 3.3's random reset. | no: option | `moead_dra.hpp` |
 | `moead_dd` | moead_dd.1 | \|S\| = 1: one offspring of the SBX pair is used (Alg.1 line 6 allows several; one offspring yields exactly N FE per generation). | yes | `moead_dd.hpp` |
 | `moead_dd` | moead_dd.2 | Eq.6 (READING): the angle is computed w.r.t. | yes | `moead_dd.hpp` |
 | `moead_dd` | moead_dd.3 | z* is the running component-wise MINIMUM over everything evaluated. | yes | `moead_dd.hpp` |
@@ -248,6 +253,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `dea_gng` | GNG-9 (AMBIGUOUS) | Alg.2 line 12 writes J = argmin_{j∈C} c_j and says nothing about ties. | yes | `dea_gng.hpp` |
 | `dea_gng` | GNG-10 (LETTER + GUARDS, noted 2026-09-16) | Eq.5 (Alg.3 line 12) maps each sub-network's node box [f^q_min,node, f^q_max,node] onto the box of its signals [f^q_min,A_S, f^q_max,A_S]. | yes | `dea_gng.hpp` |
 | `srv` | srv.1 | z^nad = the max over St (Alg.4 line 5 only says "normalize by (2)"); mating uses random pairs, as the paper specifies no parent-selection operator. | yes | `srv.hpp` |
+| `srv_nsga3` | SRVN-L (task 15 of 2026-10-21, §2; off by default) | n_offspring (λ children a generation, μ survivors from the μ + λ) and n_ref_points (H reference points, das_dennis::reference_points) apart from pop_size, as NSGA3-L in nsga3.hpp; not set, λ = μ and H = μ's lattice, a... | no: option | `srv_nsga3.hpp` |
 | `srv_nsga3` | srv_nsga3.1 | the SRVs are extracted under the max-normalization of srv_strategy while the association runs under the NSGA-III intercept normalization (SRVN-2, a mixing of spaces); set_kmeans_iter is a no-op, since the iteration co... | yes | `srv_nsga3.hpp` |
 | `srv_nsga3` | SRVN-5 | the ideal z^min and the ASF extremes of the NSGA-III intercept | yes | `srv_nsga3.hpp` |
 | `cava_moea` | CAVA-2 | The Alg.7 replacement admits any y_r in P. | yes | `cava_moea.hpp` |

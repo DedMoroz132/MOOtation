@@ -71,6 +71,10 @@
 //     moead_awa takes this step from MOEA/D-DRA and gets the same floor
 //     (AWA-14).
 // Extensions beyond the paper (disabled by default):
+//   - DRA-12 (task 15 of 2026-10-21, §1; off by default). de_base, de_index, de_p and
+//     bound_repair = r_reflect or resample, as MDE-7 in moead_de.hpp (the
+//     pbest by subproblem i's Tchebycheff value, Eq.3); the defaults are
+//     Step 3.2's current1 and wr and Step 3.3's random reset.
 //   - EP archive (vault.archive_*): in the paper Output = {x^1..x^N};
 //     enabled via set_use_ep(true), adds no extra FE.
 //   - ConstraintMode::FEASIBILITY — g^te + penalty·cv.
@@ -117,6 +121,10 @@ private:
     // Step 3.3 repair; Clip = PlatEMO/jMetal variant. bound_repair (2026-09-23):
     // any of ops::BoundRepair but resample and native; midpoint moves to x^i.
     ops::BoundRepair repair_ = ops::BoundRepair::Random;
+    // DRA-12: the DE mutation's strategy and index selection (de_mutation.hpp)
+    ops::DEBase  base_  = ops::DEBase::Current1;
+    ops::DEIndex index_ = ops::DEIndex::WR;
+    double       de_p_  = 0.1;
     std::mt19937 rng_{std::random_device{}()};
 
     int T_eff_  = 0;   // effective T (after setup)
@@ -270,6 +278,40 @@ private:
         return I;
     }
 
+    // ── Step 3.2's ȳ (Eq.4), by de_base and de_index (DRA-12) ──────────────
+    std::vector<double> de_mutant(DataVault<Ind_t>& vault, int i, const std::vector<int>& P) {
+        int r[3];
+        std::vector<double> y;
+        if (base_ == ops::DEBase::Current1) {
+            ops::de_pick(P, i, index_, 2, r, rng_);
+            ops::de_eq6(vault.variables_of(i), vault.variables_of(r[0]),
+                        vault.variables_of(r[1]), y, F_, CR_, rng_);
+        } else if (base_ == ops::DEBase::Rand1) {
+            ops::de_pick(P, i, index_, 3, r, rng_);
+            ops::de_eq6_rand1(vault.variables_of(i), vault.variables_of(r[0]),
+                              vault.variables_of(r[1]), vault.variables_of(r[2]), y, F_, CR_, rng_);
+        } else {
+            const int best = pbest(vault, i, P);
+            ops::de_pick(P, i, index_, 2, r, rng_);
+            ops::de_eq6_pbest(vault.variables_of(i), vault.variables_of(best),
+                              vault.variables_of(r[0]), vault.variables_of(r[1]), y, F_, CR_, rng_);
+        }
+        return y;
+    }
+
+    // current_to_pbest1: one of the ⌈de_p·|P|⌉ members of P with the least
+    // Tchebycheff value for subproblem i (ties by their order in P).
+    int pbest(DataVault<Ind_t>& vault, int i, const std::vector<int>& P) {
+        std::vector<std::pair<double, int>> g;
+        g.reserve(P.size());
+        for (int j : P) g.emplace_back(tche(vault.objectives_of(j), W_[i]), j);
+        std::stable_sort(g.begin(), g.end(),
+                         [](const auto& a, const auto& b) { return a.first < b.first; });
+        const int top = std::max(1, static_cast<int>(std::ceil(de_p_ * static_cast<double>(P.size()))));
+        rnd::uniform_int_distribution<int> pick(0, std::min(top, static_cast<int>(P.size())) - 1);
+        return g[static_cast<std::size_t>(pick(rng_))].second;
+    }
+
     // ── Step 3 for one subproblem i ─────────────────────────────────────────
     void update_subproblem(DataVault<Ind_t>& vault, int i, int scratch) {
         const auto& bounds = vault.get_bounds();
@@ -289,24 +331,20 @@ private:
         // ("randomly select two indexes r2 and r3 from P": r2 = r3 and
         // r2 = i are admitted; 2026-09-05 — the former rejection loop DRA-7
         // is gone).
-        int psz = static_cast<int>(P.size());
-        rnd::uniform_int_distribution<int> dP(0, psz - 1);
-        int r2 = P[dP(rng_)];
-        int r3 = P[dP(rng_)];
-
-        int nv = vault.vars_n();
-        std::vector<double> x_i(nv), x_2(nv), x_3(nv), y;
-        for (int j = 0; j < nv; ++j) {
-            x_i[j] = vault.get_variable(i,  j);
-            x_2[j] = vault.get_variable(r2, j);
-            x_3[j] = vault.get_variable(r3, j);
-        }
+        // That is de_base = current1 with de_index = wr; the others: DRA-12.
+        const std::vector<double> x_i = vault.variables_of(i);
+        const int nv = vault.vars_n();
+        std::vector<double> y = de_mutant(vault, i, P);
+        if (repair_ == ops::BoundRepair::Resample)                        // DRA-12
+            for (int t = 1; t < ops::resample_tries() && !ops::inside_box(y, bounds); ++t)
+                y = de_mutant(vault, i, P);
         // ȳ by Eq.4 (r1 = i), then the literal Eq.5 mutation (may leave the
         // box), then Step 3.3: repair of the FINAL y — random reset (paper)
         // or clamping (set_de_repair(Clip)).
-        ops::de_eq6(x_i, x_2, x_3, y, F_, CR_, rng_);
         ops::polynomial_mutation_eq7(y, bounds, eta_m_, pm_eff(nv), rng_);
-        ops::repair_out_of_box(y, bounds, repair_, rng_, &x_i);
+        ops::repair_out_of_box(y, bounds,
+                               repair_ == ops::BoundRepair::Resample ? ops::BoundRepair::Clip : repair_,
+                               rng_, &x_i);
 
         // Evaluate the offspring in the scratch slot: exactly ONE objective
         // function call.
@@ -384,7 +422,28 @@ public:
     void set_use_ep          (bool b)   { use_ep_       = b; }
     void set_de_repair       (ops::DERepair r){ repair_ = ops::to_bound_repair(r); }
     void set_bound_repair    (ops::BoundRepair r){
-        ops::require_repair(r, "moead_dra", false, false); repair_ = r; }
+        ops::require_repair(r, "moead_dra", true, false); repair_ = r; }   // resample: DRA-12
+    bool set_param(const std::string& k, double v) {
+        if (k != "de_p") return false;
+        if (!(v > 0.0 && v <= 1.0)) throw std::invalid_argument("de_p must be in (0, 1]");
+        de_p_ = v;
+        return true;
+    }
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k == "de_base") {
+            auto b = ops::parse_de_base(w);
+            if (!b) throw std::invalid_argument("de_base = '" + w + "': rand1, current1 or current_to_pbest1");
+            base_ = *b;
+            return true;
+        }
+        if (k == "de_index") {
+            auto x = ops::parse_de_index(w);
+            if (!x) throw std::invalid_argument("de_index = '" + w + "': wor, wr or wpr");
+            index_ = *x;
+            return true;
+        }
+        return false;
+    }
     void set_seed            (unsigned s){ rng_.seed(s); }
 
     int effective_T()  const { return T_eff_;  }

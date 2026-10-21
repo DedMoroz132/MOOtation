@@ -22,6 +22,11 @@
 // PAPER DEFAULTS (§IV-B): the operators follow NSGA-III [21] — SBX p_c=1.0 /
 //   eta_c=30, PM p_m=1/n / eta_m=20. Table A.II of the supplementary file is
 //   unavailable, so the [21] convention is used.
+//   SRVN-L (task 15 of 2026-10-21, §2; off by default). n_offspring (λ children a
+//     generation, μ survivors from the μ + λ) and n_ref_points (H reference
+//     points, das_dennis::reference_points) apart from pop_size, as NSGA3-L
+//     in nsga3.hpp; not set, λ = μ and H = μ's lattice, as before.
+//
 // DECLARED DEVIATIONS: the SRVs are extracted under the max-normalization of
 //   srv_strategy while the association runs under the NSGA-III intercept
 //   normalization (SRVN-2, a mixing of spaces); set_kmeans_iter is a no-op,
@@ -94,8 +99,10 @@ private:
     std::vector<std::vector<double>> extreme_hist_;  // [m] historical F vectors
 
     // ── Das-Dennis init ────────────────────────────────────────────────────
+    int n_offspring_ = 0, n_ref_points_ = 0;          // SRVN-L: λ and H; 0 = μ and μ's lattice
     void init_V(int n, int m) {
-        V_ = das_dennis::generate_exact(m, n);
+        V_ = n_ref_points_ > 0 ? das_dennis::reference_points(m, n_ref_points_)
+                               : das_dennis::generate_exact(m, n);
         // SRVN-1: theta_c^min (Eq.16) is computed HERE, the path common to
         // setup and setup_seeded. Computing it only in setup left the seeded
         // path with theta_c(G=1) = 0, hence 0/0 = NaN in rho(x). theta_min()
@@ -305,6 +312,14 @@ public:
     void set_pc           (double p) { pc_   =p; }
     void set_t_max        (int t)    { t_max_=t; }
     void set_seed         (unsigned s){ rng_.seed(s); }
+    // SRVN-L: λ and H apart from μ (n_offspring, n_ref_points; nsga3.hpp, NSGA3-L)
+    bool set_param(const std::string& k, double v) {
+        if (k != "n_offspring" && k != "n_ref_points") return false;
+        if (!(v >= 1.0 && v == std::floor(v) && v <= 1e7))
+            throw std::invalid_argument(k + " must be a whole number >= 1");
+        (k == "n_offspring" ? n_offspring_ : n_ref_points_) = static_cast<int>(v);
+        return true;
+    }
     // SRVStrategy has no kmeans_iter field: the iteration count of the
     // modified k-means is fixed at 2m by Algorithm 3 of Liu et al. 2022.
     // An earlier version referenced a non-existent srv_.kmeans_iter, which
@@ -355,11 +370,12 @@ public:
         // from St (below, after the non-dominated sort), not once per 10% of
         // t_max and not from the parents [0,n).
 
-        vault.expand(vault.pop_size());
+        const int lam = n_offspring_ > 0 ? n_offspring_ : n;            // λ (SRVN-L)
+        vault.expand(lam);
 
         std::vector<double> pv1(vault.vars_n()),pv2(vault.vars_n()),c1,c2;
         double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;  // 1/n
-        for (int i=0;i<n;i+=2) {
+        for (int i=0;i<lam;i+=2) {
             int p1=tournament(vault,dist_int), p2=tournament(vault,dist_int);
             for (int j=0;j<vault.vars_n();++j) {
                 pv1[j]=vault.get_variable(p1,j); pv2[j]=vault.get_variable(p2,j);
@@ -374,17 +390,17 @@ public:
                 }
                 ops::binary_crossover(bv1,bv2,bc1,bc2,rng_);
                 ops::bit_flip_mutation(bc1,vault.bin_vars_n(),rng_);
-                if(i+1<n) ops::bit_flip_mutation(bc2,vault.bin_vars_n(),rng_);
+                if(i+1<lam) ops::bit_flip_mutation(bc2,vault.bin_vars_n(),rng_);
                 vault.set_all_variables(n+i,c1,bc1);
-                if(i+1<n) vault.set_all_variables(n+i+1,c2,bc2);
+                if(i+1<lam) vault.set_all_variables(n+i+1,c2,bc2);
             } else {
                 vault.set_variables(n+i,c1);
-                if(i+1<n) vault.set_variables(n+i+1,c2);
+                if(i+1<lam) vault.set_variables(n+i+1,c2);
             }
         }
         vault.sync();
 
-        auto fronts=fast_nds(vault,n*2);
+        auto fronts=fast_nds(vault,n+lam);
 
         std::vector<int> St; std::vector<int> Fl;
         for (auto& front:fronts) {
@@ -425,7 +441,7 @@ public:
             survivors=St_minus_Fl;
             for(int v:chosen) survivors.push_back(v);
         }
-        rearrange(vault,survivors,n*2);
+        rearrange(vault,survivors,n+lam);
         ++current_gen_;
     }
 };

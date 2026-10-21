@@ -102,7 +102,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 14 of 2026-10-20, §11
         "race_eps", "race_delta", "race_max_samples", "race_abs_tol",
         // task 14, supplement 3, Д8.3
-        "hv_incremental"
+        "hv_incremental",
+        // task 15, §2
+        "n_offspring", "n_ref_points"
     };
     return v;
 }
@@ -154,6 +156,10 @@ inline const std::vector<std::string>& knob_names() {
 //                  objectives, the race (or Monte-Carlo) above (5;
 //                  hv_contribution.hpp, hv::ContribChoice); mo_cma_es is
 //                  exact at every M and does not take it (nor race_*)
+//   n_offspring, n_ref_points
+//                  nsga3, a_nsga3, theta_dea, srv_nsga3: the children a
+//                  generation (λ) and the reference points (H) apart from
+//                  pop_size (μ; task 15, §2); not set, λ = μ, H = μ's lattice
 //   race_eps, race_delta, race_max_samples, race_abs_tol
 //                  sms_emoa: the race for the least contributor
 //                  above hv_exact_max_m (Bringmann & Friedrich 2012): the
@@ -175,7 +181,8 @@ inline bool is_core_param(const std::string& name)
                           "cma_sigma0", "eps_objective", "polish_share", "polish_points",
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
-                          "race_max_samples", "race_abs_tol", "hv_incremental"})
+                          "race_max_samples", "race_abs_tol", "hv_incremental",
+                          "n_offspring", "n_ref_points"})
         if (name == k) return true;
     return false;
 }
@@ -185,6 +192,9 @@ inline bool is_core_param(const std::string& name)
 // it out of this file), an algorithm without the knob reports it as ignored.
 //   bound_repair  what an operator that can leave the box does with the
 //                 variables it put outside (operators/bound_repair.hpp)
+//   de_base, de_index
+//                 moead_de, moead_dra: the DE mutation's strategy and index
+//                 selection (operators/de_mutation.hpp; task 15, §1)
 //   crossover     nsga2, nsga2_sdr, ibea_eplus, spea2_sde, agemoea, sms_emoa
 //                 (operators/real_crossover.hpp, multi_parent.hpp)
 //   mutation      the same six and moead_de (operators/real_mutation.hpp)
@@ -203,6 +213,9 @@ inline bool is_core_param(const std::string& name)
 //   mads_select, mads_poll, mads_search
 //                 dmulti_mads: the incumbent by spread or first, the poll
 //                 complete or opportunistic, the speculative search or none
+//   constraint_mode
+//                 minimize()'s, for a campaign's algorithm entry: none lets the
+//                 core rank by the objectives only (task 15, §5); no core has it
 //   scalarization, local, sub_plan, tch_weights, boost_scalarization, polish
 //                 the Python-level methods of task 9 (python/mootation/scalar):
 //                 no core has them, every core reports them ignored
@@ -218,7 +231,7 @@ inline bool is_core_param(const std::string& name)
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
 inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text_knobs() {
     static const std::vector<std::pair<std::string, std::vector<std::string>>> v = {
-        {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native"}},
+        {"bound_repair", {"clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"}},
         {"crossover",    {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de",
                           "de_pbest", "portfolio", "none"}},
         {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
@@ -227,6 +240,8 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"dms_init",     {"line", "single", "random"}},
         {"dms_poll",     {"first", "random"}},
         {"de_adapt",     {"none", "shade"}},
+        {"de_base",      {"rand1", "current1", "current_to_pbest1"}},
+        {"de_index",     {"wor", "wr", "wpr"}},
         {"de_adapt_weight", {"equal", "contribution"}},
         {"de_archive",   {"yes", "no"}},
         {"portfolio",    {"sbx", "uniform", "blx_alpha", "spx", "rex", "undx", "pcx", "de",
@@ -256,6 +271,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"mads_search",  {"speculative", "none"}},
         {"boost_scalarization", {"eps", "minmax"}},
         {"scalarization", {"eps", "tch", "nbi", "nnc", "ps"}},
+        {"constraint_mode", {"feasibility", "eps_level", "none"}},
         {"local",        {"sqp", "nm", "cmaes"}},
         {"sub_plan",     {"grid", "laumanns", "gap"}},
         {"tch_weights",  {"inverse", "lattice"}},
@@ -279,7 +295,7 @@ inline bool is_list_knob(const std::string& name) { return name == "portfolio"; 
 // The text knobs a core takes through set_word (above, is_core_param).
 inline bool is_core_word(const std::string& name)
 {
-    for (const char* k : {"de_adapt", "de_adapt_weight", "de_archive", "portfolio",
+    for (const char* k : {"de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index", "portfolio",
                           "portfolio_credit", "sa_energy", "sa_step", "sa_weights",
                           "sa_tch_accept", "coords", "survival", "inner_archive",
                           "bin_crossover", "mating", "smpso_preset", "chi_mode", "turbulence",

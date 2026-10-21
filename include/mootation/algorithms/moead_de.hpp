@@ -48,6 +48,20 @@
 //     clamping to the bound (the PlatEMO / jMetal convention); MOEA/D-DRA has
 //     the same knob.
 // Extensions beyond the paper (disabled by default):
+//   - MDE-7 (task 15 of 2026-10-21, §1; off by default). The three components of the DE
+//     mutation after Tanabe & Ishibuchi, Soft Computing 2019 (source
+//     moead-de-mutation-components_tanabe2019; operators/de_mutation.hpp):
+//     de_base (current1, the default: Eq.6 with r1 = i; rand1;
+//     current_to_pbest1, its x_pbest one of the ⌈de_p·|P|⌉ best of the
+//     mating range P by subproblem i's Tchebycheff value, de_p 0.1),
+//     de_index (wr, the default: two independent draws as Step 2.2 says; wor;
+//     wpr, the authors' C++ code), and bound_repair (random, the default,
+//     Step 2.3; clip, reflect, r_reflect; resample — ȳ drawn again, indices
+//     and all, while it leaves the box, at most resample_tries() times, then
+//     Step 2.3 clips). The paper of Tanabe & Ishibuchi repairs the mutant
+//     before the crossover; here Step 2.3 repairs the final y after the
+//     mutation, as Li & Zhang do (with CR = 1 the two differ only by Eq.7's
+//     steps).
 //   - EP archive (vault.archive_*): the 2009 paper keeps NO archive
 //     (Output = {x^1..x^N}); enabled via set_use_ep(true), adds no extra FE.
 //   - ConstraintMode::FEASIBILITY — g^te + penalty·cv (the paper does not
@@ -94,6 +108,10 @@ private:
     // bound_repair (2026-09-23): any of ops::BoundRepair but resample and
     // native; midpoint moves towards x^i.
     ops::BoundRepair repair_ = ops::BoundRepair::Random;
+    // MDE-7: the DE mutation's strategy and index selection (de_mutation.hpp)
+    ops::DEBase  base_  = ops::DEBase::Current1;
+    ops::DEIndex index_ = ops::DEIndex::WR;
+    double       de_p_  = 0.1;     // current_to_pbest1: the share of P that is "best"
     // Switchable mutation (task 2 of 2026-09-23, B3): `polynomial` is the
     // literal Eq.7 above; any other (real_mutation.hpp) leaves its steps raw
     // for Step 2.3's repair of the whole offspring (bound_repair), as Eq.7's.
@@ -190,25 +208,40 @@ private:
     // "randomly select two indexes r2 and r3 from P": two independent uniform
     // draws — r2 = r3 (then ȳ = x^i) and r2 = i are admitted, as in the paper
     // (2026-09-05: the former distinctness rejection loop, MDE-4, is gone).
+    // That is de_base = current1 with de_index = wr; the others are MDE-7.
     // No repair here: Step 2.3 repairs the final y after the mutation.
     std::vector<double> de_offspring(DataVault<Ind_t>& vault, int i,
                                      const std::vector<int>& mating_pool) {
-        int pool_sz = static_cast<int>(mating_pool.size());
-        rnd::uniform_int_distribution<int> dist_pool(0, pool_sz - 1);
-        int b = mating_pool[dist_pool(rng_)];
-        int c = mating_pool[dist_pool(rng_)];
-        int nv = vault.vars_n();
-
-        std::vector<double> x_b(nv), x_c(nv), x_i(nv);
-        for (int j = 0; j < nv; ++j) {
-            x_b[j] = vault.get_variable(b, j);
-            x_c[j] = vault.get_variable(c, j);
-            x_i[j] = vault.get_variable(i, j);
-        }
-
+        int r[3];
         std::vector<double> y;
-        ops::de_eq6(x_i, x_b, x_c, y, F_, CR_, rng_);   // ȳ (Eq.6)
+        if (base_ == ops::DEBase::Current1) {
+            ops::de_pick(mating_pool, i, index_, 2, r, rng_);
+            ops::de_eq6(vault.variables_of(i), vault.variables_of(r[0]),
+                        vault.variables_of(r[1]), y, F_, CR_, rng_);          // ȳ (Eq.6)
+        } else if (base_ == ops::DEBase::Rand1) {
+            ops::de_pick(mating_pool, i, index_, 3, r, rng_);
+            ops::de_eq6_rand1(vault.variables_of(i), vault.variables_of(r[0]),
+                              vault.variables_of(r[1]), vault.variables_of(r[2]), y, F_, CR_, rng_);
+        } else {
+            const int best = pbest(vault, i, mating_pool);
+            ops::de_pick(mating_pool, i, index_, 2, r, rng_);
+            ops::de_eq6_pbest(vault.variables_of(i), vault.variables_of(best),
+                              vault.variables_of(r[0]), vault.variables_of(r[1]), y, F_, CR_, rng_);
+        }
         return y;
+    }
+
+    // current_to_pbest1 (MDE-7): one of the ⌈de_p·|P|⌉ members of P with the
+    // least Tchebycheff value for subproblem i (ties by their order in P).
+    int pbest(DataVault<Ind_t>& vault, int i, const std::vector<int>& P) {
+        std::vector<std::pair<double, int>> g;
+        g.reserve(P.size());
+        for (int j : P) g.emplace_back(tchebycheff(vault.objectives_of(j), W_[i]), j);
+        std::stable_sort(g.begin(), g.end(),
+                         [](const auto& a, const auto& b) { return a.first < b.first; });
+        const int top = std::max(1, static_cast<int>(std::ceil(de_p_ * static_cast<double>(P.size()))));
+        rnd::uniform_int_distribution<int> pick(0, std::min(top, static_cast<int>(P.size())) - 1);
+        return g[static_cast<std::size_t>(pick(rng_))].second;
     }
 
     // ── Update step for one subproblem i (Steps 2.1–2.5) ──────────────────
@@ -229,6 +262,9 @@ private:
         // Step 2.2: ȳ by Eq.6 (r1 = i), then the literal Eq.7 mutation with
         // probability p_m per gene (may leave the box).
         auto y_vars = de_offspring(vault, i, mating_pool);
+        if (repair_ == ops::BoundRepair::Resample)                         // MDE-7
+            for (int t = 1; t < ops::resample_tries() && !ops::inside_box(y_vars, bounds); ++t)
+                y_vars = de_offspring(vault, i, mating_pool);
         if (mut_.kind == ops::Mutation::Polynomial)
             ops::polynomial_mutation_eq7(y_vars, bounds, eta_m_,
                                          pm_eff(vault.vars_n()), rng_);
@@ -237,7 +273,9 @@ private:
                        /*caller_repairs=*/true);
         // Step 2.3: repair of the FINAL y — random reset inside the domain
         // (the paper) or clamping (set_de_repair(Clip), see MDE-6).
-        ops::repair_out_of_box(y_vars, bounds, repair_, rng_, &vault.variables_of(i));
+        ops::repair_out_of_box(y_vars, bounds,
+                               repair_ == ops::BoundRepair::Resample ? ops::BoundRepair::Clip : repair_,
+                               rng_, &vault.variables_of(i));
 
         // Binary variables (extension beyond the paper): inherited from x^i
         // + bit-flip with probability 1/n_bin.
@@ -315,7 +353,28 @@ public:
     void set_use_ep            (bool b)  { use_ep_        = b; }
     void set_de_repair         (ops::DERepair r){ repair_ = ops::to_bound_repair(r); }
     void set_bound_repair      (ops::BoundRepair r){
-        ops::require_repair(r, "moead_de", false, false); repair_ = r; }
+        ops::require_repair(r, "moead_de", true, false); repair_ = r; }   // resample: MDE-7
+    bool set_param(const std::string& k, double v) {
+        if (k != "de_p") return false;
+        if (!(v > 0.0 && v <= 1.0)) throw std::invalid_argument("de_p must be in (0, 1]");
+        de_p_ = v;
+        return true;
+    }
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k == "de_base") {
+            auto b = ops::parse_de_base(w);
+            if (!b) throw std::invalid_argument("de_base = '" + w + "': rand1, current1 or current_to_pbest1");
+            base_ = *b;
+            return true;
+        }
+        if (k == "de_index") {
+            auto x = ops::parse_de_index(w);
+            if (!x) throw std::invalid_argument("de_index = '" + w + "': wor, wr or wpr");
+            index_ = *x;
+            return true;
+        }
+        return false;
+    }
     void set_seed              (unsigned s){ rng_.seed(s); }
     void set_mutation          (ops::Mutation m){ mut_.kind = m; }
     void set_mutation_scale    (double s){ mut_.scale = ops::checked_mutation_scale(s); }
