@@ -6,6 +6,10 @@
 //     bits), integer, bernoulli, discrete and shuffle at a fixed seed against
 //     tests/data/random_reference.txt — one file for every platform, so CI's
 //     platforms check each other. `test_random --write <file>` writes it.
+//     Since detmath (§2) normal01, exponential, cauchy and gamma too (their
+//     log, tan and pow are dm::'s, the same everywhere): 10 000 values each,
+//     gamma 5 000 at alpha = 2.5 and 5 000 at alpha = 0.4 (the boost of
+//     Marsaglia & Tsang's note for alpha < 1).
 //   * As distributions, 10^6 values each: the moments; Kolmogorov-Smirnov
 //     for uniform01, normal01, exponential, cauchy and gamma(2.5); chi-square
 //     for below(n) at n not dividing 2^32 (7, 1000003, 3·2^30) and above 2^32,
@@ -96,6 +100,26 @@ std::vector<std::string> reference_lines()
     {
         std::mt19937_64 g(6u);                          // a 64-bit generator: its high words
         for (int i = 0; i < 1000; ++i) put("uniform01_64", hex(rnd::uniform01(g)));
+    }
+    {
+        std::mt19937 g(7u);
+        for (int i = 0; i < 10000; ++i) put("normal01", hex(rnd::normal01(g)));
+    }
+    {
+        std::mt19937 g(8u);
+        for (int i = 0; i < 10000; ++i) put("exponential", hex(rnd::exponential(g, 1.5)));
+    }
+    {
+        std::mt19937 g(9u);
+        for (int i = 0; i < 10000; ++i) put("cauchy", hex(rnd::cauchy(g, 0.5, 2.0)));
+    }
+    {
+        std::mt19937 g(10u);
+        for (int i = 0; i < 5000; ++i) put("gamma_2.5", hex(rnd::gamma(g, 2.5, 1.0)));
+    }
+    {
+        std::mt19937 g(11u);
+        for (int i = 0; i < 5000; ++i) put("gamma_0.4", hex(rnd::gamma(g, 0.4, 2.0)));
     }
     return out;
 }
