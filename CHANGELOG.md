@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `mootation::dm` is faster under MSVC: the helpers that return a struct
+  (log's split, the reduction of sin/cos/tan, pow's double-word log and exp)
+  are force-inlined, which MSVC did not do on its own — log about 4x, cos 2x,
+  sin, tan and pow 1.6x faster. No value changes (the same bits as before on
+  every platform).
 - **SMS-EMOA computes the hypervolume contributions exactly at every number
   of objectives by default** (`hv_exact_max_m` not set; it was 5): the race
   and Monte-Carlo estimates only with a threshold given and `hv_contrib =

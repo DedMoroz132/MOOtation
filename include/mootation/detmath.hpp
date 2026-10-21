@@ -60,6 +60,17 @@
 #include "detmath_coeffs.hpp"
 #include "fp_contract.hpp"
 
+// The helpers that return a struct (log_split, reduce_pio2, log_dw, ...):
+// MSVC does not inline them on its own, and on x64 Windows a struct of more
+// than 8 bytes comes back through memory, so the call and the reload cost
+// more than their arithmetic (log took 16 ns instead of 4; task 14, D9-FMA).
+// Inlining changes no value. GCC and Clang inline them already.
+#if defined(_MSC_VER)
+#define MOOTATION_FORCEINLINE __forceinline
+#else
+#define MOOTATION_FORCEINLINE inline
+#endif
+
 namespace mootation::dm {
 
 // The values of the library's calls on constants, correctly rounded
@@ -216,7 +227,7 @@ struct Reduced {
     std::uint32_t q;
 };
 
-inline Reduced reduce_pio2(double x)
+MOOTATION_FORCEINLINE Reduced reduce_pio2(double x)
 {
     if (x <= kQuarterPi)
         return {{x, 0.0}, 0};
@@ -332,7 +343,7 @@ inline double tan(double x)
 namespace detail {
 
 // asin s - s = s^3 A(s^2), 0 <= s <= 1/2; returns t A(t) for t = s^2.
-inline double asin_tail(double t)
+MOOTATION_FORCEINLINE double asin_tail(double t)
 {
     const double* A = coeffs::kAsin;
     double p = A[12];
@@ -422,7 +433,7 @@ namespace detail {
 // ACM TOMS 15(2), 1989, steps 2-4 (x_l = 0 for exp; pow passes the low part
 // of y log x). x = (32 M + J) ln2/32 + R1 + R2, |R1 + R2| <= ln2/64;
 // e^x = 2^M (S_lead(J) + (S_trail(J) + S (R1 + (R2 + Q)))).
-inline double exp_dw(double xh, double xl)
+MOOTATION_FORCEINLINE double exp_dw(double xh, double xl)
 {
     const double N = round_to_integer(xh * coeffs::kExpInvL);
     const std::int32_t n = static_cast<std::int32_t>(N);
@@ -494,7 +505,7 @@ struct LogSplit {
     double F, f;
 };
 
-inline LogSplit log_split(double x)
+MOOTATION_FORCEINLINE LogSplit log_split(double x)
 {
     std::int32_t m = 0;
     if (x < 0x1p-1022) {
@@ -543,7 +554,7 @@ namespace detail {
 // log x as a double-word number, x > 0 finite: Tang's two procedures with
 // the reduced argument and the leading terms in double-word arithmetic
 // (Joldes et al. 2017), for pow.
-inline DW log_dw(double x)
+MOOTATION_FORCEINLINE DW log_dw(double x)
 {
     if (x > coeffs::kLogT1 && x < coeffs::kLogT2) {
         // log(1 + f) = a + a^3 B(a^2), a = 2f / (2 + f) as a double-word
@@ -572,13 +583,13 @@ inline DW log_dw(double x)
     return dw_plus_fp(head, t.l + (rest + Ltrail));
 }
 
-inline bool is_integer(double y)
+MOOTATION_FORCEINLINE bool is_integer(double y)
 {
     return std::floor(y) == y;
 }
 
 // An odd integer: |y| < 2^53 (above it every double is even).
-inline bool is_odd_integer(double y)
+MOOTATION_FORCEINLINE bool is_odd_integer(double y)
 {
     return is_integer(y) && std::fabs(y) < 0x1p53 && !is_integer(0.5 * y);
 }
