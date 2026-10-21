@@ -123,8 +123,12 @@ FRONT_DIR = Path(__file__).with_name("_fronts")
 # The sizes with a non-degenerate part among those the registry has (MaF6 at
 # 5 has none, see the header). Lower sizes keep their exact curve.
 SIZES = {
-    "DTLZ5": (4, 5, 6, 8, 10, 15),
-    "DTLZ6": (4, 5, 6, 8, 10, 15),
+    # DTLZ6_10D, DTLZ5_15D and DTLZ6_15D are left out: a full front of them would
+    # take hours to build (a tenth of the samples took 11 times DTLZ6_8D's time at
+    # ten objectives; task 14 of 2026-10-21), so they keep no full front
+    # and stay out of the atlas (their reference is doubtful: cover.reference_caveat)
+    "DTLZ5": (4, 5, 6, 8, 10),
+    "DTLZ6": (4, 5, 6, 8),
     "MaF6":  (8, 10, 15),
     "WFG3":  (3, 4, 5, 6, 10),
 }

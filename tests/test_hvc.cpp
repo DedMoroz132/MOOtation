@@ -281,8 +281,9 @@ int main()
         using Way = hv::ContribChoice::Way;
         hv::ContribChoice c;                                   // the defaults
         check(c.way(2) == Way::exact && c.way(3) == Way::exact && c.way(4) == Way::exact &&
-                  c.way(5) == Way::exact && c.way(6) == Way::race && c.way(10) == Way::race,
-              "default: exact up to M = 5, the race above");
+                  c.way(5) == Way::exact && c.way(6) == Way::exact && c.way(10) == Way::exact &&
+                  c.way(15) == Way::exact,
+              "default: exact at every M (no threshold, 2026-10-21)");
         check(c.use_hvc(3) && c.use_hvc(4) && !c.use_hvc(5), "default: hvc at M = 3 and 4");
         check(c.samples() == 10000, "default: 10 000 samples a step");
         c.set_param("hv_exact_max_m", 6);
@@ -290,6 +291,8 @@ int main()
         {
             hv::ContribChoice e;
             e.set_word("hv_contrib", "mc");
+            check(e.way(6) == Way::exact, "hv_contrib = mc without a threshold: exact at every M");
+            e.set_param("hv_exact_max_m", 5);
             check(e.way(5) == Way::exact && e.way(6) == Way::mc && e.use_hvc(4),
                   "hv_contrib = mc: exact up to the threshold, Monte-Carlo above (task 13's defaults)");
             e.set_param("hv_exact_max_m", 3);

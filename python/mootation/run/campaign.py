@@ -2049,6 +2049,7 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
 
     if todo and not force:
         check_trajectory_versions(root, selected)       # task 14, §10: no mixing
+    _warn_exact_hv_time(todo)
     counts = {"done": 0, "failed": 0, "skipped": len(selected) - len(todo)}
     if len(todo) > 1 and cfg.source_path is not None:
         # Worker processes whenever there is more than one job, even with
@@ -2086,6 +2087,19 @@ def _fp_env() -> dict | None:
         print("warning: denormals are flushed to zero or read as zero in this process "
               f"({env}): results differ from a process without it", file=sys.stderr)
     return env
+
+
+def _warn_exact_hv_time(jobs: list) -> None:
+    """Before the runs: the jobs of SMS-EMOA and MO-CMA-ES whose hypervolume
+    contributions are exact at EXACT_HV_SLOW_M objectives or more (minimize.py,
+    exact_hv_time_warning): their runs can take hours."""
+    from ..minimize import exact_hv_time_warning
+    slow = [j for j in jobs if exact_hv_time_warning(j.algorithm, j.n_objs, dict(j.params or {}))]
+    if slow:
+        names = sorted({f"{j.algorithm} on {j.problem}" for j in slow})
+        print(f"warning: {len(slow)} job(s) compute the hypervolume contributions exactly at eight "
+              f"objectives or more and can take hours a run: " + "; ".join(names[:10])
+              + (" ..." if len(names) > 10 else ""), file=sys.stderr)
 
 
 # A run whose race for the least hypervolume contributor (SMS-EMOA, MO-CMA-ES

@@ -739,16 +739,21 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
 // 2026-10-19, §3; task 14 of 2026-10-20, §11; sms_emoa.hpp SMS-2, mo_cma_es.hpp
 // MOCMA-5), from their knobs:
 //   M = 2, 3                 exact (M = 3: HVC3D unless hv_contrib = wfg)
-//   4 <= M <= hv_exact_max_m exact (default threshold 5): M = 4 HVC4D unless
+//   4 <= M <= hv_exact_max_m exact (no threshold by default: exact at every
+//                            M, the owner's word of 2026-10-21): M = 4 HVC4D unless
 //                            hv_contrib = wfg, else WFG (hv_algo = box: boxes)
-//   M > hv_exact_max_m       the race for the least contributor (race, the
-//                            default; contributions_race) or, with
+//   M > hv_exact_max_m       (only with a threshold given) the race for the
+//                            least contributor (race; contributions_race) or, with
 //                            hv_contrib = mc, Monte-Carlo with n_samples
 //                            (10 000) a step shared out equally
 //   n_samples given, hv_contrib neither race nor mc
 //                            from M = 4 n_samples decides, as before task 14:
 //                            0 exact at every M, N > 0 Monte-Carlo with N
-// The exact contributions' cost grows steeply with M, hence the threshold.
+// The exact contributions' cost grows steeply with M (a run of 25 000
+// evaluations takes hours from eight objectives on: Python warns, minimize.py
+// exact_hv_time_warning); the threshold trades it for an estimate. The
+// approximations were measured to choose badly at M >= 5 (task 14, §11, Д8):
+// the race stops at its sample cap on most steps there.
 // exact_only (MO-CMA-ES; task 14, supplement 3, Д8.1): exact at every M;
 // n_samples > 0 and hv_contrib = race | mc are refused (kExactOnly says why),
 // hv_exact_max_m and race_* are not taken (the caller reports them ignored).
@@ -761,7 +766,8 @@ struct ContribChoice {
     static constexpr int kSamples = 10000;
     enum class Approx { race, mc };
     std::optional<int> n_samples;       // given by the caller
-    int  exact_max_m = 5;               // hv_exact_max_m
+    static constexpr int kEveryM = 1000; // no threshold: exact at every M
+    int  exact_max_m = kEveryM;         // hv_exact_max_m (5 until 2026-10-21)
     bool hvc = true;                    // hv_contrib: hvc (default) or wfg, the exact way
     bool iwfg = false;                  // hv_contrib = iwfg (Д8.2): from M = 6 the least by IWFG; not the
                                         // default: on populations of exact selection the contributions grow
@@ -915,7 +921,8 @@ struct ContribChoice {
         else if (use_hvc(m))       how = m == 3 ? "exact, hvc3d" : "exact, hvc4d";
         else                       how = box ? "exact, box" : iwfg && m >= kIwfgFrom ? "exact, iwfg" : "exact, wfg";
         std::vector<std::pair<std::string, std::string>> out;
-        if (!exact_only) out.emplace_back("hv_exact_max_m", std::to_string(exact_max_m));
+        if (!exact_only)
+            out.emplace_back("hv_exact_max_m", exact_max_m >= kEveryM ? "none" : std::to_string(exact_max_m));
         out.emplace_back("n_samples", n_samples ? std::to_string(*n_samples) : "default");
         out.emplace_back("hv_contrib", std::string(iwfg ? "iwfg" : hvc ? "hvc" : "wfg") +
                                            (exact_only ? "" : approx == Approx::race ? ", race" : ", mc"));

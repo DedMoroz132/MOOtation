@@ -10479,13 +10479,13 @@ def hv_algo_box_is_the_hypervolume_by_boxes():
 
 @test
 def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
-    """Task 13, §3: by default SMS-EMOA computes the hypervolume contributions
-    exactly up to hv_exact_max_m = 5 objectives (HVC4D at M = 4) and above by
-    the race for the least contributor (task 14, §11): the default run at M = 4
-    is the run with n_samples = 0 and hv_contrib = hvc, at M = 6 the one with
-    hv_contrib = race, bit for bit; hv_contrib = mc is the Monte-Carlo of
-    before, the run with n_samples = 10000; hv_exact_max_m = 6 makes M = 6
-    exact. MO-CMA-ES is exact at every M (task 14, supplement 3, Д8.1): at
+    """Task 13, §3, and the owner's word of 2026-10-21: by default SMS-EMOA
+    computes the hypervolume contributions exactly at every M (HVC4D at M = 4,
+    WFG above; hv_exact_max_m "none"): the default run at M = 4 is the run with
+    n_samples = 0 and hv_contrib = hvc, at M = 6 the one with n_samples = 0,
+    bit for bit; with a threshold given (hv_exact_max_m = 5) above it the race
+    (hv_contrib = race) or Monte-Carlo (hv_contrib = mc, the run with
+    n_samples = 10000). MO-CMA-ES is exact at every M (task 14, supplement 3, Д8.1): at
     M = 6 its default is the run with n_samples = 0, WFG; it refuses
     hv_contrib = race and mc and reports hv_exact_max_m and race_* ignored.
     Result.settings names the method; R2-EMOA reports the knobs ignored."""
@@ -10519,22 +10519,48 @@ def sms_emoa_and_mo_cma_es_compute_exact_contributions_up_to_five_objectives():
         e = raises(ValueError, run, "DTLZ2_6D", "mo_cma_es", hv_contrib=w)
         assert e is not None and "step-size adaptation" in str(e), (w, e)
     for alg in ("sms_emoa",):
-        d6 = run("DTLZ2_6D", alg)
-        assert same(d6, run("DTLZ2_6D", alg, hv_contrib="race")), alg
+        e6 = run("DTLZ2_6D", alg)                                       # exact by default
+        assert same(e6, run("DTLZ2_6D", alg, n_samples=0)), alg
+        assert dict(e6.settings)["contributions"] == "exact, wfg at M = 6", e6.settings
+        assert dict(e6.settings)["hv_exact_max_m"] == "none", e6.settings
+        d6 = run("DTLZ2_6D", alg, hv_exact_max_m=5, hv_contrib="race")  # the race only when asked
+        assert not same(d6, e6), alg
         assert dict(d6.settings)["contributions"].startswith("race (eps 0.01, delta 0.000001; "), \
             d6.settings
-        m6 = run("DTLZ2_6D", alg, hv_contrib="mc")
+        m6 = run("DTLZ2_6D", alg, hv_exact_max_m=5, hv_contrib="mc")
         assert same(m6, run("DTLZ2_6D", alg, n_samples=10000)) and not same(m6, d6), alg
         assert dict(m6.settings)["contributions"].startswith(
             "monte-carlo, 10000 samples a step (hv_contrib = mc)"), m6.settings
-        e6 = run("DTLZ2_6D", alg, hv_exact_max_m=6)
-        assert same(e6, run("DTLZ2_6D", alg, n_samples=0)) and not same(e6, d6), alg
-        assert dict(e6.settings)["contributions"] == "exact, wfg at M = 6", e6.settings
         h6 = run("DTLZ2_6D", alg, hv_exact_max_m=6, hv_contrib="iwfg", hv_incremental=0)
         assert same(e6, h6) and dict(h6.settings)["contributions"] == "exact, iwfg at M = 6", h6.settings
     r = run("DTLZ2_4D", "r2_emoa", hv_exact_max_m=6, n_samples=0, race_eps=0.1)
     assert {"hv_exact_max_m", "n_samples", "race_eps"} <= set(r.ignored) and \
         list(r.settings) == [], r.ignored
+
+
+@test
+def exact_contributions_at_eight_objectives_warn_of_the_time():
+    """The owner's word of 2026-10-21: SMS-EMOA and MO-CMA-ES compute the
+    contributions exactly at every M; from eight objectives on minimize()
+    warns that a run can take hours (exact_hv_time_warning), not below eight,
+    not for SMS-EMOA with an estimate asked for, not for other algorithms."""
+    if _core_with("max_evaluations") is None:
+        print("    (skipped: no extension)"); return
+    import warnings
+    from mootation.minimize import exact_hv_time_warning, EXACT_HV_SLOW_M
+    assert EXACT_HV_SLOW_M == 8
+    assert exact_hv_time_warning("sms_emoa", 8, {}) and exact_hv_time_warning("mo_cma_es", 10, {})
+    assert exact_hv_time_warning("sms_emoa", 6, {}) is None
+    assert exact_hv_time_warning("sms_emoa", 8, {"hv_exact_max_m": 5, "hv_contrib": "race"}) is None
+    assert exact_hv_time_warning("sms_emoa", 8, {"n_samples": 10000}) is None
+    assert exact_hv_time_warning("sms_emoa", 8, {"n_samples": 0}) is not None
+    assert exact_hv_time_warning("nsga2", 10, {}) is None
+    from mootation import minimize
+    f = lambda x: [x[i] for i in range(8)]                                  # noqa: E731
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        minimize(f, [(0.0, 1.0)] * 8, 8, algorithm="sms_emoa", pop_size=10, max_evaluations=20, seed=1)
+    assert any("exactly at 8 objectives" in str(x.message) for x in w), [str(x.message) for x in w]
 
 
 @test

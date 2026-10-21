@@ -77,8 +77,11 @@ namespace mootation {
 //     Eq. 3.1) credits dp to Naujoks et al. (CEC 2005) and leaves it out.
 //     Implemented: the basic one (the thesis's Algorithm 3.1); dp is not.
 //   SMS-2. Contributions (hv_contribution.hpp; hv::ContribChoice decides):
-//     exact up to hv_exact_max_m objectives (5 by default; task 13 of
-//     2026-10-19, §3 — before it, Monte-Carlo from M = 4), Monte-Carlo above:
+//     exact at every M by default (the owner's word of 2026-10-21, after task
+//     14's measurement: the approximations chose badly from M = 5; from task
+//     13 of 2026-10-19 until then exact up to M = 5, before it Monte-Carlo
+//     from M = 4); with hv_exact_max_m = t given, the race or Monte-Carlo
+//     above t:
 //
 //       M      hv_contrib   n_samples   computed
 //       2      any          any         exact, EJOR Eq. 6 (the 2005 paper's Eq. 4)

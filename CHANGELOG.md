@@ -10,6 +10,23 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- **SMS-EMOA computes the hypervolume contributions exactly at every number
+  of objectives by default** (`hv_exact_max_m` not set; it was 5): the race
+  and Monte-Carlo estimates only with a threshold given and `hv_contrib =
+  race` or `mc` — measured, they choose badly from five objectives on. From
+  eight objectives SMS-EMOA and MO-CMA-ES warn that a run can take hours
+  (`minimize()` and a campaign before its runs). **Changed results**:
+  SMS-EMOA's runs at six objectives and more (the race before); the runs at
+  up to five objectives and the fingerprints (two and three objectives) do
+  not change.
+- `rnd::gamma` at shape < 1 draws its uniform again when it is exactly 0
+  (Marsaglia & Tsang take it on (0, 1)); no value of any other draw changes.
+  `random.hpp` names the sources of the polar method (Marsaglia & Bray 1964)
+  and of genrand_res53 (the reference code mt19937ar.c).
+- The full fronts of DTLZ6 at ten and of DTLZ5 and DTLZ6 at fifteen
+  objectives are no longer listed to build (`fronts_full.SIZES`): they would
+  take hours.
+
 - DMulti-MADS: the initial list keeps only its non-dominated points, as
   Algorithm 3 assumes of every list. The filter moved each kept point out of
   the list it was still comparing against, so a point dominated only by an
