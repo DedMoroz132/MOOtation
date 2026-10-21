@@ -49,8 +49,11 @@ jobs:
           -DCMAKE_CXX_STANDARD_REQUIRED=ON
           -DMOOTATION_WERROR=ON
 
+      # four jobs, not -j alone: unbounded, the units that include every core
+      # outgrew the runner's memory and the runner was shut down mid-build
+      # (g++ 20, task 15; the sanitized build's below since task 14)
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build -j 4
 
       - name: Test
         # -LE nightly skips test_convergence and test_constraints, which are
@@ -79,8 +82,11 @@ jobs:
           -DCMAKE_CXX_STANDARD_REQUIRED=ON
           -DMOOTATION_WERROR=ON
 
+      # four jobs, not -j alone: unbounded, the units that include every core
+      # outgrew the runner's memory and the runner was shut down mid-build
+      # (g++ 20, task 15; the sanitized build's below since task 14)
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build -j 4
 
       - name: Test
         # -LE nightly skips test_convergence and test_constraints, which are
@@ -115,8 +121,11 @@ jobs:
           -DMOOTATION_WERROR=ON
           -DMOOTATION_BUILD_C_API=ON
 
+      # four jobs, not -j alone: unbounded, the units that include every core
+      # outgrew the runner's memory and the runner was shut down mid-build
+      # (g++ 20, task 15; the sanitized build's below since task 14)
       - name: Build
-        run: cmake --build build -j
+        run: cmake --build build -j 4
 
       - name: The tests every push skips
         run: ctest --test-dir build --output-on-failure -L nightly
@@ -131,7 +140,7 @@ jobs:
       - name: The long tests again, under ASan and UBSan
         run: |
           cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
-          cmake --build build-asan -j
+          cmake --build build-asan -j 4
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly
 
   # ── Sanitizers ────────────────────────────────────────────────────────────
@@ -180,7 +189,7 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_INSTALL_PREFIX=$PWD/stage \
                 -DMOOTATION_BUILD_TESTS=OFF -DMOOTATION_BUILD_EXAMPLES=OFF
-          cmake --build build -j
+          cmake --build build -j 4
           cmake --install build
 
       # The install rule copies by filesystem glob, so it sees the working tree
@@ -349,7 +358,7 @@ jobs:
                 -DMOOTATION_BUILD_EXAMPLES=OFF \
                 -DPython_EXECUTABLE=$(which python) \
                 -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
-          cmake --build build-py -j
+          cmake --build build-py -j 4
 
       - name: The extension was built for THIS interpreter
         run: |
@@ -513,7 +522,7 @@ jobs:
       - name: Build
         run: |
           cmake -S . -B build-c             -DCMAKE_BUILD_TYPE=Release             -DMOOTATION_BUILD_C_API=ON             -DMOOTATION_BUILD_EXAMPLES=OFF             -DMOOTATION_WERROR=ON
-          cmake --build build-c -j
+          cmake --build build-c -j 4
 
       - name: C and ctypes consumers
         run: ctest --test-dir build-c --output-on-failure -R '^capi\.'
