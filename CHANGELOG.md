@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `docs/deviations.md`: every departure from its paper that a core's header
+  names, gathered by `tools/deviations.py` (algorithm, item, what, whether the
+  default run departs); CI checks the table against the headers.
+- `docs/algorithms.md`, "How each algorithm normalizes", and
+  `mootation.run.algorithms.NORMALIZATION`: the way each of the 76 cores puts
+  its objectives on one scale (PP, BP, the NSGA-III hyperplane, an ideal point
+  only, none, or its own), after Tanabe 2024. No code changes.
+
 - `mootation::dm` is faster under MSVC: the helpers that return a struct
   (log's split, the reduction of sin/cos/tan, pow's double-word log and exp)
   are force-inlined, which MSVC did not do on its own — log about 4x, cos 2x,

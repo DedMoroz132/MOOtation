@@ -205,3 +205,116 @@ def check_pop(name: str, pop: int, n_objs: int, params: dict | None = None
             )
 
     return None
+
+
+# ── How each core normalizes the objectives ─────────────────────────────────
+
+# Task 15, §3 (after Tanabe, "Investigating normalization in preference-based
+# evolutionary multi-objective optimization using a reference point", ASOC
+# 2024, source normalization-pbemo_tanabe2024): the way a core puts its
+# objectives on one scale, read from its header and code. Hand-maintained like
+# the rules above; the core's header is the source, and docs/algorithms.md,
+# "How each algorithm normalizes", is this table.
+#
+#   PP          ideal and nadir point: the least and greatest value of each
+#               objective over the current set (P ∪ Q, P or the set the step
+#               works on)
+#   BP          ideal point: the least value ever evaluated; nadir point: over
+#               the current set
+#   hyperplane  NSGA-III's: the intercepts of the hyperplane through the
+#               extreme points (by their achievement scalarizing function),
+#               the set's nadir where it degenerates
+#   ideal       only translated by an ideal point, not scaled
+#   none        the raw objectives
+#   own         a scheme of the core's own (the entry says which)
+#
+# Tanabe's BA (the nadir from an archive of extreme points) is the way of none
+# of the cores. The second field says what the normalized values serve
+# ("selection" is the environmental selection) and where they come from.
+NORMALIZATION = {
+    "nsga2":      ("none", "selection: crowding distance, each objective divided by its range on the front"),
+    "nsga2_sdr":  ("PP", "selection: the SDR frame over P ∪ Q (sdr.hpp, make_frame)"),
+    "dn_nsga2":   ("none", "selection: crowding in the decision space, raw distances"),
+    "bc_spx":     ("none", "selection and mating: raw objectives"),
+    "bc_rex":     ("none", "as bc_spx"),
+    "spea2":      ("none", "selection: raw distances in the objective space"),
+    "spea2_sde":  ("none", "selection: shifted density estimation on raw objectives"),
+    "grea":       ("PP", "selection and mating: the grid over the set's least and greatest values"),
+    "vaea":       ("PP", "selection: over P ∪ Q (Alg. 3)"),
+    "agemoea":    ("hyperplane", "selection: ideal point of the first front of P ∪ Q (this generation), "
+                                 "intercepts from its extreme points"),
+    "etea":       ("none", "selection: raw objectives (the paper prescribes none)"),
+    "gde3":       ("none", "selection: crowding distance divided by the front's range"),
+    "nsga3":      ("hyperplane", "selection: ideal point over every generation, extreme points kept "
+                                 "from earlier generations (NSGA3-N1)"),
+    "a_nsga3":    ("hyperplane", "as nsga3"),
+    "theta_dea":  ("hyperplane", "selection: ideal point over every generation"),
+    "ar_moea":    ("PP", "mating and the reference-point adaptation: ideal and nadir of P"),
+    "moead":      ("ideal", "subproblems: the least value ever evaluated (z)"),
+    "moead_de":   ("ideal", "as moead"),
+    "moead_dra":  ("ideal", "as moead"),
+    "moead_dd":   ("ideal", "subproblems and association: the least value ever evaluated"),
+    "moead_awa":  ("ideal", "subproblems: the least value ever evaluated less 1e-7"),
+    "adaw":       ("own", "subproblems: the least value ever evaluated less 1e-4 (ideal); the archive and "
+                          "the weight adaptation: PP over A ∪ P"),
+    "moead_m2m":  ("none", "subproblems: raw objectives, shifted only where a least value is negative"),
+    "moead_am2m": ("own", "directions, association and subproblems: ideal and nadir of a snapshot taken "
+                          "at the start and at each adaptation (AM2M-norm)"),
+    "sms_m2m":    ("none", "as moead_m2m"),
+    "moead_ds":   ("hyperplane", "subproblems: ideal point of P, intercepts from its extreme points"),
+    "rd_emo":     ("ideal", "subproblems: the least value ever evaluated (RDE-3)"),
+    "aprd":       ("own", "subregions: each subregion's own ideal point, the archive shifted to the origin"),
+    "liu_gu2011": ("ideal", "association: the least values of the internal population"),
+    "isde_rd":    ("ideal", "angles: the least values of the pool (ISDE-3)"),
+    "dhea":       ("PP", "selection: over the population"),
+    "hlmea":      ("none", "raw objectives, shifted only where a least value is negative (HLMEA-5)"),
+    "ibea_eplus": ("PP", "fitness: the indicator over P ∪ Q scaled to [0, 1] (IEP-4)"),
+    "ibea_hd":    ("PP", "as ibea_eplus; reference point 2 in the scaled space"),
+    "mibea":      ("PP", "fitness: over the first front of P ∪ Q"),
+    "r2ibea":     ("none", "fitness: raw objectives (set_normalize(true) scales them)"),
+    "hype":       ("own", "fitness: a reference point from the pool's greatest values (no scaling)"),
+    "mombi2":     ("own", "selection: least value ever evaluated, nadir of the previous population with "
+                          "the paper's variance rule"),
+    "nimmo":      ("none", "raw objectives; the indicator values are scaled within the set"),
+    "irea":       ("BP", "fitness: least value ever evaluated, greatest over S_t"),
+    "edv":        ("ideal", "angles: the least value ever evaluated (EDV-3)"),
+    "if_maoea":   ("PP", "mating, selection and the archive: over the set each step works on"),
+    "maoea_iamd": ("PP", "mating and selection: over P, and over P ∪ Q"),
+    "sms_emoa":   ("own", "contributions: no scaling; from three objectives the reference point follows "
+                          "the front (SMS-7)"),
+    "r2_emoa":    ("own", "R2: raw objectives, the utopian point from the least value ever evaluated and "
+                          "nadir(Q) (normalize = true scales by ideal(Q) and nadir(Q))"),
+    "mo_cma_es":  ("own", "contributions: no scaling; reference point nadir + (nadir − ideal) over Q (MOCMA-4)"),
+    "rvea":       ("own", "selection: translated by the least values of P ∪ Q (ideal); vector adaptation: "
+                          "the survivors' ranges (PP)"),
+    "rvea_star":  ("own", "as rvea"),
+    "maoeaarv":   ("PP", "the knee and the reference: ideal and nadir of P"),
+    "mbra":       ("PP", "selection: over the pool"),
+    "nrv_moea":   ("own", "selection: least and greatest over the accepted fronts, the scale kept "
+                          "for f_r·MaxG generations at a time"),
+    "dea_gng":    ("BP", "selection (NSGA-III's): least value ever evaluated, greatest over the first front"),
+    "srv":        ("PP", "selection: over S_t"),
+    "srv_nsga3":  ("hyperplane", "as nsga3"),
+    "camoea":     ("PP", "clustering: within the last front"),
+    "cava_moea":  ("PP", "fitness and clustering: over the pool"),
+    "maoea_ac":   ("hyperplane", "selection: ideal point of S, nadir by NSGA-III's intercepts"),
+    "maoea_c":    ("PP", "selection: over P ∪ Q (over its non-dominated points below four objectives)"),
+    "maoea_3c":   ("hyperplane", "selection: over the set, extreme points by achievement scalarizing"),
+    "emyo_c":     ("ideal", "the least value ever evaluated"),
+    "crea":       ("BP", "selection: least value ever evaluated, greatest over P ∪ Q"),
+    "dcea":       ("ideal", "association: the previous generation's least values"),
+    "hcca":       ("own", "clustering: PP; subproblems: the least value ever evaluated"),
+    "lis_lcs":    ("own", "indicator and clustering: PP over the set; the least value ever evaluated"),
+    "clia":       ("own", "the classifier: points projected onto the simplex"),
+    "two_arch2":  ("PP", "the diversity archive's truncation: over the pool (TA2-1)"),
+    "naemo":      ("ideal", "the archive's ideal point"),
+    "paes":       ("own", "the grid over the archive's least and greatest values"),
+    "ctaea":      ("ideal", "the least values of the set at hand (CTAEA-2)"),
+    "ccmo":       ("none", "crowding distance divided by the front's range"),
+    "dms":        ("none", "raw objectives (the step is scaled to the variables' box)"),
+    "dmulti_mads": ("own", "the frame centre: the gaps along each objective scaled by its range"),
+    "multiglods": ("none", "raw objectives (the variables' box normalized)"),
+    "smpso":      ("none", "the leaders' archive: crowding distance divided by the front's range"),
+    "rm_meda":    ("none", "raw objectives"),
+    "mosa":       ("own", "energies: the archive's ideal point and ranges"),
+}

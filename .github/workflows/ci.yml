@@ -702,6 +702,12 @@ jobs:
           fi
           exit $bad
 
+      # Task 15, §7: docs/deviations.md is gathered from the cores' headers
+      # (tools/deviations.py); a header edited without running the tool
+      # leaves the table behind.
+      - name: docs/deviations.md is what the headers give
+        run: python3 tools/deviations.py --check
+
       - name: Every algorithm header is listed in include/mootation/algorithms.def
         run: |
           missing=0

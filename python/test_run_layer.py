@@ -98,6 +98,20 @@ def registry_is_read_from_the_def_file():
 
 
 @test
+def every_algorithm_says_how_it_normalizes():
+    """Task 15, §3: NORMALIZATION has one entry an algorithm, its way one of
+    the listed, and docs/algorithms.md's table is the same table."""
+    from mootation.run.algorithms import NORMALIZATION
+    assert list(NORMALIZATION) == list(algorithm_names()), set(algorithm_names()) ^ set(NORMALIZATION)
+    ways = {"PP", "BP", "hyperplane", "ideal", "none", "own"}
+    assert all(way in ways and what for way, what in NORMALIZATION.values())
+    doc = (HERE.parent / "docs" / "algorithms.md").read_text(encoding="utf-8")
+    rows = [ln for ln in doc[doc.index("## How each algorithm normalizes"):].splitlines()
+            if ln.startswith("| `")]
+    assert rows[:len(NORMALIZATION)] == [f"| `{a}` | {w} | {t} |" for a, (w, t) in NORMALIZATION.items()]
+
+
+@test
 def knobs_are_read_from_settings_hpp():
     k = knob_names()
     for expected in ("eta_c", "pc", "theta", "K", "div"):
