@@ -6225,6 +6225,36 @@ def subset_select_against_the_full_search_on_small_sets():
         raise AssertionError(bad)
 
 
+@test
+def dmulti_mads_cache_evaluates_no_point_twice():
+    """Task 15, §8 (DMM-8): mads_cache = on evaluates no point twice and runs
+    the same from the same seed; off (the default, the run of before) meets
+    some points again on DTLZ7_3D (task 14: 20 of 2030 at seed 13)."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  dmulti_mads_cache...: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ7_3D")
+    seen = {}
+
+    def counting(key):
+        def f(x):
+            seen[key].append(tuple(x))
+            return p.evaluate(x)
+        return f
+    runs = {}
+    for cache in ("off", "on", "on2"):
+        seen[cache] = []
+        runs[cache] = minimize(counting(cache), p.bounds, 3, algorithm="dmulti_mads", seed=13,
+                               max_evaluations=2030, **({} if cache == "off" else {"mads_cache": "on"}))
+        assert not runs[cache].ignored, runs[cache].ignored
+    assert len(seen["off"]) > len(set(seen["off"])), "the default meets no point twice: the case is gone"
+    assert len(seen["on"]) == len(set(seen["on"])), len(seen["on"]) - len(set(seen["on"]))
+    assert runs["on"].objectives == runs["on2"].objectives and seen["on"] == seen["on2"]
+    assert seen["on"][:len(set(seen["off"]))] != seen["off"][:len(set(seen["off"]))] or \
+        runs["on"].objectives != runs["off"].objectives
+
+
 # ── task 13, §1: NSGA-II/SDR ────────────────────────────────────────────────
 
 def _sdr_reference(F):

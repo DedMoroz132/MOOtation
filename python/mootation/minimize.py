@@ -42,7 +42,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
               "inner_archive", "bin_crossover", "mating", "smpso_preset", "chi_mode",
               "turbulence", "r_per_dim", "archive_prune", "leader_select", "leader_offer", "r2_mode",
-              "r2_space", "bc_selection", "mads_select", "mads_poll", "mads_search",
+              "r2_space", "bc_selection", "mads_select", "mads_poll", "mads_search", "mads_cache",
               "boost_scalarization", "scalarization",
               "local", "sub_plan", "tch_weights", "hv_algo", "hv_contrib")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):

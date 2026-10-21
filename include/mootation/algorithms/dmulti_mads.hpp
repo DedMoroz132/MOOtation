@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -54,7 +55,8 @@ namespace mootation {
 // THE KNOBS: mads_tau (τ, 1/2), mads_delta0 (Δ_0, 0.1 of the range),
 // mads_select (spread: Algorithm 4 | first: the first of the largest Δ in
 // list order), mads_poll (complete | opportunistic: stop the poll at the
-// first success), mads_search (speculative | none).
+// first success), mads_search (speculative | none), mads_cache (off | on;
+// DMM-8).
 //
 // READINGS (declared). [6] = Audet, Ianni, Le Digabel, Tribes, SIAM J. Optim.
 // 24(2):621-642, 2014 (n + 1 directions), checked; [8] = Audet, Le Digabel,
@@ -89,7 +91,9 @@ namespace mootation {
 //     the sources: [6] §1 (after MADS), "infeasible trial points are
 //     immediately rejected from consideration"; the NOMAD guide has bounds
 //     set in the parameters, never in the blackbox, and lists NOMAD 3's
-//     SNAP_TO_BOUNDS as "Not implemented" in NOMAD 4 (no projection).
+//     SNAP_TO_BOUNDS as "Not implemented" in NOMAD 4 (no projection). Near
+//     a vertex or a face of the box (an optimum on the bound: ZDT, DTLZ7) an
+//     iteration that evaluates no point at all is common.
 //   DMM-7. A poll step that would leave the box stops at its last mesh point
 //     inside: z_r is cut to the integers with 0 <= x_r + δz_r <= 1, so the
 //     point stays on the mesh and in the frame; a point equal to x_k or to an
@@ -102,6 +106,14 @@ namespace mootation {
 //     [6] nor the NOMAD guide cuts a step to the box; why the paper's runs
 //     do not stop at such a vertex ([1]'s integer basis, [8]'s mesh?) is
 //     open until those are read.
+//   DMM-8 (task 15 of 2026-10-21, §8; off by default). The cache V^k of
+//     Algorithm 1 ("Update the cache V^{k+1}"): MADS evaluates no point
+//     twice — the NOMAD 4.6.0 user guide: "before starting an evaluation,
+//     the cache is scanned for the point". mads_cache = on keeps every
+//     point evaluated (its normalized variables, bit for bit) with its
+//     values; a trial point found there takes them and spends no
+//     evaluation. Off (the default), a point met again is evaluated again,
+//     as before (on DTLZ7_3D, seed 13, 20 of 2030 evaluations; task 14).
 // Continuous variables only.
 // ============================================================================
 
@@ -125,6 +137,9 @@ private:
     std::vector<double> lo_, hi_;
     double tau_ = 0.5, delta0_ = 0.1, tol_ = 1e-9;
     bool spread_ = true, opportunistic_ = false, speculative_ = true;
+    bool cache_ = false;                                   // DMM-8
+    std::map<std::vector<double>, Entry> seen_;            // V^k: the points evaluated, by x
+    long long cache_hits_ = 0;
     std::mt19937 rng_{0};
 
     static bool dominates(const Entry& a, const Entry& b)
@@ -152,6 +167,27 @@ private:
     }
 
     std::vector<Entry> evaluate(DataVault<Ind_t>& vault, const std::vector<std::vector<double>>& U)
+    {
+        if (cache_) return evaluate_cached(vault, U);
+        return evaluate_all(vault, U);
+    }
+
+    // DMM-8: the points of U in V^k take its values; the rest are evaluated
+    // (in U's order) and enter it.
+    std::vector<Entry> evaluate_cached(DataVault<Ind_t>& vault, const std::vector<std::vector<double>>& U)
+    {
+        std::vector<std::vector<double>> fresh;
+        for (const auto& u : U)
+            if (seen_.find(u) == seen_.end()
+                && std::find(fresh.begin(), fresh.end(), u) == fresh.end()) fresh.push_back(u);
+        for (auto& e : evaluate_all(vault, fresh)) seen_.emplace(e.x, e);
+        std::vector<Entry> out;
+        for (const auto& u : U) out.push_back(seen_.at(u));
+        cache_hits_ += static_cast<long long>(U.size() - fresh.size());
+        return out;
+    }
+
+    std::vector<Entry> evaluate_all(DataVault<Ind_t>& vault, const std::vector<std::vector<double>>& U)
     {
         std::vector<Entry> out;
         if (U.empty()) return out;
@@ -382,10 +418,16 @@ public:
             speculative_ = w == "speculative";
             return true;
         }
+        if (k == "mads_cache") {                                            // DMM-8
+            if (w != "off" && w != "on") throw bad("off or on");
+            cache_ = w == "on";
+            return true;
+        }
         return false;
     }
 
     std::size_t list_size() const { return list_.size(); }
+    long long cache_hits() const { return cache_hits_; }               // DMM-8: evaluations saved
 
     // The incumbent's mesh below 1e-9 (§6.3): it has the largest Δ, so every
     // member's is.

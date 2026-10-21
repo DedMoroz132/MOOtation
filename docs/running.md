@@ -1325,7 +1325,8 @@ failure shrinks the poll centre's frame to τΔ (`mads_tau` 1/2, `mads_delta0`
 poll directions come from the seed; the run ends when the mesh is below 1e-9.
 The paper's granular mesh and its n + 1 directions with a target direction
 come from papers that were not at hand; the header says what stands in for
-them. Constraints by the extreme barrier.
+them. Constraints by the extreme barrier. `mads_cache = "on"` keeps every point
+evaluated and evaluates none twice (the paper's cache V^k); off by default.
 
 **MultiGLODS** (`algorithms/multiglods.hpp`; Custódio & Madeira, J. Glob.
 Optim. 2018): DMS's list with a comparison radius and an active flag for each

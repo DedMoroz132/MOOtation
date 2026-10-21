@@ -73,6 +73,7 @@ _FALLBACK_TEXT = {
     "mads_select": ("spread", "first"),
     "mads_poll": ("complete", "opportunistic"),
     "mads_search": ("speculative", "none"),
+    "mads_cache": ("off", "on"),
     "boost_scalarization": ("eps", "minmax"),
     "scalarization": ("eps", "tch", "nbi", "nnc", "ps"),
     "constraint_mode": ("feasibility", "eps_level", "none"),

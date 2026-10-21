@@ -210,9 +210,10 @@ inline bool is_core_param(const std::string& name)
 //                 r2_emoa: the exact or the discrete R2, weights uniform in
 //                 weight or in angle space (r2_emoa.hpp)
 //   bc_selection  bc_spx, bc_rex: BC (default), or the paper's BF and BA
-//   mads_select, mads_poll, mads_search
+//   mads_select, mads_poll, mads_search, mads_cache
 //                 dmulti_mads: the incumbent by spread or first, the poll
-//                 complete or opportunistic, the speculative search or none
+//                 complete or opportunistic, the speculative search or none,
+//                 the cache of evaluated points off or on (task 15, §8)
 //   constraint_mode
 //                 minimize()'s, for a campaign's algorithm entry: none lets the
 //                 core rank by the objectives only (task 15, §5); no core has it
@@ -269,6 +270,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"mads_select",  {"spread", "first"}},
         {"mads_poll",    {"complete", "opportunistic"}},
         {"mads_search",  {"speculative", "none"}},
+        {"mads_cache",   {"off", "on"}},
         {"boost_scalarization", {"eps", "minmax"}},
         {"scalarization", {"eps", "tch", "nbi", "nnc", "ps"}},
         {"constraint_mode", {"feasibility", "eps_level", "none"}},
@@ -300,7 +302,7 @@ inline bool is_core_word(const std::string& name)
                           "sa_tch_accept", "coords", "survival", "inner_archive",
                           "bin_crossover", "mating", "smpso_preset", "chi_mode", "turbulence",
                           "r_per_dim", "archive_prune", "leader_select", "leader_offer", "r2_mode", "r2_space",
-                          "bc_selection", "mads_select", "mads_poll", "mads_search",
+                          "bc_selection", "mads_select", "mads_poll", "mads_search", "mads_cache",
                           "boost_scalarization",
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "polish", "hv_algo",
