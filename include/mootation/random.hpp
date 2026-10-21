@@ -10,16 +10,23 @@
 // down to the bit, in the namespace rnd:
 //
 //   uniform01(g)        53 bits from two 32-bit words, [0, 1): genrand_res53
-//                       of Matsumoto & Nishimura's reference code (mt19937ar.c;
-//                       Mersenne Twister, ACM TOMACS 8(1):3-30, 1998)
+//                       of Matsumoto & Nishimura's reference code mt19937ar.c
+//                       (2002) — not of the 1998 paper (Mersenne Twister, ACM
+//                       TOMACS 8(1):3-30, 1998, source mersenne-twister_
+//                       matsumoto1998), which defines the generator only
 //   below(g, n), integer(g, lo, hi)
 //                       uniform integers by Lemire's multiply-and-reject (Fast
 //                       Random Integer Generation in an Interval, ACM TOMACS
 //                       29(1), 2019): one 32-bit word a draw for ranges up to
 //                       2^32, two words (a 64-bit draw) above; no bias
-//   normal01(g)         Marsaglia's polar method, one value a call (the second
-//                       of the pair is dropped, so a value never depends on an
-//                       earlier call or on the distribution object's life)
+//   normal01(g)         Marsaglia's polar method (Marsaglia & Bray, A
+//                       convenient method for generating normal variables,
+//                       SIAM Review 6(3):260-264, 1964, §1: X = v1 (-2 ln S /
+//                       S)^(1/2), v uniform on [-1, 1], S = v1^2 + v2^2 < 1;
+//                       source normal-polar-method_marsaglia1964), one value a
+//                       call (the second of the pair is dropped, so a value
+//                       never depends on an earlier call or on the
+//                       distribution object's life); S = 0 is drawn again too
 //   exponential, cauchy, gamma (Marsaglia & Tsang, ACM TOMS 26(3), 2000),
 //   bernoulli, discrete (cumulative weights, a binary search), shuffle
 //                       (Fisher-Yates from the last element down, by below)
@@ -158,13 +165,17 @@ inline double cauchy(G& g, double a, double b)
 }
 
 // Gamma of shape alpha and scale beta: Marsaglia & Tsang 2000 (§2; alpha < 1
-// by their §6: Gamma(alpha + 1) U^(1/alpha)).
+// by their §6: Gamma(alpha + 1) U^(1/alpha), U uniform on (0, 1) — uniform01
+// is on [0, 1), so U = 0, a chance of 2^-53, is drawn again: the paper's U,
+// and the values of every other draw unchanged).
 template <typename G>
 inline double gamma(G& g, double alpha, double beta)
 {
     if (alpha < 1.0) {
         const double x = gamma(g, alpha + 1.0, 1.0);
-        return beta * x * dm::pow(uniform01(g), 1.0 / alpha);
+        double u = uniform01(g);
+        while (u == 0.0) u = uniform01(g);
+        return beta * x * dm::pow(u, 1.0 / alpha);
     }
     const double d = alpha - 1.0 / 3.0, c = 1.0 / std::sqrt(9.0 * d);
     for (;;) {

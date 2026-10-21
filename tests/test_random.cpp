@@ -148,6 +148,52 @@ double chi2(const std::vector<double>& obs, const std::vector<double>& exp)
 
 }   // namespace
 
+// A 32-bit generator whose first `zeros` words are 0, then std::mt19937's.
+struct ZerosFirst {
+    using result_type = std::uint32_t;
+    static constexpr result_type min() { return 0; }
+    static constexpr result_type max() { return 0xFFFFFFFFu; }
+    int zeros;
+    std::mt19937 rest;
+    result_type operator()() { return zeros > 0 ? (--zeros, 0u) : static_cast<result_type>(rest()); }
+};
+
+void test_gamma_u_zero()
+{
+    // gamma at alpha < 1 takes U on (0, 1): a U of exactly 0 (two zero words
+    // make uniform01 return 0) is drawn again, so the variate is not 0. The
+    // generator gives gamma(alpha + 1)'s words first, then the zero words:
+    // count the words gamma(alpha + 1) takes on its own and put the zeros there.
+    std::mt19937 probe(42);
+    struct Counting {
+        using result_type = std::uint32_t;
+        static constexpr result_type min() { return 0; }
+        static constexpr result_type max() { return 0xFFFFFFFFu; }
+        std::mt19937* g;
+        int n = 0;
+        result_type operator()() { ++n; return static_cast<result_type>((*g)()); }
+    } counting{&probe};
+    (void)rnd::gamma(counting, 1.5, 1.0);
+    // replay: the same words, then two zeros, then fresh words
+    struct Replay {
+        using result_type = std::uint32_t;
+        static constexpr result_type min() { return 0; }
+        static constexpr result_type max() { return 0xFFFFFFFFu; }
+        std::mt19937 g;
+        int first, zeros;
+        result_type operator()()
+        {
+            if (first > 0) { --first; return static_cast<result_type>(g()); }
+            if (zeros > 0) { --zeros; return 0u; }
+            return static_cast<result_type>(g());
+        }
+    } replay{std::mt19937(42), counting.n, 2};
+    const double v = rnd::gamma(replay, 0.5, 1.0);
+    check(v > 0.0 && std::isfinite(v), "gamma at alpha < 1 draws U again when U = 0 (the paper's U on (0, 1))");
+    ZerosFirst z{2, std::mt19937(7)};
+    check(rnd::uniform01(z) == 0.0, "two zero words make uniform01 exactly 0 (the case above)");
+}
+
 int main(int argc, char** argv)
 {
     const auto lines = reference_lines();
@@ -284,6 +330,7 @@ int main(int argc, char** argv)
         check(same, "the distribution classes call the functions");
     }
 
+    test_gamma_u_zero();
     std::printf("random: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");
     return failed == 0 ? 0 : 1;
 }
