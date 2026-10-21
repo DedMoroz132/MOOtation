@@ -51,6 +51,9 @@
 //   some point of the front (20 000 sampled points), so a population on the
 //   front occupies at most 21 subpopulations. Not a defect of the port; compare
 //   RVEA on inverted or degenerate fronts with that in mind.
+//   RVEA-ADA (task 15 of 2026-10-21, §6; off by default). ada = 1: ADA in place
+//     of the generation — one child a step, P growing, the answer A^primary
+//     (operators/ada.hpp; Tanabe & Ishibuchi, IEEE TEVC 2020, Algorithm S.12).
 // Extensions beyond the paper: binary variables (uniform crossover + bit-flip),
 //   active only when bin_vars_n()>0. ConstraintMode::FEASIBILITY is
 //   Algorithm 5 (C-RVEA, §VII) of the paper itself; off by default (NONE).
@@ -75,6 +78,7 @@
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
+#include "../operators/ada.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
@@ -123,6 +127,26 @@ private:
     // Reference vectors: V0 (original, fixed) and Vt (current, adapted).
     std::vector<std::vector<double>> V0_;   // unit reference vectors, shape [N][m]
     std::vector<std::vector<double>> Vt_;   // adapted reference vectors
+    // RVEA-ADA: ADA (operators/ada.hpp) in place of the generation
+    bool ada_on_ = false, ada_started_ = false;
+    long long ada_steps_ = 0;
+    ada::Population ada_;
+    void ada_step(DataVault<Ind_t>& vault) {
+        if (!ada_started_) {
+            ada_.rule = ada::Rule::Rvea;
+            ada_.W = V0_;
+            ada_.alpha = alpha_;
+            ada_.eta_c = eta_c_;
+            ada_.eta_m = eta_m_;
+            ada_.pc = pc_;
+            ada_.constraint_mode = constraint_mode;
+            ada_.start(vault);
+            ada_started_ = true;
+        }
+        ada_.step(vault, rng_, static_cast<double>(ada_steps_) /
+                       std::max(1.0, static_cast<double>(t_max_) * vault.pop_size()));
+        ++ada_steps_;
+    }
 
     // Pre-computed smallest inter-vector angles γ_j for each reference vector.
     std::vector<double> gamma_;
@@ -349,6 +373,14 @@ public:
     void set_pc             (double p)  { pc_     = p; }
     void set_pm             (double p)  { pm_     = p; }
     void set_seed           (unsigned s){ rng_.seed(s); }
+    bool set_param(const std::string& k, double v) {
+        if (k == "ada") {                                                   // RVEA-ADA
+            if (v != 0.0 && v != 1.0) throw std::invalid_argument("ada must be 0 or 1");
+            ada_on_ = v == 1.0;
+            return true;
+        }
+        return false;
+    }
 
     // Allow user to supply custom reference vectors (must be unit vectors).
     void set_reference_vectors(std::vector<std::vector<double>> v) {
@@ -391,6 +423,7 @@ public:
 
     // ── step: one full generation (Algorithm 1) ────────────────────────────
     void step(DataVault<Ind_t>& vault) {
+        if (ada_on_) { ada_step(vault); return; }                         // RVEA-ADA
         int n = vault.pop_size();
 
         // Actual parent count recorded by expand().

@@ -32,6 +32,9 @@
 //   proposed theta-DEA, theta is also set to 5"); eta_c=30 (§IV-D-3: "As for
 //   NSGA-III and theta-DEA, the settings are only a bit different according to
 //   [28], where eta_c is set to 30"); p_c=1.0, eta_m=20, p_m=1/n (Table V).
+//   TDEA-ADA (task 15 of 2026-10-21, §6; off by default). ada = 1: ADA in place
+//     of the generation — one child a step, P growing, the answer A^primary
+//     (operators/ada.hpp; Tanabe & Ishibuchi, IEEE TEVC 2020, Algorithm S.11).
 //   TDEA-L (task 15 of 2026-10-21, §2; off by default). n_offspring (λ children a
 //     generation, μ survivors from the μ + λ) and n_ref_points (H reference
 //     points, das_dennis::reference_points) apart from pop_size, as NSGA3-L
@@ -57,6 +60,7 @@
 #include "../constraint_mode.hpp"
 #include "../das_dennis.hpp"
 #include "../data_vault.hpp"
+#include "../operators/ada.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 #include "../operators/poly_mutation.hpp"
@@ -93,6 +97,25 @@ private:
 
     // ── Das-Dennis reference point generation ─────────────────────────────
     int n_offspring_ = 0, n_ref_points_ = 0;          // TDEA-L: λ and H; 0 = μ and μ's lattice
+    // TDEA-ADA: ADA (operators/ada.hpp) in place of the generation
+    bool ada_on_ = false, ada_started_ = false;
+    long long ada_steps_ = 0;
+    ada::Population ada_;
+    void ada_step(DataVault<Ind_t>& vault) {
+        if (!ada_started_) {
+            ada_.rule = ada::Rule::ThetaDEA;
+            ada_.W = ref_points_;
+            ada_.theta = theta_default_;
+            ada_.eta_c = eta_c_;
+            ada_.eta_m = eta_m_;
+            ada_.pc = pc_;
+            ada_.constraint_mode = constraint_mode;
+            ada_.start(vault);
+            ada_started_ = true;
+        }
+        ada_.step(vault, rng_, 0.0);
+        ++ada_steps_;
+    }
     void generate_reference_points(int n, int m) {
         ref_points_ = n_ref_points_ > 0 ? das_dennis::reference_points(m, n_ref_points_)
                                         : das_dennis::generate_exact(m, n);
@@ -458,6 +481,11 @@ public:
     void set_seed         (unsigned s){ rng_.seed(s); }
     // TDEA-L: λ and H apart from μ (n_offspring, n_ref_points; nsga3.hpp, NSGA3-L)
     bool set_param(const std::string& k, double v) {
+        if (k == "ada") {                                                   // TDEA-ADA
+            if (v != 0.0 && v != 1.0) throw std::invalid_argument("ada must be 0 or 1");
+            ada_on_ = v == 1.0;
+            return true;
+        }
         if (k != "n_offspring" && k != "n_ref_points") return false;
         if (!(v >= 1.0 && v == std::floor(v) && v <= 1e7))
             throw std::invalid_argument(k + " must be a whole number >= 1");
@@ -506,6 +534,7 @@ public:
 
     // ── step: one full generation (Algorithm 1, Steps 7–22) ───────────────
     void step(DataVault<Ind_t>& vault) {
+        if (ada_on_) { ada_step(vault); return; }                         // TDEA-ADA
         int n = vault.pop_size();
 
         // Actual parent count recorded by expand().

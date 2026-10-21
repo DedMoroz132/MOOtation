@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `ada = 1` in NSGA-III, θ-DEA and RVEA: Tanabe & Ishibuchi's ADA (IEEE TEVC
+  2020; Algorithms S.10-S.12 of its supplement) for multi-modal problems — one
+  child a step, compared only with its subproblem's neighbours in the
+  variables, a growing population, the answer its best per subproblem
+  (`include/mootation/operators/ada.hpp`). Off by default.
+
 - `[campaign] set_answer = "evaluated"` or `"population"`: a second answer
   for the decision-space indicators — N points spread out in the variables
   (Tanabe & Ishibuchi 2020, §III-H) from every point evaluated that no other

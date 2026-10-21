@@ -103,8 +103,8 @@ inline const std::vector<std::string>& knob_names() {
         "race_eps", "race_delta", "race_max_samples", "race_abs_tol",
         // task 14, supplement 3, Д8.3
         "hv_incremental",
-        // task 15, §2
-        "n_offspring", "n_ref_points"
+        // task 15, §2 and §6
+        "n_offspring", "n_ref_points", "ada"
     };
     return v;
 }
@@ -156,6 +156,8 @@ inline const std::vector<std::string>& knob_names() {
 //                  objectives, the race (or Monte-Carlo) above (5;
 //                  hv_contribution.hpp, hv::ContribChoice); mo_cma_es is
 //                  exact at every M and does not take it (nor race_*)
+//   ada            nsga3, theta_dea, rvea: 1 runs ADA in place of the
+//                  generation (operators/ada.hpp; task 15, §6), 0 (default) not
 //   n_offspring, n_ref_points
 //                  nsga3, a_nsga3, theta_dea, srv_nsga3: the children a
 //                  generation (λ) and the reference points (H) apart from
@@ -182,7 +184,7 @@ inline bool is_core_param(const std::string& name)
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
                           "race_max_samples", "race_abs_tol", "hv_incremental",
-                          "n_offspring", "n_ref_points"})
+                          "n_offspring", "n_ref_points", "ada"})
         if (name == k) return true;
     return false;
 }

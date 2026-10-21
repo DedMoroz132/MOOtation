@@ -6311,6 +6311,35 @@ set_answer = "{mode}"
                 assert sa["n"] == min(job.pop, sa["n_candidates"]) and sa["igdx"] is not None, sa
 
 
+@test
+def ada_runs_in_nsga3_theta_dea_and_rvea():
+    """Task 15, §6 (Tanabe & Ishibuchi 2020, Algorithms S.10-S.12): ada = 1
+    runs one child a step, spends the budget, answers with at most N points
+    (A^primary, mutually non-dominated) and the same run from the same seed;
+    0 (the default) is the run of before; ada = 2 is refused."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  ada_runs...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("Omni-test")
+    kw = dict(bounds=p.bounds, n_objs=2, pop_size=20, max_evaluations=1500)
+    for alg in ("nsga3", "theta_dea", "rvea"):
+        d = minimize(p.evaluate, algorithm=alg, seed=3, **kw)
+        assert d.objectives == minimize(p.evaluate, algorithm=alg, seed=3, ada=0, **kw).objectives, alg
+        a = minimize(p.evaluate, algorithm=alg, seed=3, ada=1, **kw)
+        b = minimize(p.evaluate, algorithm=alg, seed=3, ada=1, **kw)
+        assert a.objectives == b.objectives and not a.ignored and a.evaluations == 1500, (alg, a.evaluations)
+        F = np.array(a.objectives)
+        assert 1 <= len(F) <= 20 and a.objectives != d.objectives, (alg, len(F))
+        assert not any(np.all(F[i] <= F[k]) and np.any(F[i] < F[k]) for i in range(len(F)) for k in range(len(F))), alg
+        try:
+            minimize(p.evaluate, algorithm=alg, seed=3, ada=2, **kw)
+        except (ValueError, RuntimeError):
+            continue
+        raise AssertionError(alg)
+
+
 # ── task 13, §1: NSGA-II/SDR ────────────────────────────────────────────────
 
 def _sdr_reference(F):

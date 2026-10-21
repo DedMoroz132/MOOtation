@@ -8,7 +8,7 @@ is given in full, with its reasons and references.
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-369 items: 301 yes, 12 no: option, 56 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+372 items: 301 yes, 15 no: option, 56 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -53,8 +53,10 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `nsga3` | NSGA3-N3 (the port's value) | The ASF of each axis is formed "with a weight vector close to ith objective axis"; | yes | `nsga3.hpp` |
 | `nsga3` | NSGA3-S (task 7 of 2026-10-10, supplements 2 and 3) | survival = "stochastic": the stochastic population update of Opris, "A First Runtime Analysis of NSGA-III on a Many-Objective Multimodal Problem: Provable Exponential Speedup via Stochastic Population Update", IJCAI 2... | no: option | `nsga3.hpp` |
 | `nsga3` | NSGA3-L (task 15 of 2026-10-21, §2; off by default) | The population size μ, the number of children λ and of reference points H apart, after Tanabe & Oyama, EMO 2017 (source nsga3-popsize-children-refpoints_ tanabe2017): n_offspring = λ children a generation, bred as μ's... | no: option | `nsga3.hpp` |
+| `nsga3` | NSGA3-ADA (task 15 of 2026-10-21, §6; off by default) | ada = 1: ADA in place of the generation — one child a step, P growing, the answer A^primary (operators/ada.hpp; | no: option | `nsga3.hpp` |
 | `a_nsga3` | ANSGA3-L (task 15 of 2026-10-21, §2; off by default) | n_offspring (λ children a generation, μ survivors from the μ + λ) and n_ref_points (H reference points, das_dennis::reference_points) apart from pop_size, as NSGA3-L in nsga3.hpp; not set, λ = μ and H = μ's lattice, a... | no: option | `a_nsga3.hpp` |
 | `a_nsga3` | a_nsga3.1 | Path-A: pop_size = the Das-Dennis lattice size (see nsga3.hpp); | yes | `a_nsga3.hpp` |
+| `theta_dea` | TDEA-ADA (task 15 of 2026-10-21, §6; off by default) | ada = 1: ADA in place of the generation — one child a step, P growing, the answer A^primary (operators/ada.hpp; | no: option | `theta_dea.hpp` |
 | `theta_dea` | TDEA-L (task 15 of 2026-10-21, §2; off by default) | n_offspring (λ children a generation, μ survivors from the μ + λ) and n_ref_points (H reference points, das_dennis::reference_points) apart from pop_size, as NSGA3-L in nsga3.hpp; not set, λ = μ and H = μ's lattice, a... | no: option | `theta_dea.hpp` |
 | `ar_moea` | IGD-NS (Eq.2-3) | IGD-NS(X,Y) = Sum_{y in Y} min_{x in X} dis(y,x) + Sum_{x' in X*} min_{y in Y} dis(y,x'), where X* is the set of noncontributing solutions: those x' that are nearest to no reference point y in Y (Eq.2). | yes | `ar_moea.hpp` |
 | `ar_moea` | ar_moea.1 | argmin/argmax ties are broken deterministically (the first extremum); on an exact distance tie there is a single contributing carrier; | yes | `ar_moea.hpp` |
@@ -232,6 +234,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `rvea` | RVEA-1 (resolved) | the reference-vector adaptation was skipped at t=0 | no: fixed | `rvea.hpp` |
 | `rvea` | RVEA-2 (resolved 2026-09-16) | the adaptation updated only as many vectors | no: fixed | `rvea.hpp` |
 | `rvea` | RVEA-3 (resolved, task 13 of 2026-10-19) | the ⌊N/2⌋ random pairs were | no: fixed | `rvea.hpp` |
+| `rvea` | RVEA-ADA (task 15 of 2026-10-21, §6; off by default) | ada = 1: ADA in place of the generation — one child a step, P growing, the answer A^primary (operators/ada.hpp; | no: option | `rvea.hpp` |
 | `maoeaarv` | maoeaarv.1 | η_c=η_m=20 and the linkage of the hierarchical clustering (single-linkage here) are NOT specified by the paper — implementation conventions were chosen. | yes | `maoeaarv.hpp` |
 | `mbra` | mbra.1 | M2: the Condition1 bounds are INCLUSIVE (G=⌊0.2·Gmax⌋ and G=⌊0.9·Gmax⌋ pass); the paper does not specify the strictness of the bounds; | yes | `mbra.hpp` |
 | `mbra` | mbra.2 | M3: guard CM_old≈0 → IMR=0 (the paper does not address division by 0); | yes | `mbra.hpp` |

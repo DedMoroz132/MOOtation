@@ -36,7 +36,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "sub_budget", "fd_step",
                "local_tol", "cma_sigma0", "eps_objective", "n_samples", "hv_exact_max_m",
                "race_eps", "race_delta", "race_max_samples", "race_abs_tol", "hv_incremental",
-               "n_offspring", "n_ref_points")
+               "n_offspring", "n_ref_points", "ada")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",

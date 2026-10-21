@@ -94,6 +94,9 @@
 //     else their Algorithm 1), and then μ need not be a lattice size. Not
 //     set, λ = μ and H = μ's lattice, as before. survival = stochastic takes
 //     λ = μ only.
+//   NSGA3-ADA (task 15 of 2026-10-21, §6; off by default). ada = 1: ADA in place
+//     of the generation — one child a step, P growing, the answer A^primary
+//     (operators/ada.hpp; Tanabe & Ishibuchi, IEEE TEVC 2020, Algorithm S.10).
 //
 // Individual: NSGAIII_Individual (individuals.hpp): rank, ref_point_idx,
 //   niche_count, norm_distance.
@@ -111,6 +114,7 @@
 #include "../data_vault.hpp"
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
+#include "../operators/ada.hpp"
 #include "../operators/inner_archive.hpp"
 #include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
@@ -137,6 +141,24 @@ private:
     // NSGA3-L: λ and H; 0 = μ and μ's lattice
     int n_offspring_ = 0;
     int n_ref_points_ = 0;
+    // NSGA3-ADA: ADA (operators/ada.hpp) in place of the generation
+    bool ada_on_ = false, ada_started_ = false;
+    long long ada_steps_ = 0;
+    ada::Population ada_;
+    void ada_step(DataVault<Ind_t>& vault) {
+        if (!ada_started_) {
+            ada_.rule = ada::Rule::NsgaIII;
+            ada_.W = ref_points_;
+            ada_.eta_c = eta_c_;
+            ada_.eta_m = eta_m_;
+            ada_.pc = pc_;
+            ada_.constraint_mode = constraint_mode;
+            ada_.start(vault);
+            ada_started_ = true;
+        }
+        ada_.step(vault, rng_, 0.0);
+        ++ada_steps_;
+    }
 
     void archive_point(DataVault<Ind_t>& vault, std::size_t i)
     {
@@ -641,6 +663,11 @@ public:
             spu_frac_ = v;
             return true;
         }
+        if (k == "ada") {                                                   // NSGA3-ADA
+            if (v != 0.0 && v != 1.0) throw std::invalid_argument("ada must be 0 or 1");
+            ada_on_ = v == 1.0;
+            return true;
+        }
         if (k == "n_offspring" || k == "n_ref_points") {                    // NSGA3-L
             if (!(v >= 1.0 && v == std::floor(v) && v <= 1e7))
                 throw std::invalid_argument(k + " must be a whole number >= 1");
@@ -664,6 +691,7 @@ public:
 
     // ── step: one full generation ──────────────────────────────────────────
     void step(DataVault<Ind_t>& vault) {
+        if (ada_on_) { ada_step(vault); return; }                         // NSGA3-ADA
         int n = vault.pop_size();
         const int lam = n_offspring_ > 0 ? n_offspring_ : n;             // λ (NSGA3-L)
         if (stochastic_ && lam != n)
