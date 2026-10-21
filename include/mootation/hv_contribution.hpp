@@ -750,7 +750,7 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
 //                            from M = 4 n_samples decides, as before task 14:
 //                            0 exact at every M, N > 0 Monte-Carlo with N
 // The exact contributions' cost grows steeply with M (a run of 25 000
-// evaluations takes hours from eight objectives on: Python warns, minimize.py
+// evaluations takes hours from eight objectives on: Python warns, _hv_time.py
 // exact_hv_time_warning); the threshold trades it for an estimate. The
 // approximations were measured to choose badly at M >= 5 (task 14, §11, Д8):
 // the race stops at its sample cap on most steps there.

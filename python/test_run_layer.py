@@ -10547,7 +10547,7 @@ def exact_contributions_at_eight_objectives_warn_of_the_time():
     if _core_with("max_evaluations") is None:
         print("    (skipped: no extension)"); return
     import warnings
-    from mootation.minimize import exact_hv_time_warning, EXACT_HV_SLOW_M
+    from mootation._hv_time import exact_hv_time_warning, EXACT_HV_SLOW_M
     assert EXACT_HV_SLOW_M == 8
     assert exact_hv_time_warning("sms_emoa", 8, {}) and exact_hv_time_warning("mo_cma_es", 10, {})
     assert exact_hv_time_warning("sms_emoa", 6, {}) is None

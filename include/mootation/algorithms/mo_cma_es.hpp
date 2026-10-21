@@ -91,7 +91,7 @@ namespace mootation {
 //     M = 6, the race for the least contributor (Voss et al., GECCO 2010, put
 //     it into this algorithm) gave HV 0 and sigma 1.13 against the exact
 //     contributions' 0.71 and 0.145; Monte-Carlo (task 13) did the same (from
-//     eight objectives on a run can take hours: Python warns, minimize.py
+//     eight objectives on a run can take hours: Python warns, _hv_time.py
 //     exact_hv_time_warning). So
 //     n_samples > 0 and hv_contrib = race | mc are REFUSED with that reason,
 //     not ignored; hv_exact_max_m and race_* are reported ignored; n_samples

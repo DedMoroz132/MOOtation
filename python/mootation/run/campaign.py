@@ -2093,7 +2093,7 @@ def _warn_exact_hv_time(jobs: list) -> None:
     """Before the runs: the jobs of SMS-EMOA and MO-CMA-ES whose hypervolume
     contributions are exact at EXACT_HV_SLOW_M objectives or more (minimize.py,
     exact_hv_time_warning): their runs can take hours."""
-    from ..minimize import exact_hv_time_warning
+    from .._hv_time import exact_hv_time_warning
     slow = [j for j in jobs if exact_hv_time_warning(j.algorithm, j.n_objs, dict(j.params or {}))]
     if slow:
         names = sorted({f"{j.algorithm} on {j.problem}" for j in slow})
