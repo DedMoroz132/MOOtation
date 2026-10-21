@@ -6163,6 +6163,68 @@ def nsga3_family_takes_lambda_and_h_apart_from_mu():
     assert rp[0] == [1 / 3] * 3                                    # the centre first
 
 
+@test
+def subset_select_against_the_full_search_on_small_sets():
+    """Task 15, §4: subset_select on non-dominated sets of n <= 16 points,
+    k <= 5, M = 2..4, against every k-subset that holds the extremes: the
+    hypervolume's greedy choice is at least (1 - 1/e) of the best (the
+    submodular bound) and its lazy evaluation the plain greedy's; the local
+    search is no worse than the greedy; every method keeps the extremes,
+    gives k distinct indices and the same ones again; dss is dss_order's
+    first k; igdp_greedy without extremes is the floor's greedy_subset."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  subset_select...: no NumPy or stale _core"); return
+    import itertools
+    import math
+    import numpy as np
+    from mootation import _core, subset_select
+    from mootation.run.cover import greedy_subset
+    rng = np.random.default_rng(15)
+
+    def front(n, m):                     # n mutually non-dominated points (on a sphere's octant)
+        X = np.abs(rng.normal(size=(n, m)))
+        return X / np.linalg.norm(X, axis=1, keepdims=True)
+
+    def hv(F, S, r):
+        return _core.hypervolume([list(F[i]) for i in S], list(r)) if S else 0.0
+    for t in range(24):
+        m, n, k = 2 + t % 3, 9 + t % 8, 3 + t % 3
+        F = front(n, m)
+        r = [1.1] * m
+        E = []
+        for j in range(m):
+            i = int(np.argmin(F[:, j]))
+            if i not in E:
+                E.append(i)
+        best = max(hv(F, list(E) + list(c), r)
+                   for c in itertools.combinations([i for i in range(n) if i not in E], k - len(E)))
+        got = {}
+        for method in ("dss", "hv_greedy", "hv_ls_rn", "igdp_greedy"):
+            S = subset_select(F, k, method, ref=r)
+            assert len(set(S)) == k and S == subset_select(F, k, method, ref=r), (t, method, S)
+            if method != "dss":
+                assert set(E) <= set(S), (t, method, E, S)
+            got[method] = hv(F, S, r)
+        assert got["hv_greedy"] >= (1 - 1 / math.e) * best - 1e-12, (t, got, best)
+        assert got["hv_ls_rn"] >= got["hv_greedy"] - 1e-12, (t, got)
+        # the lazy greedy is the plain one: each step the point adding most
+        S = list(E)
+        while len(S) < k:
+            S.append(max((i for i in range(n) if i not in S), key=lambda i: (hv(F, S + [i], r), -i)))
+        assert abs(hv(F, S, r) - got["hv_greedy"]) < 1e-12, (t, S, subset_select(F, k, "hv_greedy", ref=r))
+        assert subset_select(F, k, "dss") == [int(i) for i in _core.dss_order(F.tolist(), k)], t
+    G = front(30, 3)
+    assert subset_select(G, 4, "igdp_greedy")[:3] == [int(np.argmin(G[:, j])) for j in range(3)]
+    lo, hi = G.min(axis=0), G.max(axis=0)
+    assert greedy_subset((G - lo) / (hi - lo), 6) == greedy_subset((G - lo) / (hi - lo), 6, fixed=())
+    for bad in (dict(method="eps"), dict(method="hv_greedy")):
+        try:
+            subset_select(G, 5, **bad)
+        except ValueError:
+            continue
+        raise AssertionError(bad)
+
+
 # ── task 13, §1: NSGA-II/SDR ────────────────────────────────────────────────
 
 def _sdr_reference(F):

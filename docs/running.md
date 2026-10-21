@@ -2008,6 +2008,21 @@ python -m mootation.run.campaign campaign_all.toml --ranks igd
 python -m mootation.run --tui campaign_all.toml       # Compare tab, then t
 ```
 
+### Choosing k of n points
+
+An archive reduced to N points, and so the hypervolume taken of it, depends
+on how the N are chosen. `mootation.subset_select(F, k, method, ref=None,
+seed=1)` gives the indices by `dss` (the library's distance-based subset
+selection, as the archive reduces), `hv_greedy` (the point that adds most to
+the hypervolume, one at a time, lazily), `hv_ls_rn` (swaps from the greedy
+choice with candidate lists of 20 random and then 20 nearest points — LS-RN of
+Korogi & Tanabe, IEEE TEVC 2025) or `igdp_greedy` (the IGD+ greedy choice
+against the set, the floor's of `--cover`). Every method keeps the extreme
+points (the least value of each objective); the hypervolume methods need its
+reference point `ref`. The additive epsilon is left out on purpose: its
+subset selection is multimodal (Korogi & Tanabe, GECCO 2025).
+`include/mootation/subset_select.hpp` is the C++ side.
+
 ## The terminal interface
 
 `python -m mootation.run --tui run.toml` opens four screens over the same

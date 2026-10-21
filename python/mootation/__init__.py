@@ -48,7 +48,7 @@ _CORE_NAMES = ("Config", "ConstraintMode", "Problem", "Result", "algorithms",
                "run_raw", "reference_points")
 
 __all__ = ["minimize", "algorithms", "Problem", "Config", "Result",
-           "ConstraintMode", "run_raw", "reference_points",
+           "ConstraintMode", "run_raw", "reference_points", "subset_select",
            "save_population", "load_population", "EvaluationLog", "selftest"]
 
 
@@ -87,6 +87,11 @@ def __getattr__(name: str):
         from . import persistence
         value = getattr(persistence, name)
         globals()[name] = value
+        return value
+    if name == "subset_select":
+        # task 15, §4 (mootation/subset.py)
+        from .subset import subset_select as value
+        globals()["subset_select"] = value
         return value
     if name == "selftest":
         # mootation.selftest(): this build gives the library's runs bit for bit?

@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `mootation.subset_select(F, k, method, ref)`: k of n points by `dss`,
+  `hv_greedy` (lazy), `hv_ls_rn` (local search with candidate lists, Korogi &
+  Tanabe 2025, from the greedy choice) or `igdp_greedy` (the IGD+ floor's
+  greedy choice); the extreme points always kept. C++:
+  `include/mootation/subset_select.hpp`.
+
 - `constraint_mode = "none"`: the algorithm ranks by the objectives only,
   while the constraints are still evaluated and reported (`result.cv`), so a
   campaign measures the feasible part of the answer — the control of Tanabe &

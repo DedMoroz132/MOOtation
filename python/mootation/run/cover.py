@@ -355,16 +355,20 @@ def _dplus_matrix(G):
     return D
 
 
-def greedy_subset(G, n: int, sweeps: int = FLOOR_SWEEPS) -> list:
+def greedy_subset(G, n: int, sweeps: int = FLOOR_SWEEPS, fixed=()) -> list:
     """Indices of n rows of the normalized reference G chosen for the smallest
     IGD+ against G itself (THE FLOOR): added one at a time, each the row that
     lowers IGD+ most, then single swaps while one improves, at most `sweeps`
-    passes. Ties go to the lowest index, so the choice is deterministic."""
+    passes. Ties go to the lowest index, so the choice is deterministic.
+    fixed: rows chosen first and never swapped out (mootation.subset_select's
+    extremes, task 15, §4); none for the floor."""
     import numpy as np
     D = _dplus_matrix(G)
     cur = np.full(len(G), np.inf)
-    chosen: list = []
-    for _ in range(min(n, len(G))):
+    chosen: list = list(fixed)
+    for c in chosen:
+        cur = np.minimum(cur, D[c])
+    for _ in range(min(n, len(G)) - len(chosen)):
         cost = np.minimum(cur[None, :], D).mean(axis=1)
         cost[chosen] = np.inf
         c = int(np.argmin(cost))
@@ -372,7 +376,7 @@ def greedy_subset(G, n: int, sweeps: int = FLOOR_SWEEPS) -> list:
         cur = np.minimum(cur, D[c])
     for _ in range(sweeps):
         improved = False
-        for i in range(len(chosen)):
+        for i in range(len(fixed), len(chosen)):
             rest = chosen[:i] + chosen[i + 1:]
             base = D[rest].min(axis=0) if rest else np.full(len(G), np.inf)
             cost = np.minimum(base[None, :], D).mean(axis=1)

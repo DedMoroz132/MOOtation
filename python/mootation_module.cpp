@@ -47,6 +47,7 @@
 #include <mootation/hypervolume.hpp>
 #include <mootation/mootation.hpp>
 #include <mootation/settings.hpp>
+#include <mootation/subset_select.hpp>
 #include <mootation/suite/native.hpp>
 
 #if defined(_M_X64) || defined(__x86_64__) || defined(_M_IX86) || defined(__i386__)
@@ -1557,6 +1558,15 @@ PYBIND11_MODULE(_core, m)
           "ref, as SMS-EMOA and MO-CMA-ES select by it (include/mootation/"
           "hv_contribution.hpp): exact, or a Monte-Carlo estimate with that many "
           "samples per point.");
+    m.def("subset_select",
+          [](const std::vector<std::vector<double>>& points, std::size_t k, const std::string& method,
+             const std::vector<double>& ref, std::uint32_t seed) {
+              return mootation::subset::select(points, k, method, ref, seed);
+          },
+          py::arg("points"), py::arg("k"), py::arg("method"), py::arg("ref") = std::vector<double>{},
+          py::arg("seed") = 1,
+          "k of the points by dss, hv_greedy or hv_ls_rn (include/mootation/subset_select.hpp); "
+          "mootation.subset_select is the function to call.");
     m.def("reference_points",
           [](int n_objs, long long h) { return mootation::das_dennis::reference_points(n_objs, h); },
           py::arg("n_objs"), py::arg("h"),
