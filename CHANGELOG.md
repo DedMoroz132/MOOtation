@@ -10,9 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
-- DMulti-MADS: `mads_cache = "on"` keeps the points it evaluated (the cache
-  V^k of Bigeon et al.'s Algorithm 1) and evaluates none twice; `off`, the
-  default, is the run of before (DMM-8).
+- DMulti-MADS keeps the points it evaluated (the cache V^k of Bigeon et
+  al.'s Algorithm 1) and evaluates none twice (DMM-8); `mads_cache = "off"`
+  is the run of before. **Changed results**: every DMulti-MADS run that met
+  a point twice (without the cache up to a fifth of 10^4 evaluations went so
+  on DTLZ2_5D and MaF1_5D). The fingerprints do not change: their short
+  runs meet no point twice.
 
 - `mootation.subset_select(F, k, method, ref)`: k of n points by `dss`,
   `hv_greedy` (lazy), `hv_ls_rn` (local search with candidate lists, Korogi &

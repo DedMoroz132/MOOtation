@@ -213,7 +213,8 @@ inline bool is_core_param(const std::string& name)
 //   mads_select, mads_poll, mads_search, mads_cache
 //                 dmulti_mads: the incumbent by spread or first, the poll
 //                 complete or opportunistic, the speculative search or none,
-//                 the cache of evaluated points off or on (task 15, §8)
+//                 the cache of evaluated points on (the default) or off
+//                 (task 15, §8)
 //   constraint_mode
 //                 minimize()'s, for a campaign's algorithm entry: none lets the
 //                 core rank by the objectives only (task 15, §5); no core has it

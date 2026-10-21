@@ -55,7 +55,7 @@ namespace mootation {
 // THE KNOBS: mads_tau (τ, 1/2), mads_delta0 (Δ_0, 0.1 of the range),
 // mads_select (spread: Algorithm 4 | first: the first of the largest Δ in
 // list order), mads_poll (complete | opportunistic: stop the poll at the
-// first success), mads_search (speculative | none), mads_cache (off | on;
+// first success), mads_search (speculative | none), mads_cache (on | off;
 // DMM-8).
 //
 // READINGS (declared). [6] = Audet, Ianni, Le Digabel, Tribes, SIAM J. Optim.
@@ -106,14 +106,15 @@ namespace mootation {
 //     [6] nor the NOMAD guide cuts a step to the box; why the paper's runs
 //     do not stop at such a vertex ([1]'s integer basis, [8]'s mesh?) is
 //     open until those are read.
-//   DMM-8 (task 15 of 2026-10-21, §8; off by default). The cache V^k of
-//     Algorithm 1 ("Update the cache V^{k+1}"): MADS evaluates no point
-//     twice — the NOMAD 4.6.0 user guide: "before starting an evaluation,
-//     the cache is scanned for the point". mads_cache = on keeps every
-//     point evaluated (its normalized variables, bit for bit) with its
-//     values; a trial point found there takes them and spends no
-//     evaluation. Off (the default), a point met again is evaluated again,
-//     as before (on DTLZ7_3D, seed 13, 20 of 2030 evaluations; task 14).
+//   DMM-8 (task 15 of 2026-10-21, §8; the default since 2026-10-22). The
+//     cache V^k of Algorithm 1 ("Update the cache V^{k+1}"): MADS evaluates
+//     no point twice — the NOMAD 4.6.0 user guide: "before starting an
+//     evaluation, the cache is scanned for the point". mads_cache = on (the
+//     default) keeps every point evaluated (its normalized variables, bit
+//     for bit) with its values; a trial point found there takes them and
+//     spends no evaluation. Off: a point met again is evaluated again, the
+//     runs before 2026-10-22 (which spent up to a fifth of 10^4 evaluations
+//     so on DTLZ2_5D and MaF1_5D).
 // Continuous variables only.
 // ============================================================================
 
@@ -137,7 +138,7 @@ private:
     std::vector<double> lo_, hi_;
     double tau_ = 0.5, delta0_ = 0.1, tol_ = 1e-9;
     bool spread_ = true, opportunistic_ = false, speculative_ = true;
-    bool cache_ = false;                                   // DMM-8
+    bool cache_ = true;                                    // DMM-8
     std::map<std::vector<double>, Entry> seen_;            // V^k: the points evaluated, by x
     long long cache_hits_ = 0;
     std::mt19937 rng_{0};
