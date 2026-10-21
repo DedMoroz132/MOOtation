@@ -14,6 +14,10 @@ always listed under **Changed** or **Removed**.
   while the constraints are still evaluated and reported (`result.cv`), so a
   campaign measures the feasible part of the answer — the control of Tanabe &
   Oyama (CEC 2017) for whether a problem tests constraint handling at all.
+  `mootation.run.refs.constraint_properties(name)`: a constrained problem's
+  feasible share of the box, the constraints its infeasible points violate,
+  and whether the constraints move the front (C-DTLZ), kept in the
+  reference cache.
 
 - NSGA-III, A-NSGA-III, θ-DEA and SRV-NSGA-III take the number of children
   (`n_offspring`, λ) and of reference points (`n_ref_points`, H) apart from

@@ -4802,6 +4802,24 @@ metrics = ["igdp_norm"]
                  for k in ("nsga2", "nocons")}
         assert 0.0 < final["nocons"]["feas_share"] < 1.0, final
         assert (final["nocons"]["igdp_norm"] is None) == (final["nocons"]["feas_share"] == 0.0), final
+    import os
+    # the constraints' properties (refs.constraint_properties), kept in the reference cache
+    from mootation.run import refs as R
+    old = os.environ.get(R.ENV_DIR)
+    with tempfile.TemporaryDirectory() as td:
+        os.environ[R.ENV_DIR] = td
+        try:
+            fronts = {n: R.constraint_properties(n)["front"] for n in ("C1-DTLZ1_3D", "C2-DTLZ2_3D", "C3-DTLZ4_3D")}
+            assert fronts == {"C1-DTLZ1_3D": "same", "C2-DTLZ2_3D": "part", "C3-DTLZ4_3D": "moved"}, fronts
+            c = R.constraint_properties("C1-DTLZ3_3D")     # outside the shell 16 <= sum f^2 <= 81: feasible
+            assert c["feasible_share"] == 1.0 and c["violated_mean"] is None, c
+            assert (R.store_dir() / "C1-DTLZ3_3D" / "constraints.json").is_file()
+            assert R.constraint_properties("MW1")["front"] is None and R.constraint_properties("ZDT1") is None
+        finally:
+            if old is None:
+                os.environ.pop(R.ENV_DIR, None)
+            else:
+                os.environ[R.ENV_DIR] = old
     try:
         minimize(lambda x: [x[0], 1 - x[0]], [(0.0, 1.0)] * 2, 2, constraint_mode="off", max_evaluations=20)
     except ValueError:

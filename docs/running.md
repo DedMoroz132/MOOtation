@@ -183,6 +183,11 @@ problem does not test constraint handling: Tanabe and Oyama (CEC 2017) found
 NSGA-II without any handling to approximate the feasible front of C1-DTLZ1,
 C1-DTLZ3 and C2-DTLZ2 well, and to find feasible points of seven widely used
 engineering problems easily (though, there, worse than with a handling).
+What a problem's constraints do is `mootation.run.refs.constraint_properties(name)`,
+computed once into the reference cache: the share of 10 000 scrambled-Sobol
+points of the box that are feasible, how many constraints the infeasible ones
+violate on average and at most, and, where the problem has an unconstrained
+twin (C-DTLZ), whether its front is the same, a part of the twin's, or moved.
 
 ### The epsilon level
 

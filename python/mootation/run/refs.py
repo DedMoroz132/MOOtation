@@ -297,6 +297,95 @@ def cache_size() -> tuple:
     return len(files), sum(f.stat().st_size for f in files)
 
 
+CONSTRAINT_SAMPLE = 10000             # the Sobol points the constraint properties read
+CONSTRAINT_PROPS_VERSION = 1          # bump when constraint_properties() computes otherwise
+# C-DTLZ's unconstrained problems (Jain & Deb 2014): the front without the
+# constraints, which tells whether they move it
+_UNCONSTRAINED = {"C1-DTLZ1": "DTLZ1", "C1-DTLZ3": "DTLZ3", "C2-DTLZ2": "DTLZ2",
+                  "C3-DTLZ1": "DTLZ1", "C3-DTLZ4": "DTLZ4"}
+
+
+def constraint_properties(name: str) -> dict | None:
+    """What a constrained problem's constraints do (task 15, §5; after Tanabe &
+    Oyama, CEC 2017), computed once and kept beside its reference
+    (store_dir()/name/constraints.json); None for a problem without
+    constraints.
+
+      feasible_share   the share of 10 000 points of the box (scrambled Sobol,
+                       designs.sobol_owen, seed 1) that meet every constraint
+      violated_mean, violated_max
+                       among the infeasible ones, how many constraints each
+                       violates, on average and at most (None if none is)
+      front            what the constraints do to the Pareto front, where the
+                       problem has an unconstrained one (C-DTLZ): "same" — the
+                       two fronts coincide; "part" — the constrained front is a
+                       part of the other; "moved" — it is not on the other;
+                       None where there is no unconstrained problem to compare.
+                       Read from the two fronts' samples (3000 points each, in
+                       the unconstrained front's range): a point lies on the
+                       other front when it is no farther from that sample than
+                       the sample's widest gap between neighbours.
+    """
+    import numpy as np
+    from ..benchmarks.registry import PROBLEMS
+    p = PROBLEMS[name]
+    if not p.has_cons:
+        return None
+    path = store_dir() / name / "constraints.json"
+    if path.is_file():
+        try:
+            got = json.loads(path.read_text(encoding="utf-8"))
+            if got.get("version") == CONSTRAINT_PROPS_VERSION:
+                return got
+        except (OSError, ValueError):
+            pass
+    from ..designs import sobol_owen
+    from ..var_types import Layout
+    bounds = list(p.bounds)
+    layout = Layout(p.var_types, bounds) if p.var_types is not None else None
+    if layout is None or layout.trivial():
+        lo = np.array([b[0] for b in bounds], float)
+        hi = np.array([b[1] for b in bounds], float)
+        X = lo + sobol_owen(CONSTRAINT_SAMPLE, len(lo), 1) * (hi - lo)
+        G = np.asarray(p.constraints_batch(X), float)
+    else:
+        core = layout.core_bounds()
+        levels = layout.gene_levels()
+        U = sobol_owen(CONSTRAINT_SAMPLE, len(core) + len(levels), 1)
+        rows = []
+        for u in U:
+            x = [lo + u[j] * (hi - lo) for j, (lo, hi) in enumerate(core)]
+            x += [min(int(u[len(core) + g] * n), n - 1) for g, n in enumerate(levels)]
+            rows.append(list(p.constraints(layout.to_user(x))))
+        G = np.asarray(rows, float)
+    violated = np.sum(G > 0.0, axis=1)
+    bad = violated[violated > 0]
+    out = {"version": CONSTRAINT_PROPS_VERSION, "sample": CONSTRAINT_SAMPLE,
+           "feasible_share": float(np.mean(violated == 0)),
+           "violated_mean": float(bad.mean()) if len(bad) else None,
+           "violated_max": int(bad.max()) if len(bad) else None,
+           "front": None}
+    stem, _, rest = name.partition("_")
+    base = _UNCONSTRAINED.get(stem)
+    if base is not None and f"{base}_{rest}" in PROBLEMS and callable(p.pareto_front):
+        A = np.asarray(p.pareto_front(3000), float)
+        B = np.asarray(PROBLEMS[f"{base}_{rest}"].pareto_front(3000), float)
+        span = np.maximum(B.max(axis=0) - B.min(axis=0), 1e-12)
+
+        def nearest(P, Q, skip_self=False):   # each row of P: its distance to the set Q, in Q's frame
+            D = np.sqrt((((P[:, None, :] - Q[None, :, :]) / span) ** 2).sum(axis=2))
+            if skip_self:
+                np.fill_diagonal(D, np.inf)
+            return D.min(axis=1)
+        tol = float(nearest(B, B, skip_self=True).max())   # the sample's widest gap
+        on_base = nearest(A, B) <= tol
+        covers = nearest(B, A) <= tol
+        out["front"] = ("moved" if not on_base.all() else "same" if covers.all() else "part")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(out, indent=1), encoding="utf-8")
+    return out
+
+
 def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser(prog="mootation refs",
                                  description="the registry's reference data, built once per machine")
