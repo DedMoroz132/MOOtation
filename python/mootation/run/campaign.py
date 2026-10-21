@@ -131,6 +131,15 @@ class CampaignSpec:
     # problem has a Pareto-set sample, besides `metrics` (supplement 3 of task
     # 7, §5.3); on by default.
     set_metrics: bool = True
+    # The second answer for those indicators (task 15, the owner's word of
+    # 2026-10-22): N points spread out in the decision space (Tanabe's rule,
+    # archive.spread_select), from "population" — the final population's
+    # non-dominated points — or "evaluated" — every point evaluated that no
+    # other dominates, equal objective vectors with other variables kept apart
+    # (archive.SetArchive), which an archive in the objective space glues
+    # together. Its IGDX, CR and PSP go to meta["set_answer"]; "off" (the
+    # default) makes none.
+    set_answer: str = "off"
     seeds: tuple = ()
     # "budgets" (the default since task 10 of 2026-10-18): a trajectory point
     # at each count of budget_grid — 100, 150, 200, 300, 500, 700, 1 000, ...,
@@ -331,7 +340,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
-             "noise_cell", "coords_diag", "set_metrics", "all_evaluated", "all_levels",
+             "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
              "archive_mode", "native"}
     unknown = sorted(set(raw) - known)
     if unknown:
@@ -360,6 +369,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.set_metrics = raw.get("set_metrics", True)
     if not isinstance(spec.set_metrics, bool):
         raise ConfigError("campaign.set_metrics", "true or false")
+    spec.set_answer = raw.get("set_answer", "off")
+    if spec.set_answer not in ("off", "population", "evaluated"):
+        raise ConfigError("campaign.set_answer",
+                          f"\"off\", \"population\" or \"evaluated\", not {spec.set_answer!r}")
     spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
     # the default grid: "budgets"; "generations" with hard budgets (they read
     # every generation); the grid a results directory was started with, so
@@ -947,6 +960,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     arc = (GridArchive(p.n_obj, p.n_vars, ideal=ideal, nadir=nadir,
                        delta=spec.archive_delta or None)
            if (spec.archive or baseline) else None)
+    # the second answer's candidates when they are every point evaluated
+    sarc = None
+    if spec.set_answer == "evaluated" and pset is not None and len(pset) and p.n_vars:
+        from .archive import SetArchive
+        sarc = SetArchive(p.n_obj, p.n_vars)
 
     # Where the run's time goes (meta["timing"], seconds; tools/perf reads it):
     # the problem's objectives with its constraints (one computation, the
@@ -1066,6 +1084,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         rows_of = getattr(objective, "batch", None)
     posthoc = spec.archive_mode == "posthoc" and not baseline    # a baseline reads its archive
     pend_a, pend_o, pend_i = [], [], []          # (f, x) for the archive and oracle, (f, fe)
+    pend_s: list = []                            # (f, x) for the second answer's archive
 
     def flush(read: bool = False) -> None:
         """Hand the pending points over: to the archive and the oracle after
@@ -1082,6 +1101,9 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             inc.update(np.asarray([f for f, _ in pend_i], float),
                        np.asarray([n for _, n in pend_i], np.int64))
             pend_i.clear()
+        if pend_s:
+            sarc.add_many([f for f, _ in pend_s], [x for _, x in pend_s])
+            pend_s.clear()
         tm["archive"] += time.perf_counter() - t_a
 
     def objectives_of(X):
@@ -1131,6 +1153,8 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 xn = numeric(x) if numeric is not None else x
                 if arc is not None and ok[i]:
                     pend_a.append((F[i], xn))
+                if sarc is not None and ok[i]:
+                    pend_s.append((F[i], xn))
                 t_true = None
                 if oracle is not None:
                     t_true = T[i] if T is not None else truth(list(x))
@@ -1610,6 +1634,24 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         meta["final_archive"]["n"] = int(len(arc_sel))
         if truth is not None and len(T):
             meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
+    if spec.set_answer != "off" and pset is not None and len(pset) and p.n_vars:
+        # the second answer (CampaignSpec.set_answer): its decision-space indicators
+        from .archive import SetArchive, spread_select
+        if sarc is None:                    # "population": the final population's non-dominated
+            sarc = SetArchive(p.n_obj, p.n_vars)
+            keep = np.all(np.isfinite(F), axis=1) if F.size else np.zeros(0, bool)
+            if cons is not None and getattr(res, "cv", None) is not None and len(res.cv) == len(F):
+                keep &= np.asarray(res.cv, float) <= 0.0
+            if keep.any():
+                sarc.add_many(F[keep], X[keep])
+        if len(sarc):
+            sel = spread_select(sarc.X, p.pop_size, p.bounds, job.seed)
+            got = M.compute(true_values(sarc.F[sel], sarc.X[sel]), ref_front=ref, ideal=ideal,
+                            nadir=nadir, which=SET_METRICS, X=sarc.X[sel], **extra)
+            meta["set_answer"] = {"candidates": spec.set_answer, "n_candidates": len(sarc),
+                                  "n": int(len(sel)), **{m: got.get(m) for m in SET_METRICS}}
+        else:
+            meta["set_answer"] = {"candidates": spec.set_answer, "n_candidates": 0, "n": 0}
     tm["final"] += time.perf_counter() - t_fin
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}

@@ -652,3 +652,58 @@ class GridArchive:
     def info(self) -> dict:
         return {"size": len(self), "delta": self.delta, "normalization": self.normalization,
                 "offered": self.offered, "accepted": self.accepted}
+
+
+# ── The second answer: for the indicators in the decision space ─────────────
+
+class SetArchive:
+    """Every point evaluated that no other point evaluated dominates, points
+    with equal objectives and other variables kept apart (task 15, §6, the
+    owner's word of 2026-10-22). An archive in the objective space (GridArchive,
+    even with the finest grid) keeps one point per objective vector, so the
+    copies of a Pareto set that map onto the same front — SYM-PART's nine —
+    glue together there; this one keeps them, for the decision-space
+    indicators' answer (spread_select). No bound on its size."""
+
+    def __init__(self, n_obj: int, n_vars: int):
+        self.F = np.empty((0, n_obj))
+        self.X = np.empty((0, n_vars))
+
+    def __len__(self) -> int:
+        return len(self.F)
+
+    def add_many(self, F, X) -> None:
+        for f, x in zip(np.asarray(F, float), np.asarray(X, float)):
+            if len(self.F):
+                le = np.all(self.F <= f, axis=1)
+                if np.any(le & np.any(self.F < f, axis=1)):
+                    continue                                    # dominated: out
+                beaten = np.all(f <= self.F, axis=1) & np.any(f < self.F, axis=1)
+                if np.any(beaten):
+                    self.F, self.X = self.F[~beaten], self.X[~beaten]
+            self.F = np.vstack([self.F, f[None, :]])
+            self.X = np.vstack([self.X, x[None, :]])
+
+
+def spread_select(X, n: int, bounds, seed: int) -> np.ndarray:
+    """n of the rows of X spread out in the decision space: Tanabe & Ishibuchi's
+    selection for IGDX (IEEE TEVC 2020, §III-H, after [17]): a random first
+    point (from seed), then each time the point farthest — its distance to the
+    nearest point chosen, in the variables normalized by the bounds — until n.
+    Ties go to the lowest index."""
+    X = np.asarray(X, float)
+    if len(X) <= n:
+        return np.arange(len(X))
+    lo = np.array([b[0] for b in bounds], float)
+    hi = np.array([b[1] for b in bounds], float)
+    Z = (X - lo) / np.where(hi > lo, hi - lo, 1.0)
+    first = int(np.random.default_rng(seed).integers(len(Z)))
+    chosen = [first]
+    d = np.sqrt(((Z - Z[first]) ** 2).sum(axis=1))
+    d[first] = -1.0
+    while len(chosen) < n:
+        c = int(np.argmax(d))
+        chosen.append(c)
+        d = np.minimum(d, np.sqrt(((Z - Z[c]) ** 2).sum(axis=1)))
+        d[chosen] = -1.0
+    return np.asarray(chosen)

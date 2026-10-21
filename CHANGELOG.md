@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `[campaign] set_answer = "evaluated"` or `"population"`: a second answer
+  for the decision-space indicators — N points spread out in the variables
+  (Tanabe & Ishibuchi 2020, §III-H) from every point evaluated that no other
+  dominates (equal objectives with other variables kept apart) or from the
+  final population; its IGDX, CR and PSP in `meta["set_answer"]`. Off by
+  default.
+
 - DMulti-MADS keeps the points it evaluated (the cache V^k of Bigeon et
   al.'s Algorithm 1) and evaluates none twice (DMM-8); `mads_cache = "off"`
   is the run of before. **Changed results**: every DMulti-MADS run that met

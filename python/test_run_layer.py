@@ -6257,6 +6257,60 @@ def dmulti_mads_cache_evaluates_no_point_twice():
         runs["on"].objectives != runs["off"].objectives
 
 
+@test
+def the_second_answer_spreads_out_in_the_decision_space():
+    """Task 15 (the owner's word of 2026-10-22): SetArchive keeps the points no
+    other dominates, equal objective vectors with other variables apart;
+    spread_select takes a random first point, then the farthest; a campaign
+    with set_answer = "evaluated" writes meta["set_answer"] with N points and
+    its IGDX, and none with "off" (the default)."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  the_second_answer...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.run import campaign as C
+    from mootation.run.archive import SetArchive, spread_select
+    from mootation.run.config import load
+    a = SetArchive(2, 2)
+    a.add_many([[1, 2], [1, 2], [2, 1], [2, 2], [0.5, 3]], [[0, 0], [5, 5], [1, 1], [9, 9], [3, 3]])
+    assert a.F.tolist() == [[1, 2], [1, 2], [2, 1], [0.5, 3]] and a.X[:2].tolist() == [[0, 0], [5, 5]], a.F
+    a.add_many([[0.5, 1]], [[7, 7]])
+    assert a.F.tolist() == [[0.5, 1]], a.F
+    X = np.array([[0, 0], [0.1, 0], [1, 1], [0.9, 1], [0, 1]], float)
+    s = spread_select(X, 3, [(0, 1), (0, 1)], 4)
+    assert len(set(s.tolist())) == 3 and s.tolist() == spread_select(X, 3, [(0, 1), (0, 1)], 4).tolist()
+    assert {0, 1} - set(s.tolist()) and {2, 3} - set(s.tolist()), s     # never both of a close pair
+    for mode in ("off", "evaluated"):
+        text = f"""algorithms = [ {{ name = "nsga2", pop = 0, gens = 0 }} ]
+[run]
+name = "s"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["SYM-PART_simple"]
+[campaign]
+out = "res"
+budget_fe = 1000
+metrics = ["igdp"]
+set_answer = "{mode}"
+"""
+        with tempfile.TemporaryDirectory() as td:
+            cfg_path = Path(td) / "s.toml"
+            cfg_path.write_text(text, encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            job = C.expand_jobs(cfg, spec)[0]
+            assert C.run_job(job, root, spec, quiet=True) == "done"
+            meta = json.loads((root / job.rel_dir / "meta.json").read_text(encoding="utf-8"))
+            if mode == "off":
+                assert "set_answer" not in meta
+            else:
+                sa = meta["set_answer"]
+                assert sa["n"] == min(job.pop, sa["n_candidates"]) and sa["igdx"] is not None, sa
+
+
 # ── task 13, §1: NSGA-II/SDR ────────────────────────────────────────────────
 
 def _sdr_reference(F):

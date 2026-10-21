@@ -787,6 +787,19 @@ are null. `pdist` needs nothing but the solutions. All three read the final
 population (`final_metrics`), whose variables `final.csv` keeps, so
 `--recompute igdx,cr,pdist` adds them to a campaign that ran without them.
 
+**A second answer for them** (`[campaign] set_answer`): an answer chosen in
+the objective space — the final population, and still more an archive on a
+grid of the objectives — keeps one point of the parts of a Pareto set that
+map onto the same front, so IGDX reads them as lost. With `set_answer =
+"evaluated"` the campaign keeps every point evaluated that no other dominates,
+equal objective vectors with other variables apart, and with `"population"`
+the final population's non-dominated points; from those it takes N spread out
+in the decision space — a random first point (the run's seed), then each time
+the farthest from those taken, in the variables scaled by the bounds (Tanabe &
+Ishibuchi, IEEE TEVC 2020, §III-H) — and writes their IGDX, CR and PSP to
+`meta["set_answer"]`; the indicators in the objective space keep the main
+answer. `"off"` (the default) makes none.
+
 **Multimodal problems.** Several parts of the variables map onto one front:
 SYM-PART simple and rotated (nine parts), Omni-test (27 at three variables)
 and MMF1–15 with MMF1_z, MMF1_e, MMF14_a and MMF15_a, the 22 problems of the
