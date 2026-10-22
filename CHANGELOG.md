@@ -10,6 +10,32 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (task 17, supplement 2): `dms_cache = "on"` by default (DMS-7; the
+  same points in the same order, only the budget goes further). A point a
+  core takes from its cache (DMS, PAES, DMulti-MADS) is brought to the
+  vault's present — the equalities' tolerance, the constraint level, the
+  failures' penalty — as its other copies are; before, it kept the values of
+  the step it was evaluated at. `cache_check = "on"` evaluates every point
+  taken from a cache again and compares. A run's `meta.json` says
+  `seed_independent` where every seed gives the same run (DMS, MultiGLODS up
+  to 100 variables, BoostDMS, MOSQP at their defaults).
+
+- In C++ (task 17, stage 2a): the decision-space indicators igdx, ps_dmin and
+  pairwise_distance (`include/mootation/decision_indicators.hpp`), the same
+  values bit for bit; the second answer's spread_select. Changed: its first
+  point is the library's generator's (`rnd::below` of a `std::mt19937` of its
+  own, from the run's seed), not NumPy's: `meta["set_answer"]["version"]` 2.
+  The Monte-Carlo hypervolume's points likewise (`rnd::uniform01` of a
+  `std::mt19937`; `meta["hv_mc_version"]` 2 where it may be taken).
+  CR (and so PSP) in C++, its root by the library's `pow` instead of the C
+  library's, which differed between platforms in the last bit, and the
+  hypervolume's ref_scale^M likewise, an ulp off at some ref_scale and M
+  (`meta["indicator_version"]` 2). `reference_step` (gdp_min's) by every
+  pair, in C++ or NumPy, the same values: no SciPy KD-tree. In C++ too:
+  roi_dist, range_cover, nd_share, dup_share, nn_cv, the hypervolume of a set
+  in its frame, np.quantile and np.median (`run_metrics.hpp`), the same
+  values.
+
 - WFG1-9, MaF10-12 (WFG1, WFG2, WFG9 with M - 1 positions) and rWFG1-9 in
   the C++ suite (`include/mootation/suite/wfg.hpp`; task 17, stage 1): 20-50
   times faster an evaluation; `benchmarks/wfg.py` stays the reference. They

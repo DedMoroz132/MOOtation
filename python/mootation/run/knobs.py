@@ -76,6 +76,7 @@ _FALLBACK_TEXT = {
     "mads_cache": ("off", "on"),
     "dms_cache": ("off", "on"),
     "paes_cache": ("off", "on"),
+    "cache_check": ("off", "on"),
     "boost_scalarization": ("eps", "minmax"),
     "scalarization": ("eps", "tch", "nbi", "nnc", "ps"),
     "constraint_mode": ("feasibility", "eps_level", "none"),

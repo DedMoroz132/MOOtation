@@ -717,7 +717,7 @@ final population (the same list when omitted):
 | `range_cover` | the worst objective's covered share of [ideal, nadir]; falls early when a population collapses onto part of the front, as on DTLZ4; per objective in `range_cover_each` | higher |
 | `nd_share`, `dup_share` | the share of the set no other member dominates, and the share that repeats an objective vector already in it: stagnation and duplicates | — |
 | `igdx` | IGD in the decision space: the mean distance from a Pareto-SET sample to the nearest solution, variables normalised by the bounds (Tanabe & Ishibuchi 2019, Eq. 5) | lower |
-| `cr` | cover rate: how much of the Pareto set's extent in each variable the solutions span, geometric mean over the variables, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7–8) | higher |
+| `cr` | cover rate: how much of the Pareto set's extent in each variable the solutions span, geometric mean over the variables, 1 = all (Tanabe & Ishibuchi 2019, Eqs. 7–8); the root by the library's own `pow` with the extension, the same on every platform (`meta["indicator_version"]` 2; task 17) | higher |
 | `psp` | Pareto sets proximity, `cr` / `igdx` (Yue, Qu & Liang, IEEE TEVC 22(5), 2018, Eq. 8): near the Pareto set and over all of its extent, in the variables. `igdx` is normalised by the bounds here, the paper's is in the raw variables, so with one range r for every variable the paper's PSP is this one over r; inf where `igdx` is 0. The CEC 2019 competition ranks by 1/PSP | higher |
 | `pdist` | the mean distance between two solutions in normalised variables: spread in the decision space, no reference needed | — |
 | `tau90` | the 0.9 quantile of the IGD+ distances d⁺(z, A) = min over a of ‖max(a − z, 0)‖ over the reference sample, normalised like `igdp_norm`: 90 % of the front lies within `tau90` of the set. `igdp_norm` is the mean of the same distances; one reference point far from everything moves their maximum and not this. Weakly Pareto-compliant, like IGD+. With it, `coverage_curve` gives the share of the sample within 0.01, 0.02, 0.05, 0.1 and 0.2 | lower |
@@ -813,7 +813,13 @@ Ishibuchi, IEEE TEVC 2020, §III-H) — and writes their IGDX, CR and PSP to
 answer. `"evaluated"` is the default; `"off"` makes none. Only the
 multi-modal problems get one (the problem property `multimodal_ps`, below):
 elsewhere the main answer is already spread over the one Pareto set. Its time
-is `meta["timing"]["set_answer"]`.
+is `meta["timing"]["set_answer"]`. The first point is drawn by the library's
+generator, not the core's stream: a `std::mt19937` of its own seeded with the
+run's seed (its low 32 bits) XOR `0x2C9277B5`, and `rnd::below`
+(`decision_indicators.hpp`, `spread_first`); without the extension
+`archive.spread_first` draws the same index through NumPy's `MT19937`. That is
+`meta["set_answer"]["version"]` 2 (task 17, 2026-10-23); version 1 took NumPy's
+`default_rng(seed).integers`, so its second answers differ.
 
 **Multimodal problems.** Several parts of the variables map onto one front:
 SYM-PART simple and rotated (nine parts), Omni-test (27 at three variables)
@@ -1197,9 +1203,14 @@ tell its search from both, `dms_init = "random"` starts from a Latin
 hypercube of n points drawn from the seed and `dms_poll = "random"` polls a
 point drawn among those still worth polling (`first`, the default, the first
 in list order), the directions in random order (DMS-6 in `dms.hpp`).
-A point polled again is evaluated again, as in the paper; `dms_cache = "on"`
-takes it from the run's cache of every point evaluated instead, at no
-evaluation (DMS-7).
+A point polled again takes its values from the run's cache of every point
+evaluated, at no evaluation (`dms_cache = "on"`, the default since task 17:
+a departure from the paper, which evaluates it again — `"off"`; DMS-7). With
+the same seed it evaluates the same points in the same order as without the
+cache, only further, but where the run reads its count of evaluations
+(`eq_tol_schedule = "linear"`). `cache_check = "on"` (DMS, PAES,
+DMulti-MADS) evaluates every point taken from the cache again and stops with
+an error where the two differ: a check.
 
 **SMPSO.** Speed-constrained multi-objective PSO (Nebro et al., MCDM 2009;
 `algorithms/smpso.hpp`): `pop` particles, a leaders archive of `pop`

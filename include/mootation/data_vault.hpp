@@ -116,6 +116,21 @@ void refresh_copy(const Vault& vault, VaultPoint& pt, std::vector<double>& objs,
     if (pt.failed) objs = pt.objectives;
 }
 
+// cache_check (task 17, supplement 2, §1.2): a point a core took from its
+// cache of points evaluated (DMS-7, PAES-7, DMM-8), brought to the present,
+// against the same x evaluated again — the objectives, the violation and the
+// failure bit for bit; std::logic_error naming the core where they differ.
+inline void check_cache_hit(const char* core, const std::vector<double>& f_cached, double cv_cached,
+                            bool failed_cached, const std::vector<double>& f_new, double cv_new,
+                            bool failed_new) {
+    auto same = [](double a, double b) { return a == b || (std::isnan(a) && std::isnan(b)); };
+    bool ok = f_cached.size() == f_new.size() && same(cv_cached, cv_new) && failed_cached == failed_new;
+    for (std::size_t j = 0; ok && j < f_new.size(); ++j) ok = same(f_cached[j], f_new[j]);
+    if (!ok)
+        throw std::logic_error(std::string(core) + " cache_check: a point taken from the cache differs "
+                               "from the same x evaluated again");
+}
+
 // The same for every copy a core keeps in a container of its own (members pt,
 // objs and cv, as the cores name them), or in a container of such containers.
 template <typename Vault, typename Copy>

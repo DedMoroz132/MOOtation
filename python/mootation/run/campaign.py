@@ -60,7 +60,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from .config import Config, ConfigError, load, validate
-from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop,
+from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop, seed_independent,
                          nearest_lattice_sizes)
 from .metric_names import (DENSE_SUFFIX, POOLED_SUFFIX, HIGHER_IS_BETTER, HV_NAMES,
                            METRIC_NAMES, NEEDS_FRONT, NEEDS_SET, NEEDS_X, RUN_STATS, DE_STATS,
@@ -1070,6 +1070,9 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
         "ladder_of": job.ladder_of or None,
         "init": job.init, "init_share": job.init_share,
         "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
+        # one run whatever the seed (algorithms.seed_independent; how the atlas
+        # counts such runs is the owner's, its protocol's question P13)
+        "seed_independent": seed_independent(job.algorithm, job.params, p.n_vars, job.init),
         # the budget asked for: budget_fe rounds it up to whole generations
         # (25 025 at a population of 91), --at and the checkpoints count from it
         "budget_nominal": job.evaluations or spec.budget_fe or job.budget,
@@ -1462,6 +1465,11 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                 trajectory_hv=("not recorded" if hv_skipped else
                                "exact" if traj_hv["exact_max_m"] >= p.n_obj else
                                f"monte-carlo, {traj_hv['mc_samples']} samples"),
+                # the indicators' version (metrics.INDICATOR_VERSION)
+                indicator_version=M.INDICATOR_VERSION,
+                # the Monte-Carlo estimate's version, where one may be taken
+                hv_mc_version=(M.HV_MC_VERSION if min(traj_hv["exact_max_m"], final_hv["exact_max_m"])
+                               < p.n_obj else None),
                 trajectory_metrics=traj_metrics, trajectory_hv_skipped=hv_skipped,
                 trajectory_metrics_at_record_at=[m for m in traj_metrics
                                                  if m in spec.record_at_metrics])
@@ -1828,7 +1836,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
             meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
     if spec.set_answer != "off" and multimodal and pset is not None and len(pset) and p.n_vars:
         # the second answer (CampaignSpec.set_answer): its decision-space indicators
-        from .archive import SetArchive, spread_select
+        from .archive import SET_ANSWER_VERSION, SetArchive, spread_select
         t_s = time.perf_counter()
         if sarc is None:                    # "population": the final population's non-dominated
             sarc = SetArchive(p.n_obj, p.n_vars)
@@ -1848,9 +1856,11 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                       [f"f{i+1}" for i in range(p.n_obj)] + [f"x{i+1}" for i in range(p.n_vars)],
                       np.column_stack([SF, sarc.X[sel]]))
             meta["set_answer"] = {"candidates": spec.set_answer, "n_candidates": len(sarc),
-                                  "n": int(len(sel)), **{m: got.get(m) for m in SET_METRICS}}
+                                  "n": int(len(sel)), "version": SET_ANSWER_VERSION,
+                                  **{m: got.get(m) for m in SET_METRICS}}
         else:
-            meta["set_answer"] = {"candidates": spec.set_answer, "n_candidates": 0, "n": 0}
+            meta["set_answer"] = {"candidates": spec.set_answer, "n_candidates": 0, "n": 0,
+                                  "version": SET_ANSWER_VERSION}
         tm["set_answer"] += time.perf_counter() - t_s
     tm["final"] += time.perf_counter() - t_fin
     if not baseline:

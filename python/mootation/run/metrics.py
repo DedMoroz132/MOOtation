@@ -267,21 +267,36 @@ def _hv_exact(pl: np.ndarray, ref: np.ndarray, hv_algo: str = "auto") -> float:
 _MC_DRAWS: dict = {}
 _MC_DRAWS_KEPT = 8                 # (objectives, samples, seed) kept per process
 
+# The Monte-Carlo hypervolume's version: 2 from task 17, supplement 1 (§3, the
+# owner's decision of 2026-10-23), the library's generator below instead of
+# NumPy's default_rng(seed); a campaign writes it to meta.json beside
+# trajectory_hv wherever the hypervolume may be estimated.
+HV_MC_VERSION = 2
+# its generator's stream: the seed XOR this seeds a std::mt19937 (random.hpp)
+_HV_MC_STREAM = 0x6A09E667
+
 
 def _mc_draws(m: int, samples: int, seed: int) -> list:
-    """The uniform draws behind _hv_mc, in [0, 1)^m: NumPy's generator with
-    `seed`, in chunks of 20 000 rows. Drawn once per (m, samples, seed) and
-    process and kept (a trajectory asks for the same points at every record),
-    the same numbers as drawing them on every call."""
+    """The uniform draws behind _hv_mc, in [0, 1)^m, in chunks of 20 000 rows:
+    a std::mt19937 seeded with the seed's low 32 bits XOR _HV_MC_STREAM
+    (init_genrand; NumPy's MT19937 with its legacy seeding is that generator),
+    rnd::uniform01 of two 32-bit words a value (genrand_res53, random.hpp),
+    row after row — the same numbers as the library's generator gives on
+    every platform. Drawn once per (m, samples, seed) and process and kept (a
+    trajectory asks for the same points at every record)."""
     key = (int(m), int(samples), int(seed))
     if key not in _MC_DRAWS:
         if len(_MC_DRAWS) >= _MC_DRAWS_KEPT:
             _MC_DRAWS.pop(next(iter(_MC_DRAWS)))
-        rng = np.random.default_rng(seed)
+        bg = np.random.MT19937()
+        bg._legacy_seeding((int(seed) & 0xFFFFFFFF) ^ _HV_MC_STREAM)
         chunks, done = [], 0
         while done < samples:
             k = min(20_000, samples - done)
-            chunks.append(rng.random((k, m)))
+            w = bg.random_raw(2 * k * m)
+            a, b = w[0::2] >> 5, w[1::2] >> 6
+            U = (a.astype(float) * 67108864.0 + b.astype(float)) * (1.0 / 9007199254740992.0)
+            chunks.append(U.reshape(k, m))
             done += k
         _MC_DRAWS[key] = chunks
     return _MC_DRAWS[key]
@@ -291,7 +306,7 @@ def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: 
     """Monte-Carlo hypervolume: the box [lo, ref] times the share of `samples`
     uniform points in it that some row of `pl` weakly dominates.
 
-    The points are drawn from NumPy's generator with `seed` (_mc_draws), and
+    The points are the library's generator's with `seed` (_mc_draws), and
     only counted by the compiled hv_covered when the extension is built, so
     the estimate does not depend on which of the two counted it.
     """
@@ -340,6 +355,19 @@ def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
     nadir = np.asarray(nadir, float)
     if F.size == 0:
         return 0.0, "none"
+    fn = _compiled("hv_normalised")
+    if fn is not None and _plain(F):
+        v, method = fn(F, ideal, nadir, float(ref_scale), int(mc_samples), int(seed) & 0xFFFFFFFFFFFFFFFF,
+                       int(exact_max_m), hv_algo)
+        return float(v), method
+    return _hypervolume_numpy(F, ideal, nadir, ref_scale=ref_scale, mc_samples=mc_samples, seed=seed,
+                              exact_max_m=exact_max_m, hv_algo=hv_algo)
+
+
+def _hypervolume_numpy(F, ideal, nadir, *, ref_scale, mc_samples, seed, exact_max_m, hv_algo):
+    """hypervolume() in NumPy (its exact part the extension's where built): the
+    reference; ref_scale ** M the C library's pow here, the library's own in
+    C++ (INDICATOR_VERSION 2: an ulp apart at some ref_scale and M)."""
     span = nadir - ideal
     span[span <= 0] = 1.0
     G = (F - ideal) / span
@@ -421,6 +449,9 @@ def roi_dist(F: np.ndarray, ideal, nadir) -> float:
     F = np.asarray(F, float)
     if F.size == 0:
         return float("inf")
+    fn = _compiled("roi_dist")
+    if fn is not None and _plain(F):
+        return float(fn(F, np.asarray(ideal, float), np.asarray(nadir, float)))
     ideal = np.asarray(ideal, float)
     span = np.asarray(nadir, float) - ideal
     span = np.where(span > 0.0, span, 1.0)
@@ -435,6 +466,9 @@ def range_cover_each(F: np.ndarray, ideal, nadir) -> np.ndarray:
     reaching the nadir end and a set entirely outside spans nothing.
     """
     F = np.asarray(F, float)
+    fn = _compiled("range_cover_each")
+    if fn is not None and _plain(F):
+        return np.asarray(fn(F, np.asarray(ideal, float), np.asarray(nadir, float)), float)
     ideal = np.asarray(ideal, float)
     span = np.asarray(nadir, float) - ideal
     span = np.where(span > 0.0, span, 1.0)
@@ -449,6 +483,15 @@ def nn_cv(F: np.ndarray, ideal, nadir) -> float | None:
     as far from its nearest neighbour as every other is from its own; larger as
     the set clumps. Needs no reference front, so it reads bbob-biobj too. None
     with fewer than two such points."""
+    fn = _compiled("nn_cv")
+    F = np.asarray(F, float)
+    if fn is not None and _plain(F):
+        v = fn(F, np.asarray(ideal, float), np.asarray(nadir, float))
+        return None if v is None else float(v)
+    return _nn_cv_numpy(F, ideal, nadir)
+
+
+def _nn_cv_numpy(F, ideal, nadir) -> float | None:
     ideal = np.asarray(ideal, float)
     span = np.asarray(nadir, float) - ideal
     span = np.where(span > 0.0, span, 1.0)
@@ -468,9 +511,9 @@ def nd_share(F: np.ndarray) -> float:
     n = len(F)
     if n == 0:
         return 0.0
-    fn = _compiled("nondominated_mask")
+    fn = _compiled("nd_share")
     if fn is not None and _plain(F):
-        return float(1.0 - (~fn(F)).mean())
+        return float(fn(F))
     le = np.all(F[:, None, :] <= F[None, :, :], axis=2)      # le[j, i]: F_j <= F_i
     lt = np.any(F[:, None, :] < F[None, :, :], axis=2)
     dominated = np.any(le & lt, axis=0)
@@ -482,6 +525,9 @@ def dup_share(F: np.ndarray) -> float:
     F = np.asarray(F, float)
     if len(F) == 0:
         return 0.0
+    fn = _compiled("dup_share")
+    if fn is not None and _plain(F):
+        return float(fn(F))
     return float(1.0 - len(np.unique(F, axis=0)) / len(F))
 
 
@@ -492,6 +538,19 @@ def _unit(X, bounds) -> np.ndarray:
     lo = np.array([b[0] for b in bounds], float)
     hi = np.array([b[1] for b in bounds], float)
     return (X - lo) / np.where(hi > lo, hi - lo, 1.0)
+
+
+def _decision_args(X, pareto_set, bounds, cyclic):
+    """The arguments of the compiled decision-space indicators, or None where
+    they do not apply (no extension, an empty or ragged set): (X, sample,
+    lo, hi, cyclic) as float arrays and a list."""
+    X = np.atleast_2d(np.asarray(X, float))
+    P = None if pareto_set is None else np.atleast_2d(np.asarray(pareto_set, float))
+    if not (X.ndim == 2 and len(X) and X.shape[1]) or (P is not None and not _plain(P)):
+        return None
+    lo = np.array([b[0] for b in bounds], float)
+    hi = np.array([b[1] for b in bounds], float)
+    return X, P, lo, hi, [int(c) for c in cyclic]
 
 
 def _unit_diff(A: np.ndarray, B: np.ndarray, cyclic) -> np.ndarray:
@@ -511,8 +570,17 @@ def igdx(X, pareto_set, *, bounds, cyclic=()) -> float:
     which span [-i/2, i/2], weigh alike; on [0, 1]^n it is Eq. 5 exactly — and
     with the wrap of the cyclic variables (shiftDTLZ's distance variables,
     read mod 1), without which a solution next to its optimum across the
-    wrap reads as far from it.
+    wrap reads as far from it. The extension's igdx where it is built, the
+    same value (decision_indicators.hpp).
     """
+    fn = _compiled("igdx")
+    args = _decision_args(X, pareto_set, bounds, cyclic) if fn is not None else None
+    if args is not None:
+        return float(fn(*args))
+    return _igdx_numpy(X, pareto_set, bounds=bounds, cyclic=cyclic)
+
+
+def _igdx_numpy(X, pareto_set, *, bounds, cyclic=()) -> float:
     U = _unit(X, bounds)
     R = _unit(pareto_set, bounds)
     if U.size == 0:
@@ -530,8 +598,19 @@ def cover_rate(X, pareto_set) -> float:
 
     delta_i is the squared overlap of the solutions' range of x_i with the
     set's, over the set's; 1 where the set is a single value, 0 where the
-    ranges do not meet. Higher is better; 1 at full cover.
+    ranges do not meet. Higher is better; 1 at full cover. The extension's
+    where it is built (INDICATOR_VERSION 2: the root by the library's own
+    pow, the same on every platform); without it the C library's.
     """
+    X = np.atleast_2d(np.asarray(X, float))
+    fn = _compiled("cover_rate")
+    P = np.atleast_2d(np.asarray(pareto_set, float))
+    if fn is not None and _plain(X, P) and X.shape[1] == P.shape[1]:
+        return float(fn(X, P))
+    return _cover_rate_numpy(X, pareto_set)
+
+
+def _cover_rate_numpy(X, pareto_set) -> float:
     X = np.atleast_2d(np.asarray(X, float))
     P = np.atleast_2d(np.asarray(pareto_set, float))
     if X.size == 0:
@@ -561,7 +640,17 @@ def psp(X, pareto_set, *, bounds, cyclic=()) -> float:
 def pairwise_distance(X, *, bounds, cyclic=()) -> float:
     """The mean distance between two solutions in normalised variables (the
     cyclic ones wrapped): how spread the set is in the decision space, with no
-    reference needed. 0 for fewer than two solutions."""
+    reference needed. 0 for fewer than two solutions. The extension's where it
+    is built, the same value."""
+    fn = _compiled("pairwise_distance")
+    args = _decision_args(X, None, bounds, cyclic) if fn is not None else None
+    if args is not None:
+        X, _, lo, hi, cyc = args
+        return float(fn(X, lo, hi, cyc))
+    return _pairwise_distance_numpy(X, bounds=bounds, cyclic=cyclic)
+
+
+def _pairwise_distance_numpy(X, *, bounds, cyclic=()) -> float:
     U = _unit(X, bounds)
     n = len(U)
     if n < 2:
@@ -576,7 +665,16 @@ def pairwise_distance(X, *, bounds, cyclic=()) -> float:
 def ps_dmin(X, pareto_set, *, bounds, cyclic=()) -> float:
     """The smallest distance from a solution to the Pareto-set sample, in
     variables normalised by the bounds with the cyclic ones wrapped, as for
-    igdx: has any solution reached the Pareto set (task 6 of 2026-10-09)."""
+    igdx: has any solution reached the Pareto set (task 6 of 2026-10-09). The
+    extension's where it is built, the same value."""
+    fn = _compiled("ps_dmin")
+    args = _decision_args(X, pareto_set, bounds, cyclic) if fn is not None else None
+    if args is not None:
+        return float(fn(*args))
+    return _ps_dmin_numpy(X, pareto_set, bounds=bounds, cyclic=cyclic)
+
+
+def _ps_dmin_numpy(X, pareto_set, *, bounds, cyclic=()) -> float:
     U = _unit(X, bounds)
     R = _unit(pareto_set, bounds)
     if U.size == 0:
@@ -588,6 +686,14 @@ def ps_dmin(X, pareto_set, *, bounds, cyclic=()) -> float:
     return best
 
 
+# The indicators' version: 2 from task 17, supplement 1 (stage 2a, the
+# owner's decision of 2026-10-23), the library's own pow (detmath.hpp) where
+# metrics.py took the C library's, which differed between platforms in the
+# last bit: CR's root (and so PSP) and the hypervolume's ref_scale^M (hv,
+# hv_h; at some ref_scale and M one ulp off the C library's). A campaign
+# writes it to every run's meta.json.
+INDICATOR_VERSION = 2
+
 _REF_STEP: dict = {}
 
 
@@ -595,23 +701,23 @@ def reference_step(ref) -> float:
     """The resolution of a reference sample: the median over its points of the
     distance to the nearest other point, in the frame it is given in. Below it
     gdp_min says no more than "on the front" (task 6 of 2026-10-09). Once per
-    sample and process."""
+    sample and process. Every pair: the extension's (nearest_other) or NumPy
+    in blocks, the same values (task 17, stage 2a: no SciPy KD-tree, whose
+    distances were its own sums)."""
     R = np.asarray(ref, float)
     key = (R.shape, hash(R.tobytes()))
     if key not in _REF_STEP:
-        try:                                # Euclidean distance is a metric: a KD-tree is
-            from scipy.spatial import cKDTree        # exact here, and dense samples need it
-        except ImportError:
-            cKDTree = None
-        if cKDTree is not None and len(R) > 1:
-            nearest = cKDTree(R).query(R, k=2)[0][:, 1]
+        fn = _compiled("nearest_other")
+        if fn is not None and len(R) > 1 and _plain(R):
+            nearest = np.asarray(fn(R), float)
         else:
             nearest = np.empty(len(R))
             for a in range(0, len(R), 256):
                 D = np.sqrt(((R[a:a + 256, None, :] - R[None, :, :]) ** 2).sum(axis=2))
                 D[np.arange(len(D)), np.arange(a, a + len(D))] = np.inf
                 nearest[a:a + 256] = D.min(axis=1)
-        _REF_STEP[key] = float(np.median(nearest))
+        med = _compiled("median")
+        _REF_STEP[key] = float(med(nearest) if med is not None and len(nearest) else np.median(nearest))
     return _REF_STEP[key]
 
 
@@ -897,7 +1003,8 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                 out[name] = None
             else:
                 d = dplus_norm()[0]
-                out[name] = float(np.quantile(d, 0.9))
+                q = _compiled("quantile")
+                out[name] = float(q(d, 0.9) if q is not None else np.quantile(d, 0.9))
                 out["coverage_curve"] = {f"{t:g}": float(np.mean(d <= t)) for t in COVERAGE_TAUS}
         elif name == "gap_max":
             # the largest hole: max over the reference sample of d+(z, A), in
@@ -968,7 +1075,9 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
                     shared["g"] = np.array([distance_fn(list(x))
                                             for x in np.atleast_2d(np.asarray(X, float))])
                 g = shared["g"]
-                out[name] = float(g.min() if name == "g_min" else np.median(g))
+                med = _compiled("median")
+                out[name] = float(g.min() if name == "g_min" else
+                                  med(g) if med is not None and len(g) else np.median(g))
         elif name == "ps_dmin":
             if X is None or pareto_set is None or not np.size(pareto_set) \
                     or bounds is None or not np.size(X):

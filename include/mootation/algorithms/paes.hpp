@@ -91,6 +91,12 @@ public:
             cache_ = w == "on";
             return true;
         }
+        if (k == "cache_check") {
+            if (w != "on" && w != "off")
+                throw std::invalid_argument("cache_check = '" + w + "': on or off");
+            cache_check_ = w == "on";
+            return true;
+        }
         return false;
     }
     long long cache_hits() const { return cache_hits_; }               // PAES-7: evaluations saved
@@ -178,6 +184,7 @@ private:
     Point c_;
     std::mt19937 rng_{0};
     bool cache_ = false;                                     // PAES-7
+    bool cache_check_ = false;                               // every hit evaluated again (a check)
     std::map<std::vector<double>, Point> seen_;              // every point evaluated, by x
     long long cache_hits_ = 0;
 
@@ -212,16 +219,30 @@ private:
             auto hit = seen_.find(x);
             if (hit != seen_.end()) {
                 ++cache_hits_;
-                return hit->second;
+                // brought to the vault's present as the archive is (WRITING
+                // BACK; task 17, supplement 2)
+                Point p = hit->second;
+                refresh_copy(vault, p.pt, p.f, p.cv, constraint_mode != ConstraintMode::NONE);
+                if (cache_check_) {
+                    const Point n = evaluate_fresh(vault, x);
+                    check_cache_hit("paes", p.f, p.cv, p.pt.failed, n.f, n.cv, n.pt.failed);
+                }
+                return p;
             }
         }
+        Point p = evaluate_fresh(vault, x);
+        if (cache_) seen_.emplace(x, p);
+        return p;
+    }
+
+    Point evaluate_fresh(DataVault<Ind_t>& vault, const std::vector<double>& x)
+    {
         const int keep = static_cast<int>(vault.active_n());
         const int at = vault.expand(1);
         vault.set_variables(static_cast<std::size_t>(at), x);
         vault.sync();
         Point p = read(vault, static_cast<std::size_t>(at));
         vault.reduce(keep);
-        if (cache_) seen_.emplace(x, p);
         return p;
     }
 

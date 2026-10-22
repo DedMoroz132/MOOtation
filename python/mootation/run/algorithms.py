@@ -169,6 +169,25 @@ def two_layer_sizes(m: int, limit: int) -> list[int]:
     return sorted(out)
 
 
+def seed_independent(name: str, params: dict | None, n_vars: int, init: str | None = None) -> bool:
+    """Whether a run of `name` with these knobs is the same run for every
+    seed (task 17, supplement 2, §5; checked at the defaults over every core
+    and Python method, TASK17 checks/seed_independent.md): DMS unless
+    dms_init or dms_poll is "random" (DMS-6); MultiGLODS up to 100 variables
+    (its search the unscrambled Sobol sequence; above, uniform points from the
+    seed, MG-2); BoostDMS and MOSQP (a line, the box's centre, SLSQP). An
+    initial plan of `init` other than the cores' own (uniform) makes any of them read
+    the seed."""
+    params = params or {}
+    if init not in (None, "", "uniform"):
+        return False
+    if name == "dms":
+        return params.get("dms_init", "line") != "random" and params.get("dms_poll", "first") != "random"
+    if name == "multiglods":
+        return n_vars <= 100
+    return name in ("boostdms", "mosqp")
+
+
 def check_pop(name: str, pop: int, n_objs: int, params: dict | None = None
               ) -> str | None:
     """Return a human-readable reason `pop` is unusable, or None if it is fine.

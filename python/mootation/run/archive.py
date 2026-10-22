@@ -748,19 +748,66 @@ class PySetArchive:
         self.X = np.vstack([self.X, X])
 
 
-def spread_select(X, n: int, bounds, seed: int) -> np.ndarray:
+# The second answer's version (meta["set_answer"]["version"]): 2 from task 17,
+# supplement 1 (§3, the owner's decision of 2026-10-23), the first point
+# drawn by the library's generator (spread_first) instead of NumPy's
+# default_rng(seed).integers.
+SET_ANSWER_VERSION = 2
+
+# decision_indicators.hpp, kSecondAnswerStream
+_SECOND_ANSWER_STREAM = 0x2C9277B5
+
+
+def spread_first(seed: int, rows: int) -> int:
+    """The first point of spread_select among `rows`: rnd::below of a
+    std::mt19937 seeded with the seed's low 32 bits XOR the second answer's
+    stream (decision_indicators.hpp, spread_first) — the extension's, or the
+    same draw here: NumPy's MT19937 seeded as std::mt19937 is (init_genrand),
+    its 32-bit words, Lemire's multiply-and-reject (random.hpp, below)."""
+    try:
+        from .. import _core
+        if hasattr(_core, "spread_first"):
+            return int(_core.spread_first(int(seed) & 0xFFFFFFFFFFFFFFFF, int(rows)))
+    except ImportError:                              # pragma: no cover - no extension
+        pass
+    bg = np.random.MT19937()
+    bg._legacy_seeding((int(seed) & 0xFFFFFFFF) ^ _SECOND_ANSWER_STREAM)
+    n = int(rows)
+    if n > 0xFFFFFFFF:
+        raise ValueError("spread_first: more than 2^32 rows")
+    m = int(bg.random_raw()) * n
+    low = m & 0xFFFFFFFF
+    if low < n:
+        t = (2 ** 32 - n) % n
+        while low < t:
+            m = int(bg.random_raw()) * n
+            low = m & 0xFFFFFFFF
+    return m >> 32
+
+
+def spread_select(X, n: int, bounds, seed: int, first: int | None = None) -> np.ndarray:
     """n of the rows of X spread out in the decision space: Tanabe & Ishibuchi's
     selection for IGDX (IEEE TEVC 2020, §III-H, after [17]): a random first
-    point (from seed), then each time the point farthest — its distance to the
-    nearest point chosen, in the variables normalized by the bounds — until n.
-    Ties go to the lowest index."""
+    point (spread_first, from seed; or `first`), then each time the point
+    farthest — its distance to the nearest point chosen, in the variables
+    normalized by the bounds — until n. Ties go to the lowest index. The
+    extension's where it is built, the same indices."""
     X = np.asarray(X, float)
     if len(X) <= n:
         return np.arange(len(X))
     lo = np.array([b[0] for b in bounds], float)
     hi = np.array([b[1] for b in bounds], float)
+    if first is None:
+        first = spread_first(seed, len(X))
+    fn = _compiled("spread_select")
+    if fn is not None and X.ndim == 2 and X.shape[1]:
+        return np.asarray(fn(np.ascontiguousarray(X), int(n), lo, hi, int(first)), dtype=np.intp)
+    return _spread_select_numpy(X, n, lo, hi, int(first))
+
+
+def _spread_select_numpy(X, n: int, lo, hi, first: int) -> np.ndarray:
+    """spread_select's NumPy reference, from `first`."""
     Z = (X - lo) / np.where(hi > lo, hi - lo, 1.0)
-    first = int(np.random.default_rng(seed).integers(len(Z)))
     chosen = [first]
     d = np.sqrt(((Z - Z[first]) ** 2).sum(axis=1))
     d[first] = -1.0

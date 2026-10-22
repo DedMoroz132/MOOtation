@@ -5923,6 +5923,71 @@ def dms_and_paes_caches_evaluate_each_point_once():
 
 
 @test
+def seed_independent_algorithms_give_one_run_for_every_seed():
+    """Task 17, supplement 2, §5: algorithms.seed_independent names the runs
+    that are the same for every seed, and they are: DMS and MultiGLODS at
+    their defaults; dms_poll = random or an init design reads the seed."""
+    if not _have_numpy() or _core_with("SetArchive") is None:
+        print("  skip  seed_independent...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    from mootation.run.algorithms import seed_independent
+    p = get("ZDT1")
+    for alg, params in (("dms", {}), ("multiglods", {}), ("dms", {"dms_poll": "random"}), ("nsga2", {})):
+        runs = [minimize(p.evaluate, bounds=p.bounds, n_objs=2, algorithm=alg, max_evaluations=600,
+                         seed=seed, **params) for seed in (1, 5)]
+        same = (np.asarray(runs[0].objectives).tobytes() == np.asarray(runs[1].objectives).tobytes())
+        assert same == seed_independent(alg, params, p.n_vars), (alg, params, same)
+    assert not seed_independent("dms", {}, 30, "lhs") and not seed_independent("multiglods", {}, 101)
+    assert seed_independent("boostdms", None, 5) and seed_independent("mosqp", {}, 5)
+
+
+@test
+def a_cache_changes_nothing_but_the_budget():
+    """Task 17, supplement 2, §1.2: with the same seed the distinct points a
+    run evaluates without its cache, in the order they first appear (x and f
+    bit for bit), are the points it evaluates with it — DMS (on by default
+    now), DMulti-MADS and PAES, on DTLZ2_3D and on a failing copy, whose
+    failures' penalty moves (a point from the cache brought to the present);
+    cache_check = on evaluates every hit again and finds no difference."""
+    if not _have_numpy() or _core_with("SetArchive") is None:
+        print("  skip  a_cache_changes...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+
+    def run(name, alg, knob, value, check="off"):
+        p = get(name)
+        calls = []
+
+        def f(x):
+            try:
+                y = list(p.evaluate(list(x)))
+            except Exception:
+                calls.append((np.asarray(x, float).tobytes(), b"fail"))
+                raise
+            calls.append((np.asarray(x, float).tobytes(), np.asarray(y, float).tobytes()))
+            return y
+
+        minimize(f, bounds=p.bounds, n_objs=p.n_obj, algorithm=alg, max_evaluations=800, seed=2,
+                 pop_size=20, cache_check=check, **{knob: value})
+        return calls
+
+    for name in ("DTLZ2_3D", "DTLZ2_3D_fail10r"):
+        for alg, knob in (("dms", "dms_cache"), ("dmulti_mads", "mads_cache"), ("paes", "paes_cache")):
+            off, on = run(name, alg, knob, "off"), run(name, alg, knob, "on")
+            seen, distinct = set(), []
+            for x, y in off:
+                if x not in seen:
+                    seen.add(x)
+                    distinct.append((x, y))
+            k = min(len(distinct), len(on))
+            assert len(set(x for x, _ in on)) == len(on) and distinct[:k] == on[:k] and k > 100, (name, alg, k)
+            run(name, alg, knob, "on", check="on")             # raises where a hit differs
+
+
+@test
 def dms_can_start_off_the_grid_and_poll_at_random():
     """DMS-6 (task 5, run A1): dms_init = random and dms_poll = random make the
     seed matter — the same seed repeats the run, another changes it — while the
@@ -9337,13 +9402,14 @@ def the_compiled_indicators_are_the_numpy_ones():
             W = M.das_dennis(m, M.lattice_h(m, 100))
             assert same(M.r2_discrete(F, ideal, nadir, M.lattice_h(m, 100)), M._r2_numpy(G, W))
     # the Monte-Carlo points, drawn once and kept: the value of drawing them every time
+    # (the library's generator, task 17: rnd::uniform01 of a std::mt19937)
     pl = rng.random((60, 8)) * 0.8
     ref, lo = np.full(8, 1.1), np.zeros(8)
     v = M._hv_mc(pl, ref, lo, 50_000, 3)
-    g = np.random.default_rng(3)
+    U = np.asarray(_core.rnd_uniform(3 ^ M._HV_MC_STREAM, 50_000 * 8)).reshape(-1, 8)
     hit = 0
-    for k in (20_000, 20_000, 10_000):
-        s = lo + g.random((k, 8)) * (ref - lo)
+    for a, k in ((0, 20_000), (20_000, 20_000), (40_000, 10_000)):
+        s = lo + U[a:a + k] * (ref - lo)
         hit += int(_core.hv_covered(pl, s))
     assert v == float(np.prod(ref - lo) * hit / 50_000) == M._hv_mc(pl, ref, lo, 50_000, 3)
 
@@ -9382,6 +9448,199 @@ def incremental_front_matches_a_full_recomputation():
             assert inc.eps_plus() == float(eps.max()), (m, batch)
             assert inc.distances().tobytes() == to_set.tobytes()
         assert list(inc.reached) == [first.get(lv, -1) for lv in levels], (inc.reached, first)
+
+
+@test
+def decision_space_indicators_in_cpp_give_numpys_bits():
+    """Task 17, supplement 1, stage 2a: igdx, ps_dmin and pairwise_distance of
+    the extension (decision_indicators.hpp) are metrics.py's NumPy values bit
+    for bit: 1 to 40 variables (NumPy's sum pairwise from eight on), sets and
+    samples past a chunk of 128 rows, cyclic variables, ties, a NaN row, a
+    variable with hi <= lo."""
+    if not _have_numpy() or _core_with("igdx") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(172)
+    for d, n, k in ((1, 5, 3), (2, 40, 129), (5, 130, 300), (9, 200, 257), (17, 60, 90), (40, 140, 20)):
+        bounds = [(-1.0 - j, 2.0 + j) for j in range(d)]
+        bounds[-1] = (3.0, 3.0) if d > 2 else bounds[-1]
+        lo = np.array([b[0] for b in bounds]); hi = np.array([b[1] for b in bounds])
+        X = lo + rng.random((n, d)) * (hi - lo)
+        X[1] = X[0]                                     # a tie
+        P = lo + rng.random((k, d)) * (hi - lo)
+        P = np.round(P, 1)                              # equal distances
+        for cyclic in ((), tuple(range(0, d, 2))):
+            for name in ("igdx", "ps_dmin"):
+                fast = getattr(M, name)(X, P, bounds=bounds, cyclic=cyclic)
+                ref = getattr(M, f"_{name}_numpy")(X, P, bounds=bounds, cyclic=cyclic)
+                assert np.array([fast]).tobytes() == np.array([ref]).tobytes(), (name, d, cyclic, fast, ref)
+            fast = M.pairwise_distance(X, bounds=bounds, cyclic=cyclic)
+            ref = M._pairwise_distance_numpy(X, bounds=bounds, cyclic=cyclic)
+            assert np.array([fast]).tobytes() == np.array([ref]).tobytes(), ("pdist", d, cyclic, fast, ref)
+    X = rng.random((20, 3)); X[4, 1] = np.nan                     # a NaN row passes on
+    P = rng.random((150, 3))
+    b3 = [(0.0, 1.0)] * 3
+    for name in ("igdx", "ps_dmin"):
+        a = getattr(M, name)(X, P, bounds=b3); r = getattr(M, f"_{name}_numpy")(X, P, bounds=b3)
+        assert (np.isnan(a) and np.isnan(r)) or a == r, (name, a, r)
+    assert np.isnan(M.pairwise_distance(X, bounds=b3)) and np.isnan(M._pairwise_distance_numpy(X, bounds=b3))
+
+
+@test
+def frame_indicators_and_the_hypervolume_in_cpp_give_numpys_bits():
+    """Task 17, supplement 1, stage 2a (run_metrics.hpp): roi_dist,
+    range_cover_each, nd_share, dup_share, nn_cv, np.quantile and np.median,
+    and the hypervolume of a set in its frame (exact; Monte-Carlo from the
+    library's generator) — the NumPy code's values bit for bit, ties, copies,
+    a NaN row, points outside the frame and a span <= 0 included, but for
+    ref_scale^M, the library's pow (INDICATOR_VERSION 2), within two ulps of
+    the C library's at every ref_scale a campaign takes (1.1, 1 + 1/H) and M up
+    to 15."""
+    if not _have_numpy() or _core_with("hv_normalised") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import metrics as M
+
+    def same(a, b):
+        a, b = np.asarray(a, float), np.asarray(b, float)
+        return a.shape == b.shape and a.tobytes() == b.tobytes()
+
+    rng = np.random.default_rng(1705)
+    for m in (2, 3, 5, 9):
+        ideal = np.full(m, -0.1); nadir = np.full(m, 1.2); nadir[-1] = ideal[-1]
+        for n in (1, 2, 7, 60):
+            F = np.round(rng.random((n, m)) * 1.6 - 0.2, 2)
+            if n > 2:
+                F[1] = F[0]
+            sp = np.where(nadir - ideal > 0, nadir - ideal, 1.0)
+            G = (F - ideal) / sp
+            assert same(M.roi_dist(F, ideal, nadir),
+                        np.sqrt((np.maximum(G - 1.0, 0.0) ** 2).sum(axis=1)).min()), (m, n)
+            C = np.clip(G, 0.0, 1.0)
+            assert same(M.range_cover_each(F, ideal, nadir), C.max(axis=0) - C.min(axis=0)), (m, n)
+            le = np.all(F[:, None, :] <= F[None, :, :], axis=2)
+            lt = np.any(F[:, None, :] < F[None, :, :], axis=2)
+            assert same(M.nd_share(F), 1.0 - np.any(le & lt, axis=0).mean()), (m, n)
+            assert same(M.dup_share(F), 1.0 - len(np.unique(F, axis=0)) / len(F)), (m, n)
+            a, r = M.nn_cv(F, ideal, nadir), M._nn_cv_numpy(F, ideal, nadir)
+            assert (a is None and r is None) or same(a, r), (m, n, a, r)
+            for scale in (1.1, 1.0 + 1.0 / 12):
+                for emax in (m, m - 1):
+                    v = M.hypervolume(F, ideal, nadir, ref_scale=scale, exact_max_m=emax, mc_samples=30_000)
+                    w = M._hypervolume_numpy(F, ideal, nadir, ref_scale=scale, mc_samples=30_000, seed=0,
+                                             exact_max_m=emax, hv_algo="auto")
+                    assert v[1] == w[1] and abs(v[0] - w[0]) <= 2 * np.spacing(abs(w[0])), \
+                        (m, n, scale, emax, v, w)
+    for n in (1, 2, 3, 10, 11, 1000):
+        a = np.round(rng.random(n), 3)
+        assert same(_core.quantile(a, 0.9), np.quantile(a, 0.9)), n
+        assert same(_core.quantile(a, 0.5), np.quantile(a, 0.5)), n
+        assert same(_core.median(a), np.median(a)), n
+    assert np.isnan(_core.median([1.0, np.nan, 2.0])) and np.isnan(_core.quantile([np.nan, 1.0], 0.9))
+    for m in range(2, 16):
+        P = np.full((1, m), 0.5)
+        for scale in [1.1] + [1.0 + 1.0 / h for h in range(1, 200)]:
+            v = M.hypervolume(P, np.zeros(m), np.ones(m), ref_scale=scale, exact_max_m=m)
+            w = M._hypervolume_numpy(P, np.zeros(m), np.ones(m), ref_scale=scale, mc_samples=10, seed=0,
+                                     exact_max_m=m, hv_algo="auto")
+            # the library's pow against the C library's: equal or an ulp or two apart
+            assert abs(v[0] - w[0]) <= 2 * np.spacing(w[0]), (m, scale, v, w)
+
+
+@test
+def cover_rate_and_the_reference_step_in_cpp():
+    """Task 17, supplement 1, stage 2a: CR in C++ — every delta and their
+    product NumPy's, the root the library's pow (INDICATOR_VERSION 2): within an ulp
+    or two of the C library's; reference_step by every pair in C++, NumPy's
+    distances bit for bit, no SciPy."""
+    if not _have_numpy() or _core_with("cover_rate") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import metrics as M
+    rng = np.random.default_rng(1704)
+    for d in (1, 2, 5, 13, 40):
+        for _ in range(40):
+            P = rng.random((int(rng.integers(1, 60)), d))
+            X = rng.random((int(rng.integers(1, 60)), d)) * 1.4 - 0.2
+            if d > 1:
+                P[:, 0] = 0.3                               # a single value: delta 1
+                X[:, 1] = X[:, 1] * 0.1 + 2.0               # ranges that do not meet: 0
+            a, r = M.cover_rate(X, P), M._cover_rate_numpy(X, P)
+            assert abs(a - r) <= 4 * np.spacing(max(abs(r), 1e-300)), (d, a, r)
+    R = rng.random((300, 3)); R[7] = R[3]                    # a copy: distance 0
+    R2 = np.round(rng.random((257, 9)), 2)
+    for ref in (R, R2):
+        near = np.asarray(_core.nearest_other(ref))
+        want = np.empty(len(ref))
+        for a in range(0, len(ref), 256):
+            D = np.sqrt(((ref[a:a + 256, None, :] - ref[None, :, :]) ** 2).sum(axis=2))
+            D[np.arange(len(D)), np.arange(a, a + len(D))] = np.inf
+            want[a:a + 256] = D.min(axis=1)
+        assert near.tobytes() == want.tobytes()
+        M._REF_STEP.clear()
+        assert M.reference_step(ref) == float(np.median(want))
+    assert M.INDICATOR_VERSION == 2
+
+
+@test
+def hv_monte_carlo_draws_are_the_librarys_generator():
+    """Task 17, supplement 1, §3: the Monte-Carlo hypervolume's points
+    (metrics._mc_draws, NumPy's MT19937 with init_genrand) are rnd::uniform01
+    of a std::mt19937 (_core.rnd_uniform), row after row, across chunks."""
+    if not _have_numpy() or _core_with("rnd_uniform") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import metrics as M
+    for m, samples, seed in ((3, 7, 0), (6, 20_005, 4), (10, 50, 2**32 + 9)):
+        U = np.vstack(M._mc_draws(m, samples, seed)).ravel()
+        cpp = np.asarray(_core.rnd_uniform((seed & 0xFFFFFFFF) ^ M._HV_MC_STREAM, m * samples))
+        assert U.tobytes() == cpp.tobytes(), (m, samples, seed)
+    assert M.HV_MC_VERSION == 2
+
+
+@test
+def spread_select_in_cpp_gives_the_numpy_choice_from_the_same_first_point():
+    """Task 17, supplement 1, §3: the second answer's spread_select in C++
+    (decision_indicators.hpp) takes the NumPy reference's indices, given the
+    same first point — 200 sets of ties (coordinates on a coarse grid, copies)
+    and 300 of random points, 1 to 9 variables, a bound with hi <= lo; the
+    first point is rnd::below's of the run's seed, the extension's and the
+    NumPy emulation's the same."""
+    if not _have_numpy() or _core_with("spread_select") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.run import archive as A
+    rng = np.random.default_rng(1703)
+    for case in range(500):
+        d = int(rng.integers(1, 10))
+        rows = int(rng.integers(2, 120))
+        n = int(rng.integers(1, rows + 3))
+        X = rng.random((rows, d))
+        if case < 200:
+            X = np.round(X * 3) / 3                     # ties everywhere
+            X[rng.integers(rows)] = X[0]
+        bounds = [(0.0, 1.0)] * d
+        if d > 1:
+            bounds[0] = (0.5, 0.5)                      # width 1, as _unit takes it
+        lo = np.array([b[0] for b in bounds]); hi = np.array([b[1] for b in bounds])
+        first = int(rng.integers(rows))
+        fast = A.spread_select(X, n, bounds, seed=case, first=first)
+        ref = A._spread_select_numpy(X, n, lo, hi, first) if rows > n else np.arange(rows)
+        assert list(fast) == list(ref), (case, list(fast)[:8], list(ref)[:8])
+    import mootation.run.archive as mod
+    for seed in (0, 1, 7, 2**31 + 5):
+        for rows in (1, 5, 1000):
+            got = mod.spread_first(seed, rows)
+            bg = np.random.MT19937()
+            bg._legacy_seeding((seed & 0xFFFFFFFF) ^ mod._SECOND_ANSWER_STREAM)
+            m = int(bg.random_raw()) * rows
+            assert 0 <= got < rows and (m & 0xFFFFFFFF < rows or got == m >> 32), (seed, rows, got)
+            assert got == int(_core.spread_first(seed, rows))
 
 
 @test

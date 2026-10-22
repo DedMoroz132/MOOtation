@@ -112,15 +112,20 @@ inline std::optional<DMSPoll> parse_dms_poll(const std::string& s)
 //     when n < 2), and dms_poll = random polls a point drawn among those still
 //     worth polling, in a random order of the directions. Neither is in the
 //     paper.
-//   DMS-7 (task 16, supplement 1). A point polled again is evaluated again
-//     and counts in the budget, as in the paper, which keeps no cache:
-//     Algorithm 3.1 evaluates every poll set, and Appendix A polls x_0 again
-//     at iteration 1. On DTLZ2_3D at 2 000 evaluations about three calls in
-//     five ask for a point already evaluated (result.unique_evaluations tells
-//     them). dms_cache = on (off by default, as the paper): a point evaluated
-//     before takes its values from the run's cache of every point evaluated,
-//     as DMulti-MADS's V^k (DMM-8), and costs no evaluation. Its step size is
-//     the poll's, as a new point's would be.
+//   DMS-7 (task 16, supplement 1; task 17, supplement 2). A cache: a point
+//     polled again takes its values from the run's cache of every point
+//     evaluated, as DMulti-MADS's V^k (DMM-8), brought to the vault's present
+//     (the tolerance, the level, the failures' penalty), and costs no
+//     evaluation; its step size is the poll's, as a new point's would be.
+//     On by default (dms_cache = on; the owner's decision of 2026-10-23,
+//     TASK16a §5: IGD+ better on 8 of 11 problems at 10^4): a departure from
+//     the paper, which keeps no cache — Algorithm 3.1 evaluates every poll
+//     set, Appendix A polls x_0 again at iteration 1 — and where on DTLZ2_3D
+//     at 2 000 evaluations about three calls in five ask for a point already
+//     evaluated. The same points in the same order as without it (only the
+//     budget goes further), but where the run itself reads the count of
+//     evaluations (eq_tol_schedule = linear): TASK17 cache_equivalence.
+//     dms_cache = off evaluates them again, as the paper.
 // ============================================================================
 template <typename Ind_t>
 class DMSCore {
@@ -145,7 +150,8 @@ private:
     double  tol_    = 1e-3;
     std::vector<double> lo_, hi_;
     std::mt19937 rng_{0};           // drawn from only by DMS-6's knobs
-    bool cache_ = false;                                   // DMS-7
+    bool cache_ = true;                                    // DMS-7
+    bool cache_check_ = false;                             // every hit evaluated again (a check)
     std::map<std::vector<double>, Entry> seen_;            // every point evaluated, by x
     long long cache_hits_ = 0;
 
@@ -187,6 +193,15 @@ private:
         for (const auto& u : U) {
             Entry e = seen_.at(u);
             e.alpha = alpha;
+            if (std::find(fresh.begin(), fresh.end(), u) == fresh.end()) {
+                // a hit, evaluated at an earlier step: brought to the vault's
+                // present as the list is (WRITING BACK; task 17, supplement 2)
+                refresh_copy(vault, e.pt, e.f, e.cv, true);
+                if (cache_check_) {
+                    const Entry n = evaluate_all(vault, {u}, alpha).front();
+                    check_cache_hit("dms", e.f, e.cv, e.pt.failed, n.f, n.cv, n.pt.failed);
+                }
+            }
             out.push_back(std::move(e));
         }
         cache_hits_ += static_cast<long long>(U.size() - fresh.size());
@@ -314,6 +329,12 @@ public:
             if (w != "on" && w != "off")
                 throw std::invalid_argument("dms_cache = '" + w + "': on or off");
             cache_ = w == "on";
+            return true;
+        }
+        if (k == "cache_check") {
+            if (w != "on" && w != "off")
+                throw std::invalid_argument("cache_check = '" + w + "': on or off");
+            cache_check_ = w == "on";
             return true;
         }
         return false;

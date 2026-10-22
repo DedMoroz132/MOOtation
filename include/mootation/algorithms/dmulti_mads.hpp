@@ -147,6 +147,7 @@ private:
     double tau_ = 0.5, delta0_ = 0.1, tol_ = 1e-9;
     bool spread_ = true, opportunistic_ = false, speculative_ = true;
     bool cache_ = true;                                    // DMM-8
+    bool cache_check_ = false;                             // every hit evaluated again (a check)
     std::map<std::vector<double>, Entry> seen_;            // V^k: the points evaluated, by x
     long long cache_hits_ = 0;
     std::mt19937 rng_{0};
@@ -191,7 +192,19 @@ private:
                 && std::find(fresh.begin(), fresh.end(), u) == fresh.end()) fresh.push_back(u);
         for (auto& e : evaluate_all(vault, fresh)) seen_.emplace(e.x, e);
         std::vector<Entry> out;
-        for (const auto& u : U) out.push_back(seen_.at(u));
+        for (const auto& u : U) {
+            Entry e = seen_.at(u);
+            if (std::find(fresh.begin(), fresh.end(), u) == fresh.end()) {
+                // a hit: brought to the vault's present as the list is
+                // (WRITING BACK; task 17, supplement 2)
+                refresh_copy(vault, e.pt, e.f, e.cv, true);
+                if (cache_check_) {
+                    const Entry n = evaluate_all(vault, {u}).front();
+                    check_cache_hit("dmulti_mads", e.f, e.cv, e.pt.failed, n.f, n.cv, n.pt.failed);
+                }
+            }
+            out.push_back(std::move(e));
+        }
         cache_hits_ += static_cast<long long>(U.size() - fresh.size());
         return out;
     }
@@ -430,6 +443,11 @@ public:
         if (k == "mads_cache") {                                            // DMM-8
             if (w != "off" && w != "on") throw bad("off or on");
             cache_ = w == "on";
+            return true;
+        }
+        if (k == "cache_check") {
+            if (w != "off" && w != "on") throw bad("off or on");
+            cache_check_ = w == "on";
             return true;
         }
         return false;

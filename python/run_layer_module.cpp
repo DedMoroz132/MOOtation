@@ -20,6 +20,8 @@
 #include <pybind11/stl.h>
 
 #include <mootation/archive_select.hpp>
+#include <mootation/decision_indicators.hpp>
+#include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
 #include <mootation/nondominated.hpp>
@@ -212,6 +214,178 @@ void bind_run_layer(py::module_& m)
           py::arg("F"), py::arg("ref"), py::arg("threads") = 1,
           "mootation.run.metrics.front_distances: (to_set, to_ref, eps), the same values "
           "(include/mootation/indicators.hpp); threads 0: every core.");
+    // ── the decision-space indicators (metrics.py; task 17, stage 2a) ──────
+    // X and the sample in the problem's units, lo and hi its bounds, cyclic
+    // the indices of the variables that wrap
+    struct Decision {
+        std::vector<double> U, R;
+        std::size_t nu = 0, nr = 0, d = 0;
+        std::vector<char> cyclic;
+    };
+    auto decision = [](const Arr& X, const Arr* P, const Arr& lo, const Arr& hi,
+                       const std::vector<std::size_t>& cyclic, const char* what) {
+        Rows x = rows_of(X, what);
+        Decision out;
+        out.d = x.m;
+        if (static_cast<std::size_t>(lo.size()) != x.m || static_cast<std::size_t>(hi.size()) != x.m)
+            throw std::invalid_argument(std::string(what) + ": one bound per variable");
+        out.U = mootation::indicators::unit_rows(x.v.data(), x.n, x.m, lo.data(), hi.data());
+        out.nu = x.n;
+        if (P != nullptr) {
+            Rows p = rows_of(*P, what);
+            if (p.m != x.m) throw std::invalid_argument(std::string(what) + ": X and the sample need the same columns");
+            out.R = mootation::indicators::unit_rows(p.v.data(), p.n, p.m, lo.data(), hi.data());
+            out.nr = p.n;
+        }
+        if (!cyclic.empty()) {
+            out.cyclic.assign(x.m, 0);
+            for (std::size_t j : cyclic) {
+                if (j >= x.m) throw std::invalid_argument(std::string(what) + ": a cyclic index past the variables");
+                out.cyclic[j] = 1;
+            }
+        }
+        return out;
+    };
+    m.def("igdx",
+          [decision](const Arr& X, const Arr& P, const Arr& lo, const Arr& hi, std::vector<std::size_t> cyclic) {
+              Decision s = decision(X, &P, lo, hi, cyclic, "igdx");
+              py::gil_scoped_release unlock;
+              return mootation::indicators::igdx(s.U.data(), s.nu, s.R.data(), s.nr, s.d, s.cyclic);
+          },
+          py::arg("X"), py::arg("pareto_set"), py::arg("lo"), py::arg("hi"), py::arg("cyclic"),
+          "mootation.run.metrics.igdx, the same value (include/mootation/decision_indicators.hpp).");
+    m.def("ps_dmin",
+          [decision](const Arr& X, const Arr& P, const Arr& lo, const Arr& hi, std::vector<std::size_t> cyclic) {
+              Decision s = decision(X, &P, lo, hi, cyclic, "ps_dmin");
+              py::gil_scoped_release unlock;
+              return mootation::indicators::ps_dmin(s.U.data(), s.nu, s.R.data(), s.nr, s.d, s.cyclic);
+          },
+          py::arg("X"), py::arg("pareto_set"), py::arg("lo"), py::arg("hi"), py::arg("cyclic"),
+          "mootation.run.metrics.ps_dmin, the same value.");
+    m.def("pairwise_distance",
+          [decision](const Arr& X, const Arr& lo, const Arr& hi, std::vector<std::size_t> cyclic) {
+              Decision s = decision(X, nullptr, lo, hi, cyclic, "pairwise_distance");
+              py::gil_scoped_release unlock;
+              return mootation::indicators::pairwise_distance(s.U.data(), s.nu, s.d, s.cyclic);
+          },
+          py::arg("X"), py::arg("lo"), py::arg("hi"), py::arg("cyclic"),
+          "mootation.run.metrics.pairwise_distance, the same value.");
+    // ── more of metrics.py (run_metrics.hpp; task 17, stage 2a) ──────────────
+    auto frame = [](const Arr& a, std::size_t m, const char* what) {
+        if (static_cast<std::size_t>(a.size()) != m)
+            throw std::invalid_argument(std::string(what) + ": one value per objective");
+        return std::vector<double>(a.data(), a.data() + m);
+    };
+    m.def("roi_dist",
+          [frame](const Arr& F, const Arr& ideal, const Arr& nadir) {
+              Rows f = rows_of(F, "roi_dist: F");
+              return mootation::run_metrics::roi_dist(f.v.data(), f.n, f.m, frame(ideal, f.m, "roi_dist"),
+                                                      frame(nadir, f.m, "roi_dist"));
+          },
+          py::arg("F"), py::arg("ideal"), py::arg("nadir"), "mootation.run.metrics.roi_dist, the same value.");
+    m.def("range_cover_each",
+          [frame](const Arr& F, const Arr& ideal, const Arr& nadir) {
+              Rows f = rows_of(F, "range_cover_each: F");
+              return vector_of(mootation::run_metrics::range_cover_each(
+                  f.v.data(), f.n, f.m, frame(ideal, f.m, "range_cover_each"), frame(nadir, f.m, "range_cover_each")));
+          },
+          py::arg("F"), py::arg("ideal"), py::arg("nadir"), "mootation.run.metrics.range_cover_each, the same values.");
+    m.def("dup_share",
+          [](const Arr& F) {
+              Rows f = rows_of(F, "dup_share: F");
+              return mootation::run_metrics::dup_share(f.v.data(), f.n, f.m);
+          },
+          py::arg("F"), "mootation.run.metrics.dup_share, the same value.");
+    m.def("nd_share",
+          [](const Arr& F) {
+              Rows f = rows_of(F, "nd_share: F");
+              return mootation::run_metrics::nd_share(f.v.data(), f.n, f.m);
+          },
+          py::arg("F"), "mootation.run.metrics.nd_share, the same value.");
+    m.def("nn_cv",
+          [frame](const Arr& F, const Arr& ideal, const Arr& nadir) -> py::object {
+              Rows f = rows_of(F, "nn_cv: F");
+              const double v = mootation::run_metrics::nn_cv(f.v.data(), f.n, f.m, frame(ideal, f.m, "nn_cv"),
+                                                             frame(nadir, f.m, "nn_cv"));
+              if (std::isnan(v)) return py::none();
+              return py::float_(v);
+          },
+          py::arg("F"), py::arg("ideal"), py::arg("nadir"), "mootation.run.metrics.nn_cv, the same value or None.");
+    m.def("quantile",
+          [](std::vector<double> a, double q) { return mootation::run_metrics::quantile(std::move(a), q); },
+          py::arg("a"), py::arg("q"), "np.quantile(a, q) (method linear), the same value.");
+    m.def("median",
+          [](std::vector<double> a) { return mootation::run_metrics::median(std::move(a)); },
+          py::arg("a"), "np.median(a), the same value.");
+    m.def("hv_normalised",
+          [frame](const Arr& F, const Arr& ideal, const Arr& nadir, double ref_scale, std::size_t samples,
+                  std::uint64_t seed, int exact_max_m, const std::string& algo) {
+              if (algo != "auto" && algo != "wfg" && algo != "box")
+                  throw std::invalid_argument("hv_normalised: algo = '" + algo + "': auto, wfg or box");
+              Rows f = rows_of(F, "hv_normalised: F");
+              const auto lo = frame(ideal, f.m, "hv_normalised"), hi = frame(nadir, f.m, "hv_normalised");
+              mootation::run_metrics::Hv h;
+              {
+                  py::gil_scoped_release unlock;
+                  h = mootation::run_metrics::hypervolume(f.v.data(), f.n, f.m, lo, hi, ref_scale, samples, seed,
+                                                          exact_max_m, algo);
+              }
+              return py::make_tuple(h.value, std::string(h.method));
+          },
+          py::arg("F"), py::arg("ideal"), py::arg("nadir"), py::arg("ref_scale"), py::arg("samples"),
+          py::arg("seed"), py::arg("exact_max_m"), py::arg("algo"),
+          "mootation.run.metrics.hypervolume: (value, method), the same value.");
+    m.def("cover_rate",
+          [](const Arr& X, const Arr& P) {
+              Rows x = rows_of(X, "cover_rate: X"), p = rows_of(P, "cover_rate: pareto_set");
+              if (x.m != p.m) throw std::invalid_argument("cover_rate: X and the sample need the same columns");
+              return mootation::indicators::cover_rate(x.v.data(), x.n, p.v.data(), p.n, x.m);
+          },
+          py::arg("X"), py::arg("pareto_set"),
+          "mootation.run.metrics.cover_rate, its root by the library's pow "
+          "(include/mootation/decision_indicators.hpp).");
+    m.def("nearest_other",
+          [](const Arr& R) {
+              Rows r = rows_of(R, "nearest_other: R");
+              std::vector<double> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::indicators::nearest_other(r.v.data(), r.n, r.m);
+              }
+              return vector_of(out);
+          },
+          py::arg("R"),
+          "For every row of R the distance to the nearest other row (metrics.reference_step).");
+    m.def("rnd_uniform",
+          [](std::uint32_t seed, std::size_t n) {
+              std::mt19937 g(seed);
+              std::vector<double> out(n);
+              for (double& v : out) v = mootation::rnd::uniform01(g);
+              return vector_of(out);
+          },
+          py::arg("seed"), py::arg("n"),
+          "n values of rnd::uniform01 of a std::mt19937 seeded with `seed` (random.hpp): what "
+          "metrics._mc_draws repeats with NumPy's MT19937 (task 17, supplement 1, §3).");
+    m.def("spread_first", &mootation::indicators::spread_first, py::arg("seed"), py::arg("rows"),
+          "The first point of the second answer's spread_select among `rows`, from the run's seed "
+          "(include/mootation/decision_indicators.hpp).");
+    m.def("spread_select",
+          [](const Arr& X, std::size_t n, const Arr& lo, const Arr& hi, std::size_t first) {
+              Rows x = rows_of(X, "spread_select: X");
+              if (static_cast<std::size_t>(lo.size()) != x.m || static_cast<std::size_t>(hi.size()) != x.m)
+                  throw std::invalid_argument("spread_select: one bound per variable");
+              if (x.n > n && first >= x.n) throw std::invalid_argument("spread_select: first past the rows");
+              std::vector<std::size_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  const std::vector<double> Z =
+                      mootation::indicators::unit_rows(x.v.data(), x.n, x.m, lo.data(), hi.data());
+                  out = mootation::indicators::spread_select(Z.data(), x.n, x.m, n, first);
+              }
+              return out;
+          },
+          py::arg("X"), py::arg("n"), py::arg("lo"), py::arg("hi"), py::arg("first"),
+          "mootation.run.archive.spread_select from the given first point, the same indices.");
     m.def("igd_distances",
           [](const Arr& F, const Arr& R, unsigned threads) {
               Rows f = rows_of(F, "igd_distances: F"), r = rows_of(R, "igd_distances: ref");
