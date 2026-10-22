@@ -146,7 +146,8 @@ def runtime_ecdf(runs: list, metric: str, targets: list, *, interpolation: str =
 
 def read_trajectory(run_dir: Path) -> list:
     import json
-    path = Path(run_dir) / "trajectory.jsonl"
+    from ..store import as_run_dir
+    path = as_run_dir(run_dir) / "trajectory.jsonl"
     out = []
     if not path.is_file():
         return out

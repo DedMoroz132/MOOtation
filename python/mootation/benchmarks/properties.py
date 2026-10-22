@@ -616,6 +616,39 @@ _MMO_FRONT = {"MMF4": "concave", "MMF8": "concave", "MMF12": "convex+disconnecte
               "MMF15_a": "concave"}
 
 
+def modification_of(name: str) -> dict | None:
+    """What a registry problem changes of another (task 16, §3.4: a campaign's
+    repeats are its seeds; a shift, a rotation, noise are other problems, and
+    meta.json says which): {"kind", "of": the registry name it changes, ...},
+    or None for a problem of its own.
+
+      rotation   rDTLZ1_3D_i2: the variables rotated (rotated.py); "instance"
+                 the matrix's draw (0 without _i), "conditioning" True for rc
+      control    r0DTLZ1_3D, c0DTLZ2_5D: the same construction with Q = I
+      shift      shiftZDT1, shiftDTLZ1_3D: the optimum moved (shifted.py,
+                 dtlz_variants.py)
+      noise      ZDT1_n1 (noisy.py): "level"
+      failing    ZDT1_fail10r (failing.py): "share" (%), "region"
+    """
+    from . import failing, noisy
+    if noisy.is_noisy(name):                     # first: a noisy copy of rcDTLZ2_3D is noise
+        return {"kind": "noise", "of": noisy.base_of(name), "level": name.rsplit("_", 1)[1]}
+    if "_fail" in name:
+        base, _, spec = name.rpartition("_fail")
+        return {"kind": "failing", "of": base, "share": int(spec[:-1]),
+                "region": failing.KINDS.get(spec[-1], spec[-1])}
+    stem, _, rest = name.partition("_")
+    if stem in _ROTATED:
+        base, rotated, conditioned = _ROTATED[stem]
+        parts = rest.split("_") if rest else []
+        instance = int(parts.pop()[1:]) if parts and parts[-1][:1] == "i" and parts[-1][1:].isdigit() else 0
+        return {"kind": "rotation" if rotated else "control", "of": "_".join([base, *parts]),
+                "instance": instance, "conditioning": conditioned}
+    if stem.startswith(("shiftZDT", "shiftDTLZ")):
+        return {"kind": "shift", "of": stem[len("shift"):] + (f"_{rest}" if rest else "")}
+    return None
+
+
 def interior(name: str) -> bool:
     """Does the table put the optimum neither at the centre nor on the
     boundary (centre and boundary not True; None, unknown, counts as

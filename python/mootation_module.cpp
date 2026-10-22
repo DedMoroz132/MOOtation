@@ -750,6 +750,7 @@ struct PyResult {
     std::vector<std::string>         ignored;
     // Evaluations the run spent, setup included.
     long long                        evaluations = 0;
+    bool                             finished = false;   // the core stopped by its own rule (task 16)
     // Every variation operator the run used, with its bound repair ("none" for
     // one that cannot leave the box), in order of first use.
     std::vector<std::pair<std::string, std::string>> operators;
@@ -1133,6 +1134,7 @@ PyResult run_core(const RunConfig& cfg)
                                        static_cast<std::size_t>(v.pop_size()));
     r.ignored  = std::move(ignored);
     r.evaluations = g_evaluations.load();
+    r.finished = core_finished(alg);
     for (const auto& u : ops::operators_used()) r.operators.emplace_back(u.op, u.repair);
     if constexpr (has_effective_settings<Core>::value) r.settings = alg.effective_settings();
     if (var_prob) {
@@ -1424,6 +1426,8 @@ PYBIND11_MODULE(_core, m)
                       "The equalities' tolerance cv was taken with; 0 without equalities.")
         .def_readonly("evaluations", &PyResult::evaluations,
                       "Evaluations the run spent, setup included.")
+        .def_readonly("finished", &PyResult::finished,
+                      "Whether the core stopped by its own rule (DMS, DMulti-MADS: the step size below its tolerance), before the budget or the generations ran out.")
         .def_readonly("callback_seconds", &PyResult::callback_seconds,
                       "Wall time the run spent in the Python evaluators (objectives and "
                       "constraints), the crossing and the list conversions included.")

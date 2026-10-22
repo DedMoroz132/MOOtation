@@ -90,6 +90,10 @@ class Algorithm:
     # budget a larger design, a plan before the optimization, takes.
     init: str = "uniform"
     init_share: float = 0.0
+    # The problems of the campaign this entry runs on (empty: all of them):
+    # a grid of a knob on a part of the problems beside the main runs, as a
+    # sensitivity study of the population size (task 16, §3.3).
+    problems: tuple = ()
 
     @property
     def key(self) -> str:
@@ -288,6 +292,13 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
         where = f"algorithms[{i}]"
         if not isinstance(a, dict):
             raise ConfigError(where, "each algorithm must be a table")
+        # a knob written beside name instead of in params would be dropped
+        # without a word, and the campaign run with the default (task 16)
+        unknown = sorted(set(a) - {"name", "pop", "gens", "label", "evaluations", "init",
+                                   "init_share", "params", "problems"})
+        if unknown:
+            raise ConfigError(where, f"unknown key(s): {', '.join(unknown)}; an algorithm's "
+                                     f"knobs go in params = {{ ... }}")
         params = _opt(a, "params", {}, where, dict)
         from .knobs import LIST_KNOBS, text_knobs
         words = text_knobs()
@@ -319,6 +330,7 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             # boolean stays a boolean (normalize = true).
             params={k: (v if isinstance(v, (bool, int, str, list)) else float(v))
                     for k, v in params.items()},
+            problems=tuple(_opt(a, "problems", [], where, list)),
         ))
 
     cfg.benchmarks = _opt(raw, "benchmarks", {}, "", dict)
@@ -556,6 +568,11 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
         # returns, and shadowing it here silently replaced every complaint
         # with the selection.
         cfg.benchmark_problems = _benchmark_selection(cfg.benchmarks, bad)
+        for i, a in enumerate(cfg.algorithms):
+            outside = [p for p in a.problems if p not in cfg.benchmark_problems]
+            if outside:
+                bad(f"algorithms[{i}] ({a.key}).problems",
+                    f"not among the campaign's problems: {', '.join(outside[:5])}")
 
         # The sweep trap: a pop that is a lattice size at M = 3 but not at
         # M = 5 aborts half the campaign at setup. Check every algorithm
@@ -579,6 +596,8 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
                 if a.pop < 2:
                     continue
                 for m in sorted(by_m):
+                    if a.problems and not set(a.problems) & set(by_m[m]):
+                        continue                         # none of its problems has this M
                     reason = check_pop(a.name, a.pop, m, a.params)
                     if reason:
                         sample = ", ".join(by_m[m][:3]) + (", ..." if len(by_m[m]) > 3 else "")

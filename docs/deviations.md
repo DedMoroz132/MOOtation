@@ -8,7 +8,7 @@ is given in full, with its reasons and references.
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-372 items: 301 yes, 15 no: option, 56 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+373 items: 301 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -361,6 +361,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `dmulti_mads` | DMM-6 | Points outside the box: the extreme barrier, not evaluated. | yes | `dmulti_mads.hpp` |
 | `dmulti_mads` | DMM-7 | A poll step that would leave the box stops at its last mesh point inside: z_r is cut to the integers with 0 <= x_r + δz_r <= 1, so the point stays on the mesh and in the frame; a point equal to x_k or to an earlier po... | yes | `dmulti_mads.hpp` |
 | `dmulti_mads` | DMM-8 (task 15 of 2026-10-21, §8; the default since 2026-10-22) | The cache V^k of Algorithm 1 ("Update the cache V^{k+1}"): MADS evaluates no point twice — the NOMAD 4.6.0 user guide: "before starting an evaluation, the cache is scanned for the point". mads_cache = on (the default)... | yes | `dmulti_mads.hpp` |
+| `dmulti_mads` | DMM-9 (fixed 2026-10-22, task 16) | A failure shrinks the frame of the member polled — found by its variables and its values. | no: fixed | `dmulti_mads.hpp` |
 | `multiglods` | MG-1 | The box normalized to [0, 1]^n, as dms does: α_0 = n, distances and radii in the normalized box (the paper works in the problem's units; with its α_0 = n·max range the two agree on boxes of one range). | yes | `multiglods.hpp` |
 | `multiglods` | MG-2 | The Sobol sequence unscrambled, from its index 1, continued from one search to the next; a point outside the domain (constraints) is evaluated and refused by the extreme barrier. | yes | `multiglods.hpp` |
 | `multiglods` | MG-3 | Constraints: the extreme barrier — an infeasible point (cv > 0) never enters the list (constraint_mode FEASIBILITY); | yes | `multiglods.hpp` |

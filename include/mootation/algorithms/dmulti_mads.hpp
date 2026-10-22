@@ -115,6 +115,14 @@ namespace mootation {
 //     spends no evaluation. Off: a point met again is evaluated again, the
 //     runs before 2026-10-22 (which spent up to a fifth of 10^4 evaluations
 //     so on DTLZ2_5D and MaF1_5D).
+//   DMM-9 (fixed 2026-10-22, task 16). A failure shrinks the frame of the
+//     member polled — found by its variables and its values. It was found by
+//     its variables alone: on a noisy problem without the cache a point met
+//     twice entered the list twice (other values, the same x), the first copy
+//     shrank and the incumbent, the second, never did, and the run idled to
+//     the runner's limit (10 000 steps evaluating nothing). With the cache
+//     (DMM-8, the default) no point is evaluated twice, so the default runs
+//     do not change.
 // Continuous variables only.
 // ============================================================================
 
@@ -531,7 +539,7 @@ public:
         update_list(std::move(nd), Delta);
         if (!success)
             for (auto& e : list_)
-                if (e.x == inc.x) { e.delta = tau_ * Delta; e.failed_here = true; break; }
+                if (e.x == inc.x && e.f == inc.f) { e.delta = tau_ * Delta; e.failed_here = true; break; }   // DMM-9
         publish(vault);
     }
 };

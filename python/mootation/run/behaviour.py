@@ -169,7 +169,7 @@ def run_descriptors(recs: list, best_igdp: float | None) -> dict:
 def _describe(task) -> tuple:
     key, run_dir, best_igdp = task
     from .campaign import read_trajectory
-    return key, run_descriptors(read_trajectory(Path(run_dir)), best_igdp)
+    return key, run_descriptors(read_trajectory(run_dir), best_igdp)
 
 
 def collect(root: Path, workers: int = 1, problems=None) -> dict:
@@ -179,7 +179,7 @@ def collect(root: Path, workers: int = 1, problems=None) -> dict:
     rows = [r for r in main_rows(scan_results(Path(root))) if r["status"] == "done"
             and (problems is None or r["problem"] in problems)]
     best = best_known(rows, "igdp_norm")
-    tasks = [((r["problem"], r["algorithm"], r["seed"]), str(r["dir"]), best.get(r["problem"]))
+    tasks = [((r["problem"], r["algorithm"], r["seed"]), r["dir"], best.get(r["problem"]))
              for r in rows]
     out = {}
     if workers > 1 and len(tasks) > 1:

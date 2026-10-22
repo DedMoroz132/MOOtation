@@ -54,6 +54,7 @@ from pathlib import Path
 from . import postprocess as PP
 from . import stats as ST
 from .metric_names import HIGHER_IS_BETTER
+from ..store import as_run_dir
 
 
 def _lower(metric: str) -> bool:
@@ -395,7 +396,7 @@ def ecdf_report(rows: list, metric: str, *, precisions=(1.0, 0.1, 0.01, 0.001, 1
     for r in rows:
         if r.get("status") != "done" or r["problem"] not in best:
             continue
-        runs.setdefault(r["algorithm"], []).append((r["problem"], PP.read_trajectory(Path(r["dir"]))))
+        runs.setdefault(r["algorithm"], []).append((r["problem"], PP.read_trajectory(r["dir"])))
     if grid is None:
         grid = [round(10 ** (k / 2)) for k in range(4, 11)]          # 100 .. 100 000
     out = {}
@@ -466,8 +467,7 @@ def _chi2_sf(x: float, dof: int) -> float:
 
 def _final_variables(run_dir, m: int, n: int):
     from .campaign import _read_points
-    from pathlib import Path
-    _, X = _read_points(Path(run_dir) / "final.csv", m, n)
+    _, X = _read_points(as_run_dir(run_dir) / "final.csv", m, n)
     return X
 
 
@@ -550,7 +550,7 @@ def structural_bias(rows: list) -> dict:
                 D = np.sqrt(((U[:, None, :] - U[None, :, :]) ** 2).sum(axis=2))
                 np.fill_diagonal(D, np.inf)
                 ceis.append(float(D.min(axis=1).mean() / (0.5 / np.sqrt(len(U)))))
-            meta_path = Path(r["dir"]) / "meta.json"
+            meta_path = as_run_dir(r["dir"]) / "meta.json"
             sb = (json.loads(meta_path.read_text(encoding="utf-8")).get("structural_bias")
                   if meta_path.is_file() else None)
             for key in counts:
@@ -623,7 +623,7 @@ def _final_sets(rows: list):
         if r.get("status") != "done":
             continue
         p = bench_get(r["problem"])
-        F, X = _read_points(Path(r["dir"]) / "final.csv", p.n_obj, p.n_vars)
+        F, X = _read_points(as_run_dir(r["dir"]) / "final.csv", p.n_obj, p.n_vars)
         if F is None or not len(F):
             continue
         out.setdefault((r["problem"], r["algorithm"]), []).append((F, X))

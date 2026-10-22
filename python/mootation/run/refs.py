@@ -325,6 +325,12 @@ def constraint_properties(name: str) -> dict | None:
                        the unconstrained front's range): a point lies on the
                        other front when it is no farther from that sample than
                        the sample's widest gap between neighbours.
+      handling         does the problem test constraint handling (task 16,
+                       §2.4): "tested", "untested" (an algorithm does no
+                       worse without its handling), "unread" (no reading),
+                       as set_constraint_handling() wrote it from a reading
+                       of the user's; absent until then. Kept when the rest
+                       is computed again.
     """
     import numpy as np
     from ..benchmarks.registry import PROBLEMS
@@ -338,7 +344,9 @@ def constraint_properties(name: str) -> dict | None:
             if got.get("version") == CONSTRAINT_PROPS_VERSION:
                 return got
         except (OSError, ValueError):
-            pass
+            got = {}
+    else:
+        got = {}
     from ..designs import sobol_owen
     from ..var_types import Layout
     bounds = list(p.bounds)
@@ -365,6 +373,8 @@ def constraint_properties(name: str) -> dict | None:
            "violated_mean": float(bad.mean()) if len(bad) else None,
            "violated_max": int(bad.max()) if len(bad) else None,
            "front": None}
+    if "handling" in got:
+        out["handling"] = got["handling"]
     stem, _, rest = name.partition("_")
     base = _UNCONSTRAINED.get(stem)
     if base is not None and f"{base}_{rest}" in PROBLEMS and callable(p.pareto_front):
@@ -386,10 +396,38 @@ def constraint_properties(name: str) -> dict | None:
     return out
 
 
+HANDLING = ("tested", "untested", "unread")
+
+
+def set_constraint_handling(table: dict) -> int:
+    """Write a reading of whether constrained problems test constraint
+    handling into their constraints.json: table {"tested": [names],
+    "untested": [...], "unread": [...]} and a "source" saying where it comes
+    from (a run campaign's reading, kept by the user: mootation refs handling
+    FILE). Returns the problems written."""
+    from ..benchmarks.registry import PROBLEMS
+    bad = sorted(set(table) - set(HANDLING) - {"source"})
+    if bad:
+        raise ValueError(f"handling: {', '.join(bad)}? the keys are {', '.join(HANDLING)}")
+    names = [(n, k) for k in HANDLING for n in table.get(k, ())]
+    unknown = [n for n, _ in names if n not in PROBLEMS or not PROBLEMS[n].has_cons]
+    if unknown:
+        raise ValueError(f"not constrained problems of the registry: {', '.join(unknown[:10])}")
+    for name, kind in names:
+        props = dict(constraint_properties(name), handling=kind)
+        (store_dir() / name / "constraints.json").write_text(json.dumps(props, indent=1), encoding="utf-8")
+    return len(names)
+
+
 def main(argv: list | None = None) -> int:
     ap = argparse.ArgumentParser(prog="mootation refs",
                                  description="the registry's reference data, built once per machine")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("handling", help="write a reading of constraint handling (a JSON file "
+                       "{\"tested\": [...], \"untested\": [...], \"unread\": [...]}) into "
+                       "constraints.json")
+    s.add_argument("file")
+    s.add_argument("--refs-dir", default="", help=f"the cache's root (or {ENV_DIR})")
     for cmd in ("build", "check"):
         s = sub.add_parser(cmd)
         s.add_argument("--problems", default="", help="comma-separated names (default: all "
@@ -404,6 +442,10 @@ def main(argv: list | None = None) -> int:
     args = ap.parse_args(argv)
     if args.refs_dir:
         os.environ[ENV_DIR] = args.refs_dir           # the workers inherit it
+    if args.cmd == "handling":
+        n = set_constraint_handling(json.loads(Path(args.file).read_text(encoding="utf-8")))
+        print(f"{n} problems written ({store_dir()})")
+        return 0
     names = [n for n in args.problems.split(",") if n] or shared_problems()
     unknown = [n for n in names if not shared(n)]
     if unknown:

@@ -132,14 +132,15 @@ class CampaignSpec:
     # 7, §5.3); on by default.
     set_metrics: bool = True
     # The second answer for those indicators (task 15, the owner's word of
-    # 2026-10-22): N points spread out in the decision space (Tanabe's rule,
-    # archive.spread_select), from "population" — the final population's
+    # 2026-10-22), on the multi-modal problems (properties: multimodal_ps,
+    # several Pareto-set parts): N points spread out in the decision space
+    # (Tanabe's rule, archive.spread_select), from "population" — the final population's
     # non-dominated points — or "evaluated" — every point evaluated that no
     # other dominates, equal objective vectors with other variables kept apart
     # (archive.SetArchive), which an archive in the objective space glues
-    # together. Its IGDX, CR and PSP go to meta["set_answer"]; "off" (the
-    # default) makes none.
-    set_answer: str = "off"
+    # together (the default since 2026-10-22, task 16). Its IGDX, CR and PSP go
+    # to meta["set_answer"]; "off" makes none.
+    set_answer: str = "evaluated"
     seeds: tuple = ()
     # "budgets" (the default since task 10 of 2026-10-18): a trajectory point
     # at each count of budget_grid — 100, 150, 200, 300, 500, 700, 1 000, ...,
@@ -275,6 +276,20 @@ class CampaignSpec:
     # or "nearest", the accepted size nearest to it (fit_pop); the size run
     # is in meta.json, pop_note says why.
     pop_fit: str = "below"
+    # Where the runs go (task 16, §1): "files" — a folder of files per run, as
+    # before; "store" — a few large files per worker (mootation.store), the
+    # atlas's. keep: "standard" leaves the archives at the intermediate points
+    # of the budget grid (archive_at.npz) out of the store, "full" keeps them.
+    # segment_mb: a worker starts a new segment past this size.
+    storage: str = "files"
+    keep: str = "standard"
+    segment_mb: int = 1024
+    # A run's seconds at most (task 16, §3.1; 0: no limit), with the worker
+    # pool: past it the runner stops the worker, and the run is kept with the
+    # status "timeout" and its trajectory up to the last record it wrote (the
+    # last point of the budget grid it reached). A campaign resumed does not
+    # run it again; --force does.
+    run_timeout: float = 0.0
 
 
 def _snapshots_wanted(spec: "CampaignSpec", problem: str) -> bool:
@@ -341,7 +356,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
              "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
-             "archive_mode", "native"}
+             "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -369,7 +384,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.set_metrics = raw.get("set_metrics", True)
     if not isinstance(spec.set_metrics, bool):
         raise ConfigError("campaign.set_metrics", "true or false")
-    spec.set_answer = raw.get("set_answer", "off")
+    spec.set_answer = raw.get("set_answer", "evaluated")
     if spec.set_answer not in ("off", "population", "evaluated"):
         raise ConfigError("campaign.set_answer",
                           f"\"off\", \"population\" or \"evaluated\", not {spec.set_answer!r}")
@@ -498,6 +513,20 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
                           f"an integer >= 0, not {spec.ladder_min_gens!r}")
     if spec.budget_fe < 0:
         raise ConfigError("campaign.budget_fe", "must be >= 0")
+    spec.storage = raw.get("storage", "files")
+    if spec.storage not in ("files", "store"):
+        raise ConfigError("campaign.storage", f"\"files\" or \"store\", not {spec.storage!r}")
+    spec.keep = raw.get("keep", "standard")
+    if spec.keep not in ("standard", "full"):
+        raise ConfigError("campaign.keep", f"\"standard\" or \"full\", not {spec.keep!r}")
+    spec.segment_mb = raw.get("segment_mb", 1024)
+    if not isinstance(spec.segment_mb, int) or isinstance(spec.segment_mb, bool) or spec.segment_mb < 1:
+        raise ConfigError("campaign.segment_mb", f"an integer >= 1, not {spec.segment_mb!r}")
+    spec.run_timeout = raw.get("run_timeout", 0.0)
+    if (not isinstance(spec.run_timeout, (int, float)) or isinstance(spec.run_timeout, bool)
+            or spec.run_timeout < 0):
+        raise ConfigError("campaign.run_timeout", f"seconds >= 0 (0: no limit), not {spec.run_timeout!r}")
+    spec.run_timeout = float(spec.run_timeout)
     return spec
 
 
@@ -572,6 +601,8 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
     for pname in problems:
         p = PROBLEMS[pname]
         for a in cfg.algorithms:
+            if a.problems and pname not in a.problems:      # an entry on a part of them
+                continue
             pop = a.pop if a.pop > 0 else p.pop_size
             pop, note = fit_pop(a.name, pop, p.n_obj, a.params, spec.pop_fit)
             if a.evaluations > 0:                  # the algorithm's own budget
@@ -594,6 +625,8 @@ def expand_jobs(cfg: Config, spec: CampaignSpec) -> list[Job]:
         full = {(j.problem, j.key): j for j in jobs}
         for pname in problems:
             for a in cfg.algorithms:
+                if a.problems and pname not in a.problems:
+                    continue
                 # a plan taking a share of the budget depends on the budget too
                 if (not depends_on_budget(a.name, a.params) and not a.init_share)                         or a.evaluations > 0:
                     continue
@@ -670,6 +703,15 @@ def check_trajectory_versions(root: Path, jobs: list) -> None:
             continue
         if m.get("status") == "done" and trajectory_version_of(m) != TRAJECTORY_VERSION:
             other.append(f"{j.rel_dir.as_posix()} (v{trajectory_version_of(m)})")
+    from .. import store
+    s = store.store_dir(root)
+    keys = {store.job_key(j) for j in jobs} if s.is_dir() else set()
+    for raw in (store.packs(s) + store.segments(s)) if keys else []:
+        # a segment's or pack's header names the trajectory versions it holds
+        versions = store.read_header(raw.with_suffix(".mhd")).get("trajectory_version", "")
+        if {int(v) for v in versions.split(",") if v} - {TRAJECTORY_VERSION} and \
+                any(k in keys and loc.status == "done" for k, loc in store.segment_entries(raw)):
+            other.append(f"store/{raw.name} (v{versions})")
     if other:
         raise RuntimeError(
             f"{root} holds {len(other)} finished run(s) of another trajectory version than "
@@ -841,14 +883,77 @@ def _build_reference(path: Path, name: str, n_ref: int, front: bool, dense: bool
 
 
 def job_status(root: Path, job: Job) -> str:
-    meta = root / job.rel_dir / "meta.json"
-    if not meta.is_file():
-        return "pending"
+    return job_statuses(root, [job])[job.index]
+
+
+def job_statuses(root: Path, jobs: list) -> dict:
+    """{job index: "done", "failed", "running" or "pending"}: the run's record
+    in the store (mootation.store) where it has one, else its meta.json."""
+    from .. import store
+    stored = store.index(store.store_dir(root)) if store.store_dir(root).is_dir() else {}
+    out = {}
+    for job in jobs:
+        loc = stored.get(store.job_key(job))
+        if loc is not None:
+            out[job.index] = loc.status
+            continue
+        meta = root / job.rel_dir / "meta.json"
+        try:
+            with meta.open("r", encoding="utf-8") as fh:
+                out[job.index] = str(json.load(fh).get("status", "pending"))
+        except (OSError, ValueError):
+            out[job.index] = "pending"
+    return out
+
+
+def run_dir_of(root: Path, job: Job):
+    """The run's folder, to read: its record in the store where it has one
+    (store.StoredRun: `run / "meta.json"` reads as a file does), else
+    root / rel_dir."""
+    from .. import store
+    s = store.store_dir(root)
+    loc = store.index(s).get(store.job_key(job)) if s.is_dir() else None
+    return store.StoredRun(loc, store.job_key(job)) if loc is not None else root / job.rel_dir
+
+
+def _record_timeout(root: Path, spec: CampaignSpec, job: Job, pid: int, seconds: float) -> None:
+    """A run the runner stopped at run_timeout: its meta.json says "timeout",
+    with the evaluations and the values of its last trajectory record (the
+    last point of the budget grid it reached); its trajectory stays as
+    written. In a store it is packed from the stopped worker's scratch folder
+    into the runner's segment."""
+    import shutil
+    from .. import store
+    mine = store.store_dir(root) / store.SCRATCH_DIR / f"p{pid}"
+    d = mine / job.rel_dir if spec.storage == "store" else root / job.rel_dir
+    d.mkdir(parents=True, exist_ok=True)
     try:
-        with meta.open("r", encoding="utf-8") as fh:
-            return str(json.load(fh).get("status", "pending"))
-    except (OSError, ValueError):
-        return "pending"
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):                    # stopped before it wrote one
+        meta = {"problem": job.problem, "algorithm": job.key, "core": job.algorithm,
+                "seed": job.seed, "pop": job.pop, "gens": job.gens, "budget_fe": job.budget,
+                "params": job.params, "n_objs": job.n_objs}
+    traj = read_trajectory(d)
+    meta.update(status="timeout", timeout_seconds=seconds,
+                fe=int(traj[-1]["fe"]) if traj else 0, last_record=traj[-1] if traj else None,
+                finished=time.strftime("%Y-%m-%dT%H:%M:%S"))
+    _write_json(d / "meta.json", meta)
+    if spec.storage == "store":
+        w = store.writer(store.store_dir(root), spec.segment_mb << 20, header={
+            "code_stamp": _code_stamp(), "trajectory_version": TRAJECTORY_VERSION,
+            "detmath_path": _detmath_path()})
+        w.append(store.job_key(job), store.pack_run_dir(d, keep=spec.keep))
+        shutil.rmtree(mine, ignore_errors=True)
+
+
+def _detmath_path() -> str:
+    """The problems' elementary functions: the library's own where the
+    extension computes the suite (detmath.hpp), the C library's without it."""
+    try:
+        from .. import _core  # noqa: F401
+        return "detmath"
+    except ImportError:
+        return "libm"
 
 
 # ── running one job ─────────────────────────────────────────────────────────
@@ -856,17 +961,37 @@ def job_status(root: Path, job: Job) -> str:
 
 def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
             quiet: bool = False) -> str:
-    """Run one job to completion; returns the final status."""
+    """Run one job to completion; returns the final status. With [campaign]
+    storage = "store" the run's files are written to a scratch folder and
+    packed into this process's segment of the store (mootation.store); a run
+    stopped before that leaves no record and runs again on resuming."""
+    if not force and job_status(root, job) == "done":
+        return "done"
+    if spec.storage != "store":
+        return _run_job(job, root, spec, root / job.rel_dir, quiet=quiet)
+    import shutil
+    from .. import store
+    mine = store.store_dir(root) / store.SCRATCH_DIR / f"p{os.getpid()}"   # one run at a time
+    shutil.rmtree(mine, ignore_errors=True)
+    d = mine / job.rel_dir
+    status = _run_job(job, root, spec, d, quiet=quiet)
+    w = store.writer(store.store_dir(root), spec.segment_mb << 20, header={
+        "code_stamp": _code_stamp(), "trajectory_version": TRAJECTORY_VERSION,
+        "detmath_path": _detmath_path()})
+    w.append(store.job_key(job), store.pack_run_dir(d, keep=spec.keep))
+    shutil.rmtree(mine)
+    return status
+
+
+def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool = False) -> str:
+    """run_job's run, its files written to d."""
     import numpy as np
     from ..benchmarks import get as bench_get
     from .. import __version__, minimize
     from . import metrics as M
     from .provenance import revision
 
-    d = root / job.rel_dir
     meta_path = d / "meta.json"
-    if not force and job_status(root, job) == "done":
-        return "done"
     d.mkdir(parents=True, exist_ok=True)
     traj_path = d / "trajectory.jsonl"
     if traj_path.exists():
@@ -895,6 +1020,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
 
     from .budget import depends_on_budget
     from ..benchmarks.registry import REFERENCE_VERSION, problem_version
+    from ..benchmarks.properties import modification_of
     from ..benchmarks.wfg import numba_enabled as wfg_numba_enabled
     meta = {
         "status": "running", "problem": job.problem, "algorithm": job.key,
@@ -920,6 +1046,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         # the problem's version (registry.py, PROBLEM_VERSION): a run of an
         # older one answered another problem
         "problem_version": problem_version(job.problem),
+        # what the problem changes of another — a rotation, a shift, noise
+        # (properties.modification_of); None for one of its own. A campaign's
+        # repeats are its seeds; a modification is another problem (task 16, §3.4)
+        "modification": modification_of(job.problem),
         # what the run was measured against and with (reference_hash), and the
         # benchmark sources' stamp: --merge compares them across the parts
         "reference_hash": ref_hash, "code_stamp": _code_stamp(),
@@ -962,7 +1092,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
            if (spec.archive or baseline) else None)
     # the second answer's candidates when they are every point evaluated
     sarc = None
-    if spec.set_answer == "evaluated" and pset is not None and len(pset) and p.n_vars:
+    # kept only where the Pareto set has several parts (properties: multimodal_ps)
+    from ..benchmarks.properties import properties
+    multimodal = bool((properties(job.problem) or {}).get("multimodal_ps"))
+    if spec.set_answer == "evaluated" and multimodal and pset is not None and len(pset) and p.n_vars:
         from .archive import SetArchive
         sarc = SetArchive(p.n_obj, p.n_vars)
 
@@ -975,7 +1108,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     # (Result.callback_seconds) and the records. (constraints and feasible:
     # the constraints asked for apart, which no run does any more.)
     tm = dict(evaluate=0.0, constraints=0.0, feasible=0.0, archive=0.0, evaluator=0.0,
-              checkpoints=0.0, records=0.0, minimize=0.0, final=0.0, write=0.0,
+              checkpoints=0.0, records=0.0, minimize=0.0, final=0.0, write=0.0, set_answer=0.0,
               setup=time.perf_counter() - t_setup)
 
     # A constrained problem's indicators are measured on the feasible part of
@@ -1102,8 +1235,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                        np.asarray([n for _, n in pend_i], np.int64))
             pend_i.clear()
         if pend_s:
+            t_s = time.perf_counter()
             sarc.add_many([f for f, _ in pend_s], [x for _, x in pend_s])
             pend_s.clear()
+            tm["set_answer"] += time.perf_counter() - t_s
         tm["archive"] += time.perf_counter() - t_a
 
     def objectives_of(X):
@@ -1465,6 +1600,11 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                     traceback=traceback.format_exc()[-4000:], fe=fe,
                     finished=time.strftime("%Y-%m-%dT%H:%M:%S"),
                     seconds=round(time.perf_counter() - t0, 3))
+        # the pair cannot run at all (a core without the integer genome on
+        # binary variables, BC's n + 1 parents above pop_size): not the
+        # algorithm failing; the reports keep these apart (task 16, §2.5)
+        if "incompatible by construction" in str(e):
+            meta["incompatible"] = True
         _write_json(meta_path, meta)
         if not quiet:
             print(f"[{job.index}] {job.problem} {job.key} seed {job.seed}: FAILED {e}",
@@ -1634,9 +1774,10 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
         meta["final_archive"]["n"] = int(len(arc_sel))
         if truth is not None and len(T):
             meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
-    if spec.set_answer != "off" and pset is not None and len(pset) and p.n_vars:
+    if spec.set_answer != "off" and multimodal and pset is not None and len(pset) and p.n_vars:
         # the second answer (CampaignSpec.set_answer): its decision-space indicators
         from .archive import SetArchive, spread_select
+        t_s = time.perf_counter()
         if sarc is None:                    # "population": the final population's non-dominated
             sarc = SetArchive(p.n_obj, p.n_vars)
             keep = np.all(np.isfinite(F), axis=1) if F.size else np.zeros(0, bool)
@@ -1652,6 +1793,7 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                                   "n": int(len(sel)), **{m: got.get(m) for m in SET_METRICS}}
         else:
             meta["set_answer"] = {"candidates": spec.set_answer, "n_candidates": 0, "n": 0}
+        tm["set_answer"] += time.perf_counter() - t_s
     tm["final"] += time.perf_counter() - t_fin
     if not baseline:
         meta["operators"] = [{"operator": o, "bound_repair": r}
@@ -1689,6 +1831,14 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
                 # of `seconds`, what the trajectory records took (indicators,
                 # operator statistics, snapshots, archive checkpoints)
                 record_seconds=round(record_seconds, 3))
+    if getattr(res, "finished", False) and fe < budget:
+        # the core stopped by its own rule before the budget (DMS, DMulti-MADS:
+        # the step below its tolerance; task 16, §2): a done run, marked
+        meta["core_stopped"] = {"evaluations": int(fe), "budget": int(budget)}
+    if getattr(res, "unique_evaluations", None) is not None:
+        # the distinct points among the evaluations: the budget counts calls,
+        # a point asked for again included (task 16, §3.2)
+        meta["unique_fe"] = int(res.unique_evaluations)
     _write_json(meta_path, meta)
     if not quiet:
         summary = ", ".join(f"{k}={v:.4g}" for k, v in final.items() if isinstance(v, float))
@@ -1872,12 +2022,15 @@ def _readable(conns: list, timeout: float) -> list:
 
 
 def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
-                 force: bool, label: str, worker=None) -> dict:
+                 force: bool, label: str, worker=None, timeout: float = 0.0,
+                 on_timeout=None) -> dict:
     """Run `todo` with a pool whose size follows `_workers.txt` while it runs.
 
     Each worker has its own pipe and asks for one job at a time, so the runner
     always knows which job a worker holds, and a worker that dies holding one
     fails exactly that job. `worker` stands in for `_worker_main` in tests.
+    A job held past `timeout` seconds (0: never) stops its worker and counts
+    as "timeout"; on_timeout(job index, the worker's pid) records it.
     """
     import multiprocessing as mp
     from collections import deque
@@ -1892,6 +2045,7 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
     write_workers(root, workers)
 
     pool: dict = {}          # the runner's end of a worker's pipe -> [process, job it holds]
+    taken: dict = {}         # the same -> when it took its job
     retired: list = []       # workers told to leave, joined at the end
     counts = {"done": 0, "failed": 0}
     finished = 0
@@ -1923,6 +2077,7 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
         # _workers.txt starts a replacement.
         nonlocal finished
         p, job = pool.pop(conn)
+        taken.pop(conn, None)
         conn.close()
         p.join(timeout=1)
         if job is not None:
@@ -1955,6 +2110,7 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
                 if msg[0] == "ready":
                     if pending and len(pool) <= want:
                         pool[conn][1] = index = pending.popleft()
+                        taken[conn] = time.time()
                         try:
                             conn.send(index)
                         except OSError:
@@ -1970,12 +2126,28 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
                     conn.close()
                 elif msg[0] == "done":
                     pool[conn][1] = None
+                    taken.pop(conn, None)
                     counts[msg[3]] = counts.get(msg[3], 0) + 1
                     finished += 1
                 elif msg[0] == "broken":
                     print(f"a worker could not start: {msg[2]}", file=sys.stderr)
                     state = "broken"
                     break
+            # a job past the time limit: its worker stopped where it is
+            for conn, (p, job) in list(pool.items()):
+                if timeout <= 0 or job is None or time.time() - taken[conn] <= timeout:
+                    continue
+                pid = p.pid
+                p.kill()
+                p.join(timeout=5)
+                pool.pop(conn)
+                taken.pop(conn)
+                conn.close()
+                counts["timeout"] = counts.get("timeout", 0) + 1
+                finished += 1
+                print(f"[{job}] TIMEOUT: stopped after {timeout:g} s", file=sys.stderr)
+                if on_timeout is not None:
+                    on_timeout(job, pid)
             # A worker that died before it could take its end of the pipe leaves
             # no end of file to read, so the processes are checked as well.
             for conn, (p, _) in list(pool.items()):
@@ -2084,7 +2256,17 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
     elif shard is not None:
         i, n = shard
         selected = [j for j in jobs if shard_of(j, n) == i]
-    todo = longest_first(root, [j for j in selected if force or job_status(root, j) != "done"])
+    from .. import store
+    if store.store_dir(root).is_dir() and not (runner_state(root) or {}).get("alive"):
+        # a campaign stopped while a worker wrote: its unfinished record goes
+        # (store.log says so) and the run is done again. Not while a runner
+        # of this folder beats: its workers may be writing
+        store.repair(store.store_dir(root))
+    status = job_statuses(root, selected)
+    # a run stopped at run_timeout is not run again on resuming (it would
+    # stop there again); --force runs it
+    todo = longest_first(root, [j for j in selected
+                                if force or status[j.index] not in ("done", "timeout")])
     print(f"{cfg.name}: {len(jobs)} jobs total, {len(selected)} in this slice, "
           f"{len(todo)} to run -> {root}", file=sys.stderr)
     prepare_references(todo, spec.n_ref, workers=workers, build=build_refs)
@@ -2100,7 +2282,9 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
         label = (f"shard {shard[0]}/{shard[1]}" if shard is not None
                  else f"{len(only)} job(s)" if only is not None else "all")
         got = _run_dynamic(str(cfg.source_path), todo, root, workers=workers,
-                           force=force, label=label)
+                           force=force, label=label, timeout=spec.run_timeout,
+                           on_timeout=lambda index, pid: _record_timeout(
+                               root, spec, jobs[index], pid, spec.run_timeout))
         for k, v in got.items():
             counts[k] = counts.get(k, 0) + v
     else:
@@ -2327,7 +2511,8 @@ def emit_slurm(cfg: Config, n_shards: int, *, time_limit: str = "24:00:00",
 
 
 def read_trajectory(run_dir: Path) -> list[dict]:
-    p = run_dir / "trajectory.jsonl"
+    from ..store import as_run_dir
+    p = as_run_dir(run_dir) / "trajectory.jsonl"
     out = []
     if not p.is_file():
         return out
@@ -2344,19 +2529,26 @@ def read_trajectory(run_dir: Path) -> list[dict]:
 
 
 def scan_results(root: Path) -> list[dict]:
-    """Every run under root as {problem, algorithm, seed, status, final, seconds, fe, n_objs}."""
+    """Every run under root as {problem, algorithm, seed, status, final, seconds, fe, n_objs}:
+    the run folders and the runs of the store (mootation.store; "dir" a
+    store.StoredRun then, read as a folder is), a run in both the store's."""
+    from .. import store
     rows = []
     if not root.is_dir():
         return rows
-    for meta in root.glob("*/*/run_*/meta.json"):
+    stored = store.stored_runs(root)
+    in_store = {s.rel_dir.as_posix() for s in stored}
+    runs = [m.parent for m in root.glob("*/*/run_*/meta.json")
+            if m.parent.relative_to(root).as_posix() not in in_store] + stored
+    for run_dir in runs:
+        rel = run_dir.rel_dir if isinstance(run_dir, store.StoredRun) else run_dir.relative_to(root)
         try:
-            with meta.open("r", encoding="utf-8") as fh:
-                m = json.load(fh)
+            m = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         rows.append({
-            "problem": m.get("problem", meta.parents[2].name),
-            "algorithm": m.get("algorithm", meta.parents[1].name),
+            "problem": m.get("problem", rel.parts[0]),
+            "algorithm": m.get("algorithm", rel.parts[1]),
             "seed": m.get("seed"), "status": m.get("status", "?"),
             "final": m.get("final", {}) or {}, "seconds": m.get("seconds"),
             "fe": m.get("fe"), "n_objs": m.get("n_objs"), "budget_fe": m.get("budget_fe"),
@@ -2367,7 +2559,7 @@ def scan_results(root: Path) -> list[dict]:
             "ladder_of": m.get("ladder_of"),
             "has_reference_front": m.get("has_reference_front"),
             "pop": m.get("pop"), "reference_version": m.get("reference_version"),
-            "dir": meta.parent,
+            "dir": run_dir,
         })
     return rows
 
@@ -2425,7 +2617,7 @@ def read_row(row: dict, metrics, at: float | None) -> dict:
     budget = nominal(row)
     b = int(round(float(at) * budget))
     archive = row.get("scenario") == "archive"
-    traj = (read_trajectory(Path(row["dir"]))
+    traj = (read_trajectory(row["dir"])
             if not archive and needs_trajectory(b, budget, row.get("fe")) else ())
     return read_at(b, budget, row.get("fe"), row["final"], traj,
                    (row.get("archive_at") or {}) if archive else None, tuple(metrics))
@@ -2679,7 +2871,13 @@ def write_rank_csv(ranks: dict, path: Path) -> None:
 
 
 def _open_text(path: Path, mode: str = "r"):
-    """A results text file, gzip-compressed when its name ends in .gz."""
+    """A results text file, gzip-compressed when its name ends in .gz (a
+    stored run's file reads as its text: store.StoredFile)."""
+    from ..store import StoredFile
+    if isinstance(path, StoredFile):
+        if "r" not in mode:
+            raise OSError(f"{path}: a stored run is read only (mootation store export --files)")
+        return path.open(mode)
     if path.suffix == ".gz":
         import gzip
         return gzip.open(path, mode + "t", compresslevel=6, encoding="utf-8", newline="\n")
@@ -2690,6 +2888,11 @@ def _read_points(path: Path, m: int, n: int):
     """(F, X) from a final.csv, archive.csv or final_archive.csv.gz: m objective
     columns, then n variables."""
     import numpy as np
+    from ..store import StoredFile
+    if isinstance(path, StoredFile) and path.table() is not None:
+        # the numbers the store keeps are what parsing the text gives
+        A = path.table() if len(path.table()) else np.zeros((0, m + n))
+        return A[:, :m], (A[:, m:m + n] if A.shape[1] >= m + n else None)
     rows = []
     with _open_text(path) as fh:
         for line in fh:
@@ -3570,8 +3773,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.list:
         from ..benchmarks.registry import problem_version
+        statuses = job_statuses(root, jobs)
         for j in jobs:
-            st = job_status(root, j)
+            st = statuses[j.index]
             note = f"  [{j.pop_note}]" if j.pop_note else ""
             if st == "done":
                 meta = json.loads((root / j.rel_dir / "meta.json").read_text(encoding="utf-8"))

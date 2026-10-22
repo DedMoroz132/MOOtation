@@ -256,7 +256,7 @@ def _values_of_run(task) -> tuple:
     """(key, {budget: {metric: value}}) of one full-budget run, population."""
     key, run_dir, final, budget, spent, budgets = task
     from .campaign import read_trajectory
-    traj = (read_trajectory(Path(run_dir))
+    traj = (read_trajectory(run_dir)
             if any(needs_trajectory(b, budget, spent) for b in budgets) else ())
     return key, {b: read_at(b, budget, spent, final, traj) for b in budgets if b <= budget}
 
@@ -307,7 +307,7 @@ def collect(root: Path, budgets=BUDGETS, workers: int = 1, scenario: str = "fina
                                       archive_at=r.get("archive_at") or {})
                            for b in budgets if b <= bfe}
         else:
-            tasks.append((key, str(r["dir"]), r["final"], bfe, r.get("fe"), tuple(budgets)))
+            tasks.append((key, r["dir"], r["final"], bfe, r.get("fe"), tuple(budgets)))
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
         from .campaign import single_threaded_blas

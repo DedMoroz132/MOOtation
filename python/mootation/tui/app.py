@@ -511,12 +511,14 @@ class CampaignScreen(Vertical):
         per_alg: dict = {}                               # algorithm -> [done, failed, total]
         per_prob: dict = {}                              # problem -> [done, total]
         failed = []
+        statuses = _camp.job_statuses(self._root, [j for j in self._jobs
+                                                   if (j.problem, j.algorithm, j.seed) not in self._seen_done])
         for j in self._jobs:
             key = (j.problem, j.algorithm, j.seed)
             if key in self._seen_done:
                 st = "done"
             else:
-                st = _camp.job_status(self._root, j)
+                st = statuses[j.index]
                 if st == "done":
                     self._seen_done.add(key)
                 elif st == "failed":
@@ -534,7 +536,7 @@ class CampaignScreen(Vertical):
         errors = []
         for j in failed[-4:]:
             try:
-                meta = json.loads((self._root / j.rel_dir / "meta.json").read_text(encoding="utf-8"))
+                meta = json.loads((_camp.run_dir_of(self._root, j) / "meta.json").read_text(encoding="utf-8"))
                 errors.append(f"{j.algorithm} {j.problem} seed {j.seed}: {meta.get('error', '?')}")
             except (OSError, ValueError):
                 pass
@@ -1011,7 +1013,7 @@ class ExploreScreen(VerticalScroll):
     def show_run(self, run_dir) -> None:
         if self._plot is None:
             return
-        traj = _camp.read_trajectory(Path(run_dir))
+        traj = _camp.read_trajectory(run_dir)
         xs = [t.get("fe", 0) for t in traj]
         ys = [t.get(self.metric) for t in traj]
         body = Text()

@@ -673,16 +673,38 @@ class SetArchive:
         return len(self.F)
 
     def add_many(self, F, X) -> None:
-        for f, x in zip(np.asarray(F, float), np.asarray(X, float)):
-            if len(self.F):
-                le = np.all(self.F <= f, axis=1)
-                if np.any(le & np.any(self.F < f, axis=1)):
-                    continue                                    # dominated: out
-                beaten = np.all(f <= self.F, axis=1) & np.any(f < self.F, axis=1)
-                if np.any(beaten):
-                    self.F, self.X = self.F[~beaten], self.X[~beaten]
-            self.F = np.vstack([self.F, f[None, :]])
-            self.X = np.vstack([self.X, x[None, :]])
+        """The points of a batch, at once: those no point of the batch or the
+        archive strictly dominates join (in the batch's order), the archive's
+        that one of them dominates leave — the set and the order of adding the
+        points one at a time."""
+        F, X = np.asarray(F, float), np.asarray(X, float)
+        if not len(F):
+            return
+
+        def dominated_by(A, B):        # row i of A strictly dominated by some row of B
+            # one objective at a time: 2-D arrays, ten times faster than one
+            # 3-D comparison (task 16, §2.1)
+            out = np.zeros(len(A), bool)
+            for a in range(0, len(A), 256):
+                C = A[a:a + 256]
+                le = B[None, :, 0] <= C[:, 0, None]
+                lt = B[None, :, 0] < C[:, 0, None]
+                for j in range(1, A.shape[1]):
+                    le &= B[None, :, j] <= C[:, j, None]
+                    lt |= B[None, :, j] < C[:, j, None]
+                out[a:a + 256] = np.any(le & lt, axis=1)
+            return out
+        keep = ~dominated_by(F, F)
+        if len(self.F):
+            keep &= ~dominated_by(F, self.F)
+        F, X = F[keep], X[keep]
+        if not len(F):
+            return
+        if len(self.F):
+            stay = ~dominated_by(self.F, F)
+            self.F, self.X = self.F[stay], self.X[stay]
+        self.F = np.vstack([self.F, F])
+        self.X = np.vstack([self.X, X])
 
 
 def spread_select(X, n: int, bounds, seed: int) -> np.ndarray:

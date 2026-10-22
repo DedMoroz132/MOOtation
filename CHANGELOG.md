@@ -10,6 +10,69 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The result store (`mootation.store`, `[campaign] storage = "store"`): every
+  worker appends its runs to its own segment (`store/seg-*.mhd`, `.raw`,
+  `.idx`) instead of four files a run; a record is written whole and synced,
+  a cut one is not read and `repair` removes it; `keep = "standard"` leaves
+  the archives at the intermediate grid points out, `"full"` keeps them.
+  `mootation store ls|check|repair|compact|merge|export`: packs per family
+  of problems, byte for byte whatever segments the runs came in; tables of
+  the trajectories per family (`mootation.store.metrics`), CSV export. The
+  analyses (`--compare`, `--ranks`, `--cover`, ...) read a store as they read
+  the run folders. `storage = "files"` (the default) is the layout of before.
+
+- `mootation report <results>` (`mootation.run.campaign_report`): one HTML
+  page on a campaign, per family and number of objectives — the ECDF over
+  levels of the IGD+ floor, the median curves along the budget grid, a table
+  per level, the archive beside the population, the runs not done.
+
+- `[campaign] run_timeout`: a run past it is stopped by the runner and kept
+  as "timeout", with its trajectory up to the last record and that record in
+  `meta.json`; a resumed campaign does not run it again.
+
+- `meta.json` says what a modified problem changes of which problem
+  (`modification`: rotation, control, shift, noise, failing;
+  `benchmarks.properties.modification_of`) and how many distinct points the
+  run evaluated (`unique_fe`; the budget counts calls).
+
+- An `[[algorithms]]` entry may run on a part of the campaign's problems
+  (`problems = [...]`), as a grid of a knob beside the main runs;
+  `python/examples/population_variants.toml` shows four ways of choosing the
+  population size.
+
+- `[campaign] set_answer` is `"evaluated"` by default and the second answer
+  is kept only on the multi-modal problems (the problem property
+  `multimodal_ps`: SYM-PART, Omni-test, MMF, IPolygon, minusDTLZ2); its time
+  is `meta["timing"]["set_answer"]`. `SetArchive.add_many` compares a batch
+  at once and keeps what adding its points one by one keeps.
+
+- The budget loop stops without an error when the core ends by its own rule
+  (`finished()`: DMS, DMulti-MADS, MultiGLODS) before the budget: the run is
+  "done", and a campaign writes `meta["core_stopped"]` with the evaluations
+  spent. Before, it waited 10^4 steps and failed.
+
+- DMulti-MADS (DMM-9): a failed poll shrinks the frame of the member polled,
+  found by its variables and its values. Found by the variables alone, a
+  noisy problem without the cache (two list members with the same x, other
+  values) shrank the first copy, never the incumbent, and the run idled.
+  **Changed results**: only runs with such a copy (`mads_cache = "off"` on
+  a noisy problem); the default runs and the fingerprints do not change.
+
+- An algorithm that cannot run on a problem at all says "incompatible by
+  construction" (a core without the integer genome on binary or categorical
+  variables; BC-SPX and BC-REX when n + 1 parents exceed `pop_size`, with
+  the numbers); a campaign marks such a run `meta["incompatible"]`.
+
+- An `[[algorithms]]` entry with a key other than name, pop, gens, label,
+  evaluations, init, init_share, params and problems is refused: a knob written beside
+  `name` instead of in `params` was dropped without a word.
+
+- `mootation refs handling FILE` (`refs.set_constraint_handling`) writes a
+  reading of whether each constrained problem tests constraint handling —
+  "tested", "untested", "unread" — into its constraints.json as `handling`,
+  where `refs.constraint_properties` returns it; kept when the rest is
+  computed again. The reading is the user's (a campaign's), not shipped.
+
 - `ada = 1` in NSGA-III, θ-DEA and RVEA: Tanabe & Ishibuchi's ADA (IEEE TEVC
   2020; Algorithms S.10-S.12 of its supplement) for multi-modal problems — one
   child a step, compared only with its subproblem's neighbours in the
@@ -20,8 +83,8 @@ always listed under **Changed** or **Removed**.
   for the decision-space indicators — N points spread out in the variables
   (Tanabe & Ishibuchi 2020, §III-H) from every point evaluated that no other
   dominates (equal objectives with other variables kept apart) or from the
-  final population; its IGDX, CR and PSP in `meta["set_answer"]`. Off by
-  default.
+  final population; its IGDX, CR and PSP in `meta["set_answer"]`
+  (`"evaluated"` by default, see above).
 
 - DMulti-MADS keeps the points it evaluated (the cache V^k of Bigeon et
   al.'s Algorithm 1) and evaluates none twice (DMM-8); `mads_cache = "off"`

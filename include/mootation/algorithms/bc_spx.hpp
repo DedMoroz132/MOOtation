@@ -200,9 +200,15 @@ private:
         for (const auto& b : vault.get_bounds())
             if (!b.first || !b.second)
                 throw std::invalid_argument("bc: every variable needs finite bounds");
-        if (vault.pop_size() < vault.vars_n() + 1)
-            throw std::invalid_argument("bc: pop_size must be at least n + 1, the parents of one "
-                                        "crossover (the paper's μ is floor(100 ln n))");
+        const int n = vault.vars_n();
+        if (vault.pop_size() < n + 1)
+            throw std::invalid_argument(
+                "bc: incompatible by construction: one crossover takes k = n + 1 = " +
+                std::to_string(n + 1) + " different parents from the population, pop_size = " +
+                std::to_string(vault.pop_size()) + " is fewer (pass pop_size >= n + 1; the "
+                "paper's μ is floor(100 ln n) = " +
+                std::to_string(static_cast<int>(std::floor(100.0 * std::log(static_cast<double>(n))))) +
+                ")");
     }
 
     // NS: the non-domination level, then minus the crowding distance within

@@ -4815,6 +4815,18 @@ metrics = ["igdp_norm"]
             assert c["feasible_share"] == 1.0 and c["violated_mean"] is None, c
             assert (R.store_dir() / "C1-DTLZ3_3D" / "constraints.json").is_file()
             assert R.constraint_properties("MW1")["front"] is None and R.constraint_properties("ZDT1") is None
+            # task 16, §2.4: a reading of whether a problem tests constraint
+            # handling, written in by the user, kept when the rest is computed again
+            assert "handling" not in R.constraint_properties("MW1")
+            n = R.set_constraint_handling({"untested": ["MW1"], "unread": ["DOC1"], "tested": ["MW2"]})
+            got = {k: R.constraint_properties(k)["handling"] for k in ("MW1", "DOC1", "MW2")}
+            assert n == 3 and got == {"MW1": "untested", "DOC1": "unread", "MW2": "tested"}, got
+            path = R.store_dir() / "MW1" / "constraints.json"
+            kept = json.loads(path.read_text(encoding="utf-8"))
+            path.write_text(json.dumps(dict(kept, version=0)), encoding="utf-8")
+            assert R.constraint_properties("MW1") == kept
+            assert raises(ValueError, R.set_constraint_handling, {"untested": ["ZDT1"]}) is not None
+            assert raises(ValueError, R.set_constraint_handling, {"maybe": ["MW1"]}) is not None
         finally:
             if old is None:
                 os.environ.pop(R.ENV_DIR, None)
@@ -6263,7 +6275,9 @@ def the_second_answer_spreads_out_in_the_decision_space():
     other dominates, equal objective vectors with other variables apart;
     spread_select takes a random first point, then the farthest; a campaign
     with set_answer = "evaluated" writes meta["set_answer"] with N points and
-    its IGDX, and none with "off" (the default)."""
+    its IGDX, and none with "off"; task 16, §2.1: "evaluated" is the default,
+    only the multi-modal problems (properties: multimodal_ps) get one, and
+    add_many keeps what adding the points one by one keeps."""
     if not _have_numpy() or _core_with("subset_select") is None:
         print("  skip  the_second_answer...: no NumPy or stale _core"); return
     import numpy as np
@@ -6275,11 +6289,24 @@ def the_second_answer_spreads_out_in_the_decision_space():
     assert a.F.tolist() == [[1, 2], [1, 2], [2, 1], [0.5, 3]] and a.X[:2].tolist() == [[0, 0], [5, 5]], a.F
     a.add_many([[0.5, 1]], [[7, 7]])
     assert a.F.tolist() == [[0.5, 1]], a.F
+    rng = np.random.default_rng(3)
+    for t in range(40):                                  # many ties: values on a 0.1 grid
+        m = 2 + t % 3
+        whole, single = SetArchive(m, 2), SetArchive(m, 2)
+        for _ in range(4):
+            F = np.round(rng.random((int(rng.integers(1, 40)), m)), 1)
+            X = rng.random((len(F), 2))
+            whole.add_many(F, X)
+            for f, x in zip(F, X):
+                single.add_many([f], [x])
+        assert np.array_equal(whole.F, single.F) and np.array_equal(whole.X, single.X), t
     X = np.array([[0, 0], [0.1, 0], [1, 1], [0.9, 1], [0, 1]], float)
     s = spread_select(X, 3, [(0, 1), (0, 1)], 4)
     assert len(set(s.tolist())) == 3 and s.tolist() == spread_select(X, 3, [(0, 1), (0, 1)], 4).tolist()
     assert {0, 1} - set(s.tolist()) and {2, 3} - set(s.tolist()), s     # never both of a close pair
-    for mode in ("off", "evaluated"):
+    for problem, mode in (("SYM-PART_simple", "off"), ("SYM-PART_simple", None),
+                          ("ZDT1", "evaluated")):
+        line = "" if mode is None else f'set_answer = "{mode}"'
         text = f"""algorithms = [ {{ name = "nsga2", pop = 0, gens = 0 }} ]
 [run]
 name = "s"
@@ -6287,12 +6314,12 @@ name = "s"
 kind = "builtin"
 [benchmarks]
 runs = 1
-problems = ["SYM-PART_simple"]
+problems = ["{problem}"]
 [campaign]
 out = "res"
 budget_fe = 1000
 metrics = ["igdp"]
-set_answer = "{mode}"
+{line}
 """
         with tempfile.TemporaryDirectory() as td:
             cfg_path = Path(td) / "s.toml"
@@ -6304,11 +6331,117 @@ set_answer = "{mode}"
             job = C.expand_jobs(cfg, spec)[0]
             assert C.run_job(job, root, spec, quiet=True) == "done"
             meta = json.loads((root / job.rel_dir / "meta.json").read_text(encoding="utf-8"))
-            if mode == "off":
-                assert "set_answer" not in meta
+            if mode == "off" or problem == "ZDT1":
+                assert "set_answer" not in meta, (problem, mode)
             else:
                 sa = meta["set_answer"]
+                assert sa["candidates"] == "evaluated", sa
                 assert sa["n"] == min(job.pop, sa["n_candidates"]) and sa["igdx"] is not None, sa
+                assert meta["timing"]["set_answer"] > 0.0, meta["timing"]
+
+
+@test
+def a_core_that_stops_itself_is_done_and_an_impossible_pair_says_so():
+    """Task 16, §2.2 and §2.5: DMS ends by its own rule on MaF8_3D after some
+    50 evaluations of 500 — the budget loop stops without an error, the run
+    is "done" and meta["core_stopped"] holds what it spent; BC-SPX with
+    pop_size below n + 1 fails as "incompatible by construction", with the
+    numbers, and meta["incompatible"] says so."""
+    core = _core_with("subset_select")
+    if core is None or not hasattr(core.Result, "finished"):
+        print("  skip  a_core_that_stops_itself...: stale _core"); return
+    from mootation import minimize
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    r = minimize(lambda x: [x[0] ** 2, (x[0] - 1) ** 2], [(-2.0, 2.0)], 2, algorithm="dms", seed=1,
+                 max_evaluations=20000)
+    assert r.finished and r.evaluations < 20000, (r.finished, r.evaluations)
+    r = minimize(lambda x: [x[0] ** 2, (x[0] - 1) ** 2], [(-2.0, 2.0)], 2, algorithm="nsga2", seed=1,
+                 pop_size=10, max_evaluations=200)
+    assert not r.finished
+    e = raises(ValueError, minimize, lambda x: [x[0], sum(x)], [(0.0, 1.0)] * 30, 2,
+               algorithm="bc_spx", pop_size=20, max_evaluations=500)
+    assert e is not None and "incompatible by construction" in str(e) and "= 31" in str(e), e
+    text = """algorithms = [ { name = "dms", pop = 0, gens = 0 },
+               { name = "bc_spx", pop = 10, gens = 0 } ]
+[run]
+name = "s"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["MaF8_3D", "DTLZ2_3D"]
+[campaign]
+out = "res"
+budget_fe = 500
+metrics = ["igdp"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "s.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        seen = set()
+        for job in C.expand_jobs(cfg, spec):
+            st = C.run_job(job, root, spec, quiet=True)
+            meta = json.loads((root / job.rel_dir / "meta.json").read_text(encoding="utf-8"))
+            if job.algorithm == "dms" and job.problem == "MaF8_3D":
+                assert st == "done" and "core_stopped" in meta, (st, meta.get("error"))
+                c = meta["core_stopped"]                    # the budget: whole generations of 91
+                assert 0 < c["evaluations"] == meta["fe"] < 500 <= c["budget"], c
+                assert 0 < meta["unique_fe"] <= meta["fe"], meta["unique_fe"]    # task 16, §3.2
+                seen.add("stopped")
+            elif job.algorithm == "dms":
+                assert st == "done" and "core_stopped" not in meta, meta.get("core_stopped")
+            elif job.problem == "DTLZ2_3D":                 # n = 12: 13 parents, pop 10
+                assert st == "failed" and meta.get("incompatible") is True, (st, meta.get("error"))
+                seen.add("incompatible")
+            else:
+                assert st == "done" and "incompatible" not in meta, (st, meta.get("error"))
+        assert seen == {"stopped", "incompatible"}, seen
+
+
+@test
+def dmulti_mads_meets_a_noisy_copy_without_idling():
+    """Task 16, §2.2 (DMM-9): RE21_h1 without the cache (task 15, §0: the
+    smoke run's failure, budget 100) puts the same point in the list twice;
+    a failed poll shrinks every copy, so the run spends its budget instead
+    of idling 10^4 steps and failing. And a knob beside name rather than in
+    params is refused, not dropped."""
+    if _core_with("subset_select") is None:
+        print("  skip  dmulti_mads_meets...: stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import ConfigError, load
+    text = """algorithms = [ { name = "dmulti_mads", pop = 0, gens = 0%s } ]
+[run]
+name = "s"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["RE21_h1"]
+[campaign]
+out = "res"
+budget_fe = 100
+metrics = ["igdp"]
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "s.toml"
+        cfg_path.write_text(text % ', mads_cache = "off"', encoding="utf-8")
+        e = raises(ConfigError, load, cfg_path)
+        assert "mads_cache" in str(e) and "params" in str(e), e
+        cfg_path.write_text(text % ', params = { mads_cache = "off" }', encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        job = C.expand_jobs(cfg, spec)[0]
+        assert job.params == {"mads_cache": "off"}, job.params
+        assert C.run_job(job, root, spec, quiet=True) == "done"
+        meta = json.loads((root / job.rel_dir / "meta.json").read_text(encoding="utf-8"))
+        assert meta["fe"] >= 100 and "core_stopped" not in meta, meta["fe"]
 
 
 @test
@@ -10968,6 +11101,422 @@ def hv_contrib_takes_its_words_and_refuses_others():
         r = minimize(p.evaluate, p.bounds, 3, algorithm=alg, pop_size=20, max_evaluations=400,
                      seed=2, hv_contrib="hvc")
         assert "hv_contrib" in r.ignored, (alg, r.ignored)
+
+
+
+# ── the result store (task 16, §1) ──────────────────────────────────────────
+
+_STORE_TOML = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 }, { name = "moead", pop = 0, gens = 0 } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["ZDT1", "DTLZ2_3D_n1", "SYM-PART_simple"]
+[campaign]
+out = "res/{name}"
+budget_fe = 600
+record_at = [200, 400]
+archive_checkpoints = true
+metrics = ["igdp", "hv"]
+EXTRA
+"""
+# meta.json keys of the moment and the machine (tools/compare_results.py)
+_VOLATILE = {"started", "finished", "seconds", "record_seconds", "pid", "host", "platform",
+             "python", "revision", "timing", "mootation"}
+
+
+def _store_campaign(td, name, extra):
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    path = Path(td) / f"{name}.toml"
+    path.write_text(_STORE_TOML.replace("NAME", name).replace("EXTRA", extra), encoding="utf-8")
+    cfg = load(path)
+    assert validate(cfg) == [], validate(cfg)
+    spec = C.campaign_spec(cfg)
+    return cfg, spec, C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+
+
+def _same_run(a, b, keep="full"):
+    """The files of two run folders (a Path or a store.StoredRun) hold the same
+    results: meta.json without _VOLATILE, the trajectory without its clock,
+    the CSV text, the .npz arrays; keep = "standard": b has no archive_at.npz."""
+    import numpy as np
+    for name in ("meta.json", "trajectory.jsonl", "final.csv", "archive.csv", "archive_at.npz"):
+        fa, fb = a / name, b / name
+        if name == "archive_at.npz" and keep == "standard":
+            assert fa.is_file() and not fb.is_file(), (a, b)
+            continue
+        assert fa.is_file() == fb.is_file(), (a, b, name)
+        if not fa.is_file():
+            continue
+        if name == "meta.json":
+            ma, mb = (json.loads(f.read_text(encoding="utf-8")) for f in (fa, fb))
+            assert {k: v for k, v in ma.items() if k not in _VOLATILE} == \
+                   {k: v for k, v in mb.items() if k not in _VOLATILE}, (a, b)
+        elif name == "trajectory.jsonl":
+            ta, tb = ([{k: v for k, v in json.loads(line).items() if k != "t"}
+                       for line in f.read_text(encoding="utf-8").splitlines()] for f in (fa, fb))
+            assert ta == tb, (a, b)
+        elif name.endswith(".npz"):
+            with fa.open("rb") as ra, fb.open("rb") as rb, np.load(ra) as za, np.load(rb) as zb:
+                assert sorted(za.files) == sorted(zb.files)
+                for k in za.files:
+                    assert np.array_equal(za[k], zb[k]), (a, b, k)
+        else:
+            assert fa.read_text(encoding="utf-8") == fb.read_text(encoding="utf-8"), (a, b, name)
+
+
+@test
+def the_store_holds_what_the_run_folders_hold():
+    """Task 16, §1.1-1.2: a campaign with storage = "store" writes no run
+    folder, one record per run in this process's segment (.mhd, .raw, .idx),
+    and every run reads back as the folder campaign's — meta.json without the
+    clocks, the trajectory without "t", the CSV text, the .npz arrays; keep =
+    "standard" leaves archive_at.npz out. scan_results reads both alike, and a
+    run done is not run again."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  the_store_holds...: no NumPy or stale _core"); return
+    from mootation import store
+    from mootation.run import campaign as C
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, extra in (("f", ""), ("s", 'storage = "store"\nkeep = "full"'),
+                            ("d", 'storage = "store"')):
+            cfg, spec, root, jobs = _store_campaign(td, name, extra)
+            for job in jobs:
+                assert C.run_job(job, root, spec, quiet=True) == "done", (name, job.rel_dir)
+            made[name] = (spec, root, jobs)
+        (_, rf, jobs), (spec_s, rs, _), (_, rd, _) = made["f"], made["s"], made["d"]
+        assert not any((rs / j.rel_dir).exists() for j in jobs)
+        segs = store.segments(store.store_dir(rs))
+        assert len(segs) == 1 and all(segs[0].with_suffix(x).is_file() for x in (".mhd", ".idx"))
+        head = store.read_header(segs[0].with_suffix(".mhd"))
+        assert head["format"] == "mootation-store" and int(head["records"]) == len(jobs), head
+        assert head["trajectory_version"] == str(C.TRAJECTORY_VERSION) and head["code_stamp"], head
+        assert not any((store.store_dir(rs) / store.SCRATCH_DIR).rglob("*.json"))
+        for job in jobs:
+            _same_run(rf / job.rel_dir, C.run_dir_of(rs, job))
+            _same_run(rf / job.rel_dir, C.run_dir_of(rd, job), keep="standard")
+        assert all(st == "done" for st in C.job_statuses(rs, jobs).values())
+        assert C.run_job(jobs[0], rs, spec_s, quiet=True) == "done"
+        assert sum(int(store.read_header(p.with_suffix(".mhd"))["records"])
+                   for p in store.segments(store.store_dir(rs))) == len(jobs)      # not run again
+        key = lambda r: (r["problem"], r["algorithm"], r["seed"])      # noqa: E731
+        sf = sorted(C.scan_results(rf), key=key)
+        ss = sorted(C.scan_results(rs), key=key)
+        assert [key(r) for r in sf] == [key(r) for r in ss] and len(ss) == len(jobs)
+        assert [(r["status"], r["final"]) for r in sf] == [(r["status"], r["final"]) for r in ss]
+        assert C.read_trajectory(ss[0]["dir"]) and isinstance(ss[0]["dir"], store.StoredRun)
+
+
+@test
+def a_store_cuts_a_torn_record_and_packs_the_same_bytes():
+    """Task 16, §1.1 and §1.3: a record cut off halfway (a worker killed while
+    it wrote) is not read, repair() cuts it off and says so in store.log, an
+    index lost is rebuilt from the data; compact writes the same packs and
+    metrics tables whatever segments the records came in, keeps the segments
+    unless asked, and every record of a pack is the segment's bytes;
+    metrics() and the CSV export read the tables; merge joins two parts and
+    refuses a run that differs between them."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  a_store_cuts...: no NumPy or stale _core"); return
+    import gzip
+    import numpy as np
+    from mootation import store
+    from mootation.run import campaign as C
+    with tempfile.TemporaryDirectory() as td:
+        cfg, spec, root, jobs = _store_campaign(td, "s", 'storage = "store"')
+        for job in jobs:
+            C.run_job(job, root, spec, quiet=True)
+        s = store.store_dir(root)
+        (seg,) = store.segments(s)
+        records = {k: store.read_record_bytes(loc) for k, loc in store.index(s).items()}
+        whole = seg.stat().st_size
+        with open(seg, "ab") as fh:                       # a worker stopped mid-record
+            fh.write(next(iter(records.values()))[:200])
+        assert len(store.index(s)) == len(jobs)
+        assert store.check(root)["tails"] and not store.check(root)["damaged"]
+        seg.with_suffix(".idx").unlink()                  # and its index lost
+        assert len(store.index(s)) == len(jobs)          # read from the data
+        done = store.repair(s)
+        assert seg.stat().st_size == whole and len(done) == 2, done
+        assert "cut an unfinished record" in (s / store.LOG_FILE).read_text(encoding="utf-8")
+        with open(seg, "ab") as fh:                       # again, the index whole: the tail only
+            fh.write(next(iter(records.values()))[:300])
+        assert len(store.repair(s)) == 1 and seg.stat().st_size == whole
+        assert store.check(root) == {"records": len(jobs), "damaged": [], "tails": [], "duplicates": 0}
+
+        # the same records in other segments, in another order
+        other = Path(td) / "other"
+        w = store.SegmentWriter(store.store_dir(other), limit=3 * max(map(len, records.values())))
+        for k in sorted(records, reverse=True):
+            w.append(k, store.decode_blocks(store._parse_record(records[k], 0)[1]))
+        assert len(store.segments(store.store_dir(other))) > 1
+        expected = [store.job_key(j) for j in jobs]
+        a = store.compact(root, expected=expected + ["ZDT1|nsga2||9|600"])
+        b = store.compact(other)
+        assert a["missing"] == ["ZDT1|nsga2||9|600"] and not a["failed"] and not a["removed"], a
+        assert a["packs"] == b["packs"] == {"SYM-PART": 4, "ZDT": 4, "noisy": 4}, a
+        names = sorted(p.name for p in s.glob("pack-*")) + sorted(p.name for p in s.glob("metrics-*"))
+        assert len(names) == 15, names
+        for f in names:
+            assert (s / f).read_bytes() == (store.store_dir(other) / f).read_bytes(), f
+        assert store.segments(s)                           # kept
+        store.compact(root, remove_segments=True)
+        assert not store.segments(s) and len(store.index(s)) == len(jobs)
+        assert {k: store.read_record_bytes(loc) for k, loc in store.index(s).items()} == records
+        t = store.metrics(root, family="ZDT")
+        lines = sum(len(C.read_trajectory(C.run_dir_of(root, j))) for j in jobs if j.problem == "ZDT1")
+        assert len(t["problem"]) == lines and set(t["algorithm"]) == {"nsga2", "moead"}, len(t["problem"])
+        assert np.isfinite(t["igdp"]).all() and (t["budget"] == 600).all() and t["fe"].max() >= 600
+        assert len(store.metrics(root)["problem"]) == sum(
+            len(C.read_trajectory(C.run_dir_of(root, j))) for j in jobs)
+        (csv_gz,) = [p for p in store.export_csv(root, Path(td) / "csv") if "ZDT" in p.name]
+        with gzip.open(csv_gz, "rt", encoding="utf-8") as fh:
+            head = fh.readline().strip().split(",")
+            assert head[:6] == ["problem", "algorithm", "variant", "status", "seed", "budget"], head
+            assert len(fh.read().splitlines()) == lines
+        assert store.export_files(root, Path(td) / "files") == len(jobs)
+        for job in jobs:
+            _same_run(Path(td) / "files" / job.rel_dir, C.run_dir_of(root, job))
+
+        # merge: two halves, one run in both
+        keys = sorted(records)
+        for part, ks in (("p1", keys[:7]), ("p2", keys[6:])):
+            w = store.SegmentWriter(store.store_dir(Path(td) / part))
+            for k in ks:
+                w.append(k, store.decode_blocks(store._parse_record(records[k], 0)[1]))
+        got = store.merge(Path(td) / "m", [Path(td) / "p1", Path(td) / "p2"])
+        assert got == {"runs": len(keys), "copied": len(keys)}, got
+        assert {k: store.read_record_bytes(loc) for k, loc in
+                store.index(store.store_dir(Path(td) / "m")).items()} == records
+        blocks = store.decode_blocks(store._parse_record(records[keys[6]], 0)[1])
+        blocks[0] = store.Block(blocks[0].name, blocks[0].dtype, blocks[0].shape, blocks[0].data + b" ")
+        store.SegmentWriter(store.store_dir(Path(td) / "p2")).append(keys[6], blocks)
+        e = raises(ValueError, store.merge, Path(td) / "m2", [Path(td) / "p1", Path(td) / "p2"])
+        assert keys[6] in str(e), e
+
+
+@test
+def store_blocks_give_the_bytes_back():
+    """Task 16, §1.2-1.3: a block decodes to its bytes, zlib or shuffle+zlib,
+    whichever is smaller; a CSV is kept as numbers when they give its text
+    back (LF or CR LF), as text when not; an .npz array by array."""
+    if not _have_numpy():
+        print("  skip  store_blocks...: no NumPy"); return
+    import numpy as np
+    from mootation import store
+    rng = np.random.default_rng(1)
+    counts = np.arange(5000, dtype="<i8")
+    noise = rng.random(4000)
+    for a in (counts, noise, np.zeros(0)):
+        b = store.Block("a", a.dtype.str, a.shape, a.tobytes())
+        (back,) = store.decode_blocks(store.encode_body([b]))
+        assert back == b
+    enc = store.encode_block(store.Block("a", counts.dtype.str, counts.shape, counts.tobytes()))
+    assert b"shuffle+zlib" in enc                      # counts gain by the shuffle
+    with tempfile.TemporaryDirectory() as td:
+        d = Path(td)
+        rows = "".join(f"{v:.10g},{w:.10g},{int(v > 0.5)}\n" for v, w in rng.random((50, 2)))
+        text = "# a comment\nf1,f2,extreme\n" + rows
+        (d / "final.csv").write_bytes(text.replace("\n", "\r\n").encode())
+        (d / "archive.csv").write_bytes(text.encode())
+        (d / "odd.csv").write_bytes(b"f1,f2\n0.1000,2\n")              # not {:.10g}: kept as text
+        (d / "meta.json").write_bytes(b'{"status": "done"}')
+        np.savez_compressed(d / "snapshots.npz", F=noise.reshape(-1, 2).astype("<f4"), n=counts[:9])
+        blocks = store.pack_run_dir(d, keep="full")
+        kinds = {b.name: b.dtype for b in blocks}
+        assert kinds["final.csv"] == kinds["archive.csv"] == "<f8" and kinds["odd.csv"] == "text", kinds
+        files = store.run_files(store.decode_blocks(store.encode_body(blocks)))
+        for name in ("final.csv", "archive.csv", "odd.csv", "meta.json"):
+            assert files[name].encode() == (d / name).read_bytes(), name
+        assert np.array_equal(files["snapshots.npz"]["F"], noise.reshape(-1, 2).astype("<f4"))
+        assert files["snapshots.npz"]["n"].dtype == np.int64
+
+
+
+@test
+def a_run_past_run_timeout_is_kept_as_timeout():
+    """Task 16, §3.1: with run_timeout the runner stops a worker whose run
+    takes longer; the run is "timeout" — not "failed" — with its trajectory up
+    to the last record it wrote and that record's evaluations in meta.json,
+    in a folder campaign and in a store; resuming does not run it again."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  a_run_past_run_timeout...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0, evaluations = 2000 },
+               { name = "sms_emoa", pop = 0, gens = 0, label = "slow", params = { hv_contrib = "wfg" } } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_5D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 200000
+record_grid = "log"
+metrics = ["igdp"]
+run_timeout = 8
+EXTRA
+"""
+    with tempfile.TemporaryDirectory() as td:
+        for name, extra in (("f", ""), ("s", 'storage = "store"')):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(text.replace("NAME", name).replace("EXTRA", extra), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            jobs = C.expand_jobs(cfg, spec)
+            root = C.out_root(cfg, spec)
+            got = C.run_campaign(cfg, workers=2)
+            assert got.get("timeout") == 1 and got["done"] == 1, got
+            for job in jobs:
+                if job.key == "nsga2":
+                    assert C.job_status(root, job) == "done"
+                    continue
+                meta = json.loads((C.run_dir_of(root, job) / "meta.json").read_text(encoding="utf-8"))
+                traj = C.read_trajectory(C.run_dir_of(root, job))
+                assert meta["status"] == "timeout" and meta["timeout_seconds"] == 8.0, meta.get("status")
+                assert traj and meta["fe"] == traj[-1]["fe"] < job.budget, (meta["fe"], len(traj))
+                assert meta["last_record"] == traj[-1]
+            again = C.run_campaign(cfg, workers=2)
+            assert again["skipped"] == len(jobs) and again.get("timeout", 0) == 0, again
+
+
+@test
+def population_variants_and_modifications_are_told_apart():
+    """Task 16, §3.3-3.4: the example's four ways of choosing μ expand to
+    their own jobs — the registry's sizes, one size, a small budget with its
+    own μ, a grid on a part of the problems (an entry's `problems`, which must
+    be the campaign's); a rotated, shifted, noisy or failing problem says in
+    meta.json what it changes of which problem, a problem of its own null."""
+    if not _have_numpy():
+        print("  skip  population_variants...: no NumPy"); return
+    from collections import Counter
+    from mootation.benchmarks.properties import modification_of
+    from mootation.benchmarks.registry import PROBLEMS
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    cfg = load(HERE / "examples" / "population_variants.toml")
+    assert validate(cfg) == [], validate(cfg)
+    jobs = C.expand_jobs(cfg, C.campaign_spec(cfg))
+    per = Counter(j.key for j in jobs)
+    assert per == {"nsga3_registry": 20, "nsga3_mu100": 20, "nsga3_mu20_b1000": 20,
+                   "nsga3_mu50": 10, "nsga3_mu200": 10}, per
+    assert {j.problem for j in jobs if j.key == "nsga3_mu200"} == {"DTLZ2_3D", "WFG4_3D"}
+    assert {j.budget for j in jobs if j.key == "nsga3_mu20_b1000"} == {1000}
+    assert {(j.problem, j.pop) for j in jobs if j.key == "nsga3_registry"} == \
+        {(p, PROBLEMS[p].pop_size) for p in ("DTLZ2_3D", "DTLZ2_5D", "WFG4_3D", "WFG4_5D")}
+    text = (HERE / "examples" / "population_variants.toml").read_text(encoding="utf-8")
+    probs = validate(loads(text.replace('problems = ["DTLZ2_3D", "WFG4_3D"]\n\n[[',
+                                        'problems = ["DTLZ2_3D", "ZDT1"]\n\n[[')),
+                     base=HERE / "examples")
+    assert any("ZDT1" in p and "not among" in p for p in probs), probs
+
+    assert modification_of("rDTLZ1_3D_i2") == {"kind": "rotation", "of": "DTLZ1_3D", "instance": 2,
+                                               "conditioning": False}
+    assert modification_of("c0DTLZ2_5D")["kind"] == "control"
+    assert modification_of("shiftZDT1") == {"kind": "shift", "of": "ZDT1"}
+    assert modification_of("rcDTLZ2_3D_n1") == {"kind": "noise", "of": "rcDTLZ2_3D", "level": "n1"}
+    assert modification_of("ZDT1_fail10r") == {"kind": "failing", "of": "ZDT1", "share": 10,
+                                               "region": "random"}
+    assert modification_of("DTLZ2_3D") is None
+    mods = {n: modification_of(n) for n in PROBLEMS}
+    assert all(m["of"] in PROBLEMS for m in mods.values() if m), \
+        [n for n, m in mods.items() if m and m["of"] not in PROBLEMS][:5]
+    assert sum(m is not None for m in mods.values()) >= 500
+    if _core_with("subset_select") is None:
+        return
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "m.toml"
+        path.write_text("""algorithms = [ { name = "nsga2", pop = 0, gens = 0 } ]
+[run]
+name = "m"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["rZDT1_i2", "ZDT1"]
+[campaign]
+out = "res"
+budget_fe = 200
+metrics = ["igdp"]
+""", encoding="utf-8")
+        cfg = load(path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done"
+            meta = json.loads((root / job.rel_dir / "meta.json").read_text(encoding="utf-8"))
+            assert meta["modification"] == modification_of(job.problem) and meta["seed"] == 1, meta
+
+
+@test
+def every_core_has_a_row_in_verification_md():
+    """Task 16, §5: docs/verification.md, the map of how each algorithm is
+    checked, has one row per core of algorithms.def, and no other."""
+    import re
+    from mootation.run.algorithms import algorithm_names
+    path = HERE.parent / "docs" / "verification.md"
+    if not path.is_file():
+        print("  skip  every_core_has_a_row...: no docs"); return
+    rows = re.findall(r"^\| `(\w+)` \|", path.read_text(encoding="utf-8"), re.M)
+    assert sorted(rows) == sorted(algorithm_names()), \
+        (sorted(set(algorithm_names()) - set(rows)), sorted(set(rows) - set(algorithm_names())))
+
+
+@test
+def the_campaign_report_reads_folders_and_a_store_alike():
+    """Task 16, §4: `mootation report` writes one HTML page per campaign —
+    per family and M the ECDF over the floor levels, the median IGD+ / floor,
+    a table per level, the archive beside the population, and what did not
+    finish (an incompatible pair named so) — the same page from run folders
+    and from a store."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  the_campaign_report...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run import campaign_report as CR
+    from mootation.run.config import load
+    text = """algorithms = [ { name = "nsga2", pop = 0, gens = 0 },
+               { name = "bc_spx", pop = 10, gens = 0 } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["ZDT1", "DTLZ2_3D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 1000
+metrics = ["igdp", "igdp_norm"]
+EXTRA
+"""
+    with tempfile.TemporaryDirectory() as td:
+        pages = {}
+        for name, extra in (("f", ""), ("s", 'storage = "store"')):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(text.replace("NAME", name).replace("EXTRA", extra), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                C.run_job(job, root, spec, quiet=True)
+            pages[name] = CR.build(root).replace(f"res{Path('/')}{name}", "").replace(f": {name}<", ": <")
+        page = pages["f"]
+        assert page == pages["s"]
+        for part in ("<h2>ZDT, M = 2 (1 problems)</h2>", "<h2>DTLZ, M = 3 (1 problems)</h2>",
+                     "ECDF over the levels", "median IGD+ / floor", "met at 1.1 x floor",
+                     "The archive beside the population", "Not done (4)", "<svg"):
+            assert part in page, part
+        assert page.count("<td>incompatible</td>") == 4, page[page.index("Not done"):][:400]
 
 
 def main(argv=None) -> int:

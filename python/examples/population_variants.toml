@@ -1,0 +1,57 @@
+# The population size μ in four ways, side by side in one campaign: each
+# entry has its own label, and its runs are filed and reported under it
+# (docs/running.md, "Population sizes").
+#
+#   python -m mootation.run.campaign population_variants.toml --list
+
+[run]
+name = "population_variants"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+problems = ["DTLZ2_3D", "DTLZ2_5D", "WFG4_3D", "WFG4_5D"]
+runs = 5
+
+[campaign]
+out = "results/{name}"
+budget_fe = 25000
+pop_fit = "below"            # a size a core does not take (a lattice) goes to the one below
+
+# (a) the registry's rule by M: pop = 0 takes each problem's own size
+[[algorithms]]
+name = "nsga3"
+pop = 0
+gens = 0
+label = "nsga3_registry"
+
+# (b) one μ for every problem
+[[algorithms]]
+name = "nsga3"
+pop = 100
+gens = 0
+label = "nsga3_mu100"
+
+# (c) μ matched to a small budget: runs of their own, with their own budget
+[[algorithms]]
+name = "nsga3"
+pop = 20
+gens = 0
+evaluations = 1000
+label = "nsga3_mu20_b1000"
+
+# (d) a sensitivity study: a grid of μ on a part of the problems
+[[algorithms]]
+name = "nsga3"
+pop = 50
+gens = 0
+label = "nsga3_mu50"
+problems = ["DTLZ2_3D", "WFG4_3D"]
+
+[[algorithms]]
+name = "nsga3"
+pop = 200
+gens = 0
+label = "nsga3_mu200"
+problems = ["DTLZ2_3D", "WFG4_3D"]

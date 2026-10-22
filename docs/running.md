@@ -687,7 +687,13 @@ many steps: a step is a generation for most algorithms, but one offspring for
 NIMMO and a fifth of the population for MOEA/D-DRA and MOEA/D-AWA, and a budget
 in generations left those three with 2 % and 21 % of everyone else's
 evaluations. The count each run actually spent is `fe` in its `meta.json`.
-`mootation.run.metrics` carries the indicators. `metrics` names the ones
+A core that ends by its own rule first (DMS, DMulti-MADS and MultiGLODS when
+every step size is below their tolerance) is "done" with fewer, and
+`meta["core_stopped"]` holds its evaluations and the budget. A pair that
+cannot run at all (a core without the integer genome on binary or categorical
+variables; BC with `pop_size` below n + 1) fails "incompatible by
+construction" and its `meta.json` has `incompatible = true`: not the
+algorithm failing. `mootation.run.metrics` carries the indicators. `metrics` names the ones
 recorded along every trajectory, `final_metrics` the ones computed once on the
 final population (the same list when omitted):
 
@@ -798,7 +804,10 @@ in the decision space — a random first point (the run's seed), then each time
 the farthest from those taken, in the variables scaled by the bounds (Tanabe &
 Ishibuchi, IEEE TEVC 2020, §III-H) — and writes their IGDX, CR and PSP to
 `meta["set_answer"]`; the indicators in the objective space keep the main
-answer. `"off"` (the default) makes none.
+answer. `"evaluated"` is the default; `"off"` makes none. Only the
+multi-modal problems get one (the problem property `multimodal_ps`, below):
+elsewhere the main answer is already spread over the one Pareto set. Its time
+is `meta["timing"]["set_answer"]`.
 
 **Multimodal problems.** Several parts of the variables map onto one front:
 SYM-PART simple and rotated (nine parts), Omni-test (27 at three variables)
@@ -1904,6 +1913,92 @@ full run's place when the campaign has one of exactly that budget. The rungs
 never appear as algorithms of their own in `--compare`, `--ranks` or the TUI.
 Without rungs, overlay a budget-dependent algorithm's curves by fraction of
 the budget (`--at`), never by absolute evaluations.
+
+### Population sizes, repeats and modifications
+
+Variants of one algorithm are entries of their own with a `label`, filed and
+reported under it. `python/examples/population_variants.toml` puts the four
+ways of choosing μ side by side: (a) `pop = 0`, each problem's own size (the
+registry's rule by M); (b) one `pop` for every problem; (c) a small budget
+with a μ for it, `evaluations` and `pop` of the entry's own; (d) a grid of
+`pop` on a part of the problems, an entry's `problems = [...]` (a subset of
+the campaign's). A size the core does not take (a Das-Dennis lattice) is
+fitted by `pop_fit`, and `meta.json` says so (`pop_note`).
+
+A campaign's repeats are its seeds (`runs`, or `[campaign] seeds`). A shifted,
+rotated, noisy or failing problem is a problem of its own, never a repeat:
+`meta.json`'s `modification` says what it changes of which problem —
+`{"kind": "rotation", "of": "DTLZ1_3D", "instance": 2, "conditioning": false}`
+for rDTLZ1_3D_i2, `"shift"`, `"control"`, `"noise"`, `"failing"` — and is
+null for a problem of its own (`benchmarks.properties.modification_of`).
+
+`run_timeout` (seconds, `[campaign]`) stops a run that takes longer: the
+runner ends its worker, and the run is kept with the status `"timeout"`, its
+trajectory up to the last record it wrote, and that record's evaluations
+(`fe`) and values (`last_record`) in `meta.json`; a summary counts it apart
+from the failures, and resuming the campaign does not run it again
+(`--force` does). It needs the worker pool (more than one job).
+
+### The result store
+
+Four files a run is a million files for an atlas of a quarter of a million
+runs. `storage = "store"` in `[campaign]` keeps them in a few large files
+instead (`mootation.store`; its docstring has the format): every worker
+appends its runs to its own segment under `<results>/store/` — a text header
+(`.mhd`, `key = value`), the data (`.raw`) and an index (`.idx`) — and opens a
+new one past `segment_mb` (1024). A run is one record: its meta.json and
+trajectory as text, the numbers of every CSV as float64, every `.npz` array by
+array, each block zlib-compressed (byte-shuffled first where that is smaller).
+Packing checks that the record gives the run's files back value for value.
+`keep = "standard"` (the default) leaves out the archives at the intermediate
+points of the budget grid (`archive_at.npz`, `archive_checkpoints`); `"full"`
+keeps them. The default `storage` is `"files"`, the folder of files per run.
+
+A record is written whole and synced before the run counts as done, so a
+campaign stopped at any moment resumes as a folder campaign does: the runs
+without a record run again, and a record cut off halfway is removed
+(`store/store.log` says so). `--compare`, `--ranks`, `--bias`, `--cover`,
+`--portfolio`, `--oracle`, `--behaviour`, `--instance-space` and the terminal
+interface read a store as they read folders (`scan_results`). The commands that write into run folders (`--recompute`,
+`--retrajectory`, `--rereference`, `--dense`) work on folders only: export
+first.
+
+    mootation store ls      results/atlas        # runs per family and status, size
+    mootation store check   results/atlas        # every record read back (CRC)
+    mootation store compact results/atlas        # packs per family + metrics tables
+    mootation store compact results/atlas --remove-segments
+    mootation store merge   results/atlas results/part1 results/part2
+    mootation store export  results/atlas --csv tables/   # metrics-<family>.csv.gz
+    mootation store export  results/atlas --files runs/ --run "ZDT1|nsga2||1|25000"
+
+`compact` writes one pack per family of problems, its records sorted by
+problem, algorithm, variant, seed and budget and copied byte for byte — the
+same pack whichever worker ran which run — and a table of every family's
+trajectories, column by column (`metrics-<family>.mhd/.raw`), which
+`mootation.store.metrics(results, family="DTLZ")` reads into NumPy arrays (a
+pandas DataFrame with `frame=True`). The segments are deleted only with
+`--remove-segments`, after every record has been read back from its pack.
+`merge` copies the stores of parts run on other machines (`--shard`) into one;
+a run present in two parts must be the same bytes in both.
+
+Keep a campaign out of a synced folder (Yandex.Disk, OneDrive, Dropbox): the
+client copies a segment while it grows and can hold it open when the worker
+appends.
+
+### One page on a campaign
+
+    mootation report results/atlas                     # results/atlas/_report/report.html
+    mootation report results/atlas --scenario archive --levels 1.1,2,4,10 --workers 8
+
+writes one HTML page, from run folders or a store alike, with its plots drawn
+inline (no plotting library). Everything is per family of problems and number
+of objectives, never pooled across families: the ECDF of the (run, level)
+pairs met over the budget grid, a level being a multiple of the problem's IGD+
+floor (`--cover`'s, THE FLOOR); the median IGD+ / floor along the grid; per
+level the share of the problems whose median over the seeds meets it at each
+budget; the final population's IGD+ beside the archive scenario's; and every
+run not done — failed, timeout, an incompatible pair — with why.
+`mootation.run.campaign_report` has the definitions.
 
 ### Changing the number of workers while it runs
 

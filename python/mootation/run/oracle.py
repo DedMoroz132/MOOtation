@@ -45,7 +45,8 @@ def run_values(run_dir: Path, n_ref: int = 1000) -> dict | str:
     from .archive import greedy_igdp_rows, igdp_self_order
     from .campaign import _read_points
     from .metrics import _normalised, igd_plus
-    run_dir = Path(run_dir)
+    from ..store import as_run_dir
+    run_dir = as_run_dir(run_dir)
     meta = json.loads((run_dir / "meta.json").read_text(encoding="utf-8"))
     if meta.get("status") != "done":
         return "not done"
@@ -81,7 +82,7 @@ def run_values(run_dir: Path, n_ref: int = 1000) -> dict | str:
 def _task(args):
     run_dir, n_ref = args
     try:
-        return run_values(Path(run_dir), n_ref)
+        return run_values(run_dir, n_ref)
     except Exception as e:                          # noqa: BLE001 - one bad run is a row of its own
         return f"failed: {type(e).__name__}: {e}"
 
@@ -98,7 +99,7 @@ def run(root: Path, *, n_ref: int = 1000, workers: int = 1, out_dir: Path | None
     out_dir = Path(out_dir) if out_dir else root / "_oracle"
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = [r for r in main_rows(scan_results(root)) if r["status"] == "done"]
-    tasks = [(str(r["dir"]), n_ref) for r in rows]
+    tasks = [(r["dir"], n_ref) for r in rows]
     if workers > 1 and len(tasks) > 1:
         import multiprocessing as mp
         from .campaign import single_threaded_blas

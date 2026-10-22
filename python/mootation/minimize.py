@@ -749,9 +749,9 @@ def minimize(
     except ValueError as e:
         if n_bin and ("binary" in str(e) or "continuous" in str(e)):
             # the 24 cores without an integer genome refuse it by name
-            raise ValueError(f"{algorithm} takes no binary or categorical variables (the "
-                             f"integer genome; docs/running.md lists the cores that do): "
-                             f"{e}") from e
+            raise ValueError(f"{algorithm}: incompatible by construction: takes no binary or "
+                             f"categorical variables (the integer genome; docs/running.md "
+                             f"lists the cores that do): {e}") from e
         raise
     finally:
         if log is not None:
