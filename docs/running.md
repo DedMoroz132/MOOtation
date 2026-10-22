@@ -300,7 +300,7 @@ extension. The C++ suite's `exp`, `log`, `pow`, `sin`, `cos`, `tan` and
 `hypot` are the library's own (`include/mootation/detmath.hpp`, task 14 of
 2026-10-20): the same bits on every platform. The NumPy code calls the C
 library instead, whose last bit may differ between machines: the two agree to
-4 ulps (near zero, to 2·10⁻¹⁵ of the problem's scale; bbob-biobj and WFG 4·10⁻¹⁵) wherever
+4 ulps (near zero, to 2·10⁻¹⁵ of the problem's scale; bbob-biobj 4·10⁻¹⁵, WFG 10⁻¹³) wherever
 NumPy's `sin`, `cos`, `exp` and `pow` are the C library's (`_rows.agrees`),
 which the tests check on every problem of these families. Without the
 extension a run takes the NumPy code, and with it the last bits of that
