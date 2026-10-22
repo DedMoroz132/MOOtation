@@ -53,7 +53,7 @@ inline void evaluate(int which, const double* y, int n, double* f)
         }
         case 6: {
             const double h = 1.0 - dm::exp(-4.0 * y[0]) * dm::pow(dm::sin(6.0 * kPi * y[0]), 6.0);
-            const double g = 1.0 + 9.0 * dm::pow(row_sum(y + 1, static_cast<std::size_t>(n - 1)) / 9.0, 0.25);
+            const double g = 1.0 + 9.0 * dm::pow(row_sum(y + 1, static_cast<std::size_t>(n - 1)) / (n - 1), 0.25);
             f[0] = h;
             f[1] = g * (1.0 - dm::pow(h / g, 2.0));
             return;

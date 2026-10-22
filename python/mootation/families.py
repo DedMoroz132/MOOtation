@@ -10,6 +10,9 @@ from __future__ import annotations
 NOISE_LEVELS = ("n1", "n5", "d1", "d5", "s1", "s5", "h1", "h5")
 CONTROLS = ("r0", "c0")          # the Q = I controls of benchmarks/rotated.py
 ENGINEERING = ("RE", "CRE", "RCM")   # the real-world problems: re.py, rwmop.py
+# the verification set (benchmarks/classic.py): problems to check the cores
+# against their papers, apart from the atlas and its families' summaries
+VERIFICATION = ("SCH", "FON", "POL", "KUR", "SPH_2D", "SPH_3D", "QV", "KURZ", "ZDT6_D100")
 
 
 def family(name: str) -> str:
@@ -17,7 +20,10 @@ def family(name: str) -> str:
     its digits. A noisy copy (ZDT1_n1, DTLZ2_3D_s5) -> noisy, a failing one
     (ZDT1_fail10r, benchmarks/failing.py) -> failing; a control of the rotated
     problems keeps its prefix, r0DTLZ1 -> r0DTLZ and c0DTLZ2 -> c0DTLZ, apart
-    from rDTLZ and rcDTLZ."""
+    from rDTLZ and rcDTLZ. The verification set (VERIFICATION) ->
+    verification."""
+    if name in VERIFICATION:
+        return "verification"
     if "_" in name and name.rsplit("_", 1)[1] in NOISE_LEVELS:
         return "noisy"
     if "_" in name and name.rsplit("_", 1)[1].startswith("fail"):

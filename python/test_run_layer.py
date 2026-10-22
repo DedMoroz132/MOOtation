@@ -5923,6 +5923,70 @@ def dms_and_paes_caches_evaluate_each_point_once():
 
 
 @test
+def the_verification_set_is_its_papers_formulas():
+    """Task 17, supplement 2, §3 (classic.hpp, classic.py): SCH, FON, POL,
+    KUR (Deb et al. 2002, Table I), SPH-2, SPH-3, QV and the errata's KUR
+    (Zitzler et al. 2001, Table 1), ZDT6 at n = 100 — the C++ suite against
+    the formulas written here in NumPy, within a few ulps (the library's exp,
+    sin, cos and pow against the C library's); the closed-form fronts are
+    their Pareto sets' images; every front non-dominated; family
+    "verification"."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation.benchmarks import registry as R
+    from mootation.benchmarks.properties import properties
+    from mootation.families import family
+    from mootation.run.metrics import nondominated_mask
+    c = 1.0 / np.sqrt(3.0)
+    s1, c1, s2, c2 = np.sin(1.0), np.cos(1.0), np.sin(2.0), np.cos(2.0)
+    A1, A2 = 0.5 * s1 - 2 * c1 + s2 - 1.5 * c2, 1.5 * s1 - c1 + 2 * s2 - 0.5 * c2
+
+    def ras(Y):
+        return (Y ** 2 - 10 * np.cos(2 * np.pi * Y) + 10).mean(axis=1) ** 0.25
+
+    formulas = {
+        "SCH": lambda X: np.column_stack([X[:, 0] ** 2, (X[:, 0] - 2) ** 2]),
+        "FON": lambda X: np.column_stack([1 - np.exp(-((X - c) ** 2).sum(axis=1)),
+                                          1 - np.exp(-((X + c) ** 2).sum(axis=1))]),
+        "POL": lambda X: np.column_stack([
+            1 + (A1 - (0.5 * np.sin(X[:, 0]) - 2 * np.cos(X[:, 0]) + np.sin(X[:, 1]) - 1.5 * np.cos(X[:, 1]))) ** 2
+              + (A2 - (1.5 * np.sin(X[:, 0]) - np.cos(X[:, 0]) + 2 * np.sin(X[:, 1]) - 0.5 * np.cos(X[:, 1]))) ** 2,
+            (X[:, 0] + 3) ** 2 + (X[:, 1] + 1) ** 2]),
+        "KUR": lambda X: np.column_stack([
+            (-10 * np.exp(-0.2 * np.sqrt(X[:, :-1] ** 2 + X[:, 1:] ** 2))).sum(axis=1),
+            (np.abs(X) ** 0.8 + 5 * np.sin(X ** 3)).sum(axis=1)]),
+        "SPH_2D": lambda X: np.column_stack([(X ** 2).sum(axis=1) - 2 * X[:, j] + 1 for j in range(2)]),
+        "SPH_3D": lambda X: np.column_stack([(X ** 2).sum(axis=1) - 2 * X[:, j] + 1 for j in range(3)]),
+        "QV": lambda X: np.column_stack([ras(X), ras(X - 1.5)]),
+        "KURZ": lambda X: np.column_stack([
+            (np.abs(X) ** 0.8 + 5 * np.sin(X) ** 3 + 3.5828).sum(axis=1),
+            (1 - np.exp(-0.2 * np.sqrt(X[:, :-1] ** 2 + X[:, 1:] ** 2))).sum(axis=1)]),
+        "ZDT6_D100": lambda X: (lambda f1, g: np.column_stack([f1, g * (1 - (f1 / g) ** 2)]))(
+            1 - np.exp(-4 * X[:, 0]) * np.sin(6 * np.pi * X[:, 0]) ** 6,
+            1 + 9 * (X[:, 1:].sum(axis=1) / (X.shape[1] - 1)) ** 0.25),
+    }
+    rng = np.random.default_rng(1706)
+    for name, f in formulas.items():
+        p = R.PROBLEMS[name]
+        assert p.native is not None and family(name) == "verification", name
+        assert properties(name)["family_kind"] == "verification", name
+        lo, hi = np.array(p.bounds).T
+        X = lo + rng.random((300, p.n_vars)) * (hi - lo)
+        mine, ref = np.asarray(p.evaluate_batch(X)), f(X)
+        scale = np.abs(ref).max(axis=0)
+        assert np.all(np.abs(mine - ref) <= 1e-13 * np.maximum(scale, 1.0)), (name, np.abs(mine - ref).max())
+        if p.pareto_front is not None:
+            Z = np.asarray(p.pareto_front(200), float)
+            assert nondominated_mask(Z).all(), name
+        if p.pareto_set is not None:
+            S = np.asarray(p.pareto_set(50), float)
+            FS = np.asarray(p.evaluate_batch(S))
+            assert nondominated_mask(FS).all(), name
+            assert np.allclose(FS.min(axis=0), np.asarray(p.pareto_front(500)).min(axis=0), atol=1e-12), name
+
+
+@test
 def seed_independent_algorithms_give_one_run_for_every_seed():
     """Task 17, supplement 2, §5: algorithms.seed_independent names the runs
     that are the same for every seed, and they are: DMS and MultiGLODS at

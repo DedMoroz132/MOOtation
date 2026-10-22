@@ -81,6 +81,7 @@ from . import polygon_ishibuchi as _ipoly
 from . import zcat as _zcat
 from . import bbob_biobj as _bbobbiobj
 from . import uninformative as _uninf
+from . import classic as _classic
 from . import pareto_sets as _psets
 from . import shifted as _shift
 from . import distances as _dist
@@ -2308,6 +2309,8 @@ def _register_mixed():
 
 
 _register_mixed()
+# the verification set (classic.py; task 17, supplement 2, §3): the C++ suite's
+EXACT_FRAME.update(_classic.register(PROBLEMS, BenchProblem, _budget, _ref_norm, _divisor))
 # The problems of the suite's families evaluated by C++ from here on (native.py),
 # before the noisy copies take their bases' functions; the rotated ones and the
 # late bases below.

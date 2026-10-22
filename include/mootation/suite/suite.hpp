@@ -17,6 +17,9 @@
 // family "bbob-biobj" or "bbob-biobj-mixint", the numbers of its two
 // functions in `bbob`.
 //
+// The verification set (classic.hpp; task 17, supplement 2, §3): family
+// "SCH", "FON", "POL", "KUR", "SPH" (m = n_obj), "QV" or "KURZ".
+//
 // WFG1-9 (wfg.hpp; task 17, supplement 1, stage 1): family "WFG1" ..
 // "WFG9", `k` position variables (0: 2 (M - 1)); MaF10-12 are WFG1, WFG2 and
 // WFG9 with k = M - 1.
@@ -45,6 +48,7 @@
 #include <vector>
 
 #include "bbob.hpp"
+#include "classic.hpp"
 #include "common.hpp"
 #include "dtlz.hpp"
 #include "maf.hpp"
@@ -113,6 +117,7 @@ public:
         else if ((which_ = number_after(f, "MaF")) != 0) kind_ = Kind::MaF;
         else if ((which_ = number_after(f, "ZCAT")) != 0) kind_ = Kind::ZCAT;
         else if ((which_ = number_after(f, "WFG")) != 0) kind_ = Kind::WFG;
+        else if (classic::parse(f, classic_)) kind_ = Kind::Classic;
         else if (f == "C1-DTLZ1") set_cdtlz(1, dtlz::Cons::C1_DTLZ1, 1);
         else if (f == "C1-DTLZ3") set_cdtlz(3, dtlz::Cons::C1_DTLZ3, 1);
         else if (f == "C2-DTLZ2") set_cdtlz(2, dtlz::Cons::C2_DTLZ2, 1);
@@ -180,6 +185,9 @@ public:
             case Kind::WFG:
                 wfg::evaluate(which_, p, n_var, n_obj, wfg_k_, f);
                 return;
+            case Kind::Classic:
+                classic::evaluate(classic_, p, n_var, n_obj, f);
+                return;
             case Kind::BBOB:
                 bbob_.evaluate(p, f);
                 return;
@@ -189,7 +197,7 @@ public:
     const Spec& spec() const { return s_; }
 
 private:
-    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, BBOB };
+    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
@@ -198,6 +206,7 @@ private:
     MapKind map_ = MapKind::None;
     int which_ = 0;
     int wfg_k_ = 0;
+    classic::Which classic_ = classic::Which::SCH;
     dtlz::Cons cons_ = dtlz::Cons::C1_DTLZ1;
     zcat::Problem zcat_;
     bbob::Pair bbob_;
@@ -266,6 +275,15 @@ private:
                     fail("WFG1-9, M >= 2, k positions a multiple of M - 1, n > k");
                 if ((which_ == 2 || which_ == 3) && n - wfg_k_ < 2) fail("WFG2, WFG3: two distance variables at least");
                 break;
+            case Kind::Classic: {
+                using classic::Which;
+                const bool sph = classic_ == Which::SPH;
+                if (sph ? (M < 2 || n < M) : M != 2) fail("two objectives (SPH: m <= n)");
+                if ((classic_ == Which::SCH && n != 1) || (classic_ == Which::POL && n != 2) ||
+                    ((classic_ == Which::KUR || classic_ == Which::KURZ) && n < 2))
+                    fail("SCH one variable, POL two, KUR and KURZ two or more");
+                break;
+            }
             case Kind::BBOB:
                 if (M != 2) fail("two objectives");
                 bbob_ = bbob::Pair(s_.bbob, n);

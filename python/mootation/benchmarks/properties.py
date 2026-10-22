@@ -429,8 +429,9 @@ def properties(name: str) -> dict | None:
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
     row["front_dim"] = _front_dim(stem, row["n_obj"], front)
-    from ..families import is_engineering
-    row["family_kind"] = "engineering" if is_engineering(name) else "synthetic"
+    from ..families import VERIFICATION, is_engineering
+    row["family_kind"] = ("verification" if name in VERIFICATION else
+                          "engineering" if is_engineering(name) else "synthetic")
     # a constrained problem's kinds of difficulty, where its source names them
     # (DAS-CMOP's triplet: diversity, feasibility, convergence); None elsewhere
     row["difficulty"] = None
@@ -526,8 +527,29 @@ def _front_dim(stem: str, m: int, front: str | None) -> int | None:
     return m - 1
 
 
+# The verification set (classic.py; task 17, supplement 2, §3): the front as
+# its paper describes it (Deb et al. 2002, Table I: SCH convex, FON
+# nonconvex, POL nonconvex and disconnected; Zitzler et al. 2001: SPH-m
+# unimodal, QV of Rastrigin's type with an "extreme concave" front, KUR "not
+# connected ... concave and convex regions"; SPH-m's front, f_j = |x|^2 - 2
+# x_j + 1 on the simplex, convex); the rest is not stated there: None.
+# ZDT6_D100 takes ZDT6's row.
+_CLASSIC = {
+    "SCH": _p("convex", False, None, None, None, None, None),
+    "FON": _p("concave", False, None, None, None, None, None),
+    "POL": _p("concave+disconnected", None, None, None, None, None, None),
+    "KUR": _p("mixed+disconnected", True, None, None, None, None, None),
+    "SPH_2D": _p("convex", False, None, None, None, None, None),
+    "SPH_3D": _p("convex", False, None, None, None, None, None),
+    "QV": _p("concave", True, None, None, None, None, None),
+    "KURZ": _p("mixed+disconnected", True, None, None, None, None, None),
+}
+
+
 def _huband(name: str) -> dict | None:
     """Huband's seven keys for one registry name, or None."""
+    if name in _CLASSIC:
+        return dict(_CLASSIC[name])
     stem, m = _stem_and_m(name)
     if stem in _ZDT:
         return dict(_ZDT[stem])

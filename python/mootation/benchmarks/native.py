@@ -53,6 +53,10 @@ _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2
 _MAF_WFG = {"MaF10": "WFG1", "MaF11": "WFG2", "MaF12": "WFG9"}
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
 _BBOB = re.compile(r"bbobbiobj(mixint)?\d\d_n\d\d_2D")
+# the verification set (task 17, supplement 2, §3; classic.hpp): its names
+# and the suite's families
+CLASSIC = {"SCH": "SCH", "FON": "FON", "POL": "POL", "KUR": "KUR", "SPH_2D": "SPH", "SPH_3D": "SPH",
+           "QV": "QV", "KURZ": "KURZ"}
 
 
 def _base(family: str, n_var: int, n_obj: int, **extra) -> dict:
@@ -123,6 +127,10 @@ def spec(name: str, p, rotated=None) -> dict | None:
     if _BBOB.fullmatch(name):
         return _bbob(name, p)
     n = p.n_vars
+    if name in CLASSIC:
+        return _base(CLASSIC[name], n, p.n_obj)
+    if name == "ZDT6_D100":
+        return _base("ZDT6", n, 2)
     if _ZDT.fullmatch(name):
         base = name.replace("shift", "")
         if not name.startswith("shift"):

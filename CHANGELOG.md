@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The verification set (task 17, supplement 2, §3; `benchmarks/classic.py`,
+  `include/mootation/suite/classic.hpp`): SCH, FON, POL, KUR (Deb et al. 2002,
+  Table I), SPH_2D, SPH_3D, QV and KURZ, the errata's KUR (Zitzler et al.
+  2001, n = 100), ZDT6_D100 — in the C++ suite from the start, family
+  "verification", apart from the atlas. Fixed: the C++ ZDT6 divided the sum
+  by 9, right at its ten variables only; now by n - 1 (the same values at
+  ten).
+
 - Changed (task 17, supplement 2): `dms_cache = "on"` by default (DMS-7; the
   same points in the same order, only the budget goes further). A point a
   core takes from its cache (DMS, PAES, DMulti-MADS) is brought to the
