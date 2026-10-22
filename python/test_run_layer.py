@@ -9391,6 +9391,48 @@ def incremental_front_matches_a_full_recomputation():
 
 
 @test
+def incremental_front_skips_dominated_points_and_gives_the_same_bits():
+    """Task 17, supplement 1, stage 0: a point weakly dominated by one offered
+    before is skipped; IGD+, epsilon, every distance and the levels reached are
+    those of offering every point, bit for bit — copies, ties, NaN and inf
+    rows, a frame with a span <= 0 included. By default it skips up to five
+    objectives, where that pays."""
+    if not _have_numpy() or _core_with("IncrementalFront") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation import _core
+    rng = np.random.default_rng(17)
+    for m in (2, 3, 5, 8):
+        Z = rng.random((200, m))
+        Z /= Z.sum(axis=1, keepdims=True)
+        ideal, nadir = np.full(m, -0.1), np.full(m, 1.3)
+        nadir[-1] = ideal[-1]                       # a span <= 0 counts as 1
+        levels = [1.0, 0.4, 0.2, 0.1, 0.05]
+        a = _core.IncrementalFront(Z, ideal, nadir, levels, skip_dominated=True)
+        b = _core.IncrementalFront(Z, ideal, nadir, levels, skip_dominated=False)
+        c = _core.IncrementalFront(Z, ideal, nadir, levels)
+        fe = 0
+        for batch in range(40):
+            B = np.round(rng.random((25, m)) * (2.0 - batch / 25.0), 2)   # ties
+            B[3] = B[1]                             # a copy
+            if batch % 7 == 3:
+                B[5, 0] = np.nan
+            if batch % 9 == 4:
+                B[6, -1] = np.inf
+            counts = np.arange(fe + 1, fe + 26, dtype=np.int64)
+            for inc in (a, b, c):
+                inc.update(B, counts)
+            fe += 25
+            for x, y in ((a.igd_plus(), b.igd_plus()), (a.eps_plus(), b.eps_plus())):
+                assert np.array([x]).tobytes() == np.array([y]).tobytes(), (m, batch, x, y)
+            assert a.distances().tobytes() == b.distances().tobytes(), (m, batch)
+        assert list(a.reached) == list(b.reached) and a.seen == b.seen == fe, m
+        assert a.skipped > 0 and b.skipped == 0, (m, a.skipped)
+        assert c.skipped == (a.skipped if m <= 5 else 0), (m, c.skipped)
+        assert c.distances().tobytes() == b.distances().tobytes(), m
+
+
+@test
 def the_budget_grid_records_the_population_at_exactly_b():
     """record_grid = "budgets" (task 10, §5.1): a record at every count of the
     grid and at the end; the population there is the one the "generations"

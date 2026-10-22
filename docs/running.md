@@ -887,7 +887,9 @@ read a rung at the record `record_at` puts there, which has them, and
   and the additive ε of EVERY point the run evaluated — the feasible ones,
   noise-free on a noisy copy, in `igdp_norm`'s frame — up to date at every
   evaluation (`_core.IncrementalFront`: for each reference point the least
-  d⁺ and ε so far, O(|Z| M) a point): every record has them as
+  d⁺ and ε so far, O(|Z| M) a point; up to five objectives a point weakly
+  dominated by one evaluated before is skipped, as it lowers neither, the
+  same values): every record has them as
   `igdp_norm_all` and `eps_norm_all`, `final` too, and `meta.json`'s
   `all_evaluated` gives, for each level of `all_levels` (1, 0.5, 0.2, …,
   0.001), the evaluation at which `igdp_norm_all` first reached it — the

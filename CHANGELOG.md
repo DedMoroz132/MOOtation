@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Faster, the same values (task 17, supplement 1, stage 0): `IncrementalFront`
+  (IGD+ and epsilon of everything evaluated) skips a point weakly dominated
+  by one offered before, up to five objectives; the MaF reference simplex is
+  enumerated without the tuples whose sum is already above 1, the same grid
+  (importing the registry took 4.7 s, now about 0.5 s).
+
 - The store's format 2: a run's point sets go into its record straight from
   memory as float64 (no CSV text on the way), its trajectory column by
   column; the run folders and `mootation store export` still write ten

@@ -20,7 +20,6 @@
 # ============================================================================
 from __future__ import annotations
 from typing import List
-import itertools
 import math
 from functools import lru_cache as _lru_cache
 import numpy as np
@@ -146,15 +145,35 @@ def _simplex_impl(M: int, n: int) -> np.ndarray:
     # stays reproducible. IGD+ values at M >= 10 are NOT comparable with
     # numbers produced before this fix.
     p = max(1, int(round(n ** (1.0 / (M - 1))))) if M > 1 else 1
-    pts = [list(c) + [1.0 - sum(c)]
-           for c in itertools.product(np.linspace(0, 1, p + 1), repeat=M - 1)
-           if sum(c) <= 1.0 + 1e-9]
-    W = np.asarray(pts, float)
+    W = np.asarray(_grid_points(np.linspace(0, 1, p + 1), M - 1), float)
     if len(W) < n:
         rng = np.random.default_rng(20260709 + 1000 * M + n)
         extra = rng.dirichlet(np.ones(M), size=n - len(W))
         W = np.vstack([W, extra])
     return W
+
+
+def _grid_points(levels, k: int) -> list:
+    """The tuples c of k values from `levels` with sum(c) <= 1 + 1e-9, each
+    with 1 - sum(c) appended, in itertools.product's order. The tuples are
+    built a value at a time and a prefix whose sum is already above the bound
+    is not extended (task 17, supplement 1, stage 0: at M = 15 the product
+    has 3^14 tuples and took six seconds at import): the values are >= 0, so
+    no extension of it comes back under. The sums are Python's sum(c), left to
+    right from 0, the same bits as before."""
+    out = []
+
+    def extend(prefix, total):
+        if len(prefix) == k:
+            out.append(prefix + [1.0 - total])
+            return
+        for v in levels:
+            t = total + v
+            if t <= 1.0 + 1e-9:
+                extend(prefix + [v], t)
+
+    extend([], 0)
+    return out
 
 
 def _sphere(M: int, n: int) -> np.ndarray:

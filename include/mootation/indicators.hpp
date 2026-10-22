@@ -26,6 +26,7 @@
 #include <thread>
 #include <vector>
 
+#include "nd_tree.hpp"
 #include "numpy_sum.hpp"
 
 namespace mootation::indicators {
@@ -176,11 +177,31 @@ inline double r2_mean(const double* G, std::size_t n, const double* W, std::size
 // metrics.eps_plus give on all the points so far, normalised the same way, bit
 // for bit: the minima are exact, and the mean is taken in NumPy's order. An
 // update costs O(|Z| m) per point.
+//
+// A point weakly dominated by one offered before (b <= a in every objective,
+// a copy included) is skipped (task 17, supplement 1, stage 0): it lowers
+// nothing. The frame is monotone, (a - ideal) / span >= (b - ideal) / span in
+// every objective after rounding too, and so is every step from there: d =
+// g - z, max(d, 0), its square, NumPy's pairwise sum of non-negative terms,
+// the root, the max over the objectives. So d+(z, a) >= d+(z, b) and
+// max_j (a_j - z_j) >= max_j (b_j - z_j) for every z, and neither minimum can
+// fall at a. The points not skipped are kept in an ND-tree (nd_tree.hpp) of
+// the nondominated ones so far; a point with a NaN is never skipped nor kept
+// (its NaN reaches the minima as before). skip_dominated = false offers every
+// point, the reference for the tests. The skip pays up to five objectives
+// (skip_pays): on the points NSGA-II and SMS-EMOA evaluate in 25 000, the
+// update takes 0.08-0.71 of its time at M = 2-5, where 37-92 % of the points
+// are dominated, and 1.07-1.38 of it at M = 8, 10 (NSGA-III), where 10-45 %
+// are and the tree costs more than it saves.
 class IncrementalFront {
 public:
+    static bool skip_pays(std::size_t m) { return m <= 5; }
+
     IncrementalFront(const double* Z, std::size_t r, std::size_t m, const std::vector<double>& ideal,
-                     const std::vector<double>& nadir, std::vector<double> levels)
-        : r_(r), m_(m), lo_(ideal), span_(m), levels_(std::move(levels)), reached_(levels_.size(), -1)
+                     const std::vector<double>& nadir, std::vector<double> levels,
+                     bool skip_dominated = true)
+        : r_(r), m_(m), lo_(ideal), span_(m), levels_(std::move(levels)), reached_(levels_.size(), -1),
+          skip_(skip_dominated), front_(m)
     {
         for (std::size_t j = 0; j < m; ++j) {
             const double s = nadir[j] - ideal[j];
@@ -201,6 +222,11 @@ public:
     void update(const double* F, std::size_t n, const long long* fe)
     {
         for (std::size_t a = 0; a < n; ++a) {
+            if (skip_ && dominated(F + a * m_)) {
+                ++n_seen_;
+                ++skipped_;
+                continue;
+            }
             for (std::size_t j = 0; j < m_; ++j) g_[j] = (F[a * m_ + j] - lo_[j]) / span_[j];
             bool lower = false;
             for (std::size_t z = 0; z < r_; ++z) {
@@ -234,6 +260,8 @@ public:
     }
 
     std::size_t seen() const { return n_seen_; }
+    // the points skipped as weakly dominated by one offered before
+    std::size_t skipped() const { return skipped_; }
     double igd_plus() const
     {
         return n_seen_ ? np::mean(dmin_.data(), r_) : std::numeric_limits<double>::infinity();
@@ -257,6 +285,32 @@ private:
     std::vector<long long> reached_;
     std::vector<double> dmin_, dsq_, emin_, buf_, g_;
     std::size_t n_seen_ = 0;
+    bool skip_;
+    nd::NDTree front_;                  // the nondominated points offered so far
+    std::vector<std::size_t> free_ids_, beaten_;
+    std::size_t next_id_ = 0, skipped_ = 0;
+
+    // Is f weakly dominated by a point offered before? If not, f goes into
+    // the front and the points it weakly dominates leave it.
+    bool dominated(const double* f)
+    {
+        for (std::size_t j = 0; j < m_; ++j)
+            if (std::isnan(f[j])) return false;
+        if (front_.covered(f, &beaten_)) return true;
+        for (std::size_t id : beaten_) {
+            front_.erase(id);
+            free_ids_.push_back(id);
+        }
+        std::size_t id = next_id_;
+        if (free_ids_.empty()) {
+            ++next_id_;
+        } else {
+            id = free_ids_.back();
+            free_ids_.pop_back();
+        }
+        front_.insert(id, f);
+        return false;
+    }
 
     void check_levels(long long fe)
     {

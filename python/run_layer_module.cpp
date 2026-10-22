@@ -9,6 +9,7 @@
 // ============================================================================
 
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -342,7 +343,8 @@ void bind_run_layer(py::module_& m)
                    "a reference Z, in the frame (f - ideal)/(nadir - ideal), and the "
                    "evaluation at which IGD+ first reached each level "
                    "(include/mootation/indicators.hpp).")
-        .def(py::init([](const Arr& Z, const Arr& ideal, const Arr& nadir, std::vector<double> levels) {
+        .def(py::init([](const Arr& Z, const Arr& ideal, const Arr& nadir, std::vector<double> levels,
+                         std::optional<bool> skip_dominated) {
                  Rows z = rows_of(Z, "IncrementalFront: Z");
                  if (ideal.ndim() != 1 || nadir.ndim() != 1 ||
                      static_cast<std::size_t>(ideal.shape(0)) != z.m ||
@@ -352,10 +354,12 @@ void bind_run_layer(py::module_& m)
                  return new IF(z.v.data(), z.n, z.m,
                                std::vector<double>(ideal.data(), ideal.data() + z.m),
                                std::vector<double>(nadir.data(), nadir.data() + z.m),
-                               std::move(levels));
+                               std::move(levels), skip_dominated.value_or(IF::skip_pays(z.m)));
              }),
              py::arg("Z"), py::arg("ideal"), py::arg("nadir"),
-             py::arg("levels") = std::vector<double>{})
+             py::arg("levels") = std::vector<double>{}, py::arg("skip_dominated") = py::none(),
+             "skip_dominated: skip the points weakly dominated by one offered before (the same "
+             "values); None: where it pays, up to five objectives")
         .def("update",
              [](IF& a, const Arr& F, const py::array_t<long long, py::array::c_style |
                                                                  py::array::forcecast>& fe) {
@@ -370,6 +374,7 @@ void bind_run_layer(py::module_& m)
         .def("igd_plus", &IF::igd_plus)
         .def("eps_plus", &IF::eps_plus)
         .def_property_readonly("seen", &IF::seen)
+        .def_property_readonly("skipped", &IF::skipped)
         .def_property_readonly("levels", &IF::levels)
         .def_property_readonly("reached", &IF::reached)
         .def("distances", [](const IF& a) { return vector_of(a.distances()); },
