@@ -5,12 +5,12 @@
 # Test Problems and a Scalable Test Problem Toolkit", IEEE Transactions on
 # Evolutionary Computation 10(5), 2006, pp. 477-506.
 #
-# One code path: every wfgN calls the scalar kernels below, which numba
-# compiles when it is installed and Python runs as written when it is not (or
-# when NUMBA_DISABLE_JIT is set); `numba_enabled()` reports which. numba is an
-# accelerator here, never a requirement. Interpreted, the kernels cost what
-# vectorised NumPy did (about 0.1 ms an evaluation of WFG4 at three and five
-# objectives, measured 2026-10-09): the vectors are a few dozen long.
+# The NumPy reference of the C++ suite's WFG (include/mootation/suite/wfg.hpp;
+# task 17, supplement 1, stage 1), which evaluates WFG1-9, MaF10-12 and rWFG
+# with the extension built: every wfgN calls the scalar kernels below, which
+# wfg.hpp repeats operation for operation. Until stage 1 numba compiled them
+# where it was installed; it is gone (the interpreted kernels were already the
+# same bits), and the project's environment never had it.
 #
 # FIX 2026-10-09: until then a plain-NumPy copy of each wfgN ran without
 # numba, and its shape functions took one factor too few in the middle
@@ -29,31 +29,11 @@ from typing import List
 
 import numpy as np
 
-try:
-    from numba import njit as _njit
-    from numba import config as _numba_config
-    _NUMBA = not _numba_config.DISABLE_JIT
-except ImportError:
-    def _njit(**kw):
-        def decorator(f): return f
-        return decorator
-    _NUMBA = False
-
-# numba is an optional accelerator, never a requirement: without it the
-# decorator above is a no-op and the kernels run as Python. Whether it is
-# present is reported through a function rather than printed at import —
-# a library that writes to stdout when imported corrupts any caller whose
-# stdout is data.
-def numba_enabled() -> bool:
-    """True when numba is installed and the WFG kernels are compiled."""
-    return bool(_NUMBA)
-
 
 # =============================================================
-#  JIT primitives — all scalar loops, work on 1-D arrays
+#  Primitives — all scalar loops, work on 1-D arrays
 # =============================================================
 
-@_njit(cache=True)
 def _nb_normalize(z):
     n = len(z)
     out = np.empty(n)
@@ -61,14 +41,12 @@ def _nb_normalize(z):
         out[i] = z[i] / (2.0 * (i + 1))
     return out
 
-@_njit(cache=True)
 def _nb_s_linear(y, A):
     out = np.empty(len(y))
     for i in range(len(y)):
         out[i] = abs(y[i] - A) / abs(math.floor(A - y[i]) + A)
     return out
 
-@_njit(cache=True)
 def _nb_s_decept(y, A, B, C):
     out = np.empty(len(y))
     for i in range(len(y)):
@@ -79,7 +57,6 @@ def _nb_s_decept(y, A, B, C):
         out[i] = 1.0 + inner * (t1 + t2 + 1.0 / B)
     return out
 
-@_njit(cache=True)
 def _nb_s_multi(y, A, B, C):
     out = np.empty(len(y))
     for i in range(len(y)):
@@ -90,14 +67,12 @@ def _nb_s_multi(y, A, B, C):
         out[i] = num / (B + 2.0)
     return out
 
-@_njit(cache=True)
 def _nb_b_poly(y, alpha):
     out = np.empty(len(y))
     for i in range(len(y)):
         out[i] = y[i] ** alpha
     return out
 
-@_njit(cache=True)
 def _nb_b_flat(y, A, B, C):
     out = np.empty(len(y))
     for i in range(len(y)):
@@ -108,7 +83,6 @@ def _nb_b_flat(y, A, B, C):
         out[i] = max(0.0, min(1.0, v))
     return out
 
-@_njit(cache=True)
 def _nb_b_param(y, y_prime, A, B, C):
     out = np.empty(len(y))
     for i in range(len(y)):
@@ -116,7 +90,6 @@ def _nb_b_param(y, y_prime, A, B, C):
         out[i] = y[i] ** (B + (C - B) * v)
     return out
 
-@_njit(cache=True)
 def _nb_r_nonsep(y, A):
     n = len(y)
     ceil_A_half = math.ceil(A / 2.0)
@@ -129,7 +102,6 @@ def _nb_r_nonsep(y, A):
     denom = (n / A) * ceil_A_half * (1.0 + 2.0*A - 2.0*ceil_A_half)
     return total / denom
 
-@_njit(cache=True)
 def _nb_r_sum_chunks(t, k, M, w):
     """Weighted r_sum; w=None → uniform (pass zeros to signal uniform)."""
     chunk = k // (M - 1)
@@ -157,7 +129,6 @@ def _nb_r_sum_chunks(t, k, M, w):
         out[M-1] = s / sw
     return out
 
-@_njit(cache=True)
 def _nb_r_nonsep_chunks(t, A, k, M, l):
     chunk = k // (M - 1)
     out = np.empty(M)
@@ -168,7 +139,6 @@ def _nb_r_nonsep_chunks(t, A, k, M, l):
     out[M-1] = _nb_r_nonsep(t[k:], l)
     return out
 
-@_njit(cache=True)
 def _nb_shape_linear(x):
     # h[0] = prod(x[0..M-2])
     # h[m] = prod(x[0..M-m-2]) * (1-x[M-m-1])  for m=1..M-2
@@ -185,7 +155,6 @@ def _nb_shape_linear(x):
     h[M-1] = 1.0 - x[0]
     return h
 
-@_njit(cache=True)
 def _nb_shape_convex(x):
     # h[0] = prod(1-c[i])
     # h[m] = prod(1-c[0..M-m-2]) * (1-s[M-m-1])  for m=1..M-2
@@ -208,7 +177,6 @@ def _nb_shape_convex(x):
     h[M-1] = 1.0 - s[0]
     return h
 
-@_njit(cache=True)
 def _nb_shape_concave(x):
     # h[0] = prod(s[i])
     # h[m] = prod(s[0..M-m-2]) * c[M-m-1]  for m=1..M-2
@@ -229,7 +197,6 @@ def _nb_shape_concave(x):
     h[M-1] = c[0]
     return h
 
-@_njit(cache=True)
 def _nb_calc_x(t, A_vec):
     M = len(t)
     x = np.empty(M)
@@ -239,7 +206,6 @@ def _nb_calc_x(t, A_vec):
     x[-1] = tM
     return x
 
-@_njit(cache=True)
 def _nb_final(x, h, M):
     out = np.empty(M)
     for m in range(M):
@@ -391,27 +357,3 @@ def wfg_bounds(M: int, k: int | None = None, l: int = 20):
 
 def wfg_nadir(M: int):
     return tuple(2.0*m for m in range(1, M+1))
-
-# =============================================================
-#  JIT warmup — call once per process to load numba cache
-# =============================================================
-def warmup():
-    if not _NUMBA:
-        return
-    _w = np.array([0.1, 0.2, 0.3, 0.4, 0.5])
-    _x = np.array([0.3, 0.4, 0.5, 0.6])
-    _t = np.array([0.3, 0.4, 0.5, 0.6, 0.7])
-    _nb_normalize(_w)
-    _nb_s_linear(_w, 0.35)
-    _nb_s_decept(_w, 0.35, 0.001, 0.05)
-    _nb_s_multi(_w, 30, 10.0, 0.35)
-    _nb_b_poly(_w, 0.02)
-    _nb_b_flat(_w, 0.8, 0.75, 0.85)
-    _nb_b_param(_w, _w, 0.98/49.98, 0.02, 50.0)
-    _nb_r_nonsep(_w, 2)
-    _nb_r_sum_chunks(_t, 4, 3, _UNIF)
-    _nb_shape_linear(_x); _nb_shape_convex(_x); _nb_shape_concave(_x)
-    _nb_calc_x(_t, np.ones(4))
-    _nb_final(_t, _t, 5)
-    # Full WFG9 warmup (most complex)
-    wfg9([0.1*i for i in range(1, 31)], 5)

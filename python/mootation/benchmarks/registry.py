@@ -2681,6 +2681,13 @@ _register_failing()
 # ZDT2 and bbob's f13 change too: their x ** 2 is x * x now, and MSVC's
 # pow(x, 2) differed from it in the last bit for a few points in a million.
 # The noisy and failing copies follow their bases.
+#
+# From 2026-10-23 (task 17, supplement 1, stage 1, owner's decision): WFG1-9,
+# MaF10-12 and rWFG1-9 in the C++ suite — the C library's pow, sin and cos
+# now the library's own, and rWFG's turn A d the pairwise sums of
+# matvec_pairwise (rotated.py, in the NumPy reference too) instead of BLAS's
+# gemv: version 2 (by _in_suite below), their noisy and failing copies with
+# them.
 PROBLEM_VERSION: Dict[str, int] = {
     **{name: 2 for name, r in ROTATED.items()
        if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
@@ -2696,7 +2703,7 @@ def _in_suite(name: str) -> bool:
     or without the extension."""
     r = ROTATED.get(name)
     if r is not None:
-        return r.kind in ("dtlz", "maf", "zdt", "zcat")
+        return r.kind in ("dtlz", "maf", "zdt", "zcat", "wfg")
     return bool(_native._BBOB.fullmatch(name) or _native._ZDT.fullmatch(name)
                 or _native._STEMS.fullmatch(name))
 

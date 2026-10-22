@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- WFG1-9, MaF10-12 (WFG1, WFG2, WFG9 with M - 1 positions) and rWFG1-9 in
+  the C++ suite (`include/mootation/suite/wfg.hpp`; task 17, stage 1): 20-50
+  times faster an evaluation; `benchmarks/wfg.py` stays the reference. They
+  are version 2 of themselves (`registry.PROBLEM_VERSION`), their noisy and
+  failing copies with them: the library's own `pow`, `sin` and `cos`, and
+  rWFG's rotation the pairwise sums of `matvec_pairwise` instead of BLAS's
+  product (in the reference too). Removed: numba (the WFG kernels' optional
+  compiler) and the `numba` field of a run's `meta.json`.
+
 - Faster, the same values (task 17, supplement 1, stage 0): `IncrementalFront`
   (IGD+ and epsilon of everything evaluated) skips a point weakly dominated
   by one offered before, up to five objectives; the MaF reference simplex is

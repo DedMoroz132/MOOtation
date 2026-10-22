@@ -400,9 +400,10 @@ int main()
         t.bbob[0].levels = {{0.0, 1.0}};
         check(refused(t), "bbob-biobj-mixint with levels in one objective only");
     }
-    check(refused(spec("WFG1", 6, 2)), "a family the suite does not have");
+    check(refused(spec("WFG10", 6, 2)), "a family the suite does not have");
+    check(refused(spec("WFG1", 4, 3)), "WFG with no distance variable");
     check(refused(spec("MaF8", 2, 3)), "MaF8 without its vertices");
-    check(refused(spec("MaF11", 12, 3)), "MaF11 (WFG2) stays in Python");
+    check(refused(spec("MaF11", 12, 3)), "MaF11 is family WFG2 with k = M - 1");
     check(refused(spec("DTLZ2", 2, 3)), "fewer variables than objectives");
     check(refused(spec("ZDT1", 30, 3)), "ZDT at three objectives");
     {

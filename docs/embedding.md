@@ -53,7 +53,10 @@ this for the Kursawe problem in about forty lines.
 [`include/mootation/problems/benchmarks.hpp`](../include/mootation/problems/benchmarks.hpp)
 carries DTLZ1-4 and ZDT1-3 as plain specs plus the macro
 `MOOTATION_DEFINE_PROBLEM(Tag, Base, Spec)` that writes the specialisation for
-you; the full WFG / MaF families live on the Python side. A binary or mixed
+you. The registry's ZDT, DTLZ, MaF, WFG, ZCAT and bbob-biobj families and their
+variants are in the C++ suite (`include/mootation/suite`, `suite::make(spec)`;
+`benchmarks/native.py` writes each problem's spec); the other families live on
+the Python side. A binary or mixed
 genome is the same interface with `get_bin_vars_n() > 0`
 ([`problems/zdt1_mixed.hpp`](../problems/zdt1_mixed.hpp),
 [`examples/ibea_mixed.cpp`](../examples/ibea_mixed.cpp)); 51 of the 76 cores

@@ -352,12 +352,12 @@ class Rotated:
         0.46 of the way to the worst value."""
         x = np.asarray(x, float)
         if self.family in ("WFG4", "WFG5", "WFG6", "WFG7"):
-            return 0.35 + self.A @ (x[self.first:] / self.scale - 0.35)
+            return 0.35 + matvec_pairwise(self.A, x[self.first:] / self.scale - 0.35)
         if self.family == "WFG8":
             c = wfg8_optimum(x[:self.first] / self.scale_all[:self.first], len(self.scale))
         else:
             c = self.centre_u
-        return c + self.A @ ((x[self.first:] - self.scale * c) / self.scale)
+        return c + matvec_pairwise(self.A, (x[self.first:] - self.scale * c) / self.scale)
 
     def _zcat_v(self, x):
         """rZCAT's normalised point, its m and its distance block before the clipping."""

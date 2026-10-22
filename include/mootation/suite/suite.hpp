@@ -17,6 +17,10 @@
 // family "bbob-biobj" or "bbob-biobj-mixint", the numbers of its two
 // functions in `bbob`.
 //
+// WFG1-9 (wfg.hpp; task 17, supplement 1, stage 1): family "WFG1" ..
+// "WFG9", `k` position variables (0: 2 (M - 1)); MaF10-12 are WFG1, WFG2 and
+// WFG9 with k = M - 1.
+//
 // THE MAPS (dtlz_variants.py, shifted.py, rotated.py): the point the family
 // is evaluated at, its variables from `first` on read as
 //   cyclic       y = (x - c + 1/2) mod 1          shiftDTLZ1-4
@@ -26,8 +30,12 @@
 //   rotate_abs   y = |A (x - c)| / spread         rZDT1-3, 6
 //   rotate       y = A (x - c)                    rZDT4
 //   rotate_zcat  rZCAT's map (zcat.hpp)
+//   rotate_wfg   v = c + A ((x - 2i c) / 2i), y = 2i clip(v, 0, 1)    rWFG1-3, 8, 9
+//   rotate_wfg_035  v = 0.35 + A (x / 2i - 0.35), y as above          rWFG4-7
 // A the problem's matrix (Q, Lambda Q or Lambda), each of its products with a
-// vector a row's pairwise sum (common.hpp, matvec).
+// vector a row's pairwise sum (common.hpp, matvec). rWFG's c is `centre`
+// (0.35, or WFG9's optimum), WFG8's its optimum at the point's positions
+// (wfg8_optimum below, as rotated.py's), 2i the variable's upper bound.
 // ============================================================================
 
 #include <memory>
@@ -40,6 +48,7 @@
 #include "common.hpp"
 #include "dtlz.hpp"
 #include "maf.hpp"
+#include "wfg.hpp"
 #include "zcat.hpp"
 #include "zdt.hpp"
 
@@ -61,6 +70,7 @@ struct Spec {
     std::vector<double> link;                     // MaF14, MaF15: (a, l, u - l) per variable of x^s
     std::vector<double> parts;                    // MaF14, MaF15: the subcomponents' sizes, group by group
     std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta
+    int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
 };
 
 namespace detail {
@@ -102,6 +112,7 @@ public:
         else if ((which_ = number_after(f, "minusDTLZ")) != 0) kind_ = Kind::Minus;
         else if ((which_ = number_after(f, "MaF")) != 0) kind_ = Kind::MaF;
         else if ((which_ = number_after(f, "ZCAT")) != 0) kind_ = Kind::ZCAT;
+        else if ((which_ = number_after(f, "WFG")) != 0) kind_ = Kind::WFG;
         else if (f == "C1-DTLZ1") set_cdtlz(1, dtlz::Cons::C1_DTLZ1, 1);
         else if (f == "C1-DTLZ3") set_cdtlz(3, dtlz::Cons::C1_DTLZ3, 1);
         else if (f == "C2-DTLZ2") set_cdtlz(2, dtlz::Cons::C2_DTLZ2, 1);
@@ -117,7 +128,11 @@ public:
     {
         std::vector<double> y;
         const double* p = x;
-        if (map_ != MapKind::None && map_ != MapKind::RotateZcat) {
+        if (map_ == MapKind::RotateWfg || map_ == MapKind::RotateWfg035) {
+            y.resize(static_cast<std::size_t>(n_var));
+            map_wfg(x, y.data());
+            p = y.data();
+        } else if (map_ != MapKind::None && map_ != MapKind::RotateZcat) {
             y.resize(static_cast<std::size_t>(n_var));
             map(x, y.data());
             p = y.data();
@@ -162,6 +177,9 @@ public:
             case Kind::ZCAT:
                 zcat_.evaluate(p, f);
                 return;
+            case Kind::WFG:
+                wfg::evaluate(which_, p, n_var, n_obj, wfg_k_, f);
+                return;
             case Kind::BBOB:
                 bbob_.evaluate(p, f);
                 return;
@@ -171,13 +189,15 @@ public:
     const Spec& spec() const { return s_; }
 
 private:
-    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, BBOB };
-    enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat };
+    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, BBOB };
+    enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
+                         RotateWfg035 };
 
     Spec s_;
     Kind kind_ = Kind::DTLZ;
     MapKind map_ = MapKind::None;
     int which_ = 0;
+    int wfg_k_ = 0;
     dtlz::Cons cons_ = dtlz::Cons::C1_DTLZ1;
     zcat::Problem zcat_;
     bbob::Pair bbob_;
@@ -231,7 +251,7 @@ private:
                 } else if (which_ == 13) {
                     if (n != 5 || M < 3) fail("MaF13: five variables, M >= 3");
                 } else if (which_ < 1 || which_ > 7 || M < 2 || n < M) {
-                    fail("MaF1-9 and 13-15 (MaF10-12 are not in the suite)");
+                    fail("MaF1-9 and 13-15 (MaF10-12 are WFG1, WFG2, WFG9 with k = M - 1)");
                 }
                 break;
             case Kind::ZCAT:
@@ -239,6 +259,12 @@ private:
                 zcat_.which = which_;
                 zcat_.M = M;
                 zcat_.n = n;
+                break;
+            case Kind::WFG:
+                wfg_k_ = s_.k != 0 ? s_.k : 2 * (M - 1);
+                if (which_ < 1 || which_ > 9 || M < 2 || wfg_k_ < M - 1 || wfg_k_ % (M - 1) != 0 || n <= wfg_k_)
+                    fail("WFG1-9, M >= 2, k positions a multiple of M - 1, n > k");
+                if ((which_ == 2 || which_ == 3) && n - wfg_k_ < 2) fail("WFG2, WFG3: two distance variables at least");
                 break;
             case Kind::BBOB:
                 if (M != 2) fail("two objectives");
@@ -267,6 +293,14 @@ private:
         const int k = n - s_.first;
         if (s_.first < 0 || k < 1) fail("a map with no variables to read");
         const std::size_t ku = static_cast<std::size_t>(k);
+        if (map == "rotate_wfg" || map == "rotate_wfg_035") {
+            map_ = map == "rotate_wfg" ? MapKind::RotateWfg : MapKind::RotateWfg035;
+            if (kind_ != Kind::WFG || s_.matrices.size() != 1 || s_.matrices[0].size() != ku * ku)
+                fail(map + ": WFG and a k x k matrix");
+            if (map_ == MapKind::RotateWfg && s_.centre.size() != (which_ == 8 ? 0 : ku))
+                fail("rotate_wfg: one centre per variable (none for WFG8)");
+            return;
+        }
         if (map == "cyclic" || map == "shift") {
             map_ = map == "cyclic" ? MapKind::Cyclic : MapKind::Shift;
             if (s_.centre.size() != ku) fail(map + ": one centre per variable");
@@ -301,6 +335,53 @@ private:
         if (total != static_cast<double>(ns)) fail("MaF14, MaF15: the subcomponents do not take x^s");
     }
 
+    // rWFG's map (rotated.py, Rotated._wfg_v and map): the distance block
+    // normalised by its bounds 2i, turned about its centre, clipped to [0, 1]
+    void map_wfg(const double* x, double* y) const
+    {
+        const int first = s_.first, k = n_var - first;
+        const std::size_t ku = static_cast<std::size_t>(k);
+        for (int i = 0; i < n_var; ++i) y[i] = x[i];
+        std::vector<double> c(ku, 0.35), d(ku), r(ku);
+        if (map_ == MapKind::RotateWfg) {
+            if (which_ == 8) {
+                std::vector<double> pos(static_cast<std::size_t>(first));
+                for (int i = 0; i < first; ++i) pos[static_cast<std::size_t>(i)] = x[i] / (2.0 * (i + 1));
+                c = wfg8_optimum(pos, k);
+            } else {
+                c = s_.centre;
+            }
+        }
+        for (int i = 0; i < k; ++i) {
+            const double scale = 2.0 * (first + i + 1);
+            const std::size_t u = static_cast<std::size_t>(i);
+            d[u] = map_ == MapKind::RotateWfg035 ? x[first + i] / scale - 0.35
+                                                 : (x[first + i] - scale * c[u]) / scale;
+        }
+        matvec(s_.matrices[0], ku, d.data(), r.data());
+        for (int i = 0; i < k; ++i) {
+            const std::size_t u = static_cast<std::size_t>(i);
+            const double v = (map_ == MapKind::RotateWfg035 ? 0.35 : c[u]) + r[u];
+            y[first + i] = 2.0 * (first + i + 1) * clip(v, 0.0, 1.0);
+        }
+    }
+
+    // WFG8's optimal normalised distance variables at the normalised
+    // positions (rotated.py, wfg8_optimum): each the y with b_param(y, u) =
+    // 0.35, u the mean of every value before it, positions included
+    static std::vector<double> wfg8_optimum(std::vector<double> y, int l)
+    {
+        const std::size_t positions = y.size();
+        for (int j = 0; j < l; ++j) {
+            double s = 0.0;
+            for (double v : y) s = s + v;
+            const double u = s / static_cast<double>(y.size());
+            const double v = wfg::kBpA - (1.0 - 2.0 * u) * std::abs(std::floor(0.5 - u) + wfg::kBpA);
+            y.push_back(dm::pow(0.35, 1.0 / (wfg::kBpB + (wfg::kBpC - wfg::kBpB) * v)));
+        }
+        return std::vector<double>(y.begin() + static_cast<std::ptrdiff_t>(positions), y.end());
+    }
+
     void map(const double* x, double* y) const
     {
         const int first = s_.first, k = n_var - first;
@@ -333,6 +414,8 @@ private:
             }
             case MapKind::None:
             case MapKind::RotateZcat:
+            case MapKind::RotateWfg:
+            case MapKind::RotateWfg035:
                 for (int i = first; i < n_var; ++i) y[i] = x[i];
                 return;
         }

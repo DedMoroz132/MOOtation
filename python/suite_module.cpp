@@ -108,6 +108,7 @@ suite::Spec spec_of(const py::dict& d)
     s.vertices = flat_of(d, "vertices");
     s.link = flat_of(d, "link");
     s.parts = flat_of(d, "parts");
+    if (d.contains("k")) s.k = d["k"].cast<int>();
     if (d.contains("bbob") && !d["bbob"].is_none())
         for (const auto& item : d["bbob"]) s.bbob.push_back(bbob_of(item));
     return s;
@@ -132,6 +133,7 @@ py::dict dict_of(const suite::Spec& s)
     d["vertices"] = s.vertices;
     d["link"] = s.link;
     d["parts"] = s.parts;
+    d["k"] = s.k;
     py::list fs;
     for (const auto& f : s.bbob) fs.append(dict_of(f));
     d["bbob"] = fs;

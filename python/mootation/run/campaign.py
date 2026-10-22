@@ -1060,7 +1060,6 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     from .budget import depends_on_budget
     from ..benchmarks.registry import REFERENCE_VERSION, problem_version
     from ..benchmarks.properties import modification_of
-    from ..benchmarks.wfg import numba_enabled as wfg_numba_enabled
     meta = {
         "status": "running", "problem": job.problem, "algorithm": job.key,
         "core": job.algorithm,
@@ -1102,9 +1101,6 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
         "revision": revision(),
         "host": socket.gethostname(), "platform": platform.platform(),
         "python": sys.version.split()[0], "pid": os.getpid(),
-        # whether the WFG kernels ran compiled (benchmarks/wfg.py: until
-        # 2026-10-09 the path without numba computed WFG wrong from M = 3)
-        "numba": wfg_numba_enabled(),
         # denormals flushed or read as zero change results (task 14, §5 item 3)
         "fp_env": _fp_env(),
         "started": time.strftime("%Y-%m-%dT%H:%M:%S"),

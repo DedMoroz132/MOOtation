@@ -8,8 +8,10 @@ MaF1-7, MaF9 and MaF13; ZCAT1-20; shiftZDT1-4 and 6; and the rotations over
 them (rotated.py: rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF, r0/c0MaF,
 rZCAT). Task 12 of 2026-10-19 added MaF8 (§6: version 2, the C library's
 hypot), the new MaF14 and MaF15 (§2), and bbob-biobj and bbob-biobj-mixint
-(§1: the 110 problems of each; include/mootation/suite/bbob.hpp). Not moved:
-MaF10-12 (WFG), and every other family.
+(§1: the 110 problems of each; include/mootation/suite/bbob.hpp). Task 17,
+supplement 1, stage 1: WFG1-9, MaF10-12 (WFG1, WFG2 and WFG9 with M - 1
+positions) and rWFG1-9 (include/mootation/suite/wfg.hpp). Not moved: every
+other family.
 
 With the extension built, such a problem's evaluate, evaluate_batch,
 constraints, constraints_batch and evaluate_with_constraints are C++ (attach):
@@ -45,8 +47,10 @@ from . import shifted as _shift
 
 # the stems of the problems with an objective count (<stem>_<M>D), and of ZDT
 _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2|SDTLZ[12]|"
-                    r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-9]|1[345])|"
-                    r"ZCAT([1-9]|1[0-9]|20))_(\d+)D")
+                    r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-9]|1[0-5])|"
+                    r"ZCAT([1-9]|1[0-9]|20)|WFG[1-9])_(\d+)D")
+# MaF10-12: WFG1, WFG2 and WFG9 with M - 1 positions (Cheng et al. 2017, 2.10-2.12)
+_MAF_WFG = {"MaF10": "WFG1", "MaF11": "WFG2", "MaF12": "WFG9"}
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
 _BBOB = re.compile(r"bbobbiobj(mixint)?\d\d_n\d\d_2D")
 
@@ -61,10 +65,16 @@ def _array(v) -> np.ndarray:
 
 def _rotated(r) -> dict | None:
     """A rotated problem (rotated.Rotated) of the suite's families."""
-    if r.kind not in ("dtlz", "maf", "zdt", "zcat"):
-        return None                                    # rWFG, rcPolygon: Python
+    if r.kind not in ("dtlz", "maf", "zdt", "zcat", "wfg"):
+        return None                                    # rcPolygon: Python
     d = _base(r.family, r.n_vars, r.M, first=r.first)
-    if r.kind == "zcat":
+    if r.wfg:
+        if r.family in ("WFG4", "WFG5", "WFG6", "WFG7"):
+            d.update(map="rotate_wfg_035", matrices=[_array(r.A)])
+        else:
+            d.update(map="rotate_wfg", matrices=[_array(r.A)],
+                     centre=_array([] if r.family == "WFG8" else r.centre_u))
+    elif r.kind == "zcat":
         d.update(map="rotate_zcat", matrices=[_array(A) for A in r.matrices()])
     elif r.family == "ZDT4":
         d.update(map="rotate", centre=_array(r.optimum), matrices=[_array(r.A)])
@@ -125,9 +135,11 @@ def spec(name: str, p, rotated=None) -> dict | None:
     m = _STEMS.fullmatch(name)
     if m is None:
         return None
-    stem, M = m.group(1), int(m.group(4))
+    stem, M = m.group(1), int(m.group(m.lastindex))
     k = n - M + 1                                      # the distance block
-    if stem.startswith(("DTLZ", "MaF", "ZCAT", "IDTLZ", "minusDTLZ")):
+    if stem in _MAF_WFG:
+        return _base(_MAF_WFG[stem], n, M, k=M - 1)
+    if stem.startswith(("DTLZ", "MaF", "ZCAT", "IDTLZ", "minusDTLZ", "WFG")):
         d = _base(stem, n, M)
         if stem.startswith("MaF9"):
             from .registry import _maf9_forbidden_regions, _maf9_lines

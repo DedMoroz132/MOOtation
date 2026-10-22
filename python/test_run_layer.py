@@ -711,28 +711,23 @@ def wfg_at_fixed_points() -> dict:
 
 
 @test
-def wfg_matches_pymoo_with_and_without_numba():
+def wfg_matches_pymoo_in_numpy_and_in_the_suite():
     """WFG1-9 at 2, 3, 5 and 10 objectives give pymoo's values at fixed points
-    (tests/data/pymoo-0.6.2_wfg.json): on the path this interpreter takes and,
-    in a child process with NUMBA_DISABLE_JIT=1, on the interpreted one. Until
-    2026-10-09 the path without numba got f_2 .. f_{M-1} wrong from three
+    (tests/data/pymoo-0.6.2_wfg.json): the NumPy reference (wfg.py) and the
+    C++ suite (suite/wfg.hpp; task 17, supplement 1, stage 1). Until
+    2026-10-09 wfg.py without numba got f_2 .. f_{M-1} wrong from three
     objectives on."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
-    import os
-    import subprocess
-    from mootation.benchmarks import wfg
     ref = reference_data("pymoo-0.6.2_wfg")
-    child = subprocess.run(
-        [sys.executable, "-c",
-         "import json, test_run_layer as t; from mootation.benchmarks import wfg; "
-         "print(json.dumps([wfg.numba_enabled(), t.wfg_at_fixed_points()]))"],
-        capture_output=True, text=True, check=True, cwd=str(HERE),
-        env=dict(os.environ, NUMBA_DISABLE_JIT="1"))
-    numba_there, there = json.loads(child.stdout.strip().splitlines()[-1])
-    assert numba_there is False
-    paths = {f"this process (numba {'on' if wfg.numba_enabled() else 'off'})":
-             wfg_at_fixed_points(), "NUMBA_DISABLE_JIT": there}
+    paths = {"wfg.py": wfg_at_fixed_points()}
+    if _core_with("Native") is not None:
+        from mootation import _core
+        paths["suite"] = {}
+        for case in ref["cases"]:
+            name, M = case["problem"].split("_")[0], int(case["problem"].split("_")[1][:-1])
+            native = _core.Native({"family": name, "n_var": len(case["x"]), "n_obj": M})
+            paths["suite"][case["problem"]] = native.evaluate(case["x"])
     for path, got in paths.items():
         for case in ref["cases"]:
             assert_close(got[case["problem"]], case["f"], ref["tolerance"], (path, case["problem"]))
@@ -2843,7 +2838,6 @@ snapshots = ["ZDT1"]
                 assert len(rows) - 2 == meta["archive"]["size"] > 0, (prob, alg)
                 assert (d / "snapshots.npz").exists() == (prob == "ZDT1"), (prob, alg)
                 assert meta["revision"]["commit"], meta
-                assert isinstance(meta["numba"], bool), meta     # which WFG path ran
                 if alg == "random_search":
                     assert meta["fe"] == meta["budget_fe"], meta    # exactly, no overshoot
 
@@ -10339,7 +10333,7 @@ def mosqp_spreads_refines_and_keeps_its_budget():
 _SUITE_STEMS = (r"(shift)?ZDT[12346]", r"DTLZ[1-7]_\d+D", r"wideDTLZ3_\d+D",
                 r"shiftDTLZ[1-467]_\d+D", r"IDTLZ[12]_\d+D", r"minusDTLZ2_\d+D",
                 r"SDTLZ[12]_\d+D", r"C1-DTLZ[13]_\d+D", r"C2-DTLZ2_\d+D", r"C2-ConvexDTLZ2_\d+D",
-                r"C3-DTLZ[14]_\d+D", r"MaF([1-9]|1[345])_\d+D", r"ZCAT\d+_\d+D")
+                r"C3-DTLZ[14]_\d+D", r"MaF([1-9]|1[0-5])_\d+D", r"ZCAT\d+_\d+D", r"WFG[1-9]_\d+D")
 
 
 def _suite_names(R):
@@ -10348,7 +10342,7 @@ def _suite_names(R):
     for name in sorted(R.PROBLEMS):
         r = R.ROTATED.get(name)
         if any(re.fullmatch(s, name) for s in _SUITE_STEMS) or (
-                r is not None and r.kind in ("dtlz", "maf", "zdt", "zcat")):
+                r is not None and r.kind in ("dtlz", "maf", "zdt", "zcat", "wfg")):
             out.append(name)
     return out
 
@@ -10425,11 +10419,15 @@ def the_suite_gives_numpys_values(part, parts):
     from mootation.benchmarks import registry as R
     exact = _numpy_is_the_c_library()
     names = _suite_names(R)
-    assert len(names) >= 550, len(names)
+    assert len(names) >= 700, len(names)
 
     def check(mine, ref, what):
         if exact:
-            _close_to_numpy(mine, ref, what)
+            # WFG (task 17, supplement 1, stage 1): a last-bit difference of
+            # pow grows through b_param's exponents up to 50, b_poly's 0.02 and
+            # the floors of s_multi and s_decept: 4e-15 of the column's scale
+            wide = what.startswith(("WFG", "rWFG", "MaF10", "MaF11", "MaF12"))
+            _close_to_numpy(mine, ref, what, 4e-15 if wide else 2e-15)
         else:
             mine, ref = np.asarray(mine, float), np.asarray(ref, float)
             assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
@@ -10465,7 +10463,10 @@ def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
     import numpy as np
     from mootation import _core
     from mootation.benchmarks import registry as R
-    for bad in ({"family": "WFG1", "n_var": 6, "n_obj": 2},
+    for bad in ({"family": "WFG10", "n_var": 6, "n_obj": 2},
+                {"family": "WFG1", "n_var": 4, "n_obj": 3},
+                {"family": "WFG2", "n_var": 5, "n_obj": 3, "k": 4},
+                {"family": "WFG4", "n_var": 24, "n_obj": 3, "k": 3},
                 {"family": "MaF8", "n_var": 2, "n_obj": 3},
                 {"family": "DTLZ2", "n_var": 2, "n_obj": 3},
                 {"family": "ZDT5", "n_var": 30, "n_obj": 2},
@@ -10634,7 +10635,8 @@ def rotations_and_maf9_take_an_order_of_numpys():
     assert R.problem_version("rZDT4") == 3 and R.problem_version("MaF9_5D") == 2
     assert R.problem_version("rcDTLZ2_3D_n1") == 3 and R.problem_version("rZDT1") == 2
     for name, v in (("r0DTLZ1_3D", 2), ("c0DTLZ2_6D", 2), ("r0MaF3_5D", 2), ("c0MaF6_3D", 2),
-                    ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 1), ("rcPolygon_3D", 1),
+                    ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 2), ("rcPolygon_3D", 1),
+                    ("WFG4_3D", 2), ("MaF10_5D", 2), ("WFG4_3D_n1", 2),
                     ("shiftDTLZ1_3D", 2), ("c0MaF1_3D", 1)):
         assert name in R.PROBLEMS and R.problem_version(name) == v, name
     P = R._maf9_forbidden_regions(5)[0]

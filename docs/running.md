@@ -289,9 +289,9 @@ may differ). A row whose evaluation fails is NaN in that row; the batch goes on.
 call.
 
 **In C++: the suite.** ZDT1–4 and ZDT6, DTLZ1–7 and wideDTLZ3, shiftDTLZ,
-IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–9 and MaF13–15, ZCAT1–20, shiftZDT
+IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–15, ZCAT1–20, WFG1–9, shiftZDT
 and the rotations over them (rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF,
-r0/c0MaF, rZCAT) are computed in C++ when the extension is built
+r0/c0MaF, rZCAT, rWFG) are computed in C++ when the extension is built
 (`include/mootation/suite`, `benchmarks/native.py`): `p.evaluate`,
 `p.evaluate_batch` and the constraints call it, the loop over a batch runs in
 C++, and `p.native` is the `_core.Native` behind them. The NumPy code stays,
@@ -300,7 +300,7 @@ extension. The C++ suite's `exp`, `log`, `pow`, `sin`, `cos`, `tan` and
 `hypot` are the library's own (`include/mootation/detmath.hpp`, task 14 of
 2026-10-20): the same bits on every platform. The NumPy code calls the C
 library instead, whose last bit may differ between machines: the two agree to
-4 ulps (near zero, to 2·10⁻¹⁵ of the problem's scale; bbob-biobj 4·10⁻¹⁵) wherever
+4 ulps (near zero, to 2·10⁻¹⁵ of the problem's scale; bbob-biobj and WFG 4·10⁻¹⁵) wherever
 NumPy's `sin`, `cos`, `exp` and `pow` are the C library's (`_rows.agrees`),
 which the tests check on every problem of these families. Without the
 extension a run takes the NumPy code, and with it the last bits of that
@@ -331,7 +331,13 @@ calls `exp`, `log`, `pow`, `sin`, `cos`, `tan` or `hypot` once more (the
 library's own functions now; ZDT2's and bbob f13's x² is x·x, which the C
 library's `pow` missed for a few points in a million); unchanged are ZDT1,
 MaF1 and MaF9, their shifts and rotations, and the bbob-biobj pairs of f1 and
-f8 alone (`registry._DETMATH_SAME`). MaF10–12 (WFG) stay in Python.
+f8 alone (`registry._DETMATH_SAME`). WFG1–9, MaF10–12 (WFG1, WFG2 and WFG9
+with M − 1 positions) and rWFG joined the suite in task 17 (2026-10-23) as
+version 2 of themselves: the library's `pow`, `sin` and `cos`, and rWFG's
+A·d the pairwise sums of `_rows.matvec_pairwise` in the NumPy reference too,
+where it was BLAS's product. With the C library's `pow` instead, the C++ code
+gives `wfg.py`'s values bit for bit but where that `pow` itself differs from
+CPython's `**` in the last bit (72 in 200 000 on MSVC).
 
 **MaF14 and MaF15** (Cheng et al. 2017, Eq. 41–50; task 12 of 2026-10-19):
 LSMOP3 and the inverted LSMOP8, the suite's two large-scale problems, at 3, 5,
@@ -956,8 +962,8 @@ read a rung at the record `record_at` puts there, which has them, and
   populations.
 
 **What a campaign keeps between runs.** The worker processes live for the
-whole campaign, each taking one job after another, so imports and numba's
-compiled WFG kernels (cached on disk) are paid once a process.
+whole campaign, each taking one job after another, so imports are paid once a
+process.
 
 **The cache of references.** A problem's frame, reference front of `n_ref`
 points, dense reference (four to ten objectives), Pareto-set sample and the
