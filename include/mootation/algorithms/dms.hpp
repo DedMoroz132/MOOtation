@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <random>
@@ -111,6 +112,15 @@ inline std::optional<DMSPoll> parse_dms_poll(const std::string& s)
 //     when n < 2), and dms_poll = random polls a point drawn among those still
 //     worth polling, in a random order of the directions. Neither is in the
 //     paper.
+//   DMS-7 (task 16, supplement 1). A point polled again is evaluated again
+//     and counts in the budget, as in the paper, which keeps no cache:
+//     Algorithm 3.1 evaluates every poll set, and Appendix A polls x_0 again
+//     at iteration 1. On DTLZ2_3D at 2 000 evaluations about three calls in
+//     five ask for a point already evaluated (result.unique_evaluations tells
+//     them). dms_cache = on (off by default, as the paper): a point evaluated
+//     before takes its values from the run's cache of every point evaluated,
+//     as DMulti-MADS's V^k (DMM-8), and costs no evaluation. Its step size is
+//     the poll's, as a new point's would be.
 // ============================================================================
 template <typename Ind_t>
 class DMSCore {
@@ -135,6 +145,9 @@ private:
     double  tol_    = 1e-3;
     std::vector<double> lo_, hi_;
     std::mt19937 rng_{0};           // drawn from only by DMS-6's knobs
+    bool cache_ = false;                                   // DMS-7
+    std::map<std::vector<double>, Entry> seen_;            // every point evaluated, by x
+    long long cache_hits_ = 0;
 
     static bool dominates(const Entry& a, const Entry& b)
     {
@@ -158,9 +171,30 @@ private:
         return x;
     }
 
-    // Evaluate points (normalised) in one batch: slots after the answer set.
+    // Evaluate points (normalised) in one batch: slots after the answer set;
+    // with the cache (DMS-7) only those not evaluated before, the others
+    // taken from it, in U's order either way.
     std::vector<Entry> evaluate(DataVault<Ind_t>& vault, const std::vector<std::vector<double>>& U,
                                 double alpha)
+    {
+        if (!cache_) return evaluate_all(vault, U, alpha);
+        std::vector<std::vector<double>> fresh;
+        for (const auto& u : U)
+            if (seen_.find(u) == seen_.end()
+                && std::find(fresh.begin(), fresh.end(), u) == fresh.end()) fresh.push_back(u);
+        for (auto& e : evaluate_all(vault, fresh, alpha)) seen_.emplace(e.x, e);
+        std::vector<Entry> out;
+        for (const auto& u : U) {
+            Entry e = seen_.at(u);
+            e.alpha = alpha;
+            out.push_back(std::move(e));
+        }
+        cache_hits_ += static_cast<long long>(U.size() - fresh.size());
+        return out;
+    }
+
+    std::vector<Entry> evaluate_all(DataVault<Ind_t>& vault, const std::vector<std::vector<double>>& U,
+                                    double alpha)
     {
         std::vector<Entry> out;
         if (U.empty()) return out;
@@ -273,6 +307,18 @@ public:
     void set_init(DMSInit i)        { init_ = i; }
     void set_poll(DMSPoll p)        { poll_ = p; }
     void set_step_tolerance(double t) { tol_ = t; }
+
+    bool set_word(const std::string& k, const std::string& w)
+    {
+        if (k == "dms_cache") {                                            // DMS-7
+            if (w != "on" && w != "off")
+                throw std::invalid_argument("dms_cache = '" + w + "': on or off");
+            cache_ = w == "on";
+            return true;
+        }
+        return false;
+    }
+    long long cache_hits() const { return cache_hits_; }               // DMS-7: evaluations saved
 
     // The list itself (normalised variables, objectives, step sizes).
     std::size_t list_size() const { return list_.size(); }

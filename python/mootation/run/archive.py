@@ -663,11 +663,52 @@ class SetArchive:
     even with the finest grid) keeps one point per objective vector, so the
     copies of a Pareto set that map onto the same front — SYM-PART's nine —
     glue together there; this one keeps them, for the decision-space
-    indicators' answer (spread_select). No bound on its size."""
+    indicators' answer (spread_select). No bound on its size.
+
+    The points are kept by the compiled archive (include/mootation/
+    set_archive.hpp: a sorted list at two objectives, an ND-tree from three;
+    task 16, supplement 1, §3) where the extension is built, by PySetArchive
+    otherwise: the same points in the same order. F and X: the stored points'
+    objectives and variables, in the order they were offered."""
+
+    def __init__(self, n_obj: int, n_vars: int):
+        compiled = _compiled("SetArchive")
+        self._a = compiled(int(n_obj), int(n_vars)) if compiled is not None else PySetArchive(n_obj, n_vars)
+        self._points = None
+
+    def __len__(self) -> int:
+        return len(self._a)
+
+    def add_many(self, F, X) -> None:
+        """Offer the rows of F and X, in order."""
+        F, X = np.asarray(F, float), np.asarray(X, float)
+        if len(F):
+            self._a.add_many(F.reshape(len(F), -1), X.reshape(len(F), -1))
+            self._points = None
+
+    def _read(self):
+        if self._points is None:
+            self._points = self._a.points()
+        return self._points
+
+    @property
+    def F(self):
+        return self._read()[0]
+
+    @property
+    def X(self):
+        return self._read()[1]
+
+
+class PySetArchive:
+    """SetArchive in NumPy: the reference (a batch compared at once)."""
 
     def __init__(self, n_obj: int, n_vars: int):
         self.F = np.empty((0, n_obj))
         self.X = np.empty((0, n_vars))
+
+    def points(self):
+        return self.F, self.X
 
     def __len__(self) -> int:
         return len(self.F)

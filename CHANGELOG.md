@@ -10,6 +10,31 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The store's format 2: a run's point sets go into its record straight from
+  memory as float64 (no CSV text on the way), its trajectory column by
+  column; the run folders and `mootation store export` still write ten
+  significant digits, the same text. A store of format 1 is read as before.
+  New beside the final population: `final_cv.csv` (its constraint violation,
+  constrained problems) and `set_answer.csv` (the second answer's points).
+
+- `[campaign] archive_cap` (x N; 0, the default, the whole archive): the run
+  archive written is its first archive_cap x N points in DSS order, which
+  begin with the archive scenario's N, so no indicator changes. A noisy
+  copy's archive keeps the values its algorithm saw (`f1_seen` ...), which
+  the archive scenario selects by. `python/examples/atlas_storage.toml`.
+
+- `SetArchive` (the second answer's candidates) in C++
+  (`include/mootation/set_archive.hpp`): a sorted list at two objectives, an
+  ND-tree from three; the same points in the same order as the NumPy one.
+
+- `dms_cache` and `paes_cache` (`off` by default, as the papers): a point
+  evaluated before is taken from the run's cache, at no evaluation (DMS-7,
+  PAES-7).
+
+- Problem properties (`benchmarks/properties.py`) for MaF1-13 and their
+  rotated copies (Cheng et al. 2017, Table 1), OMM, LOTZ, OJZJ and the
+  uninformative problems: every registry problem now has a row.
+
 - The result store (`mootation.store`, `[campaign] storage = "store"`): every
   worker appends its runs to its own segment (`store/seg-*.mhd`, `.raw`,
   `.idx`) instead of four files a run; a record is written whole and synced,

@@ -5033,6 +5033,61 @@ snapshot_variables = "all"
         assert np.allclose(last, TL, rtol=1e-5, atol=1e-5)          # float32 snapshots
 
 
+@test
+def archive_cap_keeps_the_archive_scenarios_points():
+    """archive_cap (task 16, supplement 1): the archive written cut to cap x N
+    by DSS; its first N are the archive scenario's, found again from the file
+    as from the whole archive, a noisy copy's by the values its algorithm saw
+    (f*_seen)."""
+    if not _have_numpy() or _core_with("SetArchive") is None:
+        print("  skip  archive_cap_keeps...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    p = get("DTLZ2_3D_n1")
+    got = {}
+    with tempfile.TemporaryDirectory() as td:
+        for cap in (0, 1):
+            text = f"""algorithms = [ {{ name = "nsga2", pop = 0, gens = 0 }} ]
+[run]
+name = "c{cap}"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["DTLZ2_3D_n1"]
+[campaign]
+out = "res{cap}"
+budget_fe = 4000
+metrics = ["igdp"]
+final_metrics = ["igdp"]
+archive = true
+archive_cap = {cap}
+"""
+            cfg_path = Path(td) / f"c{cap}.toml"
+            cfg_path.write_text(text, encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            for job in C.expand_jobs(cfg, spec):
+                assert C.run_job(job, root, spec, quiet=True) == "done", job
+            run = root / "DTLZ2_3D_n1" / "nsga2" / "run_1"
+            meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
+            header = [r for r in (run / "archive.csv").read_text(encoding="utf-8").splitlines()
+                      if not r.startswith("#")][0]
+            assert header.endswith(",extreme,f1_seen,f2_seen,f3_seen"), header
+            F, X = C._archive_answer(run, meta, p, 3, p.n_vars)
+            got[cap] = (meta, np.column_stack([F, X]))
+    whole, cut = got[0][0]["archive"], got[1][0]["archive"]
+    assert whole["written"] > p.pop_size and cut["written"] == p.pop_size, (whole, cut)
+    assert cut["cap"] == p.pop_size and whole["cap"] is None, (whole, cut)
+    assert got[0][0]["final_archive"] == got[1][0]["final_archive"]
+    A, B = (got[c][1] for c in (0, 1))
+    assert sorted(map(tuple, A)) == sorted(map(tuple, B))
+
+
 # ── task 6, item 9: dense references at four objectives and more ───────────
 
 @test
@@ -5534,8 +5589,9 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
             if p.distance_fn is not None or r.family != "DTLZ5":
                 assert max(p.distance_fn(list(x)) for x in S) < 1e-9, name
         row = properties(name)
-        assert p.cyclic_vars == () and (row is None) == (r.kind == "maf"), name
-        assert row is None or (row["centre"], row["boundary"]) == (False, False), name
+        # every rotation takes its base's row, MaF's too (task 16, supplement 1)
+        assert p.cyclic_vars == () and row is not None, name
+        assert (row["centre"], row["boundary"]) == (False, False), name
     for M in R.SIZES:
         X = box(get(f"DTLZ1_{M}D"), 2000)
         for stem, other, same in (("rDTLZ2", None, True), ("rDTLZ4", None, True),
@@ -5592,7 +5648,8 @@ def a_rotated_problem_is_its_base_where_its_map_is_the_identity():
     assert properties("r0DTLZ1_3D")["separable"] is True
     assert properties("rZDT1")["separable"] is False and properties("rZDT4")["multimodal"]
     assert properties("rDTLZ1_3D_i2")["n_obj"] == 3 and properties("rcDTLZ2_10D")["front_dim"] == 9
-    assert properties("rWFG8_3D")["separable"] is False and properties("rcMaF1_3D") is None
+    assert properties("rWFG8_3D")["separable"] is False
+    assert properties("MaF1_3D")["separable"] and properties("rcMaF1_3D")["separable"] is False
     assert properties("rcDTLZ5_5D")["front"] == "degenerate+mixed"
     assert properties("rZCAT1_3D")["linkage"] and properties("rcPolygon_3D")["separable"] is False
     fam = families()
@@ -5842,6 +5899,33 @@ def dms_is_deterministic_stops_by_itself_and_answers_with_a_nondominated_set():
     assert not single.ignored and "dms_init" in minimize(sch, max_evaluations=100, algorithm="nsga2",
                                                          bounds=kw["bounds"], n_objs=2,
                                                          dms_init="single").ignored
+
+
+@test
+def dms_and_paes_caches_evaluate_each_point_once():
+    """DMS-7, PAES-7 (task 16, supplement 1): a point polled or mutated again is
+    evaluated again by default, as in the papers; dms_cache / paes_cache = "on"
+    take it from the run's cache: every call of the function is a new point."""
+    if not _have_numpy() or _core_with("SetArchive") is None:
+        print("  skip  dms_and_paes_caches...: no NumPy or stale _core"); return
+    from mootation import minimize
+
+    for alg, knob, n in (("dms", "dms_cache", 2), ("paes", "paes_cache", 10)):
+        calls = {}
+        for value in ("off", "on"):
+            seen = calls[value] = []
+
+            def sch(x, _seen=seen):
+                _seen.append(tuple(x))
+                return [x[0] ** 2 + x[1] ** 2, (x[0] - 2) ** 2 + (x[1] - 2) ** 2]
+
+            r = minimize(sch, bounds=[(-5.0, 5.0)] * n, n_objs=2, algorithm=alg, pop_size=30,
+                         max_evaluations=3000, seed=1, **{knob: value})
+            assert r.evaluations == len(seen) and not r.ignored, (alg, value, r.evaluations, r.ignored)
+        assert len(set(calls["off"])) < len(calls["off"]), alg       # repeats without the cache
+        assert len(set(calls["on"])) == len(calls["on"]), alg        # none with it
+    assert "dms_cache" in minimize(sch, bounds=[(-5.0, 5.0)] * 2, n_objs=2, algorithm="nsga2",
+                                   max_evaluations=100, dms_cache="on").ignored
 
 
 @test
@@ -6289,17 +6373,22 @@ def the_second_answer_spreads_out_in_the_decision_space():
     assert a.F.tolist() == [[1, 2], [1, 2], [2, 1], [0.5, 3]] and a.X[:2].tolist() == [[0, 0], [5, 5]], a.F
     a.add_many([[0.5, 1]], [[7, 7]])
     assert a.F.tolist() == [[0.5, 1]], a.F
+    from mootation.run.archive import PySetArchive
     rng = np.random.default_rng(3)
-    for t in range(40):                                  # many ties: values on a 0.1 grid
-        m = 2 + t % 3
-        whole, single = SetArchive(m, 2), SetArchive(m, 2)
+    for t in range(500):                                 # many ties: values on a 0.1 grid
+        m = (2, 3, 4, 5, 8)[t % 5]
+        whole, single, ref = SetArchive(m, 2), SetArchive(m, 2), PySetArchive(m, 2)
         for _ in range(4):
-            F = np.round(rng.random((int(rng.integers(1, 40)), m)), 1)
+            F = np.round(rng.random((int(rng.integers(1, 60)), m)), 1)
+            if t % 7 == 0:
+                F[0, 0] = np.nan                         # compared by nothing: kept
             X = rng.random((len(F), 2))
             whole.add_many(F, X)
+            ref.add_many(F, X)
             for f, x in zip(F, X):
                 single.add_many([f], [x])
-        assert np.array_equal(whole.F, single.F) and np.array_equal(whole.X, single.X), t
+        for a in (whole, single):      # task 16, supplement 1, §3: the NumPy reference's points, order
+            assert np.array_equal(a.F, ref.F, equal_nan=True) and np.array_equal(a.X, ref.X), t
     X = np.array([[0, 0], [0.1, 0], [1, 1], [0.9, 1], [0, 1]], float)
     s = spread_select(X, 3, [(0, 1), (0, 1)], 4)
     assert len(set(s.tolist())) == 3 and s.tolist() == spread_select(X, 3, [(0, 1), (0, 1)], 4).tolist()
@@ -11517,6 +11606,32 @@ EXTRA
                      "The archive beside the population", "Not done (4)", "<svg"):
             assert part in page, part
         assert page.count("<td>incompatible</td>") == 4, page[page.index("Not done"):][:400]
+
+
+@test
+def every_registry_problem_has_a_property_row():
+    """Task 16, supplement 1, §7: every problem of the registry has a row of
+    benchmarks.properties — MaF1-13 after Cheng et al. 2017, Table 1, and
+    their rotations after the base, the bit strings and the uninformative
+    probes from their definitions."""
+    if not _have_numpy():
+        print("  skip  every_registry_problem...: no NumPy"); return
+    from mootation.benchmarks.properties import KEYS, properties
+    from mootation.benchmarks.registry import PROBLEMS
+    missing = [n for n in PROBLEMS if properties(n) is None]
+    assert not missing, missing[:10]
+    assert all(set(properties(n)) == set(KEYS) for n in PROBLEMS)
+    row = lambda n: properties(n)                          # noqa: E731
+    assert row("MaF1_3D")["front"] == "linear" and row("MaF1_3D")["centre"] is True
+    assert row("MaF5_5D")["bias"] and row("MaF5_5D")["scaled"] and row("MaF4_5D")["multimodal"]
+    assert row("MaF7_3D")["boundary"] is True and "disconnected" in row("MaF7_3D")["front"]
+    assert row("MaF12_5D")["deceptive"] and not row("MaF11_5D")["separable"]
+    assert row("MaF13_5D")["linkage"] and row("MaF13_5D")["front_dim"] == 2
+    assert row("MaF6_5D")["front_dim"] == 1 and row("MaF8_5D")["front_dim"] == 2
+    r = row("rMaF2_3D_i1")
+    assert r["front"] == row("MaF2_3D")["front"] and r["centre"] is False and not r["separable"]
+    assert row("OJZJ_n10_k2")["deceptive"] and row("OMM_n10")["separable"] and row("LOTZ_n10")["centre"] is None
+    assert row("uninformative_f5_n02_2D")["front"] == "linear" and row("uninformative_n02_2D")["multimodal"] is None
 
 
 def main(argv=None) -> int:

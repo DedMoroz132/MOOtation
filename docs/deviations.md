@@ -8,7 +8,7 @@ is given in full, with its reasons and references.
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-373 items: 301 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+377 items: 305 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -174,6 +174,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `hlmea` | HLMEA-10 (MINOR, pseudocode defect) | Alg.2 line 3 initialises Q = ∅ ONCE, outside the generation loop, and lines 12/26 write Q = Q ∪ P inside the per-subregion loop. | yes | `hlmea.hpp` |
 | `hlmea` | HLMEA-11 (FIXED 2026-09-05, second primary-source pass) | Alg.4 takes the cluster centres "of the last and current generation". | no: fixed | `hlmea.hpp` |
 | `hlmea` | HLMEA-12 (MINOR) | K-means runs in DECISION space (§3.1), so a cluster centre has no objective vector of its own; the "centre" fed to the HV of Alg.4 is the mean of the members' objective vectors. | yes | `hlmea.hpp` |
+| `hlmea` | HLMEA-13 (task 16, supplement 1) | An offspring equal to a point evaluated before is evaluated again and counts in the budget, as in the paper: on DTLZ2_3D at 2 000 evaluations about one call in eight. | yes | `hlmea.hpp` |
 | `ibea_eplus` | IEP-1 (MINOR) | Alg.1 Step 4 returns the non-dominated subset A of P; this core hands back the whole final P and leaves that filter to the caller, as every core in the library does. | yes | `ibea_eplus.hpp` |
 | `ibea_eplus` | IEP-2 (DEVIATION) | Binary genomes use the library's uniform crossover + bit-flip 1/n_bits; the paper's knapsack runs used one-point crossover 0.8 + bit-flip 0.04 (footnote 3). | yes | `ibea_eplus.hpp` |
 | `ibea_eplus` | IEP-3 (EXTENSION) | The constraint modes above are not in the paper and are off by default. | no: option | `ibea_eplus.hpp` |
@@ -326,6 +327,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `two_arch2` | TA2-7 (MINOR) | Stream sizes. The paper fixes only the population/FE budget and says nothing about how many crossover children versus mutants are bred per generation; the ~50/50 split of n_DA offspring is this port's choice (see TA2-4). | yes | `two_arch2.hpp` |
 | `two_arch2` | TA2-8 (letter, noted 2026-09-16) | Parents are drawn uniformly: §V-E-2 describes the crossover as "one parent from CA and the other from DA" and names no mating selection, and Eq.(2) is -e^{-I/0.05} with no c = max\|I\| factor (the scaling IBEA adds is h... | yes | `two_arch2.hpp` |
 | `two_arch2` | TA2-6 (MINOR) | Real genome only; binary is out of scope. | yes | `two_arch2.hpp` |
+| `two_arch2` | TA2-9 (task 16, supplement 1) | An offspring equal to a point evaluated before is evaluated again and counts in the budget, as in the paper: on DTLZ2_3D at 2 000 evaluations about one call in six. | yes | `two_arch2.hpp` |
 | `naemo` | NAEMO-1 (DEVIATION) | Eq.19 formally applies polynomial mutation to "all j"; implemented as Deb's CANONICAL polynomial mutation with pm=1/n_vars. | yes | `naemo.hpp` |
 | `naemo` | NAEMO-2 (MINOR) | PBI and association operate in the translated space x' = f − z* (z* being the archive ideal point); the paper draws the lines through the origin in the raw space (for DTLZ, f>=0 and z*~0) — this is the MOEA/D-PBI conv... | yes | `naemo.hpp` |
 | `naemo` | NAEMO-3 (MINOR) | §4.4 takes the DE points "from the archive", while §4.1/4.9 restrict reproduction to the neighbourhood. | yes | `naemo.hpp` |
@@ -340,6 +342,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `paes` | PAES-4 | Constraints: Deb's constrained domination wherever domination is asked (constraint_mode not NONE), as jMetal's comparator. | yes | `paes.hpp` |
 | `paes` | PAES-5 | The first c: a uniform random point (seeded: the first seed). | yes | `paes.hpp` |
 | `paes` | PAES-6 | The grid follows the archive's range at every change; | yes | `paes.hpp` |
+| `paes` | PAES-7 (task 16, supplement 1) | A mutant equal to its parent (no variable mutated) is evaluated and counts in the budget: Figure 1 evaluates every m, and only the archive refuses copies. | yes | `paes.hpp` |
 | `ctaea` | CTAEA-1 | Algorithm 2's infeasible branch (lines 23-30) begins with S <- S_c and loops while \|S\| < N (the printed \|S_c\| < N cannot end), and line 29 cuts the level added last; | yes | `ctaea.hpp` |
 | `ctaea` | CTAEA-2 | Eq. 8 divides by z_nad - z*; the authors' code (as pymoo carries it) only subtracts z*, and so does this: with the division, the DA's far infeasible members squeeze the front onto a few weights. z* is the least of eac... | yes | `ctaea.hpp` |
 | `ctaea` | CTAEA-3 | The supplement with the operators' settings is not at hand: SBX (eta_c 30, pc 1) and polynomial mutation (eta_m 20, pm 1/n), and one child of each pair, N pairs per generation — the authors' code as pymoo carries it. | yes | `ctaea.hpp` |
@@ -353,6 +356,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `dms` | DMS-4 | Constraints: with constraint_mode FEASIBILITY a point with cv > 0 is infeasible and filtered out, the extreme barrier (2); with NONE the limits are ignored, as in every core. | yes | `dms.hpp` |
 | `dms` | DMS-5 | Continuous variables only; a problem with binary ones is refused. | yes | `dms.hpp` |
 | `dms` | DMS-6 (task 5, 2026-10-01; off by default) | The method has no random number, so its ten seeds of a campaign are one run, and the line's points and their dyadic steps (α = 1, 1/2, 1/4, ... of the range) land exactly on the middle and the bounds of the box, where... | no: option | `dms.hpp` |
+| `dms` | DMS-7 (task 16, supplement 1) | A point polled again is evaluated again and counts in the budget, as in the paper, which keeps no cache: Algorithm 3.1 evaluates every poll set, and Appendix A polls x_0 again at iteration 1. | yes | `dms.hpp` |
 | `dmulti_mads` | DMM-1 | The poll directions: an orthonormal basis H = I − 2vvᵀ (a Householder matrix of a unit vector v drawn from the seed, as OrthoMADS's [1] Halton vector, here from the run's generator), each column turned towards the tar... | yes | `dmulti_mads.hpp` |
 | `dmulti_mads` | DMM-2 | The mesh: the classic MADS one, δ = min(Δ, Δ²) (Algorithm 2), in the normalized box; a direction u becomes the mesh vector z = round(u / ‖u‖_∞ · Δ/δ), so that ‖δz‖_∞ = Δ. | yes | `dmulti_mads.hpp` |
 | `dmulti_mads` | DMM-3 | τ = 1/2 and Δ_0 = 0.1: the paper's runs leave both to [8]'s mesh. | yes | `dmulti_mads.hpp` |

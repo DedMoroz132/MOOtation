@@ -93,6 +93,9 @@
 //     and names no mating selection, and Eq.(2) is -e^{-I/0.05} with no
 //     c = max|I| factor (the scaling IBEA adds is handled by TA2-1).
 //   TA2-6 (MINOR). Real genome only; binary is out of scope.
+//   TA2-9 (task 16, supplement 1). An offspring equal to a point evaluated
+//     before is evaluated again and counts in the budget, as in the paper: on
+//     DTLZ2_3D at 2 000 evaluations about one call in six.
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP switches BOTH archives to Deb's feasibility rules:
 //   the DA Pareto filter uses constrained domination, and the CA indicator

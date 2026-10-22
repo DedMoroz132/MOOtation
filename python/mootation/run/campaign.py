@@ -234,6 +234,12 @@ class CampaignSpec:
     # archive.csv.gz. On a large campaign "selected" takes about a tenth of the
     # room of "all" (a quarter of it gzipped).
     archive_variables: str = "all"
+    # The archive written: every point (0), or at most archive_cap x N, cut by
+    # DSS in the frame the archive scenario selects in (task 16, supplement 1,
+    # §2; the atlas: 10). The archive scenario's N points are the first N of
+    # that DSS order, so the cut keeps them (with answer_select = "igdp_self"
+    # its N points are kept besides); the indicators are not changed by it.
+    archive_cap: int = 0
     # IGD+ and the additive epsilon of EVERY point the run evaluated (the
     # feasible ones, noise-free on a noisy copy), in igdp_norm's frame, kept up
     # to date at every evaluation (_core.IncrementalFront; task 10, §5.2): in
@@ -356,7 +362,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
              "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
-             "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout"}
+             "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout",
+             "archive_cap"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -456,6 +463,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if (not isinstance(spec.noise_cell, (int, float)) or isinstance(spec.noise_cell, bool)
             or not 0 < spec.noise_cell <= 1):
         raise ConfigError("campaign.noise_cell", f"a share in (0, 1], not {spec.noise_cell!r}")
+    spec.archive_cap = raw.get("archive_cap", 0)
+    if not isinstance(spec.archive_cap, int) or isinstance(spec.archive_cap, bool) or spec.archive_cap < 0:
+        raise ConfigError("campaign.archive_cap", f"an integer >= 0 (x N; 0: the whole archive), "
+                                                  f"not {spec.archive_cap!r}")
     spec.archive_variables = raw.get("archive_variables", "all")
     if spec.archive_variables not in ("all", "selected"):
         raise ConfigError("campaign.archive_variables",
@@ -942,7 +953,7 @@ def _record_timeout(root: Path, spec: CampaignSpec, job: Job, pid: int, seconds:
         w = store.writer(store.store_dir(root), spec.segment_mb << 20, header={
             "code_stamp": _code_stamp(), "trajectory_version": TRAJECTORY_VERSION,
             "detmath_path": _detmath_path()})
-        w.append(store.job_key(job), store.pack_run_dir(d, keep=spec.keep))
+        w.append(store.job_key(job), [store.format_block()] + store.pack_run_dir(d, keep=spec.keep))
         shutil.rmtree(mine, ignore_errors=True)
 
 
@@ -974,17 +985,26 @@ def run_job(job: Job, root: Path, spec: CampaignSpec, *, force: bool = False,
     mine = store.store_dir(root) / store.SCRATCH_DIR / f"p{os.getpid()}"   # one run at a time
     shutil.rmtree(mine, ignore_errors=True)
     d = mine / job.rel_dir
-    status = _run_job(job, root, spec, d, quiet=quiet)
+    tables: dict = {}
+    status = _run_job(job, root, spec, d, quiet=quiet, tables=tables)
     w = store.writer(store.store_dir(root), spec.segment_mb << 20, header={
         "code_stamp": _code_stamp(), "trajectory_version": TRAJECTORY_VERSION,
         "detmath_path": _detmath_path()})
-    w.append(store.job_key(job), store.pack_run_dir(d, keep=spec.keep))
+    blocks = [store.format_block()] + store.pack_run_dir(d, keep=spec.keep)
+    for name, (kind, *what) in tables.items():
+        if spec.keep == "standard" and name in store.FULL_ONLY:
+            continue
+        blocks += store.table_blocks(name, *what) if kind == "table" else store.array_blocks(name, *what)
+    w.append(store.job_key(job), blocks)
     shutil.rmtree(mine)
     return status
 
 
-def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool = False) -> str:
-    """run_job's run, its files written to d."""
+def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool = False,
+             tables: dict | None = None) -> str:
+    """run_job's run, its files written to d; with `tables` (a store) its
+    point sets go there from memory as float64 instead of CSV files:
+    {name: ("table", head, array) or ("arrays", {name: array})}."""
     import numpy as np
     from ..benchmarks import get as bench_get
     from .. import __version__, minimize
@@ -993,6 +1013,25 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
 
     meta_path = d / "meta.json"
     d.mkdir(parents=True, exist_ok=True)
+
+    def put_table(name, comments, columns, A, ints=()):
+        """A point set of the run: its CSV ("{:.10g}", the files layout), or
+        its numbers as float64 for the store (store.table_blocks)."""
+        from ..store import _csv_text
+        A = np.asarray(A, float).reshape(-1, len(columns)) if len(columns) else np.zeros((0, 0))
+        head = {"comments": comments, "columns": columns, "ints": list(ints),
+                "newline": "\n" if name.endswith(".gz") else os.linesep}
+        if tables is not None:
+            tables[name] = ("table", head, A)
+            return
+        with _open_text(d / name, "w") as out:
+            out.write(_csv_text(dict(head, newline="\n"), A))
+
+    def put_arrays(name, payload):
+        if tables is not None:
+            tables[name] = ("arrays", payload)
+        else:
+            np.savez_compressed(d / name, **payload)
     traj_path = d / "trajectory.jsonl"
     if traj_path.exists():
         traj_path.unlink()
@@ -1622,56 +1661,73 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     seen = None
     if truth is not None and len(F):
         seen, F = F, true_values(F, X)       # f: noise-free; f_seen: what the algorithm saw
-    with (d / "final.csv").open("w", encoding="utf-8") as out:
-        out.write("# mootation campaign final population v1"
-                  + ("; f noise-free, f_seen as the algorithm saw it" if seen is not None
-                     else "") + "\n")
-        out.write(",".join([f"f{i+1}" for i in range(F.shape[1] if F.ndim == 2 else 0)]
-                           + [f"x{i+1}" for i in range(X.shape[1] if X.ndim == 2 else 0)]
-                           + ([f"f{i+1}_seen" for i in range(p.n_obj)] if seen is not None
-                              else [])) + "\n")
-        for i in range(len(F)):
-            row = list(F[i]) + list(X[i]) + (list(seen[i]) if seen is not None else [])
-            out.write(",".join(f"{v:.10g}" for v in row) + "\n")
+    columns = ([f"f{i+1}" for i in range(F.shape[1] if F.ndim == 2 else 0)]
+               + [f"x{i+1}" for i in range(X.shape[1] if X.ndim == 2 else 0)]
+               + ([f"f{i+1}_seen" for i in range(p.n_obj)] if seen is not None else []))
+    parts = [F, X] + ([seen] if seen is not None else [])
+    put_table("final.csv", ["# mootation campaign final population v1"
+                            + ("; f noise-free, f_seen as the algorithm saw it" if seen is not None
+                               else "")],
+              columns, np.column_stack(parts) if columns else np.zeros((0, 0)))
+    cv = getattr(res, "cv", None)
+    if cons is not None and cv is not None and len(cv) == len(F):
+        # the final population's constraint violation, row by row with final.csv
+        # (task 16, supplement 1)
+        put_table("final_cv.csv", ["# mootation campaign final population's constraint violation "
+                                   "v1: the sum of the violations, the rows of final.csv"],
+                  ["cv"], np.asarray(cv, float).reshape(-1, 1))
 
     arc_sel = None                  # the archive scenario's points: indices into arc.points()
     if arc is not None:
         AF, AX, AE = arc.points()
-        AF = true_values(AF, AX)          # a noisy copy's archive is written noise-free
-        # "all": every point with its variables; "selected": the objectives of
-        # every point, and the variables only of the points DSS selects
         whole = spec.archive_variables == "all"
-        name = "archive.csv" if whole else "archive.csv.gz"
-        with _open_text(d / name, "w") as out:
-            out.write(f"# mootation campaign archive v1: every nondominated point evaluated"
-                      f"{' (feasible only)' if p.has_cons else ''}, at most one per cell of a "
-                      f"{arc.delta:g} grid in {arc.normalization}-normalized objectives, "
-                      f"each objective's best point kept whatever its cell holds"
-                      + ("" if whole else "; objectives only, the variables of the points "
-                         "the archive scenario selects are in final_archive.csv.gz") + "\n")
-            out.write(",".join([f"f{i+1}" for i in range(p.n_obj)]
-                               + [f"x{i+1}" for i in range(p.n_vars) if whole]
-                               + ["extreme"]) + "\n")
-            for i in range(len(AF)):
-                row = list(AF[i]) + (list(AX[i]) if whole else [])
-                out.write(",".join(f"{v:.10g}" for v in row) + f",{int(AE[i])}\n")
         if (len(AF) or cons is not None) and (spec.archive_scenario or not whole):
             t_sel = time.perf_counter()
             arc_sel = arc.select(p.pop_size, spec.answer_select)
             tm["final"] += time.perf_counter() - t_sel
+        # the points written: all, or archive_cap x N cut by DSS in the frame
+        # select() uses (its first N are the archive scenario's; see archive_cap)
+        cap = spec.archive_cap * p.pop_size
+        kept = np.arange(len(AF))
+        if cap and len(AF) > cap:
+            from .archive import dss_order
+            lo_c, hi_c = arc.frame() if arc.normalization == "problem" else (None, None)
+            kept = np.union1d(dss_order(AF, k=cap, ideal=lo_c, nadir=hi_c),
+                              np.asarray(arc_sel if arc_sel is not None else [], np.intp))
+        # a noisy copy's archive is written noise-free, and beside it the
+        # values the archive scenario selected by (f*_seen, task 16,
+        # supplement 1), so that its N points are found again from the file
+        seen_af = AF if truth is not None else None
+        AF = true_values(AF, AX)
+        # "all": every point with its variables; "selected": the objectives of
+        # every point, and the variables only of the points DSS selects
+        name = "archive.csv" if whole else "archive.csv.gz"
+        put_table(name, [f"# mootation campaign archive v1: every nondominated point evaluated"
+                         f"{' (feasible only)' if p.has_cons else ''}, at most one per cell of a "
+                         f"{arc.delta:g} grid in {arc.normalization}-normalized objectives, "
+                         f"each objective's best point kept whatever its cell holds"
+                         + ("" if whole else "; objectives only, the variables of the points "
+                            "the archive scenario selects are in final_archive.csv.gz")
+                         + (f"; cut to {cap} points by DSS" if len(kept) < len(AF) else "")
+                         + ("; f noise-free, f_seen as the algorithm saw it" if seen_af is not None
+                            else "")],
+                  [f"f{i+1}" for i in range(p.n_obj)] + [f"x{i+1}" for i in range(p.n_vars) if whole]
+                  + ["extreme"] + ([f"f{i+1}_seen" for i in range(p.n_obj)] if seen_af is not None else []),
+                  np.column_stack([AF[kept]] + ([AX[kept]] if whole else []) + [AE[kept]]
+                                  + ([seen_af[kept]] if seen_af is not None else [])),
+                  ints=[p.n_obj + (p.n_vars if whole else 0)])
         if not whole and arc_sel is not None:
-            with _open_text(d / "final_archive.csv.gz", "w") as out:
-                how = "DSS" if spec.answer_select == "dss" else spec.answer_select
-                out.write(f"# mootation campaign archive selection v1: the points {how} selects "
-                          f"from the archive for the archive scenario\n")
-                out.write(",".join([f"f{i+1}" for i in range(p.n_obj)]
-                                   + [f"x{i+1}" for i in range(p.n_vars)]) + "\n")
-                for i in arc_sel:
-                    out.write(",".join(f"{v:.10g}" for v in list(AF[i]) + list(AX[i])) + "\n")
+            how = "DSS" if spec.answer_select == "dss" else spec.answer_select
+            put_table("final_archive.csv.gz",
+                      [f"# mootation campaign archive selection v1: the points {how} selects "
+                       f"from the archive for the archive scenario"],
+                      [f"f{i+1}" for i in range(p.n_obj)] + [f"x{i+1}" for i in range(p.n_vars)],
+                      np.column_stack([AF[arc_sel], AX[arc_sel]]))
         lo, hi = arc.frame()
         # The frame DSS normalises by when it reduces the archive (scenario
         # "archive"), so that --recompute --scenario archive selects the same points.
         meta["archive"] = dict(arc.info(), extremes=int(AE.sum()), file=name,
+                               written=int(len(kept)), cap=cap or None,
                                answer_select=spec.answer_select,
                                variables=("all, in archive.csv" if whole else
                                           "the selected points', in final_archive.csv.gz"),
@@ -1683,7 +1739,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                        n=np.asarray(snap_n, np.int64), F=np.vstack(snap_F))
         if keep_x:
             payload["X"] = np.vstack(snap_X)
-        np.savez_compressed(d / "snapshots.npz", **payload)
+        put_arrays("snapshots.npz", payload)
         meta["snapshots"] = {"file": "snapshots.npz", "records": len(snap_F),
                              "dtype": "float32", "variables": keep_x,
                              "layout": "F (and X) rows of every record, stacked in order; "
@@ -1697,7 +1753,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                            F=np.vstack(ck_F))
             if keep_x:
                 payload["X"] = np.vstack(ck_X)
-            np.savez_compressed(d / "archive_at.npz", **payload)
+            put_arrays("archive_at.npz", payload)
     if hard:
         for b in hard:
             if str(b) not in hard_arc and arc is not None and (len(arc) or cons is not None):
@@ -1787,8 +1843,14 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                 sarc.add_many(F[keep], X[keep])
         if len(sarc):
             sel = spread_select(sarc.X, p.pop_size, p.bounds, job.seed)
-            got = M.compute(true_values(sarc.F[sel], sarc.X[sel]), ref_front=ref, ideal=ideal,
+            SF = true_values(sarc.F[sel], sarc.X[sel])
+            got = M.compute(SF, ref_front=ref, ideal=ideal,
                             nadir=nadir, which=SET_METRICS, X=sarc.X[sel], **extra)
+            # its points (task 16, supplement 1): objectives noise-free, then variables
+            put_table("set_answer.csv", ["# mootation campaign second answer v1: the points "
+                                         "spread_select takes for the decision-space indicators"],
+                      [f"f{i+1}" for i in range(p.n_obj)] + [f"x{i+1}" for i in range(p.n_vars)],
+                      np.column_stack([SF, sarc.X[sel]]))
             meta["set_answer"] = {"candidates": spec.set_answer, "n_candidates": len(sarc),
                                   "n": int(len(sel)), **{m: got.get(m) for m in SET_METRICS}}
         else:
@@ -2922,6 +2984,9 @@ def _archive_answer(run_dir: Path, meta: dict, p, m: int, n: int):
     F, X = _read_points(path, m, n)
     if not len(F):
         return None
+    # a noisy copy's archive: selected by the values the run saw (f*_seen)
+    S = _seen_columns(path, m)
+    by = F if S is None else S
     arc_meta = meta.get("archive") or {}
     frame = arc_meta.get("frame")
     if arc_meta.get("normalization") == "archive":
@@ -2935,10 +3000,39 @@ def _archive_answer(run_dir: Path, meta: dict, p, m: int, n: int):
     if len(F) <= p.pop_size:
         idx = np.arange(len(F))
     elif arc_meta.get("answer_select", "dss") == "igdp_self":
-        idx = igdp_self_order(F, p.pop_size, ideal=lo, nadir=hi)
+        idx = igdp_self_order(by, p.pop_size, ideal=lo, nadir=hi)
     else:
-        idx = dss_order(F, k=p.pop_size, ideal=lo, nadir=hi)
+        idx = dss_order(by, k=p.pop_size, ideal=lo, nadir=hi)
     return F[idx], (None if X is None else X[idx])
+
+
+def _seen_columns(path, m: int):
+    """The f1_seen .. fm_seen columns of a results CSV (a noisy copy's values as
+    its algorithm saw them), or None where it has none."""
+    import numpy as np
+    from ..store import StoredFile
+    if isinstance(path, StoredFile) and path.table() is not None:
+        import json as _json
+        head = _json.loads(path.run.blocks()[path.name + "#head"].data)
+        cols, A = head["columns"], path.table()
+    else:
+        cols, rows = None, []
+        with _open_text(path) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if cols is None:
+                    cols = line.split(",")
+                    continue
+                rows.append([float(v) for v in line.split(",")])
+        if cols is None:
+            return None
+        A = np.asarray(rows, float).reshape(-1, len(cols))
+    want = [f"f{i+1}_seen" for i in range(m)]
+    if not all(c in cols for c in want):
+        return None
+    return A[:, [cols.index(c) for c in want]]
 
 
 def _recompute_one(args) -> str:

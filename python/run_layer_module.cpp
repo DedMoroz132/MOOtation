@@ -22,6 +22,7 @@
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
 #include <mootation/nondominated.hpp>
+#include <mootation/set_archive.hpp>
 
 namespace py = pybind11;
 
@@ -308,6 +309,31 @@ void bind_run_layer(py::module_& m)
         .def_property_readonly("offered", &GA::offered)
         .def_property_readonly("accepted", &GA::accepted)
         .def_property_readonly("delta", &GA::delta);
+
+    // ── the second answer's candidates (archive.py, SetArchive) ────────────
+    using SA = mootation::SetArchive;
+    py::class_<SA>(m, "SetArchive",
+                   "mootation.run.archive.SetArchive's points, kept in C++ "
+                   "(include/mootation/set_archive.hpp); archive.SetArchive uses it.")
+        .def(py::init<std::size_t, std::size_t>(), py::arg("n_obj"), py::arg("n_vars"))
+        .def("add_many",
+             [](SA& a, const Arr& F, const Arr& X) {
+                 Rows f = rows_of(F, "SetArchive.add_many: F");
+                 Rows x = rows_of(X, "SetArchive.add_many: X");
+                 if (f.m != a.n_obj() || x.n != f.n || x.m != a.n_vars())
+                     throw std::invalid_argument("SetArchive.add_many: F must be n x n_obj, X n x n_vars");
+                 py::gil_scoped_release unlock;
+                 for (std::size_t i = 0; i < f.n; ++i) a.add(f.row(i), x.m ? x.row(i) : nullptr);
+             },
+             py::arg("F"), py::arg("X"), "Offer the rows of F (and X) in order.")
+        .def("points",
+             [](const SA& a) {
+                 std::vector<double> F, X;
+                 a.points(F, X);
+                 return py::make_tuple(matrix(F, a.size(), a.n_obj()), matrix(X, a.size(), a.n_vars()));
+             },
+             "(F, X) of the stored points, in the order they were offered.")
+        .def("__len__", &SA::size);
 
     // ── IGD+ and epsilon over everything evaluated (§5.2 of task 10) ───────
     using IF = mootation::indicators::IncrementalFront;

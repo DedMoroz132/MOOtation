@@ -1189,6 +1189,9 @@ tell its search from both, `dms_init = "random"` starts from a Latin
 hypercube of n points drawn from the seed and `dms_poll = "random"` polls a
 point drawn among those still worth polling (`first`, the default, the first
 in list order), the directions in random order (DMS-6 in `dms.hpp`).
+A point polled again is evaluated again, as in the paper; `dms_cache = "on"`
+takes it from the run's cache of every point evaluated instead, at no
+evaluation (DMS-7).
 
 **SMPSO.** Speed-constrained multi-objective PSO (Nebro et al., MCDM 2009;
 `algorithms/smpso.hpp`): `pop` particles, a leaders archive of `pop`
@@ -1251,6 +1254,9 @@ objective; 5, the paper's). The archive, bounded by `archive_size`
 papers' bit flips. A grid of 2^(5·M) cells is far finer than an archive of a
 hundred points from three objectives on, where every point has a cell of its
 own and a full archive loses its first member: a smaller `paes_depth` there.
+A mutant equal to a point evaluated before (no variable mutated) is evaluated
+again, as in the paper; `paes_cache = "on"` takes it from the run's cache
+instead, at no evaluation (PAES-7).
 
 **RM-MEDA** (`algorithms/rm_meda.hpp`; Zhang, Zhou & Jin, IEEE TEVC 2008):
 an estimation of distribution algorithm. Each generation an (m − 1)-dimensional
@@ -1946,13 +1952,26 @@ runs. `storage = "store"` in `[campaign]` keeps them in a few large files
 instead (`mootation.store`; its docstring has the format): every worker
 appends its runs to its own segment under `<results>/store/` — a text header
 (`.mhd`, `key = value`), the data (`.raw`) and an index (`.idx`) — and opens a
-new one past `segment_mb` (1024). A run is one record: its meta.json and
-trajectory as text, the numbers of every CSV as float64, every `.npz` array by
-array, each block zlib-compressed (byte-shuffled first where that is smaller).
-Packing checks that the record gives the run's files back value for value.
-`keep = "standard"` (the default) leaves out the archives at the intermediate
-points of the budget grid (`archive_at.npz`, `archive_checkpoints`); `"full"`
-keeps them. The default `storage` is `"files"`, the folder of files per run.
+new one past `segment_mb` (1024). A run is one record: its meta.json as text,
+its trajectory column by column, and its point sets — the final population,
+the archive, the second answer, the snapshots — as float64 straight from
+memory, each block zlib-compressed (byte-shuffled first where that is
+smaller). The store keeps the points to the last bit; the run folders
+(`storage = "files"`) and `mootation store export` write them with ten
+significant digits, the same text either way. `keep = "standard"` (the
+default) leaves out the archives at the intermediate points of the budget
+grid (`archive_at.npz`, `archive_checkpoints`); `"full"` keeps them. The
+default `storage` is `"files"`, the folder of files per run. A store written
+by task 16's code (format 1: the CSV's ten-digit numbers) is read as before.
+
+`archive_cap = 10` (`[campaign]`, x N) writes at most 10 N points of the run
+archive: the first 10 N in DSS order, in the frame the archive scenario
+selects in. Those begin with the scenario's N points, so no indicator
+changes; 0, the default, writes the whole archive. A noisy copy's archive
+also keeps the values its algorithm saw (`f1_seen` ...), which its archive
+scenario selected by. `python/examples/atlas_storage.toml` has the atlas's
+settings: the store, `keep = "standard"`, `archive_variables = "selected"`,
+`archive_cap = 10`.
 
 A record is written whole and synced before the run counts as done, so a
 campaign stopped at any moment resumes as a folder campaign does: the runs

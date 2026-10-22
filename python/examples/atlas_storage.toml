@@ -1,0 +1,30 @@
+# The atlas's storage (task 16, supplement 1): a store instead of run folders,
+# the archives at the intermediate grid points left out, the archive cut to
+# 10 N by DSS, the variables kept only for the N points the archive scenario
+# selects (docs/running.md, "The result store").
+#
+#   python -m mootation.run.campaign atlas_storage.toml --workers 8
+#   mootation store compact results/atlas_storage
+
+[run]
+name = "atlas_storage"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+problems = ["DTLZ2_3D", "WFG4_5D"]
+runs = 5
+
+[campaign]
+out = "results/{name}"
+budget_fe = 25000
+storage = "store"
+keep = "standard"
+archive_variables = "selected"
+archive_cap = 10
+
+[[algorithms]]
+name = "nsga3"
+pop = 0
+gens = 0

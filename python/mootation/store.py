@@ -25,13 +25,19 @@ A record counts once it is written whole and on the disk (flush + fsync);
 opening a segment reads up to its last whole record (length and CRC), and
 repair() cuts an unfinished tail off, saying so in store/store.log.
 
-The run is written by campaign.run_job as before, into a scratch folder, and
-packed: meta.json and trajectory.jsonl as text, every CSV as its numbers
-(float64, the values the CSV holds) with its header lines, every .npz array by
-array. Packing checks that the record gives back the same text, number for
-number and byte for byte, and keeps the file's text as it is where it would
-not. keep = "standard" leaves out the archives at the intermediate points of
-the budget grid (archive_at.npz); "full" keeps everything.
+FORMAT 2 (task 16, supplement 1): the run's point sets — the final
+population, the archive, the second answer, the snapshots — come straight
+from memory as float64 (counts as integers), never through the text of a CSV:
+a table is its numbers with the header lines its CSV would have
+(table_blocks), so that export_files writes that CSV, ten significant digits,
+byte for byte as a campaign with storage = "files" writes it. meta.json is
+kept as text, the trajectory column by column (float64 values and a code per
+cell: float, int, bool, null, text, absent), checked to give its lines back
+byte for byte, else kept as text. A record says its format in a block
+"#format"; a record of format 1 (task 16: the CSV's ten-digit numbers, or its
+text) is read as before. keep = "standard" leaves out the archives at the
+intermediate points of the budget grid (archive_at.npz); "full" keeps
+everything.
 
 The key of a run: problem|algorithm|variant|seed|budget — the core, the
 label of the variant ("" for none), and the budget in evaluations the run
@@ -46,9 +52,8 @@ written to CSV by export_csv().
 
 Compression: zlib; for an array of numbers also zlib after a byte shuffle (the
 first byte of every number, then the second, ...; as Blosc does, which puts
-alike high bytes together), and the smaller of the two is kept — the shuffle
-wins on counts and float32, not on the ten-digit decimals of a CSV, whose
-mantissas are noise. The block says which. Decompression gives the same bits.
+alike high bytes together), and the smaller of the two is kept. The block says
+which. Decompression gives the same bits.
 """
 
 from __future__ import annotations
@@ -67,7 +72,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 FORMAT = "mootation-store"
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 MAGIC = b"MOOTREC1"
 SEGMENT_BYTES = 1 << 30                 # a new segment at 1 GiB ([campaign] segment_mb)
 ZLEVEL = 6
@@ -264,6 +269,125 @@ def _csv_text(head: dict, A) -> str:
     return text.replace("\n", "\r\n") if head.get("newline") == "\r\n" else text
 
 
+def format_block() -> Block:
+    """The block that says a record's format (FORMAT_VERSION); a record
+    without one is of format 1."""
+    return Block("#format", "json", (), json.dumps({"version": FORMAT_VERSION}).encode())
+
+
+def record_format(by: dict) -> int:
+    b = by.get("#format")
+    return int(json.loads(b.data)["version"]) if b is not None else 1
+
+
+def table_blocks(name: str, head: dict, A) -> list:
+    """A table of a run (format 2): its numbers as float64, straight from
+    memory, and head = {"comments": the '#' lines, "columns": the names,
+    "ints": the columns written as integers, "newline": the CSV's line end},
+    from which file_content writes its CSV ("{:.10g}"), as campaign does."""
+    import numpy as np
+    n = len(head["columns"])
+    A = np.ascontiguousarray(np.asarray(A, "<f8").reshape(-1, n) if n else np.zeros((0, 0), "<f8"))
+    return [Block(name + "#head", "json", (), json.dumps(dict(head, numbers="float64")).encode()),
+            Block(name, "<f8", A.shape, A.tobytes())]
+
+
+def array_blocks(name: str, arrays: dict) -> list:
+    """Named arrays of a run (an .npz in the files layout), array by array."""
+    import numpy as np
+    out = [Block(name + "#head", "json", (), json.dumps({"arrays": list(arrays)}).encode())]
+    for k, a in arrays.items():
+        a = np.ascontiguousarray(a)
+        a = a.astype(a.dtype.newbyteorder("<"))
+        out.append(Block(f"{name}/{k}", a.dtype.str, a.shape, a.tobytes()))
+    return out
+
+
+# the trajectory's cells (format 2): what each value of a record is
+_ABSENT, _FLOAT, _INT, _BOOL, _NULL, _TEXT = 0, 1, 2, 3, 4, 5
+
+
+def _jsonl_blocks(name: str, text: str):
+    """A trajectory column by column: the keys of every record in one order
+    (each record's keys keep their order in it), float64 values, a code per
+    cell, the text values apart — or None where the lines would not come back
+    byte for byte (json.dumps(record, separators=(",", ":")), as campaign
+    writes them)."""
+    import numpy as np
+    newline = "\r\n" if "\r\n" in text else "\n"
+    lines = text.replace("\r\n", "\n").split("\n")
+    if lines and lines[-1] == "":
+        lines = lines[:-1]
+    try:
+        recs = [json.loads(line) for line in lines]
+    except ValueError:
+        return None
+    if not all(isinstance(r, dict) for r in recs):
+        return None
+    cols: list = []
+    for r in recs:                     # one order that keeps every record's
+        prev = -1
+        for k in r:
+            if k not in cols:
+                cols.insert(prev + 1, k)
+            prev = cols.index(k)
+    where = {k: j for j, k in enumerate(cols)}
+    V = np.zeros((len(recs), len(cols)), "<f8")
+    C = np.zeros((len(recs), len(cols)), "u1")
+    texts = []
+    for i, r in enumerate(recs):
+        for k, v in r.items():
+            j = where[k]
+            if v is None:
+                C[i, j] = _NULL
+            elif isinstance(v, bool):
+                C[i, j], V[i, j] = _BOOL, float(v)
+            elif isinstance(v, int):
+                if abs(v) >= 2 ** 53:
+                    return None
+                C[i, j], V[i, j] = _INT, float(v)
+            elif isinstance(v, float):
+                C[i, j], V[i, j] = _FLOAT, v
+            elif isinstance(v, str):
+                C[i, j], V[i, j] = _TEXT, len(texts)
+                texts.append(v)
+            else:
+                return None
+    head = {"kind": "jsonl", "columns": cols, "texts": texts, "newline": newline}
+    blocks = [Block(name + "#head", "json", (), json.dumps(head).encode()),
+              Block(name + "#cells", "|u1", C.shape, C.tobytes()),
+              Block(name, "<f8", V.shape, V.tobytes())]
+    if _jsonl_text(head, C, V) != text:
+        return None
+    return blocks
+
+
+def _jsonl_text(head: dict, C, V) -> str:
+    cols, texts = head["columns"], head["texts"]
+    out = []
+    for c, v in zip(C.tolist(), V.tolist()):
+        rec = {}
+        for j, code in enumerate(c):
+            if code == _ABSENT:
+                continue
+            rec[cols[j]] = (v[j] if code == _FLOAT else int(v[j]) if code == _INT
+                            else bool(v[j]) if code == _BOOL else None if code == _NULL
+                            else texts[int(v[j])])
+        out.append(json.dumps(rec, separators=(",", ":")) + "\n")
+    text = "".join(out)
+    return text.replace("\n", "\r\n") if head.get("newline") == "\r\n" else text
+
+
+def trajectory_columns(by: dict, name: str = "trajectory.jsonl"):
+    """(columns, cells, values) of a trajectory kept column by column (format
+    2), or None: the metrics tables read the numbers without the text."""
+    h = by.get(name + "#head")
+    if h is None or json.loads(h.data).get("kind") != "jsonl":
+        return None
+    head = json.loads(h.data)
+    return head["columns"], block_array(by[name + "#cells"]), block_array(by[name])
+
+
 def pack_run_dir(d: Path, keep: str = "standard") -> list:
     """The blocks of every file of a run folder (the module's docstring)."""
     import numpy as np
@@ -275,7 +399,9 @@ def pack_run_dir(d: Path, keep: str = "standard") -> list:
         if name.endswith(".json"):
             blocks.append(Block(name, "json", (), f.read_bytes()))
         elif name.endswith(".jsonl"):
-            blocks.append(Block(name, "text", (), f.read_bytes()))
+            raw = f.read_bytes()
+            got = _jsonl_blocks(name, raw.decode("utf-8"))
+            blocks += got if got is not None else [Block(name, "text", (), raw)]
         elif name.endswith((".csv", ".csv.gz")):
             raw = f.read_bytes()
             text_bytes = gzip.decompress(raw) if name.endswith(".gz") else raw
@@ -316,7 +442,10 @@ def file_content(by: dict, name: str):
         return b.data.decode("utf-8")
     if b.dtype == "bytes":
         return b.data
-    return _csv_text(json.loads(by[name + "#head"].data), block_array(b))     # a CSV's numbers
+    head = json.loads(by[name + "#head"].data)
+    if head.get("kind") == "jsonl":                                            # a trajectory
+        return _jsonl_text(head, block_array(by[name + "#cells"]), block_array(b))
+    return _csv_text(head, block_array(b))                                     # a table
 
 
 def run_files(blocks: list) -> dict:
@@ -830,6 +959,23 @@ def merge(out_campaign: Path, parts: list) -> dict:
 _KEY_COLUMNS = ("problem", "algorithm", "variant", "status")
 
 
+def _records(run, names) -> list:
+    """The trajectory records of a stored run, as dicts: from its columns
+    (format 2: each record's keys in its own order, as its line had them)
+    without the text, else from its lines."""
+    got = trajectory_columns(run.blocks()) if "trajectory.jsonl" in names else None
+    if got is None:
+        text = run.content("trajectory.jsonl") if "trajectory.jsonl" in names else ""
+        return [json.loads(line) for line in text.splitlines() if line.strip()]
+    cols, C, V = got
+    out = []
+    for c, v in zip(C.tolist(), V.tolist()):
+        out.append({cols[j]: (None if code == _NULL else bool(v[j]) if code == _BOOL
+                              else int(v[j]) if code == _INT else v[j])
+                    for j, code in enumerate(c) if code not in (_ABSENT, _TEXT)})
+    return out
+
+
 def write_metrics(store: Path, family: str, runs: list) -> Path:
     """metrics-<family>.mhd/.raw: one row per trajectory record of every run —
     the key's parts, seed, budget, then every number the records hold (bools
@@ -841,11 +987,7 @@ def write_metrics(store: Path, family: str, runs: list) -> Path:
         names = run.names()
         status = (str(json.loads(run.content("meta.json")).get("status", "?"))
                   if "meta.json" in names else "?")
-        traj = run.content("trajectory.jsonl") if "trajectory.jsonl" in names else ""
-        for line in traj.splitlines():
-            if not line.strip():
-                continue
-            rec = json.loads(line)
+        for rec in _records(run, names):
             row = {"problem": problem, "algorithm": algorithm, "variant": variant, "status": status,
                    "seed": seed, "budget": budget}
             for k, v in rec.items():

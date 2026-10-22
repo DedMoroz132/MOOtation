@@ -206,6 +206,10 @@ inline bool is_core_param(const std::string& name)
 //                 drawn from the seed
 //   dms_poll      dms: the next poll centre, the first still worth polling or
 //                 one of them at random
+//   dms_cache, paes_cache
+//                 dms, paes: a point evaluated before taken from the run's
+//                 cache (on) or evaluated again (off, the default, as the
+//                 papers; task 16, supplement 1)
 //   smpso_preset, chi_mode, turbulence, r_per_dim, archive_prune, leader_select,
 //   leader_offer  smpso: the preset and the readings it fixes (smpso.hpp)
 //   r2_mode, r2_space
@@ -243,6 +247,8 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"crowding_space", {"objectives", "decision"}},
         {"dms_init",     {"line", "single", "random"}},
         {"dms_poll",     {"first", "random"}},
+        {"dms_cache",    {"off", "on"}},
+        {"paes_cache",   {"off", "on"}},
         {"de_adapt",     {"none", "shade"}},
         {"de_base",      {"rand1", "current1", "current_to_pbest1"}},
         {"de_index",     {"wor", "wr", "wpr"}},
@@ -306,7 +312,7 @@ inline bool is_core_word(const std::string& name)
                           "bin_crossover", "mating", "smpso_preset", "chi_mode", "turbulence",
                           "r_per_dim", "archive_prune", "leader_select", "leader_offer", "r2_mode", "r2_space",
                           "bc_selection", "mads_select", "mads_poll", "mads_search", "mads_cache",
-                          "boost_scalarization",
+                          "dms_cache", "paes_cache", "boost_scalarization",
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "polish", "hv_algo",
                           "hv_contrib"})

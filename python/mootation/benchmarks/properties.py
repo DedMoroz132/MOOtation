@@ -98,6 +98,33 @@ Huband analyses:
               and BT8 have simple nonlinear Pareto sets and BT7 a complicated
               one (linkage), the others constant optima sin(j pi / 2n)
               (separable, not medial); BT8 is multimodal.
+  MaF1-13     Cheng et al. 2017, Table 1 (maf.py; task 16, supplement 1),
+              and their definitions: the front as the table names it (MaF1
+              "linear", the inverted plane; MaF7 "mixed, disconnected"; MaF10-12
+              WFG1, 2, 9's rows, the WFG they are); multimodal, biased,
+              deceptive, degenerate as the table says; scaled where it says
+              "badly scaled" (MaF4, 5) or "scaled PF" (MaF10-12: WFG's 2i);
+              separable where every distance variable is in its own term of g
+              (MaF1-7; nonseparable where the table says so: MaF11-13); the
+              optimum of a distance variable at 1/2 (MaF1-6, medial), at 0
+              (MaF7, extremal), on MaF13's curve y = 0 (neither); MaF8, 9 as
+              Polygon: two variables, the polygon at the centre of the box.
+              Their rotations (rMaF, rcMaF, r0MaF, c0MaF) take the base's row
+              as every rotation does.
+  OMM, LOTZ, OJZJ
+              the bit strings of binary.py, read off their definitions there
+              (the papers are not in the corpus): the front n + 1 (OJZJ: n - 2k
+              + 3) points on the line f1 + f2 = const, "linear" (OJZJ's with
+              its gaps, "linear+disconnected"); OJZJ multimodal and deceptive
+              (inside the jump the fitness falls towards 0^n and 1^n); OMM
+              separable (every string is Pareto optimal), LOTZ and OJZJ not (a
+              bit's best value depends on the others); centre and boundary do
+              not apply to bits: None
+  uninformative
+              Kudela et al. 2026, Table 1 (uninformative.py): the front of each
+              (f1 a point, f2b disconnected, f3b convex stairs, f4b two concave
+              pieces, f5 linear); the objectives do not depend on x, so nothing
+              else of Huband's applies: None
   MaF14, MaF15
               Cheng et al. 2017, Table 1 (maf.py): MaF14 "Linear, partially
               separable, large scale", MaF15 "Convex, partially separable,
@@ -106,7 +133,7 @@ Huband analyses:
               multimodal by eta_1, Rastrigin's and Griewank's (Eq. 44, 49);
               every variable of x^s linked to x_1 (Eq. 45, 50: linkage, the
               optimum neither in the middle nor on a bound); the objectives
-              alike over [0, 1], no bias built in. The other MaF have no row.
+              alike over [0, 1], no bias built in.
   Polygon     a MOOtation construction (polygon.py): MaF8 of Cheng et al. 2017
               — "Linear, degenerate" in their Table 1 — with extra distance
               variables whose optimum is 0, the middle of [-1, 1] (medial). The
@@ -306,6 +333,23 @@ for _i in (17, 18, 19, 20):
     _ZCAT_FRONT[_i] = "degenerate+mixed"
 
 # Cheng et al. 2017, Table 1, and the definitions (see the module docstring)
+_MAF = {
+    "MaF1": _p("linear", False, False, False, True, True, False),
+    "MaF2": _p("concave", False, False, False, True, True, False),
+    "MaF3": _p("convex", True, False, False, True, True, False),
+    "MaF4": _p("concave", True, False, True, True, True, False),
+    "MaF5": _p("convex", False, True, True, True, True, False),
+    "MaF6": _p("concave+degenerate", False, False, False, True, True, False),
+    "MaF7": _p("mixed+disconnected", True, False, False, True, False, True),
+    "MaF8": _p("linear+degenerate", False, False, False, False, True, False),
+    "MaF9": _p("linear+degenerate", False, False, False, False, True, False),
+    "MaF10": _p("convex+mixed", False, True, True, True, False, False),
+    "MaF11": _p("convex+disconnected", True, False, True, False, False, False),
+    "MaF12": _p("concave", True, True, True, False, False, False, deceptive=True),
+    "MaF13": _p("concave+degenerate", False, False, False, False, False, False),
+}
+_MAF_LINKAGE = {"MaF13": True, "MaF8": None, "MaF9": None, "MaF10": None, "MaF11": None,
+                "MaF12": None}                       # the rest: constant optima, False
 _MAF_LSMOP = {
     "MaF14": _p("linear", True, False, False, False, False, False),
     "MaF15": _p("convex", True, False, False, False, False, False),
@@ -367,6 +411,8 @@ def properties(name: str) -> dict | None:
         row["linkage"] = stem in _MW_LINKAGE
     elif stem in _MAF_LSMOP:
         row["linkage"] = True
+    elif stem in _MAF or (stem in _ROTATED and _ROTATED[stem][0] in _MAF):
+        row["linkage"] = _MAF_LINKAGE.get(_ROTATED[stem][0] if stem in _ROTATED else stem, False)
     else:
         row["linkage"] = None
     from .registry import PROBLEMS
@@ -465,8 +511,10 @@ def _front_dim(stem: str, m: int, front: str | None) -> int | None:
     """The Pareto front's dimension d (see front_dim above)."""
     if m == 2:
         return 1
-    if stem in ("Polygon", "IPolygon"):
+    if stem in ("Polygon", "IPolygon", "MaF8", "MaF9", "MaF13"):
         return 2
+    if stem == "MaF6":                               # DTLZ5(I, M) at I = 2: a curve
+        return 1
     if stem in ("DTLZ5", "DTLZ6") and m == 3:
         return 1
     if stem in ("ZCAT14", "ZCAT15", "ZCAT16"):
@@ -507,6 +555,13 @@ def _huband(name: str) -> dict | None:
         return dict(_MW[stem])
     if stem in _MAF_LSMOP:
         return dict(_MAF_LSMOP[stem])
+    if stem in _MAF:
+        row = dict(_MAF[stem])
+        if stem in ("MaF8", "MaF9") and m < 4:
+            row["front"] = "linear"                    # a triangle at three objectives
+        if stem in ("MaF6", "MaF13") and m <= 2 + (stem == "MaF13"):
+            row["front"] = "concave"                   # not degenerate at M - 1 dimensions
+        return row
     if stem.startswith(("RE", "CRE")) and stem.lstrip("CRE").rstrip("c").isdigit():
         # Tanabe & Ishibuchi 2020: the true fronts are unknown; Section 2.6 and
         # Fig. 2 call RE2-4-3 (RE23) and RE2-3-5 (RE25) disconnected. The rest
@@ -518,8 +573,6 @@ def _huband(name: str) -> dict | None:
         # separable where the rotation mixes an anisotropic g (rDTLZ2 and
         # rDTLZ4 are their Q = I construction: separable as DTLZ2)
         family, rotate, condition = _ROTATED[stem]
-        if family.startswith("MaF"):
-            return None                          # MaF has no row of its own
         row = _huband(family + ("" if family.startswith("ZDT") else f"_{m}D"))
         row["centre"] = row["boundary"] = False
         if rotate and (condition or family not in ("DTLZ2", "DTLZ4")):
@@ -594,6 +647,14 @@ def _huband(name: str) -> dict | None:
     if stem.startswith("BT") and stem[2:].isdigit():
         i = int(stem[2:])
         return _p(_BT_FRONT[i], i == 8, True, False, i not in _BT_LINKAGE, False, False)
+    if stem in ("OMM", "LOTZ", "OJZJ"):
+        return _p("linear+disconnected" if stem == "OJZJ" else "linear", stem == "OJZJ", False, False,
+                  stem == "OMM", None, None, deceptive=stem == "OJZJ")
+    if stem == "uninformative":
+        kind = name.split("_")[1]
+        front = {"f2b": "disconnected", "f3b": "convex+disconnected", "f4b": "concave+disconnected",
+                 "f5": "linear"}.get(kind)                   # f1: a single point
+        return _p(front, None, None, None, None, None, None, deceptive=None)
     if stem == "Polygon":
         return _p("linear+degenerate" if m >= 4 else "linear", False, False, False, False, True,
                   False)

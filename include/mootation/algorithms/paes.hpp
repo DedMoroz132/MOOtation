@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -63,6 +64,13 @@ namespace mootation {
 //   PAES-5. The first c: a uniform random point (seeded: the first seed).
 //   PAES-6. The grid follows the archive's range at every change; §2.3
 //     recomputes it when the range moves by a threshold it does not give.
+//   PAES-7 (task 16, supplement 1). A mutant equal to its parent (no variable
+//     mutated) is evaluated and counts in the budget: Figure 1 evaluates every
+//     m, and only the archive refuses copies. On DTLZ2_3D at 2 000
+//     evaluations about a third of the calls are such copies. paes_cache = on
+//     (off by default, as the paper): a point
+//     evaluated before takes its values from the run's cache of every point
+//     evaluated and costs no evaluation.
 // Real variables only.
 // ============================================================================
 
@@ -74,6 +82,18 @@ public:
     void set_seed(unsigned s)       { rng_.seed(s); }
     void set_eta_mutation(double e) { eta_m_ = e; }
     void set_pm(double p)           { pm_ = p; }
+
+    bool set_word(const std::string& k, const std::string& w)
+    {
+        if (k == "paes_cache") {                                           // PAES-7
+            if (w != "on" && w != "off")
+                throw std::invalid_argument("paes_cache = '" + w + "': on or off");
+            cache_ = w == "on";
+            return true;
+        }
+        return false;
+    }
+    long long cache_hits() const { return cache_hits_; }               // PAES-7: evaluations saved
 
     bool set_param(const std::string& k, double v)
     {
@@ -157,6 +177,9 @@ private:
     std::vector<Point> arch_;
     Point c_;
     std::mt19937 rng_{0};
+    bool cache_ = false;                                     // PAES-7
+    std::map<std::vector<double>, Point> seen_;              // every point evaluated, by x
+    long long cache_hits_ = 0;
 
     void start(DataVault<Ind_t>& vault)
     {
@@ -185,12 +208,20 @@ private:
 
     Point evaluate(DataVault<Ind_t>& vault, const std::vector<double>& x)
     {
+        if (cache_) {                                        // PAES-7
+            auto hit = seen_.find(x);
+            if (hit != seen_.end()) {
+                ++cache_hits_;
+                return hit->second;
+            }
+        }
         const int keep = static_cast<int>(vault.active_n());
         const int at = vault.expand(1);
         vault.set_variables(static_cast<std::size_t>(at), x);
         vault.sync();
         Point p = read(vault, static_cast<std::size_t>(at));
         vault.reduce(keep);
+        if (cache_) seen_.emplace(x, p);
         return p;
     }
 

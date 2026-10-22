@@ -118,6 +118,9 @@
 //     of Alg.4 is the mean of the members' objective vectors. Evaluating the
 //     decision-space centroid instead would cost K·W extra FE per generation,
 //     which the paper never budgets.
+//   HLMEA-13 (task 16, supplement 1). An offspring equal to a point evaluated
+//     before is evaluated again and counts in the budget, as in the paper: on
+//     DTLZ2_3D at 2 000 evaluations about one call in eight.
 //
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP routes the NDS used by the Alg.1 allocation and by the

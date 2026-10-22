@@ -397,8 +397,11 @@ the archive holds for it: SciPy's SLSQP with finite-difference gradients
 (`sqp`), SciPy's Nelder–Mead with adaptive parameters (`nm`) or a CMA-ES
 written from Hansen's tutorial, arXiv:1604.00772 (`cmaes`). Every evaluation,
 finite differences included, is counted and archived; the answer is the
-archive's feasible non-dominated points, reduced to `pop_size` by DSS. Real
-variables only. `scalar` with its knobs covers all of them; the six names are
+archive's feasible non-dominated points, reduced to `pop_size` by DSS. A failed
+evaluation of an iterate ends that subproblem's SQP solve (SCALAR-6, in
+`scalar/__init__.py`), so with failures these methods may end with budget left,
+as they do once every subproblem of the plan is solved; the budget is not
+spent elsewhere. Real variables only. `scalar` with its knobs covers all of them; the six names are
 its presets. `mosqp` (Fliege & Vaz) is beside them without a scalarization: a
 set of points spread by one SQP step per objective, then each moved along the
 step that improves all objectives at once. [running.md](running.md) has the
