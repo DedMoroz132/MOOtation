@@ -6118,11 +6118,9 @@ def a_stochastic_problem_turns_the_caches_off():
     a new measurement, and Result.settings says why; "force" keeps the cache.
     A deterministic problem keeps it. The noisy copies of kinds n and h and
     RE91 are stochastic, those of kinds d and s and every other problem not."""
-    if not _have_numpy():
-        print("  skip  a_stochastic_problem...: no NumPy"); return
-    from mootation import _core
-    if not hasattr(_core.Problem(), "stochastic"):
-        print("  skip  a_stochastic_problem...: stale _core"); return
+    core = _core_with("Problem")
+    if not _have_numpy() or core is None or not hasattr(core.Problem(), "stochastic"):
+        print("  skip  a_stochastic_problem...: no NumPy or stale _core"); return
     import numpy as np
     from mootation import minimize
     from mootation.benchmarks import get
