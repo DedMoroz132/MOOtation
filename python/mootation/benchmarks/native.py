@@ -28,9 +28,9 @@ library's own (include/mootation/detmath.hpp; task 14 of 2026-10-20), the same
 bits on every platform; the NumPy code stays on NumPy, that is on the C
 library, whose last bits may differ from machine to machine. The tests hold
 the two within 4 ulps (near zero, within 2e-15 of the problem's scale; bbob
-4e-15, WFG, MW and DOC 1e-13) wherever NumPy's sin, cos, exp and pow are the C
-library's (_rows.agrees) — bbob-biobj's, where its BLAS also adds in the
-order bbob.hpp writes out.
+4e-15, WFG, MW, DOC and LIR-CMOP 1e-13) wherever NumPy's sin, cos, exp and
+pow are the C library's (_rows.agrees) — bbob-biobj's, where its BLAS also
+adds in the order bbob.hpp writes out.
 
 spec(name) is what C++ needs of a problem: its family and sizes and the
 numbers NumPy made for it (centres, rotations, MaF9's polygons, MaF8's

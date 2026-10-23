@@ -360,7 +360,9 @@ called through a pointer (MSVC puts inline versions of its own in place of a
 direct `log` or `pow`; the 72 differences of WFG above were those), the C++
 code gives NumPy's values bit for bit on every problem of these families and
 the same Pareto sets; the tests hold MW and DOC, whose constraints near zero
-carry the last bit of a power further, within 10⁻¹³ of the column's scale.
+carry the last bit of a power further, and LIR-CMOP, whose sine of 4π times
+objectives in the hundreds does the same with g's, within 10⁻¹³ of the
+column's scale.
 
 **MaF14 and MaF15** (Cheng et al. 2017, Eq. 41–50; task 12 of 2026-10-19):
 LSMOP3 and the inverted LSMOP8, the suite's two large-scale problems, at 3, 5,
