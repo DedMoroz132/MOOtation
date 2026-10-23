@@ -37,8 +37,9 @@ always listed under **Changed** or **Removed**.
 - Store format 3 (task 17, stage 4; supplement 5, §2): the library's own
   codecs (`include/mootation/store/`). A float64 column: a value met before
   by its index, a new one by its top k bits through an adaptive binary range
-  coder and the rest raw; integers by frame of reference, differences or
-  runs; each block the shortest of these, zlib and the shuffle. A record's
+  coder and the rest raw, or, where every value is an integer over 10^e
+  (clocks in milliseconds, counts), the integers; integers by frame of
+  reference, differences or runs; each block the shortest of these. A record's
   point sets (archive, population, selection, second answer, trajectory)
   go together, a column of one name through all of them, so that a point
   two of them hold is written once. A record's blocks read back bit for

@@ -215,10 +215,11 @@ is the bytes' definition, whatever the coder keeps them in.
 
 ### A float64 column (`column_codec.hpp`)
 
-    method  u8      0 raw, 1 model
+    method  u8      0 raw, 1 model, 6 decimal
     count   varint
-    raw:    count × u64, each value's bits
-    model:  k (u8, 8..28), then the range coder's bytes
+    raw:     count × u64, each value's bits
+    model:   k (u8, 8..28), then the range coder's bytes
+    decimal: e (u8, 0..18), then an integer column (below) of count values d
 
 The model codes the values in order, each as its 64 bits. A value is a
 repeat (a flag bit 1) when it is bit for bit one met before in the column:
@@ -232,6 +233,13 @@ value tree's node keys are those prefixes; an index tree's are
 chooses k as the least of the tree's estimated cost (the
 Krichevsky-Trofimov code length of every node's counts) plus 64 − k bits per
 new value, and keeps raw where that is shorter.
+
+Decimal (the idea of ALP, Afroozeh, Kuffó & Boncz 2023): each value is
+`d / 10^e`, one IEEE division of the integer d (as a double) by 10^e (exact
+in a double for e ≤ 18). The writer takes it where every value of the column
+comes back so bit for bit (d = round(x·10^e), half away from zero) at one e
+— the least such e — and it is shorter than the model; -0.0, NaN and the
+infinities never are decimals.
 
 ### An integer column
 

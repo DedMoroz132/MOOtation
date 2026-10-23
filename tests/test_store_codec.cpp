@@ -123,6 +123,24 @@ int main()
         const std::size_t size = f64_round_trip(x, "a front with repeats");
         CHECK(size < 8 * x.size());
     }
+    {
+        // decimal columns: clocks in milliseconds, counts as float64 — kept as integers
+        std::vector<double> ms, counts, mixed;
+        for (int i = 0; i < 1000; ++i) ms.push_back(static_cast<double>(g() % 100000) / 1000.0);
+        for (int i = 0; i < 1000; ++i) counts.push_back(static_cast<double>(100 * i + g() % 50));
+        mixed = ms;
+        mixed[500] = -0.0;                                      // not a decimal: the column is not
+        const auto bytes = st::encode_f64(ms.data(), ms.size());
+        CHECK(bytes[0] == st::col::kDecimal && bytes[3] == 3);  // method, count (2 bytes), e = 3
+        CHECK(f64_round_trip(ms, "milliseconds") < 3 * ms.size());
+        const auto cb = st::encode_f64(counts.data(), counts.size());
+        CHECK(cb[0] == st::col::kDecimal && cb[3] == 0);
+        CHECK(f64_round_trip(counts, "counts") < 2 * counts.size());
+        f64_round_trip(mixed, "milliseconds and a -0.0");
+        CHECK(st::encode_f64(mixed.data(), mixed.size())[0] != st::col::kDecimal);
+        f64_round_trip({0.1, 0.2, 0.30000000000000004, 1e-18, -5e17, 123456789.123}, "decimals at the edges");
+        f64_round_trip({1e19, 2e19}, "past int64's range");
+    }
 
     // a count or bytes that do not match: an error
     {

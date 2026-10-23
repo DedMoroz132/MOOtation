@@ -22,6 +22,14 @@
 // are not a series). The flag's probability depends on the previous flag.
 // A column the model does not shorten is kept raw (8 bytes a value).
 //
+// DECIMAL (the idea of ALP, Afroozeh, Kuffo & Boncz 2023): a column whose every
+// value is an integer d over 10^e (e = 0..18, the least that holds for all),
+// clocks rounded to milliseconds, counts kept as float64, is kept as e and the
+// integers d (below), where that is shorter. A value is such an integer when
+// d = llround(x 10^e) gives x back bit for bit as d / 10^e (one IEEE
+// division, correctly rounded, the same everywhere; 10^e is exact in a
+// double); -0.0, NaN and the infinities never are.
+//
 // INTEGERS (§2.2): the shortest of raw, one constant, frame of reference (the
 // minimum and every value's offset from it in a fixed number of bits), the
 // same over the differences after the first value (zigzag: 0, -1, 1, -2 ...
@@ -34,6 +42,7 @@
 // ============================================================================
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -54,8 +63,13 @@ enum Method : std::uint8_t {
     kConstant = 2,     // integers: one value
     kFor = 3,          // integers: frame of reference
     kDeltaFor = 4,     // integers: the first value, then the differences' frame of reference
-    kRuns = 5          // integers: (value, run) pairs
+    kRuns = 5,         // integers: (value, run) pairs
+    kDecimal = 6       // float64: e, then the integers x 10^e (an integer column)
 };
+
+// 10^0 .. 10^18, each exact in a double
+constexpr double kPow10[19] = {1e0,  1e1,  1e2,  1e3,  1e4,  1e5,  1e6,  1e7,  1e8, 1e9,
+                               1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18};
 
 inline void put_varint(std::vector<std::uint8_t>& out, std::uint64_t v)
 {
@@ -369,7 +383,44 @@ inline std::vector<std::uint8_t> model_bytes(const std::uint64_t* v, const std::
     return rc.finish();
 }
 
+// x as an integer over 10^e: d, if d / 10^e gives x's bits back
+inline bool decimal_at(double x, int e, std::int64_t& d)
+{
+    const double s = x * kPow10[e];
+    if (!(std::fabs(s) < 9.0e18)) return false;         // NaN and the infinities too
+    d = std::llround(s);
+    const double back = static_cast<double>(d) / kPow10[e];
+    std::uint64_t a, b;
+    std::memcpy(&a, &x, 8);
+    std::memcpy(&b, &back, 8);
+    return a == b;
+}
+
+// The least e for which every value is an integer over 10^e (d), or -1: no
+// e below the largest of the values' own least e holds, so the search starts
+// there (one value with none ends it).
+inline int decimal_digits(const double* x, std::size_t n, std::vector<std::int64_t>& d)
+{
+    d.resize(n);
+    int from = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        int e = 0;
+        while (e <= 18 && !decimal_at(x[i], e, d[i])) ++e;
+        if (e > 18) return -1;
+        from = std::max(from, e);
+    }
+    for (int e = from; e <= 18; ++e) {
+        bool all = true;
+        for (std::size_t i = 0; i < n && all; ++i) all = decimal_at(x[i], e, d[i]);
+        if (all) return e;
+    }
+    return -1;
+}
+
 }   // namespace col
+
+inline std::vector<std::uint8_t> encode_i64(const std::int64_t* x, std::size_t n);
+inline std::vector<std::int64_t> decode_i64(const std::uint8_t* data, std::size_t size, std::size_t n);
 
 // The bytes of a float64 column (its values' bits).
 inline std::vector<std::uint8_t> encode_f64(const double* x, std::size_t n)
@@ -388,6 +439,17 @@ inline std::vector<std::uint8_t> encode_f64(const double* x, std::size_t n)
         out.push_back(static_cast<std::uint8_t>(k));
         const std::vector<std::uint8_t> coded = col::model_bytes(v.data(), index.data(), n, k);
         out.insert(out.end(), coded.begin(), coded.end());
+    }
+    std::vector<std::int64_t> d;
+    const int e = n ? col::decimal_digits(x, n, d) : -1;
+    if (e >= 0) {
+        std::vector<std::uint8_t> dec;
+        dec.push_back(col::kDecimal);
+        col::put_varint(dec, n);
+        dec.push_back(static_cast<std::uint8_t>(e));
+        const std::vector<std::uint8_t> ints = encode_i64(d.data(), n);
+        dec.insert(dec.end(), ints.begin(), ints.end());
+        if (dec.size() < out.size()) out.swap(dec);
     }
     std::vector<std::uint8_t> raw;
     raw.push_back(col::kRaw);
@@ -435,6 +497,14 @@ inline std::vector<double> decode_f64(const std::uint8_t* data, std::size_t size
         }
         if (rc.consumed() != size - pos)
             throw std::runtime_error("float64 column: the coded bytes do not end where the values do");
+    } else if (method == col::kDecimal) {
+        if (pos >= size) throw std::runtime_error("float64 column: no e");
+        const int e = data[pos++];
+        if (e > 18) throw std::runtime_error("float64 column: e out of range");
+        const std::vector<std::int64_t> d = decode_i64(data + pos, size - pos, n);
+        std::vector<double> x(n);
+        for (std::size_t i = 0; i < n; ++i) x[i] = static_cast<double>(d[i]) / col::kPow10[e];
+        return x;
     } else {
         throw std::runtime_error("float64 column: unknown method " + std::to_string(method));
     }
