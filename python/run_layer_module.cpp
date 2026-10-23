@@ -21,6 +21,7 @@
 
 #include <mootation/archive_select.hpp>
 #include <mootation/decision_indicators.hpp>
+#include <mootation/json.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
@@ -915,6 +916,17 @@ void bind_run_layer(py::module_& m)
               return bad;
           },
           py::arg("data"), py::arg("name"), "What is wrong with a pack, and where; empty where it is whole.");
+    // ── JSON as Python's json module reads and writes it (json.hpp) ─────────
+    m.def("json_reformat",
+          [](const std::string& text, int indent, const py::object& separators) {
+              const auto v = mootation::json::parse(text);
+              if (separators.is_none()) return mootation::json::dump(v, indent);
+              const auto sep = separators.cast<std::pair<std::string, std::string>>();
+              return mootation::json::dump(v, indent, sep.first.c_str(), sep.second.c_str());
+          },
+          py::arg("text"), py::arg("indent") = -1, py::arg("separators") = py::none(),
+          "json.dumps(json.loads(text), indent=indent or None, separators=...) by include/mootation/json.hpp.");
+    m.def("json_float_repr", &mootation::json::float_repr, py::arg("x"), "repr(x) by include/mootation/json.hpp.");
     m.def("sha256",
           [](const py::bytes& b) {
               const std::string s = b;
