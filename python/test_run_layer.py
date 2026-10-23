@@ -10760,8 +10760,11 @@ def the_suite_gives_numpys_values(part, parts):
             # scale with Windows' and glibc's libm here, more on CI's; 1e-13.
             # MW and DOC (stage 3a): constraints near 0 of products of
             # differences of powers (MW's g1 takes x^13, DOC4 x^6): up to
-            # 7.6e-15 of the column's scale here
-            wide = what.startswith(("WFG", "rWFG", "MaF10", "MaF11", "MaF12", "MW", "DOC"))
+            # 7.6e-15 of the column's scale here. LIR-CMOP9-12: the sine of
+            # 4 pi times objectives in the hundreds carries their last bit
+            # (from g's sin and cos) into the constraint: 2.9e-15 on CI's Linux
+            wide = what.startswith(("WFG", "rWFG", "MaF10", "MaF11", "MaF12", "MW", "DOC",
+                                    "LIR-CMOP"))
             _close_to_numpy(mine, ref, what, 1e-13 if wide else 2e-15)
         else:
             mine, ref = np.asarray(mine, float), np.asarray(ref, float)
