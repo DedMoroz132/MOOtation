@@ -134,21 +134,19 @@ inline Model unpack(const Vec& alpha, std::size_t n)
 inline std::vector<Model> models(const std::vector<Vec>& S, const std::vector<Vec>& F)
 {
     using namespace boost_detail;
-    const std::size_t p = S.size(), n = S[0].size(), cols = F[0].size();
+    const std::size_t p = S.size(), n = S[0].size(), n_obj = F[0].size();
     const std::size_t q = (n + 1) * (n + 2) / 2;
     std::vector<Model> out;
-    auto column = [&](std::size_t c) {
-        Vec v(p);
-        for (std::size_t i = 0; i < p; ++i) v[i] = F[i][c];
-        return v;
-    };
+    std::vector<Vec> cols(n_obj, Vec(p));       // every objective's values, one factorization
+    for (std::size_t c = 0; c < cols.size(); ++c)
+        for (std::size_t i = 0; i < p; ++i) cols[c][i] = F[i][c];
     if (p >= q) {                                     // regression (interpolation at p = q)
         lsq::Matrix A(p, q);
         for (std::size_t i = 0; i < p; ++i) {
             const Vec b = quad_basis(S[i]);
             for (std::size_t j = 0; j < q; ++j) A(i, j) = b[j];
         }
-        for (std::size_t c = 0; c < cols; ++c) out.push_back(unpack(lsq::hfti(A, column(c)), n));
+        for (const Vec& a : lsq::hfti(A, cols)) out.push_back(unpack(a, n));
         return out;
     }
     if (p > n + 1) {                                  // minimum Frobenius norm
@@ -170,10 +168,9 @@ inline std::vector<Model> models(const std::vector<Vec>& S, const std::vector<Ve
             K(i, p) = K(p, i) = 1.0;                  // ML = [1, S]
             for (std::size_t j = 0; j < n; ++j) K(i, p + 1 + j) = K(p + 1 + j, i) = S[i][j];
         }
-        for (std::size_t c = 0; c < cols; ++c) {
-            Vec rhs = column(c);
-            rhs.resize(p + n + 1, 0.0);
-            const Vec sol = lsq::hfti(K, rhs);
+        std::vector<Vec> rhs = cols;
+        for (Vec& r : rhs) r.resize(p + n + 1, 0.0);
+        for (const Vec& sol : lsq::hfti(K, rhs)) {
             Vec alpha(q);
             for (std::size_t j = 0; j <= n; ++j) alpha[j] = sol[p + j];
             for (std::size_t k = 0; k < nq; ++k) {
@@ -190,8 +187,7 @@ inline std::vector<Model> models(const std::vector<Vec>& S, const std::vector<Ve
         ML(i, 0) = 1.0;
         for (std::size_t j = 0; j < n; ++j) ML(i, 1 + j) = S[i][j];
     }
-    for (std::size_t c = 0; c < cols; ++c) {
-        const Vec a = lsq::hfti(ML, column(c));
+    for (const Vec& a : lsq::hfti(ML, cols)) {
         Model md;
         md.c = a[0];
         md.g.assign(a.begin() + 1, a.end());

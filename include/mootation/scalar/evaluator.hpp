@@ -60,6 +60,11 @@ struct Problem {
         evaluate;
 };
 
+// A point whose values are known (a seed population, an algorithm's evaluations).
+struct Point {
+    std::vector<double> x, f, g;
+};
+
 // observer(gen, F, X): the answer's objectives and variables.
 using Observer = std::function<void(long long gen, const Rows& F, const Rows& X)>;
 

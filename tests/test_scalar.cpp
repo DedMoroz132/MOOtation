@@ -273,7 +273,7 @@ int main()
     polish();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     // the same on every platform of the CI (MSVC, g++, clang, macOS ARM)
-    const std::uint64_t expected = 0x1e8f51b2bd1f21d8ULL;
+    const std::uint64_t expected = 0x82c569bc36d20e20ULL;
     check(g_hash == expected, "bits: the checksum of every run's answer");
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);

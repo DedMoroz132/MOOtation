@@ -12,7 +12,8 @@
 //   least_squares              min ||A x - b|| for A of full column rank, by
 //                              Householder triangularization (Ch. 11, HFT/HS1)
 //   hfti                       the least squares solution of least length for
-//                              any A, Algorithm HFTI (14.9)
+//                              any A, Algorithm HFTI (14.9), for several
+//                              right-hand sides at once
 //   nnls                       min ||E x - f|| subject to x >= 0, Algorithm
 //                              NNLS (23.10) with §23.3's guards against
 //                              round-off; at most 3n iterations, as LH's
@@ -52,6 +53,11 @@
 //   LSQ-5. A Householder transformation whose part to be zeroed is zero
 //     already is the identity (H1 would flip the pivot's sign; the identity
 //     keeps triangular input exact).
+//   LSQ-7. The sum of H2's Step 8 is taken in four running sums (terms
+//     l, l + 4, ... in the first, and so on), then (s0 + s1) + (s2 + s3):
+//     the order is the code's, the same everywhere, and four times shorter
+//     a chain of additions than the one-by-one sum (BoostDMS's models
+//     triangularize matrices of up to 992 x 496 at every iteration).
 //   LSQ-6. HFTI's pseudorank: the diagonal elements above max(m, n) eps
 //     |r_11| (Step 13 leaves tau to the caller; this is NumPy's default rcond
 //     for lstsq, measured on R's diagonal instead of the singular values).
@@ -118,8 +124,15 @@ inline void house_apply(const double* v, std::size_t st, std::size_t p, std::siz
     if (h.identity) return;
     const double b = v[p * st] * h.up;                    // Step 5
     if (b == 0.0) return;                                 // Step 6
-    double s = c[p * cst] * h.up;                         // Step 8
-    for (std::size_t i = l; i < m; ++i) s += c[i * cst] * v[i * st];
+    // Step 8: c_p h + sum c_i v_i, the sum in four running sums (term i to
+    // sum (i - l) mod 4, then (s0 + s1) + (s2 + s3)): a fixed order, the same
+    // on every platform, that the processor need not wait on (LSQ-7)
+    double r[4] = {0.0, 0.0, 0.0, 0.0};
+    std::size_t t = l;
+    for (; t + 4 <= m; t += 4)
+        for (std::size_t k = 0; k < 4; ++k) r[k] += c[(t + k) * cst] * v[(t + k) * st];
+    for (std::size_t k = 0; t < m; ++t, ++k) r[k] += c[t * cst] * v[t * st];
+    double s = c[p * cst] * h.up + ((r[0] + r[1]) + (r[2] + r[3]));
     s /= b;
     c[p * cst] += s * h.up;                               // Step 9
     for (std::size_t i = l; i < m; ++i) c[i * cst] += s * v[i * st];   // Step 10
@@ -191,49 +204,87 @@ inline bool least_squares(const Matrix& A, const std::vector<double>& b, std::ve
 }
 
 // ── HFTI, LH (14.9): the least squares solution of least length ────────────
-// A x ≅ b for any A (m x n), with the column interchanges of Steps 3-10 and
-// the pseudorank k = the number of leading |r_jj| > tau, tau = max(m, n) eps
-// |r_11| (LSQ-6); the rest of the solution set to 0 (Step 20), so x is the
-// solution of least length of the problem with A's pseudorank k.
-inline std::vector<double> hfti(Matrix A, std::vector<double> b)
+// A X ≅ B for any A (m x n) and several right-hand sides at once (LH's
+// subroutine takes NB of them): one triangularization with the column
+// interchanges of Steps 3-10 — the squared lengths h_l brought down from step
+// to step (Step 4) and computed again when that has lost the precision Step 6
+// asks for — the pseudorank k = the number of leading |r_jj| > tau, tau =
+// max(m, n) eps |r_11| (LSQ-6), the rest of the solution set to 0 (Step 20):
+// every x is the solution of least length of the problem with A's pseudorank
+// k. A's columns are held one after another while it is triangularized.
+inline std::vector<std::vector<double>> hfti(const Matrix& A0, std::vector<std::vector<double>> B)
 {
-    const std::size_t m = A.rows, n = A.cols, mu = std::min(m, n);
+    const std::size_t m = A0.rows, n = A0.cols, mu = std::min(m, n);
+    std::vector<std::vector<double>> a(n, std::vector<double>(m));   // a[j]: column j
+    for (std::size_t i = 0; i < m; ++i)
+        for (std::size_t j = 0; j < n; ++j) a[j][i] = A0(i, j);
     std::vector<std::size_t> piv(mu);
+    std::vector<double> h(n, 0.0);
+    double hbar = 0.0;
+    auto argmax = [&](std::size_t from) {
+        std::size_t lam = from;
+        for (std::size_t l = from + 1; l < n; ++l)
+            if (h[l] > h[lam]) lam = l;
+        return lam;
+    };
     for (std::size_t j = 0; j < mu; ++j) {
         std::size_t lam = j;
-        double best = -1.0;
-        for (std::size_t l = j; l < n; ++l) {                 // Steps 4-8
-            double s = 0.0;
-            for (std::size_t i = j; i < m; ++i) s += A(i, l) * A(i, l);
-            if (s > best) { best = s; lam = l; }
+        bool again = j == 0;
+        if (!again) {
+            for (std::size_t l = j; l < n; ++l) h[l] -= a[l][j - 1] * a[l][j - 1];   // Step 4
+            lam = argmax(j);                                                          // Step 5
+            again = !(hbar + 1e-3 * h[lam] > hbar);                                   // Step 6
         }
-        piv[j] = lam;                                         // Steps 9-10
-        if (lam != j)
-            for (std::size_t i = 0; i < m; ++i) std::swap(A(i, j), A(i, lam));
-        House h = house_make(&A(0, j), A.cols, j, j + 1, m);  // Steps 11-12
-        for (std::size_t c = j + 1; c < n; ++c) house_apply(&A(0, j), A.cols, j, j + 1, m, h, &A(0, c), A.cols);
-        house_apply(&A(0, j), A.cols, j, j + 1, m, h, b.data(), 1);
+        if (again) {                                                                  // Steps 7-8
+            for (std::size_t l = j; l < n; ++l) {
+                double s = 0.0;
+                for (std::size_t i = j; i < m; ++i) s += a[l][i] * a[l][i];
+                h[l] = s;
+            }
+            lam = argmax(j);
+            hbar = h[lam];
+        }
+        piv[j] = lam;                                                                 // Steps 9-10
+        if (lam != j) {
+            std::swap(a[j], a[lam]);
+            h[lam] = h[j];
+        }
+        House hs = house_make(a[j].data(), 1, j, j + 1, m);                          // Steps 11-12
+        for (std::size_t c = j + 1; c < n; ++c) house_apply(a[j].data(), 1, j, j + 1, m, hs, a[c].data(), 1);
+        for (std::vector<double>& b : B) house_apply(a[j].data(), 1, j, j + 1, m, hs, b.data(), 1);
     }
-    std::vector<double> x(n, 0.0);
-    if (mu == 0) return x;
-    const double tau = static_cast<double>(std::max(m, n)) * kEps * std::fabs(A(0, 0));
-    std::size_t k = 0;                                        // Step 13
-    while (k < mu && std::fabs(A(k, k)) > tau) ++k;
-    if (k == 0) return x;
+    std::vector<std::vector<double>> X(B.size(), std::vector<double>(n, 0.0));
+    if (mu == 0) return X;
+    const double tau = static_cast<double>(std::max(m, n)) * kEps * std::fabs(a[0][0]);
+    std::size_t k = 0;                                                                // Step 13
+    while (k < mu && std::fabs(a[k][k]) > tau) ++k;
+    if (k == 0) return X;
+    Matrix R(k, n);                                                                   // [R11 R12]
+    for (std::size_t i = 0; i < k; ++i)
+        for (std::size_t c = 0; c < n; ++c) R(i, c) = a[c][i];
     std::vector<House> g(k);
-    if (k < n)                                                // Step 16: [R11 R12] K = [W 0]
+    if (k < n)                                                                        // Step 16: [R11 R12] K = [W 0]
         for (std::size_t i = k; i-- > 0;) {
-            g[i] = house_make(&A(i, 0), 1, i, k, n);
-            for (std::size_t r = 0; r < i; ++r) house_apply(&A(i, 0), 1, i, k, n, g[i], &A(r, 0), 1);
+            g[i] = house_make(&R(i, 0), 1, i, k, n);
+            for (std::size_t r = 0; r < i; ++r) house_apply(&R(i, 0), 1, i, k, n, g[i], &R(r, 0), 1);
         }
-    b.resize(k);
-    std::vector<double> y = solve_upper(A, k, b);             // Steps 17-18
-    for (std::size_t i = 0; i < k; ++i) x[i] = y[i];
-    if (k < n)                                                // Step 21
-        for (std::size_t i = 0; i < k; ++i) house_apply(&A(i, 0), 1, i, k, n, g[i], x.data(), 1);
-    for (std::size_t j = mu; j-- > 0;)                        // Steps 22-23
-        if (piv[j] != j) std::swap(x[j], x[piv[j]]);
-    return x;
+    for (std::size_t t = 0; t < B.size(); ++t) {
+        std::vector<double> b(B[t].begin(), B[t].begin() + static_cast<std::ptrdiff_t>(k));
+        std::vector<double> y = solve_upper(R, k, b);                                 // Steps 17-18
+        std::vector<double>& x = X[t];
+        for (std::size_t i = 0; i < k; ++i) x[i] = y[i];
+        if (k < n)                                                                    // Step 21
+            for (std::size_t i = 0; i < k; ++i) house_apply(&R(i, 0), 1, i, k, n, g[i], x.data(), 1);
+        for (std::size_t j = mu; j-- > 0;)                                            // Steps 22-23
+            if (piv[j] != j) std::swap(x[j], x[piv[j]]);
+    }
+    return X;
+}
+
+// One right-hand side.
+inline std::vector<double> hfti(const Matrix& A, const std::vector<double>& b)
+{
+    return hfti(A, std::vector<std::vector<double>>{b})[0];
 }
 
 // ── NNLS, LH (23.10) ────────────────────────────────────────────────────────
