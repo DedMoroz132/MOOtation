@@ -1258,6 +1258,8 @@ void bind_run_layer(py::module_& m);
 void bind_suite(py::module_& m);
 // python/detmath_module.cpp: _core.detmath, the library's elementary functions
 void bind_detmath(py::module_& m);
+// python/scalar_module.cpp: _core.scalar, the scalarization methods and their solvers
+void bind_scalar(py::module_& m);
 
 PYBIND11_MODULE(_core, m)
 {
@@ -1276,6 +1278,7 @@ PYBIND11_MODULE(_core, m)
 
     bind_suite(m);                    // _core.Native, which Problem.native holds
     bind_detmath(m);                  // _core.detmath.exp, log, pow, ...
+    bind_scalar(m);                   // _core.scalar.run, polish, slsqp, nelder_mead
 
     py::class_<PyProblem>(m, "Problem")
         .def(py::init<>())

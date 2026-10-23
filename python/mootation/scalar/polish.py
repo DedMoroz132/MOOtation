@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Polishing at the end of the budget (task 9, A2): any algorithm, then a local
-solver on some of the points it found.
+solver on some of the points it found. In C++ since task 17, stage 6
+(include/mootation/scalar/polish.hpp, _core.scalar.polish); here the knobs'
+check, the recording of the algorithm's evaluations and the result.
 
   polish         off (the default: nothing changes) | sqp | nm
   polish_share   the share of max_evaluations kept for the polishing (0.2);
@@ -9,7 +11,7 @@ solver on some of the points it found.
                  n_sub (scalar, SCALAR-1), at most pop_size
 
 THE POINTS are the feasible non-dominated points of every evaluation the
-algorithm made, chosen by DSS (run/archive.py) when there are more; without a
+algorithm made, chosen by DSS (dss.hpp) when there are more; without a
 feasible point, the least violating ones.
 
 POLISHING a point a is the ε-constraint subproblem "improve one objective,
@@ -36,7 +38,7 @@ READINGS:
     algorithm's answer first (so it can hold more than pop_size when the
     algorithm's answer does).
   POLISH-3. The subproblem's constraints f_i <= f_i(a) hold to a slack
-    (solvers.SLACK, in the normalized objectives): a result a hair worse
+    (SLACK, solvers.hpp, in the normalized objectives): a result a hair worse
     than a in one objective does not dominate a, and both stay.
 """
 
@@ -95,11 +97,11 @@ class Recorder:
 class PolishedResult:
     """The binding's Result, after polishing."""
 
-    def __init__(self, base, ev, idx, extra_evals, n_failed, settings):
-        self.objectives = [list(map(float, ev.F[i])) for i in idx]
-        self.variables = [list(map(float, ev.X[i])) for i in idx]
-        self.cv = [float(ev.cv(i)) for i in idx]
-        self.active_n = len(idx)
+    def __init__(self, base, d, extra_evals, n_failed, settings):
+        self.objectives = d["objectives"]
+        self.variables = d["variables"]
+        self.cv = d["cv"]
+        self.active_n = len(self.objectives)
         self.ignored = list(base.ignored)
         self.evaluations = int(extra_evals)
         self.unique_evaluations = getattr(base, "unique_evaluations", -1)
@@ -134,92 +136,18 @@ def check(knobs: dict, max_evaluations: int):
 def run(base, recorder, *, how, points, fn, constraints, bounds, n_objs, n_cons, n_eq,
         eq_tol, pop_size, budget, on_generation=None, record_every=0, guard=None,
         fd_step=1.4901161193847656e-08, local_tol=1e-14):
-    import numpy as np
-    from . import solvers as S
-    from . import subproblems as P
-    from .evaluator import BudgetSpent, Evaluator, SubBudgetSpent
-
-    m, n = int(n_objs), len(bounds)
-    ev = Evaluator(fn, constraints, bounds=bounds, n_objs=m, n_cons=n_cons, n_eq=n_eq,
-                   eq_tol=eq_tol, eq_tol0=None, budget=budget, pop_size=pop_size,
-                   on_generation=on_generation, record_every=record_every)
-    ev.recorded = True                                # the algorithm has had gen 0
-    ev.gen0 = -(-int(base.evaluations) // max(1, pop_size))
-    for x, f, g in recorder.points():
-        ev.plant(np.asarray(x, float), f, g if g is not None else [])
-    base_idx = [ev.where[np.ascontiguousarray(x, dtype=float).tobytes()]
-                for x in base.variables
-                if np.ascontiguousarray(x, dtype=float).tobytes() in ev.where]
-    chosen = ev.answer(None)
-    k_pts = points or int(min(pop_size, max(1, budget // (10 * (n + 1)))))
-    chosen = chosen[:k_pts]
-    polished = []
-    if chosen:
-        FC = np.array([ev.F[i] for i in chosen])
-        frame = P.Frame.from_anchors(np.vstack([FC.min(axis=0), FC.max(axis=0)]))
-        lo, width = ev.lo, ev.hi - ev.lo
-        try:
-            for j, a in enumerate(chosen):
-                k = j % m
-                Fa = frame.bar(ev.F[a])
-                rows = []
-                for i in range(m):
-                    row = np.zeros(m)
-                    row[i] = -1.0
-                    rows.append((row, 0.0, float(Fa[i])))
-                a0 = np.zeros(m)
-                a0[k] = 1.0
-                sub = P.Sub("polish", a0, ineq=rows)
-                left = ev.budget - ev.spent
-                ev.limit = ev.spent + max(1, left // (len(chosen) - j))
-                run_ = S.Run(sub, ev, frame)
-                run_.touched.append(a)
-                y0 = (ev.X[a] - lo) / width
-                try:
-                    if how == "sqp":
-                        S.sqp(run_, y0, 0.0, fd_step=fd_step, tol=local_tol)
-                    else:
-                        S.nm(run_, y0, [a], tol=local_tol)
-                except SubBudgetSpent:
-                    pass
-                finally:
-                    ev.limit = ev.budget
-                polished.append(S.best_of(run_, run_.touched))
-        except BudgetSpent:
-            pass
-    ev.over = True
-    # the answer: the algorithm's answer and the polished points, non-dominated
-    pool = list(dict.fromkeys(base_idx + [i for i in polished if i is not None]))
-    ok = [i for i in pool if not ev.failed[i]]
-    feas = [i for i in ok if ev.cv(i) <= 0.0]
-    if feas:
-        F = np.array([ev.F[i] for i in feas])
-        nd = [feas[a] for a in range(len(feas))
-              if not np.any(np.all(F <= F[a], axis=1) & np.any(F < F[a], axis=1))]
-        nd = list(dict.fromkeys(nd))
-        if len(nd) > pop_size:
-            # first, for every feasible point of the algorithm's answer, one
-            # point that weakly dominates it; the rest in DSS order (POLISH-2)
-            from ..run.archive import dss_order
-            Fn = np.array([ev.F[i] for i in nd])
-            keep = []
-            for b in base_idx:
-                if ev.failed[b] or ev.cv(b) > 0.0:
-                    continue
-                cover = np.flatnonzero(np.all(Fn <= np.asarray(ev.F[b]), axis=1))
-                if not any(int(j) in keep for j in cover):
-                    keep.append(int(cover[0]))
-            rest = [int(j) for j in dss_order(Fn) if int(j) not in keep]
-            nd = [nd[j] for j in keep + rest[:max(0, pop_size - len(keep))]]
-        idx = nd
-    else:
-        idx = sorted(ok, key=lambda i: (ev.cv(i), i))[:pop_size]
-    if ev.observer is not None:
-        F = [list(map(float, ev.F[i])) for i in idx]
-        X = [list(map(float, ev.X[i])) for i in idx]
-        ev.observer(ev.gen0 + -(-ev.spent // max(1, pop_size)), F, X)
+    from . import _module
+    core = _module()
+    d = core.polish(fn, constraints, bounds, int(n_objs), int(n_cons), int(n_eq),
+                    float(eq_tol), int(pop_size), int(budget), recorder.points(),
+                    [list(map(float, x)) for x in base.variables], int(base.evaluations),
+                    how, int(points),
+                    on_generation=on_generation if int(record_every) > 0 else None,
+                    record_every=int(record_every), fd_step=float(fd_step),
+                    local_tol=float(local_tol))
     # the guard counts the failures of the algorithm and of the polishing alike
     n_failed = guard.n_failed if guard is not None else int(base.n_failed)
-    settings = [("polish", how), ("polish_points", str(len(chosen))),
-                ("polish_evaluations", str(ev.spent))]
-    return PolishedResult(base, ev, idx, recorder.calls, n_failed, settings)
+    settings = [("polish", how), ("polish_points", str(d["chosen"])),
+                ("polish_evaluations", str(d["evaluations"])),
+                ("polish_version", str(core.METHOD_VERSION))]
+    return PolishedResult(base, d, recorder.calls, n_failed, settings)

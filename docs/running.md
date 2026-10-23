@@ -1295,9 +1295,12 @@ Pareto set that lies on a bound (RM-8 in the header). `pop_size` must exceed
 `n_clusters`; the paper uses 100 at two objectives and 200 at three. Real
 variables only.
 
-**Scalarization with a local solver** (`python/mootation/scalar/`, task 9):
-the algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
-`nnc_sqp`, `eps_nm`, `eps_cmaes`, Python with NumPy and SciPy. A run is a plan
+**Scalarization with a local solver** (`include/mootation/scalar/`, task 9;
+in C++ since task 17, stage 6, with the library's own SQP and Nelder–Mead): the
+algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
+`nnc_sqp`, `eps_nm`, `eps_cmaes`; they need the compiled extension, not SciPy.
+`method_version` in the settings (meta) is the version of their trajectories:
+2 since stage 6 (1 was SciPy's solvers). A run is a plan
 of single-objective subproblems:
 
 1. the initial plan — `pop_size` uniform points, or the design of `init`
@@ -1327,9 +1330,10 @@ beside the answer, which is the archive's feasible non-dominated points by
 DSS. The plan is laid out over the budget, so these runs depend on
 `max_evaluations` (`run/budget.py`). Only `constraint_mode = "feasibility"`;
 real variables only. The header of each module lists what it reads where the
-sources are silent (SCALAR-1 ... 12 in `scalar/__init__.py`).
+sources are silent (SCALAR-1 ... 12 in `scalar/scalar.hpp`, SQP-n in
+`slsqp.hpp`, NM-n in `nelder_mead.hpp`, LSQ-n in `lsq.hpp`).
 
-**MOSQP** (`python/mootation/scalar/mosqp.py`; Fliege & Vaz, SIAM J.
+**MOSQP** (`include/mootation/scalar/mosqp.hpp`; Fliege & Vaz, SIAM J.
 Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the
 constraints); then `mosqp_spread` (20) iterations that spread a set of
 pop_size points from the line between the bounds — every point gives, for
@@ -1387,7 +1391,7 @@ poll centre is the active point of the largest step that is not yet local
 (`glods_local_tol` 10⁻³). The answer is the non-dominated part of the list.
 Deterministic, as dms: no random number below 101 variables.
 
-**BoostDMS** (`python/mootation/scalar/boostdms.py`; Brás & Custódio,
+**BoostDMS** (`include/mootation/scalar/boostdms.hpp`; Brás & Custódio,
 Comput. Optim. Appl. 2020): DMS with a search step before each poll — quadratic
 models of every objective from up to (n + 1)(n + 2) evaluated points, 80 %
 from the ball of three trust radii around the poll centre; each model by
@@ -1395,8 +1399,8 @@ regression, minimum Frobenius norm or linear interpolation as the points
 allow; minimized in the trust region by the adapted ε-constraint of Custódio,
 Pozzi & Silva (2026; `boost_scalarization = "eps"`, the default: one
 objective, the others no worse than at the centre) or by the paper's min-max
-levels (`"minmax"`). A new non-dominated point skips the poll. Python with
-SciPy; deterministic.
+levels (`"minmax"`). A new non-dominated point skips the poll. C++, with the
+library's SQP on the models; deterministic.
 
 **MOSA.** Multi-objective simulated annealing (`algorithms/mosa.hpp`):
 annealing chains over an archive of every non-dominated point evaluated. It is

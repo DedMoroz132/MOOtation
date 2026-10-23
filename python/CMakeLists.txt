@@ -29,7 +29,7 @@ if(NOT pybind11_FOUND)
 endif()
 
 pybind11_add_module(mootation_python mootation_module.cpp run_layer_module.cpp suite_module.cpp
-                    detmath_module.cpp)
+                    detmath_module.cpp scalar_module.cpp)
 
 # The C++ suite of benchmark problems (include/mootation/suite) gives NumPy's
 # values bit for bit, which a fused multiply-add would not: NumPy rounds a * b

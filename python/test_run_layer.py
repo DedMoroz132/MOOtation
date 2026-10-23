@@ -10175,8 +10175,8 @@ def scalar_presets_budget_and_refusals():
     is reported, its own knobs are reported by the cores; a binary genome,
     eps_level, laumanns with nbi and a bad word are refused; a failing fn does
     not stop the run."""
-    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
-        print("  skip  scalar_presets...: no NumPy, SciPy or _core"); return
+    if not _have_numpy() or _core_with("scalar") is None:
+        print("  skip  scalar_presets...: no NumPy or _core.scalar"); return
     import math
     import mootation
     from mootation.run.metrics import nondominated
@@ -10233,8 +10233,8 @@ def scalar_anchors_constraints_and_the_front():
     and feasible; nbi_sqp's subproblem solutions on DTLZ2_3D on the front
     (| ||F|| - 1 | < 1e-8) and evenly spread (Spacing < 0.06); laumanns on ZDT1
     finds points on the front; the observer sees gen 0, the records and the end."""
-    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
-        print("  skip  scalar_anchors...: no NumPy, SciPy or _core"); return
+    if not _have_numpy() or _core_with("scalar") is None:
+        print("  skip  scalar_anchors...: no NumPy or _core.scalar"); return
     import math
     import numpy as np
     import mootation
@@ -10251,8 +10251,7 @@ def scalar_anchors_constraints_and_the_front():
         return y
     gens = []
     # 4000, not 3000: at 3000 an anchor's stage has about six SQP iterations,
-    # too few to reach its minimum with every BLAS thread count (a campaign's
-    # workers run one)
+    # too few to reach its minimum
     r = mootation.minimize(f, p.bounds, 2, algorithm="eps_sqp", pop_size=50,
                            max_evaluations=4000, n_sub=5, seed=1,
                            on_generation=lambda g, F, X: gens.append((g, len(F), len(X))),
@@ -10288,8 +10287,8 @@ def scalar_anchors_constraints_and_the_front():
 def scalar_runs_in_a_campaign():
     """Task 9, A1: a campaign runs the presets by name; meta.json carries the
     settings and marks the run budget-dependent."""
-    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
-        print("  skip  scalar_runs...: no NumPy, SciPy or _core"); return
+    if not _have_numpy() or _core_with("scalar") is None:
+        print("  skip  scalar_runs...: no NumPy or _core.scalar"); return
     from mootation.run import campaign as C
     from mootation.run.config import load
     text = """algorithms = [
@@ -10336,8 +10335,8 @@ def polish_improves_and_loses_nothing():
     answer weakly dominated by the polished answer, the settings reported;
     polish = off is the plain run, bit for bit; without max_evaluations, or
     with a share out of (0, 1), refused."""
-    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
-        print("  skip  polish...: no NumPy, SciPy or _core"); return
+    if not _have_numpy() or _core_with("scalar") is None:
+        print("  skip  polish...: no NumPy or _core.scalar"); return
     import numpy as np
     import mootation
     from mootation.benchmarks import get
@@ -10511,7 +10510,7 @@ def direct_search_methods_are_deterministic_and_take_their_knobs():
         assert not run("multiglods", **kw).ignored, kw
     r = run("multiglods", max_evaluations=200000, glods_local_tol=0.05)
     assert r.evaluations < 200000                     # every active point local: the end
-    if _have_scipy():
+    if _core_with("scalar") is not None:
         a, b = run("boostdms", max_evaluations=400), run("boostdms", max_evaluations=400, seed=5)
         assert a.objectives == b.objectives and a.evaluations <= 400 + 6
         assert dict(a.settings)["boost_scalarization"] == "eps"
@@ -10519,17 +10518,7 @@ def direct_search_methods_are_deterministic_and_take_their_knobs():
         assert dict(r.settings)["boost_scalarization"] == "minmax" and not r.ignored
         assert raises(ValueError, run, "boostdms", boost_scalarization="nbi") is not None
         assert run("boostdms", max_evaluations=200, eta_c=10).ignored == ["eta_c"]
-        from mootation.scalar.boostdms import models
-        import numpy as np
-        rng = np.random.default_rng(3)
-        S = rng.uniform(-1, 1, (40, 3))                 # regression: 40 > 10 coefficients
-        q = lambda s: 1.0 + s @ [1.0, -2.0, 0.5] + 0.5 * s @ np.diag([2.0, 1.0, 4.0]) @ s
-        (c, g, H), = models(S, np.array([[q(s)] for s in S]))
-        assert abs(c - 1) < 1e-10 and np.allclose(g, [1, -2, 0.5]) and \
-            np.allclose(H, np.diag([2.0, 1.0, 4.0]))   # a quadratic is its own model
-        S = rng.uniform(-1, 1, (7, 3))                  # minimum Frobenius norm: 4 < 7 < 10
-        (c, g, H), = models(S, np.array([[1.0 + s @ [1.0, -2.0, 0.5]] for s in S]))
-        assert np.allclose(H, 0, atol=1e-9) and np.allclose(g, [1, -2, 0.5])   # linear: H = 0
+        # the models themselves: tests/test_scalar.cpp
 
 
 @test
@@ -10623,8 +10612,8 @@ def mosqp_spreads_refines_and_keeps_its_budget():
     the budget; the answer non-dominated and on ZDT2's front (f2 = 1 - f1²)
     within 1e-3 for most of its points; DOC3's equalities held within eq_tol;
     its knobs reported, a bad value refused."""
-    if not _have_numpy() or not _have_scipy() or _core_with("Config") is None:
-        print("  skip  mosqp...: no NumPy, SciPy or _core"); return
+    if not _have_numpy() or _core_with("scalar") is None:
+        print("  skip  mosqp...: no NumPy or _core.scalar"); return
     import numpy as np
     import mootation
     from mootation.benchmarks import get, solve
@@ -10647,6 +10636,89 @@ def mosqp_spreads_refines_and_keeps_its_budget():
     assert len(H) and H.max() <= 1e-4 and max(r.cv) == 0.0, H.max()
     assert raises(ValueError, mootation.minimize, f, p.bounds, 2, algorithm="mosqp",
                   pop_size=10, max_evaluations=100, seed=1, mosqp_beta=1.5) is not None
+
+
+@test
+def own_slsqp_and_nelder_mead_against_scipy():
+    """Task 17, stage 6: the library's own SQP and Nelder-Mead (_core.scalar.slsqp
+    and nelder_mead, include/mootation/scalar/) against SciPy's SLSQP and
+    Nelder-Mead, the reference where SciPy is installed: the same solutions of
+    problems whose solutions are known (equalities, inequalities, active
+    bounds, a start on the boundary, infeasible starts, Hock & Schittkowski 71)
+    and iterations of the same order — not the same bits."""
+    if _core_with("scalar") is None or not _have_numpy() or not _have_scipy():
+        print("  skip  own_slsqp...: no _core.scalar or no SciPy"); return
+    import math
+    import numpy as np
+    from scipy.optimize import minimize as sp_minimize
+    from mootation import _core
+    inf = math.inf
+
+    def hs71_c(x):
+        return [x[0] ** 2 + x[1] ** 2 + x[2] ** 2 + x[3] ** 2 - 40, x[0] * x[1] * x[2] * x[3] - 25]
+
+    def hs71_j(x):
+        return [[2 * x[0], 2 * x[1], 2 * x[2], 2 * x[3]],
+                [x[1] * x[2] * x[3], x[0] * x[2] * x[3], x[0] * x[1] * x[3], x[0] * x[1] * x[2]]]
+
+    # name, f, grad, x0, lo, hi, n_eq, n_ineq, c, jac, solution
+    problems = [
+        ("equality", lambda x: (x[0] - 1) ** 2 + (x[1] - 2) ** 2,
+         lambda x: [2 * (x[0] - 1), 2 * (x[1] - 2)], [5, -3], [-inf] * 2, [inf] * 2, 1, 0,
+         lambda x: [x[0] + x[1] - 1], lambda x: [[1, 1]], [0, 1]),
+        ("inequality, infeasible start", lambda x: x[0] ** 2 + x[1] ** 2,
+         lambda x: [2 * x[0], 2 * x[1]], [-3, -3], [-inf] * 2, [inf] * 2, 0, 1,
+         lambda x: [x[0] + x[1] - 1], lambda x: [[1, 1]], [0.5, 0.5]),
+        ("active bounds from a corner", lambda x: (x[0] - 2) ** 2 + (x[1] + 1) ** 2,
+         lambda x: [2 * (x[0] - 2), 2 * (x[1] + 1)], [0, 1], [0, 0], [1, 1], 0, 0,
+         None, None, [1, 0]),
+        ("disc, infeasible start", lambda x: x[0] + x[1], lambda x: [1, 1], [3, 2],
+         [-inf] * 2, [inf] * 2, 0, 1, lambda x: [2 - x[0] ** 2 - x[1] ** 2],
+         lambda x: [[-2 * x[0], -2 * x[1]]], [-1, -1]),
+        ("Rosenbrock", lambda x: 100 * (x[1] - x[0] ** 2) ** 2 + (1 - x[0]) ** 2,
+         lambda x: [-400 * x[0] * (x[1] - x[0] ** 2) - 2 * (1 - x[0]), 200 * (x[1] - x[0] ** 2)],
+         [-1.2, 1], [-inf] * 2, [inf] * 2, 0, 0, None, None, [1, 1]),
+        ("Hock-Schittkowski 71", lambda x: x[0] * x[3] * (x[0] + x[1] + x[2]) + x[2],
+         lambda x: [x[3] * (2 * x[0] + x[1] + x[2]), x[0] * x[3], x[0] * x[3] + 1,
+                    x[0] * (x[0] + x[1] + x[2])],
+         [1, 5, 5, 1], [1] * 4, [5] * 4, 1, 1, hs71_c, hs71_j, [1, 4.742999, 3.821151, 1.379408]),
+    ]
+    for name, f, g, x0, lo, hi, me, mi, c, jac, sol in problems:
+        ours = _core.scalar.slsqp(f, g, x0, lo, hi, me, mi, c, jac, tol=1e-12, max_iter=500)
+        A = lambda v: np.asarray(v, dtype=float)       # noqa: E731
+        cons = []
+        if me:
+            cons.append({"type": "eq", "fun": lambda x, c=c, me=me: A(c(x)[:me]),
+                         "jac": lambda x, jac=jac, me=me: A(jac(x)[:me])})
+        if mi:
+            cons.append({"type": "ineq", "fun": lambda x, c=c, me=me: A(c(x)[me:]),
+                         "jac": lambda x, jac=jac, me=me: A(jac(x)[me:])})
+        bounds = [(None if not math.isfinite(a) else a, None if not math.isfinite(b) else b)
+                  for a, b in zip(lo, hi)]
+        ref = sp_minimize(f, A(x0), jac=lambda x, g=g: A(g(x)), method="SLSQP", bounds=bounds,
+                          constraints=cons,
+                          options={"ftol": 1e-12, "maxiter": 500})
+        tol = 1e-5 if name.startswith("Hock") else 1e-6
+        assert ours["status"] == "converged" or name == "Rosenbrock", (name, ours)
+        assert max(abs(a - b) for a, b in zip(ours["x"], sol)) < tol, (name, ours["x"])
+        assert max(abs(a - b) for a, b in zip(ref.x, sol)) < tol, (name, ref.x)
+        assert ours["iterations"] <= 3 * ref.nit + 10, (name, ours["iterations"], ref.nit)
+    # Nelder-Mead in a box
+    def ros(x):
+        return 100 * (x[1] - x[0] ** 2) ** 2 + (1 - x[0]) ** 2
+
+    def quad(x):
+        return sum((i + 1) * (v - 0.3) ** 2 for i, v in enumerate(x))
+
+    for f, x0, lo, hi, sol in ((ros, [-1.2, 1.0], [-2, -2], [2, 2], [1, 1]),
+                               (quad, [1.0] * 5, [0] * 5, [1] * 5, [0.3] * 5)):
+        ours = _core.scalar.nelder_mead(f, x0, lo, hi, tol=1e-10)
+        ref = sp_minimize(f, np.asarray(x0, float), method="Nelder-Mead", bounds=list(zip(lo, hi)),
+                          options={"adaptive": True, "xatol": 1e-10, "fatol": 1e-10,
+                                   "maxfev": 10 ** 6, "maxiter": 10 ** 6})
+        assert ours["converged"] and max(abs(a - b) for a, b in zip(ours["x"], sol)) < 1e-5, ours
+        assert max(abs(a - b) for a, b in zip(ref.x, sol)) < 1e-5, ref.x
+        assert ours["evaluations"] <= 3 * ref.nfev + 50, (ours["evaluations"], ref.nfev)
 
 
 # ── the C++ suite of benchmark problems (task 11 of 2026-10-18, §1) ─────────
