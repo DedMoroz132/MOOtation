@@ -11171,8 +11171,11 @@ def the_suite_gives_numpys_values(part, parts):
             # rotated.py draw Q apart, two QR factorizations of the same normal
             # matrix, which agree to its condition number in ulps (up to 1.2e-13
             # of the largest entry); through the base's function, up to 2.5e-13
-            # of the column's scale (rWFG); 1e-12.
-            wide = what.startswith(("WFG", "rWFG", "MaF10", "MaF11", "MaF12", "MW", "DOC",
+            # of the column's scale (rWFG); 1e-12. MaF9's polygons, drawn by
+            # C++ from dm::sin and dm::cos since then: the intersections of
+            # the bow-ties carry the last bits of sine and cosine into the
+            # constraint; 1e-13.
+            wide = what.startswith(("WFG", "rWFG", "MaF9", "MaF10", "MaF11", "MaF12", "MW", "DOC",
                                     "LIR-CMOP"))
             turned = what.split(" ")[0] in turned_by_q
             _close_to_numpy(mine, ref, what, 1e-12 if turned else 1e-13 if wide else 2e-15)
