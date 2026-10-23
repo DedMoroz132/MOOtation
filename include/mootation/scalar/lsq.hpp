@@ -39,10 +39,17 @@
 //     columns already in the set explain (|r| * 0.01 adds nothing to that
 //     part's norm, the test LH's subroutine makes through DIFF) or when z_t is
 //     not positive (§23.3): w_t is then taken as 0 and Step 3 is done again.
-//   LSQ-3. LDP finds G x >= h incompatible when 1 + ||r||^2 = 1 in floating
-//     point (||r|| = 0 of Step 3, compared with the precision limit as LH's
-//     DIFF compares), ||r||^2 the sum of the squares of r: its other form
-//     1 - h^T u (23.32) cancels near the limit.
+//   LSQ-3. LDP finds G x >= h incompatible when ||r|| (Step 3's ||r|| = 0)
+//     is within the round-off of r itself: ||r|| <= 100 eps (1 + sum_ij
+//     |E_ij| u_j), the bound of the error of r = E u - f summed term by term.
+//     ||r|| is the root of the sum of the squares of r (its other form,
+//     ||r||^2 = 1 - h^T u (23.32), cancels near the limit). On random
+//     problems the incompatible ones give at most 1.3 of that bound and the
+//     compatible ones 2e12 and more. Solutions far longer than 1/sqrt(eps)
+//     are kept: a finite-difference gradient across a kink of a constraint
+//     (C2-DTLZ2's minimum of spheres) is ~1e8 long, and so is the LDP's
+//     solution, which a test of ||r||^2 against eps (DIFF's 1 + ||r||^2 = 1)
+//     refuses.
 //   LSQ-4. lsei picks the rows of C in the order of the largest remaining
 //     norm (the column interchanges of HFTI (14.9), Steps 3-10, on C^T) and
 //     takes as its pseudorank the rows whose diagonal element exceeds
@@ -429,14 +436,17 @@ inline LDPResult ldp(const Matrix& G, const std::vector<double>& h)
     if (u.status == Status::singular) { r.status = Status::singular; return r; }
     // Step 2: r = E u - f; ||r||^2 (= -r_{n+1} by (23.32), which cancels)
     std::vector<double> res(n + 1);
-    double rr = 0.0;
+    double rr = 0.0, scale = 1.0;
     for (std::size_t i = 0; i <= n; ++i) {
         double s = -f[i];
-        for (std::size_t j = 0; j < m; ++j) s += E(i, j) * u.x[j];
+        for (std::size_t j = 0; j < m; ++j) {
+            s += E(i, j) * u.x[j];
+            scale += std::fabs(E(i, j)) * u.x[j];
+        }
         res[i] = s;
         rr += s * s;
     }
-    if (!(1.0 + rr > 1.0)) {                             // Step 3, LSQ-3
+    if (!(std::sqrt(rr) > 100.0 * kEps * scale)) {      // Step 3, LSQ-3
         r.status = Status::incompatible;
         return r;
     }
