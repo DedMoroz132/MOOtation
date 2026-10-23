@@ -12213,6 +12213,24 @@ def store_blocks_give_the_bytes_back():
             assert files[name].encode() == (d / name).read_bytes(), name
         assert np.array_equal(files["snapshots.npz"]["F"], noise.reshape(-1, 2).astype("<f4"))
         assert files["snapshots.npz"]["n"].dtype == np.int64
+        # meta.json's final kept once (supplement 5, §2.4): the values the
+        # trajectory's last record holds alike are read from there, and
+        # meta.json comes back byte for byte (its CR LF line ends too)
+        if store._codec() is not None:
+            last = {"gen": 9, "fe": 1000, "igdp": 0.125, "hv": 0.5, "hv_method": "exact"}
+            (d / "trajectory.jsonl").write_bytes(
+                (json.dumps({"gen": 0, "fe": 100, "igdp": 1.5, "hv": 0.0}, separators=(",", ":")) + "\n"
+                 + json.dumps(last, separators=(",", ":")) + "\n").encode())
+            meta = {"status": "done", "final": {"igdp": 0.125, "fe_first_feas": 7, "hv": 0.5,
+                                                "hv_method": "exact"}, "seconds": 1.0}
+            for crlf in (False, True):
+                text = json.dumps(meta, indent=1)
+                (d / "meta.json").write_bytes((text.replace("\n", "\r\n") if crlf else text).encode())
+                blocks = store.pack_run_dir(d, keep="full")
+                once = {b.name: b for b in store._final_once(blocks)}["meta.json"].data
+                assert b'"#trajectory"' in once and b"0.125" not in once and b"fe_first_feas" in once
+                back = {b.name: b for b in store.decode_blocks(store.encode_body(blocks))}
+                assert back["meta.json"].data == (d / "meta.json").read_bytes(), crlf
         # a record's checksum (CRC-32C, MOOTREC2): any bit flipped in it, and
         # the record is not whole — an error at its place, not other numbers
         rec = store.encode_record("p|a||1|100", body)

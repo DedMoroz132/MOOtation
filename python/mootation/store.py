@@ -74,8 +74,12 @@ together into one block "#points" (store_encode_tables): a column of one
 name through all of them, so that a point two of them hold is written once.
 "#points" holds the tables' places among the record's blocks, and reading
 puts every table back where it was: the blocks read are the blocks written,
-bit for bit. Reading format 3 needs the extension; formats 1 and 2 are read
-as before.
+bit for bit. meta.json's "final" is not kept twice (supplement 5, §2.4):
+the values the trajectory's last record holds alike (json's text equal) are
+read from there — meta.json keeps the keys' order ("#keys") and which come
+from the trajectory ("#trajectory"), and reading gives its bytes back (the
+writer checks that it does, else keeps meta.json whole). Reading format 3
+needs the extension; formats 1 and 2 are read as before.
 """
 
 from __future__ import annotations
@@ -250,7 +254,7 @@ def decode_blocks(body: bytes) -> list:
         else:
             raise ValueError(f"block {name!r}: unknown compression {how!r}")
         out.append(Block(name, dtype, tuple(shape), data))
-    return _points_back(out)
+    return _final_back(_points_back(out))
 
 
 def _own_decode(name: str, how: str, dtype: str, shape, payload: bytes) -> bytes:
@@ -312,9 +316,88 @@ def _points_back(blocks: list) -> list:
     return rest
 
 
+def _last_record(by: dict, name: str = "trajectory.jsonl"):
+    """The trajectory's last record as a dict, from its blocks, or None."""
+    import numpy as np
+    h, V, C = by.get(name + "#head"), by.get(name), by.get(name + "#cells")
+    if h is None or V is None or C is None or V.dtype != "<f8" or not V.shape or not V.shape[0]:
+        return None
+    head = json.loads(h.data)
+    if head.get("kind") != "jsonl":
+        return None
+    cols, texts = head["columns"], head["texts"]
+    v = np.frombuffer(V.data, "<f8").reshape(V.shape)[-1].tolist()
+    c = np.frombuffer(C.data, "u1").reshape(C.shape)[-1].tolist()
+    rec = {}
+    for j, code in enumerate(c):
+        if code == _ABSENT:
+            continue
+        rec[cols[j]] = (v[j] if code == _FLOAT else int(v[j]) if code == _INT
+                        else bool(v[j]) if code == _BOOL else None if code == _NULL
+                        else texts[int(v[j])])
+    return rec
+
+
+def _meta_text(meta: dict, crlf: bool) -> bytes:
+    """meta.json's text as campaign writes it (json.dumps, indent 1), its line
+    ends CR LF where the file's were (a text file written on Windows)."""
+    text = json.dumps(meta, indent=1).encode()
+    return text.replace(b"\n", b"\r\n") if crlf else text
+
+
+def _final_text(meta_text: bytes, rec: dict) -> bytes:
+    """meta.json's text with "final" rebuilt from the trajectory's last record."""
+    meta = json.loads(meta_text)
+    f = meta["final"]
+    meta["final"] = {k: (rec[k] if k in f["#trajectory"] else f[k]) for k in f["#keys"]}
+    return _meta_text(meta, b"\r\n" in meta_text)
+
+
+def _final_once(blocks: list) -> list:
+    """Blocks with meta.json's final values that the trajectory's last record
+    holds alike left to it (the module's docstring); unchanged where meta.json
+    would not come back byte for byte."""
+    by = {b.name: b for b in blocks}
+    mb = by.get("meta.json")
+    rec = _last_record(by)
+    if mb is None or rec is None:
+        return blocks
+    try:
+        meta = json.loads(mb.data)
+    except ValueError:
+        return blocks
+    final = meta.get("final") if isinstance(meta, dict) else None
+    if not isinstance(final, dict) or not final or "#keys" in final:
+        return blocks
+    same = [k for k, v in final.items() if k in rec and json.dumps(rec[k]) == json.dumps(v)]
+    if not same:
+        return blocks
+    meta["final"] = dict({"#keys": list(final), "#trajectory": same},
+                         **{k: v for k, v in final.items() if k not in same})
+    text = _meta_text(meta, b"\r\n" in mb.data)
+    if _final_text(text, rec) != mb.data:
+        return blocks
+    return [Block(b.name, b.dtype, b.shape, text) if b.name == "meta.json" else b for b in blocks]
+
+
+def _final_back(blocks: list) -> list:
+    """meta.json's final rebuilt where it was left to the trajectory."""
+    by = {b.name: b for b in blocks}
+    mb = by.get("meta.json")
+    if mb is None or b'"#keys"' not in mb.data:
+        return blocks
+    rec = _last_record(by)
+    if rec is None:
+        raise ValueError("meta.json: its final is in the trajectory, which the record lacks")
+    text = _final_text(mb.data, rec)
+    return [Block(b.name, b.dtype, b.shape, text) if b.name == "meta.json" else b for b in blocks]
+
+
 def encode_body(blocks: list) -> bytes:
     import numpy as np
     c = _codec()
+    if c is not None:
+        blocks = _final_once(blocks)
     tables = _point_tables(blocks) if c is not None else []
     if tables:
         coded = bytes(c.store_encode_tables([
