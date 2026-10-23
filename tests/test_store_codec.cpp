@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <random>
@@ -19,6 +20,7 @@
 
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
+#include <mootation/store/pack.hpp>
 #include <mootation/store/record.hpp>
 #include <mootation/store/record_tables.hpp>
 #include <mootation/store/text_codec.hpp>
@@ -351,6 +353,62 @@ int main()
         bool threw = false;
         try { st::rec::dtype_of("<x"); } catch (const std::invalid_argument&) { threw = true; }
         CHECK(threw);
+
+        // ── a pack: written, its entries, checked; a byte changed: where ─────
+        namespace fs = std::filesystem;
+        const fs::path dir = fs::temp_directory_path() /
+                             ("mootation_test_store_" + std::to_string(std::random_device{}()) + "_" +
+                              std::to_string(static_cast<unsigned long long>(g() % 1000000007ull)));
+        fs::create_directories(dir);
+        const std::string path = (dir / "pack-T.mpk").u8string(), tmp = (dir / "pack-T.mpk.tmp").u8string();
+        std::vector<st::PackRecord> recs;
+        for (int i = 0; i < 5; ++i) {
+            const std::string k = "P" + std::to_string(i) + "|nsga2||1|100";
+            recs.push_back({k, st::encode_record(k, body), i == 3 ? "failed" : "done"});
+        }
+        const std::vector<std::uint8_t> meta_t = {'M', 'O', 'O', 'T', 'M', 'E', 'T', '1', 0, 0, 0, 0};
+        const auto entries = st::write_pack(path, tmp, "kind = pack\nfamily = T\n", meta_t, {}, recs);
+        CHECK(!fs::exists(dir / "pack-T.mpk.tmp") && entries.size() == 5);
+        std::vector<std::uint8_t> file(static_cast<std::size_t>(fs::file_size(dir / "pack-T.mpk")));
+        {
+            std::FILE* f = st::file::open(path, "rb");
+            CHECK(std::fread(file.data(), 1, file.size(), f) == file.size());
+            std::fclose(f);
+        }
+        CHECK(file.size() % 64 == 0 && std::memcmp(file.data() + file.size() - 64, "MOOTPEND", 8) == 0);
+        const auto read = st::pack_entries(file.data(), file.size(), "pack-T.mpk");
+        CHECK(read.size() == 5);
+        for (std::size_t i = 0; i < read.size() && i < entries.size(); ++i)
+            CHECK(read[i].key == entries[i].key && read[i].offset == entries[i].offset && read[i].offset % 64 == 0 &&
+                  read[i].crc == entries[i].crc && read[i].status == entries[i].status);
+        CHECK(st::check_pack(file.data(), file.size(), "pack-T.mpk").empty());
+        auto bad = file;
+        bad[static_cast<std::size_t>(entries[2].offset + entries[2].length / 2)] ^= 4;
+        const auto said = st::check_pack(bad.data(), bad.size(), "pack-T.mpk");
+        CHECK(said.size() == 1 && said[0].find("@" + std::to_string(entries[2].offset) + ": the record of P2") !=
+                                      std::string::npos);
+        bad = file;
+        bad[3] ^= 1;                                                       // the header
+        const auto said2 = st::check_pack(bad.data(), bad.size(), "pack-T.mpk");
+        CHECK(said2.size() == 1 && said2[0].find("the header") != std::string::npos);
+        // a segment: appended, synced, indexed
+        const std::string raw = (dir / "seg.raw").u8string(), idx = (dir / "seg.idx").u8string();
+        const auto e0 = st::append_record(raw, idx, recs[0].key, recs[0].record, "done");
+        const auto e1 = st::append_record(raw, idx, recs[1].key, recs[1].record, "done");
+        CHECK(e0.offset == 0 && e1.offset == recs[0].record.size() &&
+              fs::file_size(dir / "seg.raw") == recs[0].record.size() + recs[1].record.size());
+        std::string lines;
+        {
+            std::FILE* f = st::file::open(idx, "rb");
+            char buf[512];
+            std::size_t n;
+            while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) lines.append(buf, n);
+            std::fclose(f);
+        }
+        const auto ie = st::index_entries(lines);
+        CHECK(ie.size() == 2 && ie[1].key == recs[1].key && ie[1].offset == e1.offset && ie[1].crc == e1.crc);
+        std::error_code ec;
+        fs::remove_all(dir, ec);
     }
 
     if (failures) {

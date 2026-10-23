@@ -50,9 +50,10 @@ always listed under **Changed** or **Removed**.
   column), the trajectories' table, the records, an index, each at a
   multiple of 64 bytes, and a footer with their places and the file's
   CRC-32C; packs of before are read, and `compact` replaces them. A
-  record's bytes — blocks, body, frame, the key's SHA-256 — are written and
-  read by the library (`include/mootation/store/record.hpp`); `store.py`
-  keeps the files and what reads JSON. The format, byte by byte:
+  record's bytes — blocks, body, frame, the key's SHA-256 — and the files —
+  a segment's record appended and synced, a pack written, read and checked
+  — are the library's (`include/mootation/store/record.hpp`, `pack.hpp`);
+  `store.py` finds the files and keeps what reads JSON. The format, byte by byte:
   `docs/store-format.md`.
 
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a

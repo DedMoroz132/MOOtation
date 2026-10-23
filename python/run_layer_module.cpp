@@ -25,6 +25,7 @@
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
+#include <mootation/store/pack.hpp>
 #include <mootation/store/record.hpp>
 #include <mootation/store/record_tables.hpp>
 #include <mootation/store/text_codec.hpp>
@@ -833,6 +834,87 @@ void bind_run_layer(py::module_& m)
           },
           py::arg("buf"), py::arg("at"),
           "(key, body, crc, end) of the whole, sound record at `at` in buf, or None.");
+    // ── the store's files: a segment's record, a pack (store/pack.hpp) ──────
+    auto bytes_in = [](const py::buffer& buf, const char* what) {
+        const py::buffer_info info = buf.request();
+        if (info.itemsize != 1 || info.ndim != 1) throw std::invalid_argument(std::string(what) + ": bytes");
+        return std::make_pair(static_cast<const std::uint8_t*>(info.ptr), static_cast<std::size_t>(info.size));
+    };
+    auto entry_tuple = [](const mootation::store::Entry& e) {
+        return py::make_tuple(e.key, e.offset, e.length, e.crc, e.status);
+    };
+    m.def("store_append_record",
+          [entry_tuple](const std::string& raw, const std::string& idx, const std::string& key,
+                        const py::bytes& record, const std::string& status) {
+              const std::string s = record;
+              mootation::store::Entry e;
+              {
+                  py::gil_scoped_release unlock;
+                  e = mootation::store::append_record(raw, idx, key, std::vector<std::uint8_t>(s.begin(), s.end()),
+                                                      status);
+              }
+              return entry_tuple(e);
+          },
+          py::arg("raw"), py::arg("idx"), py::arg("key"), py::arg("record"), py::arg("status"),
+          "Append a record to a segment (synced), then its line to the segment's index: "
+          "(key, offset, length, crc, status).");
+    m.def("store_write_pack",
+          [entry_tuple](const std::string& path, const std::string& tmp, const std::string& header,
+                        const py::bytes& meta, const py::bytes& metrics, const py::list& records) {
+              const std::string ms = meta, ts = metrics;
+              std::vector<mootation::store::PackRecord> rs;
+              for (const auto& item : records) {
+                  const auto t = item.cast<py::tuple>();
+                  const std::string r = t[1].cast<py::bytes>();
+                  rs.push_back({t[0].cast<std::string>(), std::vector<std::uint8_t>(r.begin(), r.end()),
+                                t[2].cast<std::string>()});
+              }
+              std::vector<mootation::store::Entry> es;
+              {
+                  py::gil_scoped_release unlock;
+                  es = mootation::store::write_pack(path, tmp, header, std::vector<std::uint8_t>(ms.begin(), ms.end()),
+                                                    std::vector<std::uint8_t>(ts.begin(), ts.end()), rs);
+              }
+              py::list out;
+              for (const auto& e : es) out.append(entry_tuple(e));
+              return out;
+          },
+          py::arg("path"), py::arg("tmp"), py::arg("header"), py::arg("meta"), py::arg("metrics"), py::arg("records"),
+          "Write a pack (include/mootation/store/pack.hpp) through tmp: records [(key, bytes, status)]; "
+          "their [(key, offset, length, crc, status)].");
+    m.def("store_pack_footer",
+          [bytes_in](const py::buffer& buf, const std::string& name) {
+              const auto [p, n] = bytes_in(buf, "store_pack_footer");
+              const auto f = mootation::store::pack_footer(p, n, name);
+              py::dict d;
+              d["meta"] = py::make_tuple(f.meta_at, f.meta_size);
+              d["metrics"] = py::make_tuple(f.metrics_at, f.metrics_size);
+              d["index"] = py::make_tuple(f.index_at, f.index_size);
+              d["crc"] = f.crc;
+              d["index_crc"] = f.index_crc;
+              d["end"] = f.end;
+              return d;
+          },
+          py::arg("data"), py::arg("name"), "A pack's footer from the file's bytes.");
+    m.def("store_pack_entries",
+          [bytes_in, entry_tuple](const py::buffer& buf, const std::string& name) {
+              const auto [p, n] = bytes_in(buf, "store_pack_entries");
+              py::list out;
+              for (const auto& e : mootation::store::pack_entries(p, n, name)) out.append(entry_tuple(e));
+              return out;
+          },
+          py::arg("data"), py::arg("name"), "A pack's [(key, offset, length, crc, status)] from its index.");
+    m.def("store_check_pack",
+          [bytes_in](const py::buffer& buf, const std::string& name) {
+              const auto [p, n] = bytes_in(buf, "store_check_pack");
+              std::vector<std::string> bad;
+              {
+                  py::gil_scoped_release unlock;
+                  bad = mootation::store::check_pack(p, n, name);
+              }
+              return bad;
+          },
+          py::arg("data"), py::arg("name"), "What is wrong with a pack, and where; empty where it is whole.");
     m.def("sha256",
           [](const py::bytes& b) {
               const std::string s = b;

@@ -91,9 +91,10 @@ writer checks that it does, else keeps meta.json whole). Reading format 3
 needs the extension; formats 1 and 2 are read as before.
 
 ONE IMPLEMENTATION (task 17, §3а.3): a format-3 record's bytes — its blocks,
-its body with "#points", its frame — are written and read by the library
-(include/mootation/store/record.hpp, the extension's store_encode_body,
-store_decode_body, store_encode_record, store_parse_record). What reads JSON
+its body with "#points", its frame — and the files — a segment's record
+appended and synced, a pack written, its footer and index read, a pack
+checked — are the library's (include/mootation/store/record.hpp, pack.hpp;
+the extension's store_* functions). What reads JSON
 stays here: which blocks are point tables (their "#head"), meta.json's final
 once and back, the pack's meta table. Without the extension this module
 writes and reads format 2 (zlib) by itself.
@@ -200,6 +201,37 @@ def _codec():
     return _core if hasattr(_core, "store_encode_tables") else None
 
 
+def _lib(call, *args):
+    """A call into the library's store, its errors of bytes as ValueError
+    (what this module raises for a damaged store)."""
+    try:
+        return call(*args)
+    except RuntimeError as e:
+        raise ValueError(str(e)) from None
+
+
+class _Mapped:
+    """A file's bytes, mapped (mmap) while in a with block: what the library
+    reads without a copy."""
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    def __enter__(self):
+        import mmap
+        self.fh = open(self.path, "rb")
+        try:
+            self.mm = mmap.mmap(self.fh.fileno(), 0, access=mmap.ACCESS_READ)
+        except ValueError:                  # an empty file
+            self.fh.close()
+            raise ValueError(f"{self.path.name}: empty")
+        return self.mm
+
+    def __exit__(self, *exc):
+        self.mm.close()
+        self.fh.close()
+
+
 def encode_block(b: Block) -> bytes:
     c = _codec()
     if c is None:
@@ -228,7 +260,7 @@ def decode_blocks(body: bytes) -> list:
     c = _codec()
     if c is not None:
         out = []
-        for name, dtype, shape, data, how in c.store_decode_body(body):
+        for name, dtype, shape, data, how in _lib(c.store_decode_body, body):
             if how == "zlib":
                 data = zlib.decompress(data)
             elif how == "shuffle+zlib":
@@ -840,6 +872,12 @@ class SegmentWriter:
         rec = encode_record(key, encode_body(blocks))
         if self.raw is None or (self.records and self.raw.stat().st_size + len(rec) > self.limit):
             self._start()
+        c = _codec()
+        if c is not None:                   # the library's (pack.hpp): appended, synced, indexed
+            _, offset, length, crc, status = c.store_append_record(
+                str(self.raw), str(self.raw.with_suffix(".idx")), key, rec, _status_of(blocks))
+            self.records += 1
+            return Loc(self.raw, offset, length, crc, status)
         with open(self.raw, "ab") as fh:
             offset = fh.tell()
             fh.write(rec)
@@ -935,6 +973,13 @@ def write_pack(path: Path, fields: dict, meta: bytes, metrics: bytes, records: l
     [(key, Loc)] in it."""
     path = Path(path)
     tmp = path.with_suffix(f".mpk.{os.getpid()}.tmp")
+    c = _codec()
+    if c is not None:                       # the library's (pack.hpp)
+        got = c.store_write_pack(str(path), str(tmp), "".join(f"{k} = {v}\n" for k, v in fields.items()),
+                                 meta, metrics, records)
+        _PACK_CACHE.clear()
+        _META_CACHE.clear()
+        return [(k, Loc(path, off, n, crc, st)) for k, off, n, crc, st in got]
     entries = []
     with open(tmp, "wb") as out:
         head = "".join(f"{k} = {v}\n" for k, v in fields.items()).encode("utf-8")
@@ -972,6 +1017,10 @@ def write_pack(path: Path, fields: dict, meta: bytes, metrics: bytes, records: l
 
 def _pack_footer(path: Path) -> dict:
     path = Path(path)
+    c = _codec()
+    if c is not None:
+        with _Mapped(path) as mm:
+            return _lib(c.store_pack_footer, mm, path.name)
     size = path.stat().st_size
     if size < 64:
         raise ValueError(f"{path.name}: shorter than a pack's footer")
@@ -1006,7 +1055,13 @@ def _pack_index(path: Path) -> list:
     st = path.stat()
     tag = (str(path), st.st_mtime_ns, st.st_size)
     if tag not in _PACK_CACHE:
-        _PACK_CACHE[tag] = _index_entries(path, _pack_part(path, "index"))
+        c = _codec()
+        if c is not None:
+            with _Mapped(path) as mm:
+                _PACK_CACHE[tag] = [(k, Loc(path, off, n, crc, st))
+                                    for k, off, n, crc, st in _lib(c.store_pack_entries, mm, path.name)]
+        else:
+            _PACK_CACHE[tag] = _index_entries(path, _pack_part(path, "index"))
     return _PACK_CACHE[tag]
 
 
@@ -1032,6 +1087,12 @@ def check_pack(path: Path) -> list:
     file's checksum fails, the header or the footer's checksum."""
     path = Path(path)
     name = path.name
+    c = _codec()
+    if c is not None:                       # the library's (pack.hpp)
+        if path.stat().st_size == 0:
+            return [f"{name}: shorter than a pack's footer"]
+        with _Mapped(path) as mm:
+            return list(c.store_check_pack(mm, name))
     try:
         f = _pack_footer(path)
     except ValueError as e:
