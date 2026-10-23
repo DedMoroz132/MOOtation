@@ -20,9 +20,11 @@
 
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
+#include <mootation/store/meta_table.hpp>
 #include <mootation/store/pack.hpp>
 #include <mootation/store/record.hpp>
 #include <mootation/store/record_tables.hpp>
+#include <mootation/store/run_json.hpp>
 #include <mootation/store/text_codec.hpp>
 
 namespace st = mootation::store;
@@ -416,6 +418,68 @@ int main()
         CHECK(ie.size() == 2 && ie[1].key == recs[1].key && ie[1].offset == e1.offset && ie[1].crc == e1.crc);
         std::error_code ec;
         fs::remove_all(dir, ec);
+    }
+
+    // ── a run's JSON: final once and back; a pack's meta table ───────────────
+    {
+        namespace js = mootation::json;
+        auto bytes_of = [](const std::string& t) { return std::vector<std::uint8_t>(t.begin(), t.end()); };
+        // the trajectory: two records of columns fe (int), igd (float), ok (bool), x (null), note (text)
+        js::Value head = js::Value::object(), cols = js::Value::array(), texts = js::Value::array();
+        for (const char* c : {"fe", "igd", "ok", "x", "note"}) cols.items.push_back(js::Value::string(c));
+        texts.items.push_back(js::Value::string("first"));
+        texts.items.push_back(js::Value::string("last"));
+        head.set("kind", js::Value::string("jsonl"));
+        head.set("columns", cols);
+        head.set("texts", texts);
+        const double vals[10] = {100, 0.5, 1, 0, 0, 200, 0.25, 0, 0, 1};
+        std::vector<std::uint8_t> vb, cb = {2, 1, 3, 4, 5, 2, 1, 3, 4, 5};
+        for (double v : vals) {
+            std::uint64_t bits;
+            std::memcpy(&bits, &v, 8);
+            st::rec::put_le(vb, bits, 8);
+        }
+        js::Value meta = js::Value::object(), final = js::Value::object();
+        meta.set("algorithm", js::Value::string("nsga2"));
+        final.set("igd", js::Value::number(0.25));       // as the last record: left to it
+        final.set("fe", js::Value::integer(200));
+        final.set("hv", js::Value::number(0.75));        // not in the trajectory: kept
+        final.set("ok", js::Value::boolean(true));       // the record says false: kept
+        meta.set("final", final);
+        meta.set("seed", js::Value::integer(3));
+        for (bool crlf : {false, true}) {
+            const std::vector<std::uint8_t> text = st::meta_text(meta, crlf);
+            std::vector<st::Block> run = {
+                {"meta.json", "json", {}, text, ""},
+                {"trajectory.jsonl#head", "json", {}, bytes_of(js::dump(head)), ""},
+                {"trajectory.jsonl", "<f8", {2, 5}, vb, ""},
+                {"trajectory.jsonl#cells", "|u1", {2, 5}, cb, ""}};
+            const auto once = st::final_once(run);
+            const std::string kept(once[0].data.begin(), once[0].data.end());
+            CHECK(kept.find("\"#trajectory\": [") != std::string::npos && kept.find("\"hv\": 0.75") != std::string::npos &&
+                  st::has_crlf(once[0].data) == crlf);
+            const auto js_once = js::parse(kept);
+            const js::Value* f = js_once.find("final");
+            CHECK(f && f->find("#trajectory")->items.size() == 2 && !f->find("igd") && !f->find("fe") && f->find("ok"));
+            const auto back = st::final_back(once);
+            CHECK(back[0].data == text);
+            const auto body = st::encode_run(run);
+            const auto read = st::decode_run(body.data(), body.size());
+            CHECK(read.size() == run.size() && read[0].data == text && read[2].data == vb);
+        }
+        // the meta table: two rows of one skeleton (one with CR LF), one kept whole
+        std::vector<std::pair<std::string, std::vector<std::uint8_t>>> rows = {
+            {"A|nsga2||1|100", st::meta_text(meta, false)},
+            {"B|nsga2||2|100", st::meta_text(meta, true)},
+            {"C|nsga2||3|100", bytes_of("{\"a\":1}")}};
+        const auto table = st::encode_meta_table(rows);
+        const auto got = st::decode_meta_table(table.data(), table.size());
+        CHECK(got == rows);
+        auto bad = table;
+        bad[bad.size() / 2] ^= 1;
+        bool threw = false;
+        try { st::decode_meta_table(bad.data(), bad.size()); } catch (const std::runtime_error&) { threw = true; }
+        CHECK(threw);
     }
 
     if (failures) {

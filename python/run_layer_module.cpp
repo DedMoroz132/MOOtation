@@ -28,6 +28,7 @@
 #include <mootation/store/crc32c.hpp>
 #include <mootation/store/pack.hpp>
 #include <mootation/store/record.hpp>
+#include <mootation/store/meta_table.hpp>
 #include <mootation/store/record_tables.hpp>
 #include <mootation/store/run_json.hpp>
 #include <mootation/store/text_codec.hpp>
@@ -871,6 +872,35 @@ void bind_run_layer(py::module_& m)
               return out;
           },
           py::arg("blocks"), "[(place, columns)] of the point tables among the blocks (named by their #head).");
+    m.def("store_encode_meta_table",
+          [as_bytes](const py::list& rows) {
+              std::vector<std::pair<std::string, std::vector<std::uint8_t>>> rs;
+              for (const auto& item : rows) {
+                  const auto r = item.cast<py::tuple>();
+                  const std::string d = r[1].cast<py::bytes>();
+                  rs.emplace_back(r[0].cast<std::string>(), std::vector<std::uint8_t>(d.begin(), d.end()));
+              }
+              std::vector<std::uint8_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::store::encode_meta_table(rs);
+              }
+              return as_bytes(out);
+          },
+          py::arg("rows"), "A pack's meta table of [(key, meta.json bytes)] (store/meta_table.hpp).");
+    m.def("store_decode_meta_table",
+          [as_bytes](const py::bytes& data) {
+              const std::string s = data;
+              std::vector<std::pair<std::string, std::vector<std::uint8_t>>> rs;
+              {
+                  py::gil_scoped_release unlock;
+                  rs = mootation::store::decode_meta_table(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+              }
+              py::list out;
+              for (const auto& r : rs) out.append(py::make_tuple(r.first, as_bytes(r.second)));
+              return out;
+          },
+          py::arg("data"), "[(key, meta.json bytes)] of a pack's meta table.");
     m.def("store_final_once",
           [blocks_in, blocks_out](const py::list& blocks) {
               return blocks_out(mootation::store::final_once(blocks_in(blocks)));

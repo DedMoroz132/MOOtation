@@ -3,11 +3,13 @@
 What a campaign with `storage = "store"` writes, byte by byte — enough to
 write a reader in another language. A record's bytes — its blocks, its body,
 its frame — and the files — a segment's record appended, a pack written,
-read and checked — are the library's (`include/mootation/store/record.hpp`,
-`pack.hpp`, over the codecs beside them; the extension's `store_*`
-functions);
-`python/mootation/store.py` keeps the files and what reads JSON (which blocks
-are point tables, meta.json's final once, a pack's meta table).
+read and checked — and what a record reads from its JSON — which blocks
+are point tables, meta.json's final once, a pack's meta table — are the
+library's (`include/mootation/store/record.hpp`, `pack.hpp`, `run_json.hpp`,
+`meta_table.hpp`, over the codecs beside them and `include/mootation/json.hpp`;
+the extension's `store_*` functions); `python/mootation/store.py` finds the
+files, runs compact, merge and export over them, and builds the metrics
+table.
 Everything is little-endian.
 
 ## Files
