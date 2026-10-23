@@ -23,6 +23,7 @@
 #include <mootation/decision_indicators.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
+#include <mootation/store/column_codec.hpp>
 #include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
@@ -663,6 +664,42 @@ void bind_run_layer(py::module_& m)
         .def_property_readonly("reached", &IF::reached)
         .def("distances", [](const IF& a) { return vector_of(a.distances()); },
              "min over the points so far of d+(z, a), for every reference point z");
+
+    // ── the store's column codecs (store/column_codec.hpp; task 17, stage 4) ──
+    m.def("store_encode_f64",
+          [](const Arr& x) {
+              if (x.ndim() != 1) throw std::invalid_argument("store_encode_f64: a 1-D array");
+              std::vector<std::uint8_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::store::encode_f64(x.data(), static_cast<std::size_t>(x.size()));
+              }
+              return py::bytes(reinterpret_cast<const char*>(out.data()), out.size());
+          },
+          py::arg("x"), "A float64 column's bytes (include/mootation/store/column_codec.hpp).");
+    m.def("store_decode_f64",
+          [](const py::bytes& b, std::size_t n) {
+              const std::string s = b;
+              const auto x = mootation::store::decode_f64(reinterpret_cast<const std::uint8_t*>(s.data()), s.size(), n);
+              return vector_of(x);
+          },
+          py::arg("data"), py::arg("n"), "The n values of a float64 column's bytes; an error where they do not hold them.");
+    m.def("store_encode_i64",
+          [](const py::array_t<std::int64_t, py::array::c_style | py::array::forcecast>& x) {
+              if (x.ndim() != 1) throw std::invalid_argument("store_encode_i64: a 1-D array");
+              const auto out = mootation::store::encode_i64(x.data(), static_cast<std::size_t>(x.size()));
+              return py::bytes(reinterpret_cast<const char*>(out.data()), out.size());
+          },
+          py::arg("x"), "An integer column's bytes.");
+    m.def("store_decode_i64",
+          [](const py::bytes& b, std::size_t n) {
+              const std::string s = b;
+              const auto x = mootation::store::decode_i64(reinterpret_cast<const std::uint8_t*>(s.data()), s.size(), n);
+              py::array_t<std::int64_t> out(static_cast<py::ssize_t>(x.size()));
+              std::copy(x.begin(), x.end(), out.mutable_data());
+              return out;
+          },
+          py::arg("data"), py::arg("n"), "The n values of an integer column's bytes.");
 
     // ── a campaign run's accounting (campaign.py's account; run_ledger.hpp) ──
     struct Ledger {
