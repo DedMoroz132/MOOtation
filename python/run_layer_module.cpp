@@ -29,6 +29,7 @@
 #include <mootation/store/pack.hpp>
 #include <mootation/store/record.hpp>
 #include <mootation/store/record_tables.hpp>
+#include <mootation/store/run_json.hpp>
 #include <mootation/store/text_codec.hpp>
 #include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
@@ -815,6 +816,71 @@ void bind_run_layer(py::module_& m)
           py::arg("body"),
           "[(name, dtype, shape, bytes, how)] of a body, the point tables back at their places; how: '' "
           "or the method of a block of before ('zlib', 'shuffle+zlib'), its bytes as stored.");
+    auto blocks_in = [](const py::list& blocks) {
+        std::vector<mootation::store::Block> bs;
+        for (const auto& item : blocks) {
+            const auto t = item.cast<py::tuple>();
+            mootation::store::Block b;
+            b.name = t[0].cast<std::string>();
+            b.dtype = t[1].cast<std::string>();
+            b.shape = t[2].cast<std::vector<std::uint64_t>>();
+            const std::string d = t[3].cast<py::bytes>();
+            b.data.assign(d.begin(), d.end());
+            bs.push_back(std::move(b));
+        }
+        return bs;
+    };
+    m.def("store_encode_run",
+          [as_bytes, blocks_in](const py::list& blocks) {
+              const auto bs = blocks_in(blocks);
+              std::vector<std::uint8_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::store::encode_run(bs);
+              }
+              return as_bytes(out);
+          },
+          py::arg("blocks"),
+          "A run's body (store/run_json.hpp): meta.json's final once, the point tables (named by their "
+          "#head) together in '#points'.");
+    m.def("store_decode_run",
+          [as_bytes](const py::bytes& body) {
+              const std::string s = body;
+              std::vector<mootation::store::Block> bs;
+              {
+                  py::gil_scoped_release unlock;
+                  bs = mootation::store::decode_run(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+              }
+              py::list out;
+              for (const auto& b : bs)
+                  out.append(py::make_tuple(b.name, b.dtype, py::tuple(py::cast(b.shape)), as_bytes(b.data), b.how));
+              return out;
+          },
+          py::arg("body"), "A run's blocks back from its body, meta.json's final rebuilt.");
+    auto blocks_out = [as_bytes](const std::vector<mootation::store::Block>& bs) {
+        py::list out;
+        for (const auto& b : bs)
+            out.append(py::make_tuple(b.name, b.dtype, py::tuple(py::cast(b.shape)), as_bytes(b.data)));
+        return out;
+    };
+    m.def("store_point_tables",
+          [blocks_in](const py::list& blocks) {
+              py::list out;
+              for (const auto& pt : mootation::store::point_tables(blocks_in(blocks)))
+                  out.append(py::make_tuple(pt.place, pt.columns));
+              return out;
+          },
+          py::arg("blocks"), "[(place, columns)] of the point tables among the blocks (named by their #head).");
+    m.def("store_final_once",
+          [blocks_in, blocks_out](const py::list& blocks) {
+              return blocks_out(mootation::store::final_once(blocks_in(blocks)));
+          },
+          py::arg("blocks"), "The blocks with meta.json's final values the trajectory holds alike left to it.");
+    m.def("store_final_back",
+          [blocks_in, blocks_out](const py::list& blocks) {
+              return blocks_out(mootation::store::final_back(blocks_in(blocks)));
+          },
+          py::arg("blocks"), "The blocks with meta.json's final rebuilt from the trajectory.");
     m.def("store_encode_record",
           [as_bytes](const std::string& key, const py::bytes& body) {
               const std::string s = body;
