@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed: the memory of `result.unique_evaluations`. Every distinct point a
+  run evaluated was kept as a tuple of Python floats, about 3 kB a point of
+  100 variables: 3 GB for a run of 10^6 evaluations, and a campaign of
+  eighteen such runs at once exhausted the machine. The points are now
+  remembered by a 16-byte digest (BLAKE2b; `unique.py`): the same count —
+  -0.0 as 0.0, a NaN equal to nothing, as with the tuples — at about 90 MB
+  per 10^6 points. The cache of `budget_counts = "unique"` keeps the points.
+
 - Fixed: a campaign on a problem with a categorical variable (catZDT1).
   With a core, a decision-space indicator on the trajectory failed:
   `current_variables()` gave the real genome only (ten columns for eleven

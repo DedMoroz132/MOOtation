@@ -10178,6 +10178,41 @@ archive_mode = "{mode}"
 
 
 @test
+def distinct_points_are_counted_by_a_digest_as_tuples_would_count_them():
+    """unique.py (task 17, 2026-10-23): the distinct points a run evaluated are
+    remembered by a 16-byte digest, not by a tuple of floats (3 GB at 10^6
+    points of 100 variables). Equal keys, equal digests: -0.0 as 0.0, an int
+    as its float, a label by its repr; a NaN equal to nothing; a row of an
+    array as its tuple. On the direct path (a problem of the C++ suite) the
+    count is the number of distinct rows on_rows sees."""
+    if not _have_numpy():
+        print("  skip  distinct_points...: no NumPy"); return
+    import numpy as np
+    from mootation.unique import _digest, _key, row_digests
+    assert _digest((0.0, 1)) == _digest((-0.0, 1.0)) != _digest((0.0, 2.0))
+    assert _digest(("a", 1.5)) == _digest(("a", 1.5)) != _digest(("b", 1.5))
+    assert _digest((float("nan"),)) != _digest((float("nan"),))
+    X = np.random.default_rng(3).random((300, 7))
+    X[:40] = X[40:80]                                  # repeats
+    X[100, 2] = -0.0; X[101] = X[100]; X[101, 2] = 0.0
+    X[150, 0] = np.nan; X[151] = X[150]               # NaN rows: each its own
+    d = row_digests(X)
+    assert [d[i] for i in range(len(X)) if not np.isnan(X[i]).any()] == \
+        [_digest(_key(r)) for r in X.tolist() if r == r and not any(v != v for v in r)]
+    assert len(set(d)) == len(set(map(tuple, X.tolist()))), (len(set(d)), len(set(map(tuple, X.tolist()))))
+    if _core_with("Native") is None:
+        print("    (direct path skipped: no extension)"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("ZDT1")
+    rows = []
+    r = minimize(p.evaluate, bounds=p.bounds, n_objs=2, algorithm="nsga2", pop_size=20,
+                 max_evaluations=2000, seed=4, native="auto", on_rows=lambda X, F, G: rows.append(X))
+    seen = {tuple(x) for X in rows for x in X.tolist()}
+    assert rows and r.unique_evaluations == len(seen) <= r.evaluations, (r.unique_evaluations, len(seen))
+
+
+@test
 def a_categorical_problem_records_its_variables_with_a_core_and_a_baseline():
     """catZDT1 in a campaign (task 17, the owner's word of 2026-10-23): a
     decision-space indicator on the trajectory reads the problem's eleven

@@ -441,7 +441,7 @@ def minimize(
     # budget_counts = "unique" a repeat is answered from memory.
     if budget_counts not in ("calls", "unique"):
         raise ValueError(f"budget_counts = '{budget_counts}': calls or unique")
-    from .unique import Points
+    from .unique import Points, row_digests
     points = Points(cache=budget_counts == "unique")
     fn = points.fn(fn)
     if constraints is not None:
@@ -499,7 +499,7 @@ def minimize(
         problem.n_limits = n_cons = direct.n_con
 
         def rows_seen(X, F, G, _user=on_rows):
-            points.seen.update(map(tuple, X.tolist()))      # result.unique_evaluations
+            points.seen.update(row_digests(X))              # result.unique_evaluations
             if _user is not None:
                 _user(X, F, G)
         problem.on_rows = rows_seen
