@@ -21,6 +21,7 @@
 
 #include <mootation/archive_select.hpp>
 #include <mootation/decision_indicators.hpp>
+#include <mootation/run_compute.hpp>
 #include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
@@ -413,6 +414,113 @@ void bind_run_layer(py::module_& m)
           },
           py::arg("G"), py::arg("W"),
           "mootation.run.metrics.r2_discrete on the normalised set G and the weights W.");
+    // ── metrics.compute as a whole (run_compute.hpp; task 17, stage 2b) ──────
+    m.def("compute_indicators",
+          [](const Arr& F, const std::vector<std::string>& which, const py::object& ref,
+             const py::object& ideal, const py::object& nadir, std::size_t pop, int exact_max_m,
+             std::size_t mc_samples, std::uint64_t seed, const std::string& hv_algo, const py::object& X,
+             const py::object& pareto_set, const py::object& lo, const py::object& hi,
+             std::vector<std::size_t> cyclic, const py::object& feasible, const py::object& V,
+             const py::object& g, double ref_step) {
+              namespace rc = mootation::run_compute;
+              if (hv_algo != "auto" && hv_algo != "wfg" && hv_algo != "box")
+                  throw std::invalid_argument("compute_indicators: hv_algo = '" + hv_algo + "': auto, wfg or box");
+              Rows f = rows_of(F, "compute_indicators: F");
+              rc::Context c;
+              c.m = f.m;
+              Rows r, x, p;
+              if (!ref.is_none()) {
+                  r = rows_of(Arr::ensure(ref), "compute_indicators: ref");
+                  if (r.m != f.m) throw std::invalid_argument("compute_indicators: F and ref need the same columns");
+                  c.ref = r.v.data();
+                  c.ref_n = r.n;
+              }
+              c.ideal = frame_of(ideal, f.m, "compute_indicators: ideal");
+              c.nadir = frame_of(nadir, f.m, "compute_indicators: nadir");
+              c.has_frame = !ideal.is_none() && !nadir.is_none();
+              c.pop = pop;
+              c.exact_max_m = exact_max_m;
+              c.mc_samples = mc_samples;
+              c.seed = seed;
+              c.hv_algo = hv_algo;
+              rc::Rows rows;
+              rows.F = f.v.data();
+              rows.n = f.n;
+              if (!X.is_none()) {
+                  x = rows_of(Arr::ensure(X), "compute_indicators: X");
+                  if (x.n != f.n) throw std::invalid_argument("compute_indicators: X needs a row per row of F");
+                  rows.X = x.v.data();
+                  rows.d = x.m;
+              }
+              // the sample and the bounds are read with the variables only
+              if (!X.is_none() && !pareto_set.is_none()) {
+                  p = rows_of(Arr::ensure(pareto_set), "compute_indicators: pareto_set");
+                  if (p.n && p.m != x.m) throw std::invalid_argument("compute_indicators: X and the sample need the same columns");
+                  c.pset = p.v.data();
+                  c.pset_n = p.n;
+              }
+              if (!X.is_none() && !lo.is_none() && !hi.is_none()) {
+                  c.lo = frame_of(lo, x.m, "compute_indicators: lo");
+                  c.hi = frame_of(hi, x.m, "compute_indicators: hi");
+                  c.has_bounds = true;
+              }
+              for (std::size_t j : cyclic)
+                  if (!X.is_none() && j >= x.m) throw std::invalid_argument("compute_indicators: a cyclic index past the variables");
+              if (!X.is_none()) c.cyclic = std::move(cyclic);
+              c.ref_step = ref_step;
+              std::vector<char> ok;
+              std::vector<double> viol, dist;
+              auto per_row = [&](const py::object& o, const char* what) {
+                  Arr a = Arr::ensure(o);
+                  if (!a || a.ndim() != 1 || static_cast<std::size_t>(a.shape(0)) != f.n)
+                      throw std::invalid_argument(std::string("compute_indicators: ") + what + ": one value per row");
+                  return std::vector<double>(a.data(), a.data() + f.n);
+              };
+              if (!feasible.is_none()) {
+                  for (double v : per_row(feasible, "feasible")) ok.push_back(v != 0.0 ? 1 : 0);
+                  rows.constrained = true;
+                  rows.feasible = ok.data();
+              }
+              if (!V.is_none()) { viol = per_row(V, "V"); rows.V = viol.data(); }
+              if (!g.is_none()) { dist = per_row(g, "g"); rows.g = dist.data(); }
+              rc::Out out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = rc::compute(rows, c, which);
+              }
+              py::list items;
+              for (const auto& kv : out.items) {
+                  const rc::Value& v = kv.second;
+                  py::object o;
+                  switch (v.kind) {
+                  case rc::Value::None: o = py::none(); break;
+                  case rc::Value::Real: o = py::float_(v.real); break;
+                  case rc::Value::Int: o = py::int_(v.integer); break;
+                  case rc::Value::Bool: o = py::bool_(v.flag); break;
+                  case rc::Value::Text: o = py::str(v.text); break;
+                  case rc::Value::List: {
+                      py::list l;
+                      for (double e : v.list) l.append(py::float_(e));
+                      o = l;
+                      break;
+                  }
+                  case rc::Value::Dict: {
+                      py::dict dct;
+                      for (const auto& e : v.dict) dct[py::str(e.first)] = py::float_(e.second);
+                      o = dct;
+                      break;
+                  }
+                  }
+                  items.append(py::make_tuple(kv.first, o));
+              }
+              return items;
+          },
+          py::arg("F"), py::arg("which"), py::arg("ref"), py::arg("ideal"), py::arg("nadir"), py::arg("pop"),
+          py::arg("exact_max_m"), py::arg("mc_samples"), py::arg("seed"), py::arg("hv_algo"), py::arg("X"),
+          py::arg("pareto_set"), py::arg("lo"), py::arg("hi"), py::arg("cyclic"), py::arg("feasible"),
+          py::arg("V"), py::arg("g"), py::arg("ref_step"),
+          "mootation.run.metrics.compute's (name, value) pairs in its order, the same values "
+          "(include/mootation/run_compute.hpp); range_cover_each unrounded.");
 
     // ── the run archive (archive.py, GridArchive) ──────────────────────────
     using GA = mootation::GridArchive;

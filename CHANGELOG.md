@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- In C++ (task 17, stage 2b): `metrics.compute` as a whole
+  (`include/mootation/run_compute.hpp`), every indicator by name in the same
+  order with the same values; the Python stays as the reference
+  (`metrics._compute_numpy`).
+
 - Added (task 17, supplement 2, §1.3): a problem can say it is stochastic —
   `minimize(stochastic=True)`, an optional `is_stochastic()` in C++
   (`problem.hpp`), `BenchProblem.stochastic` (the noisy copies of kinds n and
