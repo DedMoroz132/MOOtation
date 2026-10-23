@@ -20,7 +20,7 @@ sys.path.insert(0, str(HERE))
 import points as P           # noqa: E402
 import reference as R        # noqa: E402
 
-ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot")
+ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot", "asin", "atan")
 
 
 def _chunk(args):

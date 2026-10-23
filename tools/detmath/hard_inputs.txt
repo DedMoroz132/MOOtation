@@ -1,5 +1,9 @@
 acos 0x1.dffffb3488a40p-1
 acos 0x1.6c05eb219ec46p-1
+asin -0x1.0000045b2c904p-3
+asin 0x1.6c042a6378102p-1
+atan 0x1.f9004c4fef9eap-4
+atan -0x1.ffff8020d3d1dp-7
 cos -0x1.7120161c92674p+0
 exp -0x1.49f33ad2c1c58p+9
 exp 0x1.fce66609f7428p+5
@@ -14,6 +18,10 @@ pow 0x1.010e2e7ee71aep+0 0x1.44bf0047427f6p+17
 pow 0x1.fffff9c61ce40p-1 0x1.c4e304ed4c734p+31
 acos 0x1.35b03e336a82bp-1
 acos -0x1.0068b067c6feep-1
+asin -0x1.00d44cccfa990p-1
+asin -0x1.004d1c5a9400bp-1
+atan -0x1.60370d15396b7p-1
+atan 0x1.62ff6a1682c25p-1
 exp 0x1.b97dc8345c550p+5
 exp 0x1.2e8f20cf3cbe7p+8
 log 0x1.108058fed54b3p+0
@@ -30,6 +38,10 @@ pow 0x1.000002c5e2e99p+0 0x1.c9eee35374af6p+31
 pow 0x1.010e2e7ec0c83p+0 0x1.44bf00479249dp+17
 acos -0x1.8d313198a2e03p-53
 acos -0x1.cb3b399d747f3p-55
+asin 0x1.eaeca101513d2p-2
+asin -0x1.7137449123ef6p-26
+atan 0x1.01e0be37af68fp+1
+atan -0x1.085b3fdb46cb0p+0
 cos 0x1.2f29eb4e99fa2p+7
 cos 0x1.16e534ee36580p-4
 exp -0x1.4133f4fd79c1cp-13
@@ -43,14 +55,21 @@ hypot 0x1.a308e1455f447p+0 0x1.9d931a83ef879p+0
 pow 0x1.111616f835fb1p-72 0x1.c6cfa07925d49p+3
 pow 0x1.b4234939ab74ap+997 0x1.59ccddd614389p+62
 acos -0x1.01f97a9d82a5dp-1
+asin 0x1.003d8c089658bp-1
 cos -0x1.9200634d4471fp-1
 exp -0x1.fffffffa00000p-27
 log 0x1.0ffc349469a2fp+0
 sin -0x1.11b624b546894p+9
 tan -0x1.4d7c8b8320237p+11
 acos 0x1.251869c3f7881p-1
+asin 0x1.0479b37d95e5cp-1
+atan 0x1.032b4811f3dc5p+0
 acos 0x1.266637a3d2bbcp-1
 acos -0x1.3702dc3201849p-1
+asin -0x1.2ef2481799c7cp-1
+asin 0x1.df2c6032adcd8p-2
+atan 0x1.52184b1b9bd9bp+0
+atan 0x1.00bb805435ccfp+0
 cos 0x1.25133ca3904dfp+20
 cos 0x1.2a33ae1a620b1p+1
 exp -0x1.625f1b359729ep+9

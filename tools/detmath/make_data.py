@@ -34,7 +34,7 @@ import reference as R        # noqa: E402
 ROOT = HERE.parents[1]
 OUT = ROOT / "tests" / "data" / "detmath_reference.txt"
 N = 20000
-ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot")
+ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot", "asin", "atan")
 
 
 def steps_between(a, b):

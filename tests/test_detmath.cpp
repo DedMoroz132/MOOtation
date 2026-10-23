@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // detmath.hpp (task 14 of 2026-10-20, §2 and supplement 2): the library's own
-// exp, log, pow, sin, cos, tan, acos, hypot.
+// exp, log, pow, sin, cos, tan, acos, hypot; asin and atan (task 17,
+// supplement 3, stage 3a: MW5-8).
 //   * Accuracy and bits: 2 * 10^4 points a function (made here from integers,
 //     the same doubles as tools/detmath/points.py makes) and the hard inputs
 //     of tools/detmath/hard_inputs.txt, against tests/data/detmath_reference.txt
@@ -136,6 +137,28 @@ Point acos_point(SplitMix64& g, int block)
     return {g.signed_(v), 0.0};
 }
 
+Point atan_point(SplitMix64& g, int block)
+{
+    if (block == 0)
+        return {g.between(-1.0, 1.0), 0.0};
+    if (block == 1) {
+        const double v = g.binade(1023 - 30, 1023 + 30);
+        return {g.signed_(v), 0.0};
+    }
+    if (block == 2) {
+        const double seams[3] = {0.2679491924311227, 1.0, 3.7320508075688772};
+        const double x = seams[g.below(3)];
+        const double v = step(x, static_cast<int>(g.below(2001)) - 1000);
+        return {g.signed_(v), 0.0};
+    }
+    if (block == 3) {
+        const double v = g.binade(1023 + 30, 2046);
+        return {g.signed_(v), 0.0};
+    }
+    const double v = g.binade(0, 1023 - 30);
+    return {g.signed_(v), 0.0};
+}
+
 Point exp_point(SplitMix64& g, int block)
 {
     if (block == 0)
@@ -231,6 +254,8 @@ const std::vector<Function>& functions()
         {"tan", 6, {3, 3, 2, 1, 1}, trig_point, [](double x, double) { return dm::tan(x); }, 2.0},
         {"acos", 7, {4, 2, 2, 2}, acos_point, [](double x, double) { return dm::acos(x); }, 2.0},
         {"hypot", 8, {5, 5}, hypot_point, [](double x, double y) { return dm::hypot(x, y); }, 2.0},
+        {"asin", 9, {4, 2, 2, 2}, acos_point, [](double x, double) { return dm::asin(x); }, 2.0},
+        {"atan", 10, {3, 3, 2, 1, 1}, atan_point, [](double x, double) { return dm::atan(x); }, 2.0},
     };
     return fs;
 }
@@ -346,7 +371,7 @@ void check_reference()
         ++at;
     }
     close();
-    check(sections == 8, "eight functions in the reference file");
+    check(sections == 10, "ten functions in the reference file");
 }
 
 // ── Annex F ─────────────────────────────────────────────────────────────────
@@ -404,6 +429,20 @@ void check_special()
         {"acos(1.5)", dm::acos(1.5), nan},
         {"acos(-inf)", dm::acos(-inf), nan},
         {"acos(NaN)", dm::acos(nan), nan},
+        // F.10.1.2, F.10.1.3
+        {"asin(+0)", dm::asin(0.0), 0.0},
+        {"asin(-0)", dm::asin(-0.0), -0.0},
+        {"asin(1)", dm::asin(1.0), 0x1.921fb54442d18p+0},
+        {"asin(-1)", dm::asin(-1.0), -0x1.921fb54442d18p+0},
+        {"asin(1.5)", dm::asin(1.5), nan},
+        {"asin(-inf)", dm::asin(-inf), nan},
+        {"asin(NaN)", dm::asin(nan), nan},
+        {"atan(+0)", dm::atan(0.0), 0.0},
+        {"atan(-0)", dm::atan(-0.0), -0.0},
+        {"atan(+inf)", dm::atan(inf), 0x1.921fb54442d18p+0},
+        {"atan(-inf)", dm::atan(-inf), -0x1.921fb54442d18p+0},
+        {"atan(1)", dm::atan(1.0), 0x1.921fb54442d18p-1},
+        {"atan(NaN)", dm::atan(nan), nan},
         // F.10.4.4
         {"hypot(3, +0)", dm::hypot(3.0, 0.0), 3.0},
         {"hypot(-3, -0)", dm::hypot(-3.0, -0.0), 3.0},
@@ -481,6 +520,8 @@ bool monotonic(double (*f)(double), double x0, int count, int dir)
 double f_exp(double x) { return dm::exp(x); }
 double f_log(double x) { return dm::log(x); }
 double f_acos(double x) { return dm::acos(x); }
+double f_asin(double x) { return dm::asin(x); }
+double f_atan(double x) { return dm::atan(x); }
 double f_sin(double x) { return dm::sin(x); }
 double f_cos(double x) { return dm::cos(x); }
 double f_tan(double x) { return dm::tan(x); }
@@ -515,6 +556,16 @@ void check_monotonic()
     ok = ok && monotonic(f_acos, step(1.0, -2 * run), 2 * run, -1);
     check(ok, "acos decreases across its branches");
     ok = true;
+    // asin: the branches at +-1/2, near +-1, 0; atan: the seams 2 - sqrt 3, 1,
+    // 2 + sqrt 3 of the reduction, either sign, and 0
+    for (double x0 : {-1.0, -0.5, 0.0, 0.5})
+        ok = ok && monotonic(f_asin, x0 == -1.0 ? -1.0 : step(x0, -run), 2 * run, 1);
+    ok = ok && monotonic(f_asin, step(1.0, -2 * run), 2 * run, 1);
+    for (double x0 : {0.2679491924311227, 1.0, 3.7320508075688772})
+        ok = ok && monotonic(f_atan, step(x0, -run), 2 * run, 1) && monotonic(f_atan, step(-x0, -run), 2 * run, 1);
+    ok = ok && monotonic(f_atan, step(0.0, -run), 2 * run, 1);
+    check(ok, "asin and atan increase across their branches and seams");
+    ok = true;
     // sin increasing, cos decreasing on (-pi/2, pi/2) / (0, pi) across the seam
     // of the reduction at pi/4; tan increasing across its seams k pi/2 + pi/4
     ok = ok && monotonic(f_sin, step(0.7853981633974483, -run), 2 * run, 1);
@@ -536,6 +587,13 @@ void check_symmetry()
              same_bits(dm::tan(-x), -dm::tan(x));
     }
     check(ok, "sin and tan odd, cos even, bit for bit");
+    ok = true;
+    for (int i = 0; i < 100000; ++i) {
+        const double x = g.between(0.0, 1.0), y = g.between(0.0, 1e4);
+        ok = ok && same_bits(dm::asin(-x), -dm::asin(x)) && same_bits(dm::atan(-y), -dm::atan(y)) &&
+             same_bits(dm::atan(-x), -dm::atan(x));
+    }
+    check(ok, "asin and atan odd, bit for bit");
     check(dm::trig_in_domain(kTrigMax) && dm::trig_in_domain(-kTrigMax) &&
               !dm::trig_in_domain(std::nextafter(kTrigMax, 2e6)) && !dm::trig_in_domain(-1.7e6),
           "trig_in_domain: |x| <= 2^20 pi/2");

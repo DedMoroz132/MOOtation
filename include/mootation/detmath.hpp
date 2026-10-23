@@ -12,7 +12,8 @@
 //
 // The functions, written for this library, in the namespace dm: exp, log,
 // pow, sin, cos, tan, acos, hypot — the elementary functions the cores,
-// operators, distributions and the suite of problems call (task 14, D7.1).
+// operators, distributions and the suite of problems call (task 14, D7.1) —
+// and asin and atan (task 17, supplement 3, stage 3a: the suite's MW5-8).
 // Accuracy: within 1 ulp for exp, log, sin, cos; within 2 ulp for the rest;
 // measured against values to 60 digits (tools/detmath/, tests/test_detmath.cpp,
 // the table in tests/data/README.md). Special values (zeros, infinities,
@@ -38,6 +39,9 @@
 //            parts); kernels on |r| <= pi/4; tan as the quotient of the two
 //            kernels in double-word arithmetic
 //   acos     Cody & Waite, ch. 10 (asin of the half angle near +-1)
+//   asin     ibid., ch. 10, acos's kernel
+//   atan     ibid., ch. 11 (the reduction to |f| <= 2 - sqrt 3), the reduced
+//            argument carried as a double-word number
 //   hypot    C. F. Borges, Algorithm 1014, ACM TOMS 47(1), 2020: scaling by a
 //            power of two, h = sqrt(x^2 + y^2) corrected by tau / (2h) as in
 //            his Algorithm 5, with Dekker's exact products for his FMAs
@@ -380,6 +384,96 @@ inline double acos(double x)
         return 2.0 * (s + tail);
     const detail::DW a = detail::two_sum(coeffs::kPiHi, -2.0 * s);
     return a.h + (a.l + (coeffs::kPiLo - 2.0 * tail));
+}
+
+// ── asin, atan ──────────────────────────────────────────────────────────────
+
+// asin x (Cody & Waite 1980, ch. 10), acos's kernel: |x| <= 1/2: x + x^3
+// A(x^2); |x| > 1/2: pi/2 - 2 asin s, s = sqrt((1 - |x|)/2), the rounding
+// error of the square root carried (Dekker's exact product). Odd, exactly.
+inline double asin(double x)
+{
+    if (x != x)
+        return x;                                      // NaN
+    const double ax = std::fabs(x);
+    if (ax > 1.0)
+        return std::numeric_limits<double>::quiet_NaN();
+    if (ax <= 0.5)
+        return x + x * detail::asin_tail(x * x);
+    const double z = (1.0 - ax) * 0.5;                  // exact
+    if (z == 0.0)
+        return x > 0.0 ? coeffs::kPio2Hi : -coeffs::kPio2Hi;
+    const double s = std::sqrt(z);
+    const detail::DW ss = detail::two_prod(s, s);
+    const double sl = ((z - ss.h) - ss.l) / (2.0 * s);  // sqrt(z) ~ s + sl
+    const double tail = sl + s * detail::asin_tail(z);  // asin sqrt(z) ~ s + tail
+    const detail::DW a = detail::two_sum(coeffs::kPio2Hi, -2.0 * s);
+    const double r = a.h + (a.l + (coeffs::kPio2Lo - 2.0 * tail));
+    return x > 0.0 ? r : -r;
+}
+
+namespace detail {
+
+// atan f - f = f^3 T(f^2), |f| <= 2 - sqrt 3; returns t T(t) for t = f^2.
+MOOTATION_FORCEINLINE double atan_tail(double t)
+{
+    constexpr int n = static_cast<int>(sizeof(coeffs::kAtan) / sizeof(coeffs::kAtan[0]));
+    double p = coeffs::kAtan[n - 1];
+    for (int i = n - 2; i >= 0; --i)
+        p = coeffs::kAtan[i] + t * p;
+    return t * p;
+}
+
+}   // namespace detail
+
+// atan x (Cody & Waite 1980, ch. 11): f = |x|, 1/f above 1 (atan = pi/2 -
+// atan f), then (sqrt3 f - 1) / (sqrt3 + f) above 2 - sqrt 3 (atan = pi/6 +
+// atan f), so that |f| <= 2 - sqrt 3; atan f = f + f^3 T(f^2); pi/6, pi/2,
+// pi/3 added as hi + lo. Their reduction in plain floating point loses up to
+// two ulps near its seams (sqrt3 f - 1 cancels); here f is carried as a
+// double-word number through it (Joldes et al. 2017, Algorithms 4, 6, 7, 17).
+// Odd, exactly; atan(+-inf) = +-pi/2.
+inline double atan(double x)
+{
+    if (x != x)
+        return x;                                      // NaN
+    double f = std::fabs(x);
+    if (f == std::numeric_limits<double>::infinity())
+        return std::signbit(x) ? -coeffs::kPio2Hi : coeffs::kPio2Hi;
+    double fl = 0.0;                                    // f + fl
+    int n = 0;
+    if (f > 1.0) {
+        const double r = 1.0 / f;
+        if (f < 0x1p500) {                              // Dekker's split of f stays finite
+            const detail::DW p = detail::two_prod(f, r);
+            fl = ((1.0 - p.h) - p.l) / f;               // 1/f ~ r + fl
+        }
+        f = r;
+        n = 2;
+    }
+    if (f > coeffs::kTwoMinusSqrt3) {
+        const detail::DW s3{coeffs::kSqrt3Hi, coeffs::kSqrt3Lo};
+        detail::DW num = detail::dw_times_fp(s3, f);
+        num = detail::dw_plus_fp(detail::DW{num.h, num.l + coeffs::kSqrt3Hi * fl}, -1.0);
+        const detail::DW den = detail::dw_plus_dw(s3, detail::DW{f, fl});
+        const detail::DW q = detail::dw_div_dw(num, den);
+        f = q.h;
+        fl = q.l;
+        ++n;
+    }
+    const double rl = fl + f * detail::atan_tail(f * f);   // atan(f + fl) ~ f + rl
+    double v = f + rl;
+    if (n == 1) {
+        const detail::DW a = detail::two_sum(coeffs::kPio6Hi, f);
+        v = a.h + (a.l + (coeffs::kPio6Lo + rl));
+    } else if (n == 2) {
+        const detail::DW a = detail::two_sum(coeffs::kPio2Hi, -f);
+        v = a.h + (a.l + (coeffs::kPio2Lo - rl));
+    } else if (n == 3) {
+        const detail::DW a = detail::two_sum(coeffs::kPio3Hi, -f);
+        v = a.h + (a.l + (coeffs::kPio3Lo - rl));
+    }
+    return std::signbit(x) ? -v : v;
 }
 
 // ── hypot ───────────────────────────────────────────────────────────────────
