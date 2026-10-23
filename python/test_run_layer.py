@@ -7746,7 +7746,8 @@ def doc_follows_its_supplement_and_its_fronts_hold():
         _, ineq, eq = D.evaluate(i, lo)
         p = get(f"DOC{i}")
         assert (p.n_vars, len(ineq), len(eq), p.n_eq) == (n, nic, nec, nec), i
-        c = p.constraints(lo)
+        # doc.py's own (the C++ suite's agree to a few ulps: the_suite_gives_numpys_values)
+        c = ((p.reference or {}).get("constraints") or p.constraints)(lo)
         assert c[:nic] == ineq and c[nic:] == [abs(h) - 1e-4 for h in eq], i
     # at g = 1 the objectives are the unconstrained front's
     x = [0.25, 193.724510070035, 20.0, 20.0, 200.0, 6.5, 6.0, 5.0]
