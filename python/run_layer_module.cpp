@@ -25,6 +25,7 @@
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
+#include <mootation/store/record.hpp>
 #include <mootation/store/record_tables.hpp>
 #include <mootation/store/text_codec.hpp>
 #include <mootation/run_metrics.hpp>
@@ -763,6 +764,82 @@ void bind_run_layer(py::module_& m)
               return out;
           },
           py::arg("data"), py::arg("n"), "The n values of an integer column's bytes.");
+
+    // ── a record of the store, format 3 (store/record.hpp; task 17, §3а.3) ──
+    auto as_bytes = [](const std::vector<std::uint8_t>& v) {
+        return py::bytes(reinterpret_cast<const char*>(v.data()), v.size());
+    };
+    m.def("store_encode_body",
+          [as_bytes](const py::list& blocks, const py::list& tables) {
+              std::vector<mootation::store::Block> bs;
+              for (const auto& item : blocks) {
+                  const auto t = item.cast<py::tuple>();
+                  mootation::store::Block b;
+                  b.name = t[0].cast<std::string>();
+                  b.dtype = t[1].cast<std::string>();
+                  b.shape = t[2].cast<std::vector<std::uint64_t>>();
+                  const std::string d = t[3].cast<py::bytes>();
+                  b.data.assign(d.begin(), d.end());
+                  bs.push_back(std::move(b));
+              }
+              std::vector<mootation::store::PointTable> ts;
+              for (const auto& item : tables) {
+                  const auto t = item.cast<py::tuple>();
+                  ts.push_back({t[0].cast<std::size_t>(), t[1].cast<std::vector<std::string>>()});
+              }
+              std::vector<std::uint8_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::store::encode_body(bs, ts);
+              }
+              return as_bytes(out);
+          },
+          py::arg("blocks"), py::arg("tables"),
+          "A record's body (include/mootation/store/record.hpp): blocks [(name, dtype, shape, bytes)], "
+          "the point tables [(place, columns)] together in '#points'.");
+    m.def("store_decode_body",
+          [as_bytes](const py::bytes& body) {
+              const std::string s = body;
+              std::vector<mootation::store::Block> bs;
+              {
+                  py::gil_scoped_release unlock;
+                  bs = mootation::store::decode_body(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+              }
+              py::list out;
+              for (const auto& b : bs)
+                  out.append(py::make_tuple(b.name, b.dtype, py::tuple(py::cast(b.shape)), as_bytes(b.data), b.how));
+              return out;
+          },
+          py::arg("body"),
+          "[(name, dtype, shape, bytes, how)] of a body, the point tables back at their places; how: '' "
+          "or the method of a block of before ('zlib', 'shuffle+zlib'), its bytes as stored.");
+    m.def("store_encode_record",
+          [as_bytes](const std::string& key, const py::bytes& body) {
+              const std::string s = body;
+              return as_bytes(mootation::store::encode_record(key, std::vector<std::uint8_t>(s.begin(), s.end())));
+          },
+          py::arg("key"), py::arg("body"), "A record's bytes: its frame around the body.");
+    m.def("store_parse_record",
+          [](const py::buffer& buf, std::size_t at) -> py::object {
+              // the caller's bytes as they are (a segment's, read whole): no copy
+              const py::buffer_info info = buf.request();
+              if (info.itemsize != 1 || info.ndim != 1)
+                  throw std::invalid_argument("store_parse_record: bytes");
+              const auto* p = static_cast<const std::uint8_t*>(info.ptr);
+              const auto r = mootation::store::parse_record(p, static_cast<std::size_t>(info.size), at);
+              if (!r.ok) return py::none();
+              return py::make_tuple(r.key, py::bytes(reinterpret_cast<const char*>(p + r.body), r.body_size),
+                                    r.crc, r.end);
+          },
+          py::arg("buf"), py::arg("at"),
+          "(key, body, crc, end) of the whole, sound record at `at` in buf, or None.");
+    m.def("sha256",
+          [](const py::bytes& b) {
+              const std::string s = b;
+              const auto h = mootation::store::sha256(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+              return py::bytes(reinterpret_cast<const char*>(h.data()), h.size());
+          },
+          py::arg("data"), "SHA-256 of the bytes (include/mootation/store/sha256.hpp).");
 
     // ── a campaign run's accounting (campaign.py's account; run_ledger.hpp) ──
     struct Ledger {

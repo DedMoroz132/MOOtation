@@ -1,9 +1,11 @@
 # The campaign store, format 3
 
 What a campaign with `storage = "store"` writes, byte by byte — enough to
-write a reader in another language. The implementation is
-`python/mootation/store.py` (the files, the blocks) over the library's codecs
-in `include/mootation/store/` (C++; the extension's `store_*` functions).
+write a reader in another language. A record's bytes — its blocks, its body,
+its frame — are the library's (`include/mootation/store/record.hpp` over the
+codecs beside it; the extension's `store_*` functions);
+`python/mootation/store.py` keeps the files and what reads JSON (which blocks
+are point tables, meta.json's final once, a pack's meta table).
 Everything is little-endian.
 
 ## Files

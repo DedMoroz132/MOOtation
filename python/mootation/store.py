@@ -89,6 +89,14 @@ read from there — meta.json keeps the keys' order ("#keys") and which come
 from the trajectory ("#trajectory"), and reading gives its bytes back (the
 writer checks that it does, else keeps meta.json whole). Reading format 3
 needs the extension; formats 1 and 2 are read as before.
+
+ONE IMPLEMENTATION (task 17, §3а.3): a format-3 record's bytes — its blocks,
+its body with "#points", its frame — are written and read by the library
+(include/mootation/store/record.hpp, the extension's store_encode_body,
+store_decode_body, store_encode_record, store_parse_record). What reads JSON
+stays here: which blocks are point tables (their "#head"), meta.json's final
+once and back, the pack's meta table. Without the extension this module
+writes and reads format 2 (zlib) by itself.
 """
 
 from __future__ import annotations
@@ -192,21 +200,6 @@ def _codec():
     return _core if hasattr(_core, "store_encode_tables") else None
 
 
-def _own_codec(b: Block):
-    """(name, payload) of the library's own codec for an array block, or None."""
-    import numpy as np
-    c = _codec()
-    if c is None or b.dtype in ("json", "text", "bytes"):
-        return None
-    dt = np.dtype(b.dtype)
-    a = np.frombuffer(b.data, dt)
-    if dt == np.dtype("<f8"):
-        return "f64", bytes(c.store_encode_f64(a))
-    if dt.kind in "iu" and dt.itemsize <= 8 and dt != np.dtype("<u8") and dt.byteorder in "<|=":
-        return "i64", bytes(c.store_encode_i64(a.astype(np.int64)))
-    return None
-
-
 def encode_block(b: Block) -> bytes:
     c = _codec()
     if c is None:
@@ -219,21 +212,9 @@ def encode_block(b: Block) -> bytes:
             if len(shuffled) < len(payload):
                 how, payload = "shuffle+zlib", shuffled
     else:
-        # format 3: the library's own codecs only (task 17, §3а.2: no Deflate):
-        # float64 and integers by their column codecs, bytes by the text codec,
-        # other arrays (float32) by the text codec shuffled or not; #points is
-        # coded already
-        own = _own_codec(b)
-        if b.name == "#points":
-            how, payload = "raw", b.data
-        elif own is not None:
-            how, payload = own
-        else:
-            how, payload = "text", bytes(c.store_encode_text(b.data))
-            if b.dtype not in ("json", "text", "bytes"):
-                shuffled = bytes(c.store_encode_text(shuffle(b.data, _itemsize(b.dtype))))
-                if len(shuffled) < len(payload):
-                    how, payload = "shuffle+text", shuffled
+        # format 3: the library's (record.hpp: float64 and integers by their
+        # column codecs, the rest by the text codec, an array shuffled or not)
+        return bytes(c.store_encode_body([(b.name, b.dtype, list(b.shape), b.data)], []))[4:]
     if len(payload) >= len(b.data):
         how, payload = "raw", b.data
     name, dt, hw = b.name.encode(), b.dtype.encode(), how.encode()
@@ -244,6 +225,17 @@ def encode_block(b: Block) -> bytes:
 
 
 def decode_blocks(body: bytes) -> list:
+    c = _codec()
+    if c is not None:
+        out = []
+        for name, dtype, shape, data, how in c.store_decode_body(body):
+            if how == "zlib":
+                data = zlib.decompress(data)
+            elif how == "shuffle+zlib":
+                data = unshuffle(zlib.decompress(data), _itemsize(dtype))
+            out.append(Block(name, dtype, tuple(shape), bytes(data)))
+        return _final_back(out)
+    # without the extension: formats 1 and 2
     out = []
     (count,) = struct.unpack_from("<I", body, 0)
     at = 4
@@ -265,26 +257,13 @@ def decode_blocks(body: bytes) -> list:
         elif how == "shuffle+zlib":
             data = unshuffle(zlib.decompress(payload), _itemsize(dtype))
         elif how in ("f64", "i64", "text", "shuffle+text"):
-            data = _own_decode(name, how, dtype, shape, payload)
+            raise ValueError(f"block {name!r}: format 3 ({how}) needs the compiled extension")
         else:
             raise ValueError(f"block {name!r}: unknown compression {how!r}")
         out.append(Block(name, dtype, tuple(shape), data))
-    return _final_back(_points_back(out))
-
-
-def _own_decode(name: str, how: str, dtype: str, shape, payload: bytes) -> bytes:
-    import numpy as np
-    c = _codec()
-    if c is None:
-        raise ValueError(f"block {name!r}: format 3 ({how}) needs the compiled extension")
-    if how == "text":
-        return bytes(c.store_decode_text(payload))
-    if how == "shuffle+text":
-        return unshuffle(bytes(c.store_decode_text(payload)), _itemsize(dtype))
-    n = int(np.prod(shape)) if len(shape) else 1
-    if how == "f64":
-        return np.asarray(c.store_decode_f64(payload, n), "<f8").tobytes()
-    return np.asarray(c.store_decode_i64(payload, n)).astype(np.dtype(dtype)).tobytes()
+    if any(b.name == "#points" for b in out):
+        raise ValueError("block '#points': format 3 needs the compiled extension")
+    return out
 
 
 # ── format 3: the record's point sets together ──────────────────────────────
@@ -307,28 +286,6 @@ def _point_tables(blocks: list) -> list:
                 and all(isinstance(c, str) for c in cols) and len(cols) == b.shape[1]):
             out.append((i, b, cols))
     return out
-
-
-def _points_back(blocks: list) -> list:
-    """Blocks with "#points" expanded: every table back at its place."""
-    import numpy as np
-    at = next((i for i, b in enumerate(blocks) if b.name == "#points"), None)
-    if at is None:
-        return blocks
-    data = blocks[at].data
-    (k,) = struct.unpack_from("<I", data, 0)
-    places = struct.unpack_from(f"<{k}I", data, 4)
-    c = _codec()
-    if c is None:
-        raise ValueError("block '#points': format 3 needs the compiled extension")
-    tables = c.store_decode_tables(data[4 + 4 * k:])
-    if len(tables) != k:
-        raise ValueError("block '#points': its tables and places differ in number")
-    rest = blocks[:at] + blocks[at + 1:]
-    for place, (name, _cols, A) in sorted(zip(places, tables), key=lambda t: t[0]):
-        A = np.ascontiguousarray(A, "<f8")
-        rest.insert(place, Block(name, "<f8", tuple(A.shape), A.tobytes()))
-    return rest
 
 
 def _last_record(by: dict, name: str = "trajectory.jsonl"):
@@ -409,20 +366,12 @@ def _final_back(blocks: list) -> list:
 
 
 def encode_body(blocks: list) -> bytes:
-    import numpy as np
     c = _codec()
-    if c is not None:
-        blocks = _final_once(blocks)
-    tables = _point_tables(blocks) if c is not None else []
-    if tables:
-        coded = bytes(c.store_encode_tables([
-            (b.name, cols, np.frombuffer(b.data, "<f8").reshape(b.shape)) for _, b, cols in tables]))
-        places = [i for i, _, _ in tables]
-        points = Block("#points", "bytes", (), struct.pack("<I", len(places))
-                       + struct.pack(f"<{len(places)}I", *places) + coded)
-        taken = set(places)
-        blocks = [b for i, b in enumerate(blocks) if i not in taken] + [points]
-    return struct.pack("<I", len(blocks)) + b"".join(encode_block(b) for b in blocks)
+    if c is None:                                       # format 2
+        return struct.pack("<I", len(blocks)) + b"".join(encode_block(b) for b in blocks)
+    blocks = _final_once(blocks)
+    return bytes(c.store_encode_body([(b.name, b.dtype, list(b.shape), b.data) for b in blocks],
+                                     [(i, cols) for i, _, cols in _point_tables(blocks)]))
 
 
 _CRC32C_TABLE: list = []
@@ -446,6 +395,9 @@ def crc32c(data: bytes) -> int:
 
 
 def encode_record(key: str, body: bytes) -> bytes:
+    c = _codec()
+    if c is not None:
+        return bytes(c.store_encode_record(key, body))
     k = key.encode()
     rest = (struct.pack("<H", len(k)) + k + hashlib.sha256(k).digest()[:8]
             + struct.pack("<I", crc32c(body)) + body)
@@ -455,6 +407,10 @@ def encode_record(key: str, body: bytes) -> bytes:
 def _parse_record(buf: bytes, at: int):
     """(key, body, crc, end) of the record at `at` in buf, or None where there
     is no whole, sound record there."""
+    c = _codec()
+    if c is not None:
+        got = c.store_parse_record(buf, at)
+        return None if got is None else (got[0], bytes(got[1]), got[2], got[3])
     magic = buf[at:at + 8]
     if magic not in (MAGIC, MAGIC_C) or at + 16 > len(buf):
         return None

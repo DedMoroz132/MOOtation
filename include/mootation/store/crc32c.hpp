@@ -41,4 +41,22 @@ inline std::uint32_t crc32c(const std::uint8_t* data, std::size_t n, std::uint32
     return ~crc;
 }
 
+// zlib's CRC-32 (ISO 3309, the reflected polynomial 0xEDB88320), the checksum
+// of the records of before (MOOTREC1), read only; "123456789" gives 0xCBF43926.
+inline std::uint32_t crc32_zlib(const std::uint8_t* data, std::size_t n)
+{
+    static const std::array<std::uint32_t, 256> table = [] {
+        std::array<std::uint32_t, 256> t{};
+        for (std::uint32_t i = 0; i < 256; ++i) {
+            std::uint32_t c = i;
+            for (int k = 0; k < 8; ++k) c = (c & 1u) ? (c >> 1) ^ 0xEDB88320u : c >> 1;
+            t[i] = c;
+        }
+        return t;
+    }();
+    std::uint32_t crc = 0xFFFFFFFFu;
+    for (std::size_t i = 0; i < n; ++i) crc = table[(crc ^ data[i]) & 0xFFu] ^ (crc >> 8);
+    return ~crc;
+}
+
 }   // namespace mootation::store

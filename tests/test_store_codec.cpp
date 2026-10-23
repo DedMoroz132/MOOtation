@@ -6,6 +6,7 @@
 // with structure is coded shorter than raw. A count or bytes that do not
 // match are an error, not other numbers.
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -18,6 +19,7 @@
 
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
+#include <mootation/store/record.hpp>
 #include <mootation/store/record_tables.hpp>
 #include <mootation/store/text_codec.hpp>
 
@@ -263,6 +265,92 @@ int main()
         const std::vector<std::uint8_t> head(far.begin(), far.begin() + 3000);
         far.insert(far.end(), head.begin(), head.end());
         CHECK(round(far, "a repeat 70000 bytes back") < alone + 20);
+    }
+
+    // ── a record: SHA-256, zlib's CRC, blocks, body, frame (record.hpp) ──────
+    {
+        auto hex = [](const std::array<std::uint8_t, 32>& h) {
+            std::string s;
+            char buf[3];
+            for (auto c : h) {
+                std::snprintf(buf, sizeof buf, "%02x", c);
+                s += buf;
+            }
+            return s;
+        };
+        const std::uint8_t* abc = reinterpret_cast<const std::uint8_t*>("abc");
+        CHECK(hex(st::sha256(abc, 3)) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+        CHECK(hex(st::sha256(abc, 0)) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        const std::string long_msg = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";   // 56 bytes: two blocks
+        CHECK(hex(st::sha256(reinterpret_cast<const std::uint8_t*>(long_msg.data()), long_msg.size())) ==
+              "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1");
+        CHECK(st::crc32_zlib(reinterpret_cast<const std::uint8_t*>("123456789"), 9) == 0xCBF43926u);
+    }
+    {
+        auto bytes_of = [](const void* p, std::size_t n) {
+            const auto* b = static_cast<const std::uint8_t*>(p);
+            return std::vector<std::uint8_t>(b, b + n);
+        };
+        std::vector<double> front(30 * 3), pop(20 * 3);
+        for (auto& v : front) v = u01();
+        for (std::size_t i = 0; i < pop.size(); ++i) pop[i] = i < 30 ? front[i] : u01();    // shared points
+        std::vector<float> f32(500);
+        for (std::size_t i = 0; i < f32.size(); ++i) f32[i] = static_cast<float>(i % 7);
+        std::vector<std::int32_t> i32 = {-5, 7, -2147483647 - 1, 2147483647, 0};
+        std::vector<std::uint32_t> u32 = {4000000000u, 0u, 17u};
+        std::vector<std::uint8_t> u8(300, 4);
+        const std::string json = R"({"algorithm": "nsga2", "seed": 1})";
+        std::vector<st::Block> blocks = {
+            {"meta.json", "json", {}, bytes_of(json.data(), json.size()), ""},
+            {"archive", "<f8", {30, 3}, bytes_of(front.data(), 8 * front.size()), ""},
+            {"f32", "<f4", {500}, bytes_of(f32.data(), 4 * f32.size()), ""},
+            {"population", "<f8", {20, 3}, bytes_of(pop.data(), 8 * pop.size()), ""},
+            {"i32", "<i4", {5}, bytes_of(i32.data(), 4 * i32.size()), ""},
+            {"u32", "<u4", {3}, bytes_of(u32.data(), 4 * u32.size()), ""},
+            {"u8", "|u1", {300}, u8, ""},
+            {"scalar", "<f8", {}, bytes_of(&front[0], 8), ""},
+            {"empty", "<f8", {0, 3}, {}, ""}};
+        const std::vector<st::PointTable> tables = {{1, {"f1", "f2", "f3"}}, {3, {"f1", "f2", "f3"}}};
+        const auto body = st::encode_body(blocks, tables);
+        const auto back = st::decode_body(body.data(), body.size());
+        CHECK(back.size() == blocks.size());
+        for (std::size_t i = 0; i < back.size() && i < blocks.size(); ++i)
+            CHECK(back[i].name == blocks[i].name && back[i].dtype == blocks[i].dtype &&
+                  back[i].shape == blocks[i].shape && back[i].data == blocks[i].data && back[i].how.empty());
+        CHECK(st::encode_body(back, tables) == body);                        // the same bytes again
+        const auto plain = st::encode_body(blocks, {});
+        const auto back2 = st::decode_body(plain.data(), plain.size());
+        CHECK(back2.size() == blocks.size() && back2[1].data == blocks[1].data);
+
+        const std::string key = "DTLZ2_3D|nsga2||1|10000";
+        const auto record = st::encode_record(key, body);
+        const auto r = st::parse_record(record.data(), record.size(), 0);
+        CHECK(r.ok && r.key == key && r.end == record.size() && r.body_size == body.size() &&
+              std::memcmp(record.data() + r.body, body.data(), body.size()) == 0);
+        for (std::size_t at = 0; at < record.size(); at += 7) {               // any bit flipped: not whole
+            auto bad = record;
+            bad[at] ^= static_cast<std::uint8_t>(1u << (at % 8));
+            CHECK(!st::parse_record(bad.data(), bad.size(), 0).ok);
+        }
+        CHECK(!st::parse_record(record.data(), record.size() - 1, 0).ok);     // cut
+
+        // a block of before (zlib): back as stored, its method named
+        std::vector<std::uint8_t> old = {1, 0, 0, 0};
+        const std::string nm = "a", dt = "json", how = "zlib";
+        st::rec::put_le(old, nm.size(), 2);
+        old.insert(old.end(), nm.begin(), nm.end());
+        st::rec::put_le(old, dt.size(), 1);
+        old.insert(old.end(), dt.begin(), dt.end());
+        st::rec::put_le(old, 0, 1);
+        st::rec::put_le(old, how.size(), 1);
+        old.insert(old.end(), how.begin(), how.end());
+        st::rec::put_le(old, 3, 8);
+        old.insert(old.end(), {7, 8, 9});
+        const auto ob = st::decode_body(old.data(), old.size());
+        CHECK(ob.size() == 1 && ob[0].how == "zlib" && ob[0].data == std::vector<std::uint8_t>({7, 8, 9}));
+        bool threw = false;
+        try { st::rec::dtype_of("<x"); } catch (const std::invalid_argument&) { threw = true; }
+        CHECK(threw);
     }
 
     if (failures) {
