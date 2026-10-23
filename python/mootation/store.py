@@ -61,11 +61,13 @@ which. Decompression gives the same bits.
 
 FORMAT 3 (task 17, stage 4; the owner's decisions of 2026-10-24, supplement
 5, §2): the library's own codecs where the extension is built
-(include/mootation/store/). An array of float64 may be coded "f64" (its
-values met before by reference, new ones by their top bits through an
-adaptive range coder and the rest raw), of integers "i64" (frame of
-reference, differences or runs); the shortest of these, zlib and the
-shuffle is kept. The point sets of a record — every float64 table with its
+(include/mootation/store/), and no zlib. Bytes — a JSON, a text, any block —
+are "text": LZ77 and an adaptive range coder; an array also "shuffle+text"
+(the same after the shuffle), of float64 "f64" (its values met before by
+reference, new ones by their top bits through the range coder and the rest
+raw), of integers "i64" (frame of reference, differences or runs): the
+shortest is kept. Without the extension a store is written with zlib, as
+format 2, and read anywhere. The point sets of a record — every float64 table with its
 columns named in its "#head": the archive, the final population, the
 archive's selection, the second answer, the trajectory's values — go
 together into one block "#points" (store_encode_tables): a column of one
@@ -193,17 +195,26 @@ def _own_codec(b: Block):
 
 
 def encode_block(b: Block) -> bytes:
-    how, payload = "zlib", zlib.compress(b.data, ZLEVEL)
-    if b.dtype not in ("json", "text", "bytes"):
-        # the shuffle helps where the high bytes repeat (counts, float32); the
-        # ten-digit decimals of a CSV fill the mantissa, and it does not: the
-        # smaller of the two, task 16, §1.3
-        shuffled = zlib.compress(shuffle(b.data, _itemsize(b.dtype)), ZLEVEL)
-        if len(shuffled) < len(payload):
-            how, payload = "shuffle+zlib", shuffled
-        own = _own_codec(b)
-        if own is not None and len(own[1]) < len(payload):
-            how, payload = own
+    c = _codec()
+    if c is None:
+        how, payload = "zlib", zlib.compress(b.data, ZLEVEL)
+        if b.dtype not in ("json", "text", "bytes"):
+            # the shuffle helps where the high bytes repeat (counts, float32);
+            # the ten-digit decimals of a CSV fill the mantissa, and it does
+            # not: the smaller of the two, task 16, §1.3
+            shuffled = zlib.compress(shuffle(b.data, _itemsize(b.dtype)), ZLEVEL)
+            if len(shuffled) < len(payload):
+                how, payload = "shuffle+zlib", shuffled
+    else:
+        # format 3: the library's own codecs only (task 17, §3а.2: no Deflate)
+        how, payload = "text", bytes(c.store_encode_text(b.data))
+        if b.dtype not in ("json", "text", "bytes"):
+            shuffled = bytes(c.store_encode_text(shuffle(b.data, _itemsize(b.dtype))))
+            if len(shuffled) < len(payload):
+                how, payload = "shuffle+text", shuffled
+            own = _own_codec(b)
+            if own is not None and len(own[1]) < len(payload):
+                how, payload = own
     if len(payload) >= len(b.data):
         how, payload = "raw", b.data
     name, dt, hw = b.name.encode(), b.dtype.encode(), how.encode()
@@ -234,7 +245,7 @@ def decode_blocks(body: bytes) -> list:
             data = zlib.decompress(payload)
         elif how == "shuffle+zlib":
             data = unshuffle(zlib.decompress(payload), _itemsize(dtype))
-        elif how in ("f64", "i64"):
+        elif how in ("f64", "i64", "text", "shuffle+text"):
             data = _own_decode(name, how, dtype, shape, payload)
         else:
             raise ValueError(f"block {name!r}: unknown compression {how!r}")
@@ -247,6 +258,10 @@ def _own_decode(name: str, how: str, dtype: str, shape, payload: bytes) -> bytes
     c = _codec()
     if c is None:
         raise ValueError(f"block {name!r}: format 3 ({how}) needs the compiled extension")
+    if how == "text":
+        return bytes(c.store_decode_text(payload))
+    if how == "shuffle+text":
+        return unshuffle(bytes(c.store_decode_text(payload)), _itemsize(dtype))
     n = int(np.prod(shape)) if len(shape) else 1
     if how == "f64":
         return np.asarray(c.store_decode_f64(payload, n), "<f8").tobytes()

@@ -26,6 +26,7 @@
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
 #include <mootation/store/record_tables.hpp>
+#include <mootation/store/text_codec.hpp>
 #include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
@@ -693,6 +694,24 @@ void bind_run_layer(py::module_& m)
           },
           py::arg("data"), py::arg("crc") = 0,
           "CRC-32C of the bytes (include/mootation/store/crc32c.hpp); crc: the value of the bytes before.");
+    m.def("store_encode_text",
+          [](const py::bytes& b) {
+              const std::string s = b;
+              std::vector<std::uint8_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::store::encode_text(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+              }
+              return py::bytes(reinterpret_cast<const char*>(out.data()), out.size());
+          },
+          py::arg("data"), "Bytes compressed by LZ77 and the range coder (include/mootation/store/text_codec.hpp).");
+    m.def("store_decode_text",
+          [](const py::bytes& b) {
+              const std::string s = b;
+              const auto out = mootation::store::decode_text(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+              return py::bytes(reinterpret_cast<const char*>(out.data()), out.size());
+          },
+          py::arg("data"), "The bytes back from store_encode_text's.");
     m.def("store_encode_tables",
           [](const py::list& tables) {
               std::vector<mootation::store::Table> ts;

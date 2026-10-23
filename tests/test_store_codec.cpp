@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <string>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -18,6 +19,7 @@
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
 #include <mootation/store/record_tables.hpp>
+#include <mootation/store/text_codec.hpp>
 
 namespace st = mootation::store;
 
@@ -200,6 +202,49 @@ int main()
                   back[t].rows == tables[t].rows);
             CHECK(same_bits(back[t].values, tables[t].values));
         }
+    }
+
+    // ── text: LZ77 and the range coder ─────────────────────────────────────
+    {
+        auto round = [&](const std::vector<std::uint8_t>& t, const char* what) {
+            const auto bytes = st::encode_text(t.data(), t.size());
+            std::vector<std::uint8_t> back;
+            try {
+                back = st::decode_text(bytes.data(), bytes.size());
+            } catch (const std::exception& e) {
+                std::printf("FAIL %s: decode threw: %s\n", what, e.what());
+                ++failures;
+                return bytes.size();
+            }
+            if (back != t) {
+                std::printf("FAIL %s: not the same bytes\n", what);
+                ++failures;
+            }
+            return bytes.size();
+        };
+        round({}, "empty text");
+        round({'x'}, "one byte");
+        std::vector<std::uint8_t> all;
+        for (int r = 0; r < 4; ++r)
+            for (int b = 0; b < 256; ++b) all.push_back(static_cast<std::uint8_t>(b));
+        round(all, "every byte value");
+        std::vector<std::uint8_t> noise(5000);
+        for (auto& b : noise) b = static_cast<std::uint8_t>(g());
+        round(noise, "random bytes");
+        const std::vector<std::uint8_t> run(10000, 'a');
+        CHECK(round(run, "a run (an overlapping copy)") < 60);
+        std::string json;
+        for (int i = 0; i < 200; ++i)
+            json += "{\"gen\": " + std::to_string(i) + ", \"fe\": " + std::to_string(100 * i) +
+                    ", \"igdp\": 0." + std::to_string(g() % 1000000) + "},\n";
+        const std::vector<std::uint8_t> jt(json.begin(), json.end());
+        CHECK(round(jt, "json-like lines") < jt.size() / 2);
+        std::vector<std::uint8_t> far;                       // repeats past 64 KB back
+        for (int i = 0; i < 70000; ++i) far.push_back(static_cast<std::uint8_t>(g()));
+        const std::size_t alone = round(far, "70000 random bytes");
+        const std::vector<std::uint8_t> head(far.begin(), far.begin() + 3000);
+        far.insert(far.end(), head.begin(), head.end());
+        CHECK(round(far, "a repeat 70000 bytes back") < alone + 20);
     }
 
     if (failures) {
