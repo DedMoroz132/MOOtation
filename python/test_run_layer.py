@@ -6921,6 +6921,32 @@ def ada_runs_in_nsga3_theta_dea_and_rvea():
         raise AssertionError(alg)
 
 
+@test
+def theta_dea_keeps_every_reference_direction():
+    """TDEA-1 (task 17, supplement 5, §1.1): copies of a solution in one cluster
+    are not all theta-optimal, so the random choice of Step 20 cannot empty a
+    cluster for them. DTLZ2 at three objectives, 91 points, 250 generations
+    (Yuan et al. 2016, Table VII): the IGD to the 91 targeted points of §IV-B
+    stays below 0.004; with the copies on one level one to four directions
+    stayed empty and it was several times that."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  theta_dea_keeps...: no NumPy or stale _core"); return
+    import itertools
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ2_3D")
+    W = np.array([c for c in itertools.product(range(13), repeat=3) if sum(c) == 12], float) / 12
+    Z = W / np.linalg.norm(W, axis=1, keepdims=True)
+    igd = []
+    for seed in (1, 2, 3):
+        F = np.array(minimize(p.evaluate, bounds=p.bounds, n_objs=3, algorithm="theta_dea",
+                              pop_size=91, n_gen=250, seed=seed).objectives)
+        d = np.sqrt(((Z[:, None, :] - F[None, :, :]) ** 2).sum(axis=2))
+        igd.append(d.min(axis=1).mean())
+    assert np.median(igd) < 0.004, igd
+
+
 # ── task 13, §1: NSGA-II/SDR ────────────────────────────────────────────────
 
 def _sdr_reference(F):

@@ -221,9 +221,9 @@ srv zdt1_nan 100 97f01ac58fb00c11
 srv_nsga3 dtlz2_3 91 9501463a50fd5019
 srv_nsga3 zdt1 100 711bb54fff305518
 srv_nsga3 zdt1_nan 100 a713cdc4cdf938cf
-theta_dea dtlz2_3 91 1beed927bc384643
-theta_dea zdt1 100 12c0583dc19d9648
-theta_dea zdt1_nan 100 d4c840921e39d550
+theta_dea dtlz2_3 91 72d58a0aa2b2bc9f
+theta_dea zdt1 100 c91f092a8389e963
+theta_dea zdt1_nan 100 11d42bd859957a90
 two_arch2 dtlz2_3 91 b83c3e29983d39a3
 two_arch2 zdt1 34 9cdf26da9d00422f
 two_arch2 zdt1_nan 33 8191cc5b89a50dd9
