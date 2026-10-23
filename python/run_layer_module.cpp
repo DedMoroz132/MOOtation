@@ -24,6 +24,7 @@
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
+#include <mootation/store/crc32c.hpp>
 #include <mootation/store/record_tables.hpp>
 #include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
@@ -685,6 +686,13 @@ void bind_run_layer(py::module_& m)
               return vector_of(x);
           },
           py::arg("data"), py::arg("n"), "The n values of a float64 column's bytes; an error where they do not hold them.");
+    m.def("crc32c",
+          [](const py::bytes& b, std::uint32_t crc) {
+              const std::string s = b;
+              return mootation::store::crc32c(reinterpret_cast<const std::uint8_t*>(s.data()), s.size(), crc);
+          },
+          py::arg("data"), py::arg("crc") = 0,
+          "CRC-32C of the bytes (include/mootation/store/crc32c.hpp); crc: the value of the bytes before.");
     m.def("store_encode_tables",
           [](const py::list& tables) {
               std::vector<mootation::store::Table> ts;

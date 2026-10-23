@@ -16,6 +16,8 @@
 #include <vector>
 
 #include <mootation/store/column_codec.hpp>
+#include <mootation/store/crc32c.hpp>
+#include <mootation/store/record_tables.hpp>
 
 namespace st = mootation::store;
 
@@ -160,6 +162,44 @@ int main()
         for (int r = 0; r < 20; ++r) x.insert(x.end(), 50 + static_cast<std::size_t>(g() % 50), static_cast<std::int64_t>(r % 3));
         const std::size_t size = i64_round_trip(x, "runs");
         CHECK(size < 80);
+    }
+
+    // ── CRC-32C: the check value, and in parts as at once ──────────────────
+    {
+        const char* nine = "123456789";
+        const auto* p = reinterpret_cast<const std::uint8_t*>(nine);
+        CHECK(st::crc32c(p, 9) == 0xE3069283u);
+        CHECK(st::crc32c(p + 4, 5, st::crc32c(p, 4)) == 0xE3069283u);
+        CHECK(st::crc32c(p, 0) == 0u);
+    }
+
+    // ── a record's tables: back with their names, columns and bits ─────────
+    {
+        std::vector<st::Table> tables(3);
+        tables[0].name = "archive";
+        tables[0].columns = {"f1", "f2", "extreme"};
+        tables[1].name = "final";
+        tables[1].columns = {"f1", "f2", "x1"};
+        tables[2].name = "empty";
+        tables[2].columns = {"f1", "f2"};
+        tables[0].rows = 200;
+        tables[1].rows = 50;
+        for (std::size_t i = 0; i < 200; ++i) {
+            const double a = u01();
+            tables[0].values.insert(tables[0].values.end(), {a, 1.0 - std::sqrt(a), i < 2 ? 1.0 : 0.0});
+        }
+        for (std::size_t i = 0; i < 50; ++i)                   // half of them archive points
+            tables[1].values.insert(tables[1].values.end(),
+                                    {i % 2 ? tables[0].values[3 * i] : u01(),
+                                     i % 2 ? tables[0].values[3 * i + 1] : u01(), u01()});
+        const auto bytes = st::encode_tables(tables);
+        const auto back = st::decode_tables(bytes.data(), bytes.size());
+        CHECK(back.size() == 3);
+        for (std::size_t t = 0; t < back.size() && t < tables.size(); ++t) {
+            CHECK(back[t].name == tables[t].name && back[t].columns == tables[t].columns &&
+                  back[t].rows == tables[t].rows);
+            CHECK(same_bits(back[t].values, tables[t].values));
+        }
     }
 
     if (failures) {

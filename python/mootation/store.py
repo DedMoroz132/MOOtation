@@ -16,7 +16,11 @@ A new segment starts at SEGMENT_BYTES (a knob: [campaign] segment_mb). One
 record is one run:
 
     MAGIC (8 bytes) | u64 length of the rest | u16 key length | key (UTF-8)
-    | 8 bytes of the key's SHA-256 | u32 CRC32 of the body | body
+    | 8 bytes of the key's SHA-256 | u32 checksum of the body | body
+
+the checksum CRC-32C (MAGIC "MOOTREC2", task 17, §3а.3; the library's own,
+include/mootation/store/crc32c.hpp, or the same in Python) — or, in records
+written before, zlib's CRC32 (MAGIC "MOOTREC1"), still read
 
 and the body a sequence of blocks: u32 count, then per block u16 name length,
 name, u8 dtype length, dtype, u8 ndim, u64 per dimension, u8 length of the
@@ -89,7 +93,8 @@ from pathlib import Path, PurePosixPath
 
 FORMAT = "mootation-store"
 FORMAT_VERSION = 3
-MAGIC = b"MOOTREC1"
+MAGIC = b"MOOTREC1"                     # zlib's CRC32 of the body (read only)
+MAGIC_C = b"MOOTREC2"                   # CRC-32C of the body (written)
 SEGMENT_BYTES = 1 << 30                 # a new segment at 1 GiB ([campaign] segment_mb)
 ZLEVEL = 6
 STORE_DIR = "store"
@@ -307,17 +312,38 @@ def encode_body(blocks: list) -> bytes:
     return struct.pack("<I", len(blocks)) + b"".join(encode_block(b) for b in blocks)
 
 
+_CRC32C_TABLE: list = []
+
+
+def crc32c(data: bytes) -> int:
+    """CRC-32C (Castagnoli; iSCSI's): the extension's, or the same value here."""
+    c = _codec()
+    if c is not None:
+        return int(c.crc32c(data))
+    if not _CRC32C_TABLE:
+        for i in range(256):
+            v = i
+            for _ in range(8):
+                v = (v >> 1) ^ 0x82F63B78 if v & 1 else v >> 1
+            _CRC32C_TABLE.append(v)
+    crc = 0xFFFFFFFF
+    for b in data:
+        crc = _CRC32C_TABLE[(crc ^ b) & 0xFF] ^ (crc >> 8)
+    return crc ^ 0xFFFFFFFF
+
+
 def encode_record(key: str, body: bytes) -> bytes:
     k = key.encode()
     rest = (struct.pack("<H", len(k)) + k + hashlib.sha256(k).digest()[:8]
-            + struct.pack("<I", zlib.crc32(body)) + body)
-    return MAGIC + struct.pack("<Q", len(rest)) + rest
+            + struct.pack("<I", crc32c(body)) + body)
+    return MAGIC_C + struct.pack("<Q", len(rest)) + rest
 
 
 def _parse_record(buf: bytes, at: int):
     """(key, body, crc, end) of the record at `at` in buf, or None where there
     is no whole, sound record there."""
-    if buf[at:at + 8] != MAGIC or at + 16 > len(buf):
+    magic = buf[at:at + 8]
+    if magic not in (MAGIC, MAGIC_C) or at + 16 > len(buf):
         return None
     (rest,) = struct.unpack_from("<Q", buf, at + 8)
     end = at + 16 + rest
@@ -329,7 +355,7 @@ def _parse_record(buf: bytes, at: int):
         return None
     (crc,) = struct.unpack_from("<I", buf, at + 26 + n)
     body = buf[at + 30 + n:end]
-    if zlib.crc32(body) != crc:
+    if (crc32c(body) if magic == MAGIC_C else zlib.crc32(body)) != crc:
         return None
     return k.decode(), body, crc, end
 
@@ -631,7 +657,11 @@ def scan_raw(raw: Path) -> tuple:
         if got is None:
             break
         key, body, crc, end = got
-        out.append((key, Loc(Path(raw), at, end - at, crc, _status_of(decode_blocks(body)))))
+        try:
+            status = _status_of(decode_blocks(body))
+        except ValueError:                  # format 3 without the extension: whole, status unread
+            status = "?"
+        out.append((key, Loc(Path(raw), at, end - at, crc, status)))
         at = end
     return out, at
 

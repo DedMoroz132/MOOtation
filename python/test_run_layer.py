@@ -12213,6 +12213,14 @@ def store_blocks_give_the_bytes_back():
             assert files[name].encode() == (d / name).read_bytes(), name
         assert np.array_equal(files["snapshots.npz"]["F"], noise.reshape(-1, 2).astype("<f4"))
         assert files["snapshots.npz"]["n"].dtype == np.int64
+        # a record's checksum (CRC-32C, MOOTREC2): any bit flipped in it, and
+        # the record is not whole — an error at its place, not other numbers
+        rec = store.encode_record("p|a||1|100", body)
+        assert rec[:8] == b"MOOTREC2" and store._parse_record(rec, 0)[1] == body
+        for bit in rng.integers(30 * 8, 8 * len(rec), 40):
+            bad = bytearray(rec)
+            bad[bit // 8] ^= 1 << (bit % 8)
+            assert store._parse_record(bytes(bad), 0) is None, bit
 
 
 
