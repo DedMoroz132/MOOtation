@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <limits>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -404,7 +405,8 @@ int main()
     }
     check(refused(spec("WFG10", 6, 2)), "a family the suite does not have");
     check(refused(spec("WFG1", 4, 3)), "WFG with no distance variable");
-    check(refused(spec("MaF8", 2, 3)), "MaF8 without its vertices");
+    check(!refused(spec("MaF8", 2, 3)) && refused(spec("MaF8", 3, 3)),
+          "MaF8: its vertices drawn here (task 17, supplement 5, §3), two variables");
     check(refused(spec("MaF11", 12, 3)), "MaF11 is family WFG2 with k = M - 1");
     check(refused(spec("DTLZ2", 2, 3)), "fewer variables than objectives");
     check(refused(spec("ZDT1", 30, 3)), "ZDT at three objectives");
@@ -497,6 +499,62 @@ int main()
         check(refused(spec("MMF1", 3, 2)), "MMF1 at three variables");
         check(refused(spec("IPolygon", 2, 3)), "IPolygon without its polygons");
         check(refused(spec("LIR-CMOP15", 30, 2)), "LIR-CMOP15: there is none");
+    }
+
+    // the Haar rotations (instances.hpp; task 17, supplement 5, §3): Q^T Q = I
+    // to a few ulps, R = Q^T A upper triangular with a positive diagonal (the
+    // signs fixed), and over 4 000 rotations of size 4 the moments of the
+    // Haar distribution: E q_ij = 0, E q_ij^2 = 1/4, E tr Q = 0, E (tr Q)^2 = 1
+    // (within five standard errors)
+    {
+        namespace I = S::instances;
+        check(I::crc32("DTLZ2") == 0xde3d019bu && I::crc32("") == 0u && I::crc32("ZCAT19") == 0xd2c19e25u,
+              "instances: crc32 is zlib's");
+        double worst_orth = 0.0, worst_low = 0.0;
+        bool positive = true;
+        for (int k : {1, 2, 3, 5, 9, 20, 48})
+            for (int inst = 1; inst <= 5; ++inst) {
+                std::mt19937 g(I::seed({7u, static_cast<std::uint64_t>(k), static_cast<std::uint64_t>(inst)}));
+                std::mt19937 again = g;
+                const std::vector<double> Q = I::haar(g, k);
+                std::vector<double> A(static_cast<std::size_t>(k * k));
+                for (double& a : A) a = mootation::rnd::normal01(again);
+                for (int i = 0; i < k; ++i)
+                    for (int j = 0; j < k; ++j) {
+                        double qq = 0.0, r = 0.0;
+                        for (int l = 0; l < k; ++l) {
+                            qq += Q[static_cast<std::size_t>(l * k + i)] * Q[static_cast<std::size_t>(l * k + j)];
+                            r += Q[static_cast<std::size_t>(l * k + i)] * A[static_cast<std::size_t>(l * k + j)];
+                        }
+                        worst_orth = std::max(worst_orth, std::abs(qq - (i == j ? 1.0 : 0.0)));
+                        if (i > j) worst_low = std::max(worst_low, std::abs(r));
+                        if (i == j) positive = positive && r > 0.0;
+                    }
+            }
+        std::printf("  haar: largest |Q^T Q - I| %.3g, largest |R below the diagonal| %.3g\n", worst_orth, worst_low);
+        check(worst_orth < 64 * std::numeric_limits<double>::epsilon(), "haar: Q^T Q = I to a few ulps");
+        check(worst_low < 1e-13 && positive, "haar: Q^T A upper triangular with a positive diagonal");
+        const int N = 4000, k = 4;
+        double m00 = 0.0, sq = 0.0, tr = 0.0, tr2 = 0.0;
+        for (int t = 0; t < N; ++t) {
+            std::mt19937 g(I::seed({11u, static_cast<std::uint64_t>(t)}));
+            const std::vector<double> Q = I::haar(g, k);
+            double trace = 0.0;
+            for (int i = 0; i < k; ++i) trace += Q[static_cast<std::size_t>(i * k + i)];
+            for (double q : Q) sq += q * q;
+            m00 += Q[0];
+            tr += trace;
+            tr2 += trace * trace;
+        }
+        m00 /= N;
+        sq /= N * k * k;
+        tr /= N;
+        tr2 /= N;
+        // standard errors: sqrt(1/4 / N), sqrt(1/16 / N) (per element, the
+        // squares' variance E q^4 - 1/16 = 3/24 - 1/16), sqrt(1/N), sqrt(2/N)
+        check(std::abs(m00) < 5.0 * std::sqrt(0.25 / N) && std::abs(sq - 0.25) < 5.0 * std::sqrt(0.0625 / N) &&
+                  std::abs(tr) < 5.0 * std::sqrt(1.0 / N) && std::abs(tr2 - 1.0) < 5.0 * std::sqrt(2.0 / N),
+              "haar: E q_11 = 0, E q^2 = 1/4, E tr = 0, E tr^2 = 1 (4 000 rotations of size 4)");
     }
 
     std::printf("suite: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");

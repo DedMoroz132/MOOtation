@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (task 17, supplement 5, §3): C++ draws what the problems' specs
+  held. The rotations of the rotated problems are Haar rotations from the
+  library's generator (`suite/instances.hpp`: Householder QR of a normal
+  matrix, R's diagonal positive), and the bbob-biobj and bbob-biobj-mixint
+  instances are drawn by `suite/bbob.hpp` — new instances of 352 rotated
+  problems and 220 bbob-biobj ones (version +1, `PROBLEM_CHANGED[4]`,
+  reference version 4; ours, not COCO's). MaF8's and MaF9's polygons and
+  MaF14's and MaF15's linkage are drawn in C++ too (MaF8_8D, MaF9_8D and
+  MaF15 at 3, 5, 8, 15 objectives: version +1). `benchmarks/library_rng.py`
+  draws the same in Python, the cross-check's; a test holds the rotations to
+  the Haar distribution's moments.
+
 - The scalarization methods (`scalar` and its presets), `mosqp`, `boostdms`
   and `polish` in C++ (task 17, stage 6; `include/mootation/scalar/`,
   `_core.scalar`), with the library's own local solvers in place of SciPy's:

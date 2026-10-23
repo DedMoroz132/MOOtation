@@ -133,10 +133,10 @@ M = 6 and 10 too, for a trend over the number of objectives (task 7, §3).
 INSTANCES (task 7, §3 and §7). rZDT1-4, rZDT6, rDTLZ1, rDTLZ3, rcDTLZ2,
 rWFG4-7 and every rotated problem of §7 (not the controls) come in three
 instances of Q, <name>_i1, _i2, _i3 (rDTLZ1_3D_i2, rZDT4_i3), at
-every size they have. Instance k draws Q from SeedSequence([20261009,
-crc32(base family), M, k_dist, k]); instance 1 is the problem without the
-suffix (the same matrix, whose hash the tests have held since task 6), under
-the name with it, so that a campaign over the instances lists all three.
+every size they have. Instance k draws Q from the key (20261009,
+crc32(base family), M, k_dist, k); instance 1 is the problem without the
+suffix (the same matrix), under the name with it, so that a campaign over the
+instances lists all three.
 
 WHAT A ROTATION CANNOT DO. DTLZ2's and DTLZ4's g = |y - 1/2|^2 is isotropic,
 and |Q (z - c)| = |z - c|: rDTLZ2 and rDTLZ4 are the same functions as their
@@ -144,10 +144,13 @@ Q = I construction (to 3e-15 on 10^4 points), checks of invariance and not
 rotated problems. Not rotated at all: DTLZ6 (x^0.1 has no value below 0) and
 DTLZ7 (its g is linear and runs to minus infinity off [0, 1]), nor MaF7.
 
-Q is a Haar rotation: QR of a standard normal matrix with the signs fixed, as
-bbob._rotation, from SeedSequence([20261009, crc32(base family), M, k,
-instance]) — the same for every run. numpy does not promise its normal stream
-bit for bit across versions; the tests hold a hash of every Q.
+Q is a Haar rotation: QR of a standard normal matrix with the signs fixed
+(Higham 2002, §28.3), drawn by the library's generator from the key (20261009,
+crc32(base family), M, k, instance): the C++ suite draws it
+(include/mootation/suite/instances.hpp), library_rng.haar the same here, to a
+few ulps. Version 2 of these problems (task 17, supplement 5, §3, from
+2026-10-24): before, NumPy's default_rng(SeedSequence(...)) drew another Q —
+another instance of each problem. The tests hold a hash of every Q.
 
 Front, frame and Pareto-set positions are the base problem's; the distance
 variables of the Pareto set are c (rZDT, rDTLZ, rMaF, rcPolygon, r0, c0),
@@ -194,6 +197,7 @@ from typing import List
 
 import numpy as np
 
+from . import library_rng as _lrng
 from . import zcat as _zcat
 from ._rows import matvec_pairwise
 from .dtlz import DTLZ_FUNCS, DTLZ_ROWS
@@ -243,10 +247,8 @@ _BP_A, _BP_B, _BP_C = 0.98 / 49.98, 0.02, 50.0
 
 def rotation(family: str, M: int, k: int, instance: int = 1) -> np.ndarray:
     """The k x k Haar rotation of a family at M objectives (see above)."""
-    seed = np.random.SeedSequence([20261009, zlib.crc32(family.encode()), M, k, instance])
-    A = np.random.default_rng(seed).standard_normal((k, k))
-    Q, R = np.linalg.qr(A)
-    return Q * np.sign(np.where(np.diag(R) == 0.0, 1.0, np.diag(R)))
+    rng = _lrng.LibraryRng(_lrng.seed(20261009, zlib.crc32(family.encode()), M, k, instance))
+    return _lrng.haar(rng, k)
 
 
 def conditioning(k: int, kappa: float = KAPPA) -> np.ndarray:
@@ -338,11 +340,15 @@ class Rotated:
             self._matrices[k] = A
         return self._matrices[k]
 
+    def sizes(self) -> list:
+        """The sizes of every matrix the problem uses: ZCAT19 and ZCAT20 one
+        per size of their distance block."""
+        k = self.n_vars - self.first
+        return [k, self.n_vars - 1] if self.family in _zcat.REGION_M else [k]
+
     def matrices(self) -> list:
-        """Every matrix the problem uses: ZCAT19 and ZCAT20 one per block size."""
-        if self.family in _zcat.REGION_M:
-            return [self.A, self.matrix(self.n_vars - 1)]
-        return [self.A]
+        """Every matrix the problem uses (sizes)."""
+        return [self.matrix(k) for k in self.sizes()]
 
     def _wfg_v(self, x) -> np.ndarray:
         """rWFG's distance block, normalised, before the clipping. rWFG4-7 as in

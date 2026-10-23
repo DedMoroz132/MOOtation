@@ -8,9 +8,16 @@
 // in the NumPy code; version 1 took CPython's math.hypot, an algorithm of its
 // own, version 2 the C library's). MaF10-12 are WFG's.
 // The order of every operation is that of the NumPy rows (common.hpp).
+// The polygons of MaF8 and MaF9 and MaF14's and MaF15's linkage are drawn
+// here (vertices, maf9_lines, maf9_regions, lsmop_link; task 17, supplement
+// 5, §3), as registry.py and maf.py draw them, with dm::'s cos, sin and
+// hypot: one version more of MaF8_8D and MaF9_8D (a vertex's last bit
+// changes) and of MaF15_3D, 5D, 8D and 15D (the linkage's).
 // ============================================================================
 
+#include <cmath>
 #include <cstdlib>
+#include <initializer_list>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -345,6 +352,91 @@ inline double maf9_constraint(const double* x, const std::vector<Vec>& polygons)
         if (inside(x, P.data(), n)) cv += poly_edge_distance(x, P.data(), n);
     }
     return cv;
+}
+
+// ---- what the specs of MaF8, MaF9, MaF14 and MaF15 hold ---------------------
+
+// The vertices (x, y) of the regular M-gon on the unit circle, vertex m at
+// the angle 2 pi m / M (registry._maf8_vertices)
+inline Vec vertices(int M)
+{
+    Vec v;
+    for (int m = 0; m < M; ++m) {
+        v.push_back(dm::cos(2.0 * kPi * m / M));
+        v.push_back(dm::sin(2.0 * kPi * m / M));
+    }
+    return v;
+}
+
+// MaF9's target lines: (ax, ay, dx, dy, |d|) of each edge A_m A_{m+1}
+// (registry._maf9_lines)
+inline Vec maf9_lines(int M)
+{
+    const Vec V = vertices(M);
+    Vec out;
+    for (int m = 0; m < M; ++m) {
+        const std::size_t a = static_cast<std::size_t>(2 * m), b = static_cast<std::size_t>(2 * ((m + 1) % M));
+        const double dx = V[b] - V[a], dy = V[b + 1] - V[a + 1];
+        for (double e : {V[a], V[a + 1], dx, dy, dm::hypot(dx, dy)}) out.push_back(e);
+    }
+    return out;
+}
+
+// MaF9's infeasible bow-tie polygons, one per pair of non-adjacent,
+// non-parallel target lines; none for M <= 4 (registry._maf9_forbidden_regions):
+// the intersection O of the two lines, the chain of vertices facing it from
+// the end of edge i nearer to O to that of edge n, the chain reflected
+// through O; x0 y0 x1 y1 ...
+inline std::vector<Vec> maf9_regions(int M)
+{
+    const Vec V = vertices(M);
+    auto X = [&](int j) { return V[static_cast<std::size_t>(2 * (((j % M) + M) % M))]; };
+    auto Y = [&](int j) { return V[static_cast<std::size_t>(2 * (((j % M) + M) % M) + 1)]; };
+    std::vector<Vec> out;
+    for (int i = 0; i < M; ++i)
+        for (int n = i + 2; n < M; ++n) {
+            if (i == 0 && n == M - 1) continue;                        // adjacent through the wrap
+            const double d1x = X(i + 1) - X(i), d1y = Y(i + 1) - Y(i);
+            const double d2x = X(n + 1) - X(n), d2y = Y(n + 1) - Y(n);
+            const double det = d1x * d2y - d1y * d2x;
+            if (std::abs(det) < 1e-12) continue;                       // parallel lines (even M)
+            const double t = ((X(n) - X(i)) * d2y - (Y(n) - Y(i)) * d2x) / det;
+            const double ox = X(i) + t * d1x, oy = Y(i) + t * d1y;
+            const double to_b = std::sqrt((ox - X(i + 1)) * (ox - X(i + 1)) + (oy - Y(i + 1)) * (oy - Y(i + 1)));
+            const double to_a = std::sqrt((ox - X(i)) * (ox - X(i)) + (oy - Y(i)) * (oy - Y(i)));
+            std::vector<int> chain;
+            if (to_b < to_a)
+                for (int j = i + 1; j <= n; ++j) chain.push_back(j);      // V[i+1..n]
+            else
+                for (int j = i; j > n - M; --j) chain.push_back(j);       // V[i], V[i-1], .., V[n+1]
+            Vec poly = {X(chain[0]), Y(chain[0])};
+            for (int j : chain) {                                      // the chain reflected through O
+                poly.push_back(2.0 * ox - X(j));
+                poly.push_back(2.0 * oy - Y(j));
+            }
+            for (std::size_t c = chain.size() - 1; c >= 1; --c) {       // chain[:0:-1]
+                poly.push_back(X(chain[c]));
+                poly.push_back(Y(chain[c]));
+            }
+            out.push_back(poly);
+        }
+    return out;
+}
+
+// MaF14's and MaF15's linkage (a_i, l_i, u_i - l_i) of the |x^s| = 19 M + 1
+// variables of x^s (maf.lsmop_link; Eq. 45, 50): MaF14 a_i = 1 + i / |x^s|
+// over [0, 10], MaF15 1 + cos(pi i / (2 |x^s|)) over [0, 1]
+inline Vec lsmop_link(int M, int which)
+{
+    const int ns = 20 * M - M + 1;
+    Vec out;
+    for (int i = 1; i <= ns; ++i) {
+        const double r = static_cast<double>(i) / ns;
+        out.push_back(which == 14 ? 1.0 + r : 1.0 + dm::cos(0.5 * kPi * r));
+        out.push_back(0.0);
+        out.push_back(which == 14 ? 10.0 : 1.0);
+    }
+    return out;
 }
 
 }   // namespace mootation::suite::maf

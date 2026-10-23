@@ -5379,8 +5379,9 @@ archive = true
 # sha256 (16 hex digits) of every rotated problem's matrix (Q, Lambda Q, I or
 # Lambda), rounded to 1e-6 (LAPACK's QR differs across platforms in the last
 # bits, which 1e-12 let through), and of every rotation of the registered
-# bbob-biobj problems: numpy does not promise its normal stream across
-# versions, and a changed draw must fail here, not move results silently.
+# bbob-biobj problems, as library_rng.py draws them (the library's generator;
+# task 17, supplement 5, §3): a changed draw must fail here, not move results
+# silently.
 ROTATION_HASHES = {
     "c0DTLZ2_10D": "f4051c1a6bd36392", "c0DTLZ2_3D": "f4051c1a6bd36392",
     "c0DTLZ2_5D": "f4051c1a6bd36392", "c0DTLZ2_6D": "f4051c1a6bd36392",
@@ -5394,184 +5395,181 @@ ROTATION_HASHES = {
     "r0MaF2_3D": "a3c81aeea2e1ab58", "r0MaF2_5D": "a3c81aeea2e1ab58",
     "r0MaF3_3D": "a3c81aeea2e1ab58", "r0MaF3_5D": "a3c81aeea2e1ab58",
     "r0MaF4_3D": "a3c81aeea2e1ab58", "r0MaF4_5D": "a3c81aeea2e1ab58",
-    "rDTLZ1_3D": "c769f25996708c5a", "rDTLZ1_3D_i1": "c769f25996708c5a",
-    "rDTLZ1_3D_i2": "a9f2a2a2e5042517", "rDTLZ1_3D_i3": "e2f9ae2b7505a433",
-    "rDTLZ1_5D": "df51d5e160d49f5f", "rDTLZ1_5D_i1": "df51d5e160d49f5f",
-    "rDTLZ1_5D_i2": "00f1a132af5fc1df", "rDTLZ1_5D_i3": "ec8a13a3df065c4a",
-    "rDTLZ2_3D": "1306b1d7346e87e1", "rDTLZ2_5D": "57abfdd53219d0f0",
-    "rDTLZ3_3D": "46f9352bc92d74c0", "rDTLZ3_3D_i1": "46f9352bc92d74c0",
-    "rDTLZ3_3D_i2": "89eff7769875428c", "rDTLZ3_3D_i3": "74c473ec4bcbccfb",
-    "rDTLZ3_5D": "a39edc31ef18a0f5", "rDTLZ3_5D_i1": "a39edc31ef18a0f5",
-    "rDTLZ3_5D_i2": "9495a3bd0bf320cb", "rDTLZ3_5D_i3": "8119c9815f4645c7",
-    "rDTLZ4_3D": "d41c9c09a417f819", "rDTLZ4_5D": "9277e86cb3d337a7",
-    "rMaF2_3D": "7ec409913cff6a1a", "rMaF2_3D_i1": "7ec409913cff6a1a",
-    "rMaF2_3D_i2": "5273ad959500024b", "rMaF2_3D_i3": "eef6f109538ae14e",
-    "rMaF2_5D": "8e889631d7e89aea", "rMaF2_5D_i1": "8e889631d7e89aea",
-    "rMaF2_5D_i2": "eac07f5d36d3936c", "rMaF2_5D_i3": "2374eca6fc05b910",
-    "rMaF3_3D": "56f6ae3c2e81ff1f", "rMaF3_3D_i1": "56f6ae3c2e81ff1f",
-    "rMaF3_3D_i2": "2ff9f224fc8c96ad", "rMaF3_3D_i3": "a8ffab49a4bb75c6",
-    "rMaF3_5D": "836939cedc20a18a", "rMaF3_5D_i1": "836939cedc20a18a",
-    "rMaF3_5D_i2": "15a0b736c2769c5a", "rMaF3_5D_i3": "efe831236fae70f5",
-    "rMaF4_3D": "112b9ab1ddcdae9f", "rMaF4_3D_i1": "112b9ab1ddcdae9f",
-    "rMaF4_3D_i2": "b7ce173d2d310c82", "rMaF4_3D_i3": "798999d8220770fb",
-    "rMaF4_5D": "907fd6d05363afba", "rMaF4_5D_i1": "907fd6d05363afba",
-    "rMaF4_5D_i2": "efaff16249e9364b", "rMaF4_5D_i3": "20f5fb05e2a5f277",
-    "rWFG1_3D": "69018c08b9388d4c", "rWFG1_3D_i1": "69018c08b9388d4c",
-    "rWFG1_3D_i2": "0ea94560e5c90bbf", "rWFG1_3D_i3": "482c0c6e34d8415f",
-    "rWFG1_5D": "93b88ffe8c6e4314", "rWFG1_5D_i1": "93b88ffe8c6e4314",
-    "rWFG1_5D_i2": "82d6a9f14d38eb8a", "rWFG1_5D_i3": "58f383ac9a0e0033",
-    "rWFG2_3D": "5514f9911a27b405", "rWFG2_3D_i1": "5514f9911a27b405",
-    "rWFG2_3D_i2": "f9e47fa590b21a3e", "rWFG2_3D_i3": "502c9083527cf994",
-    "rWFG2_5D": "caf06525033344e6", "rWFG2_5D_i1": "caf06525033344e6",
-    "rWFG2_5D_i2": "058b11027594107e", "rWFG2_5D_i3": "d1c0013b2ce63bd6",
-    "rWFG3_3D": "2541763a3cfaa279", "rWFG3_3D_i1": "2541763a3cfaa279",
-    "rWFG3_3D_i2": "d33f09082d1e158f", "rWFG3_3D_i3": "d86f7d6498190fb2",
-    "rWFG3_5D": "efc08973d5c64c40", "rWFG3_5D_i1": "efc08973d5c64c40",
-    "rWFG3_5D_i2": "c82c1812c3cb4d9f", "rWFG3_5D_i3": "631cdcc70ba05f8d",
-    "rWFG4_3D": "fbcdf21c15e602b8", "rWFG4_3D_i1": "fbcdf21c15e602b8",
-    "rWFG4_3D_i2": "3d4f8f050e0c4ed8", "rWFG4_3D_i3": "67df01e884d95f22",
-    "rWFG4_5D": "74af38dc612a7f79", "rWFG4_5D_i1": "74af38dc612a7f79",
-    "rWFG4_5D_i2": "591a6f82888340dc", "rWFG4_5D_i3": "f8d3e175c673e190",
-    "rWFG5_3D": "ffad98d28186f3c1", "rWFG5_3D_i1": "ffad98d28186f3c1",
-    "rWFG5_3D_i2": "89701693fd2cb6a8", "rWFG5_3D_i3": "8c0c184481fdfe3b",
-    "rWFG5_5D": "76b3eb3d1941f01c", "rWFG5_5D_i1": "76b3eb3d1941f01c",
-    "rWFG5_5D_i2": "7a4f58255ede61ec", "rWFG5_5D_i3": "a309ddf00ef9f996",
-    "rWFG6_3D": "1ac3f6901e681c62", "rWFG6_3D_i1": "1ac3f6901e681c62",
-    "rWFG6_3D_i2": "7a052eb48b8b1962", "rWFG6_3D_i3": "18bc676c1dbf976a",
-    "rWFG6_5D": "efe988f86e5ee278", "rWFG6_5D_i1": "efe988f86e5ee278",
-    "rWFG6_5D_i2": "bd2a88f2975979e3", "rWFG6_5D_i3": "5bba1813ce5a22d4",
-    "rWFG7_3D": "7d9473afb6844b39", "rWFG7_3D_i1": "7d9473afb6844b39",
-    "rWFG7_3D_i2": "5ba6c043318911f0", "rWFG7_3D_i3": "c97690fe04f780c1",
-    "rWFG7_5D": "291af541076ce4c7", "rWFG7_5D_i1": "291af541076ce4c7",
-    "rWFG7_5D_i2": "e13d16953024f10b", "rWFG7_5D_i3": "4f09fedfe30cfdb3",
-    "rWFG8_3D": "b2cc51c3b257d079", "rWFG8_3D_i1": "b2cc51c3b257d079",
-    "rWFG8_3D_i2": "ba1b44d9f9f4a1a8", "rWFG8_3D_i3": "eff75ae15a0afada",
-    "rWFG8_5D": "6f893527ce83e06d", "rWFG8_5D_i1": "6f893527ce83e06d",
-    "rWFG8_5D_i2": "39b84ee79af5b67a", "rWFG8_5D_i3": "bfd12fa21a4e7314",
-    "rWFG9_3D": "7f17170806d2982c", "rWFG9_3D_i1": "7f17170806d2982c",
-    "rWFG9_3D_i2": "4cb3be2068b9009e", "rWFG9_3D_i3": "ab13d82c37016272",
-    "rWFG9_5D": "d6007b40b92b198d", "rWFG9_5D_i1": "d6007b40b92b198d",
-    "rWFG9_5D_i2": "a9d5c182c891e51f", "rWFG9_5D_i3": "33730a4cf8262bc2",
-    "rZCAT10_3D": "3ffda6a38bebffb9", "rZCAT10_3D_i1": "3ffda6a38bebffb9",
-    "rZCAT10_3D_i2": "18038fed28ccea98", "rZCAT10_3D_i3": "afe4d85142e377de",
-    "rZCAT10_5D": "d52e06d453b3daa6", "rZCAT10_5D_i1": "d52e06d453b3daa6",
-    "rZCAT10_5D_i2": "61c6088cf9c61b66", "rZCAT10_5D_i3": "1d25c3e9fe6ffba7",
-    "rZCAT11_3D": "aca4beacb2a27145", "rZCAT11_3D_i1": "aca4beacb2a27145",
-    "rZCAT11_3D_i2": "46af50c92194a2f4", "rZCAT11_3D_i3": "1cd986d3a1512e21",
-    "rZCAT11_5D": "76c892b546a7ab67", "rZCAT11_5D_i1": "76c892b546a7ab67",
-    "rZCAT11_5D_i2": "6c2be4bf460684e5", "rZCAT11_5D_i3": "171a41c4bf52637a",
-    "rZCAT12_3D": "4ce01fbab04be6ba", "rZCAT12_3D_i1": "4ce01fbab04be6ba",
-    "rZCAT12_3D_i2": "c482e663133fea8b", "rZCAT12_3D_i3": "5a76115b8884c74b",
-    "rZCAT12_5D": "702802ce30655f8d", "rZCAT12_5D_i1": "702802ce30655f8d",
-    "rZCAT12_5D_i2": "05db1fb86e757993", "rZCAT12_5D_i3": "b37713b178e58186",
-    "rZCAT13_3D": "59d66fc291617bc7", "rZCAT13_3D_i1": "59d66fc291617bc7",
-    "rZCAT13_3D_i2": "f1688babc9a3acf5", "rZCAT13_3D_i3": "70d5038d8b5c9536",
-    "rZCAT13_5D": "2f25fc051d7ebe9e", "rZCAT13_5D_i1": "2f25fc051d7ebe9e",
-    "rZCAT13_5D_i2": "0a1ec353364a4ac8", "rZCAT13_5D_i3": "1eed55f857072b3c",
-    "rZCAT14_3D": "c750c3c92d83e401", "rZCAT14_3D_i1": "c750c3c92d83e401",
-    "rZCAT14_3D_i2": "8b820a64ba449886", "rZCAT14_3D_i3": "a25f6ed5a6cc7e00",
-    "rZCAT14_5D": "55e50b7a8a583b87", "rZCAT14_5D_i1": "55e50b7a8a583b87",
-    "rZCAT14_5D_i2": "3195f319fe4443fa", "rZCAT14_5D_i3": "83050e865b3b6280",
-    "rZCAT15_3D": "3f6cad419890b538", "rZCAT15_3D_i1": "3f6cad419890b538",
-    "rZCAT15_3D_i2": "e1f6e97163f984e1", "rZCAT15_3D_i3": "aeb19728a22ee058",
-    "rZCAT15_5D": "97049c1fe7a26906", "rZCAT15_5D_i1": "97049c1fe7a26906",
-    "rZCAT15_5D_i2": "4b0126a8d7e6630d", "rZCAT15_5D_i3": "d4f6cc50e4378d0b",
-    "rZCAT16_3D": "3e646cc6c336ebcb", "rZCAT16_3D_i1": "3e646cc6c336ebcb",
-    "rZCAT16_3D_i2": "d126184f963ea71e", "rZCAT16_3D_i3": "666118eec8218aa3",
-    "rZCAT16_5D": "cbb7d94872593ade", "rZCAT16_5D_i1": "cbb7d94872593ade",
-    "rZCAT16_5D_i2": "6d02317b0ddde707", "rZCAT16_5D_i3": "ea09bd1d2c7811fa",
-    "rZCAT17_3D": "ad22544a2999e044", "rZCAT17_3D_i1": "ad22544a2999e044",
-    "rZCAT17_3D_i2": "4c3e1532a4dc7669", "rZCAT17_3D_i3": "0ac64f0cde4276ef",
-    "rZCAT17_5D": "5ac91feb98e0de88", "rZCAT17_5D_i1": "5ac91feb98e0de88",
-    "rZCAT17_5D_i2": "69379086930d2e16", "rZCAT17_5D_i3": "5c13603168376bae",
-    "rZCAT18_3D": "6b0082a4e3753fc1", "rZCAT18_3D_i1": "6b0082a4e3753fc1",
-    "rZCAT18_3D_i2": "30e97beae33f51af", "rZCAT18_3D_i3": "c7445632d489bc80",
-    "rZCAT18_5D": "b161fe8f8521f943", "rZCAT18_5D_i1": "b161fe8f8521f943",
-    "rZCAT18_5D_i2": "7e2cad44ba233bd0", "rZCAT18_5D_i3": "3d496e2f89ea609c",
-    "rZCAT19_3D": "118086c54befab2c", "rZCAT19_3D_i1": "118086c54befab2c",
-    "rZCAT19_3D_i2": "45a3f3f93d9d6e7b", "rZCAT19_3D_i3": "0055016d12e88f24",
-    "rZCAT19_5D": "77fb24f140f63fac", "rZCAT19_5D_i1": "77fb24f140f63fac",
-    "rZCAT19_5D_i2": "8ec69c709c4fa980", "rZCAT19_5D_i3": "42160f0dca33504a",
-    "rZCAT1_3D": "7d86254f36020314", "rZCAT1_3D_i1": "7d86254f36020314",
-    "rZCAT1_3D_i2": "bc3e2cc36aedb7f0", "rZCAT1_3D_i3": "86d57d83ee1ed4c1",
-    "rZCAT1_5D": "9f5ce729a7765143", "rZCAT1_5D_i1": "9f5ce729a7765143",
-    "rZCAT1_5D_i2": "a2f30e1348b85ac4", "rZCAT1_5D_i3": "455dc809288e161f",
-    "rZCAT20_3D": "3b49b305731a856a", "rZCAT20_3D_i1": "3b49b305731a856a",
-    "rZCAT20_3D_i2": "ae5c253766dc0faa", "rZCAT20_3D_i3": "1678c7e7f1996f3e",
-    "rZCAT20_5D": "ae4cbf31e8ace847", "rZCAT20_5D_i1": "ae4cbf31e8ace847",
-    "rZCAT20_5D_i2": "c506390d9b600c0f", "rZCAT20_5D_i3": "2d776701cae333bf",
-    "rZCAT2_3D": "95f97efcf958147a", "rZCAT2_3D_i1": "95f97efcf958147a",
-    "rZCAT2_3D_i2": "99a7ccbeeae7aa7b", "rZCAT2_3D_i3": "6317d8d859b4e6ed",
-    "rZCAT2_5D": "89043338c1178292", "rZCAT2_5D_i1": "89043338c1178292",
-    "rZCAT2_5D_i2": "1aa56c17c455607f", "rZCAT2_5D_i3": "f5d7c4b4c8500338",
-    "rZCAT3_3D": "505768c3c34f3b60", "rZCAT3_3D_i1": "505768c3c34f3b60",
-    "rZCAT3_3D_i2": "556f4fb61322f948", "rZCAT3_3D_i3": "027c4e59839a9339",
-    "rZCAT3_5D": "a89460f62a3d511c", "rZCAT3_5D_i1": "a89460f62a3d511c",
-    "rZCAT3_5D_i2": "61905d7cd39adf14", "rZCAT3_5D_i3": "aad84af1e8b705a3",
-    "rZCAT4_3D": "03894ce12a39040c", "rZCAT4_3D_i1": "03894ce12a39040c",
-    "rZCAT4_3D_i2": "7c28b2c882266723", "rZCAT4_3D_i3": "bcb47b292398e6d0",
-    "rZCAT4_5D": "9859521cfc1ba068", "rZCAT4_5D_i1": "9859521cfc1ba068",
-    "rZCAT4_5D_i2": "9435177e8b4bbab6", "rZCAT4_5D_i3": "bc8a18ced05070a3",
-    "rZCAT5_3D": "6e42da07f8a1dffc", "rZCAT5_3D_i1": "6e42da07f8a1dffc",
-    "rZCAT5_3D_i2": "7395159142142d21", "rZCAT5_3D_i3": "1c22f69bfc708e35",
-    "rZCAT5_5D": "e82afcad0cbb522d", "rZCAT5_5D_i1": "e82afcad0cbb522d",
-    "rZCAT5_5D_i2": "8d748dc9697480e2", "rZCAT5_5D_i3": "5295ee36d2dfaf3f",
-    "rZCAT6_3D": "43aaaf3578deb4f0", "rZCAT6_3D_i1": "43aaaf3578deb4f0",
-    "rZCAT6_3D_i2": "058f8a9b943dcb43", "rZCAT6_3D_i3": "ee37adeb12dc46f5",
-    "rZCAT6_5D": "980041fd98e428a8", "rZCAT6_5D_i1": "980041fd98e428a8",
-    "rZCAT6_5D_i2": "88fc32d2a0f88455", "rZCAT6_5D_i3": "cc294252feb55282",
-    "rZCAT7_3D": "7cecca8f79e9d539", "rZCAT7_3D_i1": "7cecca8f79e9d539",
-    "rZCAT7_3D_i2": "46d8d8e43933e152", "rZCAT7_3D_i3": "3ee41c08efd8d696",
-    "rZCAT7_5D": "e4e57de4c900efb5", "rZCAT7_5D_i1": "e4e57de4c900efb5",
-    "rZCAT7_5D_i2": "88f67659d5afe924", "rZCAT7_5D_i3": "9798f88fe2e2c96c",
-    "rZCAT8_3D": "dc9ffb47dd1e4255", "rZCAT8_3D_i1": "dc9ffb47dd1e4255",
-    "rZCAT8_3D_i2": "9bf7c15075140e46", "rZCAT8_3D_i3": "ca7b3ada0fbdf075",
-    "rZCAT8_5D": "87979898e941397f", "rZCAT8_5D_i1": "87979898e941397f",
-    "rZCAT8_5D_i2": "85fc9565103b6bc2", "rZCAT8_5D_i3": "c07d54b437b413cb",
-    "rZCAT9_3D": "0a44ffb65eccb638", "rZCAT9_3D_i1": "0a44ffb65eccb638",
-    "rZCAT9_3D_i2": "5ea59ebfa886d2aa", "rZCAT9_3D_i3": "4d4ca949d25f39f2",
-    "rZCAT9_5D": "afbff255cf86ff4e", "rZCAT9_5D_i1": "afbff255cf86ff4e",
-    "rZCAT9_5D_i2": "39e0a88cb03e4bb1", "rZCAT9_5D_i3": "9d7d174b128684d6",
-    "rZDT1": "6def5ac9d528646e", "rZDT1_i1": "6def5ac9d528646e",
-    "rZDT1_i2": "2cefd442de6b073c", "rZDT1_i3": "0f53dd16f05d544c",
-    "rZDT2": "7d66ba66072173ae", "rZDT2_i1": "7d66ba66072173ae",
-    "rZDT2_i2": "335545f8df56b00a", "rZDT2_i3": "58238761e1ea1a27",
-    "rZDT3": "558f12ff3ba89312", "rZDT3_i1": "558f12ff3ba89312",
-    "rZDT3_i2": "d2ca7fb43c99b423", "rZDT3_i3": "3700044d0d17db7b",
-    "rZDT4": "10e70f50d53139bd", "rZDT4_i1": "10e70f50d53139bd",
-    "rZDT4_i2": "b8534060fdec75da", "rZDT4_i3": "9b99a423e0f6bc23",
-    "rZDT6": "b5dbffb60df1c58b", "rZDT6_i1": "b5dbffb60df1c58b",
-    "rZDT6_i2": "be3ceb3412ae6718", "rZDT6_i3": "ddf2c6638fc05278",
-    "rcDTLZ2_10D": "05b30240ae53382b", "rcDTLZ2_10D_i1": "05b30240ae53382b",
-    "rcDTLZ2_10D_i2": "ec16666f9f4ad5e1", "rcDTLZ2_10D_i3": "73b4d89e9f0c3a22",
-    "rcDTLZ2_3D": "83d2091bdb342835", "rcDTLZ2_3D_i1": "83d2091bdb342835",
-    "rcDTLZ2_3D_i2": "1ae6065c7c7f2573", "rcDTLZ2_3D_i3": "ddfd93c2c5835162",
-    "rcDTLZ2_5D": "9aff00c4856a01f9", "rcDTLZ2_5D_i1": "9aff00c4856a01f9",
-    "rcDTLZ2_5D_i2": "6ed280d8a41550cf", "rcDTLZ2_5D_i3": "59271f759909a3e9",
-    "rcDTLZ2_6D": "8a55d7a79f21a5ba", "rcDTLZ2_6D_i1": "8a55d7a79f21a5ba",
-    "rcDTLZ2_6D_i2": "be670aaa0387d54b", "rcDTLZ2_6D_i3": "9cc7fb95f84dc5e9",
-    "rcDTLZ5_3D": "c6f4cd5da2e2b575", "rcDTLZ5_3D_i1": "c6f4cd5da2e2b575",
-    "rcDTLZ5_3D_i2": "3e1604d1549b43d8", "rcDTLZ5_3D_i3": "cab9f8ba7ed8cca0",
-    "rcDTLZ5_5D": "8e9b87e4198749d0", "rcDTLZ5_5D_i1": "8e9b87e4198749d0",
-    "rcDTLZ5_5D_i2": "5f3b402f5efcf2a2", "rcDTLZ5_5D_i3": "26ca32cc167a3d66",
-    "rcMaF1_3D": "8b84960f55c9f6e6", "rcMaF1_3D_i1": "8b84960f55c9f6e6",
-    "rcMaF1_3D_i2": "37bfd354c76eea45", "rcMaF1_3D_i3": "c3abf368ca279fa0",
-    "rcMaF1_5D": "e23ef1816bb772d5", "rcMaF1_5D_i1": "e23ef1816bb772d5",
-    "rcMaF1_5D_i2": "a2bd2b70ae90a359", "rcMaF1_5D_i3": "d54b946edbae35d2",
-    "rcMaF5_3D": "941ad658d2ada1c4", "rcMaF5_3D_i1": "941ad658d2ada1c4",
-    "rcMaF5_3D_i2": "b8b6bcb4aaab4c90", "rcMaF5_3D_i3": "2da0f230eb8609b9",
-    "rcMaF5_5D": "c1b8fb58662777b2", "rcMaF5_5D_i1": "c1b8fb58662777b2",
-    "rcMaF5_5D_i2": "397fe4bc0f9c3ca8", "rcMaF5_5D_i3": "56f1fce51224962e",
-    "rcMaF6_3D": "eb3ba5522643ce41", "rcMaF6_3D_i1": "eb3ba5522643ce41",
-    "rcMaF6_3D_i2": "1d20c3554c20d0cf", "rcMaF6_3D_i3": "91761afab4ea232e",
-    "rcMaF6_5D": "f58ce8d5e8a2ed7b", "rcMaF6_5D_i1": "f58ce8d5e8a2ed7b",
-    "rcMaF6_5D_i2": "e947cb033b3dd2fe", "rcMaF6_5D_i3": "3d0486d11eae70e8",
-    "rcPolygon_3D": "9b50a7b8bba1a19e", "rcPolygon_3D_i1": "9b50a7b8bba1a19e",
-    "rcPolygon_3D_i2": "49fd710fd90f1e19", "rcPolygon_3D_i3": "e34b25e5082c011f",
-    "rcPolygon_5D": "dc606239c2f29f92", "rcPolygon_5D_i1": "dc606239c2f29f92",
-    "rcPolygon_5D_i2": "44616c652c36ea78", "rcPolygon_5D_i3": "162a2e8e6a9b6276",
+    "rDTLZ1_3D": "34156a38ac88b6cb", "rDTLZ1_3D_i1": "34156a38ac88b6cb",
+    "rDTLZ1_3D_i2": "f227d9690c89af3a", "rDTLZ1_3D_i3": "48da37141ab682a0",
+    "rDTLZ1_5D": "8fdc0be99577d48e", "rDTLZ1_5D_i1": "8fdc0be99577d48e",
+    "rDTLZ1_5D_i2": "414164995d60d1ee", "rDTLZ1_5D_i3": "3c6dfafb8bfb1375",
+    "rDTLZ2_3D": "d3c52b52df2a01df", "rDTLZ2_5D": "7ca7099d480327ef",
+    "rDTLZ3_3D": "9f04f6e99891b09e", "rDTLZ3_3D_i1": "9f04f6e99891b09e",
+    "rDTLZ3_3D_i2": "10153730ca65b18d", "rDTLZ3_3D_i3": "655b26fe46829689",
+    "rDTLZ3_5D": "19d0df13154afd75", "rDTLZ3_5D_i1": "19d0df13154afd75",
+    "rDTLZ3_5D_i2": "b1aeb1967013bb7b", "rDTLZ3_5D_i3": "65af91ec40661bae",
+    "rDTLZ4_3D": "e2c30c87bfab54c3", "rDTLZ4_5D": "f304d965d4685699",
+    "rMaF2_3D": "72a9eef173a5f7bc", "rMaF2_3D_i1": "72a9eef173a5f7bc",
+    "rMaF2_3D_i2": "296dd97bb207fabf", "rMaF2_3D_i3": "0c4b72e32160574e",
+    "rMaF2_5D": "159478fa61a71aa0", "rMaF2_5D_i1": "159478fa61a71aa0",
+    "rMaF2_5D_i2": "f2197c53b085c7c7", "rMaF2_5D_i3": "40b291644879e500",
+    "rMaF3_3D": "27ebcdd0a016c845", "rMaF3_3D_i1": "27ebcdd0a016c845",
+    "rMaF3_3D_i2": "8c538372bdef619b", "rMaF3_3D_i3": "2f9e8e51f168a84b",
+    "rMaF3_5D": "f5c1cc9d3f10a94f", "rMaF3_5D_i1": "f5c1cc9d3f10a94f",
+    "rMaF3_5D_i2": "b78b143d26142247", "rMaF3_5D_i3": "54f42715fed122ec",
+    "rMaF4_3D": "426fb63fd232c240", "rMaF4_3D_i1": "426fb63fd232c240",
+    "rMaF4_3D_i2": "b3e27a12642041d0", "rMaF4_3D_i3": "80914d3f8dcc6809",
+    "rMaF4_5D": "97117206b5c827a5", "rMaF4_5D_i1": "97117206b5c827a5",
+    "rMaF4_5D_i2": "1f0010d028a0aed2", "rMaF4_5D_i3": "d61053eedf4a1c38",
+    "rWFG1_3D": "dd127246eb545ebc", "rWFG1_3D_i1": "dd127246eb545ebc",
+    "rWFG1_3D_i2": "af18b8f93cfda7b0", "rWFG1_3D_i3": "329ab158fed8506d",
+    "rWFG1_5D": "dd42d24747ab0dee", "rWFG1_5D_i1": "dd42d24747ab0dee",
+    "rWFG1_5D_i2": "ccd870453a538d6f", "rWFG1_5D_i3": "b9fc7d7c6e9adcf8",
+    "rWFG2_3D": "dee71cdf260f43aa", "rWFG2_3D_i1": "dee71cdf260f43aa",
+    "rWFG2_3D_i2": "edbe5cddf3a9a40f", "rWFG2_3D_i3": "860b931a289ee4f2",
+    "rWFG2_5D": "18d4b07c851a469a", "rWFG2_5D_i1": "18d4b07c851a469a",
+    "rWFG2_5D_i2": "c2c4f1e82d349d3d", "rWFG2_5D_i3": "80097dcf301923e3",
+    "rWFG3_3D": "fbb030aa85cea067", "rWFG3_3D_i1": "fbb030aa85cea067",
+    "rWFG3_3D_i2": "f0a2b4fe81f6e2dc", "rWFG3_3D_i3": "185fef0cc39752c7",
+    "rWFG3_5D": "3cd1b6156035fb45", "rWFG3_5D_i1": "3cd1b6156035fb45",
+    "rWFG3_5D_i2": "b1fac1751e2219b6", "rWFG3_5D_i3": "b4984ec2e5c82041",
+    "rWFG4_3D": "75c09544bd1cd148", "rWFG4_3D_i1": "75c09544bd1cd148",
+    "rWFG4_3D_i2": "d9073a407e46a09b", "rWFG4_3D_i3": "ef1fe61947bad9de",
+    "rWFG4_5D": "98a7fb314dce1088", "rWFG4_5D_i1": "98a7fb314dce1088",
+    "rWFG4_5D_i2": "246c230ca97e487e", "rWFG4_5D_i3": "a261bd66d4d9c587",
+    "rWFG5_3D": "4a8818d94483cc7f", "rWFG5_3D_i1": "4a8818d94483cc7f",
+    "rWFG5_3D_i2": "3659b4bbf4705e7d", "rWFG5_3D_i3": "ab05d400255da643",
+    "rWFG5_5D": "eae2c0286347b8c8", "rWFG5_5D_i1": "eae2c0286347b8c8",
+    "rWFG5_5D_i2": "114a1934748f061f", "rWFG5_5D_i3": "3d4d44f965fb8d13",
+    "rWFG6_3D": "4e144ccb7e3db26e", "rWFG6_3D_i1": "4e144ccb7e3db26e",
+    "rWFG6_3D_i2": "5391af827b143bc7", "rWFG6_3D_i3": "a62926ec5d40e93f",
+    "rWFG6_5D": "890c937c77dea9e9", "rWFG6_5D_i1": "890c937c77dea9e9",
+    "rWFG6_5D_i2": "6d7dad3e8f4e9ec0", "rWFG6_5D_i3": "53d611d3dfdf3e6a",
+    "rWFG7_3D": "33178f8b945dcb8d", "rWFG7_3D_i1": "33178f8b945dcb8d",
+    "rWFG7_3D_i2": "2aacaf35703b2f71", "rWFG7_3D_i3": "accb7947273e4f35",
+    "rWFG7_5D": "6b79d81ac7fc2616", "rWFG7_5D_i1": "6b79d81ac7fc2616",
+    "rWFG7_5D_i2": "cf0cbf6e1519d065", "rWFG7_5D_i3": "fd9c5a13035dba5b",
+    "rWFG8_3D": "760801a9df927ccb", "rWFG8_3D_i1": "760801a9df927ccb",
+    "rWFG8_3D_i2": "eb74c5a9fc3bbef1", "rWFG8_3D_i3": "a89b7eee99d99314",
+    "rWFG8_5D": "98ce547972fc4f41", "rWFG8_5D_i1": "98ce547972fc4f41",
+    "rWFG8_5D_i2": "f420178d1111d3d3", "rWFG8_5D_i3": "d4c36b6cc576e558",
+    "rWFG9_3D": "eb6cdff083841bed", "rWFG9_3D_i1": "eb6cdff083841bed",
+    "rWFG9_3D_i2": "12c191d0a7888743", "rWFG9_3D_i3": "f5788a12315d16bf",
+    "rWFG9_5D": "954ebc689473b1f7", "rWFG9_5D_i1": "954ebc689473b1f7",
+    "rWFG9_5D_i2": "ad2ec1c9b644b575", "rWFG9_5D_i3": "f95c0339bcde449a",
+    "rZCAT10_3D": "91dc0f0ea538bd0f", "rZCAT10_3D_i1": "91dc0f0ea538bd0f",
+    "rZCAT10_3D_i2": "de72e94576d30fe7", "rZCAT10_3D_i3": "7d67ed5ece41b9be",
+    "rZCAT10_5D": "3326c81f36dd9877", "rZCAT10_5D_i1": "3326c81f36dd9877",
+    "rZCAT10_5D_i2": "38c2463a529c00cd", "rZCAT10_5D_i3": "b22c133ff90db5a6",
+    "rZCAT11_3D": "41b7939a47e6267f", "rZCAT11_3D_i1": "41b7939a47e6267f",
+    "rZCAT11_3D_i2": "a96bd21e1219ddac", "rZCAT11_3D_i3": "a32a054f93095472",
+    "rZCAT11_5D": "0ecc99cb5ea9a0e3", "rZCAT11_5D_i1": "0ecc99cb5ea9a0e3",
+    "rZCAT11_5D_i2": "f4f29d81d89818c8", "rZCAT11_5D_i3": "ffe79f1b5158c32c",
+    "rZCAT12_3D": "06b3440621a45759", "rZCAT12_3D_i1": "06b3440621a45759",
+    "rZCAT12_3D_i2": "44e689d201751fde", "rZCAT12_3D_i3": "7f9f4253ac1642b8",
+    "rZCAT12_5D": "a90e83127fbb4be9", "rZCAT12_5D_i1": "a90e83127fbb4be9",
+    "rZCAT12_5D_i2": "a073139602b1049d", "rZCAT12_5D_i3": "45759c4d644d0ce9",
+    "rZCAT13_3D": "af607b5f874ba702", "rZCAT13_3D_i1": "af607b5f874ba702",
+    "rZCAT13_3D_i2": "eb2ab4a2e5835027", "rZCAT13_3D_i3": "06b663d12a9fa1aa",
+    "rZCAT13_5D": "77a44f4f9d707bac", "rZCAT13_5D_i1": "77a44f4f9d707bac",
+    "rZCAT13_5D_i2": "94ca593e8c778963", "rZCAT13_5D_i3": "3c2061c11b99c06a",
+    "rZCAT14_3D": "fdce378a3e514106", "rZCAT14_3D_i1": "fdce378a3e514106",
+    "rZCAT14_3D_i2": "1f96f0455baeec32", "rZCAT14_3D_i3": "6b9f67d4833bc11f",
+    "rZCAT14_5D": "4685b17c9a7382a1", "rZCAT14_5D_i1": "4685b17c9a7382a1",
+    "rZCAT14_5D_i2": "272dbf472a866144", "rZCAT14_5D_i3": "2415f62322fadece",
+    "rZCAT15_3D": "4762182382c26932", "rZCAT15_3D_i1": "4762182382c26932",
+    "rZCAT15_3D_i2": "cb11da1b5b23e099", "rZCAT15_3D_i3": "c0dd8940ed3e3738",
+    "rZCAT15_5D": "85338d9cfa51b5ab", "rZCAT15_5D_i1": "85338d9cfa51b5ab",
+    "rZCAT15_5D_i2": "171de9217acacedc", "rZCAT15_5D_i3": "77ddcce4c0dee3a0",
+    "rZCAT16_3D": "059b7e6dc1aa3fc4", "rZCAT16_3D_i1": "059b7e6dc1aa3fc4",
+    "rZCAT16_3D_i2": "984e223ed0a0b240", "rZCAT16_3D_i3": "c19de3a5e1cec00b",
+    "rZCAT16_5D": "6c916b26f090e399", "rZCAT16_5D_i1": "6c916b26f090e399",
+    "rZCAT16_5D_i2": "365f074412d0fa9c", "rZCAT16_5D_i3": "b9042c76c23bbaf5",
+    "rZCAT17_3D": "51e73f2e59445a77", "rZCAT17_3D_i1": "51e73f2e59445a77",
+    "rZCAT17_3D_i2": "58e55ab7436843bd", "rZCAT17_3D_i3": "221444acaf6b4c1a",
+    "rZCAT17_5D": "b6e16ac15ab6bac5", "rZCAT17_5D_i1": "b6e16ac15ab6bac5",
+    "rZCAT17_5D_i2": "73bdb72ef26d89b2", "rZCAT17_5D_i3": "9c0a9272f2e11226",
+    "rZCAT18_3D": "2b5e855b98af999c", "rZCAT18_3D_i1": "2b5e855b98af999c",
+    "rZCAT18_3D_i2": "5c18f7757e2a7af4", "rZCAT18_3D_i3": "9fe698d879639f19",
+    "rZCAT18_5D": "551389f5e5d2ba9e", "rZCAT18_5D_i1": "551389f5e5d2ba9e",
+    "rZCAT18_5D_i2": "9b9c6b28a3157c6c", "rZCAT18_5D_i3": "19f3493be3dc5dff",
+    "rZCAT19_3D": "998f99c002193b83", "rZCAT19_3D_i1": "998f99c002193b83",
+    "rZCAT19_3D_i2": "09c130798ef04dcc", "rZCAT19_3D_i3": "064238e20768deb3",
+    "rZCAT19_5D": "4eb9514567266f88", "rZCAT19_5D_i1": "4eb9514567266f88",
+    "rZCAT19_5D_i2": "9a4988fadbd14209", "rZCAT19_5D_i3": "43616ecdb5a8847f",
+    "rZCAT1_3D": "f883308e1aeab0c2", "rZCAT1_3D_i1": "f883308e1aeab0c2",
+    "rZCAT1_3D_i2": "4144a7b3d8b3b468", "rZCAT1_3D_i3": "a78f1a4affdfc88c",
+    "rZCAT1_5D": "634ef998cce3e13b", "rZCAT1_5D_i1": "634ef998cce3e13b",
+    "rZCAT1_5D_i2": "fa9452866a0830ec", "rZCAT1_5D_i3": "0857fcc6da4233dd",
+    "rZCAT20_3D": "477bd50049426dfc", "rZCAT20_3D_i1": "477bd50049426dfc",
+    "rZCAT20_3D_i2": "a1f84ddb8576ec5b", "rZCAT20_3D_i3": "87ee509d7a4eba49",
+    "rZCAT20_5D": "b07c3036133e868c", "rZCAT20_5D_i1": "b07c3036133e868c",
+    "rZCAT20_5D_i2": "2b7197839d3d8362", "rZCAT20_5D_i3": "0e0310c6b38efd65",
+    "rZCAT2_3D": "83cef11c7fd772aa", "rZCAT2_3D_i1": "83cef11c7fd772aa",
+    "rZCAT2_3D_i2": "5b1ddb0e450d9f1d", "rZCAT2_3D_i3": "eef50b4f12cf3fc1",
+    "rZCAT2_5D": "d431b8ac6ad2e70e", "rZCAT2_5D_i1": "d431b8ac6ad2e70e",
+    "rZCAT2_5D_i2": "9110974c603c10a4", "rZCAT2_5D_i3": "0497abd3858ec4d0",
+    "rZCAT3_3D": "edcfa1fe2116d05f", "rZCAT3_3D_i1": "edcfa1fe2116d05f",
+    "rZCAT3_3D_i2": "1c9a9553174cde19", "rZCAT3_3D_i3": "ae5c0cbd0be4208e",
+    "rZCAT3_5D": "641692af523d3526", "rZCAT3_5D_i1": "641692af523d3526",
+    "rZCAT3_5D_i2": "2a5054ee3b22b5d0", "rZCAT3_5D_i3": "6a160376b812bbc9",
+    "rZCAT4_3D": "c874efd1d8466936", "rZCAT4_3D_i1": "c874efd1d8466936",
+    "rZCAT4_3D_i2": "1d69dc157d2b6364", "rZCAT4_3D_i3": "ca37bacac8889cf5",
+    "rZCAT4_5D": "3f8db7efb4d47af9", "rZCAT4_5D_i1": "3f8db7efb4d47af9",
+    "rZCAT4_5D_i2": "5ef97847ef5b00ca", "rZCAT4_5D_i3": "87b9b76f85933143",
+    "rZCAT5_3D": "c09bd7d0a371e848", "rZCAT5_3D_i1": "c09bd7d0a371e848",
+    "rZCAT5_3D_i2": "1b4e74546edce6a3", "rZCAT5_3D_i3": "f8307caaf4887166",
+    "rZCAT5_5D": "2103aab42c5019a5", "rZCAT5_5D_i1": "2103aab42c5019a5",
+    "rZCAT5_5D_i2": "41fd479267bd3105", "rZCAT5_5D_i3": "4ab1606178c290a3",
+    "rZCAT6_3D": "2630ceaeadf2c07a", "rZCAT6_3D_i1": "2630ceaeadf2c07a",
+    "rZCAT6_3D_i2": "f9e8c6d952679ec4", "rZCAT6_3D_i3": "85846a79360669c6",
+    "rZCAT6_5D": "306ef5907b178073", "rZCAT6_5D_i1": "306ef5907b178073",
+    "rZCAT6_5D_i2": "bef93e2d3f982995", "rZCAT6_5D_i3": "4b50d87b24961217",
+    "rZCAT7_3D": "a3e2e8fd2ad815db", "rZCAT7_3D_i1": "a3e2e8fd2ad815db",
+    "rZCAT7_3D_i2": "43f118d2e2a456aa", "rZCAT7_3D_i3": "4bcd6e9b2fb8b575",
+    "rZCAT7_5D": "d62bdf6d12d1f7c9", "rZCAT7_5D_i1": "d62bdf6d12d1f7c9",
+    "rZCAT7_5D_i2": "006191a7fe547816", "rZCAT7_5D_i3": "403d98a5c33c34b3",
+    "rZCAT8_3D": "9fca01d7b05617f1", "rZCAT8_3D_i1": "9fca01d7b05617f1",
+    "rZCAT8_3D_i2": "ccdf0835a3353ec9", "rZCAT8_3D_i3": "3895bf7b42f8d4f8",
+    "rZCAT8_5D": "7551979274efc3bf", "rZCAT8_5D_i1": "7551979274efc3bf",
+    "rZCAT8_5D_i2": "fa3f3decd0a7b70d", "rZCAT8_5D_i3": "de86fce080f389d3",
+    "rZCAT9_3D": "70bf133d7fad21a3", "rZCAT9_3D_i1": "70bf133d7fad21a3",
+    "rZCAT9_3D_i2": "9decc418e8b61155", "rZCAT9_3D_i3": "489308b6fb343b73",
+    "rZCAT9_5D": "bd9e97080d4294fd", "rZCAT9_5D_i1": "bd9e97080d4294fd",
+    "rZCAT9_5D_i2": "ab2ecfbcd106bffc", "rZCAT9_5D_i3": "e56dae1812d3a199",
+    "rZDT1": "bed684499fce9e0e", "rZDT1_i1": "bed684499fce9e0e", "rZDT1_i2": "797f1b7210bfa05d",
+    "rZDT1_i3": "2540433b6ccedee6", "rZDT2": "24c1ecf63dc93b98", "rZDT2_i1": "24c1ecf63dc93b98",
+    "rZDT2_i2": "389b1bd8131f0b34", "rZDT2_i3": "b98d2f1f7f2b9aba", "rZDT3": "7c49d832887da8cc",
+    "rZDT3_i1": "7c49d832887da8cc", "rZDT3_i2": "1031d208f33bf68c", "rZDT3_i3": "b4ad239c315e7e10",
+    "rZDT4": "b5ad69cf70095787", "rZDT4_i1": "b5ad69cf70095787", "rZDT4_i2": "7c8de78e755e70fa",
+    "rZDT4_i3": "da576c7e794171c4", "rZDT6": "d15608bf70e0b90e", "rZDT6_i1": "d15608bf70e0b90e",
+    "rZDT6_i2": "f0ccdb5a491c80c8", "rZDT6_i3": "4014544735f2c794",
+    "rcDTLZ2_10D": "13275d5fa7315df4", "rcDTLZ2_10D_i1": "13275d5fa7315df4",
+    "rcDTLZ2_10D_i2": "1a0d232649b7f449", "rcDTLZ2_10D_i3": "79dc4aee6efa03a2",
+    "rcDTLZ2_3D": "d1103844b23b1a84", "rcDTLZ2_3D_i1": "d1103844b23b1a84",
+    "rcDTLZ2_3D_i2": "2012834631f22ca2", "rcDTLZ2_3D_i3": "1d64274b6b6f3ef3",
+    "rcDTLZ2_5D": "f06918d63825d6b2", "rcDTLZ2_5D_i1": "f06918d63825d6b2",
+    "rcDTLZ2_5D_i2": "8e7c6864ff81f731", "rcDTLZ2_5D_i3": "cb9d4f65d4fdd242",
+    "rcDTLZ2_6D": "f1fc56b0a1e6c57b", "rcDTLZ2_6D_i1": "f1fc56b0a1e6c57b",
+    "rcDTLZ2_6D_i2": "de23179de94e8ae2", "rcDTLZ2_6D_i3": "b583a16279ff2bdf",
+    "rcDTLZ5_3D": "07fb794c108c32f9", "rcDTLZ5_3D_i1": "07fb794c108c32f9",
+    "rcDTLZ5_3D_i2": "01b68c2f08f344a3", "rcDTLZ5_3D_i3": "42231f2a8bc44dc2",
+    "rcDTLZ5_5D": "679b18f7af91c5ab", "rcDTLZ5_5D_i1": "679b18f7af91c5ab",
+    "rcDTLZ5_5D_i2": "a19076a5a985fb45", "rcDTLZ5_5D_i3": "e73382e3d15e4e1b",
+    "rcMaF1_3D": "1f59a42aa627befb", "rcMaF1_3D_i1": "1f59a42aa627befb",
+    "rcMaF1_3D_i2": "c9aeb748519b6d01", "rcMaF1_3D_i3": "6c0818635a8c7d44",
+    "rcMaF1_5D": "7a32525ace5574e8", "rcMaF1_5D_i1": "7a32525ace5574e8",
+    "rcMaF1_5D_i2": "0942922656529e5d", "rcMaF1_5D_i3": "28d526bf0250b03d",
+    "rcMaF5_3D": "0a1e7cfc3fc84f2b", "rcMaF5_3D_i1": "0a1e7cfc3fc84f2b",
+    "rcMaF5_3D_i2": "cb929039e172b69d", "rcMaF5_3D_i3": "0b4c1e0235b85b25",
+    "rcMaF5_5D": "181182bfd83b85a9", "rcMaF5_5D_i1": "181182bfd83b85a9",
+    "rcMaF5_5D_i2": "8fc80573dba09a5b", "rcMaF5_5D_i3": "760d1bb7b99e0910",
+    "rcMaF6_3D": "c2fd2f70663d2564", "rcMaF6_3D_i1": "c2fd2f70663d2564",
+    "rcMaF6_3D_i2": "c1ffcae63c6303a8", "rcMaF6_3D_i3": "b7a9bb49f24a969e",
+    "rcMaF6_5D": "c37ebd40c72a6f66", "rcMaF6_5D_i1": "c37ebd40c72a6f66",
+    "rcMaF6_5D_i2": "6e27d1dcb7b5d412", "rcMaF6_5D_i3": "8ca2dbe15b1ba415",
+    "rcPolygon_3D": "3a5cfbfdce441751", "rcPolygon_3D_i1": "3a5cfbfdce441751",
+    "rcPolygon_3D_i2": "1bc3896c02efeb20", "rcPolygon_3D_i3": "89a1d91a11db5c2c",
+    "rcPolygon_5D": "7c73ef00b1739b04", "rcPolygon_5D_i1": "7c73ef00b1739b04",
+    "rcPolygon_5D_i2": "6ef20e74d4fd06ad", "rcPolygon_5D_i3": "92e33896f1be4a77",
 }
-BBOB_ROTATION_HASH = "65c0c29ca35cb30a"
+BBOB_ROTATION_HASH = "3f6b670c6ffd12b2"
 
 
 def _matrix_hash(A, digest=None) -> str:
@@ -5583,14 +5581,17 @@ def _matrix_hash(A, digest=None) -> str:
 
 
 @test
-def the_rotations_are_rotations_and_numpy_still_draws_them():
+def the_rotations_are_rotations_and_the_library_draws_them():
     """Every Q of rotated.py is orthogonal (1e-12), the conditioned ones are
     Lambda Q with the stated Lambda, the controls I or Lambda; the hash of every
     matrix, and of bbob-biobj's rotations, is the one recorded (task 6, item
     1.3; the rZDT, the instances and M = 6 and 10, task 7, §3; the other
     families, §7, ZCAT19 and ZCAT20 with a matrix per size of the distance
-    block). Instance 1 is the problem without the suffix, 2 and 3 are other
-    matrices."""
+    block; drawn by the library's generator from task 17, supplement 5, §3).
+    Instance 1 is the problem without the suffix, 2 and 3 are other matrices.
+    With the extension, the matrices C++ draws (suite.hpp, Rotation) and the
+    bbob instances (bbob.hpp, biobj) are these to a few ulps (the matrices:
+    to their normal matrix's condition number in ulps)."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
     import hashlib
@@ -5629,6 +5630,26 @@ def the_rotations_are_rotations_and_numpy_still_draws_them():
                 if A is not None:
                     d.update((np.round(A, 6) + 0.0).tobytes())
     assert d.hexdigest()[:16] == BBOB_ROTATION_HASH, d.hexdigest()[:16]
+    if _core_with("Native") is None:
+        return
+    from mootation.benchmarks import registry as REG
+    for name, r in ROTATED.items():
+        mine = REG.PROBLEMS[name].native.spec["matrices"]
+        assert len(mine) == len(r.matrices()), name
+        for A, B in zip(mine, r.matrices()):
+            # two QR factorizations of the same normal matrix agree to about its
+            # condition number in ulps (rZDT1's: 2.2e4, 1.2e-13 of the largest entry)
+            assert np.allclose(np.reshape(A, B.shape), B, rtol=0.0, atol=1e-11 * np.abs(B).max()), name
+    for n in ("bbobbiobj21_n05_2D", "bbobbiobj45_n10_2D", "bbobbiobjmixint33_n10_2D"):
+        fa, fb = REG.PROBLEMS[n].native.spec["bbob"]
+        p = BB.problem(int(n[-9:-7]), int(n[-5:-3]), 1)
+        for mine, theirs in ((fa, p.alpha), (fb, p.beta)):
+            assert mine["fid"] == theirs.fid and mine["f_opt"] == theirs.f_opt, n
+            assert np.allclose(mine["x_opt"], theirs.x_opt, rtol=0.0, atol=1e-13), n
+            for key in ("R", "Q"):
+                if getattr(theirs, key) is not None:
+                    assert np.allclose(np.reshape(mine[key], (-1, theirs.D)), getattr(theirs, key),
+                                       rtol=0.0, atol=1e-13), (n, key)
 
 
 @test
@@ -11129,6 +11150,8 @@ def the_suite_gives_numpys_values(part, parts):
     names = _suite_names(R)
     assert len(names) >= 700, len(names)
 
+    turned_by_q = {n for n, r in R.ROTATED.items() if r.rotate}
+
     def check(mine, ref, what):
         if exact:
             # WFG (task 17, supplement 1, stage 1): a last-bit difference of
@@ -11140,9 +11163,15 @@ def the_suite_gives_numpys_values(part, parts):
             # 7.6e-15 of the column's scale here. LIR-CMOP9-12: the sine of
             # 4 pi times objectives in the hundreds carries their last bit
             # (from g's sin and cos) into the constraint: 2.9e-15 on CI's Linux
+            # The rotated problems with Q (task 17, supplement 5, §3): C++ and
+            # rotated.py draw Q apart, two QR factorizations of the same normal
+            # matrix, which agree to its condition number in ulps (up to 1.2e-13
+            # of the largest entry); through the base's function, up to 2.5e-13
+            # of the column's scale (rWFG); 1e-12.
             wide = what.startswith(("WFG", "rWFG", "MaF10", "MaF11", "MaF12", "MW", "DOC",
                                     "LIR-CMOP"))
-            _close_to_numpy(mine, ref, what, 1e-13 if wide else 2e-15)
+            turned = what.split(" ")[0] in turned_by_q
+            _close_to_numpy(mine, ref, what, 1e-12 if turned else 1e-13 if wide else 2e-15)
         else:
             mine, ref = np.asarray(mine, float), np.asarray(ref, float)
             assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
@@ -11188,7 +11217,7 @@ def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
                 {"family": "WFG1", "n_var": 4, "n_obj": 3},
                 {"family": "WFG2", "n_var": 5, "n_obj": 3, "k": 4},
                 {"family": "WFG4", "n_var": 24, "n_obj": 3, "k": 3},
-                {"family": "MaF8", "n_var": 2, "n_obj": 3},
+                {"family": "MaF8", "n_var": 3, "n_obj": 3},
                 {"family": "DTLZ2", "n_var": 2, "n_obj": 3},
                 {"family": "ZDT5", "n_var": 30, "n_obj": 2},
                 {"family": "SDTLZ1", "n_var": 7, "n_obj": 3, "scale": [1.0, 10.0]},
@@ -11289,11 +11318,12 @@ def bbob_biobj_gives_numpys_values():
     reference's values (p.reference) at points of the box, at its bounds and
     middle, at and near each objective's optimum and, mixint, at integer and
     half-way values: the batch and one point at a time; a problem pickles by
-    its spec. Within 4 ulps or 4e-15 of the column's scale (_close_to_numpy:
-    T_osz, T_asy and the sums of f15, f17 and f21 carry a last-bit difference
-    of the elementary functions further than the other families) where
-    NumPy's functions are the C library's and its BLAS adds in bbob.hpp's
-    order; within 1e-9 elsewhere."""
+    its spec. Within 4 ulps or 1e-13 of the column's scale (_close_to_numpy:
+    the instances are drawn twice, by C++ and by bbob.py, and the rotations,
+    by two QR factorizations, agree to a few ulps; T_osz, T_asy and the sums
+    of f15, f17 and f21 carry a last-bit difference further) where NumPy's
+    functions are the C library's and its BLAS adds in bbob.hpp's order;
+    within 1e-9 elsewhere."""
     if not _have_numpy() or _core_with("Native") is None:
         print("    (skipped: no NumPy or no extension)"); return
     import math
@@ -11310,7 +11340,7 @@ def bbob_biobj_gives_numpys_values():
 
     def check(mine, ref, what):
         if exact:
-            _close_to_numpy(mine, ref, what, scale=4e-15)
+            _close_to_numpy(mine, ref, what, scale=1e-13)
         else:
             mine, ref = np.asarray(mine, float), np.asarray(ref, float)
             assert mine.shape == ref.shape, (what, mine.shape, ref.shape)
@@ -11365,18 +11395,21 @@ def rotations_and_maf9_take_an_order_of_numpys():
     assert r.map(x)[r.first:].tobytes() == (0.5 + np.sum(r.A * d, axis=1)).tobytes()
     assert matvec_pairwise(r.A, np.vstack([d, d]))[1].tobytes() == np.sum(r.A * d, axis=1).tobytes()
     assert r.map_rows(x[None, :])[0].tobytes() == r.map(x).tobytes()
-    assert R.problem_version("rDTLZ3_5D_i2") == 3 and R.problem_version("rZCAT7_5D") == 3
-    assert R.problem_version("rZDT4") == 3 and R.problem_version("MaF9_5D") == 2
-    assert R.problem_version("rcDTLZ2_3D_n1") == 3 and R.problem_version("rZDT1") == 2
+    # one more each from task 17, supplement 5, §3: the library's rotations
+    assert R.problem_version("rDTLZ3_5D_i2") == 4 and R.problem_version("rZCAT7_5D") == 4
+    assert R.problem_version("rZDT4") == 4 and R.problem_version("MaF9_5D") == 2
+    assert R.problem_version("rcDTLZ2_3D_n1") == 4 and R.problem_version("rZDT1") == 3
     for name, v in (("r0DTLZ1_3D", 2), ("c0DTLZ2_6D", 2), ("r0MaF3_5D", 2), ("c0MaF6_3D", 2),
-                    ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 2), ("rcPolygon_3D", 2),
+                    ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 3), ("rcPolygon_3D", 3),
                     ("WFG4_3D", 2), ("MaF10_5D", 2), ("WFG4_3D_n1", 2),
                     ("shiftDTLZ1_3D", 2), ("c0MaF1_3D", 1),
                     # task 17, supplement 3, stage 3a
                     ("DAS-CMOP1_t01", 2), ("MW14_3D", 2), ("DOC8", 1), ("IPolygon_3D", 1),
                     ("MMF1_z", 2), ("RE21", 1), ("RE21_n1", 1), ("RE61", 2), ("CRE51", 2),
-                    # task 17, supplement 5, §4: Payne and Hanek's reduction
-                    ("DOC4", 3)):
+                    # task 17, supplement 5, §4: Payne and Hanek's reduction; §3: the
+                    # specs drawn by C++
+                    ("DOC4", 3), ("MaF8_8D", 4), ("MaF9_8D", 3), ("MaF15_3D", 3), ("MaF15_10D", 2),
+                    ("bbobbiobj01_n05_2D", 2), ("bbobbiobjmixint01_n05_2D", 2), ("bbobbiobj21_n10_2D", 3)):
         assert name in R.PROBLEMS and R.problem_version(name) == v, name
     P = R._maf9_forbidden_regions(5)[0]
     want = R._poly_edge_distance(np.array([0.3, 2.0]), P)
@@ -11414,7 +11447,7 @@ def maf8_takes_hypot():
     for M in (3, 5, 8, 10, 15):
         name = f"MaF8_{M}D"
         p = R.PROBLEMS[name]
-        assert R.problem_version(name) == 3, name
+        assert R.problem_version(name) == (4 if M == 8 else 3), name   # 8D: its vertex drawn in C++ (task 17)
         ref = (p.reference or {}).get("evaluate_batch", p.evaluate_batch)
         F = np.asarray(ref(X), float)
         H = np.column_stack([np.hypot(X[:, 0] - vx, X[:, 1] - vy) for vx, vy in R._maf8_vertices(M)])
@@ -11482,7 +11515,8 @@ def maf14_and_maf15_as_the_paper_defines_them():
         for which in (14, 15):
             name = f"MaF{which}_{M}D"
             p = R.get(name)
-            assert p.n_vars == D and p.n_obj == M and R.problem_version(name) == 2, name
+            drawn = which == 15 and M != 10                                     # linkage drawn in C++ (task 17)
+            assert p.n_vars == D and p.n_obj == M and R.problem_version(name) == 2 + drawn, name
             assert p.bounds == [(0.0, 1.0)] * (M - 1) + [(0.0, 10.0 if which == 14 else 1.0)] * (D - M + 1)
             assert p.ideal == (0.0,) * M and p.nadir == (1.0,) * M, name
             assert abs(p.pop_size * p.n_gen - max(100_000, 10_000 * D)) <= p.pop_size / 2, name
@@ -11663,7 +11697,7 @@ gens = 0
             for mode, want in (("auto", True), ("off", False)):
                 meta = json.loads((roots[mode] / "rDTLZ1_3D_i2" / "moead_de" / "run_1" /
                                    "meta.json").read_text(encoding="utf-8"))
-                assert meta["problem_version"] == REG.problem_version("rDTLZ1_3D_i2") == 3
+                assert meta["problem_version"] == REG.problem_version("rDTLZ1_3D_i2") == 4
                 assert (meta["timing_us"]["native"] > 0) == want, meta["timing_us"]
         bad = Path(td) / "bad.toml"
         bad.write_text(text.replace("NATIVE", "maybe").replace("GRID", ""), encoding="utf-8")

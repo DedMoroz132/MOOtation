@@ -33,10 +33,11 @@ pow are the C library's (_rows.agrees) — bbob-biobj's, where its BLAS also
 adds in the order bbob.hpp writes out.
 
 spec(name) is what C++ needs of a problem: its family and sizes and the
-numbers NumPy made for it (centres, rotations, MaF9's polygons, MaF8's
-vertices, MaF14's and MaF15's groups and linkage, the constants of C-DTLZ and
-SDTLZ, what a bbob instance draws), as include/mootation/suite/suite.hpp, Spec,
-reads them.
+numbers Python computes for it (centres, MaF14's and MaF15's groups, the
+constants of C-DTLZ and SDTLZ, ...), as include/mootation/suite/suite.hpp,
+Spec, reads them. What a problem draws — the rotations (a key: family, M,
+instance, sizes), the bbob instances (F and instance), MaF8's and MaF9's
+polygons, MaF14's and MaF15's linkage — C++ draws (task 17, supplement 5, §3).
 """
 
 from __future__ import annotations
@@ -80,25 +81,25 @@ def _rotated(r) -> dict | None:
     """A rotated problem (rotated.Rotated) of the suite's families."""
     if r.kind not in ("dtlz", "maf", "zdt", "zcat", "wfg", "polygon"):
         return None
-    d = _base(r.family, r.n_vars, r.M, first=r.first)
+    # the matrices are drawn by C++ (suite.hpp, Rotation; task 17, supplement 5, §3)
+    d = _base(r.family, r.n_vars, r.M, first=r.first,
+              rotation={"family": r.family, "M": r.M, "instance": r.instance, "rotate": r.rotate,
+                        "condition": r.condition, "sizes": r.sizes()})
     if r.kind == "polygon":
-        d.update(map="rotate", centre=_array(r.optimum), matrices=[_array(r.A)],
-                 vertices=_polygon_vertices(r.M))
+        d.update(map="rotate", centre=_array(r.optimum), vertices=_polygon_vertices(r.M))
     elif r.wfg:
         if r.family in ("WFG4", "WFG5", "WFG6", "WFG7"):
-            d.update(map="rotate_wfg_035", matrices=[_array(r.A)])
+            d.update(map="rotate_wfg_035")
         else:
-            d.update(map="rotate_wfg", matrices=[_array(r.A)],
-                     centre=_array([] if r.family == "WFG8" else r.centre_u))
+            d.update(map="rotate_wfg", centre=_array([] if r.family == "WFG8" else r.centre_u))
     elif r.kind == "zcat":
-        d.update(map="rotate_zcat", matrices=[_array(A) for A in r.matrices()])
+        d.update(map="rotate_zcat")
     elif r.family == "ZDT4":
-        d.update(map="rotate", centre=_array(r.optimum), matrices=[_array(r.A)])
+        d.update(map="rotate", centre=_array(r.optimum))
     elif r.zdt:
-        d.update(map="rotate_abs", centre=_array(r.optimum), spread=_array(r.spread),
-                 matrices=[_array(r.A)])
+        d.update(map="rotate_abs", centre=_array(r.optimum), spread=_array(r.spread))
     else:
-        d.update(map="rotate_half", centre=_array(r.optimum), matrices=[_array(r.A)])
+        d.update(map="rotate_half", centre=_array(r.optimum))
     return d
 
 
@@ -132,32 +133,13 @@ def _stage3a(name: str, p) -> dict | None:
     return _base(name, p.n_vars, p.n_obj)             # LIR-CMOP<i>, DOC<i>
 
 
-def _bbob_function(f, levels=()) -> dict:
-    """One objective of a bbob-biobj problem: what the bbob.Instance f drew,
-    and the levels its integer variables stand for (bbob-biobj-mixint)."""
-    d = {"fid": f.fid, "x_opt": _array(f.x_opt), "f_opt": float(f.f_opt)}
-    for key in ("R", "Q", "l10"):
-        if getattr(f, key) is not None:
-            d[key] = _array(getattr(f, key))
-    if f.fid == 20:
-        d["sign"] = _array(f.peaks["sign"])
-    if f.fid == 21:
-        d.update(w=_array(f.peaks["w"]), C=_array(f.peaks["C"]), y=_array(f.peaks["y"]))
-    if len(levels):
-        d["levels"] = [_array(z) for z in levels]
-    return d
-
-
 def _bbob(name: str, p) -> dict:
-    """A bbob-biobj problem (its evaluate the bbob_biobj.BiObjective the
-    registry made) or a bbob-biobj-mixint one (a bbob_biobj_mixint.MixedInteger)."""
-    obj = p.evaluate
-    if name.startswith("bbobbiobjmixint"):
-        return _base("bbob-biobj-mixint", p.n_vars, 2,
-                     bbob=[_bbob_function(obj.alpha, obj.z_alpha),
-                           _bbob_function(obj.beta, obj.z_beta)])
-    return _base("bbob-biobj", p.n_vars, 2,
-                 bbob=[_bbob_function(obj.alpha), _bbob_function(obj.beta)])
+    """A bbob-biobj problem or a bbob-biobj-mixint one: F1..F55 at instance 1,
+    its instances drawn by C++ (suite/bbob.hpp, biobj and mixint; task 17,
+    supplement 5, §3)."""
+    fnum = int(name[-9:-7])                            # bbobbiobj07_n10_2D: 7
+    family = "bbob-biobj-mixint" if name.startswith("bbobbiobjmixint") else "bbob-biobj"
+    return _base(family, p.n_vars, 2, bbob_fnum=fnum, bbob_iid=1)
 
 
 def spec(name: str, p, rotated=None) -> dict | None:
@@ -194,17 +176,11 @@ def spec(name: str, p, rotated=None) -> dict | None:
         return _base(_MAF_WFG[stem], n, M, k=M - 1)
     if stem.startswith(("DTLZ", "MaF", "ZCAT", "IDTLZ", "minusDTLZ", "WFG")):
         d = _base(stem, n, M)
-        if stem.startswith("MaF9"):
-            from .registry import _maf9_forbidden_regions, _maf9_lines
-            d.update(lines=_array(_maf9_lines(M)),
-                     polygons=[_array(P) for P in _maf9_forbidden_regions(M)])
-        elif stem.startswith("MaF8"):
-            from .registry import _maf8_vertices
-            d.update(vertices=_array(_maf8_vertices(M)))
-        elif stem in ("MaF14", "MaF15"):
+        # MaF8's and MaF9's polygons and MaF14's and MaF15's linkage: drawn by
+        # C++ (suite/maf.hpp; task 17, supplement 5, §3)
+        if stem in ("MaF14", "MaF15"):
             from . import maf
-            d.update(link=_array(maf.lsmop_link(M, int(stem[3:]))),
-                     parts=_array(maf.lsmop_parts(M)))
+            d.update(parts=_array(maf.lsmop_parts(M)))
         return d
     if stem == "wideDTLZ3":
         return _base("DTLZ3", n, M)

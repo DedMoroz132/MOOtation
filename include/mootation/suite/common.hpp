@@ -23,9 +23,11 @@
 //   * a Python expression a * b / c is (a * b) / c and 2 * pi * x is
 //     (2 * pi) * x: each line below keeps the grouping of the one it follows;
 //   * np.clip and np.minimum as NumPy's scalar loops decide (clip, nan_min).
-// What NumPy draws or factorises (the rotations, the shift centres, MaF9's
-// polygons) and the constants Python computes once are handed over: C++ does
-// the arithmetic only.
+// The rotations, the bbob instances, MaF8's and MaF9's polygons and MaF14's
+// and MaF15's linkage are drawn here (instances.hpp, bbob.hpp, maf.hpp; task
+// 17, supplement 5, §3); the other numbers Python computes once for a problem
+// (the shift centres, the constants of C-DTLZ and SDTLZ, ...) are handed over
+// in the spec.
 //
 // Built without contraction into fused multiply-adds (-ffp-contract=off,
 // /fp:precise; python/CMakeLists.txt): a fused a * b + c rounds once where
