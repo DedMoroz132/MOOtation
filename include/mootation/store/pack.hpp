@@ -57,11 +57,43 @@ struct PackFooter {
 
 namespace file {
 
+// A UTF-8 path as the system's: UTF-16 on Windows (decoded here, the same in
+// C++17 and C++20, where u8path is deprecated), the bytes as they are elsewhere.
+inline std::filesystem::path path_of(const std::string& utf8)
+{
+#if defined(_WIN32)
+    std::wstring w;
+    for (std::size_t i = 0; i < utf8.size();) {
+        const auto b = static_cast<unsigned char>(utf8[i]);
+        const int n = b < 0x80 ? 1 : b < 0xE0 ? 2 : b < 0xF0 ? 3 : 4;
+        if (i + static_cast<std::size_t>(n) > utf8.size() || (n > 1 && b < 0xC2) || b > 0xF4)
+            throw std::invalid_argument("a path that is not UTF-8");
+        std::uint32_t c = n == 1 ? b : b & (0x7Fu >> n);
+        for (int k = 1; k < n; ++k) {
+            const auto t = static_cast<unsigned char>(utf8[i + static_cast<std::size_t>(k)]);
+            if ((t & 0xC0) != 0x80) throw std::invalid_argument("a path that is not UTF-8");
+            c = (c << 6) | (t & 0x3Fu);
+        }
+        i += static_cast<std::size_t>(n);
+        if (c >= 0x10000) {
+            c -= 0x10000;
+            w.push_back(static_cast<wchar_t>(0xD800 + (c >> 10)));
+            w.push_back(static_cast<wchar_t>(0xDC00 + (c & 0x3FF)));
+        } else {
+            w.push_back(static_cast<wchar_t>(c));
+        }
+    }
+    return std::filesystem::path(w);
+#else
+    return std::filesystem::path(utf8);
+#endif
+}
+
 // A file by its UTF-8 path, opened as fopen's mode says.
 inline std::FILE* open(const std::string& path, const char* mode)
 {
 #if defined(_WIN32)
-    const std::wstring w = std::filesystem::u8path(path).wstring();
+    const std::wstring w = path_of(path).wstring();
     const std::wstring m(mode, mode + std::char_traits<char>::length(mode));
     std::FILE* f = _wfsopen(w.c_str(), m.c_str(), _SH_DENYNO);   // others may read it meanwhile
 #else
@@ -224,11 +256,11 @@ inline std::vector<Entry> write_pack(const std::string& path, const std::string&
     } catch (...) {
         std::fclose(f);
         std::error_code ec;
-        std::filesystem::remove(std::filesystem::u8path(tmp), ec);
+        std::filesystem::remove(file::path_of(tmp), ec);
         throw;
     }
     std::fclose(f);
-    std::filesystem::rename(std::filesystem::u8path(tmp), std::filesystem::u8path(path));   // replaces a pack there
+    std::filesystem::rename(file::path_of(tmp), file::path_of(path));   // replaces a pack there
     return entries;
 }
 

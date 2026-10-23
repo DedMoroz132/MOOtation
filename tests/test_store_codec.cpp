@@ -356,11 +356,18 @@ int main()
 
         // ── a pack: written, its entries, checked; a byte changed: where ─────
         namespace fs = std::filesystem;
+#if defined(_WIN32)
+        // a UTF-8 path to the system's UTF-16: two, three and four bytes (a surrogate pair)
+        CHECK(st::file::path_of("a\xC3\xA9\xE2\x82\xAC\xF0\x9F\x98\x80").wstring() ==
+              std::wstring({L'a', wchar_t(0x00E9), wchar_t(0x20AC), wchar_t(0xD83D), wchar_t(0xDE00)}));
+#else
+        CHECK(st::file::path_of("a\xC3\xA9").string() == "a\xC3\xA9");
+#endif
         const fs::path dir = fs::temp_directory_path() /
                              ("mootation_test_store_" + std::to_string(std::random_device{}()) + "_" +
                               std::to_string(static_cast<unsigned long long>(g() % 1000000007ull)));
         fs::create_directories(dir);
-        const std::string path = (dir / "pack-T.mpk").u8string(), tmp = (dir / "pack-T.mpk.tmp").u8string();
+        const std::string path = (dir / "pack-T.mpk").string(), tmp = (dir / "pack-T.mpk.tmp").string();   // ASCII
         std::vector<st::PackRecord> recs;
         for (int i = 0; i < 5; ++i) {
             const std::string k = "P" + std::to_string(i) + "|nsga2||1|100";
@@ -392,7 +399,7 @@ int main()
         const auto said2 = st::check_pack(bad.data(), bad.size(), "pack-T.mpk");
         CHECK(said2.size() == 1 && said2[0].find("the header") != std::string::npos);
         // a segment: appended, synced, indexed
-        const std::string raw = (dir / "seg.raw").u8string(), idx = (dir / "seg.idx").u8string();
+        const std::string raw = (dir / "seg.raw").string(), idx = (dir / "seg.idx").string();
         const auto e0 = st::append_record(raw, idx, recs[0].key, recs[0].record, "done");
         const auto e1 = st::append_record(raw, idx, recs[1].key, recs[1].record, "done");
         CHECK(e0.offset == 0 && e1.offset == recs[0].record.size() &&
