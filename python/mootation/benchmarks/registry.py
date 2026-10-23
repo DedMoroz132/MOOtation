@@ -2463,7 +2463,12 @@ REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
 # Pareto set are sampled from the library's generator (polygon_ishibuchi.
 # _sample_interior), which the C++ suite repeats, instead of NumPy's
 # default_rng; the same construction otherwise.
-REFERENCE_VERSION = 3
+# Version 4 (2026-10-24, task 17, supplement 5, §3): the rotated problems'
+# rotations and the bbob-biobj instances are drawn by the library's generator
+# (C++ suite/instances.hpp, bbob.hpp; Python library_rng.py), other instances
+# of those problems: REFERENCE_CHANGED[4] and PROBLEM_CHANGED[4], below the
+# problem versions.
+REFERENCE_VERSION = 4
 REFERENCE_CHANGED[3] = frozenset({"IPolygon_3D", "IPolygon_4D", "IPolygon_8D"})
 # the problems whose DEFINITION changed with a version: their older runs
 # answered another problem and are run again, not recomputed
@@ -2746,12 +2751,34 @@ for _name in list(PROBLEMS):
 # not exact before); of the suite's problems only DOC4 reaches there (its sine
 # of 10 pi (f1 - f2 + 1), arguments up to 3e8): one version more.
 PROBLEM_VERSION["DOC4"] = PROBLEM_VERSION.get("DOC4", 1) + 1
+# 2026-10-24 (task 17, supplement 5, §3): what the problems' specs hold is
+# drawn by C++. New instances — the rotations of every rotated problem with Q
+# (not the controls r0 and c0, whose matrix is I or Lambda) and the instances
+# of bbob-biobj and bbob-biobj-mixint, from the library's generator where
+# NumPy's default_rng drew them: one version more, and their definition
+# changed (PROBLEM_CHANGED[4]). The last bits — MaF8's and MaF9's vertices at
+# M = 8 and MaF15's linkage at M = 3, 5, 8, 15 (dm::'s cos and sin): one
+# version more.
+_NEW_INSTANCES = frozenset([name for name, r in ROTATED.items() if r.rotate]
+                           + [name for name in PROBLEMS if _native._BBOB.fullmatch(name)])
+for _name in sorted(_NEW_INSTANCES) + ["MaF8_8D", "MaF9_8D", "MaF15_3D", "MaF15_5D", "MaF15_8D",
+                                       "MaF15_15D"]:
+    PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
 PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
                         for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
                         for level in _noisy.LEVELS})
 PROBLEM_VERSION.update({_fail.name(base, share, kind): PROBLEM_VERSION[base]
                         for base in _fail.BASES if base in PROBLEM_VERSION
                         for share in _fail.SHARES for kind in _fail.KINDS})
+
+
+_COPIES_OF_NEW = frozenset(
+    [_noisy.name(base, level) for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in _NEW_INSTANCES
+     for level in _noisy.LEVELS]
+    + [_fail.name(base, share, kind) for base in _fail.BASES if base in _NEW_INSTANCES
+       for share in _fail.SHARES for kind in _fail.KINDS])
+REFERENCE_CHANGED[4] = _NEW_INSTANCES | _COPIES_OF_NEW
+PROBLEM_CHANGED[4] = _NEW_INSTANCES | _COPIES_OF_NEW
 
 
 def problem_version(name: str) -> int:

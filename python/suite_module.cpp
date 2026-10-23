@@ -111,6 +111,17 @@ suite::Spec spec_of(const py::dict& d)
     s.parts = flat_of(d, "parts");
     if (d.contains("k")) s.k = d["k"].cast<int>();
     s.constants = flat_of(d, "constants");
+    if (d.contains("bbob_fnum")) s.bbob_fnum = d["bbob_fnum"].cast<int>();
+    if (d.contains("bbob_iid")) s.bbob_iid = d["bbob_iid"].cast<int>();
+    if (d.contains("rotation") && !d["rotation"].is_none()) {
+        const py::dict r = d["rotation"].cast<py::dict>();
+        s.rotation.family = r["family"].cast<std::string>();
+        s.rotation.M = r["M"].cast<int>();
+        s.rotation.instance = r["instance"].cast<int>();
+        s.rotation.rotate = r["rotate"].cast<bool>();
+        s.rotation.condition = r["condition"].cast<bool>();
+        s.rotation.sizes = r["sizes"].cast<std::vector<int>>();
+    }
     if (d.contains("bbob") && !d["bbob"].is_none())
         for (const auto& item : d["bbob"]) s.bbob.push_back(bbob_of(item));
     return s;
@@ -137,6 +148,18 @@ py::dict dict_of(const suite::Spec& s)
     d["parts"] = s.parts;
     d["k"] = s.k;
     d["constants"] = s.constants;
+    d["bbob_fnum"] = s.bbob_fnum;
+    d["bbob_iid"] = s.bbob_iid;
+    if (!s.rotation.family.empty()) {
+        py::dict r;
+        r["family"] = s.rotation.family;
+        r["M"] = s.rotation.M;
+        r["instance"] = s.rotation.instance;
+        r["rotate"] = s.rotation.rotate;
+        r["condition"] = s.rotation.condition;
+        r["sizes"] = s.rotation.sizes;
+        d["rotation"] = r;
+    }
     py::list fs;
     for (const auto& f : s.bbob) fs.append(dict_of(f));
     d["bbob"] = fs;

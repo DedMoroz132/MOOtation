@@ -7,10 +7,11 @@
 //
 // A Spec is what benchmarks/native.py reads off a registered problem: the
 // family (the registry's family names: ZDT1, DTLZ3, IDTLZ1, SDTLZ2,
-// minusDTLZ2, C2-DTLZ2, MaF5, ZCAT12, ...), the sizes, and the numbers NumPy
-// made for it — shift centres, rotations, MaF9's polygons, MaF8's vertices,
-// MaF14's and MaF15's groups and linkage, the constants of C-DTLZ and
-// SDTLZ. The registry's names of the problems themselves
+// minusDTLZ2, C2-DTLZ2, MaF5, ZCAT12, ...), the sizes, and the numbers Python
+// computes for it — shift centres, MaF14's and MaF15's groups, the constants
+// of C-DTLZ and SDTLZ; the rotations, the bbob instances, MaF8's and MaF9's
+// polygons and MaF14's and MaF15's linkage are drawn here (task 17,
+// supplement 5, §3). The registry's names of the problems themselves
 // (rDTLZ1_3D_i2, shiftZDT4) stay in Python, which builds the spec of each.
 //
 // bbob-biobj and bbob-biobj-mixint (bbob.hpp; task 12 of 2026-10-19, §1):
@@ -52,12 +53,18 @@
 //   rotate_wfg   v = c + A ((x - 2i c) / 2i), y = 2i clip(v, 0, 1)    rWFG1-3, 8, 9
 //   rotate_wfg_035  v = 0.35 + A (x / 2i - 0.35), y as above          rWFG4-7
 // A the problem's matrix (Q, Lambda Q or Lambda), each of its products with a
-// vector a row's pairwise sum (common.hpp, matvec). rWFG's c is `centre`
+// vector a row's pairwise sum (common.hpp, matvec). A spec names its matrices
+// by `rotation` (task 17, supplement 5, §3): drawn here, one per size, Q from
+// the key (20261009, crc32(family), M, k, instance) (instances.hpp, haar),
+// Lambda = diag(10^3^((i - 1) / (2 (k - 1)))) on the left; or hands them over
+// in `matrices`. rWFG's c is `centre`
 // (0.35, or WFG9's optimum), WFG8's its optimum at the point's positions
 // (wfg8_optimum below, as rotated.py's), 2i the variable's upper bound.
 // ============================================================================
 
+#include <cstdint>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -69,6 +76,7 @@
 #include "dascmop.hpp"
 #include "doc.hpp"
 #include "dtlz.hpp"
+#include "instances.hpp"
 #include "lircmop.hpp"
 #include "maf.hpp"
 #include "mmo.hpp"
@@ -80,6 +88,15 @@
 #include "zdt.hpp"
 
 namespace mootation::suite {
+
+// The rotations of a rotated problem (rotated.py): Q (rotate) and Lambda
+// (condition) for each size of its distance block.
+struct Rotation {
+    std::string family;                           // the base family the key takes: "DTLZ2", "ZCAT19", ...
+    int M = 0, instance = 1;
+    bool rotate = true, condition = false;
+    std::vector<int> sizes;
+};
 
 struct Spec {
     std::string family;                           // ZDT1, DTLZ3, C1-DTLZ1, MaF9, ZCAT7, ...
@@ -96,9 +113,11 @@ struct Spec {
     std::vector<double> vertices;                 // MaF8: (x, y) per vertex
     std::vector<double> link;                     // MaF14, MaF15: (a, l, u - l) per variable of x^s
     std::vector<double> parts;                    // MaF14, MaF15: the subcomponents' sizes, group by group
-    std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta
+    std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta, handed over
+    int bbob_fnum = 0, bbob_iid = 1;              // or drawn here: F1..F55 at that instance (bbob::biobj)
     int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
     std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet
+    Rotation rotation;                            // the matrices drawn here (family empty: none)
 };
 
 namespace detail {
@@ -129,6 +148,7 @@ class Problem final : public Native {
 public:
     explicit Problem(Spec spec) : s_(std::move(spec))
     {
+        if (!s_.rotation.family.empty()) s_.matrices = matrices_of(s_.rotation);
         n_var = s_.n_var;
         n_obj = s_.n_obj;
         const std::string& f = s_.family;
@@ -328,6 +348,14 @@ private:
                 if (kind_ == Kind::Minus && which_ != 2) fail("minusDTLZ2");
                 break;
             case Kind::MaF:
+                // drawn here where the spec does not hand them over (maf.hpp)
+                if (which_ == 9 && s_.lines.empty() && M >= 3) {
+                    s_.lines = maf::maf9_lines(M);
+                    s_.polygons = maf::maf9_regions(M);
+                }
+                if (which_ == 8 && s_.vertices.empty() && M >= 3) s_.vertices = maf::vertices(M);
+                if ((which_ == 14 || which_ == 15) && s_.link.empty() && M >= 2)
+                    s_.link = maf::lsmop_link(M, which_);
                 if (which_ == 9) {
                     if (n != 2 || static_cast<int>(s_.lines.size()) != 5 * M) fail("MaF9: two variables, M lines");
                     for (const auto& P : s_.polygons)
@@ -366,6 +394,13 @@ private:
             }
             case Kind::BBOB:
                 if (M != 2) fail("two objectives");
+                if (s_.bbob_fnum != 0) {
+                    if (s_.bbob_fnum < 1 || s_.bbob_fnum > 55 || n < bbob::kMinD || n > bbob::kMaxD ||
+                        (s_.family == "bbob-biobj-mixint" && (n % 5 != 0 || s_.bbob_iid != 1)))
+                        fail("F1..F55 in 2..15 variables (mixint: a multiple of 5, instance 1)");
+                    s_.bbob = s_.family == "bbob-biobj-mixint" ? bbob::mixint(s_.bbob_fnum, n)
+                                                               : bbob::biobj(s_.bbob_fnum, n, s_.bbob_iid);
+                }
                 bbob_ = bbob::Pair(s_.bbob, n);
                 if ((bbob_.integers() > 0) != (s_.family == "bbob-biobj-mixint"))
                     fail("integer variables in bbob-biobj-mixint only");
@@ -470,6 +505,33 @@ private:
             total += v;
         }
         if (total != static_cast<double>(ns)) fail("MaF14, MaF15: the subcomponents do not take x^s");
+    }
+
+    // The matrices a Rotation names, one per size: Q (or I), times Lambda
+    // on the left (rotated.Rotated.matrix).
+    static std::vector<std::vector<double>> matrices_of(const Rotation& r)
+    {
+        std::vector<std::vector<double>> out;
+        for (int k : r.sizes) {
+            if (k < 1) throw std::invalid_argument("suite: rotation: a size below 1");
+            const std::size_t n = static_cast<std::size_t>(k);
+            std::vector<double> A(n * n, 0.0);
+            if (r.rotate) {
+                std::mt19937 g(instances::seed({20261009u, instances::crc32(r.family),
+                                                static_cast<std::uint64_t>(r.M), static_cast<std::uint64_t>(k),
+                                                static_cast<std::uint64_t>(r.instance)}));
+                A = instances::haar(g, k);
+            } else {
+                for (std::size_t i = 0; i < n; ++i) A[i * n + i] = 1.0;
+            }
+            if (r.condition && k > 1)
+                for (std::size_t i = 0; i < n; ++i) {
+                    const double lambda = dm::pow(1e3, static_cast<double>(i) / (2.0 * (k - 1)));
+                    for (std::size_t j = 0; j < n; ++j) A[i * n + j] = lambda * A[i * n + j];
+                }
+            out.push_back(A);
+        }
+        return out;
     }
 
     // rWFG's map (rotated.py, Rotated._wfg_v and map): the distance block

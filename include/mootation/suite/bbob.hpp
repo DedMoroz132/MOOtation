@@ -18,11 +18,17 @@
 // Single- and Bi-Objective Optimization." GECCO 2019, Section 3.1.1: the
 // integer j of a variable stands for the level z_{j+1}.
 //
-// Python keeps what an instance draws and what a problem's frame is — x_opt,
-// f_opt, the rotations R and Q, the diagonal of Lambda^10, f20's signs, f21's
-// peaks, the levels of the integer variables, the ideal and the nadir — and
-// hands the numbers over (benchmarks/native.py). C++ evaluates. The readings
-// BBOB-1..4, BIOBJ-1..2 and MIXINT-1..3 are those of the Python modules.
+// WHAT AN INSTANCE DRAWS (task 17, supplement 5, §3): x_opt, f_opt, the
+// rotations R and Q, f20's signs, f21's peaks — drawn here (instance, pair
+// below), by the library's generator keyed (20260916, fid, iid, D), in
+// bbob.py's order, draw for draw (bbob.py draws the same through
+// library_rng.py, the cross-check's): Hansen et al.'s distributions (Section
+// 0.1), not COCO's generator, which no paper states — the instances are ours
+// and are not COCO's (BBOB-4), and from 2026-10-24 (version 2) not the ones
+// NumPy's default_rng drew before either. A spec may still hand the numbers
+// over (`bbob`). Python keeps the problem's frame, the ideal and the nadir.
+// The readings BBOB-1..4, BIOBJ-1..2 and MIXINT-1..3 are those of the Python
+// modules.
 //
 // THE ORDER OF THE ARITHMETIC is that of the NumPy code, as in the rest of the
 // suite (common.hpp): sums along a row pairwise, x ** 2 of an array x * x,
@@ -56,7 +62,9 @@
 #include <vector>
 
 #include "../detmath.hpp"
+#include "../random.hpp"
 #include "common.hpp"
+#include "instances.hpp"
 
 #if defined(_MSC_VER) && defined(_M_X64) && !defined(__clang__)
 #include <immintrin.h>
@@ -483,6 +491,143 @@ private:
     Objective objective_[2];
     int n_ = 0, k_ = 0;
 };
+
+// ---- the instances (bbob.py, instance; bbob_biobj.py, problem; task 17,
+// supplement 5, §3) -----------------------------------------------------------
+
+// the diagonal of Lambda^alpha: alpha^(1/2 (i - 1)/(D - 1)) (bbob.lam)
+inline std::vector<double> lam(double alpha, int D)
+{
+    if (D < 2) return {1.0};
+    std::vector<double> v(static_cast<std::size_t>(D));
+    for (int i = 0; i < D; ++i) v[static_cast<std::size_t>(i)] = dm::pow(alpha, 0.5 * i / (D - 1.0));
+    return v;
+}
+
+// D draws lo + (hi - lo) U
+inline std::vector<double> uniform(std::mt19937& g, double lo, double hi, int D)
+{
+    std::vector<double> v(static_cast<std::size_t>(D));
+    for (double& e : v) e = lo + (hi - lo) * rnd::uniform01(g);
+    return v;
+}
+
+// Function fid at instance iid in D variables (bbob.py, instance): x_opt
+// uniform on [-4, 4]^D ([-3, 3]^D for f8, drawn after the first), f_opt
+// Cauchy about 0 of scale 100 rounded to two decimals (half to even) within
+// +-1000, R and Q Haar rotations, Lambda^10, f20's signs (U < 1/2: -1) and
+// x_opt = 4.2096874633 s / 2, f21's 101 peaks (w_1 = 10, w_i = 1.1 + 8 (i -
+// 2)/99; the alpha_i a permutation of 1000^(2j/99); C_i a permutation of
+// Lambda^alpha_i over alpha_i^(1/4); y_1 on [-4, 4]^D, the others on
+// [-5, 5]^D (BBOB-1); x_opt = y_1).
+inline Function instance(int fid, int iid, int D)
+{
+    std::mt19937 g(instances::seed({20260916u, static_cast<std::uint64_t>(fid), static_cast<std::uint64_t>(iid),
+                                    static_cast<std::uint64_t>(D)}));
+    Function f;
+    f.fid = fid;
+    f.x_opt = uniform(g, -4.0, 4.0, D);
+    if (fid == 8) f.x_opt = uniform(g, -3.0, 3.0, D);
+    const double c = rnd::cauchy(g, 0.0, 100.0);
+    f.f_opt = clip(std::nearbyint(100.0 * c) / 100.0, -1000.0, 1000.0);
+    if (fid == 6 || fid == 13 || fid == 14 || fid == 15 || fid == 17 || fid == 21) f.R = instances::haar(g, D);
+    if (fid == 6 || fid == 13 || fid == 15 || fid == 17) f.Q = instances::haar(g, D);
+    if (fid == 6 || fid == 13 || fid == 15 || fid == 17 || fid == 20) f.l10 = lam(10.0, D);
+    if (fid == 20) {
+        for (int i = 0; i < D; ++i) f.sign.push_back(rnd::uniform01(g) < 0.5 ? -1.0 : 1.0);
+        for (int i = 0; i < D; ++i) f.x_opt[static_cast<std::size_t>(i)] = 0.5 * 4.2096874633 * f.sign[static_cast<std::size_t>(i)];
+    }
+    if (fid == 21) {
+        f.w.push_back(10.0);
+        for (int j = 0; j < kPeaks - 1; ++j) f.w.push_back(1.1 + 8.0 * j / 99.0);
+        std::vector<double> alpha;
+        for (int j = 0; j < kPeaks - 1; ++j) alpha.push_back(dm::pow(1000.0, 2.0 * j / 99.0));
+        rnd::shuffle(alpha.begin(), alpha.end(), g);
+        alpha.insert(alpha.begin(), 1000.0);
+        for (int k = 0; k < kPeaks; ++k) {
+            std::vector<double> l = lam(alpha[static_cast<std::size_t>(k)], D);
+            rnd::shuffle(l.begin(), l.end(), g);
+            const double scale = dm::pow(alpha[static_cast<std::size_t>(k)], 0.25);
+            for (double v : l) f.C.push_back(v / scale);
+        }
+        for (double v : uniform(g, -4.0, 4.0, D)) f.y.push_back(v);
+        for (int k = 1; k < kPeaks; ++k)
+            for (double v : uniform(g, -5.0, 5.0, D)) f.y.push_back(v);
+        f.x_opt.assign(f.y.begin(), f.y.begin() + D);
+    }
+    return f;
+}
+
+// The ten functions in the paper's order of F1..F55 (bbob_biobj.PAIRS):
+// (f_a, f_b) over the pairs a <= b of BASE.
+inline void pair_of(int fnum, int& fa, int& fb)
+{
+    static const int base[10] = {1, 2, 6, 8, 13, 14, 15, 17, 20, 21};
+    int at = 0;
+    for (int i = 0; i < 10; ++i)
+        for (int j = i; j < 10; ++j)
+            if (++at == fnum) {
+                fa = base[i];
+                fb = base[j];
+                return;
+            }
+    throw std::invalid_argument("suite: bbob-biobj has F1..F55");
+}
+
+// F fnum in D variables at bi-objective instance iid (bbob_biobj.problem):
+// the instances K_alpha, K_beta of Section 5.1.3 (1: 2 and 4; 2: 3 and 5;
+// else 2K + 1 and 2K + 2), K_beta raised until the optima lie 1e-4 apart
+// and the ideal and the nadir (BIOBJ-1) 0.1 apart, 100 tries at most.
+inline std::vector<Function> biobj(int fnum, int D, int iid)
+{
+    int fa = 0, fb = 0;
+    pair_of(fnum, fa, fb);
+    int ka = iid == 1 ? 2 : iid == 2 ? 3 : 2 * iid + 1;
+    int kb = iid == 1 ? 4 : iid == 2 ? 5 : ka + 1;
+    const Function a = instance(fa, ka, D);
+    const Objective oa(a, D);
+    for (int tries = 0; tries < 100; ++tries, ++kb) {
+        Function b = instance(fb, kb, D);
+        const Objective ob(b, D);
+        double dx = 0.0;
+        for (int i = 0; i < D; ++i) {
+            const double e = a.x_opt[static_cast<std::size_t>(i)] - b.x_opt[static_cast<std::size_t>(i)];
+            dx = dx + e * e;
+        }
+        const double n1 = oa(b.x_opt.data()) - a.f_opt, n2 = ob(a.x_opt.data()) - b.f_opt;
+        if (std::sqrt(dx) >= 1e-4 && std::sqrt(n1 * n1 + n2 * n2) >= 1e-1) return {a, b};
+    }
+    throw std::runtime_error("suite: bbob-biobj: no second instance far enough in 100 tries");
+}
+
+// The levels z_1 .. z_l of an integer variable of arity l whose optimum is
+// x_opt_i (bbob_biobj_mixint.levels; Tusar et al. 2019, §3.1.1): -4 + 8 j /
+// (l + 1), moved so that the one nearest x_opt_i (the first of equal
+// distances) is x_opt_i.
+inline std::vector<double> levels(double x_opt_i, int l)
+{
+    std::vector<double> y;
+    for (int j = 1; j <= l; ++j) y.push_back(-4.0 + 8.0 * j / (l + 1));
+    std::size_t best = 0;
+    for (std::size_t j = 1; j < y.size(); ++j)
+        if (std::abs(y[j] - x_opt_i) < std::abs(y[best] - x_opt_i)) best = j;
+    const double d = y[best] - x_opt_i;
+    for (double& v : y) v = v - d;
+    return y;
+}
+
+// bbob-biobj-mixint's functions: F fnum at instance 1 (bbob_biobj_mixint.
+// MixedInteger), the first 4 D / 5 variables integer, of arities 2, 4, 8 and
+// 16, D / 5 of each, each objective with its own levels.
+inline std::vector<Function> mixint(int fnum, int D)
+{
+    std::vector<Function> fs = biobj(fnum, D, 1);
+    static const int arity[4] = {2, 4, 8, 16};
+    for (Function& f : fs)
+        for (int a = 0, i = 0; a < 4; ++a)
+            for (int r = 0; r < D / 5; ++r, ++i) f.levels.push_back(levels(f.x_opt[static_cast<std::size_t>(i)], arity[a]));
+    return fs;
+}
 
 }   // namespace bbob
 }   // namespace mootation::suite

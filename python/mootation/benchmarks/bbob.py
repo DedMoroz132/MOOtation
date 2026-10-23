@@ -37,7 +37,13 @@
 #     but the generator that turns an instance NUMBER into those draws lives
 #     only in COCO's source, and no paper states it. Instance 1 here is
 #     therefore not instance 1 there: results are comparable between runs of
-#     this library and NOT with the COCO data archives.
+#     this library and NOT with the COCO data archives. From 2026-10-24 (task
+#     17, supplement 5, §3; version 2 of every bbob-biobj problem) the draws
+#     are the library's generator's, keyed (20260916, fid, iid, D): the C++
+#     suite draws them (include/mootation/suite/bbob.hpp, instance), and this
+#     module the same through library_rng.py, the cross-check's; before, NumPy's
+#     default_rng drew other instances. f_opt is rounded to two decimals by
+#     rint(100 c) / 100, which C++ repeats.
 # ============================================================================
 from __future__ import annotations
 
@@ -47,6 +53,7 @@ from typing import Callable, Dict, List, Tuple
 
 import numpy as np
 
+from . import library_rng as _lrng
 from ._rows import pow_each, rows_dot, rows_matvec, spow
 
 # The ten the bbob-biobj suite selects (Brockhoff et al., Section 5.1).
@@ -94,31 +101,23 @@ def f_pen(x: np.ndarray) -> np.ndarray:
 
 
 # ---- what an instance is (Section 0.1) ------------------------------
-def _seeds(fid: int, iid: int, D: int) -> np.random.Generator:
+def _seeds(fid: int, iid: int, D: int) -> _lrng.LibraryRng:
     """Deterministic per (function, instance, dimension). See BBOB-4."""
-    return np.random.default_rng(np.random.SeedSequence([20260916, fid, iid, D]))
+    return _lrng.LibraryRng(_lrng.seed(20260916, fid, iid, D))
 
 
-def _rotation(rng: np.random.Generator, D: int) -> np.ndarray:
-    """An orthogonal matrix from Gram-Schmidt on standard normal entries.
-
-    numpy's QR is the same orthonormalisation; the sign fix-up is what makes it
-    a uniform (Haar) draw rather than one biased by LAPACK's sign convention,
-    which otherwise correlates the first row with the identity.
-    """
-    A = rng.standard_normal((D, D))
-    Q, R = np.linalg.qr(A)
-    return Q * np.sign(np.where(np.diag(R) == 0.0, 1.0, np.diag(R)))
+def _uniform(rng: _lrng.LibraryRng, lo: float, hi: float, D: int) -> np.ndarray:
+    return np.array([rng.uniform(lo, hi) for _ in range(D)], float)
 
 
-def _draw_f_opt(rng: np.random.Generator) -> float:
+def _draw_f_opt(rng: _lrng.LibraryRng) -> float:
     """Cauchy about zero, about half the mass in [-100,100], 2 decimals, |.| <= 1000."""
-    c = 100.0 * math.tan(math.pi * (rng.random() - 0.5))
-    return float(min(1000.0, max(-1000.0, round(c, 2))))
+    c = 0.0 + 100.0 * math.tan(math.pi * (rng.uniform01() - 0.5))
+    return float(min(1000.0, max(-1000.0, float(np.rint(100.0 * c)) / 100.0)))
 
 
-def _plus_minus(rng: np.random.Generator, D: int) -> np.ndarray:
-    return np.where(rng.random(D) < 0.5, -1.0, 1.0)
+def _plus_minus(rng: _lrng.LibraryRng, D: int) -> np.ndarray:
+    return np.array([-1.0 if rng.uniform01() < 0.5 else 1.0 for _ in range(D)])
 
 
 @dataclass
@@ -148,14 +147,14 @@ def instance(fid: int, iid: int, D: int) -> Instance:
     if fid not in NAMES:
         raise ValueError(f"bbob function f{fid} is not one of the ten: {BASE_IDS}")
     rng = _seeds(fid, iid, D)
-    x_opt = rng.uniform(-4.0, 4.0, D)
+    x_opt = _uniform(rng, -4.0, 4.0, D)
     if fid == 8:                                   # "Exceptionally, here x_opt in [-3,3]^D"
-        x_opt = rng.uniform(-3.0, 3.0, D)
+        x_opt = _uniform(rng, -3.0, 3.0, D)
     inst = Instance(fid=fid, iid=iid, D=D, x_opt=x_opt, f_opt=_draw_f_opt(rng))
     if fid in (6, 13, 14, 15, 17, 21):
-        inst.R = _rotation(rng, D)
+        inst.R = _lrng.haar(rng, D)
     if fid in (6, 13, 15, 17):
-        inst.Q = _rotation(rng, D)
+        inst.Q = _lrng.haar(rng, D)
     if fid in (6, 13, 15, 17, 20):
         inst.l10 = lam(10.0, D)
     if fid == 20:
@@ -168,7 +167,7 @@ def instance(fid: int, iid: int, D: int) -> Instance:
     return inst
 
 
-def _gallagher(rng: np.random.Generator, D: int) -> dict:
+def _gallagher(rng: _lrng.LibraryRng, D: int) -> dict:
     """f21's 101 peaks: positions y_i, weights w_i and the diagonals of C_i."""
     n = 101
     w = np.empty(n)
@@ -177,13 +176,14 @@ def _gallagher(rng: np.random.Generator, D: int) -> dict:
     # alpha_1 = 1000; the rest a permutation of {1000^(2j/99)}, without replacement
     alpha = np.empty(n)
     alpha[0] = 1000.0
-    alpha[1:] = rng.permutation(1000.0 ** (2.0 * np.arange(n - 1) / 99.0))
+    alpha[1:] = rng.shuffle(list(1000.0 ** (2.0 * np.arange(n - 1) / 99.0)))
     C = np.empty((n, D))
     for i in range(n):
-        C[i] = rng.permutation(lam(alpha[i], D)) / alpha[i] ** 0.25
+        C[i] = np.array(rng.shuffle(list(lam(alpha[i], D)))) / alpha[i] ** 0.25
     y = np.empty((n, D))
-    y[0] = rng.uniform(-4.0, 4.0, D)
-    y[1:] = rng.uniform(-5.0, 5.0, (n - 1, D))     # BBOB-1: the errata's box
+    y[0] = _uniform(rng, -4.0, 4.0, D)
+    for i in range(1, n):                          # BBOB-1: the errata's box
+        y[i] = _uniform(rng, -5.0, 5.0, D)
     return {"w": w, "C": C, "y": y}
 
 

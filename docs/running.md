@@ -364,6 +364,25 @@ carry the last bit of a power further, and LIR-CMOP, whose sine of 4π times
 objectives in the hundreds does the same with g's, within 10⁻¹³ of the
 column's scale.
 
+The reference is C++, the same on every platform; the NumPy code of the
+problems is a cross-check within a tolerance (task 17, supplement 4). From
+2026-10-24 (supplement 5) C++ draws what a problem's spec held: the rotations
+of the rotated problems — Haar rotations, the Q of the QR factorization of a
+normal matrix with R's diagonal positive (Higham, *Accuracy and Stability of
+Numerical Algorithms*, §28.3), from the library's generator keyed by family,
+M, block size and instance (`suite/instances.hpp`) — and the bbob-biobj
+instances (`suite/bbob.hpp`), where NumPy's `default_rng` drew them: other
+instances of the 352 rotated problems with Q and the 220 bbob-biobj ones,
+version +1, marked as redefined (`registry.PROBLEM_CHANGED[4]`, reference
+version 4). The instances are this library's, not COCO's. MaF8's and MaF9's
+polygons and MaF14's and MaF15's linkage are drawn there too (one version more
+of MaF8_8D, MaF9_8D and MaF15 at 3, 5, 8 and 15 objectives, whose last bits
+change). `benchmarks/library_rng.py` draws the same numbers in Python for the
+cross-check: the rotations agree to their normal matrix's condition number in
+ulps, and the tests hold the rotated problems' values to NumPy's within 10⁻¹²
+of the column's scale. `dm::sin`, `cos` and `tan` reduce every finite argument
+(Payne and Hanek's reduction above 2²⁰·π/2), which changed DOC4 (version 3).
+
 **MaF14 and MaF15** (Cheng et al. 2017, Eq. 41–50; task 12 of 2026-10-19):
 LSMOP3 and the inverted LSMOP8, the suite's two large-scale problems, at 3, 5,
 8, 10 and 15 objectives with the paper's D = 20 M variables, N_k = 2
