@@ -8,6 +8,8 @@
 // interval is given beside it.
 // ============================================================================
 
+#include <cstdint>
+
 namespace mootation::dm::coeffs {
 
 // pi/2 = kPio2Part[0] + [1] + [2] + [3]: the first three with 33 significant
@@ -18,6 +20,17 @@ inline constexpr double kPio2Lo = 0x1.1a62633145c07p-54;
 inline constexpr double kPiHi = 0x1.921fb54442d18p+1;
 inline constexpr double kPiLo = 0x1.1a62633145c07p-53;
 inline constexpr double kTwoOverPi = 0x1.45f306dc9c883p-1;
+// the bits of 2/pi after the binary point, 32 a word, the first the most
+// significant: Payne and Hanek's reduction of |x| > 2^20 pi/2 (Muller 2016, §11.4)
+inline constexpr std::uint32_t kTwoOverPiBits[40] = {
+    0xa2f9836e, 0x4e441529, 0xfc2757d1, 0xf534ddc0, 0xdb629599, 0x3c439041,
+    0xfe5163ab, 0xdebbc561, 0xb7246e3a, 0x424dd2e0, 0x06492eea, 0x09d1921c,
+    0xfe1deb1c, 0xb129a73e, 0xe88235f5, 0x2ebb4484, 0xe99c7026, 0xb45f7e41,
+    0x3991d639, 0x835339f4, 0x9c845f8b, 0xbdf9283b, 0x1ff897ff, 0xde05980f,
+    0xef2f118b, 0x5a0a6d1f, 0x6d367ecf, 0x27cb09b7, 0x4f463f66, 0x9e5fea2d,
+    0x7527bac7, 0xebe5f17b, 0x3d0739f7, 0x8a5292ea, 0x6bfb5fb1, 0x1f8d5d08,
+    0x56033046, 0xfc7b6bab, 0xf0cfbc20, 0x9af4361d,
+};
 // atan (Cody & Waite 1980, ch. 11): pi/6, pi/3 and sqrt 3 as hi + lo;
 // 2 - sqrt 3 correctly rounded
 inline constexpr double kPio6Hi = 0x1.0c152382d7366p-1;

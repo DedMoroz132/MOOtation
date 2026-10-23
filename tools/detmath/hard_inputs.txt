@@ -5,11 +5,13 @@ asin 0x1.6c042a6378102p-1
 atan 0x1.f9004c4fef9eap-4
 atan -0x1.ffff8020d3d1dp-7
 cos -0x1.7120161c92674p+0
+cos_big -0x1.d19ebc5567dcdp+311
 exp -0x1.49f33ad2c1c58p+9
 exp 0x1.fce66609f7428p+5
 log 0x1.1211bef8f68e9p+0
 log 0x1.008000db2e8bep+0
 sin -0x1.f8b791cafcdefp+4
+sin_big -0x1.0e16eb809a35dp+944
 tan -0x1.317cd745dd37cp+9
 tan 0x1.49adfd996a81dp+18
 hypot 0x0.603e52daf0bfdp-1022 -0x0.a622d0a9a433bp-1022
@@ -22,17 +24,24 @@ asin -0x1.00d44cccfa990p-1
 asin -0x1.004d1c5a9400bp-1
 atan -0x1.60370d15396b7p-1
 atan 0x1.62ff6a1682c25p-1
+cos_big 0x1.9eb7148f354d6p+20
+cos_big -0x1.4ae182c1ab422p+21
 exp 0x1.b97dc8345c550p+5
 exp 0x1.2e8f20cf3cbe7p+8
 log 0x1.108058fed54b3p+0
 log 0x1.48ae5a67204f5p+0
+sin_big 0x1.9eb7148f354d6p+21
+sin_big -0x1.842d8ec8f752fp+21
 tan 0x1.93c05c9ed3cbcp+18
+tan_big 0x1.3f9605aaeb51bp+21
 hypot -0x1.a9a537a197f59p+427 0x1.254f84c458eb4p+428
 hypot 0x1.6a0a41410b1abp-1004 -0x0.a24afe71b539fp-1022
 pow 0x1.156c99097c8cdp-753 0x1.6d3023561e86dp+0
 pow 0x1.a26d96e778dc8p+163 0x1.90d5de9f964f6p-9
+cos_big -0x1.34e729fd08086p+21
 exp -0x1.18209ecd19a8cp+6
 log 0x1.dc0b586f2b260p-1
+sin_big 0x1.4d84db080b9fdp+21
 hypot 0x1.00014d4b1c6b9p-1015 -0x1.000105ba9bf40p-1015
 pow 0x1.000002c5e2e99p+0 0x1.c9eee35374af6p+31
 pow 0x1.010e2e7ec0c83p+0 0x1.44bf00479249dp+17
@@ -51,6 +60,7 @@ log 0x1.5b6e7e4e96f86p+2
 sin -0x1.07e4c92b5349dp+4
 sin 0x1.1031fb0196180p-8
 tan -0x1.a81d98fc58537p+6
+tan_big -0x1.13a5ccd87c9bbp+1008
 hypot 0x1.a308e1455f447p+0 0x1.9d931a83ef879p+0
 pow 0x1.111616f835fb1p-72 0x1.c6cfa07925d49p+3
 pow 0x1.b4234939ab74ap+997 0x1.59ccddd614389p+62

@@ -112,6 +112,7 @@ def sin_cos(x):
 
 def value(f, x, y=None):
     """The value of f at the double x (and y), as a Decimal of DIGITS digits."""
+    f = f[:-4] if f.endswith("_big") else f          # sin_big: sin above 2^20 pi/2
     with localcontext() as c:
         c.prec = DIGITS + 20
         X = Decimal(x)

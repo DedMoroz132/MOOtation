@@ -85,6 +85,25 @@ def pi_parts():
         return parts
 
 
+TWO_OVER_PI_WORDS = 40          # 1280 bits: x up to DBL_MAX and 192 bits below its last
+
+
+def two_over_pi_words(n_words):
+    """The bits of 2/pi after the binary point (2/pi < 1), 32 a word, the
+    first word the most significant: Payne and Hanek's table (Muller 2016,
+    §11.4)."""
+    with localcontext() as c:
+        c.prec = 32 * n_words // 3 + 40         # decimal digits for the bits, and more
+        f = 2 / R.pi(c.prec)
+        words = []
+        for _ in range(n_words):
+            f *= 2 ** 32
+            w = int(f)                          # floor: f > 0
+            words.append(w)
+            f -= w
+        return words
+
+
 def hi_lo(v):
     with localcontext() as c:
         c.prec = PREC
@@ -326,6 +345,7 @@ def main():
             "kExpMinus1": float(Decimal(-1).exp()),
         }
 
+    tw = two_over_pi_words(TWO_OVER_PI_WORDS)
     lines = [
         "#pragma once",
         "// SPDX-License-Identifier: Apache-2.0",
@@ -337,6 +357,8 @@ def main():
         "// interval is given beside it.",
         "// ============================================================================",
         "",
+        "#include <cstdint>",
+        "",
         "namespace mootation::dm::coeffs {",
         "",
         "// pi/2 = kPio2Part[0] + [1] + [2] + [3]: the first three with 33 significant",
@@ -347,6 +369,11 @@ def main():
         f"inline constexpr double kPiHi = {hexf(pi_hl[0])};",
         f"inline constexpr double kPiLo = {hexf(pi_hl[1])};",
         f"inline constexpr double kTwoOverPi = {hexf(two_over_pi)};",
+        "// the bits of 2/pi after the binary point, 32 a word, the first the most",
+        "// significant: Payne and Hanek's reduction of |x| > 2^20 pi/2 (Muller 2016, §11.4)",
+        f"inline constexpr std::uint32_t kTwoOverPiBits[{len(tw)}] = {{",
+    ] + ["    " + ", ".join(f"0x{w:08x}" for w in tw[i:i + 6]) + "," for i in range(0, len(tw), 6)] + [
+        "};",
         "// atan (Cody & Waite 1980, ch. 11): pi/6, pi/3 and sqrt 3 as hi + lo;",
         "// 2 - sqrt 3 correctly rounded",
         f"inline constexpr double kPio6Hi = {hexf(pio6[0])};",

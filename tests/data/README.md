@@ -54,6 +54,9 @@ built); `tools/detmath/check.py` measures 10⁶ points a function the same way.
 | `hypot` | 2 | 0.500 | 0.740 |
 | `asin` | 2 | 0.605 | 0.613 |
 | `atan` | 2 | 0.537 | 0.553 |
+| `sin` above 2²⁰·π/2 (`sin_big`) | 1 | 0.711 | — |
+| `cos` above 2²⁰·π/2 (`cos_big`) | 1 | 0.714 | — |
+| `tan` above 2²⁰·π/2 (`tan_big`) | 2 | 0.857 | — |
 
 The polynomial coefficients and constants (`include/mootation/detmath_coeffs.hpp`)
 come from `tools/detmath/gen_coeffs.py` (`--check` compares).

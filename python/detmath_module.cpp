@@ -27,12 +27,9 @@ void bind_detmath(py::module_& m)
     d.def("log", py::vectorize([](double x) { return dm::log(x); }), py::arg("x"), "natural logarithm");
     d.def("pow", py::vectorize([](double x, double y) { return dm::pow(x, y); }), py::arg("x"),
           py::arg("y"), "x^y");
-    d.def("sin", py::vectorize([](double x) { return dm::sin(x); }), py::arg("x"),
-          "sine, |x| <= 2^20 pi/2");
-    d.def("cos", py::vectorize([](double x) { return dm::cos(x); }), py::arg("x"),
-          "cosine, |x| <= 2^20 pi/2");
-    d.def("tan", py::vectorize([](double x) { return dm::tan(x); }), py::arg("x"),
-          "tangent, |x| <= 2^20 pi/2");
+    d.def("sin", py::vectorize([](double x) { return dm::sin(x); }), py::arg("x"), "sine");
+    d.def("cos", py::vectorize([](double x) { return dm::cos(x); }), py::arg("x"), "cosine");
+    d.def("tan", py::vectorize([](double x) { return dm::tan(x); }), py::arg("x"), "tangent");
     d.def("acos", py::vectorize([](double x) { return dm::acos(x); }), py::arg("x"), "arc cosine");
     d.def("asin", py::vectorize([](double x) { return dm::asin(x); }), py::arg("x"), "arc sine");
     d.def("atan", py::vectorize([](double x) { return dm::atan(x); }), py::arg("x"), "arc tangent");

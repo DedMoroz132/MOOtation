@@ -11374,7 +11374,9 @@ def rotations_and_maf9_take_an_order_of_numpys():
                     ("shiftDTLZ1_3D", 2), ("c0MaF1_3D", 1),
                     # task 17, supplement 3, stage 3a
                     ("DAS-CMOP1_t01", 2), ("MW14_3D", 2), ("DOC8", 1), ("IPolygon_3D", 1),
-                    ("MMF1_z", 2), ("RE21", 1), ("RE21_n1", 1), ("RE61", 2), ("CRE51", 2)):
+                    ("MMF1_z", 2), ("RE21", 1), ("RE21_n1", 1), ("RE61", 2), ("CRE51", 2),
+                    # task 17, supplement 5, §4: Payne and Hanek's reduction
+                    ("DOC4", 3)):
         assert name in R.PROBLEMS and R.problem_version(name) == v, name
     P = R._maf9_forbidden_regions(5)[0]
     want = R._poly_edge_distance(np.array([0.3, 2.0]), P)

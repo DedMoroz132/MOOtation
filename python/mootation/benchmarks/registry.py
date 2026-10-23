@@ -2741,6 +2741,11 @@ def _in_suite(name: str) -> bool:
 for _name in list(PROBLEMS):
     if _in_suite(_name) and not _DETMATH_SAME.fullmatch(_name):
         PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
+# 2026-10-24 (task 17, supplement 5, §4): dm::sin, cos and tan reduce every
+# finite argument (Payne and Hanek's above 2^20 pi/2, where the reduction was
+# not exact before); of the suite's problems only DOC4 reaches there (its sine
+# of 10 pi (f1 - f2 + 1), arguments up to 3e8): one version more.
+PROBLEM_VERSION["DOC4"] = PROBLEM_VERSION.get("DOC4", 1) + 1
 PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
                         for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
                         for level in _noisy.LEVELS})
