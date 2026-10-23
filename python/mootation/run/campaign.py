@@ -1216,9 +1216,31 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     # a categorical variable reaches the objective as its label and the run
     # archive as its index (var_types.Layout.numeric; supplement 3, §1)
     numeric = None
-    if typed and any(isinstance(t, (tuple, list)) and t[0] == "cat" for t in p.var_types):
+    layout = None
+    if typed:
         from ..var_types import Layout
-        numeric = Layout(p.var_types, p.bounds).numeric
+        layout = Layout(p.var_types, p.bounds)
+        if "cat" in layout.kinds:
+            numeric = layout.numeric
+
+    def baseline_point(x):
+        """A baseline's point as the problem reads it: a categorical variable's
+        value its label (the nearest index, as categorical.label_of reads a
+        number), the rest as drawn."""
+        return [layout.values[i][min(max(int(round(v)), 0), len(layout.values[i]) - 1)]
+                if k == "cat" else v for i, (k, v) in enumerate(zip(layout.kinds, x))]
+
+    def user_rows(rows):
+        """The rows a core or a baseline hands over (Result.variables and
+        binary_variables, current_variables(), a baseline's points) as the
+        problem's variables in their order, numbers: a categorical variable's
+        index. Unchanged without a categorical variable (a problem of bits is
+        its genome)."""
+        if numeric is None:
+            return rows
+        if baseline:
+            return [numeric(baseline_point(r)) for r in rows]
+        return [numeric(layout.to_user(r)) for r in rows]
     # A problem of bits with an exact front (benchmarks/binary.py): the first
     # generation and evaluation at which the population, and the inner
     # archive, hold every front vector (supplement 2, §3.4: the paper's
@@ -1484,6 +1506,8 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
 
     def evaluate(x):
         """One point (a baseline's, or a core's single evaluation)."""
+        if baseline and numeric is not None:
+            x = baseline_point(x)
         got = evaluate_rows([x])
         return got[0][0] if cons is not None else got[0]
 
@@ -1625,6 +1649,8 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
         """The variables of the rows on_generation hands over, when the record needs them."""
         if need_x and len(objectives) and variables is None:
             variables = _core.current_variables()         # a baseline hands them over
+        if variables is not None and len(variables):
+            variables = user_rows(variables)
         return variables
 
     def on_gen(gen, objectives, variables=None):
@@ -1775,7 +1801,10 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     t_out = time.perf_counter()
 
     F = np.asarray(res.objectives, float)
-    X = np.asarray(res.variables, float)
+    genes = getattr(res, "binary_variables", None) if numeric is not None and not baseline else None
+    rows = ([list(x) + list(b) for x, b in zip(res.variables, genes)] if genes
+            else res.variables)
+    X = np.asarray(user_rows(rows) if len(rows) else rows, float)
     seen = None
     if truth is not None and len(F):
         seen, F = F, true_values(F, X)       # f: noise-free; f_seen: what the algorithm saw
