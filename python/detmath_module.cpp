@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // _core.detmath (task 14 of 2026-10-20, §2): the functions of
-// include/mootation/detmath.hpp — exp, log, pow, sin, cos, tan, acos, hypot —
-// for a float or a NumPy array (elementwise, the result in the argument's
-// shape). Python's math and NumPy call the C library, whose last bit may
+// include/mootation/detmath.hpp — exp, log, pow, sin, cos, tan, acos, hypot,
+// and asin and atan (task 17, supplement 3, stage 3a) — for a float or a
+// NumPy array (elementwise, the result in the argument's shape). Python's math and NumPy call the C library, whose last bit may
 // differ between platforms; a reference that must equal the core bit for bit
 // takes these (python/test_run_layer.py, the SDR and DSS references), and
 // tools/detmath/check.py measures their accuracy.
@@ -34,6 +34,8 @@ void bind_detmath(py::module_& m)
     d.def("tan", py::vectorize([](double x) { return dm::tan(x); }), py::arg("x"),
           "tangent, |x| <= 2^20 pi/2");
     d.def("acos", py::vectorize([](double x) { return dm::acos(x); }), py::arg("x"), "arc cosine");
+    d.def("asin", py::vectorize([](double x) { return dm::asin(x); }), py::arg("x"), "arc sine");
+    d.def("atan", py::vectorize([](double x) { return dm::atan(x); }), py::arg("x"), "arc tangent");
     d.def("hypot", py::vectorize([](double x, double y) { return dm::hypot(x, y); }), py::arg("x"),
           py::arg("y"), "sqrt(x^2 + y^2) without overflow or underflow in between");
 }

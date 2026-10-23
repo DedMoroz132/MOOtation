@@ -97,6 +97,19 @@ def _acos(g, block):
     return (signed(g, binade(g, 0, 1023 - 2)),)                    # small
 
 
+def _atan(g, block):
+    if block == 0:
+        return (between(g, -1.0, 1.0),)
+    if block == 1:
+        return (signed(g, binade(g, 1023 - 30, 1023 + 30)),)       # 2^-30 .. 2^31
+    if block == 2:                                                 # near 2 - sqrt 3, 1, 2 + sqrt 3
+        x = (0.2679491924311227, 1.0, 3.7320508075688772)[g.below(3)]
+        return (signed(g, step(x, g.below(2001) - 1000)),)
+    if block == 3:
+        return (signed(g, binade(g, 1023 + 30, 2046)),)            # large
+    return (signed(g, binade(g, 0, 1023 - 30)),)                   # tiny, subnormal
+
+
 def _exp(g, block):
     if block == 0:
         return (between(g, EXP_UNDER, EXP_OVER),)
@@ -151,12 +164,15 @@ BLOCKS = {
     "cos": (_trig, (3, 3, 2, 1, 1)),
     "tan": (_trig, (3, 3, 2, 1, 1)),
     "acos": (_acos, (4, 2, 2, 2)),
+    "asin": (_acos, (4, 2, 2, 2)),
+    "atan": (_atan, (3, 3, 2, 1, 1)),
     "exp": (_exp, (4, 2, 2, 1, 1)),
     "log": (_log, (4, 2, 2, 2)),
     "pow": (_pow, (3, 2, 2, 1, 1, 1)),
     "hypot": (_hypot, (5, 5)),
 }
-SEEDS = {"exp": 1, "log": 2, "pow": 3, "sin": 4, "cos": 5, "tan": 6, "acos": 7, "hypot": 8}
+SEEDS = {"exp": 1, "log": 2, "pow": 3, "sin": 4, "cos": 5, "tan": 6, "acos": 7, "hypot": 8,
+         "asin": 9, "atan": 10}
 
 
 def points(f, n):

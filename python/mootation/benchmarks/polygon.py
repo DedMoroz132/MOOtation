@@ -40,6 +40,16 @@ from typing import List
 import numpy as np
 
 
+def polygon_vertices(M: int) -> List[tuple]:
+    """The M vertices (cos theta, sin theta), theta = 2 pi m / M: what the C++
+    suite is handed (native.py)."""
+    out = []
+    for m in range(M):
+        theta = 2.0 * math.pi * m / M
+        out.append((math.cos(theta), math.sin(theta)))
+    return out
+
+
 def polygon_eval(x: List[float], M: int) -> List[float]:
     x = np.asarray(x, dtype=float)
     # position
@@ -48,10 +58,7 @@ def polygon_eval(x: List[float], M: int) -> List[float]:
     g = float(np.sum(x[2:] ** 2)) if x.shape[0] > 2 else 0.0
     # vertices
     f = np.empty(M)
-    for m in range(M):
-        theta = 2.0 * math.pi * m / M
-        vx = math.cos(theta)
-        vy = math.sin(theta)
+    for m, (vx, vy) in enumerate(polygon_vertices(M)):
         f[m] = math.sqrt((p[0] - vx) ** 2 + (p[1] - vy) ** 2) + g
     return f.tolist()
 

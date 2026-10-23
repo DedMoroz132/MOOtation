@@ -195,7 +195,7 @@ from typing import List
 import numpy as np
 
 from . import zcat as _zcat
-from ._rows import matvec_pairwise, rows_matvec
+from ._rows import matvec_pairwise
 from .dtlz import DTLZ_FUNCS, DTLZ_ROWS
 from .dtlz_variants import shift_centres
 from .wfg import WFG_FUNCS
@@ -375,28 +375,24 @@ class Rotated:
         elif self.kind == "zcat":
             idx, m, v = self._zcat_v(x)
             y[m:] = (np.clip(v, 0.0, 1.0) - 0.5) * idx[m:]
-        elif self.family == "ZDT4":
+        elif self.family == "ZDT4" or self.kind == "polygon":
             y[self.first:] = matvec_pairwise(self.A, y[self.first:] - self.optimum)
         elif self.zdt:
             y[self.first:] = np.abs(matvec_pairwise(self.A, y[self.first:] - self.optimum)) / self.spread
-        elif self.kind == "polygon":
-            y[self.first:] = self.A @ (y[self.first:] - self.optimum)
         else:
             y[self.first:] = 0.5 + matvec_pairwise(self.A, y[self.first:] - self.optimum)
         return y
 
     def map_rows(self, X) -> np.ndarray:
-        """map of every row of X: one product with the matrix per row (gemv, as
-        map does), the rest elementwise; rWFG's and rZCAT's row by row."""
+        """map of every row of X: one product with the matrix per row (the
+        pairwise sums, as map's), the rest elementwise; rWFG's and rZCAT's row
+        by row."""
         Y = np.array(X, dtype=float).reshape(-1, self.n_vars)
         if self.wfg or self.kind == "zcat":
             for i in range(len(Y)):
                 Y[i] = self.map(Y[i])
             return Y
-        if self.kind == "polygon":
-            D = rows_matvec(self.A, Y[:, self.first:] - self.optimum)
-        else:
-            D = matvec_pairwise(self.A, Y[:, self.first:] - self.optimum)
+        D = matvec_pairwise(self.A, Y[:, self.first:] - self.optimum)
         if self.family == "ZDT4" or self.kind == "polygon":
             Y[:, self.first:] = D
         elif self.zdt:

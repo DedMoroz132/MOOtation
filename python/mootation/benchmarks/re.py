@@ -91,6 +91,11 @@ stay as they are for the published fronts:
     formulas are the file's; the draws come from the run's seed and the
     evaluation's number (make_evaluator, as the noisy problems'), and without
     a seed from x itself — so that a campaign repeats a run exactly.
+
+THE C++ SUITE (task 17, supplement 3, stage 3a): with the extension built the
+problems are computed by include/mootation/suite/re.hpp (benchmarks/native.py),
+RE91 without a seed (its seeded stream, RE91Evaluator, stays here); this module
+stays the reference (BenchProblem.reference) and what runs without it.
 """
 
 from __future__ import annotations

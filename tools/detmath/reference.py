@@ -14,6 +14,7 @@ and cosine and the arctangent are the series below:
     atan        atan x = 2 atan(x / (1 + sqrt(1 + x^2))) until |x| < 1/8,
                 then the Taylor series
     acos        2 atan(sqrt((1 - x) / (1 + x))); acos(-1) = pi
+    asin        atan(x / sqrt(1 - x^2)); asin(+-1) = +-pi/2
     pow         exp(y ln |x|), the sign of x^y for x < 0 and an odd integer y
     hypot       sqrt(x^2 + y^2)
 
@@ -130,6 +131,13 @@ def value(f, x, y=None):
                 v = pi(DIGITS + 20)
             else:
                 v = 2 * _atan(((1 - X) / (1 + X)).sqrt(), DIGITS + 20)
+        elif f == "asin":
+            if abs(x) == 1.0:
+                v = pi(DIGITS + 20) / 2 * int(x)
+            else:
+                v = _atan(X / (1 - X * X).sqrt(), DIGITS + 20)
+        elif f == "atan":
+            v = _atan(X, DIGITS + 20)
         elif f == "pow":
             Y = Decimal(y)
             if X == 0:

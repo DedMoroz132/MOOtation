@@ -52,6 +52,8 @@ built); `tools/detmath/check.py` measures 10⁶ points a function the same way.
 | `tan` | 2 | 0.867 | 0.957 |
 | `acos` | 2 | 0.573 | 0.629 |
 | `hypot` | 2 | 0.500 | 0.740 |
+| `asin` | 2 | 0.605 | 0.613 |
+| `atan` | 2 | 0.537 | 0.553 |
 
 The polynomial coefficients and constants (`include/mootation/detmath_coeffs.hpp`)
 come from `tools/detmath/gen_coeffs.py` (`--check` compares).

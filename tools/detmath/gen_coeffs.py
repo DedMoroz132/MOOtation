@@ -18,7 +18,9 @@ highest, the rest re-solved): for |r| <= pi/4 and t = r^2,
     sin r = r + r^3 S(t),      S of degree 5,
     cos r = 1 - t/2 + t^2 C(t),  C of degree 5;
 and for 0 <= s <= 1/2, t = s^2,
-    asin s = s + s^3 A(t),     A of degree 12.
+    asin s = s + s^3 A(t),     A of degree 12;
+and for |f| <= 2 - sqrt 3, t = f^2 (task 17, supplement 3, stage 3a),
+    atan f = f + f^3 T(t),     T of degree 10.
 Each minimises the relative error of the whole function; the level of the
 rounded polynomial is printed and written into the header.
 
@@ -177,6 +179,35 @@ def main():
         C, c_level = poly("cos", cF, cW, pi4sq, 5, cWtrue)
         A, a_level = poly("asin", aF, aW, Decimal("0.25"), 12, aWtrue)
 
+        # atan f = f + f^3 T(f^2), |f| <= 2 - sqrt 3 (Cody & Waite 1980, ch. 11)
+        b_at = (2 - Decimal(3).sqrt()) ** 2
+
+        def tval(t):
+            return R._atan(t.sqrt(), PREC)
+
+        def tF(t):
+            if t == 0:
+                return Decimal(-1) / 3
+            s = t.sqrt()
+            return (tval(t) - s) / (t * s)
+
+        def tWtrue(t):
+            if t == 0:
+                return Decimal(0)
+            s = t.sqrt()
+            return t * s / tval(t)
+
+        def tW(t):
+            if t == 0:
+                return b_at / 64
+            s = t.sqrt()
+            return (t + b_at / 64) * s / tval(t)
+
+        T, t_level = poly("atan", tF, tW, b_at, 10, tWtrue)
+        sqrt3 = Decimal(3).sqrt()
+        pio6 = hi_lo(pi / 6)
+        pio3 = hi_lo(pi / 3)
+
         def eF(t):
             if t == 0:
                 return Decimal(1) / 2
@@ -316,6 +347,15 @@ def main():
         f"inline constexpr double kPiHi = {hexf(pi_hl[0])};",
         f"inline constexpr double kPiLo = {hexf(pi_hl[1])};",
         f"inline constexpr double kTwoOverPi = {hexf(two_over_pi)};",
+        "// atan (Cody & Waite 1980, ch. 11): pi/6, pi/3 and sqrt 3 as hi + lo;",
+        "// 2 - sqrt 3 correctly rounded",
+        f"inline constexpr double kPio6Hi = {hexf(pio6[0])};",
+        f"inline constexpr double kPio6Lo = {hexf(pio6[1])};",
+        f"inline constexpr double kPio3Hi = {hexf(pio3[0])};",
+        f"inline constexpr double kPio3Lo = {hexf(pio3[1])};",
+        f"inline constexpr double kSqrt3Hi = {hexf(hi_lo(sqrt3)[0])};",
+        f"inline constexpr double kSqrt3Lo = {hexf(hi_lo(sqrt3)[1])};",
+        f"inline constexpr double kTwoMinusSqrt3 = {hexf(float(2 - sqrt3))};",
         "",
         "// correctly rounded values of the library's calls on constants",
     ]
@@ -329,6 +369,8 @@ def main():
         "inline constexpr double kCos[6] = {" + ", ".join(hexf(v) for v in C) + "};",
         f"// asin s = s + s^3 A(s^2), 0 <= s <= 1/2; relative error 2^{math.log2(float(a_level)):.1f}",
         "inline constexpr double kAsin[13] = {" + ", ".join(hexf(v) for v in A) + "};",
+        f"// atan f = f + f^3 T(f^2), |f| <= 2 - sqrt 3; relative error 2^{math.log2(float(t_level)):.1f}",
+        f"inline constexpr double kAtan[{len(T)}] = {{" + ", ".join(hexf(v) for v in T) + "};",
         "",
         "// exp (Tang 1989): 32/ln2; ln2/32 = kExpL1 + kExpL2 (kExpL1: 33 bits)",
         f"inline constexpr double kExpInvL = {hexf(inv_l)};",

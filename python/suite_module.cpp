@@ -13,6 +13,7 @@
 // bit (suite/common.hpp).
 // ============================================================================
 
+#include <algorithm>
 #include <cstddef>
 #include <memory>
 #include <stdexcept>
@@ -109,6 +110,7 @@ suite::Spec spec_of(const py::dict& d)
     s.link = flat_of(d, "link");
     s.parts = flat_of(d, "parts");
     if (d.contains("k")) s.k = d["k"].cast<int>();
+    s.constants = flat_of(d, "constants");
     if (d.contains("bbob") && !d["bbob"].is_none())
         for (const auto& item : d["bbob"]) s.bbob.push_back(bbob_of(item));
     return s;
@@ -134,17 +136,23 @@ py::dict dict_of(const suite::Spec& s)
     d["link"] = s.link;
     d["parts"] = s.parts;
     d["k"] = s.k;
+    d["constants"] = s.constants;
     py::list fs;
     for (const auto& f : s.bbob) fs.append(dict_of(f));
     d["bbob"] = fs;
     return d;
 }
 
-const suite::Spec& spec_of(const suite::Native& p)
+const suite::Problem& problem_of(const suite::Native& p)
 {
     auto* q = dynamic_cast<const suite::Problem*>(&p);
     if (q == nullptr) throw std::runtime_error("suite: not a problem of the suite");
-    return q->spec();
+    return *q;
+}
+
+const suite::Spec& spec_of(const suite::Native& p)
+{
+    return problem_of(p).spec();
 }
 
 // X as n rows of n_var values: a 1-D or 2-D array whose size is a multiple
@@ -196,8 +204,9 @@ void bind_suite(py::module_& m)
 {
     py::class_<suite::Native, std::shared_ptr<suite::Native>>(m, "Native",
         "A benchmark problem of the C++ suite (include/mootation/suite): ZDT, DTLZ and its "
-        "variants, C-DTLZ, MaF, ZCAT and the shifts and rotations over them, bbob-biobj and "
-        "bbob-biobj-mixint, made from the "
+        "variants, C-DTLZ, MaF, ZCAT, WFG and the shifts and rotations over them, bbob-biobj and "
+        "bbob-biobj-mixint, the verification set, DAS-CMOP, LIR-CMOP, MW, DOC, Polygon and "
+        "IPolygon, SYM-PART, Omni-test, MMF, RE and CRE, made from the "
         "spec benchmarks/native.py builds. Its values are NumPy's bit for bit, where NumPy's "
         "sin, cos, exp, log and pow are the C library's (benchmarks/_rows.py, agrees) and, for "
         "bbob-biobj, its BLAS adds in the order suite/bbob.hpp writes out. Hand it to "
@@ -229,6 +238,24 @@ void bind_suite(py::module_& m)
                  return py::make_tuple(std::move(FG.first), std::move(FG.second));
              },
              py::arg("X"), "(objectives, constraint values) of the rows of X, one computation.")
+        .def_property_readonly("has_pareto_set",
+                               [](const suite::Native& p) { return problem_of(p).has_pareto_set(); },
+                               "Whether pareto_set gives the problem's global Pareto set.")
+        .def("pareto_set",
+             [](const suite::Native& p, int n) {
+                 const suite::Problem& q = problem_of(p);
+                 if (!q.has_pareto_set()) throw std::invalid_argument("suite: no Pareto set of " + q.spec().family);
+                 std::vector<double> v;
+                 {
+                     py::gil_scoped_release unlock;
+                     v = q.pareto_set(n);
+                 }
+                 const py::ssize_t w = p.n_var, rows = static_cast<py::ssize_t>(v.size()) / w;
+                 Arr out({rows, w});
+                 std::copy(v.begin(), v.end(), out.mutable_data());
+                 return out;
+             },
+             py::arg("n"), "About n points of the global Pareto set, every part: an (rows, n_var) array.")
         .def(py::pickle(
             [](const suite::Native& p) { return dict_of(spec_of(p)); },
             [](const py::dict& spec) {

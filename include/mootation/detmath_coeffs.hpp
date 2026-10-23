@@ -18,6 +18,15 @@ inline constexpr double kPio2Lo = 0x1.1a62633145c07p-54;
 inline constexpr double kPiHi = 0x1.921fb54442d18p+1;
 inline constexpr double kPiLo = 0x1.1a62633145c07p-53;
 inline constexpr double kTwoOverPi = 0x1.45f306dc9c883p-1;
+// atan (Cody & Waite 1980, ch. 11): pi/6, pi/3 and sqrt 3 as hi + lo;
+// 2 - sqrt 3 correctly rounded
+inline constexpr double kPio6Hi = 0x1.0c152382d7366p-1;
+inline constexpr double kPio6Lo = -0x1.ee6913347c2a6p-55;
+inline constexpr double kPio3Hi = 0x1.0c152382d7366p+0;
+inline constexpr double kPio3Lo = -0x1.ee6913347c2a6p-54;
+inline constexpr double kSqrt3Hi = 0x1.bb67ae8584caap+0;
+inline constexpr double kSqrt3Lo = 0x1.cec95d0b5c1e3p-54;
+inline constexpr double kTwoMinusSqrt3 = 0x1.126145e9ecd56p-2;
 
 // correctly rounded values of the library's calls on constants
 inline constexpr double kPi = 0x1.921fb54442d18p+1;
@@ -34,6 +43,8 @@ inline constexpr double kSin[6] = {-0x1.5555555555548p-3, 0x1.111111110f7d0p-7, 
 inline constexpr double kCos[6] = {0x1.555555555554cp-5, -0x1.6c16c16c151b0p-10, 0x1.a01a019cb2adcp-16, -0x1.27e4f808bb44bp-22, 0x1.1ee9ea3646d79p-29, -0x1.8fad699abef09p-37};
 // asin s = s + s^3 A(s^2), 0 <= s <= 1/2; relative error 2^-58.8
 inline constexpr double kAsin[13] = {0x1.5555555555560p-3, 0x1.3333333330a07p-4, 0x1.6db6db706be50p-5, 0x1.f1c71b223c685p-6, 0x1.6e8bd0be793d9p-6, 0x1.1c4ada282088ep-6, 0x1.ca0b2e9739408p-7, 0x1.7621d73fd295ep-7, 0x1.5e019a2035becp-7, 0x1.0a23d9f9c079bp-8, 0x1.562db7cb0abd7p-6, -0x1.45cb23ff3dca9p-6, 0x1.05cfa12b651c8p-5};
+// atan f = f + f^3 T(f^2), |f| <= 2 - sqrt 3; relative error 2^-59.3
+inline constexpr double kAtan[11] = {-0x1.5555555555555p-2, 0x1.9999999999997p-3, -0x1.24924924920e8p-3, 0x1.c71c71c6d5465p-4, -0x1.745d172d849e0p-4, 0x1.3b13ac19fd545p-4, -0x1.11105d20ceebfp-4, 0x1.e1c133b955904p-5, -0x1.ad32a7eaff9a5p-5, 0x1.72d3fc57e5f14p-5, -0x1.e779aab48dcebp-6};
 
 // exp (Tang 1989): 32/ln2; ln2/32 = kExpL1 + kExpL2 (kExpL1: 33 bits)
 inline constexpr double kExpInvL = 0x1.71547652b82fep+5;

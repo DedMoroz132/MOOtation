@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Prints the hard inputs of the 8 functions of detmath.hpp: the double-
+"""Prints the hard inputs of the 10 functions of detmath.hpp: the double-
 precision inputs with the largest known errors of the libraries in
 B. Gladman, V. Innocente, J. Mather, P. Zimmermann, "Accuracy of Mathematical
 Functions in Single, Double, Double Extended, and Quadruple Precision"
@@ -15,7 +15,7 @@ cos and tan beyond 2^20 pi/2 are left out (outside the area of detmath.hpp).
 import re
 import sys
 
-FUNCS = ("acos", "cos", "exp", "hypot", "log", "pow", "sin", "tan")
+FUNCS = ("acos", "asin", "atan", "cos", "exp", "hypot", "log", "pow", "sin", "tan")
 HEX = re.compile(r"-?0x[0-9a-fA-F.]+p[+-]?\d+")
 TRIG_MAX = 1647099.3291652855        # 2^20 pi/2
 

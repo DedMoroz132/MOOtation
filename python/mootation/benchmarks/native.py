@@ -10,8 +10,12 @@ rZCAT). Task 12 of 2026-10-19 added MaF8 (§6: version 2, the C library's
 hypot), the new MaF14 and MaF15 (§2), and bbob-biobj and bbob-biobj-mixint
 (§1: the 110 problems of each; include/mootation/suite/bbob.hpp). Task 17,
 supplement 1, stage 1: WFG1-9, MaF10-12 (WFG1, WFG2 and WFG9 with M - 1
-positions) and rWFG1-9 (include/mootation/suite/wfg.hpp). Not moved: every
-other family.
+positions) and rWFG1-9 (include/mootation/suite/wfg.hpp). Task 17,
+supplement 3, stage 3a: DAS-CMOP1-9, LIR-CMOP1-14, MW1-14, DOC1-9, Polygon
+with rcPolygon and c0Polygon, IPolygon, SYM-PART, Omni-test, MMF1-15, RE and
+CRE (RE91 without a seed; its seeded stream, re.RE91Evaluator, stays
+Python's), and the multimodal problems' and the polygons' Pareto sets
+(attach: p.pareto_set). Not moved: every other family.
 
 With the extension built, such a problem's evaluate, evaluate_batch,
 constraints, constraints_batch and evaluate_with_constraints are C++ (attach):
@@ -24,9 +28,9 @@ library's own (include/mootation/detmath.hpp; task 14 of 2026-10-20), the same
 bits on every platform; the NumPy code stays on NumPy, that is on the C
 library, whose last bits may differ from machine to machine. The tests hold
 the two within 4 ulps (near zero, within 2e-15 of the problem's scale; bbob
-4e-15) wherever NumPy's sin, cos, exp and pow are the C library's
-(_rows.agrees) — bbob-biobj's, where its BLAS also adds in the order bbob.hpp
-writes out.
+4e-15, WFG, MW, DOC and LIR-CMOP 1e-13) wherever NumPy's sin, cos, exp and
+pow are the C library's (_rows.agrees) — bbob-biobj's, where its BLAS also
+adds in the order bbob.hpp writes out.
 
 spec(name) is what C++ needs of a problem: its family and sizes and the
 numbers NumPy made for it (centres, rotations, MaF9's polygons, MaF8's
@@ -53,6 +57,11 @@ _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2
 _MAF_WFG = {"MaF10": "WFG1", "MaF11": "WFG2", "MaF12": "WFG9"}
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
 _BBOB = re.compile(r"bbobbiobj(mixint)?\d\d_n\d\d_2D")
+# task 17, supplement 3, stage 3a
+_DAS = re.compile(r"DAS-CMOP([1-9])_(t\d\d|f6)")
+_OTHER = re.compile(r"LIR-CMOP\d+|DOC\d|(I?Polygon)_(\d+)D|(MW\d+)(_\d+D)?")
+_MMO = re.compile(r"SYM-PART_(simple|rotated)|Omni-test|MMF\d+(_[aez])?")
+_RE = re.compile(r"RE\d\dc?|CRE\d\d")
 # the verification set (task 17, supplement 2, §3; classic.hpp): its names
 # and the suite's families
 CLASSIC = {"SCH": "SCH", "FON": "FON", "POL": "POL", "KUR": "KUR", "SPH_2D": "SPH", "SPH_3D": "SPH",
@@ -69,10 +78,13 @@ def _array(v) -> np.ndarray:
 
 def _rotated(r) -> dict | None:
     """A rotated problem (rotated.Rotated) of the suite's families."""
-    if r.kind not in ("dtlz", "maf", "zdt", "zcat", "wfg"):
-        return None                                    # rcPolygon: Python
+    if r.kind not in ("dtlz", "maf", "zdt", "zcat", "wfg", "polygon"):
+        return None
     d = _base(r.family, r.n_vars, r.M, first=r.first)
-    if r.wfg:
+    if r.kind == "polygon":
+        d.update(map="rotate", centre=_array(r.optimum), matrices=[_array(r.A)],
+                 vertices=_polygon_vertices(r.M))
+    elif r.wfg:
         if r.family in ("WFG4", "WFG5", "WFG6", "WFG7"):
             d.update(map="rotate_wfg_035", matrices=[_array(r.A)])
         else:
@@ -88,6 +100,36 @@ def _rotated(r) -> dict | None:
     else:
         d.update(map="rotate_half", centre=_array(r.optimum), matrices=[_array(r.A)])
     return d
+
+
+def _polygon_vertices(M: int) -> np.ndarray:
+    from .polygon import polygon_vertices
+    return _array(polygon_vertices(M)).ravel()
+
+
+def _stage3a(name: str, p) -> dict | None:
+    """DAS-CMOP, LIR-CMOP, DOC, Polygon, IPolygon, SYM-PART, Omni-test, MMF, RE
+    and CRE (task 17, supplement 3, stage 3a)."""
+    if _MMO.fullmatch(name) or _RE.fullmatch(name):
+        return _base(name, p.n_vars, p.n_obj)
+    m = _DAS.fullmatch(name)
+    if m is not None:
+        from . import dascmop
+        i, tag = int(m.group(1)), m.group(2)
+        triplet = dascmop.FIGURE6 if tag == "f6" else dascmop.TRIPLETS[int(tag[1:]) - 1]
+        return _base(f"DAS-CMOP{i}", p.n_vars, p.n_obj, constants=_array(dascmop.params(*triplet)))
+    m = _OTHER.fullmatch(name)
+    if m is None:
+        return None
+    if m.group(1) == "Polygon":
+        return _base("Polygon", p.n_vars, p.n_obj, vertices=_polygon_vertices(p.n_obj))
+    if m.group(1) == "IPolygon":
+        from .polygon_ishibuchi import _vertices
+        return _base("IPolygon", p.n_vars, p.n_obj,
+                     polygons=[_array(V).ravel() for V in _vertices(p.n_obj)])
+    if m.group(3):
+        return _base(m.group(3), p.n_vars, p.n_obj)   # MW<i>, MW<i>_<M>D
+    return _base(name, p.n_vars, p.n_obj)             # LIR-CMOP<i>, DOC<i>
 
 
 def _bbob_function(f, levels=()) -> dict:
@@ -126,6 +168,9 @@ def spec(name: str, p, rotated=None) -> dict | None:
         return _rotated(rotated)
     if _BBOB.fullmatch(name):
         return _bbob(name, p)
+    d = _stage3a(name, p)
+    if d is not None:
+        return d
     n = p.n_vars
     if name in CLASSIC:
         return _base(CLASSIC[name], n, p.n_obj)
@@ -233,6 +278,9 @@ def attach(problems: dict, rotated: dict) -> int:
                        "constraints": p.constraints, "constraints_batch": p.constraints_batch,
                        "evaluate_with_constraints": p.evaluate_with_constraints}
         p.native = obj
+        if obj.has_pareto_set and callable(p.pareto_set):   # the multimodal ones, the polygons
+            p.reference["pareto_set"] = p.pareto_set
+            p.pareto_set = obj.pareto_set
         p.evaluate = Evaluate(obj)
         p.evaluate_batch = obj.evaluate_batch
         if p.has_cons:

@@ -75,6 +75,10 @@ the positions of the front's points and the distance variables at g's
 optimum (g1: x_i = (0.5 + (i-1)/(2n))^(1/(n-m)); g2: x_i = (i-1)/n; g3: x_i =
 1 - (x_{i-1} - 0.5)^2, a chain from the last position variable — variable
 linkage). Elsewhere the front needs g > 1: no sampler.
+
+THE C++ SUITE (task 17, supplement 3, stage 3a): with the extension built the
+problems are computed by include/mootation/suite/mw.hpp (benchmarks/native.py); this
+module stays the reference (BenchProblem.reference) and what runs without it.
 """
 
 from __future__ import annotations

@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Task 17, supplement 3, stage 3a: DAS-CMOP1-9, LIR-CMOP1-14, MW1-14,
+  DOC1-9, Polygon (with rcPolygon and c0Polygon), IPolygon, SYM-PART,
+  Omni-test, MMF1-15, RE and CRE in the C++ suite (`include/mootation/suite`:
+  `dascmop.hpp`, `lircmop.hpp`, `mw.hpp`, `doc.hpp`, `polygon.hpp`,
+  `mmo.hpp`, `re.hpp`), the NumPy code the reference; the multimodal
+  problems' and the polygons' Pareto sets too (`Native.pareto_set`). New in
+  `detmath.hpp`: `asin` and `atan` (Cody & Waite 1980, ch. 10 and 11; MW5-8).
+  Problem version 2 wherever the code calls an elementary function; three
+  NumPy references now add in an order C++ repeats (DOC2's products, DOC7's
+  and Omni-test's sums, rcPolygon's turn); IPolygon's front and Pareto set
+  are drawn from the library's generator: reference version 3.
+
 - Added (task 17, supplement 2, §1.3): a problem can say it is stochastic —
   `minimize(stochastic=True)`, an optional `is_stochastic()` in C++
   (`problem.hpp`), `BenchProblem.stochastic` (the noisy copies of kinds n and

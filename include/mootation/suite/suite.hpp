@@ -24,6 +24,22 @@
 // "WFG9", `k` position variables (0: 2 (M - 1)); MaF10-12 are WFG1, WFG2 and
 // WFG9 with k = M - 1.
 //
+// Task 17, supplement 3, stage 3a:
+//   DAS-CMOP1-9 (dascmop.hpp): family "DAS-CMOP<i>", `constants` the
+//     triplet's (b, d, e, r) (dascmop.params; e = inf where zeta = 0)
+//   LIR-CMOP1-14 (lircmop.hpp): family "LIR-CMOP<i>"
+//   MW1-14 (mw.hpp): family "MW<i>"; MW4, MW8 and MW14 at M >= 2, the rest
+//     at two
+//   DOC1-9 (doc.hpp): family "DOC<i>", the sizes of the paper
+//   Polygon (polygon.hpp): family "Polygon", `vertices` its M vertices;
+//     rcPolygon and c0Polygon with the map "rotate" from the third variable
+//   IPolygon (polygon.hpp): family "IPolygon", two variables, `polygons`
+//     the four polygons' M vertices each
+//   SYM-PART, Omni-test, MMF1-15 (mmo.hpp): family the registry's name
+//     ("SYM-PART_rotated", "Omni-test", "MMF1_z", "MMF14_a", ...)
+//   RE and CRE (re.hpp): family the registry's name ("RE21", "RE22c",
+//     "CRE24", ...), the sizes of the suite
+//
 // THE MAPS (dtlz_variants.py, shifted.py, rotated.py): the point the family
 // is evaluated at, its variables from `first` on read as
 //   cyclic       y = (x - c + 1/2) mod 1          shiftDTLZ1-4
@@ -50,8 +66,15 @@
 #include "bbob.hpp"
 #include "classic.hpp"
 #include "common.hpp"
+#include "dascmop.hpp"
+#include "doc.hpp"
 #include "dtlz.hpp"
+#include "lircmop.hpp"
 #include "maf.hpp"
+#include "mmo.hpp"
+#include "mw.hpp"
+#include "polygon.hpp"
+#include "re.hpp"
 #include "wfg.hpp"
 #include "zcat.hpp"
 #include "zdt.hpp"
@@ -75,6 +98,7 @@ struct Spec {
     std::vector<double> parts;                    // MaF14, MaF15: the subcomponents' sizes, group by group
     std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta
     int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
+    std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet
 };
 
 namespace detail {
@@ -118,6 +142,14 @@ public:
         else if ((which_ = number_after(f, "ZCAT")) != 0) kind_ = Kind::ZCAT;
         else if ((which_ = number_after(f, "WFG")) != 0) kind_ = Kind::WFG;
         else if (classic::parse(f, classic_)) kind_ = Kind::Classic;
+        else if ((which_ = number_after(f, "DAS-CMOP")) != 0) kind_ = Kind::DASCMOP;
+        else if ((which_ = number_after(f, "LIR-CMOP")) != 0) kind_ = Kind::LIRCMOP;
+        else if ((which_ = number_after(f, "DOC")) != 0) kind_ = Kind::DOC;
+        else if ((which_ = number_after(f, "MW")) != 0) kind_ = Kind::MW;
+        else if (f == "Polygon") kind_ = Kind::Polygon;
+        else if (f == "IPolygon") kind_ = Kind::IPolygon;
+        else if (mmo::parse(f, mmo_)) kind_ = Kind::MMO;
+        else if (re::parse(f, re_)) kind_ = Kind::RE;
         else if (f == "C1-DTLZ1") set_cdtlz(1, dtlz::Cons::C1_DTLZ1, 1);
         else if (f == "C1-DTLZ3") set_cdtlz(3, dtlz::Cons::C1_DTLZ3, 1);
         else if (f == "C2-DTLZ2") set_cdtlz(2, dtlz::Cons::C2_DTLZ2, 1);
@@ -191,13 +223,59 @@ public:
             case Kind::BBOB:
                 bbob_.evaluate(p, f);
                 return;
+            case Kind::DASCMOP:
+                dascmop::evaluate(which_, p, n_var, s_.constants, f, g);
+                return;
+            case Kind::LIRCMOP:
+                lircmop::evaluate(which_, p, n_var, f, g);
+                return;
+            case Kind::DOC:
+                doc::evaluate(which_, p, f, g);
+                return;
+            case Kind::MW:
+                mw::evaluate(which_, p, n_var, n_obj, f, g);
+                return;
+            case Kind::Polygon:
+                polygon::polygon(p, n_var, n_obj, s_.vertices, f);
+                return;
+            case Kind::IPolygon:
+                polygon::ipolygon(p, n_obj, s_.polygons, f);
+                return;
+            case Kind::MMO:
+                mmo::evaluate(mmo_, p, n_var, f);
+                return;
+            case Kind::RE:
+                re::evaluate(re_, p, f, g);
+                return;
         }
     }
 
     const Spec& spec() const { return s_; }
 
+    // Whether the suite has the problem's global Pareto set (pareto_set): the
+    // multimodal families and the polygons, without a map (task 17, supplement
+    // 3, stage 3a).
+    bool has_pareto_set() const
+    {
+        if (map_ != MapKind::None) return false;
+        if (kind_ == Kind::MMO) return mmo_ != mmo::Which::Omni || n_var == 3;
+        return kind_ == Kind::Polygon || kind_ == Kind::IPolygon;
+    }
+
+    // About n points of the global Pareto set, every part, flat (n_var values
+    // a row): mmo.pareto_set, pareto_sets.polygon, polygon_ishibuchi's; empty
+    // where has_pareto_set is false.
+    std::vector<double> pareto_set(int n) const
+    {
+        if (!has_pareto_set()) return {};
+        if (kind_ == Kind::MMO) return mmo::pareto_set(mmo_, n);
+        if (kind_ == Kind::Polygon) return polygon::polygon_set(n_obj, n_var, n, s_.vertices);
+        return polygon::ipolygon_set(n, s_.polygons);
+    }
+
 private:
-    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB };
+    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, DASCMOP, LIRCMOP,
+                      DOC, MW, Polygon, IPolygon, MMO, RE };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
@@ -207,6 +285,8 @@ private:
     int which_ = 0;
     int wfg_k_ = 0;
     classic::Which classic_ = classic::Which::SCH;
+    mmo::Which mmo_ = mmo::Which::MMF1;
+    re::Which re_ = re::Which::RE21;
     dtlz::Cons cons_ = dtlz::Cons::C1_DTLZ1;
     zcat::Problem zcat_;
     bbob::Pair bbob_;
@@ -290,6 +370,45 @@ private:
                 if ((bbob_.integers() > 0) != (s_.family == "bbob-biobj-mixint"))
                     fail("integer variables in bbob-biobj-mixint only");
                 break;
+            case Kind::DASCMOP:
+                if (which_ < 1 || which_ > 9 || M != dascmop::n_obj(which_) || n < M)
+                    fail("DAS-CMOP1-6 two objectives, 7-9 three, n >= M");
+                if (s_.constants.size() != 4) fail("DAS-CMOP: the constants b, d, e, r of the triplet");
+                n_con = dascmop::n_con(which_);
+                break;
+            case Kind::LIRCMOP:
+                if (which_ < 1 || which_ > 14 || M != lircmop::n_obj(which_) || n < 3)
+                    fail("LIR-CMOP1-12 two objectives, 13-14 three, n >= 3");
+                n_con = lircmop::n_con(which_);
+                break;
+            case Kind::DOC:
+                if (which_ < 1 || which_ > 9 || M != doc::n_obj(which_) || n != doc::n_var(which_))
+                    fail("DOC1-9 at the paper's sizes");
+                n_con = doc::n_con(which_);
+                break;
+            case Kind::MW:
+                if (which_ < 1 || which_ > 14 || M < 2 || (!mw::scalable(which_) && M != 2) || n <= M)
+                    fail("MW1-14, two objectives (MW4, MW8, MW14: two or more), n > M");
+                n_con = mw::n_con(which_);
+                break;
+            case Kind::Polygon:
+                if (n < 2 || static_cast<int>(s_.vertices.size()) != 2 * M) fail("two variables at least, M vertices");
+                break;
+            case Kind::IPolygon:
+                if (n != 2 || s_.polygons.empty()) fail("two variables and the polygons");
+                for (const auto& P : s_.polygons)
+                    if (static_cast<int>(P.size()) != 2 * M) fail("M vertices per polygon");
+                break;
+            case Kind::MMO:
+                if (M != mmo::n_obj(mmo_) || (mmo::n_var(mmo_) != 0 && n != mmo::n_var(mmo_)))
+                    fail("the competition's sizes (Omni-test: any number of variables)");
+                break;
+            case Kind::RE: {
+                const re::Size z = re::size(re_);
+                if (n != z.n_var || M != z.n_obj) fail("the suite's sizes");
+                n_con = z.n_con;
+                break;
+            }
         }
         const std::string& map = s_.map;
         if (map == "none") return;

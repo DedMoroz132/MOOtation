@@ -54,6 +54,11 @@ tests/data/pymoo-0.6.2_omni-sympart.json.
 
 parts(name): how many parts of the global set each map onto the whole front
 (MMF6's pieces of a third and fourth not counted: PARTS_NOTE).
+
+THE C++ SUITE (task 17, supplement 3, stage 3a): with the extension built the
+problems and the Pareto sets are computed by include/mootation/suite/mmo.hpp
+(benchmarks/native.py); this module stays the reference (BenchProblem.reference)
+and what runs without it.
 """
 
 from __future__ import annotations
@@ -170,7 +175,13 @@ def evaluate(name: str, x) -> list:
         c, s = math.cos(OMEGA), math.sin(OMEGA)
         return _sym_part(c * x[0] - s * x[1], s * x[0] + c * x[1])
     if name == "Omni-test":
-        return [sum(math.sin(math.pi * v) for v in x), sum(math.cos(math.pi * v) for v in x)]
+        # term by term from 0 (Python's sum of floats is compensated from 3.12)
+        s = c = 0.0
+        for v in x:
+            s = s + math.sin(math.pi * v)
+        for v in x:
+            c = c + math.cos(math.pi * v)
+        return [s, c]
     if name in ("MMF1", "MMF1_z", "MMF1_e", "MMF5", "MMF6", "MMF7"):
         d = abs(x[0] - 2.0)
         if name == "MMF7":

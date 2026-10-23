@@ -53,6 +53,10 @@ grid of [d, e] (or [0, 1] above d when zeta = 0), each point kept if every
 constraint holds; then the least feasible g of every non-dominated point by
 bisection below its grid value; built on first use and cached. A construction of this
 library, not the paper's (it plots them, Figure 6).
+
+THE C++ SUITE (task 17, supplement 3, stage 3a): with the extension built the
+problems are computed by include/mootation/suite/dascmop.hpp (benchmarks/native.py); this
+module stays the reference (BenchProblem.reference) and what runs without it.
 """
 
 from __future__ import annotations
