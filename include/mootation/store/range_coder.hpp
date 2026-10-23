@@ -15,10 +15,11 @@
 // grows by one); a decoder reading the bytes sees the sum carried.
 //
 // THE PROBABILITY of a 0 at a node is 16 bits and learns from every bit coded
-// there: p moves towards the bit seen by 1/(n + 2) of the distance, n the
-// bits it has seen, which is the Krichevsky-Trofimov estimate (n0 + 1/2) /
-// (n + 1) exactly while it is not clamped; from 30 bits on the step stays
-// 1/32, so the node keeps following a source that changes. Clamped to
+// there: p moves towards the bit seen by 1/(n + 2) of the distance (in 16
+// bits: (distance * floor(65536 / (n + 2))) >> 16), n the bits it has seen,
+// which is the Krichevsky-Trofimov estimate (n0 + 1/2) / (n + 1) up to the
+// rounding; from 30 bits on the step stays 1/32, so the node keeps following
+// a source that changes. Clamped to
 // [kMinP, 2^16 - kMinP], so that no bit costs more than ~11 bits.
 //
 // DIRECT BITS cost one bit each: m of them (up to 16) split the range into
@@ -33,23 +34,28 @@
 
 namespace mootation::store {
 
+constexpr std::uint32_t kTop = 1u << 24;
+constexpr std::uint32_t kMinP = 32;
+constexpr std::uint8_t kMaxCount = 30;
+
 struct BitModel {
     std::uint16_t p = 1u << 15;     // the probability of a 0, in 1/65536
     std::uint8_t n = 0;             // bits seen, up to kMaxCount
 };
 
-constexpr std::uint32_t kTop = 1u << 24;
-constexpr std::uint32_t kMinP = 32;
-constexpr std::uint8_t kMaxCount = 30;
+// 65536 / (n + 2), the step of a node that has seen n bits
+constexpr std::uint32_t kStep[kMaxCount + 1] = {
+    32768, 21845, 16384, 13107, 10922, 9362, 8192, 7281, 6553, 5957, 5461, 5041, 4681, 4369, 4096, 3855,
+    3640, 3449, 3276, 3120, 2978, 2849, 2730, 2621, 2520, 2427, 2340, 2259, 2184, 2114, 2048};
 
 inline void adapt(BitModel& m, int bit)
 {
-    const std::uint32_t div = static_cast<std::uint32_t>(m.n) + 2;
+    const std::uint32_t step = kStep[m.n];
     std::uint32_t p = m.p;
     if (bit == 0)
-        p += (65536u - p) / div;
+        p += ((65536u - p) * step) >> 16;
     else
-        p -= p / div;
+        p -= (p * step) >> 16;
     if (p < kMinP) p = kMinP;
     if (p > 65536u - kMinP) p = 65536u - kMinP;
     m.p = static_cast<std::uint16_t>(p);

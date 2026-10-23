@@ -194,16 +194,20 @@ private:
 
 // The models of a column: the flags, the trees of the indices (a node's key:
 // the index's width and the node's prefix with a leading 1, which keeps the
-// depths apart) and the tree of the values' top bits (the prefix alone).
+// depths apart) and the tree of the values' top bits (the prefix alone; its
+// top 12 levels, the nodes every value passes, in an array).
+constexpr std::uint64_t kDense = 1u << 12;
+
 struct FloatModels {
     BitModel flag[2];
+    std::vector<BitModel> top = std::vector<BitModel>(kDense);
     NodeTable index, value;
 };
 
 inline BitModel& node(FloatModels& m, int width, std::uint64_t prefix)
 {
-    return width < 0 ? m.value.at(prefix)
-                     : m.index.at((static_cast<std::uint64_t>(width + 1) << 40) | prefix);
+    if (width < 0) return prefix < kDense ? m.top[prefix] : m.value.at(prefix);
+    return m.index.at((static_cast<std::uint64_t>(width + 1) << 40) | prefix);
 }
 
 inline void code_tree(RangeEncoder& rc, FloatModels& m, std::uint64_t sym, int k, int width)

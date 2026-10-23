@@ -136,10 +136,13 @@ add `bits * range` to `low`. The end writes the four bytes of `low`.
 A decoder reads four bytes into `code` and mirrors it: a bit is 0 where
 `code < bound`; `m` direct bits are `code / (range >> m)`.
 
-A probability starts at 1/2 and after each bit moves towards it by
+A probability starts at 1/2 and after each bit moves towards it by about
 1/(n + 2) of the distance, n the bits it has seen (to at most 30), clamped
-to [32, 65504]; integer arithmetic: `p += (65536 - p) / (n + 2)` after a 0,
-`p -= p / (n + 2)` after a 1.
+to [32, 65504]; integer arithmetic, with `s = floor(65536 / (n + 2))`:
+`p += ((65536 - p) * s) >> 16` after a 0, `p -= (p * s) >> 16` after a 1.
+
+The value tree's nodes are found by their prefix (with the leading 1); this
+is the bytes' definition, whatever the coder keeps them in.
 
 ### A float64 column (`column_codec.hpp`)
 

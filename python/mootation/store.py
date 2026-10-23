@@ -210,15 +210,21 @@ def encode_block(b: Block) -> bytes:
             if len(shuffled) < len(payload):
                 how, payload = "shuffle+zlib", shuffled
     else:
-        # format 3: the library's own codecs only (task 17, §3а.2: no Deflate)
-        how, payload = "text", bytes(c.store_encode_text(b.data))
-        if b.dtype not in ("json", "text", "bytes"):
-            shuffled = bytes(c.store_encode_text(shuffle(b.data, _itemsize(b.dtype))))
-            if len(shuffled) < len(payload):
-                how, payload = "shuffle+text", shuffled
-            own = _own_codec(b)
-            if own is not None and len(own[1]) < len(payload):
-                how, payload = own
+        # format 3: the library's own codecs only (task 17, §3а.2: no Deflate):
+        # float64 and integers by their column codecs, bytes by the text codec,
+        # other arrays (float32) by the text codec shuffled or not; #points is
+        # coded already
+        own = _own_codec(b)
+        if b.name == "#points":
+            how, payload = "raw", b.data
+        elif own is not None:
+            how, payload = own
+        else:
+            how, payload = "text", bytes(c.store_encode_text(b.data))
+            if b.dtype not in ("json", "text", "bytes"):
+                shuffled = bytes(c.store_encode_text(shuffle(b.data, _itemsize(b.dtype))))
+                if len(shuffled) < len(payload):
+                    how, payload = "shuffle+text", shuffled
     if len(payload) >= len(b.data):
         how, payload = "raw", b.data
     name, dt, hw = b.name.encode(), b.dtype.encode(), how.encode()
