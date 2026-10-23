@@ -4,8 +4,8 @@ the papers of the fifteen algorithms checked against them use — not atlas
 problems, apart from the families' summaries (families.VERIFICATION).
 
 They are the C++ suite's (include/mootation/suite/classic.hpp, where the
-sources and the formulas are written out); without the extension they say
-so. The tests check them against the formulas in NumPy.
+sources and the formulas are written out); without the extension the
+papers' formulas in NumPy (rows), which the tests compare with them.
 
   SCH, FON, POL, KUR   Deb et al., IEEE TEVC 6(2), 2002, Table I
   SPH_2D, SPH_3D, QV   Zitzler, Laumanns & Thiele, TIK-Report 103, 2001,
@@ -45,10 +45,44 @@ SIZES = {
 }
 
 
-def _needs_extension(name):
-    def evaluate(x):
-        raise RuntimeError(f"{name} is in the C++ suite only (classic.hpp): build the extension")
-    return evaluate
+def rows(name: str, X) -> np.ndarray:
+    """The objectives of the rows of X by the papers' formulas in NumPy: what
+    runs without the extension (with it the C++ suite's, the same to a few
+    ulps; the tests compare the two)."""
+    X = np.atleast_2d(np.asarray(X, float))
+    if name == "SCH":
+        return np.column_stack([X[:, 0] ** 2, (X[:, 0] - 2.0) ** 2])
+    if name == "FON":
+        c = 1.0 / math.sqrt(3.0)
+        return np.column_stack([1.0 - np.exp(-((X - c) ** 2).sum(axis=1)),
+                                1.0 - np.exp(-((X + c) ** 2).sum(axis=1))])
+    if name == "POL":
+        a1 = 0.5 * math.sin(1.0) - 2.0 * math.cos(1.0) + math.sin(2.0) - 1.5 * math.cos(2.0)
+        a2 = 1.5 * math.sin(1.0) - math.cos(1.0) + 2.0 * math.sin(2.0) - 0.5 * math.cos(2.0)
+        s1, c1, s2, c2 = np.sin(X[:, 0]), np.cos(X[:, 0]), np.sin(X[:, 1]), np.cos(X[:, 1])
+        b1 = 0.5 * s1 - 2.0 * c1 + s2 - 1.5 * c2
+        b2 = 1.5 * s1 - c1 + 2.0 * s2 - 0.5 * c2
+        return np.column_stack([1.0 + (a1 - b1) ** 2 + (a2 - b2) ** 2,
+                                (X[:, 0] + 3.0) ** 2 + (X[:, 1] + 1.0) ** 2])
+    if name == "KUR":
+        return np.column_stack([
+            (-10.0 * np.exp(-0.2 * np.sqrt(X[:, :-1] ** 2 + X[:, 1:] ** 2))).sum(axis=1),
+            (np.abs(X) ** 0.8 + 5.0 * np.sin(X ** 3)).sum(axis=1)])
+    if name in ("SPH_2D", "SPH_3D"):
+        sq = (X ** 2).sum(axis=1)
+        return np.column_stack([sq - 2.0 * X[:, j] + 1.0 for j in range(SIZES[name][1])])
+    if name == "QV":
+        r = lambda Y: (Y ** 2 - 10.0 * np.cos(2.0 * np.pi * Y) + 10.0).mean(axis=1) ** 0.25  # noqa: E731
+        return np.column_stack([r(X), r(X - 1.5)])
+    if name == "KURZ":
+        return np.column_stack([
+            (np.abs(X) ** 0.8 + 5.0 * np.sin(X) ** 3 + 3.5828).sum(axis=1),
+            (1.0 - np.exp(-0.2 * np.sqrt(X[:, :-1] ** 2 + X[:, 1:] ** 2))).sum(axis=1)])
+    if name == "ZDT6_D100":
+        f1 = 1.0 - np.exp(-4.0 * X[:, 0]) * np.sin(6.0 * np.pi * X[:, 0]) ** 6
+        g = 1.0 + 9.0 * (X[:, 1:].sum(axis=1) / (X.shape[1] - 1)) ** 0.25
+        return np.column_stack([f1, g * (1.0 - (f1 / g) ** 2)])
+    raise KeyError(name)
 
 
 def _nondominated_2d(F: np.ndarray, X: np.ndarray):
@@ -184,7 +218,8 @@ def register(PROBLEMS: dict, BenchProblem, budget, ref_norm, divisor) -> list:
         pop, ng = budget(m)
         PROBLEMS[name] = BenchProblem(
             name=name, n_vars=n_var, bounds=[(lo, hi)] * n_var, n_obj=m,
-            evaluate=_needs_extension(name), constraints=lambda x: [],
+            evaluate=lambda x, _n=name: rows(_n, [list(x)])[0].tolist(),
+            evaluate_batch=lambda X, _n=name: rows(_n, X), constraints=lambda x: [],
             hv_ref_raw=tuple(v + 0.1 * (v - u) for u, v in zip(ideal, nadir)),
             hv_ref_norm=ref_norm(m), hv_norm_divisor=divisor(m),
             ideal=tuple(ideal), nadir=tuple(nadir),

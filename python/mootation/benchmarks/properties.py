@@ -532,15 +532,17 @@ def _front_dim(stem: str, m: int, front: str | None) -> int | None:
 # nonconvex, POL nonconvex and disconnected; Zitzler et al. 2001: SPH-m
 # unimodal, QV of Rastrigin's type with an "extreme concave" front, KUR "not
 # connected ... concave and convex regions"; SPH-m's front, f_j = |x|^2 - 2
-# x_j + 1 on the simplex, convex); the rest is not stated there: None.
+# x_j + 1 on the simplex, convex); boundary from the Pareto sets where they
+# are known (no optimum on a bound: SCH, FON, SPH-m); the rest is not stated
+# there: None.
 # ZDT6_D100 takes ZDT6's row.
 _CLASSIC = {
-    "SCH": _p("convex", False, None, None, None, None, None),
-    "FON": _p("concave", False, None, None, None, None, None),
+    "SCH": _p("convex", False, None, None, None, None, False),
+    "FON": _p("concave", False, None, None, None, None, False),
     "POL": _p("concave+disconnected", None, None, None, None, None, None),
     "KUR": _p("mixed+disconnected", True, None, None, None, None, None),
-    "SPH_2D": _p("convex", False, None, None, None, None, None),
-    "SPH_3D": _p("convex", False, None, None, None, None, None),
+    "SPH_2D": _p("convex", False, None, None, None, None, False),
+    "SPH_3D": _p("convex", False, None, None, None, None, False),
     "QV": _p("concave", True, None, None, None, None, None),
     "KURZ": _p("mixed+disconnected", True, None, None, None, None, None),
 }
