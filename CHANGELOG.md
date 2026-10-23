@@ -87,8 +87,10 @@ always listed under **Changed** or **Removed**.
   CRC-32C; packs of before are read, and `compact` replaces them. A
   record's bytes — blocks, body, frame, the key's SHA-256 — and the files —
   a segment's record appended and synced, a pack written, read and checked
-  — are the library's (`include/mootation/store/record.hpp`, `pack.hpp`);
-  `store.py` finds the files and keeps what reads JSON. The format, byte by byte:
+  — and what a record reads from its JSON (the point tables, meta.json's
+  final once, a pack's meta table) are the library's
+  (`include/mootation/store/`); `store.py` finds the files and runs compact,
+  merge and export over them. The format, byte by byte:
   `docs/store-format.md`.
 
 - `dm::sin`, `cos` and `tan` for every finite argument (task 17, supplement

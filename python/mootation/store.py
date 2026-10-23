@@ -93,11 +93,13 @@ needs the extension; formats 1 and 2 are read as before.
 ONE IMPLEMENTATION (task 17, §3а.3): a format-3 record's bytes — its blocks,
 its body with "#points", its frame — and the files — a segment's record
 appended and synced, a pack written, its footer and index read, a pack
-checked — are the library's (include/mootation/store/record.hpp, pack.hpp;
-the extension's store_* functions). What reads JSON
-stays here: which blocks are point tables (their "#head"), meta.json's final
-once and back, the pack's meta table. Without the extension this module
-writes and reads format 2 (zlib) by itself.
+checked — and what a record reads from its JSON — which blocks are point
+tables (their "#head"), meta.json's final once and back, a pack's meta table
+— are the library's (include/mootation/store/record.hpp, pack.hpp,
+run_json.hpp, meta_table.hpp; the extension's store_* functions). This module
+finds the files, runs compact, merge and export over them and builds the
+metrics table. Without the extension it writes and reads format 2 (zlib) by
+itself.
 """
 
 from __future__ import annotations
@@ -307,13 +309,6 @@ def _blocks_lib(blocks: list) -> list:
 
 def _blocks_py(got) -> list:
     return [Block(name, dtype, tuple(shape), bytes(data)) for name, dtype, shape, data in got]
-
-
-def _meta_text(meta: dict, crlf: bool) -> bytes:
-    """meta.json's text as campaign writes it (json.dumps, indent 1), its line
-    ends CR LF where the file's were (a text file written on Windows)."""
-    text = json.dumps(meta, indent=1).encode()
-    return text.replace(b"\n", b"\r\n") if crlf else text
 
 
 def _point_tables(blocks: list) -> list:
@@ -1128,145 +1123,21 @@ def _pieces(body: bytes):
         at += n
 
 
-def _leaves(v, path: tuple, out: list):
-    """v's skeleton; its leaves appended to out as (path, value)."""
-    if isinstance(v, dict):
-        return {k: _leaves(x, path + (k,), out) for k, x in v.items()}
-    if isinstance(v, list):
-        return [_leaves(x, path + ([i],), out) for i, x in enumerate(v)]
-    out.append((json.dumps(path), v))
-    return 0
-
-
-def _fill(skel, path: tuple, take):
-    if isinstance(skel, dict):
-        return {k: _fill(x, path + (k,), take) for k, x in skel.items()}
-    if isinstance(skel, list):
-        return [_fill(x, path + ([i],), take) for i, x in enumerate(skel)]
-    return take(json.dumps(path))
-
-
 def encode_meta_table(rows: list) -> bytes:
-    """[(key, meta.json bytes)] as a pack's table (the comment above)."""
-    import numpy as np
+    """[(key, meta.json bytes)] as a pack's table (the comment above; the
+    library's, store/meta_table.hpp)."""
     c = _codec()
-    keys, skels, skel_ids, crlf, whole = [], {}, [], [], {}
-    cols: dict = {}
-    for r, (key, text) in enumerate(rows):
-        keys.append(key)
-        cr = b"\r\n" in text
-        crlf.append(int(cr))
-        try:
-            obj = json.loads(text)
-            ok = _meta_text(obj, cr) == text
-        except ValueError:
-            ok = False
-        leaves: list = []
-        if ok:
-            skel = json.dumps(_leaves(obj, (), leaves), separators=(",", ":"))
-            ok = all(v is None or isinstance(v, (bool, float, str)) or
-                     (isinstance(v, int) and -2 ** 63 <= v < 2 ** 63) for _, v in leaves)
-        if not ok:
-            whole[r] = text.decode("utf-8")
-            skel_ids.append(-1)
-            continue
-        skel_ids.append(skels.setdefault(skel, len(skels)))
-        for path, v in leaves:
-            col = cols.setdefault(path, {"types": [], "ints": [], "floats": [], "texts": [], "dict": {}})
-            if v is None:
-                col["types"].append(0)
-            elif isinstance(v, bool):
-                col["types"].append(2 if v else 1)
-            elif isinstance(v, int):
-                col["types"].append(3)
-                col["ints"].append(v)
-            elif isinstance(v, float):
-                col["types"].append(4)
-                col["floats"].append(v)
-            else:
-                col["types"].append(5)
-                col["texts"].append(col["dict"].setdefault(v, len(col["dict"])))
-    def text_piece(obj):
-        return bytes(c.store_encode_text(json.dumps(obj).encode()))
-
-    def ints(v):
-        return bytes(c.store_encode_i64(np.asarray(v, np.int64)))
-    out: list = []
-    _put_piece(out, text_piece({"rows": len(rows), "columns": list(cols)}))
-    _put_piece(out, text_piece(keys))
-    _put_piece(out, text_piece(list(skels)))
-    _put_piece(out, ints(skel_ids))
-    _put_piece(out, ints(crlf))
-    _put_piece(out, text_piece({str(r): t for r, t in whole.items()}))
-    for col in cols.values():
-        _put_piece(out, ints(col["types"]))
-        _put_piece(out, ints(col["ints"]))
-        _put_piece(out, bytes(c.store_encode_f64(np.asarray(col["floats"], np.float64))))
-        _put_piece(out, ints(col["texts"]))
-        _put_piece(out, text_piece(list(col["dict"])))
-    body = b"".join(out)
-    return META_MAGIC + struct.pack("<I", crc32c(body)) + body
+    if c is None:
+        raise ValueError("a pack's meta table needs the compiled extension")
+    return bytes(_lib(c.store_encode_meta_table, [(k, bytes(t)) for k, t in rows]))
 
 
 def decode_meta_table(data: bytes) -> dict:
     """{key: meta.json bytes} of a pack's table; ValueError where it is damaged."""
-    import numpy as np
     c = _codec()
     if c is None:
         raise ValueError("a pack's meta table needs the compiled extension")
-    if data[:8] != META_MAGIC or len(data) < 12:
-        raise ValueError("not a pack's meta table")
-    (crc,) = struct.unpack_from("<I", data, 8)
-    body = data[12:]
-    if crc32c(body) != crc:
-        raise ValueError("a pack's meta table: its checksum does not hold")
-    pieces = list(_pieces(body))
-
-    def text(i):
-        return json.loads(bytes(c.store_decode_text(pieces[i])))
-    head = text(0)
-    n = head["rows"]
-    keys, skels, whole = text(1), text(2), text(5)
-    skel_ids = c.store_decode_i64(pieces[3], n).tolist()
-    crlf = c.store_decode_i64(pieces[4], n).tolist()
-    # the columns' leaves, in row order: types first, then each kind's values
-    cols, at = {}, 6
-    counts: dict = {}
-    for r, sid in enumerate(skel_ids):           # how many leaves each column holds
-        if sid < 0:
-            continue
-        _fill(json.loads(skels[sid]), (), lambda path: counts.__setitem__(path, counts.get(path, 0) + 1))
-    for path in head["columns"]:
-        types = c.store_decode_i64(pieces[at], counts.get(path, 0)).tolist()
-        n_int, n_float, n_text = types.count(3), types.count(4), types.count(5)
-        cols[path] = {
-            "types": iter(types),
-            "ints": iter(c.store_decode_i64(pieces[at + 1], n_int).tolist()),
-            "floats": iter(np.asarray(c.store_decode_f64(pieces[at + 2], n_float)).tolist()),
-            "texts": iter(c.store_decode_i64(pieces[at + 3], n_text).tolist()),
-            "dict": text(at + 4),
-        }
-        at += 5
-
-    def take(path):
-        col = cols[path]
-        t = next(col["types"])
-        if t == 0:
-            return None
-        if t in (1, 2):
-            return t == 2
-        if t == 3:
-            return int(next(col["ints"]))
-        if t == 4:
-            return float(next(col["floats"]))
-        return col["dict"][next(col["texts"])]
-    out = {}
-    for r, (key, sid) in enumerate(zip(keys, skel_ids)):
-        if sid < 0:
-            out[key] = whole[str(r)].encode("utf-8")
-        else:
-            out[key] = _meta_text(_fill(json.loads(skels[sid]), (), take), bool(crlf[r]))
-    return out
+    return {k: bytes(t) for k, t in _lib(c.store_decode_meta_table, bytes(data))}
 
 
 def _pack_metas(raw: Path):
