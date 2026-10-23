@@ -50,6 +50,13 @@
 //     (C2-DTLZ2's minimum of spheres) is ~1e8 long, and so is the LDP's
 //     solution, which a test of ||r||^2 against eps (DIFF's 1 + ||r||^2 = 1)
 //     refuses.
+//   LSQ-8. LDP is solved for the same constraints with every row g_i of G
+//     scaled to unit length and h to max |h_i| = 1: G x >= h and
+//     (g_i / ||g_i||)^T x >= h_i / ||g_i|| are one set, and LDP's solution is
+//     linear in h (x(c h) = c x(h)); x and the multipliers are scaled back.
+//     A QP whose gradient is ~1e8 long (a finite difference across a kink)
+//     gives an h that long, and NNLS on [G^T; h^T] unscaled lost the
+//     solution (a compatible relaxed QP found incompatible).
 //   LSQ-4. lsei picks the rows of C in the order of the largest remaining
 //     norm (the column interchanges of HFTI (14.9), Steps 3-10, on C^T) and
 //     takes as its pseudorank the rows whose diagonal element exceeds
@@ -425,10 +432,21 @@ inline LDPResult ldp(const Matrix& G, const std::vector<double>& h)
     r.x.assign(n, 0.0);
     r.lam.assign(m, 0.0);
     if (m == 0) return r;
+    // LSQ-8: the same problem with every row of G of unit length and
+    // max |h| = 1 (row i divided by w_i = ||g_i||, h by c)
+    std::vector<double> w(m, 1.0);
+    double c = 0.0;
+    for (std::size_t j = 0; j < m; ++j) {
+        double s = 0.0;
+        for (std::size_t i = 0; i < n; ++i) s += G(j, i) * G(j, i);
+        if (s > 0.0) w[j] = std::sqrt(s);
+        c = std::max(c, std::fabs(h[j] / w[j]));
+    }
+    if (c == 0.0) return r;                              // h = 0: x = 0 is the solution
     Matrix E(n + 1, m);                                  // Step 1: E = [G^T; h^T]
     for (std::size_t j = 0; j < m; ++j) {
-        for (std::size_t i = 0; i < n; ++i) E(i, j) = G(j, i);
-        E(n, j) = h[j];
+        for (std::size_t i = 0; i < n; ++i) E(i, j) = G(j, i) / w[j];
+        E(n, j) = h[j] / w[j] / c;
     }
     std::vector<double> f(n + 1, 0.0);
     f[n] = 1.0;
@@ -451,8 +469,8 @@ inline LDPResult ldp(const Matrix& G, const std::vector<double>& h)
         return r;
     }
     const double fac = rr;
-    for (std::size_t i = 0; i < n; ++i) r.x[i] = res[i] / fac;   // Step 5, (23.32)
-    for (std::size_t j = 0; j < m; ++j) r.lam[j] = u.x[j] / fac;
+    for (std::size_t i = 0; i < n; ++i) r.x[i] = res[i] / fac * c;   // Step 5, (23.32)
+    for (std::size_t j = 0; j < m; ++j) r.lam[j] = u.x[j] / fac * c / w[j];
     if (u.status == Status::iterations) r.status = Status::iterations;
     return r;
 }
