@@ -230,8 +230,9 @@ inline bool is_core_param(const std::string& name)
 //   constraint_mode
 //                 minimize()'s, for a campaign's algorithm entry: none lets the
 //                 core rank by the objectives only (task 15, §5); no core has it
-//   scalarization, local, sub_plan, tch_weights, boost_scalarization, polish
-//                 the Python-level methods of task 9 (python/mootation/scalar):
+//   scalarization, local, sub_plan, tch_weights, sqp_line_search,
+//   boost_scalarization, polish
+//                 the methods of task 9 (include/mootation/scalar/):
 //                 no core has them, every core reports them ignored
 //   hv_algo       sms_emoa, mo_cma_es: the exact contributions' hypervolumes by
 //                 WFG (auto, the default, and wfg) or by box decomposition
@@ -293,6 +294,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"local",        {"sqp", "nm", "cmaes"}},
         {"sub_plan",     {"grid", "laumanns", "gap"}},
         {"tch_weights",  {"inverse", "lattice"}},
+        {"sqp_line_search", {"stop", "accept"}},
         {"hv_algo",      {"auto", "wfg", "box"}},
         {"hv_contrib",   {"iwfg", "hvc", "wfg", "race", "mc"}},
         {"polish",       {"off", "sqp", "nm"}},
@@ -321,7 +323,7 @@ inline bool is_core_word(const std::string& name)
                           "bc_selection", "mads_select", "mads_poll", "mads_search", "mads_cache", "cache_check",
                           "dms_cache", "paes_cache", "boost_scalarization",
                           "scalarization",
-                          "local", "sub_plan", "tch_weights", "polish", "hv_algo",
+                          "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
                           "hv_contrib"})
         if (name == k) return true;
     return false;
