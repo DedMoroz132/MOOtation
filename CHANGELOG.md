@@ -10,6 +10,23 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The scalarization methods (`scalar` and its presets), `mosqp`, `boostdms`
+  and `polish` in C++ (task 17, stage 6; `include/mootation/scalar/`,
+  `_core.scalar`), with the library's own local solvers in place of SciPy's:
+  an SQP (`slsqp.hpp`: the line-search SQP of Nocedal & Wright, Algorithm
+  18.3, with the damped BFGS update and the l1 merit function, its quadratic
+  subproblem solved as Lawson & Hanson's LSEI/LSI/LDP/NNLS, `lsq.hpp`), a
+  Nelder-Mead (`nelder_mead.hpp`: Lagarias et al. 1998 with their tie rules and
+  Gao & Han's adaptive coefficients), the CMA-ES and its eigendecomposition
+  (Lawson & Hanson's symmetric QR algorithm, `eigen.hpp`); the random numbers
+  of `rnd::`. Their runs change: `method_version = 2` in the settings
+  (`polish_version` for the polishing). SciPy is no longer needed by them; it
+  remains the reference of the tests (`own_slsqp_and_nelder_mead_against_scipy`).
+  The Python modules `scalar/evaluator.py`, `subproblems.py`, `solvers.py`,
+  `cmaes.py`, `mosqp.py`, `boostdms.py` are removed; tests/test_slsqp.cpp and
+  tests/test_scalar.cpp check the solvers on problems with known solutions and
+  the methods' answers bit for bit.
+
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a
   run evaluated was kept as a tuple of Python floats, about 3 kB a point of
   100 variables: 3 GB for a run of 10^6 evaluations, and a campaign of

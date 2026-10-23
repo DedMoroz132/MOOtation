@@ -336,7 +336,7 @@ reading until checked against the granular-mesh and OrthoMADS papers it cites;
 the cut is ours, not in the n + 1 directions paper or the NOMAD 4 guide);
 MultiGLODS keeps the points of every search it has
 started, active or merged, and starts new ones from a Sobol sequence after
-three failures in a row; BoostDMS (Python, SciPy) is DMS with a search step that
+three failures in a row; BoostDMS (`include/mootation/scalar/boostdms.hpp`) is DMS with a search step that
 minimizes quadratic models of the objectives built from the evaluated points.
 Deterministic, and it stops on its own when every step size is below 10⁻³ of
 the range. Its answer is the list reduced to `pop_size` by DSS
@@ -388,18 +388,22 @@ manifold in the variables under the Karush–Kuhn–Tucker conditions.
 | Pascoletti–Serafini (`scalarization = ps`) | 1984 | `scalar` | [10.1007/BF00934564](https://doi.org/10.1007/BF00934564) |
 | Multiobjective SQP | 2016 | `mosqp` | [10.1137/15M1016424](https://doi.org/10.1137/15M1016424) |
 
-Not evolutionary and not C++ cores: Python (`python/mootation/scalar/`), run by
-name through `minimize()` and in campaigns like any algorithm, with NumPy and
-SciPy. The front is a sequence of single-objective subproblems — the anchors
+Not evolutionary and not cores of `algorithms.def`: C++ in
+`include/mootation/scalar/` (since task 17, stage 6; `_core.scalar` from
+Python), run by name through `minimize()` and in campaigns like any algorithm.
+The front is a sequence of single-objective subproblems — the anchors
 first (each objective's lexicographic minimum), then a plan of subproblems over
 the normalized objectives — each solved by a local method from the best point
-the archive holds for it: SciPy's SLSQP with finite-difference gradients
-(`sqp`), SciPy's Nelder–Mead with adaptive parameters (`nm`) or a CMA-ES
-written from Hansen's tutorial, arXiv:1604.00772 (`cmaes`). Every evaluation,
+the archive holds for it: the library's SQP with finite-difference gradients
+(`sqp`; `slsqp.hpp`, Nocedal & Wright's line-search SQP whose quadratic
+subproblem is Lawson & Hanson's least-squares problem, as in Kraft's SLSQP),
+Nelder–Mead (`nm`; `nelder_mead.hpp`, Lagarias et al. 1998 with Gao & Han's
+adaptive coefficients) or a CMA-ES written from Hansen's tutorial,
+arXiv:1604.00772 (`cmaes`). Every evaluation,
 finite differences included, is counted and archived; the answer is the
 archive's feasible non-dominated points, reduced to `pop_size` by DSS. A failed
 evaluation of an iterate ends that subproblem's SQP solve (SCALAR-6, in
-`scalar/__init__.py`), so with failures these methods may end with budget left,
+`scalar/scalar.hpp`), so with failures these methods may end with budget left,
 as they do once every subproblem of the plan is solved; the budget is not
 spent elsewhere. Real variables only. `scalar` with its knobs covers all of them; the six names are
 its presets. `mosqp` (Fliege & Vaz) is beside them without a scalarization: a

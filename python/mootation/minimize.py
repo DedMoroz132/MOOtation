@@ -76,7 +76,7 @@ def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constrain
     from .scalar import NAMES as SCALAR_NAMES
     own = (constraints is None or getattr(constraints, "native", None) is obj) and \
           (batch is None or getattr(batch, "__self__", None) is obj)
-    why = ("a scalarization method runs in Python" if algorithm in SCALAR_NAMES else
+    why = ("a scalarization method takes fn itself (_core.scalar)" if algorithm in SCALAR_NAMES else
            "batch or constraints of the caller's" if not own else
            "eq_constraints" if eq_constraints is not None else
            "log_evaluations" if log_evaluations is not None else
@@ -547,7 +547,7 @@ def minimize(
             **{k: float(v) for k, v in knobs_s.items()})
 
     if algorithm in SCALAR_NAMES:
-        # scalarization with a local solver (mootation.scalar): Python, not a core
+        # scalarization with a local solver (mootation.scalar, _core.scalar): not a core
         if layout is not None:
             raise ValueError(f"{algorithm} takes real variables only: no var_types other "
                              "than 'real'")

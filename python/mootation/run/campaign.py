@@ -1133,7 +1133,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     from .baselines import BASELINES, run_baseline
     from ..scalar import NAMES as SCALAR_NAMES
     baseline = job.algorithm in BASELINES
-    # the scalarization methods run in Python (mootation.scalar): no core
+    # the scalarization methods (mootation.scalar, _core.scalar): no core
     # state to read at the records
     in_python = baseline or job.algorithm in SCALAR_NAMES
     # Every nondominated point the run evaluates, whatever the algorithm keeps
