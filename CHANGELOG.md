@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed: `theta_dea` let copies of a solution crowd the first theta level.
+  Definition 7 compares F_j with a strict "<", so two copies in one cluster
+  were both theta-optimal; the first level then outgrew the clusters it
+  covered, and the random choice of Step 20 dropped the only member of
+  another cluster, leaving reference directions empty to the end of a run.
+  Equal F_j are now ordered by their slots (TDEA-1, a declared deviation from the strict
+  "<" of Definition 7).
+  The default runs of `theta_dea` change: its three fingerprints are new.
+
 - Fixed: a campaign entry of `nsga3`, `a_nsga3`, `theta_dea` or `srv_nsga3`
   with `n_ref_points` ran another population than it named: the config check
   accepted any `pop` with `n_ref_points` (the reference points no longer come
