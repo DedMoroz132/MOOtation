@@ -30,7 +30,8 @@ set(MOOTATION_TESTS
     test_detmath
     test_slsqp
     test_scalar
-    test_store_codec)
+    test_store_codec
+    test_json)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

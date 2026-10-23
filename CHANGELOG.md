@@ -37,6 +37,14 @@ always listed under **Changed** or **Removed**.
   from it, task 15, §2), but the job expansion still rounded `pop` to a
   Das-Dennis lattice (`campaign.fit_pop`). It now keeps the `pop`.
 
+- `include/mootation/json.hpp`: JSON as Python's `json` module reads and
+  writes it, byte for byte — a float as `repr()` (the shortest digits that
+  read back, `std::to_chars`), `ensure_ascii` escapes, `json.dumps`'s layouts
+  with and without `indent`, `json.loads`'s numbers, NaN and the infinities,
+  a key given twice; for the store and the campaign engine in C++ (task 17,
+  stage 5). `tests/test_json.cpp`; the extension's `json_reformat`,
+  `json_float_repr`.
+
 - The scalarization methods (`scalar` and its presets), `mosqp`, `boostdms`
   and `polish` in C++ (task 17, stage 6; `include/mootation/scalar/`,
   `_core.scalar`), with the library's own local solvers in place of SciPy's:
