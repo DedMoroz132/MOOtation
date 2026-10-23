@@ -20,11 +20,12 @@
 // NaN, overflow) as C23 Annex F says (ISO/IEC 9899:2024, F.10); odd functions
 // odd and even ones even, exactly (F.10, 3).
 //
-// sin, cos, tan: |x| <= 2^20 pi/2 (about 1.6e6). The reduction takes pi/2 in
-// four parts, three of 33 bits, so k * part is exact for k <= 2^20; beyond
-// that a debug build stops at an assert, a release build runs the same
-// arithmetic (the same bits everywhere, accuracy not promised). The library
-// calls them with |x| below 10^4.
+// sin, cos, tan: every finite x. Up to |x| = 2^20 pi/2 (about 1.6e6) the
+// reduction takes pi/2 in four parts, three of 33 bits, so k * part is exact
+// for k <= 2^20 (Cody & Waite); above it, Payne and Hanek's reduction by the
+// bits of 2/pi (Muller, Elementary Functions, 3rd ed., 2016, §11.4; task 17,
+// supplement 5, §4 — DOC4's sine takes arguments up to 3e8): the same
+// accuracy, and the bits below 2^20 pi/2 those of before.
 //
 // Sources, by function:
 //   exp      P. T. P. Tang, Table-driven implementation of the exponential
@@ -36,8 +37,10 @@
 //   sin, cos, tan
 //            W. J. Cody, W. Waite, Software Manual for the Elementary
 //            Functions, Prentice-Hall, 1980, ch. 8-9 (reduction by pi in
-//            parts); kernels on |r| <= pi/4; tan as the quotient of the two
-//            kernels in double-word arithmetic
+//            parts); above 2^20 pi/2 M. Payne, R. Hanek, SIGNUM Newsletter
+//            18, 1983, as Muller 2016, §11.4, with its worst case for the
+//            reduction (Table 11.2); kernels on |r| <= pi/4; tan as the
+//            quotient of the two kernels in double-word arithmetic
 //   acos     Cody & Waite, ch. 10 (asin of the half angle near +-1)
 //   asin     ibid., ch. 10, acos's kernel
 //   atan     ibid., ch. 11 (the reduction to |f| <= 2 - sqrt 3), the reduced
@@ -55,7 +58,6 @@
 // to detmath_coeffs.hpp.
 // ============================================================================
 
-#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -247,6 +249,84 @@ MOOTATION_FORCEINLINE Reduced reduce_pio2(double x)
     return {r, q};
 }
 
+// Payne and Hanek's reduction (Muller 2016, §11.4) of x > 2^20 pi/2, finite:
+// x = X 2^E, X the 53-bit integer significand, and x 2/pi = X 2^E sum b_i 2^-i
+// over the bits b_i of 2/pi (coeffs::kTwoOverPiBits). A bit with i <= E - 2
+// adds a multiple of 4 to x 2/pi — nothing to k mod 4 or to r — and is left
+// out; the 192 bits from b_{max(1, E - 1)} on are taken, as the integer W, and
+// the bits after them change the fraction of x 2/pi by less than 2^-137, while
+// no double lies closer than 2^-61 to a multiple of pi/2 (Muller, Table 11.2:
+// 6381956970095103 2^797). Z = X W, in 32-bit words; its bits from sh = i0 +
+// 191 - E up give k mod 4, the 192 below sh the fraction f, k rounded to the
+// nearest (f >= 1/2: k + 1, f - 1); r = f pi/2, a double-word number from the
+// first 159 bits of |f| on.
+inline Reduced reduce_large(double x)
+{
+    const std::uint64_t u = bits(x);
+    const std::int32_t E = static_cast<std::int32_t>((u >> 52) & 0x7ff) - 1075;
+    const std::uint64_t X = (u & ((std::uint64_t{1} << 52) - 1)) | (std::uint64_t{1} << 52);
+    const std::int32_t i0 = E - 1 > 1 ? E - 1 : 1;
+    // the 32 bits b_i .. b_{i+31} of 2/pi (i from 1)
+    auto word = [](std::int32_t i) {
+        const std::int32_t w = (i - 1) / 32, off = (i - 1) % 32;
+        const std::uint32_t* T = coeffs::kTwoOverPiBits;
+        return off == 0 ? T[w] : static_cast<std::uint32_t>((T[w] << off) | (T[w + 1] >> (32 - off)));
+    };
+    // W, least significant 32-bit word first; X in two words
+    std::uint64_t w[6];
+    for (int j = 0; j < 6; ++j) w[j] = word(i0 + 32 * (5 - j));
+    const std::uint64_t xw[2] = {X & 0xffffffffu, X >> 32};
+    std::uint64_t z[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    for (int i = 0; i < 2; ++i) {
+        std::uint64_t carry = 0;
+        for (int j = 0; j < 6; ++j) {
+            const std::uint64_t t = xw[i] * w[j] + z[i + j] + carry;   // < 2^64
+            z[i + j] = t & 0xffffffffu;
+            carry = t >> 32;
+        }
+        z[i + 6] += carry;
+    }
+    auto bit = [&](std::int32_t b) -> std::uint32_t {
+        return b < 0 ? 0u : static_cast<std::uint32_t>((z[b / 32] >> (b % 32)) & 1u);
+    };
+    const std::int32_t sh = i0 + 191 - E;
+    std::uint32_t q = bit(sh) | (bit(sh + 1) << 1);
+    // the fraction's 192 bits, the first (weight 1/2) at f[0]
+    std::uint32_t f[192];
+    for (std::int32_t t = 0; t < 192; ++t) f[t] = bit(sh - 1 - t);
+    const bool up = f[0] != 0;
+    if (up) {                                       // 1 - f: two's complement
+        q = (q + 1) & 3u;
+        std::uint32_t borrow = 0;
+        for (std::int32_t t = 191; t >= 0; --t) {
+            const std::uint32_t d = 0u - f[t] - borrow;
+            borrow = (f[t] | borrow) != 0 ? 1u : 0u;
+            f[t] = d & 1u;
+        }
+    }
+    std::int32_t lead = 0;
+    while (lead < 192 && f[lead] == 0) ++lead;
+    // three 53-bit pieces from the leading bit on, bit t weighing 2^-(t + 1)
+    auto piece = [&](std::int32_t from) {
+        std::uint64_t v = 0;
+        for (std::int32_t t = from; t < from + 53; ++t) v = (v << 1) | (t < 192 ? f[t] : 0u);
+        return static_cast<double>(v) * pow2i(-(from + 53));
+    };
+    DW g = fast_two_sum(piece(lead), piece(lead + 53));
+    g = dw_plus_fp(g, piece(lead + 106));
+    DW r = dw_times_fp(g, coeffs::kPio2Hi);
+    r = dw_plus_fp(r, g.h * coeffs::kPio2Lo);
+    if (up) r = {-r.h, -r.l};
+    return {r, q};
+}
+
+// x = k pi/2 + r of any finite x >= 0: Cody and Waite's up to 2^20 pi/2,
+// Payne and Hanek's above.
+MOOTATION_FORCEINLINE Reduced reduce(double x)
+{
+    return x <= kTrigMax ? reduce_pio2(x) : reduce_large(x);
+}
+
 // sin(r_h + r_l) = sin r_h + r_l cos r_h, cos r_h ~ 1 - r_h^2/2 (the rest of
 // r_l cos r_h is below 2^-110 r_h).
 inline DW sin_kernel_dw(DW r)
@@ -283,7 +363,8 @@ inline double cos_kernel(DW r)
 
 }   // namespace detail
 
-// Whether |x| is within the area where sin, cos and tan are accurate.
+// Whether |x| is within the area of Cody and Waite's reduction (above it,
+// Payne and Hanek's: the same accuracy).
 inline bool trig_in_domain(double x)
 {
     return std::fabs(x) <= detail::kTrigMax;
@@ -296,8 +377,7 @@ inline double sin(double x)
         return x - x;                                  // NaN for NaN and +-inf
     if (ax < 0x1p-26)
         return x;                                      // sin x = x to the last bit
-    assert(trig_in_domain(x) && "dm::sin: |x| above 2^20 pi/2");
-    const detail::Reduced R = detail::reduce_pio2(ax);
+    const detail::Reduced R = detail::reduce(ax);
     double v;
     switch (R.q) {
     case 0: v = detail::sin_kernel(R.r); break;
@@ -315,8 +395,7 @@ inline double cos(double x)
         return x - x;
     if (ax < 0x1p-27)
         return 1.0;                                    // cos x = 1 to the last bit
-    assert(trig_in_domain(x) && "dm::cos: |x| above 2^20 pi/2");
-    const detail::Reduced R = detail::reduce_pio2(ax);
+    const detail::Reduced R = detail::reduce(ax);
     switch (R.q) {
     case 0: return detail::cos_kernel(R.r);
     case 1: return -detail::sin_kernel(R.r);
@@ -334,8 +413,7 @@ inline double tan(double x)
         return x - x;
     if (ax < 0x1p-27)
         return x;                                      // tan x = x to the last bit
-    assert(trig_in_domain(x) && "dm::tan: |x| above 2^20 pi/2");
-    const detail::Reduced R = detail::reduce_pio2(ax);
+    const detail::Reduced R = detail::reduce(ax);
     const detail::DW s = detail::sin_kernel_dw(R.r);
     const detail::DW c = detail::cos_kernel_dw(R.r);
     const double v = (R.q & 1u) ? -detail::dw_div_dw(c, s).h : detail::dw_div_dw(s, c).h;

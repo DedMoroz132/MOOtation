@@ -34,7 +34,8 @@ import reference as R        # noqa: E402
 ROOT = HERE.parents[1]
 OUT = ROOT / "tests" / "data" / "detmath_reference.txt"
 N = 20000
-ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot", "asin", "atan")
+ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot", "asin", "atan",
+         "sin_big", "cos_big", "tan_big")
 
 
 def steps_between(a, b):
@@ -77,7 +78,7 @@ def main():
         worst = 0.0
         for kind, pts in (("gen", gen), ("hard", hd)):
             for p in pts:
-                got = float(getattr(dm, f)(*p))
+                got = float(getattr(dm, f.replace("_big", ""))(*p))
                 hi, q = exact_of(f, p)
                 d = 0 if math.isinf(hi) and got == hi else steps_between(hi, got)
                 err = abs(d - q / 1000) if not math.isinf(hi) else 0.0

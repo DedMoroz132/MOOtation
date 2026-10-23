@@ -87,6 +87,19 @@ def _trig(g, block):
     return (signed(g, binade(g, 0, 1023 - 26)),)                   # tiny, subnormal
 
 
+def _trig_big(g, block):
+    """sin, cos, tan above 2^20 pi/2: Payne and Hanek's reduction."""
+    if block == 0:
+        return (signed(g, binade(g, 1023 + 21, 2046)),)            # 2^21 .. DBL_MAX
+    if block == 1:
+        return (signed(g, between(g, TRIG_MAX, 1e9)),)            # DOC4's arguments
+    if block == 2:                                                 # near k pi/2, k above 2^20
+        k = (1 << 20) + g.below(1 << 32)
+        return (signed(g, step(k * PIO2, g.below(7) - 3)),)
+    # around the double nearest a multiple of pi/2 (Muller 2016, Table 11.2)
+    return (signed(g, step(6381956970095103.0 * 2.0 ** 797, g.below(2001) - 1000)),)
+
+
 def _acos(g, block):
     if block == 0:
         return (between(g, -1.0, 1.0),)
@@ -170,9 +183,12 @@ BLOCKS = {
     "log": (_log, (4, 2, 2, 2)),
     "pow": (_pow, (3, 2, 2, 1, 1, 1)),
     "hypot": (_hypot, (5, 5)),
+    "sin_big": (_trig_big, (4, 3, 2, 1)),
+    "cos_big": (_trig_big, (4, 3, 2, 1)),
+    "tan_big": (_trig_big, (4, 3, 2, 1)),
 }
 SEEDS = {"exp": 1, "log": 2, "pow": 3, "sin": 4, "cos": 5, "tan": 6, "acos": 7, "hypot": 8,
-         "asin": 9, "atan": 10}
+         "asin": 9, "atan": 10, "sin_big": 11, "cos_big": 12, "tan_big": 13}
 
 
 def points(f, n):

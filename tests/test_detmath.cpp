@@ -2,7 +2,8 @@
 // ============================================================================
 // detmath.hpp (task 14 of 2026-10-20, §2 and supplement 2): the library's own
 // exp, log, pow, sin, cos, tan, acos, hypot; asin and atan (task 17,
-// supplement 3, stage 3a: MW5-8).
+// supplement 3, stage 3a: MW5-8); sin, cos and tan above 2^20 pi/2 (sin_big,
+// cos_big, tan_big: Payne and Hanek's reduction, task 17, supplement 5, §4).
 //   * Accuracy and bits: 2 * 10^4 points a function (made here from integers,
 //     the same doubles as tools/detmath/points.py makes) and the hard inputs
 //     of tools/detmath/hard_inputs.txt, against tests/data/detmath_reference.txt
@@ -118,6 +119,26 @@ Point trig_point(SplitMix64& g, int block)
     if (block == 3)
         return {g.between(-1e4, 1e4), 0.0};
     const double v = g.binade(0, 1023 - 26);
+    return {g.signed_(v), 0.0};
+}
+
+Point trig_big_point(SplitMix64& g, int block)
+{
+    if (block == 0) {
+        const double v = g.binade(1023 + 21, 2046);
+        return {g.signed_(v), 0.0};
+    }
+    if (block == 1) {
+        const double v = g.between(kTrigMax, 1e9);
+        return {g.signed_(v), 0.0};
+    }
+    if (block == 2) {
+        const double k = static_cast<double>((std::uint64_t{1} << 20) + g.below(std::uint64_t{1} << 32));
+        const double v = step(k * kPio2, static_cast<int>(g.below(7)) - 3);
+        return {g.signed_(v), 0.0};
+    }
+    // around the double nearest a multiple of pi/2 (Muller 2016, Table 11.2)
+    const double v = step(6381956970095103.0 * 0x1p797, static_cast<int>(g.below(2001)) - 1000);
     return {g.signed_(v), 0.0};
 }
 
@@ -256,6 +277,9 @@ const std::vector<Function>& functions()
         {"hypot", 8, {5, 5}, hypot_point, [](double x, double y) { return dm::hypot(x, y); }, 2.0},
         {"asin", 9, {4, 2, 2, 2}, acos_point, [](double x, double) { return dm::asin(x); }, 2.0},
         {"atan", 10, {3, 3, 2, 1, 1}, atan_point, [](double x, double) { return dm::atan(x); }, 2.0},
+        {"sin_big", 11, {4, 3, 2, 1}, trig_big_point, [](double x, double) { return dm::sin(x); }, 1.0},
+        {"cos_big", 12, {4, 3, 2, 1}, trig_big_point, [](double x, double) { return dm::cos(x); }, 1.0},
+        {"tan_big", 13, {4, 3, 2, 1}, trig_big_point, [](double x, double) { return dm::tan(x); }, 2.0},
     };
     return fs;
 }
@@ -371,7 +395,7 @@ void check_reference()
         ++at;
     }
     close();
-    check(sections == 10, "ten functions in the reference file");
+    check(sections == 13, "thirteen sections in the reference file");
 }
 
 // ── Annex F ─────────────────────────────────────────────────────────────────
@@ -594,6 +618,13 @@ void check_symmetry()
              same_bits(dm::atan(-x), -dm::atan(x));
     }
     check(ok, "asin and atan odd, bit for bit");
+    ok = true;
+    for (int i = 0; i < 20000; ++i) {
+        const double x = g.binade(1023 + 21, 2046);
+        ok = ok && same_bits(dm::sin(-x), -dm::sin(x)) && same_bits(dm::cos(-x), dm::cos(x)) &&
+             same_bits(dm::tan(-x), -dm::tan(x));
+    }
+    check(ok, "sin and tan odd, cos even above 2^20 pi/2, bit for bit");
     check(dm::trig_in_domain(kTrigMax) && dm::trig_in_domain(-kTrigMax) &&
               !dm::trig_in_domain(std::nextafter(kTrigMax, 2e6)) && !dm::trig_in_domain(-1.7e6),
           "trig_in_domain: |x| <= 2^20 pi/2");

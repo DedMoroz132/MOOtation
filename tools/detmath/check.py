@@ -20,13 +20,14 @@ sys.path.insert(0, str(HERE))
 import points as P           # noqa: E402
 import reference as R        # noqa: E402
 
-ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot", "asin", "atan")
+ORDER = ("exp", "log", "pow", "sin", "cos", "tan", "acos", "hypot", "asin", "atan",
+         "sin_big", "cos_big", "tan_big")
 
 
 def _chunk(args):
     f, pts = args
     from mootation import _core
-    fn = getattr(_core.detmath, f)
+    fn = getattr(_core.detmath, f.replace("_big", ""))
     worst, where, not_cr = 0.0, None, 0
     for p in pts:
         if f == "pow" and p[0] == 0.0:

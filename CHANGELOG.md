@@ -56,6 +56,15 @@ always listed under **Changed** or **Removed**.
   `store.py` finds the files and keeps what reads JSON. The format, byte by byte:
   `docs/store-format.md`.
 
+- `dm::sin`, `cos` and `tan` for every finite argument (task 17, supplement
+  5, §4): above 2^20 pi/2 Payne and Hanek's reduction by the bits of 2/pi
+  (Muller, Elementary Functions, §11.4; the table from `gen_coeffs.py`),
+  where the Cody-Waite reduction was not exact before and a debug build
+  stopped at an assert. Within 0.86 ulp there (the reference file's new
+  sections `sin_big`, `cos_big`, `tan_big`, with Gladman et al.'s hard inputs
+  and Muller's worst case for the reduction); below 2^20 pi/2 the bits are
+  the same. DOC4, whose sine takes arguments up to 3e8, is version 3.
+
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a
   run evaluated was kept as a tuple of Python floats, about 3 kB a point of
   100 variables: 3 GB for a run of 10^6 evaluations, and a campaign of

@@ -9,7 +9,8 @@ Functions in Single, Double, Double Extended, and Quadruple Precision"
     python tools/detmath/hard_inputs.py <the report as Markdown> > tools/detmath/hard_inputs.txt
 
 One line per input: the function, x (and y) as hex floats. Inputs of sin,
-cos and tan beyond 2^20 pi/2 are left out (outside the area of detmath.hpp).
+cos and tan beyond 2^20 pi/2 are sin_big, cos_big, tan_big: Payne and Hanek's
+reduction (task 17, supplement 5, §4), sections of their own.
 """
 
 import re
@@ -39,12 +40,11 @@ def main():
             else:
                 if len(vals) != 1:
                     continue
-                if f in ("sin", "cos", "tan") and abs(vals[0]) > TRIG_MAX:
-                    continue
-                key = (f, vals[0])
+                big = f in ("sin", "cos", "tan") and abs(vals[0]) > TRIG_MAX
+                key = (f + "_big" if big else f, vals[0])     # Payne and Hanek's reduction
             if key not in seen:
                 seen.add(key)
-                print(f, " ".join(v.hex() for v in key[1:]))
+                print(key[0], " ".join(v.hex() for v in key[1:]))
 
 
 if __name__ == "__main__":
