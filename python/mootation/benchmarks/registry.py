@@ -2439,7 +2439,6 @@ _attach_full_fronts()
 # whose pareto_front(1000) changed with it; a run measured against an older
 # reference of one of
 # them is set aside by --cover until recomputed.
-REFERENCE_VERSION = 2
 REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
     "BT5", "BT9", "DTLZ1_2D", "DTLZ2_2D", "DTLZ3_2D", "DTLZ4_2D", "DTLZ7_10D", "DTLZ7_15D",
     "DTLZ7_2D", "DTLZ7_3D", "DTLZ7_4D", "DTLZ7_5D", "DTLZ7_6D", "IPolygon_3D",
@@ -2453,6 +2452,12 @@ REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
     "ZCAT19_3D", "ZCAT19_5D", "ZCAT1_10D", "ZCAT1_3D", "ZCAT1_5D", "ZCAT20_3D", "ZCAT20_5D",
     "ZCAT2_10D", "ZCAT2_3D", "ZCAT2_5D", "ZCAT8_10D", "ZCAT8_3D", "ZCAT8_5D", "ZDT3",
     "shiftDTLZ1_2D", "shiftDTLZ2_2D", "shiftDTLZ3_2D", "shiftDTLZ4_2D"})}
+# Version 3 (2026-10-23, task 17, supplement 3, stage 3a): IPolygon's front and
+# Pareto set are sampled from the library's generator (polygon_ishibuchi.
+# _sample_interior), which the C++ suite repeats, instead of NumPy's
+# default_rng; the same construction otherwise.
+REFERENCE_VERSION = 3
+REFERENCE_CHANGED[3] = frozenset({"IPolygon_3D", "IPolygon_4D", "IPolygon_8D"})
 # the problems whose DEFINITION changed with a version: their older runs
 # answered another problem and are run again, not recomputed
 PROBLEM_CHANGED: Dict[int, frozenset] = {
@@ -2691,6 +2696,16 @@ _register_failing()
 # matvec_pairwise (rotated.py, in the NumPy reference too) instead of BLAS's
 # gemv: version 2 (by _in_suite below), their noisy and failing copies with
 # them.
+#
+# From 2026-10-23 (task 17, supplement 3, stage 3a): DAS-CMOP, LIR-CMOP, MW,
+# DOC, Polygon, rcPolygon and c0Polygon, IPolygon, SYM-PART, Omni-test, MMF,
+# RE and CRE in the C++ suite: version 2 (by _in_suite) wherever the code
+# calls exp, log, pow, sin, cos, asin or atan, the library's own now; besides,
+# DOC2's products with g19's matrices and DOC7's and Omni-test's sums add term
+# by term (where BLAS and, from Python 3.12, sum() added in orders of their
+# own), and rcPolygon's turn takes the pairwise sums. Unchanged, the same bits
+# in C++ as in NumPy: IPolygon, DOC8 and the RE and CRE problems of arithmetic
+# and square roots alone (_DETMATH_SAME).
 PROBLEM_VERSION: Dict[str, int] = {
     **{name: 2 for name, r in ROTATED.items()
        if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
@@ -2698,7 +2713,9 @@ PROBLEM_VERSION: Dict[str, int] = {
     **{f"MaF8_{M}D": 2 for M in (3, 5, 8, 10, 15)}}
 
 _DETMATH_SAME = re.compile(r"(?:r|rc|r0|c0|shift)?(?:ZDT1|MaF1_\d+D|MaF9_\d+D)(?:_i\d)?|"
-                           r"bbobbiobj(?:mixint)?(?:01|04|28)_n\d\d_2D")
+                           r"bbobbiobj(?:mixint)?(?:01|04|28)_n\d\d_2D|"
+                           r"IPolygon_\d+D|DOC8|RE2[1-5]|RE22c|RE3[1-7]|RE33c|RE41|"
+                           r"CRE2[1-5]|CRE31")
 
 
 def _in_suite(name: str) -> bool:
@@ -2706,9 +2723,11 @@ def _in_suite(name: str) -> bool:
     or without the extension."""
     r = ROTATED.get(name)
     if r is not None:
-        return r.kind in ("dtlz", "maf", "zdt", "zcat", "wfg")
+        return r.kind in ("dtlz", "maf", "zdt", "zcat", "wfg", "polygon")
     return bool(_native._BBOB.fullmatch(name) or _native._ZDT.fullmatch(name)
-                or _native._STEMS.fullmatch(name))
+                or _native._STEMS.fullmatch(name) or _native._DAS.fullmatch(name)
+                or _native._OTHER.fullmatch(name) or _native._MMO.fullmatch(name)
+                or _native._RE.fullmatch(name))
 
 
 for _name in list(PROBLEMS):

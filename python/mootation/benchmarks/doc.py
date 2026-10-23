@@ -56,6 +56,10 @@ points f1 = i/20 of f1 + f2 = 1; 5 the 14 of them with f1 <= 0.4 or >= 0.8;
 6 the segment f1 in [0, 0.5] and the points f1 = i/20, i = 11..20; 7 the
 segment f1 in [0, 0.45] and the same points; 8 the simplex f1 + f2 + f3 = 1
 without 0.4 < f3 < 0.6; 9 the quarter circle at f3 = 0.
+
+THE C++ SUITE (task 17, supplement 3, stage 3a): with the extension built the
+problems are computed by include/mootation/suite/doc.hpp (benchmarks/native.py); this
+module stays the reference (BenchProblem.reference) and what runs without it.
 """
 
 from __future__ import annotations
@@ -122,6 +126,14 @@ def name(i: int) -> str:
     return f"DOC{i}"
 
 
+def _dot(a, b) -> float:
+    """sum a_i b_i term by term from 0 (DOC2's products with g19's matrices)."""
+    s = 0.0
+    for u, v in zip(a, b):
+        s = s + u * v
+    return s
+
+
 def _sine(f1: float, f2: float) -> float:
     """f1 + f2 - 1 - |sin(10 pi (f1 - f2 + 1))|, DOC-4 to 7's constraint."""
     return f1 + f2 - 1.0 - abs(math.sin(10.0 * math.pi * (f1 - f2 + 1.0)))
@@ -169,13 +181,17 @@ def evaluate(i: int, x) -> tuple:
                 9.300961 + c - 25.0, -9.300961 - c + 20.0]
         return f, ineq, []
     if i == 2:
-        y = np.array(X[12:17])                   # x12..x16
-        z = np.array(X[2:12])                    # x2..x11
-        g = float(y @ G19_C @ y + 2.0 * np.sum(G19_D * y ** 3) - G19_B @ z - 31.6555929502)
+        y = X[12:17]                             # x12..x16
+        z = X[2:12]                              # x2..x11
+        # y C y, the sums term by term from 0 (_dot), as include/mootation/
+        # suite/doc.hpp writes them (BLAS's @ adds in an order of its own)
+        yC = [_dot(y, G19_C[:, k]) for k in range(5)]
+        g = float(_dot(yC, y) + 2.0 * _dot(G19_D, [v ** 3 for v in y]) - _dot(G19_B, z)
+                  - 31.6555929502)
         f = [X[1], g - X[1] ** (1.0 / 3.0)]
         ineq = objective_constraints(2, f)
-        ineq += [float(v) for v in -2.0 * (G19_C.T @ y) - 3.0 * G19_D * y ** 2 - G19_E
-                 + z @ G19_A]
+        ineq += [float(-2.0 * _dot(G19_C[:, k], y) - 3.0 * G19_D[k] * (y[k] * y[k]) - G19_E[k]
+                       + _dot(z, G19_A[:, k])) for k in range(5)]
         return f, ineq, []
     if i == 3:
         g = (-9.0 * X[6] - 15.0 * X[9] + 6.0 * X[2] + 16.0 * X[3] + 10.0 * (X[7] + X[8])
@@ -234,8 +250,15 @@ def evaluate(i: int, x) -> tuple:
         return f, ineq, []
     if i == 7:
         y = X[2:12]                              # x2..x11
-        s = sum(y)
-        g = sum(v * (c + math.log(v / s)) for v, c in zip(y, G14_C) if v > 0.0) + 48.7648884
+        # term by term from 0: Python's sum of floats is compensated from 3.12
+        s = 0.0
+        for v in y:
+            s = s + v
+        g = 0.0
+        for v, c in zip(y, G14_C):
+            if v > 0.0:
+                g = g + v * (float(c) + math.log(v / s))
+        g = g + 48.7648884
         f = [X[1], g - math.sqrt(X[1])]
         ineq = objective_constraints(7, f)
         eq = [X[2] + 2.0 * X[3] + 2.0 * X[4] + X[7] + X[11] - 2.0,

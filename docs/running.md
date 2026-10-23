@@ -339,6 +339,29 @@ where it was BLAS's product. With the C library's `pow` instead, the C++ code
 gives `wfg.py`'s values bit for bit but where that `pow` itself differs from
 CPython's `**` in the last bit (72 in 200 000 on MSVC).
 
+Stage 3a of task 17 (2026-10-23) moved the constrained, multimodal and
+real-world families: DAS-CMOP1–9, LIR-CMOP1–14, MW1–14, DOC1–9, Polygon with
+rcPolygon and c0Polygon, IPolygon, SYM-PART, Omni-test, MMF1–15, RE and CRE.
+RE91 is C++ without a seed (its draws from x itself); a campaign's seeded RE91
+(`make_evaluator`) stays Python's. The multimodal problems' and the polygons'
+Pareto sets come from the suite as well (`p.pareto_set`, `Native.pareto_set`),
+NumPy's samplers the reference (`p.reference["pareto_set"]`). They are version
+2 of themselves wherever the code calls `exp`, `log`, `pow`, `sin`, `cos`,
+`asin` or `atan` (`asin` and `atan` joined `detmath.hpp` for MW5–8); IPolygon,
+DOC8 and the RE and CRE problems of arithmetic and square roots alone give the
+same bits as before and stay version 1. Three NumPy references now add in an
+order C++ repeats: DOC2's products with g19's matrices term by term (BLAS's in
+its own order before), DOC7's and Omni-test's sums term by term (Python's `sum`
+of floats is compensated from 3.12), rcPolygon's A·d the pairwise sums.
+IPolygon's front and Pareto set are drawn from the library's generator
+(`std::mt19937`, `rnd::uniform01`) instead of NumPy's `default_rng`: reference
+version 3. Built with the C library's functions instead of the library's own,
+called through a pointer (MSVC puts inline versions of its own in place of a
+direct `log` or `pow`; the 72 differences of WFG above were those), the C++
+code gives NumPy's values bit for bit on every problem of these families and
+the same Pareto sets; the tests hold MW and DOC, whose constraints near zero
+carry the last bit of a power further, within 10⁻¹³ of the column's scale.
+
 **MaF14 and MaF15** (Cheng et al. 2017, Eq. 41–50; task 12 of 2026-10-19):
 LSMOP3 and the inverted LSMOP8, the suite's two large-scale problems, at 3, 5,
 8, 10 and 15 objectives with the paper's D = 20 M variables, N_k = 2

@@ -37,6 +37,11 @@
 # Provides: eval(x) -> [f...]; pf(n) -> objective vectors (one polygon, the
 # same for every polygon); ps(n) -> points of all m polygons, for IGDX and PSP;
 # frame(M) -> the exact ideal and nadir.
+#
+# Reference version 3 (2026-10-23, task 17, supplement 3, stage 3a): pf and ps
+# sample the polygons from the library's generator (_sample_interior), the same
+# points as the C++ suite's (include/mootation/suite/polygon.hpp), which
+# evaluates the problem and gives its Pareto set.
 # ============================================================================
 from __future__ import annotations
 from typing import List
@@ -81,13 +86,30 @@ def _inside(pts: np.ndarray, poly: np.ndarray) -> np.ndarray:
     return inside
 
 
+SEED = 12345
+
+
+def _uniform(bg, k: int) -> np.ndarray:
+    """k values in [0, 1) of the library's generator (include/mootation/random.hpp,
+    rnd::uniform01: genrand_res53 of two 32-bit words of a std::mt19937)."""
+    w = bg.random_raw(2 * k)
+    a, b = w[0::2] >> 5, w[1::2] >> 6
+    return (a.astype(float) * 67108864.0 + b.astype(float)) * (1.0 / 9007199254740992.0)
+
+
 def _sample_interior(poly: np.ndarray, n: int) -> np.ndarray:
-    """Uniform points inside the polygon, by rejection sampling."""
+    """Uniform points inside the polygon, by rejection sampling: candidates
+    lo + (hi - lo) U of its bounding box, x then y, from a std::mt19937 seeded
+    SEED (NumPy's MT19937 with its legacy seeding is that generator), the same
+    numbers as the C++ suite's (include/mootation/suite/polygon.hpp; task 17,
+    supplement 3, stage 3a: NumPy's default_rng(12345) before, which C++ does
+    not repeat)."""
     lo = poly.min(0); hi = poly.max(0)
     out = []
-    rng = np.random.default_rng(12345)
+    bg = np.random.MT19937()
+    bg._legacy_seeding(SEED)
     while len(out) < n:
-        c = rng.uniform(lo, hi, (4 * n, 2))
+        c = lo + (hi - lo) * _uniform(bg, 8 * n).reshape(4 * n, 2)
         c = c[_inside(c, poly)]
         out.extend(c.tolist())
     return np.asarray(out[:n], float)

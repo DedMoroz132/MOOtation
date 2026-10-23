@@ -10656,7 +10656,11 @@ def mosqp_spreads_refines_and_keeps_its_budget():
 _SUITE_STEMS = (r"(shift)?ZDT[12346]", r"DTLZ[1-7]_\d+D", r"wideDTLZ3_\d+D",
                 r"shiftDTLZ[1-467]_\d+D", r"IDTLZ[12]_\d+D", r"minusDTLZ2_\d+D",
                 r"SDTLZ[12]_\d+D", r"C1-DTLZ[13]_\d+D", r"C2-DTLZ2_\d+D", r"C2-ConvexDTLZ2_\d+D",
-                r"C3-DTLZ[14]_\d+D", r"MaF([1-9]|1[0-5])_\d+D", r"ZCAT\d+_\d+D", r"WFG[1-9]_\d+D")
+                r"C3-DTLZ[14]_\d+D", r"MaF([1-9]|1[0-5])_\d+D", r"ZCAT\d+_\d+D", r"WFG[1-9]_\d+D",
+                # task 17, supplement 3, stage 3a
+                r"DAS-CMOP\d_(t\d\d|f6)", r"LIR-CMOP\d+", r"MW\d+(_\d+D)?", r"DOC\d",
+                r"I?Polygon_\d+D", r"SYM-PART_(simple|rotated)", r"Omni-test", r"MMF\d+(_[aez])?",
+                r"RE\d\dc?", r"CRE\d\d")
 
 
 def _suite_names(R):
@@ -10665,7 +10669,7 @@ def _suite_names(R):
     for name in sorted(R.PROBLEMS):
         r = R.ROTATED.get(name)
         if any(re.fullmatch(s, name) for s in _SUITE_STEMS) or (
-                r is not None and r.kind in ("dtlz", "maf", "zdt", "zcat", "wfg")):
+                r is not None and r.kind in ("dtlz", "maf", "zdt", "zcat", "wfg", "polygon")):
             out.append(name)
     return out
 
@@ -10697,7 +10701,9 @@ def _numpy_is_the_c_library():
     from mootation.benchmarks import _rows
     ok = (_rows.agrees("sin", np.sin, math.sin, "trig") and
           _rows.agrees("cos", np.cos, math.cos, "trig") and
-          _rows.agrees("exp", np.exp, math.exp, "exp"))
+          _rows.agrees("exp", np.exp, math.exp, "exp") and
+          _rows.agrees("log", np.log, math.log, "pow+") and
+          _rows.agrees("arctan", np.arctan, math.atan, "trig"))
     for e in (3.0, 4.0, 5.0, 6.0, 10.0, 100.0):
         ok = ok and _rows.agrees(("pow", e), lambda x, e=e: np.power(x, e), lambda v, e=e: v ** e,
                                  "pow")
@@ -10750,8 +10756,11 @@ def the_suite_gives_numpys_values(part, parts):
             # WFG (task 17, supplement 1, stage 1): a last-bit difference of
             # pow grows through b_param's exponents up to 50, s_multi's
             # cos(122 pi ...) and b_poly's 0.02: up to 3.9e-15 of the column's
-            # scale with Windows' and glibc's libm here, more on CI's; 1e-13
-            wide = what.startswith(("WFG", "rWFG", "MaF10", "MaF11", "MaF12"))
+            # scale with Windows' and glibc's libm here, more on CI's; 1e-13.
+            # MW and DOC (stage 3a): constraints near 0 of products of
+            # differences of powers (MW's g1 takes x^13, DOC4 x^6): up to
+            # 7.6e-15 of the column's scale here
+            wide = what.startswith(("WFG", "rWFG", "MaF10", "MaF11", "MaF12", "MW", "DOC"))
             _close_to_numpy(mine, ref, what, 1e-13 if wide else 2e-15)
         else:
             mine, ref = np.asarray(mine, float), np.asarray(ref, float)
@@ -10774,6 +10783,12 @@ def the_suite_gives_numpys_values(part, parts):
             check(G2, G, name + " both")
             check([p.constraints(list(x)) for x in X[:8]],
                   [ref["constraints"](list(x)) for x in X[:8]], name + " constraints, point")
+        if p.native.has_pareto_set:                  # task 17, supplement 3, stage 3a
+            for k in (5, 200):
+                S, T = np.asarray(p.pareto_set(k), float), np.asarray(ref["pareto_set"](k), float)
+                assert S.shape == T.shape, (name, k, S.shape, T.shape)
+                if len(S):
+                    check(S, T, f"{name} Pareto set of {k}")
     if not exact:
         print("    (NumPy's functions are not the C library's here: compared within 1e-9)")
 
@@ -10800,10 +10815,20 @@ def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
                 {"family": "DTLZ2", "n_var": 12, "n_obj": 3, "map": "rotate_half", "first": 2,
                  "centre": [0.5] * 10, "matrices": [np.eye(9)]},
                 {"family": "DTLZ2", "n_var": 12, "n_obj": 3, "map": "turn", "first": 2,
-                 "centre": [0.5] * 10}):
+                 "centre": [0.5] * 10},
+                # task 17, supplement 3, stage 3a
+                {"family": "DAS-CMOP1", "n_var": 30, "n_obj": 2},
+                {"family": "MW1", "n_var": 15, "n_obj": 3},
+                {"family": "DOC1", "n_var": 7, "n_obj": 2},
+                {"family": "RE21", "n_var": 5, "n_obj": 2},
+                {"family": "MMF1", "n_var": 3, "n_obj": 2},
+                {"family": "IPolygon", "n_var": 2, "n_obj": 3},
+                {"family": "Polygon", "n_var": 10, "n_obj": 3, "vertices": [1.0, 0.0]}):
         assert raises(ValueError, _core.Native, bad) is not None, bad
     rng = np.random.default_rng(3)
-    for name in ("rDTLZ1_3D_i2", "C2-DTLZ2_3D", "MaF9_8D", "rZCAT19_3D", "shiftZDT4"):
+    for name in ("rDTLZ1_3D_i2", "C2-DTLZ2_3D", "MaF9_8D", "rZCAT19_3D", "shiftZDT4",
+                 "DAS-CMOP3_t05", "MW8_5D", "DOC5", "RE91", "CRE32", "MMF14_a", "IPolygon_4D",
+                 "rcPolygon_3D_i2"):
         p = R.PROBLEMS[name]
         X = _suite_points(p, rng, 50)
         q = pickle.loads(pickle.dumps(p.native))
@@ -10812,6 +10837,9 @@ def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
             np.asarray(p.evaluate_batch(X)).tobytes(), name
         assert pickle.loads(pickle.dumps(p.evaluate))(list(X[0])) == p.evaluate(list(X[0]))
     assert raises(ValueError, R.PROBLEMS["DTLZ2_3D"].native.evaluate, [0.5] * 3) is not None
+    assert raises(ValueError, R.PROBLEMS["DTLZ2_3D"].native.pareto_set, 10) is not None
+    q = pickle.loads(pickle.dumps(R.PROBLEMS["IPolygon_4D"].native))
+    assert q.pareto_set(40).tobytes() == R.PROBLEMS["IPolygon_4D"].pareto_set(40).tobytes()
 
 
 def _numpy_blas_is_bbobs_order():
@@ -10960,9 +10988,12 @@ def rotations_and_maf9_take_an_order_of_numpys():
     assert R.problem_version("rZDT4") == 3 and R.problem_version("MaF9_5D") == 2
     assert R.problem_version("rcDTLZ2_3D_n1") == 3 and R.problem_version("rZDT1") == 2
     for name, v in (("r0DTLZ1_3D", 2), ("c0DTLZ2_6D", 2), ("r0MaF3_5D", 2), ("c0MaF6_3D", 2),
-                    ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 2), ("rcPolygon_3D", 1),
+                    ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 2), ("rcPolygon_3D", 2),
                     ("WFG4_3D", 2), ("MaF10_5D", 2), ("WFG4_3D_n1", 2),
-                    ("shiftDTLZ1_3D", 2), ("c0MaF1_3D", 1)):
+                    ("shiftDTLZ1_3D", 2), ("c0MaF1_3D", 1),
+                    # task 17, supplement 3, stage 3a
+                    ("DAS-CMOP1_t01", 2), ("MW14_3D", 2), ("DOC8", 1), ("IPolygon_3D", 1),
+                    ("MMF1_z", 2), ("RE21", 1), ("RE21_n1", 1), ("RE61", 2), ("CRE51", 2)):
         assert name in R.PROBLEMS and R.problem_version(name) == v, name
     P = R._maf9_forbidden_regions(5)[0]
     want = R._poly_edge_distance(np.array([0.3, 2.0]), P)

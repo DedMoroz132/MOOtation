@@ -91,6 +91,32 @@ inline double np_mod(double a, double b)
     return m;
 }
 
+// np.linspace(start, stop, num): i * step + start, step = (stop - start) /
+// (num - 1), the last value stop itself (the Pareto sets; task 17,
+// supplement 3, stage 3a)
+inline std::vector<double> linspace(double start, double stop, int num)
+{
+    std::vector<double> y(static_cast<std::size_t>(num > 0 ? num : 0));
+    if (num == 1) y[0] = start;
+    if (num < 2) return y;
+    const double div = num - 1, delta = stop - start, step = delta / div;
+    for (int i = 0; i < num; ++i)
+        y[static_cast<std::size_t>(i)] = (step == 0.0 ? i / div * delta : i * step) + start;
+    y.back() = stop;
+    return y;
+}
+
+// np.arange(start, stop, step) of floats: ceil((stop - start) / step) values
+// start + i d, d = (start + step) - start (NumPy's fill)
+inline std::vector<double> arange(double start, double stop, double step)
+{
+    const double len = std::ceil((stop - start) / step);
+    std::vector<double> y(static_cast<std::size_t>(len > 0.0 ? len : 0.0));
+    const double d = (start + step) - start;
+    for (std::size_t i = 0; i < y.size(); ++i) y[i] = i == 1 ? start + step : start + static_cast<double>(i) * d;
+    return y;
+}
+
 // A x of a k x k row-major matrix A, each row the pairwise sum of its
 // products: np.sum(A * x, axis=1) (benchmarks/_rows.py, matvec_pairwise).
 inline void matvec(const std::vector<double>& A, std::size_t k, const double* x, double* out)

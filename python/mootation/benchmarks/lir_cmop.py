@@ -61,6 +61,10 @@ point of 5-12's fronts lies on the unconstrained front or on a constraint's
 boundary; 5 and 6 on the unconstrained one, 7 and 8 on the boundary, 9 and 10
 on pieces of the unconstrained one, 11 and 12 on the boundary, as its text
 says.
+
+THE C++ SUITE (task 17, supplement 3, stage 3a): with the extension built the
+problems are computed by include/mootation/suite/lircmop.hpp (benchmarks/native.py); this
+module stays the reference (BenchProblem.reference) and what runs without it.
 """
 
 from __future__ import annotations

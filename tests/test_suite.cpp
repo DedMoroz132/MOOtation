@@ -7,9 +7,11 @@
 // and rotations, and the specs make() refuses.
 // ============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -422,6 +424,79 @@ int main()
         z.map = "rotate_zcat";
         z.matrices.push_back(std::vector<double>(28 * 28, 0.0));
         check(refused(z), "rZCAT19 without its second matrix");
+    }
+
+    // task 17, supplement 3, stage 3a: the constrained, multimodal and
+    // real-world families where their papers state the values, their Pareto
+    // sets on their fronts, and the specs make() refuses
+    {
+        const double pi = 3.141592653589793;
+        S::Spec d = spec("DAS-CMOP1", 30, 2);
+        d.constants = {-1.0, 0.0, std::numeric_limits<double>::infinity(), 0.0};   // the triplet (0, 0, 0)
+        auto das = S::make(d);
+        std::vector<double> x(30, mootation::dm::sin(0.5 * pi * 0.3)), g;
+        x[0] = 0.3;
+        const auto f = eval(*das, x, &g);
+        check(das->n_con == 11 && f[0] == 0.3 && f[1] == 1.0 - 0.3 * 0.3 && g[1] == 0.0,
+              "DAS-CMOP1: g = 0 on x_j = sin(pi x1 / 2), c2 = g - d at zeta = 0");
+
+        auto lir = S::make(spec("LIR-CMOP13", 30, 3));
+        std::vector<double> y(30, 0.5);
+        y[0] = 0.2;
+        y[1] = 0.7;
+        const auto fl = eval(*lir, y, &g);
+        check(std::abs(std::sqrt(fl[0] * fl[0] + fl[1] * fl[1] + fl[2] * fl[2]) - 1.7057) < 1e-12 && g.size() == 2,
+              "LIR-CMOP13: the sphere of radius 1.7057 at g1 = 0");
+
+        auto mw = S::make(spec("MW3", 15, 2));
+        std::vector<double> z(15, 0.0);
+        z[0] = 0.4;
+        for (int i = 1; i < 15; ++i) z[static_cast<std::size_t>(i)] = 1.0 - (z[static_cast<std::size_t>(i - 1)] - 0.5) * (z[static_cast<std::size_t>(i - 1)] - 0.5);
+        const auto fm = eval(*mw, z, &g);
+        check(std::abs(fm[0] + fm[1] - 1.0) < 1e-12 && g.size() == 2, "MW3: f1 + f2 = 1 at g3's optimum");
+
+        auto re = S::make(spec("RE21", 4, 2));
+        const auto fr = eval(*re, {2.0, 2.0, 2.0, 2.0});
+        const double s2 = std::sqrt(2.0);
+        check(std::abs(fr[0] - 200.0 * (4.0 + 2.0 * s2 + s2 + 2.0)) < 1e-9 && std::abs(fr[1] - 0.01 * 2.0) < 1e-15,
+              "RE21 at (2, 2, 2, 2)");
+        check(S::make(spec("CRE24", 7, 2))->n_con == 11, "CRE24: the speed reducer's eleven constraints");
+
+        // the Pareto sets
+        const auto mmf = S::make(spec("MMF1", 2, 2));
+        const std::vector<double> P = dynamic_cast<const S::Problem&>(*mmf).pareto_set(100);
+        double worst = 0.0;
+        for (std::size_t i = 0; i + 1 < P.size(); i += 2) {
+            const auto fp = eval(*mmf, {P[i], P[i + 1]});
+            worst = std::max(worst, std::abs(fp[1] - (1.0 - std::sqrt(fp[0]))));
+        }
+        check(P.size() == 200 && worst < 1e-12, "MMF1: its Pareto set on f2 = 1 - sqrt f1");
+        S::Spec ip = spec("IPolygon", 2, 3);
+        for (double cx : {25.0, 75.0})
+            for (double cy : {25.0, 75.0})
+                ip.polygons.push_back({cx, cy + 8.0, cx - 6.9282, cy - 4.0, cx + 6.9282, cy - 4.0});
+        const std::vector<double> Q = dynamic_cast<const S::Problem&>(*S::make(ip)).pareto_set(40);
+        bool inside = Q.size() == 80;
+        for (std::size_t i = 0; i + 1 < Q.size(); i += 2)
+            inside = inside && S::polygon::inside(Q[i], Q[i + 1], ip.polygons[i / 20]);
+        check(inside, "IPolygon: ten points in each polygon, each inside its own");
+        S::Spec rot = spec("Polygon", 10, 3);
+        rot.vertices = {1.0, 0.0, -0.5, 0.8660254037844386, -0.5, -0.8660254037844387};
+        check(dynamic_cast<const S::Problem&>(*S::make(rot)).has_pareto_set(), "Polygon has its Pareto set");
+        rot.map = "rotate";
+        rot.first = 2;
+        rot.centre.assign(8, 0.0);
+        rot.matrices.push_back(std::vector<double>(64, 0.0));
+        check(!dynamic_cast<const S::Problem&>(*S::make(rot)).has_pareto_set(), "rcPolygon: not the suite's");
+
+        S::Spec das0 = spec("DAS-CMOP1", 30, 2);
+        check(refused(das0), "DAS-CMOP without its triplet's constants");
+        check(refused(spec("MW1", 15, 3)), "MW1 at three objectives");
+        check(refused(spec("DOC1", 7, 2)), "DOC1 at seven variables");
+        check(refused(spec("RE21", 5, 2)), "RE21 at five variables");
+        check(refused(spec("MMF1", 3, 2)), "MMF1 at three variables");
+        check(refused(spec("IPolygon", 2, 3)), "IPolygon without its polygons");
+        check(refused(spec("LIR-CMOP15", 30, 2)), "LIR-CMOP15: there is none");
     }
 
     std::printf("suite: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");
