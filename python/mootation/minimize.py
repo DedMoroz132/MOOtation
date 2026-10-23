@@ -236,7 +236,8 @@ def minimize(
                 convergence trajectory is recorded without re-running at
                 several budgets. Off unless record_every > 0. The observer
                 gets the rows' variables, when it needs them, from
-                mootation._core.current_variables().
+                mootation._core.current_variables(): the core's genome, the
+                reals and then the integer genome (var_types.Layout.to_user).
     operator_stats
                 keep per-step statistics of the variation operators, read with
                 mootation._core.operator_stats() from on_generation: offspring,

@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed: a campaign on a problem with a categorical variable (catZDT1).
+  With a core, a decision-space indicator on the trajectory failed:
+  `current_variables()` gave the real genome only (ten columns for eleven
+  variables); it now gives the integer genome after it, and the campaign
+  reads the rows as the problem's variables, the label's index. With a
+  baseline, the run failed on a number where a label was wanted: a
+  baseline's point now reaches the problem and the archive as its label, the
+  nearest index, as the problem itself read the number. final.csv carries
+  the eleven variables.
+
 - In C++ (task 17, stage 2b): `metrics.compute` as a whole
   (`include/mootation/run_compute.hpp`), every indicator by name in the same
   order with the same values; the Python stays as the reference

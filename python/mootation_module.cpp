@@ -984,15 +984,21 @@ PyResult run_core(const RunConfig& cfg)
         g_ops.setup_evals = g_ops.evals_read = g_evaluations.load();
         g_ops.rc_read = ops::repair_counts();
         const bool observe = cfg.on_generation && cfg.record_every > 0;
-        // the variables of the rows emit() hands over, when the observer asks
+        // the variables of the rows emit() hands over, when the observer asks:
+        // the real genome and then the integer one (bits, categorical
+        // variables' label indices), as the evaluator receives a point
         g_answer_variables = [&opt]() {
             auto& v = opt.get_vault();
             std::size_t n = std::min<std::size_t>(
                 v.active_n(), static_cast<std::size_t>(v.pop_size()));
             std::vector<std::vector<double>> X;
             X.reserve(n);
-            for (std::size_t i = 0; i < n; ++i)
-                if (!v.is_failed(i)) X.push_back(v.variables_of(i));   // as emit() below
+            for (std::size_t i = 0; i < n; ++i) {
+                if (v.is_failed(i)) continue;                           // as emit() below
+                X.push_back(v.variables_of(i));
+                if (v.bin_vars_n() > 0)
+                    for (int b : v.binary_variables_of(i)) X.back().push_back(static_cast<double>(b));
+            }
             return X;
         };
         g_points = [&opt]() {
@@ -1662,7 +1668,9 @@ PYBIND11_MODULE(_core, m)
               return g_answer_variables();
           },
           "The variables of the rows the on_generation observer has just received, in "
-          "the same order, for the run in progress (call it from on_generation).");
+          "the same order, for the run in progress (call it from on_generation): the "
+          "real genome, then the integer one (bits, categorical label indices) where "
+          "the run has binary or categorical variables.");
     m.def("current_points", []() {
               if (!g_points)
                   throw std::runtime_error("current_points() answers only from an "

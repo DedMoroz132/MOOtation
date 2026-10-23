@@ -10178,6 +10178,54 @@ archive_mode = "{mode}"
 
 
 @test
+def a_categorical_problem_records_its_variables_with_a_core_and_a_baseline():
+    """catZDT1 in a campaign (task 17, the owner's word of 2026-10-23): a
+    decision-space indicator on the trajectory reads the problem's eleven
+    variables — the core's genome is ten reals and the categorical variable's
+    index (current_variables() hands both over) — and a baseline's point
+    reaches the problem and the archive as its label (the nearest index).
+    Before, the first failed reshaping ten columns to eleven and the second
+    on a number where a label was wanted."""
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  a_categorical_problem...: no NumPy or stale _core"); return
+    import numpy as np
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    text = """algorithms = [{ name = "nsga2", pop = 0, gens = 0 }, { name = "random_search", pop = 0, gens = 0 }]
+[run]
+name = "cat"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["catZDT1"]
+[campaign]
+out = "res"
+budget_fe = 600
+metrics = ["igdp_norm", "pdist"]
+archive_variables = "all"
+"""
+    with tempfile.TemporaryDirectory() as td:
+        cfg_path = Path(td) / "c.toml"
+        cfg_path.write_text(text, encoding="utf-8")
+        cfg = load(cfg_path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        for job in C.expand_jobs(cfg, spec):
+            assert C.run_job(job, root, spec, quiet=True) == "done", job
+            d = root / job.rel_dir
+            T = [json.loads(l) for l in (d / "trajectory.jsonl").read_text().splitlines()]
+            assert T and all(t["pdist"] is not None for t in T), (job.algorithm, T[-1])
+            for name in ("final.csv", "archive.csv"):
+                lines = [l for l in (d / name).read_text().splitlines() if not l.startswith("#")]
+                head = lines[0].split(",")
+                assert "x11" in head and "x12" not in head, (job.algorithm, name, head)
+                c = np.array([float(l.split(",")[head.index("x1")]) for l in lines[1:]])
+                assert len(c) and set(c.tolist()) <= {0.0, 1.0, 2.0}, (job.algorithm, name, set(c.tolist()))
+
+
+@test
 def the_accounting_in_cpp_is_the_accounting_in_python():
     """Task 17, stage 2b, step 2: a run's accounting of its evaluations in C++
     (run_ledger.hpp; campaign.USE_LEDGER) writes the same files as in Python
