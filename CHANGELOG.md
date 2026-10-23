@@ -29,6 +29,16 @@ always listed under **Changed** or **Removed**.
   default, or `accept`): what sqp does after 10 step lengths without
   Armijo's decrease (SQP-6).
 
+- Store format 3 (task 17, stage 4; supplement 5, §2): the library's own
+  codecs (`include/mootation/store/`). A float64 column: a value met before
+  by its index, a new one by its top k bits through an adaptive binary range
+  coder and the rest raw; integers by frame of reference, differences or
+  runs; each block the shortest of these, zlib and the shuffle. A record's
+  point sets (archive, population, selection, second answer, trajectory)
+  go together, a column of one name through all of them, so that a point
+  two of them hold is written once. A record's blocks read back bit for
+  bit; formats 1 and 2 are read as before; format 3 needs the extension.
+
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a
   run evaluated was kept as a tuple of Python floats, about 3 kB a point of
   100 variables: 3 GB for a run of 10^6 evaluations, and a campaign of

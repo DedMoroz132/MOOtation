@@ -24,6 +24,7 @@
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
+#include <mootation/store/record_tables.hpp>
 #include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
@@ -684,6 +685,41 @@ void bind_run_layer(py::module_& m)
               return vector_of(x);
           },
           py::arg("data"), py::arg("n"), "The n values of a float64 column's bytes; an error where they do not hold them.");
+    m.def("store_encode_tables",
+          [](const py::list& tables) {
+              std::vector<mootation::store::Table> ts;
+              for (const auto& item : tables) {
+                  const auto tup = item.cast<py::tuple>();
+                  mootation::store::Table t;
+                  t.name = tup[0].cast<std::string>();
+                  t.columns = tup[1].cast<std::vector<std::string>>();
+                  Arr a = Arr::ensure(tup[2]);
+                  if (!a || a.ndim() != 2 || static_cast<std::size_t>(a.shape(1)) != t.columns.size())
+                      throw std::invalid_argument("store_encode_tables: " + t.name + ": a rows x columns array");
+                  t.rows = static_cast<std::size_t>(a.shape(0));
+                  t.values.assign(a.data(), a.data() + a.size());
+                  ts.push_back(std::move(t));
+              }
+              std::vector<std::uint8_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::store::encode_tables(ts);
+              }
+              return py::bytes(reinterpret_cast<const char*>(out.data()), out.size());
+          },
+          py::arg("tables"),
+          "A record's point sets [(name, columns, array)] coded together, a column of one name "
+          "through every table (include/mootation/store/record_tables.hpp).");
+    m.def("store_decode_tables",
+          [](const py::bytes& b) {
+              const std::string s = b;
+              const auto ts = mootation::store::decode_tables(reinterpret_cast<const std::uint8_t*>(s.data()), s.size());
+              py::list out;
+              for (const auto& t : ts)
+                  out.append(py::make_tuple(t.name, t.columns, matrix(t.values, t.rows, t.columns.size())));
+              return out;
+          },
+          py::arg("data"), "[(name, columns, array)] back from store_encode_tables's bytes.");
     m.def("store_encode_i64",
           [](const py::array_t<std::int64_t, py::array::c_style | py::array::forcecast>& x) {
               if (x.ndim() != 1) throw std::invalid_argument("store_encode_i64: a 1-D array");

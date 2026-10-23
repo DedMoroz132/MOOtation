@@ -54,6 +54,22 @@ Compression: zlib; for an array of numbers also zlib after a byte shuffle (the
 first byte of every number, then the second, ...; as Blosc does, which puts
 alike high bytes together), and the smaller of the two is kept. The block says
 which. Decompression gives the same bits.
+
+FORMAT 3 (task 17, stage 4; the owner's decisions of 2026-10-24, supplement
+5, §2): the library's own codecs where the extension is built
+(include/mootation/store/). An array of float64 may be coded "f64" (its
+values met before by reference, new ones by their top bits through an
+adaptive range coder and the rest raw), of integers "i64" (frame of
+reference, differences or runs); the shortest of these, zlib and the
+shuffle is kept. The point sets of a record — every float64 table with its
+columns named in its "#head": the archive, the final population, the
+archive's selection, the second answer, the trajectory's values — go
+together into one block "#points" (store_encode_tables): a column of one
+name through all of them, so that a point two of them hold is written once.
+"#points" holds the tables' places among the record's blocks, and reading
+puts every table back where it was: the blocks read are the blocks written,
+bit for bit. Reading format 3 needs the extension; formats 1 and 2 are read
+as before.
 """
 
 from __future__ import annotations
@@ -72,7 +88,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 FORMAT = "mootation-store"
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 MAGIC = b"MOOTREC1"
 SEGMENT_BYTES = 1 << 30                 # a new segment at 1 GiB ([campaign] segment_mb)
 ZLEVEL = 6
@@ -147,6 +163,30 @@ def _itemsize(dtype: str) -> int:
     return np.dtype(dtype).itemsize if dtype not in ("json", "text", "bytes") else 1
 
 
+def _codec():
+    """The extension, where it has the store's codecs (format 3), else None."""
+    try:
+        from . import _core
+    except ImportError:
+        return None
+    return _core if hasattr(_core, "store_encode_tables") else None
+
+
+def _own_codec(b: Block):
+    """(name, payload) of the library's own codec for an array block, or None."""
+    import numpy as np
+    c = _codec()
+    if c is None or b.dtype in ("json", "text", "bytes"):
+        return None
+    dt = np.dtype(b.dtype)
+    a = np.frombuffer(b.data, dt)
+    if dt == np.dtype("<f8"):
+        return "f64", bytes(c.store_encode_f64(a))
+    if dt.kind in "iu" and dt.itemsize <= 8 and dt != np.dtype("<u8") and dt.byteorder in "<|=":
+        return "i64", bytes(c.store_encode_i64(a.astype(np.int64)))
+    return None
+
+
 def encode_block(b: Block) -> bytes:
     how, payload = "zlib", zlib.compress(b.data, ZLEVEL)
     if b.dtype not in ("json", "text", "bytes"):
@@ -156,6 +196,9 @@ def encode_block(b: Block) -> bytes:
         shuffled = zlib.compress(shuffle(b.data, _itemsize(b.dtype)), ZLEVEL)
         if len(shuffled) < len(payload):
             how, payload = "shuffle+zlib", shuffled
+        own = _own_codec(b)
+        if own is not None and len(own[1]) < len(payload):
+            how, payload = own
     if len(payload) >= len(b.data):
         how, payload = "raw", b.data
     name, dt, hw = b.name.encode(), b.dtype.encode(), how.encode()
@@ -186,13 +229,81 @@ def decode_blocks(body: bytes) -> list:
             data = zlib.decompress(payload)
         elif how == "shuffle+zlib":
             data = unshuffle(zlib.decompress(payload), _itemsize(dtype))
+        elif how in ("f64", "i64"):
+            data = _own_decode(name, how, dtype, shape, payload)
         else:
             raise ValueError(f"block {name!r}: unknown compression {how!r}")
         out.append(Block(name, dtype, tuple(shape), data))
+    return _points_back(out)
+
+
+def _own_decode(name: str, how: str, dtype: str, shape, payload: bytes) -> bytes:
+    import numpy as np
+    c = _codec()
+    if c is None:
+        raise ValueError(f"block {name!r}: format 3 ({how}) needs the compiled extension")
+    n = int(np.prod(shape)) if len(shape) else 1
+    if how == "f64":
+        return np.asarray(c.store_decode_f64(payload, n), "<f8").tobytes()
+    return np.asarray(c.store_decode_i64(payload, n)).astype(np.dtype(dtype)).tobytes()
+
+
+# ── format 3: the record's point sets together ──────────────────────────────
+
+
+def _point_tables(blocks: list) -> list:
+    """(index, block, columns) of the float64 tables among blocks: a 2-D
+    array whose "#head" names its columns."""
+    heads = {}
+    for b in blocks:
+        if b.name.endswith("#head") and b.dtype == "json":
+            try:
+                heads[b.name[:-len("#head")]] = json.loads(b.data)
+            except ValueError:
+                pass
+    out = []
+    for i, b in enumerate(blocks):
+        cols = (heads.get(b.name) or {}).get("columns") if isinstance(heads.get(b.name), dict) else None
+        if (b.dtype == "<f8" and len(b.shape) == 2 and isinstance(cols, list)
+                and all(isinstance(c, str) for c in cols) and len(cols) == b.shape[1]):
+            out.append((i, b, cols))
     return out
 
 
+def _points_back(blocks: list) -> list:
+    """Blocks with "#points" expanded: every table back at its place."""
+    import numpy as np
+    at = next((i for i, b in enumerate(blocks) if b.name == "#points"), None)
+    if at is None:
+        return blocks
+    data = blocks[at].data
+    (k,) = struct.unpack_from("<I", data, 0)
+    places = struct.unpack_from(f"<{k}I", data, 4)
+    c = _codec()
+    if c is None:
+        raise ValueError("block '#points': format 3 needs the compiled extension")
+    tables = c.store_decode_tables(data[4 + 4 * k:])
+    if len(tables) != k:
+        raise ValueError("block '#points': its tables and places differ in number")
+    rest = blocks[:at] + blocks[at + 1:]
+    for place, (name, _cols, A) in sorted(zip(places, tables), key=lambda t: t[0]):
+        A = np.ascontiguousarray(A, "<f8")
+        rest.insert(place, Block(name, "<f8", tuple(A.shape), A.tobytes()))
+    return rest
+
+
 def encode_body(blocks: list) -> bytes:
+    import numpy as np
+    c = _codec()
+    tables = _point_tables(blocks) if c is not None else []
+    if tables:
+        coded = bytes(c.store_encode_tables([
+            (b.name, cols, np.frombuffer(b.data, "<f8").reshape(b.shape)) for _, b, cols in tables]))
+        places = [i for i, _, _ in tables]
+        points = Block("#points", "bytes", (), struct.pack("<I", len(places))
+                       + struct.pack(f"<{len(places)}I", *places) + coded)
+        taken = set(places)
+        blocks = [b for i, b in enumerate(blocks) if i not in taken] + [points]
     return struct.pack("<I", len(blocks)) + b"".join(encode_block(b) for b in blocks)
 
 

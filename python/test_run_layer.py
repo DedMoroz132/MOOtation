@@ -12186,7 +12186,10 @@ def store_blocks_give_the_bytes_back():
         (back,) = store.decode_blocks(store.encode_body([b]))
         assert back == b
     enc = store.encode_block(store.Block("a", counts.dtype.str, counts.shape, counts.tobytes()))
-    assert b"shuffle+zlib" in enc                      # counts gain by the shuffle
+    if store._codec() is not None:                     # format 3: the library's integer codec
+        assert b"i64" in enc and len(enc) < 100, len(enc)
+    else:
+        assert b"shuffle+zlib" in enc                  # counts gain by the shuffle
     with tempfile.TemporaryDirectory() as td:
         d = Path(td)
         rows = "".join(f"{v:.10g},{w:.10g},{int(v > 0.5)}\n" for v, w in rng.random((50, 2)))
@@ -12199,7 +12202,13 @@ def store_blocks_give_the_bytes_back():
         blocks = store.pack_run_dir(d, keep="full")
         kinds = {b.name: b.dtype for b in blocks}
         assert kinds["final.csv"] == kinds["archive.csv"] == "<f8" and kinds["odd.csv"] == "text", kinds
-        files = store.run_files(store.decode_blocks(store.encode_body(blocks)))
+        body = store.encode_body(blocks)
+        back = store.decode_blocks(body)
+        assert [(b.name, b.dtype, b.shape, b.data) for b in back] == \
+            [(b.name, b.dtype, b.shape, b.data) for b in blocks]    # in their order, bit for bit
+        if store._codec() is not None:                 # format 3: the tables in one block
+            assert b"#points" in body
+        files = store.run_files(back)
         for name in ("final.csv", "archive.csv", "odd.csv", "meta.json"):
             assert files[name].encode() == (d / name).read_bytes(), name
         assert np.array_equal(files["snapshots.npz"]["F"], noise.reshape(-1, 2).astype("<f4"))
