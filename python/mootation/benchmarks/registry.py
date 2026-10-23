@@ -184,6 +184,12 @@ class BenchProblem:
     # for every other problem, and for all without the extension.
     native: Optional[object] = None
     reference: Optional[dict] = None
+    # True where make_evaluator's evaluator measures anew at every call, one x
+    # evaluated twice giving two values: the noisy copies of kinds n and h
+    # (noisy.py) and RE91 (re.py). A campaign hands it to minimize, and the
+    # cores' caches are off there (task 17, supplement 2, §1.3). evaluate
+    # itself is a function of x everywhere.
+    stochastic: bool = False
 
     def __post_init__(self):
         both = self.evaluate_with_constraints
@@ -2069,7 +2075,8 @@ def _add_noisy(base: str, level: str, late: bool = False) -> None:
         pop_size=b.pop_size, n_gen=b.n_gen, K_runs=b.K_runs, has_cons=False,
         pareto_front=b.pareto_front if late else None, pareto_set=b.pareto_set,
         cyclic_vars=b.cyclic_vars, make_evaluator=_make, true_objectives=b.evaluate,
-        front_exact=b.front_exact, distance_fn=b.distance_fn if late else None)
+        front_exact=b.front_exact, distance_fn=b.distance_fn if late else None,
+        stochastic=kind in ("n", "h"))
     FRAME_OF[key] = base
     if late and base in EXACT_FRAME:
         EXACT_FRAME.add(key)
@@ -2546,6 +2553,7 @@ def _register_re():
             pop_size=pop, n_gen=ng, K_runs=21, has_cons=False, pareto_front=_pf,
             front_exact=False,
             make_evaluator=(lambda seed: _re.RE91Evaluator(seed)) if name == "RE91" else None,
+            stochastic=name == "RE91",
             var_types=_re.VAR_TYPES.get(name))
         EXACT_FRAME.add(name)
     for name, (base, model) in _re.CRE.items():

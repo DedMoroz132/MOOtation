@@ -137,6 +137,7 @@ def minimize(
     failure_window: int = 100,
     native: str = "auto",
     on_rows=None,
+    stochastic: bool = False,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -291,6 +292,11 @@ def minimize(
                 and every few thousand rows in between; a design's points at
                 once, before the run. An error where the core does not evaluate
                 the problem itself.
+    stochastic  True where fn evaluated twice at one x may give two values (a
+                noisy measurement): the caches of points evaluated (dms_cache,
+                paes_cache, mads_cache) are then off unless set to "force",
+                every repeat a new measurement; result.settings says so. False
+                (the default): fn is a function of x.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -485,6 +491,7 @@ def minimize(
     problem.bounds = bounds
     problem.n_objectives = int(n_objs)
     problem.n_bin = n_bin
+    problem.stochastic = bool(stochastic)
 
     if direct is not None:
         problem.native = direct

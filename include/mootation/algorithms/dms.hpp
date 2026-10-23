@@ -150,7 +150,9 @@ private:
     double  tol_    = 1e-3;
     std::vector<double> lo_, hi_;
     std::mt19937 rng_{0};           // drawn from only by DMS-6's knobs
-    bool cache_ = true;                                    // DMS-7
+    bool cache_ = true;                                    // DMS-7, as the run uses it
+    std::string cache_mode_ = "on";                        // dms_cache: on, off, force
+    std::string cache_note_ = "on";
     bool cache_check_ = false;                             // every hit evaluated again (a check)
     std::map<std::vector<double>, Entry> seen_;            // every point evaluated, by x
     long long cache_hits_ = 0;
@@ -326,9 +328,9 @@ public:
     bool set_word(const std::string& k, const std::string& w)
     {
         if (k == "dms_cache") {                                            // DMS-7
-            if (w != "on" && w != "off")
-                throw std::invalid_argument("dms_cache = '" + w + "': on or off");
-            cache_ = w == "on";
+            if (w != "on" && w != "off" && w != "force")
+                throw std::invalid_argument("dms_cache = '" + w + "': on, off or force");
+            cache_mode_ = w;
             return true;
         }
         if (k == "cache_check") {
@@ -340,6 +342,10 @@ public:
         return false;
     }
     long long cache_hits() const { return cache_hits_; }               // DMS-7: evaluations saved
+    std::vector<std::pair<std::string, std::string>> effective_settings() const
+    {
+        return {{"dms_cache", cache_note_}};
+    }
 
     // The list itself (normalised variables, objectives, step sizes).
     std::size_t list_size() const { return list_.size(); }
@@ -352,8 +358,18 @@ public:
         return !list_.empty();
     }
 
+    // The cache as the run uses it: off on a stochastic problem but where
+    // forced (task 17, supplement 2, §1.3; problem.hpp, is_stochastic).
+    void choose_cache(const DataVault<Ind_t>& vault)
+    {
+        cache_ = cache_mode_ == "force" || (cache_mode_ == "on" && !vault.stochastic());
+        cache_note_ = cache_mode_ == "on" && !cache_ ? "off: the problem is stochastic"
+                                                    : cache_ ? "on" : "off";
+    }
+
     void setup(DataVault<Ind_t>& vault)
     {
+        choose_cache(vault);
         read_bounds(vault);
         const std::size_t n = lo_.size();
         std::vector<std::vector<double>> S;
@@ -381,6 +397,7 @@ public:
     // A warm start: the seeded population's nondominated points, α_0 each.
     void setup_seeded(DataVault<Ind_t>& vault)
     {
+        choose_cache(vault);
         read_bounds(vault);
         std::vector<Entry> first;
         for (std::size_t v = 0; v < vault.active_n(); ++v) {

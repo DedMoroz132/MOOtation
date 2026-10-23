@@ -60,15 +60,20 @@ NOISE_MODES = ("_oracle", "_observed")
 # (benchmarks/binary.py, supplement 2, §3.4), in `final`.
 TYPED = ("dup_x_share", "cover_gen", "cover_evals", "cover_archive_gen", "cover_archive_evals")
 
+# What goes with "hv" (task 17, supplement 2, §2): the hypervolume of the
+# whole archive written (hv_archive, exact; trajectory and final_archive) and
+# the Monte-Carlo estimates' standard errors (hv_se, hv_h_se).
+HV_EXTRA = ("hv_archive", "hv_se", "hv_h_se")
+
 # Everything a table can be asked for.
 TABLE_NAMES = (METRIC_NAMES + RUN_STATS + DE_STATS + SA_STATS + COORDS_STATS + FEASIBILITY
-               + NOISE + TYPED)
+               + NOISE + TYPED + HV_EXTRA)
 
 # Higher is better for these; lower for every other indicator. nd_share,
 # range_cover and pdist are diagnostics rather than quality indicators,
 # oriented the way a healthy run moves.
-HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "range_cover", "nd_share", "cr", "psp", "pdist",
-                              "feas_share"})
+HIGHER_IS_BETTER = frozenset({"hv", "hv_h", "hv_archive", "range_cover", "nd_share", "cr", "psp",
+                              "pdist", "feas_share"})
 
 # These compare the answer set with a sample of the true Pareto front, so a
 # problem without one gives None for them.
@@ -132,6 +137,11 @@ DESCRIPTIONS = {
     "hv": "hypervolume, objectives normalised by ideal and nadir, reference point 1.1",
     "hv_h": "hypervolume with the reference point at 1 + 1/H, H from the problem's default "
             "population (Ishibuchi, Imada, Setoguchi & Nojima, GECCO 2017)",
+    "hv_archive": "hv of the whole archive the run writes (archive_cap x N), exactly; with "
+                  "\"hv\", up to hv_archive_grid_max_m objectives on the trajectory and "
+                  "hv_archive_final_max_m in final_archive",
+    "hv_se": "the standard error of hv where it is a Monte-Carlo estimate",
+    "hv_h_se": "the standard error of hv_h where it is a Monte-Carlo estimate",
     "i_cmop": "Vodopija et al.'s indicator for a constrained problem (IEEE TEVC 2025, "
               "Eq. 12): at most 1 with a feasible point (minus the normalised hypervolume, "
               "or the distance to [ideal, nadir]), 1 + the least violation without one; "

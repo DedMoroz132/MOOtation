@@ -10,6 +10,21 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 17, supplement 2, §1.3): a problem can say it is stochastic —
+  `minimize(stochastic=True)`, an optional `is_stochastic()` in C++
+  (`problem.hpp`), `BenchProblem.stochastic` (the noisy copies of kinds n and
+  h, RE91), which a campaign passes on. There the caches of DMS, PAES and
+  DMulti-MADS are off by default, and `result.settings` says why; the new
+  value `"force"` of `dms_cache`, `paes_cache` and `mads_cache` keeps them.
+
+- Changed (task 17, supplement 2, §2): the hypervolume's knobs. Exact on the
+  trajectory up to `hv_grid_exact_max_m` (8), at the end up to
+  `hv_exact_max_m` (10, was 5), Monte Carlo above with its standard error
+  (`hv_se`, `hv_h_se`). New `hv_archive`: the exact hypervolume of the whole
+  archive written (archive_cap x N), on the trajectory up to
+  `hv_archive_grid_max_m` (6) objectives, read at exactly each count of the
+  grid, and in `final_archive` up to `hv_archive_final_max_m` (8).
+
 - The verification set (task 17, supplement 2, §3; `benchmarks/classic.py`,
   `include/mootation/suite/classic.hpp`): SCH, FON, POL, KUR (Deb et al. 2002,
   Table I), SPH_2D, SPH_3D, QV and KURZ, the errata's KUR (Zitzler et al.

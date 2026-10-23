@@ -209,7 +209,9 @@ inline bool is_core_param(const std::string& name)
 //   dms_cache, paes_cache
 //                 dms, paes: a point evaluated before taken from the run's
 //                 cache (on; dms's default since task 17, supplement 2) or
-//                 evaluated again (off; paes's default, as its paper)
+//                 evaluated again (off; paes's default, as its paper); on a
+//                 stochastic problem (problem.hpp, is_stochastic) "on" reads
+//                 as off, "force" keeps the cache there too (§1.3)
 //   cache_check   dms, paes, dmulti_mads: every point taken from the cache
 //                 evaluated again and compared bit for bit, an error where
 //                 they differ (on; off, the default) — a check, which spends
@@ -224,7 +226,7 @@ inline bool is_core_param(const std::string& name)
 //                 dmulti_mads: the incumbent by spread or first, the poll
 //                 complete or opportunistic, the speculative search or none,
 //                 the cache of evaluated points on (the default) or off
-//                 (task 15, §8)
+//                 (task 15, §8), or force: on a stochastic problem as well
 //   constraint_mode
 //                 minimize()'s, for a campaign's algorithm entry: none lets the
 //                 core rank by the objectives only (task 15, §5); no core has it
@@ -251,8 +253,8 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"crowding_space", {"objectives", "decision"}},
         {"dms_init",     {"line", "single", "random"}},
         {"dms_poll",     {"first", "random"}},
-        {"dms_cache",    {"off", "on"}},
-        {"paes_cache",   {"off", "on"}},
+        {"dms_cache",    {"off", "on", "force"}},
+        {"paes_cache",   {"off", "on", "force"}},
         {"de_adapt",     {"none", "shade"}},
         {"de_base",      {"rand1", "current1", "current_to_pbest1"}},
         {"de_index",     {"wor", "wr", "wpr"}},
@@ -283,7 +285,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"mads_select",  {"spread", "first"}},
         {"mads_poll",    {"complete", "opportunistic"}},
         {"mads_search",  {"speculative", "none"}},
-        {"mads_cache",   {"off", "on"}},
+        {"mads_cache",   {"off", "on", "force"}},
         {"cache_check",  {"off", "on"}},
         {"boost_scalarization", {"eps", "minmax"}},
         {"scalarization", {"eps", "tch", "nbi", "nnc", "ps"}},

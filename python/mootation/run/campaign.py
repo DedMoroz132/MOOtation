@@ -184,10 +184,17 @@ class CampaignSpec:
     # points (the same points at every record, so the curve is smooth).
     trajectory_hv_max_m: int = 0
     trajectory_hv_mc_samples: int = 0
-    # The final hypervolume: exact up to hv_exact_max_m objectives, Monte Carlo
-    # from hv_mc_samples points above (metrics.hypervolume). The exact one is the
-    # compiled WFG when the extension is built: milliseconds at 5 objectives.
-    hv_exact_max_m: int = 5
+    # The hypervolumes (task 17, supplement 2, §2; the owner's table): of the
+    # final population and of the archive scenario's N points exact up to
+    # hv_exact_max_m objectives, on the trajectory up to hv_grid_exact_max_m,
+    # Monte Carlo from hv_mc_samples points above (metrics.hypervolume; its
+    # standard error beside it, hv_se). hv_archive, of the whole archive the
+    # run writes (archive_cap x N, or all of it), exactly: at the records up to
+    # hv_archive_grid_max_m objectives, at the end up to hv_archive_final_max_m.
+    hv_exact_max_m: int = 10
+    hv_grid_exact_max_m: int = 8
+    hv_archive_grid_max_m: int = 6
+    hv_archive_final_max_m: int = 8
     hv_mc_samples: int = 100_000
     # Scenario "archive" (report.py): the final metrics once more, on the run
     # archive reduced to the problem's population size by DSS
@@ -357,7 +364,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     known = {"out", "budget_fe", "record_every", "metrics", "final_metrics", "n_ref", "seeds",
              "record_grid", "record_per_decade", "record_at", "record_at_metrics", "ladder",
              "trajectory_hv_max_m",
-             "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples",
+             "trajectory_hv_mc_samples", "hv_exact_max_m", "hv_mc_samples", "hv_grid_exact_max_m",
+             "hv_archive_grid_max_m", "hv_archive_final_max_m",
              "archive", "archive_delta", "archive_variables", "archive_scenario", "snapshots",
              "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
@@ -432,7 +440,8 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if spec.trajectory_hv_max_m < 0:
         raise ConfigError("campaign.trajectory_hv_max_m", "must be >= 0 (0 = no limit)")
     for key, lo in (("trajectory_hv_mc_samples", 0), ("hv_exact_max_m", 0),
-                    ("hv_mc_samples", 1)):
+                    ("hv_mc_samples", 1), ("hv_grid_exact_max_m", 0), ("hv_archive_grid_max_m", 0),
+                    ("hv_archive_final_max_m", 0)):
         v = raw.get(key, getattr(spec, key))
         if not isinstance(v, int) or isinstance(v, bool) or v < lo:
             raise ConfigError(f"campaign.{key}", f"an integer >= {lo}, not {v!r}")
@@ -1224,6 +1233,34 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     n_failed, failed_at_record = 0, 0
     failed_fe: list = []                 # the counts of the failed evaluations ("budgets")
 
+    # The archive's points the run writes, and whose hypervolume hv_archive is:
+    # all, or archive_cap x N cut by DSS in the frame select() uses — their
+    # first N the archive scenario's, joined to `sel` (select()'s, where it is
+    # not DSS's prefix: igdp_self).
+    def archive_kept(AF, sel):
+        cap = spec.archive_cap * p.pop_size
+        if not cap or len(AF) <= cap:
+            return np.arange(len(AF))
+        from .archive import dss_order
+        lo_c, hi_c = arc.frame() if arc.normalization == "problem" else (None, None)
+        return np.union1d(dss_order(AF, k=cap, ideal=lo_c, nadir=hi_c),
+                          np.asarray(sel if sel is not None else [], np.intp))
+
+    def archive_hv():
+        """hv_archive: the exact hypervolume of archive_kept's points, noise-free."""
+        AF, AX, _ = arc.points()
+        if not len(AF):
+            return 0.0
+        sel = arc.select(p.pop_size, spec.answer_select) if spec.answer_select != "dss" else None
+        kept = archive_kept(AF, sel)
+        T = true_values(AF[kept], AX[kept])
+        return M.hypervolume(T, ideal, nadir, exact_max_m=p.n_obj)[0]
+
+    # hv_archive at the records, read at exactly each count of the grid
+    arc_hv = (arc is not None and ideal is not None and nadir is not None
+              and "hv" in spec.metrics and p.n_obj <= spec.hv_archive_grid_max_m)
+    arc_hv_at: dict = {}
+
     # Everything evaluated (CampaignSpec.all_evaluated): IGD+ and epsilon of all
     # the feasible, finite points so far (noise-free on a noisy copy), and their
     # values at exactly each count of the "budgets" grid.
@@ -1336,7 +1373,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                     pend_i.append((F[i] if t_true is None else t_true, start + 1 + i))
         if read_at is None:     # made at the first call: they are all set before the run
             read_at = sorted(set(checkpoints) | (set(hard) if arc is not None else set())
-                             | (grid_set if inc is not None else set()))
+                             | (grid_set if (inc is not None or arc_hv) else set()))
         reads = read_at[bisect.bisect_right(read_at, start):bisect.bisect_right(read_at, start + n)]
         lo = 0
         for b in reads:
@@ -1346,6 +1383,11 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
             if inc is not None and fe in grid_set:
                 flush()
                 all_at[fe] = (inc.igd_plus(), inc.eps_plus())
+            if arc_hv and fe in grid_set:
+                flush(read=True)
+                t_hv = time.perf_counter()
+                arc_hv_at[fe] = archive_hv()
+                tm["records"] += time.perf_counter() - t_hv
             if (arc is not None and fe in hard) or fe in checkpoints:
                 flush(read=True)
                 if arc is not None and fe in hard:
@@ -1442,7 +1484,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     # estimated by Monte Carlo when trajectory_hv_mc_samples asks for it.
     traj_metrics = [*spec.metrics, *set_extra]
     hv_skipped = []
-    traj_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
+    traj_hv = {"exact_max_m": spec.hv_grid_exact_max_m, "mc_samples": spec.hv_mc_samples}
     if spec.trajectory_hv_max_m and p.n_obj > spec.trajectory_hv_max_m:
         if spec.trajectory_hv_mc_samples > 0:
             traj_hv = {"exact_max_m": 0, "mc_samples": spec.trajectory_hv_mc_samples}
@@ -1581,6 +1623,11 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
         mark = fe_rec >= budget or any(last_fe < b <= fe_rec for b in spec.record_at)
         if finite and F.size:
             rec.update(measure(F, X, traj_metrics if mark else everywhere))
+        if arc_hv and finite and F.size:
+            if fe_rec not in arc_hv_at:
+                flush(read=True)
+                arc_hv_at[fe_rec] = archive_hv()
+            rec["hv_archive"] = arc_hv_at[fe_rec]
         if inc is not None:
             v = all_at.get(fe_rec) if fe_rec != fe else None
             v = v or (inc.igd_plus(), inc.eps_plus())
@@ -1635,6 +1682,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                 operator_stats=op_stats,
                 init=job.init, init_share=job.init_share,
                 var_types=p.var_types,
+                stochastic=p.stochastic,
                 **job.params,
             )
     except Exception as e:                       # one bad job must not kill the shard
@@ -1689,15 +1737,9 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
             t_sel = time.perf_counter()
             arc_sel = arc.select(p.pop_size, spec.answer_select)
             tm["final"] += time.perf_counter() - t_sel
-        # the points written: all, or archive_cap x N cut by DSS in the frame
-        # select() uses (its first N are the archive scenario's; see archive_cap)
+        # the points written: all, or archive_cap x N cut by DSS (archive_kept)
         cap = spec.archive_cap * p.pop_size
-        kept = np.arange(len(AF))
-        if cap and len(AF) > cap:
-            from .archive import dss_order
-            lo_c, hi_c = arc.frame() if arc.normalization == "problem" else (None, None)
-            kept = np.union1d(dss_order(AF, k=cap, ideal=lo_c, nadir=hi_c),
-                              np.asarray(arc_sel if arc_sel is not None else [], np.intp))
+        kept = archive_kept(AF, arc_sel)
         # a noisy copy's archive is written noise-free, and beside it the
         # values the archive scenario selected by (f*_seen, task 16,
         # supplement 1), so that its N points are found again from the file
@@ -1834,6 +1876,10 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
         meta["final_archive"]["n"] = int(len(arc_sel))
         if truth is not None and len(T):
             meta["final_archive"]["true_dominated_share"] = 1.0 - M.nd_share(T)
+        if ("hv" in final_metrics and ideal is not None and nadir is not None
+                and p.n_obj <= spec.hv_archive_final_max_m):
+            # the whole archive written, exactly (CampaignSpec.hv_archive_final_max_m)
+            meta["final_archive"]["hv_archive"] = archive_hv()
     if spec.set_answer != "off" and multimodal and pset is not None and len(pset) and p.n_vars:
         # the second answer (CampaignSpec.set_answer): its decision-space indicators
         from .archive import SET_ANSWER_VERSION, SetArchive, spread_select

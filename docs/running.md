@@ -835,22 +835,28 @@ MMF8's front is the quarter circle, MMF13's printed set lies outside its box,
 and so on). `dn_nsga2` is NSGA-II with a niched mating pool and crowding in
 the variables, built for them (DN-NSGA-II, Liang, Yue & Qu, CEC 2016).
 
-The hypervolume is exact up to `hv_exact_max_m` objectives (5 by default) and
-a Monte-Carlo estimate from `hv_mc_samples` points (100 000) above. The exact
-one is the WFG algorithm (While, Bradstreet & Barone 2012) compiled into the
-extension, `mootation._core.hypervolume`: about 20 ms for 210 points at five
-objectives, where the Python recursion it replaces took seconds; without the
-extension the Python one still runs. The Monte-Carlo points are drawn by
-NumPy from a fixed seed and only counted in C++, so an estimate does not
-depend on which of the two counted it, and every record of a trajectory uses
-the same points, which keeps the curve free of sampling jitter. `hv_method` in
-each record says which one ran.
+The hypervolume (task 17, supplement 2, §2, the owner's table) is exact on
+the trajectory up to `hv_grid_exact_max_m` objectives (8 by default), of the
+final population and the archive scenario's N points up to `hv_exact_max_m`
+(10), and a Monte-Carlo estimate from `hv_mc_samples` points (100 000) above,
+its standard error beside it (`hv_se`, `hv_h_se`). `hv_archive`, with `hv`
+among the metrics, is the exact hypervolume of the whole archive the run
+writes (`archive_cap` x N, cut by DSS, or all of it): at every record of the
+grid, read at exactly its count, up to `hv_archive_grid_max_m` objectives (6),
+and in `final_archive` up to `hv_archive_final_max_m` (8). At eight objectives
+and more IGD+ is the atlas's main indicator, the hypervolume a second one. The
+exact one is WFG or the box decomposition compiled into the extension
+(`mootation._core.hypervolume`); without the extension a Python recursion
+runs. The Monte-Carlo points come from the library's generator with a fixed
+seed (`metrics._mc_draws`), so every record of a trajectory and every
+algorithm uses the same points, which keeps the curve free of sampling
+jitter. `hv_method` in each record says which one ran.
 
 Along a trajectory, `trajectory_hv_max_m = 3` keeps the exact hypervolume to
 three objectives; above it the hypervolume is `null`, or, with
 `trajectory_hv_mc_samples = 10000`, estimated from that many points (about
 ±0.01 at 95 %, ~15 ms per record at five objectives). The final population
-always gets the exact value up to `hv_exact_max_m`. `final_metrics` pays for
+gets the exact value up to `hv_exact_max_m`. `final_metrics` pays for
 anything costly once per run: `metrics = ["igdp"]` with `final_metrics =
 ["igdp", "eps", "hv", "hv_h"]`. The other indicators cost milliseconds.
 The decision-space indicators (`pdist`, and `igdx` and `cr` where the problem
@@ -1211,6 +1217,15 @@ cache, only further, but where the run reads its count of evaluations
 (`eq_tol_schedule = "linear"`). `cache_check = "on"` (DMS, PAES,
 DMulti-MADS) evaluates every point taken from the cache again and stops with
 an error where the two differ: a check.
+
+On a stochastic problem — one x evaluated twice may give two values:
+`minimize(..., stochastic=True)`, `is_stochastic()` on a C++ problem
+(`problem.hpp`), the noisy copies of kinds n and h and RE91 in a campaign —
+the caches of DMS, PAES and DMulti-MADS are off whatever `dms_cache`,
+`paes_cache` and `mads_cache` say, every repeat a new measurement, as in the
+papers; `result.settings` (and a campaign's `meta.json`) reads
+`"off: the problem is stochastic"`. `"force"` keeps the cache there too: the
+first measurement of a point stands, as a real solver's cache would keep it.
 
 **SMPSO.** Speed-constrained multi-objective PSO (Nebro et al., MCDM 2009;
 `algorithms/smpso.hpp`): `pop` particles, a leaders archive of `pop`

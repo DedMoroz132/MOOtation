@@ -86,9 +86,9 @@ public:
     bool set_word(const std::string& k, const std::string& w)
     {
         if (k == "paes_cache") {                                           // PAES-7
-            if (w != "on" && w != "off")
-                throw std::invalid_argument("paes_cache = '" + w + "': on or off");
-            cache_ = w == "on";
+            if (w != "on" && w != "off" && w != "force")
+                throw std::invalid_argument("paes_cache = '" + w + "': on, off or force");
+            cache_mode_ = w;
             return true;
         }
         if (k == "cache_check") {
@@ -100,6 +100,10 @@ public:
         return false;
     }
     long long cache_hits() const { return cache_hits_; }               // PAES-7: evaluations saved
+    std::vector<std::pair<std::string, std::string>> effective_settings() const
+    {
+        return {{"paes_cache", cache_note_}};
+    }
 
     bool set_param(const std::string& k, double v)
     {
@@ -118,8 +122,18 @@ public:
         return false;
     }
 
+    // The cache as the run uses it: off on a stochastic problem but where
+    // forced (task 17, supplement 2, §1.3; problem.hpp, is_stochastic).
+    void choose_cache(const DataVault<Ind_t>& vault)
+    {
+        cache_ = cache_mode_ == "force" || (cache_mode_ == "on" && !vault.stochastic());
+        cache_note_ = cache_mode_ == "on" && !cache_ ? "off: the problem is stochastic"
+                                                    : cache_ ? "on" : "off";
+    }
+
     void setup(DataVault<Ind_t>& vault)
     {
+        choose_cache(vault);
         start(vault);
         const auto& b = vault.get_bounds();
         rnd::uniform_real_distribution<double> U(0.0, 1.0);
@@ -133,6 +147,7 @@ public:
 
     void setup_seeded(DataVault<Ind_t>& vault)
     {
+        choose_cache(vault);
         start(vault);
         std::vector<Point> seeds;
         for (std::size_t v = 0; v < vault.active_n(); ++v) seeds.push_back(read(vault, v));
@@ -183,7 +198,9 @@ private:
     std::vector<Point> arch_;
     Point c_;
     std::mt19937 rng_{0};
-    bool cache_ = false;                                     // PAES-7
+    bool cache_ = false;                                     // PAES-7, as the run uses it
+    std::string cache_mode_ = "off";                         // paes_cache: on, off, force
+    std::string cache_note_ = "off";
     bool cache_check_ = false;                               // every hit evaluated again (a check)
     std::map<std::vector<double>, Point> seen_;              // every point evaluated, by x
     long long cache_hits_ = 0;

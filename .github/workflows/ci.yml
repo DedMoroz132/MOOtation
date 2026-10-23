@@ -22,307 +22,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Linux / macOS: the compiler x standard matrix ──────────────────────────
-  build:
-    name: ${{ matrix.os }} · ${{ matrix.compiler }} · ${{ matrix.std }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:       [ubuntu-latest, macos-latest]
-        compiler: [g++, clang++]
-        std:      [17, 20]
-        exclude:
-          # Apple clang is reached through clang++; g++ on macOS runners is a
-          # shim for the same toolchain, so it would test nothing new.
-          - os: macos-latest
-            compiler: g++
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Configure
-        run: >
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
-          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
-          -DCMAKE_CXX_STANDARD_REQUIRED=ON
-          -DMOOTATION_WERROR=ON
-
-      # four jobs, not -j alone: unbounded, the units that include every core
-      # outgrew the runner's memory and the runner was shut down mid-build
-      # (g++ 20, task 15; the sanitized build's below since task 14)
-      - name: Build
-        run: cmake --build build -j 4
-
-      - name: Test
-        # -LE nightly skips test_convergence and test_constraints, which are
-        # ~10 of the suite's ~11 minutes. They run on the schedule below, and
-        # can be forced on a branch with the `full-tests` label on a PR.
-        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
-
-  # ── Windows is a supported platform, not an afterthought ──────────────────
-  windows:
-    name: windows · msvc · ${{ matrix.std }}
-    runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        std: [17, 20]
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: ilammy/msvc-dev-cmd@v1
-
-      - name: Configure
-        run: >
-          cmake -S . -B build -G Ninja
-          -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
-          -DCMAKE_CXX_STANDARD_REQUIRED=ON
-          -DMOOTATION_WERROR=ON
-
-      # four jobs, not -j alone: unbounded, the units that include every core
-      # outgrew the runner's memory and the runner was shut down mid-build
-      # (g++ 20, task 15; the sanitized build's below since task 14)
-      - name: Build
-        run: cmake --build build -j 4
-
-      - name: Test
-        # -LE nightly skips test_convergence and test_constraints, which are
-        # ~10 of the suite's ~11 minutes. They run on the schedule below, and
-        # can be forced on a branch with the `full-tests` label on a PR.
-        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
-
-  # ── The long tests ────────────────────────────────────────────────────────
-  # test_convergence runs all 76 algorithms to convergence; test_constraints
-  # runs all 76 twice, with constraint handling off and on. Together they are
-  # the bulk of the suite's runtime, so every push skips them (-LE nightly) and
-  # this job runs them on a schedule instead.
-  #
-  # Skipping them on a push is a real trade: a regression in one of them is
-  # caught within a day rather than within a minute. That is the right way
-  # round — they guard slow rot (an algorithm quietly stopping converging), not
-  # the kind of breakage a compiler catches.
-  nightly:
-    name: nightly · full test suite
-    if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.pull_request.labels.*.name, 'full-tests')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Configure
-        run: >
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Release
-          -DMOOTATION_WERROR=ON
-          -DMOOTATION_BUILD_C_API=ON
-
-      # four jobs, not -j alone: unbounded, the units that include every core
-      # outgrew the runner's memory and the runner was shut down mid-build
-      # (g++ 20, task 15; the sanitized build's below since task 14)
-      - name: Build
-        run: cmake --build build -j 4
-
-      - name: The tests every push skips
-        run: ctest --test-dir build --output-on-failure -L nightly
-
-      - name: Everything else, for completeness
-        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
-
-      # The long tests are the only ones that drive every algorithm to
-      # convergence, so they are the only place a use-after-free in a rarely
-      # taken branch will surface. Running them under the sanitizers is slow,
-      # which is precisely why it belongs here and not on a push.
-      - name: The long tests again, under ASan and UBSan
-        run: |
-          cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
-          cmake --build build-asan -j 4
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly
-
-  # ── Sanitizers ────────────────────────────────────────────────────────────
-  # The README claims the library is clean under ASan and UBSan. This job is
-  # what makes that claim checkable by anyone, rather than something the
-  # maintainer asserts.
-  sanitize:
-    name: asan + ubsan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Configure
-        run: >
-          cmake -S . -B build
-          -DCMAKE_BUILD_TYPE=Debug
-          -DCMAKE_CXX_COMPILER=clang++
-          -DMOOTATION_SANITIZE=ON
-
-      # four jobs, not -j alone: unbounded, the sanitized Debug units outgrew
-      # the runner's memory and the runner was shut down mid-build (task 14)
-      - name: Build
-        run: cmake --build build -j 4
-
-      - name: Test
-        env:
-          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-          ASAN_OPTIONS: detect_leaks=1
-        # The quick tests only. Sanitizers multiply runtime, and the long tests
-        # under ASan are a nightly job's worth of work on their own — see the
-        # `nightly` job, which runs exactly that.
-        run: ctest --test-dir build --output-on-failure -LE nightly --parallel 4
-
-  # ── The installed package must actually be consumable ─────────────────────
-  # Installing and then building a tiny project against find_package() is the
-  # only way to catch a broken export set. It is a common failure and invisible
-  # to every other job here.
-  install-consume:
-    name: install + find_package
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Install to a staging prefix
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_INSTALL_PREFIX=$PWD/stage \
-                -DMOOTATION_BUILD_TESTS=OFF -DMOOTATION_BUILD_EXAMPLES=OFF
-          cmake --build build -j 4
-          cmake --install build
-
-      # The install rule copies by filesystem glob, so it sees the working tree
-      # rather than the git index. .gitignore therefore does NOT protect it:
-      # local-only work that git never tracks can still be installed. This once
-      # shipped five private headers into the install prefix, so the check is
-      # empirical — inspect what actually landed, not what should have.
-      - name: The install prefix contains no local-only work
-        run: |
-          leaked=$(find stage -type f | grep -iE '_local' || true)
-          if [ -n "$leaked" ]; then
-            echo "local-only files reached the install prefix:"
-            echo "$leaked"
-            exit 1
-          fi
-          echo "install prefix clean ($(find stage -name '*.hpp' | wc -l) headers)"
-
-      - name: Build a consumer project against the installed package
-        run: |
-          mkdir -p consumer
-          cat > consumer/CMakeLists.txt <<'EOF'
-          cmake_minimum_required(VERSION 3.14)
-          project(consumer LANGUAGES CXX)
-          find_package(MOOtation REQUIRED)
-          add_executable(consumer main.cpp)
-          target_link_libraries(consumer PRIVATE MOOtation::MOOtation)
-          EOF
-          cat > consumer/main.cpp <<'EOF'
-          #include <mootation/mootation.hpp>
-          #include <iostream>
-          int main() {
-              using namespace mootation;
-              Problem<NSGAII_Individual>   prob;
-              DataVault<NSGAII_Individual> vault(40, prob);
-              Optimizer<NSGAII_Individual, NSGAIICore<NSGAII_Individual>>
-                  opt(std::move(vault));
-              opt.optimize(20);
-              std::cout << "consumer OK, " << mootation::version()
-                        << ", n=" << opt.get_vault().active_n() << '\n';
-              return 0;
-          }
-          EOF
-          cmake -S consumer -B consumer/build -DCMAKE_PREFIX_PATH=$PWD/stage
-          cmake --build consumer/build -j
-          ./consumer/build/consumer
-
-      - name: The embedding layer works from the installed tree too
-        run: |
-          # A separate consumer because embed.hpp needs things the umbrella does
-          # not: algorithms.def must have been installed alongside the headers,
-          # and Threads must come through find_dependency. Neither shows up in
-          # the build tree, where both are satisfied by accident.
-          mkdir -p consumer2
-          cat > consumer2/CMakeLists.txt <<'EOF'
-          cmake_minimum_required(VERSION 3.14)
-          project(consumer2 LANGUAGES CXX)
-          find_package(MOOtation REQUIRED)
-          add_executable(consumer2 main.cpp)
-          target_link_libraries(consumer2 PRIVATE MOOtation::MOOtation)
-          EOF
-          cat > consumer2/main.cpp <<'EOF'
-          #include <mootation/embed.hpp>
-          #include <cmath>
-          #include <cstdio>
-          int main() {
-              mootation::Settings s;
-              s.algorithm = "nsga2";
-              s.pop_size = 20; s.max_gen = 10; s.seed = 3; s.n_objs = 2;
-              s.set_box(6, 0.0, 1.0);
-              auto zdt1 = [](const std::vector<std::vector<double>>& X,
-                             std::vector<std::vector<double>>& F,
-                             std::vector<std::vector<double>>&) {
-                  for (std::size_t i = 0; i < X.size(); ++i) {
-                      double g = 0.0;
-                      for (std::size_t j = 1; j < X[i].size(); ++j) g += X[i][j];
-                      g = 1.0 + 9.0 * g / 5.0;
-                      F[i][0] = X[i][0];
-                      F[i][1] = g * (1.0 - std::sqrt(F[i][0] / g));
-                  }
-              };
-              auto a = mootation::run(s, zdt1);
-              mootation::Session sess(s);
-              std::vector<std::vector<double>> F;
-              for (auto X = sess.ask(); !X.empty(); X = sess.tell(F)) {
-                  F.assign(X.size(), std::vector<double>(2, 0.0));
-                  zdt1(X, F, F);
-              }
-              auto b = sess.result();
-              std::printf("installed embed OK: run=%zu session=%zu algorithms=%zu\n",
-                          a.size(), b.size(), mootation::algorithm_names().size());
-              if (mootation::algorithm_names().size() != 76) return 1;
-              if (a.size() != b.size() || a.size() == 0) return 1;
-              for (std::size_t i = 0; i < a.size(); ++i)
-                  for (std::size_t j = 0; j < 2; ++j)
-                      if (a.objectives[i][j] != b.objectives[i][j]) return 1;
-              return 0;
-          }
-          EOF
-          cmake -S consumer2 -B consumer2/build -DCMAKE_PREFIX_PATH=$PWD/stage
-          cmake --build consumer2/build -j
-          ./consumer2/build/consumer2
-
-  # ── FetchContent consumption ──────────────────────────────────────────────
-  fetchcontent:
-    name: FetchContent
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with: { path: mootation }
-
-      - name: Consume the checkout via FetchContent
-        run: |
-          mkdir -p fc
-          cat > fc/CMakeLists.txt <<'EOF'
-          cmake_minimum_required(VERSION 3.14)
-          project(fc LANGUAGES CXX)
-          include(FetchContent)
-          FetchContent_Declare(MOOtation SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../mootation)
-          FetchContent_MakeAvailable(MOOtation)
-          add_executable(fc main.cpp)
-          target_link_libraries(fc PRIVATE MOOtation::MOOtation)
-          EOF
-          cat > fc/main.cpp <<'EOF'
-          #include <mootation/mootation.hpp>
-          int main() { return mootation::version() ? 0 : 1; }
-          EOF
-          cmake -S fc -B fc/build
-          cmake --build fc/build -j
-          ./fc/build/fc
-          # A consumed project must not build our tests or examples.
-          test ! -e fc/build/tests/test_convergence
-          echo "FetchContent consumer did not inherit our tests — correct."
-
   # ── Python binding ────────────────────────────────────────────────────────
   # Optional at build time (MOOTATION_BUILD_PYTHON=OFF by default), so the
   # library stays buildable with nothing but a compiler. CI builds it anyway:
@@ -506,6 +205,69 @@ jobs:
           done
           echo "validator reported: $(echo "$out" | grep -c ' - ') problems"
 
+  # ── Sanitizers ────────────────────────────────────────────────────────────
+  # The README claims the library is clean under ASan and UBSan. This job is
+  # what makes that claim checkable by anyone, rather than something the
+  # maintainer asserts.
+  sanitize:
+    name: asan + ubsan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_CXX_COMPILER=clang++
+          -DMOOTATION_SANITIZE=ON
+
+      # four jobs, not -j alone: unbounded, the sanitized Debug units outgrew
+      # the runner's memory and the runner was shut down mid-build (task 14)
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Test
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          ASAN_OPTIONS: detect_leaks=1
+        # The quick tests only. Sanitizers multiply runtime, and the long tests
+        # under ASan are a nightly job's worth of work on their own — see the
+        # `nightly` job, which runs exactly that.
+        run: ctest --test-dir build --output-on-failure -LE nightly --parallel 4
+
+  # ── Default behaviour, bit for bit ────────────────────────────────────────
+  # Options are added under one rule: every algorithm at its defaults returns
+  # exactly the population it returned at the baseline commit
+  # (tests/compat_baseline.txt). A stored population cannot check that across
+  # compilers and standard libraries, so tools/compat_check.py compiles
+  # tests/compat_dump.cpp against the baseline's headers and against this
+  # tree's, here, with the same compiler, and compares the fingerprints.
+  default-behaviour:
+    name: default behaviour, bit for bit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0          # the baseline commit's headers
+      - name: Every algorithm at its defaults gives the stored fingerprints
+        run: python3 tools/compat_check.py --golden --cxx g++
+      # Since task 14 the fingerprints are also stored (tests/golden_fingerprints.txt)
+      # and every platform's ctest compares with them (golden_fingerprints); here
+      # every algorithm built for a CPU with fused multiply-adds through the
+      # MOOtation target must contain none (-ffp-contract=off).
+      - name: No fused multiply-adds through the MOOtation target
+        run: |
+          for cxx in g++ clang++; do
+            cmake -S . -B build-fma-$cxx -DCMAKE_CXX_COMPILER=$cxx -DCMAKE_BUILD_TYPE=Release \
+                  -DMOOTATION_BUILD_TESTS=ON -DMOOTATION_FMA_PROBE=ON > /dev/null
+            cmake --build build-fma-$cxx --target fma_probe > /dev/null
+            n=$(find build-fma-$cxx -name 'compat_dump.cpp.o' -path '*fma_probe*' -exec objdump -d {} \; \
+                | grep -ciE 'vfn?m(add|sub)[0-9]+[sp]d' || true)
+            echo "$cxx: $n fused multiply-adds"
+            test "$n" -eq 0
+          done
+
   # ── C ABI ─────────────────────────────────────────────────────────────────
   # The only compiled artefact the project produces. Two consumers are built
   # here on purpose: a C99 program, which fails if a C++-ism creeps into
@@ -537,6 +299,227 @@ jobs:
             echo "non-moo_ symbols exported:"; echo "$leaked"; exit 1
           fi
           echo "clean: $(nm -D --defined-only build-c/capi/libmootation.so                         | grep -c '^.* moo_') moo_ symbols"
+
+  # ── Windows is a supported platform, not an afterthought ──────────────────
+  windows:
+    name: windows · msvc · ${{ matrix.std }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        std: [17, 20]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DMOOTATION_WERROR=ON
+
+      # four jobs, not -j alone: unbounded, the units that include every core
+      # outgrew the runner's memory and the runner was shut down mid-build
+      # (g++ 20, task 15; the sanitized build's below since task 14)
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Test
+        # -LE nightly skips test_convergence and test_constraints, which are
+        # ~10 of the suite's ~11 minutes. They run on the schedule below, and
+        # can be forced on a branch with the `full-tests` label on a PR.
+        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
+
+  # ── Linux / macOS: the compiler x standard matrix ──────────────────────────
+  build:
+    name: ${{ matrix.os }} · ${{ matrix.compiler }} · ${{ matrix.std }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:       [ubuntu-latest, macos-latest]
+        compiler: [g++, clang++]
+        std:      [17, 20]
+        exclude:
+          # Apple clang is reached through clang++; g++ on macOS runners is a
+          # shim for the same toolchain, so it would test nothing new.
+          - os: macos-latest
+            compiler: g++
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_COMPILER=${{ matrix.compiler }}
+          -DCMAKE_CXX_STANDARD=${{ matrix.std }}
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DMOOTATION_WERROR=ON
+
+      # four jobs, not -j alone: unbounded, the units that include every core
+      # outgrew the runner's memory and the runner was shut down mid-build
+      # (g++ 20, task 15; the sanitized build's below since task 14)
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Test
+        # -LE nightly skips test_convergence and test_constraints, which are
+        # ~10 of the suite's ~11 minutes. They run on the schedule below, and
+        # can be forced on a branch with the `full-tests` label on a PR.
+        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
+
+  # ── The installed package must actually be consumable ─────────────────────
+  # Installing and then building a tiny project against find_package() is the
+  # only way to catch a broken export set. It is a common failure and invisible
+  # to every other job here.
+  install-consume:
+    name: install + find_package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install to a staging prefix
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX=$PWD/stage \
+                -DMOOTATION_BUILD_TESTS=OFF -DMOOTATION_BUILD_EXAMPLES=OFF
+          cmake --build build -j 4
+          cmake --install build
+
+      # The install rule copies by filesystem glob, so it sees the working tree
+      # rather than the git index. .gitignore therefore does NOT protect it:
+      # local-only work that git never tracks can still be installed. This once
+      # shipped five private headers into the install prefix, so the check is
+      # empirical — inspect what actually landed, not what should have.
+      - name: The install prefix contains no local-only work
+        run: |
+          leaked=$(find stage -type f | grep -iE '_local' || true)
+          if [ -n "$leaked" ]; then
+            echo "local-only files reached the install prefix:"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "install prefix clean ($(find stage -name '*.hpp' | wc -l) headers)"
+
+      - name: Build a consumer project against the installed package
+        run: |
+          mkdir -p consumer
+          cat > consumer/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(consumer LANGUAGES CXX)
+          find_package(MOOtation REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE MOOtation::MOOtation)
+          EOF
+          cat > consumer/main.cpp <<'EOF'
+          #include <mootation/mootation.hpp>
+          #include <iostream>
+          int main() {
+              using namespace mootation;
+              Problem<NSGAII_Individual>   prob;
+              DataVault<NSGAII_Individual> vault(40, prob);
+              Optimizer<NSGAII_Individual, NSGAIICore<NSGAII_Individual>>
+                  opt(std::move(vault));
+              opt.optimize(20);
+              std::cout << "consumer OK, " << mootation::version()
+                        << ", n=" << opt.get_vault().active_n() << '\n';
+              return 0;
+          }
+          EOF
+          cmake -S consumer -B consumer/build -DCMAKE_PREFIX_PATH=$PWD/stage
+          cmake --build consumer/build -j
+          ./consumer/build/consumer
+
+      - name: The embedding layer works from the installed tree too
+        run: |
+          # A separate consumer because embed.hpp needs things the umbrella does
+          # not: algorithms.def must have been installed alongside the headers,
+          # and Threads must come through find_dependency. Neither shows up in
+          # the build tree, where both are satisfied by accident.
+          mkdir -p consumer2
+          cat > consumer2/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(consumer2 LANGUAGES CXX)
+          find_package(MOOtation REQUIRED)
+          add_executable(consumer2 main.cpp)
+          target_link_libraries(consumer2 PRIVATE MOOtation::MOOtation)
+          EOF
+          cat > consumer2/main.cpp <<'EOF'
+          #include <mootation/embed.hpp>
+          #include <cmath>
+          #include <cstdio>
+          int main() {
+              mootation::Settings s;
+              s.algorithm = "nsga2";
+              s.pop_size = 20; s.max_gen = 10; s.seed = 3; s.n_objs = 2;
+              s.set_box(6, 0.0, 1.0);
+              auto zdt1 = [](const std::vector<std::vector<double>>& X,
+                             std::vector<std::vector<double>>& F,
+                             std::vector<std::vector<double>>&) {
+                  for (std::size_t i = 0; i < X.size(); ++i) {
+                      double g = 0.0;
+                      for (std::size_t j = 1; j < X[i].size(); ++j) g += X[i][j];
+                      g = 1.0 + 9.0 * g / 5.0;
+                      F[i][0] = X[i][0];
+                      F[i][1] = g * (1.0 - std::sqrt(F[i][0] / g));
+                  }
+              };
+              auto a = mootation::run(s, zdt1);
+              mootation::Session sess(s);
+              std::vector<std::vector<double>> F;
+              for (auto X = sess.ask(); !X.empty(); X = sess.tell(F)) {
+                  F.assign(X.size(), std::vector<double>(2, 0.0));
+                  zdt1(X, F, F);
+              }
+              auto b = sess.result();
+              std::printf("installed embed OK: run=%zu session=%zu algorithms=%zu\n",
+                          a.size(), b.size(), mootation::algorithm_names().size());
+              if (mootation::algorithm_names().size() != 76) return 1;
+              if (a.size() != b.size() || a.size() == 0) return 1;
+              for (std::size_t i = 0; i < a.size(); ++i)
+                  for (std::size_t j = 0; j < 2; ++j)
+                      if (a.objectives[i][j] != b.objectives[i][j]) return 1;
+              return 0;
+          }
+          EOF
+          cmake -S consumer2 -B consumer2/build -DCMAKE_PREFIX_PATH=$PWD/stage
+          cmake --build consumer2/build -j
+          ./consumer2/build/consumer2
+
+  # ── FetchContent consumption ──────────────────────────────────────────────
+  fetchcontent:
+    name: FetchContent
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with: { path: mootation }
+
+      - name: Consume the checkout via FetchContent
+        run: |
+          mkdir -p fc
+          cat > fc/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.14)
+          project(fc LANGUAGES CXX)
+          include(FetchContent)
+          FetchContent_Declare(MOOtation SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../mootation)
+          FetchContent_MakeAvailable(MOOtation)
+          add_executable(fc main.cpp)
+          target_link_libraries(fc PRIVATE MOOtation::MOOtation)
+          EOF
+          cat > fc/main.cpp <<'EOF'
+          #include <mootation/mootation.hpp>
+          int main() { return mootation::version() ? 0 : 1; }
+          EOF
+          cmake -S fc -B fc/build
+          cmake --build fc/build -j
+          ./fc/build/fc
+          # A consumed project must not build our tests or examples.
+          test ! -e fc/build/tests/test_convergence
+          echo "FetchContent consumer did not inherit our tests — correct."
 
   # ── Single-header amalgamation ────────────────────────────────────────────
   # The generator is a convenience for users who cannot control include paths.
@@ -636,38 +619,6 @@ jobs:
           /tmp/amalg_embed
           echo "embed.hpp works from the single header"
 
-  # ── Default behaviour, bit for bit ────────────────────────────────────────
-  # Options are added under one rule: every algorithm at its defaults returns
-  # exactly the population it returned at the baseline commit
-  # (tests/compat_baseline.txt). A stored population cannot check that across
-  # compilers and standard libraries, so tools/compat_check.py compiles
-  # tests/compat_dump.cpp against the baseline's headers and against this
-  # tree's, here, with the same compiler, and compares the fingerprints.
-  default-behaviour:
-    name: default behaviour, bit for bit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0          # the baseline commit's headers
-      - name: Every algorithm at its defaults gives the stored fingerprints
-        run: python3 tools/compat_check.py --golden --cxx g++
-      # Since task 14 the fingerprints are also stored (tests/golden_fingerprints.txt)
-      # and every platform's ctest compares with them (golden_fingerprints); here
-      # every algorithm built for a CPU with fused multiply-adds through the
-      # MOOtation target must contain none (-ffp-contract=off).
-      - name: No fused multiply-adds through the MOOtation target
-        run: |
-          for cxx in g++ clang++; do
-            cmake -S . -B build-fma-$cxx -DCMAKE_CXX_COMPILER=$cxx -DCMAKE_BUILD_TYPE=Release \
-                  -DMOOTATION_BUILD_TESTS=ON -DMOOTATION_FMA_PROBE=ON > /dev/null
-            cmake --build build-fma-$cxx --target fma_probe > /dev/null
-            n=$(find build-fma-$cxx -name 'compat_dump.cpp.o' -path '*fma_probe*' -exec objdump -d {} \; \
-                | grep -ciE 'vfn?m(add|sub)[0-9]+[sp]d' || true)
-            echo "$cxx: $n fused multiply-adds"
-            test "$n" -eq 0
-          done
-
   # ── Hygiene ───────────────────────────────────────────────────────────────
   hygiene:
     name: repo hygiene
@@ -746,3 +697,52 @@ jobs:
             fi
           done
           exit $inert
+
+  # ── The long tests ────────────────────────────────────────────────────────
+  # test_convergence runs all 76 algorithms to convergence; test_constraints
+  # runs all 76 twice, with constraint handling off and on. Together they are
+  # the bulk of the suite's runtime, so every push skips them (-LE nightly) and
+  # this job runs them on a schedule instead.
+  #
+  # Skipping them on a push is a real trade: a regression in one of them is
+  # caught within a day rather than within a minute. That is the right way
+  # round — they guard slow rot (an algorithm quietly stopping converging), not
+  # the kind of breakage a compiler catches.
+  nightly:
+    name: nightly · full test suite
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'full-tests')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DMOOTATION_WERROR=ON
+          -DMOOTATION_BUILD_C_API=ON
+
+      # four jobs, not -j alone: unbounded, the units that include every core
+      # outgrew the runner's memory and the runner was shut down mid-build
+      # (g++ 20, task 15; the sanitized build's below since task 14)
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: The tests every push skips
+        run: ctest --test-dir build --output-on-failure -L nightly
+
+      - name: Everything else, for completeness
+        run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
+
+      # The long tests are the only ones that drive every algorithm to
+      # convergence, so they are the only place a use-after-free in a rarely
+      # taken branch will surface. Running them under the sanitizers is slow,
+      # which is precisely why it belongs here and not on a push.
+      - name: The long tests again, under ASan and UBSan
+        run: |
+          cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
+          cmake --build build-asan -j 4
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly

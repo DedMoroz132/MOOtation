@@ -80,6 +80,9 @@ struct PyProblem {
     // Binary variables after the real ones (task 7, supplement 2, §3): the
     // evaluators receive the real values, then the bits as 0.0 and 1.0.
     int    n_bin        = 0;
+    // A noisy measurement (task 17, supplement 2, §1.3): problem.hpp's
+    // is_stochastic(); the cores' caches are off by default where it is set.
+    bool   stochastic   = false;
     // One of the two. evaluate_batch is preferred: it crosses the GIL once per
     // generation instead of once per individual.
     std::function<std::vector<double>(std::vector<double>)>               evaluate;
@@ -489,6 +492,7 @@ void native_run_batch(const mootation::BatchRequest& req, mootation::BatchRespon
             bounds;                                                            \
         int get_vars_n() const { return static_cast<int>(bounds.size()); }     \
         int get_bin_vars_n() const { return g_problem ? g_problem->n_bin : 0; }\
+        bool is_stochastic() const { return g_problem && g_problem->stochastic; }\
         int get_objs_n() const                                                 \
         {                                                                      \
             return g_problem ? g_problem->n_objectives : 0;                    \
@@ -1286,6 +1290,9 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("evaluate_batch", &PyProblem::evaluate_batch)
         .def_readwrite("limits_batch",   &PyProblem::limits_batch)
         .def_readwrite("n_bin",          &PyProblem::n_bin)
+        .def_readwrite("stochastic",     &PyProblem::stochastic,
+                       "One x evaluated twice may give two values: the cores' caches of "
+                       "points evaluated are off by default (problem.hpp, is_stochastic).")
         .def_readwrite("native",         &PyProblem::native,
                        "A problem of the C++ suite (_core.Native): the run evaluates it "
                        "without calling Python, and evaluate, evaluate_batch and "

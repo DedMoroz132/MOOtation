@@ -142,6 +142,13 @@ void refresh_copies(const Vault& vault, std::vector<std::vector<Copy>>& copies, 
     for (auto& c : copies) refresh_copies(vault, c, with_cv);
 }
 
+// Whether a Problem says it is stochastic (problem.hpp, is_stochastic).
+template <typename P, typename = void>
+struct has_is_stochastic : std::false_type {};
+template <typename P>
+struct has_is_stochastic<P, std::void_t<decltype(std::declval<const P&>().is_stochastic())>>
+    : std::true_type {};
+
 template <typename Ind_type>
 class DataVault {
 private:
@@ -573,6 +580,14 @@ public:
 
     const std::vector<std::pair<std::optional<double>, std::optional<double>>>&
     get_bounds() const { return problem_.bounds; }
+
+    // The problem's is_stochastic() where it has one (problem.hpp), false
+    // otherwise: the cores' caches of points evaluated are off by default
+    // on a stochastic problem (task 17, supplement 2, §1.3).
+    bool stochastic() const {
+        if constexpr (has_is_stochastic<Problem<Ind_type>>::value) return problem_.is_stochastic();
+        else return false;
+    }
 
     // ── Active population management ─────────────────────────────────────────
 

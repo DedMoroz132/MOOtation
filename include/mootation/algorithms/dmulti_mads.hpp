@@ -146,7 +146,9 @@ private:
     std::vector<double> lo_, hi_;
     double tau_ = 0.5, delta0_ = 0.1, tol_ = 1e-9;
     bool spread_ = true, opportunistic_ = false, speculative_ = true;
-    bool cache_ = true;                                    // DMM-8
+    bool cache_ = true;                                    // DMM-8, as the run uses it
+    std::string cache_mode_ = "on";                        // mads_cache: on, off, force
+    std::string cache_note_ = "on";
     bool cache_check_ = false;                             // every hit evaluated again (a check)
     std::map<std::vector<double>, Entry> seen_;            // V^k: the points evaluated, by x
     long long cache_hits_ = 0;
@@ -441,8 +443,8 @@ public:
             return true;
         }
         if (k == "mads_cache") {                                            // DMM-8
-            if (w != "off" && w != "on") throw bad("off or on");
-            cache_ = w == "on";
+            if (w != "off" && w != "on" && w != "force") throw bad("off, on or force");
+            cache_mode_ = w;
             return true;
         }
         if (k == "cache_check") {
@@ -455,6 +457,10 @@ public:
 
     std::size_t list_size() const { return list_.size(); }
     long long cache_hits() const { return cache_hits_; }               // DMM-8: evaluations saved
+    std::vector<std::pair<std::string, std::string>> effective_settings() const
+    {
+        return {{"mads_cache", cache_note_}};
+    }
 
     // The incumbent's mesh below 1e-9 (§6.3): it has the largest Δ, so every
     // member's is.
@@ -466,8 +472,18 @@ public:
         return mesh(dmax) < tol_;
     }
 
+    // The cache as the run uses it: off on a stochastic problem but where
+    // forced (task 17, supplement 2, §1.3; problem.hpp, is_stochastic).
+    void choose_cache(const DataVault<Ind_t>& vault)
+    {
+        cache_ = cache_mode_ == "force" || (cache_mode_ == "on" && !vault.stochastic());
+        cache_note_ = cache_mode_ == "on" && !cache_ ? "off: the problem is stochastic"
+                                                    : cache_ ? "on" : "off";
+    }
+
     void setup(DataVault<Ind_t>& vault)
     {
+        choose_cache(vault);
         read_bounds(vault);
         const std::size_t n = lo_.size();
         std::vector<std::vector<double>> S;
@@ -481,6 +497,7 @@ public:
 
     void setup_seeded(DataVault<Ind_t>& vault)
     {
+        choose_cache(vault);
         read_bounds(vault);
         std::vector<Entry> first;
         for (std::size_t v = 0; v < vault.active_n(); ++v) {

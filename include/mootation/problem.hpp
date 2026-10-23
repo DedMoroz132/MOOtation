@@ -20,6 +20,12 @@ namespace mootation {
 //   int  get_lims_n()     const;
 //   void calc_objs(Ind_type& ind) const;
 //   std::vector<std::pair<std::optional<double>, std::optional<double>>> bounds;
+// Optional:
+//   bool is_stochastic() const;   true where one x evaluated twice may give
+//                                 two values (a noisy measurement): the cores'
+//                                 caches of points evaluated are off there by
+//                                 default (task 17, supplement 2, §1.3).
+//                                 Without it the problem is deterministic.
 template <typename Ind_type>
 class Problem {
 private:

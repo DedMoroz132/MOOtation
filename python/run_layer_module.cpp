@@ -330,11 +330,12 @@ void bind_run_layer(py::module_& m)
                   h = mootation::run_metrics::hypervolume(f.v.data(), f.n, f.m, lo, hi, ref_scale, samples, seed,
                                                           exact_max_m, algo);
               }
-              return py::make_tuple(h.value, std::string(h.method));
+              return py::make_tuple(h.value, std::string(h.method), h.se);
           },
           py::arg("F"), py::arg("ideal"), py::arg("nadir"), py::arg("ref_scale"), py::arg("samples"),
           py::arg("seed"), py::arg("exact_max_m"), py::arg("algo"),
-          "mootation.run.metrics.hypervolume: (value, method), the same value.");
+          "mootation.run.metrics.hypervolume: (value, method, the Monte-Carlo estimate's "
+          "standard error or NaN), the same value.");
     m.def("cover_rate",
           [](const Arr& X, const Arr& P) {
               Rows x = rows_of(X, "cover_rate: X"), p = rows_of(P, "cover_rate: pareto_set");

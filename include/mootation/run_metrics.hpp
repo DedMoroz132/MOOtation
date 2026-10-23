@@ -223,6 +223,10 @@ constexpr std::uint32_t kHvMcStream = 0x6A09E667u;
 struct Hv {
     double value = 0.0;
     const char* method = "none";
+    // the Monte-Carlo estimate's standard error, in the value's units (task
+    // 17, supplement 2, §2): box sqrt(p (1 - p) / samples) / ref_scale^M, p
+    // the share of the points covered; NaN for an exact value
+    double se = std::numeric_limits<double>::quiet_NaN();
 };
 
 // metrics.hypervolume: the rows of F in the frame, the reference point
@@ -284,10 +288,16 @@ inline Hv hypervolume(const double* F, std::size_t n, std::size_t m, const Vec& 
                 done += chunk;
             }
             v = box * static_cast<double>(hit) / static_cast<double>(samples);
+            const double share = static_cast<double>(hit) / static_cast<double>(samples);
+            out.se = box * std::sqrt(share * (1.0 - share) / static_cast<double>(samples));
+        } else {
+            out.se = 0.0;
         }
         out.method = "mc";
     }
-    out.value = v / dm::pow(ref_scale, static_cast<double>(m));
+    const double scale_m = dm::pow(ref_scale, static_cast<double>(m));
+    out.value = v / scale_m;
+    if (!std::isnan(out.se)) out.se = out.se / scale_m;
     return out;
 }
 

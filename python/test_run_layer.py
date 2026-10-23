@@ -3483,7 +3483,7 @@ final_metrics = ["hv_h"]
         cfg = load(cfg_path)
         assert validate(cfg) == [], validate(cfg)
         spec = C.campaign_spec(cfg)
-        assert (spec.trajectory_hv_mc_samples, spec.hv_exact_max_m) == (4000, 5)
+        assert (spec.trajectory_hv_mc_samples, spec.hv_exact_max_m) == (4000, 10)
         root = C.out_root(cfg, spec)
         (job,) = C.expand_jobs(cfg, spec)
         assert C.run_job(job, root, spec, quiet=True) == "done"
@@ -5028,6 +5028,66 @@ snapshot_variables = "all"
 
 
 @test
+def the_hypervolume_knobs_follow_the_owners_table():
+    """Task 17, supplement 2, §2: hv_archive is the exact hypervolume of the
+    archive written (the store's archive, float64, cut to archive_cap x N),
+    bit for bit, on the
+    trajectory and in final_archive at three objectives; above the grid's and
+    the archive's limits (five objectives, the limits set to four) the
+    trajectory's hv is a Monte-Carlo estimate with its standard error, the
+    final one exact, and no hv_archive."""
+    if not _have_numpy() or _core_with("hv_normalised") is None:
+        print("    (skipped: no NumPy or no compiled run layer)"); return
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import campaign as C
+    from mootation.run import metrics as M
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        for prob in ("DTLZ2_3D", "DTLZ2_5D"):
+            text = f"""algorithms = [ {{ name = "nsga3", pop = 0, gens = 0 }} ]
+[run]
+name = "h{prob}"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["{prob}"]
+[campaign]
+out = "res_{prob}"
+budget_fe = 2000
+storage = "store"
+archive_cap = 2
+metrics = ["igdp", "hv"]
+""" + ("hv_grid_exact_max_m = 4\nhv_archive_grid_max_m = 4\nhv_archive_final_max_m = 4\n"
+       if prob == "DTLZ2_5D" else "")
+            cfg_path = Path(td) / f"{prob}.toml"
+            cfg_path.write_text(text, encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            job = C.expand_jobs(cfg, spec)[0]
+            assert C.run_job(job, root, spec, quiet=True) == "done"
+            from mootation import store
+            (key, loc), = store.index(store.store_dir(root)).items()
+            d = store.StoredRun(loc, key)
+            meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+            T = C.read_trajectory(d)
+            p = get(prob)
+            if prob == "DTLZ2_3D":
+                AF, _ = C._read_points(d / "archive.csv", 3, p.n_vars)
+                want = M.hypervolume(AF, p.ideal, p.nadir, exact_max_m=3)[0]
+                assert meta["final_archive"]["hv_archive"] == want, (meta["final_archive"], want)
+                assert all("hv_archive" in t for t in T) and T[-1]["hv_archive"] == want
+                assert T[-1]["hv_method"] == "exact" and "hv_se" not in T[-1]
+            else:
+                assert T[-1]["hv_method"] == "mc" and T[-1]["hv_se"] > 0, T[-1]
+                assert meta["final"]["hv_method"] == "exact" and "hv_archive" not in meta["final_archive"]
+                assert not any("hv_archive" in t for t in T)
+
+
+@test
 def archive_cap_keeps_the_archive_scenarios_points():
     """archive_cap (task 16, supplement 1): the archive written cut to cap x N
     by DSS; its first N are the archive scenario's, found again from the file
@@ -6049,6 +6109,48 @@ def a_cache_changes_nothing_but_the_budget():
             k = min(len(distinct), len(on))
             assert len(set(x for x, _ in on)) == len(on) and distinct[:k] == on[:k] and k > 100, (name, alg, k)
             run(name, alg, knob, "on", check="on")             # raises where a hit differs
+
+
+@test
+def a_stochastic_problem_turns_the_caches_off():
+    """Task 17, supplement 2, §1.3: on a problem declared stochastic the
+    cores' caches (DMS, DMulti-MADS, PAES) are off unless forced, every repeat
+    a new measurement, and Result.settings says why; "force" keeps the cache.
+    A deterministic problem keeps it. The noisy copies of kinds n and h and
+    RE91 are stochastic, those of kinds d and s and every other problem not."""
+    if not _have_numpy():
+        print("  skip  a_stochastic_problem...: no NumPy"); return
+    from mootation import _core
+    if not hasattr(_core.Problem(), "stochastic"):
+        print("  skip  a_stochastic_problem...: stale _core"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ2_3D")
+
+    def run(alg, knob, value, stochastic):
+        xs = []
+
+        def f(x):
+            xs.append(np.asarray(x, float).tobytes())
+            return list(p.evaluate(list(x)))
+
+        r = minimize(f, bounds=p.bounds, n_objs=3, algorithm=alg, max_evaluations=800, seed=2,
+                     pop_size=20, stochastic=stochastic, **{knob: value})
+        return dict(r.settings)[knob], len(xs) - len(set(xs))
+
+    for alg, knob in (("dms", "dms_cache"), ("dmulti_mads", "mads_cache"), ("paes", "paes_cache")):
+        note, repeats = run(alg, knob, "on", True)
+        assert note == "off: the problem is stochastic" and repeats > 0, (alg, note, repeats)
+        assert run(alg, knob, "force", True) == ("on", 0), alg
+        assert run(alg, knob, "on", False) == ("on", 0), alg
+        assert run(alg, knob, "off", True)[0] == "off", alg
+        # "on" on a stochastic problem is "off": the same calls, repeats and all
+        assert repeats == run(alg, knob, "off", False)[1], alg
+    flags = {name: get(name).stochastic for name in
+             ("DTLZ2_3D", "DTLZ2_3D_n1", "DTLZ2_3D_h5", "DTLZ2_3D_d1", "DTLZ2_3D_s5", "RE91", "RE21")}
+    assert flags == {"DTLZ2_3D": False, "DTLZ2_3D_n1": True, "DTLZ2_3D_h5": True,
+                     "DTLZ2_3D_d1": False, "DTLZ2_3D_s5": False, "RE91": True, "RE21": False}, flags
 
 
 @test

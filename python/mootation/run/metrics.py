@@ -29,6 +29,8 @@ with (the functions named *_numpy) and runs where the extension is not built.
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 HV_EXACT_MAX_M = 5
@@ -310,9 +312,15 @@ def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: 
     only counted by the compiled hv_covered when the extension is built, so
     the estimate does not depend on which of the two counted it.
     """
+    box, hit = _hv_mc_count(pl, ref, lo, samples, seed)
+    return float(box * hit / samples) if box > 0 else 0.0
+
+
+def _hv_mc_count(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: int):
+    """(the box's volume, how many of the samples some row of pl covers)."""
     box = np.prod(ref - lo)
     if box <= 0:
-        return 0.0
+        return box, 0
     try:
         from .. import _core
         count = getattr(_core, "hv_covered", None)
@@ -331,7 +339,7 @@ def _hv_mc(pl: np.ndarray, ref: np.ndarray, lo: np.ndarray, samples: int, seed: 
             for row in pl:
                 covered |= np.all(row[None, :] <= s, axis=1)
             hit += int(covered.sum())
-    return float(box * hit / samples)
+    return box, hit
 
 
 def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
@@ -355,11 +363,29 @@ def hypervolume(F: np.ndarray, ideal, nadir, *, ref_scale: float = 1.1,
     nadir = np.asarray(nadir, float)
     if F.size == 0:
         return 0.0, "none"
+    v, method, _ = hypervolume_se(F, ideal, nadir, ref_scale=ref_scale, mc_samples=mc_samples,
+                                  seed=seed, exact_max_m=exact_max_m, hv_algo=hv_algo)
+    return v, method
+
+
+def hypervolume_se(F, ideal, nadir, *, ref_scale: float = 1.1, mc_samples: int = HV_MC_SAMPLES,
+                   seed: int = 0, exact_max_m: int = HV_EXACT_MAX_M,
+                   hv_algo: str = "auto") -> tuple[float, str, float | None]:
+    """hypervolume() and the Monte-Carlo estimate's standard error (task 17,
+    supplement 2, §2): ref_scale^-M box sqrt(p (1 - p) / samples), p the share
+    of the samples covered; None for an exact value."""
+    if hv_algo not in ("auto", "wfg", "box"):
+        raise ValueError(f"hv_algo = '{hv_algo}': auto, wfg or box")
+    F = np.asarray(F, float)
+    ideal = np.asarray(ideal, float)
+    nadir = np.asarray(nadir, float)
+    if F.size == 0:
+        return 0.0, "none", None
     fn = _compiled("hv_normalised")
     if fn is not None and _plain(F):
-        v, method = fn(F, ideal, nadir, float(ref_scale), int(mc_samples), int(seed) & 0xFFFFFFFFFFFFFFFF,
-                       int(exact_max_m), hv_algo)
-        return float(v), method
+        v, method, se = fn(F, ideal, nadir, float(ref_scale), int(mc_samples),
+                           int(seed) & 0xFFFFFFFFFFFFFFFF, int(exact_max_m), hv_algo)
+        return float(v), method, (None if math.isnan(se) else float(se))
     return _hypervolume_numpy(F, ideal, nadir, ref_scale=ref_scale, mc_samples=mc_samples, seed=seed,
                               exact_max_m=exact_max_m, hv_algo=hv_algo)
 
@@ -375,16 +401,19 @@ def _hypervolume_numpy(F, ideal, nadir, *, ref_scale, mc_samples, seed, exact_ma
     ref = np.full(m, float(ref_scale))
     G = G[np.all(G < ref, axis=1)]
     if len(G) == 0:
-        return 0.0, "none"
+        return 0.0, "none", None
     G = nondominated(G)
     if m <= exact_max_m:
         v = _hv_exact(G, ref, hv_algo)
         method = "exact"
     else:
         lo = np.minimum(G.min(axis=0), 0.0)
-        v = _hv_mc(G, ref, lo, mc_samples, seed)
-        method = "mc"
-    return float(v / ref_scale ** m), method
+        box, hit = _hv_mc_count(G, ref, lo, mc_samples, seed)
+        v = float(box * hit / mc_samples) if box > 0 else 0.0
+        share = hit / mc_samples
+        se = float(box * math.sqrt(share * (1.0 - share) / mc_samples)) if box > 0 else 0.0
+        return float(v / ref_scale ** m), "mc", se / ref_scale ** m
+    return float(v / ref_scale ** m), method, None
 
 
 def eps_plus(F: np.ndarray, ref: np.ndarray) -> float:
@@ -1021,18 +1050,22 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
             if not have_box:
                 out["hv"] = None
             else:
-                v, method = hypervolume(F, ideal, nadir, **hvo)
+                v, method, se = hypervolume_se(F, ideal, nadir, **hvo)
                 out["hv"] = v
                 out["hv_method"] = method
+                if se is not None:
+                    out["hv_se"] = se
         elif name == "hv_h":
             if not have_box or not pop or F.ndim != 2:
                 out["hv_h"] = None
             else:
                 scale = 1.0 + 1.0 / lattice_h(F.shape[1], int(pop))
-                v, method = hypervolume(F, ideal, nadir, ref_scale=scale, **hvo)
+                v, method, se = hypervolume_se(F, ideal, nadir, ref_scale=scale, **hvo)
                 out["hv_h"] = v
                 out["hv_h_ref"] = scale
                 out["hv_method"] = method
+                if se is not None:
+                    out["hv_h_se"] = se
         elif name == "r2":
             if not have_box or not pop or F.ndim != 2 or not F.size:
                 out["r2"] = None
