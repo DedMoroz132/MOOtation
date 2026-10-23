@@ -2019,14 +2019,19 @@ appends its runs to its own segment under `<results>/store/` — a text header
 new one past `segment_mb` (1024). A run is one record: its meta.json as text,
 its trajectory column by column, and its point sets — the final population,
 the archive, the second answer, the snapshots — as float64 straight from
-memory, each block zlib-compressed (byte-shuffled first where that is
-smaller). The store keeps the points to the last bit; the run folders
+memory. Format 3 (task 17) codes them with the library's own codecs: the
+point sets together, a column of one name (f1, x3 ...) through all of them,
+a value met before by reference and a new one by its top bits through an
+adaptive range coder and the rest raw; text by its own LZ77; every record
+checked by CRC-32C. `docs/store-format.md` has the format byte by byte. The
+store keeps the points to the last bit; the run folders
 (`storage = "files"`) and `mootation store export` write them with ten
 significant digits, the same text either way. `keep = "standard"` (the
 default) leaves out the archives at the intermediate points of the budget
 grid (`archive_at.npz`, `archive_checkpoints`); `"full"` keeps them. The
-default `storage` is `"files"`, the folder of files per run. A store written
-by task 16's code (format 1: the CSV's ten-digit numbers) is read as before.
+default `storage` is `"files"`, the folder of files per run. Stores of
+formats 1 and 2 (task 16: zlib) are read as before; format 3 needs the
+compiled extension.
 
 `archive_cap = 10` (`[campaign]`, x N) writes at most 10 N points of the run
 archive: the first 10 N in DSS order, in the frame the archive scenario

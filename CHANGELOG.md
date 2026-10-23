@@ -43,6 +43,9 @@ always listed under **Changed** or **Removed**.
   go together, a column of one name through all of them, so that a point
   two of them hold is written once. A record's blocks read back bit for
   bit; formats 1 and 2 are read as before; format 3 needs the extension.
+  Bytes (JSON, text) by the library's own LZ77 and range coder, no zlib;
+  records checked by CRC-32C (`MOOTREC2`). The format, byte by byte:
+  `docs/store-format.md`.
 
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a
   run evaluated was kept as a tuple of Python floats, about 3 kB a point of
