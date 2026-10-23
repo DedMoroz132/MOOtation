@@ -49,8 +49,12 @@ was given.
 
 LAYER 2, AFTER THE CAMPAIGN (compact): one pack per family of problems
 (families.family), records sorted by (problem, algorithm, variant, seed,
-budget) and copied byte for byte, so that the pack is the same whatever
-process wrote which run. LAYER 3: a table of the trajectories per family
+budget), so that the pack is the same whatever process wrote which run. In
+format 3 the runs' meta.json go into one table of the pack,
+pack-<family>.meta (supplement 5, §2.3; encode_meta_table): a record keeps a
+mark "#meta" where its meta.json was, and reading puts it back — the blocks
+read are the blocks written. Records of formats 1 and 2 are copied byte for
+byte. LAYER 3: a table of the trajectories per family
 (metrics-<family>.mhd/.raw, column after column), read by metrics() and
 written to CSV by export_csv().
 
@@ -762,7 +766,7 @@ def scan_raw(raw: Path) -> tuple:
             break
         key, body, crc, end = got
         try:
-            status = _status_of(decode_blocks(body))
+            status = _status_of(_with_meta(key, decode_blocks(body), Path(raw)))
         except ValueError:                  # format 3 without the extension: whole, status unread
             status = "?"
         out.append((key, Loc(Path(raw), at, end - at, crc, status)))
@@ -913,14 +917,229 @@ def index(store: Path) -> dict:
 
 
 def read_record(loc: Loc) -> list:
-    """The blocks of the record at loc; ValueError if it is not whole and sound."""
+    """The blocks of the record at loc; ValueError if it is not whole and sound.
+    A pack's record gets its meta.json back from the pack's table."""
     with open(loc.raw, "rb") as fh:
         fh.seek(loc.offset)
         buf = fh.read(loc.length)
     got = _parse_record(buf, 0)
     if got is None or got[2] != loc.crc:
         raise ValueError(f"{loc.raw.name}@{loc.offset}: not a whole record (length or CRC)")
-    return decode_blocks(got[1])
+    return _with_meta(got[0], decode_blocks(got[1]), Path(loc.raw))
+
+
+# ── the meta table of a pack (format 3; supplement 5, §2.3) ─────────────────
+#
+# meta.json of every run of a pack as a table: a run's JSON is a skeleton
+# (its dicts and lists, every leaf a 0) and its leaves in depth-first order,
+# each in the column of its path (the keys and list positions down to it). A
+# column keeps its leaves' types (0 null, 1 false, 2 true, 3 int, 4 float,
+# 5 text) and its ints, floats and texts apart, each by its codec: ints and
+# types "i64", floats "f64", texts a dictionary of the column's distinct
+# texts and an index each. The skeletons are a dictionary too: most runs
+# share one. A run whose text json.dumps(..., indent=1) does not give back
+# (its CR LF line ends are kept) is kept as its text.
+#
+#     magic "MOOTMET1" | u32 CRC-32C of the body | body
+#     body: pieces, each a varint length and its bytes —
+#       header (text codec: JSON {"rows", "columns"}), keys (text codec: JSON),
+#       skeletons (text codec: JSON), each row's skeleton (i64), CR LF (i64),
+#       the texts kept whole (text codec: JSON {row: text}),
+#       then per column: types, ints (i64), floats (f64), the texts' indices
+#       (i64), the column's texts (text codec: JSON)
+
+META_MAGIC = b"MOOTMET1"
+_META_CACHE: dict = {}
+
+
+def _put_piece(out: list, data: bytes) -> None:
+    n = len(data)
+    head = bytearray()
+    while n >= 0x80:
+        head.append((n & 0x7F) | 0x80)
+        n >>= 7
+    head.append(n)
+    out.append(bytes(head) + data)
+
+
+def _pieces(body: bytes):
+    at = 0
+    while at < len(body):
+        n, shift = 0, 0
+        while True:
+            b = body[at]
+            at += 1
+            n |= (b & 0x7F) << shift
+            shift += 7
+            if not b & 0x80:
+                break
+        yield body[at:at + n]
+        at += n
+
+
+def _leaves(v, path: tuple, out: list):
+    """v's skeleton; its leaves appended to out as (path, value)."""
+    if isinstance(v, dict):
+        return {k: _leaves(x, path + (k,), out) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_leaves(x, path + ([i],), out) for i, x in enumerate(v)]
+    out.append((json.dumps(path), v))
+    return 0
+
+
+def _fill(skel, path: tuple, take):
+    if isinstance(skel, dict):
+        return {k: _fill(x, path + (k,), take) for k, x in skel.items()}
+    if isinstance(skel, list):
+        return [_fill(x, path + ([i],), take) for i, x in enumerate(skel)]
+    return take(json.dumps(path))
+
+
+def encode_meta_table(rows: list) -> bytes:
+    """[(key, meta.json bytes)] as a pack's table (the comment above)."""
+    import numpy as np
+    c = _codec()
+    keys, skels, skel_ids, crlf, whole = [], {}, [], [], {}
+    cols: dict = {}
+    for r, (key, text) in enumerate(rows):
+        keys.append(key)
+        cr = b"\r\n" in text
+        crlf.append(int(cr))
+        try:
+            obj = json.loads(text)
+            ok = _meta_text(obj, cr) == text
+        except ValueError:
+            ok = False
+        leaves: list = []
+        if ok:
+            skel = json.dumps(_leaves(obj, (), leaves), separators=(",", ":"))
+            ok = all(v is None or isinstance(v, (bool, float, str)) or
+                     (isinstance(v, int) and -2 ** 63 <= v < 2 ** 63) for _, v in leaves)
+        if not ok:
+            whole[r] = text.decode("utf-8")
+            skel_ids.append(-1)
+            continue
+        skel_ids.append(skels.setdefault(skel, len(skels)))
+        for path, v in leaves:
+            col = cols.setdefault(path, {"types": [], "ints": [], "floats": [], "texts": [], "dict": {}})
+            if v is None:
+                col["types"].append(0)
+            elif isinstance(v, bool):
+                col["types"].append(2 if v else 1)
+            elif isinstance(v, int):
+                col["types"].append(3)
+                col["ints"].append(v)
+            elif isinstance(v, float):
+                col["types"].append(4)
+                col["floats"].append(v)
+            else:
+                col["types"].append(5)
+                col["texts"].append(col["dict"].setdefault(v, len(col["dict"])))
+    def text_piece(obj):
+        return bytes(c.store_encode_text(json.dumps(obj).encode()))
+
+    def ints(v):
+        return bytes(c.store_encode_i64(np.asarray(v, np.int64)))
+    out: list = []
+    _put_piece(out, text_piece({"rows": len(rows), "columns": list(cols)}))
+    _put_piece(out, text_piece(keys))
+    _put_piece(out, text_piece(list(skels)))
+    _put_piece(out, ints(skel_ids))
+    _put_piece(out, ints(crlf))
+    _put_piece(out, text_piece({str(r): t for r, t in whole.items()}))
+    for col in cols.values():
+        _put_piece(out, ints(col["types"]))
+        _put_piece(out, ints(col["ints"]))
+        _put_piece(out, bytes(c.store_encode_f64(np.asarray(col["floats"], np.float64))))
+        _put_piece(out, ints(col["texts"]))
+        _put_piece(out, text_piece(list(col["dict"])))
+    body = b"".join(out)
+    return META_MAGIC + struct.pack("<I", crc32c(body)) + body
+
+
+def decode_meta_table(data: bytes) -> dict:
+    """{key: meta.json bytes} of a pack's table; ValueError where it is damaged."""
+    import numpy as np
+    c = _codec()
+    if c is None:
+        raise ValueError("a pack's meta table needs the compiled extension")
+    if data[:8] != META_MAGIC or len(data) < 12:
+        raise ValueError("not a pack's meta table")
+    (crc,) = struct.unpack_from("<I", data, 8)
+    body = data[12:]
+    if crc32c(body) != crc:
+        raise ValueError("a pack's meta table: its checksum does not hold")
+    pieces = list(_pieces(body))
+
+    def text(i):
+        return json.loads(bytes(c.store_decode_text(pieces[i])))
+    head = text(0)
+    n = head["rows"]
+    keys, skels, whole = text(1), text(2), text(5)
+    skel_ids = c.store_decode_i64(pieces[3], n).tolist()
+    crlf = c.store_decode_i64(pieces[4], n).tolist()
+    # the columns' leaves, in row order: types first, then each kind's values
+    cols, at = {}, 6
+    counts: dict = {}
+    for r, sid in enumerate(skel_ids):           # how many leaves each column holds
+        if sid < 0:
+            continue
+        _fill(json.loads(skels[sid]), (), lambda path: counts.__setitem__(path, counts.get(path, 0) + 1))
+    for path in head["columns"]:
+        types = c.store_decode_i64(pieces[at], counts.get(path, 0)).tolist()
+        n_int, n_float, n_text = types.count(3), types.count(4), types.count(5)
+        cols[path] = {
+            "types": iter(types),
+            "ints": iter(c.store_decode_i64(pieces[at + 1], n_int).tolist()),
+            "floats": iter(np.asarray(c.store_decode_f64(pieces[at + 2], n_float)).tolist()),
+            "texts": iter(c.store_decode_i64(pieces[at + 3], n_text).tolist()),
+            "dict": text(at + 4),
+        }
+        at += 5
+
+    def take(path):
+        col = cols[path]
+        t = next(col["types"])
+        if t == 0:
+            return None
+        if t in (1, 2):
+            return t == 2
+        if t == 3:
+            return int(next(col["ints"]))
+        if t == 4:
+            return float(next(col["floats"]))
+        return col["dict"][next(col["texts"])]
+    out = {}
+    for r, (key, sid) in enumerate(zip(keys, skel_ids)):
+        if sid < 0:
+            out[key] = whole[str(r)].encode("utf-8")
+        else:
+            out[key] = _meta_text(_fill(json.loads(skels[sid]), (), take), bool(crlf[r]))
+    return out
+
+
+def _pack_metas(raw: Path):
+    """{key: meta.json bytes} of the pack whose data is raw, or None."""
+    p = Path(raw).with_suffix(".meta")
+    if not Path(raw).name.startswith("pack-") or not p.exists():
+        return None
+    st = p.stat()
+    tag = (str(p), st.st_mtime_ns, st.st_size)
+    if tag not in _META_CACHE:
+        _META_CACHE.clear()
+        _META_CACHE[tag] = decode_meta_table(p.read_bytes())
+    return _META_CACHE[tag]
+
+
+def _with_meta(key: str, blocks: list, raw: Path) -> list:
+    """A pack's record with its meta.json put back at its mark."""
+    if not any(b.name == "#meta" for b in blocks):
+        return blocks
+    metas = _pack_metas(raw)
+    if metas is None or key not in metas:
+        raise ValueError(f"{raw.name}: {key}: its meta.json is not in the pack's table")
+    blocks = [Block("meta.json", "json", (), metas[key]) if b.name == "#meta" else b for b in blocks]
+    return _final_back(blocks)
 
 
 def read_record_bytes(loc: Loc) -> bytes:
@@ -1098,18 +1317,34 @@ def compact(campaign: Path, *, remove_segments: bool = False, expected: list | N
     for fam, keys in sorted(fams.items()):
         raw = s / f"pack-{_safe(fam)}.raw"
         tmp = raw.with_suffix(f".raw.{os.getpid()}.tmp")
-        entries, metas = [], []
+        entries, metas, table = [], [], []
         with open(tmp, "wb") as out:
             for key in keys:
-                rec = read_record_bytes(idx[key])
+                loc = idx[key]
+                blocks = read_record(loc)
+                by = {b.name: b for b in blocks}
+                rec = read_record_bytes(loc)
+                if _codec() is not None and record_format(by) >= 3 and "meta.json" in by:
+                    # format 3: meta.json into the pack's table, a mark in its place
+                    once = {b.name: b for b in _final_once(blocks)}["meta.json"].data
+                    table.append((key, once))
+                    rec = encode_record(key, encode_body(
+                        [Block("#meta", "json", (), b"") if b.name == "meta.json" else b for b in blocks]))
                 offset = out.tell()
                 out.write(rec)
-                loc = idx[key]
-                entries.append((key, Loc(raw, offset, len(rec), loc.crc, loc.status)))
-                by = {b.name: b for b in decode_blocks(_parse_record(rec, 0)[1])}
+                got = _parse_record(rec, 0)
+                entries.append((key, Loc(raw, offset, len(rec), got[2], loc.status)))
                 metas.append(json.loads(file_content(by, "meta.json")) if "meta.json" in by else {})
             out.flush()
             os.fsync(out.fileno())
+        meta_path = raw.with_suffix(".meta")
+        if table:
+            tmp_meta = meta_path.with_suffix(f".meta.{os.getpid()}.tmp")
+            tmp_meta.write_bytes(encode_meta_table(table))
+            os.replace(tmp_meta, meta_path)
+        else:
+            meta_path.unlink(missing_ok=True)
+        _META_CACHE.clear()
         os.replace(tmp, raw)
         write_index(raw, entries)
         # read from the records, so that the header too is the same whatever
@@ -1126,7 +1361,7 @@ def compact(campaign: Path, *, remove_segments: bool = False, expected: list | N
     if remove_segments:
         new = index(s)
         for key, loc in idx.items():
-            if loc.raw.name.startswith("seg-") and read_record_bytes(new[key]) != read_record_bytes(loc):
+            if loc.raw.name.startswith("seg-") and not _same_blocks(read_record(new[key]), read_record(loc)):
                 raise ValueError(f"{key}: the pack's record is not the segment's; nothing removed")
         for raw in segments(s):
             for suffix in (".raw", ".idx", ".mhd"):
@@ -1168,6 +1403,11 @@ def check(campaign: Path) -> dict:
     return out
 
 
+def _same_blocks(a: list, b: list) -> bool:
+    return [(x.name, x.dtype, tuple(x.shape), x.data) for x in a] == \
+        [(x.name, x.dtype, tuple(x.shape), x.data) for x in b]
+
+
 def merge(out_campaign: Path, parts: list) -> dict:
     """The stores of campaign parts (other machines' --shard) into one: their
     segments and packs copied in; a run in two parts must be the same bytes
@@ -1176,15 +1416,15 @@ def merge(out_campaign: Path, parts: list) -> dict:
     dst.mkdir(parents=True, exist_ok=True)
     have = {}
     for key, loc in index(dst).items():
-        have[key] = read_record_bytes(loc)
+        have[key] = read_record(loc)
     clash, copied = [], 0
     for part in parts:
         src = store_dir(part)
         for key, loc in index(src).items():
-            rec = read_record_bytes(loc)
-            if key in have and have[key] != rec:
+            blocks = read_record(loc)
+            if key in have and not _same_blocks(have[key], blocks):
                 clash.append(f"{key}: {part} differs")
-            have.setdefault(key, rec)
+            have.setdefault(key, blocks)
     if clash:
         raise ValueError(f"{len(clash)} runs differ between the parts: " + "; ".join(clash[:20]))
     w = SegmentWriter(dst, header={"merged_from": ",".join(str(p) for p in parts)})
@@ -1192,8 +1432,7 @@ def merge(out_campaign: Path, parts: list) -> dict:
     for key in sorted(have, key=sort_key):
         if key in mine:
             continue
-        got = _parse_record(have[key], 0)
-        w.append(key, decode_blocks(got[1]))
+        w.append(key, have[key])
         copied += 1
     return {"runs": len(have), "copied": copied}
 

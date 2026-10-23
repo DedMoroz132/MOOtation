@@ -12130,13 +12130,19 @@ def a_store_cuts_a_torn_record_and_packs_the_same_bytes():
         assert a["missing"] == ["ZDT1|nsga2||9|600"] and not a["failed"] and not a["removed"], a
         assert a["packs"] == b["packs"] == {"SYM-PART": 4, "ZDT": 4, "noisy": 4}, a
         names = sorted(p.name for p in s.glob("pack-*")) + sorted(p.name for p in s.glob("metrics-*"))
-        assert len(names) == 15, names
+        # format 3: every pack has its meta table (pack-<family>.meta) beside it
+        assert len(names) == (18 if store._codec() is not None else 15), names
         for f in names:
             assert (s / f).read_bytes() == (store.store_dir(other) / f).read_bytes(), f
         assert store.segments(s)                           # kept
         store.compact(root, remove_segments=True)
         assert not store.segments(s) and len(store.index(s)) == len(jobs)
-        assert {k: store.read_record_bytes(loc) for k, loc in store.index(s).items()} == records
+        # the runs read from the packs are the runs written, block for block
+        # (a pack's record lends its meta.json to the pack's table)
+        def blocks(bs):
+            return [(b.name, b.dtype, tuple(b.shape), b.data) for b in bs]
+        assert {k: blocks(store.read_record(loc)) for k, loc in store.index(s).items()} == \
+            {k: blocks(store.decode_blocks(store._parse_record(r, 0)[1])) for k, r in records.items()}
         t = store.metrics(root, family="ZDT")
         lines = sum(len(C.read_trajectory(C.run_dir_of(root, j))) for j in jobs if j.problem == "ZDT1")
         assert len(t["problem"]) == lines and set(t["algorithm"]) == {"nsga2", "moead"}, len(t["problem"])

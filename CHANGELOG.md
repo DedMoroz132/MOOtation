@@ -44,8 +44,9 @@ always listed under **Changed** or **Removed**.
   two of them hold is written once. A record's blocks read back bit for
   bit; formats 1 and 2 are read as before; format 3 needs the extension.
   Bytes (JSON, text) by the library's own LZ77 and range coder, no zlib;
-  records checked by CRC-32C (`MOOTREC2`). The format, byte by byte:
-  `docs/store-format.md`.
+  records checked by CRC-32C (`MOOTREC2`); `compact` keeps a pack's meta.json
+  as one table beside it (`pack-<family>.meta`, column by column). The
+  format, byte by byte: `docs/store-format.md`.
 
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a
   run evaluated was kept as a tuple of Python floats, about 3 kB a point of

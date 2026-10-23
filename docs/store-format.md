@@ -117,6 +117,33 @@ writes meta.json again as `json.dumps(meta, indent=1)`, its line ends CR LF
 where the stored text's are. A writer does this only where the rebuild gives
 the original bytes back.
 
+## A pack's meta table (`pack-<family>.meta`)
+
+`compact` takes every format-3 run's meta.json (as its record keeps it, final
+once) out of the record — a block `#meta` (json, empty) marks its place — and
+writes them as one table:
+
+    magic "MOOTMET1" | u32 CRC-32C of the body | body
+
+The body is pieces, each a varint length and its bytes:
+
+| piece | what |
+|---|---|
+| header | text codec: JSON `{"rows": n, "columns": [path, ...]}` |
+| keys | text codec: JSON list of the runs' keys, in the pack's order |
+| skeletons | text codec: JSON list of the distinct skeletons |
+| skeleton of each row | integer column (-1: kept whole) |
+| CR LF of each row | integer column (1: the text's line ends are CR LF) |
+| kept whole | text codec: JSON `{row: text}` |
+| per column, five | its leaves' types (integer column: 0 null, 1 false, 2 true, 3 int, 4 float, 5 text), its ints (integer column), its floats (float64 column), its texts' indices (integer column), its texts (text codec: JSON list) |
+
+A row's JSON is its skeleton — its dicts and lists in order, every leaf a 0
+(`json.dumps(..., separators=(",", ":"))`) — with the leaves filled in depth
+first, each the next of its column, a column being a leaf's path: the JSON
+text of the list of keys and `[index]`s down to it. The text is
+`json.dumps(meta, indent=1)`, CR LF where marked. Reading a pack's record
+puts its meta.json back at `#meta` (then rebuilds final).
+
 ## The codecs
 
 Varints are LEB128 (7 bits a byte, low first, the high bit set but on the
