@@ -12063,7 +12063,7 @@ def the_store_holds_what_the_run_folders_hold():
         segs = store.segments(store.store_dir(rs))
         assert len(segs) == 1 and all(segs[0].with_suffix(x).is_file() for x in (".mhd", ".idx"))
         head = store.read_header(segs[0].with_suffix(".mhd"))
-        assert head["format"] == "mootation-store" and int(head["records"]) == len(jobs), head
+        assert head["format"] == "mootation-store" and len(store.segment_entries(segs[0])) == len(jobs), head
         assert head["trajectory_version"] == str(C.TRAJECTORY_VERSION) and head["code_stamp"], head
         assert not any((store.store_dir(rs) / store.SCRATCH_DIR).rglob("*.json"))
         for job in jobs:
@@ -12071,7 +12071,7 @@ def the_store_holds_what_the_run_folders_hold():
             _same_run(rf / job.rel_dir, C.run_dir_of(rd, job), keep="standard")
         assert all(st == "done" for st in C.job_statuses(rs, jobs).values())
         assert C.run_job(jobs[0], rs, spec_s, quiet=True) == "done"
-        assert sum(int(store.read_header(p.with_suffix(".mhd"))["records"])
+        assert sum(len(store.segment_entries(p))
                    for p in store.segments(store.store_dir(rs))) == len(jobs)      # not run again
         key = lambda r: (r["problem"], r["algorithm"], r["seed"])      # noqa: E731
         sf = sorted(C.scan_results(rf), key=key)
@@ -12129,12 +12129,39 @@ def a_store_cuts_a_torn_record_and_packs_the_same_bytes():
         b = store.compact(other)
         assert a["missing"] == ["ZDT1|nsga2||9|600"] and not a["failed"] and not a["removed"], a
         assert a["packs"] == b["packs"] == {"SYM-PART": 4, "ZDT": 4, "noisy": 4}, a
+        # one file per family, the same whatever segments the records came in
         names = sorted(p.name for p in s.glob("pack-*")) + sorted(p.name for p in s.glob("metrics-*"))
-        # format 3: every pack has its meta table (pack-<family>.meta) beside it
-        assert len(names) == (18 if store._codec() is not None else 15), names
+        assert names == ["pack-SYM-PART.mpk", "pack-ZDT.mpk", "pack-noisy.mpk"], names
         for f in names:
             assert (s / f).read_bytes() == (store.store_dir(other) / f).read_bytes(), f
+            assert store.check_pack(s / f) == [], f
+            data = (s / f).read_bytes()
+            assert data[-64:-56] == store.PACK_FOOT and len(data) % 64 == 0
+            assert all(loc.offset % 64 == 0 for _, loc in store.segment_entries(s / f))
+        head = store.header_of(s / "pack-ZDT.mpk")
+        assert head["kind"] == "pack" and head["records"] == "4" and head["family"] == "ZDT", head
         assert store.segments(s)                           # kept
+        # a byte changed in a record: the pack's checksum and the record's tell
+        bad = Path(td) / "bad.mpk"
+        data = bytearray((s / "pack-ZDT.mpk").read_bytes())
+        (_, loc), *_ = store.segment_entries(s / "pack-ZDT.mpk")
+        data[loc.offset + loc.length // 2] ^= 1
+        bad.write_bytes(bytes(data))
+        got = store.check_pack(bad)
+        assert len(got) == 1 and "checksum" in got[0], got
+        # a pack of before (pack-<family>.raw beside .idx, .mhd): read, then replaced
+        old = Path(td) / "old"
+        w = store.SegmentWriter(store.store_dir(old))
+        for k in sorted(records):
+            if k.startswith("ZDT"):
+                w.append(k, store.decode_blocks(store._parse_record(records[k], 0)[1]))
+        (seg,) = store.segments(store.store_dir(old))
+        for suffix in (".raw", ".idx", ".mhd"):
+            seg.with_suffix(suffix).rename(store.store_dir(old) / f"pack-ZDT{suffix}")
+        assert len(store.index(store.store_dir(old))) == 4
+        store.compact(old)
+        assert sorted(p.name for p in store.store_dir(old).glob("pack-*")) == ["pack-ZDT.mpk"]
+        assert (store.store_dir(old) / "pack-ZDT.mpk").read_bytes() == (s / "pack-ZDT.mpk").read_bytes()
         store.compact(root, remove_segments=True)
         assert not store.segments(s) and len(store.index(s)) == len(jobs)
         # the runs read from the packs are the runs written, block for block

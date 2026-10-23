@@ -733,7 +733,7 @@ def check_trajectory_versions(root: Path, jobs: list) -> None:
     keys = {store.job_key(j) for j in jobs} if s.is_dir() else set()
     for raw in (store.packs(s) + store.segments(s)) if keys else []:
         # a segment's or pack's header names the trajectory versions it holds
-        versions = store.read_header(raw.with_suffix(".mhd")).get("trajectory_version", "")
+        versions = store.header_of(raw).get("trajectory_version", "")
         if {int(v) for v in versions.split(",") if v} - {TRAJECTORY_VERSION} and \
                 any(k in keys and loc.status == "done" for k, loc in store.segment_entries(raw)):
             other.append(f"store/{raw.name} (v{versions})")

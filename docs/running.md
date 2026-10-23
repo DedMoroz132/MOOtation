@@ -2059,10 +2059,10 @@ first.
     mootation store export  results/atlas --csv tables/   # metrics-<family>.csv.gz
     mootation store export  results/atlas --files runs/ --run "ZDT1|nsga2||1|25000"
 
-`compact` writes one pack per family of problems, its records sorted by
-problem, algorithm, variant, seed and budget and copied byte for byte — the
-same pack whichever worker ran which run — and a table of every family's
-trajectories, column by column (`metrics-<family>.mhd/.raw`), which
+`compact` writes one pack per family of problems, one file
+(`pack-<family>.mpk`), its records sorted by problem, algorithm, variant,
+seed and budget — the same pack whichever worker ran which run — with a
+table of the family's trajectories, column by column, which
 `mootation.store.metrics(results, family="DTLZ")` reads into NumPy arrays (a
 pandas DataFrame with `frame=True`). The segments are deleted only with
 `--remove-segments`, after every record has been read back from its pack.

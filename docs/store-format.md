@@ -9,12 +9,11 @@ Everything is little-endian.
 ## Files
 
     <campaign>/store/seg-<time>-p<pid>-<n>.{mhd,raw,idx}   segments, while a campaign runs
-    <campaign>/store/pack-<family>.{mhd,raw,idx}           packs, after `compact`
-    <campaign>/store/metrics-<family>.{mhd,raw}            the trajectories' table, after `compact`
+    <campaign>/store/pack-<family>.mpk                     a family's pack, after `compact`
 
 - `.mhd` — a text header, one `key = value` per line (as MetaImage's):
-  `format = mootation-store`, `format_version`, `kind` (`segment`, `pack`,
-  `metrics`) and the file names beside it.
+  `format = mootation-store`, `format_version`, `kind = segment` and the
+  file names beside it.
 - `.raw` — records one after the other (below). A segment is only appended
   to; a record counts once it is written whole.
 - `.idx` — one line per record: `offset \t length \t checksum (8 hex digits)
@@ -22,7 +21,44 @@ Everything is little-endian.
 
 A pack holds a family's records sorted by key (problem, algorithm, variant,
 seed, budget), so that a pack is the same bytes whatever segments its records
-came in.
+came in (below). Packs of before — `pack-<family>.{mhd,raw,idx}`, a
+`pack-<family>.meta` beside them and `metrics-<family>.{mhd,raw}` — are read
+as well; `compact` replaces them with the one file.
+
+## A pack (`pack-<family>.mpk`)
+
+Parts one after the other, each starting at a multiple of 64 bytes (zero
+bytes between), and a footer of 64 bytes at the end:
+
+| part | what |
+|---|---|
+| header | `key = value` lines, as an `.mhd` (`kind = pack`, `family`, `records`, `sorted_by`, `code_stamp`, `trajectory_version`, `layout`, `alignment`, `byte_order`), then newlines to a multiple of 64 |
+| meta | the runs' meta.json as one table (below; empty where no record is of format 3) |
+| metrics | the trajectories' table (below) |
+| records | one record (below) after the other, each at a multiple of 64 |
+| index | `T` and the text codec's bytes of the lines `offset 	 length 	 checksum 	 status 	 key` (offset from the start of the file); `R` and the lines as they are where written without the extension |
+
+The footer:
+
+    magic        8 bytes   "MOOTPEND"
+    meta         u64, u64  offset, length
+    metrics      u64, u64  offset, length
+    index        u64, u64  offset, length
+    crc          u32       CRC-32C of the file before the footer
+    index crc    u32       CRC-32C of the index's bytes
+
+A reader reads the footer, the index (its checksum), then a record where the
+index says (the record's own checksum); a check reads the whole file against
+`crc`. A pack is written to a temporary file and renamed when whole.
+
+### The metrics table
+
+Pieces (below): a directory — JSON `{"family", "rows", "columns": [[name,
+dtype], ...]}` — then each column's block (as a record's, without the count).
+One row per trajectory record of every run: `problem`, `algorithm`,
+`variant`, `status` (each a block `<name>#labels`, JSON list of the
+distinct texts, and `<name>`, `<i4` indices into it), `seed`, `budget`, then
+every number the trajectory's records hold (`<f8`; bools 0/1, null NaN).
 
 ## A record
 
@@ -117,7 +153,7 @@ writes meta.json again as `json.dumps(meta, indent=1)`, its line ends CR LF
 where the stored text's are. A writer does this only where the rebuild gives
 the original bytes back.
 
-## A pack's meta table (`pack-<family>.meta`)
+## A pack's meta table
 
 `compact` takes every format-3 run's meta.json (as its record keeps it, final
 once) out of the record — a block `#meta` (json, empty) marks its place — and

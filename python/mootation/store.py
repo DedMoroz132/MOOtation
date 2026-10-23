@@ -49,14 +49,19 @@ was given.
 
 LAYER 2, AFTER THE CAMPAIGN (compact): one pack per family of problems
 (families.family), records sorted by (problem, algorithm, variant, seed,
-budget), so that the pack is the same whatever process wrote which run. In
-format 3 the runs' meta.json go into one table of the pack,
-pack-<family>.meta (supplement 5, §2.3; encode_meta_table): a record keeps a
-mark "#meta" where its meta.json was, and reading puts it back — the blocks
-read are the blocks written. Records of formats 1 and 2 are copied byte for
-byte. LAYER 3: a table of the trajectories per family
-(metrics-<family>.mhd/.raw, column after column), read by metrics() and
-written to CSV by export_csv().
+budget), so that the pack is the same whatever process wrote which run: one
+file, pack-<family>.mpk (task 17, §3а.3) — a text header, the runs' meta.json
+as one table (supplement 5, §2.3; encode_meta_table), the metrics table
+(layer 3), the records, an index, each at an offset that is a multiple of 64,
+and a footer of 64 bytes at the end: where the parts are and the CRC-32C of
+everything before it. A record of format 3 keeps a mark "#meta" where its
+meta.json was, and reading puts it back — the blocks read are the blocks
+written; records of formats 1 and 2 are copied byte for byte. Packs of
+before (pack-<family>.raw, .idx, .mhd, .meta and metrics-<family>.mhd/.raw)
+are read as well, and compact replaces them. LAYER 3: a table of the
+trajectories per family (column after column; a part of the pack, before it
+metrics-<family>.mhd/.raw), read by metrics() and written to CSV by
+export_csv().
 
 Compression: zlib; for an array of numbers also zlib after a byte shuffle (the
 first byte of every number, then the second, ...; as Blosc does, which puts
@@ -739,6 +744,17 @@ def read_header(path: Path) -> dict:
     return out
 
 
+def header_of(raw: Path) -> dict:
+    """The header of a segment or pack: its .mhd, or a pack file's first part."""
+    raw = Path(raw)
+    if raw.suffix != PACK_SUFFIX:
+        return read_header(raw.with_suffix(".mhd"))
+    at = _pack_footer(raw)["meta"][0]
+    with open(raw, "rb") as fh:
+        text = fh.read(at).decode("utf-8")
+    return {k.strip(): v.strip() for k, v in (line.split(" = ", 1) for line in text.splitlines() if " = " in line)}
+
+
 @dataclass
 class Loc:
     raw: Path
@@ -809,6 +825,8 @@ def segment_entries(raw: Path) -> list:
     """[(key, Loc)] of a segment or pack: from its index, or from the data
     where the index disagrees."""
     raw = Path(raw)
+    if raw.suffix == PACK_SUFFIX:
+        return _pack_index(raw)
     got = _read_idx(raw.with_suffix(".idx"), raw)
     return got if got is not None else scan_raw(raw)[0]
 
@@ -853,11 +871,12 @@ class SegmentWriter:
         self._header()
 
     def _header(self) -> None:
+        # once, when the segment starts: its records are counted by its index
         _write_header(self.raw.with_suffix(".mhd"), {
             "format": FORMAT, "format_version": FORMAT_VERSION, "kind": "segment",
             "data_file": self.raw.name, "index_file": self.raw.with_suffix(".idx").name,
             "process": os.getpid(), "host": socket.gethostname(), "segment": self.number,
-            "records": self.records, **self.header,
+            **self.header,
             "created": time.strftime("%Y-%m-%dT%H:%M:%S", time.strptime(self.stamp, "%Y%m%d-%H%M%S")),
         })
 
@@ -875,7 +894,6 @@ class SegmentWriter:
         with open(self.raw.with_suffix(".idx"), "a", encoding="utf-8", newline="\n") as fh:
             fh.write(_idx_line(key, loc))
         self.records += 1
-        self._header()
         return loc
 
 
@@ -902,7 +920,8 @@ def segments(store: Path) -> list:
 
 
 def packs(store: Path) -> list:
-    return sorted(Path(store).glob("pack-*.raw"))
+    """The packs: one file each (.mpk), and those of before (.raw beside .idx)."""
+    return sorted(Path(store).glob("pack-*.mpk")) + sorted(Path(store).glob("pack-*.raw"))
 
 
 def index(store: Path) -> dict:
@@ -926,6 +945,144 @@ def read_record(loc: Loc) -> list:
     if got is None or got[2] != loc.crc:
         raise ValueError(f"{loc.raw.name}@{loc.offset}: not a whole record (length or CRC)")
     return _with_meta(got[0], decode_blocks(got[1]), Path(loc.raw))
+
+
+# ── the pack file (task 17, §3а.3) ──────────────────────────────────────────
+#
+#     header    "key = value" lines (as an .mhd), then newlines to a multiple of 64
+#     meta      the runs' meta.json as a table (encode_meta_table; may be empty)
+#     metrics   the metrics table (_metrics_section)
+#     records   one after the other, each at a multiple of 64 (zero bytes between)
+#     index     "offset \t length \t checksum \t status \t key" lines (the
+#               text codec's bytes, a "T" before them; "R" and the lines as
+#               they are where the extension is not built)
+#     footer    64 bytes: "MOOTPEND", the meta's, metrics' and index's offset
+#               and length (u64 each), the CRC-32C of the file before the
+#               footer, the CRC-32C of the index's bytes (u32 each)
+#
+# Every part but the footer starts at a multiple of 64. A reader reads the
+# footer, then the index (its own checksum), then any record (its own); a
+# check reads the whole file against the footer's checksum.
+
+PACK_SUFFIX = ".mpk"
+PACK_FOOT = b"MOOTPEND"
+ALIGN = 64
+_PACK_CACHE: dict = {}
+
+
+def _align(out) -> None:
+    out.write(b"\0" * (-out.tell() % ALIGN))
+
+
+def write_pack(path: Path, fields: dict, meta: bytes, metrics: bytes, records: list) -> list:
+    """Write a pack: records [(key, record bytes, status)] in order; their
+    [(key, Loc)] in it."""
+    path = Path(path)
+    tmp = path.with_suffix(f".mpk.{os.getpid()}.tmp")
+    entries = []
+    with open(tmp, "wb") as out:
+        head = "".join(f"{k} = {v}\n" for k, v in fields.items()).encode("utf-8")
+        out.write(head + b"\n" * (-len(head) % ALIGN or ALIGN))
+        meta_at = out.tell()
+        out.write(meta)
+        _align(out)
+        metrics_at = out.tell()
+        out.write(metrics)
+        _align(out)
+        for key, rec, status in records:
+            at = out.tell()
+            out.write(rec)
+            entries.append((key, Loc(path, at, len(rec), _parse_record(rec, 0)[2], status)))
+            _align(out)
+        lines = "".join(_idx_line(k, loc) for k, loc in entries).encode("utf-8")
+        c = _codec()
+        index = (b"T" + bytes(c.store_encode_text(lines))) if c is not None else (b"R" + lines)
+        index_at = out.tell()
+        out.write(index)
+        _align(out)
+        out.flush()
+    with open(tmp, "rb") as fh:
+        whole = crc32c(fh.read())
+    with open(tmp, "ab") as out:
+        out.write(PACK_FOOT + struct.pack("<6Q", meta_at, len(meta), metrics_at, len(metrics), index_at,
+                                          len(index)) + struct.pack("<II", whole, crc32c(index)))
+        out.flush()
+        os.fsync(out.fileno())
+    os.replace(tmp, path)
+    _PACK_CACHE.clear()
+    _META_CACHE.clear()
+    return [(k, Loc(path, loc.offset, loc.length, loc.crc, loc.status)) for k, loc in entries]
+
+
+def _pack_footer(path: Path) -> dict:
+    path = Path(path)
+    size = path.stat().st_size
+    if size < 64:
+        raise ValueError(f"{path.name}: shorter than a pack's footer")
+    with open(path, "rb") as fh:
+        fh.seek(size - 64)
+        foot = fh.read(64)
+    if foot[:8] != PACK_FOOT:
+        raise ValueError(f"{path.name}: no pack footer at its end")
+    meta_at, meta_n, metrics_at, metrics_n, index_at, index_n = struct.unpack_from("<6Q", foot, 8)
+    whole, index_crc = struct.unpack_from("<II", foot, 56)
+    return {"meta": (meta_at, meta_n), "metrics": (metrics_at, metrics_n), "index": (index_at, index_n),
+            "crc": whole, "index_crc": index_crc, "end": size - 64}
+
+
+def _pack_part(path: Path, name: str) -> bytes:
+    """A part of a pack ("meta", "metrics", "index"), read alone (mmap)."""
+    import mmap
+    f = _pack_footer(path)
+    at, n = f[name]
+    if n == 0:
+        return b""
+    with open(path, "rb") as fh, mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+        part = mm[at:at + n]
+    if name == "index" and crc32c(part) != f["index_crc"]:
+        raise ValueError(f"{Path(path).name}: the index's checksum does not hold")
+    return part
+
+
+def _pack_index(path: Path) -> list:
+    """[(key, Loc)] of a pack, from its index."""
+    path = Path(path)
+    st = path.stat()
+    tag = (str(path), st.st_mtime_ns, st.st_size)
+    if tag not in _PACK_CACHE:
+        part = _pack_part(path, "index")
+        if part[:1] == b"T":
+            c = _codec()
+            if c is None:
+                raise ValueError(f"{path.name}: its index needs the compiled extension")
+            lines = bytes(c.store_decode_text(part[1:]))
+        else:
+            lines = part[1:]
+        out = []
+        for line in lines.decode("utf-8").splitlines():
+            off, length, crc, status, key = line.split("\t", 4)
+            out.append((key, Loc(path, int(off), int(length), int(crc, 16), status)))
+        _PACK_CACHE[tag] = out
+    return _PACK_CACHE[tag]
+
+
+def check_pack(path: Path) -> list:
+    """What is wrong with a pack: its footer, its whole checksum, its index, every record."""
+    try:
+        f = _pack_footer(path)
+        with open(path, "rb") as fh:
+            if crc32c(fh.read(f["end"])) != f["crc"]:
+                return [f"{Path(path).name}: the file's checksum does not hold"]
+        bad = []
+        for key, loc in _pack_index(path):
+            with open(path, "rb") as fh:
+                fh.seek(loc.offset)
+                got = _parse_record(fh.read(loc.length), 0)
+            if got is None or got[0] != key or got[2] != loc.crc:
+                bad.append(f"{Path(path).name}@{loc.offset}: {key} is not whole")
+        return bad
+    except ValueError as e:
+        return [str(e)]
 
 
 # ── the meta table of a pack (format 3; supplement 5, §2.3) ─────────────────
@@ -1120,14 +1277,16 @@ def decode_meta_table(data: bytes) -> dict:
 
 def _pack_metas(raw: Path):
     """{key: meta.json bytes} of the pack whose data is raw, or None."""
-    p = Path(raw).with_suffix(".meta")
-    if not Path(raw).name.startswith("pack-") or not p.exists():
+    raw = Path(raw)
+    p = raw if raw.suffix == PACK_SUFFIX else raw.with_suffix(".meta")
+    if not raw.name.startswith("pack-") or not p.exists():
         return None
     st = p.stat()
     tag = (str(p), st.st_mtime_ns, st.st_size)
     if tag not in _META_CACHE:
         _META_CACHE.clear()
-        _META_CACHE[tag] = decode_meta_table(p.read_bytes())
+        data = _pack_part(p, "meta") if p.suffix == PACK_SUFFIX else p.read_bytes()
+        _META_CACHE[tag] = decode_meta_table(data) if data else {}
     return _META_CACHE[tag]
 
 
@@ -1163,7 +1322,7 @@ def repair(store: Path) -> list:
     if scratch.is_dir() and any(scratch.iterdir()):
         shutil.rmtree(scratch, ignore_errors=True)
         done.append(f"{SCRATCH_DIR}/: removed the folders of runs stopped before their record")
-    for raw in segments(store) + packs(store):
+    for raw in segments(store) + [p for p in packs(store) if p.suffix != PACK_SUFFIX]:
         size = raw.stat().st_size
         listed = _read_idx(raw.with_suffix(".idx"), raw)
         # an index that agrees with the data: only the tail past it is looked
@@ -1315,48 +1474,40 @@ def compact(campaign: Path, *, remove_segments: bool = False, expected: list | N
         fams.setdefault(_family(split_key(key)[0]), []).append(key)
     written = {}
     for fam, keys in sorted(fams.items()):
-        raw = s / f"pack-{_safe(fam)}.raw"
-        tmp = raw.with_suffix(f".raw.{os.getpid()}.tmp")
-        entries, metas, table = [], [], []
-        with open(tmp, "wb") as out:
-            for key in keys:
-                loc = idx[key]
-                blocks = read_record(loc)
-                by = {b.name: b for b in blocks}
-                rec = read_record_bytes(loc)
-                if _codec() is not None and record_format(by) >= 3 and "meta.json" in by:
-                    # format 3: meta.json into the pack's table, a mark in its place
-                    once = {b.name: b for b in _final_once(blocks)}["meta.json"].data
-                    table.append((key, once))
-                    rec = encode_record(key, encode_body(
-                        [Block("#meta", "json", (), b"") if b.name == "meta.json" else b for b in blocks]))
-                offset = out.tell()
-                out.write(rec)
-                got = _parse_record(rec, 0)
-                entries.append((key, Loc(raw, offset, len(rec), got[2], loc.status)))
-                metas.append(json.loads(file_content(by, "meta.json")) if "meta.json" in by else {})
-            out.flush()
-            os.fsync(out.fileno())
-        meta_path = raw.with_suffix(".meta")
-        if table:
-            tmp_meta = meta_path.with_suffix(f".meta.{os.getpid()}.tmp")
-            tmp_meta.write_bytes(encode_meta_table(table))
-            os.replace(tmp_meta, meta_path)
-        else:
-            meta_path.unlink(missing_ok=True)
-        _META_CACHE.clear()
-        os.replace(tmp, raw)
-        write_index(raw, entries)
+        path = s / f"pack-{_safe(fam)}{PACK_SUFFIX}"
+        records, metas, table, runs = [], [], [], []
+        for key in keys:
+            loc = idx[key]
+            blocks = read_record(loc)
+            by = {b.name: b for b in blocks}
+            run = StoredRun(loc, key)
+            run._by = by
+            runs.append(run)
+            rec = read_record_bytes(loc)
+            if _codec() is not None and record_format(by) >= 3 and "meta.json" in by:
+                # format 3: meta.json into the pack's table, a mark in its place
+                once = {b.name: b for b in _final_once(blocks)}["meta.json"].data
+                table.append((key, once))
+                rec = encode_record(key, encode_body(
+                    [Block("#meta", "json", (), b"") if b.name == "meta.json" else b for b in blocks]))
+            elif rec[:8] == MAGIC_C and _parse_record(rec, 0) is None:
+                raise ValueError(f"{key}: not a whole record")
+            records.append((key, rec, loc.status))
+            metas.append(json.loads(file_content(by, "meta.json")) if "meta.json" in by else {})
         # read from the records, so that the header too is the same whatever
         # segments they came in
-        _write_header(raw.with_suffix(".mhd"), {
-            "format": FORMAT, "format_version": FORMAT_VERSION, "kind": "pack", "family": fam,
-            "data_file": raw.name, "index_file": raw.with_suffix(".idx").name,
-            "records": len(entries), "sorted_by": "problem, algorithm, variant, seed, budget",
-            **_common(metas, ("code_stamp", "trajectory_version")),
-        })
+        fields = {"format": FORMAT, "format_version": FORMAT_VERSION, "kind": "pack", "family": fam,
+                  "records": len(records), "sorted_by": "problem, algorithm, variant, seed, budget",
+                  **_common(metas, ("code_stamp", "trajectory_version")),
+                  "layout": "header, meta, metrics, records, index; a footer of 64 bytes at the end",
+                  "alignment": ALIGN, "byte_order": "little"}
+        entries = write_pack(path, fields, encode_meta_table(table) if table else b"",
+                             _metrics_section(fam, runs), records)
         written[fam] = len(entries)
-        write_metrics(s, fam, [StoredRun(loc, key) for key, loc in entries])
+        # the pack of before, now in this one
+        for old in (s / f"pack-{_safe(fam)}.raw", s / f"metrics-{_safe(fam)}.raw"):
+            for suffix in (".raw", ".idx", ".mhd", ".meta"):
+                old.with_suffix(suffix).unlink(missing_ok=True)
     removed = []
     if remove_segments:
         new = index(s)
@@ -1389,6 +1540,11 @@ def check(campaign: Path) -> dict:
     out = {"records": 0, "damaged": [], "tails": [], "duplicates": 0}
     seen = set()
     for raw in packs(s) + segments(s):
+        if raw.suffix == PACK_SUFFIX:
+            bad = check_pack(raw)
+            out["damaged"] += bad
+            out["records"] += 0 if bad else len(_pack_index(raw))
+            continue
         entries, end = scan_raw(raw)
         if end < raw.stat().st_size:
             out["tails"].append(f"{raw.name}: {raw.stat().st_size - end} bytes after the last whole record")
@@ -1460,11 +1616,43 @@ def _records(run, names) -> list:
     return out
 
 
-def write_metrics(store: Path, family: str, runs: list) -> Path:
-    """metrics-<family>.mhd/.raw: one row per trajectory record of every run —
-    the key's parts, seed, budget, then every number the records hold (bools
-    as 0/1, null as NaN; text left out) — column after column."""
+def _metrics_section(family: str, runs: list) -> bytes:
+    """The metrics table of a pack: one row per trajectory record of every run
+    — the key's parts, seed, budget, then every number the records hold (bools
+    as 0/1, null as NaN; text left out) — column after column: pieces, a
+    directory (JSON: family, rows, columns [name, dtype]) and each column's
+    block (encode_block)."""
     import numpy as np
+    rows, cols = _metric_rows(runs)
+    out: list = []
+    blocks = []
+    for c in _KEY_COLUMNS:
+        labels = sorted({r[c] for r in rows})
+        code = {v: i for i, v in enumerate(labels)}
+        blocks.append(Block(f"{c}#labels", "json", (), json.dumps(labels).encode()))
+        blocks.append(Block(c, "<i4", (len(rows),), np.asarray([code[r[c]] for r in rows], "<i4").tobytes()))
+    for c in ("seed", "budget", *cols):
+        a = np.asarray([r.get(c, np.nan) for r in rows], "<f8")
+        blocks.append(Block(c, "<f8", a.shape, a.tobytes()))
+    _put_piece(out, json.dumps({"family": family, "rows": len(rows),
+                                "columns": [[b.name, b.dtype] for b in blocks]}).encode())
+    for b in blocks:
+        _put_piece(out, encode_block(b))
+    return b"".join(out)
+
+
+def _metrics_from_section(data: bytes) -> dict:
+    """{column name: Block} of a pack's metrics part."""
+    pieces = list(_pieces(data))
+    head = json.loads(pieces[0])
+    cols = {}
+    for (name, _), piece in zip(head["columns"], pieces[1:]):
+        (b,) = decode_blocks(struct.pack("<I", 1) + piece)
+        cols[name] = b
+    return cols
+
+
+def _metric_rows(runs: list) -> tuple:
     rows, cols = [], []
     for run in runs:
         problem, algorithm, variant, seed, budget = split_key(run.key)
@@ -1484,6 +1672,14 @@ def write_metrics(store: Path, family: str, runs: list) -> Path:
                     if k not in cols:
                         cols.append(k)
             rows.append(row)
+    return rows, cols
+
+
+def write_metrics(store: Path, family: str, runs: list) -> Path:
+    """metrics-<family>.mhd/.raw, the metrics table as a file of its own (the
+    layout of before the pack file; _metrics_section is the pack's)."""
+    import numpy as np
+    rows, cols = _metric_rows(runs)
     raw = Path(store) / f"metrics-{_safe(family)}.raw"
     tmp = raw.with_suffix(f".raw.{os.getpid()}.tmp")
     fields = {"format": FORMAT, "format_version": FORMAT_VERSION, "kind": "metrics", "family": family,
@@ -1512,22 +1708,25 @@ def metrics(path, family: str | None = None, *, frame: bool = False):
     family=None with a campaign takes every family, one table."""
     import numpy as np
     path = Path(path)
-    if path.suffix == ".mhd":
+    if path.suffix in (".mhd", PACK_SUFFIX):
         mhds = [path]
     else:
         s = path if path.name == STORE_DIR else store_dir(path)
-        mhds = [s / f"metrics-{_safe(family)}.mhd"] if family else sorted(s.glob("metrics-*.mhd"))
+        mhds = _metric_files(s, family)
     parts = []
     for mhd in mhds:
-        h = read_header(mhd)
-        buf = mhd.with_name(h["data_file"]).read_bytes()
-        cols = {}
-        for k, v in h.items():
-            if not k.startswith("column."):
-                continue
-            _, off, n = v.split()
-            (b,) = decode_blocks(struct.pack("<I", 1) + buf[int(off):int(off) + int(n)])
-            cols[k[len("column."):]] = b
+        if mhd.suffix == PACK_SUFFIX:
+            cols = _metrics_from_section(_pack_part(mhd, "metrics"))
+        else:
+            h = read_header(mhd)
+            buf = mhd.with_name(h["data_file"]).read_bytes()
+            cols = {}
+            for k, v in h.items():
+                if not k.startswith("column."):
+                    continue
+                _, off, n = v.split()
+                (b,) = decode_blocks(struct.pack("<I", 1) + buf[int(off):int(off) + int(n)])
+                cols[k[len("column."):]] = b
         table = {}
         for c in _KEY_COLUMNS:
             labels = json.loads(cols.pop(f"{c}#labels").data)
@@ -1549,15 +1748,32 @@ def metrics(path, family: str | None = None, *, frame: bool = False):
     return out
 
 
+def _metric_files(s: Path, family: str | None = None) -> list:
+    """The files that hold a family's metrics table (every family's with
+    None): its pack, or the metrics-<family>.mhd of before."""
+    names = [_safe(family)] if family else None
+    out = []
+    for f in sorted(s.glob(f"pack-*{PACK_SUFFIX}")):
+        if names is None or f.stem[len("pack-"):] in names:
+            out.append(f)
+    have = {f.stem[len("pack-"):] for f in out}
+    for f in sorted(s.glob("metrics-*.mhd")):
+        fam = f.stem[len("metrics-"):]
+        if fam not in have and (names is None or fam in names):
+            out.append(f)
+    return out
+
+
 def export_csv(campaign: Path, out_dir: Path) -> list:
     """metrics-<family>.csv.gz of every family's table (gzip, no time stamp)."""
     import csv
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     written = []
-    for mhd in sorted(store_dir(campaign).glob("metrics-*.mhd")):
+    for mhd in _metric_files(store_dir(campaign)):
         t = metrics(mhd)
-        path = out_dir / (mhd.stem + ".csv.gz")
+        fam = mhd.stem.split("-", 1)[1]
+        path = out_dir / f"metrics-{fam}.csv.gz"
         with open(path, "wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz:
             text = io.TextIOWrapper(gz, encoding="utf-8", newline="")
             w = csv.writer(text, lineterminator="\n")

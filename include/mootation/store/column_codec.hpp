@@ -39,8 +39,6 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -192,42 +190,123 @@ private:
     std::size_t used_ = 0;
 };
 
-// The models of a column: the flags, the trees of the indices (a node's key:
-// the index's width and the node's prefix with a leading 1, which keeps the
-// depths apart) and the tree of the values' top bits (the prefix alone; its
-// top 12 levels, the nodes every value passes, in an array).
+// The models of a column: the flags, the trees of the indices (one per width
+// of the index, a node at its prefix with a leading 1: an array of 2^width,
+// made when the width is first used) and the tree of the values' top bits
+// (its top 12 levels, the nodes every value passes, in an array; the deeper
+// nodes by their prefix in a NodeTable).
 constexpr std::uint64_t kDense = 1u << 12;
 
 struct FloatModels {
     BitModel flag[2];
     std::vector<BitModel> top = std::vector<BitModel>(kDense);
-    NodeTable index, value;
+    std::vector<BitModel> index[33];
+    NodeTable value;
 };
 
-inline BitModel& node(FloatModels& m, int width, std::uint64_t prefix)
+inline BitModel& value_node(FloatModels& m, std::uint64_t prefix)
 {
-    if (width < 0) return prefix < kDense ? m.top[prefix] : m.value.at(prefix);
-    return m.index.at((static_cast<std::uint64_t>(width + 1) << 40) | prefix);
+    return prefix < kDense ? m.top[prefix] : m.value.at(prefix);
 }
 
-inline void code_tree(RangeEncoder& rc, FloatModels& m, std::uint64_t sym, int k, int width)
+inline std::vector<BitModel>& index_tree(FloatModels& m, int width)
+{
+    if (m.index[width].empty()) m.index[width].assign(std::size_t{1} << width, BitModel{});
+    return m.index[width];
+}
+
+inline void code_value(RangeEncoder& rc, FloatModels& m, std::uint64_t sym, int k)
 {
     std::uint64_t prefix = 1;
     for (int d = 0; d < k; ++d) {
         const int b = static_cast<int>((sym >> (k - 1 - d)) & 1u);
-        rc.bit(node(m, width, prefix), b);
+        rc.bit(value_node(m, prefix), b);
         prefix = (prefix << 1) | static_cast<std::uint64_t>(b);
     }
 }
 
-inline std::uint64_t decode_tree(RangeDecoder& rc, FloatModels& m, int k, int width)
+inline std::uint64_t decode_value(RangeDecoder& rc, FloatModels& m, int k)
 {
     std::uint64_t prefix = 1;
-    for (int d = 0; d < k; ++d) prefix = (prefix << 1) | static_cast<std::uint64_t>(rc.bit(node(m, width, prefix)));
+    for (int d = 0; d < k; ++d) prefix = (prefix << 1) | static_cast<std::uint64_t>(rc.bit(value_node(m, prefix)));
     return prefix & ((std::uint64_t{1} << k) - 1);
 }
 
+inline void code_index(RangeEncoder& rc, FloatModels& m, std::uint64_t sym, int width)
+{
+    std::vector<BitModel>& tree = index_tree(m, width);
+    std::uint64_t prefix = 1;
+    for (int d = 0; d < width; ++d) {
+        const int b = static_cast<int>((sym >> (width - 1 - d)) & 1u);
+        rc.bit(tree[prefix], b);
+        prefix = (prefix << 1) | static_cast<std::uint64_t>(b);
+    }
+}
+
+inline std::uint64_t decode_index(RangeDecoder& rc, FloatModels& m, int width)
+{
+    std::vector<BitModel>& tree = index_tree(m, width);
+    std::uint64_t prefix = 1;
+    for (int d = 0; d < width; ++d) prefix = (prefix << 1) | static_cast<std::uint64_t>(rc.bit(tree[prefix]));
+    return prefix & ((std::uint64_t{1} << width) - 1);
+}
+
+// Each value's index among the column's distinct values (in the order they
+// first came), and those values: open addressing over the values' bits.
+inline void distinct(const std::uint64_t* v, std::size_t n, std::vector<std::uint32_t>& index,
+                     std::vector<std::uint64_t>& fresh)
+{
+    if (n >= 0xFFFFFFFFu) throw std::invalid_argument("float64 column: 2^32 values or more");
+    constexpr std::uint32_t kEmpty = 0xFFFFFFFFu;
+    std::size_t size = 16;
+    while (size < 2 * n) size <<= 1;
+    std::vector<std::uint32_t> slots(size, kEmpty);
+    const std::size_t mask = size - 1;
+    index.resize(n);
+    fresh.clear();
+    for (std::size_t i = 0; i < n; ++i) {
+        std::uint64_t h = v[i];                          // MurmurHash3's finaliser
+        h ^= h >> 33;
+        h *= 0xff51afd7ed558ccdull;
+        h ^= h >> 33;
+        h *= 0xc4ceb9fe1a85ec53ull;
+        h ^= h >> 33;
+        std::size_t s = static_cast<std::size_t>(h) & mask;
+        while (slots[s] != kEmpty && fresh[slots[s]] != v[i]) s = (s + 1) & mask;
+        if (slots[s] == kEmpty) {
+            slots[s] = static_cast<std::uint32_t>(fresh.size());
+            fresh.push_back(v[i]);
+        }
+        index[i] = slots[s];
+    }
+}
+
 constexpr int kMinTop = 8, kMaxTop = 28;
+
+// rest[t] = sum_{s<t} log2(s + 1), half[c] = sum_{j<c} log2(j + 1/2), up to
+// n: a node's KT code length is rest[n0 + n1] - half[n0] - half[n1]. Kept
+// for the thread's next columns up to 2^16 (each sum is the same whatever
+// length it is made to: the terms in one order).
+struct LogSums {
+    std::vector<double> rest{0.0}, half{0.0};
+    void reach(std::size_t n)
+    {
+        const double ln2 = dm::log(2.0);
+        for (std::size_t t = rest.size() - 1; t < n; ++t) {
+            rest.push_back(rest[t] + dm::log(static_cast<double>(t) + 1.0) / ln2);
+            half.push_back(half[t] + dm::log(static_cast<double>(t) + 0.5) / ln2);
+        }
+    }
+};
+
+inline const LogSums& log_sums(std::size_t n, LogSums& own)
+{
+    thread_local LogSums kept;
+    constexpr std::size_t kKept = std::size_t{1} << 16;
+    LogSums& s = n <= kKept ? kept : own;
+    s.reach(n);
+    return s;
+}
 
 // The k of least cost for the values met first (`fresh`, in order): the tree
 // of their top k bits at the KT code length of every node's counts, and the
@@ -238,14 +317,10 @@ inline int choose_k(std::vector<std::uint64_t> fresh)
     if (n == 0) return kMinTop;
     for (auto& a : fresh) a >>= 64 - kMaxTop;
     std::sort(fresh.begin(), fresh.end());
-    // rest[t] = sum_{s<t} log2(s + 1), half[c] = sum_{j<c} log2(j + 1/2): a
-    // node's KT code length is rest[n0 + n1] - half[n0] - half[n1]
-    std::vector<double> rest(n + 1, 0.0), half(n + 1, 0.0);
-    const double ln2 = dm::log(2.0);
-    for (std::size_t t = 0; t < n; ++t) {
-        rest[t + 1] = rest[t] + dm::log(static_cast<double>(t) + 1.0) / ln2;
-        half[t + 1] = half[t] + dm::log(static_cast<double>(t) + 0.5) / ln2;
-    }
+    LogSums own;
+    const LogSums& sums = log_sums(n, own);
+    const std::vector<double>& rest = sums.rest;
+    const std::vector<double>& half = sums.half;
     double tree = 0.0, best_cost = 0.0;
     int best = kMinTop;
     for (int d = 0; d < kMaxTop; ++d) {
@@ -271,26 +346,24 @@ inline int choose_k(std::vector<std::uint64_t> fresh)
     return best;
 }
 
-inline std::vector<std::uint8_t> model_bytes(const std::uint64_t* v, std::size_t n, int k)
+// index[i]: v[i]'s index among the distinct values; one met before where it
+// is below the count of those met so far
+inline std::vector<std::uint8_t> model_bytes(const std::uint64_t* v, const std::uint32_t* index, std::size_t n, int k)
 {
     RangeEncoder rc;
     FloatModels m;
-    std::unordered_map<std::uint64_t, std::uint64_t> seen;
-    seen.reserve(n);
+    std::uint64_t seen = 0;
     int last = 0;
     for (std::size_t i = 0; i < n; ++i) {
-        auto it = seen.find(v[i]);
-        const int repeat = it != seen.end() ? 1 : 0;
+        const int repeat = index[i] < seen ? 1 : 0;
         rc.bit(m.flag[last], repeat);
         last = repeat;
         if (repeat) {
-            const int width = bit_width(seen.size() - 1);
-            code_tree(rc, m, it->second, width, width);
+            code_index(rc, m, index[i], bit_width(seen - 1));
         } else {
-            code_tree(rc, m, v[i] >> (64 - k), k, -1);
+            code_value(rc, m, v[i] >> (64 - k), k);
             rc.direct(v[i], 64 - k);
-            const std::uint64_t index = seen.size();
-            seen.emplace(v[i], index);
+            ++seen;
         }
     }
     return rc.finish();
@@ -303,27 +376,26 @@ inline std::vector<std::uint8_t> encode_f64(const double* x, std::size_t n)
 {
     std::vector<std::uint64_t> v(n);
     if (n) std::memcpy(v.data(), x, n * 8);
+    std::vector<std::uint8_t> out;
+    if (n) {
+        // the values met for the first time, in order: their top bits choose k
+        std::vector<std::uint32_t> index;
+        std::vector<std::uint64_t> fresh;
+        col::distinct(v.data(), n, index, fresh);
+        const int k = col::choose_k(std::move(fresh));
+        out.push_back(col::kModel);
+        col::put_varint(out, n);
+        out.push_back(static_cast<std::uint8_t>(k));
+        const std::vector<std::uint8_t> coded = col::model_bytes(v.data(), index.data(), n, k);
+        out.insert(out.end(), coded.begin(), coded.end());
+    }
     std::vector<std::uint8_t> raw;
     raw.push_back(col::kRaw);
     col::put_varint(raw, n);
+    if (n && out.size() < raw.size() + 8 * n) return out;
+    raw.reserve(raw.size() + 8 * n);
     for (std::size_t i = 0; i < n; ++i) col::put_u64(raw, v[i]);
-    if (n == 0) return raw;
-    // the values met for the first time, in order: their top bits choose k
-    std::vector<std::uint64_t> fresh;
-    {
-        std::unordered_set<std::uint64_t> seen;
-        seen.reserve(n);
-        for (std::uint64_t a : v)
-            if (seen.insert(a).second) fresh.push_back(a);
-    }
-    const int k = col::choose_k(std::move(fresh));
-    std::vector<std::uint8_t> out;
-    out.push_back(col::kModel);
-    col::put_varint(out, n);
-    out.push_back(static_cast<std::uint8_t>(k));
-    const std::vector<std::uint8_t> coded = col::model_bytes(v.data(), n, k);
-    out.insert(out.end(), coded.begin(), coded.end());
-    return out.size() < raw.size() ? out : raw;
+    return raw;
 }
 
 // The column's n values back from its bytes; an error where they do not hold
@@ -352,11 +424,11 @@ inline std::vector<double> decode_f64(const std::uint8_t* data, std::size_t size
             if (repeat) {
                 if (seen.empty()) throw std::runtime_error("float64 column: a reference with no value before it");
                 const int width = col::bit_width(seen.size() - 1);
-                const std::uint64_t j = col::decode_tree(rc, m, width, width);
+                const std::uint64_t j = col::decode_index(rc, m, width);
                 if (j >= seen.size()) throw std::runtime_error("float64 column: a reference past the values");
                 v[i] = seen[j];
             } else {
-                const std::uint64_t top = col::decode_tree(rc, m, k, -1);
+                const std::uint64_t top = col::decode_value(rc, m, k);
                 v[i] = (top << (64 - k)) | rc.direct(64 - k);
                 seen.push_back(v[i]);
             }

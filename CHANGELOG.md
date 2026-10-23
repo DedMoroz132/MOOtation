@@ -44,8 +44,11 @@ always listed under **Changed** or **Removed**.
   two of them hold is written once. A record's blocks read back bit for
   bit; formats 1 and 2 are read as before; format 3 needs the extension.
   Bytes (JSON, text) by the library's own LZ77 and range coder, no zlib;
-  records checked by CRC-32C (`MOOTREC2`); `compact` keeps a pack's meta.json
-  as one table beside it (`pack-<family>.meta`, column by column). The
+  records checked by CRC-32C (`MOOTREC2`). A pack is one file,
+  `pack-<family>.mpk`: a header, the runs' meta.json as one table (column by
+  column), the trajectories' table, the records, an index, each at a
+  multiple of 64 bytes, and a footer with their places and the file's
+  CRC-32C; packs of before are read, and `compact` replaces them. The
   format, byte by byte: `docs/store-format.md`.
 
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a
