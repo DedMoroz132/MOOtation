@@ -260,13 +260,13 @@ def decode_blocks(body: bytes) -> list:
     c = _codec()
     if c is not None:
         out = []
-        for name, dtype, shape, data, how in _lib(c.store_decode_body, body):
+        for name, dtype, shape, data, how in _lib(c.store_decode_run, body):
             if how == "zlib":
                 data = zlib.decompress(data)
             elif how == "shuffle+zlib":
                 data = unshuffle(zlib.decompress(data), _itemsize(dtype))
             out.append(Block(name, dtype, tuple(shape), bytes(data)))
-        return _final_back(out)
+        return out
     # without the extension: formats 1 and 2
     out = []
     (count,) = struct.unpack_from("<I", body, 0)
@@ -301,45 +301,12 @@ def decode_blocks(body: bytes) -> list:
 # ── format 3: the record's point sets together ──────────────────────────────
 
 
-def _point_tables(blocks: list) -> list:
-    """(index, block, columns) of the float64 tables among blocks: a 2-D
-    array whose "#head" names its columns."""
-    heads = {}
-    for b in blocks:
-        if b.name.endswith("#head") and b.dtype == "json":
-            try:
-                heads[b.name[:-len("#head")]] = json.loads(b.data)
-            except ValueError:
-                pass
-    out = []
-    for i, b in enumerate(blocks):
-        cols = (heads.get(b.name) or {}).get("columns") if isinstance(heads.get(b.name), dict) else None
-        if (b.dtype == "<f8" and len(b.shape) == 2 and isinstance(cols, list)
-                and all(isinstance(c, str) for c in cols) and len(cols) == b.shape[1]):
-            out.append((i, b, cols))
-    return out
+def _blocks_lib(blocks: list) -> list:
+    return [(b.name, b.dtype, list(b.shape), b.data) for b in blocks]
 
 
-def _last_record(by: dict, name: str = "trajectory.jsonl"):
-    """The trajectory's last record as a dict, from its blocks, or None."""
-    import numpy as np
-    h, V, C = by.get(name + "#head"), by.get(name), by.get(name + "#cells")
-    if h is None or V is None or C is None or V.dtype != "<f8" or not V.shape or not V.shape[0]:
-        return None
-    head = json.loads(h.data)
-    if head.get("kind") != "jsonl":
-        return None
-    cols, texts = head["columns"], head["texts"]
-    v = np.frombuffer(V.data, "<f8").reshape(V.shape)[-1].tolist()
-    c = np.frombuffer(C.data, "u1").reshape(C.shape)[-1].tolist()
-    rec = {}
-    for j, code in enumerate(c):
-        if code == _ABSENT:
-            continue
-        rec[cols[j]] = (v[j] if code == _FLOAT else int(v[j]) if code == _INT
-                        else bool(v[j]) if code == _BOOL else None if code == _NULL
-                        else texts[int(v[j])])
-    return rec
+def _blocks_py(got) -> list:
+    return [Block(name, dtype, tuple(shape), bytes(data)) for name, dtype, shape, data in got]
 
 
 def _meta_text(meta: dict, crlf: bool) -> bytes:
@@ -349,61 +316,41 @@ def _meta_text(meta: dict, crlf: bool) -> bytes:
     return text.replace(b"\n", b"\r\n") if crlf else text
 
 
-def _final_text(meta_text: bytes, rec: dict) -> bytes:
-    """meta.json's text with "final" rebuilt from the trajectory's last record."""
-    meta = json.loads(meta_text)
-    f = meta["final"]
-    meta["final"] = {k: (rec[k] if k in f["#trajectory"] else f[k]) for k in f["#keys"]}
-    return _meta_text(meta, b"\r\n" in meta_text)
+def _point_tables(blocks: list) -> list:
+    """(index, block, columns) of the float64 tables among blocks: a 2-D
+    array whose "#head" names its columns (the library's, store/run_json.hpp)."""
+    c = _codec()
+    if c is None:
+        return []
+    return [(i, blocks[i], cols) for i, cols in _lib(c.store_point_tables, _blocks_lib(blocks))]
 
 
 def _final_once(blocks: list) -> list:
     """Blocks with meta.json's final values that the trajectory's last record
-    holds alike left to it (the module's docstring); unchanged where meta.json
-    would not come back byte for byte."""
-    by = {b.name: b for b in blocks}
-    mb = by.get("meta.json")
-    rec = _last_record(by)
-    if mb is None or rec is None:
-        return blocks
-    try:
-        meta = json.loads(mb.data)
-    except ValueError:
-        return blocks
-    final = meta.get("final") if isinstance(meta, dict) else None
-    if not isinstance(final, dict) or not final or "#keys" in final:
-        return blocks
-    same = [k for k, v in final.items() if k in rec and json.dumps(rec[k]) == json.dumps(v)]
-    if not same:
-        return blocks
-    meta["final"] = dict({"#keys": list(final), "#trajectory": same},
-                         **{k: v for k, v in final.items() if k not in same})
-    text = _meta_text(meta, b"\r\n" in mb.data)
-    if _final_text(text, rec) != mb.data:
-        return blocks
-    return [Block(b.name, b.dtype, b.shape, text) if b.name == "meta.json" else b for b in blocks]
+    holds alike left to it (the module's docstring; the library's,
+    store/run_json.hpp); unchanged where meta.json would not come back byte
+    for byte, or without the extension."""
+    c = _codec()
+    return blocks if c is None else _blocks_py(_lib(c.store_final_once, _blocks_lib(blocks)))
 
 
 def _final_back(blocks: list) -> list:
-    """meta.json's final rebuilt where it was left to the trajectory."""
-    by = {b.name: b for b in blocks}
-    mb = by.get("meta.json")
-    if mb is None or b'"#keys"' not in mb.data:
+    """meta.json's final rebuilt where it was left to the trajectory (the library's)."""
+    c = _codec()
+    if c is None:
+        mb = next((b for b in blocks if b.name == "meta.json"), None)
+        if mb is not None and b'"#keys"' in mb.data:
+            raise ValueError("meta.json: its final is in the trajectory; reading it needs the compiled extension")
         return blocks
-    rec = _last_record(by)
-    if rec is None:
-        raise ValueError("meta.json: its final is in the trajectory, which the record lacks")
-    text = _final_text(mb.data, rec)
-    return [Block(b.name, b.dtype, b.shape, text) if b.name == "meta.json" else b for b in blocks]
+    return _blocks_py(_lib(c.store_final_back, _blocks_lib(blocks)))
 
 
 def encode_body(blocks: list) -> bytes:
     c = _codec()
     if c is None:                                       # format 2
         return struct.pack("<I", len(blocks)) + b"".join(encode_block(b) for b in blocks)
-    blocks = _final_once(blocks)
-    return bytes(c.store_encode_body([(b.name, b.dtype, list(b.shape), b.data) for b in blocks],
-                                     [(i, cols) for i, _, cols in _point_tables(blocks)]))
+    # final once, the point tables together (store/run_json.hpp)
+    return bytes(_lib(c.store_encode_run, _blocks_lib(blocks)))
 
 
 _CRC32C_TABLE: list = []
