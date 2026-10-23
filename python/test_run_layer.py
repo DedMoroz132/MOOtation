@@ -6708,7 +6708,7 @@ metrics = ["igdp"]
                 sa = meta["set_answer"]
                 assert sa["candidates"] == "evaluated", sa
                 assert sa["n"] == min(job.pop, sa["n_candidates"]) and sa["igdx"] is not None, sa
-                assert meta["timing"]["set_answer"] > 0.0, meta["timing"]
+                assert meta["timing_us"]["set_answer"] > 0, meta["timing_us"]
 
 
 @test
@@ -11576,7 +11576,7 @@ def _same_run_files(a, b, only=None) -> list:
     (only: the top-level directories to compare, all but _references if None)."""
     import gzip
     import numpy as np
-    clocks = {"started", "finished", "seconds", "record_seconds", "timing", "pid"}
+    clocks = {"started", "finished", "seconds", "record_seconds", "timing", "timing_us", "pid"}
 
     def content(p):
         if p.name == "meta.json":
@@ -11662,7 +11662,7 @@ gens = 0
                 meta = json.loads((roots[mode] / "rDTLZ1_3D_i2" / "moead_de" / "run_1" /
                                    "meta.json").read_text(encoding="utf-8"))
                 assert meta["problem_version"] == REG.problem_version("rDTLZ1_3D_i2") == 3
-                assert (meta["timing"]["native"] > 0.0) == want, meta["timing"]
+                assert (meta["timing_us"]["native"] > 0) == want, meta["timing_us"]
         bad = Path(td) / "bad.toml"
         bad.write_text(text.replace("NATIVE", "maybe").replace("GRID", ""), encoding="utf-8")
         assert raises(C.ConfigError, C.campaign_spec, load(bad)) is not None
@@ -11994,7 +11994,7 @@ EXTRA
 """
 # meta.json keys of the moment and the machine (tools/compare_results.py)
 _VOLATILE = {"started", "finished", "seconds", "record_seconds", "pid", "host", "platform",
-             "python", "revision", "timing", "mootation"}
+             "python", "revision", "timing", "timing_us", "mootation"}
 
 
 def _store_campaign(td, name, extra):

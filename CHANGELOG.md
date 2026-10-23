@@ -29,6 +29,11 @@ always listed under **Changed** or **Removed**.
   default, or `accept`): what sqp does after 10 step lengths without
   Armijo's decrease (SQP-6).
 
+- Changed: a run's clocks in `meta.json` are `timing_us`, whole
+  microseconds (the store's integer codec keeps them exactly; the owner's
+  word, task 17, supplement 5, §2.6), where they were `timing`, seconds
+  rounded to 0.1 ms. `tools/perf` reads both.
+
 - Store format 3 (task 17, stage 4; supplement 5, §2): the library's own
   codecs (`include/mootation/store/`). A float64 column: a value met before
   by its index, a new one by its top k bits through an adaptive binary range

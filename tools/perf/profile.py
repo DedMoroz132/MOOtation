@@ -10,7 +10,7 @@ problems x seeds at one budget.
 
 Every run is an ordinary campaign job (mootation.run.campaign.run_job), so what
 is measured is what a campaign spends. The job records its own clocks in
-meta["timing"]; this script writes the campaign config, runs it and turns the
+meta["timing_us"]; this script writes the campaign config, runs it and turns the
 clocks into components:
 
     evaluation the problem's objectives and constraints: Python's, or the C++
@@ -97,8 +97,11 @@ def write_config(out: Path, algorithms, problems, seeds, budget, extra: dict) ->
 
 def components(meta: dict) -> dict | None:
     """The components of one run, in seconds (module docstring); None without
-    meta["timing"] (a run of a version that kept no clocks)."""
+    clocks (a run of a version that kept none). meta["timing_us"], whole
+    microseconds (task 17), or meta["timing"], seconds (before)."""
     t = meta.get("timing")
+    if meta.get("timing_us"):
+        t = {k: (v if k == "calls" else v / 1e6) for k, v in meta["timing_us"].items()}
     if not t:
         return None
     total = float(meta.get("seconds", 0.0))

@@ -838,7 +838,7 @@ Ishibuchi, IEEE TEVC 2020, §III-H) — and writes their IGDX, CR and PSP to
 answer. `"evaluated"` is the default; `"off"` makes none. Only the
 multi-modal problems get one (the problem property `multimodal_ps`, below):
 elsewhere the main answer is already spread over the one Pareto set. Its time
-is `meta["timing"]["set_answer"]`. The first point is drawn by the library's
+is `meta["timing_us"]["set_answer"]` (microseconds). The first point is drawn by the library's
 generator, not the core's stream: a `std::mt19937` of its own seeded with the
 run's seed (its low 32 bits) XOR `0x2C9277B5`, and `rnd::below`
 (`decision_indicators.hpp`, `spread_first`); without the extension
@@ -976,8 +976,8 @@ read a rung at the record `record_at` puts there, which has them, and
   checkpoints and hard budgets a batch at a time, before every record and at
   the end (with integer and discrete variables, decoded: the points the
   campaign's evaluator receives), and the files are those of `native = "off"`, which evaluates
-  through the campaign's evaluator as before. `meta.json`'s `timing.native` is
-  the time of the C++ evaluations.
+  through the campaign's evaluator as before. `meta.json`'s `timing_us.native` is
+  the time of the C++ evaluations, in microseconds.
 - `hard_budgets = [100, 300, 1000]` reads those budgets the hard way, for
   budgets of a few generations, where the first record at or after b (the
   rule of `record_at` and `--at`) can add a whole population — at N = 200

@@ -1151,7 +1151,9 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
         from .archive import SetArchive
         sarc = SetArchive(p.n_obj, p.n_vars)
 
-    # Where the run's time goes (meta["timing"], seconds; tools/perf reads it):
+    # Where the run's time goes (meta["timing_us"], whole microseconds — the
+    # store's integer codec keeps them exactly, the owner's word of 2026-10-24,
+    # task 17, supplement 5, §2.6; tools/perf reads it):
     # the problem's objectives with its constraints (one computation, the
     # batch's), the run archive, the oracle and everything evaluated, the
     # evaluator around all that, the checkpoints taken inside it, the
@@ -2030,9 +2032,9 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     if direct is not None:
         tm["evaluate"] = native_s
         tm["evaluator"] += native_s
-    meta["timing"] = dict({k: round(v, 4) for k, v in tm.items()},
-                          callbacks=round(float(getattr(res, "callback_seconds", 0.0)), 4),
-                          calls=int(getattr(res, "callbacks", 0)), native=round(native_s, 4))
+    meta["timing_us"] = dict({k: int(round(1e6 * v)) for k, v in tm.items()},
+                             callbacks=int(round(1e6 * float(getattr(res, "callback_seconds", 0.0)))),
+                             calls=int(getattr(res, "callbacks", 0)), native=int(round(1e6 * native_s)))
     meta.update(status="done", fe=fe, records=n_records, final=final,
                 ignored_knobs=list(res.ignored), active_n=int(res.active_n),
                 finished=time.strftime("%Y-%m-%dT%H:%M:%S"),

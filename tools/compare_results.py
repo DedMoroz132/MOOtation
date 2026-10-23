@@ -34,7 +34,7 @@ from pathlib import Path
 
 # meta.json keys that say when, where and how fast a run ran, not what it found
 VOLATILE = {"started", "finished", "seconds", "record_seconds", "pid", "host", "platform",
-            "python", "revision", "timing", "mootation"}
+            "python", "revision", "timing", "timing_us", "mootation"}
 # meta.json keys that describe the trajectory's grid (--common-grid)
 GRID_KEYS = {"record_grid", "record_per_decade", "record_every", "records", "record_at",
              "trajectory_metrics_at_record_at"}
