@@ -1361,6 +1361,7 @@ of single-objective subproblems:
 | `local` | `sqp` (SLSQP; the problem's inequalities and equalities as its constraints), `nm`, `cmaes` (both with a penalty in which a feasible point is always better) |
 | `n_sub` | subproblems after the anchors; 0: from the budget — what is left over 10 (n + 1) evaluations for sqp, 100 n for the others, at most `pop_size` |
 | `sub_budget` | evaluations a subproblem may take; 0: what is left over the subproblems left (what one does not use, the next get) |
+| `sqp_line_search` | `stop` (the default): after 10 step lengths without Armijo's decrease sqp stops, B reset to I once first (Nocedal & Wright §3.5); `accept`: it takes the last step length and goes on, as Kraft's code does (`slsqp.hpp`, SQP-6) |
 | `fd_step`, `local_tol`, `cma_sigma0`, `eps_objective` | sqp's forward-difference step in the box normalized to [0, 1] (1.49e-8); the solvers' tolerance (1e-14); CMA-ES's first step in the normalized box (0.3); the objective eps minimizes (1) |
 
 The run ends when the plan is done or the budget spent: a plan that ends

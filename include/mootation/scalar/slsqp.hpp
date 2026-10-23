@@ -56,6 +56,12 @@
 //     x + alpha d is clipped to the box (a step of an ulp at most: the QP's
 //     step keeps the box) and the start too.
 //   SQP-5. No scaling of x, f or c: the caller's.
+//   SQP-6. When no step length passes Armijo's test in 10 trials, the run
+//     stops (Options::accept_failed = false, NW §3.5's stopping test; with B
+//     reset first, SQP-2) or takes the last trial point and goes on
+//     (accept_failed = true: what Kraft's code does; Powell 1978, §4, whose
+//     step-length rule (4.7)-(4.8) Kraft's follows, sets no limit on the
+//     trials). The knob sqp_line_search of the scalarization methods.
 // ============================================================================
 
 #include <algorithm>
@@ -84,6 +90,7 @@ struct NLP {
 struct Options {
     double tol = 1e-6;
     int max_iter = 100;
+    bool accept_failed = false;          // SQP-6
 };
 
 enum class Status { converged, max_iter, qp_failed, line_search_failed, no_progress };
@@ -95,6 +102,7 @@ struct Result {
     Status status = Status::max_iter;
     int iterations = 0;
     int relaxed = 0;                     // QPs solved relaxed (SQP-1)
+    int forced = 0;                      // steps taken without Armijo's decrease (SQP-6)
 };
 
 inline constexpr double kEta = 1e-4;     // Armijo's constant, NW (3.4)
@@ -258,7 +266,7 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
         const double phi0 = f + mu * viol;
 
         // the step length
-        bool accepted = false;
+        bool accepted = false, evaluated = false;
         double alpha = 1.0, ft = 0.0;
         std::vector<double> xt(n), ct(m);
         if (slope < 0.0) {
@@ -267,11 +275,16 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
                 detail::clip(xt, p.lo, p.hi);
                 if (xt == x) break;
                 ft = p.values(xt, ct);
+                evaluated = true;
                 const double phi = ft + mu * detail::violation(ct, me);
                 if (phi <= phi0 + kEta * alpha * slope) { accepted = true; break; }
                 const double a = -slope * alpha * alpha / (2.0 * (phi - phi0 - slope * alpha));
                 alpha = std::isfinite(a) ? std::max(0.1 * alpha, a) : 0.1 * alpha;
             }
+        }
+        if (!accepted && o.accept_failed && evaluated && !(xt == x)) {
+            accepted = true;                             // SQP-6: the last trial point
+            ++r.forced;
         }
         if (!accepted) {
             if (fresh) {

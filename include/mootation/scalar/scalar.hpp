@@ -22,6 +22,9 @@
 //   n_sub          subproblems after the anchors; 0: from the budget (SCALAR-1)
 //   sub_budget     evaluations a subproblem may take; 0: what is left over the
 //                  subproblems left, so that what one does not use the next get
+//   sqp_line_search  stop | accept: sqp after 10 step lengths without Armijo's
+//                  decrease stops (NW §3.5) or takes the last one (Kraft's
+//                  code); slsqp.hpp SQP-6 (stop)
 //   fd_step        sqp's forward-difference step in the normalized box (1.49e-8)
 //   local_tol      the solvers' tolerance (1e-14)
 //   cma_sigma0     cmaes's initial step in the normalized box (0.3; the
@@ -307,7 +310,8 @@ inline std::vector<Vec> levels(std::size_t m, long long count, long long& L)
 
 // ── scalar ──────────────────────────────────────────────────────────────────
 struct ScalarSettings {
-    std::string scalarization = "eps", local = "sqp", sub_plan = "grid", tch_weights = "inverse";
+    std::string scalarization = "eps", local = "sqp", sub_plan = "grid", tch_weights = "inverse",
+                sqp_line_search = "stop";
     double n_sub = 0, sub_budget = 0, fd_step = 1.4901161193847656e-08, local_tol = 1e-14,
            cma_sigma0 = 0.3, eps_objective = 1;
 };
@@ -321,7 +325,8 @@ inline ScalarSettings scalar_settings(const std::string& name, const Knobs& knob
         {"scalarization", {"eps", "tch", "nbi", "nnc", "ps"}},
         {"tch_weights", {"inverse", "lattice"}},
         {"local", {"sqp", "nm", "cmaes"}},
-        {"sub_plan", {"grid", "laumanns", "gap"}}};
+        {"sub_plan", {"grid", "laumanns", "gap"}},
+        {"sqp_line_search", {"stop", "accept"}}};
     ScalarSettings s;
     if (name == "eps_sqp") { s.scalarization = "eps"; s.local = "sqp"; }
     else if (name == "tch_sqp") { s.scalarization = "tch"; s.local = "sqp"; }
@@ -335,7 +340,8 @@ inline ScalarSettings scalar_settings(const std::string& name, const Knobs& knob
                                            {"eps_objective", &s.eps_objective}};
     std::map<std::string, std::string*> word_of{{"scalarization", &s.scalarization},
                                                 {"tch_weights", &s.tch_weights},
-                                                {"local", &s.local}, {"sub_plan", &s.sub_plan}};
+                                                {"local", &s.local}, {"sub_plan", &s.sub_plan},
+                                                {"sqp_line_search", &s.sqp_line_search}};
     for (const auto& [k, v] : knobs) {
         auto w = words.find(k);
         if (w != words.end()) {
@@ -367,7 +373,8 @@ inline std::vector<std::pair<std::string, std::string>> settings_list(const Scal
 {
     using detail::g_format;
     return {{"scalarization", s.scalarization}, {"local", s.local}, {"sub_plan", s.sub_plan},
-            {"tch_weights", s.tch_weights}, {"n_sub", g_format(s.n_sub)},
+            {"tch_weights", s.tch_weights}, {"sqp_line_search", s.sqp_line_search},
+            {"n_sub", g_format(s.n_sub)},
             {"sub_budget", g_format(s.sub_budget)}, {"fd_step", g_format(s.fd_step)},
             {"local_tol", g_format(s.local_tol)}, {"cma_sigma0", g_format(s.cma_sigma0)},
             {"eps_objective", g_format(s.eps_objective)},
@@ -489,7 +496,8 @@ inline Result run_scalar(const std::string& name, const Problem& P, double eq_to
             run.touched.push_back(st);
             const Vec y0 = run.y_of(st);
             if (s.local == "sqp")
-                sqp(run, y0, sub.t_star(frame.bar(ev.F[st])), s.fd_step, s.local_tol);
+                sqp(run, y0, sub.t_star(frame.bar(ev.F[st])), s.fd_step, s.local_tol,
+                    s.sqp_line_search == "accept");
             else if (s.local == "nm")
                 nm(run, y0, {st}, s.local_tol);
             else

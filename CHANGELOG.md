@@ -25,7 +25,9 @@ always listed under **Changed** or **Removed**.
   The Python modules `scalar/evaluator.py`, `subproblems.py`, `solvers.py`,
   `cmaes.py`, `mosqp.py`, `boostdms.py` are removed; tests/test_slsqp.cpp and
   tests/test_scalar.cpp check the solvers on problems with known solutions and
-  the methods' answers bit for bit.
+  the methods' answers bit for bit. The knob `sqp_line_search` (`stop`, the
+  default, or `accept`): what sqp does after 10 step lengths without
+  Armijo's decrease (SQP-6).
 
 - Fixed: the memory of `result.unique_evaluations`. Every distinct point a
   run evaluated was kept as a tuple of Python floats, about 3 kB a point of
