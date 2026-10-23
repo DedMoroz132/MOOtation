@@ -10178,6 +10178,69 @@ archive_mode = "{mode}"
 
 
 @test
+def the_accounting_in_cpp_is_the_accounting_in_python():
+    """Task 17, stage 2b, step 2: a run's accounting of its evaluations in C++
+    (run_ledger.hpp; campaign.USE_LEDGER) writes the same files as in Python
+    (account_numpy): the grid of budgets with its checkpoints, everything
+    evaluated and hv_archive, the hard budgets on the generations' grid, the
+    second answer from every point evaluated; on a problem of the suite (the
+    direct path), a constrained one, a noisy copy (the oracle), a failing
+    copy, a categorical one (the archive's indices), a multimodal one, and a
+    baseline."""
+    if not _have_numpy() or _core_with("RunLedger") is None:
+        print("  skip  the_accounting_in_cpp...: no NumPy or stale _core"); return
+    from mootation.run import campaign as C
+    from mootation.run.config import load
+    import importlib.util
+    spec_ = importlib.util.spec_from_file_location(
+        "compare_results", HERE.parent / "tools" / "compare_results.py")
+    cmp = importlib.util.module_from_spec(spec_)
+    spec_.loader.exec_module(cmp)
+    budgets = ('record_grid = "budgets"\nrecord_at = [250, 600]\narchive_checkpoints = true\n'
+               'all_evaluated = true\nset_answer = "evaluated"')
+    many = '"DTLZ2_3D", "C2-DTLZ2_3D", "DTLZ2_3D_n1", "DTLZ2_3D_fail10r", "minusDTLZ2_3D"'
+    both = '{ name = "nsga2", pop = 0, gens = 0 }, { name = "random_search", pop = 0, gens = 0 }'
+    cases = ((budgets, many, both),
+             ('record_grid = "generations"\nrecord_every = 1\nhard_budgets = [300, 700]\nanswer_k = 10',
+              many, both),
+             # a categorical problem: a core only (a baseline's points are not its labels)
+             (budgets, '"catZDT1"', '{ name = "nsga2", pop = 0, gens = 0 }'))
+    for grid, problems, algorithms in cases:
+        roots = {}
+        for use in (False, True):
+            text = f"""algorithms = [{algorithms}]
+[run]
+name = "ledger{int(use)}"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = [{problems}]
+[campaign]
+out = "res"
+budget_fe = 1200
+metrics = ["igdp_norm", "hv"]
+{grid}
+"""
+            td = tempfile.mkdtemp()
+            cfg_path = Path(td) / "c.toml"
+            cfg_path.write_text(text, encoding="utf-8")
+            cfg = load(cfg_path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root = C.out_root(cfg, spec)
+            C.USE_LEDGER = use
+            try:
+                for job in C.expand_jobs(cfg, spec):
+                    assert C.run_job(job, root, spec, quiet=True) == "done", job
+            finally:
+                C.USE_LEDGER = True
+            roots[use] = root
+        diffs = cmp.compare(roots[False], roots[True])
+        assert diffs == [], (grid, problems, diffs[:10])
+
+
+@test
 def smpso_presets_knobs_and_refusals():
     """Task 9, B1: SMPSO (algorithms/smpso.hpp) — each preset resolves to its
     table row and Result.settings reports every knob as the run used it; a

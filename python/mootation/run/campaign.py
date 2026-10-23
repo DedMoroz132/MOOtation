@@ -704,6 +704,11 @@ REFERENCES_DIR = "_references"
 # and to merge parts of two versions.
 TRAJECTORY_VERSION = 2
 
+# A run's accounting of its evaluations in C++ where the extension has it
+# (run_ledger.hpp; task 17, stage 2b); False: in Python (account_numpy), the
+# reference the tests compare it with.
+USE_LEDGER = True
+
 
 def trajectory_version_of(meta: dict) -> int:
     return int(meta.get("trajectory_version") or 1)
@@ -1336,13 +1341,86 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
 
     read_at = None          # the counts where account reads something, sorted
 
+    # The accounting in C++ (run_ledger.hpp; task 17, stage 2b) where the
+    # archives are the extension's: the same counts, failures and points;
+    # account_numpy below is the reference, and the path without it.
+    ledger = None
+    if USE_LEDGER:
+        try:
+            from .. import _core as _cl
+        except ImportError:
+            _cl = None
+        compiled = _cl is not None and hasattr(_cl, "RunLedger") and all(
+            a is None or isinstance(getattr(a, "_a", None), (_cl.GridArchive, _cl.SetArchive))
+            for a in (arc, oracle, sarc))
+        if compiled:
+            ledger = _cl.RunLedger(p.n_obj, p.n_vars, cons is not None,
+                                   arc._a if arc is not None else None,
+                                   oracle._a if oracle is not None else None, inc,
+                                   sarc._a if sarc is not None else None)
+
+    def reads():
+        """The counts where account reads something, made at the first call:
+        they are all set before the run."""
+        nonlocal read_at
+        if read_at is None:
+            read_at = sorted(set(checkpoints) | (set(hard) if arc is not None else set())
+                             | (grid_set if (inc is not None or arc_hv) else set()))
+            if ledger is not None:
+                ledger.set_reads(read_at, sorted(grid_set) if inc is not None else [])
+        return read_at
+
+    def read(b):
+        """What the run reads after exactly b evaluations, the archive's points offered up to b."""
+        if arc_hv and b in grid_set:
+            flush(read=True)
+            t_hv = time.perf_counter()
+            arc_hv_at[b] = archive_hv()
+            tm["records"] += time.perf_counter() - t_hv
+        if (arc is not None and b in hard) or b in checkpoints:
+            flush(read=True)
+            if arc is not None and b in hard:
+                take_hard_archive(b)
+            if b in checkpoints and (len(arc) or cons is not None):
+                take_checkpoint(b)
+
     def account(X, F, G, T):
         """The rows X evaluated, (F, G, T) their values (objectives_of), in
         order (THE EVALUATOR above): the counts, the failures and the points of
-        a batch at once, which every row is pended in order, and at each count
+        a batch at once, which every row is offered in order, and at each count
         where something is read (the grid of everything evaluated, the hard
         budgets, the checkpoints) the reading after exactly that many."""
-        nonlocal fe, fe_first_feas, n_failed, read_at
+        nonlocal fe, fe_first_feas, n_failed
+        if ledger is None:
+            return account_numpy(X, F, G, T)
+        reads()
+        n = len(X)
+        F = np.asarray(F, float).reshape(n, p.n_obj)
+        # a categorical variable's label is a string: the archives keep its index
+        Xa = (np.asarray(X, float) if numeric is None else
+              np.asarray([numeric(x) for x in X], float)).reshape(n, p.n_vars)
+        if oracle is not None and T is None:
+            finite = np.isfinite(F).all(axis=1)
+            T = [truth(list(x)) if finite[i] else [np.nan] * p.n_obj for i, x in enumerate(X)]
+        t_a = time.perf_counter()
+        ledger.begin(Xa, F, None if G is None else np.asarray(G, float).reshape(n, -1),
+                     None if T is None else np.asarray(T, float).reshape(n, p.n_obj))
+        while True:
+            b = ledger.next()
+            if b < 0:
+                break
+            fe = b
+            tm["archive"] += time.perf_counter() - t_a
+            read(b)
+            t_a = time.perf_counter()
+        tm["archive"] += time.perf_counter() - t_a
+        fe, n_failed, fe_first_feas = ledger.fe, ledger.n_failed, ledger.first_feasible
+        if len(failed_fe) != n_failed:
+            failed_fe[:] = ledger.failed_fe
+
+    def account_numpy(X, F, G, T):
+        """account() in Python: the reference."""
+        nonlocal fe, fe_first_feas, n_failed
         n = len(X)
         F = np.asarray(F, float).reshape(n, p.n_obj)
         finite = np.isfinite(F).all(axis=1)
@@ -1371,29 +1449,16 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                     pend_o.append((t_true, xn))
                 if inc is not None and ok[i]:
                     pend_i.append((F[i] if t_true is None else t_true, start + 1 + i))
-        if read_at is None:     # made at the first call: they are all set before the run
-            read_at = sorted(set(checkpoints) | (set(hard) if arc is not None else set())
-                             | (grid_set if (inc is not None or arc_hv) else set()))
-        reads = read_at[bisect.bisect_right(read_at, start):bisect.bisect_right(read_at, start + n)]
+        at = reads()
         lo = 0
-        for b in reads:
+        for b in at[bisect.bisect_right(at, start):bisect.bisect_right(at, start + n)]:
             pend(lo, b - start)
             lo = b - start
             fe = b
             if inc is not None and fe in grid_set:
                 flush()
                 all_at[fe] = (inc.igd_plus(), inc.eps_plus())
-            if arc_hv and fe in grid_set:
-                flush(read=True)
-                t_hv = time.perf_counter()
-                arc_hv_at[fe] = archive_hv()
-                tm["records"] += time.perf_counter() - t_hv
-            if (arc is not None and fe in hard) or fe in checkpoints:
-                flush(read=True)
-                if arc is not None and fe in hard:
-                    take_hard_archive(fe)
-                if fe in checkpoints and (len(arc) or cons is not None):
-                    take_checkpoint(fe)
+            read(b)
         pend(lo, n)
         fe = start + n
         flush()
@@ -1629,7 +1694,8 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
                 arc_hv_at[fe_rec] = archive_hv()
             rec["hv_archive"] = arc_hv_at[fe_rec]
         if inc is not None:
-            v = all_at.get(fe_rec) if fe_rec != fe else None
+            v = ((ledger.all_at(fe_rec) if ledger is not None else all_at.get(fe_rec))
+                 if fe_rec != fe else None)
             v = v or (inc.igd_plus(), inc.eps_plus())
             rec["igdp_norm_all"], rec["eps_norm_all"] = (None if not math.isfinite(u) else u
                                                          for u in v)
