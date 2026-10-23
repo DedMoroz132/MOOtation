@@ -29,6 +29,7 @@
 #include <mootation/store/pack.hpp>
 #include <mootation/store/record.hpp>
 #include <mootation/store/meta_table.hpp>
+#include <mootation/store/metrics_table.hpp>
 #include <mootation/store/record_tables.hpp>
 #include <mootation/store/run_json.hpp>
 #include <mootation/store/text_codec.hpp>
@@ -901,6 +902,22 @@ void bind_run_layer(py::module_& m)
               return out;
           },
           py::arg("data"), "[(key, meta.json bytes)] of a pack's meta table.");
+    m.def("store_encode_metrics_table",
+          [as_bytes, blocks_in](const std::string& family, const py::list& runs) {
+              std::vector<std::pair<std::string, std::vector<mootation::store::Block>>> rs;
+              for (const auto& item : runs) {
+                  const auto r = item.cast<py::tuple>();
+                  rs.emplace_back(r[0].cast<std::string>(), blocks_in(r[1].cast<py::list>()));
+              }
+              std::vector<std::uint8_t> out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::store::encode_metrics_table(family, rs);
+              }
+              return as_bytes(out);
+          },
+          py::arg("family"), py::arg("runs"),
+          "A pack's metrics table of its runs [(key, blocks)] (store/metrics_table.hpp).");
     m.def("store_final_once",
           [blocks_in, blocks_out](const py::list& blocks) {
               return blocks_out(mootation::store::final_once(blocks_in(blocks)));

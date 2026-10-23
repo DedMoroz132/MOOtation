@@ -95,11 +95,11 @@ its body with "#points", its frame — and the files — a segment's record
 appended and synced, a pack written, its footer and index read, a pack
 checked — and what a record reads from its JSON — which blocks are point
 tables (their "#head"), meta.json's final once and back, a pack's meta table
-— are the library's (include/mootation/store/record.hpp, pack.hpp,
-run_json.hpp, meta_table.hpp; the extension's store_* functions). This module
-finds the files, runs compact, merge and export over them and builds the
-metrics table. Without the extension it writes and reads format 2 (zlib) by
-itself.
+and the metrics table — are the library's (include/mootation/store/
+record.hpp, pack.hpp, run_json.hpp, meta_table.hpp, metrics_table.hpp; the
+extension's store_* functions). This module finds the files and runs
+compact, merge and export over them. Without the extension it writes and
+reads format 2 (zlib) by itself.
 """
 
 from __future__ import annotations
@@ -1486,8 +1486,13 @@ def _metrics_section(family: str, runs: list) -> bytes:
     — the key's parts, seed, budget, then every number the records hold (bools
     as 0/1, null as NaN; text left out) — column after column: "MOOTMTR1",
     the CRC-32C of the body, the body: pieces, a directory (JSON: family,
-    rows, columns [name, dtype]) and each column's block (encode_block)."""
+    rows, columns [name, dtype]) and each column's block (encode_block). The
+    library's (store/metrics_table.hpp); without the extension, this one."""
     import numpy as np
+    c = _codec()
+    if c is not None:
+        return bytes(_lib(c.store_encode_metrics_table, family,
+                          [(r.key, _blocks_lib(list(r.blocks().values()))) for r in runs]))
     rows, cols = _metric_rows(runs)
     out: list = []
     blocks = []
@@ -1544,32 +1549,6 @@ def _metric_rows(runs: list) -> tuple:
                         cols.append(k)
             rows.append(row)
     return rows, cols
-
-
-def write_metrics(store: Path, family: str, runs: list) -> Path:
-    """metrics-<family>.mhd/.raw, the metrics table as a file of its own (the
-    layout of before the pack file; _metrics_section is the pack's)."""
-    import numpy as np
-    rows, cols = _metric_rows(runs)
-    raw = Path(store) / f"metrics-{_safe(family)}.raw"
-    tmp = raw.with_suffix(f".raw.{os.getpid()}.tmp")
-    fields = {"format": FORMAT, "format_version": FORMAT_VERSION, "kind": "metrics", "family": family,
-              "data_file": raw.name, "rows": len(rows)}
-    with open(tmp, "wb") as fh:
-        for c in _KEY_COLUMNS:
-            labels = sorted({r[c] for r in rows})
-            code = {s: i for i, s in enumerate(labels)}
-            for name, b in ((f"{c}#labels", Block(f"{c}#labels", "json", (), json.dumps(labels).encode())),
-                            (c, Block(c, "<i4", (len(rows),),
-                                      np.asarray([code[r[c]] for r in rows], "<i4").tobytes()))):
-                fields[f"column.{name}"] = f"{b.dtype} {fh.tell()} {fh.write(encode_block(b))}"
-        for c in ("seed", "budget", *cols):
-            a = np.asarray([r.get(c, np.nan) for r in rows], "<f8")
-            b = Block(c, "<f8", a.shape, a.tobytes())
-            fields[f"column.{c}"] = f"<f8 {fh.tell()} {fh.write(encode_block(b))}"
-    os.replace(tmp, raw)
-    _write_header(raw.with_suffix(".mhd"), fields)
-    return raw
 
 
 def metrics(path, family: str | None = None, *, frame: bool = False):

@@ -88,7 +88,7 @@ always listed under **Changed** or **Removed**.
   record's bytes — blocks, body, frame, the key's SHA-256 — and the files —
   a segment's record appended and synced, a pack written, read and checked
   — and what a record reads from its JSON (the point tables, meta.json's
-  final once, a pack's meta table) are the library's
+  final once, a pack's meta and metrics tables) are the library's
   (`include/mootation/store/`); `store.py` finds the files and runs compact,
   merge and export over them. The format, byte by byte:
   `docs/store-format.md`.

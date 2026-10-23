@@ -21,6 +21,7 @@
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
 #include <mootation/store/meta_table.hpp>
+#include <mootation/store/metrics_table.hpp>
 #include <mootation/store/pack.hpp>
 #include <mootation/store/record.hpp>
 #include <mootation/store/record_tables.hpp>
@@ -85,6 +86,14 @@ static std::size_t i64_round_trip(const std::vector<std::int64_t>& x, const char
         ++failures;
     }
     return bytes.size();
+}
+
+static void same(const std::string& got, const std::string& want)
+{
+    if (got != want) {
+        std::printf("FAIL: got  %s\n      want %s\n", got.c_str(), want.c_str());
+        ++failures;
+    }
 }
 
 int main()
@@ -480,6 +489,41 @@ int main()
         bool threw = false;
         try { st::decode_meta_table(bad.data(), bad.size()); } catch (const std::runtime_error&) { threw = true; }
         CHECK(threw);
+    }
+    {
+        // the metrics table: a run's trajectory by columns (its two records) and one as text (format 1)
+        namespace js = mootation::json;
+        auto bytes_of = [](const std::string& t) { return std::vector<std::uint8_t>(t.begin(), t.end()); };
+        js::Value head = js::Value::object(), cols = js::Value::array();
+        for (const char* c : {"fe", "igd", "ok"}) cols.items.push_back(js::Value::string(c));
+        head.set("kind", js::Value::string("jsonl"));
+        head.set("columns", cols);
+        head.set("texts", js::Value::array());
+        const double vals[6] = {100, 0.5, 1, 200, 0.25, 0};
+        std::vector<std::uint8_t> vb, cb = {2, 1, 3, 2, 1, 3};
+        for (double v : vals) {
+            std::uint64_t bits;
+            std::memcpy(&bits, &v, 8);
+            st::rec::put_le(vb, bits, 8);
+        }
+        const std::vector<st::Block> a = {
+            {"meta.json", "json", {}, bytes_of("{\"status\": \"done\"}"), ""},
+            {"trajectory.jsonl#head", "json", {}, bytes_of(js::dump(head)), ""},
+            {"trajectory.jsonl", "<f8", {2, 3}, vb, ""},
+            {"trajectory.jsonl#cells", "|u1", {2, 3}, cb, ""}};
+        const std::vector<st::Block> b = {
+            {"trajectory.jsonl", "text", {}, bytes_of("{\"fe\": 50, \"hv\": null, \"note\": \"x\"}\r\n\n"), ""}};
+        const auto table = st::encode_metrics_table("ZDT", {{"ZDT1|nsga2||1|200", a}, {"ZDT2|moead||2|100", b}});
+        CHECK(table.size() > 12 && std::memcmp(table.data(), "MOOTMTR1", 8) == 0);
+        std::size_t at = 12;
+        const std::uint64_t n = st::col::get_varint(table.data(), table.size(), at);
+        const js::Value dir = js::parse(std::string(table.begin() + static_cast<std::ptrdiff_t>(at),
+                                                    table.begin() + static_cast<std::ptrdiff_t>(at + n)));
+        CHECK(dir.find("rows")->i == 3 && dir.find("family")->s == "ZDT");
+        std::string names;
+        for (const auto& c : dir.find("columns")->items) names += c.items[0].s + ":" + c.items[1].s + " ";
+        same(names, "problem#labels:json problem:<i4 algorithm#labels:json algorithm:<i4 variant#labels:json "
+                    "variant:<i4 status#labels:json status:<i4 seed:<f8 budget:<f8 fe:<f8 igd:<f8 ok:<f8 hv:<f8 ");
     }
 
     if (failures) {
