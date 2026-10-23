@@ -54,10 +54,6 @@
 
 namespace mootation::scalar {
 
-struct Point {
-    Vec x, f, g;
-};
-
 struct PolishResult {
     Rows objectives, variables;
     Vec cv;
