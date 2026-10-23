@@ -1378,6 +1378,58 @@ def campaign_fit_pop_rounds_to_what_the_core_accepts():
     assert fit_pop("moead", 20, 3, {}, "nearest")[0] == 21
     assert fit_pop("nsga3", 10, 5, {}, "nearest")[0] == 5            # 5 and 15 as near
     assert fit_pop("moead_m2m", 97, 3, {}, "nearest")[0] == 100
+    # n_ref_points sets the reference points apart from pop (task 15, §2):
+    # check_pop accepts any pop then, and fit_pop leaves it as it is
+    from mootation.run.algorithms import check_pop
+    for alg, pop, m, h in (("nsga3", 100, 5, 100), ("theta_dea", 92, 3, 91), ("a_nsga3", 212, 5, 210),
+                           ("srv_nsga3", 65, 10, 55)):
+        assert check_pop(alg, pop, m, {"n_ref_points": h}) is None, alg
+        for rule in ("below", "nearest"):
+            assert fit_pop(alg, pop, m, {"n_ref_points": h}, rule) == (pop, ""), (alg, rule)
+    assert fit_pop("moead", 100, 5, {"n_ref_points": 100})[0] == 85     # not a FREE_H core: 70 + 15
+
+
+@test
+def campaign_keeps_the_pop_of_a_core_given_n_ref_points():
+    """A campaign entry with n_ref_points runs the pop it names (the fit_pop
+    defect found in task 17, supplement 5, §1.3: N was rounded to a lattice
+    although the config check had accepted it)."""
+    try:
+        import numpy  # noqa: F401
+    except ImportError:
+        return
+    from mootation.run import campaign as C
+    cfg = loads('''
+[run]
+name = "fitpop"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+problems = ["DTLZ2_5D"]
+
+[campaign]
+seeds = [1]
+pop_fit = "below"
+
+[[algorithms]]
+name = "nsga3"
+label = "n3h"
+pop = 100
+gens = 3
+params = { n_ref_points = 100 }
+
+[[algorithms]]
+name = "nsga3"
+label = "n3"
+pop = 100
+gens = 3
+''')
+    assert validate(cfg) == [], validate(cfg)
+    jobs = {j.key: j for j in C.expand_jobs(cfg, C.campaign_spec(cfg))}
+    assert jobs["n3h"].pop == 100 and jobs["n3h"].pop_note == "", (jobs["n3h"].pop, jobs["n3h"].pop_note)
+    assert jobs["n3"].pop == 85 and "lattice" in jobs["n3"].pop_note, (jobs["n3"].pop, jobs["n3"].pop_note)
 
 
 @test

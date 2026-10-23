@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed: a campaign entry of `nsga3`, `a_nsga3`, `theta_dea` or `srv_nsga3`
+  with `n_ref_points` ran another population than it named: the config check
+  accepted any `pop` with `n_ref_points` (the reference points no longer come
+  from it, task 15, §2), but the job expansion still rounded `pop` to a
+  Das-Dennis lattice (`campaign.fit_pop`). It now keeps the `pop`.
+
 - The scalarization methods (`scalar` and its presets), `mosqp`, `boostdms`
   and `polish` in C++ (task 17, stage 6; `include/mootation/scalar/`,
   `_core.scalar`), with the library's own local solvers in place of SciPy's:

@@ -60,7 +60,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from .config import Config, ConfigError, load, validate
-from .algorithms import (EXACT_LATTICE, K_DIVISIBLE, check_pop, seed_independent,
+from .algorithms import (EXACT_LATTICE, FREE_H, K_DIVISIBLE, check_pop, seed_independent,
                          nearest_lattice_sizes)
 from .metric_names import (DENSE_SUFFIX, POOLED_SUFFIX, HIGHER_IS_BETTER, HV_NAMES,
                            METRIC_NAMES, NEEDS_FRONT, NEEDS_SET, NEEDS_X, RUN_STATS, DE_STATS,
@@ -578,6 +578,11 @@ def fit_pop(name: str, pop: int, n_objs: int, params: dict,
     rule "below": the largest accepted size up to pop (the smallest above when
     there is none); "nearest": the accepted size nearest to pop, the smaller of
     two as near (CampaignSpec.pop_fit)."""
+    # Task 15, §2: given n_ref_points, these take any population size (their
+    # reference points no longer come from it), as check_pop says; rounding
+    # such a pop to a lattice ran another population than the one asked for.
+    if name in FREE_H and params.get("n_ref_points"):
+        return pop, ""
     if name in EXACT_LATTICE:
         from .algorithms import lattice_sizes
         ok = set(lattice_sizes(n_objs, 2 * pop)) | _two_layer_sizes(n_objs, 2 * pop)
