@@ -1050,39 +1050,68 @@ def _pack_index(path: Path) -> list:
     st = path.stat()
     tag = (str(path), st.st_mtime_ns, st.st_size)
     if tag not in _PACK_CACHE:
-        part = _pack_part(path, "index")
-        if part[:1] == b"T":
-            c = _codec()
-            if c is None:
-                raise ValueError(f"{path.name}: its index needs the compiled extension")
-            lines = bytes(c.store_decode_text(part[1:]))
-        else:
-            lines = part[1:]
-        out = []
-        for line in lines.decode("utf-8").splitlines():
-            off, length, crc, status, key = line.split("\t", 4)
-            out.append((key, Loc(path, int(off), int(length), int(crc, 16), status)))
-        _PACK_CACHE[tag] = out
+        _PACK_CACHE[tag] = _index_entries(path, _pack_part(path, "index"))
     return _PACK_CACHE[tag]
 
 
+def _index_entries(path: Path, part: bytes) -> list:
+    if part[:1] == b"T":
+        c = _codec()
+        if c is None:
+            raise ValueError(f"{path.name}: its index needs the compiled extension")
+        lines = bytes(c.store_decode_text(part[1:]))
+    else:
+        lines = part[1:]
+    out = []
+    for line in lines.decode("utf-8").splitlines():
+        off, length, crc, status, key = line.split("\t", 4)
+        out.append((key, Loc(path, int(off), int(length), int(crc, 16), status)))
+    return out
+
+
 def check_pack(path: Path) -> list:
-    """What is wrong with a pack: its footer, its whole checksum, its index, every record."""
+    """What is wrong with a pack, and where: the footer, then every part by its
+    own checksum — the meta table, the metrics table, the index, each record
+    (its key and offset) — and the zero bytes between them; where only the
+    file's checksum fails, the header or the footer's checksum."""
+    path = Path(path)
+    name = path.name
     try:
         f = _pack_footer(path)
-        with open(path, "rb") as fh:
-            if crc32c(fh.read(f["end"])) != f["crc"]:
-                return [f"{Path(path).name}: the file's checksum does not hold"]
-        bad = []
-        for key, loc in _pack_index(path):
-            with open(path, "rb") as fh:
-                fh.seek(loc.offset)
-                got = _parse_record(fh.read(loc.length), 0)
-            if got is None or got[0] != key or got[2] != loc.crc:
-                bad.append(f"{Path(path).name}@{loc.offset}: {key} is not whole")
-        return bad
     except ValueError as e:
         return [str(e)]
+    data = path.read_bytes()
+    bad = []
+    parts = []                                          # (start, end) of every part, in order
+    for part in ("meta", "metrics"):
+        at, n = f[part]
+        parts.append((at, at + n))
+        if n == 0:
+            continue
+        piece = data[at:at + n]
+        magic = META_MAGIC if part == "meta" else METRICS_MAGIC
+        if piece[:8] != magic or len(piece) < 12 or crc32c(piece[12:]) != struct.unpack_from("<I", piece, 8)[0]:
+            bad.append(f"{name}@{at}: the {part} table is damaged (its checksum)")
+    at, n = f["index"]
+    if at + n > f["end"] or crc32c(data[at:at + n]) != f["index_crc"]:
+        bad.append(f"{name}@{at}: the index is damaged (its checksum)")
+        entries = []
+    else:
+        entries = _index_entries(path, data[at:at + n])
+    parts.append((at, at + n))
+    for key, loc in entries:
+        parts.append((loc.offset, loc.offset + loc.length))
+        got = _parse_record(data[loc.offset:loc.offset + loc.length], 0)
+        if got is None or got[0] != key or got[2] != loc.crc:
+            bad.append(f"{name}@{loc.offset}: the record of {key} is damaged (its checksum)")
+    parts.sort()
+    for (_, end), (start, _) in zip(parts, parts[1:] + [(f["end"], 0)]):
+        if end <= start and any(data[end:start]):
+            first = end + next(i for i, b in enumerate(data[end:start]) if b)
+            bad.append(f"{name}@{first}: a byte that should be zero (between the parts)")
+    if crc32c(data[:f["end"]]) != f["crc"] and not bad:
+        bad.append(f"{name}: the header (bytes 0-{parts[0][0]}) or the footer's checksum is damaged")
+    return bad
 
 
 # ── the meta table of a pack (format 3; supplement 5, §2.3) ─────────────────
@@ -1106,6 +1135,7 @@ def check_pack(path: Path) -> list:
 #       (i64), the column's texts (text codec: JSON)
 
 META_MAGIC = b"MOOTMET1"
+METRICS_MAGIC = b"MOOTMTR1"
 _META_CACHE: dict = {}
 
 
@@ -1619,9 +1649,9 @@ def _records(run, names) -> list:
 def _metrics_section(family: str, runs: list) -> bytes:
     """The metrics table of a pack: one row per trajectory record of every run
     — the key's parts, seed, budget, then every number the records hold (bools
-    as 0/1, null as NaN; text left out) — column after column: pieces, a
-    directory (JSON: family, rows, columns [name, dtype]) and each column's
-    block (encode_block)."""
+    as 0/1, null as NaN; text left out) — column after column: "MOOTMTR1",
+    the CRC-32C of the body, the body: pieces, a directory (JSON: family,
+    rows, columns [name, dtype]) and each column's block (encode_block)."""
     import numpy as np
     rows, cols = _metric_rows(runs)
     out: list = []
@@ -1638,12 +1668,18 @@ def _metrics_section(family: str, runs: list) -> bytes:
                                 "columns": [[b.name, b.dtype] for b in blocks]}).encode())
     for b in blocks:
         _put_piece(out, encode_block(b))
-    return b"".join(out)
+    body = b"".join(out)
+    return METRICS_MAGIC + struct.pack("<I", crc32c(body)) + body
 
 
 def _metrics_from_section(data: bytes) -> dict:
     """{column name: Block} of a pack's metrics part."""
-    pieces = list(_pieces(data))
+    if data[:8] != METRICS_MAGIC or len(data) < 12:
+        raise ValueError("not a pack's metrics table")
+    body = data[12:]
+    if crc32c(body) != struct.unpack_from("<I", data, 8)[0]:
+        raise ValueError("a pack's metrics table: its checksum does not hold")
+    pieces = list(_pieces(body))
     head = json.loads(pieces[0])
     cols = {}
     for (name, _), piece in zip(head["columns"], pieces[1:]):

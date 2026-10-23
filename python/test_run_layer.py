@@ -12148,7 +12148,7 @@ def a_store_cuts_a_torn_record_and_packs_the_same_bytes():
         data[loc.offset + loc.length // 2] ^= 1
         bad.write_bytes(bytes(data))
         got = store.check_pack(bad)
-        assert len(got) == 1 and "checksum" in got[0], got
+        assert len(got) == 1 and f"@{loc.offset}: the record of" in got[0], got   # where
         # a pack of before (pack-<family>.raw beside .idx, .mhd): read, then replaced
         old = Path(td) / "old"
         w = store.SegmentWriter(store.store_dir(old))

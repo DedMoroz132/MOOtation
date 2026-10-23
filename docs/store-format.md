@@ -49,12 +49,18 @@ The footer:
 
 A reader reads the footer, the index (its checksum), then a record where the
 index says (the record's own checksum); a check reads the whole file against
-`crc`. A pack is written to a temporary file and renamed when whole.
+`crc`, and where it fails, each part against its own checksum (the meta and
+metrics tables, the index, every record) and the bytes between the parts
+against zero, to say where; what is left is the header or the footer. A pack
+is written to a temporary file and renamed when whole.
 
 ### The metrics table
 
-Pieces (below): a directory — JSON `{"family", "rows", "columns": [[name,
-dtype], ...]}` — then each column's block (as a record's, without the count).
+    magic "MOOTMTR1" | u32 CRC-32C of the body | body
+
+The body is pieces (below): a directory — JSON `{"family", "rows",
+"columns": [[name, dtype], ...]}` — then each column's block (as a record's,
+without the count).
 One row per trajectory record of every run: `problem`, `algorithm`,
 `variant`, `status` (each a block `<name>#labels`, JSON list of the
 distinct texts, and `<name>`, `<i4` indices into it), `seed`, `budget`, then
