@@ -969,7 +969,98 @@ def compute(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
     2026-10-09, item 5.2). A set without a feasible point, an empty one
     included, has feas_share 0 and no value for any indicator: None, not 0 and
     not infinity (n_final 0).
+
+    In C++ where the extension is built (run_compute.hpp; task 17, stage 2b):
+    the same values in the same order; _compute_numpy is the reference.
     """
+    fn = _compiled("compute_indicators")
+    args = _compute_args(F, ref_front, ideal, nadir, which, pop, hv_options, X, pareto_set,
+                         bounds, cyclic, distance_fn, constraints) if fn is not None else None
+    if args is None:
+        return _compute_numpy(F, ref_front=ref_front, ideal=ideal, nadir=nadir, which=which, pop=pop,
+                              hv_options=hv_options, X=X, pareto_set=pareto_set, bounds=bounds,
+                              cyclic=cyclic, distance_fn=distance_fn, constraints=constraints)
+    out = dict(fn(**args))
+    if "range_cover_each" in out:
+        out["range_cover_each"] = [round(float(v), 6) for v in out["range_cover_each"]]
+    return out
+
+
+_HV_DEFAULTS = {"exact_max_m": HV_EXACT_MAX_M, "mc_samples": HV_MC_SAMPLES, "seed": 0, "hv_algo": "auto"}
+
+
+def _compute_args(F, ref_front, ideal, nadir, which, pop, hv_options, X, pareto_set, bounds,
+                  cyclic, distance_fn, constraints):
+    """compute_indicators's arguments, or None where the compiled compute does
+    not take the inputs as they are (odd shapes, an unknown name or hv
+    option): _compute_numpy measures, or raises, as always."""
+    from .metric_names import METRIC_NAMES
+    F = np.asarray(F, float)
+    if F.ndim != 2 or not F.shape[1] or any(w not in METRIC_NAMES for w in which):
+        return None
+    m = F.shape[1]
+    hv = dict(_HV_DEFAULTS)
+    if any(k not in hv for k in (hv_options or {})):
+        return None
+    hv.update(hv_options or {})
+    if ref_front is not None:
+        ref_front = np.asarray(ref_front, float)
+        if not (ref_front.ndim == 2 and len(ref_front) and ref_front.shape[1] == m):
+            return None
+    if (ideal is None) != (nadir is None):
+        return None
+    for v in (ideal, nadir):
+        if v is not None and np.shape(v) != (m,):
+            return None
+    if X is not None:
+        X = np.asarray(X, float)
+        if X.ndim != 2 or len(X) != len(F):
+            return None
+    if constraints is not None:
+        if X is None:
+            return None                           # _compute_numpy raises
+        ok = feasible_mask(X, constraints)
+    else:
+        ok = None
+    lo = hi = None
+    if X is not None and bounds is not None:
+        lo = np.array([b[0] for b in bounds], float)
+        hi = np.array([b[1] for b in bounds], float)
+        if lo.shape != (X.shape[1],):
+            return None
+    P = None
+    if pareto_set is not None and np.size(pareto_set):
+        P = np.atleast_2d(np.asarray(pareto_set, float))
+        if X is not None and not (P.ndim == 2 and P.shape[1] == X.shape[1]):
+            return None
+    V = None
+    if "i_cmop" in which and have_frame(ideal, nadir) and len(F) and constraints is not None:
+        V = violations(X, constraints)
+    g = None
+    if (distance_fn is not None and X is not None and X.size
+            and any(w in ("g_min", "g_median") for w in which)):
+        # the problem's distance of the rows measured (the feasible ones)
+        g = np.array([distance_fn(list(x)) if ok is None or ok[i] else np.nan
+                      for i, x in enumerate(X)], float)
+    step = float("nan")
+    if ("gdp_min" in which and ref_front is not None and have_frame(ideal, nadir)
+            and len(F) and (ok is None or ok.any())):
+        step = reference_step(_normalised(F, ref_front, ideal, nadir)[1])
+    return dict(F=F, which=list(which), ref=ref_front,
+                ideal=None if ideal is None else np.asarray(ideal, float),
+                nadir=None if nadir is None else np.asarray(nadir, float),
+                pop=int(pop) if pop else 0, exact_max_m=int(hv["exact_max_m"]),
+                mc_samples=int(hv["mc_samples"]), seed=int(hv["seed"]) & 0xFFFFFFFFFFFFFFFF,
+                hv_algo=str(hv["hv_algo"]), X=X, pareto_set=P, lo=lo, hi=hi,
+                cyclic=[int(c) for c in cyclic], feasible=None if ok is None else ok.astype(float),
+                V=V, g=g, ref_step=step)
+
+
+def _compute_numpy(F, *, ref_front=None, ideal=None, nadir=None, which=("igd",),
+                   pop: int | None = None, hv_options: dict | None = None, X=None,
+                   pareto_set=None, bounds=None, cyclic=(), distance_fn=None,
+                   constraints=None) -> dict:
+    """compute() in Python over the kernels: the reference."""
     out: dict = {}
     F = np.asarray(F, float)
     if "i_cmop" in which and have_frame(ideal, nadir) and len(F):

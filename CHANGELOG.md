@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- In C++ (task 17, stage 2b): `metrics.compute` as a whole
+  (`include/mootation/run_compute.hpp`), every indicator by name in the same
+  order with the same values; the Python stays as the reference
+  (`metrics._compute_numpy`).
+
 - Task 17, supplement 3, stage 3a: DAS-CMOP1-9, LIR-CMOP1-14, MW1-14,
   DOC1-9, Polygon (with rcPolygon and c0Polygon), IPolygon, SYM-PART,
   Omni-test, MMF1-15, RE and CRE in the C++ suite (`include/mootation/suite`:

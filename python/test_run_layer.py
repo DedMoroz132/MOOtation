@@ -5028,6 +5028,65 @@ snapshot_variables = "all"
 
 
 @test
+def compute_in_cpp_gives_the_numpy_values():
+    """Task 17, stage 2b, step 1: metrics.compute in C++ (run_compute.hpp)
+    gives what its Python over the same kernels gives (_compute_numpy), every
+    indicator name, the same keys in the same order, the same values bit for
+    bit: sets of 0, 1, 7 and 60 points, with a reference front, a Pareto-set
+    sample, cyclic variables (shiftDTLZ), constraints (C1-DTLZ1, C2-DTLZ2: the
+    feasible part, i_cmop, a set without a feasible point), distance_fn
+    (DTLZ2), the hypervolume exact and by Monte Carlo, NaN rows."""
+    if not _have_numpy() or _core_with("compute_indicators") is None:
+        print("  skip  compute_in_cpp...: no NumPy or stale _core"); return
+    import math
+    import numpy as np
+    from mootation.benchmarks import get
+    from mootation.run import metrics as M
+    from mootation.run.metric_names import METRIC_NAMES
+
+    def same(a, b):
+        if type(a) is not type(b):
+            return False
+        if isinstance(a, float):
+            return (math.isnan(a) and math.isnan(b)) or (a == b and math.copysign(1, a) == math.copysign(1, b))
+        if isinstance(a, list):
+            return len(a) == len(b) and all(same(u, v) for u, v in zip(a, b))
+        if isinstance(a, dict):
+            return list(a) == list(b) and all(same(a[k], b[k]) for k in a)
+        return a == b
+
+    rng = np.random.default_rng(17)
+    cases = 0
+    for name in ("DTLZ2_3D", "ZDT1", "shiftDTLZ2_2D", "C1-DTLZ1_3D", "C2-DTLZ2_3D", "DTLZ2_5D"):
+        p = get(name)
+        ref = np.asarray(p.pareto_front(300), float)
+        pset = np.asarray(p.pareto_set(200), float) if callable(p.pareto_set) else None
+        lo = np.array([b[0] for b in p.bounds]); hi = np.array([b[1] for b in p.bounds])
+        cons = p.constraints if p.has_cons else None
+        for n in (0, 1, 7, 60):
+            X = lo + rng.random((n, p.n_vars)) * (hi - lo)
+            if pset is not None and n > 1:
+                X[: n // 2] = pset[rng.integers(0, len(pset), n // 2)]       # some on the set
+            F = np.array([p.evaluate(list(x)) for x in X], float).reshape(n, p.n_obj)
+            for hv in ({"exact_max_m": 10, "mc_samples": 100_000}, {"exact_max_m": 2, "mc_samples": 4000}):
+                kw = dict(ref_front=ref, ideal=p.ideal, nadir=p.nadir, which=METRIC_NAMES,
+                          pop=p.pop_size, hv_options=hv, X=X, pareto_set=pset, bounds=p.bounds,
+                          cyclic=p.cyclic_vars, distance_fn=p.distance_fn, constraints=cons)
+                got, want = M.compute(F, **kw), M._compute_numpy(F, **kw)
+                assert list(got) == list(want), (name, n, list(got), list(want))
+                bad = [k for k in got if not same(got[k], want[k])]
+                assert not bad, (name, n, hv, [(k, got[k], want[k]) for k in bad])
+                cases += 1
+    # a NaN row, and no frame, no reference, no variables
+    F = np.array([[0.2, 0.9], [np.nan, 0.1], [0.5, 0.5]])
+    for kw in (dict(ref_front=np.array([[0.0, 1.0], [1.0, 0.0]]), ideal=[0, 0], nadir=[1, 1]), {}):
+        got, want = M.compute(F, which=METRIC_NAMES, pop=100, **kw), M._compute_numpy(F, which=METRIC_NAMES, pop=100, **kw)
+        assert list(got) == list(want) and all(same(got[k], want[k]) for k in got), (got, want)
+        cases += 1
+    assert cases == 50, cases
+
+
+@test
 def the_hypervolume_knobs_follow_the_owners_table():
     """Task 17, supplement 2, §2: hv_archive is the exact hypervolume of the
     archive written (the store's archive, float64, cut to archive_cap x N),
