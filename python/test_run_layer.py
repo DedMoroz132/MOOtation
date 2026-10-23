@@ -1955,6 +1955,7 @@ def portfolio_runs_on_a_results_tree():
     a bbob-biobj one kept apart, the seed rules, and the matrix."""
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks.registry import REFERENCE_VERSION
     from mootation.run import portfolio as P
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -1975,7 +1976,8 @@ def portfolio_runs_on_a_results_tree():
                 (d / "meta.json").write_text(json.dumps(
                     {"problem": prob, "algorithm": alg, "seed": s, "status": "done", "final": f,
                      "budget_nominal": 1000, "budget_fe": 1000, "pop": 91 if prob != "bbobbiobj01_n05_2D" else 100,
-                     "has_reference_front": prob == "DTLZ2_3D", "reference_version": 2}),
+                     "has_reference_front": prob == "DTLZ2_3D",
+                     "reference_version": REFERENCE_VERSION}),     # the bbob ones changed in v4
                     encoding="utf-8")
         text = P.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,))
         # DTLZ2's optimum is at the centre: no front_interior group (task 6)
@@ -2129,6 +2131,7 @@ def instance_space_runs_on_a_results_tree():
     front and the bbob-biobj ones in spaces of their own, the files written."""
     if not _have_numpy() or not _have_scipy():
         print("  skip  instance_space_runs...: no NumPy or SciPy"); return
+    from mootation.benchmarks.registry import REFERENCE_VERSION
     from mootation.run import instance_space as S
     front = ["ZDT1", "ZDT2", "ZDT3", "DTLZ2_3D", "WFG4_3D", "MOP1"]
     bbob = ["bbobbiobj01_n05_2D", "bbobbiobj15_n05_2D", "bbobbiobj40_n10_2D",
@@ -2147,7 +2150,8 @@ def instance_space_runs_on_a_results_tree():
                     (d / "meta.json").write_text(json.dumps(
                         {"problem": prob, "algorithm": alg, "seed": s, "status": "done",
                          "final": final, "budget_nominal": 1000, "budget_fe": 1000,
-                         "has_reference_front": prob in front, "reference_version": 2}),
+                         "has_reference_front": prob in front,
+                         "reference_version": REFERENCE_VERSION}),  # the bbob ones changed in v4
                         encoding="utf-8")
         text = S.run(root, budgets=(1000,), taus=(0.1,), floor_taus=(1.0,), n_ref=200, tries=3,
                      bbob_features="properties")
