@@ -8,7 +8,7 @@ is given in full, with its reasons and references.
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-377 items: 305 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+378 items: 306 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -58,6 +58,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `a_nsga3` | a_nsga3.1 | Path-A: pop_size = the Das-Dennis lattice size (see nsga3.hpp); | yes | `a_nsga3.hpp` |
 | `theta_dea` | TDEA-ADA (task 15 of 2026-10-21, §6; off by default) | ada = 1: ADA in place of the generation — one child a step, P growing, the answer A^primary (operators/ada.hpp; | no: option | `theta_dea.hpp` |
 | `theta_dea` | TDEA-L (task 15 of 2026-10-21, §2; off by default) | n_offspring (λ children a generation, μ survivors from the μ + λ) and n_ref_points (H reference points, das_dennis::reference_points) apart from pop_size, as NSGA3-L in nsga3.hpp; not set, λ = μ and H = μ's lattice, a... | no: option | `theta_dea.hpp` |
+| `theta_dea` | TDEA-1 (declared 2026-10-24, task 17, supplement 5, §1.1) | Equal F_j in one cluster — copies of a solution, which random mating breeds whenever a parent is drawn twice and no variable mutates — are ordered by their slots, so that only one of them is theta-optimal. | yes | `theta_dea.hpp` |
 | `ar_moea` | IGD-NS (Eq.2-3) | IGD-NS(X,Y) = Sum_{y in Y} min_{x in X} dis(y,x) + Sum_{x' in X*} min_{y in Y} dis(y,x'), where X* is the set of noncontributing solutions: those x' that are nearest to no reference point y in Y (Eq.2). | yes | `ar_moea.hpp` |
 | `ar_moea` | ar_moea.1 | argmin/argmax ties are broken deterministically (the first extremum); on an exact distance tie there is a single contributing carrier; | yes | `ar_moea.hpp` |
 | `ar_moea` | ar_moea.2 | ENS/T-ENS (§III-D) is replaced by a fast NDS with an equivalent result; | yes | `ar_moea.hpp` |

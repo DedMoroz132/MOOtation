@@ -44,6 +44,18 @@
 //   components of z^nad are rolled back ("In all the above cases, z_i^nad is
 //   assigned ... for each i"). das_dennis::generate_exact requires N to equal
 //   the lattice point count exactly, which is stricter than the paper.
+//   TDEA-1 (declared 2026-10-24, task 17, supplement 5, §1.1). Equal F_j in one
+//     cluster — copies of a solution, which random mating breeds whenever a
+//     parent is drawn twice and no variable mutates — are ordered by their
+//     slots, so that only one of them is theta-optimal. Definition 7 compares
+//     with a strict "<", and read literally two copies theta-dominate each
+//     other in neither direction: both enter F'_1, F'_1 then outgrows the
+//     clusters it covers, and the random choice of Step 20 drops the only
+//     member of another cluster, which empties: on DTLZ2 at M = 3 one to four
+//     reference directions stayed empty to the end of a run. The paper's "the
+//     fast non-dominated sorting approach [9] can be immediately adopted"
+//     sorts the members of a cluster by F_j; how it ranks equal values is not
+//     said.
 // EXTENSIONS BEYOND THE PAPER: ConstraintMode::FEASIBILITY — CDP dominance in
 //   the prefilter and feasible-priority in the theta comparison (the paper does
 //   not consider constraints); off by default. Binary variables (uniform
@@ -385,6 +397,9 @@ private:
             double theta = theta_per_ref_[ra];
             double Fa = vault.get_ind(a).d1 + theta * vault.get_ind(a).d2;
             double Fb = vault.get_ind(b).d1 + theta * vault.get_ind(b).d2;
+            // TDEA-1: equal F_j (copies) are ordered by their slots, so that
+            // only one of them is theta-optimal.
+            if (Fa == Fb) return a < b;
             return Fa < Fb;
         }
         // Different clusters are theta-incomparable (Definition 7: x
