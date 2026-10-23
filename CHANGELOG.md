@@ -14,6 +14,10 @@ always listed under **Changed** or **Removed**.
   (`include/mootation/run_compute.hpp`), every indicator by name in the same
   order with the same values; the Python stays as the reference
   (`metrics._compute_numpy`).
+  And a run's accounting of its evaluations (`include/mootation/
+  run_ledger.hpp`, `campaign.USE_LEDGER`): the counts, the failures, the
+  first feasible evaluation and every row offered to the run's archives, read
+  at exactly the grid's counts; the same files.
 
 - Added (task 17, supplement 2, §1.3): a problem can say it is stochastic —
   `minimize(stochastic=True)`, an optional `is_stochastic()` in C++

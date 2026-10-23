@@ -22,6 +22,7 @@
 #include <mootation/archive_select.hpp>
 #include <mootation/decision_indicators.hpp>
 #include <mootation/run_compute.hpp>
+#include <mootation/run_ledger.hpp>
 #include <mootation/run_metrics.hpp>
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
@@ -662,4 +663,79 @@ void bind_run_layer(py::module_& m)
         .def_property_readonly("reached", &IF::reached)
         .def("distances", [](const IF& a) { return vector_of(a.distances()); },
              "min over the points so far of d+(z, a), for every reference point z");
+
+    // ── a campaign run's accounting (campaign.py's account; run_ledger.hpp) ──
+    struct Ledger {
+        mootation::RunLedger L;
+        std::size_t d;                            // the variables the archives keep
+        py::object keep;                          // the archives, alive while the ledger is
+        std::vector<double> X, F, G, T;           // the batch in progress
+    };
+    auto archive_of = [](const py::object& o) -> GA* { return o.is_none() ? nullptr : o.cast<GA*>(); };
+    py::class_<Ledger>(m, "RunLedger",
+                       "campaign.py's account() in C++ (include/mootation/run_ledger.hpp): the "
+                       "counts, the failures, the first feasible evaluation and every row offered to "
+                       "the run's archives, read at exactly the counts set_reads names.")
+        .def(py::init([archive_of](std::size_t n_obj, std::size_t n_vars, bool constrained,
+                                   const py::object& archive, const py::object& oracle,
+                                   const py::object& all, const py::object& second) {
+                 auto* inc = all.is_none() ? nullptr : all.cast<IF*>();
+                 auto* sarc = second.is_none() ? nullptr : second.cast<SA*>();
+                 return new Ledger{mootation::RunLedger(n_obj, n_vars, constrained, archive_of(archive),
+                                                        archive_of(oracle), inc, sarc),
+                                   n_vars, py::make_tuple(archive, oracle, all, second), {}, {}, {}, {}};
+             }),
+             py::arg("n_obj"), py::arg("n_vars"), py::arg("constrained"), py::arg("archive"),
+             py::arg("oracle"), py::arg("all"), py::arg("second"))
+        .def("set_reads",
+             [](Ledger& a, std::vector<long long> at, std::vector<long long> grid) { a.L.set_reads(std::move(at), grid); },
+             py::arg("at"), py::arg("grid"),
+             "The counts the caller reads at, and those of everything evaluated's grid.")
+        .def("begin",
+             [](Ledger& a, const Arr& X, const Arr& F, const py::object& G, const py::object& T) {
+                 Rows f = rows_of(F, "RunLedger.begin: F"), x = rows_of(X, "RunLedger.begin: X");
+                 if (x.n != f.n || x.m != a.d)
+                     throw std::invalid_argument("RunLedger.begin: X must be n x n_vars, a row per row of F");
+                 a.X = std::move(x.v);
+                 a.F = std::move(f.v);
+                 std::size_t c = 0;
+                 a.G.clear(); a.T.clear();
+                 if (!G.is_none()) {
+                     Rows g = rows_of(Arr::ensure(G), "RunLedger.begin: G");
+                     if (g.n != f.n) throw std::invalid_argument("RunLedger.begin: G needs a row per row of F");
+                     c = g.m;
+                     a.G = std::move(g.v);
+                 }
+                 if (!T.is_none()) {
+                     Rows t = rows_of(Arr::ensure(T), "RunLedger.begin: T");
+                     if (t.n != f.n || t.m != f.m) throw std::invalid_argument("RunLedger.begin: T must be as F");
+                     a.T = std::move(t.v);
+                 }
+                 a.L.begin(a.X.data(), a.F.data(), f.n, c ? a.G.data() : nullptr, c,
+                           T.is_none() ? nullptr : a.T.data());
+             },
+             py::arg("X"), py::arg("F"), py::arg("G") = py::none(), py::arg("T") = py::none(),
+             "A batch of rows in the order evaluated: X the variables the archives keep "
+             "(a categorical variable's index), F, G and T as account() takes them.")
+        .def("next",
+             [](Ledger& a) {
+                 py::gil_scoped_release unlock;
+                 return a.L.next();
+             },
+             "Offer the rows up to the next count read in the batch and return it; -1 at its end.")
+        .def_property_readonly("fe", [](const Ledger& a) { return a.L.fe(); })
+        .def_property_readonly("n_failed", [](const Ledger& a) { return a.L.n_failed(); })
+        .def_property_readonly("failed_fe", [](const Ledger& a) { return a.L.failed_fe(); })
+        .def_property_readonly("first_feasible",
+                               [](const Ledger& a) -> py::object {
+                                   const long long v = a.L.first_feasible();
+                                   return v < 0 ? py::object(py::none()) : py::object(py::int_(v));
+                               })
+        .def("all_at",
+             [](const Ledger& a, long long b) -> py::object {
+                 auto it = a.L.all_at().find(b);
+                 if (it == a.L.all_at().end()) return py::none();
+                 return py::make_tuple(it->second.first, it->second.second);
+             },
+             py::arg("b"), "(IGD+, epsilon) of everything evaluated after exactly b evaluations, or None.");
 }
