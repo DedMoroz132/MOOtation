@@ -216,21 +216,26 @@ void methods()
     bool gap = false, version = false;
     for (const auto& [key, v] : r.settings) {
         gap = gap || (key == "sub_plan" && v == "gap");
-        version = version || (key == "method_version" && v == "2");
+        version = version || (key == "method_version" && v == "3");
     }
     check(r.ignored == std::vector<std::string>{"eta_c"} && gap && version,
-          "scalar: knobs taken, ignored and reported; method_version 2");
-    // sqp_line_search = accept (SQP-6): a run of its own, within the budget, reported
-    Counted cc = constrained();
-    sc::Knobs ka{{"sqp_line_search", {true, "accept", 0.0}}};
-    const sc::Result ra = sc::run("eps_sqp", cc.P, 1e-3, false, 0.0, 20, 1500, 7, ka, {}, 0, {});
-    bool accept = false;
-    for (const auto& [key, v] : ra.settings) accept = accept || (key == "sqp_line_search" && v == "accept");
-    bool feasible = !ra.objectives.empty();
-    for (double v : ra.cv) feasible = feasible && v <= 0.0;
-    check(accept && feasible && ra.evaluations == cc.calls() && ra.evaluations <= 1500,
-          "eps_sqp with sqp_line_search = accept: " + std::to_string(ra.evaluations) + " evaluations");
-    hash(ra.objectives);
+          "scalar: knobs taken, ignored and reported; method_version 3");
+    // sqp_line_search (SQP-6 to SQP-9): accept by default, stop and powell
+    // runs of their own, within the budget, reported
+    for (const char* how : {"", "stop", "powell"}) {
+        Counted cc = constrained();
+        sc::Knobs ka;
+        if (*how) ka = {{"sqp_line_search", {true, how, 0.0}}};
+        const sc::Result ra = sc::run("eps_sqp", cc.P, 1e-3, false, 0.0, 20, 1500, 7, ka, {}, 0, {});
+        const std::string want = *how ? how : "accept";
+        bool reported = false;
+        for (const auto& [key, v] : ra.settings) reported = reported || (key == "sqp_line_search" && v == want);
+        bool feasible = !ra.objectives.empty();
+        for (double v : ra.cv) feasible = feasible && v <= 0.0;
+        check(reported && feasible && ra.evaluations == cc.calls() && ra.evaluations <= 1500,
+              "eps_sqp with sqp_line_search = " + want + ": " + std::to_string(ra.evaluations) + " evaluations");
+        hash(ra.objectives);
+    }
 }
 
 void polish()
@@ -284,7 +289,7 @@ int main()
     polish();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     // the same on every platform of the CI (MSVC, g++, clang, macOS ARM)
-    const std::uint64_t expected = 0x2312f04dd7e4b9acULL;
+    const std::uint64_t expected = 0x6a7181cb28e93855ULL;
     check(g_hash == expected, "bits: the checksum of every run's answer");
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);

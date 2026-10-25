@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (the owner's word, 25.10): `sqp_line_search = accept` is the
+  default of the scalarization methods (`scalar` and its presets); the runs
+  of those with `local = sqp` change, `method_version = 3`. A third value,
+  `powell`: the merit function and the step length of Powell 1978, §4 (a
+  penalty per constraint by (4.6), the step rule (4.7)-(4.8) with 0.1 and
+  the change of the linearized merit; `slsqp.hpp`, SQP-7 to SQP-9).
+
 - Changed (task 17, supplement 5, §3): C++ draws what the problems' specs
   held. The rotations of the rotated problems are Haar rotations from the
   library's generator (`suite/instances.hpp`: Householder QR of a normal
@@ -60,8 +67,8 @@ always listed under **Changed** or **Removed**.
   The Python modules `scalar/evaluator.py`, `subproblems.py`, `solvers.py`,
   `cmaes.py`, `mosqp.py`, `boostdms.py` are removed; tests/test_slsqp.cpp and
   tests/test_scalar.cpp check the solvers on problems with known solutions and
-  the methods' answers bit for bit. The knob `sqp_line_search` (`stop`, the
-  default, or `accept`): what sqp does after 10 step lengths without
+  the methods' answers bit for bit. The knob `sqp_line_search` (`stop`, then
+  the default, or `accept`): what sqp does after 10 step lengths without
   Armijo's decrease (SQP-6).
 
 - Changed: a run's clocks in `meta.json` are `timing_us`, whole

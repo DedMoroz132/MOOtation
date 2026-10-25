@@ -1359,7 +1359,8 @@ in C++ since task 17, stage 6, with the library's own SQP and Nelder–Mead): th
 algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
 `nnc_sqp`, `eps_nm`, `eps_cmaes`; they need the compiled extension, not SciPy.
 `method_version` in the settings (meta) is the version of their trajectories:
-2 since stage 6 (1 was SciPy's solvers). A run is a plan
+3 since `sqp_line_search = accept` became the default, 2 since stage 6 (1 was
+SciPy's solvers). A run is a plan
 of single-objective subproblems:
 
 1. the initial plan — `pop_size` uniform points, or the design of `init`
@@ -1380,7 +1381,7 @@ of single-objective subproblems:
 | `local` | `sqp` (SLSQP; the problem's inequalities and equalities as its constraints), `nm`, `cmaes` (both with a penalty in which a feasible point is always better) |
 | `n_sub` | subproblems after the anchors; 0: from the budget — what is left over 10 (n + 1) evaluations for sqp, 100 n for the others, at most `pop_size` |
 | `sub_budget` | evaluations a subproblem may take; 0: what is left over the subproblems left (what one does not use, the next get) |
-| `sqp_line_search` | `stop` (the default): after 10 step lengths without Armijo's decrease sqp stops, B reset to I once first (Nocedal & Wright §3.5); `accept`: it takes the last step length and goes on, as Kraft's code does (`slsqp.hpp`, SQP-6) |
+| `sqp_line_search` | `accept` (the default): after 10 step lengths without Armijo's decrease sqp takes the last one and goes on, as Kraft's code does; `stop`: it stops, B reset to I once first (Nocedal & Wright §3.5) (`slsqp.hpp`, SQP-6); `powell`: the merit function and the step length of Powell 1978, §4 — a penalty per constraint (4.6), the step rule (4.7)–(4.8) with 0.1 and the change of the linearized merit, no limit on the trials (`slsqp.hpp`, SQP-7 to SQP-9) |
 | `fd_step`, `local_tol`, `cma_sigma0`, `eps_objective` | sqp's forward-difference step in the box normalized to [0, 1] (1.49e-8); the solvers' tolerance (1e-14); CMA-ES's first step in the normalized box (0.3); the objective eps minimizes (1) |
 
 The run ends when the plan is done or the budget spent: a plan that ends
