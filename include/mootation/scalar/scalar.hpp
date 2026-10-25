@@ -22,9 +22,11 @@
 //   n_sub          subproblems after the anchors; 0: from the budget (SCALAR-1)
 //   sub_budget     evaluations a subproblem may take; 0: what is left over the
 //                  subproblems left, so that what one does not use the next get
-//   sqp_line_search  stop | accept: sqp after 10 step lengths without Armijo's
-//                  decrease stops (NW §3.5) or takes the last one (Kraft's
-//                  code); slsqp.hpp SQP-6 (stop)
+//   sqp_line_search  stop | accept | powell: sqp after 10 step lengths without
+//                  Armijo's decrease stops (NW §3.5) or takes the last one
+//                  (Kraft's code), slsqp.hpp SQP-6; or its merit and step
+//                  length are Powell 1978's, §4 (accept; the owner's word,
+//                  25.10)
 //   fd_step        sqp's forward-difference step in the normalized box (1.49e-8)
 //   local_tol      the solvers' tolerance (1e-14)
 //   cma_sigma0     cmaes's initial step in the normalized box (0.3; the
@@ -121,7 +123,8 @@
 // METHOD_VERSION: the version of these methods' trajectories, in every
 // result's settings (a campaign's meta): 1 — SciPy's SLSQP and Nelder-Mead and
 // NumPy's generator (task 9), 2 — the library's own solvers and rnd:: (task
-// 17, stage 6).
+// 17, stage 6), 3 — sqp_line_search = accept by default (the presets with
+// local = sqp change; polish, mosqp and boostdms run as in 2).
 // ============================================================================
 
 #include <algorithm>
@@ -145,7 +148,7 @@
 
 namespace mootation::scalar {
 
-inline constexpr int METHOD_VERSION = 2;
+inline constexpr int METHOD_VERSION = 3;
 
 // A knob as the caller gives it: a word or a number.
 struct Knob {
@@ -311,7 +314,7 @@ inline std::vector<Vec> levels(std::size_t m, long long count, long long& L)
 // ── scalar ──────────────────────────────────────────────────────────────────
 struct ScalarSettings {
     std::string scalarization = "eps", local = "sqp", sub_plan = "grid", tch_weights = "inverse",
-                sqp_line_search = "stop";
+                sqp_line_search = "accept";
     double n_sub = 0, sub_budget = 0, fd_step = 1.4901161193847656e-08, local_tol = 1e-14,
            cma_sigma0 = 0.3, eps_objective = 1;
 };
@@ -326,7 +329,7 @@ inline ScalarSettings scalar_settings(const std::string& name, const Knobs& knob
         {"tch_weights", {"inverse", "lattice"}},
         {"local", {"sqp", "nm", "cmaes"}},
         {"sub_plan", {"grid", "laumanns", "gap"}},
-        {"sqp_line_search", {"stop", "accept"}}};
+        {"sqp_line_search", {"stop", "accept", "powell"}}};
     ScalarSettings s;
     if (name == "eps_sqp") { s.scalarization = "eps"; s.local = "sqp"; }
     else if (name == "tch_sqp") { s.scalarization = "tch"; s.local = "sqp"; }
@@ -497,7 +500,9 @@ inline Result run_scalar(const std::string& name, const Problem& P, double eq_to
             const Vec y0 = run.y_of(st);
             if (s.local == "sqp")
                 sqp(run, y0, sub.t_star(frame.bar(ev.F[st])), s.fd_step, s.local_tol,
-                    s.sqp_line_search == "accept");
+                    s.sqp_line_search == "stop"     ? slsqp::LineSearch::stop
+                    : s.sqp_line_search == "accept" ? slsqp::LineSearch::accept
+                                                    : slsqp::LineSearch::powell);
             else if (s.local == "nm")
                 nm(run, y0, {st}, s.local_tol);
             else

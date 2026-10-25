@@ -146,7 +146,7 @@ inline bool moved(const Run& run, const std::vector<std::size_t>& starts, std::s
 
 // ── sqp ─────────────────────────────────────────────────────────────────────
 inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_step, double tol,
-                bool accept_failed = false)
+                slsqp::LineSearch line_search = slsqp::LineSearch::stop)
 {
     const Sub& sub = run.sub;
     Evaluator& ev = run.ev;
@@ -253,7 +253,7 @@ inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_st
     std::vector<double> z0 = y0;
     if (sub.aux) z0.push_back(t0);
     try {
-        slsqp::minimize(nlp, z0, {tol, 100000, accept_failed});
+        slsqp::minimize(nlp, z0, {tol, 100000, line_search});
     } catch (const SubBudgetSpent&) {
     } catch (const FailedPoint&) {
     }

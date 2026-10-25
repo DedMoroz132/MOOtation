@@ -26,9 +26,10 @@ fn; the run's first points are pop_size uniform points from the seed, the
 rows of the design `init` (designs.py), or the seed population.
 
 THE VERSION of these methods' trajectories is in every result's settings,
-method_version (_core.scalar.METHOD_VERSION): 2 since task 17, stage 6 (the
-library's solvers and random numbers; 1, absent, was SciPy's SLSQP and
-Nelder-Mead and NumPy's generator).
+method_version (_core.scalar.METHOD_VERSION): 3 since sqp_line_search =
+accept became the default (25.10); 2 since task 17, stage 6 (the library's
+solvers and random numbers; 1, absent, was SciPy's SLSQP and Nelder-Mead and
+NumPy's generator).
 """
 
 from __future__ import annotations

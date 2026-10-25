@@ -57,11 +57,33 @@
 //     step keeps the box) and the start too.
 //   SQP-5. No scaling of x, f or c: the caller's.
 //   SQP-6. When no step length passes Armijo's test in 10 trials, the run
-//     stops (Options::accept_failed = false, NW §3.5's stopping test; with B
-//     reset first, SQP-2) or takes the last trial point and goes on
-//     (accept_failed = true: what Kraft's code does; Powell 1978, §4, whose
-//     step-length rule (4.7)-(4.8) Kraft's follows, sets no limit on the
-//     trials). The knob sqp_line_search of the scalarization methods.
+//     stops (LineSearch::stop, NW §3.5's stopping test; with B reset first,
+//     SQP-2) or takes the last trial point and goes on (LineSearch::accept:
+//     what Kraft's code does). The knob sqp_line_search of the scalarization
+//     methods; its third value, powell, is the next paragraph.
+//
+// LineSearch::powell — steps 2 and 3 as M.J.D. Powell, "A fast algorithm for
+// nonlinearly constrained optimization calculations", in: G.A. Watson (ed.),
+// Numerical Analysis, Dundee 1977, LNM 630, Springer 1978, pp. 144-157
+// (source sqp_powell1978), §4, whose rule Kraft's code follows:
+//   2. a penalty mu_i of its own for every constraint, in the merit (4.2)
+//      phi(x) = f + sum_E mu_i |c_i| + sum_I mu_i |min(0, c_i)|: mu_i = |lambda_i|
+//      on the first iteration, then (4.6) mu_i = max(|lambda_i|,
+//      (mu_i + |lambda_i|) / 2), mu_i the previous iteration's;
+//   3. alpha_0 = 1, alpha_k the greater of 0.1 alpha_{k-1} and the minimizer
+//      of the quadratic through phi(0), Delta and phi(alpha_{k-1}) (4.7),
+//      until phi(alpha_k) <= phi(0) + 0.1 alpha_k Delta (4.8); Delta is
+//      phi(1) - phi(0) with f and c taken linear (§4, after (4.8)), not the
+//      derivative; no limit on the trials, as in the paper.
+// OURS for it:
+//   SQP-7. The trials end, failed, when x + alpha d is x bit for bit (alpha
+//     falls by 1.8 at least a trial, so this comes); then SQP-2 as for stop.
+//     Delta >= 0 (a relaxed QP's step, SQP-1) fails the same way at once.
+//   SQP-8. An iteration made again after a reset (SQP-2) takes (4.6) from the
+//     mu_i of the last finished iteration, not from those of the failed try.
+//   SQP-9. Not done: the paper's trap for cycling (an error return after five
+//     iterations with mu constant and no decrease of phi; "This error return
+//     has never occurred", §4). Steps 1 and 4 and SQP-1 to SQP-5 are as above.
 // ============================================================================
 
 #include <algorithm>
@@ -87,10 +109,12 @@ struct NLP {
     std::function<void(const std::vector<double>& x, std::vector<double>& g, Matrix& A)> derivatives;
 };
 
+enum class LineSearch { stop, accept, powell };   // SQP-6; powell: Powell 1978, §4
+
 struct Options {
     double tol = 1e-6;
     int max_iter = 100;
-    bool accept_failed = false;          // SQP-6
+    LineSearch line_search = LineSearch::stop;
 };
 
 enum class Status { converged, max_iter, qp_failed, line_search_failed, no_progress };
@@ -109,6 +133,7 @@ inline constexpr double kEta = 1e-4;     // Armijo's constant, NW (3.4)
 inline constexpr double kRho = 0.5;      // NW (18.36)
 inline constexpr double kRelax = 1e4;    // SQP-1
 inline constexpr int kTrials = 10;       // NW §3.5
+inline constexpr double kEtaPowell = 0.1;   // Powell 1978, (4.8)
 
 namespace detail {
 
@@ -117,6 +142,15 @@ inline double violation(const std::vector<double>& c, std::size_t me)
     double v = 0.0;
     for (std::size_t j = 0; j < c.size(); ++j)
         v += j < me ? std::fabs(c[j]) : std::max(0.0, -c[j]);
+    return v;
+}
+
+// The penalty part of Powell's merit (4.2), mu_i a constraint.
+inline double penalty(const std::vector<double>& c, const std::vector<double>& mu, std::size_t me)
+{
+    double v = 0.0;
+    for (std::size_t j = 0; j < c.size(); ++j)
+        v += mu[j] * (j < me ? std::fabs(c[j]) : std::max(0.0, -c[j]));
     return v;
 }
 
@@ -226,7 +260,9 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
     Matrix B(n, n);
     for (std::size_t i = 0; i < n; ++i) B(i, i) = 1.0;
     bool fresh = true;                                   // B = I since the last reset
-    double mu = 0.0;
+    const bool powell = o.line_search == LineSearch::powell;
+    double mu = 0.0;                                     // NW (18.36)
+    std::vector<double> mus;                             // Powell (4.6); empty before the first iteration
 
     auto reset = [&]() {
         B = Matrix(n, n);
@@ -250,39 +286,63 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
         for (double v : st.d) dmax = std::max(dmax, std::fabs(v));
         if (dmax <= o.tol && viol <= o.tol) { r.status = Status::converged; break; }   // SQP-3
 
-        // the penalty (NW (18.36), sigma = 1)
-        double gd = 0.0, dBd = 0.0;
-        for (std::size_t i = 0; i < n; ++i) {
-            gd += g[i] * st.d[i];
-            double s = 0.0;
-            for (std::size_t j = 0; j < n; ++j) s += B(i, j) * st.d[j];
-            dBd += st.d[i] * s;
+        double gd = 0.0;
+        for (std::size_t i = 0; i < n; ++i) gd += g[i] * st.d[i];
+        double slope = 0.0, phi0 = 0.0;
+        std::vector<double> mut;                         // the mu_i of this iteration (Powell)
+        if (powell) {
+            // the penalties (4.6), SQP-8
+            mut.resize(m);
+            for (std::size_t j = 0; j < m; ++j) {
+                const double l = std::fabs(st.lam[j]);
+                mut[j] = mus.empty() ? l : std::max(l, 0.5 * (mus[j] + l));
+            }
+            // Delta: phi(1) - phi(0) with f and c linear
+            std::vector<double> cl(m);
+            for (std::size_t j = 0; j < m; ++j) {
+                double v = c[j];
+                for (std::size_t i = 0; i < n; ++i) v += A(j, i) * st.d[i];
+                cl[j] = v;
+            }
+            const double p0 = detail::penalty(c, mut, me);
+            slope = gd + (detail::penalty(cl, mut, me) - p0);
+            phi0 = f + p0;
+        } else {
+            // the penalty (NW (18.36), sigma = 1)
+            double dBd = 0.0;
+            for (std::size_t i = 0; i < n; ++i) {
+                double s = 0.0;
+                for (std::size_t j = 0; j < n; ++j) s += B(i, j) * st.d[j];
+                dBd += st.d[i] * s;
+            }
+            if (viol > 0.0) {
+                const double need = (gd + 0.5 * dBd) / ((1.0 - kRho) * viol);
+                if (mu < need) mu = 2.0 * need;
+            }
+            slope = gd - mu * viol;                      // NW (18.29)
+            phi0 = f + mu * viol;
         }
-        if (viol > 0.0) {
-            const double need = (gd + 0.5 * dBd) / ((1.0 - kRho) * viol);
-            if (mu < need) mu = 2.0 * need;
-        }
-        const double slope = gd - mu * viol;             // NW (18.29)
-        const double phi0 = f + mu * viol;
+        const double eta = powell ? kEtaPowell : kEta;
 
         // the step length
         bool accepted = false, evaluated = false;
         double alpha = 1.0, ft = 0.0;
         std::vector<double> xt(n), ct(m);
         if (slope < 0.0) {
-            for (int trial = 0; trial < kTrials; ++trial) {
+            for (int trial = 0; powell || trial < kTrials; ++trial) {   // SQP-7
                 for (std::size_t i = 0; i < n; ++i) xt[i] = x[i] + alpha * st.d[i];
                 detail::clip(xt, p.lo, p.hi);
                 if (xt == x) break;
                 ft = p.values(xt, ct);
                 evaluated = true;
-                const double phi = ft + mu * detail::violation(ct, me);
-                if (phi <= phi0 + kEta * alpha * slope) { accepted = true; break; }
+                const double phi = ft + (powell ? detail::penalty(ct, mut, me)
+                                                : mu * detail::violation(ct, me));
+                if (phi <= phi0 + eta * alpha * slope) { accepted = true; break; }
                 const double a = -slope * alpha * alpha / (2.0 * (phi - phi0 - slope * alpha));
                 alpha = std::isfinite(a) ? std::max(0.1 * alpha, a) : 0.1 * alpha;
             }
         }
-        if (!accepted && o.accept_failed && evaluated && !(xt == x)) {
+        if (!accepted && o.line_search == LineSearch::accept && evaluated && !(xt == x)) {
             accepted = true;                             // SQP-6: the last trial point
             ++r.forced;
         }
@@ -295,6 +355,7 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
             --r.iterations;
             continue;
         }
+        if (powell) mus = mut;
         const bool done = std::fabs(ft - f) <= o.tol && detail::violation(ct, me) <= o.tol;
         std::vector<double> s(n);
         for (std::size_t i = 0; i < n; ++i) s[i] = xt[i] - x[i];

@@ -7,7 +7,9 @@
 //   slsqp   quadratics with equalities and inequalities, active bounds,
 //           degenerate constraints (repeated and redundant rows), a start on
 //           the boundary, infeasible starts, a start where the linearized
-//           constraints are incompatible, Rosenbrock, Hock & Schittkowski 71;
+//           constraints are incompatible, Rosenbrock, Hock & Schittkowski 71,
+//           the post office parcel and Powell's problems of Powell 1978, §5;
+//           with each line search (stop, accept, powell);
 //   nm      Rosenbrock, a quadratic in 5 variables, a minimum on the boundary.
 // ============================================================================
 
@@ -119,6 +121,9 @@ struct Prob {
     std::function<Matrix(const std::vector<double>&)> jac;
 };
 
+slsqp::LineSearch g_ls = slsqp::LineSearch::stop;   // the line search solve() uses
+std::string g_tag = "slsqp";                          // and its name in the checks
+
 slsqp::Result solve(const Prob& p, std::vector<double> x0, double tol = 1e-12, int it = 200)
 {
     slsqp::NLP nlp;
@@ -135,7 +140,7 @@ slsqp::Result solve(const Prob& p, std::vector<double> x0, double tol = 1e-12, i
         g = p.grad(x);
         if (p.me + p.mi) A = p.jac(x);
     };
-    return slsqp::minimize(nlp, std::move(x0), {tol, it});
+    return slsqp::minimize(nlp, std::move(x0), {tol, it, g_ls});
 }
 
 std::vector<double> lin(std::initializer_list<double> v) { return v; }
@@ -162,7 +167,7 @@ void slsqp_problems()
             [](auto&) { return rows({{1, 1}}); }};
     auto r = solve(eq, {5, -3});
     check(r.status == slsqp::Status::converged && near(r.x[0], 0, 1e-9) && near(r.x[1], 1, 1e-9),
-          "slsqp: quadratic, one equality (" + std::to_string(r.iterations) + " iterations)");
+          g_tag + ": quadratic, one equality (" + std::to_string(r.iterations) + " iterations)");
 
     // 2. inequality: min x^2 + y^2 s.t. x + y >= 1 -> (0.5, 0.5); infeasible start
     Prob in{2, 0, 1, {-kInf, -kInf}, {kInf, kInf},
@@ -172,7 +177,7 @@ void slsqp_problems()
             [](auto&) { return rows({{1, 1}}); }};
     r = solve(in, {-3, -3});
     check(r.status == slsqp::Status::converged && near(r.x[0], 0.5, 1e-9) && near(r.x[1], 0.5, 1e-9),
-          "slsqp: quadratic, one inequality, infeasible start (" + std::to_string(r.iterations) +
+          g_tag + ": quadratic, one inequality, infeasible start (" + std::to_string(r.iterations) +
               " iterations)");
 
     // 3. bounds active: min (x-2)^2 + (y+1)^2 on [0, 1]^2 -> (1, 0); from a corner
@@ -181,9 +186,9 @@ void slsqp_problems()
             [](auto& x) { return lin({2 * (x[0] - 2), 2 * (x[1] + 1)}); }, nullptr, nullptr};
     r = solve(bx, {0, 1});
     check(r.status == slsqp::Status::converged && near(r.x[0], 1, 1e-12) && near(r.x[1], 0, 1e-12),
-          "slsqp: active bounds, start at a corner (" + std::to_string(r.iterations) + " iterations)");
+          g_tag + ": active bounds, start at a corner (" + std::to_string(r.iterations) + " iterations)");
     r = solve(bx, {5, -5});
-    check(near(r.x[0], 1, 1e-12) && near(r.x[1], 0, 1e-12), "slsqp: a start outside the box is clipped");
+    check(near(r.x[0], 1, 1e-12) && near(r.x[1], 0, 1e-12), g_tag + ": a start outside the box is clipped");
 
     // 4. degenerate: the equality twice, and redundant active inequalities
     Prob dup{2, 2, 3, {-kInf, -kInf}, {kInf, kInf},
@@ -197,7 +202,7 @@ void slsqp_problems()
     r = solve(dup, {3, 3});
     // min under x + y = 1, x <= 0.5: (0, 1) satisfies x <= 0.5 -> (0, 1)
     check(r.status == slsqp::Status::converged && near(r.x[0], 0, 1e-9) && near(r.x[1], 1, 1e-9),
-          "slsqp: repeated equality, redundant inequalities (" + std::to_string(r.iterations) +
+          g_tag + ": repeated equality, redundant inequalities (" + std::to_string(r.iterations) +
               " iterations)");
     Prob act{2, 0, 3, {-kInf, -kInf}, {kInf, kInf},
              [](auto& x) { return (x[0] - 1) * (x[0] - 1) + x[1] * x[1]; },
@@ -206,7 +211,7 @@ void slsqp_problems()
              [](auto&) { return rows({{-1, 0}, {-1, 0}, {-2, 0}}); }};
     r = solve(act, {0.1, 0.3});
     check(r.status == slsqp::Status::converged && near(r.x[0], 0.5, 1e-9) && near(r.x[1], 0, 1e-9),
-          "slsqp: three active rows of one constraint (" + std::to_string(r.iterations) +
+          g_tag + ": three active rows of one constraint (" + std::to_string(r.iterations) +
               " iterations)");
 
     // 5. incompatible linearization at the start: x <= 1, x^2 >= 0.25 at x = 0
@@ -217,7 +222,7 @@ void slsqp_problems()
              [](auto& x) { return rows({{-1}, {2 * x[0]}}); }};
     r = solve(inc, {0.0});
     check(r.status == slsqp::Status::converged && near(r.x[0], 0.8, 1e-9) && r.relaxed > 0,
-          "slsqp: incompatible linearization, relaxed (" + std::to_string(r.relaxed) + " QPs)");
+          g_tag + ": incompatible linearization, relaxed (" + std::to_string(r.relaxed) + " QPs)");
 
     // 6. nonlinear infeasible start: min x + y s.t. x^2 + y^2 <= 2 -> (-1, -1)
     Prob circ{2, 0, 1, {-kInf, -kInf}, {kInf, kInf},
@@ -227,7 +232,7 @@ void slsqp_problems()
               [](auto& x) { return rows({{-2 * x[0], -2 * x[1]}}); }};
     r = solve(circ, {3, 2});
     check(r.status == slsqp::Status::converged && near(r.x[0], -1, 1e-7) && near(r.x[1], -1, 1e-7),
-          "slsqp: disc, infeasible start (" + std::to_string(r.iterations) + " iterations)");
+          g_tag + ": disc, infeasible start (" + std::to_string(r.iterations) + " iterations)");
 
     // 7. Rosenbrock from (-1.2, 1)
     Prob ros{2, 0, 0, {-kInf, -kInf}, {kInf, kInf},
@@ -237,7 +242,7 @@ void slsqp_problems()
                                        200 * (x[1] - x[0] * x[0])}); }, nullptr, nullptr};
     r = solve(ros, {-1.2, 1}, 1e-14, 500);
     check(near(r.x[0], 1, 1e-6) && near(r.x[1], 1, 1e-6),
-          "slsqp: Rosenbrock (" + std::to_string(r.iterations) + " iterations)");
+          g_tag + ": Rosenbrock (" + std::to_string(r.iterations) + " iterations)");
 
     // 8. Hock & Schittkowski 71: f* = 17.0140173 at (1, 4.743, 3.82115, 1.37941)
     Prob hs71{4, 1, 1, {1, 1, 1, 1}, {5, 5, 5, 5},
@@ -258,7 +263,42 @@ void slsqp_problems()
     r = solve(hs71, {1, 5, 5, 1});
     check(r.status == slsqp::Status::converged && near(r.f, 17.0140173, 1e-6) &&
           near(r.x[1], 4.743, 1e-3) && near(r.x[2], 3.82115, 1e-4),
-          "slsqp: Hock-Schittkowski 71 (" + std::to_string(r.iterations) + " iterations)");
+          g_tag + ": Hock-Schittkowski 71 (" + std::to_string(r.iterations) + " iterations)");
+
+    // 9. two problems of Powell 1978, §5 (Table 1: 5 and 6 iterations there,
+    // to five significant digits): the post office parcel problem from
+    // (10, 10, 10) -> (24, 12, 12), and Powell's problem with three nonlinear
+    // equalities from (-2, 2, 2, -1, -1) -> f* = 0.0539498; checked as there, by
+    // the point (round-off in c keeps the violation over tol = 1e-12 on the first)
+    Prob pop{3, 0, 1, {0, 0, 0}, {42, 42, 42},
+             [](auto& x) { return -x[0] * x[1] * x[2]; },
+             [](auto& x) { return lin({-x[1] * x[2], -x[0] * x[2], -x[0] * x[1]}); },
+             [](auto& x) { return lin({72 - x[0] - 2 * x[1] - 2 * x[2]}); },
+             [](auto&) { return rows({{-1, -2, -2}}); }};
+    r = solve(pop, {10, 10, 10});
+    check(near(r.x[0], 24, 1e-6) && near(r.x[1], 12, 1e-6) &&
+              near(r.x[2], 12, 1e-6),
+          g_tag + ": post office parcel (" + std::to_string(r.iterations) + " iterations)");
+    Prob pw{5, 3, 0, std::vector<double>(5, -kInf), std::vector<double>(5, kInf),
+            [](auto& x) { return std::exp(x[0] * x[1] * x[2] * x[3] * x[4]); },
+            [](auto& x) {
+                const double e = std::exp(x[0] * x[1] * x[2] * x[3] * x[4]);
+                return lin({e * x[1] * x[2] * x[3] * x[4], e * x[0] * x[2] * x[3] * x[4],
+                            e * x[0] * x[1] * x[3] * x[4], e * x[0] * x[1] * x[2] * x[4],
+                            e * x[0] * x[1] * x[2] * x[3]});
+            },
+            [](auto& x) {
+                return lin({x[0] * x[0] + x[1] * x[1] + x[2] * x[2] + x[3] * x[3] + x[4] * x[4] - 10,
+                            x[1] * x[2] - 5 * x[3] * x[4], x[0] * x[0] * x[0] + x[1] * x[1] * x[1] + 1});
+            },
+            [](auto& x) {
+                return rows({{2 * x[0], 2 * x[1], 2 * x[2], 2 * x[3], 2 * x[4]},
+                             {0, x[2], x[1], -5 * x[4], -5 * x[3]},
+                             {3 * x[0] * x[0], 3 * x[1] * x[1], 0, 0, 0}});
+            }};
+    r = solve(pw, {-2, 2, 2, -1, -1});
+    check(near(r.f, 0.0539498, 1e-7) && near(r.x[0], -1.717143, 1e-5),
+          g_tag + ": Powell's problem (" + std::to_string(r.iterations) + " iterations)");
 }
 
 // ── nelder-mead ─────────────────────────────────────────────────────────────
@@ -296,6 +336,12 @@ int main()
 {
     lse_example();
     nnls_ldp_random();
+    slsqp_problems();
+    g_ls = slsqp::LineSearch::accept;
+    g_tag = "slsqp accept";
+    slsqp_problems();
+    g_ls = slsqp::LineSearch::powell;
+    g_tag = "slsqp powell";
     slsqp_problems();
     nm_problems();
     if (g_failed) {

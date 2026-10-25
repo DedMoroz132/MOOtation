@@ -297,7 +297,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"local",        {"sqp", "nm", "cmaes"}},
         {"sub_plan",     {"grid", "laumanns", "gap"}},
         {"tch_weights",  {"inverse", "lattice"}},
-        {"sqp_line_search", {"stop", "accept"}},
+        {"sqp_line_search", {"stop", "accept", "powell"}},
         {"theta_ties",   {"slot", "letter"}},
         {"hv_algo",      {"auto", "wfg", "box"}},
         {"hv_contrib",   {"iwfg", "hvc", "wfg", "race", "mc"}},
