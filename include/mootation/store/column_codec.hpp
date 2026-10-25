@@ -213,14 +213,24 @@ constexpr std::uint64_t kDense = 1u << 12;
 
 struct FloatModels {
     BitModel flag[2];
-    std::vector<BitModel> top = std::vector<BitModel>(kDense);
+    std::vector<BitModel> top;              // the nodes of prefix below its size, in an array
     std::vector<BitModel> index[33];
     NodeTable value;
+
+    // n: the column's values; the array holds no more of the tree's top than
+    // n values can reach (8 n nodes, at least 64), so that a short column does
+    // not fill 4096 of them. Where a node is kept changes nothing it codes.
+    explicit FloatModels(std::size_t n)
+    {
+        std::uint64_t size = 64;
+        while (size < kDense && size < 8 * static_cast<std::uint64_t>(n)) size <<= 1;
+        top.assign(static_cast<std::size_t>(size), BitModel{});
+    }
 };
 
 inline BitModel& value_node(FloatModels& m, std::uint64_t prefix)
 {
-    return prefix < kDense ? m.top[prefix] : m.value.at(prefix);
+    return prefix < m.top.size() ? m.top[prefix] : m.value.at(prefix);
 }
 
 inline std::vector<BitModel>& index_tree(FloatModels& m, int width)
@@ -322,6 +332,37 @@ inline const LogSums& log_sums(std::size_t n, LogSums& own)
     return s;
 }
 
+// The KT code lengths of the tree of the sorted top bits a[lo, hi), which
+// share their top d bits: cost[d'] gains each node's at depth d' that holds
+// two values or more; a node of one value costs exactly one bit at its depth
+// and every depth below it (the KT estimate of one symbol: 1/2), counted in
+// single[d'] where it first stands alone.
+inline void tree_cost(const std::vector<std::uint64_t>& a, std::size_t lo, std::size_t hi, int d,
+                      const std::vector<double>& rest, const std::vector<double>& half, double* cost,
+                      std::size_t* single)
+{
+    while (d < kMaxTop) {
+        const std::size_t m = hi - lo;
+        if (m == 1) {
+            ++single[d];
+            return;
+        }
+        // the first value with bit d set (the values are sorted and share their top d bits)
+        const std::uint64_t bit = std::uint64_t{1} << (kMaxTop - 1 - d);
+        const std::size_t mid = static_cast<std::size_t>(
+            std::partition_point(a.begin() + static_cast<std::ptrdiff_t>(lo), a.begin() + static_cast<std::ptrdiff_t>(hi),
+                                 [bit](std::uint64_t x) { return (x & bit) == 0; }) - a.begin());
+        cost[d] += rest[m] - half[mid - lo] - half[hi - mid];
+        if (mid == lo || mid == hi) {                   // one child: the same values one level down
+            ++d;
+            continue;
+        }
+        tree_cost(a, lo, mid, d + 1, rest, half, cost, single);
+        lo = mid;
+        ++d;
+    }
+}
+
 // The k of least cost for the values met first (`fresh`, in order): the tree
 // of their top k bits at the KT code length of every node's counts, and the
 // 64 - k raw bits of each.
@@ -333,28 +374,20 @@ inline int choose_k(std::vector<std::uint64_t> fresh)
     std::sort(fresh.begin(), fresh.end());
     LogSums own;
     const LogSums& sums = log_sums(n, own);
-    const std::vector<double>& rest = sums.rest;
-    const std::vector<double>& half = sums.half;
+    double cost[kMaxTop] = {};
+    std::size_t single[kMaxTop] = {};
+    tree_cost(fresh, 0, n, 0, sums.rest, sums.half, cost, single);
     double tree = 0.0, best_cost = 0.0;
+    std::size_t alone = 0;
     int best = kMinTop;
     for (int d = 0; d < kMaxTop; ++d) {
-        // depth d: the runs of equal top-d bits in the sorted values, split by bit d
-        std::size_t i = 0;
-        while (i < n) {
-            const std::uint64_t prefix = d ? fresh[i] >> (kMaxTop - d) : 0;
-            std::size_t j = i, zeros = 0;
-            while (j < n && (d ? fresh[j] >> (kMaxTop - d) : 0) == prefix) {
-                zeros += ((fresh[j] >> (kMaxTop - 1 - d)) & 1u) == 0 ? 1 : 0;
-                ++j;
-            }
-            tree += rest[j - i] - half[zeros] - half[j - i - zeros];
-            i = j;
-        }
+        alone += single[d];                             // the values alone at depth d or above
+        tree += cost[d] + static_cast<double>(alone);
         const int k = d + 1;
-        const double cost = tree + static_cast<double>(64 - k) * static_cast<double>(n);
-        if (k == kMinTop || (k > kMinTop && cost < best_cost)) {
+        const double c = tree + static_cast<double>(64 - k) * static_cast<double>(n);
+        if (k == kMinTop || (k > kMinTop && c < best_cost)) {
             best = k;
-            best_cost = cost;
+            best_cost = c;
         }
     }
     return best;
@@ -365,7 +398,7 @@ inline int choose_k(std::vector<std::uint64_t> fresh)
 inline std::vector<std::uint8_t> model_bytes(const std::uint64_t* v, const std::uint32_t* index, std::size_t n, int k)
 {
     RangeEncoder rc;
-    FloatModels m;
+    FloatModels m(n);
     std::uint64_t seen = 0;
     int last = 0;
     for (std::size_t i = 0; i < n; ++i) {
@@ -387,7 +420,7 @@ inline std::vector<std::uint8_t> model_bytes(const std::uint64_t* v, const std::
 inline bool decimal_at(double x, int e, std::int64_t& d)
 {
     const double s = x * kPow10[e];
-    if (!(std::fabs(s) < 9.0e18)) return false;         // NaN and the infinities too
+    if (!(std::fabs(s) < 1125899906842624.0)) return false;    // 2^50; NaN and the infinities too
     d = std::llround(s);
     const double back = static_cast<double>(d) / kPow10[e];
     std::uint64_t a, b;
@@ -402,12 +435,17 @@ inline bool decimal_at(double x, int e, std::int64_t& d)
 inline int decimal_digits(const double* x, std::size_t n, std::vector<std::int64_t>& d)
 {
     d.resize(n);
+    // the e at which a value is an integer d over 10^e are an interval: from
+    // its least up to where |x 10^e| reaches 2^50 — below that bound x 10^(e+1)
+    // is 10 d to within 1/4, so d / 10^e and 10 d / 10^(e+1), the same number,
+    // read back alike. The column's least e is then the largest of the values'
+    // least: each value is tried first at the largest so far, then above it.
     int from = 0;
     for (std::size_t i = 0; i < n; ++i) {
-        int e = 0;
+        int e = from;
         while (e <= 18 && !decimal_at(x[i], e, d[i])) ++e;
         if (e > 18) return -1;
-        from = std::max(from, e);
+        from = e;
     }
     for (int e = from; e <= 18; ++e) {
         bool all = true;
@@ -477,7 +515,7 @@ inline std::vector<double> decode_f64(const std::uint8_t* data, std::size_t size
         const int k = data[pos++];
         if (k < col::kMinTop || k > col::kMaxTop) throw std::runtime_error("float64 column: k out of range");
         RangeDecoder rc(data + pos, size - pos);
-        col::FloatModels m;
+        col::FloatModels m(n);
         std::vector<std::uint64_t> seen;
         int last = 0;
         for (std::size_t i = 0; i < n; ++i) {

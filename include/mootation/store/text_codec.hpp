@@ -27,6 +27,7 @@
 // decoder checks that the length comes out and the coder's bytes end there.
 // ============================================================================
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -106,20 +107,53 @@ inline std::uint32_t hash3(const std::uint8_t* p)
     return (v * 2654435761u) >> (32 - kHashBits);
 }
 
+// The chains' heads, one table a thread keeps for every text it codes: an
+// entry counts only when its stamp is the text's, so that a new text starts
+// from an empty table without filling 2^15 entries again (a record codes a
+// dozen small texts).
+struct Heads {
+    std::vector<std::int64_t> pos = std::vector<std::int64_t>(std::size_t{1} << kHashBits, -1);
+    std::vector<std::uint32_t> stamp = std::vector<std::uint32_t>(std::size_t{1} << kHashBits, 0);
+    std::uint32_t now = 0;
+
+    void start()
+    {
+        if (++now == 0) {                            // the stamps wrapped: empty the table for real
+            std::fill(stamp.begin(), stamp.end(), 0u);
+            now = 1;
+        }
+    }
+    std::int64_t get(std::uint32_t h) const { return stamp[h] == now ? pos[h] : -1; }
+    void set(std::uint32_t h, std::int64_t i)
+    {
+        stamp[h] = now;
+        pos[h] = i;
+    }
+};
+
+inline Heads& thread_heads()
+{
+    thread_local Heads heads;
+    return heads;
+}
+
 struct Matcher {
     const std::uint8_t* d;
     std::size_t n;
-    std::vector<std::int64_t> head, prev;
+    Heads& head;
+    std::vector<std::int64_t> prev;
 
-    Matcher(const std::uint8_t* data, std::size_t size)
-        : d(data), n(size), head(std::size_t{1} << kHashBits, -1), prev(size, -1) {}
+    Matcher(const std::uint8_t* data, std::size_t size) : d(data), n(size), head(thread_heads()), prev(size, -1)
+    {
+        head.start();
+    }
 
     void insert(std::size_t i)
     {
         if (i + kMinMatch > n) return;
         const std::uint32_t h = hash3(d + i);
-        prev[i] = head[h];
-        head[h] = static_cast<std::int64_t>(i);
+        prev[i] = head.get(h);
+        head.set(h, static_cast<std::int64_t>(i));
     }
 
     // the longest match at i among the chain: (length, distance), length 0 for none
@@ -127,7 +161,7 @@ struct Matcher {
     {
         std::size_t len = 0, dist = 0;
         if (i + kMinMatch > n) return {0, 0};
-        std::int64_t j = head[hash3(d + i)];
+        std::int64_t j = head.get(hash3(d + i));
         const std::size_t limit = n - i < kMaxMatch ? n - i : kMaxMatch;
         for (int c = 0; c < kChain && j >= 0; ++c, j = prev[static_cast<std::size_t>(j)]) {
             const std::size_t s = static_cast<std::size_t>(j);
@@ -155,12 +189,23 @@ inline std::vector<std::uint8_t> encode_text(const std::uint8_t* d, std::size_t 
     text::Matcher mt(d, n);
     int last = 0;
     std::size_t i = 0;
+    // the lookahead's match at i + 1, kept for the next step when a literal
+    // goes out at i (the chains are then as they were when it was found)
+    std::size_t ahead_at = 0;
+    std::pair<std::size_t, std::size_t> ahead{0, 0};
+    bool have_ahead = false;
     while (i < n) {
-        auto here = mt.best(i);
+        auto here = have_ahead && ahead_at == i ? ahead : mt.best(i);
+        have_ahead = false;
         if (here.first && i + 1 < n) {               // one byte of lookahead
             mt.insert(i);
             const auto next = mt.best(i + 1);
-            if (next.first >= here.first + 2) here = {0, 0};
+            if (next.first >= here.first + 2) {
+                here = {0, 0};
+                ahead_at = i + 1;
+                ahead = next;
+                have_ahead = true;
+            }
         } else {
             mt.insert(i);
         }

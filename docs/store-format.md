@@ -237,15 +237,16 @@ previous flag. A tree's node is the bits coded so far with a leading 1: the
 value tree's node keys are those prefixes; an index tree's are
 `(w + 1) << 40 | prefix`. Every node has its own probability. The writer
 chooses k as the least of the tree's estimated cost (the
-Krichevsky-Trofimov code length of every node's counts) plus 64 − k bits per
-new value, and keeps raw where that is shorter.
+Krichevsky-Trofimov code length of every node's counts; a node of one value,
+one bit) plus 64 − k bits per new value, and keeps raw where that is shorter;
+k is in the column's header, so how a writer chose it is not the format's.
 
 Decimal (the idea of ALP, Afroozeh, Kuffó & Boncz 2023): each value is
 `d / 10^e`, one IEEE division of the integer d (as a double) by 10^e (exact
 in a double for e ≤ 18). The writer takes it where every value of the column
-comes back so bit for bit (d = round(x·10^e), half away from zero) at one e
-— the least such e — and it is shorter than the model; -0.0, NaN and the
-infinities never are decimals.
+comes back so bit for bit (d = round(x·10^e), half away from zero, |x·10^e| <
+2^50) at one e — the least such e — and it is shorter than the model; -0.0,
+NaN and the infinities never are decimals.
 
 ### An integer column
 
