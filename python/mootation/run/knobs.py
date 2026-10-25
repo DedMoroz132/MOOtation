@@ -85,6 +85,7 @@ _FALLBACK_TEXT = {
     "tch_weights": ("inverse", "lattice"),
     "hv_algo": ("auto", "wfg", "box"),
     "hv_contrib": ("iwfg", "hvc", "wfg", "race", "mc"),
+    "theta_ties": ("slot", "letter"),
     "polish": ("off", "sqp", "nm"),
 }
 

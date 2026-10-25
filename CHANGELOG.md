@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added: the word knob `theta_ties` of `theta_dea` — `slot` (the default, TDEA-1:
+  equal F_j in one cluster ordered by their slots) or `letter` (Definition 7's
+  strict "<": copies share the first theta level); and the knobs `pc` and `pm`
+  of `spea2` (not set: p_c = 1 and p_m = 1/n as before). Default runs unchanged
+  (the golden fingerprints are the same).
+
 - Changed (task 17, supplement 5, §3): C++ draws what the problems' specs
   held. The rotations of the rotated problems are Haar rotations from the
   library's generator (`suite/instances.hpp`: Householder QR of a normal

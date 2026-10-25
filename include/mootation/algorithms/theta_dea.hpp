@@ -52,7 +52,9 @@
 //     reference directions stayed empty to the end of a run (task 17,
 //     supplement 5, §1.1). The paper's "the fast non-dominated sorting
 //     approach [9] can be immediately adopted" sorts the members of a cluster
-//     by F_j; how it ranks equal values is not said.
+//     by F_j; how it ranks equal values is not said. The word knob
+//     theta_ties = letter keeps the letter (the owner's decision of
+//     2026-10-25: the order by slot the default, the letter a knob).
 // READING of §III-D: in any invalid case ALL components of z^nad are rolled
 //   back ("In all the above cases, z_i^nad is assigned ... for each i").
 //   das_dennis::generate_exact requires N to equal the lattice point count
@@ -91,6 +93,7 @@ private:
     // ── hyperparameters ────────────────────────────────────────────────────
     double       theta_default_ = 5.0;       // θ (§IV-D-2: θ = 5)
     double       theta_axis_    = 1e6;       // theta for axial directions (§III-F)
+    bool         letter_ties_   = false;     // theta_ties = letter: Def. 7's strict "<" (TDEA-1)
     double       eta_c_         = 30.0;      // SBX index (§IV-D-3: η_c = 30)
     double       eta_m_         = 20.0;      // PM index (Table V: η_m = 20)
     double       pc_            = 1.0;       // crossover prob. (Table V: p_c = 1.0)
@@ -399,8 +402,9 @@ private:
             double Fa = vault.get_ind(a).d1 + theta * vault.get_ind(a).d2;
             double Fb = vault.get_ind(b).d1 + theta * vault.get_ind(b).d2;
             // TDEA-1: equal F_j (copies) are ordered by their slots, so that
-            // only one of them is theta-optimal.
-            if (Fa == Fb) return a < b;
+            // only one of them is theta-optimal; theta_ties = letter keeps
+            // Definition 7's strict "<", under which both are.
+            if (Fa == Fb && !letter_ties_) return a < b;
             return Fa < Fb;
         }
         // Different clusters are theta-incomparable (Definition 7: x
@@ -506,6 +510,15 @@ public:
         if (!(v >= 1.0 && v == std::floor(v) && v <= 1e7))
             throw std::invalid_argument(k + " must be a whole number >= 1");
         (k == "n_offspring" ? n_offspring_ : n_ref_points_) = static_cast<int>(v);
+        return true;
+    }
+
+    // theta_ties (TDEA-1): slot (the default) | letter
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k != "theta_ties") return false;
+        if (w != "slot" && w != "letter")
+            throw std::invalid_argument("theta_ties must be slot or letter");
+        letter_ties_ = w == "letter";
         return true;
     }
 
