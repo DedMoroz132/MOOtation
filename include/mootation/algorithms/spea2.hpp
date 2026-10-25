@@ -25,7 +25,9 @@
 //   paper specifies NEITHER p_c NOR eta_m NOR p_m for the continuous case; the
 //   library uses Deb's reference-implementation values (p_c = 1.0 with
 //   per-variable 0.5, eta_m = 20, p_m = 1/n). Attributing those three to §4
-//   would be a false citation.
+//   would be a false citation. The knobs pc and pm set them (2026-10-25, the
+//   owner's decision; Zitzler & Kuenzli 2004 ran SPEA2 with p_c = 1,
+//   p_m = 0.01); not set, the run is the one of before, bit for bit.
 // Deviations (MINOR, deliberate; internal audit):
 //   - the `<=` tournament tie-break deterministically awards the win to the
 //     first contestant;
@@ -86,6 +88,8 @@ private:
     int          archive_size_ = -1;
     double       eta_c_        = 20.0;
     double       eta_m_        = 20.0;
+    double       pc_           = 1.0;    // SBX probability (knob pc)
+    double       pm_           = -1.0;   // mutation probability; < 0: 1/n (knob pm)
     std::mt19937 rng_{std::random_device{}()};
     int          eff_arch_     = 0;
 
@@ -347,9 +351,11 @@ private:
             int bi = tournament_archive(vault);
             const auto& av = vault.archive_variables_of(static_cast<std::size_t>(ai));
             const auto& bv = vault.archive_variables_of(static_cast<std::size_t>(bi));
-            ops::sbx(av, bv, c1, c2, bounds, eta_c_, rng_);
-            ops::polynomial_mutation(c1, bounds, eta_m_, rng_);
-            ops::polynomial_mutation(c2, bounds, eta_m_, rng_);
+            ops::sbx(av, bv, c1, c2, bounds, eta_c_, pc_, rng_);
+            const double pm = pm_ >= 0.0 ? pm_
+                            : (c1.empty() ? 0.0 : 1.0 / static_cast<double>(c1.size()));
+            ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
+            ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
             if (vault.bin_vars_n() > 0) {
                 const auto& abv = vault.archive_bin_variables_of(
                     static_cast<std::size_t>(ai));
@@ -374,6 +380,8 @@ public:
     void set_archive_size (int n)    { archive_size_ = n; }
     void set_eta_crossover(double e) { eta_c_        = e; }
     void set_eta_mutation (double e) { eta_m_        = e; }
+    void set_pc           (double p) { pc_           = p; }
+    void set_pm           (double p) { pm_           = p; }
     void set_seed         (unsigned s){ rng_.seed(s); }
 
     // ── The answer set into the active slots ───────────────────────────────

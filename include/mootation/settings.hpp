@@ -234,6 +234,9 @@ inline bool is_core_param(const std::string& name)
 //   boost_scalarization, polish
 //                 the methods of task 9 (include/mootation/scalar/):
 //                 no core has them, every core reports them ignored
+//   theta_ties    theta_dea: equal F_j in one cluster ordered by slot (slot, the
+//                 default: TDEA-1) or both theta-optimal, the letter of
+//                 Definition 7 (letter)
 //   hv_algo       sms_emoa, mo_cma_es: the exact contributions' hypervolumes by
 //                 WFG (auto, the default, and wfg) or by box decomposition
 //                 (box; hv_box.hpp)
@@ -295,6 +298,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"sub_plan",     {"grid", "laumanns", "gap"}},
         {"tch_weights",  {"inverse", "lattice"}},
         {"sqp_line_search", {"stop", "accept"}},
+        {"theta_ties",   {"slot", "letter"}},
         {"hv_algo",      {"auto", "wfg", "box"}},
         {"hv_contrib",   {"iwfg", "hvc", "wfg", "race", "mc"}},
         {"polish",       {"off", "sqp", "nm"}},
@@ -324,7 +328,7 @@ inline bool is_core_word(const std::string& name)
                           "dms_cache", "paes_cache", "boost_scalarization",
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
-                          "hv_contrib"})
+                          "hv_contrib", "theta_ties"})
         if (name == k) return true;
     return false;
 }

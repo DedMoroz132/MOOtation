@@ -6922,6 +6922,39 @@ def ada_runs_in_nsga3_theta_dea_and_rvea():
 
 
 @test
+def theta_ties_and_spea2_pc_pm_knobs():
+    """The owner's decisions of 2026-10-25: theta_dea's word knob theta_ties
+    (slot, the default and TDEA-1, or letter, Definition 7's strict "<"), and
+    spea2's pc and pm. Not set, each run is the one of before: slot and
+    pc = 1, pm = 1/n give the default run bit for bit; the other values are
+    taken (not reported ignored) and change it."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  theta_ties...: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ2_3D")
+    kw = dict(bounds=p.bounds, n_objs=3, pop_size=91, n_gen=60, seed=5)
+    d = minimize(p.evaluate, algorithm="theta_dea", **kw)
+    s = minimize(p.evaluate, algorithm="theta_dea", theta_ties="slot", **kw)
+    l = minimize(p.evaluate, algorithm="theta_dea", theta_ties="letter", **kw)
+    assert d.objectives == s.objectives and not s.ignored, s.ignored
+    assert l.objectives != d.objectives and not l.ignored, l.ignored
+    try:
+        minimize(p.evaluate, algorithm="theta_dea", theta_ties="both", **kw)
+    except (ValueError, RuntimeError):
+        pass
+    else:
+        raise AssertionError("theta_ties = both was taken")
+    z = get("ZDT1")
+    kz = dict(bounds=z.bounds, n_objs=2, pop_size=40, n_gen=30, seed=7)
+    d = minimize(z.evaluate, algorithm="spea2", **kz)
+    e = minimize(z.evaluate, algorithm="spea2", pc=1.0, pm=1.0 / len(z.bounds), **kz)
+    assert d.objectives == e.objectives and not e.ignored, e.ignored
+    for knobs in ({"pm": 0.01}, {"pc": 0.5}):
+        f = minimize(z.evaluate, algorithm="spea2", **knobs, **kz)
+        assert f.objectives != d.objectives and not f.ignored, (knobs, f.ignored)
+
+@test
 def theta_dea_keeps_every_reference_direction():
     """TDEA-1 (task 17, supplement 5, §1.1): copies of a solution in one cluster
     are not all theta-optimal, so the random choice of Step 20 cannot empty a
