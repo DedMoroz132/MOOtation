@@ -1,0 +1,238 @@
+{
+ "format": 1,
+ "code_stamp": "v4-af2341d9e832bace",
+ "reference_version": 4,
+ "mootation": "0.1.0",
+ "problems": [
+  {
+   "name": "ZDT1",
+   "n_var": 30,
+   "n_obj": 2,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": true,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "distance": true,
+   "spec": {
+    "family": "ZDT1",
+    "n_var": 30,
+    "n_obj": 2
+   }
+  },
+  {
+   "name": "DTLZ2_3D",
+   "n_var": 12,
+   "n_obj": 3,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 91,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": true,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "distance": true,
+   "spec": {
+    "family": "DTLZ2",
+    "n_var": 12,
+    "n_obj": 3
+   }
+  }
+ ]
+}

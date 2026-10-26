@@ -1,0 +1,23 @@
+[run]
+name = "sample"
+
+[problem]
+kind = "builtin"
+
+[benchmarks]
+problems = ["ZDT1", "DTLZ2_3D"]
+runs = 1
+
+[campaign]
+budget_fe = 600
+n_ref = 100
+
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+
+[[algorithms]]
+name = "moead_de"
+pop = 0
+gens = 0

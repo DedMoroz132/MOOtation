@@ -10,6 +10,25 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/campaign/job_run.hpp`: a campaign's job run by the C++
+  engine up to the end of its run — the references from the cache, the run
+  archive, the second answer's archive, everything evaluated, the accounting
+  of the core's rows, the core's run (`run_core.hpp`) and the trajectory
+  records on the three grids, line for line what `run/campaign.py`'s
+  `_run_job` writes but the seconds; `campaign/measure.hpp`:
+  `metrics.compute` around `run_compute.hpp` (feasibility and violations
+  from the problem's constraints, `range_cover_each` rounded as Python
+  rounds). A job the engine does not run yet says why (`refusal`). The
+  extension's `engine_run_job` and `engine_measure` for the cross-checks;
+  `tests/test_job_run.cpp` (`tests/data/job_sample`,
+  `tools/refs/gen_job_sample.py`).
+- Fixed (`run/metrics.py`): `violations` added a row's constraint violations
+  with builtin `sum()`, compensated from Python 3.12 on and not before: the
+  last bit of `i_cmop` depended on the Python version. Now added in order.
+- Changed: `naemo` has no `set_eta_crossover` (it did nothing: its eta_c is
+  adaptive); a run given `eta_c` gets it back in `ignored` (the owner's
+  word, 2026-10-26). `docs/embedding.md`'s knob table says so.
+
 - `run/registry_export.py` (`python -m mootation.run.registry_export`): the
   problem registry as data for the campaign engine in C++ — sizes, box,
   default population and generations, version, modification, references,

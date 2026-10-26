@@ -908,7 +908,15 @@ def violations(X, constraints) -> np.ndarray:
     """Every row's overall violation, the sum of its constraints' positive
     values (the library's sign: <= 0 satisfied)."""
     X = np.asarray(X, float).reshape(len(X), -1) if len(X) else np.zeros((0, 0))
-    return np.array([sum(max(c, 0.0) for c in constraints(list(x))) for x in X], float)
+
+    def total(values):
+        # added in order: builtin sum() of floats is compensated from Python 3.12
+        # on and not before, which made the last bit depend on the version
+        v = 0.0
+        for c in values:
+            v += max(c, 0.0)
+        return v
+    return np.array([total(constraints(list(x))) for x in X], float)
 
 
 def i_cmop(F, V, ideal, nadir, tau: float = 1.0, **hv_options) -> float | None:

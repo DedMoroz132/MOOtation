@@ -24,8 +24,10 @@
 #include <mootation/json.hpp>
 #include <mootation/toml.hpp>
 #include <mootation/campaign/config.hpp>
+#include <mootation/campaign/job_run.hpp>
 #include <mootation/campaign/jobs.hpp>
 #include <mootation/campaign/references.hpp>
+#include <mootation/campaign/measure.hpp>
 #include <mootation/campaign/registry.hpp>
 #include <mootation/io/npz.hpp>
 #include <mootation/run_compute.hpp>
@@ -1194,6 +1196,127 @@ void bind_run_layer(py::module_& m)
           py::arg("path"), py::arg("name"), py::arg("X"),
           "(F, G, why the engine refuses it or None) of the rows X by the problem built in C++ from the "
           "exported registry's spec (include/mootation/campaign/registry.hpp).");
+    m.def("engine_measure",
+          [](const std::vector<std::vector<double>>& F, const py::object& X, const std::vector<std::string>& which,
+             const py::object& ref, const py::object& ideal, const py::object& nadir, std::size_t pop,
+             const py::object& pset, const py::object& bounds, std::vector<std::size_t> cyclic,
+             const py::object& registry, const std::string& name, int exact_max_m, std::size_t mc_samples) {
+              namespace cp = mootation::campaign;
+              auto matrix = [](const py::object& o) {
+                  std::optional<cp::Matrix> r;
+                  if (o.is_none()) return r;
+                  const auto rows = o.cast<std::vector<std::vector<double>>>();
+                  cp::Matrix a;
+                  a.shape = {rows.size(), rows.empty() ? 0 : rows[0].size()};
+                  for (const auto& row : rows) a.values.insert(a.values.end(), row.begin(), row.end());
+                  r = a;
+                  return r;
+              };
+              cp::MeasureInputs in;
+              in.ref = matrix(ref);
+              if (!ideal.is_none()) in.ideal = ideal.cast<std::vector<double>>();
+              if (!nadir.is_none()) in.nadir = nadir.cast<std::vector<double>>();
+              in.pop = pop;
+              in.pset = matrix(pset);
+              if (!bounds.is_none()) in.bounds = bounds.cast<std::vector<std::pair<double, double>>>();
+              in.cyclic = std::move(cyclic);
+              if (!registry.is_none()) {
+                  static std::map<std::wstring, cp::ProblemRegistry> cache;
+                  const auto path = registry.cast<std::wstring>();
+                  auto it = cache.find(path);
+                  if (it == cache.end()) it = cache.emplace(path, cp::load_registry(std::filesystem::path(path))).first;
+                  const auto& p = it->second.problems.at(name);
+                  if (p.has_cons) in.constraints = cp::make_native(p);
+              }
+              std::vector<double> f, x;
+              const std::size_t n = F.size(), m = n ? F[0].size() : 0;
+              for (const auto& r : F) f.insert(f.end(), r.begin(), r.end());
+              std::size_t d = 0;
+              if (!X.is_none()) {
+                  for (const auto& r : X.cast<std::vector<std::vector<double>>>()) {
+                      d = r.size();
+                      x.insert(x.end(), r.begin(), r.end());
+                  }
+              }
+              cp::HvOptions hv;
+              hv.exact_max_m = exact_max_m;
+              hv.mc_samples = mc_samples;
+              return mootation::json::dump(cp::measure(f.data(), n, m, X.is_none() ? nullptr : x.data(), d, which, in, hv));
+          },
+          py::arg("F"), py::arg("X"), py::arg("which"), py::arg("ref"), py::arg("ideal"), py::arg("nadir"),
+          py::arg("pop"), py::arg("pset"), py::arg("bounds"), py::arg("cyclic"), py::arg("registry"),
+          py::arg("name"), py::arg("exact_max_m") = 5, py::arg("mc_samples") = 100000,
+          "json.dumps of metrics.compute's dict by include/mootation/campaign/measure.hpp.");
+    m.def("engine_run_job",
+          [](const std::string& text, const std::wstring& source_path, const py::dict& r, const py::dict& jr,
+             const std::wstring& registry_path, std::int64_t index) -> py::tuple {
+              namespace cp = mootation::campaign;
+              cp::Registry reg;
+              auto strings = [](const py::dict& d, const char* k) { return d[k].cast<std::vector<std::string>>(); };
+              reg.algorithms = strings(r, "algorithms");
+              reg.baselines = strings(r, "baselines");
+              reg.scalar_names = strings(r, "scalar_names");
+              reg.design_kinds = strings(r, "design_kinds");
+              reg.knob_names = strings(r, "knob_names");
+              reg.list_knobs = strings(r, "list_knobs");
+              for (const auto& item : r["text_knobs"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  reg.text_knobs.emplace_back(t[0].cast<std::string>(), t[1].cast<std::vector<std::string>>());
+              }
+              for (const auto& item : r["problems"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  reg.problems.emplace_back(t[0].cast<std::string>(), t[1].cast<int>());
+              }
+              reg.platform = r["platform"].cast<std::string>();
+              reg.algorithms_error = r["algorithms_error"].cast<std::string>();
+              const py::object findable = r["executable_findable"], groups = r["regex_groups"];
+              reg.executable_findable = [findable](const std::string& a) { return findable(a).cast<bool>(); };
+              reg.regex_groups = [groups](const std::string& p, std::string& error) {
+                  const auto t = groups(p).cast<py::tuple>();
+                  error = t[1].cast<std::string>();
+                  return t[0].cast<int>();
+              };
+              cp::JobsRegistry jreg;
+              jreg.metric_names = strings(jr, "metric_names");
+              jreg.budget_dependent = strings(jr, "budget_dependent");
+              jreg.scalar_names = strings(jr, "scalar_names");
+              jreg.scalar_others = strings(jr, "scalar_others");
+              for (const auto& item : jr["problems"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  jreg.problems[t[0].cast<std::string>()] = {t[1].cast<int>(), t[2].cast<std::int64_t>(),
+                                                             t[3].cast<std::int64_t>()};
+              }
+              cp::Config cfg = cp::loads(text, reg, std::filesystem::path(source_path));
+              if (!cp::validate(cfg, reg).empty()) return py::make_tuple("refused", "the config has problems", py::list());
+              const cp::CampaignSpec spec = cp::campaign_spec(cfg, jreg);
+              const auto jobs = cp::expand_jobs(cfg, spec, jreg);
+              const cp::Job& job = jobs.at(static_cast<std::size_t>(index));
+              const cp::ProblemRegistry preg = cp::load_registry(std::filesystem::path(registry_path));
+              const cp::RegistryProblem& p = preg.problems.at(job.problem);
+              if (auto why = cp::refusal(job, spec, p, mootation::run::algorithm_names()))
+                  return py::make_tuple("refused", *why, py::list());
+              auto any_of = [&](const std::set<std::string>& names) {
+                  for (const auto* list : {&spec.metrics, &spec.final_metrics})
+                      for (const auto& w : *list)
+                          if (names.count(w)) return true;
+                  return false;
+              };
+              const bool with_set = spec.set_metrics && p.has_pareto_set;
+              const auto entry = cp::load_entry(cp::entry_path(preg.reference_version, job.problem, spec.n_ref));
+              cp::JobRun run(job, spec, p,
+                             cp::shared_references(entry, any_of(cp::needs_front()), spec.dense_reference,
+                                                   any_of(cp::needs_set()) || with_set));
+              cp::JobOutcome out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = run.run();
+              }
+              return py::make_tuple(out.status, out.error, out.trajectory);
+          },
+          py::arg("text"), py::arg("source_path"), py::arg("registry"), py::arg("jobs_registry"),
+          py::arg("registry_path"), py::arg("index"),
+          "(status, error, trajectory lines without t) of one job of a campaign run by the C++ engine "
+          "(include/mootation/campaign/job_run.hpp).");
     m.def("toml_to_json",
           [](const std::string& text) { return mootation::json::dump(mootation::toml::parse(text)); },
           py::arg("text"), "json.dumps(tomllib.loads(text)) by include/mootation/toml.hpp (dates as their text).");
