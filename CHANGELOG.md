@@ -10,6 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `mootation store ls|check|repair|compact|merge` (`campaign/store_tools.hpp`):
+  `store.py`'s commands in C++, the packs `compact` writes the bytes
+  Python's does; a pack's record reads back with its meta.json from the
+  pack's table, a record of format 2 with its zlib blocks inflated. The
+  registry export names each problem's family. `export` stays Python's (it
+  writes gzip). `tests/test_store_tools.cpp`.
+- Fixed (`store.py`): `compact --remove-segments` checked each segment's
+  record against the store's index, which still gave the segment's own
+  record while the segment was there — the check compared a record with
+  itself; it reads the record from the new pack now. `compact` stopped
+  where campaign.json named a config it could not find (relative to where
+  the campaign ran): the list of the missing runs is left out then.
+
 - `engine/`: the `mootation` executable, the campaign engine in C++ —
   `mootation run <campaign.toml> [--workers N] [--shard i/n] [--only ...]
   [--force] [--registry FILE]` runs a campaign with storage = "store" by a

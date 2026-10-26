@@ -644,6 +644,7 @@
  "problems": [
   {
    "name": "shiftDTLZ2_3D",
+   "family": "shiftDTLZ",
    "n_var": 12,
    "n_obj": 3,
    "n_con": 0,
@@ -773,6 +774,7 @@
   },
   {
    "name": "C2-DTLZ2_3D",
+   "family": "C-DTLZ",
    "n_var": 12,
    "n_obj": 3,
    "n_con": 1,
@@ -878,6 +880,7 @@
   },
   {
    "name": "rDTLZ2_3D",
+   "family": "rDTLZ",
    "n_var": 12,
    "n_obj": 3,
    "n_con": 0,
@@ -1008,6 +1011,7 @@
   },
   {
    "name": "bbobbiobj07_n10_2D",
+   "family": "bbobbiobj",
    "n_var": 10,
    "n_obj": 2,
    "n_con": 0,
@@ -1100,6 +1104,7 @@
   },
   {
    "name": "catZDT1",
+   "family": "catZDT",
    "n_var": 11,
    "n_obj": 2,
    "n_con": null,

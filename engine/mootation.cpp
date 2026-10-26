@@ -4,6 +4,7 @@
 //
 //     mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,...]
 //                   [--force] [--registry FILE] [--quiet]
+//     mootation store ls|check|repair|compact|merge <campaign folder> ...
 //     mootation --version
 //
 // `run` runs a campaign with storage = "store" as `python -m
@@ -33,6 +34,7 @@
 #endif
 
 #include <mootation/campaign/engine.hpp>
+#include <mootation/campaign/store_tools.hpp>
 #include <mootation/fp_env.hpp>
 #include <mootation/version.hpp>
 
@@ -188,6 +190,118 @@ int run(const std::vector<std::string>& args)
     return c.failed ? 1 : 0;
 }
 
+// the keys a campaign plans (its campaign.json names its config), or nothing
+std::optional<std::vector<std::string>> planned_keys(const std::filesystem::path& camp, const cg::ProblemRegistry& preg)
+{
+    try {
+        const js::Value info = js::parse(cg::detail::read_all(camp / "campaign.json"));
+        const std::string config = info.find("config")->s;
+        const auto source = mootation::store::file::path_of(config);
+        const cg::Registry reg = cg::config_registry(preg);
+        const cg::JobsRegistry jreg = cg::jobs_registry(preg);
+        cg::Config cfg = cg::loads(cg::detail::read_all(source), reg, source);
+        cg::validate(cfg, reg);
+        std::vector<std::string> keys;
+        for (const auto& j : cg::expand_jobs(cfg, cg::campaign_spec(cfg, jreg), jreg)) keys.push_back(cg::job_key(j));
+        return keys;
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+}
+
+const char* kStoreUsage =
+    "usage: mootation store ls|check|repair <campaign folder>\n"
+    "       mootation store compact <campaign folder> [--remove-segments] [--registry FILE]\n"
+    "       mootation store merge <campaign folder> <part folder>...\n"
+    "       (export: python -m mootation.store export ...)\n";
+
+int store_command(const std::vector<std::string>& args)
+{
+    if (args.size() < 2) throw std::invalid_argument(std::string("store: which command and campaign?\n") + kStoreUsage);
+    const std::string cmd = args[0];
+    const auto camp = mootation::store::file::path_of(args[1]);
+    const auto dir = camp / cg::kStoreDir;
+    bool remove_segments = false;
+    std::filesystem::path registry;
+    std::vector<std::filesystem::path> parts;
+    for (std::size_t k = 2; k < args.size(); ++k) {
+        if (args[k] == "--remove-segments") remove_segments = true;
+        else if (args[k] == "--registry" && k + 1 < args.size()) registry = mootation::store::file::path_of(args[++k]);
+        else if (cmd == "merge") parts.push_back(mootation::store::file::path_of(args[k]) / cg::kStoreDir);
+        else throw std::invalid_argument("store " + cmd + ": unknown argument " + args[k]);
+    }
+    if (cmd == "ls") {
+        if (registry.empty()) registry = newest_registry();
+        const cg::ProblemRegistry preg = cg::load_registry(registry);
+        std::map<std::string, std::map<std::string, std::size_t>> by;
+        const auto idx = cg::store_index(dir);
+        for (const auto& [key, e] : idx) {
+            const std::string problem = cg::KeyOrder::parts(key)[0];
+            const auto it = preg.problems.find(problem);
+            ++by[it != preg.problems.end() ? it->second.family : problem][e.status];
+        }
+        for (const auto& [fam, st] : by) {
+            std::string line;
+            for (const auto& [s, n] : st) line += (line.empty() ? "" : ", ") + s + " " + std::to_string(n);
+            std::printf("%-16s %s\n", fam.c_str(), line.c_str());
+        }
+        std::vector<std::filesystem::path> packs, segs;
+        cg::store_files(dir, packs, segs);
+        std::uintmax_t size = 0;
+        std::error_code ec;
+        for (const auto& f : std::filesystem::directory_iterator(dir, ec))
+            if (f.is_regular_file()) size += f.file_size();
+        std::printf("%zu runs, %zu segments, %zu packs, %.1f MiB\n", idx.size(), segs.size(), packs.size(),
+                    static_cast<double>(size) / (1 << 20));
+        return 0;
+    }
+    if (cmd == "check") {
+        const cg::StoreCheck c = cg::check_store(dir);
+        js::Value o = js::Value::object(), d = js::Value::array(), t = js::Value::array();
+        for (const auto& s : c.damaged) d.items.push_back(js::Value::string(s));
+        for (const auto& s : c.tails) t.items.push_back(js::Value::string(s));
+        o.set("records", js::Value::integer(static_cast<std::int64_t>(c.records)));
+        o.set("damaged", d);
+        o.set("tails", t);
+        o.set("duplicates", js::Value::integer(static_cast<std::int64_t>(c.duplicates)));
+        std::printf("%s\n", js::dump(o, 1).c_str());
+        return c.damaged.empty() && c.tails.empty() ? 0 : 1;
+    }
+    if (cmd == "repair") {
+        const auto done = cg::repair_store(dir);
+        if (done.empty()) std::printf("nothing to repair\n");
+        for (const auto& line : done) std::printf("%s\n", line.c_str());
+        return 0;
+    }
+    if (cmd == "compact") {
+        if (registry.empty()) registry = newest_registry();
+        const cg::ProblemRegistry preg = cg::load_registry(registry);
+        auto family_of = [&preg](const std::string& problem) {
+            const auto it = preg.problems.find(problem);
+            if (it == preg.problems.end() || it->second.family.empty())
+                throw std::runtime_error(problem + ": not in the problem registry (its family is the pack's)");
+            return it->second.family;
+        };
+        const cg::Compacted c = cg::compact_store(dir, family_of, remove_segments, planned_keys(camp, preg), process_id());
+        js::Value o = js::Value::object(), packs = js::Value::object();
+        for (const auto& [fam, n] : c.packs) packs.set(fam, js::Value::integer(static_cast<std::int64_t>(n)));
+        o.set("packs", packs);
+        o.set("removed", js::Value::integer(static_cast<std::int64_t>(c.removed.size())));
+        o.set("missing", js::Value::integer(static_cast<std::int64_t>(c.missing.size())));
+        o.set("failed", js::Value::integer(static_cast<std::int64_t>(c.failed.size())));
+        std::printf("%s\n", js::dump(o, 1).c_str());
+        for (std::size_t k = 0; k < c.missing.size() && k < 50; ++k) std::printf("missing: %s\n", c.missing[k].c_str());
+        return 0;
+    }
+    if (cmd == "merge") {
+        if (parts.empty()) throw std::invalid_argument("store merge: which parts?");
+        const auto [runs, copied] = cg::merge_stores(dir, parts, process_id(), host_name());
+        std::printf("{\n \"runs\": %zu,\n \"copied\": %zu\n}\n", runs, copied);
+        return 0;
+    }
+    throw std::invalid_argument("store: unknown command " + cmd + "\n" + kStoreUsage);
+}
+
 }   // namespace
 
 int main(int argc, char** argv)
@@ -204,6 +318,7 @@ int main(int argc, char** argv)
             return 0;
         }
         if (args[0] == "run") return run(std::vector<std::string>(args.begin() + 1, args.end()));
+        if (args[0] == "store") return store_command(std::vector<std::string>(args.begin() + 1, args.end()));
         std::fprintf(stderr, "unknown command %s\n%s", args[0].c_str(), kUsage);
         return 2;
     } catch (const std::exception& e) {

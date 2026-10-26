@@ -152,6 +152,7 @@ inline JobsRegistry jobs_registry(const ProblemRegistry& preg)
 struct StoreEntry {
     std::string key, status;
     std::uint64_t offset = 0, length = 0;
+    std::filesystem::path file;          // the segment or pack it is in (store_index)
 };
 
 // the status a record's meta.json says
@@ -267,31 +268,57 @@ inline std::vector<StoreEntry> pack_index(const std::filesystem::path& path)
     return out;
 }
 
-// store.index: key -> status of every run of a store, the packs first, then
-// the segments in the order they were started (a run done again: its later record)
-inline std::map<std::string, std::string> store_statuses(const std::filesystem::path& store_dir)
+// store.packs and store.segments: the packs (.mpk, then the packs of before,
+// .raw), the segments in the order they were started
+inline void store_files(const std::filesystem::path& store_dir, std::vector<std::filesystem::path>& packs,
+                        std::vector<std::filesystem::path>& segs)
 {
-    std::map<std::string, std::string> out;
+    std::vector<std::filesystem::path> mpk, old_packs;
     std::error_code ec;
-    if (!std::filesystem::is_directory(store_dir, ec)) return out;
-    std::vector<std::filesystem::path> mpk, old_packs, segs;
-    for (const auto& f : std::filesystem::directory_iterator(store_dir)) {
-        const std::string n = detail::utf8(f.path().filename());
-        if (n.rfind("pack-", 0) == 0 && f.path().extension() == ".mpk") mpk.push_back(f.path());
-        else if (n.rfind("pack-", 0) == 0 && f.path().extension() == ".raw") old_packs.push_back(f.path());
-        else if (n.rfind("seg-", 0) == 0 && f.path().extension() == ".raw") segs.push_back(f.path());
-    }
+    if (std::filesystem::is_directory(store_dir, ec))
+        for (const auto& f : std::filesystem::directory_iterator(store_dir)) {
+            const std::string n = detail::utf8(f.path().filename());
+            if (n.rfind("pack-", 0) == 0 && f.path().extension() == ".mpk") mpk.push_back(f.path());
+            else if (n.rfind("pack-", 0) == 0 && f.path().extension() == ".raw") old_packs.push_back(f.path());
+            else if (n.rfind("seg-", 0) == 0 && f.path().extension() == ".raw") segs.push_back(f.path());
+        }
     std::sort(mpk.begin(), mpk.end());
     std::sort(old_packs.begin(), old_packs.end());
     std::sort(segs.begin(), segs.end());
-    for (const auto& p : mpk)
-        for (const auto& e : pack_index(p)) out[e.key] = e.status;
-    for (const auto* list : {&old_packs, &segs})
-        for (const auto& raw : *list) {
-            auto listed = read_idx(raw);
-            const auto entries = listed ? *listed : scan_raw(detail::read_all(raw), nullptr);
-            for (const auto& e : entries) out[e.key] = e.status;
-        }
+    packs = mpk;
+    packs.insert(packs.end(), old_packs.begin(), old_packs.end());
+}
+
+// store.segment_entries: a pack's index, a segment's index where it agrees
+// with the data, else the data's account
+inline std::vector<StoreEntry> file_entries(const std::filesystem::path& raw)
+{
+    std::vector<StoreEntry> out;
+    if (raw.extension() == ".mpk") out = pack_index(raw);
+    else if (auto listed = read_idx(raw)) out = *listed;
+    else out = scan_raw(detail::read_all(raw), nullptr);
+    for (auto& e : out) e.file = raw;
+    return out;
+}
+
+// store.index: key -> where its record is, the packs first, then the
+// segments in the order they were started (a run done again: its later record)
+inline std::map<std::string, StoreEntry> store_index(const std::filesystem::path& store_dir)
+{
+    std::vector<std::filesystem::path> packs, segs;
+    store_files(store_dir, packs, segs);
+    std::map<std::string, StoreEntry> out;
+    for (const auto* list : {&packs, &segs})
+        for (const auto& raw : *list)
+            for (auto& e : file_entries(raw)) out[e.key] = e;
+    return out;
+}
+
+// store.index's statuses: key -> the status of its record
+inline std::map<std::string, std::string> store_statuses(const std::filesystem::path& store_dir)
+{
+    std::map<std::string, std::string> out;
+    for (const auto& [key, e] : store_index(store_dir)) out[key] = e.status;
     return out;
 }
 

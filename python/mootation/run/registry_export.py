@@ -74,6 +74,7 @@ def _spec_json(s: dict | None):
 def entry(name: str) -> dict:
     """What the engine reads of the registry problem `name`."""
     from ..benchmarks import native as N
+    from ..families import family
     from ..benchmarks import registry as R
     from ..benchmarks.properties import modification_of, properties
     from ..benchmarks.noisy import kind_of as noise_kind
@@ -84,7 +85,7 @@ def entry(name: str) -> dict:
         spec = _spec_json(N.spec(name, p, R.ROTATED.get(name)))
     props = properties(name) or {}
     return {
-        "name": name, "n_var": int(p.n_vars), "n_obj": int(p.n_obj),
+        "name": name, "family": family(name), "n_var": int(p.n_vars), "n_obj": int(p.n_obj),
         "n_con": int(p.native.n_con) if p.native is not None else None,
         "has_cons": bool(p.has_cons), "n_eq": int(p.n_eq),
         "bounds": [[float(lo), float(hi)] for lo, hi in p.bounds],

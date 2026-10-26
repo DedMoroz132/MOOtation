@@ -1375,7 +1375,12 @@ def compact(campaign: Path, *, remove_segments: bool = False, expected: list | N
                 old.with_suffix(suffix).unlink(missing_ok=True)
     removed = []
     if remove_segments:
-        new = index(s)
+        # every segment's record against its record in the new packs: index()
+        # would give the segment's own while the segment is there
+        new = {}
+        for raw in packs(s):
+            for key, loc in segment_entries(raw):
+                new[key] = loc
         for key, loc in idx.items():
             if loc.raw.name.startswith("seg-") and not _same_blocks(read_record(new[key]), read_record(loc)):
                 raise ValueError(f"{key}: the pack's record is not the segment's; nothing removed")
@@ -1712,14 +1717,16 @@ def main(argv: list | None = None) -> int:
 
 def _planned(camp: Path) -> list | None:
     """The keys the campaign's config plans (campaign.json names it), or None."""
+    from .run.config import ConfigError, load, validate
     try:
         info = json.loads((Path(camp) / "campaign.json").read_text(encoding="utf-8"))
-        from .run.config import load, validate
         from .run.campaign import campaign_spec, expand_jobs
         cfg = load(info["config"])
         validate(cfg)
         return [job_key(j) for j in expand_jobs(cfg, campaign_spec(cfg))]
-    except (OSError, KeyError, ValueError):
+    except (OSError, KeyError, ValueError, ConfigError):
+        # the config not found (campaign.json names it as the run was given
+        # it, relative to where it ran) or not read: no list of the missing
         return None
 
 

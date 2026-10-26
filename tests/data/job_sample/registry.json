@@ -644,6 +644,7 @@
  "problems": [
   {
    "name": "ZDT1",
+   "family": "ZDT",
    "n_var": 30,
    "n_obj": 2,
    "n_con": 0,
@@ -795,6 +796,7 @@
   },
   {
    "name": "DTLZ2_3D",
+   "family": "DTLZ",
    "n_var": 12,
    "n_obj": 3,
    "n_con": 0,

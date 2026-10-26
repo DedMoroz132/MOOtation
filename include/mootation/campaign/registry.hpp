@@ -25,6 +25,7 @@ namespace mootation::campaign {
 
 struct RegistryProblem {
     std::string name;
+    std::string family;                           // families.family: the store's pack it goes to
     int n_var = 0, n_obj = 0, n_eq = 0;
     std::optional<int> n_con;                     // the suite's, for a problem of the suite
     bool has_cons = false;
@@ -124,6 +125,7 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     using detail::int_of;
     RegistryProblem p;
     p.name = o.find("name")->s;
+    if (const json::Value* f = o.find("family")) p.family = f->s;
     p.n_var = static_cast<int>(int_of(o, "n_var"));
     p.n_obj = static_cast<int>(int_of(o, "n_obj"));
     p.n_eq = static_cast<int>(int_of(o, "n_eq"));
