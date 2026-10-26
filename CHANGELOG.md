@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/toml.hpp`: TOML 1.0 read into json.hpp's tree, as
+  Python's `tomllib.loads` gives it — every string, number and key form,
+  tables, arrays of tables, inline tables, tomllib's rules on defining and
+  extending them, errors with their line and column; dates kept as their
+  text; an integer past int64 an error (TOML 1.0's lossless rule). For the
+  campaign engine in C++ (task 17, stage 5). `tests/test_toml.cpp`; the
+  extension's `toml_to_json`.
+
 - Changed (the owner's word, 26.10): `sqp_line_search = powell` is the
   default of the scalarization methods, after the A/B of stop, accept and
   powell; the runs of those with `local = sqp` change, `method_version = 4`.

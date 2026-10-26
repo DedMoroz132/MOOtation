@@ -48,6 +48,7 @@ struct Value {
     std::string s;                                        // UTF-8
     std::vector<Value> items;                             // an array's, or an object's values
     std::vector<std::string> keys;                        // an object's keys, in order (one a value)
+    bool datetime = false;                                // a String that is a TOML date or time (toml.hpp)
 
     static Value null() { return {}; }
     static Value boolean(bool v) { Value x; x.kind = Kind::Bool; x.b = v; return x; }

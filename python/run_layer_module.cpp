@@ -22,6 +22,7 @@
 #include <mootation/archive_select.hpp>
 #include <mootation/decision_indicators.hpp>
 #include <mootation/json.hpp>
+#include <mootation/toml.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
@@ -1039,6 +1040,9 @@ void bind_run_layer(py::module_& m)
           },
           py::arg("text"), py::arg("indent") = -1, py::arg("separators") = py::none(),
           "json.dumps(json.loads(text), indent=indent or None, separators=...) by include/mootation/json.hpp.");
+    m.def("toml_to_json",
+          [](const std::string& text) { return mootation::json::dump(mootation::toml::parse(text)); },
+          py::arg("text"), "json.dumps(tomllib.loads(text)) by include/mootation/toml.hpp (dates as their text).");
     m.def("json_float_repr", &mootation::json::float_repr, py::arg("x"), "repr(x) by include/mootation/json.hpp.");
     m.def("sha256",
           [](const py::bytes& b) {
