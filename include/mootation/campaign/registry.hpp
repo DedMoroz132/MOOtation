@@ -39,9 +39,18 @@ struct RegistryProblem {
     std::optional<json::Value> spec;              // null: not a problem of the suite
 };
 
+// The lists of the Python modules a config is checked against and a
+// campaign's jobs are made from (registry_export.names).
+struct RegistryNames {
+    std::vector<std::string> baselines, scalar_names, scalar_others, design_kinds, knob_names, list_knobs,
+        metric_names, budget_dependent;
+    std::vector<std::pair<std::string, std::vector<std::string>>> text_knobs;
+};
+
 struct ProblemRegistry {
     std::string code_stamp;
     int reference_version = 0;
+    RegistryNames names;
     std::map<std::string, RegistryProblem> problems;
 };
 
@@ -154,6 +163,28 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
     ProblemRegistry r;
     r.code_stamp = doc.find("code_stamp")->s;
     r.reference_version = static_cast<int>(detail::int_of(doc, "reference_version"));
+    if (const json::Value* n = doc.find("names"); n && n->kind == json::Value::Kind::Object) {
+        auto words = [n](const char* k) {
+            std::vector<std::string> out;
+            if (const json::Value* v = n->find(k))
+                for (const auto& x : v->items) out.push_back(x.s);
+            return out;
+        };
+        r.names.baselines = words("baselines");
+        r.names.scalar_names = words("scalar_names");
+        r.names.scalar_others = words("scalar_others");
+        r.names.design_kinds = words("design_kinds");
+        r.names.knob_names = words("knob_names");
+        r.names.list_knobs = words("list_knobs");
+        r.names.metric_names = words("metric_names");
+        r.names.budget_dependent = words("budget_dependent");
+        if (const json::Value* v = n->find("text_knobs"))
+            for (const auto& pair : v->items) {
+                std::vector<std::string> w;
+                for (const auto& x : pair.items.at(1).items) w.push_back(x.s);
+                r.names.text_knobs.emplace_back(pair.items.at(0).s, std::move(w));
+            }
+    }
     for (const auto& item : doc.find("problems")->items) {
         RegistryProblem p = registry_problem_of(item);
         r.problems.emplace(p.name, std::move(p));

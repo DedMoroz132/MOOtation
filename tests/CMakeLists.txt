@@ -38,7 +38,8 @@ set(MOOTATION_TESTS
     test_npz
     test_registry
     test_job_run
-    test_run_store)
+    test_run_store
+    test_engine)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

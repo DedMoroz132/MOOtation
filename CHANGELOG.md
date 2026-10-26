@@ -10,6 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/campaign/engine.hpp`: a campaign run by the C++
+  engine — campaign.json, a slice of the jobs (`shard_of`, a list),
+  the store of a stopped run repaired (`store.repair`), the jobs done
+  skipped (the records of the store's packs and segments), the others run
+  by a pool of threads, each appending to a segment of its own; a job the
+  engine does not run is left to Python with its reason; references
+  missing from the cache are named before any job runs. The registry
+  export carries the lists of the Python modules a config is checked
+  against (`names`). `ops::sbx_var_prob()` is per thread, as the cores'
+  other records. `tests/test_engine.cpp`: four threads write the records
+  one does, a second run runs nothing, a record cut off is repaired, three
+  slices make the whole.
+
 - `include/mootation/campaign/run_store.hpp`: a job's record in the store
   made by the C++ engine — the "#format" block, meta.json as the file's
   text, the trajectory column by column (`store._jsonl_blocks`, checked to

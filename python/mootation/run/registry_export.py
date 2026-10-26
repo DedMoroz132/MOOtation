@@ -107,6 +107,24 @@ def entry(name: str) -> dict:
     }
 
 
+def names() -> dict:
+    """The lists a config is checked against and a campaign's jobs are made
+    from that live in Python modules (run/config.py's validate, campaign.py):
+    the baselines, the scalarization methods, the designs of a first
+    population, the knobs, the text and list knobs, the metric names, the
+    algorithms whose run depends on the budget."""
+    from .. import designs
+    from ..scalar import NAMES, OTHERS
+    from .baselines import BASELINES
+    from .budget import BUDGET_DEPENDENT
+    from .knobs import LIST_KNOBS, knob_names, text_knobs
+    from .metric_names import METRIC_NAMES
+    return {"baselines": list(BASELINES), "scalar_names": list(NAMES), "scalar_others": list(OTHERS),
+            "design_kinds": list(designs.KINDS), "knob_names": list(knob_names()),
+            "text_knobs": [[k, list(v)] for k, v in text_knobs().items()], "list_knobs": list(LIST_KNOBS),
+            "metric_names": list(METRIC_NAMES), "budget_dependent": sorted(BUDGET_DEPENDENT)}
+
+
 def export(path: Path | None = None) -> Path:
     """Write the registry's file (atomically); its path."""
     from .. import __version__
@@ -114,7 +132,8 @@ def export(path: Path | None = None) -> Path:
     from .campaign import _code_stamp
     path = path or registry_path()
     doc = {"format": FORMAT, "code_stamp": _code_stamp(), "reference_version": R.REFERENCE_VERSION,
-           "mootation": __version__, "problems": [entry(n) for n in sorted(R.PROBLEMS)]}
+           "mootation": __version__, "names": names(),
+           "problems": [entry(n) for n in sorted(R.PROBLEMS)]}
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(doc, separators=(",", ":")), encoding="utf-8")

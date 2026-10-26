@@ -27,7 +27,7 @@ namespace mootation::ops {
 // The toggle enables an A/B test without touching every algorithm:
 // ops::sbx_var_prob() = 1.0. Default 0.5 → behavior is unchanged relative to
 // the current build.
-inline double& sbx_var_prob() { static double v = 0.5; return v; }
+inline double& sbx_var_prob() { thread_local double v = 0.5; return v; }   // per thread, as the records
 
 // Sets sbx_var_prob() for one run and puts the old value back after it: the
 // knob `sbx_var_prob` of run(), Session and the Python binding. The toggle is

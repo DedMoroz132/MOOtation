@@ -33,7 +33,7 @@ from mootation.benchmarks import registry as R  # noqa: E402
 from mootation.run import campaign as K  # noqa: E402
 from mootation.run import config as C  # noqa: E402
 from mootation.run.campaign import _code_stamp  # noqa: E402
-from mootation.run.registry_export import FORMAT, entry  # noqa: E402
+from mootation.run.registry_export import FORMAT, entry, names  # noqa: E402
 import numpy as np  # noqa: E402
 
 # meta.json's fields that are the process's (campaign.py; the C++ engine's Process)
@@ -70,7 +70,7 @@ assert not C.validate(cfg)
 spec = K.campaign_spec(cfg)
 jobs = K.expand_jobs(cfg, spec)
 doc = {"format": FORMAT, "code_stamp": _code_stamp(), "reference_version": R.REFERENCE_VERSION,
-       "mootation": __version__, "problems": [entry(n) for n in ("ZDT1", "DTLZ2_3D")]}
+       "mootation": __version__, "names": names(), "problems": [entry(n) for n in ("ZDT1", "DTLZ2_3D")]}
 (out / "registry.json").write_text(json.dumps(doc, indent=1) + "\n", encoding="utf-8", newline="\n")
 lines = []
 with tempfile.TemporaryDirectory() as tmp:

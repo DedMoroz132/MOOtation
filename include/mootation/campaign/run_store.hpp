@@ -18,6 +18,7 @@
 // ============================================================================
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
@@ -257,8 +258,11 @@ private:
     void start()
     {
         std::filesystem::create_directories(store_);
+        // the numbers one counter of the process gives, so that the writers of
+        // a pool of threads never take one name
+        static std::atomic<int> taken{0};
         for (;;) {            // a name no writer of this process took this second
-            ++number_;
+            number_ = ++taken;
             char n[16];
             std::snprintf(n, sizeof n, "%04d", number_);
             const std::filesystem::path raw =
