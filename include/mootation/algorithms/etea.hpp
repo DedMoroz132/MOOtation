@@ -100,7 +100,9 @@ public:
     ETEACore() = default;
     void set_seed(unsigned s) { rng_.seed(s); }
     void set_eta_crossover(double e) { eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation(double e)  { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
 
     void setup(DataVault<Ind_t>& vault) {
         // Real-valued reproduction only: refuse a binary genome instead of
@@ -196,9 +198,10 @@ private:
     std::mt19937 rng_{std::random_device{}()};
     int          m_ = 0, N_ = 0;
     double       eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0;
+    double       pm_ = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     std::vector<Sol> P_, Q_;
 
-    double pm_eff(int nv) const { return nv > 0 ? 1.0 / nv : 0.0; }
+    double pm_eff(int nv) const { return pm_ >= 0.0 ? pm_ : (nv > 0 ? 1.0 / nv : 0.0); }
 
     double cv_of(DataVault<Ind_t>& vault, int slot) const {
         return (constraint_mode == ConstraintMode::NONE) ? 0.0 : vault.get_cv(slot);

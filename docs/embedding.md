@@ -161,79 +161,79 @@ of every key. A knob the chosen algorithm does not have is reported in
 `Result::ignored` rather than dropped.
 
 Which algorithm takes the operator knobs (a knob it lacks is reported in
-`Result::ignored`; measured by a short run of every algorithm with all five
+`Result::ignored`; measured by a short run of every algorithm with all six
 set). `pm` is 1/n by default wherever it is a knob; NSGA-II, SPEA2+SDE,
 AGE-MOEA and SMS-EMOA took it only from task 7 on.
 
-<details><summary>pm, eta_m, eta_c, mutation, crossover per algorithm</summary>
+<details><summary>pc, pm, eta_m, eta_c, mutation, crossover per algorithm</summary>
 
-| algorithm | `pm` | `eta_m` | `eta_c` | `mutation` | `crossover` |
-|---|---|---|---|---|---|
-| `nsga2` | yes | yes | yes | yes | yes |
-| `nsga2_sdr` | yes | yes | yes | yes | yes |
-| `spea2` | no | yes | yes | no | no |
-| `spea2_sde` | yes | yes | yes | yes | yes |
-| `grea` | no | yes | yes | no | no |
-| `vaea` | no | yes | yes | no | no |
-| `agemoea` | yes | yes | yes | yes | yes |
-| `etea` | no | yes | yes | no | no |
-| `gde3` | no | no | no | no | no |
-| `nsga3` | no | yes | yes | no | no |
-| `a_nsga3` | no | yes | yes | no | no |
-| `theta_dea` | yes | yes | yes | no | no |
-| `ar_moea` | yes | yes | yes | no | no |
-| `moead` | yes | yes | yes | no | no |
-| `moead_de` | yes | yes | yes | yes | no |
-| `moead_dra` | yes | yes | yes | no | no |
-| `moead_dd` | yes | yes | yes | no | no |
-| `moead_awa` | no | yes | yes | no | no |
-| `adaw` | no | yes | yes | no | no |
-| `moead_m2m` | yes | yes | yes | no | no |
-| `moead_am2m` | yes | yes | yes | no | no |
-| `sms_m2m` | yes | yes | yes | no | no |
-| `moead_ds` | yes | yes | yes | no | no |
-| `rd_emo` | yes | yes | yes | no | no |
-| `aprd` | yes | yes | yes | no | no |
-| `liu_gu2011` | yes | yes | yes | no | no |
-| `isde_rd` | yes | yes | yes | no | no |
-| `dhea` | yes | yes | yes | no | no |
-| `hlmea` | yes | yes | yes | no | no |
-| `ibea_eplus` | yes | yes | yes | yes | yes |
-| `ibea_hd` | yes | yes | yes | no | no |
-| `mibea` | yes | yes | yes | no | no |
-| `r2ibea` | no | yes | yes | no | no |
-| `hype` | no | yes | yes | no | no |
-| `mombi2` | no | yes | yes | no | no |
-| `nimmo` | yes | yes | yes | no | no |
-| `irea` | yes | yes | yes | no | no |
-| `edv` | no | yes | yes | no | no |
-| `if_maoea` | yes | yes | yes | no | no |
-| `maoea_iamd` | no | yes | yes | no | no |
-| `sms_emoa` | yes | yes | yes | yes | yes |
-| `mo_cma_es` | no | no | no | no | no |
-| `rvea` | yes | yes | yes | no | no |
-| `rvea_star` | yes | yes | yes | no | no |
-| `maoeaarv` | no | yes | yes | no | no |
-| `mbra` | no | yes | yes | no | no |
-| `nrv_moea` | no | yes | yes | no | no |
-| `dea_gng` | yes | yes | yes | no | no |
-| `srv` | no | yes | yes | no | no |
-| `srv_nsga3` | no | yes | yes | no | no |
-| `camoea` | no | yes | yes | no | no |
-| `cava_moea` | no | yes | yes | no | no |
-| `maoea_ac` | no | yes | yes | no | no |
-| `maoea_c` | no | yes | yes | no | no |
-| `maoea_3c` | no | yes | yes | no | no |
-| `emyo_c` | no | yes | yes | no | no |
-| `crea` | no | yes | yes | no | no |
-| `dcea` | yes | yes | yes | no | no |
-| `hcca` | yes | yes | yes | no | no |
-| `lis_lcs` | no | yes | yes | no | no |
-| `clia` | yes | yes | yes | no | no |
-| `two_arch2` | yes | yes | yes | no | no |
-| `naemo` | yes | yes | yes | no | no |
-| `dms` | no | no | no | no | no |
-| `mosa` | yes | yes | yes | no | no |
+| algorithm | `pc` | `pm` | `eta_m` | `eta_c` | `mutation` | `crossover` |
+|---|---|---|---|---|---|---|
+| `nsga2` | yes | yes | yes | yes | yes | yes |
+| `nsga2_sdr` | yes | yes | yes | yes | yes | yes |
+| `spea2` | yes | yes | yes | yes | no | no |
+| `spea2_sde` | yes | yes | yes | yes | yes | yes |
+| `grea` | yes | yes | yes | yes | no | no |
+| `vaea` | yes | yes | yes | yes | no | no |
+| `agemoea` | yes | yes | yes | yes | yes | yes |
+| `etea` | yes | yes | yes | yes | no | no |
+| `gde3` | no | no | no | no | no | no |
+| `nsga3` | yes | yes | yes | yes | no | no |
+| `a_nsga3` | yes | yes | yes | yes | no | no |
+| `theta_dea` | yes | yes | yes | yes | no | no |
+| `ar_moea` | yes | yes | yes | yes | no | no |
+| `moead` | yes | yes | yes | yes | no | no |
+| `moead_de` | no | yes | yes | yes | yes | no |
+| `moead_dra` | no | yes | yes | yes | no | no |
+| `moead_dd` | yes | yes | yes | yes | no | no |
+| `moead_awa` | yes | yes | yes | yes | no | no |
+| `adaw` | yes | yes | yes | yes | no | no |
+| `moead_m2m` | yes | yes | yes | yes | no | no |
+| `moead_am2m` | yes | yes | yes | yes | no | no |
+| `sms_m2m` | yes | yes | yes | yes | no | no |
+| `moead_ds` | yes | yes | yes | yes | no | no |
+| `rd_emo` | yes | yes | yes | yes | no | no |
+| `aprd` | yes | yes | yes | yes | no | no |
+| `liu_gu2011` | yes | yes | yes | yes | no | no |
+| `isde_rd` | yes | yes | yes | yes | no | no |
+| `dhea` | yes | yes | yes | yes | no | no |
+| `hlmea` | no | yes | yes | yes | no | no |
+| `ibea_eplus` | yes | yes | yes | yes | yes | yes |
+| `ibea_hd` | yes | yes | yes | yes | no | no |
+| `mibea` | yes | yes | yes | yes | no | no |
+| `r2ibea` | yes | yes | yes | yes | no | no |
+| `hype` | yes | yes | yes | yes | no | no |
+| `mombi2` | yes | yes | yes | yes | no | no |
+| `nimmo` | yes | yes | yes | yes | no | no |
+| `irea` | yes | yes | yes | yes | no | no |
+| `edv` | yes | yes | yes | yes | no | no |
+| `if_maoea` | yes | yes | yes | yes | no | no |
+| `maoea_iamd` | yes | no | yes | yes | no | no |
+| `sms_emoa` | yes | yes | yes | yes | yes | yes |
+| `mo_cma_es` | no | no | no | no | no | no |
+| `rvea` | yes | yes | yes | yes | no | no |
+| `rvea_star` | yes | yes | yes | yes | no | no |
+| `maoeaarv` | yes | yes | yes | yes | no | no |
+| `mbra` | yes | yes | yes | yes | no | no |
+| `nrv_moea` | yes | yes | yes | yes | no | no |
+| `dea_gng` | yes | yes | yes | yes | no | no |
+| `srv` | yes | yes | yes | yes | no | no |
+| `srv_nsga3` | yes | yes | yes | yes | no | no |
+| `camoea` | yes | yes | yes | yes | no | no |
+| `cava_moea` | yes | yes | yes | yes | no | no |
+| `maoea_ac` | yes | yes | yes | yes | no | no |
+| `maoea_c` | yes | yes | yes | yes | no | no |
+| `maoea_3c` | yes | yes | yes | yes | no | no |
+| `emyo_c` | no | yes | yes | yes | no | no |
+| `crea` | yes | yes | yes | yes | no | no |
+| `dcea` | no | yes | yes | yes | no | no |
+| `hcca` | yes | yes | yes | yes | no | no |
+| `lis_lcs` | yes | yes | yes | yes | no | no |
+| `clia` | yes | yes | yes | yes | no | no |
+| `two_arch2` | yes | yes | yes | yes | no | no |
+| `naemo` | yes | yes | yes | yes | no | no |
+| `dms` | no | no | no | no | no | no |
+| `mosa` | yes | yes | yes | yes | no | no |
 
 </details>
 

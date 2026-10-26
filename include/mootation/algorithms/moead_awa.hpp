@@ -132,6 +132,7 @@ private:
     int    util_period_  = 50;     // π recomputation period (Step 2.1)
     double eta_c_        = 20.0;   // Table 1
     double eta_m_        = 20.0;   // Table 1
+    double pm_           = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double pc_           = 1.0;    // Table 1
     double feas_penalty_ = 1e6;    // FEASIBILITY extension
     int    t_max_        = 1000;   // G_max
@@ -366,7 +367,7 @@ private:
             pv2[j] = vault.get_variable(r2, j);
         }
         ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
-        double pm = (nv > 0) ? 1.0 / nv : 0.0;
+        double pm = pm_ >= 0.0 ? pm_ : ((nv > 0) ? 1.0 / nv : 0.0);
         ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
         // Step 3.3 (repair): the bounded operators yield y ∈ Ω by construction.
 
@@ -565,7 +566,9 @@ public:
     void set_rate_evol         (double r){ rate_evol_ = r; }
     void set_feas_penalty      (double p){ feas_penalty_ = p; }
     void set_eta_crossover     (double e){ eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation      (double e){ eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_seed              (unsigned s){ rng_.seed(s); }
     void set_t_max             (int t)   { t_max_ = (t > 0) ? t : 1; }
 

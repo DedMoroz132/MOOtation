@@ -101,6 +101,8 @@ private:
     std::optional<double> ref_delta_;
     double       eta_c_      = 20.0;
     double       eta_m_      = 20.0;
+    double       pc_         = 1.0;    // SBX probability (knob pc)
+    double       pm_         = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     std::mt19937 rng_{std::random_device{}()};
 
     // External fixed reference point R (paper: Require of Alg. 1/3/5/6).
@@ -469,7 +471,9 @@ public:
         return true;
     }
     void set_eta_crossover(double e)  { eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation (double e)  { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_seed         (unsigned s){ rng_.seed(s); }
 
     // External fixed reference point R (paper-exact mode). Pass an empty
@@ -524,9 +528,11 @@ public:
                 pv1[j] = vault.get_variable(p1, j);
                 pv2[j] = vault.get_variable(p2, j);
             }
-            ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, rng_);
-            ops::polynomial_mutation(c1, bounds, eta_m_, rng_);
-            ops::polynomial_mutation(c2, bounds, eta_m_, rng_);
+            ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
+            const double pm = pm_ >= 0.0 ? pm_
+                            : (c1.empty() ? 0.0 : 1.0 / static_cast<double>(c1.size()));
+            ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
+            ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
             if (vault.bin_vars_n() > 0) {
                 std::vector<int> bv1(vault.bin_vars_n()), bv2(vault.bin_vars_n());
                 std::vector<int> bc1, bc2;

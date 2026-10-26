@@ -198,6 +198,7 @@ private:
     double   s0_ = 0.2, s_end_ = 0.002, psa_alpha_ = 1.05;
     double   eta_c_ = 20.0, eta_m_ = 20.0;
     std::optional<double> pm_;
+    double pc_ = 1.0;   // SBX probability (knob pc)
     int      chains_ = 0;                 // 0: 1, or 10 with tch
     int      cap_ = 0;                    // 0: no cap
     int      window_ = 200;
@@ -337,9 +338,9 @@ private:
         if (learned) {
             ops::require_repair(repair_, ops::coords_name(coords_.kind), false, false);
             ops::sbx(coords_.to_y(x), coords_.to_y(xa), c1, c2, coords_.open(x.size()), eta_c_,
-                     1.0, rng_);
+                     pc_, rng_);
         } else {
-            ops::sbx(x, xa, c1, c2, bounds, eta_c_, 1.0, rng_);
+            ops::sbx(x, xa, c1, c2, bounds, eta_c_, pc_, rng_);
         }
         rnd::uniform_real_distribution<double> u(0.0, 1.0);
         std::vector<double> y = u(rng_) < 0.5 ? c1 : c2;
@@ -542,6 +543,7 @@ public:
     void set_t_max(int t)                  { t_max_ = std::max(1, t); }
     void set_F(double f)                   { F_ = f; }
     void set_eta_crossover(double e)       { eta_c_ = e; }
+    void set_pc(double p)                  { pc_ = p; }
     void set_eta_mutation(double e)        { eta_m_ = e; }
     void set_pm(double p)                  { pm_ = p; }
     void set_bound_repair(ops::BoundRepair r)

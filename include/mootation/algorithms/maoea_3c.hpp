@@ -137,7 +137,9 @@ public:
     MaOEA3CCore() = default;
     void set_seed(unsigned s) { rng_.seed(s); }
     void set_eta_crossover(double e) { eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation(double e)  { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_t_max(int t) { t_max_ = t; }
     void set_fr(double f) { fr_ = f; }
     void set_conv45(double c) { conv45_ = c; }

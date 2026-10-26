@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added: the operator knobs where a core used SBX or polynomial mutation with a
+  written-in probability (the owner's decision of 2026-10-26): `pm` in
+  `a_nsga3`, `camoea`, `cava_moea`, `crea`, `emyo_c`, `grea`, `maoea_ac`,
+  `maoea_c`, `maoeaarv`, `mbra`, `mombi2`, `nsga3`, `r2ibea`, `srv`,
+  `srv_nsga3`, `vaea`; `pc` and `pm` in `adaw`, `edv`, `etea`, `hype`,
+  `lis_lcs`, `maoea_3c`, `moead_awa`, `nrv_moea`; `pc` in `mosa` and `naemo`.
+  Not set, each takes the value written in before (p_c = 1, p_m = 1/n; `edv`
+  1/N, EDV-1): default runs unchanged, the golden fingerprints the same.
+  `docs/embedding.md`'s table of operator knobs per algorithm gains `pc`.
+
 - Added: the word knob `theta_ties` of `theta_dea` — `slot` (the default, TDEA-1:
   equal F_j in one cluster ordered by their slots) or `letter` (Definition 7's
   strict "<": copies share the first theta level); and the knobs `pc` and `pm`

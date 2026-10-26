@@ -111,6 +111,7 @@ private:
 
     double       eta_c_ = 20.0;
     double       eta_m_ = 20.0;
+    double       pm_    = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double       pc_    = 1.0;
     int          t_max_ = 1000;
     int          current_gen_ = 0;
@@ -301,7 +302,9 @@ public:
     NRVMOEACore() = default;
 
     void set_eta_crossover(double e) { eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation (double e) { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_t_max(int t)            { t_max_ = (t > 0) ? t : 1; }
     void set_population_pruning(bool b) { population_pruning_ = b; }   // NRV-1
@@ -413,7 +416,7 @@ public:
         };
         int off_base = vault.expand(n);
         int nv = vault.vars_n();
-        double pm = (nv > 0) ? 1.0 / nv : 0.0;   // p_m = 1/V
+        double pm = pm_ >= 0.0 ? pm_ : ((nv > 0) ? 1.0 / nv : 0.0);   // p_m = 1/V
         std::vector<double> pv1, pv2, c1, c2;
         for (int i = 0; i < n; i += 2) {
             int p1 = dist_PA(rng_), p2 = dist_PA(rng_);

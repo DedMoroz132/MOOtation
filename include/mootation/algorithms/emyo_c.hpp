@@ -88,6 +88,7 @@ public:
 
 private:
     double       eta_m_ = 20.0;
+    double       pm_    = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double       cr_    = 0.15;    // CR = 0.15 (§3.2)
     std::mt19937 rng_{std::random_device{}()};
     // the knobs for the mechanism (header): the paper's values by default
@@ -210,6 +211,7 @@ public:
 
     void set_eta_crossover(double)   {}             // EMyO/C does not use SBX
     void set_eta_mutation (double e) { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_cr           (double c) { cr_ = c; }
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_bound_repair(ops::BoundRepair r) {
@@ -258,7 +260,7 @@ public:
         // ════ VARIATION: DE difference vector + PM (Eq.2-5) ════
         int off_base = vault.expand(n);
         int nv = vault.vars_n();
-        double pm = (nv > 0) ? 1.0 / nv : 0.0;   // p_m = 1/n (§3.2)
+        double pm = pm_ >= 0.0 ? pm_ : ((nv > 0) ? 1.0 / nv : 0.0);   // p_m = 1/n (§3.2)
         // PM is applied to the difference vector v, whose natural bounds are
         // [−(ub−lb), (ub−lb)] — the difference of two variables from [lb,ub];
         // v is then clamped to [−delta, delta] with delta = (ub−lb)/2.

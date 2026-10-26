@@ -109,6 +109,7 @@ private:
 
     double       eta_c_ = 20.0;
     double       eta_m_ = 20.0;
+    double       pm_    = -1.0;   // mutation probability per variable; < 0: 1/N or 1/n (EDV-1; knob pm)
     double       pc_    = 1.0;
     bool         ideal_shift_ = true;   // EDV-3: angles from f − z* (true) or from the origin
     bool         pm_literal_  = true;   // EDV-1: p_m = 1/pop_size (the paper's letter); false -> 1/n_vars
@@ -195,7 +196,9 @@ public:
     EDVCore() = default;
 
     void set_eta_crossover(double e) { eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation (double e) { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_ideal_shift(bool b)     { ideal_shift_ = b; }   // EDV-3
     void set_pm_literal(bool b)      { pm_literal_ = b; }    // EDV-1
@@ -266,7 +269,8 @@ public:
         //    (EDV-2)
         int off_base = vault.expand(N);
         int nv = vault.vars_n();
-        double pm = pm_literal_ ? 1.0 / static_cast<double>(N)          // §4.2.4 (EDV-1)
+        double pm = pm_ >= 0.0 ? pm_
+                : pm_literal_ ? 1.0 / static_cast<double>(N)          // §4.2.4 (EDV-1)
                                 : ((nv > 0) ? 1.0 / nv : 0.0);           // Deb convention
         std::vector<double> pv1(nv), pv2(nv), c1, c2;
         for (int i = 0; i < N; ++i) {

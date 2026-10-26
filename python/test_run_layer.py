@@ -6955,6 +6955,40 @@ def theta_ties_and_spea2_pc_pm_knobs():
         assert f.objectives != d.objectives and not f.ignored, (knobs, f.ignored)
 
 @test
+def operator_knobs_pc_pm_in_the_26_cores():
+    """The owner's decision of 2026-10-26: the knobs pm (16 cores), pc and pm
+    (8) and pc (mosa, naemo) where a core used SBX or polynomial mutation with
+    a written-in probability. Their defaults are those values — p_c = 1, p_m =
+    1/n (edv: 1/N, EDV-1) — so the default run equals the run given them
+    explicitly bit for bit; another value is taken (not reported ignored) and
+    changes the run."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  operator_knobs...: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ2_3D")
+    n = len(p.bounds)
+    pm_only = ("a_nsga3", "camoea", "cava_moea", "crea", "grea", "maoea_ac", "maoea_c", "maoeaarv",
+               "mbra", "mombi2", "nsga3", "r2ibea", "srv", "srv_nsga3", "vaea", "emyo_c")
+    pc_pm = ("adaw", "edv", "etea", "hype", "lis_lcs", "maoea_3c", "moead_awa", "nrv_moea")
+    pc_only = ("mosa", "naemo")
+    for alg in pm_only + pc_pm + pc_only:
+        kw = dict(bounds=p.bounds, n_objs=3, pop_size=91, n_gen=4, seed=3)
+        explicit, other = {}, []
+        if alg not in pc_only:
+            explicit["pm"] = 1.0 / 91 if alg == "edv" else 1.0 / n
+            other.append({"pm": 0.3})
+        if alg not in pm_only:
+            explicit["pc"] = 1.0
+            other.append({"pc": 0.5})
+        d = minimize(p.evaluate, algorithm=alg, **kw)
+        e = minimize(p.evaluate, algorithm=alg, **explicit, **kw)
+        assert d.objectives == e.objectives and not e.ignored, (alg, e.ignored)
+        for knobs in other:
+            f = minimize(p.evaluate, algorithm=alg, **knobs, **kw)
+            assert not f.ignored and f.objectives != d.objectives, (alg, knobs, f.ignored)
+
+@test
 def theta_dea_keeps_every_reference_direction():
     """TDEA-1 (task 17, supplement 5, §1.1): copies of a solution in one cluster
     are not all theta-optimal, so the random choice of Step 20 cannot empty a

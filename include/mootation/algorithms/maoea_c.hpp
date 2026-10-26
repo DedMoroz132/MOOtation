@@ -78,6 +78,7 @@ private:
 
     double       eta_c_ = 30.0;    // Table I
     double       eta_m_ = 20.0;    // Table I
+    double       pm_    = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double       pc_    = 1.0;     // Table I: p_c = 1.0
     double       delta_ = 0.8;     // eps, the similarity-mating probability (Table I)
     std::mt19937 rng_{std::random_device{}()};
@@ -289,6 +290,7 @@ public:
 
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation (double e) { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_pc(double p)            { pc_ = p; }
     void set_delta(double d)         { delta_ = d; }   // ε
     void set_seed(unsigned s)        { rng_.seed(s); }
@@ -333,8 +335,8 @@ public:
 
         int off_base = vault.expand(n);
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
-        const double pm = (vault.vars_n() > 0)
-            ? 1.0 / static_cast<double>(vault.vars_n()) : 0.0;   // p_m=1/n (Table I)
+        const double pm = pm_ >= 0.0 ? pm_ : ((vault.vars_n() > 0)
+            ? 1.0 / static_cast<double>(vault.vars_n()) : 0.0);   // p_m=1/n (Table I)
         int off = 0;
         for (int i = 0; i < m && off < n; ++i) {
             const auto& Ci = PCM_P[i];
