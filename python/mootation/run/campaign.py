@@ -358,6 +358,15 @@ def log_grid(limit: int, per_decade: int) -> list:
 # ── reading the [campaign] table ────────────────────────────────────────────
 
 
+def _integer(raw: dict, key: str, default: int) -> int:
+    """An integer key of [campaign]: true/false, a float or a word is an error,
+    not int()'s reading of it."""
+    v = raw.get(key, default)
+    if not isinstance(v, int) or isinstance(v, bool):
+        raise ConfigError(f"campaign.{key}", f"an integer, not {v!r}")
+    return v
+
+
 def campaign_spec(cfg: Config) -> CampaignSpec:
     raw = dict(cfg.campaign or {})
     spec = CampaignSpec()
@@ -376,9 +385,11 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
                                       f"Known: {', '.join(sorted(known))}")
-    spec.out = str(raw.get("out", spec.out))
-    spec.budget_fe = int(raw.get("budget_fe", 0))
-    spec.record_every = int(raw.get("record_every", 1))
+    spec.out = raw.get("out", spec.out)
+    if not isinstance(spec.out, str):
+        raise ConfigError("campaign.out", f"a path, not {spec.out!r}")
+    spec.budget_fe = _integer(raw, "budget_fe", 0)
+    spec.record_every = _integer(raw, "record_every", 1)
     # `metrics` are recorded along the trajectory, `final_metrics` once on the
     # final population. Splitting them is what lets a costly indicator — the
     # hypervolume at five objectives — be measured on the result without
@@ -387,12 +398,14 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
         names = raw.get(key, default)
         if names is None:
             continue
+        if not isinstance(names, (list, tuple)):
+            raise ConfigError(f"campaign.{key}", f"a list of metric names, not {names!r}")
         for m in names:
             if m not in METRIC_NAMES:
                 raise ConfigError(f"campaign.{key}",
                                   f"unknown metric '{m}'; known: {', '.join(METRIC_NAMES)}")
         setattr(spec, key, tuple(names))
-    spec.n_ref = int(raw.get("n_ref", 1000))
+    spec.n_ref = _integer(raw, "n_ref", 1000)
     spec.dense_reference = raw.get("dense_reference", True)
     if not isinstance(spec.dense_reference, bool):
         raise ConfigError("campaign.dense_reference", "true or false")
@@ -403,16 +416,20 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if spec.set_answer not in ("off", "population", "evaluated"):
         raise ConfigError("campaign.set_answer",
                           f"\"off\", \"population\" or \"evaluated\", not {spec.set_answer!r}")
-    spec.seeds = tuple(int(s) for s in raw.get("seeds", ()))
+    seeds = raw.get("seeds", [])
+    if (not isinstance(seeds, (list, tuple))
+            or not all(isinstance(s, int) and not isinstance(s, bool) for s in seeds)):
+        raise ConfigError("campaign.seeds", f"a list of integers, not {seeds!r}")
+    spec.seeds = tuple(seeds)
     # the default grid: "budgets"; "generations" with hard budgets (they read
     # every generation); the grid a results directory was started with, so
     # that a resumed campaign does not mix two grids
     default_grid = "generations" if raw.get("hard_budgets") else "budgets"
     if "record_grid" not in raw:
         default_grid = _started_grid(cfg, spec) or default_grid
-    spec.record_grid = str(raw.get("record_grid", default_grid))
-    spec.record_per_decade = int(raw.get("record_per_decade", 10))
-    spec.trajectory_hv_max_m = int(raw.get("trajectory_hv_max_m", 0))
+    spec.record_grid = raw.get("record_grid", default_grid)
+    spec.record_per_decade = _integer(raw, "record_per_decade", 10)
+    spec.trajectory_hv_max_m = _integer(raw, "trajectory_hv_max_m", 0)
     if spec.record_grid not in ("budgets", "generations", "log"):
         raise ConfigError("campaign.record_grid",
                           f"'budgets', 'generations' or 'log', not '{spec.record_grid}'")
@@ -458,7 +475,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.archive = raw.get("archive", True)
     if not isinstance(spec.archive, bool):
         raise ConfigError("campaign.archive", "true or false")
-    spec.archive_delta = float(raw.get("archive_delta", 0.0))
+    spec.archive_delta = raw.get("archive_delta", 0.0)
+    if not isinstance(spec.archive_delta, (int, float)) or isinstance(spec.archive_delta, bool):
+        raise ConfigError("campaign.archive_delta", f"a number, not {spec.archive_delta!r}")
+    spec.archive_delta = float(spec.archive_delta)
     spec.archive_mode = raw.get("archive_mode", "online")
     if spec.archive_mode not in ("online", "posthoc"):
         raise ConfigError("campaign.archive_mode",

@@ -24,6 +24,7 @@
 #include <mootation/json.hpp>
 #include <mootation/toml.hpp>
 #include <mootation/campaign/config.hpp>
+#include <mootation/campaign/jobs.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
@@ -1084,6 +1085,71 @@ void bind_run_layer(py::module_& m)
           py::arg("text"), py::arg("source_path"), py::arg("base"), py::arg("registry"),
           "(error or None, problems, benchmark problems) of a run description, as run/config.py's loads and "
           "validate give them (include/mootation/campaign/config.hpp).");
+    m.def("campaign_jobs",
+          [](const std::string& text, const py::object& source_path, const py::dict& r, const py::dict& jr,
+             std::int64_t shards) -> py::tuple {
+              namespace cp = mootation::campaign;
+              namespace js = mootation::json;
+              cp::Registry reg;
+              auto strings = [](const py::dict& d, const char* k) { return d[k].cast<std::vector<std::string>>(); };
+              reg.algorithms = strings(r, "algorithms");
+              reg.baselines = strings(r, "baselines");
+              reg.scalar_names = strings(r, "scalar_names");
+              reg.design_kinds = strings(r, "design_kinds");
+              reg.knob_names = strings(r, "knob_names");
+              reg.list_knobs = strings(r, "list_knobs");
+              for (const auto& item : r["text_knobs"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  reg.text_knobs.emplace_back(t[0].cast<std::string>(), t[1].cast<std::vector<std::string>>());
+              }
+              for (const auto& item : r["problems"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  reg.problems.emplace_back(t[0].cast<std::string>(), t[1].cast<int>());
+              }
+              reg.platform = r["platform"].cast<std::string>();
+              reg.algorithms_error = r["algorithms_error"].cast<std::string>();
+              const py::object findable = r["executable_findable"], groups = r["regex_groups"];
+              reg.executable_findable = [findable](const std::string& a) { return findable(a).cast<bool>(); };
+              reg.regex_groups = [groups](const std::string& p, std::string& error) {
+                  const auto t = groups(p).cast<py::tuple>();
+                  error = t[1].cast<std::string>();
+                  return t[0].cast<int>();
+              };
+              cp::JobsRegistry jreg;
+              jreg.metric_names = strings(jr, "metric_names");
+              jreg.budget_dependent = strings(jr, "budget_dependent");
+              jreg.scalar_names = strings(jr, "scalar_names");
+              jreg.scalar_others = strings(jr, "scalar_others");
+              for (const auto& item : jr["problems"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  jreg.problems[t[0].cast<std::string>()] = {t[1].cast<int>(), t[2].cast<std::int64_t>(),
+                                                             t[3].cast<std::int64_t>()};
+              }
+              std::optional<std::filesystem::path> src;
+              if (!source_path.is_none()) src = std::filesystem::path(source_path.cast<std::wstring>());
+              try {
+                  cp::Config cfg = cp::loads(text, reg, src);
+                  if (!cp::validate(cfg, reg).empty()) return py::make_tuple("the config has problems", py::none());
+                  if (cfg.kind != "builtin") return py::make_tuple("not a campaign", py::none());
+                  const cp::CampaignSpec spec = cp::campaign_spec(cfg, jreg);
+                  const auto jobs = cp::expand_jobs(cfg, spec, jreg);
+                  js::Value out = js::Value::object(), list = js::Value::array(), parts = js::Value::array();
+                  for (const auto& j : jobs) {
+                      list.items.push_back(cp::to_value(j));
+                      parts.items.push_back(js::Value::integer(cp::shard_of(j, shards)));
+                  }
+                  out.set("spec", cp::to_value(spec));
+                  out.set("jobs", list);
+                  out.set("shards", parts);
+                  return py::make_tuple(py::none(), js::dump(out));
+              } catch (const cp::ConfigError& e) {
+                  return py::make_tuple(std::string(e.what()), py::none());
+              }
+          },
+          py::arg("text"), py::arg("source_path"), py::arg("registry"), py::arg("jobs_registry"),
+          py::arg("shards") = 7,
+          "(error or None, JSON of {spec, jobs, shards}) of a campaign: campaign.py's campaign_spec, expand_jobs "
+          "and shard_of (include/mootation/campaign/jobs.hpp).");
     m.def("toml_to_json",
           [](const std::string& text) { return mootation::json::dump(mootation::toml::parse(text)); },
           py::arg("text"), "json.dumps(tomllib.loads(text)) by include/mootation/toml.hpp (dates as their text).");

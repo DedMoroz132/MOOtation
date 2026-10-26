@@ -10,6 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/campaign/jobs.hpp`: a campaign's settings and job list
+  in C++ — `run/campaign.py`'s `campaign_spec()`, `fit_pop()`,
+  `expand_jobs()` (the budget ladder's rungs included) and `shard_of()`,
+  with the same messages and the same jobs, field for field. The extension's
+  `campaign_jobs` for the cross-check; `tests/test_campaign_jobs.cpp`.
+- Fixed (`run/campaign.py`): `[campaign]` values of the wrong type —
+  `budget_fe`, `record_every`, `n_ref`, `record_per_decade`,
+  `trajectory_hv_max_m` as a float, true/false or a word; `seeds` holding
+  them; `archive_delta` as a word; `metrics` as one word rather than a list;
+  `out` not a string — were read by `int()`/`float()`/`str()` (1.5 as 1,
+  true as 1, "igd" as three metric names) or raised a bare `ValueError`; now
+  a config error naming the key.
+
 - `include/mootation/campaign/config.hpp`: a run description read and
   checked in C++ — `run/config.py`'s `loads()` and `validate()` with the same
   messages, word for word; what the checks look up (algorithms, knobs,

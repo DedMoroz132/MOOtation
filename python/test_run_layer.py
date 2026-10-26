@@ -1542,6 +1542,21 @@ def campaign_record_at_and_ladder_expand_as_documented():
 
 
 @test
+def campaign_numbers_of_the_wrong_type_are_config_errors():
+    # int() and float() read 1.5, true and "12" before; a word raised ValueError
+    from mootation.run import campaign as C
+    for old, bad, where in (("budget_fe = 25000", "budget_fe = 2.5e4", "campaign.budget_fe"),
+                            ("budget_fe = 25000", "budget_fe = true", "campaign.budget_fe"),
+                            ("budget_fe = 25000", "budget_fe = 25000\nseeds = [1, \"2\"]", "campaign.seeds"),
+                            ("budget_fe = 25000", "budget_fe = 25000\nn_ref = \"many\"", "campaign.n_ref"),
+                            ("budget_fe = 25000", "budget_fe = 25000\narchive_delta = \"x\"",
+                             "campaign.archive_delta"),
+                            ("budget_fe = 25000", "budget_fe = 25000\nmetrics = \"igd\"", "campaign.metrics")):
+        e = raises(ConfigError, C.campaign_spec, loads(_LADDER.replace(old, bad)))
+        assert where in str(e), (bad, e)
+
+
+@test
 def campaign_workers_get_one_blas_thread():
     """single_threaded_blas: 1 where unset, a user's value kept."""
     import os
