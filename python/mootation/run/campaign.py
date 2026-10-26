@@ -4042,13 +4042,18 @@ def main(argv: list[str] | None = None) -> int:
         jobs = [j for j in jobs if j.problem in only_problems]
 
     if args.list:
+        from .. import store
         from ..benchmarks.registry import problem_version
         statuses = job_statuses(root, jobs)
+        # a done run's meta.json: its record in the store, where it has one
+        stored = store.index(store.store_dir(root)) if store.store_dir(root).is_dir() else {}
         for j in jobs:
             st = statuses[j.index]
             note = f"  [{j.pop_note}]" if j.pop_note else ""
             if st == "done":
-                meta = json.loads((root / j.rel_dir / "meta.json").read_text(encoding="utf-8"))
+                loc = stored.get(store.job_key(j))
+                run = store.StoredRun(loc, store.job_key(j)) if loc is not None else root / j.rel_dir
+                meta = json.loads((run / "meta.json").read_text(encoding="utf-8"))
                 ran = int(meta.get("problem_version") or 1)
                 if ran < problem_version(j.problem):
                     note += (f"  [problem v{ran}, now v{problem_version(j.problem)}: to run "

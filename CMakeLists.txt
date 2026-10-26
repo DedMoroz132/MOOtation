@@ -49,6 +49,10 @@ option(MOOTATION_BUILD_PYTHON   "Build the pybind11 module"      OFF)
 # the Python module is: `cmake --build` with nothing enabled must stay a
 # header-only, compile-nothing affair.
 option(MOOTATION_BUILD_C_API    "Build the C ABI shared library" OFF)
+# The campaign engine in C++ (engine/: the `mootation` executable; task 17,
+# stage 5). Built with the tests and the examples where this is the
+# top-level project.
+option(MOOTATION_BUILD_ENGINE   "Build the mootation campaign engine" ${MOOTATION_IS_TOP_LEVEL})
 
 # ── The library ─────────────────────────────────────────────────────────────
 # Header-only, so an INTERFACE target: it carries include paths and the required
@@ -169,6 +173,10 @@ endif()
 
 if(MOOTATION_BUILD_C_API)
     add_subdirectory(capi)
+endif()
+
+if(MOOTATION_BUILD_ENGINE)
+    add_subdirectory(engine)
 endif()
 
 if(MOOTATION_BUILD_PYTHON)

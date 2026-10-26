@@ -210,7 +210,8 @@ inline std::optional<std::filesystem::path> out_root(const Config& cfg, const Ca
 {
     const auto out = format_out(spec.out, cfg.name);
     if (!out) return std::nullopt;
-    const std::filesystem::path p = store::file::path_of(*out);
+    std::filesystem::path p = store::file::path_of(*out);
+    p.make_preferred();                   // the platform's separators, as Path(...) gives them
     if (p.is_absolute()) return p;
     const std::filesystem::path base = cfg.source_path ? cfg.source_path->parent_path() : std::filesystem::current_path();
     return base / p;

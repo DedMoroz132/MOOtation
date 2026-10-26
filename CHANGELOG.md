@@ -10,6 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `engine/`: the `mootation` executable, the campaign engine in C++ —
+  `mootation run <campaign.toml> [--workers N] [--shard i/n] [--only ...]
+  [--force] [--registry FILE]` runs a campaign with storage = "store" by a
+  pool of threads (`campaign/engine.hpp`), names the jobs it leaves to the
+  Python engine with their reasons, and writes meta.json's process fields of
+  its own (`python` null); `mootation --version` with the build's commit.
+  Option `MOOTATION_BUILD_ENGINE` (on where MOOtation is the top-level
+  project). `include/mootation/fp_env.hpp`: the floating-point environment
+  the extension's `fp_env()` and the engine record.
+- Fixed (`run/campaign.py`): `--list` of a campaign with storage = "store"
+  read a done run's meta.json from a run folder that the store has none of,
+  and stopped; it reads the store's record now.
+
 - `include/mootation/campaign/engine.hpp`: a campaign run by the C++
   engine — campaign.json, a slice of the jobs (`shard_of`, a list),
   the store of a stopped run repaired (`store.repair`), the jobs done
