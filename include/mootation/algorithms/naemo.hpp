@@ -412,7 +412,7 @@ public:
     void set_theta(double t)       { if (t > 0.0) theta_ = t; }
     void set_mut_prob(double p)    { mut_prob_ = p; }
     void set_eta_mutation(double e){ eta_m_ = e; }
-    void set_eta_crossover(double){}   // η_c is adaptive — no-op shim for API uniformity
+    // no set_eta_crossover: eta_c is adaptive here, and a run that sets it gets it back ignored
     void set_pm(double p)          { pm_ = p; }
     void set_pc(double p)          { pc_ = p; }
     void set_flag1(bool f)         { flag1_ = f; }

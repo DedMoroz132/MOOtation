@@ -1560,11 +1560,14 @@ def campaign_numbers_of_the_wrong_type_are_config_errors():
 def the_registry_exported_builds_the_same_problems():
     """run/registry_export.py: a suite problem's exported spec builds the
     problem the registry has (task 17, stage 5); the refusals are named."""
-    from mootation import _core
+    try:
+        from mootation import _core
+    except ImportError:
+        _core = None
+    if not hasattr(_core, "Native"):
+        print("    (skipped: no extension)"); return
     from mootation.benchmarks.registry import PROBLEMS
     from mootation.run.registry_export import entry
-    if not hasattr(_core, "Native"):
-        print("    (skipped: no suite)"); return
     e = entry("shiftDTLZ2_3D")
     assert e["spec"]["map"] == "cyclic" and len(e["spec"]["centre"]) == 10, e["spec"]
     x = [0.3] * e["n_var"]
@@ -7007,6 +7010,21 @@ def theta_ties_and_spea2_pc_pm_knobs():
     for knobs in ({"pm": 0.01}, {"pc": 0.5}):
         f = minimize(z.evaluate, algorithm="spea2", **knobs, **kz)
         assert f.objectives != d.objectives and not f.ignored, (knobs, f.ignored)
+
+@test
+def naemo_reports_eta_c_ignored():
+    """The owner's word of 2026-10-26: NAEMO's eta_c is adaptive; a run given
+    one gets it back in ignored (no setter that does nothing), and runs as
+    without it."""
+    if not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  naemo_reports_eta_c_ignored: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    p = get("DTLZ2_3D")
+    kw = dict(bounds=p.bounds, n_objs=3, pop_size=91, n_gen=3, seed=5, algorithm="naemo")
+    d = minimize(p.evaluate, **kw)
+    e = minimize(p.evaluate, eta_c=15.0, **kw)
+    assert e.ignored == ["eta_c"] and e.objectives == d.objectives, e.ignored
 
 @test
 def operator_knobs_pc_pm_in_the_26_cores():

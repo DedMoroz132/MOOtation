@@ -30,6 +30,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -352,8 +353,11 @@ inline const char* name_of(Want w)
     return "";
 }
 
-inline const Value& req(const Value& table, const std::string& key, const std::string& where, Want w)
+// key and where by value: a reference to the table's member comes back, and
+// GCC's -Wdangling-reference takes a temporary string argument for its source
+inline const Value& req(const Value& table, std::string_view key_, std::string_view where_, Want w)
 {
+    const std::string key(key_), where(where_);
     const Value* v = table.find(key);
     if (!v) throw ConfigError(where, "missing required key '" + key + "'");
     if (!is(*v, w))
@@ -361,9 +365,9 @@ inline const Value& req(const Value& table, const std::string& key, const std::s
     return *v;
 }
 
-inline const Value* opt(const Value& table, const std::string& key, const std::string& where, Want w)
+inline const Value* opt(const Value& table, std::string_view key, std::string_view where, Want w)
 {
-    if (!table.find(key)) return nullptr;
+    if (!table.find(std::string(key))) return nullptr;
     return &req(table, key, where, w);
 }
 

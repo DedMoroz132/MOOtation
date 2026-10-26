@@ -55,6 +55,8 @@ struct Bits {
     std::uint32_t buf = 0;               // bits not used yet, the next lowest
     int cnt = 0;
 
+    Bits(const std::uint8_t* data, std::size_t size) : in(data), n(size) {}
+
     int need(int k)                      // the next k bits, least significant first
     {
         std::uint32_t v = buf;
@@ -210,7 +212,7 @@ inline std::vector<std::uint8_t> inflate(const std::uint8_t* in, std::size_t n, 
 {
     std::vector<std::uint8_t> out;
     out.reserve(size_hint);
-    detail::Bits b{in, n};
+    detail::Bits b(in, n);
     int last;
     do {
         last = b.need(1);

@@ -231,7 +231,7 @@ AGE-MOEA and SMS-EMOA took it only from task 7 on.
 | `lis_lcs` | yes | yes | yes | yes | no | no |
 | `clia` | yes | yes | yes | yes | no | no |
 | `two_arch2` | yes | yes | yes | yes | no | no |
-| `naemo` | yes | yes | yes | yes | no | no |
+| `naemo` | yes | yes | yes | no | no | no |
 | `dms` | no | no | no | no | no | no |
 | `mosa` | yes | yes | yes | yes | no | no |
 
