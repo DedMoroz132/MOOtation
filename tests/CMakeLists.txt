@@ -205,6 +205,13 @@ if(Python3_Interpreter_FOUND AND NOT Python3_VERSION VERSION_LESS 3.11)
                      ${CMAKE_CURRENT_SOURCE_DIR}/../python/test_tui.py)
     set_tests_properties(python.mootation_tui PROPERTIES TIMEOUT 300)
 
+    # The Python suites run on the schedule, not on every push (the owner's
+    # word of 2026-10-27: the work goes on in C++ and is debugged there; the
+    # Python layer stays the cross-check): labelled nightly, and python so
+    # that the sanitized nightly build can leave them out.
+    set_tests_properties(python.mootation_run python.mootation_run_check python.mootation_tui
+                         PROPERTIES LABELS "nightly;python")
+
     # The examples need the COMPILED extension, so they are registered in
     # python/CMakeLists.txt instead, next to the interpreter it was built for.
     # Registering them here would run them under whatever Python this directory

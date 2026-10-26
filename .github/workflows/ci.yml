@@ -32,12 +32,18 @@ jobs:
     # once (test_run_layer.py --shard i/3), each part building the extension and
     # installing the package (NumPy and the extras the tests use); the smoke
     # test and the examples run in the first.
+    #
+    # On a push only the first part runs, without the run layer and the
+    # examples: the extension builds for this interpreter, the smoke test, the
+    # installed package. The run layer's suite runs on the schedule (the
+    # owner's word of 2026-10-27: the work goes on in C++ and is debugged
+    # there; the Python layer stays the cross-check, nightly).
     name: python binding · ${{ matrix.shard }}/3
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2]
+        shard: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '[0, 1, 2]' || '[0]') }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -119,11 +125,12 @@ jobs:
         # The run-layer jobs below have no extension, so test_run_layer.py
         # skips its campaign round trip there. Here it runs for real, and it
         # is the only place in CI where a parameter travels from a TOML file
-        # through minimize() into the binding.
+        # through minimize() into the binding. On the schedule.
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: PYTHONPATH=python python python/test_run_layer.py --shard ${{ matrix.shard }}/3
 
       - name: The examples
-        if: matrix.shard == 0
+        if: matrix.shard == 0 && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         run: PYTHONPATH=python python python/test_examples.py
 
   # ── The TOML / external-evaluator layer ───────────────────────────────────
@@ -132,6 +139,8 @@ jobs:
   # of using tomllib instead of a package is that there is nothing to install.
   python-run:
     name: run layer · python ${{ matrix.python }} · ${{ matrix.shard }}/2
+    # on the schedule (the python job above says why)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -745,4 +754,4 @@ jobs:
         run: |
           cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
           cmake --build build-asan -j 4
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly -LE python
