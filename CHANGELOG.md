@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/io/npz.hpp`: NumPy's `.npz` and `.npy` read in C++ —
+  zip (stored and deflated members, CRC-32 checked), inflate (RFC 1951),
+  float64/int64/bool arrays in either order and unicode strings — and
+  `campaign/references.hpp`: an entry of the reference cache (`run/refs.py`)
+  and `campaign.reference_hash()` over it, for the campaign engine in C++.
+  The extension's `npz_members` and `reference_entry` for the cross-check;
+  `tests/test_npz.cpp` on files NumPy and zlib wrote
+  (`tools/refs/gen_npz_samples.py`).
+
 - `include/mootation/campaign/jobs.hpp`: a campaign's settings and job list
   in C++ — `run/campaign.py`'s `campaign_spec()`, `fit_pop()`,
   `expand_jobs()` (the budget ladder's rungs included) and `shard_of()`,

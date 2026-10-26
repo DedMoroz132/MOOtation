@@ -25,6 +25,8 @@
 #include <mootation/toml.hpp>
 #include <mootation/campaign/config.hpp>
 #include <mootation/campaign/jobs.hpp>
+#include <mootation/campaign/references.hpp>
+#include <mootation/io/npz.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
@@ -1150,6 +1152,26 @@ void bind_run_layer(py::module_& m)
           py::arg("shards") = 7,
           "(error or None, JSON of {spec, jobs, shards}) of a campaign: campaign.py's campaign_spec, expand_jobs "
           "and shard_of (include/mootation/campaign/jobs.hpp).");
+    m.def("npz_members",
+          [](const std::wstring& path) {
+              py::dict out;
+              for (const auto& [name, a] : mootation::npz::load(std::filesystem::path(path)))
+                  out[py::str(name)] = py::make_tuple(a.descr, a.fortran_order, py::tuple(py::cast(a.shape)),
+                                                      py::bytes(reinterpret_cast<const char*>(a.data.data()),
+                                                                a.data.size()));
+              return out;
+          },
+          py::arg("path"), "{name: (descr, fortran_order, shape, raw bytes)} of an .npz (include/mootation/io/npz.hpp).");
+    m.def("reference_entry",
+          [](const std::wstring& path) {
+              namespace cp = mootation::campaign;
+              const cp::ReferenceEntry e = cp::load_entry(std::filesystem::path(path));
+              return py::make_tuple(mootation::json::dump(e.meta),
+                                    cp::reference_hash(e.ideal, e.nadir, e.ref, e.ref3, e.pset));
+          },
+          py::arg("path"),
+          "(json.dumps of the meta, reference_hash of the arrays) of a reference cache entry "
+          "(include/mootation/campaign/references.hpp).");
     m.def("toml_to_json",
           [](const std::string& text) { return mootation::json::dump(mootation::toml::parse(text)); },
           py::arg("text"), "json.dumps(tomllib.loads(text)) by include/mootation/toml.hpp (dates as their text).");
