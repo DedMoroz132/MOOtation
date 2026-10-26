@@ -2622,6 +2622,7 @@ _register_noisy(_noisy.LATE_BASES, late=True)
 #  False), or the base's front when nothing is left.
 # =============================================================
 _FAIL_PARTS: Dict[str, tuple] = {}
+_FAIL_REGIONS: Dict[str, object] = {}     # name -> failing.Region, for the registry export
 
 
 def _failing_parts(key: str):
@@ -2634,6 +2635,7 @@ def _failing_parts(key: str):
             k = 2 * (b.n_obj - 1)
             S = _fail.wfg4_pareto_set(_fail.SAMPLE, k, b.n_vars - k, _fail._rng(key + ":ps"))
         evaluate, region, kept = _fail.make(b, share, kind, S)
+        _FAIL_REGIONS[key] = region
         p = PROBLEMS[key]
         exact = len(kept) == len(S) and b.front_exact
         object.__setattr__(p, "front_exact", exact)
@@ -2641,6 +2643,12 @@ def _failing_parts(key: str):
             FRAME_OF[key] = base
         _FAIL_PARTS[key] = (evaluate, kept, len(S))
     return _FAIL_PARTS[key]
+
+
+def failing_region(key: str):
+    """The failure region of the failing copy `key` (failing.Region)."""
+    _failing_parts(key)
+    return _FAIL_REGIONS[key]
 
 
 def _register_failing():

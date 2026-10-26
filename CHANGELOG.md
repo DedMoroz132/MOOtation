@@ -23,6 +23,15 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs the failing copies (`<base>_fail<share><kind>`,
+  benchmarks/failing.py): the registry export hands over the base's spec
+  and the failure region (`failing_region`: the band's width, or the balls'
+  centres and radius, in normalised units), and the engine evaluates the
+  base with NaN in every objective inside the region. The 18 copies under
+  five cores: 90 runs as the Python engine's, record for record (60 with
+  failed evaluations, 11 586 in all). `registry.failing_region(name)`;
+  `tests/data/registry_sample.json` gains two copies with values inside and
+  outside their regions.
 - The C++ engine runs campaigns with `snapshots` (snapshots.npz: every
   record's population, its variables as `snapshot_variables` says) and
   `archive_checkpoints` (meta.json's `archive_at`; archive_at.npz where

@@ -10,7 +10,9 @@
 // run needs no Python (engine_refusal says why not, where not).
 // ============================================================================
 
+#include <algorithm>
 #include <filesystem>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -19,9 +21,21 @@
 
 #include "../io/npz.hpp"
 #include "../json.hpp"
+#include "../numpy_sum.hpp"
 #include "../suite/suite.hpp"
 
 namespace mootation::campaign {
+
+// A failing copy's failure region (benchmarks/failing.py), in the box's
+// normalised units, (x - lb) / (ub - lb): "b" the band within t of the
+// faces; "r" (random balls) and "n" (a tube about part of the Pareto-set
+// sample) the balls of one radius about the centres. With the base's spec.
+struct FailRegion {
+    std::string kind;
+    double t = 0.0, radius = 0.0;
+    std::vector<std::vector<double>> centres;
+    json::Value spec;
+};
 
 struct RegistryProblem {
     std::string name;
@@ -38,6 +52,7 @@ struct RegistryProblem {
     std::vector<int> cyclic_vars;
     bool own_evaluator = false, typed = false, failing = false, distance = false;
     std::optional<json::Value> spec;              // null: not a problem of the suite
+    std::optional<FailRegion> failing_region;     // a failing copy of a problem of the suite
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -152,6 +167,16 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     p.failing = flag_of(o, "failing");
     p.distance = flag_of(o, "distance");
     if (const json::Value* v = o.find("spec"); v && v->kind == json::Value::Kind::Object) p.spec = *v;
+    if (const json::Value* v = o.find("failing_region"); v && v->kind == json::Value::Kind::Object) {
+        FailRegion r;
+        r.kind = v->find("kind")->s;
+        r.spec = *v->find("spec");
+        if (const json::Value* t = v->find("t")) r.t = t->kind == json::Value::Kind::Int ? double(t->i) : t->f;
+        if (const json::Value* c = v->find("radius")) r.radius = c->kind == json::Value::Kind::Int ? double(c->i) : c->f;
+        if (const json::Value* c = v->find("centres"))
+            for (const auto& row : c->items) r.centres.push_back(detail::floats_of(&row));
+        p.failing_region = std::move(r);
+    }
     return p;
 }
 
@@ -197,17 +222,84 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
 // why the C++ engine does not run this problem (the Python engine does), or nothing
 inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
-    if (!p.spec) return "not a problem of the C++ suite";
+    if (!p.spec && !p.failing_region) return "not a problem of the C++ suite";
     if (p.own_evaluator) return "an evaluator of the run's own (noise, an uninformative problem)";
     if (p.typed) return "typed variables";
-    if (p.failing) return "a failing copy";
+    if (p.failing && !p.failing_region) return "a failing copy";
     if (p.n_eq) return "equality constraints";
     return std::nullopt;
 }
 
-// the problem's evaluation in C++, built from its spec
+// failing.make's evaluate: the base's, but NaN in every objective at a point
+// of the failure region (Region.inside). The squared distance to a centre is
+// taken as Region.inside takes it, |u|^2 + |c|^2 - 2 u.c, the squares summed in
+// NumPy's order; u.c, NumPy's matrix product, in order — the two agree on
+// which points fail but within rounding of the region's edge.
+class FailingNative : public suite::Native {
+public:
+    FailingNative(std::shared_ptr<suite::Native> base, FailRegion region,
+                  std::vector<std::pair<double, double>> bounds)
+        : base_(std::move(base)), region_(std::move(region)), bounds_(std::move(bounds))
+    {
+        n_var = base_->n_var;
+        n_obj = base_->n_obj;
+        n_con = base_->n_con;
+        for (const auto& c : region_.centres) {
+            std::vector<double> sq(c.size());
+            for (std::size_t j = 0; j < c.size(); ++j) sq[j] = c[j] * c[j];
+            cc_.push_back(np::pairwise_sum(sq.data(), sq.size()));
+        }
+    }
+
+    void evaluate(const double* x, double* f, double* g) const override
+    {
+        if (!inside(x)) {
+            base_->evaluate(x, f, g);
+            return;
+        }
+        for (int j = 0; j < n_obj; ++j) f[j] = std::numeric_limits<double>::quiet_NaN();
+        for (int j = 0; j < n_con; ++j) g[j] = std::numeric_limits<double>::quiet_NaN();
+    }
+
+    bool inside(const double* x) const
+    {
+        const std::size_t n = static_cast<std::size_t>(n_var);
+        std::vector<double> u(n), sq(n);
+        for (std::size_t j = 0; j < n; ++j) {
+            u[j] = (x[j] - bounds_[j].first) / (bounds_[j].second - bounds_[j].first);
+            sq[j] = u[j] * u[j];
+        }
+        if (region_.kind == "b") {
+            for (double v : u)
+                if (v < region_.t || v > 1.0 - region_.t) return true;
+            return false;
+        }
+        if (region_.centres.empty()) return false;
+        const double uu = np::pairwise_sum(sq.data(), n);
+        double best = std::numeric_limits<double>::infinity();
+        for (std::size_t k = 0; k < region_.centres.size(); ++k) {
+            double dot = 0.0;
+            for (std::size_t j = 0; j < n; ++j) dot += u[j] * region_.centres[k][j];
+            best = std::min(best, uu + cc_[k] - 2.0 * dot);
+        }
+        return best < region_.radius * region_.radius;
+    }
+
+private:
+    std::shared_ptr<suite::Native> base_;
+    FailRegion region_;
+    std::vector<std::pair<double, double>> bounds_;
+    std::vector<double> cc_;                     // |c|^2 of each centre
+};
+
+// the problem's evaluation in C++, built from its spec (a failing copy: its
+// base's, failing in the region)
 inline std::shared_ptr<suite::Native> make_native(const RegistryProblem& p)
 {
+    if (p.failing_region) {
+        std::shared_ptr<suite::Native> base(suite::make(spec_of(p.failing_region->spec)));
+        return std::make_shared<FailingNative>(std::move(base), *p.failing_region, p.bounds);
+    }
     if (!p.spec) throw std::invalid_argument(p.name + ": not a problem of the C++ suite");
     return std::shared_ptr<suite::Native>(suite::make(spec_of(*p.spec)));
 }

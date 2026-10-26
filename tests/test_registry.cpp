@@ -5,8 +5,10 @@
 // its exported spec gives, at the file's point, the objectives and
 // constraints Python's registry gave, bit for bit — a shift's centre handed
 // over, C-DTLZ's constants, a rotation and a bbob instance drawn here — and
-// the engine refuses the problem it cannot run without Python.
+// the engine refuses the problem it cannot run without Python; a failing
+// copy gives the base's values outside its region and NaN inside, as Python's.
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -37,7 +39,7 @@ int main()
 {
     const std::string path = std::string(MOOTATION_TEST_DATA) + "/registry_sample.json";
     const cg::ProblemRegistry reg = cg::load_registry(path);
-    CHECK(reg.problems.size() == 5);
+    CHECK(reg.problems.size() == 7);
     CHECK(!reg.code_stamp.empty() && reg.reference_version >= 1);
 
     // the values the file records, from the problems built here
@@ -62,6 +64,34 @@ int main()
         ++checked;
     }
     CHECK(checked == 4);
+
+    // the failing copies: the base's values outside the region, NaN (null in
+    // the file) in every objective inside it, at the points Python evaluated
+    int fail_checked = 0;
+    for (const auto& item : doc.find("problems")->items) {
+        const js::Value* checks = item.find("fail_checks");
+        if (!checks) continue;
+        const cg::RegistryProblem& p = reg.problems.at(item.find("name")->s);
+        CHECK(p.failing && p.failing_region && !cg::engine_refusal(p));
+        const auto native = cg::make_native(p);
+        for (const auto& c : checks->items) {
+            const auto x = numbers(*c.find("x"));
+            std::vector<double> f(static_cast<std::size_t>(native->n_obj));
+            native->evaluate(x.data(), f.data(), nullptr);
+            const auto& want = c.find("F")->items;
+            bool same = want.size() == f.size();
+            for (std::size_t j = 0; same && j < f.size(); ++j)
+                same = want[j].kind == js::Value::Kind::Null ? std::isnan(f[j])
+                                                             : f[j] == (want[j].kind == js::Value::Kind::Float ? want[j].f
+                                                                                  : static_cast<double>(want[j].i));
+            if (!same) {
+                std::printf("FAIL %s: other values at a point\n", p.name.c_str());
+                ++failures;
+            }
+            ++fail_checked;
+        }
+    }
+    CHECK(fail_checked == 7);
 
     CHECK(!cg::engine_refusal(reg.problems.at("shiftDTLZ2_3D")));
     CHECK(reg.problems.at("C2-DTLZ2_3D").has_cons && reg.problems.at("C2-DTLZ2_3D").n_con == 1);

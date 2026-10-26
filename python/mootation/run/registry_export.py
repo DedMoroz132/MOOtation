@@ -12,8 +12,10 @@ spec its C++ evaluation is built from (benchmarks/native.spec: the numbers
 Python computes for it, centres, constants, vertices; what the suite draws
 itself, the rotations and the bbob instances, stays out). And the flags that
 send a problem to the Python engine: an evaluator of the run's own (noise,
-uninformative problems), typed variables, a failing copy, a distance to the
-Pareto set (g_min, g_median), which the suite does not compute yet.
+uninformative problems), typed variables, a distance to the Pareto set
+(g_min, g_median), which the suite does not compute yet. A failing copy of a
+problem of the suite carries its base's spec and its failure region
+(failing_region), which the engine evaluates itself.
 
 WHERE. Beside the cache of references (run/refs.py), under the benchmark
 code's stamp (campaign._code_stamp): <refs root>/registry/<stamp>.json. The
@@ -103,9 +105,34 @@ def entry(name: str) -> dict:
                          or noise_kind(name) is not None,
         "typed": p.var_types is not None and any(t != "real" for t in p.var_types),
         "failing": p.failing is not None,
+        "failing_region": _failing_region(name),
         "distance": p.distance_fn is not None,
         "spec": spec,
     }
+
+
+def _failing_region(name: str) -> dict | None:
+    """A failing copy of a problem of the C++ suite (benchmarks/failing.py):
+    the base's spec and the failure region in the box's normalised units —
+    "b": the band within t of the faces; "r" and "n": the balls of one radius
+    about the centres (the random balls, the tube about part of the Pareto-set
+    sample)."""
+    from ..benchmarks import native as N
+    from ..benchmarks import registry as R
+    if name not in R.FAILING:
+        return None
+    base = R.FAILING[name][0]
+    b = R.PROBLEMS[base]
+    if b.native is None:
+        return None
+    region = R.failing_region(name)
+    out = {"of": base, "kind": region.kind, "spec": _spec_json(N.spec(base, b, R.ROTATED.get(base)))}
+    if region.kind == "b":
+        out["t"] = float(region.t)
+    else:
+        out["radius"] = float(region.radius)
+        out["centres"] = [_floats(c) for c in region.centres]
+    return out
 
 
 def names() -> dict:
