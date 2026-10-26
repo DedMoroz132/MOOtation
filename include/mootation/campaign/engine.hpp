@@ -181,7 +181,7 @@ inline std::vector<StoreEntry> scan_raw(const std::string& data, std::uint64_t* 
             status = record_status(buf + r.body, r.body_size);
         } catch (const std::exception&) {
         }
-        out.push_back({r.key, status, at, r.end - at});
+        out.push_back({r.key, status, at, r.end - at, {}});
         at = r.end;
     }
     if (end_out) *end_out = at;
@@ -264,7 +264,7 @@ inline std::vector<StoreEntry> pack_index(const std::filesystem::path& path)
         throw std::runtime_error(name + ": an index of unknown kind");
     }
     std::vector<StoreEntry> out;
-    for (const auto& e : store::index_entries(lines)) out.push_back({e.key, e.status, e.offset, e.length});
+    for (const auto& e : store::index_entries(lines)) out.push_back({e.key, e.status, e.offset, e.length, {}});
     return out;
 }
 
