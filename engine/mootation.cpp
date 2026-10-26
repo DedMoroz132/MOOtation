@@ -184,8 +184,8 @@ int run(const std::vector<std::string>& args)
     const cg::EngineCounts c = cg::run_campaign(text.str(), source, preg, opt);
     std::size_t left = 0;
     for (const auto& [why, n] : c.left) left += n;
-    std::fprintf(stderr, "finished: done %zu, failed %zu, skipped %zu, left to the Python engine %zu\n", c.done,
-                 c.failed, c.skipped, left);
+    std::fprintf(stderr, "finished: done %zu, failed %zu, timeout %zu, skipped %zu, left to the Python engine %zu\n",
+                 c.done, c.failed, c.timeout, c.skipped, left);
     for (const auto& [why, n] : c.left) std::fprintf(stderr, "  %zu: %s\n", n, why.c_str());
     return c.failed ? 1 : 0;
 }

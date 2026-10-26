@@ -71,8 +71,14 @@ int main()
                                           job.problem + "/n" + std::to_string(spec.n_ref) + ".npz");
         cg::JobRun run(job, spec, p, cg::shared_references(entry, true, spec.dense_reference, p.has_pareto_set));
         run.set_registry(preg, jreg);
-        const cg::JobOutcome out = run.run();
+        cg::Process still;
+        still.seconds = [] { return 0.0; };            // the clock stands still: "t" is 0.0
+        cg::JobOutcome out = run.run(still);
         const cg::JobFiles files = run.finish(out);
+        for (auto& rec : out.trajectory) {            // the samples have no "t"
+            const auto at = rec.find("\"t\":0.0,");
+            if (at != std::string::npos) rec.erase(at, 8);
+        }
         // meta.json without the process's fields
         js::Value meta = files.meta, kept = js::Value::object();
         for (std::size_t k = 0; k < meta.keys.size(); ++k) {

@@ -403,7 +403,7 @@ struct EngineOptions {
 };
 
 struct EngineCounts {
-    std::size_t total = 0, selected = 0, skipped = 0, done = 0, failed = 0;
+    std::size_t total = 0, selected = 0, skipped = 0, done = 0, failed = 0, timeout = 0;
     std::map<std::string, std::size_t> left;                      // to Python, by reason
 };
 
@@ -526,7 +526,7 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
                 const JobFiles files = run.finish(out);
                 writer.append(job_key(job), record_blocks(files, out.trajectory));
                 std::lock_guard<std::mutex> g(lock);
-                (out.status == "done" ? counts.done : counts.failed) += 1;
+                (out.status == "done" ? counts.done : out.status == "timeout" ? counts.timeout : counts.failed) += 1;
                 if (opt.say)
                     opt.say("[" + std::to_string(job.index) + "] " + job.problem + " " + job.key() + " seed " +
                             std::to_string(job.seed) + ": " + out.status);

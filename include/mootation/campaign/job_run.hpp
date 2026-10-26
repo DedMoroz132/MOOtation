@@ -236,6 +236,9 @@ struct Process {
     json::Value python = json::Value::null();           // the Python version; null from C++
     json::Value pid = json::Value::null(), fp_env = json::Value::null();
     std::function<std::string()> now;                   // time.strftime("%Y-%m-%dT%H:%M:%S")
+    // the seconds a run has taken (a record's "t", run_timeout); unset: the
+    // steady clock (a test sets one that stands still)
+    std::function<double()> seconds;
 };
 
 // A table of a run (store.table_blocks): head {comments, columns, ints,
@@ -254,13 +257,17 @@ struct JobFiles {
 
 // What the run leaves for its end (step 4d).
 struct JobOutcome {
-    std::string status;                            // "done" or "failed"
+    std::string status;                            // "done", "failed" or "timeout"
     std::string error;
-    std::vector<std::string> trajectory;          // the records, json.dumps each, "t" left out
+    std::vector<std::string> trajectory;          // the records, json.dumps each
     run::RunResult result;
     long long fe = 0, n_failed = 0, first_feasible = -1;
     std::size_t records = 0;
 };
+
+// a run stopped at run_timeout ([campaign]): thrown from the observer, it
+// ends the core's run; the record so far is kept, "timeout"
+struct TimeoutStop {};
 
 class JobRun {
 public:
@@ -274,6 +281,7 @@ public:
         setup();
         process_ = process;
         begin_meta();
+        start_ = std::chrono::steady_clock::now();
         JobOutcome out;
         run::RunProblem rp;
         for (const auto& b : p_.bounds) rp.bounds.push_back(b);
@@ -295,6 +303,12 @@ public:
         cfg.record_every = grid_kind_ != Grid::Generations ? 1 : static_cast<int>(spec_.record_every);
         try {
             out.result = run::run(job_.algorithm, rp, cfg);
+        } catch (const TimeoutStop&) {
+            // stopped at run_timeout: the trajectory up to its last record
+            out.status = "timeout";
+            out.trajectory = std::move(lines_);
+            out.fe = fe_;
+            return out;
         } catch (const std::exception& e) {
             out.status = "failed";
             out.error = e.what();
@@ -321,6 +335,24 @@ public:
         const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
         JobFiles files;
         V& meta = meta_;
+        if (out.status == "timeout") {
+            // campaign._record_timeout: the meta.json the run wrote at its
+            // start, "timeout", the evaluations and the values of its last record
+            V t = meta_at_start_;
+            V last = V::null();
+            std::int64_t fe = 0;
+            if (!out.trajectory.empty()) {
+                last = json::parse(out.trajectory.back());
+                if (const V* f = last.find("fe")) fe = f->i;
+            }
+            t.set("status", V::string("timeout"));
+            t.set("timeout_seconds", V::number(spec_.run_timeout));
+            t.set("fe", V::integer(fe));
+            t.set("last_record", last);
+            t.set("finished", now());
+            files.meta = t;
+            return files;
+        }
         if (out.status != "done") {
             meta.set("status", V::string("failed"));
             meta.set("error", V::string(out.error));
@@ -825,6 +857,7 @@ private:
         if (refs_.pset && refs_.pset->rows() == 0)
             meta.set("pareto_set_empty", V::string("the Pareto-set sample is empty (a failing copy whose failed region "
                                                    "takes all of it): no decision-space indicators"));
+        meta_at_start_ = meta;             // what meta.json holds while the run runs
         meta.set("record_grid", V::string(spec_.record_grid));
         meta.set("record_per_decade", spec_.record_grid == "log" ? V::integer(spec_.record_per_decade) : V::null());
         V at = V::array();
@@ -969,6 +1002,7 @@ private:
 
     void on_gen(int gen, std::vector<std::vector<double>> P)
     {
+        if (spec_.run_timeout > 0 && seconds() > spec_.run_timeout) throw TimeoutStop{};
         std::vector<double> F;
         for (const auto& r : P) F.insert(F.end(), r.begin(), r.end());
         if (grid_kind_ == Grid::Budgets) {
@@ -996,7 +1030,8 @@ private:
         json::Value rec = json::Value::object();
         rec.set("gen", json::Value::integer(gen));
         rec.set("fe", json::Value::integer(fe_rec));
-        rec.set("n", json::Value::integer(static_cast<std::int64_t>(n)));
+        rec.set("t", json::Value::number(py_round(seconds(), 3)));
+        rec.set("n",json::Value::integer(static_cast<std::int64_t>(n)));
         if (fe_pop) rec.set("fe_pop", json::Value::integer(*fe_pop));
         const auto& failed = ledger_->failed_fe();
         if (grid_kind_ == Grid::Budgets) {
@@ -1074,7 +1109,15 @@ private:
     std::vector<std::string> lines_;
     MeasureInputs measure_in_, dense_in_;
     Process process_;
-    json::Value meta_;
+    json::Value meta_, meta_at_start_;
+    std::chrono::steady_clock::time_point start_;
+
+    // the seconds since the run started (the process's clock where it has one)
+    double seconds() const
+    {
+        if (process_.seconds) return process_.seconds();
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - start_).count();
+    }
     std::set<std::string> seen_rows_;
     bool budget_dependent_ = false;
     int reference_version_ = 0;

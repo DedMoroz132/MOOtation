@@ -2029,7 +2029,9 @@ runner ends its worker, and the run is kept with the status `"timeout"`, its
 trajectory up to the last record it wrote, and that record's evaluations
 (`fe`) and values (`last_record`) in `meta.json`; a summary counts it apart
 from the failures, and resuming the campaign does not run it again
-(`--force` does). It needs the worker pool (more than one job).
+(`--force` does). It needs the worker pool (more than one job). The C++
+engine (`mootation run`) reads the clock at every generation and stops the
+run itself, for any number of jobs; the record is the same.
 
 ### The result store
 

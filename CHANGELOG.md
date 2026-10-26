@@ -23,6 +23,12 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine's trajectory records carry `"t"` (seconds since the run
+  started, after `"fe"`, as Python writes it), and `run_timeout` stops a
+  run at the first generation past it: the record says `"timeout"` with
+  the last trajectory record, as `_record_timeout` writes it, and resuming
+  does not run it again (`EngineCounts::timeout`). A process may give its
+  own clock (`Process::seconds`); the tests stop it.
 - `engine/`: the `mootation` executable, the campaign engine in C++ —
   `mootation run <campaign.toml> [--workers N] [--shard i/n] [--only ...]
   [--force] [--registry FILE]` runs a campaign with storage = "store" by a

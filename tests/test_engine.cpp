@@ -4,12 +4,14 @@
 // its jobs and their records are the bytes one thread writes; run again, it
 // runs nothing (the store says every job is done); a record cut off in the
 // middle is cut away by the repair and the jobs before it stay done; a slice
-// of the jobs (shard_of) runs only its jobs.
+// of the jobs (shard_of) runs only its jobs; a run past run_timeout is
+// stopped and recorded "timeout".
 
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <sstream>
 #include <string>
@@ -99,16 +101,22 @@ static int body()
     const auto tmp = std::filesystem::temp_directory_path() / ("mootation_test_engine_" + std::to_string(std::rand()));
     std::filesystem::remove_all(tmp);
 
-    auto run = [&](const std::string& dir, int workers, std::optional<std::pair<std::int64_t, std::int64_t>> shard = {}) {
+    auto run_with = [&](const std::string& dir, const std::string& toml, int workers,
+                        std::optional<std::pair<std::int64_t, std::int64_t>> shard, std::function<double()> seconds) {
         std::filesystem::create_directories(tmp / dir);
         const auto source = tmp / dir / "campaign.toml";
-        std::ofstream(source, std::ios::binary) << text;
+        std::ofstream(source, std::ios::binary) << toml;
         cg::EngineOptions opt;
         opt.workers = workers;
         opt.shard = shard;
         opt.pid = 7;
+        opt.process.seconds = std::move(seconds);
         opt.host = "test";
-        return cg::run_campaign(text, source, preg, opt);
+        return cg::run_campaign(toml, source, preg, opt);
+    };
+    auto run = [&](const std::string& dir, int workers, std::optional<std::pair<std::int64_t, std::int64_t>> shard = {}) {
+        // the clock stands still: "t" the same whichever thread ran it
+        return run_with(dir, text, workers, shard, [] { return 0.0; });
     };
 
     // four threads, then one: the same records
@@ -146,6 +154,23 @@ static int body()
     for (std::int64_t i = 0; i < 3; ++i) sliced += run("slices", 1, std::make_pair(i, std::int64_t{3})).done;
     CHECK(sliced == 4);
     CHECK(bodies(tmp / "slices" / "results" / "sample" / "store") == a);
+
+    // run_timeout: a clock that moves a second each time it is read stops
+    // every run after its first record; the record says "timeout" with the
+    // last trajectory record, and the job is not run again
+    std::string timed = text;
+    timed.replace(timed.find("[campaign]\n"), 11, "[campaign]\nrun_timeout = 2.5\n");
+    auto ticking = [] { return [n = 0.0]() mutable { return n += 1.0; }; };
+    const cg::EngineCounts t = run_with("timeout", timed, 2, std::nullopt, ticking());
+    CHECK(t.timeout == 4 && t.done == 0 && t.failed == 0);
+    const auto store_t = tmp / "timeout" / "results" / "sample" / "store";
+    for (const auto& [key, status] : cg::store_statuses(store_t)) CHECK(status == "timeout");
+    for (const auto& [key, body] : bodies(store_t)) {
+        CHECK(body.find("\"status\": \"timeout\"") != std::string::npos);
+        CHECK(body.find("\"timeout_seconds\": 2.5") != std::string::npos);
+        CHECK(body.find("\"last_record\": {\"gen\": 0, ") != std::string::npos);
+    }
+    CHECK(run_with("timeout", timed, 2, std::nullopt, ticking()).skipped == 4);
 
     std::filesystem::remove_all(tmp);
     if (failures) {
