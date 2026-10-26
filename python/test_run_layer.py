@@ -158,6 +158,30 @@ def nearest_lattice_brackets_the_request():
     assert below == 91 and above == 105
 
 
+@test
+def one_objective_lattices_end():
+    # every h gives the same one point at M = 1: the searches for a larger
+    # size used to loop for ever (a config with n_objs = 1 and moead_de)
+    assert nearest_lattice_sizes(1, 1) == (1, 1)
+    assert nearest_lattice_sizes(1, 92) == (1, None)
+    assert check_pop("moead_de", 1, 1) is None and check_pop("moead_de", 2, 1) is None
+    msg = check_pop("moead_de", 92, 1)
+    assert msg and "Nearest attainable: 1" in msg, msg
+
+
+@test
+def true_is_not_a_count():
+    bad = _MIN.replace("n_objs = 2", "n_objs = true")
+    e = raises(ConfigError, loads, bad)
+    assert "problem.n_objs" in str(e) and "expected int, got bool" in str(e), e
+    e = raises(ConfigError, loads, _MIN.replace("[0.0, 1.0], [0.0, 1.0]]", "[0.0, true], [0.0, 1.0]]"))
+    assert "bounds must be numbers" in str(e), e
+    # a step's timeout of the wrong type: a ConfigError, not float()'s ValueError
+    e = raises(ConfigError, loads, _MIN.replace('run = ["python", "-c", "pass"]',
+                                               'run = ["python", "-c", "pass"]\ntimeout = "zz"'))
+    assert "problem.steps[0].timeout" in str(e), e
+
+
 # ── config parsing ──────────────────────────────────────────────────────────
 
 @test

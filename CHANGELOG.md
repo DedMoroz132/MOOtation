@@ -10,6 +10,22 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/campaign/config.hpp`: a run description read and
+  checked in C++ — `run/config.py`'s `loads()` and `validate()` with the same
+  messages, word for word; what the checks look up (algorithms, knobs,
+  problems, PATH, regular expressions) the caller gives. The Python stays as
+  its cross-check (the extension's `campaign_check_config`).
+  `tests/test_config.cpp`.
+- Fixed (`run/config.py`, `run/algorithms.py`, `run/campaign.py`): a config
+  with one objective and an algorithm that needs an exact Das-Dennis lattice
+  (`n_objs = 1` with `moead_de`, `nsga3`, ...) hung `--check`: the search for
+  the next lattice size never ended, every lattice at M = 1 being one point.
+  `true` or `false` where a count or a number is wanted (`n_objs = true`,
+  bounds, `benchmarks.runs`) was taken as 1 or 0; now an error. A step's
+  `timeout`, the output's `nth` and `fields`, and `benchmarks.problems`,
+  `families` and `objectives` of the wrong type gave a Python exception
+  instead of the config error naming the key.
+
 - `include/mootation/toml.hpp`: TOML 1.0 read into json.hpp's tree, as
   Python's `tomllib.loads` gives it — every string, number and key form,
   tables, arrays of tables, inline tables, tomllib's rules on defining and

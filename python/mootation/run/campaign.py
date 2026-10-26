@@ -561,6 +561,8 @@ def out_root(cfg: Config, spec: CampaignSpec) -> Path:
 
 def _two_layer_sizes(m: int, limit: int) -> set:
     from .algorithms import das_dennis_count
+    if m < 2:                     # one objective: two one-point layers
+        return {2} if limit >= 2 else set()
     sizes = set()
     h1 = 1
     while das_dennis_count(m, h1) <= limit:
@@ -590,7 +592,7 @@ def fit_pop(name: str, pop: int, n_objs: int, params: dict,
             return pop, ""
         if rule == "nearest":
             _, above = nearest_lattice_sizes(n_objs, pop)
-            near = min(ok | {above}, key=lambda s: (abs(s - pop), s))
+            near = min(ok | ({above} if above is not None else set()), key=lambda s: (abs(s - pop), s))
             return near, f"pop {pop} -> {near} (nearest lattice size for M={n_objs})"
         below = max((s for s in ok if s <= pop), default=None)
         if below is None:

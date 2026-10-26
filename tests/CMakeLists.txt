@@ -32,7 +32,8 @@ set(MOOTATION_TESTS
     test_scalar
     test_store_codec
     test_json
-    test_toml)
+    test_toml
+    test_config)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

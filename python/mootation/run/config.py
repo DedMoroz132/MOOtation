@@ -158,7 +158,8 @@ def _req(table: dict, key: str, where: str, typ=None):
     if key not in table:
         raise ConfigError(where, f"missing required key '{key}'")
     v = table[key]
-    if typ is not None and not isinstance(v, typ):
+    # true/false is an int to isinstance; a count or a number given as one is a slip
+    if typ is not None and (not isinstance(v, typ) or (isinstance(v, bool) and typ is not bool)):
         want = typ.__name__ if isinstance(typ, type) else "/".join(t.__name__ for t in typ)
         raise ConfigError(f"{where}.{key}", f"expected {want}, got {type(v).__name__}")
     return v
@@ -264,7 +265,7 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
                 raise ConfigError(f"problem.bounds[{i}]",
                                   "expected a [lower, upper] pair")
             lo, hi = b
-            if not isinstance(lo, (int, float)) or not isinstance(hi, (int, float)):
+            if any(not isinstance(x, (int, float)) or isinstance(x, bool) for x in (lo, hi)):
                 raise ConfigError(f"problem.bounds[{i}]", "bounds must be numbers")
             cfg.bounds.append((float(lo), float(hi)))
 
@@ -280,7 +281,7 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             cfg.steps.append(Step(
                 name=_opt(st, "name", f"step{i}", where, str),
                 argv=_resolve_argv(st, where),
-                timeout=(float(st["timeout"]) if "timeout" in st else None),
+                timeout=(float(_req(st, "timeout", where, (int, float))) if "timeout" in st else None),
                 shell=bool(_opt(st, "shell", False, where, bool)),
             ))
 
@@ -353,11 +354,13 @@ def _load_output(out: dict) -> Output:
         objectives=list(_opt(out, "objectives", [], where, list)),
         constraints=list(_opt(out, "constraints", [], where, list)),
         take=_opt(out, "take", "last", where, str),
-        nth=(int(out["nth"]) if "nth" in out else None),
+        nth=_opt(out, "nth", None, where, int),
         patterns=dict(_opt(out, "patterns", {}, where, dict)),
         line=int(_opt(out, "line", -1, where, int)),
-        fields=[int(f) for f in _opt(out, "fields", [], where, list)],
+        fields=list(_opt(out, "fields", [], where, list)),
     )
+    if any(not isinstance(f, int) or isinstance(f, bool) for f in o.fields):
+        raise ConfigError(f"{where}.fields", f"expected a list of integers, got {o.fields!r}")
     if o.take not in ("first", "last", "nth"):
         raise ConfigError(f"{where}.take",
                           f"must be first, last or nth; got '{o.take}'")
@@ -636,7 +639,7 @@ def _benchmark_selection(spec: dict, bad) -> list:
                           f"Known: {', '.join(sorted(known_keys))}")
 
     runs = spec.get("runs", 31)
-    if not isinstance(runs, int) or runs < 1:
+    if not isinstance(runs, int) or isinstance(runs, bool) or runs < 1:
         bad("benchmarks.runs", f"must be an integer >= 1, got {runs!r}")
 
     try:
@@ -648,7 +651,10 @@ def _benchmark_selection(spec: dict, bad) -> list:
     registry = set(bench_names())
 
     if "problems" in spec:
-        wanted = list(spec["problems"])
+        wanted = spec["problems"]
+        if not isinstance(wanted, list) or not all(isinstance(p, str) for p in wanted):
+            bad("benchmarks.problems", f"expected a list of problem names, got {wanted!r}")
+            return []
         missing = [p for p in wanted if p not in registry]
         for p in missing:
             # Suggest by the FULL stem first — "DTLZ2" from "DTLZ2_M3" — before
@@ -671,6 +677,9 @@ def _benchmark_selection(spec: dict, bad) -> list:
         bad("benchmarks",
             "give either 'problems = [...]' or both 'families = [...]' and "
             "'objectives = [...]'")
+        return []
+    if not isinstance(fams, list) or not isinstance(objs, list):
+        bad("benchmarks", "'families' and 'objectives' must be lists")
         return []
 
     selected = []

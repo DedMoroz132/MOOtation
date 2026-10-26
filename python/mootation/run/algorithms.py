@@ -125,6 +125,8 @@ def das_dennis_count(m: int, h: int) -> int:
 
 def lattice_sizes(m: int, limit: int) -> list[int]:
     """Attainable single-layer lattice sizes for m objectives, up to `limit`."""
+    if m < 2:                     # one objective: every h gives the one point
+        return [1] if limit >= 1 else []
     out = []
     h = 1
     while True:
@@ -142,6 +144,8 @@ def nearest_lattice_sizes(m: int, pop: int) -> tuple[int | None, int | None]:
     Returned so an error message can say "use 91 or 105" instead of merely
     "invalid", which is the difference between a fixable message and a riddle.
     """
+    if m < 2:                     # one objective: the lattice is one point for every h
+        return (1, 1) if pop == 1 else ((1, None) if pop > 1 else (None, 1))
     below = None
     h = 1
     while True:
@@ -158,6 +162,8 @@ def two_layer_sizes(m: int, limit: int) -> list[int]:
     """Attainable TWO-layer lattice sizes (Deb & Jain 2014 §V: boundary H1 plus
     inner H2 < H1) for m objectives, up to `limit`. generate_exact accepts these
     as well as the single-layer sizes."""
+    if m < 2:                     # one objective: two one-point layers
+        return [2] if limit >= 2 else []
     out = set()
     h1 = 1
     while das_dennis_count(m, h1) <= limit:

@@ -23,6 +23,7 @@
 #include <mootation/decision_indicators.hpp>
 #include <mootation/json.hpp>
 #include <mootation/toml.hpp>
+#include <mootation/campaign/config.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
 #include <mootation/store/column_codec.hpp>
@@ -1040,6 +1041,49 @@ void bind_run_layer(py::module_& m)
           },
           py::arg("text"), py::arg("indent") = -1, py::arg("separators") = py::none(),
           "json.dumps(json.loads(text), indent=indent or None, separators=...) by include/mootation/json.hpp.");
+    // ── a run description read and checked (campaign/config.hpp) ────────────
+    m.def("campaign_check_config",
+          [](const std::string& text, const py::object& source_path, const py::object& base, const py::dict& r) -> py::tuple {
+              namespace cp = mootation::campaign;
+              cp::Registry reg;
+              auto strings = [&](const char* k) { return r[k].cast<std::vector<std::string>>(); };
+              reg.algorithms = strings("algorithms");
+              reg.baselines = strings("baselines");
+              reg.scalar_names = strings("scalar_names");
+              reg.design_kinds = strings("design_kinds");
+              reg.knob_names = strings("knob_names");
+              reg.list_knobs = strings("list_knobs");
+              for (const auto& item : r["text_knobs"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  reg.text_knobs.emplace_back(t[0].cast<std::string>(), t[1].cast<std::vector<std::string>>());
+              }
+              for (const auto& item : r["problems"].cast<py::list>()) {
+                  const auto t = item.cast<py::tuple>();
+                  reg.problems.emplace_back(t[0].cast<std::string>(), t[1].cast<int>());
+              }
+              reg.platform = r["platform"].cast<std::string>();
+              reg.algorithms_error = r["algorithms_error"].cast<std::string>();
+              const py::object findable = r["executable_findable"], groups = r["regex_groups"];
+              reg.executable_findable = [findable](const std::string& a) { return findable(a).cast<bool>(); };
+              reg.regex_groups = [groups](const std::string& p, std::string& error) {
+                  const auto t = groups(p).cast<py::tuple>();
+                  error = t[1].cast<std::string>();
+                  return t[0].cast<int>();
+              };
+              std::optional<std::filesystem::path> src, b;
+              if (!source_path.is_none()) src = std::filesystem::path(source_path.cast<std::wstring>());
+              if (!base.is_none()) b = std::filesystem::path(base.cast<std::wstring>());
+              try {
+                  cp::Config cfg = cp::loads(text, reg, src);
+                  const auto problems = cp::validate(cfg, reg, b);
+                  return py::tuple(py::make_tuple(py::none(), problems, cfg.benchmark_problems));
+              } catch (const cp::ConfigError& e) {
+                  return py::tuple(py::make_tuple(std::string(e.what()), py::list(), py::list()));
+              }
+          },
+          py::arg("text"), py::arg("source_path"), py::arg("base"), py::arg("registry"),
+          "(error or None, problems, benchmark problems) of a run description, as run/config.py's loads and "
+          "validate give them (include/mootation/campaign/config.hpp).");
     m.def("toml_to_json",
           [](const std::string& text) { return mootation::json::dump(mootation::toml::parse(text)); },
           py::arg("text"), "json.dumps(tomllib.loads(text)) by include/mootation/toml.hpp (dates as their text).");
