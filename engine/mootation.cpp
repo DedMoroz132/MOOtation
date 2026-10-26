@@ -16,7 +16,7 @@
 // Python runner's. It reads the exported problem registry (`python -m
 // mootation.run.registry_export`; the newest in the reference cache's
 // registry/ folder unless --registry names one) and the cache of references
-// (`mootation refs build`, Python).
+// (`python -m mootation refs build`).
 // ============================================================================
 
 #include <cstdio>

@@ -2135,6 +2135,42 @@ jobs done, the jobs in flight — rewritten every two seconds, which is how the
 TUI shows a campaign it did not start. A worker that dies inside an algorithm
 fails the one job it holds, which is recorded, and is replaced.
 
+### The campaign engine in C++
+
+A campaign with `storage = "store"` can also be run by the C++ executable
+`mootation` (`engine/`, built with the library unless
+`MOOTATION_BUILD_ENGINE=OFF`; it lands in `<build>/engine/` and is not the
+`mootation` command pip installs, whose `report`, `store` and `refs` are
+also `python -m mootation ...`):
+
+```bash
+<build>/engine/mootation run camp.toml --workers 8
+```
+
+It reads the same config, writes the same records into the same store —
+meta.json, the trajectory and the tables the Python engine writes, apart
+from the process's fields (`python` is null, `platform` names the engine)
+and the times — and keeps the same `_workers.txt` and `_runner.json`, so the
+TUI, `--list`, `store` and `report` read its campaigns as they read
+Python's. Its pool is threads in one process, with no import per worker.
+It needs the exported problem registry (`python -m
+mootation.run.registry_export`, or `--registry FILE`) and the cache of
+references built beforehand (`python -m mootation refs build`).
+
+The jobs it does not run yet — a problem outside the C++ suite, typed
+variables, equality constraints, a reference built for the campaign rather
+than taken from the cache — it leaves pending and counts by reason at the
+end. Running the same config with the Python engine afterwards runs exactly
+those: every job the C++ engine finished is in the store and skipped.
+
+```bash
+<build>/engine/mootation run camp.toml --workers 8        # what C++ runs
+python -m mootation.run.campaign camp.toml --workers 8   # the rest
+```
+
+Two runners in one results folder at once are not supported; each leaves a
+store whose runner still beats unrepaired.
+
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)

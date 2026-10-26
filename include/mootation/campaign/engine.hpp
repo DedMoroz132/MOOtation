@@ -594,7 +594,7 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
     if (!missing.empty())
         throw std::runtime_error("the cache of references (" + detail::utf8(refs_root()) + ") lacks " +
                                  std::to_string(missing.size()) + " entries at n_ref = " + std::to_string(spec.n_ref) +
-                                 " (build them with: mootation refs build --n-ref " + std::to_string(spec.n_ref) +
+                                 " (build them with: python -m mootation refs build --n-ref " + std::to_string(spec.n_ref) +
                                  " --problems " + join({missing.begin(), missing.end()}, ",") + ")");
     if (opt.say)
         opt.say(cfg.name + ": " + std::to_string(jobs.size()) + " jobs total, " + std::to_string(selected.size()) +
