@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/campaign/run_store.hpp`: a job's record in the store
+  made by the C++ engine — the "#format" block, meta.json as the file's
+  text, the trajectory column by column (`store._jsonl_blocks`, checked to
+  give its lines back), the tables — encoded by the library's codecs and
+  appended to the process's segment (`SegmentWriter`: `.raw`, `.idx`,
+  `.mhd`). Once against the Python engine's records: the same blocks, but
+  meta.json's process fields and the trajectory's seconds.
+  `tests/test_run_store.cpp`.
+
 - `campaign/job_run.hpp`: a job's end in C++ (`JobRun::finish`) — meta.json
   in the Python engine's order of keys, `final`, the archive scenario, the
   second answer, everything evaluated, and the tables `final.csv`,

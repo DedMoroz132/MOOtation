@@ -29,6 +29,7 @@
 #include <mootation/campaign/references.hpp>
 #include <mootation/campaign/measure.hpp>
 #include <mootation/campaign/registry.hpp>
+#include <mootation/campaign/run_store.hpp>
 #include <mootation/io/npz.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
@@ -1249,7 +1250,7 @@ void bind_run_layer(py::module_& m)
           "json.dumps of metrics.compute's dict by include/mootation/campaign/measure.hpp.");
     m.def("engine_run_job",
           [](const std::string& text, const std::wstring& source_path, const py::dict& r, const py::dict& jr,
-             const std::wstring& registry_path, std::int64_t index) -> py::tuple {
+             const std::wstring& registry_path, std::int64_t index, const py::object& store_dir) -> py::tuple {
               namespace cp = mootation::campaign;
               cp::Registry reg;
               auto strings = [](const py::dict& d, const char* k) { return d[k].cast<std::vector<std::string>>(); };
@@ -1316,6 +1317,17 @@ void bind_run_layer(py::module_& m)
                   out = run.run(proc);
                   files = run.finish(out);
               }
+              if (!store_dir.is_none()) {          // the record appended to a segment of that store
+                  static std::map<std::wstring, std::unique_ptr<cp::SegmentWriter>> writers;
+                  const auto dir = store_dir.cast<std::wstring>();
+                  auto& w = writers[dir];
+                  if (!w)
+                      w = std::make_unique<cp::SegmentWriter>(
+                          std::filesystem::path(dir), std::uint64_t{1} << 30, 1, "engine",
+                          std::vector<std::pair<std::string, std::string>>{
+                              {"code_stamp", preg.code_stamp}, {"trajectory_version", "2"}, {"detmath_path", "detmath"}});
+                  w->append(cp::job_key(job), cp::record_blocks(files, out.trajectory));
+              }
               py::list tables;
               for (const auto& t : files.tables)
                   tables.append(py::make_tuple(t.name, mootation::json::dump(t.head), t.rows, t.cols,
@@ -1325,7 +1337,7 @@ void bind_run_layer(py::module_& m)
                                     tables);
           },
           py::arg("text"), py::arg("source_path"), py::arg("registry"), py::arg("jobs_registry"),
-          py::arg("registry_path"), py::arg("index"),
+          py::arg("registry_path"), py::arg("index"), py::arg("store_dir") = py::none(),
           "(status, error, trajectory lines without t) of one job of a campaign run by the C++ engine "
           "(include/mootation/campaign/job_run.hpp).");
     m.def("toml_to_json",
