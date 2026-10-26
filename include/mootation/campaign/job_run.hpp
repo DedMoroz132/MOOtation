@@ -15,8 +15,8 @@
 // engine runs): a problem of the C++ suite whose run needs no Python
 // (registry.hpp), a core of algorithms.def (not a baseline or a
 // scalarization method), the first population uniform, no polishing, and of
-// [campaign] neither hard budgets, archive checkpoints, operator statistics
-// nor the learned coordinates' diagnostics; g_min and g_median only where the
+// [campaign] neither hard budgets, operator statistics nor the learned
+// coordinates' diagnostics; g_min and g_median only where the
 // problem has no distance of its own.
 // ============================================================================
 
@@ -140,7 +140,6 @@ inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& sp
     if (job.init != "uniform") return "a designed first population (init)";
     if (const json::Value* v = job.params.find("polish"); v && detail::py_str(*v) != "off") return "polish";
     if (!spec.hard_budgets.empty()) return "hard budgets";
-    if (spec.archive_checkpoints) return "archive checkpoints";
     if (spec.operator_stats) return "operator statistics";
     if (spec.coords_diag) return "the learned coordinates' diagnostics";
     if (p.distance) {
@@ -243,11 +242,21 @@ struct Process {
 
 // A table of a run (store.table_blocks): head {comments, columns, ints,
 // newline} and the numbers, rows x columns.
+// An .npz of a run instead (store.array_blocks: snapshots.npz,
+// archive_at.npz): its arrays in order, each with a NumPy dtype's text, a
+// shape and its bytes (little-endian, as the machines it runs on).
+struct NamedArray {
+    std::string key, dtype;
+    std::vector<std::uint64_t> shape;
+    std::vector<std::uint8_t> data;
+};
+
 struct Table {
     std::string name;
     json::Value head;
     std::size_t rows = 0, cols = 0;
     std::vector<double> values;
+    std::vector<NamedArray> arrays;                // an .npz: these, not head and values
 };
 
 struct JobFiles {
@@ -485,6 +494,42 @@ public:
                 a.set("frame", fr);
             }
             meta.set("archive", a);
+        }
+        auto rows_of = [](std::size_t size, std::size_t width) {
+            return static_cast<std::uint64_t>(width ? size / width : 0);
+        };
+        if (snap_ && !snap_n_.empty()) {
+            Table s;
+            s.name = "snapshots.npz";
+            s.arrays.push_back(named_array("fe", "<i8", {snap_fe_.size()}, snap_fe_));
+            s.arrays.push_back(named_array("gen", "<i8", {snap_gen_.size()}, snap_gen_));
+            s.arrays.push_back(named_array("n", "<i8", {snap_n_.size()}, snap_n_));
+            s.arrays.push_back(named_array("F", "<f4", {rows_of(snap_F_.size(), m), m}, snap_F_));
+            if (keep_x_) s.arrays.push_back(named_array("X", "<f4", {rows_of(snap_X_.size(), d), d}, snap_X_));
+            files.tables.push_back(std::move(s));
+            V sm = V::object();
+            sm.set("file", V::string("snapshots.npz"));
+            sm.set("records", V::integer(static_cast<std::int64_t>(snap_n_.size())));
+            sm.set("dtype", V::string("float32"));
+            sm.set("variables", V::boolean(keep_x_));
+            sm.set("layout", V::string("F (and X) rows of every record, stacked in order; n gives each record's "
+                                       "row count"));
+            meta.set("snapshots", sm);
+        }
+        if (!checkpoints_.empty()) {
+            // the archive scenario at the record_at counts: indicators and points
+            // (the points only where [campaign] keep = "full": store.FULL_ONLY)
+            meta.set("archive_at", archive_at_);
+            if (!ck_budget_.empty() && spec_.keep == "full") {
+                Table c;
+                c.name = "archive_at.npz";
+                c.arrays.push_back(named_array("budget", "<i8", {ck_budget_.size()}, ck_budget_));
+                c.arrays.push_back(named_array("fe", "<i8", {ck_budget_.size()}, ck_budget_));
+                c.arrays.push_back(named_array("n", "<i8", {ck_n_.size()}, ck_n_));
+                c.arrays.push_back(named_array("F", "<f4", {rows_of(ck_F_.size(), m), m}, ck_F_));
+                if (keep_x_) c.arrays.push_back(named_array("X", "<f4", {rows_of(ck_X_.size(), d), d}, ck_X_));
+                files.tables.push_back(std::move(c));
+            }
         }
         // the final indicators
         V final = V::object();
@@ -725,15 +770,33 @@ private:
         } else {
             grid_kind_ = Grid::Generations;
         }
-        need_x_ = constrained_;
+        // snapshots.npz: the populations of the records; their variables where
+        // snapshot_variables says so, and always on a constrained problem
+        if (spec_.snapshots.kind == json::Value::Kind::Bool) {
+            snap_ = spec_.snapshots.b;
+        } else {
+            for (const auto& s : spec_.snapshots.items) snap_ = snap_ || s.s == job_.problem;
+        }
+        keep_x_ = spec_.snapshot_variables == "all" || constrained_ ||
+                  (spec_.snapshot_variables == "pareto_set" && p_.has_pareto_set);
+        // the archive scenario at the record_at counts below the budget, nominal
+        // and actual, taken after exactly that many evaluations
+        if (spec_.archive_checkpoints && arc_ && grid_kind_ != Grid::Generations) {
+            const std::int64_t nominal = job_.evaluations ? job_.evaluations
+                                         : spec_.budget_fe ? spec_.budget_fe : budget_;
+            for (auto b : spec_.record_at)
+                if (b < std::min(budget_, nominal)) checkpoints_.insert(b);
+        }
+        need_x_ = (snap_ && keep_x_) || constrained_;
         for (const auto& w : traj_metrics_) need_x_ = need_x_ || needs_x().count(w);
         for (const auto& w : traj_metrics_)
             if (std::find(spec_.record_at_metrics.begin(), spec_.record_at_metrics.end(), w) ==
                 spec_.record_at_metrics.end())
                 everywhere_.push_back(w);
         ledger_ = std::make_unique<RunLedger>(m, d, constrained_, arc_.get(), nullptr, inc_.get(), sarc_.get());
-        std::vector<long long> reads;
-        if (inc_ || arc_hv_) reads.assign(grid_set_.begin(), grid_set_.end());
+        std::set<long long> read_at(checkpoints_.begin(), checkpoints_.end());
+        if (inc_ || arc_hv_) read_at.insert(grid_set_.begin(), grid_set_.end());
+        const std::vector<long long> reads(read_at.begin(), read_at.end());
         ledger_->set_reads(reads, inc_ ? std::vector<long long>(grid_set_.begin(), grid_set_.end())
                                        : std::vector<long long>{});
         measure_in_.ref = refs_.ref;
@@ -790,7 +853,8 @@ private:
         return h;
     }
 
-    // dense(): the front indicators among `which` against the dense reference
+    // dense(): the front indicators among `which` against the dense reference,
+    // those alone (not what compute adds beside them: coverage_curve, ...)
     void add_dense(json::Value& into, const double* F, std::size_t n, std::size_t m, const double* X, std::size_t d,
                    const std::vector<std::string>& which) const
     {
@@ -799,7 +863,10 @@ private:
             if (needs_front().count(w)) front.push_back(w);
         if (!dense_in_.ref || front.empty() || !n) return;
         const json::Value dv = measure(F, n, m, X, d, front, dense_in_, HvOptions{});
-        for (std::size_t k = 0; k < dv.keys.size(); ++k) into.set(dv.keys[k] + kDenseSuffix, dv.items[k]);
+        for (const auto& w : front) {
+            const json::Value* v = dv.find(w);
+            into.set(w + kDenseSuffix, v ? *v : json::Value::null());
+        }
     }
 
     // meta.json as _run_job writes it before the run
@@ -914,6 +981,46 @@ private:
     void read(long long b)
     {
         if (arc_hv_ && grid_set_.count(b)) arc_hv_at_[b] = archive_hv();
+        if (checkpoints_.count(b) && (arc_->size() || constrained_)) take_checkpoint(b);
+    }
+
+    // take_checkpoint: the archive scenario after exactly b evaluations
+    // (archive_checkpoints): its indicators in meta's archive_at, its points in
+    // archive_at.npz
+    void take_checkpoint(long long b)
+    {
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
+        std::vector<double> AX, T, TX;
+        std::vector<char> AE;
+        const select::Rows AF = archive_rows(AX, AE);
+        const auto idx = archive_select(AF, static_cast<std::size_t>(p_.pop_size));
+        for (auto i : idx) {
+            T.insert(T.end(), AF.row(i), AF.row(i) + m);
+            TX.insert(TX.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                      AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+        }
+        json::Value v = measure(rows_ptr(T), idx.size(), m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_, measure_in_,
+                                traj_hv_);
+        add_dense(v, rows_ptr(T), idx.size(), m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_);
+        for (const auto& h : hv_skipped_) v.set(h, json::Value::null());
+        v.set("fe", json::Value::integer(b));
+        v.set("n", json::Value::integer(static_cast<std::int64_t>(idx.size())));
+        archive_at_.set(std::to_string(b), v);
+        ck_budget_.push_back(b);
+        ck_n_.push_back(static_cast<std::int64_t>(idx.size()));
+        for (double x : T) ck_F_.push_back(static_cast<float>(x));
+        if (keep_x_)
+            for (double x : TX) ck_X_.push_back(static_cast<float>(x));
+    }
+
+    template <class T>
+    static NamedArray named_array(std::string key, const char* dtype, std::vector<std::uint64_t> shape,
+                                  const std::vector<T>& v)
+    {
+        NamedArray a{std::move(key), dtype, std::move(shape), {}};
+        const auto* p = reinterpret_cast<const std::uint8_t*>(v.data());
+        a.data.assign(p, p + v.size() * sizeof(T));
+        return a;
     }
 
     // the archive's points as select() reads them
@@ -1056,13 +1163,7 @@ private:
             const auto& which = mark ? traj_metrics_ : everywhere_;
             const json::Value vals = measure(F.data(), n, m, x, d, which, measure_in_, traj_hv_);
             for (std::size_t k = 0; k < vals.keys.size(); ++k) rec.set(vals.keys[k], vals.items[k]);
-            std::vector<std::string> front;
-            for (const auto& w : which)
-                if (needs_front().count(w)) front.push_back(w);
-            if (dense_in_.ref && !front.empty()) {
-                const json::Value dv = measure(F.data(), n, m, x, d, front, dense_in_, HvOptions{});
-                for (std::size_t k = 0; k < dv.keys.size(); ++k) rec.set(dv.keys[k] + kDenseSuffix, dv.items[k]);
-            }
+            add_dense(rec, F.data(), n, m, x, d, which);
             for (const auto& h : hv_skipped_) rec.set(h, json::Value::null());
         }
         if (arc_hv_ && finite && !F.empty()) {
@@ -1079,6 +1180,14 @@ private:
             auto finite_or_null = [](double u) { return std::isfinite(u) ? json::Value::number(u) : json::Value::null(); };
             rec.set("igdp_norm_all", finite_or_null(v.first));
             rec.set("eps_norm_all", finite_or_null(v.second));
+        }
+        if (snap_) {
+            snap_fe_.push_back(fe_rec);
+            snap_gen_.push_back(gen);
+            snap_n_.push_back(static_cast<std::int64_t>(n));
+            for (double x : F) snap_F_.push_back(static_cast<float>(x));
+            if (keep_x_)
+                for (double x : X) snap_X_.push_back(static_cast<float>(x));   // none: no rows
         }
         last_fe_ = fe_rec;
         lines_.push_back(json::dump(rec, -1, ",", ":"));
@@ -1110,6 +1219,13 @@ private:
     MeasureInputs measure_in_, dense_in_;
     Process process_;
     json::Value meta_, meta_at_start_;
+    bool snap_ = false, keep_x_ = false;
+    std::vector<std::int64_t> snap_fe_, snap_gen_, snap_n_;
+    std::vector<float> snap_F_, snap_X_;
+    std::set<long long> checkpoints_;
+    json::Value archive_at_ = json::Value::object();
+    std::vector<std::int64_t> ck_budget_, ck_n_;
+    std::vector<float> ck_F_, ck_X_;
     std::chrono::steady_clock::time_point start_;
 
     // the seconds since the run started (the process's clock where it has one)

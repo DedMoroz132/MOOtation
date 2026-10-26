@@ -7,12 +7,14 @@
 // not while another runner's heartbeat says it runs; the heartbeat and
 // _workers.txt read as the Python runner's; a slice
 // of the jobs (shard_of) runs only its jobs; a run past run_timeout is
-// stopped and recorded "timeout".
+// stopped and recorded "timeout"; snapshots and archive checkpoints are
+// where meta.json says, in the shapes it says.
 
 #include <chrono>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -206,6 +208,52 @@ static int body()
         CHECK(body.find("\"last_record\": {\"gen\": 0, ") != std::string::npos);
     }
     CHECK(run_with("timeout", timed, 2, std::nullopt, ticking()).skipped == 4);
+
+    // snapshots and archive checkpoints: snapshots.npz holds every record's
+    // population (n rows each, variables too), archive_at.npz the archive
+    // scenario at each record_at count below the budget, meta.json says both
+    std::string snapped = text;
+    snapped.replace(snapped.find("[campaign]\n"), 11,
+                    "[campaign]\nkeep = \"full\"\nsnapshots = true\nsnapshot_variables = \"all\"\n"
+                    "archive_checkpoints = true\nrecord_at = [200, 400, 5000]\n");
+    CHECK(run_with("snapshots", snapped, 2, std::nullopt, [] { return 0.0; }).done == 4);
+    for (const auto& f : std::filesystem::directory_iterator(tmp / "snapshots" / "results" / "sample" / "store")) {
+        if (f.path().extension() != ".raw") continue;
+        const std::string raw = read_text(f.path());
+        const auto* buf = reinterpret_cast<const std::uint8_t*>(raw.data());
+        for (std::size_t at = 0; at < raw.size();) {
+            const st::RecordAt r = st::parse_record(buf, raw.size(), at);
+            if (!r.ok) break;
+            std::map<std::string, st::Block> by;
+            for (auto& blk : st::decode_run(buf + r.body, r.body_size)) by[blk.name] = blk;
+            const auto meta = mootation::json::parse(std::string(by["meta.json"].data.begin(), by["meta.json"].data.end()));
+            const auto* snaps = meta.find("snapshots");
+            const auto* ck = meta.find("archive_at");
+            CHECK(snaps && ck && ck->keys == std::vector<std::string>({"200", "400"}));
+            const auto& n = by["snapshots.npz/n"];
+            const auto& F = by["snapshots.npz/F"];
+            const auto& X = by["snapshots.npz/X"];
+            CHECK(n.dtype == "<i8" && F.dtype == "<f4" && X.dtype == "<f4" && F.shape.size() == 2);
+            std::int64_t rows = 0;
+            for (std::size_t k = 0; k < n.data.size() / 8; ++k) {
+                std::int64_t v = 0;
+                std::memcpy(&v, n.data.data() + 8 * k, 8);
+                rows += v;
+            }
+            CHECK(snaps && static_cast<std::int64_t>(n.shape.at(0)) == snaps->find("records")->i);
+            CHECK(F.shape.at(0) == static_cast<std::uint64_t>(rows) && X.shape.at(0) == F.shape.at(0));
+            CHECK(F.data.size() == 4 * F.shape[0] * F.shape[1]);
+            const auto& budget = by["archive_at.npz/budget"];
+            std::int64_t b0 = 0, b1 = 0;
+            CHECK(budget.data.size() == 16);
+            if (budget.data.size() == 16) {
+                std::memcpy(&b0, budget.data.data(), 8);
+                std::memcpy(&b1, budget.data.data() + 8, 8);
+            }
+            CHECK(b0 == 200 && b1 == 400);
+            at = r.end;
+        }
+    }
 
     std::filesystem::remove_all(tmp);
     if (failures) {

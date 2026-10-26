@@ -23,6 +23,16 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs campaigns with `snapshots` (snapshots.npz: every
+  record's population, its variables as `snapshot_variables` says) and
+  `archive_checkpoints` (meta.json's `archive_at`; archive_at.npz where
+  `keep = "full"`), stored as the Python engine's array blocks. Before, it
+  left archive checkpoints to Python and ran a campaign with snapshots
+  without writing them. Fixed: the dense reference's indicators carried
+  what compute adds beside a front indicator (`coverage_curve_ref_v3`
+  beside `tau90_ref_v3`); only the indicators asked for now, as Python's
+  `dense()`. Task 10's mini-campaign: the 150 runs the C++ engine runs are
+  Python's record for record.
 - The C++ engine keeps the Python runner's live control: `_workers.txt`
   sets the size of its pool while it runs (re-read every 1.5 s; a lower
   number lets the surplus finish its job, 0 drains the campaign, the rest

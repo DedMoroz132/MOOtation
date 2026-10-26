@@ -74,6 +74,15 @@ inline Block format_block()
 // store.table_blocks: the head with numbers "float64", and the numbers
 inline std::vector<Block> table_blocks(const Table& t)
 {
+    if (!t.arrays.empty()) {                    // store.array_blocks: an .npz, array by array
+        json::Value names = json::Value::array(), head = json::Value::object();
+        for (const auto& a : t.arrays) names.items.push_back(json::Value::string(a.key));
+        head.set("arrays", names);
+        std::vector<Block> out;
+        out.push_back(Block{t.name + "#head", "json", {}, bytes_of(json::dump(head)), ""});
+        for (const auto& a : t.arrays) out.push_back(Block{t.name + "/" + a.key, a.dtype, a.shape, a.data, ""});
+        return out;
+    }
     json::Value head = t.head;
     head.set("numbers", json::Value::string("float64"));
     std::vector<Block> out;
