@@ -35,7 +35,8 @@ set(MOOTATION_TESTS
     test_toml
     test_config
     test_campaign_jobs
-    test_npz)
+    test_npz
+    test_registry)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

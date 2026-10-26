@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `run/registry_export.py` (`python -m mootation.run.registry_export`): the
+  problem registry as data for the campaign engine in C++ — sizes, box,
+  default population and generations, version, modification, references,
+  the flags that keep a run in Python, and a suite problem's spec (the
+  numbers Python computes for it) — beside the reference cache, under the
+  benchmark code's stamp. `include/mootation/campaign/registry.hpp` reads it
+  and builds a suite problem from its spec; every one of the 1198 suite
+  problems gives the registry's values from the exported spec, bit for bit.
+  The extension's `registry_rows`; `tests/test_registry.cpp`
+  (`tests/data/registry_sample.json`, `tools/refs/gen_registry_sample.py`).
+
 - `include/mootation/run_core.hpp`: one algorithm run by name — the run
   loop, the batch executors, the suite problems' rows, the operator
   statistics and the knobs' setters — moved out of

@@ -26,6 +26,7 @@
 #include <mootation/campaign/config.hpp>
 #include <mootation/campaign/jobs.hpp>
 #include <mootation/campaign/references.hpp>
+#include <mootation/campaign/registry.hpp>
 #include <mootation/io/npz.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
@@ -1172,6 +1173,27 @@ void bind_run_layer(py::module_& m)
           py::arg("path"),
           "(json.dumps of the meta, reference_hash of the arrays) of a reference cache entry "
           "(include/mootation/campaign/references.hpp).");
+    m.def("registry_rows",
+          [](const std::wstring& path, const std::string& name, const std::vector<std::vector<double>>& X) {
+              namespace cp = mootation::campaign;
+              static std::map<std::wstring, cp::ProblemRegistry> cache;   // the file read once
+              auto it = cache.find(path);
+              if (it == cache.end()) it = cache.emplace(path, cp::load_registry(std::filesystem::path(path))).first;
+              const cp::RegistryProblem& p = it->second.problems.at(name);
+              const auto native = cp::make_native(p);
+              std::vector<std::vector<double>> F, G;
+              for (const auto& x : X) {
+                  std::vector<double> f(static_cast<std::size_t>(native->n_obj)), g(static_cast<std::size_t>(native->n_con));
+                  native->evaluate(x.data(), f.data(), g.empty() ? nullptr : g.data());
+                  F.push_back(f);
+                  G.push_back(g);
+              }
+              const auto why = cp::engine_refusal(p);
+              return py::make_tuple(F, G, why ? py::object(py::str(*why)) : py::object(py::none()));
+          },
+          py::arg("path"), py::arg("name"), py::arg("X"),
+          "(F, G, why the engine refuses it or None) of the rows X by the problem built in C++ from the "
+          "exported registry's spec (include/mootation/campaign/registry.hpp).");
     m.def("toml_to_json",
           [](const std::string& text) { return mootation::json::dump(mootation::toml::parse(text)); },
           py::arg("text"), "json.dumps(tomllib.loads(text)) by include/mootation/toml.hpp (dates as their text).");

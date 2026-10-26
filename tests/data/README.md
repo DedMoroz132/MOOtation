@@ -18,6 +18,7 @@ point `x` and the values `f`, `g`, or what the file names), at full precision.
 | `reproblems-7876b4e_re.json` | reproblems' Python version, commit 7876b4e, RE21-91 and CRE21-51 | 120 |
 | `scipy-1.18.1_sobol.txt` | SciPy 1.18.1, `qmc.Sobol(d=100, scramble=False)`: `include/mootation/sobol.hpp` (tests/test_sobol.cpp) | 40 |
 | `npz/` | NumPy 2.5.3 `savez`/`savez_compressed` and zlib's raw deflate (stored, fixed, dynamic blocks): `include/mootation/io/npz.hpp`, `campaign/references.hpp` (tests/test_npz.cpp) | 5 files |
+| `registry_sample.json` | five problems of the exported registry (`run/registry_export.py`) with the registry's values at one point each: `include/mootation/campaign/registry.hpp` (tests/test_registry.cpp) | 4 points |
 
 To make them again (by hand; CI does neither, and no test imports pymoo):
 
@@ -26,6 +27,7 @@ uv run --no-project --python 3.13 --with pymoo==0.6.2 python tools/refs/gen_pymo
 python tools/refs/gen_reproblems_refs.py <reproblems>/reproblem_python_ver/reproblem.py
 python tools/refs/gen_sobol_ref.py
 python tools/refs/gen_npz_samples.py
+python tools/refs/gen_registry_sample.py
 ```
 
 The other reference data of the tests stay where they were: the problems'

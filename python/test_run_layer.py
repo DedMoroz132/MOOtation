@@ -1557,6 +1557,21 @@ def campaign_numbers_of_the_wrong_type_are_config_errors():
 
 
 @test
+def the_registry_exported_builds_the_same_problems():
+    """run/registry_export.py: a suite problem's exported spec builds the
+    problem the registry has (task 17, stage 5); the refusals are named."""
+    from mootation import _core
+    from mootation.benchmarks.registry import PROBLEMS
+    from mootation.run.registry_export import entry
+    if not hasattr(_core, "Native"):
+        print("    (skipped: no suite)"); return
+    e = entry("shiftDTLZ2_3D")
+    assert e["spec"]["map"] == "cyclic" and len(e["spec"]["centre"]) == 10, e["spec"]
+    x = [0.3] * e["n_var"]
+    assert _core.Native(e["spec"]).evaluate(x) == PROBLEMS["shiftDTLZ2_3D"].evaluate(x)
+    assert entry("catZDT1")["typed"] and entry("DTLZ2_3D")["shared_reference"]
+
+@test
 def campaign_workers_get_one_blas_thread():
     """single_threaded_blas: 1 where unset, a user's value kept."""
     import os

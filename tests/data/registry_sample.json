@@ -1,0 +1,535 @@
+{
+ "format": 1,
+ "code_stamp": "v4-af2341d9e832bace",
+ "reference_version": 4,
+ "mootation": "0.1.0",
+ "problems": [
+  {
+   "name": "shiftDTLZ2_3D",
+   "n_var": 12,
+   "n_obj": 3,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 91,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": {
+    "kind": "shift",
+    "of": "DTLZ2_3D"
+   },
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": true,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+   ],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "distance": true,
+   "spec": {
+    "family": "DTLZ2",
+    "n_var": 12,
+    "n_obj": 3,
+    "map": "cyclic",
+    "first": 2,
+    "centre": [
+     0.773606797749979,
+     0.302786404500042,
+     0.8208203932499369,
+     0.25557280900008406,
+     0.668033988749895,
+     0.2083592135001261,
+     0.7152475842498529,
+     0.16114561800016813,
+     0.7624611797498109,
+     0.3139320225002102
+    ]
+   },
+   "check": {
+    "x": [
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667
+    ],
+    "F": [
+     0.7798699533850444,
+     0.8661333301686894,
+     1.1654973572779543
+    ],
+    "G": []
+   }
+  },
+  {
+   "name": "C2-DTLZ2_3D",
+   "n_var": 12,
+   "n_obj": 3,
+   "n_con": 1,
+   "has_cons": true,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 91,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": true,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "distance": true,
+   "spec": {
+    "family": "C2-DTLZ2",
+    "n_var": 12,
+    "n_obj": 3,
+    "r2": 0.16000000000000003,
+    "centre_m": 0.5773502691896258
+   },
+   "check": {
+    "x": [
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667
+    ],
+    "F": [
+     0.48313544369566,
+     0.5365762701259548,
+     0.7220345910115967
+    ],
+    "G": [
+     -0.12852749467641372
+    ]
+   }
+  },
+  {
+   "name": "rDTLZ2_3D",
+   "n_var": 12,
+   "n_obj": 3,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 91,
+   "n_gen": 500,
+   "problem_version": 4,
+   "modification": {
+    "kind": "rotation",
+    "of": "DTLZ2_3D",
+    "instance": 0,
+    "conditioning": false
+   },
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": true,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "distance": true,
+   "spec": {
+    "family": "DTLZ2",
+    "n_var": 12,
+    "n_obj": 3,
+    "first": 2,
+    "rotation": {
+     "family": "DTLZ2",
+     "M": 3,
+     "instance": 1,
+     "rotate": true,
+     "condition": false,
+     "sizes": [
+      10
+     ]
+    },
+    "map": "rotate_half",
+    "centre": [
+     0.773606797749979,
+     0.302786404500042,
+     0.8208203932499369,
+     0.25557280900008406,
+     0.668033988749895,
+     0.2083592135001261,
+     0.7152475842498529,
+     0.16114561800016813,
+     0.7624611797498109,
+     0.3139320225002102
+    ]
+   },
+   "check": {
+    "x": [
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667
+    ],
+    "F": [
+     0.7798699533850445,
+     0.8661333301686897,
+     1.1654973572779543
+    ],
+    "G": []
+   }
+  },
+  {
+   "name": "bbobbiobj07_n10_2D",
+   "n_var": 10,
+   "n_obj": 2,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ],
+    [
+     -5.0,
+     5.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 3,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "distance": false,
+   "spec": {
+    "family": "bbob-biobj",
+    "n_var": 10,
+    "n_obj": 2,
+    "bbob_fnum": 7,
+    "bbob_iid": 1
+   },
+   "check": {
+    "x": [
+     0.0,
+     0.3333333333333333,
+     0.6666666666666666,
+     0.0,
+     0.3333333333333333,
+     0.6666666666666666,
+     0.0,
+     0.3333333333333333,
+     0.6666666666666666,
+     0.0
+    ],
+    "F": [
+     -627.8012299671931,
+     426.3539929225563
+    ],
+    "G": []
+   }
+  },
+  {
+   "name": "catZDT1",
+   "n_var": 11,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     2.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": true,
+   "failing": false,
+   "distance": false,
+   "spec": null
+  }
+ ]
+}
