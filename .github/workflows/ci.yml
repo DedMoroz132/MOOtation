@@ -231,10 +231,12 @@ jobs:
           -DCMAKE_CXX_COMPILER=clang++
           -DMOOTATION_SANITIZE=ON
 
-      # four jobs, not -j alone: unbounded, the sanitized Debug units outgrew
-      # the runner's memory and the runner was shut down mid-build (task 14)
+      # two jobs: unbounded, the sanitized Debug units outgrew the runner's
+      # memory and the runner was shut down mid-build (task 14); at four, the
+      # campaign engine's tests (each a unit of every core) did the same when
+      # they came together (task 17)
       - name: Build
-        run: cmake --build build -j 4
+        run: cmake --build build -j 2
 
       - name: Test
         env:
@@ -753,5 +755,5 @@ jobs:
       - name: The long tests again, under ASan and UBSan
         run: |
           cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
-          cmake --build build-asan -j 4
+          cmake --build build-asan -j 2
           UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly -LE python
