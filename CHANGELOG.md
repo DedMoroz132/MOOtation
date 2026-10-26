@@ -10,6 +10,10 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (the owner's word, 26.10): `sqp_line_search = powell` is the
+  default of the scalarization methods, after the A/B of stop, accept and
+  powell; the runs of those with `local = sqp` change, `method_version = 4`.
+
 - Added: the word knob `theta_ties` of `theta_dea` — `slot` (the default, TDEA-1:
   equal F_j in one cluster ordered by their slots) or `letter` (Definition 7's
   strict "<": copies share the first theta level); and the knobs `pc` and `pm`

@@ -216,18 +216,18 @@ void methods()
     bool gap = false, version = false;
     for (const auto& [key, v] : r.settings) {
         gap = gap || (key == "sub_plan" && v == "gap");
-        version = version || (key == "method_version" && v == "3");
+        version = version || (key == "method_version" && v == "4");
     }
     check(r.ignored == std::vector<std::string>{"eta_c"} && gap && version,
-          "scalar: knobs taken, ignored and reported; method_version 3");
-    // sqp_line_search (SQP-6 to SQP-9): accept by default, stop and powell
+          "scalar: knobs taken, ignored and reported; method_version 4");
+    // sqp_line_search (SQP-6 to SQP-9): powell by default, stop and accept
     // runs of their own, within the budget, reported
-    for (const char* how : {"", "stop", "powell"}) {
+    for (const char* how : {"", "stop", "accept"}) {
         Counted cc = constrained();
         sc::Knobs ka;
         if (*how) ka = {{"sqp_line_search", {true, how, 0.0}}};
         const sc::Result ra = sc::run("eps_sqp", cc.P, 1e-3, false, 0.0, 20, 1500, 7, ka, {}, 0, {});
-        const std::string want = *how ? how : "accept";
+        const std::string want = *how ? how : "powell";
         bool reported = false;
         for (const auto& [key, v] : ra.settings) reported = reported || (key == "sqp_line_search" && v == want);
         bool feasible = !ra.objectives.empty();
@@ -289,7 +289,7 @@ int main()
     polish();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     // the same on every platform of the CI (MSVC, g++, clang, macOS ARM)
-    const std::uint64_t expected = 0x6a7181cb28e93855ULL;
+    const std::uint64_t expected = 0x8f6c7458336771deULL;
     check(g_hash == expected, "bits: the checksum of every run's answer");
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);

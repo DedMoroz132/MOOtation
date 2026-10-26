@@ -25,8 +25,8 @@
 //   sqp_line_search  stop | accept | powell: sqp after 10 step lengths without
 //                  Armijo's decrease stops (NW §3.5) or takes the last one
 //                  (Kraft's code), slsqp.hpp SQP-6; or its merit and step
-//                  length are Powell 1978's, §4 (accept; the owner's word,
-//                  25.10)
+//                  length are Powell 1978's, §4 (powell; the owner's word,
+//                  26.10)
 //   fd_step        sqp's forward-difference step in the normalized box (1.49e-8)
 //   local_tol      the solvers' tolerance (1e-14)
 //   cma_sigma0     cmaes's initial step in the normalized box (0.3; the
@@ -124,7 +124,8 @@
 // result's settings (a campaign's meta): 1 — SciPy's SLSQP and Nelder-Mead and
 // NumPy's generator (task 9), 2 — the library's own solvers and rnd:: (task
 // 17, stage 6), 3 — sqp_line_search = accept by default (the presets with
-// local = sqp change; polish, mosqp and boostdms run as in 2).
+// local = sqp change; polish, mosqp and boostdms run as in 2), 4 —
+// sqp_line_search = powell by default (the same presets change again).
 // ============================================================================
 
 #include <algorithm>
@@ -148,7 +149,7 @@
 
 namespace mootation::scalar {
 
-inline constexpr int METHOD_VERSION = 3;
+inline constexpr int METHOD_VERSION = 4;
 
 // A knob as the caller gives it: a word or a number.
 struct Knob {
@@ -314,7 +315,7 @@ inline std::vector<Vec> levels(std::size_t m, long long count, long long& L)
 // ── scalar ──────────────────────────────────────────────────────────────────
 struct ScalarSettings {
     std::string scalarization = "eps", local = "sqp", sub_plan = "grid", tch_weights = "inverse",
-                sqp_line_search = "accept";
+                sqp_line_search = "powell";
     double n_sub = 0, sub_budget = 0, fd_step = 1.4901161193847656e-08, local_tol = 1e-14,
            cma_sigma0 = 0.3, eps_objective = 1;
 };
