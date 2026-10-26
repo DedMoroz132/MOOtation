@@ -120,6 +120,7 @@ private:
     double archive_rate_ = 2.0;    // N_A = 2N
     double eta_c_        = 20.0;
     double eta_m_        = 20.0;
+    double pm_           = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double pc_           = 1.0;
     double feas_penalty_ = 1e6;    // FEASIBILITY extension
     int    t_max_        = 1000;   // Gen_max
@@ -325,7 +326,7 @@ private:
             pv2[j] = vault.get_variable(r2, j);
         }
         ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
-        double pm = (nv > 0) ? 1.0 / nv : 0.0;
+        double pm = pm_ >= 0.0 ? pm_ : ((nv > 0) ? 1.0 / nv : 0.0);
         ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
 
         std::vector<int> bc1;
@@ -569,7 +570,9 @@ public:
     void set_nr                (int nr)  { nr_ = std::max(1, nr); }
     void set_feas_penalty      (double p){ feas_penalty_ = p; }
     void set_eta_crossover     (double e){ eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation      (double e){ eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_seed              (unsigned s){ rng_.seed(s); }
     void set_t_max             (int t)   { t_max_ = (t > 0) ? t : 1; }
 

@@ -150,6 +150,7 @@ private:
     double mut_prob_ = 0.75;     // §4.5
     double eta_m_    = 20.0;     // polynomial mutation
     double pm_       = -1.0;     // <0 → 1/n_vars (NAEMO-1)
+    double pc_       = 1.0;      // SBX probability (knob pc)
     // The paper: "flag1 and flag2 are FALSE in all cases except DTLZ1/DTLZ3".
     // Always-on polynomial mutation suppressed convergence on every other
     // problem, so the default is false. For DTLZ1 set flag2=true, for DTLZ3 set
@@ -372,7 +373,7 @@ private:
                 p2 = parent;
             }
             std::vector<double> c1, c2;
-            ops::sbx(parent, p2, c1, c2, bounds, etac, 1.0, rng_);
+            ops::sbx(parent, p2, c1, c2, bounds, etac, pc_, rng_);
             child = c1;   // the first child is taken
             if (flag1_) poly(child, bounds, nv);
         }
@@ -413,6 +414,7 @@ public:
     void set_eta_mutation(double e){ eta_m_ = e; }
     void set_eta_crossover(double){}   // η_c is adaptive — no-op shim for API uniformity
     void set_pm(double p)          { pm_ = p; }
+    void set_pc(double p)          { pc_ = p; }
     void set_flag1(bool f)         { flag1_ = f; }
     void set_flag2(bool f)         { flag2_ = f; }
     void set_seed(unsigned s)      { rng_.seed(s); }

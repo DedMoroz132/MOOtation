@@ -151,6 +151,7 @@ private:
     // §4.1 (see the header)
     double eta_c_ = 20.0;
     double eta_m_ = 20.0;
+    double pm_    = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double pc_    = 1.0;
     double de_F_  = 0.5;
     double de_CR_ = 1.0;
@@ -591,7 +592,9 @@ public:
     LISLCSCore() = default;
 
     void set_eta_crossover(double e) { eta_c_ = e; }
+    void set_pc           (double p) { pc_ = p; }
     void set_eta_mutation (double e) { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_bound_repair(ops::BoundRepair r) {
         ops::require_repair(r, "lis_lcs", false, false); repair_ = r; }
@@ -647,7 +650,7 @@ public:
         const int nv = vault.vars_n();
         const int nb = vault.bin_vars_n();
         const auto& bounds = vault.get_bounds();
-        const double pm = (nv > 0) ? 1.0 / nv : 0.0;   // §4.1: pm = 1/n
+        const double pm = pm_ >= 0.0 ? pm_ : ((nv > 0) ? 1.0 / nv : 0.0);   // §4.1: pm = 1/n
         rnd::uniform_real_distribution<double> U01(0.0, 1.0);
 
         const int K_l = K_;   // K of the previous generation (Eq.4: K_l)

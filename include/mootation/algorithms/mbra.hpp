@@ -89,6 +89,7 @@ private:
 
     double       eta_c_ = 20.0;   // §"Parameter settings": η_c = 20
     double       eta_m_ = 20.0;   // §"Parameter settings": η_m = 20
+    double       pm_    = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double       pc_    = 1.0;    // §"Parameter settings": p_c = 1
     double       fr_    = 0.1;
     double       alpha_ = 0.01;
@@ -312,6 +313,7 @@ public:
 
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation (double e) { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_pc           (double p) { pc_   = p; }
     // MANDATORY before setup()/setup_seeded() (see Gmax CONTRACT in the header).
     void set_t_max(int t)            { t_max_ = (t > 0) ? t : 0; }
@@ -380,7 +382,7 @@ public:
         int off_base = vault.expand(n);
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         // §"Parameter settings": p_c = 1, p_m = 1/D.
-        double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
+        double pm = pm_ >= 0.0 ? pm_ : ((vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0);
         for (int i = 0; i < n; i += 2) {
             int p1 = parents[i], p2 = parents[(i + 1) % n];
             for (int j = 0; j < vault.vars_n(); ++j) {

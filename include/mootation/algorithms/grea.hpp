@@ -71,6 +71,7 @@ private:
     int          div_  = 9;     // §V-B/§VI: "division 9 was recommended for an unknown problem"; per-problem via set_div
     double       eta_c_ = 20.0; // §IV-C.1
     double       eta_m_ = 20.0; // §IV-C.1
+    double       pm_    = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double       pc_    = 1.0;  // §IV-C.1: «A crossover probability pc = 1.0»
     std::mt19937 rng_{std::random_device{}()};
 
@@ -428,6 +429,7 @@ public:
     void set_div          (int d)    { div_   = std::max(1, d); }
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation (double e) { eta_m_ = e; }
+    void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_pc           (double p) { pc_    = p; }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
@@ -487,7 +489,7 @@ public:
             int p1=tournament(vault,dist_int), p2=tournament(vault,dist_int);
             for(int j=0;j<vault.vars_n();++j){pv1[j]=vault.get_variable(p1,j);pv2[j]=vault.get_variable(p2,j);}
             // §IV-C.1: pc=1.0, pm=1/n
-            double pm = (vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0;
+            double pm = pm_ >= 0.0 ? pm_ : ((vault.vars_n() > 0) ? 1.0 / vault.vars_n() : 0.0);
             ops::sbx(pv1,pv2,c1,c2,bounds,eta_c_,pc_,rng_);
             ops::polynomial_mutation(c1,bounds,eta_m_,pm,rng_);
             ops::polynomial_mutation(c2,bounds,eta_m_,pm,rng_);
