@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `include/mootation/run_core.hpp`: one algorithm run by name — the run
+  loop, the batch executors, the suite problems' rows, the operator
+  statistics and the knobs' setters — moved out of
+  `python/mootation_module.cpp`, which now hands its Python callables to it
+  (the GIL as the run's lock). The campaign engine in C++ makes the same
+  run; the run state is per thread. Runs unchanged: every core on six paths
+  (suite problem with `on_rows`, Python callbacks a point and a batch at a
+  time, constraints, integer variables, operator statistics) gives the same
+  answer, counts, operators, observer calls and rows, bit for bit.
+
 - `include/mootation/io/npz.hpp`: NumPy's `.npz` and `.npy` read in C++ —
   zip (stored and deflated members, CRC-32 checked), inflate (RFC 1951),
   float64/int64/bool arrays in either order and unicode strings — and
