@@ -113,6 +113,8 @@ struct Parser {
     Flags flags;
     std::vector<std::string> current;                     // the header the key/values go under
 
+    explicit Parser(const std::string& text) : t(text) {}
+
     [[noreturn]] void fail(const std::string& what) const
     {
         std::size_t line = 1, col = 1;
@@ -679,7 +681,7 @@ struct Parser {
 // tomllib.loads(text): the document's tree; toml::Error with its line and column
 inline json::Value parse(const std::string& text)
 {
-    detail::Parser p{text};
+    detail::Parser p(text);
     p.document();
     return std::move(p.root);
 }
