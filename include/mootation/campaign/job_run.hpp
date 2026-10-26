@@ -22,6 +22,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -209,6 +212,46 @@ inline void apply_knobs(run::RunConfig& cfg, const json::Value& params)
     }
 }
 
+// algorithms.seed_independent: a run of `name` with these knobs that is the
+// same run for every seed
+inline bool seed_independent(const std::string& name, const json::Value& params, int n_vars, const std::string& init)
+{
+    if (!init.empty() && init != "uniform") return false;
+    auto word = [&params](const char* k, const char* fallback) {
+        const json::Value* v = params.find(k);
+        return v ? detail::py_str(*v) : std::string(fallback);
+    };
+    if (name == "dms") return word("dms_init", "line") != "random" && word("dms_poll", "first") != "random";
+    if (name == "multiglods") return n_vars <= 100;
+    return name == "boostdms" || name == "mosqp";
+}
+
+// The fields of meta.json that are the process's, not the run's: what the
+// caller (the engine) says of itself. A run's other fields are the same
+// whichever engine made it.
+struct Process {
+    json::Value mootation = json::Value::null();        // the version
+    json::Value revision = json::Value::null();         // provenance.revision()
+    json::Value host = json::Value::null(), platform = json::Value::null();
+    json::Value python = json::Value::null();           // the Python version; null from C++
+    json::Value pid = json::Value::null(), fp_env = json::Value::null();
+    std::function<std::string()> now;                   // time.strftime("%Y-%m-%dT%H:%M:%S")
+};
+
+// A table of a run (store.table_blocks): head {comments, columns, ints,
+// newline} and the numbers, rows x columns.
+struct Table {
+    std::string name;
+    json::Value head;
+    std::size_t rows = 0, cols = 0;
+    std::vector<double> values;
+};
+
+struct JobFiles {
+    json::Value meta;
+    std::vector<Table> tables;
+};
+
 // What the run leaves for its end (step 4d).
 struct JobOutcome {
     std::string status;                            // "done" or "failed"
@@ -226,9 +269,11 @@ public:
     {
     }
 
-    JobOutcome run()
+    JobOutcome run(const Process& process = {})
     {
         setup();
+        process_ = process;
+        begin_meta();
         JobOutcome out;
         run::RunProblem rp;
         for (const auto& b : p_.bounds) rp.bounds.push_back(b);
@@ -266,6 +311,310 @@ public:
         out.first_feasible = ledger_->first_feasible();
         out.records = records_;
         return out;
+    }
+
+    // After run(): meta.json and the tables, as _run_job writes them after the
+    // core's run (the run "done"; a failed run: its meta only)
+    JobFiles finish(const JobOutcome& out)
+    {
+        using V = json::Value;
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
+        JobFiles files;
+        V& meta = meta_;
+        if (out.status != "done") {
+            meta.set("status", V::string("failed"));
+            meta.set("error", V::string(out.error));
+            meta.set("fe", V::integer(out.fe));
+            meta.set("finished", now());
+            files.meta = meta;
+            return files;
+        }
+        const run::RunResult& res = out.result;
+        // the final population: objectives, then variables
+        std::vector<double> F, X;
+        for (const auto& r : res.objectives) F.insert(F.end(), r.begin(), r.end());
+        for (const auto& r : res.variables) X.insert(X.end(), r.begin(), r.end());
+        const std::size_t n = res.objectives.size();
+        {
+            Table t;
+            t.name = "final.csv";
+            std::vector<std::string> cols;
+            if (n) {
+                for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1));
+                for (std::size_t j = 0; j < d; ++j) cols.push_back("x" + std::to_string(j + 1));
+            }
+            t.head = table_head(t.name, {"# mootation campaign final population v1"}, cols, {});
+            t.cols = cols.size();
+            t.rows = t.cols ? n : 0;
+            for (std::size_t i = 0; i < t.rows; ++i) {
+                t.values.insert(t.values.end(), F.begin() + static_cast<std::ptrdiff_t>(i * m),
+                                F.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
+                t.values.insert(t.values.end(), X.begin() + static_cast<std::ptrdiff_t>(i * d),
+                                X.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+            }
+            files.tables.push_back(std::move(t));
+        }
+        if (constrained_ && res.cv.size() == n) {
+            Table t;
+            t.name = "final_cv.csv";
+            t.head = table_head(t.name, {"# mootation campaign final population's constraint violation v1: the sum of "
+                                         "the violations, the rows of final.csv"},
+                                {"cv"}, {});
+            t.cols = 1;
+            t.rows = n;
+            t.values = res.cv;
+            files.tables.push_back(std::move(t));
+        }
+        std::vector<std::size_t> arc_sel;
+        bool have_sel = false;
+        select::Rows AF;
+        std::vector<double> AX;
+        std::vector<char> AE;
+        if (arc_) {
+            AF = archive_rows(AX, AE);
+            const bool whole = spec_.archive_variables == "all";
+            if ((AF.n || constrained_) && (spec_.archive_scenario || !whole)) {
+                arc_sel = archive_select(AF, static_cast<std::size_t>(p_.pop_size));
+                have_sel = true;
+            }
+            const std::int64_t cap = spec_.archive_cap * p_.pop_size;
+            const auto kept = archive_kept(AF, have_sel ? &arc_sel : nullptr);
+            const std::string name = whole ? "archive.csv" : "archive.csv.gz";
+            char delta[32];
+            std::snprintf(delta, sizeof delta, "%g", arc_->delta());
+            const std::string normalization = arc_->problem_frame() ? "problem" : "archive";
+            std::string comment = std::string("# mootation campaign archive v1: every nondominated point evaluated") +
+                                  (p_.has_cons ? " (feasible only)" : "") + ", at most one per cell of a " + delta +
+                                  " grid in " + normalization +
+                                  "-normalized objectives, each objective's best point kept whatever its cell holds";
+            if (!whole)
+                comment += "; objectives only, the variables of the points the archive scenario selects are in "
+                           "final_archive.csv.gz";
+            if (kept.size() < AF.n) comment += "; cut to " + std::to_string(cap) + " points by DSS";
+            Table t;
+            t.name = name;
+            std::vector<std::string> cols;
+            for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1));
+            if (whole)
+                for (std::size_t j = 0; j < d; ++j) cols.push_back("x" + std::to_string(j + 1));
+            cols.push_back("extreme");
+            t.head = table_head(name, {comment}, cols, {static_cast<std::int64_t>(m + (whole ? d : 0))});
+            t.cols = cols.size();
+            t.rows = kept.size();
+            for (auto i : kept) {
+                t.values.insert(t.values.end(), AF.row(i), AF.row(i) + m);
+                if (whole) t.values.insert(t.values.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                                           AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+                t.values.push_back(AE[i] ? 1.0 : 0.0);
+            }
+            files.tables.push_back(std::move(t));
+            if (!whole && have_sel) {
+                Table s;
+                s.name = "final_archive.csv.gz";
+                const std::string how = spec_.answer_select == "dss" ? "DSS" : spec_.answer_select;
+                std::vector<std::string> c2;
+                for (std::size_t j = 0; j < m; ++j) c2.push_back("f" + std::to_string(j + 1));
+                for (std::size_t j = 0; j < d; ++j) c2.push_back("x" + std::to_string(j + 1));
+                s.head = table_head(s.name, {"# mootation campaign archive selection v1: the points " + how +
+                                             " selects from the archive for the archive scenario"},
+                                    c2, {});
+                s.cols = c2.size();
+                s.rows = arc_sel.size();
+                for (auto i : arc_sel) {
+                    s.values.insert(s.values.end(), AF.row(i), AF.row(i) + m);
+                    s.values.insert(s.values.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                                    AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+                }
+                files.tables.push_back(std::move(s));
+            }
+            std::vector<double> lo, hi;
+            archive_frame(AF, lo, hi);
+            long long extremes = 0;
+            for (char e : AE) extremes += e != 0;
+            V a = V::object();
+            a.set("size", V::integer(static_cast<std::int64_t>(arc_->size())));
+            a.set("delta", V::number(arc_->delta()));
+            a.set("normalization", V::string(normalization));
+            a.set("offered", V::integer(arc_->offered()));
+            a.set("accepted", V::integer(arc_->accepted()));
+            a.set("extremes", V::integer(extremes));
+            a.set("file", V::string(name));
+            a.set("written", V::integer(static_cast<std::int64_t>(kept.size())));
+            a.set("cap", cap ? V::integer(cap) : V::null());
+            a.set("answer_select", V::string(spec_.answer_select));
+            a.set("variables", V::string(whole ? "all, in archive.csv" : "the selected points', in final_archive.csv.gz"));
+            a.set("feasible_only", V::boolean(p_.has_cons));
+            if (lo.empty()) {
+                a.set("frame", V::null());
+            } else {
+                V fr = V::array();
+                fr.items.push_back(numbers(lo));
+                fr.items.push_back(numbers(hi));
+                a.set("frame", fr);
+            }
+            meta.set("archive", a);
+        }
+        // the final indicators
+        V final = V::object();
+        bool all_finite = !F.empty();
+        for (double v : F) all_finite = all_finite && std::isfinite(v);
+        MeasureInputs fin = measure_in_;
+        HvOptions final_hv;
+        final_hv.exact_max_m = static_cast<int>(spec_.hv_exact_max_m);
+        final_hv.mc_samples = static_cast<std::size_t>(spec_.hv_mc_samples);
+        if (all_finite) {
+            final = measure(F.data(), n, m, d ? X.data() : nullptr, d, final_metrics_, fin, final_hv);
+            add_dense(final, F.data(), n, m, d ? X.data() : nullptr, d, final_metrics_);
+        }
+        if (inc_ && !final.keys.empty()) {
+            final.set("igdp_norm_all", inc_->seen() ? V::number(inc_->igd_plus()) : V::null());
+            final.set("eps_norm_all", inc_->seen() ? V::number(inc_->eps_plus()) : V::null());
+        }
+        if (inc_) {
+            V ae = V::object();
+            ae.set("points", V::integer(static_cast<std::int64_t>(inc_->seen())));
+            ae.set("levels", numbers(spec_.all_levels));
+            V reached = V::array();
+            for (long long v : inc_->reached()) reached.items.push_back(v < 0 ? V::null() : V::integer(v));
+            ae.set("fe_to_level", reached);
+            ae.set("measured", V::string("IGD+ and the additive epsilon of every feasible, finite point evaluated "
+                                         "(noise-free on a noisy copy) against the reference, in igdp_norm's frame; "
+                                         "fe_to_level: the evaluation at which igdp_norm_all first reached each "
+                                         "level"));
+            meta.set("all_evaluated", ae);
+        }
+        if (constrained_)
+            final.set("fe_first_feas", out.first_feasible < 0 ? V::null() : V::integer(out.first_feasible));
+        if (p_.failing || out.n_failed) final.set("n_failed", V::integer(out.n_failed));
+        if (have_sel && spec_.archive_scenario) {
+            std::vector<double> T, TX;
+            for (auto i : arc_sel) {
+                T.insert(T.end(), AF.row(i), AF.row(i) + m);
+                TX.insert(TX.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                          AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+            }
+            V fa = measure(rows_ptr(T), arc_sel.size(), m, d ? rows_ptr(TX) : nullptr, d, final_metrics_, fin, final_hv);
+            add_dense(fa, rows_ptr(T), arc_sel.size(), m, d ? rows_ptr(TX) : nullptr, d, final_metrics_);
+            fa.set("n", V::integer(static_cast<std::int64_t>(arc_sel.size())));
+            if (std::find(final_metrics_.begin(), final_metrics_.end(), "hv") != final_metrics_.end() && refs_.ideal &&
+                refs_.nadir && static_cast<std::int64_t>(m) <= spec_.hv_archive_final_max_m)
+                fa.set("hv_archive", V::number(archive_hv()));
+            meta.set("final_archive", fa);
+        }
+        if (spec_.set_answer != "off" && p_.multimodal_ps && refs_.pset && refs_.pset->rows() &&
+            !refs_.pset->values.empty() && d) {
+            std::unique_ptr<SetArchive> own;
+            SetArchive* sa = sarc_.get();
+            if (!sa) {                                   // "population": the final population's non-dominated
+                own = std::make_unique<SetArchive>(m, d);
+                for (std::size_t i = 0; i < n; ++i) {
+                    bool keep = true;
+                    for (std::size_t j = 0; j < m; ++j) keep = keep && std::isfinite(F[i * m + j]);
+                    if (constrained_ && res.cv.size() == n) keep = keep && res.cv[i] <= 0.0;
+                    if (keep) own->add(&F[i * m], &X[i * d]);
+                }
+                sa = own.get();
+            }
+            V sv = V::object();
+            sv.set("candidates", V::string(spec_.set_answer));
+            if (sa->size()) {
+                std::vector<double> SF, SX;
+                sa->points(SF, SX);
+                const std::size_t rows = sa->size();
+                std::vector<double> lo, hi;
+                for (const auto& [l, h] : p_.bounds) {
+                    lo.push_back(l);
+                    hi.push_back(h);
+                }
+                std::vector<std::size_t> sel;
+                if (rows <= static_cast<std::size_t>(p_.pop_size)) {
+                    for (std::size_t i = 0; i < rows; ++i) sel.push_back(i);
+                } else {
+                    const auto Z = indicators::unit_rows(SX.data(), rows, d, lo.data(), hi.data());
+                    sel = indicators::spread_select(Z.data(), rows, d, static_cast<std::size_t>(p_.pop_size),
+                                                    indicators::spread_first(static_cast<std::uint64_t>(job_.seed), rows));
+                }
+                std::vector<double> T, TX;
+                for (auto i : sel) {
+                    T.insert(T.end(), SF.begin() + static_cast<std::ptrdiff_t>(i * m),
+                             SF.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
+                    TX.insert(TX.end(), SX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                              SX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+                }
+                const V got = measure(T.data(), sel.size(), m, TX.data(), d, set_metrics_names(), fin, final_hv);
+                Table t;
+                t.name = "set_answer.csv";
+                std::vector<std::string> cols;
+                for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1));
+                for (std::size_t j = 0; j < d; ++j) cols.push_back("x" + std::to_string(j + 1));
+                t.head = table_head(t.name, {"# mootation campaign second answer v1: the points spread_select "
+                                             "takes for the decision-space indicators"},
+                                    cols, {});
+                t.cols = cols.size();
+                t.rows = sel.size();
+                for (std::size_t k = 0; k < sel.size(); ++k) {
+                    t.values.insert(t.values.end(), T.begin() + static_cast<std::ptrdiff_t>(k * m),
+                                    T.begin() + static_cast<std::ptrdiff_t>((k + 1) * m));
+                    t.values.insert(t.values.end(), TX.begin() + static_cast<std::ptrdiff_t>(k * d),
+                                    TX.begin() + static_cast<std::ptrdiff_t>((k + 1) * d));
+                }
+                files.tables.push_back(std::move(t));
+                sv.set("n_candidates", V::integer(static_cast<std::int64_t>(rows)));
+                sv.set("n", V::integer(static_cast<std::int64_t>(sel.size())));
+                sv.set("version", V::integer(2));
+                for (const auto& w : set_metrics_names()) {
+                    const V* x = got.find(w);
+                    sv.set(w, x ? *x : V::null());
+                }
+            } else {
+                sv.set("n_candidates", V::integer(0));
+                sv.set("n", V::integer(0));
+                sv.set("version", V::integer(2));
+            }
+            meta.set("set_answer", sv);
+        }
+        V ops = V::array();
+        for (const auto& [o, r] : res.operators) {
+            V e = V::object();
+            e.set("operator", V::string(o));
+            e.set("bound_repair", V::string(r));
+            ops.items.push_back(e);
+        }
+        meta.set("operators", ops);
+        if (!res.settings.empty()) {
+            V s = V::object();
+            for (const auto& [k, v] : res.settings) s.set(k, V::string(v));
+            meta.set("settings", s);
+        }
+        meta.set("operator_stats", V::boolean(false));
+        V timing = V::object();
+        for (const char* k : {"evaluate", "constraints", "feasible", "archive", "evaluator", "checkpoints", "records",
+                              "minimize", "final", "write", "set_answer", "setup"})
+            timing.set(k, V::integer(0));
+        timing.set("callbacks", V::integer(0));
+        timing.set("calls", V::integer(res.callbacks));
+        timing.set("native", V::integer(static_cast<std::int64_t>(std::llround(1e6 * res.native_seconds))));
+        meta.set("timing_us", timing);
+        meta.set("status", V::string("done"));
+        meta.set("fe", V::integer(out.fe));
+        meta.set("records", V::integer(static_cast<std::int64_t>(out.records)));
+        meta.set("final", final);
+        V ignored = V::array();
+        for (const auto& k : res.ignored) ignored.items.push_back(V::string(k));
+        meta.set("ignored_knobs", ignored);
+        meta.set("active_n", V::integer(static_cast<std::int64_t>(res.active_n)));
+        meta.set("finished", now());
+        meta.set("seconds", V::number(0.0));
+        meta.set("record_seconds", V::number(0.0));
+        if (res.finished && out.fe < budget_) {
+            V cs = V::object();
+            cs.set("evaluations", V::integer(out.fe));
+            cs.set("budget", V::integer(budget_));
+            meta.set("core_stopped", cs);
+        }
+        meta.set("unique_fe", V::integer(static_cast<std::int64_t>(seen_rows_.size())));
+        files.meta = meta;
+        return files;
     }
 
     // what step 4d reads
@@ -369,10 +718,155 @@ private:
         dense_in_.constraints = measure_in_.constraints;
     }
 
+    // the rows' variables, an empty set's included (Python hands an n x 0 array,
+    // not None)
+    static const double* rows_ptr(const std::vector<double>& v)
+    {
+        static const double none = 0.0;
+        return v.empty() ? &none : v.data();
+    }
+
+    static json::Value numbers(const std::vector<double>& v)
+    {
+        json::Value a = json::Value::array();
+        for (double x : v) a.items.push_back(json::Value::number(x));
+        return a;
+    }
+
+    json::Value now() const { return process_.now ? json::Value::string(process_.now()) : json::Value::null(); }
+
+    // put_table's head: a CSV's line end is the platform's (os.linesep), a
+    // gzipped one's "\n"
+    static json::Value table_head(const std::string& name, const std::vector<std::string>& comments,
+                                  const std::vector<std::string>& columns, const std::vector<std::int64_t>& ints)
+    {
+        json::Value h = json::Value::object(), c = json::Value::array(), k = json::Value::array(),
+                    i = json::Value::array();
+        for (const auto& s : comments) c.items.push_back(json::Value::string(s));
+        for (const auto& s : columns) k.items.push_back(json::Value::string(s));
+        for (auto x : ints) i.items.push_back(json::Value::integer(x));
+        h.set("comments", c);
+        h.set("columns", k);
+        h.set("ints", i);
+#if defined(_WIN32)
+        const char* linesep = "\r\n";
+#else
+        const char* linesep = "\n";
+#endif
+        const bool gz = name.size() > 3 && name.compare(name.size() - 3, 3, ".gz") == 0;
+        h.set("newline", json::Value::string(gz ? "\n" : linesep));
+        return h;
+    }
+
+    // dense(): the front indicators among `which` against the dense reference
+    void add_dense(json::Value& into, const double* F, std::size_t n, std::size_t m, const double* X, std::size_t d,
+                   const std::vector<std::string>& which) const
+    {
+        std::vector<std::string> front;
+        for (const auto& w : which)
+            if (needs_front().count(w)) front.push_back(w);
+        if (!dense_in_.ref || front.empty() || !n) return;
+        const json::Value dv = measure(F, n, m, X, d, front, dense_in_, HvOptions{});
+        for (std::size_t k = 0; k < dv.keys.size(); ++k) into.set(dv.keys[k] + kDenseSuffix, dv.items[k]);
+    }
+
+    // meta.json as _run_job writes it before the run
+    void begin_meta()
+    {
+        using V = json::Value;
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj);
+        V& meta = meta_;
+        meta = V::object();
+        meta.set("status", V::string("running"));
+        meta.set("problem", V::string(job_.problem));
+        meta.set("algorithm", V::string(job_.key()));
+        meta.set("core", V::string(job_.algorithm));
+        meta.set("budget_dependent", V::boolean(budget_dependent_ || job_.init_share != 0.0));
+        meta.set("ladder_of", job_.ladder_of.empty() ? V::null() : V::string(job_.ladder_of));
+        meta.set("init", V::string(job_.init));
+        meta.set("init_share", V::number(job_.init_share));
+        meta.set("seed", V::integer(job_.seed));
+        meta.set("pop", V::integer(job_.pop));
+        meta.set("gens", V::integer(job_.gens));
+        meta.set("budget_fe", V::integer(job_.budget()));
+        meta.set("seed_independent", V::boolean(seed_independent(job_.algorithm, job_.params, p_.n_var, job_.init)));
+        meta.set("budget_nominal", V::integer(job_.evaluations ? job_.evaluations
+                                              : spec_.budget_fe ? spec_.budget_fe : job_.budget()));
+        meta.set("params", job_.params);
+        meta.set("n_objs", V::integer(p_.n_obj));
+        meta.set("n_vars", V::integer(p_.n_var));
+        meta.set("pop_note", V::string(job_.pop_note));
+        V metrics = V::array(), fin = V::array();
+        for (const auto& w : spec_.metrics) metrics.items.push_back(V::string(w));
+        for (const auto& w : set_extra_) metrics.items.push_back(V::string(w));
+        for (const auto& w : final_metrics_) fin.items.push_back(V::string(w));
+        meta.set("metrics", metrics);
+        meta.set("final_metrics", fin);
+        meta.set("record_every", V::integer(spec_.record_every));
+        meta.set("n_ref", V::integer(spec_.n_ref));
+        meta.set("has_reference_front", V::boolean(refs_.ref.has_value()));
+        meta.set("reference_version", V::integer(reference_version_));
+        meta.set("problem_version", V::integer(p_.problem_version));
+        meta.set("modification", p_.modification);
+        meta.set("reference_hash", V::string(refs_.hash));
+        meta.set("code_stamp", V::string(code_stamp_));
+        meta.set("trajectory_version", V::integer(2));
+        meta.set("reference_rows", refs_.ref ? V::integer(static_cast<std::int64_t>(refs_.ref->rows())) : V::null());
+        meta.set("reference_v3", refs_.info3);
+        meta.set("has_pareto_set", V::boolean(p_.has_pareto_set));
+        meta.set("mootation", process_.mootation);
+        meta.set("revision", process_.revision);
+        meta.set("host", process_.host);
+        meta.set("platform", process_.platform);
+        meta.set("python", process_.python);
+        meta.set("pid", process_.pid);
+        meta.set("fp_env", process_.fp_env);
+        meta.set("started", now());
+        if (refs_.pset && refs_.pset->rows() == 0)
+            meta.set("pareto_set_empty", V::string("the Pareto-set sample is empty (a failing copy whose failed region "
+                                                   "takes all of it): no decision-space indicators"));
+        meta.set("record_grid", V::string(spec_.record_grid));
+        meta.set("record_per_decade", spec_.record_grid == "log" ? V::integer(spec_.record_per_decade) : V::null());
+        V at = V::array();
+        for (auto b : spec_.record_at) at.items.push_back(V::integer(b));
+        meta.set("record_at", at);
+        meta.set("trajectory_hv_max_m", V::integer(spec_.trajectory_hv_max_m));
+        meta.set("trajectory_hv", V::string(!hv_skipped_.empty() ? "not recorded"
+                                            : traj_hv_.exact_max_m >= p_.n_obj
+                                                ? "exact"
+                                                : "monte-carlo, " + std::to_string(traj_hv_.mc_samples) + " samples"));
+        meta.set("indicator_version", V::integer(2));
+        meta.set("hv_mc_version", std::min<std::int64_t>(traj_hv_.exact_max_m, spec_.hv_exact_max_m) <
+                                          static_cast<std::int64_t>(m)
+                                      ? V::integer(2)
+                                      : V::null());
+        V tm = V::array(), sk = V::array(), ra = V::array();
+        for (const auto& w : traj_metrics_) tm.items.push_back(V::string(w));
+        for (const auto& w : hv_skipped_) sk.items.push_back(V::string(w));
+        for (const auto& w : traj_metrics_)
+            if (std::find(spec_.record_at_metrics.begin(), spec_.record_at_metrics.end(), w) !=
+                spec_.record_at_metrics.end())
+                ra.items.push_back(V::string(w));
+        meta.set("trajectory_metrics", tm);
+        meta.set("trajectory_hv_skipped", sk);
+        meta.set("trajectory_metrics_at_record_at", ra);
+    }
+
     // THE ACCOUNTING: the rows the core evaluated, a batch at a time
     void account(const std::vector<double>& X, const std::vector<double>& F, const std::vector<double>& G,
                  std::size_t n)
     {
+        // the distinct points evaluated (unique.row_digests: the bytes of each
+        // row, -0.0 as 0.0), meta's unique_fe
+        const std::size_t width = static_cast<std::size_t>(p_.n_var);
+        for (std::size_t i = 0; i < n; ++i) {
+            std::string key(width * sizeof(double), '\0');
+            for (std::size_t j = 0; j < width; ++j) {
+                const double v = X[i * width + j] + 0.0;
+                std::memcpy(&key[j * sizeof(double)], &v, sizeof v);
+            }
+            seen_rows_.insert(std::move(key));
+        }
         const std::size_t c = static_cast<std::size_t>(native_->n_con);
         ledger_->begin(X.data(), F.data(), n, constrained_ ? G.data() : nullptr, constrained_ ? c : 0, nullptr);
         for (;;) {
@@ -579,6 +1073,22 @@ private:
     std::size_t records_ = 0;
     std::vector<std::string> lines_;
     MeasureInputs measure_in_, dense_in_;
+    Process process_;
+    json::Value meta_;
+    std::set<std::string> seen_rows_;
+    bool budget_dependent_ = false;
+    int reference_version_ = 0;
+    std::string code_stamp_;
+
+public:
+    // what meta.json says of the registry: its code stamp and reference
+    // version, and whether the run depends on its budget (budget.py)
+    void set_registry(const ProblemRegistry& reg, const JobsRegistry& jreg)
+    {
+        code_stamp_ = reg.code_stamp;
+        reference_version_ = reg.reference_version;
+        budget_dependent_ = depends_on_budget(jreg, job_.algorithm, job_.params);
+    }
 };
 
 }   // namespace mootation::campaign

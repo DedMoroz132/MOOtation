@@ -1287,14 +1287,14 @@ void bind_run_layer(py::module_& m)
                                                              t[3].cast<std::int64_t>()};
               }
               cp::Config cfg = cp::loads(text, reg, std::filesystem::path(source_path));
-              if (!cp::validate(cfg, reg).empty()) return py::make_tuple("refused", "the config has problems", py::list());
+              if (!cp::validate(cfg, reg).empty()) return py::make_tuple("refused", "the config has problems", py::list(), py::none(), py::list());
               const cp::CampaignSpec spec = cp::campaign_spec(cfg, jreg);
               const auto jobs = cp::expand_jobs(cfg, spec, jreg);
               const cp::Job& job = jobs.at(static_cast<std::size_t>(index));
               const cp::ProblemRegistry preg = cp::load_registry(std::filesystem::path(registry_path));
               const cp::RegistryProblem& p = preg.problems.at(job.problem);
               if (auto why = cp::refusal(job, spec, p, mootation::run::algorithm_names()))
-                  return py::make_tuple("refused", *why, py::list());
+                  return py::make_tuple("refused", *why, py::list(), py::none(), py::list());
               auto any_of = [&](const std::set<std::string>& names) {
                   for (const auto* list : {&spec.metrics, &spec.final_metrics})
                       for (const auto& w : *list)
@@ -1306,12 +1306,23 @@ void bind_run_layer(py::module_& m)
               cp::JobRun run(job, spec, p,
                              cp::shared_references(entry, any_of(cp::needs_front()), spec.dense_reference,
                                                    any_of(cp::needs_set()) || with_set));
+              run.set_registry(preg, jreg);
+              cp::Process proc;
+              proc.now = [] { return std::string("now"); };
               cp::JobOutcome out;
+              cp::JobFiles files;
               {
                   py::gil_scoped_release unlock;
-                  out = run.run();
+                  out = run.run(proc);
+                  files = run.finish(out);
               }
-              return py::make_tuple(out.status, out.error, out.trajectory);
+              py::list tables;
+              for (const auto& t : files.tables)
+                  tables.append(py::make_tuple(t.name, mootation::json::dump(t.head), t.rows, t.cols,
+                                               py::bytes(reinterpret_cast<const char*>(t.values.data()),
+                                                         t.values.size() * sizeof(double))));
+              return py::make_tuple(out.status, out.error, out.trajectory, mootation::json::dump(files.meta, 1),
+                                    tables);
           },
           py::arg("text"), py::arg("source_path"), py::arg("registry"), py::arg("jobs_registry"),
           py::arg("registry_path"), py::arg("index"),

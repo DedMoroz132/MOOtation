@@ -7,12 +7,15 @@ reference of tests/test_job_run.cpp (include/mootation/campaign/job_run.hpp):
     registry.json       the two problems of the exported registry
                         (run/registry_export.py)
     refs/               their entries of the cache of references (run/refs.py)
-    expected.jsonl      every job's trajectory as run/campaign.py's _run_job
-                        writes it, "t" (the seconds) left out: one line per
-                        job, {"index": i, "lines": [...]}
+    expected.jsonl      every job as run/campaign.py's _run_job writes it for
+                        the store: its trajectory ("t", the seconds, left
+                        out), meta.json (the process's fields left out) and
+                        its tables (head, shape, SHA-256 of the float64
+                        numbers); one line per job
 
     python tools/refs/gen_job_sample.py
 """
+import hashlib
 import json
 import os
 import shutil
@@ -31,6 +34,11 @@ from mootation.run import campaign as K  # noqa: E402
 from mootation.run import config as C  # noqa: E402
 from mootation.run.campaign import _code_stamp  # noqa: E402
 from mootation.run.registry_export import FORMAT, entry  # noqa: E402
+import numpy as np  # noqa: E402
+
+# meta.json's fields that are the process's (campaign.py; the C++ engine's Process)
+PROCESS = ("mootation", "revision", "host", "platform", "python", "pid", "fp_env", "started", "finished",
+           "seconds", "record_seconds", "timing_us")
 
 TEXT = """[run]
 name = "sample"
@@ -68,12 +76,20 @@ lines = []
 with tempfile.TemporaryDirectory() as tmp:
     for j in jobs:
         d = Path(tmp) / j.rel_dir
-        K._run_job(j, Path(tmp), spec, d, quiet=True)
+        tables = {}
+        K._run_job(j, Path(tmp), spec, d, quiet=True, tables=tables)
+        meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+        for k in PROCESS:
+            meta.pop(k, None)
+        heads = [{"name": name, "head": head, "shape": list(A.shape),
+                  "sha256": hashlib.sha256(np.ascontiguousarray(A, "<f8").tobytes()).hexdigest()}
+                 for name, (kind, head, A) in tables.items()]
         traj = []
         for x in (d / "trajectory.jsonl").read_text(encoding="utf-8").splitlines():
             rec = json.loads(x)
             rec.pop("t", None)
             traj.append(json.dumps(rec, separators=(",", ":")))
-        lines.append(json.dumps({"index": j.index, "problem": j.problem, "algorithm": j.key, "lines": traj}))
+        lines.append(json.dumps({"index": j.index, "problem": j.problem, "algorithm": j.key, "lines": traj,
+                                 "meta": meta, "tables": heads}))
 (out / "expected.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
 print(out, len(jobs), "jobs", file=sys.stderr)

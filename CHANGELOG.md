@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `campaign/job_run.hpp`: a job's end in C++ (`JobRun::finish`) — meta.json
+  in the Python engine's order of keys, `final`, the archive scenario, the
+  second answer, everything evaluated, and the tables `final.csv`,
+  `final_cv.csv`, the archive's and `set_answer.csv` as the store keeps them
+  (head and float64 numbers). The fields that are the process's (the
+  version, revision, host, platform, Python, pid, floating-point
+  environment, times) the engine gives (`Process`); the C++ engine's
+  `python` is null. `tests/test_job_run.cpp` compares meta.json and the
+  tables too.
+
 - `include/mootation/campaign/job_run.hpp`: a campaign's job run by the C++
   engine up to the end of its run — the references from the cache, the run
   archive, the second answer's archive, everything evaluated, the accounting
