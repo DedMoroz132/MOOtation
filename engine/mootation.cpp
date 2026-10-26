@@ -11,7 +11,9 @@
 // mootation.run.campaign` does (include/mootation/campaign/engine.hpp): the
 // jobs not done yet, by a pool of threads, each record appended to the
 // store; the jobs it does not run it names, with their reasons, for the
-// Python engine. It reads the exported problem registry (`python -m
+// Python engine. While it runs, <results>/_workers.txt sets the size of the
+// pool (0 drains it) and <results>/_runner.json is its heartbeat, as the
+// Python runner's. It reads the exported problem registry (`python -m
 // mootation.run.registry_export`; the newest in the reference cache's
 // registry/ folder unless --registry names one) and the cache of references
 // (`mootation refs build`, Python).
@@ -184,8 +186,9 @@ int run(const std::vector<std::string>& args)
     const cg::EngineCounts c = cg::run_campaign(text.str(), source, preg, opt);
     std::size_t left = 0;
     for (const auto& [why, n] : c.left) left += n;
-    std::fprintf(stderr, "finished: done %zu, failed %zu, timeout %zu, skipped %zu, left to the Python engine %zu\n",
-                 c.done, c.failed, c.timeout, c.skipped, left);
+    std::fprintf(stderr,
+                 "finished: done %zu, failed %zu, timeout %zu, skipped %zu, pending %zu, left to the Python engine %zu\n",
+                 c.done, c.failed, c.timeout, c.skipped, c.pending, left);
     for (const auto& [why, n] : c.left) std::fprintf(stderr, "  %zu: %s\n", n, why.c_str());
     return c.failed ? 1 : 0;
 }

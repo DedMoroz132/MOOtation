@@ -23,6 +23,12 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine keeps the Python runner's live control: `_workers.txt`
+  sets the size of its pool while it runs (re-read every 1.5 s; a lower
+  number lets the surplus finish its job, 0 drains the campaign, the rest
+  left pending), `_runner.json` is its heartbeat every two seconds, and it
+  does not repair a store whose runner (of either engine) still beats.
+  `EngineCounts::pending`; `read_workers`, `write_workers`, `runner_state`.
 - The C++ engine's trajectory records carry `"t"` (seconds since the run
   started, after `"fe"`, as Python writes it), and `run_timeout` stops a
   run at the first generation past it: the record says `"timeout"` with

@@ -3,10 +3,14 @@
 // sample campaign (tests/data/job_sample) written to a store: four threads run
 // its jobs and their records are the bytes one thread writes; run again, it
 // runs nothing (the store says every job is done); a record cut off in the
-// middle is cut away by the repair and the jobs before it stay done; a slice
+// middle is cut away by the repair and the jobs before it stay done, but
+// not while another runner's heartbeat says it runs; the heartbeat and
+// _workers.txt read as the Python runner's; a slice
 // of the jobs (shard_of) runs only its jobs; a run past run_timeout is
 // stopped and recorded "timeout".
 
+#include <chrono>
+#include <climits>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -148,6 +152,37 @@ static int body()
     const auto repaired = cg::repair_store(store4);
     CHECK(repaired.size() == 1 && std::filesystem::file_size(seg) == size);
     CHECK(run("four", 2).done == 0);
+
+    // the heartbeat of the last run: finished, its jobs counted; the pool's
+    // size in _workers.txt
+    const auto root4 = tmp / "four" / "results" / "sample";
+    const auto beat = cg::runner_state(root4);
+    CHECK(beat && beat->find("state")->s == "finished" && !beat->find("alive")->b);
+    CHECK(beat && beat->find("done")->i == 4 && beat->find("todo")->i == 4 && beat->find("slice")->s == "all");
+    CHECK(cg::read_workers(root4, 5) == 4);
+    for (const auto& [content, want] : std::vector<std::pair<std::string, int>>{
+             {" 8 \n", 8}, {"-3", 0}, {"x", 5}, {"", 5}, {"+4", 4}, {"99999999999", INT_MAX}}) {
+        std::ofstream(root4 / "_workers.txt", std::ios::binary) << content;
+        CHECK(cg::read_workers(root4, 5) == want);
+    }
+
+    // a runner that beats (another process writing): the store is not
+    // repaired, its unfinished record stays
+    {
+        std::ofstream out(seg, std::ios::binary | std::ios::app);
+        out << read_text(seg).substr(0, 100);
+    }
+    const auto cut = std::filesystem::file_size(seg);
+    {
+        const double now = std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+        std::ofstream(root4 / "_runner.json", std::ios::binary)
+            << "{\"state\": \"running\", \"pid\": 1, \"updated\": " << std::to_string(now) << "}";
+    }
+    CHECK(cg::runner_state(root4)->find("alive")->b);
+    run("four", 1);
+    CHECK(std::filesystem::file_size(seg) == cut);
+    cg::repair_store(store4);
+    CHECK(std::filesystem::file_size(seg) == size);
 
     // a slice: its jobs only
     std::size_t sliced = 0;

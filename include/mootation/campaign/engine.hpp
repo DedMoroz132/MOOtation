@@ -17,6 +17,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <climits>
+#include <condition_variable>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -389,6 +392,96 @@ inline std::vector<std::string> repair_store(const std::filesystem::path& store_
     return done;
 }
 
+// ── live control of a running campaign (campaign.py) ────────────────────────
+//
+// Two small files in the results root, the Python runner's: `_workers.txt`
+// holds the number of workers the runner keeps, re-read every 1.5 s (a higher
+// number starts threads at once, a lower one lets the surplus finish the job
+// it is on and leave, 0 drains the campaign and stops it with the unfinished
+// jobs left pending); `_runner.json` is the runner's heartbeat, rewritten every
+// two seconds. A runner of either engine sees the other's: neither repairs a
+// store whose runner is alive.
+
+constexpr const char* kWorkersFile = "_workers.txt";
+constexpr const char* kRunnerFile = "_runner.json";
+constexpr double kHeartbeatStale = 15.0;     // seconds without a beat: the runner is gone
+
+namespace detail {
+
+// time.time()
+inline double unix_time()
+{
+    return std::chrono::duration<double>(std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+// _write_text: a temporary file moved over the old one. On Windows a file
+// another process holds open cannot be replaced; a reader holds it for
+// milliseconds, so the move is tried again for a few seconds.
+inline void write_text_file(const std::filesystem::path& path, const std::string& text)
+{
+    auto tmp = path;
+    tmp += ".tmp";
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        f << text_mode(text);
+    }
+    std::chrono::milliseconds delay(10);
+    for (int attempt = 0; attempt < 39; ++attempt) {
+        std::error_code ec;
+        std::filesystem::rename(tmp, path, ec);
+        if (!ec) return;
+        std::this_thread::sleep_for(delay);
+        delay = std::min(2 * delay, std::chrono::milliseconds(250));
+    }
+    std::filesystem::rename(tmp, path);
+}
+
+}   // namespace detail
+
+// read_workers: the worker count `_workers.txt` says, or `fallback`
+inline int read_workers(const std::filesystem::path& root, int fallback)
+{
+    std::string s = detail::read_all(root / kWorkersFile);
+    const auto first = s.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return fallback;
+    s = s.substr(first, s.find_last_not_of(" \t\r\n") - first + 1);
+    std::size_t at = s[0] == '+' || s[0] == '-' ? 1 : 0;
+    if (at == s.size() || s.find_first_not_of("0123456789", at) != std::string::npos) return fallback;
+    if (s[0] == '-') return 0;
+    if (s.size() - at > 9) return INT_MAX;                  // more than any machine has
+    return std::stoi(s);
+}
+
+inline void write_workers(const std::filesystem::path& root, int n)
+{
+    std::filesystem::create_directories(root);
+    detail::write_text_file(root / kWorkersFile, std::to_string(std::max(0, n)) + "\n");
+}
+
+// runner_state: the last heartbeat of this results root's runner with
+// "alive" added (running, and a beat in the last 15 s); none if no runner
+// ever wrote one
+inline std::optional<json::Value> runner_state(const std::filesystem::path& root)
+{
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(root / kRunnerFile, ec)) return std::nullopt;
+    json::Value st;
+    try {
+        st = json::parse(detail::read_all(root / kRunnerFile));
+    } catch (const std::exception&) {
+        return std::nullopt;
+    }
+    if (st.kind != json::Value::Kind::Object) return std::nullopt;
+    const json::Value* state = st.find("state");
+    const json::Value* updated = st.find("updated");
+    double when = 0.0;
+    if (updated && updated->kind == json::Value::Kind::Float) when = updated->f;
+    if (updated && updated->kind == json::Value::Kind::Int) when = static_cast<double>(updated->i);
+    const bool running = state && state->kind == json::Value::Kind::String && state->s == "running";
+    st.set("alive", json::Value::boolean(running && detail::unix_time() - when <= kHeartbeatStale));
+    return st;
+}
+
 // ── the campaign ────────────────────────────────────────────────────────────
 
 struct EngineOptions {
@@ -404,6 +497,7 @@ struct EngineOptions {
 
 struct EngineCounts {
     std::size_t total = 0, selected = 0, skipped = 0, done = 0, failed = 0, timeout = 0;
+    std::size_t pending = 0;                                      // not run: the campaign drained (_workers.txt 0)
     std::map<std::string, std::size_t> left;                      // to Python, by reason
 };
 
@@ -465,7 +559,12 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
     counts.selected = selected.size();
     const auto store_dir = *root / kStoreDir;
     std::error_code ec;
-    if (std::filesystem::is_directory(store_dir, ec))
+    // a campaign stopped while a worker wrote: its unfinished record goes and
+    // the run is done again. Not while a runner of this folder beats: its
+    // workers may be writing
+    const auto runner = runner_state(*root);
+    const bool alive = runner && runner->find("alive")->b;
+    if (std::filesystem::is_directory(store_dir, ec) && !alive)
         for (const auto& line : repair_store(store_dir))
             if (opt.say) opt.say(line);
     const auto status = store_statuses(store_dir);
@@ -500,16 +599,32 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
     if (opt.say)
         opt.say(cfg.name + ": " + std::to_string(jobs.size()) + " jobs total, " + std::to_string(selected.size()) +
                 " in this slice, " + std::to_string(todo.size()) + " to run -> " + detail::utf8(*root));
-    // the pool: each thread takes the next job and appends its record to its own segment
-    std::atomic<std::size_t> next{0};
+    if (todo.empty()) return counts;
+    // the pool: each thread takes the next job and appends its record to its
+    // own segment; this thread keeps the pool at what _workers.txt says and
+    // writes the heartbeat
     std::mutex lock;
+    std::condition_variable changed;          // a job finished, a thread left
+    std::size_t next = 0, finished = 0;       // under `lock`, as the rest
+    int active = 0, want = 0;
+    std::set<std::int64_t> running;
     std::exception_ptr crash;
     auto worker = [&]() {
         SegmentWriter writer(store_dir, static_cast<std::uint64_t>(spec.segment_mb) << 20, opt.pid, opt.host,
                              {{"code_stamp", preg.code_stamp}, {"trajectory_version", "2"}, {"detmath_path", "detmath"}});
         for (;;) {
-            const std::size_t k = next.fetch_add(1);
-            if (k >= todo.size()) return;
+            std::size_t k = 0;
+            {
+                std::lock_guard<std::mutex> g(lock);
+                // surplus, or nothing left: leave
+                if (active > want || next >= todo.size() || crash) {
+                    --active;
+                    changed.notify_all();
+                    return;
+                }
+                k = next++;
+                running.insert(todo[k]->index);
+            }
             const Job& job = *todo[k];
             try {
                 const RegistryProblem& p = preg.problems.at(job.problem);
@@ -527,21 +642,77 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
                 writer.append(job_key(job), record_blocks(files, out.trajectory));
                 std::lock_guard<std::mutex> g(lock);
                 (out.status == "done" ? counts.done : out.status == "timeout" ? counts.timeout : counts.failed) += 1;
+                ++finished;
+                running.erase(job.index);
+                changed.notify_all();
                 if (opt.say)
                     opt.say("[" + std::to_string(job.index) + "] " + job.problem + " " + job.key() + " seed " +
                             std::to_string(job.seed) + ": " + out.status);
             } catch (...) {
                 std::lock_guard<std::mutex> g(lock);
-                if (!crash) crash = std::current_exception();
-                next = todo.size();               // the others stop after their job
+                if (!crash) crash = std::current_exception();    // the others stop after their job
+                running.erase(job.index);
+                --active;
+                changed.notify_all();
                 return;
             }
         }
     };
+    const std::string label = opt.shard ? "shard " + std::to_string(opt.shard->first) + "/" + std::to_string(opt.shard->second)
+                              : opt.only ? std::to_string(opt.only->size()) + " job(s)"
+                                         : "all";
+    const double started = detail::unix_time();
+    auto beat = [&](const std::string& state) {          // under `lock`
+        json::Value st = json::Value::object(), ids = json::Value::array();
+        for (auto i : running) ids.items.push_back(json::Value::integer(i));
+        st.set("state", json::Value::string(state));
+        st.set("pid", json::Value::integer(opt.pid));
+        st.set("slice", json::Value::string(label));
+        st.set("started", json::Value::number(started));
+        st.set("updated", json::Value::number(detail::unix_time()));
+        st.set("target", json::Value::integer(want));
+        st.set("active", json::Value::integer(active));
+        st.set("todo", json::Value::integer(static_cast<std::int64_t>(todo.size())));
+        st.set("done", json::Value::integer(static_cast<std::int64_t>(counts.done)));
+        st.set("failed", json::Value::integer(static_cast<std::int64_t>(counts.failed)));
+        st.set("running", ids);
+        detail::write_text_file(*root / kRunnerFile, json::dump(st, 1));
+    };
+    write_workers(*root, opt.workers);
+    const int ceiling = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
     std::vector<std::thread> pool;
-    const int n = std::max(1, std::min<int>(opt.workers, static_cast<int>(std::max<std::size_t>(1, todo.size()))));
-    for (int t = 0; t < n; ++t) pool.emplace_back(worker);
+    std::string state = "running";
+    {
+        using clock = std::chrono::steady_clock;
+        clock::time_point last_read{}, last_beat{};
+        std::unique_lock<std::mutex> g(lock);
+        while (finished < todo.size() && !(crash && active == 0)) {
+            const auto now = clock::now();
+            if (pool.empty() || now - last_read >= std::chrono::milliseconds(1500)) {
+                last_read = now;
+                g.unlock();
+                const int asked = read_workers(*root, opt.workers);
+                g.lock();
+                want = std::min(asked, ceiling);
+                const int wanted = static_cast<int>(std::min<std::size_t>(want, running.size() + (todo.size() - next)));
+                for (; active < wanted && !crash; ++active) pool.emplace_back(worker);
+                if (want == 0 && active == 0) {
+                    state = "stopped";                   // drained on request
+                    break;
+                }
+            }
+            if (now - last_beat >= std::chrono::seconds(2)) {
+                last_beat = now;
+                beat("running");
+            }
+            changed.wait_for(g, std::chrono::milliseconds(250));
+        }
+        if (crash) state = "broken";
+    }
     for (auto& t : pool) t.join();
+    std::lock_guard<std::mutex> g(lock);
+    beat(state == "running" ? "finished" : state);
+    counts.pending = todo.size() - finished;
     if (crash) std::rethrow_exception(crash);
     return counts;
 }
