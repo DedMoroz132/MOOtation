@@ -23,6 +23,11 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs DOC3, DOC5 and DOC7: their equalities are in the
+  suite's constraint values already, as |h| - 1e-4 (the registry's, bit for
+  bit), and the Python engine runs them on the direct path too; the
+  refusal was caution. DOC1, 3, 5 and 7 under three cores, two seeds: 24
+  runs as the Python engine's.
 - The C++ engine runs problems with integer variables beside real ones
   (bbob-biobj-mixint, RE23, RE36, CRE25: var_types of "int" and "real"):
   the registry export hands over the core's kinds and box

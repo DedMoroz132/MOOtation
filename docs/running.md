@@ -2160,8 +2160,8 @@ references built beforehand (`python -m mootation refs build`).
 It runs the problems of the C++ suite (integer variables beside real ones
 included), their failing and noisy copies and the uninformative problems.
 The jobs it does not run yet — a problem outside the C++ suite, bits or
-categories, equality constraints, a baseline or a scalarization method — it
-leaves pending and counts by reason at the end.
+categories, a baseline or a scalarization method — it leaves pending and
+counts by reason at the end.
 Running the same config with the Python engine afterwards runs exactly
 those: every job the C++ engine finished is in the store and skipped. A
 problem whose reference is built for the campaign rather than kept in the
