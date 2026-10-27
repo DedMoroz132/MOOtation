@@ -5,7 +5,7 @@
 // its exported spec gives, at the file's point, the objectives and
 // constraints Python's registry gave, bit for bit — a shift's centre handed
 // over, C-DTLZ's constants, a rotation and a bbob instance drawn here — and
-// the engine refuses the problem it cannot run without Python; a failing
+// the engine refuses a problem it cannot run without Python; a failing
 // copy gives the base's values outside its region and NaN inside, as Python's;
 // a noisy copy's run evaluator, its values in turn; an uninformative one's,
 // and its count of where the points fell.
@@ -41,7 +41,7 @@ int main()
 {
     const std::string path = std::string(MOOTATION_TEST_DATA) + "/registry_sample.json";
     const cg::ProblemRegistry reg = cg::load_registry(path);
-    CHECK(reg.problems.size() == 16);
+    CHECK(reg.problems.size() == 18);
     CHECK(!reg.code_stamp.empty() && reg.reference_version >= 1);
 
     // the values the file records, from the problems built here
@@ -65,7 +65,7 @@ int main()
         CHECK(static_cast<int>(p.bounds.size()) == p.n_var && native->n_var == p.n_var);
         ++checked;
     }
-    CHECK(checked == 5);
+    CHECK(checked == 8);
 
     // integer variables: the core's kinds and box, each integer's widened by
     // just under a half (var_types.Layout.core_bounds)
@@ -153,8 +153,20 @@ int main()
 
     CHECK(!cg::engine_refusal(reg.problems.at("shiftDTLZ2_3D")));
     CHECK(reg.problems.at("C2-DTLZ2_3D").has_cons && reg.problems.at("C2-DTLZ2_3D").n_con == 1);
-    const auto why = cg::engine_refusal(reg.problems.at("catZDT1"));
+    // RE91 with its run's stream; an evaluator of the run's own without one
+    cg::RegistryProblem own = reg.problems.at("RE91");
+    CHECK(own.own_evaluator && !cg::engine_refusal(own));
+    own.seeded_stream.reset();
+    const auto why = cg::engine_refusal(own);
     CHECK(why && !why->empty());
+    // bits and categories: every variable's kind, the genes' levels, the
+    // front cover_gen looks for
+    const cg::RegistryProblem& cat = reg.problems.at("catZDT1");
+    CHECK(!cg::engine_refusal(cat) && cat.user_kinds.size() == 11 && cat.user_kinds[0] == "cat" &&
+          cat.cat_levels[0] == 3 && (cat.gene_levels == std::vector<int>{3}) && cat.core_bounds.size() == 10);
+    const cg::RegistryProblem& ojzj = reg.problems.at("OJZJ_n10_k2");
+    CHECK(!cg::engine_refusal(ojzj) && ojzj.user_kinds.size() == 10 && ojzj.core_bounds.empty() &&
+          ojzj.cover_front.size() == 9);
     CHECK(reg.problems.at("rDTLZ2_3D").modification.kind == js::Value::Kind::Object);
 
     if (failures) {

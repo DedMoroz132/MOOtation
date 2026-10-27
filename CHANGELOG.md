@@ -23,6 +23,27 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The bit strings (OMM, LOTZ, OJZJ; suite/bits.hpp) and catZDT1
+  (suite/catzdt.hpp) in the C++ suite: with the C library's functions
+  121 066 values of 121 066 the reference's bits (the bits by integer
+  arithmetic, the same with dm::); catZDT1's sums term by term in
+  categorical.py too, version 2; the bit strings unchanged. Python hands
+  catZDT1's native its label's index (registry), and _run_job asks
+  direct_path with the problem's var_types (a native problem of bits is
+  not direct).
+- The C++ engine runs bits and categories: the registry export hands over
+  every variable's kind, a categorical one's labels, the genes' levels and
+  the bits' front cover_gen looks for; the run gives the core its integer
+  genome (n_bin, gene_levels), decodes each row as minimize's layout does
+  (Layout.to_user, numeric) and evaluates and accounts for it, records
+  cover_gen and cover_archive_gen, and leaves to Python a core without the
+  integer genome (which records the pair as incompatible). The 11 problems
+  under five cores, two seeds: 88 runs by C++ and 22 by Python as the
+  Python engine alone writes the 110; with inner_archive = "nd", 9 of 9.
+- RE91 with its run's stream in C++ (RE91Native, re.RE91Evaluator's draws):
+  9 runs as Python's. Every problem of the registry now runs in the C++
+  engine. The registry export's file name carries the module's own hash
+  (a field more is a new file, not a stale one read).
 - The C++ engine runs problems with discrete variables (RCM15, RE22, RE22c,
   RE25): the registry export hands over their values (`discrete_values`)
   beside the kinds and the box, and the core decodes them as minimize's

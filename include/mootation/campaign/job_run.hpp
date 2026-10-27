@@ -323,16 +323,25 @@ public:
         start_ = std::chrono::steady_clock::now();
         JobOutcome out;
         run::RunProblem rp;
-        // integer variables: the core's box, each integer's widened by just
-        // under a half (var_types.Layout.core_bounds)
-        for (const auto& b : p_.var_kinds.empty() ? p_.bounds : p_.core_bounds) rp.bounds.push_back(b);
+        // typed variables: the core's box, each integer's widened by just under
+        // a half (var_types.Layout.core_bounds); no bounds for the bits and
+        // the categories, the integer genome after the reals
+        const bool layout = !p_.user_kinds.empty();
+        for (const auto& b : layout ? p_.core_bounds : p_.bounds) rp.bounds.push_back(b);
         rp.n_objectives = p_.n_obj;
         native_ = make_run_native(p_, static_cast<std::uint64_t>(job_.seed), noise_cell());
-        rp.native = native_;
-        rp.n_limits = native_->n_con;
         rp.stochastic = p_.stochastic;
-        rp.on_rows = [this](const std::vector<double>& X, const std::vector<double>& F,
-                            const std::vector<double>& G, std::size_t n) { account(X, F, G, n); };
+        if (n_genes_ > 0) {
+            // bits or categories: the core hands its genome, which minimize's
+            // layout decodes for the problem (direct_path refuses them)
+            rp.n_bin = static_cast<int>(n_genes_);
+            rp.evaluate_batch = [this](const std::vector<std::vector<double>>& rows) { return evaluate_rows(rows); };
+        } else {
+            rp.native = native_;
+            rp.n_limits = native_->n_con;
+            rp.on_rows = [this](const std::vector<double>& X, const std::vector<double>& F,
+                                const std::vector<double>& G, std::size_t n) { account(X, F, G, n); };
+        }
         run::RunConfig cfg;
         cfg.pop_size = static_cast<int>(job_.pop);
         cfg.n_gen = static_cast<int>(job_.gens);
@@ -341,12 +350,14 @@ public:
         if (native_->n_con > 0) cfg.constraint_mode = ConstraintMode::FEASIBILITY;
         apply_knobs(cfg, job_.params);
         cfg.operator_stats = spec_.operator_stats;
-        if (!p_.var_kinds.empty()) {
+        if (layout) {
             // minimize's layout: the kinds, rounded into the genome (lamarck,
-            // int_repair's default), polynomial mutation's index 3 for them
+            // int_repair's default), polynomial mutation's index 3 for them;
+            // the genes' levels
             cfg.var_kinds = p_.var_kinds;
             cfg.discrete_values = p_.discrete_values;
             cfg.discrete_values.resize(p_.var_kinds.size());
+            cfg.gene_levels = p_.gene_levels;
             const json::Value* repair = job_.params.find("int_repair");
             cfg.lamarck = !repair || detail::py_str(*repair) == "lamarck";
             if (std::any_of(p_.var_kinds.begin(), p_.var_kinds.end(), [](int k) { return k != 0; })) {
@@ -365,6 +376,14 @@ public:
             out.fe = fe_;
             return out;
         } catch (const std::exception& e) {
+            const std::string why = e.what();
+            if (n_genes_ > 0 && (why.find("binary") != std::string::npos ||
+                                 why.find("continuous") != std::string::npos)) {
+                // a core without the integer genome: left to the Python
+                // engine, which records the pair as incompatible
+                out.status = "left";
+                return out;
+            }
             out.status = "failed";
             out.error = e.what();
             out.trajectory = std::move(lines_);
@@ -420,8 +439,21 @@ public:
         // the final population: objectives, then variables
         std::vector<double> F, X;
         for (const auto& r : res.objectives) F.insert(F.end(), r.begin(), r.end());
-        for (const auto& r : res.variables) X.insert(X.end(), r.begin(), r.end());
         const std::size_t n = res.objectives.size();
+        // the variables: the real genome, or, with a categorical variable, the
+        // caller's variables (the genes after the reals, decoded: user_rows)
+        std::size_t dx = d;
+        if (has_cat_) {
+            for (std::size_t i = 0; i < n; ++i) {
+                std::vector<double> g = res.variables[i];
+                for (int b : res.binary_variables.at(i)) g.push_back(static_cast<double>(b));
+                const auto u = user_row(g.data());
+                X.insert(X.end(), u.begin(), u.end());
+            }
+        } else {
+            for (const auto& r : res.variables) X.insert(X.end(), r.begin(), r.end());
+            if (n_genes_ > 0) dx = p_.core_bounds.size();
+        }
         // a noisy copy: f noise-free, f_seen what the algorithm saw
         std::vector<double> seen;
         const bool noisy = truth_ && n;
@@ -435,7 +467,7 @@ public:
             std::vector<std::string> cols;
             if (n) {
                 for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1));
-                for (std::size_t j = 0; j < d; ++j) cols.push_back("x" + std::to_string(j + 1));
+                for (std::size_t j = 0; j < dx; ++j) cols.push_back("x" + std::to_string(j + 1));
             }
             if (noisy)
                 for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1) + "_seen");
@@ -447,8 +479,8 @@ public:
             for (std::size_t i = 0; i < t.rows; ++i) {
                 t.values.insert(t.values.end(), F.begin() + static_cast<std::ptrdiff_t>(i * m),
                                 F.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
-                t.values.insert(t.values.end(), X.begin() + static_cast<std::ptrdiff_t>(i * d),
-                                X.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+                t.values.insert(t.values.end(), X.begin() + static_cast<std::ptrdiff_t>(i * dx),
+                                X.begin() + static_cast<std::ptrdiff_t>((i + 1) * dx));
                 if (noisy)
                     t.values.insert(t.values.end(), seen.begin() + static_cast<std::ptrdiff_t>(i * m),
                                     seen.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
@@ -628,8 +660,8 @@ public:
         final_hv.exact_max_m = static_cast<int>(spec_.hv_exact_max_m);
         final_hv.mc_samples = static_cast<std::size_t>(spec_.hv_mc_samples);
         if (all_finite) {
-            final = measure(F.data(), n, m, d ? X.data() : nullptr, d, final_metrics_, fin, final_hv);
-            add_dense(final, F.data(), n, m, d ? X.data() : nullptr, d, final_metrics_);
+            final = measure(F.data(), n, m, dx ? X.data() : nullptr, dx, final_metrics_, fin, final_hv);
+            add_dense(final, F.data(), n, m, dx ? X.data() : nullptr, dx, final_metrics_);
         }
         if (inc_ && !final.keys.empty()) {
             final.set("igdp_norm_all", inc_->seen() ? V::number(inc_->igd_plus()) : V::null());
@@ -653,6 +685,17 @@ public:
         if (p_.failing || out.n_failed) final.set("n_failed", V::integer(out.n_failed));
         if (p_.typed && !final.keys.empty())
             final.set("dup_x_share", V::number(static_cast<double>(dup_x_) / static_cast<double>(std::max(out.fe, 1LL))));
+        if (!p_.cover_front.empty()) {
+            // the bits' front covered: the first generation and evaluation at
+            // which the population, and the inner archive, held every vector
+            // of it; NaN where it did not within the budget
+            const V nan = V::number(std::numeric_limits<double>::quiet_NaN());
+            final.set("cover_gen", cover_gen_ < 0 ? nan : V::integer(cover_gen_));
+            final.set("cover_evals", cover_gen_ < 0 ? nan : V::integer(cover_fe_));
+            final.set("cover_reached", V::boolean(cover_gen_ >= 0));
+            final.set("cover_archive_gen", cover_archive_gen_ < 0 ? nan : V::integer(cover_archive_gen_));
+            final.set("cover_archive_evals", cover_archive_gen_ < 0 ? nan : V::integer(cover_archive_fe_));
+        }
         if (truth_) {
             if (!final.keys.empty()) {
                 final.set("true_dominated_share", dominated_share(F.data(), n, m));
@@ -938,6 +981,10 @@ private:
             for (auto b : spec_.record_at)
                 if (b < std::min(budget_, nominal)) checkpoints_.insert(b);
         }
+        for (const auto& k : p_.user_kinds) {
+            n_genes_ += k == "bin" || k == "cat";
+            has_cat_ = has_cat_ || k == "cat";
+        }
         need_x_ = (snap_ && keep_x_) || constrained_ || truth_ != nullptr;
         for (const auto& w : traj_metrics_) need_x_ = need_x_ || needs_x().count(w);
         for (const auto& w : traj_metrics_)
@@ -1185,6 +1232,70 @@ private:
         hard_arc_[b] = v;
     }
 
+    // var_types.Layout.to_user, then numeric: the core's [reals..., genes...]
+    // as the caller's variables in their order — an integer rounded half to
+    // even into its bounds, a discrete one the nearest value (ties to the
+    // lower), a bit 0 or 1, a categorical one its label's index
+    std::vector<double> user_row(const double* core) const
+    {
+        const std::size_t nv = p_.user_kinds.size(), reals = p_.core_bounds.size();
+        std::vector<double> u(nv);
+        std::size_t r = 0, g = 0;
+        for (std::size_t i = 0; i < nv; ++i) {
+            const std::string& k = p_.user_kinds[i];
+            if (k == "bin" || k == "cat") continue;
+            double v = core[r++];
+            if (k == "int") {
+                v = std::min(std::max(std::nearbyint(v), std::ceil(p_.bounds[i].first)), std::floor(p_.bounds[i].second)) + 0.0;
+            } else if (k == "discrete") {
+                const auto& vals = p_.discrete_values[r - 1];
+                double best = vals[0];
+                for (double a : vals)
+                    if (std::fabs(a - v) < std::fabs(best - v)) best = a;
+                v = best;
+            }
+            u[i] = v;
+        }
+        for (std::size_t i = 0; i < nv; ++i) {
+            const std::string& k = p_.user_kinds[i];
+            if (k != "bin" && k != "cat") continue;
+            const double gene = std::trunc(core[reals + g++]);
+            if (k == "bin") u[i] = gene != 0.0 ? 1.0 : 0.0;
+            else u[i] = std::min(std::max(gene, 0.0), static_cast<double>(p_.cat_levels[i] - 1));
+        }
+        return u;
+    }
+
+    // the core's batch with bits or categories: each row decoded, evaluated,
+    // accounted for (campaign's evaluate_rows)
+    std::vector<std::vector<double>> evaluate_rows(const std::vector<std::vector<double>>& rows)
+    {
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj);
+        std::vector<double> X, F;
+        std::vector<std::vector<double>> out;
+        for (const auto& row : rows) {
+            const auto u = user_row(row.data());
+            std::vector<double> f(m);
+            native_->evaluate(u.data(), f.data(), nullptr);
+            X.insert(X.end(), u.begin(), u.end());
+            F.insert(F.end(), f.begin(), f.end());
+            out.push_back(std::move(f));
+        }
+        account(X, F, {}, rows.size());
+        return out;
+    }
+
+    // every vector of the bits' front among the rows (tuples, exactly)
+    bool covers(const std::vector<std::vector<double>>& rows) const
+    {
+        for (const auto& want : p_.cover_front) {
+            bool hit = false;
+            for (const auto& r : rows) hit = hit || r == want;
+            if (!hit) return false;
+        }
+        return true;
+    }
+
     // true_values: a noisy copy's noise-free objectives at the rows X (n x d)
     std::vector<double> true_rows(const double* X, std::size_t n) const
     {
@@ -1329,13 +1440,35 @@ private:
     {
         std::vector<double> X;
         if (need_x_ && rows && run::st().answer_variables)
-            for (const auto& x : run::st().answer_variables()) X.insert(X.end(), x.begin(), x.end());
+            for (const auto& x : run::st().answer_variables()) {
+                if (!has_cat_) {
+                    X.insert(X.end(), x.begin(), x.end());
+                    continue;
+                }
+                const auto u = user_row(x.data());          // user_rows: a categorical variable's index
+                X.insert(X.end(), u.begin(), u.end());
+            }
         return X;
     }
 
     void on_gen(int gen, std::vector<std::vector<double>> P)
     {
         if (spec_.run_timeout > 0 && seconds() > spec_.run_timeout) throw TimeoutStop{};
+        if (!p_.cover_front.empty()) {                   // at every call, before the grid's choice
+            if (cover_gen_ < 0 && covers(P)) {
+                cover_gen_ = gen;
+                cover_fe_ = fe_;
+            }
+            if (cover_archive_gen_ < 0) {
+                std::vector<std::vector<double>> A;
+                if (const auto* live = ops::inner_archive_record().live)
+                    for (const auto& mem : *live) A.push_back(mem.f);
+                if (!A.empty() && covers(A)) {
+                    cover_archive_gen_ = gen;
+                    cover_archive_fe_ = fe_;
+                }
+            }
+        }
         std::vector<double> F;
         for (const auto& r : P) F.insert(F.end(), r.begin(), r.end());
         if (grid_kind_ == Grid::Budgets) {
@@ -1467,6 +1600,9 @@ private:
     json::Value meta_, meta_at_start_;
     bool snap_ = false, keep_x_ = false;
     long long dup_x_ = 0;                            // the points evaluated again
+    std::size_t n_genes_ = 0;                        // bits and categories: the integer genome
+    bool has_cat_ = false;
+    long long cover_gen_ = -1, cover_fe_ = -1, cover_archive_gen_ = -1, cover_archive_fe_ = -1;
     std::vector<std::int64_t> snap_fe_, snap_gen_, snap_n_;
     std::vector<float> snap_F_, snap_X_;
     std::set<long long> checkpoints_;

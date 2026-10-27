@@ -19,9 +19,10 @@ problem of the suite carries its base's spec and its failure region
 which the engine evaluates itself.
 
 WHERE. Beside the cache of references (run/refs.py), under the benchmark
-code's stamp (campaign._code_stamp): <refs root>/registry/<stamp>.json. The
-same code writes the same file on every machine; a change of the benchmark
-code is a new stamp and a new file.
+code's stamp (campaign._code_stamp) and this module's hash:
+<refs root>/registry/<stamp>-<hash>.json. The same code writes the same file
+on every machine; a change of the benchmark code or of this module is a new
+file.
 """
 
 from __future__ import annotations
@@ -36,9 +37,13 @@ FORMAT = 1
 
 
 def registry_path() -> Path:
+    """Under the benchmark code's stamp and this file's own hash: a change of
+    either (a field more, as the engine learns more) is a new file."""
+    import hashlib
     from .campaign import _code_stamp
     from .refs import refs_root
-    return refs_root() / "registry" / f"{_code_stamp()}.json"
+    mine = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()[:8]
+    return refs_root() / "registry" / f"{_code_stamp()}-{mine}.json"
 
 
 def _floats(v):
@@ -109,6 +114,9 @@ def entry(name: str) -> dict:
         "failing_region": _failing_region(name),
         "noise": _noise(name),
         "uninformative": _uninformative(name),
+        # RE91's run evaluator (re.RE91Evaluator): its draws from the run's
+        # seed, which the engine makes as Python does
+        "seeded_stream": "RE91" if name == "RE91" else None,
         **_layout(p),
         "distance": p.distance_fn is not None,
         "spec": spec,
@@ -116,23 +124,29 @@ def entry(name: str) -> dict:
 
 
 def _layout(p) -> dict:
-    """Integer and discrete variables beside real ones (var_types.Layout, no
-    bits and no categories): the core's kinds (0 real, 1 integer, 2
-    discrete), its box (an integer's widened by just under a half on each
-    side, a discrete one's from its least value to its largest) and the
-    discrete ones' values, sorted; nothing else."""
+    """Typed variables (var_types.Layout): every variable's kind (real, int,
+    discrete, bin, cat) and a categorical one's number of labels; the core's
+    real genome's kinds (0 real, 1 integer, 2 discrete), its box (an
+    integer's widened by just under a half on each side, a discrete one's
+    from its least value to its largest), the discrete ones' values, sorted,
+    and the integer genome's levels (gene_levels); for bits alone with an
+    exact front, the front cover_gen looks for (run/campaign.py)."""
     from ..var_types import Layout
-
-    def plain(t):
-        return t in ("real", "int") or (isinstance(t, (tuple, list)) and t[0] == "discrete")
-    if p.var_types is None or not all(plain(t) for t in p.var_types):
+    if p.var_types is None:
         return {}
     layout = Layout(p.var_types, list(p.bounds))
     if layout.trivial():
         return {}
-    return {"var_kinds": [int(k) for k in layout.var_kinds()],
-            "core_bounds": [[float(lo), float(hi)] for lo, hi in layout.core_bounds()],
-            "discrete_values": [[float(v) for v in vs] for vs in layout.discrete_values()]}
+    out = {"user_kinds": list(layout.kinds),
+           "cat_levels": [len(v) if k == "cat" else 0 for k, v in zip(layout.kinds, layout.values)],
+           "var_kinds": [int(k) for k in layout.var_kinds()],
+           "core_bounds": [[float(lo), float(hi)] for lo, hi in layout.core_bounds()],
+           "discrete_values": [[float(v) for v in vs] for vs in layout.discrete_values()],
+           "gene_levels": [int(v) for v in layout.gene_levels()]}
+    if all(k == "bin" for k in layout.kinds) and p.front_exact and callable(p.pareto_front):
+        import numpy as np
+        out["cover_front"] = [[float(v) for v in row] for row in np.asarray(p.pareto_front(1000))]
+    return out
 
 
 def _uninformative(name: str) -> str | None:

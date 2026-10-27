@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // The problem registry read in C++ — task 17, stage 5, step 4: the file
-// run/registry_export.py writes (<refs root>/registry/<code stamp>.json): every
-// problem's sizes and box, default population and generations, version, what
+// run/registry_export.py writes (<refs root>/registry/<code stamp>-<hash>.json):
+// every problem's sizes and box, default population and generations, version, what
 // it modifies, its references, and — for a problem of the C++ suite — the spec
 // its evaluation is built from (suite::Spec, as python/suite_module.cpp's
 // spec_of reads it from Python). The engine runs a problem of the suite whose
@@ -68,12 +68,19 @@ struct RegistryProblem {
     std::optional<FailRegion> failing_region;     // a failing copy of a problem of the suite
     std::optional<NoiseSpec> noise;               // a noisy copy of a problem of the suite
     std::optional<std::string> uninformative;     // an uninformative problem's kind: f1, f2b, f3b, f4b, f5
+    std::optional<std::string> seeded_stream;     // RE91: its run's draws from the seed (re.RE91Evaluator)
     // integer and discrete variables beside real ones (var_types.Layout): the
     // core's kinds (0 real, 1 integer, 2 discrete) and box; empty for real
     // variables alone
     std::vector<int> var_kinds;
     std::vector<std::pair<double, double>> core_bounds;
     std::vector<std::vector<double>> discrete_values;   // a discrete variable's values, sorted; [] elsewhere
+    // every variable's kind (real, int, discrete, bin, cat; empty for real
+    // variables alone), a categorical one's labels, the integer genome's
+    // levels (gene_levels), and the front of bits cover_gen looks for
+    std::vector<std::string> user_kinds;
+    std::vector<int> cat_levels, gene_levels;
+    std::vector<std::vector<double>> cover_front;
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -211,6 +218,8 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     }
     if (const json::Value* v = o.find("uninformative"); v && v->kind == json::Value::Kind::String)
         p.uninformative = v->s;
+    if (const json::Value* v = o.find("seeded_stream"); v && v->kind == json::Value::Kind::String)
+        p.seeded_stream = v->s;
     if (const json::Value* v = o.find("var_kinds"); v && v->kind == json::Value::Kind::Array)
         for (const auto& k : v->items) p.var_kinds.push_back(static_cast<int>(k.i));
     if (const json::Value* v = o.find("core_bounds"); v && v->kind == json::Value::Kind::Array)
@@ -220,6 +229,14 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
         }
     if (const json::Value* v = o.find("discrete_values"); v && v->kind == json::Value::Kind::Array)
         for (const auto& vs : v->items) p.discrete_values.push_back(detail::floats_of(&vs));
+    if (const json::Value* v = o.find("user_kinds"); v && v->kind == json::Value::Kind::Array)
+        for (const auto& k : v->items) p.user_kinds.push_back(k.s);
+    if (const json::Value* v = o.find("cat_levels"); v && v->kind == json::Value::Kind::Array)
+        for (const auto& k : v->items) p.cat_levels.push_back(static_cast<int>(k.i));
+    if (const json::Value* v = o.find("gene_levels"); v && v->kind == json::Value::Kind::Array)
+        for (const auto& k : v->items) p.gene_levels.push_back(static_cast<int>(k.i));
+    if (const json::Value* v = o.find("cover_front"); v && v->kind == json::Value::Kind::Array)
+        for (const auto& row : v->items) p.cover_front.push_back(detail::floats_of(&row));
     return p;
 }
 
@@ -266,8 +283,11 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
 inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
     if (!p.spec && !p.failing_region && !p.noise && !p.uninformative) return "not a problem of the C++ suite";
-    if (p.own_evaluator && !p.noise && !p.uninformative) return "an evaluator of the run's own";
-    if (p.typed && p.var_kinds.empty()) return "typed variables (bits or categories)";
+    if (p.own_evaluator && !p.noise && !p.uninformative && !p.seeded_stream) return "an evaluator of the run's own";
+    if (p.typed && p.user_kinds.empty()) return "typed variables";
+    if (p.has_cons && std::any_of(p.user_kinds.begin(), p.user_kinds.end(),
+                                  [](const std::string& k) { return k == "bin" || k == "cat"; }))
+        return "constraints with bits or categories";
     if (p.failing && !p.failing_region) return "a failing copy";
     return std::nullopt;
 }
@@ -551,6 +571,39 @@ private:
     double (*volatile pow_)(double, double) = ::pow;
 };
 
+// re.RE91Evaluator: one run's RE91, the k-th evaluation the k-th four
+// normals of the stream of the run's seed (splitmix64 and Box-Muller; log and
+// cos the C library's, as CPython's math, through a pointer)
+class RE91Native : public suite::Native {
+public:
+    explicit RE91Native(std::uint64_t seed) : seed_(seed)
+    {
+        n_var = 7;
+        n_obj = 9;
+        n_con = 0;
+    }
+
+    void evaluate(const double* x, double* f, double*) const override
+    {
+        double z[4];
+        for (std::uint64_t i = 0; i < 4; ++i) {
+            const double u1 = NoisyNative::unit(NoisyNative::splitmix64(seed_ ^ NoisyNative::splitmix64(kDomain + 8 * k_ + 2 * i)));
+            const double u2 =
+                NoisyNative::unit(NoisyNative::splitmix64(seed_ ^ NoisyNative::splitmix64(kDomain + 8 * k_ + 2 * i + 1)));
+            z[i] = std::sqrt(-2.0 * log_(1.0 - u1)) * cos_(2.0 * 3.141592653589793 * u2);
+        }
+        ++k_;
+        suite::re::re91(x, z, f);
+    }
+
+private:
+    static constexpr std::uint64_t kDomain = 5ULL << 60;         // re._DOMAIN
+    std::uint64_t seed_;
+    mutable std::uint64_t k_ = 0;
+    double (*volatile log_)(double) = ::log;
+    double (*volatile cos_)(double) = ::cos;
+};
+
 // the problem's evaluation in C++, built from its spec (a failing copy: its
 // base's, failing in the region; a noisy copy: its base's, noise-free — the
 // run's noisy evaluation is make_run_native's)
@@ -571,6 +624,7 @@ inline std::shared_ptr<suite::Native> make_run_native(const RegistryProblem& p, 
 {
     if (p.noise) return std::make_shared<NoisyNative>(make_native(p), *p.noise, p.bounds, seed, cell);
     if (p.uninformative) return std::make_shared<UninformativeNative>(*p.uninformative, p.n_var, seed);
+    if (p.seeded_stream && *p.seeded_stream == "RE91") return std::make_shared<RE91Native>(seed);
     return make_native(p);
 }
 

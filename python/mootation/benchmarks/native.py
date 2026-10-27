@@ -65,7 +65,9 @@ _MMO = re.compile(r"SYM-PART_(simple|rotated)|Omni-test|MMF\d+(_[aez])?")
 _RE = re.compile(r"RE\d\dc?|CRE\d\d")
 # BT1-9 and MOP1-7, and RWMOP's RCM problems (task 17, stage 5; bt.hpp, mop.hpp,
 # rcm.hpp)
-_BT_MOP = re.compile(r"BT[1-9]|MOP[1-7]|RCM\d\d")
+_BT_MOP = re.compile(r"BT[1-9]|MOP[1-7]|RCM\d\d|catZDT1")
+# the bit strings (bits.hpp): OMM_n<n>, LOTZ_n<n>, OJZJ_n<n>_k<k>
+_BITS = re.compile(r"(OMM|LOTZ)_n\d+|OJZJ_n\d+_k(\d+)")
 # the verification set (task 17, supplement 2, §3; classic.hpp): its names
 # and the suite's families
 CLASSIC = {"SCH": "SCH", "FON": "FON", "POL": "POL", "KUR": "KUR", "SPH_2D": "SPH", "SPH_3D": "SPH",
@@ -113,9 +115,14 @@ def _polygon_vertices(M: int) -> np.ndarray:
 
 def _stage3a(name: str, p) -> dict | None:
     """DAS-CMOP, LIR-CMOP, DOC, Polygon, IPolygon, SYM-PART, Omni-test, MMF, RE
-    and CRE (task 17, supplement 3, stage 3a); BT, MOP and RCM (task 17, stage 5)."""
+    and CRE (task 17, supplement 3, stage 3a); BT, MOP, RCM, the bit strings and
+    catZDT1 (task 17, stage 5)."""
     if _MMO.fullmatch(name) or _RE.fullmatch(name) or _BT_MOP.fullmatch(name):
         return _base(name, p.n_vars, p.n_obj)
+    m = _BITS.fullmatch(name)
+    if m is not None:
+        k = int(m.group(2)) if m.group(2) else 0
+        return _base(name.split("_")[0], p.n_vars, p.n_obj, k=k)
     m = _DAS.fullmatch(name)
     if m is not None:
         from . import dascmop

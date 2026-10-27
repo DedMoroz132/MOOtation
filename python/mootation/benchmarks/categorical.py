@@ -35,15 +35,22 @@ LEAST_G = {"rastrigin": 1.0, "linear": 1.02, "quadratic": 1.05}
 
 
 def g(label: str, y) -> float:
+    """The label's g at y; its sums term by term from 0 (built-in sum adds
+    compensated from Python 3.12 on, and the C++ suite adds in order)."""
     n = len(y)
+    s = 0.0
     if label == "rastrigin":
-        return 1.0 + 10.0 * n + sum((10.0 * v - 5.0) ** 2
-                                    - 10.0 * math.cos(4.0 * math.pi * (10.0 * v - 5.0))
-                                    for v in y)
+        for v in y:
+            s = s + ((10.0 * v - 5.0) ** 2 - 10.0 * math.cos(4.0 * math.pi * (10.0 * v - 5.0)))
+        return 1.0 + 10.0 * n + s
     if label == "linear":
-        return 1.02 + 9.0 * sum(y) / n
+        for v in y:
+            s = s + v
+        return 1.02 + 9.0 * s / n
     if label == "quadratic":
-        return 1.05 + 9.0 * sum((v - 0.75) ** 2 for v in y) / n
+        for v in y:
+            s = s + (v - 0.75) ** 2
+        return 1.05 + 9.0 * s / n
     raise ValueError(f"catZDT1: the label {label!r} is not one of {LABELS}")
 
 
@@ -51,6 +58,11 @@ def label_of(c) -> str:
     if isinstance(c, str):
         return c
     return LABELS[min(max(int(round(c)), 0), len(LABELS) - 1)]
+
+
+def numeric(x) -> list:
+    """x with the label as its index (what the C++ suite reads)."""
+    return [float(LABELS.index(label_of(x[0])))] + [float(v) for v in x[1:]]
 
 
 def evaluate(x) -> List[float]:

@@ -293,8 +293,8 @@ IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–15, ZCAT1–20, WFG1–9, shiftZDT
 and the rotations over them (rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF,
 r0/c0MaF, rZCAT, rWFG), bbob-biobj and bbob-biobj-mixint, DAS-CMOP,
 LIR-CMOP, MW, DOC, Polygon and IPolygon, SYM-PART, Omni-test, MMF, RE and
-CRE, BT1–9, MOP1–7 and RWMOP's RCM problems are computed in C++ when the
-extension is built
+CRE, BT1–9, MOP1–7, RWMOP's RCM problems, the bit strings (OneMinMax, LOTZ,
+OneJumpZeroJump) and catZDT1 are computed in C++ when the extension is built
 (`include/mootation/suite`, `benchmarks/native.py`): `p.evaluate`,
 `p.evaluate_batch` and the constraints call it, the loop over a batch runs in
 C++, and `p.native` is the `_core.Native` behind them. The NumPy code stays,
@@ -2174,11 +2174,13 @@ It needs the exported problem registry (`python -m
 mootation.run.registry_export`, or `--registry FILE`) and the cache of
 references built beforehand (`python -m mootation refs build`).
 
-It runs the problems of the C++ suite (integer and discrete variables
-beside real ones included), their failing and noisy copies and the
-uninformative problems. The jobs it does not run yet — a problem outside
-the C++ suite, bits or categories, a baseline or a scalarization method — it
-leaves pending and counts by reason at the end.
+It runs every problem of the registry: the C++ suite's (with integer,
+discrete, binary and categorical variables), their failing and noisy copies,
+the uninformative problems and RE91 with its run's stream. The jobs it does
+not run — a baseline or a scalarization method, a designed first
+population, polishing, the learned coordinates' diagnostics, a core without
+the integer genome on bits or categories — it leaves pending and counts by
+reason at the end.
 `--report FILE` writes them (their indices) and the counts as JSON, which
 is how the Python engine learns what is left to it. A problem whose
 reference is built for the campaign rather than kept in the cache (an

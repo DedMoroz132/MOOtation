@@ -2611,6 +2611,12 @@ def _register_binary():
 
 _register_binary()
 _native.attach(PROBLEMS, ROTATED)
+# catZDT1's C++ evaluation reads the label's index (catzdt.hpp); the caller
+# hands the label itself (var_types decoded) or its index
+if PROBLEMS["catZDT1"].native is not None:
+    _cz = PROBLEMS["catZDT1"]
+    _cz.evaluate = lambda x, _e=_cz.evaluate: _e(_cat.numeric(x))
+    _cz.evaluate_batch = lambda X, _b=_cz.evaluate_batch: _b([_cat.numeric(x) for x in X])
 _register_noisy(_noisy.LATE_BASES, late=True)
 
 
@@ -2733,7 +2739,9 @@ _register_failing()
 # RCM problems (rwmop.py), their pow, exp and log the library's own, RCM21's
 # response surfaces summed term by term (where built-in sum added compensated
 # from Python 3.12): version 2; unchanged RCM07, RCM09 and RCM22, of
-# arithmetic and square roots alone (_DETMATH_SAME).
+# arithmetic and square roots alone (_DETMATH_SAME). And the bit strings,
+# unchanged (integer arithmetic), and catZDT1, its sums term by term and its
+# pow and cos the library's own: version 2.
 PROBLEM_VERSION: Dict[str, int] = {
     **{name: 2 for name, r in ROTATED.items()
        if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
@@ -2743,7 +2751,8 @@ PROBLEM_VERSION: Dict[str, int] = {
 _DETMATH_SAME = re.compile(r"(?:r|rc|r0|c0|shift)?(?:ZDT1|MaF1_\d+D|MaF9_\d+D)(?:_i\d)?|"
                            r"bbobbiobj(?:mixint)?(?:01|04|28)_n\d\d_2D|"
                            r"IPolygon_\d+D|DOC8|RE2[1-5]|RE22c|RE3[1-7]|RE33c|RE41|"
-                           r"CRE2[1-5]|CRE31|RCM07|RCM09|RCM22")
+                           r"CRE2[1-5]|CRE31|RCM07|RCM09|RCM22|"
+                           r"(?:OMM|LOTZ)_n\d+|OJZJ_n\d+_k\d+")
 
 
 def _in_suite(name: str) -> bool:
@@ -2755,7 +2764,8 @@ def _in_suite(name: str) -> bool:
     return bool(_native._BBOB.fullmatch(name) or _native._ZDT.fullmatch(name)
                 or _native._STEMS.fullmatch(name) or _native._DAS.fullmatch(name)
                 or _native._OTHER.fullmatch(name) or _native._MMO.fullmatch(name)
-                or _native._RE.fullmatch(name) or _native._BT_MOP.fullmatch(name))
+                or _native._RE.fullmatch(name) or _native._BT_MOP.fullmatch(name)
+                or _native._BITS.fullmatch(name))
 
 
 for _name in list(PROBLEMS):

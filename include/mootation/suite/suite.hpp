@@ -43,7 +43,9 @@
 //
 // Task 17, stage 5: BT1-9 (bt.hpp): family "BT<i>", 30 variables; MOP1-7
 // (mop.hpp): family "MOP<i>", 10 variables; RWMOP's registered RCM problems
-// (rcm.hpp): family "RCM01" .. "RCM29", the suite's sizes.
+// (rcm.hpp): family "RCM01" .. "RCM29", the suite's sizes; the bit strings
+// (bits.hpp): family "OMM", "LOTZ" or "OJZJ" (`k` its jump), n bits; catZDT1
+// (catzdt.hpp): family "catZDT1", the label's index and ten reals.
 //
 // THE MAPS (dtlz_variants.py, shifted.py, rotated.py): the point the family
 // is evaluated at, its variables from `first` on read as
@@ -75,7 +77,9 @@
 #include <vector>
 
 #include "bbob.hpp"
+#include "bits.hpp"
 #include "bt.hpp"
+#include "catzdt.hpp"
 #include "classic.hpp"
 #include "common.hpp"
 #include "dascmop.hpp"
@@ -176,6 +180,8 @@ public:
         else if ((which_ = number_after(f, "BT")) != 0) kind_ = Kind::BT;
         else if ((which_ = number_after(f, "MOP")) != 0) kind_ = Kind::MOP;
         else if ((which_ = number_after(f, "RCM")) != 0) kind_ = Kind::RCM;
+        else if (bits::parse(f, bits_)) kind_ = Kind::Bits;
+        else if (f == "catZDT1") kind_ = Kind::CatZDT;
         else if (f == "Polygon") kind_ = Kind::Polygon;
         else if (f == "IPolygon") kind_ = Kind::IPolygon;
         else if (mmo::parse(f, mmo_)) kind_ = Kind::MMO;
@@ -274,6 +280,12 @@ public:
             case Kind::RCM:
                 rcm::evaluate(which_, p, f, g);
                 return;
+            case Kind::Bits:
+                bits::evaluate(bits_, p, n_var, s_.k, f);
+                return;
+            case Kind::CatZDT:
+                catzdt::evaluate(p, f);
+                return;
             case Kind::Polygon:
                 polygon::polygon(p, n_var, n_obj, s_.vertices, f);
                 return;
@@ -314,11 +326,12 @@ public:
 
 private:
     enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, DASCMOP, LIRCMOP,
-                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM };
+                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM, Bits, CatZDT };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
     Spec s_;
+    bits::Kind bits_ = bits::Kind::OMM;
     Kind kind_ = Kind::DTLZ;
     MapKind map_ = MapKind::None;
     int which_ = 0;
@@ -452,6 +465,13 @@ private:
             case Kind::MOP:
                 if (which_ < 1 || which_ > 7 || n != mop::kN || M != mop::n_obj(which_))
                     fail("MOP1-5 two objectives, MOP6-7 three, 10 variables");
+                break;
+            case Kind::Bits:
+                if (n < 1 || M != 2 || s_.k < 0 || (bits_ == bits::Kind::OJZJ && (s_.k < 2 || 2 * s_.k >= n)))
+                    fail("two objectives of n bits (OJZJ: 2 <= k < n / 2)");
+                break;
+            case Kind::CatZDT:
+                if (n != 1 + catzdt::kReal || M != 2) fail("the label and ten reals, two objectives");
                 break;
             case Kind::RCM: {
                 const rcm::Size z = rcm::size(which_);

@@ -1560,7 +1560,7 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     direct = None
     if not baseline and objective is p.evaluate and truth is None:
         direct, _ = direct_path(objective, native=spec.native, algorithm=job.algorithm,
-                                **job.params)
+                                var_types=p.var_types, **job.params)
 
     def on_rows(X, F, G):
         nonlocal dup_x

@@ -693,6 +693,15 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
                 JobRun run(job, spec, p, std::move(refs));
                 run.set_registry(preg, jreg);
                 const JobOutcome out = run.run(opt.process);
+                if (out.status == "left") {             // the core takes no bits or categories
+                    std::lock_guard<std::mutex> g(lock);
+                    ++counts.left["a core without the integer genome (the Python engine records the pair)"];
+                    counts.left_jobs.push_back(job.index);
+                    ++finished;
+                    running.erase(job.index);
+                    changed.notify_all();
+                    continue;
+                }
                 const JobFiles files = run.finish(out);
                 writer.append(job_key(job), record_blocks(files, out.trajectory));
                 std::lock_guard<std::mutex> g(lock);

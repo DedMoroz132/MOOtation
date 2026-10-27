@@ -1,6 +1,6 @@
 {
  "format": 1,
- "code_stamp": "v4-9cc0fd1b963e8a38",
+ "code_stamp": "v4-27f9b5f377ae0bc8",
  "reference_version": 4,
  "mootation": "0.1.0",
  "names": {
@@ -732,6 +732,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": {
     "family": "DTLZ2",
@@ -851,6 +852,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": {
     "family": "C2-DTLZ2",
@@ -965,6 +967,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": {
     "family": "DTLZ2",
@@ -1086,6 +1089,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": null,
+   "seeded_stream": null,
    "distance": false,
    "spec": {
     "family": "bbob-biobj",
@@ -1119,7 +1123,7 @@
    "family": "catZDT",
    "n_var": 11,
    "n_obj": 2,
-   "n_con": null,
+   "n_con": 0,
    "has_cons": false,
    "n_eq": 0,
    "bounds": [
@@ -1127,6 +1131,407 @@
      0.0,
      2.0
     ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": true,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "seeded_stream": null,
+   "user_kinds": [
+    "cat",
+    "real",
+    "real",
+    "real",
+    "real",
+    "real",
+    "real",
+    "real",
+    "real",
+    "real",
+    "real"
+   ],
+   "cat_levels": [
+    3,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "var_kinds": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "core_bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "discrete_values": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+   ],
+   "gene_levels": [
+    3
+   ],
+   "distance": false,
+   "spec": {
+    "family": "catZDT1",
+    "n_var": 11,
+    "n_obj": 2
+   },
+   "check": {
+    "x": [
+     1.0,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333
+    ],
+    "F": [
+     0.5333333333333333,
+     4.058182756356381
+    ],
+    "G": []
+   }
+  },
+  {
+   "name": "bbobbiobjmixint01_n05_2D",
+   "family": "bbobbiobjmixint",
+   "n_var": 5,
+   "n_obj": 2,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     3.0
+    ],
+    [
+     0.0,
+     7.0
+    ],
+    [
+     0.0,
+     15.0
+    ],
+    [
+     -5.0,
+     5.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": true,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "seeded_stream": null,
+   "user_kinds": [
+    "int",
+    "int",
+    "int",
+    "int",
+    "real"
+   ],
+   "cat_levels": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "var_kinds": [
+    1,
+    1,
+    1,
+    1,
+    0
+   ],
+   "core_bounds": [
+    [
+     -0.4999999,
+     1.4999999
+    ],
+    [
+     -0.4999999,
+     3.4999999
+    ],
+    [
+     -0.4999999,
+     7.4999999
+    ],
+    [
+     -0.4999999,
+     15.4999999
+    ],
+    [
+     -5.0,
+     5.0
+    ]
+   ],
+   "discrete_values": [
+    [],
+    [],
+    [],
+    [],
+    []
+   ],
+   "gene_levels": [],
+   "distance": false,
+   "spec": {
+    "family": "bbob-biobj-mixint",
+    "n_var": 5,
+    "n_obj": 2,
+    "bbob_fnum": 1,
+    "bbob_iid": 1
+   },
+   "check": {
+    "x": [
+     0.5,
+     1.6,
+     3.966666666666667,
+     7.5,
+     0.3333333333333333
+    ],
+    "F": [
+     7.741681410890754,
+     -94.91070293766535
+    ],
+    "G": []
+   }
+  },
+  {
+   "name": "RE91",
+   "family": "RE",
+   "n_var": 7,
+   "n_obj": 9,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.5,
+     1.5
+    ],
+    [
+     0.45,
+     1.35
+    ],
+    [
+     0.5,
+     1.5
+    ],
+    [
+     0.5,
+     1.5
+    ],
+    [
+     0.875,
+     2.625
+    ],
+    [
+     0.4,
+     1.2
+    ],
+    [
+     0.4,
+     1.2
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": false,
+   "front_exact": false,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": true,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "seeded_stream": "RE91",
+   "distance": false,
+   "spec": {
+    "family": "RE91",
+    "n_var": 7,
+    "n_obj": 9
+   },
+   "check": {
+    "x": [
+     1.0,
+     0.93,
+     1.0666666666666667,
+     1.0,
+     1.8083333333333333,
+     0.8533333333333334,
+     0.8
+    ],
+    "F": [
+     29.887025200000004,
+     0.7575861200124357,
+     77.89635841078041,
+     0.6767675491775804,
+     0.9498008901481794,
+     0.9784643882572649,
+     0.9947713926555672,
+     0.9833955439323083,
+     0.9372292319650717
+    ],
+    "G": []
+   }
+  },
+  {
+   "name": "OJZJ_n10_k2",
+   "family": "OJZJ",
+   "n_var": 10,
+   "n_obj": 2,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
     [
      0.0,
      1.0
@@ -1186,105 +1591,96 @@
    "failing_region": null,
    "noise": null,
    "uninformative": null,
-   "distance": false,
-   "spec": null
-  },
-  {
-   "name": "bbobbiobjmixint01_n05_2D",
-   "family": "bbobbiobjmixint",
-   "n_var": 5,
-   "n_obj": 2,
-   "n_con": 0,
-   "has_cons": false,
-   "n_eq": 0,
-   "bounds": [
-    [
-     0.0,
-     1.0
-    ],
-    [
-     0.0,
-     3.0
-    ],
-    [
-     0.0,
-     7.0
-    ],
-    [
-     0.0,
-     15.0
-    ],
-    [
-     -5.0,
-     5.0
-    ]
+   "seeded_stream": null,
+   "user_kinds": [
+    "bin",
+    "bin",
+    "bin",
+    "bin",
+    "bin",
+    "bin",
+    "bin",
+    "bin",
+    "bin",
+    "bin"
    ],
-   "pop_size": 100,
-   "n_gen": 500,
-   "problem_version": 2,
-   "modification": null,
-   "multimodal_ps": false,
-   "has_pareto_front": false,
-   "has_pareto_set": false,
-   "front_exact": true,
-   "shared_reference": false,
-   "dense_reference": false,
-   "cyclic_vars": [],
-   "stochastic": false,
-   "own_evaluator": false,
-   "typed": true,
-   "failing": false,
-   "failing_region": null,
-   "noise": null,
-   "uninformative": null,
-   "var_kinds": [
-    1,
-    1,
-    1,
-    1,
+   "cat_levels": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
     0
    ],
-   "core_bounds": [
+   "var_kinds": [],
+   "core_bounds": [],
+   "discrete_values": [],
+   "gene_levels": [],
+   "cover_front": [
     [
-     -0.4999999,
-     1.4999999
+     -2.0,
+     -12.0
     ],
     [
-     -0.4999999,
-     3.4999999
-    ],
-    [
-     -0.4999999,
-     7.4999999
-    ],
-    [
-     -0.4999999,
-     15.4999999
+     -4.0,
+     -10.0
     ],
     [
      -5.0,
-     5.0
+     -9.0
+    ],
+    [
+     -6.0,
+     -8.0
+    ],
+    [
+     -7.0,
+     -7.0
+    ],
+    [
+     -8.0,
+     -6.0
+    ],
+    [
+     -9.0,
+     -5.0
+    ],
+    [
+     -10.0,
+     -4.0
+    ],
+    [
+     -12.0,
+     -2.0
     ]
    ],
    "distance": false,
    "spec": {
-    "family": "bbob-biobj-mixint",
-    "n_var": 5,
+    "family": "OJZJ",
+    "n_var": 10,
     "n_obj": 2,
-    "bbob_fnum": 1,
-    "bbob_iid": 1
+    "k": 2
    },
    "check": {
     "x": [
      0.5,
-     1.6,
-     3.966666666666667,
-     7.5,
-     0.3333333333333333
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5,
+     0.5333333333333333,
+     0.5666666666666667,
+     0.5
     ],
     "F": [
-     7.741681410890754,
-     -94.91070293766535
+     -12.0,
+     -2.0
     ],
     "G": []
    }
@@ -1451,6 +1847,7 @@
    },
    "noise": null,
    "uninformative": null,
+   "seeded_stream": null,
    "distance": false,
    "spec": null,
    "fail_checks": [
@@ -1718,6 +2115,7 @@
    },
    "noise": null,
    "uninformative": null,
+   "seeded_stream": null,
    "distance": false,
    "spec": null,
    "fail_checks": [
@@ -1976,6 +2374,7 @@
     }
    },
    "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -2274,6 +2673,7 @@
     }
    },
    "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -2557,6 +2957,7 @@
     }
    },
    "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -2855,6 +3256,7 @@
     }
    },
    "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -3037,6 +3439,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": "f1",
+   "seeded_stream": null,
    "distance": false,
    "spec": null,
    "uninformative_checks": {
@@ -3249,6 +3652,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": "f2b",
+   "seeded_stream": null,
    "distance": false,
    "spec": null,
    "uninformative_checks": {
@@ -3413,6 +3817,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": "f3b",
+   "seeded_stream": null,
    "distance": false,
    "spec": null,
    "uninformative_checks": {
@@ -3577,6 +3982,7 @@
    "failing_region": null,
    "noise": null,
    "uninformative": "f4b",
+   "seeded_stream": null,
    "distance": false,
    "spec": null,
    "uninformative_checks": {
