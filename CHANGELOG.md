@@ -23,6 +23,13 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs a problem whose reference is built for the campaign
+  (not `refs.shared`: RE, CRE, KUR, POL, QV, bbob-biobj ...) from the
+  campaign's own cache, `<results>/_references/<name>.npz`, which the
+  Python engine builds: read when its stamp is the registry's code stamp
+  and its `want` the run's (`campaign_references`); left to Python before.
+  14 such problems (one shared beside them) under three cores: 42 runs as
+  the Python engine's, record for record.
 - The C++ engine runs the noisy copies (`<base>_n1` ... `_h5`,
   benchmarks/noisy.py) of the problems of its suite: the registry export
   hands over the base's spec and the noise (`noise`: kind, sigma, the

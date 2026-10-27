@@ -532,6 +532,32 @@ inline void write_campaign_json(const std::filesystem::path& root, const Config&
     std::filesystem::rename(tmp, root / "campaign.json");
 }
 
+// what a run asks of its references (reference_data's front and pset)
+struct Wanted {
+    bool front = false, pset = false;
+};
+
+inline Wanted wanted(const CampaignSpec& spec, const RegistryProblem& p)
+{
+    Wanted w;
+    w.pset = spec.set_metrics && p.has_pareto_set;
+    for (const auto* list : {&spec.metrics, &spec.final_metrics})
+        for (const auto& m : *list) {
+            w.front = w.front || needs_front().count(m);
+            w.pset = w.pset || needs_set().count(m);
+        }
+    return w;
+}
+
+// a problem's references from the campaign's own cache (campaign_references)
+inline std::optional<JobReferences> own_references(const std::filesystem::path& root, const ProblemRegistry& preg,
+                                                   const CampaignSpec& spec, const Job& job)
+{
+    const Wanted w = wanted(spec, preg.problems.at(job.problem));
+    return campaign_references(root / "_references" / (job.problem + ".npz"), preg.code_stamp, spec.n_ref, w.front,
+                               spec.dense_reference, w.pset);
+}
+
 // run_campaign: the campaign's jobs not done yet, run by `workers` threads
 inline EngineCounts run_campaign(const std::string& text, const std::filesystem::path& source_path,
                                  const ProblemRegistry& preg, const EngineOptions& opt)
@@ -583,11 +609,16 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
             ++counts.left[*why];
             continue;
         }
+        if (!p.shared_reference && !own_references(*root, preg, spec, *j)) {
+            ++counts.left["a reference built for the campaign, not built yet (the Python engine builds it)"];
+            continue;
+        }
         todo.push_back(j);
     }
-    // every reference the jobs read, there before the first runs
+    // every reference the jobs read from the cache, there before the first runs
     std::set<std::string> missing;
     for (const Job* j : todo) {
+        if (!preg.problems.at(j->problem).shared_reference) continue;
         const auto path = entry_path(preg.reference_version, j->problem, spec.n_ref);
         if (!std::filesystem::is_regular_file(path, ec)) missing.insert(j->problem);
     }
@@ -628,14 +659,14 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
             const Job& job = *todo[k];
             try {
                 const RegistryProblem& p = preg.problems.at(job.problem);
-                bool front = false, with_set = spec.set_metrics && p.has_pareto_set;
-                for (const auto* list : {&spec.metrics, &spec.final_metrics})
-                    for (const auto& w : *list) {
-                        front = front || needs_front().count(w);
-                        with_set = with_set || needs_set().count(w);
-                    }
-                const auto entry = load_entry(entry_path(preg.reference_version, job.problem, spec.n_ref));
-                JobRun run(job, spec, p, shared_references(entry, front, spec.dense_reference, with_set));
+                const Wanted w = wanted(spec, p);
+                JobReferences refs;
+                if (p.shared_reference)
+                    refs = shared_references(load_entry(entry_path(preg.reference_version, job.problem, spec.n_ref)),
+                                             w.front, spec.dense_reference, w.pset);
+                else
+                    refs = *own_references(*root, preg, spec, job);
+                JobRun run(job, spec, p, std::move(refs));
                 run.set_registry(preg, jreg);
                 const JobOutcome out = run.run(opt.process);
                 const JobFiles files = run.finish(out);

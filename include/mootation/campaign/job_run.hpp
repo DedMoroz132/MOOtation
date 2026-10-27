@@ -130,6 +130,39 @@ inline JobReferences shared_references(const ReferenceEntry& e, bool front, bool
     return r;
 }
 
+// campaign.reference_data for a problem whose reference is not in the cache
+// of references (refs.shared): the campaign's own cache, <results>/_references/
+// <name>.npz, which the Python engine builds (np.savez of stamp, want, ideal,
+// nadir and what the run asks for), read when it is there for this code
+// (stamp: the registry's code stamp) and this ask (want); nothing otherwise.
+inline std::optional<JobReferences> campaign_references(const std::filesystem::path& path, const std::string& stamp,
+                                                        std::int64_t n_ref, bool front, bool dense, bool pset)
+{
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec)) return std::nullopt;
+    const std::string want = "n" + std::to_string(n_ref) + "-f" + (front ? "1" : "0") + "-d" + (dense ? "1" : "0") +
+                             "-s" + (pset ? "1" : "0");
+    std::map<std::string, npz::Array> z;
+    try {
+        z = npz::load(path);
+        if (!z.count("stamp") || z.at("stamp").text() != stamp || !z.count("want") || z.at("want").text() != want ||
+            !z.count("ideal") || !z.count("nadir"))
+            return std::nullopt;
+    } catch (const std::exception&) {
+        return std::nullopt;                          // unreadable: the Python engine builds it again
+    }
+    std::optional<Matrix> ideal = matrix_of(z.at("ideal")), nadir = matrix_of(z.at("nadir"));
+    JobReferences r;
+    r.ideal = ideal->values;
+    r.nadir = nadir->values;
+    if (z.count("ref")) r.ref = matrix_of(z.at("ref"));
+    if (z.count("ref3")) r.ref3 = matrix_of(z.at("ref3"));
+    if (z.count("pset")) r.pset = matrix_of(z.at("pset"));
+    r.info3 = z.count("info3") ? json::parse(z.at("info3").text()) : json::Value::null();
+    r.hash = reference_hash(ideal, nadir, r.ref, r.ref3, r.pset);
+    return r;
+}
+
 // why the C++ engine leaves this job to Python, or nothing
 inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& spec, const RegistryProblem& p,
                                           const std::vector<std::string>& algorithms)
@@ -147,7 +180,6 @@ inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& sp
             for (const auto& m : lists)
                 if (m == "g_min" || m == "g_median") return "g_min and g_median: the problem's distance is Python's";
     }
-    if (!p.shared_reference) return "a reference built for the campaign (not the cache of references)";
     return std::nullopt;
 }
 

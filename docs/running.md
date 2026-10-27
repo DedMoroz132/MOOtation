@@ -2157,11 +2157,16 @@ It needs the exported problem registry (`python -m
 mootation.run.registry_export`, or `--registry FILE`) and the cache of
 references built beforehand (`python -m mootation refs build`).
 
-The jobs it does not run yet — a problem outside the C++ suite, typed
-variables, equality constraints, a reference built for the campaign rather
-than taken from the cache — it leaves pending and counts by reason at the
-end. Running the same config with the Python engine afterwards runs exactly
-those: every job the C++ engine finished is in the store and skipped.
+It runs the problems of the C++ suite and their failing and noisy copies.
+The jobs it does not run yet — a problem outside the C++ suite, an
+uninformative problem, typed variables, equality constraints, a baseline or
+a scalarization method — it leaves pending and counts by reason at the end.
+Running the same config with the Python engine afterwards runs exactly
+those: every job the C++ engine finished is in the store and skipped. A
+problem whose reference is built for the campaign rather than kept in the
+cache (an approximate front: RE, CRE, KUR, bbob-biobj ...) it runs once the
+Python engine has built that reference in `<results>/_references/`, for the
+same code and the same metrics; before, it leaves it too.
 
 ```bash
 <build>/engine/mootation run camp.toml --workers 8        # what C++ runs
