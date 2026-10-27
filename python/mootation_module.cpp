@@ -465,43 +465,16 @@ PYBIND11_MODULE(_core, m)
           "(EMO 2017) — the farthest points of a dense lattice, from the centre on. "
           "Deterministic; what n_ref_points gives nsga3, a_nsga3, theta_dea and srv_nsga3.");
     m.def("operator_stats", []() {
-              // Since the previous call: offspring evaluated, the shares of them
-              // that left the box before repair (and of their variables), that
-              // survived, that no parent dominates, and the mean step. None where
-              // nothing was counted.
+              // Since the previous call (run_core.hpp, operator_stats): offspring
+              // evaluated, the shares of them that left the box before repair
+              // (and of their variables), that survived, that no parent
+              // dominates, and the mean step. None where nothing was counted.
               py::dict d;
-              const long long ev = mrun::st().evaluations.load() - mrun::st().ops.evals_read;
-              const auto& rc = mootation::ops::repair_counts();
-              const double n_vars = mrun::st().problem ? static_cast<double>(mrun::st().problem->bounds.size()) : 0.0;
-              d["offspring"] = ev;
-              if (ev > 0) {
-                  d["oob_share"] = static_cast<double>(rc.out_children - mrun::st().ops.rc_read.out_children) / ev;
-                  d["oob_var_share"] = n_vars > 0
-                      ? py::cast(static_cast<double>(rc.out_vars - mrun::st().ops.rc_read.out_vars) / (ev * n_vars))
-                      : py::none();
-              } else {
-                  d["oob_share"] = py::none();
-                  d["oob_var_share"] = py::none();
+              for (const auto& s : mrun::operator_stats()) {
+                  if (!s.value) d[py::str(s.name)] = py::none();
+                  else if (s.integer) d[py::str(s.name)] = static_cast<long long>(*s.value);
+                  else d[py::str(s.name)] = *s.value;
               }
-              if (mrun::st().ops.on && mrun::st().ops.off > 0) {
-                  d["survival_share"] = static_cast<double>(mrun::st().ops.surv) / mrun::st().ops.off;
-                  d["offspring_nd_share"] = static_cast<double>(mrun::st().ops.nd) / mrun::st().ops.off;
-              } else {
-                  d["survival_share"] = py::none();
-                  d["offspring_nd_share"] = py::none();
-              }
-              d["step_mean"] = (mrun::st().ops.on && mrun::st().ops.step_n > 0)
-                  ? py::cast(mrun::st().ops.step / static_cast<double>(mrun::st().ops.step_n)) : py::none();
-              // de, de_pbest and portfolio (operators/real_crossover.hpp)
-              for (const auto& kv : mootation::ops::crossover_stats(false)) d[py::str(kv.first)] = kv.second;
-              // mosa: the annealing's state (algorithms/mosa.hpp)
-              for (const auto& kv : mootation::mosa_record()) d[py::str(kv.first)] = kv.second;
-              // the inner archive (operators/inner_archive.hpp)
-              for (const auto& kv : mootation::ops::inner_archive_stats(false)) d[py::str(kv.first)] = kv.second;
-              mrun::st().ops.evals_read = mrun::st().evaluations.load();
-              mrun::st().ops.rc_read = rc;
-              mrun::st().ops.off = mrun::st().ops.surv = mrun::st().ops.nd = mrun::st().ops.step_n = 0;
-              mrun::st().ops.step = 0.0;
               return d;
           },
           "Operator statistics since the previous call, for the run in progress "

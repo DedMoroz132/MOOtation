@@ -14,10 +14,9 @@
 // The jobs it runs (refusal() says why not the others, which the Python
 // engine runs): a problem of the C++ suite whose run needs no Python
 // (registry.hpp), a core of algorithms.def (not a baseline or a
-// scalarization method), the first population uniform, no polishing, and of
-// [campaign] neither operator statistics nor the learned coordinates'
-// diagnostics; g_min and g_median only where the
-// problem has no distance of its own.
+// scalarization method), the first population uniform, no polishing, no
+// learned coordinates' diagnostics ([campaign] coords_diag); g_min and
+// g_median only where the problem has no distance of its own.
 // ============================================================================
 
 #include <algorithm>
@@ -172,7 +171,6 @@ inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& sp
         return "not a core of algorithms.def (a baseline or a scalarization method)";
     if (job.init != "uniform") return "a designed first population (init)";
     if (const json::Value* v = job.params.find("polish"); v && detail::py_str(*v) != "off") return "polish";
-    if (spec.operator_stats) return "operator statistics";
     if (spec.coords_diag) return "the learned coordinates' diagnostics";
     if (p.distance) {
         for (const auto& lists : {spec.metrics, spec.final_metrics})
@@ -342,6 +340,7 @@ public:
         cfg.max_evaluations = budget_;
         if (native_->n_con > 0) cfg.constraint_mode = ConstraintMode::FEASIBILITY;
         apply_knobs(cfg, job_.params);
+        cfg.operator_stats = spec_.operator_stats;
         if (!p_.var_kinds.empty()) {
             // minimize's layout: the kinds, rounded into the genome (lamarck,
             // int_repair's default), polynomial mutation's index 3 for them
@@ -795,7 +794,9 @@ public:
             for (const auto& [k, v] : res.settings) s.set(k, V::string(v));
             meta.set("settings", s);
         }
-        meta.set("operator_stats", V::boolean(false));
+        if (spec_.operator_stats && !final.keys.empty())
+            for (const auto& [k, v] : res.operator_totals) final.set(k, V::number(v));
+        meta.set("operator_stats", V::boolean(spec_.operator_stats));
         // the uninformative problems count where every evaluated point and
         // every non-dominated one fell
         if (const auto u = std::dynamic_pointer_cast<const UninformativeNative>(native_))
@@ -1408,6 +1409,11 @@ private:
             rec.set("igdp_norm_all", finite_or_null(v.first));
             rec.set("eps_norm_all", finite_or_null(v.second));
         }
+        if (spec_.operator_stats)
+            for (const auto& s : run::operator_stats())
+                rec.set(s.name, !s.value   ? json::Value::null()
+                                : s.integer ? json::Value::integer(static_cast<std::int64_t>(*s.value))
+                                            : json::Value::number(*s.value));
         for (auto b : hard_) {
             if (fe_rec > b) continue;
             json::Value pop = json::Value::object();

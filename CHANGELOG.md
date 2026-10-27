@@ -23,6 +23,13 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs campaigns with `operator_stats`: the statistics since
+  the previous record in every record, the run's totals in `final`, as
+  `_run_job` records them. `run::operator_stats()` (run_core.hpp) is what
+  the extension's `operator_stats()` returned, moved out of the binding so
+  that both read the one function. Four problems under five variants
+  (portfolio crossover, mosa and spea2 among them), two seeds: 40 runs as
+  the Python engine's.
 - The C++ engine runs campaigns with `hard_budgets`: the archive scenario
   of `answer_k` points after exactly each budget (at the end where the run
   stopped before it) and the population's last record at or below it,

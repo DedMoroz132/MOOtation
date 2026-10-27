@@ -1198,6 +1198,60 @@ RunResult run_core(const RunConfig& cfg)
     return r;
 }
 
+// operator_stats(): the operator statistics since the previous call, for the
+// run in progress (called from the on_generation observer: the binding's
+// operator_stats(), the C++ campaign engine's records). In order: offspring
+// evaluated (integer), the shares of them that left the box before repair
+// (and of their variables), that survived, that no parent dominates, the mean
+// step — none where nothing was counted; the last three need
+// RunConfig::operator_stats — then the crossover's, mosa's and the inner
+// archive's records.
+struct OperatorStat {
+    std::string name;
+    std::optional<double> value;        // none: nothing counted
+    bool integer = false;
+};
+
+inline std::vector<OperatorStat> operator_stats()
+{
+    std::vector<OperatorStat> d;
+    RunState& s = st();
+    const long long ev = s.evaluations.load() - s.ops.evals_read;
+    const auto& rc = ops::repair_counts();
+    const double n_vars = s.problem ? static_cast<double>(s.problem->bounds.size()) : 0.0;
+    d.push_back({"offspring", static_cast<double>(ev), true});
+    if (ev > 0) {
+        d.push_back({"oob_share", static_cast<double>(rc.out_children - s.ops.rc_read.out_children) / ev});
+        d.push_back({"oob_var_share", n_vars > 0 ? std::optional<double>(static_cast<double>(
+                                                       rc.out_vars - s.ops.rc_read.out_vars) / (ev * n_vars))
+                                                 : std::nullopt});
+    } else {
+        d.push_back({"oob_share", std::nullopt});
+        d.push_back({"oob_var_share", std::nullopt});
+    }
+    if (s.ops.on && s.ops.off > 0) {
+        d.push_back({"survival_share", static_cast<double>(s.ops.surv) / s.ops.off});
+        d.push_back({"offspring_nd_share", static_cast<double>(s.ops.nd) / s.ops.off});
+    } else {
+        d.push_back({"survival_share", std::nullopt});
+        d.push_back({"offspring_nd_share", std::nullopt});
+    }
+    d.push_back({"step_mean", s.ops.on && s.ops.step_n > 0
+                                  ? std::optional<double>(s.ops.step / static_cast<double>(s.ops.step_n))
+                                  : std::nullopt});
+    // de, de_pbest and portfolio (operators/real_crossover.hpp)
+    for (const auto& kv : ops::crossover_stats(false)) d.push_back({kv.first, kv.second});
+    // mosa: the annealing's state (algorithms/mosa.hpp)
+    for (const auto& kv : mosa_record()) d.push_back({kv.first, kv.second});
+    // the inner archive (operators/inner_archive.hpp)
+    for (const auto& kv : ops::inner_archive_stats(false)) d.push_back({kv.first, kv.second});
+    s.ops.evals_read = s.evaluations.load();
+    s.ops.rc_read = rc;
+    s.ops.off = s.ops.surv = s.ops.nd = s.ops.step_n = 0;
+    s.ops.step = 0.0;
+    return d;
+}
+
 // ── Dispatch, generated from include/mootation/algorithms.def ───────────────
 // One run of the algorithm `name` on `problem`. The problem is the run's
 // until it returns; the state of the thread (st()) is cleared afterwards.
