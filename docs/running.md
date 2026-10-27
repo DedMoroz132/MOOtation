@@ -2183,11 +2183,12 @@ references built beforehand (`python -m mootation refs build`).
 It runs every problem of the registry: the C++ suite's (with integer,
 discrete, binary and categorical variables), their failing and noisy copies,
 the uninformative problems and RE91 with its run's stream; the cores, the
-seven baselines and the two ablations. The jobs it does not run — a
-scalarization method, a designed first population, polishing, the learned
-coordinates' diagnostics, a core without the integer genome on bits or
-categories, a baseline on typed variables — it leaves pending and counts by
-reason at the end.
+seven baselines and the two ablations, the scalarization methods
+(`scalar/scalar.hpp`) and the polishing (`scalar/polish.hpp`). The jobs it
+does not run — a designed first population, the learned coordinates'
+diagnostics, a core without the integer genome on bits or categories, a
+baseline, a scalarization method or polishing on typed variables, knobs
+minimize refuses — it leaves pending and counts by reason at the end.
 `--report FILE` writes them (their indices) and the counts as JSON, which
 is how the Python engine learns what is left to it. A problem whose
 reference is built for the campaign rather than kept in the cache (an

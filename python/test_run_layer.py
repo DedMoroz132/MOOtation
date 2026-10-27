@@ -12395,9 +12395,17 @@ def a_campaign_hands_what_it_can_to_the_cxx_engine():
     if C.engine_path() is None or not _have_numpy() or _core_with("subset_select") is None:
         print("  skip  a_campaign_hands...: no C++ engine"); return
     from mootation.run.config import load
-    # nsga2's jobs the C++ engine runs, eps_nm's (a scalarization method) it leaves
-    text = _STORE_TOML.replace('{ name = "moead", pop = 0, gens = 0 }',
-                               '{ name = "eps_nm", pop = 0, gens = 0 }')
+    # the C++ engine runs a core, a scalarization method and a polished core
+    # on ZDT1 and nsga2 on OMM_n10; it leaves the others on OMM_n10, which
+    # fail in Python: mosa (a core without the integer genome, incompatible),
+    # eps_nm and the polishing (real variables only)
+    text = (_STORE_TOML.replace('{ name = "moead", pop = 0, gens = 0 }',
+                                '{ name = "mosa", pop = 0, gens = 0 }, '
+                                '{ name = "eps_nm", pop = 0, gens = 0 }, '
+                                '{ name = "nsga2", label = "pol", pop = 0, gens = 0, '
+                                'params = { polish = "sqp" } }')
+            .replace('problems = ["ZDT1", "DTLZ2_3D_n1", "SYM-PART_simple"]',
+                     'problems = ["ZDT1", "OMM_n10"]'))
     with tempfile.TemporaryDirectory() as td:
         made = {}
         for name, engine in (("p", "python"), ("c", "cxx")):
@@ -12409,16 +12417,22 @@ def a_campaign_hands_what_it_can_to_the_cxx_engine():
             spec = C.campaign_spec(cfg)
             root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
             counts = C.run_campaign(cfg, workers=2, engine=engine)
-            assert counts["done"] == len(jobs) and counts["failed"] == 0, (engine, counts)
+            assert counts["done"] == len(jobs) - 6 and counts["failed"] == 6, (engine, counts)
             made[name] = (cfg, root, jobs)
         (_, rp, jobs), (cfg_c, rc, _) = made["p"], made["c"]
+        platforms = set()
         for job in jobs:
-            _same_run(C.run_dir_of(rp, job), C.run_dir_of(rc, job))
-        platforms = {json.loads((C.run_dir_of(rc, j) / "meta.json").read_text(encoding="utf-8"))["platform"]
-                     for j in jobs}
+            mp, mc = (json.loads((C.run_dir_of(r, job) / "meta.json").read_text(encoding="utf-8"))
+                      for r in (rp, rc))
+            if job.problem == "OMM_n10" and job.key != "nsga2":
+                assert mp["status"] == mc["status"] == "failed", mc
+                assert bool(mc.get("incompatible")) == (job.algorithm == "mosa"), mc
+            else:
+                _same_run(C.run_dir_of(rp, job), C.run_dir_of(rc, job))
+            platforms.add(mc["platform"])
         assert len(platforms) == 2, platforms           # the C++ engine ran some, Python the rest
         again = C.run_campaign(cfg_c, workers=2, engine="cxx")
-        assert again["done"] == 0 and again["skipped"] == len(jobs), again
+        assert again["done"] == 0 and again["skipped"] == len(jobs) - 6, again
 
 
 @test

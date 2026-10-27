@@ -384,7 +384,9 @@ def minimize(
     # the batch's constraint rows are kept, by point, until the core asks for
     # them right after the objectives (the binding asks limits_batch for the
     # rows it has just evaluated); a point asked for outside a batch (a warm
-    # start's, a design's) is computed alone.
+    # start's, a design's, every point of a scalarization method) is a batch
+    # of one, its constraints kept the same way: fn's own call and then
+    # constraints' would compute it twice.
     if batch_with_constraints:
         if batch is None:
             raise ValueError("batch_with_constraints needs batch, returning (objectives, "
@@ -408,7 +410,10 @@ def minimize(
                 return last[k]
             return list(_b([x])[1][0])
 
-        batch, constraints, has_ineq = objectives_part, constraints_part, True
+        def one_part(x, _o=objectives_part):
+            return _o([x])[0]
+
+        batch, constraints, has_ineq, fn = objectives_part, constraints_part, True, one_part
 
     # Failed evaluations (mootation.failures; task 7, supplement 3, §2): the
     # guard turns the user's exceptions and None rows into NaN, which the core
@@ -537,7 +542,7 @@ def minimize(
         if polish_how is None:
             return result
         knobs_s = {k: v for k, v in knobs.items() if k in ("fd_step", "local_tol")}
-        return _polish.run(
+        out = _polish.run(
             result, recorder, how=polish_how, points=polish_points, fn=fn,
             constraints=constraints, bounds=bounds, n_objs=int(n_objs),
             n_cons=int(n_cons) if constraints is not None else 0, n_eq=n_eq,
@@ -546,6 +551,8 @@ def minimize(
             on_generation=on_generation if int(record_every) > 0 else None,
             record_every=int(record_every), guard=guard,
             **{k: float(v) for k, v in knobs_s.items()})
+        out.unique_evaluations = points.count       # the polishing's points too
+        return out
 
     if algorithm in SCALAR_NAMES:
         # scalarization with a local solver (mootation.scalar, _core.scalar): not a core

@@ -40,6 +40,8 @@
 #include "../run_core.hpp"
 #include "../run_ledger.hpp"
 #include "../run_metrics.hpp"
+#include "../scalar/polish.hpp"
+#include "../scalar/scalar.hpp"
 #include "../set_archive.hpp"
 #include "../settings.hpp"
 #include "jobs.hpp"
@@ -164,6 +166,37 @@ inline std::optional<JobReferences> campaign_references(const std::filesystem::p
     return r;
 }
 
+// polish.check: (how, share, points) from the params, or nothing where
+// minimize refuses them (left to the Python engine, which records why); how
+// "off" is no polishing
+struct PolishKnobs {
+    std::string how = "off";
+    double share = 0.2;
+    long long points = 0;
+};
+
+inline std::optional<PolishKnobs> polish_knobs(const json::Value& params)
+{
+    using Kind = json::Value::Kind;
+    PolishKnobs k;
+    auto number = [](const json::Value& v, double& out) {
+        if (v.kind == Kind::Float) out = v.f;
+        else if (v.kind == Kind::Int) out = static_cast<double>(v.i);
+        else if (v.kind == Kind::Bool) out = v.b ? 1.0 : 0.0;
+        else return false;
+        return true;
+    };
+    if (const json::Value* v = params.find("polish")) k.how = detail::py_str(*v);
+    if (k.how != "off" && k.how != "sqp" && k.how != "nm") return std::nullopt;
+    if (const json::Value* v = params.find("polish_share"); v && !number(*v, k.share)) return std::nullopt;
+    double pts = 0.0;
+    if (const json::Value* v = params.find("polish_points"); v && !number(*v, pts)) return std::nullopt;
+    if (k.how == "off") return k;
+    if (!(0.0 < k.share && k.share < 1.0) || pts < 0.0 || pts != std::floor(pts)) return std::nullopt;
+    k.points = static_cast<long long>(pts);
+    return k;
+}
+
 // why the C++ engine leaves this job to Python, or nothing
 inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& spec, const RegistryProblem& p,
                                           const std::vector<std::string>& algorithms,
@@ -172,10 +205,19 @@ inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& sp
     if (auto why = engine_refusal(p)) return why;
     const bool baseline = std::find(baselines.begin(), baselines.end(), job.algorithm) != baselines.end();
     if (baseline && !p.user_kinds.empty()) return "a baseline on typed variables";
-    if (!baseline && std::find(algorithms.begin(), algorithms.end(), job.algorithm) == algorithms.end())
-        return "not a core of algorithms.def (a scalarization method)";
+    const auto& sn = scalar::names();
+    const bool scalar = std::find(sn.begin(), sn.end(), job.algorithm) != sn.end();
+    if (scalar && !p.user_kinds.empty()) return "a scalarization method on typed variables";
+    if (scalar)
+        if (const json::Value* v = job.params.find("constraint_mode"); v && detail::py_str(*v) != "feasibility")
+            return "a scalarization method under another constraint_mode";
+    if (!baseline && !scalar && std::find(algorithms.begin(), algorithms.end(), job.algorithm) == algorithms.end())
+        return "not a core of algorithms.def";
     if (job.init != "uniform") return "a designed first population (init)";
-    if (const json::Value* v = job.params.find("polish"); v && detail::py_str(*v) != "off") return "polish";
+    if (const json::Value* v = job.params.find("polish"); v && detail::py_str(*v) != "off") {
+        if (!p.user_kinds.empty()) return "polish on typed variables";
+        if (!polish_knobs(job.params)) return "polish knobs minimize refuses";
+    }
     if (spec.coords_diag) return "the learned coordinates' diagnostics";
     if (p.distance) {
         for (const auto& lists : {spec.metrics, spec.final_metrics})
@@ -351,10 +393,17 @@ public:
         cfg.pop_size = static_cast<int>(job_.pop);
         cfg.n_gen = static_cast<int>(job_.gens);
         cfg.seed = static_cast<unsigned>(job_.seed);
-        cfg.max_evaluations = budget_;
+        // polishing: the algorithm on the budget without the polishing's
+        // share (Python's round: half to even), every evaluation recorded
+        polish_ = *polish_knobs(job_.params);
+        algo_budget_ = budget_;
+        recording_ = polish_.how != "off";
+        if (polish_.how != "off")
+            algo_budget_ = budget_ - static_cast<std::int64_t>(std::nearbyint(polish_.share * static_cast<double>(budget_)));
+        cfg.max_evaluations = algo_budget_;
         if (native_->n_con > 0) cfg.constraint_mode = ConstraintMode::FEASIBILITY;
         apply_knobs(cfg, job_.params);
-        cfg.operator_stats = spec_.operator_stats;
+        cfg.operator_stats = op_stats();
         if (layout) {
             // minimize's layout: the kinds, rounded into the genome (lamarck,
             // int_repair's default), polynomial mutation's index 3 for them;
@@ -373,7 +422,10 @@ public:
         cfg.on_generation = [this](int gen, std::vector<std::vector<double>> F) { on_gen(gen, std::move(F)); };
         cfg.record_every = grid_kind_ != Grid::Generations ? 1 : static_cast<int>(spec_.record_every);
         try {
-            out.result = baseline_ ? run_baseline(cfg.record_every) : run::run(job_.algorithm, rp, cfg);
+            out.result = baseline_ ? run_baseline(cfg.record_every)
+                         : scalar_   ? run_scalar(cfg.record_every)
+                                     : run::run(job_.algorithm, rp, cfg);
+            if (polish_.how != "off") out.result = run_polish(out.result, cfg.record_every);
         } catch (const TimeoutStop&) {
             // stopped at run_timeout: the trajectory up to its last record
             out.status = "timeout";
@@ -845,9 +897,9 @@ public:
                 meta.set("settings", s);
             }
         }
-        if (spec_.operator_stats && !final.keys.empty())
+        if (op_stats() && !final.keys.empty())
             for (const auto& [k, v] : res.operator_totals) final.set(k, V::number(v));
-        meta.set("operator_stats", V::boolean(spec_.operator_stats));
+        meta.set("operator_stats", V::boolean(op_stats()));
         // the uninformative problems count where every evaluated point and
         // every non-dominated one fell
         if (const auto u = std::dynamic_pointer_cast<const UninformativeNative>(native_))
@@ -1181,6 +1233,7 @@ private:
             if (!seen_rows_.insert(std::move(key)).second) ++dup_x_;
         }
         const std::size_t c = static_cast<std::size_t>(native_->n_con);
+        if (recording_) record_rows(X, F, G, n);
         const std::vector<double> T = truth_ ? true_rows(X.data(), n) : std::vector<double>{};
         ledger_->begin(X.data(), F.data(), n, constrained_ ? G.data() : nullptr, constrained_ ? c : 0,
                        truth_ ? T.data() : nullptr);
@@ -1191,6 +1244,27 @@ private:
             read(b);
         }
         fe_ = ledger_->fe();
+    }
+
+    // polish.Recorder: every point the algorithm evaluated, in order of
+    // first evaluation, with its latest values; every row a call
+    void record_rows(const std::vector<double>& X, const std::vector<double>& F, const std::vector<double>& G,
+                     std::size_t n)
+    {
+        const std::size_t d = static_cast<std::size_t>(p_.n_var), m = static_cast<std::size_t>(p_.n_obj);
+        const std::size_t c = constrained_ ? static_cast<std::size_t>(native_->n_con) : 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            std::vector<double> x(X.begin() + static_cast<std::ptrdiff_t>(i * d),
+                                  X.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+            auto [it, fresh] = recorded_.try_emplace(std::move(x));
+            if (fresh) record_order_.push_back(&it->first);
+            it->second.first.assign(F.begin() + static_cast<std::ptrdiff_t>(i * m),
+                                    F.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
+            if (c)
+                it->second.second.assign(G.begin() + static_cast<std::ptrdiff_t>(i * c),
+                                         G.begin() + static_cast<std::ptrdiff_t>((i + 1) * c));
+            ++recorded_calls_;
+        }
     }
 
     void read(long long b)
@@ -1316,8 +1390,8 @@ private:
             return f;
         };
         auto observe = [this](int gen, const ablations::Rows& F, const ablations::Rows& X) {
-            baseline_x_.clear();
-            for (const auto& x : X) baseline_x_.insert(baseline_x_.end(), x.begin(), x.end());
+            handed_x_.clear();
+            for (const auto& x : X) handed_x_.insert(handed_x_.end(), x.begin(), x.end());
             on_gen(gen, F);
         };
         // the archive's answer: its DSS selection of N (GridArchive.select's default)
@@ -1383,6 +1457,112 @@ private:
         res.objectives = a.F;
         res.variables = a.X;
         res.active_n = a.F.size();
+        return res;
+    }
+
+    // minimize's scalarization path (scalar.run, _core.scalar.run): the
+    // method's own evaluator on the problem, every new point evaluated and
+    // accounted for alone, the observer's rows handed over; the knobs are
+    // the params but minimize's own arguments and the polishing's
+    scalar::Problem scalar_problem()
+    {
+        scalar::Problem P;
+        for (const auto& [l, h] : p_.bounds) {
+            P.lo.push_back(l);
+            P.hi.push_back(h);
+        }
+        P.m = p_.n_obj;
+        P.n_cons = native_->n_con;
+        P.evaluate = [this](const std::vector<double>& x, std::vector<double>& f, std::vector<double>& g) {
+            native_->evaluate(x.data(), f.data(), g.empty() ? nullptr : g.data());
+            account(x, f, constrained_ ? g : std::vector<double>{}, 1);
+        };
+        return P;
+    }
+
+    run::RunResult run_scalar(int record_every)
+    {
+        const scalar::Problem P = scalar_problem();
+        scalar::Knobs knobs;
+        for (std::size_t i = 0; i < job_.params.keys.size(); ++i) {
+            const std::string& k = job_.params.keys[i];
+            const json::Value& v = job_.params.items[i];
+            if (k == "polish" || k == "polish_share" || k == "polish_points" || k == "eta_int" ||
+                k == "constraint_mode" || k == "int_repair")
+                continue;
+            scalar::Knob kn;
+            if (v.kind == json::Value::Kind::String) {
+                kn.is_word = true;
+                kn.word = v.s;
+            } else if (v.kind == json::Value::Kind::Float) {
+                kn.number = v.f;
+            } else if (v.kind == json::Value::Kind::Int) {
+                kn.number = static_cast<double>(v.i);
+            } else if (v.kind == json::Value::Kind::Bool) {
+                kn.number = v.b ? 1.0 : 0.0;
+            } else {
+                throw std::invalid_argument("parameter " + k + " takes a number or a word, got " + py_repr(v));
+            }
+            knobs.emplace_back(k, kn);
+        }
+        scalar::Observer observe = [this](long long gen, const scalar::Rows& F, const scalar::Rows& X) {
+            handed_x_.clear();
+            for (const auto& x : X) handed_x_.insert(handed_x_.end(), x.begin(), x.end());
+            on_gen(static_cast<int>(gen), F);
+        };
+        const scalar::Result r = scalar::run(job_.algorithm, P, kMinimizeEqTol, false, 0.0, static_cast<int>(job_.pop),
+                                             algo_budget_, static_cast<unsigned>(job_.seed), knobs, observe,
+                                             record_every, scalar::Start{});
+        run::RunResult res;
+        res.objectives = r.objectives;
+        res.variables = r.variables;
+        res.cv = r.cv;
+        res.active_n = r.objectives.size();
+        res.ignored = r.ignored;
+        res.evaluations = r.evaluations;
+        res.settings = r.settings;
+        return res;
+    }
+
+    // scalar/polish.py's run: the local solver on some of the points the
+    // algorithm evaluated (recorded_, in order of first evaluation), on the
+    // budget it left; the answer the polished result, the settings the
+    // algorithm's and the polishing's
+    run::RunResult run_polish(const run::RunResult& base, int record_every)
+    {
+        recording_ = false;
+        handing_ = true;                 // the observer's rows are the polishing's
+        std::vector<scalar::Point> points;
+        for (const auto* x : record_order_) {
+            const auto& [f, g] = recorded_.at(*x);
+            points.push_back({*x, f, g});
+        }
+        const scalar::Problem P = scalar_problem();
+        double fd_step = 1.4901161193847656e-08, local_tol = 1e-14;
+        for (const auto& [k, out] : {std::pair<const char*, double*>{"fd_step", &fd_step}, {"local_tol", &local_tol}})
+            if (const json::Value* v = job_.params.find(k))
+                *out = v->kind == json::Value::Kind::Float ? v->f : static_cast<double>(v->i);
+        scalar::Observer observe = [this](long long gen, const scalar::Rows& F, const scalar::Rows& X) {
+            handed_x_.clear();
+            for (const auto& x : X) handed_x_.insert(handed_x_.end(), x.begin(), x.end());
+            on_gen(static_cast<int>(gen), F);
+        };
+        const long long left = std::max<long long>(0, budget_ - recorded_calls_);
+        const scalar::PolishResult r =
+            scalar::polish(P, points, base.variables, base.evaluations, polish_.how, polish_.points, kMinimizeEqTol,
+                           static_cast<int>(job_.pop), left, observe, record_every, fd_step, local_tol);
+        run::RunResult res = base;
+        res.objectives = r.objectives;
+        res.variables = r.variables;
+        res.cv = r.cv;
+        res.active_n = r.objectives.size();
+        res.evaluations = recorded_calls_;
+        res.settings.emplace_back("polish", polish_.how);
+        res.settings.emplace_back("polish_points", std::to_string(r.chosen));
+        res.settings.emplace_back("polish_evaluations", std::to_string(r.spent));
+        res.settings.emplace_back("polish_version", std::to_string(scalar::METHOD_VERSION));
+        res.inner_objectives.clear();
+        res.inner_variables.clear();
         return res;
     }
 
@@ -1546,7 +1726,7 @@ private:
     std::vector<double> variables_of(std::size_t rows)
     {
         std::vector<double> X;
-        if (baseline_) return rows ? baseline_x_ : X;      // the answer's rows, as the baseline hands them
+        if (baseline_ || scalar_ || handing_) return rows ? handed_x_ : X;   // the answer's rows, as handed over
         if (need_x_ && rows && run::st().answer_variables)
             for (const auto& x : run::st().answer_variables()) {
                 if (!has_cat_) {
@@ -1567,7 +1747,7 @@ private:
                 cover_gen_ = gen;
                 cover_fe_ = fe_;
             }
-            if (cover_archive_gen_ < 0) {
+            if (cover_archive_gen_ < 0 && !baseline_ && !scalar_) {
                 std::vector<std::vector<double>> A;
                 if (const auto* live = ops::inner_archive_record().live)
                     for (const auto& mem : *live) A.push_back(mem.f);
@@ -1651,7 +1831,7 @@ private:
             rec.set("igdp_norm_all", finite_or_null(v.first));
             rec.set("eps_norm_all", finite_or_null(v.second));
         }
-        if (spec_.operator_stats)
+        if (op_stats())
             for (const auto& s : run::operator_stats())
                 rec.set(s.name, !s.value   ? json::Value::null()
                                 : s.integer ? json::Value::integer(static_cast<std::int64_t>(*s.value))
@@ -1709,7 +1889,18 @@ private:
     bool snap_ = false, keep_x_ = false;
     long long dup_x_ = 0;                            // the points evaluated again
     bool baseline_ = false;                          // run/baselines.py's, not a core
-    std::vector<double> baseline_x_;                 // the answer's rows the baseline hands to on_gen
+    bool scalar_ = false;                            // a scalarization method (mootation.scalar)
+    PolishKnobs polish_;                             // polish, polish_share, polish_points
+    std::int64_t algo_budget_ = 0;                   // the algorithm's budget: without the polishing's share
+    bool recording_ = false, handing_ = false;       // polishing: the recorder on; the observer's rows handed
+    std::map<std::vector<double>, std::pair<std::vector<double>, std::vector<double>>> recorded_;
+    std::vector<const std::vector<double>*> record_order_;
+    long long recorded_calls_ = 0;
+    static constexpr double kMinimizeEqTol = 1e-4;   // minimize's eq_tol (no equalities here)
+
+    // the operator statistics: a core's only (campaign: not in_python)
+    bool op_stats() const { return spec_.operator_stats && !baseline_ && !scalar_; }
+    std::vector<double> handed_x_;                 // the answer's rows the baseline hands to on_gen
     std::size_t n_genes_ = 0;                        // bits and categories: the integer genome
     bool has_cat_ = false;
     long long cover_gen_ = -1, cover_fe_ = -1, cover_archive_gen_ = -1, cover_archive_fe_ = -1;
@@ -1742,6 +1933,8 @@ public:
     {
         const auto& b = reg.names.baselines;
         baseline_ = std::find(b.begin(), b.end(), job_.algorithm) != b.end();
+        const auto& sn = scalar::names();
+        scalar_ = std::find(sn.begin(), sn.end(), job_.algorithm) != sn.end();
         code_stamp_ = reg.code_stamp;
         reference_version_ = reg.reference_version;
         budget_dependent_ = depends_on_budget(jreg, job_.algorithm, job_.params);

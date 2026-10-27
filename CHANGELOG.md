@@ -10,6 +10,22 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The C++ engine runs the scalarization methods (the seven presets,
+  boostdms, mosqp; `scalar/scalar.hpp`) and polishing (`polish`,
+  `polish_share`, `polish_points`; `scalar/polish.hpp`) as minimize does:
+  the method's or the core's run on the budget without the polishing's
+  share, every evaluation recorded, then the polishing on the rest. On ZDT1,
+  DTLZ2_3D, C2-DTLZ2_3D, DTLZ2_3D_n1 and RE21, two seeds: the nine methods'
+  90 runs and 40 polished runs (nsga2 with sqp and nm, moead_de, eps_nm) as
+  the Python engine's.
+- Fixed (`minimize.py`): with `batch_with_constraints` (a campaign on a
+  constrained problem) a point evaluated alone — every point of a
+  scalarization method, a design's or a warm start's — was computed twice,
+  once for its objectives and once for its constraints, and a campaign
+  counted both: its `fe` was twice the evaluations. It is a batch of one
+  now. **Changed results**: those runs' `fe` and the records it places.
+- Fixed (`minimize.py`): after polishing, `unique_evaluations` (meta.json's
+  `unique_fe`) left out the polishing's points.
 - The designs and the baselines on the library's own generators
   (`designs.hpp`, `ablations.hpp`; `_core.design`, `_core.random_selection_ea`,
   `_core.gsemo`): `std::mt19937` and `rnd::`, `sobol.hpp`'s Joe-Kuo
