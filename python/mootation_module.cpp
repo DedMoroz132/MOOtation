@@ -43,6 +43,8 @@
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
+#include <mootation/ablations.hpp>
+#include <mootation/designs.hpp>
 #include <mootation/fp_env.hpp>
 #include <mootation/hv_box.hpp>
 #include <mootation/hypervolume.hpp>
@@ -457,6 +459,43 @@ PYBIND11_MODULE(_core, m)
           py::arg("seed") = 1,
           "k of the points by dss, hv_greedy or hv_ls_rn (include/mootation/subset_select.hpp); "
           "mootation.subset_select is the function to call.");
+    m.def("design",
+          [](const std::string& kind, std::size_t n, int d, std::int64_t seed) {
+              const std::vector<double> U = mootation::designs::design(kind, n, d, seed);
+              py::array_t<double> out({static_cast<py::ssize_t>(n), static_cast<py::ssize_t>(d)});
+              std::copy(U.begin(), U.end(), out.mutable_data());
+              return out;
+          },
+          py::arg("kind"), py::arg("n"), py::arg("d"), py::arg("seed"),
+          "n points of a design in [0, 1)^d (include/mootation/designs.hpp): uniform, sobol "
+          "(linear matrix scrambling with a digital shift), halton_rand, sobol_owen or lhs, from "
+          "the library's own generators (DESIGN version 2), as an (n, d) array.");
+    m.attr("DESIGN_VERSION") = mootation::designs::kVersion;
+    m.def("random_selection_ea",
+          [](const mootation::ablations::Evaluate& evaluate, const std::vector<double>& lo,
+             const std::vector<double>& hi, std::size_t pop, std::size_t max_evaluations, std::int64_t seed,
+             const mootation::ablations::Observe& on_generation, int record_every) {
+              const auto a = mootation::ablations::random_selection_ea(evaluate, lo, hi, pop, max_evaluations, seed,
+                                                                       on_generation, record_every);
+              return py::make_tuple(a.F, a.X, a.steps);
+          },
+          py::arg("evaluate"), py::arg("lo"), py::arg("hi"), py::arg("pop"), py::arg("max_evaluations"),
+          py::arg("seed"), py::arg("on_generation") = nullptr, py::arg("record_every") = 1,
+          "The ablation random_selection_ea (include/mootation/ablations.hpp) on the library's "
+          "generator: (answer objectives, answer variables, steps).");
+    m.def("gsemo",
+          [](const mootation::ablations::Evaluate& evaluate, const std::vector<double>& lo,
+             const std::vector<double>& hi, std::size_t pop, std::size_t max_evaluations, std::int64_t seed,
+             const mootation::ablations::Select& select, const mootation::ablations::Observe& on_generation,
+             int record_every) {
+              const auto a = mootation::ablations::gsemo(evaluate, lo, hi, pop, max_evaluations, seed, select,
+                                                         on_generation, record_every);
+              return py::make_tuple(a.F, a.X, a.steps);
+          },
+          py::arg("evaluate"), py::arg("lo"), py::arg("hi"), py::arg("pop"), py::arg("max_evaluations"),
+          py::arg("seed"), py::arg("select"), py::arg("on_generation") = nullptr, py::arg("record_every") = 1,
+          "The ablation gsemo (include/mootation/ablations.hpp) on the library's generator; "
+          "select(F, k) picks the answer's rows: (answer objectives, answer variables, steps).");
     m.def("reference_points",
           [](int n_objs, long long h) { return mootation::das_dennis::reference_points(n_objs, h); },
           py::arg("n_objs"), py::arg("h"),

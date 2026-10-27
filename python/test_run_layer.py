@@ -2843,10 +2843,12 @@ def an_owen_scrambled_sobol_plan_is_stratified_seeded_and_off_the_grid():
 
 @test
 def the_older_designs_have_not_moved():
-    """The sobol and lhs designs and the draws of random_search, sobol_search
-    and lhs_search are what they were before the randomized Halton came (task
-    6, item 12.5; lhs's since its power became multiplications, 2026-10-11):
-    rows 0, 5 and 11 of 12 points at seed 5, to 1e-12."""
+    """Version 1 (design_numpy, NumPy's and SciPy's generators): the sobol and
+    lhs designs and the draws of random_search, sobol_search and lhs_search
+    are what they were before the randomized Halton came (task 6, item 12.5;
+    lhs's since its power became multiplications, 2026-10-11). Version 2 (the
+    C++ designs, task 17, stage 5): the five sampling baselines' draws as they
+    were made. Rows 0, 5 and 11 of 12 points at seed 5, to 1e-12."""
     try:
         import numpy as np
     except ImportError:
@@ -2855,7 +2857,8 @@ def the_older_designs_have_not_moved():
     from mootation.run.archive import GridArchive
     from mootation.run.baselines import run_baseline
     box = [(0.0, 1.0), (-2.0, 2.0), (0.0, 10.0)]
-    was = {
+    lo, hi = np.array([b[0] for b in box]), np.array([b[1] for b in box])
+    version1 = {
         "random_search": [[0.80500292374538, 1.23176315894597, 5.15325561042142],
                           [0.844231037608741, -0.430381342660887, 4.93023018731743],
                           [0.436667052175653, -1.18698865554174, 3.24942644575606]],
@@ -2869,8 +2872,35 @@ def the_older_designs_have_not_moved():
     try:
         import scipy  # noqa: F401
     except ImportError:
-        del was["sobol_search"]
-    for name, rows in was.items():
+        del version1["sobol_search"]
+    for name, rows in version1.items():
+        if name == "random_search":                    # NumPy's uniform draws
+            X = lo + np.random.default_rng(5).random((12, 3)) * (hi - lo)
+        else:
+            X = D.design_numpy(name.split("_")[0], 12, box, 5)
+        assert np.allclose(X[[0, 5, 11]], rows, rtol=0, atol=1e-12), name
+    if _core_with("design") is None:
+        return
+    version2 = {
+        "random_search": [[0.22199317108973948, 1.4829292247095056, 2.067191553394264],
+                          [0.27408646199222464, -0.34305992367579474, 2.9607993273364794],
+                          [0.7795145855555298, -1.908267630243674, 5.77662858129756]],
+        "lhs_search": [[0.8896280539412023, 1.5144726367802845, 3.1604714894902948],
+                       [0.6950031125146174, -1.9309580466002307, 8.484538430934483],
+                       [0.5911323160544327, -0.9501249525273747, 1.166285607769998]],
+        "sobol_search": [[0.41423502494581044, 1.3735010521486402, 5.464564964640886],
+                         [0.5202282718382776, -1.0828820308670402, 6.674469711724669],
+                         [0.17142598587088287, -0.03232902754098177, 7.171170678921044]],
+        "halton_search": [[0.8978195640446908, -0.8825879994565242, 8.240311076124684],
+                          [0.27281956404469077, 0.8951897783212535, 8.640311076124686],
+                          [0.21031956404469077, 1.9322268153582898, 7.840311076124685]],
+        "sobol_owen_search": [[0.8118127838242799, -0.9100556615740061, 8.16193101927638],
+                              [0.41437783860601485, 0.6887683514505625, 8.897684165276587],
+                              [0.5483979571145028, 1.5310965096578002, 9.390549529343843]],
+    }
+    kinds = {"lhs_search": "lhs", "sobol_search": "sobol", "halton_search": "halton_rand",
+             "sobol_owen_search": "sobol_owen"}
+    for name, rows in version2.items():
         seen, arc = [], GridArchive(2, 3)
 
         def ev(x, seen=seen, arc=arc):
@@ -2879,8 +2909,8 @@ def the_older_designs_have_not_moved():
             return [x[0], 1.0 - x[0]]
         run_baseline(name, ev, box, pop=12, max_evaluations=12, seed=5, archive=arc)
         assert np.allclose(np.array(seen)[[0, 5, 11]], rows, rtol=0, atol=1e-12), name
-        if name != "random_search":                    # the design is the baseline's draw
-            X = D.design(name.split("_")[0], 12, box, 5)
+        if name in kinds:                              # the design is the baseline's draw
+            X = D.design(kinds[name], 12, box, 5)
             assert np.allclose(X[[0, 5, 11]], rows, rtol=0, atol=1e-12), name
 
 
@@ -12365,9 +12395,9 @@ def a_campaign_hands_what_it_can_to_the_cxx_engine():
     if C.engine_path() is None or not _have_numpy() or _core_with("subset_select") is None:
         print("  skip  a_campaign_hands...: no C++ engine"); return
     from mootation.run.config import load
-    # moead's jobs the C++ engine runs, random_search's (a baseline) it leaves
+    # nsga2's jobs the C++ engine runs, eps_nm's (a scalarization method) it leaves
     text = _STORE_TOML.replace('{ name = "moead", pop = 0, gens = 0 }',
-                               '{ name = "random_search", pop = 0, gens = 0 }')
+                               '{ name = "eps_nm", pop = 0, gens = 0 }')
     with tempfile.TemporaryDirectory() as td:
         made = {}
         for name, engine in (("p", "python"), ("c", "cxx")):

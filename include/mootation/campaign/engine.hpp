@@ -623,7 +623,7 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
             continue;
         }
         const RegistryProblem& p = preg.problems.at(j->problem);
-        if (auto why = refusal(*j, spec, p, algorithms)) {
+        if (auto why = refusal(*j, spec, p, algorithms, preg.names.baselines)) {
             ++counts.left[*why];
             counts.left_jobs.push_back(j->index);
             continue;

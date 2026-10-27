@@ -31,7 +31,9 @@
 #include <string>
 #include <vector>
 
+#include "../ablations.hpp"
 #include "../archive_select.hpp"
+#include "../designs.hpp"
 #include "../grid_archive.hpp"
 #include "../indicators.hpp"
 #include "../json.hpp"
@@ -164,11 +166,14 @@ inline std::optional<JobReferences> campaign_references(const std::filesystem::p
 
 // why the C++ engine leaves this job to Python, or nothing
 inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& spec, const RegistryProblem& p,
-                                          const std::vector<std::string>& algorithms)
+                                          const std::vector<std::string>& algorithms,
+                                          const std::vector<std::string>& baselines = {})
 {
     if (auto why = engine_refusal(p)) return why;
-    if (std::find(algorithms.begin(), algorithms.end(), job.algorithm) == algorithms.end())
-        return "not a core of algorithms.def (a baseline or a scalarization method)";
+    const bool baseline = std::find(baselines.begin(), baselines.end(), job.algorithm) != baselines.end();
+    if (baseline && !p.user_kinds.empty()) return "a baseline on typed variables";
+    if (!baseline && std::find(algorithms.begin(), algorithms.end(), job.algorithm) == algorithms.end())
+        return "not a core of algorithms.def (a scalarization method)";
     if (job.init != "uniform") return "a designed first population (init)";
     if (const json::Value* v = job.params.find("polish"); v && detail::py_str(*v) != "off") return "polish";
     if (spec.coords_diag) return "the learned coordinates' diagnostics";
@@ -368,7 +373,7 @@ public:
         cfg.on_generation = [this](int gen, std::vector<std::vector<double>> F) { on_gen(gen, std::move(F)); };
         cfg.record_every = grid_kind_ != Grid::Generations ? 1 : static_cast<int>(spec_.record_every);
         try {
-            out.result = run::run(job_.algorithm, rp, cfg);
+            out.result = baseline_ ? run_baseline(cfg.record_every) : run::run(job_.algorithm, rp, cfg);
         } catch (const TimeoutStop&) {
             // stopped at run_timeout: the trajectory up to its last record
             out.status = "timeout";
@@ -825,18 +830,20 @@ public:
             }
             meta.set("set_answer", sv);
         }
-        V ops = V::array();
-        for (const auto& [o, r] : res.operators) {
-            V e = V::object();
-            e.set("operator", V::string(o));
-            e.set("bound_repair", V::string(r));
-            ops.items.push_back(e);
-        }
-        meta.set("operators", ops);
-        if (!res.settings.empty()) {
-            V s = V::object();
-            for (const auto& [k, v] : res.settings) s.set(k, V::string(v));
-            meta.set("settings", s);
+        if (!baseline_) {
+            V ops = V::array();
+            for (const auto& [o, r] : res.operators) {
+                V e = V::object();
+                e.set("operator", V::string(o));
+                e.set("bound_repair", V::string(r));
+                ops.items.push_back(e);
+            }
+            meta.set("operators", ops);
+            if (!res.settings.empty()) {
+                V s = V::object();
+                for (const auto& [k, v] : res.settings) s.set(k, V::string(v));
+                meta.set("settings", s);
+            }
         }
         if (spec_.operator_stats && !final.keys.empty())
             for (const auto& [k, v] : res.operator_totals) final.set(k, V::number(v));
@@ -870,7 +877,7 @@ public:
             cs.set("budget", V::integer(budget_));
             meta.set("core_stopped", cs);
         }
-        meta.set("unique_fe", V::integer(static_cast<std::int64_t>(seen_rows_.size())));
+        if (!baseline_) meta.set("unique_fe", V::integer(static_cast<std::int64_t>(seen_rows_.size())));
         files.meta = meta;
         return files;
     }
@@ -904,7 +911,7 @@ private:
                     final_metrics_.push_back(s);
         }
         budget_ = job_.budget();
-        if (spec_.archive) {
+        if (spec_.archive || baseline_) {
             std::vector<double> lo, hi;
             if (refs_.ideal && refs_.nadir) {
                 lo = *refs_.ideal;
@@ -1127,6 +1134,8 @@ private:
         if (refs_.pset && refs_.pset->rows() == 0)
             meta.set("pareto_set_empty", V::string("the Pareto-set sample is empty (a failing copy whose failed region "
                                                    "takes all of it): no decision-space indicators"));
+        if (job_.init != "uniform" || baseline_)
+            meta.set("design_version", V::integer(designs::kVersion));   // the library's generators
         meta_at_start_ = meta;             // what meta.json holds while the run runs
         meta.set("record_grid", V::string(spec_.record_grid));
         meta.set("record_per_decade", spec_.record_grid == "log" ? V::integer(spec_.record_per_decade) : V::null());
@@ -1285,6 +1294,98 @@ private:
         return out;
     }
 
+    // run_baselines.run_baseline: the sampling baselines' points from the
+    // designs (the whole budget's plan at once), the ablations' from
+    // ablations.hpp; every point evaluated and accounted for alone, the
+    // answer the archive's DSS selection of N (the sampling baselines, gsemo)
+    // or the last population (random_selection_ea)
+    run::RunResult run_baseline(int record_every)
+    {
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
+        const std::size_t pop = static_cast<std::size_t>(job_.pop), budget = static_cast<std::size_t>(budget_);
+        std::vector<double> lo, hi;
+        for (const auto& [l, h] : p_.bounds) {
+            lo.push_back(l);
+            hi.push_back(h);
+        }
+        auto evaluate = [this, m](const std::vector<double>& x) {
+            const std::size_t c = static_cast<std::size_t>(native_->n_con);
+            std::vector<double> f(m), g(c);
+            native_->evaluate(x.data(), f.data(), c ? g.data() : nullptr);
+            account(x, f, constrained_ ? g : std::vector<double>{}, 1);
+            return f;
+        };
+        auto observe = [this](int gen, const ablations::Rows& F, const ablations::Rows& X) {
+            baseline_x_.clear();
+            for (const auto& x : X) baseline_x_.insert(baseline_x_.end(), x.begin(), x.end());
+            on_gen(gen, F);
+        };
+        // the archive's answer: its DSS selection of N (GridArchive.select's default)
+        auto answer = [this, d](ablations::Rows& F, ablations::Rows& X) {
+            std::vector<double> AX;
+            std::vector<char> AE;
+            const select::Rows AF = archive_rows(AX, AE);
+            F.clear();
+            X.clear();
+            for (auto i : archive_select(AF, static_cast<std::size_t>(job_.pop), *arc_, "dss")) {
+                F.emplace_back(AF.row(i), AF.row(i) + AF.m);
+                X.emplace_back(AX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                               AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+            }
+        };
+        ablations::Answer a;
+        if (job_.algorithm == "random_selection_ea") {
+            a = ablations::random_selection_ea(evaluate, lo, hi, pop, budget, job_.seed, observe, record_every);
+        } else if (job_.algorithm == "gsemo") {
+            std::vector<double> flo, fhi;                // the frame DSS normalises by: the problem's
+            if (arc_->problem_frame()) arc_->frame(flo, fhi);
+            auto choose = [flo, fhi, m](const ablations::Rows& F, std::size_t k) {
+                std::vector<std::size_t> idx;
+                if (F.size() <= k) {
+                    for (std::size_t i = 0; i < F.size(); ++i) idx.push_back(i);
+                    return idx;
+                }
+                select::Rows R;
+                for (const auto& f : F) R.v.insert(R.v.end(), f.begin(), f.end());
+                R.m = m;
+                R.n = F.size();
+                return select::dss_order(R, k, flo, fhi);
+            };
+            a = ablations::gsemo(evaluate, lo, hi, pop, budget, job_.seed, choose, observe, record_every);
+        } else {
+            const std::string kind = job_.algorithm == "random_search"   ? "uniform"
+                                     : job_.algorithm == "sobol_search"  ? "sobol"
+                                     : job_.algorithm == "lhs_search"    ? "lhs"
+                                     : job_.algorithm == "halton_search" ? "halton_rand"
+                                                                         : "sobol_owen";
+            const auto plan = designs::design(kind, budget, static_cast<int>(d), job_.seed);
+            std::size_t spent = 0;
+            int gen = 0;
+            ablations::Rows Fa, Xa;
+            while (spent < budget) {
+                const std::size_t k = std::min(pop, budget - spent);
+                for (std::size_t i = spent; i < spent + k; ++i) {
+                    std::vector<double> x(d);
+                    for (std::size_t j = 0; j < d; ++j) x[j] = lo[j] + plan[i * d + j] * (hi[j] - lo[j]);
+                    evaluate(x);
+                }
+                spent += k;
+                if (gen % std::max(1, record_every) == 0 || spent >= budget) {
+                    answer(Fa, Xa);
+                    observe(gen, Fa, Xa);
+                }
+                ++gen;
+            }
+            answer(a.F, a.X);
+            a.steps = gen;
+        }
+        run::RunResult res;
+        res.objectives = a.F;
+        res.variables = a.X;
+        res.active_n = a.F.size();
+        return res;
+    }
+
     // every vector of the bits' front among the rows (tuples, exactly)
     bool covers(const std::vector<std::vector<double>>& rows) const
     {
@@ -1381,6 +1482,12 @@ private:
 
     std::vector<std::size_t> archive_select(const select::Rows& F, std::size_t k, const GridArchive& a) const
     {
+        return archive_select(F, k, a, spec_.answer_select);
+    }
+
+    std::vector<std::size_t> archive_select(const select::Rows& F, std::size_t k, const GridArchive& a,
+                                            const std::string& method) const
+    {
         std::vector<std::size_t> all;
         if (F.n <= k) {
             for (std::size_t i = 0; i < F.n; ++i) all.push_back(i);
@@ -1388,7 +1495,7 @@ private:
         }
         std::vector<double> lo, hi;
         if (a.problem_frame()) archive_frame(F, lo, hi, &a);
-        if (spec_.answer_select == "igdp_self") return select::igdp_self_order(F, k, lo, hi);
+        if (method == "igdp_self") return select::igdp_self_order(F, k, lo, hi);
         return select::dss_order(F, k, lo, hi);
     }
 
@@ -1439,6 +1546,7 @@ private:
     std::vector<double> variables_of(std::size_t rows)
     {
         std::vector<double> X;
+        if (baseline_) return rows ? baseline_x_ : X;      // the answer's rows, as the baseline hands them
         if (need_x_ && rows && run::st().answer_variables)
             for (const auto& x : run::st().answer_variables()) {
                 if (!has_cat_) {
@@ -1600,6 +1708,8 @@ private:
     json::Value meta_, meta_at_start_;
     bool snap_ = false, keep_x_ = false;
     long long dup_x_ = 0;                            // the points evaluated again
+    bool baseline_ = false;                          // run/baselines.py's, not a core
+    std::vector<double> baseline_x_;                 // the answer's rows the baseline hands to on_gen
     std::size_t n_genes_ = 0;                        // bits and categories: the integer genome
     bool has_cat_ = false;
     long long cover_gen_ = -1, cover_fe_ = -1, cover_archive_gen_ = -1, cover_archive_fe_ = -1;
@@ -1630,6 +1740,8 @@ public:
     // version, and whether the run depends on its budget (budget.py)
     void set_registry(const ProblemRegistry& reg, const JobsRegistry& jreg)
     {
+        const auto& b = reg.names.baselines;
+        baseline_ = std::find(b.begin(), b.end(), job_.algorithm) != b.end();
         code_stamp_ = reg.code_stamp;
         reference_version_ = reg.reference_version;
         budget_dependent_ = depends_on_budget(jreg, job_.algorithm, job_.params);

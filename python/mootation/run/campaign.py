@@ -1165,6 +1165,13 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
         meta["pareto_set_empty"] = ("the Pareto-set sample is empty (a failing copy whose "
                                     "failed region takes all of it): no decision-space "
                                     "indicators")
+    from .baselines import BASELINES as _BASELINES
+    if job.init != "uniform" or job.algorithm in _BASELINES:
+        # the design's or the baseline's points from the library's generators
+        # (designs.hpp, ablations.hpp; task 17, stage 5): version 2, where 1
+        # drew from NumPy's and SciPy's
+        from ..designs import DESIGN_VERSION
+        meta["design_version"] = DESIGN_VERSION
     _write_json(meta_path, meta)
 
     from .archive import GridArchive

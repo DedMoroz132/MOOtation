@@ -10,6 +10,23 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The designs and the baselines on the library's own generators
+  (`designs.hpp`, `ablations.hpp`; `_core.design`, `_core.random_selection_ea`,
+  `_core.gsemo`): `std::mt19937` and `rnd::`, `sobol.hpp`'s Joe-Kuo
+  directions (`sobol::directions`, `sobol::integers`), the same points on
+  every platform. Design version 2 (`designs.DESIGN_VERSION`, meta.json's
+  `design_version` where `init` is a design or the algorithm a baseline).
+  **Changed results**: every baseline and ablation run, and every run with
+  `init` other than uniform, draws other points than version 1; the
+  NumPy/SciPy code stays as `designs.design_numpy` and
+  `ablations.random_selection_ea_numpy` / `gsemo_numpy`, a check of the
+  distributions. `sobol_search` no longer needs SciPy. `tests/test_designs.cpp`.
+- The C++ engine runs the seven baselines and the two ablations (not on
+  typed variables): every point evaluated and accounted for alone, the
+  answer the archive's DSS selection (gsemo: its population's, in the
+  problem's frame); on ZDT1, DTLZ2_3D, C2-DTLZ2_3D, DTLZ2_3D_n1 and RE21,
+  two seeds, 80 runs as the Python engine's.
+
 - `mootation store ls|check|repair|compact|merge` (`campaign/store_tools.hpp`):
   `store.py`'s commands in C++, the packs `compact` writes the bytes
   Python's does; a pack's record reads back with its meta.json from the

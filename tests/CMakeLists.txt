@@ -18,6 +18,7 @@ set(MOOTATION_TESTS
     test_genes
     test_r2_emoa
     test_sobol
+    test_designs
     test_run_layer_numerics
     test_suite
     test_nd_tree

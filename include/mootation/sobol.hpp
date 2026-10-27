@@ -164,27 +164,51 @@ inline const std::vector<Poly>& table()
 
 constexpr int max_dims = 100;
 
+// The direction numbers of dimensions 1 .. dims, 32 each: V[j][k] is
+// v_{k+1} 2^32 of dimension j + 1, the first van der Corput's.
+inline std::vector<std::vector<unsigned>> directions(int dims)
+{
+    if (dims < 1 || dims > max_dims)
+        throw std::invalid_argument("sobol: 1 to 100 dimensions");
+    std::vector<std::vector<unsigned>> out(static_cast<std::size_t>(dims));
+    for (int b = 1; b <= 32; ++b) out[0].push_back(1u << (32 - b));      // van der Corput
+    for (int j = 1; j < dims; ++j) {
+        const Poly& p = table()[static_cast<std::size_t>(j - 1)];
+        auto& V = out[static_cast<std::size_t>(j)];
+        V.resize(33);
+        for (int i = 1; i <= p.s; ++i) V[static_cast<std::size_t>(i)] = p.m[static_cast<std::size_t>(i - 1)] << (32 - i);
+        for (int i = p.s + 1; i <= 32; ++i) {
+            unsigned v = V[static_cast<std::size_t>(i - p.s)] ^ (V[static_cast<std::size_t>(i - p.s)] >> p.s);
+            for (int k = 1; k <= p.s - 1; ++k)
+                v ^= (((static_cast<unsigned>(p.a) >> (p.s - 1 - k)) & 1u) * V[static_cast<std::size_t>(i - k)]);
+            V[static_cast<std::size_t>(i)] = v;
+        }
+        V.erase(V.begin());                                            // V[0..31] = V_1..V_32
+    }
+    return out;
+}
+
+// Points start .. start + n - 1 of the sequence as 32-bit integers, index 0
+// (the origin) included, in Gray-code order (Joe & Kuo's notes, Eq. 4): row i
+// the XOR of the direction numbers of the bits of gray(start + i)
+inline std::vector<unsigned> integers(std::size_t n, int dims, std::uint64_t start = 0)
+{
+    const auto V = directions(dims);
+    std::vector<unsigned> X(n * static_cast<std::size_t>(dims), 0u);
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::uint64_t idx = start + i, gray = idx ^ (idx >> 1);
+        for (int k = 0; k < 32; ++k)
+            if ((gray >> k) & 1u)
+                for (int j = 0; j < dims; ++j)
+                    X[i * static_cast<std::size_t>(dims) + static_cast<std::size_t>(j)] ^=
+                        V[static_cast<std::size_t>(j)][static_cast<std::size_t>(k)];
+    }
+    return X;
+}
+
 class Generator {
 public:
-    explicit Generator(int dims) : d_(dims), x_(static_cast<std::size_t>(dims), 0u), V_(static_cast<std::size_t>(dims))
-    {
-        if (dims < 1 || dims > max_dims)
-            throw std::invalid_argument("sobol: 1 to 100 dimensions");
-        for (int b = 1; b <= 32; ++b) V_[0].push_back(1u << (32 - b));      // van der Corput
-        for (int j = 1; j < dims; ++j) {
-            const Poly& p = table()[static_cast<std::size_t>(j - 1)];
-            auto& V = V_[static_cast<std::size_t>(j)];
-            V.resize(33);
-            for (int i = 1; i <= p.s; ++i) V[static_cast<std::size_t>(i)] = p.m[static_cast<std::size_t>(i - 1)] << (32 - i);
-            for (int i = p.s + 1; i <= 32; ++i) {
-                unsigned v = V[static_cast<std::size_t>(i - p.s)] ^ (V[static_cast<std::size_t>(i - p.s)] >> p.s);
-                for (int k = 1; k <= p.s - 1; ++k)
-                    v ^= (((static_cast<unsigned>(p.a) >> (p.s - 1 - k)) & 1u) * V[static_cast<std::size_t>(i - k)]);
-                V[static_cast<std::size_t>(i)] = v;
-            }
-            V.erase(V.begin());                                            // V[0..31] = V_1..V_32
-        }
-    }
+    explicit Generator(int dims) : d_(dims), x_(static_cast<std::size_t>(dims), 0u), V_(directions(dims)) {}
 
     // The next point (index 1, 2, ...).
     std::vector<double> next()

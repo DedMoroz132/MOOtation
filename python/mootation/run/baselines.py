@@ -9,12 +9,12 @@ converges to is decided by the archiver, not by how the points are drawn
 (Schütze et al. 2008), so the two are built together.
 
   random_search   uniform points of the box
-  sobol_search    a scrambled Sobol sequence (scipy.stats.qmc.Sobol: its
-                  scrambling is a linear matrix scramble with a digital shift,
-                  "LMS+shift" — Matoušek's affine scrambling, not Owen's nested
-                  uniform one — seeded per run): lower discrepancy than
-                  uniform, which matters at budgets of tens to hundreds of
-                  points and not after; needs SciPy
+  sobol_search    a scrambled Sobol sequence (a linear matrix scramble with a
+                  digital shift, "LMS+shift" — Matoušek's affine scrambling,
+                  not Owen's nested uniform one — seeded per run, as SciPy's
+                  qmc.Sobol scrambles): lower discrepancy than uniform, which
+                  matters at budgets of tens to hundreds of points and not
+                  after
   lhs_search      a maximin Latin hypercube of the whole budget
                   (designs.py, after Morris & Mitchell 1995), its points
                   evaluated in batches of N; laid out for the budget at once, so
@@ -44,19 +44,20 @@ its population reduced the same way, random_selection_ea's its last population.
 Each spends exactly the budget: the last batch is cut to what is left. None of
 them handles constraints: only the run archive keeps to feasible points.
 
-These are not C++ cores and are not in algorithms.def: nothing about them
-needs the core, and every interface that should run them — the campaign — is
-Python. They are validated, listed and run alongside the core's list.
+These are not C++ cores and are not in algorithms.def. Their points and their
+random choices come from the library's own generators (designs.hpp and
+ablations.hpp; task 17, stage 5: designs.DESIGN_VERSION 2, the same numbers
+on every platform), where they came from NumPy's and SciPy's (version 1).
+They are validated, listed and run alongside the core's list.
 """
 
 from __future__ import annotations
 
-import warnings
 from types import SimpleNamespace
 
 BASELINES = {
     "random_search": "uniform sampling of the box, archived, N chosen by DSS",
-    "sobol_search": "scrambled Sobol sampling (SciPy), archived, N chosen by DSS",
+    "sobol_search": "scrambled Sobol sampling (LMS + shift), archived, N chosen by DSS",
     "lhs_search": "a maximin Latin hypercube of the whole budget (Morris & Mitchell 1995), "
                   "archived, N chosen by DSS",
     "halton_search": "randomized Halton sampling (Owen 2017), archived, N chosen by DSS",
@@ -108,32 +109,22 @@ def run_baseline(name: str, evaluate, bounds, *, pop: int, max_evaluations: int,
         return SimpleNamespace(objectives=np.asarray(F).tolist(),
                                variables=np.asarray(X).tolist(),
                                ignored=[], active_n=len(F), steps=steps)
-    if name == "sobol_search":
-        try:
-            from scipy.stats import qmc
-        except ImportError as e:                    # pragma: no cover - machine-dependent
-            raise ImportError("sobol_search needs SciPy: pip install scipy") from e
-        engine = qmc.Sobol(d, scramble=True, seed=seed)
-
-        def draw(k):
-            with warnings.catch_warnings():         # "balance properties ... power of 2"
-                warnings.simplefilter("ignore")
-                return engine.random(k)
-    elif name in ("lhs_search", "halton_search", "sobol_owen_search"):
-        from ..designs import design
-        kind = {"lhs_search": "lhs", "halton_search": "halton_rand",
-                "sobol_owen_search": "sobol_owen"}[name]
-        plan = design(kind, max_evaluations, [(0.0, 1.0)] * d, seed)
-        served = [0]
-
-        def draw(k):
-            served[0] += k
-            return plan[served[0] - k:served[0]]
+    # the whole budget's points at once, from the C++ designs (designs.hpp,
+    # DESIGN_VERSION 2); a sequence's first points are those of a smaller
+    # budget, the Latin hypercube is laid out for the budget
+    from ..designs import design
+    kind = {"random_search": "uniform", "sobol_search": "sobol", "lhs_search": "lhs",
+            "halton_search": "halton_rand", "sobol_owen_search": "sobol_owen"}[name]
+    if kind == "uniform":
+        from .. import _core
+        plan = np.asarray(_core.design("uniform", int(max_evaluations), d, int(seed)))
     else:
-        rng = np.random.default_rng(seed)
+        plan = design(kind, max_evaluations, [(0.0, 1.0)] * d, seed)
+    served = [0]
 
-        def draw(k):
-            return rng.random((k, d))
+    def draw(k):
+        served[0] += k
+        return plan[served[0] - k:served[0]]
 
     def answer():
         F, X, _ = archive.points()

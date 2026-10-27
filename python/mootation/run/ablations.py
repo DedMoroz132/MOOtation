@@ -29,7 +29,11 @@
 The operators follow include/mootation/operators/sbx.hpp and
 poly_mutation.hpp formula for formula (Deb & Agrawal's bounded SBX with the
 NSGA-II code's per-variable coin and swap; the NSGA-II code's bounded
-polynomial mutation), drawn from NumPy's generator rather than the core's.
+polynomial mutation). With the extension the two run in C++
+(include/mootation/ablations.hpp, task 17, stage 5) on the library's own
+generator, the same numbers on every platform (designs.DESIGN_VERSION 2);
+the NumPy code below, which drew from NumPy's generator (version 1), stays
+as random_selection_ea_numpy and gsemo_numpy, a check of the behaviour.
 """
 
 from __future__ import annotations
@@ -96,9 +100,52 @@ def _ok(F, X):
     return F[keep], X[keep]
 
 
+def _core_or_none():
+    try:
+        from .. import _core
+    except ImportError:
+        return None
+    return _core if hasattr(_core, "gsemo") else None
+
+
 def random_selection_ea(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int,
                         on_generation=None, record_every: int = 1):
-    """(answer objectives, answer variables, steps) — see the module docstring."""
+    """(answer objectives, answer variables, steps) — see the module docstring:
+    the C++ one (ablations.hpp), random_selection_ea_numpy's without the
+    extension."""
+    core = _core_or_none()
+    if core is None:
+        return random_selection_ea_numpy(evaluate, lo, hi, pop=pop, max_evaluations=max_evaluations,
+                                         seed=seed, on_generation=on_generation,
+                                         record_every=record_every)
+    F, X, steps = core.random_selection_ea(
+        lambda x: [float(v) for v in evaluate(list(x))], [float(v) for v in lo],
+        [float(v) for v in hi], int(pop), int(max_evaluations), int(seed),
+        on_generation, int(record_every))
+    return np.asarray(F, float), np.asarray(X, float), steps
+
+
+def gsemo(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select,
+          on_generation=None, record_every: int = 1):
+    """(answer objectives, answer variables, steps); `select(F, k)` picks the
+    answer rows: the C++ one (ablations.hpp), gsemo_numpy's without the
+    extension."""
+    core = _core_or_none()
+    if core is None:
+        return gsemo_numpy(evaluate, lo, hi, pop=pop, max_evaluations=max_evaluations, seed=seed,
+                           select=select, on_generation=on_generation, record_every=record_every)
+    F, X, steps = core.gsemo(
+        lambda x: [float(v) for v in evaluate(list(x))], [float(v) for v in lo],
+        [float(v) for v in hi], int(pop), int(max_evaluations), int(seed),
+        lambda F, k: [int(i) for i in select(np.asarray(F, float), int(k))],
+        on_generation, int(record_every))
+    return np.asarray(F, float), np.asarray(X, float), steps
+
+
+def random_selection_ea_numpy(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int,
+                              on_generation=None, record_every: int = 1):
+    """(answer objectives, answer variables, steps) — see the module docstring;
+    NumPy's generator (version 1)."""
     rng = np.random.default_rng(seed)
     d = len(lo)
     X = lo + rng.random((pop, d)) * (hi - lo)
@@ -133,9 +180,10 @@ def random_selection_ea(evaluate, lo, hi, *, pop: int, max_evaluations: int, see
     return Fo, Xo, gen
 
 
-def gsemo(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select,
-          on_generation=None, record_every: int = 1):
-    """(answer objectives, answer variables, steps); `select(F, k)` picks the answer rows."""
+def gsemo_numpy(evaluate, lo, hi, *, pop: int, max_evaluations: int, seed: int, select,
+                on_generation=None, record_every: int = 1):
+    """(answer objectives, answer variables, steps); `select(F, k)` picks the
+    answer rows; NumPy's generator (version 1)."""
     rng = np.random.default_rng(seed)
     d = len(lo)
     x0 = lo + rng.random(d) * (hi - lo)

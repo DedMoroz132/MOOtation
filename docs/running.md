@@ -1072,7 +1072,8 @@ Halton sequence (Owen, arXiv:1706.02808, 2017: every digit of every
 coordinate through a random permutation of its own, seeded by the run),
 `init = "sobol_owen"` from the Sobol sequence under Owen's nested uniform
 scrambling (Joe & Kuo's direction numbers, Burley's hash, JCGT 2020 — where
-`sobol` is SciPy's linear matrix scramble with a digital shift),
+`sobol` is Matousek's linear matrix scramble with a digital shift, as SciPy
+scrambles),
 instead of its own random
 population: the design is evaluated by the campaign's evaluator, costing what
 the algorithm's own start would, and planted as the seed population.
@@ -1081,9 +1082,14 @@ algorithm: its population is the plan's nondominated points first, the rest
 chosen by DSS among the others, and it has the other half to run; such a run
 depends on its budget, so a `ladder` gives it a run of its own at each rung.
 `minimize(init=..., init_share=...)` does the same outside a campaign.
+The designs and the baselines below draw from the library's own generators
+(`designs.hpp`, `ablations.hpp`: `std::mt19937` and Joe & Kuo's directions),
+the same points on every platform — design version 2, `design_version` in
+`meta.json`; version 1 drew from NumPy and SciPy and stays in
+`designs.design_numpy` and `ablations.*_numpy`, a check of the distributions.
 
-**Baselines.** `random_search`, `sobol_search` (scrambled Sobol, needs
-SciPy), `lhs_search`, `halton_search` (the randomized Halton sequence) and
+**Baselines.** `random_search`, `sobol_search` (scrambled Sobol),
+`lhs_search`, `halton_search` (the randomized Halton sequence) and
 `sobol_owen_search` (Owen-scrambled Sobol) go in the algorithm list like any
 core. They sample the box blindly,
 keep the run archive, and answer with the problem's population size chosen
@@ -2176,10 +2182,11 @@ references built beforehand (`python -m mootation refs build`).
 
 It runs every problem of the registry: the C++ suite's (with integer,
 discrete, binary and categorical variables), their failing and noisy copies,
-the uninformative problems and RE91 with its run's stream. The jobs it does
-not run — a baseline or a scalarization method, a designed first
-population, polishing, the learned coordinates' diagnostics, a core without
-the integer genome on bits or categories — it leaves pending and counts by
+the uninformative problems and RE91 with its run's stream; the cores, the
+seven baselines and the two ablations. The jobs it does not run — a
+scalarization method, a designed first population, polishing, the learned
+coordinates' diagnostics, a core without the integer genome on bits or
+categories, a baseline on typed variables — it leaves pending and counts by
 reason at the end.
 `--report FILE` writes them (their indices) and the counts as JSON, which
 is how the Python engine learns what is left to it. A problem whose

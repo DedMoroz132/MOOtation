@@ -9,9 +9,10 @@ At budgets of 100-1 000 evaluations a GA makes a few generations, and how its
 first points lie may decide as much as what it does after (task 5 of
 2026-10-01, run B1). The kinds:
 
-  sobol    the first n points of a scrambled Sobol sequence
-           (scipy.stats.qmc.Sobol, linear matrix scrambling with a digital
-           shift, seeded), as sobol_search draws them
+  sobol    the first n points of a scrambled Sobol sequence (linear
+           matrix scrambling with a digital shift, Matousek's, as
+           scipy.stats.qmc.Sobol scrambles; seeded), as sobol_search draws
+           them
   lhs      a maximin Latin hypercube (MAXIMIN LHS below)
   halton_rand
            the first n points of a randomized Halton sequence (RANDOMIZED
@@ -23,6 +24,13 @@ first points lie may decide as much as what it does after (task 5 of
 
 (The uniform start is every algorithm's own: `init = "uniform"` leaves it to
 the algorithm.)
+
+DESIGN_VERSION 2 (task 17, stage 5): the points come from the library's own
+generators (include/mootation/designs.hpp through _core.design: std::mt19937,
+sobol.hpp's Joe-Kuo directions), the same on every platform; version 1 drew
+from NumPy's generator and SciPy's Sobol and stays as design_numpy, which
+checks the C++ designs by their distributions, not their bits. A result
+records the version as meta.json's design_version.
 
 minimize(init=...) evaluates a design and starts the algorithm from it; with
 init_share > 0 the design is a plan of experiments larger than the population,
@@ -125,6 +133,11 @@ import warnings
 from pathlib import Path
 
 KINDS = ("sobol", "lhs", "halton_rand", "sobol_owen")
+# 2 (task 17, stage 5): the points from the library's own generators
+# (include/mootation/designs.hpp, _core.design), the same on every platform;
+# 1 was the NumPy and SciPy code below, which stays as design_numpy, a check
+# of the distributions
+DESIGN_VERSION = 2
 P_VALUES = (1, 2, 5, 10, 20, 50, 100)      # Morris & Mitchell 1995, Section 5
 FAC_T = 0.95                               # Section 4: "0.90 and 0.95"
 ACCEPT = 0.99                              # Section 4: t0 accepts a step of one level so
@@ -133,7 +146,26 @@ BUDGET, BUDGET_WORK = 20000, 2 * 10**7     # perturbations per search: BUDGET, B
 
 
 def design(kind: str, n: int, bounds, seed: int):
-    """n points of the box `bounds` [(lo, hi), ...], as an (n, d) array."""
+    """n points of the box `bounds` [(lo, hi), ...], as an (n, d) array: the
+    C++ designs (designs.hpp, DESIGN_VERSION), or design_numpy's without the
+    extension."""
+    import numpy as np
+    if kind not in KINDS:
+        raise ValueError(f"unknown design '{kind}'; known: {', '.join(KINDS)}")
+    try:
+        from . import _core
+    except ImportError:
+        _core = None
+    if not hasattr(_core, "design"):
+        return design_numpy(kind, n, bounds, seed)
+    lo = np.array([b[0] for b in bounds], float)
+    hi = np.array([b[1] for b in bounds], float)
+    return lo + np.asarray(_core.design(kind, int(n), len(lo), int(seed))) * (hi - lo)
+
+
+def design_numpy(kind: str, n: int, bounds, seed: int):
+    """design() of version 1: NumPy's and SciPy's generators (the kinds above);
+    a check of the C++ designs' distributions."""
     import numpy as np
     if kind not in KINDS:
         raise ValueError(f"unknown design '{kind}'; known: {', '.join(KINDS)}")
