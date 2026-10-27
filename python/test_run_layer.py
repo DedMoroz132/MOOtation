@@ -11374,6 +11374,14 @@ def the_suite_gives_numpys_values(part, parts):
     turned_by_q = {n for n, r in R.ROTATED.items() if r.rotate}
 
     def check(mine, ref, what):
+        if what.startswith("RCM15") and np.ndim(ref) == 2 and np.shape(ref)[1] == 8:
+            # RCM15's g7, sigma_p + 700 / K + 1.05 (x1 + 2) x3 - l_f, is 0 as
+            # printed (rwmop.py): its values are the rounding of terms in the
+            # thousands, a last bit of K's pow apart up to 1e-11; compared on
+            # that scale, the other columns as everywhere
+            mine, ref = np.array(mine, float), np.array(ref, float)
+            assert np.allclose(mine[:, 6], ref[:, 6], rtol=0.0, atol=1e-9), what
+            mine[:, 6] = ref[:, 6] = 0.0
         if exact:
             # WFG (task 17, supplement 1, stage 1): a last-bit difference of
             # pow grows through b_param's exponents up to 50, s_multi's
@@ -11457,7 +11465,11 @@ def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
                 {"family": "RE21", "n_var": 5, "n_obj": 2},
                 {"family": "MMF1", "n_var": 3, "n_obj": 2},
                 {"family": "IPolygon", "n_var": 2, "n_obj": 3},
-                {"family": "Polygon", "n_var": 10, "n_obj": 3, "vertices": [1.0, 0.0]}):
+                {"family": "Polygon", "n_var": 10, "n_obj": 3, "vertices": [1.0, 0.0]},
+                # task 17, stage 5: BT, MOP and the registered RCM problems
+                {"family": "BT1", "n_var": 10, "n_obj": 2},
+                {"family": "MOP6", "n_var": 10, "n_obj": 2},
+                {"family": "RCM24", "n_var": 9, "n_obj": 3}):
         assert raises(ValueError, _core.Native, bad) is not None, bad
     rng = np.random.default_rng(3)
     for name in ("rDTLZ1_3D_i2", "C2-DTLZ2_3D", "MaF9_8D", "rZCAT19_3D", "shiftZDT4",

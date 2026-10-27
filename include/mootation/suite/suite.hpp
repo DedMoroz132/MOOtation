@@ -42,7 +42,8 @@
 //     "CRE24", ...), the sizes of the suite
 //
 // Task 17, stage 5: BT1-9 (bt.hpp): family "BT<i>", 30 variables; MOP1-7
-// (mop.hpp): family "MOP<i>", 10 variables.
+// (mop.hpp): family "MOP<i>", 10 variables; RWMOP's registered RCM problems
+// (rcm.hpp): family "RCM01" .. "RCM29", the suite's sizes.
 //
 // THE MAPS (dtlz_variants.py, shifted.py, rotated.py): the point the family
 // is evaluated at, its variables from `first` on read as
@@ -87,6 +88,7 @@
 #include "mop.hpp"
 #include "mw.hpp"
 #include "polygon.hpp"
+#include "rcm.hpp"
 #include "re.hpp"
 #include "wfg.hpp"
 #include "zcat.hpp"
@@ -173,6 +175,7 @@ public:
         else if ((which_ = number_after(f, "MW")) != 0) kind_ = Kind::MW;
         else if ((which_ = number_after(f, "BT")) != 0) kind_ = Kind::BT;
         else if ((which_ = number_after(f, "MOP")) != 0) kind_ = Kind::MOP;
+        else if ((which_ = number_after(f, "RCM")) != 0) kind_ = Kind::RCM;
         else if (f == "Polygon") kind_ = Kind::Polygon;
         else if (f == "IPolygon") kind_ = Kind::IPolygon;
         else if (mmo::parse(f, mmo_)) kind_ = Kind::MMO;
@@ -268,6 +271,9 @@ public:
             case Kind::MOP:
                 mop::evaluate(which_, p, f);
                 return;
+            case Kind::RCM:
+                rcm::evaluate(which_, p, f, g);
+                return;
             case Kind::Polygon:
                 polygon::polygon(p, n_var, n_obj, s_.vertices, f);
                 return;
@@ -308,7 +314,7 @@ public:
 
 private:
     enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, DASCMOP, LIRCMOP,
-                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP };
+                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
@@ -447,6 +453,12 @@ private:
                 if (which_ < 1 || which_ > 7 || n != mop::kN || M != mop::n_obj(which_))
                     fail("MOP1-5 two objectives, MOP6-7 three, 10 variables");
                 break;
+            case Kind::RCM: {
+                const rcm::Size z = rcm::size(which_);
+                if (z.n_var == 0 || n != z.n_var || M != z.n_obj) fail("a registered RCM at the suite's sizes");
+                n_con = z.n_con;
+                break;
+            }
             case Kind::Polygon:
                 if (n < 2 || static_cast<int>(s_.vertices.size()) != 2 * M) fail("two variables at least, M vertices");
                 break;

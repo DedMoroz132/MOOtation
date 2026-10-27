@@ -263,7 +263,7 @@ inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
     if (!p.spec && !p.failing_region && !p.noise && !p.uninformative) return "not a problem of the C++ suite";
     if (p.own_evaluator && !p.noise && !p.uninformative) return "an evaluator of the run's own";
-    if (p.typed && p.var_kinds.empty()) return "typed variables (bits or categories)";
+    if (p.typed && p.var_kinds.empty()) return "typed variables (bits, categories or discrete values)";
     if (p.failing && !p.failing_region) return "a failing copy";
     return std::nullopt;
 }

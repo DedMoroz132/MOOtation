@@ -23,6 +23,17 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- RWMOP's 25 registered RCM problems in the C++ suite (`suite/rcm.hpp`),
+  rwmop.py's Python one to one (a float's ** pow, round half to even, the
+  equalities as |h| - EQ_EPS after the inequalities, NaN where RCM02 is not
+  defined): built with the C library's functions, 1 012 552 values of
+  1 012 552 the reference's bits; with dm::, within a few ulps but for
+  RCM15's g7, 0 as printed and the rounding of terms in the thousands
+  (the suite test compares it on that scale). RCM21's surfaces sum term by
+  term in rwmop.py too (built-in sum is compensated from Python 3.12).
+  Version 2 but RCM07, RCM09 and RCM22 (arithmetic alone). The C++ engine
+  runs them but RCM15 (a discrete variable): 48 runs and Python's 2 as the
+  Python engine alone writes the 50.
 - BT1-9 and MOP1-7 in the C++ suite (`suite/bt.hpp`, `suite/mop.hpp`;
   `benchmarks/native.py`), the NumPy code of bt.py and mop.py one to one:
   built with the C library's functions in place of dm::'s, 192 605 values

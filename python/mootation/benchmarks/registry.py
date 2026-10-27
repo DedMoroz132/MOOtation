@@ -2729,7 +2729,11 @@ _register_failing()
 # and square roots alone (_DETMATH_SAME).
 #
 # From 2026-10-27 (task 17, stage 5): BT1-9 and MOP1-7 in the C++ suite, their
-# exp, pow, sin and cos the library's own: version 2 (by _in_suite).
+# exp, pow, sin and cos the library's own: version 2 (by _in_suite). And the
+# RCM problems (rwmop.py), their pow, exp and log the library's own, RCM21's
+# response surfaces summed term by term (where built-in sum added compensated
+# from Python 3.12): version 2; unchanged RCM07, RCM09 and RCM22, of
+# arithmetic and square roots alone (_DETMATH_SAME).
 PROBLEM_VERSION: Dict[str, int] = {
     **{name: 2 for name, r in ROTATED.items()
        if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
@@ -2739,7 +2743,7 @@ PROBLEM_VERSION: Dict[str, int] = {
 _DETMATH_SAME = re.compile(r"(?:r|rc|r0|c0|shift)?(?:ZDT1|MaF1_\d+D|MaF9_\d+D)(?:_i\d)?|"
                            r"bbobbiobj(?:mixint)?(?:01|04|28)_n\d\d_2D|"
                            r"IPolygon_\d+D|DOC8|RE2[1-5]|RE22c|RE3[1-7]|RE33c|RE41|"
-                           r"CRE2[1-5]|CRE31")
+                           r"CRE2[1-5]|CRE31|RCM07|RCM09|RCM22")
 
 
 def _in_suite(name: str) -> bool:

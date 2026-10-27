@@ -485,8 +485,15 @@ _C21 = (
 
 
 def _surface(c, x):
+    """The surface at x; its sums term by term from 0 (built-in sum adds
+    compensated from Python 3.12 on, and the C++ suite adds in order)."""
     c0, lin, sq, cross = c
-    v = c0 + sum(a * xi for a, xi in zip(lin, x)) + sum(a * xi * xi for a, xi in zip(sq, x))
+    s1 = s2 = 0.0
+    for a, xi in zip(lin, x):
+        s1 = s1 + a * xi
+    for a, xi in zip(sq, x):
+        s2 = s2 + a * xi * xi
+    v = c0 + s1 + s2
     k = 0
     for i in range(6):
         for j in range(i + 1, 6):

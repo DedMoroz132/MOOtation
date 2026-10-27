@@ -63,8 +63,9 @@ _DAS = re.compile(r"DAS-CMOP([1-9])_(t\d\d|f6)")
 _OTHER = re.compile(r"LIR-CMOP\d+|DOC\d|(I?Polygon)_(\d+)D|(MW\d+)(_\d+D)?")
 _MMO = re.compile(r"SYM-PART_(simple|rotated)|Omni-test|MMF\d+(_[aez])?")
 _RE = re.compile(r"RE\d\dc?|CRE\d\d")
-# BT1-9 and MOP1-7 (task 17, stage 5; bt.hpp, mop.hpp)
-_BT_MOP = re.compile(r"BT[1-9]|MOP[1-7]")
+# BT1-9 and MOP1-7, and RWMOP's RCM problems (task 17, stage 5; bt.hpp, mop.hpp,
+# rcm.hpp)
+_BT_MOP = re.compile(r"BT[1-9]|MOP[1-7]|RCM\d\d")
 # the verification set (task 17, supplement 2, §3; classic.hpp): its names
 # and the suite's families
 CLASSIC = {"SCH": "SCH", "FON": "FON", "POL": "POL", "KUR": "KUR", "SPH_2D": "SPH", "SPH_3D": "SPH",
@@ -112,7 +113,7 @@ def _polygon_vertices(M: int) -> np.ndarray:
 
 def _stage3a(name: str, p) -> dict | None:
     """DAS-CMOP, LIR-CMOP, DOC, Polygon, IPolygon, SYM-PART, Omni-test, MMF, RE
-    and CRE (task 17, supplement 3, stage 3a); BT and MOP (task 17, stage 5)."""
+    and CRE (task 17, supplement 3, stage 3a); BT, MOP and RCM (task 17, stage 5)."""
     if _MMO.fullmatch(name) or _RE.fullmatch(name) or _BT_MOP.fullmatch(name):
         return _base(name, p.n_vars, p.n_obj)
     m = _DAS.fullmatch(name)
