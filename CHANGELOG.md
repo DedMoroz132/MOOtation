@@ -23,6 +23,11 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs problems with discrete variables (RCM15, RE22, RE22c,
+  RE25): the registry export hands over their values (`discrete_values`)
+  beside the kinds and the box, and the core decodes them as minimize's
+  layout does. The four and RE23 under nsga2, moead_de and nsga2 with
+  int_repair = baldwin, two seeds: 30 runs as the Python engine's.
 - RWMOP's 25 registered RCM problems in the C++ suite (`suite/rcm.hpp`),
   rwmop.py's Python one to one (a float's ** pow, round half to even, the
   equalities as |h| - EQ_EPS after the inequalities, NaN where RCM02 is not

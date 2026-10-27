@@ -68,10 +68,12 @@ struct RegistryProblem {
     std::optional<FailRegion> failing_region;     // a failing copy of a problem of the suite
     std::optional<NoiseSpec> noise;               // a noisy copy of a problem of the suite
     std::optional<std::string> uninformative;     // an uninformative problem's kind: f1, f2b, f3b, f4b, f5
-    // integer variables beside real ones (var_types.Layout): the core's kinds
-    // (0 real, 1 integer) and box; empty for real variables alone
+    // integer and discrete variables beside real ones (var_types.Layout): the
+    // core's kinds (0 real, 1 integer, 2 discrete) and box; empty for real
+    // variables alone
     std::vector<int> var_kinds;
     std::vector<std::pair<double, double>> core_bounds;
+    std::vector<std::vector<double>> discrete_values;   // a discrete variable's values, sorted; [] elsewhere
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -216,6 +218,8 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
             const auto lh = detail::floats_of(&b);
             p.core_bounds.emplace_back(lh.at(0), lh.at(1));
         }
+    if (const json::Value* v = o.find("discrete_values"); v && v->kind == json::Value::Kind::Array)
+        for (const auto& vs : v->items) p.discrete_values.push_back(detail::floats_of(&vs));
     return p;
 }
 
@@ -263,7 +267,7 @@ inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
     if (!p.spec && !p.failing_region && !p.noise && !p.uninformative) return "not a problem of the C++ suite";
     if (p.own_evaluator && !p.noise && !p.uninformative) return "an evaluator of the run's own";
-    if (p.typed && p.var_kinds.empty()) return "typed variables (bits, categories or discrete values)";
+    if (p.typed && p.var_kinds.empty()) return "typed variables (bits or categories)";
     if (p.failing && !p.failing_region) return "a failing copy";
     return std::nullopt;
 }

@@ -2174,10 +2174,10 @@ It needs the exported problem registry (`python -m
 mootation.run.registry_export`, or `--registry FILE`) and the cache of
 references built beforehand (`python -m mootation refs build`).
 
-It runs the problems of the C++ suite (integer variables beside real ones
-included), their failing and noisy copies and the uninformative problems.
-The jobs it does not run yet — a problem outside the C++ suite, bits,
-categories or discrete values, a baseline or a scalarization method — it
+It runs the problems of the C++ suite (integer and discrete variables
+beside real ones included), their failing and noisy copies and the
+uninformative problems. The jobs it does not run yet — a problem outside
+the C++ suite, bits or categories, a baseline or a scalarization method — it
 leaves pending and counts by reason at the end.
 `--report FILE` writes them (their indices) and the counts as JSON, which
 is how the Python engine learns what is left to it. A problem whose

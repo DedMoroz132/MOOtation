@@ -116,17 +116,23 @@ def entry(name: str) -> dict:
 
 
 def _layout(p) -> dict:
-    """Integer variables beside real ones (var_types.Layout, no bits and no
-    categories): the core's kinds (0 real, 1 integer) and its box, each
-    integer's widened by just under a half on each side; nothing else."""
+    """Integer and discrete variables beside real ones (var_types.Layout, no
+    bits and no categories): the core's kinds (0 real, 1 integer, 2
+    discrete), its box (an integer's widened by just under a half on each
+    side, a discrete one's from its least value to its largest) and the
+    discrete ones' values, sorted; nothing else."""
     from ..var_types import Layout
-    if p.var_types is None or any(t not in ("real", "int") for t in p.var_types):
+
+    def plain(t):
+        return t in ("real", "int") or (isinstance(t, (tuple, list)) and t[0] == "discrete")
+    if p.var_types is None or not all(plain(t) for t in p.var_types):
         return {}
     layout = Layout(p.var_types, list(p.bounds))
     if layout.trivial():
         return {}
     return {"var_kinds": [int(k) for k in layout.var_kinds()],
-            "core_bounds": [[float(lo), float(hi)] for lo, hi in layout.core_bounds()]}
+            "core_bounds": [[float(lo), float(hi)] for lo, hi in layout.core_bounds()],
+            "discrete_values": [[float(v) for v in vs] for vs in layout.discrete_values()]}
 
 
 def _uninformative(name: str) -> str | None:

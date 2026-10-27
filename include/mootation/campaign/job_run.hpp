@@ -345,7 +345,8 @@ public:
             // minimize's layout: the kinds, rounded into the genome (lamarck,
             // int_repair's default), polynomial mutation's index 3 for them
             cfg.var_kinds = p_.var_kinds;
-            cfg.discrete_values.assign(p_.var_kinds.size(), {});
+            cfg.discrete_values = p_.discrete_values;
+            cfg.discrete_values.resize(p_.var_kinds.size());
             const json::Value* repair = job_.params.find("int_repair");
             cfg.lamarck = !repair || detail::py_str(*repair) == "lamarck";
             if (std::any_of(p_.var_kinds.begin(), p_.var_kinds.end(), [](int k) { return k != 0; })) {
