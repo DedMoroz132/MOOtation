@@ -239,6 +239,7 @@ inline void apply_knobs(run::RunConfig& cfg, const json::Value& params)
         else if (k == "sbx_var_prob") cfg.sbx_var_prob = number(v);
         else if (k == "step_share") cfg.step_share = number(v);
         else if (k == "F_spread") cfg.F_spread = number(v);
+        else if (k == "eta_int" || k == "int_repair") continue;     // minimize's, for integer variables (run())
         else throw std::invalid_argument("unknown parameter(s): " + k);
     }
 }
@@ -325,7 +326,9 @@ public:
         start_ = std::chrono::steady_clock::now();
         JobOutcome out;
         run::RunProblem rp;
-        for (const auto& b : p_.bounds) rp.bounds.push_back(b);
+        // integer variables: the core's box, each integer's widened by just
+        // under a half (var_types.Layout.core_bounds)
+        for (const auto& b : p_.var_kinds.empty() ? p_.bounds : p_.core_bounds) rp.bounds.push_back(b);
         rp.n_objectives = p_.n_obj;
         native_ = make_run_native(p_, static_cast<std::uint64_t>(job_.seed), noise_cell());
         rp.native = native_;
@@ -340,6 +343,18 @@ public:
         cfg.max_evaluations = budget_;
         if (native_->n_con > 0) cfg.constraint_mode = ConstraintMode::FEASIBILITY;
         apply_knobs(cfg, job_.params);
+        if (!p_.var_kinds.empty()) {
+            // minimize's layout: the kinds, rounded into the genome (lamarck,
+            // int_repair's default), polynomial mutation's index 3 for them
+            cfg.var_kinds = p_.var_kinds;
+            cfg.discrete_values.assign(p_.var_kinds.size(), {});
+            const json::Value* repair = job_.params.find("int_repair");
+            cfg.lamarck = !repair || detail::py_str(*repair) == "lamarck";
+            if (std::any_of(p_.var_kinds.begin(), p_.var_kinds.end(), [](int k) { return k != 0; })) {
+                const json::Value* eta = job_.params.find("eta_int");
+                cfg.eta_int = !eta ? 3.0 : eta->kind == json::Value::Kind::Float ? eta->f : static_cast<double>(eta->i);
+            }
+        }
         cfg.on_generation = [this](int gen, std::vector<std::vector<double>> F) { on_gen(gen, std::move(F)); };
         cfg.record_every = grid_kind_ != Grid::Generations ? 1 : static_cast<int>(spec_.record_every);
         try {
@@ -618,6 +633,8 @@ public:
         if (constrained_)
             final.set("fe_first_feas", out.first_feasible < 0 ? V::null() : V::integer(out.first_feasible));
         if (p_.failing || out.n_failed) final.set("n_failed", V::integer(out.n_failed));
+        if (p_.typed && !final.keys.empty())
+            final.set("dup_x_share", V::number(static_cast<double>(dup_x_) / static_cast<double>(std::max(out.fe, 1LL))));
         if (truth_) {
             if (!final.keys.empty()) {
                 final.set("true_dominated_share", dominated_share(F.data(), n, m));
@@ -1079,7 +1096,8 @@ private:
                 const double v = X[i * width + j] + 0.0;
                 std::memcpy(&key[j * sizeof(double)], &v, sizeof v);
             }
-            seen_rows_.insert(std::move(key));
+            // a point asked for again (after the rounding of its integers)
+            if (!seen_rows_.insert(std::move(key)).second) ++dup_x_;
         }
         const std::size_t c = static_cast<std::size_t>(native_->n_con);
         const std::vector<double> T = truth_ ? true_rows(X.data(), n) : std::vector<double>{};
@@ -1378,6 +1396,7 @@ private:
     Process process_;
     json::Value meta_, meta_at_start_;
     bool snap_ = false, keep_x_ = false;
+    long long dup_x_ = 0;                            // the points evaluated again
     std::vector<std::int64_t> snap_fe_, snap_gen_, snap_n_;
     std::vector<float> snap_F_, snap_X_;
     std::set<long long> checkpoints_;

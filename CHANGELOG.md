@@ -23,6 +23,16 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs problems with integer variables beside real ones
+  (bbob-biobj-mixint, RE23, RE36, CRE25: var_types of "int" and "real"):
+  the registry export hands over the core's kinds and box
+  (`var_kinds`, `core_bounds`, as var_types.Layout gives them), and the run
+  sets them as minimize does — the integers rounded into the genome
+  (`int_repair`, lamarck by default), polynomial mutation's index 3 for
+  them (`eta_int`) — and records `dup_x_share`. Bits and categories stay
+  Python's. Seven such problems under four variants (one with
+  int_repair = baldwin and eta_int = 5), two seeds: 56 runs as the Python
+  engine's, record for record.
 - The C++ engine runs the uninformative problems (benchmarks/uninformative.py,
   f1 and f2b-f5 at 2 and 10 variables): `UninformativeNative` draws their
   values from the run's seed and the evaluation's number as

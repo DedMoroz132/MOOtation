@@ -5,11 +5,12 @@ point each, the reference of tests/test_registry.cpp
 (include/mootation/campaign/registry.hpp): a shifted problem (its centre
 handed over), a constrained one (C-DTLZ's constants), a rotated one (its
 matrix drawn by C++), a bbob-biobj one (its instance drawn by C++), one
-the C++ engine refuses, and two failing copies (the band at the faces, the
-random balls) with the values at points inside and outside the region
-(null: NaN, a failed evaluation), and a noisy copy of each kind with the
-values its run evaluator (seed 7, cell 0.02) gives at a few points in turn;
-two uninformative problems with their evaluator's values and summary.
+the C++ engine refuses, a mixed-integer one (its core's kinds and box), two
+failing copies (the band at the faces, the random balls) with the values
+at points inside and outside the region (null: NaN, a failed evaluation),
+a noisy copy of each kind with the values its run evaluator (seed 7, cell
+0.02) gives at a few points in turn, and four uninformative problems with
+their evaluator's values and summary.
 
     python tools/refs/gen_registry_sample.py
 """
@@ -21,7 +22,7 @@ from mootation.benchmarks import registry as R
 from mootation.run.campaign import _code_stamp
 from mootation.run.registry_export import FORMAT, entry, names
 
-NAMES = ("shiftDTLZ2_3D", "C2-DTLZ2_3D", "rDTLZ2_3D", "bbobbiobj07_n10_2D", "catZDT1")
+NAMES = ("shiftDTLZ2_3D", "C2-DTLZ2_3D", "rDTLZ2_3D", "bbobbiobj07_n10_2D", "catZDT1", "bbobbiobjmixint01_n05_2D")
 FAILING = ("ZDT1_fail30b", "DTLZ2_3D_fail30r")
 NOISY = ("ZDT1_n1", "DTLZ2_3D_d5", "ZDT1_s5", "DTLZ2_3D_h1")
 UNINFORMATIVE = ("uninformative_n10_2D", "uninformative_f2b_n02_2D", "uninformative_f3b_n02_2D",

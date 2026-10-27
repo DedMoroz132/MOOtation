@@ -41,7 +41,7 @@ int main()
 {
     const std::string path = std::string(MOOTATION_TEST_DATA) + "/registry_sample.json";
     const cg::ProblemRegistry reg = cg::load_registry(path);
-    CHECK(reg.problems.size() == 15);
+    CHECK(reg.problems.size() == 16);
     CHECK(!reg.code_stamp.empty() && reg.reference_version >= 1);
 
     // the values the file records, from the problems built here
@@ -65,7 +65,14 @@ int main()
         CHECK(static_cast<int>(p.bounds.size()) == p.n_var && native->n_var == p.n_var);
         ++checked;
     }
-    CHECK(checked == 4);
+    CHECK(checked == 5);
+
+    // integer variables: the core's kinds and box, each integer's widened by
+    // just under a half (var_types.Layout.core_bounds)
+    const cg::RegistryProblem& mixint = reg.problems.at("bbobbiobjmixint01_n05_2D");
+    CHECK(mixint.typed && !cg::engine_refusal(mixint));
+    CHECK((mixint.var_kinds == std::vector<int>{1, 1, 1, 1, 0}) && mixint.core_bounds.size() == 5);
+    CHECK(mixint.core_bounds[1].first == 0.0 - 0.4999999 && mixint.core_bounds[1].second == 3.0 + 0.4999999);
 
     // the failing copies: the base's values outside the region, NaN (null in
     // the file) in every objective inside it, at the points Python evaluated

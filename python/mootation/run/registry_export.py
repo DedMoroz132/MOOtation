@@ -109,9 +109,24 @@ def entry(name: str) -> dict:
         "failing_region": _failing_region(name),
         "noise": _noise(name),
         "uninformative": _uninformative(name),
+        **_layout(p),
         "distance": p.distance_fn is not None,
         "spec": spec,
     }
+
+
+def _layout(p) -> dict:
+    """Integer variables beside real ones (var_types.Layout, no bits and no
+    categories): the core's kinds (0 real, 1 integer) and its box, each
+    integer's widened by just under a half on each side; nothing else."""
+    from ..var_types import Layout
+    if p.var_types is None or any(t not in ("real", "int") for t in p.var_types):
+        return {}
+    layout = Layout(p.var_types, list(p.bounds))
+    if layout.trivial():
+        return {}
+    return {"var_kinds": [int(k) for k in layout.var_kinds()],
+            "core_bounds": [[float(lo), float(hi)] for lo, hi in layout.core_bounds()]}
 
 
 def _uninformative(name: str) -> str | None:

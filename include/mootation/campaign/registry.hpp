@@ -68,6 +68,10 @@ struct RegistryProblem {
     std::optional<FailRegion> failing_region;     // a failing copy of a problem of the suite
     std::optional<NoiseSpec> noise;               // a noisy copy of a problem of the suite
     std::optional<std::string> uninformative;     // an uninformative problem's kind: f1, f2b, f3b, f4b, f5
+    // integer variables beside real ones (var_types.Layout): the core's kinds
+    // (0 real, 1 integer) and box; empty for real variables alone
+    std::vector<int> var_kinds;
+    std::vector<std::pair<double, double>> core_bounds;
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -205,6 +209,13 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     }
     if (const json::Value* v = o.find("uninformative"); v && v->kind == json::Value::Kind::String)
         p.uninformative = v->s;
+    if (const json::Value* v = o.find("var_kinds"); v && v->kind == json::Value::Kind::Array)
+        for (const auto& k : v->items) p.var_kinds.push_back(static_cast<int>(k.i));
+    if (const json::Value* v = o.find("core_bounds"); v && v->kind == json::Value::Kind::Array)
+        for (const auto& b : v->items) {
+            const auto lh = detail::floats_of(&b);
+            p.core_bounds.emplace_back(lh.at(0), lh.at(1));
+        }
     return p;
 }
 
@@ -252,7 +263,7 @@ inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
     if (!p.spec && !p.failing_region && !p.noise && !p.uninformative) return "not a problem of the C++ suite";
     if (p.own_evaluator && !p.noise && !p.uninformative) return "an evaluator of the run's own";
-    if (p.typed) return "typed variables";
+    if (p.typed && p.var_kinds.empty()) return "typed variables (bits or categories)";
     if (p.failing && !p.failing_region) return "a failing copy";
     if (p.n_eq) return "equality constraints";
     return std::nullopt;

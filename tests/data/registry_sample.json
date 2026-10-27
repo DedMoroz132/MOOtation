@@ -1190,6 +1190,106 @@
    "spec": null
   },
   {
+   "name": "bbobbiobjmixint01_n05_2D",
+   "family": "bbobbiobjmixint",
+   "n_var": 5,
+   "n_obj": 2,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     3.0
+    ],
+    [
+     0.0,
+     7.0
+    ],
+    [
+     0.0,
+     15.0
+    ],
+    [
+     -5.0,
+     5.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": true,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "var_kinds": [
+    1,
+    1,
+    1,
+    1,
+    0
+   ],
+   "core_bounds": [
+    [
+     -0.4999999,
+     1.4999999
+    ],
+    [
+     -0.4999999,
+     3.4999999
+    ],
+    [
+     -0.4999999,
+     7.4999999
+    ],
+    [
+     -0.4999999,
+     15.4999999
+    ],
+    [
+     -5.0,
+     5.0
+    ]
+   ],
+   "distance": false,
+   "spec": {
+    "family": "bbob-biobj-mixint",
+    "n_var": 5,
+    "n_obj": 2,
+    "bbob_fnum": 1,
+    "bbob_iid": 1
+   },
+   "check": {
+    "x": [
+     0.5,
+     1.6,
+     3.966666666666667,
+     7.5,
+     0.3333333333333333
+    ],
+    "F": [
+     7.741681410890754,
+     -94.91070293766535
+    ],
+    "G": []
+   }
+  },
+  {
    "name": "ZDT1_fail30b",
    "family": "failing",
    "n_var": 30,
