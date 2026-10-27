@@ -706,8 +706,8 @@ always listed under **Changed** or **Removed**.
   box: the run met §6.3's stop after some 40 evaluations. A poll step that
   would leave the box now stops at its last mesh point inside (DMM-7), and a
   repeated poll point is dropped; trajectories change wherever a poll point
-  left the box. WFG4_3D does worse than before at 10 000 evaluations (IGD+
-  about 0.6 against 0.3): the dominated diagonal points the filter kept lay
+  left the box. WFG4_3D does worse than before at 10 000 evaluations: the
+  dominated diagonal points the filter kept lay
   near WFG4's optimal distance values, and the paper's start (the
   non-dominated points of the line, DMS) drops them. DMM-7 is our reading:
   the DMulti-MADS implementation is preliminary until its poll and bounds
