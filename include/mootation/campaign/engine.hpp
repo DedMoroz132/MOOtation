@@ -559,6 +559,23 @@ inline std::optional<JobReferences> own_references(const std::filesystem::path& 
                                spec.dense_reference, w.pset);
 }
 
+// refs.status: the entry is there, and of this problem version and this
+// builder version (an older one the Python engine builds anew)
+inline bool entry_current(const std::filesystem::path& path, int problem_version, int reference_version)
+{
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec)) return false;
+    try {
+        const ReferenceEntry e = load_entry(path);
+        const json::Value* pv = e.meta.find("problem_version");
+        const json::Value* rv = e.meta.find("reference_version");
+        return pv && rv && pv->kind == json::Value::Kind::Int && rv->kind == json::Value::Kind::Int &&
+               pv->i == problem_version && rv->i == reference_version;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 // run_campaign: the campaign's jobs not done yet, run by `workers` threads
 inline EngineCounts run_campaign(const std::string& text, const std::filesystem::path& source_path,
                                  const ProblemRegistry& preg, const EngineOptions& opt)
@@ -618,17 +635,21 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
         }
         todo.push_back(j);
     }
-    // every reference the jobs read from the cache, there before the first runs
+    // every reference the jobs read from the cache, there and current before
+    // the first runs
     std::set<std::string> missing;
     for (const Job* j : todo) {
-        if (!preg.problems.at(j->problem).shared_reference) continue;
-        const auto path = entry_path(preg.reference_version, j->problem, spec.n_ref);
-        if (!std::filesystem::is_regular_file(path, ec)) missing.insert(j->problem);
+        const RegistryProblem& p = preg.problems.at(j->problem);
+        if (!p.shared_reference) continue;
+        if (!entry_current(entry_path(preg.reference_version, j->problem, spec.n_ref), p.problem_version,
+                           preg.reference_version))
+            missing.insert(j->problem);
     }
     if (!missing.empty())
         throw std::runtime_error("the cache of references (" + detail::utf8(refs_root()) + ") lacks " +
-                                 std::to_string(missing.size()) + " entries at n_ref = " + std::to_string(spec.n_ref) +
-                                 " (build them with: python -m mootation refs build --n-ref " + std::to_string(spec.n_ref) +
+                                 std::to_string(missing.size()) + " current entries at n_ref = " +
+                                 std::to_string(spec.n_ref) + " (missing, or of an older version; " +
+                                 "build them with: python -m mootation refs build --n-ref " + std::to_string(spec.n_ref) +
                                  " --problems " + join({missing.begin(), missing.end()}, ",") + ")");
     if (opt.say)
         opt.say(cfg.name + ": " + std::to_string(jobs.size()) + " jobs total, " + std::to_string(selected.size()) +

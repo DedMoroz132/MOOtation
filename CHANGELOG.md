@@ -23,6 +23,15 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- BT1-9 and MOP1-7 in the C++ suite (`suite/bt.hpp`, `suite/mop.hpp`;
+  `benchmarks/native.py`), the NumPy code of bt.py and mop.py one to one:
+  built with the C library's functions in place of dm::'s, 192 605 values
+  of 192 605 the NumPy reference's bits; with dm::, within 7 ulps. Their
+  problem version is 2 (exp, pow, sin and cos the library's own). The C++
+  campaign engine runs them; their 32 runs under nsga2 and moead_de as the
+  Python engine's. The engine checks a cache entry's problem and builder
+  versions before it reads it, as refs.status does (an older entry: built
+  anew by the Python command, or named).
 - `python -m mootation.run.campaign` hands a campaign with storage =
   "store" of builtin problems to the C++ engine first (`--engine auto`, the
   default, where it is found: `MOOTATION_ENGINE`, or `mootation/bin/`, where

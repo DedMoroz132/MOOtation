@@ -2727,6 +2727,9 @@ _register_failing()
 # own), and rcPolygon's turn takes the pairwise sums. Unchanged, the same bits
 # in C++ as in NumPy: IPolygon, DOC8 and the RE and CRE problems of arithmetic
 # and square roots alone (_DETMATH_SAME).
+#
+# From 2026-10-27 (task 17, stage 5): BT1-9 and MOP1-7 in the C++ suite, their
+# exp, pow, sin and cos the library's own: version 2 (by _in_suite).
 PROBLEM_VERSION: Dict[str, int] = {
     **{name: 2 for name, r in ROTATED.items()
        if r.rotate and r.kind in ("dtlz", "maf", "zdt", "zcat")},
@@ -2748,7 +2751,7 @@ def _in_suite(name: str) -> bool:
     return bool(_native._BBOB.fullmatch(name) or _native._ZDT.fullmatch(name)
                 or _native._STEMS.fullmatch(name) or _native._DAS.fullmatch(name)
                 or _native._OTHER.fullmatch(name) or _native._MMO.fullmatch(name)
-                or _native._RE.fullmatch(name))
+                or _native._RE.fullmatch(name) or _native._BT_MOP.fullmatch(name))
 
 
 for _name in list(PROBLEMS):

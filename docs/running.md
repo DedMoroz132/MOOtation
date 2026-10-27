@@ -291,7 +291,9 @@ call.
 **In C++: the suite.** ZDT1–4 and ZDT6, DTLZ1–7 and wideDTLZ3, shiftDTLZ,
 IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–15, ZCAT1–20, WFG1–9, shiftZDT
 and the rotations over them (rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF,
-r0/c0MaF, rZCAT, rWFG) are computed in C++ when the extension is built
+r0/c0MaF, rZCAT, rWFG), bbob-biobj and bbob-biobj-mixint, DAS-CMOP,
+LIR-CMOP, MW, DOC, Polygon and IPolygon, SYM-PART, Omni-test, MMF, RE and
+CRE, BT1–9 and MOP1–7 are computed in C++ when the extension is built
 (`include/mootation/suite`, `benchmarks/native.py`): `p.evaluate`,
 `p.evaluate_batch` and the constraints call it, the loop over a batch runs in
 C++, and `p.native` is the `_core.Native` behind them. The NumPy code stays,
