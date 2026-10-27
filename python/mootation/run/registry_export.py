@@ -108,9 +108,20 @@ def entry(name: str) -> dict:
         "failing": p.failing is not None,
         "failing_region": _failing_region(name),
         "noise": _noise(name),
+        "uninformative": _uninformative(name),
         "distance": p.distance_fn is not None,
         "spec": spec,
     }
+
+
+def _uninformative(name: str) -> str | None:
+    """An uninformative problem's kind (benchmarks/uninformative.py: f1, f2b,
+    f3b, f4b, f5), whose run evaluator the engine makes from the run's seed."""
+    from ..benchmarks import uninformative as U
+    for problem in U.PROBLEMS:
+        if any(U.name(n, problem) == name for n in U.SIZES):
+            return problem
+    return None
 
 
 def _noise(name: str) -> dict | None:

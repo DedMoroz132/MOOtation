@@ -23,6 +23,13 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs the uninformative problems (benchmarks/uninformative.py,
+  f1 and f2b-f5 at 2 and 10 variables): `UninformativeNative` draws their
+  values from the run's seed and the evaluation's number as
+  `uninformative.Evaluator` does, and counts where the evaluated and the
+  non-dominated points fell (meta.json's `structural_bias`). The ten
+  problems under three cores and two seeds: 60 runs as the Python
+  engine's, record for record.
 - The C++ engine runs a problem whose reference is built for the campaign
   (not `refs.shared`: RE, CRE, KUR, POL, QV, bbob-biobj ...) from the
   campaign's own cache, `<results>/_references/<name>.npz`, which the

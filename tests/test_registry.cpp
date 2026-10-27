@@ -7,7 +7,8 @@
 // over, C-DTLZ's constants, a rotation and a bbob instance drawn here — and
 // the engine refuses the problem it cannot run without Python; a failing
 // copy gives the base's values outside its region and NaN inside, as Python's;
-// a noisy copy's run evaluator, its values in turn.
+// a noisy copy's run evaluator, its values in turn; an uninformative one's,
+// and its count of where the points fell.
 
 #include <cmath>
 #include <cstdio>
@@ -40,7 +41,7 @@ int main()
 {
     const std::string path = std::string(MOOTATION_TEST_DATA) + "/registry_sample.json";
     const cg::ProblemRegistry reg = cg::load_registry(path);
-    CHECK(reg.problems.size() == 11);
+    CHECK(reg.problems.size() == 15);
     CHECK(!reg.code_stamp.empty() && reg.reference_version >= 1);
 
     // the values the file records, from the problems built here
@@ -118,6 +119,30 @@ int main()
         }
     }
     CHECK(noise_checked == 20);
+
+    // the uninformative problems: their run evaluator's values in turn and its
+    // count of where the points fell (meta.json's structural_bias)
+    int uninformative_checked = 0;
+    for (const auto& item : doc.find("problems")->items) {
+        const js::Value* checks = item.find("uninformative_checks");
+        if (!checks) continue;
+        const cg::RegistryProblem& p = reg.problems.at(item.find("name")->s);
+        CHECK(p.uninformative && !cg::engine_refusal(p));
+        const auto native = cg::make_run_native(p, static_cast<std::uint64_t>(checks->find("seed")->i), 0.01);
+        for (const auto& c : checks->find("points")->items) {
+            const auto x = numbers(*c.find("x"));
+            std::vector<double> f(2);
+            native->evaluate(x.data(), f.data(), nullptr);
+            if (f != numbers(*c.find("F"))) {
+                std::printf("FAIL %s: other uninformative values\n", p.name.c_str());
+                ++failures;
+            }
+        }
+        const auto u = std::dynamic_pointer_cast<const cg::UninformativeNative>(native);
+        CHECK(u && js::dump(u->summary()) == js::dump(*checks->find("summary")));
+        ++uninformative_checked;
+    }
+    CHECK(uninformative_checked == 4);
 
     CHECK(!cg::engine_refusal(reg.problems.at("shiftDTLZ2_3D")));
     CHECK(reg.problems.at("C2-DTLZ2_3D").has_cons && reg.problems.at("C2-DTLZ2_3D").n_con == 1);

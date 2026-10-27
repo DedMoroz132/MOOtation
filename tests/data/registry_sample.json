@@ -731,6 +731,7 @@
    "failing": false,
    "failing_region": null,
    "noise": null,
+   "uninformative": null,
    "distance": true,
    "spec": {
     "family": "DTLZ2",
@@ -849,6 +850,7 @@
    "failing": false,
    "failing_region": null,
    "noise": null,
+   "uninformative": null,
    "distance": true,
    "spec": {
     "family": "C2-DTLZ2",
@@ -962,6 +964,7 @@
    "failing": false,
    "failing_region": null,
    "noise": null,
+   "uninformative": null,
    "distance": true,
    "spec": {
     "family": "DTLZ2",
@@ -1082,6 +1085,7 @@
    "failing": false,
    "failing_region": null,
    "noise": null,
+   "uninformative": null,
    "distance": false,
    "spec": {
     "family": "bbob-biobj",
@@ -1181,6 +1185,7 @@
    "failing": false,
    "failing_region": null,
    "noise": null,
+   "uninformative": null,
    "distance": false,
    "spec": null
   },
@@ -1345,6 +1350,7 @@
     "t": 0.005909383970481574
    },
    "noise": null,
+   "uninformative": null,
    "distance": false,
    "spec": null,
    "fail_checks": [
@@ -1611,6 +1617,7 @@
     ]
    },
    "noise": null,
+   "uninformative": null,
    "distance": false,
    "spec": null,
    "fail_checks": [
@@ -1868,6 +1875,7 @@
      "n_obj": 2
     }
    },
+   "uninformative": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -2165,6 +2173,7 @@
      "n_obj": 3
     }
    },
+   "uninformative": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -2447,6 +2456,7 @@
      "n_obj": 2
     }
    },
+   "uninformative": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -2744,6 +2754,7 @@
      "n_obj": 3
     }
    },
+   "uninformative": null,
    "distance": true,
    "spec": null,
    "noise_checks": {
@@ -2856,6 +2867,742 @@
       ]
      }
     ]
+   }
+  },
+  {
+   "name": "uninformative_n10_2D",
+   "family": "uninformative",
+   "n_var": 10,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f1",
+   "distance": false,
+   "spec": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.3935452525211064,
+       0.46519245062848724
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.1077757327000407,
+       0.9082131990553513
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.26316369734458245,
+       0.5572075013668569
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.16896006603794256,
+       0.22747779916361122
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.8097394965038001,
+       0.5240694861265422
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.7860236340497067,
+       0.13833585160249018
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       12
+      ],
+      "at_lower": 12,
+      "at_upper": 12,
+      "at_half": 12
+     },
+     "nondominated": {
+      "points": 3,
+      "hist": [
+       6,
+       0,
+       0,
+       0,
+       0,
+       6,
+       0,
+       0,
+       0,
+       0,
+       6,
+       0,
+       0,
+       0,
+       0,
+       6,
+       0,
+       0,
+       0,
+       6
+      ],
+      "at_lower": 6,
+      "at_upper": 6,
+      "at_half": 6
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f2b_n02_2D",
+   "family": "uninformative",
+   "n_var": 2,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f2b",
+   "distance": false,
+   "spec": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.7291843589636411,
+       0.7685635692387338
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.6694836778405229,
+       0.1780672661217147
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.7737916900724396,
+       0.3196790270880971
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.9660140942282133,
+       0.5413985897032849
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.0257666337700182,
+       1.1431259621410275
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.1433409482970136,
+       0.7672586228436
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       3,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       3,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 3,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "nondominated": {
+      "points": 3,
+      "hist": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 1,
+      "at_upper": 2,
+      "at_half": 1
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f3b_n02_2D",
+   "family": "uninformative",
+   "n_var": 2,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f3b",
+   "distance": false,
+   "spec": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.7291843589636411,
+       1.6953493411339067
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.6694836778405229,
+       0.4006870879624227
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.7737916900724396,
+       1.0610652742787965
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.9660140942282133,
+       0.10347974225335708
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.0257666337700182,
+       4.333961616708169
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.1433409482970136,
+       3.7971558331037625
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       3,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       3,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 3,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "nondominated": {
+      "points": 4,
+      "hist": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 1,
+      "at_upper": 2,
+      "at_half": 1
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f4b_n02_2D",
+   "family": "uninformative",
+   "n_var": 2,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f4b",
+   "distance": false,
+   "spec": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.7291843589636411,
+       2.4785586205252694
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.6694836778405229,
+       -0.5570589130020268
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.7737916900724396,
+       1.0404482940414863
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.9660140942282133,
+       -0.9280029666426647
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.0257666337700182,
+       7.385030055746212
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.1433409482970136,
+       6.3909622711791325
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       3,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       3,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 3,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "nondominated": {
+      "points": 4,
+      "hist": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 1,
+      "at_upper": 2,
+      "at_half": 1
+     },
+     "evaluations": 6
+    }
    }
   }
  ]

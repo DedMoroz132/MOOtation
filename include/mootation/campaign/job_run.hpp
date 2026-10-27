@@ -761,6 +761,10 @@ public:
             meta.set("settings", s);
         }
         meta.set("operator_stats", V::boolean(false));
+        // the uninformative problems count where every evaluated point and
+        // every non-dominated one fell
+        if (const auto u = std::dynamic_pointer_cast<const UninformativeNative>(native_))
+            meta.set("structural_bias", u->summary());
         V timing = V::object();
         for (const char* k : {"evaluate", "constraints", "feasible", "archive", "evaluator", "checkpoints", "records",
                               "minimize", "final", "write", "set_answer", "setup"})

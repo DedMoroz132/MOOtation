@@ -67,6 +67,7 @@ struct RegistryProblem {
     std::optional<json::Value> spec;              // null: not a problem of the suite
     std::optional<FailRegion> failing_region;     // a failing copy of a problem of the suite
     std::optional<NoiseSpec> noise;               // a noisy copy of a problem of the suite
+    std::optional<std::string> uninformative;     // an uninformative problem's kind: f1, f2b, f3b, f4b, f5
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -202,6 +203,8 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
         z.spec = *v->find("spec");
         p.noise = std::move(z);
     }
+    if (const json::Value* v = o.find("uninformative"); v && v->kind == json::Value::Kind::String)
+        p.uninformative = v->s;
     return p;
 }
 
@@ -247,8 +250,8 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
 // why the C++ engine does not run this problem (the Python engine does), or nothing
 inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
-    if (!p.spec && !p.failing_region && !p.noise) return "not a problem of the C++ suite";
-    if (p.own_evaluator && !p.noise) return "an evaluator of the run's own (an uninformative problem)";
+    if (!p.spec && !p.failing_region && !p.noise && !p.uninformative) return "not a problem of the C++ suite";
+    if (p.own_evaluator && !p.noise && !p.uninformative) return "an evaluator of the run's own";
     if (p.typed) return "typed variables";
     if (p.failing && !p.failing_region) return "a failing copy";
     if (p.n_eq) return "equality constraints";
@@ -397,6 +400,143 @@ private:
     double (*volatile crt_cos_)(double) = ::cos;
 };
 
+// uninformative.Evaluator: one run's objectives, drawn at random whatever x
+// is — the k-th evaluation the k-th draw of the splitmix64 stream of the
+// run's seed (f1: two uniforms; f2b-f5: Kudela et al.'s [a, g2(a) + R z^2]
+// of a uniform a and a normal z by Box-Muller) — and where the evaluated
+// points lie: 20 bins of [0, 1] per coordinate and the points exactly at 0,
+// 1 and 1/2, over every point and over the run's non-dominated ones
+// (summary(), meta.json's structural_bias). The C library's log, cos, sin
+// and pow through pointers, as CPython's math and ** call them.
+class UninformativeNative : public suite::Native {
+public:
+    UninformativeNative(std::string problem, int n_vars, std::uint64_t seed) : problem_(std::move(problem)), seed_(seed)
+    {
+        n_var = n_vars;
+        n_obj = 2;
+        n_con = 0;
+    }
+
+    void evaluate(const double* x, double* f, double*) const override
+    {
+        if (problem_ == "f1") {
+            for (std::uint64_t i = 0; i < 2; ++i)
+                f[i] = NoisyNative::unit(NoisyNative::splitmix64(seed_ ^ NoisyNative::splitmix64(k_ * 2 + i)));
+        } else {
+            const double a = draw(0), u1 = draw(1), u2 = draw(2);
+            const double z = std::sqrt(-2.0 * log_(1.0 - u1)) * cos_(2.0 * kPi * u2);
+            objectives(a, z, f);
+        }
+        ++k_;
+        std::vector<double> v(x, x + n_var);
+        all_.add(v);
+        front(f, v);
+    }
+
+    json::Value summary() const
+    {
+        Counts nd;
+        for (const auto& x : front_x_) nd.add(x);
+        json::Value s = json::Value::object();
+        s.set("bins", json::Value::integer(kBins));
+        s.set("all", all_.as_value());
+        s.set("nondominated", nd.as_value());
+        s.set("evaluations", json::Value::integer(static_cast<std::int64_t>(k_)));
+        return s;
+    }
+
+private:
+    static constexpr int kBins = 20;
+    static constexpr double kPi = 3.141592653589793;           // math.pi
+
+    struct Counts {
+        std::vector<std::int64_t> hist = std::vector<std::int64_t>(kBins, 0);
+        std::int64_t points = 0, lower = 0, upper = 0, half = 0;
+        void add(const std::vector<double>& x)
+        {
+            ++points;
+            for (double v : x) {
+                // min(BINS - 1, max(0, int(v * BINS)))
+                const double b = std::trunc(v * kBins);
+                hist[static_cast<std::size_t>(b < 0.0 ? 0.0 : b > kBins - 1 ? kBins - 1 : b)] += 1;
+                lower += v == 0.0;
+                upper += v == 1.0;
+                half += v == 0.5;
+            }
+        }
+        json::Value as_value() const
+        {
+            json::Value d = json::Value::object(), h = json::Value::array();
+            for (auto c : hist) h.items.push_back(json::Value::integer(c));
+            d.set("points", json::Value::integer(points));
+            d.set("hist", h);
+            d.set("at_lower", json::Value::integer(lower));
+            d.set("at_upper", json::Value::integer(upper));
+            d.set("at_half", json::Value::integer(half));
+            return d;
+        }
+    };
+
+    // uniform i (0..3) of the evaluation: a domain apart from f1's
+    double draw(std::uint64_t i) const
+    {
+        return NoisyNative::unit(NoisyNative::splitmix64(seed_ ^ NoisyNative::splitmix64((1ULL << 62) + 4 * k_ + i)));
+    }
+
+    // uninformative.objectives: [g1, g2] for a = U(0, 1) and z = N(0, 1)
+    void objectives(double a, double z, double* f) const
+    {
+        f[0] = a;
+        if (problem_ == "f5") {
+            f[1] = -a;
+            return;
+        }
+        double g2 = 0.0, r = 0.0;
+        if (problem_ == "f2b") {
+            g2 = 1.0 - sin_(12.0 * kPi * pow_(a, 1.5)) / 4.0 - std::sqrt(a / 2.0);
+            r = 0.08;
+        } else if (problem_ == "f3b") {
+            int b = 0;
+            for (int i = 1; i < 10; ++i) b += a > i / 10.0;
+            g2 = 0.1 / pow_(10.0 * (a - b / 10.0) + 1.0, 10.0) + (1.0 - b / 10.0);
+            r = 0.9;
+        } else {                                                   // f4b
+            g2 = a < 0.5 ? -2.0 * a * a : -2.0 * pow_(a - 0.5, 2.0) - 0.5;
+            r = 2.0;
+        }
+        f[1] = g2 + r * z * z;
+    }
+
+    // the run's non-dominated points so far, by f1 ascending (f2 falls along)
+    void front(const double* f, const std::vector<double>& x) const
+    {
+        const auto i = static_cast<std::size_t>(std::lower_bound(front_f1_.begin(), front_f1_.end(), f[0]) -
+                                                front_f1_.begin());
+        if (i > 0 && front_f2_[i - 1] <= f[1]) return;
+        if (i < front_f1_.size() && front_f1_[i] == f[0] && front_f2_[i] <= f[1]) return;
+        std::size_t j = i;
+        while (j < front_f1_.size() && front_f2_[j] >= f[1]) ++j;
+        const auto at = static_cast<std::ptrdiff_t>(i), to = static_cast<std::ptrdiff_t>(j);
+        front_f1_.erase(front_f1_.begin() + at, front_f1_.begin() + to);
+        front_f2_.erase(front_f2_.begin() + at, front_f2_.begin() + to);
+        front_x_.erase(front_x_.begin() + at, front_x_.begin() + to);
+        front_f1_.insert(front_f1_.begin() + at, f[0]);
+        front_f2_.insert(front_f2_.begin() + at, f[1]);
+        front_x_.insert(front_x_.begin() + at, x);
+    }
+
+    std::string problem_;
+    std::uint64_t seed_;
+    mutable std::uint64_t k_ = 0;
+    mutable Counts all_;
+    mutable std::vector<double> front_f1_, front_f2_;
+    mutable std::vector<std::vector<double>> front_x_;
+    double (*volatile log_)(double) = ::log;
+    double (*volatile cos_)(double) = ::cos;
+    double (*volatile sin_)(double) = ::sin;
+    double (*volatile pow_)(double, double) = ::pow;
+};
+
 // the problem's evaluation in C++, built from its spec (a failing copy: its
 // base's, failing in the region; a noisy copy: its base's, noise-free — the
 // run's noisy evaluation is make_run_native's)
@@ -416,6 +556,7 @@ inline std::shared_ptr<suite::Native> make_native(const RegistryProblem& p)
 inline std::shared_ptr<suite::Native> make_run_native(const RegistryProblem& p, std::uint64_t seed, double cell)
 {
     if (p.noise) return std::make_shared<NoisyNative>(make_native(p), *p.noise, p.bounds, seed, cell);
+    if (p.uninformative) return std::make_shared<UninformativeNative>(*p.uninformative, p.n_var, seed);
     return make_native(p);
 }
 

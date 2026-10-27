@@ -8,7 +8,8 @@ matrix drawn by C++), a bbob-biobj one (its instance drawn by C++), one
 the C++ engine refuses, and two failing copies (the band at the faces, the
 random balls) with the values at points inside and outside the region
 (null: NaN, a failed evaluation), and a noisy copy of each kind with the
-values its run evaluator (seed 7, cell 0.02) gives at a few points in turn.
+values its run evaluator (seed 7, cell 0.02) gives at a few points in turn;
+two uninformative problems with their evaluator's values and summary.
 
     python tools/refs/gen_registry_sample.py
 """
@@ -23,6 +24,8 @@ from mootation.run.registry_export import FORMAT, entry, names
 NAMES = ("shiftDTLZ2_3D", "C2-DTLZ2_3D", "rDTLZ2_3D", "bbobbiobj07_n10_2D", "catZDT1")
 FAILING = ("ZDT1_fail30b", "DTLZ2_3D_fail30r")
 NOISY = ("ZDT1_n1", "DTLZ2_3D_d5", "ZDT1_s5", "DTLZ2_3D_h1")
+UNINFORMATIVE = ("uninformative_n10_2D", "uninformative_f2b_n02_2D", "uninformative_f3b_n02_2D",
+                 "uninformative_f4b_n02_2D")
 
 
 def box_point(p, u):
@@ -66,6 +69,17 @@ for name in NOISY:
     rows = ev.batch(points)
     e["noise_checks"] = {"seed": 7, "cell": 0.02,
                          "points": [{"x": x, "F": [float(v) for v in f]} for x, f in zip(points, rows)]}
+    problems.append(e)
+for name in UNINFORMATIVE:
+    e = entry(name)
+    p = R.PROBLEMS[name]
+    ev = p.make_evaluator(7)
+    n = p.n_vars
+    points = [[((3 * i + k) % 5) / 4 for i in range(n)] for k in range(6)]   # 0, 1/2 and 1 among them
+    rows = [ev(x) for x in points]
+    e["uninformative_checks"] = {"seed": 7, "points": [{"x": x, "F": [float(v) for v in f]}
+                                                       for x, f in zip(points, rows)],
+                                 "summary": ev.summary()}
     problems.append(e)
 doc = {"format": FORMAT, "code_stamp": _code_stamp(), "reference_version": R.REFERENCE_VERSION,
        "mootation": __version__, "names": names(), "problems": problems}
