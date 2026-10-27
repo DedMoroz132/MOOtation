@@ -15,8 +15,8 @@
 // engine runs): a problem of the C++ suite whose run needs no Python
 // (registry.hpp), a core of algorithms.def (not a baseline or a
 // scalarization method), the first population uniform, no polishing, and of
-// [campaign] neither hard budgets, operator statistics nor the learned
-// coordinates' diagnostics; g_min and g_median only where the
+// [campaign] neither operator statistics nor the learned coordinates'
+// diagnostics; g_min and g_median only where the
 // problem has no distance of its own.
 // ============================================================================
 
@@ -172,7 +172,6 @@ inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& sp
         return "not a core of algorithms.def (a baseline or a scalarization method)";
     if (job.init != "uniform") return "a designed first population (init)";
     if (const json::Value* v = job.params.find("polish"); v && detail::py_str(*v) != "off") return "polish";
-    if (!spec.hard_budgets.empty()) return "hard budgets";
     if (spec.operator_stats) return "operator statistics";
     if (spec.coords_diag) return "the learned coordinates' diagnostics";
     if (p.distance) {
@@ -586,6 +585,21 @@ public:
                                        "row count"));
             meta.set("snapshots", sm);
         }
+        if (!hard_.empty()) {
+            // the hard budgets: the archive at exactly each (taken at the end
+            // where the run stopped before it) and the population's last
+            // record at or below it
+            for (auto b : hard_)
+                if (!hard_arc_.count(b) && arc_) take_hard_archive(b);
+            V h = V::object();
+            for (auto b : hard_) {
+                V e = V::object();
+                e.set("population", hard_pop_.count(b) ? hard_pop_.at(b) : V::null());
+                e.set("archive", hard_arc_.count(b) ? hard_arc_.at(b) : V::null());
+                h.set(std::to_string(b), e);
+            }
+            hard_at_ = h;
+        }
         if (!checkpoints_.empty()) {
             // the archive scenario at the record_at counts: indicators and points
             // (the points only where [campaign] keep = "full": store.FULL_ONLY)
@@ -600,6 +614,10 @@ public:
                 if (keep_x_) c.arrays.push_back(named_array("X", "<f4", {rows_of(ck_X_.size(), d), d}, ck_X_));
                 files.tables.push_back(std::move(c));
             }
+        }
+        if (!hard_.empty()) {
+            meta.set("hard_at", hard_at_);
+            meta.set("answer_k", V::integer(spec_.answer_k ? spec_.answer_k : p_.pop_size));
         }
         // the final indicators
         V final = V::object();
@@ -925,7 +943,12 @@ private:
                 spec_.record_at_metrics.end())
                 everywhere_.push_back(w);
         ledger_ = std::make_unique<RunLedger>(m, d, constrained_, arc_.get(), oracle_.get(), inc_.get(), sarc_.get());
+        // the hard budgets (CampaignSpec.hard_budgets): the archive after
+        // exactly b evaluations, the population's last record at or below b
+        for (auto b : spec_.hard_budgets)
+            if (b <= budget_) hard_.push_back(b);
         std::set<long long> read_at(checkpoints_.begin(), checkpoints_.end());
+        if (arc_) read_at.insert(hard_.begin(), hard_.end());
         if (inc_ || arc_hv_) read_at.insert(grid_set_.begin(), grid_set_.end());
         const std::vector<long long> reads(read_at.begin(), read_at.end());
         ledger_->set_reads(reads, inc_ ? std::vector<long long>(grid_set_.begin(), grid_set_.end())
@@ -1115,7 +1138,49 @@ private:
     void read(long long b)
     {
         if (arc_hv_ && grid_set_.count(b)) arc_hv_at_[b] = archive_hv();
+        if (arc_ && std::find(hard_.begin(), hard_.end(), b) != hard_.end()) take_hard_archive(b);
         if (checkpoints_.count(b) && (arc_->size() || constrained_)) take_checkpoint(b);
+    }
+
+    // the archive scenario now, k points: its indicators as a record's
+    // (noise-free, the dense reference's, true_dominated_share), and the
+    // points (T, TX) and how many (n)
+    json::Value archive_scenario(std::size_t k, std::vector<double>& T, std::vector<double>& TX, std::size_t& n) const
+    {
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
+        std::vector<double> AX;
+        std::vector<char> AE;
+        const select::Rows AF = archive_rows(AX, AE);
+        const auto idx = archive_select(AF, k);
+        T.clear();
+        TX.clear();
+        for (auto i : idx) {
+            T.insert(T.end(), AF.row(i), AF.row(i) + m);
+            TX.insert(TX.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                      AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+        }
+        n = idx.size();
+        if (truth_) T = true_rows(TX.data(), n);
+        json::Value v = measure(rows_ptr(T), n, m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_, measure_in_, traj_hv_);
+        add_dense(v, rows_ptr(T), n, m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_);
+        if (truth_ && n) v.set("true_dominated_share", dominated_share(T.data(), n, m));
+        for (const auto& h : hv_skipped_) v.set(h, json::Value::null());
+        return v;
+    }
+
+    // take_hard_archive: the archive scenario of answer_k points (the
+    // population's size by default) after exactly b evaluations, or at the
+    // end of a run that stopped before b
+    void take_hard_archive(long long b)
+    {
+        if (!arc_->size() && !constrained_) return;     // a constrained problem's empty archive: feas_share 0
+        std::vector<double> T, TX;
+        std::size_t n = 0;
+        const std::size_t k = static_cast<std::size_t>(spec_.answer_k ? spec_.answer_k : p_.pop_size);
+        json::Value v = archive_scenario(k, T, TX, n);
+        v.set("fe", json::Value::integer(fe_));
+        v.set("n", json::Value::integer(static_cast<std::int64_t>(n)));
+        hard_arc_[b] = v;
     }
 
     // true_values: a noisy copy's noise-free objectives at the rows X (n x d)
@@ -1145,27 +1210,14 @@ private:
     // archive_at.npz
     void take_checkpoint(long long b)
     {
-        const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
-        std::vector<double> AX, T, TX;
-        std::vector<char> AE;
-        const select::Rows AF = archive_rows(AX, AE);
-        const auto idx = archive_select(AF, static_cast<std::size_t>(p_.pop_size));
-        for (auto i : idx) {
-            T.insert(T.end(), AF.row(i), AF.row(i) + m);
-            TX.insert(TX.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
-                      AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
-        }
-        if (truth_) T = true_rows(TX.data(), idx.size());
-        json::Value v = measure(rows_ptr(T), idx.size(), m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_, measure_in_,
-                                traj_hv_);
-        add_dense(v, rows_ptr(T), idx.size(), m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_);
-        if (truth_ && !idx.empty()) v.set("true_dominated_share", dominated_share(T.data(), idx.size(), m));
-        for (const auto& h : hv_skipped_) v.set(h, json::Value::null());
+        std::vector<double> T, TX;
+        std::size_t n = 0;
+        json::Value v = archive_scenario(static_cast<std::size_t>(p_.pop_size), T, TX, n);
         v.set("fe", json::Value::integer(b));
-        v.set("n", json::Value::integer(static_cast<std::int64_t>(idx.size())));
+        v.set("n", json::Value::integer(static_cast<std::int64_t>(n)));
         archive_at_.set(std::to_string(b), v);
         ck_budget_.push_back(b);
-        ck_n_.push_back(static_cast<std::int64_t>(idx.size()));
+        ck_n_.push_back(static_cast<std::int64_t>(n));
         for (double x : T) ck_F_.push_back(static_cast<float>(x));
         if (keep_x_)
             for (double x : TX) ck_X_.push_back(static_cast<float>(x));
@@ -1356,6 +1408,17 @@ private:
             rec.set("igdp_norm_all", finite_or_null(v.first));
             rec.set("eps_norm_all", finite_or_null(v.second));
         }
+        for (auto b : hard_) {
+            if (fe_rec > b) continue;
+            json::Value pop = json::Value::object();
+            std::vector<std::string> keys = {"gen", "fe", "n"};
+            keys.insert(keys.end(), traj_metrics_.begin(), traj_metrics_.end());
+            for (const auto& k : keys) {
+                const json::Value* v = rec.find(k);
+                pop.set(k, v ? *v : json::Value::null());
+            }
+            hard_pop_[b] = pop;
+        }
         if (snap_) {
             snap_fe_.push_back(fe_rec);
             snap_gen_.push_back(gen);
@@ -1400,6 +1463,9 @@ private:
     std::vector<std::int64_t> snap_fe_, snap_gen_, snap_n_;
     std::vector<float> snap_F_, snap_X_;
     std::set<long long> checkpoints_;
+    std::vector<long long> hard_;                    // the hard budgets within the budget, in the config's order
+    json::Value hard_at_;
+    std::map<long long, json::Value> hard_pop_, hard_arc_;
     json::Value archive_at_ = json::Value::object();
     std::vector<std::int64_t> ck_budget_, ck_n_;
     std::vector<float> ck_F_, ck_X_;

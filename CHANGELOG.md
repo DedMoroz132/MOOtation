@@ -23,6 +23,13 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs campaigns with `hard_budgets`: the archive scenario
+  of `answer_k` points after exactly each budget (at the end where the run
+  stopped before it) and the population's last record at or below it,
+  meta.json's `hard_at` and `answer_k`, as `_run_job` takes them. Five
+  problems (a constrained and a noisy one among them) under three cores,
+  two seeds, budgets 500, 1000, 2500 and 5000 at 3000 evaluations, answer_k
+  30: 30 runs as the Python engine's.
 - The C++ engine runs DOC3, DOC5 and DOC7: their equalities are in the
   suite's constraint values already, as |h| - 1e-4 (the registry's, bit for
   bit), and the Python engine runs them on the direct path too; the
