@@ -12254,7 +12254,7 @@ EXTRA
 """
 # meta.json keys of the moment and the machine (tools/compare_results.py)
 _VOLATILE = {"started", "finished", "seconds", "record_seconds", "pid", "host", "platform",
-             "python", "revision", "timing", "timing_us", "mootation"}
+             "python", "revision", "timing", "timing_us", "mootation", "fp_env"}
 
 
 def _store_campaign(td, name, extra):
@@ -12339,6 +12339,44 @@ def the_store_holds_what_the_run_folders_hold():
         assert [key(r) for r in sf] == [key(r) for r in ss] and len(ss) == len(jobs)
         assert [(r["status"], r["final"]) for r in sf] == [(r["status"], r["final"]) for r in ss]
         assert C.read_trajectory(ss[0]["dir"]) and isinstance(ss[0]["dir"], store.StoredRun)
+
+
+@test
+def a_campaign_hands_what_it_can_to_the_cxx_engine():
+    """Task 17, stage 5: run_campaign(engine="cxx") hands a campaign with
+    storage = "store" to the C++ engine (engine_path: MOOTATION_ENGINE, or
+    mootation/bin/ from a build with the Python module), which runs the jobs
+    it can into the store and names the others; this engine runs those. The
+    store holds what this engine alone writes, run for run (the process's
+    fields apart), and a second run runs nothing."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("subset_select") is None:
+        print("  skip  a_campaign_hands...: no C++ engine"); return
+    from mootation.run.config import load
+    # moead's jobs the C++ engine runs, random_search's (a baseline) it leaves
+    text = _STORE_TOML.replace('{ name = "moead", pop = 0, gens = 0 }',
+                               '{ name = "random_search", pop = 0, gens = 0 }')
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(text.replace("NAME", name).replace("EXTRA", 'storage = "store"'),
+                            encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            counts = C.run_campaign(cfg, workers=2, engine=engine)
+            assert counts["done"] == len(jobs) and counts["failed"] == 0, (engine, counts)
+            made[name] = (cfg, root, jobs)
+        (_, rp, jobs), (cfg_c, rc, _) = made["p"], made["c"]
+        for job in jobs:
+            _same_run(C.run_dir_of(rp, job), C.run_dir_of(rc, job))
+        platforms = {json.loads((C.run_dir_of(rc, j) / "meta.json").read_text(encoding="utf-8"))["platform"]
+                     for j in jobs}
+        assert len(platforms) == 2, platforms           # the C++ engine ran some, Python the rest
+        again = C.run_campaign(cfg_c, workers=2, engine="cxx")
+        assert again["done"] == 0 and again["skipped"] == len(jobs), again
 
 
 @test

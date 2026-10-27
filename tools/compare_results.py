@@ -33,8 +33,10 @@ import sys
 from pathlib import Path
 
 # meta.json keys that say when, where and how fast a run ran, not what it found
+# (fp_env: the process's floating-point state, whose sticky flags depend on
+# what the process did before; the C++ engine's and Python's differ there)
 VOLATILE = {"started", "finished", "seconds", "record_seconds", "pid", "host", "platform",
-            "python", "revision", "timing", "timing_us", "mootation"}
+            "python", "revision", "timing", "timing_us", "mootation", "fp_env"}
 # meta.json keys that describe the trajectory's grid (--common-grid)
 GRID_KEYS = {"record_grid", "record_per_decade", "record_every", "records", "record_at",
              "trajectory_metrics_at_record_at"}

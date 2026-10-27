@@ -2137,8 +2137,22 @@ fails the one job it holds, which is recorded, and is replaced.
 
 ### The campaign engine in C++
 
-A campaign with `storage = "store"` can also be run by the C++ executable
-`mootation` (`engine/`, built with the library unless
+A campaign with `storage = "store"` of builtin problems is run by the C++
+engine as far as it goes, and by the Python engine for the rest, from the
+one command:
+
+```bash
+python -m mootation.run.campaign camp.toml --workers 8
+```
+
+hands the jobs to the C++ executable `mootation` first, where it finds one
+(`MOOTATION_ENGINE`, or `mootation/bin/` beside the package, where a build
+with `MOOTATION_BUILD_PYTHON=ON` copies it), and runs here the jobs it
+leaves; `--engine python` runs them all here, `--engine cxx` stops with an
+error where there is no C++ engine. Before handing them over it builds the
+cache of references, the problem registry's export and the references the
+campaign builds for its own problems. The executable runs a campaign by
+itself as well (`engine/`, built with the library unless
 `MOOTATION_BUILD_ENGINE=OFF`; it lands in `<build>/engine/` and is not the
 `mootation` command pip installs, whose `report`, `store` and `refs` are
 also `python -m mootation ...`):
@@ -2162,18 +2176,14 @@ included), their failing and noisy copies and the uninformative problems.
 The jobs it does not run yet — a problem outside the C++ suite, bits or
 categories, a baseline or a scalarization method — it leaves pending and
 counts by reason at the end.
-Running the same config with the Python engine afterwards runs exactly
-those: every job the C++ engine finished is in the store and skipped. A
-problem whose reference is built for the campaign rather than kept in the
-cache (an approximate front: RE, CRE, KUR, bbob-biobj; none: the
-uninformative problems) it runs once the
-Python engine has built that reference in `<results>/_references/`, for the
-same code and the same metrics; before, it leaves it too.
-
-```bash
-<build>/engine/mootation run camp.toml --workers 8        # what C++ runs
-python -m mootation.run.campaign camp.toml --workers 8   # the rest
-```
+`--report FILE` writes them (their indices) and the counts as JSON, which
+is how the Python engine learns what is left to it. A problem whose
+reference is built for the campaign rather than kept in the cache (an
+approximate front: RE, CRE, KUR, bbob-biobj; none: the uninformative
+problems) it runs once that reference is in `<results>/_references/`, for
+the same code and the same metrics, which the Python command builds before
+it hands the campaign over; run by itself, the executable leaves those jobs
+too.
 
 Two runners in one results folder at once are not supported; each leaves a
 store whose runner still beats unrepaired.

@@ -23,6 +23,20 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- `python -m mootation.run.campaign` hands a campaign with storage =
+  "store" of builtin problems to the C++ engine first (`--engine auto`, the
+  default, where it is found: `MOOTATION_ENGINE`, or `mootation/bin/`, where
+  a build with the Python module now copies the executable) and runs only
+  the jobs the engine leaves; `--engine python` runs everything in Python,
+  `--engine cxx` requires the engine. It builds the registry export and the
+  campaign's own references first. The executable takes `--report FILE`
+  (the counts and the indices of the jobs it left, JSON) and `--only @FILE`.
+  `run_campaign(..., engine=)`, `engine_path()`, `reference_wants()`. A
+  campaign of ZDT1, a failing and a noisy copy, RE21, RCM01, BT1 and an
+  uninformative problem under nsga2, moead_de and random_search: 20 runs by
+  the C++ engine, 22 by Python, the 42 as the Python engine alone writes
+  them. `fp_env` is among the volatile keys of tools/compare_results.py: its
+  sticky flags depend on what the process did before.
 - The C++ engine runs campaigns with `operator_stats`: the statistics since
   the previous record in every record, the run's totals in `final`, as
   `_run_job` records them. `run::operator_stats()` (run_core.hpp) is what

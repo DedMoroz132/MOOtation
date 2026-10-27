@@ -814,6 +814,20 @@ def reference_hash(p, ref, ref3, pset) -> str:
     return h.hexdigest()[:16]
 
 
+def reference_wants(spec: "CampaignSpec", p) -> tuple:
+    """(front, dense, pset): what a run of the registry problem p asks of its
+    references (reference_data): the front where an indicator needs one, the
+    dense reference where [campaign] dense_reference, the Pareto-set sample
+    where an indicator needs it — set_metrics' among them where p has a
+    Pareto set."""
+    final_metrics = spec.final_metrics or spec.metrics
+    if spec.set_metrics and callable(p.pareto_set):
+        final_metrics = (*final_metrics, *(m for m in SET_METRICS if m not in final_metrics))
+    names = (*spec.metrics, *final_metrics)
+    return (any(m in NEEDS_FRONT for m in names), spec.dense_reference,
+            any(m in NEEDS_SET for m in names))
+
+
 def reference_data(root: Path, name: str, n_ref: int, front: bool, dense: bool, pset: bool):
     """(problem, ref, (ref3, info3), pareto_set) of a registry problem for a
     run: the problem with its frame read off its front where the registry does
@@ -1089,11 +1103,8 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     # the frame, the reference front, the dense reference ([campaign]
     # dense_reference) and the Pareto-set sample, from the campaign's cache
     # (reference_data)
-    p, ref, (ref3, info3), pset = reference_data(
-        root, job.problem, spec.n_ref,
-        front=any(m in NEEDS_FRONT for m in (*spec.metrics, *final_metrics)),
-        dense=spec.dense_reference,
-        pset=any(m in NEEDS_SET for m in (*spec.metrics, *final_metrics)))
+    p, ref, (ref3, info3), pset = reference_data(root, job.problem, spec.n_ref,
+                                                 *reference_wants(spec, p))
     ref_hash = reference_hash(p, ref, ref3, pset)
     ideal, nadir = p.ideal, p.nadir
     final_hv = {"exact_max_m": spec.hv_exact_max_m, "mc_samples": spec.hv_mc_samples}
@@ -2474,9 +2485,79 @@ def longest_first(root: Path, jobs: list) -> list:
     return sorted(jobs, key=lambda j: (-est[j.index], j.index))
 
 
+# ── the campaign engine in C++ (engine/; task 17, stage 5) ──────────────────
+# `mootation run` runs the jobs of a campaign with storage = "store" it can
+# run — the problems of its suite and their failing and noisy copies, the
+# uninformative ones, the cores — into the same store, record for record what
+# this engine writes, and names the jobs it leaves. run_campaign hands it a
+# campaign first (engine "auto": where it is found) and runs the jobs left.
+
+ENGINE_ENV = "MOOTATION_ENGINE"
+
+
+def engine_path() -> Path | None:
+    """The C++ engine's executable: MOOTATION_ENGINE, else the copy beside the
+    package (python/mootation/bin/, which a build with the Python module
+    makes: engine/CMakeLists.txt); None where there is none."""
+    env = os.environ.get(ENGINE_ENV, "")
+    if env:
+        return Path(env) if Path(env).is_file() else None
+    exe = Path(__file__).resolve().parent.parent / "bin" / ("mootation.exe" if os.name == "nt" else "mootation")
+    return exe if exe.is_file() else None
+
+
+def _run_engine(cfg: Config, spec: "CampaignSpec", root: Path, todo: list, *, workers: int,
+                force: bool, required: bool) -> dict | None:
+    """The jobs of `todo` the C++ engine runs, run by it; its report — done,
+    failed, timeout, pending (a drained pool) and the indices of the jobs it
+    left (left) — or None where it did not run: not found, or stopped
+    without a report (required: an error instead)."""
+    import subprocess
+    import tempfile
+    from . import refs, registry_export
+    from ..benchmarks import registry as R
+    exe = engine_path()
+    if exe is None:
+        if required:
+            raise RuntimeError(f"--engine cxx: no C++ engine ({ENGINE_ENV}, or python/mootation/bin/ "
+                               "from a build with MOOTATION_BUILD_PYTHON)")
+        return None
+    registry = registry_export.registry_path()
+    if not registry.is_file():
+        registry_export.export(registry)
+    # the references the campaign builds for its own problems (not in the
+    # cache of references), built here, so that the engine finds them
+    for name in sorted({j.problem for j in todo if not refs.shared(j.problem)}):
+        reference_data(root, name, spec.n_ref, *reference_wants(spec, R.PROBLEMS[name]))
+    with tempfile.TemporaryDirectory(prefix="mootation_engine_") as tmp:
+        only = Path(tmp) / "only.txt"
+        only.write_text(",".join(str(j.index) for j in todo), encoding="utf-8")
+        report = Path(tmp) / "report.json"
+        cmd = [str(exe), "run", str(cfg.source_path), "--workers", str(max(1, workers)),
+               "--only", "@" + str(only), "--registry", str(registry), "--report", str(report)]
+        if force:
+            cmd.append("--force")
+        sys.stderr.flush()
+        code = subprocess.run(cmd, env=dict(os.environ, MOOTATION_REFS_DIR=str(refs.refs_root()))).returncode
+        if not report.is_file():
+            if required:
+                raise RuntimeError(f"the C++ engine stopped (exit {code}) without a report")
+            print(f"the C++ engine stopped (exit {code}) without a report: the Python engine "
+                  "runs every job", file=sys.stderr)
+            return None
+        return json.loads(report.read_text(encoding="utf-8"))
+
+
 def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
                  only: list[int] | None = None, workers: int = 1,
-                 force: bool = False, build_refs: bool = True) -> dict:
+                 force: bool = False, build_refs: bool = True, engine: str = "python") -> dict:
+    """Run the campaign's jobs not done yet (all of them with force), of a
+    slice (shard: part i of n) or of a list (only). engine: "python" runs
+    them here; "cxx" hands a campaign with storage = "store" to the C++
+    engine first and runs here only the jobs it leaves; "auto" does so where
+    the C++ engine is found and the campaign is one it runs, else "python"."""
+    if engine not in ("auto", "python", "cxx"):
+        raise ValueError(f"engine = '{engine}': auto, python or cxx")
     spec = campaign_spec(cfg)
     jobs = expand_jobs(cfg, spec)
     root = out_root(cfg, spec)
@@ -2513,6 +2594,25 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
         check_trajectory_versions(root, selected)       # task 14, §10: no mixing
     _warn_exact_hv_time(todo)
     counts = {"done": 0, "failed": 0, "skipped": len(selected) - len(todo)}
+    fits = cfg.source_path is not None and spec.storage == "store" and cfg.kind == "builtin"
+    if engine == "cxx" and not fits:
+        raise ValueError("--engine cxx: a campaign of builtin problems with storage = \"store\", "
+                         "from a config file")
+    got = (_run_engine(cfg, spec, root, todo, workers=workers, force=force, required=engine == "cxx")
+           if engine != "python" and fits and todo else None)
+    if got is not None:
+        for k in ("done", "failed", "timeout"):
+            if got.get(k):
+                counts[k] = counts.get(k, 0) + int(got[k])
+        if got.get("pending"):
+            # the pool drained on request (_workers.txt 0): the campaign stops
+            counts["pending"] = int(got["pending"]) + len(got.get("left", []))
+            print(f"finished: {counts}", file=sys.stderr)
+            return counts
+        left = set(got.get("left", []))
+        todo = [j for j in todo if j.index in left]
+        if todo:
+            print(f"{len(todo)} job(s) left to the Python engine", file=sys.stderr)
     if len(todo) > 1 and cfg.source_path is not None:
         # Worker processes whenever there is more than one job, even with
         # workers = 1, so the pool can be grown while the campaign runs.
@@ -3817,6 +3917,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="worker processes to start with; change it while the campaign runs by "
                          "writing the number into <results>/_workers.txt (0 drains and stops)")
     ap.add_argument("--force", action="store_true", help="rerun jobs already marked done")
+    ap.add_argument("--engine", choices=("auto", "python", "cxx"), default="auto",
+                    help="who runs the jobs: auto (the default) hands a campaign with storage = "
+                         "\"store\" to the C++ engine where it is found (MOOTATION_ENGINE, or "
+                         "mootation/bin/) and runs here the jobs it leaves; python: all here; "
+                         "cxx: as auto, an error without it")
     ap.add_argument("--no-build-refs", action="store_true",
                     help="stop with the list where the cache of references (mootation refs) lacks "
                          "a problem's entry, instead of building it before the first run")
@@ -4322,7 +4427,8 @@ def main(argv: list[str] | None = None) -> int:
     from .refs import MissingReferences
     try:
         counts = run_campaign(cfg, shard=shard, only=only, workers=args.workers,
-                              force=args.force, build_refs=not args.no_build_refs)
+                              force=args.force, build_refs=not args.no_build_refs,
+                              engine=args.engine)
     except MissingReferences as e:
         print(e, file=sys.stderr)
         return 2

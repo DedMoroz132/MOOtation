@@ -26,6 +26,17 @@ add_custom_target(mootation_engine_git_stamp
 add_dependencies(mootation_engine mootation_engine_git_stamp)
 target_include_directories(mootation_engine PRIVATE ${_MOOTATION_ENGINE_STAMP_DIR})
 
+# Built with the Python module, a copy goes beside it, python/mootation/bin/,
+# where `python -m mootation.run.campaign` finds it (--engine auto): the
+# jobs it can run go to it, the rest to the Python engine.
+if(MOOTATION_BUILD_PYTHON)
+    add_custom_command(TARGET mootation_engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${PROJECT_SOURCE_DIR}/python/mootation/bin
+        COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:mootation_engine>
+                ${PROJECT_SOURCE_DIR}/python/mootation/bin/$<TARGET_FILE_NAME:mootation_engine>
+        VERBATIM)
+endif()
+
 if(MOOTATION_BUILD_TESTS)
     # the executable answers; the engine itself is tests/test_engine.cpp's
     add_test(NAME engine.version COMMAND mootation_engine --version)

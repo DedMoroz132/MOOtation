@@ -499,6 +499,7 @@ struct EngineCounts {
     std::size_t total = 0, selected = 0, skipped = 0, done = 0, failed = 0, timeout = 0;
     std::size_t pending = 0;                                      // not run: the campaign drained (_workers.txt 0)
     std::map<std::string, std::size_t> left;                      // to Python, by reason
+    std::vector<std::int64_t> left_jobs;                          // their indices, in the campaign's order
 };
 
 // campaign.json as run_campaign writes it (json.dumps(..., indent=1), text mode)
@@ -607,10 +608,12 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
         const RegistryProblem& p = preg.problems.at(j->problem);
         if (auto why = refusal(*j, spec, p, algorithms)) {
             ++counts.left[*why];
+            counts.left_jobs.push_back(j->index);
             continue;
         }
         if (!p.shared_reference && !own_references(*root, preg, spec, *j)) {
             ++counts.left["a reference built for the campaign, not built yet (the Python engine builds it)"];
+            counts.left_jobs.push_back(j->index);
             continue;
         }
         todo.push_back(j);

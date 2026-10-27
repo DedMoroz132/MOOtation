@@ -69,5 +69,7 @@ python/examples/results/
 *.pyd
 python/mootation/_core*.so
 python/mootation/_core*.pyd
+# and the campaign engine copied beside it (engine/CMakeLists.txt)
+python/mootation/bin/
 _skbuild/
 wheelhouse/

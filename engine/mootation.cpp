@@ -11,7 +11,9 @@
 // mootation.run.campaign` does (include/mootation/campaign/engine.hpp): the
 // jobs not done yet, by a pool of threads, each record appended to the
 // store; the jobs it does not run it names, with their reasons, for the
-// Python engine. While it runs, <results>/_workers.txt sets the size of the
+// Python engine (--report FILE: the counts and the indices of the jobs left,
+// JSON, which `python -m mootation.run.campaign` reads when it hands a
+// campaign over). While it runs, <results>/_workers.txt sets the size of the
 // pool (0 drains it) and <results>/_runner.json is its heartbeat, as the
 // Python runner's. It reads the exported problem registry (`python -m
 // mootation.run.registry_export`; the newest in the reference cache's
@@ -56,8 +58,8 @@ namespace js = mootation::json;
 namespace {
 
 const char* kUsage =
-    "usage: mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,...] [--force]\n"
-    "                     [--registry FILE] [--quiet]\n"
+    "usage: mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,... | --only @FILE]\n"
+    "                     [--force] [--registry FILE] [--report FILE] [--quiet]\n"
     "       mootation --version\n";
 
 long long process_id()
@@ -142,7 +144,7 @@ int run(const std::vector<std::string>& args)
     std::string config;
     cg::EngineOptions opt;
     opt.workers = static_cast<int>(std::max(1u, std::thread::hardware_concurrency() / 2));
-    std::filesystem::path registry;
+    std::filesystem::path registry, report;
     bool quiet = false;
     for (std::size_t k = 0; k < args.size(); ++k) {
         const std::string& a = args[k];
@@ -159,13 +161,19 @@ int run(const std::vector<std::string>& args)
             if (opt.shard->second < 1 || opt.shard->first < 0 || opt.shard->first >= opt.shard->second)
                 throw std::invalid_argument("--shard i/n: 0 <= i < n");
         } else if (a == "--only") {
+            // the indices, comma-separated; @FILE: read from FILE (a long list)
             std::vector<std::int64_t> only;
-            std::stringstream s(value());
+            std::string list = value();
+            if (!list.empty() && list[0] == '@') list = cg::detail::read_all(mootation::store::file::path_of(list.substr(1)));
+            for (char& ch : list)
+                if (ch == '\n' || ch == '\r' || ch == ' ') ch = ',';
+            std::stringstream s(list);
             for (std::string i; std::getline(s, i, ',');)
                 if (!i.empty()) only.push_back(std::stoll(i));
             opt.only = only;
         } else if (a == "--force") opt.force = true;
         else if (a == "--registry") registry = mootation::store::file::path_of(value());
+        else if (a == "--report") report = mootation::store::file::path_of(value());
         else if (a == "--quiet") quiet = true;
         else if (!a.empty() && a[0] == '-') throw std::invalid_argument("unknown option " + a);
         else if (config.empty()) config = a;
@@ -190,6 +198,20 @@ int run(const std::vector<std::string>& args)
                  "finished: done %zu, failed %zu, timeout %zu, skipped %zu, pending %zu, left to the Python engine %zu\n",
                  c.done, c.failed, c.timeout, c.skipped, c.pending, left);
     for (const auto& [why, n] : c.left) std::fprintf(stderr, "  %zu: %s\n", n, why.c_str());
+    if (!report.empty()) {
+        // for the Python engine, which runs the jobs left to it (campaign.py --engine)
+        js::Value r = js::Value::object(), jobs = js::Value::array(), why = js::Value::object();
+        for (auto i : c.left_jobs) jobs.items.push_back(js::Value::integer(i));
+        for (const auto& [w, n] : c.left) why.set(w, js::Value::integer(static_cast<std::int64_t>(n)));
+        r.set("done", js::Value::integer(static_cast<std::int64_t>(c.done)));
+        r.set("failed", js::Value::integer(static_cast<std::int64_t>(c.failed)));
+        r.set("timeout", js::Value::integer(static_cast<std::int64_t>(c.timeout)));
+        r.set("skipped", js::Value::integer(static_cast<std::int64_t>(c.skipped)));
+        r.set("pending", js::Value::integer(static_cast<std::int64_t>(c.pending)));
+        r.set("left", jobs);
+        r.set("left_by_reason", why);
+        std::ofstream(report, std::ios::binary) << js::dump(r, 1) << "\n";
+    }
     return c.failed ? 1 : 0;
 }
 
