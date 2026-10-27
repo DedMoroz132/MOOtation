@@ -6,7 +6,8 @@
 // constraints Python's registry gave, bit for bit — a shift's centre handed
 // over, C-DTLZ's constants, a rotation and a bbob instance drawn here — and
 // the engine refuses the problem it cannot run without Python; a failing
-// copy gives the base's values outside its region and NaN inside, as Python's.
+// copy gives the base's values outside its region and NaN inside, as Python's;
+// a noisy copy's run evaluator, its values in turn.
 
 #include <cmath>
 #include <cstdio>
@@ -39,7 +40,7 @@ int main()
 {
     const std::string path = std::string(MOOTATION_TEST_DATA) + "/registry_sample.json";
     const cg::ProblemRegistry reg = cg::load_registry(path);
-    CHECK(reg.problems.size() == 7);
+    CHECK(reg.problems.size() == 11);
     CHECK(!reg.code_stamp.empty() && reg.reference_version >= 1);
 
     // the values the file records, from the problems built here
@@ -92,6 +93,31 @@ int main()
         }
     }
     CHECK(fail_checked == 7);
+
+    // the noisy copies: the values the run's evaluator gives at the points in
+    // turn, bit for bit — the noise of the evaluation's number (n, h), of x
+    // (d) and of its cell (s)
+    int noise_checked = 0;
+    for (const auto& item : doc.find("problems")->items) {
+        const js::Value* checks = item.find("noise_checks");
+        if (!checks) continue;
+        const cg::RegistryProblem& p = reg.problems.at(item.find("name")->s);
+        CHECK(p.noise && !cg::engine_refusal(p));
+        const auto native = cg::make_run_native(p, static_cast<std::uint64_t>(checks->find("seed")->i),
+                                                checks->find("cell")->f);
+        for (const auto& c : checks->find("points")->items) {
+            const auto x = numbers(*c.find("x"));
+            std::vector<double> f(static_cast<std::size_t>(native->n_obj));
+            std::vector<double> g(static_cast<std::size_t>(native->n_con));
+            native->evaluate(x.data(), f.data(), g.empty() ? nullptr : g.data());
+            if (f != numbers(*c.find("F"))) {
+                std::printf("FAIL %s: other noisy values\n", p.name.c_str());
+                ++failures;
+            }
+            ++noise_checked;
+        }
+    }
+    CHECK(noise_checked == 20);
 
     CHECK(!cg::engine_refusal(reg.problems.at("shiftDTLZ2_3D")));
     CHECK(reg.problems.at("C2-DTLZ2_3D").has_cons && reg.problems.at("C2-DTLZ2_3D").n_con == 1);

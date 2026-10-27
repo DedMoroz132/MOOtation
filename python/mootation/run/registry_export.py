@@ -15,7 +15,8 @@ send a problem to the Python engine: an evaluator of the run's own (noise,
 uninformative problems), typed variables, a distance to the Pareto set
 (g_min, g_median), which the suite does not compute yet. A failing copy of a
 problem of the suite carries its base's spec and its failure region
-(failing_region), which the engine evaluates itself.
+(failing_region), and a noisy copy its base's spec and its noise (noise),
+which the engine evaluates itself.
 
 WHERE. Beside the cache of references (run/refs.py), under the benchmark
 code's stamp (campaign._code_stamp): <refs root>/registry/<stamp>.json. The
@@ -106,9 +107,32 @@ def entry(name: str) -> dict:
         "typed": p.var_types is not None and any(t != "real" for t in p.var_types),
         "failing": p.failing is not None,
         "failing_region": _failing_region(name),
+        "noise": _noise(name),
         "distance": p.distance_fn is not None,
         "spec": spec,
     }
+
+
+def _noise(name: str) -> dict | None:
+    """A noisy copy of a problem of the C++ suite (benchmarks/noisy.py): the
+    base's spec and its evaluator's numbers — the kind, sigma, the scale
+    sigma (nadir - ideal) per objective and the ideal point (kind h) as the
+    run's evaluator holds them; the cell's width comes from the campaign
+    (noise_cell) and the box."""
+    from ..benchmarks import native as N
+    from ..benchmarks import noisy
+    from ..benchmarks import registry as R
+    kind = noisy.kind_of(name)
+    if kind is None or name not in R.PROBLEMS:
+        return None
+    base = noisy.base_of(name)
+    b = R.PROBLEMS.get(base)
+    if b is None or b.native is None:
+        return None
+    ev = R.PROBLEMS[name].make_evaluator(0)
+    return {"of": base, "kind": kind, "sigma": float(ev.sigma), "scale": [float(v) for v in ev.scale],
+            "ideal": None if ev.ideal is None else [float(v) for v in ev.ideal],
+            "spec": _spec_json(N.spec(base, b, R.ROTATED.get(base)))}
 
 
 def _failing_region(name: str) -> dict | None:

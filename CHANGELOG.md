@@ -23,6 +23,18 @@ always listed under **Changed** or **Removed**.
   where campaign.json named a config it could not find (relative to where
   the campaign ran): the list of the missing runs is left out then.
 
+- The C++ engine runs the noisy copies (`<base>_n1` ... `_h5`,
+  benchmarks/noisy.py) of the problems of its suite: the registry export
+  hands over the base's spec and the noise (`noise`: kind, sigma, the
+  scale, the ideal point), `NoisyNative` adds it as `noisy.Evaluator` does
+  (splitmix64 and Box-Muller; the evaluations numbered in turn; log and cos
+  the C library's), and the run measures as Python's does: the
+  noise-free values of the records, the answers and the checkpoints,
+  `f*_seen` beside them in final.csv and the archive, the oracle archive,
+  `_observed` and `_oracle` in `final`, `true_dominated_share`, meta's
+  `noise`. 14 copies of every kind under four cores and two seeds: 104 runs
+  as the Python engine's, record for record. `make_run_native`;
+  registry_sample.json gains four copies with their evaluator's values.
 - The C++ engine runs the failing copies (`<base>_fail<share><kind>`,
   benchmarks/failing.py): the registry export hands over the base's spec
   and the failure region (`failing_region`: the band's width, or the balls'

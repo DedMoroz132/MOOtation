@@ -295,7 +295,7 @@ public:
         run::RunProblem rp;
         for (const auto& b : p_.bounds) rp.bounds.push_back(b);
         rp.n_objectives = p_.n_obj;
-        native_ = make_native(p_);
+        native_ = make_run_native(p_, static_cast<std::uint64_t>(job_.seed), noise_cell());
         rp.native = native_;
         rp.n_limits = native_->n_con;
         rp.stochastic = p_.stochastic;
@@ -376,6 +376,13 @@ public:
         for (const auto& r : res.objectives) F.insert(F.end(), r.begin(), r.end());
         for (const auto& r : res.variables) X.insert(X.end(), r.begin(), r.end());
         const std::size_t n = res.objectives.size();
+        // a noisy copy: f noise-free, f_seen what the algorithm saw
+        std::vector<double> seen;
+        const bool noisy = truth_ && n;
+        if (noisy) {
+            seen = F;
+            F = true_rows(X.data(), n);
+        }
         {
             Table t;
             t.name = "final.csv";
@@ -384,7 +391,11 @@ public:
                 for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1));
                 for (std::size_t j = 0; j < d; ++j) cols.push_back("x" + std::to_string(j + 1));
             }
-            t.head = table_head(t.name, {"# mootation campaign final population v1"}, cols, {});
+            if (noisy)
+                for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1) + "_seen");
+            t.head = table_head(t.name, {std::string("# mootation campaign final population v1") +
+                                         (noisy ? "; f noise-free, f_seen as the algorithm saw it" : "")},
+                                cols, {});
             t.cols = cols.size();
             t.rows = t.cols ? n : 0;
             for (std::size_t i = 0; i < t.rows; ++i) {
@@ -392,6 +403,9 @@ public:
                                 F.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
                 t.values.insert(t.values.end(), X.begin() + static_cast<std::ptrdiff_t>(i * d),
                                 X.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+                if (noisy)
+                    t.values.insert(t.values.end(), seen.begin() + static_cast<std::ptrdiff_t>(i * m),
+                                    seen.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
             }
             files.tables.push_back(std::move(t));
         }
@@ -432,6 +446,10 @@ public:
                 comment += "; objectives only, the variables of the points the archive scenario selects are in "
                            "final_archive.csv.gz";
             if (kept.size() < AF.n) comment += "; cut to " + std::to_string(cap) + " points by DSS";
+            // a noisy copy's archive is written noise-free, and beside it the
+            // values the archive scenario selected by (f*_seen)
+            if (truth_) comment += "; f noise-free, f_seen as the algorithm saw it";
+            const std::vector<double> AT = truth_ ? true_rows(AX.data(), AF.n) : AF.v;
             Table t;
             t.name = name;
             std::vector<std::string> cols;
@@ -439,14 +457,18 @@ public:
             if (whole)
                 for (std::size_t j = 0; j < d; ++j) cols.push_back("x" + std::to_string(j + 1));
             cols.push_back("extreme");
+            if (truth_)
+                for (std::size_t j = 0; j < m; ++j) cols.push_back("f" + std::to_string(j + 1) + "_seen");
             t.head = table_head(name, {comment}, cols, {static_cast<std::int64_t>(m + (whole ? d : 0))});
             t.cols = cols.size();
             t.rows = kept.size();
             for (auto i : kept) {
-                t.values.insert(t.values.end(), AF.row(i), AF.row(i) + m);
+                t.values.insert(t.values.end(), AT.begin() + static_cast<std::ptrdiff_t>(i * m),
+                                AT.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
                 if (whole) t.values.insert(t.values.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
                                            AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
                 t.values.push_back(AE[i] ? 1.0 : 0.0);
+                if (truth_) t.values.insert(t.values.end(), AF.row(i), AF.row(i) + m);
             }
             files.tables.push_back(std::move(t));
             if (!whole && have_sel) {
@@ -462,7 +484,8 @@ public:
                 s.cols = c2.size();
                 s.rows = arc_sel.size();
                 for (auto i : arc_sel) {
-                    s.values.insert(s.values.end(), AF.row(i), AF.row(i) + m);
+                    s.values.insert(s.values.end(), AT.begin() + static_cast<std::ptrdiff_t>(i * m),
+                                    AT.begin() + static_cast<std::ptrdiff_t>((i + 1) * m));
                     s.values.insert(s.values.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
                                     AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
                 }
@@ -563,6 +586,45 @@ public:
         if (constrained_)
             final.set("fe_first_feas", out.first_feasible < 0 ? V::null() : V::integer(out.first_feasible));
         if (p_.failing || out.n_failed) final.set("n_failed", V::integer(out.n_failed));
+        if (truth_) {
+            if (!final.keys.empty()) {
+                final.set("true_dominated_share", dominated_share(F.data(), n, m));
+                // the observed answer: its noisy values, as the algorithm saw them
+                const V obs = measure(rows_ptr(seen), n, m, d ? X.data() : nullptr, d, final_metrics_, fin, final_hv);
+                for (std::size_t k = 0; k < obs.keys.size(); ++k) final.set(obs.keys[k] + "_observed", obs.items[k]);
+            }
+            std::vector<double> OX;
+            std::vector<char> OE;
+            select::Rows OF;
+            oracle_->points(OF.v, OX, OE);
+            OF.m = m;
+            OF.n = m ? OF.v.size() / m : 0;
+            if (OF.n) {
+                // the oracle: the noise-free non-dominated set of every
+                // evaluation, reduced to the answer's size by the archive
+                // scenario's rule
+                const auto sel = archive_select(OF, static_cast<std::size_t>(p_.pop_size), *oracle_);
+                std::vector<double> SF, SX;
+                for (auto i : sel) {
+                    SF.insert(SF.end(), OF.row(i), OF.row(i) + m);
+                    SX.insert(SX.end(), OX.begin() + static_cast<std::ptrdiff_t>(i * d),
+                              OX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+                }
+                const V orc = measure(rows_ptr(SF), sel.size(), m, d ? rows_ptr(SX) : nullptr, d, final_metrics_, fin,
+                                      final_hv);
+                for (std::size_t k = 0; k < orc.keys.size(); ++k) final.set(orc.keys[k] + "_oracle", orc.items[k]);
+            }
+            const NoiseSpec& z = *p_.noise;
+            V nz = V::object();
+            nz.set("kind", V::string(z.kind));
+            nz.set("scale", numbers(z.scale));
+            nz.set("cell", z.kind == "s" ? V::number(noise_cell()) : V::null());
+            nz.set("measured", V::string("every indicator on the noise-free objectives of the answer; _oracle on the "
+                                         "noise-free non-dominated set of every evaluation; _observed on the noisy "
+                                         "values of the answer"));
+            nz.set("oracle_n", V::integer(static_cast<std::int64_t>(OF.n)));
+            meta.set("noise", nz);
+        }
         if (have_sel && spec_.archive_scenario) {
             std::vector<double> T, TX;
             for (auto i : arc_sel) {
@@ -570,9 +632,11 @@ public:
                 TX.insert(TX.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
                           AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
             }
+            if (truth_) T = true_rows(TX.data(), arc_sel.size());
             V fa = measure(rows_ptr(T), arc_sel.size(), m, d ? rows_ptr(TX) : nullptr, d, final_metrics_, fin, final_hv);
             add_dense(fa, rows_ptr(T), arc_sel.size(), m, d ? rows_ptr(TX) : nullptr, d, final_metrics_);
             fa.set("n", V::integer(static_cast<std::int64_t>(arc_sel.size())));
+            if (truth_ && !arc_sel.empty()) fa.set("true_dominated_share", dominated_share(T.data(), arc_sel.size(), m));
             if (std::find(final_metrics_.begin(), final_metrics_.end(), "hv") != final_metrics_.end() && refs_.ideal &&
                 refs_.nadir && static_cast<std::int64_t>(m) <= spec_.hv_archive_final_max_m)
                 fa.set("hv_archive", V::number(archive_hv()));
@@ -618,6 +682,7 @@ public:
                     TX.insert(TX.end(), SX.begin() + static_cast<std::ptrdiff_t>(i * d),
                               SX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
                 }
+                if (truth_) T = true_rows(TX.data(), sel.size());
                 const V got = measure(T.data(), sel.size(), m, TX.data(), d, set_metrics_names(), fin, final_hv);
                 Table t;
                 t.name = "set_answer.csv";
@@ -731,6 +796,19 @@ private:
             }
             arc_ = std::make_unique<GridArchive>(p_.n_obj, p_.n_var, lo, hi, spec_.archive_delta);
         }
+        // A noisy copy (benchmarks/noisy.py): the algorithm sees the noisy
+        // values, every indicator is measured on the noise-free ones at the
+        // same x (truth_, the base), and its oracle keeps every non-dominated
+        // point by the noise-free values of all the points evaluated
+        if (p_.noise) {
+            truth_ = make_native(p_);
+            std::vector<double> lo, hi;
+            if (refs_.ideal && refs_.nadir) {
+                lo = *refs_.ideal;
+                hi = *refs_.nadir;
+            }
+            oracle_ = std::make_unique<GridArchive>(p_.n_obj, p_.n_var, lo, hi, spec_.archive_delta);
+        }
         if (spec_.set_answer == "evaluated" && p_.multimodal_ps && refs_.pset && refs_.pset->rows() &&
             !refs_.pset->values.empty() && d)
             sarc_ = std::make_unique<SetArchive>(m, d);
@@ -787,13 +865,13 @@ private:
             for (auto b : spec_.record_at)
                 if (b < std::min(budget_, nominal)) checkpoints_.insert(b);
         }
-        need_x_ = (snap_ && keep_x_) || constrained_;
+        need_x_ = (snap_ && keep_x_) || constrained_ || truth_ != nullptr;
         for (const auto& w : traj_metrics_) need_x_ = need_x_ || needs_x().count(w);
         for (const auto& w : traj_metrics_)
             if (std::find(spec_.record_at_metrics.begin(), spec_.record_at_metrics.end(), w) ==
                 spec_.record_at_metrics.end())
                 everywhere_.push_back(w);
-        ledger_ = std::make_unique<RunLedger>(m, d, constrained_, arc_.get(), nullptr, inc_.get(), sarc_.get());
+        ledger_ = std::make_unique<RunLedger>(m, d, constrained_, arc_.get(), oracle_.get(), inc_.get(), sarc_.get());
         std::set<long long> read_at(checkpoints_.begin(), checkpoints_.end());
         if (inc_ || arc_hv_) read_at.insert(grid_set_.begin(), grid_set_.end());
         const std::vector<long long> reads(read_at.begin(), read_at.end());
@@ -968,7 +1046,9 @@ private:
             seen_rows_.insert(std::move(key));
         }
         const std::size_t c = static_cast<std::size_t>(native_->n_con);
-        ledger_->begin(X.data(), F.data(), n, constrained_ ? G.data() : nullptr, constrained_ ? c : 0, nullptr);
+        const std::vector<double> T = truth_ ? true_rows(X.data(), n) : std::vector<double>{};
+        ledger_->begin(X.data(), F.data(), n, constrained_ ? G.data() : nullptr, constrained_ ? c : 0,
+                       truth_ ? T.data() : nullptr);
         for (;;) {
             const long long b = ledger_->next();
             if (b < 0) break;
@@ -982,6 +1062,28 @@ private:
     {
         if (arc_hv_ && grid_set_.count(b)) arc_hv_at_[b] = archive_hv();
         if (checkpoints_.count(b) && (arc_->size() || constrained_)) take_checkpoint(b);
+    }
+
+    // true_values: a noisy copy's noise-free objectives at the rows X (n x d)
+    std::vector<double> true_rows(const double* X, std::size_t n) const
+    {
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
+        std::vector<double> T(n * m), g(static_cast<std::size_t>(truth_->n_con));
+        for (std::size_t i = 0; i < n; ++i) truth_->evaluate(X + i * d, &T[i * m], g.empty() ? nullptr : g.data());
+        return T;
+    }
+
+    // the share of the rows another of them dominates (a noisy copy's
+    // true_dominated_share)
+    static json::Value dominated_share(const double* F, std::size_t n, std::size_t m)
+    {
+        return json::Value::number(1.0 - run_metrics::nd_share(F, n, m));
+    }
+
+    double noise_cell() const
+    {
+        const json::Value& c = spec_.noise_cell;
+        return c.kind == json::Value::Kind::Int ? static_cast<double>(c.i) : c.f;
     }
 
     // take_checkpoint: the archive scenario after exactly b evaluations
@@ -999,9 +1101,11 @@ private:
             TX.insert(TX.end(), AX.begin() + static_cast<std::ptrdiff_t>(i * d),
                       AX.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
         }
+        if (truth_) T = true_rows(TX.data(), idx.size());
         json::Value v = measure(rows_ptr(T), idx.size(), m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_, measure_in_,
                                 traj_hv_);
         add_dense(v, rows_ptr(T), idx.size(), m, d ? rows_ptr(TX) : nullptr, d, traj_metrics_);
+        if (truth_ && !idx.empty()) v.set("true_dominated_share", dominated_share(T.data(), idx.size(), m));
         for (const auto& h : hv_skipped_) v.set(h, json::Value::null());
         v.set("fe", json::Value::integer(b));
         v.set("n", json::Value::integer(static_cast<std::int64_t>(idx.size())));
@@ -1034,9 +1138,10 @@ private:
     }
 
     // archive.GridArchive.frame: the grid's, or the points' minimum and maximum
-    void archive_frame(const select::Rows& F, std::vector<double>& lo, std::vector<double>& hi) const
+    void archive_frame(const select::Rows& F, std::vector<double>& lo, std::vector<double>& hi,
+                       const GridArchive* a = nullptr) const
     {
-        if (arc_->frame(lo, hi)) return;
+        if ((a ? a : arc_.get())->frame(lo, hi)) return;
         lo.clear();
         hi.clear();
         if (!F.n) return;
@@ -1052,13 +1157,18 @@ private:
     // archive.GridArchive.select(k, method)
     std::vector<std::size_t> archive_select(const select::Rows& F, std::size_t k) const
     {
+        return archive_select(F, k, *arc_);
+    }
+
+    std::vector<std::size_t> archive_select(const select::Rows& F, std::size_t k, const GridArchive& a) const
+    {
         std::vector<std::size_t> all;
         if (F.n <= k) {
             for (std::size_t i = 0; i < F.n; ++i) all.push_back(i);
             return all;
         }
         std::vector<double> lo, hi;
-        if (arc_->problem_frame()) archive_frame(F, lo, hi);
+        if (a.problem_frame()) archive_frame(F, lo, hi, &a);
         if (spec_.answer_select == "igdp_self") return select::igdp_self_order(F, k, lo, hi);
         return select::dss_order(F, k, lo, hi);
     }
@@ -1094,6 +1204,14 @@ private:
         const auto kept = archive_kept(F, other ? &sel : nullptr);
         std::vector<double> T;
         for (auto i : kept) T.insert(T.end(), F.row(i), F.row(i) + F.m);
+        if (truth_) {
+            const std::size_t d = static_cast<std::size_t>(p_.n_var);
+            std::vector<double> KX;
+            for (auto i : kept)
+                KX.insert(KX.end(), X.begin() + static_cast<std::ptrdiff_t>(i * d),
+                          X.begin() + static_cast<std::ptrdiff_t>((i + 1) * d));
+            T = true_rows(KX.data(), kept.size());
+        }
         return run_metrics::hypervolume(T.data(), kept.size(), F.m, *refs_.ideal, *refs_.nadir, 1.1, kHvMcSamples,
                                         0, p_.n_obj, "auto")
             .value;
@@ -1129,11 +1247,13 @@ private:
         record(gen, fe_, F, variables_of(P.size()), std::nullopt);
     }
 
-    void record(int gen, long long fe_rec, const std::vector<double>& F, const std::vector<double>& X,
+    void record(int gen, long long fe_rec, const std::vector<double>& F_seen, const std::vector<double>& X,
                 std::optional<long long> fe_pop)
     {
         const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
-        const std::size_t n = m ? F.size() / m : 0;
+        const std::size_t n = m ? F_seen.size() / m : 0;
+        // snapshot and indicators: noise-free
+        const std::vector<double> F = truth_ && !X.empty() ? true_rows(X.data(), n) : F_seen;
         json::Value rec = json::Value::object();
         rec.set("gen", json::Value::integer(gen));
         rec.set("fe", json::Value::integer(fe_rec));
@@ -1164,6 +1284,7 @@ private:
             const json::Value vals = measure(F.data(), n, m, x, d, which, measure_in_, traj_hv_);
             for (std::size_t k = 0; k < vals.keys.size(); ++k) rec.set(vals.keys[k], vals.items[k]);
             add_dense(rec, F.data(), n, m, x, d, which);
+            if (truth_) rec.set("true_dominated_share", dominated_share(F.data(), n, m));
             for (const auto& h : hv_skipped_) rec.set(h, json::Value::null());
         }
         if (arc_hv_ && finite && !F.empty()) {
@@ -1202,7 +1323,8 @@ private:
     std::vector<std::string> final_metrics_, set_extra_, traj_metrics_, hv_skipped_, everywhere_;
     HvOptions traj_hv_;
     std::int64_t budget_ = 0;
-    std::unique_ptr<GridArchive> arc_;
+    std::unique_ptr<GridArchive> arc_, oracle_;
+    std::shared_ptr<suite::Native> truth_;           // a noisy copy's base: the noise-free values
     std::unique_ptr<SetArchive> sarc_;
     std::unique_ptr<indicators::IncrementalFront> inc_;
     std::unique_ptr<RunLedger> ledger_;

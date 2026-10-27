@@ -11,6 +11,9 @@
 // ============================================================================
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <limits>
 #include <map>
@@ -37,6 +40,16 @@ struct FailRegion {
     json::Value spec;
 };
 
+// A noisy copy's noise (benchmarks/noisy.py): its kind (n, d, s, h), sigma,
+// the scale sigma (nadir - ideal) per objective and the base's ideal point,
+// as the run's evaluator holds them; with the base's spec.
+struct NoiseSpec {
+    std::string kind;
+    double sigma = 0.0;
+    std::vector<double> scale, ideal;
+    json::Value spec;
+};
+
 struct RegistryProblem {
     std::string name;
     std::string family;                           // families.family: the store's pack it goes to
@@ -53,6 +66,7 @@ struct RegistryProblem {
     bool own_evaluator = false, typed = false, failing = false, distance = false;
     std::optional<json::Value> spec;              // null: not a problem of the suite
     std::optional<FailRegion> failing_region;     // a failing copy of a problem of the suite
+    std::optional<NoiseSpec> noise;               // a noisy copy of a problem of the suite
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -177,6 +191,17 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
             for (const auto& row : c->items) r.centres.push_back(detail::floats_of(&row));
         p.failing_region = std::move(r);
     }
+    if (const json::Value* v = o.find("noise"); v && v->kind == json::Value::Kind::Object) {
+        NoiseSpec z;
+        z.kind = v->find("kind")->s;
+        const json::Value* sg = v->find("sigma");
+        z.sigma = sg->kind == json::Value::Kind::Int ? double(sg->i) : sg->f;
+        z.scale = detail::floats_of(v->find("scale"));
+        if (const json::Value* i = v->find("ideal"); i && i->kind == json::Value::Kind::Array)
+            z.ideal = detail::floats_of(i);
+        z.spec = *v->find("spec");
+        p.noise = std::move(z);
+    }
     return p;
 }
 
@@ -222,8 +247,8 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
 // why the C++ engine does not run this problem (the Python engine does), or nothing
 inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
-    if (!p.spec && !p.failing_region) return "not a problem of the C++ suite";
-    if (p.own_evaluator) return "an evaluator of the run's own (noise, an uninformative problem)";
+    if (!p.spec && !p.failing_region && !p.noise) return "not a problem of the C++ suite";
+    if (p.own_evaluator && !p.noise) return "an evaluator of the run's own (an uninformative problem)";
     if (p.typed) return "typed variables";
     if (p.failing && !p.failing_region) return "a failing copy";
     if (p.n_eq) return "equality constraints";
@@ -292,16 +317,106 @@ private:
     std::vector<double> cc_;                     // |c|^2 of each centre
 };
 
+// noisy.Evaluator: one run's objectives, the base's values plus s_i z_i, z_i
+// a standard normal by Box-Muller from two uniforms of the splitmix64 hash —
+// kinds n and h from (the run's seed, the evaluation's number), d from the
+// doubles of x, s from the cell floor((x - lb) / (cell (ub - lb))); s_i the
+// scale, or sigma (f_i - ideal_i) for kind h. The evaluations are numbered
+// in the order they are made: one object per run, on one thread. log and cos
+// are the C library's, called through a pointer: MSVC's inline versions
+// differ from it (and from CPython's math) in the last bit now and then.
+class NoisyNative : public suite::Native {
+public:
+    NoisyNative(std::shared_ptr<suite::Native> base, NoiseSpec noise, std::vector<std::pair<double, double>> bounds,
+                std::uint64_t seed, double cell)
+        : base_(std::move(base)), noise_(std::move(noise)), bounds_(std::move(bounds)), seed_(seed)
+    {
+        n_var = base_->n_var;
+        n_obj = base_->n_obj;
+        n_con = base_->n_con;
+        for (const auto& b : bounds_) width_.push_back(cell * (b.second - b.first));
+    }
+
+    void evaluate(const double* x, double* f, double* g) const override
+    {
+        base_->evaluate(x, f, g);
+        std::uint64_t h = 0;
+        if (noise_.kind == "d") {
+            for (int j = 0; j < n_var; ++j) {
+                std::uint64_t bits;
+                std::memcpy(&bits, &x[j], sizeof bits);
+                h = splitmix64(h ^ bits);
+            }
+        } else if (noise_.kind == "s") {
+            h = kDomainX;
+            for (std::size_t j = 0; j < static_cast<std::size_t>(n_var); ++j) {
+                const double cell = std::floor((x[j] - bounds_[j].first) / width_[j]);
+                h = splitmix64(h ^ static_cast<std::uint64_t>(static_cast<std::int64_t>(cell)));
+            }
+        }
+        for (int i = 0; i < n_obj; ++i) {
+            const std::uint64_t two_i = 2 * static_cast<std::uint64_t>(i);
+            double u1, u2;
+            if (noise_.kind == "n" || noise_.kind == "h") {
+                u1 = unit(splitmix64(seed_ ^ splitmix64(kDomain + 4 * k_ + two_i)));
+                u2 = unit(splitmix64(seed_ ^ splitmix64(kDomain + 4 * k_ + two_i + 1)));
+            } else {
+                u1 = unit(splitmix64(h + two_i + 1));
+                u2 = unit(splitmix64(h + two_i + 2));
+            }
+            const double z = std::sqrt(-2.0 * crt_log_(1.0 - u1)) * crt_cos_(2.0 * kPi * u2);
+            const double si = noise_.kind == "h" ? noise_.sigma * (f[i] - noise_.ideal[static_cast<std::size_t>(i)])
+                                                 : noise_.scale[static_cast<std::size_t>(i)];
+            f[i] = f[i] + si * z;
+        }
+        ++k_;
+    }
+
+    static std::uint64_t splitmix64(std::uint64_t z)
+    {
+        z += 0x9E3779B97F4A7C15ULL;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+        return z ^ (z >> 31);
+    }
+
+    // 53 high bits of a 64-bit hash as a double in [0, 1)
+    static double unit(std::uint64_t h) { return static_cast<double>(h >> 11) * (1.0 / 9007199254740992.0); }
+
+private:
+    static constexpr std::uint64_t kDomain = 3ULL << 61;      // noisy._DOMAIN
+    static constexpr std::uint64_t kDomainX = 5ULL << 60;     // noisy._DOMAIN_X
+    static constexpr double kPi = 3.141592653589793;           // math.pi
+    std::shared_ptr<suite::Native> base_;
+    NoiseSpec noise_;
+    std::vector<std::pair<double, double>> bounds_;
+    std::vector<double> width_;
+    std::uint64_t seed_;
+    mutable std::uint64_t k_ = 0;                              // the evaluations so far
+    double (*volatile crt_log_)(double) = ::log;
+    double (*volatile crt_cos_)(double) = ::cos;
+};
+
 // the problem's evaluation in C++, built from its spec (a failing copy: its
-// base's, failing in the region)
+// base's, failing in the region; a noisy copy: its base's, noise-free — the
+// run's noisy evaluation is make_run_native's)
 inline std::shared_ptr<suite::Native> make_native(const RegistryProblem& p)
 {
+    if (p.noise) return std::shared_ptr<suite::Native>(suite::make(spec_of(p.noise->spec)));
     if (p.failing_region) {
         std::shared_ptr<suite::Native> base(suite::make(spec_of(p.failing_region->spec)));
         return std::make_shared<FailingNative>(std::move(base), *p.failing_region, p.bounds);
     }
     if (!p.spec) throw std::invalid_argument(p.name + ": not a problem of the C++ suite");
     return std::shared_ptr<suite::Native>(suite::make(spec_of(*p.spec)));
+}
+
+// what the core of one run evaluates: the problem (make_native), a noisy
+// copy's with the run's noise (seed: the run's; cell: [campaign] noise_cell)
+inline std::shared_ptr<suite::Native> make_run_native(const RegistryProblem& p, std::uint64_t seed, double cell)
+{
+    if (p.noise) return std::make_shared<NoisyNative>(make_native(p), *p.noise, p.bounds, seed, cell);
+    return make_native(p);
 }
 
 }   // namespace mootation::campaign
