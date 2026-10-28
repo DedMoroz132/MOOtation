@@ -391,6 +391,13 @@ inline std::vector<double> lhs(std::size_t n, int d, std::int64_t seed)
 
 // ── by name ─────────────────────────────────────────────────────────────────
 
+// designs.KINDS: the designs of a first population
+inline const std::vector<std::string>& kinds()
+{
+    static const std::vector<std::string> v{"sobol", "lhs", "halton_rand", "sobol_owen"};
+    return v;
+}
+
 // n points of kind `kind` in [0, 1)^d (designs.KINDS, and "uniform")
 inline std::vector<double> design(const std::string& kind, std::size_t n, int d, std::int64_t seed)
 {

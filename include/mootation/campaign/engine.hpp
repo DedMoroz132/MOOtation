@@ -695,7 +695,9 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
                 const JobOutcome out = run.run(opt.process);
                 if (out.status == "left") {             // the core takes no bits or categories
                     std::lock_guard<std::mutex> g(lock);
-                    ++counts.left["a core without the integer genome (the Python engine records the pair)"];
+                    ++counts.left[out.error.empty()
+                                      ? "a core without the integer genome (the Python engine records the pair)"
+                                      : out.error];
                     counts.left_jobs.push_back(job.index);
                     ++finished;
                     running.erase(job.index);

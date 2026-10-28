@@ -166,6 +166,63 @@ inline std::optional<JobReferences> campaign_references(const std::filesystem::p
     return r;
 }
 
+// designs.start_points: k rows of F to start from, the nondominated ones
+// first (DSS among them when there are more than k), the rest by DSS among
+// the others; a failed row (a non-finite value) last
+inline std::vector<std::size_t> start_points(const std::vector<std::vector<double>>& F, std::size_t k)
+{
+    const std::size_t n = F.size();
+    std::vector<std::size_t> out;
+    if (k >= n) {
+        for (std::size_t i = 0; i < n; ++i) out.push_back(i);
+        return out;
+    }
+    std::vector<std::size_t> ok, bad;
+    for (std::size_t i = 0; i < n; ++i) {
+        bool finite = true;
+        for (double v : F[i]) finite = finite && std::isfinite(v);
+        (finite ? ok : bad).push_back(i);
+    }
+    if (!bad.empty()) {
+        if (ok.size() <= k) {
+            out = ok;
+            for (std::size_t i = 0; out.size() < k; ++i) out.push_back(bad[i]);
+            return out;
+        }
+        std::vector<std::vector<double>> FO;
+        for (auto i : ok) FO.push_back(F[i]);
+        for (auto j : start_points(FO, k)) out.push_back(ok[j]);
+        return out;
+    }
+    auto rows_of = [&F](const std::vector<std::size_t>& idx) {
+        select::Rows R;
+        R.n = idx.size();
+        R.m = F.empty() ? 0 : F[0].size();
+        for (auto i : idx) R.v.insert(R.v.end(), F[i].begin(), F[i].end());
+        return R;
+    };
+    std::vector<std::size_t> nd, rest;                   // designs.nondominated
+    for (std::size_t i = 0; i < n; ++i) {
+        bool dominated = false;
+        for (std::size_t j = 0; j < n && !dominated; ++j) {
+            bool all_le = true, any_lt = false;
+            for (std::size_t c = 0; c < F[i].size(); ++c) {
+                all_le = all_le && F[j][c] <= F[i][c];
+                any_lt = any_lt || F[j][c] < F[i][c];
+            }
+            dominated = all_le && any_lt;
+        }
+        (dominated ? rest : nd).push_back(i);
+    }
+    if (nd.size() >= k) {
+        for (auto j : select::dss_order(rows_of(nd), k)) out.push_back(nd[j]);
+        return out;
+    }
+    out = nd;
+    for (auto j : select::dss_order(rows_of(rest), k - nd.size())) out.push_back(rest[j]);
+    return out;
+}
+
 // polish.check: (how, share, points) from the params, or nothing where
 // minimize refuses them (left to the Python engine, which records why); how
 // "off" is no polishing
@@ -213,7 +270,12 @@ inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& sp
             return "a scalarization method under another constraint_mode";
     if (!baseline && !scalar && std::find(algorithms.begin(), algorithms.end(), job.algorithm) == algorithms.end())
         return "not a core of algorithms.def";
-    if (job.init != "uniform") return "a designed first population (init)";
+    if (job.init != "uniform") {
+        const auto& kinds = designs::kinds();
+        if (std::find(kinds.begin(), kinds.end(), job.init) == kinds.end()) return "an init minimize refuses";
+        for (const auto& k : p.user_kinds)
+            if (k == "bin" || k == "cat") return "a designed first population on bits or categories";
+    }
     if (const json::Value* v = job.params.find("polish"); v && detail::py_str(*v) != "off") {
         if (!p.user_kinds.empty()) return "polish on typed variables";
         if (!polish_knobs(job.params)) return "polish knobs minimize refuses";
@@ -418,6 +480,11 @@ public:
                 const json::Value* eta = job_.params.find("eta_int");
                 cfg.eta_int = !eta ? 3.0 : eta->kind == json::Value::Kind::Float ? eta->f : static_cast<double>(eta->i);
             }
+        }
+        if (job_.init != "uniform" && !baseline_ && !scalar_ && !seed_design(cfg, rp)) {
+            out.status = "left";         // the design takes the whole budget: minimize refuses it
+            out.error = "a design that takes the whole budget";
+            return out;
         }
         cfg.on_generation = [this](int gen, std::vector<std::vector<double>> F) { on_gen(gen, std::move(F)); };
         cfg.record_every = grid_kind_ != Grid::Generations ? 1 : static_cast<int>(spec_.record_every);
@@ -1480,6 +1547,69 @@ private:
         return P;
     }
 
+    // scalar.run's first points: the design's rows (but mosqp's, which
+    // starts from the box's centre), max(pop, init_share of the budget)
+    scalar::Start scalar_start() const
+    {
+        scalar::Start st;
+        if (job_.init == "uniform" || job_.algorithm == "mosqp") return st;
+        std::int64_t n0 = job_.pop;
+        if (job_.init_share != 0.0)
+            n0 = std::max<std::int64_t>(n0, static_cast<std::int64_t>(
+                                                std::nearbyint(job_.init_share * static_cast<double>(algo_budget_))));
+        st.has_design = true;
+        st.design = design_rows(p_.bounds, static_cast<std::size_t>(n0));
+        return st;
+    }
+
+    // designs.design: n points of the box, lo + u (hi - lo)
+    std::vector<std::vector<double>> design_rows(const std::vector<std::pair<double, double>>& box,
+                                                 std::size_t n) const
+    {
+        const std::size_t d = box.size();
+        const auto U = designs::design(job_.init, n, static_cast<int>(d), job_.seed);
+        std::vector<std::vector<double>> rows(n, std::vector<double>(d));
+        for (std::size_t i = 0; i < n; ++i)
+            for (std::size_t j = 0; j < d; ++j)
+                rows[i][j] = box[j].first + U[i * d + j] * (box[j].second - box[j].first);
+        return rows;
+    }
+
+    // minimize's init: the design evaluated here (decoded, accounted for as
+    // one batch), the start points of it planted as the seed population, the
+    // core on the budget the design leaves; false where it leaves none
+    bool seed_design(run::RunConfig& cfg, const run::RunProblem& rp)
+    {
+        std::int64_t n_design = job_.pop;
+        if (job_.init_share != 0.0)
+            n_design = std::max<std::int64_t>(n_design, static_cast<std::int64_t>(std::nearbyint(
+                                                            job_.init_share * static_cast<double>(algo_budget_))));
+        if (algo_budget_ - n_design <= 0) return false;
+        const auto rows = design_rows(rp.bounds, static_cast<std::size_t>(n_design));
+        const std::size_t m = static_cast<std::size_t>(p_.n_obj), c = static_cast<std::size_t>(native_->n_con);
+        const bool layout = !p_.user_kinds.empty();
+        std::vector<double> X, F, G;
+        std::vector<std::vector<double>> FR, GR;
+        for (const auto& row : rows) {
+            const std::vector<double> u = layout ? user_row(row.data()) : row;
+            std::vector<double> f(m), g(c);
+            native_->evaluate(u.data(), f.data(), c ? g.data() : nullptr);
+            X.insert(X.end(), u.begin(), u.end());
+            F.insert(F.end(), f.begin(), f.end());
+            G.insert(G.end(), g.begin(), g.end());
+            FR.push_back(std::move(f));
+            GR.push_back(std::move(g));
+        }
+        account(X, F, constrained_ ? G : std::vector<double>{}, rows.size());
+        for (auto i : start_points(FR, static_cast<std::size_t>(job_.pop))) {
+            cfg.seed_variables.push_back(rows[i]);
+            cfg.seed_objectives.push_back(FR[i]);
+            if (c) cfg.seed_limits.push_back(GR[i]);
+        }
+        cfg.max_evaluations = algo_budget_ - n_design;
+        return true;
+    }
+
     run::RunResult run_scalar(int record_every)
     {
         const scalar::Problem P = scalar_problem();
@@ -1512,7 +1642,7 @@ private:
         };
         const scalar::Result r = scalar::run(job_.algorithm, P, kMinimizeEqTol, false, 0.0, static_cast<int>(job_.pop),
                                              algo_budget_, static_cast<unsigned>(job_.seed), knobs, observe,
-                                             record_every, scalar::Start{});
+                                             record_every, scalar_start());
         run::RunResult res;
         res.objectives = r.objectives;
         res.variables = r.variables;

@@ -10,6 +10,25 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The C++ engine runs the designed first populations (`init`,
+  `init_share`) as minimize does: the design evaluated as one batch (its
+  integers and discrete values decoded), `designs.start_points` of it
+  planted as the core's seed population, the core on the budget the design
+  leaves; a scalarization method starts from the design's rows. On seven
+  problems (RE22 and RE25 with discrete variables among them), two seeds,
+  seven variants (four designs, `init_share`, scalarization, polishing):
+  every run as the Python engine's.
+- Fixed (`minimize.py`): on the direct path a design's points went to the
+  problem undecoded — integer variables not rounded, discrete ones not
+  snapped to their values (RE22, RE25, RCM15 with `init`). **Changed
+  results** for those runs.
+- Fixed (`scalar/solvers.hpp`): Nelder-Mead (eps_nm, polish = "nm") could
+  cycle for ever on points already evaluated — the penalty of a point grows
+  with the worst feasible value met, and a collapsed simplex kept a stale
+  best value — growing its memory until the allocation failed (eps_nm on
+  RE21 from a Latin hypercube). It stops after 100 (n + 1) calls in a row
+  that evaluate nothing; the scalarization and polishing runs above are bit
+  for bit what they were.
 - The C++ engine runs the scalarization methods (the seven presets,
   boostdms, mosqp; `scalar/scalar.hpp`) and polishing (`polish`,
   `polish_share`, `polish_points`; `scalar/polish.hpp`) as minimize does:

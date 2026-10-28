@@ -289,17 +289,36 @@ struct Penalty {
     }
 };
 
+// The penalty's value of a point grows as the run meets worse feasible values
+// (Penalty::worst), so a simplex collapsed onto points already evaluated can
+// keep a stale best value and cycle for ever without evaluating anything (a
+// run of eps_nm on RE21 did, until memory ran out): the method stops after
+// 100 (n + 1) calls in a row that evaluate nothing.
 inline void nm(Run& run, const std::vector<double>& y0, const std::vector<std::size_t>& start, double tol)
 {
+    struct Idle {};
     Penalty pen(run, start);
     const std::size_t n = y0.size();
     nelder_mead::Options o;
     o.tol = tol;
     o.max_iter = 1000000000LL;
+    const long long cap = 100 * static_cast<long long>(n + 1);
+    long long idle = 0, spent = run.ev.spent;
     try {
-        nelder_mead::minimize([&](const std::vector<double>& y) { return pen(y); }, y0,
-                              std::vector<double>(n, 0.0), std::vector<double>(n, 1.0), o);
+        nelder_mead::minimize(
+            [&](const std::vector<double>& y) {
+                const double v = pen(y);
+                if (run.ev.spent != spent) {
+                    spent = run.ev.spent;
+                    idle = 0;
+                } else if (++idle > cap) {
+                    throw Idle{};
+                }
+                return v;
+            },
+            y0, std::vector<double>(n, 0.0), std::vector<double>(n, 1.0), o);
     } catch (const SubBudgetSpent&) {
+    } catch (const Idle&) {
     }
 }
 

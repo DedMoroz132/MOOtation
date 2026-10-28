@@ -696,7 +696,10 @@ def minimize(
         rows = [list(x) for x in designs.design(init, n_design, bounds, seed)]
         if direct is not None:
             import numpy as np
-            XD = np.asarray(rows, dtype=float).reshape(len(rows), len(bounds))
+            # the decoded points (integers rounded, discrete values snapped),
+            # as the core hands its own rows to the problem
+            XU = rows if layout is None else [layout.numeric(layout.to_user(r)) for r in rows]
+            XD = np.asarray(XU, dtype=float).reshape(len(rows), len(bounds))
             FD, GD = direct.evaluate_with_constraints(XD)
             problem.on_rows(XD, FD, GD)                    # the design's points, before the run
             F, G = FD.tolist(), GD.tolist()
