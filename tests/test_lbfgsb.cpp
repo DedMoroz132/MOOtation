@@ -6,11 +6,14 @@
 // is 0), but for four noted below (where SciPy's L-BFGS-B, the same m, ends
 // no nearer); infinite bounds as no bounds, bit for bit; Rosenbrock with x1
 // <= 1/2 ends at (1/2, 1/4); bounded variants end where the projected
-// gradient vanishes (BLNZ (6.1)).
+// gradient vanishes (BLNZ (6.1)); a checksum of the MGH runs, the same bits
+// on every platform (dm:: in the problems, + - * / sqrt in the solver).
 // ============================================================================
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -25,6 +28,15 @@ namespace mgh = mootation::suite::mgh;
 using LB::Vec;
 
 int g_failed = 0;
+
+std::uint64_t g_hash = 1469598103934665603ull;     // FNV-1a over the runs' bits (MSVC = g++ = clang)
+
+void mix(double v)
+{
+    std::uint64_t b;
+    std::memcpy(&b, &v, sizeof b);
+    g_hash = (g_hash ^ b) * 1099511628211ull;
+}
 
 void check(bool ok, const std::string& what)
 {
@@ -69,6 +81,8 @@ int main()
         o.pgtol = 1e-10;
         o.ftol = 1e-15;
         const LB::Result r = LB::solve(sum_of_squares(k.id, k.n, k.m), mgh::start(k.id, k.n, 1.0), o);
+        for (double v : r.x) mix(v);
+        mix(static_cast<double>(r.nfev));
         std::printf("      %-24s n %2zu: f %.9g (MGH %.6g) nfev %lld it %lld status %d\n", mgh::name(k.id), k.n, r.f,
                     k.fmin, r.nfev, r.iterations, static_cast<int>(r.status));
         bool ok = k.fmin == 0.0 ? r.f <= 1e-10 : std::fabs(r.f - k.fmin) <= 1e-5 * k.fmin;
@@ -77,11 +91,11 @@ int main()
             ok = std::fabs(r.f - 2.79505612e-5) <= 1e-6 * 2.79505612e-5;
             note = ": the local minimum 2.79506e-5 (SciPy's too)";
         }
-        // ill-conditioned: L-BFGS creeps (SciPy: 1.9e-7, 2.1e-6, 9.2e-8); on Powell's the path
-        // follows the rounding of exp: 5.8e-7 with MSVC's, 5.1e-4 and 5.2e-4 with macOS's and glibc's
+        // ill-conditioned: L-BFGS creeps (SciPy: 1.9e-7, 2.1e-6, 9.2e-8); the run is the same bits
+        // everywhere (the checksum below), Powell's ends at 1.67e-4
         if (k.id == 3 || (k.id == 20 && k.n > 6)) {
-            ok = r.f <= (k.id == 3 ? 1e-3 : k.n == 9 ? 1.6e-6 : 1e-7);
-            note = ": below 1e-3, 1.6e-6, 1e-7 (MGH's minimum not reached, nor by SciPy)";
+            ok = r.f <= (k.id == 3 ? 2e-4 : k.n == 9 ? 1.6e-6 : 1e-7);
+            note = ": below 2e-4, 1.6e-6, 1e-7 (MGH's minimum not reached, nor by SciPy)";
         }
         check(ok, std::string("MGH ") + mgh::name(k.id) + " n=" + std::to_string(k.n) + note);
     }
@@ -119,6 +133,8 @@ int main()
                   std::string("bounds: ") + mgh::name(k.id) + " in a box ends with the projected gradient < 1e-7 (pgtol, or the search at rounding)");
         }
     }
+    std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
+    check(g_hash == 0xa2e476653418ead6ull, "the runs' bits as on every platform (dm:: and + - * / sqrt only)");
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;
 }

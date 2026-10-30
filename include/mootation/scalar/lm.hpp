@@ -163,6 +163,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../fp_contract.hpp"
 #include "eigen.hpp"
 #include "lsq.hpp"
@@ -760,7 +761,10 @@ inline double loss_of(Options::Loss loss, double c, double t)
 {
     const double a = std::fabs(t);
     if (loss == Options::Loss::huber) return a <= c ? 0.5 * t * t : c * (a - 0.5 * c);
-    if (loss == Options::Loss::cauchy) return 0.5 * c * c * std::log1p((t / c) * (t / c));
+    if (loss == Options::Loss::cauchy) {             // log1p(u) by dm::log, as D. Goldberg, "What every
+        const double u = (t / c) * (t / c), w = 1.0 + u;   // computer scientist should know about floating-point
+        return 0.5 * c * c * (w == 1.0 ? u : dm::log(w) * u / (w - 1.0));   // arithmetic", 1991, Theorem 4
+    }
     return 0.5 * t * t;
 }
 

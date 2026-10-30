@@ -11,7 +11,8 @@
 // the lines "  bK = start1 start2 certified deviation" the parameters (in the
 // order of K); "Residual Sum of Squares:" the certified sum. The residual is
 // y - f(x; b), for Nelson log(y) - f(x1, x2; b) (its model is log[y] = ...).
-// pi in ENSO and Roszman1 is the double nearest to pi.
+// pi in ENSO and Roszman1 is the double nearest to pi; exp, log, pow, sin,
+// cos, atan the library's own (dm::, detmath.hpp): the same bits everywhere.
 // ============================================================================
 
 #include <cmath>
@@ -22,6 +23,7 @@
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../fp_contract.hpp"
 
 namespace mootation::suite::nist {
@@ -96,38 +98,38 @@ inline double model(const std::string& name, const Vec& b, const Vec& xs)
 {
     const double x = xs[0];
     const double pi = 3.141592653589793;
-    if (name == "Misra1a" || name == "BoxBOD") return b[0] * (1.0 - std::exp(-b[1] * x));
-    if (name == "Chwirut1" || name == "Chwirut2") return std::exp(-b[0] * x) / (b[1] + b[2] * x);
+    if (name == "Misra1a" || name == "BoxBOD") return b[0] * (1.0 - dm::exp(-b[1] * x));
+    if (name == "Chwirut1" || name == "Chwirut2") return dm::exp(-b[0] * x) / (b[1] + b[2] * x);
     if (name == "Lanczos1" || name == "Lanczos2" || name == "Lanczos3")
-        return b[0] * std::exp(-b[1] * x) + b[2] * std::exp(-b[3] * x) + b[4] * std::exp(-b[5] * x);
+        return b[0] * dm::exp(-b[1] * x) + b[2] * dm::exp(-b[3] * x) + b[4] * dm::exp(-b[5] * x);
     if (name == "Gauss1" || name == "Gauss2" || name == "Gauss3") {
         const double u = (x - b[3]) / b[4], v = (x - b[6]) / b[7];
-        return b[0] * std::exp(-b[1] * x) + b[2] * std::exp(-u * u) + b[5] * std::exp(-v * v);
+        return b[0] * dm::exp(-b[1] * x) + b[2] * dm::exp(-u * u) + b[5] * dm::exp(-v * v);
     }
-    if (name == "DanWood") return b[0] * std::pow(x, b[1]);
-    if (name == "Misra1b") return b[0] * (1.0 - std::pow(1.0 + b[1] * x / 2.0, -2.0));
-    if (name == "Misra1c") return b[0] * (1.0 - std::pow(1.0 + 2.0 * b[1] * x, -0.5));
+    if (name == "DanWood") return b[0] * dm::pow(x, b[1]);
+    if (name == "Misra1b") return b[0] * (1.0 - dm::pow(1.0 + b[1] * x / 2.0, -2.0));
+    if (name == "Misra1c") return b[0] * (1.0 - dm::pow(1.0 + 2.0 * b[1] * x, -0.5));
     if (name == "Misra1d") return b[0] * b[1] * x / (1.0 + b[1] * x);
     if (name == "Kirby2") return (b[0] + b[1] * x + b[2] * x * x) / (1.0 + b[3] * x + b[4] * x * x);
     if (name == "Hahn1" || name == "Thurber")
         return (b[0] + b[1] * x + b[2] * x * x + b[3] * x * x * x) / (1.0 + b[4] * x + b[5] * x * x + b[6] * x * x * x);
-    if (name == "Nelson") return b[0] - b[1] * xs[0] * std::exp(-b[2] * xs[1]);
-    if (name == "MGH17") return b[0] + b[1] * std::exp(-x * b[3]) + b[2] * std::exp(-x * b[4]);
-    if (name == "Roszman1") return b[0] - b[1] * x - std::atan(b[2] / (x - b[3])) / pi;
+    if (name == "Nelson") return b[0] - b[1] * xs[0] * dm::exp(-b[2] * xs[1]);
+    if (name == "MGH17") return b[0] + b[1] * dm::exp(-x * b[3]) + b[2] * dm::exp(-x * b[4]);
+    if (name == "Roszman1") return b[0] - b[1] * x - dm::atan(b[2] / (x - b[3])) / pi;
     if (name == "ENSO") {
         const double a = 2.0 * pi * x;
-        return b[0] + b[1] * std::cos(a / 12.0) + b[2] * std::sin(a / 12.0) + b[4] * std::cos(a / b[3]) +
-               b[5] * std::sin(a / b[3]) + b[7] * std::cos(a / b[6]) + b[8] * std::sin(a / b[6]);
+        return b[0] + b[1] * dm::cos(a / 12.0) + b[2] * dm::sin(a / 12.0) + b[4] * dm::cos(a / b[3]) +
+               b[5] * dm::sin(a / b[3]) + b[7] * dm::cos(a / b[6]) + b[8] * dm::sin(a / b[6]);
     }
     if (name == "MGH09") return b[0] * (x * x + x * b[1]) / (x * x + x * b[2] + b[3]);
-    if (name == "Rat42") return b[0] / (1.0 + std::exp(b[1] - b[2] * x));
-    if (name == "MGH10") return b[0] * std::exp(b[1] / (x + b[2]));
+    if (name == "Rat42") return b[0] / (1.0 + dm::exp(b[1] - b[2] * x));
+    if (name == "MGH10") return b[0] * dm::exp(b[1] / (x + b[2]));
     if (name == "Eckerle4") {
         const double u = (x - b[2]) / b[1];
-        return (b[0] / b[1]) * std::exp(-0.5 * u * u);
+        return (b[0] / b[1]) * dm::exp(-0.5 * u * u);
     }
-    if (name == "Rat43") return b[0] / std::pow(1.0 + std::exp(b[1] - b[2] * x), 1.0 / b[3]);
-    if (name == "Bennett5") return b[0] * std::pow(b[1] + x, -1.0 / b[2]);
+    if (name == "Rat43") return b[0] / dm::pow(1.0 + dm::exp(b[1] - b[2] * x), 1.0 / b[3]);
+    if (name == "Bennett5") return b[0] * dm::pow(b[1] + x, -1.0 / b[2]);
     throw std::invalid_argument("nist: no model for " + name);
 }
 
@@ -137,7 +139,7 @@ inline void residuals(const Dataset& d, const Vec& b, Vec& r)
     r.resize(d.y.size());
     const bool log_y = d.name == "Nelson";
     for (std::size_t i = 0; i < d.y.size(); ++i)
-        r[i] = (log_y ? std::log(d.y[i]) : d.y[i]) - model(d.name, b, d.x[i]);
+        r[i] = (log_y ? dm::log(d.y[i]) : d.y[i]) - model(d.name, b, d.x[i]);
 }
 
 }   // namespace mootation::suite::nist
