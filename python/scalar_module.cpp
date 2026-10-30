@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include <mootation/scalar/lbfgsb.hpp>
 #include <mootation/scalar/lm.hpp>
 #include <mootation/suite/mgh.hpp>
 #include <mootation/suite/nist.hpp>
@@ -482,6 +483,46 @@ void bind_scalar(py::module_& m)
           "min 1/2 ||y - Phi(alpha) a||^2 by variable projection (Golub-Pereyra): lm.hpp on r_2(alpha) = "
           "P_Phi^perp y, a = Phi^- y. basis(alpha) gives Phi (m x p), derivatives(alpha) the k matrices "
           "dPhi/dalpha_j (None: differences of r_2); kaufman: Kaufman's Jacobian.");
+
+    s.def("lbfgsb",
+          [](const py::object& fun, const Vec& x0, const py::object& grad, const py::object& bounds, int m,
+             double pgtol, double ftol, long long max_nfev, long long max_iter) {
+              sc::lbfgsb::Problem p;
+              p.n = x0.size();
+              p.f = [fun](const Vec& x) { return fun(to_list(x)).cast<double>(); };
+              if (!grad.is_none())
+                  p.fg = [fun, grad](const Vec& x, Vec& g) {
+                      g = floats(grad(to_list(x)));
+                      return fun(to_list(x)).cast<double>();
+                  };
+              if (!bounds.is_none()) {
+                  const py::sequence b = bounds.cast<py::sequence>();
+                  p.lo = floats(b[0]);
+                  p.hi = floats(b[1]);
+              }
+              sc::lbfgsb::Options o;
+              o.m = m;
+              o.pgtol = pgtol;
+              o.ftol = ftol;
+              o.max_nfev = max_nfev;
+              o.max_iter = max_iter;
+              const sc::lbfgsb::Result r = sc::lbfgsb::solve(p, x0, o);
+              py::dict d;
+              d["x"] = to_list(r.x);
+              d["f"] = r.f;
+              d["g"] = to_list(r.g);
+              d["nfev"] = r.nfev;
+              d["ngev"] = r.ngev;
+              d["iterations"] = r.iterations;
+              d["status"] = static_cast<int>(r.status);
+              return d;
+          },
+          py::arg("fun"), py::arg("x0"), py::arg("grad") = py::none(), py::arg("bounds") = py::none(),
+          py::arg("m") = 5, py::arg("pgtol") = 1e-5, py::arg("ftol") = 0.0, py::arg("max_nfev") = 15000,
+          py::arg("max_iter") = 15000,
+          "min fun(x) on lo <= x <= hi (+-inf allowed) by lbfgsb.hpp (Byrd-Lu-Nocedal-Zhu 1995, Morales-Nocedal "
+          "2011, More-Thuente search); grad(x) the gradient (None: forward differences). status: 0 pgtol, 1 "
+          "ftol, 2 line search, 3 max_nfev, 4 max_iter.");
 
     // the published test sets, for cross-checks: MGH 1981 and NIST StRD
     s.def("mgh",

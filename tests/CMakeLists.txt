@@ -33,6 +33,8 @@ set(MOOTATION_TESTS
     test_scalar
     test_lm
     test_lm_sets
+    test_line_search
+    test_lbfgsb
     test_store_codec
     test_json
     test_toml
