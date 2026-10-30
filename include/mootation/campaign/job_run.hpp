@@ -295,7 +295,7 @@ inline std::optional<std::string> refusal(const Job& job, const CampaignSpec& sp
 // minimize()'s knobs on the run's configuration: the per-knob ones, the
 // params (is_core_param, as floats) and the words (is_core_word; a list as
 // comma-separated words)
-inline void apply_knobs(run::RunConfig& cfg, const json::Value& params)
+inline void apply_knobs(runner::RunConfig& cfg, const json::Value& params)
 {
     using Kind = json::Value::Kind;
     auto number = [](const json::Value& v) { return v.kind == Kind::Float ? v.f : v.kind == Kind::Bool ? (v.b ? 1.0 : 0.0) : static_cast<double>(v.i); };
@@ -411,7 +411,7 @@ struct JobOutcome {
     std::string status;                            // "done", "failed" or "timeout"
     std::string error;
     std::vector<std::string> trajectory;          // the records, json.dumps each
-    run::RunResult result;
+    runner::RunResult result;
     long long fe = 0, n_failed = 0, first_feasible = -1;
     std::size_t records = 0;
 };
@@ -434,7 +434,7 @@ public:
         begin_meta();
         start_ = std::chrono::steady_clock::now();
         JobOutcome out;
-        run::RunProblem rp;
+        runner::RunProblem rp;
         // typed variables: the core's box, each integer's widened by just under
         // a half (var_types.Layout.core_bounds); no bounds for the bits and
         // the categories, the integer genome after the reals
@@ -454,7 +454,7 @@ public:
             rp.on_rows = [this](const std::vector<double>& X, const std::vector<double>& F,
                                 const std::vector<double>& G, std::size_t n) { account(X, F, G, n); };
         }
-        run::RunConfig cfg;
+        runner::RunConfig cfg;
         cfg.pop_size = static_cast<int>(job_.pop);
         cfg.n_gen = static_cast<int>(job_.gens);
         cfg.seed = static_cast<unsigned>(job_.seed);
@@ -494,7 +494,7 @@ public:
         try {
             out.result = baseline_ ? run_baseline(cfg.record_every)
                          : scalar_   ? run_scalar(cfg.record_every)
-                                     : run::run(job_.algorithm, rp, cfg);
+                                     : runner::run(job_.algorithm, rp, cfg);
             if (polish_.how != "off") out.result = run_polish(out.result, cfg.record_every);
         } catch (const TimeoutStop&) {
             // stopped at run_timeout: the trajectory up to its last record
@@ -562,7 +562,7 @@ public:
             files.meta = meta;
             return files;
         }
-        const run::RunResult& res = out.result;
+        const runner::RunResult& res = out.result;
         // the final population: objectives, then variables
         std::vector<double> F, X;
         for (const auto& r : res.objectives) F.insert(F.end(), r.begin(), r.end());
@@ -1446,7 +1446,7 @@ private:
     // ablations.hpp; every point evaluated and accounted for alone, the
     // answer the archive's DSS selection of N (the sampling baselines, gsemo)
     // or the last population (random_selection_ea)
-    run::RunResult run_baseline(int record_every)
+    runner::RunResult run_baseline(int record_every)
     {
         const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
         const std::size_t pop = static_cast<std::size_t>(job_.pop), budget = static_cast<std::size_t>(budget_);
@@ -1526,7 +1526,7 @@ private:
             answer(a.F, a.X);
             a.steps = gen;
         }
-        run::RunResult res;
+        runner::RunResult res;
         res.objectives = a.F;
         res.variables = a.X;
         res.active_n = a.F.size();
@@ -1584,7 +1584,7 @@ private:
     // minimize's init: the design evaluated here (decoded, accounted for as
     // one batch), the start points of it planted as the seed population, the
     // core on the budget the design leaves; false where it leaves none
-    bool seed_design(run::RunConfig& cfg, const run::RunProblem& rp)
+    bool seed_design(runner::RunConfig& cfg, const runner::RunProblem& rp)
     {
         std::int64_t n_design = job_.pop;
         if (job_.init_share != 0.0)
@@ -1616,7 +1616,7 @@ private:
         return true;
     }
 
-    run::RunResult run_scalar(int record_every)
+    runner::RunResult run_scalar(int record_every)
     {
         const scalar::Problem P = scalar_problem();
         scalar::Knobs knobs;
@@ -1649,7 +1649,7 @@ private:
         const scalar::Result r = scalar::run(job_.algorithm, P, kMinimizeEqTol, false, 0.0, static_cast<int>(job_.pop),
                                              algo_budget_, static_cast<unsigned>(job_.seed), knobs, observe,
                                              record_every, scalar_start());
-        run::RunResult res;
+        runner::RunResult res;
         res.objectives = r.objectives;
         res.variables = r.variables;
         res.cv = r.cv;
@@ -1664,7 +1664,7 @@ private:
     // algorithm evaluated (recorded_, in order of first evaluation), on the
     // budget it left; the answer the polished result, the settings the
     // algorithm's and the polishing's
-    run::RunResult run_polish(const run::RunResult& base, int record_every)
+    runner::RunResult run_polish(const runner::RunResult& base, int record_every)
     {
         recording_ = false;
         handing_ = true;                 // the observer's rows are the polishing's
@@ -1687,7 +1687,7 @@ private:
         const scalar::PolishResult r =
             scalar::polish(P, points, base.variables, base.evaluations, polish_.how, polish_.points, kMinimizeEqTol,
                            static_cast<int>(job_.pop), left, observe, record_every, fd_step, local_tol);
-        run::RunResult res = base;
+        runner::RunResult res = base;
         res.objectives = r.objectives;
         res.variables = r.variables;
         res.cv = r.cv;
@@ -1864,8 +1864,8 @@ private:
     {
         std::vector<double> X;
         if (baseline_ || scalar_ || handing_) return rows ? handed_x_ : X;   // the answer's rows, as handed over
-        if (need_x_ && rows && run::st().answer_variables)
-            for (const auto& x : run::st().answer_variables()) {
+        if (need_x_ && rows && runner::st().answer_variables)
+            for (const auto& x : runner::st().answer_variables()) {
                 if (!has_cat_) {
                     X.insert(X.end(), x.begin(), x.end());
                     continue;
@@ -1970,7 +1970,7 @@ private:
             rec.set("eps_norm_all", finite_or_null(v.second));
         }
         if (op_stats())
-            for (const auto& s : run::operator_stats())
+            for (const auto& s : runner::operator_stats())
                 rec.set(s.name, !s.value   ? json::Value::null()
                                 : s.integer ? json::Value::integer(static_cast<std::int64_t>(*s.value))
                                             : json::Value::number(*s.value));

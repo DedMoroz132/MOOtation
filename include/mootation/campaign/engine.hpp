@@ -116,7 +116,7 @@ inline bool executable_findable(const std::string& name)
 inline Registry config_registry(const ProblemRegistry& preg)
 {
     Registry r;
-    r.algorithms = run::algorithm_names();
+    r.algorithms = runner::algorithm_names();
     r.baselines = preg.names.baselines;
     r.scalar_names = preg.names.scalar_names;
     r.design_kinds = preg.names.design_kinds;
@@ -614,7 +614,7 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
     const auto status = store_statuses(store_dir);
     // the jobs to run, and those the engine leaves to Python
     std::vector<const Job*> todo;
-    const auto algorithms = run::algorithm_names();
+    const auto algorithms = runner::algorithm_names();
     for (const Job* j : selected) {
         const auto it = status.find(job_key(*j));
         const std::string st = it == status.end() ? "pending" : it->second;

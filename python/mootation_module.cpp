@@ -71,12 +71,12 @@ namespace py = pybind11;
 
 namespace {
 
-namespace mrun = mootation::run;
+namespace mrun = mootation::runner;
 using RunConfig = mrun::RunConfig;
 using PyResult  = mrun::RunResult;
 
 // ── The problem, as configured from Python ─────────────────────────────────
-// What _core.Problem holds; run() below hands it to mootation::run::run
+// What _core.Problem holds; run() below hands it to mootation::runner::run
 // (include/mootation/run_core.hpp) as a RunProblem whose lock is the GIL.
 struct PyProblem {
     std::vector<std::pair<double, double>> bounds;

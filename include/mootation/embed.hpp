@@ -49,6 +49,11 @@
 // candidate, `n_cons` values, each <= 0 meaning satisfied. The library derives
 // the total violation from those. With n_cons = 0, G is empty and ignored.
 //
+// ── ONE DRIVER ──────────────────────────────────────────────────────────────
+// Both run through run_core.hpp's runner::run, the driver the Python package
+// and the C++ campaign engine use: the same Settings give the same run there
+// and here (task 17, section 2.5).
+//
 // ── COST ────────────────────────────────────────────────────────────────────
 // Including this header instantiates all 76 algorithms in the translation
 // unit, because the dispatch is by string. That is a real compile-time cost
@@ -79,6 +84,7 @@
 
 #include "io/population.hpp"
 #include "mootation.hpp"
+#include "run_core.hpp"
 #include "settings.hpp"
 
 namespace mootation {
@@ -107,293 +113,6 @@ using Evaluate = std::function<void(const std::vector<std::vector<double>>& X,
                                     std::vector<std::vector<double>>&       G)>;
 
 namespace embed_detail {
-
-// ── The evaluation context ──────────────────────────────────────────────────
-// One per running optimization, reached by Problem<Tag>::calc_objs through a
-// thread_local pointer. thread_local rather than global so that independent
-// runs on different threads do not collide.
-struct Context {
-    int      n_objs = 0;
-    int      n_cons = 0;
-    Evaluate eval;
-    std::vector<std::pair<std::optional<double>, std::optional<double>>> bounds;
-    int      evaluations = 0;
-};
-
-inline Context*& context() {
-    static thread_local Context* ctx = nullptr;
-    return ctx;
-}
-
-struct ContextGuard {
-    Context* prev;
-    explicit ContextGuard(Context* c) : prev(context()) { context() = c; }
-    ~ContextGuard() { context() = prev; }
-};
-
-// Evaluate exactly one point through the context. Used by Problem<Tag> for the
-// non-batched path; the batched path goes through BatchExecutor below.
-inline void eval_one(const std::vector<double>& x,
-                     std::vector<double>&       f,
-                     std::vector<double>&       g) {
-    Context* c = context();
-    if (!c)
-        throw std::logic_error("mootation: Problem::calc_objs called with no "
-                               "evaluation context — use run() or Session");
-    std::vector<std::vector<double>> X{x};
-    std::vector<std::vector<double>> F(1, std::vector<double>(static_cast<std::size_t>(c->n_objs), 0.0));
-    std::vector<std::vector<double>> G;
-    if (c->n_cons > 0)
-        G.assign(1, std::vector<double>(static_cast<std::size_t>(c->n_cons), 0.0));
-    c->eval(X, F, G);
-    c->evaluations += 1;
-    if (F.size() != 1 || F[0].size() != static_cast<std::size_t>(c->n_objs))
-        throw std::runtime_error("mootation: evaluator returned the wrong shape for F");
-    f = F[0];
-    if (c->n_cons > 0) {
-        if (G.size() != 1 || G[0].size() != static_cast<std::size_t>(c->n_cons))
-            throw std::runtime_error("mootation: evaluator returned the wrong shape for G");
-        g = G[0];
-    } else {
-        g.clear();
-    }
-}
-
-// The BatchExecutor installed on every vault: hands the whole dirty set to the
-// evaluator in one call. This is what makes ask() return real batches.
-inline void run_batch(const BatchRequest& req, BatchResponse& resp) {
-    Context* c = context();
-    if (!c)
-        throw std::logic_error("mootation: batch executor called with no "
-                               "evaluation context — use run() or Session");
-    resp.resize(req.size(), c->n_objs, c->n_cons);
-    c->eval(req.variables, resp.objectives, resp.limits);
-    c->evaluations += static_cast<int>(req.size());
-
-    if (resp.objectives.size() != req.size())
-        throw std::runtime_error(
-            "mootation: evaluator returned " + std::to_string(resp.objectives.size()) +
-            " objective rows for a batch of " + std::to_string(req.size()));
-    for (const auto& row : resp.objectives)
-        if (row.size() != static_cast<std::size_t>(c->n_objs))
-            throw std::runtime_error(
-                "mootation: evaluator returned a row of " + std::to_string(row.size()) +
-                " objectives, expected " + std::to_string(c->n_objs));
-    if (c->n_cons > 0) {
-        if (resp.limits.size() != req.size())
-            throw std::runtime_error(
-                "mootation: n_cons = " + std::to_string(c->n_cons) +
-                " but the evaluator returned " + std::to_string(resp.limits.size()) +
-                " constraint rows for a batch of " + std::to_string(req.size()));
-        for (const auto& row : resp.limits)
-            if (row.size() != static_cast<std::size_t>(c->n_cons))
-                throw std::runtime_error(
-                    "mootation: evaluator returned a row of " + std::to_string(row.size()) +
-                    " constraint values, expected " + std::to_string(c->n_cons));
-    } else {
-        resp.limits.clear();
-    }
-}
-
-// ── One tag + one Problem specialization per algorithm ──────────────────────
-// Each core needs its own Individual type, and Based_Individual befriends
-// Problem<T> only, so calc_objs has to live in the specialization. The tags
-// are generated from the same algorithms.def the tests iterate over.
-#define MOOTATION_EMBED_PROBLEM(TAG, BASE)                                     \
-    namespace mootation { namespace embed_detail {                             \
-        struct TAG : public ::mootation::BASE {};                              \
-    } }                                                                        \
-    namespace mootation {                                                      \
-    template <>                                                                \
-    class Problem<embed_detail::TAG> {                                         \
-    public:                                                                    \
-        int get_vars_n() const {                                               \
-            return static_cast<int>(embed_detail::context()->bounds.size());   \
-        }                                                                      \
-        int get_bin_vars_n() const { return 0; }                               \
-        int get_objs_n() const { return embed_detail::context()->n_objs; }     \
-        int get_lims_n() const { return embed_detail::context()->n_cons; }     \
-        std::vector<std::pair<std::optional<double>, std::optional<double>>>   \
-            bounds;                                                            \
-        void calc_objs(embed_detail::TAG& ind) const {                         \
-            embed_detail::eval_one(ind.variables, ind.objectives, ind.limits); \
-        }                                                                      \
-    };                                                                         \
-    }
-
-} // namespace embed_detail
-} // namespace mootation
-
-#define MOOTATION_ALG(KEY, IND, CORE) MOOTATION_EMBED_PROBLEM(EmbedTag_##KEY, IND)
-#include "mootation/algorithms.def"
-#undef MOOTATION_ALG
-#undef MOOTATION_EMBED_PROBLEM
-
-namespace mootation {
-namespace embed_detail {
-
-// ── Optional-setter detection ───────────────────────────────────────────────
-// A knob is applied when the core has the setter and reported when it does
-// not. Silently dropping it would mean running a different configuration than
-// the caller asked for.
-#define MOOTATION_OPTIONAL_SETTER(NAME, SETTER, TYPE)                          \
-    template <typename C, typename = void>                                     \
-    struct has_##NAME : std::false_type {};                                    \
-    template <typename C>                                                      \
-    struct has_##NAME<C, std::void_t<decltype(std::declval<C&>().SETTER(       \
-                             std::declval<TYPE>()))>> : std::true_type {};     \
-    template <typename C>                                                      \
-    bool apply_##NAME(C& core, TYPE v) {                                       \
-        if constexpr (has_##NAME<C>::value) { core.SETTER(v); return true; }   \
-        else { (void)core; (void)v; return false; }                            \
-    }
-
-MOOTATION_OPTIONAL_SETTER(t_max,      set_t_max,      int)
-MOOTATION_OPTIONAL_SETTER(eta_c,      set_eta_crossover, double)
-MOOTATION_OPTIONAL_SETTER(eta_m,      set_eta_mutation,  double)
-MOOTATION_OPTIONAL_SETTER(pc,         set_pc,         double)
-MOOTATION_OPTIONAL_SETTER(pm,         set_pm,         double)
-MOOTATION_OPTIONAL_SETTER(T,          set_T,          int)
-MOOTATION_OPTIONAL_SETTER(delta,      set_delta,      double)
-MOOTATION_OPTIONAL_SETTER(nr,         set_nr,         int)
-MOOTATION_OPTIONAL_SETTER(kappa,      set_kappa,      double)
-MOOTATION_OPTIONAL_SETTER(K,          set_K,          int)
-MOOTATION_OPTIONAL_SETTER(n_clusters, set_n_clusters, int)
-MOOTATION_OPTIONAL_SETTER(theta,      set_theta,      double)
-MOOTATION_OPTIONAL_SETTER(alpha,      set_alpha,      double)
-MOOTATION_OPTIONAL_SETTER(F,          set_F,          double)
-MOOTATION_OPTIONAL_SETTER(CR,         set_CR,         double)
-MOOTATION_OPTIONAL_SETTER(div,        set_div,        int)
-MOOTATION_OPTIONAL_SETTER(normalize,  set_normalize,  bool)
-MOOTATION_OPTIONAL_SETTER(bound_repair, set_bound_repair, ops::BoundRepair)
-MOOTATION_OPTIONAL_SETTER(crossover,  set_crossover,  ops::Crossover)
-MOOTATION_OPTIONAL_SETTER(mutation,   set_mutation,   ops::Mutation)
-MOOTATION_OPTIONAL_SETTER(mutation_scale, set_mutation_scale, double)
-MOOTATION_OPTIONAL_SETTER(mixture_q,  set_mixture_q,  double)
-MOOTATION_OPTIONAL_SETTER(blx_alpha,  set_blx_alpha,  double)
-MOOTATION_OPTIONAL_SETTER(crowding_space, set_crowding_space, CrowdingSpace)
-MOOTATION_OPTIONAL_SETTER(dms_init,   set_init,       DMSInit)
-MOOTATION_OPTIONAL_SETTER(dms_poll,   set_poll,       DMSPoll)
-MOOTATION_OPTIONAL_SETTER(step_share, set_step_share, double)
-MOOTATION_OPTIONAL_SETTER(F_spread,   set_F_spread,   double)
-
-#undef MOOTATION_OPTIONAL_SETTER
-
-// The knobs after the per-knob setters (settings.hpp, is_core_param): a core
-// takes them through set_param / set_word, which answer whether it has them.
-template <typename C, typename = void>
-struct has_set_param : std::false_type {};
-template <typename C>
-struct has_set_param<C, std::void_t<decltype(std::declval<C&>().set_param(
-                            std::declval<const std::string&>(), std::declval<double>()))>>
-    : std::true_type {};
-template <typename C, typename = void>
-struct has_set_word : std::false_type {};
-template <typename C>
-struct has_set_word<C, std::void_t<decltype(std::declval<C&>().set_word(
-                           std::declval<const std::string&>(), std::declval<const std::string&>()))>>
-    : std::true_type {};
-template <typename C>
-bool apply_param(C& core, const std::string& k, double v)
-{
-    if constexpr (has_set_param<C>::value) return core.set_param(k, v);
-    else { (void)core; (void)k; (void)v; return false; }
-}
-template <typename C>
-bool apply_word(C& core, const std::string& k, const std::string& w)
-{
-    if constexpr (has_set_word<C>::value) return core.set_word(k, w);
-    else { (void)core; (void)k; (void)w; return false; }
-}
-
-// A core that can tell it has converged (DMS: every step size below its
-// tolerance) ends the run early instead of stepping on without evaluating.
-template <typename C, typename = void>
-struct has_finished : std::false_type {};
-template <typename C>
-struct has_finished<C, std::void_t<decltype(std::declval<const C&>().finished())>>
-    : std::true_type {};
-template <typename C>
-bool core_finished(const C& c)
-{
-    if constexpr (has_finished<C>::value) return c.finished();
-    else { (void)c; return false; }
-}
-
-template <typename Core>
-inline std::vector<std::string> apply_knobs(Core& alg, const Settings& s) {
-    std::vector<std::string> ignored;
-    auto get = [&](const char* k) -> const double* {
-        auto it = s.params.find(k);
-        return it == s.params.end() ? nullptr : &it->second;
-    };
-    auto note = [&](bool applied, const char* name) {
-        if (!applied) ignored.emplace_back(name);
-    };
-    if (auto* v = get("eta_c"))      note(apply_eta_c(alg, *v), "eta_c");
-    if (auto* v = get("eta_m"))      note(apply_eta_m(alg, *v), "eta_m");
-    if (auto* v = get("pc"))         note(apply_pc(alg, *v), "pc");
-    if (auto* v = get("pm"))         note(apply_pm(alg, *v), "pm");
-    if (auto* v = get("T"))          note(apply_T(alg, static_cast<int>(*v)), "T");
-    if (auto* v = get("delta"))      note(apply_delta(alg, *v), "delta");
-    if (auto* v = get("nr"))         note(apply_nr(alg, static_cast<int>(*v)), "nr");
-    if (auto* v = get("kappa"))      note(apply_kappa(alg, *v), "kappa");
-    if (auto* v = get("K"))          note(apply_K(alg, static_cast<int>(*v)), "K");
-    if (auto* v = get("n_clusters")) note(apply_n_clusters(alg, static_cast<int>(*v)), "n_clusters");
-    if (auto* v = get("theta"))      note(apply_theta(alg, *v), "theta");
-    if (auto* v = get("alpha"))      note(apply_alpha(alg, *v), "alpha");
-    if (auto* v = get("F"))          note(apply_F(alg, *v), "F");
-    if (auto* v = get("CR"))         note(apply_CR(alg, *v), "CR");
-    if (auto* v = get("div"))        note(apply_div(alg, static_cast<int>(*v)), "div");
-    if (auto* v = get("normalize"))  note(apply_normalize(alg, *v != 0.0), "normalize");
-    if (auto* v = get("mutation_scale")) note(apply_mutation_scale(alg, *v), "mutation_scale");
-    if (auto* v = get("mixture_q"))  note(apply_mixture_q(alg, *v), "mixture_q");
-    if (auto* v = get("blx_alpha"))  note(apply_blx_alpha(alg, *v), "blx_alpha");
-    if (auto* v = get("step_share")) note(apply_step_share(alg, *v), "step_share");
-    if (auto* v = get("F_spread"))   note(apply_F_spread(alg, *v), "F_spread");
-    auto word = [&](const char* k) -> const std::string* {
-        auto it = s.text_params.find(k);
-        return it == s.text_params.end() ? nullptr : &it->second;
-    };
-    auto bad_word = [](const char* k, const std::string& v) {
-        return std::invalid_argument(std::string(k) + ": unknown value '" + v + "'");
-    };
-    if (auto* v = word("bound_repair")) {
-        auto how = ops::parse_bound_repair(*v);
-        if (!how) throw bad_word("bound_repair", *v);
-        note(apply_bound_repair(alg, *how), "bound_repair");
-    }
-    if (auto* v = word("crossover")) {
-        auto c = ops::parse_crossover(*v);
-        if (!c) throw bad_word("crossover", *v);
-        note(apply_crossover(alg, *c), "crossover");
-    }
-    if (auto* v = word("mutation")) {
-        auto m = ops::parse_mutation(*v);
-        if (!m) throw bad_word("mutation", *v);
-        note(apply_mutation(alg, *m), "mutation");
-    }
-    if (auto* v = word("dms_init")) {
-        auto i = parse_dms_init(*v);
-        if (!i) throw bad_word("dms_init", *v);
-        note(apply_dms_init(alg, *i), "dms_init");
-    }
-    if (auto* v = word("dms_poll")) {
-        auto p = parse_dms_poll(*v);
-        if (!p) throw bad_word("dms_poll", *v);
-        note(apply_dms_poll(alg, *p), "dms_poll");
-    }
-    if (auto* v = word("crowding_space")) {
-        auto c = parse_crowding_space(*v);
-        if (!c) throw bad_word("crowding_space", *v);
-        note(apply_crowding_space(alg, *c), "crowding_space");
-    }
-    for (const auto& kv : s.params)
-        if (is_core_param(kv.first)) note(apply_param(alg, kv.first, kv.second), kv.first.c_str());
-    for (const auto& kv : s.text_params)
-        if (is_core_word(kv.first)) note(apply_word(alg, kv.first, kv.second), kv.first.c_str());
-    return ignored;
-}
 
 // ── Warm start ──────────────────────────────────────────────────────────────
 // Everything that can be wrong with a seed population is checked HERE, once,
@@ -452,153 +171,136 @@ inline io::Population load_seed(const Settings& s)
     return pop;
 }
 
-// ── The generic run body, one instantiation per algorithm ───────────────────
-// `hook` is called once after setup and once after every step, so Session can
-// drive the loop generation by generation without duplicating this function.
-template <typename Tag, typename Core>
-inline Result run_core(const Settings& s, Context& ctx,
-                       const io::Population* seed,
-                       const std::function<void(int)>& per_generation) {
-    Problem<Tag> prob;
-    prob.bounds = ctx.bounds;
-
-    DataVault<Tag> vault(s.pop_size, prob);
-    vault.set_batch_executor(&run_batch);
-
-    Optimizer<Tag, Core> opt(std::move(vault), defer_setup);
-    Core& alg = opt.get_algorithm();
-
-    alg.set_seed(s.seed);
-    alg.constraint_mode = s.constraints;
-    // t_max is a schedule input, not a user knob: several cores anneal against
-    // it, and their 1000-generation default against a 250-generation budget is
-    // not the paper's schedule. Always pass the real budget where it is taken.
-    // Under an evaluation budget the number of steps is not known yet: start
-    // from budget / pop_size and correct it after the first step (below).
-    const bool by_evaluations = s.max_evaluations > 0;
-    apply_t_max(alg, by_evaluations
-        ? static_cast<int>(std::min<long long>(INT_MAX,
-              (static_cast<long long>(s.max_evaluations) + s.pop_size - 1) / s.pop_size))
-        : s.max_gen);
-
-    Result r;
-    r.ignored = apply_knobs(alg, s);
-    // sbx_var_prob belongs to the SBX operator, not to a core: it is set for
-    // this run, and reported as ignored when the run never used SBX.
-    std::optional<ops::ScopedSbxVarProb> var_prob;
-    const auto vp = s.params.find("sbx_var_prob");
-    if (vp != s.params.end()) {
-        if (!(vp->second >= 0.0 && vp->second <= 1.0))
-            throw std::invalid_argument("sbx_var_prob must be in [0, 1]");
-        var_prob.emplace(vp->second);
-    }
-    ops::reset_operator_records();
-    ops::reset_crossover_records();
-    mosa_record().clear();
-    ops::inner_archive_record() = ops::InnerArchiveRecord{};
-
+// ── The run: run_core.hpp's (task 17, section 2.5) ──────────────────────────
+// One driver of a run in the library: the one the Python package and the C++
+// campaign engine use (runner::run). Settings become its RunConfig — the
+// knobs it names first, then every other core knob and word, as run_core
+// applies them — and the evaluator its RunProblem: one call per batch, the
+// constraint values of the batch kept for the limits the run asks for next.
+inline runner::RunConfig config_of(const Settings& s, const io::Population* seed)
+{
+    runner::RunConfig c;
+    c.pop_size = s.pop_size;
+    c.n_gen = s.max_gen;
+    c.max_evaluations = s.max_evaluations;
+    c.seed = s.seed;
+    c.constraint_mode = s.constraints;
+    auto num = [&](const char* k) -> std::optional<double> {
+        const auto it = s.params.find(k);
+        return it == s.params.end() ? std::nullopt : std::optional<double>(it->second);
+    };
+    auto whole = [&](const char* k) -> std::optional<int> {
+        const auto v = num(k);
+        return v ? std::optional<int>(static_cast<int>(*v)) : std::nullopt;
+    };
+    auto word = [&](const char* k) -> std::optional<std::string> {
+        const auto it = s.text_params.find(k);
+        return it == s.text_params.end() ? std::nullopt : std::optional<std::string>(it->second);
+    };
+    c.eta_c = num("eta_c");
+    c.eta_m = num("eta_m");
+    c.pc = num("pc");
+    c.pm = num("pm");
+    c.T = whole("T");
+    c.delta = num("delta");
+    c.nr = whole("nr");
+    c.kappa = num("kappa");
+    c.K = whole("K");
+    c.n_clusters = whole("n_clusters");
+    c.theta = num("theta");
+    c.alpha = num("alpha");
+    c.F = num("F");
+    c.CR = num("CR");
+    c.div = whole("div");
+    if (const auto v = num("normalize")) c.normalize = *v != 0.0;
+    c.mutation_scale = num("mutation_scale");
+    c.mixture_q = num("mixture_q");
+    c.blx_alpha = num("blx_alpha");
+    c.step_share = num("step_share");
+    c.F_spread = num("F_spread");
+    c.sbx_var_prob = num("sbx_var_prob");
+    c.bound_repair = word("bound_repair");
+    c.crossover = word("crossover");
+    c.mutation = word("mutation");
+    c.dms_init = word("dms_init");
+    c.dms_poll = word("dms_poll");
+    c.crowding_space = word("crowding_space");
+    for (const auto& kv : s.params)
+        if (is_core_param(kv.first)) c.params.insert(kv);
+    for (const auto& kv : s.text_params)
+        if (is_core_word(kv.first)) c.words.insert(kv);
     if (seed) {
-        // seed_individual plants variables AND objectives, so the evaluator is
-        // never called for the seeded generation: a warm start costs zero
-        // function evaluations, which is the whole point when one of them is a
-        // simulator run.
-        //
-        // Binary variables are passed only when the file actually has them.
-        // Handing over pop_size rows of empty vectors would look like "this
-        // problem has binary variables, all of width zero" rather than "it has
-        // none".
-        static const std::vector<std::vector<int>> kNoBinary;
-        const bool has_bin = !seed->binary_variables.empty() &&
-                             !seed->binary_variables.front().empty();
-        opt.setup_with_seed(seed->variables, seed->objectives,
-                            has_bin ? seed->binary_variables : kNoBinary,
-                            seed->limits);
-    } else {
-        opt.setup();
+        // the objectives come from the population: a warm start costs no
+        // evaluation (setup_with_seed); bits only where the population has them
+        c.seed_variables = seed->variables;
+        c.seed_objectives = seed->objectives;
+        c.seed_limits = seed->limits;
+        if (!seed->binary_variables.empty() && !seed->binary_variables.front().empty())
+            c.seed_binary = seed->binary_variables;
     }
-    if (per_generation) per_generation(0);
-    if (!by_evaluations) {
-        for (int g = 1; g <= s.max_gen; ++g) {
-            opt.step();
-            r.generations = g;
-            if (per_generation) per_generation(g);
-            if (core_finished(alg)) break;
-        }
-    } else {
-        const int start = ctx.evaluations;
-        int idle = 0;                    // consecutive steps that evaluated nothing
-        for (int g = 1; ctx.evaluations < s.max_evaluations; ++g) {
-            const int before = ctx.evaluations;
-            opt.step();
-            r.generations = g;
-            if (ctx.evaluations > before) {
-                idle = 0;
-            } else if (++idle >= 10000) {
-                throw std::runtime_error(
-                    "mootation: 10000 steps in a row evaluated nothing; this core "
-                    "cannot run on an evaluation budget, use max_gen");
-            }
-            if (g == 1) {
-                // The cost of a step is known now: give the schedule the number
-                // of steps the budget buys (MOEA/D-AWA anneals over five times
-                // more steps than a generational core).
-                const int per  = std::max(1, ctx.evaluations - start);
-                const int left = std::max(0, s.max_evaluations - ctx.evaluations);
-                apply_t_max(alg, 1 + (left + per - 1) / per);
-            }
-            if (per_generation) per_generation(g);
-            if (core_finished(alg)) break;
-        }
-    }
+    return c;
+}
 
-    auto& v = opt.get_vault();
-    // Steady-state cores park a scratch slot at active index pop_size(); the
-    // answer set is [0, pop_size()), never [0, active_n()).
-    std::size_t n = std::min<std::size_t>(v.active_n(),
-                                          static_cast<std::size_t>(v.pop_size()));
-    r.variables.reserve(n);
-    r.objectives.reserve(n);
-    r.cv.reserve(n);
-    if (s.n_cons > 0) r.limits.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        r.variables.push_back(v.variables_of(i));
-        r.objectives.push_back(v.objectives_of(i));
-        r.cv.push_back(v.get_cv(i));
-        if (s.n_cons > 0) r.limits.push_back(v.limits_of(i));
-    }
-    r.evaluations = ctx.evaluations;
-    if (var_prob) {
-        bool used = false;
-        for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";
-        if (!used) r.ignored.emplace_back("sbx_var_prob");
-    }
+// the evaluator as a RunProblem's: F returned, G kept for limits_batch, which
+// the run calls next on the same rows; the shapes checked
+inline runner::RunProblem problem_of(const Settings& s, Evaluate eval)
+{
+    runner::RunProblem p;
+    for (std::size_t i = 0; i < s.lower.size(); ++i) p.bounds.emplace_back(s.lower[i], s.upper[i]);
+    p.n_objectives = s.n_objs;
+    p.n_limits = s.n_cons;
+    const auto G = std::make_shared<std::vector<std::vector<double>>>();
+    const int n_objs = s.n_objs, n_cons = s.n_cons;
+    p.evaluate_batch = [eval = std::move(eval), G, n_objs, n_cons](std::vector<std::vector<double>> X) {
+        std::vector<std::vector<double>> F(X.size(), std::vector<double>(static_cast<std::size_t>(n_objs), 0.0));
+        G->assign(n_cons > 0 ? X.size() : 0, std::vector<double>(static_cast<std::size_t>(n_cons), 0.0));
+        eval(X, F, *G);
+        if (F.size() != X.size())
+            throw std::runtime_error("mootation: evaluator returned " + std::to_string(F.size()) +
+                                     " objective rows for a batch of " + std::to_string(X.size()));
+        for (const auto& row : F)
+            if (row.size() != static_cast<std::size_t>(n_objs))
+                throw std::runtime_error("mootation: evaluator returned a row of " + std::to_string(row.size()) +
+                                         " objectives, expected " + std::to_string(n_objs));
+        if (n_cons > 0) {
+            if (G->size() != X.size())
+                throw std::runtime_error("mootation: n_cons = " + std::to_string(n_cons) +
+                                         " but the evaluator returned " + std::to_string(G->size()) +
+                                         " constraint rows for a batch of " + std::to_string(X.size()));
+            for (const auto& row : *G)
+                if (row.size() != static_cast<std::size_t>(n_cons))
+                    throw std::runtime_error("mootation: evaluator returned a row of " +
+                                             std::to_string(row.size()) + " constraint values, expected " +
+                                             std::to_string(n_cons));
+        }
+        return F;
+    };
+    if (n_cons > 0)
+        p.limits_batch = [G](std::vector<std::vector<double>> X) {
+            if (G->size() != X.size())
+                throw std::logic_error("mootation: the limits asked for are not the batch just evaluated");
+            return *G;
+        };
+    return p;
+}
+
+// One run: on_step(g) after setup (0) and after every step
+inline Result run(const Settings& s, Evaluate eval, const io::Population* seed,
+                  const std::function<void(int)>& on_step)
+{
+    runner::RunProblem problem = problem_of(s, std::move(eval));
+    runner::RunConfig cfg = config_of(s, seed);
+    cfg.on_step = on_step;
+    runner::RunResult rr = runner::run(s.algorithm, problem, cfg);
+    Result r;
+    r.variables = std::move(rr.variables);
+    r.objectives = std::move(rr.objectives);
+    r.cv = std::move(rr.cv);
+    r.limits = std::move(rr.limits);
+    r.ignored = std::move(rr.ignored);
+    r.generations = rr.generations;
+    r.evaluations = static_cast<int>(rr.evaluations);
     return r;
-}
-
-inline Result dispatch(const Settings& s, Context& ctx,
-                       const io::Population* seed,
-                       const std::function<void(int)>& per_generation) {
-#define MOOTATION_ALG(KEY, IND, CORE)                                          \
-    if (s.algorithm == #KEY)                                                   \
-        return run_core<embed_detail::EmbedTag_##KEY,                          \
-                        CORE<embed_detail::EmbedTag_##KEY>>(s, ctx, seed,      \
-                                                            per_generation);
-#include "mootation/algorithms.def"
-#undef MOOTATION_ALG
-    throw std::invalid_argument("mootation: unknown algorithm '" + s.algorithm +
-                                "' — see algorithm_names()");
-}
-
-inline Context make_context(const Settings& s, Evaluate eval) {
-    Context ctx;
-    ctx.n_objs = s.n_objs;
-    ctx.n_cons = s.n_cons;
-    ctx.eval   = std::move(eval);
-    ctx.bounds.reserve(s.lower.size());
-    for (std::size_t i = 0; i < s.lower.size(); ++i)
-        ctx.bounds.emplace_back(std::optional<double>(s.lower[i]),
-                                std::optional<double>(s.upper[i]));
-    return ctx;
 }
 
 } // namespace embed_detail
@@ -646,9 +348,7 @@ inline Result run(const Settings& s, Evaluate eval) {
     std::optional<io::Population> seed;
     if (!s.seed_population.empty()) seed = embed_detail::load_seed(s);
 
-    embed_detail::Context ctx = embed_detail::make_context(s, std::move(eval));
-    embed_detail::ContextGuard guard(&ctx);
-    return embed_detail::dispatch(s, ctx, seed ? &*seed : nullptr, nullptr);
+    return embed_detail::run(s, std::move(eval), seed ? &*seed : nullptr, nullptr);
 }
 
 // The same, from a population you already have in memory — no file involved.
@@ -664,9 +364,7 @@ inline Result run(const Settings& s, Evaluate eval, io::Population seed) {
     io::fit_population(seed, s.pop_size, s.on_size_mismatch);
     embed_detail::validate_seed(seed, s, "passed to run()");
 
-    embed_detail::Context ctx = embed_detail::make_context(s, std::move(eval));
-    embed_detail::ContextGuard guard(&ctx);
-    return embed_detail::dispatch(s, ctx, &seed, nullptr);
+    return embed_detail::run(s, std::move(eval), &seed, nullptr);
 }
 
 // A Result is what a finished run hands back; this turns it into something the
@@ -823,21 +521,17 @@ private:
     // settings and the worker started last, once every member it touches is in
     // place.
     void init() {
-        ctx_ = embed_detail::make_context(settings_,
-            [this](const std::vector<std::vector<double>>& X,
-                   std::vector<std::vector<double>>&       F,
-                   std::vector<std::vector<double>>&       G) {
-                this->handoff(X, F, G);
-            });
         start();
     }
 
     void start() {
         worker_ = std::thread([this] {
-            embed_detail::ContextGuard guard(&ctx_);
             try {
-                Result r = embed_detail::dispatch(
-                    settings_, ctx_,
+                Result r = embed_detail::run(
+                    settings_,
+                    [this](const std::vector<std::vector<double>>& X,
+                           std::vector<std::vector<double>>&       F,
+                           std::vector<std::vector<double>>&       G) { this->handoff(X, F, G); },
                     // seed_ is written in the constructor and only read here,
                     // after the thread is created — no synchronisation needed
                     // because the thread's creation is the happens-before edge.
@@ -905,7 +599,6 @@ private:
 
     Settings                      settings_;
     std::optional<io::Population> seed_;   // empty = fresh random start
-    embed_detail::Context  ctx_;
     Result                 result_;
 
     std::thread             worker_;

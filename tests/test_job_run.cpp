@@ -62,7 +62,7 @@ int main()
         const js::Value want = js::parse(line);
         const cg::Job& job = jobs.at(static_cast<std::size_t>(want.find("index")->i));
         const cg::RegistryProblem& p = preg.problems.at(job.problem);
-        if (auto why = cg::refusal(job, spec, p, mootation::run::algorithm_names())) {
+        if (auto why = cg::refusal(job, spec, p, mootation::runner::algorithm_names())) {
             std::printf("FAIL %s: refused (%s)\n", job.problem.c_str(), why->c_str());
             ++failures;
             continue;

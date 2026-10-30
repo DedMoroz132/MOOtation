@@ -1484,7 +1484,7 @@ void bind_run_layer(py::module_& m)
               const cp::Job& job = jobs.at(static_cast<std::size_t>(index));
               const cp::ProblemRegistry preg = cp::load_registry(std::filesystem::path(registry_path));
               const cp::RegistryProblem& p = preg.problems.at(job.problem);
-              if (auto why = cp::refusal(job, spec, p, mootation::run::algorithm_names()))
+              if (auto why = cp::refusal(job, spec, p, mootation::runner::algorithm_names()))
                   return py::make_tuple("refused", *why, py::list(), py::none(), py::list());
               auto any_of = [&](const std::set<std::string>& names) {
                   for (const auto* list : {&spec.metrics, &spec.final_metrics})

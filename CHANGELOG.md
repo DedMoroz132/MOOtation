@@ -76,6 +76,14 @@ always listed under **Changed** or **Removed**.
   run (an underflow in an earlier run set one), not its setting; it holds
   the control bits now. Two runs of the same job in one process or two
   could differ in that field.
+- `embed.hpp`'s `run` and `Session` drive their runs through `run_core.hpp`
+  (`runner::run`, the driver of the Python package and the C++ campaign
+  engine): one driver of a run in the library. The same results; two
+  differences where they could arise: a failed evaluation is no longer in
+  the answer, and `mutation_scale`, `mixture_q` and `blx_alpha` are set
+  after the `crossover` and `mutation` words. The internal namespace
+  `mootation::run` is now `mootation::runner` (it collided with the public
+  `mootation::run`).
 - `mootation run|store|refs --help`; a mistake on the executable's command
   line is reported as the Python commands report theirs (argparse's usage
   lines, then `mootation <command>: error: ...`, exit status 2), a config's

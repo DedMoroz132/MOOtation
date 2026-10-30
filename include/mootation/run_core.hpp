@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // One algorithm run, by name — the run the Python package's minimize() makes
-// (_core.run) and the campaign engine in C++ makes (task 17, stage 5, step
-// 4b): the same code, so the same run, bit for bit. Moved here from
+// (_core.run), the campaign engine in C++ makes (task 17, stage 5, step 4b)
+// and embed.hpp's run() and Session make (task 17, section 2.5): the same
+// code, so the same run, bit for bit; the library's one driver of a run. Moved here from
 // python/mootation_module.cpp, which now wraps its Python callables and
 // calls run() below.
 //
@@ -22,8 +23,7 @@
 // the inner archive, mosa's) are thread_local in their headers.
 //
 // Every algorithm of algorithms.def is instantiated by run(): a translation
-// unit that includes this pays for all of them (embed.hpp says the same of
-// its own dispatch).
+// unit that includes this (or embed.hpp) pays for all of them.
 // ============================================================================
 
 #include <algorithm>
@@ -47,7 +47,7 @@
 #include "settings.hpp"
 #include "suite/native.hpp"
 
-namespace mootation::run {
+namespace mootation::runner {
 
 // ── The problem of a run ────────────────────────────────────────────────────
 struct RunProblem {
@@ -468,7 +468,7 @@ inline void native_run_batch(const BatchRequest& req, BatchResponse& resp)
     }
 }
 
-}   // namespace mootation::run
+}   // namespace mootation::runner
 
 // Each algorithm needs ITS OWN individual type — crEA reads .cluster/.rank,
 // NSGA-II reads .rank/.crowding_distance — so one tag per algorithm is
@@ -476,38 +476,38 @@ inline void native_run_batch(const BatchRequest& req, BatchResponse& resp)
 // specialization has to be written out in full: Based_Individual befriends
 // Problem<T> only, so nothing else may touch ind.variables/objectives/limits.
 #define MOOTATION_RUN_PROBLEM(TAG, BASE)                                       \
-    namespace mootation::run { struct TAG : public mootation::BASE {}; }       \
+    namespace mootation::runner { struct TAG : public mootation::BASE {}; }       \
     namespace mootation {                                                      \
     template <>                                                                \
-    class Problem<run::TAG> {                                                  \
+    class Problem<runner::TAG> {                                                  \
     public:                                                                    \
         std::vector<std::pair<std::optional<double>, std::optional<double>>>   \
             bounds;                                                            \
         int get_vars_n() const { return static_cast<int>(bounds.size()); }     \
         int get_bin_vars_n() const                                             \
         {                                                                      \
-            return run::st().problem ? run::st().problem->n_bin : 0;           \
+            return runner::st().problem ? runner::st().problem->n_bin : 0;           \
         }                                                                      \
         bool is_stochastic() const                                             \
         {                                                                      \
-            return run::st().problem && run::st().problem->stochastic;         \
+            return runner::st().problem && runner::st().problem->stochastic;         \
         }                                                                      \
         int get_objs_n() const                                                 \
         {                                                                      \
-            return run::st().problem ? run::st().problem->n_objectives : 0;    \
+            return runner::st().problem ? runner::st().problem->n_objectives : 0;    \
         }                                                                      \
         int get_lims_n() const                                                 \
         {                                                                      \
-            return run::st().problem ? run::st().problem->n_limits : 0;        \
+            return runner::st().problem ? runner::st().problem->n_limits : 0;        \
         }                                                                      \
-        void calc_objs(run::TAG& ind) const                                    \
+        void calc_objs(runner::TAG& ind) const                                    \
         {                                                                      \
-            if (run::st().problem && run::st().problem->n_bin > 0) {           \
+            if (runner::st().problem && runner::st().problem->n_bin > 0) {           \
                 std::vector<double> x = ind.variables;                         \
                 for (int b : ind.binary_variables) x.push_back(b);             \
-                run::eval_into(x, ind.objectives, ind.limits);                 \
+                runner::eval_into(x, ind.objectives, ind.limits);                 \
             } else {                                                           \
-                run::eval_into(ind.variables, ind.objectives, ind.limits);     \
+                runner::eval_into(ind.variables, ind.objectives, ind.limits);     \
             }                                                                  \
         }                                                                      \
     };                                                                         \
@@ -518,7 +518,7 @@ inline void native_run_batch(const BatchRequest& req, BatchResponse& resp)
 #undef MOOTATION_ALG
 #undef MOOTATION_RUN_PROBLEM
 
-namespace mootation::run {
+namespace mootation::runner {
 
 // ── Optional-setter detection ───────────────────────────────────────────────
 // One macro per knob: a trait that asks "does this core have set_X(T)?", and an
@@ -694,6 +694,9 @@ struct RunConfig {
     // Off by default: optimize() runs uninterrupted.
     std::function<void(int, std::vector<std::vector<double>>)> on_generation;
     int record_every = 0;
+    // Called after setup (0) and after every step (its number), whatever
+    // record_every: embed.hpp's Session counts the generations with it.
+    std::function<void(int)> on_step;
 
     // Evaluation budget. 0 = run n_gen steps. > 0 = step until this many
     // evaluations have been spent; n_gen is then ignored. A step is not a
@@ -754,6 +757,10 @@ struct RunResult {
     std::vector<std::string>         ignored;
     // Evaluations the run spent, setup included.
     long long                        evaluations = 0;
+    // The steps the core took, and the answer's per-constraint values (n_limits
+    // of them a row, `<= 0` satisfied; empty without constraints), beside cv.
+    int                              generations = 0;
+    std::vector<std::vector<double>> limits;
     bool                             finished = false;   // the core stopped by its own rule (task 16)
     // Every variation operator the run used, with its bound repair ("none" for
     // one that cannot leave the box), in order of first use.
@@ -936,6 +943,7 @@ RunResult run_core(const RunConfig& cfg)
             throw std::invalid_argument(kv.first + " = '" + kv.second + "' is not one of its values");
         note(apply_word(alg, kv.first, kv.second), kv.first.c_str());
     }
+    long long steps_done = 0;                 // the steps taken (RunResult::generations)
     std::optional<ops::ScopedSbxVarProb> var_prob;
     if (cfg.sbx_var_prob) {
         if (!(*cfg.sbx_var_prob >= 0.0 && *cfg.sbx_var_prob <= 1.0))
@@ -961,9 +969,9 @@ RunResult run_core(const RunConfig& cfg)
         } else {
             opt.setup();
         }
+        if (cfg.on_step) cfg.on_step(0);
         // EPS_LEVEL: eps(0) from the initial population (Eq. 8, rule 1)
         int eps_gen = 0;                      // generations whose eps is set
-        long long steps_done = 0;
         if (cfg.eps_level) {
             auto& v = opt.get_vault();
             const std::size_t n = std::min<std::size_t>(v.active_n(),
@@ -1060,6 +1068,7 @@ RunResult run_core(const RunConfig& cfg)
             opt.step();
             ++steps_done;
             if (st().ops.on) ops_after_step(opt.get_vault());
+            if (cfg.on_step) cfg.on_step(static_cast<int>(steps_done));
         };
         auto emit = [&](int g) {
             auto& v = opt.get_vault();
@@ -1144,6 +1153,7 @@ RunResult run_core(const RunConfig& cfg)
                                        static_cast<std::size_t>(v.pop_size()));
     r.ignored  = std::move(ignored);
     r.evaluations = st().evaluations.load();
+    r.generations = static_cast<int>(steps_done);
     r.finished = core_finished(alg);
     for (const auto& u : ops::operators_used()) r.operators.emplace_back(u.op, u.repair);
     if constexpr (has_effective_settings<Core>::value) r.settings = alg.effective_settings();
@@ -1188,6 +1198,7 @@ RunResult run_core(const RunConfig& cfg)
         r.variables.push_back(v.variables_of(i));
         if (v.bin_vars_n() > 0) r.binary_variables.push_back(v.binary_variables_of(i));
         r.cv.push_back(v.get_cv(i));
+        if (st().problem->n_limits > 0) r.limits.push_back(v.limits_of(i));
     }
     r.n_failed = v.failed_n();
     r.eq_tol   = cfg.n_eq > 0 ? v.eq_tol() : 0.0;
@@ -1321,4 +1332,4 @@ inline std::vector<std::string> algorithm_names()
     return v;
 }
 
-}   // namespace mootation::run
+}   // namespace mootation::runner
