@@ -76,6 +76,14 @@ always listed under **Changed** or **Removed**.
   run (an underflow in an earlier run set one), not its setting; it holds
   the control bits now. Two runs of the same job in one process or two
   could differ in that field.
+- `mootation run|store|refs --help`; a mistake on the executable's command
+  line is reported as the Python commands report theirs (argparse's usage
+  lines, then `mootation <command>: error: ...`, exit status 2), a config's
+  as `config error — ...`. docs/running.md: benchmark campaigns from C++
+  alone.
+- Fixed: the C++ engine wrote `seconds` and `record_seconds` of 0 into
+  meta.json; it writes the run's time and what its records took, as the
+  Python engine does.
 - `mootation store export --csv | --files` in C++: the metrics CSV of every
   pack and every run's files, the same content as the Python command's.
 - CI refuses `std::exp`, `log`, `pow` and the other elementary functions of

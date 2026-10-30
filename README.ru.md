@@ -97,6 +97,7 @@ cmake -S . -B build -DMOOTATION_BUILD_C_API=ON && cmake --build build
 | Python, целевые функции на Python | `mootation.minimize` | [`python/examples/01_basic.py`](python/examples/01_basic.py) |
 | Python, стандартные наборы задач | `mootation.benchmarks` | [`python/examples/03_benchmarks.py`](python/examples/03_benchmarks.py) |
 | целевые значения даёт отдельная программа (солвер, сеточник, стенд) | TOML-файл + `mootation.run` | [docs/running.md](docs/running.md) |
+| кампании на встроенных задачах, без Python на машине | исполняемый файл `mootation` (`engine/`) | [docs/running.md](docs/running.md#benchmark-campaigns-from-c-alone) |
 | Rust, C#, Julia, R, MATLAB, Fortran, Go | C ABI | [docs/embedding.md](docs/embedding.md#the-c-abi) |
 | продолжить завершённый расчёт или сменить алгоритм по ходу | сохранить и посеять популяцию | [`python/examples/06_restart.py`](python/examples/06_restart.py) |
 | нет контроля над путями включения | единый заголовок | [docs/embedding.md](docs/embedding.md#the-single-header) |

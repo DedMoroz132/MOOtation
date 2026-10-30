@@ -32,6 +32,7 @@
 // in the installation, where the build puts them).
 // ============================================================================
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -39,6 +40,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -82,11 +84,71 @@ namespace {
 const char* kUsage =
     "usage: mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,... | --only @FILE]\n"
     "                     [--force] [--registry FILE] [--report FILE] [--quiet]\n"
-    "       mootation store ls|check|repair|compact|merge <campaign folder> ...\n"
+    "       mootation store ls|check|repair|compact|merge|export <campaign folder> ...\n"
     "       mootation refs build [--problems A,B] [--n-ref N] [--rebuild] [--extend] [--workers N]\n"
     "                            [--registry FILE] [--data DIR]\n"
     "       mootation refs check [--problems A,B] [--n-ref N] [--registry FILE]\n"
-    "       mootation --version\n";
+    "       mootation --version\n"
+    "       mootation <command> --help\n";
+
+const char* kRunUsage =
+    "usage: mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,... | --only @FILE]\n"
+    "                     [--force] [--registry FILE] [--report FILE] [--quiet]\n"
+    "\n"
+    "Runs the jobs of a campaign the C++ engine takes (its config as python -m\n"
+    "mootation.run.campaign reads it) into its store; the others are left to the\n"
+    "Python engine and counted at the end.\n"
+    "  --workers N      the pool's threads (default: half the hardware's)\n"
+    "  --shard i/n      the jobs i, i + n, i + 2n, ... (0 <= i < n)\n"
+    "  --only LIST      only these job indices (comma-separated, or @FILE)\n"
+    "  --force          run again the jobs already done\n"
+    "  --registry FILE  the problem registry (default: see docs/running.md)\n"
+    "  --report FILE    write the counts and the jobs left as JSON\n"
+    "  --quiet          no line per job\n";
+
+const char* kRefsUsage =
+    "usage: mootation refs build [--problems A,B] [--n-ref N] [--rebuild] [--extend] [--workers N]\n"
+    "                            [--registry FILE] [--data DIR]\n"
+    "       mootation refs check [--problems A,B] [--n-ref N] [--registry FILE]\n"
+    "\n"
+    "build: the cache's entries (reference version 5) of the problems, all with an exact\n"
+    "front by default; check: the entries missing or old.\n"
+    "  --problems A,B   these problems only\n"
+    "  --n-ref N        the reference front's size (default 1000)\n"
+    "  --rebuild        build the entries already current again\n"
+    "  --extend         record the extends of every entry\n"
+    "  --workers N      threads\n"
+    "  --registry FILE  the problem registry (default: see docs/running.md)\n"
+    "  --data DIR       the shipped fronts' folder (default: MOOTATION_DATA, else beside the registry)\n";
+
+// a mistake in the command line: argparse's way — the command's usage, then
+// "<prog>: error: <what>", exit status 2 (as the Python CLI)
+struct UsageError : std::invalid_argument {
+    std::string prog, usage;
+    UsageError(std::string p, std::string u, const std::string& what)
+        : std::invalid_argument(what), prog(std::move(p)), usage(std::move(u)) {}
+};
+
+// an integer argument, or the usage error argparse gives
+long long int_arg(const std::string& prog, const char* usage, const std::string& flag, const std::string& v)
+{
+    std::size_t used = 0;
+    long long x = 0;
+    try {
+        x = std::stoll(v, &used);
+    } catch (const std::exception&) {
+        used = 0;
+    }
+    if (used == 0 || used != v.size())
+        throw UsageError(prog, usage, "argument " + flag + ": invalid int value: '" + v + "'");
+    return x;
+}
+
+bool wants_help(const std::vector<std::string>& args)
+{
+    return std::find(args.begin(), args.end(), "--help") != args.end() ||
+           std::find(args.begin(), args.end(), "-h") != args.end();
+}
 
 long long process_id()
 {
@@ -199,6 +261,11 @@ cg::Process process_fields()
 
 int run(const std::vector<std::string>& args)
 {
+    if (wants_help(args)) {
+        std::fputs(kRunUsage, stdout);
+        return 0;
+    }
+    const std::string prog = "mootation run";
     std::string config;
     cg::EngineOptions opt;
     opt.workers = static_cast<int>(std::max(1u, std::thread::hardware_concurrency() / 2));
@@ -207,17 +274,18 @@ int run(const std::vector<std::string>& args)
     for (std::size_t k = 0; k < args.size(); ++k) {
         const std::string& a = args[k];
         auto value = [&]() -> const std::string& {
-            if (k + 1 >= args.size()) throw std::invalid_argument(a + " needs a value");
+            if (k + 1 >= args.size()) throw UsageError(prog, kRunUsage, "argument " + a + ": expected one argument");
             return args[++k];
         };
-        if (a == "--workers") opt.workers = std::stoi(value());
+        if (a == "--workers") opt.workers = static_cast<int>(int_arg(prog, kRunUsage, a, value()));
         else if (a == "--shard") {
             const std::string v = value();
             const auto slash = v.find('/');
-            if (slash == std::string::npos) throw std::invalid_argument("--shard i/n");
-            opt.shard = std::make_pair(std::stoll(v.substr(0, slash)), std::stoll(v.substr(slash + 1)));
+            if (slash == std::string::npos) throw UsageError(prog, kRunUsage, "argument --shard: i/n, not '" + v + "'");
+            opt.shard = std::make_pair(int_arg(prog, kRunUsage, a, v.substr(0, slash)),
+                                       int_arg(prog, kRunUsage, a, v.substr(slash + 1)));
             if (opt.shard->second < 1 || opt.shard->first < 0 || opt.shard->first >= opt.shard->second)
-                throw std::invalid_argument("--shard i/n: 0 <= i < n");
+                throw UsageError(prog, kRunUsage, "argument --shard: i/n with 0 <= i < n, not '" + v + "'");
         } else if (a == "--only") {
             // the indices, comma-separated; @FILE: read from FILE (a long list)
             std::vector<std::int64_t> only;
@@ -227,17 +295,17 @@ int run(const std::vector<std::string>& args)
                 if (ch == '\n' || ch == '\r' || ch == ' ') ch = ',';
             std::stringstream s(list);
             for (std::string i; std::getline(s, i, ',');)
-                if (!i.empty()) only.push_back(std::stoll(i));
+                if (!i.empty()) only.push_back(int_arg(prog, kRunUsage, a, i));
             opt.only = only;
         } else if (a == "--force") opt.force = true;
         else if (a == "--registry") registry = mootation::store::file::path_of(value());
         else if (a == "--report") report = mootation::store::file::path_of(value());
         else if (a == "--quiet") quiet = true;
-        else if (!a.empty() && a[0] == '-') throw std::invalid_argument("unknown option " + a);
+        else if (!a.empty() && a[0] == '-') throw UsageError(prog, kRunUsage, "unrecognized arguments: " + a);
         else if (config.empty()) config = a;
-        else throw std::invalid_argument("one campaign at a time: " + a);
+        else throw UsageError(prog, kRunUsage, "unrecognized arguments: " + a + " (one campaign at a time)");
     }
-    if (config.empty()) throw std::invalid_argument("run: which campaign?");
+    if (config.empty()) throw UsageError(prog, kRunUsage, "the following arguments are required: config");
     if (registry.empty()) registry = newest_registry();
     const cg::ProblemRegistry preg = cg::load_registry(registry);
     const auto source = mootation::store::file::path_of(config);
@@ -300,7 +368,14 @@ const char* kStoreUsage =
 
 int store_command(const std::vector<std::string>& args)
 {
-    if (args.size() < 2) throw std::invalid_argument(std::string("store: which command and campaign?\n") + kStoreUsage);
+    if (wants_help(args)) {
+        std::fputs(kStoreUsage, stdout);
+        return 0;
+    }
+    if (args.size() < 2)
+        throw UsageError("mootation store", kStoreUsage,
+                         args.empty() ? "the following arguments are required: command, campaign"
+                                      : "the following arguments are required: campaign");
     const std::string cmd = args[0];
     const auto camp = mootation::store::file::path_of(args[1]);
     const auto dir = camp / cg::kStoreDir;
@@ -320,7 +395,7 @@ int store_command(const std::vector<std::string>& args)
         if (args[k] == "--remove-segments") remove_segments = true;
         else if (args[k] == "--registry" && k + 1 < args.size()) registry = mootation::store::file::path_of(args[++k]);
         else if (cmd == "merge") parts.push_back(mootation::store::file::path_of(args[k]) / cg::kStoreDir);
-        else throw std::invalid_argument("store " + cmd + ": unknown argument " + args[k]);
+        else throw UsageError("mootation store " + cmd, kStoreUsage, "unrecognized arguments: " + args[k]);
     }
     if (cmd == "ls") {
         if (registry.empty()) registry = newest_registry();
@@ -386,25 +461,33 @@ int store_command(const std::vector<std::string>& args)
         return 0;
     }
     if (cmd == "merge") {
-        if (parts.empty()) throw std::invalid_argument("store merge: which parts?");
+        if (parts.empty()) throw UsageError("mootation store merge", kStoreUsage, "the following arguments are required: parts");
         const auto [runs, copied] = cg::merge_stores(dir, parts, process_id(), host_name());
         std::printf("{\n \"runs\": %zu,\n \"copied\": %zu\n}\n", runs, copied);
         return 0;
     }
     if (cmd == "export") {
-        if (csv_dir.empty() && files_dir.empty()) throw std::invalid_argument("store export: --csv DIR, --files DIR or both");
+        if (csv_dir.empty() && files_dir.empty())
+            throw UsageError("mootation store export", kStoreUsage, "one of the arguments --csv --files is required");
         if (!csv_dir.empty())
             for (const auto& p : cg::export_csv(dir, csv_dir)) std::printf("%s\n", cg::detail::utf8(p).c_str());
         if (!files_dir.empty()) std::printf("%zu runs written\n", cg::export_files(dir, files_dir, run_keys));
         return 0;
     }
-    throw std::invalid_argument("store: unknown command " + cmd + "\n" + kStoreUsage);
+    throw UsageError("mootation store", kStoreUsage,
+                     "argument command: invalid choice: '" + cmd + "' (choose from ls, check, repair, compact, merge, export)");
 }
 
 int refs_command(const std::vector<std::string>& args)
 {
-    if (args.empty() || (args[0] != "build" && args[0] != "check"))
-        throw std::invalid_argument("refs: build or check?\n" + std::string(kUsage));
+    if (wants_help(args)) {
+        std::fputs(kRefsUsage, stdout);
+        return 0;
+    }
+    if (args.empty()) throw UsageError("mootation refs", kRefsUsage, "the following arguments are required: cmd");
+    if (args[0] != "build" && args[0] != "check")
+        throw UsageError("mootation refs", kRefsUsage,
+                         "argument cmd: invalid choice: '" + args[0] + "' (choose from build, check)");
     const std::string cmd = args[0];
     std::string problems;
     std::filesystem::path registry, data;
@@ -412,17 +495,18 @@ int refs_command(const std::vector<std::string>& args)
     for (std::size_t k = 1; k < args.size(); ++k) {
         const std::string& a = args[k];
         auto value = [&]() -> std::string {
-            if (k + 1 >= args.size()) throw std::invalid_argument("refs " + cmd + ": " + a + " wants a value");
+            if (k + 1 >= args.size()) throw UsageError("mootation refs " + cmd, kRefsUsage, "argument " + a + ": expected one argument");
             return args[++k];
         };
         if (a == "--problems") problems = value();
-        else if (a == "--n-ref") opt.n_ref = static_cast<std::size_t>(std::stoll(value()));
+        else if (a == "--n-ref") opt.n_ref = static_cast<std::size_t>(int_arg("mootation refs " + cmd, kRefsUsage, a, value()));
         else if (a == "--registry") registry = mootation::store::file::path_of(value());
         else if (cmd == "build" && a == "--data") data = mootation::store::file::path_of(value());
-        else if (cmd == "build" && a == "--workers") opt.workers = static_cast<std::size_t>(std::stoll(value()));
+        else if (cmd == "build" && a == "--workers")
+            opt.workers = static_cast<std::size_t>(int_arg("mootation refs " + cmd, kRefsUsage, a, value()));
         else if (cmd == "build" && a == "--rebuild") opt.rebuild = true;
         else if (cmd == "build" && a == "--extend") opt.extend = true;
-        else throw std::invalid_argument("refs " + cmd + ": unknown argument " + a);
+        else throw UsageError("mootation refs " + cmd, kRefsUsage, "unrecognized arguments: " + a);
     }
     if (registry.empty()) registry = newest_registry();
     const cg::ProblemRegistry preg = cg::load_registry(registry);
@@ -507,8 +591,17 @@ int main(int argc, char** argv)
         if (args[0] == "run") return run(std::vector<std::string>(args.begin() + 1, args.end()));
         if (args[0] == "store") return store_command(std::vector<std::string>(args.begin() + 1, args.end()));
         if (args[0] == "refs") return refs_command(std::vector<std::string>(args.begin() + 1, args.end()));
-        std::fprintf(stderr, "unknown command %s\n%s", args[0].c_str(), kUsage);
+        std::fprintf(stderr, "%smootation: error: argument command: invalid choice: '%s' (choose from run, store, refs)\n",
+                     kUsage, args[0].c_str());
         return 2;
+    } catch (const UsageError& e) {                    // argparse's way (the Python CLI): the usage lines
+        const auto blank = e.usage.find("\n\n");
+        const std::string usage = blank == std::string::npos ? e.usage : e.usage.substr(0, blank + 1);
+        std::fprintf(stderr, "%s%s: error: %s\n", usage.c_str(), e.prog.c_str(), e.what());
+        return 2;
+    } catch (const cg::ConfigError& e) {               // as campaign.main prints it
+        std::fprintf(stderr, "config error \xe2\x80\x94 %s\n", e.what());
+        return 1;
     } catch (const std::exception& e) {
         std::fprintf(stderr, "mootation: %s\n", e.what());
         return 1;

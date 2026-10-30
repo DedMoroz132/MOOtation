@@ -2234,6 +2234,62 @@ too.
 Two runners in one results folder at once are not supported; each leaves a
 store whose runner still beats unrepaired.
 
+### Benchmark campaigns from C++ alone
+
+A machine with a C++17 compiler and CMake runs a campaign of the built-in
+problems without Python: the registry is `data/registry.json` (its numbers,
+the frames among them, computed by the C++ code), the references are built
+by the same executable.
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMOOTATION_BUILD_TESTS=OFF
+cmake --build build -j 8
+cmake --install build --prefix $HOME/mootation      # optional: bin/ and share/mootation/
+```
+
+The build leaves `build/engine/mootation` with `registry.json`, `_fronts/`
+and `_rwmop/` beside it, where it finds them; the installation puts them in
+`share/mootation/` (the order it looks in: above).
+
+```bash
+mootation refs build --problems ZDT1,DTLZ2_3D --n-ref 1000 --workers 8
+mootation run camp.toml --workers 8 --report report.json
+mootation store check results/<name>
+mootation store export results/<name> --csv out/ --files out/runs
+```
+
+`refs build` without `--problems` builds every problem of the cache (hours
+at the largest objective counts); `refs check` names what is missing or
+old. A campaign file for the engine has `storage = "store"` in `[campaign]`
+and `kind = "builtin"` in `[problem]`; for example
+
+```toml
+[run]
+name = "dtlz_wfg"
+[problem]
+kind = "builtin"
+[benchmarks]
+problems = ["ZDT1", "DTLZ2_3D", "WFG4_3D"]
+runs = 5
+[campaign]
+storage = "store"
+metrics = ["igd", "igdp", "hv"]
+n_ref = 1000
+[[algorithms]]
+name = "nsga2"
+pop = 0
+gens = 0
+```
+
+What stays in Python: the analysis of the results (`report`, `--ranks`,
+the tables beyond the store's), the terminal interface, the learned
+coordinates' diagnostics (`coords_diag`), the external solvers and their
+steps (`[[steps]]`), and the jobs `--report` lists as left to the Python
+engine (above). Every `mootation` command takes `--help`; a mistake on its
+command line is reported as the Python commands report theirs (the usage,
+then `mootation <command>: error: ...`, exit status 2), a config's as
+`config error — ...`.
+
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)

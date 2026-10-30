@@ -65,4 +65,15 @@ if(MOOTATION_BUILD_TESTS)
     # the executable answers; the engine itself is tests/test_engine.cpp's
     add_test(NAME engine.version COMMAND mootation_engine --version)
     add_test(NAME engine.usage COMMAND mootation_engine --help)
+    # each command's --help, and a mistake on the command line the Python
+    # CLI's way (argparse: the usage, then "<prog>: error: ...")
+    add_test(NAME engine.run_help COMMAND mootation_engine run --help)
+    add_test(NAME engine.refs_help COMMAND mootation_engine refs build --help)
+    add_test(NAME engine.store_help COMMAND mootation_engine store --help)
+    add_test(NAME engine.bad_option COMMAND mootation_engine run camp.toml --frob)
+    set_tests_properties(engine.bad_option PROPERTIES
+        PASS_REGULAR_EXPRESSION "usage: mootation run.*mootation run: error: unrecognized arguments: --frob")
+    add_test(NAME engine.bad_int COMMAND mootation_engine refs build --n-ref ten)
+    set_tests_properties(engine.bad_int PROPERTIES
+        PASS_REGULAR_EXPRESSION "mootation refs build: error: argument --n-ref: invalid int value: 'ten'")
 endif()

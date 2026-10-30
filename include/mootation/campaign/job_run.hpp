@@ -20,6 +20,7 @@
 // ============================================================================
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -990,8 +991,11 @@ public:
         meta.set("ignored_knobs", ignored);
         meta.set("active_n", V::integer(static_cast<std::int64_t>(res.active_n)));
         meta.set("finished", now());
-        meta.set("seconds", V::number(0.0));
-        meta.set("record_seconds", V::number(0.0));
+        // the run's wall time since it started, and of it what the records
+        // took (indicators, statistics, snapshots, archive checkpoints), as
+        // campaign.run_job: round(..., 3)
+        meta.set("seconds", V::number(std::nearbyint(seconds() * 1000.0) / 1000.0));
+        meta.set("record_seconds", V::number(std::nearbyint(record_seconds_ * 1000.0) / 1000.0));
         if (res.finished && out.fe < budget_) {
             V cs = V::object();
             cs.set("evaluations", V::integer(out.fe));
@@ -1736,6 +1740,7 @@ private:
     // archive_at.npz
     void take_checkpoint(long long b)
     {
+        const Clock clock(*this);
         std::vector<double> T, TX;
         std::size_t n = 0;
         json::Value v = archive_scenario(static_cast<std::size_t>(p_.pop_size), T, TX, n);
@@ -1911,6 +1916,7 @@ private:
     void record(int gen, long long fe_rec, const std::vector<double>& F_seen, const std::vector<double>& X,
                 std::optional<long long> fe_pop)
     {
+        const Clock clock(*this);
         const std::size_t m = static_cast<std::size_t>(p_.n_obj), d = static_cast<std::size_t>(p_.n_var);
         const std::size_t n = m ? F_seen.size() / m : 0;
         // snapshot and indicators: noise-free
@@ -2057,6 +2063,17 @@ private:
     bool budget_dependent_ = false;
     int reference_version_ = 0;
     std::string code_stamp_;
+    // of seconds(), what the records took (meta.json's record_seconds)
+    double record_seconds_ = 0.0;
+    // adds the run's time from here to the end of the scope to record_seconds_
+    struct Clock {
+        JobRun& run;
+        double t;
+        explicit Clock(JobRun& r) : run(r), t(r.seconds()) {}
+        Clock(const Clock&) = delete;
+        Clock& operator=(const Clock&) = delete;
+        ~Clock() { run.record_seconds_ += run.seconds() - t; }
+    };
 
 public:
     // what meta.json says of the registry: its code stamp and reference

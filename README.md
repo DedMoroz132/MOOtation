@@ -94,6 +94,7 @@ cmake -S . -B build -DMOOTATION_BUILD_C_API=ON && cmake --build build
 | Python, objectives are a Python function | `mootation.minimize` | [`python/examples/01_basic.py`](python/examples/01_basic.py) |
 | Python, the standard test suites | `mootation.benchmarks` | [`python/examples/03_benchmarks.py`](python/examples/03_benchmarks.py) |
 | objectives come from a separate program (solver, mesher, rig) | a TOML file + `mootation.run` | [docs/running.md](docs/running.md) |
+| benchmark campaigns of the built-in problems, no Python on the machine | the `mootation` executable (`engine/`) | [docs/running.md](docs/running.md#benchmark-campaigns-from-c-alone) |
 | Rust, C#, Julia, R, MATLAB, Fortran, Go | the C ABI | [docs/embedding.md](docs/embedding.md#the-c-abi) |
 | continue a finished run, or switch algorithm mid-study | save and seed a population | [`python/examples/06_restart.py`](python/examples/06_restart.py) |
 | no control over include paths | the single header | [docs/embedding.md](docs/embedding.md#the-single-header) |
