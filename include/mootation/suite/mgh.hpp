@@ -10,7 +10,9 @@
 // the function the minima of (d) are given for); unconstrained minimization:
 // the same sum, its gradient 2 J^T f.
 //
-// The numbers are MGH's, written as functions, not taken from their Fortran.
+// The numbers are MGH's, written as functions, not taken from their Fortran;
+// exp, log, pow, sin, cos, atan the library's own (dm::, detmath.hpp), so that
+// every platform evaluates the same bits.
 // Readings:
 //   MGH-1. Gulf (11): the printed |y_i mi x_2| is read |y_i - x_2|, the one
 //     reading under which (d) f = 0 at (50, 25, 1.5) holds.
@@ -29,6 +31,7 @@
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../fp_contract.hpp"
 
 namespace mootation::suite::mgh {
@@ -126,8 +129,8 @@ inline constexpr double kPi = 3.141592653589793;
 
 inline double theta(double x1, double x2)            // helical valley (MGH-2)
 {
-    if (x1 > 0.0) return std::atan(x2 / x1) / (2.0 * kPi);
-    if (x1 < 0.0) return std::atan(x2 / x1) / (2.0 * kPi) + 0.5;
+    if (x1 > 0.0) return dm::atan(x2 / x1) / (2.0 * kPi);
+    if (x1 < 0.0) return dm::atan(x2 / x1) / (2.0 * kPi) + 0.5;
     return x2 > 0.0 ? 0.25 : x2 < 0.0 ? -0.25 : 0.0;
 }
 
@@ -234,10 +237,10 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
         break;
     case 3:
         f[0] = 1e4 * x[0] * x[1] - 1.0;
-        f[1] = std::exp(-x[0]) + std::exp(-x[1]) - 1.0001;
+        f[1] = dm::exp(-x[0]) + dm::exp(-x[1]) - 1.0001;
         if (jac) {
             at(0, 0) = 1e4 * x[1]; at(0, 1) = 1e4 * x[0];
-            at(1, 0) = -std::exp(-x[0]); at(1, 1) = -std::exp(-x[1]);
+            at(1, 0) = -dm::exp(-x[0]); at(1, 1) = -dm::exp(-x[1]);
         }
         break;
     case 4:
@@ -249,18 +252,18 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     case 5: {
         const double y[3] = {1.5, 2.25, 2.625};
         for (std::size_t i = 0; i < 3; ++i) {
-            const double p = std::pow(x[1], static_cast<double>(i + 1));
+            const double p = dm::pow(x[1], static_cast<double>(i + 1));
             f[i] = y[i] - x[0] * (1.0 - p);
             if (jac) {
                 at(i, 0) = -(1.0 - p);
-                at(i, 1) = x[0] * static_cast<double>(i + 1) * std::pow(x[1], static_cast<double>(i));
+                at(i, 1) = x[0] * static_cast<double>(i + 1) * dm::pow(x[1], static_cast<double>(i));
             }
         }
         break;
     }
     case 6:
         for (std::size_t i = 0; i < m; ++i) {
-            const double ii = static_cast<double>(i + 1), e1 = std::exp(ii * x[0]), e2 = std::exp(ii * x[1]);
+            const double ii = static_cast<double>(i + 1), e1 = dm::exp(ii * x[0]), e2 = dm::exp(ii * x[1]);
             f[i] = 2.0 + 2.0 * ii - (e1 + e2);
             if (jac) { at(i, 0) = -ii * e1; at(i, 1) = -ii * e2; }
         }
@@ -289,7 +292,7 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     case 9:
         for (std::size_t i = 0; i < 15; ++i) {
             const double t = (8.0 - static_cast<double>(i + 1)) / 2.0, d = t - x[2];
-            const double e = std::exp(-x[1] * d * d / 2.0);
+            const double e = dm::exp(-x[1] * d * d / 2.0);
             f[i] = x[0] * e - detail::gaussian_y(static_cast<int>(i + 1));
             if (jac) { at(i, 0) = e; at(i, 1) = -x[0] * e * d * d / 2.0; at(i, 2) = x[0] * e * x[1] * d; }
         }
@@ -297,7 +300,7 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     case 10:
         for (std::size_t i = 0; i < 16; ++i) {
             const double t = 45.0 + 5.0 * static_cast<double>(i + 1), d = t + x[2];
-            const double e = std::exp(x[1] / d);
+            const double e = dm::exp(x[1] / d);
             f[i] = x[0] * e - detail::meyer_y()[i];
             if (jac) { at(i, 0) = e; at(i, 1) = x[0] * e / d; at(i, 2) = -x[0] * e * x[1] / (d * d); }
         }
@@ -305,21 +308,21 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     case 11:                                         // MGH-1
         for (std::size_t i = 0; i < m; ++i) {
             const double t = static_cast<double>(i + 1) / 100.0;
-            const double y = 25.0 + std::pow(-50.0 * std::log(t), 2.0 / 3.0);
-            const double a = std::fabs(y - x[1]), p = std::pow(a, x[2]), e = std::exp(-p / x[0]);
+            const double y = 25.0 + dm::pow(-50.0 * dm::log(t), 2.0 / 3.0);
+            const double a = std::fabs(y - x[1]), p = dm::pow(a, x[2]), e = dm::exp(-p / x[0]);
             f[i] = e - t;
             if (jac) {
                 const double sg = y - x[1] > 0.0 ? 1.0 : y - x[1] < 0.0 ? -1.0 : 0.0;
                 at(i, 0) = e * p / (x[0] * x[0]);
-                at(i, 1) = a > 0.0 ? e * x[2] * std::pow(a, x[2] - 1.0) * sg / x[0] : 0.0;
-                at(i, 2) = a > 0.0 ? -e * p * std::log(a) / x[0] : 0.0;
+                at(i, 1) = a > 0.0 ? e * x[2] * dm::pow(a, x[2] - 1.0) * sg / x[0] : 0.0;
+                at(i, 2) = a > 0.0 ? -e * p * dm::log(a) / x[0] : 0.0;
             }
         }
         break;
     case 12:
         for (std::size_t i = 0; i < m; ++i) {
             const double t = 0.1 * static_cast<double>(i + 1);
-            const double e1 = std::exp(-t * x[0]), e2 = std::exp(-t * x[1]), c = std::exp(-t) - std::exp(-10.0 * t);
+            const double e1 = dm::exp(-t * x[0]), e2 = dm::exp(-t * x[1]), c = dm::exp(-t) - dm::exp(-10.0 * t);
             f[i] = e1 - e2 - x[2] * c;
             if (jac) { at(i, 0) = -t * e1; at(i, 1) = t * e2; at(i, 2) = -c; }
         }
@@ -372,14 +375,14 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     case 16:
         for (std::size_t i = 0; i < m; ++i) {
             const double t = static_cast<double>(i + 1) / 5.0;
-            const double a = x[0] + t * x[1] - std::exp(t), b = x[2] + x[3] * std::sin(t) - std::cos(t);
+            const double a = x[0] + t * x[1] - dm::exp(t), b = x[2] + x[3] * dm::sin(t) - dm::cos(t);
             f[i] = a * a + b * b;
-            if (jac) { at(i, 0) = 2.0 * a; at(i, 1) = 2.0 * a * t; at(i, 2) = 2.0 * b; at(i, 3) = 2.0 * b * std::sin(t); }
+            if (jac) { at(i, 0) = 2.0 * a; at(i, 1) = 2.0 * a * t; at(i, 2) = 2.0 * b; at(i, 3) = 2.0 * b * dm::sin(t); }
         }
         break;
     case 17:
         for (std::size_t i = 0; i < 33; ++i) {
-            const double t = 10.0 * static_cast<double>(i), e4 = std::exp(-t * x[3]), e5 = std::exp(-t * x[4]);
+            const double t = 10.0 * static_cast<double>(i), e4 = dm::exp(-t * x[3]), e5 = dm::exp(-t * x[4]);
             f[i] = detail::osborne1_y()[i] - (x[0] + x[1] * e4 + x[2] * e5);
             if (jac) { at(i, 0) = -1.0; at(i, 1) = -e4; at(i, 2) = -e5; at(i, 3) = x[1] * t * e4; at(i, 4) = x[2] * t * e5; }
         }
@@ -387,8 +390,8 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     case 18:
         for (std::size_t i = 0; i < m; ++i) {
             const double t = 0.1 * static_cast<double>(i + 1);
-            const double y = std::exp(-t) - 5.0 * std::exp(-10.0 * t) + 3.0 * std::exp(-4.0 * t);
-            const double e1 = std::exp(-t * x[0]), e2 = std::exp(-t * x[1]), e5 = std::exp(-t * x[4]);
+            const double y = dm::exp(-t) - 5.0 * dm::exp(-10.0 * t) + 3.0 * dm::exp(-4.0 * t);
+            const double e1 = dm::exp(-t * x[0]), e2 = dm::exp(-t * x[1]), e5 = dm::exp(-t * x[4]);
             f[i] = x[2] * e1 - x[3] * e2 + x[5] * e5 - y;
             if (jac) {
                 at(i, 0) = -t * x[2] * e1; at(i, 1) = t * x[3] * e2; at(i, 2) = e1;
@@ -400,8 +403,8 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
         for (std::size_t i = 0; i < 65; ++i) {
             const double t = static_cast<double>(i) / 10.0;
             const double d9 = t - x[8], d10 = t - x[9], d11 = t - x[10];
-            const double e1 = std::exp(-t * x[4]), e2 = std::exp(-d9 * d9 * x[5]), e3 = std::exp(-d10 * d10 * x[6]),
-                         e4 = std::exp(-d11 * d11 * x[7]);
+            const double e1 = dm::exp(-t * x[4]), e2 = dm::exp(-d9 * d9 * x[5]), e3 = dm::exp(-d10 * d10 * x[6]),
+                         e4 = dm::exp(-d11 * d11 * x[7]);
             f[i] = detail::osborne2_y()[i] - (x[0] * e1 + x[1] * e2 + x[2] * e3 + x[3] * e4);
             if (jac) {
                 at(i, 0) = -e1; at(i, 1) = -e2; at(i, 2) = -e3; at(i, 3) = -e4;
@@ -453,19 +456,19 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
         break;
     }
     case 24: {
-        const double sa = std::sqrt(1e-5), e1 = std::exp(-0.1);
+        const double sa = std::sqrt(1e-5), e1 = dm::exp(-0.1);
         f[0] = x[0] - 0.2;
         if (jac) at(0, 0) = 1.0;
         for (std::size_t i = 1; i < n; ++i) {
             const double ii = static_cast<double>(i + 1);
-            const double y = std::exp(ii / 10.0) + std::exp((ii - 1.0) / 10.0);
-            const double a = std::exp(x[i] / 10.0), b = std::exp(x[i - 1] / 10.0);
+            const double y = dm::exp(ii / 10.0) + dm::exp((ii - 1.0) / 10.0);
+            const double a = dm::exp(x[i] / 10.0), b = dm::exp(x[i - 1] / 10.0);
             f[i] = sa * (a + b - y);
             if (jac) { at(i, i) = sa * a / 10.0; at(i, i - 1) = sa * b / 10.0; }
         }
         for (std::size_t i = n; i + 1 < 2 * n; ++i) {   // i (1-based i + 1) in (n, 2n): x_{i - n + 1}
             const std::size_t j = i - n + 1;
-            const double a = std::exp(x[j] / 10.0);
+            const double a = dm::exp(x[j] / 10.0);
             f[i] = sa * (a - e1);
             if (jac) at(i, j) = sa * a / 10.0;
         }
@@ -495,13 +498,13 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     }
     case 26: {
         double c = 0.0;
-        for (std::size_t j = 0; j < n; ++j) c += std::cos(x[j]);
+        for (std::size_t j = 0; j < n; ++j) c += dm::cos(x[j]);
         for (std::size_t i = 0; i < n; ++i) {
             const double ii = static_cast<double>(i + 1);
-            f[i] = dn - c + ii * (1.0 - std::cos(x[i])) - std::sin(x[i]);
+            f[i] = dn - c + ii * (1.0 - dm::cos(x[i])) - dm::sin(x[i]);
             if (jac) {
-                for (std::size_t j = 0; j < n; ++j) at(i, j) = std::sin(x[j]);
-                at(i, i) += ii * std::sin(x[i]) - std::cos(x[i]);
+                for (std::size_t j = 0; j < n; ++j) at(i, j) = dm::sin(x[j]);
+                at(i, i) += ii * dm::sin(x[i]) - dm::cos(x[i]);
             }
         }
         break;
