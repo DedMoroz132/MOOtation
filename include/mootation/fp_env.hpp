@@ -23,7 +23,7 @@ struct FpEnv {
     std::string arch = "other";           // "x86", "arm64" or "other"
     bool known = false;                   // ftz and daz read (not on "other")
     bool ftz = false, daz = false;
-    std::uint64_t reg = 0;                // MXCSR on x86, FPCR on ARM64
+    std::uint64_t reg = 0;                // MXCSR's control bits on x86, FPCR on ARM64
 };
 
 inline FpEnv fp_env()
@@ -35,7 +35,8 @@ inline FpEnv fp_env()
     e.known = true;
     e.ftz = (csr & 0x8000u) != 0;
     e.daz = (csr & 0x0040u) != 0;
-    e.reg = csr;
+    e.reg = csr & ~0x3Fu;                 // not the sticky exception flags (bits 0-5):
+                                          // what the thread computed so far, not its setting
 #elif defined(__aarch64__) && !defined(_MSC_VER)
     std::uint64_t fpcr = 0;               // FPCR: FZ bit 24 flushes both ways
     __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));

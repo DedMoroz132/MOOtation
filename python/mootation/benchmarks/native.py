@@ -46,9 +46,6 @@ import re
 
 import numpy as np
 
-from . import c_dtlz as _cd
-from . import dtlz_variants as _dv
-from . import shifted as _shift
 
 # the stems of the problems with an objective count (<stem>_<M>D), and of ZDT
 _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2|SDTLZ[12]|"
@@ -90,27 +87,21 @@ def _rotated(r) -> dict | None:
     d = _base(r.family, r.n_vars, r.M, first=r.first,
               rotation={"family": r.family, "M": r.M, "instance": r.instance, "rotate": r.rotate,
                         "condition": r.condition, "sizes": r.sizes()})
+    # the optimum (centre, spread) and the polygon's vertices: C++'s
+    # (suite/spec_numbers.hpp; task 17, section 2.2)
     if r.kind == "polygon":
-        d.update(map="rotate", centre=_array(r.optimum), vertices=_polygon_vertices(r.M))
+        d.update(map="rotate")
     elif r.wfg:
-        if r.family in ("WFG4", "WFG5", "WFG6", "WFG7"):
-            d.update(map="rotate_wfg_035")
-        else:
-            d.update(map="rotate_wfg", centre=_array([] if r.family == "WFG8" else r.centre_u))
+        d.update(map="rotate_wfg_035" if r.family in ("WFG4", "WFG5", "WFG6", "WFG7") else "rotate_wfg")
     elif r.kind == "zcat":
         d.update(map="rotate_zcat")
     elif r.family == "ZDT4":
-        d.update(map="rotate", centre=_array(r.optimum))
+        d.update(map="rotate")
     elif r.zdt:
-        d.update(map="rotate_abs", centre=_array(r.optimum), spread=_array(r.spread))
+        d.update(map="rotate_abs")
     else:
-        d.update(map="rotate_half", centre=_array(r.optimum))
+        d.update(map="rotate_half")
     return d
-
-
-def _polygon_vertices(M: int) -> np.ndarray:
-    from .polygon import polygon_vertices
-    return _array(polygon_vertices(M)).ravel()
 
 
 def _stage3a(name: str, p) -> dict | None:
@@ -128,16 +119,12 @@ def _stage3a(name: str, p) -> dict | None:
         from . import dascmop
         i, tag = int(m.group(1)), m.group(2)
         triplet = dascmop.FIGURE6 if tag == "f6" else dascmop.TRIPLETS[int(tag[1:]) - 1]
-        return _base(f"DAS-CMOP{i}", p.n_vars, p.n_obj, constants=_array(dascmop.params(*triplet)))
+        return _base(f"DAS-CMOP{i}", p.n_vars, p.n_obj, triplet=_array(triplet))
     m = _OTHER.fullmatch(name)
     if m is None:
         return None
-    if m.group(1) == "Polygon":
-        return _base("Polygon", p.n_vars, p.n_obj, vertices=_polygon_vertices(p.n_obj))
-    if m.group(1) == "IPolygon":
-        from .polygon_ishibuchi import _vertices
-        return _base("IPolygon", p.n_vars, p.n_obj,
-                     polygons=[_array(V).ravel() for V in _vertices(p.n_obj)])
+    if m.group(1) in ("Polygon", "IPolygon"):            # the vertices: C++'s
+        return _base(m.group(1), p.n_vars, p.n_obj)
     if m.group(3):
         return _base(m.group(3), p.n_vars, p.n_obj)   # MW<i>, MW<i>_<M>D
     return _base(name, p.n_vars, p.n_obj)             # LIR-CMOP<i>, DOC<i>
@@ -172,44 +159,27 @@ def spec(name: str, p, rotated=None) -> dict | None:
         base = name.replace("shift", "")
         if not name.startswith("shift"):
             return _base(base, n, 2)
-        c = _shift.zdt_centres(base, n)
-        if base == "ZDT4":
-            return _base(base, n, 2, map="shift", first=1, centre=_array(c))
-        return _base(base, n, 2, map="fold", first=1, centre=_array(c),
-                     spread=_array(np.maximum(c, 1.0 - c)))
+        return _base(base, n, 2, map="shift" if base == "ZDT4" else "fold", first=1)   # the centres: C++'s
     m = _STEMS.fullmatch(name)
     if m is None:
         return None
     stem, M = m.group(1), int(m.group(m.lastindex))
-    k = n - M + 1                                      # the distance block
     if stem in _MAF_WFG:
         return _base(_MAF_WFG[stem], n, M, k=M - 1)
     if stem.startswith(("DTLZ", "MaF", "ZCAT", "IDTLZ", "minusDTLZ", "WFG")):
         d = _base(stem, n, M)
-        # MaF8's and MaF9's polygons and MaF14's and MaF15's linkage: drawn by
-        # C++ (suite/maf.hpp; task 17, supplement 5, §3)
-        if stem in ("MaF14", "MaF15"):
-            from . import maf
-            d.update(parts=_array(maf.lsmop_parts(M)))
+        # MaF8's and MaF9's polygons and MaF14's and MaF15's linkage and parts:
+        # C++'s (suite/maf.hpp, spec_numbers.hpp; task 17, section 2.2)
         return d
     if stem == "wideDTLZ3":
         return _base("DTLZ3", n, M)
+    # the shift centres, SDTLZ's factors and C-DTLZ's radii: C++'s
+    # (suite/spec_numbers.hpp, dtlz.hpp; task 17, section 2.2)
     if stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):
-        return _base(stem[5:], n, M, map="cyclic", first=M - 1,
-                     centre=_array(_dv.shift_centres(k)))
+        return _base(stem[5:], n, M, map="cyclic", first=M - 1)
     if stem in ("shiftDTLZ6", "shiftDTLZ7"):
-        c = _dv.shift_centres(k)
-        return _base(stem[5:], n, M, map="fold", first=M - 1, centre=_array(c),
-                     spread=_array(np.maximum(c, 1.0 - c)))
-    if stem.startswith("SDTLZ"):
-        return _base(stem, n, M, scale=_array(_dv._scale(M, stem)))
-    if stem == "C1-DTLZ3":
-        return _base(stem, n, M, r2=_cd.C1_DTLZ3_R[M] ** 2)
-    if stem == "C2-DTLZ2":
-        return _base(stem, n, M, r2=_cd.C2_DTLZ2_R[M] ** 2, centre_m=float(1.0 / np.sqrt(M)))
-    if stem == "C2-ConvexDTLZ2":
-        return _base(stem, n, M, r2=_cd.C2_CONVEX_R[M] ** 2)
-    return _base(stem, n, M)                           # C1-DTLZ1, C3-DTLZ1, C3-DTLZ4
+        return _base(stem[5:], n, M, map="fold", first=M - 1)
+    return _base(stem, n, M)                           # SDTLZ, C-DTLZ
 
 
 class Evaluate:

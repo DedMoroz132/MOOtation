@@ -18,7 +18,13 @@ from __future__ import annotations
 import zlib
 
 
-def _is_exactly_n(pf) -> bool:
+def _is_exactly_n(p) -> bool:
+    """Whether the registry thins p's sample to n (_exactly_n): its Python
+    sampler's, kept in p.reference once the C++ one stands in for it
+    (registry._cxx_references)."""
+    pf = p.pareto_front
+    if getattr(pf, "__qualname__", "").startswith("_cxx_sampler"):
+        pf = p.reference["pareto_front"]
     return getattr(pf, "__qualname__", "").startswith("_exactly_n")
 
 
@@ -31,14 +37,15 @@ def _kind(name: str, p) -> dict | None:
     from . import binary as _bin
     from . import dtlz as _d
     from . import fronts_full as _ff
-    from . import dtlz_variants as _dv
     from .registry import FULL_FRONT
     stem, M = _stem_m(name, p)
     if name in FULL_FRONT:
         return {"kind": "full", "file": _ff._path(stem, M).name}
     if stem == "DTLZ1":
         return {"kind": "dtlz1", "M": M}
-    if stem in ("DTLZ2", "DTLZ3", "DTLZ4", "wideDTLZ3"):
+    if stem == "shiftDTLZ1":
+        return {"kind": "dtlz1", "M": M}
+    if stem in ("DTLZ2", "DTLZ3", "DTLZ4", "wideDTLZ3", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):
         return {"kind": "dtlz2", "M": M}
     if stem in ("DTLZ5", "DTLZ6"):
         return {"kind": "dtlz5", "M": M}
@@ -49,7 +56,7 @@ def _kind(name: str, p) -> dict | None:
     if stem == "minusDTLZ2":
         return {"kind": "minus_dtlz2", "M": M, "k": int(_d.DTLZ_K["DTLZ2"])}
     if stem in ("SDTLZ1", "SDTLZ2"):
-        return {"kind": stem.lower(), "M": M, "scale": [float(v) for v in _dv._scale(M, stem)]}
+        return {"kind": stem.lower(), "M": M}             # the factors: C++'s
     wfg = {"WFG1": "wfg1", "WFG2": "wfg2", "WFG3": "wfg3", "MaF10": "wfg1", "MaF11": "wfg2", "MaF12": "wfg_concave",
            **{f"WFG{i}": "wfg_concave" for i in range(4, 10)}}
     if stem in wfg:
@@ -96,6 +103,9 @@ def _kind(name: str, p) -> dict | None:
         return {"kind": name.lower()}
     if name in ("SPH_2D", "SPH_3D"):
         return {"kind": "sph", "M": M}
+    from . import rwmop as _rw
+    if name.startswith("RCM") and (_rw.DATA / f"{name}.dat").is_file():
+        return {"kind": "text", "file": f"_rwmop/{name}.dat"}
     for kind, n, k in _bin.SIZES:
         if _bin.name(kind, n, k) == name:
             return {"kind": "binary", "which": kind, "n": int(n), "k": int(k)}
@@ -108,12 +118,14 @@ def front_spec(name: str) -> dict | None:
     p = PROBLEMS[name]
     if not callable(p.pareto_front) or name in FAILING:
         return None                                   # a failing copy: its own sample (not yet)
-    src = FRAME_OF.get(name, name)
+    src = name
+    while src in FRAME_OF:                            # a noisy copy of a rotated problem: two steps
+        src = FRAME_OF[src]
     q = PROBLEMS[src]
     spec = _kind(src, q)
     if spec is None:
         return None
-    if _is_exactly_n(q.pareto_front):
+    if _is_exactly_n(q):
         spec["seed"] = zlib.crc32(src.encode())
     else:
         spec["whole"] = True
@@ -123,8 +135,6 @@ def front_spec(name: str) -> dict | None:
 
 def _set_kind(name: str, p) -> dict | None:
     """The Pareto-set sampler of the problem `name` (its own, not a copy's)."""
-    from . import dtlz_variants as _dv
-    from . import shifted as _shift
     stem, M = _stem_m(name, p)
     nv = int(p.n_vars)
     half = {"M": M, "n_vars": nv}
@@ -145,6 +155,8 @@ def _set_kind(name: str, p) -> dict | None:
     from .registry import ROTATED
     if name in _mmo.NAMES:
         return {"kind": "mmo", "name": name, "n_vars": nv}
+    if stem in ("MaF14", "MaF15"):
+        return {"kind": "lsmop", "M": M, "which": int(stem[3:])}
     r = ROTATED.get(name)
     if r is not None and r.kind in ("dtlz", "maf", "zdt", "wfg", "polygon"):
         return {"kind": "rotated", "family": r.family, "M": M, "n_vars": nv}
@@ -157,16 +169,16 @@ def _set_kind(name: str, p) -> dict | None:
             return {"kind": "zcat", "i": int(stem[len(pre):]), "M": M}
     if stem in ("MW1", "MW2", "MW4", "MW6", "MW8", "MW14"):
         return {"kind": "mw", "i": int(stem[2:]), "M": M}
-    centres = [float(v) for v in _dv.shift_centres(nv - M + 1)]
+    # the shifted problems' optimum: C++'s (suite/spec_numbers.hpp)
     if stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4") or (stem == "shiftDTLZ6" and M <= 3):
-        return {"kind": "dtlz", **half, "rest": centres}
+        return {"kind": "dtlz", **half, "rest": "shift"}
     if stem == "shiftDTLZ7":
-        return {"kind": "dtlz7", **half, "rest": centres}
+        return {"kind": "dtlz7", **half, "rest": "shift"}
     if name in ("ZDT1", "ZDT2", "ZDT3", "ZDT4", "ZDT6"):
         return {"kind": "zdt", "base": name, "rest": 0.0}
     if name.startswith("shiftZDT"):
         base = name[len("shift"):]
-        return {"kind": "zdt", "base": base, "rest": [float(v) for v in _shift.zdt_centres(base, nv)]}
+        return {"kind": "zdt", "base": base, "rest": "shift"}
     if name in ("SCH", "FON"):
         return {"kind": name.lower()}
     if name in ("SPH_2D", "SPH_3D"):
@@ -178,10 +190,10 @@ def set_spec(name: str) -> dict | None:
     """The Pareto-set sampler of the registry problem `name` (a noisy copy:
     its base's), or None where it has none or C++ does not build it yet."""
     from .noisy import base_of, kind_of
-    from .registry import PROBLEMS
+    from .registry import FAILING, PROBLEMS
     p = PROBLEMS[name]
-    if not callable(p.pareto_set):
-        return None
+    if not callable(p.pareto_set) or name in FAILING:
+        return None                                   # a failing copy: its base's set less the region
     src = base_of(name) if kind_of(name) is not None else name
     spec = _set_kind(src, PROBLEMS[src])
     if spec is not None:

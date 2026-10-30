@@ -26,7 +26,14 @@ so the same values.
 WHERE. The user's cache, not the repository nor the installation:
 %LOCALAPPDATA%\\mootation\\references\\v<REFERENCE_VERSION>\\ on Windows,
 $XDG_CACHE_HOME/mootation/references/v<...>/ (else ~/.cache/...) elsewhere;
-MOOTATION_REFS_DIR (or --refs-dir) puts it anywhere. <problem>/n<n_ref>.npz.
+MOOTATION_REFS_DIR (or --refs-dir) puts it anywhere. <problem>/n<n_ref>.mrf.
+
+WHO BUILDS. From reference version 5 (task 17, section 2.1) the C++ builders
+(include/mootation/refs, campaign/refs_build.hpp; `mootation refs build`
+without Python): an entry is one record of the store's format, .mrf. This
+module hands them the registry's export of the problems asked for and reads
+the entries back (_core.refs_load_entry); Python's samplers stay as the
+cross-check (TASK17's refs_check.py). The .npz entries of before are read.
 Every machine builds the same bytes of the arrays, so a cache can be copied
 from one to another, and the hashes agree (campaign --merge checks them).
 
@@ -61,10 +68,6 @@ import time
 from pathlib import Path
 
 ENV_DIR = "MOOTATION_REFS_DIR"
-# The families whose references take the longest (ZCAT's fronts and sets at
-# ten objectives, DAS-CMOP's dense sample): built first, so that a pool of
-# workers does not end on them.
-SLOW_FIRST = ("rZCAT", "ZCAT", "DAS-CMOP", "rWFG", "WFG", "MW", "LIR-CMOP", "DOC")
 
 
 class MissingReferences(RuntimeError):
@@ -95,8 +98,14 @@ def store_dir() -> Path:
     return refs_root() / f"v{REFERENCE_VERSION}"
 
 
+# the first reference version whose entries are records (.mrf), C++'s
+RECORD_ENTRIES = 5
+
+
 def entry_path(name: str, n_ref: int) -> Path:
-    return store_dir() / name / f"n{int(n_ref)}.npz"
+    from ..benchmarks.registry import REFERENCE_VERSION
+    ext = "mrf" if REFERENCE_VERSION >= RECORD_ENTRIES else "npz"
+    return store_dir() / name / f"n{int(n_ref)}.{ext}"
 
 
 def shared(name: str) -> bool:
@@ -127,10 +136,14 @@ def load_entry(name: str, n_ref: int):
     if not path.is_file():
         return None
     try:
+        if path.suffix == ".mrf":
+            from .. import _core
+            arrays, meta = _core.refs_load_entry(str(path))
+            return dict(arrays), json.loads(meta)
         with np.load(path, allow_pickle=False) as z:
             arrays = {k: z[k] for k in z.files if k != "meta"}
             meta = json.loads(str(z["meta"]))
-    except (OSError, ValueError, KeyError):
+    except (OSError, ValueError, KeyError, RuntimeError):
         return None
     return arrays, meta
 
@@ -148,66 +161,42 @@ def status(name: str, meta) -> str:
     return "old: " + ", ".join(why) if why else "ok"
 
 
-def build_entry(name: str, n_ref: int, extend: bool = False) -> dict:
-    """Build the entry of `name` at n_ref and write it (atomically: a copy built
-    at the same time by another process gives the same bytes); its meta."""
-    import numpy as np
-    from .. import __version__
+def _registry_for(names) -> Path:
+    """An export of the registry (registry_export) of `names` and of the bases
+    of the failing copies among them, for the C++ builders: a file of its own,
+    beside the cache, named by its content."""
+    import hashlib
     from ..benchmarks import registry as R
-    from .campaign import _code_stamp, reference_hash
-    from .cover import igdp_floors
-    t0 = time.perf_counter()
-    p = R.get(name)
-    ref = np.asarray(p.pareto_front(n_ref), float)
-    ref3 = info3 = None
-    if R.has_dense_reference(name):
-        ref3, info3 = R.dense_reference(name, p.pop_size)
-    pset = np.asarray(p.pareto_set(n_ref), float) if callable(p.pareto_set) else None
-    floors = igdp_floors(name, n_ref, (p.pop_size,), ref=ref)
-    pop = int(p.pop_size)
-    meta = {
-        "problem": name, "n_ref": int(n_ref), "n_obj": int(p.n_obj),
-        "problem_version": R.problem_version(name), "reference_version": R.REFERENCE_VERSION,
-        "code_stamp": _code_stamp(), "mootation": __version__,
-        "reference_hash": reference_hash(p, ref, ref3, pset),
-        "rows": floors["rows"], "distinct": floors["distinct"], "info3": info3,
-        "floors": {str(pop): {"greedy": floors[pop][0], "dss": floors[pop][1]}},
-    }
-    if extend:
-        meta["extends"] = _extends(name, n_ref, ref)
-    arrays = dict(ideal=np.asarray(p.ideal, float), nadir=np.asarray(p.nadir, float), ref=ref)
-    if ref3 is not None:
-        arrays["ref3"] = np.asarray(ref3, float)
-    if pset is not None:
-        arrays["pset"] = pset
-    meta["seconds"] = round(time.perf_counter() - t0, 3)
-    path = entry_path(name, n_ref)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp.npz")
-    np.savez_compressed(tmp, meta=np.asarray(json.dumps(meta)), **arrays)
-    try:
+    from . import registry_export as X
+    want = set(names) | {R.FAILING[n][0] for n in names if n in R.FAILING}
+    doc = {"format": X.FORMAT, "code_stamp": "", "reference_version": R.REFERENCE_VERSION,
+           "mootation": "", "names": X.names(), "problems": [X.entry(n) for n in sorted(want)]}
+    text = json.dumps(doc, separators=(",", ":"))
+    path = refs_root() / "registry" / f"part-{hashlib.sha256(text.encode()).hexdigest()[:16]}.json"
+    if not path.is_file():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)
-    except OSError:              # Windows: another process reads the copy it wrote
-        tmp.unlink(missing_ok=True)
-        if load_entry(name, n_ref) is None:
-            raise
-    return meta
+    return path
 
 
-def _extends(name: str, n_ref: int, ref) -> dict | None:
-    """Against the largest smaller entry of `name`: whether its front is the
-    first rows of `ref` (kept, extended) or not (built anew)."""
-    import numpy as np
-    sizes = sorted(int(f.stem[1:]) for f in (store_dir() / name).glob("n*.npz")
-                   if f.stem[1:].isdigit() and int(f.stem[1:]) < n_ref)
-    if not sizes:
-        return None
-    got = load_entry(name, sizes[-1])
-    if got is None or "ref" not in got[0]:
-        return None
-    old = got[0]["ref"]
-    kept = len(old) <= len(ref) and np.array_equal(old, ref[:len(old)])
-    return {"n_ref": sizes[-1], "prefix": bool(kept)}
+def _build_cxx(names, n_ref: int, workers: int, rebuild: bool, extend: bool, log=None) -> dict:
+    """The entries of `names` built by the C++ builders; {name: what}."""
+    from .. import __version__, _core
+    from .campaign import _code_stamp
+    data = Path(__file__).resolve().parent.parent / "benchmarks"
+    return dict(_core.refs_build_cache(str(_registry_for(names)), list(names), int(n_ref), int(workers),
+                                       bool(rebuild), bool(extend), str(data), _code_stamp(), __version__,
+                                       log))
+
+
+def build_entry(name: str, n_ref: int, extend: bool = False) -> dict:
+    """Build the entry of `name` at n_ref (the C++ builders) and write it; its meta."""
+    got = _build_cxx([name], n_ref, 1, True, extend)
+    if got.get(name) != "built":
+        raise RuntimeError(f"{name}: {got.get(name)}")
+    return load_entry(name, n_ref)[1]
 
 
 def floor_of(name: str, n_ref: int, pop: int):
@@ -230,70 +219,27 @@ def check(names, n_ref: int) -> dict:
     return out
 
 
-def _order(names) -> list:
-    def key(n):
-        from ..families import family
-        fam = family(n)
-        return (SLOW_FIRST.index(fam) if fam in SLOW_FIRST else len(SLOW_FIRST), n)
-    return sorted(names, key=key)
-
-
-def _build_task(task):
-    name, n_ref, extend = task
-    t0 = time.perf_counter()
-    try:
-        meta = build_entry(name, n_ref, extend=extend)
-        return name, "built", meta, time.perf_counter() - t0
-    except Exception as e:                       # noqa: BLE001
-        return name, f"failed: {type(e).__name__}: {e}", None, time.perf_counter() - t0
-
-
 def build(names, n_ref: int = 1000, workers: int = 1, rebuild: bool = False,
           extend: bool = False, log=print) -> dict:
     """Build the entries of `names` at n_ref that are missing or old (all of
-    them with rebuild or extend), `workers` processes at a time. {name:
-    "built" | "ok" | "failed: ..."}."""
+    them with rebuild or extend), `workers` threads of the C++ builders (the
+    slow families first, refs_build.hpp's SLOW_FIRST). {name: "built" | "ok" |
+    "failed: ..." | "not built: ..."}."""
     names = list(dict.fromkeys(names))
-    now = check(names, n_ref)
-    todo = _order([n for n in names if rebuild or extend or now[n] != "ok"])
-    out = {n: "ok" for n in names if n not in todo}
-    if not todo:
-        return out
-    log(f"references: {len(todo)} of {len(names)} to build at n_ref = {n_ref} -> {store_dir()}")
-    tasks = [(n, int(n_ref), extend) for n in todo]
+    if not names:
+        return {}
     t0 = time.perf_counter()
-    if workers > 1 and len(tasks) > 1:
-        import multiprocessing as mp
-        from .campaign import single_threaded_blas
-        single_threaded_blas()
-        with mp.get_context("spawn").Pool(processes=min(workers, len(tasks))) as pool:
-            results = pool.imap_unordered(_build_task, tasks)
-            for i, (name, what, meta, sec) in enumerate(results, 1):
-                out[name] = what
-                log(f"  [{i}/{len(tasks)}] {name}: {what} ({sec:.1f} s)")
-    else:
-        for i, task in enumerate(tasks, 1):
-            name, what, meta, sec = _build_task(task)
-            out[name] = what
-            log(f"  [{i}/{len(tasks)}] {name}: {what} ({sec:.1f} s)")
-    again = [n for n in todo if out[n].startswith("failed")]
-    if again and workers > 1:
-        # one at a time in this process: a pool of builders can run out of memory
-        # together (DAS-CMOP's dense samples) where one alone does not
-        log(f"references: {len(again)} failed in the pool, built again one at a time")
-        for name in again:
-            name, what, meta, sec = _build_task((name, int(n_ref), extend))
-            out[name] = what
-            log(f"  {name}: {what} ({sec:.1f} s)")
-    failed = sum(v.startswith("failed") for v in out.values())
-    log(f"references: {len(todo) - failed} built, {failed} failed, "
-        f"{time.perf_counter() - t0:.1f} s")
+    out = _build_cxx(names, n_ref, max(1, workers), rebuild, extend, log)
+    failed = sum(v not in ("built", "ok") for v in out.values())
+    built = sum(v == "built" for v in out.values())
+    if built or failed:
+        log(f"references: {built} built, {failed} failed, {time.perf_counter() - t0:.1f} s")
     return out
 
 
 def cache_size() -> tuple:
     """(files, bytes) of this builder version's cache."""
-    files = [f for f in store_dir().rglob("*.npz")] if store_dir().is_dir() else []
+    files = [f for f in store_dir().rglob("n*.*") if f.suffix in (".mrf", ".npz")]         if store_dir().is_dir() else []
     return len(files), sum(f.stat().st_size for f in files)
 
 
@@ -457,7 +403,7 @@ def main(argv: list | None = None) -> int:
                     extend=args.extend)
         files, size = cache_size()
         print(f"cache {store_dir()}: {files} files, {size / 2**20:.1f} MiB")
-        return 1 if any(v.startswith("failed") for v in got.values()) else 0
+        return 1 if any(v not in ("built", "ok") for v in got.values()) else 0
     st = check(names, args.n_ref)
     from .campaign import _code_stamp
     other = []

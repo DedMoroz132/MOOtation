@@ -111,6 +111,7 @@ suite::Spec spec_of(const py::dict& d)
     s.parts = flat_of(d, "parts");
     if (d.contains("k")) s.k = d["k"].cast<int>();
     s.constants = flat_of(d, "constants");
+    s.triplet = flat_of(d, "triplet");
     if (d.contains("bbob_fnum")) s.bbob_fnum = d["bbob_fnum"].cast<int>();
     if (d.contains("bbob_iid")) s.bbob_iid = d["bbob_iid"].cast<int>();
     if (d.contains("rotation") && !d["rotation"].is_none()) {
@@ -148,6 +149,7 @@ py::dict dict_of(const suite::Spec& s)
     d["parts"] = s.parts;
     d["k"] = s.k;
     d["constants"] = s.constants;
+    d["triplet"] = s.triplet;
     d["bbob_fnum"] = s.bbob_fnum;
     d["bbob_iid"] = s.bbob_iid;
     if (!s.rotation.family.empty()) {

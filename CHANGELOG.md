@@ -10,6 +10,55 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The cache of references is built in C++ (`include/mootation/refs`,
+  `mootation refs build|check`; `python -m mootation refs build` calls the
+  same builders): the reference fronts, the dense references, the
+  Pareto-set samples and the IGD+ floors of every problem of the cache, an
+  entry one record of the store's format (`n<n_ref>.mrf`; the `.npz`
+  entries of before are read). Python's samplers stay as the cross-check.
+  **Reference version 5** (`REFERENCE_CHANGED[5]`: every reference front):
+  the thinning and the random parts of the samplers draw from the
+  library's generator instead of NumPy's `default_rng`; ZDT3's front lies
+  on its pieces, their ends computed as local minima of f2 to the last bit
+  (in Python too); the last step of every reference front is a
+  deterministic nondominated filter (in Python too); Polygon, MaF8, MaF9
+  and the rotated Polygons take their exact frame (ideal 0, the nadir at
+  the vertex farthest from each vertex or edge line) instead of one read off
+  a sample. **Changed results** for every metric measured against a
+  reference front or the frame of those problems.
+- A problem of the C++ suite is built from its name, sizes and parameters
+  alone: the numbers its spec held from Python — the shift centres, SDTLZ's
+  factors, C-DTLZ's radii, the vertices of Polygon and IPolygon, DAS-CMOP's
+  constants (the spec now gives its triplet), MaF14's and MaF15's parts, the
+  rotated problems' optimum — are computed in C++
+  (`include/mootation/suite/spec_numbers.hpp`). The same values on every
+  problem but rWFG9, whose optimum differs in the last bits: its version
+  goes up by one.
+- The problem registry as data in the repository: `data/registry.json`
+  (`python -m mootation.run.registry_export --repo`; a CI test fails, naming
+  that command, when it is behind the code). The build puts it, with the
+  shipped fronts `_fronts/` and `_rwmop/`, beside the executable, and
+  `cmake --install` in `share/mootation/` (the executable in `bin/`).
+  `mootation run`, `refs` and `store` find it there without Python:
+  `--registry FILE`, `MOOTATION_REGISTRY`, beside the executable, the
+  installation, the newest export in the reference cache (the order in
+  `docs/running.md`). A CI job builds the references and runs a campaign
+  with the installed executable and no Python on PATH.
+- Fixed (`fp_env.hpp`): meta.json's `fp_env.register` held MXCSR with its
+  sticky exception flags, which say what the process computed before the
+  run (an underflow in an earlier run set one), not its setting; it holds
+  the control bits now. Two runs of the same job in one process or two
+  could differ in that field.
+- `mootation store export --csv | --files` in C++: the metrics CSV of every
+  pack and every run's files, the same content as the Python command's.
+- CI refuses `std::exp`, `log`, `pow` and the other elementary functions of
+  the C library in `include/` outside `detmath` (two calls moved to `dm::`,
+  the same values).
+- The nearest-other distances behind a reference's step (the dense
+  reference, `gdp_min`) are found with a k-d tree from 2048 points: the same
+  values as by every pair, much faster for the dense references of 10^5
+  points.
+
 - The C++ engine runs the designed first populations (`init`,
   `init_share`) as minimize does: the design evaluated as one batch (its
   integers and discrete values decoded), `designs.start_points` of it

@@ -15,8 +15,7 @@
 //   merge    the stores of a campaign's parts into one, a run in two parts
 //            the same blocks in both
 //
-// export (a run's files, the CSV of the metrics) stays Python's: it writes
-// gzip, which the library does not.
+// export (a run's files, the CSV of the metrics): store_export.hpp.
 // ============================================================================
 
 #include <algorithm>

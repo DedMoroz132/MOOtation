@@ -121,6 +121,12 @@ jobs:
           python -m mootation.run.campaign campaign.toml --list > jobs.txt
           echo "the installed campaign runner expands $(wc -l < jobs.txt) jobs"
 
+      - name: data/registry.json is what the code writes
+        # the engine and `mootation refs build` read it without Python (task
+        # 17, section 2.2); the message names the command that writes it anew
+        if: matrix.shard == 0
+        run: PYTHONPATH=python python -m mootation.run.registry_export --check
+
       - name: The run layer against the built extension
         # The run-layer jobs below have no extension, so test_run_layer.py
         # skips its campaign round trip there. Here it runs for real, and it
@@ -382,6 +388,63 @@ jobs:
         # ~10 of the suite's ~11 minutes. They run on the schedule below, and
         # can be forced on a branch with the `full-tests` label on a PR.
         run: ctest --test-dir build --output-on-failure -j 2 -LE nightly
+
+  # ── The C++ engine on a machine without Python ────────────────────────────
+  # The installed executable with its registry.json and shipped fronts builds
+  # the references and runs a campaign; Python is kept off PATH, so a call
+  # out to it would fail the job.
+  engine-without-python:
+    name: engine without Python
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build and install the engine
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_INSTALL_PREFIX=$PWD/stage \
+                -DMOOTATION_BUILD_TESTS=OFF -DMOOTATION_BUILD_EXAMPLES=OFF
+          cmake --build build -j 4
+          cmake --install build
+          test -f stage/share/mootation/registry.json
+          test -d stage/share/mootation/_fronts
+
+      - name: refs build, then a campaign
+        run: |
+          mkdir -p "$RUNNER_TEMP/camp"
+          cat > "$RUNNER_TEMP/camp/camp.toml" <<'EOF'
+          [run]
+          name = "no_python"
+          [problem]
+          kind = "builtin"
+          [benchmarks]
+          problems = ["ZDT1", "DTLZ2_3D", "WFG4_3D", "DTLZ5_4D"]
+          runs = 2
+          [campaign]
+          out = "results/{name}"
+          record_every = 10
+          metrics = ["igd", "igdp", "hv"]
+          n_ref = 200
+          storage = "store"
+          [[algorithms]]
+          name = "nsga2"
+          pop = 40
+          gens = 20
+          EOF
+          export MOOTATION_REFS_DIR="$RUNNER_TEMP/refs"
+          bin="$PWD/stage/bin/mootation"
+          nopy() { env PATH="$PWD/stage/bin" "$@"; }
+          if env PATH="$PWD/stage/bin" /bin/sh -c 'command -v python3 || command -v python'; then
+            echo "Python is still reachable"; exit 1
+          fi
+          nopy "$bin" refs build --problems ZDT1,DTLZ2_3D,WFG4_3D,DTLZ5_4D --n-ref 200 --workers 2
+          nopy "$bin" refs check --problems ZDT1,DTLZ2_3D,WFG4_3D,DTLZ5_4D --n-ref 200
+          nopy "$bin" run "$RUNNER_TEMP/camp/camp.toml" --workers 2 --report "$RUNNER_TEMP/report.json"
+          cat "$RUNNER_TEMP/report.json"
+          grep -q '"pending": 0' "$RUNNER_TEMP/report.json"
+          grep -q '"left": \[\]' "$RUNNER_TEMP/report.json"
+          nopy "$bin" store check "$RUNNER_TEMP/camp/results/no_python" | tee "$RUNNER_TEMP/check.json"
+          grep -q '"records": 8' "$RUNNER_TEMP/check.json"
 
   # ── The installed package must actually be consumable ─────────────────────
   # Installing and then building a tiny project against find_package() is the
@@ -672,6 +735,16 @@ jobs:
             echo "long double differs between platforms"; bad=1
           fi
           exit $bad
+
+      # Task 17, addendum 4 §2.4: exp, log, pow and the trigonometric functions
+      # are the library's own (detmath.hpp, dm::), the same bits everywhere; the
+      # C library's are its platform's.
+      - name: "No std:: elementary functions in include/ but detmath"
+        run: |
+          if grep -rnE 'std::(exp|exp2|expm1|log|log2|log10|log1p|pow|sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|hypot|cbrt|erf|erfc|lgamma|tgamma)\(' \
+               include --include='*.hpp' | grep -v '^include/mootation/detmath'; then
+            echo "use mootation::dm (detmath.hpp) instead"; exit 1
+          fi
 
       # Task 15, §7: docs/deviations.md is gathered from the cores' headers
       # (tools/deviations.py); a header edited without running the tool

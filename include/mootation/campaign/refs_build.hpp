@@ -33,6 +33,7 @@
 
 #include "../refs/build.hpp"
 #include "../refs/sets.hpp"
+#include "../suite/instances.hpp"
 #include "engine.hpp"
 #include "references.hpp"
 #include "registry.hpp"
@@ -135,9 +136,10 @@ inline json::Value extends_of(const RegistryProblem& p, std::size_t n_ref, const
 }
 
 // registry._failing_parts: the base's Pareto-set sample (failing.SAMPLE rows;
-// WFG4's — it has no sampler — failing.wfg4_pareto_set: the k positions
-// uniform in [0, 2i], the distance variables at 0.35 * 2i, from a std::seed_seq
-// of 20261011 and the CRC-32 of "<copy>:ps"), and the rows outside the region
+// WFG4's — it has no sampler — failing.wfg4_reference_sample: the k
+// positions uniform in [0, 2i], the distance variables at 0.35 * 2i, from the
+// library's generator seeded with instances::seed of 20261011 and the CRC-32
+// of "<copy>:ps"), and the rows outside the region
 inline refs::Rows failing_kept(const RegistryProblem& p, const RegistryProblem& base, std::size_t& total)
 {
     refs::Rows S;
@@ -146,8 +148,8 @@ inline refs::Rows failing_kept(const RegistryProblem& p, const RegistryProblem& 
     } else {
         const std::size_t k = 2 * static_cast<std::size_t>(base.n_obj - 1), nv = static_cast<std::size_t>(base.n_var);
         const std::string key = p.name + ":ps";
-        std::seed_seq seq{20261011u, store::crc32_zlib(reinterpret_cast<const std::uint8_t*>(key.data()), key.size())};
-        std::mt19937 g(seq);
+        std::mt19937 g(suite::instances::seed(
+            {20261011u, store::crc32_zlib(reinterpret_cast<const std::uint8_t*>(key.data()), key.size())}));
         S = refs::rows_of(kFailSample, nv);
         for (std::size_t i = 0; i < kFailSample; ++i)
             for (std::size_t j = 0; j < nv; ++j)

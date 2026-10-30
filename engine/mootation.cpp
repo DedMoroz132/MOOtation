@@ -18,17 +18,18 @@
 // JSON, which `python -m mootation.run.campaign` reads when it hands a
 // campaign over). While it runs, <results>/_workers.txt sets the size of the
 // pool (0 drains it) and <results>/_runner.json is its heartbeat, as the
-// Python runner's. It reads the exported problem registry (`python -m
-// mootation.run.registry_export`; the newest in the reference cache's
-// registry/ folder unless --registry names one) and the cache of references
-// (`python -m mootation refs build`).
+// Python runner's. It reads the problem registry as data (the repository's
+// data/registry.json; where it looks for it: newest_registry below,
+// docs/running.md) and the cache of references (`mootation refs build`).
 //
 // `refs build` builds the cache's entries in C++ (include/mootation/campaign/
 // refs_build.hpp; reference version 5) for the problems whose samplers the
 // registry's export gives — all with an exact front by default — and names
 // the others; `refs check` lists the entries missing or old. --data is the
 // folder of the shipped fronts (_fronts/: the full fronts of DTLZ5, DTLZ6,
-// MaF6 and WFG3; MOOTATION_DATA if not given).
+// MaF6 and WFG3; _rwmop/: RCM's); MOOTATION_DATA if not given, else the
+// registry file's folder where it holds _fronts/ (beside the executable and
+// in the installation, where the build puts them).
 // ============================================================================
 
 #include <chrono>
@@ -44,12 +45,21 @@
 
 #if defined(_WIN32)
 #include <process.h>
+// kernel32's, declared here: <windows.h>'s macros (far, near, small) break
+// the algorithms' headers
+extern "C" __declspec(dllimport) unsigned long __stdcall GetModuleFileNameW(void* module, wchar_t* name,
+                                                                          unsigned long size);
 #else
 #include <unistd.h>
 #endif
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+#include <cstdint>
 
 #include <mootation/campaign/engine.hpp>
 #include <mootation/campaign/refs_build.hpp>
+#include <mootation/campaign/store_export.hpp>
 #include <mootation/campaign/store_tools.hpp>
 #include <mootation/fp_env.hpp>
 #include <mootation/version.hpp>
@@ -98,16 +108,46 @@ std::string host_name()
     return h.empty() ? "unknown" : h;
 }
 
-// the newest export in the reference cache's registry folder
+// the folder of this executable
+std::filesystem::path exe_dir()
+{
+#if defined(_WIN32)
+    std::wstring buf(32768, L'\0');
+    const unsigned long n = GetModuleFileNameW(nullptr, buf.data(), static_cast<unsigned long>(buf.size()));
+    buf.resize(n);
+    return std::filesystem::path(buf).parent_path();
+#elif defined(__APPLE__)
+    char buf[4096];
+    std::uint32_t size = sizeof buf;
+    if (_NSGetExecutablePath(buf, &size) != 0) return {};
+    std::error_code ec;
+    return std::filesystem::canonical(buf, ec).parent_path();
+#else
+    std::error_code ec;
+    return std::filesystem::read_symlink("/proc/self/exe", ec).parent_path();
+#endif
+}
+
+// The problem registry (data/registry.json of the repository, its export),
+// the first of: MOOTATION_REGISTRY; registry.json beside the executable; the
+// installation's share/mootation/registry.json; the newest full export in the
+// reference cache's registry folder (`python -m mootation.run.registry_export`;
+// not its part-*.json, the few problems `refs build` was handed). --registry
+// FILE goes before all of them.
 std::filesystem::path newest_registry()
 {
+    const std::string env = cg::detail::getenv_str("MOOTATION_REGISTRY");
+    if (!env.empty()) return mootation::store::file::path_of(env);
+    std::error_code ec;
+    const auto here = exe_dir();
+    for (const auto& p : {here / "registry.json", here.parent_path() / "share" / "mootation" / "registry.json"})
+        if (!here.empty() && std::filesystem::is_regular_file(p, ec)) return p;
     const auto dir = cg::refs_root() / "registry";
     std::filesystem::path best;
     std::filesystem::file_time_type when{};
-    std::error_code ec;
     if (std::filesystem::is_directory(dir, ec))
         for (const auto& f : std::filesystem::directory_iterator(dir)) {
-            if (f.path().extension() != ".json") continue;
+            if (f.path().extension() != ".json" || cg::detail::utf8(f.path().filename()).rfind("part-", 0) == 0) continue;
             const auto t = std::filesystem::last_write_time(f.path(), ec);
             if (best.empty() || t > when) {
                 best = f.path();
@@ -115,8 +155,10 @@ std::filesystem::path newest_registry()
             }
         }
     if (best.empty())
-        throw std::runtime_error("no exported problem registry in " + cg::detail::utf8(dir) +
-                                 " (write one with: python -m mootation.run.registry_export)");
+        throw std::runtime_error("no problem registry: none beside the executable, in the installation (share/"
+                                 "mootation/registry.json) nor in " + cg::detail::utf8(dir) +
+                                 " (give one with --registry FILE or MOOTATION_REGISTRY: the repository's "
+                                 "data/registry.json)");
     return best;
 }
 
@@ -254,7 +296,7 @@ const char* kStoreUsage =
     "usage: mootation store ls|check|repair <campaign folder>\n"
     "       mootation store compact <campaign folder> [--remove-segments] [--registry FILE]\n"
     "       mootation store merge <campaign folder> <part folder>...\n"
-    "       (export: python -m mootation.store export ...)\n";
+    "       mootation store export <campaign folder> [--csv DIR] [--files DIR] [--run KEY]...\n";
 
 int store_command(const std::vector<std::string>& args)
 {
@@ -265,7 +307,16 @@ int store_command(const std::vector<std::string>& args)
     bool remove_segments = false;
     std::filesystem::path registry;
     std::vector<std::filesystem::path> parts;
+    std::filesystem::path csv_dir, files_dir;
+    std::vector<std::string> run_keys;
     for (std::size_t k = 2; k < args.size(); ++k) {
+        if (cmd == "export" && k + 1 < args.size() && (args[k] == "--csv" || args[k] == "--files" || args[k] == "--run")) {
+            const std::string flag = args[k], v = args[++k];
+            if (flag == "--csv") csv_dir = mootation::store::file::path_of(v);
+            else if (flag == "--files") files_dir = mootation::store::file::path_of(v);
+            else run_keys.push_back(v);
+            continue;
+        }
         if (args[k] == "--remove-segments") remove_segments = true;
         else if (args[k] == "--registry" && k + 1 < args.size()) registry = mootation::store::file::path_of(args[++k]);
         else if (cmd == "merge") parts.push_back(mootation::store::file::path_of(args[k]) / cg::kStoreDir);
@@ -340,6 +391,13 @@ int store_command(const std::vector<std::string>& args)
         std::printf("{\n \"runs\": %zu,\n \"copied\": %zu\n}\n", runs, copied);
         return 0;
     }
+    if (cmd == "export") {
+        if (csv_dir.empty() && files_dir.empty()) throw std::invalid_argument("store export: --csv DIR, --files DIR or both");
+        if (!csv_dir.empty())
+            for (const auto& p : cg::export_csv(dir, csv_dir)) std::printf("%s\n", cg::detail::utf8(p).c_str());
+        if (!files_dir.empty()) std::printf("%zu runs written\n", cg::export_files(dir, files_dir, run_keys));
+        return 0;
+    }
     throw std::invalid_argument("store: unknown command " + cmd + "\n" + kStoreUsage);
 }
 
@@ -402,6 +460,9 @@ int refs_command(const std::vector<std::string>& args)
         const std::string env = cg::detail::getenv_str("MOOTATION_DATA");
         if (!env.empty()) data = mootation::store::file::path_of(env);
     }
+    std::error_code ec;
+    if (data.empty() && std::filesystem::is_directory(registry.parent_path() / "_fronts", ec))
+        data = registry.parent_path();
     opt.data.dir = data;
     opt.code_stamp = std::string("cxx ") + mootation::version() + " " + MOOTATION_GIT_COMMIT;
     opt.version = mootation::version();

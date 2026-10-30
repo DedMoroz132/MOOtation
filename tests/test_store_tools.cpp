@@ -4,7 +4,8 @@
 // every record and nothing wrong; compact makes one pack per family whose
 // records read back as the segments' (meta.json from the pack's table), then
 // removes the segments; compacting the packs again writes the same bytes;
-// merging two copies of the store finds no run that differs.
+// merging two copies of the store finds no run that differs; export writes
+// a metrics CSV a family and every run's files.
 
 #include <cstdio>
 #include <cstdlib>
@@ -16,6 +17,7 @@
 #include <vector>
 
 #include <mootation/campaign/engine.hpp>
+#include <mootation/campaign/store_export.hpp>
 #include <mootation/campaign/store_tools.hpp>
 
 namespace cg = mootation::campaign;
@@ -101,6 +103,25 @@ static int body()
     cg::compact_store(store, family_of, false, std::nullopt, 9);
     CHECK(packs(store) == first);
 
+    // export: a metrics CSV a family, gzip of the key columns first; every
+    // run's files, meta.json as the store keeps it
+    const auto exported = tmp / "export";
+    const auto csvs = cg::export_csv(store, exported / "csv");
+    CHECK(csvs.size() == 2);
+    for (const auto& p : csvs) {
+        const std::string gz = read_text(p);
+        const auto csv = mootation::npz::inflate(reinterpret_cast<const std::uint8_t*>(gz.data()) + 10, gz.size() - 18);
+        CHECK(std::string(csv.begin(), csv.end()).rfind("problem,algorithm,variant,status,seed,budget,", 0) == 0);
+    }
+    CHECK(cg::export_files(store, exported / "files") == 4);
+    cg::MetaCache export_cache;
+    for (const auto& [key, e] : cg::store_index(store)) {
+        std::string meta;
+        for (const auto& b : cg::entry_blocks(e, export_cache))
+            if (b.name == "meta.json") meta.assign(b.data.begin(), b.data.end());
+        CHECK(read_text(exported / "files" / cg::run_rel_dir(key) / "meta.json") == meta);
+    }
+
     // a copy merged in: nothing differs, nothing to copy
     const auto copy = tmp / "copy";
     std::filesystem::copy(store, copy, std::filesystem::copy_options::recursive);
@@ -112,7 +133,7 @@ static int body()
         std::printf("%d failure(s)\n", failures);
         return 1;
     }
-    std::printf("store tools: check, compact, merge\n");
+    std::printf("store tools: check, compact, merge, export\n");
     return 0;
 }
 

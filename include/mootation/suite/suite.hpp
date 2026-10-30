@@ -93,6 +93,7 @@
 #include "mw.hpp"
 #include "polygon.hpp"
 #include "rcm.hpp"
+#include "spec_numbers.hpp"
 #include "re.hpp"
 #include "wfg.hpp"
 #include "zcat.hpp"
@@ -127,7 +128,8 @@ struct Spec {
     std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta, handed over
     int bbob_fnum = 0, bbob_iid = 1;              // or drawn here: F1..F55 at that instance (bbob::biobj)
     int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
-    std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet
+    std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet (from it where empty)
+    std::vector<double> triplet;                  // DAS-CMOP: eta, zeta, gamma
     Rotation rotation;                            // the matrices drawn here (family empty: none)
 };
 
@@ -359,8 +361,52 @@ private:
     // The sizes and parameters the family and the map read, before any
     // evaluation: a spec that does not hold them is refused here, not read
     // out of bounds later.
+    // The numbers a spec no longer hands over (task 17, §2.2), computed here
+    // where it leaves them out (spec_numbers.hpp): a spec of before, which
+    // has them, is taken as it is.
+    void fill()
+    {
+        namespace nb = numbers;
+        const std::size_t M = static_cast<std::size_t>(n_obj);
+        if (kind_ == Kind::SDTLZ && s_.scale.empty() && (which_ == 1 || which_ == 2))
+            s_.scale = nb::sdtlz_scale(s_.family, M);
+        if (kind_ == Kind::CDTLZ && s_.r2 == 0.0) {
+            const double r = dtlz::cdtlz_radius(cons_, n_obj);
+            s_.r2 = r * r;
+        }
+        if (kind_ == Kind::CDTLZ && cons_ == dtlz::Cons::C2_DTLZ2 && s_.centre_m == 0.0)
+            s_.centre_m = 1.0 / std::sqrt(static_cast<double>(M));
+        if (kind_ == Kind::MaF && (which_ == 14 || which_ == 15) && s_.parts.empty())
+            for (const auto& group : nb::lsmop_parts(M))
+                for (std::size_t v : group) s_.parts.push_back(static_cast<double>(v));
+        if (kind_ == Kind::DASCMOP && s_.constants.empty() && s_.triplet.size() == 3)
+            s_.constants = nb::das_params(s_.triplet[0], s_.triplet[1], s_.triplet[2]);
+        if (kind_ == Kind::Polygon && s_.vertices.empty()) s_.vertices = nb::unit_polygon(M);
+        if (kind_ == Kind::IPolygon && s_.polygons.empty()) s_.polygons = nb::ipolygons(M);
+        // a map's optimum (dtlz_variants.shift_centres, rotated.Rotated.optimum)
+        const std::string& map = s_.map;
+        const int k = n_var - s_.first;
+        if (map == "none" || map == "rotate_zcat" || map == "rotate_wfg_035" || k < 1 || !s_.centre.empty()) return;
+        const std::size_t ku = static_cast<std::size_t>(k);
+        if (map == "rotate_wfg") {
+            // rotated.Rotated.centre_u: WFG9's optimum, 0.35 elsewhere; WFG8 none (it follows the positions)
+            if (which_ == 9) s_.centre = nb::wfg9_optimum(ku);
+            else if (which_ != 8) s_.centre.assign(ku, 0.35);
+            return;
+        }
+        std::vector<double> c = nb::shift_centres(ku);
+        if (kind_ == Kind::ZDT && which_ == 4)
+            for (double& v : c) v = 10.0 * (v - 0.5);
+        if (kind_ == Kind::Polygon)
+            for (double& v : c) v = 2.0 * v - 1.0;
+        s_.centre = c;
+        if ((map == "fold" || map == "rotate_abs") && s_.spread.empty())
+            for (double v : c) s_.spread.push_back(std::max(v, 1.0 - v));
+    }
+
     void check()
     {
+        fill();
         const int n = n_var, M = n_obj;
         if (n < 1 || M < 1) fail("no variables or objectives");
         switch (kind_) {

@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // The problem registry read in C++ — task 17, stage 5, step 4: the file
-// run/registry_export.py writes (<refs root>/registry/<code stamp>-<hash>.json):
+// run/registry_export.py writes (the repository's data/registry.json, or
+// <refs root>/registry/<code stamp>-<hash>.json):
 // every problem's sizes and box, default population and generations, version, what
 // it modifies, its references, and — for a problem of the C++ suite — the spec
 // its evaluation is built from (suite::Spec, as python/suite_module.cpp's
@@ -154,6 +155,7 @@ inline suite::Spec spec_of(const json::Value& d)
     s.parts = floats_of(d.find("parts"));
     s.k = static_cast<int>(int_of(d, "k"));
     s.constants = floats_of(d.find("constants"));
+    s.triplet = floats_of(d.find("triplet"));
     s.bbob_fnum = static_cast<int>(int_of(d, "bbob_fnum"));
     s.bbob_iid = static_cast<int>(int_of(d, "bbob_iid", 1));
     if (const json::Value* r = d.find("rotation"); r && r->kind == Kind::Object) {

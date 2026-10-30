@@ -37,6 +37,30 @@ if(MOOTATION_BUILD_PYTHON)
         VERBATIM)
 endif()
 
+# The problem registry as data (data/registry.json, task 17, section 2.2)
+# and the shipped fronts `refs build` reads (_fronts/, _rwmop/): beside the
+# executable in the build tree and in the installation's share/mootation,
+# where it looks for them.
+# A target of its own, run on every build: a change of the file alone is
+# copied too, without relinking the executable.
+set(MOOTATION_SHIPPED_FRONTS ${PROJECT_SOURCE_DIR}/python/mootation/benchmarks)
+add_custom_target(mootation_engine_data ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${PROJECT_SOURCE_DIR}/data/registry.json
+            $<TARGET_FILE_DIR:mootation_engine>/registry.json
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${MOOTATION_SHIPPED_FRONTS}/_fronts
+            $<TARGET_FILE_DIR:mootation_engine>/_fronts
+    COMMAND ${CMAKE_COMMAND} -E copy_directory ${MOOTATION_SHIPPED_FRONTS}/_rwmop
+            $<TARGET_FILE_DIR:mootation_engine>/_rwmop
+    VERBATIM)
+add_dependencies(mootation_engine_data mootation_engine)
+if(MOOTATION_INSTALL)
+    include(GNUInstallDirs)
+    install(TARGETS mootation_engine RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    install(FILES ${PROJECT_SOURCE_DIR}/data/registry.json DESTINATION ${CMAKE_INSTALL_DATADIR}/mootation)
+    install(DIRECTORY ${MOOTATION_SHIPPED_FRONTS}/_fronts ${MOOTATION_SHIPPED_FRONTS}/_rwmop
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/mootation)
+endif()
+
 if(MOOTATION_BUILD_TESTS)
     # the executable answers; the engine itself is tests/test_engine.cpp's
     add_test(NAME engine.version COMMAND mootation_engine --version)

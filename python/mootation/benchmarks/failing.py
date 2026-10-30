@@ -71,6 +71,22 @@ def wfg4_pareto_set(n: int, k: int, l: int, rng) -> np.ndarray:
     return z
 
 
+def wfg4_reference_sample(n: int, k: int, l: int, key: str) -> np.ndarray:
+    """wfg4_pareto_set drawn by the library's generator (library_rng; the C++
+    builder's, refs_build.hpp, task 17, section 2.1): the sample the reference
+    front of a failing copy of WFG4 keeps the rows of. The failure region stays
+    the one made from _rng's sample, part of the problem's definition."""
+    from .library_rng import LibraryRng, crc32, seed
+    rng = LibraryRng(seed(20261011, crc32(key)))
+    z = np.empty((n, k + l))
+    scale = 2.0 * np.arange(1, k + l + 1)
+    for i in range(n):
+        for j in range(k):
+            z[i, j] = rng.uniform01() * scale[j]
+    z[:, k:] = 0.35 * scale[k:]
+    return z
+
+
 class Region:
     """The failure region F of one problem, in normalised units."""
 

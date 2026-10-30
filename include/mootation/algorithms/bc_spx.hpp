@@ -207,7 +207,7 @@ private:
                 std::to_string(n + 1) + " different parents from the population, pop_size = " +
                 std::to_string(vault.pop_size()) + " is fewer (pass pop_size >= n + 1; the "
                 "paper's μ is floor(100 ln n) = " +
-                std::to_string(static_cast<int>(std::floor(100.0 * std::log(static_cast<double>(n))))) +
+                std::to_string(static_cast<int>(std::floor(100.0 * dm::log(static_cast<double>(n))))) +
                 ")");
     }
 

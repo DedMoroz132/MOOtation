@@ -19,8 +19,8 @@
 //                        phi(x) = x (1 + sin 3 pi x), or random records with
 //                        the corners, nondominated, checked (checked below)
 //   idtlz1, idtlz2, minus_dtlz2, sdtlz1, sdtlz2
-//                        dtlz_variants.pf_*: "k" the DTLZ2 k of minusDTLZ2,
-//                        "scale" SDTLZ's factors
+//                        dtlz_variants.pf_*: "k" the DTLZ2 k of minusDTLZ2;
+//                        SDTLZ's factors suite/spec_numbers.hpp's
 //   zdt1 .. zdt6         registry._pf_zdt* (zdt1 also ZDT4's, catZDT1's)
 //   bt_concave, bt5, bt9 bt.pf_*
 //   mop1 .. mop7         mop.pf_*
@@ -37,7 +37,9 @@
 // ============================================================================
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <limits>
 #include <random>
@@ -48,6 +50,7 @@
 #include "../io/npz.hpp"
 #include "../json.hpp"
 #include "../nondominated.hpp"
+#include "../store/pack.hpp"
 #include "../run_compute.hpp"
 #include "../run_metrics.hpp"
 #include "../suite/dascmop.hpp"
@@ -55,6 +58,7 @@
 #include "../suite/lircmop.hpp"
 #include "../suite/mmo.hpp"
 #include "../suite/polygon.hpp"
+#include "../suite/spec_numbers.hpp"
 #include "fronts_mw.hpp"
 #include "fronts_zcat.hpp"
 #include "sample.hpp"
@@ -311,7 +315,9 @@ inline Rows zdt3_image(const Rows& X)
 // before it, comes down to the earlier minimum's level (bisected too; the
 // first piece starts at 0). The n points lie on the pieces evenly by f1,
 // each piece's share of n its share of the pieces' length (the largest
-// remainders rounded up), both ends of every piece among them.
+// remainders rounded up): the first piece's from 0 to its end, every other's
+// from just past its start (the start itself is the earlier minimum's level,
+// which that minimum weakly dominates) to its end.
 struct Zdt3Piece {
     double a = 0.0, b = 0.0;
 };
@@ -389,8 +395,10 @@ inline Rows zdt3(std::size_t n)
     std::sort(rest.begin(), rest.end());
     for (std::size_t r = 0; used < n && r < rest.size(); ++r, ++used) ++count[rest[r].second];
     Rows X = rows_of(0, 1);
-    for (std::size_t i = 0; i < k; ++i)
-        for (double f1 : linspace(pieces[i].a, pieces[i].b, count[i])) push_row(X, &f1);
+    for (std::size_t i = 0; i < k; ++i) {
+        const std::vector<double> t = linspace(pieces[i].a, pieces[i].b, i == 0 ? count[i] : count[i] + 1);
+        for (std::size_t j = i == 0 ? 0 : 1; j < t.size(); ++j) push_row(X, &t[j]);
+    }
     return zdt3_image(X);
 }
 
@@ -595,17 +603,7 @@ inline Rows maf2(std::size_t M, std::size_t n)
     return F;
 }
 
-// the regular M-gon's vertices on the unit circle, vertex m at 2 pi m / M
-inline std::vector<double> unit_polygon(std::size_t M)
-{
-    std::vector<double> V(2 * M);
-    for (std::size_t m = 0; m < M; ++m) {
-        const double ang = 2.0 * dm::kPi * static_cast<double>(m) / static_cast<double>(M);
-        V[2 * m] = dm::cos(ang);
-        V[2 * m + 1] = dm::sin(ang);
-    }
-    return V;
-}
+using suite::numbers::unit_polygon;
 
 // registry._point_in_poly (the ray test; V: x0 y0 x1 y1 ...)
 inline bool point_in_poly(double px, double py, const std::vector<double>& V)
@@ -667,22 +665,7 @@ inline Rows edge_line_distances(const Rows& P, const std::vector<double>& V)
     return F;
 }
 
-// polygon_ishibuchi: the four regular M-gons of radius 8 about (25, 25),
-// (75, 25), (25, 75), (75, 75), vertex m at 2 pi m / M + pi / 2
-inline std::vector<std::vector<double>> ipolygons(std::size_t M)
-{
-    static const double centres[4][2] = {{25.0, 25.0}, {75.0, 25.0}, {25.0, 75.0}, {75.0, 75.0}};
-    std::vector<std::vector<double>> out(4, std::vector<double>(2 * M));
-    for (std::size_t m = 0; m < M; ++m) {
-        const double ang = 2.0 * dm::kPi * static_cast<double>(m) / static_cast<double>(M) + dm::kPi / 2.0;
-        const double bx = 8.0 * dm::cos(ang), by = 8.0 * dm::sin(ang);
-        for (int p = 0; p < 4; ++p) {
-            out[static_cast<std::size_t>(p)][2 * m] = bx + centres[p][0];
-            out[static_cast<std::size_t>(p)][2 * m + 1] = by + centres[p][1];
-        }
-    }
-    return out;
-}
+using suite::numbers::ipolygons;
 
 // polygon_ishibuchi.make_pf: n points of the first polygon (by rejection, a
 // std::mt19937 seeded 12345, x then y), f_i the distance to the nearest of the
@@ -902,16 +885,11 @@ struct DasParams {
     double b = 0.0, d = 0.0, e = 0.0, r = 0.0;
 };
 
-// dascmop.params: (b, d, e, r) of the triplet (eta, zeta, gamma), D = 0.5
+// dascmop.params: (b, d, e, r) of the triplet (suite/spec_numbers.hpp)
 inline DasParams das_params(double eta, double zeta, double gamma)
 {
-    constexpr double kD = 0.5;
-    DasParams p;
-    p.b = 2.0 * eta - 1.0;
-    p.d = zeta == 0.0 ? 0.0 : kD;
-    p.e = zeta == 0.0 ? std::numeric_limits<double>::infinity() : kD - dm::log(zeta);
-    p.r = gamma / 2.0;
-    return p;
+    const std::vector<double> v = suite::numbers::das_params(eta, zeta, gamma);
+    return DasParams{v[0], v[1], v[2], v[3]};
 }
 
 // dascmop.constraints_c of the row f (x1, x2, g its point's): every c >= -1e-12
@@ -1348,12 +1326,12 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
         return F;
     }
     if (kind == "sdtlz1" || kind == "sdtlz2") {
-        const json::Value& scale = field(spec, "scale");
+        const std::vector<double> scale = suite::numbers::sdtlz_scale(kind == "sdtlz1" ? "SDTLZ1" : "SDTLZ2", M());
         Rows F = kind == "sdtlz1" ? simplex(M(), n) : sphere_oct(M(), n);
         if (kind == "sdtlz1")
             for (double& v : F.v) v *= 0.5;
         for (std::size_t i = 0; i < F.n; ++i)
-            for (std::size_t j = 0; j < F.m; ++j) F.row(i)[j] *= number(scale.items[j]);
+            for (std::size_t j = 0; j < F.m; ++j) F.row(i)[j] *= scale[j];
         return F;
     }
     if (kind == "zdt1" || kind == "bt_concave" || kind == "mop1")
@@ -1521,6 +1499,30 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
         const json::Value& t = field(spec, "triplet");
         return dascmop(static_cast<int>(count(spec, "i")), number(t.items.at(0)), number(t.items.at(1)),
                        number(t.items.at(2)), n);
+    }
+    if (kind == "text") {
+        // a front kept as text, a row a line (np.loadtxt: '#' starts a comment)
+        const auto path = data.dir / store::file::path_of(field(spec, "file").s);
+        std::ifstream in(path, std::ios::binary);
+        if (!in) throw std::runtime_error("cannot read " + path.string());
+        Rows F;
+        std::string line;
+        while (std::getline(in, line)) {
+            const auto hash = line.find('#');
+            if (hash != std::string::npos) line.resize(hash);
+            std::vector<double> row;
+            const char* p = line.c_str();
+            char* end = nullptr;
+            for (double v = std::strtod(p, &end); end != p; v = std::strtod(p, &end)) {
+                row.push_back(v);
+                p = end;
+            }
+            if (row.empty()) continue;
+            if (F.m == 0) F.m = row.size();
+            if (row.size() != F.m) throw std::runtime_error(path.string() + ": rows of other lengths");
+            push_row(F, row.data());
+        }
+        return F;
     }
     if (kind == "full") {
         const auto path = data.dir / "_fronts" / field(spec, "file").s;

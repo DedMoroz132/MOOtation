@@ -780,7 +780,8 @@ def zdt3_pieces() -> tuple:
 def _pf_zdt3(n: int) -> np.ndarray:
     """ZDT3's front: n points on its pieces (zdt3_pieces), evenly by f1, each
     piece's share of n its share of their length (largest remainders up, two
-    points a piece at least), both ends of every piece among them."""
+    points a piece at least): the first piece from 0, every other from just
+    past its start (where the earlier minimum weakly dominates it)."""
     pieces = zdt3_pieces()
     total = sum(b - a for a, b in pieces)
     shares = [n * (b - a) / total for a, b in pieces]
@@ -792,7 +793,8 @@ def _pf_zdt3(n: int) -> np.ndarray:
             break
         count[i] += 1
         used += 1
-    f1 = np.concatenate([np.linspace(a, b, c) for (a, b), c in zip(pieces, count)])
+    f1 = np.concatenate([np.linspace(a, b, c) if i == 0 else np.linspace(a, b, c + 1)[1:]
+                         for i, ((a, b), c) in enumerate(zip(pieces, count))])
     return np.column_stack([f1, 1.0 - np.sqrt(f1) - f1 * np.sin(10.0 * math.pi * f1)])
 
 
@@ -2535,7 +2537,14 @@ REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
 # (C++ suite/instances.hpp, bbob.hpp; Python library_rng.py), other instances
 # of those problems: REFERENCE_CHANGED[4] and PROBLEM_CHANGED[4], below the
 # problem versions.
-REFERENCE_VERSION = 4
+# Version 5 (2026-10-30, task 17, section 2.1, addendum 6): the references are
+# built in C++ (include/mootation/refs; Python's samplers below are the
+# cross-check): the thinning and every random part of a sampler draw from the
+# library's generator, not NumPy's default_rng; ZDT3's front lies on its
+# pieces, their ends computed; the last step of every front is a
+# deterministic nondominated filter; Polygon, MaF8 and MaF9 take their exact
+# frame (polygon.exact_frame). Every front changes: REFERENCE_CHANGED[5].
+REFERENCE_VERSION = 5
 REFERENCE_CHANGED[3] = frozenset({"IPolygon_3D", "IPolygon_4D", "IPolygon_8D"})
 # the problems whose DEFINITION changed with a version: their older runs
 # answered another problem and are run again, not recomputed
@@ -2723,10 +2732,17 @@ def _failing_parts(key: str):
         b = PROBLEMS[base]
         if callable(b.pareto_set):
             S = np.asarray(b.pareto_set(_fail.SAMPLE), float)
+            S_ref = S
         else:                                   # WFG4
             k = 2 * (b.n_obj - 1)
             S = _fail.wfg4_pareto_set(_fail.SAMPLE, k, b.n_vars - k, _fail._rng(key + ":ps"))
+            # the reference's own sample, the C++ builder's (reference version 5)
+            S_ref = _fail.wfg4_reference_sample(_fail.SAMPLE, k, b.n_vars - k, key + ":ps")
         evaluate, region, kept = _fail.make(b, share, kind, S)
+        if S_ref is not S:
+            lo = np.array([v[0] for v in b.bounds], float)
+            hi = np.array([v[1] for v in b.bounds], float)
+            kept = S_ref[~region.inside((S_ref - lo) / (hi - lo))]
         _FAIL_REGIONS[key] = region
         p = PROBLEMS[key]
         exact = len(kept) == len(S) and b.front_exact
@@ -2876,6 +2892,15 @@ _NEW_INSTANCES = frozenset([name for name, r in ROTATED.items() if r.rotate]
 for _name in sorted(_NEW_INSTANCES) + ["MaF8_8D", "MaF9_8D", "MaF15_3D", "MaF15_5D", "MaF15_8D",
                                        "MaF15_15D"]:
     PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
+# 2026-10-30 (task 17, section 2.2): the numbers the specs held (the shift
+# centres, SDTLZ's factors, C-DTLZ's radii, the polygons' vertices, DAS-CMOP's
+# constants, MaF14's and MaF15's parts, the rotated problems' optimum) are
+# computed by C++ (suite/spec_numbers.hpp): bit for bit those of before on
+# 1 242 of the suite's 1 250 problems; rWFG9's optimum (wfg9_optimum, its sums
+# left to right and dm::pow, where Python's sum compensates and pow is the C
+# library's) differs in the last bits: one version more.
+for _name in sorted(n for n, r in ROTATED.items() if r.family == "WFG9"):
+    PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
 PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
                         for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
                         for level in _noisy.LEVELS})
@@ -2891,6 +2916,7 @@ _COPIES_OF_NEW = frozenset(
        for share in _fail.SHARES for kind in _fail.KINDS])
 REFERENCE_CHANGED[4] = _NEW_INSTANCES | _COPIES_OF_NEW
 PROBLEM_CHANGED[4] = _NEW_INSTANCES | _COPIES_OF_NEW
+REFERENCE_CHANGED[5] = frozenset(n for n, p in PROBLEMS.items() if callable(p.pareto_front))
 
 
 def problem_version(name: str) -> int:
@@ -3067,3 +3093,53 @@ def families() -> dict:
     for n in sorted(PROBLEMS):
         out.setdefault(family(n), []).append(n)
     return out
+
+
+# ── the references from C++ (task 17, section 2.1) ─────────────────────────
+# Where the extension is built, a problem's pareto_front and pareto_set are
+# the C++ builders' (include/mootation/refs; the samplers front_specs.py
+# names), the same arrays the cache of references holds and `mootation refs
+# build` writes; the Python samplers above move to p.reference
+# ("pareto_front", "pareto_set"), the cross-check (TASK17's refs_check.py).
+# Without the extension the Python samplers stay.
+def _cxx_sampler(fn, spec: str, data):
+    """pareto_front / pareto_set of a spec: once per n and process, a copy each call."""
+    @functools.lru_cache(maxsize=None)
+    def rows(n: int) -> np.ndarray:
+        A = np.asarray(fn(spec, int(n), data) if data is not None else fn(spec, int(n)), float)
+        A.setflags(write=False)
+        return A
+
+    def call(n: int = 1000) -> np.ndarray:
+        return rows(int(n)).copy()
+    return call
+
+
+def _cxx_references() -> None:
+    try:
+        from .. import _core
+    except ImportError:
+        return
+    if not hasattr(_core, "refs_front"):
+        return
+    from .front_specs import front_spec, set_spec
+    data = str(_Path(__file__).resolve().parent)
+    specs = {}
+    for name, p in PROBLEMS.items():           # every spec first: a copy reads its base's sampler
+        fs = front_spec(name) if callable(p.pareto_front) else None
+        ss = set_spec(name) if callable(p.pareto_set) else None
+        if fs is not None or ss is not None:
+            specs[name] = (fs, ss)
+    for name, (fs, ss) in specs.items():
+        p = PROBLEMS[name]
+        ref = dict(p.reference or {})
+        if fs is not None:
+            ref["pareto_front"] = p.pareto_front
+            object.__setattr__(p, "pareto_front", _cxx_sampler(_core.refs_front, _json.dumps(fs), data))
+        if ss is not None:
+            ref["pareto_set"] = p.pareto_set
+            object.__setattr__(p, "pareto_set", _cxx_sampler(_core.refs_set, _json.dumps(ss), None))
+        object.__setattr__(p, "reference", ref)
+
+
+_cxx_references()

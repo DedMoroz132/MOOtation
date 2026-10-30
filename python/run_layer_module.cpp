@@ -9,6 +9,8 @@
 // ============================================================================
 
 #include <cstddef>
+#include <map>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -27,6 +29,7 @@
 #include <mootation/campaign/job_run.hpp>
 #include <mootation/campaign/jobs.hpp>
 #include <mootation/campaign/references.hpp>
+#include <mootation/campaign/refs_build.hpp>
 #include <mootation/campaign/measure.hpp>
 #include <mootation/campaign/registry.hpp>
 #include <mootation/campaign/run_store.hpp>
@@ -189,6 +192,62 @@ void bind_run_layer(py::module_& m)
           },
           py::arg("ref"), py::arg("ideal"), py::arg("nadir"), py::arg("pop"),
           "cover.igdp_floors in C++ at one population: (greedy, dss, rows, distinct).");
+    m.def("refs_load_entry",
+          [](const std::string& path) {
+              namespace cp = mootation::campaign;
+              const cp::ReferenceEntry e = cp::load_entry(mootation::store::file::path_of(path));
+              py::dict arrays;
+              auto put = [&arrays](const char* name, const std::optional<cp::Matrix>& m) {
+                  if (!m) return;
+                  std::vector<py::ssize_t> shape;
+                  for (auto s : m->shape) shape.push_back(static_cast<py::ssize_t>(s));
+                  py::array_t<double> a(shape);
+                  std::copy(m->values.begin(), m->values.end(), a.mutable_data());
+                  arrays[name] = a;
+              };
+              put("ideal", e.ideal);
+              put("nadir", e.nadir);
+              put("ref", e.ref);
+              put("ref3", e.ref3);
+              put("pset", e.pset);
+              return py::make_tuple(arrays, mootation::json::dump(e.meta));
+          },
+          py::arg("path"),
+          "An entry of the cache of references (.mrf, or an .npz of before): ({name: array}, meta's JSON).");
+    m.def("refs_build_cache",
+          [](const std::string& registry, const std::vector<std::string>& names, std::size_t n_ref,
+             std::size_t workers, bool rebuild, bool extend, const std::string& data_dir,
+             const std::string& code_stamp, const std::string& version, py::object log) {
+              namespace cp = mootation::campaign;
+              const cp::ProblemRegistry preg = cp::load_registry(mootation::store::file::path_of(registry));
+              cp::RefsBuildOptions opt;
+              opt.n_ref = n_ref;
+              opt.workers = workers;
+              opt.rebuild = rebuild;
+              opt.extend = extend;
+              opt.data.dir = mootation::store::file::path_of(data_dir);
+              opt.code_stamp = code_stamp;
+              opt.version = version;
+              opt.pid = static_cast<long long>(py::module_::import("os").attr("getpid")().cast<long long>());
+              std::vector<std::string> lines;
+              std::mutex lock;
+              opt.log = [&lines, &lock](const std::string& line) {
+                  std::lock_guard<std::mutex> g(lock);
+                  lines.push_back(line);
+              };
+              std::map<std::string, std::string> got;
+              {
+                  py::gil_scoped_release unlock;
+                  got = cp::build_references(preg, names, opt);
+              }
+              if (!log.is_none())
+                  for (const auto& line : lines) log(line);
+              return got;
+          },
+          py::arg("registry"), py::arg("names"), py::arg("n_ref"), py::arg("workers"), py::arg("rebuild"),
+          py::arg("extend"), py::arg("data_dir"), py::arg("code_stamp"), py::arg("version"), py::arg("log") = py::none(),
+          "The cache's entries of `names` built in C++ (include/mootation/campaign/refs_build.hpp): "
+          "{name: built | ok | failed: ... | not built: why}.");
 
     // ── the subset selection (archive.py) ──────────────────────────────────
     m.def("almost_dominated",

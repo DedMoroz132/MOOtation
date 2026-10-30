@@ -497,7 +497,7 @@ int main()
         check(refused(spec("DOC1", 7, 2)), "DOC1 at seven variables");
         check(refused(spec("RE21", 5, 2)), "RE21 at five variables");
         check(refused(spec("MMF1", 3, 2)), "MMF1 at three variables");
-        check(refused(spec("IPolygon", 2, 3)), "IPolygon without its polygons");
+        check(!refused(spec("IPolygon", 2, 3)), "IPolygon builds its polygons itself (spec_numbers.hpp)");
         check(refused(spec("LIR-CMOP15", 30, 2)), "LIR-CMOP15: there is none");
     }
 

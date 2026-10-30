@@ -98,12 +98,14 @@ inline std::vector<std::int64_t> budget_grid(std::int64_t limit, const std::vect
 }
 
 // campaign.log_grid: round(10 ** (j / per_decade)) up to limit, without repeats
+// (the library's pow: the same integers as the C library's on every grid up
+// to 10^9 and 100 a decade, checked)
 inline std::vector<std::int64_t> log_grid(std::int64_t limit, std::int64_t per_decade)
 {
     std::vector<std::int64_t> out;
     for (std::int64_t j = 0;; ++j) {
         const std::int64_t v = static_cast<std::int64_t>(
-            std::nearbyint(std::pow(10.0, static_cast<double>(j) / static_cast<double>(per_decade))));
+            std::nearbyint(dm::pow(10.0, static_cast<double>(j) / static_cast<double>(per_decade))));
         if (v > limit) return out;
         if (out.empty() || v > out.back()) out.push_back(v);
     }

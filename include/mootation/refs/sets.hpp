@@ -28,6 +28,8 @@
 #include <string>
 #include <vector>
 
+#include "../suite/maf.hpp"
+#include "../suite/spec_numbers.hpp"
 #include "fronts.hpp"
 
 namespace mootation::refs {
@@ -78,12 +80,19 @@ inline Rows cube_positions(std::size_t d, std::size_t n)
     return P;
 }
 
-// "rest" of a spec: one value for every variable, or one each
-inline std::vector<double> rest_of(const json::Value& spec, std::size_t k)
+// "rest" of a spec: one value for every variable, one each, or "shift": the
+// shifted problems' optimum
+inline std::vector<double> rest_of(const json::Value& spec, std::size_t k, bool zdt4 = false)
 {
     const json::Value& r = field(spec, "rest");
     std::vector<double> out(k);
-    if (r.kind == json::Value::Kind::Array) {
+    if (r.kind == json::Value::Kind::String && r.s == "shift") {
+        // the shifted problems' optimum (dtlz_variants.shift_centres; shiftZDT4's
+        // scaled to [-5, 5], shifted.zdt_centres)
+        out = suite::numbers::shift_centres(k);
+        if (zdt4)
+            for (double& v : out) v = 10.0 * (v - 0.5);
+    } else if (r.kind == json::Value::Kind::Array) {
         if (r.items.size() != k) throw std::invalid_argument("a set's rest of another length than its variables");
         for (std::size_t j = 0; j < k; ++j) out[j] = number(r.items[j]);
     } else {
@@ -110,51 +119,9 @@ inline Rows columns(const Rows& F, std::size_t k)
     return P;
 }
 
-// dtlz_variants.shift_centres: c_i = 1/2 + d_i (odd i), 1/2 - d_i (even), d_i
-// = 0.15 + 0.2 frac(i phi), i = 1..k
-inline std::vector<double> shift_centres(std::size_t k)
-{
-    const double phi = (std::sqrt(5.0) - 1.0) / 2.0;
-    std::vector<double> c(k);
-    for (std::size_t i = 1; i <= k; ++i) {
-        const double v = static_cast<double>(i) * phi;
-        const double d = 0.15 + 0.2 * (v - std::floor(v));
-        c[i - 1] = 0.5 + (i % 2 == 1 ? d : -d);
-    }
-    return c;
-}
-
-// rotated._b_param_root: the y with b_param(y, u) = 0.35
-inline double b_param_root(double u)
-{
-    constexpr double kA = 0.98 / 49.98, kB = 0.02, kC = 50.0;
-    const double v = kA - (1.0 - 2.0 * u) * std::abs(std::floor(0.5 - u) + kA);
-    return dm::pow(0.35, 1.0 / (kB + (kC - kB) * v));
-}
-
-// rotated.wfg8_optimum (the sums one after another, as suite.hpp's)
-inline std::vector<double> wfg8_optimum(std::vector<double> y, std::size_t l)
-{
-    const std::size_t positions = y.size();
-    for (std::size_t j = 0; j < l; ++j) {
-        double s = 0.0;
-        for (double v : y) s = s + v;
-        y.push_back(b_param_root(s / static_cast<double>(y.size())));
-    }
-    return std::vector<double>(y.begin() + static_cast<std::ptrdiff_t>(positions), y.end());
-}
-
-// rotated.wfg9_optimum: the last first
-inline std::vector<double> wfg9_optimum(std::size_t l)
-{
-    std::vector<double> y{0.35};
-    for (std::size_t j = 1; j < l; ++j) {
-        double s = 0.0;
-        for (double v : y) s = s + v;
-        y.insert(y.begin(), b_param_root(s / static_cast<double>(y.size())));
-    }
-    return y;
-}
+using suite::numbers::shift_centres;
+using suite::numbers::wfg8_optimum;
+using suite::numbers::wfg9_optimum;
 
 // registry._register_rotated's _ps: the base's Pareto set with the distance
 // block at the rotated problem's optimum (rotated.Rotated.optimum)
@@ -204,6 +171,44 @@ inline Rows rotated_set(const std::string& family, std::size_t M, std::size_t nv
     return fill(cube_positions(M - 1, n), nv, shift_centres(nv - M + 1));   // DTLZ, MaF
 }
 
+using suite::numbers::lsmop_parts;
+
+// maf.ps_lsmop: the positions over [0, 1]^(M-1) (MaF14's x_1 scaled to its
+// largest value at which every Rosenbrock subcomponent reaches z = 1), every
+// subcomponent at its optimum z (1 for Rosenbrock, MaF14's even groups; else
+// 0), x_i = l_i + (z + x_1 (u_i - l_i)) / a_i, kept in the box
+inline Rows lsmop_set(std::size_t M, int which, std::size_t n)
+{
+    const std::vector<double> link = suite::maf::lsmop_link(static_cast<int>(M), which);
+    const std::size_t ns = link.size() / 3, D = 20 * M;
+    std::vector<double> z(ns, 0.0);
+    double x1_max = 1.0;
+    std::size_t at = 0;
+    const auto parts = lsmop_parts(M);
+    for (std::size_t k = 0; k < parts.size(); ++k) {
+        const std::size_t start = at;
+        for (std::size_t s : parts[k]) {
+            if (which == 14 && k % 2 == 1 && s >= 2)
+                for (std::size_t i = at; i < at + s; ++i) x1_max = std::min(x1_max, link[3 * i] - 1.0 / link[3 * i + 2]);
+            at += s;
+        }
+        if (which == 14 && k % 2 == 1)
+            for (std::size_t i = start; i < at; ++i) z[i] = 1.0;
+    }
+    Rows P = cube_positions(M - 1, n);
+    if (which == 14)
+        for (std::size_t i = 0; i < P.n; ++i) P.row(i)[0] *= x1_max;
+    Rows X = rows_of(P.n, D);
+    for (std::size_t r = 0; r < P.n; ++r) {
+        std::copy(P.row(r), P.row(r) + P.m, X.row(r));
+        for (std::size_t i = 0; i < ns; ++i) {
+            const double a = link[3 * i], l = link[3 * i + 1], w = link[3 * i + 2];
+            X.row(r)[M - 1 + i] = std::min(l + (z[i] + P.row(r)[0] * w) / a, l + w);
+        }
+    }
+    return X;
+}
+
 }   // namespace detail
 
 inline Rows pareto_set(const json::Value& spec, std::size_t n)
@@ -221,6 +226,7 @@ inline Rows pareto_set(const json::Value& spec, std::size_t n)
         }
         return X;
     }
+    if (kind == "lsmop") return lsmop_set(count(spec, "M"), static_cast<int>(count(spec, "which")), n);
     if (kind == "rotated") return rotated_set(field(spec, "family").s, count(spec, "M"), count(spec, "n_vars"), n);
     if (kind == "mmo" || kind == "polygon" || kind == "ipolygon") {
         // the suite's own samplers (suite/mmo.hpp, suite/polygon.hpp)
@@ -316,7 +322,7 @@ inline Rows pareto_set(const json::Value& spec, std::size_t n)
         if (base == "ZDT3") x1 = columns(zdt3(n), 1);
         else
             for (double v : linspace(0.0, 1.0, n)) push_row(x1, &v);
-        return fill(x1, nv, rest_of(spec, nv - 1));
+        return fill(x1, nv, rest_of(spec, nv - 1, base == "ZDT4"));
     }
     if (kind == "sch") {
         Rows X = rows_of(0, 1);

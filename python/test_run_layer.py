@@ -1569,7 +1569,8 @@ def the_registry_exported_builds_the_same_problems():
     from mootation.benchmarks.registry import PROBLEMS
     from mootation.run.registry_export import entry
     e = entry("shiftDTLZ2_3D")
-    assert e["spec"]["map"] == "cyclic" and len(e["spec"]["centre"]) == 10, e["spec"]
+    # the centres are C++'s to compute (suite/spec_numbers.hpp): not in the spec
+    assert e["spec"]["map"] == "cyclic" and "centre" not in e["spec"], e["spec"]
     x = [0.3] * e["n_var"]
     assert _core.Native(e["spec"]).evaluate(x) == PROBLEMS["shiftDTLZ2_3D"].evaluate(x)
     assert entry("catZDT1")["typed"] and entry("DTLZ2_3D")["shared_reference"]
@@ -4748,7 +4749,7 @@ def mw_matches_pymoo():
 def mw_fronts_are_feasible_non_dominated_and_framed():
     """Every MW reference front is feasible (to 1e-12: much of it lies on
     the constraints) and mutually non-dominated, its extremes the registered
-    frame (mw.frame, to 1e-9), MW11's isolated point (1, 1) on it; the Pareto
+    frame (mw.frame, to 1e-9), MW11's isolated point (1, 1) in its sample; the Pareto
     sets, where the front lies at g = 1, are feasible, at g = 1 and on the
     front. 10^4 random points of every box, with x1 on its bound for a tenth
     (reading MW-3), give finite values (task 6, item 5)."""
@@ -4777,7 +4778,9 @@ def mw_fronts_are_feasible_non_dominated_and_framed():
         R[:1000, 0] = mw.upper(name)
         for x in R:
             assert np.isfinite(p.evaluate(list(x))).all() and np.isfinite(p.constraints(list(x))).all(), key
-    F = get("MW11").pareto_front(1000)
+    # the isolated point is in the sample; the thinning to n (_exactly_n)
+    # keeps the extremes of each objective, not it
+    F = mw.front("MW11", 2, 1000, None, None)
     assert np.min(np.abs(F - [1.0, 1.0]).max(axis=1)) == 0.0
 
 
@@ -11494,7 +11497,6 @@ def a_suite_problem_refuses_a_spec_that_does_not_fit_and_pickles():
                 {"family": "DOC1", "n_var": 7, "n_obj": 2},
                 {"family": "RE21", "n_var": 5, "n_obj": 2},
                 {"family": "MMF1", "n_var": 3, "n_obj": 2},
-                {"family": "IPolygon", "n_var": 2, "n_obj": 3},
                 {"family": "Polygon", "n_var": 10, "n_obj": 3, "vertices": [1.0, 0.0]},
                 # task 17, stage 5: BT, MOP and the registered RCM problems
                 {"family": "BT1", "n_var": 10, "n_obj": 2},
@@ -11959,7 +11961,8 @@ gens = 0
                 roots[mode] = C.out_root(cfg, spec)
                 for job in C.expand_jobs(cfg, spec):
                     assert C.run_job(job, roots[mode], spec, quiet=True) == "done", job
-            assert _same_run_files(roots["auto"], roots["off"]) == [], grid
+            differ = _same_run_files(roots["auto"], roots["off"])
+            assert differ == [], (grid, differ)
             for mode, want in (("auto", True), ("off", False)):
                 meta = json.loads((roots[mode] / "rDTLZ1_3D_i2" / "moead_de" / "run_1" /
                                    "meta.json").read_text(encoding="utf-8"))

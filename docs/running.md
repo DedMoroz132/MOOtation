@@ -342,6 +342,14 @@ where it was BLAS's product. With the C library's `pow` instead, the C++ code
 gives `wfg.py`'s values bit for bit but where that `pow` itself differs from
 CPython's `**` in the last bit (72 in 200 000 on MSVC).
 
+Task 17, section 2.2 (2026-10-30): the numbers the specs of the suite's
+problems held from Python (the shift centres, SDTLZ's factors, C-DTLZ's radii,
+the polygons' vertices, DAS-CMOP's constants, MaF14's and MaF15's parts, the
+rotated problems' optimum) are computed in C++
+(`include/mootation/suite/spec_numbers.hpp`): the same bits on every problem
+but rWFG9, whose optimum differs in the last bits: version 4 of itself now
+(3 since its rotation was drawn by the library's generator).
+
 Stage 3a of task 17 (2026-10-23) moved the constrained, multimodal and
 real-world families: DAS-CMOP1–9, LIR-CMOP1–14, MW1–14, DOC1–9, Polygon with
 rcPolygon and c0Polygon, IPolygon, SYM-PART, Omni-test, MMF1–15, RE and CRE.
@@ -1968,7 +1976,11 @@ python -m mootation.run.campaign c.toml --pooled-reference --workers 8      # ag
   metrics were measured against (`reference_version` and `reference_rows` in
   `meta.json`; the registry's `REFERENCE_VERSION`, version 2 since
   2026-09-29: distinct rows, exactly `n_ref` of them where the sampler can
-  give as many, WFG1 and WFG2 without the aliasing grid, a new IPolygon). A run
+  give as many, WFG1 and WFG2 without the aliasing grid, a new IPolygon;
+  version 5 since 2026-10-30: the references built in C++, their random parts
+  and the thinning drawn by the library's generator, ZDT3 on its computed
+  pieces, every front's last step a deterministic nondominated filter, the
+  exact frame of Polygon, MaF8 and MaF9). A run
   measured against an older version, on a problem whose reference changed since
   (`REFERENCE_CHANGED`), is measured again from its saved answers — `final.csv`,
   `final_archive.csv.gz`, the archive checkpoints in `archive_at.npz`, the
@@ -2176,9 +2188,28 @@ from the process's fields (`python` is null, `platform` names the engine)
 and the times — and keeps the same `_workers.txt` and `_runner.json`, so the
 TUI, `--list`, `store` and `report` read its campaigns as they read
 Python's. Its pool is threads in one process, with no import per worker.
-It needs the exported problem registry (`python -m
-mootation.run.registry_export`, or `--registry FILE`) and the cache of
-references built beforehand (`python -m mootation refs build`).
+It needs the problem registry as data and the cache of references built
+beforehand (`<build>/engine/mootation refs build`, or `python -m mootation
+refs build`, which hands the building to the same C++ code). The registry
+is the repository's `data/registry.json` (`python -m
+mootation.run.registry_export --repo` writes it; a CI test fails, naming
+that command, when it is behind the code). `run` and `refs` take the first
+of:
+
+1. `--registry FILE`;
+2. the environment variable `MOOTATION_REGISTRY`;
+3. `registry.json` beside the executable (the build copies
+   `data/registry.json` there, and into `mootation/bin/` beside the Python
+   package with `MOOTATION_BUILD_PYTHON=ON`);
+4. `share/mootation/registry.json` of the installation (`cmake --install`
+   puts the executable in `bin/` and the file there);
+5. the newest export in the reference cache's `registry/` folder
+   (`python -m mootation.run.registry_export` without `--repo`; not the
+   `part-*.json` files, the few problems a Python `refs build` hands over).
+
+No Python is needed for either: a clean machine with the built executable
+and its `registry.json` runs `refs build` and then `run` (the CI job
+"engine without Python" does that).
 
 It runs every problem of the registry: the C++ suite's (with integer,
 discrete, binary and categorical variables), their failing and noisy copies,
