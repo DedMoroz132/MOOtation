@@ -65,6 +65,7 @@ suite::bbob::Function bbob_of(const py::handle& o)
     f.R = flat_of(d, "R");
     f.Q = flat_of(d, "Q");
     f.l10 = flat_of(d, "l10");
+    f.lam = flat_of(d, "lam");
     f.sign = flat_of(d, "sign");
     f.w = flat_of(d, "w");
     f.C = flat_of(d, "C");
@@ -82,6 +83,7 @@ py::dict dict_of(const suite::bbob::Function& f)
     d["R"] = f.R;
     d["Q"] = f.Q;
     d["l10"] = f.l10;
+    d["lam"] = f.lam;
     d["sign"] = f.sign;
     d["w"] = f.w;
     d["C"] = f.C;
@@ -113,6 +115,7 @@ suite::Spec spec_of(const py::dict& d)
     s.constants = flat_of(d, "constants");
     if (d.contains("bbob_fnum")) s.bbob_fnum = d["bbob_fnum"].cast<int>();
     if (d.contains("bbob_iid")) s.bbob_iid = d["bbob_iid"].cast<int>();
+    if (d.contains("bbob_fid")) s.bbob_fid = d["bbob_fid"].cast<int>();
     if (d.contains("rotation") && !d["rotation"].is_none()) {
         const py::dict r = d["rotation"].cast<py::dict>();
         s.rotation.family = r["family"].cast<std::string>();
@@ -150,6 +153,7 @@ py::dict dict_of(const suite::Spec& s)
     d["constants"] = s.constants;
     d["bbob_fnum"] = s.bbob_fnum;
     d["bbob_iid"] = s.bbob_iid;
+    d["bbob_fid"] = s.bbob_fid;
     if (!s.rotation.family.empty()) {
         py::dict r;
         r["family"] = s.rotation.family;
@@ -228,7 +232,8 @@ void bind_suite(py::module_& m)
     py::class_<suite::Native, std::shared_ptr<suite::Native>>(m, "Native",
         "A benchmark problem of the C++ suite (include/mootation/suite): ZDT, DTLZ and its "
         "variants, C-DTLZ, MaF, ZCAT, WFG and the shifts and rotations over them, bbob-biobj and "
-        "bbob-biobj-mixint, the verification set, DAS-CMOP, LIR-CMOP, MW, DOC, Polygon and "
+        "bbob-biobj-mixint, bbob (one objective, f1-f24), the verification set, DAS-CMOP, LIR-CMOP, "
+        "MW, DOC, Polygon and "
         "IPolygon, SYM-PART, Omni-test, MMF, RE and CRE, made from the "
         "spec benchmarks/native.py builds. Its values are NumPy's bit for bit, where NumPy's "
         "sin, cos, exp, log and pow are the C library's (benchmarks/_rows.py, agrees) and, for "

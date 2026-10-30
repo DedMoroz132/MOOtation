@@ -890,6 +890,47 @@ def bbob_functions_reach_their_own_optimum():
 
 
 @test
+def bbob_all_24_in_cpp_as_in_python():
+    """bbob, one objective (task 18, stage 2): the suite's family "bbob" draws
+    the instance bbob.py draws, and on the same instance gives bbob.py's
+    values; f(x_opt) = f_opt.
+
+    The instances agree to the last bits of the rotations (two Householder QRs
+    in their own orders), and the values on C++'s instance to 1e-12 of their
+    scale (the library's pow, sin and cos against the C library's).
+    """
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    _core = _core_with("Native")
+    if _core is None:
+        print("    (skipped: no compiled suite)"); return
+    import numpy as np
+    from mootation.benchmarks import bbob
+    for fid in range(1, 25):
+        for D in (2, 5, 20):
+            nat = _core.Native({"family": "bbob", "n_var": D, "n_obj": 1, "bbob_fid": fid, "bbob_iid": 2})
+            fc = nat.spec["bbob"][0]
+            s = bbob.instance(fid, 2, D)
+            assert np.allclose(fc["x_opt"], s.x_opt, rtol=0.0, atol=1e-13) and fc["f_opt"] == s.f_opt, (fid, D)
+            for key in ("R", "Q"):
+                if getattr(s, key) is not None:
+                    M = np.asarray(fc[key]).reshape(D, D)
+                    assert np.allclose(M, getattr(s, key), rtol=0.0, atol=1e-14), (fid, D, key)
+                    setattr(s, key, M)                      # from here on, C++'s instance
+            s.x_opt = np.asarray(fc["x_opt"])
+            if fid in (21, 22):
+                k = len(fc["w"])
+                assert np.allclose(fc["y"], s.peaks["y"].ravel(), rtol=0.0, atol=1e-13), (fid, D)
+                s.peaks = {"w": np.asarray(fc["w"]), "C": np.asarray(fc["C"]).reshape(k, D),
+                           "y": np.asarray(fc["y"]).reshape(k, D)}
+            X = np.vstack([s.x_opt[None, :], np.random.default_rng(fid * 100 + D).uniform(-5.5, 5.5, (30, D))])
+            c = np.array([nat.evaluate(list(map(float, x)))[0] for x in X])
+            p = s.batch(X)
+            assert np.all(np.abs(c - p) <= 1e-12 * np.maximum(1.0, np.abs(p))), (fid, D, np.max(np.abs(c - p)))
+            assert abs(c[0] - s.f_opt) <= 1e-9 * max(1.0, abs(s.f_opt)), (fid, D, c[0], s.f_opt)
+
+
+@test
 def bbob_biobj_pairs_and_frame_follow_the_paper():
     """The 55 pairs, the instance numbering, and a frame with no reference front."""
     if not _have_numpy():
