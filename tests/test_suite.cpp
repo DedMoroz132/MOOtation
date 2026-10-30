@@ -374,6 +374,37 @@ int main()
         check(at({0.0, 1.0, 2.0, 2.0, last})[0] == eval(*r, lv)[0], "bbob-biobj-mixint: each value its level");
     }
 
+    // bbob, one objective (task 18): all 24 at their optimum, on the instances
+    // drawn here, in every size of the suite; the optimum in the box
+    {
+        bool all = true, inside = true;
+        for (int fid = 1; fid <= 24; ++fid)
+            for (int D : {2, 3, 5, 10, 20, 40})
+                for (int iid = 1; iid <= 3; ++iid) {
+                    S::Spec s = spec("bbob", D, 1);
+                    s.bbob_fid = fid;
+                    s.bbob_iid = iid;
+                    auto p = S::make(s);
+                    const S::bbob::Function f = S::bbob::instance(fid, iid, D);
+                    const double v = eval(*p, f.x_opt)[0];
+                    const bool ok = std::abs(v - f.f_opt) <= 1e-9 * std::max(1.0, std::abs(f.f_opt));
+                    if (!ok) std::printf("  bbob f%d D=%d i%d at x_opt: %.17g, f_opt %.17g\n", fid, D, iid, v, f.f_opt);
+                    all = all && ok;
+                    for (double x : f.x_opt) inside = inside && std::abs(x) <= 5.0;
+                }
+        check(all, "bbob: f(x_opt) = f_opt for the 24 in 2..40 variables");
+        check(inside, "bbob: x_opt in [-5, 5]^D");
+        S::Spec s = spec("bbob", 41, 1);
+        s.bbob_fid = 1;
+        check(refused(s), "bbob beyond 40 variables");
+        s = spec("bbob", 5, 2);
+        s.bbob_fid = 1;
+        check(refused(s), "bbob with two objectives");
+        s = spec("bbob", 5, 1);
+        s.bbob_fid = 25;
+        check(refused(s), "bbob f25");
+    }
+
     // what make() refuses
     {
         namespace B = S::bbob;

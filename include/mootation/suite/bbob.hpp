@@ -7,6 +7,21 @@
 // values those modules compute (to a few ulps: the elementary functions here
 // are the library's own, dm::, those of the modules the C library's).
 //
+// bbob itself (task 18, stage 2): all 24 functions, one objective, in 2 to 40
+// variables (Objective; the suite's family "bbob"). The fourteen the pairs do
+// not use (f3-f5, f7, f9-f12, f16, f18, f19, f22-f24) are written from the
+// report as the ten were, in the same manner, and bbob.py repeats them as the
+// cross-check. Readings of the report for them (bbob.py's BBOB-5..8):
+//   BBOB-5. f9 and f19 draw no x_opt: z = max(1, sqrt(D)/8) R x + 1/2 with
+//     z_opt = 1, so x_opt = R^T 1 / (2 max(1, sqrt(D)/8)); f(x_opt) is f_opt
+//     to rounding, not exactly.
+//   BBOB-6. f23's [.] (the nearest integer) rounds half to even.
+//   BBOB-7. f22 as printed after the errata: alpha_1 = 1000^2, y_1 on
+//     [-3.92, 3.92]^D, the other peaks on [-4.9, 4.9]^D.
+//   BBOB-8. f16's inner sum runs over k = 0..11 in order, each term
+//     2^-k cos(2 pi 3^k (z_i + 1/2)) with 2 pi 3^k taken first; f0 the same at
+//     z_i = 0. f23's over j = 1..32 in order.
+//
 // N. Hansen, S. Finck, R. Ros, A. Auger. "Real-Parameter Black-Box
 // Optimization Benchmarking 2009: Noiseless Functions Definitions." INRIA
 // RR-6829, with the 2019 errata: the functions (Sections 1-5) and the
@@ -22,7 +37,9 @@
 // rotations R and Q, f20's signs, f21's peaks — drawn here (instance, pair
 // below), by the library's generator keyed (20260916, fid, iid, D), in
 // bbob.py's order, draw for draw (bbob.py draws the same through
-// library_rng.py, the cross-check's): Hansen et al.'s distributions (Section
+// library_rng.py, the cross-check's; the fourteen of task 18 in the same
+// order: x_opt, f_opt, R, Q, then the signs or the peaks, the draws a
+// function does not use left out): Hansen et al.'s distributions (Section
 // 0.1), not COCO's generator, which no paper states — the instances are ours
 // and are not COCO's (BBOB-4), and from 2026-10-24 (version 2) not the ones
 // NumPy's default_rng drew before either. A spec may still hand the numbers
@@ -45,7 +62,9 @@
 // up to 15 (ddot), is written out below (dot, matvec, gemm_row). A machine
 // whose NumPy has another BLAS or kernel gives other last bits in the Python
 // code, as it always did; this code gives the same values everywhere. The
-// sizes the orders were read off for bound D to 2..15.
+// sizes the orders were read off for bound bbob-biobj's D to 2..15; bbob's
+// single functions in 16 to 40 variables keep the same orders, whose ddot
+// NumPy then takes from another kernel (the cross-check's tolerance).
 //
 // Built without contraction into fused multiply-adds (suite_module.cpp):
 // every fused multiply-add here is explicit (fused), rounded once, whatever
@@ -76,21 +95,36 @@ namespace mootation::suite {
 namespace bbob {
 
 constexpr int kMinD = 2;
-constexpr int kMaxD = 15;                       // the sizes the BLAS orders were read off for
-constexpr int kPeaks = 101;                     // f21
+constexpr int kMaxD = 15;                       // bbob-biobj: the sizes the BLAS orders were read off for
+constexpr int kMaxSoloD = 40;                   // bbob: n = 2, 3, 5, 10, 20, 40
+constexpr int kPeaks = 101;                     // f21 (f22: 21)
 constexpr double kTwoPi = 2.0 * kPi;            // 2.0 * math.pi, as Python folds it first
 constexpr double kSchwefel = 4.189828872724339; // f20's constant
+
+// the peaks of f21 and f22
+inline int peaks_of(int fid) { return fid == 22 ? 21 : kPeaks; }
+
+// whether function fid takes R, Q, Lambda^10, another Lambda^alpha, the signs
+inline bool uses_r(int id) { return !(id <= 5 || id == 8 || id == 20); }
+inline bool uses_q(int id)
+{
+    return id == 6 || id == 7 || id == 13 || id == 15 || id == 16 || id == 17 || id == 18 || id == 23 || id == 24;
+}
+inline bool uses_l10(int id) { return id == 3 || id == 4 || id == 6 || id == 7 || id == 13 || id == 15 || id == 17 || id == 20; }
+inline double alpha_of(int id) { return id == 16 ? 0.01 : id == 18 ? 1000.0 : (id == 23 || id == 24) ? 100.0 : 0.0; }
+inline bool uses_sign(int id) { return id == 5 || id == 20 || id == 24; }
 
 // One bbob function at one instance in D variables: what bbob.py's Instance
 // holds, and for bbob-biobj-mixint the levels its integers stand for.
 struct Function {
-    int fid = 0;                                // 1, 2, 6, 8, 13, 14, 15, 17, 20 or 21
+    int fid = 0;                                // 1 .. 24 (bbob-biobj: 1, 2, 6, 8, 13, 14, 15, 17, 20 or 21)
     std::vector<double> x_opt;                  // D
     double f_opt = 0.0;
-    std::vector<double> R, Q;                   // D x D, row-major (f6, f13-f15, f17, f21: R; f6, f13, f15, f17: Q)
-    std::vector<double> l10;                    // the diagonal of Lambda^10 (f6, f13, f15, f17, f20)
-    std::vector<double> sign;                   // f20: the vector 1+-
-    std::vector<double> w, C, y;                // f21: 101 weights, the 101 x D diagonals of C_i, the 101 x D peaks y_i
+    std::vector<double> R, Q;                   // D x D, row-major (uses_r, uses_q)
+    std::vector<double> l10;                    // the diagonal of Lambda^10 (uses_l10)
+    std::vector<double> lam;                    // the diagonal of Lambda^alpha, alpha_of: f16, f18, f23, f24
+    std::vector<double> sign;                   // f5, f20, f24: the vector 1+-
+    std::vector<double> w, C, y;                // f21, f22: the weights, the peaks x D diagonals of C_i, the peaks y_i
     std::vector<std::vector<double>> levels;    // mixint: z_1 .. z_l of each integer variable, in this objective
 };
 
@@ -231,7 +265,7 @@ inline void t_asy(const double* x, int D, double beta, double* out)
 // f_pen: sum_i max(0, |x_i| - 5)^2
 inline double f_pen(const double* x, int D)
 {
-    double t[kMaxD] = {};
+    double t[kMaxSoloD] = {};
     for (int i = 0; i < D; ++i) {
         const double m = np_maximum(0.0, std::abs(x[i]) - 5.0);
         t[i] = m * m;
@@ -239,7 +273,7 @@ inline double f_pen(const double* x, int D)
     return row_sum(t, static_cast<std::size_t>(D));
 }
 
-// ---- the ten functions (bbob.py's _f1 .. _f21, one point) -------------------
+// ---- the 24 functions (bbob.py's _f1 .. _f24, one point) --------------------
 
 class Objective {
 public:
@@ -256,27 +290,45 @@ public:
     // the value at x (D values, real)
     double operator()(const double* x) const
     {
-        double d[kMaxD] = {};
+        double d[kMaxSoloD] = {};
         for (int i = 0; i < D_; ++i) d[i] = x[i] - f_.x_opt[static_cast<std::size_t>(i)];
         switch (f_.fid) {
             case 1: return dot(d, d, D_) + f_.f_opt;
             case 2: return f2(d);
+            case 3: return f3(d);
+            case 4: return f4(x, d);
+            case 5: return f5(x);
             case 6: return f6(d);
+            case 7: return f7(x, d);
             case 8: return f8(d);
+            case 9: return f9(x);
+            case 10: return f10(d);
+            case 11: return f11(d);
+            case 12: return f12(d);
             case 13: return f13(d);
             case 14: return f14(d);
             case 15: return f15(d);
-            case 17: return f17(x, d);
+            case 16: return f16(x, d);
+            case 17: return f17(x, d, f_.l10);
+            case 18: return f17(x, d, f_.lam);
+            case 19: return f19(x);
             case 20: return f20(x);
-            default: return f21(x);
+            case 21: case 22: return f21(x);
+            case 23: return f23(x, d);
+            default: return f24(x);
         }
     }
 
 private:
     Function f_;
     int D_ = 0;
-    std::vector<double> cond_;                  // f2: 10^(6 (i-1)/(D-1)); f14: the exponents 2 + 4 (i-1)/(D-1)
+    std::vector<double> cond_;                  // f2, f10: 10^(6 (i-1)/(D-1)); f7: 10^(2 (i-1)/(D-1));
+                                                // f14: the exponents 2 + 4 (i-1)/(D-1); f5: s_i
     std::vector<double> two_abs_;               // f20: 2 |x_opt| (BBOB-2)
+    double c_ = 0.0;                            // f9, f19: max(1, sqrt(D)/8); f23: 10/D^1.2; f24: s
+    double mu1_ = 0.0;                          // f24
+    double f0_ = 0.0;                           // f16
+    double half_k_[12] = {}, wave_k_[12] = {};  // f16: 2^-k and 2 pi 3^k
 
     void fail(const std::string& why) const
     {
@@ -286,38 +338,78 @@ private:
     // the sizes the function reads, before any evaluation
     void check() const
     {
-        const std::size_t n = static_cast<std::size_t>(D_), peaks = static_cast<std::size_t>(kPeaks);
-        if (D_ < kMinD || D_ > kMaxD) fail("D from 2 to 15");
+        const std::size_t n = static_cast<std::size_t>(D_);
+        if (D_ < kMinD || D_ > kMaxSoloD) fail("D from 2 to 40");
         if (f_.x_opt.size() != n) fail("x_opt of D values");
         const int id = f_.fid;
-        const bool rot_r = id == 6 || id == 13 || id == 14 || id == 15 || id == 17 || id == 21;
-        const bool rot_q = id == 6 || id == 13 || id == 15 || id == 17;
-        const bool lam = id == 6 || id == 13 || id == 15 || id == 17 || id == 20;
-        if (id != 1 && id != 2 && id != 8 && !rot_r && id != 20) fail("not one of the ten");
-        if (rot_r && f_.R.size() != n * n) fail("R of D x D");
-        if (rot_q && f_.Q.size() != n * n) fail("Q of D x D");
-        if (lam && f_.l10.size() != n) fail("Lambda^10 of D values");
-        if (id == 20 && f_.sign.size() != n) fail("the signs of D values");
-        if (id == 21 && (f_.w.size() != peaks || f_.C.size() != peaks * n || f_.y.size() != peaks * n))
-            fail("101 peaks");
+        if (id < 1 || id > 24) fail("not one of the 24");
+        if (uses_r(id) && f_.R.size() != n * n) fail("R of D x D");
+        if (uses_q(id) && f_.Q.size() != n * n) fail("Q of D x D");
+        if (uses_l10(id) && f_.l10.size() != n) fail("Lambda^10 of D values");
+        if (alpha_of(id) > 0.0 && f_.lam.size() != n) fail("Lambda^alpha of D values");
+        if (uses_sign(id) && f_.sign.size() != n) fail("the signs of D values");
+        const std::size_t peaks = static_cast<std::size_t>(peaks_of(id));
+        if ((id == 21 || id == 22) && (f_.w.size() != peaks || f_.C.size() != peaks * n || f_.y.size() != peaks * n))
+            fail(std::to_string(peaks) + " peaks");
     }
 
     // the constants bbob.py computes in every call, once
     void prepare()
     {
         const int D = D_;
-        if (f_.fid == 2)
+        if (f_.fid == 2 || f_.fid == 10)
             for (int i = 0; i < D; ++i) cond_.push_back(dm::pow(10.0, 6.0 * i / (D - 1.0)));
+        if (f_.fid == 7)
+            for (int i = 0; i < D; ++i) cond_.push_back(dm::pow(10.0, 2.0 * i / (D - 1.0)));
         if (f_.fid == 14)
             for (int i = 0; i < D; ++i) cond_.push_back(2.0 + 4.0 * i / (D - 1.0));
+        if (f_.fid == 5)
+            for (int i = 0; i < D; ++i)
+                cond_.push_back(np_sign(f_.x_opt[static_cast<std::size_t>(i)]) * dm::pow(10.0, i / (D - 1.0)));
         if (f_.fid == 20)
             for (double v : f_.x_opt) two_abs_.push_back(2.0 * std::abs(v));
+        if (f_.fid == 9 || f_.fid == 19) c_ = std::max(1.0, std::sqrt(static_cast<double>(D)) / 8.0);
+        if (f_.fid == 23) c_ = 10.0 / dm::pow(static_cast<double>(D), 1.2);
+        if (f_.fid == 24) {
+            c_ = 1.0 - 1.0 / (2.0 * std::sqrt(D + 20.0) - 8.2);
+            mu1_ = -std::sqrt((2.5 * 2.5 - 1.0) / c_);
+        }
+        if (f_.fid == 16) {
+            double three = 1.0, half = 1.0;
+            for (int k = 0; k < 12; ++k) {
+                half_k_[k] = half;
+                wave_k_[k] = kTwoPi * three;
+                f0_ = f0_ + half * dm::cos(wave_k_[k] * 0.5);
+                three = 3.0 * three;
+                half = 0.5 * half;
+            }
+        }
+    }
+
+    // 10 (D - sum cos(2 pi z_i)): f3, f4, f15, f24's Rastrigin part
+    double rastrigin(const double* z) const
+    {
+        double c[kMaxSoloD] = {};
+        for (int i = 0; i < D_; ++i) c[i] = dm::cos(kTwoPi * z[i]);
+        return 10.0 * (D_ - row_sum(c, static_cast<std::size_t>(D_)));
+    }
+
+    // sum_i 100 (z_i^2 - z_{i+1})^2 + (z_i - 1)^2: f8, f9's Rosenbrock
+    double rosenbrock(const double* z) const
+    {
+        double t[kMaxSoloD] = {};
+        for (int i = 0; i < D_ - 1; ++i) {
+            const double a = z[i] * z[i] - z[i + 1];
+            const double b = z[i] - 1.0;
+            t[i] = 100.0 * a * a + b * b;
+        }
+        return row_sum(t, static_cast<std::size_t>(D_ - 1));
     }
 
     // Q Lambda^10 R d
     void qlr(const double* d, double* z) const
     {
-        double a[kMaxD] = {};
+        double a[kMaxSoloD] = {};
         matvec(f_.R, D_, d, a);
         for (int i = 0; i < D_; ++i) a[i] = f_.l10[static_cast<std::size_t>(i)] * a[i];
         matvec(f_.Q, D_, a, z);
@@ -325,7 +417,7 @@ private:
 
     double f2(const double* d) const
     {
-        double t[kMaxD] = {};
+        double t[kMaxSoloD] = {};
         for (int i = 0; i < D_; ++i) {
             const double z = t_osz(d[i]);
             t[i] = cond_[static_cast<std::size_t>(i)] * z * z;
@@ -335,7 +427,7 @@ private:
 
     double f6(const double* d) const
     {
-        double z[kMaxD] = {}, t[kMaxD] = {};
+        double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
         qlr(d, z);
         for (int i = 0; i < D_; ++i) {
             const double s = z[i] * f_.x_opt[static_cast<std::size_t>(i)] > 0.0 ? 100.0 : 1.0;
@@ -348,7 +440,7 @@ private:
     double f8(const double* d) const
     {
         const double c = std::max(1.0, std::sqrt(static_cast<double>(D_)) / 8.0);
-        double z[kMaxD] = {}, t[kMaxD] = {};
+        double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
         for (int i = 0; i < D_; ++i) z[i] = c * d[i] + 1.0;
         for (int i = 0; i < D_ - 1; ++i) {
             const double a = z[i] * z[i] - z[i + 1];
@@ -360,14 +452,14 @@ private:
 
     double f13(const double* d) const
     {
-        double z[kMaxD] = {};
+        double z[kMaxSoloD] = {};
         qlr(d, z);
         return py_square(z[0]) + 100.0 * std::sqrt(dot(z + 1, z + 1, D_ - 1)) + f_.f_opt;
     }
 
     double f14(const double* d) const
     {
-        double z[kMaxD] = {}, t[kMaxD] = {};
+        double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
         matvec(f_.R, D_, d, z);
         for (int i = 0; i < D_; ++i) t[i] = dm::pow(std::abs(z[i]), cond_[static_cast<std::size_t>(i)]);
         return std::sqrt(row_sum(t, static_cast<std::size_t>(D_))) + f_.f_opt;
@@ -375,7 +467,7 @@ private:
 
     double f15(const double* d) const
     {
-        double a[kMaxD] = {}, b[kMaxD] = {}, z[kMaxD] = {}, c[kMaxD] = {};
+        double a[kMaxSoloD] = {}, b[kMaxSoloD] = {}, z[kMaxSoloD] = {}, c[kMaxSoloD] = {};
         matvec(f_.R, D_, d, a);
         for (int i = 0; i < D_; ++i) a[i] = t_osz(a[i]);
         t_asy(a, D_, 0.2, b);
@@ -386,13 +478,14 @@ private:
         return (10.0 * (D_ - row_sum(c, static_cast<std::size_t>(D_))) + dot(z, z, D_)) + f_.f_opt;
     }
 
-    double f17(const double* x, const double* d) const
+    // f17 with Lambda^10, f18 with Lambda^1000
+    double f17(const double* x, const double* d, const std::vector<double>& lam) const
     {
-        double a[kMaxD] = {}, b[kMaxD] = {}, z[kMaxD] = {}, t[kMaxD] = {};
+        double a[kMaxSoloD] = {}, b[kMaxSoloD] = {}, z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
         matvec(f_.R, D_, d, a);
         t_asy(a, D_, 0.5, b);
         matvec(f_.Q, D_, b, a);
-        for (int i = 0; i < D_; ++i) z[i] = f_.l10[static_cast<std::size_t>(i)] * a[i];
+        for (int i = 0; i < D_; ++i) z[i] = lam[static_cast<std::size_t>(i)] * a[i];
         for (int i = 0; i < D_ - 1; ++i) {                    // BBOB-3: i = 1 .. D-1
             const double s = std::sqrt(z[i] * z[i] + z[i + 1] * z[i + 1]);
             const double rt = std::sqrt(s);
@@ -405,7 +498,7 @@ private:
 
     double f20(const double* x) const
     {
-        double xh[kMaxD] = {}, z[kMaxD] = {}, t[kMaxD] = {};
+        double xh[kMaxSoloD] = {}, z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
         for (int i = 0; i < D_; ++i) xh[i] = 2.0 * f_.sign[static_cast<std::size_t>(i)] * x[i];
         for (int i = 0; i < D_; ++i) {
             const double two_abs = two_abs_[static_cast<std::size_t>(i)];
@@ -418,11 +511,13 @@ private:
         return term + kSchwefel + 100.0 * f_pen(z, D_) + f_.f_opt;
     }
 
+    // f21 with 101 peaks, f22 with 21
     double f21(const double* x) const
     {
-        double d[kMaxD] = {}, u[kMaxD] = {}, q[kMaxD] = {};
+        double d[kMaxSoloD] = {}, u[kMaxSoloD] = {}, q[kMaxSoloD] = {};
         double best = 0.0;
-        for (int k = 0; k < kPeaks; ++k) {
+        const int peaks = peaks_of(f_.fid);
+        for (int k = 0; k < peaks; ++k) {
             const double* y = f_.y.data() + static_cast<std::size_t>(k) * D_;
             const double* C = f_.C.data() + static_cast<std::size_t>(k) * D_;
             for (int i = 0; i < D_; ++i) d[i] = x[i] - y[i];
@@ -433,6 +528,169 @@ private:
             best = k == 0 ? v : np_maximum(best, v);
         }
         return py_square(t_osz(10.0 - best)) + f_pen(x, D_) + f_.f_opt;
+    }
+
+    // ---- the fourteen of task 18 ----
+
+    double f3(const double* d) const
+    {
+        double a[kMaxSoloD] = {}, z[kMaxSoloD] = {};
+        for (int i = 0; i < D_; ++i) a[i] = t_osz(d[i]);
+        t_asy(a, D_, 0.2, z);
+        for (int i = 0; i < D_; ++i) z[i] = f_.l10[static_cast<std::size_t>(i)] * z[i];
+        return (rastrigin(z) + dot(z, z, D_)) + f_.f_opt;
+    }
+
+    // s_i = 10 lambda_ii where z_i > 0 at the odd i (1-based), lambda_ii else
+    double f4(const double* x, const double* d) const
+    {
+        double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
+        for (int i = 0; i < D_; ++i) {
+            const double v = t_osz(d[i]);
+            const double l = f_.l10[static_cast<std::size_t>(i)];
+            z[i] = (v > 0.0 && i % 2 == 0 ? 10.0 * l : l) * v;
+            t[i] = z[i] * z[i];
+        }
+        return rastrigin(z) + row_sum(t, static_cast<std::size_t>(D_)) + 100.0 * f_pen(x, D_) + f_.f_opt;
+    }
+
+    double f5(const double* x) const
+    {
+        double t[kMaxSoloD] = {};
+        for (int i = 0; i < D_; ++i) {
+            const double xo = f_.x_opt[static_cast<std::size_t>(i)], s = cond_[static_cast<std::size_t>(i)];
+            const double z = xo * x[i] < 25.0 ? x[i] : xo;
+            t[i] = 5.0 * std::abs(s) - s * z;
+        }
+        return row_sum(t, static_cast<std::size_t>(D_)) + f_.f_opt;
+    }
+
+    double f7(const double* x, const double* d) const
+    {
+        double zh[kMaxSoloD] = {}, zt[kMaxSoloD] = {}, z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
+        matvec(f_.R, D_, d, zh);
+        for (int i = 0; i < D_; ++i) {
+            zh[i] = f_.l10[static_cast<std::size_t>(i)] * zh[i];
+            zt[i] = std::abs(zh[i]) > 0.5 ? std::floor(0.5 + zh[i]) : std::floor(0.5 + 10.0 * zh[i]) / 10.0;
+        }
+        matvec(f_.Q, D_, zt, z);
+        for (int i = 0; i < D_; ++i) t[i] = cond_[static_cast<std::size_t>(i)] * z[i] * z[i];
+        const double big = np_maximum(std::abs(zh[0]) / 1e4, row_sum(t, static_cast<std::size_t>(D_)));
+        return 0.1 * big + f_pen(x, D_) + f_.f_opt;
+    }
+
+    // z = max(1, sqrt(D)/8) R x + 1/2 (BBOB-5)
+    double f9(const double* x) const
+    {
+        double z[kMaxSoloD] = {};
+        matvec(f_.R, D_, x, z);
+        for (int i = 0; i < D_; ++i) z[i] = c_ * z[i] + 0.5;
+        return rosenbrock(z) + f_.f_opt;
+    }
+
+    double f10(const double* d) const
+    {
+        double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
+        matvec(f_.R, D_, d, z);
+        for (int i = 0; i < D_; ++i) {
+            const double v = t_osz(z[i]);
+            t[i] = cond_[static_cast<std::size_t>(i)] * v * v;
+        }
+        return row_sum(t, static_cast<std::size_t>(D_)) + f_.f_opt;
+    }
+
+    double f11(const double* d) const
+    {
+        double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
+        matvec(f_.R, D_, d, z);
+        for (int i = 0; i < D_; ++i) z[i] = t_osz(z[i]);
+        for (int i = 1; i < D_; ++i) t[i - 1] = z[i] * z[i];
+        return 1e6 * (z[0] * z[0]) + row_sum(t, static_cast<std::size_t>(D_ - 1)) + f_.f_opt;
+    }
+
+    double f12(const double* d) const
+    {
+        double a[kMaxSoloD] = {}, b[kMaxSoloD] = {}, z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
+        matvec(f_.R, D_, d, a);
+        t_asy(a, D_, 0.5, b);
+        matvec(f_.R, D_, b, z);
+        for (int i = 1; i < D_; ++i) t[i - 1] = z[i] * z[i];
+        return z[0] * z[0] + 1e6 * row_sum(t, static_cast<std::size_t>(D_ - 1)) + f_.f_opt;
+    }
+
+    // z = R Lambda^(1/100) Q T_osz(R d); BBOB-8
+    double f16(const double* x, const double* d) const
+    {
+        double a[kMaxSoloD] = {}, b[kMaxSoloD] = {}, z[kMaxSoloD] = {}, s[kMaxSoloD] = {};
+        matvec(f_.R, D_, d, a);
+        for (int i = 0; i < D_; ++i) a[i] = t_osz(a[i]);
+        matvec(f_.Q, D_, a, b);
+        for (int i = 0; i < D_; ++i) b[i] = f_.lam[static_cast<std::size_t>(i)] * b[i];
+        matvec(f_.R, D_, b, z);
+        for (int i = 0; i < D_; ++i) {
+            double acc = 0.0;
+            for (int k = 0; k < 12; ++k) acc = acc + half_k_[k] * dm::cos(wave_k_[k] * (z[i] + 0.5));
+            s[i] = acc;
+        }
+        const double g = row_sum(s, static_cast<std::size_t>(D_)) / D_ - f0_;
+        return 10.0 * (g * g * g) + (10.0 / D_) * f_pen(x, D_) + f_.f_opt;
+    }
+
+    // z = max(1, sqrt(D)/8) R x + 1/2 (BBOB-5)
+    double f19(const double* x) const
+    {
+        double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
+        matvec(f_.R, D_, x, z);
+        for (int i = 0; i < D_; ++i) z[i] = c_ * z[i] + 0.5;
+        for (int i = 0; i < D_ - 1; ++i) {
+            const double a = z[i] * z[i] - z[i + 1];
+            const double b = z[i] - 1.0;
+            const double s = 100.0 * a * a + b * b;
+            t[i] = s / 4000.0 - dm::cos(s);
+        }
+        return 10.0 / (D_ - 1.0) * row_sum(t, static_cast<std::size_t>(D_ - 1)) + 10.0 + f_.f_opt;
+    }
+
+    // z = Q Lambda^100 R d; BBOB-6, BBOB-8
+    double f23(const double* x, const double* d) const
+    {
+        double a[kMaxSoloD] = {}, z[kMaxSoloD] = {}, p[kMaxSoloD] = {};
+        matvec(f_.R, D_, d, a);
+        for (int i = 0; i < D_; ++i) a[i] = f_.lam[static_cast<std::size_t>(i)] * a[i];
+        matvec(f_.Q, D_, a, z);
+        for (int i = 0; i < D_; ++i) {
+            double s = 0.0, two = 1.0;
+            for (int j = 1; j <= 32; ++j) {
+                two = 2.0 * two;
+                const double v = two * z[i];
+                s = s + std::abs(v - std::nearbyint(v)) / two;
+            }
+            p[i] = dm::pow(1.0 + (i + 1.0) * s, c_);
+        }
+        const double k = 10.0 / (D_ * D_);
+        return k * row_prod(p, static_cast<std::size_t>(D_)) - k + f_pen(x, D_) + f_.f_opt;
+    }
+
+    // mu_0 = 2.5, d = 1, s = c_, mu_1 = mu1_
+    double f24(const double* x) const
+    {
+        double a[kMaxSoloD] = {}, b[kMaxSoloD] = {}, z[kMaxSoloD] = {}, u[kMaxSoloD] = {};
+        for (int i = 0; i < D_; ++i) {
+            const double xh = 2.0 * f_.sign[static_cast<std::size_t>(i)] * x[i];
+            a[i] = xh - 2.5;
+            b[i] = xh - mu1_;
+        }
+        double aa[kMaxSoloD] = {}, bb[kMaxSoloD] = {};
+        for (int i = 0; i < D_; ++i) {
+            aa[i] = a[i] * a[i];
+            bb[i] = b[i] * b[i];
+        }
+        const double funnel = std::min(row_sum(aa, static_cast<std::size_t>(D_)),
+                                       1.0 * D_ + c_ * row_sum(bb, static_cast<std::size_t>(D_)));
+        matvec(f_.R, D_, a, u);
+        for (int i = 0; i < D_; ++i) u[i] = f_.lam[static_cast<std::size_t>(i)] * u[i];
+        matvec(f_.Q, D_, u, z);
+        return funnel + rastrigin(z) + 1e4 * f_pen(x, D_) + f_.f_opt;
     }
 };
 
@@ -447,6 +705,7 @@ public:
     Pair(const std::vector<Function>& fs, int n)
     {
         if (fs.size() != 2) throw std::invalid_argument("suite: bbob-biobj: two functions");
+        if (n > kMaxD) throw std::invalid_argument("suite: bbob-biobj: D from 2 to 15");
         for (int o = 0; o < 2; ++o) objective_[o] = Objective(fs[static_cast<std::size_t>(o)], n);
         n_ = n;
         k_ = static_cast<int>(fs[0].levels.size());
@@ -468,7 +727,7 @@ public:
                 f[o] = objective_[o](x);
                 continue;
             }
-            double z[kMaxD] = {};
+            double z[kMaxSoloD] = {};
             bool nan = false;
             for (int i = 0; i < n_; ++i) z[i] = x[i];
             const auto& levels = objective_[o].function().levels;
@@ -519,7 +778,13 @@ inline std::vector<double> uniform(std::mt19937& g, double lo, double hi, int D)
 // x_opt = 4.2096874633 s / 2, f21's 101 peaks (w_1 = 10, w_i = 1.1 + 8 (i -
 // 2)/99; the alpha_i a permutation of 1000^(2j/99); C_i a permutation of
 // Lambda^alpha_i over alpha_i^(1/4); y_1 on [-4, 4]^D, the others on
-// [-5, 5]^D (BBOB-1); x_opt = y_1).
+// [-5, 5]^D (BBOB-1); x_opt = y_1). The fourteen of task 18 draw the same
+// way, in the same order, what they use: f5's and f24's signs as f20's, then
+// x_opt = 5 s (f5) and 2.5 s / 2 (f24); f22's 21 peaks as f21's (w_i = 1.1 +
+// 8 (i - 2)/19, alpha_1 = 1000^2, the others a permutation of 1000^(2j/19),
+// y_1 on [-3.92, 3.92]^D, the others on [-4.9, 4.9]^D: BBOB-7); f9's and
+// f19's x_opt the point where z = 1 (BBOB-5), sum_i R_ij / (2 max(1,
+// sqrt(D)/8)), the sum over i in order. Lambda^alpha takes no draws.
 inline Function instance(int fid, int iid, int D)
 {
     std::mt19937 g(instances::seed({20260916u, static_cast<std::uint64_t>(fid), static_cast<std::uint64_t>(iid),
@@ -530,29 +795,42 @@ inline Function instance(int fid, int iid, int D)
     if (fid == 8) f.x_opt = uniform(g, -3.0, 3.0, D);
     const double c = rnd::cauchy(g, 0.0, 100.0);
     f.f_opt = clip(std::nearbyint(100.0 * c) / 100.0, -1000.0, 1000.0);
-    if (fid == 6 || fid == 13 || fid == 14 || fid == 15 || fid == 17 || fid == 21) f.R = instances::haar(g, D);
-    if (fid == 6 || fid == 13 || fid == 15 || fid == 17) f.Q = instances::haar(g, D);
-    if (fid == 6 || fid == 13 || fid == 15 || fid == 17 || fid == 20) f.l10 = lam(10.0, D);
-    if (fid == 20) {
+    if (uses_r(fid)) f.R = instances::haar(g, D);
+    if (uses_q(fid)) f.Q = instances::haar(g, D);
+    if (uses_l10(fid)) f.l10 = lam(10.0, D);
+    if (alpha_of(fid) > 0.0) f.lam = lam(alpha_of(fid), D);
+    if (uses_sign(fid)) {
+        const double scale = fid == 5 ? 5.0 : fid == 20 ? 0.5 * 4.2096874633 : 0.5 * 2.5;
         for (int i = 0; i < D; ++i) f.sign.push_back(rnd::uniform01(g) < 0.5 ? -1.0 : 1.0);
-        for (int i = 0; i < D; ++i) f.x_opt[static_cast<std::size_t>(i)] = 0.5 * 4.2096874633 * f.sign[static_cast<std::size_t>(i)];
+        for (int i = 0; i < D; ++i) f.x_opt[static_cast<std::size_t>(i)] = scale * f.sign[static_cast<std::size_t>(i)];
     }
-    if (fid == 21) {
+    if (fid == 9 || fid == 19) {
+        const double two_c = 2.0 * std::max(1.0, std::sqrt(static_cast<double>(D)) / 8.0);
+        for (int j = 0; j < D; ++j) {
+            double s = 0.0;
+            for (int i = 0; i < D; ++i) s = s + f.R[static_cast<std::size_t>(i * D + j)];
+            f.x_opt[static_cast<std::size_t>(j)] = s / two_c;
+        }
+    }
+    if (fid == 21 || fid == 22) {
+        const int peaks = peaks_of(fid);
+        const double q = peaks - 2.0;                           // 99, 19
         f.w.push_back(10.0);
-        for (int j = 0; j < kPeaks - 1; ++j) f.w.push_back(1.1 + 8.0 * j / 99.0);
+        for (int j = 0; j < peaks - 1; ++j) f.w.push_back(1.1 + 8.0 * j / q);
         std::vector<double> alpha;
-        for (int j = 0; j < kPeaks - 1; ++j) alpha.push_back(dm::pow(1000.0, 2.0 * j / 99.0));
+        for (int j = 0; j < peaks - 1; ++j) alpha.push_back(dm::pow(1000.0, 2.0 * j / q));
         rnd::shuffle(alpha.begin(), alpha.end(), g);
-        alpha.insert(alpha.begin(), 1000.0);
-        for (int k = 0; k < kPeaks; ++k) {
+        alpha.insert(alpha.begin(), fid == 21 ? 1000.0 : 1000.0 * 1000.0);
+        for (int k = 0; k < peaks; ++k) {
             std::vector<double> l = lam(alpha[static_cast<std::size_t>(k)], D);
             rnd::shuffle(l.begin(), l.end(), g);
             const double scale = dm::pow(alpha[static_cast<std::size_t>(k)], 0.25);
             for (double v : l) f.C.push_back(v / scale);
         }
-        for (double v : uniform(g, -4.0, 4.0, D)) f.y.push_back(v);
-        for (int k = 1; k < kPeaks; ++k)
-            for (double v : uniform(g, -5.0, 5.0, D)) f.y.push_back(v);
+        const double first = fid == 21 ? 4.0 : 3.92, rest = fid == 21 ? 5.0 : 4.9;
+        for (double v : uniform(g, -first, first, D)) f.y.push_back(v);
+        for (int k = 1; k < peaks; ++k)
+            for (double v : uniform(g, -rest, rest, D)) f.y.push_back(v);
         f.x_opt.assign(f.y.begin(), f.y.begin() + D);
     }
     return f;

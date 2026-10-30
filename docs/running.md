@@ -291,7 +291,7 @@ call.
 **In C++: the suite.** ZDT1–4 and ZDT6, DTLZ1–7 and wideDTLZ3, shiftDTLZ,
 IDTLZ, minusDTLZ2, SDTLZ, C-DTLZ, MaF1–15, ZCAT1–20, WFG1–9, shiftZDT
 and the rotations over them (rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF,
-r0/c0MaF, rZCAT, rWFG), bbob-biobj and bbob-biobj-mixint, DAS-CMOP,
+r0/c0MaF, rZCAT, rWFG), bbob-biobj and bbob-biobj-mixint, bbob's 24 functions (family `bbob`, one objective), DAS-CMOP,
 LIR-CMOP, MW, DOC, Polygon and IPolygon, SYM-PART, Omni-test, MMF, RE and
 CRE, BT1–9, MOP1–7, RWMOP's RCM problems, the bit strings (OneMinMax, LOTZ,
 OneJumpZeroJump) and catZDT1 are computed in C++ when the extension is built

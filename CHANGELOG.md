@@ -118,6 +118,12 @@ always listed under **Changed** or **Removed**.
   values as by every pair, much faster for the dense references of 10^5
   points.
 
+- bbob itself, one objective (task 18, stage 2): all 24 functions of Hansen
+  et al. (RR-6829 with the 2019 errata) in 2 to 40 variables, the suite's
+  family `bbob` (`suite/bbob.hpp`; `bbob_fid`, `bbob_iid`): the fourteen the
+  bbob-biobj pairs do not use written as the ten were, the instances drawn by
+  the library's generator in the ten's order. `benchmarks/bbob.py` has all 24
+  as the cross-check. bbob-biobj and its mixint are unchanged.
 - The C++ engine runs the designed first populations (`init`,
   `init_share`) as minimize does: the design evaluated as one batch (its
   integers and discrete values decoded), `designs.start_points` of it

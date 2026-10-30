@@ -16,7 +16,9 @@
 //
 // bbob-biobj and bbob-biobj-mixint (bbob.hpp; task 12 of 2026-10-19, §1):
 // family "bbob-biobj" or "bbob-biobj-mixint", the numbers of its two
-// functions in `bbob`.
+// functions in `bbob`. bbob itself (task 18, stage 2): family "bbob", one
+// objective, the function bbob_fid (1..24) at instance bbob_iid drawn here,
+// or its numbers in `bbob` (one function).
 //
 // The verification set (classic.hpp; task 17, supplement 2, §3): family
 // "SCH", "FON", "POL", "KUR", "SPH" (m = n_obj), "QV" or "KURZ".
@@ -127,6 +129,7 @@ struct Spec {
     std::vector<double> parts;                    // MaF14, MaF15: the subcomponents' sizes, group by group
     std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta, handed over
     int bbob_fnum = 0, bbob_iid = 1;              // or drawn here: F1..F55 at that instance (bbob::biobj)
+    int bbob_fid = 0;                             // bbob: f1..f24 at bbob_iid (bbob::instance)
     int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
     bool wide = false;                            // DTLZ: wideDTLZ3's box (Problem::bounds)
     std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet (from it where empty)
@@ -196,6 +199,7 @@ public:
         else if (f == "C3-DTLZ1") set_cdtlz(1, dtlz::Cons::C3_DTLZ1, n_obj);
         else if (f == "C3-DTLZ4") set_cdtlz(4, dtlz::Cons::C3_DTLZ4, n_obj);
         else if (f == "bbob-biobj" || f == "bbob-biobj-mixint") kind_ = Kind::BBOB;
+        else if (f == "bbob") kind_ = Kind::BBOB1;
         else throw std::invalid_argument("suite: unknown family '" + f + "'");
         check();
     }
@@ -261,6 +265,9 @@ public:
                 return;
             case Kind::BBOB:
                 bbob_.evaluate(p, f);
+                return;
+            case Kind::BBOB1:
+                f[0] = bbob1_(p);
                 return;
             case Kind::DASCMOP:
                 dascmop::evaluate(which_, p, n_var, s_.constants, f, g);
@@ -411,7 +418,7 @@ public:
     }
 
 private:
-    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, DASCMOP, LIRCMOP,
+    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, BBOB1, DASCMOP, LIRCMOP,
                       DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM, Bits, CatZDT };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
@@ -428,6 +435,7 @@ private:
     dtlz::Cons cons_ = dtlz::Cons::C1_DTLZ1;
     zcat::Problem zcat_;
     bbob::Pair bbob_;
+    bbob::Objective bbob1_;
 
     void set_cdtlz(int base, dtlz::Cons cons, int n_cons)
     {
@@ -566,6 +574,17 @@ private:
                 bbob_ = bbob::Pair(s_.bbob, n);
                 if ((bbob_.integers() > 0) != (s_.family == "bbob-biobj-mixint"))
                     fail("integer variables in bbob-biobj-mixint only");
+                break;
+            case Kind::BBOB1:
+                if (M != 1) fail("one objective");
+                if (s_.bbob_fid != 0) {
+                    if (s_.bbob_fid < 1 || s_.bbob_fid > 24 || n < bbob::kMinD || n > bbob::kMaxSoloD ||
+                        s_.bbob_iid < 1)
+                        fail("f1..f24 in 2..40 variables, instance 1 or more");
+                    s_.bbob = {bbob::instance(s_.bbob_fid, s_.bbob_iid, n)};
+                }
+                if (s_.bbob.size() != 1) fail("one bbob function");
+                bbob1_ = bbob::Objective(s_.bbob[0], n);
                 break;
             case Kind::DASCMOP:
                 if (which_ < 1 || which_ > 9 || M != dascmop::n_obj(which_) || n < M)
