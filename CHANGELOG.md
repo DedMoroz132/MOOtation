@@ -118,6 +118,12 @@ always listed under **Changed** or **Removed**.
   values as by every pair, much faster for the dense references of 10^5
   points.
 
+- `lbfgsb`, bound-constrained minimization (task 18, stage 2;
+  `scalar/lbfgsb.hpp`, `_core.scalar.lbfgsb`): L-BFGS-B as Byrd, Lu, Nocedal
+  and Zhu (1995) give it, with Morales and Nocedal's subspace step (2011),
+  bounds +-inf allowed, the gradient the caller's or forward differences; the
+  line search of Moré and Thuente (1994) on its own (`scalar/line_search.hpp`),
+  which reproduces all 24 runs of their Tables I-VI.
 - `lm`, nonlinear least squares (task 18, stage 2; `scalar/lm.hpp`,
   `_core.scalar.lm`): Moré's Levenberg-Marquardt method (LNM 630, 1978) as
   the paper gives it, bounds by Coleman and Li's interior trust region
