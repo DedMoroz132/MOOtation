@@ -20,6 +20,9 @@
 #include <string>
 #include <vector>
 
+#include <mootation/scalar/lm.hpp>
+#include <mootation/suite/mgh.hpp>
+#include <mootation/suite/nist.hpp>
 #include <mootation/scalar/polish.hpp>
 #include <mootation/scalar/scalar.hpp>
 #include <mootation/suite/native.hpp>
@@ -311,4 +314,207 @@ void bind_scalar(py::module_& m)
           py::arg("fun"), py::arg("x0"), py::arg("lo"), py::arg("hi"), py::arg("tol") = 1e-8,
           py::arg("max_iter") = 1000000,
           "min fun(x) on the box [lo, hi] by nelder_mead.hpp.");
+
+    // the residuals and the Jacobian of Python callables
+    auto lm_problem = [](const py::object& fun, const py::object& jac, std::size_t n, std::size_t m) {
+        sc::lm::Problem p;
+        p.n = n;
+        p.m = m;
+        p.residuals = [fun, m](const Vec& x, Vec& r) {
+            r = floats(fun(to_list(x)));
+            if (r.size() != m) throw std::invalid_argument("lm: fun gave another number of residuals");
+        };
+        if (!jac.is_none())
+            p.jacobian = [jac, n, m](const Vec& x, mootation::lsq::Matrix& J) {
+                const py::object rows = jac(to_list(x));
+                std::size_t i = 0;
+                for (py::handle row : rows) {
+                    const Vec v = floats(row);
+                    if (i >= m || v.size() != n) throw std::invalid_argument("lm: jac is not m x n");
+                    for (std::size_t j = 0; j < n; ++j) J(i, j) = v[j];
+                    ++i;
+                }
+                if (i != m) throw std::invalid_argument("lm: jac is not m x n");
+            };
+        return p;
+    };
+    auto rows_of = [](const mootation::lsq::Matrix& A) {
+        py::list l;
+        for (std::size_t i = 0; i < A.rows; ++i) {
+            py::list row;
+            for (std::size_t j = 0; j < A.cols; ++j) row.append(A(i, j));
+            l.append(row);
+        }
+        return l;
+    };
+
+    s.def("lm",
+          [lm_problem, rows_of](const py::object& fun, const Vec& x0, std::size_t m, const py::object& jac,
+                                double ftol, double xtol, double gtol, double factor, double fd_eps,
+                                long long max_nfev, bool scale, bool geodesic, double geodesic_alpha,
+                                const std::string& loss, double f_scale, bool diagnose, double sigma2,
+                                const py::object& bounds) {
+              sc::lm::Problem p = lm_problem(fun, jac, x0.size(), m);
+              if (!bounds.is_none()) {
+                  const py::sequence b = bounds.cast<py::sequence>();
+                  p.lo = floats(b[0]);
+                  p.hi = floats(b[1]);
+              }
+              sc::lm::Options o;
+              o.ftol = ftol;
+              o.xtol = xtol;
+              o.gtol = gtol;
+              o.factor = factor;
+              o.fd_eps = fd_eps;
+              o.max_nfev = max_nfev;
+              o.scale = scale;
+              o.geodesic = geodesic;
+              o.geodesic_alpha = geodesic_alpha;
+              if (loss == "linear") o.loss = sc::lm::Options::Loss::linear;
+              else if (loss == "huber") o.loss = sc::lm::Options::Loss::huber;
+              else if (loss == "cauchy") o.loss = sc::lm::Options::Loss::cauchy;
+              else throw std::invalid_argument("lm: loss = linear, huber or cauchy");
+              o.f_scale = f_scale;
+              const sc::lm::Result r = sc::lm::solve_robust(p, x0, o);
+              py::dict d;
+              d["x"] = to_list(r.x);
+              d["r"] = to_list(r.r);
+              d["cost"] = r.cost;
+              d["nfev"] = r.nfev;
+              d["njev"] = r.njev;
+              d["iterations"] = r.iterations;
+              d["status"] = static_cast<int>(r.status);
+              if (diagnose) {                     // J at the solution, then the diagnostics
+                  mootation::lsq::Matrix J(m, x0.size());
+                  if (p.jacobian) p.jacobian(r.x, J);
+                  else sc::lm::fd_jacobian(p, r.x, r.r, fd_eps, J);
+                  const sc::lm::Diagnostics g = sc::lm::diagnose(J, r.cost, sigma2, !p.jacobian, fd_eps);
+                  d["singular_values"] = to_list(g.sv);
+                  d["small"] = g.small;
+                  d["sigma2"] = g.sigma2;
+                  d["sigma2_given"] = g.sigma2_given;
+                  d["covariance"] = rows_of(g.cov);
+                  d["correlation"] = rows_of(g.corr);
+              }
+              return d;
+          },
+          py::arg("fun"), py::arg("x0"), py::arg("m"), py::arg("jac") = py::none(),
+          py::arg("ftol") = 1e-8, py::arg("xtol") = 1e-8,
+          py::arg("gtol") = 0.0, py::arg("factor") = 100.0, py::arg("fd_eps") = 0.0, py::arg("max_nfev") = 0,
+          py::arg("scale") = true, py::arg("geodesic") = false, py::arg("geodesic_alpha") = 0.75,
+          py::arg("loss") = "linear", py::arg("f_scale") = 1.0, py::arg("diagnose") = false,
+          py::arg("sigma2") = 0.0, py::arg("bounds") = py::none(),
+          "min 1/2 ||fun(x)||^2 (or sum rho(r_i), loss) by lm.hpp (Levenberg-Marquardt, More 1978); fun "
+          "gives m residuals, jac their m x n Jacobian (None: forward differences). status: 0 ftol, 1 "
+          "xtol, 2 both, 3 gtol, 4 max_nfev, 5-7 ftol, xtol, gtol at machine precision. diagnose: the "
+          "singular values of J at the solution, the covariance s^2 (J^T J)^+ (s^2 = sigma2, or 2 cost / "
+          "(m - n) when sigma2 = 0) and the correlations. bounds = (lo, hi), +-inf allowed: Coleman-Li's interior "
+          "trust region (x0 inside).");
+
+    s.def("lm_check_jacobian",
+          [lm_problem](const py::object& fun, const py::object& jac, const Vec& x, std::size_t m, double fd_eps) {
+              const sc::lm::JacobianCheck c = sc::lm::check_jacobian(lm_problem(fun, jac, x.size(), m), x, fd_eps);
+              py::dict d;
+              d["column_error"] = to_list(c.column_error);
+              d["worst"] = py::cast(c.worst);
+              return d;
+          },
+          py::arg("fun"), py::arg("jac"), py::arg("x"), py::arg("m"), py::arg("fd_eps") = 0.0,
+          "jac(x) against forward differences of fun, column by column: the relative errors and the "
+          "columns from the worst.");
+
+    // varpro: y - Phi(alpha) a, basis(alpha) -> m x p rows, derivatives(alpha) -> k matrices m x p
+    s.def("varpro",
+          [](const py::object& basis, const Vec& alpha0, const Vec& y, std::size_t p,
+                    const py::object& derivatives, bool kaufman, double ftol, double xtol, long long max_nfev,
+                    const py::object& bounds) {
+              const std::size_t m = y.size(), k = alpha0.size();
+              auto fill = [m, p](const py::handle& rows, mootation::lsq::Matrix& A) {
+                  std::size_t i = 0;
+                  for (py::handle row : rows) {
+                      const Vec v = floats(row);
+                      if (i >= m || v.size() != p) throw std::invalid_argument("varpro: a matrix is not m x p");
+                      for (std::size_t j = 0; j < p; ++j) A(i, j) = v[j];
+                      ++i;
+                  }
+                  if (i != m) throw std::invalid_argument("varpro: a matrix is not m x p");
+              };
+              sc::lm::Separable sp;
+              sp.m = m;
+              sp.k = k;
+              sp.p = p;
+              sp.y = y;
+              sp.basis = [basis, fill](const Vec& al, mootation::lsq::Matrix& Phi) { fill(basis(to_list(al)), Phi); };
+              if (!derivatives.is_none())
+                  sp.derivatives = [derivatives, fill, k](const Vec& al, std::vector<mootation::lsq::Matrix>& d) {
+                      const py::object ms = derivatives(to_list(al));
+                      std::size_t j = 0;
+                      for (py::handle mat : ms) {
+                          if (j >= k) throw std::invalid_argument("varpro: derivatives gives more than k matrices");
+                          fill(mat, d[j++]);
+                      }
+                      if (j != k) throw std::invalid_argument("varpro: derivatives gives fewer than k matrices");
+                  };
+              if (!bounds.is_none()) {
+                  const py::sequence b = bounds.cast<py::sequence>();
+                  sp.lo = floats(b[0]);
+                  sp.hi = floats(b[1]);
+              }
+              sc::lm::Options o;
+              o.ftol = ftol;
+              o.xtol = xtol;
+              o.max_nfev = max_nfev;
+              const sc::lm::SeparableResult r = sc::lm::varpro(sp, alpha0, o, kaufman);
+              py::dict d;
+              d["alpha"] = to_list(r.fit.x);
+              d["a"] = to_list(r.a);
+              d["r"] = to_list(r.fit.r);
+              d["cost"] = r.fit.cost;
+              d["nfev"] = r.fit.nfev;
+              d["njev"] = r.fit.njev;
+              d["status"] = static_cast<int>(r.fit.status);
+              d["rank"] = r.rank;
+              return d;
+          },
+          py::arg("basis"), py::arg("alpha0"), py::arg("y"), py::arg("p"), py::arg("derivatives") = py::none(),
+          py::arg("kaufman") = false, py::arg("ftol") = 1e-8, py::arg("xtol") = 1e-8, py::arg("max_nfev") = 0,
+          py::arg("bounds") = py::none(),
+          "min 1/2 ||y - Phi(alpha) a||^2 by variable projection (Golub-Pereyra): lm.hpp on r_2(alpha) = "
+          "P_Phi^perp y, a = Phi^- y. basis(alpha) gives Phi (m x p), derivatives(alpha) the k matrices "
+          "dPhi/dalpha_j (None: differences of r_2); kaufman: Kaufman's Jacobian.");
+
+    // the published test sets, for cross-checks: MGH 1981 and NIST StRD
+    s.def("mgh",
+          [](int id, std::size_t n, std::size_t m, const Vec& x) {
+              Vec f, J;
+              mootation::suite::mgh::evaluate(id, n, m, x, f, &J);
+              py::list rows;
+              for (std::size_t i = 0; i < m; ++i) rows.append(to_list(Vec(J.begin() + static_cast<std::ptrdiff_t>(i * n),
+                                                                        J.begin() + static_cast<std::ptrdiff_t>((i + 1) * n))));
+              return py::make_tuple(to_list(f), rows);
+          },
+          py::arg("id"), py::arg("n"), py::arg("m"), py::arg("x"),
+          "MGH 1981 function id (1-35): (f, J) at x (suite/mgh.hpp).");
+    s.def("mgh_start",
+          [](int id, std::size_t n, double factor) { return to_list(mootation::suite::mgh::start(id, n, factor)); },
+          py::arg("id"), py::arg("n"), py::arg("factor") = 1.0, "MGH's INITPT: factor * x_s.");
+    s.def("nist",
+          [](const std::string& path, const std::string& name) {
+              const mootation::suite::nist::Dataset ds = mootation::suite::nist::read(path, name);
+              py::dict d;
+              d["n"] = ds.n;
+              d["m"] = ds.y.size();
+              d["start1"] = to_list(ds.start1);
+              d["start2"] = to_list(ds.start2);
+              d["certified"] = to_list(ds.certified);
+              d["rss"] = ds.rss;
+              d["residuals"] = py::cpp_function([ds](const Vec& b) {
+                  Vec r;
+                  mootation::suite::nist::residuals(ds, b, r);
+                  return to_list(r);
+              });
+              return d;
+          },
+          py::arg("path"), py::arg("name"),
+          "a NIST StRD file read by suite/nist.hpp: starts, certified values, residuals(b).");
 }
