@@ -89,6 +89,31 @@ multiply a steady ratio by a constant and leave it steady. Steady ratio: scale.
 Sliding ratio: do not. A problem that is both skewed and drifting is not
 covered by this test.
 
+## One objective
+
+The cores are multi-objective. With `n_objs = 1`, 22 of them refuse in
+`Settings::validate()` and name their reason (`single_objective_refusal`,
+`settings.hpp`): nsga3, a_nsga3, theta_dea, moead, moead_de, moead_dra, moead_dd,
+moead_awa, adaw, mombi2, irea, edv, rvea, rvea_star, mbra, srv, srv_nsga3 and
+ctaea (their reference directions come from a simplex lattice, which at M = 1
+is one point), rd_emo, r2ibea, if_maoea and r2_emoa (each its own reason).
+
+These ten run with one objective but are not single-objective algorithms
+there; what they become, read from their code:
+
+| core | at M = 1 |
+|---|---|
+| etea | the archive keeps the best point and then the sparsest ones, not the next best |
+| moead_m2m | all K directions are the same: one subregion of K keeps the best, the other K - 1 are refilled at random |
+| sms_m2m | the same partition as moead_m2m: one elitist block, K - 1 random refills |
+| moead_am2m | one weight, so the population is one point: a (1+1)-EA with Liu-Li mutation, reseeded by clones of the best |
+| liu_gu2011 | all directions the same: the population shrinks to about the square root of pop_size |
+| isde_rd | removal deletes the first non-best points: generational replacement with the best kept |
+| hcca | pop_size is ignored and the answer is one point: a (1+3)-EA with polynomial mutation |
+| naemo | one line, one evaluation per step, no mutation by default: the archive shrinks to a few points and stalls |
+| mosa | an archive of one point and energy 1 for every worse point: mostly a random walk |
+| mo_cma_es | with mu >= 2 (the settings ask for it) success is beating the worst of mu, not the parent; at mu = 1 it would be the (1+1)-CMA-ES |
+
 ## How each algorithm normalizes
 
 The way each core puts its objectives on one scale, after the classification of
