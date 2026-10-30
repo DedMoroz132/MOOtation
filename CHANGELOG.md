@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- With `n_objs = 1` the 22 cores that crashed or hung there now refuse in
+  `Settings::validate()` with the core's name and reason (task 18; the cores'
+  files are unchanged); `docs/algorithms.md` lists the ten that run with one
+  objective without being single-objective algorithms. Multi-objective runs
+  are unchanged (the golden fingerprints).
 - `lbfgsb`, bound-constrained minimization (task 18, stage 2;
   `scalar/lbfgsb.hpp`, `_core.scalar.lbfgsb`): L-BFGS-B as Byrd, Lu, Nocedal
   and Zhu (1995) give it, with Morales and Nocedal's subspace step (2011),

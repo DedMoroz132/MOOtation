@@ -35,6 +35,7 @@ set(MOOTATION_TESTS
     test_lm_sets
     test_line_search
     test_lbfgsb
+    test_single_objective_refusal
     test_store_codec
     test_json
     test_toml

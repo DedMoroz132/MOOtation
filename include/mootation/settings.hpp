@@ -355,6 +355,33 @@ inline bool text_knob_accepts(const std::string& name, const std::string& value)
     return true;
 }
 
+// The cores that cannot run with one objective (task 18, supplement 1, §5):
+// their reason, or nullptr. One list here, the cores' files untouched; the
+// reasons from reading each core at M = 1 (task 18's report, §2.2).
+inline const char* single_objective_refusal(const std::string& algorithm)
+{
+    static const char* lattice =
+        "its reference directions come from a simplex lattice (das_dennis::generate_exact), which at "
+        "M = 1 is a single point and cannot give pop_size directions";
+    static const std::pair<const char*, const char*> list[] = {
+        {"nsga3", lattice},     {"a_nsga3", lattice},   {"theta_dea", lattice}, {"moead", lattice},
+        {"moead_de", lattice},  {"moead_dra", lattice}, {"moead_dd", lattice},  {"moead_awa", lattice},
+        {"adaw", lattice},      {"mombi2", lattice},    {"irea", lattice},      {"edv", lattice},
+        {"rvea", lattice},      {"rvea_star", lattice}, {"mbra", lattice},      {"srv", lattice},
+        {"srv_nsga3", lattice}, {"ctaea", lattice},
+        {"rd_emo", "at M = 1 its lattice gives one reference direction, which has no neighbours, and "
+                   "the core reads the first of the empty list of them"},
+        {"r2ibea", "its draw of a weight vector reads x[M - 2], which at M = 1 is x[-1]"},
+        {"if_maoea", "it grows its lattice until it holds more than pop_size points, and at M = 1 the "
+                     "lattice keeps one point, so the loop does not end"},
+        {"r2_emoa", "it grows its lattice of weights until it holds as many vectors as it asks for, and "
+                    "at M = 1 the lattice keeps one vector, so the loop does not end"},
+    };
+    for (const auto& e : list)
+        if (algorithm == e.first) return e.second;
+    return nullptr;
+}
+
 struct Settings {
     // ── the run ──────────────────────────────────────────────────────────
     std::string algorithm = "nsga2";
@@ -419,6 +446,9 @@ struct Settings {
                 bad("lower[" + std::to_string(i) + "]=" + std::to_string(lower[i]) +
                     " must be < upper[" + std::to_string(i) + "]=" + std::to_string(upper[i]));
         if (n_objs < 1)               bad("n_objs must be >= 1, got " + std::to_string(n_objs));
+        if (n_objs == 1)
+            if (const char* why = single_objective_refusal(algorithm))
+                bad(algorithm + " needs n_objs >= 2: " + why);
         if (n_cons < 0)               bad("n_cons must be >= 0, got " + std::to_string(n_cons));
         if (constraints != ConstraintMode::NONE && n_cons == 0)
             bad("constraints is enabled but n_cons = 0 — there is nothing to constrain");
