@@ -19,6 +19,7 @@ point `x` and the values `f`, `g`, or what the file names), at full precision.
 | `scipy-1.18.1_sobol.txt` | SciPy 1.18.1, `qmc.Sobol(d=100, scramble=False)`: `include/mootation/sobol.hpp` (tests/test_sobol.cpp) | 40 |
 | `npz/` | NumPy 2.5.3 `savez`/`savez_compressed` and zlib's raw deflate (stored, fixed, dynamic blocks): `include/mootation/io/npz.hpp`, `campaign/references.hpp` (tests/test_npz.cpp) | 5 files |
 | `registry_sample.json` | five problems of the exported registry (`run/registry_export.py`) with the registry's values at one point each: `include/mootation/campaign/registry.hpp` (tests/test_registry.cpp) | 4 points |
+| `nist-strd-nls/` | NIST StRD nonlinear regression, the 27 files byte for byte (SRD 140; its README has the source, the notice and the sha256): `include/mootation/suite/nist.hpp` (tests/test_lm_sets.cpp) | 27 files |
 | `job_sample/` | a small campaign run by the Python engine (`run/campaign.py`): its config, two problems of the exported registry, their reference cache entries and every job's trajectory: `include/mootation/campaign/job_run.hpp` (tests/test_job_run.cpp) | 4 jobs |
 
 To make them again (by hand; CI does neither, and no test imports pymoo):

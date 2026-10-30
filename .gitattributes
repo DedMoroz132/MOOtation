@@ -18,3 +18,6 @@
 *.def   text eol=lf
 *.json  text eol=lf
 *.cfg   text eol=lf
+
+# NIST StRD files: kept byte for byte (CRLF as NIST serves them; the tests check their sha256).
+tests/data/nist-strd-nls/*.dat -text
