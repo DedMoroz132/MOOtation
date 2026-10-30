@@ -15,8 +15,9 @@
 //     sum that lm gets right (the log relative error, LRE);
 //   - bounds (Coleman-Li): infinite bounds give Moré's run bit for bit; a
 //     bound that holds the minimizer: the point on it;
-//   - varpro: Osborne 1 and 2 (MGH 17, 19) and Lanczos3 as separable problems
-//     reach the minima of the full problems.
+//   - varpro: Osborne 1 reaches the minimum of the full problem;
+//   - a checksum of Table IV's and NIST's runs: the same bits on every
+//     platform (the problems take dm::, lm only + - * / sqrt).
 // ============================================================================
 
 #include <algorithm>
@@ -43,6 +44,15 @@ using LM::Vec;
 using mootation::lsq::Matrix;
 
 int g_failed = 0;
+
+std::uint64_t g_hash = 1469598103934665603ull;     // FNV-1a over the runs' bits (MSVC = g++ = clang)
+
+void mix(double v)
+{
+    std::uint64_t b;
+    std::memcpy(&b, &v, sizeof b);
+    g_hash = (g_hash ^ b) * 1099511628211ull;
+}
 
 void check(bool ok, const std::string& what)
 {
@@ -217,6 +227,8 @@ int main()
             o.max_nfev = 1000;
             const LM::Result r = LM::solve(p, mgh::start(id, row.n, factor), o);
             const double fn = std::sqrt(2.0 * r.cost), e = row.norm[t];
+            for (double v : r.x) mix(v);
+            mix(static_cast<double>(r.nfev));
             std::printf("  %2d %-26s %2zu %2zu %5g | %4lld %4lld | %.7e | %.7e  status %d\n", row.nlls, mgh::name(id),
                         row.n, row.m, factor, r.nfev, r.njev, fn, e, static_cast<int>(r.status));
             const bool small = e < 1e-6;
@@ -305,6 +317,8 @@ int main()
                 o.xtol = 1e-15;
                 o.max_nfev = 20000;
                 const LM::Result res = LM::solve(p, s == 0 ? d.start1 : d.start2, o);
+                for (double v : res.x) mix(v);
+                mix(static_cast<double>(res.nfev));
                 double worst = 15.0;
                 for (std::size_t j = 0; j < d.n; ++j) worst = std::min(worst, lre(res.x[j], d.certified[j]));
                 std::printf(" s%d %.1f %.1f %lld %d", s + 1, worst, lre(2.0 * res.cost, d.rss), res.nfev,
@@ -380,6 +394,8 @@ int main()
                       ") reaches MGH's ||f|| 7.392493e-3; (a, alpha) is the full problem's point");
         }
     }
+    std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
+    check(g_hash == 0xb9bf1e88f5ea6838ull, "the runs' bits, Table IV and NIST, as on every platform (dm:: and + - * / sqrt only)");
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;
 }
