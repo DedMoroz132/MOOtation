@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `lm`, nonlinear least squares (task 18, stage 2; `scalar/lm.hpp`,
+  `_core.scalar.lm`): Moré's Levenberg-Marquardt method (LNM 630, 1978) as
+  the paper gives it, bounds by Coleman and Li's interior trust region
+  (infinite bounds leave Moré's method unchanged), variable projection for
+  separable problems (`varpro`, Golub-Pereyra, with Kaufman's Jacobian),
+  robust losses, geodesic acceleration, diagnostics and a Jacobian check.
+  The test sets beside it: the 35 functions of Moré, Garbow and Hillstrom
+  (`suite/mgh.hpp`) and NIST's 27 StRD regression files read as they are
+  (`suite/nist.hpp`, `tests/data/nist-strd-nls`).
 - bbob itself, one objective (task 18, stage 2): all 24 functions of Hansen
   et al. (RR-6829 with the 2019 errata) in 2 to 40 variables, the suite's
   family `bbob` (`suite/bbob.hpp`; `bbob_fid`, `bbob_iid`): the fourteen the

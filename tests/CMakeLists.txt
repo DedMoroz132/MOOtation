@@ -31,6 +31,8 @@ set(MOOTATION_TESTS
     test_detmath
     test_slsqp
     test_scalar
+    test_lm
+    test_lm_sets
     test_store_codec
     test_json
     test_toml
