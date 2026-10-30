@@ -47,6 +47,22 @@
 //     of Byrd, Nocedal, Schnabel, BLNZ's [6]; BLNZ only say the inverse is
 //     cheap): an elimination of the whole indefinite matrix lost B's
 //     positive definiteness where theta is large (Brown's badly scaled).
+//   LB-8. The subspace step's middle matrix is (I + theta Mbar Wbar^T A A^T
+//     Wbar)^-1 Mbar of (5.22), the form BLNZ used in their experiments (end
+//     of §5.3: "identical to" (5.10)'s (I - M W^T Z Z^T W / theta)^-1 M), with
+//     Mbar of (3.7)-(3.8); with no bound active it is -H r exactly. (5.10)'s
+//     form cancels where theta is large (Brown's badly scaled: theta ~ 1e12):
+//     the step lost the descent and the memory was dropped (LB-4).
+//   LB-9. x^c = x + t d is projected onto the box (the path is P(x - t g, l,
+//     u), (2.2)), and so is (5.9)'s point (feasible by (5.8)): their rounding
+//     crossed a bound (Penalty II in [0, 0.5]^4: the largest step along d came
+//     out -0 and the run stopped).
+//   LB-10. Not a departure, a note: where a pair is near (3.9)'s refusal
+//     (s^T y the difference of nearly equal terms), theta and the next step
+//     follow the last digits of the search's end point, which MT leave to the
+//     program (line_search.hpp LS-4); with ftol on, a tiny step after it ends
+//     the run (Penalty II in [0, 0.5]^4, m = 10, ftol = 2.2e-9: f = 0.047,
+//     SciPy's run, the same for six iterations to six digits, goes on).
 //   LB-6. OURS: the new point is the one the search accepts; where it stops
 //     short of (2.5)-(2.6) (its own limits), the trial with the lowest f.
 // ============================================================================
@@ -128,6 +144,7 @@ struct Memory {
     std::vector<Vec> S, Y;                  // oldest first
     double theta = 1.0;
     std::vector<double> M;                  // row by row
+    std::vector<double> Mbar;               // (3.7)'s, for Wbar = [Y / theta, S] (LB-8)
 
     std::size_t k() const { return S.size(); }
     // W^T v
@@ -153,6 +170,16 @@ struct Memory {
         for (std::size_t j = 0; j < kk; ++j) {
             r[j] = Y[j][b];
             r[kk + j] = theta * S[j][b];
+        }
+        return r;
+    }
+    Vec wbar_row(std::size_t b) const       // row b of Wbar = [Y / theta, S]
+    {
+        const std::size_t kk = k();
+        Vec r(2 * kk);
+        for (std::size_t j = 0; j < kk; ++j) {
+            r[j] = Y[j][b] / theta;
+            r[kk + j] = S[j][b];
         }
         return r;
     }
@@ -219,6 +246,30 @@ struct Memory {
                 double s = 0.0;
                 for (std::size_t l = 0; l < kk; ++l) s += Ti[i * kk + l] * L[l * kk + j];
                 E[i * kk + j] = s / D[j];
+            }
+        // Mbar = [[0, -R^-1], [-R^-T, R^-T (D + Y^T Y / theta) R^-1]] (3.7), R_ij = s_i^T y_j, i <= j (3.8)
+        std::vector<double> Ri(kk * kk, 0.0);          // R^-1 (upper triangular), column by column
+        for (std::size_t c = 0; c < kk; ++c)
+            for (std::size_t i = c + 1; i-- > 0;) {
+                double s = i == c ? 1.0 : 0.0;
+                for (std::size_t l = i + 1; l <= c; ++l) s -= dot(S[i], Y[l]) * Ri[l * kk + c];
+                Ri[i * kk + c] = s / D[i];
+            }
+        std::vector<double> G(kk * kk, 0.0);           // R^-T (D + Y^T Y / theta) R^-1
+        for (std::size_t i = 0; i < kk; ++i)
+            for (std::size_t j = 0; j < kk; ++j) {
+                double s = 0.0;
+                for (std::size_t a = 0; a < kk; ++a)
+                    for (std::size_t b = 0; b < kk; ++b)
+                        s += Ri[a * kk + i] * ((a == b ? D[a] : 0.0) + dot(Y[a], Y[b]) / theta) * Ri[b * kk + j];
+                G[i * kk + j] = s;
+            }
+        Mbar.assign(q * q, 0.0);
+        for (std::size_t i = 0; i < kk; ++i)
+            for (std::size_t j = 0; j < kk; ++j) {
+                Mbar[i * q + kk + j] = -Ri[i * kk + j];
+                Mbar[(kk + i) * q + j] = -Ri[j * kk + i];
+                Mbar[(kk + i) * q + kk + j] = G[i * kk + j];
             }
         M.assign(q * q, 0.0);
         for (std::size_t i = 0; i < kk; ++i)
@@ -291,8 +342,8 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
     dtmin = std::max(dtmin, 0.0);
     if (!std::isfinite(dtmin)) dtmin = 0.0;           // every variable at a bound: d = 0
     told += dtmin;
-    for (std::size_t i = 0; i < n; ++i)
-        if (d[i] != 0.0) xc[i] = x[i] + told * d[i];
+    for (std::size_t i = 0; i < n; ++i)               // on the path P(x - t g, l, u) (LB-9)
+        if (d[i] != 0.0) xc[i] = std::min(std::max(x[i] + told * d[i], lo[i]), hi[i]);
     for (std::size_t i = 0; i < c.size(); ++i) c[i] += dtmin * p[i];
     return xc;
 }
@@ -321,24 +372,29 @@ inline Vec subspace(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, co
     }
     Vec du(t);
     for (std::size_t a = 0; a < t; ++a) du[a] = -r[a] / theta;
-    if (q) {                                          // (5.10): - (1/theta^2) Z^T W N^-1 M W^T Z r
-        std::vector<Vec> U(t);                        // the rows of Z^T W
-        for (std::size_t a = 0; a < t; ++a) U[a] = B.w_row(Z[a]);
+    if (q) {                                          // (5.10), its middle matrix as BLNZ §5.3 (LB-8):
+        std::vector<Vec> U(t);                        // - (1/theta^2) Z^T W P W^T Z r,
+        for (std::size_t a = 0; a < t; ++a) U[a] = B.w_row(Z[a]);   // P = (I + theta Mbar Wbar^T A A^T Wbar)^-1 Mbar
         Vec v(q, 0.0);
         for (std::size_t a = 0; a < t; ++a)
             for (std::size_t j = 0; j < q; ++j) v[j] += U[a][j] * r[a];
-        v = B.mul_m(v);
-        std::vector<double> UtU(q * q, 0.0), N(q * q, 0.0);
-        for (std::size_t a = 0; a < t; ++a)
-            for (std::size_t i = 0; i < q; ++i)
-                for (std::size_t j = 0; j < q; ++j) UtU[i * q + j] += U[a][i] * U[a][j] / theta;
+        std::vector<double> WAAW(q * q, 0.0), Nb(q * q, 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (xc[i] > lo[i] && xc[i] < hi[i]) continue;   // the active set A at x^c
+            const Vec wb = B.wbar_row(i);
+            for (std::size_t a = 0; a < q; ++a)
+                for (std::size_t b = 0; b < q; ++b) WAAW[a * q + b] += wb[a] * wb[b];
+        }
         for (std::size_t i = 0; i < q; ++i)
             for (std::size_t j = 0; j < q; ++j) {
                 double s = 0.0;
-                for (std::size_t l = 0; l < q; ++l) s += B.M[i * q + l] * UtU[l * q + j];
-                N[i * q + j] = (i == j ? 1.0 : 0.0) - s;
+                for (std::size_t l = 0; l < q; ++l) s += B.Mbar[i * q + l] * WAAW[l * q + j];
+                Nb[i * q + j] = (i == j ? 1.0 : 0.0) + theta * s;
             }
-        v = solve(N, v);
+        Vec mv(q, 0.0);                               // Mbar v, then Nb^-1
+        for (std::size_t i = 0; i < q; ++i)
+            for (std::size_t j = 0; j < q; ++j) mv[i] += B.Mbar[i * q + j] * v[j];
+        v = solve(Nb, mv);
         for (std::size_t a = 0; a < t; ++a) {
             double s = 0.0;
             for (std::size_t j = 0; j < q; ++j) s += U[a][j] * v[j];
@@ -360,7 +416,8 @@ inline Vec subspace(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, co
         else if (du[a] < 0.0 && lo[i] > -kInf) a_star = std::min(a_star, (lo[i] - xc[i]) / du[a]);
     }
     xbar = xc;
-    for (std::size_t a = 0; a < t; ++a) xbar[Z[a]] = xc[Z[a]] + a_star * du[a];   // (5.9)
+    for (std::size_t a = 0; a < t; ++a)               // (5.9), in the box against rounding (LB-9)
+        xbar[Z[a]] = std::min(std::max(xc[Z[a]] + a_star * du[a], lo[Z[a]]), hi[Z[a]]);
     return xbar;
 }
 
