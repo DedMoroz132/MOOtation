@@ -92,10 +92,10 @@ int main()
             note = ": the local minimum 2.79506e-5 (SciPy's too)";
         }
         // ill-conditioned: L-BFGS creeps (SciPy: 1.9e-7, 2.1e-6, 9.2e-8); the run is the same bits
-        // everywhere (the checksum below), Powell's ends at 1.67e-4
+        // everywhere (the checksum below): Powell's ends at 3.8e-7, Watson's at 1.39996e-6, 8.5e-8
         if (k.id == 3 || (k.id == 20 && k.n > 6)) {
-            ok = r.f <= (k.id == 3 ? 2e-4 : k.n == 9 ? 1.6e-6 : 1e-7);
-            note = ": below 2e-4, 1.6e-6, 1e-7 (MGH's minimum not reached, nor by SciPy)";
+            ok = r.f <= (k.id == 3 ? 1e-6 : k.n == 9 ? 1.6e-6 : 1e-7);
+            note = ": below 1e-6, 1.6e-6, 1e-7 (MGH's minimum not reached, nor by SciPy)";
         }
         check(ok, std::string("MGH ") + mgh::name(k.id) + " n=" + std::to_string(k.n) + note);
     }
@@ -134,7 +134,7 @@ int main()
         }
     }
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
-    check(g_hash == 0xa2e476653418ead6ull, "the runs' bits as on every platform (dm:: and + - * / sqrt only)");
+    check(g_hash == 0x8ae4a65d9e843c71ull, "the runs' bits as on every platform (dm:: and + - * / sqrt only)");
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;
 }
