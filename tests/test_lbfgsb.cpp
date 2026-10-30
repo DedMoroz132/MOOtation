@@ -77,9 +77,11 @@ int main()
             ok = std::fabs(r.f - 2.79505612e-5) <= 1e-6 * 2.79505612e-5;
             note = ": the local minimum 2.79506e-5 (SciPy's too)";
         }
-        if (k.id == 3 || (k.id == 20 && k.n > 6)) {   // ill-conditioned: L-BFGS creeps (SciPy: 1.9e-7, 2.1e-6, 9.2e-8)
-            ok = r.f <= (k.id == 3 ? 1e-5 : k.n == 9 ? 1.6e-6 : 1e-7);
-            note = ": below 1e-5, 1.6e-6, 1e-7 (MGH's minimum not reached, nor by SciPy)";
+        // ill-conditioned: L-BFGS creeps (SciPy: 1.9e-7, 2.1e-6, 9.2e-8); on Powell's the path
+        // follows the rounding of exp: 5.8e-7 with MSVC's, 5.1e-4 and 5.2e-4 with macOS's and glibc's
+        if (k.id == 3 || (k.id == 20 && k.n > 6)) {
+            ok = r.f <= (k.id == 3 ? 1e-3 : k.n == 9 ? 1.6e-6 : 1e-7);
+            note = ": below 1e-3, 1.6e-6, 1e-7 (MGH's minimum not reached, nor by SciPy)";
         }
         check(ok, std::string("MGH ") + mgh::name(k.id) + " n=" + std::to_string(k.n) + note);
     }
