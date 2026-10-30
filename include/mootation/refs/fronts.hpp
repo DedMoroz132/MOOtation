@@ -42,6 +42,8 @@
 #include <fstream>
 #include <functional>
 #include <limits>
+#include <map>
+#include <mutex>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -59,6 +61,7 @@
 #include "../suite/mmo.hpp"
 #include "../suite/polygon.hpp"
 #include "../suite/spec_numbers.hpp"
+#include "fronts_classic.hpp"
 #include "fronts_mw.hpp"
 #include "fronts_zcat.hpp"
 #include "sample.hpp"
@@ -72,14 +75,15 @@ struct Data {
 
 namespace detail {
 
-inline const json::Value& field(const json::Value& spec, const std::string& key)
+// the key a literal: a reference into spec, with no temporary to dangle
+inline const json::Value& field(const json::Value& spec, const char* key)
 {
     const json::Value* v = spec.find(key);
-    if (!v) throw std::invalid_argument("a front's spec without \"" + key + "\"");
+    if (!v) throw std::invalid_argument("a front's spec without \"" + std::string(key) + "\"");
     return *v;
 }
 
-inline std::size_t count(const json::Value& spec, const std::string& key)
+inline std::size_t count(const json::Value& spec, const char* key)
 {
     return static_cast<std::size_t>(field(spec, key).i);
 }
@@ -376,7 +380,8 @@ inline std::vector<Zdt3Piece> zdt3_pieces()
     return out;
 }
 
-inline Rows zdt3(std::size_t n)
+// piece: each row's piece (the thinning keeps every piece's ends)
+inline Rows zdt3(std::size_t n, std::vector<std::size_t>* piece = nullptr)
 {
     static const std::vector<Zdt3Piece> pieces = zdt3_pieces();
     double total = 0.0;
@@ -397,7 +402,10 @@ inline Rows zdt3(std::size_t n)
     Rows X = rows_of(0, 1);
     for (std::size_t i = 0; i < k; ++i) {
         const std::vector<double> t = linspace(pieces[i].a, pieces[i].b, i == 0 ? count[i] : count[i] + 1);
-        for (std::size_t j = i == 0 ? 0 : 1; j < t.size(); ++j) push_row(X, &t[j]);
+        for (std::size_t j = i == 0 ? 0 : 1; j < t.size(); ++j) {
+            push_row(X, &t[j]);
+            if (piece) piece->push_back(i);
+        }
     }
     return zdt3_image(X);
 }
@@ -1293,10 +1301,38 @@ inline Rows mmo(const std::string& name, std::size_t n)
     }
 }
 
+// rows kept as text, a row a line (np.loadtxt: '#' starts a comment)
+inline Rows text_rows(const std::filesystem::path& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("cannot read " + path.string());
+    Rows F;
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto hash = line.find('#');
+        if (hash != std::string::npos) line.resize(hash);
+        std::vector<double> row;
+        const char* p = line.c_str();
+        char* end = nullptr;
+        for (double v = std::strtod(p, &end); end != p; v = std::strtod(p, &end)) {
+            row.push_back(v);
+            p = end;
+        }
+        if (row.empty()) continue;
+        if (F.m == 0) F.m = row.size();
+        if (row.size() != F.m) throw std::runtime_error(path.string() + ": rows of other lengths");
+        push_row(F, row.data());
+    }
+    return F;
+}
+
 }   // namespace detail
 
-// The rows of the sampler a front's spec names, for n.
-inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {})
+// The rows of the sampler a front's spec names, for n; piece (where given)
+// gets each row's piece of the front where the sampler knows them (ZDT3's
+// pieces, MW's: addendum 7, section 1), and stays empty where not.
+inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {},
+                   std::vector<std::size_t>* piece = nullptr)
 {
     using namespace detail;
     const std::string kind = field(spec, "kind").s;
@@ -1337,7 +1373,7 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
     if (kind == "zdt1" || kind == "bt_concave" || kind == "mop1")
         return curve(linspace(0.0, 1.0, n), [](double f1) { return 1.0 - std::sqrt(f1); });
     if (kind == "zdt2") return curve(linspace(0.0, 1.0, n), [](double f1) { return 1.0 - f1 * f1; });
-    if (kind == "zdt3") return zdt3(n);
+    if (kind == "zdt3") return zdt3(n, piece);
     if (kind == "zdt6") return curve(linspace(0.280775, 1.0, n), [](double f1) { return 1.0 - f1 * f1; });
     if (kind == "bt5")
         return nondominated(curve(linspace(0.0, 1.0, n), [](double u) {
@@ -1378,6 +1414,23 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
             push_row(F, r);
         }
         return F;
+    }
+    if (kind == "classic_grid" || kind == "qv") {
+        // POL's, KUR's, QV's front (fronts_classic.hpp), once per process
+        static std::map<std::string, Rows> made;
+        static std::mutex lock;
+        const std::string key = kind == "qv" ? std::string("QV") : field(spec, "name").s;
+        Rows F;
+        {
+            std::lock_guard<std::mutex> g(lock);
+            auto it = made.find(key);
+            if (it == made.end())
+                it = made.emplace(key, key == "QV" ? classic::qv_front()
+                                                   : classic::grid_front(key == "POL" ? classic::Which::POL
+                                                                                      : classic::Which::KUR)).first;
+            F = it->second;
+        }
+        return classic::even(F, n);
     }
     if (kind == "sph") {
         const std::size_t m = M();
@@ -1492,7 +1545,7 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
     if (kind == "c2_convex") return convex_c2(M(), n);
     if (kind == "lircmop") return lircmop(static_cast<int>(count(spec, "i")), n);
     if (kind == "doc") return doc(static_cast<int>(count(spec, "i")), n);
-    if (kind == "mw") return mw::front(static_cast<int>(count(spec, "i")), M(), n);
+    if (kind == "mw") return mw::front(static_cast<int>(count(spec, "i")), M(), n, piece);
     if (kind == "zcat") return zcat::front(static_cast<int>(count(spec, "i")), M(), n);
     if (kind == "mmo") return mmo(field(spec, "name").s, n);
     if (kind == "dascmop") {
@@ -1500,30 +1553,7 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
         return dascmop(static_cast<int>(count(spec, "i")), number(t.items.at(0)), number(t.items.at(1)),
                        number(t.items.at(2)), n);
     }
-    if (kind == "text") {
-        // a front kept as text, a row a line (np.loadtxt: '#' starts a comment)
-        const auto path = data.dir / store::file::path_of(field(spec, "file").s);
-        std::ifstream in(path, std::ios::binary);
-        if (!in) throw std::runtime_error("cannot read " + path.string());
-        Rows F;
-        std::string line;
-        while (std::getline(in, line)) {
-            const auto hash = line.find('#');
-            if (hash != std::string::npos) line.resize(hash);
-            std::vector<double> row;
-            const char* p = line.c_str();
-            char* end = nullptr;
-            for (double v = std::strtod(p, &end); end != p; v = std::strtod(p, &end)) {
-                row.push_back(v);
-                p = end;
-            }
-            if (row.empty()) continue;
-            if (F.m == 0) F.m = row.size();
-            if (row.size() != F.m) throw std::runtime_error(path.string() + ": rows of other lengths");
-            push_row(F, row.data());
-        }
-        return F;
-    }
+    if (kind == "text") return text_rows(data.dir / store::file::path_of(field(spec, "file").s));
     if (kind == "full") {
         const auto path = data.dir / "_fronts" / field(spec, "file").s;
         const auto arrays = npz::load(path);
@@ -1552,7 +1582,10 @@ inline Rows front(const json::Value& spec, std::size_t n, const Data& data = {},
         F = sample(spec, n, data);
     } else {
         const auto seed = static_cast<std::uint32_t>(detail::field(spec, "seed").i);
-        F = exactly_n([&](std::size_t k) { return sample(spec, k, data); }, n, seed);
+        F = exactly_n(PiecedSampler([&](std::size_t k, std::vector<std::size_t>* piece) {
+                          return sample(spec, k, data, piece);
+                      }),
+                      n, seed);
     }
     return filter ? detail::nondominated(F) : F;
 }

@@ -8,12 +8,15 @@
 // keep their own code as the reference; nothing here is needed to run a core.
 // ============================================================================
 
+#include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <map>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -248,6 +251,79 @@ void bind_run_layer(py::module_& m)
           py::arg("extend"), py::arg("data_dir"), py::arg("code_stamp"), py::arg("version"), py::arg("log") = py::none(),
           "The cache's entries of `names` built in C++ (include/mootation/campaign/refs_build.hpp): "
           "{name: built | ok | failed: ... | not built: why}.");
+    m.def("refs_classic_minima",
+          []() {
+              namespace rc = mootation::refs::classic;
+              auto row = [](const rc::Minimum& m) {
+                  py::dict d;
+                  d["x"] = m.x;
+                  d["g"] = m.g;
+                  d["second_x"] = m.second_x;
+                  d["second_g"] = m.second_g;
+                  return d;
+              };
+              py::dict out;
+              out["KUR"] = row(rc::minimum_of(
+                  [](double t) { return mootation::dm::pow(std::abs(t), 0.8) + 5.0 * mootation::dm::sin(t * t * t); },
+                  -5.0, 5.0, 1000000));
+              out["KURZ"] = row(rc::minimum_of(
+                  [](double t) {
+                      const double s = mootation::dm::sin(t);
+                      return mootation::dm::pow(std::abs(t), 0.8) + 5.0 * (s * s * s);
+                  },
+                  -1000.0, 1000.0, 20000000));
+              out["POL_roots"] = rc::pol_roots();
+              return out;
+          },
+          "The one-variable minima behind KUR's and KURZ's frames (argmin, min and the grid's "
+          "next-deepest local minimum) and POL's roots of B(x) = A (refs/fronts_classic.hpp).");
+    m.def("failing_balls",
+          [](const std::string& name, std::size_t n, double share) {
+              std::vector<std::vector<double>> centres;
+              double radius = 0.0;
+              mootation::campaign::failing_balls(name, n, share, centres, radius);
+              return py::make_tuple(centres, radius);
+          },
+          py::arg("name"), py::arg("n"), py::arg("share"),
+          "(centres, radius) of the failing copy `name`'s random balls in n normalised variables "
+          "(campaign/registry.hpp, failing_balls; task 17, addendum 7, section 2.3).");
+    m.def("refs_frames",
+          [](const std::string& registry, std::size_t workers, const std::string& data_dir) {
+              namespace cp = mootation::campaign;
+              const cp::ProblemRegistry preg = cp::load_registry(mootation::store::file::path_of(registry));
+              mootation::refs::Data data;
+              data.dir = mootation::store::file::path_of(data_dir);
+              std::vector<const cp::RegistryProblem*> all;
+              for (const auto& [name, p] : preg.problems) all.push_back(&p);
+              std::vector<std::optional<mootation::refs::Frame>> got(all.size());
+              std::vector<std::string> error(all.size());
+              {
+                  py::gil_scoped_release unlock;
+                  std::atomic<std::size_t> next{0};
+                  auto work = [&] {
+                      for (std::size_t i; (i = next++) < all.size();) {
+                          try {
+                              got[i] = cp::frame_of(*all[i], preg, data);
+                          } catch (const std::exception& e) {
+                              error[i] = e.what();
+                          }
+                      }
+                  };
+                  std::vector<std::thread> pool;
+                  for (std::size_t w = 1; w < std::max<std::size_t>(workers, 1); ++w) pool.emplace_back(work);
+                  work();
+                  for (auto& t : pool) t.join();
+              }
+              py::dict out;
+              for (std::size_t i = 0; i < all.size(); ++i) {
+                  if (!error[i].empty()) throw std::runtime_error("refs_frames: " + all[i]->name + ": " + error[i]);
+                  if (got[i]) out[py::str(all[i]->name)] = py::make_tuple(got[i]->ideal, got[i]->nadir);
+              }
+              return out;
+          },
+          py::arg("registry"), py::arg("workers") = 1, py::arg("data_dir") = "",
+          "{name: (ideal, nadir)}: the frame of every problem of the registry's export that C++ "
+          "gives one (campaign/refs_build.hpp, frame_of; task 17, addendum 7, section 2.1).");
 
     // ── the subset selection (archive.py) ──────────────────────────────────
     m.def("almost_dominated",

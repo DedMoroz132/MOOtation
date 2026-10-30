@@ -131,7 +131,22 @@ def entry(name: str) -> dict:
         "nadir": _frame(name)[1],
         "front": front_spec(name),
         "set": set_spec(name),
+        "frame_files": _frame_files(name),
     }
+
+
+def _frame_files(name: str) -> dict | None:
+    """Where an RE or CRE problem's frame is (re.frame): its authors' ideal
+    and nadir files, beside benchmarks/ (a CRE problem's those of its RE
+    counterpart, without the last objective); C++ reads them (task 17,
+    addendum 7, section 2.1)."""
+    from ..benchmarks import re as _re
+    if name in _re.RE:
+        return {"dir": _re._data(name).relative_to(_re.DATA.parent).as_posix(), "name": name, "drop_last": False}
+    if name in _re.CRE:
+        base = _re.CRE[name][0]
+        return {"dir": _re._data(base).relative_to(_re.DATA.parent).as_posix(), "name": base, "drop_last": True}
+    return None
 
 
 def _frame(name: str) -> tuple:
@@ -184,11 +199,11 @@ def _uninformative(name: str) -> str | None:
 
 
 def _noise(name: str) -> dict | None:
-    """A noisy copy of a problem of the C++ suite (benchmarks/noisy.py): the
-    base's spec and its evaluator's numbers — the kind, sigma, the scale
-    sigma (nadir - ideal) per objective and the ideal point (kind h) as the
-    run's evaluator holds them; the cell's width comes from the campaign
-    (noise_cell) and the box."""
+    """A noisy copy of a problem of the C++ suite (benchmarks/noisy.py): its
+    base and the base's spec, the kind. Sigma (from the name), the scale
+    sigma (nadir - ideal) and the ideal point come from the base's frame in
+    C++ (campaign/registry.hpp, derive_numbers; task 17, addendum 7, section
+    2.2); the cell's width from the campaign (noise_cell) and the box."""
     from ..benchmarks import native as N
     from ..benchmarks import noisy
     from ..benchmarks import registry as R
@@ -199,18 +214,12 @@ def _noise(name: str) -> dict | None:
     b = R.PROBLEMS.get(base)
     if b is None or b.native is None:
         return None
-    ev = R.PROBLEMS[name].make_evaluator(0)
-    return {"of": base, "kind": kind, "sigma": float(ev.sigma), "scale": [float(v) for v in ev.scale],
-            "ideal": None if ev.ideal is None else [float(v) for v in ev.ideal],
-            "spec": _spec_json(N.spec(base, b, R.ROTATED.get(base)))}
+    return {"of": base, "kind": kind, "spec": _spec_json(N.spec(base, b, R.ROTATED.get(base)))}
 
 
 def _failing_region(name: str) -> dict | None:
     """A failing copy of a problem of the C++ suite (benchmarks/failing.py):
-    the base's spec and the failure region in the box's normalised units —
-    "b": the band within t of the faces; "r" and "n": the balls of one radius
-    about the centres (the random balls, the tube about part of the Pareto-set
-    sample)."""
+    its base, the base's spec and the region's kind."""
     from ..benchmarks import native as N
     from ..benchmarks import registry as R
     if name not in R.FAILING:
@@ -220,13 +229,9 @@ def _failing_region(name: str) -> dict | None:
     if b.native is None:
         return None
     region = R.failing_region(name)
-    out = {"of": base, "kind": region.kind, "spec": _spec_json(N.spec(base, b, R.ROTATED.get(base)))}
-    if region.kind == "b":
-        out["t"] = float(region.t)
-    else:
-        out["radius"] = float(region.radius)
-        out["centres"] = [_floats(c) for c in region.centres]
-    return out
+    # the band's t, the balls and the window: C++'s, from the name and the
+    # base (campaign/registry.hpp, derive_numbers; task 17, addendum 7, section 2.3)
+    return {"of": base, "kind": region.kind, "spec": _spec_json(N.spec(base, b, R.ROTATED.get(base)))}
 
 
 def names() -> dict:
@@ -251,9 +256,32 @@ REPO_FILE = Path(__file__).resolve().parents[3] / "data" / "registry.json"
 REGENERATE = "python -m mootation.run.registry_export --repo"
 
 
-def text() -> str:
+FRAME_TABLE = Path(__file__).resolve().parents[1] / "benchmarks" / "_refframe_cache.json"
+FRAME_WORKERS = 4
+
+
+def _cxx_frames(head: dict, entries: list) -> None:
+    """Every entry's ideal and nadir computed by C++ (_core.refs_frames:
+    campaign/refs_build.hpp, frame_of; task 17, addendum 7, section 2.1),
+    where it gives one; the others keep get()'s."""
+    import tempfile
+    from .. import _core
+    from ..benchmarks import registry as R
+    with tempfile.TemporaryDirectory(prefix="mootation-frames-") as td:
+        tmp = Path(td) / "registry.json"
+        tmp.write_text(json.dumps({**head, "problems": entries}), encoding="utf-8")
+        got = _core.refs_frames(str(tmp), FRAME_WORKERS, str(Path(R.__file__).resolve().parent))
+    for e in entries:
+        if e["name"] in got:
+            ideal, nadir = got[e["name"]]
+            e["ideal"], e["nadir"] = [float(v) for v in ideal], [float(v) for v in nadir]
+
+
+def text(cxx_frames: bool = False) -> str:
     """The registry's file as text: the header on the first line, then a
-    problem per line."""
+    problem per line. cxx_frames: the frames computed by C++ (the
+    repository's file); else get()'s, which reads them from
+    _refframe_cache.json, made from that file."""
     from .. import __version__
     from ..benchmarks import registry as R
     from .campaign import _code_stamp
@@ -263,27 +291,52 @@ def text() -> str:
 
     head = {"format": FORMAT, "code_stamp": _code_stamp(), "reference_version": R.REFERENCE_VERSION,
             "mootation": __version__, "names": names()}
-    problems = ",\n".join(dump(entry(n)) for n in sorted(R.PROBLEMS))
+    entries = [entry(n) for n in sorted(R.PROBLEMS)]
+    if cxx_frames:
+        _cxx_frames(head, entries)
+    problems = ",\n".join(dump(e) for e in entries)
     return dump(head)[:-1] + ',\n"problems":[\n' + problems + "\n]}\n"
 
 
-def export(path: Path | None = None) -> Path:
-    """Write the registry's file (atomically); its path."""
-    path = path or registry_path()
+def frame_table(registry_text: str) -> str:
+    """_refframe_cache.json made from the registry's file: {name: [ideal,
+    nadir]} of every problem with a frame (registry.get reads it; task 17,
+    addendum 7, section 2.1: one source of the numbers)."""
+    doc = json.loads(registry_text)
+    table = {e["name"]: [e["ideal"], e["nadir"]] for e in doc["problems"]
+             if e.get("ideal") is not None and e.get("nadir") is not None}
+    return json.dumps(table, sort_keys=True)            # its format: one line, sorted keys (fronts_full.py)
+
+
+def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp")
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
-        f.write(text())
+        f.write(content)
     os.replace(tmp, path)
+
+
+def export(path: Path | None = None, cxx_frames: bool = False) -> Path:
+    """Write the registry's file (atomically); its path. With cxx_frames
+    (the repository's file), _refframe_cache.json from it as well."""
+    path = path or registry_path()
+    content = text(cxx_frames)
+    _write(path, content)
+    if cxx_frames:
+        _write(FRAME_TABLE, frame_table(content))
     return path
 
 
 def check(path: Path) -> str | None:
-    """None when the file is what the code writes now; else what differs."""
+    """None when the file is what the code writes now (the frames computed
+    by C++ anew) and _refframe_cache.json is made from it; else what differs."""
     if not path.is_file():
         return f"{path} is missing"
-    old = path.read_text(encoding="utf-8").splitlines()
-    new = text().splitlines()
+    content = path.read_text(encoding="utf-8")
+    if not FRAME_TABLE.is_file() or FRAME_TABLE.read_text(encoding="utf-8") != frame_table(content):
+        return f"{FRAME_TABLE} is not made from {path}"
+    old = content.splitlines()
+    new = text(cxx_frames=True).splitlines()
     for i, (a, b) in enumerate(zip(old, new)):
         if a != b:
             what = "the header" if i == 0 else (json.loads(b.rstrip(",")).get("name", f"line {i + 1}")
@@ -310,7 +363,7 @@ def main(argv: list | None = None) -> int:
             return 1
         print(f"{path or REPO_FILE}: up to date")
         return 0
-    print(export(path))
+    print(export(path, cxx_frames=args.repo))
     return 0
 
 

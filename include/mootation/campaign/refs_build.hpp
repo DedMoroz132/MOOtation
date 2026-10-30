@@ -24,6 +24,7 @@
 #include <cmath>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -163,6 +164,107 @@ inline refs::Rows failing_kept(const RegistryProblem& p, const RegistryProblem& 
     return refs::detail::keep_rows(S, keep);
 }
 
+// p's reference front of n rows, as build_entry makes it: a failing copy's
+// the base's front where no row of the base's Pareto-set sample fails or
+// every one does, else the base's images of the rows kept (kept: those rows)
+inline refs::Rows reference_front(const RegistryProblem& p, const ProblemRegistry& preg, std::size_t n,
+                                  const refs::Data& data, refs::Rows* kept_rows = nullptr)
+{
+    if (!p.failing) return refs::front(p.front, n, data);
+    const RegistryProblem& base = preg.problems.at(p.failing_region->of);
+    std::size_t total = 0;
+    const refs::Rows kept = failing_kept(p, base, total);
+    if (kept_rows) *kept_rows = kept;
+    if (kept.n == 0 || kept.n == total) return refs::front(base.front, n, data);
+    const auto native = std::shared_ptr<suite::Native>(suite::make(spec_of(p.failing_region->spec)));
+    refs::Rows ref = refs::rows_of(kept.n, static_cast<std::size_t>(base.n_obj));
+    std::vector<double> g(static_cast<std::size_t>(std::max(native->n_con, 1)));
+    for (std::size_t i = 0; i < kept.n; ++i) native->evaluate(kept.row(i), ref.row(i), g.data());
+    return refs::detail::nondominated(ref);
+}
+
+// The frame of p (task 17, addendum 7, section 2.1), part of the problem's
+// definition and fixed in the registry (registry_export writes it, whatever
+// n a reference is built at): the exact one where the definition gives it
+// (refs::exact_frame); a full front of the shipped files, the file's own
+// (the whole verified set's, its report); else over its reference front at n
+// = kFrameRows (the default n_ref), whose thinning keeps every objective's
+// extremes, so that they are the sample's. Nothing where C++ has no front.
+constexpr std::size_t kFrameRows = 1000;
+
+inline std::optional<refs::Frame> frame_of(const RegistryProblem& p, const ProblemRegistry& preg,
+                                           const refs::Data& data)
+{
+    if (p.noise) {                                      // a noisy copy: its base's
+        const auto base = preg.problems.find(p.name.substr(0, p.name.rfind('_')));
+        return base == preg.problems.end() ? std::nullopt : frame_of(base->second, preg, data);
+    }
+    if (p.uninformative) {                              // the noise-free curve's
+        refs::Frame f{std::vector<double>(2), std::vector<double>(2)};
+        UninformativeNative(*p.uninformative, p.n_var, 0).frame(f.ideal.data(), f.nadir.data());
+        return f;
+    }
+    if (p.frame_files.kind == json::Value::Kind::Object) {
+        // RE, CRE (re.frame): the authors' ideal_point_<name>.dat and
+        // nadir_point_<name>.dat, read as numpy.loadtxt reads them; CRE's
+        // its RE counterpart's without the last objective (the violation)
+        const auto dir = data.dir / store::file::path_of(p.frame_files.find("dir")->s);
+        const std::string name = p.frame_files.find("name")->s;
+        refs::Frame f{refs::detail::text_rows(dir / ("ideal_point_" + name + ".dat")).v,
+                      refs::detail::text_rows(dir / ("nadir_point_" + name + ".dat")).v};
+        const json::Value* drop = p.frame_files.find("drop_last");
+        if (drop && drop->b) {
+            f.ideal.pop_back();
+            f.nadir.pop_back();
+        }
+        return f;
+    }
+    const json::Value* family = p.spec ? p.spec->find("family") : nullptr;
+    if (family && (family->s == "POL" || family->s == "KUR" || family->s == "QV" || family->s == "KURZ")) {
+        suite::classic::Which w{};                      // the definition's (fronts_classic.hpp)
+        suite::classic::parse(family->s, w);
+        const refs::classic::Frame2 c = refs::classic::frame(w, static_cast<std::size_t>(p.n_var));
+        return refs::Frame{{c.ideal[0], c.ideal[1]}, {c.nadir[0], c.nadir[1]}};
+    }
+    if (family && (family->s == "bbob-biobj" || family->s == "bbob-biobj-mixint")) {
+        const suite::Spec s = spec_of(*p.spec);         // BIOBJ-1 (bbob.hpp, frame)
+        const auto fs = s.family == "bbob-biobj-mixint" ? suite::bbob::mixint(s.bbob_fnum, s.n_var)
+                                                         : suite::bbob::biobj(s.bbob_fnum, s.n_var, s.bbob_iid);
+        refs::Frame f{std::vector<double>(2), std::vector<double>(2)};
+        suite::bbob::frame(fs, s.n_var, f.ideal.data(), f.nadir.data());
+        return f;
+    }
+    if (p.failing) {
+        if (!p.failing_region) return std::nullopt;
+        const auto base = preg.problems.find(p.failing_region->of);
+        if (base == preg.problems.end() || base->second.front.kind != json::Value::Kind::Object) return std::nullopt;
+    } else if (p.front.kind != json::Value::Kind::Object) {
+        return std::nullopt;
+    }
+    if (!p.failing)                                     // (the failing copies' bases have no exact frame)
+        if (const auto exact = refs::exact_frame(p.front)) return exact;
+    const json::Value* kind = p.front.find("kind");
+    if (!p.failing && kind && kind->s == "full") {
+        // the file's own: its report's ideal and nadir, the whole verified
+        // set's (fronts_full.py), which the stored DSS prefix need not reach
+        const auto path = data.dir / "_fronts" / p.front.find("file")->s;
+        const auto arrays = npz::load(path);
+        const auto it = arrays.find("report");
+        if (it == arrays.end()) throw std::runtime_error(path.string() + ": no report");
+        const json::Value report = json::parse(it->second.text());
+        return refs::Frame{detail::floats_of(report.find("ideal")), detail::floats_of(report.find("nadir"))};
+    }
+    const refs::Rows F = reference_front(p, preg, kFrameRows, data);
+    refs::Frame f{std::vector<double>(F.m, std::numeric_limits<double>::infinity()),
+                  std::vector<double>(F.m, -std::numeric_limits<double>::infinity())};
+    for (std::size_t i = 0; i < F.n; ++i)
+        for (std::size_t j = 0; j < F.m; ++j) {
+            f.ideal[j] = std::min(f.ideal[j], F.row(i)[j]);
+            f.nadir[j] = std::max(f.nadir[j], F.row(i)[j]);
+        }
+    return f;
+}
+
 // refs.build_entry in C++: the entry of p at n_ref (not written)
 inline ReferenceEntry build_entry(const RegistryProblem& p, const ProblemRegistry& preg, std::size_t n_ref,
                                   const refs::Data& data, const std::string& code_stamp, const std::string& version,
@@ -176,26 +278,10 @@ inline ReferenceEntry build_entry(const RegistryProblem& p, const ProblemRegistr
     ReferenceEntry e;
     e.ideal = vector_matrix(frame.ideal);
     e.nadir = vector_matrix(frame.nadir);
-    refs::Rows ref;
-    if (p.failing) {
-        // the base's front where no row of the sample fails or every one does,
-        // else the base's images of the rows kept; the Pareto set those rows
-        const RegistryProblem& base = preg.problems.at(p.failing_region->of);
-        std::size_t total = 0;
-        const refs::Rows kept = failing_kept(p, base, total);
-        if (kept.n == 0 || kept.n == total) {
-            ref = refs::front(base.front, n_ref, data);
-        } else {
-            const auto native = std::shared_ptr<suite::Native>(suite::make(spec_of(p.failing_region->spec)));
-            ref = refs::rows_of(kept.n, static_cast<std::size_t>(base.n_obj));
-            std::vector<double> g(static_cast<std::size_t>(std::max(native->n_con, 1)));
-            for (std::size_t i = 0; i < kept.n; ++i) native->evaluate(kept.row(i), ref.row(i), g.data());
-            ref = refs::detail::nondominated(ref);
-        }
-        e.pset = Matrix{{kept.n, static_cast<std::size_t>(base.n_var)}, kept.v};
-    } else {
-        ref = refs::front(p.front, n_ref, data);
-    }
+    refs::Rows kept;
+    const refs::Rows ref = reference_front(p, preg, n_ref, data, &kept);
+    if (p.failing)                                       // the Pareto set: the rows kept
+        e.pset = Matrix{{kept.n, static_cast<std::size_t>(preg.problems.at(p.failing_region->of).n_var)}, kept.v};
     e.ref = matrix_of_rows(ref);
     json::Value info3 = json::Value::null();
     if (p.dense_reference) {

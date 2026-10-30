@@ -163,12 +163,15 @@ def status(name: str, meta) -> str:
 
 def _registry_for(names) -> Path:
     """An export of the registry (registry_export) of `names` and of the bases
-    of the failing copies among them, for the C++ builders: a file of its own,
-    beside the cache, named by its content."""
+    of the failing and noisy copies among them (C++ makes their region and
+    noise from the base), for the C++ builders: a file of its own, beside the
+    cache, named by its content."""
     import hashlib
     from ..benchmarks import registry as R
+    from ..benchmarks.noisy import base_of, is_noisy
     from . import registry_export as X
-    want = set(names) | {R.FAILING[n][0] for n in names if n in R.FAILING}
+    want = (set(names) | {R.FAILING[n][0] for n in names if n in R.FAILING}
+            | {base_of(n) for n in names if is_noisy(n) and base_of(n) in R.PROBLEMS})
     doc = {"format": X.FORMAT, "code_stamp": "", "reference_version": R.REFERENCE_VERSION,
            "mootation": "", "names": X.names(), "problems": [X.entry(n) for n in sorted(want)]}
     text = json.dumps(doc, separators=(",", ":"))

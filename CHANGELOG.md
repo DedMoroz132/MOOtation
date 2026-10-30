@@ -21,7 +21,10 @@ always listed under **Changed** or **Removed**.
   library's generator instead of NumPy's `default_rng`; ZDT3's front lies
   on its pieces, their ends computed as local minima of f2 to the last bit
   (in Python too); the last step of every reference front is a
-  deterministic nondominated filter (in Python too); Polygon, MaF8, MaF9
+  deterministic nondominated filter (in Python too); where the sampler
+  knows the front's pieces (MW's, ZDT3's), the thinning keeps every
+  objective's extremes of every piece, so that MW11's isolated point (1, 1)
+  and the ends of every piece stay (in Python too); Polygon, MaF8, MaF9
   and the rotated Polygons take their exact frame (ideal 0, the nadir at
   the vertex farthest from each vertex or edge line) instead of one read off
   a sample. **Changed results** for every metric measured against a
@@ -34,6 +37,30 @@ always listed under **Changed** or **Removed**.
   (`include/mootation/suite/spec_numbers.hpp`). The same values on every
   problem but rWFG9, whose optimum differs in the last bits: its version
   goes up by one.
+- Every problem's frame (ideal, nadir) is computed in C++
+  (`campaign/refs_build.hpp`, `frame_of`): the definition's where it gives
+  one (the polygon problems, bbob-biobj's BIOBJ-1, the uninformative
+  problems' noise-free curve, RE's and CRE's published points, POL, KUR,
+  QV and KURZ at the minimisers of their objectives,
+  `refs/fronts_classic.hpp`), a shipped full front's own, else the least
+  and greatest values over the C++ reference at n = 1000.
+  `registry_export --repo` writes them into `data/registry.json`, and
+  `benchmarks/_refframe_cache.json`, which `registry.get` reads, is made
+  from it (`--check` recomputes both). The problems whose frame moved
+  (`benchmarks/_frame_changed.py`) take one version more. **Changed
+  results** for the metrics normalised by the frame of those problems.
+- Fixed: KURZ's frame was a placeholder (the unit square); it is its
+  objectives' values at their minimisers now.
+- POL's, KUR's and QV's reference fronts are built in C++ as well (the same
+  grids and hull as `benchmarks/classic.py`).
+- A noisy copy's scale and a failing copy's region come from its name and
+  its base in C++ (`campaign/registry.hpp`, `derive_numbers`): the file
+  holds no numbers of theirs. The failing copies' random balls ("r") are
+  drawn by the library's generator, and the near-front region ("n") is the
+  tube about the part of the base's Pareto set whose first variable lies in
+  a window narrowed by the tube, so that the share in the name is the share
+  of the set that fails: new definitions of those twelve problems, one
+  version more each.
 - The problem registry as data in the repository: `data/registry.json`
   (`python -m mootation.run.registry_export --repo`; a CI test fails, naming
   that command, when it is behind the code). The build puts it, with the

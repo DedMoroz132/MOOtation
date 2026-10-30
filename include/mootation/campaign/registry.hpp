@@ -20,26 +20,106 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+#include "../detmath.hpp"
 #include "../io/npz.hpp"
 #include "../json.hpp"
 #include "../numpy_sum.hpp"
+#include "../random.hpp"
+#include "../store/crc32c.hpp"
+#include "../suite/instances.hpp"
 #include "../suite/suite.hpp"
 
 namespace mootation::campaign {
 
-// A failing copy's failure region (benchmarks/failing.py), in the box's
-// normalised units, (x - lb) / (ub - lb): "b" the band within t of the
-// faces; "r" (random balls) and "n" (a tube about part of the Pareto-set
-// sample) the balls of one radius about the centres. With the base's spec.
+// A failing copy's failure region (benchmarks/failing.py; task 17, addendum
+// 7, section 2.3), in the box's normalised units, (x - lb) / (ub - lb): "b"
+// the band within t of the faces; "r" the union of kFailBalls balls of one
+// radius about the centres; "n" the points within kFailTube of W = [lo, hi],
+// the part of the base's Pareto set (a box) whose first position variable
+// lies in a window about 1/2. Made from the name and the base (detail::
+// derive_numbers) where the file holds none. With the base's spec.
 struct FailRegion {
     std::string of, kind;                         // the base's name; the region's kind
     double t = 0.0, radius = 0.0;
     std::vector<std::vector<double>> centres;
+    std::vector<double> lo, hi;                   // "n": W
     json::Value spec;
 };
+
+constexpr int kFailBalls = 4;                     // failing.FAIL_BALLS
+constexpr double kFailTube = 0.05;                // failing.TUBE
+constexpr std::size_t kFailProbe = std::size_t{1} << 14;
+
+// "r": the centres uniform in the unit box and the radius whose balls take
+// `share` of a probe of 2^14 uniform points (bisection on the radius), all
+// drawn by the library's generator seeded with instances::seed of 20261011
+// and the CRC-32 of the copy's name — the centres first, then the probe
+inline void failing_balls(const std::string& name, std::size_t n, double share,
+                          std::vector<std::vector<double>>& centres, double& radius)
+{
+    std::mt19937 g(suite::instances::seed(
+        {20261011u, store::crc32_zlib(reinterpret_cast<const std::uint8_t*>(name.data()), name.size())}));
+    centres.assign(kFailBalls, std::vector<double>(n));
+    for (auto& c : centres)
+        for (double& v : c) v = rnd::uniform01(g);
+    std::vector<double> d(kFailProbe), u(n);
+    for (std::size_t i = 0; i < kFailProbe; ++i) {
+        for (double& v : u) v = rnd::uniform01(g);
+        double best = std::numeric_limits<double>::infinity();
+        for (const auto& c : centres) {
+            double s = 0.0;
+            for (std::size_t j = 0; j < n; ++j) s += (u[j] - c[j]) * (u[j] - c[j]);
+            best = std::min(best, s);
+        }
+        d[i] = std::sqrt(best);
+    }
+    double a = 0.0, b = std::sqrt(static_cast<double>(n));
+    for (int it = 0; it < 100; ++it) {
+        const double r = (a + b) / 2.0;
+        std::size_t in = 0;
+        for (double v : d) in += v < r;
+        if (static_cast<double>(in) > share * static_cast<double>(kFailProbe)) b = r;
+        else a = r;
+    }
+    radius = (a + b) / 2.0;
+}
+
+// "n": W, the base's Pareto set — ZDT's x1 in [0, 1], the others 0; DTLZ's
+// first M - 1 in [0, 1], the others 1/2; WFG's k positions in [0, 1], the
+// distance variables 0.35 (of 2i, normalised) — its first variable in the
+// window [1/2 - share/2 + TUBE, 1/2 + share/2 - TUBE], narrowed by the tube
+// so that the region takes `share` of the set (under share = 2 TUBE, none)
+inline void failing_window(const suite::Spec& base, double share, std::vector<double>& lo, std::vector<double>& hi)
+{
+    if (share < 2.0 * kFailTube)
+        throw std::invalid_argument("failing copy: a near-front share under 2 TUBE (" + std::to_string(share) + ")");
+    const std::size_t n = static_cast<std::size_t>(base.n_var), M = static_cast<std::size_t>(base.n_obj);
+    std::size_t free = 0;
+    double rest = 0.0;
+    if (base.family.rfind("ZDT", 0) == 0) {
+        free = 1;
+    } else if (base.family.rfind("DTLZ", 0) == 0) {
+        free = M - 1;
+        rest = 0.5;
+    } else if (base.family.rfind("WFG", 0) == 0) {
+        free = base.k > 0 ? static_cast<std::size_t>(base.k) : 2 * (M - 1);
+        rest = 0.35;
+    } else {
+        throw std::invalid_argument("failing copy: no near-front region for " + base.family);
+    }
+    lo.assign(n, rest);
+    hi.assign(n, rest);
+    for (std::size_t j = 0; j < free; ++j) {
+        lo[j] = 0.0;
+        hi[j] = 1.0;
+    }
+    lo[0] = 0.5 - share / 2.0 + kFailTube;
+    hi[0] = 0.5 + share / 2.0 - kFailTube;
+}
 
 // A noisy copy's noise (benchmarks/noisy.py): its kind (n, d, s, h), sigma,
 // the scale sigma (nadir - ideal) per objective and the base's ideal point,
@@ -69,6 +149,7 @@ struct RegistryProblem {
     std::optional<FailRegion> failing_region;     // a failing copy of a problem of the suite
     std::optional<NoiseSpec> noise;               // a noisy copy of a problem of the suite
     std::optional<std::string> uninformative;     // an uninformative problem's kind: f1, f2b, f3b, f4b, f5
+    json::Value frame_files;                      // RE, CRE: where its authors' ideal and nadir points are
     std::optional<std::string> seeded_stream;     // RE91: its run's draws from the seed (re.RE91Evaluator)
     // integer and discrete variables beside real ones (var_types.Layout): the
     // core's kinds (0 real, 1 integer, 2 discrete) and box; empty for real
@@ -104,6 +185,8 @@ struct ProblemRegistry {
     std::map<std::string, RegistryProblem> problems;
 };
 
+inline suite::Spec spec_of(const json::Value& d);
+
 namespace detail {
 
 inline std::vector<double> floats_of(const json::Value* v)
@@ -124,6 +207,40 @@ inline std::int64_t int_of(const json::Value& o, const char* key, std::int64_t f
 {
     const json::Value* v = o.find(key);
     return v && v->kind == json::Value::Kind::Int ? v->i : fallback;
+}
+
+// The numbers of a noisy and of a failing copy that come from its name and
+// its base (task 17, addendum 7, sections 2.2 and 2.3), where the file holds
+// none: noisy.py's level (<base>_<kind><1|5>: sigma 0.01 or 0.05), the scale
+// sigma (nadir_i - ideal_i) and the ideal point of the base's frame;
+// failing.py's band (<base>_fail<share>b): t from (1 - 2t)^n = 1 - share.
+inline void derive_numbers(ProblemRegistry& r)
+{
+    for (auto& [name, p] : r.problems) {
+        if (p.noise && p.noise->scale.empty()) {
+            const auto cut = name.rfind('_');
+            const std::string level = cut == std::string::npos ? std::string() : name.substr(cut + 1);
+            if (level.size() != 2 || (level[1] != '1' && level[1] != '5'))
+                throw std::runtime_error("registry: " + name + " is not a noisy copy's name");
+            const auto base = r.problems.find(name.substr(0, cut));
+            if (base == r.problems.end() || base->second.ideal.empty()) continue;   // its run refuses (make_run_native)
+            NoiseSpec& z = *p.noise;
+            z.sigma = level[1] == '1' ? 0.01 : 0.05;
+            z.ideal = base->second.ideal;
+            for (std::size_t i = 0; i < z.ideal.size(); ++i)
+                z.scale.push_back(z.sigma * (base->second.nadir.at(i) - z.ideal[i]));
+        }
+        if (p.failing_region) {
+            FailRegion& f = *p.failing_region;
+            const auto at = name.rfind("_fail");
+            const double share = std::stod(name.substr(at + 5, name.size() - at - 6)) / 100.0;
+            if (f.kind == "b" && f.t == 0.0)
+                f.t = (1.0 - dm::pow(1.0 - share, 1.0 / static_cast<double>(p.n_var))) / 2.0;
+            if (f.kind == "r" && f.centres.empty())
+                failing_balls(name, static_cast<std::size_t>(p.n_var), share, f.centres, f.radius);
+            if (f.kind == "n" && f.lo.empty()) failing_window(spec_of(f.spec), share, f.lo, f.hi);
+        }
+    }
 }
 
 }   // namespace detail
@@ -220,8 +337,10 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     if (const json::Value* v = o.find("noise"); v && v->kind == json::Value::Kind::Object) {
         NoiseSpec z;
         z.kind = v->find("kind")->s;
-        const json::Value* sg = v->find("sigma");
-        z.sigma = sg->kind == json::Value::Kind::Int ? double(sg->i) : sg->f;
+        // sigma, the scale and the ideal from the name and the base's frame
+        // (derive_numbers) where the file holds none (addendum 7, section 2.2)
+        if (const json::Value* sg = v->find("sigma"))
+            z.sigma = sg->kind == json::Value::Kind::Int ? double(sg->i) : sg->f;
         z.scale = detail::floats_of(v->find("scale"));
         if (const json::Value* i = v->find("ideal"); i && i->kind == json::Value::Kind::Array)
             z.ideal = detail::floats_of(i);
@@ -230,6 +349,7 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     }
     if (const json::Value* v = o.find("uninformative"); v && v->kind == json::Value::Kind::String)
         p.uninformative = v->s;
+    if (const json::Value* v = o.find("frame_files")) p.frame_files = *v;
     if (const json::Value* v = o.find("seeded_stream"); v && v->kind == json::Value::Kind::String)
         p.seeded_stream = v->s;
     if (const json::Value* v = o.find("var_kinds"); v && v->kind == json::Value::Kind::Array)
@@ -288,6 +408,7 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
         RegistryProblem p = registry_problem_of(item);
         r.problems.emplace(p.name, std::move(p));
     }
+    detail::derive_numbers(r);
     return r;
 }
 
@@ -347,6 +468,14 @@ public:
             for (double v : u)
                 if (v < region_.t || v > 1.0 - region_.t) return true;
             return false;
+        }
+        if (region_.kind == "n") {                // |u - clamp(u, W)| <= TUBE
+            double d2 = 0.0;
+            for (std::size_t j = 0; j < n; ++j) {
+                const double e = u[j] - std::min(std::max(u[j], region_.lo[j]), region_.hi[j]);
+                d2 += e * e;
+            }
+            return d2 <= kFailTube * kFailTube;
         }
         if (region_.centres.empty()) return false;
         const double uu = np::pairwise_sum(sq.data(), n);
@@ -489,6 +618,29 @@ public:
         s.set("nondominated", nd.as_value());
         s.set("evaluations", json::Value::integer(static_cast<std::int64_t>(k_)));
         return s;
+    }
+
+    // the frame (registry._register_uninformative; task 17, addendum 7,
+    // section 2.1): f1's the unit square; f2b-f5's the noise-free curve's (z =
+    // 0) over a = numpy.linspace(0, 1, 1001), g1 = a in [0, 1]
+    void frame(double ideal[2], double nadir[2]) const
+    {
+        ideal[0] = 0.0;
+        nadir[0] = 1.0;
+        if (problem_ == "f1") {
+            ideal[1] = 0.0;
+            nadir[1] = 1.0;
+            return;
+        }
+        ideal[1] = std::numeric_limits<double>::infinity();
+        nadir[1] = -std::numeric_limits<double>::infinity();
+        for (int i = 0; i <= 1000; ++i) {
+            const double a = i == 1000 ? 1.0 : i * (1.0 / 1000.0);
+            double f[2];
+            objectives(a, 0.0, f);
+            ideal[1] = std::min(ideal[1], f[1]);
+            nadir[1] = std::max(nadir[1], f[1]);
+        }
     }
 
 private:
@@ -634,7 +786,11 @@ inline std::shared_ptr<suite::Native> make_native(const RegistryProblem& p)
 // copy's with the run's noise (seed: the run's; cell: [campaign] noise_cell)
 inline std::shared_ptr<suite::Native> make_run_native(const RegistryProblem& p, std::uint64_t seed, double cell)
 {
-    if (p.noise) return std::make_shared<NoisyNative>(make_native(p), *p.noise, p.bounds, seed, cell);
+    if (p.noise) {
+        if (p.noise->scale.empty())
+            throw std::runtime_error("registry: " + p.name + ": its base's frame is not in the registry");
+        return std::make_shared<NoisyNative>(make_native(p), *p.noise, p.bounds, seed, cell);
+    }
     if (p.uninformative) return std::make_shared<UninformativeNative>(*p.uninformative, p.n_var, seed);
     if (p.seeded_stream && *p.seeded_stream == "RE91") return std::make_shared<RE91Native>(seed);
     return make_native(p);

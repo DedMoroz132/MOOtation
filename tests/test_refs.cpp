@@ -6,7 +6,8 @@
 //   - deflate, gzip, zip (io/deflate.hpp): what npz.hpp's inflate reads back
 //     is the input, for text, noise, runs, one byte and none; an .npz of
 //     npy_bytes reads back as its arrays;
-//   - distinct_rows, thin: copies to 12 decimals go, the extremes stay, the
+//   - distinct_rows, thin: copies to 12 decimals go, the extremes stay (of
+//     every piece of the front where the sampler knows them), the
 //     draw is the same for the same seed;
 //   - the fronts: DTLZ1's rows sum to 1/2, DTLZ2's have norm 1, WFG4's
 //     sum (f_m / 2m)^2 = 1, the simplex grid has the size of its formula,
@@ -20,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -125,6 +127,69 @@ static void thinning()
     CHECK(E.n == 500);
 }
 
+// the thinning keeps every piece's ends where the sampler knows the pieces
+// (addendum 7, section 1): an isolated point stays, more ends than n is an
+// error; MW11's (1, 1) and the ends of MW's and ZDT3's pieces are in their
+// reference fronts
+static void pieces()
+{
+    rf::Rows F = rf::rows_of(0, 2);
+    std::vector<std::size_t> piece;
+    for (int i = 0; i <= 50; ++i) {                            // two segments and a point
+        const double a[2] = {i / 100.0, 1.0 - i / 100.0}, b[2] = {0.6 + i / 200.0, 0.3 - i / 200.0};
+        rf::push_row(F, a);
+        piece.push_back(0);
+        rf::push_row(F, b);
+        piece.push_back(1);
+    }
+    const double lone[2] = {0.55, 0.42};
+    rf::push_row(F, lone);
+    piece.push_back(2);
+    const rf::Rows T = rf::thin(F, 8, 5u, piece);
+    auto has = [](const rf::Rows& R, const double* r) {
+        for (std::size_t i = 0; i < R.n; ++i)
+            if (R.row(i)[0] == r[0] && R.row(i)[1] == r[1]) return true;
+        return false;
+    };
+    const double ends[4][2] = {{0.0, 1.0}, {0.5, 0.5}, {0.6, 0.3}, {0.6 + 50 / 200.0, 0.3 - 50 / 200.0}};
+    CHECK(T.n == 8 && has(T, lone));
+    for (const auto& e : ends) CHECK(has(T, e));
+    bool refused = false;
+    try {
+        rf::thin(F, 4, 5u, piece);
+    } catch (const std::invalid_argument&) {
+        refused = true;
+    }
+    CHECK(refused);
+
+    auto mw_spec = [](int i) {
+        js::Value s = js::Value::object();
+        s.set("kind", js::Value::string("mw"));
+        s.set("i", js::Value::integer(i));
+        s.set("M", js::Value::integer(2));
+        s.set("seed", js::Value::integer(7));
+        return s;
+    };
+    const double one[2] = {1.0, 1.0};
+    CHECK(has(rf::front(mw_spec(11), 1000), one));
+    // at n = 100 the sample is spread's at 200 (98 distinct rows at 100)
+    for (int i : {1, 6, 7, 10, 11, 13}) {
+        std::vector<std::size_t> of;
+        const rf::Rows S = rf::mw::front(i, 2, 200, &of), R = rf::front(mw_spec(i), 100);
+        CHECK(R.n == 100);
+        for (std::size_t k = 0; k < S.n; ++k)
+            if (k == 0 || k + 1 == S.n || of[k] != of[k - 1] || of[k] != of[k + 1]) CHECK(has(R, S.row(k)));
+    }
+    js::Value z = js::Value::object();
+    z.set("kind", js::Value::string("zdt3"));
+    z.set("M", js::Value::integer(2));
+    z.set("seed", js::Value::integer(7));
+    std::vector<std::size_t> of;
+    const rf::Rows S = rf::detail::zdt3(300, &of), R = rf::front(z, 300);
+    for (std::size_t k = 0; k < S.n; ++k)
+        if (k == 0 || k + 1 == S.n || of[k] != of[k - 1] || of[k] != of[k + 1]) CHECK(has(R, S.row(k)));
+}
+
 static void fronts()
 {
     auto spec = [](const std::string& kind, int M) {
@@ -212,6 +277,7 @@ int main()
         nearest_other_tree();
         deflate_round_trip();
         thinning();
+        pieces();
         fronts();
         entry_record();
     } catch (const std::exception& ex) {
@@ -222,6 +288,6 @@ int main()
         std::printf("%d failure(s)\n", failures);
         return 1;
     }
-    std::printf("refs: nearest_other, deflate, thinning, fronts, entries\n");
+    std::printf("refs: nearest_other, deflate, thinning, pieces, fronts, entries\n");
     return 0;
 }

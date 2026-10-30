@@ -2689,6 +2689,8 @@ def baselines_spend_the_budget_exactly_and_answer_with_the_archive():
         import numpy as np
     except ImportError:
         return
+    if _core_with("design") is None:            # the baselines' points are the C++ designs'
+        print("    (skipped: no extension)"); return
     from mootation.run.archive import GridArchive
     from mootation.run.baselines import run_baseline
     from mootation.benchmarks import get
@@ -3282,6 +3284,17 @@ def algorithm_families_cover_the_registry():
 
 
 # ── analysis layer: variants, Pareto sets, hypervolume, reports, ablations ──
+
+def _frame_bump(name: str) -> int:
+    """1 where the problem's frame changed when C++ came to compute it (task
+    17, addendum 7, section 2.1: one version more), for it or the base of a
+    noisy or failing copy; else 0."""
+    from mootation.benchmarks._frame_changed import FRAME_CHANGED
+    from mootation.benchmarks.noisy import base_of, is_noisy
+    from mootation.benchmarks.registry import FAILING
+    base = base_of(name) if is_noisy(name) else FAILING[name][0] if name in FAILING else name
+    return int(base in FRAME_CHANGED)
+
 
 def _core_with(attr: str):
     """The compiled extension if it has `attr`, else None (a stale or absent build)."""
@@ -4749,7 +4762,7 @@ def mw_matches_pymoo():
 def mw_fronts_are_feasible_non_dominated_and_framed():
     """Every MW reference front is feasible (to 1e-12: much of it lies on
     the constraints) and mutually non-dominated, its extremes the registered
-    frame (mw.frame, to 1e-9), MW11's isolated point (1, 1) in its sample; the Pareto
+    frame (mw.frame, to 1e-9), MW11's isolated point (1, 1) on it and every piece's ends; the Pareto
     sets, where the front lies at g = 1, are feasible, at g = 1 and on the
     front. 10^4 random points of every box, with x1 on its bound for a tenth
     (reading MW-3), give finite values (task 6, item 5)."""
@@ -4778,10 +4791,18 @@ def mw_fronts_are_feasible_non_dominated_and_framed():
         R[:1000, 0] = mw.upper(name)
         for x in R:
             assert np.isfinite(p.evaluate(list(x))).all() and np.isfinite(p.constraints(list(x))).all(), key
-    # the isolated point is in the sample; the thinning to n (_exactly_n)
-    # keeps the extremes of each objective, not it
-    F = mw.front("MW11", 2, 1000, None, None)
-    assert np.min(np.abs(F - [1.0, 1.0]).max(axis=1)) == 0.0
+    # the thinning to n keeps every piece's ends, the isolated point among them
+    # (addendum 7, section 1): in both implementations' fronts
+    from mootation.benchmarks import registry as REG
+    p = get("MW11")
+    for F in (p.pareto_front(1000), p.reference["pareto_front"](1000)):
+        assert np.min(np.abs(F - [1.0, 1.0]).max(axis=1)) == 0.0
+    for key in ("MW1", "MW6", "MW11", "MW13"):
+        S, of = mw._spread(mw.dense_front(key), 200, pieces=True)      # the sample of n = 100
+        ends = [k for k in range(len(S)) if k in (0, len(S) - 1) or of[k] != of[k - 1] or of[k] != of[k + 1]]
+        for F in (get(key).pareto_front(100), get(key).reference["pareto_front"](100)):
+            assert all(np.min(np.abs(F - S[k]).max(axis=1)) <= 1e-12 for k in ends), key
+    assert raises(ValueError, REG._thin, S, len(ends) - 1, 1, of) is not None
 
 
 @test
@@ -8482,7 +8503,8 @@ def mixed_integer_and_categorical_problems_keep_their_optima():
             b = mi.optimum(mi.beta, mi.z_beta)
             assert math.isclose(mi(a)[0], p.ideal[0], abs_tol=1e-12)
             assert math.isclose(mi(b)[1], p.ideal[1], abs_tol=1e-12)
-            assert p.nadir == (mi(b)[0], mi(a)[1])
+            # the frame is C++'s (addendum 7, section 2.1): NumPy's formula to the last bits
+            assert np.allclose(p.nadir, (mi(b)[0], mi(a)[1]), rtol=1e-12, atol=0.0), (p.nadir, mi(b)[0], mi(a)[1])
             rng = np.random.default_rng(fnum)
             for _ in range(200):                      # nothing beats the ideal
                 x = [int(rng.integers(0, l)) for l in mi.arities] + list(rng.uniform(-5, 5, D // 5))
@@ -11664,9 +11686,10 @@ def rotations_and_maf9_take_an_order_of_numpys():
     assert matvec_pairwise(r.A, np.vstack([d, d]))[1].tobytes() == np.sum(r.A * d, axis=1).tobytes()
     assert r.map_rows(x[None, :])[0].tobytes() == r.map(x).tobytes()
     # one more each from task 17, supplement 5, §3: the library's rotations
-    assert R.problem_version("rDTLZ3_5D_i2") == 4 and R.problem_version("rZCAT7_5D") == 4
-    assert R.problem_version("rZDT4") == 4 and R.problem_version("MaF9_5D") == 2
-    assert R.problem_version("rcDTLZ2_3D_n1") == 4 and R.problem_version("rZDT1") == 3
+    # and one where the frame changed (addendum 7, section 2.1: _frame_bump)
+    for name, v in (("rDTLZ3_5D_i2", 4), ("rZCAT7_5D", 4), ("rZDT4", 4), ("MaF9_5D", 2),
+                    ("rcDTLZ2_3D_n1", 4), ("rZDT1", 3)):
+        assert R.problem_version(name) == v + _frame_bump(name), name
     for name, v in (("r0DTLZ1_3D", 2), ("c0DTLZ2_6D", 2), ("r0MaF3_5D", 2), ("c0MaF6_3D", 2),
                     ("MaF9_3D", 1), ("DTLZ2_3D", 2), ("rWFG4_3D", 3), ("rcPolygon_3D", 3),
                     ("WFG4_3D", 2), ("MaF10_5D", 2), ("WFG4_3D_n1", 2),
@@ -11678,7 +11701,7 @@ def rotations_and_maf9_take_an_order_of_numpys():
                     # specs drawn by C++
                     ("DOC4", 3), ("MaF8_8D", 4), ("MaF9_8D", 3), ("MaF15_3D", 3), ("MaF15_10D", 2),
                     ("bbobbiobj01_n05_2D", 2), ("bbobbiobjmixint01_n05_2D", 2), ("bbobbiobj21_n10_2D", 3)):
-        assert name in R.PROBLEMS and R.problem_version(name) == v, name
+        assert name in R.PROBLEMS and R.problem_version(name) == v + _frame_bump(name), name
     P = R._maf9_forbidden_regions(5)[0]
     want = R._poly_edge_distance(np.array([0.3, 2.0]), P)
     a, b = P[0], P[1]
@@ -11715,14 +11738,16 @@ def maf8_takes_hypot():
     for M in (3, 5, 8, 10, 15):
         name = f"MaF8_{M}D"
         p = R.PROBLEMS[name]
-        assert R.problem_version(name) == (4 if M == 8 else 3), name   # 8D: its vertex drawn in C++ (task 17)
+        # 8D: its vertex drawn in C++ (task 17); the exact frame (addendum 7)
+        assert R.problem_version(name) == (4 if M == 8 else 3) + _frame_bump(name), name
         ref = (p.reference or {}).get("evaluate_batch", p.evaluate_batch)
         F = np.asarray(ref(X), float)
         H = np.column_stack([np.hypot(X[:, 0] - vx, X[:, 1] - vy) for vx, vy in R._maf8_vertices(M)])
         assert F.tobytes() == H.tobytes(), name
         old = np.array([version1(x, M) for x in X])
         assert np.all(np.abs(old - F) <= np.spacing(np.maximum(old, F))), name
-    assert R.problem_version("MaF9_3D") == 1 and R.problem_version("MaF7_3D") == 2
+    assert R.problem_version("MaF9_3D") == 1 + _frame_bump("MaF9_3D")
+    assert R.problem_version("MaF7_3D") == 2 + _frame_bump("MaF7_3D")
 
 
 @test
@@ -11784,7 +11809,7 @@ def maf14_and_maf15_as_the_paper_defines_them():
             name = f"MaF{which}_{M}D"
             p = R.get(name)
             drawn = which == 15 and M != 10                                     # linkage drawn in C++ (task 17)
-            assert p.n_vars == D and p.n_obj == M and R.problem_version(name) == 2 + drawn, name
+            assert p.n_vars == D and p.n_obj == M and R.problem_version(name) == 2 + drawn + _frame_bump(name), name
             assert p.bounds == [(0.0, 1.0)] * (M - 1) + [(0.0, 10.0 if which == 14 else 1.0)] * (D - M + 1)
             assert p.ideal == (0.0,) * M and p.nadir == (1.0,) * M, name
             assert abs(p.pop_size * p.n_gen - max(100_000, 10_000 * D)) <= p.pop_size / 2, name

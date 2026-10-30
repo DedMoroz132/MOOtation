@@ -798,6 +798,31 @@ def _pf_zdt3(n: int) -> np.ndarray:
     return np.column_stack([f1, 1.0 - np.sqrt(f1) - f1 * np.sin(10.0 * math.pi * f1)])
 
 
+def _with_pieces(pf: Callable, pieces: Callable) -> Callable:
+    """pf with the piece of each of its rows (pieces(n), as pf(n) gives
+    them): where the sampler knows the front's pieces, the thinning to n
+    keeps every piece's ends (_thin; task 17, addendum 7, section 1)."""
+    pf.pieces = pieces
+    return pf
+
+
+def _pf_zdt3_pieces(n: int) -> np.ndarray:
+    """The piece of each row of _pf_zdt3(n) (the thinning keeps every
+    piece's ends: _thin)."""
+    pieces = zdt3_pieces()
+    total = sum(b - a for a, b in pieces)
+    shares = [n * (b - a) / total for a, b in pieces]
+    count = [max(2, int(v)) for v in shares]
+    order = sorted(range(len(pieces)), key=lambda i: (-(shares[i] - math.floor(shares[i])), i))
+    used = sum(count)
+    for i in order:
+        if used >= n:
+            break
+        count[i] += 1
+        used += 1
+    return np.repeat(np.arange(len(pieces)), count)
+
+
 def _pf_zdt4(n: int) -> np.ndarray:
     # the same front as ZDT1 (convex)
     return _pf_zdt1(n)
@@ -1149,7 +1174,7 @@ def _zdt_register():
         hv_ref_raw=(1.1, 1.1), hv_ref_norm=(1.1, 1.1), hv_norm_divisor=1.21,
         ideal=(0.0, -0.7731), nadir=(1.0, 1.0),
         pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
-        pareto_front=lambda n: _pf_zdt3(n),
+        pareto_front=_with_pieces(lambda n: _pf_zdt3(n), _pf_zdt3_pieces),
         pareto_set=lambda n: _ps_zdt("ZDT3", n, 0.0))
 
     # ── ZDT4 — multimodal ────────────────────────────────────────────────────
@@ -2175,6 +2200,8 @@ def _register_mw():
             def _eval(x, _n=name, _M=M): return _mw.objectives(_n, x, _M)
             def _cons(x, _n=name, _M=M): return _mw.constraints(_n, x, _M)
             def _pf(n, _n=name, _M=M): return _mw.front(_n, _M, n, _dd_simplex, _dd_sphere)
+            if name not in ("MW4", "MW8", "MW14"):
+                _pf = _with_pieces(_pf, lambda n, _n=name: _mw.front_pieces(_n, 2, n))
             _ps = None
             if name in _mw.ON_G1:
                 def _ps(n, _n=name, _M=M): return _mw.pareto_set(_n, _M, n, _dd_simplex, _dd_sphere)
@@ -2555,18 +2582,34 @@ _REPEAT_DIGITS = 12                  # rows equal to 12 decimals count as one
 _MAX_GROWTH = 64                     # draw at most 64 x n candidates for n distinct rows
 
 
+def _distinct_index(F: np.ndarray) -> np.ndarray:
+    """The rows of F not repeating an earlier one, in the order they came."""
+    if len(F) == 0:
+        return np.arange(0)
+    _, first = np.unique(np.round(F, _REPEAT_DIGITS), axis=0, return_index=True)
+    return np.sort(first)
+
+
 def _distinct_rows(F: np.ndarray) -> np.ndarray:
     """F without repeated rows, in the order they came."""
-    if len(F) == 0:
-        return F
-    _, first = np.unique(np.round(F, _REPEAT_DIGITS), axis=0, return_index=True)
-    return F[np.sort(first)]
+    return F[_distinct_index(F)]
 
 
-def _thin(F: np.ndarray, n: int, seed: int) -> np.ndarray:
-    """n rows of F, in order: every objective's smallest and largest row, so
-    that the front's range stays, and the rest drawn uniformly at random."""
-    keep = sorted(set(np.argmin(F, axis=0).tolist()) | set(np.argmax(F, axis=0).tolist()))
+def _thin(F: np.ndarray, n: int, seed: int, piece=None) -> np.ndarray:
+    """n rows of F, in order: every objective's smallest and largest row of
+    every piece of the front (piece: each row's; None: one piece), so that
+    the range of every piece stays and an isolated point (a piece of one)
+    with it, and the rest drawn uniformly at random. More of those than n is
+    an error."""
+    piece = np.zeros(len(F), int) if piece is None else np.asarray(piece)
+    keep = set()
+    for p in np.unique(piece):
+        rows = np.flatnonzero(piece == p)
+        keep |= set(rows[np.argmin(F[rows], axis=0)].tolist()) | set(rows[np.argmax(F[rows], axis=0)].tolist())
+    keep = sorted(keep)
+    if len(keep) > n:
+        raise ValueError(f"thinning to {n} rows: the ends of the front's {len(np.unique(piece))} pieces "
+                         f"are {len(keep)} rows already")
     rest = np.setdiff1d(np.arange(len(F)), keep)
     rng = np.random.default_rng(seed)
     extra = rng.choice(rest, size=max(0, n - len(keep)), replace=False)
@@ -2580,17 +2623,24 @@ def _exactly_n(pf: Callable, seed: int) -> Callable:
     process; every caller gets a copy."""
     import functools
 
+    pieces = getattr(pf, "pieces", None)
+
+    def draw(k: int):
+        R = np.asarray(pf(k), float)
+        keep = _distinct_index(R)
+        return R[keep], (None if pieces is None else np.asarray(pieces(k))[keep])
+
     @functools.lru_cache(maxsize=None)
     def front(n: int) -> np.ndarray:
-        F = _distinct_rows(np.asarray(pf(n), float))
+        F, piece = draw(n)
         k = n
         while len(F) < n and k < _MAX_GROWTH * n:
             k *= 2
-            more = _distinct_rows(np.asarray(pf(k), float))
+            more, more_piece = draw(k)
             if len(more) <= len(F):
                 break                              # the sampler gives no more
-            F = more
-        F = _thin(F, n, seed) if len(F) > n else F
+            F, piece = more, more_piece
+        F = _thin(F, n, seed, piece) if len(F) > n else F
         return F[_nondominated_mask(F)]            # the last step: deterministic (addendum 6, §4)
 
     def call(n: int = 1000) -> np.ndarray:
@@ -2732,17 +2782,10 @@ def _failing_parts(key: str):
         b = PROBLEMS[base]
         if callable(b.pareto_set):
             S = np.asarray(b.pareto_set(_fail.SAMPLE), float)
-            S_ref = S
-        else:                                   # WFG4
+        else:                                   # WFG4: the C++ builder's sample
             k = 2 * (b.n_obj - 1)
-            S = _fail.wfg4_pareto_set(_fail.SAMPLE, k, b.n_vars - k, _fail._rng(key + ":ps"))
-            # the reference's own sample, the C++ builder's (reference version 5)
-            S_ref = _fail.wfg4_reference_sample(_fail.SAMPLE, k, b.n_vars - k, key + ":ps")
+            S = _fail.wfg4_reference_sample(_fail.SAMPLE, k, b.n_vars - k, key + ":ps")
         evaluate, region, kept = _fail.make(b, share, kind, S)
-        if S_ref is not S:
-            lo = np.array([v[0] for v in b.bounds], float)
-            hi = np.array([v[1] for v in b.bounds], float)
-            kept = S_ref[~region.inside((S_ref - lo) / (hi - lo))]
         _FAIL_REGIONS[key] = region
         p = PROBLEMS[key]
         exact = len(kept) == len(S) and b.front_exact
@@ -2901,12 +2944,29 @@ for _name in sorted(_NEW_INSTANCES) + ["MaF8_8D", "MaF9_8D", "MaF15_3D", "MaF15_
 # library's) differs in the last bits: one version more.
 for _name in sorted(n for n, r in ROTATED.items() if r.family == "WFG9"):
     PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
+# 2026-10-31 (task 17, addendum 7, section 2.1): the frame is part of the
+# problem's definition and C++ computes it (campaign/refs_build.hpp, frame_of:
+# the definition's where there is one, else the C++ reference at n = 1000);
+# the problems whose frame changed (_frame_changed.py: the polygon problems'
+# exact frame, DAS-CMOP7's sample reaching its extremes, ZDT3's minimum of f2
+# computed, and the last bits of 233 more) one version more.
+from ._frame_changed import FRAME_CHANGED as _FRAME_CHANGED  # noqa: E402
+for _name in sorted(_FRAME_CHANGED):
+    PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
 PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
                         for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
                         for level in _noisy.LEVELS})
 PROBLEM_VERSION.update({_fail.name(base, share, kind): PROBLEM_VERSION[base]
                         for base in _fail.BASES if base in PROBLEM_VERSION
                         for share in _fail.SHARES for kind in _fail.KINDS})
+# 2026-10-31 (task 17, addendum 7, section 2.3): the failing copies' regions
+# made by C++ — the random balls drawn by the library's generator, the
+# near-front region the tube about W (the window of the base's Pareto set,
+# narrowed by the tube), in place of one about a NumPy sample's points: new
+# definitions of the r and n copies, one version more.
+for _name in [_fail.name(base, share, kind) for base in _fail.BASES for share in _fail.SHARES
+              for kind in ("r", "n")]:
+    PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
 
 
 _COPIES_OF_NEW = frozenset(
@@ -3007,13 +3067,18 @@ def _reframe_table() -> dict:
 
 
 def _reframe_one(name: str, p: "BenchProblem", n: int = 500) -> None:
-    """Set p.ideal / p.nadir from the true PF, once."""
-    if name in _REFRAMED or name in EXACT_FRAME:
+    """Set p.ideal / p.nadir, once: C++'s frame where the table has it (made
+    from the repository's data/registry.json, task 17, addendum 7, section
+    2.1; the problem's own formula then the cross-check), else the exact one
+    of the registration or the true PF's."""
+    if name in _REFRAMED:
+        return
+    table = _reframe_table()
+    if name in EXACT_FRAME and name not in table:
         return
     _REFRAMED.add(name)
 
-    table = _reframe_table()
-    key = FRAME_OF.get(name, name)              # a shifted copy reads its base's frame
+    key = name if name in table else FRAME_OF.get(name, name)   # a shifted copy: its base's
     if key in table:
         idl, nad = tuple(table[key][0]), tuple(table[key][1])
     else:

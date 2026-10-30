@@ -68,13 +68,17 @@ inline Rows normalised(const Rows& R, const Frame& f)
 // interior, which holds every vertex and edge: the ideal is 0 everywhere. A
 // distance is convex, so its largest value over the polygon is at a vertex:
 // the nadir is the farthest vertex from vertex m (from line m for MaF9).
+// IPolygon (Ishibuchi et al. 2010; polygon_ishibuchi.frame): four copies of
+// one regular M-gon, f_m the distance to vertex m of the nearest copy; the
+// same argument on one copy (its vertices, ipolygons(M)[0]).
 // Nothing for the other kinds (rotated copies take their base's spec).
 inline std::optional<Frame> exact_frame(const json::Value& spec)
 {
     const json::Value* kind = spec.find("kind");
-    if (!kind || (kind->s != "polygon" && kind->s != "maf8" && kind->s != "maf9")) return std::nullopt;
+    if (!kind || (kind->s != "polygon" && kind->s != "maf8" && kind->s != "maf9" && kind->s != "ipolygon"))
+        return std::nullopt;
     const std::size_t M = detail::count(spec, "M");
-    const std::vector<double> V = detail::unit_polygon(M);
+    const std::vector<double> V = kind->s == "ipolygon" ? detail::ipolygons(M)[0] : detail::unit_polygon(M);
     Rows P = rows_of(M, 2);
     P.v = V;
     const Rows D = kind->s == "maf9" ? detail::edge_line_distances(P, V) : detail::vertex_distances(P, V);

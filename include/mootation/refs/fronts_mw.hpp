@@ -67,7 +67,7 @@ inline double f1_range(int i)
 // mw._feasible: every constraint of the objective vector f <= tol
 inline bool feasible(int i, const double* f, int m, double tol = 0.0)
 {
-    double c[4];
+    double c[4] = {0.0, 0.0, 0.0, 0.0};
     suite::mw::constraints(i, f, m, c);
     for (int k = 0; k < suite::mw::n_con(i); ++k)
         if (!(c[k] <= tol)) return false;
@@ -369,10 +369,14 @@ inline Rows dense_front(int i)
 }
 
 // mw._spread: about n rows of the sorted front, evenly by length along it,
-// the ends of every piece kept (a step over 20 median steps separates two)
-inline Rows spread(const Rows& F, std::size_t n)
+// the ends of every piece kept (a step over 20 median steps separates two);
+// piece: each row's piece, counted from 0 along the front
+inline Rows spread(const Rows& F, std::size_t n, std::vector<std::size_t>* piece = nullptr)
 {
-    if (F.n <= n) return F;
+    if (F.n < 2) {
+        if (piece) piece->assign(F.n, 0);
+        return F;
+    }
     std::vector<double> st(F.n - 1);
     for (std::size_t k = 0; k + 1 < F.n; ++k) {
         const double a = F.row(k + 1)[0] - F.row(k)[0], b = F.row(k + 1)[1] - F.row(k)[1];
@@ -381,6 +385,12 @@ inline Rows spread(const Rows& F, std::size_t n)
     const double med = run_metrics::median(st);
     std::vector<char> gap(st.size());
     for (std::size_t k = 0; k < st.size(); ++k) gap[k] = st[k] > 20.0 * med;
+    std::vector<std::size_t> of(F.n, 0);             // the piece of each row of F
+    for (std::size_t k = 0; k + 1 < F.n; ++k) of[k + 1] = of[k] + (gap[k] ? 1 : 0);
+    if (F.n <= n) {
+        if (piece) *piece = of;
+        return F;
+    }
     std::vector<double> s(F.n, 0.0);                 // the length along it, gaps counting nothing
     for (std::size_t k = 0; k + 1 < F.n; ++k) s[k + 1] = s[k] + (gap[k] ? 0.0 : st[k]);
     std::vector<std::size_t> idx;
@@ -393,6 +403,10 @@ inline Rows spread(const Rows& F, std::size_t n)
     }
     std::sort(idx.begin(), idx.end());
     idx.erase(std::unique(idx.begin(), idx.end()), idx.end());
+    if (piece) {
+        piece->clear();
+        for (std::size_t k : idx) piece->push_back(of[k]);
+    }
     return take(F, idx);
 }
 
@@ -449,8 +463,9 @@ inline Rows mw14_front(std::size_t m, std::size_t n)
     return F;
 }
 
-// mw.front
-inline Rows front(int i, std::size_t m, std::size_t n)
+// mw.front; piece: each row's piece where the front is the sorted
+// two-objective one (spread), left empty elsewhere
+inline Rows front(int i, std::size_t m, std::size_t n, std::vector<std::size_t>* piece = nullptr)
 {
     if (i == 4) return simplex(m, n);
     if (i == 8) {
@@ -470,7 +485,7 @@ inline Rows front(int i, std::size_t m, std::size_t n)
         if (it == dense.end()) it = dense.emplace(i, dense_front(i)).first;
         D = it->second;
     }
-    return spread(D, n);
+    return spread(D, n, piece);
 }
 
 }   // namespace mootation::refs::mw

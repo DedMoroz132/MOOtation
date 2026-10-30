@@ -547,18 +547,24 @@ def dense_front(name: str) -> np.ndarray:
     return _nondominated(F)
 
 
-def _spread(F: np.ndarray, n: int) -> np.ndarray:
+def _spread(F: np.ndarray, n: int, pieces: bool = False):
     """About n rows of the sorted two-objective front F, evenly by length
     along it; the ends of every piece kept (a step of more than 20 times the
-    median separates two pieces, and counts nothing)."""
-    if len(F) <= n:
-        return F.copy()
+    median separates two pieces, and counts nothing). pieces: also each
+    row's piece, counted from 0 along the front (the thinning to n keeps
+    every piece's ends: registry._thin)."""
+    if len(F) < 2:
+        return (F.copy(), np.zeros(len(F), int)) if pieces else F.copy()
     step = np.linalg.norm(np.diff(F, axis=0), axis=1)
     gap = step > 20.0 * np.median(step)
+    of = np.concatenate([[0], np.cumsum(gap)])
+    if len(F) <= n:
+        return (F.copy(), of) if pieces else F.copy()
     s = np.concatenate([[0.0], np.cumsum(np.where(gap, 0.0, step))])
     ends = np.flatnonzero(np.concatenate([[True], gap]) | np.concatenate([gap, [True]]))
     pick = np.searchsorted(s, np.linspace(0.0, s[-1], max(n - len(ends), 2)))
-    return F[np.unique(np.concatenate([ends, np.minimum(pick, len(F) - 1)]))]
+    idx = np.unique(np.concatenate([ends, np.minimum(pick, len(F) - 1)]))
+    return (F[idx], of[idx]) if pieces else F[idx]
 
 
 def _mw14_records(grid: int = 200_001) -> np.ndarray:
@@ -578,6 +584,14 @@ def _mw14_front(m: int, n: int) -> np.ndarray:
     P = np.vstack([corners, rec[rng.integers(0, len(rec), (n, m - 1))]])
     h = 6.0 - np.exp(P) - 1.5 * np.sin(1.1 * np.pi * P * P)
     return np.column_stack([P, h.mean(axis=1)])
+
+
+def front_pieces(name: str, m: int, n: int) -> np.ndarray | None:
+    """The piece of each row of front(name, m, n) where it is the sorted
+    two-objective front (_spread); None elsewhere (MW4, MW8, MW14)."""
+    if name in ("MW4", "MW8", "MW14"):
+        return None
+    return _spread(dense_front(name), n, pieces=True)[1]
 
 
 def front(name: str, m: int, n: int, unit_simplex, unit_sphere) -> np.ndarray:

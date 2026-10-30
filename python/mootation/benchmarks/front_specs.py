@@ -103,6 +103,10 @@ def _kind(name: str, p) -> dict | None:
         return {"kind": name.lower()}
     if name in ("SPH_2D", "SPH_3D"):
         return {"kind": "sph", "M": M}
+    if name in ("POL", "KUR"):
+        return {"kind": "classic_grid", "name": name}
+    if name == "QV":
+        return {"kind": "qv"}
     from . import rwmop as _rw
     if name.startswith("RCM") and (_rw.DATA / f"{name}.dat").is_file():
         return {"kind": "text", "file": f"_rwmop/{name}.dat"}

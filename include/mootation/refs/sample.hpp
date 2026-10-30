@@ -9,9 +9,15 @@
 //   distinct_rows(F)     registry._distinct_rows: F without the rows equal to
 //                        an earlier one when rounded to 12 decimals
 //                        (np.round: x * 1e12, rint, / 1e12), in F's order
-//   thin(F, n, seed)     registry._thin: n rows of F in F's order — every
-//                        objective's first smallest and first largest row,
-//                        the others drawn without replacement; the draw is
+//   thin(F, n, seed, piece)
+//                        registry._thin: n rows of F in F's order — every
+//                        objective's first smallest and first largest row
+//                        of every piece of the front (piece[i]: row i's;
+//                        none given, one piece), so that an isolated point
+//                        (a piece of one) and the ends of every piece stay
+//                        (addendum 7, section 1: only where the sampler
+//                        knows the pieces); more of them than n is an
+//                        error; the others drawn without replacement; the draw is
 //                        the library's (std::mt19937 seeded with `seed`,
 //                        rnd::below, a partial Fisher-Yates over the others
 //                        in their order), not NumPy's default_rng: one
@@ -20,7 +26,8 @@
 //   exactly_n(pf, n, seed)
 //                        registry._exactly_n: pf(n) without repeated rows; a
 //                        sample with fewer drawn again at 2n, 4n, ... (up to
-//                        64n) while it grows; thinned to n rows
+//                        64n) while it grows; thinned to n rows (pf(k, piece)
+//                        gives the pieces of its rows where it knows them)
 //   simplex(M, n)        dtlz_variants._simplex: the points of the grid of
 //                        step 1/p on [0, 1]^(M-1) (p = round(n^(1/(M-1))))
 //                        whose sum is at most 1 + 1e-9, with 1 - sum after
@@ -38,6 +45,7 @@
 #include <map>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../archive_select.hpp"
@@ -95,7 +103,8 @@ inline double round12(double x)
     return std::nearbyint(x * 1e12) / 1e12;
 }
 
-inline Rows distinct_rows(const Rows& F)
+// the rows of F not equal to an earlier one (rounded to 12 decimals)
+inline std::vector<std::size_t> distinct_index(const Rows& F)
 {
     std::map<std::vector<double>, char> seen;     // compared value by value: 0.0 == -0.0
     std::vector<std::size_t> keep;
@@ -104,26 +113,38 @@ inline Rows distinct_rows(const Rows& F)
         for (std::size_t j = 0; j < F.m; ++j) key[j] = round12(F.row(i)[j]);
         if (seen.emplace(key, char{0}).second) keep.push_back(i);
     }
-    return take(F, keep);
+    return keep;
 }
 
-inline Rows thin(const Rows& F, std::size_t n, std::uint32_t seed)
+inline Rows distinct_rows(const Rows& F)
+{
+    return take(F, distinct_index(F));
+}
+
+inline Rows thin(const Rows& F, std::size_t n, std::uint32_t seed, const std::vector<std::size_t>& piece = {})
 {
     std::vector<char> kept(F.n, 0);
-    for (std::size_t j = 0; j < F.m; ++j) {
-        std::size_t lo = 0, hi = 0;
-        for (std::size_t i = 1; i < F.n; ++i) {
-            if (F.row(i)[j] < F.row(lo)[j]) lo = i;
-            if (F.row(i)[j] > F.row(hi)[j]) hi = i;
+    std::map<std::size_t, std::vector<std::size_t>> pieces;   // piece -> its rows, in F's order
+    for (std::size_t i = 0; i < F.n; ++i) pieces[piece.empty() ? 0 : piece.at(i)].push_back(i);
+    for (const auto& [id, rows] : pieces)
+        for (std::size_t j = 0; j < F.m; ++j) {
+            std::size_t lo = rows[0], hi = rows[0];
+            for (std::size_t i : rows) {
+                if (F.row(i)[j] < F.row(lo)[j]) lo = i;
+                if (F.row(i)[j] > F.row(hi)[j]) hi = i;
+            }
+            kept[lo] = kept[hi] = 1;
         }
-        kept[lo] = kept[hi] = 1;
-    }
     std::vector<std::size_t> rest;
     std::size_t n_keep = 0;
     for (std::size_t i = 0; i < F.n; ++i) {
         if (kept[i]) ++n_keep;
         else rest.push_back(i);
     }
+    if (n_keep > n)
+        throw std::invalid_argument("thinning to " + std::to_string(n) + " rows: the ends of the front's " +
+                                    std::to_string(pieces.size()) + " pieces are " + std::to_string(n_keep) +
+                                    " rows already");
     const std::size_t extra = n > n_keep ? std::min(n - n_keep, rest.size()) : 0;
     std::mt19937 g(seed);
     for (std::size_t k = 0; k < extra; ++k) {             // the first `extra` places: the draw
@@ -137,18 +158,38 @@ inline Rows thin(const Rows& F, std::size_t n, std::uint32_t seed)
     return take(F, idx);
 }
 
-inline Rows exactly_n(const std::function<Rows(std::size_t)>& pf, std::size_t n, std::uint32_t seed)
+// pf(k, piece): about k rows of the front, and the piece of each in *piece
+// where the sampler knows the pieces (left empty where not)
+using PiecedSampler = std::function<Rows(std::size_t, std::vector<std::size_t>*)>;
+
+inline Rows exactly_n(const PiecedSampler& pf, std::size_t n, std::uint32_t seed)
 {
     constexpr std::size_t kMaxGrowth = 64;
-    Rows F = distinct_rows(pf(n));
+    auto draw = [&](std::size_t k, std::vector<std::size_t>& piece) {
+        std::vector<std::size_t> all;
+        const Rows R = pf(k, &all);
+        const std::vector<std::size_t> keep = distinct_index(R);
+        piece.clear();
+        if (!all.empty())
+            for (std::size_t i : keep) piece.push_back(all.at(i));
+        return take(R, keep);
+    };
+    std::vector<std::size_t> piece, more_piece;
+    Rows F = draw(n, piece);
     std::size_t k = n;
     while (F.n < n && k < kMaxGrowth * n) {
         k *= 2;
-        Rows more = distinct_rows(pf(k));
+        Rows more = draw(k, more_piece);
         if (more.n <= F.n) break;                         // the sampler gives no more
         F = std::move(more);
+        piece.swap(more_piece);
     }
-    return F.n > n ? thin(F, n, seed) : F;
+    return F.n > n ? thin(F, n, seed, piece) : F;
+}
+
+inline Rows exactly_n(const std::function<Rows(std::size_t)>& pf, std::size_t n, std::uint32_t seed)
+{
+    return exactly_n(PiecedSampler([&](std::size_t k, std::vector<std::size_t>*) { return pf(k); }), n, seed);
 }
 
 // Python's round() of a positive value: half to even

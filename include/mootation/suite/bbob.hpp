@@ -629,5 +629,35 @@ inline std::vector<Function> mixint(int fnum, int D)
     return fs;
 }
 
+// The frame of the pair fs in D variables (BIOBJ-1; bbob_biobj.problem and
+// bbob_biobj_mixint.MixedInteger; task 17, addendum 7, section 2.1): the
+// ideal (f_opt^alpha, f_opt^beta), the nadir each objective at the other's
+// optimum — with integer variables the mixed point where it takes f_opt,
+// each integer the index of its level at x_opt (the first of the nearest).
+inline void frame(const std::vector<Function>& fs, int D, double ideal[2], double nadir[2])
+{
+    const Pair pair(fs, D);
+    double best[2][kMaxD] = {};
+    for (int o = 0; o < 2; ++o) {
+        const Function& f = fs[static_cast<std::size_t>(o)];
+        for (int i = 0; i < D; ++i) best[o][i] = f.x_opt[static_cast<std::size_t>(i)];
+        for (int i = 0; i < pair.integers(); ++i) {
+            const auto& z = f.levels[static_cast<std::size_t>(i)];
+            std::size_t j = 0;
+            for (std::size_t t = 1; t < z.size(); ++t)
+                if (std::abs(z[t] - f.x_opt[static_cast<std::size_t>(i)]) <
+                    std::abs(z[j] - f.x_opt[static_cast<std::size_t>(i)]))
+                    j = t;
+            best[o][i] = static_cast<double>(j);
+        }
+        ideal[o] = f.f_opt;
+    }
+    double at_b[2], at_a[2];
+    pair.evaluate(best[1], at_b);
+    pair.evaluate(best[0], at_a);
+    nadir[0] = at_b[0];
+    nadir[1] = at_a[1];
+}
+
 }   // namespace bbob
 }   // namespace mootation::suite
