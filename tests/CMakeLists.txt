@@ -36,6 +36,9 @@ set(MOOTATION_TESTS
     test_line_search
     test_lbfgsb
     test_single_objective_refusal
+    test_de
+    test_jade
+    test_shade
     test_store_codec
     test_json
     test_toml
