@@ -3,14 +3,23 @@
 // ============================================================================
 // What a run is measured against, read in C++ — task 17, stage 5, step 4a:
 // the cache of references (run/refs.py: <root>/v<REFERENCE_VERSION>/<problem>/
-// n<n_ref>.npz, built by Python) and campaign.reference_hash() over it.
+// n<n_ref>.<ext>) and campaign.reference_hash() over it.
 //
 // An entry holds the frame (ideal, nadir), the reference front (ref), the
 // dense reference (ref3) and the Pareto-set sample (pset) — each where the
 // problem has it — and json.dumps of its meta (refs.build_entry).
+//
+// From reference version 5 (§2.1: the references built in C++, refs/) an
+// entry is one record of the store's format (store/record.hpp, the key
+// "<problem>|<n_ref>"): the block meta.json (its JSON text), then the arrays
+// as <f8 blocks under their names — n<n_ref>.mrf. The entries of before, by
+// Python, are .npz files (numpy.savez_compressed; "meta" json.dumps of the
+// meta as a 0-d string array): read, never written.
 // ============================================================================
 
 #include <cstdlib>
+#include <cstring>
+#include <fstream>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -19,6 +28,8 @@
 #include "../io/npz.hpp"
 #include "../json.hpp"
 #include "../store/pack.hpp"
+#include "../store/record.hpp"
+#include "../store/run_json.hpp"
 #include "../store/sha256.hpp"
 
 namespace mootation::campaign {
@@ -73,11 +84,14 @@ inline std::filesystem::path refs_root()
     return root / "mootation" / "references";
 }
 
+// the first reference version whose entries are records (.mrf)
+constexpr int kRecordEntries = 5;
+
 // refs.entry_path()
 inline std::filesystem::path entry_path(int reference_version, const std::string& name, long long n_ref)
 {
     return refs_root() / ("v" + std::to_string(reference_version)) / store::file::path_of(name) /
-           ("n" + std::to_string(n_ref) + ".npz");
+           ("n" + std::to_string(n_ref) + (reference_version >= kRecordEntries ? ".mrf" : ".npz"));
 }
 
 inline Matrix matrix_of(const npz::Array& a)
@@ -85,10 +99,81 @@ inline Matrix matrix_of(const npz::Array& a)
     return Matrix{a.shape, a.doubles()};
 }
 
+namespace detail {
+
+inline const std::pair<const char*, std::optional<Matrix> ReferenceEntry::*> kArrays[] = {
+    {"ideal", &ReferenceEntry::ideal}, {"nadir", &ReferenceEntry::nadir}, {"ref", &ReferenceEntry::ref},
+    {"ref3", &ReferenceEntry::ref3},   {"pset", &ReferenceEntry::pset}};
+
+}   // namespace detail
+
+// An entry as the bytes of its record (the key "<problem>|<n_ref>").
+inline std::vector<std::uint8_t> encode_entry(const std::string& key, const ReferenceEntry& e)
+{
+    std::vector<store::Block> blocks;
+    const std::string meta = json::dump(e.meta);
+    blocks.push_back(store::Block{"meta.json", "json", {}, {meta.begin(), meta.end()}, ""});
+    for (const auto& [name, member] : detail::kArrays) {
+        const std::optional<Matrix>& a = e.*member;
+        if (!a) continue;
+        store::Block b{name, "<f8", {}, {}, ""};
+        for (auto s : a->shape) b.shape.push_back(s);
+        const auto* p = reinterpret_cast<const std::uint8_t*>(a->values.data());
+        b.data.assign(p, p + 8 * a->values.size());
+        blocks.push_back(std::move(b));
+    }
+    return store::encode_record(key, store::encode_run(blocks));
+}
+
+inline ReferenceEntry decode_entry(const std::vector<std::uint8_t>& bytes, const std::string& what)
+{
+    const store::RecordAt r = store::parse_record(bytes.data(), bytes.size(), 0);
+    if (!r.ok) throw std::runtime_error(what + ": not a whole record (length or CRC)");
+    ReferenceEntry e;
+    for (const store::Block& b : store::decode_run(bytes.data() + r.body, r.body_size)) {
+        if (b.name == "meta.json") {
+            e.meta = json::parse(std::string(b.data.begin(), b.data.end()));
+            continue;
+        }
+        for (const auto& [name, member] : detail::kArrays) {
+            if (b.name != name) continue;
+            Matrix m;
+            for (auto s : b.shape) m.shape.push_back(static_cast<std::size_t>(s));
+            m.values.resize(b.data.size() / 8);
+            std::memcpy(m.values.data(), b.data.data(), 8 * m.values.size());
+            e.*member = std::move(m);
+        }
+    }
+    return e;
+}
+
+// An entry written whole: to a file beside it, renamed over it (a copy built
+// at the same time elsewhere is the same bytes).
+inline void save_entry(const std::filesystem::path& path, const std::string& key, const ReferenceEntry& e,
+                       long long pid)
+{
+    std::filesystem::create_directories(path.parent_path());
+    const auto bytes = encode_entry(key, e);
+    auto tmp = path;
+    tmp += "." + std::to_string(pid) + ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+        if (!out) throw std::runtime_error("cannot write " + tmp.string());
+    }
+    std::error_code ec;
+    std::filesystem::rename(tmp, path, ec);
+    if (ec) {                                        // Windows: another process holds the copy it wrote
+        std::filesystem::remove(tmp, ec);
+        if (!std::filesystem::is_regular_file(path)) throw std::runtime_error("cannot write " + path.string());
+    }
+}
+
 // an entry's arrays and meta (refs.load_entry), from its file
 inline ReferenceEntry load_entry(const std::filesystem::path& path)
 {
     ReferenceEntry e;
+    if (path.extension() == ".mrf") return decode_entry(npz::read_file(path), path.string());
     for (const auto& [name, a] : npz::load(path)) {
         if (name == "meta") e.meta = json::parse(a.text());
         else if (name == "ideal") e.ideal = matrix_of(a);

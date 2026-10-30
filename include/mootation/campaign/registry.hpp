@@ -34,7 +34,7 @@ namespace mootation::campaign {
 // faces; "r" (random balls) and "n" (a tube about part of the Pareto-set
 // sample) the balls of one radius about the centres. With the base's spec.
 struct FailRegion {
-    std::string kind;
+    std::string of, kind;                         // the base's name; the region's kind
     double t = 0.0, radius = 0.0;
     std::vector<std::vector<double>> centres;
     json::Value spec;
@@ -81,6 +81,11 @@ struct RegistryProblem {
     std::vector<std::string> user_kinds;
     std::vector<int> cat_levels, gene_levels;
     std::vector<std::vector<double>> cover_front;
+    // the frame (BenchProblem.ideal, nadir), and the samplers of the reference
+    // front and the Pareto set (benchmarks/front_specs.py; refs/fronts.hpp,
+    // refs/sets.hpp): null where C++ does not build them
+    std::vector<double> ideal, nadir;
+    json::Value front, pset;
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -194,10 +199,15 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     p.typed = flag_of(o, "typed");
     p.failing = flag_of(o, "failing");
     p.distance = flag_of(o, "distance");
+    p.ideal = detail::floats_of(o.find("ideal"));
+    p.nadir = detail::floats_of(o.find("nadir"));
+    if (const json::Value* v = o.find("front")) p.front = *v;
+    if (const json::Value* v = o.find("set")) p.pset = *v;
     if (const json::Value* v = o.find("spec"); v && v->kind == json::Value::Kind::Object) p.spec = *v;
     if (const json::Value* v = o.find("failing_region"); v && v->kind == json::Value::Kind::Object) {
         FailRegion r;
         r.kind = v->find("kind")->s;
+        if (const json::Value* of = v->find("of")) r.of = of->s;
         r.spec = *v->find("spec");
         if (const json::Value* t = v->find("t")) r.t = t->kind == json::Value::Kind::Int ? double(t->i) : t->f;
         if (const json::Value* c = v->find("radius")) r.radius = c->kind == json::Value::Kind::Int ? double(c->i) : c->f;

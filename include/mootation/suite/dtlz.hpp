@@ -133,6 +133,20 @@ inline void inverted(int which, const double* y, int n, int M, double* f)
 // ---- C-DTLZ's constraints (c_dtlz.constraints_rows), <= 0 satisfied ------
 enum class Cons { C1_DTLZ1, C1_DTLZ3, C2_DTLZ2, C2_Convex, C3_DTLZ1, C3_DTLZ4 };
 
+// The radius r of C1-DTLZ3, C2-DTLZ2 and C2-ConvexDTLZ2 at M = 3 and 5 (Jain
+// & Deb, IEEE TEVC 18(4), 2014, Part II; c_dtlz.C1_DTLZ3_R, C2_DTLZ2_R,
+// C2_CONVEX_R); 0 elsewhere.
+inline double cdtlz_radius(Cons which, int M)
+{
+    if (M != 3 && M != 5) return 0.0;
+    switch (which) {
+        case Cons::C1_DTLZ3: return M == 3 ? 9.0 : 12.5;
+        case Cons::C2_DTLZ2: return M == 3 ? 0.4 : 0.5;
+        case Cons::C2_Convex: return 0.225;
+        default: return 0.0;
+    }
+}
+
 // Part I's convex DTLZ2: f_i^4 (i < M), f_M^2 (c_dtlz.convex).
 inline void convex(double* f, int M)
 {

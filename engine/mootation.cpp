@@ -5,6 +5,9 @@
 //     mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,...]
 //                   [--force] [--registry FILE] [--quiet]
 //     mootation store ls|check|repair|compact|merge <campaign folder> ...
+//     mootation refs build [--problems A,B] [--n-ref N] [--rebuild] [--extend]
+//                          [--workers N] [--registry FILE] [--data DIR]
+//     mootation refs check [--problems A,B] [--n-ref N] [--registry FILE]
 //     mootation --version
 //
 // `run` runs a campaign with storage = "store" as `python -m
@@ -19,8 +22,16 @@
 // mootation.run.registry_export`; the newest in the reference cache's
 // registry/ folder unless --registry names one) and the cache of references
 // (`python -m mootation refs build`).
+//
+// `refs build` builds the cache's entries in C++ (include/mootation/campaign/
+// refs_build.hpp; reference version 5) for the problems whose samplers the
+// registry's export gives — all with an exact front by default — and names
+// the others; `refs check` lists the entries missing or old. --data is the
+// folder of the shipped fronts (_fronts/: the full fronts of DTLZ5, DTLZ6,
+// MaF6 and WFG3; MOOTATION_DATA if not given).
 // ============================================================================
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -38,6 +49,7 @@
 #endif
 
 #include <mootation/campaign/engine.hpp>
+#include <mootation/campaign/refs_build.hpp>
 #include <mootation/campaign/store_tools.hpp>
 #include <mootation/fp_env.hpp>
 #include <mootation/version.hpp>
@@ -60,6 +72,10 @@ namespace {
 const char* kUsage =
     "usage: mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,... | --only @FILE]\n"
     "                     [--force] [--registry FILE] [--report FILE] [--quiet]\n"
+    "       mootation store ls|check|repair|compact|merge <campaign folder> ...\n"
+    "       mootation refs build [--problems A,B] [--n-ref N] [--rebuild] [--extend] [--workers N]\n"
+    "                            [--registry FILE] [--data DIR]\n"
+    "       mootation refs check [--problems A,B] [--n-ref N] [--registry FILE]\n"
     "       mootation --version\n";
 
 long long process_id()
@@ -327,6 +343,91 @@ int store_command(const std::vector<std::string>& args)
     throw std::invalid_argument("store: unknown command " + cmd + "\n" + kStoreUsage);
 }
 
+int refs_command(const std::vector<std::string>& args)
+{
+    if (args.empty() || (args[0] != "build" && args[0] != "check"))
+        throw std::invalid_argument("refs: build or check?\n" + std::string(kUsage));
+    const std::string cmd = args[0];
+    std::string problems;
+    std::filesystem::path registry, data;
+    cg::RefsBuildOptions opt;
+    for (std::size_t k = 1; k < args.size(); ++k) {
+        const std::string& a = args[k];
+        auto value = [&]() -> std::string {
+            if (k + 1 >= args.size()) throw std::invalid_argument("refs " + cmd + ": " + a + " wants a value");
+            return args[++k];
+        };
+        if (a == "--problems") problems = value();
+        else if (a == "--n-ref") opt.n_ref = static_cast<std::size_t>(std::stoll(value()));
+        else if (a == "--registry") registry = mootation::store::file::path_of(value());
+        else if (cmd == "build" && a == "--data") data = mootation::store::file::path_of(value());
+        else if (cmd == "build" && a == "--workers") opt.workers = static_cast<std::size_t>(std::stoll(value()));
+        else if (cmd == "build" && a == "--rebuild") opt.rebuild = true;
+        else if (cmd == "build" && a == "--extend") opt.extend = true;
+        else throw std::invalid_argument("refs " + cmd + ": unknown argument " + a);
+    }
+    if (registry.empty()) registry = newest_registry();
+    const cg::ProblemRegistry preg = cg::load_registry(registry);
+    std::vector<std::string> names;
+    for (std::size_t at = 0; at < problems.size();) {
+        const auto comma = problems.find(',', at);
+        const std::string n = problems.substr(at, comma == std::string::npos ? std::string::npos : comma - at);
+        if (!n.empty()) names.push_back(n);
+        if (comma == std::string::npos) break;
+        at = comma + 1;
+    }
+    if (names.empty())
+        for (const auto& [name, p] : preg.problems)
+            if (p.shared_reference) names.push_back(name);
+    constexpr int version = mootation::refs::kReferenceVersion;
+    const auto root = cg::refs_root() / ("v" + std::to_string(version));
+    if (cmd == "check") {
+        std::size_t bad = 0;
+        for (const auto& name : names) {
+            const auto it = preg.problems.find(name);
+            const std::string st =
+                it == preg.problems.end()
+                    ? "not in the registry"
+                    : cg::refs_status(cg::entry_path(version, name, static_cast<long long>(opt.n_ref)), it->second, version);
+            if (st != "ok") {
+                std::printf("%s: %s\n", name.c_str(), st.c_str());
+                ++bad;
+            }
+        }
+        std::printf("%zu of %zu current at n_ref = %zu (%s)\n", names.size() - bad, names.size(), opt.n_ref,
+                    cg::detail::utf8(root).c_str());
+        return bad ? 1 : 0;
+    }
+    if (data.empty()) {
+        const std::string env = cg::detail::getenv_str("MOOTATION_DATA");
+        if (!env.empty()) data = mootation::store::file::path_of(env);
+    }
+    opt.data.dir = data;
+    opt.code_stamp = std::string("cxx ") + mootation::version() + " " + MOOTATION_GIT_COMMIT;
+    opt.version = mootation::version();
+    opt.pid = process_id();
+    opt.log = [](const std::string& line) {
+        std::printf("%s\n", line.c_str());
+        std::fflush(stdout);
+    };
+    const auto t0 = std::chrono::steady_clock::now();
+    const auto got = cg::build_references(preg, names, opt);
+    std::size_t built = 0, failed = 0, skipped = 0;
+    for (const auto& [name, what] : got) {
+        if (what == "built") {
+            ++built;
+        } else if (what.rfind("failed", 0) == 0) {
+            ++failed;
+        } else if (what != "ok") {
+            ++skipped;
+            std::printf("  %s: %s\n", name.c_str(), what.c_str());
+        }
+    }
+    std::printf("references: %zu built, %zu failed, %zu not built in C++, %.1f s\n", built, failed, skipped,
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+    return failed ? 1 : 0;
+}
+
 }   // namespace
 
 int main(int argc, char** argv)
@@ -344,6 +445,7 @@ int main(int argc, char** argv)
         }
         if (args[0] == "run") return run(std::vector<std::string>(args.begin() + 1, args.end()));
         if (args[0] == "store") return store_command(std::vector<std::string>(args.begin() + 1, args.end()));
+        if (args[0] == "refs") return refs_command(std::vector<std::string>(args.begin() + 1, args.end()));
         std::fprintf(stderr, "unknown command %s\n%s", args[0].c_str(), kUsage);
         return 2;
     } catch (const std::exception& e) {

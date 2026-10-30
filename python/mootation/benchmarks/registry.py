@@ -51,6 +51,7 @@
 # ============================================================================
 from __future__ import annotations
 
+import functools
 import math
 import re
 from dataclasses import dataclass
@@ -720,13 +721,79 @@ def _pf_zdt2(n: int) -> np.ndarray:
     return np.column_stack([f1, 1.0 - f1 ** 2])
 
 
+def _zdt3_f2(x: float) -> float:
+    return 1.0 - math.sqrt(x) - x * math.sin(10.0 * math.pi * x)
+
+
+def _zdt3_slope(x: float) -> float:
+    return (-0.5 / math.sqrt(x) - math.sin(10.0 * math.pi * x)
+            - 10.0 * math.pi * x * math.cos(10.0 * math.pi * x))
+
+
+def _bisect(fn, lo: float, hi: float) -> float:
+    """The root of fn between lo and hi (of other signs there), to the last bit."""
+    lo_neg = fn(lo) < 0.0
+    while True:
+        mid = 0.5 * (lo + hi)
+        if mid <= lo or mid >= hi:
+            return mid
+        if (fn(mid) < 0.0) == lo_neg:
+            lo = mid
+        else:
+            hi = mid
+
+
+@functools.lru_cache(maxsize=None)
+def zdt3_pieces() -> tuple:
+    """ZDT3's front pieces (a, b) of f1 (task 17, addendum 6, §4; as the C++
+    builder, refs/fronts.hpp): b a local minimum of f2 lower than every
+    earlier one (f2' from negative to positive on a grid of 2e5, bisected to
+    the last bit), a where f2, falling from the local maximum before it,
+    comes down to the earlier minimum's level (0 for the first)."""
+    grid = 200_000
+    minima, maxima = [], []
+    prev = _zdt3_slope(1.0 / grid)
+    for k in range(2, grid + 1):
+        x = k / grid
+        s = _zdt3_slope(x)
+        lo = (k - 1) / grid
+        if prev < 0.0 <= s:
+            minima.append(_bisect(_zdt3_slope, lo, x))
+        if prev >= 0.0 > s:
+            maxima.append(_bisect(_zdt3_slope, lo, x))
+        prev = s
+    out, level = [], math.inf
+    for b in minima:
+        fb = _zdt3_f2(b)
+        if not fb < level:
+            continue
+        a = 0.0
+        if out:
+            m = max(c for c in maxima if c < b)
+            a = _bisect(lambda x, _l=level: _zdt3_f2(x) - _l, m, b)
+        out.append((a, b))
+        level = fb
+    return tuple(out)
+
+
 @_cached_front
 def _pf_zdt3(n: int) -> np.ndarray:
-    f1 = np.linspace(0.0, 1.0, 4 * n)
-    f2 = 1.0 - np.sqrt(f1) - f1 * np.sin(10.0 * math.pi * f1)
-    F = np.column_stack([f1, f2])
-    keep = _nondominated_mask(F)
-    return F[keep][_checked(f1[keep, None], F[keep], _img_zdt3, 20260922)]
+    """ZDT3's front: n points on its pieces (zdt3_pieces), evenly by f1, each
+    piece's share of n its share of their length (largest remainders up, two
+    points a piece at least), both ends of every piece among them."""
+    pieces = zdt3_pieces()
+    total = sum(b - a for a, b in pieces)
+    shares = [n * (b - a) / total for a, b in pieces]
+    count = [max(2, int(v)) for v in shares]
+    order = sorted(range(len(pieces)), key=lambda i: (-(shares[i] - math.floor(shares[i])), i))
+    used = sum(count)
+    for i in order:
+        if used >= n:
+            break
+        count[i] += 1
+        used += 1
+    f1 = np.concatenate([np.linspace(a, b, c) for (a, b), c in zip(pieces, count)])
+    return np.column_stack([f1, 1.0 - np.sqrt(f1) - f1 * np.sin(10.0 * math.pi * f1)])
 
 
 def _pf_zdt4(n: int) -> np.ndarray:
@@ -2514,7 +2581,8 @@ def _exactly_n(pf: Callable, seed: int) -> Callable:
             if len(more) <= len(F):
                 break                              # the sampler gives no more
             F = more
-        return _thin(F, n, seed) if len(F) > n else F
+        F = _thin(F, n, seed) if len(F) > n else F
+        return F[_nondominated_mask(F)]            # the last step: deterministic (addendum 6, §4)
 
     def call(n: int = 1000) -> np.ndarray:
         return front(int(n)).copy()
@@ -2540,6 +2608,24 @@ def _shifted_fronts() -> None:
 
 
 _shifted_fronts()
+
+
+def _exact_polygon_frames() -> None:
+    """Polygon, MaF8 and MaF9 (and the rotated Polygons, FRAME_OF) take their
+    exact frame (polygon.exact_frame; task 17, addendum 6, §3), not one read
+    off a sample of the front."""
+    for name, p in PROBLEMS.items():
+        stem = FRAME_OF.get(name, name).split("_")[0]
+        kind = {"Polygon": "vertex", "MaF8": "vertex", "MaF9": "line"}.get(stem)
+        if kind is None:
+            continue
+        ideal, nadir = _poly.exact_frame(kind, p.n_obj)
+        object.__setattr__(p, "ideal", ideal)
+        object.__setattr__(p, "nadir", nadir)
+        EXACT_FRAME.add(name)
+
+
+_exact_polygon_frames()
 
 
 # =============================================================
@@ -2671,7 +2757,8 @@ def _register_failing():
                     _, kept, total = _failing_parts(_k)
                     if len(kept) in (0, total):
                         return PROBLEMS[_b].pareto_front(n)
-                    return np.asarray(PROBLEMS[_b].evaluate_batch(kept), float)
+                    F = np.asarray(PROBLEMS[_b].evaluate_batch(kept), float)
+                    return F[_nondominated_mask(F)]
 
                 def _ps(n=1000, _k=key, _b=base):
                     _, kept, total = _failing_parts(_k)

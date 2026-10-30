@@ -16,6 +16,11 @@
 // for these files), big-endian and object arrays — an error names what it
 // met.
 //
+// Written (`mootation store export --files`, tests): an .npy of version 1.0
+// with NumPy's header (the dict, spaces and a newline to a multiple of 64
+// bytes), and an .npz of them deflated (deflate.hpp's zip) — what numpy.load
+// reads.
+//
 // inflate follows the decoder of RFC 1951 §3.2 as Mark Adler's puff.c lays it
 // out: canonical Huffman codes given by their lengths, decoded a bit at a time
 // by counting the codes of each length.
@@ -32,6 +37,7 @@
 #include <vector>
 
 #include "../store/crc32c.hpp"
+#include "deflate.hpp"
 
 namespace mootation::npz {
 
@@ -438,6 +444,43 @@ inline std::map<std::string, Array> load(const std::filesystem::path& path)
         out[key] = parse_npy(bytes);
     }
     return out;
+}
+
+// An .npy of version 1.0: `descr` NumPy's dtype string ("<f8", "|b1",
+// "<U12", ...), the shape, the bytes in C order.
+inline std::vector<std::uint8_t> npy_bytes(const std::string& descr, const std::vector<std::size_t>& shape,
+                                           const std::vector<std::uint8_t>& data)
+{
+    std::string dims;
+    for (std::size_t k = 0; k < shape.size(); ++k) dims += (k ? ", " : "") + std::to_string(shape[k]);
+    if (shape.size() == 1) dims += ",";
+    std::string header = "{'descr': '" + descr + "', 'fortran_order': False, 'shape': (" + dims + "), }";
+    // magic (6) + version (2) + length (2) + header + "\n": a multiple of 64
+    while ((10 + header.size() + 1) % 64 != 0) header += ' ';
+    header += '\n';
+    if (header.size() > 0xFFFF) throw Error("an .npy header past 64 KiB");
+    std::vector<std::uint8_t> out = {0x93, 'N', 'U', 'M', 'P', 'Y', 1, 0};
+    out.push_back(static_cast<std::uint8_t>(header.size() & 0xFF));
+    out.push_back(static_cast<std::uint8_t>(header.size() >> 8));
+    out.insert(out.end(), header.begin(), header.end());
+    out.insert(out.end(), data.begin(), data.end());
+    return out;
+}
+
+// One array of an .npz to write: its name (without ".npy"), dtype, shape, bytes.
+struct NpyArray {
+    std::string name, descr;
+    std::vector<std::size_t> shape;
+    std::vector<std::uint8_t> data;
+};
+
+// The bytes of an .npz of the arrays, in their order (numpy.savez_compressed's
+// content; the archive's own bytes are deflate.hpp's).
+inline std::vector<std::uint8_t> npz_bytes(const std::vector<NpyArray>& arrays)
+{
+    std::vector<std::pair<std::string, std::vector<std::uint8_t>>> files;
+    for (const auto& a : arrays) files.emplace_back(a.name + ".npy", npy_bytes(a.descr, a.shape, a.data));
+    return deflate::zip(files);
 }
 
 }   // namespace mootation::npz

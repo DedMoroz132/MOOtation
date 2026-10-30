@@ -73,5 +73,26 @@ def polygon_nadir(M: int) -> tuple:
     return tuple([2.0] * M)
 
 
+def exact_frame(kind: str, M: int) -> tuple:
+    """(ideal, nadir) of Polygon and MaF8 (kind "vertex": f_m the distance to
+    vertex m of the regular M-gon on the unit circle) and MaF9 ("line": to the
+    line through edge m), exactly (task 17, addendum 6, §3; as the C++
+    builder, refs/build.hpp): the Pareto set is the polygon's interior, which
+    holds every vertex and edge, so the ideal is 0; a distance is convex, so
+    its largest value over the polygon is at a vertex."""
+    V = [(math.cos(2.0 * math.pi * m / M), math.sin(2.0 * math.pi * m / M)) for m in range(M)]
+    nadir = []
+    for m in range(M):
+        if kind == "vertex":
+            d = [math.hypot(x - V[m][0], y - V[m][1]) for x, y in V]
+        else:
+            ax, ay = V[m]
+            dx, dy = V[(m + 1) % M][0] - ax, V[(m + 1) % M][1] - ay
+            nrm = math.hypot(dx, dy)
+            d = [abs(dy * (x - ax) - dx * (y - ay)) / nrm for x, y in V]
+        nadir.append(max(d))
+    return tuple([0.0] * M), tuple(nadir)
+
+
 def polygon_ideal(M: int) -> tuple:
     return tuple([0.0] * M)

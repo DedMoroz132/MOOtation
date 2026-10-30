@@ -46,6 +46,9 @@
 #include <mootation/grid_archive.hpp>
 #include <mootation/indicators.hpp>
 #include <mootation/nondominated.hpp>
+#include <mootation/refs/fronts.hpp>
+#include <mootation/refs/sets.hpp>
+#include <mootation/refs/build.hpp>
 #include <mootation/set_archive.hpp>
 
 namespace py = pybind11;
@@ -134,6 +137,58 @@ void bind_run_layer(py::module_& m)
               return flags(keep);
           },
           py::arg("F"), "Which rows of F no row dominates (copies all kept).");
+
+    // ── the reference builders (include/mootation/refs) ────────────────────
+    m.def("refs_sample",
+          [](const std::string& spec, std::size_t n, const std::string& data_dir) {
+              const mootation::json::Value s = mootation::json::parse(spec);
+              Rows F;
+              {
+                  py::gil_scoped_release unlock;
+                  F = mootation::refs::sample(s, n, {mootation::store::file::path_of(data_dir)});
+              }
+              return matrix(F.v, F.n, F.m);
+          },
+          py::arg("spec"), py::arg("n"), py::arg("data_dir") = "",
+          "The rows of the sampler a front's spec (JSON, benchmarks/front_specs.py) names, for n.");
+    m.def("refs_front",
+          [](const std::string& spec, std::size_t n, const std::string& data_dir, bool filter) {
+              const mootation::json::Value s = mootation::json::parse(spec);
+              Rows F;
+              {
+                  py::gil_scoped_release unlock;
+                  F = mootation::refs::front(s, n, {mootation::store::file::path_of(data_dir)}, filter);
+              }
+              return matrix(F.v, F.n, F.m);
+          },
+          py::arg("spec"), py::arg("n"), py::arg("data_dir") = "", py::arg("filter") = true,
+          "The reference front of n rows the spec gives (include/mootation/refs/fronts.hpp).");
+    m.def("refs_set",
+          [](const std::string& spec, std::size_t n) {
+              const mootation::json::Value s = mootation::json::parse(spec);
+              Rows X;
+              {
+                  py::gil_scoped_release unlock;
+                  X = mootation::refs::pareto_set(s, n);
+              }
+              return matrix(X.v, X.n, X.m);
+          },
+          py::arg("spec"), py::arg("n"),
+          "The n rows of the Pareto-set sampler the spec names (include/mootation/refs/sets.hpp).");
+    m.def("refs_floors",
+          [](const Arr& ref, const Arr& ideal, const Arr& nadir, std::size_t pop) {
+              const Rows R = rows_of(ref, "refs_floors: ref");
+              mootation::refs::Frame f{std::vector<double>(ideal.data(), ideal.data() + ideal.size()),
+                                       std::vector<double>(nadir.data(), nadir.data() + nadir.size())};
+              mootation::refs::Floors out;
+              {
+                  py::gil_scoped_release unlock;
+                  out = mootation::refs::igdp_floors(R, f, pop);
+              }
+              return py::make_tuple(out.greedy, out.dss, out.rows, out.distinct);
+          },
+          py::arg("ref"), py::arg("ideal"), py::arg("nadir"), py::arg("pop"),
+          "cover.igdp_floors in C++ at one population: (greedy, dss, rows, distinct).");
 
     // ── the subset selection (archive.py) ──────────────────────────────────
     m.def("almost_dominated",

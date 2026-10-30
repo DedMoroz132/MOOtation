@@ -86,6 +86,7 @@ def entry(name: str) -> dict:
     from ..benchmarks import registry as R
     from ..benchmarks.properties import modification_of, properties
     from ..benchmarks.noisy import kind_of as noise_kind
+    from ..benchmarks.front_specs import front_spec, set_spec
     from . import refs
     p = R.PROBLEMS[name]
     spec = None
@@ -120,7 +121,25 @@ def entry(name: str) -> dict:
         **_layout(p),
         "distance": p.distance_fn is not None,
         "spec": spec,
+        # the reference builders in C++ (refs/): the frame and the samplers
+        "ideal": _frame(name)[0],
+        "nadir": _frame(name)[1],
+        "front": front_spec(name),
+        "set": set_spec(name),
     }
+
+
+def _frame(name: str) -> tuple:
+    """(ideal, nadir) as registry.get gives them (the frame read off the
+    reference front where it is not exact), lists of floats; Nones without."""
+    import warnings
+    from ..benchmarks import registry as R
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")              # the degenerate fronts' note
+        p = R.get(name)
+    if p.ideal is None or p.nadir is None:
+        return None, None
+    return [float(v) for v in p.ideal], [float(v) for v in p.nadir]
 
 
 def _layout(p) -> dict:

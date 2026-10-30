@@ -21,6 +21,7 @@
 // platform and in archive.py without the extension.
 // ============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -181,10 +182,99 @@ inline double cover_rate(const double* X, std::size_t n, const double* P, std::s
     return dm::pow(prod, 1.0 / (2.0 * static_cast<double>(D)));
 }
 
-// For every row of R (n x m) the distance to the nearest other row, NumPy's
-// sqrt of the sum of the squares: reference_step's distances (metrics.py),
-// by every pair (it replaces SciPy's KD-tree, task 17, stage 2a).
-inline std::vector<double> nearest_other(const double* R, std::size_t n, std::size_t m)
+namespace detail_x {
+
+// NumPy's sqrt of the sum of the squares of a - b
+inline double distance(const double* a, const double* b, std::size_t m, double* buf)
+{
+    for (std::size_t c = 0; c < m; ++c) {
+        const double v = a[c] - b[c];
+        buf[c] = v * v;
+    }
+    return std::sqrt(np::sum(buf, m));
+}
+
+// A k-d tree over the rows of R (Bentley, Commun. ACM 18(9), 1975): a node
+// splits its rows at the median of the axis they spread most along, a leaf
+// holds at most 16. It only decides which rows to measure: every distance
+// is distance() above, and the nearest is the least of them, so the answer is
+// the one of every pair. A subtree is left out only when the gap to its side
+// of the split alone is beyond the best distance by more than rounding could
+// make up (a relative 1e-10 of the square).
+struct KdTree {
+    const double* R = nullptr;
+    std::size_t m = 0;
+    std::vector<std::size_t> idx;
+    struct Node {
+        std::size_t lo = 0, hi = 0, axis = 0, left = 0, right = 0;
+        double split = 0.0;
+        bool leaf = true;
+    };
+    std::vector<Node> nodes;
+
+    KdTree(const double* R_, std::size_t n, std::size_t m_) : R(R_), m(m_), idx(n)
+    {
+        for (std::size_t i = 0; i < n; ++i) idx[i] = i;
+        nodes.reserve(2 * n / 8 + 2);
+        build(0, n);
+    }
+
+    std::size_t build(std::size_t lo, std::size_t hi)
+    {
+        const std::size_t at = nodes.size();
+        nodes.push_back(Node{lo, hi, 0, 0, 0, 0.0, true});
+        if (hi - lo <= 16) return at;
+        std::size_t axis = 0;
+        double widest = -1.0;
+        for (std::size_t c = 0; c < m; ++c) {
+            double a = R[idx[lo] * m + c], b = a;
+            for (std::size_t k = lo + 1; k < hi; ++k) {
+                a = std::min(a, R[idx[k] * m + c]);
+                b = std::max(b, R[idx[k] * m + c]);
+            }
+            if (b - a > widest) {
+                widest = b - a;
+                axis = c;
+            }
+        }
+        if (!(widest > 0.0)) return at;                 // all the same here: one leaf
+        const std::size_t mid = lo + (hi - lo) / 2;
+        std::nth_element(idx.begin() + static_cast<std::ptrdiff_t>(lo), idx.begin() + static_cast<std::ptrdiff_t>(mid),
+                         idx.begin() + static_cast<std::ptrdiff_t>(hi), [this, axis](std::size_t a, std::size_t b) {
+                             return R[a * m + axis] < R[b * m + axis];
+                         });
+        const double split = R[idx[mid] * m + axis];
+        const std::size_t left = build(lo, mid);
+        const std::size_t right = build(mid, hi);
+        nodes[at].leaf = false;
+        nodes[at].axis = axis;
+        nodes[at].split = split;
+        nodes[at].left = left;
+        nodes[at].right = right;
+        return at;
+    }
+
+    // the least distance from row i to another row under node `at`
+    void nearest(std::size_t at, std::size_t i, double& best, double* buf) const
+    {
+        const Node& nd = nodes[at];
+        const double* q = R + i * m;
+        if (nd.leaf) {
+            for (std::size_t k = nd.lo; k < nd.hi; ++k)
+                if (idx[k] != i) best = std::min(best, distance(q, R + idx[k] * m, m, buf));
+            return;
+        }
+        const double gap = q[nd.axis] - nd.split;
+        const std::size_t first = gap < 0.0 ? nd.left : nd.right, second = gap < 0.0 ? nd.right : nd.left;
+        nearest(first, i, best, buf);
+        if (gap * gap <= best * best * (1.0 + 1e-10)) nearest(second, i, best, buf);
+    }
+};
+
+}   // namespace detail_x
+
+// nearest_other by every pair (a NaN as np.minimum takes it)
+inline std::vector<double> nearest_other_pairs(const double* R, std::size_t n, std::size_t m)
 {
     std::vector<double> out(n), buf(m);
     for (std::size_t i = 0; i < n; ++i) {
@@ -192,17 +282,36 @@ inline std::vector<double> nearest_other(const double* R, std::size_t n, std::si
         bool first = true;
         for (std::size_t j = 0; j < n; ++j) {
             if (j == i) continue;
-            for (std::size_t c = 0; c < m; ++c) {
-                const double v = R[i * m + c] - R[j * m + c];
-                buf[c] = v * v;
-            }
-            const double d = std::sqrt(np::sum(buf.data(), m));
+            const double d = detail_x::distance(R + i * m, R + j * m, m, buf.data());
             best = first ? d : detail_x::nan_min(best, d);
             first = false;
         }
         out[i] = best;
     }
     return out;
+}
+
+// For every row of R (n x m) the distance to the nearest other row, NumPy's
+// sqrt of the sum of the squares: reference_step's distances (metrics.py).
+// It replaced SciPy's KD-tree (task 17, stage 2a) by every pair; from 2 048
+// rows without a NaN a k-d tree of its own picks the pairs (detail_x::KdTree,
+// task 17, §2.1: the dense references of 10^5 rows), the same values.
+inline std::vector<double> nearest_other(const double* R, std::size_t n, std::size_t m)
+{
+    bool finite = true;
+    for (std::size_t k = 0; k < n * m && finite; ++k) finite = std::isfinite(R[k]);
+    if (finite && n >= 2048) {
+        std::vector<double> out(n);
+        const detail_x::KdTree tree(R, n, m);
+        std::vector<double> buf(m);
+        for (std::size_t i = 0; i < n; ++i) {
+            double best = std::numeric_limits<double>::infinity();
+            tree.nearest(0, i, best, buf.data());
+            out[i] = best;
+        }
+        return out;
+    }
+    return nearest_other_pairs(R, n, m);
 }
 
 // the second answer's stream: the run's seed XOR this seeds its generator
