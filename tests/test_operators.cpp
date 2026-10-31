@@ -387,6 +387,30 @@ void test_pcx_child()
     check_close(along_ratio, 0.01, 0.0003, "the step along d has variance sigma_zeta^2 |d|^2");
     check_close(across_ratio, (n - 1.0) * 0.01, 0.0009,
                 "the step across has variance sigma_eta^2 Dbar^2 per direction");
+
+    // centre: the parent named, and no draw for it — the child is the one the
+    // default call makes when its draw picks that parent
+    std::mt19937 a(5);
+    for (int t = 0; t < 200; ++t) {
+        std::mt19937 probe = a;
+        const auto [y0, p0] = ops::pcx_child(P, 0.1, 0.1, a);
+        rnd::uniform_int_distribution<std::size_t> pick(0, P.size() - 1);
+        (void)pick(probe);                                       // the default's own draw of x_p
+        const auto [y1, p1] = ops::pcx_child(P, 0.1, 0.1, probe, static_cast<long long>(p0));
+        if (y1 != y0 || p1 != p0) {
+            check(false, "pcx_child(centre): the default's child for that parent");
+            return;
+        }
+    }
+    check(true, "pcx_child(centre): the parent named, no draw for it, the default's child");
+    bool refused = false;
+    try {
+        std::mt19937 r(1);
+        (void)ops::pcx_child(P, 0.1, 0.1, r, 3);
+    } catch (const std::invalid_argument&) {
+        refused = true;
+    }
+    check(refused, "pcx_child(centre): a centre outside P refused");
 }
 
 void test_multi_parent_host_entry()

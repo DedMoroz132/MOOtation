@@ -422,7 +422,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `ga` | GA-3 | lambda odd: the second child of the last pair is dropped after its mutation (nsga2 does the same). lambda = 1 with `coin`: one child of the pair kept by a fair coin drawn between crossover and mutation, the other neit... | yes | `ga.hpp` |
 | `ga` | GA-4 | Bounds: SBX and the polynomial mutation stay in the box by construction; | yes | `ga.hpp` |
 | `ga` | GA-5 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) in tournaments, truncation and G3's choices; not in the papers. | yes | `ga.hpp` |
-| `ga` | G3-1 | PCX: ops::pcx_child draws its index parent x_p at random; | yes | `ga.hpp` |
+| `ga` | G3-1 | PCX's index parent x_p is the best of the parents (best_centre, on by default: §3.2.1, "For a faster convergence, the best parent is always used"), not the operator's own pick "with equal probability" (§2.2), which be... | yes | `ga.hpp` |
 | `ga` | G3-2 | Step (1)'s mu - 1 others differ from the best and from each other; step (3)'s two differ. | yes | `ga.hpp` |
 | `ga` | G3-3 | Step (4) keeps the two best of the family in its order (the two chosen, then the offspring), stably; the better goes to the first chosen place. | yes | `ga.hpp` |
 | `jade` | JADE-1 | "the 100p % best": the ceil(p NP) best of P (at least 1); ranking and draws as pbest.hpp (PB-1, PB-2). | yes | `jade.hpp` |
