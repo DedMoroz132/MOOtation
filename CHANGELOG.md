@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `ops::pcx_child` takes the index parent x_p as an argument, `centre`
+  (default -1: drawn "with equal probability", Deb, Anand & Joshi 2002, §2.2,
+  as before; a given centre draws nothing for it). The G3 core of `scalar/ga.hpp`
+  (the `g3_pcx` preset) gives its best parent (`best_centre`, on by default:
+  §3.2.1, "the best parent is always used"), and its runs reach Table 2's
+  evaluations; every other user of the operator, the multi-objective cores
+  among them, keeps the random pick (the golden fingerprints unchanged).
 - `docs/deviations.md` has a second table: the readings of every file of
   `include/mootation/scalar` (LM-n, LB-n, LS-n, SCALAR-n, SQP-n, DE-n, ...),
   gathered by `tools/deviations.py` like the cores' (task 18, addendum 2,

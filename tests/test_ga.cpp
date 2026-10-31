@@ -9,10 +9,10 @@
 //     difference);
 //   - G3 with PCX, Deb, Anand, Joshi 2002 (n = 20, N = 100, mu = 3, lambda =
 //     2, start in [-10, -5]^20, no box): every run of 5 reaches 1e-20 on the
-//     ellipsoid and on Schwefel's function. With the library's PCX, whose
-//     index parent is random (G3-1), it takes about 10 times Table 2's
-//     evaluations; the same model with the best parent as index parent gives
-//     Table 2 (the TASK18 report, §13);
+//     ellipsoid and on Schwefel's function, the median within 25 % of Table
+//     2's — PCX's index parent the best (G3-1, best_centre); with the
+//     operator's random pick (best_centre = false) it takes several times
+//     more (the TASK18 report, §13);
 //   - CHC with BLX-0.5 (scalar/chc.hpp), Eshelman & Schaffer 1993, Table 3,
 //     De Jong's F1 and F2 on their bit grids, 50 runs as the paper: every run
 //     finds the optimum; the mean trials within 20 % (F1) and 50 % (F2) of
@@ -220,10 +220,12 @@ double fsch(const Vec& x)
     return s;
 }
 
-long long g3_evaluations(const std::function<double(const Vec&)>& f, unsigned seed, long long cap)
+long long g3_evaluations(const std::function<double(const Vec&)>& f, unsigned seed, long long cap,
+                         bool best_centre = true)
 {
     G::G3Options o;
     o.repair = mootation::ops::BoundRepair::Native;
+    o.best_centre = best_centre;
     std::mt19937 rng(seed);
     G::G3 g3(Vec(20, -10.0), Vec(20, -5.0), o, rng);
     long long nfe = 0;
@@ -259,7 +261,12 @@ void g3_table_2()
         std::snprintf(line, sizeof line,
                       "G3-PCX, %s, n = 20: 5 of 5 to 1e-20, evaluations %lld ... %lld (median %lld; Table 2's %.0f)",
                       c.name, n.front(), n.back(), n[2], c.median);
-        check(n.front() > 0, line);
+        check(n.front() > 0 && std::fabs(static_cast<double>(n[2]) - c.median) <= 0.25 * c.median, line);
+        // the operator's own pick of x_p: the same model, several times slower
+        const long long slow = g3_evaluations(c.f, 300u, 300000, false);
+        check(slow < 0 || static_cast<double>(slow) > 3.0 * static_cast<double>(n[2]),
+              std::string("G3 with best_centre = false, ") + c.name + ": " + std::to_string(slow) +
+                  " evaluations (more than 3 times the median above, or not within 300000)");
     }
 }
 
@@ -389,7 +396,7 @@ int main()
     chc_table_3();
     rules();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
-    check(g_hash == 0xf020aa5fdc800c0bull, "the checksum of the runs, the same bits on every platform");
+    check(g_hash == 0x8349efbff345aec3ull, "the checksum of the runs, the same bits on every platform");
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;
 }

@@ -47,9 +47,11 @@
 //   GA-5. Constraints g <= 0: NSGA-II's constrained-domination at M = 1
 //     (evo.hpp) in tournaments, truncation and G3's choices; not in the
 //     papers.
-//   G3-1. PCX: ops::pcx_child draws its index parent x_p at random; §3.2.1
-//     takes "the best parent ... for a faster convergence". The operator file
-//     is not changed (task 18, supplement 3, §3): here x_p is random.
+//   G3-1. PCX's index parent x_p is the best of the parents (best_centre, on
+//     by default: §3.2.1, "For a faster convergence, the best parent is
+//     always used"), not the operator's own pick "with equal probability"
+//     (§2.2), which best_centre = false gives (ops::pcx_child's default; the
+//     owner's word, 31.10).
 //   G3-2. Step (1)'s mu - 1 others differ from the best and from each other;
 //     step (3)'s two differ. Each of the lambda offspring is one pcx_child
 //     call on the same parents.
@@ -233,6 +235,7 @@ struct G3Options {
     std::size_t n = 100, mu = 3, lambda = 2;               // §3.2.1
     double sigma_zeta = 0.1, sigma_eta = 0.1;              // §3.2.1
     bool modified = false;                                 // §3.2.2
+    bool best_centre = true;                               // §3.2.1, G3-1
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // GA-4
 };
 
@@ -260,7 +263,8 @@ public:
         for (std::size_t i : idx) P.push_back(x_[i]);
         u_.clear();
         for (std::size_t k = 0; k < o_.lambda; ++k) {                    // (2), G3-1
-            auto [y, p] = ops::pcx_child(P, o_.sigma_zeta, o_.sigma_eta, rng_);
+            // P[0] is the best (step 1)
+            auto [y, p] = ops::pcx_child(P, o_.sigma_zeta, o_.sigma_eta, rng_, o_.best_centre ? 0 : -1);
             if (o_.repair != ops::BoundRepair::Native)
                 for (std::size_t j = 0; j < y.size(); ++j)
                     if (y[j] < lo_[j] || y[j] > hi_[j]) y[j] = ops::repair_value(y[j], lo_[j], hi_[j], P[p][j], o_.repair, rng_);

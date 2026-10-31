@@ -46,9 +46,13 @@
 //         through g along d, and y = x_p + w_ζ·d + Σ w_η·D̄·e^(i),
 //         w_ζ ~ N(0, σ_ζ²), w_η ~ N(0, σ_η²); σ_ζ = σ_η = 0.1 and μ = 3 (§4:
 //         "In all PCX runs, we have used σ_η = σ_ζ = 0.1"). The journal's G3
-//         runs take the BEST parent as x_p "for a faster convergence"; the
-//         operator itself picks it at random, and so does this one — a host
-//         here has no single fitness to call best.
+//         runs take the BEST parent as x_p (§3.2.1: "For a faster
+//         convergence, the best parent is always used"); the operator itself
+//         picks it "with equal probability" (§2.2), and so does this one by
+//         default. `centre` names the parent instead (the owner's word,
+//         31.10): scalar/ga.hpp's G3, the g3_pcx preset, gives its best. The
+//         multi-objective hosts keep the random pick: there no single fitness
+//         says which parent is best.
 //
 // Declared readings:
 //   MP-1 (UNDX, PCX). Σ z_k e_k over an orthonormal basis of the complement
@@ -88,6 +92,7 @@
 #include <cstddef>
 #include <optional>
 #include <random>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -212,13 +217,21 @@ undx_pair(const std::vector<double>& x1, const std::vector<double>& x2, const st
     return {c1, c2};
 }
 
+// centre: the index of x_p in P; -1 (the default) draws it uniformly, §2.2.
+// A given centre draws nothing for it.
 template <typename RNG>
 inline std::pair<std::vector<double>, std::size_t>
-pcx_child(const ParentSet& P, double sigma_zeta, double sigma_eta, RNG& rng)
+pcx_child(const ParentSet& P, double sigma_zeta, double sigma_eta, RNG& rng, long long centre = -1)
 {
     const std::size_t n = P[0].size();
-    rnd::uniform_int_distribution<std::size_t> pick(0, P.size() - 1);
-    const std::size_t p = pick(rng);
+    if (centre >= static_cast<long long>(P.size())) throw std::invalid_argument("pcx_child: centre outside P");
+    std::size_t p;
+    if (centre >= 0) {
+        p = static_cast<std::size_t>(centre);
+    } else {
+        rnd::uniform_int_distribution<std::size_t> pick(0, P.size() - 1);
+        p = pick(rng);
+    }
     const auto g = mp_detail::centre(P);
     std::vector<double> d(n);
     for (std::size_t j = 0; j < n; ++j) d[j] = P[p][j] - g[j];
