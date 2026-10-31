@@ -361,6 +361,20 @@ _BBOB_GROUP = {1: "separable", 2: "separable", 6: "moderate", 8: "moderate",
                13: "ill-conditioned", 14: "ill-conditioned", 15: "multimodal",
                17: "multimodal", 20: "weakly-structured", 21: "weakly-structured"}
 
+# bbob at one objective (task 18, stage 1, §1d), Hansen et al. 2009 (RR-6829,
+# the headings of its five groups and of each function): f1-f5 separable,
+# f6-f9 low or moderate conditioning, f10-f14 high conditioning and unimodal,
+# f15-f19 multimodal with adequate global structure, f20-f24 multimodal with
+# weak global structure; f3 (Rastrigin) and f4 (Büche-Rastrigin) multimodal
+# too; f5 (linear slope) has its optimum on the box's boundary
+_BBOB1_GROUP = ((5, "separable"), (9, "moderate"), (14, "ill-conditioned"), (19, "multimodal"),
+                (24, "weakly-structured"))
+
+
+def _bbob1_group(fid: int) -> str:
+    return next(g for last, g in _BBOB1_GROUP if fid <= last)
+
+
 # Liu, Gu & Zhang 2014, Section III-C (see the module docstring)
 _MOP_FRONT = {1: "convex", 2: "concave", 3: "concave", 4: "disconnected", 5: "convex",
               6: "linear", 7: "concave"}
@@ -428,6 +442,8 @@ def properties(name: str) -> dict | None:
         from .bbob_biobj import PAIRS
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
+    elif stem.startswith("bbob") and stem[4:].isdigit():
+        row["bbob_groups"] = _bbob1_group(int(stem[4:]))
     row["front_dim"] = _front_dim(stem, row["n_obj"], front)
     from ..families import VERIFICATION, is_engineering
     row["family_kind"] = ("verification" if name in VERIFICATION else
@@ -661,6 +677,17 @@ def _huband(name: str) -> dict | None:
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         return _p(None, fa in _BBOB_MULTIMODAL or fb in _BBOB_MULTIMODAL, False, None,
                   fa in _BBOB_SEPARABLE and fb in _BBOB_SEPARABLE, False, False)
+    if stem.startswith("bbob") and stem[4:].isdigit():
+        # one objective (_BBOB1_GROUP above): no front, no objective scales
+        fid = int(stem[4:])
+        return _p(None, fid in (3, 4) or fid >= 15, False, None, fid <= 5, False, fid == 5)
+    if stem.startswith("MGH") and stem[3:].isdigit() or stem == "NIST":
+        # MGH and NIST at one objective (least_squares.py): multimodal where
+        # MGH's (d) prints a local minimum beside the global one (LSQ-3), the
+        # rest not stated by the sources
+        from .least_squares import MGH_LOCAL
+        multimodal = True if stem != "NIST" and int(stem[3:]) in MGH_LOCAL else None
+        return _p(None, multimodal, None, None, None, None, None, deceptive=None)
     if stem == "catZDT1":
         # categorical.py: ZDT1's front, held by the multimodal g only, the
         # easy ones just above it (deceptive); its optimum y = 0.5, medial

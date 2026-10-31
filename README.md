@@ -39,7 +39,8 @@ plus *mutation*, the operator all of these algorithms are built on.
   the Ishibuchi polygons, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy
   and failing copies, the real-world RE, CRE and RWMOP's RCM, the multimodal SYM-PART, Omni-test and
   MMF with every part of their Pareto sets) with true Pareto fronts where a closed form exists, IGD / IGD+ /
-  hypervolume, and a campaign runner that shards across a cluster.
+  hypervolume, and a campaign runner that shards across a cluster; at one objective bbob's 24 functions,
+  MGH's least-squares set and NIST StRD's regression files with their known minima.
 - **Warm starts**, an evaluation log, constraint handling in every algorithm
   (off by default, as in the papers), and a `--check` that refuses a run ten
   seconds in rather than ten minutes into a day-long job.

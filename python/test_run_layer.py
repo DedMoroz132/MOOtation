@@ -1093,6 +1093,7 @@ def no_full_front_point_of_the_dtlz5_family_has_f_M_above_one():
 def every_benchmark_evaluates_without_raising():
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
+    import math
     import random
     from mootation.benchmarks.registry import PROBLEMS
     random.seed(7)
@@ -1103,6 +1104,8 @@ def every_benchmark_evaluates_without_raising():
     # nor nadir.
     for nm, p in PROBLEMS.items():
         x = [lo + random.random() * (hi - lo) for lo, hi in p.bounds]
+        if p.x0 is not None and any(math.isinf(v) for b in p.bounds for v in b):
+            x = [v + random.random() - 0.5 for v in p.x0]     # no box (task 18, §1d): about the start
         if _without_balls(nm):
             continue
         try:
@@ -1679,6 +1682,87 @@ def every_suite_problem_has_cxx_s_box():
         checked += 1
     assert not differ, differ[:10]
     assert checked > 1000, checked
+
+@test
+def the_registry_has_problems_at_one_objective():
+    """Task 18, stage 1, §1d: bbob's 24 functions in D = 2 ... 40, MGH's 28
+    least-squares sizes from Table IV's 54 starts and NIST's 27 files from
+    two starts are registry problems of the C++ suite at one objective. Each
+    has its f_opt where it is known — f at bbob's x_opt is the instance's
+    f_opt (C++ and NumPy), the sum of squares at NIST's certified parameters
+    half the certified one, MGH (d)'s minima as least_squares.py lists them
+    (Table IV's ||f||^2 = (d) is tests/test_lm_sets.cpp's), the printed ones
+    lm's again and to (d)'s digits — the least-squares ones their start, no
+    box and their residuals, MGH's its local levels and large_residual;
+    data/registry.json carries these for them alone."""
+    try:
+        from mootation import _core
+    except ImportError:
+        _core = None
+    if not hasattr(_core, "nist_dataset"):
+        print("    (skipped: no extension, or one before §1d)"); return
+    import json
+    import math
+    from decimal import Decimal
+    from mootation.benchmarks import bbob, least_squares as L
+    from mootation.benchmarks.registry import PROBLEMS
+    one = {k: q for k, q in PROBLEMS.items() if q.n_obj == 1}
+    by = {f: [k for k in one if k.startswith(f)] for f in ("bbob", "MGH", "NIST")}
+    sizes = {f: len(v) for f, v in by.items()}
+    assert sizes == {"bbob": 144, "MGH": 54, "NIST": 54}, sizes
+    assert len(one) == 252, len(one)
+    for k in by["bbob"]:
+        q = one[k]
+        fid, D = int(k[4:6]), int(k[8:10])
+        inst = bbob.instance(fid, 1, D)
+        assert q.native.spec["bbob_fid"] == fid and q.f_opt == inst.f_opt and q.x0 is None and q.f_opt_kind == "exact"
+        f = q.evaluate(list(inst.x_opt))[0]
+        assert abs(f - q.f_opt) <= 1e-9 * max(1.0, abs(q.f_opt)), (k, f, q.f_opt)   # BBOB-5: f9, f19 to rounding
+    for fid, n, m, d, tries in L.MGH_ROWS:
+        for factor in L.factors(tries)[1:]:
+            q = one[L.mgh_name(fid, n, m, factor)]
+            assert list(q.x0) == _core.scalar.mgh_start(fid, n, float(factor))
+            assert q.f_opt_kind == L.mgh_f_opt(fid, n, m, d)[1]
+        q = one[L.mgh_name(fid, n, m, 1)]
+        assert q.bounds == [(-math.inf, math.inf)] * n and q.native.n_res == m and q.native.has_jacobian
+        assert list(q.x0) == _core.scalar.mgh_start(fid, n, 1.0)
+        assert (q.f_opt, q.f_opt_kind) == L.mgh_f_opt(fid, n, m, d)
+        assert q.f_local == L.mgh_local(fid) and q.large_residual == (None if d is None else d != 0)
+        if isinstance(d, str):                        # LSQ-1: lm from x_s again, and (d)'s printed digits
+            S = _core.scalar
+            run = S.lm(lambda x: S.mgh(fid, n, m, x)[0], list(q.x0), m, jac=lambda x: S.mgh(fid, n, m, x)[1],
+                       ftol=1e-15, xtol=1e-15, max_nfev=100000)
+            low = Decimal(d)
+            two = Decimal(repr(2.0 * q.f_opt))
+            assert abs(run["cost"] - q.f_opt) <= 1e-12 * q.f_opt and low <= two < low + Decimal(1).scaleb(
+                low.adjusted() - 5), (fid, n, m, run["cost"], q.f_opt, d)
+        r, J = q.native.residuals(list(q.x0), True)
+        t = 0.0
+        for v in r:                                   # in order, as C++ adds (not sum(): compensated)
+            t += v * v
+        assert len(r) == m and len(J) == m and q.evaluate(list(q.x0))[0] == 0.5 * t, (fid, n, m)
+    for name in L.NIST_NAMES:
+        ds = _core.nist_dataset(name)
+        for start in (1, 2):
+            q = one[L.nist_name(name, start)]
+            assert list(q.x0) == ds[f"start{start}"] and q.f_opt == ds["rss"] / 2
+            assert not q.native.has_jacobian and q.f_opt_kind == "certified"
+            f = q.evaluate(ds["certified"])[0]
+            tol = 1e-5 if name == "Lanczos1" else 1e-9      # Lanczos1's sum, 1.4e-25, is below the rounding
+            assert abs(f - q.f_opt) <= tol * q.f_opt or (name == "Lanczos1" and f < 1e-20), (name, f, q.f_opt)
+    rows = {}
+    for line in (HERE.parent / "data" / "registry.json").read_text(encoding="utf-8").splitlines()[1:]:
+        line = line.rstrip(",")
+        if line.startswith("{"):
+            row = json.loads(line)
+            rows[row["name"]] = row
+    assert all(("f_opt" in r) == (r["n_obj"] == 1) == ("f_opt_kind" in r) for r in rows.values())
+    assert rows["MGH01_n02_m02_x1_1D"]["x0"] == [-1.2, 1.0] and rows["MGH01_n02_m02_x1_1D"]["f_opt"] == 0.0
+    assert rows["MGH01_n02_m02_x100_1D"]["x0"] == [-120.0, 100.0]
+    assert rows["MGH02_n02_m02_x1_1D"]["f_local"] == [24.4921] and not rows["MGH02_n02_m02_x1_1D"]["large_residual"]
+    assert rows["MGH06_n02_m10_x1_1D"]["large_residual"] and "MGH06_n02_m10_x10_1D" not in rows
+    assert rows["bbob01_n02_1D"]["x0"] is None and rows["bbob01_n02_1D"]["bounds"] == [[-5.0, 5.0]] * 2
+
 
 @test
 def campaign_workers_get_one_blas_thread():

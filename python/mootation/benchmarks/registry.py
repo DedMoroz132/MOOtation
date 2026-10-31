@@ -101,6 +101,7 @@ from . import bbob_biobj_mixint as _mixint
 from . import categorical as _cat
 from . import mw as _mw
 from . import failing as _fail
+from . import least_squares as _lsq
 
 
 # =============================================================
@@ -191,6 +192,21 @@ class BenchProblem:
     # cores' caches are off there (task 17, supplement 2, §1.3). evaluate
     # itself is a function of x everywhere.
     stochastic: bool = False
+    # One objective (task 18, stage 1, §1d): the minimum where it is known
+    # (bbob: the instance's f_opt; MGH: the paper's (d), halved; NIST: the
+    # certified residual sum of squares, halved), and the start where the
+    # problem has one (MGH's x_s, 10 x_s or 100 x_s, NIST's start 1 or 2;
+    # least_squares.py). None for every other problem.
+    f_opt: Optional[float] = None
+    # how f_opt is known: "exact" (bbob's instance, MGH's zeros and closed
+    # forms), "computed" (MGH's printed minima, to full precision: LSQ-1),
+    # "certified" (NIST)
+    f_opt_kind: Optional[str] = None
+    x0: Optional[Tuple[float, ...]] = None
+    # MGH (least_squares.py): the local minima its paper prints, halved (levels,
+    # not targets: LSQ-3), and whether its global minimum is not zero
+    f_local: Tuple[float, ...] = ()
+    large_residual: Optional[bool] = None
 
     def __post_init__(self):
         both = self.evaluate_with_constraints
@@ -2412,6 +2428,71 @@ def _register_mixed():
 
 
 _register_mixed()
+
+
+# =============================================================
+#  One objective (task 18, stage 1, §1d): bbob, MGH, NIST
+# =============================================================
+#  bbob: the 24 functions of Hansen et al. 2009 (bbob.py, suite/bbob.hpp) in
+#  D = 2, 3, 5, 10, 20, 40 variables (the bbob suite's dimensions, Hansen et
+#  al., "COCO: a platform ...", 2021, §6), instance 1 of the library's own
+#  draws (bbob.py, BBOB-4), on [-5, 5]^D; f_opt the instance's.
+#  bbob<fid>_n<D>_1D. The instance NUMBERS are the library's, not COCO's: an
+#  instance k here is not COCO's instance k. COCO reads instances as
+#  repetitions (one run on each of 15); a campaign's knob for that comes with
+#  its single-objective records, no further rows. The budget 10^4 D (pop_size
+#  100, n_gen 100 D); COCO prescribes none (Hansen et al. 2016, "COCO: the
+#  experimental procedure": budgets k n, k growing).
+#
+#  MGH and NIST (least_squares.py): the C++ suite's least-squares problems, no
+#  box, a start x0; registered with the extension only (C++ evaluates them,
+#  and they have no NumPy code).
+BBOB_DIMS = (2, 3, 5, 10, 20, 40)
+
+
+def _register_single_objective():
+    from . import bbob as _bbob1
+    for D in BBOB_DIMS:
+        for fid in range(1, 25):
+            inst = _bbob1.instance(fid, 1, D)
+            key = f"bbob{fid:02d}_n{D:02d}_1D"
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=D, bounds=_bbob1.bounds(D), n_obj=1,
+                evaluate=lambda x, _i=inst: [_i(x)], constraints=_no_cons,
+                evaluate_batch=lambda X, _i=inst: _i.batch(X).reshape(-1, 1),
+                hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
+                pop_size=100, n_gen=100 * D, K_runs=15, has_cons=False, f_opt=float(inst.f_opt),
+                f_opt_kind="exact")
+    try:
+        from .. import _core
+    except ImportError:
+        return
+    if not hasattr(_core, "nist_dataset"):            # an extension built before §1d
+        return
+
+    def least_squares(key, spec, x0, f_opt, kind, f_local=(), large_residual=None):
+        nat = _core.Native(spec)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=spec["n_var"], bounds=[(-math.inf, math.inf)] * spec["n_var"], n_obj=1,
+            evaluate=nat.evaluate, constraints=_no_cons, evaluate_batch=nat.evaluate_batch,
+            hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
+            pop_size=1, n_gen=_lsq.BUDGET, K_runs=1, has_cons=False, f_opt=f_opt, f_opt_kind=kind,
+            x0=tuple(float(v) for v in x0), native=nat, f_local=tuple(f_local),
+            large_residual=large_residual)
+    for fid, n, m, d, tries in _lsq.MGH_ROWS:
+        f_opt, kind = _lsq.mgh_f_opt(fid, n, m, d)
+        for factor in _lsq.factors(tries):
+            least_squares(_lsq.mgh_name(fid, n, m, factor), _lsq.mgh_spec(fid, n, m),
+                          _core.scalar.mgh_start(fid, n, float(factor)), f_opt, kind, _lsq.mgh_local(fid),
+                          None if f_opt is None else f_opt > 0.0)
+    for name in _lsq.NIST_NAMES:
+        ds = _core.nist_dataset(name)
+        for start in (1, 2):
+            least_squares(_lsq.nist_name(name, start), _lsq.nist_spec(name, ds["n"]),
+                          ds[f"start{start}"], _lsq.half(ds["rss"]), "certified")
+
+
+_register_single_objective()
 # the verification set (classic.py; task 17, supplement 2, §3): the C++ suite's
 EXACT_FRAME.update(_classic.register(PROBLEMS, BenchProblem, _budget, _ref_norm, _divisor))
 # The problems of the suite's families evaluated by C++ from here on (native.py),

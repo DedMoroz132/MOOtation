@@ -12,7 +12,8 @@
 //   - NIST StRD (suite/nist.hpp, tests/data/nist-strd-nls): each file's sha256;
 //     the model's residual sum of squares at the certified parameters is the
 //     certified one; from both starts, the digits of the parameters and of the
-//     sum that lm gets right (the log relative error, LRE);
+//     sum that lm gets right (the log relative error, LRE); the library's copy
+//     of each file (nist_data.hpp) its bytes;
 //   - bounds (Coleman-Li): infinite bounds give Moré's run bit for bit; a
 //     bound that holds the minimizer: the point on it;
 //   - varpro: Osborne 1 reaches the minimum of the full problem;
@@ -329,6 +330,11 @@ int main()
             }
             std::printf("\n");
             check(ok, "NIST " + nm + ": sha256, the model at the certified point, both starts");
+            // the library's copy (nist_data.hpp): the file's bytes, read the same
+            const nist::Dataset e = nist::embedded(nm);
+            check(nist::embedded_file(nm) == bytes && e.start1 == d.start1 && e.start2 == d.start2 &&
+                      e.certified == d.certified && e.rss == d.rss && e.y == d.y && e.x == d.x,
+                  "NIST " + nm + ": the library's copy is the file, byte for byte");
         }
     }
 

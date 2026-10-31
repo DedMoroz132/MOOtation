@@ -752,6 +752,10 @@ jobs:
       - name: docs/deviations.md is what the headers give
         run: python3 tools/deviations.py --check
 
+      # Task 18, stage 1: the library's copy of NIST's files (tools/nist_data.py)
+      - name: suite/nist_data.hpp is what the NIST files give
+        run: python3 tools/nist_data.py --check
+
       - name: Every algorithm header is listed in include/mootation/algorithms.def
         run: |
           missing=0

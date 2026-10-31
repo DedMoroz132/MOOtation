@@ -243,7 +243,31 @@ the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition, and RWMO
 problems RCM01–29: 1357 problems across 49 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
-of the true Pareto front. Objective counts run from 2 to 15. Point a config at
+of the true Pareto front. Objective counts run from 2 to 15.
+
+**At one objective** (task 18, stage 1, §1d): bbob's 24 functions in
+D = 2, 3, 5, 10, 20, 40 variables (`bbob<fid>_n<D>_1D`, instance 1 of the
+library's own draws, `[-5, 5]^D`; 144 problems), and the least-squares sets
+of the C++ suite (`benchmarks/least_squares.py`): MGH's least-squares
+collection, its 18 problems at the 28 sizes of its Table IV from the starts
+the table runs — x_s, and where the paper's §5 (c) names three tries also
+10 x_s and 100 x_s (`MGH<fid>_n<n>_m<m>_x<factor>_1D`, 54 problems) — and
+NIST StRD's 27 regression files from each of their two starts
+(`NIST_<file>_s<k>_1D`; NIST Standard Reference Data (SRD 140); © U.S.
+Secretary of Commerce on behalf of the United States of America; the files
+are in the library, `suite/nist_data.hpp`, generated from
+`tests/data/nist-strd-nls`). Each carries `f_opt` (the
+instance's; MGH's (d) and NIST's certified sum of squares, halved: the
+objective is 1/2 ||r||^2) and `f_opt_kind`: `exact` (bbob, MGH's zeros and
+closed forms), `computed` (the twelve minima MGH print to six digits: our
+`lm`'s from x_s to full precision, which agrees with every printed digit) or
+`certified` (NIST, 10 to 11 significant digits); the least-squares ones carry
+`x0`, MGH's also `f_local` (the local minima the paper prints, halved: levels,
+not targets) and `large_residual` (the global minimum is not zero); they have
+no box
+(bounds -inf / +inf), their residuals and (MGH) Jacobian come with the
+objective (`_core.Native.residuals`), and they are registered with the
+extension only. LSQ-1 ... LSQ-4 in `least_squares.py` are the readings. Point a config at
 them instead of an external program:
 
 ```toml

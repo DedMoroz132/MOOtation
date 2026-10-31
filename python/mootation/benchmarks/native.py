@@ -55,6 +55,8 @@ _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2
 _MAF_WFG = {"MaF10": "WFG1", "MaF11": "WFG2", "MaF12": "WFG9"}
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
 _BBOB = re.compile(r"bbobbiobj(mixint)?\d\d_n\d\d_2D")
+# one objective (task 18, stage 1, §1d): bbob f1-f24 at instance 1
+_BBOB1 = re.compile(r"bbob(\d\d)_n(\d\d)_1D")
 # task 17, supplement 3, stage 3a
 _DAS = re.compile(r"DAS-CMOP([1-9])_(t\d\d|f6)")
 _OTHER = re.compile(r"LIR-CMOP\d+|DOC\d|(I?Polygon)_(\d+)D|(MW\d+)(_\d+D)?")
@@ -147,6 +149,13 @@ def spec(name: str, p, rotated=None) -> dict | None:
         return _rotated(rotated)
     if _BBOB.fullmatch(name):
         return _bbob(name, p)
+    m = _BBOB1.fullmatch(name)
+    if m is not None:
+        return _base("bbob", p.n_vars, 1, bbob_fid=int(m.group(1)), bbob_iid=1)
+    if p.native is not None and p.native.spec["family"] in ("MGH", "NIST"):   # made so (registry.py)
+        s = p.native.spec
+        return ({"family": "MGH", "n_var": s["n_var"], "n_obj": 1, "mgh_id": s["mgh_id"], "mgh_m": s["mgh_m"]}
+                if s["family"] == "MGH" else {"family": "NIST", "n_var": s["n_var"], "n_obj": 1, "nist": s["nist"]})
     d = _stage3a(name, p)
     if d is not None:
         return d

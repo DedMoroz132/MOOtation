@@ -118,6 +118,9 @@ suite::Spec spec_of(const py::dict& d)
     if (d.contains("bbob_fnum")) s.bbob_fnum = d["bbob_fnum"].cast<int>();
     if (d.contains("bbob_iid")) s.bbob_iid = d["bbob_iid"].cast<int>();
     if (d.contains("bbob_fid")) s.bbob_fid = d["bbob_fid"].cast<int>();
+    if (d.contains("mgh_id")) s.mgh_id = d["mgh_id"].cast<int>();
+    if (d.contains("mgh_m")) s.mgh_m = d["mgh_m"].cast<int>();
+    if (d.contains("nist")) s.nist = d["nist"].cast<std::string>();
     if (d.contains("rotation") && !d["rotation"].is_none()) {
         const py::dict r = d["rotation"].cast<py::dict>();
         s.rotation.family = r["family"].cast<std::string>();
@@ -158,6 +161,11 @@ py::dict dict_of(const suite::Spec& s)
     d["bbob_fnum"] = s.bbob_fnum;
     d["bbob_iid"] = s.bbob_iid;
     d["bbob_fid"] = s.bbob_fid;
+    if (s.mgh_id) {
+        d["mgh_id"] = s.mgh_id;
+        d["mgh_m"] = s.mgh_m;
+    }
+    if (!s.nist.empty()) d["nist"] = s.nist;
     if (!s.rotation.family.empty()) {
         py::dict r;
         r["family"] = s.rotation.family;
@@ -238,8 +246,8 @@ void bind_suite(py::module_& m)
         "variants, C-DTLZ, MaF, ZCAT, WFG and the shifts and rotations over them, bbob-biobj and "
         "bbob-biobj-mixint, bbob (one objective, f1-f24), the verification set, DAS-CMOP, LIR-CMOP, "
         "MW, DOC, Polygon and "
-        "IPolygon, SYM-PART, Omni-test, MMF, RE and CRE, made from the "
-        "spec benchmarks/native.py builds. Its values are NumPy's bit for bit, where NumPy's "
+        "IPolygon, SYM-PART, Omni-test, MMF, RE and CRE, MGH and NIST (one objective, "
+        "least squares), made from the spec benchmarks/native.py builds. Its values are NumPy's bit for bit, where NumPy's "
         "sin, cos, exp, log and pow are the C library's (benchmarks/_rows.py, agrees) and, for "
         "bbob-biobj, its BLAS adds in the order suite/bbob.hpp writes out. Hand it to "
         "a run as Problem.native and the core evaluates it without calling Python.")
@@ -250,6 +258,25 @@ void bind_suite(py::module_& m)
         .def_readonly("n_var", &suite::Native::n_var)
         .def_readonly("n_obj", &suite::Native::n_obj)
         .def_readonly("n_con", &suite::Native::n_con)
+        .def_readonly("n_res", &suite::Native::n_res)
+        .def_readonly("has_jacobian", &suite::Native::has_jacobian)
+        .def("residuals",
+             [](const suite::Native& p, const std::vector<double>& x, bool jacobian) -> py::object {
+                 if (static_cast<int>(x.size()) != p.n_var)
+                     throw std::invalid_argument("residuals: x needs n_var values");
+                 const std::size_t m = static_cast<std::size_t>(p.n_res), n = x.size();
+                 std::vector<double> r(m), J(jacobian ? m * n : 0);
+                 p.residuals(x.data(), r.data(), jacobian ? J.data() : nullptr);
+                 if (!jacobian) return py::cast(r);
+                 py::list rows;
+                 for (std::size_t i = 0; i < m; ++i)
+                     rows.append(std::vector<double>(J.begin() + static_cast<std::ptrdiff_t>(i * n),
+                                                     J.begin() + static_cast<std::ptrdiff_t>((i + 1) * n)));
+                 return py::make_tuple(r, rows);
+             },
+             py::arg("x"), py::arg("jacobian") = false,
+             "A least-squares problem's (MGH, NIST) n_res residuals at x, its objective 1/2 ||r||^2; "
+             "jacobian=True: (r, J) (has_jacobian).")
         .def_property_readonly("spec", [](const suite::Native& p) { return dict_of(spec_of(p)); },
                                "The spec the problem was made from.")
         .def("evaluate",
@@ -300,4 +327,20 @@ void bind_suite(py::module_& m)
             [](const py::dict& spec) {
                 return std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));
             }));
+
+    m.def("nist_dataset",
+          [](const std::string& name) {
+              const suite::nist::Dataset d = suite::nist::embedded(name);
+              py::dict out;
+              out["n"] = d.n;
+              out["m"] = d.y.size();
+              out["start1"] = d.start1;
+              out["start2"] = d.start2;
+              out["certified"] = d.certified;
+              out["rss"] = d.rss;
+              return out;
+          },
+          py::arg("name"),
+          "The library's copy of NIST's StRD file <name>.dat (suite/nist_data.hpp): its parameters' "
+          "count n, observations m, starts, certified parameters and residual sum of squares.");
 }
