@@ -49,6 +49,21 @@ inline bool parse(const std::string& family, Which& w)
     return true;
 }
 
+// The box, one interval for every variable (classic.SIZES)
+inline Bounds bounds(Which w, int n)
+{
+    switch (w) {
+        case Which::FON: return box(n, -4.0, 4.0);
+        case Which::POL: return box(n, -kPi, kPi);
+        case Which::KUR:
+        case Which::QV: return box(n, -5.0, 5.0);
+        case Which::SCH:
+        case Which::SPH:
+        case Which::KURZ: return box(n, -1e3, 1e3);
+    }
+    return {};
+}
+
 // f of the n variables x, M objectives (SPH: M = m; the others 2)
 inline void evaluate(Which w, const double* x, int n, int M, double* f)
 {

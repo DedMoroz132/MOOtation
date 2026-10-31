@@ -137,7 +137,8 @@ struct RegistryProblem {
     int n_var = 0, n_obj = 0, n_eq = 0;
     std::optional<int> n_con;                     // the suite's, for a problem of the suite
     bool has_cons = false;
-    std::vector<std::pair<double, double>> bounds;
+    std::vector<std::pair<double, double>> bounds;       // from the definition (definition_bounds)
+    std::vector<std::pair<double, double>> file_bounds;  // the file's, for comparison only
     std::int64_t pop_size = 0, n_gen = 0;
     int problem_version = 1;
     json::Value modification;                     // properties.modification_of: null or a dict
@@ -271,6 +272,7 @@ inline suite::Spec spec_of(const json::Value& d)
     s.link = floats_of(d.find("link"));
     s.parts = floats_of(d.find("parts"));
     s.k = static_cast<int>(int_of(d, "k"));
+    s.wide = detail::flag_of(d, "wide");
     s.constants = floats_of(d.find("constants"));
     s.triplet = floats_of(d.find("triplet"));
     s.bbob_fnum = static_cast<int>(int_of(d, "bbob_fnum"));
@@ -284,6 +286,23 @@ inline suite::Spec spec_of(const json::Value& d)
         for (const auto& x : r->find("sizes")->items) s.rotation.sizes.push_back(static_cast<int>(x.i));
     }
     return s;
+}
+
+// The box of a problem from its definition in C++ (suite::bounds; task 17,
+// supplement 7, section 2.4): a noisy or failing copy its base's, an
+// uninformative probe [0, 1]^n (uninformative.py). data/registry.json holds
+// the same numbers for comparison only (file_bounds; the test
+// tests/test_registry_bounds.cpp). A problem the C++ suite does not have,
+// which the C++ engine does not run (engine_refusal), keeps the file's.
+inline std::vector<std::pair<double, double>> definition_bounds(const RegistryProblem& p)
+{
+    const json::Value* spec = p.spec              ? &*p.spec
+                            : p.noise             ? &p.noise->spec
+                            : p.failing_region    ? &p.failing_region->spec
+                                                  : nullptr;
+    if (spec != nullptr) return suite::bounds(spec_of(*spec));
+    if (p.uninformative) return suite::box(p.n_var, 0.0, 1.0);
+    return p.file_bounds;
 }
 
 inline RegistryProblem registry_problem_of(const json::Value& o)
@@ -300,7 +319,7 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     p.has_cons = flag_of(o, "has_cons");
     for (const auto& b : o.find("bounds")->items) {
         const auto lo = detail::floats_of(&b);
-        p.bounds.emplace_back(lo.at(0), lo.at(1));
+        p.file_bounds.emplace_back(lo.at(0), lo.at(1));
     }
     p.pop_size = int_of(o, "pop_size");
     p.n_gen = int_of(o, "n_gen");
@@ -369,6 +388,7 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
         for (const auto& k : v->items) p.gene_levels.push_back(static_cast<int>(k.i));
     if (const json::Value* v = o.find("cover_front"); v && v->kind == json::Value::Kind::Array)
         for (const auto& row : v->items) p.cover_front.push_back(detail::floats_of(&row));
+    p.bounds = definition_bounds(p);
     return p;
 }
 

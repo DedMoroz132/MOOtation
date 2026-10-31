@@ -172,7 +172,7 @@ def spec(name: str, p, rotated=None) -> dict | None:
         # C++'s (suite/maf.hpp, spec_numbers.hpp; task 17, section 2.2)
         return d
     if stem == "wideDTLZ3":
-        return _base("DTLZ3", n, M)
+        return _base("DTLZ3", n, M, wide=True)
     # the shift centres, SDTLZ's factors and C-DTLZ's radii: C++'s
     # (suite/spec_numbers.hpp, dtlz.hpp; task 17, section 2.2)
     if stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4"):

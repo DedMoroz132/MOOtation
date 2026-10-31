@@ -51,6 +51,14 @@ always listed under **Changed** or **Removed**.
   results** for the metrics normalised by the frame of those problems.
 - Fixed: KURZ's frame was a placeholder (the unit square); it is its
   objectives' values at their minimisers now.
+- Every problem's box comes from its definition in C++
+  (`suite::Problem::bounds`): each family's formula, and the tables of DOC,
+  RE and CRE, RCM and MMF beside their problems (`suite/doc.hpp`, `re.hpp`,
+  `rcm.hpp`, `mmo.hpp`, `classic.hpp`); a noisy or failing copy takes its
+  base's. The engine reads the box from there; the box in
+  `data/registry.json` stays for comparison (a CTest, C++ = the file, every
+  problem bit for bit). wideDTLZ3's spec says `"wide": true`. The same
+  numbers as before: no result changes.
 - POL's, KUR's and QV's reference fronts are built in C++ as well (the same
   grids and hull as `benchmarks/classic.py`).
 - A noisy copy's scale and a failing copy's region come from its name and

@@ -128,6 +128,7 @@ struct Spec {
     std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta, handed over
     int bbob_fnum = 0, bbob_iid = 1;              // or drawn here: F1..F55 at that instance (bbob::biobj)
     int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
+    bool wide = false;                            // DTLZ: wideDTLZ3's box (Problem::bounds)
     std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet (from it where empty)
     std::vector<double> triplet;                  // DAS-CMOP: eta, zeta, gamma
     Rotation rotation;                            // the matrices drawn here (family empty: none)
@@ -304,6 +305,89 @@ public:
     }
 
     const Spec& spec() const { return s_; }
+
+    // The box of the problem, (lower, upper) of every variable, from its
+    // definition (task 17, supplement 7, §2.4): the family's formula, or its
+    // table where the paper gives one (doc.hpp, re.hpp, rcm.hpp, mmo.hpp,
+    // classic.hpp). The maps keep the base's box. data/registry.json holds
+    // the same numbers for comparison only (tests/test_registry_bounds.cpp).
+    Bounds bounds() const
+    {
+        const int n = n_var, M = n_obj;
+        switch (kind_) {
+            case Kind::ZDT: {                              // ZDT4: x2 .. xn in [-5, 5]
+                Bounds b = box(n, which_ == 4 ? -5.0 : 0.0, which_ == 4 ? 5.0 : 1.0);
+                b[0] = {0.0, 1.0};
+                return b;
+            }
+            case Kind::DTLZ: {                             // wideDTLZ3: the distance variables in [0, 1.2]
+                Bounds b = box(n, 0.0, 1.0);
+                if (s_.wide)
+                    for (int i = M - 1; i < n; ++i) b[static_cast<std::size_t>(i)].second = dtlz::kWideUpper;
+                return b;
+            }
+            case Kind::IDTLZ:
+            case Kind::SDTLZ:
+            case Kind::Minus:
+            case Kind::CDTLZ:
+            case Kind::DASCMOP:
+            case Kind::LIRCMOP:
+            case Kind::MOP:
+            case Kind::Bits: return box(n, 0.0, 1.0);
+            case Kind::MaF: {
+                if (which_ == 8 || which_ == 9) return box(n, -10000.0, 10000.0);
+                if (which_ == 13) return {{0.0, 1.0}, {0.0, 1.0}, {-2.0, 2.0}, {-2.0, 2.0}, {-2.0, 2.0}};
+                if (which_ == 14 || which_ == 15) {        // x^f in [0, 1]; x^s by the linkage (a, l, u - l)
+                    Bounds b = box(M - 1, 0.0, 1.0);
+                    for (std::size_t i = 0; i + 2 < s_.link.size(); i += 3)
+                        b.emplace_back(s_.link[i + 1], s_.link[i + 1] + s_.link[i + 2]);
+                    return b;
+                }
+                return box(n, 0.0, 1.0);
+            }
+            case Kind::ZCAT: {                             // x_i in [-i/2, i/2] (zcat.bounds)
+                Bounds b;
+                for (int i = 1; i <= n; ++i) b.emplace_back(-i / 2.0, i / 2.0);
+                return b;
+            }
+            case Kind::WFG: {                              // z_i in [0, 2i] (wfg.wfg_bounds)
+                Bounds b;
+                for (int i = 1; i <= n; ++i) b.emplace_back(0.0, 2.0 * i);
+                return b;
+            }
+            case Kind::Classic: return classic::bounds(classic_, n);
+            case Kind::BBOB: {                             // the integers of arity l in [0, l - 1], the reals in [-5, 5]
+                if (s_.family != "bbob-biobj-mixint") return box(n, -5.0, 5.0);
+                Bounds b;                                  // bbob_biobj_mixint.bounds
+                for (int l : {2, 4, 8, 16})
+                    for (int r = 0; r < n / 5; ++r) b.emplace_back(0.0, l - 1.0);
+                for (int r = 0; r < n / 5; ++r) b.emplace_back(-5.0, 5.0);
+                return b;
+            }
+            case Kind::DOC: return doc::bounds(which_);
+            case Kind::MW: {                               // [0, upper] (mw.UPPER)
+                const double upper = which_ == 6 ? 1.1 : which_ == 11 ? mw::kSqrt2
+                                   : which_ == 13 || which_ == 14 ? 1.5 : 1.0;
+                return box(n, 0.0, upper);
+            }
+            case Kind::BT: {                               // BT7: x2 .. x30 in [-1, 1] (bt._b_bt7)
+                Bounds b = box(n, which_ == 7 ? -1.0 : 0.0, 1.0);
+                b[0] = {0.0, 1.0};
+                return b;
+            }
+            case Kind::RCM: return rcm::bounds(which_);
+            case Kind::CatZDT: {                           // the label's index of three, then ten reals
+                Bounds b = box(n, 0.0, 1.0);
+                b[0] = {0.0, 2.0};
+                return b;
+            }
+            case Kind::Polygon: return box(n, -1.0, 1.0);
+            case Kind::IPolygon: return box(n, 0.0, 100.0);  // polygon_ishibuchi.BOX
+            case Kind::MMO: return mmo::bounds(mmo_, n);
+            case Kind::RE: return re::bounds(re_);
+        }
+        return {};
+    }
 
     // Whether the suite has the problem's global Pareto set (pareto_set): the
     // multimodal families and the polygons, without a map (task 17, supplement
@@ -725,6 +809,12 @@ private:
 inline std::unique_ptr<Native> make(Spec spec)
 {
     return std::make_unique<Problem>(std::move(spec));
+}
+
+// The box of the problem a spec describes (Problem::bounds).
+inline Bounds bounds(Spec spec)
+{
+    return Problem(std::move(spec)).bounds();
 }
 
 }   // namespace mootation::suite

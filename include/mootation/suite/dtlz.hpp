@@ -15,6 +15,9 @@
 
 namespace mootation::suite::dtlz {
 
+// wideDTLZ3's distance variables in [0, 1.2] (dtlz_variants.WIDE_UPPER)
+constexpr double kWideUpper = 1.2;
+
 // g_1 = 100 (k + sum((x - 1/2)^2 - cos(20 pi (x - 1/2)))) (DTLZ1, DTLZ3)
 inline double g1(const double* xm, int k)
 {

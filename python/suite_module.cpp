@@ -110,6 +110,7 @@ suite::Spec spec_of(const py::dict& d)
     s.link = flat_of(d, "link");
     s.parts = flat_of(d, "parts");
     if (d.contains("k")) s.k = d["k"].cast<int>();
+    if (d.contains("wide")) s.wide = d["wide"].cast<bool>();
     s.constants = flat_of(d, "constants");
     s.triplet = flat_of(d, "triplet");
     if (d.contains("bbob_fnum")) s.bbob_fnum = d["bbob_fnum"].cast<int>();
@@ -148,6 +149,7 @@ py::dict dict_of(const suite::Spec& s)
     d["link"] = s.link;
     d["parts"] = s.parts;
     d["k"] = s.k;
+    if (s.wide) d["wide"] = true;
     d["constants"] = s.constants;
     d["triplet"] = s.triplet;
     d["bbob_fnum"] = s.bbob_fnum;
@@ -263,6 +265,13 @@ void bind_suite(py::module_& m)
                  return py::make_tuple(std::move(FG.first), std::move(FG.second));
              },
              py::arg("X"), "(objectives, constraint values) of the rows of X, one computation.")
+        .def_property_readonly("bounds",
+                               [](const suite::Native& p) {
+                                   py::list out;
+                                   for (const auto& [lo, hi] : problem_of(p).bounds()) out.append(py::make_tuple(lo, hi));
+                                   return out;
+                               },
+                               "The box from the problem's definition, [(lower, upper), ...].")
         .def_property_readonly("has_pareto_set",
                                [](const suite::Native& p) { return problem_of(p).has_pareto_set(); },
                                "Whether pareto_set gives the problem's global Pareto set.")

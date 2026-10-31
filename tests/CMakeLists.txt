@@ -42,7 +42,8 @@ set(MOOTATION_TESTS
     test_run_store
     test_engine
     test_store_tools
-    test_refs)
+    test_refs
+    test_registry_bounds)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -52,7 +53,8 @@ foreach(_t IN LISTS MOOTATION_TESTS)
         mootation_sanitize)
     target_include_directories(${_t} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_definitions(${_t} PRIVATE
-        MOOTATION_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
+        MOOTATION_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data"
+        MOOTATION_REPO_DATA="${PROJECT_SOURCE_DIR}/data")
     set_target_properties(${_t} PROPERTIES FOLDER tests)
 
     if(MSVC)

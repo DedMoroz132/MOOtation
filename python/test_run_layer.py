@@ -1578,6 +1578,29 @@ def the_registry_exported_builds_the_same_problems():
     assert _core.Native(e["spec"]).evaluate(x) == PROBLEMS["shiftDTLZ2_3D"].evaluate(x)
     assert entry("catZDT1")["typed"] and entry("DTLZ2_3D")["shared_reference"]
 
+
+@test
+def every_suite_problem_has_cxx_s_box():
+    """Task 17, supplement 7, section 2.4: the box of every problem of the C++
+    suite from its definition there (Native.bounds) is Python's, bit for bit:
+    the tables of DOC, RE, RCM and MMF and every family's formula."""
+    try:
+        from mootation import _core
+    except ImportError:
+        _core = None
+    if not hasattr(getattr(_core, "Native", None), "bounds"):
+        print("    (skipped: no extension)"); return
+    from mootation.benchmarks.registry import PROBLEMS
+    checked, differ = 0, []
+    for name, p in PROBLEMS.items():
+        if p.native is None:
+            continue
+        if [tuple(b) for b in p.native.bounds] != [(float(lo), float(hi)) for lo, hi in p.bounds]:
+            differ.append(name)
+        checked += 1
+    assert not differ, differ[:10]
+    assert checked > 1000, checked
+
 @test
 def campaign_workers_get_one_blas_thread():
     """single_threaded_blas: 1 where unset, a user's value kept."""

@@ -5,7 +5,7 @@ stage 5, step 4).
     python -m mootation.run.registry_export [--out FILE | --repo] [--check]
 
 What the engine needs of a problem and cannot compute without Python yet: its
-sizes and box, its default population and generations, its version, what it
+sizes, its default population and generations, its version, what it
 modifies (a rotation, a shift, noise), whether its Pareto set has several
 parts, which references it has, and — for a problem of the C++ suite — the
 spec its C++ evaluation is built from (benchmarks/native.spec: the numbers
@@ -17,6 +17,12 @@ uninformative problems), typed variables, a distance to the Pareto set
 problem of the suite carries its base's spec and its failure region
 (failing_region), and a noisy copy its base's spec and its noise (noise),
 which the engine evaluates itself.
+
+THE BOX (`bounds`) is Python's, for comparison only: the engine takes every
+problem's from its definition in C++ (suite::Problem::bounds; task 17,
+supplement 7, section 2.4), and tests/test_registry_bounds.cpp checks that the
+two agree bit for bit. Of the numbers in the file only the frames are C++'s
+own (ideal, nadir: _cxx_frames).
 
 WHERE. The repository keeps one: data/registry.json (--repo), which the build
 puts beside the engine and the installation in share/mootation, so that the

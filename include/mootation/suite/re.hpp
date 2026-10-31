@@ -82,6 +82,44 @@ inline Size size(Which w)
 
 constexpr double kSqrt2 = 1.4142135623730951;      // np.sqrt(2)
 
+// The box of a problem as reproblems has it (re.RE; a CRE problem: its RE
+// counterpart's; RE33c: x4 in [2, 11], re.RE33C_BOUNDS). RE21's from F = 10,
+// sigma = 10: [F / sigma, 3 F / sigma], x2 and x3 from sqrt(2) F / sigma.
+inline Bounds bounds(Which w)
+{
+    switch (w) {
+        case Which::RE21: return {{1.0, 3.0}, {kSqrt2, 3.0}, {kSqrt2, 3.0}, {1.0, 3.0}};
+        case Which::RE22:
+        case Which::RE22c: return {{0.2, 15}, {0.0, 20}, {0.0, 40}};
+        case Which::RE23: return {{1, 100}, {1, 100}, {10, 200}, {10, 240}};
+        case Which::RE24: return {{0.5, 4}, {0.5, 50}};
+        case Which::RE25: return {{1, 70}, {0.6, 3}, {0.09, 0.5}};
+        case Which::RE31:
+        case Which::CRE21: return {{0.00001, 100.0}, {0.00001, 100.0}, {1.0, 3.0}};                  // truss
+        case Which::RE32:
+        case Which::CRE22: return {{0.125, 5.0}, {0.1, 10.0}, {0.1, 10.0}, {0.125, 5.0}};           // weld
+        case Which::RE33:
+        case Which::CRE23: return {{55, 80}, {75, 110}, {1000, 3000}, {11, 20}};                    // brake
+        case Which::RE33c: return {{55, 80}, {75, 110}, {1000, 3000}, {2, 11}};
+        case Which::RE34: return box(5, 1, 3);
+        case Which::RE35:
+        case Which::CRE24: return {{2.6, 3.6}, {0.7, 0.8}, {17, 28}, {7.3, 8.3}, {7.3, 8.3}, {2.9, 3.9}, {5.0, 5.5}};
+        case Which::RE36:
+        case Which::CRE25: return box(4, 12, 60);                                                    // gear
+        case Which::RE37: return box(4, 0, 1);
+        case Which::RE41:
+        case Which::RE91:
+        case Which::CRE31: return {{0.5, 1.5}, {0.45, 1.35}, {0.5, 1.5}, {0.5, 1.5},              // car
+                                   {0.875, 2.625}, {0.4, 1.2}, {0.4, 1.2}};
+        case Which::RE42:
+        case Which::CRE32: return {{150.0, 274.32}, {20.0, 32.31}, {13.0, 25.0}, {10.0, 11.71},   // ship
+                                   {14.0, 18.0}, {0.63, 0.75}};
+        case Which::RE61:
+        case Which::CRE51: return {{0.01, 0.45}, {0.01, 0.10}, {0.01, 0.10}};                      // water
+    }
+    return {};
+}
+
 // RE22's list of x1's values as reproblems has it ("3,10" for 3.10: 3 and 10;
 // 7.00 missing), and RE22c's, the source's (re.RE22_VALUES, RE22C_VALUES)
 constexpr double kRE22[78] = {0.20, 0.31, 0.40, 0.44, 0.60, 0.62, 0.79, 0.80, 0.88, 0.93, 1.0, 1.20, 1.24, 1.32,

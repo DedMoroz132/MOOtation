@@ -62,6 +62,40 @@ constexpr int kQ = 4;                              // MMF12
 constexpr double kMinus2Ln2 = -1.3862943611198906; // -2.0 * math.log(2.0)
 constexpr double kSqrt2 = 1.4142135623730951;      // math.sqrt(2.0)
 
+// The box of the report's problem (§1.3; mmo.BOUNDS; Omni-test: n variables
+// in [0, 6]). MMF1_e's x2 in [-a^3, a^3] with a = e: math.e ** 3 as CPython
+// computes it (the C library's pow), a unit in the last place under e^3
+// rounded (20.085536923187668), so that both engines draw the same points.
+inline Bounds bounds(Which w, int n)
+{
+    constexpr double kAe3 = 20.085536923187664;
+    switch (w) {
+        case Which::SymSimple:
+        case Which::SymRotated: return box(2, -20.0, 20.0);
+        case Which::Omni: return box(n, 0.0, 6.0);
+        case Which::MMF1:
+        case Which::MMF1z:
+        case Which::MMF7: return {{1.0, 3.0}, {-1.0, 1.0}};
+        case Which::MMF1e: return {{1.0, 3.0}, {-kAe3, kAe3}};
+        case Which::MMF2: return {{0.0, 1.0}, {0.0, 2.0}};
+        case Which::MMF3: return {{0.0, 1.0}, {0.0, 1.5}};
+        case Which::MMF4: return {{-1.0, 1.0}, {0.0, 2.0}};
+        case Which::MMF5: return {{1.0, 3.0}, {-1.0, 3.0}};
+        case Which::MMF6: return {{1.0, 3.0}, {-1.0, 2.0}};
+        case Which::MMF8: return {{-kPi, kPi}, {0.0, 9.0}};
+        case Which::MMF9:
+        case Which::MMF10:
+        case Which::MMF11: return box(2, 0.1, 1.1);
+        case Which::MMF12: return box(2, 0.0, 1.0);
+        case Which::MMF13: return box(3, 0.1, 1.1);
+        case Which::MMF14:
+        case Which::MMF14a:
+        case Which::MMF15:
+        case Which::MMF15a: return box(3, 0.0, 1.0);
+    }
+    return {};
+}
+
 inline double sq(double v) { return dm::pow(v, 2.0); }
 
 // v ** 2 of a float (pow) or, rows = true, of an array (NumPy's v * v): the

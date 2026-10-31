@@ -140,6 +140,48 @@ inline double surface(const Surface& c, const double* x)
 
 // which: a registered problem; x its variables; f its objectives; g its
 // constraints (size(which).n_con of them)
+// The box of RCM<which> (Kumar et al. 2021, §2.1-2.3; rwmop.PROBLEMS)
+inline Bounds bounds(int which)
+{
+    const double SQ2 = detail::kSq2;
+    switch (which) {
+        case 1: return {{1, 99}, {1, 99}, {10, 200}, {10, 200}};
+        case 2: return {{0.05, 0.5}, {0.2, 0.5}, {0.2, 0.6}, {0.35, 0.5}, {3, 6}};
+        case 3: return {{1e-5, 100}, {1e-5, 100}, {1, 3}};
+        case 4: return {{0.125, 5}, {0.1, 10}, {0.1, 10}, {0.125, 5}};
+        case 5: return {{55, 80}, {75, 110}, {1000, 3000}, {11, 20}};
+        case 6:
+        case 13: return {{2.6, 3.6}, {0.7, 0.8}, {17, 28}, {7.3, 8.3}, {7.3, 8.3}, {2.9, 3.9}, {5, 5.5}};
+        case 7: return box(4, 12, 60);
+        case 8: return {{0.5, 1.5}, {0.45, 1.35}, {0.5, 1.5}, {0.5, 1.5}, {0.875, 2.625}, {0.4, 1.2}, {0.4, 1.2}};
+        case 9: return {{1, 3}, {SQ2, 3}, {SQ2, 3}, {1, 3}};
+        case 10: return {{0.1, 2}, {0.5, 2.5}};
+        case 11: return {{0.01, 0.45}, {0.01, 0.1}, {0.01, 0.1}};
+        case 12: return {{10, 80}, {10, 50}, {0.9, 5}, {0.9, 5}};
+        case 14: return {{60, 80}, {90, 110}, {1, 3}, {0, 1000}, {2, 9}};
+        case 15: return {{1, 70}, {0.6, 3}, {0.009, 0.5}};
+        case 16: return {{0.01, 0.05}, {0.2, 1}};
+        case 17: return {{150, 274.32}, {20, 32.31}, {13, 25}, {10, 11.71}, {14, 18}, {0.63, 0.75}};
+        case 18: return {{136, 146}, {56, 68}, {1.4, 2.2}};
+        case 21: return {{1.3, 1.7}, {2.5, 3.5}, {1.3, 1.7}, {1.3, 1.7}, {1.3, 1.7}, {1.3, 1.7}};
+        case 22: return {{0, 100}, {0, 200}, {0, 100}, {0, 100}, {0, 100}, {0, 100}, {0, 200}, {0, 100}, {0, 200}};
+        case 23: return {{0, 1}, {0, 1}, {0, 1}, {0, 1}, {1e-5, 16}, {1e-5, 16}};
+        case 25: return {{0, 1.6}, {0, 1}};
+        case 26: return {{0.5, 1.4}, {0.5, 1.4}, {0, 1}};
+        case 28: {
+            Bounds b = box(8, 0, 100);
+            b[6] = b[7] = {0, 1};
+            return b;
+        }
+        case 29: {
+            Bounds b = box(7, 0, 100);
+            b[3] = b[4] = b[5] = b[6] = {0, 1};
+            return b;
+        }
+        default: return {};
+    }
+}
+
 inline void evaluate(int which, const double* x, double* f, double* g)
 {
     using detail::P;

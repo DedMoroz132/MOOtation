@@ -38,6 +38,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "../numpy_sum.hpp"
@@ -52,6 +53,16 @@ namespace mootation::suite {
 constexpr double kPi = 3.141592653589793;           // math.pi
 constexpr double kHalfPi = kPi / 2.0;               // zcat.HALF_PI
 constexpr double kE = 2.718281828459045;            // math.e
+
+// The box of a problem, (lower, upper) of every variable, as its definition
+// gives it (Problem::bounds, suite.hpp; task 17, supplement 7, §2.4).
+using Bounds = std::vector<std::pair<double, double>>;
+
+// n variables in [lo, hi]
+inline Bounds box(int n, double lo, double hi)
+{
+    return Bounds(static_cast<std::size_t>(n), {lo, hi});
+}
 
 // np.sum of n values in a row (0.0 plus the pairwise sum).
 inline double row_sum(const double* a, std::size_t n) { return np::sum(a, n); }
