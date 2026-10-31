@@ -283,6 +283,9 @@ inline bool two_layer(std::int64_t m, std::int64_t p)
 // A reason pop is unusable for the core at m objectives, or nothing.
 inline std::optional<std::string> check_pop(const std::string& name, std::int64_t p, std::int64_t m, const Value& params)
 {
+    // task 18, item 2.3: the single-objective solvers (scalar.hpp, single_names()) at one objective only
+    if ((name == "slsqp" || name == "nelder_mead" || name == "cmaes") && m != 1)
+        return name + " is a single-objective algorithm: n_objs must be 1, got " + std::to_string(m);
     if (pop::free_h().count(name)) {
         const Value* r = params.find("n_ref_points");
         const bool set = r && ((r->kind == Kind::Int && r->i != 0) || (r->kind == Kind::Float && r->f != 0.0) ||
