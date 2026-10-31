@@ -912,6 +912,7 @@ def bbob_all_24_in_cpp_as_in_python():
     for fid in range(1, 25):
         for D in (2, 5, 20):
             nat = _core.Native({"family": "bbob", "n_var": D, "n_obj": 1, "bbob_fid": fid, "bbob_iid": 2})
+            assert list(nat.bounds) == [(-5.0, 5.0)] * D, (fid, D)   # the search domain [-5, 5]^D
             fc = nat.spec["bbob"][0]
             s = bbob.instance(fid, 2, D)
             assert np.allclose(fc["x_opt"], s.x_opt, rtol=0.0, atol=1e-13) and fc["f_opt"] == s.f_opt, (fid, D)

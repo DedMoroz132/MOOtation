@@ -371,6 +371,7 @@ public:
                 for (int r = 0; r < n / 5; ++r) b.emplace_back(-5.0, 5.0);
                 return b;
             }
+            case Kind::BBOB1: return box(n, -5.0, 5.0);    // the search domain [-5, 5]^D (Hansen et al. 2009)
             case Kind::DOC: return doc::bounds(which_);
             case Kind::MW: {                               // [0, upper] (mw.UPPER)
                 const double upper = which_ == 6 ? 1.1 : which_ == 11 ? mw::kSqrt2
