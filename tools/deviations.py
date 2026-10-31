@@ -27,6 +27,11 @@ The last column is read from the item's wording, not stated by it: an item
 that does not say "off by default", "only when", "knob" and the like counts as
 "yes". The header stays the source; this file only gathers it, so the table
 and the headers cannot drift apart (CI runs --check).
+
+THE PROBLEMS. A second table gathers the problem suite's readings
+(include/mootation/suite): the items under a "DEVIATIONS ..." heading of a
+header's opening comment, where the definition there departs from the
+paper's text (RE-24: a box the published front was computed in).
 """
 import re
 import sys
@@ -34,6 +39,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ALGS = ROOT / "include" / "mootation" / "algorithms"
+SUITE = ROOT / "include" / "mootation" / "suite"
 DEF = ROOT / "include" / "mootation" / "algorithms.def"
 OUT = ROOT / "docs" / "deviations.md"
 
@@ -71,6 +77,29 @@ def header_of(core: str) -> tuple:
                 comments = [l.strip()[2:] for l in lines[:n] if l.strip().startswith("//")]
                 return f.name, [c[1:] if c.startswith(" ") else c for c in comments]
     raise SystemExit(f"no class {core} in {ALGS}")
+
+
+def suite_headers() -> list:
+    """(file name, lines) of every header of the problem suite whose opening
+    comment has a "DEVIATIONS ..." heading: the heading and the lines after
+    it up to the comment's next blank line, the "// " taken off."""
+    out = []
+    for f in sorted(SUITE.glob("*.hpp")):
+        comments = []
+        for line in f.read_text(encoding="utf-8").splitlines():
+            t = line.strip()
+            if t.startswith("#pragma"):
+                continue
+            if not t.startswith("//"):
+                break
+            c = t[2:]
+            comments.append(c[1:] if c.startswith(" ") else c)
+        at = next((i for i, c in enumerate(comments) if HEADING.match(c.strip())), None)
+        if at is None:
+            continue
+        end = next((i for i in range(at + 1, len(comments)) if not comments[i].strip()), len(comments))
+        out.append((f.name, comments[at:end]))
+    return out
 
 
 def indent(s: str) -> int:
@@ -194,7 +223,24 @@ def table() -> str:
         "| algorithm | item | what | default run | file |",
         "|---|---|---|---|---|",
     ]
-    return "\n".join(head + rows) + "\n"
+    problems = []
+    for fname, lines in suite_headers():
+        got, _ = items(fname[:-4], lines)
+        for ident, tag, text in got:
+            note = f" ({tag})" if tag else ""
+            problems.append(f"| {ident}{note} | {first_sentence(text).replace('|', chr(92) + '|')} | `{fname}` |")
+    tail = [
+        "",
+        "## The problems",
+        "",
+        "From the headers of the problem suite (`include/mootation/suite`): the items under a",
+        "\"DEVIATIONS ...\" heading of a header's opening comment, where the definition there departs",
+        "from the paper's text.",
+        "",
+        "| item | what | file |",
+        "|---|---|---|",
+    ]
+    return "\n".join(head + rows + tail + problems) + "\n"
 
 
 def main() -> int:
@@ -207,7 +253,7 @@ def main() -> int:
         print(f"{OUT.relative_to(ROOT)}: up to date")
         return 0
     OUT.write_text(text, encoding="utf-8", newline="\n")
-    print(f"wrote {OUT.relative_to(ROOT)}: {text.count(chr(10)) - 15} rows")
+    print(f"wrote {OUT.relative_to(ROOT)}: {text.count(chr(10)) - 24} rows")
     return 0
 
 

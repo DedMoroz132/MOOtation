@@ -56,6 +56,11 @@ repository's change log and issues):
     [11, 20] and should be [2, 11], the author agrees. Kept as [11, 20].
   * RE22: the violation sign (issue #5) — max(-g, 0) where some write
     max(g, 0); at x2 = 0, RE22's first constraint is -inf. Kept.
+  * The box is the code's, where the supplement's S.1 prints another (the
+    owner's decision of 2026-10-31; suite/re.hpp, RE-24 and RE-25): RE24's
+    x2 in [0.5, 50] (S.1.4: [4, 50]; the published front reaches f1 = 60.5 =
+    0.5 + 120 * 0.5, x2 = 0.5); RE25's x2 in [0.6, 3] (S.1.5: [0.6, 30], a
+    misprint: Kumar et al. 2021's RCM15, the same spring, has 3).
 
 THE CORRECTED COPIES (task 7 of 2026-10-10, §9), beside the originals, which
 stay as they are for the published fronts:

@@ -390,3 +390,14 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `rm_meda` | RM-6 | The crowding distance is the paper's: the average side length of the cuboid around F(x) in the objectives, not normalized (NSGA-II divides by each objective's range); the extremes of a front count infinite. | yes | `rm_meda.hpp` |
 | `rm_meda` | RM-7 | Constraints: Deb's constrained domination in the sorting (constraint_mode not NONE); the paper has none. | yes | `rm_meda.hpp` |
 | `rm_meda` | RM-8 | §V-B resets a variable outside the box to a random value inside it, but the paper's own curves (Figs. 3, 4, 11, 12: F1, F2, F5, F6 at 10 000 evaluations) are reached with the variable kept at the bound, not with the r... | yes | `rm_meda.hpp` |
+
+## The problems
+
+From the headers of the problem suite (`include/mootation/suite`): the items under a
+"DEVIATIONS ..." heading of a header's opening comment, where the definition there departs
+from the paper's text.
+
+| item | what | file |
+|---|---|---|
+| RE-24 | x2 in [0.5, 50], the code's: the supplement's S.1.4 prints "x2 in [4, 50]", but the published front (reference_points_RE24.dat: f1 from 60.5 = 0.5 + 120 * 0.5, x2 = 0.5) was computed within the code's bounds. | `re.hpp` |
+| RE-25 | x2 in [0.6, 3]: the supplement's S.1.5 prints "x2 in [0.6, 30]"; the code and Kumar et al. 2021 for the same spring (RCM15, "0.6 <= x2 (continuous) <= 3") have 3. | `re.hpp` |

@@ -13,6 +13,17 @@
 // the bits of x); a run's seeded stream (re.RE91Evaluator) is Python's.
 // CRE's constraints are the violations, max(-g, 0) (<= 0 satisfied as they
 // stand); an RE that reformulates a CRE has their sum as its last objective.
+//
+// The box (bounds below) is reproblems' code's; against the supplement's
+// S.1 two differ (the owner's decision of 2026-10-31):
+// DEVIATIONS AND READINGS (the box against the supplement):
+//   RE-24. x2 in [0.5, 50], the code's: the supplement's S.1.4 prints "x2 in
+//          [4, 50]", but the published front (reference_points_RE24.dat:
+//          f1 from 60.5 = 0.5 + 120 * 0.5, x2 = 0.5) was computed within the
+//          code's bounds. The code's box is taken.
+//   RE-25. x2 in [0.6, 3]: the supplement's S.1.5 prints "x2 in [0.6, 30]";
+//          the code and Kumar et al. 2021 for the same spring (RCM15, "0.6 <=
+//          x2 (continuous) <= 3") have 3. A misprint of the supplement: 3.
 // ============================================================================
 
 #include <cmath>
