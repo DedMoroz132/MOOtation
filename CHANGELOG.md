@@ -51,6 +51,14 @@ always listed under **Changed** or **Removed**.
   results** for the metrics normalised by the frame of those problems.
 - Fixed: KURZ's frame was a placeholder (the unit square); it is its
   objectives' values at their minimisers now.
+- Where the front's ends are known in closed form, the frame is the
+  definition's formula instead of a sample's least and greatest values,
+  which missed them in the last bits (`refs/build.hpp`, `formula_frame`):
+  DTLZ1–6, MaF6, WFG4–9 and MaF12, ZCAT1–20, BT9, MOP7, MMF14 and MMF15
+  with their `_a`, Omni-test, MW10 and MW11, and their shifts and rotations.
+  The problems whose frame moved (`benchmarks/_frame_exact.py`) take one
+  version more. **Changed results** in the last bits for the metrics
+  normalised by the frame of those problems.
 - Every problem's box comes from its definition in C++
   (`suite::Problem::bounds`): each family's formula, and the tables of DOC,
   RE and CRE, RCM and MMF beside their problems (`suite/doc.hpp`, `re.hpp`,

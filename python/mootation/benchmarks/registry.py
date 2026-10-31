@@ -2953,6 +2953,13 @@ for _name in sorted(n for n, r in ROTATED.items() if r.family == "WFG9"):
 from ._frame_changed import FRAME_CHANGED as _FRAME_CHANGED  # noqa: E402
 for _name in sorted(_FRAME_CHANGED):
     PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
+# 2026-10-31 (the owner's decision, day, item 1): the frame from the
+# definition's formula where the front's ends are known in closed form
+# (refs/build.hpp, formula_frame), not a sample's: the problems whose frame
+# moved in the last bits (_frame_exact.py) one version more.
+from ._frame_exact import FRAME_EXACT as _FRAME_EXACT  # noqa: E402
+for _name in sorted(_FRAME_EXACT):
+    PROBLEM_VERSION[_name] = PROBLEM_VERSION.get(_name, 1) + 1
 PROBLEM_VERSION.update({_noisy.name(base, level): PROBLEM_VERSION[base]
                         for base in (*_noisy.BASES, *_noisy.LATE_BASES) if base in PROBLEM_VERSION
                         for level in _noisy.LEVELS})

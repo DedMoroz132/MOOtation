@@ -771,12 +771,11 @@ def zcat_vanishes_on_its_pareto_set_and_keeps_the_papers_frame():
         n = zcat.n_vars(M)
         assert n == 10 * M, n                                  # Section 5.1
         for name in zcat.NAMES:
-            # The frame is C++'s (data/registry.json, from its sampled front):
-            # the paper's i² and 0 within the last bits.
+            # The frame is C++'s (data/registry.json): the paper's i² and 0
+            # (refs/build.hpp, formula_frame), to the bit.
             p = PROBLEMS[f"{name}_{M}D"]
             assert p.n_vars == n and p.bounds[-1] == (-n / 2.0, n / 2.0), name
-            assert np.max(np.abs(np.asarray(p.nadir) - scale)) <= 1e-12, (name, p.nadir)
-            assert np.max(np.abs(p.ideal)) <= 1e-12, (name, p.ideal)
+            assert tuple(p.nadir) == tuple(scale) and set(p.ideal) == {0.0}, name
             y = np.zeros(n)
             y[:M - 1] = 0.3 + 0.1 * np.arange(M - 1)           # ZCAT20 switches m here
             m = zcat.position_count(name, y, M)
@@ -1577,6 +1576,39 @@ def the_registry_exported_builds_the_same_problems():
     x = [0.3] * e["n_var"]
     assert _core.Native(e["spec"]).evaluate(x) == PROBLEMS["shiftDTLZ2_3D"].evaluate(x)
     assert entry("catZDT1")["typed"] and entry("DTLZ2_3D")["shared_reference"]
+
+
+@test
+def the_frames_by_formula_are_the_definitions():
+    """The owner's decision of 31.10 (day), item 1: where the front's ends are
+    known in closed form the registry's frame (C++'s, refs/build.hpp,
+    formula_frame) is the definition's — checked here by Python's own
+    formulas, to the bit: DTLZ5, DTLZ6 and MaF6 the powers of 1/sqrt 2
+    rounded once (decimal, 40 digits), mw.FRAMES, mmo.frame, i², 2m, the
+    sphere's and the simplex's corners."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from decimal import Decimal, localcontext
+    from mootation.benchmarks import mmo, mw
+    from mootation.benchmarks.registry import get
+    # the problems whose reference is the curve (front spec "dtlz5"; DTLZ5 and
+    # DTLZ6 from four to eight objectives have a shipped full front instead)
+    for name in ("DTLZ5_2D", "DTLZ5_3D", "DTLZ5_15D", "DTLZ6_2D", "DTLZ6_3D", "DTLZ6_10D", "DTLZ6_15D",
+                 "MaF6_3D", "MaF6_5D", "MaF6_15D", "shiftDTLZ6_10D", "rcMaF6_5D"):
+        p = get(name)
+        M = p.n_obj
+        with localcontext() as c:
+            c.prec = 40
+            want = [float(Decimal(2) ** (Decimal(-k) / 2)) for k in [M - 2] + list(range(M - 2, -1, -1))]
+        assert set(p.ideal) == {0.0} and list(p.nadir) == want, (name, p.nadir, want)
+    for name, M in (("DTLZ1_4D", 4), ("DTLZ2_4D", 4), ("WFG4_4D", 4), ("ZCAT2_5D", 5), ("BT9", 3), ("MOP7", 3)):
+        hi = {"DTLZ1": [0.5] * M, "WFG4": [2.0 * m for m in range(1, M + 1)],
+              "ZCAT2": [float(m * m) for m in range(1, M + 1)]}.get(name.split("_")[0], [1.0] * M)
+        assert tuple(get(name).ideal) == (0.0,) * M and list(get(name).nadir) == hi, name
+    for name in ("MW10", "MW11"):
+        assert (tuple(get(name).ideal), tuple(get(name).nadir)) == mw.frame(name), name
+    for name in ("MMF14", "MMF14_a", "MMF15", "MMF15_a", "Omni-test"):
+        assert (tuple(get(name).ideal), tuple(get(name).nadir)) == mmo.frame(name), name
 
 
 @test
@@ -3312,14 +3344,16 @@ def algorithm_families_cover_the_registry():
 # ── analysis layer: variants, Pareto sets, hypervolume, reports, ablations ──
 
 def _frame_bump(name: str) -> int:
-    """1 where the problem's frame changed when C++ came to compute it (task
-    17, addendum 7, section 2.1: one version more), for it or the base of a
-    noisy or failing copy; else 0."""
+    """The versions the problem's frame added (task 17, addendum 7, section
+    2.1: one where C++ came to compute it; the owner's decision of 31.10, day:
+    one more where it came to take the formula), for it or the base of a
+    noisy or failing copy."""
     from mootation.benchmarks._frame_changed import FRAME_CHANGED
+    from mootation.benchmarks._frame_exact import FRAME_EXACT
     from mootation.benchmarks.noisy import base_of, is_noisy
     from mootation.benchmarks.registry import FAILING
     base = base_of(name) if is_noisy(name) else FAILING[name][0] if name in FAILING else name
-    return int(base in FRAME_CHANGED)
+    return int(base in FRAME_CHANGED) + int(base in FRAME_EXACT)
 
 
 def _core_with(attr: str):
