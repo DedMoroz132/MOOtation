@@ -27,6 +27,12 @@ The last column is read from the item's wording, not stated by it: an item
 that does not say "off by default", "only when", "knob" and the like counts as
 "yes". The header stays the source; this file only gathers it, so the table
 and the headers cannot drift apart (CI runs --check).
+
+A second table does the same for the single-objective solvers and the methods
+of include/mootation/scalar (task 18, addendum 2, section 1): their readings
+("LM-3.", "SCALAR-12.", "DE-2.") are items of the same kinds, found in every
+comment of the file (a solver's header is the file's, and some files keep a
+part's readings beside it), the file's name the key.
 """
 import re
 import sys
@@ -34,6 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ALGS = ROOT / "include" / "mootation" / "algorithms"
+SCALAR = ROOT / "include" / "mootation" / "scalar"
 DEF = ROOT / "include" / "mootation" / "algorithms.def"
 OUT = ROOT / "docs" / "deviations.md"
 
@@ -71,6 +78,21 @@ def header_of(core: str) -> tuple:
                 comments = [l.strip()[2:] for l in lines[:n] if l.strip().startswith("//")]
                 return f.name, [c[1:] if c.startswith(" ") else c for c in comments]
     raise SystemExit(f"no class {core} in {ALGS}")
+
+
+def file_comments(f: Path) -> list:
+    """Every comment line of a file of scalar/ that starts the line (a header
+    or a part's own block; not a comment inside code, which cites a reading,
+    "// LSQ-8: ..."), the "// " taken off; a line between two comments is a
+    blank line, so that an item ends there."""
+    out = []
+    for line in f.read_text(encoding="utf-8").splitlines():
+        if line.startswith("//"):
+            c = line[2:]
+            out.append(c[1:] if c.startswith(" ") else c)
+        elif out and out[-1]:
+            out.append("")
+    return out
 
 
 def indent(s: str) -> int:
@@ -160,12 +182,17 @@ def default_column(tag: str, text: str) -> str:
     return "yes"
 
 
-def table() -> str:
+def rows_of(headers, numbered_only: bool = False) -> tuple:
+    """(the table's rows, the counts of its last column, the keys whose header
+    declares none, the keys with no item found) of [(key, file name, lines)].
+    numbered_only: only the items whose identifier ends in a number ("LM-3",
+    not a name such as "L-BFGS-B" or "CMA-ES" that starts a line of text)."""
     rows, counts = [], {"yes": 0, "no: option": 0, "no: fixed": 0}
     says_none, none_found = [], []
-    for key, core in cores():
-        fname, lines = header_of(core)
+    for key, fname, lines in headers:
         got, none = items(key, lines)
+        if numbered_only:
+            got = [g for g in got if re.search(r"-[0-9]+[a-z]?$", g[0])]
         if not got:
             (says_none if none else none_found).append(key)
         for ident, tag, text in got:
@@ -174,27 +201,53 @@ def table() -> str:
             note = f" ({tag})" if tag else ""
             summary = first_sentence(text).replace("|", "\\|")
             rows.append(f"| `{key}` | {ident}{note} | {summary} | {col} | `{fname}` |")
+    return rows, counts, says_none, none_found
+
+
+def summary_line(rows, counts, says_none, none_found) -> str:
+    return (f"{len(rows)} items: {counts['yes']} yes, {counts['no: option']} no: option, "
+            f"{counts['no: fixed']} no: fixed. Headers that declare none: "
+            + (", ".join(f"`{k}`" for k in says_none) if says_none else "—")
+            + ". Headers with no item this tool recognises: "
+            + (", ".join(f"`{k}`" for k in none_found) if none_found else "—") + ".")
+
+
+def table() -> str:
+    core_headers = []
+    for key, core in cores():
+        fname, lines = header_of(core)
+        core_headers.append((key, fname, lines))
+    rows, counts, says_none, none_found = rows_of(core_headers)
+    scalar = rows_of([(f.stem, f.name, file_comments(f)) for f in sorted(SCALAR.glob("*.hpp"))],
+                     numbered_only=True)
     head = [
         "# Departures from the papers",
         "",
-        "Written by `tools/deviations.py` from the headers of the cores (`include/mootation/algorithms`);",
-        "do not edit by hand — edit the header and run the tool. The header is the source: there each item",
-        "is given in full, with its reasons and references.",
+        "Written by `tools/deviations.py` from the headers of the cores (`include/mootation/algorithms`) and",
+        "of the solvers (`include/mootation/scalar`); do not edit by hand — edit the header and run the tool.",
+        "The header is the source: there each item is given in full, with its reasons and references.",
         "",
         "*Default run*: `yes` — the default run does what the item describes; `no: option` — the item is",
         "about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The",
         "column is read from the item's wording (see the tool's docstring), not stated by the item.",
         "",
-        f"{len(rows)} items: {counts['yes']} yes, {counts['no: option']} no: option, "
-        f"{counts['no: fixed']} no: fixed. Headers that declare none: "
-        + (", ".join(f"`{k}`" for k in says_none) if says_none else "—")
-        + ". Headers with no item this tool recognises: "
-        + (", ".join(f"`{k}`" for k in none_found) if none_found else "—") + ".",
+        summary_line(rows, counts, says_none, none_found),
         "",
         "| algorithm | item | what | default run | file |",
         "|---|---|---|---|---|",
     ]
-    return "\n".join(head + rows) + "\n"
+    second = [
+        "",
+        "## The single-objective solvers and methods (`include/mootation/scalar`)",
+        "",
+        "Their readings, from every comment of each file (the first column the file's name).",
+        "",
+        summary_line(*scalar),
+        "",
+        "| solver | item | what | default run | file |",
+        "|---|---|---|---|---|",
+    ]
+    return "\n".join(head + rows + second + scalar[0]) + "\n"
 
 
 def main() -> int:
@@ -207,7 +260,7 @@ def main() -> int:
         print(f"{OUT.relative_to(ROOT)}: up to date")
         return 0
     OUT.write_text(text, encoding="utf-8", newline="\n")
-    print(f"wrote {OUT.relative_to(ROOT)}: {text.count(chr(10)) - 15} rows")
+    print(f"wrote {OUT.relative_to(ROOT)}")
     return 0
 
 
