@@ -205,6 +205,11 @@ def check_pop(name: str, pop: int, n_objs: int, params: dict | None = None
     """
     params = params or {}
 
+    # Task 18, item 2.3: the single-objective solvers run at one objective only
+    from ..scalar import SINGLE
+    if name in SINGLE and n_objs != 1:
+        return f"{name} is a single-objective algorithm: n_objs must be 1, got {n_objs}"
+
     # Task 15, §2: given n_ref_points, these take any population size (their
     # reference points no longer come from it)
     if name in FREE_H and params.get("n_ref_points"):

@@ -21,9 +21,19 @@ THE ALGORITHM `scalar`, and its presets under their own names:
   n_sub, sub_budget, fd_step, local_tol, cma_sigma0, eps_objective
 
 and mosqp (mosqp_tau, mosqp_mu, mosqp_beta, mosqp_spread, fd_step) and
-boostdms (boost_scalarization = eps | minmax). Every evaluation goes through
-fn; the run's first points are pop_size uniform points from the seed, the
-rows of the design `init` (designs.py), or the seed population.
+boostdms (boost_scalarization = eps | minmax).
+
+THE SINGLE-OBJECTIVE SOLVERS (task 18, item 2.3; n_objs = 1 only): the local
+solvers alone, each with its knobs in scalar, once from the initial plan's
+best point (scalar.hpp, run_single; SINGLE-1, SINGLE-2):
+
+  slsqp        fd_step, local_tol, sqp_line_search
+  nelder_mead  local_tol
+  cmaes        cma_sigma0, local_tol
+
+Every evaluation goes through fn; the run's first points are pop_size uniform
+points from the seed, the rows of the design `init` (designs.py), or the seed
+population.
 
 THE VERSION of these methods' trajectories is in every result's settings,
 method_version (_core.scalar.METHOD_VERSION): 4 since sqp_line_search =
@@ -43,9 +53,12 @@ PRESETS = {
     "eps_nm": {"scalarization": "eps", "local": "nm"},
     "eps_cmaes": {"scalarization": "eps", "local": "cmaes"},
 }
-# the methods of task 9 beside the scalarization methods, on the same
-# evaluator, answer and observer
-OTHERS = ("boostdms", "mosqp")
+# the single-objective solvers (task 18, item 2.3)
+SINGLE = ("slsqp", "nelder_mead", "cmaes")
+# the methods beside the scalarization methods, on the same evaluator,
+# answer and observer: those of task 9 and the single-objective solvers. None
+# lays its run out over the budget (budget.py)
+OTHERS = ("boostdms", "mosqp") + SINGLE
 NAMES = tuple(PRESETS) + OTHERS
 
 

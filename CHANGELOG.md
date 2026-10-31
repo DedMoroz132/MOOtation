@@ -10,6 +10,22 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Single-objective algorithms by name (task 18, item 2.3): `slsqp`,
+  `nelder_mead` and `cmaes`, the local solvers of `scalar` alone, with their
+  knobs there (`scalar/scalar.hpp`, `run_single`; `mootation.scalar.SINGLE`):
+  the initial plan, then the solver once from its best point, until its
+  tolerance or the budget (SINGLE-1, SINGLE-2). `minimize()` and campaigns run
+  them at `n_objs = 1`; a campaign at more objectives refuses them
+  (`check_pop`), and a bound that is not finite is refused. Their runs do not
+  depend on the budget. The scalarization methods and every other algorithm
+  are unchanged.
+- Single-objective cores in `include/mootation/scalar` (task 18, stage 4),
+  ask/tell like `CMAES`, each from its paper with its readings in its header:
+  `de` (Storn & Price 1997), `jade`, `shade`, `lshade` (`pbest.hpp`), `ga` with
+  the presets `ga_sbx` and `ssga`, `G3` (G3-PCX), `chc`, `pso` (Clerc &
+  Kennedy 2002), `spso2011` and `sep_cmaes`; constraints by NSGA-II's
+  constrained-domination at one objective (`evo.hpp`). Not yet algorithms by
+  name: that comes with the single-objective runs of stage 1.
 - The cache of references is built in C++ (`include/mootation/refs`,
   `mootation refs build|check`; `python -m mootation refs build` calls the
   same builders): the reference fronts, the dense references, the

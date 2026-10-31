@@ -10842,7 +10842,8 @@ def scalar_presets_budget_and_refusals():
     from mootation.run.metrics import nondominated
     from mootation.scalar import NAMES, PRESETS
     assert tuple(PRESETS) == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm",
-                              "eps_cmaes") and NAMES == tuple(PRESETS) + ("boostdms", "mosqp")
+                              "eps_cmaes") and NAMES == tuple(PRESETS) + (
+                                  "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes")
     calls = [0]
     def f(x):
         calls[0] += 1
@@ -10986,6 +10987,66 @@ record_grid = "generations"
             T = [json.loads(l) for l in (root / "ZDT1" / key / "run_1" / "trajectory.jsonl")
                  .read_text().splitlines()]
             assert T[0]["gen"] == 0 and T[-1]["igdp_norm"] < 0.1, T[-1]
+
+
+@test
+def single_objective_solvers_and_baselines_at_one_objective():
+    """Task 18, item 2.3: slsqp, nelder_mead and cmaes through minimize() at
+    n_objs = 1 reach the minimum of a weighted sphere, count every evaluation
+    and report their knobs, the others ignored; refused at two objectives, by
+    minimize() and by a campaign's check (check_pop); not budget-dependent,
+    and a smaller budget is the same run cut short (SINGLE-1); random_search and
+    sobol_search at one objective answer with the archive's least value."""
+    if not _have_numpy() or _core_with("scalar") is None:
+        print("  skip  single_objective...: no NumPy or _core.scalar"); return
+    import numpy as np
+    import mootation
+    from mootation.run.algorithms import check_pop
+    from mootation.run.archive import GridArchive
+    from mootation.run.baselines import run_baseline
+    from mootation.run.budget import depends_on_budget
+    from mootation.scalar import SINGLE
+    assert SINGLE == ("slsqp", "nelder_mead", "cmaes")
+    box = [(-1.0, 1.0)] * 4
+
+    def sphere(x, seen=None):
+        if seen is not None:
+            seen.append(list(x))
+        return [sum((j + 1) * (v - 0.3) ** 2 for j, v in enumerate(x))]
+    for name in SINGLE:
+        seen = []
+        r = mootation.minimize(lambda x: sphere(x, seen), box, 1, algorithm=name, pop_size=20,
+                               max_evaluations=4000, seed=3, eta_c=15)
+        assert r.evaluations == len(seen) <= 4000 and r.ignored == ["eta_c"], (name, r.ignored)
+        assert min(v[0] for v in r.objectives) < 1e-7, (name, r.objectives)
+        assert dict(r.settings)["local"] == {"slsqp": "sqp", "nelder_mead": "nm", "cmaes": "cmaes"}[name]
+        cut = []
+        mootation.minimize(lambda x: sphere(x, cut), box, 1, algorithm=name, pop_size=20,
+                           max_evaluations=150, seed=3)
+        assert cut == seen[:len(cut)] and len(cut) == min(150, len(seen)), name
+        assert not depends_on_budget(name), name
+        assert raises(ValueError, mootation.minimize, lambda x: [x[0], x[1]], box, 2,
+                      algorithm=name, pop_size=10, max_evaluations=200, seed=1) is not None, name
+        assert check_pop(name, 20, 2) == (f"{name} is a single-objective algorithm: n_objs must "
+                                          "be 1, got 2"), name
+        assert check_pop(name, 20, 1) is None, name
+    try:
+        import scipy  # noqa: F401
+        names = ("random_search", "sobol_search")
+    except ImportError:
+        names = ("random_search",)
+    for name in names:
+        arc = GridArchive(1, 4)
+        seen = []
+
+        def ev(x, arc=arc, seen=seen):
+            f = sphere(x, seen)
+            arc.add(f, x)
+            return f
+        res = run_baseline(name, ev, box, pop=20, max_evaluations=500, seed=7, archive=arc)
+        least = min(sphere(x)[0] for x in seen)
+        assert len(seen) == 500 and len(res.objectives) >= 1, (name, len(seen))
+        assert all(np.isclose(f[0], least, rtol=0, atol=0) for f in res.objectives), (name, res.objectives)
 
 
 @test

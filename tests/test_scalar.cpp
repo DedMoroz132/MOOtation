@@ -6,21 +6,28 @@
 //   models    a quadratic is its own regression model; with fewer points than
 //             coefficients, the minimum Frobenius norm model of a linear
 //             function is linear;
-//   methods   every name of scalar::names() on ZDT1 (4 variables) and on a
+//   methods   every name of scalar::names() but the single-objective solvers
+//             on ZDT1 (4 variables) and on a
 //             problem with an inequality and an equality: the budget never
 //             exceeded, the answer feasible, non-dominated and pop_size at
 //             most, the evaluations counted one by one; the same seed, the
 //             same run;
+//   single    slsqp, nelder_mead and cmaes at one objective (task 18, item
+//             2.3): the minimum of a weighted sphere, with and without an
+//             active inequality; a smaller budget the same run cut short
+//             (SINGLE-1); two objectives and an infinite bound refused;
 //   polish    the polished answer weakly dominates the algorithm's answer;
 //   bits      a checksum of the runs' answers, the same on every platform of
 //             the CI (no contraction into fused multiply-adds, dm:: for the
 //             elementary functions, rnd:: for the random numbers).
 // ============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
@@ -182,6 +189,8 @@ void methods()
 {
     const long long budget = 1500;
     for (const std::string& name : sc::names()) {
+        if (std::find(sc::single_names().begin(), sc::single_names().end(), name) != sc::single_names().end())
+            continue;                               // one objective only: single() below
         for (int which = 0; which < 2; ++which) {
             Counted c = which == 0 ? zdt1() : constrained();
             const sc::Result r = sc::run(name, c.P, 1e-3, false, 0.0, 20, budget, 7, {}, {}, 0, {});
@@ -238,6 +247,104 @@ void methods()
     }
 }
 
+// sum (j + 1) (x_j - 0.3)^2 on [-1, 1]^4, every point it is called at kept;
+// constrained: g = 1 - x0 - x1 <= 0, active at the minimum: x0 - 0.3 = 2t,
+// x1 - 0.3 = t (the weights 1 and 2), 0.6 + 3t = 1, f = 6 t^2 with t = 2/15
+struct Single {
+    sc::Problem P;
+    std::shared_ptr<std::vector<Vec>> seen = std::make_shared<std::vector<Vec>>();
+};
+
+Single single_problem(bool constrained)
+{
+    Single c;
+    c.P.lo.assign(4, -1.0);
+    c.P.hi.assign(4, 1.0);
+    c.P.m = 1;
+    c.P.n_cons = constrained ? 1 : 0;
+    c.P.evaluate = [seen = c.seen, constrained](const Vec& x, Vec& f, Vec& g) {
+        seen->push_back(x);
+        double s = 0.0;
+        for (std::size_t j = 0; j < x.size(); ++j) s += static_cast<double>(j + 1) * (x[j] - 0.3) * (x[j] - 0.3);
+        f[0] = s;
+        if (constrained) g[0] = 1.0 - x[0] - x[1];
+    };
+    return c;
+}
+
+std::uint64_t g_single = 1469598103934665603ULL;    // FNV-1a of single()'s answers
+
+void single()
+{
+    const double t = 2.0 / 15.0, f_con = 6.0 * t * t;
+    for (const std::string& name : sc::single_names()) {
+        for (int con = 0; con < 2; ++con) {
+            Single a = single_problem(con == 1);
+            const sc::Result r = sc::run(name, a.P, 1e-6, false, 0.0, 20, 4000, 3, {}, {}, 0, {});
+            Single b = single_problem(con == 1);
+            const sc::Result r2 = sc::run(name, b.P, 1e-6, false, 0.0, 20, 4000, 3, {}, {}, 0, {});
+            const double want = con ? f_con : 0.0;
+            bool at_min = !r.objectives.empty();
+            double fbest = r.objectives.empty() ? 1e300 : r.objectives[0][0];
+            for (std::size_t i = 0; i < r.objectives.size(); ++i)
+                at_min = at_min && r.objectives[i][0] == fbest && r.cv[i] <= 0.0;
+            const std::string what = name + (con ? " with g <= 0" : " on the weighted sphere");
+            check(at_min && fbest - want < 1e-7 && fbest >= want - 1e-12 &&
+                      r.evaluations == static_cast<long long>(a.seen->size()) && r.evaluations <= 4000,
+                  what + ": f - f* = " + std::to_string(fbest - want) + " in " + std::to_string(r.evaluations) +
+                      " evaluations, the answer the feasible points of least f");
+            check(r.objectives == r2.objectives && r.variables == r2.variables && r.evaluations == r2.evaluations,
+                  what + ": the same seed, the same run");
+            // SINGLE-1: a smaller budget is the same run cut short
+            Single c = single_problem(con == 1);
+            const sc::Result r3 = sc::run(name, c.P, 1e-6, false, 0.0, 20, 150, 3, {}, {}, 0, {});
+            const bool prefix = c.seen->size() <= a.seen->size() &&
+                                std::equal(c.seen->begin(), c.seen->end(), a.seen->begin());
+            check(prefix && r3.evaluations == std::min<long long>(150, r.evaluations),
+                  what + ": at a budget of 150 the run cut short there");
+            for (const sc::Rows* R : {&r.objectives, &r.variables, &r3.variables})
+                for (const Vec& row : *R)
+                    for (double v : row) {
+                        std::uint64_t bits;
+                        std::memcpy(&bits, &v, sizeof bits);
+                        for (int k = 0; k < 8; ++k) {
+                            g_single ^= (bits >> (8 * k)) & 0xFF;
+                            g_single *= 1099511628211ULL;
+                        }
+                    }
+        }
+    }
+    // refusals: two objectives, an infinite bound; knobs taken, others ignored and reported
+    Counted z = zdt1();
+    std::string why;
+    try {
+        sc::run("cmaes", z.P, 1e-6, false, 0.0, 10, 300, 1, {}, {}, 0, {});
+    } catch (const std::invalid_argument& e) {
+        why = e.what();
+    }
+    check(why == "cmaes is a single-objective algorithm: n_objs must be 1, got 2", "cmaes at two objectives: " + why);
+    Single u = single_problem(false);
+    u.P.hi[2] = std::numeric_limits<double>::infinity();
+    why.clear();
+    try {
+        sc::run("nelder_mead", u.P, 1e-6, false, 0.0, 10, 300, 1, {}, {}, 0, {});
+    } catch (const std::invalid_argument& e) {
+        why = e.what();
+    }
+    check(why.find("every bound must be finite") != std::string::npos, "nelder_mead with an infinite bound: " + why);
+    Single k = single_problem(false);
+    const sc::Knobs kn{{"cma_sigma0", {false, "", 0.2}}, {"local", {true, "nm", 0.0}},
+                       {"sqp_line_search", {true, "stop", 0.0}}};
+    const sc::Result rk = sc::run("slsqp", k.P, 1e-6, false, 0.0, 10, 600, 1, kn, {}, 0, {});
+    bool stop = false, sqp = false;
+    for (const auto& [key, v] : rk.settings) {
+        stop = stop || (key == "sqp_line_search" && v == "stop");
+        sqp = sqp || (key == "local" && v == "sqp");
+    }
+    check(rk.ignored == std::vector<std::string>{"cma_sigma0", "local"} && stop && sqp,
+          "slsqp: sqp_line_search taken, cma_sigma0 and local ignored and reported");
+}
+
 void polish()
 {
     // an "algorithm": 60 random points of ZDT1, its answer the non-dominated ones
@@ -286,11 +393,14 @@ int main()
     eigen_random();
     models();
     methods();
+    single();
     polish();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     // the same on every platform of the CI (MSVC, g++, clang, macOS ARM)
     const std::uint64_t expected = 0x8f6c7458336771deULL;
     check(g_hash == expected, "bits: the checksum of every run's answer");
+    std::printf("single checksum %016llx\n", static_cast<unsigned long long>(g_single));
+    check(g_single == 0xad2a37d5e7d46f36ULL, "bits: the checksum of the single-objective runs");
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);
         return 1;

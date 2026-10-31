@@ -1413,6 +1413,17 @@ real variables only. The header of each module lists what it reads where the
 sources are silent (SCALAR-1 ... 12 in `scalar/scalar.hpp`, SQP-n in
 `slsqp.hpp`, NM-n in `nelder_mead.hpp`, LSQ-n in `lsq.hpp`).
 
+**The single-objective solvers** `slsqp`, `nelder_mead` and `cmaes` (task 18,
+item 2.3; `n_objs = 1` only): the solver `local` names, alone — the initial
+plan, then the solver once from the plan's best point (feasible first, then f)
+on f scaled by the plan's range, until its tolerance or the budget. Their knobs
+are the solver's in the table above: `fd_step`, `local_tol`, `sqp_line_search`
+for `slsqp`; `local_tol` for `nelder_mead`; `cma_sigma0`, `local_tol` for
+`cmaes`; the others are ignored and named in `result.ignored`. A run that
+stops early leaves the budget unspent, and a shorter budget gives the same run
+cut short: these runs do not depend on `max_evaluations` (SINGLE-1, SINGLE-2 in
+`scalar/scalar.hpp`). A bound that is not finite is refused.
+
 **MOSQP** (`include/mootation/scalar/mosqp.hpp`; Fliege & Vaz, SIAM J.
 Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the
 constraints); then `mosqp_spread` (20) iterations that spread a set of

@@ -5,10 +5,11 @@
 // since task 17, stage 6): the front as a sequence of single-objective
 // subproblems, each solved by a local method — and, beside them, the methods
 // of task 9 on the same evaluator, answer and observer: mosqp (mosqp.hpp) and
-// boostdms (boostdms.hpp). Not evolutionary, and not a core of
-// algorithms.def: run() takes the problem as a function and every evaluation
-// goes through it (evaluator.hpp). The local solvers are the library's own
-// (slsqp.hpp, nelder_mead.hpp, cmaes.hpp).
+// boostdms (boostdms.hpp); and the local solvers alone as single-objective
+// algorithms, slsqp, nelder_mead and cmaes (run_single, at the end). Not
+// evolutionary, and not a core of algorithms.def: run() takes the problem as
+// a function and every evaluation goes through it (evaluator.hpp). The local
+// solvers are the library's own (slsqp.hpp, nelder_mead.hpp, cmaes.hpp).
 //
 // THE ALGORITHM `scalar`, and its presets under their own names:
 //
@@ -177,7 +178,8 @@ struct Start {
     bool has_seed_points = false, has_design = false;
 };
 
-// The names: the presets of `scalar`, then the methods beside it.
+// The names: the presets of `scalar`, then the methods beside it, then the
+// single-objective solvers (run_single).
 inline const std::vector<std::string>& preset_names()
 {
     static const std::vector<std::string> v{"scalar", "eps_sqp", "tch_sqp", "nbi_sqp",
@@ -187,7 +189,8 @@ inline const std::vector<std::string>& preset_names()
 inline const std::vector<std::string>& names()
 {
     static const std::vector<std::string> v{"scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp",
-                                            "eps_nm", "eps_cmaes", "boostdms", "mosqp"};
+                                            "eps_nm", "eps_cmaes", "boostdms", "mosqp",
+                                            "slsqp", "nelder_mead", "cmaes"};
     return v;
 }
 
@@ -798,11 +801,127 @@ inline Result run_boostdms_named(const Problem& P, double eq_tol, bool has_tol0,
     return r;
 }
 
-// Any of names(): the scalar presets, mosqp or boostdms.
+// ── one objective: slsqp, nelder_mead, cmaes ────────────────────────────────
+// The local solvers of `scalar` as single-objective algorithms (task 18, item
+// 2.3), each with its knobs there: slsqp (sqp: fd_step, local_tol,
+// sqp_line_search), nelder_mead (nm: local_tol), cmaes (cma_sigma0,
+// local_tol); the others are ignored and reported. n_objs = 1 only. The run:
+//   1. the initial plan, as scalar's (THE PLAN, 1);
+//   2. the solver once, from the plan's best point (feasible first, then f;
+//      without a feasible point, the least violating one), until its own
+//      tolerance or the budget;
+//   3. the answer as every method's (evaluator.hpp): at one objective, the
+//      feasible points of least f.
+// Constraints as in scalar (CONSTRAINTS above).
+//
+// READINGS (declared):
+//   SINGLE-1. One run of the solver: one that stops before the budget leaves
+//     the rest unspent, as DMS does. Restarts are strategies of their own
+//     (task 18, stage 3), and so are scalar's second start (SCALAR-9) and its
+//     start again from the plan (SCALAR-11): none of them here. A run is the
+//     same for every budget up to where the budget stops it, so it does not
+//     depend on the budget (scalar.OTHERS in Python).
+//   SINGLE-2. The solver sees f scaled by the initial plan's range (its least
+//     value to 0, its greatest to 1), as scalar's anchors do (SCALAR-12), in
+//     the box normalized to [0, 1]^n, as every solver of solvers.hpp: a bound
+//     that is not finite is refused (task 18, addendum 1, section 3.1).
+inline const std::vector<std::string>& single_names()
+{
+    static const std::vector<std::string> v{"slsqp", "nelder_mead", "cmaes"};
+    return v;
+}
+
+inline Result run_single(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
+                         double eq_tol0, int pop_size, long long budget, unsigned seed,
+                         const Knobs& knobs, Observer observer, int record_every, const Start& start)
+{
+    using detail::g_format;
+    const std::string local = name == "slsqp" ? "sqp" : name == "nelder_mead" ? "nm" : "cmaes";
+    if (P.m != 1)
+        throw std::invalid_argument(name + " is a single-objective algorithm: n_objs must be 1, got " +
+                                    std::to_string(P.m));
+    for (std::size_t j = 0; j < P.lo.size(); ++j)
+        if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
+            throw std::invalid_argument(name + " works in the box normalized to [0, 1]^n: every bound must be "
+                                               "finite (SINGLE-2)");
+    std::vector<std::string> own{"local_tol"};
+    if (local == "sqp") own.insert(own.end(), {"fd_step", "sqp_line_search"});
+    if (local == "cmaes") own.push_back("cma_sigma0");
+    Knobs taken;
+    std::vector<std::string> ignored, none;
+    for (const auto& kv : knobs) {
+        if (detail::listed(own, kv.first)) taken.push_back(kv);
+        else ignored.push_back(kv.first);
+    }
+    std::sort(ignored.begin(), ignored.end());
+    const ScalarSettings s = scalar_settings("scalar", taken, none);   // the words and numbers checked
+
+    std::mt19937 rng(seed);
+    Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    try {
+        detail::first_points(ev, start, pop_size, rng, true);
+        if (!ev.recorded) ev.record();               // gen 0, unless the plan's last point gave it
+        long long st = -1;
+        for (std::size_t i = 0; i < ev.X.size(); ++i) {
+            if (ev.failed[i]) continue;
+            if (st < 0) {
+                st = static_cast<long long>(i);
+                continue;
+            }
+            const std::size_t b = static_cast<std::size_t>(st);
+            const double ci = ev.cv(i), cb = ev.cv(b);
+            if (ci <= 0.0 && cb <= 0.0 ? ev.F[i][0] < ev.F[b][0] : ci < cb) st = static_cast<long long>(i);
+        }
+        if (st >= 0) {
+            double lo = ev.F[static_cast<std::size_t>(st)][0], hi = lo;
+            for (std::size_t i = 0; i < ev.X.size(); ++i)
+                if (!ev.failed[i]) {
+                    lo = std::min(lo, ev.F[i][0]);
+                    hi = std::max(hi, ev.F[i][0]);
+                }
+            const Frame frame = Frame::from_anchors({{lo}, {hi}});   // SINGLE-2
+            Sub sub;
+            sub.kind = "lexi";
+            sub.a0 = unit(1, 0);
+            Run run(sub, ev, frame);
+            const std::size_t i0 = static_cast<std::size_t>(st);
+            run.touched.push_back(i0);
+            const Vec y0 = run.y_of(i0);
+            if (local == "sqp")
+                sqp(run, y0, sub.t_star(frame.bar(ev.F[i0])), s.fd_step, s.local_tol,
+                    s.sqp_line_search == "stop"     ? slsqp::LineSearch::stop
+                    : s.sqp_line_search == "accept" ? slsqp::LineSearch::accept
+                                                    : slsqp::LineSearch::powell);
+            else if (local == "nm")
+                nm(run, y0, {i0}, s.local_tol);
+            else
+                cmaes(run, y0, {i0}, s.cma_sigma0, s.local_tol, rng);
+        }
+    } catch (const BudgetSpent&) {
+    } catch (const SubBudgetSpent&) {
+    }
+    ev.over = true;
+    const std::vector<std::size_t> idx = ev.answer();
+    ev.record(true);
+    Result r = detail::result_of(ev, idx);
+    r.ignored = ignored;
+    r.settings = {{"local", local}, {"local_tol", g_format(s.local_tol)}};
+    if (local == "sqp")
+        r.settings.insert(r.settings.end(),
+                          {{"sqp_line_search", s.sqp_line_search}, {"fd_step", g_format(s.fd_step)}});
+    if (local == "cmaes") r.settings.push_back({"cma_sigma0", g_format(s.cma_sigma0)});
+    r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
+    return r;
+}
+
+// Any of names(): the scalar presets, mosqp, boostdms or a single-objective solver.
 inline Result run(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
                   double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
                   Observer observer, int record_every, const Start& start)
 {
+    if (detail::listed(single_names(), name))
+        return run_single(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
+                          std::move(observer), record_every, start);
     if (name == "mosqp")
         return run_mosqp_named(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, knobs, std::move(observer),
                                record_every);

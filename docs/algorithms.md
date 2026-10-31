@@ -91,6 +91,19 @@ covered by this test.
 
 ## One objective
 
+The single-objective algorithms (task 18, item 2.3; `n_objs = 1` only, a
+campaign at more objectives refuses them) are the local solvers of
+`scalar` on their own: `slsqp` (the library's SQP, `slsqp.hpp`; knobs
+`fd_step`, `local_tol`, `sqp_line_search`), `nelder_mead` (`nelder_mead.hpp`;
+`local_tol`) and `cmaes` (`cmaes.hpp`; `cma_sigma0`, `local_tol`). A run is the
+initial plan (`pop_size` uniform points, the design of `init` or the seed
+population) and the solver once from its best point, until the solver's own
+tolerance or the budget; a run that stops early leaves the rest of the budget
+unspent (SINGLE-1 in `scalar/scalar.hpp`: restarts are strategies of their
+own). The box must be finite (SINGLE-2). The baselines `random_search` and
+`sobol_search` run at one objective as at more; their answer is the point of
+least value.
+
 The cores are multi-objective. With `n_objs = 1`, 22 of them refuse in
 `Settings::validate()` and name their reason (`single_objective_refusal`,
 `settings.hpp`): nsga3, a_nsga3, theta_dea, moead, moead_de, moead_dra, moead_dd,
@@ -412,6 +425,7 @@ manifold in the variables under the Karush–Kuhn–Tucker conditions.
 | Normalized Normal Constraint | 2003 | `nnc_sqp` | [10.1007/s00158-002-0276-1](https://doi.org/10.1007/s00158-002-0276-1) |
 | Pascoletti–Serafini (`scalarization = ps`) | 1984 | `scalar` | [10.1007/BF00934564](https://doi.org/10.1007/BF00934564) |
 | Multiobjective SQP | 2016 | `mosqp` | [10.1137/15M1016424](https://doi.org/10.1137/15M1016424) |
+| The local solvers alone, one objective ([One objective](#one-objective)) | — | `slsqp`, `nelder_mead`, `cmaes` | — |
 
 Not evolutionary and not cores of `algorithms.def`: C++ in
 `include/mootation/scalar/` (since task 17, stage 6; `_core.scalar` from

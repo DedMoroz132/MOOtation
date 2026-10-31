@@ -146,7 +146,8 @@ def main(argv: list[str] | None = None) -> int:
         for n in names + SCALAR_NAMES:
             print(n)
         print(f"\n{len(names)} C++ algorithms and {len(SCALAR_NAMES)} scalarization methods "
-              f"(mootation.scalar); knobs read from {knob_source()}", file=sys.stderr)
+              f"and single-objective solvers (mootation.scalar); knobs read from "
+              f"{knob_source()}", file=sys.stderr)
         return 0
 
     if args.problems:
