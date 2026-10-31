@@ -189,8 +189,9 @@ void methods()
 {
     const long long budget = 1500;
     for (const std::string& name : sc::names()) {
-        if (std::find(sc::single_names().begin(), sc::single_names().end(), name) != sc::single_names().end())
-            continue;                               // one objective only: single() below
+        if (std::find(sc::single_names().begin(), sc::single_names().end(), name) != sc::single_names().end() ||
+            std::find(sc::local_names().begin(), sc::local_names().end(), name) != sc::local_names().end())
+            continue;                               // one objective only: single(), local_solvers() below
         for (int which = 0; which < 2; ++which) {
             Counted c = which == 0 ? zdt1() : constrained();
             const sc::Result r = sc::run(name, c.P, 1e-3, false, 0.0, 20, budget, 7, {}, {}, 0, {});
@@ -345,6 +346,161 @@ void single()
           "slsqp: sqp_line_search taken, cma_sigma0 and local ignored and reported");
 }
 
+// lm and lbfgsb as single-objective algorithms, the problem's gradient and
+// residuals, the two counts (task 18, stage 1, §1.1): Rosenbrock (MGH 1) from
+// Moré's (-1.2, 1), no bounds.
+std::uint64_t g_local = 1469598103934665603ULL;     // FNV-1a of local_solvers()' answers
+
+sc::Problem rosenbrock(bool residuals, bool derivatives, bool joint, std::shared_ptr<long long> calls)
+{
+    sc::Problem P;
+    const double inf = std::numeric_limits<double>::infinity();
+    P.lo = {-inf, -inf};
+    P.hi = {inf, inf};
+    P.m = 1;
+    auto r_of = [](const Vec& x) { return Vec{10.0 * (x[1] - x[0] * x[0]), 1.0 - x[0]}; };
+    auto J_of = [](const Vec& x) { return sc::Rows{{-20.0 * x[0], 10.0}, {-1.0, 0.0}}; };
+    if (residuals) {
+        P.n_res = 2;
+        if (!joint) P.residuals = [r_of, calls](const Vec& x, Vec& r) { ++*calls; r = r_of(x); };
+        if (derivatives && !joint) P.jacobian = [J_of](const Vec& x, sc::Rows& J) { J = J_of(x); };
+        if (joint)
+            P.residuals_jac = [r_of, J_of, calls](const Vec& x, Vec& r, sc::Rows& J) {
+                ++*calls;
+                r = r_of(x);
+                J = J_of(x);
+            };
+        return P;
+    }
+    auto f_of = [r_of](const Vec& x) {
+        const Vec r = r_of(x);
+        return 0.5 * (r[0] * r[0] + r[1] * r[1]);
+    };
+    auto g_of = [r_of, J_of](const Vec& x) {
+        const Vec r = r_of(x);
+        const sc::Rows J = J_of(x);
+        return Vec{J[0][0] * r[0] + J[1][0] * r[1], J[0][1] * r[0] + J[1][1] * r[1]};
+    };
+    if (!joint) P.evaluate = [f_of, calls](const Vec& x, Vec& f, Vec&) { ++*calls; f[0] = f_of(x); };
+    if (derivatives && !joint) P.gradient = [g_of](const Vec& x, Vec& gf, sc::Rows&) { gf = g_of(x); };
+    if (joint)
+        P.value_grad = [f_of, g_of, calls](const Vec& x, Vec& f, Vec&, Vec& gf, sc::Rows&) {
+            ++*calls;
+            f[0] = f_of(x);
+            gf = g_of(x);
+        };
+    return P;
+}
+
+void local_solvers()
+{
+    sc::Start x0;
+    x0.has_x0 = true;
+    x0.x0 = {-1.2, 1.0};
+    for (const std::string name : {"lm", "lbfgsb"})
+        for (int how = 0; how < 3; ++how) {        // differences, the derivatives, the joint call
+            auto calls = std::make_shared<long long>(0);
+            const sc::Problem P = rosenbrock(name == "lm", how > 0, how == 2, calls);
+            const sc::Result r = sc::run(name, P, 1e-6, false, 0.0, 1, 5000, 1, {}, {}, 0, x0);
+            const double f = r.objectives.at(0).at(0);
+            const bool counts = r.evaluations == *calls && (how == 0 ? r.grad_calls == 0 : r.grad_calls > 0) &&
+                                (how != 2 || r.grad_calls <= r.evaluations);
+            const bool fd = name == "lbfgsb" && how == 0;     // forward differences: f to about eps
+            check(f < (fd ? 1e-10 : 1e-16) && std::fabs(r.variables[0][0] - 1.0) < (fd ? 1e-4 : 1e-7) && counts,
+                  name + " (" + std::to_string(how) + "): Rosenbrock's minimum from (-1.2, 1), f = " +
+                      std::to_string(f) + ", " + std::to_string(r.evaluations) + " evaluations, " +
+                      std::to_string(r.grad_calls) + " gradients");
+            // grad_cost: the budget is evaluations + grad_cost * grad_calls
+            const sc::Knobs half{{"grad_cost", {false, "", 0.5}}};
+            auto c2 = std::make_shared<long long>(0);
+            const sc::Problem P2 = rosenbrock(name == "lm", how > 0, how == 2, c2);
+            const sc::Result r2 = sc::run(name, P2, 1e-6, false, 0.0, 1, 30, 1, half, {}, 0, x0);
+            const double used = static_cast<double>(r2.evaluations) + 0.5 * static_cast<double>(r2.grad_calls);
+            const double whole = static_cast<double>(r.evaluations) + 0.5 * static_cast<double>(r.grad_calls);
+            check(used <= 30.0 && used >= std::min(28.5, whole), name + " (" + std::to_string(how) + "): a budget of 30 at grad_cost "
+                                                   "0.5, spent " + std::to_string(used));
+            for (const sc::Rows* R : {&r.objectives, &r.variables, &r2.variables})
+                for (const Vec& row : *R)
+                    for (double v : row) {
+                        std::uint64_t bits;
+                        std::memcpy(&bits, &v, sizeof bits);
+                        for (int k = 0; k < 8; ++k) {
+                            g_local ^= (bits >> (8 * k)) & 0xFF;
+                            g_local *= 1099511628211ULL;
+                        }
+                    }
+        }
+    // lm through the evaluator is lm.hpp's own run: the same iterates, bit for bit
+    {
+        sc::lm::Problem p;
+        p.n = 2;
+        p.m = 2;
+        p.residuals = [](const Vec& x, Vec& r) { r = {10.0 * (x[1] - x[0] * x[0]), 1.0 - x[0]}; };
+        p.jacobian = [](const Vec& x, sc::lm::Matrix& J) {
+            J(0, 0) = -20.0 * x[0];
+            J(0, 1) = 10.0;
+            J(1, 0) = -1.0;
+            J(1, 1) = 0.0;
+        };
+        sc::lm::Options o;
+        o.max_nfev = 1000000;
+        const sc::lm::Result own = sc::lm::solve(p, {-1.2, 1.0}, o);
+        auto calls = std::make_shared<long long>(0);
+        const sc::Result r = sc::run("lm", rosenbrock(true, true, false, calls), 1e-6, false, 0.0, 1, 5000, 1, {},
+                                     {}, 0, x0);
+        check(r.variables[0] == own.x && r.grad_calls == own.njev,
+              "lm: through the evaluator the run of lm.hpp, bit for bit");
+    }
+    // block weights: f = 1/2 (4 r_1^2 + r_2^2) at (0, 0): r = (0, 1), f = 1/2; and at (1, 0): r = (-10, 0), f = 200
+    {
+        auto calls = std::make_shared<long long>(0);
+        sc::Problem P = rosenbrock(true, false, false, calls);
+        P.blocks = {1, 1};
+        P.weights = {4.0, 1.0};
+        sc::Evaluator ev(P, 1e-6, false, 0.0, 10, 1, {}, 0);
+        const std::size_t a = ev.index({0.0, 0.0}), b = ev.index({1.0, 0.0});
+        check(ev.F[a][0] == 0.5 && ev.F[b][0] == 200.0 && ev.R[b] == Vec{-20.0, 0.0},
+              "residual blocks: f = 1/2 sum w_b ||r_b||^2, the archive keeps sqrt(w) r");
+    }
+    // slsqp with the problem's gradient: the same minimum, fewer evaluations
+    {
+        sc::Problem P;
+        P.lo = {-2.0, -2.0, -2.0};
+        P.hi = {2.0, 2.0, 2.0};
+        P.m = 1;
+        P.evaluate = [](const Vec& x, Vec& f, Vec&) {
+            f[0] = (x[0] - 0.5) * (x[0] - 0.5) + 2.0 * (x[1] + 0.25) * (x[1] + 0.25) + 3.0 * x[2] * x[2];
+        };
+        const sc::Result plain = sc::run("slsqp", P, 1e-6, false, 0.0, 5, 400, 2, {}, {}, 0, {});
+        P.gradient = [](const Vec& x, Vec& gf, sc::Rows&) {
+            gf = {2.0 * (x[0] - 0.5), 4.0 * (x[1] + 0.25), 6.0 * x[2]};
+        };
+        const sc::Result grad = sc::run("slsqp", P, 1e-6, false, 0.0, 5, 400, 2, {}, {}, 0, {});
+        check(grad.objectives[0][0] < 1e-12 && plain.objectives[0][0] < 1e-12 && grad.grad_calls > 0 &&
+                  grad.evaluations < plain.evaluations,
+              "slsqp: the problem's gradient, " + std::to_string(grad.evaluations) + " + " +
+                  std::to_string(grad.grad_calls) + " against " + std::to_string(plain.evaluations));
+    }
+    // refusals
+    auto refused = [](const std::string& name, const sc::Problem& P, const sc::Start& st) {
+        try {
+            sc::run(name, P, 1e-6, false, 0.0, 5, 100, 1, {}, {}, 0, st);
+        } catch (const std::invalid_argument& e) {
+            return std::string(e.what());
+        }
+        return std::string();
+    };
+    auto calls = std::make_shared<long long>(0);
+    const std::string no_res = refused("lm", rosenbrock(false, true, false, calls), x0);
+    const std::string no_x0 = refused("lbfgsb", rosenbrock(false, true, false, calls), {});
+    sc::Problem cons = rosenbrock(false, true, false, calls);
+    cons.n_cons = 1;
+    const std::string with_g = refused("lbfgsb", cons, x0);
+    check(no_res.find("gives no residuals") != std::string::npos && no_x0.find("needs a start x0") != std::string::npos &&
+              with_g.find("bounds only") != std::string::npos,
+          "lm and lbfgsb refuse: no residuals (" + no_res + "), no start (" + no_x0 + "), constraints (" + with_g + ")");
+}
+
 void polish()
 {
     // an "algorithm": 60 random points of ZDT1, its answer the non-dominated ones
@@ -394,6 +550,7 @@ int main()
     models();
     methods();
     single();
+    local_solvers();
     polish();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     // the same on every platform of the CI (MSVC, g++, clang, macOS ARM)
@@ -401,6 +558,8 @@ int main()
     check(g_hash == expected, "bits: the checksum of every run's answer");
     std::printf("single checksum %016llx\n", static_cast<unsigned long long>(g_single));
     check(g_single == 0xad2a37d5e7d46f36ULL, "bits: the checksum of the single-objective runs");
+    std::printf("local checksum %016llx\n", static_cast<unsigned long long>(g_local));
+    check(g_local == 0x109781327f59cd92ULL, "bits: the checksum of the lm and lbfgsb runs");
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);
         return 1;

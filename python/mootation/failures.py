@@ -84,6 +84,27 @@ class Guard:
             return out
         return guarded
 
+    def residuals(self, r):
+        """A problem's residuals (minimize's residuals=): as fn, the stand-in
+        NaN as many as the first call that did not fail gave; a failure before
+        any is raised."""
+        width = []
+
+        def guarded(x, _r=r):
+            try:
+                out = list(_r(x))
+            except self.exceptions as e:
+                if not width:
+                    raise
+                self._note(True, f"{type(e).__name__}: {e}")
+                return [math.nan] * width[0]
+            if not width:
+                width.append(len(out))
+            ok = finite(out)
+            self._note(not ok, None if ok else "a non-finite residual")
+            return out
+        return guarded
+
     def constraints(self, c):
         def guarded(x, _c=c):
             try:

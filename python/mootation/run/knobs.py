@@ -34,6 +34,7 @@ _FALLBACK = (
     "sub_budget", "fd_step",
     "local_tol", "cma_sigma0", "eps_objective", "polish_share", "polish_points", "mosqp_tau",
     "mosqp_mu", "mosqp_beta", "mosqp_spread", "n_samples",
+    "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"),
@@ -89,6 +90,7 @@ _FALLBACK_TEXT = {
     "theta_ties": ("slot", "letter"),
     "k_share": ("pp", "dp"),
     "polish": ("off", "sqp", "nm"),
+    "lm_loss": ("linear", "huber", "cauchy"),
 }
 
 _BLOCK = re.compile(

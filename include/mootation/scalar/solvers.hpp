@@ -16,7 +16,8 @@
 //          problem's inequalities and equalities go to the solver as
 //          constraints of their own (equalities as h = 0). A failed
 //          evaluation ends the subproblem: SQP cannot step over a hole in
-//          the function (SCALAR-6).
+//          the function (SCALAR-6). With the problem's own gradient
+//          (evaluator.hpp) at one objective, that instead (SCALAR-13).
 //  nm      nelder_mead.hpp: Lagarias et al.'s algorithm with Gao & Han's
 //          adaptive coefficients, in the box.
 //  cmaes   cmaes.hpp; the box by evaluating the clipped point and adding the
@@ -26,6 +27,12 @@
 // infeasible point is worth the worst feasible value known for this
 // subproblem — over the archive at its start, then over what it evaluates —
 // plus its violation.
+//
+// SCALAR-13 (task 18, addendum 1, §3.2). The problem's gradient is in its
+// coordinates; sqp works in y, so it takes d/dy_j = (hi_j - lo_j) d/dx_j, and
+// the objective's divided by the frame's scale as F̄ is. A constrained problem
+// that gives a gradient gives the constraints' Jacobian too (n_cons rows).
+// Only at one objective: the gradient of a problem is its one objective's.
 // ============================================================================
 
 #include <algorithm>
@@ -35,6 +42,7 @@
 #include <limits>
 #include <map>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -144,6 +152,13 @@ inline bool moved(const Run& run, const std::vector<std::size_t>& starts, std::s
     return c1 <= 0.0 && v1 < v0 - 1e-9 * std::max(1.0, std::fabs(v0));
 }
 
+// The problem's own gradient, where sqp takes it (SCALAR-13): one objective
+// and a gradient of it.
+inline bool gradient_usable(const Evaluator& ev)
+{
+    return ev.m == 1 && ev.P.has_gradient();
+}
+
 // ── sqp ─────────────────────────────────────────────────────────────────────
 inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_step, double tol,
                 slsqp::LineSearch line_search = slsqp::LineSearch::stop)
@@ -178,6 +193,7 @@ inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_st
     };
 
     std::map<std::string, std::pair<lsq::Matrix, lsq::Matrix>> memo;   // y's bytes -> (JF, JG)
+    const bool user_gradient = gradient_usable(ev);
 
     slsqp::NLP nlp;
     nlp.n = nz;
@@ -200,6 +216,22 @@ inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_st
         std::string key(n * sizeof(double), '\0');
         std::memcpy(&key[0], y.data(), key.size());
         auto it = memo.find(key);
+        if (it == memo.end() && user_gradient) {          // SCALAR-13
+            const std::size_t i0 = ev.index_grad(run.x_of(y));
+            run.touched.push_back(i0);
+            if (ev.failed[i0]) throw FailedPoint{};
+            const Vec& gf = ev.grad(i0);
+            const Rows& JGu = ev.jac_g(i0);
+            if (JGu.size() != static_cast<std::size_t>(ev.n_cons))
+                throw std::invalid_argument("gradient: the constraints' Jacobian needs n_cons = " +
+                                            std::to_string(ev.n_cons) + " rows, got " + std::to_string(JGu.size()));
+            lsq::Matrix JF(m, n), JG(static_cast<std::size_t>(ev.n_cons), n);
+            for (std::size_t j = 0; j < n; ++j) {
+                JF(0, j) = gf[j] * run.width[j] / run.frame.s[0];
+                for (std::size_t r = 0; r < JG.rows; ++r) JG(r, j) = JGu[r][j] * run.width[j];
+            }
+            it = memo.emplace(key, std::make_pair(JF, JG)).first;
+        }
         if (it == memo.end()) {
             const std::size_t i0 = point(z);
             const Vec Fb = run.frame.bar(ev.F[i0]);

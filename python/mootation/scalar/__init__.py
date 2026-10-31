@@ -31,6 +31,18 @@ best point (scalar.hpp, run_single; SINGLE-1, SINGLE-2):
   nelder_mead  local_tol
   cmaes        cma_sigma0, local_tol
 
+and, in the problem's own coordinates, bounds -inf / +inf allowed (task 18,
+stage 1; scalar.hpp, run_local; LOCAL-1 to LOCAL-4):
+
+  lm           lm_ftol, lm_xtol, lm_gtol, lm_loss, lm_f_scale (the problem's
+               residuals; Moré 1978)
+  lbfgsb       lbfgsb_m, lbfgsb_pgtol, lbfgsb_ftol (Byrd, Lu, Nocedal, Zhu 1995)
+
+grad_cost (1) for all five: what a call of the problem's gradient costs of
+the budget (evaluator.hpp, THE COUNTS). The problem may give its gradient
+(grad), its residuals (residuals, the objective then 1/2 ||r||^2) and their
+Jacobian (jac), and a start x0 (minimize()).
+
 Every evaluation goes through fn; the run's first points are pop_size uniform
 points from the seed, the rows of the design `init` (designs.py), or the seed
 population.
@@ -54,7 +66,7 @@ PRESETS = {
     "eps_cmaes": {"scalarization": "eps", "local": "cmaes"},
 }
 # the single-objective solvers (task 18, item 2.3)
-SINGLE = ("slsqp", "nelder_mead", "cmaes")
+SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb")
 # the methods beside the scalarization methods, on the same evaluator,
 # answer and observer: those of task 9 and the single-objective solvers. None
 # lays its run out over the budget (budget.py)
@@ -82,6 +94,7 @@ class ScalarResult:
         self.active_n = len(self.objectives)
         self.ignored = list(ignored)
         self.evaluations = int(d["evaluations"])
+        self.grad_calls = int(d.get("grad_calls", 0))
         self.unique_evaluations = int(unique)
         self.n_failed = int(n_failed)
         self.eq_tol = float(eq_tol)
@@ -99,7 +112,8 @@ class ScalarResult:
 def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, eq_tol: float,
         eq_tol0, pop_size: int, budget: int, seed: int, knobs: dict, on_generation=None,
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
-        seed_points=None, unique_count=None, guard=None):
+        seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
+        x0=None):
     core = _module()
     design = None
     if seed_points is None and init != "uniform":
@@ -115,7 +129,8 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
                  eq_tol0, int(pop_size), int(budget), int(seed), dict(knobs),
                  on_generation=on_generation if int(record_every) > 0 else None,
                  record_every=int(record_every), design=design,
-                 seed_points=seeds if name != "mosqp" else None)
+                 seed_points=seeds if name != "mosqp" else None, grad=grad, residuals=residuals,
+                 jac=jac, x0=None if x0 is None else [float(v) for v in x0])
     n_failed = guard.n_failed if guard is not None else d["n_failed"]
     unique = unique_count() if unique_count is not None else d["evaluations"]
     return ScalarResult(d, d["ignored"], n_failed, eq_tol if n_eq else 0.0, unique)

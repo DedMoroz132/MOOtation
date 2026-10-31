@@ -100,7 +100,12 @@ initial plan (`pop_size` uniform points, the design of `init` or the seed
 population) and the solver once from its best point, until the solver's own
 tolerance or the budget; a run that stops early leaves the rest of the budget
 unspent (SINGLE-1 in `scalar/scalar.hpp`: restarts are strategies of their
-own). The box must be finite (SINGLE-2). The baselines `random_search` and
+own). The box must be finite (SINGLE-2). `lm` (`lm.hpp`, Moré 1978: least
+squares from the problem's residuals) and `lbfgsb` (`lbfgsb.hpp`, Byrd, Lu,
+Nocedal, Zhu 1995) work in the problem's coordinates, bounds `-inf` / `+inf`
+allowed with a start `x0`, bounds only (LOCAL-1 ... LOCAL-4); all five take the
+problem's derivatives where it gives them, counted as `grad_calls` at
+`grad_cost`. The baselines `random_search` and
 `sobol_search` run at one objective as at more; their answer is the point of
 least value.
 

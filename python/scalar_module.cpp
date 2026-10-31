@@ -82,6 +82,7 @@ sc::Problem problem_of(const py::object& fn, const py::object& constraints, cons
         return P;
     }
     const int m = n_objs, k = n_cons;
+    if (fn.is_none()) return P;                 // residuals give the objective (derivatives_of)
     P.evaluate = [fn, constraints, m, k](const Vec& x, Vec& f, Vec& g) {
         py::gil_scoped_acquire gil;
         py::list xs = to_list(x);
@@ -99,6 +100,52 @@ sc::Problem problem_of(const py::object& fn, const py::object& constraints, cons
         }
     };
     return P;
+}
+
+sc::Rows rows_of_seq(const py::handle& seq)
+{
+    sc::Rows out;
+    for (py::handle r : seq) out.push_back(floats(r));
+    return out;
+}
+
+// The problem's derivatives and residuals (task 18, stage 1, §1.1), Python
+// functions called with the GIL: grad(x) the objective's gradient, or the
+// pair (gradient, the constraints' Jacobian) for a constrained problem;
+// residuals(x) the residuals, jac(x) their Jacobian (rows), n_res from the
+// first call.
+void derivatives_of(sc::Problem& P, const py::object& grad, const py::object& residuals, const py::object& jac)
+{
+    if (!residuals.is_none()) {
+        P.residuals = [residuals](const Vec& x, Vec& r) {
+            py::gil_scoped_acquire gil;
+            r = floats(residuals(to_list(x)));
+        };
+        if (!jac.is_none())
+            P.jacobian = [jac](const Vec& x, sc::Rows& J) {
+                py::gil_scoped_acquire gil;
+                J = rows_of_seq(jac(to_list(x)));
+            };
+    } else if (!jac.is_none()) {
+        throw std::invalid_argument("jac is the residuals' Jacobian: it goes with residuals");
+    }
+    if (!grad.is_none()) {
+        if (P.has_residuals()) throw std::invalid_argument("grad: a problem with residuals has jac for its derivatives");
+        const int k = P.n_cons;
+        P.gradient = [grad, k](const Vec& x, Vec& gf, sc::Rows& JG) {
+            py::gil_scoped_acquire gil;
+            py::object out = grad(to_list(x));
+            if (k > 0) {
+                py::sequence pair = out.cast<py::sequence>();
+                if (pair.size() != 2)
+                    throw std::invalid_argument("grad of a constrained problem returns (gradient, constraints' Jacobian)");
+                gf = floats(pair[0]);
+                JG = rows_of_seq(pair[1]);
+            } else {
+                gf = floats(out);
+            }
+        };
+    }
 }
 
 sc::Observer observer_of(const py::object& on_generation)
@@ -168,9 +215,17 @@ void bind_scalar(py::module_& m)
              const py::object& eq_tol0, int pop_size, long long budget, unsigned seed,
              const py::dict& knobs, const py::object& on_generation, int record_every,
              const py::object& design, const py::object& seed_points,
-             const std::shared_ptr<mootation::suite::Native>& native) {
+             const std::shared_ptr<mootation::suite::Native>& native, const py::object& grad,
+             const py::object& residuals, const py::object& jac, const py::object& x0) {
+              if (fn.is_none() == residuals.is_none() && !native)
+                  throw std::invalid_argument("give fn or residuals, one of them");
               sc::Problem P = problem_of(fn, constraints, bounds, n_objs, n_cons, n_eq, native);
+              derivatives_of(P, grad, residuals, jac);
               sc::Start st;
+              if (!x0.is_none()) {
+                  st.has_x0 = true;
+                  st.x0 = floats(x0);
+              }
               if (!seed_points.is_none()) {
                   st.has_seed_points = true;
                   st.seed_points = points_of(seed_points);
@@ -192,6 +247,7 @@ void bind_scalar(py::module_& m)
               d["cv"] = to_list(r.cv);
               d["ignored"] = py::cast(r.ignored);
               d["evaluations"] = r.evaluations;
+              d["grad_calls"] = r.grad_calls;
               d["n_failed"] = r.n_failed;
               d["settings"] = py::cast(r.settings);
               d["solutions"] = rows_to_list(r.solutions);
@@ -202,10 +258,13 @@ void bind_scalar(py::module_& m)
           py::arg("eq_tol0"), py::arg("pop_size"), py::arg("budget"), py::arg("seed"),
           py::arg("knobs"), py::arg("on_generation") = py::none(), py::arg("record_every") = 0,
           py::arg("design") = py::none(), py::arg("seed_points") = py::none(),
-          py::arg("native") = nullptr,
+          py::arg("native") = nullptr, py::arg("grad") = py::none(), py::arg("residuals") = py::none(),
+          py::arg("jac") = py::none(), py::arg("x0") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
-          "n_failed (failed evaluations in the archive), settings, ignored knobs and, for the\n"
-          "scalar presets, solutions.");
+          "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
+          "for the scalar presets, solutions. fn = None with residuals (and jac, their\n"
+          "Jacobian): the objective 1/2 ||r||^2; grad: the objective's gradient; x0: the start\n"
+          "(evaluator.hpp, scalar.hpp run_local).");
 
     s.def("polish",
           [](const py::object& fn, const py::object& constraints, const py::object& bounds,
