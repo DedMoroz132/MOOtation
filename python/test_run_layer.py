@@ -11187,6 +11187,55 @@ def lm_and_lbfgsb_take_the_problems_derivatives():
         else:
             raise AssertionError("not refused: " + why)
 
+@test
+def improvements_record_the_best_point():
+    """Task 18, stage 1, §1.2 (scalar/improvements.hpp): at one objective a
+    record each time the best point improves — feasible first, then f;
+    infeasible by the violation; ties none — as a plain pass over the
+    evaluations in order gives it: through minimize() (cmaes with g <= 0) and
+    through RunLedger in batches of 7, the best point's variables beside."""
+    if _core_with("scalar") is None or _core_with("RunLedger") is None or not _have_numpy():
+        print("  skip  improvements_record...: no _core.scalar, RunLedger or NumPy"); return
+    import numpy as np
+    import mootation
+    from mootation import _core
+    seen = []
+
+    def value(x):
+        return sum((i + 1) * (v - 0.3) ** 2 for i, v in enumerate(x))
+
+    def f(x):
+        seen.append(list(x))
+        return [value(x)]
+
+    def g(x):
+        return [1.0 - x[0] - x[1]]
+
+    def better(fx, v, best):
+        if (v <= 0.0) != (best[3] <= 0.0):
+            return v <= 0.0
+        return v < best[3] if v > 0.0 else fx < best[2]
+    out = mootation.minimize(f, [(-1.0, 1.0)] * 4, 1, algorithm="cmaes", constraints=g, n_cons=1,
+                             pop_size=10, max_evaluations=300, seed=4)
+    want = []
+    for i, x in enumerate(seen):
+        fx, v = value(x), max(g(x)[0], 0.0)
+        if not want or better(fx, v, want[-1]):
+            want.append((i + 1, 0, fx, v))
+    assert len(want) > 3 and out.improvements == want, (out.improvements[:4], want[:4])
+    assert want[-1][2] == out.objectives[0][0] and want[-1][3] == 0.0
+    X = np.array(seen)
+    F = np.array([[value(x)] for x in seen])
+    G = np.array([g(x) for x in seen])
+    led = _core.RunLedger(1, 4, True, None, None, None, None)
+    led.set_reads([], [])
+    for lo in range(0, len(X), 7):
+        led.begin(X[lo:lo + 7], F[lo:lo + 7], G[lo:lo + 7])
+        while led.next() >= 0:
+            pass
+    assert led.improvements == want, (led.improvements[:4], want[:4])
+    assert list(led.best_x) == seen[want[-1][0] - 1]
+
 
 @test
 def polish_improves_and_loses_nothing():

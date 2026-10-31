@@ -251,6 +251,10 @@ void bind_scalar(py::module_& m)
               d["n_failed"] = r.n_failed;
               d["settings"] = py::cast(r.settings);
               d["solutions"] = rows_to_list(r.solutions);
+              py::list imp;
+              for (const auto& e : r.improvements)
+                  imp.append(py::make_tuple(e.evaluations, e.grad_calls, e.f, e.cv));
+              d["improvements"] = imp;
               return d;
           },
           py::arg("name"), py::arg("fn"), py::arg("constraints"), py::arg("bounds"),
@@ -262,8 +266,10 @@ void bind_scalar(py::module_& m)
           py::arg("jac") = py::none(), py::arg("x0") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
           "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
-          "for the scalar presets, solutions. fn = None with residuals (and jac, their\n"
-          "Jacobian): the objective 1/2 ||r||^2; grad: the objective's gradient; x0: the start\n"
+          "for the scalar presets, solutions; at one objective improvements, the best point's\n"
+          "records (evaluations, grad_calls, f, cv; improvements.hpp). fn = None with residuals\n"
+          "(and jac, their Jacobian): the objective 1/2 ||r||^2; grad: the objective's gradient;\n"
+          "x0: the start\n"
           "(evaluator.hpp, scalar.hpp run_local).");
 
     s.def("polish",

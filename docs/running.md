@@ -1450,6 +1450,13 @@ values) and `result.grad_calls` (calls of a gradient or Jacobian; a joint call
 is one of each); the budget is `evaluations + grad_cost * grad_calls`
 (SO-1 ... SO-3 in `evaluator.hpp`).
 
+**The best point's records** (task 18, stage 1, §1.2; `scalar/improvements.hpp`):
+at one objective the answer is the best point — the feasible point of least
+`f`, or while there is none the least violating — and `result.improvements`
+holds a record each time it improved, `(evaluations, grad_calls, f, cv)` at
+that point (SO-4 ... SO-6). A campaign's `RunLedger` keeps the same records
+of every row it accounts, with the best point's variables (`best_x`).
+
 **MOSQP** (`include/mootation/scalar/mosqp.hpp`; Fliege & Vaz, SIAM J.
 Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the
 constraints); then `mosqp_spread` (20) iterations that spread a set of

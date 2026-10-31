@@ -172,6 +172,7 @@ struct Result {
     long long n_failed = 0;          // failed evaluations in the archive
     std::vector<std::pair<std::string, std::string>> settings;
     Rows solutions;                  // scalar: every subproblem's solution, anchors first
+    std::vector<Improvement> improvements;   // one objective: the best point's records (improvements.hpp)
 };
 
 // How the first points come: seed points (planted), rows of a design
@@ -427,6 +428,7 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     }
     r.evaluations = ev.spent;
     r.grad_calls = ev.grad_calls;
+    r.improvements = ev.improvements.records();
     for (char f : ev.failed) r.n_failed += f ? 1 : 0;
     return r;
 }
