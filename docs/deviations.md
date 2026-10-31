@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-378 items: 306 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+383 items: 311 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -302,6 +302,9 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `hcca` | HCCA-6 (MINOR) | Real-valued genome; binary is out of scope. | yes | `hcca.hpp` |
 | `hcca` | HCCA-7 (DEVIATION, reference set + normalization of Eq.2) | Eq.2 is evaluated over the NDS-ACCUMULATED set Q built by Alg.2 lines 2-8, not over the full input pool PP ∪ Q1 that Alg.2 line 9 and §III name. | yes | `hcca.hpp` |
 | `hcca` | HCCA-10 (MINOR) | The paper names no repair for DE/rand/1's offspring; a variable it puts outside the box is clipped (knob bound_repair), and since 2026-10-01 counted (RepairTally) and logged as "hcca_de_rand_1". | yes | `hcca.hpp` |
+| `hcca` | HCCA-11 (FIX 2026-11-01) | The DE parents follow MOEA/D-DE (Li & Zhang 2009, Steps 2.1-2.2), whose δ, n_r, CR and F Table 2 takes: P = B(i) with probability δ, else all of DP; r1 = i (the member M_i of Algorithm 1 line 6, "crossover and mutatio... | yes | `hcca.hpp` |
+| `hcca` | HCCA-12 (reading) | T = 20, the value the sister CSMOEA of the same authors gives (Information Sciences 624, 2023, §4.1) with the same δ = 0.9 and n_r = 2; | yes | `hcca.hpp` |
+| `hcca` | HCCA-13 (FIX 2026-11-01) | DP and PP come from two independent random samples of N_ points each (§III: "two populations, DP and PP, with N individuals are randomly sampled"), 2N evaluations; the code before copied one sample into both. | yes | `hcca.hpp` |
 | `lis_lcs` | lis_lcs.1 | Eq.2–3, k-means and the CCD distances are computed on the min-max normalized objectives of the current set. | yes | `lis_lcs.hpp` |
 | `lis_lcs` | lis_lcs.2 | Alg.1 lines 12–14 («DP ← DP ∪ Pool₁ ∪ Pool₂; environmental selection (DP,W,Z)") are implemented with the canonical MOEA/D-DE scheme: each offspring replaces at most n_r subproblems (the mating scope for Pool_1, all of... | yes | `lis_lcs.hpp` |
 | `lis_lcs` | lis_lcs.3 | Δf (Eq.5) is clamped from below at zero to guarantee 0 <= EI' <= 1 (Eq.8); when EI_PP + EI_DP = 0, and in the first generation, K is left unchanged (the previous generation's EI_PP does not exist yet). | yes | `lis_lcs.hpp` |
@@ -313,6 +316,8 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `lis_lcs` | lis_lcs.9 | FE PER step(): (N - K_{t-1}) + K_t, NOT the flat N of Algorithm 1 line 16. | yes | `lis_lcs.hpp` |
 | `lis_lcs` | lis_lcs.10 | dp_update replaces on a STRICT improvement (g^tch(y) < g^tch(x^j)); the paper gives no tie rule for line 14. | yes | `lis_lcs.hpp` |
 | `lis_lcs` | lis_lcs.11 | setup() initializes both populations at random (2N evaluations, as in the paper); setup_seeded() copies the seeded population into both DP and PP. | yes | `lis_lcs.hpp` |
+| `lis_lcs` | LIS-1 (reading; knob de_base, current1 by default) | The DE base vector is the member i of M_DP itself: x_i + F·(x_r2 − x_r3), r2 and r3 from i's mating scope (B(i) with probability δ, else all of DP), different from i and from each other. | yes | `lis_lcs.hpp` |
+| `lis_lcs` | LIS-2 (reading; knob k_share, pp by default) | Eq.9 as printed sets K = [EI_DP'·N], yet K is the number of PP offspring (M_PP, line 10), and the text under it says "A better performance of offspring will generally lead to a larger number of clusters and, thus, a l... | yes | `lis_lcs.hpp` |
 | `clia` | CLIA-1 (MAJOR, the RPIL classifier) | The paper uses an INCREMENTAL SVM (Gaussian kernel <S,C> = <0.056,10>) on reference points projected by Gram-Schmidt from M to M−1, to estimate the "effective regions" of the simplex. | yes | `clia.hpp` |
 | `clia` | CLIA-2 (MINOR) | The M -> M−1 Gram-Schmidt projection for the classifier is replaced by working directly on the simplex, where the points already lie on Sum = 1. | yes | `clia.hpp` |
 | `clia` | CLIA-3 (MINOR) | PDM uses \|\|o\|\|_2 * sin(o,z), the full form of Eq.1; the pseudocode of Alg.1 writes mean(f) + sin(z,f). | yes | `clia.hpp` |

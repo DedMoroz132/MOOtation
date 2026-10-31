@@ -86,6 +86,7 @@ _FALLBACK_TEXT = {
     "hv_algo": ("auto", "wfg", "box"),
     "hv_contrib": ("iwfg", "hvc", "wfg", "race", "mc"),
     "theta_ties": ("slot", "letter"),
+    "k_share": ("pp", "dp"),
     "polish": ("off", "sqp", "nm"),
 }
 

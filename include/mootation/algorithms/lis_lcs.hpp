@@ -11,17 +11,17 @@
 // ╚══════════════════════════════════════════════════════════════════════════╝
 //
 // Two-population co-evolution (Algorithm 1), one generation:
-//   1. M_DP <- (N−K) random individuals of DP; OffspringPool_1 <- DE/rand/1/bin
-//      (vectors from the T-neighbourhood of the weights with probability δ,
-//      otherwise from all of DP;
-//      repair RandomReset) + PM.
+//   1. M_DP <- (N−K) random individuals of DP; OffspringPool_1 <- DE/bin + PM
+//      on each member i of M_DP: x_i + F·(x_r2 − x_r3), r2 and r3 from the
+//      T-neighbourhood of i's weight with probability δ, otherwise from all
+//      of DP (LIS-1); repair RandomReset.
 //   2. [K, M_PP] <- LIS(PP ∪ OffspringPool_1, K) (Algorithm 2): NDS filtering
 //      -> convergence fitness Fitness(x)=Σ −e^{I_{ε+}(x',x)/0.05} (Eq.2–3,
 //      smaller is better) -> k-means into K clusters -> best member of each
 //      cluster. K adapts per Eq.4–9: EI = Σ Δf^tch of the offspring divided by
 //      the pool size (Eq.4–5, Δf against the ACTUAL parent), normalized
 //      (Eq.8),
-//      K = max(min([EI_DP'·N], N−3), 3) (Eq.9).
+//      K = max(min([EI_PP'·N], N−3), 3) (Eq.9 as the text reads it, LIS-2).
 //   3. OffspringPool_2 <- SBX + PM from M_PP (K offspring).
 //   4. DP <- decomposition-based environmental selection: every offspring, from
 //      both pools, updates at most n_r subproblems by Tchebycheff g^tch
@@ -105,6 +105,24 @@
 //     scalarizations propagate one copy of y over up to n_r subproblems.
 //   - setup() initializes both populations at random (2N evaluations, as in the
 //     paper); setup_seeded() copies the seeded population into both DP and PP.
+//   LIS-1 (reading; knob de_base, current1 by default). The DE base vector is
+//     the member i of M_DP itself: x_i + F·(x_r2 − x_r3), r2 and r3 from i's
+//     mating scope (B(i) with probability δ, else all of DP), different from i
+//     and from each other. Algorithm 1 line 6 takes "crossover and mutation
+//     (M_DP, DP)", so the selected member is the operator's input; T, δ and n_r
+//     (§4.1) are MOEA/D-DE's parameters, and MOEA/D-DE (Li & Zhang 2009, Step
+//     2.2) reads "Set r1 = i" — as moead_de and moead_dra do. de_base = rand1
+//     is the code before 2026-11-01: x_r1 + F·(x_r2 − x_r3), all three from the
+//     scope and different from i, so that with CR = 1 nothing of x_i is left.
+//   LIS-2 (reading; knob k_share, pp by default). Eq.9 as printed sets
+//     K = [EI_DP'·N], yet K is the number of PP offspring (M_PP, line 10), and
+//     the text under it says "A better performance of offspring will generally
+//     lead to a larger number of clusters and, thus, a larger number of
+//     solutions will be selected for mating" — K grows with PP's share of the
+//     enhancement. The sister paper of the same authors (HCCA, IEEE Access
+//     2023, Eq.8) prints K = [FI'_PP·N]. The default follows the text and HCCA:
+//     K = [EI_PP'·N]; k_share = dp is the letter of Eq.9 (the code before
+//     2026-11-01). PlatEMO 4.16 has no CSMOEA to settle it.
 //
 // EXTENSIONS BEYOND THE PAPER (off by default / neutral):
 //   - constraint_mode FEASIBILITY: CV dominance inside NDS (LIS/LCS/CCD); the
@@ -117,6 +135,7 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -160,6 +179,8 @@ private:
     int    nr_    = 2;
 
     int          K_ = 0;                       // adaptive K (Eq.4–9)
+    ops::DEBase  base_     = ops::DEBase::Current1;   // LIS-1 (knob de_base)
+    bool         k_by_dp_  = false;                   // LIS-2 (knob k_share = dp)
     // DE mutant repair (bound_repair, 2026-09-23): random reset by default.
     ops::BoundRepair repair_ = ops::BoundRepair::Random;
     std::mt19937 rng_{std::random_device{}()};
@@ -434,6 +455,25 @@ private:
         do { c = (*scope)[d(rng_)]; } while (c == self || c == a || c == b);
     }
 
+    // Two distinct difference vectors from the scope, != self where possible
+    // (LIS-1: the base is self).
+    void pick2(const std::vector<int>& scope_in, int self, int& b, int& c) {
+        std::vector<int> fallback;
+        const std::vector<int>* scope = &scope_in;
+        if (static_cast<int>(scope_in.size()) < 3) {
+            fallback.resize(dp_.size());
+            std::iota(fallback.begin(), fallback.end(), 0);
+            scope = &fallback;
+        }
+        rnd::uniform_int_distribution<int> d(0, static_cast<int>(scope->size()) - 1);
+        if (static_cast<int>(scope->size()) < 3) {           // tiny DP
+            b = (*scope)[d(rng_)]; c = (*scope)[d(rng_)];
+            return;
+        }
+        do { b = (*scope)[d(rng_)]; } while (b == self);
+        do { c = (*scope)[d(rng_)]; } while (c == self || c == b);
+    }
+
     // ── Evaluate a batch of offspring via the vault scratch slots [0,cnt) ──
     // (cnt <= N always: |Pool_1| = N−K <= N−3, |Pool_2| = K <= N−3.)
     void evaluate(DataVault<Ind_t>& vault, std::vector<Sol>& sols) {
@@ -598,6 +638,22 @@ public:
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_bound_repair(ops::BoundRepair r) {
         ops::require_repair(r, "lis_lcs", false, false); repair_ = r; }
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k == "de_base") {                            // LIS-1
+            auto b = ops::parse_de_base(w);
+            if (!b || *b == ops::DEBase::CurrentToPBest1)
+                throw std::invalid_argument("lis_lcs: de_base = '" + w + "': current1 or rand1");
+            base_ = *b;
+            return true;
+        }
+        if (k == "k_share") {                            // LIS-2
+            if (w != "pp" && w != "dp")
+                throw std::invalid_argument("lis_lcs: k_share = '" + w + "': pp or dp");
+            k_by_dp_ = (w == "dp");
+            return true;
+        }
+        return false;
+    }
 
     void setup(DataVault<Ind_t>& vault) {
         const int N = vault.pop_size(), m = vault.objs_n();
@@ -669,8 +725,13 @@ public:
             bool nb_scope = (U01(rng_) < delta_);       // §4.1: δ = 0.9
             const std::vector<int>& scope = nb_scope ? B_[i] : allDP;
             int a, b, c;
-            pick3(scope, i, a, b, c);
             Sol ch;
+            if (base_ == ops::DEBase::Current1) {        // LIS-1: x_i + F·(x_b − x_c)
+                pick2(scope, i, b, c);
+                a = i;
+            } else {                                     // rand1: x_a + F·(x_b − x_c)
+                pick3(scope, i, a, b, c);
+            }
             ops::de_rand_1_bin(dp_[a].x, dp_[b].x, dp_[c].x, dp_[i].x, ch.x,
                                bounds, de_F_, de_CR_,
                                repair_, rng_);
@@ -701,8 +762,8 @@ public:
             double EIdp = ei_dp_raw / (N - K_l);         // Eq.4
             double s = EIpp + EIdp;
             if (s > 1e-14) {
-                double EIdpN = EIdp / s;                 // Eq.8
-                K_ = clamp_K(std::lround(EIdpN * N), N); // Eq.9
+                double share = (k_by_dp_ ? EIdp : EIpp) / s;   // Eq.8 (LIS-2)
+                K_ = clamp_K(std::lround(share * N), N);       // Eq.9
             }
         }
 

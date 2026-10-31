@@ -55,7 +55,8 @@ set(MOOTATION_TESTS
     test_engine
     test_store_tools
     test_refs
-    test_registry_bounds)
+    test_registry_bounds
+    test_core_readings)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -156,6 +157,8 @@ mootation_test_timeout(test_operators 300)
 mootation_test_timeout(test_hypervolume 300)
 # operators/bound_repair.hpp and the operators that use it: milliseconds.
 mootation_test_timeout(test_bound_repair 300)
+# the readings of 2026-11-01 (lis_lcs, hcca): seconds.
+mootation_test_timeout(test_core_readings 300)
 # Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
 # all 58 algorithms for the run-time dispatch. Stays in the push tier because
 # the property it guards ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â that a warm start costs no function evaluations ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â is

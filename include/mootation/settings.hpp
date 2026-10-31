@@ -196,7 +196,10 @@ inline bool is_core_param(const std::string& name)
 //                 variables it put outside (operators/bound_repair.hpp)
 //   de_base, de_index
 //                 moead_de, moead_dra: the DE mutation's strategy and index
-//                 selection (operators/de_mutation.hpp; task 15, §1)
+//                 selection (operators/de_mutation.hpp; task 15, §1);
+//                 lis_lcs: de_base current1 or rand1 (LIS-1)
+//   k_share       lis_lcs: K of Eq.9 by PP's share of the enhancement (pp,
+//                 the default) or DP's, the letter of Eq.9 (dp; LIS-2)
 //   crossover     nsga2, nsga2_sdr, ibea_eplus, spea2_sde, agemoea, sms_emoa
 //                 (operators/real_crossover.hpp, multi_parent.hpp)
 //   mutation      the same six and moead_de (operators/real_mutation.hpp)
@@ -299,6 +302,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"tch_weights",  {"inverse", "lattice"}},
         {"sqp_line_search", {"stop", "accept", "powell"}},
         {"theta_ties",   {"slot", "letter"}},
+        {"k_share",      {"pp", "dp"}},
         {"hv_algo",      {"auto", "wfg", "box"}},
         {"hv_contrib",   {"iwfg", "hvc", "wfg", "race", "mc"}},
         {"polish",       {"off", "sqp", "nm"}},
@@ -328,7 +332,7 @@ inline bool is_core_word(const std::string& name)
                           "dms_cache", "paes_cache", "boost_scalarization",
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
-                          "hv_contrib", "theta_ties"})
+                          "hv_contrib", "theta_ties", "k_share"})
         if (name == k) return true;
     return false;
 }

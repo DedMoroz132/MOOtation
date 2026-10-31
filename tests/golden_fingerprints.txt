@@ -74,9 +74,9 @@ gde3 zdt1_nan 100 ad1e8125ec936f43
 grea dtlz2_3 91 cdf1dc5db0abef6c
 grea zdt1 100 d122a100e0e99470
 grea zdt1_nan 100 f606d54c2436828c
-hcca dtlz2_3 91 ce0759ef061bf3b2
-hcca zdt1 100 503c8b858bb8343a
-hcca zdt1_nan 100 f1a4e10ee4453650
+hcca dtlz2_3 91 364862b05f6ec5ab
+hcca zdt1 100 2a27cf5b8914bad2
+hcca zdt1_nan 100 f64a44f8db03f93e
 hlmea dtlz2_3 90 6fdf7f6efcd0e11d
 hlmea zdt1 100 580b933bce08476e
 hlmea zdt1_nan 100 bbe231f82ed93ad6
@@ -98,9 +98,9 @@ irea zdt1_nan 100 304eadb4ea141342
 isde_rd dtlz2_3 90 f49ff3a3c7849f3b
 isde_rd zdt1 100 6839e7ede481f5e7
 isde_rd zdt1_nan 100 80cf2480df9e16f6
-lis_lcs dtlz2_3 91 332ca4b1bab3cc59
-lis_lcs zdt1 100 fd4af147181c2c4d
-lis_lcs zdt1_nan 100 d692df5db454806b
+lis_lcs dtlz2_3 91 0f60a4f68344725e
+lis_lcs zdt1 100 89e3c5ff031ce08c
+lis_lcs zdt1_nan 100 816619d787490de8
 liu_gu2011 dtlz2_3 91 0c973488afb9c83b
 liu_gu2011 zdt1 100 bee08642f6a2054f
 liu_gu2011 zdt1_nan 100 f4c488a4651505ae

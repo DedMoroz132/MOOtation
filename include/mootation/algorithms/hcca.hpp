@@ -8,8 +8,9 @@
 //
 // MECHANISM (Algorithm 1). Two populations of N individuals each: DP
 //   (decomposition) and PP (Pareto). Per generation:
-//   - M <- N−K random individuals from DP; DE/rand/1 + PM on each produces the
-//     offspring pool Q1 (lines 4-8).
+//   - M <- N−K random individuals from DP; DE + PM on each M_i produces the
+//     offspring pool Q1 (lines 4-8): x_i + F·(x_r2 − x_r3), r2 and r3 from
+//     B(i) with probability δ, else from all of DP (HCCA-11).
 //   - [K,Q2] <- local area selection(PP u Q1, K) (Alg.2): mating driven by
 //     hierarchical clustering plus the convergence fitness I_eps+ (Eq.2);
 //     K adapts to the fitness improvement FI'_PP (Eq.3-8).
@@ -44,8 +45,7 @@
 //     this header used to claim it was not a stated default and to source it
 //     from the §5 sweep over {0, 0.25N, 0.5N, 0.75N, N}; the sweep exists, but
 //     the pseudocode fixes the value.)
-//   T (neighbourhood) = max(2, N/10), a MOEA/D convention, since Table 2
-//     omits it for HCCA.
+//   T (neighbourhood) = 20 (HCCA-12), since Table 2 omits it for HCCA.
 //
 // DECLARED DEVIATIONS:
 //   HCCA-1 (MINOR). The hierarchical clustering is AGGLOMERATIVE with
@@ -106,6 +106,23 @@
 //   HCCA-10 (MINOR). The paper names no repair for DE/rand/1's offspring; a
 //     variable it puts outside the box is clipped (knob bound_repair), and
 //     since 2026-10-01 counted (RepairTally) and logged as "hcca_de_rand_1".
+//   HCCA-11 (FIX 2026-11-01). The DE parents follow MOEA/D-DE (Li & Zhang
+//     2009, Steps 2.1-2.2), whose δ, n_r, CR and F Table 2 takes: P = B(i)
+//     with probability δ, else all of DP; r1 = i (the member M_i of Algorithm
+//     1 line 6, "crossover and mutation (M_i, DP)"), r2 and r3 drawn from P;
+//     the child replaces within the same P (Step 2.5). Table 2's note calls δ
+//     "the probability to select the parents from T neighbors". The code
+//     before drew r1, r2 and r3 from all of DP, so that with CR = 1 nothing of
+//     M_i was left, and drew δ only for the replacement: a child unrelated to
+//     subproblem i competed for i's neighbours.
+//   HCCA-12 (reading). T = 20, the value the sister CSMOEA of the same authors
+//     gives (Information Sciences 624, 2023, §4.1) with the same δ = 0.9 and
+//     n_r = 2; Table 2 gives none for HCCA. The code before took max(2, N/10).
+//   HCCA-13 (FIX 2026-11-01). DP and PP come from two independent random
+//     samples of N_ points each (§III: "two populations, DP and PP, with N
+//     individuals are randomly sampled"), 2N evaluations; the code before
+//     copied one sample into both. A seeded start still feeds both from the
+//     one seeded population.
 //
 // CONSTRAINTS (beyond the paper, off by default). constraint_mode
 //   FEASIBILITY/CDP makes the non-dominated sorts constrained — the Alg.2 NDS
@@ -154,6 +171,7 @@ private:
         std::vector<double> parent_objs;  // objectives of the associated parent x (Eq.4)
         double              cv = 0.0;      // constraint violation (0 when unconstrained)
         int                 sp = -1;       // associated subproblem/weight index for g^tch (Eq.4/5)
+        bool                nb = false;    // DE child mated within B(sp): replaces there too (HCCA-11)
         VaultPoint          pt{};            // the point as the vault holds it (data_vault.hpp, WRITING BACK)
     };
 
@@ -386,13 +404,19 @@ private:
         return fit;
     }
 
-    // ── DE/rand/1 + PM offspring; evaluated via scratch slot ────────────────
+    // ── DE + PM offspring of subproblem base_sp; evaluated via scratch slot ──
+    // MOEA/D-DE Step 2.1-2.2 (HCCA-11): P = B(i) with probability δ, else all
+    // of DP; r1 = i, r2 and r3 drawn from P (independent draws).
     Sol de_breed(const Sol& base, int base_sp, DataVault<Ind_t>& vault, int scratch) {
         int nv = vault.vars_n();
         const auto& bnd = vault.get_bounds();
-        rnd::uniform_int_distribution<int> di(0, (int)DP_.size() - 1);
-        int r1 = di(rng_), r2 = di(rng_), r3 = di(rng_);
         rnd::uniform_real_distribution<double> ur(0.0, 1.0);
+        const bool nb = ur(rng_) < delta_;
+        const int  np = nb ? (int)B_[base_sp].size() : (int)DP_.size();
+        rnd::uniform_int_distribution<int> di(0, np - 1);
+        int r1 = base_sp;
+        int r2 = di(rng_), r3 = di(rng_);
+        if (nb) { r2 = B_[base_sp][r2]; r3 = B_[base_sp][r3]; }
         std::vector<double> child(nv);
         int jrand = rnd::uniform_int_distribution<int>(0, nv - 1)(rng_);
         ops::note_operator("hcca_de_rand_1", ops::bound_repair_name(repair_));
@@ -417,6 +441,7 @@ private:
         if (constraint_mode != ConstraintMode::NONE) o.cv = vault.get_cv(scratch);
         o.parent_objs = base.objs;   // parent x for Eq.4 (DE target)
         o.sp = base_sp;              // subproblem/weight of the DP parent (DP[i] <-> W_[i])
+        o.nb = nb;                   // the same P for the replacement (HCCA-11)
         return o;
     }
 
@@ -456,11 +481,14 @@ private:
             // (sp = -1) and fall back to a random one, which is the only
             // defensible reading for them. An earlier version drew a random
             // subproblem for EVERY offspring, discarding the index it had just
-            // computed and stored — see HCCA-9.
-            int sp = (off.sp >= 0 && off.sp < N_)
-                         ? off.sp
-                         : rnd::uniform_int_distribution<int>(0, N_ - 1)(rng_);
-            const std::vector<int>& pool = (ur(rng_) < delta_) ? B_[sp]
+            // computed and stored — see HCCA-9. A DE child replaces within
+            // the P it was mated in (B(sp) or all of DP, HCCA-11); an SBX child
+            // draws its P here.
+            const bool de = (off.sp >= 0 && off.sp < N_);
+            int sp = de ? off.sp
+                        : rnd::uniform_int_distribution<int>(0, N_ - 1)(rng_);
+            const bool nb = de ? off.nb : (ur(rng_) < delta_);
+            const std::vector<int>& pool = nb ? B_[sp]
                                           : [&]{ static thread_local std::vector<int> all;
                                                  all.resize(N_); std::iota(all.begin(), all.end(), 0);
                                                  return all; }();
@@ -801,7 +829,7 @@ private:
         // adjust N_ to number of weights (Das–Dennis may not equal N exactly)
         N_ = (int)W_.size();
         // neighborhoods
-        Tnb_ = std::max(2, N_ / 10);
+        Tnb_ = std::min(20, N_);      // HCCA-12: T = 20, as the sister CSMOEA
         B_.assign(N_, {});
         for (int i = 0; i < N_; ++i) {
             std::vector<int> idx(N_); std::iota(idx.begin(), idx.end(), 0);
@@ -819,14 +847,18 @@ private:
         int Nreq = vault.pop_size();
         K_ = std::max(3, std::min(N_ - 3, (int)std::floor(0.5 * N_)));
 
-        std::vector<Sol> base;
-        if (seeded) {
-            for (int i = 0; i < (int)vault.active_n(); ++i) {
+        // The vault's population as Sols (after a sync or a seeding).
+        auto read_vault = [&](int n) {
+            std::vector<Sol> P;
+            for (int i = 0; i < n; ++i) {
                 Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
                 if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
-                base.push_back(s);
+                P.push_back(s);
             }
-        } else {
+            return P;
+        };
+        // Nreq random points, evaluated.
+        auto sample = [&]() {
             const auto& bnd = vault.get_bounds();
             rnd::uniform_real_distribution<double> ur(0.0, 1.0);
             std::vector<double> vars(vault.vars_n());
@@ -838,18 +870,24 @@ private:
                 vault.set_variables(i, vars);
             }
             vault.sync();
-            for (int i = 0; i < Nreq; ++i) {
-                Sol s; s.vars = vault.variables_of(i); s.objs = vault.objectives_of(i); s.pt = vault.point_of(i);
-                if (constraint_mode != ConstraintMode::NONE) s.cv = vault.get_cv(i);
-                base.push_back(s);
-            }
+            return read_vault(Nreq);
+        };
+        // HCCA-13: PP and DP from two independent samples (§III, "two
+        // populations, DP and PP, with N individuals are randomly sampled");
+        // a seeded start feeds both from the one seeded population.
+        std::vector<Sol> base_pp, base_dp;
+        if (seeded) {
+            base_pp = read_vault((int)vault.active_n());
+            base_dp = base_pp;
+        } else {
+            base_pp = sample();
+            base_dp = sample();
         }
-        // DP and PP both initialized from the same sampled population, sized N_.
+        // Both sized N_ (HCCA-8: the weight count).
         DP_.clear(); PP_.clear();
-        rnd::uniform_int_distribution<int> db(0, (int)base.size() - 1);
         for (int i = 0; i < N_; ++i) {
-            DP_.push_back(base[i % base.size()]);
-            PP_.push_back(base[i % base.size()]);
+            DP_.push_back(base_dp[i % base_dp.size()]);
+            PP_.push_back(base_pp[i % base_pp.size()]);
         }
         z_.assign(m_, std::numeric_limits<double>::max());
         update_ideal(DP_); update_ideal(PP_);

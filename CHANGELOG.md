@@ -10,6 +10,25 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed: `hcca` drew the three DE vectors from all of DP and used δ only for
+  the replacement, so a child unrelated to subproblem i competed for i's
+  neighbours. The DE parents now follow MOEA/D-DE (Li & Zhang 2009, Steps
+  2.1-2.2), whose δ, n_r, CR and F the paper's Table 2 takes: P = B(i) with
+  probability δ, else all of DP; r1 = i, r2 and r3 from P; the child replaces
+  within the same P (HCCA-11). DP and PP come from two independent random
+  samples, 2N evaluations, as §III says (HCCA-13), and T = 20, the value of the
+  sister CSMOEA, in place of max(2, N/10) (HCCA-12). The default runs of `hcca`
+  change: its three fingerprints are new.
+- Changed: `lis_lcs` reads two places of its paper otherwise, each a word
+  knob with the earlier reading (the owner's decisions of 2026-11-01).
+  `de_base`: `current1` (the default) bases the DE mutant on the member i of
+  M_DP, x_i + F·(x_r2 − x_r3), as Algorithm 1 line 6 and MOEA/D-DE's Step 2.2
+  ("Set r1 = i") read; `rand1` is the code before (LIS-1). `k_share`: `pp`
+  (the default) sets K = [EI'_PP·N], as the text under Eq.9 and the sister
+  HCCA's Eq.8 read; `dp` is the letter of Eq.9, the code before (LIS-2).
+  The default runs of `lis_lcs` change: its three fingerprints are new;
+  `de_base = rand1, k_share = dp` gives the old ones (tests/test_core_readings.cpp).
+
 - `ops::pcx_child` takes the index parent x_p as an argument, `centre`
   (default -1: drawn "with equal probability", Deb, Anand & Joshi 2002, §2.2,
   as before; a given centre draws nothing for it). The G3 core of `scalar/ga.hpp`
