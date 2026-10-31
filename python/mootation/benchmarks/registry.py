@@ -3208,3 +3208,25 @@ def _cxx_references() -> None:
 
 
 _cxx_references()
+
+
+def _frames_from_table() -> None:
+    """Every problem's frame C++'s (task 17, addendum 7, section 2.1): set from
+    _refframe_cache.json, made from data/registry.json, at import — the
+    registration's own (a formula, a constant) stays the cross-check only, and
+    whoever reads PROBLEMS[name] directly reads the same frame as get()."""
+    table = _reframe_table()
+    for name, p in PROBLEMS.items():
+        key = name if name in table else FRAME_OF.get(name)
+        if key not in table:
+            continue
+        idl, nad = tuple(table[key][0]), tuple(table[key][1])
+        try:
+            p.ideal, p.nadir = idl, nad
+        except Exception:                      # frozen dataclass
+            object.__setattr__(p, "ideal", idl)
+            object.__setattr__(p, "nadir", nad)
+        _REFRAMED.add(name)
+
+
+_frames_from_table()
