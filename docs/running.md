@@ -1422,7 +1422,33 @@ for `slsqp`; `local_tol` for `nelder_mead`; `cma_sigma0`, `local_tol` for
 `cmaes`; the others are ignored and named in `result.ignored`. A run that
 stops early leaves the budget unspent, and a shorter budget gives the same run
 cut short: these runs do not depend on `max_evaluations` (SINGLE-1, SINGLE-2 in
-`scalar/scalar.hpp`). A bound that is not finite is refused.
+`scalar/scalar.hpp`). A bound that is not finite is refused; a start `x0` is the
+plan, one point (SINGLE-3).
+
+**`lm` and `lbfgsb`** (task 18, stage 1): the Levenberg-Marquardt method of
+`scalar/lm.hpp` (Moré 1978; the problem's residuals, `minimize(None, ...,
+residuals=r, jac=J)`) and L-BFGS-B of `scalar/lbfgsb.hpp` (Byrd, Lu, Nocedal,
+Zhu 1995) as single-objective algorithms, in the problem's own coordinates:
+bounds may be `-inf` / `+inf`, and then the start `x0` is needed (LOCAL-4).
+Bounds only — a problem with constraints is refused (LOCAL-1). Knobs:
+
+| Knob | Meaning (default) |
+|---|---|
+| `lm_ftol`, `lm_xtol`, `lm_gtol` | Moré's stopping tests (8.3)-(8.4) (1e-8, 1e-8, 0) |
+| `lm_loss`, `lm_f_scale` | `linear` (the default), `huber` or `cauchy` by IRLS; the scale c (1) |
+| `lbfgsb_m`, `lbfgsb_pgtol`, `lbfgsb_ftol` | the memory (5), the projected-gradient test (1e-5), the relative reduction test (0: off) |
+| `grad_cost` | what a call of the problem's gradient or Jacobian costs of the budget (1); all five single-objective algorithms |
+
+**The problem's derivatives** (task 18, stage 1, §1.1; `scalar/evaluator.hpp`):
+`minimize(..., grad=g)` gives the objective's gradient (for a constrained
+problem the pair (gradient, the constraints' Jacobian)), `residuals=r` the
+residuals — the objective is then 1/2 ||r||^2 and `fn` is `None` — and `jac=J`
+their Jacobian. `slsqp` takes the gradient in its box (SCALAR-13), `lm` the
+Jacobian, `lbfgsb` the gradient (or `J^T r`); without them they difference,
+and every step is an evaluation. Two counts: `result.evaluations` (calls of the
+values) and `result.grad_calls` (calls of a gradient or Jacobian; a joint call
+is one of each); the budget is `evaluations + grad_cost * grad_calls`
+(SO-1 ... SO-3 in `evaluator.hpp`).
 
 **MOSQP** (`include/mootation/scalar/mosqp.hpp`; Fliege & Vaz, SIAM J.
 Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the

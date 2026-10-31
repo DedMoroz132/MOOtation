@@ -36,7 +36,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "sub_budget", "fd_step",
                "local_tol", "cma_sigma0", "eps_objective", "n_samples", "hv_exact_max_m",
                "race_eps", "race_delta", "race_max_samples", "race_abs_tol", "hv_incremental",
-               "n_offspring", "n_ref_points", "ada")
+               "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
@@ -47,7 +47,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "dms_cache", "paes_cache",
               "boost_scalarization", "scalarization",
               "local", "sub_plan", "tch_weights", "sqp_line_search", "hv_algo", "hv_contrib",
-              "theta_ties")
+              "theta_ties", "lm_loss")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")
@@ -139,6 +139,10 @@ def minimize(
     native: str = "auto",
     on_rows=None,
     stochastic: bool = False,
+    grad=None,
+    residuals=None,
+    jac=None,
+    x0=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -299,6 +303,19 @@ def minimize(
                 paes_cache, mads_cache) are then off unless set to "force",
                 every repeat a new measurement; result.settings says so. False
                 (the default): fn is a function of x.
+    grad, residuals, jac, x0
+                for the single-objective algorithms (mootation.scalar.SINGLE;
+                task 18, stage 1), in the problem's coordinates. grad(x): the
+                objective's gradient — for a constrained problem the pair
+                (gradient, the constraints' Jacobian rows); slsqp, lbfgsb take
+                it. residuals(x): the residuals r, the objective then
+                1/2 ||r||^2 and fn None; jac(x): their Jacobian (rows), with
+                residuals only; lm needs residuals, and lm and lbfgsb take no
+                constraints. x0: the start, where a bound is -inf / +inf (lm,
+                lbfgsb) or instead of the initial plan. A call of grad or jac is
+                one grad_call, counted at grad_cost (a knob, 1) against the
+                budget beside the evaluations (result.grad_calls); finite
+                differences are evaluations.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -307,6 +324,27 @@ def minimize(
     `.n_failed`, `.eq_tol`.
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
+    from .scalar import SINGLE
+    derivatives = [k for k, v in (("grad", grad), ("residuals", residuals), ("jac", jac),
+                                  ("x0", x0)) if v is not None]
+    if derivatives and algorithm not in SINGLE:
+        raise ValueError(f"{', '.join(derivatives)}: for the single-objective algorithms "
+                         f"({', '.join(SINGLE)}), not {algorithm}")
+    if residuals is not None:
+        if fn is not None:
+            raise ValueError("residuals give the objective, 1/2 ||r||^2: fn must be None")
+        if int(n_objs) != 1:
+            raise ValueError(f"residuals give one objective: n_objs must be 1, got {n_objs}")
+        bad = [k for k, v in (("constraints", constraints), ("eq_constraints", eq_constraints),
+                              ("batch", batch), ("var_types", var_types),
+                              ("log_evaluations", log_evaluations),
+                              ("seed_population", seed_population)) if v is not None]
+        if bad or budget_counts != "calls":
+            raise ValueError(f"residuals: not with {', '.join(bad) or 'budget_counts = unique'}")
+    elif fn is None:
+        raise ValueError("fn is None: give fn, or residuals")
+    elif jac is not None:
+        raise ValueError("jac is the residuals' Jacobian: it goes with residuals")
     if not bounds:
         raise ValueError("bounds is empty — there are no decision variables")
     for i, (lo, hi) in enumerate(bounds):
@@ -339,6 +377,10 @@ def minimize(
     polish_how, polish_share, polish_points = _polish.check(knobs, max_evaluations)
 
     # A problem of the C++ suite the core evaluates itself (direct_path)
+    if residuals is not None and polish_how is not None:
+        raise ValueError("residuals: polish takes fn, not residuals")
+    if residuals is not None:
+        fn = lambda x: [0.0]                                    # noqa: E731 (never called)
     direct, why = direct_path(fn, native=native, algorithm=algorithm, constraints=constraints,
                               eq_constraints=eq_constraints, batch=batch,
                               log_evaluations=log_evaluations, var_types=var_types,
@@ -425,6 +467,8 @@ def minimize(
         from .failures import Guard
         guard = Guard(n_objs, n_cons, failure_exceptions, max_failure_share, failure_window)
         fn = guard.fn(fn)
+        if residuals is not None:
+            residuals = guard.residuals(residuals)
         if constraints is not None:
             constraints = guard.constraints(constraints)
         if batch is not None:
@@ -450,6 +494,8 @@ def minimize(
     from .unique import Points, row_digests
     points = Points(cache=budget_counts == "unique")
     fn = points.fn(fn)
+    if residuals is not None:
+        residuals = points.fn(residuals)
     if constraints is not None:
         constraints = points.constraints(constraints)
     if batch is not None:
@@ -584,7 +630,8 @@ def minimize(
         from . import scalar
         try:
             result = scalar.run(
-                algorithm, fn, constraints, bounds=bounds, n_objs=int(n_objs),
+                algorithm, None if residuals is not None else fn, constraints, bounds=bounds,
+                n_objs=int(n_objs),
                 n_cons=int(n_cons) if constraints is not None else 0, n_eq=n_eq,
                 eq_tol=float(eq_tol),
                 eq_tol0=float(eq_tol0) if eq_tol_schedule == "linear" else None,
@@ -593,7 +640,8 @@ def minimize(
                 seed=int(seed), knobs={k: v for k, v in knobs.items() if k not in POLISH_KNOBS},
                 on_generation=on_generation, record_every=int(record_every),
                 init=init, init_share=float(init_share), seed_points=seeds,
-                unique_count=lambda: points.count, guard=guard)
+                unique_count=lambda: points.count, guard=guard, grad=grad,
+                residuals=residuals, jac=jac, x0=x0)
             result = _polished(result)
         finally:
             if log is not None:

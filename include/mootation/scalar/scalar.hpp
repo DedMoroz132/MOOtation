@@ -6,7 +6,8 @@
 // subproblems, each solved by a local method — and, beside them, the methods
 // of task 9 on the same evaluator, answer and observer: mosqp (mosqp.hpp) and
 // boostdms (boostdms.hpp); and the local solvers alone as single-objective
-// algorithms, slsqp, nelder_mead and cmaes (run_single, at the end). Not
+// algorithms, slsqp, nelder_mead and cmaes (run_single), and lm and lbfgsb in
+// the problem's own coordinates (run_local), at the end. Not
 // evolutionary, and not a core of algorithms.def: run() takes the problem as
 // a function and every evaluation goes through it (evaluator.hpp). The local
 // solvers are the library's own (slsqp.hpp, nelder_mead.hpp, cmaes.hpp).
@@ -145,6 +146,8 @@
 #include "../fp_contract.hpp"
 #include "../random.hpp"
 #include "boostdms.hpp"
+#include "lbfgsb.hpp"
+#include "lm.hpp"
 #include "mosqp.hpp"
 #include "solvers.hpp"
 
@@ -165,6 +168,7 @@ struct Result {
     Vec cv;
     std::vector<std::string> ignored;
     long long evaluations = 0;
+    long long grad_calls = 0;        // the problem's gradient or Jacobian (evaluator.hpp THE COUNTS)
     long long n_failed = 0;          // failed evaluations in the archive
     std::vector<std::pair<std::string, std::string>> settings;
     Rows solutions;                  // scalar: every subproblem's solution, anchors first
@@ -176,6 +180,8 @@ struct Start {
     std::vector<Point> seed_points;
     Rows design;
     bool has_seed_points = false, has_design = false;
+    Vec x0;                          // a start in the problem's coordinates (task 18, addendum 1, §3.1)
+    bool has_x0 = false;
 };
 
 // The names: the presets of `scalar`, then the methods beside it, then the
@@ -190,7 +196,7 @@ inline const std::vector<std::string>& names()
 {
     static const std::vector<std::string> v{"scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp",
                                             "eps_nm", "eps_cmaes", "boostdms", "mosqp",
-                                            "slsqp", "nelder_mead", "cmaes"};
+                                            "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb"};
     return v;
 }
 
@@ -420,6 +426,7 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
         r.cv.push_back(ev.cv(i));
     }
     r.evaluations = ev.spent;
+    r.grad_calls = ev.grad_calls;
     for (char f : ev.failed) r.n_failed += f ? 1 : 0;
     return r;
 }
@@ -825,6 +832,12 @@ inline Result run_boostdms_named(const Problem& P, double eq_tol, bool has_tol0,
 //     value to 0, its greatest to 1), as scalar's anchors do (SCALAR-12), in
 //     the box normalized to [0, 1]^n, as every solver of solvers.hpp: a bound
 //     that is not finite is refused (task 18, addendum 1, section 3.1).
+//   SINGLE-3. A start x0 (the problem's coordinates) is the plan: one point,
+//     and the solver from it; the frame of SINGLE-2 is then f(x0) to 0 with
+//     scale 1 (subproblems.hpp: a range of 0 is a scale of 1). slsqp takes the
+//     problem's gradient where it gives one (solvers.hpp SCALAR-13), and
+//     grad_cost then counts it (evaluator.hpp THE COUNTS; reported in the
+//     settings only where there is a gradient).
 inline const std::vector<std::string>& single_names()
 {
     static const std::vector<std::string> v{"slsqp", "nelder_mead", "cmaes"};
@@ -844,22 +857,34 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
         if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
             throw std::invalid_argument(name + " works in the box normalized to [0, 1]^n: every bound must be "
                                                "finite (SINGLE-2)");
-    std::vector<std::string> own{"local_tol"};
+    std::vector<std::string> own{"local_tol", "grad_cost"};
     if (local == "sqp") own.insert(own.end(), {"fd_step", "sqp_line_search"});
     if (local == "cmaes") own.push_back("cma_sigma0");
     Knobs taken;
     std::vector<std::string> ignored, none;
+    double grad_cost = 1.0;
     for (const auto& kv : knobs) {
-        if (detail::listed(own, kv.first)) taken.push_back(kv);
-        else ignored.push_back(kv.first);
+        if (kv.first == "grad_cost") {
+            grad_cost = detail::number_of(kv.first, kv.second);
+            if (!std::isfinite(grad_cost) || grad_cost < 0.0) throw std::invalid_argument("grad_cost must be a number >= 0");
+        } else if (detail::listed(own, kv.first)) {
+            taken.push_back(kv);
+        } else {
+            ignored.push_back(kv.first);
+        }
     }
     std::sort(ignored.begin(), ignored.end());
     const ScalarSettings s = scalar_settings("scalar", taken, none);   // the words and numbers checked
+    if (start.has_x0 && start.x0.size() != P.lo.size())
+        throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
+                                    std::to_string(P.lo.size()) + " variables");
 
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.grad_cost = grad_cost;
     try {
-        detail::first_points(ev, start, pop_size, rng, true);
+        if (start.has_x0) ev.index(start.x0);         // the plan: x0 alone (SINGLE-3)
+        else detail::first_points(ev, start, pop_size, rng, true);
         if (!ev.recorded) ev.record();               // gen 0, unless the plan's last point gave it
         long long st = -1;
         for (std::size_t i = 0; i < ev.X.size(); ++i) {
@@ -910,6 +935,176 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
         r.settings.insert(r.settings.end(),
                           {{"sqp_line_search", s.sqp_line_search}, {"fd_step", g_format(s.fd_step)}});
     if (local == "cmaes") r.settings.push_back({"cma_sigma0", g_format(s.cma_sigma0)});
+    if (P.has_gradient()) r.settings.push_back({"grad_cost", g_format(grad_cost)});
+    r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
+    return r;
+}
+
+// ── one objective in the problem's coordinates: lm, lbfgsb ─────────────────
+// The least-squares and the bound-constrained quasi-Newton solvers of stage 2
+// as single-objective algorithms (task 18, stage 1, §1.1; addendum 1, §3.1):
+// lm (lm.hpp, Moré 1978; the problem's residuals) and lbfgsb (lbfgsb.hpp,
+// Byrd, Lu, Nocedal, Zhu 1995). Both work in the problem's own coordinates,
+// bounds -inf / +inf allowed, and take the problem's derivatives where it
+// gives them (the residuals' Jacobian; the gradient), else forward
+// differences of their own, every one an evaluation. The run:
+//   1. the start: start.x0 (the problem's coordinates) where it is given;
+//      else the initial plan, as scalar's (THE PLAN, 1), and its best point,
+//      which needs finite bounds;
+//   2. the solver once from there, until its own tolerance or the budget
+//      (SINGLE-1);
+//   3. the answer as every method's (evaluator.hpp).
+// Knobs: lm_ftol, lm_xtol, lm_gtol (Moré's (8.3)-(8.4); 1e-8, 1e-8, 0),
+// lm_loss (linear | huber | cauchy; lm.hpp's IRLS) and lm_f_scale (1) for lm;
+// lbfgsb_m (5), lbfgsb_pgtol (1e-5), lbfgsb_ftol (0) for lbfgsb; grad_cost
+// (1; evaluator.hpp THE COUNTS) for both.
+//
+// READINGS (declared):
+//   LOCAL-1. Bounds only: a problem with constraints is refused, and lm
+//     refuses a problem without residuals (its objective is 1/2 ||r~||^2).
+//   LOCAL-2. Neither solver's own limit on evaluations (lm's max_nfev,
+//     lbfgsb's max_nfev and max_iter) is put: the budget stops them.
+//   LOCAL-3. A failed evaluation ends the run, as sqp's (SCALAR-6): neither
+//     method can step over a hole in the function.
+//   LOCAL-4. Without x0, a bound that is not finite is refused: there is no
+//     box to draw the plan in, and no frame is put on x (addendum 1, §3.1).
+inline const std::vector<std::string>& local_names()
+{
+    static const std::vector<std::string> v{"lm", "lbfgsb"};
+    return v;
+}
+
+inline Result run_local(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
+                        double eq_tol0, int pop_size, long long budget, unsigned seed,
+                        const Knobs& knobs, Observer observer, int record_every, const Start& start)
+{
+    using detail::g_format;
+    const std::size_t n = P.lo.size();
+    if (P.m != 1)
+        throw std::invalid_argument(name + " is a single-objective algorithm: n_objs must be 1, got " +
+                                    std::to_string(P.m));
+    if (P.n_cons != 0)
+        throw std::invalid_argument(name + " takes bounds only: the problem's constraints are not for it (LOCAL-1)");
+    if (name == "lm" && !P.has_residuals())
+        throw std::invalid_argument("lm solves least squares: the problem gives no residuals (LOCAL-1)");
+    if (start.has_x0 && start.x0.size() != n)
+        throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
+                                    std::to_string(n) + " variables");
+    if (!start.has_x0)
+        for (std::size_t j = 0; j < n; ++j)
+            if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
+                throw std::invalid_argument(name + ": a bound that is not finite needs a start x0 (LOCAL-4)");
+    const std::vector<std::string> own = name == "lm"
+        ? std::vector<std::string>{"lm_ftol", "lm_xtol", "lm_gtol", "lm_loss", "lm_f_scale", "grad_cost"}
+        : std::vector<std::string>{"lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol", "grad_cost"};
+    lm::Options lo;
+    lbfgsb::Options bo;
+    std::string loss = "linear";
+    double grad_cost = 1.0;
+    std::vector<std::string> ignored;
+    for (const auto& [k, v] : knobs) {
+        if (!detail::listed(own, k)) {
+            ignored.push_back(k);
+            continue;
+        }
+        if (k == "lm_loss") {
+            loss = detail::shown(v);
+            if (!v.is_word || !detail::listed({"linear", "huber", "cauchy"}, loss))
+                throw std::invalid_argument("lm_loss = '" + loss + "': linear, huber, cauchy");
+            continue;
+        }
+        const double x = detail::number_of(k, v);
+        if (!std::isfinite(x) || x < 0.0) throw std::invalid_argument(k + " must be a number >= 0");
+        if (k == "lm_ftol") lo.ftol = x;
+        else if (k == "lm_xtol") lo.xtol = x;
+        else if (k == "lm_gtol") lo.gtol = x;
+        else if (k == "lm_f_scale") lo.f_scale = x;
+        else if (k == "lbfgsb_pgtol") bo.pgtol = x;
+        else if (k == "lbfgsb_ftol") bo.ftol = x;
+        else if (k == "grad_cost") grad_cost = x;
+        else {
+            if (x < 1.0 || x != std::floor(x)) throw std::invalid_argument("lbfgsb_m must be a whole number >= 1");
+            bo.m = static_cast<int>(x);
+        }
+    }
+    std::sort(ignored.begin(), ignored.end());
+    if (lo.f_scale <= 0.0) throw std::invalid_argument("lm_f_scale must be > 0");
+    lo.loss = loss == "huber" ? lm::Options::Loss::huber
+            : loss == "cauchy" ? lm::Options::Loss::cauchy : lm::Options::Loss::linear;
+    const long long no_limit = std::numeric_limits<long long>::max() / 4;   // LOCAL-2
+    lo.max_nfev = no_limit;
+    bo.max_nfev = no_limit;
+    bo.max_iter = no_limit;
+
+    std::mt19937 rng(seed);
+    Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.grad_cost = grad_cost;
+    try {
+        long long st = -1;
+        if (start.has_x0) {
+            st = static_cast<long long>(ev.index(start.x0));
+        } else {
+            detail::first_points(ev, start, pop_size, rng, true);
+            for (std::size_t i = 0; i < ev.X.size(); ++i)
+                if (!ev.failed[i] && (st < 0 || ev.F[i][0] < ev.F[static_cast<std::size_t>(st)][0]))
+                    st = static_cast<long long>(i);
+        }
+        if (!ev.recorded) ev.record();                // gen 0
+        if (st >= 0 && !ev.failed[static_cast<std::size_t>(st)]) {
+            const Vec x0 = ev.X[static_cast<std::size_t>(st)];
+            auto value = [&](const Vec& x) {
+                const std::size_t i = ev.index(x);
+                if (ev.failed[i]) throw FailedPoint{};     // LOCAL-3
+                return i;
+            };
+            if (name == "lm") {
+                lm::Problem p;
+                p.n = n;
+                p.m = static_cast<std::size_t>(ev.n_res);
+                p.lo = P.lo;
+                p.hi = P.hi;
+                p.residuals = [&](const Vec& x, Vec& r) { r = ev.R[value(x)]; };
+                if (P.has_gradient())
+                    p.jacobian = [&](const Vec& x, lm::Matrix& J) {
+                        const std::size_t i = ev.index_grad(x);
+                        if (ev.failed[i]) throw FailedPoint{};
+                        const Rows& Jr = ev.jac(i);
+                        for (std::size_t a = 0; a < J.rows; ++a)
+                            for (std::size_t b = 0; b < J.cols; ++b) J(a, b) = Jr[a][b];
+                    };
+                lm::solve_robust(p, x0, lo);
+            } else {
+                lbfgsb::Problem p;
+                p.n = n;
+                p.lo = P.lo;
+                p.hi = P.hi;
+                p.f = [&](const Vec& x) { return ev.F[value(x)][0]; };
+                if (P.has_gradient())
+                    p.fg = [&](const Vec& x, Vec& g) {
+                        const std::size_t i = ev.index_grad(x);
+                        if (ev.failed[i]) throw FailedPoint{};
+                        g = ev.grad(i);
+                        return ev.F[i][0];
+                    };
+                lbfgsb::solve(p, x0, bo);
+            }
+        }
+    } catch (const BudgetSpent&) {
+    } catch (const SubBudgetSpent&) {
+    } catch (const FailedPoint&) {
+    }
+    ev.over = true;
+    const std::vector<std::size_t> idx = ev.answer();
+    ev.record(true);
+    Result r = detail::result_of(ev, idx);
+    r.ignored = ignored;
+    if (name == "lm")
+        r.settings = {{"lm_ftol", g_format(lo.ftol)}, {"lm_xtol", g_format(lo.xtol)},
+                      {"lm_gtol", g_format(lo.gtol)}, {"lm_loss", loss}, {"lm_f_scale", g_format(lo.f_scale)}};
+    else
+        r.settings = {{"lbfgsb_m", std::to_string(bo.m)}, {"lbfgsb_pgtol", g_format(bo.pgtol)},
+                      {"lbfgsb_ftol", g_format(bo.ftol)}};
+    r.settings.push_back({"grad_cost", g_format(grad_cost)});
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
 }
@@ -919,6 +1114,9 @@ inline Result run(const std::string& name, const Problem& P, double eq_tol, bool
                   double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
                   Observer observer, int record_every, const Start& start)
 {
+    if (detail::listed(local_names(), name))
+        return run_local(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
+                         std::move(observer), record_every, start);
     if (detail::listed(single_names(), name))
         return run_single(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
                           std::move(observer), record_every, start);

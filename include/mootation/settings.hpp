@@ -104,7 +104,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 14, supplement 3, Д8.3
         "hv_incremental",
         // task 15, §2 and §6
-        "n_offspring", "n_ref_points", "ada"
+        "n_offspring", "n_ref_points", "ada",
+        // task 18, stage 1: the single-objective algorithms (scalar/scalar.hpp)
+        "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol"
     };
     return v;
 }
@@ -184,7 +186,7 @@ inline bool is_core_param(const std::string& name)
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
                           "race_max_samples", "race_abs_tol", "hv_incremental",
-                          "n_offspring", "n_ref_points", "ada"})
+                          "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol"})
         if (name == k) return true;
     return false;
 }
@@ -302,6 +304,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"hv_algo",      {"auto", "wfg", "box"}},
         {"hv_contrib",   {"iwfg", "hvc", "wfg", "race", "mc"}},
         {"polish",       {"off", "sqp", "nm"}},
+        {"lm_loss",      {"linear", "huber", "cauchy"}},
     };
     return v;
 }
@@ -328,7 +331,7 @@ inline bool is_core_word(const std::string& name)
                           "dms_cache", "paes_cache", "boost_scalarization",
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
-                          "hv_contrib", "theta_ties"})
+                          "hv_contrib", "theta_ties", "lm_loss"})
         if (name == k) return true;
     return false;
 }

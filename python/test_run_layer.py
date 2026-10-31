@@ -10906,7 +10906,8 @@ def scalar_presets_budget_and_refusals():
     from mootation.scalar import NAMES, PRESETS
     assert tuple(PRESETS) == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm",
                               "eps_cmaes") and NAMES == tuple(PRESETS) + (
-                                  "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes")
+                                  "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes", "lm",
+                                  "lbfgsb")
     calls = [0]
     def f(x):
         calls[0] += 1
@@ -11069,14 +11070,14 @@ def single_objective_solvers_and_baselines_at_one_objective():
     from mootation.run.baselines import run_baseline
     from mootation.run.budget import depends_on_budget
     from mootation.scalar import SINGLE
-    assert SINGLE == ("slsqp", "nelder_mead", "cmaes")
+    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb")
     box = [(-1.0, 1.0)] * 4
 
     def sphere(x, seen=None):
         if seen is not None:
             seen.append(list(x))
         return [sum((j + 1) * (v - 0.3) ** 2 for j, v in enumerate(x))]
-    for name in SINGLE:
+    for name in SINGLE[:3]:                          # lm and lbfgsb: below
         seen = []
         r = mootation.minimize(lambda x: sphere(x, seen), box, 1, algorithm=name, pop_size=20,
                                max_evaluations=4000, seed=3, eta_c=15)
@@ -11110,6 +11111,81 @@ def single_objective_solvers_and_baselines_at_one_objective():
         least = min(sphere(x)[0] for x in seen)
         assert len(seen) == 500 and len(res.objectives) >= 1, (name, len(seen))
         assert all(np.isclose(f[0], least, rtol=0, atol=0) for f in res.objectives), (name, res.objectives)
+
+
+@test
+def lm_and_lbfgsb_take_the_problems_derivatives():
+    """Task 18, stage 1, §1.1: minimize() hands grad, residuals, jac and x0 to
+    the single-objective algorithms. lm and lbfgsb reach Rosenbrock's minimum
+    from Moré's (-1.2, 1) without bounds, by the problem's derivatives (counted
+    as grad_calls) or by differences (evaluations); lm through minimize() is
+    _core.scalar.lm's own run, bit for bit; the budget is evaluations +
+    grad_cost * grad_calls; the refusals name what is wrong."""
+    if _core_with("scalar") is None:
+        print("  skip  lm_and_lbfgsb...: no _core.scalar"); return
+    import math
+    import mootation
+    from mootation import _core
+    inf = math.inf
+    box = [(-inf, inf)] * 2
+
+    def r(x):
+        return [10.0 * (x[1] - x[0] * x[0]), 1.0 - x[0]]
+
+    def J(x):
+        return [[-20.0 * x[0], 10.0], [-1.0, 0.0]]
+
+    def f(x):
+        a, b = r(x)
+        return [0.5 * (a * a + b * b)]
+
+    def g(x):
+        a, b = r(x)
+        return [-20.0 * x[0] * a - b, 10.0 * a]
+    for jac in (J, None):
+        out = mootation.minimize(None, box, 1, algorithm="lm", residuals=r, jac=jac, x0=[-1.2, 1.0],
+                                 max_evaluations=2000, seed=1)
+        assert out.objectives[0][0] < 1e-16 and abs(out.variables[0][0] - 1.0) < 1e-7, out.objectives
+        assert (out.grad_calls > 0) == (jac is not None), out.grad_calls
+    own = _core.scalar.lm(r, [-1.2, 1.0], 2, jac=J, max_nfev=1000000)
+    out = mootation.minimize(None, box, 1, algorithm="lm", residuals=r, jac=J, x0=[-1.2, 1.0],
+                             max_evaluations=2000, seed=1)
+    assert out.variables[0] == own["x"] and out.grad_calls == own["njev"], (out.variables, own["x"])
+    for grad in (g, None):
+        out = mootation.minimize(f, box, 1, algorithm="lbfgsb", grad=grad, x0=[-1.2, 1.0],
+                                 max_evaluations=2000, seed=1)
+        assert out.objectives[0][0] < (1e-16 if grad else 1e-10), out.objectives
+        assert (out.grad_calls > 0) == (grad is not None), out.grad_calls
+    out = mootation.minimize(f, box, 1, algorithm="lbfgsb", grad=g, x0=[-1.2, 1.0],
+                             max_evaluations=30, seed=1, grad_cost=0.5)
+    assert out.evaluations + 0.5 * out.grad_calls <= 30 and dict(out.settings)["grad_cost"] == "0.5"
+    # slsqp takes the gradient in its box
+    sq = [(-2.0, 2.0)] * 2
+    plain = mootation.minimize(f, sq, 1, algorithm="slsqp", pop_size=5, max_evaluations=400, seed=2)
+    with_g = mootation.minimize(f, sq, 1, algorithm="slsqp", grad=g, pop_size=5, max_evaluations=400,
+                                seed=2)
+    assert with_g.grad_calls > 0 and plain.grad_calls == 0, (with_g.grad_calls, plain.grad_calls)
+    assert min(v[0] for v in with_g.objectives) < 1e-10, with_g.objectives
+    # refusals
+    for call, why in (
+            (lambda: mootation.minimize(f, sq, 1, algorithm="nsga2", grad=g, pop_size=8, n_gen=2),
+             "for the single-objective algorithms"),
+            (lambda: mootation.minimize(f, box, 1, algorithm="lm", residuals=r, x0=[0.0, 0.0]),
+             "fn must be None"),
+            (lambda: mootation.minimize(None, box, 1, algorithm="lbfgsb", max_evaluations=50),
+             "give fn, or residuals"),
+            (lambda: mootation.minimize(f, box, 1, algorithm="lbfgsb", max_evaluations=50),
+             "needs a start x0"),
+            (lambda: mootation.minimize(f, box, 1, algorithm="lm", x0=[0.0, 0.0], max_evaluations=50),
+             "gives no residuals"),
+            (lambda: mootation.minimize(f, sq, 1, algorithm="lbfgsb", jac=J, max_evaluations=50),
+             "goes with residuals")):
+        try:
+            call()
+        except ValueError as e:
+            assert why in str(e), (why, str(e))
+        else:
+            raise AssertionError("not refused: " + why)
 
 
 @test

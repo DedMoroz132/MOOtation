@@ -395,7 +395,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-148 items: 148 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `evaluator`, `solvers`, `subproblems`.
+157 items: 157 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -416,6 +416,9 @@ Their readings, from every comment of each file (the first column the file's nam
 | `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |
 | `de` | DE-4 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp); not in the paper. | yes | `de.hpp` |
 | `de` | DE-5 | done() is true once all NP points are equal: every difference vector is zero and no trial can differ from its target. | yes | `de.hpp` |
+| `evaluator` | SO-1 | A problem with residuals takes its objective from them: evaluate, if it is given too, is not called, and such a problem has no constraints (n_cons = 0; the least-squares solvers of this library take none). | yes | `evaluator.hpp` |
+| `evaluator` | SO-2 | A gradient asked for at a point not yet evaluated is a joint call where the problem has one (value_grad, residuals_jac), else the values and then the gradient: either way one evaluation and one grad_call. | yes | `evaluator.hpp` |
+| `evaluator` | SO-3 | A problem that gives only the joint call (value_grad without evaluate, residuals_jac without residuals) is evaluated by it every time: every evaluation is then a grad_call too. | yes | `evaluator.hpp` |
 | `evo` | EVO-1 | A NaN value (f or v) counts as +infinity: worse than every number, equal to another NaN. | yes | `evo.hpp` |
 | `ga` | GA-1 | Tournament: k members drawn with replacement, the best by the comparison of evo.hpp, a tie to the later draw; k = 1 is a uniform draw. | yes | `ga.hpp` |
 | `ga` | GA-2 | (mu + lambda): parents first, then offspring in the order made, stably sorted by the comparison; the first mu stay, in that order. | yes | `ga.hpp` |
@@ -518,6 +521,11 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | SCALAR-12 | The anchors' stages see the objectives scaled by the initial plan's range (its minimum to 0, its maximum to 1): SQP stops early on a raw objective of 1e7 (bbob-biobj f2's ellipsoid). | yes | `scalar.hpp` |
 | `scalar` | SINGLE-1 | One run of the solver: one that stops before the budget leaves the rest unspent, as DMS does. | yes | `scalar.hpp` |
 | `scalar` | SINGLE-2 | The solver sees f scaled by the initial plan's range (its least value to 0, its greatest to 1), as scalar's anchors do (SCALAR-12), in the box normalized to [0, 1]^n, as every solver of solvers.hpp: a bound that is no... | yes | `scalar.hpp` |
+| `scalar` | SINGLE-3 | A start x0 (the problem's coordinates) is the plan: one point, and the solver from it; the frame of SINGLE-2 is then f(x0) to 0 with scale 1 (subproblems.hpp: a range of 0 is a scale of 1). slsqp takes the problem's g... | yes | `scalar.hpp` |
+| `scalar` | LOCAL-1 | Bounds only: a problem with constraints is refused, and lm refuses a problem without residuals (its objective is 1/2 \|\|r~\|\|^2). | yes | `scalar.hpp` |
+| `scalar` | LOCAL-2 | Neither solver's own limit on evaluations (lm's max_nfev, lbfgsb's max_nfev and max_iter) is put: the budget stops them. | yes | `scalar.hpp` |
+| `scalar` | LOCAL-3 | A failed evaluation ends the run, as sqp's (SCALAR-6): neither method can step over a hole in the function. | yes | `scalar.hpp` |
+| `scalar` | LOCAL-4 | Without x0, a bound that is not finite is refused: there is no box to draw the plan in, and no frame is put on x (addendum 1, §3.1). | yes | `scalar.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-3 | Ranking: the comparison of evo.hpp (NSGA-II's constrained- domination at M = 1 for constraints g <= 0, not in the paper), ties in the order told (stable). | yes | `sep_cmaes.hpp` |
@@ -539,6 +547,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `slsqp` | SQP-7 | The trials end, failed, when x + alpha d is x bit for bit (alpha falls by 1.8 at least a trial, so this comes); then SQP-2 as for stop. | yes | `slsqp.hpp` |
 | `slsqp` | SQP-8 | An iteration made again after a reset (SQP-2) takes (4.6) from the mu_i of the last finished iteration, not from those of the failed try. | yes | `slsqp.hpp` |
 | `slsqp` | SQP-9 | Not done: the paper's trap for cycling (an error return after five iterations with mu constant and no decrease of phi; | yes | `slsqp.hpp` |
+| `solvers` | SCALAR-13 (task 18, addendum 1, §3.2) | The problem's gradient is in its | yes | `solvers.hpp` |
 | `spso2011` | SPSO-1 | Synchronous: the whole swarm is evaluated, then every P_i, the links and every L_i are updated, then every particle moves (§II-C's loop updates P_i and L particle by particle). | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-2 | L_i: the best P_j over j = i and every j that informs i. | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-3 | x' is uniform in the ball's volume: a normal direction, the radius \|\|G - X\|\| U^(1/D). | yes | `spso2011.hpp` |

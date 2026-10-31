@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- The problem's derivatives (task 18, stage 1, §1.1; `scalar/evaluator.hpp`):
+  a gradient, residuals and their Jacobian, joint calls, residual blocks with
+  weights, bounds `-inf` / `+inf`, a start `x0`; two counts, `evaluations` and
+  `grad_calls`, the budget their sum with the knob `grad_cost` (1).
+  `minimize()` takes `grad=`, `residuals=`, `jac=` and `x0=` for the
+  single-objective algorithms, and `result.grad_calls`. `lm` and `lbfgsb` are
+  single-objective algorithms by name (`run_local`), in the problem's own
+  coordinates; `slsqp` takes the gradient in its box. Every other run is
+  unchanged.
 - `ops::pcx_child` takes the index parent x_p as an argument, `centre`
   (default -1: drawn "with equal probability", Deb, Anand & Joshi 2002, §2.2,
   as before; a given centre draws nothing for it). The G3 core of `scalar/ga.hpp`
