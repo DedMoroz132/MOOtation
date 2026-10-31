@@ -10,6 +10,10 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- `docs/deviations.md` has a second table: the readings of every file of
+  `include/mootation/scalar` (LM-n, LB-n, LS-n, SCALAR-n, SQP-n, DE-n, ...),
+  gathered by `tools/deviations.py` like the cores' (task 18, addendum 2,
+  section 1).
 - Single-objective algorithms by name (task 18, item 2.3): `slsqp`,
   `nelder_mead` and `cmaes`, the local solvers of `scalar` alone, with their
   knobs there (`scalar/scalar.hpp`, `run_single`; `mootation.scalar.SINGLE`):

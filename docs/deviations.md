@@ -1,8 +1,8 @@
 # Departures from the papers
 
-Written by `tools/deviations.py` from the headers of the cores (`include/mootation/algorithms`);
-do not edit by hand — edit the header and run the tool. The header is the source: there each item
-is given in full, with its reasons and references.
+Written by `tools/deviations.py` from the headers of the cores (`include/mootation/algorithms`) and
+of the solvers (`include/mootation/scalar`); do not edit by hand — edit the header and run the tool.
+The header is the source: there each item is given in full, with its reasons and references.
 
 *Default run*: `yes` — the default run does what the item describes; `no: option` — the item is
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
@@ -390,6 +390,163 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `rm_meda` | RM-6 | The crowding distance is the paper's: the average side length of the cuboid around F(x) in the objectives, not normalized (NSGA-II divides by each objective's range); the extremes of a front count infinite. | yes | `rm_meda.hpp` |
 | `rm_meda` | RM-7 | Constraints: Deb's constrained domination in the sorting (constraint_mode not NONE); the paper has none. | yes | `rm_meda.hpp` |
 | `rm_meda` | RM-8 | §V-B resets a variable outside the box to a random value inside it, but the paper's own curves (Figs. 3, 4, 11, 12: F1, F2, F5, F6 at 10 000 evaluations) are reached with the variable kept at the bound, not with the r... | yes | `rm_meda.hpp` |
+
+## The single-objective solvers and methods (`include/mootation/scalar`)
+
+Their readings, from every comment of each file (the first column the file's name).
+
+148 items: 148 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `evaluator`, `solvers`, `subproblems`.
+
+| solver | item | what | default run | file |
+|---|---|---|---|---|
+| `boostdms` | BD-1 | The box normalized to [0, 1]^n (as dms, DMS-1); α_0 = 1; the start DMS(n, line), §5. | yes | `boostdms.hpp` |
+| `boostdms` | BD-2 | The candidates are accepted by simple decrease (the list's filter), as dms; the papers' integer-lattice or sufficient-decrease globalization of the search points is not imposed. | yes | `boostdms.hpp` |
+| `boostdms` | BD-3 | "80 % ... in B(x_k; 3Δ_k)": the nearest points of the ball, then the nearest outside it, up to their shares of (n + 1)(n + 2); fewer when the cache holds fewer. | yes | `boostdms.hpp` |
+| `boostdms` | BD-4 | A candidate equal to a point of the cache is not evaluated again. | yes | `boostdms.hpp` |
+| `boostdms` | BD-5 | Constraints: the extreme barrier, as dms (an infeasible point never enters the list; a start without a feasible point keeps the least violating). | yes | `boostdms.hpp` |
+| `chc` | CHC-1 | The bits. Both papers run CHC on bit strings, BLX-0.5 on the decoded parameters; here the points are real and each variable has a b-bit code, round((x - lo) / (hi - lo) (2^b - 1)), for the Hamming distance and the div... | yes | `chc.hpp` |
+| `chc` | CHC-2 | Divergence: a flipped bit changes its variable to the decoded value lo + code / (2^b - 1) (hi - lo) of the flipped code; a variable without a flipped bit keeps the best point's value exactly. | yes | `chc.hpp` |
+| `chc` | CHC-3 | "the threshold has dropped to zero and there have been several generations without any new offspring accepted": the population is diverged when a generation without acceptance would take the threshold below zero; afte... | yes | `chc.hpp` |
+| `chc` | CHC-4 | A generation where no pair may mate makes no point: the threshold drops at once and the pairing is drawn again, inside ask(), until a pair mates or the population is diverged — ask() always returns points. | yes | `chc.hpp` |
+| `chc` | CHC-5 | A child is accepted when it is among the M best of parents and children (stably by the comparison of evo.hpp, parents first); | yes | `chc.hpp` |
+| `chc` | CHC-6 | BLX-0.5 children outside the box are repaired by the operator, ops::BoundRepair `reflect` by default (real_crossover.hpp). | yes | `chc.hpp` |
+| `chc` | CHC-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) in the selection; not in the papers. | yes | `chc.hpp` |
+| `de` | DE-1 | The trial (4) is built coordinate by coordinate: rnbr(i) is drawn first, then one U(0, 1) for every j (j = rnbr(i) included), and v_j is taken where U < CR or j = rnbr(i). | yes | `de.hpp` |
+| `de` | DE-2 | Bounds. The paper's box is the initial parameter range (IPR) only; its f9 and f28 have their minima outside it, and DE finds them. | yes | `de.hpp` |
+| `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |
+| `de` | DE-4 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp); not in the paper. | yes | `de.hpp` |
+| `de` | DE-5 | done() is true once all NP points are equal: every difference vector is zero and no trial can differ from its target. | yes | `de.hpp` |
+| `evo` | EVO-1 | A NaN value (f or v) counts as +infinity: worse than every number, equal to another NaN. | yes | `evo.hpp` |
+| `ga` | GA-1 | Tournament: k members drawn with replacement, the best by the comparison of evo.hpp, a tie to the later draw; k = 1 is a uniform draw. | yes | `ga.hpp` |
+| `ga` | GA-2 | (mu + lambda): parents first, then offspring in the order made, stably sorted by the comparison; the first mu stay, in that order. | yes | `ga.hpp` |
+| `ga` | GA-3 | lambda odd: the second child of the last pair is dropped after its mutation (nsga2 does the same). lambda = 1 with `coin`: one child of the pair kept by a fair coin drawn between crossover and mutation, the other neit... | yes | `ga.hpp` |
+| `ga` | GA-4 | Bounds: SBX and the polynomial mutation stay in the box by construction; | yes | `ga.hpp` |
+| `ga` | GA-5 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) in tournaments, truncation and G3's choices; not in the papers. | yes | `ga.hpp` |
+| `ga` | G3-1 | PCX: ops::pcx_child draws its index parent x_p at random; | yes | `ga.hpp` |
+| `ga` | G3-2 | Step (1)'s mu - 1 others differ from the best and from each other; step (3)'s two differ. | yes | `ga.hpp` |
+| `ga` | G3-3 | Step (4) keeps the two best of the family in its order (the two chosen, then the offspring), stably; the better goes to the first chosen place. | yes | `ga.hpp` |
+| `jade` | JADE-1 | "the 100p % best": the ceil(p NP) best of P (at least 1); ranking and draws as pbest.hpp (PB-1, PB-2). | yes | `jade.hpp` |
+| `jade` | JADE-2 | All NP trials of a generation are built from P and A as they are at its start; the replaced parents join A at its end (§IV-A: "after each generation"), and then A is cut. | yes | `jade.hpp` |
+| `jade` | JADE-3 | When no trial succeeds, S_F and S_CR are empty and mu_F, mu_CR keep their values (mean of an empty set is not defined). | yes | `jade.hpp` |
+| `jade` | JADE-4 | NP defaults to §V's sizes: 30 for D <= 10, 100 for D <= 30, 400 above; | yes | `jade.hpp` |
+| `jade` | JADE-5 | The draws for x_i, in Table I's order: CR_i, F_i, then the trial's (pbest.hpp, PB-1). | yes | `jade.hpp` |
+| `jade` | JADE-6 | The box: §V calls f8 "the only bound-constrained function" of its set and gives the others an initial range; here the box is both, and the middle rule of §II holds for every problem. | yes | `jade.hpp` |
+| `jade` | JADE-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp), for "better" in (5) and in the ranking of JADE-1; not in the paper. | yes | `jade.hpp` |
+| `jade` | JADE-8 | done() is true once all of P and A are one point. | yes | `jade.hpp` |
+| `lbfgsb` | LB-1 | (5.11) as printed has the sign of B^-1 r^c; d^u = -B^-1 r^c is (5.7)'s, which we follow. | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-2 | The free variables at x^c are those strictly between their bounds there (Algorithm CP's last lines leave the set to be read this way). | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-3 | MN's "not a direction of strong descent": g^T d >= 0. | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-4 | OURS: where even the truncated d is not a descent direction (B lost positive definiteness to rounding), the pairs are dropped and the iteration made again with B = I. | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-5 | OURS: the breakpoints are sorted (BLNZ use a heap: the same order; ties by index); m = 5 (BLNZ's Table 1, first column); a line search that ends without a lower f ends the run (BLNZ's F2); the point of the search is p... | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-7 | M of (3.4) by the Schur complement of -D, T = theta S^T S + L D^-1 L^T (positive definite: s_i^T y_i > 0), by Cholesky (the factorization of Byrd, Nocedal, Schnabel, BLNZ's [6]; | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-8 | The subspace step's middle matrix is (I + theta Mbar Wbar^T A A^T Wbar)^-1 Mbar of (5.22), the form BLNZ used in their experiments (end of §5.3: "identical to" (5.10)'s (I - M W^T Z Z^T W / theta)^-1 M), with Mbar of... | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-9 | x^c = x + t d is projected onto the box (the path is P(x - t g, l, u), (2.2)), and so is (5.9)'s point (feasible by (5.8)): their rounding crossed a bound (Penalty II in [0, 0.5]^4: the largest step along d came out -... | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-10 | Not a departure, a note: where a pair is near (3.9)'s refusal (s^T y the difference of nearly equal terms), theta and the next step follow the last digits of the search's end point, which MT leave to the program (line... | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-6 | OURS: the new point is the one the search accepts; where it stops short of (2.5)-(2.6) (its own limits), the trial with the lowest f. | yes | `lbfgsb.hpp` |
+| `line_search` | LS-1 | Unbracketed, case 4 takes the far end a_t + 4 (a_t - a_l) (MT give no interpolant there without a_u; | yes | `line_search.hpp` |
+| `line_search` | LS-6 | Unbracketed, case 3 takes the farther of alpha_c and alpha_s from a_t (the words: the closer, "to be cautious"), alpha_c being the far end where the cubic has no minimizer beyond a_t (the words: alpha_s); then (2.2)'s... | yes | `line_search.hpp` |
+| `line_search` | LS-3 | Before the switch to phi, psi stands in for phi in §4's cases only where the trial has a lower phi than a_l but not the sufficient decrease (phi_t <= phi_l, psi_t > 0), phi elsewhere (the words: psi until the switch). | yes | `line_search.hpp` |
+| `line_search` | LS-2 | Case 3, the cubic "tends to infinity in the direction of the step" where its cubic coefficient has the sign of a_t - a_l, and its minimizer exists (the discriminant of NW (3.59) is positive). | yes | `line_search.hpp` |
+| `line_search` | LS-4 | Also stops where the bracket is narrower than xtol times its right end (xtol = 1e-10 by default: rounding), and after max_nfev trials. | yes | `line_search.hpp` |
+| `line_search` | LS-5 | A trial a bracket cannot hold (outside it after rounding) is replaced by the bisection. | yes | `line_search.hpp` |
+| `line_search` | LS-7 | A trial where phi or phi' is not finite (overflow) becomes the right end, and the next trial halves the way back to a_l. | yes | `line_search.hpp` |
+| `lm` | LM-1 | The column interchanges and the Householder transformations are lsq.hpp's (LH); | yes | `lm.hpp` |
+| `lm` | LM-2 | lambda's iteration stops after 10 rounds even short of (5.1) (Moré gives no limit); the first lambda (Moré's "initial estimate alpha_0") is the last iteration's lambda (0 at the start, moved into (l, u) by (5.5)(a));... | yes | `lm.hpp` |
+| `lm` | LM-3 | The first Delta is factor \|\|D x_0\|\| (factor where that is 0, factor = 100), and the first iteration's Delta at most \|\|D p\|\| (Moré leaves Delta_0 open). | yes | `lm.hpp` |
+| `lm` | LM-4 | ftol = xtol = 1e-8 as in Moré's runs (§8); gtol (a stationarity test Moré's stopping rules do not have) is 0, off; the tests with eps say that the tolerance asked for cannot be reached. | yes | `lm.hpp` |
+| `lm` | LM-5 | \|\|.\|\| is the plain Euclidean norm, scaled by the largest \|entry\| (no overflow). | yes | `lm.hpp` |
+| `lm` | LMB-1 | Delta's rules and the acceptance (rho > 1e-4) are Moré's of step 3, not CL's Fig. 4.1 (mu = 0.25, gamma = 0.0625, 0.5, 2): so that the method with every bound infinite is Moré's; | yes | `lm.hpp` |
+| `lm` | LMB-2 | The step-back theta = max(0.95, 1 - \|\|s\|\|) where x + tau p (x + tau d) is on the boundary (CL (2.13) ask theta in [theta_l, 1], 1 - theta = O(\|\|s\|\|)), theta = 0.95 where rounding still puts a coordinate on the boundar... | yes | `lm.hpp` |
+| `lm` | LMB-3 | x_0 is refused outside [l, u] or where l_i >= u_i; within 100 eps max(1, \|bound\|) of a bound it is moved inside as in CL §4: to l_i + 0.1 (u_i - l_i) (u_i - 0.1 (u_i - l_i)), and where the other bound is infinite to l... | yes | `lm.hpp` |
+| `lm` | LMB-4 | xtol's \|\|D x\|\| and the first Delta take Moré's D alone; gtol's cosines are those of [J; | yes | `lm.hpp` |
+| `lm` | LMB-5 | lm_geodesic is refused with a finite bound (Transtrum & Sethna have none). | yes | `lm.hpp` |
+| `lm` | LMG-1 | lambda is chosen for v alone, as they do ("selecting lambda so that \|delta theta_1\| = Delta"); the predicted reduction and Delta's rules are v's, the actual reduction that of v + a. | yes | `lm.hpp` |
+| `lm` | LMG-2 | Where (15) fails, Delta = 1/2 min(Delta, \|\|D v\|\|) and the step is made again, v + a not evaluated. | yes | `lm.hpp` |
+| `lm` | LMG-3 | The norms of (15) are the scaled \|\|D .\|\|, so that the method stays invariant to the scale of the parameters, as they say it does. | yes | `lm.hpp` |
+| `lm` | LM-6 | OURS: irls_tol = 1e-10, 50 rounds at most, every round to the tolerances above, the evaluations of all rounds counted together. | yes | `lm.hpp` |
+| `lm` | VP-1 | The pseudorank of Phi: the diagonal \|R_jj\| > max(m, p) eps \|R_00\| (lsq.hpp's LSQ-6); a = Phi^- y is the basic solution on those columns. | yes | `lm.hpp` |
+| `lm` | VP-2 | Without the derivatives of Phi, the Jacobian of r_2 is forward differences of r_2 (the full projection, not Kaufman's term). | yes | `lm.hpp` |
+| `lm` | VP-3 | The Jacobian's evaluation of Phi and its derivatives counts as one Jacobian (njev), r_2's as one evaluation (nfev). | yes | `lm.hpp` |
+| `lshade` | LSHADE-1 | "the top N p members": the ceil(N p) best, at least 2 (SHADE's p_min = 2/N); ranking and the trial's draws as pbest.hpp (PB-1, PB-2). | yes | `lshade.hpp` |
+| `lshade` | LSHADE-2 | The draws for x_i, in Algorithm 2's order: r_i, CR_i (none when M_CR,r_i = ⊥), F_i, then the trial's. | yes | `lshade.hpp` |
+| `lshade` | LSHADE-3 | Algorithm 2, line 25 reads "if N_G < N_G+1"; the text says "whenever N_G+1 < N_G, the worst-ranking individuals are deleted" — taken. | yes | `lshade.hpp` |
+| `lshade` | LSHADE-4 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "<=", "<", the ranking and the deletion; the weight of a success as SHADE-3 (shade.hpp). | yes | `lshade.hpp` |
+| `lshade` | LSHADE-5 | All N trials of a generation are built from P and A at its start (Algorithm 2 builds them all before any selection). | yes | `lshade.hpp` |
+| `lshade` | LSHADE-6 | done() is true once all of P and A are one point. | yes | `lshade.hpp` |
+| `lsq` | LSQ-1 | NNLS solves the least squares problem of its Step 6 afresh every time (LH's subroutine updates a QR decomposition, Ch. 24): the problems here have tens of columns, and the plain form is easier to check. | yes | `lsq.hpp` |
+| `lsq` | LSQ-2 | A candidate column of NNLS (Step 5) is refused when its new diagonal element is negligible beside the part of the column the columns already in the set explain (\|r\| * 0.01 adds nothing to that part's norm, the test LH... | yes | `lsq.hpp` |
+| `lsq` | LSQ-3 | LDP finds G x >= h incompatible when \|\|r\|\| (Step 3's \|\|r\|\| = 0) is within the round-off of r itself: \|\|r\|\| <= 100 eps (1 + sum_ij \|E_ij\| u_j), the bound of the error of r = E u - f summed term by term. \|\|r\|\| is the ro... | yes | `lsq.hpp` |
+| `lsq` | LSQ-8 | LDP is solved for the same constraints with every row g_i of G scaled to unit length and h to max \|h_i\| = 1: G x >= h and (g_i / \|\|g_i\|\|)^T x >= h_i / \|\|g_i\|\| are one set, and LDP's solution is linear in h (x(c h) = c... | yes | `lsq.hpp` |
+| `lsq` | LSQ-4 | lsei picks the rows of C in the order of the largest remaining norm (the column interchanges of HFTI (14.9), Steps 3-10, on C^T) and takes as its pseudorank the rows whose diagonal element exceeds 10 eps max\|C\| (Step... | yes | `lsq.hpp` |
+| `lsq` | LSQ-5 | A Householder transformation whose part to be zeroed is zero already is the identity (H1 would flip the pivot's sign; the identity keeps triangular input exact). | yes | `lsq.hpp` |
+| `lsq` | LSQ-7 | The sum of H2's Step 8 is taken in four running sums (terms l, l + 4, ... in the first, and so on), then (s0 + s1) + (s2 + s3): the order is the code's, the same everywhere, and four times shorter a chain of additions... | yes | `lsq.hpp` |
+| `lsq` | LSQ-6 | HFTI's pseudorank: the diagonal elements above max(m, n) eps \|r_11\| (Step 13 leaves tau to the caller; this is NumPy's default rcond for lstsq, measured on R's diagonal instead of the singular values). | yes | `lsq.hpp` |
+| `mosqp` | MS-1 | τ = 1e-8 (mosqp_tau), μ = 1e-4 (mosqp_mu, Armijo), β = 1/2 (mosqp_beta); n̄ = pop_size. | yes | `mosqp.hpp` |
+| `mosqp` | MS-2 | H_i = I in both stages: the first of §6's three cases (the others need second derivatives the problems here do not give). | yes | `mosqp.hpp` |
+| `mosqp` | MS-3 | Gradients and Jacobians by forward differences (fd_step in the box normalized to [0, 1], as sqp in solvers.hpp), n evaluations a point. | yes | `mosqp.hpp` |
+| `mosqp` | MS-4 | σ: the first of 1, 10, 100, ... that makes the merit's directional derivative ∇fᵀd − σ‖c(x)‖₁ negative (Algorithm 4.1, 3(a)iD), at most 10⁸. | yes | `mosqp.hpp` |
+| `mosqp` | MS-5 | The line of stage 2: x_l = ℓ + l(u − ℓ)/(n̄ + 1), l = 1..n̄. | yes | `mosqp.hpp` |
+| `mosqp` | MS-6 | With H_i = I, (8) is the least-squares problem min ‖d + ∇f_i‖ under the linear rows, and (9), which Lemma 3.2 (item 6) writes as min Σ_i (∇f_iᵀv + ½vᵀH_i v) under the same rows, is min ‖√m v + Σ_i ∇f_i / √m‖: one lsq:... | yes | `mosqp.hpp` |
+| `mosqp` | MS-7 | (10) prints (u_j − ℓ_j)/2 for a finite box, which lies outside [ℓ_j, u_j] whenever ℓ_j > (u_j − ℓ_j)/2; read as the centre (u_j + ℓ_j)/2. | yes | `mosqp.hpp` |
+| `nelder_mead` | NM-1 | The initial simplex: x_0 and x_0 + tau e_i, tau = 0.05 in every coordinate, x_0 - tau e_i where x_0 + tau e_i would leave the box (the box is meant normalized to [0, 1]^n: Gao & Han's (3.1), fminsearch's, takes 0.0002... | yes | `nelder_mead.hpp` |
+| `nelder_mead` | NM-2 | Every point the method makes is clipped to the box before it is evaluated and becomes a vertex (Lagarias et al. and Gao & Han treat unconstrained problems). | yes | `nelder_mead.hpp` |
+| `nelder_mead` | NM-3 | The initial vertices are ordered by value, ties in their order of construction (x_0 first). | yes | `nelder_mead.hpp` |
+| `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
+| `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
+| `polish` | POLISH-1 | The objective improved goes round the objectives (the first point f_1, the second f_2, ...) in DSS order; the objectives are normalized by the range of the points chosen. | yes | `polish.hpp` |
+| `polish` | POLISH-2 | The answer after polishing is the non-dominated union of the algorithm's answer and the polished points, not the archive's; cut to pop_size, it keeps a point weakly dominating each point of the algorithm's answer firs... | yes | `polish.hpp` |
+| `polish` | POLISH-3 | The subproblem's constraints f_i <= f_i(a) hold to a slack (SLACK, in the normalized objectives): a result a hair worse than a in one objective does not dominate a, and both stay. | yes | `polish.hpp` |
+| `pso` | PSO-1 | §VI computes chi "as shown in (4.15)"; (4.15) is the modulus of the eigenvalues, sqrt(chi). | yes | `pso.hpp` |
+| `pso` | PSO-2 | Synchronous: the whole swarm is evaluated, then every p_i and p_g are updated, then every particle moves (the pseudocode updates p_g particle by particle). | yes | `pso.hpp` |
+| `pso` | PSO-3 | "Initialize population: random x_i, v_i": v_i uniform in [-(hi - lo)/2, (hi - lo)/2] coordinate by coordinate, drawn after all positions; `v0_zero` starts at 0 (SMPSO-5 of smpso.hpp). | yes | `pso.hpp` |
+| `pso` | PSO-4 | "p_g = min(p_neighbors)": §VII names no topology. | yes | `pso.hpp` |
+| `pso` | PSO-5 | Draws: particle by particle, phi_1 then phi_2 for every d. | yes | `pso.hpp` |
+| `pso` | PSO-6 | Bounds: the paper's box is the initial range; a position outside the box is repaired by ops::repair_value (reflect by default; `native` leaves it — the paper's), the velocity kept. | yes | `pso.hpp` |
+| `pso` | PSO-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(x_i) < f(p_i)" and for p_g; not in the papers. | yes | `pso.hpp` |
+| `pso` | PSO-8 | done() is true once every velocity is 0 and every x_i = p_i = p_g. | yes | `pso.hpp` |
+| `scalar` | SCALAR-1 | n_sub from the budget: what is left after the plan's start and the anchors, over 10 (n + 1) evaluations a subproblem for sqp — about ten iterations from a neighbour's solution — and 100 n for nm and cmaes; at most pop... | yes | `scalar.hpp` |
+| `scalar` | SCALAR-2 | nm, cmaes: an infeasible point is worth the worst feasible value known for its subproblem plus its violation (Deb's rule as a penalty). | yes | `scalar.hpp` |
+| `scalar` | SCALAR-3 | tch: w_i = 1 / max(d_i, 1e-6) for the lattice's direction d, so that the solutions lie on the rays F̄ ∝ d the lattice spreads evenly; the reference point is z*. | yes | `scalar.hpp` |
+| `scalar` | SCALAR-4 | nnc: the normal constraints (Ā_m − Ā_i)ᵀ(F̄ − X̄) <= 0 and min F̄_m, Problem P3 of the 2003 paper (Eqs. 36-41). | yes | `scalar.hpp` |
+| `scalar` | SCALAR-5 | ps: ā on the anchors' simplex, r its quasi-normal reversed (NBI's geometry); the 1984 paper leaves (p, q) to the user. | yes | `scalar.hpp` |
+| `scalar` | SCALAR-6 | sqp stops a subproblem at a failed evaluation of an iterate, and at a finite-difference step that fails both ways. | yes | `scalar.hpp` |
+| `scalar` | SCALAR-7 | cmaes: a point outside the box is evaluated at its clip, plus the squared distance to it times (1 + \|value\|); one run per subproblem, until σ·max D < local_tol or the allowance is spent. | yes | `scalar.hpp` |
+| `scalar` | SCALAR-8 | sqp asks g(x) <= -1e-10 of the problem's inequalities, so that a solution on the boundary is feasible by the vault's rule (g <= 0). | yes | `scalar.hpp` |
+| `scalar` | SCALAR-9 | The anchors are lexicographic minima in cyclic order: ours. | yes | `scalar.hpp` |
+| `scalar` | SCALAR-10 | laumanns: the grid's first bound is +∞ (no constraint), the mirror of the paper's lower bound 0 for maximization. | yes | `scalar.hpp` |
+| `scalar` | SCALAR-11 | A subproblem whose solver ends where it started runs again, with what is left of its allowance, from the initial plan's best point for it: the archive's best is often an anchor or a neighbour's solution at a corner of... | yes | `scalar.hpp` |
+| `scalar` | SCALAR-12 | The anchors' stages see the objectives scaled by the initial plan's range (its minimum to 0, its maximum to 1): SQP stops early on a raw objective of 1e7 (bbob-biobj f2's ellipsoid). | yes | `scalar.hpp` |
+| `scalar` | SINGLE-1 | One run of the solver: one that stops before the budget leaves the rest unspent, as DMS does. | yes | `scalar.hpp` |
+| `scalar` | SINGLE-2 | The solver sees f scaled by the initial plan's range (its least value to 0, its greatest to 1), as scalar's anchors do (SCALAR-12), in the box normalized to [0, 1]^n, as every solver of solvers.hpp: a bound that is no... | yes | `scalar.hpp` |
+| `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
+| `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |
+| `sep_cmaes` | SEP-3 | Ranking: the comparison of evo.hpp (NSGA-II's constrained- domination at M = 1 for constraints g <= 0, not in the paper), ties in the order told (stable). | yes | `sep_cmaes.hpp` |
+| `sep_cmaes` | SEP-4 | No box: Algorithm 1 has none (as cmaes.hpp); the caller's problem takes x as it comes. | yes | `sep_cmaes.hpp` |
+| `sep_cmaes` | SEP-5 | The draws: lambda vectors of n normals, point by point. | yes | `sep_cmaes.hpp` |
+| `sep_cmaes` | SEP-6 | c_cov = (n + 2)/3 c_cov^def is held at 1 at most (line 9 needs 1 - c_cov >= 0); below n = 2 nothing changes, the paper's n are larger. | yes | `sep_cmaes.hpp` |
+| `shade` | SHADE-1 | "the top N p_i members": the ceil(N p_i) best (p_i >= 2/N gives at least 2); ranking and the trial's draws as pbest.hpp (PB-1, PB-2). | yes | `shade.hpp` |
+| `shade` | SHADE-2 | The draws for x_i, in Algorithm 1's order: r_i, CR_i, F_i, p_i, then the trial's. | yes | `shade.hpp` |
+| `shade` | SHADE-3 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "<=" and "<" of Algorithm 1 and for the ranking; not in the paper. | yes | `shade.hpp` |
+| `shade` | SHADE-4 | N >= 4 so that x_i, x_r1, x~_r2 can differ; refused otherwise. | yes | `shade.hpp` |
+| `shade` | SHADE-5 | All N trials of a generation are built from P and A at its start (Algorithm 1 builds them all before any selection). | yes | `shade.hpp` |
+| `shade` | SHADE-6 | done() is true once all of P and A are one point. | yes | `shade.hpp` |
+| `slsqp` | SQP-1 | Incompatible linearized constraints: the QP is solved again with one more variable delta in [0, 1], the equalities and the violated inequalities taken as a^T d + (1 - delta) c, and rho delta^2 / 2 added to the objecti... | yes | `slsqp.hpp` |
+| `slsqp` | SQP-2 | B is reset to I and the iteration made again when the QP fails, when no step length is found, or when B loses positive definiteness to round-off; a second failure in a row ends the run. | yes | `slsqp.hpp` |
+| `slsqp` | SQP-3 | Stopping: after the QP when \|d\|_inf <= tol and the violation (sum \|c_E\| + sum max(0, -c_I)) <= tol; after a step when \|f+ - f\| <= tol and the violation <= tol; when a step leaves x unchanged bit for bit; after max_ite... | yes | `slsqp.hpp` |
+| `slsqp` | SQP-4 | The bounds are rows of the QP (infinite ones none); the point x + alpha d is clipped to the box (a step of an ulp at most: the QP's step keeps the box) and the start too. | yes | `slsqp.hpp` |
+| `slsqp` | SQP-5 | No scaling of x, f or c: the caller's. | yes | `slsqp.hpp` |
+| `slsqp` | SQP-6 | When no step length passes Armijo's test in 10 trials, the run stops (LineSearch::stop, NW §3.5's stopping test; with B reset first, SQP-2) or takes the last trial point and goes on (LineSearch::accept: what Kraft's c... | yes | `slsqp.hpp` |
+| `slsqp` | SQP-7 | The trials end, failed, when x + alpha d is x bit for bit (alpha falls by 1.8 at least a trial, so this comes); then SQP-2 as for stop. | yes | `slsqp.hpp` |
+| `slsqp` | SQP-8 | An iteration made again after a reset (SQP-2) takes (4.6) from the mu_i of the last finished iteration, not from those of the failed try. | yes | `slsqp.hpp` |
+| `slsqp` | SQP-9 | Not done: the paper's trap for cycling (an error return after five iterations with mu constant and no decrease of phi; | yes | `slsqp.hpp` |
+| `spso2011` | SPSO-1 | Synchronous: the whole swarm is evaluated, then every P_i, the links and every L_i are updated, then every particle moves (§II-C's loop updates P_i and L particle by particle). | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-2 | L_i: the best P_j over j = i and every j that informs i. | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-3 | x' is uniform in the ball's volume: a normal direction, the radius \|\|G - X\|\| U^(1/D). | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-4 | "the global optimum shows no improvement": the best P after a generation is not better than the one before it; the links are drawn again then, and at the start. | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-5 | "[-X^max, X^max]" (§II-A: V^max = X^max, "the limits of the search space"): \|V_id\| <= (max_d - min_d) / 2, which is X^max on the symmetric [-100, 100] of §III. | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-6 | The absorbing wall acts coordinate by coordinate: a coordinate outside its range is put on the bound it crossed and its velocity is 0. | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-7 | Draws, particle by particle: U1 for every d, U2 for every d, the direction's D normals, the radius's U; the initial velocity's U after all positions; links: informer by informer, K draws each. | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-8 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(X_i) < f(P_i)", L_i and SPSO-4; not in the paper. | yes | `spso2011.hpp` |
 
 ## The problems
 
