@@ -771,11 +771,12 @@ def zcat_vanishes_on_its_pareto_set_and_keeps_the_papers_frame():
         n = zcat.n_vars(M)
         assert n == 10 * M, n                                  # Section 5.1
         for name in zcat.NAMES:
-            # Straight off PROBLEMS: get() would reframe ideal/nadir from the
-            # sampled front, and what is checked here is the analytic frame.
+            # The frame is C++'s (data/registry.json, from its sampled front):
+            # the paper's i² and 0 within the last bits.
             p = PROBLEMS[f"{name}_{M}D"]
             assert p.n_vars == n and p.bounds[-1] == (-n / 2.0, n / 2.0), name
-            assert tuple(p.nadir) == tuple(scale) and set(p.ideal) == {0.0}, name
+            assert np.max(np.abs(np.asarray(p.nadir) - scale)) <= 1e-12, (name, p.nadir)
+            assert np.max(np.abs(p.ideal)) <= 1e-12, (name, p.ideal)
             y = np.zeros(n)
             y[:M - 1] = 0.3 + 0.1 * np.arange(M - 1)           # ZCAT20 switches m here
             m = zcat.position_count(name, y, M)
@@ -1056,6 +1057,8 @@ def every_benchmark_evaluates_without_raising():
     # nor nadir.
     for nm, p in PROBLEMS.items():
         x = [lo + random.random() * (hi - lo) for lo, hi in p.bounds]
+        if _without_balls(nm):
+            continue
         try:
             f = p.evaluate(x)
         except Exception as e:
@@ -3305,6 +3308,13 @@ def _core_with(attr: str):
     return _core if hasattr(_core, attr) or hasattr(_core.Config(), attr) else None
 
 
+def _without_balls(name: str) -> bool:
+    """A failing copy of kind r while the extension is absent: its balls are
+    C++'s (failing.Region, _core.failing_balls), so pure Python cannot make it."""
+    from mootation.benchmarks.registry import FAILING
+    return name in FAILING and FAILING[name][2] == "r" and _core_with("failing_balls") is None
+
+
 @test
 def variant_labels_and_evaluation_budgets_parse_and_validate():
     """[[algorithms]] label = ... files a variant apart; evaluations = ... budgets it."""
@@ -3492,7 +3502,8 @@ def boundary_and_centre_follow_the_pareto_sets(part, parts):
     from mootation.benchmarks.registry import PROBLEMS
     checked = 0
     for i, name in enumerate(names()):
-        if i % parts != part or PROBLEMS[name].pareto_set is None or properties(name) is None:
+        if (i % parts != part or PROBLEMS[name].pareto_set is None or _without_balls(name)
+                or properties(name) is None):
             continue
         if name.startswith("ZCAT") and name not in ("ZCAT1_3D", "ZCAT11_3D", "ZCAT14_3D"):
             continue                                       # seconds each: three of them
@@ -4792,15 +4803,20 @@ def mw_fronts_are_feasible_non_dominated_and_framed():
         for x in R:
             assert np.isfinite(p.evaluate(list(x))).all() and np.isfinite(p.constraints(list(x))).all(), key
     # the thinning to n keeps every piece's ends, the isolated point among them
-    # (addendum 7, section 1): in both implementations' fronts
+    # (addendum 7, section 1): in both implementations' fronts (C++'s where
+    # the extension is there)
     from mootation.benchmarks import registry as REG
-    p = get("MW11")
-    for F in (p.pareto_front(1000), p.reference["pareto_front"](1000)):
+
+    def fronts(key, n):
+        q = get(key)
+        return [q.pareto_front(n)] + ([q.reference["pareto_front"](n)] if q.reference else [])
+
+    for F in fronts("MW11", 1000):
         assert np.min(np.abs(F - [1.0, 1.0]).max(axis=1)) == 0.0
     for key in ("MW1", "MW6", "MW11", "MW13"):
         S, of = mw._spread(mw.dense_front(key), 200, pieces=True)      # the sample of n = 100
         ends = [k for k in range(len(S)) if k in (0, len(S) - 1) or of[k] != of[k - 1] or of[k] != of[k + 1]]
-        for F in (get(key).pareto_front(100), get(key).reference["pareto_front"](100)):
+        for F in fronts(key, 100):
             assert all(np.min(np.abs(F - S[k]).max(axis=1)) <= 1e-12 for k in ends), key
     assert raises(ValueError, REG._thin, S, len(ends) - 1, 1, of) is not None
 
@@ -8066,8 +8082,8 @@ def the_failing_problems_fail_where_they_say():
     near_front about its share of the Pareto set; the front stays the base's
     where the region misses the Pareto set and is marked otherwise; a campaign
     records n_failed in final and fail_share in its trajectory."""
-    if not _have_numpy():
-        print("    (skipped: no NumPy)"); return
+    if not _have_numpy() or _core_with("failing_balls") is None:
+        print("    (skipped: no NumPy or no extension: the balls are C++'s)"); return
     import math
     import numpy as np
     from mootation.benchmarks import get, names
@@ -8908,8 +8924,8 @@ def a_campaigns_reference_data_are_built_once():
     reads the file; no lock or temporary file is left. Since task 12 this is
     the campaign's own cache of the problems without an exact front (RE21);
     those with one are in the cache of references (refs.py)."""
-    if not _have_numpy():
-        print("    (skipped: no NumPy)"); return
+    if not _have_numpy() or _core_with("refs_build_cache") is None:
+        print("    (skipped: no NumPy or no extension: C++ builds the references)"); return
     import tempfile
     import threading
     import time as _time
@@ -8956,8 +8972,8 @@ def the_cache_of_references_holds_what_a_campaign_built():
     reference, Pareto-set sample — and cover's IGD+ floors at the problem's
     population; reference_data reads what a run asks for and nothing else;
     the problems with an approximate front stay out of the cache."""
-    if not _have_numpy():
-        print("    (skipped: no NumPy)"); return
+    if not _have_numpy() or _core_with("refs_build_cache") is None:
+        print("    (skipped: no NumPy or no extension: C++ builds the references)"); return
     import os
     import numpy as np
     from mootation.benchmarks import registry as R
@@ -9216,8 +9232,8 @@ def refs_build_extend_keeps_a_smaller_sample_where_the_builder_does():
     points: where the builder's n points are the first of its N (Polygon:
     DSS order) the entry says the smaller sample is kept, elsewhere (DTLZ2: a
     sample of its own) that it was built anew; both entries stay."""
-    if not _have_numpy():
-        print("    (skipped: no NumPy)"); return
+    if not _have_numpy() or _core_with("refs_build_cache") is None:
+        print("    (skipped: no NumPy or no extension: C++ builds the references)"); return
     from mootation.run import refs
     names = ["Polygon_3D", "DTLZ2_3D"]
     assert refs.main(["build", "--n-ref", "100", "--problems", ",".join(names)]) == 0
@@ -12852,9 +12868,10 @@ def every_registry_problem_has_a_property_row():
         print("  skip  every_registry_problem...: no NumPy"); return
     from mootation.benchmarks.properties import KEYS, properties
     from mootation.benchmarks.registry import PROBLEMS
-    missing = [n for n in PROBLEMS if properties(n) is None]
+    have = [n for n in PROBLEMS if not _without_balls(n)]
+    missing = [n for n in have if properties(n) is None]
     assert not missing, missing[:10]
-    assert all(set(properties(n)) == set(KEYS) for n in PROBLEMS)
+    assert all(set(properties(n)) == set(KEYS) for n in have)
     row = lambda n: properties(n)                          # noqa: E731
     assert row("MaF1_3D")["front"] == "linear" and row("MaF1_3D")["centre"] is True
     assert row("MaF5_5D")["bias"] and row("MaF5_5D")["scaled"] and row("MaF4_5D")["multimodal"]
