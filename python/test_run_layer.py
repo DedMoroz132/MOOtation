@@ -898,7 +898,9 @@ def bbob_all_24_in_cpp_as_in_python():
 
     The instances agree to the last bits of the rotations (two Householder QRs
     in their own orders), and the values on C++'s instance to 1e-12 of their
-    scale (the library's pow, sin and cos against the C library's).
+    scale (the library's pow, sin and cos against the C library's) where
+    NumPy's functions are the C library's; within 1e-9 elsewhere (f16 at
+    D = 20 sums cosines of arguments near 1e7, where NumPy's own cos differs).
     """
     if not _have_numpy():
         print("    (skipped: no NumPy)"); return
@@ -907,6 +909,7 @@ def bbob_all_24_in_cpp_as_in_python():
         print("    (skipped: no compiled suite)"); return
     import numpy as np
     from mootation.benchmarks import bbob
+    tol = 1e-12 if _numpy_is_the_c_library() else 1e-9
     for fid in range(1, 25):
         for D in (2, 5, 20):
             nat = _core.Native({"family": "bbob", "n_var": D, "n_obj": 1, "bbob_fid": fid, "bbob_iid": 2})
@@ -927,8 +930,10 @@ def bbob_all_24_in_cpp_as_in_python():
             X = np.vstack([s.x_opt[None, :], np.random.default_rng(fid * 100 + D).uniform(-5.5, 5.5, (30, D))])
             c = np.array([nat.evaluate(list(map(float, x)))[0] for x in X])
             p = s.batch(X)
-            assert np.all(np.abs(c - p) <= 1e-12 * np.maximum(1.0, np.abs(p))), (fid, D, np.max(np.abs(c - p)))
+            assert np.all(np.abs(c - p) <= tol * np.maximum(1.0, np.abs(p))), (fid, D, np.max(np.abs(c - p)))
             assert abs(c[0] - s.f_opt) <= 1e-9 * max(1.0, abs(s.f_opt)), (fid, D, c[0], s.f_opt)
+    if tol > 1e-12:
+        print("    (NumPy's functions are not the C library's here: compared within 1e-9)")
 
 
 @test
