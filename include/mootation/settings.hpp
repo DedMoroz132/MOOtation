@@ -203,6 +203,9 @@ inline bool is_core_param(const std::string& name)
 //   crossover     nsga2, nsga2_sdr, ibea_eplus, spea2_sde, agemoea, sms_emoa
 //                 (operators/real_crossover.hpp, multi_parent.hpp)
 //   mutation      the same six and moead_de (operators/real_mutation.hpp)
+//   sbx_bounds    any core using SBX: Deb's bounded SBX (bounded, the default)
+//                 or PlatEMO's unbounded one and then the clip (clip;
+//                 operators/sbx.hpp), for the run
 //   crowding_space nsga2: its crowding distance over the objectives or the
 //                 decision variables
 //   dms_init      dms: the initial list, n points on the diagonal, one, or n
@@ -258,6 +261,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"mutation",     {"polynomial", "gaussian", "cauchy", "uniform_reset", "mixture",
                           "mixture_cauchy", "none"}},
         {"crowding_space", {"objectives", "decision"}},
+        {"sbx_bounds",   {"bounded", "clip"}},
         {"dms_init",     {"line", "single", "random"}},
         {"dms_poll",     {"first", "random"}},
         {"dms_cache",    {"off", "on", "force"}},

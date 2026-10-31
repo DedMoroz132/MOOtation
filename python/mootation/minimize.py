@@ -92,7 +92,7 @@ def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constrain
 KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
-         "sbx_var_prob", "crowding_space", "dms_init", "dms_poll", "step_share",
+         "sbx_var_prob", "sbx_bounds", "crowding_space", "dms_init", "dms_poll", "step_share",
          "F_spread") + PARAM_KNOBS + WORD_KNOBS + POLISH_KNOBS
 
 from ._hv_time import exact_hv_time_warning  # noqa: E402  (task 14: exact at every M)

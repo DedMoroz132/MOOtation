@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added: the run knob `sbx_bounds`, SBX's bound handling for one run, any
+  core using SBX (the owner's decisions of 2026-11-01). `bounded`, the
+  default, is Deb's bounded SBX (nsga2.c realcross), unchanged: a child stays
+  inside the box and never reaches its bound. `clip` is PlatEMO 4.16's form
+  (OperatorGA.m, OperatorGAhalf.m): the unbounded spread factor of Deb &
+  Agrawal 1995, then every variable clipped to the box after the crossover
+  and before the mutation, so that a child outside lands on its bound, where
+  the optimum of ZDT and DTLZ6 lies. The polynomial mutation is the same in
+  both forms. The clipped variables are counted as repairs and the operator
+  log names `sbx` with `clip`. Default runs unchanged: the golden
+  fingerprints.
 - Fixed: `hcca` drew the three DE vectors from all of DP and used δ only for
   the replacement, so a child unrelated to subproblem i competed for i's
   neighbours. The DE parents now follow MOEA/D-DE (Li & Zhang 2009, Steps

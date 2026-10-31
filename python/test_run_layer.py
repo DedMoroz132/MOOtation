@@ -7186,6 +7186,46 @@ def theta_ties_and_spea2_pc_pm_knobs():
         assert f.objectives != d.objectives and not f.ignored, (knobs, f.ignored)
 
 @test
+def sbx_bounds_and_lis_lcs_knobs():
+    """The owner's decisions of 2026-11-01. sbx_bounds: bounded, the default,
+    gives the default run bit for bit; clip is taken by a core using SBX and
+    changes its run, and a core without SBX reports it ignored. lis_lcs's
+    de_base and k_share (LIS-1, LIS-2) reach the core: the defaults named give
+    the default run, the earlier readings another; a word they do not take is
+    refused."""
+    if not _have_numpy() or _core_with("sbx_bounds") is None:
+        print("  skip  sbx_bounds_and_lis_lcs_knobs: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    z = get("ZDT1")
+    kz = dict(bounds=z.bounds, n_objs=2, pop_size=40, n_gen=30, seed=7)
+    d = minimize(z.evaluate, algorithm="nsga2", **kz)
+    b = minimize(z.evaluate, algorithm="nsga2", sbx_bounds="bounded", **kz)
+    c = minimize(z.evaluate, algorithm="nsga2", sbx_bounds="clip", **kz)
+    assert d.objectives == b.objectives and not b.ignored, b.ignored
+    assert c.objectives != d.objectives and not c.ignored, c.ignored
+    r = minimize(z.evaluate, algorithm="moead_de", sbx_bounds="clip", **kz)
+    assert r.ignored == ["sbx_bounds"], r.ignored
+    try:
+        minimize(z.evaluate, algorithm="nsga2", sbx_bounds="reflect", **kz)
+    except (ValueError, RuntimeError):
+        pass
+    else:
+        raise AssertionError("sbx_bounds = reflect was taken")
+    kl = dict(bounds=z.bounds, n_objs=2, pop_size=40, n_gen=20, seed=7)
+    d = minimize(z.evaluate, algorithm="lis_lcs", **kl)
+    n = minimize(z.evaluate, algorithm="lis_lcs", de_base="current1", k_share="pp", **kl)
+    o = minimize(z.evaluate, algorithm="lis_lcs", de_base="rand1", k_share="dp", **kl)
+    assert d.objectives == n.objectives and not n.ignored, n.ignored
+    assert o.objectives != d.objectives and not o.ignored, o.ignored
+    for bad in (dict(k_share="both"), dict(de_base="current_to_pbest1")):
+        try:
+            minimize(z.evaluate, algorithm="lis_lcs", **bad, **kl)
+        except (ValueError, RuntimeError):
+            continue
+        raise AssertionError(bad)
+
+@test
 def naemo_reports_eta_c_ignored():
     """The owner's word of 2026-10-26: NAEMO's eta_c is adaptive; a run given
     one gets it back in ignored (no setter that does nothing), and runs as

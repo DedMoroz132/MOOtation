@@ -225,6 +225,7 @@ inline runner::RunConfig config_of(const Settings& s, const io::Population* seed
     c.dms_init = word("dms_init");
     c.dms_poll = word("dms_poll");
     c.crowding_space = word("crowding_space");
+    c.sbx_bounds = word("sbx_bounds");
     for (const auto& kv : s.params)
         if (is_core_param(kv.first)) c.params.insert(kv);
     for (const auto& kv : s.text_params)

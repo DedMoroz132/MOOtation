@@ -243,6 +243,9 @@ PYBIND11_MODULE(_core, m)
         .def_readwrite("sbx_var_prob",    &RunConfig::sbx_var_prob,
                        "SBX's share of crossed variables for this run (0.5, the canonical "
                        "realcross; 1.0 crosses every variable)")
+        .def_readwrite("sbx_bounds",      &RunConfig::sbx_bounds,
+                       "SBX's bound handling for this run: bounded (Deb's realcross, the "
+                       "default) or clip (PlatEMO 4.16: unbounded SBX, then the clip)")
         .def_readwrite("params",          &RunConfig::params,
                        "the knobs after the per-knob setters (settings.hpp, is_core_param): "
                        "{name: number}; assign the whole dict")

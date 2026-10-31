@@ -42,6 +42,42 @@ private:
     double saved_;
 };
 
+// ── The bound handling of SBX + polynomial mutation (knob sbx_bounds) ────────
+//   bounded  the default: Deb's bounded SBX (nsga2.c realcross), the
+//            β-spread cut so that the child stays inside [lo, hi] — below.
+//   clip     PlatEMO 4.16's form (Algorithms/Utility functions/OperatorGA.m
+//            and OperatorGAhalf.m, GAreal): SBX with the unbounded β of Deb &
+//            Agrawal 1995 (β = (2u)^{1/(η+1)} for u <= 0.5, else
+//            (2 − 2u)^{−1/(η+1)}), children (p1 + p2)/2 ± β(p1 − p2)/2, and
+//            then every variable clipped to [lo, hi] — once, after the
+//            crossover and before the mutation (OperatorGA.m line 98,
+//            OperatorGAhalf.m line 70: Offspring = min(max(Offspring,Lower),
+//            Upper)). A child that leaves the box lands ON its bound. The
+//            mutation there is the bounded polynomial mutation of nsga2.c, the
+//            same as polynomial_mutation() (poly_mutation.hpp), and no clip
+//            follows it: in both forms the mutation is the same.
+// Per thread, set for one run by ScopedSbxBounds (run(), Session, the binding).
+enum class SbxBounds { Bounded, Clip };
+inline SbxBounds& sbx_bounds() { thread_local SbxBounds v = SbxBounds::Bounded; return v; }
+
+inline const char* sbx_bounds_name(SbxBounds b) { return b == SbxBounds::Clip ? "clip" : "bounded"; }
+inline std::optional<SbxBounds> parse_sbx_bounds(const std::string& s)
+{
+    if (s == "bounded") return SbxBounds::Bounded;
+    if (s == "clip")    return SbxBounds::Clip;
+    return std::nullopt;
+}
+
+class ScopedSbxBounds {
+public:
+    explicit ScopedSbxBounds(SbxBounds v) : saved_(sbx_bounds()) { sbx_bounds() = v; }
+    ~ScopedSbxBounds() { sbx_bounds() = saved_; }
+    ScopedSbxBounds(const ScopedSbxBounds&) = delete;
+    ScopedSbxBounds& operator=(const ScopedSbxBounds&) = delete;
+private:
+    SbxBounds saved_;
+};
+
 // Require explicit bounds: the silent [0,1] default led to a silent
 // clamp/NaN on problems with other domains (2026-06 audit).
 inline double sbx_require_bound(const std::optional<double>& b,
@@ -80,10 +116,13 @@ inline void sbx(const std::vector<double>& p1,
                 double pc,
                 RNG& rng)
 {
-    note_operator("sbx", "none");      // bounded: cannot leave the box
+    const bool clip = sbx_bounds() == SbxBounds::Clip;
+    note_operator("sbx", clip ? "clip" : "none");   // bounded: cannot leave the box
     rnd::uniform_real_distribution<double> uni(0.0, 1.0);
     int nv = static_cast<int>(p1.size());
     c1 = p1; c2 = p2;
+    std::optional<RepairTally> t1, t2;   // clip: each child's variables the clip moved
+    if (clip) { t1.emplace(); t2.emplace(); }
 
     // With pc >= 1.0 do NOT burn a random number (short-circuit). A naive
     // `uni(rng) > pc` is called even at pc = 1.0 (always false) and SHIFTS the
@@ -103,6 +142,18 @@ inline void sbx(const std::vector<double>& p1,
         double y2 = std::max(p1[j], p2[j]);
         double dy = y2 - y1;
         double u  = uni(rng);
+        if (clip) {                    // PlatEMO's form (above): unbounded β, then the clip
+            double bq = (u <= 0.5) ? dm::pow(2.0 * u, 1.0 / (eta_c + 1.0))
+                                   : dm::pow(1.0 / (2.0 - 2.0 * u), 1.0 / (eta_c + 1.0));
+            double a = 0.5 * ((y1 + y2) - bq * dy);
+            double b = 0.5 * ((y1 + y2) + bq * dy);
+            if (uni(rng) < 0.5) std::swap(a, b);
+            if (a < lo || a > hi) t1->out();
+            if (b < lo || b > hi) t2->out();
+            c1[j] = std::clamp(a, lo, hi);
+            c2[j] = std::clamp(b, lo, hi);
+            continue;
+        }
         // Lower child (near y1)
         {
             double bl = 1.0 + 2.0 * (y1 - lo) / dy;

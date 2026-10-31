@@ -655,6 +655,9 @@ struct RunConfig {
     // The SBX operator's share of crossed variables (ops::sbx_var_prob, 0.5),
     // for this run only.
     std::optional<double>      sbx_var_prob;
+    // SBX's bound handling for this run (ops::sbx_bounds): bounded (Deb's
+    // realcross, the default) or clip (PlatEMO's unbounded SBX, then the clip).
+    std::optional<std::string> sbx_bounds;
     // The knobs after the per-knob setters (settings.hpp, is_core_param and
     // is_core_word): name -> value, handed to the core's set_param / set_word.
     std::map<std::string, double>      params;
@@ -950,6 +953,12 @@ RunResult run_core(const RunConfig& cfg)
             throw std::invalid_argument("sbx_var_prob must be in [0, 1]");
         var_prob.emplace(*cfg.sbx_var_prob);
     }
+    std::optional<ops::ScopedSbxBounds> sbx_bounds;
+    if (cfg.sbx_bounds) {
+        const auto b = ops::parse_sbx_bounds(*cfg.sbx_bounds);
+        if (!b) throw std::invalid_argument("sbx_bounds = '" + *cfg.sbx_bounds + "': bounded or clip");
+        sbx_bounds.emplace(*b);
+    }
 
     {
         const auto unlock = release_lock();   // the callback re-acquires per batch
@@ -1161,6 +1170,11 @@ RunResult run_core(const RunConfig& cfg)
         bool used = false;
         for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";
         if (!used) r.ignored.emplace_back("sbx_var_prob");
+    }
+    if (sbx_bounds) {
+        bool used = false;
+        for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";
+        if (!used) r.ignored.emplace_back("sbx_bounds");
     }
     if (st().ops.on) {
         const auto& rc = ops::repair_counts();

@@ -58,6 +58,7 @@ _FALLBACK_TEXT = {
     "bin_crossover": ("uniform", "none"),
     "mating": ("tournament", "each"),
     "crowding_space": ("objectives", "decision"),
+    "sbx_bounds": ("bounded", "clip"),
     "dms_init": ("line", "single", "random"),
     "dms_poll": ("first", "random"),
     "smpso_preset": ("jmetal", "platemo", "fair", "omopso"),

@@ -118,6 +118,68 @@ void test_sbx_requires_bounds()
     check(threw, "SBX throws std::invalid_argument on a missing bound");
 }
 
+void test_sbx_clip_form()
+{
+    std::cout << "-- SBX sbx_bounds = clip: PlatEMO's unbounded SBX, then the clip --\n";
+    // One variable, crossed every time; parents near the lower bound, a small
+    // eta so that the spread often leaves the box.
+    const double saved = ops::sbx_var_prob();
+    ops::sbx_var_prob() = 1.0;
+    const auto b = unit_bounds(1);
+    const std::vector<double> p1{0.02}, p2{0.3};
+    const int trials = 20000;
+    auto run = [&](ops::SbxBounds form, int& on_bound, bool& inside) {
+        ops::ScopedSbxBounds scope(form);
+        std::mt19937 rng(31);
+        on_bound = 0;
+        inside = true;
+        for (int t = 0; t < trials; ++t) {
+            std::vector<double> c1, c2;
+            ops::sbx(p1, p2, c1, c2, b, 2.0, 1.0, rng);
+            inside = inside && within(c1, b) && within(c2, b);
+            for (double c : {c1[0], c2[0]}) on_bound += (c == 0.0 || c == 1.0);
+        }
+    };
+    int on_clip = 0, on_bounded = 0;
+    bool in_clip = false, in_bounded = false;
+    ops::reset_operator_records();
+    run(ops::SbxBounds::Clip, on_clip, in_clip);
+    const auto counts = ops::repair_counts();
+    bool noted = false;
+    for (const auto& u : ops::operators_used())
+        noted = noted || (std::string(u.op) == "sbx" && std::string(u.repair) == "clip");
+    run(ops::SbxBounds::Bounded, on_bounded, in_bounded);
+    check(in_clip && in_bounded, "both forms keep the children inside [0,1]");
+    check(on_clip > 0, "clip puts children ON a bound (" + std::to_string(on_clip) + " of " +
+                       std::to_string(2 * trials) + ")");
+    check(on_bounded == 0, "bounded never reaches a bound exactly");
+    check(counts.checked == 2 * trials && counts.out_vars == on_clip,
+          "every clipped variable counted as a repair, each child checked");
+    check(noted, "the operator log names sbx with clip");
+    check(ops::sbx_bounds() == ops::SbxBounds::Bounded, "the scope puts bounded back");
+
+    // Far from the bounds the clip never acts: the children are Deb & Agrawal's
+    // unbounded β-spread, P(β > 1) = P(u > 0.5) = 1/2 (the child outside the
+    // parents' interval).
+    {
+        ops::ScopedSbxBounds scope(ops::SbxBounds::Clip);
+        std::mt19937 rng(32);
+        const std::vector<double> q1{0.49}, q2{0.51};
+        int outside = 0;
+        for (int t = 0; t < trials; ++t) {
+            std::vector<double> c1, c2;
+            ops::sbx(q1, q2, c1, c2, b, 20.0, 1.0, rng);
+            outside += std::abs(c1[0] - 0.5) > 0.01;
+        }
+        const double share = static_cast<double>(outside) / trials;
+        check(std::abs(share - 0.5) < 0.02, "children outside the parents: " + std::to_string(share) + " (1/2)");
+    }
+    for (ops::SbxBounds f : {ops::SbxBounds::Bounded, ops::SbxBounds::Clip})
+        check(ops::parse_sbx_bounds(ops::sbx_bounds_name(f)) == f, std::string(ops::sbx_bounds_name(f)) + ": name round trip");
+    check(!ops::parse_sbx_bounds("reflect"), "an unknown form is refused");
+    ops::sbx_var_prob() = saved;
+}
+
 void test_pm_bounds()
 {
     std::cout << "-- polynomial mutation keeps values inside the bounds --\n";
@@ -758,6 +820,7 @@ int main()
     test_sbx_pc_zero();
     test_sbx_identical_parents();
     test_sbx_requires_bounds();
+    test_sbx_clip_form();
     test_pm_bounds();
     test_pm_zero_probability();
     test_pm_at_bounds();

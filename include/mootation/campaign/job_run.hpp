@@ -346,6 +346,7 @@ inline void apply_knobs(runner::RunConfig& cfg, const json::Value& params)
         else if (k == "mixture_q") cfg.mixture_q = number(v);
         else if (k == "blx_alpha") cfg.blx_alpha = number(v);
         else if (k == "sbx_var_prob") cfg.sbx_var_prob = number(v);
+        else if (k == "sbx_bounds") cfg.sbx_bounds = detail::py_str(v);
         else if (k == "step_share") cfg.step_share = number(v);
         else if (k == "F_spread") cfg.F_spread = number(v);
         else if (k == "eta_int" || k == "int_repair") continue;     // minimize's, for integer variables (run())
