@@ -107,6 +107,9 @@ class ScalarResult:
         # the objectives of every subproblem's solution, anchors first, in the
         # order solved (feasible ones; a diagnostic, not the answer)
         self.solutions = d.get("solutions", [])
+        # one objective: a record each time the best point improved, (evaluations,
+        # grad_calls, f, cv) at that point (improvements.hpp)
+        self.improvements = [tuple(e) for e in d.get("improvements", [])]
 
 
 def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, eq_tol: float,

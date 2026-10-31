@@ -1615,5 +1615,18 @@ void bind_run_layer(py::module_& m)
                  if (it == a.L.all_at().end()) return py::none();
                  return py::make_tuple(it->second.first, it->second.second);
              },
-             py::arg("b"), "(IGD+, epsilon) of everything evaluated after exactly b evaluations, or None.");
+             py::arg("b"), "(IGD+, epsilon) of everything evaluated after exactly b evaluations, or None.")
+        .def("set_grad_calls", [](Ledger& a, long long k) { a.L.set_grad_calls(k); }, py::arg("k"),
+             "One objective: the caller's gradient calls so far, for the next records.")
+        .def_property_readonly("improvements",
+                               [](const Ledger& a) {
+                                   py::list out;
+                                   for (const auto& e : a.L.improvements())
+                                       out.append(py::make_tuple(e.evaluations, e.grad_calls, e.f, e.cv));
+                                   return out;
+                               },
+                               "One objective: a record each time the best point improved, (evaluations, "
+                               "grad_calls, f, cv) (scalar/improvements.hpp).")
+        .def_property_readonly("best_x", [](const Ledger& a) { return a.L.best_x(); },
+                               "One objective: the best point's variables (empty before any).");
 }

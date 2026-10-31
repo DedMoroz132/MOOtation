@@ -16,6 +16,8 @@
 //             2.3): the minimum of a weighted sphere, with and without an
 //             active inequality; a smaller budget the same run cut short
 //             (SINGLE-1); two objectives and an infinite bound refused;
+//   improvements  at one objective, the records of the best point (task 18,
+//             stage 1, §1.2): a plain pass over the evaluations in order;
 //   polish    the polished answer weakly dominates the algorithm's answer;
 //   bits      a checksum of the runs' answers, the same on every platform of
 //             the CI (no contraction into fused multiply-adds, dm:: for the
@@ -501,6 +503,60 @@ void local_solvers()
           "lm and lbfgsb refuse: no residuals (" + no_res + "), no start (" + no_x0 + "), constraints (" + with_g + ")");
 }
 
+// The improvement log (improvements.hpp): at one objective, the records are
+// those a plain pass over the evaluations in order gives (feasible first,
+// then f; infeasible by the violation max(g, 0); ties no record), each at its
+// evaluation's count; the last is the answer. lm with its Jacobian: the
+// grad_calls of the records grow and the last is the answer.
+void improvements()
+{
+    for (const std::string& name : sc::single_names()) {
+        for (int con = 0; con < 2; ++con) {
+            Single a = single_problem(con == 1);
+            const sc::Result r = sc::run(name, a.P, 1e-6, false, 0.0, 20, 600, 5, {}, {}, 0, {});
+            std::vector<sc::Improvement> want;
+            const std::vector<Vec> seen = *a.seen;            // evaluate() below adds to a.seen
+            for (std::size_t i = 0; i < seen.size(); ++i) {
+                const Vec& x = seen[i];
+                Vec f(1), g(con ? 1 : 0);
+                a.P.evaluate(x, f, g);
+                const double v = con ? std::max(g[0], 0.0) : 0.0;
+                bool better = want.empty();
+                if (!better) {
+                    const sc::Improvement& b = want.back();
+                    if ((v <= 0.0) != (b.cv <= 0.0)) better = v <= 0.0;
+                    else better = v > 0.0 ? v < b.cv : f[0] < b.f;
+                }
+                if (better) want.push_back({static_cast<long long>(i) + 1, 0, f[0], v});
+            }
+            bool same = want.size() == r.improvements.size() && !want.empty();
+            for (std::size_t k = 0; same && k < want.size(); ++k)
+                same = want[k].evaluations == r.improvements[k].evaluations && want[k].grad_calls == 0 &&
+                       r.improvements[k].grad_calls == 0 && want[k].f == r.improvements[k].f &&
+                       want[k].cv == r.improvements[k].cv;
+            same = same && !r.objectives.empty() && r.improvements.back().f == r.objectives[0][0] &&
+                   r.improvements.back().cv == 0.0;
+            check(same, name + (con ? " with g <= 0" : " on the weighted sphere") + ": " +
+                            std::to_string(r.improvements.size()) +
+                            " improvement records, those of a pass over the evaluations; the last the answer");
+        }
+    }
+    sc::Start x0;
+    x0.has_x0 = true;
+    x0.x0 = {-1.2, 1.0};
+    auto calls = std::make_shared<long long>(0);
+    const sc::Problem P = rosenbrock(true, true, false, calls);
+    const sc::Result r = sc::run("lm", P, 1e-6, false, 0.0, 1, 2000, 1, {}, {}, 0, x0);
+    bool ok = !r.improvements.empty() && r.improvements.front().evaluations == 1 && r.grad_calls > 0;
+    for (std::size_t k = 1; ok && k < r.improvements.size(); ++k)
+        ok = r.improvements[k].evaluations > r.improvements[k - 1].evaluations &&
+             r.improvements[k].grad_calls >= r.improvements[k - 1].grad_calls &&
+             r.improvements[k].f < r.improvements[k - 1].f;
+    ok = ok && r.improvements.back().grad_calls <= r.grad_calls && r.improvements.back().f == r.objectives[0][0];
+    check(ok, "lm with its Jacobian: " + std::to_string(r.improvements.size()) +
+                  " records, f falling, the counts growing, the last the answer");
+}
+
 void polish()
 {
     // an "algorithm": 60 random points of ZDT1, its answer the non-dominated ones
@@ -551,6 +607,7 @@ int main()
     methods();
     single();
     local_solvers();
+    improvements();
     polish();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     // the same on every platform of the CI (MSVC, g++, clang, macOS ARM)

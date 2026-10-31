@@ -24,7 +24,9 @@
 // non-dominated points of the archive, reduced by DSS (dss.hpp) when there are
 // more; without a feasible point, the least violating ones. The observer gets
 // it after the initial plan (gen 0), then every record_every * pop_size
-// evaluations and at the end, with the variables beside the objectives.
+// evaluations and at the end, with the variables beside the objectives. At
+// one objective the answer is the best point, and every improvement of it is
+// a record (improvements.hpp; SO-4 ... SO-6).
 //
 // WHAT ELSE A PROBLEM MAY GIVE (task 18, stage 1, §1.1; addendum 1, §3-4),
 // all of it optional and in the problem's own coordinates:
@@ -72,6 +74,7 @@
 
 #include "../dss.hpp"
 #include "../fp_contract.hpp"
+#include "improvements.hpp"
 
 namespace mootation::scalar {
 
@@ -142,6 +145,7 @@ public:
     bool over = false;                 // the run has ended: the final tolerance
     bool recorded = false;             // gen 0 has gone to the observer
     long long gen0 = 0;                // gens before this evaluator (polish.hpp)
+    ImprovementLog improvements;       // m = 1: the best point's records (improvements.hpp)
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
               int pop_size_, Observer obs, int record_every)
@@ -409,9 +413,9 @@ private:
         bool bad = false;
         for (double v : f) bad = bad || !std::isfinite(v);
         for (double v : g) bad = bad || !std::isfinite(v);
+        if (joint) ++grad_calls;       // counted before keep(): the record holds its own call
         const std::size_t i = keep(x, f, g, bad, key, true);
         if (joint) {
-            ++grad_calls;
             if (res) scale_rows(J);
             put_grad(i, std::move(gf), std::move(J));
         }
@@ -431,6 +435,7 @@ private:
         where_[key] = i;
         if (count) ++spent;
         if (!bad && nd_set && nd_tol == eq_tol() && cv(i) <= 0.0) offer(i);
+        if (m == 1 && !bad) improvements.offer(f[0], cv(i), spent, grad_calls);
         if (observer && count && spent >= next_record) {
             while (next_record <= spent) next_record += stride;
             record();

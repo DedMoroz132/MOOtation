@@ -16,6 +16,11 @@
 // (all_at). The archives take every row as offered: campaign.py's pending
 // lists and its "posthoc" mode only batch the same additions, one point after
 // the other, so the points are the same.
+//
+// At one objective (task 18, stage 1, §1.2) the ledger keeps the best point
+// and a record each time it improves (scalar/improvements.hpp): a row's
+// violation is the sum of max(g, 0) over its constraint values, its count
+// the evaluation's, grad_calls what set_grad_calls last said.
 // ============================================================================
 
 #include <algorithm>
@@ -28,6 +33,7 @@
 
 #include "grid_archive.hpp"
 #include "indicators.hpp"
+#include "scalar/improvements.hpp"
 #include "set_archive.hpp"
 
 namespace mootation {
@@ -85,6 +91,13 @@ public:
                 first_feasible_ = start_ + 1 + static_cast<long long>(i);
                 first = false;
             }
+            if (m_ == 1 && finite_[i]) {
+                double cv = 0.0;
+                if (G)
+                    for (std::size_t k = 0; k < c; ++k) cv += std::max(G[i * c + k], 0.0);
+                if (log_.offer(F[i], cv, start_ + 1 + static_cast<long long>(i), grad_calls_))
+                    best_x_.assign(X + i * d_, X + (i + 1) * d_);
+            }
         }
         next_read_ = static_cast<std::size_t>(std::upper_bound(reads_.begin(), reads_.end(), start_) - reads_.begin());
     }
@@ -113,6 +126,11 @@ public:
     const std::vector<long long>& failed_fe() const { return failed_fe_; }
     long long first_feasible() const { return first_feasible_; }     // -1: none yet
     const std::map<long long, std::pair<double, double>>& all_at() const { return all_at_; }
+
+    // one objective: the caller's gradient calls so far, for the next records
+    void set_grad_calls(long long k) { grad_calls_ = k; }
+    const std::vector<scalar::Improvement>& improvements() const { return log_.records(); }
+    const std::vector<double>& best_x() const { return best_x_; }      // the best point's variables
 
 private:
     void offer(std::size_t lo, std::size_t hi)
@@ -146,6 +164,9 @@ private:
     long long fe_ = 0, n_failed_ = 0, first_feasible_ = -1;
     std::vector<long long> failed_fe_;
     std::map<long long, std::pair<double, double>> all_at_;
+    scalar::ImprovementLog log_;                   // one objective
+    std::vector<double> best_x_;
+    long long grad_calls_ = 0;
     // the batch in progress
     const double* X_ = nullptr;
     const double* F_ = nullptr;
