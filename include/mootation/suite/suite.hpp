@@ -20,6 +20,14 @@
 // objective, the function bbob_fid (1..24) at instance bbob_iid drawn here,
 // or its numbers in `bbob` (one function).
 //
+// The least-squares sets at one objective (task 18, stage 1, §1d): family
+// "MGH", the function mgh_id (1..35) of Moré, Garbow, Hillstrom 1981 in n_var
+// variables with mgh_m residuals (mgh.hpp); family "NIST", the StRD file
+// `nist` (nist.hpp, the library's copy) with n_var parameters. The objective
+// is 1/2 ||r||^2 (the sum of squares MGH and NIST give, halved), the residuals
+// and (MGH) their Jacobian come with it (Native::residuals); no box: the
+// bounds are -inf / +inf.
+//
 // The verification set (classic.hpp; task 17, supplement 2, §3): family
 // "SCH", "FON", "POL", "KUR", "SPH" (m = n_obj), "QV" or "KURZ".
 //
@@ -70,7 +78,9 @@
 // (wfg8_optimum below, as rotated.py's), 2i the variable's upper bound.
 // ============================================================================
 
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <random>
 #include <stdexcept>
@@ -90,7 +100,9 @@
 #include "instances.hpp"
 #include "lircmop.hpp"
 #include "maf.hpp"
+#include "mgh.hpp"
 #include "mmo.hpp"
+#include "nist.hpp"
 #include "mop.hpp"
 #include "mw.hpp"
 #include "polygon.hpp"
@@ -130,6 +142,8 @@ struct Spec {
     std::vector<bbob::Function> bbob;             // bbob-biobj: f_alpha and f_beta, handed over
     int bbob_fnum = 0, bbob_iid = 1;              // or drawn here: F1..F55 at that instance (bbob::biobj)
     int bbob_fid = 0;                             // bbob: f1..f24 at bbob_iid (bbob::instance)
+    int mgh_id = 0, mgh_m = 0;                    // MGH: the function and its residuals' count
+    std::string nist;                             // NIST: the file's name (Misra1a, ...)
     int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
     bool wide = false;                            // DTLZ: wideDTLZ3's box (Problem::bounds)
     std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet (from it where empty)
@@ -200,6 +214,8 @@ public:
         else if (f == "C3-DTLZ4") set_cdtlz(4, dtlz::Cons::C3_DTLZ4, n_obj);
         else if (f == "bbob-biobj" || f == "bbob-biobj-mixint") kind_ = Kind::BBOB;
         else if (f == "bbob") kind_ = Kind::BBOB1;
+        else if (f == "MGH") kind_ = Kind::MGH;
+        else if (f == "NIST") kind_ = Kind::NIST;
         else throw std::invalid_argument("suite: unknown family '" + f + "'");
         check();
     }
@@ -308,7 +324,34 @@ public:
             case Kind::RE:
                 re::evaluate(re_, p, f, g);
                 return;
+            case Kind::MGH:
+            case Kind::NIST: {
+                std::vector<double> r(static_cast<std::size_t>(n_res));
+                residuals(p, r.data(), nullptr);
+                double sum = 0.0;
+                for (double v : r) sum += v * v;
+                f[0] = 0.5 * sum;
+                return;
+            }
         }
+    }
+
+    // MGH and NIST: the residuals at x, and (MGH, J not null) their Jacobian
+    void residuals(const double* x, double* r, double* J) const override
+    {
+        const std::size_t n = static_cast<std::size_t>(n_var), m = static_cast<std::size_t>(n_res);
+        const std::vector<double> xv(x, x + n);
+        std::vector<double> rv, Jv;
+        if (kind_ == Kind::MGH) {
+            mgh::evaluate(s_.mgh_id, n, m, xv, rv, J ? &Jv : nullptr);
+        } else if (kind_ == Kind::NIST) {
+            if (J) throw std::logic_error("suite: NIST gives no Jacobian");
+            nist::residuals(nist_, xv, rv);
+        } else {
+            Native::residuals(x, r, J);
+        }
+        std::copy(rv.begin(), rv.end(), r);
+        if (J) std::copy(Jv.begin(), Jv.end(), J);
     }
 
     const Spec& spec() const { return s_; }
@@ -393,6 +436,9 @@ public:
             case Kind::IPolygon: return box(n, 0.0, 100.0);  // polygon_ishibuchi.BOX
             case Kind::MMO: return mmo::bounds(mmo_, n);
             case Kind::RE: return re::bounds(re_);
+            case Kind::MGH:
+            case Kind::NIST: return box(n, -std::numeric_limits<double>::infinity(),
+                                        std::numeric_limits<double>::infinity());   // no box
         }
         return {};
     }
@@ -420,7 +466,7 @@ public:
 
 private:
     enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, BBOB1, DASCMOP, LIRCMOP,
-                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM, Bits, CatZDT };
+                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM, Bits, CatZDT, MGH, NIST };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
@@ -437,6 +483,7 @@ private:
     zcat::Problem zcat_;
     bbob::Pair bbob_;
     bbob::Objective bbob1_;
+    nist::Dataset nist_;
 
     void set_cdtlz(int base, dtlz::Cons cons, int n_cons)
     {
@@ -647,6 +694,22 @@ private:
                 n_con = z.n_con;
                 break;
             }
+            case Kind::MGH: {
+                const std::size_t nu = static_cast<std::size_t>(n);
+                if (s_.mgh_id < 1 || s_.mgh_id > mgh::kCount || M != 1 || s_.mgh_m < 1) fail("1..35, one objective, m >= 1");
+                if (mgh::fixed_n(s_.mgh_id) && mgh::fixed_n(s_.mgh_id) != nu) fail("the function's n");
+                const std::size_t fm = mgh::fixed_m(s_.mgh_id, nu);
+                if (fm && fm != static_cast<std::size_t>(s_.mgh_m)) fail("the function's m");
+                n_res = s_.mgh_m;
+                has_jacobian = true;
+                break;
+            }
+            case Kind::NIST:
+                if (M != 1) fail("one objective");
+                nist_ = nist::embedded(s_.nist);
+                if (static_cast<std::size_t>(n) != nist_.n) fail("the file's parameters");
+                n_res = static_cast<int>(nist_.y.size());
+                break;
         }
         const std::string& map = s_.map;
         if (map == "none") return;

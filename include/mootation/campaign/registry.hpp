@@ -169,6 +169,15 @@ struct RegistryProblem {
     // refs/sets.hpp): null where C++ does not build them
     std::vector<double> ideal, nadir;
     json::Value front, pset;
+    // one objective (task 18, stage 1, §1d): the minimum where it is known
+    // (bbob: the instance's; MGH: the paper's (d), halved; NIST: the certified
+    // sum of squares, halved), and the start where the problem has one (MGH:
+    // x_s, 10 x_s or 100 x_s; NIST: the file's start 1 or 2)
+    std::optional<double> f_opt;
+    std::string f_opt_kind;                       // "exact", "computed" (MGH's printed minima), "certified" (NIST)
+    std::vector<double> x0;
+    std::vector<double> f_local;                  // MGH: the local minima its paper prints, halved (levels)
+    std::optional<bool> large_residual;           // MGH: the global minimum is not zero
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -277,6 +286,10 @@ inline suite::Spec spec_of(const json::Value& d)
     s.triplet = floats_of(d.find("triplet"));
     s.bbob_fnum = static_cast<int>(int_of(d, "bbob_fnum"));
     s.bbob_iid = static_cast<int>(int_of(d, "bbob_iid", 1));
+    s.bbob_fid = static_cast<int>(int_of(d, "bbob_fid"));
+    s.mgh_id = static_cast<int>(int_of(d, "mgh_id"));
+    s.mgh_m = static_cast<int>(int_of(d, "mgh_m"));
+    if (const json::Value* v = d.find("nist"); v && v->kind == Kind::String) s.nist = v->s;
     if (const json::Value* r = d.find("rotation"); r && r->kind == Kind::Object) {
         s.rotation.family = r->find("family")->s;
         s.rotation.M = static_cast<int>(int_of(*r, "M"));
@@ -369,6 +382,13 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     if (const json::Value* v = o.find("uninformative"); v && v->kind == json::Value::Kind::String)
         p.uninformative = v->s;
     if (const json::Value* v = o.find("frame_files")) p.frame_files = *v;
+    if (const json::Value* v = o.find("f_opt"); v && (v->kind == json::Value::Kind::Float || v->kind == json::Value::Kind::Int))
+        p.f_opt = v->kind == json::Value::Kind::Float ? v->f : static_cast<double>(v->i);
+    if (const json::Value* v = o.find("f_opt_kind"); v && v->kind == json::Value::Kind::String) p.f_opt_kind = v->s;
+    p.x0 = detail::floats_of(o.find("x0"));
+    p.f_local = detail::floats_of(o.find("f_local"));
+    if (const json::Value* v = o.find("large_residual"); v && v->kind == json::Value::Kind::Bool)
+        p.large_residual = v->b;
     if (const json::Value* v = o.find("seeded_stream"); v && v->kind == json::Value::Kind::String)
         p.seeded_stream = v->s;
     if (const json::Value* v = o.find("var_kinds"); v && v->kind == json::Value::Kind::Array)

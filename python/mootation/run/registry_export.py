@@ -138,6 +138,11 @@ def entry(name: str) -> dict:
         "front": front_spec(name),
         "set": set_spec(name),
         "frame_files": _frame_files(name),
+        # one objective (task 18, stage 1, §1d): the minimum and the start
+        **({"f_opt": p.f_opt, "f_opt_kind": p.f_opt_kind,
+            "x0": None if p.x0 is None else [float(v) for v in p.x0],
+            "f_local": [float(v) for v in p.f_local], "large_residual": p.large_residual}
+           if p.n_obj == 1 else {}),
     }
 
 
