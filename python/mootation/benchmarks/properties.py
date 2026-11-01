@@ -568,6 +568,15 @@ def _huband(name: str) -> dict | None:
     """Huband's seven keys for one registry name, or None."""
     if name in _CLASSIC:
         return dict(_CLASSIC[name])
+    from ..families import SYMMETRIC
+    if any(name.startswith(f + "_") for f in SYMMETRIC):
+        # the problems with symmetries (task 19, symmetric.py): the minima come
+        # in equivalent copies, one per permutation of the blocks (and sign of
+        # mlp_plateau's units, rotation of lj_cluster), so multimodal; lowrank's
+        # form a connected set (GL(r)), not isolated optima: not stated; the
+        # rest not stated by the sources
+        multimodal = None if name.startswith("lowrank_") else True
+        return _p(None, multimodal, None, None, None, None, None, deceptive=None)
     stem, m = _stem_and_m(name)
     if stem in _ZDT:
         return dict(_ZDT[stem])

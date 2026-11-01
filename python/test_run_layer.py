@@ -1710,7 +1710,10 @@ def the_registry_has_problems_at_one_objective():
     by = {f: [k for k in one if k.startswith(f)] for f in ("bbob", "MGH", "NIST")}
     sizes = {f: len(v) for f, v in by.items()}
     assert sizes == {"bbob": 144, "MGH": 54, "NIST": 54}, sizes
-    assert len(one) == 252, len(one)
+    from mootation.families import SYMMETRIC          # task 19, §19.1 (benchmarks/symmetric.py)
+    sym = [k for k in one if k.startswith(tuple(f + "_" for f in SYMMETRIC))]
+    assert len(one) - len(sym) == 252, len(one)
+    assert len(sym) == 27, len(sym)
     for k in by["bbob"]:
         q = one[k]
         fid, D = int(k[4:6]), int(k[8:10])
@@ -1788,7 +1791,8 @@ def single_objective_measures_agree_with_their_python_cross_check():
     assert all(abs(a - b) <= 4.5e-16 * b for a, b in zip(C.coco_precisions(), P.coco_precisions()))   # pow: an ulp or two
     assert len(C.coco_precisions()) == 51 and len(C.coco_precisions(-6)) == 41
     one = [q for q in PROBLEMS.values() if q.n_obj == 1]
-    assert all(q.targets == ("absolute" if q.name.startswith("bbob") else "relative") for q in one)
+    # lj_cluster (task 19, symmetric.py, SYMR-3): absolute, as bbob
+    assert all(q.targets == ("absolute" if q.name.startswith(("bbob", "lj_cluster")) else "relative") for q in one)
 
     def compare(runs, kind, f_ref, budgets):
         eps = C.default_precisions(kind)
