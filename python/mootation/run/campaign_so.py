@@ -35,8 +35,8 @@ answer, the hard budgets, the snapshots) do not apply: meta.json names them
 (ignored_at_m1).
 
 REFUSALS (incompatible, as campaign.py records them): an algorithm that is
-not a single-objective one (mootation.scalar.SINGLE; stage 4's cores come
-with their wiring); lm on a problem without residuals; an algorithm other
+not a single-objective one (mootation.scalar.SINGLE, stage 4's population
+methods included); lm on a problem without residuals; an algorithm other
 than lm and lbfgsb on a problem without a box (bounds -inf / +inf).
 """
 

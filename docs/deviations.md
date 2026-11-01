@@ -400,7 +400,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-160 items: 160 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `subproblems`.
+168 items: 168 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -507,6 +507,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `polish` | POLISH-1 | The objective improved goes round the objectives (the first point f_1, the second f_2, ...) in DSS order; the objectives are normalized by the range of the points chosen. | yes | `polish.hpp` |
 | `polish` | POLISH-2 | The answer after polishing is the non-dominated union of the algorithm's answer and the polished points, not the archive's; cut to pop_size, it keeps a point weakly dominating each point of the algorithm's answer firs... | yes | `polish.hpp` |
 | `polish` | POLISH-3 | The subproblem's constraints f_i <= f_i(a) hold to a slack (SLACK, in the normalized objectives): a result a hair worse than a in one objective does not dominate a, and both stay. | yes | `polish.hpp` |
+| `population` | POP-1 | The budget can end inside a generation: the points evaluated so far are in the archive (and may be the answer), the method is not told the rest. | yes | `population.hpp` |
+| `population` | POP-2 | A point the archive has already (a repeated point) is not evaluated again and costs nothing (evaluator.hpp, THE BUDGET); the method is told its value as for any other. | yes | `population.hpp` |
+| `population` | POP-3 | A failed evaluation (evaluator.hpp: a value not finite) is told as NaN, f and v, which evo.hpp counts as +infinity (EVO-1). | yes | `population.hpp` |
+| `population` | POP-4 | sep_cmaes works in the box normalized to [0, 1]^n, as cmaes does in run_single (SINGLE-2), from the mean y0 with step cma_sigma0; a point outside the box is evaluated at its clip and told the clip's f plus the squared... | yes | `population.hpp` |
 | `pso` | PSO-1 | §VI computes chi "as shown in (4.15)"; (4.15) is the modulus of the eigenvalues, sqrt(chi). | yes | `pso.hpp` |
 | `pso` | PSO-2 | Synchronous: the whole swarm is evaluated, then every p_i and p_g are updated, then every particle moves (the pseudocode updates p_g particle by particle). | yes | `pso.hpp` |
 | `pso` | PSO-3 | "Initialize population: random x_i, v_i": v_i uniform in [-(hi - lo)/2, (hi - lo)/2] coordinate by coordinate, drawn after all positions; `v0_zero` starts at 0 (SMPSO-5 of smpso.hpp). | yes | `pso.hpp` |
@@ -534,6 +538,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | LOCAL-2 | Neither solver's own limit on evaluations (lm's max_nfev, lbfgsb's max_nfev and max_iter) is put: the budget stops them. | yes | `scalar.hpp` |
 | `scalar` | LOCAL-3 | A failed evaluation ends the run, as sqp's (SCALAR-6): neither method can step over a hole in the function. | yes | `scalar.hpp` |
 | `scalar` | LOCAL-4 | Without x0, a bound that is not finite is refused: there is no box to draw the plan in, and no frame is put on x (addendum 1, §3.1). | yes | `scalar.hpp` |
+| `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
+| `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
+| `scalar` | POP-7 | The first population is the method's draw: x0, a design (init) and seed points are not used and are reported as ignored, except x0 for sep_cmaes, its mean (normalized and clipped to the box); without x0 the mean is a... | yes | `scalar.hpp` |
+| `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-3 | Ranking: the comparison of evo.hpp (NSGA-II's constrained- domination at M = 1 for constraints g <= 0, not in the paper), ties in the order told (stable). | yes | `sep_cmaes.hpp` |

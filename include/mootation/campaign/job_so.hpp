@@ -190,7 +190,9 @@ private:
     static bool single(const std::string& a)
     {
         const auto& s = scalar::single_names();
-        return std::find(s.begin(), s.end(), a) != s.end() || local(a);
+        const auto& p = scalar::population_names();
+        return std::find(s.begin(), s.end(), a) != s.end() || std::find(p.begin(), p.end(), a) != p.end() ||
+               local(a);
     }
     static bool local(const std::string& a) { return a == "lm" || a == "lbfgsb"; }
 

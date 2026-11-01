@@ -1466,6 +1466,21 @@ Bounds only — a problem with constraints is refused (LOCAL-1). Knobs:
 | `lbfgsb_m`, `lbfgsb_pgtol`, `lbfgsb_ftol` | the memory (5), the projected-gradient test (1e-5), the relative reduction test (0: off) |
 | `grad_cost` | what a call of the problem's gradient or Jacobian costs of the budget (1); all five single-objective algorithms |
 
+**The population methods** (task 18, stage 4; `run_population` in
+`scalar/scalar.hpp`, the loop in `scalar/population.hpp`): `de`, `jade`,
+`shade`, `lshade`, `ga_sbx`, `ssga`, `g3_pcx`, `chc`, `pso`, `spso2011` and
+`sep_cmaes` at `n_objs = 1`, each with its paper's defaults — their knobs are
+in [algorithms.md](algorithms.md#one-objective). Every point a method asks for
+goes through the evaluator: counted, kept in the archive, and the best
+point's records with it; a point asked for again is not evaluated again
+(POP-2). The budget may end inside a generation (POP-1). `np` sets the
+population, 0 (the default) the paper's size (de 10 D, lshade 18 D, pso 20,
+...); `pop_size` does not (POP-6). Every bound must be finite (POP-5); `x0`, a
+design and seed points are ignored and reported, but `sep_cmaes` takes `x0`
+as its mean (POP-7). A shorter budget gives the same run cut short, except
+for `lshade`, whose population shrinks over the budget (POP-8,
+`lshade_max_nfe`); the others do not depend on `max_evaluations`.
+
 **The problem's derivatives** (task 18, stage 1, §1.1; `scalar/evaluator.hpp`):
 `minimize(..., grad=g)` gives the objective's gradient (for a constrained
 problem the pair (gradient, the constraints' Jacobian)), `residuals=r` the
@@ -1513,7 +1528,8 @@ then; the value at a fixed budget compares on an ordinal scale only (H22
 `campaign/job_so.hpp`): a job on a problem of the registry with one objective
 (bbob, MGH, NIST) takes its own path in both engines, which write the same
 files; the multi-objective path is untouched. The algorithm — one of
-`mootation.scalar.SINGLE` — sees the problem through counting functions, every
+`mootation.scalar.SINGLE`, the population methods among them — sees the problem through
+counting functions, every
 value asked for a record of the best point's log; a least-squares problem hands
 its residuals (MGH its Jacobian) and its start `x0` to `lm` and `lbfgsb`. A
 run writes:

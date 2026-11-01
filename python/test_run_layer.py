@@ -11095,7 +11095,8 @@ def scalar_presets_budget_and_refusals():
     assert tuple(PRESETS) == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm",
                               "eps_cmaes") and NAMES == tuple(PRESETS) + (
                                   "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes", "lm",
-                                  "lbfgsb")
+                                  "lbfgsb", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
+                                  "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes")
     calls = [0]
     def f(x):
         calls[0] += 1
@@ -11258,7 +11259,12 @@ def single_objective_solvers_and_baselines_at_one_objective():
     from mootation.run.baselines import run_baseline
     from mootation.run.budget import depends_on_budget
     from mootation.scalar import SINGLE
-    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb")
+    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "de", "jade", "shade", "lshade",
+                      "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes")
+    for name in SINGLE[5:]:                          # stage 4's population methods
+        assert check_pop(name, 20, 2) == (f"{name} is a single-objective algorithm: n_objs must "
+                                          "be 1, got 2"), name
+        assert check_pop(name, 20, 1) is None, name
     box = [(-1.0, 1.0)] * 4
 
     def sphere(x, seen=None):
@@ -11374,6 +11380,47 @@ def lm_and_lbfgsb_take_the_problems_derivatives():
             assert why in str(e), (why, str(e))
         else:
             raise AssertionError("not refused: " + why)
+
+@test
+def the_population_methods_run_through_minimize():
+    """Task 18, stage 4 wiring (scalar.hpp, run_population; population.hpp):
+    the eleven population methods of stage 4 are algorithms of minimize() at
+    one objective: near the minimum of a shifted sphere in [-5, 5]^3 within the
+    budget, np first in the settings, a knob taken; the same seed, the same
+    run; lshade alone depends on the budget (POP-8); two objectives and an
+    infinite bound refused."""
+    if _core_with("scalar") is None:
+        print("  skip  the_population_methods...: no _core.scalar"); return
+    import math
+    import mootation
+    from mootation.run.budget import depends_on_budget
+    from mootation.scalar import POPULATION
+    assert len(POPULATION) == 11
+    box = [(-5.0, 5.0)] * 3
+
+    def f(x):
+        return [sum((v - 1.0) ** 2 for v in x)]
+    for name in POPULATION:
+        out = mootation.minimize(f, box, 1, algorithm=name, max_evaluations=3000, seed=4)
+        again = mootation.minimize(f, box, 1, algorithm=name, max_evaluations=3000, seed=4)
+        assert out.objectives[0][0] < 1e-2 and out.evaluations <= 3000, (name, out.objectives)
+        assert (out.variables, out.objectives) == (again.variables, again.objectives), name
+        assert out.settings[0][0] == "np" and int(out.settings[0][1]) >= 2, (name, out.settings)
+        assert depends_on_budget(name) == (name == "lshade"), name
+    out = mootation.minimize(f, box, 1, algorithm="jade", max_evaluations=300, seed=1, jade_p=0.1)
+    assert dict(out.settings)["jade_p"] == "0.1", out.settings
+    for call, why in (
+            (lambda: mootation.minimize(lambda x: [x[0], x[1]], box, 2, algorithm="shade", max_evaluations=300),
+             "single-objective algorithm"),
+            (lambda: mootation.minimize(f, [(-math.inf, 1.0)] * 3, 1, algorithm="de", max_evaluations=300),
+             "every bound must be finite")):
+        try:
+            call()
+        except ValueError as e:
+            assert why in str(e), (why, str(e))
+        else:
+            raise AssertionError("not refused: " + why)
+
 
 @test
 def improvements_record_the_best_point():
@@ -13041,6 +13088,55 @@ def a_campaign_at_one_objective_writes_the_same_files_from_both_engines():
         assert (Path(td) / "files" / "MGH01_n02_m02_x1_1D" / "lm" / "run_1" / "improvements.csv").is_file()
 
 
+_POP_TOML = """algorithms = [ { name = "de", pop = 0, gens = 0 }, { name = "lshade", pop = 0, gens = 0 },
+               { name = "pso", pop = 0, gens = 0 }, { name = "sep_cmaes", pop = 0, gens = 0 } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["bbob01_n02_1D", "bbob21_n05_1D", "MGH01_n02_m02_x1_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 600
+storage = "store"
+"""
+
+
+@test
+def a_campaign_of_population_methods_writes_the_same_files_from_both_engines():
+    """Task 18, stage 4 wiring: de, lshade, pso and sep_cmaes on bbob in both
+    engines: every run the same (meta.json, the trajectory, final.csv,
+    improvements.csv); MGH has no box and refuses them (POP-5) in both."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_of_population_methods...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_POP_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert len(jobs) == 24 and (cp["done"], cp["failed"]) == (cc["done"], cc["failed"]) == (16, 8), (cp, cc)
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            ma = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            if job.problem.startswith("MGH"):
+                assert ma["status"] == "failed" and ma.get("incompatible"), ma
+                continue
+            assert ma["status"] == "done" and ma["fe"] <= 600, ma
+            ta, tb = ((x / "improvements.csv").read_text(encoding="utf-8") for x in (a, b))
+            assert ta == tb, (job.problem, job.key)
+
+
 @test
 def a_store_cuts_a_torn_record_and_packs_the_same_bytes():
     """Task 16, §1.1 and §1.3: a record cut off halfway (a worker killed while
@@ -13358,13 +13454,18 @@ metrics = ["igdp"]
 @test
 def every_core_has_a_row_in_verification_md():
     """Task 16, §5: docs/verification.md, the map of how each algorithm is
-    checked, has one row per core of algorithms.def, and no other."""
+    checked, has one row per core of algorithms.def, and no other; task 18,
+    stage 4: its second table one row per population method
+    (mootation.scalar.POPULATION)."""
     import re
     from mootation.run.algorithms import algorithm_names
+    from mootation.scalar import POPULATION
     path = HERE.parent / "docs" / "verification.md"
     if not path.is_file():
         print("  skip  every_core_has_a_row...: no docs"); return
-    rows = re.findall(r"^\| `(\w+)` \|", path.read_text(encoding="utf-8"), re.M)
+    cores, methods = path.read_text(encoding="utf-8").split("\n## The population methods at one objective\n")
+    assert re.findall(r"^\| `(\w+)` \|", methods, re.M) == list(POPULATION)
+    rows = re.findall(r"^\| `(\w+)` \|", cores, re.M)
     assert sorted(rows) == sorted(algorithm_names()), \
         (sorted(set(algorithm_names()) - set(rows)), sorted(set(rows) - set(algorithm_names())))
 

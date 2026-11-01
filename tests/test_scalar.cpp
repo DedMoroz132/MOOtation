@@ -18,6 +18,13 @@
 //             (SINGLE-1); two objectives and an infinite bound refused;
 //   improvements  at one objective, the records of the best point (task 18,
 //             stage 1, §1.2): a plain pass over the evaluations in order;
+//   population  stage 4's methods on the evaluator: the weighted sphere with
+//             and without the inequality, near the minimum, every call a
+//             new point, the budget kept; the same seed the same run; a
+//             smaller budget the same run cut short (POP-1); de and ga_sbx
+//             evaluate what the method alone asks for, a repeat not again
+//             (POP-2); a method that only repeats itself stops (POP-2);
+//             refusals, knobs taken and ignored;
 //   polish    the polished answer weakly dominates the algorithm's answer;
 //   bits      a checksum of the runs' answers, the same on every platform of
 //             the CI (no contraction into fused multiply-adds, dm:: for the
@@ -192,8 +199,10 @@ void methods()
     const long long budget = 1500;
     for (const std::string& name : sc::names()) {
         if (std::find(sc::single_names().begin(), sc::single_names().end(), name) != sc::single_names().end() ||
-            std::find(sc::local_names().begin(), sc::local_names().end(), name) != sc::local_names().end())
-            continue;                               // one objective only: single(), local_solvers() below
+            std::find(sc::local_names().begin(), sc::local_names().end(), name) != sc::local_names().end() ||
+            std::find(sc::population_names().begin(), sc::population_names().end(), name) !=
+                sc::population_names().end())
+            continue;                               // one objective only: single(), local_solvers(), population()
         for (int which = 0; which < 2; ++which) {
             Counted c = which == 0 ? zdt1() : constrained();
             const sc::Result r = sc::run(name, c.P, 1e-3, false, 0.0, 20, budget, 7, {}, {}, 0, {});
@@ -557,6 +566,142 @@ void improvements()
                   " records, f falling, the counts growing, the last the answer");
 }
 
+// The population methods of stage 4 on the evaluator (scalar.hpp,
+// run_population; population.hpp, POP-1 ... POP-8).
+std::uint64_t g_population = 1469598103934665603ULL;   // FNV-1a of population()'s answers
+
+void fnv(std::uint64_t& h, const sc::Rows& R)
+{
+    for (const Vec& row : R)
+        for (double v : row) {
+            std::uint64_t bits;
+            std::memcpy(&bits, &v, sizeof bits);
+            for (int k = 0; k < 8; ++k) {
+                h ^= (bits >> (8 * k)) & 0xFF;
+                h *= 1099511628211ULL;
+            }
+        }
+}
+
+// The points a method alone asks for in `generations` generations on the
+// problem, told its values, without repeats: what the evaluator should see.
+template <class Method>
+std::vector<Vec> alone(Method& m, const sc::Problem& P, int generations)
+{
+    std::vector<Vec> out;
+    for (int g = 0; g < generations; ++g) {
+        const sc::Rows X = m.ask();
+        Vec f(X.size()), v(X.size(), 0.0), fx(1), gx;
+        for (std::size_t k = 0; k < X.size(); ++k) {
+            P.evaluate(X[k], fx, gx);
+            f[k] = fx[0];
+            if (std::find(out.begin(), out.end(), X[k]) == out.end()) out.push_back(X[k]);
+        }
+        m.tell(f, v);
+    }
+    return out;
+}
+
+void population()
+{
+    const double t = 2.0 / 15.0, f_con = 6.0 * t * t;
+    for (const std::string& name : sc::population_names()) {
+        // lshade's schedule runs to its MAX_NFE (POP-8): fixed here, so that budgets compare
+        const sc::Knobs kn = name == "lshade" ? sc::Knobs{{"lshade_max_nfe", {false, "", 4000.0}}} : sc::Knobs{};
+        for (int con = 0; con < 2; ++con) {
+            Single a = single_problem(con == 1);
+            const sc::Result r = sc::run(name, a.P, 1e-6, false, 0.0, 20, 4000, 3, kn, {}, 0, {});
+            Single b = single_problem(con == 1);
+            const sc::Result r2 = sc::run(name, b.P, 1e-6, false, 0.0, 20, 4000, 3, kn, {}, 0, {});
+            const double want = con ? f_con : 0.0;
+            const double fbest = r.objectives.empty() ? 1e300 : r.objectives[0][0];
+            const std::string what = name + (con ? " with g <= 0" : " on the weighted sphere");
+            check(r.objectives.size() == 1 && r.cv[0] <= 0.0 && fbest - want < 1e-2 && fbest >= want - 1e-12 &&
+                      r.evaluations == static_cast<long long>(a.seen->size()) && r.evaluations <= 4000 &&
+                      !r.improvements.empty() && r.improvements.back().f == fbest,
+                  what + ": f - f* = " + std::to_string(fbest - want) + " in " + std::to_string(r.evaluations) +
+                      " evaluations, the answer the best feasible point, the last record");
+            check(r.objectives == r2.objectives && r.variables == r2.variables && r.evaluations == r2.evaluations &&
+                      *a.seen == *b.seen,
+                  what + ": the same seed, the same run");
+            Single c = single_problem(con == 1);
+            const sc::Result r3 = sc::run(name, c.P, 1e-6, false, 0.0, 20, 600, 3, kn, {}, 0, {});
+            const bool prefix = c.seen->size() <= a.seen->size() &&
+                                std::equal(c.seen->begin(), c.seen->end(), a.seen->begin());
+            check(prefix && r3.evaluations == std::min<long long>(600, r.evaluations),
+                  what + ": at a budget of 600 the run cut short there (POP-1)");
+            fnv(g_population, r.objectives);
+            fnv(g_population, r.variables);
+            fnv(g_population, r3.variables);
+        }
+    }
+    // the wiring adds nothing: de and ga_sbx see what the method alone asks for
+    {
+        Single a = single_problem(false);
+        const sc::Knobs kn{{"np", {false, "", 20.0}}};
+        const sc::Result r = sc::run("de", a.P, 1e-6, false, 0.0, 20, 20 * 30, 9, kn, {}, 0, {});
+        std::mt19937 rng(9);
+        sc::de::Options o;
+        o.np = 20;
+        sc::de::DE m(a.P.lo, a.P.hi, o, rng);
+        const std::vector<Vec> seen = *a.seen;
+        check(alone(m, a.P, 30) == seen && r.evaluations == 600, "de: the points of DE alone, in order");
+    }
+    {
+        Single a = single_problem(false);
+        const sc::Knobs kn{{"np", {false, "", 20.0}}};
+        const sc::Result r = sc::run("ga_sbx", a.P, 1e-6, false, 0.0, 20, 20 * 30, 9, kn, {}, 0, {});
+        std::mt19937 rng(9);
+        sc::ga::Options o = sc::ga::ga_sbx();
+        o.mu = 20;
+        sc::ga::GA m(a.P.lo, a.P.hi, o, rng);
+        const std::vector<Vec> seen = *a.seen;
+        // a repeat costs nothing, so the budget of 600 lasts past 30 generations: those are a prefix
+        const std::vector<Vec> want = alone(m, a.P, 30);
+        check(want.size() < seen.size() && std::equal(want.begin(), want.end(), seen.begin()) &&
+                  r.evaluations == static_cast<long long>(seen.size()) && r.evaluations == 600,
+              "ga_sbx: the points of the GA alone, in order, repeats not evaluated again (POP-2): " +
+                  std::to_string(want.size()) + " new points in 30 generations");
+    }
+    // POP-2: a GA that only copies its parents stops after kIdleGenerations generations
+    {
+        Single a = single_problem(false);
+        const sc::Knobs kn{{"np", {false, "", 20.0}}, {"pc", {false, "", 0.0}}, {"pm", {false, "", 1e-300}}};
+        const sc::Result r = sc::run("ga_sbx", a.P, 1e-6, false, 0.0, 20, 4000, 1, kn, {}, 0, {});
+        check(r.evaluations == 20, "ga_sbx copying its parents: " + std::to_string(r.evaluations) +
+                                       " evaluations, the first population, then the run stops (POP-2)");
+    }
+    // refusals; knobs taken and reported, others ignored
+    Counted z = zdt1();
+    std::string why;
+    try {
+        sc::run("jade", z.P, 1e-6, false, 0.0, 10, 300, 1, {}, {}, 0, {});
+    } catch (const std::invalid_argument& e) {
+        why = e.what();
+    }
+    check(why == "jade is a single-objective algorithm: n_objs must be 1, got 2", "jade at two objectives: " + why);
+    Single u = single_problem(false);
+    u.P.lo[1] = -std::numeric_limits<double>::infinity();
+    why.clear();
+    try {
+        sc::run("pso", u.P, 1e-6, false, 0.0, 10, 300, 1, {}, {}, 0, {});
+    } catch (const std::invalid_argument& e) {
+        why = e.what();
+    }
+    check(why.find("every bound must be finite (POP-5)") != std::string::npos, "pso with an infinite bound: " + why);
+    Single k = single_problem(false);
+    sc::Start st;
+    st.has_x0 = true;
+    st.x0 = {0.3, 0.3, 0.3, 0.3};
+    const sc::Knobs kn{{"F", {false, "", 0.7}}, {"cma_sigma0", {false, "", 0.2}}};
+    const sc::Result rk = sc::run("de", k.P, 1e-6, false, 0.0, 10, 300, 1, kn, {}, 0, st);
+    bool F = false;
+    for (const auto& [key, v] : rk.settings) F = F || (key == "F" && v == "0.7");
+    check(rk.ignored == std::vector<std::string>{"cma_sigma0", "x0"} && F && !rk.settings.empty() &&
+              rk.settings[0] == std::pair<std::string, std::string>{"np", "40"},
+          "de: F taken, NP = 10 D first in the settings; cma_sigma0 and x0 ignored and reported");
+}
+
 void polish()
 {
     // an "algorithm": 60 random points of ZDT1, its answer the non-dominated ones
@@ -608,6 +753,7 @@ int main()
     single();
     local_solvers();
     improvements();
+    population();
     polish();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     // the same on every platform of the CI (MSVC, g++, clang, macOS ARM)
@@ -617,6 +763,8 @@ int main()
     check(g_single == 0xad2a37d5e7d46f36ULL, "bits: the checksum of the single-objective runs");
     std::printf("local checksum %016llx\n", static_cast<unsigned long long>(g_local));
     check(g_local == 0x109781327f59cd92ULL, "bits: the checksum of the lm and lbfgsb runs");
+    std::printf("population checksum %016llx\n", static_cast<unsigned long long>(g_population));
+    check(g_population == 0x6cb8b514c77624afULL, "bits: the checksum of the population methods' runs");
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);
         return 1;

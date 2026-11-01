@@ -146,10 +146,20 @@
 #include "../fp_contract.hpp"
 #include "../random.hpp"
 #include "boostdms.hpp"
+#include "chc.hpp"
+#include "de.hpp"
+#include "ga.hpp"
+#include "jade.hpp"
 #include "lbfgsb.hpp"
 #include "lm.hpp"
+#include "lshade.hpp"
 #include "mosqp.hpp"
+#include "population.hpp"
+#include "pso.hpp"
+#include "sep_cmaes.hpp"
+#include "shade.hpp"
 #include "solvers.hpp"
+#include "spso2011.hpp"
 
 namespace mootation::scalar {
 
@@ -186,7 +196,7 @@ struct Start {
 };
 
 // The names: the presets of `scalar`, then the methods beside it, then the
-// single-objective solvers (run_single).
+// single-objective solvers (run_single, run_local, run_population).
 inline const std::vector<std::string>& preset_names()
 {
     static const std::vector<std::string> v{"scalar", "eps_sqp", "tch_sqp", "nbi_sqp",
@@ -197,7 +207,9 @@ inline const std::vector<std::string>& names()
 {
     static const std::vector<std::string> v{"scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp",
                                             "eps_nm", "eps_cmaes", "boostdms", "mosqp",
-                                            "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb"};
+                                            "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb",
+                                            "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
+                                            "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes"};
     return v;
 }
 
@@ -1111,6 +1123,297 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
     return r;
 }
 
+// ── one objective, a population: stage 4's methods ──────────────────────────
+// The global single-objective methods of stage 4 (task 18, §4.1-4.4) as
+// algorithms, on the evaluator (population.hpp: the loop, POP-1 ... POP-4):
+//   de         DE/rand/1/bin, Storn & Price 1997 (de.hpp)
+//   jade       Zhang & Sanderson 2009 (jade.hpp)
+//   shade      Tanabe & Fukunaga 2013 (shade.hpp)
+//   lshade     Tanabe & Fukunaga 2014 (lshade.hpp)
+//   ga_sbx     Deb & Deb 2014's real-coded GA; ssga its steady state (ga.hpp)
+//   g3_pcx     Deb, Anand, Joshi 2002 (ga.hpp, G3)
+//   chc        Eshelman 1991 with BLX-0.5, Eshelman & Schaffer 1993 (chc.hpp)
+//   pso        Clerc & Kennedy 2002, Type 1'' (pso.hpp)
+//   spso2011   Zambrano-Bigiarini, Clerc, Rojas 2013 (spso2011.hpp)
+//   sep_cmaes  Ros & Hansen 2008 (sep_cmaes.hpp)
+// Each with the defaults of its paper and these knobs (0 for np: the paper's
+// size; every other knob's default is the paper's value its header names):
+//   all        np: the population (de NP, jade NP, shade N, lshade N_init,
+//              ga mu, g3 N, chc M, pso and spso2011 the swarm, sep_cmaes
+//              lambda)
+//   de         F (0.5), CR (0.1), bound_repair (reflect)
+//   jade       jade_p (0.05), jade_c (0.1), de_archive (yes)
+//   shade      shade_h (100), shade_p_max (0.2), de_archive (yes)
+//   lshade     shade_h (6), lshade_p (0.11), lshade_r_arc (2.6),
+//              lshade_n_min (4), lshade_max_nfe (0: the run's budget)
+//   ga_sbx     pc (0.9), eta_c (2), pm (0: 1/n), eta_m (20),
+//   ssga       ga_tournament (2); ssga is (100 + 1) with the coin
+//   g3_pcx     g3_mu (3), g3_lambda (2), g3_sigma (0.1: sigma_zeta and
+//              sigma_eta), bound_repair (reflect)
+//   chc        chc_divergence (0.35), blx_alpha (0.5), chc_bits (10),
+//              bound_repair (reflect)
+//   pso        pso_phi (4.1), kappa (1), pso_topology (ring | global),
+//              pso_v0 (random | zero), bound_repair (reflect)
+//   spso2011   spso_k (3)
+//   sep_cmaes  cma_sigma0 (0.3, in the normalized box), local_tol (1e-14)
+// The other knobs are ignored and reported. n_objs = 1 only; the answer as
+// every method's (evaluator.hpp): the best point.
+//
+// READINGS (declared):
+//   POP-5. Every bound must be finite: the methods draw their first
+//     population uniformly in the box (sep_cmaes its mean), and the papers'
+//     boxes are where they search.
+//   POP-6. The population is the method's own (np), not pop_size: the papers'
+//     sizes are part of the methods (lshade's N_init = 18 D, pso's 20).
+//     pop_size still sets the observer's stride (evaluator.hpp).
+//   POP-7. The first population is the method's draw: x0, a design (init)
+//     and seed points are not used and are reported as ignored, except x0
+//     for sep_cmaes, its mean (normalized and clipped to the box); without
+//     x0 the mean is a uniform point of the box, drawn first.
+//   POP-8. lshade's MAX_NFE is the run's budget unless lshade_max_nfe is
+//     set: §III's MAX_NFE is the budget the run is given.
+inline const std::vector<std::string>& population_names()
+{
+    static const std::vector<std::string> v{"de", "jade", "shade", "lshade", "ga_sbx", "ssga",
+                                            "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes"};
+    return v;
+}
+
+namespace detail {
+
+// The knobs of a population method.
+inline std::vector<std::string> population_knobs(const std::string& name)
+{
+    std::vector<std::string> k{"np"};
+    if (name == "de") k.insert(k.end(), {"F", "CR", "bound_repair"});
+    else if (name == "jade") k.insert(k.end(), {"jade_p", "jade_c", "de_archive"});
+    else if (name == "shade") k.insert(k.end(), {"shade_h", "shade_p_max", "de_archive"});
+    else if (name == "lshade")
+        k.insert(k.end(), {"shade_h", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe"});
+    else if (name == "ga_sbx" || name == "ssga") k.insert(k.end(), {"pc", "eta_c", "pm", "eta_m", "ga_tournament"});
+    else if (name == "g3_pcx") k.insert(k.end(), {"g3_mu", "g3_lambda", "g3_sigma", "bound_repair"});
+    else if (name == "chc") k.insert(k.end(), {"chc_divergence", "blx_alpha", "chc_bits", "bound_repair"});
+    else if (name == "pso") k.insert(k.end(), {"pso_phi", "kappa", "pso_topology", "pso_v0", "bound_repair"});
+    else if (name == "spso2011") k.insert(k.end(), {"spso_k"});
+    else k.insert(k.end(), {"cma_sigma0", "local_tol"});
+    return k;
+}
+
+// The knobs given to a population method, read by name with their defaults.
+class PopulationKnobs {
+public:
+    PopulationKnobs(const std::string& name, const Knobs& knobs) : own_(population_knobs(name))
+    {
+        for (const auto& kv : knobs) {
+            if (listed(own_, kv.first)) given_.push_back(kv);
+            else ignored.push_back(kv.first);
+        }
+    }
+
+    std::vector<std::string> ignored;
+    std::vector<std::pair<std::string, std::string>> settings;   // what the run used, in reading order
+
+    double number(const std::string& k, double fallback)
+    {
+        double x = fallback;
+        if (const Knob* v = find(k)) {
+            x = number_of(k, *v);
+            if (!std::isfinite(x)) throw std::invalid_argument(k + " must be a finite number");
+        }
+        settings.push_back({k, g_format(x)});
+        return x;
+    }
+
+    std::size_t whole(const std::string& k, std::size_t fallback)
+    {
+        double x = static_cast<double>(fallback);
+        if (const Knob* v = find(k)) {
+            x = number_of(k, *v);
+            if (!(x >= 0.0) || x != std::floor(x) || x > 1e9)
+                throw std::invalid_argument(k + " must be a whole number >= 0");
+        }
+        settings.push_back({k, g_format(x)});
+        return static_cast<std::size_t>(x);
+    }
+
+    std::string word(const std::string& k, const std::string& fallback, const std::vector<std::string>& words)
+    {
+        std::string w = fallback;
+        if (const Knob* v = find(k)) {
+            w = shown(*v);
+            if (!v->is_word || !listed(words, w)) throw std::invalid_argument(k + " = '" + w + "': " + joined(words));
+        }
+        settings.push_back({k, w});
+        return w;
+    }
+
+    ops::BoundRepair repair()
+    {
+        static const std::vector<std::string> words{"clip", "reflect", "random", "midpoint",
+                                                    "resample", "wrap", "native", "r_reflect"};
+        return *ops::parse_bound_repair(word("bound_repair", "reflect", words));
+    }
+
+    // np as given (0: the paper's), and the size the method took, first in the settings
+    std::size_t np()
+    {
+        const std::size_t n = whole("np", 0);
+        settings.pop_back();
+        return n;
+    }
+    void size(std::size_t n) { settings.insert(settings.begin(), {"np", std::to_string(n)}); }
+
+private:
+    std::vector<std::string> own_;
+    Knobs given_;
+
+    const Knob* find(const std::string& k) const
+    {
+        for (const auto& kv : given_)
+            if (kv.first == k) return &kv.second;
+        return nullptr;
+    }
+};
+
+}   // namespace detail
+
+inline Result run_population(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
+                             double eq_tol0, int pop_size, long long budget, unsigned seed,
+                             const Knobs& knobs, Observer observer, int record_every, const Start& start)
+{
+    if (P.m != 1)
+        throw std::invalid_argument(name + " is a single-objective algorithm: n_objs must be 1, got " +
+                                    std::to_string(P.m));
+    for (std::size_t j = 0; j < P.lo.size(); ++j)
+        if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
+            throw std::invalid_argument(name + " draws its population in the box: every bound must be finite (POP-5)");
+    if (start.has_x0 && start.x0.size() != P.lo.size())
+        throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
+                                    std::to_string(P.lo.size()) + " variables");
+    detail::PopulationKnobs k(name, knobs);
+    if (start.has_x0 && name != "sep_cmaes") k.ignored.push_back("x0");             // POP-7
+    if (start.has_design) k.ignored.push_back("init");
+    if (start.has_seed_points) k.ignored.push_back("seed_points");
+    std::sort(k.ignored.begin(), k.ignored.end());
+    const std::vector<std::string> yes_no{"yes", "no"};
+    const Vec lo = P.lo, hi = P.hi;
+    const std::size_t np = k.np();
+
+    std::mt19937 rng(seed);
+    Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    try {
+        if (name == "de") {
+            de::Options o;
+            o.np = np;
+            o.F = k.number("F", o.F);
+            o.CR = k.number("CR", o.CR);
+            o.repair = k.repair();
+            de::DE m(lo, hi, o, rng);
+            k.size(m.np());
+            population::drive(m, ev, [&] { return m.done(); });
+        } else if (name == "jade") {
+            jade::Options o;
+            o.np = np;
+            o.p = k.number("jade_p", o.p);
+            o.c = k.number("jade_c", o.c);
+            o.archive = k.word("de_archive", "yes", yes_no) == "yes";
+            jade::JADE m(lo, hi, o, rng);
+            k.size(m.np());
+            population::drive(m, ev, [&] { return m.done(); });
+        } else if (name == "shade") {
+            shade::Options o;
+            if (np) o.np = np;
+            o.H = k.whole("shade_h", o.H);
+            o.p_max = k.number("shade_p_max", o.p_max);
+            o.archive = k.word("de_archive", "yes", yes_no) == "yes";
+            shade::SHADE m(lo, hi, o, rng);
+            k.size(m.np());
+            population::drive(m, ev, [&] { return m.done(); });
+        } else if (name == "lshade") {
+            lshade::Options o;
+            if (np) o.r_ninit = static_cast<double>(np) / static_cast<double>(lo.size());   // N_init = np
+            o.H = k.whole("shade_h", o.H);
+            o.p = k.number("lshade_p", o.p);
+            o.r_arc = k.number("lshade_r_arc", o.r_arc);
+            o.n_min = k.whole("lshade_n_min", o.n_min);
+            o.max_nfe = static_cast<long long>(k.whole("lshade_max_nfe", 0));
+            if (o.max_nfe == 0) o.max_nfe = budget;                                       // POP-8
+            lshade::LSHADE m(lo, hi, o, rng);
+            k.size(m.np());
+            population::drive(m, ev, [&] { return m.done(); });
+        } else if (name == "ga_sbx" || name == "ssga") {
+            ga::Options o = name == "ssga" ? ga::ssga() : ga::ga_sbx();
+            if (np) o.mu = np;
+            o.pc = k.number("pc", o.pc);
+            o.eta_c = k.number("eta_c", o.eta_c);
+            o.pm = k.number("pm", o.pm);
+            o.eta_m = k.number("eta_m", o.eta_m);
+            o.tournament = k.whole("ga_tournament", o.tournament);
+            ga::GA m(lo, hi, o, rng);
+            k.size(m.mu());
+            population::drive(m, ev, [&] { return m.done(); });
+        } else if (name == "g3_pcx") {
+            ga::G3Options o;
+            if (np) o.n = np;
+            o.mu = k.whole("g3_mu", o.mu);
+            o.lambda = k.whole("g3_lambda", o.lambda);
+            o.sigma_zeta = o.sigma_eta = k.number("g3_sigma", o.sigma_zeta);
+            o.repair = k.repair();
+            ga::G3 m(lo, hi, o, rng);
+            k.size(o.n);
+            population::drive(m, ev, [] { return false; });
+        } else if (name == "chc") {
+            chc::Options o;
+            if (np) o.m = np;
+            o.divergence = k.number("chc_divergence", o.divergence);
+            o.alpha = k.number("blx_alpha", o.alpha);
+            o.bits = static_cast<unsigned>(k.whole("chc_bits", o.bits));
+            o.repair = k.repair();
+            chc::CHC m(lo, hi, o, rng);
+            k.size(o.m);
+            population::drive(m, ev, [] { return false; });
+        } else if (name == "pso") {
+            pso::Options o;
+            if (np) o.n = np;
+            o.phi_max = k.number("pso_phi", o.phi_max);
+            o.kappa = k.number("kappa", o.kappa);
+            o.ring = k.word("pso_topology", "ring", {"ring", "global"}) == "ring";
+            o.v0_zero = k.word("pso_v0", "random", {"random", "zero"}) == "zero";
+            o.repair = k.repair();
+            pso::PSO m(lo, hi, o, rng);
+            k.size(o.n);
+            population::drive(m, ev, [&] { return m.done(); });
+        } else if (name == "spso2011") {
+            spso2011::Options o;
+            if (np) o.n = np;
+            o.K = k.whole("spso_k", o.K);
+            spso2011::SPSO2011 m(lo, hi, o, rng);
+            k.size(o.n);
+            population::drive(m, ev, [] { return false; });
+        } else {
+            const double sigma0 = k.number("cma_sigma0", 0.3);
+            const double tol = k.number("local_tol", 1e-14);
+            if (!(sigma0 > 0.0) || !(tol > 0.0)) throw std::invalid_argument("cma_sigma0 and local_tol must be > 0");
+            Vec y0(lo.size());
+            for (std::size_t j = 0; j < lo.size(); ++j)                                    // POP-7
+                y0[j] = start.has_x0 ? std::min(1.0, std::max(0.0, (start.x0[j] - lo[j]) / (hi[j] - lo[j])))
+                                     : rnd::uniform01(rng);
+            sep_cmaes::SepCMAES m(y0, sigma0, rng, np);
+            k.size(m.lambda());
+            population::drive_normalized(m, ev, tol);
+        }
+    } catch (const BudgetSpent&) {
+    }
+    ev.over = true;
+    const std::vector<std::size_t> idx = ev.answer();
+    ev.record(true);
+    Result r = detail::result_of(ev, idx);
+    r.ignored = k.ignored;
+    r.settings = k.settings;
+    r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
+    return r;
+}
+
 // Any of names(): the scalar presets, mosqp, boostdms or a single-objective solver.
 inline Result run(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
                   double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
@@ -1122,6 +1425,9 @@ inline Result run(const std::string& name, const Problem& P, double eq_tol, bool
     if (detail::listed(single_names(), name))
         return run_single(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
                           std::move(observer), record_every, start);
+    if (detail::listed(population_names(), name))
+        return run_population(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
+                              std::move(observer), record_every, start);
     if (name == "mosqp")
         return run_mosqp_named(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, knobs, std::move(observer),
                                record_every);

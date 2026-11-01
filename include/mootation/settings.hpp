@@ -106,7 +106,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 15, §2 and §6
         "n_offspring", "n_ref_points", "ada",
         // task 18, stage 1: the single-objective algorithms (scalar/scalar.hpp)
-        "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol"
+        "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
+        // task 18, stage 4: the population methods (scalar/scalar.hpp, run_population)
+        "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k"
     };
     return v;
 }
@@ -186,7 +188,8 @@ inline bool is_core_param(const std::string& name)
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
                           "race_max_samples", "race_abs_tol", "hv_incremental",
-                          "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol"})
+                          "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
+                          "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k"})
         if (name == k) return true;
     return false;
 }
@@ -313,6 +316,8 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"hv_contrib",   {"iwfg", "hvc", "wfg", "race", "mc"}},
         {"polish",       {"off", "sqp", "nm"}},
         {"lm_loss",      {"linear", "huber", "cauchy"}},
+        {"pso_topology", {"ring", "global"}},
+        {"pso_v0",       {"random", "zero"}},
     };
     return v;
 }
@@ -339,7 +344,7 @@ inline bool is_core_word(const std::string& name)
                           "dms_cache", "paes_cache", "boost_scalarization",
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
-                          "hv_contrib", "theta_ties", "k_share", "lm_loss"})
+                          "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0"})
         if (name == k) return true;
     return false;
 }

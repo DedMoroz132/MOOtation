@@ -89,3 +89,30 @@ A test (`every_core_has_a_row_in_verification_md`) keeps the table complete.
 | `smpso` | 2026-09 | the OMOPSO preset, an acceptance run beside an independent measure | yes | 2 run-layer |
 | `rm_meda` | 2026-09 | — | yes | 1 run-layer |
 | `mosa` | 2026-09 | the author's experiment setting, beside an independent implementation | yes | tests/test_mosa.cpp, 2 run-layer |
+
+## The population methods at one objective
+
+Stage 4 of task 18: single-objective methods in `include/mootation/scalar/`,
+not cores of `algorithms.def`, run by name at `n_objs = 1` (`run_population`
+in `scalar.hpp`). Each header was read against its paper (the readings are in
+[deviations.md](deviations.md), second table); the experiment column names
+what of the paper ran beside it, the twin column a core of the library that
+is the same method at one objective and was compared with it. The tests
+column names the method's own C++ test; all eleven also run in `test_scalar`
+(the wiring: budget, archive, records, the same run cut short) and in the
+run-layer test `the_population_methods_run_through_minimize`.
+A test (`every_core_has_a_row_in_verification_md`) keeps this table complete too.
+
+| method | read against the paper | the paper's experiment | twin at M = 1 | tests |
+|---|---|---|---|---|
+| `de` | 2026-10 | Storn & Price 1997, Tables 1–3: evaluations to the value to reach, 17 cases; f8 and f20 left out (their printed forms have no minimum where the paper says) | `gde3` (F = CR = 0.2, reflect): bit for bit | `test_de` |
+| `jade` | 2026-10 | Zhang & Sanderson 2009, Tables IV–V: mean error at the checkpoints, D = 30 and 100, with and without the archive | — | `test_jade` |
+| `shade` | 2026-10 | Tanabe & Fukunaga 2013, Table III: mean error at the checkpoints, D = 30 | — | `test_shade` |
+| `lshade` | 2026-10 | the population schedule (10) generation by generation; CEC 2014: not in the library (the direction of the paper's comparison on bbob instead) | — | `test_shade` |
+| `ga_sbx` | 2026-10 | — (the library's polynomial mutation is NSGA-II's code variant, not Deb & Deb 2014's formula) | `nsga2`: bit for bit | `test_ga` |
+| `ssga` | 2026-10 | no paper: the method is the header's | `sms_emoa`: bit for bit | `test_ga` |
+| `g3_pcx` | 2026-10 | Deb, Anand, Joshi 2002, Table 2: evaluations to 1e-20 on the ellipsoid and Schwefel's function, n = 20 | — | `test_ga` |
+| `chc` | 2026-10 | Eshelman & Schaffer 1993, Table 3: De Jong's F1 and F2 on their bit grids | — | `test_ga` |
+| `pso` | 2026-10 | Clerc & Kennedy 2002, Table V, Type 1'' | `smpso` with its knobs: no difference by Mann-Whitney | `test_pso` |
+| `spso2011` | 2026-10 | CEC 2013: not in the library (the sphere, rotation invariance and the walls instead) | — | `test_spso2011` |
+| `sep_cmaes` | 2026-10 | Ros & Hansen 2008, Tables 2–4: evaluations to the target, 7 cases | — | `test_sep_cmaes` |

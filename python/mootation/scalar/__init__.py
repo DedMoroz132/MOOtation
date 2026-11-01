@@ -43,6 +43,14 @@ the budget (evaluator.hpp, THE COUNTS). The problem may give its gradient
 (grad), its residuals (residuals, the objective then 1/2 ||r||^2) and their
 Jacobian (jac), and a start x0 (minimize()).
 
+THE POPULATION METHODS of stage 4 (task 18, §4; n_objs = 1 only, every
+bound finite), each with its paper's defaults (scalar.hpp, run_population,
+where their knobs are listed; population.hpp, POP-1 to POP-8):
+
+  de  jade  shade  lshade  ga_sbx  ssga  g3_pcx  chc  pso  spso2011  sep_cmaes
+
+np sets the population (0: the paper's); pop_size does not (POP-6).
+
 Every evaluation goes through fn; the run's first points are pop_size uniform
 points from the seed, the rows of the design `init` (designs.py), or the seed
 population.
@@ -65,13 +73,17 @@ PRESETS = {
     "eps_nm": {"scalarization": "eps", "local": "nm"},
     "eps_cmaes": {"scalarization": "eps", "local": "cmaes"},
 }
-# the single-objective solvers (task 18, item 2.3)
-SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb")
+# the population methods of stage 4 (task 18, §4; scalar.hpp, run_population)
+POPULATION = ("de", "jade", "shade", "lshade", "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011",
+              "sep_cmaes")
+# the single-objective algorithms (task 18, item 2.3, stage 1 and stage 4)
+SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb") + POPULATION
 # the methods beside the scalarization methods, on the same evaluator,
-# answer and observer: those of task 9 and the single-objective solvers. None
-# lays its run out over the budget (budget.py)
-OTHERS = ("boostdms", "mosqp") + SINGLE
-NAMES = tuple(PRESETS) + OTHERS
+# answer and observer: those of task 9 and the single-objective algorithms.
+# None lays its run out over the budget (budget.py) but lshade, whose
+# population schedule runs to the budget (POP-8)
+OTHERS = ("boostdms", "mosqp") + tuple(s for s in SINGLE if s != "lshade")
+NAMES = tuple(PRESETS) + ("boostdms", "mosqp") + SINGLE
 
 
 def _module():

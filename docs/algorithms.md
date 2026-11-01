@@ -109,6 +109,28 @@ problem's derivatives where it gives them, counted as `grad_calls` at
 `sobol_search` run at one objective as at more; their answer is the point of
 least value.
 
+The population methods of stage 4 are single-objective algorithms too, each
+with its paper's defaults and population (`np`, 0 for the paper's; `pop_size`
+does not set it), in a finite box, on the same evaluator (`run_population` in
+`scalar/scalar.hpp`, the loop and its readings POP-1 ... POP-8 in
+`scalar/population.hpp`); constraints `g <= 0` by NSGA-II's
+constrained-domination at one objective (`scalar/evo.hpp`), in no paper:
+
+| Algorithm | Year | Name | Knobs |
+|---|---|---|---|
+| DE/rand/1/bin (Storn & Price) | 1997 | `de` | `F`, `CR`, `bound_repair` |
+| JADE (Zhang & Sanderson) | 2009 | `jade` | `jade_p`, `jade_c`, `de_archive` |
+| SHADE (Tanabe & Fukunaga) | 2013 | `shade` | `shade_h`, `shade_p_max`, `de_archive` |
+| L-SHADE (Tanabe & Fukunaga) | 2014 | `lshade` | `shade_h`, `lshade_p`, `lshade_r_arc`, `lshade_n_min`, `lshade_max_nfe` (0: the budget) |
+| real-coded GA (Deb & Deb), its steady state | 2014 | `ga_sbx`, `ssga` | `pc`, `eta_c`, `pm`, `eta_m`, `ga_tournament` |
+| G3 with PCX (Deb, Anand, Joshi) | 2002 | `g3_pcx` | `g3_mu`, `g3_lambda`, `g3_sigma`, `bound_repair` |
+| CHC with BLX-0.5 (Eshelman; Eshelman & Schaffer) | 1991, 1993 | `chc` | `chc_divergence`, `blx_alpha`, `chc_bits`, `bound_repair` |
+| PSO, constriction Type 1'' (Clerc & Kennedy) | 2002 | `pso` | `pso_phi`, `kappa`, `pso_topology` (ring \| global), `pso_v0` (random \| zero), `bound_repair` |
+| SPSO 2011 (Zambrano-Bigiarini, Clerc, Rojas) | 2013 | `spso2011` | `spso_k` |
+| sep-CMA-ES (Ros & Hansen) | 2008 | `sep_cmaes` | `cma_sigma0`, `local_tol` |
+
+How each was checked is in [verification.md](verification.md#the-population-methods-at-one-objective).
+
 The cores are multi-objective. With `n_objs = 1`, 22 of them refuse in
 `Settings::validate()` and name their reason (`single_objective_refusal`,
 `settings.hpp`): nsga3, a_nsga3, theta_dea, moead, moead_de, moead_dra, moead_dd,
