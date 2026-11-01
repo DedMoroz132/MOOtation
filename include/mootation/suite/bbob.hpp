@@ -821,16 +821,27 @@ inline Function instance(int fid, int iid, int D)
         for (int j = 0; j < peaks - 1; ++j) alpha.push_back(dm::pow(1000.0, 2.0 * j / q));
         rnd::shuffle(alpha.begin(), alpha.end(), g);
         alpha.insert(alpha.begin(), fid == 21 ? 1000.0 : 1000.0 * 1000.0);
+        // C (each peak's lam, shuffled, over alpha^(1/4)) and y written in
+        // place, every value and draw as lam() and uniform() give them: g++
+        // 15 at -O2 took the frees of those temporaries here for frees of a
+        // non-heap object (-Wfree-nonheap-object), a false alarm
+        const std::size_t Du = static_cast<std::size_t>(D);
+        f.C.resize(static_cast<std::size_t>(peaks) * Du);
         for (int k = 0; k < peaks; ++k) {
-            std::vector<double> l = lam(alpha[static_cast<std::size_t>(k)], D);
-            rnd::shuffle(l.begin(), l.end(), g);
-            const double scale = dm::pow(alpha[static_cast<std::size_t>(k)], 0.25);
-            for (double v : l) f.C.push_back(v / scale);
+            const double a = alpha[static_cast<std::size_t>(k)];
+            double* l = f.C.data() + static_cast<std::size_t>(k) * Du;
+            for (int i = 0; i < D; ++i) l[i] = D < 2 ? 1.0 : dm::pow(a, 0.5 * i / (D - 1.0));
+            rnd::shuffle(l, l + D, g);
+            const double scale = dm::pow(a, 0.25);
+            for (int i = 0; i < D; ++i) l[i] = l[i] / scale;
         }
         const double first = fid == 21 ? 4.0 : 3.92, rest = fid == 21 ? 5.0 : 4.9;
-        for (double v : uniform(g, -first, first, D)) f.y.push_back(v);
-        for (int k = 1; k < peaks; ++k)
-            for (double v : uniform(g, -rest, rest, D)) f.y.push_back(v);
+        f.y.resize(static_cast<std::size_t>(peaks) * Du);
+        for (int k = 0; k < peaks; ++k) {
+            const double lo = k == 0 ? -first : -rest, hi = k == 0 ? first : rest;
+            double* y = f.y.data() + static_cast<std::size_t>(k) * Du;
+            for (std::size_t i = 0; i < Du; ++i) y[i] = lo + (hi - lo) * rnd::uniform01(g);
+        }
         f.x_opt.assign(f.y.begin(), f.y.begin() + D);
     }
     return f;
