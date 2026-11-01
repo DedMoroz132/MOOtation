@@ -46,7 +46,7 @@
 // What the products add up: Q d and Q^T d are rows' pairwise sums
 // (common.hpp, matvec: np.sum(A * d, axis=1)), as the maps' are.
 //
-// READINGS:
+// DEVIATIONS AND READINGS (where the sources leave a choice open):
 //   WRAP-1. The order shift, rotate, perm from x (above). The three commute
 //     up to their own parameters (a shift after a permutation is another
 //     shift), so the order names an instance, not a different construction.

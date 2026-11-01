@@ -611,3 +611,9 @@ from the paper's text.
 |---|---|---|
 | RE-24 | x2 in [0.5, 50], the code's: the supplement's S.1.4 prints "x2 in [4, 50]", but the published front (reference_points_RE24.dat: f1 from 60.5 = 0.5 + 120 * 0.5, x2 = 0.5) was computed within the code's bounds. | `re.hpp` |
 | RE-25 | x2 in [0.6, 3]: the supplement's S.1.5 prints "x2 in [0.6, 30]"; the code and Kumar et al. 2021 for the same spring (RCM15, "0.6 <= x2 (continuous) <= 3") have 3. | `re.hpp` |
+| WRAP-1 | The order shift, rotate, perm from x (above). | `wrap.hpp` |
+| WRAP-2 | The centre of the rotation is the optimum, c = P^T x_opt (c_pi(i) = x_opt_i, the optimum in v's coordinates), where x_opt is known (bbob: the instance's), so that the optimum stays where it was relative to the box; el... | `wrap.hpp` |
+| WRAP-3 | A rotation only for a problem without a box (every bound infinite: MGH, NIST) or whose formula is defined on all of R^n and is marked so (defined_everywhere; bbob, whose functions are defined outside [-5, 5]^D and pen... | `wrap.hpp` |
+| WRAP-4 | The scale of the shift, per variable of the run: the width of its box, ub - lb, where both bounds are finite; else max(1, \|a\|_inf), a = x_opt where known, else x0, else 1 alone. | `wrap.hpp` |
+| WRAP-5 | This is a shift of the whole problem, box and all: relative to its box the optimum does not move. | `wrap.hpp` |
+| WRAP-6 | perm and shift know the variables only as a box: a problem whose variables carry more structure (types other than real, blocks or symmetries) is the caller's to refuse, or to permute along; a shift or a rotation of in... | `wrap.hpp` |
