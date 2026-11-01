@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-383 items: 311 yes, 15 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+387 items: 313 yes, 17 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -117,6 +117,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `moead_ds` | DDS-4 (MINOR) | θ=G/Gmax = gen/t_max. The paper itself is of two minds about what G counts: the prose under Eq.16 says "G is the current evaluations and G_max is the maximum evaluations", while Alg.1 line 13 increments G once per out... | yes | `moead_ds.hpp` |
 | `moead_ds` | DDS-5 (MINOR) | Real-valued genome; binary is outside the coverage (NONE). | yes | `moead_ds.hpp` |
 | `moead_ds` | DDS-6 (ARBITRATION) | FIX 2026-07-07 (source-fidelity review): the literal Eq.9 inverts the ASF weights («when j=i, w=0» → 1e-6 on the own axis, 1 on the others): for m≥3 the "extremes" degenerate into near-ideal points (≈argmin f_i) → the... | yes | `moead_ds.hpp` |
+| `moead_ds` | DDS-8 (READING; knob extreme_weights, nsga3 by default) | Alg.3 line 5 puts the extreme points into Q unconditionally ("Q = Extreme"), so which points Eq.9 calls extreme decides which points survive every generation. | yes | `moead_ds.hpp` |
 | `moead_ds` | DDS-7 (fixed 2026-09-05) | Mating d2 (Alg.4 line 2) uses the reference points R returned by the LAST DDS call (Alg.1 line 3 for the first generation, line 12 afterwards) — i.e. the normalization frame of the merged 2N pool, as Alg.1 line 8 cons... | no: fixed | `moead_ds.hpp` |
 | `rd_emo` | RDE-1 (NOT A DEVIATION — kept as a note) | θ = 5 IS stated: §4.1 says "θ = 5 suggested in MOEA/D is set in RD-EMO". | no: fixed | `rd_emo.hpp` |
 | `rd_emo` | RDE-2 (MINOR) | A region is argmin d2 to a reference line, i.e. the "nearest reference line". | yes | `rd_emo.hpp` |
@@ -131,6 +132,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `aprd` | APRD-2 (IMPLEMENTED) | L segment: point projections are clamped into [Lmin,Lmax], the coordinate-wise bounds of the Arc projections onto L (§II-C / Fig.2, "replace projections outside L with nearest endpoint"). | yes | `aprd.hpp` |
 | `aprd` | APRD-3 (MINOR) | PBI sign and projection are written in canonical form (d1 signed, proj = Z + d1 * V_hat); the paper writes "Z − d1 V", which is dimensionally inconsistent, so the standard correct form is used. | yes | `aprd.hpp` |
 | `aprd` | APRD-4 (MINOR) | Min-Max (Euclidean) for centres and ideal points: the first element is random, as Min-Max in §II inherits a random start, then farthest-to-set; slots S_i without refill (skipped when S_i = \|P_i\|), §II-D2. | yes | `aprd.hpp` |
+| `aprd` | APRD-11 (READING; knob slot_exclusive, off by default) | The other reading of APRD-4: Alg.3 Step 4 fills S_i slots of a subregion, which reads as S_i DIFFERENT individuals; slot_exclusive = on takes each slot's PBI argmin among the members not yet selected, so a subregion's... | no: option | `aprd.hpp` |
 | `aprd` | APRD-5 (MINOR) | Case I NSGA-II: (rank, CD) tournament plus SBX/PM, then NDS+CD selection. | yes | `aprd.hpp` |
 | `aprd` | APRD-6 (MINOR / partly FIXED 2026-09-06, full-paper checklist) | SBX yields the first child — one offspring per x, Alg.1's "a new solution z". | no: fixed | `aprd.hpp` |
 | `aprd` | APRD-7 (resolved) | update_archive receives Arc u Q in BOTH cases (Alg.1: "Arc <- UpdateArchive(Arc u Q, N_a)"), not pop u Q as it once did. | no: fixed | `aprd.hpp` |
@@ -188,6 +190,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `mombi2` | mombi2.1 | the binary tournament criterion (the paper gives none; | yes | `mombi2.hpp` |
 | `nimmo` | nimmo.1 | floor(0.1mu) versus the paper's "[0.1mu]", which may mean rounding — identical for mu in {200, 210, 230}, but off by one for the paper's mu=156 (15 vs 16) and mu=135 (13 vs 14) settings; initialization is uniform rand... | yes | `nimmo.hpp` |
 | `irea` | irea.1 | Eq. 7 and §3.6/Alg. 4 are internally contradictory: the literal Eq. 7 (F = Sum −e^{−I(x2,x1)/kappa}), combined with selecting the MINIMUM F, would pick the worst solutions. | yes | `irea.hpp` |
+| `irea` | IREA-1 (READING; knob fitness_reading, swap by default) | The other consistent resolution is IBEA's own: Eq.7 as printed, F(x1) = Sum −e^{−I(x2,x1)/kappa}, with the LARGEST F kept — what "as done in [31]" (Li et al. 2016, after IBEA) does. | yes | `irea.hpp` |
 | `irea` | irea.2 | Eq. 6 as printed is a distance to a point, not a perpendicular. | yes | `irea.hpp` |
 | `irea` | irea.3 | §3.4: "if extreme point set contains duplicate extreme points, or intercepts are nonnegative [an evident typo for non-positive], then intercept can be replaced with each maximum objective functions" — a degenerate mat... | yes | `irea.hpp` |
 | `irea` | irea.4 | das_dennis::generate_exact requires N to equal the lattice point count, which is stricter than Table II of the paper, where N may differ slightly. | yes | `irea.hpp` |
@@ -341,6 +344,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `naemo` | NAEMO-5 (MINOR) | k=⌊0.2·n⌋ (§5.2: «20% of the total number of reference lines"); the soft limit is pop_size (the paper: C·n, with C a small constant, see Table 2). | yes | `naemo.hpp` |
 | `naemo` | NAEMO-6 (MINOR) | z* and PBI are recomputed once per generation (at the start of step) and held fixed for the inner loop. | yes | `naemo.hpp` |
 | `naemo` | NAEMO-8 (MINOR) | Mating pool = the parent's own sub-archive PLUS the k nearest non-empty lines. | yes | `naemo.hpp` |
+| `naemo` | NAEMO-9 (SETTING; knobs flag1, flag2, off by default) | §5.2 sets the two flags per problem: "flag2 is set as true for DTLZ1 while flag1 is set as true for DTLZ3", false elsewhere. | no: option | `naemo.hpp` |
 | `naemo` | NAEMO-7 (MINOR, resolved) | The reference-line count is chosen as the LARGEST attainable Das-Dennis lattice <= pop_size on the default path. das_dennis::generate_auto rounds UP, and since every line keeps at least one member, a lattice larger th... | no: fixed | `naemo.hpp` |
 | `paes` | PAES-1 | c's density when c lies outside the current grid (it is not in the archive): m becomes c; m outside: c stays (jMetal 4/5's test()). | yes | `paes.hpp` |
 | `paes` | PAES-2 | The member that leaves a full archive: the first, in archive order, of the most crowded cell (jMetal's prune()); m's cell is located on the grid widened to m when m lies outside it. | yes | `paes.hpp` |

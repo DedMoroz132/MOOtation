@@ -158,7 +158,7 @@ mootation_test_timeout(test_operators 300)
 mootation_test_timeout(test_hypervolume 300)
 # operators/bound_repair.hpp and the operators that use it: milliseconds.
 mootation_test_timeout(test_bound_repair 300)
-# the readings of 2026-11-01 (lis_lcs, hcca): seconds.
+# the readings of 2026-11-01 (lis_lcs, hcca) and the knobs of 2026-11-02: seconds.
 mootation_test_timeout(test_core_readings 300)
 # Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
 # all 58 algorithms for the run-time dispatch. Stays in the push tier because

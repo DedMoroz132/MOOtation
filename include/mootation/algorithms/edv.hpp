@@ -46,8 +46,11 @@
 //     the algorithm". The port used 1/n_vars (the Deb polynomial-mutation
 //     convention the paper cites) and called the text a slip; the gap is
 //     large (at the paper's m=3 setting, pop_size 300 and DTLZ n=7: 1/300
-//     against 1/7). The letter is the default; set_pm_literal(false)
-//     restores 1/n_vars. Compare
+//     against 1/7). The letter is the default; set_pm_literal(false), or the
+//     knob pm_literal = off, restores 1/n_vars. The letter and the paper's
+//     own results disagree on the multimodal DTLZ1 and DTLZ3, where the paper
+//     reports EDV converged and the letter's mutation rate does not reach the
+//     front. Compare
 //     sms_m2m.hpp (SMSM2M-2), which meets the same phrasing in a different
 //     paper and also implements it literally.
 //   EDV-2 (FIXED 2026-09-05, second primary-source pass). Alg.3 lines 2-11
@@ -79,6 +82,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -202,6 +207,13 @@ public:
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_ideal_shift(bool b)     { ideal_shift_ = b; }   // EDV-3
     void set_pm_literal(bool b)      { pm_literal_ = b; }    // EDV-1
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k != "pm_literal") return false;                  // EDV-1
+        if (w != "on" && w != "off")
+            throw std::invalid_argument("edv: pm_literal = '" + w + "': on or off");
+        pm_literal_ = (w == "on");
+        return true;
+    }
 
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();

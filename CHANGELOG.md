@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added: six knobs for readings of six cores' papers (the owner's decisions
+  of 2026-11-02), every default unchanged, so default runs keep their golden
+  fingerprints. `edv`: `pm_literal` (`on`, the letter p_m = 1/pop_size, or
+  `off`, 1/n_vars; EDV-1). `naemo`: `flag1` and `flag2`, polynomial mutation
+  after SBX or after DE, which the paper turns on for DTLZ3 and DTLZ1 (off by
+  default; NAEMO-9). `maoea_iamd`: `noise_frac`, the KPCM noise's sigma as a
+  share of each variable's range (MaOEA-IAMD-N). `irea`: `fitness_reading`,
+  Eq.7 with swapped arguments (`swap`) or IBEA's form with the largest F kept
+  (`ibea`; IREA-1). `moead_ds`: `extreme_weights`, the ASF weights of Eq.9's
+  extreme points as in NSGA-III (`nsga3`) or by the letter (`literal`;
+  DDS-8). `aprd`: `slot_exclusive`, distinct individuals in a subregion's
+  slots (`on`) or not (`off`; APRD-11).
 - Added: the run knob `sbx_bounds`, SBX's bound handling for one run, any
   core using SBX (the owner's decisions of 2026-11-01). `bounded`, the
   default, is Deb's bounded SBX (nsga2.c realcross), unchanged: a child stays

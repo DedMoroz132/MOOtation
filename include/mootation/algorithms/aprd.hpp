@@ -85,6 +85,11 @@
 //     individual may occupy several slots — as in the MOEA/D family. The paper
 //     states no exclusion rule. With Min-Max-spread Z duplicates are rare but
 //     possible.
+//   APRD-11 (READING; knob slot_exclusive, off by default). The other reading
+//     of APRD-4: Alg.3 Step 4 fills S_i slots of a subregion, which reads as S_i
+//     DIFFERENT individuals; slot_exclusive = on takes each slot's PBI argmin
+//     among the members not yet selected, so a subregion's S_i <= |P_i| slots
+//     always hold distinct individuals. off keeps APRD-4.
 //   APRD-5 (MINOR). Case I NSGA-II: (rank, CD) tournament plus SBX/PM, then
 //     NDS+CD selection.
 //   APRD-6 (MINOR / partly FIXED 2026-09-06, full-paper checklist). SBX
@@ -171,6 +176,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -195,6 +202,7 @@ private:
     double p_ = 0.7;
     double theta_ = 5.0;
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;
+    bool   slot_exclusive_ = false;   // APRD-11: knob slot_exclusive
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt{}; };
@@ -443,6 +451,7 @@ private:
         // stored (newk = the subpopulation index of each selected individual)
         // for the next step's mating.
         std::vector<Sol> newpop; std::vector<int> newk;
+        std::vector<char> taken(slot_exclusive_ ? n : 0, 0);   // APRD-11
         for(int k=0;k<K;++k){
             if(S[k]<=0 || bucket[k].empty()) continue;
             std::vector<std::vector<double>> mp; for(int i:bucket[k]) mp.push_back(proj[i]);
@@ -450,7 +459,11 @@ private:
             for(int j=0;j<S[k];++j){
                 const std::vector<double>& Z = proj[bucket[k][zi[j]]];
                 int best=-1; double bg=std::numeric_limits<double>::max();
-                for(int i:bucket[k]){ double g=pbi(R[i].objs,Z); if(g<bg){bg=g;best=i;} }
+                for(int i:bucket[k]){
+                    if(slot_exclusive_ && taken[i]) continue;
+                    double g=pbi(R[i].objs,Z); if(g<bg){bg=g;best=i;} }
+                if(best<0) continue;            // only under slot_exclusive: S_k <= |P_k|
+                if(slot_exclusive_) taken[best]=1;
                 newpop.push_back(R[best]); newk.push_back(k);
             }
         }
@@ -500,6 +513,13 @@ public:
     void set_pc(double v){ pc_=v; }
     void set_pm(double v){ pm_=v; }
     void set_seed(unsigned s){ rng_.seed(s); }
+    bool set_word(const std::string& k, const std::string& w){
+        if(k!="slot_exclusive") return false;                // APRD-11
+        if(w!="on" && w!="off")
+            throw std::invalid_argument("aprd: slot_exclusive = '"+w+"': on or off");
+        slot_exclusive_=(w=="on");
+        return true;
+    }
 
     void setup(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); N_=vault.pop_size(); Na_=2*N_;

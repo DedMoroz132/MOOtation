@@ -49,7 +49,8 @@
 //   • flag1 = flag2 = FALSE (§5.2: "The values of flag1 and flag2 are false in
 //     all cases except for DTLZ1 and DTLZ3 ... flag2 is set as true for DTLZ1
 //     while flag1 is set as true for DTLZ3") — i.e. per problem, via
-//     set_flag1/set_flag2. The code defaults match. • η_m = 20.
+//     set_flag1/set_flag2 or the knobs flag1/flag2 (NAEMO-9). The code
+//     defaults match. • η_m = 20.
 //   • k = max(2, ⌊0.2·n⌋) («The neighborhood size is set as 20% of the total
 //     number of reference lines», §5.2; §4.9 gives the 10-20% range).
 //   * L_hard = n (the number of reference lines) = set_K;
@@ -94,6 +95,15 @@
 //     is included here; when the pool still has fewer than 3 members the whole
 //     archive is used (NAEMO-3). The neighbourhood is that of the line the
 //     parent was actually drawn from (ind), not of the empty line j.
+//   NAEMO-9 (SETTING; knobs flag1, flag2, off by default). §5.2 sets the
+//     two flags per problem: "flag2 is set as true for DTLZ1 while flag1 is
+//     set as true for DTLZ3", false elsewhere. A core cannot know the
+//     problem, so both default to off (the paper's value on every other
+//     problem) and the run sets them: flag1 = on (polynomial mutation after
+//     SBX) for DTLZ3, flag2 = on (after DE) for DTLZ1. Without them DTLZ1 and
+//     DTLZ3 run with no mutation, which §4.4 warns makes the algorithm "prone
+//     to getting stuck at local optimal fronts". The paper's L_soft (Table 2:
+//     100, 220, 160 for n = 91, 210, 156) is pop_size here.
 //   NAEMO-7 (MINOR, resolved). The reference-line count is chosen as the
 //     LARGEST attainable Das-Dennis lattice <= pop_size on the default path.
 //     das_dennis::generate_auto rounds UP, and since every line keeps at least
@@ -417,6 +427,13 @@ public:
     void set_pc(double p)          { pc_ = p; }
     void set_flag1(bool f)         { flag1_ = f; }
     void set_flag2(bool f)         { flag2_ = f; }
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k != "flag1" && k != "flag2") return false;     // NAEMO-9
+        if (w != "on" && w != "off")
+            throw std::invalid_argument("naemo: " + k + " = '" + w + "': on or off");
+        (k == "flag1" ? flag1_ : flag2_) = (w == "on");
+        return true;
+    }
     void set_seed(unsigned s)      { rng_.seed(s); }
     void set_bound_repair(ops::BoundRepair r) {
         ops::require_repair(r, "naemo", false, false); repair_ = r; }

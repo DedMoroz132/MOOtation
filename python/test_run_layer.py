@@ -7374,6 +7374,44 @@ def sbx_bounds_and_lis_lcs_knobs():
         raise AssertionError(bad)
 
 @test
+def readings_knobs_of_2026_11_02():
+    """The owner's decisions of 2026-11-02: six knobs, one reading of a core's
+    paper each, with the default unchanged. Each reaches its core (not in
+    ignored): the default named gives the default run, the other value
+    another (aprd's slot_exclusive only where a slot repeats, so it is checked
+    as taken); another core reports the knob ignored; a value the knob does
+    not take is refused."""
+    if not _have_numpy() or _core_with("sbx_bounds") is None:
+        print("  skip  readings_knobs_of_2026_11_02: no NumPy or stale _core"); return
+    from mootation import minimize
+    from mootation.benchmarks import get
+    d2 = get("DTLZ2_3D")
+    k = dict(bounds=d2.bounds, n_objs=3, pop_size=91, n_gen=20, seed=7)
+    if minimize(d2.evaluate, algorithm="aprd", slot_exclusive="on", **k).ignored:
+        print("  skip  readings_knobs_of_2026_11_02: stale _core"); return
+    cases = [("edv", "pm_literal", "on", "off"), ("naemo", "flag1", "off", "on"),
+             ("naemo", "flag2", "off", "on"), ("irea", "fitness_reading", "swap", "ibea"),
+             ("moead_ds", "extreme_weights", "nsga3", "literal"),
+             ("maoea_iamd", "noise_frac", 0.01, 0.316), ("aprd", "slot_exclusive", "off", "on")]
+    for alg, knob, dflt, other in cases:
+        d = minimize(d2.evaluate, algorithm=alg, **k)
+        n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)
+        o = minimize(d2.evaluate, algorithm=alg, **{knob: other}, **k)
+        assert d.objectives == n.objectives and not n.ignored, (alg, knob, n.ignored)
+        assert not o.ignored, (alg, knob, o.ignored)
+        if alg != "aprd":
+            assert o.objectives != d.objectives, (alg, knob, other)
+        r = minimize(d2.evaluate, algorithm="nsga2", **{knob: other}, **k)
+        assert r.ignored == [knob], (knob, r.ignored)
+    for alg, bad in (("edv", dict(pm_literal="maybe")), ("irea", dict(fitness_reading="both")),
+                     ("maoea_iamd", dict(noise_frac=-1.0))):
+        try:
+            minimize(d2.evaluate, algorithm=alg, **bad, **k)
+        except (ValueError, RuntimeError):
+            continue
+        raise AssertionError((alg, bad))
+
+@test
 def naemo_reports_eta_c_ignored():
     """The owner's word of 2026-10-26: NAEMO's eta_c is adaptive; a run given
     one gets it back in ignored (no setter that does nothing), and runs as

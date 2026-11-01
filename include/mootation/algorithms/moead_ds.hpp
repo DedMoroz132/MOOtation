@@ -67,6 +67,17 @@
 //     Previously the code implemented the literal formula while the header
 //     claimed "as in NSGA-III" — the code has been brought in line with the
 //     declaration.
+//   DDS-8 (READING; knob extreme_weights, nsga3 by default). Alg.3 line 5
+//     puts the extreme points into Q unconditionally ("Q = Extreme"), so
+//     which points Eq.9 calls extreme decides which points survive every
+//     generation. Under the NSGA-III weights (DDS-6) the extreme of axis i is
+//     the point with every OTHER objective near zero, whatever its f_i: on a
+//     problem whose boundary holds such points with an enormous f_i (MaF3 at
+//     eight objectives, f^4 under a multimodal g) they are kept, and through
+//     the intercepts they stretch z_nad. Under the letter of Eq.9 the extreme
+//     of axis i minimizes f_i, a point worth keeping. extreme_weights =
+//     literal selects the letter (1e-6 on the own axis, 1 on the others) for
+//     both the normalization and Q; nsga3 keeps DDS-6.
 //   DDS-7 (fixed 2026-09-05). Mating d2 (Alg.4 line 2) uses the reference
 //     points R returned by the LAST DDS call (Alg.1 line 3 for the first
 //     generation, line 12 afterwards) — i.e. the normalization frame of the
@@ -87,6 +98,7 @@
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -107,6 +119,9 @@ private:
     double sigma_=0.9;
     double eta_c_=20.0, eta_m_=20.0, pc_=1.0, pm_=-1.0;
     int    t_max_=1000;
+    // ASF weights of the extreme points (Eq.9): the NSGA-III convention by
+    // default (DDS-6), the letter with extreme_weights = literal (DDS-8)
+    double own_w_=1.0, other_w_=1e-6;
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; double cv=0.0; VaultPoint pt{}; };
@@ -134,7 +149,7 @@ private:
             int best=0; double bg=std::numeric_limits<double>::max();
             for(int j=0;j<n;++j){
                 double mx=-1e300;
-                for(int k=0;k<m_;++k){ double w=(k==i)?1.0:1e-6; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx) mx=v; }
+                for(int k=0;k<m_;++k){ double w=(k==i)?own_w_:other_w_; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx) mx=v; }
                 if(mx<bg){bg=mx;best=j;}
             }
             ext[i]=best;
@@ -176,7 +191,7 @@ private:
         // FIX 2026-07-07 (source-fidelity review): ASF weights
         // as in normalize() — NSGA-III convention (DDS-6), was the Eq.9 inversion.
         for(int i=0;i<m_;++i){ int best=0; double bg=std::numeric_limits<double>::max();
-            for(int j=0;j<n;++j){ double mx=-1e300; for(int k=0;k<m_;++k){double w=(k==i)?1.0:1e-6; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx)mx=v;} if(mx<bg){bg=mx;best=j;} }
+            for(int j=0;j<n;++j){ double mx=-1e300; for(int k=0;k<m_;++k){double w=(k==i)?own_w_:other_w_; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx)mx=v;} if(mx<bg){bg=mx;best=j;} }
             if(std::find(ext.begin(),ext.end(),best)==ext.end()) ext.push_back(best); }
         return ext;
     }
@@ -241,6 +256,14 @@ public:
     void set_pc(double p){ pc_=p; }
     void set_pm(double p){ pm_=p; }
     void set_seed(unsigned s){ rng_.seed(s); }
+    bool set_word(const std::string& k, const std::string& w){
+        if(k!="extreme_weights") return false;               // DDS-8
+        if(w!="nsga3" && w!="literal")
+            throw std::invalid_argument("moead_ds: extreme_weights = '"+w+"': nsga3 or literal");
+        own_w_  =(w=="literal")?1e-6:1.0;
+        other_w_=(w=="literal")?1.0:1e-6;
+        return true;
+    }
 
     void setup(DataVault<Ind_t>& vault){
         // Real-valued reproduction only: refuse a binary genome instead of

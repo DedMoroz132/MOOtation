@@ -69,7 +69,7 @@
 //   Both were wrong; §3.4 states the value.
 //   This port nevertheless defaults to a Gaussian with sigma = noise_frac *
 //   (hi - lo) per variable, noise_frac = 0.01, settable with set_noise_frac
-//   (set_noise_frac(0.316) restores the paper's letter on unit-range
+//   or the knob noise_frac (0.316 restores the paper's letter on unit-range
 //   variables). Why: the noise is applied to EVERY variable of EVERY offspring,
 //   so its scale dominates convergence, and at the paper's own value the
 //   population cannot settle near the front; without noise it collapses to a
@@ -77,7 +77,11 @@
 //   allows is incompatible with the IGD values the paper reports for itself,
 //   so either the variance is applied to a different quantity than the raw
 //   variables or it is a misprint; the paper gives no way to tell. The
-//   default is ours; the letter stays selectable.
+//   default is ours; the letter stays selectable. Against the default: the
+//   same §3.4 sentence gives the noise's purpose, "to enhance MaOEA-IAMD's
+//   ability to escape local optima", and KPCM is the only mutation, so on the
+//   multimodal DTLZ1 and DTLZ3 the default's noise, thirty times smaller,
+//   weakens the escape the paper relies on.
 // Parameters the paper does not give numerically, taken from the primary
 //   sources it cites:
 //   nS = 2, nP = 4 — the LMEA [32] variable-classification defaults;
@@ -105,6 +109,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -784,6 +790,13 @@ public:
     void set_nsel(int v)             { nsel_ = std::max(1, v); }
     void set_nper(int v)             { nper_ = std::max(2, v); }
     void set_noise_frac(double v)    { noise_frac_ = std::max(0.0, v); }
+    bool set_param(const std::string& k, double v) {
+        if (k != "noise_frac") return false;                 // MaOEA-IAMD-N
+        if (!(v >= 0.0 && std::isfinite(v)))
+            throw std::invalid_argument("maoea_iamd: noise_frac must be a finite number >= 0");
+        noise_frac_ = v;
+        return true;
+    }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault) {

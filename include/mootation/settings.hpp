@@ -108,7 +108,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 18, stage 1: the single-objective algorithms (scalar/scalar.hpp)
         "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
         // task 18, stage 4: the population methods (scalar/scalar.hpp, run_population)
-        "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k"
+        "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
+        // VERIFY2 of 2026-11-02: MaOEA-IAMD's KPCM noise (MaOEA-IAMD-N)
+        "noise_frac"
     };
     return v;
 }
@@ -172,6 +174,9 @@ inline const std::vector<std::string>& knob_names() {
 //                  answer within (1 + eps) of the least with probability
 //                  1 - delta, or within abs_tol * prod(r - ideal) of it;
 //                  0.01, 1e-6, 10^6 samples a step at most, 1e-12
+//   noise_frac     maoea_iamd: the KPCM noise's sigma as a share of each
+//                  variable's range (0.01; the paper's letter is 0.316,
+//                  MaOEA-IAMD-N)
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
@@ -189,7 +194,8 @@ inline bool is_core_param(const std::string& name)
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
                           "race_max_samples", "race_abs_tol", "hv_incremental",
                           "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
-                          "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k"})
+                          "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
+                          "noise_frac"})
         if (name == k) return true;
     return false;
 }
@@ -255,6 +261,21 @@ inline bool is_core_param(const std::string& name)
 //                 objectives by HVC3D / HVC4D (hvc, the default; hvc.hpp) or by
 //                 WFG (wfg); above hv_exact_max_m the race (race, the default)
 //                 or Monte-Carlo shared out equally (mc)
+//   pm_literal    edv: p_m = 1/pop_size, the paper's letter (on, the
+//                 default) or 1/n_vars (off; EDV-1)
+//   flag1, flag2  naemo: polynomial mutation after SBX (flag1) or after DE
+//                 (flag2), off by default; the paper sets flag1 on for DTLZ3
+//                 and flag2 on for DTLZ1 (NAEMO-9)
+//   fitness_reading
+//                 irea: Eq.7 with its arguments swapped and the smallest F
+//                 kept (swap, the default) or IBEA's form, the largest kept
+//                 (ibea; IREA-1)
+//   extreme_weights
+//                 moead_ds: the ASF weights of Eq.9's extreme points, as in
+//                 NSGA-III (nsga3, the default; DDS-6) or the letter
+//                 (literal; DDS-8)
+//   slot_exclusive aprd: a subregion's slots may repeat an individual (off,
+//                 the default; APRD-4) or take distinct ones (on; APRD-11)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -318,6 +339,12 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"lm_loss",      {"linear", "huber", "cauchy"}},
         {"pso_topology", {"ring", "global"}},
         {"pso_v0",       {"random", "zero"}},
+        {"pm_literal",   {"on", "off"}},
+        {"flag1",        {"off", "on"}},
+        {"flag2",        {"off", "on"}},
+        {"fitness_reading", {"swap", "ibea"}},
+        {"extreme_weights", {"nsga3", "literal"}},
+        {"slot_exclusive", {"off", "on"}},
     };
     return v;
 }
@@ -344,7 +371,8 @@ inline bool is_core_word(const std::string& name)
                           "dms_cache", "paes_cache", "boost_scalarization",
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
-                          "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0"})
+                          "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
+                          "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive"})
         if (name == k) return true;
     return false;
 }

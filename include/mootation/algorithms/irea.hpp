@@ -34,6 +34,15 @@
 //     resolution: F(x) = Sum −e^{−I(x,y)/kappa} with minimum selection, so a
 //     dominating solution gets a strongly negative F and is preferred. That
 //     preserves the Pareto compliance of the indicator (IBEA semantics).
+//   IREA-1 (READING; knob fitness_reading, swap by default). The other
+//     consistent resolution is IBEA's own: Eq.7 as printed, F(x1) = Sum
+//     −e^{−I(x2,x1)/kappa}, with the LARGEST F kept — what "as done in [31]"
+//     (Li et al. 2016, after IBEA) does. The two agree on convergence (a
+//     dominating solution wins either way) and differ on spread: IBEA's form
+//     charges x for being nearly dominated by a close neighbour, the swapped
+//     form above credits x for nearly dominating one, so within a cluster
+//     (Alg. 4 takes layers by F) it keeps the crowded members. fitness_reading
+//     = ibea selects IBEA's form; swap (the default) keeps the code's.
 //   * Eq. 6 as printed is a distance to a point, not a perpendicular. The text
 //     of §3.5 ("perpendicular distance... similar with the association operator
 //     of NSGA-III") and Fig. 3 are unambiguous, so the code implements the
@@ -58,6 +67,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -96,6 +107,7 @@ private:
     double       eta_m_ = 20.0;   // §4.3(2): η_m = 20
     double       pc_    = 1.0;    // §4.3(2): p_c = 1.0
     double       pm_    = -1.0;   // §4.3(2): p_m = 1/n (<0 → 1/n)
+    bool         ibea_reading_ = false;   // IREA-1: knob fitness_reading = ibea
     std::mt19937 rng_{std::random_device{}()};
 
     std::vector<std::vector<double>> W_;   // reference lines (Das-Dennis)
@@ -274,6 +286,13 @@ public:
     void set_pc           (double p) { pc_    = p; }
     void set_pm           (double p) { pm_    = p; }
     void set_seed(unsigned s)        { rng_.seed(s); }
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k != "fitness_reading") return false;            // IREA-1
+        if (w != "swap" && w != "ibea")
+            throw std::invalid_argument("irea: fitness_reading = '" + w + "': swap or ibea");
+        ibea_reading_ = (w == "ibea");
+        return true;
+    }
 
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
@@ -374,12 +393,19 @@ public:
         update_ideal(vault, pool);
         auto Fn = normalise(vault, pool);
 
-        // (11-12) fitness F(x) = Sum_{y!=x} -exp(-I(x,y)/kappa).
+        // (11-12) fitness F(x) = Sum_{y!=x} -exp(-I(x,y)/kappa); with
+        // fitness_reading = ibea (IREA-1) Eq.7 as printed, F(x) = Sum_{y!=x}
+        // -exp(-I(y,x)/kappa) with the LARGEST kept, stored negated so that the
+        // smallest F still wins below.
         std::vector<double> F(pool, 0.0);
         for (int i = 0; i < pool; ++i) {
             double s = 0.0;
             for (int j = 0; j < pool; ++j) {
                 if (i == j) continue;
+                if (ibea_reading_) {
+                    s += dm::exp(-eps_plus(Fn[j], Fn[i]) / KAPPA_);
+                    continue;
+                }
                 double ind = eps_plus(Fn[i], Fn[j]);
                 s += -dm::exp(-ind / KAPPA_);
             }
