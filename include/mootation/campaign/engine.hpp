@@ -38,6 +38,7 @@
 #include "../store/record.hpp"
 #include "../store/run_json.hpp"
 #include "config.hpp"
+#include "job_so.hpp"
 #include "job_run.hpp"
 #include "jobs.hpp"
 #include "references.hpp"
@@ -683,6 +684,21 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
             const Job& job = *todo[k];
             try {
                 const RegistryProblem& p = preg.problems.at(job.problem);
+                if (p.n_obj == 1) {                      // one objective: its own path (job_so.hpp)
+                    SoJob run(job, spec, p, preg.code_stamp);
+                    const JobOutcome out = run.run(opt.process);
+                    const JobFiles files = run.finish(out);
+                    writer.append(job_key(job), record_blocks(files, out.trajectory));
+                    std::lock_guard<std::mutex> g(lock);
+                    (out.status == "done" ? counts.done : counts.failed) += 1;
+                    ++finished;
+                    running.erase(job.index);
+                    changed.notify_all();
+                    if (opt.say)
+                        opt.say("[" + std::to_string(job.index) + "] " + job.problem + " " + job.key() + " seed " +
+                                std::to_string(job.seed) + ": " + out.status);
+                    continue;
+                }
                 const Wanted w = wanted(spec, p);
                 JobReferences refs;
                 if (p.shared_reference)

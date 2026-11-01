@@ -12960,6 +12960,87 @@ def a_campaign_hands_what_it_can_to_the_cxx_engine():
         assert again["done"] == 0 and again["skipped"] == len(jobs) - 8, again
 
 
+_SO_TOML = """algorithms = [ { name = "cmaes", pop = 0, gens = 0 }, { name = "lm", pop = 0, gens = 0 },
+               { name = "lbfgsb", pop = 0, gens = 0 }, { name = "nelder_mead", pop = 0, gens = 0 } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["bbob01_n02_1D", "bbob21_n05_1D", "MGH01_n02_m02_x1_1D", "MGH08_n03_m15_x10_1D",
+            "NIST_Misra1a_s1_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 600
+storage = "store"
+EXTRA
+"""
+
+
+@test
+def a_campaign_at_one_objective_writes_the_same_files_from_both_engines():
+    """Task 18, stage 1, §1.4 (campaign_so.py, job_so.hpp): a campaign on bbob,
+    MGH and NIST with four single-objective algorithms, run by this engine and
+    by the C++ one into a store: every run the same — meta.json without the
+    process's fields, the trajectory, final.csv and improvements.csv. The
+    refusals are the same (lm without residuals, the box-less problems but for
+    lm and lbfgsb); bbob's instance follows the seed (by_run) and its f_opt
+    with it, or stays 1 (fixed); lm reaches MGH's Rosenbrock and Bard."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_at_one_objective...: no C++ engine or _core.so_metrics"); return
+    from mootation.benchmarks.registry import PROBLEMS as PROBLEMS_1D
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine, extra in (("p", "python", ""), ("c", "cxx", ""),
+                                    ("f", "python", 'bbob_instance = "fixed"')):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_SO_TOML.replace("NAME", name).replace("EXTRA", extra), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            counts = C.run_campaign(cfg, workers=2, engine=engine)
+            made[name] = (root, jobs, counts)
+        (rp, jobs, cp), (rc, _, cc), (rf, _, _) = made["p"], made["c"], made["f"]
+        # refused: lm on bbob (2 problems x 2 seeds); cmaes and nelder_mead on MGH and NIST (3 x 2 x 2)
+        assert (cp["done"], cp["failed"]) == (cc["done"], cc["failed"]) == (len(jobs) - 16, 4 + 12), (cp, cc)
+        f_opts = {}
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            ma = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            if ma["status"] == "failed":
+                assert ma.get("incompatible"), ma
+                continue
+            ta, tb = ((x / "improvements.csv").read_text(encoding="utf-8") for x in (a, b))
+            assert ta == tb, (job.problem, job.key)
+            so = ma["so"]
+            if job.problem.startswith("bbob"):
+                assert so["instance"] == job.seed and so["targets"] == "absolute" and len(so["precisions"]) == 51
+                f_opts.setdefault(job.problem, set()).add(so["f_opt"])
+                mf = json.loads((C.run_dir_of(rf, job) / "meta.json").read_text(encoding="utf-8"))
+                assert mf["so"]["instance"] == 1, mf["so"]
+            else:
+                assert so["instance"] is None and so["targets"] == "relative" and len(so["precisions"]) == 4
+            if job.algorithm == "lm" and job.problem == "MGH01_n02_m02_x1_1D":
+                assert ma["final"]["delta_f"] == 0.0 and all(t is not None for t in so["runtimes"]), so
+            if job.algorithm == "lm" and job.problem == "MGH08_n03_m15_x10_1D":
+                # Bard from 10 x_s: lm ends at (d)'s local minimum, 17.4286... (Table IV: ||f|| 4.174769)
+                local = PROBLEMS_1D[job.problem].f_local[0]
+                assert abs(ma["final"]["f"] - local) <= 1e-5 * local and ma["grad_calls"] > 0, ma["final"]
+        assert all(len(v) == 2 for v in f_opts.values()), f_opts      # two seeds, two instances
+        # the store's tools on records at one objective
+        from mootation import store
+        assert not store.check(rc)["damaged"] and store.compact(rc)["packs"] == {"MGH": 16, "NIST": 8, "bbob": 16}
+        m = store.metrics(rc)
+        assert {"fe", "grad_calls", "f", "delta_f", "cv", "x1", "x5"} <= set(m), sorted(m)   # the records'
+        assert store.export_files(rc, Path(td) / "files") == len(jobs)
+        assert (Path(td) / "files" / "MGH01_n02_m02_x1_1D" / "lm" / "run_1" / "improvements.csv").is_file()
+
+
 @test
 def a_store_cuts_a_torn_record_and_packs_the_same_bytes():
     """Task 16, §1.1 and §1.3: a record cut off halfway (a worker killed while

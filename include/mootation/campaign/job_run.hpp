@@ -407,6 +407,59 @@ struct JobFiles {
     std::vector<Table> tables;
 };
 
+// put_table's head: a CSV's line end is the platform's (os.linesep), a
+// gzipped one's "\n"
+inline json::Value table_head(const std::string& name, const std::vector<std::string>& comments,
+                              const std::vector<std::string>& columns, const std::vector<std::int64_t>& ints)
+{
+    json::Value h = json::Value::object(), c = json::Value::array(), k = json::Value::array(),
+                i = json::Value::array();
+    for (const auto& s : comments) c.items.push_back(json::Value::string(s));
+    for (const auto& s : columns) k.items.push_back(json::Value::string(s));
+    for (auto x : ints) i.items.push_back(json::Value::integer(x));
+    h.set("comments", c);
+    h.set("columns", k);
+    h.set("ints", i);
+#if defined(_WIN32)
+    const char* linesep = "\r\n";
+#else
+    const char* linesep = "\n";
+#endif
+    const bool gz = name.size() > 3 && name.compare(name.size() - 3, 3, ".gz") == 0;
+    h.set("newline", json::Value::string(gz ? "\n" : linesep));
+    return h;
+}
+
+// minimize's knobs for a scalarization method or a single-objective
+// algorithm (mootation.scalar): the job's params but polishing's and those
+// minimize itself takes, a word or a number each
+inline scalar::Knobs scalar_knobs(const json::Value& params)
+{
+    scalar::Knobs knobs;
+    for (std::size_t i = 0; i < params.keys.size(); ++i) {
+        const std::string& k = params.keys[i];
+        const json::Value& v = params.items[i];
+        if (k == "polish" || k == "polish_share" || k == "polish_points" || k == "eta_int" ||
+            k == "constraint_mode" || k == "int_repair")
+            continue;
+        scalar::Knob kn;
+        if (v.kind == json::Value::Kind::String) {
+            kn.is_word = true;
+            kn.word = v.s;
+        } else if (v.kind == json::Value::Kind::Float) {
+            kn.number = v.f;
+        } else if (v.kind == json::Value::Kind::Int) {
+            kn.number = static_cast<double>(v.i);
+        } else if (v.kind == json::Value::Kind::Bool) {
+            kn.number = v.b ? 1.0 : 0.0;
+        } else {
+            throw std::invalid_argument("parameter " + k + " takes a number or a word, got " + py_repr(v));
+        }
+        knobs.emplace_back(k, kn);
+    }
+    return knobs;
+}
+
 // What the run leaves for its end (step 4d).
 struct JobOutcome {
     std::string status;                            // "done", "failed" or "timeout"
@@ -1166,29 +1219,6 @@ private:
 
     json::Value now() const { return process_.now ? json::Value::string(process_.now()) : json::Value::null(); }
 
-    // put_table's head: a CSV's line end is the platform's (os.linesep), a
-    // gzipped one's "\n"
-    static json::Value table_head(const std::string& name, const std::vector<std::string>& comments,
-                                  const std::vector<std::string>& columns, const std::vector<std::int64_t>& ints)
-    {
-        json::Value h = json::Value::object(), c = json::Value::array(), k = json::Value::array(),
-                    i = json::Value::array();
-        for (const auto& s : comments) c.items.push_back(json::Value::string(s));
-        for (const auto& s : columns) k.items.push_back(json::Value::string(s));
-        for (auto x : ints) i.items.push_back(json::Value::integer(x));
-        h.set("comments", c);
-        h.set("columns", k);
-        h.set("ints", i);
-#if defined(_WIN32)
-        const char* linesep = "\r\n";
-#else
-        const char* linesep = "\n";
-#endif
-        const bool gz = name.size() > 3 && name.compare(name.size() - 3, 3, ".gz") == 0;
-        h.set("newline", json::Value::string(gz ? "\n" : linesep));
-        return h;
-    }
-
     // dense(): the front indicators among `which` against the dense reference,
     // those alone (not what compute adds beside them: coverage_curve, ...)
     void add_dense(json::Value& into, const double* F, std::size_t n, std::size_t m, const double* X, std::size_t d,
@@ -1620,28 +1650,7 @@ private:
     runner::RunResult run_scalar(int record_every)
     {
         const scalar::Problem P = scalar_problem();
-        scalar::Knobs knobs;
-        for (std::size_t i = 0; i < job_.params.keys.size(); ++i) {
-            const std::string& k = job_.params.keys[i];
-            const json::Value& v = job_.params.items[i];
-            if (k == "polish" || k == "polish_share" || k == "polish_points" || k == "eta_int" ||
-                k == "constraint_mode" || k == "int_repair")
-                continue;
-            scalar::Knob kn;
-            if (v.kind == json::Value::Kind::String) {
-                kn.is_word = true;
-                kn.word = v.s;
-            } else if (v.kind == json::Value::Kind::Float) {
-                kn.number = v.f;
-            } else if (v.kind == json::Value::Kind::Int) {
-                kn.number = static_cast<double>(v.i);
-            } else if (v.kind == json::Value::Kind::Bool) {
-                kn.number = v.b ? 1.0 : 0.0;
-            } else {
-                throw std::invalid_argument("parameter " + k + " takes a number or a word, got " + py_repr(v));
-            }
-            knobs.emplace_back(k, kn);
-        }
+        const scalar::Knobs knobs = scalar_knobs(job_.params);
         scalar::Observer observe = [this](long long gen, const scalar::Rows& F, const scalar::Rows& X) {
             handed_x_.clear();
             for (const auto& x : X) handed_x_.insert(handed_x_.end(), x.begin(), x.end());

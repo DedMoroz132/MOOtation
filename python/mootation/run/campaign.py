@@ -232,6 +232,10 @@ class CampaignSpec:
     # at a time. "off": every evaluation through the evaluator, as before task
     # 11. The same files either way.
     native: str = "auto"
+    # One objective (task 18, stage 1, §1.4; campaign_so.py): a bbob problem's
+    # instance — "by_run", the run's seed (instance k on run k), or "fixed",
+    # instance 1 (the owner's decision of 01.11, §1.1)
+    bbob_instance: str = "by_run"
     # The cell of the step noise (benchmarks/noisy.py, <base>_s1 and _s5), a
     # share of every variable's range.
     noise_cell: float = 0.01
@@ -380,7 +384,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
              "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
              "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout",
-             "archive_cap"}
+             "archive_cap", "bbob_instance"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -486,6 +490,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.native = raw.get("native", "auto")
     if spec.native not in ("auto", "off"):
         raise ConfigError("campaign.native", f"\"auto\" or \"off\", not {spec.native!r}")
+    spec.bbob_instance = raw.get("bbob_instance", "by_run")
+    if spec.bbob_instance not in ("by_run", "fixed"):
+        raise ConfigError("campaign.bbob_instance", f"\"by_run\" or \"fixed\", not {spec.bbob_instance!r}")
     if spec.archive_delta < 0:
         raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
     spec.noise_cell = raw.get("noise_cell", 0.01)
@@ -1094,6 +1101,9 @@ def _run_job(job: Job, root: Path, spec: CampaignSpec, d: Path, *, quiet: bool =
     t_setup = time.perf_counter()
     from ..benchmarks.registry import PROBLEMS as _registry
     p = _registry[job.problem]               # the problem's own fields; its frame comes below
+    if p.n_obj == 1:                         # one objective: its own path (campaign_so.py)
+        from .campaign_so import run_job_so
+        return run_job_so(job, spec, d, meta_path, traj_path, put_table, quiet=quiet)
     final_metrics = spec.final_metrics or spec.metrics
     # IGDX, CR and PSP wherever the problem has a Pareto set ([campaign] set_metrics)
     set_extra = []

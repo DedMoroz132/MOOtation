@@ -1630,7 +1630,9 @@ void bind_run_layer(py::module_& m)
                                "One objective: a record each time the best point improved, (evaluations, "
                                "grad_calls, f, cv) (scalar/improvements.hpp).")
         .def_property_readonly("best_x", [](const Ledger& a) { return a.L.best_x(); },
-                               "One objective: the best point's variables (empty before any).");
+                               "One objective: the best point's variables (empty before any).")
+        .def_property_readonly("record_x", [](const Ledger& a) { return a.L.record_x(); },
+                               "One objective: the variables of each improvement record, in order.");
 
     // ── the single-objective measures (so_metrics.hpp; task 18, stage 1, §1.3) ──
     namespace so = mootation::so;

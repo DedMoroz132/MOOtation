@@ -20,7 +20,8 @@
 // At one objective (task 18, stage 1, §1.2) the ledger keeps the best point
 // and a record each time it improves (scalar/improvements.hpp): a row's
 // violation is the sum of max(g, 0) over its constraint values, its count
-// the evaluation's, grad_calls what set_grad_calls last said.
+// the evaluation's, grad_calls what set_grad_calls last said; each record's
+// variables beside it (record_x), which the trajectory at one objective reads.
 // ============================================================================
 
 #include <algorithm>
@@ -95,8 +96,10 @@ public:
                 double cv = 0.0;
                 if (G)
                     for (std::size_t k = 0; k < c; ++k) cv += std::max(G[i * c + k], 0.0);
-                if (log_.offer(F[i], cv, start_ + 1 + static_cast<long long>(i), grad_calls_))
+                if (log_.offer(F[i], cv, start_ + 1 + static_cast<long long>(i), grad_calls_)) {
                     best_x_.assign(X + i * d_, X + (i + 1) * d_);
+                    record_x_.push_back(best_x_);
+                }
             }
         }
         next_read_ = static_cast<std::size_t>(std::upper_bound(reads_.begin(), reads_.end(), start_) - reads_.begin());
@@ -131,6 +134,7 @@ public:
     void set_grad_calls(long long k) { grad_calls_ = k; }
     const std::vector<scalar::Improvement>& improvements() const { return log_.records(); }
     const std::vector<double>& best_x() const { return best_x_; }      // the best point's variables
+    const std::vector<std::vector<double>>& record_x() const { return record_x_; }   // a record's variables
 
 private:
     void offer(std::size_t lo, std::size_t hi)
@@ -166,6 +170,7 @@ private:
     std::map<long long, std::pair<double, double>> all_at_;
     scalar::ImprovementLog log_;                   // one objective
     std::vector<double> best_x_;
+    std::vector<std::vector<double>> record_x_;
     long long grad_calls_ = 0;
     // the batch in progress
     const double* X_ = nullptr;

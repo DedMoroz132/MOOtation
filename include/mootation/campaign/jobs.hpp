@@ -67,6 +67,7 @@ struct CampaignSpec {
     bool operator_stats = false, coords_diag = false, archive = true;
     double archive_delta = 0.0;
     std::string archive_mode = "online", native = "auto";
+    std::string bbob_instance = "by_run";                 // one objective: a bbob problem's instance (job_run.hpp)
     Value noise_cell = Value::number(0.01);               // as the config gave it: an int stays one
     std::string archive_variables = "all";
     std::int64_t archive_cap = 0;
@@ -253,7 +254,8 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
         "snapshot_variables", "archive_checkpoints", "operator_stats", "hard_budgets",
         "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
         "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
-        "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout", "archive_cap"};
+        "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout", "archive_cap",
+        "bbob_instance"};
     const std::set<std::string> known_set(known.begin(), known.end());
     std::set<std::string> unknown;
     for (const auto& k : raw.keys)
@@ -343,6 +345,7 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
     }
     spec.archive_mode = word(raw, "archive_mode", "online", {"online", "posthoc"}, "\"online\" or \"posthoc\", not ");
     spec.native = word(raw, "native", "auto", {"auto", "off"}, "\"auto\" or \"off\", not ");
+    spec.bbob_instance = word(raw, "bbob_instance", "by_run", {"by_run", "fixed"}, "\"by_run\" or \"fixed\", not ");
     if (spec.archive_delta < 0) throw ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)");
     if (const Value* v = raw.find("noise_cell")) {
         const bool number = v->kind == Kind::Int || v->kind == Kind::Float;

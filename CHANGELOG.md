@@ -69,6 +69,13 @@ always listed under **Changed** or **Removed**.
   read off a run's improvement records; `SO_REFERENCE_VERSION` for the best
   known values that stand in for an unknown minimum (MGH's Chebyquad at
   n = 1, m = 8).
+- Campaigns at one objective (task 18, stage 1, §1.4; `run/campaign_so.py`,
+  `campaign/job_so.hpp`): a job on bbob, MGH or NIST takes its own path in
+  both engines, which write the same files — `improvements.csv`, the
+  trajectory of the best point on the sample grid, the answer, and in
+  `meta.json` the runtimes to the problem's targets. `[campaign]
+  bbob_instance = "by_run" | "fixed"` (by_run: the run's seed is its bbob
+  instance). `RunLedger.record_x`. The multi-objective path is unchanged.
 - `ops::pcx_child` takes the index parent x_p as an argument, `centre`
   (default -1: drawn "with equal probability", Deb, Anand & Joshi 2002, §2.2,
   as before; a given centre draws nothing for it). The G3 core of `scalar/ga.hpp`

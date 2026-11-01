@@ -1509,6 +1509,35 @@ which is why H22 asks for scaled problems or targets of their own. f_ref is
 then; the value at a fixed budget compares on an ordinal scale only (H22
 §III-D). SOM-1 ... SOM-4 in the header are the readings.
 
+**A campaign at one objective** (task 18, stage 1, §1.4; `run/campaign_so.py`,
+`campaign/job_so.hpp`): a job on a problem of the registry with one objective
+(bbob, MGH, NIST) takes its own path in both engines, which write the same
+files; the multi-objective path is untouched. The algorithm — one of
+`mootation.scalar.SINGLE` — sees the problem through counting functions, every
+value asked for a record of the best point's log; a least-squares problem hands
+its residuals (MGH its Jacobian) and its start `x0` to `lm` and `lbfgsb`. A
+run writes:
+
+| File | What |
+|---|---|
+| `improvements.csv` | every record of the best point: evaluations, grad_calls, f, cv |
+| `trajectory.jsonl` | at each count of the sample grid (`record_grid`) and at the end: the last record at or below it — `fe`, `grad_calls`, `f`, `delta_f`, `cv`, the best point's `x1 … xn` |
+| `final.csv` | the answer: the best point, one row |
+| `meta.json` | the job, `so` (f_opt and `f_opt_kind`, the kind of targets and their precisions, f(x0), the runtime to each target, the run's cost, the bbob instance), `final` (the best point's f, delta_f, cv, `fe_best`, `grad_calls_best`) |
+
+`[campaign] bbob_instance = "by_run"` (the default) runs a bbob problem at the
+instance of its run's seed — seeds 1, 2, … by default, so instance k on run
+k, as COCO takes its instances for repetitions — and `"fixed"` at instance 1;
+f_opt is the instance's (the instances are the library's own numbers, not
+COCO's). The multi-objective keys of `[campaign]` (`metrics`, the archive,
+the second answer, the hard budgets, the snapshots) do not apply, and
+`meta.json` names those set (`ignored_at_m1`). Refused, and recorded as
+incompatible: an algorithm that is not single-objective, `lm` on a problem
+without residuals (bbob), and anything but `lm` and `lbfgsb` on a problem
+without a box (MGH, NIST). The store keeps these records as any other
+(`improvements.csv` a point table); its metrics table has a row per
+trajectory record, with its `f`, `delta_f`, `cv`, `grad_calls` and `x1 … xn`.
+
 **MOSQP** (`include/mootation/scalar/mosqp.hpp`; Fliege & Vaz, SIAM J.
 Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the
 constraints); then `mosqp_spread` (20) iterations that spread a set of
