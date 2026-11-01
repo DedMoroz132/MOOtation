@@ -22,6 +22,24 @@ always listed under **Changed** or **Removed**.
   extreme points as in NSGA-III (`nsga3`) or by the letter (`literal`;
   DDS-8). `aprd`: `slot_exclusive`, distinct individuals in a subregion's
   slots (`on`) or not (`off`; APRD-11).
+- Added: problems with symmetries at one objective (task 19, §19.1), families
+  of the C++ suite (`suite/sym.hpp`): `sumexp` (a sum of exponentials, with
+  Lanczos's example), `lowrank`, `cp3`, `cp3_degenerate` (de Silva and Lim's
+  tensor without a best rank-2 approximation), `rbfnet`, `mlp_plateau` (starts
+  on Fukumizu and Amari's lines of embedding), `chaboche1d` (uniaxial
+  elastoplasticity with N back stresses, an implicit return mapping) and
+  `lj_cluster` (Lennard-Jones clusters, Wales and Doye's best known energies).
+  Each says which coordinates may be interchanged (`blocks`), gives a canonical
+  representative (`canon`), the directions its residuals do not see
+  (`gauge_basis`) and its own start; `_core.Native` exposes them. 27 instances
+  in the registry, a NumPy cross-check (`benchmarks/symmetric.py`,
+  `python/test_symmetric.py`) and the map of checks in
+  `docs/symmetric-problems.md`. Every earlier problem and run is unchanged.
+- Added: the knob `coefficients` of `nelder_mead::Options` (task 19,
+  §19.4.2): `adaptive`, the default and the coefficients used so far (Gao &
+  Han 2012, (4.1), for n >= 2), or `standard` (Lagarias et al. 1998, (2.2)).
+  At n = 1 and n = 2 the two are the same run.
+
 - Added: the run knob `sbx_bounds`, SBX's bound handling for one run, any
   core using SBX (the owner's decisions of 2026-11-01). `bounded`, the
   default, is Deb's bounded SBX (nsga2.c realcross), unchanged: a child stays

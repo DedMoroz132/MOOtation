@@ -127,6 +127,12 @@ jobs:
         if: matrix.shard == 0
         run: PYTHONPATH=python python -m mootation.run.registry_export --check
 
+      - name: The problems with symmetries, C++ against NumPy
+        # task 19, section 19.1.6: suite/sym.hpp's families and
+        # benchmarks/symmetric.py at every registered instance
+        if: matrix.shard == 0
+        run: PYTHONPATH=python python python/test_symmetric.py
+
       - name: The run layer against the built extension
         # The run-layer jobs below have no extension, so test_run_layer.py
         # skips its campaign round trip there. Here it runs for real, and it

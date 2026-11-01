@@ -175,7 +175,8 @@ struct RegistryProblem {
     // x_s, 10 x_s or 100 x_s; NIST: the file's start 1 or 2)
     std::optional<double> f_opt;
     std::string f_opt_kind;                       // "exact", "computed" (MGH's printed minima), "certified" (NIST),
-                                                  // "best_known" (so_metrics.hpp, kReferenceVersion)
+                                                  // "best_known" (so_metrics.hpp, kReferenceVersion),
+                                                  // "infimum" (not attained: cp3_degenerate)
     std::vector<double> x0;
     std::vector<double> f_local;                  // MGH: the local minima its paper prints, halved (levels)
     std::optional<bool> large_residual;           // MGH: the global minimum is not zero
@@ -299,6 +300,26 @@ inline suite::Spec spec_of(const json::Value& d)
         s.rotation.rotate = detail::flag_of(*r, "rotate");
         s.rotation.condition = detail::flag_of(*r, "condition");
         for (const auto& x : r->find("sizes")->items) s.rotation.sizes.push_back(static_cast<int>(x.i));
+    }
+    if (const json::Value* y = d.find("sym"); y && y->kind == Kind::Object) {   // task 19, §19.1 (suite/sym.hpp)
+        suite::sym::Instance& in = s.sym;
+        auto real = [&](const char* key, double fallback) {
+            const json::Value* v = y->find(key);
+            if (v == nullptr) return fallback;
+            return v->kind == Kind::Float ? v->f : static_cast<double>(v->i);
+        };
+        in.teacher = static_cast<int>(int_of(*y, "teacher"));
+        in.student = static_cast<int>(int_of(*y, "student"));
+        in.points = static_cast<int>(int_of(*y, "points"));
+        in.dim = static_cast<int>(int_of(*y, "dim"));
+        if (const json::Value* v = y->find("shape"); v && v->kind == Kind::Array)
+            for (const auto& x : v->items) in.shape.push_back(static_cast<int>(x.i));
+        in.noise = real("noise", 0.0);
+        in.ratio = real("ratio", 0.0);
+        in.observed = real("observed", 1.0);
+        if (const json::Value* v = y->find("variant"); v && v->kind == Kind::String) in.variant = v->s;
+        in.embed = real("embed", 0.5);
+        in.instance = static_cast<int>(int_of(*y, "instance", 1));
     }
     return s;
 }

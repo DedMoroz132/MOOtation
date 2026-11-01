@@ -126,6 +126,13 @@ if(MOOTATION_BUILD_TESTS)
                 ${_MOOTATION_PY} ${CMAKE_CURRENT_SOURCE_DIR}/test_binding.py)
     set_tests_properties(python.smoke PROPERTIES TIMEOUT 600)
 
+    # the problems with symmetries, C++ against NumPy (task 19, §19.1.6)
+    add_test(NAME python.symmetric
+        COMMAND ${CMAKE_COMMAND} -E env
+                "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}"
+                ${_MOOTATION_PY} ${CMAKE_CURRENT_SOURCE_DIR}/test_symmetric.py)
+    set_tests_properties(python.symmetric PROPERTIES TIMEOUT 600)
+
     # The examples and the run-layer tests import the SAME extension, so they
     # must use the same interpreter. Registered here rather than in tests/ for
     # that reason: tests/ has no idea which Python the module was built for.

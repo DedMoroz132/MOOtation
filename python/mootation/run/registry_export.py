@@ -79,6 +79,8 @@ def _spec_json(s: dict | None):
         elif k == "bbob":
             if v:
                 raise ValueError("a spec handing over bbob functions is not exported")
+        elif k == "sym":                                # task 19 (suite/sym.hpp's Instance)
+            out[k] = {name: ([int(x) for x in val] if name == "shape" else val) for name, val in v.items()}
         elif isinstance(v, (str, bool)) or v is None:
             out[k] = v
         elif isinstance(v, int):

@@ -51,6 +51,314 @@ std::vector<double> eval(const S::Native& p, const std::vector<double>& x, std::
     return f;
 }
 
+bool refused(const S::Spec& s);
+
+// ── the problems with symmetries (task 19, §19.1.6) ─────────────────────────
+S::Spec sym_spec(const std::string& family, const S::sym::Instance& in)
+{
+    S::Spec s = spec(family, 0, 1);
+    s.sym = in;
+    return s;
+}
+
+double objective(const S::Native& p, const std::vector<double>& x)
+{
+    double f = 0.0;
+    p.evaluate(x.data(), &f, nullptr);
+    return f;
+}
+
+// r and J (row-major), or the gradient where the problem has no residuals
+void derivatives(const S::Native& p, const std::vector<double>& x, std::vector<double>& r, std::vector<double>& J)
+{
+    const std::size_t n = x.size();
+    if (p.n_res == 0) {
+        r.assign(1, objective(p, x));
+        J.assign(n, 0.0);
+        p.gradient(x.data(), J.data());
+        return;
+    }
+    r.assign(static_cast<std::size_t>(p.n_res), 0.0);
+    J.assign(static_cast<std::size_t>(p.n_res) * n, 0.0);
+    p.residuals(x.data(), r.data(), p.has_jacobian ? J.data() : nullptr);
+}
+
+// the largest |J - central differences| over the largest |J|, step 1e-6 (1 + |x_j|)
+double derivative_error(const S::Native& p, const std::vector<double>& x)
+{
+    std::vector<double> r, J, rp, rm, Jd;
+    derivatives(p, x, r, J);
+    const std::size_t n = x.size(), m = r.size();
+    double worst = 0.0, big = 0.0;
+    for (double v : J) big = std::max(big, std::fabs(v));
+    for (std::size_t j = 0; j < n; ++j) {
+        const double h = 1e-6 * (1.0 + std::fabs(x[j]));
+        std::vector<double> xp = x, xm = x;
+        xp[j] += h;
+        xm[j] -= h;
+        derivatives(p, xp, rp, Jd);
+        derivatives(p, xm, rm, Jd);
+        for (std::size_t i = 0; i < m; ++i)
+            worst = std::max(worst, std::fabs(J[i * n + j] - (rp[i] - rm[i]) / (xp[j] - xm[j])));
+    }
+    return worst / std::max(big, 1e-300);
+}
+
+// x with its blocks in reverse order and, where the family has one, a sign
+// flip of the symmetry in each (cp3: a, c; mlp_plateau: the whole unit)
+std::vector<double> permuted(const S::Native& p, const std::string& family, std::vector<double> x)
+{
+    for (const S::Blocks& b : p.blocks) {
+        std::vector<double> y = x;
+        for (int k = 0; k < b.count; ++k)
+            for (int l = 0; l < b.size; ++l)
+                y[static_cast<std::size_t>(b.offset + k * b.size + l)] =
+                    x[static_cast<std::size_t>(b.offset + (b.count - 1 - k) * b.size + l)];
+        x = y;
+        for (int k = 0; k < b.count; ++k) {
+            double* blk = x.data() + b.offset + k * b.size;
+            if (family == "mlp_plateau" && k % 2 == 0)
+                for (int l = 0; l < b.size; ++l) blk[l] = -blk[l];
+            if ((family == "cp3" || family == "cp3_degenerate") && k % 2 == 0) {
+                const int I = b.size / 3;               // the tests' cubes: I = J = K
+                for (int l = 0; l < I; ++l) blk[l] = -blk[l];
+                for (int l = 2 * I; l < 3 * I; ++l) blk[l] = -blk[l];
+            }
+        }
+    }
+    return x;
+}
+
+void symmetric_problems()
+{
+    namespace Y = S::sym;
+    struct Case {
+        std::string family, label;
+        Y::Instance in;
+    };
+    auto inst = [](int teacher, int student, int points, int dim, std::vector<int> shape, double noise) {
+        Y::Instance in;
+        in.teacher = teacher;
+        in.student = student;
+        in.points = points;
+        in.dim = dim;
+        in.shape = std::move(shape);
+        in.noise = noise;
+        return in;
+    };
+    std::vector<Case> cases = {
+        {"sumexp", "K3", inst(3, 0, 40, 0, {}, 0.0)},
+        {"sumexp", "K3 noise", inst(3, 0, 40, 0, {}, 1e-3)},
+        {"sumexp", "K3 -> 2", inst(3, 2, 40, 0, {}, 0.0)},
+        {"sumexp", "lanczos", inst(0, 0, 0, 0, {}, 0.0)},
+        {"lowrank", "6x5 r2", inst(2, 0, 0, 0, {6, 5}, 0.0)},
+        {"lowrank", "6x5 r2 masked", inst(2, 0, 0, 0, {6, 5}, 0.0)},
+        {"cp3", "3x3x3 R2", inst(2, 0, 0, 0, {3, 3, 3}, 0.0)},
+        {"cp3_degenerate", "2x2x2", inst(0, 0, 0, 0, {2, 2, 2}, 0.0)},
+        {"rbfnet", "d2 K3", inst(3, 0, 30, 2, {}, 0.0)},
+        {"mlp_plateau", "d2 H+1 3", inst(3, 0, 30, 2, {}, 0.0)},
+        {"chaboche1d", "N2", inst(2, 0, 0, 0, {}, 0.0)},
+        {"chaboche1d", "N2 -> 1", inst(2, 1, 0, 0, {}, 0.0)},
+        {"lj_cluster", "N7", inst(0, 0, 0, 7, {}, 0.0)},
+    };
+    cases[0].in.ratio = cases[1].in.ratio = cases[2].in.ratio = 4.0;
+    cases[3].in.variant = "lanczos";
+    cases[3].in.student = 3;
+    cases[5].in.observed = 0.6;
+    for (const Case& c : cases) {
+        const std::string tag = c.family + " " + c.label;
+        const auto made = S::make(sym_spec(c.family, c.in));
+        const S::Native& p = *made;
+        const auto& fam = *dynamic_cast<const S::Problem&>(p).sym_family();
+        std::vector<double> x(static_cast<std::size_t>(p.n_var));
+        p.start(x.data());
+        // a point off the start's symmetries: the start moved a little
+        std::mt19937 g(17);
+        for (double& v : x) v = v + 0.1 * (mootation::rnd::uniform01(g) - 0.5);
+        if (!fam.optimum.empty()) {
+            const double f = objective(p, fam.optimum);
+            check(c.in.noise > 0.0 ? f > 0.0 : f == 0.0, tag + ": f(x_opt) = 0 without noise (" + std::to_string(f) + ")");
+        }
+        if (p.has_jacobian || p.has_gradient) {
+            const double e = derivative_error(p, x);
+            check(e < 1e-6, tag + ": derivatives against central differences (" + std::to_string(e) + ")");
+        }
+        if (p.has_canon) {
+            std::vector<double> y = x;
+            p.canon(y.data());
+            std::vector<double> z = y;
+            p.canon(z.data());
+            const double fx = objective(p, x), fy = objective(p, y);
+            check(std::fabs(fy - fx) <= 1e-12 * std::max(1.0, std::fabs(fx)), tag + ": f(canon(x)) = f(x)");
+            check(z == y, tag + ": canon(canon(x)) = canon(x) bit for bit");
+            std::vector<double> q = permuted(p, c.family, x);
+            p.canon(q.data());
+            check(q == y, tag + ": canon(P(x)) = canon(x) bit for bit");
+        }
+        if (p.gauge_dim > 0) {
+            std::vector<double> r, J, N(static_cast<std::size_t>(p.n_var * p.gauge_dim));
+            derivatives(p, x, r, J);
+            p.gauge_basis(x.data(), N.data());
+            const std::size_t n = x.size(), m = r.size(), d = static_cast<std::size_t>(p.gauge_dim);
+            double Jn = 0.0, worst = 0.0;
+            for (double v : J) Jn += v * v;
+            Jn = std::sqrt(Jn);
+            for (std::size_t col = 0; col < d; ++col) {
+                double gn = 0.0, jg = 0.0;
+                for (std::size_t j = 0; j < n; ++j) gn += N[j * d + col] * N[j * d + col];
+                for (std::size_t i = 0; i < m; ++i) {
+                    double s = 0.0;
+                    for (std::size_t j = 0; j < n; ++j) s += J[i * n + j] * N[j * d + col];
+                    jg += s * s;
+                }
+                worst = std::max(worst, std::sqrt(jg) / (Jn * std::sqrt(gn)));
+            }
+            check(worst <= 1e-10, tag + ": ||J g|| <= 1e-10 ||J|| ||g|| for every gauge direction (" +
+                                      std::to_string(worst) + ")");
+        }
+    }
+
+    // Istratov & Vyvenko's Table I: the resolution limit at SNR 10^2, 10^3, 10^4
+    check(std::fabs(Y::resolution(1e2) - 2.44) < 0.005 && std::fabs(Y::resolution(1e3) - 1.88) < 0.005 &&
+              std::fabs(Y::resolution(1e4) - 1.63) < 0.005,
+          "sumexp: resolution limit 2.44, 1.88, 1.63 (Istratov & Vyvenko, Table I)");
+    {   // Lanczos: their f_2 reproduces f_3 "to within two decimal places" (p. 1236) on the grid
+        Y::Instance in;
+        in.variant = "lanczos";
+        in.student = 2;
+        const auto p = S::make(sym_spec("sumexp", in));
+        const std::vector<double> f2 = {0.305, -mootation::dm::log(1.58), 2.202, -mootation::dm::log(4.45)};
+        std::vector<double> r(static_cast<std::size_t>(p->n_res));
+        p->residuals(f2.data(), r.data(), nullptr);
+        double worst = 0.0;
+        for (double v : r) worst = std::max(worst, std::fabs(v));
+        check(r.size() == 24 && worst < 0.01, "sumexp lanczos: f_2 within 0.01 of f_3 at the 24 points (" +
+                                                   std::to_string(worst) + ")");
+    }
+    {   // cp3_degenerate: n^2 f(A_n) = 1/2 ||S + Y/n||^2 exactly, the norms ~ n
+        Y::Instance in;
+        in.shape = {2, 3, 2};
+        const auto made = S::make(sym_spec("cp3_degenerate", in));
+        const auto& cp = dynamic_cast<const Y::CP3&>(*dynamic_cast<const S::Problem&>(*made).sym_family());
+        bool rate = true;
+        std::string seen;
+        for (double nn : {10.0, 100.0, 1000.0}) {
+            const std::vector<double> x = cp.sequence(nn);
+            double expect = 0.0;            // 1/2 || y1 y2 x3 + y1 x2 y3 + x1 y2 y3 + y1 y2 y3 / n ||^2
+            for (int i = 0; i < cp.I; ++i)
+                for (int j = 0; j < cp.J; ++j)
+                    for (int k = 0; k < cp.K; ++k) {
+                        const double x1 = cp.vec(0, 0)[i], y1 = cp.vec(0, 1)[i], x2 = cp.vec(1, 0)[j],
+                                     y2 = cp.vec(1, 1)[j], x3 = cp.vec(2, 0)[k], y3 = cp.vec(2, 1)[k];
+                        const double e = y1 * y2 * x3 + y1 * x2 * y3 + x1 * y2 * y3 + y1 * y2 * y3 / nn;
+                        expect += 0.5 * e * e;
+                    }
+            const double got = nn * nn * objective(*made, x);
+            double prod = 1.0;              // ||a|| ||b|| ||c|| of the first component, over n
+            for (int mode = 0, at = 0; mode < 3; at += cp.size(mode), ++mode)
+                prod *= Y::norm(x.data() + at, static_cast<std::size_t>(cp.size(mode)));
+            rate = rate && std::fabs(got - expect) <= 1e-6 * expect;
+            seen += " " + std::to_string(got / expect) + "/" + std::to_string(prod / nn);
+        }
+        check(rate, "cp3_degenerate: n^2 f(A_n) = 1/2 ||S + Y/n||^2 at n = 10, 100, 1000 (ratio/norms over n:" +
+                        seen + ")");
+    }
+    {   // mlp_plateau: at either embedding the gradient is the small network's, carried over
+        for (const char* name : {"duplicate", "bias"}) {
+            const std::string variant = name;
+            Y::Instance in;
+            in.teacher = 3;
+            in.points = 40;
+            in.dim = 2;
+            in.variant = variant;
+            in.embed = variant == "duplicate" ? 0.3 : 0.7;
+            const auto made = S::make(sym_spec("mlp_plateau", in));
+            const auto& mlp = dynamic_cast<const Y::MlpPlateau&>(*dynamic_cast<const S::Problem&>(*made).sym_family());
+            const std::vector<double> small = mlp.fit_small();
+            std::vector<double> x(static_cast<std::size_t>(made->n_var));
+            made->start(x.data());
+            auto gradient = [&](const std::vector<double>& at, int units) {
+                const std::size_t cols = static_cast<std::size_t>(units * (mlp.d + 2) + 1);
+                std::vector<double> r(static_cast<std::size_t>(mlp.m)), J(r.size() * cols), gr(cols, 0.0);
+                mlp.eval(at.data(), units, r.data(), J.data());
+                for (std::size_t i = 0; i < r.size(); ++i)
+                    for (std::size_t j = 0; j < cols; ++j) gr[j] += J[i * cols + j] * r[i];
+                return gr;
+            };
+            const std::vector<double> gb = gradient(x, mlp.H), gs = gradient(small, mlp.H - 1);
+            const std::size_t w = static_cast<std::size_t>(mlp.d + 2), last = static_cast<std::size_t>(mlp.H - 1) * w;
+            std::vector<double> carried(gb.size(), 0.0);
+            std::copy(gs.begin(), gs.begin() + static_cast<std::ptrdiff_t>(last), carried.begin());
+            carried.back() = gs.back();
+            if (variant == "duplicate") {
+                carried[last] = gs[0];
+                for (std::size_t l = 1; l < w; ++l) {
+                    carried[l] = in.embed * gs[l];
+                    carried[last + l] = (1.0 - in.embed) * gs[l];
+                }
+            } else {
+                carried[last] = Y::tanh(in.embed) * gs.back();
+            }
+            double worst = 0.0, scale = 0.0;
+            for (std::size_t j = 0; j < gb.size(); ++j) {
+                worst = std::max(worst, std::fabs(gb[j] - carried[j]));
+                scale = std::max(scale, std::fabs(gb[j]));
+            }
+            check(worst <= 1e-12 * std::max(1.0, scale) && scale < 1e-5,
+                  "mlp_plateau " + variant + ": the gradient is the small network's carried over (largest |g| " +
+                      std::to_string(scale) + ")");
+        }
+    }
+    {   // lj_cluster: the 13-atom icosahedron at its best radius is Table I's -44.326801
+        Y::Instance in;
+        in.dim = 13;
+        const auto p = S::make(sym_spec("lj_cluster", in));
+        const double phi = (1.0 + std::sqrt(5.0)) / 2.0;
+        std::vector<double> unit(3, 0.0);        // the centre, then the 12 vertices (0, +-1, +-phi) cyclically
+        for (int c = 0; c < 3; ++c)
+            for (double s1 : {-1.0, 1.0})
+                for (double s2 : {-1.0, 1.0}) {
+                    double v[3] = {0.0, 0.0, 0.0};
+                    v[(c + 1) % 3] = s1;
+                    v[(c + 2) % 3] = s2 * phi;
+                    const double len = std::sqrt(1.0 + phi * phi);
+                    for (double e : v) unit.push_back(e / len);
+                }
+        auto energy = [&](double R) {
+            std::vector<double> x = unit;
+            for (double& v : x) v *= R;
+            return objective(*p, x);
+        };
+        double a = 0.9, b = 1.3;                 // golden section on the radius
+        const double gr = (std::sqrt(5.0) - 1.0) / 2.0;
+        for (int it = 0; it < 200; ++it) {
+            const double c1 = b - gr * (b - a), c2 = a + gr * (b - a);
+            if (energy(c1) < energy(c2)) b = c2;
+            else a = c1;
+        }
+        const double E = energy((a + b) / 2.0);
+        check(std::fabs(E - Y::lj_best_known(13)) < 5e-7, "lj_cluster: the 13-atom icosahedron, E = " +
+                                                              std::to_string(E) + " (Wales & Doye: -44.326801)");
+        check(p->n_var == 39 && std::fabs(S::bounds(sym_spec("lj_cluster", in))[0].second -
+                                                          (1.0 + std::cbrt(39.0 / (4.0 * 3.141592653589793)))) < 1e-14,
+              "lj_cluster: the box L = 1 + (3N / (4 pi))^(1/3)");
+    }
+    {   // what make() refuses
+        Y::Instance bad;
+        check(refused(sym_spec("sumexp", bad)) && refused(sym_spec("lowrank", bad)) && refused(sym_spec("cp3", bad)) &&
+                  refused(sym_spec("rbfnet", bad)) && refused(sym_spec("mlp_plateau", bad)) &&
+                  refused(sym_spec("chaboche1d", bad)) && refused(sym_spec("lj_cluster", bad)),
+              "sym: instances without their sizes are refused");
+        Y::Instance two;
+        two.teacher = 2;
+        two.points = 10;
+        two.ratio = 3.0;
+        S::Spec wrong = sym_spec("sumexp", two);
+        wrong.n_var = 5;
+        check(refused(wrong), "sym: n_var other than the instance's is refused");
+    }
+}
+
 bool refused(const S::Spec& s)
 {
     try {
@@ -587,6 +895,8 @@ int main()
                   std::abs(tr) < 5.0 * std::sqrt(1.0 / N) && std::abs(tr2 - 1.0) < 5.0 * std::sqrt(2.0 / N),
               "haar: E q_11 = 0, E q^2 = 1/4, E tr = 0, E tr^2 = 1 (4 000 rotations of size 4)");
     }
+
+    symmetric_problems();
 
     std::printf("suite: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");
     return failed == 0 ? 0 : 1;

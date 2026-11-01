@@ -28,6 +28,14 @@
 // and (MGH) their Jacobian come with it (Native::residuals); no box: the
 // bounds are -inf / +inf.
 //
+// The problems with symmetries at one objective (task 19, §19.1; sym.hpp):
+// family "sumexp" (sumexp.hpp), "lowrank", "cp3", "cp3_degenerate"
+// (factor.hpp), "rbfnet", "mlp_plateau" (networks.hpp), "chaboche1d"
+// (chaboche.hpp) or "lj_cluster" (lj.hpp), the instance's numbers in `sym`;
+// n_var 0 takes the family's. Least squares but lj_cluster, whose gradient
+// comes with it; each gives its blocks, canon, gauge directions and start
+// (Native).
+//
 // The verification set (classic.hpp; task 17, supplement 2, §3): family
 // "SCH", "FON", "POL", "KUR", "SPH" (m = n_obj), "QV" or "KURZ".
 //
@@ -92,23 +100,28 @@
 #include "bits.hpp"
 #include "bt.hpp"
 #include "catzdt.hpp"
+#include "chaboche.hpp"
 #include "classic.hpp"
 #include "common.hpp"
 #include "dascmop.hpp"
 #include "doc.hpp"
 #include "dtlz.hpp"
+#include "factor.hpp"
 #include "instances.hpp"
 #include "lircmop.hpp"
+#include "lj.hpp"
 #include "maf.hpp"
 #include "mgh.hpp"
 #include "mmo.hpp"
 #include "nist.hpp"
 #include "mop.hpp"
 #include "mw.hpp"
+#include "networks.hpp"
 #include "polygon.hpp"
 #include "rcm.hpp"
 #include "spec_numbers.hpp"
 #include "re.hpp"
+#include "sumexp.hpp"
 #include "wfg.hpp"
 #include "zcat.hpp"
 #include "zdt.hpp"
@@ -148,6 +161,7 @@ struct Spec {
     bool wide = false;                            // DTLZ: wideDTLZ3's box (Problem::bounds)
     std::vector<double> constants;                // DAS-CMOP: b, d, e, r of the triplet (from it where empty)
     std::vector<double> triplet;                  // DAS-CMOP: eta, zeta, gamma
+    sym::Instance sym;                            // sumexp, lowrank, ..., lj_cluster: the instance (sym.hpp)
     Rotation rotation;                            // the matrices drawn here (family empty: none)
 };
 
@@ -216,6 +230,7 @@ public:
         else if (f == "bbob") kind_ = Kind::BBOB1;
         else if (f == "MGH") kind_ = Kind::MGH;
         else if (f == "NIST") kind_ = Kind::NIST;
+        else if ((sym_ = make_sym(f, s_.sym)) != nullptr) kind_ = Kind::Sym;
         else throw std::invalid_argument("suite: unknown family '" + f + "'");
         check();
     }
@@ -324,6 +339,12 @@ public:
             case Kind::RE:
                 re::evaluate(re_, p, f, g);
                 return;
+            case Kind::Sym:
+                if (n_res == 0) {
+                    f[0] = sym_->value(p);
+                    return;
+                }
+                [[fallthrough]];
             case Kind::MGH:
             case Kind::NIST: {
                 std::vector<double> r(static_cast<std::size_t>(n_res));
@@ -342,6 +363,11 @@ public:
         const std::size_t n = static_cast<std::size_t>(n_var), m = static_cast<std::size_t>(n_res);
         const std::vector<double> xv(x, x + n);
         std::vector<double> rv, Jv;
+        if (kind_ == Kind::Sym && n_res > 0) {
+            if (J && !has_jacobian) throw std::logic_error("suite: " + s_.family + " gives no Jacobian");
+            sym_->residuals(x, r, J);
+            return;
+        }
         if (kind_ == Kind::MGH) {
             mgh::evaluate(s_.mgh_id, n, m, xv, rv, J ? &Jv : nullptr);
         } else if (kind_ == Kind::NIST) {
@@ -353,6 +379,32 @@ public:
         std::copy(rv.begin(), rv.end(), r);
         if (J) std::copy(Jv.begin(), Jv.end(), J);
     }
+
+    // the symmetries, the gradient and the start of sym.hpp's families (Native)
+    void canon(double* x) const override
+    {
+        if (!has_canon) Native::canon(x);
+        sym_->canonical(x);
+    }
+    void gauge_basis(const double* x, double* N) const override
+    {
+        if (gauge_dim == 0) Native::gauge_basis(x, N);
+        sym_->gauge(x, N);
+    }
+    void gradient(const double* x, double* g) const override
+    {
+        if (!has_gradient) Native::gradient(x, g);
+        sym_->gradient(x, g);
+    }
+    void start(double* x) const override
+    {
+        if (!has_start) Native::start(x);
+        sym_->start(x);
+    }
+
+    // the family's object (sym.hpp; null for the other families): its data
+    // and helpers for the tests
+    const sym::Family* sym_family() const { return sym_.get(); }
 
     const Spec& spec() const { return s_; }
 
@@ -439,6 +491,7 @@ public:
             case Kind::MGH:
             case Kind::NIST: return box(n, -std::numeric_limits<double>::infinity(),
                                         std::numeric_limits<double>::infinity());   // no box
+            case Kind::Sym: return sym_->bounds;
         }
         return {};
     }
@@ -466,7 +519,7 @@ public:
 
 private:
     enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, BBOB1, DASCMOP, LIRCMOP,
-                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM, Bits, CatZDT, MGH, NIST };
+                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM, Bits, CatZDT, MGH, NIST, Sym };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
@@ -484,6 +537,21 @@ private:
     bbob::Pair bbob_;
     bbob::Objective bbob1_;
     nist::Dataset nist_;
+    std::shared_ptr<const sym::Family> sym_;
+
+    // the family of sym.hpp a name names (null: none of them)
+    static std::shared_ptr<const sym::Family> make_sym(const std::string& f, const sym::Instance& in)
+    {
+        if (f == "sumexp") return std::make_shared<sym::Sumexp>(in);
+        if (f == "lowrank") return std::make_shared<sym::Lowrank>(in);
+        if (f == "cp3") return std::make_shared<sym::CP3>(in, false);
+        if (f == "cp3_degenerate") return std::make_shared<sym::CP3>(in, true);
+        if (f == "rbfnet") return std::make_shared<sym::Rbfnet>(in);
+        if (f == "mlp_plateau") return std::make_shared<sym::MlpPlateau>(in);
+        if (f == "chaboche1d") return std::make_shared<sym::Chaboche>(in);
+        if (f == "lj_cluster") return std::make_shared<sym::LJCluster>(in);
+        return nullptr;
+    }
 
     void set_cdtlz(int base, dtlz::Cons cons, int n_cons)
     {
@@ -547,6 +615,7 @@ private:
     void check()
     {
         fill();
+        if (kind_ == Kind::Sym && n_var == 0) n_var = s_.n_var = sym_->n;
         const int n = n_var, M = n_obj;
         if (n < 1 || M < 1) fail("no variables or objectives");
         switch (kind_) {
@@ -704,6 +773,18 @@ private:
                 has_jacobian = true;
                 break;
             }
+            case Kind::Sym:
+                if (M != 1 || s_.map != "none") fail("one objective, no map");
+                if (n != sym_->n) fail("the instance's " + std::to_string(sym_->n) + " variables");
+                n_res = sym_->m;
+                has_jacobian = sym_->has_jacobian;
+                has_gradient = sym_->has_gradient;
+                has_canon = sym_->has_canon;
+                has_start = sym_->has_start;
+                gauge_dim = sym_->gauge_dim;
+                blocks = sym_->blocks;
+                linear = sym_->linear;
+                break;
             case Kind::NIST:
                 if (M != 1) fail("one objective");
                 nist_ = nist::embedded(s_.nist);

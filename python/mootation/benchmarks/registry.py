@@ -102,6 +102,7 @@ from . import categorical as _cat
 from . import mw as _mw
 from . import failing as _fail
 from . import least_squares as _lsq
+from . import symmetric as _sym
 
 
 # =============================================================
@@ -201,7 +202,8 @@ class BenchProblem:
     # how f_opt is known: "exact" (bbob's instance, MGH's zeros and closed
     # forms), "computed" (MGH's printed minima, to full precision: LSQ-1),
     # "certified" (NIST), "best_known" (no minimum known: the best value
-    # known, of version SO_REFERENCE_VERSION; LSQ-2)
+    # known, of version SO_REFERENCE_VERSION; LSQ-2), "infimum" (a lower
+    # bound that is not attained: cp3_degenerate, symmetric.py)
     f_opt_kind: Optional[str] = None
     x0: Optional[Tuple[float, ...]] = None
     # MGH (least_squares.py): the local minima its paper prints, halved (levels,
@@ -2498,6 +2500,39 @@ def _register_single_objective():
 
 
 _register_single_objective()
+
+
+# =============================================================
+#  One objective with symmetries (task 19, §19.1): symmetric.py
+# =============================================================
+#  The C++ suite's families sumexp, lowrank, cp3, cp3_degenerate, rbfnet,
+#  mlp_plateau, chaboche1d, lj_cluster (suite/sym.hpp), registered with the
+#  extension only (C++ evaluates them; symmetric.py's NumPy is the
+#  cross-check). Each takes its own start as x0 and the box its header gives;
+#  the least-squares ones are measured against relative targets from x0, as
+#  MGH and NIST, lj_cluster against absolute ones, as bbob (SYMR-3).
+def _register_symmetric():
+    try:
+        from .. import _core
+    except ImportError:
+        return
+    if not hasattr(_core.Native, "gauge_dim"):         # an extension built before task 19
+        return
+    for row in _sym.ROWS:
+        nat = _core.Native(_sym.spec(row))
+        key = _sym.name(row)
+        lsq = nat.n_res > 0
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=nat.n_var, bounds=[tuple(b) for b in nat.bounds], n_obj=1,
+            evaluate=nat.evaluate, constraints=_no_cons, evaluate_batch=nat.evaluate_batch,
+            hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
+            pop_size=1 if lsq else 100, n_gen=_sym.BUDGET if lsq else 100 * nat.n_var, K_runs=1 if lsq else 15,
+            has_cons=False, f_opt=row.f_opt, f_opt_kind=row.f_opt_kind,
+            x0=tuple(float(v) for v in nat.start()), native=nat, f_local=tuple(row.f_local),
+            large_residual=(row.f_opt > 0.0) if lsq else None, targets="relative" if lsq else "absolute")
+
+
+_register_symmetric()
 # the verification set (classic.py; task 17, supplement 2, §3): the C++ suite's
 EXACT_FRAME.update(_classic.register(PROBLEMS, BenchProblem, _budget, _ref_norm, _divisor))
 # The problems of the suite's families evaluated by C++ from here on (native.py),

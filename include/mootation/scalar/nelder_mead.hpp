@@ -16,9 +16,12 @@
 // Appl. 51(1):259-277, 2012, (4.1), for n >= 2: rho = 1, chi = 1 + 2/n,
 // gamma = 0.75 - 1/(2n), sigma = 1 - 1/n (source nelder-mead-adaptive_
 // gao2012); for n = 1, where (4.1) would give sigma = 0, the standard ones of
-// Lagarias et al. (2.2). The run ends by Gao & Han's test (T1): max |f_i -
-// f_1| <= tol and max ||x_i - x_1||_inf <= tol, or when max_iter iterations
-// are done.
+// Lagarias et al. (2.2). With coefficients = standard (the knob
+// nm_coefficients, task 19, §19.4.2) every n takes the standard ones,
+// Lagarias et al. (2.2), which Gao & Han print as (1.3): rho = 1, chi = 2,
+// gamma = 1/2, sigma = 1/2; at n = 2 (4.1) gives the same numbers. The run
+// ends by Gao & Han's test (T1): max |f_i - f_1| <= tol and max ||x_i -
+// x_1||_inf <= tol, or when max_iter iterations are done.
 //
 // OURS:
 //   NM-1. The initial simplex: x_0 and x_0 + tau e_i, tau = 0.05 in every
@@ -46,6 +49,7 @@ struct Options {
     double tol = 1e-8;
     double tau = 0.05;              // NM-1
     long long max_iter = 1000000;
+    enum class Coefficients { adaptive, standard } coefficients = Coefficients::adaptive;   // nm_coefficients
 };
 
 struct Result {
@@ -62,10 +66,11 @@ inline Result minimize(const std::function<double(const std::vector<double>&)>& 
 {
     const std::size_t n = x0.size();
     const double dn = static_cast<double>(n);
+    const bool adaptive = o.coefficients == Options::Coefficients::adaptive && n >= 2;
     const double rho = 1.0;
-    const double chi = n >= 2 ? 1.0 + 2.0 / dn : 2.0;
-    const double gamma = n >= 2 ? 0.75 - 1.0 / (2.0 * dn) : 0.5;
-    const double sigma = n >= 2 ? 1.0 - 1.0 / dn : 0.5;
+    const double chi = adaptive ? 1.0 + 2.0 / dn : 2.0;
+    const double gamma = adaptive ? 0.75 - 1.0 / (2.0 * dn) : 0.5;
+    const double sigma = adaptive ? 1.0 - 1.0 / dn : 0.5;
 
     auto clip = [&](std::vector<double>& x) {
         for (std::size_t i = 0; i < n; ++i) x[i] = std::min(hi[i], std::max(lo[i], x[i]));

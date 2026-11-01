@@ -152,6 +152,9 @@ def spec(name: str, p, rotated=None) -> dict | None:
     m = _BBOB1.fullmatch(name)
     if m is not None:
         return _base("bbob", p.n_vars, 1, bbob_fid=int(m.group(1)), bbob_iid=1)
+    if p.native is not None and "sym" in p.native.spec:   # task 19 (symmetric.py; registry.py)
+        s = p.native.spec
+        return {"family": s["family"], "n_var": s["n_var"], "n_obj": 1, "sym": s["sym"]}
     if p.native is not None and p.native.spec["family"] in ("MGH", "NIST"):   # made so (registry.py)
         s = p.native.spec
         return ({"family": "MGH", "n_var": s["n_var"], "n_obj": 1, "mgh_id": s["mgh_id"], "mgh_m": s["mgh_m"]}

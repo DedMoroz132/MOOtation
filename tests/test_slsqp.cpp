@@ -330,6 +330,54 @@ void nm_problems()
     check(r.x[0] == 1.0 && near(r.x[1], 0.5, 1e-5), "nm: minimum on the boundary");
 }
 
+// nm_coefficients (task 19, §19.4.2): at n = 1 and n = 2 the adaptive
+// coefficients (4.1) are the standard ones, the same run point for point; at
+// n = 5 they are not. Gao & Han's convex quartic (4.3) from (1, ..., 1).
+void nm_coefficients()
+{
+    using Coefficients = nm::Options::Coefficients;
+    auto trace = [](std::size_t n, Coefficients c, std::vector<std::vector<double>>& points) {
+        nm::Options o;
+        o.tol = 1e-10;
+        o.coefficients = c;
+        auto f = [&](const std::vector<double>& x) {
+            points.push_back(x);
+            double s = 0.0;
+            for (std::size_t i = 0; i + 1 < x.size(); ++i)
+                s += 100 * (x[i + 1] - x[i] * x[i]) * (x[i + 1] - x[i] * x[i]) + (1 - x[i]) * (1 - x[i]);
+            return x.size() == 1 ? (x[0] - 0.7) * (x[0] - 0.7) : s;
+        };
+        std::vector<double> x0(n, -0.5);
+        return nm::minimize(f, x0, std::vector<double>(n, -2.0), std::vector<double>(n, 2.0), o);
+    };
+    for (std::size_t n : {1, 2, 5}) {
+        std::vector<std::vector<double>> pa, ps;
+        const nm::Result ra = trace(n, Coefficients::adaptive, pa);
+        const nm::Result rs = trace(n, Coefficients::standard, ps);
+        const bool same = pa == ps && ra.x == rs.x && ra.f == rs.f && ra.iterations == rs.iterations;
+        check(n == 5 ? !same && ra.converged && rs.converged : same,
+              "nm_coefficients: n = " + std::to_string(n) + (n == 5 ? ", the runs differ" : ", the same run") +
+                  " (" + std::to_string(pa.size()) + " and " + std::to_string(ps.size()) + " evaluations)");
+    }
+    // (4.3): f = x^T D x + sigma (x^T B x)^2, D = diag((1 + eps)^i), B = U^T U,
+    // U upper triangular of ones, so x^T B x = sum_k (x_k + ... + x_n)^2
+    const double eps = 0.05, sigma = 1e-4;
+    auto quartic = [&](const std::vector<double>& x) {
+        double q = 0.0, tail = 0.0, b = 0.0;
+        for (std::size_t i = 0; i < x.size(); ++i) q += std::pow(1.0 + eps, static_cast<double>(i + 1)) * x[i] * x[i];
+        for (std::size_t k = x.size(); k-- > 0;) {
+            tail += x[k];
+            b += tail * tail;
+        }
+        return q + sigma * b * b;
+    };
+    nm::Options o;
+    o.tol = 1e-4;                                       // Gao & Han's TolFun = TolX (4.2)
+    const nm::Result r = nm::minimize(quartic, std::vector<double>(10, 1.0), std::vector<double>(10, -10.0),
+                                      std::vector<double>(10, 10.0), o);
+    check(r.converged && r.f < 1e-6, "nm: Gao & Han's quartic (4.3), n = 10, eps = 0.05, sigma = 1e-4");
+}
+
 }   // namespace
 
 int main()
@@ -344,6 +392,7 @@ int main()
     g_tag = "slsqp powell";
     slsqp_problems();
     nm_problems();
+    nm_coefficients();
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);
         return 1;

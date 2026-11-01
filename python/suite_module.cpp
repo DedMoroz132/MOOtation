@@ -132,6 +132,21 @@ suite::Spec spec_of(const py::dict& d)
     }
     if (d.contains("bbob") && !d["bbob"].is_none())
         for (const auto& item : d["bbob"]) s.bbob.push_back(bbob_of(item));
+    if (d.contains("sym") && !d["sym"].is_none()) {               // task 19, §19.1 (suite/sym.hpp)
+        const py::dict y = d["sym"].cast<py::dict>();
+        suite::sym::Instance& in = s.sym;
+        if (y.contains("teacher")) in.teacher = y["teacher"].cast<int>();
+        if (y.contains("student")) in.student = y["student"].cast<int>();
+        if (y.contains("points")) in.points = y["points"].cast<int>();
+        if (y.contains("dim")) in.dim = y["dim"].cast<int>();
+        if (y.contains("shape")) in.shape = y["shape"].cast<std::vector<int>>();
+        if (y.contains("noise")) in.noise = y["noise"].cast<double>();
+        if (y.contains("ratio")) in.ratio = y["ratio"].cast<double>();
+        if (y.contains("observed")) in.observed = y["observed"].cast<double>();
+        if (y.contains("variant")) in.variant = y["variant"].cast<std::string>();
+        if (y.contains("embed")) in.embed = y["embed"].cast<double>();
+        if (y.contains("instance")) in.instance = y["instance"].cast<int>();
+    }
     return s;
 }
 
@@ -179,6 +194,22 @@ py::dict dict_of(const suite::Spec& s)
     py::list fs;
     for (const auto& f : s.bbob) fs.append(dict_of(f));
     d["bbob"] = fs;
+    if (suite::sym::is_family(s.family)) {
+        const suite::sym::Instance& in = s.sym;
+        py::dict y;
+        y["teacher"] = in.teacher;
+        y["student"] = in.student;
+        y["points"] = in.points;
+        y["dim"] = in.dim;
+        y["shape"] = in.shape;
+        y["noise"] = in.noise;
+        y["ratio"] = in.ratio;
+        y["observed"] = in.observed;
+        y["variant"] = in.variant;
+        y["embed"] = in.embed;
+        y["instance"] = in.instance;
+        d["sym"] = y;
+    }
     return d;
 }
 
@@ -279,6 +310,59 @@ void bind_suite(py::module_& m)
              "jacobian=True: (r, J) (has_jacobian).")
         .def_property_readonly("spec", [](const suite::Native& p) { return dict_of(spec_of(p)); },
                                "The spec the problem was made from.")
+        // task 19, §19.1: the symmetries, the gradient and the start (suite/native.hpp)
+        .def_property_readonly("blocks",
+                               [](const suite::Native& p) {
+                                   py::list out;
+                                   for (const suite::Blocks& b : p.blocks) out.append(py::make_tuple(b.offset, b.size, b.count));
+                                   return out;
+                               },
+                               "[(offset, block_size, count), ...]: count blocks of block_size coordinates from "
+                               "offset that may be interchanged.")
+        .def_readonly("linear", &suite::Native::linear, "The parameters the residuals are linear in.")
+        .def_readonly("has_canon", &suite::Native::has_canon)
+        .def_readonly("has_gradient", &suite::Native::has_gradient)
+        .def_readonly("has_start", &suite::Native::has_start)
+        .def_readonly("gauge_dim", &suite::Native::gauge_dim)
+        .def("canon",
+             [](const suite::Native& p, std::vector<double> x) {
+                 if (static_cast<int>(x.size()) != p.n_var) throw std::invalid_argument("canon: x needs n_var values");
+                 p.canon(x.data());
+                 return x;
+             },
+             py::arg("x"), "The canonical representative of x (has_canon): f(canon(x)) = f(x), idempotent.")
+        .def("gauge_basis",
+             [](const suite::Native& p, const std::vector<double>& x) {
+                 if (static_cast<int>(x.size()) != p.n_var) throw std::invalid_argument("gauge_basis: x needs n_var values");
+                 const std::size_t n = x.size(), k = static_cast<std::size_t>(p.gauge_dim);
+                 std::vector<double> N(n * k);
+                 p.gauge_basis(x.data(), N.data());
+                 py::list rows;
+                 for (std::size_t i = 0; i < n; ++i)
+                     rows.append(std::vector<double>(N.begin() + static_cast<std::ptrdiff_t>(i * k),
+                                                     N.begin() + static_cast<std::ptrdiff_t>((i + 1) * k)));
+                 return rows;
+             },
+             py::arg("x"), "The gauge_dim directions at x along which the residuals do not change to first "
+                           "order: n_var rows of gauge_dim.")
+        .def("gradient",
+             [](const suite::Native& p, const std::vector<double>& x) {
+                 if (static_cast<int>(x.size()) != p.n_var) throw std::invalid_argument("gradient: x needs n_var values");
+                 std::vector<double> g(x.size());
+                 p.gradient(x.data(), g.data());
+                 return g;
+             },
+             py::arg("x"), "The objective's gradient at x (has_gradient).")
+        .def("start",
+             [](const suite::Native& p) {
+                 std::vector<double> x(static_cast<std::size_t>(p.n_var));
+                 {
+                     py::gil_scoped_release unlock;
+                     p.start(x.data());
+                 }
+                 return x;
+             },
+             "The problem's own start (has_start).")
         .def("evaluate",
              [](const suite::Native& p, const py::handle& x) { return evaluate_point(p, x).first; },
              py::arg("x"), "The objectives of one point, as a list.")

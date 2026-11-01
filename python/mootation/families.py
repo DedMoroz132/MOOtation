@@ -15,15 +15,24 @@ ENGINEERING = ("RE", "CRE", "RCM")   # the real-world problems: re.py, rwmop.py
 VERIFICATION = ("SCH", "FON", "POL", "KUR", "SPH_2D", "SPH_3D", "QV", "KURZ", "ZDT6_D100")
 
 
+# task 19, §19.1 (benchmarks/symmetric.py): the families whose names have
+# digits or underscores; cp3_degenerate before cp3
+SYMMETRIC = ("cp3_degenerate", "cp3", "chaboche1d", "lj_cluster", "lowrank", "mlp_plateau", "rbfnet", "sumexp")
+
+
 def family(name: str) -> str:
     """DTLZ2_3D -> DTLZ, MaF10_8D -> MaF, ZDT1 -> ZDT: the name's stem without
     its digits. A noisy copy (ZDT1_n1, DTLZ2_3D_s5) -> noisy, a failing one
     (ZDT1_fail10r, benchmarks/failing.py) -> failing; a control of the rotated
     problems keeps its prefix, r0DTLZ1 -> r0DTLZ and c0DTLZ2 -> c0DTLZ, apart
     from rDTLZ and rcDTLZ. The verification set (VERIFICATION) ->
-    verification."""
+    verification. The problems with symmetries (SYMMETRIC) keep their
+    family's name whole (cp3_degenerate_I2_J2_K2_1D -> cp3_degenerate)."""
     if name in VERIFICATION:
         return "verification"
+    for f in SYMMETRIC:
+        if name.startswith(f + "_"):
+            return f
     if "_" in name and name.rsplit("_", 1)[1] in NOISE_LEVELS:
         return "noisy"
     if "_" in name and name.rsplit("_", 1)[1].startswith("fail"):
