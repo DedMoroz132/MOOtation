@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -39,6 +40,7 @@
 #include <mootation/io/npz.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
+#include <mootation/so_metrics.hpp>
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
 #include <mootation/store/pack.hpp>
@@ -1629,4 +1631,40 @@ void bind_run_layer(py::module_& m)
                                "grad_calls, f, cv) (scalar/improvements.hpp).")
         .def_property_readonly("best_x", [](const Ledger& a) { return a.L.best_x(); },
                                "One objective: the best point's variables (empty before any).");
+
+    // ── the single-objective measures (so_metrics.hpp; task 18, stage 1, §1.3) ──
+    namespace so = mootation::so;
+    using Rec = std::tuple<long long, long long, double, double>;
+    auto records_of = [](const std::vector<Rec>& rs) {
+        std::vector<so::Improvement> out;
+        for (const auto& [e, g, f, cv] : rs) out.push_back({e, g, f, cv});
+        return out;
+    };
+    py::module_ sm = m.def_submodule("so_metrics", "include/mootation/so_metrics.hpp: COCO's and Moré-Wild's "
+                                                   "targets, the runtime to a target, ERT, the ECDF and the "
+                                                   "value at a budget, off a run's improvement records "
+                                                   "(evaluations, grad_calls, f, cv).");
+    sm.attr("REFERENCE_VERSION") = so::kReferenceVersion;
+    sm.def("coco_precisions", &so::coco_precisions, py::arg("k_min") = -8, py::arg("k_max") = 2);
+    sm.def("coco_table_precisions", &so::coco_table_precisions);
+    sm.def("more_wild_factors", &so::more_wild_factors);
+    sm.def("default_precisions", [](const std::string& kind) { return so::default_precisions(so::target_kind(kind)); },
+           py::arg("kind"));
+    sm.def("targets",
+           [](const std::string& kind, const std::vector<double>& eps, double f_ref, double f_x0) {
+               return so::targets(so::target_kind(kind), eps, f_ref, f_x0);
+           },
+           py::arg("kind"), py::arg("eps"), py::arg("f_ref"), py::arg("f_x0") = 0.0);
+    sm.def("runtime",
+           [records_of](const std::vector<Rec>& rs, double target, double grad_cost) {
+               return so::runtime(records_of(rs), target, grad_cost);
+           },
+           py::arg("records"), py::arg("target"), py::arg("grad_cost") = 1.0);
+    sm.def("ert", &so::ert, py::arg("runtimes"), py::arg("lengths"));
+    sm.def("ecdf", &so::ecdf, py::arg("runtimes"), py::arg("xs"));
+    sm.def("value_at",
+           [records_of](const std::vector<Rec>& rs, double budget, double grad_cost) {
+               return so::value_at(records_of(rs), budget, grad_cost);
+           },
+           py::arg("records"), py::arg("budget"), py::arg("grad_cost") = 1.0);
 }

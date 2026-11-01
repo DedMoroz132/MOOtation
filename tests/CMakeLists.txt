@@ -43,6 +43,7 @@ set(MOOTATION_TESTS
     test_pso
     test_spso2011
     test_sep_cmaes
+    test_so_metrics
     test_store_codec
     test_json
     test_toml

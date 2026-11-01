@@ -200,13 +200,18 @@ class BenchProblem:
     f_opt: Optional[float] = None
     # how f_opt is known: "exact" (bbob's instance, MGH's zeros and closed
     # forms), "computed" (MGH's printed minima, to full precision: LSQ-1),
-    # "certified" (NIST)
+    # "certified" (NIST), "best_known" (no minimum known: the best value
+    # known, of version SO_REFERENCE_VERSION; LSQ-2)
     f_opt_kind: Optional[str] = None
     x0: Optional[Tuple[float, ...]] = None
     # MGH (least_squares.py): the local minima its paper prints, halved (levels,
     # not targets: LSQ-3), and whether its global minimum is not zero
     f_local: Tuple[float, ...] = ()
     large_residual: Optional[bool] = None
+    # the kind of targets its runs are measured against (so_metrics.hpp):
+    # "absolute" (bbob: COCO's), "relative" (MGH, NIST: Moré and Wild's, from
+    # the run's start); the owner's decision of 01.11
+    targets: Optional[str] = None
 
     def __post_init__(self):
         both = self.evaluate_with_constraints
@@ -2462,7 +2467,7 @@ def _register_single_objective():
                 evaluate_batch=lambda X, _i=inst: _i.batch(X).reshape(-1, 1),
                 hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
                 pop_size=100, n_gen=100 * D, K_runs=15, has_cons=False, f_opt=float(inst.f_opt),
-                f_opt_kind="exact")
+                f_opt_kind="exact", targets="absolute")
     try:
         from .. import _core
     except ImportError:
@@ -2478,7 +2483,7 @@ def _register_single_objective():
             hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
             pop_size=1, n_gen=_lsq.BUDGET, K_runs=1, has_cons=False, f_opt=f_opt, f_opt_kind=kind,
             x0=tuple(float(v) for v in x0), native=nat, f_local=tuple(f_local),
-            large_residual=large_residual)
+            large_residual=large_residual, targets="relative")
     for fid, n, m, d, tries in _lsq.MGH_ROWS:
         f_opt, kind = _lsq.mgh_f_opt(fid, n, m, d)
         for factor in _lsq.factors(tries):
