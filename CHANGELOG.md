@@ -35,6 +35,15 @@ always listed under **Changed** or **Removed**.
   in the registry, a NumPy cross-check (`benchmarks/symmetric.py`,
   `python/test_symmetric.py`) and the map of checks in
   `docs/symmetric-problems.md`. Every earlier problem and run is unchanged.
+- Added: ensemble Kalman inversion (task 19, §19.4.1; C++,
+  `scalar/eki.hpp`, not yet a registered algorithm): Algorithm 1 of
+  Iglesias, Law & Stuart 2013 on a problem's residuals, its initial ensemble
+  from a design in the box or about `x0`, the data perturbed or not, the
+  discrepancy principle as a stop.
+- Added: injection into `scalar/cmaes.hpp` (task 19, §19.4.3; Hansen 2011):
+  `inject` (points in place of the next draws, their steps clipped to c_y),
+  `inject_mean`, a bound on σ's change, and the elitist mode. A run without
+  injection is unchanged.
 - Added: `lm` for problems with symmetries (task 19, §19.3; C++,
   `scalar/lm.hpp`): a gauge basis (`Problem::gauge`), whose directions the
   step leaves out, with diagnostics on their complement (`diagnose_gauge`);

@@ -60,3 +60,10 @@ not known, `f_opt` is the best value known (`f_opt_kind = best_known`, `SO_REFER
 | profiles (`profile`) | each value of x_j fixed by a linear equality, the rest refitted, continuation outward; Raue et al.'s threshold Δ_α = χ²(α, df) and classification (readings LMP); `chi2_quantile` | a linear model's profile is the parabola and its interval the classical one; `lowrank`'s is flat (structurally non-identifiable); χ² quantiles. Raue et al.'s ODE models are not in the library: the property stands in for their experiment |
 
 None of these changes a run of `lm` without them (the iterates' checksum of `tests/test_lm.cpp`).
+
+## Solvers (C++, not yet registered algorithms)
+
+| what | source | checked by |
+|---|---|---|
+| `eki::minimize` (`scalar/eki.hpp`): ensemble Kalman inversion on the residuals | Iglesias, Law & Stuart 2013, Algorithm 1 (readings EKI) | `tests/test_lm.cpp`: the ensemble stays in the initial ensemble's affine hull (their Theorem 2.1, tighter); a linear problem's first mean is their (39), and near (41) with many members. Their Darcy and Navier–Stokes examples are not in the library |
+| `CMAES::inject`, `inject_mean`, `elitist` (`scalar/cmaes.hpp`) | Hansen 2011, Figure 1, Table 1 (readings INJ) | `tests/test_slsqp.cpp`: runs without injection unchanged (a checksum of their points); a far injected point clipped, σ's change bounded; `inject_mean`; the elitist mode never loses its best |

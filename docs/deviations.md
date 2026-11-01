@@ -404,7 +404,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-181 items: 181 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `subproblems`.
+191 items: 191 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -420,11 +420,21 @@ Their readings, from every comment of each file (the first column the file's nam
 | `chc` | CHC-5 | A child is accepted when it is among the M best of parents and children (stably by the comparison of evo.hpp, parents first); | yes | `chc.hpp` |
 | `chc` | CHC-6 | BLX-0.5 children outside the box are repaired by the operator, ops::BoundRepair `reflect` by default (real_crossover.hpp). | yes | `chc.hpp` |
 | `chc` | CHC-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) in the selection; not in the papers. | yes | `chc.hpp` |
+| `cmaes` | INJ-1 | The strategy's own parameters stay the tutorial's (Table 1 of the report lists those of [5], Hansen & Kern 2004; the report itself advises keeping the original strategy parameters, p. 7). | yes | `cmaes.hpp` |
+| `cmaes` | INJ-2 | Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5 says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m = sqrt(2n) + 2n/(n + 2) (Table 1). | yes | `cmaes.hpp` |
+| `cmaes` | INJ-3 | The tutorial's negative weights: an injected point among the worst is clipped by (3) as well; the report expects no harm (p. 9: the clipping of long steps even helps the negative update). | yes | `cmaes.hpp` |
+| `cmaes` | INJ-4 | An injected mean takes the place of the weighted mean of (41) for the mean's move and for p_σ and p_c, the y_i (clipped) still serve the rank-μ update (Figure 1). | yes | `cmaes.hpp` |
 | `de` | DE-1 | The trial (4) is built coordinate by coordinate: rnbr(i) is drawn first, then one U(0, 1) for every j (j = rnbr(i) included), and v_j is taken where U < CR or j = rnbr(i). | yes | `de.hpp` |
 | `de` | DE-2 | Bounds. The paper's box is the initial parameter range (IPR) only; its f9 and f28 have their minima outside it, and DE finds them. | yes | `de.hpp` |
 | `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |
 | `de` | DE-4 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp); not in the paper. | yes | `de.hpp` |
 | `de` | DE-5 | done() is true once all NP points are equal: every difference vector is zero and no trial can differ from its target. | yes | `de.hpp` |
+| `eki` | EKI-1 | (C^pp + Gamma)^-1 v: where J <= m by the Sherman-Morrison-Woodbury identity, gamma^-2 (v - P~ (J gamma^2 I + P~^T P~)^-1 P~^T v), P~ the m x J matrix of the p~^(j), a J x J Cholesky system; where J > m the m x m syste... | yes | `eki.hpp` |
+| `eki` | EKI-2 | (22) prints C^pp with p-hat (uncentred); we take the covariance (11) prints, centred, which (37)-(38) use as well. | yes | `eki.hpp` |
+| `eki` | EKI-3 | The initial ensemble (their §2.2 leaves it to the user as a draw from a prior): J points of a design in the box (init = sobol: the scrambled Sobol points of designs.hpp; lhs: its Latin hypercube; seed the design's), o... | yes | `eki.hpp` |
+| `eki` | EKI-4 | J = max(10, 2 n) by default; gamma = 1 (the residuals taken as divided by the noise's sigma); perturb = true (their p. 7: without the perturbation the results were less accurate); tau = 1.5 (their tau > 1). | yes | `eki.hpp` |
+| `eki` | EKI-5 | The answer: the mean of the last ensemble, evaluated once; the best member evaluated on the way is returned beside it. | yes | `eki.hpp` |
+| `eki` | EKI-6 | The draws: one std::mt19937 seeded with seed; the initial ensemble around x0 member after member, then eta per iteration member after member, rnd::normal01. | yes | `eki.hpp` |
 | `evaluator` | SO-1 | A problem with residuals takes its objective from them: evaluate, if it is given too, is not called, and such a problem has no constraints (n_cons = 0; the least-squares solvers of this library take none). | yes | `evaluator.hpp` |
 | `evaluator` | SO-2 | A gradient asked for at a point not yet evaluated is a joint call where the problem has one (value_grad, residuals_jac), else the values and then the gradient: either way one evaluation and one grad_call. | yes | `evaluator.hpp` |
 | `evaluator` | SO-3 | A problem that gives only the joint call (value_grad without evaluate, residuals_jac without residuals) is evaluated by it every time: every evaluation is then a grad_call too. | yes | `evaluator.hpp` |

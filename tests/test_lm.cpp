@@ -20,7 +20,10 @@
 //     sphere, lowrank balanced; the gauge basis on lowrank (steps orthogonal
 //     to N, the same minimum, J Sigma J^T against the gauge fixed
 //     explicitly); profiles (a linear model's parabola and interval, a flat
-//     one), chi^2 quantiles.
+//     one), chi^2 quantiles;
+//   - task 19, §19.4.1: scalar/eki.hpp, the initial ensemble's affine hull
+//     kept, a linear problem's first mean against Iglesias et al.'s (39)
+//     and, with many members, (41).
 // ============================================================================
 
 #include <algorithm>
@@ -33,6 +36,7 @@
 #include <vector>
 
 #include <mootation/random.hpp>
+#include <mootation/scalar/eki.hpp>
 #include <mootation/scalar/lm.hpp>
 #include <mootation/suite/factor.hpp>
 
@@ -474,6 +478,122 @@ void task19()
     }
 }
 
+// ── task 19, §19.4.1: ensemble Kalman inversion (scalar/eki.hpp) ─────────────
+void eki_checks()
+{
+    namespace E = mootation::eki;
+    // the affine hull of the initial ensemble (J = 10 < n = 28), to 1e-12
+    {
+        const auto lr = lowrank(8, 6, 2, 0.05);
+        const std::size_t n = static_cast<std::size_t>(lr.n), m = static_cast<std::size_t>(lr.m);
+        Vec x0(n);
+        lr.start(x0.data());
+        E::Options o;
+        o.ensemble = 10;
+        o.init = E::Options::Init::around;
+        o.max_evals = 301;
+        o.seed = 7;
+        const E::Result res = E::minimize([&lr](const Vec& x, Vec& r) { lr.residuals(x.data(), r.data(), nullptr); }, m,
+                                          Vec(n, -LM::kInf), Vec(n, LM::kInf), x0, o);
+        const std::size_t J = res.initial.size();
+        Matrix A(n, J - 1);                           // the initial differences u_k - u_0
+        for (std::size_t k = 1; k < J; ++k)
+            for (std::size_t i = 0; i < n; ++i) A(i, k - 1) = res.initial[k][i] - res.initial[0][i];
+        double worst = 0.0;
+        std::vector<Vec> members = res.ensemble;
+        members.push_back(res.x);
+        for (const Vec& u : members) {
+            Vec b(n);
+            for (std::size_t i = 0; i < n; ++i) b[i] = u[i] - res.initial[0][i];
+            const Vec c = mootation::lsq::hfti(A, b);
+            Vec resid = b;
+            for (std::size_t i = 0; i < n; ++i)
+                for (std::size_t k = 0; k + 1 < J; ++k) resid[i] -= A(i, k) * c[k];
+            worst = std::max(worst, LM::norm(resid) / std::max(1.0, LM::norm(b)));
+        }
+        check(res.iterations == 30 && res.evaluations == 301 && worst <= 1e-12 && std::isfinite(res.best_f),
+              "eki: 30 iterations stay in the initial ensemble's affine hull (" + sci(worst) + ")");
+    }
+    // a linear problem: the first iteration's mean is (39) without perturbation, and tends to (41) as J grows
+    {
+        const std::size_t n = 3, m = 5;
+        std::mt19937 g(23);
+        Matrix G(m, n);
+        Vec y(m);
+        for (double& v : G.a) v = 2.0 * mootation::rnd::uniform01(g) - 1.0;
+        for (double& v : y) v = 2.0 * mootation::rnd::uniform01(g) - 1.0;
+        auto res_fn = [&](const Vec& x, Vec& r) {
+            for (std::size_t i = 0; i < m; ++i) {
+                r[i] = -y[i];
+                for (std::size_t j = 0; j < n; ++j) r[i] += G(i, j) * x[j];
+            }
+        };
+        const Vec x0 = {0.2, -0.1, 0.4};
+        // u_1 = m_J + C^up (C^pp + Gamma)^-1 (y - G m_J), the sample covariances with the divisor J
+        auto formula39 = [&](const std::vector<Vec>& u0, double gamma2) {
+            const double J = static_cast<double>(u0.size());
+            Vec mJ(n, 0.0);
+            for (const Vec& u : u0)
+                for (std::size_t i = 0; i < n; ++i) mJ[i] += u[i] / J;
+            Matrix Cuu(n, n);
+            for (const Vec& u : u0)
+                for (std::size_t a = 0; a < n; ++a)
+                    for (std::size_t b = 0; b < n; ++b) Cuu(a, b) += (u[a] - mJ[a]) * (u[b] - mJ[b]) / J;
+            Matrix Cup(n, m), Cpp(m, m);              // C G^T, G C G^T
+            for (std::size_t a = 0; a < n; ++a)
+                for (std::size_t i = 0; i < m; ++i)
+                    for (std::size_t b = 0; b < n; ++b) Cup(a, i) += Cuu(a, b) * G(i, b);
+            for (std::size_t i = 0; i < m; ++i)
+                for (std::size_t k = 0; k < m; ++k) {
+                    for (std::size_t a = 0; a < n; ++a) Cpp(i, k) += G(i, a) * Cup(a, k);
+                    if (i == k) Cpp(i, k) += gamma2;
+                }
+            Vec rhs(m);
+            for (std::size_t i = 0; i < m; ++i) {
+                rhs[i] = y[i];
+                for (std::size_t a = 0; a < n; ++a) rhs[i] -= G(i, a) * mJ[a];
+            }
+            const Vec t = gauss(Cpp, rhs);
+            Vec u1 = mJ;
+            for (std::size_t a = 0; a < n; ++a)
+                for (std::size_t i = 0; i < m; ++i) u1[a] += Cup(a, i) * t[i];
+            return u1;
+        };
+        E::Options o;
+        o.ensemble = 6;
+        o.init = E::Options::Init::around;
+        o.perturb = false;
+        o.gamma = 0.3;
+        o.max_evals = 7;                              // one iteration and the answer
+        const E::Result one = E::minimize(res_fn, m, Vec(n, -LM::kInf), Vec(n, LM::kInf), x0, o);
+        const double d39 = max_abs_diff(one.x, formula39(one.initial, 0.09));
+        check(one.iterations == 1 && d39 <= 1e-13, "eki: a linear problem's first mean is their (39) (" + sci(d39) + ")");
+        // (41): the prior N(x0, sigma0^2 I) (sigma0 = 0.1, no box) and J = 5000
+        o.ensemble = 5000;
+        o.max_evals = 5001;
+        const E::Result big = E::minimize(res_fn, m, Vec(n, -LM::kInf), Vec(n, LM::kInf), x0, o);
+        Matrix GCG(m, m);
+        for (std::size_t i = 0; i < m; ++i)
+            for (std::size_t k = 0; k < m; ++k) {
+                for (std::size_t a = 0; a < n; ++a) GCG(i, k) += 0.01 * G(i, a) * G(k, a);
+                if (i == k) GCG(i, k) += 0.09;
+            }
+        Vec rhs(m);
+        for (std::size_t i = 0; i < m; ++i) {
+            rhs[i] = y[i];
+            for (std::size_t a = 0; a < n; ++a) rhs[i] -= G(i, a) * x0[a];
+        }
+        const Vec t = gauss(GCG, rhs);
+        Vec utp = x0;
+        for (std::size_t a = 0; a < n; ++a)
+            for (std::size_t i = 0; i < m; ++i) utp[a] += 0.01 * G(i, a) * t[i];
+        Vec moved(n);
+        for (std::size_t a = 0; a < n; ++a) moved[a] = utp[a] - x0[a];
+        const double d41 = max_abs_diff(big.x, utp) / LM::norm(moved);
+        check(d41 <= 0.05, "eki: with J = 5000 the first mean is near their (41), u_TP (" + sci(d41) + " of the step)");
+    }
+}
+
 }   // namespace
 
 int main()
@@ -586,6 +706,7 @@ int main()
     }
 
     task19();
+    eki_checks();
 
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(hash));
     check(hash == 0xf74755ffd406621eull, "the iterates' bits as on MSVC and clang (checksum f74755ffd406621e)");

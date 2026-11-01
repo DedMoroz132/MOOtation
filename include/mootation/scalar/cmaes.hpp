@@ -10,11 +10,40 @@
 // strategy does the rest. Minimization. The normal samples are rnd::normal01
 // (random.hpp), the eigendecomposition of C eigen.hpp's; log, exp and pow are
 // dm:: (detmath.hpp).
+//
+// Injection (task 19, §19.4.3): external points, as N. Hansen, "Injecting
+// external solutions into CMA-ES", INRIA RR-7748, arXiv:1110.4181, 2011
+// (source cmaes-injection_hansen2011_arxiv), Figure 1. inject(points): the
+// next ask() returns them in place of its first draws (1); in tell, the step
+// y_i = (x_i - m) / σ of an injected point is clipped to the Mahalanobis
+// length c_y, y_i <- α_clip(c_y, ||C^-1/2 y_i||) y_i, α_clip(c, x) = min(1,
+// c/x) (3), (12). inject_mean(x_m): the mean step is (x_m - m) / σ (4),
+// clipped to c_y^m by α_clip(c_y^m, sqrt(μ_w) ||C^-1/2 Δm||) (6), before the
+// mean moves (the order of (5) and (6) exchanged, as the report allows on p.
+// 6). σ's change is bounded: σ <- σ exp(min(Δσ_max, (c_σ/d_σ)(||p_σ|| / E||N||
+// - 1))) (11). elitist(true): the best point told so far is injected at
+// every ask (the report's "elitist algorithm with comma selection", §3). With
+// c_y = c_y^m = Δσ_max = inf, the state before any injection, the strategy is
+// the one above unchanged.
+//   INJ-1. The strategy's own parameters stay the tutorial's (Table 1 of the
+//     report lists those of [5], Hansen & Kern 2004; the report itself
+//     advises keeping the original strategy parameters, p. 7).
+//   INJ-2. Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5
+//     says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m =
+//     sqrt(2n) + 2n/(n + 2) (Table 1). They take effect at the first
+//     injection (inject, inject_mean or elitist) and hold from then on.
+//   INJ-3. The tutorial's negative weights: an injected point among the worst
+//     is clipped by (3) as well; the report expects no harm (p. 9: the
+//     clipping of long steps even helps the negative update).
+//   INJ-4. An injected mean takes the place of the weighted mean of (41) for
+//     the mean's move and for p_σ and p_c, the y_i (clipped) still serve the
+//     rank-μ update (Figure 1).
 // ============================================================================
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <numeric>
 #include <random>
 #include <vector>
@@ -75,13 +104,56 @@ public:
     }
 
     std::size_t lambda() const { return lam_; }
+    const std::vector<double>& mean() const { return m_; }
+    double sigma() const { return sigma_; }
 
-    // λ points: x_k = m + σ B D z_k (38)-(40).
+    // Injection's parameters (INJ-2), 0: Table 1's; the first injection
+    // switches them on with Table 1's where none were set
+    struct Injection {
+        double c_y = 0.0, c_ym = 0.0, dsigma_max = 1.0;
+    };
+    void injection(const Injection& p)
+    {
+        const double n = static_cast<double>(n_);
+        cy_ = p.c_y > 0.0 ? p.c_y : std::sqrt(n) + 2.0 * n / (n + 2.0);
+        cym_ = p.c_ym > 0.0 ? p.c_ym : std::sqrt(2.0 * n) + 2.0 * n / (n + 2.0);
+        dsmax_ = p.dsigma_max;
+        injecting_ = true;
+    }
+    // points for the next ask, in place of its first draws (at most λ)
+    void inject(std::vector<std::vector<double>> points)
+    {
+        if (!injecting_) injection(Injection());
+        for (auto& p : points)
+            if (injected_.size() < lam_) injected_.push_back(std::move(p));
+    }
+    // the next tell's mean step from x_m (4)
+    void inject_mean(std::vector<double> xm)
+    {
+        if (!injecting_) injection(Injection());
+        mean_x_ = std::move(xm);
+    }
+    // the best point told so far injected at every ask
+    void elitist(bool on)
+    {
+        if (on && !injecting_) injection(Injection());
+        elitist_ = on;
+    }
+
+    // λ points: x_k = m + σ B D z_k (38)-(40), the injected ones first (1).
     std::vector<std::vector<double>> ask()
     {
+        if (elitist_ && !best_x_.empty() && injected_.size() < lam_) injected_.insert(injected_.begin(), best_x_);
         y_.assign(lam_, std::vector<double>(n_, 0.0));
         std::vector<std::vector<double>> x(lam_, std::vector<double>(n_));
+        is_injected_.assign(lam_, false);
         for (std::size_t k = 0; k < lam_; ++k) {
+            if (k < injected_.size()) {                                         // (1), (2)
+                is_injected_[k] = true;
+                x[k] = injected_[k];
+                for (std::size_t i = 0; i < n_; ++i) y_[k][i] = (x[k][i] - m_[i]) / sigma_;
+                continue;
+            }
             std::vector<double> z(n_);
             for (std::size_t j = 0; j < n_; ++j) z[j] = rnd::normal01(rng_);
             for (std::size_t i = 0; i < n_; ++i) {
@@ -91,6 +163,8 @@ public:
                 x[k][i] = m_[i] + sigma_ * s;
             }
         }
+        injected_.clear();
+        if (elitist_) x_ = x;
         return x;
     }
 
@@ -101,12 +175,14 @@ public:
         std::iota(order.begin(), order.end(), std::size_t{0});
         std::stable_sort(order.begin(), order.end(),
                          [&](std::size_t a, std::size_t b) { return values[a] < values[b]; });
+        if (elitist_)                                                            // the best told so far
+            for (std::size_t k = 0; k < lam_; ++k)
+                if (values[k] < best_f_) {
+                    best_f_ = values[k];
+                    best_x_ = x_[k];
+                }
         std::vector<std::vector<double>> y(lam_);
         for (std::size_t k = 0; k < lam_; ++k) y[k] = y_[order[k]];
-        std::vector<double> yw(n_, 0.0);                                        // (41)
-        for (std::size_t k = 0; k < mu_; ++k)
-            for (std::size_t i = 0; i < n_; ++i) yw[i] += w_[k] * y[k][i];
-        for (std::size_t i = 0; i < n_; ++i) m_[i] += cm_ * sigma_ * yw[i];     // (42)
         // C^-1/2 = B D^-1 B^T
         lsq::Matrix Ci(n_, n_);
         for (std::size_t i = 0; i < n_; ++i)
@@ -121,6 +197,29 @@ public:
                 for (std::size_t j = 0; j < n_; ++j) out[i] += Ci(i, j) * v[j];
             return out;
         };
+        auto length = [](const std::vector<double>& v) {
+            double q = 0.0;
+            for (double t : v) q += t * t;
+            return std::sqrt(q);
+        };
+        if (injecting_)                                                         // (3), (12)
+            for (std::size_t k = 0; k < lam_; ++k) {
+                if (is_injected_.empty() || !is_injected_[order[k]]) continue;
+                const double l = length(times_ci(y[k]));
+                if (l > cy_)
+                    for (double& t : y[k]) t *= cy_ / l;
+            }
+        std::vector<double> yw(n_, 0.0);                                        // (41)
+        for (std::size_t k = 0; k < mu_; ++k)
+            for (std::size_t i = 0; i < n_; ++i) yw[i] += w_[k] * y[k][i];
+        if (!mean_x_.empty()) {                                                 // (4), (6) (INJ-4)
+            for (std::size_t i = 0; i < n_; ++i) yw[i] = (mean_x_[i] - m_[i]) / sigma_;
+            const double l = std::sqrt(mueff_) * length(times_ci(yw));
+            if (l > cym_)
+                for (double& t : yw) t *= cym_ / l;
+            mean_x_.clear();
+        }
+        for (std::size_t i = 0; i < n_; ++i) m_[i] += cm_ * sigma_ * yw[i];     // (42)
         const std::vector<double> ciyw = times_ci(yw);
         const double cps = std::sqrt(cs_ * (2.0 - cs_) * mueff_);
         double norm_ps = 0.0;
@@ -154,7 +253,8 @@ public:
                 for (std::size_t k = 0; k < lam_; ++k) rank_mu += y[k][i] * wo[k] * y[k][j];
                 Cn(i, j) = keep * C_(i, j) + c1_ * pc_[i] * pc_[j] + cmu_ * rank_mu;
             }
-        sigma_ *= dm::exp(cs_ / ds_ * (norm_ps / chiN_ - 1.0));                  // (44)
+        const double log_step = cs_ / ds_ * (norm_ps / chiN_ - 1.0);            // (44)
+        sigma_ *= dm::exp(injecting_ ? std::min(dsmax_, log_step) : log_step);   // (11)
         for (std::size_t i = 0; i < n_; ++i)
             for (std::size_t j = 0; j < n_; ++j) C_(i, j) = (Cn(i, j) + Cn(j, i)) / 2.0;
         std::vector<double> ev;
@@ -176,6 +276,14 @@ private:
     lsq::Matrix C_, B_;
     long long g_ = 0;
     std::vector<std::vector<double>> y_;
+    // injection (INJ-2): off until the first injection, the strategy unchanged
+    double cy_ = std::numeric_limits<double>::infinity(), cym_ = std::numeric_limits<double>::infinity(),
+           dsmax_ = std::numeric_limits<double>::infinity();
+    bool injecting_ = false, elitist_ = false;
+    std::vector<std::vector<double>> injected_, x_;
+    std::vector<bool> is_injected_;
+    std::vector<double> mean_x_, best_x_;
+    double best_f_ = std::numeric_limits<double>::infinity();
 };
 
 }   // namespace mootation::scalar
