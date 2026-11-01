@@ -20,6 +20,7 @@ point `x` and the values `f`, `g`, or what the file names), at full precision.
 | `npz/` | NumPy 2.5.3 `savez`/`savez_compressed` and zlib's raw deflate (stored, fixed, dynamic blocks): `include/mootation/io/npz.hpp`, `campaign/references.hpp` (tests/test_npz.cpp) | 5 files |
 | `registry_sample.json` | five problems of the exported registry (`run/registry_export.py`) with the registry's values at one point each: `include/mootation/campaign/registry.hpp` (tests/test_registry.cpp) | 4 points |
 | `nist-strd-nls/` | NIST StRD nonlinear regression, the 27 files byte for byte (SRD 140; its README has the source, the notice and the sha256): `include/mootation/suite/nist.hpp` (tests/test_lm_sets.cpp) | 27 files |
+| `wrap_python.json` | the library's own Python twin of the wrappers (`python/mootation/benchmarks/wrap.py`, NumPy 2.5.3) over bbob and DTLZ2: the permutations and shifts bit for bit, the rotations, `T(x)` and the values to 1e-12: `include/mootation/suite/wrap.hpp` (tests/test_wrap.cpp) | 15 |
 | `job_sample/` | a small campaign run by the Python engine (`run/campaign.py`): its config, two problems of the exported registry, their reference cache entries and every job's trajectory: `include/mootation/campaign/job_run.hpp` (tests/test_job_run.cpp) | 4 jobs |
 
 To make them again (by hand; CI does neither, and no test imports pymoo):
@@ -31,6 +32,7 @@ python tools/refs/gen_sobol_ref.py
 python tools/refs/gen_npz_samples.py
 python tools/refs/gen_registry_sample.py
 python tools/refs/gen_job_sample.py
+PYTHONPATH=python python tools/refs/gen_wrap_refs.py
 ```
 
 The other reference data of the tests stay where they were: the problems'

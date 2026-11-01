@@ -58,7 +58,8 @@ set(MOOTATION_TESTS
     test_store_tools
     test_refs
     test_registry_bounds
-    test_core_readings)
+    test_core_readings
+    test_wrap)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
