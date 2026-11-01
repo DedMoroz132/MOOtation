@@ -174,10 +174,12 @@ struct RegistryProblem {
     // sum of squares, halved), and the start where the problem has one (MGH:
     // x_s, 10 x_s or 100 x_s; NIST: the file's start 1 or 2)
     std::optional<double> f_opt;
-    std::string f_opt_kind;                       // "exact", "computed" (MGH's printed minima), "certified" (NIST)
+    std::string f_opt_kind;                       // "exact", "computed" (MGH's printed minima), "certified" (NIST),
+                                                  // "best_known" (so_metrics.hpp, kReferenceVersion)
     std::vector<double> x0;
     std::vector<double> f_local;                  // MGH: the local minima its paper prints, halved (levels)
     std::optional<bool> large_residual;           // MGH: the global minimum is not zero
+    std::string targets;                          // "absolute" (bbob) or "relative" (MGH, NIST): so_metrics.hpp
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -389,6 +391,7 @@ inline RegistryProblem registry_problem_of(const json::Value& o)
     p.f_local = detail::floats_of(o.find("f_local"));
     if (const json::Value* v = o.find("large_residual"); v && v->kind == json::Value::Kind::Bool)
         p.large_residual = v->b;
+    if (const json::Value* v = o.find("targets"); v && v->kind == json::Value::Kind::String) p.targets = v->s;
     if (const json::Value* v = o.find("seeded_stream"); v && v->kind == json::Value::Kind::String)
         p.seeded_stream = v->s;
     if (const json::Value* v = o.find("var_kinds"); v && v->kind == json::Value::Kind::Array)

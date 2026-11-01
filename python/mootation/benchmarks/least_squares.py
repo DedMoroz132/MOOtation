@@ -33,8 +33,11 @@
 #     python/test_run_layer.py repeats the runs). The minima in closed form
 #     (problems 32 to 34) and the zeros are exact.
 #   LSQ-2. Chebyquad (35) at n = 1, m = 8 has no minimum in (d), which gives
-#     them for m = n only: f_opt None and large_residual None (Table IV's
-#     ||f|| is MINPACK's result, not a minimum).
+#     them for m = n only. Its f_opt is the best known value, of version
+#     SO_REFERENCE_VERSION (so_metrics.hpp; f_opt_kind "best_known"): our lm
+#     from 10 x_s and 100 x_s, x = 0.98173..., ||f|| = 1.884248, Table IV's from
+#     the same two starts (from x_s lm stops at x = 1/2, ||f|| = 1.886238, as
+#     Table IV's does).
 #   LSQ-3. The local minima (d) prints beside the global one — Freudenstein and
 #     Roth (2) 48.9842... at (11.41..., -0.8968...), Bard (8) 17.4286... at
 #     (0.8406..., -inf, -inf), Kowalik and Osborne (15) 1.02734... 10^-3 at
@@ -102,6 +105,10 @@ MGH_COMPUTED = {
     (19, 11, 65): 0.020068868146773895,     # (d) 4.01377e-2
 }
 
+# LSQ-2: the best known value where (d) gives none (1/2 ||r||^2; version
+# SO_REFERENCE_VERSION = 1)
+MGH_BEST_KNOWN = {(35, 1, 8): 1.7751956488378624}
+
 # LSQ-3: the local minima (d) prints, MGH's f, by function of §3
 MGH_LOCAL = {2: "48.9842", 8: "17.4286", 15: "1.02734e-3", 27: 1}
 
@@ -133,9 +140,9 @@ def half(v) -> float:
 
 
 def mgh_f_opt(fid: int, n: int, m: int, d) -> tuple:
-    """(f_opt, f_opt_kind) of a row of MGH_ROWS: (None, None) where (d) gives none."""
+    """(f_opt, f_opt_kind) of a row of MGH_ROWS: the best known value where (d) gives none."""
     if d is None:
-        return None, None
+        return MGH_BEST_KNOWN[(fid, n, m)], "best_known"
     if isinstance(d, str):
         return MGH_COMPUTED[(fid, n, m)], "computed"
     return half(d), "exact"

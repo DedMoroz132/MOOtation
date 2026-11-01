@@ -1727,7 +1727,7 @@ def the_registry_has_problems_at_one_objective():
         assert q.bounds == [(-math.inf, math.inf)] * n and q.native.n_res == m and q.native.has_jacobian
         assert list(q.x0) == _core.scalar.mgh_start(fid, n, 1.0)
         assert (q.f_opt, q.f_opt_kind) == L.mgh_f_opt(fid, n, m, d)
-        assert q.f_local == L.mgh_local(fid) and q.large_residual == (None if d is None else d != 0)
+        assert q.f_local == L.mgh_local(fid) and q.large_residual == (d is None or d != 0)
         if isinstance(d, str):                        # LSQ-1: lm from x_s again, and (d)'s printed digits
             S = _core.scalar
             run = S.lm(lambda x: S.mgh(fid, n, m, x)[0], list(q.x0), m, jac=lambda x: S.mgh(fid, n, m, x)[1],
@@ -1762,6 +1762,70 @@ def the_registry_has_problems_at_one_objective():
     assert rows["MGH02_n02_m02_x1_1D"]["f_local"] == [24.4921] and not rows["MGH02_n02_m02_x1_1D"]["large_residual"]
     assert rows["MGH06_n02_m10_x1_1D"]["large_residual"] and "MGH06_n02_m10_x10_1D" not in rows
     assert rows["bbob01_n02_1D"]["x0"] is None and rows["bbob01_n02_1D"]["bounds"] == [[-5.0, 5.0]] * 2
+
+
+@test
+def single_objective_measures_agree_with_their_python_cross_check():
+    """Task 18, stage 1, §1.3 (so_metrics.hpp, run/so_metrics.py): the C++
+    measures and the Python ones on real runs — lm on MGH's Rosenbrock from
+    x_s, 10 x_s and 100 x_s with relative targets, cmaes on bbob's f1 and f8
+    (D = 5, three seeds) with COCO's absolute ones: the same targets (the
+    absolute grid within an ulp: pow), runtimes, ERT, ECDF and values at
+    budgets; each problem of the registry at one objective says its kind."""
+    try:
+        from mootation import _core
+    except ImportError:
+        _core = None
+    if not hasattr(_core, "so_metrics") or not hasattr(_core, "nist_dataset"):
+        print("    (skipped: no extension, or one before §1c)"); return
+    import math
+    import mootation
+    from mootation.benchmarks.registry import PROBLEMS
+    from mootation.run import so_metrics as P
+    C = _core.so_metrics
+    assert C.REFERENCE_VERSION == P.REFERENCE_VERSION == 1
+    assert C.coco_table_precisions() == P.coco_table_precisions() and C.more_wild_factors() == P.more_wild_factors()
+    assert all(abs(a - b) <= 4.5e-16 * b for a, b in zip(C.coco_precisions(), P.coco_precisions()))   # pow: an ulp or two
+    assert len(C.coco_precisions()) == 51 and len(C.coco_precisions(-6)) == 41
+    one = [q for q in PROBLEMS.values() if q.n_obj == 1]
+    assert all(q.targets == ("absolute" if q.name.startswith("bbob") else "relative") for q in one)
+
+    def compare(runs, kind, f_ref, budgets):
+        eps = C.default_precisions(kind)
+        assert eps == P.default_precisions(kind) or kind == "absolute"
+        lengths = [float(r.evaluations) + float(r.grad_calls) for r in runs]
+        per_target = []
+        for i, r in enumerate(runs):
+            f_x0 = r.improvements[0][2]
+            tc, tp = C.targets(kind, eps, f_ref, f_x0), P.targets(kind, eps, f_ref, f_x0)
+            assert all(abs(a - b) <= 4.5e-16 * max(1.0, abs(b)) for a, b in zip(tc, tp)), (tc, tp)
+            rt = [C.runtime(r.improvements, t) for t in tc]
+            assert rt == [P.runtime(r.improvements, t) for t in tc]
+            assert [C.value_at(r.improvements, b) for b in budgets] == [P.value_at(r.improvements, b) for b in budgets]
+            per_target.append(rt)
+        for j in range(len(eps)):
+            col = [per_target[i][j] for i in range(len(runs))]
+            a, b = C.ert(col, lengths), P.ert(col, lengths)
+            assert a == b or (math.isinf(a) and math.isinf(b)), (a, b)
+        flat = [t for rt in per_target for t in rt]
+        xs = [1.0, 10.0, 100.0, 1000.0, 1e4]
+        assert C.ecdf(flat, xs) == P.ecdf(flat, xs)
+        return flat
+
+    lm_runs = []
+    for factor in (1, 10, 100):
+        q = PROBLEMS[f"MGH01_n02_m02_x{factor}_1D"]
+        lm_runs.append(mootation.minimize(None, q.bounds, 1, algorithm="lm",
+                                          residuals=lambda x, _q=q: _q.native.residuals(x),
+                                          jac=lambda x, _q=q: _q.native.residuals(x, True)[1],
+                                          x0=list(q.x0), max_evaluations=1000, seed=1))
+    flat = compare(lm_runs, "relative", PROBLEMS["MGH01_n02_m02_x1_1D"].f_opt, [5.0, 20.0, 1e3])
+    assert all(t is not None for t in flat), flat               # lm reaches Rosenbrock's 1e-7 from all three
+    for fid in (1, 8):
+        q = PROBLEMS[f"bbob{fid:02d}_n05_1D"]
+        runs = [mootation.minimize(q.evaluate, q.bounds, 1, algorithm="cmaes", pop_size=10, max_evaluations=2000,
+                                   seed=s) for s in (1, 2, 3)]
+        compare(runs, "absolute", q.f_opt, [100.0, 500.0, 2000.0])
 
 
 @test

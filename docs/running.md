@@ -243,31 +243,7 @@ the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition, and RWMO
 problems RCM01–29: 1357 problems across 49 families, each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
-of the true Pareto front. Objective counts run from 2 to 15.
-
-**At one objective** (task 18, stage 1, §1d): bbob's 24 functions in
-D = 2, 3, 5, 10, 20, 40 variables (`bbob<fid>_n<D>_1D`, instance 1 of the
-library's own draws, `[-5, 5]^D`; 144 problems), and the least-squares sets
-of the C++ suite (`benchmarks/least_squares.py`): MGH's least-squares
-collection, its 18 problems at the 28 sizes of its Table IV from the starts
-the table runs — x_s, and where the paper's §5 (c) names three tries also
-10 x_s and 100 x_s (`MGH<fid>_n<n>_m<m>_x<factor>_1D`, 54 problems) — and
-NIST StRD's 27 regression files from each of their two starts
-(`NIST_<file>_s<k>_1D`; NIST Standard Reference Data (SRD 140); © U.S.
-Secretary of Commerce on behalf of the United States of America; the files
-are in the library, `suite/nist_data.hpp`, generated from
-`tests/data/nist-strd-nls`). Each carries `f_opt` (the
-instance's; MGH's (d) and NIST's certified sum of squares, halved: the
-objective is 1/2 ||r||^2) and `f_opt_kind`: `exact` (bbob, MGH's zeros and
-closed forms), `computed` (the twelve minima MGH print to six digits: our
-`lm`'s from x_s to full precision, which agrees with every printed digit) or
-`certified` (NIST, 10 to 11 significant digits); the least-squares ones carry
-`x0`, MGH's also `f_local` (the local minima the paper prints, halved: levels,
-not targets) and `large_residual` (the global minimum is not zero); they have
-no box
-(bounds -inf / +inf), their residuals and (MGH) Jacobian come with the
-objective (`_core.Native.residuals`), and they are registered with the
-extension only. LSQ-1 ... LSQ-4 in `least_squares.py` are the readings. Point a config at
+of the true Pareto front. Objective counts run from 2 to 15. Point a config at
 them instead of an external program:
 
 ```toml
@@ -291,6 +267,31 @@ gens = 500
 
 `--check` expands the cross product against the real registry and names what
 does not exist, with near misses; the names are `DTLZ2_3D`, not `DTLZ2_M3`.
+
+**At one objective** (task 18, stage 1, §1d): bbob's 24 functions in
+D = 2, 3, 5, 10, 20, 40 variables (`bbob<fid>_n<D>_1D`, instance 1 of the
+library's own draws, `[-5, 5]^D`; 144 problems), and the least-squares sets
+of the C++ suite (`benchmarks/least_squares.py`): MGH's least-squares
+collection, its 18 problems at the 28 sizes of its Table IV from the starts
+the table runs — x_s, and where the paper's §5 (c) names three tries also
+10 x_s and 100 x_s (`MGH<fid>_n<n>_m<m>_x<factor>_1D`, 54 problems) — and
+NIST StRD's 27 regression files from each of their two starts
+(`NIST_<file>_s<k>_1D`; NIST Standard Reference Data (SRD 140); © U.S.
+Secretary of Commerce on behalf of the United States of America; the files
+are in the library, `suite/nist_data.hpp`, generated from
+`tests/data/nist-strd-nls`). Each carries `f_opt` (the
+instance's; MGH's (d) and NIST's certified sum of squares, halved: the
+objective is 1/2 ||r||^2) and `f_opt_kind`: `exact` (bbob, MGH's zeros and
+closed forms), `computed` (the twelve minima MGH print to six digits: our
+`lm`'s from x_s to full precision, which agrees with every printed digit),
+`certified` (NIST, 10 to 11 significant digits) or `best_known` (Chebyquad
+at n = 1, m = 8, where the paper gives no minimum: the best value known, of
+version `SO_REFERENCE_VERSION`); the least-squares ones carry
+`x0`, MGH's also `f_local` (the local minima the paper prints, halved: levels,
+not targets) and `large_residual` (the global minimum is not zero); they have
+no box (bounds -inf / +inf), their residuals and (MGH) Jacobian come with the
+objective (`_core.Native.residuals`), and they are registered with the
+extension only. LSQ-1 ... LSQ-6 in `least_squares.py` are the readings.
 
 **A batch at a time.** Every problem evaluates a batch of points:
 `p.evaluate_batch(X)` takes n rows of `n_vars` values and gives the n × M
@@ -1482,6 +1483,31 @@ at one objective the answer is the best point — the feasible point of least
 holds a record each time it improved, `(evaluations, grad_calls, f, cv)` at
 that point (SO-4 ... SO-6). A campaign's `RunLedger` keeps the same records
 of every row it accounts, with the best point's variables (`best_x`).
+
+**Measures at one objective** (task 18, stage 1, §1.3; `include/mootation/so_metrics.hpp`,
+`_core.so_metrics`; `run/so_metrics.py` is its cross-check). From a run's
+improvement records: the precision Δf = f − f_opt; the targets τ = f_ref + ε,
+the runtime to a target (the cost — evaluations + `grad_cost` · grad_calls — at
+the first feasible record at or below it), ERT over runs (the runs' costs over
+the number that hit; +inf without a hit), the ECDF over (run, target) pairs
+with the misses in the denominator, and the best value within a budget. The
+definitions are Hansen et al.'s ("COCO: Performance Assessment",
+arXiv:1605.03560; "Anytime Performance Assessment in Blackbox Optimization
+Benchmarking", IEEE TEVC 2022). The targets depend on the problem (the
+owner's decision of 01.11):
+
+| Problems | Targets | Source |
+|---|---|---|
+| bbob (and CEC 2013) | absolute, ε = 10^k, k = 2, 1.8, …, −8 (51); tables 1e1, 1e0, 1e−1, 1e−2, 1e−3, 1e−5, 1e−7; the final target f_opt + 1e−8 | COCO (H22 §III-F item 2, Table I) |
+| MGH, NIST | relative, ε = 10^−k (f(x0) − f_ref), k = 1, 3, 5, 7, x0 the run's start (each of MGH's x_s, 10 x_s, 100 x_s its own) | Moré and Wild 2009, as H22 §III-F item 1 gives it |
+
+Absolute targets of the same ε would be trivial on one least-squares problem
+and out of reach on the next — their sums of squares differ by many orders —
+which is why H22 asks for scaled problems or targets of their own. f_ref is
+`f_opt`, or where none is known the best known value of version
+`SO_REFERENCE_VERSION` (`so_metrics.REFERENCE_VERSION`, 1), the same rule
+then; the value at a fixed budget compares on an ordinal scale only (H22
+§III-D). SOM-1 ... SOM-4 in the header are the readings.
 
 **MOSQP** (`include/mootation/scalar/mosqp.hpp`; Fliege & Vaz, SIAM J.
 Optim. 2016, Algorithm 4.1): the extreme points first (min f_i under the
