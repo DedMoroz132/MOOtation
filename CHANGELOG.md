@@ -35,6 +35,15 @@ always listed under **Changed** or **Removed**.
   in the registry, a NumPy cross-check (`benchmarks/symmetric.py`,
   `python/test_symmetric.py`) and the map of checks in
   `docs/symmetric-problems.md`. Every earlier problem and run is unchanged.
+- Added: `lm` for problems with symmetries (task 19, §19.3; C++,
+  `scalar/lm.hpp`): a gauge basis (`Problem::gauge`), whose directions the
+  step leaves out, with diagnostics on their complement (`diagnose_gauge`);
+  equalities (`solve_eq`), linear ones eliminated exactly where there are no
+  bounds, any others by the bound-constrained Lagrangian method of Nocedal &
+  Wright's Algorithm 17.4 with `lm` for its subproblem; profiles (`profile`)
+  with Raue et al.'s thresholds and classification (`chi2_quantile`).
+  `lm` without them is unchanged. The Python side comes with the knobs'
+  registration.
 - Added: the knob `coefficients` of `nelder_mead::Options` (task 19,
   §19.4.2): `adaptive`, the default and the coefficients used so far (Gao &
   Han 2012, (4.1), for n >= 2), or `standard` (Lagarias et al. 1998, (2.2)).

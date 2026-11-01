@@ -50,3 +50,13 @@ not known, `f_opt` is the best value known (`f_opt_kind = best_known`, `SO_REFER
 | `lj_cluster`: the 13-atom icosahedron at its best radius gives Table I's energy (the other sizes: no published coordinates in the sources) | `tests/test_suite.cpp` |
 | C++ against NumPy at every registered instance: residuals, Jacobian, objective, gradient, gauge directions, `canon`, to 10⁻¹² | `python/test_symmetric.py` |
 | the box from C++ is the registry's | `tests/test_registry_bounds.cpp` |
+
+## `lm` for such problems (C++, `scalar/lm.hpp`)
+
+| what | how | checked by (`tests/test_lm.cpp`) |
+|---|---|---|
+| a gauge basis (`Problem::gauge`) | the step on the complement of the gauge directions, in Moré's scaling (readings LMN); `diagnose_gauge`: singular values, covariance and correlations on the complement; `Result::gauge_k`, `gauge_ratio` | `lowrank`: the steps orthogonal to N, the same minimum as without it, J Σ Jᵀ equal to the one with the gauge fixed explicitly (U's top block = I) |
+| equalities (`solve_eq`) | linear ones without bounds: exact elimination; nonlinear ones, or any with bounds: the bound-constrained Lagrangian method, Nocedal & Wright's Algorithm 17.4, with `lm` for the subproblem (readings LMC) | a linear model with linear equalities against the KKT system (both paths); min ‖x − a‖ on the unit sphere (h's Jacobian given, by differences, with a box); `lowrank` with UᵀU = VᵀV |
+| profiles (`profile`) | each value of x_j fixed by a linear equality, the rest refitted, continuation outward; Raue et al.'s threshold Δ_α = χ²(α, df) and classification (readings LMP); `chi2_quantile` | a linear model's profile is the parabola and its interval the classical one; `lowrank`'s is flat (structurally non-identifiable); χ² quantiles. Raue et al.'s ODE models are not in the library: the property stands in for their experiment |
+
+None of these changes a run of `lm` without them (the iterates' checksum of `tests/test_lm.cpp`).

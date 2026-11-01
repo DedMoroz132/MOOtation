@@ -153,6 +153,27 @@
 //     Jacobian (njev), r_2's as one evaluation (nfev).
 //
 // LM-7, LM-8: the diagnostics (diagnose, below).
+//
+// Task 19, §19.3: a gauge basis (Problem::gauge; LMN, here), equalities
+// (solve_eq; LMC) and profiles (profile; LMP), each with its readings below.
+// None of them changes a run without them.
+//
+// A gauge basis (§19.3.1; a derivation of ours, the task names no paper):
+// gauge(x) = N (n x k), the directions the residuals do not see to first
+// order. Step 2 is solved on the complement of D N in the scaled variables:
+// Q2 an orthonormal basis of it (the last columns of Q in D N P = Q R, from
+// N's pseudorank on), the step p = D^-1 Q2 w, w from step 2 for the matrix
+// J D^-1 Q2 with the identity for its scaling, so that ||D p|| = ||w|| and
+// Moré's trust region, lambda, rho and the stopping tests are unchanged.
+//   LMN-1. The metric is Moré's D: the step is orthogonal to N in D^2 (N^T
+//     D^2 p = 0), plainly orthogonal where scale = false; D from J's own
+//     columns as in step 1.
+//   LMN-2. The diagnostics on the complement (diagnose_gauge) take the plain
+//     inner product: the covariance of J Q2's parameters, carried back.
+//   LMN-3. A gauge basis takes no finite bound and no lm_geodesic.
+//   LMN-4. Result::gauge_k is N's pseudorank at the solution, gauge_ratio
+//     ||J Q_N|| / ||J|| (Frobenius, Q_N an orthonormal basis of N's columns),
+//     with a Jacobian at the solution (one more, counted).
 // ============================================================================
 
 #include <algorithm>
@@ -184,6 +205,9 @@ struct Problem {
     std::function<void(const Vec& x, Vec& r)> residuals;
     std::function<void(const Vec& x, Matrix& J)> jacobian;   // empty: forward differences
     Vec lo, hi;
+    // the directions (n x k) along which r does not change to first order
+    // (task 19, §19.3.1, LMN): the step keeps to their complement
+    std::function<void(const Vec& x, Matrix& N)> gauge;
 };
 
 struct Options {
@@ -201,6 +225,7 @@ struct Options {
     double f_scale = 1.0;                   // c
     double irls_tol = 1e-10;                // LM-6
     int irls_max = 50;
+    std::vector<Vec>* iterates = nullptr;   // where given, every accepted x is appended
 };
 
 enum class Status { ftol, xtol, ftol_xtol, gtol, max_nfev, ftol_eps, xtol_eps, gtol_eps };
@@ -210,6 +235,8 @@ struct Result {
     double cost = 0.0;                      // 1/2 ||r||^2
     long long nfev = 0, njev = 0, iterations = 0;
     Status status = Status::max_nfev;
+    std::size_t gauge_k = 0;                // with a gauge basis: its rank at x
+    double gauge_ratio = 0.0;               // and ||J N|| / ||J|| there, N orthonormal (LMN-4)
 };
 
 // ||v||, scaled by the largest |entry| (LM-5)
@@ -528,6 +555,50 @@ inline Vec feasible(const Vec& x, const Vec& d, const Vec& lo, const Vec& hi, do
 
 }   // namespace detail
 
+namespace detail {
+
+// Q b for the J P = Q R of factor (all of Q, J's rows long)
+inline Vec q_times(const Factor& f, Vec b)
+{
+    for (std::size_t j = f.house.size(); j-- > 0;)
+        lsq::house_apply(f.a[j].data(), 1, j, j + 1, b.size(), f.house[j], b.data(), 1);
+    return b;
+}
+
+// the pseudorank of R (lsq.hpp's LSQ-6: |R_jj| > max(m, n) eps |R_00|)
+inline std::size_t pseudorank(const Factor& f, std::size_t rows)
+{
+    const std::size_t k = f.R.rows;
+    if (k == 0 || f.R(0, 0) == 0.0) return 0;
+    const double tau = static_cast<double>(std::max(rows, k)) * kEps * std::fabs(f.R(0, 0));
+    std::size_t r = 0;
+    while (r < k && std::fabs(f.R(r, r)) > tau) ++r;
+    return r;
+}
+
+// An orthonormal basis (n x (n - rank)) of the complement of the columns of
+// diag(D) N (n x k): the last columns of Q in D N P = Q R, from the
+// pseudorank on; rank its pseudorank.
+inline Matrix complement(const Matrix& N, const Vec& D, std::size_t& rank)
+{
+    const std::size_t n = N.rows, k = N.cols;
+    Matrix DN(n, k);
+    for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t c = 0; c < k; ++c) DN(i, c) = D[i] * N(i, c);
+    const Factor f = factor(DN, Vec(n, 0.0));
+    rank = pseudorank(f, n);
+    Matrix Q2(n, n - rank);
+    for (std::size_t c = rank; c < n; ++c) {
+        Vec e(n, 0.0);
+        e[c] = 1.0;
+        const Vec q = q_times(f, e);
+        for (std::size_t i = 0; i < n; ++i) Q2(i, c - rank) = q[i];
+    }
+    return Q2;
+}
+
+}   // namespace detail
+
 // The forward-difference Jacobian at x, r = r(x) (n evaluations); backward
 // where x_j + h passes the upper bound (LMB-4)
 inline void fd_jacobian(const Problem& p, const Vec& x, const Vec& r, double fd_eps, Matrix& J)
@@ -559,6 +630,9 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         }
     }
     if (bounded && o.geodesic) throw std::invalid_argument("lm: lm_geodesic takes no finite bounds (LMB-5)");
+    const bool gauged = static_cast<bool>(p.gauge);
+    if (gauged && (bounded || o.geodesic))
+        throw std::invalid_argument("lm: a gauge basis takes no finite bounds and no lm_geodesic (LMN-3)");
     if (bounded)                                      // strictly inside (LMB-3)
         for (std::size_t i = 0; i < n; ++i) {
             const double l = p.lo[i], u = p.hi[i];
@@ -576,7 +650,8 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     res.nfev = 1;
     double rnorm = norm(r);
     double lambda = 0.0, delta = 0.0, xnorm = 0.0;
-    Matrix J, Ja;
+    Matrix J, Ja, Q2, Jw;                             // Q2, Jw: the gauge's complement and J D^-1 Q2
+    Vec zf;                                           // the step in the factored matrix's columns
     bool done = false;
     for (long long iter = 1; !done; ) {
         if (p.jacobian) {
@@ -607,10 +682,38 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 Ja(m + j, j) = std::sqrt(C[j]);
             }
             ra.resize(m + n, 0.0);
+        } else if (gauged) {                          // LMN-1: J D^-1 Q2, D from J's own columns
+            for (std::size_t j = 0; j < n; ++j) {
+                Vec col(m);
+                for (std::size_t i = 0; i < m; ++i) col[i] = J(i, j);
+                colnorm[j] = norm(col);
+            }
+            if (iter == 1) {
+                if (o.scale)
+                    for (std::size_t j = 0; j < n; ++j) D[j] = colnorm[j] == 0.0 ? 1.0 : colnorm[j];
+                for (std::size_t j = 0; j < n; ++j) Dx[j] = D[j] * x[j];
+                xnorm = norm(Dx);
+                delta = xnorm > 0.0 ? o.factor * xnorm : o.factor;
+            }
+            if (o.scale)
+                for (std::size_t j = 0; j < n; ++j) D[j] = std::max(D[j], colnorm[j]);
+            Matrix N;
+            p.gauge(x, N);
+            if (N.rows != n) throw std::invalid_argument("lm: the gauge basis needs n rows");
+            std::size_t rank = 0;
+            Q2 = detail::complement(N, D, rank);
+            Jw = Matrix(m, n - rank);
+            for (std::size_t i = 0; i < m; ++i)
+                for (std::size_t c = 0; c < n - rank; ++c) {
+                    double sum = 0.0;
+                    for (std::size_t j = 0; j < n; ++j) sum += (J(i, j) / D[j]) * Q2(j, c);
+                    Jw(i, c) = sum;
+                }
         }
-        const detail::Factor f = detail::factor(bounded ? Ja : J, ra);
-        if (!bounded) colnorm = f.colnorm;
-        if (iter == 1) {
+        const detail::Factor f = detail::factor(bounded ? Ja : gauged ? Jw : J, ra);
+        const std::size_t nf = f.perm.size();         // n, or n - rank with a gauge basis
+        if (!bounded && !gauged) colnorm = f.colnorm;
+        if (iter == 1 && !gauged) {
             if (o.scale)
                 for (std::size_t j = 0; j < n; ++j) D[j] = colnorm[j] == 0.0 ? 1.0 : colnorm[j];
             for (std::size_t j = 0; j < n; ++j) Dx[j] = D[j] * x[j];
@@ -619,7 +722,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         }
         double gcos = 0.0;                            // the gtol test's largest cosine
         if (rnorm != 0.0)
-            for (std::size_t j = 0; j < n; ++j) {
+            for (std::size_t j = 0; j < nf; ++j) {
                 const std::size_t l = f.perm[j];
                 if (f.colnorm[l] == 0.0) continue;
                 double sum = 0.0;
@@ -630,11 +733,20 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
             res.status = Status::gtol;
             break;
         }
-        if (o.scale)
+        if (o.scale && !gauged)
             for (std::size_t j = 0; j < n; ++j) D[j] = std::max(D[j], colnorm[j]);
         for (std::size_t j = 0; j < n; ++j) Dt[j] = bounded ? D[j] / std::sqrt(dv[j]) : D[j];
         for (;;) {                                     // until a step is taken
-            lambda = detail::levenberg(f, Dt, delta, lambda, z);
+            lambda = detail::levenberg(f, gauged ? Vec(nf, 1.0) : Dt, delta, lambda, zf);
+            z = zf;
+            if (gauged) {                             // p = D^-1 Q2 w (LMN-1)
+                z.assign(n, 0.0);
+                for (std::size_t j = 0; j < n; ++j) {
+                    double sum = 0.0;
+                    for (std::size_t c = 0; c < nf; ++c) sum += Q2(j, c) * zf[c];
+                    z[j] = sum / D[j];
+                }
+            }
             bool step_is_p = true;
             for (std::size_t j = 0; j < n; ++j) s[j] = -z[j];
             if (bounded) {                            // CL Fig. 4.1, step 2
@@ -691,9 +803,9 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
             const double rtnorm = norm(rt);
             double predicted, gamma;                  // Moré (4.4)'s denominator, (4.5)'s gamma
             if (!bounded) {
-                Vec Rp(n, 0.0);                       // R P^T p: its norm is ||J p||
-                for (std::size_t j = 0; j < n; ++j) {
-                    const double t = z[f.perm[j]];
+                Vec Rp(nf, 0.0);                      // R P^T p: its norm is ||J p||
+                for (std::size_t j = 0; j < nf; ++j) {
+                    const double t = zf[f.perm[j]];
                     for (std::size_t i = 0; i <= j; ++i) Rp[i] += f.R(i, j) * t;
                 }
                 const double t1 = norm(Rp) / rnorm, t2 = std::sqrt(lambda) * pnorm / rnorm;
@@ -735,6 +847,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 rnorm = rtnorm;
                 ++iter;
                 ++res.iterations;
+                if (o.iterates) o.iterates->push_back(x);
             }
             const bool f_ok = predicted <= o.ftol;    // Moré (8.4)
             const bool x_ok = delta <= o.xtol * xnorm;   // Moré (8.3)
@@ -753,6 +866,33 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     res.x = x;
     res.r = r;
     res.cost = 0.5 * rnorm * rnorm;
+    if (gauged) {                                     // LMN-4, at x with a Jacobian of its own
+        if (p.jacobian) {
+            J = Matrix(m, n);
+            p.jacobian(x, J);
+            ++res.njev;
+        } else {
+            fd_jacobian(p, x, r, o.fd_eps, J);
+            res.nfev += static_cast<long long>(n);
+        }
+        Matrix N;
+        p.gauge(x, N);
+        const detail::Factor fn = detail::factor(N, Vec(n, 0.0));
+        res.gauge_k = detail::pseudorank(fn, n);
+        double jn = 0.0, jj = 0.0;
+        for (std::size_t c = 0; c < res.gauge_k; ++c) {
+            Vec e(n, 0.0);
+            e[c] = 1.0;
+            const Vec q = detail::q_times(fn, e);     // an orthonormal column of span N
+            for (std::size_t i = 0; i < m; ++i) {
+                double sum = 0.0;
+                for (std::size_t j = 0; j < n; ++j) sum += J(i, j) * q[j];
+                jn += sum * sum;
+            }
+        }
+        for (double v : J.a) jj += v * v;
+        res.gauge_ratio = jj > 0.0 ? std::sqrt(jn / jj) : 0.0;
+    }
     return res;
 }
 
@@ -1036,6 +1176,597 @@ inline SeparableResult varpro(const Separable& sp, Vec alpha, const Options& o, 
     out.a = P.coef(sp.y);
     out.rank = P.rank;
     return out;
+}
+
+
+// ── diagnostics on the gauge's complement (task 19, §19.3.1; LMN-2) ─────────
+// diagnose() of J Q2, Q2 an orthonormal basis of the complement of N's columns
+// (the plain inner product), its covariance carried back: cov = Q2 cov_Q2
+// Q2^T (n x n, rank n - k at most); sv the singular values of J Q2.
+inline Diagnostics diagnose_gauge(const Matrix& J, const Matrix& N, double cost, double sigma2,
+                                  bool differences = false, double fd_eps = 0.0)
+{
+    const std::size_t m = J.rows, n = J.cols;
+    std::size_t rank = 0;
+    const Matrix Q2 = detail::complement(N, Vec(n, 1.0), rank);
+    const std::size_t nc = n - rank;
+    Matrix Jc(m, nc);
+    for (std::size_t i = 0; i < m; ++i)
+        for (std::size_t c = 0; c < nc; ++c) {
+            double sum = 0.0;
+            for (std::size_t j = 0; j < n; ++j) sum += J(i, j) * Q2(j, c);
+            Jc(i, c) = sum;
+        }
+    Diagnostics dc = diagnose(Jc, cost, sigma2, differences, fd_eps);
+    Diagnostics d = dc;
+    d.cov = Matrix(n, n);
+    for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t j = 0; j < n; ++j) {
+            double sum = 0.0;
+            for (std::size_t a = 0; a < nc; ++a)
+                for (std::size_t b = 0; b < nc; ++b) sum += Q2(i, a) * dc.cov(a, b) * Q2(j, b);
+            d.cov(i, j) = sum;
+        }
+    d.corr = Matrix(n, n);
+    for (std::size_t i = 0; i < n; ++i)
+        for (std::size_t j = 0; j < n; ++j) {
+            const double s = std::sqrt(d.cov(i, i) * d.cov(j, j));
+            d.corr(i, j) = s > 0.0 ? d.cov(i, j) / s : 0.0;
+        }
+    return d;
+}
+
+// ── equalities (task 19, §19.3.2; LMC) ──────────────────────────────────────
+// min 1/2 ||r(x)||^2 subject to C x = d, h(x) = 0 and the problem's bounds.
+// Linear equalities alone and no finite bound: exact elimination, x = x_p +
+// Z y, Z from the QR of C^T, lm over y (LMC-4). Otherwise every equality, the
+// linear ones as rows C x - d, joins c(x) = (C x - d, h(x)) and the bound-
+// constrained Lagrangian method of J. Nocedal, S.J. Wright, Numerical
+// Optimization, 2nd ed., Springer 2006 (source numerical-optimization_
+// nocedal2006), §17.4, Algorithm 17.4, solves it: its subproblem (17.50), min
+// L_A over l <= x <= u, is lm with the bounds on the residuals of least-squares
+// form r~ = [r; sqrt(mu) (c + lambda / mu)], 1/2 ||r~||^2 = 1/2 ||r||^2 +
+// lambda^T c + (mu/2) ||c||^2 + ||lambda||^2 / (2 mu), which is N&W's (17.36)
+// L_A with f = 1/2 ||r||^2 and lambda = -lambda_N&W (LMC-1); then, with the
+// projected gradient ||x - P(x - grad L_A)|| of (17.51):
+//   mu_0 = 10, omega_0 = 1 / mu_0, eta_0 = 1 / mu_0^0.1;
+//   ||c|| <= eta_k: stop where ||c|| <= eta_* and the projected gradient <=
+//     omega_*; lambda += mu c (N&W's (17.39) in our sign), eta /= mu^0.9,
+//     omega /= mu;
+//   else mu *= 100, eta = 1 / mu^0.1, omega = 1 / mu.
+// OURS (N&W's 17.3 leaves mu's growth and the tolerances open, 17.4 fixes
+// them; the constants 0.1, 0.9 and 100 are theirs, "to some extent
+// arbitrary"):
+//   LMC-1. The multipliers' sign: the task's form r~ = [r; sqrt(mu) (c +
+//     lambda/mu)] is N&W's with lambda = -lambda_N&W; at a solution J^T r +
+//     A^T lambda = 0, A the Jacobian of c.
+//   LMC-2. The subproblem is solved by lm to its own tests (ftol, xtol); where
+//     the projected gradient is still above omega_k s, lm again from there
+//     with ftol and xtol a hundredth (not below eps), three times at most.
+//   LMC-3. omega_k and omega_* are relative, times s = max(1, ||J^T r||) at
+//     x_0, so that the method does not hang on the residuals' scale; eta_*
+//     = 1e-8 (on ||c||, the equalities' own scale) and omega_* = 1e-6 by
+//     default; 50 outer iterations at most, mu not beyond 1e15 (the run ends
+//     unconverged there). N&W leave eta_* and omega_* to the user. Why not
+//     tighter: the subproblem's cost carries 1/2 ||r||^2 whole, so a c below
+//     about (eps cost / mu)^1/2 changes it by less than its rounding and lm
+//     cannot see it; mu then grows and the gradient's mu c term is rounding
+//     too (min ||x - a|| on the sphere, tests/test_lm.cpp, stalls with
+//     1e-10 and 1e-8).
+//   LMC-4. Exact elimination only without a finite bound (the owner's
+//     decision H2 of 2026-11-01): a box in x is no box in y. C^T P = Q R with
+//     column interchanges (lm's factor), C's pseudorank by lsq.hpp's LSQ-6;
+//     x_p = Q_1 R^-T P^T d, the least-norm solution, refused where C x_p is
+//     not d to 1e3 eps of the scale (inconsistent equalities). y is counted
+//     from x_0's projection onto C x = d, x = x_0p + Z y, and lm starts at y =
+//     0 exactly: counted from x_p, a start on C x = d would have y_0 of
+//     rounding size, Moré's first Delta (LM-3) and the differences' steps
+//     relative to it.
+//   LMC-5. After elimination the multipliers are the least-squares solution of
+//     C^T lambda = -J^T r at x (one more Jacobian).
+struct Equalities {
+    Matrix C;                               // p x n (p = 0: none)
+    Vec d;
+    std::size_t q = 0;                      // h's values (0: none)
+    std::function<void(const Vec& x, Vec& h)> h;
+    std::function<void(const Vec& x, Matrix& A)> jacobian;   // q x n; empty: forward differences
+};
+
+struct EqOptions {
+    double eta = 1e-8;                      // eta_* (LMC-3)
+    double omega = 1e-6;                    // omega_*, relative (LMC-3)
+    int max_outer = 50;
+    double mu_max = 1e15;                   // no growth beyond (LMC-3)
+    Vec lambda0;                            // empty: 0
+};
+
+struct EqResult {
+    Result fit;                             // x; r and cost the problem's own; the counts of every lm run
+    Vec lambda;                             // the multipliers (LMC-1), the linear rows first
+    double mu = 0.0;
+    double c_norm = 0.0;                    // ||c(x)||
+    double projected_gradient = 0.0;        // of L_A at x, over s (LMC-3)
+    int outer = 0;
+    long long ceval = 0;                    // evaluations of h
+    bool eliminated = false, converged = false;
+};
+
+namespace detail {
+
+// J at x (the problem's or forward differences), r = r(x); counts into res
+inline void jacobian_at(const Problem& p, const Vec& x, const Vec& r, double fd_eps, Matrix& J, Result& res)
+{
+    if (p.jacobian) {
+        J = Matrix(p.m, p.n);
+        p.jacobian(x, J);
+        ++res.njev;
+    } else {
+        fd_jacobian(p, x, r, fd_eps, J);
+        res.nfev += static_cast<long long>(p.n);
+    }
+}
+
+inline Vec gradient_of(const Matrix& J, const Vec& r)
+{
+    Vec g(J.cols, 0.0);
+    for (std::size_t j = 0; j < J.cols; ++j)
+        for (std::size_t i = 0; i < J.rows; ++i) g[j] += J(i, j) * r[i];
+    return g;
+}
+
+inline void add_counts(Result& total, const Result& part)
+{
+    total.nfev += part.nfev;
+    total.njev += part.njev;
+    total.iterations += part.iterations;
+    total.status = part.status;
+}
+
+inline EqResult eliminate(const Problem& p, const Equalities& e, const Vec& x0, const Options& o)
+{
+    const std::size_t n = p.n, pc = e.C.rows;
+    Matrix Ct(n, pc);
+    for (std::size_t i = 0; i < pc; ++i)
+        for (std::size_t j = 0; j < n; ++j) Ct(j, i) = e.C(i, j);
+    const Factor f = factor(Ct, Vec(n, 0.0));
+    const std::size_t rc = pseudorank(f, n);
+    Vec u(n, 0.0);                                   // R^T u = P^T d
+    for (std::size_t j = 0; j < rc; ++j) {
+        double s = e.d[f.perm[j]];
+        for (std::size_t i = 0; i < j; ++i) s -= f.R(i, j) * u[i];
+        u[j] = s / f.R(j, j);
+    }
+    const Vec xp = q_times(f, u);
+    double resid = 0.0, scale = norm(e.d), cbig = 0.0;
+    for (std::size_t i = 0; i < pc; ++i) {
+        double s = -e.d[i];
+        for (std::size_t j = 0; j < n; ++j) {
+            s += e.C(i, j) * xp[j];
+            cbig = std::max(cbig, std::fabs(e.C(i, j)));
+        }
+        resid = std::max(resid, std::fabs(s));
+    }
+    scale = std::max(scale, cbig * norm(xp));
+    if (resid > 1e3 * kEps * std::max(scale, kTiny)) throw std::invalid_argument("lm: the linear equalities are inconsistent");
+    const std::size_t ny = n - rc;
+    Matrix Z(n, ny);
+    for (std::size_t c = 0; c < ny; ++c) {
+        Vec ec(n, 0.0);
+        ec[rc + c] = 1.0;
+        const Vec q = q_times(f, ec);
+        for (std::size_t i = 0; i < n; ++i) Z(i, c) = q[i];
+    }
+    Vec origin = xp;                                  // x_0 projected onto C x = d (LMC-4)
+    for (std::size_t c = 0; c < ny; ++c) {
+        double s = 0.0;
+        for (std::size_t i = 0; i < n; ++i) s += Z(i, c) * (x0[i] - xp[i]);
+        for (std::size_t i = 0; i < n; ++i) origin[i] += Z(i, c) * s;
+    }
+    auto x_of = [&](const Vec& y) {
+        Vec x = origin;
+        for (std::size_t i = 0; i < n; ++i)
+            for (std::size_t c = 0; c < ny; ++c) x[i] += Z(i, c) * y[c];
+        return x;
+    };
+    Problem q;
+    q.n = ny;
+    q.m = p.m;
+    q.residuals = [&](const Vec& y, Vec& r) { p.residuals(x_of(y), r); };
+    if (p.jacobian)
+        q.jacobian = [&](const Vec& y, Matrix& Jy) {
+            Matrix J(p.m, n);
+            p.jacobian(x_of(y), J);
+            Jy = Matrix(p.m, ny);
+            for (std::size_t i = 0; i < p.m; ++i)
+                for (std::size_t c = 0; c < ny; ++c) {
+                    double s = 0.0;
+                    for (std::size_t j = 0; j < n; ++j) s += J(i, j) * Z(j, c);
+                    Jy(i, c) = s;
+                }
+        };
+    EqResult out;
+    out.eliminated = out.converged = true;
+    out.fit = solve(q, Vec(ny, 0.0), o);
+    out.fit.x = x_of(out.fit.x);
+    Vec c(pc);
+    for (std::size_t i = 0; i < pc; ++i) {
+        double s = -e.d[i];
+        for (std::size_t j = 0; j < n; ++j) s += e.C(i, j) * out.fit.x[j];
+        c[i] = s;
+    }
+    out.c_norm = norm(c);
+    Matrix J;                                         // LMC-5
+    jacobian_at(p, out.fit.x, out.fit.r, o.fd_eps, J, out.fit);
+    const Vec qg = f.qt(gradient_of(J, out.fit.r));
+    Vec lp(pc, 0.0);
+    for (std::size_t jj = rc; jj-- > 0;) {
+        double s = -qg[jj];
+        for (std::size_t i = jj + 1; i < rc; ++i) s -= f.R(jj, i) * lp[i];
+        lp[jj] = s / f.R(jj, jj);
+    }
+    out.lambda.assign(pc, 0.0);
+    for (std::size_t j = 0; j < pc; ++j) out.lambda[f.perm[j]] = lp[j];
+    return out;
+}
+
+inline EqResult bound_constrained_lagrangian(const Problem& p, const Equalities& e, Vec x, const Options& o,
+                                             const EqOptions& eo)
+{
+    const std::size_t n = p.n, m = p.m, pc = e.C.rows, nc = pc + e.q;
+    EqResult out;
+    auto cval = [&](const Vec& v, Vec& c) {
+        c.assign(nc, 0.0);
+        for (std::size_t i = 0; i < pc; ++i) {
+            double s = -e.d[i];
+            for (std::size_t j = 0; j < n; ++j) s += e.C(i, j) * v[j];
+            c[i] = s;
+        }
+        if (e.q) {
+            Vec hv(e.q);
+            e.h(v, hv);
+            ++out.ceval;
+            for (std::size_t i = 0; i < e.q; ++i) c[pc + i] = hv[i];
+        }
+    };
+    auto cjac = [&](const Vec& v, const Vec& c, Matrix& A) {   // A of c at v, c = c(v)
+        A = Matrix(nc, n);
+        for (std::size_t i = 0; i < pc; ++i)
+            for (std::size_t j = 0; j < n; ++j) A(i, j) = e.C(i, j);
+        if (!e.q) return;
+        if (e.jacobian) {
+            Matrix Ah(e.q, n);
+            e.jacobian(v, Ah);
+            for (std::size_t i = 0; i < e.q; ++i)
+                for (std::size_t j = 0; j < n; ++j) A(pc + i, j) = Ah(i, j);
+            return;
+        }
+        const double step = std::sqrt(std::max(o.fd_eps, kEps));    // as fd_jacobian
+        Vec vh = v, ch;
+        for (std::size_t j = 0; j < n; ++j) {
+            double hj = step * std::fabs(v[j]);
+            if (hj == 0.0) hj = step;
+            if (!p.hi.empty() && v[j] + hj > p.hi[j]) hj = -hj;
+            vh[j] = v[j] + hj;
+            cval(vh, ch);
+            vh[j] = v[j];
+            for (std::size_t i = 0; i < e.q; ++i) A(pc + i, j) = (ch[pc + i] - c[pc + i]) / hj;
+        }
+    };
+    Vec lambda = eo.lambda0.empty() ? Vec(nc, 0.0) : eo.lambda0;
+    if (lambda.size() != nc) throw std::invalid_argument("lm: lambda0 needs one value per equality");
+    double mu = 10.0, omega = 1.0 / mu, eta = 1.0 / dm::pow(mu, 0.1);
+    // the projected gradient of L_A at v, over s (LMC-3); r, c at v
+    auto projected = [&](const Vec& v, Vec& r, Vec& c, double s) {
+        r.assign(m, 0.0);
+        p.residuals(v, r);
+        ++out.fit.nfev;
+        Matrix J, A;
+        jacobian_at(p, v, r, o.fd_eps, J, out.fit);
+        cval(v, c);
+        cjac(v, c, A);
+        Vec g = gradient_of(J, r);
+        for (std::size_t j = 0; j < n; ++j)
+            for (std::size_t i = 0; i < nc; ++i) g[j] += A(i, j) * (lambda[i] + mu * c[i]);
+        Vec dv(n);
+        for (std::size_t j = 0; j < n; ++j) {
+            double t = v[j] - g[j];
+            if (!p.lo.empty()) t = std::min(p.hi[j], std::max(p.lo[j], t));
+            dv[j] = v[j] - t;
+        }
+        return norm(dv) / s;
+    };
+    Vec r(m), c;
+    double s = 1.0;
+    {
+        p.residuals(x, r);
+        ++out.fit.nfev;
+        Matrix J;
+        jacobian_at(p, x, r, o.fd_eps, J, out.fit);
+        s = std::max(1.0, norm(gradient_of(J, r)));
+    }
+    Problem inner;
+    inner.n = n;
+    inner.m = m + nc;
+    inner.lo = p.lo;
+    inner.hi = p.hi;
+    inner.residuals = [&](const Vec& v, Vec& ra) {
+        Vec rv(m), cv;
+        p.residuals(v, rv);
+        cval(v, cv);
+        ra.assign(m + nc, 0.0);
+        std::copy(rv.begin(), rv.end(), ra.begin());
+        const double sq = std::sqrt(mu);
+        for (std::size_t i = 0; i < nc; ++i) ra[m + i] = sq * (cv[i] + lambda[i] / mu);
+    };
+    if (p.jacobian)
+        inner.jacobian = [&](const Vec& v, Matrix& Ja) {
+            Matrix J(m, n), A;
+            p.jacobian(v, J);
+            Vec cv;
+            cval(v, cv);
+            cjac(v, cv, A);
+            Ja = Matrix(m + nc, n);
+            const double sq = std::sqrt(mu);
+            for (std::size_t j = 0; j < n; ++j) {
+                for (std::size_t i = 0; i < m; ++i) Ja(i, j) = J(i, j);
+                for (std::size_t i = 0; i < nc; ++i) Ja(m + i, j) = sq * A(i, j);
+            }
+        };
+    double pg = 0.0;
+    for (out.outer = 1; out.outer <= eo.max_outer; ++out.outer) {
+        Options oi = o;
+        for (int round = 0; round < 4; ++round) {     // LMC-2
+            const Result step = solve(inner, x, oi);
+            add_counts(out.fit, step);
+            x = step.x;
+            pg = projected(x, r, c, s);
+            if (pg <= omega) break;
+            oi.ftol = std::max(kEps, 0.01 * oi.ftol);
+            oi.xtol = std::max(kEps, 0.01 * oi.xtol);
+        }
+        const double cn = norm(c);
+        if (cn <= eta) {
+            if (cn <= eo.eta && pg <= eo.omega) {
+                out.converged = true;
+                break;
+            }
+            for (std::size_t i = 0; i < nc; ++i) lambda[i] += mu * c[i];
+            eta = eta / dm::pow(mu, 0.9);
+            omega = omega / mu;
+        } else {
+            if (mu >= eo.mu_max) break;              // LMC-3
+            mu = 100.0 * mu;
+            eta = 1.0 / dm::pow(mu, 0.1);
+            omega = 1.0 / mu;
+        }
+    }
+    if (out.outer > eo.max_outer) out.outer = eo.max_outer;
+    out.fit.x = x;
+    out.fit.r = r;
+    out.fit.cost = 0.5 * norm(r) * norm(r);
+    out.lambda = lambda;
+    out.mu = mu;
+    out.c_norm = norm(c);
+    out.projected_gradient = pg;
+    return out;
+}
+
+}   // namespace detail
+
+inline EqResult solve_eq(const Problem& p, const Equalities& e, Vec x, const Options& o, const EqOptions& eo = {})
+{
+    if (e.C.rows > 0 && (e.C.cols != p.n || e.d.size() != e.C.rows))
+        throw std::invalid_argument("lm: C needs n columns and d one value per row");
+    if (e.q > 0 && !e.h) throw std::invalid_argument("lm: q nonlinear equalities need h");
+    if (p.gauge) throw std::invalid_argument("lm: equalities take no gauge basis");
+    bool bounded = false;
+    for (std::size_t i = 0; i < p.lo.size(); ++i) bounded = bounded || p.lo[i] > -kInf || p.hi[i] < kInf;
+    if (e.C.rows == 0 && e.q == 0) {
+        EqResult out;
+        out.fit = solve(p, std::move(x), o);
+        out.converged = true;
+        return out;
+    }
+    if (e.q == 0 && !bounded) return detail::eliminate(p, e, x, o);
+    return detail::bound_constrained_lagrangian(p, e, std::move(x), o, eo);
+}
+
+// ── profiles (task 19, §19.3.3; LMP) ────────────────────────────────────────
+// The profile of the parameter x_j: for each value v the least cost with x_j
+// = v fixed (the linear equality e_j^T x = v, solve_eq), the others fitted by
+// lm, each from the neighbouring node's solution, outward from x_hat in both
+// directions; the threshold and the classification of A. Raue et al.,
+// "Structural and practical identifiability analysis of partially observed
+// dynamical models by exploiting the profile likelihood", Bioinformatics
+// 25(15) 2009, 1923-1929 (source profile-likelihood-identifiability_raue2009):
+// (8), the region chi^2(theta) - chi^2(theta_hat) < Delta_alpha, Delta_alpha
+// = chi2_quantile(alpha, df) (df = 1 pointwise, df = n simultaneous, their
+// (7)); §2.3: identifiable where the profile passes Delta_alpha on both
+// sides, structurally non-identifiable where it is flat, practically
+// non-identifiable where it stays below it on a side. OURS:
+//   LMP-1. chi^2 = sum (r_i / sigma_i)^2 = 2 cost where the residuals are
+//     divided by sigma: the threshold on the cost is Delta_alpha / 2, times
+//     sigma2 where the caller gives the residuals' variance (the residuals
+//     not divided); without sigma2 (0) the residuals are taken as divided by
+//     sigma = 1 and the profile is relative (Profile::relative).
+//   LMP-2. The automatic grid: steps of h = sqrt(2 threshold C_jj) / 10, C
+//     = (J^T J)^+ at x_hat (the quadratic model's crossing in ten steps), or
+//     0.1 max(1, |x_hat_j|) where C_jj = 0; max_steps nodes a side at most;
+//     a side ends past the threshold, or on x_j's bound (the last node on
+//     it). A crossing is refined by bisection between the last node below
+//     and the first above (30 halvings, each a fit from the node below).
+//   LMP-3. Flat: every node's cost within flat_tol max(1, cost_hat) of
+//     cost_hat (flat_tol = 1e-8).
+//   LMP-4. chi2_quantile: the regularized lower incomplete gamma P(df/2,
+//     x/2) by its power series, the definition's integrand e^-t t^(a-1)
+//     expanded and integrated term by term: P(a, z) = z^a e^-z / Gamma(a + 1)
+//     sum_k z^k / ((a + 1) ... (a + k)), Gamma(a + 1) by its recurrence from
+//     Gamma(1) = 1 or Gamma(1/2) = sqrt(pi) (a is a multiple of 1/2); the
+//     quantile by bisection.
+
+inline double chi2_cdf(double x, int df)
+{
+    if (!(x > 0.0)) return 0.0;
+    const double a = 0.5 * df, z = 0.5 * x;
+    double lg = 0.0;                                  // log Gamma(a + 1)
+    for (double t = a; t > 0.25; t -= 1.0) lg += dm::log(t);
+    if (df % 2 == 1) lg += 0.5 * dm::log(dm::kPi);    // Gamma(1/2)
+    double term = 1.0, sum = 1.0;
+    for (int k = 1; k < 100000; ++k) {
+        term *= z / (a + k);
+        sum += term;
+        if (term < kEps * sum) break;
+    }
+    return std::min(1.0, dm::exp(a * dm::log(z) - z - lg) * sum);
+}
+
+inline double chi2_quantile(double alpha, int df)
+{
+    if (!(alpha > 0.0 && alpha < 1.0) || df < 1) throw std::invalid_argument("chi2_quantile: 0 < alpha < 1, df >= 1");
+    double lo = 0.0, hi = 1.0;
+    while (chi2_cdf(hi, df) < alpha) hi *= 2.0;
+    for (int it = 0; it < 200; ++it) {
+        const double mid = 0.5 * (lo + hi);
+        if (chi2_cdf(mid, df) < alpha) lo = mid;
+        else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+}
+
+struct ProfileOptions {
+    std::vector<double> grid;               // the values of x_j; empty: automatic (LMP-2)
+    double alpha = 0.95;
+    int df = 1;
+    double sigma2 = 0.0;                    // the residuals' variance (0: divided already, relative; LMP-1)
+    double step = 0.0;                      // 0: LMP-2's
+    int max_steps = 50;
+    double flat_tol = 1e-8;                 // LMP-3
+};
+
+struct ProfilePoint {
+    double value = 0.0, cost = 0.0;
+    Vec x;
+};
+
+struct Profile {
+    std::size_t j = 0;
+    double cost_hat = 0.0, threshold = 0.0;  // the cost's threshold above cost_hat
+    std::vector<ProfilePoint> points;       // by increasing value, x_hat's among them
+    double lower = -kInf, upper = kInf;     // where the profile passes the threshold (infinite: it does not)
+    bool relative = false;
+    enum class Kind { identifiable, practically_non_identifiable, structurally_non_identifiable } kind =
+        Kind::identifiable;
+};
+
+inline Profile profile(const Problem& p, const Vec& x_hat, std::size_t j, const Options& o,
+                       const ProfileOptions& po = {})
+{
+    const std::size_t n = p.n;
+    if (j >= n) throw std::invalid_argument("profile: j is not a parameter");
+    Profile pr;
+    pr.j = j;
+    pr.relative = !(po.sigma2 > 0.0);
+    pr.threshold = 0.5 * chi2_quantile(po.alpha, po.df) * (pr.relative ? 1.0 : po.sigma2);
+    Vec r(p.m);
+    p.residuals(x_hat, r);
+    pr.cost_hat = 0.5 * norm(r) * norm(r);
+    auto fit_at = [&](double v, const Vec& from) {
+        Equalities e;
+        e.C = Matrix(1, n);
+        e.C(0, j) = 1.0;
+        e.d = {v};
+        Vec x0 = from;
+        x0[j] = v;
+        if (!p.lo.empty()) x0[j] = std::min(p.hi[j], std::max(p.lo[j], v));
+        const EqResult er = solve_eq(p, e, x0, o);
+        return ProfilePoint{v, er.fit.cost, er.fit.x};
+    };
+    const double lo_j = p.lo.empty() ? -kInf : p.lo[j], hi_j = p.hi.empty() ? kInf : p.hi[j];
+    std::vector<ProfilePoint> sides[2];
+    bool crossed[2] = {false, false};
+    double crossing[2] = {-kInf, kInf};
+    if (!po.grid.empty()) {
+        for (int side = 0; side < 2; ++side) {        // outward from x_hat_j, below and above
+            std::vector<double> vs;
+            for (double v : po.grid)
+                if (side == 0 ? v < x_hat[j] : v > x_hat[j]) vs.push_back(v);
+            std::sort(vs.begin(), vs.end());
+            if (side == 0) std::reverse(vs.begin(), vs.end());
+            Vec from = x_hat;
+            for (double v : vs) {
+                sides[side].push_back(fit_at(v, from));
+                from = sides[side].back().x;
+            }
+        }
+    } else {
+        double h = po.step;
+        if (!(h > 0.0)) {                             // LMP-2
+            Matrix J;
+            Result counts;
+            detail::jacobian_at(p, x_hat, r, o.fd_eps, J, counts);
+            const Diagnostics d = diagnose(J, pr.cost_hat, 1.0, !p.jacobian, o.fd_eps);
+            const double cjj = d.cov(j, j);
+            h = cjj > 0.0 ? std::sqrt(2.0 * pr.threshold * cjj) / 10.0 : 0.1 * std::max(1.0, std::fabs(x_hat[j]));
+        }
+        for (int side = 0; side < 2; ++side) {
+            const double dir = side == 0 ? -1.0 : 1.0, bound = side == 0 ? lo_j : hi_j;
+            Vec from = x_hat;
+            ProfilePoint below{x_hat[j], pr.cost_hat, x_hat};
+            for (int k = 1; k <= po.max_steps; ++k) {
+                double v = x_hat[j] + dir * k * h;
+                const bool on_bound = side == 0 ? v <= bound : v >= bound;
+                if (on_bound) v = bound;
+                ProfilePoint pt = fit_at(v, from);
+                if (pt.cost - pr.cost_hat > pr.threshold) {   // refine the crossing (LMP-2)
+                    double a = below.value, b = v;
+                    Vec xa = below.x;
+                    for (int it = 0; it < 30; ++it) {
+                        const double mid = 0.5 * (a + b);
+                        const ProfilePoint pm = fit_at(mid, xa);
+                        if (pm.cost - pr.cost_hat > pr.threshold) b = mid;
+                        else {
+                            a = mid;
+                            xa = pm.x;
+                        }
+                    }
+                    crossed[side] = true;
+                    crossing[side] = 0.5 * (a + b);
+                    sides[side].push_back(std::move(pt));
+                    break;
+                }
+                below = pt;
+                from = pt.x;
+                sides[side].push_back(std::move(pt));
+                if (on_bound) break;
+            }
+        }
+    }
+    for (std::size_t k = sides[0].size(); k-- > 0;) pr.points.push_back(sides[0][k]);
+    pr.points.push_back(ProfilePoint{x_hat[j], pr.cost_hat, x_hat});
+    for (const ProfilePoint& pt : sides[1]) pr.points.push_back(pt);
+    if (!po.grid.empty())                             // the grid's crossings: between nodes, linearly
+        for (std::size_t k = 1; k < pr.points.size(); ++k) {
+            const ProfilePoint &a = pr.points[k - 1], &b = pr.points[k];
+            const double ta = a.cost - pr.cost_hat - pr.threshold, tb = b.cost - pr.cost_hat - pr.threshold;
+            if ((ta > 0.0) == (tb > 0.0)) continue;
+            const double v = a.value + (b.value - a.value) * (ta / (ta - tb));
+            if (b.value <= x_hat[j]) {
+                crossed[0] = true;
+                crossing[0] = v;
+            } else if (!crossed[1]) {
+                crossed[1] = true;
+                crossing[1] = v;
+            }
+        }
+    pr.lower = crossed[0] ? crossing[0] : -kInf;
+    pr.upper = crossed[1] ? crossing[1] : kInf;
+    bool flat = true;
+    for (const ProfilePoint& pt : pr.points)
+        flat = flat && std::fabs(pt.cost - pr.cost_hat) <= po.flat_tol * std::max(1.0, pr.cost_hat);
+    pr.kind = crossed[0] && crossed[1] ? Profile::Kind::identifiable
+            : flat                    ? Profile::Kind::structurally_non_identifiable
+                                      : Profile::Kind::practically_non_identifiable;
+    return pr;
 }
 
 }   // namespace mootation::scalar::lm

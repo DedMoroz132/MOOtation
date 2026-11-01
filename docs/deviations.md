@@ -404,7 +404,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-168 items: 168 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `subproblems`.
+181 items: 181 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `cmaes`, `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -482,6 +482,19 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lm` | VP-1 | The pseudorank of Phi: the diagonal \|R_jj\| > max(m, p) eps \|R_00\| (lsq.hpp's LSQ-6); a = Phi^- y is the basic solution on those columns. | yes | `lm.hpp` |
 | `lm` | VP-2 | Without the derivatives of Phi, the Jacobian of r_2 is forward differences of r_2 (the full projection, not Kaufman's term). | yes | `lm.hpp` |
 | `lm` | VP-3 | The Jacobian's evaluation of Phi and its derivatives counts as one Jacobian (njev), r_2's as one evaluation (nfev). | yes | `lm.hpp` |
+| `lm` | LMN-1 | The metric is Moré's D: the step is orthogonal to N in D^2 (N^T D^2 p = 0), plainly orthogonal where scale = false; | yes | `lm.hpp` |
+| `lm` | LMN-2 | The diagnostics on the complement (diagnose_gauge) take the plain inner product: the covariance of J Q2's parameters, carried back. | yes | `lm.hpp` |
+| `lm` | LMN-3 | A gauge basis takes no finite bound and no lm_geodesic. | yes | `lm.hpp` |
+| `lm` | LMN-4 | Result::gauge_k is N's pseudorank at the solution, gauge_ratio \|\|J Q_N\|\| / \|\|J\|\| (Frobenius, Q_N an orthonormal basis of N's columns), with a Jacobian at the solution (one more, counted). | yes | `lm.hpp` |
+| `lm` | LMC-1 | The multipliers' sign: the task's form r~ = [r; sqrt(mu) (c + lambda/mu)] is N&W's with lambda = -lambda_N&W; at a solution J^T r + A^T lambda = 0, A the Jacobian of c. | yes | `lm.hpp` |
+| `lm` | LMC-2 | The subproblem is solved by lm to its own tests (ftol, xtol); where the projected gradient is still above omega_k s, lm again from there with ftol and xtol a hundredth (not below eps), three times at most. | yes | `lm.hpp` |
+| `lm` | LMC-3 | omega_k and omega_* are relative, times s = max(1, \|\|J^T r\|\|) at x_0, so that the method does not hang on the residuals' scale; eta_* = 1e-8 (on \|\|c\|\|, the equalities' own scale) and omega_* = 1e-6 by default; 50 oute... | yes | `lm.hpp` |
+| `lm` | LMC-4 | Exact elimination only without a finite bound (the owner's decision H2 of 2026-11-01): a box in x is no box in y. | yes | `lm.hpp` |
+| `lm` | LMC-5 | After elimination the multipliers are the least-squares solution of C^T lambda = -J^T r at x (one more Jacobian). | yes | `lm.hpp` |
+| `lm` | LMP-1 | chi^2 = sum (r_i / sigma_i)^2 = 2 cost where the residuals are divided by sigma: the threshold on the cost is Delta_alpha / 2, times sigma2 where the caller gives the residuals' variance (the residuals not divided); w... | yes | `lm.hpp` |
+| `lm` | LMP-2 | The automatic grid: steps of h = sqrt(2 threshold C_jj) / 10, C = (J^T J)^+ at x_hat (the quadratic model's crossing in ten steps), or 0.1 max(1, \|x_hat_j\|) where C_jj = 0; max_steps nodes a side at most; a side ends... | yes | `lm.hpp` |
+| `lm` | LMP-3 | Flat: every node's cost within flat_tol max(1, cost_hat) of cost_hat (flat_tol = 1e-8). | yes | `lm.hpp` |
+| `lm` | LMP-4 | chi2_quantile: the regularized lower incomplete gamma P(df/2, x/2) by its power series, the definition's integrand e^-t t^(a-1) expanded and integrated term by term: P(a, z) = z^a e^-z / Gamma(a + 1) sum_k z^k / ((a +... | yes | `lm.hpp` |
 | `lshade` | LSHADE-1 | "the top N p members": the ceil(N p) best, at least 2 (SHADE's p_min = 2/N); ranking and the trial's draws as pbest.hpp (PB-1, PB-2). | yes | `lshade.hpp` |
 | `lshade` | LSHADE-2 | The draws for x_i, in Algorithm 2's order: r_i, CR_i (none when M_CR,r_i = ⊥), F_i, then the trial's. | yes | `lshade.hpp` |
 | `lshade` | LSHADE-3 | Algorithm 2, line 25 reads "if N_G < N_G+1"; the text says "whenever N_G+1 < N_G, the worst-ranking individuals are deleted" — taken. | yes | `lshade.hpp` |
