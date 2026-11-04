@@ -23,7 +23,13 @@
 //     one), chi^2 quantiles;
 //   - task 19, §19.4.1: scalar/eki.hpp, the initial ensemble's affine hull
 //     kept, a linear problem's first mean against Iglesias et al.'s (39)
-//     and, with many members, (41).
+//     and, with many members, (41);
+//   - residuals that are not finite (LM-9): r = (atan(x_1 - 1), x_2 - 2),
+//     NaN or inf for x_1 > 3, where the first Gauss-Newton step from (-3, 0)
+//     lands: the step refused, the minimum (1, 2) reached, no iterate there,
+//     with and without bounds and the Jacobian; NaN at x_0 or in the
+//     Jacobian there stops with Status::nonfinite, as do solve_robust and
+//     solve_eq (not converged); norm() of NaN entries is NaN.
 // ============================================================================
 
 #include <algorithm>
@@ -594,6 +600,84 @@ void eki_checks()
     }
 }
 
+// LM-9: residuals NaN (all, or the first) or +inf for x_1 > 3
+void nonfinite_checks()
+{
+    check(std::isnan(LM::norm({std::nan(""), 1.0})) && std::isnan(LM::norm({1.0, std::nan("")})) &&
+              std::isnan(LM::norm({std::nan("")})) && LM::norm({LM::kInf, 1.0}) == LM::kInf &&
+              LM::norm({3.0, 4.0}) == 5.0,
+          "norm: NaN where an entry is NaN, inf where one is inf, 5 for (3, 4)");
+    enum class Bad { all_nan, first_nan, first_inf };
+    for (Bad bad : {Bad::all_nan, Bad::first_nan, Bad::first_inf})
+        for (int variant = 0; variant < 3; ++variant) {   // 0: the Jacobian; 1: differences; 2: a box
+            long long outside = 0;                    // evaluations with x_1 > 3
+            LM::Problem p;
+            p.n = p.m = 2;
+            p.residuals = [&](const Vec& x, Vec& r) {
+                r[0] = std::atan(x[0] - 1.0);
+                r[1] = x[1] - 2.0;
+                if (x[0] > 3.0) {
+                    ++outside;
+                    r[0] = bad == Bad::first_inf ? LM::kInf : std::nan("");
+                    if (bad == Bad::all_nan) r[1] = std::nan("");
+                }
+            };
+            if (variant != 1)
+                p.jacobian = [](const Vec& x, Matrix& J) {
+                    J(0, 0) = 1.0 / (1.0 + (x[0] - 1.0) * (x[0] - 1.0));
+                    J(0, 1) = J(1, 0) = 0.0;
+                    J(1, 1) = 1.0;
+                };
+            if (variant == 2) {
+                p.lo = {-10.0, -10.0};
+                p.hi = {10.0, 10.0};
+            }
+            std::vector<Vec> its;
+            LM::Options o;
+            o.iterates = &its;
+            const LM::Result res = LM::solve(p, {-3.0, 0.0}, o);
+            bool inside = true;
+            for (const Vec& x : its) inside = inside && x[0] <= 3.0;
+            const double err = std::max(std::fabs(res.x[0] - 1.0), std::fabs(res.x[1] - 2.0));
+            const char* names[] = {"all NaN", "r_1 NaN", "r_1 inf"};
+            const char* how[] = {"the Jacobian", "differences", "a box"};
+            check(outside >= 1 && inside && res.status != LM::Status::nonfinite && err <= 1e-8 &&
+                      std::isfinite(res.cost),
+                  std::string("lm: ") + names[static_cast<int>(bad)] + " past x_1 = 3, " + how[variant] +
+                      ": the step refused, (1, 2) reached (" + sci(err) + ", " + sci(static_cast<double>(outside)) +
+                      " evaluations past it)");
+        }
+    LM::Problem p;
+    p.n = p.m = 2;
+    p.residuals = [](const Vec& x, Vec& r) {
+        r[0] = x[0] > 3.0 ? std::nan("") : std::atan(x[0] - 1.0);
+        r[1] = x[1] - 2.0;
+    };
+    {
+        const LM::Result res = LM::solve(p, {4.0, 0.0}, LM::Options{});
+        check(res.status == LM::Status::nonfinite && res.nfev == 1 && res.x == Vec({4.0, 0.0}) && res.cost == LM::kInf,
+              "lm: NaN at x_0 stops at once, Status::nonfinite");
+        LM::Options oh;
+        oh.loss = LM::Options::Loss::huber;
+        check(LM::solve_robust(p, {4.0, 0.0}, oh).status == LM::Status::nonfinite,
+              "lm: solve_robust, NaN at x_0: Status::nonfinite");
+        LM::Equalities eq;                            // x_2 = 2, eliminated
+        eq.C = Matrix(1, 2);
+        eq.C(0, 1) = 1.0;
+        eq.d = {2.0};
+        const LM::EqResult er = LM::solve_eq(p, eq, {4.0, 0.0}, LM::Options{});
+        check(!er.converged && er.fit.status == LM::Status::nonfinite, "lm: solve_eq, NaN at x_0: not converged");
+    }
+    p.jacobian = [](const Vec&, Matrix& J) {
+        J(0, 0) = std::nan("");
+        J(0, 1) = J(1, 0) = 0.0;
+        J(1, 1) = 1.0;
+    };
+    const LM::Result res = LM::solve(p, {-1.0, 0.0}, LM::Options{});
+    check(res.status == LM::Status::nonfinite && res.njev == 1 && res.x == Vec({-1.0, 0.0}),
+          "lm: a NaN in the Jacobian at x_0: Status::nonfinite, x_0 kept");
+}
+
 }   // namespace
 
 int main()
@@ -707,6 +791,7 @@ int main()
 
     task19();
     eki_checks();
+    nonfinite_checks();
 
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(hash));
     check(hash == 0xf74755ffd406621eull, "the iterates' bits as on MSVC and clang (checksum f74755ffd406621e)");

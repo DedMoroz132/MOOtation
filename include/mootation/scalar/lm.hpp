@@ -62,7 +62,20 @@
 //     Moré's stopping rules do not have) is 0, off; the tests with eps say
 //     that the tolerance asked for cannot be reached.
 //   LM-5. ||.|| is the plain Euclidean norm, scaled by the largest |entry|
-//     (no overflow).
+//     (no overflow). It is NaN where an entry is NaN, +inf where one is
+//     +-inf.
+//   LM-9. Residuals that are not finite (an entry NaN or +-inf, or ||r||
+//     overflowing) count as an infinite cost. Moré takes r as defined
+//     everywhere; ours: at x_0 the run stops at once with Status::nonfinite
+//     (x_0 kept, cost +inf), and so it does at the current x where the
+//     Jacobian there has an entry that is not finite; at a trial point x + p
+//     the step counts as ||f_+|| = +inf: refused (rho = 0; the evaluation
+//     counts in nfev), Delta = Delta / 10 by Moré §4's rule for ||f_+|| > 10
+//     ||f||, then LM-3b as for any refused step with lambda = 0. SciPy's
+//     least_squares (trf) refuses such a step too, with Delta = ||s|| / 4.
+//     The wrappers below: solve_robust stops there; solve_eq is not
+//     converged (LMC); a profile's node whose fit stops so has cost +inf
+//     (LMP).
 //   Checked against Moré's §8 table (tests/test_lm_sets.cpp): on four of
 //   his twelve runs (Kowalik-Osborne from x_0, Bard from 10 x_0 and 100 x_0,
 //   the helical valley from x_0) his NF and NJ come out exactly.
@@ -228,7 +241,8 @@ struct Options {
     std::vector<Vec>* iterates = nullptr;   // where given, every accepted x is appended
 };
 
-enum class Status { ftol, xtol, ftol_xtol, gtol, max_nfev, ftol_eps, xtol_eps, gtol_eps };
+enum class Status { ftol, xtol, ftol_xtol, gtol, max_nfev, ftol_eps, xtol_eps, gtol_eps,
+                    nonfinite };   // LM-9: r(x_0) or a Jacobian not finite
 
 struct Result {
     Vec x, r;
@@ -239,11 +253,15 @@ struct Result {
     double gauge_ratio = 0.0;               // and ||J N|| / ||J|| there, N orthonormal (LMN-4)
 };
 
-// ||v||, scaled by the largest |entry| (LM-5)
+// ||v||, scaled by the largest |entry| (LM-5); NaN where an entry is NaN
+// (std::max(big, NaN) would keep big)
 inline double norm(const Vec& v)
 {
     double big = 0.0;
-    for (double e : v) big = std::max(big, std::fabs(e));
+    for (double e : v) {
+        if (std::isnan(e)) return std::numeric_limits<double>::quiet_NaN();
+        big = std::max(big, std::fabs(e));
+    }
     if (big == 0.0 || !std::isfinite(big)) return big;
     double s = 0.0;
     for (double e : v) s += (e / big) * (e / big);
@@ -649,6 +667,13 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     p.residuals(x, r);
     res.nfev = 1;
     double rnorm = norm(r);
+    if (!std::isfinite(rnorm)) {                      // LM-9
+        res.x = x;
+        res.r = r;
+        res.cost = kInf;
+        res.status = Status::nonfinite;
+        return res;
+    }
     double lambda = 0.0, delta = 0.0, xnorm = 0.0;
     Matrix J, Ja, Q2, Jw;                             // Q2, Jw: the gauge's complement and J D^-1 Q2
     Vec zf;                                           // the step in the factored matrix's columns
@@ -661,6 +686,10 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         } else {
             fd_jacobian(p, x, r, o.fd_eps, J);
             res.nfev += static_cast<long long>(n);
+        }
+        if (!std::all_of(J.a.begin(), J.a.end(), [](double v) { return std::isfinite(v); })) {
+            res.status = Status::nonfinite;           // LM-9
+            break;
         }
         Vec colnorm(n), ra = r;                       // J's column norms (Moré's D)
         if (bounded) {                                // [J; C^1/2] and [f; 0]
@@ -801,6 +830,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
             p.residuals(xt, rt);
             ++res.nfev;
             const double rtnorm = norm(rt);
+            const bool finite = std::isfinite(rtnorm);   // else ||f_+|| = +inf (LM-9)
             double predicted, gamma;                  // Moré (4.4)'s denominator, (4.5)'s gamma
             if (!bounded) {
                 Vec Rp(nf, 0.0);                      // R P^T p: its norm is ||J p||
@@ -819,7 +849,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
             }
             const double reduced = 1.0 - (rtnorm / rnorm) * (rtnorm / rnorm);
             double ratio = 0.0;                       // 0 where ||f_+|| > ||f|| (Moré §4)
-            if (rtnorm <= rnorm && predicted != 0.0) {
+            if (finite && rtnorm <= rnorm && predicted != 0.0) {
                 double actual = reduced;
                 if (bounded) {                        // + 1/2 s^T C s (CL §2.1)
                     double cs = 0.0;
@@ -829,9 +859,9 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 ratio = actual / predicted;
             }
             if (ratio <= 0.25) {                      // Moré §4, (4.5)
-                double mu = 0.1;
-                if (rtnorm <= rnorm) mu = 0.5;
-                else if (rtnorm <= 10.0 * rnorm) mu = 0.5 * gamma / (gamma + 0.5 * reduced);
+                double mu = 0.1;                      // also where ||f_+|| = +inf (LM-9)
+                if (finite && rtnorm <= rnorm) mu = 0.5;
+                else if (finite && rtnorm <= 10.0 * rnorm) mu = 0.5 * gamma / (gamma + 0.5 * reduced);
                 mu = std::min(0.5, std::max(0.1, mu));
                 delta = mu * delta;
                 if (!bounded && lambda == 0.0 && ratio <= 1e-4)   // the same point again (LM-3b)
@@ -866,7 +896,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     res.x = x;
     res.r = r;
     res.cost = 0.5 * rnorm * rnorm;
-    if (gauged) {                                     // LMN-4, at x with a Jacobian of its own
+    if (gauged && res.status != Status::nonfinite) {  // LMN-4, at x with a Jacobian of its own
         if (p.jacobian) {
             J = Matrix(m, n);
             p.jacobian(x, J);
@@ -947,6 +977,7 @@ inline Result solve_robust(const Problem& p, Vec x, const Options& o)
         x = step.x;
         p.residuals(x, r);
         ++total.nfev;
+        if (step.status == Status::nonfinite) break;  // LM-9
         double moved = 0.0;
         for (std::size_t i = 0; i < m; ++i) {
             const double wi = weight_of(o.loss, o.f_scale, r[i]);
@@ -960,6 +991,7 @@ inline Result solve_robust(const Problem& p, Vec x, const Options& o)
     total.r = r;
     total.cost = 0.0;
     for (double v : r) total.cost += loss_of(o.loss, o.f_scale, v);
+    if (!std::isfinite(total.cost)) total.cost = kInf;   // LM-9
     return total;
 }
 
@@ -1385,8 +1417,9 @@ inline EqResult eliminate(const Problem& p, const Equalities& e, const Vec& x0, 
                 }
         };
     EqResult out;
-    out.eliminated = out.converged = true;
+    out.eliminated = true;
     out.fit = solve(q, Vec(ny, 0.0), o);
+    out.converged = out.fit.status != Status::nonfinite;   // LM-9
     out.fit.x = x_of(out.fit.x);
     Vec c(pc);
     for (std::size_t i = 0; i < pc; ++i) {
@@ -1518,6 +1551,14 @@ inline EqResult bound_constrained_lagrangian(const Problem& p, const Equalities&
         for (int round = 0; round < 4; ++round) {     // LMC-2
             const Result step = solve(inner, x, oi);
             add_counts(out.fit, step);
+            if (step.status == Status::nonfinite) {   // LM-9: not converged
+                out.fit.x = x;
+                out.fit.r = r;
+                out.fit.cost = kInf;
+                out.lambda = lambda;
+                out.mu = mu;
+                return out;
+            }
             x = step.x;
             pg = projected(x, r, c, s);
             if (pg <= omega) break;
@@ -1564,7 +1605,7 @@ inline EqResult solve_eq(const Problem& p, const Equalities& e, Vec x, const Opt
     if (e.C.rows == 0 && e.q == 0) {
         EqResult out;
         out.fit = solve(p, std::move(x), o);
-        out.converged = true;
+        out.converged = out.fit.status != Status::nonfinite;   // LM-9
         return out;
     }
     if (e.q == 0 && !bounded) return detail::eliminate(p, e, x, o);
@@ -1670,6 +1711,7 @@ inline Profile profile(const Problem& p, const Vec& x_hat, std::size_t j, const 
     Vec r(p.m);
     p.residuals(x_hat, r);
     pr.cost_hat = 0.5 * norm(r) * norm(r);
+    if (!std::isfinite(norm(r))) throw std::invalid_argument("profile: r(x_hat) is not finite");
     auto fit_at = [&](double v, const Vec& from) {
         Equalities e;
         e.C = Matrix(1, n);
@@ -1679,7 +1721,7 @@ inline Profile profile(const Problem& p, const Vec& x_hat, std::size_t j, const 
         x0[j] = v;
         if (!p.lo.empty()) x0[j] = std::min(p.hi[j], std::max(p.lo[j], v));
         const EqResult er = solve_eq(p, e, x0, o);
-        return ProfilePoint{v, er.fit.cost, er.fit.x};
+        return ProfilePoint{v, er.fit.status == Status::nonfinite ? kInf : er.fit.cost, er.fit.x};   // LM-9
     };
     const double lo_j = p.lo.empty() ? -kInf : p.lo[j], hi_j = p.hi.empty() ? kInf : p.hi[j];
     std::vector<ProfilePoint> sides[2];

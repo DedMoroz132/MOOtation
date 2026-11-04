@@ -22,6 +22,15 @@ always listed under **Changed** or **Removed**.
   extreme points as in NSGA-III (`nsga3`) or by the letter (`literal`;
   DDS-8). `aprd`: `slot_exclusive`, distinct individuals in a subregion's
   slots (`on`) or not (`off`; APRD-11).
+- Fixed (`scalar/lm.hpp`): residuals that are not finite. `norm()` dropped
+  NaN entries (an all-NaN vector had norm 0), so `lm` took a step into a
+  region where r is NaN as a perfect fit. Now a NaN entry gives a NaN norm; a
+  trial point with a residual NaN or infinite is refused and the trust region
+  shrinks as for a step that makes the fit much worse (LM-9); residuals or a
+  Jacobian that are not finite at the start stop the run with the new status
+  `nonfinite` (`solve_robust` stops too, `solve_eq` is not converged, a
+  profile's node so stopped counts as above the threshold). Runs whose
+  residuals stay finite are unchanged.
 - Added: problems with symmetries at one objective (task 19, §19.1), families
   of the C++ suite (`suite/sym.hpp`): `sumexp` (a sum of exponentials, with
   Lanczos's example), `lowrank`, `cp3`, `cp3_degenerate` (de Silva and Lim's

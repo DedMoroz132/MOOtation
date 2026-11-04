@@ -404,7 +404,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-191 items: 191 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+192 items: 192 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -480,6 +480,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lm` | LM-3 | The first Delta is factor \|\|D x_0\|\| (factor where that is 0, factor = 100), and the first iteration's Delta at most \|\|D p\|\| (Moré leaves Delta_0 open). | yes | `lm.hpp` |
 | `lm` | LM-4 | ftol = xtol = 1e-8 as in Moré's runs (§8); gtol (a stationarity test Moré's stopping rules do not have) is 0, off; the tests with eps say that the tolerance asked for cannot be reached. | yes | `lm.hpp` |
 | `lm` | LM-5 | \|\|.\|\| is the plain Euclidean norm, scaled by the largest \|entry\| (no overflow). | yes | `lm.hpp` |
+| `lm` | LM-9 | Residuals that are not finite (an entry NaN or +-inf, or \|\|r\|\| overflowing) count as an infinite cost. | yes | `lm.hpp` |
 | `lm` | LMB-1 | Delta's rules and the acceptance (rho > 1e-4) are Moré's of step 3, not CL's Fig. 4.1 (mu = 0.25, gamma = 0.0625, 0.5, 2): so that the method with every bound infinite is Moré's; | yes | `lm.hpp` |
 | `lm` | LMB-2 | The step-back theta = max(0.95, 1 - \|\|s\|\|) where x + tau p (x + tau d) is on the boundary (CL (2.13) ask theta in [theta_l, 1], 1 - theta = O(\|\|s\|\|)), theta = 0.95 where rounding still puts a coordinate on the boundar... | yes | `lm.hpp` |
 | `lm` | LMB-3 | x_0 is refused outside [l, u] or where l_i >= u_i; within 100 eps max(1, \|bound\|) of a bound it is moved inside as in CL §4: to l_i + 0.1 (u_i - l_i) (u_i - 0.1 (u_i - l_i)), and where the other bound is infinite to l... | yes | `lm.hpp` |
