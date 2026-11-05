@@ -97,7 +97,7 @@ name   = "r2ibea"
 label  = "r2ibea_norm"                      # results/.../r2ibea_norm/
 pop    = 0
 gens   = 0
-params = { normalize = true }                # IBEA, R2-IBEA, Two_Arch2, MOEA/D-AM2M
+params = { normalize = true }                # IBEA, R2-IBEA, Two_Arch2, MOEA/D-AM2M, EDV
 ```
 
 Commands are argv **arrays**: nothing to quote, nothing to escape, no
@@ -1225,6 +1225,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `noise_frac` | MaOEA-IAMD: the KPCM noise, a normal perturbation with σ = `noise_frac`·(ub − lb) on every variable of every offspring; 0.01 by default, the paper's variance 0.1 is 0.316 (MaOEA-IAMD-N, `maoea_iamd.hpp`) |
 | `fitness_reading` | IREA: Eq.7 with its arguments swapped and the smallest F kept (`swap`, the default), or IBEA's form, Eq.7 as printed with the largest F kept (`ibea`; IREA-1, `irea.hpp`) |
 | `extreme_weights` | MOEA/D-DS: the ASF weights of Eq.9's extreme points, which the DDS keeps in every generation — as in NSGA-III, 1 on the own axis (`nsga3`, the default; DDS-6), or the letter, 1e-6 on the own axis (`literal`; DDS-8, `moead_ds.hpp`) |
+| `edv_tournament` | EDV: the binary tournament over the archive by the Eq.4 fitness (`fitness`, the default), or at random, as jMetal's tournament among non-dominated solutions (`random`; EDV-5, `edv.hpp`). EDV also takes `normalize`: `true` computes I_ε+ and the angles on objectives normalized by z* and the nadir (EDV-6; `false`, the default, is the raw letter) |
 | `kpcm_pm` | MaOEA-IAMD: its KPCM in place of the polynomial mutation (`off`, the default), or after SBX and the polynomial mutation (η_m = 20, p_m = 1/n), as PlatEMO's GA operator breeds (`on`; IAMD-1, `maoea_iamd.hpp`) |
 | `slot_exclusive` | APRD: the slots of a subregion may take one individual more than once (`off`, the default; APRD-4) or take distinct ones (`on`; APRD-11, `aprd.hpp`) |
 | `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |

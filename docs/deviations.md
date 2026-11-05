@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-388 items: 313 yes, 18 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+390 items: 314 yes, 19 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -198,6 +198,8 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `edv` | EDV-2 (FIXED 2026-09-05, second primary-source pass) | Alg.3 lines 2-11 build Y one offspring at a time: each iteration draws its own parents Pa by binary tournament, "y = SBX(Pa)" yields ONE offspring y, and PM is applied to that y. | no: fixed | `edv.hpp` |
 | `edv` | EDV-3 (READING) | Alg.4 line 8 takes the angle between F(x) and d^i; | yes | `edv.hpp` |
 | `edv` | EDV-4 (DECLARED) | Table 3 lists N = 276 at m = 10 for the (3,2) two-layer lattice, whose size is C(12,9) + C(11,9) = 275; this port requires \|D\| = N exactly (generate_exact), so 276 throws and 275 is the size to use. | yes | `edv.hpp` |
+| `edv` | EDV-5 (READING; knob edv_tournament, fitness by default) | The other reading of the ASSUMPTIONS above: the experiments ran on jMetal (§4, [37]), whose binary tournament compares by Pareto dominance and breaks a tie at random; | yes | `edv.hpp` |
+| `edv` | EDV-6 (READING; knob normalize, off by default) | Eq.2, 4 and 5 compute I_eps+ on the raw objectives, and the angles of Alg.4 line 8 are taken on F(x) (f − z*, EDV-3), and the paper says nothing of scaling. | no: option | `edv.hpp` |
 | `if_maoea` | IF-MaOEA-1 (RESOLVED) | The header used to claim a scope cut — "W_convex is NOT computed" — while the code did compute it, with TWO bugs: (a) a strict upper bound on the partial sums of Eq.2 discarded every set with ϑ1=π/2, losing the entire... | no: fixed | `if_maoea.hpp` |
 | `if_maoea` | IF-MaOEA-2 (AMBIGUOUS — two readings, one chosen) | For each objective k the "neighbour" is the nearest solution with a LARGER f_k, and that whole solution vector serves as the reference point; the volume is the product of the positive gaps, and the MINIMUM volume over... | yes | `if_maoea.hpp` |
 | `if_maoea` | IF-MaOEA-3 (FIXED 2026-09-06, third primary-source pass) | §2.4 invokes the "reference point adjustment strategy" of [44] = AR-MOEA and says what it does: link each reference point with the nearest solution in its assigned subpopulation, then move the reference point to where... | no: fixed | `if_maoea.hpp` |

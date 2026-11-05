@@ -106,6 +106,7 @@ _FALLBACK_TEXT = {
     "eki_init": ("around", "sobol", "lhs"),
     "eki_perturb": ("yes", "no"),
     "kpcm_pm": ("off", "on"),
+    "edv_tournament": ("fitness", "random"),
 }
 
 _BLOCK = re.compile(

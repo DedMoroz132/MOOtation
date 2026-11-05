@@ -73,6 +73,24 @@
 //     which is what §3.4 says in words and what lines 14 and 22-26 produce.
 //     Alg.3 line 4 "Pa = binary tournament(EA)" is run twice per offspring
 //     (two parents for SBX), with replacement, ties to the first draw.
+//   EDV-5 (READING; knob edv_tournament, fitness by default). The other
+//     reading of the ASSUMPTIONS above: the experiments ran on jMetal (§4,
+//     [37]), whose binary tournament compares by Pareto dominance and breaks a
+//     tie at random; EA holds non-dominated solutions only (Alg.4 line 2), so
+//     there that tournament is a uniform random choice. edv_tournament =
+//     random draws two members and keeps either at random; fitness (the
+//     default) keeps the one with the larger Eq.4 fitness, a convergence
+//     pressure the jMetal reading does not have.
+//   EDV-6 (READING; knob normalize, off by default). Eq.2, 4 and 5 compute
+//     I_eps+ on the raw objectives, and the angles of Alg.4 line 8 are taken
+//     on F(x) (f − z*, EDV-3), and the paper says nothing of scaling. Eq.4 and
+//     its c = max|I| are IBEA's (Zitzler & Künzli 2004), which normalizes
+//     each objective to [0, 1] first, as ibea_eplus does here by default. On
+//     objectives of different ranges (WFG: f_m in [0, 2m]) the raw I_eps+ is
+//     decided by the widest objective and the angles to the simplex's
+//     direction vectors are skewed. normalize = on computes both on (f − z*)
+//     / (nadir − z*): the nadir is the largest value of each objective over
+//     EA for the tournament, over S for the update; off keeps the raw letter.
 // EXTENSIONS BEYOND THE PAPER (off by default): ConstraintMode::FEASIBILITY —
 //   CDP in the dominance relation; binary variables.
 // ============================================================================
@@ -118,6 +136,8 @@ private:
     double       pc_    = 1.0;
     bool         ideal_shift_ = true;   // EDV-3: angles from f − z* (true) or from the origin
     bool         pm_literal_  = true;   // EDV-1: p_m = 1/pop_size (the paper's letter); false -> 1/n_vars
+    bool         tour_random_ = false;  // EDV-5: knob edv_tournament = random
+    bool         normalize_   = false;  // EDV-6: knob normalize
     std::mt19937 rng_{std::random_device{}()};
 
     std::vector<std::vector<double>> D_;     // direction vectors (N of them)
@@ -175,6 +195,27 @@ private:
         }
     }
 
+    // EDV-6: the objectives of rows [0, n) as (f − z*)/(nadir − z*), the nadir the
+    // largest value of each objective over the rows `ref`
+    std::vector<std::vector<double>> normalized(DataVault<Ind_t>& vault, int n,
+                                                const std::vector<int>& ref) const {
+        const int m = vault.objs_n();
+        std::vector<double> nad(m, -std::numeric_limits<double>::max());
+        for (int v : ref) {
+            const auto& o = vault.objectives_of(v);
+            for (int j = 0; j < m; ++j) nad[j] = std::max(nad[j], o[j]);
+        }
+        std::vector<std::vector<double>> out(n, std::vector<double>(m, 0.0));
+        for (int i = 0; i < n; ++i) {
+            const auto& o = vault.objectives_of(i);
+            for (int j = 0; j < m; ++j) {
+                const double d = nad[j] - ideal_[j];
+                out[i][j] = (o[j] - ideal_[j]) / (d > 1e-12 ? d : 1.0);
+            }
+        }
+        return out;
+    }
+
     void update_ideal(const std::vector<double>& f) {
         for (std::size_t j = 0; j < f.size(); ++j)
             ideal_[j] = std::min(ideal_[j], f[j]);
@@ -207,7 +248,14 @@ public:
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_ideal_shift(bool b)     { ideal_shift_ = b; }   // EDV-3
     void set_pm_literal(bool b)      { pm_literal_ = b; }    // EDV-1
+    void set_normalize(bool b)       { normalize_ = b; }     // EDV-6 (knob normalize)
     bool set_word(const std::string& k, const std::string& w) {
+        if (k == "edv_tournament") {                          // EDV-5
+            if (w != "fitness" && w != "random")
+                throw std::invalid_argument("edv: edv_tournament = '" + w + "': fitness or random");
+            tour_random_ = (w == "random");
+            return true;
+        }
         if (k != "pm_literal") return false;                  // EDV-1
         if (w != "on" && w != "off")
             throw std::invalid_argument("edv: pm_literal = '" + w + "': on or off");
@@ -253,26 +301,37 @@ public:
         const auto& bounds = vault.get_bounds();
 
         // ── Eq.4 fitness inside EA — the binary tournament criterion ───────
+        // EDV-6: with normalize on, over the objectives normalized by z* and
+        // EA's nadir
+        std::vector<std::vector<double>> En;
+        if (normalize_) {
+            std::vector<int> ea(n_ea);
+            std::iota(ea.begin(), ea.end(), 0);
+            En = normalized(vault, n_ea, ea);
+        }
+        auto obj = [&](int i) -> const std::vector<double>& {
+            return normalize_ ? En[static_cast<std::size_t>(i)] : vault.objectives_of(i);
+        };
         std::vector<double> fit(n_ea, 0.0);
         {
             double c = 1e-12;
             for (int i = 0; i < n_ea; ++i)
                 for (int j = 0; j < n_ea; ++j)
                     if (i != j)
-                        c = std::max(c, std::abs(eps_plus(vault.objectives_of(i),
-                                                          vault.objectives_of(j))));
+                        c = std::max(c, std::abs(eps_plus(obj(i), obj(j))));
             for (int i = 0; i < n_ea; ++i) {
                 double s = 0.0;
                 for (int j = 0; j < n_ea; ++j)
                     if (i != j)
-                        s += -dm::exp(-eps_plus(vault.objectives_of(j),
-                                                 vault.objectives_of(i)) / (c * KAPPA_));
+                        s += -dm::exp(-eps_plus(obj(j), obj(i)) / (c * KAPPA_));
                 fit[i] = s;
             }
         }
         rnd::uniform_int_distribution<int> dist_ea(0, n_ea - 1);
+        rnd::uniform_int_distribution<int> coin(0, 1);
         auto tournament = [&]() {
             int a = dist_ea(rng_), b = dist_ea(rng_);
+            if (tour_random_) return coin(rng_) ? a : b;      // EDV-5: all of EA is non-dominated
             return (fit[a] >= fit[b]) ? a : b;
         };
 
@@ -333,6 +392,8 @@ public:
             if (!dom) S.push_back(i);
         }
         int Np = static_cast<int>(S.size());   // N' = size(S)
+        if (normalize_ && Np > 0)                // EDV-6: (f − z*)/(nadir(S) − z*) for eps+ and angles
+            Fp = normalized(vault, pool, S);
 
         std::vector<int> survivors;
 

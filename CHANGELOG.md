@@ -63,6 +63,13 @@ always listed under **Changed** or **Removed**.
 - Fixed (`python/mootation/__init__.py`): `mootation.hypervolume` and
   `mootation.hv_contributions` raised AttributeError: the compiled module has
   them, the package's list of compiled names did not.
+- Added: two knobs of `edv` (the owner's decisions of 2026-11-05), defaults
+  unchanged. `edv_tournament`: the binary tournament over the archive by the
+  Eq.4 fitness (`fitness`, the default) or at random, as jMetal's tournament
+  among non-dominated solutions (`random`; EDV-5). `normalize`: I_eps+ and
+  the angles on objectives normalized by the ideal point and the nadir
+  (`true`), or raw, the paper's letter (`false`, the default; EDV-6). Default
+  runs keep their golden fingerprints.
 - Added: `maoea_iamd`'s knob `kpcm_pm` (the owner's decisions of
   2026-11-05). `off`, the default and unchanged, puts KPCM in the place of
   the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and

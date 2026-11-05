@@ -7536,7 +7536,8 @@ def readings_knobs_of_2026_11_02():
              ("naemo", "flag2", "off", "on"), ("irea", "fitness_reading", "swap", "ibea"),
              ("moead_ds", "extreme_weights", "nsga3", "literal"),
              ("maoea_iamd", "noise_frac", 0.01, 0.316), ("aprd", "slot_exclusive", "off", "on"),
-             ("maoea_iamd", "kpcm_pm", "off", "on")]      # 2026-11-05 (IAMD-1)
+             ("maoea_iamd", "kpcm_pm", "off", "on"),      # 2026-11-05 (IAMD-1)
+             ("edv", "edv_tournament", "fitness", "random")]  # 2026-11-05 (EDV-5)
     for alg, knob, dflt, other in cases:
         d = minimize(d2.evaluate, algorithm=alg, **k)
         n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)
@@ -7547,6 +7548,12 @@ def readings_knobs_of_2026_11_02():
             assert o.objectives != d.objectives, (alg, knob, other)
         r = minimize(d2.evaluate, algorithm="nsga2", **{knob: other}, **k)
         assert r.ignored == [knob], (knob, r.ignored)
+    # edv takes the run knob normalize (EDV-6): false is the default, true another run
+    d = minimize(d2.evaluate, algorithm="edv", **k)
+    n = minimize(d2.evaluate, algorithm="edv", normalize=False, **k)
+    o = minimize(d2.evaluate, algorithm="edv", normalize=True, **k)
+    assert d.objectives == n.objectives and not n.ignored and not o.ignored, (n.ignored, o.ignored)
+    assert o.objectives != d.objectives
     for alg, bad in (("edv", dict(pm_literal="maybe")), ("irea", dict(fitness_reading="both")),
                      ("maoea_iamd", dict(noise_frac=-1.0))):
         try:

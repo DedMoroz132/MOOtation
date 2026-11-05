@@ -211,6 +211,14 @@ void test_knobs_of_2026_11_02()
     word_knob<AP, APRDCore<AP>>("aprd", "91 dee9a93dd30901ff", "slot_exclusive", "off", "on", 300);
     // 2026-11-05: maoea_iamd's kpcm_pm (IAMD-1)
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "kpcm_pm", "off", "on");
+    // 2026-11-05: edv's edv_tournament (EDV-5) and normalize (EDV-6)
+    word_knob<ED, EDVCore<ED>>("edv", "91 535f03f7cd2cb7ec", "edv_tournament", "fitness", "random");
+    std::cout << "-- edv: normalize (false by default, true) --\n";
+    using EC = EDVCore<ED>;
+    check(fingerprint_with<ED, EC>(91, 30, [](EC& c) { c.set_normalize(false); }) == "91 535f03f7cd2cb7ec",
+          "edv normalize = false as golden");
+    check(fingerprint_with<ED, EC>(91, 30, [](EC& c) { c.set_normalize(true); }) != "91 535f03f7cd2cb7ec",
+          "edv normalize = true runs otherwise");
 
     std::cout << "-- maoea_iamd: noise_frac (0.01 by default, 0.316 the letter) --\n";
     using MC = MaOEAIAMDCore<MI>;

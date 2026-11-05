@@ -282,6 +282,10 @@ inline bool is_core_param(const std::string& name)
 //                 the single-objective solvers of task 19 (scalar/scalar.hpp):
 //                 Nelder-Mead's coefficients, lm's step off a gauge basis,
 //                 eki's initial ensemble and perturbed data; no core has them
+//   edv_tournament
+//                 edv: the binary tournament over EA by the Eq.4 fitness
+//                 (fitness, the default) or at random, as jMetal's among
+//                 non-dominated solutions (random; EDV-5)
 //   kpcm_pm       maoea_iamd: KPCM in place of the polynomial mutation (off,
 //                 the default) or after SBX + PM, as PlatEMO's GA (on; IAMD-1)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
@@ -358,6 +362,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"eki_init",     {"around", "sobol", "lhs"}},
         {"eki_perturb",  {"yes", "no"}},
         {"kpcm_pm",      {"off", "on"}},
+        {"edv_tournament", {"fitness", "random"}},
     };
     return v;
 }
@@ -386,7 +391,7 @@ inline bool is_core_word(const std::string& name)
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
                           "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
-                          "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm"})
+                          "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament"})
         if (name == k) return true;
     return false;
 }
