@@ -1799,7 +1799,7 @@ def single_objective_measures_agree_with_their_python_cross_check():
     assert len(C.coco_precisions()) == 51 and len(C.coco_precisions(-6)) == 41
     one = [q for q in PROBLEMS.values() if q.n_obj == 1]
     # lj_cluster (task 19, symmetric.py, SYMR-3): absolute, as bbob
-    assert all(q.targets == ("absolute" if q.name.startswith(("bbob", "lj_cluster")) else "relative") for q in one)
+    assert all(q.targets == ("absolute" if q.name.startswith(("bbob", "lj_cluster", "cec2013")) else "relative") for q in one)
 
     def compare(runs, kind, f_ref, budgets):
         eps = C.default_precisions(kind)
