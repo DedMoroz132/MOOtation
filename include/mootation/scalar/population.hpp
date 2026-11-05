@@ -44,6 +44,7 @@
 #include <limits>
 #include <vector>
 
+#include "../operators/bound_repair.hpp"
 #include "evaluator.hpp"
 
 namespace mootation::scalar::population {
@@ -98,12 +99,15 @@ void drive_normalized(Method& es, Evaluator& ev, double tol)
         const Rows Y = es.ask();
         Rows X(Y.size(), Vec(n));
         Vec d2(Y.size(), 0.0);
-        for (std::size_t k = 0; k < Y.size(); ++k)
+        for (std::size_t k = 0; k < Y.size(); ++k) {
+            ops::RepairTally tally;                              // the sample (task 20, §20.2.2)
             for (std::size_t j = 0; j < n; ++j) {
                 const double yc = std::min(1.0, std::max(0.0, Y[k][j]));
+                if (yc != Y[k][j]) tally.out();
                 d2[k] += (Y[k][j] - yc) * (Y[k][j] - yc);
                 X[k][j] = ev.lo[j] + yc * (ev.hi[j] - ev.lo[j]);
             }
+        }
         Vec f, v;
         const bool fresh = values(ev, X, f, v);
         if (first && !ev.recorded) ev.record();

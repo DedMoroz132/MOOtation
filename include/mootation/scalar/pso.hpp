@@ -107,16 +107,21 @@ public:
                     if (evo::better(pf_[k], pv_[k], pf_[b], pv_[b])) b = k;
                 nb[i] = b;
             }
-        for (std::size_t i = 0; i < o_.n; ++i)
+        for (std::size_t i = 0; i < o_.n; ++i) {
+            ops::RepairTally tally;                                      // the move (task 20, §20.2.2)
             for (std::size_t j = 0; j < d; ++j) {                        // PSO-5
                 const Vec& g = p_[nb[i]];
                 const double phi1 = U01(rng_) * o_.phi_max / 2.0, phi2 = U01(rng_) * o_.phi_max / 2.0;
                 v_[i][j] = chi_ * (v_[i][j] + phi1 * (p_[i][j] - x_[i][j]) + phi2 * (g[j] - x_[i][j]));
                 double y = x_[i][j] + v_[i][j];
-                if (o_.repair != ops::BoundRepair::Native && (y < lo_[j] || y > hi_[j]))
-                    y = ops::repair_value(y, lo_[j], hi_[j], x_[i][j], o_.repair, rng_);   // PSO-6
+                if (y < lo_[j] || y > hi_[j]) {
+                    tally.out();
+                    if (o_.repair != ops::BoundRepair::Native)
+                        y = ops::repair_value(y, lo_[j], hi_[j], x_[i][j], o_.repair, rng_);   // PSO-6
+                }
                 x_[i][j] = y;
             }
+        }
         return x_;
     }
 

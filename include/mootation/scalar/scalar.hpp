@@ -124,6 +124,25 @@
 //   SCALAR-12. The anchors' stages see the objectives scaled by the initial
 //     plan's range (its minimum to 0, its maximum to 1): SQP stops early on a
 //     raw objective of 1e7 (bbob-biobj f2's ellipsoid).
+//   SCALAR-14. Result::repairs counts a point when a method makes it and
+//     it is looked at against the box, as Kononova, Caraffini and Bäck
+//     count (Information Sciences 581, 2021; task 20, section 20.2.2) — de's, jade's, shade's and lshade's mutants,
+//     g3_pcx's and the BLX/SBX children, pso's and spso2011's moves, cmaes's,
+//     sep_cmaes's and ipop/bipop's samples (outside: clipped with the
+//     penalty, or not, cma_bounds = none), nelder_mead's and slsqp's points
+//     (clipped, NM-2), lbfgsb's x_0 and its search's points (projected,
+//     LB-9); bound_repair = native counts what it leaves outside. Not
+//     counted: lbfgsb's Cauchy path (the projected gradient path is the
+//     method's geometry, not a point outside), lm (Coleman-Li's interior
+//     steps stay inside; x_0 outside is refused), eki. A point made but not
+//     evaluated (the budget ends within a generation) is counted.
+//   SCALAR-15. A campaign's trajectory rows carry the counts at their fe
+//     (job_so.hpp, campaign_so.py) where the run is on one thread; a strategy
+//     on more than one (threads > 1, or an inner table's) gives null rows:
+//     the counter is thread_local, and between rounds the job's thread holds
+//     only what the rounds added, not the starts' points as they are made.
+//     The run's totals (meta.json so.repairs, the last row) are exact on any
+//     number of threads (strategy.hpp, round).
 //
 // METHOD_VERSION: the version of these methods' trajectories, in every
 // result's settings (a campaign's meta): 1 — SciPy's SLSQP and Nelder-Mead and
@@ -148,6 +167,7 @@
 
 #include "../detmath.hpp"
 #include "../fp_contract.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "boostdms.hpp"
 #include "chc.hpp"
@@ -188,6 +208,11 @@ struct Result {
     std::vector<std::pair<std::string, std::string>> settings;
     Rows solutions;                  // scalar: every subproblem's solution, anchors first
     std::vector<Improvement> improvements;   // one objective: the best point's records (improvements.hpp)
+    // the points the method made, how many of them left the box and by how
+    // many variables (operators/bound_repair.hpp, RepairCounts; Kononova et
+    // al. 2021): every repair, clip and projection of the run, its strategy's
+    // starts included (task 20, §20.2.2)
+    ops::RepairCounts repairs;
 };
 
 // How the first points come: seed points (planted), rows of a design
@@ -1529,9 +1554,35 @@ inline Result run_population(const std::string& name, const Problem& P, double e
 }
 
 // Any of names(): the scalar presets, mosqp, boostdms or a single-objective solver.
+namespace detail {
+
+inline Result run_named(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
+                        double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
+                        Observer observer, int record_every, const Start& start);
+
+}   // namespace detail
+
+// The run's own counts of the box (Result::repairs): what the thread's
+// counter gained during the run. The counter only grows, so a run inside a
+// run (a strategy's start on this thread) adds to the outer one, and a
+// caller may read it between evaluations (job_so.hpp's trajectory); a
+// strategy on several threads adds its starts' counts to it (strategy.hpp,
+// round). No method reads it: the run's points are the same with it or
+// without.
 inline Result run(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
                   double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
                   Observer observer, int record_every, const Start& start)
+{
+    const ops::RepairCounts before = ops::repair_counts();
+    Result r = detail::run_named(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
+                                 std::move(observer), record_every, start);
+    r.repairs = ops::repair_counts() - before;
+    return r;
+}
+
+inline Result detail::run_named(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
+                                double eq_tol0, int pop_size, long long budget, unsigned seed,
+                                const Knobs& knobs, Observer observer, int record_every, const Start& start)
 {
     if (detail::listed(local_names(), name))
         return run_local(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,

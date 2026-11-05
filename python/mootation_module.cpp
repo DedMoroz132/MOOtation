@@ -499,6 +499,14 @@ PYBIND11_MODULE(_core, m)
           py::arg("seed"), py::arg("select"), py::arg("on_generation") = nullptr, py::arg("record_every") = 1,
           "The ablation gsemo (include/mootation/ablations.hpp) on the library's generator; "
           "select(F, k) picks the answer's rows: (answer objectives, answer variables, steps).");
+    m.def("repair_counts",
+          []() {
+              const auto& c = mootation::ops::repair_counts();
+              return py::make_tuple(c.checked, c.out_children, c.out_vars);
+          },
+          "(checked, out_children, out_vars) of this thread's counter of the points made outside the "
+          "box (operators/bound_repair.hpp, RepairCounts): it only grows; campaign_so.py reads it "
+          "between evaluations for the trajectory (task 20, §20.2.2).");
     m.def("reference_points",
           [](int n_objs, long long h) { return mootation::das_dennis::reference_points(n_objs, h); },
           py::arg("n_objs"), py::arg("h"),

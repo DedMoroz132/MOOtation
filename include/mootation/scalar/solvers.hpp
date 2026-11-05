@@ -49,6 +49,7 @@
 #include <vector>
 
 #include "../fp_contract.hpp"
+#include "../operators/bound_repair.hpp"
 #include "cmaes.hpp"
 #include "evaluator.hpp"
 #include "nelder_mead.hpp"
@@ -372,8 +373,10 @@ inline void cmaes(Run& run, const std::vector<double>& y0, const std::vector<std
             for (const auto& y : Y) {
                 std::vector<double> yc = y;
                 double d2 = 0.0;
+                ops::RepairTally tally;                          // the sample (task 20, §20.2.2)
                 for (std::size_t j = 0; j < yc.size(); ++j) {
                     yc[j] = std::min(1.0, std::max(0.0, yc[j]));
+                    if (yc[j] != y[j]) tally.out();
                     d2 += (y[j] - yc[j]) * (y[j] - yc[j]);
                 }
                 const double v = pen(yc);

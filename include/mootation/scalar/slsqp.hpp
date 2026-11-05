@@ -94,6 +94,7 @@
 #include <vector>
 
 #include "../fp_contract.hpp"
+#include "../operators/bound_repair.hpp"
 #include "lsq.hpp"
 
 namespace mootation::slsqp {
@@ -238,9 +239,12 @@ inline Step qp(const Matrix& B, const std::vector<double>& g, const Matrix& A,
     return st;
 }
 
+// the point projected onto the box, counted (task 20, §20.2.2)
 inline void clip(std::vector<double>& x, const std::vector<double>& lo, const std::vector<double>& hi)
 {
+    ops::RepairTally tally;
     for (std::size_t i = 0; i < x.size(); ++i) {
+        if (x[i] < lo[i] || x[i] > hi[i]) tally.out();
         if (x[i] < lo[i]) x[i] = lo[i];
         if (x[i] > hi[i]) x[i] = hi[i];
     }

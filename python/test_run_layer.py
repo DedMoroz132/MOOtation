@@ -13903,6 +13903,136 @@ def minimize_runs_a_users_problem_through_the_wrappers():
             raise AssertionError(kw)
 
 
+@test
+def a_run_at_one_objective_counts_the_points_that_left_the_box():
+    """Task 20, §20.2.2: result.repairs — the points the method made
+    (checked), those outside the box (out_children) and their variables
+    outside (out_vars), Kononova et al. 2021's measure, the multi-objective
+    runs' RepairCounts — of every single-objective method: g3_pcx with a
+    spread a million times the box puts every child outside it, and none in
+    a box of 1e12; cmaes with a step of 1e-6 none; de, pso, g3_pcx, nelder_mead count theirs; a strategy's
+    starts add up, the same on 1 thread and on 4; lm, which stays inside,
+    counts none outside. The campaign's meta.json has them (so.repairs),
+    C++ = Python (a_campaign_at_one_objective_writes_the_same_files...)."""
+    if _core_with("run") is None:
+        print("    (skipped: no extension)"); return
+    from mootation import minimize
+
+    def sphere(x):
+        return [sum((v - 0.3) ** 2 for v in x)]
+
+    box = [(0.0, 1.0)] * 5
+    wide = minimize(sphere, box, 1, algorithm="g3_pcx", seed=1, max_evaluations=600, g3_sigma=1e6)
+    r = wide.repairs
+    assert r["checked"] > 0 and r["out_children"] == r["checked"] and r["out_vars"] == 5 * r["checked"], r
+    huge = minimize(sphere, [(-1e12, 1e12)] * 5, 1, algorithm="g3_pcx", seed=1, max_evaluations=600)
+    assert huge.repairs["checked"] > 0 and huge.repairs["out_children"] == 0, huge.repairs
+    tight = minimize(sphere, box, 1, algorithm="cmaes", seed=1, max_evaluations=600, cma_sigma0=1e-6)
+    assert tight.repairs["checked"] > 0 and tight.repairs["out_children"] == 0, tight.repairs
+    for alg in ("de", "pso", "g3_pcx", "nelder_mead", "jade", "spso2011", "sep_cmaes"):
+        res = minimize(sphere, box, 1, algorithm=alg, seed=2, max_evaluations=400)
+        rep = res.repairs
+        assert set(rep) == {"checked", "out_children", "out_vars"}, (alg, rep)
+        assert rep["checked"] > 0 and 0 <= rep["out_children"] <= rep["checked"] <= 10 * res.evaluations, (alg, rep)
+        assert rep["out_children"] <= rep["out_vars"] <= 5 * rep["checked"], (alg, rep)
+    one = minimize(sphere, box, 1, algorithm={"solver": "multistart", "inner": {"solver": "cmaes", "cma_sigma0": 2.0},
+                                              "n_starts": 4}, seed=3, max_evaluations=800)
+    four = minimize(sphere, box, 1, algorithm={"solver": "multistart", "inner": {"solver": "cmaes", "cma_sigma0": 2.0},
+                                               "n_starts": 4, "threads": 4}, seed=3, max_evaluations=800)
+    assert one.repairs == four.repairs and one.repairs["out_children"] > 0, (one.repairs, four.repairs)
+    assert one.objectives == four.objectives
+
+
+_REPAIR_TOML = """[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["bbob01_n02_1D", "bbob21_n05_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 800
+storage = "store"
+record_grid = "log"
+[[algorithms]]
+name = "cmaes"
+pop = 0
+gens = 0
+params = { cma_sigma0 = 2.0 }
+[[algorithms]]
+name = "de"
+pop = 0
+gens = 0
+[[algorithms]]
+label = "ms1"
+name = "multistart"
+pop = 0
+gens = 0
+params = { n_starts = 4, inner = { solver = "cmaes", cma_sigma0 = 2.0 } }
+[[algorithms]]
+label = "ms4"
+name = "multistart"
+pop = 0
+gens = 0
+params = { n_starts = 4, threads = 4, inner = { solver = "cmaes", cma_sigma0 = 2.0 } }
+"""
+
+
+@test
+def a_campaign_at_one_objective_records_the_points_that_left_the_box():
+    """Task 20, §20.2.2: meta.json's so.repairs (checked, out_children,
+    out_vars of the run) and every trajectory row's repair_checked,
+    repair_out_children, repair_out_vars (the counts at its fe; the last row
+    the totals), the same in both engines. On one thread the rows only grow
+    and the last is so.repairs; a strategy on four threads gives the same run
+    and the same totals as on one, and null rows (the job's counter is not the
+    run's there: SCALAR-15)."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("repair_counts") is None:
+        print("  skip  a_campaign_at_one_objective_records_the_points...: no C++ engine or _core.repair_counts"); return
+    from mootation.run.config import load
+    keys = ("repair_checked", "repair_out_children", "repair_out_vars")
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_REPAIR_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert cp["done"] == cc["done"] == len(jobs), (cp, cc)
+        totals = {}
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            meta = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            rep = meta["so"]["repairs"]
+            rows = [json.loads(line) for line in (a / "trajectory.jsonl").read_text(encoding="utf-8").splitlines()]
+            totals[(job.problem, job.key, job.seed)] = (rep, meta["final"]["f"])
+            if job.key == "ms4":
+                # the records of a strategy on threads follow the threads' order
+                # (the job's counting functions are called from them); what does
+                # not: null rows, the totals, the answer
+                mc = json.loads((b / "meta.json").read_text(encoding="utf-8"))
+                rows_c = [json.loads(line) for line in (b / "trajectory.jsonl").read_text(encoding="utf-8").splitlines()]
+                assert all(r[k] is None for r in rows + rows_c for k in keys), job.key
+                assert (mc["so"]["repairs"], mc["final"]["f"]) == (rep, meta["final"]["f"]), job.key
+                continue
+            _same_run(a, b)
+            got = [tuple(r[k] for k in keys) for r in rows]
+            assert all(None not in g for g in got), (job.key, got[:3])
+            assert all(x <= y for g, h in zip(got, got[1:]) for x, y in zip(g, h)), (job.key, got)
+            assert got[-1] == (rep["checked"], rep["out_children"], rep["out_vars"]), (job.key, got[-1], rep)
+            assert rep["checked"] > 0 and 0 <= rep["out_children"] <= rep["checked"], (job.key, rep)
+        for (problem, key, seed), (rep, f) in totals.items():
+            if key == "ms4":
+                assert (rep, f) == totals[(problem, "ms1", seed)], (problem, seed)
+        assert any(r["out_children"] > 0 for (_, key, _), (r, _) in totals.items() if key == "cmaes"), totals
+
+
 _POP_TOML = """algorithms = [ { name = "de", pop = 0, gens = 0 }, { name = "lshade", pop = 0, gens = 0 },
                { name = "pso", pop = 0, gens = 0 }, { name = "sep_cmaes", pop = 0, gens = 0 } ]
 [run]

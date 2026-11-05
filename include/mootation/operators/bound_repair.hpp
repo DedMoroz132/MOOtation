@@ -91,6 +91,20 @@ struct RepairCounts {
     long long out_vars     = 0;   // variables found outside
 };
 inline RepairCounts& repair_counts() { thread_local RepairCounts c; return c; }
+inline RepairCounts& operator+=(RepairCounts& a, const RepairCounts& b)
+{
+    a.checked += b.checked;
+    a.out_children += b.out_children;
+    a.out_vars += b.out_vars;
+    return a;
+}
+inline RepairCounts operator-(RepairCounts a, const RepairCounts& b)
+{
+    a.checked -= b.checked;
+    a.out_children -= b.out_children;
+    a.out_vars -= b.out_vars;
+    return a;
+}
 
 // The operators a run used, each with its repair ("none" for one that cannot
 // leave the box), in order of first use.

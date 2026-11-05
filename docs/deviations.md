@@ -407,7 +407,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-222 items: 222 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+224 items: 224 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -575,6 +575,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | SCALAR-10 | laumanns: the grid's first bound is +∞ (no constraint), the mirror of the paper's lower bound 0 for maximization. | yes | `scalar.hpp` |
 | `scalar` | SCALAR-11 | A subproblem whose solver ends where it started runs again, with what is left of its allowance, from the initial plan's best point for it: the archive's best is often an anchor or a neighbour's solution at a corner of... | yes | `scalar.hpp` |
 | `scalar` | SCALAR-12 | The anchors' stages see the objectives scaled by the initial plan's range (its minimum to 0, its maximum to 1): SQP stops early on a raw objective of 1e7 (bbob-biobj f2's ellipsoid). | yes | `scalar.hpp` |
+| `scalar` | SCALAR-14 | Result::repairs counts a point when a method makes it and it is looked at against the box, as Kononova, Caraffini and Bäck count (Information Sciences 581, 2021; task 20, section 20.2.2) — de's, jade's, shade's and ls... | yes | `scalar.hpp` |
+| `scalar` | SCALAR-15 | A campaign's trajectory rows carry the counts at their fe (job_so.hpp, campaign_so.py) where the run is on one thread; a strategy on more than one (threads > 1, or an inner table's) gives null rows: the counter is thr... | yes | `scalar.hpp` |
 | `scalar` | SINGLE-1 | One run of the solver: one that stops before the budget leaves the rest unspent, as DMS does. | yes | `scalar.hpp` |
 | `scalar` | SINGLE-2 | The solver sees f scaled by the initial plan's range (its least value to 0, its greatest to 1), as scalar's anchors do (SCALAR-12), in the box normalized to [0, 1]^n, as every solver of solvers.hpp: a bound that is no... | yes | `scalar.hpp` |
 | `scalar` | SINGLE-3 | A start x0 (the problem's coordinates) is the plan: one point, and the solver from it; the frame of SINGLE-2 is then f(x0) to 0 with scale 1 (subproblems.hpp: a range of 0 is a scale of 1). slsqp takes the problem's g... | yes | `scalar.hpp` |

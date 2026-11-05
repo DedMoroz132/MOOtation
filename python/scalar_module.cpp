@@ -277,6 +277,11 @@ void bind_scalar(py::module_& m)
               for (const auto& e : r.improvements)
                   imp.append(py::make_tuple(e.evaluations, e.grad_calls, e.f, e.cv));
               d["improvements"] = imp;
+              py::dict rep;                                     // task 20, §20.2.2
+              rep["checked"] = r.repairs.checked;
+              rep["out_children"] = r.repairs.out_children;
+              rep["out_vars"] = r.repairs.out_vars;
+              d["repairs"] = rep;
               return d;
           },
           py::arg("name"), py::arg("fn"), py::arg("constraints"), py::arg("bounds"),

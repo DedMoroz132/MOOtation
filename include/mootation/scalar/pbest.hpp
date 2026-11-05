@@ -29,6 +29,7 @@
 #include <random>
 #include <vector>
 
+#include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
 
@@ -77,8 +78,10 @@ inline Vec trial(const Rows& P, const Rows& A, std::size_t i, const std::vector<
     const Vec& x2 = r2 < n ? P[r2] : A[r2 - n];
     const std::size_t jr = dim(rng);
     Vec u(d);
+    ops::RepairTally tally;                                    // the mutant (task 20, §20.2.2)
     for (std::size_t j = 0; j < d; ++j) {
         double v = xi[j] + F * (xb[j] - xi[j]) + F * (x1[j] - x2[j]);
+        if (v < lo[j] || v > hi[j]) tally.out();
         if (v < lo[j]) v = (lo[j] + xi[j]) / 2.0;
         else if (v > hi[j]) v = (hi[j] + xi[j]) / 2.0;
         u[j] = U01(rng) < CR || j == jr ? v : xi[j];

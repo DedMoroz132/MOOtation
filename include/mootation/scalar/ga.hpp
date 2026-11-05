@@ -265,6 +265,11 @@ public:
         for (std::size_t k = 0; k < o_.lambda; ++k) {                    // (2), G3-1
             // P[0] is the best (step 1)
             auto [y, p] = ops::pcx_child(P, o_.sigma_zeta, o_.sigma_eta, rng_, o_.best_centre ? 0 : -1);
+            {
+                ops::RepairTally tally;                                  // the child (task 20, §20.2.2)
+                for (std::size_t j = 0; j < y.size(); ++j)
+                    if (y[j] < lo_[j] || y[j] > hi_[j]) tally.out();
+            }
             if (o_.repair != ops::BoundRepair::Native)
                 for (std::size_t j = 0; j < y.size(); ++j)
                     if (y[j] < lo_[j] || y[j] > hi_[j]) y[j] = ops::repair_value(y[j], lo_[j], hi_[j], P[p][j], o_.repair, rng_);

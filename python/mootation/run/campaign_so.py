@@ -86,6 +86,21 @@ def refusal(algorithm: str, problem) -> str | None:
     return None
 
 
+def threaded(params) -> bool:
+    """A strategy on more than one thread (its knob threads, or an inner
+    table's): the counter of the job's thread is not the run's between
+    rounds, and the trajectory's counts of the box are null (job_so.hpp)."""
+    if isinstance(params, str) and params.startswith("{"):
+        try:
+            params = json.loads(params)
+        except ValueError:
+            return False
+    if not isinstance(params, dict):
+        return False
+    return any((k == "threads" and isinstance(v, int) and not isinstance(v, bool) and v > 1) or threaded(v)
+               for k, v in params.items())
+
+
 def grid_of(spec, budget: int, pop: int) -> list:
     """The sample grid's counts up to the budget (record_grid)."""
     from .campaign import budget_grid, log_grid
@@ -190,6 +205,10 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
     # the counting functions (THE RUN)
     ledger = _core.RunLedger(1, p.n_vars, False, None, None, None, None)
     ledger.set_reads([], [])
+    # the counts of the box at each count of the grid (task 20, §20.2.2): the
+    # thread's counter, which only grows, since the run began (job_so.hpp)
+    grid = grid_of(spec, job.budget, job.pop)
+    counts0, snaps, row_counts = _core.repair_counts(), [], not threaded(job.params)
 
     def account(X, F):
         nonlocal fe
@@ -198,6 +217,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         while ledger.next() >= 0:
             pass
         fe = ledger.fe
+        while row_counts and len(snaps) < len(grid) and grid[len(snaps)] <= fe:
+            snaps.append(tuple(a - b for a, b in zip(_core.repair_counts(), counts0)))
 
     def fn(x):
         f = native.evaluate(x)
@@ -253,7 +274,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         if fe and (not counts or counts[-1] != fe):
             counts.append(fe)
         k, n_records = -1, 0
-        for b in counts:
+        totals = tuple(int(res.repairs.get(key, 0)) for key in ("checked", "out_children", "out_vars"))
+        for row, b in enumerate(counts):
             while k + 1 < len(records) and records[k + 1][0] <= b:
                 k += 1
             rec = {"fe": b}
@@ -264,6 +286,12 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             else:
                 rec.update(grad_calls=None, f=None, delta_f=None, cv=None)
                 rec.update({f"x{j + 1}": None for j in range(p.n_vars)})
+            # the counts of the box at b; the last row the run's totals (the points
+            # made but not evaluated included); null on threads (threaded)
+            c = (None if not row_counts else totals if row + 1 == len(counts)
+                 else snaps[row] if row < len(snaps) else None)
+            rec.update(repair_checked=None if c is None else c[0], repair_out_children=None if c is None else c[1],
+                       repair_out_vars=None if c is None else c[2])
             fh.write(json.dumps(rec, separators=(",", ":")) + "\n")
             n_records += 1
     best = records[-1] if records else None
@@ -282,7 +310,9 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             "reference_version": so.REFERENCE_VERSION if p.f_opt_kind == "best_known" else None,
             "instance": iid, "targets": kind, "precisions": precisions, "f_x0": f_x0,
             "runtimes": runtimes, "grad_cost": grad_cost, "cost": fe + grad_cost * grad_calls,
-            "improvements": len(records), **_peaks(p, res, so),
+            "improvements": len(records),
+            "repairs": {k: int(res.repairs.get(k, 0)) for k in ("checked", "out_children", "out_vars")},
+            **_peaks(p, res, so),
             **({"stop_at": spec.stop_at} if spec.stop_at > 0 else {}),
             **({"wrap": wrap} if wrap is not None else {})},
         final=({} if best is None else {"f": best[2], "delta_f": delta(best[2]), "cv": best[3],

@@ -354,17 +354,21 @@ private:
     void uniform_mutation(std::vector<double>& x)
     {
         ops::note_operator("omopso_uniform", "clip");
+        ops::RepairTally tally;                             // the clip counted (task 20, §20.2.2)
         const double p = 1.0 / static_cast<double>(x.size());
         for (std::size_t j = 0; j < x.size(); ++j) {
             if (!(uni(0.0, 1.0) < p)) continue;
             const double r = uni(0.0, 1.0);
-            x[j] = std::clamp(x[j] + (r - 0.5) * 0.5, lo_[j], hi_[j]);
+            const double v = x[j] + (r - 0.5) * 0.5;
+            if (v < lo_[j] || v > hi_[j]) tally.out();
+            x[j] = std::clamp(v, lo_[j], hi_[j]);
         }
     }
 
     void non_uniform_mutation(std::vector<double>& x)
     {
         ops::note_operator("omopso_non_uniform", "clip");
+        ops::RepairTally tally;                             // the clip counted (task 20, §20.2.2)
         const double p = 1.0 / static_cast<double>(x.size());
         const double shrink = dm::pow(1.0 - static_cast<double>(t_) / static_cast<double>(t_max_), 0.5);
         auto delta = [&](double y) { return y * (1.0 - dm::pow(uni(0.0, 1.0), shrink)); };
@@ -372,6 +376,7 @@ private:
             if (!(uni(0.0, 1.0) < p)) continue;
             const double r = uni(0.0, 1.0);
             const double d = r <= 0.5 ? delta(hi_[j] - x[j]) : delta(lo_[j] - x[j]);
+            if (x[j] + d < lo_[j] || x[j] + d > hi_[j]) tally.out();
             x[j] = std::clamp(x[j] + d, lo_[j], hi_[j]);
         }
     }

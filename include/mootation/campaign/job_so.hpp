@@ -88,6 +88,9 @@ public:
         ledger_ = std::make_unique<RunLedger>(1, static_cast<std::size_t>(p_.n_var), false, nullptr, nullptr, nullptr,
                                               nullptr);
         ledger_->set_reads({}, {});
+        grid_ = grid();
+        counts0_ = ops::repair_counts();
+        row_counts_ = !threaded(job_.params);
         try {
             scalar::Start st;
             if (local(job_.algorithm) && !p_.x0.empty()) {
@@ -98,6 +101,7 @@ public:
                 scalar::run(job_.algorithm, problem(), kEqTol, false, 0.0, static_cast<int>(job_.pop), job_.budget(),
                             static_cast<unsigned>(job_.seed), scalar_knobs(job_.params), {}, 0, st);
             if (cec_ > 0) peaks_ = peaks(res);
+            repairs_ = res.repairs;
         } catch (const std::exception& e) {
             out.status = "failed";
             out.error = e.what();
@@ -182,6 +186,11 @@ public:
         s.set("grad_cost", V::number(grad_cost));
         s.set("cost", V::number(static_cast<double>(ledger_->fe()) + grad_cost * static_cast<double>(grad_calls)));
         s.set("improvements", V::integer(static_cast<std::int64_t>(records.size())));
+        V rep = V::object();                             // task 20, §20.2.2 (scalar::Result::repairs)
+        rep.set("checked", V::integer(repairs_.checked));
+        rep.set("out_children", V::integer(repairs_.out_children));
+        rep.set("out_vars", V::integer(repairs_.out_vars));
+        s.set("repairs", rep);
         if (cec_ > 0) s.set("peaks", peaks_);
         if (spec_.stop_at > 0.0) s.set("stop_at", V::number(spec_.stop_at));
         if (wrapped_) s.set("wrap", wrap_meta());
@@ -323,6 +332,35 @@ private:
         ledger_->begin(x.data(), &f, 1, nullptr, 0, nullptr);
         while (ledger_->next() >= 0) {
         }
+        // the counts of the box at each count of the grid (task 20, §20.2.2):
+        // the thread's counter, which only grows, since the run began; on one
+        // thread only (a strategy's threads call this from theirs: SCALAR-15)
+        while (row_counts_ && grid_next_ < grid_.size() && grid_[grid_next_] <= ledger_->fe()) {
+            grid_counts_.push_back(ops::repair_counts() - counts0_);
+            ++grid_next_;
+        }
+    }
+
+    // a strategy on more than one thread (its knob threads, or an inner
+    // table's): the counter of the job's thread is not the run's between
+    // rounds, and the trajectory's counts are null (the run's totals stay
+    // exact: strategy.hpp, round)
+    static bool threaded(const json::Value& params)
+    {
+        if (params.kind == json::Value::Kind::String && !params.s.empty() && params.s[0] == '{') {
+            try {
+                return threaded(json::parse(params.s));
+            } catch (const std::exception&) {
+                return false;
+            }
+        }
+        if (params.kind != json::Value::Kind::Object) return false;
+        for (std::size_t i = 0; i < params.keys.size(); ++i) {
+            const json::Value& v = params.items[i];
+            if (params.keys[i] == "threads" && v.kind == json::Value::Kind::Int && v.i > 1) return true;
+            if (threaded(v)) return true;
+        }
+        return false;
     }
 
     // the problem as the algorithm sees it: the counting functions
@@ -430,6 +468,16 @@ private:
                 for (const char* key : {"grad_calls", "f", "delta_f", "cv"}) rec.set(key, V::null());
                 for (int j = 0; j < p_.n_var; ++j) rec.set("x" + std::to_string(j + 1), V::null());
             }
+            // the counts of the box at b; the last row the run's totals (the
+            // points made but not evaluated included); null on threads (above)
+            const std::size_t row = lines.size();
+            const bool last = row + 1 == counts.size();
+            const ops::RepairCounts* c = !row_counts_ ? nullptr
+                                         : last ? &repairs_
+                                         : row < grid_counts_.size() ? &grid_counts_[row] : nullptr;
+            rec.set("repair_checked", c ? V::integer(c->checked) : V::null());
+            rec.set("repair_out_children", c ? V::integer(c->out_children) : V::null());
+            rec.set("repair_out_vars", c ? V::integer(c->out_vars) : V::null());
             lines.push_back(json::dump(rec, -1, ",", ":"));
         }
     }
@@ -514,6 +562,12 @@ private:
     std::shared_ptr<suite::Native> native_;
     std::shared_ptr<suite::Wrapped> wrapped_;           // [campaign] wrap_*: native_ through the wrappers
     std::string wrap_refusal_;
+    ops::RepairCounts repairs_;
+    std::vector<std::int64_t> grid_;                  // the trajectory's counts (grid())
+    std::size_t grid_next_ = 0;
+    std::vector<ops::RepairCounts> grid_counts_;      // the counts of the box at each of them
+    ops::RepairCounts counts0_;
+    bool row_counts_ = true;
     std::optional<double> f_opt_;
     std::optional<std::int64_t> instance_;
     std::unique_ptr<RunLedger> ledger_;
