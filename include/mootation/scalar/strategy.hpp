@@ -27,6 +27,7 @@
 // THE STRATEGIES (and ipop, bipop, bipop_2009: restarts.hpp; halving, mlsl,
 // basin_hopping, ils, memetic: search.hpp):
 //   tiktak      Arnoud, Guvenen, Kleineberg's TikTak (tiktak.hpp; task 19).
+//   data_continuation  stages of the residuals' weights (continuation.hpp; task 19).
 //   multistart  n_starts starts in one round, the budget shared evenly:
 //               start 0 is the inner solver's own (its plan, or x0); start k
 //               >= 1 from point k of a design (start_points: sobol, lhs,
@@ -516,7 +517,7 @@ private:
 inline const std::vector<std::string>& strategy_names()
 {
     static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
-                                            "basin_hopping", "ils", "memetic", "tiktak"};
+                                            "basin_hopping", "ils", "memetic", "tiktak", "data_continuation"};
     return v;
 }
 
@@ -536,6 +537,11 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
 // tiktak (tiktak.hpp, included at the end; task 19, §19.6)
 inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                          long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every);
+
+// data_continuation (continuation.hpp, included at the end; task 19, §19.6)
+inline Result run_data_continuation(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                                    long long budget, unsigned seed, const Knobs& knobs, Observer observer,
+                                    int record_every, const Start& start);
 
 // ipop, bipop, bipop_2009 (restarts.hpp, included at the end)
 inline Result run_restarts(const std::string& name, const Problem& P, double eq_tol, bool has_tol0, double eq_tol0,
@@ -622,6 +628,9 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
     if (name == "memetic")
         return run_memetic(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                            record_every, start);
+    if (name == "data_continuation")
+        return run_data_continuation(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                                     record_every, start);
     if (name == "tiktak")
         return run_tiktak(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                           record_every);
@@ -633,3 +642,4 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
 #include "restarts.hpp"
 #include "search.hpp"
 #include "tiktak.hpp"
+#include "continuation.hpp"

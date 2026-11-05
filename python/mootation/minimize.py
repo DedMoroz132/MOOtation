@@ -43,7 +43,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature", "bh_step",
                "bh_accept_rate", "bh_interval", "ils_step", "ils_restart", "ils_temperature", "memetic_every",
                "memetic_points", "local_share",
-               "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share")
+               "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share", "dc_share")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",

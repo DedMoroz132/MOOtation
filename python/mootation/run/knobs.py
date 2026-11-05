@@ -43,6 +43,7 @@ _FALLBACK = (
     "ils_restart", "ils_temperature", "memetic_every", "memetic_points", "local_share",
     "ga_block_uniform", "ga_block_mutation",
     "tiktak_n", "tiktak_share",
+    "dc_share",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"),

@@ -61,6 +61,11 @@ always listed under **Changed** or **Removed**.
   nothing (SRCH-9). A global solver stopped by its own criteria evaluates
   nothing new when rerun; with every archive point already a local start the
   loop went on without end below the budget.
+- Added: `data_continuation` (task 19, §19.6), a search strategy solving a
+  least-squares problem in stages of the residuals' block weights or windows
+  (`dc_stages`, `dc_share`), each from the previous stage's answer, the
+  problem itself last (`scalar/continuation.hpp`). C++ for now; minimize's
+  `dc_stages` comes with the residual blocks of task 19's next round.
 - Added: `tiktak` (task 19, §19.6), Arnoud, Guvenen & Kleineberg's TikTak as a
   search strategy (`scalar/tiktak.hpp`): a Sobol sample, its best tenth in
   order, local searches from starts mixed with the best minimum so far;
