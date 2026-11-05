@@ -1512,6 +1512,19 @@ as its mean (POP-7). A shorter budget gives the same run cut short, except
 for `lshade`, whose population shrinks over the budget (POP-8,
 `lshade_max_nfe`); the others do not depend on `max_evaluations`.
 
+**The strategies** (task 18, stage 3; `scalar/strategy.hpp`): a strategy's
+inner solver is a dict, `minimize(fn, bounds, 1, algorithm="multistart",
+inner={"solver": "cmaes", "cma_sigma0": 0.2}, n_starts=8)`, or the whole
+algorithm one: `algorithm={"solver": "multistart", "inner": {...},
+"n_starts": 8}`. In a campaign it is a TOML table, `params = { n_starts = 8,
+inner = { solver = "cmaes", cma_sigma0 = 0.2 } }`; the library takes it as
+the table's canonical JSON text (keys sorted, no spaces), which is what
+`result.settings` and `meta.json` show. A table that names no solver, a
+multi-objective core, or a knob that is not one is refused, by the config and
+by `minimize()`. The strategy's starts run in `threads` threads with the same
+result; with a Python `fn` they call it in turn, under the GIL. A strategy
+shares its budget among its starts, so it depends on `max_evaluations`.
+
 **The problem's derivatives** (task 18, stage 1, §1.1; `scalar/evaluator.hpp`):
 `minimize(..., grad=g)` gives the objective's gradient (for a constrained
 problem the pair (gradient, the constraints' Jacobian)), `residuals=r` the

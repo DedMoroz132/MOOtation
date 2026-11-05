@@ -112,7 +112,9 @@ inline const std::vector<std::string>& knob_names() {
         // VERIFY2 of 2026-11-02: MaOEA-IAMD's KPCM noise (MaOEA-IAMD-N)
         "noise_frac",
         // task 19, §19.4.1: eki (scalar/scalar.hpp, run_local)
-        "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau"
+        "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
+        // task 18, stage 3: the strategies (scalar/strategy.hpp)
+        "n_starts", "threads", "min_dist", "min_df"
     };
     return v;
 }
@@ -197,7 +199,8 @@ inline bool is_core_param(const std::string& name)
                           "race_max_samples", "race_abs_tol", "hv_incremental",
                           "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                           "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
-                          "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau"})
+                          "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
+                          "n_starts", "threads", "min_dist", "min_df"})
         if (name == k) return true;
     return false;
 }
@@ -366,6 +369,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"cma_weights",  {"active", "positive"}},
         {"cma_cmu",      {"tutorial2016", "hansen2009"}},
         {"cma_stop",     {"spread", "h09"}},
+        {"start_points", {"sobol", "lhs", "uniform", "halton_rand", "sobol_owen"}},
     };
     return v;
 }
@@ -379,6 +383,15 @@ inline const std::vector<std::string>* text_knob_words(const std::string& name) 
 
 // Text knobs that take a comma-separated LIST of their words.
 inline bool is_list_knob(const std::string& name) { return name == "portfolio"; }
+
+// Knobs whose value is a solver (task 18, stage 3; scalar/strategy.hpp, THE
+// INNER SOLVER): a table {solver = name, its knobs ...}, which a caller hands
+// to the library as the table's canonical JSON text.
+inline const std::vector<std::string>& solver_knobs()
+{
+    static const std::vector<std::string> v{"inner"};
+    return v;
+}
 
 // The text knobs a core takes through set_word (above, is_core_param).
 inline bool is_core_word(const std::string& name)
@@ -395,7 +408,7 @@ inline bool is_core_word(const std::string& name)
                           "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
                           "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
-                          "cma_weights", "cma_cmu", "cma_stop"})
+                          "cma_weights", "cma_cmu", "cma_stop", "start_points"})
         if (name == k) return true;
     return false;
 }

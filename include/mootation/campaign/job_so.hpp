@@ -193,8 +193,9 @@ private:
     {
         const auto& s = scalar::single_names();
         const auto& p = scalar::population_names();
+        const auto& t = scalar::strategy_names();
         return std::find(s.begin(), s.end(), a) != s.end() || std::find(p.begin(), p.end(), a) != p.end() ||
-               local(a);
+               std::find(t.begin(), t.end(), a) != t.end() || local(a);
     }
     static bool local(const std::string& a) { return a == "lm" || a == "lbfgsb" || a == "eki"; }
 

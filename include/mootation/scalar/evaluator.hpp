@@ -232,6 +232,42 @@ public:
 
     std::size_t find(const std::vector<double>& x) const { return where_.at(key_of(x)); }
 
+    bool has_grad(std::size_t i) const { return gf_.count(i) != 0; }
+
+    // ── a strategy's round (strategy.hpp) ───────────────────────────────────
+    // A start's point merged at the end of its round, in the order of the
+    // starts: f, g and r~ as the start found them, `evals` (0 or 1) the
+    // evaluation and `grads` (0 or 1) the gradient call it made for it, gf and
+    // J the gradient where it has one. What an earlier start of the round
+    // brought already costs nothing again (the round's rule: a point two
+    // starts evaluated counts for the first).
+    std::size_t adopt(const Vec& x, const Vec& f, const Vec& g, const Vec& r, bool bad, int evals, int grads,
+                      const Vec* gf, const Rows* J)
+    {
+        const std::string key = key_of(x);
+        auto it = where_.find(key);
+        std::size_t i;
+        const bool with_grad = grads > 0 && gf != nullptr && J != nullptr;
+        if (it != where_.end()) {
+            i = it->second;
+            if (with_grad && !gf_.count(i)) {
+                grad_calls += grads;
+                gf_[i] = *gf;
+                jac_[i] = *J;
+            }
+            return i;
+        }
+        if (n_res == 0) n_res = static_cast<int>(r.size());
+        grad_calls += grads;                      // before keep(), as fresh() counts a joint call
+        r_ = r;
+        i = keep(x, f, g, bad, key, evals > 0);
+        if (with_grad) {
+            gf_[i] = *gf;
+            jac_[i] = *J;
+        }
+        return i;
+    }
+
     // ── feasibility ─────────────────────────────────────────────────────────
     // The equalities' tolerance of the moment (eq_tol_schedule = linear: from
     // eq_tol0 to eq_tol in proportion to the evaluations spent; eq_tol itself

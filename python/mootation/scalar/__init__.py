@@ -59,6 +59,15 @@ where their knobs are listed; population.hpp, POP-1 to POP-8):
 
 np sets the population (0: the paper's); pop_size does not (POP-6).
 
+THE STRATEGIES of stage 3 (task 18, §3; strategy.hpp): a strategy runs an
+inner solver, the knob inner = {"solver": name, its knobs ...}, and is a
+solver itself; its budget goes by synchronous rounds of starts, the same run
+in any number of threads (threads):
+
+  multistart   n_starts (10) starts in one round, start 0 the inner solver's
+               own, the others from start_points (sobol | lhs | uniform |
+               halton_rand | sobol_owen); min_dist, min_df group the minima
+
 Every evaluation goes through fn; the run's first points are pop_size uniform
 points from the seed, the rows of the design `init` (designs.py), or the seed
 population.
@@ -84,13 +93,16 @@ PRESETS = {
 # the population methods of stage 4 (task 18, §4; scalar.hpp, run_population)
 POPULATION = ("de", "jade", "shade", "lshade", "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011",
               "sep_cmaes")
-# the single-objective algorithms (task 18, item 2.3, stage 1 and stage 4)
-SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki") + POPULATION
+# the strategies of stage 3 (task 18, §3; strategy.hpp)
+STRATEGIES = ("multistart",)
+# the single-objective algorithms (task 18, item 2.3, stages 1, 3 and 4)
+SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki") + POPULATION + STRATEGIES
 # the methods beside the scalarization methods, on the same evaluator,
 # answer and observer: those of task 9 and the single-objective algorithms.
 # None lays its run out over the budget (budget.py) but lshade, whose
-# population schedule runs to the budget (POP-8)
-OTHERS = ("boostdms", "mosqp") + tuple(s for s in SINGLE if s != "lshade")
+# population schedule runs to the budget (POP-8), and the strategies, which
+# share it out among their starts
+OTHERS = ("boostdms", "mosqp") + tuple(s for s in SINGLE if s != "lshade" and s not in STRATEGIES)
 NAMES = tuple(PRESETS) + ("boostdms", "mosqp") + SINGLE
 
 
@@ -162,6 +174,7 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
         seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
         x0=None, gauge_basis=None):
+    from ..run.knobs import canonical
     core = _module()
     design = None
     if seed_points is None and init != "uniform":
@@ -174,7 +187,8 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
         design = None                 # mosqp starts from the box's centre and its line
     seeds = None if seed_points is None else [(list(x), list(f), list(g)) for x, f, g in seed_points]
     d = core.run(name, fn, constraints, bounds, int(n_objs), int(n_cons), int(n_eq), float(eq_tol),
-                 eq_tol0, int(pop_size), int(budget), int(seed), dict(knobs),
+                 eq_tol0, int(pop_size), int(budget), int(seed),
+                 {k: (canonical(v) if isinstance(v, dict) else v) for k, v in knobs.items()},
                  on_generation=on_generation if int(record_every) > 0 else None,
                  record_every=int(record_every), design=design,
                  seed_points=seeds if name != "mosqp" else None, grad=grad, residuals=residuals,

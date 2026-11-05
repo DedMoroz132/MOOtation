@@ -309,12 +309,13 @@ def family_of() -> dict:
     baselines (random and Sobol sampling, the ablations) as "Baseline"."""
     from .algorithms import algorithm_families
     from .baselines import BASELINES
-    from ..scalar import NAMES as SCALAR_NAMES, POPULATION, SINGLE
+    from ..scalar import NAMES as SCALAR_NAMES, POPULATION, SINGLE, STRATEGIES
     out = {a: fam for fam, algs in algorithm_families() for a in algs}
     out.update({b: "Baseline" for b in BASELINES})
     out.update({s: "Scalarization + local solver" for s in SCALAR_NAMES})
     out.update({s: "Single-objective local solver" for s in SINGLE})
     out.update({s: "Single-objective population method" for s in POPULATION})
+    out.update({s: "Search strategy" for s in STRATEGIES})
     return out
 
 

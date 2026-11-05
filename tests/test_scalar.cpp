@@ -201,8 +201,10 @@ void methods()
         if (std::find(sc::single_names().begin(), sc::single_names().end(), name) != sc::single_names().end() ||
             std::find(sc::local_names().begin(), sc::local_names().end(), name) != sc::local_names().end() ||
             std::find(sc::population_names().begin(), sc::population_names().end(), name) !=
-                sc::population_names().end())
-            continue;                               // one objective only: single(), local_solvers(), population()
+                sc::population_names().end() ||
+            std::find(sc::strategy_names().begin(), sc::strategy_names().end(), name) != sc::strategy_names().end())
+            continue;                               // one objective only: single(), local_solvers(), population(),
+                                                    // test_strategy
         for (int which = 0; which < 2; ++which) {
             Counted c = which == 0 ? zdt1() : constrained();
             const sc::Result r = sc::run(name, c.P, 1e-3, false, 0.0, 20, budget, 7, {}, {}, 0, {});

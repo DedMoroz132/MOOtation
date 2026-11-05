@@ -75,6 +75,18 @@ always listed under **Changed** or **Removed**.
   the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and
   the polynomial mutation, then KPCM (IAMD-1). Default runs keep their golden
   fingerprints.
+- Added (`scalar/strategy.hpp`; task 18, stage 3): search strategies. A
+  strategy runs an inner solver, the knob `inner` = `{solver = name, its
+  knobs}` (a TOML table, a dict in `minimize()`, or `algorithm={"solver":
+  ...}`), and is a solver itself. Its budget goes by synchronous rounds of
+  starts that see the archive as it was when the round began, so `threads`
+  changes nothing in the result; a point two starts evaluate counts once.
+  First strategy: `multistart` (`n_starts`, `start_points`, `min_dist`,
+  `min_df`); its minima log is in the settings. `Evaluator::adopt` merges a
+  start's points; `[[algorithms]] params` takes a table for the knobs of
+  `solver_knobs()` (settings.hpp), checked by both configs. The Python
+  binding releases the GIL for a strategy and holds Python callables so that
+  copies of them take no Python reference.
 - Added (`scalar/cmaes.hpp`; task 18, stage 3): the CMA-ES of BIPOP-CMA-ES
   (Hansen, GECCO 2009) as options of the one CMA-ES. `cma_weights = positive`
   (only the μ best, weighted ln(μ + 1) − ln i) and `cma_cmu = hansen2009`

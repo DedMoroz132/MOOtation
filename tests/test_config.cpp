@@ -72,7 +72,11 @@ static cg::Registry registry()
 {
     cg::Registry reg;
     reg.algorithms = {"moead_de", "nsga2", "nsga3"};
-    reg.problems = {{"DTLZ2_3D", 3}, {"ZDT1", 2}};
+    reg.problems = {{"DTLZ2_3D", 3}, {"ZDT1", 2}, {"bbob01_n02_1D", 1}};
+    reg.scalar_names = {"cmaes", "nelder_mead", "multistart"};
+    reg.knob_names = {"local_tol", "n_starts", "start_points", "inner"};
+    reg.text_knobs = {{"start_points", {"sobol", "lhs"}}};
+    reg.solver_knobs = {"inner"};
     reg.executable_findable = [](const std::string& argv0) { return argv0 == "python"; };
     reg.regex_groups = [](const std::string&, std::string&) { return 0; };
     return reg;
@@ -127,6 +131,24 @@ int main()
     same("families as a word", replaced(BUILTIN, "problems = [\"ZDT1\", \"DTLZ2_3D\"]", "families = \"DTLZ\"\nobjectives = [3]"),
          "", {"benchmarks: 'families' and 'objectives' must be lists"});
     same("not TOML", "[run]\nname = = 1\n", "TOML does not parse: *");
+    // task 18, stage 3: a strategy's inner solver, a table
+    const std::string strategy =
+        replaced(replaced(BUILTIN, "problems = [\"ZDT1\", \"DTLZ2_3D\"]", "problems = [\"bbob01_n02_1D\"]"),
+                 "name = \"nsga3\"\npop = 92\ngens = 5",
+                 "name = \"multistart\"\npop = 10\ngens = 5\n"
+                 "params = { n_starts = 3, inner = { solver = \"nelder_mead\", local_tol = 1e-10 } }");
+    same("a strategy and its inner solver", strategy, "", {}, {"bbob01_n02_1D"});
+    same("an inner solver that is not one", replaced(strategy, "solver = \"nelder_mead\"", "solver = \"nsga2\""), "",
+         {"algorithms[0] (multistart): inner.solver = 'nsga2' is not a single-objective solver or strategy"},
+         {"bbob01_n02_1D"});
+    same("an inner solver's unknown knob, a word that is not one",
+         replaced(strategy, "local_tol = 1e-10", "bogus = 1, inner = { solver = \"cmaes\", start_points = \"x\" }"), "",
+         {"algorithms[0] (multistart): inner.bogus: unknown parameter",
+          "algorithms[0] (multistart): inner.inner.start_points = 'x' is not one of: sobol, lhs"},
+         {"bbob01_n02_1D"});
+    same("an inner solver as a number",
+         replaced(strategy, "inner = { solver = \"nelder_mead\", local_tol = 1e-10 }", "inner = 3"),
+         "algorithms[0].params.inner: expected a table {solver = name, its knobs ...}, got 3");
 
     if (failures) {
         std::printf("%d failure(s)\n", failures);

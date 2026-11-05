@@ -11285,7 +11285,7 @@ def scalar_presets_budget_and_refusals():
                               "eps_cmaes") and NAMES == tuple(PRESETS) + (
                                   "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes", "lm",
                                   "lbfgsb", "eki", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
-                                  "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes")
+                                  "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart")
     calls = [0]
     def f(x):
         calls[0] += 1
@@ -11449,8 +11449,8 @@ def single_objective_solvers_and_baselines_at_one_objective():
     from mootation.run.budget import depends_on_budget
     from mootation.scalar import SINGLE
     assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "de", "jade", "shade", "lshade",
-                      "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes")
-    for name in SINGLE[5:]:                          # eki and stage 4's population methods
+                      "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart")
+    for name in SINGLE[5:]:                          # eki, stage 4's population methods, stage 3's strategies
         assert check_pop(name, 20, 2) == (f"{name} is a single-objective algorithm: n_objs must "
                                           "be 1, got 2"), name
         assert check_pop(name, 20, 1) is None, name
@@ -11569,6 +11569,106 @@ def lm_and_lbfgsb_take_the_problems_derivatives():
             assert why in str(e), (why, str(e))
         else:
             raise AssertionError("not refused: " + why)
+
+@test
+def a_strategy_runs_its_inner_solver_through_minimize():
+    """Task 18, stage 3, §3.1-3.4 (scalar/strategy.hpp): multistart takes its
+    inner solver as a dict, through a keyword or algorithm={"solver": ...};
+    one start is the inner solver's own run; 1 thread and 4 the same run; the
+    minima log in the settings; a solver table that names no solver, a
+    multi-objective core or an unknown knob refused."""
+    if _core_with("scalar") is None:
+        print("  skip  a_strategy_runs...: no _core.scalar"); return
+    import json
+    import mootation
+    from mootation.run.budget import depends_on_budget
+    from mootation.scalar import STRATEGIES
+    box = [(-2.0, 2.0)] * 2
+
+    def f(x):
+        return [(x[0] ** 2 - 1.0) ** 2 + x[1] ** 2]
+    alone = mootation.minimize(f, box, 1, algorithm="cmaes", max_evaluations=1500, seed=3)
+    one = mootation.minimize(f, box, 1, algorithm="multistart", max_evaluations=1500, seed=3,
+                             inner={"solver": "cmaes"}, n_starts=1)
+    assert (one.variables, one.objectives, one.evaluations) == (alone.variables, alone.objectives,
+                                                                alone.evaluations)
+    spec = {"solver": "multistart", "inner": {"solver": "nelder_mead", "local_tol": 1e-12}, "n_starts": 6}
+    runs = [mootation.minimize(f, box, 1, algorithm=spec, max_evaluations=6000, seed=5, threads=t) for t in (1, 4)]
+    assert (runs[0].variables, runs[0].evaluations) == (runs[1].variables, runs[1].evaluations)
+    got = dict(runs[0].settings)
+    assert got["inner"] == '{"local_tol":1e-12,"solver":"nelder_mead"}', got["inner"]
+    minima = json.loads(got["minima"])
+    assert len(minima) == 2 and sum(m[2] for m in minima) == 6, minima
+    assert sorted(round(m[3]) for m in minima) == [-1, 1], minima
+    assert STRATEGIES == ("multistart",) and depends_on_budget("multistart")
+    for inner, why in (({"local_tol": 1.0}, "is not a single-objective solver or strategy"),
+                       ({"solver": "nsga2"}, "is not a single-objective solver or strategy"),
+                       ({"solver": "cmaes", "bogus": 1}, "inner.bogus: unknown parameter"),
+                       ({"solver": "cmaes", "cma_stop": "h10"}, "inner.cma_stop = 'h10' is not one of")):
+        try:
+            mootation.minimize(f, box, 1, algorithm="multistart", max_evaluations=300, inner=inner)
+        except ValueError as e:
+            assert why in str(e), (why, str(e))
+        else:
+            raise AssertionError("not refused: " + why)
+
+
+_STRATEGY_TOML = """[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["bbob01_n02_1D", "bbob21_n05_1D", "MGH01_n02_m02_x1_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 600
+storage = "store"
+[[algorithms]]
+name = "multistart"
+pop = 0
+gens = 0
+params = { n_starts = 3, inner = { solver = "nelder_mead", local_tol = 1e-10 } }
+"""
+
+
+@test
+def a_campaign_of_a_strategy_writes_the_same_files_from_both_engines():
+    """Task 18, stage 3, §3.4: a strategy in a campaign, its inner solver a
+    TOML table; both engines write the same files (meta.json with the
+    canonical text of the table, the trajectory, final.csv, improvements.csv);
+    MGH has no box and multistart refuses it in both; a table that names an
+    unknown solver is refused by both configs with the same message."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_of_a_strategy...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_STRATEGY_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert len(jobs) == 6 and (cp["done"], cp["failed"]) == (cc["done"], cc["failed"]) == (4, 2), (cp, cc)
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            ma = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            if job.problem.startswith("MGH"):
+                assert ma["status"] == "failed", ma
+                continue
+            assert ma["status"] == "done" and ma["fe"] <= 600, ma
+        bad = Path(td) / "bad.toml"
+        bad.write_text(_STRATEGY_TOML.replace("NAME", "bad").replace('solver = "nelder_mead"', 'solver = "nsga2"'),
+                       encoding="utf-8")
+        issues = validate(load(bad))
+        assert any("inner.solver = 'nsga2' is not a single-objective solver or strategy" in i for i in issues), issues
+
 
 @test
 def cmaes_takes_the_bipop_2009_options_through_minimize():

@@ -57,6 +57,18 @@ py::list rows_to_list(const sc::Rows& R)
 }
 
 // The problem: bounds, and either native or fn (+ constraints).
+// A Python callable held so that copying the C++ function that holds it
+// takes no Python reference: a strategy copies the problem's functions with
+// the GIL released (scalar/strategy.hpp, View); the last copy lets go of it
+// under the GIL.
+std::shared_ptr<py::object> held(const py::object& f)
+{
+    return std::shared_ptr<py::object>(new py::object(f), [](py::object* q) {
+        py::gil_scoped_acquire gil;
+        delete q;
+    });
+}
+
 sc::Problem problem_of(const py::object& fn, const py::object& constraints, const py::object& bounds,
                        int n_objs, int n_cons, int n_eq,
                        const std::shared_ptr<mootation::suite::Native>& native)
@@ -83,16 +95,16 @@ sc::Problem problem_of(const py::object& fn, const py::object& constraints, cons
     }
     const int m = n_objs, k = n_cons;
     if (fn.is_none()) return P;                 // residuals give the objective (derivatives_of)
-    P.evaluate = [fn, constraints, m, k](const Vec& x, Vec& f, Vec& g) {
+    P.evaluate = [fn = held(fn), constraints = held(constraints), m, k](const Vec& x, Vec& f, Vec& g) {
         py::gil_scoped_acquire gil;
         py::list xs = to_list(x);
-        Vec fv = floats(fn(xs));
+        Vec fv = floats((*fn)(xs));
         if (static_cast<int>(fv.size()) != m)
             throw std::invalid_argument("fn returned " + std::to_string(fv.size()) + " values for " +
                                         std::to_string(m) + " objectives");
         f = fv;
         if (k > 0) {
-            Vec gv = floats(constraints(xs));
+            Vec gv = floats((*constraints)(xs));
             if (static_cast<int>(gv.size()) != k)
                 throw std::invalid_argument("constraints returned " + std::to_string(gv.size()) +
                                             " values for " + std::to_string(k));
@@ -117,14 +129,14 @@ sc::Rows rows_of_seq(const py::handle& seq)
 void derivatives_of(sc::Problem& P, const py::object& grad, const py::object& residuals, const py::object& jac)
 {
     if (!residuals.is_none()) {
-        P.residuals = [residuals](const Vec& x, Vec& r) {
+        P.residuals = [residuals = held(residuals)](const Vec& x, Vec& r) {
             py::gil_scoped_acquire gil;
-            r = floats(residuals(to_list(x)));
+            r = floats((*residuals)(to_list(x)));
         };
         if (!jac.is_none())
-            P.jacobian = [jac](const Vec& x, sc::Rows& J) {
+            P.jacobian = [jac = held(jac)](const Vec& x, sc::Rows& J) {
                 py::gil_scoped_acquire gil;
-                J = rows_of_seq(jac(to_list(x)));
+                J = rows_of_seq((*jac)(to_list(x)));
             };
     } else if (!jac.is_none()) {
         throw std::invalid_argument("jac is the residuals' Jacobian: it goes with residuals");
@@ -132,9 +144,9 @@ void derivatives_of(sc::Problem& P, const py::object& grad, const py::object& re
     if (!grad.is_none()) {
         if (P.has_residuals()) throw std::invalid_argument("grad: a problem with residuals has jac for its derivatives");
         const int k = P.n_cons;
-        P.gradient = [grad, k](const Vec& x, Vec& gf, sc::Rows& JG) {
+        P.gradient = [grad = held(grad), k](const Vec& x, Vec& gf, sc::Rows& JG) {
             py::gil_scoped_acquire gil;
-            py::object out = grad(to_list(x));
+            py::object out = (*grad)(to_list(x));
             if (k > 0) {
                 py::sequence pair = out.cast<py::sequence>();
                 if (pair.size() != 2)
@@ -243,7 +255,10 @@ void bind_scalar(py::module_& m)
               const bool has0 = !eq_tol0.is_none();
               const double tol0 = has0 ? py::cast<double>(eq_tol0) : 0.0;
               sc::Observer obs = observer_of(on_generation);
-              sc::Result r = maybe_released(native != nullptr, [&]() {
+              // a strategy's starts may run in threads, each calling fn under the GIL (strategy.hpp)
+              const bool strategy = std::find(sc::strategy_names().begin(), sc::strategy_names().end(), name) !=
+                                    sc::strategy_names().end();
+              sc::Result r = maybe_released(native != nullptr || strategy, [&]() {
                   return sc::run(name, P, eq_tol, has0, tol0, pop_size, budget, seed, kn, obs,
                                  record_every, st);
               });

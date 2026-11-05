@@ -137,6 +137,23 @@ constrained-domination at one objective (`scalar/evo.hpp`), in no paper:
 
 How each was checked is in [verification.md](verification.md#the-population-methods-at-one-objective).
 
+**Search strategies** (task 18, stage 3; `scalar/strategy.hpp`): a strategy
+runs an inner solver — the knob `inner`, a table `{solver = name, its knobs
+...}`, any of the algorithms above or another strategy — and is an algorithm
+itself. Its budget goes by synchronous rounds of starts; a round's starts see
+the archive as it was when the round began and may run in threads (`threads`)
+with the same result, bit for bit; a point two starts evaluate counts once.
+
+| Strategy | Knobs |
+|---|---|
+| `multistart` | `inner`, `n_starts` (10), `start_points` (`sobol`, `lhs`, `uniform`, `halton_rand`, `sobol_owen`), `threads` (1), `min_dist` (1e-3), `min_df` (1e-8) |
+
+`multistart` shares the budget evenly among `n_starts` starts in one round:
+start 0 is the inner solver's own run (its plan, or `x0`), the others start
+from the design points in the box. With one start it is the inner solver's
+run, bit for bit. The minima the starts found, grouped by `min_dist` and
+`min_df` (STRAT-4), are in the settings (`minima`).
+
 The cores are multi-objective. With `n_objs = 1`, 22 of them refuse in
 `Settings::validate()` and name their reason (`single_objective_refusal`,
 `settings.hpp`): nsga3, a_nsga3, theta_dea, moead, moead_de, moead_dra, moead_dd,

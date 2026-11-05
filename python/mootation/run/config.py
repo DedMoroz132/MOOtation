@@ -301,10 +301,14 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             raise ConfigError(where, f"unknown key(s): {', '.join(unknown)}; an algorithm's "
                                      f"knobs go in params = {{ ... }}")
         params = _opt(a, "params", {}, where, dict)
-        from .knobs import LIST_KNOBS, text_knobs
+        from .knobs import LIST_KNOBS, solver_knobs, text_knobs
         words = text_knobs()
         for k, v in params.items():
-            if k in LIST_KNOBS:
+            if k in solver_knobs():
+                if not isinstance(v, dict):
+                    raise ConfigError(f"{where}.params.{k}",
+                                      f"expected a table {{solver = name, its knobs ...}}, got {v!r}")
+            elif k in LIST_KNOBS:
                 if not (isinstance(v, str) or (isinstance(v, list)
                                                and all(isinstance(w, str) for w in v))):
                     raise ConfigError(f"{where}.params.{k}",
@@ -329,7 +333,7 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             # A TOML integer stays an integer: T, nr, K, n_clusters and div are
             # ints in the binding, and pybind11 3 refuses 20.0 for them. A
             # boolean stays a boolean (normalize = true).
-            params={k: (v if isinstance(v, (bool, int, str, list)) else float(v))
+            params={k: (v if isinstance(v, (bool, int, str, list, dict)) else float(v))
                     for k, v in params.items()},
             problems=tuple(_opt(a, "problems", [], where, list)),
         ))
@@ -554,11 +558,15 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
             bad(where,
                 f"unknown parameter(s): {', '.join(unknown)}. "
                 f"Known: {', '.join(sorted(valid_knobs))}")
-        from .knobs import accepts, text_knobs
+        from .knobs import accepts, solver_issues, solver_knobs, text_knobs
         for k, v in a.params.items():
             allowed = text_knobs().get(k)
             if allowed is not None and not accepts(k, v):
                 bad(where, f"{k} = {v!r} is not one of: {', '.join(allowed)}")
+            if k in solver_knobs():
+                from ..scalar import NAMES as _SCALAR_NAMES
+                for issue in solver_issues(k, v, _SCALAR_NAMES):
+                    bad(where, issue)
 
         if cfg.n_objs >= 1 and a.pop >= 2:
             reason = check_pop(a.name, a.pop, cfg.n_objs, a.params)

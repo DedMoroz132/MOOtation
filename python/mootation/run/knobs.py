@@ -15,6 +15,7 @@ such in `knob_source()`.
 
 from __future__ import annotations
 
+import json
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -110,7 +111,9 @@ _FALLBACK_TEXT = {
     "cma_weights": ("active", "positive"),
     "cma_cmu": ("tutorial2016", "hansen2009"),
     "cma_stop": ("spread", "h09"),
+    "start_points": ("sobol", "lhs", "uniform", "halton_rand", "sobol_owen"),
 }
+_FALLBACK_SOLVER = ("inner",)
 
 _BLOCK = re.compile(
     r"knob_names\s*\(\s*\)\s*\{.*?\{(?P<body>.*?)\}\s*;", re.S)
@@ -118,6 +121,8 @@ _BLOCK = re.compile(
 _TEXT_BLOCK = re.compile(
     r"text_knobs\s*\(\s*\)\s*\{.*?=\s*\{(?P<body>.*?)\}\s*;", re.S)
 _TEXT_ITEM = re.compile(r'\{\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*\{([^}]*)\}\s*\}')
+_SOLVER_BLOCK = re.compile(
+    r"solver_knobs\s*\(\s*\)\s*\{.*?\{(?P<body>.*?)\}\s*;", re.S)
 _STRING = re.compile(r'"([A-Za-z_][A-Za-z0-9_]*)"')
 
 
@@ -156,6 +161,52 @@ def _read_text() -> dict:
     return {name: tuple(_STRING.findall(words)) for name, words in _TEXT_ITEM.findall(m.group("body"))}
 
 
+@lru_cache(maxsize=1)
+def _read_solver() -> tuple[str, ...]:
+    p = _settings_hpp()
+    if p is None:
+        return _FALLBACK_SOLVER
+    m = _SOLVER_BLOCK.search(p.read_text(encoding="utf-8"))
+    return tuple(_STRING.findall(m.group("body"))) if m else _FALLBACK_SOLVER
+
+
+def solver_knobs() -> tuple[str, ...]:
+    """The knobs whose value is a solver: a table {solver = name, its knobs}
+    (settings.hpp, solver_knobs(); scalar/strategy.hpp)."""
+    return _read_solver()
+
+
+def canonical(value) -> str:
+    """A solver table's canonical JSON text: keys sorted, no spaces — what the
+    library takes, and the same text from both engines."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
+def solver_issues(name: str, value, algorithms) -> list[str]:
+    """What is wrong with the solver table `value` of knob `name`: it names
+    no solver or one not in `algorithms`, or a knob of it is not a knob (its
+    own solver tables checked the same way)."""
+    if not isinstance(value, dict):
+        return [f"{name} must be a table {{solver = name, its knobs ...}}, got {value!r}"]
+    solver = value.get("solver")
+    if not isinstance(solver, str) or solver not in algorithms:
+        return [f"{name}.solver = {solver!r} is not a single-objective solver or strategy"]
+    out = []
+    valid, words, inner = set(knob_names()), text_knobs(), solver_knobs()
+    for k, v in value.items():
+        if k == "solver":
+            continue
+        if k in inner:
+            out += solver_issues(f"{name}.{k}", v, algorithms)
+        elif k not in valid:
+            out.append(f"{name}.{k}: unknown parameter")
+        elif k in words and not accepts(k, v):
+            out.append(f"{name}.{k} = {v!r} is not one of: {', '.join(words[k])}")
+        elif k not in words and not isinstance(v, (int, float, bool)):
+            out.append(f"{name}.{k}: expected a number or true/false, got {type(v).__name__}")
+    return out
+
+
 # The text knobs that take a LIST of their words (settings.hpp, is_list_knob):
 # a TOML list, or the words separated by commas.
 LIST_KNOBS = ("portfolio",)
@@ -186,7 +237,8 @@ def text_knobs() -> dict:
 
 def knob_names() -> tuple[str, ...]:
     """Every key accepted in `[[algorithms]] params`: the numeric knobs, then the text ones."""
-    return _read()[0] + PY_KNOBS + tuple(k for k in text_knobs() if k not in _read()[0])
+    return (_read()[0] + PY_KNOBS + tuple(k for k in text_knobs() if k not in _read()[0])
+            + tuple(k for k in solver_knobs() if k not in _read()[0]))
 
 
 def knob_source() -> str:

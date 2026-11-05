@@ -45,6 +45,7 @@ set(MOOTATION_TESTS
     test_sep_cmaes
     test_cmaes_inject
     test_cmaes_h09
+    test_strategy
     test_so_metrics
     test_store_codec
     test_json

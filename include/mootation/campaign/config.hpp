@@ -198,6 +198,7 @@ struct Registry {
     std::vector<std::string> knob_names;                  // in their order (knobs.knob_names)
     std::vector<std::pair<std::string, std::vector<std::string>>> text_knobs;   // knob, its words
     std::vector<std::string> list_knobs;
+    std::vector<std::string> solver_knobs;                // a table {solver = name, ...} (knobs.solver_knobs)
     std::vector<std::pair<std::string, int>> problems;    // the benchmarks: name, objectives
     std::string platform = "windows";                     // windows, darwin, linux
     std::string algorithms_error;                         // a registry that could not be read: its message
@@ -281,13 +282,59 @@ inline bool two_layer(std::int64_t m, std::int64_t p)
 }   // namespace pop
 
 // A reason pop is unusable for the core at m objectives, or nothing.
+// What is wrong with the solver table `value` of knob `name` (knobs.solver_issues):
+// no solver, or one that is not a single-objective solver or strategy, or a
+// knob that is not one (its own solver tables checked the same way).
+inline std::vector<std::string> solver_issues(const Registry& reg, const std::set<std::string>& valid,
+                                              const std::string& name, const Value& value)
+{
+    if (value.kind != Kind::Object)
+        return {name + " must be a table {solver = name, its knobs ...}, got " + py_repr(value)};
+    const Value* solver = value.find("solver");
+    if (solver == nullptr || solver->kind != Kind::String ||
+        std::find(reg.scalar_names.begin(), reg.scalar_names.end(), solver->s) == reg.scalar_names.end())
+        return {name + ".solver = " + (solver ? py_repr(*solver) : std::string("None")) +
+                " is not a single-objective solver or strategy"};
+    std::vector<std::string> out;
+    for (std::size_t k = 0; k < value.keys.size(); ++k) {
+        const std::string& key = value.keys[k];
+        const Value& v = value.items[k];
+        if (key == "solver") continue;
+        const auto* words = reg.words_of(key);
+        if (std::find(reg.solver_knobs.begin(), reg.solver_knobs.end(), key) != reg.solver_knobs.end()) {
+            const auto more = solver_issues(reg, valid, name + "." + key, v);
+            out.insert(out.end(), more.begin(), more.end());
+        } else if (!valid.count(key)) {
+            out.push_back(name + "." + key + ": unknown parameter");
+        } else if (words) {
+            bool ok = v.kind == Kind::String;
+            if (ok) {
+                const bool listed = std::find(reg.list_knobs.begin(), reg.list_knobs.end(), key) != reg.list_knobs.end();
+                std::size_t at = 0;
+                while (ok) {
+                    const auto c = listed ? v.s.find(',', at) : std::string::npos;
+                    const std::string w = v.s.substr(at, c == std::string::npos ? std::string::npos : c - at);
+                    ok = std::find(words->begin(), words->end(), w) != words->end();
+                    if (c == std::string::npos) break;
+                    at = c + 1;
+                }
+            }
+            if (!ok) out.push_back(name + "." + key + " = " + py_repr(v) + " is not one of: " + join(*words, ", "));
+        } else if (v.kind != Kind::Int && v.kind != Kind::Float && v.kind != Kind::Bool) {
+            out.push_back(name + "." + key + ": expected a number or true/false, got " + py_type(v));
+        }
+    }
+    return out;
+}
+
 inline std::optional<std::string> check_pop(const std::string& name, std::int64_t p, std::int64_t m, const Value& params)
 {
-    // task 18, item 2.3 and stage 4: the single-objective algorithms (scalar.hpp: single_names(),
-    // local_names(), population_names()) at one objective only
+    // task 18, item 2.3 and stages 3 and 4: the single-objective algorithms (scalar.hpp:
+    // single_names(), local_names(), population_names(), strategy_names()) at one objective only
     static const std::vector<std::string> single{"slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki",
                                                  "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
-                                                 "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes"};
+                                                 "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes",
+                                                 "multistart"};
     if (std::find(single.begin(), single.end(), name) != single.end() && m != 1)
         return name + " is a single-objective algorithm: n_objs must be 1, got " + std::to_string(m);
     if (pop::free_h().count(name)) {
@@ -538,7 +585,13 @@ inline Config loads(const std::string& text, const Registry& reg,
                     const Value& pv = params->items[k];
                     const auto* words = reg.words_of(name);
                     const bool listed = std::find(reg.list_knobs.begin(), reg.list_knobs.end(), name) != reg.list_knobs.end();
-                    if (listed) {
+                    const bool solver =
+                        std::find(reg.solver_knobs.begin(), reg.solver_knobs.end(), name) != reg.solver_knobs.end();
+                    if (solver) {
+                        if (pv.kind != Kind::Object)
+                            throw ConfigError(where + ".params." + name,
+                                              "expected a table {solver = name, its knobs ...}, got " + py_repr(pv));
+                    } else if (listed) {
                         bool ok = is(pv, Want::Str);
                         if (!ok && pv.kind == Kind::Array) {
                             ok = true;
@@ -882,6 +935,10 @@ inline std::vector<std::string> validate(Config& cfg, const Registry& reg,
         std::sort(unknown.begin(), unknown.end());
         if (!unknown.empty())
             bad(where, "unknown parameter(s): " + join(unknown, ", ") + ". Known: " + join(sorted_knobs, ", "));
+        for (std::size_t k = 0; k < a.params.keys.size(); ++k)
+            if (std::find(reg.solver_knobs.begin(), reg.solver_knobs.end(), a.params.keys[k]) != reg.solver_knobs.end())
+                for (const std::string& issue : solver_issues(reg, valid_knobs, a.params.keys[k], a.params.items[k]))
+                    bad(where, issue);
         for (std::size_t k = 0; k < a.params.keys.size(); ++k) {
             const auto* words = reg.words_of(a.params.keys[k]);
             if (!words) continue;

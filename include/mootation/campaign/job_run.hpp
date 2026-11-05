@@ -433,6 +433,30 @@ inline json::Value table_head(const std::string& name, const std::vector<std::st
 // minimize's knobs for a scalarization method or a single-objective
 // algorithm (mootation.scalar): the job's params but polishing's and those
 // minimize itself takes, a word or a number each
+// json.dumps(v, sort_keys=True, separators=(",", ":")): a solver table's text
+// as both engines hand it over (knobs.canonical)
+inline std::string canonical_json(json::Value v)
+{
+    struct Sort {
+        static void keys(json::Value& x)
+        {
+            for (auto& item : x.items) keys(item);
+            if (x.kind != json::Value::Kind::Object) return;
+            std::vector<std::size_t> order(x.keys.size());
+            for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+            std::sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return x.keys[a] < x.keys[b]; });
+            json::Value y = json::Value::object();
+            for (std::size_t i : order) {
+                y.keys.push_back(x.keys[i]);
+                y.items.push_back(x.items[i]);
+            }
+            x = std::move(y);
+        }
+    };
+    Sort::keys(v);
+    return json::dump(v, -1, ",", ":");
+}
+
 inline scalar::Knobs scalar_knobs(const json::Value& params)
 {
     scalar::Knobs knobs;
@@ -452,6 +476,9 @@ inline scalar::Knobs scalar_knobs(const json::Value& params)
             kn.number = static_cast<double>(v.i);
         } else if (v.kind == json::Value::Kind::Bool) {
             kn.number = v.b ? 1.0 : 0.0;
+        } else if (v.kind == json::Value::Kind::Object) {
+            kn.is_word = true;                          // a solver: its canonical text (knobs.canonical)
+            kn.word = canonical_json(v);
         } else {
             throw std::invalid_argument("parameter " + k + " takes a number or a word, got " + py_repr(v));
         }

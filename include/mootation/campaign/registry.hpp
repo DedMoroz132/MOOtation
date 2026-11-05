@@ -187,7 +187,7 @@ struct RegistryProblem {
 // campaign's jobs are made from (registry_export.names).
 struct RegistryNames {
     std::vector<std::string> baselines, scalar_names, scalar_others, design_kinds, knob_names, list_knobs,
-        metric_names, budget_dependent;
+        metric_names, budget_dependent, solver_knobs;
     std::vector<std::pair<std::string, std::vector<std::string>>> text_knobs;
 };
 
@@ -461,6 +461,7 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
         r.names.list_knobs = words("list_knobs");
         r.names.metric_names = words("metric_names");
         r.names.budget_dependent = words("budget_dependent");
+        r.names.solver_knobs = words("solver_knobs");
         if (const json::Value* v = n->find("text_knobs"))
             for (const auto& pair : v->items) {
                 std::vector<std::string> w;
