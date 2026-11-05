@@ -83,8 +83,10 @@ public:
                 st.has_x0 = true;
                 st.x0 = p_.x0;
             }
-            scalar::run(job_.algorithm, problem(), kEqTol, false, 0.0, static_cast<int>(job_.pop), job_.budget(),
-                        static_cast<unsigned>(job_.seed), scalar_knobs(job_.params), {}, 0, st);
+            const scalar::Result res =
+                scalar::run(job_.algorithm, problem(), kEqTol, false, 0.0, static_cast<int>(job_.pop), job_.budget(),
+                            static_cast<unsigned>(job_.seed), scalar_knobs(job_.params), {}, 0, st);
+            if (cec_ > 0) peaks_ = peaks(res);
         } catch (const std::exception& e) {
             out.status = "failed";
             out.error = e.what();
@@ -169,6 +171,7 @@ public:
         s.set("grad_cost", V::number(grad_cost));
         s.set("cost", V::number(static_cast<double>(ledger_->fe()) + grad_cost * static_cast<double>(grad_calls)));
         s.set("improvements", V::integer(static_cast<std::int64_t>(records.size())));
+        if (cec_ > 0) s.set("peaks", peaks_);
         meta.set("so", s);
         V fin = V::object();
         if (!records.empty()) {
@@ -219,6 +222,45 @@ private:
             f_opt_ = suite::bbob::instance(s.bbob_fid, s.bbob_iid, s.n_var).f_opt;
         }
         native_ = std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));
+        cec_ = spec_of(spec).cec_problem;
+    }
+
+    // A CEC 2013 problem's peaks found (so_metrics.hpp, peaks_found) at the
+    // competition's accuracies, on the run's final set: a strategy's minima
+    // log, else the answer (the owner's В3)
+    json::Value peaks(const scalar::Result& res) const
+    {
+        using V = json::Value;
+        std::vector<std::vector<double>> X;
+        std::vector<double> F;
+        std::string set = "answer";
+        for (const auto& [k, v] : res.settings)
+            if (k == "minima") {
+                set = "minima";
+                for (const V& row : json::parse(v).items) {
+                    F.push_back(-row.items[0].f);
+                    std::vector<double> x;
+                    for (std::size_t j = 3; j < row.items.size(); ++j) x.push_back(row.items[j].f);
+                    X.push_back(x);
+                }
+            }
+        if (set == "answer")
+            for (std::size_t i = 0; i < res.variables.size(); ++i) {
+                X.push_back(res.variables[i]);
+                F.push_back(-res.objectives[i][0]);
+            }
+        const suite::cec2013::Info info = suite::cec2013::info(cec_);
+        V eps = V::array(), found = V::array();
+        for (double e : {1e-1, 1e-2, 1e-3, 1e-4, 1e-5}) {
+            eps.items.push_back(V::number(e));
+            found.items.push_back(V::integer(so::peaks_found(X, F, info.height, e, info.r)));
+        }
+        V out = V::object();
+        out.set("set", V::string(set));
+        out.set("eps", eps);
+        out.set("found", found);
+        out.set("n_global", V::integer(info.n_global));
+        return out;
     }
 
     void account(const std::vector<double>& x, double f)
@@ -420,6 +462,8 @@ private:
     std::unique_ptr<RunLedger> ledger_;
     long long grad_calls_ = 0;
     bool incompatible_ = false;
+    int cec_ = 0;                                       // a CEC 2013 problem's number
+    json::Value peaks_;
     json::Value meta_;
 };
 

@@ -86,3 +86,17 @@ def value_at(records, budget: float, grad_cost: float = 1.0):
         if r[3] <= 0.0 and (best is None or r[2] < best):
             best = r[2]
     return best
+
+
+def peaks_found(X, F, height: float, eps: float, r: float) -> int:
+    """The CEC 2013 niching report's Algorithm 1 (so_metrics.hpp,
+    peaks_found): the points by F, largest first; one within eps of the peak
+    height counts when it is farther than r from every one counted before."""
+    order = sorted(range(len(X)), key=lambda i: -F[i])           # stable: equal F in their order
+    seeds = []
+    for i in order:
+        if not abs(height - F[i]) <= eps:
+            continue
+        if all(sum((a - b) ** 2 for a, b in zip(X[i], X[s])) ** 0.5 > r for s in seeds):
+            seeds.append(i)
+    return len(seeds)

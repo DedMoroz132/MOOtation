@@ -75,6 +75,15 @@ always listed under **Changed** or **Removed**.
   the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and
   the polynomial mutation, then KPCM (IAMD-1). Default runs keep their golden
   fingerprints.
+- Added (`suite/cec2013.hpp`; task 18, stage 3): the CEC 2013 niching
+  benchmark (Li, Engelbrecht, Epitropakis 2013), its twenty problems at one
+  objective (`cec2013_p<NN>_n<DD>_1D`, family `CEC2013` of the suite), and
+  the report's Algorithm 1 for the peaks found (`so_metrics.peaks_found`, in
+  C++ and Python). A campaign's run on one of them writes the peaks found at
+  ε = 1e-1 … 1e-5 on its final set (a strategy's minima log, else the
+  answer). F5 without the printed factor 4; the composition functions' shifts
+  and rotations are the library's; EF8F2 at z + 1, so that CF(o_i) = 0 as the
+  report states. Readings CEC-1 … CEC-6, SOM-5.
 - Added (`scalar/search.hpp`; task 18, stage 3): the strategies `mlsl`
   (Multi Level Single Linkage, Rinnooy Kan & Timmer 1987), `ils` (iterated
   local search; acceptance `better`, `rw`, `restart`, `lsmc`), `basin_hopping`

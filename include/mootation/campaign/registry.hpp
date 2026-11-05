@@ -292,6 +292,7 @@ inline suite::Spec spec_of(const json::Value& d)
     s.bbob_fid = static_cast<int>(int_of(d, "bbob_fid"));
     s.mgh_id = static_cast<int>(int_of(d, "mgh_id"));
     s.mgh_m = static_cast<int>(int_of(d, "mgh_m"));
+    s.cec_problem = static_cast<int>(int_of(d, "cec_problem"));
     if (const json::Value* v = d.find("nist"); v && v->kind == Kind::String) s.nist = v->s;
     if (const json::Value* r = d.find("rotation"); r && r->kind == Kind::Object) {
         s.rotation.family = r->find("family")->s;

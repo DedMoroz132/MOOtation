@@ -268,6 +268,20 @@ gens = 500
 `--check` expands the cross product against the real registry and names what
 does not exist, with near misses; the names are `DTLZ2_3D`, not `DTLZ2_M3`.
 
+**The CEC 2013 niching benchmark** (task 18, stage 3, §3.5;
+`suite/cec2013.hpp`): the competition's twenty problems (Li, Engelbrecht,
+Epitropakis 2013), `cec2013_p<NN>_n<DD>_1D`, the objective -F (F the report's,
+maximized), `f_opt` minus the optima's value — exact, or `computed` where
+Table IV rounds it (F3, F5, F6) — and the budget Table I's MaxFEs. F5 is taken
+without the factor 4 the report prints (CEC-1, as its Table IV and published
+results are); the composition functions F9-F12 use the library's own shifts
+and rotations (CEC-2), so their numbers compare with published ones in shape
+only. A campaign's run on one of them writes `so.peaks` in `meta.json`: the
+peaks found by the report's Algorithm 1 (`so_metrics.peaks_found`) at ε =
+1e-1 … 1e-5 on the run's final set — a strategy's minima log, else the answer
+— with the number of global optima; the peak ratio is their mean over runs
+divided by it, the success rate the share of runs that found them all.
+
 **At one objective** (task 18, stage 1, §1d): bbob's 24 functions in
 D = 2, 3, 5, 10, 20, 40 variables (`bbob<fid>_n<D>_1D`, instance 1 of the
 library's own draws, `[-5, 5]^D`; 144 problems), and the least-squares sets

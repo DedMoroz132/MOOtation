@@ -162,6 +162,32 @@ inline std::vector<double> ecdf(const std::vector<std::optional<double>>& runtim
     return out;
 }
 
+// THE PEAKS FOUND (task 18, stage 3, §3.5; the CEC 2013 niching report,
+// Li, Engelbrecht, Epitropakis 2013, §III, Algorithm 1): the points sorted
+// by F, largest first (F the report's, maximized); a point within eps of the
+// peak height is a peak found when it is farther than r (Euclidean, in x)
+// from every peak found before it. The count, at most the number of global
+// optima. SOM-5: the order of equal F is the points' own (a stable sort).
+inline int peaks_found(const std::vector<std::vector<double>>& X, const std::vector<double>& F, double height,
+                       double eps, double r)
+{
+    std::vector<std::size_t> order(X.size());
+    for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return F[a] > F[b]; });
+    std::vector<std::size_t> seeds;
+    for (std::size_t i : order) {
+        if (!(std::fabs(height - F[i]) <= eps)) continue;
+        bool far = true;
+        for (std::size_t s : seeds) {
+            double d2 = 0.0;
+            for (std::size_t j = 0; j < X[i].size(); ++j) d2 += (X[i][j] - X[s][j]) * (X[i][j] - X[s][j]);
+            far = far && std::sqrt(d2) > r;
+        }
+        if (far) seeds.push_back(i);
+    }
+    return static_cast<int>(seeds.size());
+}
+
 // The best feasible f among the records of cost at most budget; none before
 // the first feasible record
 inline std::optional<double> value_at(const std::vector<Improvement>& records, double budget, double grad_cost = 1.0)

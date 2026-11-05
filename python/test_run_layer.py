@@ -1718,8 +1718,9 @@ def the_registry_has_problems_at_one_objective():
     assert sizes == {"bbob": 144, "MGH": 54, "NIST": 54}, sizes
     from mootation.families import SYMMETRIC          # task 19, §19.1 (benchmarks/symmetric.py)
     sym = [k for k in one if k.startswith(tuple(f + "_" for f in SYMMETRIC))]
-    assert len(one) - len(sym) == 252, len(one)
-    assert len(sym) == 27, len(sym)
+    cec = [k for k in one if k.startswith("cec2013_p")]   # task 18, stage 3, §3.5 (suite/cec2013.hpp)
+    assert len(one) - len(sym) - len(cec) == 252, len(one)
+    assert len(sym) == 27 and len(cec) in (0, 20), (len(sym), len(cec))
     for k in by["bbob"]:
         q = one[k]
         fid, D = int(k[4:6]), int(k[8:10])
@@ -11571,6 +11572,122 @@ def lm_and_lbfgsb_take_the_problems_derivatives():
             assert why in str(e), (why, str(e))
         else:
             raise AssertionError("not refused: " + why)
+
+@test
+def the_cec2013_niching_problems_are_registered_and_cross_checked():
+    """Task 18, stage 3, §3.5 (suite/cec2013.hpp): the twenty problems of the
+    CEC 2013 niching benchmark are rows of the registry at one objective,
+    -F with f_opt minus the optima's value; F1-F8 from the report's formulas
+    here (Python) agree with the C++ suite at random points (F5 without the
+    factor 4, CEC-1); Algorithm 1's Python mirror counts as C++'s."""
+    if _core_with("cec2013_info") is None:
+        print("  skip  the_cec2013...: no _core.cec2013_info"); return
+    import math
+    import random
+    from mootation import _core
+    from mootation.benchmarks.registry import PROBLEMS, cec2013_name
+    from mootation.run.so_metrics import peaks_found
+    names = [n for n in PROBLEMS if n.startswith("cec2013_p")]
+    assert len(names) == 20, names
+    pi = math.pi
+
+    def F(fn, x):
+        if fn == 1:
+            v = x[0]
+            for lo, hi, a, b in ((0, 2.5, 80, 2.5), (2.5, 5, 64, -2.5), (5, 7.5, 64, 7.5), (7.5, 12.5, 28, -7.5),
+                                 (12.5, 17.5, 28, 17.5), (17.5, 22.5, 32, -17.5), (22.5, 27.5, 32, 27.5)):
+                if lo <= v < hi:
+                    return a * (b - v) if b > 0 else a * (v + b)
+            return 80 * (v - 27.5)
+        if fn == 2:
+            return math.sin(5 * pi * x[0]) ** 6
+        if fn == 3:
+            return (math.exp(-2 * math.log(2) * ((x[0] - 0.08) / 0.854) ** 2)
+                    * math.sin(5 * pi * (x[0] ** 0.75 - 0.05)) ** 6)
+        if fn == 4:
+            return 200 - (x[0] ** 2 + x[1] - 11) ** 2 - (x[0] + x[1] ** 2 - 7) ** 2
+        if fn == 5:
+            return -((4 - 2.1 * x[0] ** 2 + x[0] ** 4 / 3) * x[0] ** 2 + x[0] * x[1] + (4 * x[1] ** 2 - 4) * x[1] ** 2)
+        if fn == 6:
+            return -math.prod(sum(j * math.cos((j + 1) * v + j) for j in range(1, 6)) for v in x)
+        if fn == 7:
+            return sum(math.sin(10 * math.log(v)) for v in x) / len(x)
+        if fn == 8:
+            return -sum(10 + 9 * math.cos(2 * pi * k * v) for k, v in zip((3, 4), x))
+    rng = random.Random(4)
+    worst = 0.0
+    for p in range(1, 21):
+        info = _core.cec2013_info(p)
+        prob = PROBLEMS[cec2013_name(p, info["D"])]
+        assert prob.f_opt == -info["best"] and prob.n_vars == info["D"], (p, prob.f_opt)
+        assert prob.f_opt_kind == ("exact" if info["exact"] else "computed")
+        if info["function"] > 8:
+            continue
+        for _ in range(200):
+            x = [lo + (hi - lo) * rng.random() for lo, hi in prob.bounds]
+            c = -prob.evaluate(x)[0]
+            worst = max(worst, abs(c - F(info["function"], x)) / max(1.0, abs(c)))
+    assert worst < 1e-12, worst
+    X = [[0.1], [0.3], [0.3004], [0.5], [0.7], [0.9]]
+    Fv = [F(2, x) for x in X]
+    assert peaks_found(X, Fv, 1.0, 1e-4, 0.01) == _core.so_metrics.peaks_found(X, Fv, 1.0, 1e-4, 0.01) == 5
+
+
+_CEC_TOML = """[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["cec2013_p02_n01_1D", "cec2013_p04_n02_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 3000
+storage = "store"
+[[algorithms]]
+name = "multistart"
+pop = 0
+gens = 0
+params = { n_starts = 12, inner = { solver = "nelder_mead", local_tol = 1e-12 } }
+[[algorithms]]
+name = "cmaes"
+pop = 0
+gens = 0
+"""
+
+
+@test
+def a_cec2013_campaign_counts_the_peaks_in_both_engines():
+    """Task 18, stage 3, §3.5 and the owner's В3: on a CEC 2013 problem the
+    run's meta.json holds the peaks found at the competition's accuracies on
+    its final set, a strategy's minima log (multistart) or the answer
+    (cmaes: one point); both engines write the same files."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("cec2013_info") is None:
+        print("  skip  a_cec2013_campaign...: no C++ engine or _core.cec2013_info"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_CEC_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert len(jobs) == 8 and cp["done"] == cc["done"] == 8, (cp, cc)
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            peaks = json.loads((a / "meta.json").read_text(encoding="utf-8"))["so"]["peaks"]
+            assert peaks["eps"] == [0.1, 0.01, 0.001, 0.0001, 1e-05], peaks
+            if job.algorithm == "multistart":
+                assert peaks["set"] == "minima" and peaks["found"][3] == peaks["n_global"], (job.problem, peaks)
+            else:
+                assert peaks["set"] == "answer" and peaks["found"][0] <= 1, peaks
+
 
 @test
 def a_strategy_runs_its_inner_solver_through_minimize():

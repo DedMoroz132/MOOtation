@@ -1669,4 +1669,6 @@ void bind_run_layer(py::module_& m)
                return so::value_at(records_of(rs), budget, grad_cost);
            },
            py::arg("records"), py::arg("budget"), py::arg("grad_cost") = 1.0);
+    sm.def("peaks_found", &so::peaks_found, py::arg("X"), py::arg("F"), py::arg("height"), py::arg("eps"),
+           py::arg("r"));
 }

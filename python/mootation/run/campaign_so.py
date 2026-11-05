@@ -91,6 +91,27 @@ def grid_of(spec, budget: int, pop: int) -> list:
     return list(range(stride, budget + 1, stride))
 
 
+def _peaks(p, res, so) -> dict:
+    """A CEC 2013 problem's peaks found (so_metrics.peaks_found) at the
+    competition's accuracies on the run's final set: a strategy's minima
+    log, else the answer (job_so.hpp, peaks)."""
+    cec = p.native.spec.get("cec_problem") if p.native is not None else None
+    if not cec:
+        return {}
+    from .. import _core
+    settings = dict(res.settings)
+    if "minima" in settings:
+        rows = json.loads(settings["minima"])
+        X, F, kind = [r[3:] for r in rows], [-r[0] for r in rows], "minima"
+    else:
+        X, F, kind = [list(v) for v in res.variables], [-o[0] for o in res.objectives], "answer"
+    info = _core.cec2013_info(int(cec))
+    eps = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5]
+    return {"peaks": {"set": kind, "eps": eps,
+                      "found": [so.peaks_found(X, F, info["height"], e, info["r"]) for e in eps],
+                      "n_global": int(info["n_global"])}}
+
+
 def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, *, quiet: bool) -> str:
     import numpy as np
     from .. import __version__, _core, minimize
@@ -191,7 +212,7 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
     if job.algorithm in LOCAL and p.x0 is not None:
         derivatives["x0"] = list(p.x0)
     try:
-        minimize(None if "residuals" in derivatives else fn, bounds=p.bounds, n_objs=1,
+        res = minimize(None if "residuals" in derivatives else fn, bounds=p.bounds, n_objs=1,
                  algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens, seed=job.seed,
                  max_evaluations=job.budget, **{k: v for k, v in derivatives.items() if v is not None},
                  **job.params)
@@ -239,7 +260,7 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             "reference_version": so.REFERENCE_VERSION if p.f_opt_kind == "best_known" else None,
             "instance": iid, "targets": kind, "precisions": precisions, "f_x0": f_x0,
             "runtimes": runtimes, "grad_cost": grad_cost, "cost": fe + grad_cost * grad_calls,
-            "improvements": len(records)},
+            "improvements": len(records), **_peaks(p, res, so)},
         final=({} if best is None else {"f": best[2], "delta_f": delta(best[2]), "cv": best[3],
                                          "fe_best": best[0], "grad_calls_best": best[1]}),
         finished=time.strftime("%Y-%m-%dT%H:%M:%S"), seconds=round(time.perf_counter() - t0, 3))

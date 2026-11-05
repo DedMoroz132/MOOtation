@@ -2537,6 +2537,43 @@ def _register_symmetric():
 
 
 _register_symmetric()
+
+
+# =============================================================
+#  The CEC 2013 niching benchmark (task 18, stage 3, §3.5)
+# =============================================================
+#  Li, Engelbrecht, Epitropakis 2013 (suite/cec2013.hpp): its twenty problems,
+#  cec2013_p<NN>_n<DD>_1D, registered with the extension only (C++ evaluates
+#  them). The objective is -F; f_opt is minus the optima's value to full
+#  precision (exact, or computed where Table IV rounds it); targets absolute;
+#  the budget Table I's MaxFEs (pop_size 100); 50 runs, as the competition.
+#  The composition functions' shifts and rotations are the library's (CEC-2).
+def cec2013_name(p: int, D: int) -> str:
+    return f"cec2013_p{p:02d}_n{D:02d}_1D"
+
+
+def _register_cec2013():
+    try:
+        from .. import _core
+    except ImportError:
+        return
+    if not hasattr(_core, "cec2013_info"):            # an extension built before stage 3
+        return
+    for p in range(1, 21):
+        info = _core.cec2013_info(p)
+        D = int(info["D"])
+        nat = _core.Native({"family": "CEC2013", "n_var": D, "n_obj": 1, "cec_problem": p})
+        key = cec2013_name(p, D)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=D, bounds=[tuple(b) for b in nat.bounds], n_obj=1,
+            evaluate=nat.evaluate, constraints=_no_cons, evaluate_batch=nat.evaluate_batch,
+            hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
+            pop_size=100, n_gen=int(info["max_fes"]) // 100, K_runs=50, has_cons=False,
+            f_opt=-float(info["best"]), f_opt_kind="exact" if info["exact"] else "computed",
+            native=nat, targets="absolute")
+
+
+_register_cec2013()
 # the verification set (classic.py; task 17, supplement 2, §3): the C++ suite's
 EXACT_FRAME.update(_classic.register(PROBLEMS, BenchProblem, _budget, _ref_norm, _divisor))
 # The problems of the suite's families evaluated by C++ from here on (native.py),

@@ -48,6 +48,7 @@ set(MOOTATION_TESTS
     test_strategy
     test_restarts
     test_search
+    test_cec2013
     test_so_metrics
     test_store_codec
     test_json

@@ -20,6 +20,10 @@
 // objective, the function bbob_fid (1..24) at instance bbob_iid drawn here,
 // or its numbers in `bbob` (one function).
 //
+// The CEC 2013 niching benchmark at one objective (task 18, stage 3, §3.5;
+// cec2013.hpp): family "CEC2013", the competition's problem cec_problem (1 ...
+// 20) in its dimension; the objective is -F, F the report's (maximized).
+//
 // The least-squares sets at one objective (task 18, stage 1, §1d): family
 // "MGH", the function mgh_id (1..35) of Moré, Garbow, Hillstrom 1981 in n_var
 // variables with mgh_m residuals (mgh.hpp); family "NIST", the StRD file
@@ -101,6 +105,7 @@
 #include <vector>
 
 #include "bbob.hpp"
+#include "cec2013.hpp"
 #include "bits.hpp"
 #include "bt.hpp"
 #include "catzdt.hpp"
@@ -163,6 +168,7 @@ struct Spec {
     int bbob_fnum = 0, bbob_iid = 1;              // or drawn here: F1..F55 at that instance (bbob::biobj)
     int bbob_fid = 0;                             // bbob: f1..f24 at bbob_iid (bbob::instance)
     int mgh_id = 0, mgh_m = 0;                    // MGH: the function and its residuals' count
+    int cec_problem = 0;                          // CEC2013: the competition's problem 1 ... 20
     std::string nist;                             // NIST: the file's name (Misra1a, ...)
     int k = 0;                                    // WFG: the position variables (0: 2 (M - 1))
     bool wide = false;                            // DTLZ: wideDTLZ3's box (Problem::bounds)
@@ -241,6 +247,7 @@ public:
         else if (f == "bbob-biobj" || f == "bbob-biobj-mixint") kind_ = Kind::BBOB;
         else if (f == "bbob") kind_ = Kind::BBOB1;
         else if (f == "MGH") kind_ = Kind::MGH;
+        else if (f == "CEC2013") kind_ = Kind::CEC2013;
         else if (f == "NIST") kind_ = Kind::NIST;
         else if ((sym_ = make_sym(f, s_.sym)) != nullptr) kind_ = Kind::Sym;
         else throw std::invalid_argument("suite: unknown family '" + f + "'");
@@ -311,6 +318,9 @@ public:
                 return;
             case Kind::BBOB1:
                 f[0] = bbob1_(p);
+                return;
+            case Kind::CEC2013:
+                f[0] = -cec_.value(std::vector<double>(p, p + n_var));
                 return;
             case Kind::DASCMOP:
                 dascmop::evaluate(which_, p, n_var, s_.constants, f, g);
@@ -516,6 +526,12 @@ public:
             case Kind::NIST: return box(n, -std::numeric_limits<double>::infinity(),
                                         std::numeric_limits<double>::infinity());   // no box
             case Kind::Sym: return sym_->bounds;
+            case Kind::CEC2013: {
+                const auto lo = cec2013::lower(s_.cec_problem), hi = cec2013::upper(s_.cec_problem);
+                Bounds b;
+                for (std::size_t j = 0; j < lo.size(); ++j) b.push_back({lo[j], hi[j]});
+                return b;
+            }
         }
         return {};
     }
@@ -543,7 +559,8 @@ public:
 
 private:
     enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, BBOB1, DASCMOP, LIRCMOP,
-                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, LZ09, UF, CF, RCM, Bits, CatZDT, MGH, NIST, Sym };
+                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, LZ09, UF, CF, RCM, Bits, CatZDT, MGH, NIST, Sym,
+                      CEC2013 };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
@@ -560,6 +577,7 @@ private:
     zcat::Problem zcat_;
     bbob::Pair bbob_;
     bbob::Objective bbob1_;
+    cec2013::Problem cec_;
     nist::Dataset nist_;
     std::shared_ptr<const sym::Family> sym_;
 
@@ -715,6 +733,12 @@ private:
                 bbob_ = bbob::Pair(s_.bbob, n);
                 if ((bbob_.integers() > 0) != (s_.family == "bbob-biobj-mixint"))
                     fail("integer variables in bbob-biobj-mixint only");
+                break;
+            case Kind::CEC2013:
+                if (M != 1 || s_.cec_problem < 1 || s_.cec_problem > cec2013::kProblems ||
+                    n != cec2013::info(s_.cec_problem).D)
+                    fail("one objective, problem 1 ... 20 in its dimension");
+                cec_ = cec2013::Problem(s_.cec_problem);
                 break;
             case Kind::BBOB1:
                 if (M != 1) fail("one objective");

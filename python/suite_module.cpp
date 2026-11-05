@@ -120,6 +120,7 @@ suite::Spec spec_of(const py::dict& d)
     if (d.contains("bbob_fid")) s.bbob_fid = d["bbob_fid"].cast<int>();
     if (d.contains("mgh_id")) s.mgh_id = d["mgh_id"].cast<int>();
     if (d.contains("mgh_m")) s.mgh_m = d["mgh_m"].cast<int>();
+    if (d.contains("cec_problem")) s.cec_problem = d["cec_problem"].cast<int>();
     if (d.contains("nist")) s.nist = d["nist"].cast<std::string>();
     if (d.contains("rotation") && !d["rotation"].is_none()) {
         const py::dict r = d["rotation"].cast<py::dict>();
@@ -181,6 +182,7 @@ py::dict dict_of(const suite::Spec& s)
         d["mgh_m"] = s.mgh_m;
     }
     if (!s.nist.empty()) d["nist"] = s.nist;
+    if (s.cec_problem) d["cec_problem"] = s.cec_problem;
     if (!s.rotation.family.empty()) {
         py::dict r;
         r["family"] = s.rotation.family;
@@ -427,4 +429,24 @@ void bind_suite(py::module_& m)
           py::arg("name"),
           "The library's copy of NIST's StRD file <name>.dat (suite/nist_data.hpp): its parameters' "
           "count n, observations m, starts, certified parameters and residual sum of squares.");
+
+    m.def("cec2013_info",
+          [](int p) {
+              const suite::cec2013::Info i = suite::cec2013::info(p);
+              const suite::cec2013::Best b = suite::cec2013::best(p);
+              py::dict out;
+              out["function"] = i.function;
+              out["D"] = i.D;
+              out["r"] = i.r;
+              out["height"] = i.height;
+              out["n_global"] = i.n_global;
+              out["max_fes"] = i.max_fes;
+              out["best"] = b.value;
+              out["exact"] = b.exact;
+              return out;
+          },
+          py::arg("problem"),
+          "The CEC 2013 niching problem <problem> (1 ... 20; suite/cec2013.hpp): its function F1 ... F12, "
+          "dimension, Table IV's r, peak height and number of global optima, Table I's MaxFEs, and the "
+          "optima's value to full precision (exact or computed).");
 }
