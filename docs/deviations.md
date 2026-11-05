@@ -407,7 +407,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-221 items: 221 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+222 items: 222 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -596,6 +596,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-6 | halving: a round reruns each arm with its whole allowance so far; its earlier points come from the archive, free, and only what goes beyond costs (a solver whose run does not depend on the budget repeats itself exactl... | yes | `search.hpp` |
 | `search` | SRCH-7 | memetic: the global solver is rerun with its allowance grown by memetic_every, its earlier points free (as SRCH-6); it does not see the local searches' points (no Lamarckian step), they only enter the answer. | yes | `search.hpp` |
 | `search` | SRCH-8 | A local search's result is the inner solver's answer; worse means more violating, then larger f (Deb). | yes | `search.hpp` |
+| `search` | SRCH-9 | memetic: a phase that spends nothing ends the strategy (as RST-8): the global solver stopped by its own criteria evaluates nothing new when rerun, and with every archive point already a local start there is nothing le... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-3 | Ranking: the comparison of evo.hpp (NSGA-II's constrained- domination at M = 1 for constraints g <= 0, not in the paper), ties in the order told (stable). | yes | `sep_cmaes.hpp` |
