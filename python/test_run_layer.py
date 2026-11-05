@@ -7573,7 +7573,8 @@ def readings_knobs_of_2026_11_02():
              ("maoea_iamd", "kpcm_pm", "off", "on"),      # 2026-11-05 (IAMD-1)
              ("edv", "edv_tournament", "fitness", "random"),  # 2026-11-05 (EDV-5)
              ("maoea_iamd", "cv_rule", "angle", "lmea"),       # 2026-11-06 (IAMD-2)
-             ("maoea_iamd", "cv_norm", "population", "nondominated")]  # 2026-11-06 (IAMD-3)
+             ("maoea_iamd", "cv_norm", "population", "nondominated"),  # 2026-11-06 (IAMD-3)
+             ("moead_ds", "nadir_source", "intercepts", "archive")]  # 2026-11-06 (DDS-9)
     for alg, knob, dflt, other in cases:
         d = minimize(d2.evaluate, algorithm=alg, **k)
         n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)

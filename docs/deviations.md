@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-392 items: 316 yes, 19 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+393 items: 316 yes, 20 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -119,6 +119,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `moead_ds` | DDS-6 (ARBITRATION) | FIX 2026-07-07 (source-fidelity review): the literal Eq.9 inverts the ASF weights («when j=i, w=0» → 1e-6 on the own axis, 1 on the others): for m≥3 the "extremes" degenerate into near-ideal points (≈argmin f_i) → the... | yes | `moead_ds.hpp` |
 | `moead_ds` | DDS-8 (READING; knob extreme_weights, nsga3 by default) | Alg.3 line 5 puts the extreme points into Q unconditionally ("Q = Extreme"), so which points Eq.9 calls extreme decides which points survive every generation. | yes | `moead_ds.hpp` |
 | `moead_ds` | DDS-7 (fixed 2026-09-05) | Mating d2 (Alg.4 line 2) uses the reference points R returned by the LAST DDS call (Alg.1 line 3 for the first generation, line 12 afterwards) — i.e. the normalization frame of the merged 2N pool, as Alg.1 line 8 cons... | no: fixed | `moead_ds.hpp` |
+| `moead_ds` | DDS-9 (GUARD; knob nadir_source, off by default: intercepts) | On MaF3 at eight objectives the population can fall into points with one enormous objective and the others near zero (dominance resistant solutions); the intercepts through its own extreme points then put them on the... | no: option | `moead_ds.hpp` |
 | `rd_emo` | RDE-1 (NOT A DEVIATION — kept as a note) | θ = 5 IS stated: §4.1 says "θ = 5 suggested in MOEA/D is set in RD-EMO". | no: fixed | `rd_emo.hpp` |
 | `rd_emo` | RDE-2 (MINOR) | A region is argmin d2 to a reference line, i.e. the "nearest reference line". | yes | `rd_emo.hpp` |
 | `rd_emo` | RDE-3 (DEVIATION — overriding a stated value) | z* is the RUNNING ideal: the per-objective minimum over the population and every offspring seen. | yes | `rd_emo.hpp` |

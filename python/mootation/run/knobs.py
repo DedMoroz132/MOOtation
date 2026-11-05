@@ -126,6 +126,7 @@ _FALLBACK_TEXT = {
     "sym": ("off", "canon", "align"),
     "cv_rule": ("angle", "lmea", "platemo"),
     "cv_norm": ("population", "nondominated"),
+    "nadir_source": ("intercepts", "archive"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 

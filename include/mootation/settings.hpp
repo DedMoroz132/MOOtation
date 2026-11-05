@@ -309,6 +309,9 @@ inline bool is_core_param(const std::string& name)
 //   cv_norm       maoea_iamd: the classification normalized by the whole
 //                 population (population, the default) or by its
 //                 non-dominated members, as PlatEMO (nondominated; IAMD-3)
+//   nadir_source  moead_ds: z_nad of Eq.10 from the hyperplane intercepts
+//                 (intercepts, the default) or the maximum over an archive
+//                 of the run's non-dominated vectors (archive; DDS-9)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -395,6 +398,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"sym",          {"off", "canon", "align"}},
         {"cv_rule",      {"angle", "lmea", "platemo"}},
         {"cv_norm",      {"population", "nondominated"}},
+        {"nadir_source", {"intercepts", "archive"}},
     };
     return v;
 }
@@ -435,7 +439,8 @@ inline bool is_core_word(const std::string& name)
                           "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
                           "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept",
                           "memetic_pick", "keep_points", "sym",
-                          "cv_rule", "cv_norm"})
+                          "cv_rule", "cv_norm",
+                          "nadir_source"})
         if (name == k) return true;
     return false;
 }

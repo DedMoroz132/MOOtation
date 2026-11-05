@@ -217,6 +217,8 @@ void test_knobs_of_2026_11_02()
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_rule", "angle", "lmea");
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_rule", "angle", "platemo");
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_norm", "population", "nondominated");
+    // 2026-11-06: moead_ds's nadir_source (DDS-9)
+    word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "nadir_source", "intercepts", "archive");
     std::cout << "-- edv: normalize (false by default, true) --\n";
     using EC = EDVCore<ED>;
     check(fingerprint_with<ED, EC>(91, 30, [](EC& c) { c.set_normalize(false); }) == "91 535f03f7cd2cb7ec",

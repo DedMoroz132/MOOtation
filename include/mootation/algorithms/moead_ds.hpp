@@ -83,6 +83,18 @@
 //     generation, line 12 afterwards) — i.e. the normalization frame of the
 //     merged 2N pool, as Alg.1 line 8 consumes "d2" from line 12. Previously
 //     the parent population was re-normalized on its own every generation.
+//   DDS-9 (GUARD; knob nadir_source, off by default: intercepts). On MaF3 at
+//     eight objectives the population can fall into points with one
+//     enormous objective and the others near zero (dominance resistant
+//     solutions); the intercepts through its own extreme points then put
+//     them on the hyperplane (d1 ~ 0), and DDS keeps them. The paper's Eq.10
+//     names z^nad "the maximum value for each objective"; nadir_source =
+//     archive takes it as the maximum over an archive of every non-dominated
+//     objective vector evaluated in the run (Tanabe 2024's Eq.10; He,
+//     Ishibuchi, Trivedi et al., TEVC 2021, compare the estimates), z* and
+//     the extreme points of Q staying as they are. intercepts keeps the
+//     NSGA-III hyperplane (DDS-2, DDS-6). The archive is unbounded and
+//     checked point by point.
 //
 // CONSTRAINTS (beyond the paper, off by default). The DDS pivot loop picks,
 //   among the candidates near a pivot, the NON-DOMINATED one with the smallest
@@ -128,6 +140,25 @@ private:
     std::vector<Sol> pop_;
     std::vector<std::vector<double>> R_last_;   // reference points R of pop_ from the last DDS (DDS-7)
     int N_=0, m_=0, gen_=0, K_=10;
+    bool nadir_archive_=false;                  // DDS-9: z_nad from nd_arch_ (knob nadir_source)
+    std::vector<std::vector<double>> nd_arch_;  // every non-dominated objective vector evaluated (DDS-9)
+
+    static bool dominates_objs(const std::vector<double>& a, const std::vector<double>& b){
+        bool less=false;
+        for(std::size_t k=0;k<a.size();++k){ if(a[k]>b[k]) return false; if(a[k]<b[k]) less=true; }
+        return less;
+    }
+    // DDS-9: the archive keeps a vector unless an archived one dominates it or
+    // equals it; the vectors it dominates leave
+    void archive_add(const Sol& s){
+        if(!nadir_archive_) return;
+        if(constraint_mode!=ConstraintMode::NONE && s.cv>0.0) return;
+        for(const auto& a:nd_arch_) if(a==s.objs || dominates_objs(a,s.objs)) return;
+        nd_arch_.erase(std::remove_if(nd_arch_.begin(),nd_arch_.end(),
+                                      [&](const std::vector<double>& a){ return dominates_objs(s.objs,a); }),
+                       nd_arch_.end());
+        nd_arch_.push_back(s.objs);
+    }
 
     double pm_eff(int nv) const { return (pm_>0.0)?pm_:(nv>0?1.0/nv:0.0); }
     bool dom(const Sol& a, const Sol& b) const {
@@ -169,6 +200,11 @@ private:
         }
         if(ok){ for(int i=0;i<m_;++i){ b[i]=rhs[i]/A[i][i]; if(b[i]<=1e-12){ok=false;break;} a[i]=1.0/b[i]; } }
         if(!ok){ for(int k=0;k<m_;++k){ double mx=zmin[k]; for(auto&s:P) mx=std::max(mx,s.objs[k]); a[k]=std::max(mx-zmin[k],1e-12); } }
+        if(nadir_archive_ && !nd_arch_.empty()){   // DDS-9: z_nad = max over the archive
+            for(int k=0;k<m_;++k){ double mx=-std::numeric_limits<double>::max();
+                for(const auto& v:nd_arch_) mx=std::max(mx,v[k]);
+                a[k]=std::max(mx-zmin[k],1e-12); }
+        }
         R.assign(n,std::vector<double>(m_,0.0)); d1.assign(n,0.0);
         for(int j=0;j<n;++j){
             std::vector<double> fpp(m_); double sum=0;
@@ -242,6 +278,7 @@ private:
         ops::polynomial_mutation(c1,b,eta_m_,pm_eff(nv),rng_);
         Sol z; z.vars=c1; vault.set_variables(scratch,c1); vault.refresh_objectives(scratch); z.objs=vault.objectives_of(scratch); z.pt=vault.point_of(scratch);
         if(constraint_mode!=ConstraintMode::NONE) z.cv=vault.get_cv(scratch);
+        archive_add(z);                                      // DDS-9
         return z;
     }
     void store_arch(DataVault<Ind_t>& vault){ vault.reduce(0); vault.expand((int)pop_.size());
@@ -257,6 +294,12 @@ public:
     void set_pm(double p){ pm_=p; }
     void set_seed(unsigned s){ rng_.seed(s); }
     bool set_word(const std::string& k, const std::string& w){
+        if(k=="nadir_source"){                               // DDS-9
+            if(w!="intercepts" && w!="archive")
+                throw std::invalid_argument("moead_ds: nadir_source = '"+w+"': intercepts or archive");
+            nadir_archive_=(w=="archive");
+            return true;
+        }
         if(k!="extreme_weights") return false;               // DDS-8
         if(w!="nsga3" && w!="literal")
             throw std::invalid_argument("moead_ds: extreme_weights = '"+w+"': nsga3 or literal");
@@ -278,6 +321,7 @@ public:
         pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
+        nd_arch_.clear(); for(auto&s:pop_) archive_add(s);   // DDS-9
         pop_=dds(pop_);   // Alg.1 line 3: [P, d1, d2] = DDS(P, N, 0)
     }
     void setup_seeded(DataVault<Ind_t>& vault){
@@ -289,6 +333,7 @@ public:
         pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
+        nd_arch_.clear(); for(auto&s:pop_) archive_add(s);   // DDS-9
         pop_=dds(pop_);   // Alg.1 line 3 (a seeded pool larger than N is reduced to N here)
     }
 

@@ -76,6 +76,11 @@ always listed under **Changed** or **Removed**.
   search strategy (`scalar/tiktak.hpp`): a Sobol sample, its best tenth in
   order, local searches from starts mixed with the best minimum so far;
   knobs `tiktak_n`, `tiktak_share`, `start_points`, `start_budget`.
+- Added: `moead_ds`'s knob `nadir_source`, default unchanged, so default
+  runs keep their golden fingerprints. `intercepts`, the default, takes
+  Eq.10's z_nad from the hyperplane through the extreme points; `archive`
+  takes it as the maximum over an archive of every non-dominated objective
+  vector of the run (DDS-9).
 - Added (task 20, §20.2.1): `suite/wrap.hpp`, a permutation, rotation and
   shift over any Native problem. The run sees x; the problem
   is evaluated at y = T(x): shift u = x - s, rotate v = c + Q (u - c),
