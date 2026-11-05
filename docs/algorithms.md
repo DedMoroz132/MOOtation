@@ -124,18 +124,20 @@ constrained-domination at one objective (`scalar/evo.hpp`), in no paper:
 
 | Algorithm | Year | Name | Knobs |
 |---|---|---|---|
-| DE/rand/1/bin (Storn & Price) | 1997 | `de` | `F`, `CR`, `bound_repair` |
-| JADE (Zhang & Sanderson) | 2009 | `jade` | `jade_p`, `jade_c`, `de_archive` |
-| SHADE (Tanabe & Fukunaga) | 2013 | `shade` | `shade_h`, `shade_p_max`, `de_archive` |
-| L-SHADE (Tanabe & Fukunaga) | 2014 | `lshade` | `shade_h`, `lshade_p`, `lshade_r_arc`, `lshade_n_min`, `lshade_max_nfe` (0: the budget) |
-| real-coded GA (Deb & Deb), its steady state | 2014 | `ga_sbx`, `ssga` | `pc`, `eta_c`, `pm`, `eta_m`, `ga_tournament` |
+| DE/rand/1/bin (Storn & Price) | 1997 | `de` | `F`, `CR`, `bound_repair`, `sym` |
+| JADE (Zhang & Sanderson) | 2009 | `jade` | `jade_p`, `jade_c`, `de_archive`, `sym` |
+| SHADE (Tanabe & Fukunaga) | 2013 | `shade` | `shade_h`, `shade_p_max`, `de_archive`, `sym` |
+| L-SHADE (Tanabe & Fukunaga) | 2014 | `lshade` | `shade_h`, `lshade_p`, `lshade_r_arc`, `lshade_n_min`, `lshade_max_nfe` (0: the budget), `sym` |
+| real-coded GA (Deb & Deb), its steady state | 2014 | `ga_sbx`, `ssga` | `pc`, `eta_c`, `pm`, `eta_m`, `ga_tournament`, `sym`, `ga_block_uniform`, `ga_block_mutation` |
 | G3 with PCX (Deb, Anand, Joshi) | 2002 | `g3_pcx` | `g3_mu`, `g3_lambda`, `g3_sigma`, `bound_repair` |
 | CHC with BLX-0.5 (Eshelman; Eshelman & Schaffer) | 1991, 1993 | `chc` | `chc_divergence`, `blx_alpha`, `chc_bits`, `bound_repair` |
-| PSO, constriction Type 1'' (Clerc & Kennedy) | 2002 | `pso` | `pso_phi`, `kappa`, `pso_topology` (ring \| global), `pso_v0` (random \| zero), `bound_repair` |
-| SPSO 2011 (Zambrano-Bigiarini, Clerc, Rojas) | 2013 | `spso2011` | `spso_k` |
+| PSO, constriction Type 1'' (Clerc & Kennedy) | 2002 | `pso` | `pso_phi`, `kappa`, `pso_topology` (ring \| global), `pso_v0` (random \| zero), `bound_repair`, `sym` |
+| SPSO 2011 (Zambrano-Bigiarini, Clerc, Rojas) | 2013 | `spso2011` | `spso_k`, `sym` |
 | sep-CMA-ES (Ros & Hansen) | 2008 | `sep_cmaes` | `cma_sigma0`, `local_tol` |
 
 How each was checked is in [verification.md](verification.md#the-population-methods-at-one-objective).
+`sym = off | canon | align` (task 19; off by default) and the GA's block operators use a problem's
+symmetries — see [symmetric-problems.md](symmetric-problems.md#symmetries-in-the-population-methods-scalarsymmetryhpp).
 
 **Search strategies** (task 18, stage 3; `scalar/strategy.hpp`): a strategy
 runs an inner solver — the knob `inner`, a table `{solver = name, its knobs

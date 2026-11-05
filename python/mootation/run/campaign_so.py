@@ -13,7 +13,8 @@ of the problem's Jacobian is one). A least-squares problem (MGH, NIST) hands
 its residuals, and MGH its Jacobian, to the algorithms that take them (the
 single-objective ones), and its start x0 to lm, lbfgsb and eki; a problem
 with symmetries (task 19) its gradient where it is not a sum of squares
-(lj_cluster) and its gauge basis (for lm_gauge = "on"). A bbob problem
+(lj_cluster), its gauge basis (for lm_gauge = "on") and, to the
+single-objective algorithms, its blocks and canon (for sym). A bbob problem
 runs at the instance [campaign] bbob_instance says: "by_run" (the default)
 its run's seed (seeds 1, 2, ... by default: instance k on run k), "fixed"
 instance 1; its f_opt is that instance's (the owner's decision of 01.11,
@@ -237,6 +238,10 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         derivatives = {"grad": gradient}
     if native.gauge_dim > 0:
         derivatives["gauge_basis"] = lambda x: [list(row) for row in native.gauge_basis(x)]
+    if native.blocks and job.algorithm in SINGLE:      # its symmetries, for sym (task 19, §19.2)
+        derivatives["sym_blocks"] = list(native.blocks)
+        if native.has_canon:
+            derivatives["canon"] = lambda x: list(native.canon(x))
     if job.algorithm in LOCAL and x0 is not None:
         derivatives["x0"] = list(x0)
     try:

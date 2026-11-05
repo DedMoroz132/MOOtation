@@ -40,6 +40,10 @@
 //   DE-5. done() is true once all NP points are equal: every difference
 //     vector is zero and no trial can differ from its target. The paper
 //     stops at a value to reach or a number of generations, the caller's.
+//   DE-6. sym (task 19, symmetry.hpp SYM-8; off by default): after the index
+//     draws, x_r1, x_r2 and x_r3 aligned to the target (align), or the four
+//     canonical (canon: the crossover and the bound repair then take
+//     canon(x_i)); no draw changes, and sym = off is the trial as before.
 //
 // With F = CR = 0.2 and `reflect` this is gde3 at n_objs = 1 without
 // constraints, draw for draw (GDE3Core::setup and step): the same initial
@@ -54,6 +58,7 @@
 #include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
+#include "symmetry.hpp"
 
 namespace mootation::scalar::de {
 
@@ -65,7 +70,40 @@ struct Options {
     double F = 0.5;                                        // §4
     double CR = 0.1;                                       // §4
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // DE-2
+    symmetry::Sym sym;                                     // DE-6
 };
+
+// The trial of x_i (DE-1, (2), (4)); sym: DE-6.
+inline Vec trial(const Rows& x, std::size_t i, const Options& o, const Vec& lo, const Vec& hi, std::mt19937& rng)
+{
+    const std::size_t n = x.size(), d = lo.size();
+    const int last = static_cast<int>(n) - 1, ii = static_cast<int>(i);
+    rnd::uniform_int_distribution<int> pick(0, last);
+    rnd::uniform_int_distribution<int> dim(0, static_cast<int>(d) - 1);
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
+    int a, b, c;                                                   // DE-1
+    do a = pick(rng); while (a == ii);
+    do b = pick(rng); while (b == ii || b == a);
+    do c = pick(rng); while (c == ii || c == a || c == b);
+    Vec ci, ca, cb, cc;                                            // DE-6's copies
+    const Vec& xi = o.sym.mode == symmetry::Mode::canon ? o.sym.view(x[i], x[i], ci) : x[i];
+    const Vec &xa = o.sym.view(x[static_cast<std::size_t>(a)], xi, ca),
+              &xb = o.sym.view(x[static_cast<std::size_t>(b)], xi, cb),
+              &xc = o.sym.view(x[static_cast<std::size_t>(c)], xi, cc);
+    const std::size_t jr = static_cast<std::size_t>(dim(rng));
+    Vec u(d);
+    ops::RepairTally tally;                                        // the mutant (task 20, §20.2.2)
+    for (std::size_t j = 0; j < d; ++j) {
+        double v = xc[j] + o.F * (xa[j] - xb[j]);                  // (2)
+        if (v < lo[j] || v > hi[j]) {
+            tally.out();
+            if (o.repair != ops::BoundRepair::Native)
+                v = ops::repair_value(v, lo[j], hi[j], xi[j], o.repair, rng);   // DE-2
+        }
+        u[j] = U01(rng) < o.CR || j == jr ? v : xi[j];             // (4)
+    }
+    return u;
+}
 
 class DE {
 public:
@@ -84,32 +122,8 @@ public:
     Rows ask()
     {
         if (x_.empty()) return trial_ = evo::uniform(lo_, hi_, o_.np, rng_);
-        const std::size_t n = o_.np, d = lo_.size();
-        const int last = static_cast<int>(n) - 1;
-        rnd::uniform_int_distribution<int> pick(0, last);
-        rnd::uniform_int_distribution<int> dim(0, static_cast<int>(d) - 1);
-        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
-        trial_.assign(n, Vec(d));
-        for (std::size_t i = 0; i < n; ++i) {
-            const int ii = static_cast<int>(i);
-            int a, b, c;                                           // DE-1
-            do a = pick(rng_); while (a == ii);
-            do b = pick(rng_); while (b == ii || b == a);
-            do c = pick(rng_); while (c == ii || c == a || c == b);
-            const Vec &xa = x_[static_cast<std::size_t>(a)], &xb = x_[static_cast<std::size_t>(b)],
-                      &xc = x_[static_cast<std::size_t>(c)];
-            const std::size_t jr = static_cast<std::size_t>(dim(rng_));
-            ops::RepairTally tally;                                // the mutant (task 20, §20.2.2)
-            for (std::size_t j = 0; j < d; ++j) {
-                double v = xc[j] + o_.F * (xa[j] - xb[j]);         // (2)
-                if (v < lo_[j] || v > hi_[j]) {
-                    tally.out();
-                    if (o_.repair != ops::BoundRepair::Native)
-                        v = ops::repair_value(v, lo_[j], hi_[j], x_[i][j], o_.repair, rng_);   // DE-2
-                }
-                trial_[i][j] = U01(rng_) < o_.CR || j == jr ? v : x_[i][j];               // (4)
-            }
-        }
+        trial_.assign(o_.np, Vec());
+        for (std::size_t i = 0; i < o_.np; ++i) trial_[i] = trial(x_, i, o_, lo_, hi_, rng_);
         return trial_;
     }
 

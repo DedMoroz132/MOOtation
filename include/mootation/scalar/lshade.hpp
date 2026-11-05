@@ -72,6 +72,7 @@ struct Options {
     std::size_t H = 6;                  // Table II
     std::size_t n_min = 4;              // §II-F
     long long max_nfe = 0;              // 0: 10000 D (§III)
+    symmetry::Sym sym;                  // task 19 (pbest.hpp PB-3)
 };
 
 class LSHADE {
@@ -112,7 +113,7 @@ public:
             const std::size_t r = pick_h(rng_);
             cr_[i] = terminal_[r] ? 0.0 : pbest::draw_CR(rng_, m_cr_[r]);   // (1)
             F_[i] = pbest::draw_F(rng_, m_f_[r]);                         // (2)
-            u_[i] = pbest::trial(x_, a_, i, order, std::min(top, n_), F_[i], cr_[i], lo_, hi_, rng_);
+            u_[i] = pbest::trial(x_, a_, i, order, std::min(top, n_), F_[i], cr_[i], lo_, hi_, rng_, o_.sym);
         }
         return u_;
     }

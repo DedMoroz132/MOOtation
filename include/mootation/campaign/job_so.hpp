@@ -13,8 +13,9 @@
 // scalar/improvements.hpp), a call of the problem's Jacobian one grad_call;
 // a least-squares problem's residuals (and MGH's Jacobian) to the algorithm,
 // its start x0 to lm, lbfgsb and eki; a problem with symmetries (task 19)
-// its gradient where it is not a sum of squares (lj_cluster) and its gauge
-// basis (lm_gauge = on); a bbob problem at the instance
+// its gradient where it is not a sum of squares (lj_cluster), its gauge
+// basis (lm_gauge = on) and its blocks and canon (sym); a bbob problem at the
+// instance
 // [campaign] bbob_instance gives (by_run: the run's seed; fixed: 1), f_opt
 // that instance's. With [campaign] wrap_shift, wrap_rotate or wrap_perm the
 // problem is seen through the wrappers (suite/wrap.hpp; task 20, §20.2.1):
@@ -391,6 +392,12 @@ private:
                 for (std::size_t i = 0; i < n; ++i)
                     for (std::size_t c = 0; c < k; ++c) N[i][c] = flat[i * k + c];
             };
+        }
+        if (single(job_.algorithm)) {                    // its symmetries, for sym (task 19, §19.2)
+            for (const suite::Blocks& b : native_->blocks)
+                P.sym_blocks.push_back({static_cast<std::size_t>(b.offset), static_cast<std::size_t>(b.size),
+                                        static_cast<std::size_t>(b.count)});
+            if (native_->has_canon) P.canon = [this](std::vector<double>& x) { native_->canon(x.data()); };
         }
         return P;
     }

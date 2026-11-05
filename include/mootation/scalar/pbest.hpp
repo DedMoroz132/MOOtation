@@ -21,6 +21,10 @@
 //     differ as asked; r2 indexes P (0 ... |P| - 1), then A.
 //   PB-2. "The best" of P: ranked by the comparison of evo.hpp, ties by
 //     index; x_pbest is drawn from the first `top`, and may be x_i or x_r1.
+//   PB-3. sym (task 19, symmetry.hpp SYM-8; off by default): after the
+//     draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four
+//     canonical (canon); no draw changes, and sym = off is the trial as
+//     before.
 // ============================================================================
 
 #include <algorithm>
@@ -32,6 +36,7 @@
 #include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
+#include "symmetry.hpp"
 
 namespace mootation::scalar::pbest {
 
@@ -61,21 +66,23 @@ inline std::vector<std::size_t> ranking(const Vec& f, const Vec& v)
 }
 
 // The trial of x_i by current-to-pbest/1/bin, x_pbest one of the first `top`
-// of `order` (PB-1).
+// of `order` (PB-1); sym: PB-3.
 inline Vec trial(const Rows& P, const Rows& A, std::size_t i, const std::vector<std::size_t>& order,
-                 std::size_t top, double F, double CR, const Vec& lo, const Vec& hi, std::mt19937& rng)
+                 std::size_t top, double F, double CR, const Vec& lo, const Vec& hi, std::mt19937& rng,
+                 const symmetry::Sym& sym = {})
 {
     const std::size_t n = P.size(), d = lo.size();
     rnd::uniform_int_distribution<std::size_t> pick_top(0, top - 1), pick_p(0, n - 1), pick_pa(0, n + A.size() - 1),
         dim(0, d - 1);
     rnd::uniform_real_distribution<double> U01(0.0, 1.0);
-    const Vec& xi = P[i];
-    const Vec& xb = P[order[pick_top(rng)]];
+    Vec ci, cb, c1, c2;                                       // PB-3's copies
+    const Vec& xi = sym.mode == symmetry::Mode::canon ? sym.view(P[i], P[i], ci) : P[i];
+    const Vec& xb = sym.view(P[order[pick_top(rng)]], xi, cb);
     std::size_t r1, r2;
     do r1 = pick_p(rng); while (r1 == i);
     do r2 = pick_pa(rng); while (r2 == i || r2 == r1);
-    const Vec& x1 = P[r1];
-    const Vec& x2 = r2 < n ? P[r2] : A[r2 - n];
+    const Vec& x1 = sym.view(P[r1], xi, c1);
+    const Vec& x2 = sym.view(r2 < n ? P[r2] : A[r2 - n], xi, c2);
     const std::size_t jr = dim(rng);
     Vec u(d);
     ops::RepairTally tally;                                    // the mutant (task 20, §20.2.2)

@@ -44,6 +44,10 @@
 //     all positions; links: informer by informer, K draws each.
 //   SPSO-8. Constraints g <= 0: NSGA-II's constrained-domination at M = 1
 //     (evo.hpp) for "f(X_i) < f(P_i)", L_i and SPSO-4; not in the paper.
+//   SPSO-9. sym (task 19, symmetry.hpp SYM-9; off by default): align only —
+//     P_i and L_i aligned to X_i before the particle moves, the velocity left
+//     in the particle's representation; canon refused. No draw changes, and sym =
+//     off is the move as before.
 // ============================================================================
 
 #include <algorithm>
@@ -57,6 +61,7 @@
 #include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
+#include "symmetry.hpp"
 
 namespace mootation::scalar::spso2011 {
 
@@ -68,7 +73,52 @@ struct Options {
     std::size_t K = 3;                                     // §III
     double c = 0.5 + 0.6931471805599453;                   // 0.5 + ln 2
     double w = 1.0 / (2.0 * 0.6931471805599453);           // 1 / (2 ln 2)
+    symmetry::Sym sym;                                     // SPSO-9
 };
+
+// A particle's move ((2a-c), (3), (1b), SPSO-3, SPSO-5, SPSO-6): X and V from
+// its best P and its neighbourhood's best L; sym: SPSO-9.
+inline void move(Vec& X, Vec& V, const Vec& P0, const Vec& L0, const Options& o, const Vec& lo, const Vec& hi,
+                 std::mt19937& rng)
+{
+    const std::size_t d = lo.size();
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
+    Vec kp, kl;                                                          // SPSO-9's copies
+    const Vec& P = o.sym.view(P0, X, kp);
+    const Vec& L = o.sym.view(L0, X, kl);
+    Vec G(d);
+    for (std::size_t j = 0; j < d; ++j) {                                // (2a)
+        const double pp = X[j] + o.c * U01(rng) * (P[j] - X[j]);
+        G[j] = X[j] + pp;
+    }
+    for (std::size_t j = 0; j < d; ++j) {                                // (2b), (2c)
+        const double ll = X[j] + o.c * U01(rng) * (L[j] - X[j]);
+        G[j] = (G[j] + ll) / 3.0;
+    }
+    double radius = 0.0;
+    for (std::size_t j = 0; j < d; ++j) radius += (G[j] - X[j]) * (G[j] - X[j]);
+    radius = std::sqrt(radius);
+    Vec dir(d);                                                          // SPSO-3
+    double norm = 0.0;
+    for (std::size_t j = 0; j < d; ++j) {
+        dir[j] = rnd::normal01(rng);
+        norm += dir[j] * dir[j];
+    }
+    norm = std::sqrt(norm);
+    const double r = radius * dm::pow(U01(rng), 1.0 / static_cast<double>(d));
+    ops::RepairTally tally;                                              // the move (task 20, §20.2.2)
+    for (std::size_t j = 0; j < d; ++j) {
+        const double xp = G[j] + (norm > 0.0 ? r * dir[j] / norm : 0.0);
+        const double vmax = (hi[j] - lo[j]) / 2.0;                       // SPSO-5
+        V[j] = std::clamp(o.w * V[j] + xp - X[j], -vmax, vmax);          // (3)
+        X[j] += V[j];                                                    // (1b)
+        if (X[j] < lo[j] || X[j] > hi[j]) {                              // SPSO-6
+            tally.out();
+            X[j] = X[j] < lo[j] ? lo[j] : hi[j];
+            V[j] = 0.0;
+        }
+    }
+}
 
 class SPSO2011 {
 public:
@@ -76,6 +126,7 @@ public:
     {
         if (lo_.empty() || lo_.size() != hi_.size()) throw std::invalid_argument("spso2011: lo, hi");
         if (o_.n < 2 || o_.K < 1) throw std::invalid_argument("spso2011: n >= 2, K >= 1");
+        if (o_.sym.mode == symmetry::Mode::canon) throw std::invalid_argument("spso2011: sym = canon (SPSO-9: align only)");
     }
 
     Rows ask()
@@ -90,42 +141,7 @@ public:
                     v_[i][j] = (lo_[j] + U01(rng_) * (hi_[j] - lo_[j]) - x_[i][j]) / 2.0;
             return x_;
         }
-        for (std::size_t i = 0; i < o_.n; ++i) {
-            const Vec& P = p_[i];
-            const Vec& L = p_[local_[i]];
-            Vec G(d);
-            for (std::size_t j = 0; j < d; ++j) {                        // (2a)
-                const double pp = x_[i][j] + o_.c * U01(rng_) * (P[j] - x_[i][j]);
-                G[j] = x_[i][j] + pp;
-            }
-            for (std::size_t j = 0; j < d; ++j) {                        // (2b), (2c)
-                const double ll = x_[i][j] + o_.c * U01(rng_) * (L[j] - x_[i][j]);
-                G[j] = (G[j] + ll) / 3.0;
-            }
-            double radius = 0.0;
-            for (std::size_t j = 0; j < d; ++j) radius += (G[j] - x_[i][j]) * (G[j] - x_[i][j]);
-            radius = std::sqrt(radius);
-            Vec dir(d);                                                  // SPSO-3
-            double norm = 0.0;
-            for (std::size_t j = 0; j < d; ++j) {
-                dir[j] = rnd::normal01(rng_);
-                norm += dir[j] * dir[j];
-            }
-            norm = std::sqrt(norm);
-            const double r = radius * dm::pow(U01(rng_), 1.0 / static_cast<double>(d));
-            ops::RepairTally tally;                                      // the move (task 20, §20.2.2)
-            for (std::size_t j = 0; j < d; ++j) {
-                const double xp = G[j] + (norm > 0.0 ? r * dir[j] / norm : 0.0);
-                const double vmax = (hi_[j] - lo_[j]) / 2.0;             // SPSO-5
-                v_[i][j] = std::clamp(o_.w * v_[i][j] + xp - x_[i][j], -vmax, vmax);   // (3)
-                x_[i][j] += v_[i][j];                                    // (1b)
-                if (x_[i][j] < lo_[j] || x_[i][j] > hi_[j]) {            // SPSO-6
-                    tally.out();
-                    x_[i][j] = x_[i][j] < lo_[j] ? lo_[j] : hi_[j];
-                    v_[i][j] = 0.0;
-                }
-            }
-        }
+        for (std::size_t i = 0; i < o_.n; ++i) move(x_[i], v_[i], p_[i], p_[local_[i]], o_, lo_, hi_, rng_);
         return x_;
     }
 

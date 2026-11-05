@@ -1314,6 +1314,13 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
 //     x0 the mean is a uniform point of the box, drawn first.
 //   POP-8. lshade's MAX_NFE is the run's budget unless lshade_max_nfe is
 //     set: §III's MAX_NFE is the budget the run is given.
+//   POP-9. sym = off | canon | align (task 19, §19.2.2; symmetry.hpp SYM-7
+//     ... SYM-10; off by default) for de, jade, shade, lshade, ga_sbx, ssga,
+//     pso and spso2011 (align only), and ga_block_uniform, ga_block_mutation
+//     (§19.2.3; GA-7, GA-8) for ga_sbx and ssga, need the problem's
+//     sym_blocks (or, for sym, its canon or align). They go to the settings
+//     only where given: a run without them lists what it listed before, and
+//     runs as before.
 inline const std::vector<std::string>& population_names()
 {
     static const std::vector<std::string> v{"de", "jade", "shade", "lshade", "ga_sbx", "ssga",
@@ -1327,16 +1334,17 @@ namespace detail {
 inline std::vector<std::string> population_knobs(const std::string& name)
 {
     std::vector<std::string> k{"np"};
-    if (name == "de") k.insert(k.end(), {"F", "CR", "bound_repair"});
-    else if (name == "jade") k.insert(k.end(), {"jade_p", "jade_c", "de_archive"});
-    else if (name == "shade") k.insert(k.end(), {"shade_h", "shade_p_max", "de_archive"});
+    if (name == "de") k.insert(k.end(), {"F", "CR", "bound_repair", "sym"});
+    else if (name == "jade") k.insert(k.end(), {"jade_p", "jade_c", "de_archive", "sym"});
+    else if (name == "shade") k.insert(k.end(), {"shade_h", "shade_p_max", "de_archive", "sym"});
     else if (name == "lshade")
-        k.insert(k.end(), {"shade_h", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe"});
-    else if (name == "ga_sbx" || name == "ssga") k.insert(k.end(), {"pc", "eta_c", "pm", "eta_m", "ga_tournament"});
+        k.insert(k.end(), {"shade_h", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "sym"});
+    else if (name == "ga_sbx" || name == "ssga")
+        k.insert(k.end(), {"pc", "eta_c", "pm", "eta_m", "ga_tournament", "sym", "ga_block_uniform", "ga_block_mutation"});
     else if (name == "g3_pcx") k.insert(k.end(), {"g3_mu", "g3_lambda", "g3_sigma", "bound_repair"});
     else if (name == "chc") k.insert(k.end(), {"chc_divergence", "blx_alpha", "chc_bits", "bound_repair"});
-    else if (name == "pso") k.insert(k.end(), {"pso_phi", "kappa", "pso_topology", "pso_v0", "bound_repair"});
-    else if (name == "spso2011") k.insert(k.end(), {"spso_k"});
+    else if (name == "pso") k.insert(k.end(), {"pso_phi", "kappa", "pso_topology", "pso_v0", "bound_repair", "sym"});
+    else if (name == "spso2011") k.insert(k.end(), {"spso_k", "sym"});
     else k.insert(k.end(), {"cma_sigma0", "local_tol"});
     return k;
 }
@@ -1405,6 +1413,42 @@ public:
     }
     void size(std::size_t n) { settings.insert(settings.begin(), {"np", std::to_string(n)}); }
 
+    bool given(const std::string& k) const { return find(k) != nullptr; }
+
+    // sym (POP-9): the kernels' symmetry::Sym from the problem's symmetries
+    symmetry::Sym sym(const Problem& P)
+    {
+        symmetry::Sym s;
+        if (!given("sym")) return s;
+        const std::string w = word("sym", "off", {"off", "canon", "align"});
+        s.mode = w == "canon" ? symmetry::Mode::canon : w == "align" ? symmetry::Mode::align : symmetry::Mode::off;
+        if (s.on()) checked(P);
+        s.groups = P.sym_blocks;
+        s.canon = P.canon;
+        s.align = P.align;
+        if (s.on() && s.groups.empty() && !(s.mode == symmetry::Mode::canon ? bool(P.canon) : bool(P.align)))
+            throw std::invalid_argument("sym = " + w + ": the problem gives no symmetries (sym_blocks, canon or align)");
+        return s;
+    }
+
+    // ga_block_uniform, ga_block_mutation (POP-9): 0 where not given
+    double block(const std::string& k, const Problem& P)
+    {
+        if (!given(k)) return 0.0;
+        const double p = number(k, 0.0);
+        if (!(p >= 0.0 && p <= 1.0)) throw std::invalid_argument(k + " must be in [0, 1]");
+        if (p > 0.0 && P.sym_blocks.empty()) throw std::invalid_argument(k + ": the problem gives no sym_blocks");
+        if (p > 0.0) checked(P);
+        return p;
+    }
+
+    // the problem's groups within its variables, not overlapping, each with one box (SYM-4, SYM-6)
+    static void checked(const Problem& P)
+    {
+        symmetry::check(P.sym_blocks, P.lo.size());
+        symmetry::check_bounds(P.sym_blocks, P.lo, P.hi);
+    }
+
 private:
     std::vector<std::string> own_;
     Knobs given_;
@@ -1450,6 +1494,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             o.F = k.number("F", o.F);
             o.CR = k.number("CR", o.CR);
             o.repair = k.repair();
+            o.sym = k.sym(P);
             de::DE m(lo, hi, o, rng);
             k.size(m.np());
             population::drive(m, ev, [&] { return m.done(); });
@@ -1459,6 +1504,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             o.p = k.number("jade_p", o.p);
             o.c = k.number("jade_c", o.c);
             o.archive = k.word("de_archive", "yes", yes_no) == "yes";
+            o.sym = k.sym(P);
             jade::JADE m(lo, hi, o, rng);
             k.size(m.np());
             population::drive(m, ev, [&] { return m.done(); });
@@ -1468,6 +1514,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             o.H = k.whole("shade_h", o.H);
             o.p_max = k.number("shade_p_max", o.p_max);
             o.archive = k.word("de_archive", "yes", yes_no) == "yes";
+            o.sym = k.sym(P);
             shade::SHADE m(lo, hi, o, rng);
             k.size(m.np());
             population::drive(m, ev, [&] { return m.done(); });
@@ -1480,6 +1527,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             o.n_min = k.whole("lshade_n_min", o.n_min);
             o.max_nfe = static_cast<long long>(k.whole("lshade_max_nfe", 0));
             if (o.max_nfe == 0) o.max_nfe = budget;                                       // POP-8
+            o.sym = k.sym(P);
             lshade::LSHADE m(lo, hi, o, rng);
             k.size(m.np());
             population::drive(m, ev, [&] { return m.done(); });
@@ -1491,6 +1539,11 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             o.pm = k.number("pm", o.pm);
             o.eta_m = k.number("eta_m", o.eta_m);
             o.tournament = k.whole("ga_tournament", o.tournament);
+            o.sym = k.sym(P);
+            o.block_uniform = k.block("ga_block_uniform", P);
+            o.block_mutation = k.block("ga_block_mutation", P);
+            if ((o.block_uniform > 0.0 || o.block_mutation > 0.0) && o.sym.groups.empty())
+                o.sym.groups = P.sym_blocks;                                              // GA-7, GA-8
             ga::GA m(lo, hi, o, rng);
             k.size(m.mu());
             population::drive(m, ev, [&] { return m.done(); });
@@ -1522,6 +1575,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             o.ring = k.word("pso_topology", "ring", {"ring", "global"}) == "ring";
             o.v0_zero = k.word("pso_v0", "random", {"random", "zero"}) == "zero";
             o.repair = k.repair();
+            o.sym = k.sym(P);
             pso::PSO m(lo, hi, o, rng);
             k.size(o.n);
             population::drive(m, ev, [&] { return m.done(); });
@@ -1529,6 +1583,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             spso2011::Options o;
             if (np) o.n = np;
             o.K = k.whole("spso_k", o.K);
+            o.sym = k.sym(P);
             spso2011::SPSO2011 m(lo, hi, o, rng);
             k.size(o.n);
             population::drive(m, ev, [] { return false; });

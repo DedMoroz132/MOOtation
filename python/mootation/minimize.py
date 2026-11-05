@@ -42,7 +42,8 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "threads", "min_dist", "min_df", "start_share", "bipop_large", "mlsl_n", "mlsl_sigma",
                "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature", "bh_step",
                "bh_accept_rate", "bh_interval", "ils_step", "ils_restart", "ils_temperature", "memetic_every",
-               "memetic_points", "local_share")
+               "memetic_points", "local_share",
+               "ga_block_uniform", "ga_block_mutation")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
@@ -56,7 +57,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
               "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
-              "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points")
+              "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points", "sym")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")
@@ -158,6 +159,9 @@ def minimize(
     gauge_basis=None,
     f_stop=None,
     wrap: dict | None = None,
+    sym_blocks=None,
+    canon=None,
+    align=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -346,6 +350,14 @@ def minimize(
                 result.wrap names the instances. Not with batch, var_types
                 other than real, or a problem of the suite evaluated by the
                 core (it is called through Python).
+    sym_blocks, canon, align
+                the problem's symmetries (task 19, §19.2.1): sym_blocks a list
+                of (offset, size, count), count blocks of size coordinates
+                from offset that may be interchanged; canon(x) its canonical
+                representative (f(canon(x)) = f(x), canon idempotent);
+                align(x, ref) x moved to ref (default: canon, then the blocks
+                permuted to ref's, mootation.symmetry.align). The population
+                methods use them with the knob sym = canon | align.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -355,6 +367,9 @@ def minimize(
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if wrap is not None:
+        if sym_blocks is not None or canon is not None or align is not None:
+            raise ValueError("wrap: not with sym_blocks, canon or align (a wrapper does not carry "
+                             "symmetries; suite/wrap.hpp WRAP-7)")
         return _wrapped_minimize(wrap, fn, bounds, n_objs, constraints=constraints, eq_constraints=eq_constraints,
                                  batch=batch, var_types=var_types, grad=grad, residuals=residuals, jac=jac, x0=x0,
                                  gauge_basis=gauge_basis,
@@ -374,7 +389,8 @@ def minimize(
                                            **knobs))
     from .scalar import SINGLE
     derivatives = [k for k, v in (("grad", grad), ("residuals", residuals), ("jac", jac),
-                                  ("x0", x0), ("gauge_basis", gauge_basis)) if v is not None]
+                                  ("x0", x0), ("gauge_basis", gauge_basis), ("sym_blocks", sym_blocks),
+                                  ("canon", canon), ("align", align)) if v is not None]
     lsq = (residuals, jac, bounds) if residuals is not None else None   # result.profile's
     if derivatives and algorithm not in SINGLE:
         raise ValueError(f"{', '.join(derivatives)}: for the single-objective algorithms "
@@ -702,7 +718,8 @@ def minimize(
                 on_generation=on_generation, record_every=int(record_every),
                 init=init, init_share=float(init_share), seed_points=seeds,
                 unique_count=lambda: points.count, guard=guard, grad=grad,
-                residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop)
+                residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop,
+                sym_blocks=sym_blocks, canon=canon, align=align)
             result._lsq = lsq
             result = _polished(result)
         finally:

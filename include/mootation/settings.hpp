@@ -115,7 +115,9 @@ inline const std::vector<std::string>& knob_names() {
         "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
         // task 18, stage 3: the strategies (scalar/strategy.hpp)
         "n_starts", "threads", "min_dist", "min_df", "start_share", "bipop_large",
-        "mlsl_n", "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature", "bh_step", "bh_accept_rate", "bh_interval", "ils_step", "ils_restart", "ils_temperature", "memetic_every", "memetic_points", "local_share"
+        "mlsl_n", "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature", "bh_step", "bh_accept_rate", "bh_interval", "ils_step", "ils_restart", "ils_temperature", "memetic_every", "memetic_points", "local_share",
+        // task 19, §19.2.3: ga's block operators (scalar/ga.hpp)
+        "ga_block_uniform", "ga_block_mutation"
     };
     return v;
 }
@@ -204,7 +206,8 @@ inline bool is_core_param(const std::string& name)
                           "n_starts", "threads", "min_dist", "min_df", "start_share", "bipop_large", "mlsl_n",
                           "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature",
                           "bh_step", "bh_accept_rate", "bh_interval", "ils_step", "ils_restart",
-                          "ils_temperature", "memetic_every", "memetic_points", "local_share"})
+                          "ils_temperature", "memetic_every", "memetic_points", "local_share",
+                          "ga_block_uniform", "ga_block_mutation"})
         if (name == k) return true;
     return false;
 }
@@ -295,6 +298,9 @@ inline bool is_core_param(const std::string& name)
 //                 non-dominated solutions (random; EDV-5)
 //   kpcm_pm       maoea_iamd: KPCM in place of the polynomial mutation (off,
 //                 the default) or after SBX + PM, as PlatEMO's GA (on; IAMD-1)
+//   sym           the single-objective population methods (task 19, §19.2.2;
+//                 scalar/symmetry.hpp): the points they combine as they are,
+//                 canonical or aligned to each other; no core has it
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -378,6 +384,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"ils_accept",   {"better", "rw", "restart", "lsmc"}},
         {"memetic_pick", {"best", "spread"}},
         {"keep_points",  {"all", "best"}},
+        {"sym",          {"off", "canon", "align"}},
     };
     return v;
 }
@@ -417,7 +424,7 @@ inline bool is_core_word(const std::string& name)
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
                           "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
                           "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept",
-                          "memetic_pick", "keep_points"})
+                          "memetic_pick", "keep_points", "sym"})
         if (name == k) return true;
     return false;
 }

@@ -75,6 +75,17 @@ in any number of threads (threads):
                cma_sigma0 (a share of the box's width), start_share,
                cma_bounds (penalty | none), bipop_large (9)
 
+sym = off | canon | align (task 19, §19.2.2; POP-9), off by default: what
+de, jade, shade, lshade, ga_sbx, ssga, pso and spso2011 do with the points
+they combine — use them as they are, canonical, or aligned to the target,
+the first parent or the particle (pso and spso2011: align only). ga_sbx and
+ssga take ga_block_uniform and ga_block_mutation (§19.2.3), the
+probabilities of the block crossover and the block mutation. They need the
+problem's symmetries: sym_blocks, a list of (offset, size, count) (count
+blocks of size coordinates from offset, which may be interchanged), and
+optionally canon(x) and align(x, ref) (minimize(); mootation.symmetry has
+the built-in ones).
+
 Every evaluation goes through fn; the run's first points are pop_size uniform
 points from the seed, the rows of the design `init` (designs.py), or the seed
 population.
@@ -186,7 +197,7 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
         eq_tol0, pop_size: int, budget: int, seed: int, knobs: dict, on_generation=None,
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
         seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
-        x0=None, gauge_basis=None, f_stop=None):
+        x0=None, gauge_basis=None, f_stop=None, sym_blocks=None, canon=None, align=None):
     from ..run.knobs import canonical
     core = _module()
     design = None
@@ -206,7 +217,9 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
                  record_every=int(record_every), design=design,
                  seed_points=seeds if name != "mosqp" else None, grad=grad, residuals=residuals,
                  jac=jac, x0=None if x0 is None else [float(v) for v in x0],
-                 gauge_basis=gauge_basis, f_stop=None if f_stop is None else float(f_stop))
+                 gauge_basis=gauge_basis, f_stop=None if f_stop is None else float(f_stop),
+                 sym_blocks=None if sym_blocks is None else [tuple(int(v) for v in b) for b in sym_blocks],
+                 canon=canon, align=align)
     n_failed = guard.n_failed if guard is not None else d["n_failed"]
     unique = unique_count() if unique_count is not None else d["evaluations"]
     return ScalarResult(d, d["ignored"], n_failed, eq_tol if n_eq else 0.0, unique)

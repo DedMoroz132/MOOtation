@@ -58,6 +58,7 @@ struct Options {
     std::size_t H = 100;                // §VI
     double p_max = 0.2;                 // (20)
     bool archive = true;
+    symmetry::Sym sym;                  // task 19 (pbest.hpp PB-3)
 };
 
 namespace detail {
@@ -133,7 +134,8 @@ public:
             F_[i] = pbest::draw_F(rng_, m_f_[r]);                        // (16)
             const double p = pick_p(rng_);                               // (20)
             const std::size_t top = static_cast<std::size_t>(std::ceil(nn * p));   // SHADE-1
-            u_[i] = pbest::trial(x_, a_, i, order, std::max<std::size_t>(top, 2), F_[i], cr_[i], lo_, hi_, rng_);
+            u_[i] = pbest::trial(x_, a_, i, order, std::max<std::size_t>(top, 2), F_[i], cr_[i], lo_, hi_, rng_,
+                                 o_.sym);
         }
         return u_;
     }

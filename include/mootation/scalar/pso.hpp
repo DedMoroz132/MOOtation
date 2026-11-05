@@ -41,6 +41,10 @@
 //   PSO-7. Constraints g <= 0: NSGA-II's constrained-domination at M = 1
 //     (evo.hpp) for "f(x_i) < f(p_i)" and for p_g; not in the papers.
 //   PSO-8. done() is true once every velocity is 0 and every x_i = p_i = p_g.
+//   PSO-9. sym (task 19, symmetry.hpp SYM-9; off by default): align only —
+//     p_i and p_g aligned to x_i before the particle moves, the velocity left
+//     in the particle's representation; canon refused. No draw changes, and sym =
+//     off is the move as before.
 // ============================================================================
 
 #include <cmath>
@@ -52,6 +56,7 @@
 #include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
+#include "symmetry.hpp"
 
 namespace mootation::scalar::pso {
 
@@ -65,12 +70,36 @@ struct Options {
     bool v0_zero = false;                                  // PSO-3
     bool ring = true;                                      // PSO-4
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // PSO-6
+    symmetry::Sym sym;                                     // PSO-9
 };
 
 // (4.17)
 inline double constriction(double phi, double kappa)
 {
     return phi > 4.0 ? 2.0 * kappa / (phi - 2.0 + std::sqrt(phi * phi - 4.0 * phi)) : kappa;
+}
+
+// A particle's move (PSO-5, PSO-6): x and v from its best p and its
+// neighbourhood's best g; sym: PSO-9.
+inline void move(Vec& x, Vec& v, const Vec& p, const Vec& g, const Options& o, double chi, const Vec& lo,
+                 const Vec& hi, std::mt19937& rng)
+{
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
+    Vec kp, kg;                                                          // PSO-9's copies
+    const Vec& pa = o.sym.view(p, x, kp);
+    const Vec& ga = o.sym.view(g, x, kg);
+    ops::RepairTally tally;                                              // the move (task 20, §20.2.2)
+    for (std::size_t j = 0; j < x.size(); ++j) {                         // PSO-5
+        const double phi1 = U01(rng) * o.phi_max / 2.0, phi2 = U01(rng) * o.phi_max / 2.0;
+        v[j] = chi * (v[j] + phi1 * (pa[j] - x[j]) + phi2 * (ga[j] - x[j]));
+        double y = x[j] + v[j];
+        if (y < lo[j] || y > hi[j]) {
+            tally.out();
+            if (o.repair != ops::BoundRepair::Native)
+                y = ops::repair_value(y, lo[j], hi[j], x[j], o.repair, rng);   // PSO-6
+        }
+        x[j] = y;
+    }
 }
 
 class PSO {
@@ -81,6 +110,7 @@ public:
         if (lo_.empty() || lo_.size() != hi_.size()) throw std::invalid_argument("pso: lo, hi");
         if (o_.n < 1 || !(o_.phi_max > 0.0) || !(o_.kappa > 0.0)) throw std::invalid_argument("pso: n, phi_max, kappa");
         if (o_.repair == ops::BoundRepair::Resample) throw std::invalid_argument("pso: resample (PSO-6)");
+        if (o_.sym.mode == symmetry::Mode::canon) throw std::invalid_argument("pso: sym = canon (PSO-9: align only)");
     }
 
     double chi() const { return chi_; }
@@ -98,7 +128,6 @@ public:
             }
             return x_;
         }
-        rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         std::vector<std::size_t> nb(o_.n, g_);                           // PSO-4
         if (o_.ring)
             for (std::size_t i = 0; i < o_.n; ++i) {
@@ -107,21 +136,7 @@ public:
                     if (evo::better(pf_[k], pv_[k], pf_[b], pv_[b])) b = k;
                 nb[i] = b;
             }
-        for (std::size_t i = 0; i < o_.n; ++i) {
-            ops::RepairTally tally;                                      // the move (task 20, §20.2.2)
-            for (std::size_t j = 0; j < d; ++j) {                        // PSO-5
-                const Vec& g = p_[nb[i]];
-                const double phi1 = U01(rng_) * o_.phi_max / 2.0, phi2 = U01(rng_) * o_.phi_max / 2.0;
-                v_[i][j] = chi_ * (v_[i][j] + phi1 * (p_[i][j] - x_[i][j]) + phi2 * (g[j] - x_[i][j]));
-                double y = x_[i][j] + v_[i][j];
-                if (y < lo_[j] || y > hi_[j]) {
-                    tally.out();
-                    if (o_.repair != ops::BoundRepair::Native)
-                        y = ops::repair_value(y, lo_[j], hi_[j], x_[i][j], o_.repair, rng_);   // PSO-6
-                }
-                x_[i][j] = y;
-            }
-        }
+        for (std::size_t i = 0; i < o_.n; ++i) move(x_[i], v_[i], p_[i], p_[nb[i]], o_, chi_, lo_, hi_, rng_);
         return x_;
     }
 

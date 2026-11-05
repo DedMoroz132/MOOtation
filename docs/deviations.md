@@ -407,7 +407,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-224 items: 224 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+242 items: 235 yes, 7 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -437,6 +437,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |
 | `de` | DE-4 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp); not in the paper. | yes | `de.hpp` |
 | `de` | DE-5 | done() is true once all NP points are equal: every difference vector is zero and no trial can differ from its target. | yes | `de.hpp` |
+| `de` | DE-6 | sym (task 19, symmetry.hpp SYM-8; off by default): after the index draws, x_r1, x_r2 and x_r3 aligned to the target (align), or the four canonical (canon: the crossover and the bound repair then take canon(x_i)); no d... | no: option | `de.hpp` |
 | `eki` | EKI-1 | (C^pp + Gamma)^-1 v: where J <= m by the Sherman-Morrison-Woodbury identity, gamma^-2 (v - P~ (J gamma^2 I + P~^T P~)^-1 P~^T v), P~ the m x J matrix of the p~^(j), a J x J Cholesky system; where J > m the m x m syste... | yes | `eki.hpp` |
 | `eki` | EKI-2 | (22) prints C^pp with p-hat (uncentred); we take the covariance (11) prints, centred, which (37)-(38) use as well. | yes | `eki.hpp` |
 | `eki` | EKI-3 | The initial ensemble (their §2.2 leaves it to the user as a draw from a prior): J points of a design in the box (init = sobol: the scrambled Sobol points of designs.hpp; lhs: its Latin hypercube; seed the design's), o... | yes | `eki.hpp` |
@@ -452,6 +453,9 @@ Their readings, from every comment of each file (the first column the file's nam
 | `ga` | GA-3 | lambda odd: the second child of the last pair is dropped after its mutation (nsga2 does the same). lambda = 1 with `coin`: one child of the pair kept by a fair coin drawn between crossover and mutation, the other neit... | yes | `ga.hpp` |
 | `ga` | GA-4 | Bounds: SBX and the polynomial mutation stay in the box by construction; | yes | `ga.hpp` |
 | `ga` | GA-5 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) in tournaments, truncation and G3's choices; not in the papers. | yes | `ga.hpp` |
+| `ga` | GA-6 | sym (task 19, symmetry.hpp SYM-7; off by default): the second parent aligned to the first (align), or both canonical (canon), after the tournaments and before the crossover; no draw changes, and sym = off is GA as bef... | no: option | `ga.hpp` |
+| `ga` | GA-7 | block_uniform (task 19, §19.2.3; off by default): with probability o.block_uniform a pair, after its crossover (which made the free coordinates), every block of sym's groups whole from one parent: a fair coin a block,... | no: option | `ga.hpp` |
+| `ga` | GA-8 | block_mutation (§19.2.3; off by default): with probability o.block_mutation a child, after its mutation, one block of all the groups' blocks drawn uniformly and each of its coordinates mutated by the polynomial mutati... | no: option | `ga.hpp` |
 | `ga` | G3-1 | PCX's index parent x_p is the best of the parents (best_centre, on by default: §3.2.1, "For a faster convergence, the best parent is always used"), not the operator's own pick "with equal probability" (§2.2), which be... | yes | `ga.hpp` |
 | `ga` | G3-2 | Step (1)'s mu - 1 others differ from the best and from each other; step (3)'s two differ. | yes | `ga.hpp` |
 | `ga` | G3-3 | Step (4) keeps the two best of the family in its order (the two chosen, then the offspring), stably; the better goes to the first chosen place. | yes | `ga.hpp` |
@@ -540,6 +544,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `nelder_mead` | NM-3 | The initial vertices are ordered by value, ties in their order of construction (x_0 first). | yes | `nelder_mead.hpp` |
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
+| `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |
 | `polish` | POLISH-1 | The objective improved goes round the objectives (the first point f_1, the second f_2, ...) in DSS order; the objectives are normalized by the range of the points chosen. | yes | `polish.hpp` |
 | `polish` | POLISH-2 | The answer after polishing is the non-dominated union of the algorithm's answer and the polished points, not the archive's; cut to pop_size, it keeps a point weakly dominating each point of the algorithm's answer firs... | yes | `polish.hpp` |
 | `polish` | POLISH-3 | The subproblem's constraints f_i <= f_i(a) hold to a slack (SLACK, in the normalized objectives): a result a hair worse than a in one objective does not dominate a, and both stay. | yes | `polish.hpp` |
@@ -555,6 +560,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pso` | PSO-6 | Bounds: the paper's box is the initial range; a position outside the box is repaired by ops::repair_value (reflect by default; `native` leaves it — the paper's), the velocity kept. | yes | `pso.hpp` |
 | `pso` | PSO-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(x_i) < f(p_i)" and for p_g; not in the papers. | yes | `pso.hpp` |
 | `pso` | PSO-8 | done() is true once every velocity is 0 and every x_i = p_i = p_g. | yes | `pso.hpp` |
+| `pso` | PSO-9 | sym (task 19, symmetry.hpp SYM-9; off by default): align only — p_i and p_g aligned to x_i before the particle moves, the velocity left in the particle's representation; canon refused. | no: option | `pso.hpp` |
 | `restarts` | RST-1 | One set of termination criteria for both, H09's (§2.2): AH05's are the same in substance (equalfunvalhist, TolFun, TolX, noeffectaxis, noeffectcoord, conditioncov) but for TolFun over the last generation's values; | yes | `restarts.hpp` |
 | `restarts` | RST-2 | U[0,1]² of λ_s is the square of one uniform number; the second draw (σ⁰) is another (H09: "independent uniformly distributed numbers"). | yes | `restarts.hpp` |
 | `restarts` | RST-3 | "Half of the recent large budget": half of the evaluations of the last run of regime 1. | yes | `restarts.hpp` |
@@ -590,6 +596,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw: x0, a design (init) and seed points are not used and are reported as ignored, except x0 for sep_cmaes, its mean (normalized and clipped to the box); without x0 the mean is a... | yes | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
+| `scalar` | POP-9 | sym = off \| canon \| align (task 19, §19.2.2; symmetry.hpp SYM-7 ... | yes | `scalar.hpp` |
 | `search` | SRCH-1 | MLSL's r_k: part II's (2) prints it without Γ; it refers to part I's Single Linkage analysis, whose (35) has Γ(1 + n/2) (the volume of the unit ball): taken with Γ. m(S) = 1, distances in the box normalized to [0, 1]^n. | yes | `search.hpp` |
 | `search` | SRCH-2 | MLSL as part II's experiments (§4): τ = ν = 0 by default (no boundary set Q_τ, no neighbourhood X*_ν of the minima found), σ = 4, γ = 0.2. | yes | `search.hpp` |
 | `search` | SRCH-3 | MLSL: the local searches of an iteration are one round; a point that started one never starts another; the sample is the uniform points only (a local search's points are in the archive, not in the sample). | yes | `search.hpp` |
@@ -629,12 +636,23 @@ Their readings, from every comment of each file (the first column the file's nam
 | `spso2011` | SPSO-6 | The absorbing wall acts coordinate by coordinate: a coordinate outside its range is put on the bound it crossed and its velocity is 0. | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-7 | Draws, particle by particle: U1 for every d, U2 for every d, the direction's D normals, the radius's U; the initial velocity's U after all positions; links: informer by informer, K draws each. | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-8 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(X_i) < f(P_i)", L_i and SPSO-4; not in the paper. | yes | `spso2011.hpp` |
+| `spso2011` | SPSO-9 | sym (task 19, symmetry.hpp SYM-9; off by default): align only — P_i and L_i aligned to X_i before the particle moves, the velocity left in the particle's representation; canon refused. | no: option | `spso2011.hpp` |
 | `strategy` | STRAT-1 | A start's generator: the run's seed for start 0, else a 32-bit word of std::seed_seq{seed, k} (the standard defines its words), so one start is the inner solver's own run, bit for bit (§3.1's test). | yes | `strategy.hpp` |
 | `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |
 | `strategy` | STRAT-4 | The minima log: a start's answer joins the first minimum within min_dist (the box normalized to [0, 1]^n where it is finite, else the problem's coordinates; the largest coordinate difference) and min_df in f, else is... | yes | `strategy.hpp` |
 | `strategy` | STRAT-5 | The run's equalities' tolerance schedule (eq_tol0) is the inner solver's, on its own allowance. | yes | `strategy.hpp` |
 | `strategy` | STRAT-6 | A start may spend on new points at most what it was given (its allowance, or less where a strategy reruns a start whose earlier points are free, search.hpp SRCH-6): past it the view ends the inner run as the budget do... | yes | `strategy.hpp` |
+| `symmetry` | SYM-1 | Ties: Step 1 takes the first non-covered zero in row-major order and the Preliminaries star in row-major order, so the assignment is a function of the matrix: equal blocks or equal costs give the same answer every time. | yes | `symmetry.hpp` |
+| `symmetry` | SYM-2 | A zero is an entry equal to 0.0. In floating point Step 3 makes the least non-covered entry exactly 0 (y - y), so the zero the method needs is there; the other entries carry the rounding of the subtractions, which can... | yes | `symmetry.hpp` |
+| `symmetry` | SYM-3 | align(x, ref) with x a permutation of ref's blocks returns ref bit for bit: the permutation's cost is 0, the least possible, and the result copies x's blocks, which are ref's. | yes | `symmetry.hpp` |
+| `symmetry` | SYM-4 | The groups are aligned one after another, each on its own coordinates (the task's blocks do not overlap; overlapping groups are refused). | yes | `symmetry.hpp` |
+| `symmetry` | SYM-5 | sym = canon where the problem gives no canon: each group's blocks sorted lexicographically (stably), the least member of x's orbit under the group: f(canon(x)) = f(x), canon(canon(x)) = canon(x) and canon(P(x)) = cano... | yes | `symmetry.hpp` |
+| `symmetry` | SYM-6 | A group's blocks have the same bounds, coordinate by coordinate, so that a permutation stays in the box; refused otherwise. | yes | `symmetry.hpp` |
+| `symmetry` | SYM-7 | ga (GA's crossovers): align — the second parent aligned to the first, canon — both parents canonical, before the crossover; the children are in the first parent's representation (align). | yes | `symmetry.hpp` |
+| `symmetry` | SYM-8 | de, jade, shade, lshade: align — the base vector and the difference vectors aligned to the target x_i before the mutation; canon — the target too canonical, and the trial's crossover and the bound repair take canon(x_i). | yes | `symmetry.hpp` |
+| `symmetry` | SYM-9 | pso, spso2011: align only — the particle's own best and its neighbourhood's best aligned to its position before it moves; the velocity stays in the particle's representation (§19.2.2). canon is refused: it would chang... | yes | `symmetry.hpp` |
+| `symmetry` | SYM-10 | The points a kernel makes are evaluated and stored as made; the Evaluator's archive (repeats) is by the raw x. | yes | `symmetry.hpp` |
 
 ## The problems
 

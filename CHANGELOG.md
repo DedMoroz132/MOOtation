@@ -101,6 +101,14 @@ always listed under **Changed** or **Removed**.
   10 % (gamma) of a random sample, against beta's 3 %. Each draws from a
   domain of its own: the streams of f1, f2b, f3b, f4b and f5 are unchanged,
   bit for bit, and so is their frame, which does not depend on r.
+- Added: symmetries in the single-objective population methods (task 19,
+  §19.2; `scalar/symmetry.hpp`, `mootation.symmetry`). A problem's
+  `sym_blocks`, `canon` and `align` (`minimize(...)`; in campaigns the
+  suite's blocks and canon); the knob `sym = off | canon | align` for `de`,
+  `jade`, `shade`, `lshade`, `ga_sbx`, `ssga`, `pso` and `spso2011` (align
+  only), with the Hungarian method (Kuhn 1955, Munkres 1957) for the
+  alignment; the GA's `ga_block_uniform` and `ga_block_mutation`. Off by
+  default: every run as before, bit for bit, and its settings unchanged.
 - Added: task 19's solvers and knobs registered (§19.3, §19.4). `eki`, a
   single-objective algorithm of `minimize()` and of campaigns at one
   objective, on the problem's residuals (knobs `eki_ensemble`, `eki_init`,

@@ -61,9 +61,44 @@ not known, `f_opt` is the best value known (`f_opt_kind = best_known`, `SO_REFER
 
 None of these changes a run of `lm` without them (the iterates' checksum of `tests/test_lm.cpp`).
 
-## Solvers (C++, not yet registered algorithms)
+## Solvers (registered: `eki` in `minimize()` and campaigns, `scalar.hpp` LOCAL-5)
 
 | what | source | checked by |
 |---|---|---|
 | `eki::minimize` (`scalar/eki.hpp`): ensemble Kalman inversion on the residuals | Iglesias, Law & Stuart 2013, Algorithm 1 (readings EKI) | `tests/test_lm.cpp`: the ensemble stays in the initial ensemble's affine hull (their Theorem 2.1, tighter); a linear problem's first mean is their (39), and near (41) with many members. Their Darcy and Navier–Stokes examples are not in the library |
 | `CMAES::inject`, `inject_mean`, `elitist` (`scalar/cmaes.hpp`) | Hansen 2011, Figure 1, Table 1 (readings INJ) | `tests/test_slsqp.cpp`: runs without injection unchanged (a checksum of their points); a far injected point clipped, σ's change bounded; `inject_mean`; the elitist mode never loses its best |
+
+## Symmetries in the population methods (`scalar/symmetry.hpp`)
+
+A problem tells its symmetries to the single-objective algorithms by `sym_blocks` (a list of
+`(offset, size, count)`), and optionally `canon(x)` and `align(x, ref)`: `minimize(...,
+sym_blocks=, canon=, align=)`, and in campaigns the suite's `blocks` and `canon`. The built-in
+`align(x, ref)` is `canon(x)` where given, then in every group the permutation of x's blocks with the
+least sum of squared distances to ref's — the Hungarian method of Kuhn 1955 in Munkres's 1957 form
+(readings SYM-1 to SYM-4); without a `canon` of the problem, `sym = canon` sorts each group's blocks
+(SYM-5). A group's blocks must share their bounds (SYM-6). `mootation.symmetry` is the Python twin.
+
+The knob `sym = off | canon | align` (`off` by default: every method runs as before, bit for bit):
+
+| method | what is aligned (`align`) or made canonical (`canon`) |
+|---|---|
+| `ga_sbx`, `ssga` | the second parent to the first, or both canonical, before the crossover (GA-6) |
+| `de`, `jade`, `shade`, `lshade` | the base and difference vectors (archive members too) to the target, or all of them and the target canonical (DE-6, PB-3) |
+| `pso`, `spso2011` | the particle's own best and its neighbourhood's best to its position; the velocity stays in the particle's representation; `canon` refused (PSO-9, SPSO-9) |
+
+`ga_sbx` and `ssga` also take `ga_block_uniform` (each block whole from one parent, with this
+probability a pair; GA-7) and `ga_block_mutation` (one block's coordinates mutated, with this
+probability a child; GA-8). The Evaluator's archive is by the raw x (SYM-10). Not wired yet: the
+points injected into `cmaes` (§19.4.3) and grouping by distance (with task 18's stage 3).
+
+| check | where |
+|---|---|
+| the Hungarian method's cost equals the least over every permutation, n = 1 … 7 (420 matrices, ties included); ties broken the same way every time | `tests/test_symmetry.cpp` |
+| `align(P(x), x) = x` bit for bit for permutations P of two groups; `distance(P(x), x) = 0`; canon applied first | `tests/test_symmetry.cpp` |
+| the built-in canon: `canon(P(x)) = canon(x)`, idempotent | `tests/test_symmetry.cpp` |
+| each method's step with `align` on x and on P(x) (all points but the one aligned to permuted), and with `canon` on P(x), gives the same offspring bit for bit from the same generator state: `de::trial`, `pbest::trial`, `ga::cross`, `pso::move`, `spso2011::move`; with `off` it does not | `tests/test_symmetry.cpp` |
+| `block_uniform`: each block whole from one parent; `block_mutation`: one block changed, in the box | `tests/test_symmetry.cpp` |
+| `sym = off` given: every method as without the knob, bit for bit; the knobs in the settings only where given; the refusals | `tests/test_symmetry.cpp`, `python/test_run_layer.py` |
+| without the knobs: the checksums of `tests/test_scalar.cpp` and the methods' own tests (twins `gde3`, `nsga2`, `sms_emoa` bit for bit) unchanged | `tests/test_scalar.cpp`, `test_de`, `test_ga`, … |
+| C++ against Python: the Hungarian method, `align` and the built-in canon, bit for bit | `python/test_run_layer.py` |
+| a campaign with `sym` on `sumexp` and `lj_cluster`: the same files from both engines | `python/test_run_layer.py` |

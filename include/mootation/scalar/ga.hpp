@@ -47,6 +47,22 @@
 //   GA-5. Constraints g <= 0: NSGA-II's constrained-domination at M = 1
 //     (evo.hpp) in tournaments, truncation and G3's choices; not in the
 //     papers.
+//   GA-6. sym (task 19, symmetry.hpp SYM-7; off by default): the second
+//     parent aligned to the first (align), or both canonical (canon), after
+//     the tournaments and before the crossover; no draw changes, and sym =
+//     off is GA as before.
+//   GA-7. block_uniform (task 19, §19.2.3; off by default): with probability
+//     o.block_uniform a pair, after its crossover (which made the free
+//     coordinates), every block of sym's groups whole from one parent: a
+//     fair coin a block, group by group, heads the first child's from the
+//     first parent and the second's from the second, tails crosswise. The
+//     coins follow the crossover's draws; o.block_uniform = 0 draws nothing.
+//   GA-8. block_mutation (§19.2.3; off by default): with probability
+//     o.block_mutation a child, after its mutation, one block of all the
+//     groups' blocks drawn uniformly and each of its coordinates mutated by
+//     the polynomial mutation (eta_m, p_m = 1) within its bounds — the
+//     operator on the block alone (its per-variable eta, the MO runs' integer
+//     variables, is not set at M = 1). o.block_mutation = 0 draws nothing.
 //   G3-1. PCX's index parent x_p is the best of the parents (best_centre, on
 //     by default: §3.2.1, "For a faster convergence, the best parent is
 //     always used"), not the operator's own pick "with equal probability"
@@ -82,6 +98,7 @@
 #include "../operators/sbx.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
+#include "symmetry.hpp"
 
 namespace mootation::scalar::ga {
 
@@ -101,6 +118,8 @@ struct Options {
     double eta_m = 20.0, pm = 0.0;                         // pm 0: 1/n
     bool coin = false;                                     // GA-3
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // GA-4 (BLX)
+    symmetry::Sym sym;                                     // GA-6
+    double block_uniform = 0.0, block_mutation = 0.0;      // GA-7, GA-8 (sym's groups)
 };
 
 inline Options ga_sbx() { return Options{}; }
@@ -125,6 +144,53 @@ inline Bounds bounds(const Vec& lo, const Vec& hi)
 
 }   // namespace detail
 
+// The children c1, c2 of the parents p1, p2: GA-6, the crossover, GA-7.
+inline void cross(const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, const Bounds& b, const Options& o,
+                  std::mt19937& rng)
+{
+    Vec k1, k2;                                                          // GA-6's copies
+    const Vec& a = o.sym.mode == symmetry::Mode::canon ? o.sym.view(p1, p1, k1) : p1;
+    const Vec& c = o.sym.view(p2, p1, k2);
+    if (o.crossover == Crossover::SBX) ops::sbx(a, c, c1, c2, b, o.eta_c, o.pc, rng);
+    else ops::blx_alpha_crossover(a, c, c1, c2, b, o.alpha, o.pc, o.repair, rng);
+    if (o.block_uniform == 0.0) return;
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
+    if (!(U01(rng) < o.block_uniform)) return;
+    rnd::uniform_int_distribution<int> coin(0, 1);
+    for (const symmetry::Blocks& g : o.sym.groups)                       // GA-7
+        for (std::size_t k = 0; k < g.count; ++k) {
+            const bool heads = coin(rng) == 1;
+            for (std::size_t j = g.offset + k * g.size; j < g.offset + (k + 1) * g.size; ++j) {
+                c1[j] = heads ? a[j] : c[j];
+                c2[j] = heads ? c[j] : a[j];
+            }
+        }
+}
+
+// One block of the child c mutated, with probability o.block_mutation (GA-8).
+inline void block_mutation(Vec& c, const Bounds& b, const Options& o, std::mt19937& rng)
+{
+    if (o.block_mutation == 0.0) return;
+    rnd::uniform_real_distribution<double> U01(0.0, 1.0);
+    if (!(U01(rng) < o.block_mutation)) return;
+    std::size_t total = 0;
+    for (const symmetry::Blocks& g : o.sym.groups) total += g.count;
+    rnd::uniform_int_distribution<std::size_t> pick(0, total - 1);
+    std::size_t k = pick(rng);
+    for (const symmetry::Blocks& g : o.sym.groups) {
+        if (k >= g.count) {
+            k -= g.count;
+            continue;
+        }
+        const std::size_t first = g.offset + k * g.size;
+        Vec y(c.begin() + static_cast<std::ptrdiff_t>(first), c.begin() + static_cast<std::ptrdiff_t>(first + g.size));
+        const Bounds bb(b.begin() + static_cast<std::ptrdiff_t>(first), b.begin() + static_cast<std::ptrdiff_t>(first + g.size));
+        ops::polynomial_mutation(y, bb, o.eta_m, 1.0, rng);
+        std::copy(y.begin(), y.end(), c.begin() + static_cast<std::ptrdiff_t>(first));
+        return;
+    }
+}
+
 class GA {
 public:
     GA(Vec lo, Vec hi, const Options& o, std::mt19937& rng)
@@ -136,6 +202,10 @@ public:
         if (o_.mu < 2 || o_.tournament < 1) throw std::invalid_argument("ga: mu >= 2, tournament >= 1");
         if (o_.coin && o_.lambda != 1) throw std::invalid_argument("ga: coin needs lambda = 1 (GA-3)");
         if (o_.crossover == Crossover::BLX) ops::require_repair(o_.repair, "ga", true, false);
+        if (!(o_.block_uniform >= 0.0 && o_.block_uniform <= 1.0 && o_.block_mutation >= 0.0 && o_.block_mutation <= 1.0))
+            throw std::invalid_argument("ga: block_uniform and block_mutation in [0, 1]");
+        if ((o_.block_uniform > 0.0 || o_.block_mutation > 0.0) && o_.sym.groups.empty())
+            throw std::invalid_argument("ga: the block operators need the problem's blocks (GA-7, GA-8)");
     }
 
     std::size_t mu() const { return o_.mu; }
@@ -149,11 +219,10 @@ public:
         while (u_.size() < o_.lambda) {
             const Vec& p1 = x_[tournament()];
             const Vec& p2 = x_[tournament()];
-            if (o_.crossover == Crossover::SBX) ops::sbx(p1, p2, c1, c2, b_, o_.eta_c, o_.pc, rng_);
-            else ops::blx_alpha_crossover(p1, p2, c1, c2, b_, o_.alpha, o_.pc, o_.repair, rng_);
+            cross(p1, p2, c1, c2, b_, o_, rng_);
             const int keep = o_.coin ? coin(rng_) : -1;                  // GA-3
-            if (keep != 1 && o_.mutation) ops::polynomial_mutation(c1, b_, o_.eta_m, o_.pm, rng_);
-            if (keep != 0 && o_.mutation) ops::polynomial_mutation(c2, b_, o_.eta_m, o_.pm, rng_);
+            if (keep != 1) mutate(c1);
+            if (keep != 0) mutate(c2);
             if (keep != 1) u_.push_back(c1);
             if (keep != 0 && u_.size() < o_.lambda) u_.push_back(c2);
         }
@@ -212,6 +281,12 @@ public:
     std::size_t best() const { return evo::best(f_, v_); }
 
 private:
+    void mutate(Vec& c)
+    {
+        if (o_.mutation) ops::polynomial_mutation(c, b_, o_.eta_m, o_.pm, rng_);
+        block_mutation(c, b_, o_, rng_);                                 // GA-8
+    }
+
     std::size_t tournament()                                             // GA-1
     {
         rnd::uniform_int_distribution<std::size_t> pick(0, o_.mu - 1);

@@ -14154,6 +14154,118 @@ def a_campaign_of_the_task19_solvers_writes_the_same_files_from_both_engines():
             if job.problem.startswith("lj"):             # the problem's gradient, called
                 assert ma["grad_calls"] >= 1, ma
 
+
+@test
+def the_task19_symmetries_in_cpp_as_in_python_and_through_minimize():
+    """Task 19, §19.2 (symmetry.hpp, mootation.symmetry): the Hungarian
+    method, align and the built-in canon the same in C++ and Python, bit for
+    bit; the Hungarian method's cost the least of every permutation (n <= 6);
+    through minimize: sym = off given runs as no knob, sym = align / canon and
+    the block operators run on the population methods with the problem's
+    sym_blocks (a Python fn), and the refusals."""
+    if _core_with("scalar") is None or not hasattr(_core_with("scalar"), "symmetry_align"):
+        print("  skip  the_task19_symmetries...: no _core.scalar.symmetry_align"); return
+    import itertools
+    import math
+    import random
+    import mootation
+    from mootation import symmetry as Y
+    core = _core_with("scalar")
+    rng = random.Random(19)
+    for n in range(1, 7):
+        for rep in range(20):
+            c = [[rng.random() if rep % 2 else float(rng.randrange(3)) for _ in range(n)] for _ in range(n)]
+            a = core.symmetry_hungarian(c)
+            assert list(a) == Y.hungarian(c), (n, rep)
+            best = min(sum(c[i][p[i]] for i in range(n)) for p in itertools.permutations(range(n)))
+            assert abs(sum(c[i][a[i]] for i in range(n)) - best) <= 1e-12, (n, rep)
+    blocks = [(1, 2, 4), (10, 3, 3)]
+    for rep in range(50):
+        x = [rng.uniform(-2, 2) for _ in range(19)]
+        ref = [rng.uniform(-2, 2) for _ in range(19)]
+        assert core.symmetry_align(x, ref, blocks) == Y.align(x, ref, blocks), rep
+        assert core.symmetry_canon(x, blocks) == Y.sort_blocks(x, blocks), rep
+
+    def f(x):                                            # invariant under the blocks' permutations
+        s = (x[0] - 0.5) ** 2 + (x[9] + 0.5) ** 2
+        for off, size, count in blocks:
+            for k in range(count):
+                r = sum(v * v for v in x[off + k * size:off + (k + 1) * size])
+                s += (r - 1.0) ** 2
+        return [s]
+
+    bounds = [(-2.0, 2.0)] * 19
+    run = lambda alg, **kw: mootation.minimize(f, bounds, 1, algorithm=alg, pop_size=20,  # noqa: E731
+                                               max_evaluations=400, seed=3, sym_blocks=blocks, **kw)
+    for alg in ("de", "jade", "shade", "lshade", "ga_sbx", "ssga", "pso", "spso2011"):
+        a, b = run(alg), run(alg, sym="off")
+        assert a.variables == b.variables and a.objectives == b.objectives, alg
+        for mode in ("align", "canon"):
+            if mode == "canon" and alg in ("pso", "spso2011"):
+                continue
+            r = run(alg, sym=mode)
+            assert r.evaluations == a.evaluations and math.isfinite(r.objectives[0][0]), (alg, mode)
+    r = run("ga_sbx", sym="align", ga_block_uniform=0.5, ga_block_mutation=0.2,
+            canon=lambda x: Y.sort_blocks(x, blocks))
+    assert math.isfinite(r.objectives[0][0])
+    r = run("de", sym="align", align=lambda x, ref: Y.align(x, ref, blocks))
+    assert math.isfinite(r.objectives[0][0])
+    for kw in ({"sym": "canon", "algorithm": "pso"}, {"sym": "align", "sym_blocks": None},
+               {"ga_block_mutation": 0.5, "sym_blocks": None, "algorithm": "ga_sbx"},
+               {"sym_blocks": [(0, 4, 4)], "sym": "align"}):
+        alg = kw.pop("algorithm", "de")
+        args = {"sym_blocks": blocks, **kw}
+        try:
+            mootation.minimize(f, bounds, 1, algorithm=alg, pop_size=20, max_evaluations=100, seed=1, **args)
+        except ValueError:
+            continue
+        raise AssertionError(f"not refused: {alg} {kw}")
+
+
+_SYM2_TOML = """algorithms = [ { name = "de", pop = 0, gens = 0, params = { sym = "align" } },
+               { name = "ga_sbx", pop = 0, gens = 0, params = { sym = "canon", ga_block_uniform = 0.5, ga_block_mutation = 0.2 } },
+               { name = "pso", pop = 0, gens = 0, params = { sym = "align" } } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["sumexp_K3_r4_1D", "lj_cluster_N13_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 400
+storage = "store"
+"""
+
+
+@test
+def a_campaign_with_sym_writes_the_same_files_from_both_engines():
+    """Task 19, §19.2: de (sym = align), ga_sbx (sym = canon with the block
+    operators) and pso (sym = align) on sumexp and lj_cluster (their blocks
+    and canon) in both engines: every run done and the same."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_with_sym...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_SYM2_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert len(jobs) == 6 and (cp["done"], cp["failed"]) == (cc["done"], cc["failed"]) == (6, 0), (cp, cc)
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            ta, tb = ((x / "improvements.csv").read_text(encoding="utf-8") for x in (a, b))
+            assert ta == tb, (job.problem, job.key)
+
 @test
 def a_store_cuts_a_torn_record_and_packs_the_same_bytes():
     """Task 16, §1.1 and §1.3: a record cut off halfway (a worker killed while

@@ -91,6 +91,10 @@ sc::Problem problem_of(const py::object& fn, const py::object& constraints, cons
         P.evaluate = [nat](const Vec& x, Vec& f, Vec& g) {
             nat->evaluate(x.data(), f.data(), g.empty() ? nullptr : g.data());
         };
+        for (const auto& b : nat->blocks)                     // the problem's symmetries (task 19, §19.2.1)
+            P.sym_blocks.push_back({static_cast<std::size_t>(b.offset), static_cast<std::size_t>(b.size),
+                                    static_cast<std::size_t>(b.count)});
+        if (nat->has_canon) P.canon = [nat](Vec& x) { nat->canon(x.data()); };
         return P;
     }
     const int m = n_objs, k = n_cons;
@@ -229,7 +233,8 @@ void bind_scalar(py::module_& m)
              const py::object& design, const py::object& seed_points,
              const std::shared_ptr<mootation::suite::Native>& native, const py::object& grad,
              const py::object& residuals, const py::object& jac, const py::object& x0,
-             const py::object& gauge_basis, const py::object& f_stop) {
+             const py::object& gauge_basis, const py::object& f_stop, const py::object& sym_blocks,
+             const py::object& canon, const py::object& align) {
               if (fn.is_none() == residuals.is_none() && !native)
                   throw std::invalid_argument("give fn or residuals, one of them");
               sc::Problem P = problem_of(fn, constraints, bounds, n_objs, n_cons, n_eq, native);
@@ -240,6 +245,25 @@ void bind_scalar(py::module_& m)
                       N = rows_of_seq((*gauge_basis)(to_list(x)));
                   };
               if (!f_stop.is_none()) P.stop_at = py::cast<double>(f_stop);
+              if (!sym_blocks.is_none()) {           // (offset, size, count) each (task 19, §19.2.1)
+                  P.sym_blocks.clear();
+                  for (py::handle b : sym_blocks) {
+                      const py::sequence t = py::reinterpret_borrow<py::sequence>(b);
+                      if (t.size() != 3) throw std::invalid_argument("sym_blocks: (offset, size, count) each");
+                      P.sym_blocks.push_back({py::cast<std::size_t>(t[0]), py::cast<std::size_t>(t[1]),
+                                              py::cast<std::size_t>(t[2])});
+                  }
+              }
+              if (!canon.is_none())
+                  P.canon = [canon = held(canon)](Vec& x) {
+                      py::gil_scoped_acquire gil;
+                      x = floats((*canon)(to_list(x)));
+                  };
+              if (!align.is_none())
+                  P.align = [align = held(align)](const Vec& x, const Vec& ref, Vec& out) {
+                      py::gil_scoped_acquire gil;
+                      out = floats((*align)(to_list(x), to_list(ref)));
+                  };
               sc::Start st;
               if (!x0.is_none()) {
                   st.has_x0 = true;
@@ -292,13 +316,16 @@ void bind_scalar(py::module_& m)
           py::arg("native") = nullptr, py::arg("grad") = py::none(), py::arg("residuals") = py::none(),
           py::arg("jac") = py::none(), py::arg("x0") = py::none(), py::arg("gauge_basis") = py::none(),
           py::arg("f_stop") = py::none(),
+          py::arg("sym_blocks") = py::none(), py::arg("canon") = py::none(), py::arg("align") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
           "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
           "for the scalar presets, solutions; at one objective improvements, the best point's\n"
           "records (evaluations, grad_calls, f, cv; improvements.hpp). fn = None with residuals\n"
           "(and jac, their Jacobian): the objective 1/2 ||r||^2; grad: the objective's gradient;\n"
           "x0: the start\n"
-          "(evaluator.hpp, scalar.hpp run_local).");
+          "(evaluator.hpp, scalar.hpp run_local). sym_blocks, canon, align: the problem's\n"
+          "symmetries for the population methods' sym knob (symmetry.hpp; a native problem's own\n"
+          "where not given).");
 
     s.def("polish",
           [](const py::object& fn, const py::object& constraints, const py::object& bounds,
@@ -505,6 +532,41 @@ void bind_scalar(py::module_& m)
           "singular values of J at the solution, the covariance s^2 (J^T J)^+ (s^2 = sigma2, or 2 cost / "
           "(m - n) when sigma2 = 0) and the correlations. bounds = (lo, hi), +-inf allowed: Coleman-Li's interior "
           "trust region (x0 inside).");
+
+    // task 19, §19.2.1 (symmetry.hpp): the C++ side of mootation.symmetry's cross-check
+    auto groups_of = [](const py::object& blocks) {
+        std::vector<sc::symmetry::Blocks> g;
+        for (py::handle b : blocks) {
+            const py::sequence t = py::reinterpret_borrow<py::sequence>(b);
+            if (t.size() != 3) throw std::invalid_argument("blocks: (offset, size, count) each");
+            g.push_back({py::cast<std::size_t>(t[0]), py::cast<std::size_t>(t[1]), py::cast<std::size_t>(t[2])});
+        }
+        return g;
+    };
+    s.def("symmetry_hungarian",
+          [](const py::object& c) {
+              const sc::Rows rows = rows_of_seq(c);
+              Vec flat;
+              for (const Vec& r : rows) flat.insert(flat.end(), r.begin(), r.end());
+              return sc::symmetry::hungarian(rows.size(), flat);
+          },
+          py::arg("c"), "The least-cost assignment of the square matrix c: the column of each row (Munkres 1957).");
+    s.def("symmetry_align",
+          [groups_of](const Vec& x, const Vec& ref, const py::object& blocks) {
+              const auto g = groups_of(blocks);
+              sc::symmetry::check(g, x.size());
+              return sc::symmetry::align(x, ref, g);
+          },
+          py::arg("x"), py::arg("ref"), py::arg("blocks"),
+          "x with each group's blocks permuted to ref's at least squared distance (symmetry.hpp).");
+    s.def("symmetry_canon",
+          [groups_of](Vec x, const py::object& blocks) {
+              const auto g = groups_of(blocks);
+              sc::symmetry::check(g, x.size());
+              sc::symmetry::sort_blocks(x, g);
+              return x;
+          },
+          py::arg("x"), py::arg("blocks"), "x with each group's blocks sorted (the built-in canon, SYM-5).");
 
     s.def("lm_profile",
           [lm_problem](const py::object& fun, const py::object& jac, const Vec& x_hat, std::size_t m, std::size_t j,

@@ -90,6 +90,7 @@
 #include "../dss.hpp"
 #include "../fp_contract.hpp"
 #include "improvements.hpp"
+#include "symmetry.hpp"
 
 namespace mootation::scalar {
 
@@ -125,6 +126,13 @@ struct Problem {
     // one objective: the run ends at the first feasible point with f <= stop_at
     // (THE TARGET; -inf: never)
     double stop_at = -std::numeric_limits<double>::infinity();
+    // symmetries (task 19, §19.2.1; symmetry.hpp): groups of interchangeable
+    // blocks of coordinates, the problem's canonical representative (f(canon(x))
+    // = f(x), canon(canon(x)) = canon(x)) and its alignment of x to ref; empty:
+    // the built-in ones on sym_blocks (the kernels' sym knob)
+    std::vector<symmetry::Blocks> sym_blocks;
+    std::function<void(Vec& x)> canon;
+    std::function<void(const Vec& x, const Vec& ref, Vec& out)> align;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }

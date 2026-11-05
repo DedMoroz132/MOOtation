@@ -1542,6 +1542,17 @@ single-objective job counts the evaluations from the thread that makes them,
 which is not yet safe for a strategy's starts in threads. A strategy
 shares its budget among its starts, so it depends on `max_evaluations`.
 
+**Symmetries** (task 19, §19.2; `scalar/symmetry.hpp`): `minimize(...,
+sym_blocks=[(offset, size, count), ...], canon=None, align=None)` tells the
+population methods which blocks of coordinates may be interchanged, and
+`sym = canon | align` has `de`, `jade`, `shade`, `lshade`, `ga_sbx`, `ssga`,
+`pso` and `spso2011` (the last two `align` only) combine the points
+canonical or aligned to each other; `ga_block_uniform` and
+`ga_block_mutation` are the GA's block crossover and mutation. In campaigns
+the suite's problems give their blocks and `canon`. `sym = off` (the
+default) and no block knob: the runs of before (POP-9); what each method
+aligns is in [symmetric-problems.md](symmetric-problems.md).
+
 **The problem's derivatives** (task 18, stage 1, §1.1; `scalar/evaluator.hpp`):
 `minimize(..., grad=g)` gives the objective's gradient (for a constrained
 problem the pair (gradient, the constraints' Jacobian)), `residuals=r` the
