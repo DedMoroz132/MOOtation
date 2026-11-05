@@ -41,7 +41,7 @@ int main()
 {
     const std::string path = std::string(MOOTATION_TEST_DATA) + "/registry_sample.json";
     const cg::ProblemRegistry reg = cg::load_registry(path);
-    CHECK(reg.problems.size() == 18);
+    CHECK(reg.problems.size() == 26);
     CHECK(!reg.code_stamp.empty() && reg.reference_version >= 1);
 
     // the values the file records, from the problems built here
@@ -149,7 +149,7 @@ int main()
         CHECK(u && js::dump(u->summary()) == js::dump(*checks->find("summary")));
         ++uninformative_checked;
     }
-    CHECK(uninformative_checked == 4);
+    CHECK(uninformative_checked == 10);
 
     CHECK(!cg::engine_refusal(reg.problems.at("shiftDTLZ2_3D")));
     CHECK(reg.problems.at("C2-DTLZ2_3D").has_cons && reg.problems.at("C2-DTLZ2_3D").n_con == 1);

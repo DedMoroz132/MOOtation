@@ -12,8 +12,7 @@ Optimisation", GECCO 2026, arXiv 2602.06742; the analysis is `--bias` on the
 campaign command line.)
 
 The problems, M = 2, x in [0, 1]^n for n = 2 and 10, after Kudela et al.'s
-Table 1 (variant beta where there are three), a = U(0, 1) and z = N(0, 1)
-fresh at every evaluation:
+Table 1, a = U(0, 1) and z = N(0, 1) fresh at every evaluation:
   f1   uninformative_n02_2D      [U, U]: the Pareto set is the point (0, 0)
   f2b  uninformative_f2b_n02_2D  [a, 1 - sin(12 pi a^1.5)/4 - sqrt(a/2) + 0.08 z^2]:
                                  a disconnected front
@@ -23,7 +22,22 @@ fresh at every evaluation:
   f4b  uninformative_f4b_n02_2D  [a, c + 2 z^2], c = -2a^2 below a = 1/2 and
                                  -2(a - 1/2)^2 - 1/2 above: two concave regions
   f5   uninformative_f5_n02_2D   [a, -a]: every point non-dominated
-(and _n10_ for n = 10). f4's first objective, g1 = a, is printed in the
+(and _n10_ for n = 10). f2, f3 and f4 have three variants in the table, alpha,
+beta and gamma, which differ only in the weight r of the noise z^2 — beta's
+above (task 6), alpha's and gamma's since task 20 of 2026-11-02, §20.1.5
+(f2a, f2g, ..., f4g: uninformative_f2a_n02_2D and so on):
+
+         alpha   beta   gamma
+    f2   2       0.08   0.0015
+    f3   20      0.9    0.02
+    f4   60      2      0.06
+
+The larger r, the fewer points lie near the noise-free curve: of 10^4 random
+points about 10^2, 3 10^2 and 10^3 are non-dominated (the table's last
+column, alpha, beta, gamma), a share of about 0.01, 0.03 and 0.1. The paper
+(Section 4.3) finds that the front's shape changes neither the kind nor the
+strength of the structural bias, its density does — which only all three
+variants show. f4's first objective, g1 = a, is printed in the
 paper's Table 1 in its PDF; the task notes the HTML version omits it.
 
 The values are deterministic from (the run's seed, the evaluation's number):
@@ -33,7 +47,9 @@ needs a counter, so the problem hands a campaign a fresh evaluator per run
 without a seed, draws from x instead — the same x gets the same values —
 which is just as uninformative. f1's stream is the one it always had; the
 others draw from a domain of their own (`draw`), z by Box-Muller from two of
-its uniforms.
+its uniforms. Each of f2a .. f4g has a domain of its own as well (DOMAIN),
+so that f1's, f2b's, f3b's, f4b's and f5's streams stay what they were, bit
+for bit.
 
 WHAT A RUN LEAVES BEHIND. The evaluator counts, over every point the run
 evaluated (Kudela's X_A) and over those non-dominated over the whole run
@@ -52,8 +68,14 @@ from typing import List
 
 M = 2
 SIZES = (2, 10)
-PROBLEMS = ("f1", "f2b", "f3b", "f4b", "f5")
-R = {"f2b": 0.08, "f3b": 0.9, "f4b": 2.0}          # Kudela et al., Table 1, variant beta
+PROBLEMS = ("f1", "f2b", "f3b", "f4b", "f5", "f2a", "f2g", "f3a", "f3g", "f4a", "f4g")
+R = {"f2b": 0.08, "f3b": 0.9, "f4b": 2.0,          # Kudela et al., Table 1: variant beta,
+     "f2a": 2.0, "f3a": 20.0, "f4a": 60.0,          # alpha
+     "f2g": 0.0015, "f3g": 0.02, "f4g": 0.06}       # and gamma
+# the draw domain: f2b-f5 the one they always had (1 << 62), each later
+# problem its own, d << 56 above it (4 k + i stays below 2^56 for k < 2^54)
+DOMAIN = {p: 1 << 62 for p in ("f2b", "f3b", "f4b", "f5")}
+DOMAIN.update({p: (1 << 62) + (d << 56) for d, p in enumerate(("f2a", "f2g", "f3a", "f3g", "f4a", "f4g"), 1)})
 BINS = 20
 _MASK = (1 << 64) - 1
 
@@ -76,10 +98,10 @@ def value(seed: int, k: int, i: int) -> float:
     return _unit(h)
 
 
-def draw(seed: int, k: int, i: int) -> float:
-    """Uniform i (0..3) of evaluation k for f2b-f5: U(0, 1), a domain apart
-    from f1's."""
-    h = _splitmix64((seed & _MASK) ^ _splitmix64((1 << 62) + 4 * k + i))
+def draw(seed: int, k: int, i: int, problem: str = "f2b") -> float:
+    """Uniform i (0..3) of evaluation k for f2b-f5 and f2a-f4g: U(0, 1), in
+    the problem's domain (DOMAIN), apart from f1's."""
+    h = _splitmix64((seed & _MASK) ^ _splitmix64(DOMAIN[problem] + 4 * k + i))
     return _unit(h)
 
 
@@ -87,15 +109,15 @@ def objectives(problem: str, a: float, z: float) -> List[float]:
     """Kudela et al.'s [g1, g2] for a = U(0, 1) and z = N(0, 1)."""
     if problem == "f5":
         return [a, -a]
-    if problem == "f2b":
+    if problem not in R:
+        raise ValueError(f"unknown problem '{problem}'")
+    if problem.startswith("f2"):
         g2 = 1.0 - math.sin(12.0 * math.pi * a ** 1.5) / 4.0 - math.sqrt(a / 2.0)
-    elif problem == "f3b":
+    elif problem.startswith("f3"):
         b = sum(1 for i in range(1, 10) if a > i / 10.0)
         g2 = 0.1 / (10.0 * (a - b / 10.0) + 1.0) ** 10 + (1.0 - b / 10.0)
-    elif problem == "f4b":
+    else:                                               # f4
         g2 = -2.0 * a * a if a < 0.5 else -2.0 * (a - 0.5) ** 2 - 0.5
-    else:
-        raise ValueError(f"unknown problem '{problem}'")
     return [a, g2 + R[problem] * z * z]
 
 
@@ -116,8 +138,8 @@ class Evaluator:
         if self.problem == "f1":
             f = [value(self.seed, self.k, i) for i in range(M)]
         else:
-            a = draw(self.seed, self.k, 0)
-            u1, u2 = draw(self.seed, self.k, 1), draw(self.seed, self.k, 2)
+            a = draw(self.seed, self.k, 0, self.problem)
+            u1, u2 = draw(self.seed, self.k, 1, self.problem), draw(self.seed, self.k, 2, self.problem)
             z = math.sqrt(-2.0 * math.log(1.0 - u1)) * math.cos(2.0 * math.pi * u2)
             f = objectives(self.problem, a, z)
         self.k += 1

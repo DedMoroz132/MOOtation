@@ -1712,8 +1712,10 @@ carries onto every problem; Kudela, van Stein, Bäck & Kononova (GECCO 2026)
 found such pulls in 120 PlatEMO algorithms. The problems are theirs (Table 1),
 in two and ten variables: `uninformative_n02_2D` is f1, [U, U]; f2b, f3b and
 f4b (`uninformative_f2b_n02_2D`, ...) put a disconnected, a stepped and a
-two-region front under a χ²-shaped noise (variant β); f5 is [a, −a], every
-point non-dominated. The problem itself counts, in 20 bins of [0, 1] and
+two-region front under a χ²-shaped noise (variant β); f2a … f4g are the
+table's variants α and γ of the same three, whose noise weight thins the front
+to about 1 % and thickens it to about 10 % of a random sample (β: 3 %); f5 is
+[a, −a], every point non-dominated. The problem itself counts, in 20 bins of [0, 1] and
 exactly on a bound or at ½, the coordinates of every point a run evaluated and
 of those non-dominated over the run, and the campaign writes the counts into
 `meta.json` (`structural_bias`).

@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added: Kudela et al.'s variants alpha and gamma of the uninformative
+  problems f2-f4 (GECCO 2026, Table 1), at 2 and 10 variables:
+  `uninformative_f2a_n02_2D` ... `uninformative_f4g_n10_2D`, 12 rows. The same
+  functions as beta's with the noise weight r of the table (f2: 2 and 0.0015,
+  f3: 20 and 0.02, f4: 60 and 0.06), so the front is about 1 % (alpha) and
+  10 % (gamma) of a random sample, against beta's 3 %. Each draws from a
+  domain of its own: the streams of f1, f2b, f3b, f4b and f5 are unchanged,
+  bit for bit, and so is their frame, which does not depend on r.
 - Added: six knobs for readings of six cores' papers (the owner's decisions
   of 2026-11-02), every default unchanged, so default runs keep their golden
   fingerprints. `edv`: `pm_literal` (`on`, the letter p_m = 1/pop_size, or

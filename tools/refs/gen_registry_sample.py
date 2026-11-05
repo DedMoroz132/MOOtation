@@ -10,7 +10,8 @@ box), a categorical one (catZDT1) and one of bits (OJZJ: its front), two
 failing copies (the band at the faces, the random balls) with the values
 at points inside and outside the region (null: NaN, a failed evaluation),
 a noisy copy of each kind with the values its run evaluator (seed 7, cell
-0.02) gives at a few points in turn, and four uninformative problems with
+0.02) gives at a few points in turn (and their bases, for their frames), and ten uninformative problems (f1 and
+the variants beta, alpha and gamma of Kudela et al.'s f2-f4) with
 their evaluator's values and summary.
 
     python tools/refs/gen_registry_sample.py
@@ -27,8 +28,13 @@ NAMES = ("shiftDTLZ2_3D", "C2-DTLZ2_3D", "rDTLZ2_3D", "bbobbiobj07_n10_2D", "cat
          "RE91", "OJZJ_n10_k2")
 FAILING = ("ZDT1_fail30b", "DTLZ2_3D_fail30r")
 NOISY = ("ZDT1_n1", "DTLZ2_3D_d5", "ZDT1_s5", "DTLZ2_3D_h1")
+# the noisy copies' bases: the engine scales a copy's noise by its base's
+# frame, which it reads from the base's row (load_registry)
+BASES = ("ZDT1", "DTLZ2_3D")
 UNINFORMATIVE = ("uninformative_n10_2D", "uninformative_f2b_n02_2D", "uninformative_f3b_n02_2D",
-                 "uninformative_f4b_n02_2D")
+                 "uninformative_f4b_n02_2D", "uninformative_f2a_n02_2D", "uninformative_f2g_n02_2D",
+                 "uninformative_f3a_n02_2D", "uninformative_f3g_n02_2D", "uninformative_f4a_n10_2D",
+                 "uninformative_f4g_n10_2D")
 
 
 def box_point(p, u):
@@ -48,12 +54,12 @@ for name in FAILING:
     e = entry(name)
     p = R.PROBLEMS[name]
     n = p.n_vars
-    region = e["failing_region"]
-    if region["kind"] == "b":
-        points = [[0.5] * n, [region["t"] / 2] + [0.5] * (n - 1), [0.5] * (n - 1) + [1.0 - region["t"] / 2]]
+    region = R.failing_region(name)       # the export leaves t and the balls to C++ (derive_numbers)
+    if e["failing_region"]["kind"] == "b":
+        points = [[0.5] * n, [region.t / 2] + [0.5] * (n - 1), [0.5] * (n - 1) + [1.0 - region.t / 2]]
     else:
-        c = region["centres"]
-        points = [list(c[0]), [min(1.0, v + 0.5 * region["radius"] / n ** 0.5) for v in c[1]],
+        c = [[float(v) for v in row] for row in region.centres]
+        points = [list(c[0]), [min(1.0, v + 0.5 * region.radius / n ** 0.5) for v in c[1]],
                   [0.5] * n, [0.0] * n]
     checks = []
     for u in points:
@@ -62,6 +68,8 @@ for name in FAILING:
         checks.append({"x": x, "F": [None if v != v else v for v in F]})
     e["fail_checks"] = checks
     problems.append(e)
+for name in BASES:
+    problems.append(entry(name))
 for name in NOISY:
     e = entry(name)
     p = R.PROBLEMS[name]

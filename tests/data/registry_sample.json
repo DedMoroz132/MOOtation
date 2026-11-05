@@ -1,7 +1,7 @@
 {
  "format": 1,
- "code_stamp": "v4-27f9b5f377ae0bc8",
- "reference_version": 4,
+ "code_stamp": "v5-14f0adf5194b2fdc",
+ "reference_version": 5,
  "mootation": "0.1.0",
  "names": {
   "baselines": [
@@ -22,11 +22,42 @@
    "eps_nm",
    "eps_cmaes",
    "boostdms",
-   "mosqp"
+   "mosqp",
+   "slsqp",
+   "nelder_mead",
+   "cmaes",
+   "lm",
+   "lbfgsb",
+   "de",
+   "jade",
+   "shade",
+   "lshade",
+   "ga_sbx",
+   "ssga",
+   "g3_pcx",
+   "chc",
+   "pso",
+   "spso2011",
+   "sep_cmaes"
   ],
   "scalar_others": [
    "boostdms",
-   "mosqp"
+   "mosqp",
+   "slsqp",
+   "nelder_mead",
+   "cmaes",
+   "lm",
+   "lbfgsb",
+   "de",
+   "jade",
+   "shade",
+   "ga_sbx",
+   "ssga",
+   "g3_pcx",
+   "chc",
+   "pso",
+   "spso2011",
+   "sep_cmaes"
   ],
   "design_kinds": [
    "sobol",
@@ -117,11 +148,38 @@
    "n_offspring",
    "n_ref_points",
    "ada",
+   "grad_cost",
+   "lm_ftol",
+   "lm_xtol",
+   "lm_gtol",
+   "lm_f_scale",
+   "lbfgsb_m",
+   "lbfgsb_pgtol",
+   "lbfgsb_ftol",
+   "np",
+   "jade_p",
+   "jade_c",
+   "shade_h",
+   "shade_p_max",
+   "lshade_p",
+   "lshade_r_arc",
+   "lshade_n_min",
+   "lshade_max_nfe",
+   "ga_tournament",
+   "g3_mu",
+   "g3_lambda",
+   "g3_sigma",
+   "chc_divergence",
+   "chc_bits",
+   "pso_phi",
+   "spso_k",
+   "noise_frac",
    "eta_int",
    "bound_repair",
    "crossover",
    "mutation",
    "crowding_space",
+   "sbx_bounds",
    "dms_init",
    "dms_poll",
    "dms_cache",
@@ -165,9 +223,19 @@
    "tch_weights",
    "sqp_line_search",
    "theta_ties",
+   "k_share",
    "hv_algo",
    "hv_contrib",
    "polish",
+   "lm_loss",
+   "pso_topology",
+   "pso_v0",
+   "pm_literal",
+   "flag1",
+   "flag2",
+   "fitness_reading",
+   "extreme_weights",
+   "slot_exclusive",
    "int_repair"
   ],
   "text_knobs": [
@@ -217,6 +285,13 @@
     [
      "objectives",
      "decision"
+    ]
+   ],
+   [
+    "sbx_bounds",
+    [
+     "bounded",
+     "clip"
     ]
    ],
    [
@@ -554,6 +629,13 @@
     ]
    ],
    [
+    "k_share",
+    [
+     "pp",
+     "dp"
+    ]
+   ],
+   [
     "hv_algo",
     [
      "auto",
@@ -577,6 +659,70 @@
      "off",
      "sqp",
      "nm"
+    ]
+   ],
+   [
+    "lm_loss",
+    [
+     "linear",
+     "huber",
+     "cauchy"
+    ]
+   ],
+   [
+    "pso_topology",
+    [
+     "ring",
+     "global"
+    ]
+   ],
+   [
+    "pso_v0",
+    [
+     "random",
+     "zero"
+    ]
+   ],
+   [
+    "pm_literal",
+    [
+     "on",
+     "off"
+    ]
+   ],
+   [
+    "flag1",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "flag2",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "fitness_reading",
+    [
+     "swap",
+     "ibea"
+    ]
+   ],
+   [
+    "extreme_weights",
+    [
+     "nsga3",
+     "literal"
+    ]
+   ],
+   [
+    "slot_exclusive",
+    [
+     "off",
+     "on"
     ]
    ],
    [
@@ -739,20 +885,32 @@
     "n_var": 12,
     "n_obj": 3,
     "map": "cyclic",
-    "first": 2,
-    "centre": [
-     0.773606797749979,
-     0.302786404500042,
-     0.8208203932499369,
-     0.25557280900008406,
-     0.668033988749895,
-     0.2083592135001261,
-     0.7152475842498529,
-     0.16114561800016813,
-     0.7624611797498109,
-     0.3139320225002102
-    ]
+    "first": 2
    },
+   "ideal": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "dtlz2",
+    "M": 3,
+    "seed": 3025643453,
+    "of": "shiftDTLZ2_3D"
+   },
+   "set": {
+    "kind": "dtlz",
+    "M": 3,
+    "n_vars": 12,
+    "rest": "shift",
+    "of": "shiftDTLZ2_3D"
+   },
+   "frame_files": null,
    "check": {
     "x": [
      0.5,
@@ -857,10 +1015,31 @@
    "spec": {
     "family": "C2-DTLZ2",
     "n_var": 12,
-    "n_obj": 3,
-    "r2": 0.16000000000000003,
-    "centre_m": 0.5773502691896258
+    "n_obj": 3
    },
+   "ideal": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "c2_dtlz2",
+    "M": 3,
+    "seed": 4093205539,
+    "of": "C2-DTLZ2_3D"
+   },
+   "set": {
+    "kind": "c2_dtlz2",
+    "M": 3,
+    "n_vars": 12,
+    "of": "C2-DTLZ2_3D"
+   },
+   "frame_files": null,
    "check": {
     "x": [
      0.5,
@@ -984,20 +1163,32 @@
       10
      ]
     },
-    "map": "rotate_half",
-    "centre": [
-     0.773606797749979,
-     0.302786404500042,
-     0.8208203932499369,
-     0.25557280900008406,
-     0.668033988749895,
-     0.2083592135001261,
-     0.7152475842498529,
-     0.16114561800016813,
-     0.7624611797498109,
-     0.3139320225002102
-    ]
+    "map": "rotate_half"
    },
+   "ideal": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "dtlz2",
+    "M": 3,
+    "seed": 2907601593,
+    "of": "DTLZ2_3D"
+   },
+   "set": {
+    "kind": "rotated",
+    "family": "DTLZ2",
+    "M": 3,
+    "n_vars": 12,
+    "of": "rDTLZ2_3D"
+   },
+   "frame_files": null,
    "check": {
     "x": [
      0.5,
@@ -1073,7 +1264,7 @@
    ],
    "pop_size": 100,
    "n_gen": 500,
-   "problem_version": 3,
+   "problem_version": 4,
    "modification": null,
    "multimodal_ps": false,
    "has_pareto_front": false,
@@ -1098,6 +1289,17 @@
     "bbob_fnum": 7,
     "bbob_iid": 1
    },
+   "ideal": [
+    -695.09,
+    65.69
+   ],
+   "nadir": [
+    -624.0662832855027,
+    470.23013998480377
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "check": {
     "x": [
      0.0,
@@ -1292,6 +1494,21 @@
     "n_var": 11,
     "n_obj": 2
    },
+   "ideal": [
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "zdt1",
+    "seed": 3034726726,
+    "of": "catZDT1"
+   },
+   "set": null,
+   "frame_files": null,
    "check": {
     "x": [
      1.0,
@@ -1421,6 +1638,17 @@
     "bbob_fnum": 1,
     "bbob_iid": 1
    },
+   "ideal": [
+    -6.59,
+    -119.99
+   ],
+   "nadir": [
+    27.660825701507154,
+    -85.73917429849284
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "check": {
     "x": [
      0.5,
@@ -1498,6 +1726,35 @@
     "family": "RE91",
     "n_var": 7,
     "n_obj": 9
+   },
+   "ideal": [
+    15.549754,
+    0.0,
+    0.0,
+    0.0907242296262,
+    0.367459287472,
+    0.527364946723,
+    0.735415465187,
+    0.618676033791,
+    0.660886967497
+   ],
+   "nadir": [
+    39.6023250742,
+    1.00188125422,
+    112.487885728,
+    0.79017024474,
+    1.42304666576,
+    1.08576907833,
+    1.1215181762,
+    0.993535488298,
+    1.01068662645
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": {
+    "dir": "_re",
+    "name": "RE91",
+    "drop_last": false
    },
    "check": {
     "x": [
@@ -1665,6 +1922,24 @@
     "n_obj": 2,
     "k": 2
    },
+   "ideal": [
+    -12.0,
+    -12.0
+   ],
+   "nadir": [
+    -2.0,
+    -2.0
+   ],
+   "front": {
+    "kind": "binary",
+    "which": "OJZJ",
+    "n": 10,
+    "k": 2,
+    "whole": true,
+    "of": "OJZJ_n10_k2"
+   },
+   "set": null,
+   "frame_files": null,
    "check": {
     "x": [
      0.5,
@@ -1842,14 +2117,24 @@
      "family": "ZDT1",
      "n_var": 30,
      "n_obj": 2
-    },
-    "t": 0.005909383970481574
+    }
    },
    "noise": null,
    "uninformative": null,
    "seeded_stream": null,
    "distance": false,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "fail_checks": [
     {
      "x": [
@@ -2027,7 +2312,7 @@
    ],
    "pop_size": 91,
    "n_gen": 500,
-   "problem_version": 2,
+   "problem_version": 3,
    "modification": {
     "kind": "failing",
     "of": "DTLZ2_3D",
@@ -2052,87 +2337,41 @@
      "family": "DTLZ2",
      "n_var": 12,
      "n_obj": 3
-    },
-    "radius": 1.0280882546941332,
-    "centres": [
-     [
-      0.7101235338867833,
-      0.18326280953247442,
-      0.2271571671629683,
-      0.19142047223905445,
-      0.5541372405828192,
-      0.5850253251653189,
-      0.9832856990228778,
-      0.5624149350134288,
-      0.3512134605946947,
-      0.4463778027340233,
-      0.38760530793789716,
-      0.634459021339566
-     ],
-     [
-      0.5604965134214225,
-      0.322617522397893,
-      0.48786641259104013,
-      0.3370935426410907,
-      0.6763744858296081,
-      0.1420776044251254,
-      0.01481009113521714,
-      0.7874699259955075,
-      0.9858641499293787,
-      0.9319764404206041,
-      0.8919952393918968,
-      0.3222638594653495
-     ],
-     [
-      0.4887404884066463,
-      0.8279034802733268,
-      0.4992870258405976,
-      0.5833904947924075,
-      0.8753358795406667,
-      0.8650517509531834,
-      0.14915587358103732,
-      0.584301883585166,
-      0.0410104891912797,
-      0.5307259309267942,
-      0.04938753265450191,
-      0.010957247815902682
-     ],
-     [
-      0.03425924086590748,
-      0.65922533795987,
-      0.2645143391666983,
-      0.7867857726158073,
-      0.4851918771381679,
-      0.401480531433262,
-      0.9256973856366432,
-      0.24720980016453364,
-      0.8224333157450874,
-      0.636634192891701,
-      0.3747118828643613,
-      0.4098167566806882
-     ]
-    ]
+    }
    },
    "noise": null,
    "uninformative": null,
    "seeded_stream": null,
    "distance": false,
    "spec": null,
+   "ideal": [
+    6.123233995736766e-17,
+    0.9124252318887373,
+    0.0
+   ],
+   "nadir": [
+    0.4092254750480122,
+    1.0,
+    0.25189781815421697
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "fail_checks": [
     {
      "x": [
-      0.7101235338867833,
-      0.18326280953247442,
-      0.2271571671629683,
-      0.19142047223905445,
-      0.5541372405828192,
-      0.5850253251653189,
-      0.9832856990228778,
-      0.5624149350134288,
-      0.3512134605946947,
-      0.4463778027340233,
-      0.38760530793789716,
-      0.634459021339566
+      0.7748437747631012,
+      0.3329285068230077,
+      0.8122410669414019,
+      0.31630977815898087,
+      0.3509239686773208,
+      0.4241581617634157,
+      0.829387819872211,
+      0.12821026300017135,
+      0.3899562623689161,
+      0.08192493795964118,
+      0.9247085883820398,
+      0.7693279942462089
      ],
      "F": [
       null,
@@ -2142,18 +2381,18 @@
     },
     {
      "x": [
-      0.70888827107101,
-      0.47100928004748055,
-      0.6362581702406277,
-      0.48548530029067827,
-      0.8247662434791957,
-      0.29046936207471297,
-      0.16320184878480473,
-      0.935861683645095,
       1.0,
       1.0,
+      0.3370782053293655,
+      0.5057540073336044,
       1.0,
-      0.4706556171149371
+      0.24181462446588664,
+      0.5074397012460014,
+      0.8980631412400409,
+      0.9518866787831494,
+      0.7714501869723552,
+      0.7278660368468387,
+      0.49226142004887674
      ],
      "F": [
       null,
@@ -2204,6 +2443,290 @@
      ]
     }
    ]
+  },
+  {
+   "name": "ZDT1",
+   "family": "ZDT",
+   "n_var": 30,
+   "n_obj": 2,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": true,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "seeded_stream": null,
+   "distance": true,
+   "spec": {
+    "family": "ZDT1",
+    "n_var": 30,
+    "n_obj": 2
+   },
+   "ideal": [
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "zdt1",
+    "seed": 2104397228,
+    "of": "ZDT1"
+   },
+   "set": {
+    "kind": "zdt",
+    "base": "ZDT1",
+    "rest": 0.0,
+    "of": "ZDT1"
+   },
+   "frame_files": null
+  },
+  {
+   "name": "DTLZ2_3D",
+   "family": "DTLZ",
+   "n_var": 12,
+   "n_obj": 3,
+   "n_con": 0,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 91,
+   "n_gen": 500,
+   "problem_version": 2,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": true,
+   "has_pareto_set": true,
+   "front_exact": true,
+   "shared_reference": true,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": false,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "seeded_stream": null,
+   "distance": true,
+   "spec": {
+    "family": "DTLZ2",
+    "n_var": 12,
+    "n_obj": 3
+   },
+   "ideal": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "dtlz2",
+    "M": 3,
+    "seed": 2907601593,
+    "of": "DTLZ2_3D"
+   },
+   "set": {
+    "kind": "dtlz",
+    "M": 3,
+    "n_vars": 12,
+    "rest": 0.5,
+    "of": "DTLZ2_3D"
+   },
+   "frame_files": null
   },
   {
    "name": "ZDT1_n1",
@@ -2358,15 +2881,6 @@
    "noise": {
     "of": "ZDT1",
     "kind": "n",
-    "sigma": 0.01,
-    "scale": [
-     0.01,
-     0.01
-    ],
-    "ideal": [
-     0.0,
-     0.0
-    ],
     "spec": {
      "family": "ZDT1",
      "n_var": 30,
@@ -2377,6 +2891,26 @@
    "seeded_stream": null,
    "distance": true,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "zdt1",
+    "seed": 2104397228,
+    "of": "ZDT1"
+   },
+   "set": {
+    "kind": "zdt",
+    "base": "ZDT1",
+    "rest": 0.0,
+    "of": "ZDT1"
+   },
+   "frame_files": null,
    "noise_checks": {
     "seed": 7,
     "cell": 0.02,
@@ -2655,17 +3189,6 @@
    "noise": {
     "of": "DTLZ2_3D",
     "kind": "d",
-    "sigma": 0.05,
-    "scale": [
-     0.05,
-     0.05,
-     0.05
-    ],
-    "ideal": [
-     0.0,
-     0.0,
-     0.0
-    ],
     "spec": {
      "family": "DTLZ2",
      "n_var": 12,
@@ -2676,6 +3199,30 @@
    "seeded_stream": null,
    "distance": true,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "dtlz2",
+    "M": 3,
+    "seed": 2907601593,
+    "of": "DTLZ2_3D"
+   },
+   "set": {
+    "kind": "dtlz",
+    "M": 3,
+    "n_vars": 12,
+    "rest": 0.5,
+    "of": "DTLZ2_3D"
+   },
+   "frame_files": null,
    "noise_checks": {
     "seed": 7,
     "cell": 0.02,
@@ -2941,15 +3488,6 @@
    "noise": {
     "of": "ZDT1",
     "kind": "s",
-    "sigma": 0.05,
-    "scale": [
-     0.05,
-     0.05
-    ],
-    "ideal": [
-     0.0,
-     0.0
-    ],
     "spec": {
      "family": "ZDT1",
      "n_var": 30,
@@ -2960,6 +3498,26 @@
    "seeded_stream": null,
    "distance": true,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "zdt1",
+    "seed": 2104397228,
+    "of": "ZDT1"
+   },
+   "set": {
+    "kind": "zdt",
+    "base": "ZDT1",
+    "rest": 0.0,
+    "of": "ZDT1"
+   },
+   "frame_files": null,
    "noise_checks": {
     "seed": 7,
     "cell": 0.02,
@@ -3238,17 +3796,6 @@
    "noise": {
     "of": "DTLZ2_3D",
     "kind": "h",
-    "sigma": 0.01,
-    "scale": [
-     0.01,
-     0.01,
-     0.01
-    ],
-    "ideal": [
-     0.0,
-     0.0,
-     0.0
-    ],
     "spec": {
      "family": "DTLZ2",
      "n_var": 12,
@@ -3259,6 +3806,30 @@
    "seeded_stream": null,
    "distance": true,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "dtlz2",
+    "M": 3,
+    "seed": 2907601593,
+    "of": "DTLZ2_3D"
+   },
+   "set": {
+    "kind": "dtlz",
+    "M": 3,
+    "n_vars": 12,
+    "rest": 0.5,
+    "of": "DTLZ2_3D"
+   },
+   "frame_files": null,
    "noise_checks": {
     "seed": 7,
     "cell": 0.02,
@@ -3442,6 +4013,17 @@
    "seeded_stream": null,
    "distance": false,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "uninformative_checks": {
     "seed": 7,
     "points": [
@@ -3655,6 +4237,17 @@
    "seeded_stream": null,
    "distance": false,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.07362355483603622
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "uninformative_checks": {
     "seed": 7,
     "points": [
@@ -3820,6 +4413,17 @@
    "seeded_stream": null,
    "distance": false,
    "spec": null,
+   "ideal": [
+    0.0,
+    0.10009765624999997
+   ],
+   "nadir": [
+    1.0,
+    1.1
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "uninformative_checks": {
     "seed": 7,
     "points": [
@@ -3985,6 +4589,17 @@
    "seeded_stream": null,
    "distance": false,
    "spec": null,
+   "ideal": [
+    0.0,
+    -1.0
+   ],
+   "nadir": [
+    1.0,
+    0.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
    "uninformative_checks": {
     "seed": 7,
     "points": [
@@ -4106,6 +4721,1222 @@
       "at_lower": 1,
       "at_upper": 2,
       "at_half": 1
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f2a_n02_2D",
+   "family": "uninformative",
+   "n_var": 2,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f2a",
+   "seeded_stream": null,
+   "distance": false,
+   "spec": null,
+   "ideal": [
+    0.0,
+    -1.0
+   ],
+   "nadir": [
+    1.0,
+    0.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.6644622561043801,
+       0.21138913394875877
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.5893143423898065,
+       10.158155891076822
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.7584187514909153,
+       2.3367821792764043
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.8821179284227844,
+       7.1440795500575565
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.4275127849378515,
+       8.414770780420437
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.4539533030639158,
+       0.7824891483902587
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       3,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       3,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 3,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "nondominated": {
+      "points": 3,
+      "hist": [
+       2,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       1
+      ],
+      "at_lower": 2,
+      "at_upper": 1,
+      "at_half": 1
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f2g_n02_2D",
+   "family": "uninformative",
+   "n_var": 2,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f2g",
+   "seeded_stream": null,
+   "distance": false,
+   "spec": null,
+   "ideal": [
+    0.0,
+    -1.0
+   ],
+   "nadir": [
+    1.0,
+    0.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.25631536439591807,
+       0.8935308221655139
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.13562916468638897,
+       0.5043063403237702
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.00493856279223881,
+       0.9478201646340865
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.3579172041392822,
+       0.3329350727668013
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.49377573233759653,
+       0.3801762505930135
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.48472711390375367,
+       0.47191116392129484
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       3,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       3,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 3,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "nondominated": {
+      "points": 3,
+      "hist": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1
+      ],
+      "at_lower": 1,
+      "at_upper": 1,
+      "at_half": 1
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f3a_n02_2D",
+   "family": "uninformative",
+   "n_var": 2,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f3a",
+   "seeded_stream": null,
+   "distance": false,
+   "spec": null,
+   "ideal": [
+    0.0,
+    -1.0
+   ],
+   "nadir": [
+    1.0,
+    0.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.8521738523252016,
+       43.79714220332418
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.35529484187872906,
+       0.7936635346841521
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.7707731077238444,
+       5.080571894655989
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.19836437264531015,
+       7.7822802328621545
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.37315092478427125,
+       2.0731017871397635
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.16481938829334153,
+       3.801159813788597
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       3,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       3,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 3,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "nondominated": {
+      "points": 2,
+      "hist": [
+       1,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       1
+      ],
+      "at_lower": 1,
+      "at_upper": 1,
+      "at_half": 0
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f3g_n02_2D",
+   "family": "uninformative",
+   "n_var": 2,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f3g",
+   "seeded_stream": null,
+   "distance": false,
+   "spec": null,
+   "ideal": [
+    0.0,
+    -1.0
+   ],
+   "nadir": [
+    1.0,
+    0.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.7802033950327569,
+       0.31089443634556235
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.8546716792345052,
+       0.2688787709187158
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.9815938214137866,
+       0.10025662477339926
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.9646285915252084,
+       0.15404188274660496
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.9187229691101727,
+       0.11937589242302947
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.9900819051530914,
+       0.10036848345800468
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       3,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       3,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 3,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "nondominated": {
+      "points": 4,
+      "hist": [
+       2,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       0,
+       2,
+       0,
+       0,
+       0,
+       0,
+       1,
+       0,
+       0,
+       0,
+       2
+      ],
+      "at_lower": 2,
+      "at_upper": 2,
+      "at_half": 2
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f4a_n10_2D",
+   "family": "uninformative",
+   "n_var": 10,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f4a",
+   "seeded_stream": null,
+   "distance": false,
+   "spec": null,
+   "ideal": [
+    0.0,
+    -1.0
+   ],
+   "nadir": [
+    1.0,
+    0.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.3135413097404546,
+       198.53637567392045
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.04147677384255266,
+       36.514781094567795
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.515742454957172,
+       99.55929273459518
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.38007857336534745,
+       143.92957527424502
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.7308469686446619,
+       2.175174181670726
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.8472029134514668,
+       19.79944949322009
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       12
+      ],
+      "at_lower": 12,
+      "at_upper": 12,
+      "at_half": 12
+     },
+     "nondominated": {
+      "points": 2,
+      "hist": [
+       4,
+       0,
+       0,
+       0,
+       0,
+       4,
+       0,
+       0,
+       0,
+       0,
+       4,
+       0,
+       0,
+       0,
+       0,
+       4,
+       0,
+       0,
+       0,
+       4
+      ],
+      "at_lower": 4,
+      "at_upper": 4,
+      "at_half": 4
+     },
+     "evaluations": 6
+    }
+   }
+  },
+  {
+   "name": "uninformative_f4g_n10_2D",
+   "family": "uninformative",
+   "n_var": 10,
+   "n_obj": 2,
+   "n_con": null,
+   "has_cons": false,
+   "n_eq": 0,
+   "bounds": [
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ],
+    [
+     0.0,
+     1.0
+    ]
+   ],
+   "pop_size": 100,
+   "n_gen": 500,
+   "problem_version": 1,
+   "modification": null,
+   "multimodal_ps": false,
+   "has_pareto_front": false,
+   "has_pareto_set": false,
+   "front_exact": true,
+   "shared_reference": false,
+   "dense_reference": false,
+   "cyclic_vars": [],
+   "stochastic": false,
+   "own_evaluator": true,
+   "typed": false,
+   "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": "f4g",
+   "seeded_stream": null,
+   "distance": false,
+   "spec": null,
+   "ideal": [
+    0.0,
+    -1.0
+   ],
+   "nadir": [
+    1.0,
+    0.0
+   ],
+   "front": null,
+   "set": null,
+   "frame_files": null,
+   "uninformative_checks": {
+    "seed": 7,
+    "points": [
+     {
+      "x": [
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.642273968560177,
+       -0.46894098367313575
+      ]
+     },
+     {
+      "x": [
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75
+      ],
+      "F": [
+       0.7864354959350125,
+       -0.6505129767888469
+      ]
+     },
+     {
+      "x": [
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0
+      ],
+      "F": [
+       0.8521148599357273,
+       -0.7394288202507168
+      ]
+     },
+     {
+      "x": [
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0
+      ],
+      "F": [
+       0.26736447651624784,
+       -0.10958228846135032
+      ]
+     },
+     {
+      "x": [
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25
+      ],
+      "F": [
+       0.2922399660713665,
+       -0.10098322681722445
+      ]
+     },
+     {
+      "x": [
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5,
+       0.0,
+       0.75,
+       0.25,
+       1.0,
+       0.5
+      ],
+      "F": [
+       0.6605167579401171,
+       -0.550497209213893
+      ]
+     }
+    ],
+    "summary": {
+     "bins": 20,
+     "all": {
+      "points": 6,
+      "hist": [
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       0,
+       12,
+       0,
+       0,
+       0,
+       12
+      ],
+      "at_lower": 12,
+      "at_upper": 12,
+      "at_half": 12
+     },
+     "nondominated": {
+      "points": 5,
+      "hist": [
+       10,
+       0,
+       0,
+       0,
+       0,
+       10,
+       0,
+       0,
+       0,
+       0,
+       10,
+       0,
+       0,
+       0,
+       0,
+       10,
+       0,
+       0,
+       0,
+       10
+      ],
+      "at_lower": 10,
+      "at_upper": 10,
+      "at_half": 10
      },
      "evaluations": 6
     }

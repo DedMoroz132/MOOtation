@@ -4799,7 +4799,7 @@ def kudelas_problems_and_where_the_points_fell():
     from mootation.benchmarks import get, names
     from mootation.benchmarks import uninformative as U
     from mootation.run import report as R
-    assert len([n for n in names() if n.startswith("uninformative")]) == 10
+    assert len([n for n in names() if n.startswith("uninformative")]) == 22
     assert U.name(10, "f3b") == "uninformative_f3b_n10_2D"
     rng = np.random.default_rng(9)
     X = rng.random((20000, 2))
@@ -4830,6 +4830,38 @@ def kudelas_problems_and_where_the_points_fell():
     s = e.summary()
     assert s["nondominated"]["points"] == 3000, s["nondominated"]["points"]  # every one
     assert s["all"]["at_lower"] + s["all"]["at_upper"] > 1000, s["all"]
+
+
+@test
+def kudelas_variants_alpha_and_gamma():
+    """f2a-f4g (task 20, §20.1.5): the same functions as beta's with Table 1's
+    weights r, each in a draw domain of its own (so f2b-f5's streams stay
+    theirs); the noise-free curve, and with it the frame, does not depend on
+    r; of 10^4 draws about 10^2, 3 10^2 and 10^3 are non-dominated for alpha,
+    beta and gamma (the table's last column; an order of magnitude)."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    from mootation.benchmarks import get
+    from mootation.benchmarks import uninformative as U
+    assert U.name(2, "f2a") == "uninformative_f2a_n02_2D" and U.name(10, "f4g") == "uninformative_f4g_n10_2D"
+    assert len(set(U.DOMAIN.values())) == 7 and U.DOMAIN["f2b"] == U.DOMAIN["f5"] == 1 << 62
+    for fn in ("f2", "f3", "f4"):
+        for a in (0.0, 0.13, 0.5, 0.77, 1.0):
+            assert U.objectives(fn + "a", a, 0.0) == U.objectives(fn + "b", a, 0.0) == U.objectives(fn + "g", a, 0.0)
+        assert U.objectives(fn + "a", 0.3, 1.0)[1] - U.objectives(fn + "a", 0.3, 0.0)[1] == U.R[fn + "a"]
+        frames = {(get(U.name(2, fn + v)).ideal, get(U.name(2, fn + v)).nadir) for v in "abg"}
+        assert len(frames) == 1, (fn, frames)
+        counts = []
+        for v in "abg":
+            e = U.Evaluator(11, fn + v)
+            for _ in range(10_000):
+                e([0.5, 0.5])
+            counts.append(e.summary()["nondominated"]["points"])
+        assert counts[0] < counts[1] < counts[2], (fn, counts)
+        for c, want in zip(counts, (100, 300, 1000)):
+            assert want / 3 < c < 3 * want, (fn, counts)
+    # a domain of its own: alpha's uniforms are not beta's
+    assert U.draw(5, 0, 0, "f2a") != U.draw(5, 0, 0, "f2b") == U.draw(5, 0, 0)
 
 
 @test
@@ -13506,6 +13538,7 @@ def every_core_has_a_row_in_verification_md():
     if not path.is_file():
         print("  skip  every_core_has_a_row...: no docs"); return
     cores, methods = path.read_text(encoding="utf-8").split("\n## The population methods at one objective\n")
+    methods = methods.split("\n## ")[0]                  # the problems' map follows (task 20)
     assert re.findall(r"^\| `(\w+)` \|", methods, re.M) == list(POPULATION)
     rows = re.findall(r"^\| `(\w+)` \|", cores, re.M)
     assert sorted(rows) == sorted(algorithm_names()), \

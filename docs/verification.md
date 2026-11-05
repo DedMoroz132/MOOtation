@@ -116,3 +116,13 @@ A test (`every_core_has_a_row_in_verification_md`) keeps this table complete too
 | `pso` | 2026-10 | Clerc & Kennedy 2002, Table V, Type 1'' | `smpso` with its knobs: no difference by Mann-Whitney | `test_pso` |
 | `spso2011` | 2026-10 | CEC 2013: not in the library (the sphere, rotation invariance and the walls instead) | — | `test_spso2011` |
 | `sep_cmaes` | 2026-10 | Ros & Hansen 2008, Tables 2–4: evaluations to the target, 7 cases | — | `test_sep_cmaes` |
+
+## The problems of task 20
+
+Problems added in task 20 (2026-11), each checked against its source as the
+column says; the C++ suite is the reference, the Python module the
+cross-check. Results of runs are not kept here, only what checks them.
+
+| problems | source | what checks them | tests |
+|---|---|---|---|
+| `uninformative_f2a` … `uninformative_f4g` (n = 2, 10) | Kudela, van Stein, Bäck, Kononova, GECCO 2026, Table 1 (variants α and γ; the weights read off the PDF, 2026-11-02) | C++ = Python value for value and the counts' summary on the same seeds; f1, f2b–f5 bit for bit as before (their rows of `tests/data/registry_sample.json` unchanged); the noise-free curve and the frame the same for α, β and γ; non-dominated among 10⁴ draws about 10², 3·10², 10³ (the table's last column, to an order of magnitude) | `test_registry`; run-layer `kudelas_variants_alpha_and_gamma` |

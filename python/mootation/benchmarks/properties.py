@@ -122,8 +122,8 @@ Huband analyses:
               not apply to bits: None
   uninformative
               Kudela et al. 2026, Table 1 (uninformative.py): the front of each
-              (f1 a point, f2b disconnected, f3b convex stairs, f4b two concave
-              pieces, f5 linear); the objectives do not depend on x, so nothing
+              (f1 a point, f2 disconnected, f3 convex stairs, f4 two concave
+              pieces, f5 linear; alpha, beta and gamma alike); the objectives do not depend on x, so nothing
               else of Huband's applies: None
   MaF14, MaF15
               Cheng et al. 2017, Table 1 (maf.py): MaF14 "Linear, partially
@@ -712,8 +712,8 @@ def _huband(name: str) -> dict | None:
                   stem == "OMM", None, None, deceptive=stem == "OJZJ")
     if stem == "uninformative":
         kind = name.split("_")[1]
-        front = {"f2b": "disconnected", "f3b": "convex+disconnected", "f4b": "concave+disconnected",
-                 "f5": "linear"}.get(kind)                   # f1: a single point
+        front = {"f2": "disconnected", "f3": "convex+disconnected", "f4": "concave+disconnected",
+                 "f5": "linear"}.get(kind[:2])               # f1: a single point
         return _p(front, None, None, None, None, None, None, deceptive=None)
     if stem == "Polygon":
         return _p("linear+degenerate" if m >= 4 else "linear", False, False, False, False, True,

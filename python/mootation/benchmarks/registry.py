@@ -1898,8 +1898,9 @@ def _register_bbob_biobj():
 
 
 def _register_uninformative():
-    """f1 (the original pair) and Kudela et al.'s f2b-f5 (uninformative.py). The
-    frame of f2b-f5 is the noise-free curve's (z = 0), which the run's
+    """f1 (the original pair) and Kudela et al.'s f2b-f5 and f2a-f4g
+    (uninformative.py). The frame of the others is the noise-free curve's (z =
+    0), the same for a function's three variants, which the run's
     non-dominated points approach; there is no reference front."""
     pop, ng = _budget(2)
     a = np.linspace(0.0, 1.0, 1001)

@@ -204,7 +204,7 @@ def _layout(p) -> dict:
 
 def _uninformative(name: str) -> str | None:
     """An uninformative problem's kind (benchmarks/uninformative.py: f1, f2b,
-    f3b, f4b, f5), whose run evaluator the engine makes from the run's seed."""
+    f3b, f4b, f5, f2a .. f4g), whose run evaluator the engine makes from the run's seed."""
     from ..benchmarks import uninformative as U
     for problem in U.PROBLEMS:
         if any(U.name(n, problem) == name for n in U.SIZES):

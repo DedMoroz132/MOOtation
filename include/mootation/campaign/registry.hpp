@@ -641,8 +641,9 @@ private:
 
 // uninformative.Evaluator: one run's objectives, drawn at random whatever x
 // is — the k-th evaluation the k-th draw of the splitmix64 stream of the
-// run's seed (f1: two uniforms; f2b-f5: Kudela et al.'s [a, g2(a) + R z^2]
-// of a uniform a and a normal z by Box-Muller) — and where the evaluated
+// run's seed (f1: two uniforms; f2b-f5 and f2a-f4g: Kudela et al.'s [a, g2(a)
+// + r z^2] of a uniform a and a normal z by Box-Muller, f2a-f4g each in a
+// draw domain of its own, uninformative.DOMAIN) — and where the evaluated
 // points lie: 20 bins of [0, 1] per coordinate and the points exactly at 0,
 // 1 and 1/2, over every point and over the run's non-dominated ones
 // (summary(), meta.json's structural_bias). The C library's log, cos, sin
@@ -651,6 +652,24 @@ class UninformativeNative : public suite::Native {
 public:
     UninformativeNative(std::string problem, int n_vars, std::uint64_t seed) : problem_(std::move(problem)), seed_(seed)
     {
+        // uninformative.R and DOMAIN: Kudela et al.'s Table 1, variants beta,
+        // alpha and gamma; f2b-f5 the domain they always had
+        struct Row {
+            const char* name;
+            double r;
+            std::uint64_t domain;                                  // d << 56 above 1 << 62
+        };
+        static constexpr Row table[] = {{"f2b", 0.08, 0}, {"f3b", 0.9, 0},    {"f4b", 2.0, 0},  {"f5", 0.0, 0},
+                                        {"f2a", 2.0, 1},  {"f2g", 0.0015, 2}, {"f3a", 20.0, 3}, {"f3g", 0.02, 4},
+                                        {"f4a", 60.0, 5}, {"f4g", 0.06, 6}};
+        if (problem_ != "f1") {
+            const Row* row = nullptr;
+            for (const Row& t : table)
+                if (problem_ == t.name) row = &t;
+            if (!row) throw std::invalid_argument("uninformative: unknown problem '" + problem_ + "'");
+            r_ = row->r;
+            domain_ = (1ULL << 62) + (row->domain << 56);
+        }
         n_var = n_vars;
         n_obj = 2;
         n_con = 0;
@@ -685,8 +704,9 @@ public:
     }
 
     // the frame (registry._register_uninformative; task 17, addendum 7,
-    // section 2.1): f1's the unit square; f2b-f5's the noise-free curve's (z =
-    // 0) over a = numpy.linspace(0, 1, 1001), g1 = a in [0, 1]
+    // section 2.1): f1's the unit square; f2b-f5's and f2a-f4g's the
+    // noise-free curve's (z = 0) over a = numpy.linspace(0, 1, 1001), g1 = a
+    // in [0, 1]: the same for the three variants of a function, r z^2 = 0
     void frame(double ideal[2], double nadir[2]) const
     {
         ideal[0] = 0.0;
@@ -739,10 +759,10 @@ private:
         }
     };
 
-    // uniform i (0..3) of the evaluation: a domain apart from f1's
+    // uniform i (0..3) of the evaluation, in the problem's domain: apart from f1's
     double draw(std::uint64_t i) const
     {
-        return NoisyNative::unit(NoisyNative::splitmix64(seed_ ^ NoisyNative::splitmix64((1ULL << 62) + 4 * k_ + i)));
+        return NoisyNative::unit(NoisyNative::splitmix64(seed_ ^ NoisyNative::splitmix64(domain_ + 4 * k_ + i)));
     }
 
     // uninformative.objectives: [g1, g2] for a = U(0, 1) and z = N(0, 1)
@@ -753,20 +773,17 @@ private:
             f[1] = -a;
             return;
         }
-        double g2 = 0.0, r = 0.0;
-        if (problem_ == "f2b") {
+        double g2 = 0.0;
+        if (problem_[1] == '2') {
             g2 = 1.0 - sin_(12.0 * kPi * pow_(a, 1.5)) / 4.0 - std::sqrt(a / 2.0);
-            r = 0.08;
-        } else if (problem_ == "f3b") {
+        } else if (problem_[1] == '3') {
             int b = 0;
             for (int i = 1; i < 10; ++i) b += a > i / 10.0;
             g2 = 0.1 / pow_(10.0 * (a - b / 10.0) + 1.0, 10.0) + (1.0 - b / 10.0);
-            r = 0.9;
-        } else {                                                   // f4b
+        } else {                                                   // f4
             g2 = a < 0.5 ? -2.0 * a * a : -2.0 * pow_(a - 0.5, 2.0) - 0.5;
-            r = 2.0;
         }
-        f[1] = g2 + r * z * z;
+        f[1] = g2 + r_ * z * z;
     }
 
     // the run's non-dominated points so far, by f1 ascending (f2 falls along)
@@ -789,6 +806,8 @@ private:
 
     std::string problem_;
     std::uint64_t seed_;
+    double r_ = 0.0;                                           // the weight of z^2
+    std::uint64_t domain_ = 1ULL << 62;
     mutable std::uint64_t k_ = 0;
     mutable Counts all_;
     mutable std::vector<double> front_f1_, front_f2_;
