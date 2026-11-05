@@ -345,6 +345,9 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"fitness_reading", {"swap", "ibea"}},
         {"extreme_weights", {"nsga3", "literal"}},
         {"slot_exclusive", {"off", "on"}},
+        {"cma_weights",  {"active", "positive"}},
+        {"cma_cmu",      {"tutorial2016", "hansen2009"}},
+        {"cma_stop",     {"spread", "h09"}},
     };
     return v;
 }
@@ -372,7 +375,8 @@ inline bool is_core_word(const std::string& name)
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
                           "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
-                          "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive"})
+                          "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
+                          "cma_weights", "cma_cmu", "cma_stop"})
         if (name == k) return true;
     return false;
 }

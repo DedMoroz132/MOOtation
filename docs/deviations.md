@@ -404,7 +404,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-192 items: 192 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+197 items: 197 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -424,6 +424,11 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cmaes` | INJ-2 | Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5 says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m = sqrt(2n) + 2n/(n + 2) (Table 1). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-3 | The tutorial's negative weights: an injected point among the worst is clipped by (3) as well; the report expects no harm (p. 9: the clipping of long steps even helps the negative update). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-4 | An injected mean takes the place of the weighted mean of (41) for the mean's move and for p_σ and p_c, the y_i (clipped) still serve the rank-μ update (Figure 1). | yes | `cmaes.hpp` |
+| `cmaes` | CMA-1 | t counts the tells; the criteria are tested after the update of iteration t, on the state it left (m, σ, C, p_c of t + 1 in H09's Table 1), each iteration, as a production code tests them before sampling. | yes | `cmaes.hpp` |
+| `cmaes` | CMA-2 | Stagnation holds when it holds in both arrays, the best and the median values ("respectively"), and is tested only once the iterations reach the window's length (with fewer, 20 newest and 20 oldest overlap or are not... | yes | `cmaes.hpp` |
+| `cmaes` | CMA-3 | TolHistFun and EqualFunVals are tested only once there are as many iterations as their window holds (10 + ⌈30D/λ⌉, D). | yes | `cmaes.hpp` |
+| `cmaes` | CMA-4 | "Numerically constant": m_i + δ_i == m_i in double for every i (NoEffectAxis), for some i (NoEffectCoor). | yes | `cmaes.hpp` |
+| `cmaes` | CMA-5 | The eigendecomposition of C at every iteration, where H09 makes it every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves time and changes no update but the sampling's B and D between decompositions. | yes | `cmaes.hpp` |
 | `de` | DE-1 | The trial (4) is built coordinate by coordinate: rnbr(i) is drawn first, then one U(0, 1) for every j (j = rnbr(i) included), and v_j is taken where U < CR or j = rnbr(i). | yes | `de.hpp` |
 | `de` | DE-2 | Bounds. The paper's box is the initial parameter range (IPR) only; its f9 and f28 have their minima outside it, and DE finds them. | yes | `de.hpp` |
 | `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |

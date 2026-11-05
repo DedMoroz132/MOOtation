@@ -101,6 +101,9 @@ _FALLBACK_TEXT = {
     "fitness_reading": ("swap", "ibea"),
     "extreme_weights": ("nsga3", "literal"),
     "slot_exclusive": ("off", "on"),
+    "cma_weights": ("active", "positive"),
+    "cma_cmu": ("tutorial2016", "hansen2009"),
+    "cma_stop": ("spread", "h09"),
 }
 
 _BLOCK = re.compile(

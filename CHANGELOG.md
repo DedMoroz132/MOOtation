@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (`scalar/cmaes.hpp`; task 18, stage 3): the CMA-ES of BIPOP-CMA-ES
+  (Hansen, GECCO 2009) as options of the one CMA-ES. `cma_weights = positive`
+  (only the μ best, weighted ln(μ + 1) − ln i) and `cma_cmu = hansen2009`
+  (that paper's c_μ); `cma_stop = h09` stops a run by the paper's nine
+  termination criteria (MaxIter, TolHistFun, EqualFunVals, TolX, TolUpSigma,
+  Stagnation, ConditionCov, NoEffectAxis, NoEffectCoor) instead of by the
+  step's spread at `local_tol`. Knobs of the single-objective `cmaes`; the
+  defaults (`active`, `tutorial2016`, `spread`) leave every run as it was.
+  Readings CMA-1 … CMA-5.
 - Added: six knobs for readings of six cores' papers (the owner's decisions
   of 2026-11-02), every default unchanged, so default runs keep their golden
   fingerprints. `edv`: `pm_literal` (`on`, the letter p_m = 1/pop_size, or

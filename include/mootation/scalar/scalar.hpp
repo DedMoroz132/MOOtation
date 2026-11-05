@@ -826,7 +826,11 @@ inline Result run_boostdms_named(const Problem& P, double eq_tol, bool has_tol0,
 // The local solvers of `scalar` as single-objective algorithms (task 18, item
 // 2.3), each with its knobs there: slsqp (sqp: fd_step, local_tol,
 // sqp_line_search), nelder_mead (nm: local_tol), cmaes (cma_sigma0,
-// local_tol); the others are ignored and reported. n_objs = 1 only. The run:
+// local_tol, and cma_weights = active | positive, cma_cmu = tutorial2016 |
+// hansen2009, cma_stop = spread | h09: the tutorial's weights and c_mu or
+// those of BIPOP-CMA-ES 2009, the run stopped by its spread at local_tol or
+// by H09's termination criteria, cmaes.hpp); the others are ignored and
+// reported. n_objs = 1 only. The run:
 //   1. the initial plan, as scalar's (THE PLAN, 1);
 //   2. the solver once, from the plan's best point (feasible first, then f;
 //      without a feasible point, the least violating one), until its own
@@ -873,7 +877,7 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
                                                "finite (SINGLE-2)");
     std::vector<std::string> own{"local_tol", "grad_cost"};
     if (local == "sqp") own.insert(own.end(), {"fd_step", "sqp_line_search"});
-    if (local == "cmaes") own.push_back("cma_sigma0");
+    if (local == "cmaes") own.insert(own.end(), {"cma_sigma0", "cma_weights", "cma_cmu", "cma_stop"});
     Knobs taken;
     std::vector<std::string> ignored, none;
     double grad_cost = 1.0;
@@ -889,6 +893,21 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     }
     std::sort(ignored.begin(), ignored.end());
     const ScalarSettings s = scalar_settings("scalar", taken, none);   // the words and numbers checked
+    std::map<std::string, std::string> cma{{"cma_weights", "active"}, {"cma_cmu", "tutorial2016"},
+                                           {"cma_stop", "spread"}};
+    for (const auto& [k, v] : taken)
+        if (cma.count(k)) {
+            static const std::map<std::string, std::vector<std::string>> words{
+                {"cma_weights", {"active", "positive"}}, {"cma_cmu", {"tutorial2016", "hansen2009"}},
+                {"cma_stop", {"spread", "h09"}}};
+            const std::string w = detail::shown(v);
+            if (!v.is_word || !detail::listed(words.at(k), w))
+                throw std::invalid_argument(k + " = '" + w + "': " + detail::joined(words.at(k)));
+            cma[k] = w;
+        }
+    CMAESOptions cma_options;
+    if (cma["cma_weights"] == "positive") cma_options.weights = CMAESOptions::Weights::positive;
+    if (cma["cma_cmu"] == "hansen2009") cma_options.cmu = CMAESOptions::Cmu::hansen2009;
     if (start.has_x0 && start.x0.size() != P.lo.size())
         throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
                                     std::to_string(P.lo.size()) + " variables");
@@ -934,7 +953,7 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
             else if (local == "nm")
                 nm(run, y0, {i0}, s.local_tol);
             else
-                cmaes(run, y0, {i0}, s.cma_sigma0, s.local_tol, rng);
+                cmaes(run, y0, {i0}, s.cma_sigma0, s.local_tol, rng, cma_options, cma["cma_stop"] == "h09");
         }
     } catch (const BudgetSpent&) {
     } catch (const SubBudgetSpent&) {
@@ -948,7 +967,10 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     if (local == "sqp")
         r.settings.insert(r.settings.end(),
                           {{"sqp_line_search", s.sqp_line_search}, {"fd_step", g_format(s.fd_step)}});
-    if (local == "cmaes") r.settings.push_back({"cma_sigma0", g_format(s.cma_sigma0)});
+    if (local == "cmaes")
+        r.settings.insert(r.settings.end(), {{"cma_sigma0", g_format(s.cma_sigma0)},
+                                             {"cma_weights", cma["cma_weights"]}, {"cma_cmu", cma["cma_cmu"]},
+                                             {"cma_stop", cma["cma_stop"]}});
     if (P.has_gradient()) r.settings.push_back({"grad_cost", g_format(grad_cost)});
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
