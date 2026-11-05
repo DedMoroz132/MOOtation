@@ -33,6 +33,18 @@ always listed under **Changed** or **Removed**.
   problem. `Wrapped` passes the problem's gradient, gauge directions and
   start through the map. Off by default: runs without the keys are
   unchanged.
+- Changed: das_dennis::classify_size and suggest_sizes look for a single
+  layer up to H = 2000 (kMaxSingleLayerH; 500 before), so at two objectives
+  a population of up to 2001 is a lattice: N = 600, MOEA/D-DRA's (Zhang, Liu
+  & Li 2009, Sec. III), threw before. Only sizes that threw change: every
+  size attainable under the old bound keeps its configuration and its
+  lattice, bit for bit (test_das_dennis checks the 2413 of them up to 501 at
+  two objectives and 3000 at three to eight). generate_auto is unchanged.
+  The run layer's check_pop and campaign.fit_pop take exactly the core's
+  sizes (run/algorithms.py, attainable_sizes: the same bounds on H and the
+  same two-layer pairs); check_pop passed N = 600 at two objectives before,
+  where the core threw.
+
 - Added (`scalar/evaluator.hpp`; task 18, group 3g): the evaluator's lean
   mode, opt-in, for one objective: no archive, the best and the last point
   only, no lookup of repeated points, the counts, the records, the observer

@@ -610,21 +610,6 @@ def out_root(cfg: Config, spec: CampaignSpec) -> Path:
 # ── population-size adjustment ──────────────────────────────────────────────
 
 
-def _two_layer_sizes(m: int, limit: int) -> set:
-    from .algorithms import das_dennis_count
-    if m < 2:                     # one objective: two one-point layers
-        return {2} if limit >= 2 else set()
-    sizes = set()
-    h1 = 1
-    while das_dennis_count(m, h1) <= limit:
-        for h2 in range(1, h1):
-            s = das_dennis_count(m, h1) + das_dennis_count(m, h2)
-            if s <= limit:
-                sizes.add(s)
-        h1 += 1
-    return sizes
-
-
 def fit_pop(name: str, pop: int, n_objs: int, params: dict,
             rule: str = "below") -> tuple[int, str]:
     """The population size this algorithm will accept, and a note if it changed.
@@ -637,8 +622,8 @@ def fit_pop(name: str, pop: int, n_objs: int, params: dict,
     if name in FREE_H and params.get("n_ref_points"):
         return pop, ""
     if name in EXACT_LATTICE:
-        from .algorithms import lattice_sizes
-        ok = set(lattice_sizes(n_objs, 2 * pop)) | _two_layer_sizes(n_objs, 2 * pop)
+        from .algorithms import attainable_sizes
+        ok = attainable_sizes(n_objs, 2 * pop)
         if pop in ok:
             return pop, ""
         if rule == "nearest":

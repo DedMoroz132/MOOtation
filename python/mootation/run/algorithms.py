@@ -118,6 +118,18 @@ K_DIVISIBLE = {"moead_m2m": 10, "sms_m2m": 10}
 FREE_H = frozenset({"nsga3", "a_nsga3", "theta_dea", "srv_nsga3"})
 
 
+# The lattices das_dennis::generate_exact accepts (include/mootation/
+# das_dennis.hpp, classify_size): a single layer of up to MAX_SINGLE_LAYER_H
+# divisions (kMaxSingleLayerH), or two layers, an inner one of up to
+# TWO_LAYER_INNER_H divisions and a boundary one of more, up to
+# TWO_LAYER_BOUNDARY_H. check_pop and fit_pop take exactly these, so the run
+# layer refuses what the core refuses (test_run_layer:
+# check_pop_takes_the_sizes_the_core_takes).
+MAX_SINGLE_LAYER_H = 2000
+TWO_LAYER_INNER_H = 60
+TWO_LAYER_BOUNDARY_H = 80
+
+
 def das_dennis_count(m: int, h: int) -> int:
     """Number of points in the m-objective Das-Dennis lattice with h divisions."""
     return math.comb(h + m - 1, m - 1)
@@ -129,7 +141,7 @@ def lattice_sizes(m: int, limit: int) -> list[int]:
         return [1] if limit >= 1 else []
     out = []
     h = 1
-    while True:
+    while h <= MAX_SINGLE_LAYER_H:
         n = das_dennis_count(m, h)
         if n > limit:
             break
@@ -147,32 +159,39 @@ def nearest_lattice_sizes(m: int, pop: int) -> tuple[int | None, int | None]:
     if m < 2:                     # one objective: the lattice is one point for every h
         return (1, 1) if pop == 1 else ((1, None) if pop > 1 else (None, 1))
     below = None
-    h = 1
-    while True:
+    for h in range(1, MAX_SINGLE_LAYER_H + 1):
         n = das_dennis_count(m, h)
         if n == pop:
             return (n, n)
         if n > pop:
             return (below, n)
         below = n
-        h += 1
+    return (below, None)
 
 
 def two_layer_sizes(m: int, limit: int) -> list[int]:
     """Attainable TWO-layer lattice sizes (Deb & Jain 2014 §V: boundary H1 plus
-    inner H2 < H1) for m objectives, up to `limit`. generate_exact accepts these
-    as well as the single-layer sizes."""
+    inner H2 < H1) for m objectives, up to `limit`: H2 up to TWO_LAYER_INNER_H,
+    H1 up to TWO_LAYER_BOUNDARY_H, as generate_exact accepts them besides the
+    single-layer sizes."""
     if m < 2:                     # one objective: two one-point layers
         return [2] if limit >= 2 else []
     out = set()
-    h1 = 1
-    while das_dennis_count(m, h1) <= limit:
-        for h2 in range(1, h1):
+    for h2 in range(1, TWO_LAYER_INNER_H + 1):
+        if das_dennis_count(m, h2) >= limit:
+            break
+        for h1 in range(h2 + 1, TWO_LAYER_BOUNDARY_H + 1):
             s = das_dennis_count(m, h1) + das_dennis_count(m, h2)
-            if s <= limit:
-                out.add(s)
-        h1 += 1
+            if s > limit:
+                break
+            out.add(s)
     return sorted(out)
+
+
+def attainable_sizes(m: int, limit: int) -> set:
+    """Every population size up to `limit` that generate_exact accepts for m
+    objectives: a single layer or two."""
+    return set(lattice_sizes(m, limit)) | set(two_layer_sizes(m, limit))
 
 
 def seed_independent(name: str, params: dict | None, n_vars: int, init: str | None = None) -> bool:
@@ -215,14 +234,14 @@ def check_pop(name: str, pop: int, n_objs: int, params: dict | None = None
     if name in FREE_H and params.get("n_ref_points"):
         return None
     if name in EXACT_LATTICE:
-        below, above = nearest_lattice_sizes(n_objs, pop)
-        if below == pop:
-            return None
         # FIX 2026-09-05: the two-layer sizes (91+..., 275 = 220+55 at M=10,
         # 135 = 120+15 at M=15) are accepted by generate_exact too; refusing
-        # them here was stricter than the library.
-        if pop in two_layer_sizes(n_objs, pop):
+        # them here was stricter than the library. Task 20 (2026-11): and
+        # with the core's bounds on H, which it was looser than (N = 600 at
+        # two objectives passed here and threw in the core).
+        if pop in attainable_sizes(n_objs, pop):
             return None
+        below, above = nearest_lattice_sizes(n_objs, pop)
         hint = ", ".join(str(v) for v in (below, above) if v is not None)
         return (
             f"pop = {pop} is not a Das-Dennis lattice size for n_objs = {n_objs}; "
