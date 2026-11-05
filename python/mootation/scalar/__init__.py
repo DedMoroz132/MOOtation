@@ -183,7 +183,7 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
         eq_tol0, pop_size: int, budget: int, seed: int, knobs: dict, on_generation=None,
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
         seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
-        x0=None, gauge_basis=None):
+        x0=None, gauge_basis=None, f_stop=None):
     from ..run.knobs import canonical
     core = _module()
     design = None
@@ -203,7 +203,7 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
                  record_every=int(record_every), design=design,
                  seed_points=seeds if name != "mosqp" else None, grad=grad, residuals=residuals,
                  jac=jac, x0=None if x0 is None else [float(v) for v in x0],
-                 gauge_basis=gauge_basis)
+                 gauge_basis=gauge_basis, f_stop=None if f_stop is None else float(f_stop))
     n_failed = guard.n_failed if guard is not None else d["n_failed"]
     unique = unique_count() if unique_count is not None else d["evaluations"]
     return ScalarResult(d, d["ignored"], n_failed, eq_tol if n_eq else 0.0, unique)

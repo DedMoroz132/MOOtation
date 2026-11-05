@@ -38,6 +38,12 @@
 //     (jacobian, or residuals_jac in one call with r).
 // The bounds may be -inf / +inf, coordinate by coordinate.
 //
+// THE TARGET (task 18, stage 3, §3.6): with Problem::stop_at, the first
+// feasible point of one objective at or below it ends the run as the budget
+// would: the evaluator keeps it, records it, and its budget becomes what it
+// has spent (BudgetSpent), so that nothing evaluates after it — a strategy's
+// rounds and restarts included (as COCO's runs end at the final target).
+//
 // THE COUNTS (addendum 1, §4). evaluations: the calls of the problem's
 // values (evaluate, residuals); grad_calls: the calls of a gradient or a
 // Jacobian; a joint call is one of each. What the budget is spent by is
@@ -107,6 +113,9 @@ struct Problem {
     // the directions along which the residuals do not change to first order,
     // n rows of k (task 19, §19.3.1; lm with lm_gauge = on)
     std::function<void(const Vec& x, Rows& N)> gauge_basis;
+    // one objective: the run ends at the first feasible point with f <= stop_at
+    // (THE TARGET; -inf: never)
+    double stop_at = -std::numeric_limits<double>::infinity();
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }
@@ -478,6 +487,11 @@ private:
         if (observer && count && spent >= next_record) {
             while (next_record <= spent) next_record += stride;
             record();
+        }
+        if (m == 1 && count && !bad && f[0] <= P.stop_at && cv(i) <= 0.0) {     // THE TARGET
+            budget = spent;
+            limit = std::min(limit, spent);
+            throw BudgetSpent{};
         }
         return i;
     }

@@ -215,6 +215,7 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         res = minimize(None if "residuals" in derivatives else fn, bounds=p.bounds, n_objs=1,
                  algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens, seed=job.seed,
                  max_evaluations=job.budget, **{k: v for k, v in derivatives.items() if v is not None},
+                 f_stop=f_opt + spec.stop_at if spec.stop_at > 0 and f_opt is not None else None,
                  **job.params)
     except Exception as e:                          # one bad job must not kill the shard
         return failed(f"{type(e).__name__}: {e}", "incompatible by construction" in str(e))
@@ -260,7 +261,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             "reference_version": so.REFERENCE_VERSION if p.f_opt_kind == "best_known" else None,
             "instance": iid, "targets": kind, "precisions": precisions, "f_x0": f_x0,
             "runtimes": runtimes, "grad_cost": grad_cost, "cost": fe + grad_cost * grad_calls,
-            "improvements": len(records), **_peaks(p, res, so)},
+            "improvements": len(records), **_peaks(p, res, so),
+            **({"stop_at": spec.stop_at} if spec.stop_at > 0 else {})},
         final=({} if best is None else {"f": best[2], "delta_f": delta(best[2]), "cv": best[3],
                                          "fe_best": best[0], "grad_calls_best": best[1]}),
         finished=time.strftime("%Y-%m-%dT%H:%M:%S"), seconds=round(time.perf_counter() - t0, 3))

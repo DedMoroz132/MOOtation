@@ -21,6 +21,7 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -158,6 +159,33 @@ void bounds()
               std::to_string(none.objectives[0][0]) + ", " + std::to_string(pen.objectives[0][0]) + ")");
 }
 
+// THE TARGET (evaluator.hpp): a run ends at the first point at or below
+// Problem::stop_at, whatever the strategy; the point is the answer and the last
+// evaluation, and nothing loops on a budget that no longer shrinks
+void target()
+{
+    const double fopt = f_opt(1, 4), at = fopt + 1e-8;
+    for (const char* name : {"ipop", "bipop_2009", "multistart", "ils", "mlsl"}) {
+        sc::Problem P = bbob(1, 4);
+        auto calls = std::make_shared<long long>(0);
+        const auto inner_eval = P.evaluate;
+        P.evaluate = [inner_eval, calls](const Vec& x, Vec& f, Vec& g) {
+            ++*calls;
+            inner_eval(x, f, g);
+        };
+        P.stop_at = at;
+        sc::Knobs kn;
+        if (std::string(name) == "multistart" || std::string(name) == "ils" || std::string(name) == "mlsl")
+            kn.push_back({"inner", word("{\"solver\":\"cmaes\",\"local_tol\":1e-14}")});
+        const sc::Result r = sc::run(name, P, 1e-6, false, 0.0, 10, 1000000, 6, kn, {}, 0, {});
+        const bool last = !r.improvements.empty() && r.improvements.back().f <= at &&
+                          r.improvements.back().evaluations == r.evaluations;
+        check(r.objectives[0][0] <= at && last && r.evaluations < 1000000,
+              std::string(name) + " with stop_at = f* + 1e-8, bbob f1 D = 4: ends at the target's first point, " +
+                  std::to_string(r.evaluations) + " evaluations (" + std::to_string(*calls) + " calls)");
+    }
+}
+
 void refusals()
 {
     std::string why;
@@ -188,6 +216,7 @@ int main()
     bipop_schedule();
     bipop_2009();
     bounds();
+    target();
     refusals();
     std::printf("%s (%d failed)\n", g_failed == 0 ? "PASS" : "FAIL", g_failed);
     return g_failed == 0 ? 0 : 1;

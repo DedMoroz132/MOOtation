@@ -156,6 +156,7 @@ def minimize(
     jac=None,
     x0=None,
     gauge_basis=None,
+    f_stop=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -671,7 +672,7 @@ def minimize(
                 on_generation=on_generation, record_every=int(record_every),
                 init=init, init_share=float(init_share), seed_points=seeds,
                 unique_count=lambda: points.count, guard=guard, grad=grad,
-                residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis)
+                residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop)
             result._lsq = lsq
             result = _polished(result)
         finally:

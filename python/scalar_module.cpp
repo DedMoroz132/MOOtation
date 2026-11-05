@@ -229,16 +229,17 @@ void bind_scalar(py::module_& m)
              const py::object& design, const py::object& seed_points,
              const std::shared_ptr<mootation::suite::Native>& native, const py::object& grad,
              const py::object& residuals, const py::object& jac, const py::object& x0,
-             const py::object& gauge_basis) {
+             const py::object& gauge_basis, const py::object& f_stop) {
               if (fn.is_none() == residuals.is_none() && !native)
                   throw std::invalid_argument("give fn or residuals, one of them");
               sc::Problem P = problem_of(fn, constraints, bounds, n_objs, n_cons, n_eq, native);
               derivatives_of(P, grad, residuals, jac);
               if (!gauge_basis.is_none())            // n rows of k (task 19, §19.3.1)
-                  P.gauge_basis = [gauge_basis](const Vec& x, sc::Rows& N) {
+                  P.gauge_basis = [gauge_basis = held(gauge_basis)](const Vec& x, sc::Rows& N) {
                       py::gil_scoped_acquire gil;
-                      N = rows_of_seq(gauge_basis(to_list(x)));
+                      N = rows_of_seq((*gauge_basis)(to_list(x)));
                   };
+              if (!f_stop.is_none()) P.stop_at = py::cast<double>(f_stop);
               sc::Start st;
               if (!x0.is_none()) {
                   st.has_x0 = true;
@@ -285,6 +286,7 @@ void bind_scalar(py::module_& m)
           py::arg("design") = py::none(), py::arg("seed_points") = py::none(),
           py::arg("native") = nullptr, py::arg("grad") = py::none(), py::arg("residuals") = py::none(),
           py::arg("jac") = py::none(), py::arg("x0") = py::none(), py::arg("gauge_basis") = py::none(),
+          py::arg("f_stop") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
           "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
           "for the scalar presets, solutions; at one objective improvements, the best point's\n"

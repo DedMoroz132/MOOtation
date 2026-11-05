@@ -236,6 +236,7 @@ class CampaignSpec:
     # instance — "by_run", the run's seed (instance k on run k), or "fixed",
     # instance 1 (the owner's decision of 01.11, §1.1)
     bbob_instance: str = "by_run"
+    stop_at: float = 0.0
     # The cell of the step noise (benchmarks/noisy.py, <base>_s1 and _s5), a
     # share of every variable's range.
     noise_cell: float = 0.01
@@ -384,7 +385,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
              "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
              "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout",
-             "archive_cap", "bbob_instance"}
+             "archive_cap", "bbob_instance", "stop_at"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -493,6 +494,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.bbob_instance = raw.get("bbob_instance", "by_run")
     if spec.bbob_instance not in ("by_run", "fixed"):
         raise ConfigError("campaign.bbob_instance", f"\"by_run\" or \"fixed\", not {spec.bbob_instance!r}")
+    stop_at = raw.get("stop_at", 0.0)
+    if isinstance(stop_at, bool) or not isinstance(stop_at, (int, float)) or not stop_at >= 0:
+        raise ConfigError("campaign.stop_at", f"a number >= 0 (0: never), not {stop_at!r}")
+    spec.stop_at = float(stop_at)
     if spec.archive_delta < 0:
         raise ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)")
     spec.noise_cell = raw.get("noise_cell", 0.01)

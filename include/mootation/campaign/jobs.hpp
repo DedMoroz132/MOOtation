@@ -68,6 +68,7 @@ struct CampaignSpec {
     double archive_delta = 0.0;
     std::string archive_mode = "online", native = "auto";
     std::string bbob_instance = "by_run";                 // one objective: a bbob problem's instance (job_run.hpp)
+    double stop_at = 0.0;                                 // one objective: end a run at f_opt + stop_at (0: never)
     Value noise_cell = Value::number(0.01);               // as the config gave it: an int stays one
     std::string archive_variables = "all";
     std::int64_t archive_cap = 0;
@@ -255,7 +256,7 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
         "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
         "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
         "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout", "archive_cap",
-        "bbob_instance"};
+        "bbob_instance", "stop_at"};
     const std::set<std::string> known_set(known.begin(), known.end());
     std::set<std::string> unknown;
     for (const auto& k : raw.keys)
@@ -346,6 +347,11 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
     spec.archive_mode = word(raw, "archive_mode", "online", {"online", "posthoc"}, "\"online\" or \"posthoc\", not ");
     spec.native = word(raw, "native", "auto", {"auto", "off"}, "\"auto\" or \"off\", not ");
     spec.bbob_instance = word(raw, "bbob_instance", "by_run", {"by_run", "fixed"}, "\"by_run\" or \"fixed\", not ");
+    if (const Value* v = raw.find("stop_at")) {
+        if ((v->kind != Kind::Int && v->kind != Kind::Float) || !(as_float(*v) >= 0.0))
+            throw ConfigError("campaign.stop_at", "a number >= 0 (0: never), not " + py_repr(*v));
+        spec.stop_at = as_float(*v);
+    }
     if (spec.archive_delta < 0) throw ConfigError("campaign.archive_delta", "must be >= 0 (0 = the default step)");
     if (const Value* v = raw.find("noise_cell")) {
         const bool number = v->kind == Kind::Int || v->kind == Kind::Float;

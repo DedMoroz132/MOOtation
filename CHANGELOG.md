@@ -75,6 +75,11 @@ always listed under **Changed** or **Removed**.
   the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and
   the polynomial mutation, then KPCM (IAMD-1). Default runs keep their golden
   fingerprints.
+- Added: a run at one objective may end at a target (`scalar::Problem::
+  stop_at`; `minimize(f_stop=)`; `[campaign] stop_at`, a precision above the
+  problem's `f_opt`, in both engines): the evaluator keeps and records the
+  first feasible point at or below it, then its budget is what it has spent,
+  so a strategy's later rounds and restarts end too. Off by default.
 - Added (`suite/cec2013.hpp`; task 18, stage 3): the CEC 2013 niching
   benchmark (Li, Engelbrecht, Epitropakis 2013), its twenty problems at one
   objective (`cec2013_p<NN>_n<DD>_1D`, family `CEC2013` of the suite), and

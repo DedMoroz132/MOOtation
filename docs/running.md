@@ -1601,6 +1601,14 @@ run writes:
 | `final.csv` | the answer: the best point, one row |
 | `meta.json` | the job, `so` (f_opt and `f_opt_kind`, the kind of targets and their precisions, f(x0), the runtime to each target, the run's cost, the bbob instance), `final` (the best point's f, delta_f, cv, `fe_best`, `grad_calls_best`) |
 
+`[campaign] stop_at = 1e-8` ends a run at one objective at its first feasible
+point within that much of the problem's `f_opt`, as COCO's runs end at the
+final target (task 18, stage 3; `Problem::stop_at`, evaluator.hpp THE
+TARGET): the point is the last record, nothing is evaluated after it (a
+strategy's later rounds and restarts included), `meta.json`'s `so.stop_at`
+names it. 0, the default, never stops; a problem without `f_opt` runs its
+budget. `minimize(..., f_stop=)` is the same, absolute.
+
 `[campaign] bbob_instance = "by_run"` (the default) runs a bbob problem at the
 instance of its run's seed — seeds 1, 2, … by default, so instance k on run
 k, as COCO takes its instances for repetitions — and `"fixed"` at instance 1;

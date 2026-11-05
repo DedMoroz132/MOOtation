@@ -11633,6 +11633,64 @@ def the_cec2013_niching_problems_are_registered_and_cross_checked():
     assert peaks_found(X, Fv, 1.0, 1e-4, 0.01) == _core.so_metrics.peaks_found(X, Fv, 1.0, 1e-4, 0.01) == 5
 
 
+@test
+def a_campaign_stops_at_its_target_in_both_engines():
+    """Task 18, stage 3, §3.6 ([campaign] stop_at; evaluator.hpp, THE
+    TARGET): a run at one objective ends at the first point within stop_at of
+    f_opt, as COCO's runs end at the final target: ipop on bbob f1 and f2
+    stops far below its budget, the last record the hit, meta's so.stop_at
+    the precision; both engines write the same files; a stop_at below 0 is
+    refused."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_stops_at_its_target...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    toml = """[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["bbob01_n02_1D", "bbob02_n03_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 200000
+storage = "store"
+stop_at = 1e-8
+[[algorithms]]
+name = "ipop"
+pop = 0
+gens = 0
+"""
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(toml.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            assert spec.stop_at == 1e-8
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert cp["done"] == cc["done"] == 4, (cp, cc)
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            m = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            assert m["so"]["stop_at"] == 1e-8 and m["fe"] < 200000 and m["final"]["delta_f"] <= 1e-8, m
+            assert m["final"]["fe_best"] == m["fe"], m
+        bad = Path(td) / "bad.toml"
+        bad.write_text(toml.replace("NAME", "bad").replace("stop_at = 1e-8", "stop_at = -1"), encoding="utf-8")
+        try:
+            C.campaign_spec(load(bad))
+        except Exception as e:                                   # noqa: BLE001
+            assert "stop_at" in str(e), str(e)
+        else:
+            raise AssertionError("stop_at = -1 not refused")
+
+
 _CEC_TOML = """[run]
 name = "NAME"
 [problem]

@@ -172,6 +172,7 @@ public:
         s.set("cost", V::number(static_cast<double>(ledger_->fe()) + grad_cost * static_cast<double>(grad_calls)));
         s.set("improvements", V::integer(static_cast<std::int64_t>(records.size())));
         if (cec_ > 0) s.set("peaks", peaks_);
+        if (spec_.stop_at > 0.0) s.set("stop_at", V::number(spec_.stop_at));
         meta.set("so", s);
         V fin = V::object();
         if (!records.empty()) {
@@ -280,6 +281,7 @@ private:
             P.hi.push_back(hi);
         }
         P.m = 1;
+        if (spec_.stop_at > 0.0 && f_opt_) P.stop_at = *f_opt_ + spec_.stop_at;       // [campaign] stop_at
         P.evaluate = [this](const std::vector<double>& x, std::vector<double>& f, std::vector<double>& g) {
             native_->evaluate(x.data(), f.data(), g.empty() ? nullptr : g.data());
             account(x, f[0]);
