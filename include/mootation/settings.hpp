@@ -303,6 +303,12 @@ inline bool is_core_param(const std::string& name)
 //   sym           the single-objective population methods (task 19, §19.2.2;
 //                 scalar/symmetry.hpp): the points they combine as they are,
 //                 canonical or aligned to each other; no core has it
+//   cv_rule       maoea_iamd: CV by the angle clusters only (angle, the
+//                 default) or by [32]'s line-fit rule, with the paper's mean
+//                 square error (lmea) or PlatEMO's error (platemo; IAMD-2)
+//   cv_norm       maoea_iamd: the classification normalized by the whole
+//                 population (population, the default) or by its
+//                 non-dominated members, as PlatEMO (nondominated; IAMD-3)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -387,6 +393,8 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"memetic_pick", {"best", "spread"}},
         {"keep_points",  {"all", "best"}},
         {"sym",          {"off", "canon", "align"}},
+        {"cv_rule",      {"angle", "lmea", "platemo"}},
+        {"cv_norm",      {"population", "nondominated"}},
     };
     return v;
 }
@@ -426,7 +434,8 @@ inline bool is_core_word(const std::string& name)
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
                           "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
                           "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept",
-                          "memetic_pick", "keep_points", "sym"})
+                          "memetic_pick", "keep_points", "sym",
+                          "cv_rule", "cv_norm"})
         if (name == k) return true;
     return false;
 }

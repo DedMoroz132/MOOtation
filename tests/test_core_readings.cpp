@@ -213,6 +213,10 @@ void test_knobs_of_2026_11_02()
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "kpcm_pm", "off", "on");
     // 2026-11-05: edv's edv_tournament (EDV-5) and normalize (EDV-6)
     word_knob<ED, EDVCore<ED>>("edv", "91 535f03f7cd2cb7ec", "edv_tournament", "fitness", "random");
+    // 2026-11-06: maoea_iamd's cv_rule (IAMD-2) and cv_norm (IAMD-3)
+    word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_rule", "angle", "lmea");
+    word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_rule", "angle", "platemo");
+    word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_norm", "population", "nondominated");
     std::cout << "-- edv: normalize (false by default, true) --\n";
     using EC = EDVCore<ED>;
     check(fingerprint_with<ED, EC>(91, 30, [](EC& c) { c.set_normalize(false); }) == "91 535f03f7cd2cb7ec",

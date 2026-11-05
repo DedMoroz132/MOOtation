@@ -124,6 +124,8 @@ _FALLBACK_TEXT = {
     "memetic_pick": ("best", "spread"),
     "keep_points": ("all", "best"),
     "sym": ("off", "canon", "align"),
+    "cv_rule": ("angle", "lmea", "platemo"),
+    "cv_norm": ("population", "nondominated"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 

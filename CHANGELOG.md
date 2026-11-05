@@ -150,6 +150,13 @@ always listed under **Changed** or **Removed**.
 - Fixed (`python/mootation/__init__.py`): `mootation.hypervolume` and
   `mootation.hv_contributions` raised AttributeError: the compiled module has
   them, the package's list of compiled names did not.
+- Added: two knobs of `maoea_iamd` for its variable classification, the
+  method of LMEA [32] the paper cites; defaults unchanged, so default runs
+  keep their golden fingerprints. `cv_rule`: the cluster of smaller angles
+  (`angle`, the default), or LMEA's rule with the line-fit error, the
+  paper's mean square error (`lmea`) or PlatEMO's (`platemo`; IAMD-2).
+  `cv_norm`: normalized by the whole population (`population`, the default)
+  or by its non-dominated members, as PlatEMO (`nondominated`; IAMD-3).
 - Added: two knobs of `edv` (the owner's decisions of 2026-11-05), defaults
   unchanged. `edv_tournament`: the binary tournament over the archive by the
   Eq.4 fitness (`fitness`, the default) or at random, as jMetal's tournament

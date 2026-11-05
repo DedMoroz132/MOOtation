@@ -109,6 +109,27 @@
 //   tell the two apart. kpcm_pm = on breeds that way: SBX, then PM (η_m = 20,
 //   p_m = 1/n), then KPCM. off keeps KPCM in PM's place, the code's reading
 //   until now.
+// IAMD-2 (DEVIATION from [32]; knob cv_rule, angle by default). The paper
+//   classifies with "the decision variable clustering method [32]", LMEA's
+//   Alg. 5 (Zhang et al., TEVC 2018): lines 9-14 fit a line to each
+//   variable's perturbed points, CV = the variables whose mean fit error is
+//   below 1e-2, cut to the smaller-angle k-means cluster when they fall in
+//   both clusters, DV = the rest. This port's default (angle) keeps only the
+//   k-means over the angles, the smaller-angle cluster being CV. lmea is
+//   Alg. 5's rule with its "mean square error" (the mean squared distance of
+//   the points to the line); platemo the same rule with PlatEMO 4.16's error,
+//   the root of the summed squared distances (LMEA/VariableClustering.m),
+//   which at nP = 4 is the stricter one. Where the angles do not split into
+//   two clusters, lmea and platemo take CV = the line-like variables. Not
+//   followed in any rule: [32] draws the nS individuals anew for each
+//   variable (PlatEMO and this port, once for all); PlatEMO seeds its k-means
+//   at random (this port with the smallest and the largest mean angle).
+//   nS = 2, nP = 4 are [32]'s (§V-A); PlatEMO's defaults are 5 and 50.
+// IAMD-3 (DEVIATION; knob cv_norm, population by default). From [32]'s
+//   implementation: [32] Alg. 5 line 6 says only "Normalize SP"; PlatEMO normalizes
+//   the perturbed points by the min and max of the population's
+//   non-dominated members (nondominated), this port by the whole
+//   population's (population).
 // EXTENSIONS BEYOND THE PAPER (off by default): constraint_mode FEASIBILITY
 //   (feasible-first in dominance and in the tournament); binary genome (uniform
 //   crossover + bit-flip; KPCM and the classification stay real-valued only).
@@ -165,6 +186,14 @@ private:
     bool   kpcm_pm_ = false;   // IAMD-1: SBX + PM before KPCM (knob kpcm_pm)
     int    nsel_  = 2;      // nS (LMEA [32])
     int    nper_  = 4;      // nP (LMEA [32])
+    // IAMD-2: which variables are CV (knob cv_rule): the angle clusters only
+    // (Angle, the default), or [32]'s rule with the line fit's error, as the
+    // paper's Alg. 5 has it (Lmea: mean square error) or as PlatEMO computes
+    // it (Platemo: the root of the summed squares)
+    enum class CVRule { Angle, Lmea, Platemo };
+    CVRule cv_rule_ = CVRule::Angle;
+    bool   cv_norm_nd_ = false;   // IAMD-3: normalize by the non-dominated members (knob cv_norm)
+    static constexpr double CV_ERR_TOL_ = 1e-2;   // [32] Alg. 5 line 10
     std::mt19937 rng_{std::random_device{}()};
 
     std::vector<int> cv_, dv_;          // Alg. 1 line 2: CV/DV variable indices
@@ -457,10 +486,13 @@ private:
     // ── Alg. 1 line 2: CV/DV variable classification (LMEA [32]) ───────────
     // nP perturbed points for nS individuals per variable; the angle between
     // the principal axis of the normalized objective cloud and the diagonal
-    // (1,...,1); then k-means (k=2).
-    double principal_angle(const std::vector<std::vector<double>>& pts, int m) const {
+    // (1,...,1); then k-means (k=2). sse, if given, receives the summed squared
+    // distances of the points to the fitted line through their mean (IAMD-2).
+    double principal_angle(const std::vector<std::vector<double>>& pts, int m,
+                           double* sse = nullptr) const {
         const double HALF_PI = 1.57079632679489662;
         int k = static_cast<int>(pts.size());
+        if (sse) *sse = 0.0;
         if (k < 2) return HALF_PI;
         std::vector<double> mean(m, 0.0);
         for (const auto& p : pts) for (int j = 0; j < m; ++j) mean[j] += p[j];
@@ -470,6 +502,8 @@ private:
             for (int a = 0; a < m; ++a)
                 for (int b = 0; b < m; ++b)
                     C[static_cast<std::size_t>(a) * m + b] += (p[a] - mean[a]) * (p[b] - mean[b]);
+        if (sse)   // all of the spread, until a direction takes part of it
+            for (int a = 0; a < m; ++a) *sse += C[static_cast<std::size_t>(a) * m + a];
         // power iteration -> principal direction
         std::vector<double> v(m, 1.0 / std::sqrt(static_cast<double>(m))), nv(m);
         for (int it = 0; it < 60; ++it) {
@@ -483,6 +517,14 @@ private:
             if (nn < 1e-30) return HALF_PI;               // variable has no effect -> DV
             for (int a = 0; a < m; ++a) v[a] = nv[a] / nn;
         }
+        if (sse) {   // minus the part along the line: |p − mean|² − ((p − mean)·v)²
+            for (const auto& p : pts) {
+                double t = 0.0;
+                for (int a = 0; a < m; ++a) t += (p[a] - mean[a]) * v[a];
+                *sse -= t * t;
+            }
+            *sse = std::max(*sse, 0.0);
+        }
         double dot = 0.0, u = 1.0 / std::sqrt(static_cast<double>(m));
         for (int a = 0; a < m; ++a) dot += v[a] * u;
         double c = std::min(std::abs(dot), 1.0);
@@ -494,10 +536,15 @@ private:
         int n = vault.pop_size(), D = vault.vars_n(), m = vault.objs_n();
         if (D == 0) return;
         const auto& bounds = vault.get_bounds();
-        // normalize the perturbed points by the current population's min/max
+        // normalize the perturbed points by the current population's min/max,
+        // or by its non-dominated members' as PlatEMO's VariableClustering.m
+        // does (IAMD-3)
+        std::vector<int> norm_set;
+        if (cv_norm_nd_) norm_set = fast_nds(vault, n).front();
+        else { norm_set.resize(n); std::iota(norm_set.begin(), norm_set.end(), 0); }
         std::vector<double> fmin(m,  std::numeric_limits<double>::max());
         std::vector<double> fmax(m, -std::numeric_limits<double>::max());
-        for (int i = 0; i < n; ++i) {
+        for (int i : norm_set) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
                 fmin[j] = std::min(fmin[j], o[j]);
@@ -514,6 +561,7 @@ private:
         rnd::uniform_real_distribution<double> uni(0.0, 1.0);
         std::vector<double> vars(D);
         std::vector<std::vector<double>> angle(D, std::vector<double>(ns, 0.0));
+        std::vector<std::vector<double>> sse(D, std::vector<double>(ns, 0.0));
         for (int j = 0; j < D; ++j) {
             double lo = bounds[j].first .value_or(0.0);
             double hi = bounds[j].second.value_or(1.0);
@@ -539,7 +587,7 @@ private:
                         pts[p][t] = (range > 1e-14) ? (o[t] - fmin[t]) / range : 0.0;
                     }
                 }
-                angle[j][s] = principal_angle(pts, m);
+                angle[j][s] = principal_angle(pts, m, &sse[j][s]);
             }
         }
         vault.reduce(n);
@@ -550,12 +598,37 @@ private:
             for (int s = 0; s < ns; ++s) mean_a[j] += angle[j][s];
             mean_a[j] /= ns;
         }
+        // IAMD-2, [32] Alg. 5 lines 9-14: the variables whose perturbations lie
+        // on a line (the mean over the samples of the fit's error below 1e-2;
+        // the error is the mean square of the distances to the line, MSE, in
+        // the paper, the root of their sum in PlatEMO) are CV, cut to the
+        // smaller-angle cluster when they fall in both clusters; DV the rest
+        std::vector<char> on_line(D, 0);
+        for (int j = 0; j < D && cv_rule_ != CVRule::Angle; ++j) {
+            double e = 0.0;
+            for (int s = 0; s < ns; ++s)
+                e += cv_rule_ == CVRule::Lmea ? sse[j][s] / nper_ : std::sqrt(sse[j][s]);
+            on_line[j] = e / ns < CV_ERR_TOL_ ? 1 : 0;
+        }
+        auto by_line = [&](const std::vector<int>* lab, int cv_label) {
+            bool both = false;
+            if (lab) {
+                bool in0 = false, in1 = false;
+                for (int j = 0; j < D; ++j)
+                    if (on_line[j]) ((*lab)[j] == 0 ? in0 : in1) = true;
+                both = in0 && in1;
+            }
+            for (int j = 0; j < D; ++j)
+                (on_line[j] && (!both || (*lab)[j] == cv_label) ? cv_ : dv_).push_back(j);
+        };
+
         int lo_j = 0, hi_j = 0;
         for (int j = 1; j < D; ++j) {
             if (mean_a[j] < mean_a[lo_j]) lo_j = j;
             if (mean_a[j] > mean_a[hi_j]) hi_j = j;
         }
         if (D < 2 || mean_a[hi_j] - mean_a[lo_j] < 1e-12) {
+            if (cv_rule_ != CVRule::Angle) { by_line(nullptr, 0); return; }
             // indistinguishable (guard beyond the paper): all variables in both
             cv_.resize(D); std::iota(cv_.begin(), cv_.end(), 0);
             dv_ = cv_;
@@ -591,12 +664,14 @@ private:
             else             { m2 += mean_a[j]; ++k2; }
         }
         if (k1 == 0 || k2 == 0) {
+            if (cv_rule_ != CVRule::Angle) { by_line(nullptr, 0); return; }
             cv_.resize(D); std::iota(cv_.begin(), cv_.end(), 0);
             dv_ = cv_;
             return;
         }
         m1 /= k1; m2 /= k2;
         int cv_label = (m1 <= m2) ? 0 : 1;
+        if (cv_rule_ != CVRule::Angle) { by_line(&lab, cv_label); return; }
         for (int j = 0; j < D; ++j)
             (lab[j] == cv_label ? cv_ : dv_).push_back(j);
     }
@@ -810,11 +885,26 @@ public:
         return true;
     }
     bool set_word(const std::string& k, const std::string& w) {
-        if (k != "kpcm_pm") return false;                    // IAMD-1
-        if (w != "off" && w != "on")
-            throw std::invalid_argument("maoea_iamd: kpcm_pm = '" + w + "': off or on");
-        kpcm_pm_ = (w == "on");
-        return true;
+        if (k == "kpcm_pm") {                                // IAMD-1
+            if (w != "off" && w != "on")
+                throw std::invalid_argument("maoea_iamd: kpcm_pm = '" + w + "': off or on");
+            kpcm_pm_ = (w == "on");
+            return true;
+        }
+        if (k == "cv_rule") {                                // IAMD-2
+            if      (w == "angle")   cv_rule_ = CVRule::Angle;
+            else if (w == "lmea")    cv_rule_ = CVRule::Lmea;
+            else if (w == "platemo") cv_rule_ = CVRule::Platemo;
+            else throw std::invalid_argument("maoea_iamd: cv_rule = '" + w + "': angle, lmea or platemo");
+            return true;
+        }
+        if (k == "cv_norm") {                                // IAMD-3
+            if (w != "population" && w != "nondominated")
+                throw std::invalid_argument("maoea_iamd: cv_norm = '" + w + "': population or nondominated");
+            cv_norm_nd_ = (w == "nondominated");
+            return true;
+        }
+        return false;
     }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
