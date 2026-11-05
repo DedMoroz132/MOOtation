@@ -740,6 +740,16 @@ def _huband(name: str) -> dict | None:
         # one objective (_BBOB1_GROUP above): no front, no objective scales
         fid = int(stem[4:])
         return _p(None, fid in (3, 4) or fid >= 15, False, None, fid <= 5, False, fid == 5)
+    if name.startswith("cec2013_p"):
+        # the CEC 2013 niching problems (suite/cec2013.hpp; Li, Engelbrecht,
+        # Epitropakis 2013): several optima each, the point of the set, so
+        # multimodal; F1's trap deceptive; F7 and F8 sums over the
+        # coordinates, separable; CF3 and CF4 rotated, "Non-separable" (the
+        # report's properties); the rest not stated
+        problem = int(name[len("cec2013_p"):len("cec2013_p") + 2])
+        function = (1, 2, 3, 4, 5, 6, 7, 6, 7, 8, 9, 10, 11, 11, 12, 11, 12, 11, 12, 12)[problem - 1]
+        separable = True if function in (7, 8) else False if function in (11, 12) else None
+        return _p(None, True, None, None, separable, None, None, deceptive=True if function == 1 else None)
     if stem.startswith("MGH") and stem[3:].isdigit() or stem == "NIST":
         # MGH and NIST at one objective (least_squares.py): multimodal where
         # MGH's (d) prints a local minimum beside the global one (LSQ-3), the
