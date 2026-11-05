@@ -95,6 +95,18 @@
 //     the extreme points of Q staying as they are. intercepts keeps the
 //     NSGA-III hyperplane (DDS-2, DDS-6). The archive is unbounded and
 //     checked point by point.
+//   DDS-10 (GUARD; knob drs_guard, off by default). The same trap, met at
+//     the extreme points instead of the nadir. A dominance resistant point is
+//     told by Ikeda, Kita & Kobayashi's alpha-domination (CEC 2001): y
+//     alpha-dominates x when, for every objective k, (y_k - x_k) + alpha *
+//     sum_{j != k} (y_j - x_j) <= 0, one of them < 0 (alpha = 0.01, ours; on
+//     f - z*). A point far out on one axis with the others near zero is
+//     alpha-dominated by a converged point; a corner of the front is not.
+//     drs_guard = normalize picks the extreme points of the hyperplane
+//     (Eq.9-10) among the points no other alpha-dominates; extreme picks the
+//     extreme points that Q keeps (Alg.3 line 5, "Q = Extreme") among them,
+//     the normalization as it is. If every point is alpha-dominated, all
+//     are candidates. off keeps the paper's choice from the whole set.
 //
 // CONSTRAINTS (beyond the paper, off by default). The DDS pivot loop picks,
 //   among the candidates near a pivot, the NON-DOMINATED one with the smallest
@@ -141,6 +153,34 @@ private:
     std::vector<std::vector<double>> R_last_;   // reference points R of pop_ from the last DDS (DDS-7)
     int N_=0, m_=0, gen_=0, K_=10;
     bool nadir_archive_=false;                  // DDS-9: z_nad from nd_arch_ (knob nadir_source)
+    enum class DRSGuard { Off, Normalize, Extreme };
+    DRSGuard drs_guard_=DRSGuard::Off;          // DDS-10 (knob drs_guard)
+    static constexpr double DRS_ALPHA_=0.01;    // DDS-10: alpha of the alpha-domination
+
+    // DDS-10: 1 for each point of P that another alpha-dominates (on f - z*);
+    // all 0 when every point would be marked
+    std::vector<char> drs_mask(const std::vector<Sol>& P) const {
+        int n=(int)P.size();
+        std::vector<char> mark(n,0);
+        int marked=0;
+        for(int x=0;x<n;++x){
+            for(int y=0;y<n && !mark[x];++y){
+                if(y==x) continue;
+                double tot=0.0;
+                for(int k=0;k<m_;++k) tot+=P[y].objs[k]-P[x].objs[k];
+                bool all=true, strict=false;
+                for(int k=0;k<m_ && all;++k){
+                    double d=P[y].objs[k]-P[x].objs[k];
+                    double g=d+DRS_ALPHA_*(tot-d);
+                    if(g>0.0) all=false; else if(g<0.0) strict=true;
+                }
+                if(all && strict) mark[x]=1;
+            }
+            marked+=mark[x];
+        }
+        if(marked==n) std::fill(mark.begin(),mark.end(),char(0));
+        return mark;
+    }
     std::vector<std::vector<double>> nd_arch_;  // every non-dominated objective vector evaluated (DDS-9)
 
     static bool dominates_objs(const std::vector<double>& a, const std::vector<double>& b){
@@ -176,9 +216,11 @@ private:
         // [22], which the paper refers to) — now 1 on the own axis, 1e-6 on
         // the others.
         std::vector<int> ext(m_,0);
+        const std::vector<char> skip=(drs_guard_==DRSGuard::Normalize)?drs_mask(P):std::vector<char>(n,0);   // DDS-10
         for(int i=0;i<m_;++i){
             int best=0; double bg=std::numeric_limits<double>::max();
             for(int j=0;j<n;++j){
+                if(skip[j]) continue;
                 double mx=-1e300;
                 for(int k=0;k<m_;++k){ double w=(k==i)?own_w_:other_w_; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx) mx=v; }
                 if(mx<bg){bg=mx;best=j;}
@@ -224,10 +266,11 @@ private:
         std::vector<double> zmin(m_,std::numeric_limits<double>::max());
         for(auto&s:P) for(int k=0;k<m_;++k) zmin[k]=std::min(zmin[k],s.objs[k]);
         std::vector<int> ext;
+        const std::vector<char> skip=(drs_guard_==DRSGuard::Extreme)?drs_mask(P):std::vector<char>(n,0);   // DDS-10
         // FIX 2026-07-07 (source-fidelity review): ASF weights
         // as in normalize() — NSGA-III convention (DDS-6), was the Eq.9 inversion.
         for(int i=0;i<m_;++i){ int best=0; double bg=std::numeric_limits<double>::max();
-            for(int j=0;j<n;++j){ double mx=-1e300; for(int k=0;k<m_;++k){double w=(k==i)?own_w_:other_w_; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx)mx=v;} if(mx<bg){bg=mx;best=j;} }
+            for(int j=0;j<n;++j){ if(skip[j]) continue; double mx=-1e300; for(int k=0;k<m_;++k){double w=(k==i)?own_w_:other_w_; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx)mx=v;} if(mx<bg){bg=mx;best=j;} }
             if(std::find(ext.begin(),ext.end(),best)==ext.end()) ext.push_back(best); }
         return ext;
     }
@@ -294,6 +337,13 @@ public:
     void set_pm(double p){ pm_=p; }
     void set_seed(unsigned s){ rng_.seed(s); }
     bool set_word(const std::string& k, const std::string& w){
+        if(k=="drs_guard"){                                  // DDS-10
+            if(w=="off") drs_guard_=DRSGuard::Off;
+            else if(w=="normalize") drs_guard_=DRSGuard::Normalize;
+            else if(w=="extreme") drs_guard_=DRSGuard::Extreme;
+            else throw std::invalid_argument("moead_ds: drs_guard = '"+w+"': off, normalize or extreme");
+            return true;
+        }
         if(k=="nadir_source"){                               // DDS-9
             if(w!="intercepts" && w!="archive")
                 throw std::invalid_argument("moead_ds: nadir_source = '"+w+"': intercepts or archive");

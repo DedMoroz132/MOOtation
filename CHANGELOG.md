@@ -76,6 +76,10 @@ always listed under **Changed** or **Removed**.
   search strategy (`scalar/tiktak.hpp`): a Sobol sample, its best tenth in
   order, local searches from starts mixed with the best minimum so far;
   knobs `tiktak_n`, `tiktak_share`, `start_points`, `start_budget`.
+- Added: `moead_ds`'s knob `drs_guard`, default unchanged: `off` chooses
+  the extreme points from the whole set; `normalize` and `extreme` choose
+  them among the points no other alpha-dominates, for the hyperplane or for
+  the extremes Q keeps (DDS-10).
 - Added: `moead_ds`'s knob `nadir_source`, default unchanged, so default
   runs keep their golden fingerprints. `intercepts`, the default, takes
   Eq.10's z_nad from the hyperplane through the extreme points; `archive`

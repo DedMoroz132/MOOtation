@@ -312,6 +312,9 @@ inline bool is_core_param(const std::string& name)
 //   nadir_source  moead_ds: z_nad of Eq.10 from the hyperplane intercepts
 //                 (intercepts, the default) or the maximum over an archive
 //                 of the run's non-dominated vectors (archive; DDS-9)
+//   drs_guard     moead_ds: the extreme points from the whole set (off, the
+//                 default) or among the points no other alpha-dominates, for
+//                 the hyperplane (normalize) or for Q (extreme; DDS-10)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -399,6 +402,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"cv_rule",      {"angle", "lmea", "platemo"}},
         {"cv_norm",      {"population", "nondominated"}},
         {"nadir_source", {"intercepts", "archive"}},
+        {"drs_guard",    {"off", "normalize", "extreme"}},
     };
     return v;
 }
@@ -440,7 +444,8 @@ inline bool is_core_word(const std::string& name)
                           "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept",
                           "memetic_pick", "keep_points", "sym",
                           "cv_rule", "cv_norm",
-                          "nadir_source"})
+                          "nadir_source",
+                          "drs_guard"})
         if (name == k) return true;
     return false;
 }

@@ -127,6 +127,7 @@ _FALLBACK_TEXT = {
     "cv_rule": ("angle", "lmea", "platemo"),
     "cv_norm": ("population", "nondominated"),
     "nadir_source": ("intercepts", "archive"),
+    "drs_guard": ("off", "normalize", "extreme"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 

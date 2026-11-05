@@ -247,6 +247,9 @@ void test_knobs_of_2026_11_02()
     }
     // 2026-11-06: moead_ds's nadir_source (DDS-9)
     word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "nadir_source", "intercepts", "archive");
+    // 2026-11-06: moead_ds's drs_guard (DDS-10)
+    word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "drs_guard", "off", "normalize");
+    word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "drs_guard", "off", "extreme");
     std::cout << "-- edv: normalize (false by default, true) --\n";
     using EC = EDVCore<ED>;
     check(fingerprint_with<ED, EC>(91, 30, [](EC& c) { c.set_normalize(false); }) == "91 535f03f7cd2cb7ec",

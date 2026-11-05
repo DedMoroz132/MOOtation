@@ -59,7 +59,8 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
               "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points", "sym",
               "cv_rule", "cv_norm",
-              "nadir_source")
+              "nadir_source",
+              "drs_guard")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")
