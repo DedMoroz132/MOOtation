@@ -7581,7 +7581,9 @@ def readings_knobs_of_2026_11_02():
         o = minimize(d2.evaluate, algorithm=alg, **{knob: other}, **k)
         assert d.objectives == n.objectives and not n.ignored, (alg, knob, n.ignored)
         assert not o.ignored, (alg, knob, o.ignored)
-        if alg != "aprd":
+        # aprd's slots and maoea_iamd's classification rules agree on DTLZ2 (CV = the
+        # distance variables under every rule; test_core_readings checks the sets)
+        if alg != "aprd" and knob not in ("cv_rule", "cv_norm"):
             assert o.objectives != d.objectives, (alg, knob, other)
         r = minimize(d2.evaluate, algorithm="nsga2", **{knob: other}, **k)
         assert r.ignored == [knob], (knob, r.ignored)

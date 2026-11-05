@@ -907,6 +907,8 @@ public:
         return false;
     }
     void set_seed(unsigned s)        { rng_.seed(s); }
+    // the variables classified as convergence-related at setup (Alg. 1 line 2), read only
+    const std::vector<int>& convergence_variables() const { return cv_; }
 
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();

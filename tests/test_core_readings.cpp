@@ -213,10 +213,38 @@ void test_knobs_of_2026_11_02()
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "kpcm_pm", "off", "on");
     // 2026-11-05: edv's edv_tournament (EDV-5) and normalize (EDV-6)
     word_knob<ED, EDVCore<ED>>("edv", "91 535f03f7cd2cb7ec", "edv_tournament", "fitness", "random");
-    // 2026-11-06: maoea_iamd's cv_rule (IAMD-2) and cv_norm (IAMD-3)
-    word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_rule", "angle", "lmea");
-    word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_rule", "angle", "platemo");
-    word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "cv_norm", "population", "nondominated");
+    // 2026-11-06: maoea_iamd's cv_rule (IAMD-2) and cv_norm (IAMD-3). On DTLZ2
+    // every rule agrees: a distance variable moves the point along a ray (a
+    // line, small angle), a position variable along an arc (large angle), so
+    // the runs are the default's and CV is the distance variables 2..11.
+    {
+        using MC = MaOEAIAMDCore<MI>;
+        const std::vector<int> distance{2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+        auto cv_of = [](const std::string& knob, const std::string& word) {
+            Problem<MI> prob;
+            DataVault<MI> vault(91, prob);
+            Optimizer<MI, MC> opt(std::move(vault), defer_setup);
+            opt.get_algorithm().set_seed(20260923u);
+            if (!knob.empty()) opt.get_algorithm().set_word(knob, word);
+            opt.setup();
+            return opt.get_algorithm().convergence_variables();
+        };
+        for (const auto& kw : std::vector<std::pair<std::string, std::string>>{
+                 {"", ""}, {"cv_rule", "lmea"}, {"cv_rule", "platemo"}, {"cv_norm", "nondominated"}}) {
+            std::cout << "-- maoea_iamd: " << (kw.first.empty() ? "default" : kw.first + " = " + kw.second)
+                      << " on DTLZ2 --\n";
+            check(cv_of(kw.first, kw.second) == distance, "CV = the distance variables");
+            if (!kw.first.empty())
+                check(fingerprint_with<MI, MC>(91, 30, [&](MC& c) { c.set_word(kw.first, kw.second); })
+                          == "91 1e27b57e7dab0642", "the default's run");
+        }
+        MC core;
+        for (const auto& k : {"cv_rule", "cv_norm"}) {
+            bool threw = false;
+            try { core.set_word(k, "maybe"); } catch (const std::invalid_argument&) { threw = true; }
+            check(threw, std::string(k) + " = maybe refused");
+        }
+    }
     // 2026-11-06: moead_ds's nadir_source (DDS-9)
     word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "nadir_source", "intercepts", "archive");
     std::cout << "-- edv: normalize (false by default, true) --\n";
