@@ -72,7 +72,7 @@ sc::Problem rastrigin(int n)
     P.m = 1;
     P.evaluate = [](const Vec& x, Vec& f, Vec&) {
         double s = 10.0 * static_cast<double>(x.size());
-        for (double v : x) s += v * v - 10.0 * std::cos(2.0 * 3.14159265358979323846 * v);
+        for (double v : x) s += v * v - 10.0 * mootation::dm::cos(2.0 * 3.14159265358979323846 * v);   // dm: the same bits everywhere
         f.assign(1, s);
     };
     return P;
@@ -191,7 +191,7 @@ void within_the_budget()
     }
     char buf[32];
     std::snprintf(buf, sizeof buf, "%016llx", static_cast<unsigned long long>(h));
-    check(h == 0x9c237e8b63e6081full, std::string("the six runs' answers: checksum ") + buf);
+    check(h == 0x661eff1f409cdb6eull, std::string("the six runs' answers: checksum ") + buf);
 }
 
 }   // namespace
