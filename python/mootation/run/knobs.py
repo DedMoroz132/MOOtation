@@ -40,8 +40,9 @@ _FALLBACK = (
     "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau", "n_starts", "threads",
     "min_dist", "min_df", "start_share", "bipop_large", "mlsl_n", "mlsl_sigma", "mlsl_gamma", "mlsl_tau",
     "mlsl_nu", "start_budget", "bh_temperature", "bh_step", "bh_accept_rate", "bh_interval", "ils_step",
-    "ils_restart", "ils_temperature", "memetic_every", "memetic_points", "local_share"
+    "ils_restart", "ils_temperature", "memetic_every", "memetic_points", "local_share",
     "ga_block_uniform", "ga_block_mutation",
+    "tiktak_n", "tiktak_share",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"),

@@ -61,6 +61,10 @@ always listed under **Changed** or **Removed**.
   nothing (SRCH-9). A global solver stopped by its own criteria evaluates
   nothing new when rerun; with every archive point already a local start the
   loop went on without end below the budget.
+- Added: `tiktak` (task 19, §19.6), Arnoud, Guvenen & Kleineberg's TikTak as a
+  search strategy (`scalar/tiktak.hpp`): a Sobol sample, its best tenth in
+  order, local searches from starts mixed with the best minimum so far;
+  knobs `tiktak_n`, `tiktak_share`, `start_points`, `start_budget`.
 - Added (task 20, §20.2.1): `suite/wrap.hpp`, a permutation, rotation and
   shift over any Native problem. The run sees x; the problem
   is evaluated at y = T(x): shift u = x - s, rotate v = c + Q (u - c),

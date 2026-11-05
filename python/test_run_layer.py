@@ -11903,7 +11903,7 @@ def a_strategy_runs_its_inner_solver_through_minimize():
     assert len(minima) == 2 and sum(m[2] for m in minima) == 6, minima
     assert sorted(round(m[3]) for m in minima) == [-1, 1], minima
     assert STRATEGIES == ("multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils",
-                          "memetic")
+                          "memetic", "tiktak")
     assert [s for s in STRATEGIES if not depends_on_budget(s)] == ["ipop", "bipop", "bipop_2009"]
     mem = mootation.minimize(f, box, 1, algorithm="memetic", max_evaluations=3000, seed=2,
                              inner={"solver": "de"}, local_solver={"solver": "nelder_mead"}, memetic_every=500)

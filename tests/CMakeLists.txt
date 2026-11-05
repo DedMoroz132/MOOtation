@@ -48,6 +48,7 @@ set(MOOTATION_TESTS
     test_strategy
     test_restarts
     test_search
+    test_tiktak
     test_cec2013
     test_symmetry
     test_blocks_objectives

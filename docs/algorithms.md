@@ -155,7 +155,14 @@ with the same result, bit for bit; a point two starts evaluate counts once.
 | `ils` (Lourenço, Martin & Stützle 2001) | `inner`, `ils_accept` (`better`, `rw`, `restart`, `lsmc`), `ils_step` (0.1 of the width), `ils_restart` (10), `ils_temperature` (1), `start_budget` |
 | `basin_hopping` (Wales & Doye 1997) | `inner`, `bh_temperature` (1), `bh_step` (0.05 of the width), `bh_accept_rate` (0.5), `bh_interval` (10), `start_budget` |
 | `halving` (Jamieson & Talwalkar 2016) | `inner`, `n_starts` (16), `start_points`, `threads` |
+| `tiktak` (Arnoud, Guvenen & Kleineberg 2019, 2023; task 19) | `inner` (a local solver), `tiktak_n` (100), `tiktak_share` (0.1), `start_points`, `start_budget` (0), `min_dist`, `min_df` |
 | `memetic` | `inner` (the global solver), `local_solver`, `memetic_every` (1000), `memetic_points` (1), `memetic_pick` (`best`, `spread`), `local_share` (0.2), `start_budget`, `threads` |
+
+`tiktak` evaluates `tiktak_n` design points, keeps the best `tiktak_share` of them
+and runs local searches from them in order of value, one a round, each from
+(1 - θ_i) s_i + θ_i p_low with θ_i = min(max(0.1, (i/N*)^½), 0.995), p_low the
+best minimum so far (`scalar/tiktak.hpp`, TT-1 to TT-6); it ends after the N*
+searches.
 
 `multistart` shares the budget evenly among `n_starts` starts in one round:
 start 0 is the inner solver's own run (its plan, or `x0`), the others start
