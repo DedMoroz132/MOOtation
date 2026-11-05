@@ -355,6 +355,36 @@ void single()
     }
     check(rk.ignored == std::vector<std::string>{"cma_sigma0", "local"} && stop && sqp,
           "slsqp: sqp_line_search taken, cma_sigma0 and local ignored and reported");
+    // cmaes with BIPOP-CMA-ES 2009's weights, c_mu and termination (task 18, В4): in the settings, at the minimum
+    Single h = single_problem(false);
+    const sc::Knobs kh{{"cma_weights", {true, "positive", 0.0}}, {"cma_cmu", {true, "hansen2009", 0.0}},
+                       {"cma_stop", {true, "h09", 0.0}}};
+    const sc::Result rh = sc::run("cmaes", h.P, 1e-6, false, 0.0, 20, 20000, 3, kh, {}, 0, {});
+    std::vector<std::string> shown;
+    for (const auto& [key, v] : rh.settings)
+        if (key.rfind("cma_", 0) == 0) shown.push_back(key + "=" + v);
+    check(shown == std::vector<std::string>{"cma_sigma0=0.3", "cma_weights=positive", "cma_cmu=hansen2009",
+                                            "cma_stop=h09"} &&
+              rh.ignored.empty() && !rh.objectives.empty() && rh.objectives[0][0] < 1e-9 && rh.evaluations < 20000,
+          "cmaes, cma_weights = positive, cma_cmu = hansen2009, cma_stop = h09: in the settings, f = " +
+              (rh.objectives.empty() ? std::string("-") : std::to_string(rh.objectives[0][0])) + " in " +
+              std::to_string(rh.evaluations) + " evaluations, stopped before the budget");
+    Single d = single_problem(false);
+    const sc::Result rd = sc::run("cmaes", d.P, 1e-6, false, 0.0, 20, 600, 3, {}, {}, 0, {});
+    shown.clear();
+    for (const auto& [key, v] : rd.settings)
+        if (key.rfind("cma_", 0) == 0) shown.push_back(key + "=" + v);
+    check(shown == std::vector<std::string>{"cma_sigma0=0.3", "cma_weights=active", "cma_cmu=tutorial2016",
+                                            "cma_stop=spread"},
+          "cmaes: the defaults active, tutorial2016, spread in the settings");
+    why.clear();
+    try {
+        Single e = single_problem(false);
+        sc::run("cmaes", e.P, 1e-6, false, 0.0, 20, 600, 3, {{"cma_cmu", {true, "hansen2008", 0.0}}}, {}, 0, {});
+    } catch (const std::invalid_argument& e) {
+        why = e.what();
+    }
+    check(why == "cma_cmu = 'hansen2008': tutorial2016, hansen2009", "cmaes: an unknown cma_cmu refused: " + why);
 }
 
 // lm and lbfgsb as single-objective algorithms, the problem's gradient and

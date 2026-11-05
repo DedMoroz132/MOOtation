@@ -29,7 +29,8 @@ best point (scalar.hpp, run_single; SINGLE-1, SINGLE-2):
 
   slsqp        fd_step, local_tol, sqp_line_search
   nelder_mead  local_tol
-  cmaes        cma_sigma0, local_tol
+  cmaes        cma_sigma0, local_tol, cma_weights (active | positive),
+               cma_cmu (tutorial2016 | hansen2009), cma_stop (spread | h09)
 
 and, in the problem's own coordinates, bounds -inf / +inf allowed (task 18,
 stage 1; scalar.hpp, run_local; LOCAL-1 to LOCAL-4):

@@ -1455,8 +1455,12 @@ on f scaled by the plan's range, until its tolerance or the budget. Their knobs
 are the solver's in the table above: `fd_step`, `local_tol`, `sqp_line_search`
 for `slsqp`; `local_tol`, `nm_coefficients` (`adaptive`, Gao & Han's (4.1), the
 default, or `standard`, Lagarias et al.'s (1.3); also `eps_nm`'s) for
-`nelder_mead`; `cma_sigma0`, `local_tol` for
-`cmaes`; the others are ignored and named in `result.ignored`. A run that
+`nelder_mead`; `cma_sigma0`, `local_tol`,
+`cma_weights` (`active`, the default, or `positive`: only the μ best, weighted
+ln(μ + 1) − ln i), `cma_cmu` (`tutorial2016` or `hansen2009`) and `cma_stop`
+(`spread`: the step's spread below `local_tol`; `h09`: the termination criteria
+of BIPOP-CMA-ES 2009, `scalar/cmaes.hpp`) for `cmaes`; the others are ignored
+and named in `result.ignored`. A run that
 stops early leaves the budget unspent, and a shorter budget gives the same run
 cut short: these runs do not depend on `max_evaluations` (SINGLE-1, SINGLE-2 in
 `scalar/scalar.hpp`). A bound that is not finite is refused; a start `x0` is the

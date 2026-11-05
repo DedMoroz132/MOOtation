@@ -44,6 +44,7 @@ set(MOOTATION_TESTS
     test_spso2011
     test_sep_cmaes
     test_cmaes_inject
+    test_cmaes_h09
     test_so_metrics
     test_store_codec
     test_json

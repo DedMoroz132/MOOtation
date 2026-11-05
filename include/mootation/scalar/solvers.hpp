@@ -357,13 +357,16 @@ inline void nm(Run& run, const std::vector<double>& y0, const std::vector<std::s
     }
 }
 
+// h09: stopped by H09's termination criteria (cmaes.hpp) instead of by the
+// spread falling to tol
 inline void cmaes(Run& run, const std::vector<double>& y0, const std::vector<std::size_t>& start,
-                  double sigma0, double tol, std::mt19937& rng)
+                  double sigma0, double tol, std::mt19937& rng, const CMAESOptions& options = CMAESOptions(),
+                  bool h09 = false)
 {
     Penalty pen(run, start);
-    CMAES es(y0, sigma0, rng);
+    CMAES es(y0, sigma0, rng, 0, options);
     try {
-        while (es.spread() > tol) {
+        while (h09 ? es.stop() == CMAES::Stop::none : es.spread() > tol) {
             const std::vector<std::vector<double>> Y = es.ask();
             std::vector<double> vals;
             for (const auto& y : Y) {

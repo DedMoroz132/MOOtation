@@ -107,6 +107,9 @@ _FALLBACK_TEXT = {
     "eki_perturb": ("yes", "no"),
     "kpcm_pm": ("off", "on"),
     "edv_tournament": ("fitness", "random"),
+    "cma_weights": ("active", "positive"),
+    "cma_cmu": ("tutorial2016", "hansen2009"),
+    "cma_stop": ("spread", "h09"),
 }
 
 _BLOCK = re.compile(

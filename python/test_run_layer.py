@@ -11571,6 +11571,35 @@ def lm_and_lbfgsb_take_the_problems_derivatives():
             raise AssertionError("not refused: " + why)
 
 @test
+def cmaes_takes_the_bipop_2009_options_through_minimize():
+    """Task 18, stage 3 (owner's В4; scalar/cmaes.hpp): cmaes takes
+    cma_weights, cma_cmu and cma_stop through minimize(); with BIPOP-CMA-ES
+    2009's weights, c_mu and termination it reaches the minimum and stops
+    before the budget; the defaults are in the settings; a word it does not
+    know is refused."""
+    if _core_with("scalar") is None:
+        print("  skip  cmaes_takes_the_bipop_2009_options...: no _core.scalar"); return
+    import mootation
+    box = [(-5.0, 5.0)] * 4
+
+    def f(x):
+        return [sum((i + 1.0) * (v - 1.0) ** 2 for i, v in enumerate(x))]
+    out = mootation.minimize(f, box, 1, algorithm="cmaes", max_evaluations=20000, seed=2,
+                             cma_weights="positive", cma_cmu="hansen2009", cma_stop="h09")
+    got = dict(out.settings)
+    assert (got["cma_weights"], got["cma_cmu"], got["cma_stop"]) == ("positive", "hansen2009", "h09"), out.settings
+    assert out.objectives[0][0] < 1e-9 and out.evaluations < 20000, (out.objectives, out.evaluations)
+    plain = dict(mootation.minimize(f, box, 1, algorithm="cmaes", max_evaluations=500, seed=2).settings)
+    assert (plain["cma_weights"], plain["cma_cmu"], plain["cma_stop"]) == ("active", "tutorial2016", "spread"), plain
+    try:
+        mootation.minimize(f, box, 1, algorithm="cmaes", max_evaluations=500, cma_stop="h10")
+    except ValueError as e:
+        assert "cma_stop" in str(e), str(e)
+    else:
+        raise AssertionError("cma_stop = 'h10' not refused")
+
+
+@test
 def the_population_methods_run_through_minimize():
     """Task 18, stage 4 wiring (scalar.hpp, run_population; population.hpp):
     the eleven population methods of stage 4 are algorithms of minimize() at

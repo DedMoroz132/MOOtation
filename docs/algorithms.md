@@ -95,7 +95,11 @@ The single-objective algorithms (task 18, item 2.3; `n_objs = 1` only, a
 campaign at more objectives refuses them) are the local solvers of
 `scalar` on their own: `slsqp` (the library's SQP, `slsqp.hpp`; knobs
 `fd_step`, `local_tol`, `sqp_line_search`), `nelder_mead` (`nelder_mead.hpp`;
-`local_tol`, `nm_coefficients`) and `cmaes` (`cmaes.hpp`; `cma_sigma0`, `local_tol`). A run is the
+`local_tol`, `nm_coefficients`) and `cmaes` (`cmaes.hpp`; `cma_sigma0`, `local_tol`, and
+`cma_weights` = `active` | `positive`, `cma_cmu` = `tutorial2016` |
+`hansen2009`, `cma_stop` = `spread` | `h09`: the tutorial's weights and c_μ, the
+defaults, or those of BIPOP-CMA-ES (Hansen, GECCO 2009), and the run stopped by
+its spread at `local_tol` or by that paper's termination criteria). A run is the
 initial plan (`pop_size` uniform points, the design of `init` or the seed
 population) and the solver once from its best point, until the solver's own
 tolerance or the budget; a run that stops early leaves the rest of the budget
