@@ -54,6 +54,7 @@
 #include <vector>
 
 #include "../detmath.hpp"
+#include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
 
@@ -112,12 +113,14 @@ public:
             }
             norm = std::sqrt(norm);
             const double r = radius * dm::pow(U01(rng_), 1.0 / static_cast<double>(d));
+            ops::RepairTally tally;                                      // the move (task 20, §20.2.2)
             for (std::size_t j = 0; j < d; ++j) {
                 const double xp = G[j] + (norm > 0.0 ? r * dir[j] / norm : 0.0);
                 const double vmax = (hi_[j] - lo_[j]) / 2.0;             // SPSO-5
                 v_[i][j] = std::clamp(o_.w * v_[i][j] + xp - x_[i][j], -vmax, vmax);   // (3)
                 x_[i][j] += v_[i][j];                                    // (1b)
                 if (x_[i][j] < lo_[j] || x_[i][j] > hi_[j]) {            // SPSO-6
+                    tally.out();
                     x_[i][j] = x_[i][j] < lo_[j] ? lo_[j] : hi_[j];
                     v_[i][j] = 0.0;
                 }

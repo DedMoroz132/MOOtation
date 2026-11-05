@@ -69,6 +69,7 @@
 #include <string>
 #include <vector>
 
+#include "../operators/bound_repair.hpp"
 #include "cmaes.hpp"
 #include "strategy.hpp"
 
@@ -104,6 +105,11 @@ inline Run run_cma(Evaluator& ev, const Vec& m0, double sigma0, std::size_t lamb
     auto value = [&](const Vec& y) {
         Vec x = y;
         double d2 = 0.0;
+        {
+            ops::RepairTally tally;                              // the sample (task 20, §20.2.2)
+            for (std::size_t j = 0; j < n; ++j)
+                if (y[j] < ev.lo[j] || y[j] > ev.hi[j]) tally.out();
+        }
         if (clip)
             for (std::size_t j = 0; j < n; ++j) {
                 x[j] = std::min(ev.hi[j], std::max(ev.lo[j], y[j]));

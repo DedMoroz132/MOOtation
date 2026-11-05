@@ -1624,6 +1624,17 @@ strategy's later rounds and restarts included), `meta.json`'s `so.stop_at`
 names it. 0, the default, never stops; a problem without `f_opt` runs its
 budget. `minimize(..., f_stop=)` is the same, absolute.
 
+A run at one objective counts the points its method makes outside the box
+(task 20, §20.2.2; Kononova et al., Inf. Sci. 581, 2021, the multi-objective
+runs' `oob_share`): `meta.json`'s `so.repairs` has `checked` (the points made),
+`out_children` (those outside) and `out_vars` (their variables outside), and
+every trajectory row `repair_checked`, `repair_out_children` and
+`repair_out_vars` at its `fe`, the last row the totals; `minimize` gives the
+same as `result.repairs`. What counts is SCALAR-14 (de and its kin, the GA
+presets, the PSOs, the CMA-ES family, nelder_mead, slsqp, lbfgsb's
+projections; not lm). On a strategy with `threads` above 1 the rows are null
+and the totals stay exact (SCALAR-15); the default, one thread, fills them.
+
 `[campaign] wrap_shift`, `wrap_rotate` and `wrap_perm` put every problem of a
 campaign at one objective behind the wrappers of `suite/wrap.hpp` (task 20,
 §20.2.1): the run sees x, the problem is evaluated at y = T(x), shift, then

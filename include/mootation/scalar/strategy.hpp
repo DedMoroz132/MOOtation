@@ -373,6 +373,7 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
                 for (std::size_t k = next++; k < n; k = next++) one(k);
             });
         for (auto& th : pool) th.join();
+        for (const Result& r : out) ops::repair_counts() += r.repairs;   // counted on the pool's threads
     }
     for (std::size_t k = 0; k < n; ++k)
         if (error[k]) std::rethrow_exception(error[k]);

@@ -42,6 +42,7 @@
 #include <vector>
 
 #include "../fp_contract.hpp"
+#include "../operators/bound_repair.hpp"
 
 namespace mootation::nelder_mead {
 
@@ -72,8 +73,12 @@ inline Result minimize(const std::function<double(const std::vector<double>&)>& 
     const double gamma = adaptive ? 0.75 - 1.0 / (2.0 * dn) : 0.5;
     const double sigma = adaptive ? 1.0 - 1.0 / dn : 0.5;
 
-    auto clip = [&](std::vector<double>& x) {
-        for (std::size_t i = 0; i < n; ++i) x[i] = std::min(hi[i], std::max(lo[i], x[i]));
+    auto clip = [&](std::vector<double>& x) {                // NM-2; counted (task 20, §20.2.2)
+        ops::RepairTally tally;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (x[i] < lo[i] || x[i] > hi[i]) tally.out();
+            x[i] = std::min(hi[i], std::max(lo[i], x[i]));
+        }
     };
     struct Vertex {
         std::vector<double> x;

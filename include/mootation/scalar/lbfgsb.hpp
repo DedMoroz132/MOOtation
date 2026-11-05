@@ -77,6 +77,7 @@
 #include <vector>
 
 #include "../fp_contract.hpp"
+#include "../operators/bound_repair.hpp"
 #include "line_search.hpp"
 
 namespace mootation::scalar::lbfgsb {
@@ -428,9 +429,13 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     const std::size_t n = p.n;
     Vec lo = p.lo.empty() ? Vec(n, -kInf) : p.lo, hi = p.hi.empty() ? Vec(n, kInf) : p.hi;
     if (lo.size() != n || hi.size() != n) throw std::invalid_argument("lbfgsb: lo and hi need n entries");
-    for (std::size_t i = 0; i < n; ++i) {
-        if (!(lo[i] <= hi[i])) throw std::invalid_argument("lbfgsb: lo_i <= hi_i is needed");
-        x[i] = std::min(std::max(x[i], lo[i]), hi[i]);   // x_0 projected onto the box
+    {
+        ops::RepairTally tally;                       // x_0 (task 20, §20.2.2)
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!(lo[i] <= hi[i])) throw std::invalid_argument("lbfgsb: lo_i <= hi_i is needed");
+            if (x[i] < lo[i] || x[i] > hi[i]) tally.out();
+            x[i] = std::min(std::max(x[i], lo[i]), hi[i]);   // x_0 projected onto the box
+        }
     }
     Result res;
     auto eval = [&](const Vec& v, Vec& g) {           // f and g, counted
@@ -487,7 +492,14 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         Vec xa(n), ga_(n), xt = x, gt = g;            // the trial; the best one (LB-6)
         double ft = f;
         auto phi = [&](double a, double& fa, double& ga) {
-            for (std::size_t i = 0; i < n; ++i) xa[i] = std::min(std::max(x[i] + a * d[i], lo[i]), hi[i]);
+            {
+                ops::RepairTally tally;                  // the search's point (LB-9; task 20, §20.2.2)
+                for (std::size_t i = 0; i < n; ++i) {
+                    const double v = x[i] + a * d[i];
+                    if (v < lo[i] || v > hi[i]) tally.out();
+                    xa[i] = std::min(std::max(v, lo[i]), hi[i]);
+                }
+            }
             fa = eval(xa, ga_);
             ga = 0.0;
             for (std::size_t i = 0; i < n; ++i) ga += ga_[i] * d[i];

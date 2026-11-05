@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 20, §20.2.2): the single-objective methods count the points
+  they make outside the box, as the multi-objective operators do
+  (RepairCounts): de, jade, shade, lshade, g3_pcx, pso, spso2011, the
+  CMA-ES family's clipped samples, nelder_mead, slsqp and lbfgsb's
+  projections (SCALAR-14). `scalar::Result::repairs` and `result.repairs`
+  in Python (checked, out_children, out_vars), a strategy's starts added up
+  on any number of threads; a campaign at one objective writes them to
+  `meta.json` (`so.repairs`) and to every trajectory row (null on a strategy
+  with threads > 1, SCALAR-15), the same in both engines. smpso's OMOPSO
+  mutations, which clipped past the counter, are counted. The counter draws
+  nothing: every run is the same (test_scalar's checksums, compat 228/228).
 - Added (task 20, §20.2.1): the wrappers of `suite/wrap.hpp` in runs at one
   objective. `[campaign] wrap_shift`, `wrap_rotate`, `wrap_perm` (an instance
   number, 0 off, or `"by_run"`: the run's seed) and `wrap_shift_scale` put

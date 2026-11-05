@@ -99,10 +99,14 @@ public:
             const Vec &xa = x_[static_cast<std::size_t>(a)], &xb = x_[static_cast<std::size_t>(b)],
                       &xc = x_[static_cast<std::size_t>(c)];
             const std::size_t jr = static_cast<std::size_t>(dim(rng_));
+            ops::RepairTally tally;                                // the mutant (task 20, §20.2.2)
             for (std::size_t j = 0; j < d; ++j) {
                 double v = xc[j] + o_.F * (xa[j] - xb[j]);         // (2)
-                if (o_.repair != ops::BoundRepair::Native && (v < lo_[j] || v > hi_[j]))
-                    v = ops::repair_value(v, lo_[j], hi_[j], x_[i][j], o_.repair, rng_);   // DE-2
+                if (v < lo_[j] || v > hi_[j]) {
+                    tally.out();
+                    if (o_.repair != ops::BoundRepair::Native)
+                        v = ops::repair_value(v, lo_[j], hi_[j], x_[i][j], o_.repair, rng_);   // DE-2
+                }
                 trial_[i][j] = U01(rng_) < o_.CR || j == jr ? v : x_[i][j];               // (4)
             }
         }

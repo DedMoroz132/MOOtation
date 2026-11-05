@@ -152,6 +152,9 @@ class ScalarResult:
         # one objective: a record each time the best point improved, (evaluations,
         # grad_calls, f, cv) at that point (improvements.hpp)
         self.improvements = [tuple(e) for e in d.get("improvements", [])]
+        # the points the method made, how many of them left the box and by how
+        # many variables (Result::repairs; task 20, §20.2.2)
+        self.repairs = {k: int(v) for k, v in dict(d.get("repairs", {})).items()}
         self._lsq = None                # (residuals, jac, bounds) of a least-squares run
 
     def profile(self, j: int, grid=None, *, alpha: float = 0.95, df: int = 1, sigma2: float = 0.0,
