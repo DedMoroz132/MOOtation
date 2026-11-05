@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed: das_dennis::classify_size and suggest_sizes look for a single
+  layer up to H = 2000 (kMaxSingleLayerH; 500 before), so at two objectives
+  a population of up to 2001 is a lattice: N = 600, MOEA/D-DRA's (Zhang, Liu
+  & Li 2009, Sec. III), threw before. Only sizes that threw change: every
+  size attainable under the old bound keeps its configuration and its
+  lattice, bit for bit (test_das_dennis checks the 2413 of them up to 501 at
+  two objectives and 3000 at three to eight). generate_auto is unchanged.
+
 - Added (task 20, §20.2.1): `suite/wrap.hpp`, a permutation, rotation and
   shift over any Native problem. The run sees x; the problem
   is evaluated at y = T(x): shift u = x - s, rotate v = c + Q (u - c),

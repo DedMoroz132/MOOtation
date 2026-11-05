@@ -234,12 +234,20 @@ struct LayerConfig {
     bool two_layer = false;
 };
 
+// The largest H a single layer is looked for at (classify_size,
+// suggest_sizes). It only matters at two objectives, where N = H + 1: up to
+// 2026-11 it was 500, so N = 600 (MOEA/D-DRA's, Zhang, Liu & Li 2009, §III)
+// threw; at three objectives H = 500 is already 125 751 vectors. Raising it
+// turned only sizes that threw into lattices; every size attainable before
+// keeps its configuration (test_das_dennis, test_single_layer_bound).
+constexpr int kMaxSingleLayerH = 2000;
+
 // Is exactly `n` vectors attainable for m objectives? If so, returns the
 // configuration (single or two-layer) with found=true.
 inline LayerConfig classify_size(int m, long long n) {
     LayerConfig cfg;
     // single-layer
-    for (int H = 1; H <= 500; ++H) {
+    for (int H = 1; H <= kMaxSingleLayerH; ++H) {
         long long c = n_vectors(m, H);
         if (c == n) { cfg.H1 = H; cfg.size = c; cfg.two_layer = false; return cfg; }
         if (c > n) break;
@@ -273,7 +281,7 @@ inline std::pair<long long,long long> suggest_sizes(int m, long long n) {
     // collect all attainable sizes up to a reasonable limit
     long long limit = (n < 4) ? 16 : n * 2 + 8;
     std::vector<long long> sizes;
-    for (int H = 1; H <= 500; ++H) {
+    for (int H = 1; H <= kMaxSingleLayerH; ++H) {
         long long c = n_vectors(m, H);
         if (c > limit) break;
         sizes.push_back(c);

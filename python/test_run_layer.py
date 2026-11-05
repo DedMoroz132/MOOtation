@@ -159,6 +159,39 @@ def nearest_lattice_brackets_the_request():
 
 
 @test
+def check_pop_takes_the_sizes_the_core_takes():
+    """Task 20: check_pop accepts a population size exactly where the core's
+    das_dennis::generate_exact does — the single layer up to H = 2000, the two
+    layers of its bounds — asked of the core itself (moead at its defaults on
+    a problem of M objectives; a refused size raises before any evaluation)
+    for M = 2..10 over a range of sizes, and N = 600 at two objectives (MOEA/D-
+    DRA's) now passes both."""
+    if _core_with("run") is None:
+        print("    (skipped: no extension)"); return
+    from mootation import minimize
+    from mootation.run.algorithms import attainable_sizes
+
+    def core_takes(m, n):
+        try:
+            minimize(lambda x, _m=m: [float(sum(x))] * _m, bounds=[(0.0, 1.0)] * 2, n_objs=m,
+                     algorithm="moead", pop_size=n, n_gen=1, seed=1, max_evaluations=n)
+            return True
+        except ValueError as e:
+            assert "not attainable" in str(e), e
+            return False
+
+    sizes = {2: list(range(2, 40)) + [499, 500, 501, 502, 600, 1000, 2000, 2001, 2002, 2500]}
+    for m in range(3, 11):
+        near = sorted(attainable_sizes(m, 400))
+        sizes[m] = sorted(set(range(m, 40)) | set(near) | {s + 1 for s in near if s < 400})
+    for m, ns in sizes.items():
+        for n in ns:
+            ours = check_pop("moead", n, m) is None
+            assert ours == core_takes(m, n), (m, n, ours)
+    assert check_pop("moead_dra", 600, 2) is None and check_pop("moead_dra", 2002, 2) is not None
+
+
+@test
 def one_objective_lattices_end():
     # every h gives the same one point at M = 1: the searches for a larger
     # size used to loop for ever (a config with n_objs = 1 and moead_de)

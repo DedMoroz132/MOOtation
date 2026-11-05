@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <iostream>
 #include <set>
 #include <string>
@@ -216,6 +217,69 @@ void test_reference_points_any_h()
         check(rp == das_dennis::reference_points(m, h), w + ": the same points again");
     }
 }
+// The single-layer bound (das_dennis::kMaxSingleLayerH, 500 until 2026-11):
+// N = 600 at two objectives is H = 599 now; and every size the old bound made
+// attainable keeps its configuration and its lattice, bit for bit.
+das_dennis::LayerConfig classify_size_bound_500(int m, long long n)
+{
+    das_dennis::LayerConfig cfg;
+    for (int H = 1; H <= 500; ++H) {
+        const long long c = das_dennis::n_vectors(m, H);
+        if (c == n) { cfg.H1 = H; cfg.size = c; return cfg; }
+        if (c > n) break;
+    }
+    for (int Hi = 1; Hi <= 60; ++Hi) {
+        const long long ni = das_dennis::n_vectors(m, Hi);
+        if (ni >= n) break;
+        for (int Hb = Hi + 1; Hb <= 80; ++Hb) {
+            const long long nb = das_dennis::n_vectors(m, Hb);
+            if (ni + nb == n) { cfg.H1 = Hb; cfg.H2 = Hi; cfg.size = n; cfg.two_layer = true; return cfg; }
+            if (ni + nb > n) break;
+        }
+    }
+    cfg.size = -1;
+    return cfg;
+}
+
+void test_single_layer_bound()
+{
+    std::cout << "-- the single-layer bound --\n";
+    for (long long n : {600LL, 1000LL, 2001LL}) {
+        const auto cfg = das_dennis::classify_size(2, n);
+        check(cfg.size == n && !cfg.two_layer && cfg.H1 == n - 1,
+              "m=2, n=" + std::to_string(n) + ": a single layer, H = n - 1");
+        check(das_dennis::generate_exact(2, n) == das_dennis::generate(2, static_cast<int>(n - 1)),
+              "m=2, n=" + std::to_string(n) + ": generate_exact is that layer");
+    }
+    bool threw = false;
+    try {
+        (void)das_dennis::generate_exact(2, 2002);
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    check(threw, "m=2, n=2002: beyond the bound, refused");
+    long long same = 0;
+    for (int m = 2; m <= 8; ++m) {
+        for (long long n = 2; n <= (m == 2 ? 501 : 3000); ++n) {
+            const auto old_cfg = classify_size_bound_500(m, n);
+            if (old_cfg.size != n) continue;
+            const auto cfg = das_dennis::classify_size(m, n);
+            const bool cfg_same = cfg.size == n && cfg.H1 == old_cfg.H1 && cfg.H2 == old_cfg.H2 &&
+                                  cfg.two_layer == old_cfg.two_layer;
+            const auto old_pts = old_cfg.two_layer ? das_dennis::generate_two_layer(m, old_cfg.H1, old_cfg.H2)
+                                                   : das_dennis::generate(m, old_cfg.H1);
+            const auto pts = das_dennis::generate_exact(m, n);
+            bool bits = pts.size() == old_pts.size();
+            for (std::size_t i = 0; bits && i < pts.size(); ++i)
+                for (std::size_t k = 0; bits && k < pts[i].size(); ++k)
+                    bits = std::memcmp(&pts[i][k], &old_pts[i][k], sizeof(double)) == 0;
+            check(cfg_same && bits, "m=" + std::to_string(m) + ", n=" + std::to_string(n) +
+                                        ": the configuration and lattice of the old bound");
+            ++same;
+        }
+    }
+    std::cout << "   " << same << " sizes attainable under the old bound, unchanged\n";
+}
 }   // namespace
 
 int main()
@@ -229,5 +293,6 @@ int main()
     test_two_layer();
     test_degenerate();
     test_reference_points_any_h();
+    test_single_layer_bound();
     return mootation::testing::report("das_dennis");
 }
