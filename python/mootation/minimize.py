@@ -38,8 +38,8 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "race_eps", "race_delta", "race_max_samples", "race_abs_tol", "hv_incremental",
                "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
-               "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
-               "n_starts", "threads", "min_dist", "min_df")
+               "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau", "n_starts",
+               "threads", "min_dist", "min_df", "start_share", "bipop_large")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
@@ -53,7 +53,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
               "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
-              "cma_weights", "cma_cmu", "cma_stop", "start_points")
+              "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")

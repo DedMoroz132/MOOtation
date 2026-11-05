@@ -216,7 +216,7 @@ inline const std::vector<std::string>& names()
                                             "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki",
                                             "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                             "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes",
-                                            "multistart"};
+                                            "multistart", "ipop", "bipop", "bipop_2009"};
     return v;
 }
 

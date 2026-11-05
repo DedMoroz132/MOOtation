@@ -75,6 +75,13 @@ always listed under **Changed** or **Removed**.
   the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and
   the polynomial mutation, then KPCM (IAMD-1). Default runs keep their golden
   fingerprints.
+- Added (`scalar/restarts.hpp`; task 18, stage 3): the strategies `ipop`
+  (Auger & Hansen, CEC 2005) and `bipop` (Hansen, GECCO 2009), restarts of
+  the library's CMA-ES in the problem's coordinates, each run until a
+  termination criterion of Hansen 2009 holds, and the preset `bipop_2009`
+  with that paper's weights and c_μ. Knobs `cma_sigma0` (a share of the box's
+  width), `start_share`, `cma_bounds = penalty | none`, `bipop_large`; every
+  run in the settings. Readings RST-1 … RST-7.
 - Added (`scalar/strategy.hpp`; task 18, stage 3): search strategies. A
   strategy runs an inner solver, the knob `inner` = `{solver = name, its
   knobs}` (a TOML table, a dict in `minimize()`, or `algorithm={"solver":

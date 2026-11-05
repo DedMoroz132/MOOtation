@@ -147,12 +147,27 @@ with the same result, bit for bit; a point two starts evaluate counts once.
 | Strategy | Knobs |
 |---|---|
 | `multistart` | `inner`, `n_starts` (10), `start_points` (`sobol`, `lhs`, `uniform`, `halton_rand`, `sobol_owen`), `threads` (1), `min_dist` (1e-3), `min_df` (1e-8) |
+| `ipop` (Auger & Hansen, CEC 2005) | `cma_weights`, `cma_cmu`, `cma_sigma0` (0.5 of the box's width), `start_share` (0), `cma_bounds` (`penalty`, `none`), `min_dist`, `min_df` |
+| `bipop`, `bipop_2009` (Hansen, GECCO 2009) | as `ipop`, `cma_sigma0` 0.2, `start_share` 0.1, and `bipop_large` (9) |
 
 `multistart` shares the budget evenly among `n_starts` starts in one round:
 start 0 is the inner solver's own run (its plan, or `x0`), the others start
 from the design points in the box. With one start it is the inner solver's
 run, bit for bit. The minima the starts found, grouped by `min_dist` and
 `min_df` (STRAT-4), are in the settings (`minima`).
+
+`ipop` and `bipop` restart the library's CMA-ES in the problem's own
+coordinates, each run until one of the termination criteria of Hansen 2009
+(`cma_stop = h09` of `cmaes`) holds. `ipop` doubles the population at every
+restart; `bipop` alternates a regime of growing populations (up to 2^9 times
+the default, `bipop_large`) and one of small populations with small steps,
+the one whose budget is smaller running next (RST-1 … RST-7 in
+`scalar/restarts.hpp`). `bipop_2009` is `bipop` with that paper's CMA-ES:
+positive weights and its c_μ. The start mean is uniform in the box less
+`start_share` of its width each side, σ⁰ is `cma_sigma0` times the width;
+`cma_bounds = none` evaluates points beyond the box, for a function defined
+there (bbob). A shorter budget gives the same run cut short. Every run is in
+the settings (`restarts`: regime, λ, σ⁰, evaluations, what stopped it).
 
 The cores are multi-objective. With `n_objs = 1`, 22 of them refuse in
 `Settings::validate()` and name their reason (`single_objective_refusal`,

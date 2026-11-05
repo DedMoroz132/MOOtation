@@ -114,7 +114,7 @@ inline const std::vector<std::string>& knob_names() {
         // task 19, §19.4.1: eki (scalar/scalar.hpp, run_local)
         "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
         // task 18, stage 3: the strategies (scalar/strategy.hpp)
-        "n_starts", "threads", "min_dist", "min_df"
+        "n_starts", "threads", "min_dist", "min_df", "start_share", "bipop_large"
     };
     return v;
 }
@@ -200,7 +200,7 @@ inline bool is_core_param(const std::string& name)
                           "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                           "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
                           "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
-                          "n_starts", "threads", "min_dist", "min_df"})
+                          "n_starts", "threads", "min_dist", "min_df", "start_share", "bipop_large"})
         if (name == k) return true;
     return false;
 }
@@ -370,6 +370,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"cma_cmu",      {"tutorial2016", "hansen2009"}},
         {"cma_stop",     {"spread", "h09"}},
         {"start_points", {"sobol", "lhs", "uniform", "halton_rand", "sobol_owen"}},
+        {"cma_bounds",   {"penalty", "none"}},
     };
     return v;
 }
@@ -408,7 +409,7 @@ inline bool is_core_word(const std::string& name)
                           "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
                           "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
-                          "cma_weights", "cma_cmu", "cma_stop", "start_points"})
+                          "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds"})
         if (name == k) return true;
     return false;
 }

@@ -24,7 +24,7 @@
 // point of the archive. Each start's own answer goes to the minima log, which
 // groups the starts that found the same minimum (min_dist, min_df).
 //
-// THE STRATEGIES:
+// THE STRATEGIES (and ipop, bipop, bipop_2009: restarts.hpp):
 //   multistart  n_starts starts in one round, the budget shared evenly:
 //               start 0 is the inner solver's own (its plan, or x0); start k
 //               >= 1 from point k of a design (start_points: sobol, lhs,
@@ -489,9 +489,14 @@ private:
 
 inline const std::vector<std::string>& strategy_names()
 {
-    static const std::vector<std::string> v{"multistart"};
+    static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009"};
     return v;
 }
+
+// ipop, bipop, bipop_2009 (restarts.hpp, included at the end)
+inline Result run_restarts(const std::string& name, const Problem& P, double eq_tol, bool has_tol0, double eq_tol0,
+                           int pop_size, long long budget, unsigned seed, const Knobs& knobs, Observer observer,
+                           int record_every, const Start& start);
 
 // ── multistart ──────────────────────────────────────────────────────────────
 inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
@@ -559,7 +564,12 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
     if (name == "multistart")
         return run_multistart(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                               record_every, start);
+    if (name == "ipop" || name == "bipop" || name == "bipop_2009")
+        return run_restarts(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                            record_every, start);
     throw std::invalid_argument("unknown strategy '" + name + "'");
 }
 
 }   // namespace mootation::scalar
+
+#include "restarts.hpp"

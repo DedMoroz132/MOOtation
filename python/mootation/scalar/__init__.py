@@ -67,6 +67,13 @@ in any number of threads (threads):
   multistart   n_starts (10) starts in one round, start 0 the inner solver's
                own, the others from start_points (sobol | lhs | uniform |
                halton_rand | sobol_owen); min_dist, min_df group the minima
+  ipop         CMA-ES restarts, each population twice the last (Auger &
+               Hansen 2005), in the problem's coordinates
+  bipop        two regimes of restarts, large and small populations (Hansen
+               2009); bipop_2009 with that paper's CMA-ES (cma_weights =
+               positive, cma_cmu = hansen2009). Knobs: cma_weights, cma_cmu,
+               cma_sigma0 (a share of the box's width), start_share,
+               cma_bounds (penalty | none), bipop_large (9)
 
 Every evaluation goes through fn; the run's first points are pop_size uniform
 points from the seed, the rows of the design `init` (designs.py), or the seed
@@ -93,16 +100,19 @@ PRESETS = {
 # the population methods of stage 4 (task 18, §4; scalar.hpp, run_population)
 POPULATION = ("de", "jade", "shade", "lshade", "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011",
               "sep_cmaes")
-# the strategies of stage 3 (task 18, §3; strategy.hpp)
-STRATEGIES = ("multistart",)
+# the strategies of stage 3 (task 18, §3; strategy.hpp, restarts.hpp)
+STRATEGIES = ("multistart", "ipop", "bipop", "bipop_2009")
+# those that share the budget out among their starts: a run that depends on it
+SHARING = ("multistart",)
 # the single-objective algorithms (task 18, item 2.3, stages 1, 3 and 4)
 SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki") + POPULATION + STRATEGIES
 # the methods beside the scalarization methods, on the same evaluator,
 # answer and observer: those of task 9 and the single-objective algorithms.
 # None lays its run out over the budget (budget.py) but lshade, whose
-# population schedule runs to the budget (POP-8), and the strategies, which
-# share it out among their starts
-OTHERS = ("boostdms", "mosqp") + tuple(s for s in SINGLE if s != "lshade" and s not in STRATEGIES)
+# population schedule runs to the budget (POP-8), and the strategies that
+# share it out among their starts; ipop and bipop restart until it is spent,
+# a shorter budget the same run cut short
+OTHERS = ("boostdms", "mosqp") + tuple(s for s in SINGLE if s != "lshade" and s not in SHARING)
 NAMES = tuple(PRESETS) + ("boostdms", "mosqp") + SINGLE
 
 
