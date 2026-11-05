@@ -56,9 +56,9 @@ std::string setting(const sc::Result& r, const std::string& key)
     return "";
 }
 
-sc::Problem bbob(int fid, int D)
+sc::Problem bbob(int fid, int D, int iid = 1)
 {
-    auto obj = std::make_shared<B::Objective>(B::instance(fid, 1, D), D);
+    auto obj = std::make_shared<B::Objective>(B::instance(fid, iid, D), D);
     sc::Problem P;
     P.lo.assign(static_cast<std::size_t>(D), -5.0);
     P.hi.assign(static_cast<std::size_t>(D), 5.0);
@@ -186,6 +186,23 @@ void target()
     }
 }
 
+// RST-8: the target met in a run of regime 2 ends bipop (the H2 sample's
+// bbob f15, D = 10, instance 2, seed 2 looped there for ever: regime 2's own
+// allowance cleared the budget's end against the run's whole budget)
+void target_in_regime_2()
+{
+    sc::Problem P = bbob(15, 10, 2);
+    const double at = B::instance(15, 2, 10).f_opt + 1e-8;
+    P.stop_at = at;
+    const sc::Result r = sc::run("bipop_2009", P, 1e-6, false, 0.0, 10, 1000000, 2,
+                                 {{"cma_bounds", word("none")}}, {}, 0, {});
+    const auto runs = mootation::json::parse(setting(r, "restarts"));
+    const auto& last = runs.items.back().items;
+    check(r.objectives[0][0] <= at && r.evaluations < 1000000 && last[0].i == 2,
+          "bipop_2009, bbob f15 D = 10 instance 2, the target met in a run of regime 2: the strategy ends (" +
+              std::to_string(runs.items.size()) + " runs, " + std::to_string(r.evaluations) + " evaluations)");
+}
+
 void refusals()
 {
     std::string why;
@@ -217,6 +234,7 @@ int main()
     bipop_2009();
     bounds();
     target();
+    target_in_regime_2();
     refusals();
     std::printf("%s (%d failed)\n", g_failed == 0 ? "PASS" : "FAIL", g_failed);
     return g_failed == 0 ? 0 : 1;

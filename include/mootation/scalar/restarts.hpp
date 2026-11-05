@@ -56,6 +56,9 @@
 //   RST-7. A run's generator and its start mean come from start_seed(seed, k)
 //     (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and
 //     σ⁰ of a run of regime 2 from it before the start mean.
+//   RST-8. A run that evaluates nothing ends the strategy: the budget, or the
+//     run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's
+//     own allowance says.
 // ============================================================================
 
 #include <algorithm>
@@ -201,7 +204,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     };
     for (unsigned long long q = 0;; ++q) {
         std::mt19937 rng(start_seed(seed, q));                                          // RST-7
-        if (ev.spent >= budget) break;
+        if (ev.spent >= ev.budget) break;                        // ev.budget: THE TARGET shortens it
         if (!bipop) {
             const Run r = one(0, lam_def << q, sigma_large, 0, rng);
             if (r.budget_out) break;
@@ -230,9 +233,9 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
             const double ratio = 0.5 * static_cast<double>(lam_last) / static_cast<double>(lam_def);
             const auto lam_s = static_cast<std::size_t>(std::floor(static_cast<double>(lam_def) * dm::pow(ratio, u * u)));
             r = one(2, std::max(lam_s, lam_def), sigma_large * dm::pow(10.0, -2.0 * u2), std::max(1LL, last_large / 2), rng);
-            if (r.budget_out && ev.spent < budget) r.budget_out = false;                  // its own allowance ended
+            if (r.budget_out && ev.spent < ev.budget) r.budget_out = false;               // its own allowance ended
         }
-        if (r.budget_out) break;
+        if (r.budget_out || r.evaluations == 0) break;                                    // RST-8
     }
     if (!ev.recorded) ev.record();
     MinimaLog log(P.lo, P.hi, min_dist, min_df);

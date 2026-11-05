@@ -407,7 +407,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-220 items: 220 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+221 items: 221 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -562,6 +562,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `restarts` | RST-5 | "The first and last restart are conducted under the first regime": after regime 1's last run (λ = 2^bipop_large λ_def) the strategy stops. | yes | `restarts.hpp` |
 | `restarts` | RST-6 | The box gives the start: a bound that is not finite is refused, and so are constraints (bounds only). | yes | `restarts.hpp` |
 | `restarts` | RST-7 | A run's generator and its start mean come from start_seed(seed, k) (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and σ⁰ of a run of regime 2 from it before the start mean. | yes | `restarts.hpp` |
+| `restarts` | RST-8 | A run that evaluates nothing ends the strategy: the budget, or the run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's own allowance says. | yes | `restarts.hpp` |
 | `scalar` | SCALAR-1 | n_sub from the budget: what is left after the plan's start and the anchors, over 10 (n + 1) evaluations a subproblem for sqp — about ten iterations from a neighbour's solution — and 100 n for nm and cmaes; at most pop... | yes | `scalar.hpp` |
 | `scalar` | SCALAR-2 | nm, cmaes: an infeasible point is worth the worst feasible value known for its subproblem plus its violation (Deb's rule as a penalty). | yes | `scalar.hpp` |
 | `scalar` | SCALAR-3 | tch: w_i = 1 / max(d_i, 1e-6) for the lattice's direction d, so that the solutions lie on the rays F̄ ∝ d the lattice spreads evenly; the reference point is z*. | yes | `scalar.hpp` |
