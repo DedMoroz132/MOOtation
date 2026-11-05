@@ -50,6 +50,9 @@ always listed under **Changed** or **Removed**.
   10 % (gamma) of a random sample, against beta's 3 %. Each draws from a
   domain of its own: the streams of f1, f2b, f3b, f4b and f5 are unchanged,
   bit for bit, and so is their frame, which does not depend on r.
+- Fixed (`python/mootation/__init__.py`): `mootation.hypervolume` and
+  `mootation.hv_contributions` raised AttributeError: the compiled module has
+  them, the package's list of compiled names did not.
 - Added: six knobs for readings of six cores' papers (the owner's decisions
   of 2026-11-02), every default unchanged, so default runs keep their golden
   fingerprints. `edv`: `pm_literal` (`on`, the letter p_m = 1/pop_size, or

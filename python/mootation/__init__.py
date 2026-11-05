@@ -45,10 +45,11 @@ from __future__ import annotations
 __version__ = "0.1.0"
 
 _CORE_NAMES = ("Config", "ConstraintMode", "Problem", "Result", "algorithms",
-               "run_raw", "reference_points")
+               "run_raw", "reference_points", "hypervolume", "hv_contributions")
 
 __all__ = ["minimize", "algorithms", "Problem", "Config", "Result",
-           "ConstraintMode", "run_raw", "reference_points", "subset_select",
+           "ConstraintMode", "run_raw", "reference_points", "hypervolume", "hv_contributions",
+           "subset_select",
            "save_population", "load_population", "EvaluationLog", "selftest"]
 
 

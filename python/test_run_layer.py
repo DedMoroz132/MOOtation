@@ -13729,6 +13729,18 @@ def every_registry_problem_has_a_property_row():
     assert row("uninformative_f5_n02_2D")["front"] == "linear" and row("uninformative_n02_2D")["multimodal"] is None
 
 
+@test
+def hypervolume_and_its_contributions_are_reached_from_the_package():
+    """mootation.hypervolume and mootation.hv_contributions are _core's
+    functions (they were in _core, not in the package's names)."""
+    _core = _core_with("hypervolume")
+    if _core is None:
+        print("    (skipped: no compiled extension)"); return
+    import mootation
+    assert mootation.hypervolume is _core.hypervolume
+    assert mootation.hv_contributions is _core.hv_contributions
+    assert {"hypervolume", "hv_contributions"} <= set(mootation.__all__)
+
 def main(argv=None) -> int:
     """python test_run_layer.py [--shard i/n]: every test, or the i-th of n
     parts (the tests i, i + n, i + 2n, ...; 0 <= i < n), so that n processes
