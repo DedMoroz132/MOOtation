@@ -104,6 +104,9 @@ struct Problem {
     std::function<void(const Vec& x, Vec& r, Rows& J)> residuals_jac;
     std::vector<int> blocks;          // the residual blocks' sizes (sum n_res); empty: one block
     std::vector<double> weights;      // a weight per block; empty: 1
+    // the directions along which the residuals do not change to first order,
+    // n rows of k (task 19, §19.3.1; lm with lm_gauge = on)
+    std::function<void(const Vec& x, Rows& N)> gauge_basis;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }

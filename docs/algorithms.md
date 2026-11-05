@@ -95,7 +95,7 @@ The single-objective algorithms (task 18, item 2.3; `n_objs = 1` only, a
 campaign at more objectives refuses them) are the local solvers of
 `scalar` on their own: `slsqp` (the library's SQP, `slsqp.hpp`; knobs
 `fd_step`, `local_tol`, `sqp_line_search`), `nelder_mead` (`nelder_mead.hpp`;
-`local_tol`) and `cmaes` (`cmaes.hpp`; `cma_sigma0`, `local_tol`). A run is the
+`local_tol`, `nm_coefficients`) and `cmaes` (`cmaes.hpp`; `cma_sigma0`, `local_tol`). A run is the
 initial plan (`pop_size` uniform points, the design of `init` or the seed
 population) and the solver once from its best point, until the solver's own
 tolerance or the budget; a run that stops early leaves the rest of the budget
@@ -103,9 +103,11 @@ unspent (SINGLE-1 in `scalar/scalar.hpp`: restarts are strategies of their
 own). The box must be finite (SINGLE-2). `lm` (`lm.hpp`, Moré 1978: least
 squares from the problem's residuals) and `lbfgsb` (`lbfgsb.hpp`, Byrd, Lu,
 Nocedal, Zhu 1995) work in the problem's coordinates, bounds `-inf` / `+inf`
-allowed with a start `x0`, bounds only (LOCAL-1 ... LOCAL-4); all five take the
-problem's derivatives where it gives them, counted as `grad_calls` at
-`grad_cost`. The baselines `random_search` and
+allowed with a start `x0`, bounds only (LOCAL-1 ... LOCAL-4), and so does
+`eki` (`eki.hpp`, ensemble Kalman inversion, Iglesias, Law & Stuart 2013; the
+residuals; LOCAL-5); `lm_gauge = on` takes the problem's gauge basis
+(LOCAL-6). All but `eki` take the problem's derivatives where it gives them,
+counted as `grad_calls` at `grad_cost`. The baselines `random_search` and
 `sobol_search` run at one objective as at more; their answer is the point of
 least value.
 

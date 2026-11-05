@@ -19,7 +19,8 @@
 //          the function (SCALAR-6). With the problem's own gradient
 //          (evaluator.hpp) at one objective, that instead (SCALAR-13).
 //  nm      nelder_mead.hpp: Lagarias et al.'s algorithm with Gao & Han's
-//          adaptive coefficients, in the box.
+//          adaptive coefficients, in the box (nm_coefficients = standard:
+//          Lagarias et al.'s (1.3) at every n; task 19, §19.4.2).
 //  cmaes   cmaes.hpp; the box by evaluating the clipped point and adding the
 //          squared distance to it times (1 + |value|) (SCALAR-7).
 // For nm and cmaes the subproblem's own constraints and the problem's are a
@@ -326,13 +327,15 @@ struct Penalty {
 // keep a stale best value and cycle for ever without evaluating anything (a
 // run of eps_nm on RE21 did, until memory ran out): the method stops after
 // 100 (n + 1) calls in a row that evaluate nothing.
-inline void nm(Run& run, const std::vector<double>& y0, const std::vector<std::size_t>& start, double tol)
+inline void nm(Run& run, const std::vector<double>& y0, const std::vector<std::size_t>& start, double tol,
+               bool standard = false)
 {
     struct Idle {};
     Penalty pen(run, start);
     const std::size_t n = y0.size();
     nelder_mead::Options o;
     o.tol = tol;
+    if (standard) o.coefficients = nelder_mead::Options::Coefficients::standard;
     o.max_iter = 1000000000LL;
     const long long cap = 100 * static_cast<long long>(n + 1);
     long long idle = 0, spent = run.ev.spent;

@@ -50,6 +50,16 @@ always listed under **Changed** or **Removed**.
   10 % (gamma) of a random sample, against beta's 3 %. Each draws from a
   domain of its own: the streams of f1, f2b, f3b, f4b and f5 are unchanged,
   bit for bit, and so is their frame, which does not depend on r.
+- Added: task 19's solvers and knobs registered (§19.3, §19.4). `eki`, a
+  single-objective algorithm of `minimize()` and of campaigns at one
+  objective, on the problem's residuals (knobs `eki_ensemble`, `eki_init`,
+  `eki_sigma0`, `eki_gamma`, `eki_perturb`, `eki_noise`, `eki_tau`; LOCAL-5);
+  `nm_coefficients = adaptive | standard` for `nelder_mead` and `eps_nm`;
+  `lm_gauge = off | on` with a problem's `gauge_basis` (`minimize(...,
+  gauge_basis=)`, and the suite's problems with symmetries in campaigns;
+  LOCAL-6); `result.profile(j, ...)` of a run with residuals
+  (`_core.scalar.lm_profile`). In campaigns `lj_cluster` hands its gradient to
+  the algorithms. Every default is the run of before.
 - Fixed (`python/mootation/__init__.py`): `mootation.hypervolume` and
   `mootation.hv_contributions` raised AttributeError: the compiled module has
   them, the package's list of compiled names did not.

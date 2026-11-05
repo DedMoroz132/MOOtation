@@ -11276,7 +11276,7 @@ def scalar_presets_budget_and_refusals():
     assert tuple(PRESETS) == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm",
                               "eps_cmaes") and NAMES == tuple(PRESETS) + (
                                   "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes", "lm",
-                                  "lbfgsb", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
+                                  "lbfgsb", "eki", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                   "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes")
     calls = [0]
     def f(x):
@@ -11440,9 +11440,9 @@ def single_objective_solvers_and_baselines_at_one_objective():
     from mootation.run.baselines import run_baseline
     from mootation.run.budget import depends_on_budget
     from mootation.scalar import SINGLE
-    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "de", "jade", "shade", "lshade",
+    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "de", "jade", "shade", "lshade",
                       "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes")
-    for name in SINGLE[5:]:                          # stage 4's population methods
+    for name in SINGLE[5:]:                          # eki and stage 4's population methods
         assert check_pop(name, 20, 2) == (f"{name} is a single-objective algorithm: n_objs must "
                                           "be 1, got 2"), name
         assert check_pop(name, 20, 1) is None, name
@@ -11602,6 +11602,78 @@ def the_population_methods_run_through_minimize():
         else:
             raise AssertionError("not refused: " + why)
 
+
+@test
+def the_task19_solvers_and_knobs_run_through_minimize():
+    """Task 19, registration (scalar.hpp, run_local, run_single): eki on
+    Rosenbrock's residuals from x0 and from a design, its settings; the same
+    seed, the same run; nm_coefficients = standard is Gao & Han's adaptive
+    method at n = 2 (the same run) and another at n = 5; lm_gauge = on on
+    lowrank reaches the same cost with k and ||J N|| / ||J|| in the settings,
+    and is refused without a gauge_basis; result.profile of a linear model
+    is its parabola, and of a run without residuals refused."""
+    if _core_with("scalar") is None or _core_with("Native") is None:
+        print("  skip  the_task19_solvers...: no _core.scalar"); return
+    import mootation
+    from mootation.benchmarks import registry as R
+
+    def res(x):
+        return [10.0 * (x[1] - x[0] ** 2), 1.0 - x[0]]
+    box = [(-5.0, 5.0)] * 2
+    for init in ("around", "sobol"):
+        out = mootation.minimize(None, box, 1, algorithm="eki", residuals=res, x0=[-1.2, 1.0],
+                                 max_evaluations=3000, seed=1, eki_init=init, eki_ensemble=20)
+        again = mootation.minimize(None, box, 1, algorithm="eki", residuals=res, x0=[-1.2, 1.0],
+                                   max_evaluations=3000, seed=1, eki_init=init, eki_ensemble=20)
+        s = dict(out.settings)
+        assert (s["eki_init"], s["eki_ensemble"], out.evaluations) == (init, "20", 3000), (s, out.evaluations)
+        assert out.objectives == again.objectives and out.objectives[0][0] < 12.1, out.objectives
+    sphere = lambda x: [sum((v - 0.3) ** 2 for v in x)]          # noqa: E731
+    runs = {(n, c): mootation.minimize(sphere, [(0.0, 1.0)] * n, 1, algorithm="nelder_mead",
+                                       max_evaluations=400, seed=1, nm_coefficients=c)
+            for n in (2, 5) for c in ("adaptive", "standard")}
+    assert runs[2, "adaptive"].variables == runs[2, "standard"].variables
+    assert runs[5, "adaptive"].variables != runs[5, "standard"].variables
+    assert dict(runs[5, "standard"].settings)["nm_coefficients"] == "standard"
+    p = R.PROBLEMS["lowrank_m20_n15_r3_1D"]
+    nv = p.native
+    x0 = list(nv.start())
+    rr = lambda x: list(nv.residuals(x))                              # noqa: E731
+    gb = lambda x: [list(row) for row in nv.gauge_basis(x)]           # noqa: E731
+    off, on = (mootation.minimize(None, p.bounds, 1, algorithm="lm", residuals=rr, x0=x0, gauge_basis=gb,
+                                  max_evaluations=20000, seed=1, lm_gauge=g) for g in ("off", "on"))
+    s = dict(on.settings)
+    assert off.objectives[0][0] < 1e-20 and on.objectives[0][0] < 1e-20, (off.objectives, on.objectives)
+    assert s["lm_gauge"] == "on" and s["lm_gauge_k"] == "9" and float(s["lm_gauge_ratio"]) < 1e-6, s
+    try:
+        mootation.minimize(None, p.bounds, 1, algorithm="lm", residuals=rr, x0=x0, lm_gauge="on",
+                           max_evaluations=100)
+    except ValueError as e:
+        assert "needs the problem's gauge_basis" in str(e), str(e)
+    else:
+        raise AssertionError("lm_gauge = on without a gauge_basis not refused")
+    t = [0.0, 0.5, 1.0, 1.5, 2.0]
+    lin = lambda x: [x[0] + x[1] * ti - (1.0 + 2.0 * ti + 0.1 * (-1) ** k) for k, ti in enumerate(t)]  # noqa: E731
+    fit = mootation.minimize(None, [(-10.0, 10.0)] * 2, 1, algorithm="lm", residuals=lin, x0=[0.0, 0.0],
+                             max_evaluations=200, seed=1)
+    pr = fit.profile(1, grid=[1.6, 1.8, 2.2, 2.4])
+    a, c = pr["x"][0], pr["cost_hat"]
+    # a linear model's profile: the parabola cost_hat + (v - b)^2 / (2 C_bb), C = (A^T A)^-1
+    sxx = sum((ti - 1.0) ** 2 for ti in t)
+    b_hat = fit.variables[0][1]
+    for v, cost in zip(pr["values"], pr["costs"]):
+        assert abs(cost - (c + 0.5 * sxx * (v - b_hat) ** 2)) < 1e-7, (v, cost)   # lm to its ftol
+    assert pr["kind"] == "practically_non_identifiable" and len(a) == 2, pr   # within the threshold
+    auto = fit.profile(1)                             # the steps from (J^T J)^+ (LMP-2)
+    half = (2.0 * auto["threshold"] / sxx) ** 0.5     # chi^2(0.95, 1) = 3.84: b -+ (3.84 C_bb)^1/2
+    assert auto["kind"] == "identifiable", auto["kind"]
+    assert abs(auto["lower"] - (b_hat - half)) < 1e-6 and abs(auto["upper"] - (b_hat + half)) < 1e-6, auto
+    try:
+        mootation.minimize(sphere, [(0.0, 1.0)] * 2, 1, algorithm="nelder_mead", max_evaluations=50).profile(0)
+    except ValueError as e:
+        assert "no residuals" in str(e), str(e)
+    else:
+        raise AssertionError("profile without residuals not refused")
 
 @test
 def improvements_record_the_best_point():
@@ -13319,6 +13391,57 @@ def a_campaign_of_population_methods_writes_the_same_files_from_both_engines():
             ta, tb = ((x / "improvements.csv").read_text(encoding="utf-8") for x in (a, b))
             assert ta == tb, (job.problem, job.key)
 
+
+_SYM_TOML = """algorithms = [ { name = "eki", pop = 0, gens = 0 }, { name = "lm", pop = 0, gens = 0 },
+               { name = "lbfgsb", pop = 0, gens = 0 } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["lowrank_m20_n15_r3_1D", "lj_cluster_N13_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 600
+storage = "store"
+"""
+
+
+@test
+def a_campaign_of_the_task19_solvers_writes_the_same_files_from_both_engines():
+    """Task 19, registration: eki, lm and lbfgsb on lowrank (residuals and a
+    gauge basis) and lj_cluster (no residuals; its gradient) in both
+    engines: every run the same; eki refuses lj_cluster (no residuals) in
+    both; lbfgsb on lj_cluster calls the problem's gradient."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_of_the_task19_solvers...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_SYM_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert len(jobs) == 6 and (cp["done"], cp["failed"]) == (cc["done"], cc["failed"]) == (4, 2), (cp, cc)
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            ma = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            if job.problem.startswith("lj") and job.algorithm in ("eki", "lm"):
+                assert ma["status"] == "failed" and ma.get("incompatible"), ma
+                continue
+            assert ma["status"] == "done" and ma["fe"] <= 600, ma
+            ta, tb = ((x / "improvements.csv").read_text(encoding="utf-8") for x in (a, b))
+            assert ta == tb, (job.problem, job.key)
+            if job.problem.startswith("lj"):             # the problem's gradient, called
+                assert ma["grad_calls"] >= 1, ma
 
 @test
 def a_store_cuts_a_torn_record_and_packs_the_same_bytes():

@@ -11,7 +11,9 @@ _core.RunLedger, which keeps the best point and a record each time it
 improves (scalar/improvements.hpp), with the grad_calls made so far (a call
 of the problem's Jacobian is one). A least-squares problem (MGH, NIST) hands
 its residuals, and MGH its Jacobian, to the algorithms that take them (the
-single-objective ones), and its start x0 to lm and lbfgsb. A bbob problem
+single-objective ones), and its start x0 to lm, lbfgsb and eki; a problem
+with symmetries (task 19) its gradient where it is not a sum of squares
+(lj_cluster) and its gauge basis (for lm_gauge = "on"). A bbob problem
 runs at the instance [campaign] bbob_instance says: "by_run" (the default)
 its run's seed (seeds 1, 2, ... by default: instance k on run k), "fixed"
 instance 1; its f_opt is that instance's (the owner's decision of 01.11,
@@ -36,8 +38,8 @@ answer, the hard budgets, the snapshots) do not apply: meta.json names them
 
 REFUSALS (incompatible, as campaign.py records them): an algorithm that is
 not a single-objective one (mootation.scalar.SINGLE, stage 4's population
-methods included); lm on a problem without residuals; an algorithm other
-than lm and lbfgsb on a problem without a box (bounds -inf / +inf).
+methods included); lm or eki on a problem without residuals; an algorithm
+other than lm, lbfgsb and eki on a problem without a box (bounds -inf / +inf).
 """
 
 from __future__ import annotations
@@ -55,7 +57,7 @@ from pathlib import Path
 # their defaults
 MO_KEYS = ("metrics", "final_metrics", "archive", "set_answer", "set_metrics", "hard_budgets",
            "snapshots", "archive_checkpoints", "all_evaluated", "dense_reference", "operator_stats")
-LOCAL = ("lm", "lbfgsb")
+LOCAL = ("lm", "lbfgsb", "eki")
 
 
 def instance_of(problem, seed: int, how: str) -> int | None:
@@ -70,10 +72,10 @@ def refusal(algorithm: str, problem) -> str | None:
     from ..scalar import SINGLE
     if algorithm not in SINGLE:
         return f"{algorithm}: not a single-objective algorithm (mootation.scalar.SINGLE; incompatible by construction)"
-    if algorithm == "lm" and problem.native.n_res == 0:
-        return "lm: the problem gives no residuals (incompatible by construction)"
+    if algorithm in ("lm", "eki") and problem.native.n_res == 0:
+        return f"{algorithm}: the problem gives no residuals (incompatible by construction)"
     if algorithm not in LOCAL and any(math.isinf(v) for b in problem.bounds for v in b):
-        return (f"{algorithm}: a problem without a box (bounds -inf / +inf) is for lm and lbfgsb "
+        return (f"{algorithm}: a problem without a box (bounds -inf / +inf) is for lm, lbfgsb and eki "
                 "(incompatible by construction)")
     return None
 
@@ -175,8 +177,17 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
 
     from ..scalar import SINGLE
     derivatives = {}
+    def gradient(x):
+        nonlocal grad_calls
+        grad_calls += 1
+        return list(native.gradient(x))
+
     if native.n_res and job.algorithm in SINGLE:
         derivatives = {"residuals": residuals, "jac": jacobian if native.has_jacobian else None}
+    elif native.has_gradient and job.algorithm in SINGLE:
+        derivatives = {"grad": gradient}
+    if native.gauge_dim > 0:
+        derivatives["gauge_basis"] = lambda x: [list(row) for row in native.gauge_basis(x)]
     if job.algorithm in LOCAL and p.x0 is not None:
         derivatives["x0"] = list(p.x0)
     try:

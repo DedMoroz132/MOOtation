@@ -285,7 +285,7 @@ inline std::optional<std::string> check_pop(const std::string& name, std::int64_
 {
     // task 18, item 2.3 and stage 4: the single-objective algorithms (scalar.hpp: single_names(),
     // local_names(), population_names()) at one objective only
-    static const std::vector<std::string> single{"slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb",
+    static const std::vector<std::string> single{"slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki",
                                                  "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                                  "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes"};
     if (std::find(single.begin(), single.end(), name) != single.end() && m != 1)

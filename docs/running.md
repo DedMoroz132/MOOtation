@@ -1451,7 +1451,9 @@ item 2.3; `n_objs = 1` only): the solver `local` names, alone — the initial
 plan, then the solver once from the plan's best point (feasible first, then f)
 on f scaled by the plan's range, until its tolerance or the budget. Their knobs
 are the solver's in the table above: `fd_step`, `local_tol`, `sqp_line_search`
-for `slsqp`; `local_tol` for `nelder_mead`; `cma_sigma0`, `local_tol` for
+for `slsqp`; `local_tol`, `nm_coefficients` (`adaptive`, Gao & Han's (4.1), the
+default, or `standard`, Lagarias et al.'s (1.3); also `eps_nm`'s) for
+`nelder_mead`; `cma_sigma0`, `local_tol` for
 `cmaes`; the others are ignored and named in `result.ignored`. A run that
 stops early leaves the budget unspent, and a shorter budget gives the same run
 cut short: these runs do not depend on `max_evaluations` (SINGLE-1, SINGLE-2 in
@@ -1469,8 +1471,25 @@ Bounds only — a problem with constraints is refused (LOCAL-1). Knobs:
 |---|---|
 | `lm_ftol`, `lm_xtol`, `lm_gtol` | Moré's stopping tests (8.3)-(8.4) (1e-8, 1e-8, 0) |
 | `lm_loss`, `lm_f_scale` | `linear` (the default), `huber` or `cauchy` by IRLS; the scale c (1) |
+| `lm_gauge` | `off` (the default) or `on`: the step in the complement of the problem's `gauge_basis` (`minimize(..., gauge_basis=N)`, N(x) n rows of k; lm.hpp LMN); its k and ‖J N‖/‖J‖ at the solution in the settings (LOCAL-6) |
 | `lbfgsb_m`, `lbfgsb_pgtol`, `lbfgsb_ftol` | the memory (5), the projected-gradient test (1e-5), the relative reduction test (0: off) |
-| `grad_cost` | what a call of the problem's gradient or Jacobian costs of the budget (1); all five single-objective algorithms |
+| `grad_cost` | what a call of the problem's gradient or Jacobian costs of the budget (1); every single-objective algorithm but `eki` |
+
+**`eki`** (task 19, §19.4.1): ensemble Kalman inversion (`scalar/eki.hpp`,
+Iglesias, Law & Stuart 2013) on the problem's residuals, from `x0` or the
+plan's best point as `lm` (LOCAL-5); every member is one evaluation, and the
+budget stops it. Knobs: `eki_ensemble` (J; 0: max(10, 2n)), `eki_init`
+(`around` the start, the default, with `eki_sigma0` (0.1) of the box's width;
+or `sobol`, `lhs`: a design in the box), `eki_gamma` (Γ = γ² I, 1),
+`eki_perturb` (`yes`, the default, or `no`: the data perturbed), `eki_noise`
+and `eki_tau` (the discrepancy principle, ‖r‖/γ ≤ τ · eki_noise; 0: off; 1.5).
+
+**Profiles**: a run with residuals answers `result.profile(j, grid=None,
+alpha=0.95, df=1, sigma2=0)` — the profile of x_j about the best point by
+`lm.hpp`'s `profile` (Raue et al. 2009): the values and their least costs, the
+threshold, the interval `[lower, upper]` and the kind (`identifiable`,
+`practically_non_identifiable`, `structurally_non_identifiable`). Its
+evaluations are the residuals' own calls, outside the run's budget.
 
 **The population methods** (task 18, stage 4; `run_population` in
 `scalar/scalar.hpp`, the loop in `scalar/population.hpp`): `de`, `jade`,
@@ -1537,7 +1556,9 @@ files; the multi-objective path is untouched. The algorithm — one of
 `mootation.scalar.SINGLE`, the population methods among them — sees the problem through
 counting functions, every
 value asked for a record of the best point's log; a least-squares problem hands
-its residuals (MGH its Jacobian) and its start `x0` to `lm` and `lbfgsb`. A
+its residuals (MGH its Jacobian) and its start `x0` to `lm`, `lbfgsb` and
+`eki`; a problem with symmetries (task 19) its gradient where it is not a sum
+of squares (`lj_cluster`) and its gauge basis (for `lm_gauge = "on"`). A
 run writes:
 
 | File | What |
@@ -1554,9 +1575,9 @@ f_opt is the instance's (the instances are the library's own numbers, not
 COCO's). The multi-objective keys of `[campaign]` (`metrics`, the archive,
 the second answer, the hard budgets, the snapshots) do not apply, and
 `meta.json` names those set (`ignored_at_m1`). Refused, and recorded as
-incompatible: an algorithm that is not single-objective, `lm` on a problem
-without residuals (bbob), and anything but `lm` and `lbfgsb` on a problem
-without a box (MGH, NIST). The store keeps these records as any other
+incompatible: an algorithm that is not single-objective, `lm` or `eki` on a
+problem without residuals (bbob, `lj_cluster`), and anything but `lm`, `lbfgsb`
+and `eki` on a problem without a box (MGH, NIST). The store keeps these records as any other
 (`improvements.csv` a point table); its metrics table has a row per
 trajectory record, with its `f`, `delta_f`, `cv`, `grad_calls` and `x1 … xn`.
 

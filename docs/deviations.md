@@ -404,7 +404,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-192 items: 192 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+194 items: 194 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -566,6 +566,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | LOCAL-2 | Neither solver's own limit on evaluations (lm's max_nfev, lbfgsb's max_nfev and max_iter) is put: the budget stops them. | yes | `scalar.hpp` |
 | `scalar` | LOCAL-3 | A failed evaluation ends the run, as sqp's (SCALAR-6): neither method can step over a hole in the function. | yes | `scalar.hpp` |
 | `scalar` | LOCAL-4 | Without x0, a bound that is not finite is refused: there is no box to draw the plan in, and no frame is put on x (addendum 1, §3.1). | yes | `scalar.hpp` |
+| `scalar` | LOCAL-5 | eki starts as lm does, from x0 or the plan's best point: its initial ensemble around that point by default (eki_init = around, EKI-3), or a design in the box (sobol, lhs; finite bounds). | yes | `scalar.hpp` |
+| `scalar` | LOCAL-6 | lm_gauge = on needs the problem's gauge_basis; its k and \|\|J N\|\| / \|\|J\|\| at lm's solution (lm.hpp LMN-4) go to the settings (lm_gauge_k, lm_gauge_ratio). | yes | `scalar.hpp` |
 | `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw: x0, a design (init) and seed points are not used and are reported as ignored, except x0 for sep_cmaes, its mean (normalized and clipped to the box); without x0 the mean is a... | yes | `scalar.hpp` |

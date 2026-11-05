@@ -12,7 +12,9 @@
 // for a row of a RunLedger at one objective (the best point and its records,
 // scalar/improvements.hpp), a call of the problem's Jacobian one grad_call;
 // a least-squares problem's residuals (and MGH's Jacobian) to the algorithm,
-// its start x0 to lm and lbfgsb; a bbob problem at the instance
+// its start x0 to lm, lbfgsb and eki; a problem with symmetries (task 19)
+// its gradient where it is not a sum of squares (lj_cluster) and its gauge
+// basis (lm_gauge = on); a bbob problem at the instance
 // [campaign] bbob_instance gives (by_run: the run's seed; fixed: 1), f_opt
 // that instance's.
 // ============================================================================
@@ -49,13 +51,13 @@ public:
         if (!single(algorithm))
             return algorithm + ": not a single-objective algorithm (mootation.scalar.SINGLE; incompatible by "
                                "construction)";
-        if (algorithm == "lm" && native.n_res == 0)
-            return std::string("lm: the problem gives no residuals (incompatible by construction)");
+        if ((algorithm == "lm" || algorithm == "eki") && native.n_res == 0)
+            return algorithm + ": the problem gives no residuals (incompatible by construction)";
         bool boxless = false;
         for (const auto& [lo, hi] : p.bounds) boxless = boxless || std::isinf(lo) || std::isinf(hi);
         if (!local(algorithm) && boxless)
-            return algorithm + ": a problem without a box (bounds -inf / +inf) is for lm and lbfgsb (incompatible "
-                               "by construction)";
+            return algorithm + ": a problem without a box (bounds -inf / +inf) is for lm, lbfgsb and eki "
+                               "(incompatible by construction)";
         return std::nullopt;
     }
 
@@ -194,7 +196,7 @@ private:
         return std::find(s.begin(), s.end(), a) != s.end() || std::find(p.begin(), p.end(), a) != p.end() ||
                local(a);
     }
-    static bool local(const std::string& a) { return a == "lm" || a == "lbfgsb"; }
+    static bool local(const std::string& a) { return a == "lm" || a == "lbfgsb" || a == "eki"; }
 
     double number_param(const char* key, double fallback) const
     {
@@ -258,6 +260,23 @@ private:
                         std::copy(flat.begin() + static_cast<std::ptrdiff_t>(i * n),
                                   flat.begin() + static_cast<std::ptrdiff_t>((i + 1) * n), J[i].begin());
                 };
+        }
+        const std::size_t n = static_cast<std::size_t>(p_.n_var);
+        if (native_->n_res == 0 && native_->has_gradient && single(job_.algorithm))
+            P.gradient = [this, n](const std::vector<double>& x, std::vector<double>& gf, scalar::Rows&) {
+                ++grad_calls_;
+                gf.assign(n, 0.0);
+                native_->gradient(x.data(), gf.data());
+            };
+        if (native_->gauge_dim > 0) {
+            const std::size_t k = static_cast<std::size_t>(native_->gauge_dim);
+            P.gauge_basis = [this, n, k](const std::vector<double>& x, scalar::Rows& N) {
+                std::vector<double> flat(n * k);
+                native_->gauge_basis(x.data(), flat.data());
+                N.assign(n, std::vector<double>(k));
+                for (std::size_t i = 0; i < n; ++i)
+                    for (std::size_t c = 0; c < k; ++c) N[i][c] = flat[i * k + c];
+            };
         }
         return P;
     }

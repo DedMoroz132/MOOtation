@@ -34,11 +34,18 @@ best point (scalar.hpp, run_single; SINGLE-1, SINGLE-2):
 and, in the problem's own coordinates, bounds -inf / +inf allowed (task 18,
 stage 1; scalar.hpp, run_local; LOCAL-1 to LOCAL-4):
 
-  lm           lm_ftol, lm_xtol, lm_gtol, lm_loss, lm_f_scale (the problem's
-               residuals; Moré 1978)
+  lm           lm_ftol, lm_xtol, lm_gtol, lm_loss, lm_f_scale, lm_gauge (the
+               problem's residuals; Moré 1978; lm_gauge = on: the step off the
+               problem's gauge_basis, task 19)
   lbfgsb       lbfgsb_m, lbfgsb_pgtol, lbfgsb_ftol (Byrd, Lu, Nocedal, Zhu 1995)
+  eki          eki_ensemble, eki_init, eki_sigma0, eki_gamma, eki_perturb,
+               eki_noise, eki_tau (the residuals; ensemble Kalman inversion,
+               Iglesias, Law, Stuart 2013; task 19)
 
-grad_cost (1) for all five: what a call of the problem's gradient costs of
+nelder_mead and eps_nm take nm_coefficients = adaptive | standard (task 19).
+A run with residuals answers result.profile(j, ...) (lm.hpp's profiles).
+
+grad_cost (1) for all but eki: what a call of the problem's gradient costs of
 the budget (evaluator.hpp, THE COUNTS). The problem may give its gradient
 (grad), its residuals (residuals, the objective then 1/2 ||r||^2) and their
 Jacobian (jac), and a start x0 (minimize()).
@@ -77,7 +84,7 @@ PRESETS = {
 POPULATION = ("de", "jade", "shade", "lshade", "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011",
               "sep_cmaes")
 # the single-objective algorithms (task 18, item 2.3, stage 1 and stage 4)
-SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb") + POPULATION
+SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki") + POPULATION
 # the methods beside the scalarization methods, on the same evaluator,
 # answer and observer: those of task 9 and the single-objective algorithms.
 # None lays its run out over the budget (budget.py) but lshade, whose
@@ -122,13 +129,38 @@ class ScalarResult:
         # one objective: a record each time the best point improved, (evaluations,
         # grad_calls, f, cv) at that point (improvements.hpp)
         self.improvements = [tuple(e) for e in d.get("improvements", [])]
+        self._lsq = None                # (residuals, jac, bounds) of a least-squares run
+
+    def profile(self, j: int, grid=None, *, alpha: float = 0.95, df: int = 1, sigma2: float = 0.0,
+                max_steps: int = 50, x=None) -> dict:
+        """The profile of variable j about x (the best point by default) of a
+        run with residuals (lm.hpp, profile; task 19, §19.3.3): for each value
+        of x_j the least 1/2 ||r||^2 with x_j fixed, by lm from the neighbouring
+        node; the threshold chi2_quantile(alpha, df) / 2 (times sigma2 where
+        the residuals are not divided by their sigma; sigma2 = 0: relative),
+        the interval [lower, upper] where the profile crosses it, and the kind
+        (identifiable, practically_non_identifiable,
+        structurally_non_identifiable; Raue et al. 2009). grid: the values,
+        or None for steps from (J^T J)^+ (LMP-2). Its evaluations are the
+        residuals' own calls, outside the run's budget and counts."""
+        if self._lsq is None:
+            raise ValueError("profile: the run had no residuals (least squares only)")
+        residuals, jac, bounds = self._lsq
+        x_hat = [float(v) for v in (self.variables[0] if x is None else x)]
+        m = len(residuals(x_hat))
+        lo = [b[0] for b in bounds]
+        hi = [b[1] for b in bounds]
+        return _module().lm_profile(lambda v: list(residuals(v)), jac, x_hat, m, int(j),
+                                    bounds=(lo, hi), grid=None if grid is None else [float(v) for v in grid],
+                                    alpha=float(alpha), df=int(df), sigma2=float(sigma2),
+                                    max_steps=int(max_steps))
 
 
 def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, eq_tol: float,
         eq_tol0, pop_size: int, budget: int, seed: int, knobs: dict, on_generation=None,
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
         seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
-        x0=None):
+        x0=None, gauge_basis=None):
     core = _module()
     design = None
     if seed_points is None and init != "uniform":
@@ -145,7 +177,8 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
                  on_generation=on_generation if int(record_every) > 0 else None,
                  record_every=int(record_every), design=design,
                  seed_points=seeds if name != "mosqp" else None, grad=grad, residuals=residuals,
-                 jac=jac, x0=None if x0 is None else [float(v) for v in x0])
+                 jac=jac, x0=None if x0 is None else [float(v) for v in x0],
+                 gauge_basis=gauge_basis)
     n_failed = guard.n_failed if guard is not None else d["n_failed"]
     unique = unique_count() if unique_count is not None else d["evaluations"]
     return ScalarResult(d, d["ignored"], n_failed, eq_tol if n_eq else 0.0, unique)

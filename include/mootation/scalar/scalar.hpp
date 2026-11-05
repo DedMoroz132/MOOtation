@@ -31,6 +31,9 @@
 //                  26.10)
 //   fd_step        sqp's forward-difference step in the normalized box (1.49e-8)
 //   local_tol      the solvers' tolerance (1e-14)
+//   nm_coefficients  adaptive | standard: nm's coefficients, Gao & Han's (4.1)
+//                  or Lagarias et al.'s (1.3) (nelder_mead.hpp; task 19,
+//                  §19.4.2); in the settings where local = nm
 //   cma_sigma0     cmaes's initial step in the normalized box (0.3; the
 //                  tutorial's 0.3 (b - a), footnote to Figure 6)
 //   eps_objective  the objective eps minimizes, 1-based (1)
@@ -133,6 +136,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <map>
@@ -148,6 +152,7 @@
 #include "boostdms.hpp"
 #include "chc.hpp"
 #include "de.hpp"
+#include "eki.hpp"
 #include "ga.hpp"
 #include "jade.hpp"
 #include "lbfgsb.hpp"
@@ -207,7 +212,7 @@ inline const std::vector<std::string>& names()
 {
     static const std::vector<std::string> v{"scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp",
                                             "eps_nm", "eps_cmaes", "boostdms", "mosqp",
-                                            "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb",
+                                            "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki",
                                             "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                             "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes"};
     return v;
@@ -337,7 +342,7 @@ inline std::vector<Vec> levels(std::size_t m, long long count, long long& L)
 // ── scalar ──────────────────────────────────────────────────────────────────
 struct ScalarSettings {
     std::string scalarization = "eps", local = "sqp", sub_plan = "grid", tch_weights = "inverse",
-                sqp_line_search = "powell";
+                sqp_line_search = "powell", nm_coefficients = "adaptive";
     double n_sub = 0, sub_budget = 0, fd_step = 1.4901161193847656e-08, local_tol = 1e-14,
            cma_sigma0 = 0.3, eps_objective = 1;
 };
@@ -352,7 +357,8 @@ inline ScalarSettings scalar_settings(const std::string& name, const Knobs& knob
         {"tch_weights", {"inverse", "lattice"}},
         {"local", {"sqp", "nm", "cmaes"}},
         {"sub_plan", {"grid", "laumanns", "gap"}},
-        {"sqp_line_search", {"stop", "accept", "powell"}}};
+        {"sqp_line_search", {"stop", "accept", "powell"}},
+        {"nm_coefficients", {"adaptive", "standard"}}};
     ScalarSettings s;
     if (name == "eps_sqp") { s.scalarization = "eps"; s.local = "sqp"; }
     else if (name == "tch_sqp") { s.scalarization = "tch"; s.local = "sqp"; }
@@ -367,7 +373,8 @@ inline ScalarSettings scalar_settings(const std::string& name, const Knobs& knob
     std::map<std::string, std::string*> word_of{{"scalarization", &s.scalarization},
                                                 {"tch_weights", &s.tch_weights},
                                                 {"local", &s.local}, {"sub_plan", &s.sub_plan},
-                                                {"sqp_line_search", &s.sqp_line_search}};
+                                                {"sqp_line_search", &s.sqp_line_search},
+                                                {"nm_coefficients", &s.nm_coefficients}};
     for (const auto& [k, v] : knobs) {
         auto w = words.find(k);
         if (w != words.end()) {
@@ -398,13 +405,16 @@ inline ScalarSettings scalar_settings(const std::string& name, const Knobs& knob
 inline std::vector<std::pair<std::string, std::string>> settings_list(const ScalarSettings& s)
 {
     using detail::g_format;
-    return {{"scalarization", s.scalarization}, {"local", s.local}, {"sub_plan", s.sub_plan},
-            {"tch_weights", s.tch_weights}, {"sqp_line_search", s.sqp_line_search},
-            {"n_sub", g_format(s.n_sub)},
-            {"sub_budget", g_format(s.sub_budget)}, {"fd_step", g_format(s.fd_step)},
-            {"local_tol", g_format(s.local_tol)}, {"cma_sigma0", g_format(s.cma_sigma0)},
-            {"eps_objective", g_format(s.eps_objective)},
-            {"method_version", std::to_string(METHOD_VERSION)}};
+    std::vector<std::pair<std::string, std::string>> v{
+        {"scalarization", s.scalarization}, {"local", s.local}, {"sub_plan", s.sub_plan},
+        {"tch_weights", s.tch_weights}, {"sqp_line_search", s.sqp_line_search},
+        {"n_sub", g_format(s.n_sub)},
+        {"sub_budget", g_format(s.sub_budget)}, {"fd_step", g_format(s.fd_step)},
+        {"local_tol", g_format(s.local_tol)}, {"cma_sigma0", g_format(s.cma_sigma0)},
+        {"eps_objective", g_format(s.eps_objective)}};
+    if (s.local == "nm") v.push_back({"nm_coefficients", s.nm_coefficients});
+    v.push_back({"method_version", std::to_string(METHOD_VERSION)});
+    return v;
 }
 
 namespace detail {
@@ -529,7 +539,7 @@ inline Result run_scalar(const std::string& name, const Problem& P, double eq_to
                     : s.sqp_line_search == "accept" ? slsqp::LineSearch::accept
                                                     : slsqp::LineSearch::powell);
             else if (s.local == "nm")
-                nm(run, y0, {st}, s.local_tol);
+                nm(run, y0, {st}, s.local_tol, s.nm_coefficients == "standard");
             else
                 cmaes(run, y0, {st}, s.cma_sigma0, s.local_tol, rng);
         };
@@ -825,7 +835,7 @@ inline Result run_boostdms_named(const Problem& P, double eq_tol, bool has_tol0,
 // ── one objective: slsqp, nelder_mead, cmaes ────────────────────────────────
 // The local solvers of `scalar` as single-objective algorithms (task 18, item
 // 2.3), each with its knobs there: slsqp (sqp: fd_step, local_tol,
-// sqp_line_search), nelder_mead (nm: local_tol), cmaes (cma_sigma0,
+// sqp_line_search), nelder_mead (nm: local_tol, nm_coefficients), cmaes (cma_sigma0,
 // local_tol); the others are ignored and reported. n_objs = 1 only. The run:
 //   1. the initial plan, as scalar's (THE PLAN, 1);
 //   2. the solver once, from the plan's best point (feasible first, then f;
@@ -873,6 +883,7 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
                                                "finite (SINGLE-2)");
     std::vector<std::string> own{"local_tol", "grad_cost"};
     if (local == "sqp") own.insert(own.end(), {"fd_step", "sqp_line_search"});
+    if (local == "nm") own.push_back("nm_coefficients");
     if (local == "cmaes") own.push_back("cma_sigma0");
     Knobs taken;
     std::vector<std::string> ignored, none;
@@ -932,7 +943,7 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
                     : s.sqp_line_search == "accept" ? slsqp::LineSearch::accept
                                                     : slsqp::LineSearch::powell);
             else if (local == "nm")
-                nm(run, y0, {i0}, s.local_tol);
+                nm(run, y0, {i0}, s.local_tol, s.nm_coefficients == "standard");
             else
                 cmaes(run, y0, {i0}, s.cma_sigma0, s.local_tol, rng);
         }
@@ -948,6 +959,7 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     if (local == "sqp")
         r.settings.insert(r.settings.end(),
                           {{"sqp_line_search", s.sqp_line_search}, {"fd_step", g_format(s.fd_step)}});
+    if (local == "nm") r.settings.push_back({"nm_coefficients", s.nm_coefficients});
     if (local == "cmaes") r.settings.push_back({"cma_sigma0", g_format(s.cma_sigma0)});
     if (P.has_gradient()) r.settings.push_back({"grad_cost", g_format(grad_cost)});
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
@@ -957,8 +969,9 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 // ── one objective in the problem's coordinates: lm, lbfgsb ─────────────────
 // The least-squares and the bound-constrained quasi-Newton solvers of stage 2
 // as single-objective algorithms (task 18, stage 1, §1.1; addendum 1, §3.1):
-// lm (lm.hpp, Moré 1978; the problem's residuals) and lbfgsb (lbfgsb.hpp,
-// Byrd, Lu, Nocedal, Zhu 1995). Both work in the problem's own coordinates,
+// lm (lm.hpp, Moré 1978; the problem's residuals), lbfgsb (lbfgsb.hpp,
+// Byrd, Lu, Nocedal, Zhu 1995) and eki (eki.hpp, ensemble Kalman inversion,
+// Iglesias, Law, Stuart 2013; the residuals). All work in the problem's own coordinates,
 // bounds -inf / +inf allowed, and take the problem's derivatives where it
 // gives them (the residuals' Jacobian; the gradient), else forward
 // differences of their own, every one an evaluation. The run:
@@ -969,9 +982,15 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //      (SINGLE-1);
 //   3. the answer as every method's (evaluator.hpp).
 // Knobs: lm_ftol, lm_xtol, lm_gtol (Moré's (8.3)-(8.4); 1e-8, 1e-8, 0),
-// lm_loss (linear | huber | cauchy; lm.hpp's IRLS) and lm_f_scale (1) for lm;
-// lbfgsb_m (5), lbfgsb_pgtol (1e-5), lbfgsb_ftol (0) for lbfgsb; grad_cost
-// (1; evaluator.hpp THE COUNTS) for both.
+// lm_loss (linear | huber | cauchy; lm.hpp's IRLS), lm_f_scale (1) and
+// lm_gauge (off | on: the step in the complement of the problem's
+// gauge_basis, lm.hpp LMN; task 19, §19.3.1) for lm; lbfgsb_m (5),
+// lbfgsb_pgtol (1e-5), lbfgsb_ftol (0) for lbfgsb; grad_cost (1;
+// evaluator.hpp THE COUNTS) for both; for eki (eki.hpp's Options, task 19,
+// §19.4.1) eki_ensemble (J; 0: max(10, 2 n), EKI-4), eki_init (around |
+// sobol | lhs; LOCAL-5), eki_sigma0 (0.1), eki_gamma (1), eki_perturb (yes |
+// no), eki_noise (||eta^dagger||_Gamma of the discrepancy principle; 0: off)
+// and eki_tau (1.5).
 //
 // READINGS (declared):
 //   LOCAL-1. Bounds only: a problem with constraints is refused, and lm
@@ -982,9 +1001,18 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //     method can step over a hole in the function.
 //   LOCAL-4. Without x0, a bound that is not finite is refused: there is no
 //     box to draw the plan in, and no frame is put on x (addendum 1, §3.1).
+//   LOCAL-5. eki starts as lm does, from x0 or the plan's best point: its
+//     initial ensemble around that point by default (eki_init = around,
+//     EKI-3), or a design in the box (sobol, lhs; finite bounds). Its seed
+//     is the run's; its own stop on evaluations is off (LOCAL-2), so its
+//     last mean (EKI-5) is evaluated only where the budget leaves room: the
+//     answer is the evaluator's, as every method's.
+//   LOCAL-6. lm_gauge = on needs the problem's gauge_basis; its k and ||J N||
+//     / ||J|| at lm's solution (lm.hpp LMN-4) go to the settings
+//     (lm_gauge_k, lm_gauge_ratio).
 inline const std::vector<std::string>& local_names()
 {
-    static const std::vector<std::string> v{"lm", "lbfgsb"};
+    static const std::vector<std::string> v{"lm", "lbfgsb", "eki"};
     return v;
 }
 
@@ -999,8 +1027,8 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                                     std::to_string(P.m));
     if (P.n_cons != 0)
         throw std::invalid_argument(name + " takes bounds only: the problem's constraints are not for it (LOCAL-1)");
-    if (name == "lm" && !P.has_residuals())
-        throw std::invalid_argument("lm solves least squares: the problem gives no residuals (LOCAL-1)");
+    if ((name == "lm" || name == "eki") && !P.has_residuals())
+        throw std::invalid_argument(name + " solves least squares: the problem gives no residuals (LOCAL-1)");
     if (start.has_x0 && start.x0.size() != n)
         throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
                                     std::to_string(n) + " variables");
@@ -1008,12 +1036,20 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         for (std::size_t j = 0; j < n; ++j)
             if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
                 throw std::invalid_argument(name + ": a bound that is not finite needs a start x0 (LOCAL-4)");
-    const std::vector<std::string> own = name == "lm"
-        ? std::vector<std::string>{"lm_ftol", "lm_xtol", "lm_gtol", "lm_loss", "lm_f_scale", "grad_cost"}
-        : std::vector<std::string>{"lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol", "grad_cost"};
+    const std::vector<std::string> own =
+        name == "lm"    ? std::vector<std::string>{"lm_ftol", "lm_xtol", "lm_gtol", "lm_loss", "lm_f_scale", "lm_gauge",
+                                                   "grad_cost"}
+        : name == "eki" ? std::vector<std::string>{"eki_ensemble", "eki_init", "eki_sigma0", "eki_gamma", "eki_perturb",
+                                                   "eki_noise", "eki_tau"}
+                        : std::vector<std::string>{"lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol", "grad_cost"};
+    static const std::map<std::string, std::vector<std::string>> words{
+        {"lm_loss", {"linear", "huber", "cauchy"}}, {"lm_gauge", {"off", "on"}},
+        {"eki_init", {"around", "sobol", "lhs"}}, {"eki_perturb", {"yes", "no"}}};
     lm::Options lo;
     lbfgsb::Options bo;
-    std::string loss = "linear";
+    eki::Options eo;
+    std::map<std::string, std::string> word{{"lm_loss", "linear"}, {"lm_gauge", "off"},
+                                            {"eki_init", "around"}, {"eki_perturb", "yes"}};
     double grad_cost = 1.0;
     std::vector<std::string> ignored;
     for (const auto& [k, v] : knobs) {
@@ -1021,10 +1057,11 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
             ignored.push_back(k);
             continue;
         }
-        if (k == "lm_loss") {
-            loss = detail::shown(v);
-            if (!v.is_word || !detail::listed({"linear", "huber", "cauchy"}, loss))
-                throw std::invalid_argument("lm_loss = '" + loss + "': linear, huber, cauchy");
+        if (words.count(k)) {
+            const std::string w = detail::shown(v);
+            if (!v.is_word || !detail::listed(words.at(k), w))
+                throw std::invalid_argument(k + " = '" + w + "': " + detail::joined(words.at(k)));
+            word[k] = w;
             continue;
         }
         const double x = detail::number_of(k, v);
@@ -1036,19 +1073,39 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         else if (k == "lbfgsb_pgtol") bo.pgtol = x;
         else if (k == "lbfgsb_ftol") bo.ftol = x;
         else if (k == "grad_cost") grad_cost = x;
-        else {
+        else if (k == "eki_sigma0") eo.sigma0 = x;
+        else if (k == "eki_gamma") eo.gamma = x;
+        else if (k == "eki_noise") eo.noise_norm = x;
+        else if (k == "eki_tau") eo.tau = x;
+        else if (k == "eki_ensemble") {
+            if (x != std::floor(x) || x == 1.0 || x > 1e6)
+                throw std::invalid_argument("eki_ensemble must be a whole number >= 2 (0: max(10, 2 n))");
+            eo.ensemble = static_cast<int>(x);
+        } else {
             if (x < 1.0 || x != std::floor(x)) throw std::invalid_argument("lbfgsb_m must be a whole number >= 1");
             bo.m = static_cast<int>(x);
         }
     }
     std::sort(ignored.begin(), ignored.end());
     if (lo.f_scale <= 0.0) throw std::invalid_argument("lm_f_scale must be > 0");
+    if (!(eo.sigma0 > 0.0) || !(eo.gamma > 0.0) || !(eo.tau > 0.0))
+        throw std::invalid_argument("eki_sigma0, eki_gamma and eki_tau must be > 0");
+    const std::string loss = word["lm_loss"];
+    const bool gauge = word["lm_gauge"] == "on";
+    if (gauge && !P.gauge_basis)
+        throw std::invalid_argument("lm_gauge = 'on' needs the problem's gauge_basis (LOCAL-6)");
+    eo.init = word["eki_init"] == "sobol" ? eki::Options::Init::sobol
+            : word["eki_init"] == "lhs"   ? eki::Options::Init::lhs : eki::Options::Init::around;
+    eo.perturb = word["eki_perturb"] == "yes";
+    eo.seed = static_cast<std::uint32_t>(seed);
     lo.loss = loss == "huber" ? lm::Options::Loss::huber
             : loss == "cauchy" ? lm::Options::Loss::cauchy : lm::Options::Loss::linear;
     const long long no_limit = std::numeric_limits<long long>::max() / 4;   // LOCAL-2
     lo.max_nfev = no_limit;
     bo.max_nfev = no_limit;
     bo.max_iter = no_limit;
+    eo.max_evals = no_limit;
+    lm::Result lr;
 
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
@@ -1086,7 +1143,22 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                         for (std::size_t a = 0; a < J.rows; ++a)
                             for (std::size_t b = 0; b < J.cols; ++b) J(a, b) = Jr[a][b];
                     };
-                lm::solve_robust(p, x0, lo);
+                if (gauge)
+                    p.gauge = [&](const Vec& x, lm::Matrix& N) {
+                        Rows Nr;
+                        P.gauge_basis(x, Nr);
+                        const std::size_t k = Nr.empty() ? 0 : Nr[0].size();
+                        if (Nr.size() != n) throw std::invalid_argument("gauge_basis: n rows are needed");
+                        N = lm::Matrix(n, k);
+                        for (std::size_t a = 0; a < n; ++a) {
+                            if (Nr[a].size() != k) throw std::invalid_argument("gauge_basis: rows of one length");
+                            for (std::size_t b = 0; b < k; ++b) N(a, b) = Nr[a][b];
+                        }
+                    };
+                lr = lm::solve_robust(p, x0, lo);
+            } else if (name == "eki") {
+                eki::minimize([&](const Vec& x, Vec& r) { r = ev.R[value(x)]; },
+                              static_cast<std::size_t>(ev.n_res), P.lo, P.hi, x0, eo);
             } else {
                 lbfgsb::Problem p;
                 p.n = n;
@@ -1112,13 +1184,24 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
     ev.record(true);
     Result r = detail::result_of(ev, idx);
     r.ignored = ignored;
-    if (name == "lm")
+    if (name == "lm") {
         r.settings = {{"lm_ftol", g_format(lo.ftol)}, {"lm_xtol", g_format(lo.xtol)},
-                      {"lm_gtol", g_format(lo.gtol)}, {"lm_loss", loss}, {"lm_f_scale", g_format(lo.f_scale)}};
-    else
+                      {"lm_gtol", g_format(lo.gtol)}, {"lm_loss", loss}, {"lm_f_scale", g_format(lo.f_scale)},
+                      {"lm_gauge", word["lm_gauge"]}};
+        if (gauge)                                    // LOCAL-6 (0 where the run ended before lm did)
+            r.settings.insert(r.settings.end(), {{"lm_gauge_k", std::to_string(lr.gauge_k)},
+                                                 {"lm_gauge_ratio", g_format(lr.gauge_ratio)}});
+    } else if (name == "eki") {
+        r.settings = {{"eki_ensemble", std::to_string(eo.ensemble > 0 ? eo.ensemble
+                                                                      : std::max<int>(10, 2 * static_cast<int>(n)))},
+                      {"eki_init", word["eki_init"]}, {"eki_sigma0", g_format(eo.sigma0)},
+                      {"eki_gamma", g_format(eo.gamma)}, {"eki_perturb", word["eki_perturb"]},
+                      {"eki_noise", g_format(eo.noise_norm)}, {"eki_tau", g_format(eo.tau)}};
+    } else {
         r.settings = {{"lbfgsb_m", std::to_string(bo.m)}, {"lbfgsb_pgtol", g_format(bo.pgtol)},
                       {"lbfgsb_ftol", g_format(bo.ftol)}};
-    r.settings.push_back({"grad_cost", g_format(grad_cost)});
+    }
+    if (name != "eki") r.settings.push_back({"grad_cost", g_format(grad_cost)});
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
 }

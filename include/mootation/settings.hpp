@@ -110,7 +110,9 @@ inline const std::vector<std::string>& knob_names() {
         // task 18, stage 4: the population methods (scalar/scalar.hpp, run_population)
         "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
         // VERIFY2 of 2026-11-02: MaOEA-IAMD's KPCM noise (MaOEA-IAMD-N)
-        "noise_frac"
+        "noise_frac",
+        // task 19, §19.4.1: eki (scalar/scalar.hpp, run_local)
+        "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau"
     };
     return v;
 }
@@ -195,7 +197,7 @@ inline bool is_core_param(const std::string& name)
                           "race_max_samples", "race_abs_tol", "hv_incremental",
                           "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                           "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
-                          "noise_frac"})
+                          "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau"})
         if (name == k) return true;
     return false;
 }
@@ -276,6 +278,10 @@ inline bool is_core_param(const std::string& name)
 //                 (literal; DDS-8)
 //   slot_exclusive aprd: a subregion's slots may repeat an individual (off,
 //                 the default; APRD-4) or take distinct ones (on; APRD-11)
+//   nm_coefficients, lm_gauge, eki_init, eki_perturb
+//                 the single-objective solvers of task 19 (scalar/scalar.hpp):
+//                 Nelder-Mead's coefficients, lm's step off a gauge basis,
+//                 eki's initial ensemble and perturbed data; no core has them
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -345,6 +351,10 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"fitness_reading", {"swap", "ibea"}},
         {"extreme_weights", {"nsga3", "literal"}},
         {"slot_exclusive", {"off", "on"}},
+        {"nm_coefficients", {"adaptive", "standard"}},
+        {"lm_gauge",     {"off", "on"}},
+        {"eki_init",     {"around", "sobol", "lhs"}},
+        {"eki_perturb",  {"yes", "no"}},
     };
     return v;
 }
@@ -372,7 +382,8 @@ inline bool is_core_word(const std::string& name)
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
                           "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
-                          "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive"})
+                          "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
+                          "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb"})
         if (name == k) return true;
     return false;
 }

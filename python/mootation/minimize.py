@@ -38,7 +38,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "race_eps", "race_delta", "race_max_samples", "race_abs_tol", "hv_incremental",
                "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
-               "noise_frac")
+               "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
@@ -50,7 +50,8 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "boost_scalarization", "scalarization",
               "local", "sub_plan", "tch_weights", "sqp_line_search", "hv_algo", "hv_contrib",
               "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
-              "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive")
+              "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
+              "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")
@@ -146,6 +147,7 @@ def minimize(
     residuals=None,
     jac=None,
     x0=None,
+    gauge_basis=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -318,7 +320,11 @@ def minimize(
                 lbfgsb) or instead of the initial plan. A call of grad or jac is
                 one grad_call, counted at grad_cost (a knob, 1) against the
                 budget beside the evaluations (result.grad_calls); finite
-                differences are evaluations.
+                differences are evaluations. A run with residuals answers
+                result.profile(j, ...) (mootation.scalar).
+    gauge_basis  gauge_basis(x): the n x k directions (rows of k) along which
+                the residuals do not change to first order; lm takes them
+                with lm_gauge = "on" (task 19, §19.3.1).
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -329,7 +335,8 @@ def minimize(
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     from .scalar import SINGLE
     derivatives = [k for k, v in (("grad", grad), ("residuals", residuals), ("jac", jac),
-                                  ("x0", x0)) if v is not None]
+                                  ("x0", x0), ("gauge_basis", gauge_basis)) if v is not None]
+    lsq = (residuals, jac, bounds) if residuals is not None else None   # result.profile's
     if derivatives and algorithm not in SINGLE:
         raise ValueError(f"{', '.join(derivatives)}: for the single-objective algorithms "
                          f"({', '.join(SINGLE)}), not {algorithm}")
@@ -644,7 +651,8 @@ def minimize(
                 on_generation=on_generation, record_every=int(record_every),
                 init=init, init_share=float(init_share), seed_points=seeds,
                 unique_count=lambda: points.count, guard=guard, grad=grad,
-                residuals=residuals, jac=jac, x0=x0)
+                residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis)
+            result._lsq = lsq
             result = _polished(result)
         finally:
             if log is not None:

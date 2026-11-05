@@ -216,11 +216,17 @@ void bind_scalar(py::module_& m)
              const py::dict& knobs, const py::object& on_generation, int record_every,
              const py::object& design, const py::object& seed_points,
              const std::shared_ptr<mootation::suite::Native>& native, const py::object& grad,
-             const py::object& residuals, const py::object& jac, const py::object& x0) {
+             const py::object& residuals, const py::object& jac, const py::object& x0,
+             const py::object& gauge_basis) {
               if (fn.is_none() == residuals.is_none() && !native)
                   throw std::invalid_argument("give fn or residuals, one of them");
               sc::Problem P = problem_of(fn, constraints, bounds, n_objs, n_cons, n_eq, native);
               derivatives_of(P, grad, residuals, jac);
+              if (!gauge_basis.is_none())            // n rows of k (task 19, §19.3.1)
+                  P.gauge_basis = [gauge_basis](const Vec& x, sc::Rows& N) {
+                      py::gil_scoped_acquire gil;
+                      N = rows_of_seq(gauge_basis(to_list(x)));
+                  };
               sc::Start st;
               if (!x0.is_none()) {
                   st.has_x0 = true;
@@ -263,7 +269,7 @@ void bind_scalar(py::module_& m)
           py::arg("knobs"), py::arg("on_generation") = py::none(), py::arg("record_every") = 0,
           py::arg("design") = py::none(), py::arg("seed_points") = py::none(),
           py::arg("native") = nullptr, py::arg("grad") = py::none(), py::arg("residuals") = py::none(),
-          py::arg("jac") = py::none(), py::arg("x0") = py::none(),
+          py::arg("jac") = py::none(), py::arg("x0") = py::none(), py::arg("gauge_basis") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
           "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
           "for the scalar presets, solutions; at one objective improvements, the best point's\n"
@@ -472,10 +478,56 @@ void bind_scalar(py::module_& m)
           py::arg("sigma2") = 0.0, py::arg("bounds") = py::none(),
           "min 1/2 ||fun(x)||^2 (or sum rho(r_i), loss) by lm.hpp (Levenberg-Marquardt, More 1978); fun "
           "gives m residuals, jac their m x n Jacobian (None: forward differences). status: 0 ftol, 1 "
-          "xtol, 2 both, 3 gtol, 4 max_nfev, 5-7 ftol, xtol, gtol at machine precision. diagnose: the "
+          "xtol, 2 both, 3 gtol, 4 max_nfev, 5-7 ftol, xtol, gtol at machine precision, 8 residuals or "
+          "a Jacobian not finite (LM-9). diagnose: the "
           "singular values of J at the solution, the covariance s^2 (J^T J)^+ (s^2 = sigma2, or 2 cost / "
           "(m - n) when sigma2 = 0) and the correlations. bounds = (lo, hi), +-inf allowed: Coleman-Li's interior "
           "trust region (x0 inside).");
+
+    s.def("lm_profile",
+          [lm_problem](const py::object& fun, const py::object& jac, const Vec& x_hat, std::size_t m, std::size_t j,
+                       const py::object& bounds, const py::object& grid, double alpha, int df, double sigma2,
+                       int max_steps) {
+              sc::lm::Problem p = lm_problem(fun, jac, x_hat.size(), m);
+              if (!bounds.is_none()) {
+                  const py::sequence b = bounds.cast<py::sequence>();
+                  p.lo = floats(b[0]);
+                  p.hi = floats(b[1]);
+              }
+              sc::lm::ProfileOptions po;
+              if (!grid.is_none()) po.grid = floats(grid);
+              po.alpha = alpha;
+              po.df = df;
+              po.sigma2 = sigma2;
+              po.max_steps = max_steps;
+              const sc::lm::Profile pr = sc::lm::profile(p, x_hat, j, sc::lm::Options{}, po);
+              py::list values, costs, xs;
+              for (const auto& pt : pr.points) {
+                  values.append(pt.value);
+                  costs.append(pt.cost);
+                  xs.append(to_list(pt.x));
+              }
+              py::dict d;
+              d["j"] = pr.j;
+              d["values"] = values;
+              d["costs"] = costs;
+              d["x"] = xs;
+              d["cost_hat"] = pr.cost_hat;
+              d["threshold"] = pr.threshold;
+              d["lower"] = pr.lower;
+              d["upper"] = pr.upper;
+              d["relative"] = pr.relative;
+              d["kind"] = pr.kind == sc::lm::Profile::Kind::identifiable ? "identifiable"
+                          : pr.kind == sc::lm::Profile::Kind::practically_non_identifiable
+                              ? "practically_non_identifiable"
+                              : "structurally_non_identifiable";
+              return d;
+          },
+          py::arg("fun"), py::arg("jac"), py::arg("x_hat"), py::arg("m"), py::arg("j"),
+          py::arg("bounds") = py::none(), py::arg("grid") = py::none(), py::arg("alpha") = 0.95,
+          py::arg("df") = 1, py::arg("sigma2") = 0.0, py::arg("max_steps") = 50,
+          "The profile of x_j about x_hat (lm.hpp, profile; Raue et al. 2009): the values, their least "
+          "costs and points, the threshold, the interval [lower, upper] and the kind.");
 
     s.def("lm_check_jacobian",
           [lm_problem](const py::object& fun, const py::object& jac, const Vec& x, std::size_t m, double fd_eps) {
