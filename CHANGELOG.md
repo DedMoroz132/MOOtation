@@ -76,6 +76,12 @@ always listed under **Changed** or **Removed**.
   search strategy (`scalar/tiktak.hpp`): a Sobol sample, its best tenth in
   order, local searches from starts mixed with the best minimum so far;
   knobs `tiktak_n`, `tiktak_share`, `start_points`, `start_budget`.
+- Added: knobs for the readings of 2026-11-06, every default unchanged, so
+  default runs keep their golden fingerprints. `clia`: `clia_norm` (`raw` |
+  `intercepts`, as PlatEMO's CLIA normalizes on some problems; CLIA-8) and
+  `clia_rpil` (`on` | `off`; CLIA-9). `dea_gng`: `gng_eps` (the epsilon of
+  Eq.8 for every M) and `gng_ties` (`first` | `random`; GNG-11).
+  `maoeaarv`: `arv_linkage` (`single` | `average` | `complete`; ARV-2).
 - Added: `moead_ds`'s knob `drs_guard`, default unchanged: `off` chooses
   the extreme points from the whole set; `normalize` and `extreme` choose
   them among the points no other alpha-dominates, for the hyperplane or for

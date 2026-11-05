@@ -97,6 +97,12 @@
 //     NSGA-III", whose niching draws at random among the minimal ρ_j (deb2014
 //     Alg.4 lines 3-4), so random ties were tried in both places; the first
 //     index, the letter of argmin, stays.
+//   GNG-11 (READING; knobs gng_eps and gng_ties, off by default). Of
+//     PlatEMO's code. PlatEMO 4.16's DEAGNG.m sets eps = 0.314 (0.1 pi) for every
+//     M (the paper, §IV-A: 0.05 pi below five objectives, 0.15 pi from five)
+//     and draws the argmin c_j ties at random (ESelection.m; ArchiveUpdate.m
+//     among the minimal R_u vectors first). gng_eps = v sets eps for every M;
+//     gng_ties = random draws the ties so; first, the default, keeps GNG-9.
 //   GNG-10 (LETTER + GUARDS, noted 2026-09-16). Eq.5 (Alg.3 line 12) maps each
 //     sub-network's node box [f^q_min,node, f^q_max,node] onto the box of its
 //     signals [f^q_min,A_S, f^q_max,A_S]. Alg.3 does not discuss three cases:
@@ -125,6 +131,7 @@
 #include <queue>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -166,6 +173,22 @@ private:
     std::vector<std::vector<double>> Ru_;
     std::vector<std::vector<double>> R_;
     std::vector<double> Rtheta_;
+    int nRu_=0;                 // how many of R_'s first vectors are R'_u (R lists R'_u ahead of R'_node)
+    bool ties_random_=false;    // GNG-11: argmin c_j ties drawn at random, as PlatEMO (knob gng_ties)
+
+    // argmin_{j active} c_j (Alg.2 line 12, the A_S update of §III-C). GNG-9:
+    // the first index; GNG-11 (gng_ties = random): uniform among the minimal,
+    // and in the archive update (prefer_u) among the minimal R'_u first, as
+    // PlatEMO's DEA-GNG ArchiveUpdate.m does.
+    int pick_J(const std::vector<int>& cj, const std::vector<char>& Cact, bool prefer_u){
+        int R=(int)cj.size(), J=-1;
+        for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }
+        if(!ties_random_ || J<0) return J;
+        std::vector<int> mins, minsu;
+        for(int r=0;r<R;++r) if(Cact[r] && cj[r]==cj[J]){ mins.push_back(r); if(r<nRu_) minsu.push_back(r); }
+        const auto& from=(prefer_u && !minsu.empty())?minsu:mins;
+        return from[rnd::uniform_int_distribution<int>(0,(int)from.size()-1)(rng_)];
+    }
     std::vector<double> z_;
     int N_=0, m_=0, NS_=0, g_=0;
 
@@ -209,7 +232,7 @@ private:
         std::vector<int> cj(R,0); std::vector<char> Cact(R,1);
         std::vector<Sol> out; out.reserve(NS_);
         while((int)out.size()<NS_){
-            int J=-1; for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }   // ties: first index (GNG-9)
+            int J=pick_J(cj,Cact,true);   // ties: first index (GNG-9) or random (GNG-11)
             if(J<0) break;
             auto& D=Delta[J];
             if(D.empty()){ Cact[J]=0; continue; }
@@ -278,7 +301,7 @@ private:
 
     void reference_adaptation(){
         std::vector<int> idx; for(int i=0;i<(int)gn_.size();++i) if(gn_[i].alive) idx.push_back(i);
-        if(idx.empty()){ R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); return; }
+        if(idx.empty()){ R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); nRu_=(int)R_.size(); return; }
         std::vector<double> mn(m_,1e300),mx(m_,-1e300);
         for(auto&s:AS_) for(int k=0;k<m_;++k){ mn[k]=std::min(mn[k],s.objs[k]); mx[k]=std::max(mx[k],s.objs[k]); }
         std::map<int,int> g2l; for(int t=0;t<(int)idx.size();++t) g2l[idx[t]]=t;
@@ -323,6 +346,7 @@ private:
         double dmin=std::min(dp,du);
         R_.clear(); Rtheta_.clear();
         for(auto& ru:Ru_){ double dd=1e300; for(auto& rp:Rp) dd=std::min(dd,edist(ru,rp)); if(dd>=dmin){ R_.push_back(ru); Rtheta_.push_back(INF_THETA); } }
+        nRu_=(int)R_.size();
         int ri=0;
         for(int q=0;q<Q;++q){ std::vector<int> nq; for(int t=0;t<(int)idx.size();++t) if(comp[t]==q) nq.push_back(t);
             for(int t:nq){
@@ -346,7 +370,7 @@ private:
                 ++ri;
             }
         }
-        if(R_.empty()){ R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); }
+        if(R_.empty()){ R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); nRu_=(int)R_.size(); }
     }
 
     double pbi(const std::vector<double>& fp, const std::vector<double>& r, double theta) const {
@@ -379,7 +403,7 @@ private:
         std::vector<char> Cact(R,1);
         std::vector<int> chosen=Pidx;
         while((int)chosen.size()<N_){
-            int J=-1; for(int r=0;r<R;++r){ if(!Cact[r]) continue; if(J<0||cj[r]<cj[J]) J=r; }   // ties: first index (GNG-9)
+            int J=pick_J(cj,Cact,false);   // ties: first index (GNG-9) or random (GNG-11)
             if(J<0) break;
             if(Delta[J].empty()){ Cact[J]=0; continue; }
             int pick;
@@ -438,6 +462,18 @@ public:
     // Public setter of the ε for ζ' (§IV-A). An explicit setting disables the
     //   choice by M.
     void set_eps_theta(double e){ eps_theta_=e; eps_user_set_=true; }
+    bool set_param(const std::string& k, double v){
+        if(k!="gng_eps") return false;                       // GNG-11: PlatEMO's 0.314 for every M
+        if(!(v>=0.0 && v<M_PI/2.0)) throw std::invalid_argument("dea_gng: gng_eps must be in [0, pi/2)");
+        set_eps_theta(v);
+        return true;
+    }
+    bool set_word(const std::string& k, const std::string& w){
+        if(k!="gng_ties") return false;                      // GNG-11
+        if(w!="first" && w!="random") throw std::invalid_argument("dea_gng: gng_ties = '"+w+"': first or random");
+        ties_random_=(w=="random");
+        return true;
+    }
     void set_seed(unsigned s){ rng_.seed(s); }
 
     void setup(DataVault<Ind_t>& vault){
@@ -449,7 +485,7 @@ public:
         age_max_=N_; lambda_=std::max(1,(int)std::floor(0.2*N_)); maxnode_=N_;
         // ε from the number of objectives (§IV-A) unless set explicitly.
         if(!eps_user_set_) eps_theta_=(m_<5)?0.05*M_PI:0.15*M_PI;
-        auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA);
+        auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); nRu_=(int)R_.size();
         const auto& bd=vault.get_bounds(); rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
@@ -469,7 +505,7 @@ public:
         age_max_=N_; lambda_=std::max(1,(int)std::floor(0.2*N_)); maxnode_=N_;
         // ε from the number of objectives (§IV-A) unless set explicitly.
         if(!eps_user_set_) eps_theta_=(m_<5)?0.05*M_PI:0.15*M_PI;
-        auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA);
+        auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); nRu_=(int)R_.size();
         pop_.clear(); z_.assign(m_,std::numeric_limits<double>::max());
         for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);

@@ -94,6 +94,18 @@
 //     the first two and by about 4.2× for the third. The classifier here is a
 //     Parzen estimator, not the SVM (CLIA-1), so no reading reproduces the
 //     paper exactly; the choice is declared, not derived.
+//   CLIA-8 (READING; knob clia_norm, off by default: raw). Of the authors'
+//     code. The paper clusters on raw objectives (§III-A, "we avoid the
+//     changes ... caused by normalization"); PlatEMO 4.16's CLIA
+//     (initialize.m) sets normalization_str = 'normalize' on MaF5, MaF7 and
+//     MaF8 and normalizes before the pairing (normalization.m, intercepts).
+//     clia_norm = intercepts does the same before the attachment, the PDM
+//     and the distances to the centres; the frontiers stay those of the raw
+//     objectives, as there.
+//   CLIA-9 (READING; knob clia_rpil, off by default: on). Of the authors'
+//     code. PlatEMO's initialize.m sets disable_flag = true (no reference
+//     point learning) on MaF3, 5, 10, 11, 12 and 14; clia_rpil = off skips
+//     RPIL, the reference vectors staying the initial ones.
 //   The round-robin of Alg.1 starts from the first cluster, so with more
 //     clusters than N the later ones lose their centres. §III-A-3 says so
 //     itself ("unless the number of clusters is more than N ... all cluster
@@ -118,6 +130,7 @@
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -146,6 +159,21 @@ public:
     void set_pm(double p) { pm_ = p; }
     void set_alpha(double a) { alpha_ = a; }
     void set_n_keep_factor(double f) { n_keep_factor_ = f; }  // n = f·N (default 2)
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k == "clia_norm") {                                  // CLIA-8
+            if (w != "raw" && w != "intercepts")
+                throw std::invalid_argument("clia: clia_norm = '" + w + "': raw or intercepts");
+            clia_norm_ = (w == "intercepts");
+            return true;
+        }
+        if (k == "clia_rpil") {                                  // CLIA-9
+            if (w != "on" && w != "off")
+                throw std::invalid_argument("clia: clia_rpil = '" + w + "': on or off");
+            clia_rpil_ = (w == "on");
+            return true;
+        }
+        return false;
+    }
 
     void setup(DataVault<Ind_t>& vault);
     void setup_seeded(DataVault<Ind_t>& vault);
@@ -158,6 +186,8 @@ private:
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;
     double alpha_ = 5.0;          // Eq.1, as in PBI
     double n_keep_factor_ = 2.0;  // §IV-B: n = 2N
+    bool   clia_norm_ = false;    // CLIA-8: PlatEMO's normalization before the clustering (knob clia_norm)
+    bool   clia_rpil_ = true;     // CLIA-9: RPIL on (the paper) or off (knob clia_rpil)
 
     int m_ = 0, N_ = 0;
     int theta_ = 5;               // §IV-B status-sampler threshold
@@ -198,6 +228,57 @@ private:
         double s = 0; for (std::size_t i = 0; i < a.size(); ++i) { double d = a[i]-b[i]; s += d*d; } return std::sqrt(s);
     }
     static double norm2(const std::vector<double>& a) { double s=0; for(double x:a) s+=x*x; return std::sqrt(s); }
+
+    static std::vector<std::vector<double>> raw_objs(const std::vector<Sol>& P) {
+        std::vector<std::vector<double>> F; F.reserve(P.size());
+        for (const auto& s : P) F.push_back(s.objs);
+        return F;
+    }
+    // CLIA-8: PlatEMO 4.16 CLIA/normalization.m, intercepts(): the extreme
+    // points are, per objective, the largest value of that objective among the
+    // minimizers of each objective and of the sum of squares of the others; a
+    // hyperplane through them (raw objectives) gives the intercepts a, or the
+    // maximum of each objective when fewer than M extremes are distinct; then
+    // f' = (f - min f) / a. (Its MATLAB warning on a singular system is
+    // ignored there; here a singular or non-positive solve takes the maximum.)
+    std::vector<std::vector<double>> normalized_objs(const std::vector<Sol>& P) const {
+        const int n = (int)P.size(), M = m_;
+        std::vector<std::vector<double>> F = raw_objs(P);
+        if (n == 0) return F;
+        std::vector<double> fmin(M, std::numeric_limits<double>::max()), fmax(M, -std::numeric_limits<double>::max());
+        for (const auto& f : F) for (int k = 0; k < M; ++k) { fmin[k] = std::min(fmin[k], f[k]); fmax[k] = std::max(fmax[k], f[k]); }
+        std::vector<int> chosen;
+        for (int k = 0; k < M; ++k) {
+            int b = 0; for (int i = 1; i < n; ++i) if (F[i][k] < F[b][k]) b = i;
+            chosen.push_back(b);
+        }
+        for (int k = 0; k < M; ++k) {
+            int b = 0; double bs = std::numeric_limits<double>::max();
+            for (int i = 0; i < n; ++i) { double s = 0; for (int j = 0; j < M; ++j) if (j != k) s += F[i][j] * F[i][j]; if (s < bs) { bs = s; b = i; } }
+            chosen.push_back(b);
+        }
+        std::vector<int> ext;
+        for (int k = 0; k < M; ++k) {
+            int b = chosen[0]; for (int c : chosen) if (F[c][k] > F[b][k]) b = c;
+            if (std::find(ext.begin(), ext.end(), b) == ext.end()) ext.push_back(b);
+        }
+        std::vector<double> a = fmax;
+        if ((int)ext.size() == M) {
+            std::vector<std::vector<double>> A(M, std::vector<double>(M + 1, 1.0));
+            for (int r = 0; r < M; ++r) for (int c = 0; c < M; ++c) A[r][c] = F[ext[r]][c];
+            bool ok = true;
+            for (int c = 0; c < M && ok; ++c) {
+                int piv = c; for (int r = c + 1; r < M; ++r) if (std::abs(A[r][c]) > std::abs(A[piv][c])) piv = r;
+                if (std::abs(A[piv][c]) < 1e-12) { ok = false; break; }
+                std::swap(A[c], A[piv]);
+                for (int r = 0; r < M; ++r) { if (r == c) continue; double q = A[r][c] / A[c][c]; for (int k = c; k <= M; ++k) A[r][k] -= q * A[c][k]; }
+            }
+            if (ok) for (int c = 0; c < M; ++c) { double h = A[c][M] / A[c][c]; if (!(h > 0.0)) { ok = false; break; } a[c] = 1.0 / h; }
+            if (!ok) a = fmax;
+        }
+        for (auto& f : F) for (int k = 0; k < M; ++k) f[k] = (f[k] - fmin[k]) / (std::abs(a[k]) > 1e-300 ? a[k] : 1.0);
+        return F;
+    }
 
     // PDM (Eq.1): mean(o) + α·||o||₂·sin(o,z). osin = ||o||·sin precomputed.
     double pdm(const std::vector<double>& o, double osin) const {
@@ -246,17 +327,20 @@ private:
         int R = (int)Z_.size();
         active_out.assign(R, 0);
 
-        // 1. Frontier identification (§III-A-1)
+        // 1. Frontier identification (§III-A-1), on the raw objectives
         std::vector<char> fm = frontier_mask(pool);
+        // the objectives the clustering sees: raw (the paper), or normalized as
+        // PlatEMO's CLIA does on some problems (CLIA-8, knob clia_norm)
+        const std::vector<std::vector<double>> F = clia_norm_ ? normalized_objs(pool) : raw_objs(pool);
 
         // 2a. Attach frontiers to nearest ref-vector by sin angle; precompute osin.
         std::vector<std::vector<int>> cl_F(R);   // frontier indices per ref
         std::vector<double> osin(n, 0.0);        // ||o||·sin(o,z*) of attached
         for (int i = 0; i < n; ++i) {
             if (!fm[i]) continue;
-            int best = 0; double bs = sin_angle(pool[i].objs, Z_[0]);
+            int best = 0; double bs = sin_angle(F[i], Z_[0]);
             for (int r = 1; r < R; ++r) {
-                double s = sin_angle(pool[i].objs, Z_[r]);
+                double s = sin_angle(F[i], Z_[r]);
                 if (s < bs) { bs = s; best = r; }
             }
             cl_F[best].push_back(i); osin[i] = bs; active_out[best] = 1;
@@ -271,7 +355,7 @@ private:
             Cluster c;
             c.F = cl_F[r];
             std::stable_sort(c.F.begin(), c.F.end(), [&](int a, int b) {
-                return pdm(pool[a].objs, osin[a]) < pdm(pool[b].objs, osin[b]);
+                return pdm(F[a], osin[a]) < pdm(F[b], osin[b]);
             });
             c.center = c.F.front();          // smallest PDM
             clusters.push_back(std::move(c));
@@ -281,7 +365,7 @@ private:
         if (C == 0) {  // degenerate: no frontier attached anywhere — keep best N by mean
             std::vector<int> idx(n); std::iota(idx.begin(), idx.end(), 0);
             std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
-                double ma=0,mb=0; for(double v:pool[a].objs) ma+=v; for(double v:pool[b].objs) mb+=v; return ma<mb; });
+                double ma=0,mb=0; for(double v:F[a]) ma+=v; for(double v:F[b]) mb+=v; return ma<mb; });
             std::vector<Sol> out; for (int k = 0; k < std::min(N_, n); ++k) out.push_back(pool[idx[k]]);
             return out;
         }
@@ -289,17 +373,17 @@ private:
         // 2c. Attach non-frontiers to nearest cluster CENTER (euclid); sort by dist.
         for (int i = 0; i < n; ++i) {
             if (fm[i]) continue;
-            int best = 0; double bd = l2(pool[i].objs, pool[clusters[0].center].objs);
+            int best = 0; double bd = l2(F[i], F[clusters[0].center]);
             for (int c = 1; c < C; ++c) {
-                double d = l2(pool[i].objs, pool[clusters[c].center].objs);
+                double d = l2(F[i], F[clusters[c].center]);
                 if (d < bd) { bd = d; best = c; }
             }
             clusters[best].NF.push_back(i);
         }
         for (auto& c : clusters) {
             std::stable_sort(c.NF.begin(), c.NF.end(), [&](int a, int b) {
-                return l2(pool[a].objs, pool[c.center].objs)
-                     < l2(pool[b].objs, pool[c.center].objs);
+                return l2(F[a], F[c.center])
+                     < l2(F[b], F[c.center]);
             });
         }
 
@@ -505,8 +589,9 @@ void CLIACore<Ind_t>::step(DataVault<Ind_t>& vault) {
     std::vector<char> active_mask;
     pop_ = cascade_select(pool, active_mask);
 
-    // (4) RPIL: status sampler + incremental learning when stable & under-active.
-    update_status_and_learn(active_mask);
+    // (4) RPIL: status sampler + incremental learning when stable & under-active
+    // (CLIA-9: clia_rpil = off skips it, as PlatEMO's disable_flag)
+    if (clia_rpil_) update_status_and_learn(active_mask);
 
     ++t_;
     write_pop(vault, pop_);

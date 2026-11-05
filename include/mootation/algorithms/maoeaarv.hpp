@@ -21,6 +21,12 @@
 // Defaults = §5.1.1: p_c=1.0, p_m=1/D. Deviations: η_c=η_m=20 and the linkage
 //   of the hierarchical clustering (single-linkage here) are NOT specified
 //   by the paper — implementation conventions were chosen.
+// ARV-2 (READING; knob arv_linkage, off by default: single). §4.4 (Alg.4
+//   line 3) cites "the hierarchical clustering strategy [34]" with the
+//   Euclidean distance and no linkage; [34] gives none either. single is the
+//   port's choice (MATLAB's clusterdata defaults to it, the experiments ran
+//   on PlatEMO); average (mean pairwise distance) and complete (largest)
+//   are the other common readings.
 // Extensions beyond the paper: constraint_mode FEASIBILITY (CDP), binary
 //   variables (off by default).
 // ============================================================================
@@ -42,6 +48,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -65,6 +73,8 @@ private:
     double       eta_m_ = 20.0;   // not specified by the paper (convention, see header)
     double       pm_    = -1.0;   // mutation probability per variable; < 0: 1/n (knob pm)
     double       pc_    = 1.0;    // §5.1.1: "crossover probability … 1.0"
+    enum class Linkage { Single, Average, Complete };
+    Linkage      linkage_ = Linkage::Single;   // ARV-2 (knob arv_linkage)
     std::mt19937 rng_{std::random_device{}()};
 
     // ── Dominance ──────────────────────────────────────────────────────────
@@ -231,12 +241,25 @@ private:
             for (int ai = 0; ai < static_cast<int>(active.size()); ++ai)
                 for (int bi = ai+1; bi < static_cast<int>(active.size()); ++bi) {
                     int la = active[ai], lb = active[bi];
-                    // Single-linkage: min pairwise distance.
+                    if (linkage_ == Linkage::Single) {
+                        // Single-linkage: min pairwise distance.
+                        for (int ia : groups[la])
+                            for (int ib : groups[lb]) {
+                                double d = dist(ia, ib);
+                                if (d < best) { best = d; best_a = la; best_b = lb; }
+                            }
+                        continue;
+                    }
+                    // ARV-2: average (mean pairwise) or complete (max pairwise) linkage
+                    double agg = 0.0;
                     for (int ia : groups[la])
                         for (int ib : groups[lb]) {
                             double d = dist(ia, ib);
-                            if (d < best) { best = d; best_a = la; best_b = lb; }
+                            agg = (linkage_ == Linkage::Complete) ? std::max(agg, d) : agg + d;
                         }
+                    if (linkage_ == Linkage::Average)
+                        agg /= static_cast<double>(groups[la].size() * groups[lb].size());
+                    if (agg < best) { best = agg; best_a = la; best_b = lb; }
                 }
 
             if (best_a < 0) break;
@@ -312,6 +335,14 @@ public:
     void set_pm           (double p) { pm_ = p; }   // < 0: 1/n
     void set_pc           (double p)  { pc_   = p; }
     void set_seed         (unsigned s){ rng_.seed(s); }
+    bool set_word(const std::string& k, const std::string& w) {   // ARV-2
+        if (k != "arv_linkage") return false;
+        if      (w == "single")   linkage_ = Linkage::Single;
+        else if (w == "average")  linkage_ = Linkage::Average;
+        else if (w == "complete") linkage_ = Linkage::Complete;
+        else throw std::invalid_argument("maoeaarv: arv_linkage = '" + w + "': single, average or complete");
+        return true;
+    }
 
     // ── setup ──────────────────────────────────────────────────────────────
     void setup(DataVault<Ind_t>& vault) {

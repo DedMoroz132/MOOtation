@@ -45,6 +45,7 @@ _FALLBACK = (
     "tiktak_n", "tiktak_share",
     "dc_share",
     "pap_interval", "pap_size",
+    "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau", "gng_eps",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"),
@@ -128,6 +129,10 @@ _FALLBACK_TEXT = {
     "cv_norm": ("population", "nondominated"),
     "nadir_source": ("intercepts", "archive"),
     "drs_guard": ("off", "normalize", "extreme"),
+    "clia_norm": ("raw", "intercepts"),
+    "clia_rpil": ("on", "off"),
+    "gng_ties": ("first", "random"),
+    "arv_linkage": ("single", "average", "complete"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 

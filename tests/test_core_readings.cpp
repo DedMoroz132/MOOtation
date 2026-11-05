@@ -131,6 +131,9 @@ MOOTATION_TEST_PROBLEM(NA, NSGAII_Individual,    DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(MI, MaOEAIAMD_Individual, DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(IR, IREA_Individual,      DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(DS, NSGAII_Individual,    DTLZ2Spec)
+MOOTATION_TEST_PROBLEM(CL, NSGAII_Individual,    DTLZ2Spec)
+MOOTATION_TEST_PROBLEM(DG, NSGAII_Individual,    DTLZ2Spec)
+MOOTATION_TEST_PROBLEM(AR, MaOEAARV_Individual,  DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(AP, NSGAII_Individual,    DTLZ2Spec)
 
 using namespace mootation;
@@ -182,6 +185,11 @@ void test_hcca_two_samples()
 // golden fingerprint (tests/golden_fingerprints.txt, dtlz2_3); the other word
 // gives another run over `gens` generations; a word the knob does not take is
 // refused, and another core's knob is not taken.
+// the default run's fingerprint, for the cores whose golden line the test does
+// not repeat (2026-11-06)
+template <typename Ind, typename Core>
+std::string golden_of() { return fingerprint_with<Ind, Core>(91, 30, [](Core&) {}); }
+
 template <typename Ind, typename Core>
 void word_knob(const std::string& key, const std::string& golden, const std::string& knob,
                const std::string& dflt, const std::string& other, int gens = 30)
@@ -250,6 +258,23 @@ void test_knobs_of_2026_11_02()
     // 2026-11-06: moead_ds's drs_guard (DDS-10)
     word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "drs_guard", "off", "normalize");
     word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "drs_guard", "off", "extreme");
+    // 2026-11-06: clia's clia_norm, clia_rpil (CLIA-8, -9), dea_gng's gng_ties
+    // (GNG-11), maoeaarv's arv_linkage (ARV-2)
+    word_knob<CL, CLIACore<CL>>("clia", golden_of<CL, CLIACore<CL>>(), "clia_norm", "raw", "intercepts");
+    {   // clia_rpil: off skips RPIL, which on DTLZ2 (a full front) need not trigger
+        // at all, so only the default's run and the refusal are checked here
+        using CC = CLIACore<CL>;
+        const std::string g = golden_of<CL, CC>();
+        check(fingerprint_with<CL, CC>(91, 30, [](CC& c) { c.set_word("clia_rpil", "on"); }) == g,
+              "clia clia_rpil = on as the default");
+        CC core;
+        bool threw = false;
+        try { core.set_word("clia_rpil", "maybe"); } catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "clia clia_rpil = maybe refused");
+    }
+    word_knob<DG, DEAGNGCore<DG>>("dea_gng", golden_of<DG, DEAGNGCore<DG>>(), "gng_ties", "first", "random");
+    word_knob<AR, MaOEAARVCore<AR>>("maoeaarv", golden_of<AR, MaOEAARVCore<AR>>(), "arv_linkage", "single", "average");
+    word_knob<AR, MaOEAARVCore<AR>>("maoeaarv", golden_of<AR, MaOEAARVCore<AR>>(), "arv_linkage", "single", "complete");
     std::cout << "-- edv: normalize (false by default, true) --\n";
     using EC = EDVCore<ED>;
     check(fingerprint_with<ED, EC>(91, 30, [](EC& c) { c.set_normalize(false); }) == "91 535f03f7cd2cb7ec",

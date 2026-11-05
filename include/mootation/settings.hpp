@@ -111,6 +111,8 @@ inline const std::vector<std::string>& knob_names() {
         "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
         // VERIFY2 of 2026-11-02: MaOEA-IAMD's KPCM noise (MaOEA-IAMD-N)
         "noise_frac",
+        // VERIFY2 of 2026-11-06: DEA-GNG's epsilon for every M (GNG-11)
+        "gng_eps",
         // task 19, §19.4.1: eki (scalar/scalar.hpp, run_local)
         "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
         // task 18, stage 3: the strategies (scalar/strategy.hpp)
@@ -186,6 +188,9 @@ inline const std::vector<std::string>& knob_names() {
 //   noise_frac     maoea_iamd: the KPCM noise's sigma as a share of each
 //                  variable's range (0.01; the paper's letter is 0.316,
 //                  MaOEA-IAMD-N)
+//   gng_eps        dea_gng: the epsilon of Eq.8 for every M (by default the
+//                  paper's 0.05 pi below five objectives, 0.15 pi from five;
+//                  PlatEMO's 0.314; GNG-11)
 inline bool is_core_param(const std::string& name)
 {
     for (const char* k : {"ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed",
@@ -209,7 +214,7 @@ inline bool is_core_param(const std::string& name)
                           "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature",
                           "bh_step", "bh_accept_rate", "bh_interval", "ils_step", "ils_restart",
                           "ils_temperature", "memetic_every", "memetic_points", "local_share",
-                          "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share", "dc_share", "pap_interval", "pap_size"})
+                          "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share", "dc_share", "pap_interval", "pap_size", "gng_eps"})
         if (name == k) return true;
     return false;
 }
@@ -315,6 +320,14 @@ inline bool is_core_param(const std::string& name)
 //   drs_guard     moead_ds: the extreme points from the whole set (off, the
 //                 default) or among the points no other alpha-dominates, for
 //                 the hyperplane (normalize) or for Q (extreme; DDS-10)
+//   clia_norm     clia: clustering on raw objectives (raw, the default) or
+//                 normalized as PlatEMO's CLIA (intercepts; CLIA-8)
+//   clia_rpil     clia: reference point incremental learning on (the
+//                 default) or off, as PlatEMO's disable_flag (CLIA-9)
+//   gng_ties      dea_gng: argmin c_j ties to the first index (first, the
+//                 default; GNG-9) or at random, as PlatEMO (random; GNG-11)
+//   arv_linkage   maoeaarv: the hierarchical clustering's linkage, single
+//                 (the default), average or complete (ARV-2)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -403,6 +416,10 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"cv_norm",      {"population", "nondominated"}},
         {"nadir_source", {"intercepts", "archive"}},
         {"drs_guard",    {"off", "normalize", "extreme"}},
+        {"clia_norm",    {"raw", "intercepts"}},
+        {"clia_rpil",    {"on", "off"}},
+        {"gng_ties",     {"first", "random"}},
+        {"arv_linkage",  {"single", "average", "complete"}},
     };
     return v;
 }
@@ -445,7 +462,8 @@ inline bool is_core_word(const std::string& name)
                           "memetic_pick", "keep_points", "sym",
                           "cv_rule", "cv_norm",
                           "nadir_source",
-                          "drs_guard"})
+                          "drs_guard",
+                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage"})
         if (name == k) return true;
     return false;
 }

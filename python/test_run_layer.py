@@ -7576,7 +7576,12 @@ def readings_knobs_of_2026_11_02():
              ("maoea_iamd", "cv_norm", "population", "nondominated"),  # 2026-11-06 (IAMD-3)
              ("moead_ds", "nadir_source", "intercepts", "archive"),  # 2026-11-06 (DDS-9)
              ("moead_ds", "drs_guard", "off", "normalize"),       # 2026-11-06 (DDS-10)
-             ("moead_ds", "drs_guard", "off", "extreme")]
+             ("moead_ds", "drs_guard", "off", "extreme"),
+             ("clia", "clia_norm", "raw", "intercepts"),          # 2026-11-06 (CLIA-8)
+             ("clia", "clia_rpil", "on", "off"),                  # 2026-11-06 (CLIA-9)
+             ("dea_gng", "gng_ties", "first", "random"),          # 2026-11-06 (GNG-11)
+             ("dea_gng", "gng_eps", 0.05 * 3.141592653589793, 0.314),
+             ("maoeaarv", "arv_linkage", "single", "average")]   # 2026-11-06 (ARV-2)
     for alg, knob, dflt, other in cases:
         d = minimize(d2.evaluate, algorithm=alg, **k)
         n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)
@@ -7585,7 +7590,7 @@ def readings_knobs_of_2026_11_02():
         assert not o.ignored, (alg, knob, o.ignored)
         # aprd's slots and maoea_iamd's classification rules agree on DTLZ2 (CV = the
         # distance variables under every rule; test_core_readings checks the sets)
-        if alg != "aprd" and knob not in ("cv_rule", "cv_norm"):
+        if alg != "aprd" and knob not in ("cv_rule", "cv_norm", "clia_rpil"):
             assert o.objectives != d.objectives, (alg, knob, other)
         r = minimize(d2.evaluate, algorithm="nsga2", **{knob: other}, **k)
         assert r.ignored == [knob], (knob, r.ignored)

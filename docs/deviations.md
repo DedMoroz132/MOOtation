@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-394 items: 316 yes, 21 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+398 items: 316 yes, 25 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -248,6 +248,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `rvea` | RVEA-3 (resolved, task 13 of 2026-10-19) | the ⌊N/2⌋ random pairs were | no: fixed | `rvea.hpp` |
 | `rvea` | RVEA-ADA (task 15 of 2026-10-21, §6; off by default) | ada = 1: ADA in place of the generation — one child a step, P growing, the answer A^primary (operators/ada.hpp; | no: option | `rvea.hpp` |
 | `maoeaarv` | maoeaarv.1 | η_c=η_m=20 and the linkage of the hierarchical clustering (single-linkage here) are NOT specified by the paper — implementation conventions were chosen. | yes | `maoeaarv.hpp` |
+| `maoeaarv` | ARV-2 (READING; knob arv_linkage, off by default: single) | §4.4 (Alg.4 line 3) cites "the hierarchical clustering strategy [34]" with the Euclidean distance and no linkage; [34] gives none either. single is the port's choice (MATLAB's clusterdata defaults to it, the experimen... | no: option | `maoeaarv.hpp` |
 | `mbra` | mbra.1 | M2: the Condition1 bounds are INCLUSIVE (G=⌊0.2·Gmax⌋ and G=⌊0.9·Gmax⌋ pass); the paper does not specify the strictness of the bounds; | yes | `mbra.hpp` |
 | `mbra` | mbra.2 | M3: guard CM_old≈0 → IMR=0 (the paper does not address division by 0); | yes | `mbra.hpp` |
 | `mbra` | mbra.3 | M4: max-min-angle with an empty selected set: the first individual is the first by index (all dmin=0); the paper does not define this case; | yes | `mbra.hpp` |
@@ -266,6 +267,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `dea_gng` | GNG-8 (FIXED 2026-09-06, third primary-source pass) | Alg.1 line 17 increments g AFTER environmental selection and line 10 tests g < (1−α)·G_max with g = 0 in the first generation; the port incremented g before the test, so the learning model stopped one generation early... | no: fixed | `dea_gng.hpp` |
 | `dea_gng` | GNG-6 (AMBIGUOUS — the paper mixes two frames; the raw one is chosen) | ζ (Eq.8) is measured on the RAW, un-expanded GNG node geometry: both the reference vector and the edge come from node_obj, matching V_edge as emitted by Alg.1 line 12, and the resulting θ is then attached to the Eq.5-... | yes | `dea_gng.hpp` |
 | `dea_gng` | GNG-9 (AMBIGUOUS) | Alg.2 line 12 writes J = argmin_{j∈C} c_j and says nothing about ties. | yes | `dea_gng.hpp` |
+| `dea_gng` | GNG-11 (READING; knobs gng_eps and gng_ties, off by default) | Of PlatEMO's code. PlatEMO 4.16's DEAGNG.m sets eps = 0.314 (0.1 pi) for every M (the paper, §IV-A: 0.05 pi below five objectives, 0.15 pi from five) and draws the argmin c_j ties at random (ESelection.m; | no: option | `dea_gng.hpp` |
 | `dea_gng` | GNG-10 (LETTER + GUARDS, noted 2026-09-16) | Eq.5 (Alg.3 line 12) maps each sub-network's node box [f^q_min,node, f^q_max,node] onto the box of its signals [f^q_min,A_S, f^q_max,A_S]. | yes | `dea_gng.hpp` |
 | `srv` | srv.1 | z^nad = the max over St (Alg.4 line 5 only says "normalize by (2)"); mating uses random pairs, as the paper specifies no parent-selection operator. | yes | `srv.hpp` |
 | `srv_nsga3` | SRVN-L (task 15 of 2026-10-21, §2; off by default) | n_offspring (λ children a generation, μ survivors from the μ + λ) and n_ref_points (H reference points, das_dennis::reference_points) apart from pop_size, as NSGA3-L in nsga3.hpp; not set, λ = μ and H = μ's lattice, a... | no: option | `srv_nsga3.hpp` |
@@ -335,6 +337,8 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `clia` | CLIA-5 (MINOR) | One offspring per pair (SBX, first child), N pairs drawn at random from the population. | yes | `clia.hpp` |
 | `clia` | CLIA-6 (MINOR) | Real-valued genome; binary and mixed are out of scope (constraint_mode=NONE). | yes | `clia.hpp` |
 | `clia` | CLIA-7 (AMBIGUOUS, the kernel width) | §IV-B gives <S,C> = <0.056,10>, "S is the kernel scale of the Gaussian kernel", and no formula. | yes | `clia.hpp` |
+| `clia` | CLIA-8 (READING; knob clia_norm, off by default: raw) | Of the authors' code. The paper clusters on raw objectives (§III-A, "we avoid the changes ... caused by normalization"); | no: option | `clia.hpp` |
+| `clia` | CLIA-9 (READING; knob clia_rpil, off by default: on) | Of the authors' code. PlatEMO's initialize.m sets disable_flag = true (no reference point learning) on MaF3, 5, 10, 11, 12 and 14; clia_rpil = off skips RPIL, the reference vectors staying the initial ones. | no: option | `clia.hpp` |
 | `two_arch2` | TA2-1 (AMBIGUOUS, reading fixed 2026-09-09) | The paper is SILENT on whether the objectives are scaled before I_eps+: Eq.1 is written on raw values, while IBEA — whose Eq.2 fitness this reuses verbatim — scales them to [0,1] over the pool in its own Alg.2 (steps... | no: fixed | `two_arch2.hpp` |
 | `two_arch2` | TA2-2 (MINOR) | DA "boundary solutions with maximal or minimal objective values" (Alg. 3 line 3) implemented as, per objective i, the argmin and argmax of f_i (up to 2m points, de-duplicated). | yes | `two_arch2.hpp` |
 | `two_arch2` | TA2-3 (reading) | If after Pareto filtering \|DA\| <= n_DA, DA is kept as-is, with no padding. | yes | `two_arch2.hpp` |
