@@ -407,7 +407,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-194 items: 194 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+220 items: 220 yes, 0 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -427,6 +427,11 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cmaes` | INJ-2 | Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5 says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m = sqrt(2n) + 2n/(n + 2) (Table 1). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-3 | The tutorial's negative weights: an injected point among the worst is clipped by (3) as well; the report expects no harm (p. 9: the clipping of long steps even helps the negative update). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-4 | An injected mean takes the place of the weighted mean of (41) for the mean's move and for p_σ and p_c, the y_i (clipped) still serve the rank-μ update (Figure 1). | yes | `cmaes.hpp` |
+| `cmaes` | CMA-1 | t counts the tells; the criteria are tested after the update of iteration t, on the state it left (m, σ, C, p_c of t + 1 in H09's Table 1), each iteration, as a production code tests them before sampling. | yes | `cmaes.hpp` |
+| `cmaes` | CMA-2 | Stagnation holds when it holds in both arrays, the best and the median values ("respectively"), and is tested only once the iterations reach the window's length (with fewer, 20 newest and 20 oldest overlap or are not... | yes | `cmaes.hpp` |
+| `cmaes` | CMA-3 | TolHistFun and EqualFunVals are tested only once there are as many iterations as their window holds (10 + ⌈30D/λ⌉, D). | yes | `cmaes.hpp` |
+| `cmaes` | CMA-4 | "Numerically constant": m_i + δ_i == m_i in double for every i (NoEffectAxis), for some i (NoEffectCoor). | yes | `cmaes.hpp` |
+| `cmaes` | CMA-5 | The eigendecomposition of C at every iteration, where H09 makes it every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves time and changes no update but the sampling's B and D between decompositions. | yes | `cmaes.hpp` |
 | `de` | DE-1 | The trial (4) is built coordinate by coordinate: rnbr(i) is drawn first, then one U(0, 1) for every j (j = rnbr(i) included), and v_j is taken where U < CR or j = rnbr(i). | yes | `de.hpp` |
 | `de` | DE-2 | Bounds. The paper's box is the initial parameter range (IPR) only; its f9 and f28 have their minima outside it, and DE finds them. | yes | `de.hpp` |
 | `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |
@@ -550,6 +555,13 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pso` | PSO-6 | Bounds: the paper's box is the initial range; a position outside the box is repaired by ops::repair_value (reflect by default; `native` leaves it — the paper's), the velocity kept. | yes | `pso.hpp` |
 | `pso` | PSO-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(x_i) < f(p_i)" and for p_g; not in the papers. | yes | `pso.hpp` |
 | `pso` | PSO-8 | done() is true once every velocity is 0 and every x_i = p_i = p_g. | yes | `pso.hpp` |
+| `restarts` | RST-1 | One set of termination criteria for both, H09's (§2.2): AH05's are the same in substance (equalfunvalhist, TolFun, TolX, noeffectaxis, noeffectcoord, conditioncov) but for TolFun over the last generation's values; | yes | `restarts.hpp` |
+| `restarts` | RST-2 | U[0,1]² of λ_s is the square of one uniform number; the second draw (σ⁰) is another (H09: "independent uniformly distributed numbers"). | yes | `restarts.hpp` |
+| `restarts` | RST-3 | "Half of the recent large budget": half of the evaluations of the last run of regime 1. | yes | `restarts.hpp` |
+| `restarts` | RST-4 | The regimes' budgets are the evaluations their runs spent; the first run (λ_def) counts in neither (H09: "the first single run ... is disregarded"). | yes | `restarts.hpp` |
+| `restarts` | RST-5 | "The first and last restart are conducted under the first regime": after regime 1's last run (λ = 2^bipop_large λ_def) the strategy stops. | yes | `restarts.hpp` |
+| `restarts` | RST-6 | The box gives the start: a bound that is not finite is refused, and so are constraints (bounds only). | yes | `restarts.hpp` |
+| `restarts` | RST-7 | A run's generator and its start mean come from start_seed(seed, k) (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and σ⁰ of a run of regime 2 from it before the start mean. | yes | `restarts.hpp` |
 | `scalar` | SCALAR-1 | n_sub from the budget: what is left after the plan's start and the anchors, over 10 (n + 1) evaluations a subproblem for sqp — about ten iterations from a neighbour's solution — and 100 n for nm and cmaes; at most pop... | yes | `scalar.hpp` |
 | `scalar` | SCALAR-2 | nm, cmaes: an infeasible point is worth the worst feasible value known for its subproblem plus its violation (Deb's rule as a penalty). | yes | `scalar.hpp` |
 | `scalar` | SCALAR-3 | tch: w_i = 1 / max(d_i, 1e-6) for the lattice's direction d, so that the solutions lie on the rays F̄ ∝ d the lattice spreads evenly; the reference point is z*. | yes | `scalar.hpp` |
@@ -575,6 +587,14 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw: x0, a design (init) and seed points are not used and are reported as ignored, except x0 for sep_cmaes, its mean (normalized and clipped to the box); without x0 the mean is a... | yes | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
+| `search` | SRCH-1 | MLSL's r_k: part II's (2) prints it without Γ; it refers to part I's Single Linkage analysis, whose (35) has Γ(1 + n/2) (the volume of the unit ball): taken with Γ. m(S) = 1, distances in the box normalized to [0, 1]^n. | yes | `search.hpp` |
+| `search` | SRCH-2 | MLSL as part II's experiments (§4): τ = ν = 0 by default (no boundary set Q_τ, no neighbourhood X*_ν of the minima found), σ = 4, γ = 0.2. | yes | `search.hpp` |
+| `search` | SRCH-3 | MLSL: the local searches of an iteration are one round; a point that started one never starts another; the sample is the uniform points only (a local search's points are in the archive, not in the sample). | yes | `search.hpp` |
+| `search` | SRCH-4 | A perturbed point is clipped to the box (ils, basin_hopping). | yes | `search.hpp` |
+| `search` | SRCH-5 | basin_hopping's step: adjusted every bh_interval (10) steps, divided by 0.9 when the acceptance ratio was above bh_accept_rate, multiplied by 0.9 otherwise (the paper gives the target, not the rule). | yes | `search.hpp` |
+| `search` | SRCH-6 | halving: a round reruns each arm with its whole allowance so far; its earlier points come from the archive, free, and only what goes beyond costs (a solver whose run does not depend on the budget repeats itself exactl... | yes | `search.hpp` |
+| `search` | SRCH-7 | memetic: the global solver is rerun with its allowance grown by memetic_every, its earlier points free (as SRCH-6); it does not see the local searches' points (no Lamarckian step), they only enter the answer. | yes | `search.hpp` |
+| `search` | SRCH-8 | A local search's result is the inner solver's answer; worse means more violating, then larger f (Deb). | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-3 | Ranking: the comparison of evo.hpp (NSGA-II's constrained- domination at M = 1 for constraints g <= 0, not in the paper), ties in the order told (stable). | yes | `sep_cmaes.hpp` |
@@ -605,6 +625,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `spso2011` | SPSO-6 | The absorbing wall acts coordinate by coordinate: a coordinate outside its range is put on the bound it crossed and its velocity is 0. | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-7 | Draws, particle by particle: U1 for every d, U2 for every d, the direction's D normals, the radius's U; the initial velocity's U after all positions; links: informer by informer, K draws each. | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-8 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(X_i) < f(P_i)", L_i and SPSO-4; not in the paper. | yes | `spso2011.hpp` |
+| `strategy` | STRAT-1 | A start's generator: the run's seed for start 0, else a 32-bit word of std::seed_seq{seed, k} (the standard defines its words), so one start is the inner solver's own run, bit for bit (§3.1's test). | yes | `strategy.hpp` |
+| `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
+| `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |
+| `strategy` | STRAT-4 | The minima log: a start's answer joins the first minimum within min_dist (the box normalized to [0, 1]^n where it is finite, else the problem's coordinates; the largest coordinate difference) and min_df in f, else is... | yes | `strategy.hpp` |
+| `strategy` | STRAT-5 | The run's equalities' tolerance schedule (eq_tol0) is the inner solver's, on its own allowance. | yes | `strategy.hpp` |
+| `strategy` | STRAT-6 | A start may spend on new points at most what it was given (its allowance, or less where a strategy reruns a start whose earlier points are free, search.hpp SRCH-6): past it the view ends the inner run as the budget do... | yes | `strategy.hpp` |
 
 ## The problems
 
@@ -614,6 +640,12 @@ from the paper's text.
 
 | item | what | file |
 |---|---|---|
+| CEC-1 | F5 is -[(4 - 2.1x² + x⁴/3)x² + xy + (4y² - 4)y²], without the factor 4 the report prints: Table IV's height 1.03163 and the published peak ratios (Tables II-III: 1 at every ε) are of this form (owner's В2). | `cec2013.hpp` |
+| CEC-2 | The report gives no shifts o_i nor rotations M_i of the composition functions (the competition's data files have them): ours, o_i uniform in [-5, 5]^D, M_i of CF3 and CF4 Haar rotations (condition number one), from st... | `cec2013.hpp` |
+| CEC-3 | Where every w_i is 0 (far from every o_i; outside the box only) the weights are equal, 1/n, as the normalization 0/0 leaves them. | `cec2013.hpp` |
+| CEC-4 | F8 at D = 2 has k = (3, 4) (the report's 2-D instance); its formula is printed under the name F9, a misprint. | `cec2013.hpp` |
+| CEC-5 | Ties of the largest weight: every w_i equal to the largest keeps its value. | `cec2013.hpp` |
+| CEC-6 | EF8F2 is evaluated at z + 1, as CEC 2005's expanded F8F2 (x - o + 1), whose code the report's is based on: its minimum is then at z = 0, and CF(o_i) = 0, as the report states; at z itself it would be at (1, ..., 1) an... | `cec2013.hpp` |
 | CF-1 | No clipping of x into the box inside the problem (the task's reading P3): PlatEMO clips in CF8 and CF9; the box is the algorithm's. | `cf.hpp` |
 | CF-2 | The competition's tolerance (§IV, c >= -1e-6) belongs to its assessment, not to the problem: g = -c as printed. | `cf.hpp` |
 | CF-3 | CF8-CF10 divide by 1 - f3^2, 0 at the front's pole f3 = 1 (x_1 = 1, the J3 terms at their optimum): there the constraint is 0/0 or x/0 and comes out NaN, as the printed formula and PlatEMO's code give it. | `cf.hpp` |
