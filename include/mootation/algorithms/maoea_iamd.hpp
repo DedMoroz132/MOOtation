@@ -97,8 +97,18 @@
 //     an excursion to q <= 0 in Newton–Raphson gives q = 1; zero perturbation
 //     covariance gives an angle of π/2, putting the variable in DV; an empty
 //     k-means cluster gives CV = DV = all variables;
-//   - eta_m_ / set_eta_mutation are kept for interface compatibility but are
-//     unused, since the paper replaces PM with KPCM.
+//   - eta_m_ / set_eta_mutation act only under kpcm_pm = on (IAMD-1);
+//     by default the paper's KPCM replaces PM.
+// IAMD-1 (READING; knob kpcm_pm, off by default). §4.3(2): "all
+//   compared algorithms employ SBX and PM", and the experiments ran on PlatEMO
+//   (§4), whose real-coded GA (OperatorGA, OperatorGAhalf) is SBX followed by
+//   Deb's polynomial mutation in one call, with no SBX-only form. A KPCM
+//   written as a step after that call, the usual way a PlatEMO algorithm is
+//   built, adds to PM rather than replacing it; §4.5.2's ablation ("replace it
+//   with the polynomial mutation used in the compared algorithm") does not
+//   tell the two apart. kpcm_pm = on breeds that way: SBX, then PM (η_m = 20,
+//   p_m = 1/n), then KPCM. off keeps KPCM in PM's place, the code's reading
+//   until now.
 // EXTENSIONS BEYOND THE PAPER (off by default): constraint_mode FEASIBILITY
 //   (feasible-first in dominance and in the tournament); binary genome (uniform
 //   crossover + bit-flip; KPCM and the classification stay real-valued only).
@@ -120,6 +130,7 @@
 #include "../operators/binary_crossover.hpp"
 #include "../operators/bit_flip.hpp"
 #include "../operators/bound_repair.hpp"
+#include "../operators/poly_mutation.hpp"
 #include "../operators/sbx.hpp"
 #include "../random.hpp"
 
@@ -150,7 +161,8 @@ private:
 
     double eta_c_ = 20.0;   // §4.3(2)
     double pc_    = 1.0;    // §4.3(2)
-    double eta_m_ = 20.0;   // unused: the paper replaces PM with KPCM
+    double eta_m_ = 20.0;   // PM's index, used only with kpcm_pm = on (IAMD-1)
+    bool   kpcm_pm_ = false;   // IAMD-1: SBX + PM before KPCM (knob kpcm_pm)
     int    nsel_  = 2;      // nS (LMEA [32])
     int    nper_  = 4;      // nP (LMEA [32])
     std::mt19937 rng_{std::random_device{}()};
@@ -785,7 +797,7 @@ public:
     MaOEAIAMDCore() = default;
 
     void set_eta_crossover(double e) { eta_c_ = e; }
-    void set_eta_mutation (double e) { eta_m_ = e; }   // compatibility shim; unused
+    void set_eta_mutation (double e) { eta_m_ = e; }   // PM's index under kpcm_pm = on
     void set_pc(double p)            { pc_ = p; }
     void set_nsel(int v)             { nsel_ = std::max(1, v); }
     void set_nper(int v)             { nper_ = std::max(2, v); }
@@ -795,6 +807,13 @@ public:
         if (!(v >= 0.0 && std::isfinite(v)))
             throw std::invalid_argument("maoea_iamd: noise_frac must be a finite number >= 0");
         noise_frac_ = v;
+        return true;
+    }
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k != "kpcm_pm") return false;                    // IAMD-1
+        if (w != "off" && w != "on")
+            throw std::invalid_argument("maoea_iamd: kpcm_pm = '" + w + "': off or on");
+        kpcm_pm_ = (w == "on");
         return true;
     }
     void set_seed(unsigned s)        { rng_.seed(s); }
@@ -875,6 +894,11 @@ public:
                 pv2[j] = vault.get_variable(p2, j);
             }
             ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
+            if (kpcm_pm_) {                               // IAMD-1: PlatEMO's GA
+                const double pm = 1.0 / static_cast<double>(std::max(1, vault.vars_n()));
+                ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
+                if (i + 1 < n) ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
+            }
             kpcm_mutate(c1, vault, ec, ed);
             if (i + 1 < n) kpcm_mutate(c2, vault, ec, ed);
             if (vault.bin_vars_n() > 0) {

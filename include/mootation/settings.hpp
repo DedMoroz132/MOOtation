@@ -282,6 +282,8 @@ inline bool is_core_param(const std::string& name)
 //                 the single-objective solvers of task 19 (scalar/scalar.hpp):
 //                 Nelder-Mead's coefficients, lm's step off a gauge basis,
 //                 eki's initial ensemble and perturbed data; no core has them
+//   kpcm_pm       maoea_iamd: KPCM in place of the polynomial mutation (off,
+//                 the default) or after SBX + PM, as PlatEMO's GA (on; IAMD-1)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -355,6 +357,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"lm_gauge",     {"off", "on"}},
         {"eki_init",     {"around", "sobol", "lhs"}},
         {"eki_perturb",  {"yes", "no"}},
+        {"kpcm_pm",      {"off", "on"}},
     };
     return v;
 }
@@ -383,7 +386,7 @@ inline bool is_core_word(const std::string& name)
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
                           "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
-                          "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb"})
+                          "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm"})
         if (name == k) return true;
     return false;
 }

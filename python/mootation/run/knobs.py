@@ -105,6 +105,7 @@ _FALLBACK_TEXT = {
     "lm_gauge": ("off", "on"),
     "eki_init": ("around", "sobol", "lhs"),
     "eki_perturb": ("yes", "no"),
+    "kpcm_pm": ("off", "on"),
 }
 
 _BLOCK = re.compile(
