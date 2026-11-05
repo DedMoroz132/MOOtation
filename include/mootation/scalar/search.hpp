@@ -84,6 +84,10 @@
 //     then local searches at the end, as polish.
 //   SRCH-8. A local search's result is the inner solver's answer; worse means
 //     more violating, then larger f (Deb).
+//   SRCH-9. memetic: a phase that spends nothing ends the strategy (as RST-8):
+//     the global solver stopped by its own criteria evaluates nothing new when
+//     rerun, and with every archive point already a local start there is
+//     nothing left to search from.
 // ============================================================================
 
 #include <algorithm>
@@ -483,6 +487,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     };
     try {
         while (search::left(ev) > 0) {
+            const double before = ev.used();
             g.fresh = std::min(every, search::left(ev));                                          // SRCH-7
             g.allowance += g.fresh;
             strategy::round(ev, global, {g}, 1, pop_size);
@@ -537,6 +542,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
                 if (b.ok) log.add(b.x, b.f, searches + static_cast<long long>(q));
             }
             searches += static_cast<long long>(res.size());
+            if (ev.used() == before) break;                                                       // SRCH-9
         }
     } catch (const BudgetSpent&) {
     }

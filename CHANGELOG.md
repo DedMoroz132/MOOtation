@@ -16,6 +16,10 @@ always listed under **Changed** or **Removed**.
   and the target as before. `ipop`, `bipop` and `bipop_2009` take it with
   `keep_points = best` (default `all`): the archive of every point of a
   budget of 10^6 D does not fit in memory (about 0.4 KB a point at D = 10).
+- Fixed (`scalar/search.hpp`; task 18): `memetic` ends when a phase spends
+  nothing (SRCH-9). A global solver stopped by its own criteria evaluates
+  nothing new when rerun; with every archive point already a local start the
+  loop went on without end below the budget.
 - Added (task 20, §20.2.1): `suite/wrap.hpp`, a permutation, rotation and
   shift over any Native problem. The run sees x; the problem
   is evaluated at y = T(x): shift u = x - s, rotate v = c + Q (u - c),

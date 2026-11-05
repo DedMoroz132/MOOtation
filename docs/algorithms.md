@@ -190,7 +190,8 @@ constant temperature and the step adjusted to an acceptance ratio of 0.5.
 earlier evaluations coming from the archive when it runs again (SRCH-6).
 `memetic` grows the global solver's run by `memetic_every` evaluations at a
 time and runs `local_solver` from the best (or best and spread) points after
-each piece, `local_share` of the budget in all.
+each piece, `local_share` of the budget in all; a piece that spends nothing
+ends it (SRCH-9).
 
 The cores are multi-objective. With `n_objs = 1`, 22 of them refuse in
 `Settings::validate()` and name their reason (`single_objective_refusal`,

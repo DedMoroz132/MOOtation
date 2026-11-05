@@ -9,7 +9,8 @@
 //     every one;
 //   - halving: ⌈log2 8⌉ = 3 rounds of 8, 4, 2 arms, each round's allowance
 //     B/(|S| 3) more per arm (Jamieson & Talwalkar, Algorithm 1);
-//   - memetic: de with nelder_mead as it goes;
+//   - memetic: de with nelder_mead as it goes; a phase that spends nothing
+//     ends it (SRCH-9: a box of zero width, every point the same one);
 //   - every strategy within its budget, also with lshade (whose run depends
 //     on the budget) inside: the reruns' new points capped (STRAT-6).
 // ============================================================================
@@ -170,6 +171,29 @@ void memetic()
               setting(r, "phases") + " phases, " + setting(r, "local_searches") + " local searches");
 }
 
+// SRCH-9: in a box of zero width every point is the same one, the archive's
+// only point; after the first phase nothing is new and nothing is left to
+// start from. The strategy ends below its budget only by the guard (the loop
+// otherwise ends when the budget is spent).
+void memetic_without_progress()
+{
+    auto calls = std::make_shared<long long>(0);
+    sc::Problem P;
+    P.lo = {0.5, 0.5};
+    P.hi = {0.5, 0.5};
+    P.m = 1;
+    P.evaluate = [calls](const Vec& x, Vec& f, Vec&) {
+        ++*calls;
+        f = {x[0] * x[0] + x[1] * x[1]};
+    };
+    const sc::Result r = sc::run("memetic", P, 1e-6, false, 0.0, 10, 100000, 3,
+                                 {{"inner", word(kNM)}, {"local_solver", word(kNM)}, {"memetic_every", number(500)}},
+                                 {}, 0, {});
+    check(r.evaluations < 100000 && *calls == r.evaluations && std::stoll(setting(r, "phases")) <= 3,
+          "memetic in a box of zero width: ends after " + setting(r, "phases") + " phases, " +
+              std::to_string(r.evaluations) + " evaluations (budget 100000)");
+}
+
 void within_the_budget()
 {
     std::uint64_t h = 1469598103934665603ull;          // the runs' answers, the same with MSVC and clang
@@ -202,6 +226,7 @@ int main()
     walks();
     halving();
     memetic();
+    memetic_without_progress();
     within_the_budget();
     std::printf("%s (%d failed)\n", g_failed == 0 ? "PASS" : "FAIL", g_failed);
     return g_failed == 0 ? 0 : 1;
