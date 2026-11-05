@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 20, §20.2.1): the wrappers of `suite/wrap.hpp` in runs at one
+  objective. `[campaign] wrap_shift`, `wrap_rotate`, `wrap_perm` (an instance
+  number, 0 off, or `"by_run"`: the run's seed) and `wrap_shift_scale` put
+  every problem behind them in both engines, with the same files: the box,
+  the start and the answer in the wrapped coordinates, `meta.json`'s
+  `so.wrap` the instances; a rotation of a problem with a box (WRAP-3) or any
+  wrapper on a problem with blocks (WRAP-7) is incompatible.
+  `minimize(..., wrap={...})` does the same for a user's function
+  (benchmarks/wrap.py); `_core.Wrapped` is the C++ wrapper over a suite
+  problem. `Wrapped` passes the problem's gradient, gauge directions and
+  start through the map. Off by default: runs without the keys are
+  unchanged.
 - Added (`scalar/evaluator.hpp`; task 18, group 3g): the evaluator's lean
   mode, opt-in, for one objective: no archive, the best and the last point
   only, no lookup of repeated points, the counts, the records, the observer

@@ -16,7 +16,11 @@
 // its gradient where it is not a sum of squares (lj_cluster) and its gauge
 // basis (lm_gauge = on); a bbob problem at the instance
 // [campaign] bbob_instance gives (by_run: the run's seed; fixed: 1), f_opt
-// that instance's.
+// that instance's. With [campaign] wrap_shift, wrap_rotate or wrap_perm the
+// problem is seen through the wrappers (suite/wrap.hpp; task 20, §20.2.1):
+// the run's box, its start and its answer in the wrapped coordinates, f_opt
+// the problem's; a wrapper the problem refuses (a rotation of a problem
+// with a box, WRAP-3; blocks, WRAP-7) makes the job incompatible.
 // ============================================================================
 
 #include <algorithm>
@@ -31,6 +35,7 @@
 #include "../run_ledger.hpp"
 #include "../scalar/scalar.hpp"
 #include "../so_metrics.hpp"
+#include "../suite/wrap.hpp"
 #include "job_run.hpp"
 #include "jobs.hpp"
 #include "registry.hpp"
@@ -74,6 +79,12 @@ public:
             incompatible_ = true;
             return out;
         }
+        if (!wrap_refusal_.empty()) {
+            out.status = "failed";
+            out.error = wrap_refusal_ + " (incompatible by construction)";
+            incompatible_ = true;
+            return out;
+        }
         ledger_ = std::make_unique<RunLedger>(1, static_cast<std::size_t>(p_.n_var), false, nullptr, nullptr, nullptr,
                                               nullptr);
         ledger_->set_reads({}, {});
@@ -81,7 +92,7 @@ public:
             scalar::Start st;
             if (local(job_.algorithm) && !p_.x0.empty()) {
                 st.has_x0 = true;
-                st.x0 = p_.x0;
+                st.x0 = wrapped_ ? wrapped_->map().to_run(p_.x0) : p_.x0;
             }
             const scalar::Result res =
                 scalar::run(job_.algorithm, problem(), kEqTol, false, 0.0, static_cast<int>(job_.pop), job_.budget(),
@@ -173,6 +184,7 @@ public:
         s.set("improvements", V::integer(static_cast<std::int64_t>(records.size())));
         if (cec_ > 0) s.set("peaks", peaks_);
         if (spec_.stop_at > 0.0) s.set("stop_at", V::number(spec_.stop_at));
+        if (wrapped_) s.set("wrap", wrap_meta());
         meta.set("so", s);
         V fin = V::object();
         if (!records.empty()) {
@@ -216,7 +228,8 @@ private:
         f_opt_ = p_.f_opt;
         json::Value spec = *p_.spec;
         const json::Value* fam = spec.find("family");
-        if (fam && fam->s == "bbob") {
+        const bool bbob = fam && fam->s == "bbob";
+        if (bbob) {
             instance_ = spec_.bbob_instance == "by_run" ? job_.seed : 1;
             spec.set("bbob_iid", json::Value::integer(*instance_));
             const suite::Spec s = spec_of(spec);
@@ -224,6 +237,46 @@ private:
         }
         native_ = std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));
         cec_ = spec_of(spec).cec_problem;
+        suite::WrapSpec w;
+        w.name = job_.problem;
+        w.shift = wrap_instance(spec_.wrap_shift);
+        w.rotate = wrap_instance(spec_.wrap_rotate);
+        w.perm = wrap_instance(spec_.wrap_perm);
+        w.shift_scale = spec_.wrap_shift_scale;
+        if (w.shift == 0 && w.rotate == 0 && w.perm == 0) return;
+        std::vector<double> x_opt;
+        if (bbob) {                                      // WRAP-2, WRAP-3: bbob's optimum, defined on R^n
+            const suite::Spec s = spec_of(spec);
+            x_opt = s.bbob.empty() ? suite::bbob::instance(s.bbob_fid, s.bbob_iid, s.n_var).x_opt : s.bbob[0].x_opt;
+            w.defined_everywhere = true;
+        }
+        try {
+            suite::WrapMap map(w, p_.n_var, 1, p_.bounds, x_opt, p_.x0);
+            wrapped_ = std::make_shared<suite::Wrapped>(native_, std::move(map));
+            native_ = wrapped_;
+        } catch (const std::invalid_argument& e) {
+            wrap_refusal_ = e.what();
+        }
+    }
+
+    // [campaign] wrap_*: an instance number, or the run's seed ("by_run")
+    int wrap_instance(const json::Value& v) const
+    {
+        return v.kind == json::Value::Kind::String ? static_cast<int>(job_.seed) : static_cast<int>(v.i);
+    }
+
+    // meta.json's so.wrap: the instances and their key (WrapMap::describe)
+    json::Value wrap_meta() const
+    {
+        using V = json::Value;
+        const suite::WrapSpec& w = wrapped_->map().spec();
+        V o = V::object();
+        o.set("shift", V::integer(w.shift));
+        o.set("rotate", V::integer(w.rotate));
+        o.set("perm", V::integer(w.perm));
+        o.set("shift_scale", V::number(w.shift_scale));
+        o.set("instance", V::string(wrapped_->map().describe()));
+        return o;
     }
 
     // A CEC 2013 problem's peaks found (so_metrics.hpp, peaks_found) at the
@@ -276,7 +329,7 @@ private:
     scalar::Problem problem()
     {
         scalar::Problem P;
-        for (const auto& [lo, hi] : p_.bounds) {
+        for (const auto& [lo, hi] : wrapped_ ? wrapped_->map().bounds() : p_.bounds) {
             P.lo.push_back(lo);
             P.hi.push_back(hi);
         }
@@ -459,6 +512,8 @@ private:
     Process process_;
     std::chrono::steady_clock::time_point start_;
     std::shared_ptr<suite::Native> native_;
+    std::shared_ptr<suite::Wrapped> wrapped_;           // [campaign] wrap_*: native_ through the wrappers
+    std::string wrap_refusal_;
     std::optional<double> f_opt_;
     std::optional<std::int64_t> instance_;
     std::unique_ptr<RunLedger> ledger_;

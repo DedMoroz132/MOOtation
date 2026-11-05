@@ -13772,6 +13772,137 @@ def a_campaign_at_one_objective_writes_the_same_files_from_both_engines():
         assert (Path(td) / "files" / "MGH01_n02_m02_x1_1D" / "lm" / "run_1" / "improvements.csv").is_file()
 
 
+_WRAP_TOML = """algorithms = [ { name = "cmaes", pop = 0, gens = 0 }, { name = "lbfgsb", pop = 0, gens = 0 },
+               { name = "nelder_mead", pop = 0, gens = 0 } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 2
+problems = ["bbob01_n02_1D", "bbob21_n05_1D", "MGH01_n02_m02_x1_1D", "cec2013_p04_n02_1D",
+            "lj_cluster_N13_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 600
+storage = "store"
+wrap_shift = 1
+wrap_rotate = "by_run"
+wrap_perm = 2
+"""
+
+
+@test
+def a_campaign_at_one_objective_runs_through_the_wrappers():
+    """Task 20, §20.2.1: [campaign] wrap_shift, wrap_rotate ("by_run": the
+    run's seed) and wrap_perm put every problem of a campaign at one objective
+    behind the wrappers of suite/wrap.hpp, in both engines, with the same
+    files. bbob (defined on R^n, WRAP-3) and the box-less MGH01 run (so.wrap
+    names the instances); the last trajectory record's f is the problem's at
+    T(x) of its x, bit for bit. A CEC 2013 problem with a box refuses the
+    rotation (WRAP-3), and so does lj_cluster, whose blocks (WRAP-7, test_wrap)
+    come second: incompatible, in both engines alike. Bad values of the keys are refused by name."""
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("Wrapped") is None:
+        print("  skip  a_campaign_at_one_objective_runs_through...: no C++ engine or _core.Wrapped"); return
+    from mootation import _core
+    from mootation.benchmarks.registry import PROBLEMS as P1
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_WRAP_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert (cp["done"], cp["failed"]) == (cc["done"], cc["failed"]), (cp, cc)
+        reasons = {}
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            ma = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            if ma["status"] == "failed":
+                assert ma.get("incompatible"), ma
+                reasons.setdefault(job.problem, set()).add(ma["error"])
+                continue
+            w = ma["so"]["wrap"]
+            assert (w["shift"], w["rotate"], w["perm"]) == (1, job.seed, 2) and job.problem in w["instance"], w
+            p = P1[job.problem]
+            native = p.native
+            bbob = native.spec.get("family") == "bbob"
+            if bbob:
+                spec_n = dict(native.spec, bbob_iid=ma["so"]["instance"])
+                native = _core.Native({k: spec_n[k] for k in ("family", "n_var", "n_obj", "bbob_fid", "bbob_iid")})
+            wrapped = _core.Wrapped(native, job.problem, 1, job.seed, 2, 1.0, bbob, [tuple(v) for v in p.bounds],
+                                    list(native.spec["bbob"][0]["x_opt"]) if bbob else [],
+                                    list(p.x0) if p.x0 is not None else [])
+            last = json.loads((b / "trajectory.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+            x = [last[f"x{j + 1}"] for j in range(p.n_vars)]        # full precision (final.csv has 10 digits)
+            assert last["f"] == ma["final"]["f"], (job.problem, job.key)
+            assert wrapped.evaluate(x)[0] == last["f"], (job.problem, job.key)
+            assert native.evaluate(wrapped.to_problem(x))[0] == last["f"], (job.problem, job.key)
+        assert any("WRAP-3" in e for e in reasons["cec2013_p04_n02_1D"]), reasons
+        assert all("WRAP-3" in e for e in reasons["lj_cluster_N13_1D"]), reasons   # its box first
+        assert "bbob01_n02_1D" not in reasons and "bbob21_n05_1D" not in reasons, reasons
+        for old, bad, key in (("wrap_shift = 1", "wrap_shift = -1", "wrap_shift"),
+                              ("wrap_perm = 2", 'wrap_perm = "fixed"', "wrap_perm"),
+                              ("wrap_perm = 2", "wrap_perm = 2\nwrap_shift_scale = 0", "wrap_shift_scale")):
+            path = Path(td) / "bad.toml"
+            path.write_text(_WRAP_TOML.replace("NAME", "bad").replace(old, bad), encoding="utf-8")
+            try:
+                C.campaign_spec(load(path))
+            except Exception as e:                      # noqa: BLE001
+                assert f"campaign.{key}" in str(e), e
+            else:
+                raise AssertionError(bad)
+
+
+@test
+def minimize_runs_a_users_problem_through_the_wrappers():
+    """Task 20, §20.2.1: minimize(..., wrap={...}) runs fn at y = T(x) in the
+    wrapped box (benchmarks/wrap.py): the answer's f is fn at T(x) of its x;
+    a perm only is a relabelling, so nelder_mead on a separable sum finds the
+    same minimum; the gradient is pulled back (lbfgsb on a box-less rotated
+    quadratic reaches its minimum at T^-1 of the problem's); a rotation of a
+    problem with a box, batch, and an unknown key are refused."""
+    if _core_with("run") is None or not _have_numpy():
+        print("    (skipped: no extension or NumPy)"); return
+    import numpy as np
+    from mootation import minimize
+    from mootation.benchmarks.wrap import WrapMap
+    c = np.array([0.3, -0.2, 0.1, 0.4])
+
+    def f(y):
+        return [float(np.sum((np.asarray(y) - c) ** 2 * np.arange(1, 5)))]
+
+    box = [(-1.0, 1.0)] * 4
+    w = {"name": "toy", "shift": 1, "perm": 3}
+    res = minimize(f, box, 1, algorithm="nelder_mead", seed=1, max_evaluations=4000, wrap=w)
+    m = WrapMap("toy", 4, 1, box, perm=3, shift=1)
+    x = list(res.variables[0])
+    assert res.objectives[0][0] == f(m.to_problem(x))[0] and res.objectives[0][0] < 1e-8, res.objectives
+    assert "perm 3" in res.wrap and "'toy'" in res.wrap and all(lo <= v <= hi for v, (lo, hi) in zip(x, m.bounds()))
+    free = [(-np.inf, np.inf)] * 4
+    Q = WrapMap("toy", 4, 1, free, rotate=2)
+    res = minimize(f, free, 1, algorithm="lbfgsb", x0=[0.0] * 4, max_evaluations=2000,
+                   grad=lambda y: list(2.0 * (np.asarray(y) - c) * np.arange(1, 5)),
+                   wrap={"name": "toy", "rotate": 2})
+    assert np.allclose(Q.to_problem(res.variables[0]), c, atol=1e-6) and res.grad_calls > 0, res.variables
+    for kw, why in ((dict(wrap={"name": "toy", "rotate": 1}), "WRAP-3"),
+                    (dict(wrap={"name": "toy", "shift": 1}, batch=lambda X: [f(x) for x in X]), "batch"),
+                    (dict(wrap={"name": "toy", "turn": 1}), "a dict of")):
+        try:
+            minimize(f, box, 1, algorithm="nelder_mead", max_evaluations=100, **kw)
+        except ValueError as e:
+            assert why in str(e), e
+        else:
+            raise AssertionError(kw)
+
+
 _POP_TOML = """algorithms = [ { name = "de", pop = 0, gens = 0 }, { name = "lshade", pop = 0, gens = 0 },
                { name = "pso", pop = 0, gens = 0 }, { name = "sep_cmaes", pop = 0, gens = 0 } ]
 [run]
