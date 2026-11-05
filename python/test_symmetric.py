@@ -86,8 +86,80 @@ def main() -> int:
                   f"{sym.name(row)}: its blocks as objectives = NumPy's, and its spec and pickle make them again")
     check(abs(sym.resolution(1e2) - 2.44) < 0.005 and abs(sym.resolution(1e4) - 1.63) < 0.005,
           "resolution limit: Istratov & Vyvenko's Table I")
+    blocks_instances()
     print(f"test_symmetric: {'FAILED, ' + str(failed) + ' check(s)' if failed else 'all checks passed'}")
     return 1 if failed else 0
+
+
+_BLOCKS_TOML = """algorithms = [ { name = "nsga2", pop = 12, gens = 4 }, { name = "moead", pop = 10, gens = 4 } ]
+[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["sumexp_K3_r4_snr1e3_blocks_2D", "chaboche1d_N3_s2_blocks_3D"]
+[campaign]
+out = "res/{name}"
+storage = "store"
+"""
+
+
+def blocks_instances() -> None:
+    """Task 19, §19.5: the registry's blocks instances (registry.py,
+    _register_blocks): B objectives of the base's residual blocks, the frame
+    [0, f(x0)] (BOR-1), every point's f_b the base's 1/2 ||r_b||^2; a small
+    campaign of them gives the same files from both engines."""
+    import tempfile
+    from pathlib import Path
+    from mootation.benchmarks import registry as R
+    for base in R.BLOCK_BASES:
+        b = R.PROBLEMS[base]
+        sizes = list(b.native.res_blocks)
+        key = base[:-len("_1D")] + f"_blocks_{len(sizes)}D"
+        q = R.PROBLEMS.get(key)
+        ok = q is not None and q.n_obj == len(sizes) and q.ideal == (0.0,) * len(sizes)
+        if ok:
+            x0 = list(b.x0)
+            r, at, want = b.native.residuals(x0), 0, []
+            for size in sizes:
+                t = 0.0
+                for v in r[at:at + size]:
+                    t += v * v
+                want.append(0.5 * t)
+                at += size
+            ok = list(q.nadir) == want and list(q.evaluate(x0)) == want and q.bounds == b.bounds
+        check(ok, f"{key}: {len(sizes)} objectives of {base}'s blocks, the frame [0, f(x0)] (BOR-1)")
+    from mootation.run import campaign as C
+    from mootation.run.config import load, validate
+    if C.engine_path() is None:
+        print("  skip  the blocks campaign in both engines: no C++ engine")
+        return
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_run_layer import _same_run
+    import os
+    with tempfile.TemporaryDirectory() as td:
+        os.environ["MOOTATION_REFS_DIR"] = str(Path(td) / "refs")     # never the user's references
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_BLOCKS_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            problems = validate(cfg)
+            if problems:
+                check(False, f"the blocks campaign's config: {problems}")
+                return
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        same = len(jobs) == 4 and cp["done"] == cc["done"] == 4
+        for job in jobs:
+            try:
+                _same_run(C.run_dir_of(rp, job), C.run_dir_of(rc, job))
+            except AssertionError:
+                same = False
+        check(same, "a campaign of the blocks instances (nsga2, moead): the same files from both engines")
 
 
 if __name__ == "__main__":

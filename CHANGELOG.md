@@ -108,6 +108,12 @@ always listed under **Changed** or **Removed**.
   `result.sum_of_squares`; `Native.res_blocks` (set by `chaboche1d` and
   `sumexp`), and `_core.Native(spec)` with `"objectives": "blocks"`.
   Problems without the keys are made and evaluated as before.
+- Added: four registry problems of residual blocks as objectives (task 19,
+  §19.5): `chaboche1d_N2_snr1e2_blocks_3D`, `chaboche1d_N3_s2_blocks_3D`,
+  `sumexp_K3_r4_snr1e3_blocks_2D`, `sumexp_K3_r4_s2_blocks_2D`, in campaigns
+  of both engines (the C++ engine makes `"objectives": "blocks"` specs, as
+  the extension does); hypervolume in the frame of the base's start. The
+  earlier rows unchanged.
 - Added: symmetries in the single-objective population methods (task 19,
   §19.2; `scalar/symmetry.hpp`, `mootation.symmetry`). A problem's
   `sym_blocks`, `canon` and `align` (`minimize(...)`; in campaigns the

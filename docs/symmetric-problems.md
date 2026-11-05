@@ -117,7 +117,11 @@ spec and pickle carry the two keys). Readings BO-1 to BO-5 in the header: f_b's 
 f_b against ½‖r‖² (within 2γ_{n_res}; one block bit for bit), above 8 blocks a warning, what passes
 through (residuals, symmetries, start), the weights the adapter's. Task 20's wrappers (`wrap.hpp`)
 pass the residual blocks through (WRAP-8); a problem with blocks of coordinates or a canon is
-refused under them (WRAP-7). Not yet: the problems as campaign instances of their own.
+refused under them (WRAP-7). The registry has four such problems of their own, for campaigns of
+the multi-objective cores in both engines: `chaboche1d_N2_snr1e2_blocks_3D`, `chaboche1d_N3_s2_blocks_3D`,
+`sumexp_K3_r4_snr1e3_blocks_2D`, `sumexp_K3_r4_s2_blocks_2D` — bases whose blocks compete (noisy data, a
+smaller student). No front is known: hypervolume only, in the frame [0, f(x0)] of the base's start
+(BOR-1, `benchmarks/registry.py`).
 
 | check | where |
 |---|---|
@@ -125,4 +129,5 @@ refused under them (WRAP-7). Not yet: the problems as campaign instances of thei
 | f_b from one call of the residuals, block by block, bit for bit; Σ_b f_b within 2γ_{n_res} of ½‖r‖²; one block of weight 1 the objective at M = 1 bit for bit | `tests/test_blocks_objectives.cpp` |
 | the weights; residuals, canon, start passed through; under perm and shift a problem without blocks of coordinates keeps res_blocks and f_b are the wrapped residuals's, chaboche1d refused; the refusals | `tests/test_blocks_objectives.cpp` |
 | f_b from C++ = NumPy's to 10⁻¹² at every registered instance with blocks; the spec and pickle make the adapter again | `python/test_symmetric.py` |
+| the registry's blocks instances: B objectives of the base's blocks, the frame [0, f(x0)]; a campaign of them (nsga2, moead) gives the same files from both engines | `python/test_symmetric.py` |
 | `minimize(objectives="blocks")` under nsga2 and moead: every answer point's f_b and `sum_of_squares` as above; one block = the run at one objective bit for bit; the refusals and the warning | `python/test_run_layer.py` |

@@ -159,7 +159,11 @@ def spec(name: str, p, rotated=None) -> dict | None:
         return {"family": "CEC2013", "n_var": p.n_vars, "n_obj": 1, "cec_problem": p.native.spec["cec_problem"]}
     if p.native is not None and "sym" in p.native.spec:   # task 19 (symmetric.py; registry.py)
         s = p.native.spec
-        return {"family": s["family"], "n_var": s["n_var"], "n_obj": 1, "sym": s["sym"]}
+        d = {"family": s["family"], "n_var": s["n_var"], "n_obj": 1, "sym": s["sym"]}
+        for k in ("objectives", "block_weights"):            # its residual blocks as objectives (task 19, §19.5)
+            if k in s:
+                d[k] = s[k]
+        return d
     if p.native is not None and p.native.spec["family"] in ("MGH", "NIST"):   # made so (registry.py)
         s = p.native.spec
         return ({"family": "MGH", "n_var": s["n_var"], "n_obj": 1, "mgh_id": s["mgh_id"], "mgh_m": s["mgh_m"]}

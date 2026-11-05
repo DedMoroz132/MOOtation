@@ -30,6 +30,7 @@
 #include "../numpy_sum.hpp"
 #include "../random.hpp"
 #include "../store/crc32c.hpp"
+#include "../suite/blocks_objectives.hpp"
 #include "../suite/instances.hpp"
 #include "../suite/suite.hpp"
 
@@ -864,7 +865,13 @@ inline std::shared_ptr<suite::Native> make_native(const RegistryProblem& p)
         return std::make_shared<FailingNative>(std::move(base), *p.failing_region, p.bounds);
     }
     if (!p.spec) throw std::invalid_argument(p.name + ": not a problem of the C++ suite");
-    return std::shared_ptr<suite::Native>(suite::make(spec_of(*p.spec)));
+    std::shared_ptr<suite::Native> made(suite::make(spec_of(*p.spec)));
+    // "objectives": "blocks" — its residual blocks as objectives (task 19, §19.5; as python/suite_module.cpp's native_of)
+    const json::Value* how = p.spec->find("objectives");
+    if (how == nullptr || how->s == "one") return made;
+    if (how->s != "blocks") throw std::invalid_argument(p.name + ": objectives = 'one' or 'blocks', not '" + how->s + "'");
+    const json::Value* w = p.spec->find("block_weights");
+    return std::make_shared<suite::BlocksObjectives>(std::move(made), w ? detail::floats_of(w) : std::vector<double>{});
 }
 
 // what the core of one run evaluates: the problem (make_native), a noisy

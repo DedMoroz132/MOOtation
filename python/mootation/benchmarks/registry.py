@@ -2540,6 +2540,46 @@ _register_symmetric()
 
 
 # =============================================================
+#  Residual blocks as objectives (task 19, §19.5; suite/blocks_objectives.hpp)
+# =============================================================
+#  chaboche1d and sumexp instances whose blocks compete — noisy data or a
+#  student smaller than the teacher — as problems of B objectives f_b = 1/2
+#  ||r_b||^2 (the base's res_blocks), for the multi-objective cores. No front
+#  is known: hypervolume only, in the frame [0, f(x0)] of the base's start
+#  (BOR-1: each f_b >= 0, and a point worse than the start in every block is
+#  of no use), the reference point 1.1 of it; the budget of their M
+#  (_budget). The name: the base's with _blocks_<B>D for _1D.
+BLOCK_BASES = ("chaboche1d_N2_snr1e2_1D", "chaboche1d_N3_s2_1D", "sumexp_K3_r4_snr1e3_1D", "sumexp_K3_r4_s2_1D")
+
+
+def _register_blocks():
+    try:
+        from .. import _core
+    except ImportError:
+        return
+    if not hasattr(_core.Native, "res_blocks"):         # an extension built before §19.5
+        return
+    for base in BLOCK_BASES:
+        b = PROBLEMS.get(base)
+        if b is None or b.native is None:
+            continue
+        nat = _core.Native({**b.native.spec, "objectives": "blocks"})
+        M = nat.n_obj
+        key = base[:-len("_1D")] + f"_blocks_{M}D"
+        nadir = tuple(float(v) for v in nat.evaluate(list(b.x0)))
+        pop, ng = _budget(M)
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=nat.n_var, bounds=list(b.bounds), n_obj=M,
+            evaluate=nat.evaluate, constraints=_no_cons, evaluate_batch=nat.evaluate_batch,
+            hv_ref_raw=tuple(1.1 * v for v in nadir), hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+            ideal=(0.0,) * M, nadir=nadir, pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+            x0=b.x0, native=nat)
+
+
+_register_blocks()
+
+
+# =============================================================
 #  The CEC 2013 niching benchmark (task 18, stage 3, §3.5)
 # =============================================================
 #  Li, Engelbrecht, Epitropakis 2013 (suite/cec2013.hpp): its twenty problems,
