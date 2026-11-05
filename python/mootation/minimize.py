@@ -39,7 +39,10 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
                "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau", "n_starts",
-               "threads", "min_dist", "min_df", "start_share", "bipop_large")
+               "threads", "min_dist", "min_df", "start_share", "bipop_large", "mlsl_n", "mlsl_sigma",
+               "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature", "bh_step",
+               "bh_accept_rate", "bh_interval", "ils_step", "ils_restart", "ils_temperature", "memetic_every",
+               "memetic_points", "local_share")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
@@ -53,13 +56,13 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
               "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
-              "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds")
+              "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept", "memetic_pick")
 # Polishing at the end of the budget (task 9, A2; mootation.scalar.polish):
 # every algorithm takes them, and minimize() does the polishing itself.
 POLISH_KNOBS = ("polish", "polish_share", "polish_points")
 # A strategy's inner solver (task 18, stage 3; scalar/strategy.hpp): a dict
 # {"solver": name, its knobs ...}, handed over as its canonical JSON text.
-SOLVER_KNOBS = ("inner",)
+SOLVER_KNOBS = ("inner", "local_solver")
 
 
 def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constraints=None,

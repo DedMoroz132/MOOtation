@@ -149,6 +149,11 @@ with the same result, bit for bit; a point two starts evaluate counts once.
 | `multistart` | `inner`, `n_starts` (10), `start_points` (`sobol`, `lhs`, `uniform`, `halton_rand`, `sobol_owen`), `threads` (1), `min_dist` (1e-3), `min_df` (1e-8) |
 | `ipop` (Auger & Hansen, CEC 2005) | `cma_weights`, `cma_cmu`, `cma_sigma0` (0.5 of the box's width), `start_share` (0), `cma_bounds` (`penalty`, `none`), `min_dist`, `min_df` |
 | `bipop`, `bipop_2009` (Hansen, GECCO 2009) | as `ipop`, `cma_sigma0` 0.2, `start_share` 0.1, and `bipop_large` (9) |
+| `mlsl` (Rinnooy Kan & Timmer 1987) | `inner`, `mlsl_n` (100), `mlsl_sigma` (4), `mlsl_gamma` (0.2), `mlsl_tau` (0), `mlsl_nu` (0), `threads`, `start_budget` (0) |
+| `ils` (Lourenço, Martin & Stützle 2001) | `inner`, `ils_accept` (`better`, `rw`, `restart`, `lsmc`), `ils_step` (0.1 of the width), `ils_restart` (10), `ils_temperature` (1), `start_budget` |
+| `basin_hopping` (Wales & Doye 1997) | `inner`, `bh_temperature` (1), `bh_step` (0.05 of the width), `bh_accept_rate` (0.5), `bh_interval` (10), `start_budget` |
+| `halving` (Jamieson & Talwalkar 2016) | `inner`, `n_starts` (16), `start_points`, `threads` |
+| `memetic` | `inner` (the global solver), `local_solver`, `memetic_every` (1000), `memetic_points` (1), `memetic_pick` (`best`, `spread`), `local_share` (0.2), `start_budget`, `threads` |
 
 `multistart` shares the budget evenly among `n_starts` starts in one round:
 start 0 is the inner solver's own run (its plan, or `x0`), the others start
@@ -168,6 +173,20 @@ positive weights and its c_μ. The start mean is uniform in the box less
 `cma_bounds = none` evaluates points beyond the box, for a function defined
 there (bbob). A shorter budget gives the same run cut short. Every run is in
 the settings (`restarts`: regime, λ, σ⁰, evaluations, what stopped it).
+
+The strategies around a local solver (`scalar/search.hpp`): `mlsl` grows a
+uniform sample and starts the inner solver only from points with no lower
+sample point within the critical distance r_k (Rinnooy Kan & Timmer, part
+II, (2) with part I's Γ, SRCH-1); with `mlsl_nu > 0` no point near a minimum
+already found starts again, which keeps the local searches finite. `ils`
+perturbs the current local minimum and searches from there, accepting by
+`ils_accept`; `basin_hopping` is that walk with Metropolis acceptance at a
+constant temperature and the step adjusted to an acceptance ratio of 0.5.
+`halving` runs `n_starts` arms and keeps the better half each round, an arm's
+earlier evaluations coming from the archive when it runs again (SRCH-6).
+`memetic` grows the global solver's run by `memetic_every` evaluations at a
+time and runs `local_solver` from the best (or best and spread) points after
+each piece, `local_share` of the budget in all.
 
 The cores are multi-objective. With `n_objs = 1`, 22 of them refuse in
 `Settings::validate()` and name their reason (`single_objective_refusal`,

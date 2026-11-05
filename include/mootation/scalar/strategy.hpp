@@ -24,7 +24,8 @@
 // point of the archive. Each start's own answer goes to the minima log, which
 // groups the starts that found the same minimum (min_dist, min_df).
 //
-// THE STRATEGIES (and ipop, bipop, bipop_2009: restarts.hpp):
+// THE STRATEGIES (and ipop, bipop, bipop_2009: restarts.hpp; halving, mlsl,
+// basin_hopping, ils, memetic: search.hpp):
 //   multistart  n_starts starts in one round, the budget shared evenly:
 //               start 0 is the inner solver's own (its plan, or x0); start k
 //               >= 1 from point k of a design (start_points: sobol, lhs,
@@ -48,6 +49,10 @@
 //     f, else is a minimum of its own; a minimum keeps its best point.
 //   STRAT-5. The run's equalities' tolerance schedule (eq_tol0) is the inner
 //     solver's, on its own allowance.
+//   STRAT-6. A start may spend on new points at most what it was given (its
+//     allowance, or less where a strategy reruns a start whose earlier
+//     points are free, search.hpp SRCH-6): past it the view ends the inner
+//     run as the budget does, so a round never spends past the run's budget.
 // ============================================================================
 
 #include <algorithm>
@@ -56,6 +61,7 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -97,7 +103,11 @@ public:
     };
     std::vector<Known> own;           // the start's points, in the order it met them
 
-    explicit View(const Evaluator& parent) : parent_(parent), P_(parent.P)
+    // fresh: what the start may spend on new points (evaluations + grad_cost
+    // * gradient calls); past it a call throws BudgetSpent, which ends the
+    // inner run as its budget would (STRAT-6)
+    explicit View(const Evaluator& parent, double fresh = std::numeric_limits<double>::infinity())
+        : parent_(parent), P_(parent.P), fresh_(fresh)
     {
         problem = P_;
         problem.blocks.clear();       // r~ comes scaled already (SO-1)
@@ -165,6 +175,13 @@ private:
     const Problem& P_;
     std::unordered_map<std::string, std::size_t> where_;
     std::vector<Event> events_;
+    double fresh_, spent_ = 0.0;
+
+    void charge(double cost)
+    {
+        if (spent_ + cost > fresh_) throw BudgetSpent{};
+        spent_ += cost;
+    }
 
     static std::string key_of(const Vec& x)
     {
@@ -189,6 +206,7 @@ private:
 
     void values(Known& k, std::size_t at, bool joint)
     {
+        charge(joint ? 1.0 + parent_.grad_cost : 1.0);
         k.f.assign(static_cast<std::size_t>(P_.m), 0.0);
         k.g.assign(static_cast<std::size_t>(P_.n_cons), 0.0);
         if (P_.has_residuals()) {
@@ -224,6 +242,7 @@ private:
 
     void gradient(Known& k, std::size_t at)
     {
+        charge(parent_.grad_cost);
         if (P_.has_residuals()) {
             if (P_.jacobian) {
                 P_.jacobian(k.x, k.J);
@@ -309,11 +328,14 @@ inline Inner inner_of(const std::string& knob, const Knob& v)
     return in;
 }
 
-// What a start runs: its allowance, its generator's seed, its start.
+// What a start runs: its allowance (what the inner solver counts), its
+// generator's seed, its start, and what it may spend on new points (fresh;
+// -1: its allowance).
 struct StartSpec {
     long long allowance = 0;
     unsigned seed = 0;
     Start start;
+    long long fresh = -1;
 };
 
 // One round (ROUNDS): every start's inner run on its view, in `threads`
@@ -324,7 +346,9 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
 {
     const std::size_t n = starts.size();
     std::vector<std::unique_ptr<View>> views;
-    for (std::size_t k = 0; k < n; ++k) views.push_back(std::make_unique<View>(ev));
+    for (std::size_t k = 0; k < n; ++k)
+        views.push_back(std::make_unique<View>(
+            ev, static_cast<double>(starts[k].fresh >= 0 ? starts[k].fresh : starts[k].allowance)));
     std::vector<Result> out(n);
     std::vector<std::exception_ptr> error(n);
     const double eq_tol = ev.eq_tol_end, eq_tol0 = ev.eq_tol0;
@@ -489,9 +513,23 @@ private:
 
 inline const std::vector<std::string>& strategy_names()
 {
-    static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009"};
+    static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
+                                            "basin_hopping", "ils", "memetic"};
     return v;
 }
+
+// halving, mlsl, basin_hopping, ils, memetic (search.hpp, included at the end)
+inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
+                       unsigned seed, const Knobs& knobs, Observer observer, int record_every);
+inline Result run_walk(const std::string& name, const Problem& P, double eq_tol, bool has_tol0, double eq_tol0,
+                       int pop_size, long long budget, unsigned seed, const Knobs& knobs, Observer observer,
+                       int record_every, const Start& start);
+inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                          long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
+                          const Start& start);
+inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                          long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
+                          const Start& start);
 
 // ipop, bipop, bipop_2009 (restarts.hpp, included at the end)
 inline Result run_restarts(const std::string& name, const Problem& P, double eq_tol, bool has_tol0, double eq_tol0,
@@ -567,9 +605,21 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
     if (name == "ipop" || name == "bipop" || name == "bipop_2009")
         return run_restarts(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                             record_every, start);
+    if (name == "mlsl")
+        return run_mlsl(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every);
+    if (name == "ils" || name == "basin_hopping")
+        return run_walk(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                        record_every, start);
+    if (name == "halving")
+        return run_halving(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                           record_every, start);
+    if (name == "memetic")
+        return run_memetic(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                           record_every, start);
     throw std::invalid_argument("unknown strategy '" + name + "'");
 }
 
 }   // namespace mootation::scalar
 
 #include "restarts.hpp"
+#include "search.hpp"

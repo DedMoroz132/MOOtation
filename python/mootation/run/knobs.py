@@ -38,7 +38,9 @@ _FALLBACK = (
     "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
     "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
     "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau", "n_starts", "threads",
-    "min_dist", "min_df", "start_share", "bipop_large",
+    "min_dist", "min_df", "start_share", "bipop_large", "mlsl_n", "mlsl_sigma", "mlsl_gamma", "mlsl_tau",
+    "mlsl_nu", "start_budget", "bh_temperature", "bh_step", "bh_accept_rate", "bh_interval", "ils_step",
+    "ils_restart", "ils_temperature", "memetic_every", "memetic_points", "local_share",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"),
@@ -114,8 +116,10 @@ _FALLBACK_TEXT = {
     "cma_stop": ("spread", "h09"),
     "start_points": ("sobol", "lhs", "uniform", "halton_rand", "sobol_owen"),
     "cma_bounds": ("penalty", "none"),
+    "ils_accept": ("better", "rw", "restart", "lsmc"),
+    "memetic_pick": ("best", "spread"),
 }
-_FALLBACK_SOLVER = ("inner",)
+_FALLBACK_SOLVER = ("inner", "local_solver")
 
 _BLOCK = re.compile(
     r"knob_names\s*\(\s*\)\s*\{.*?\{(?P<body>.*?)\}\s*;", re.S)

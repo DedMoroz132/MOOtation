@@ -75,6 +75,14 @@ always listed under **Changed** or **Removed**.
   the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and
   the polynomial mutation, then KPCM (IAMD-1). Default runs keep their golden
   fingerprints.
+- Added (`scalar/search.hpp`; task 18, stage 3): the strategies `mlsl`
+  (Multi Level Single Linkage, Rinnooy Kan & Timmer 1987), `ils` (iterated
+  local search; acceptance `better`, `rw`, `restart`, `lsmc`), `basin_hopping`
+  (Wales & Doye 1997), `halving` (successive halving, Jamieson & Talwalkar
+  2016) and `memetic` (a global solver and `local_solver` as it goes). A
+  start may spend on new points only what it was given (STRAT-6), so a
+  strategy never spends past its budget, also when it reruns a start whose
+  earlier points are free. Readings SRCH-1 … SRCH-8.
 - Added (`scalar/restarts.hpp`; task 18, stage 3): the strategies `ipop`
   (Auger & Hansen, CEC 2005) and `bipop` (Hansen, GECCO 2009), restarts of
   the library's CMA-ES in the problem's coordinates, each run until a
