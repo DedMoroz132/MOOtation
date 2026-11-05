@@ -35,7 +35,10 @@ struct Blocks {
 // gauge_basis(x) (n_var rows of gauge_dim, row-major). linear: the parameters
 // the residuals are linear in (for variable projection). An objective that is
 // not a sum of squares may give its gradient (has_gradient). start(x0): the
-// problem's own start where it has one (has_start).
+// problem's own start where it has one (has_start). res_blocks: the sizes of
+// the residuals' blocks, in order (task 19, §19.5; they add up to n_res;
+// empty: one block), which blocks_objectives.hpp makes objectives of; the
+// problem's own objective stays 1/2 ||r||^2 whatever they say.
 struct Native {
     int n_var = 0, n_obj = 0, n_con = 0;
     int n_res = 0;                     // 0: no residuals
@@ -44,6 +47,7 @@ struct Native {
     std::vector<int> linear;
     bool has_canon = false, has_gradient = false, has_start = false;
     int gauge_dim = 0;
+    std::vector<int> res_blocks;       // empty: one block of n_res
     virtual ~Native() = default;
     virtual void evaluate(const double* x, double* f, double* g) const = 0;
     virtual void residuals(const double*, double*, double*) const

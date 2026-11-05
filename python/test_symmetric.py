@@ -13,6 +13,7 @@ bit for bit, the gauge test, f(x_opt) = f_opt) are tests/test_suite.cpp's.
 
 from __future__ import annotations
 
+import pickle
 import sys
 
 import numpy as np
@@ -70,6 +71,19 @@ def main() -> int:
         again = _core.Native(nat.spec)
         check(again.evaluate(list(x0)) == nat.evaluate(list(x0)) and again.n_var == nat.n_var,
               f"{sym.name(row)}: its spec makes the same problem")
+        # task 19, §19.5: the residuals' blocks, and the blocks as objectives (blocks_objectives.hpp)
+        check(list(nat.res_blocks) == list(getattr(py, "res_blocks", [])),
+              f"{sym.name(row)}: res_blocks {list(nat.res_blocks)} as NumPy's")
+        if nat.res_blocks:
+            bo = _core.Native({**sym.spec(row), "objectives": "blocks", "block_weights": [2.0] * len(nat.res_blocks)})
+            r, at, want = py.residuals(x), 0, []
+            for size in py.res_blocks:
+                want.append(2.0 * 0.5 * float(np.sum(r[at:at + size] ** 2)))
+                at += size
+            got = bo.evaluate(list(x))
+            made = _core.Native(bo.spec), pickle.loads(pickle.dumps(bo))
+            check(bo.n_obj == len(want) and close(got, want) <= TOL and all(m.evaluate(list(x)) == got for m in made),
+                  f"{sym.name(row)}: its blocks as objectives = NumPy's, and its spec and pickle make them again")
     check(abs(sym.resolution(1e2) - 2.44) < 0.005 and abs(sym.resolution(1e4) - 1.63) < 0.005,
           "resolution limit: Istratov & Vyvenko's Table I")
     print(f"test_symmetric: {'FAILED, ' + str(failed) + ' check(s)' if failed else 'all checks passed'}")

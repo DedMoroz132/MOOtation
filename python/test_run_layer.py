@@ -14222,6 +14222,79 @@ def the_task19_symmetries_in_cpp_as_in_python_and_through_minimize():
         raise AssertionError(f"not refused: {alg} {kw}")
 
 
+@test
+def residual_blocks_become_objectives_through_minimize():
+    """Task 19, §19.5 (suite/blocks_objectives.hpp; minimize(objectives=
+    "blocks")): chaboche1d's residuals in its three blocks as three
+    objectives under nsga2 and under moead; f_b of every answer point is
+    1/2 ||r_b||^2 of the residuals there, result.sum_of_squares their sum,
+    within 2 gamma_{n_res} of the problem's 1/2 ||r||^2 (BO-2); the same
+    problem from _core.Native(spec + objectives = blocks) evaluates the same;
+    one block is the objective at M = 1 bit for bit; refusals and the
+    warning above 8 blocks."""
+    if _core_with("block_objectives") is None or _core_with("Native") is None:
+        print("  skip  residual_blocks_become_objectives...: no _core.block_objectives"); return
+    import math
+    import warnings
+    import mootation
+    from mootation import _core
+    from mootation.benchmarks import registry as R
+    p = R.PROBLEMS["chaboche1d_N2_1D"]
+    nv = p.native
+    sizes = list(nv.res_blocks)
+    assert sizes == [80, 160, 240], sizes
+    rr = lambda x: list(nv.residuals(x))                              # noqa: E731
+    bo = _core.Native({**nv.spec, "objectives": "blocks"})
+    u = 2.0 ** -53
+    for alg in ("nsga2", "moead"):
+        r = mootation.minimize(None, p.bounds, 3, algorithm=alg, residuals=rr, objectives="blocks",
+                               residual_blocks=sizes, pop_size=21, max_evaluations=420, seed=2)
+        assert len(r.objectives[0]) == 3 and len(r.sum_of_squares) == len(r.objectives), alg
+        for x, f, total in zip(r.variables, r.objectives, r.sum_of_squares):
+            res, at = rr(x), 0
+            for b, size in enumerate(sizes):
+                s = 0.0
+                for v in res[at:at + size]:
+                    s += v * v
+                assert f[b] == 0.5 * s, (alg, b)
+                at += size
+            assert list(f) == list(bo.evaluate(list(x))), alg
+            f1 = nv.evaluate(list(x))[0]
+            gamma = 480 * u / (1 - 480 * u)
+            assert abs(total - f1) <= 2 * gamma * f1, (alg, total, f1)
+    one = mootation.minimize(None, p.bounds, 1, algorithm="de", residuals=rr, objectives="blocks",
+                             residual_blocks=[480], max_evaluations=300, seed=1)
+    ref = mootation.minimize(lambda x: nv.evaluate(x), p.bounds, 1, algorithm="de", max_evaluations=300, seed=1)
+    assert one.objectives == ref.objectives and one.variables == ref.variables
+    assert one.sum_of_squares == [f[0] for f in one.objectives]
+    w = mootation.minimize(None, p.bounds, None, algorithm="nsga2", residuals=rr, objectives="blocks",
+                           residual_blocks=sizes, block_weights=[1.0, 0.5, 0.0], pop_size=12, n_gen=2, seed=3)
+    assert all(f[2] == 0.0 for f in w.objectives)
+    for kw in ({"residual_blocks": [80, 160]}, {"residual_blocks": sizes, "block_weights": [1.0]},
+               {"residual_blocks": sizes, "block_weights": [1.0, -1.0, 1.0]},
+               {"residual_blocks": sizes, "n_objs": 2}, {"residual_blocks": None},
+               {"residual_blocks": sizes, "objectives": "pairs"}):
+        args = {"objectives": "blocks", "n_objs": None, **kw}
+        try:
+            mootation.minimize(None, p.bounds, args.pop("n_objs"), algorithm="nsga2", residuals=rr,
+                               pop_size=12, n_gen=1, seed=1, **args)
+        except (ValueError, RuntimeError):
+            continue
+        raise AssertionError(f"not refused: {kw}")
+    try:
+        mootation.minimize(lambda x: [0.0], p.bounds, 1, residual_blocks=sizes, pop_size=12, n_gen=1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("residual_blocks without objectives = 'blocks' not refused")
+    many = [48] * 10
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        m = mootation.minimize(None, p.bounds, 10, algorithm="nsga2", residuals=rr, objectives="blocks",
+                               residual_blocks=many, pop_size=12, n_gen=1, seed=1)
+    assert any("BO-3" in str(c.message) for c in caught) and math.isfinite(m.sum_of_squares[0])
+
+
 _SYM2_TOML = """algorithms = [ { name = "de", pop = 0, gens = 0, params = { sym = "align" } },
                { name = "ga_sbx", pop = 0, gens = 0, params = { sym = "canon", ga_block_uniform = 0.5, ga_block_mutation = 0.2 } },
                { name = "pso", pop = 0, gens = 0, params = { sym = "align" } } ]

@@ -845,6 +845,7 @@ private:
                 gauge_dim = sym_->gauge_dim;
                 blocks = sym_->blocks;
                 linear = sym_->linear;
+                res_blocks = sym_->res_blocks;
                 break;
             case Kind::NIST:
                 if (M != 1) fail("one objective");

@@ -101,6 +101,13 @@ always listed under **Changed** or **Removed**.
   10 % (gamma) of a random sample, against beta's 3 %. Each draws from a
   domain of its own: the streams of f1, f2b, f3b, f4b and f5 are unchanged,
   bit for bit, and so is their frame, which does not depend on r.
+- Added: residual blocks as objectives (task 19, §19.5;
+  `suite/blocks_objectives.hpp`). `minimize(objectives="blocks",
+  residual_blocks=..., block_weights=...)` turns residuals in B blocks into
+  B objectives f_b = 1/2 w_b ||r_b||^2 for the multi-objective cores, with
+  `result.sum_of_squares`; `Native.res_blocks` (set by `chaboche1d` and
+  `sumexp`), and `_core.Native(spec)` with `"objectives": "blocks"`.
+  Problems without the keys are made and evaluated as before.
 - Added: symmetries in the single-objective population methods (task 19,
   §19.2; `scalar/symmetry.hpp`, `mootation.symmetry`). A problem's
   `sym_blocks`, `canon` and `align` (`minimize(...)`; in campaigns the

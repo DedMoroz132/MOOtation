@@ -57,6 +57,10 @@
 //     2e5], gamma_k in [0, 5000]; the start (inside it, by lm's rule for a
 //     start on a bound) E = 150 000, sigma_y = 150, Q = 50, b = 5, C_k =
 //     30 000 / 10^(k - 1), gamma_k = 300 / 10^(k - 1).
+//   CH-4. The residuals' blocks (task 19, §19.5; Native::res_blocks): the
+//     program's three amplitudes, 80, 160 and 240 steps, each amplitude's two
+//     cycles one block (ours: an amplitude is what a test of the material
+//     varies).
 // ============================================================================
 
 #include <cmath>
@@ -76,11 +80,13 @@ public:
         if (in.teacher < 1) throw std::invalid_argument("chaboche1d: N_t >= 1 back stresses");
         for (double a : {0.004, 0.008, 0.012}) {      // CH-2
             const int quarter = static_cast<int>(a / 0.0004 + 0.5);
+            const std::size_t before = strain.size();
             for (int cycle = 0; cycle < 2; ++cycle) {
                 for (int i = 1; i <= quarter; ++i) strain.push_back(0.0004 * i);
                 for (int i = quarter - 1; i >= -quarter; --i) strain.push_back(0.0004 * i);
                 for (int i = -quarter + 1; i <= 0; ++i) strain.push_back(0.0004 * i);
             }
+            res_blocks.push_back(static_cast<int>(strain.size() - before));   // CH-4
         }
         Vec teacher = {200000.0, 200.0, 100.0, 10.0};   // CH-3
         double scale = 1.0;

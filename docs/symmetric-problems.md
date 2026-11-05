@@ -17,6 +17,7 @@ with their sources and readings), evaluated by C++ and checked against an indepe
 | `canon(x)` | a canonical representative: `f(canon(x)) = f(x)`, `canon(canon(x)) = canon(x)` bit for bit, `canon(P(x)) = canon(x)` for a permutation `P` of the blocks |
 | `gauge_basis(x)` | `gauge_dim` directions (columns, `n_var` rows) along which the residuals (or the objective) do not change to first order |
 | `linear` | the parameters the residuals are linear in (variable projection) |
+| `res_blocks` | the sizes of the residuals' blocks, in order (`chaboche1d`: its three amplitudes, CH-4; `sumexp`: the grid's two halves, SE-4); empty: one block |
 | `gradient(x)` | the objective's gradient where it is not a sum of squares |
 | `start()` | the problem's own start, the registry's `x0` |
 
@@ -102,3 +103,25 @@ points injected into `cmaes` (§19.4.3) and grouping by distance (with task 18's
 | without the knobs: the checksums of `tests/test_scalar.cpp` and the methods' own tests (twins `gde3`, `nsga2`, `sms_emoa` bit for bit) unchanged | `tests/test_scalar.cpp`, `test_de`, `test_ga`, … |
 | C++ against Python: the Hungarian method, `align` and the built-in canon, bit for bit | `python/test_run_layer.py` |
 | a campaign with `sym` on `sumexp` and `lj_cluster`: the same files from both engines | `python/test_run_layer.py` |
+
+## Residual blocks as objectives (`suite/blocks_objectives.hpp`)
+
+A problem whose residuals come in B blocks (`res_blocks`) is also a problem of B objectives
+f_b = ½ w_b ‖r_b‖², one call of the residuals for all B — the calibration as a vector of measures
+rather than one weighted sum (Gupta, Sorooshian & Yapo 1998, their (2) against (3); the paper has no
+algorithm of its own to reproduce). Every multi-objective core runs it. From Python:
+`minimize(None, bounds, None, residuals=r, objectives="blocks", residual_blocks=[...],
+block_weights=None, algorithm=...)`, whose `result.sum_of_squares` is Σ_b f_b of every answer point;
+or `_core.Native({**spec, "objectives": "blocks", "block_weights": [...]})` for a suite problem (its
+spec and pickle carry the two keys). Readings BO-1 to BO-5 in the header: f_b's order of addition, Σ_b
+f_b against ½‖r‖² (within 2γ_{n_res}; one block bit for bit), above 8 blocks a warning, what passes
+through (residuals, symmetries, start), the weights the adapter's. Not yet: the problems as campaign
+instances of their own, and over task 20's wrappers.
+
+| check | where |
+|---|---|
+| the families' blocks: 80 + 160 + 240 (chaboche1d), the grid's halves (sumexp); C++ = NumPy | `tests/test_blocks_objectives.cpp`, `python/test_symmetric.py` |
+| f_b from one call of the residuals, block by block, bit for bit; Σ_b f_b within 2γ_{n_res} of ½‖r‖²; one block of weight 1 the objective at M = 1 bit for bit | `tests/test_blocks_objectives.cpp` |
+| the weights; residuals, canon, start passed through; the refusals | `tests/test_blocks_objectives.cpp` |
+| f_b from C++ = NumPy's to 10⁻¹² at every registered instance with blocks; the spec and pickle make the adapter again | `python/test_symmetric.py` |
+| `minimize(objectives="blocks")` under nsga2 and moead: every answer point's f_b and `sum_of_squares` as above; one block = the run at one objective bit for bit; the refusals and the warning | `python/test_run_layer.py` |

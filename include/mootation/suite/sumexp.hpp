@@ -45,6 +45,9 @@
 //     t_max], the smallest positive and the largest t of the grid (decays
 //     faster or slower than the grid can see are outside). The start: a_k =
 //     Y / K_s, s_k evenly inside the box's s range, (k - 1/2) / K_s of it.
+//   SE-4. The residuals' blocks (task 19, §19.5; Native::res_blocks): the
+//     grid's first half and its second, floor(N / 2) and the rest points —
+//     the fast decays' times and the slow ones' (ours).
 // ============================================================================
 
 #include <cmath>
@@ -105,6 +108,7 @@ public:
             }
         n = 2 * K;
         m = static_cast<int>(t.size());
+        res_blocks = {m / 2, m - m / 2};                    // SE-4
         has_jacobian = has_canon = true;
         blocks = {{0, 2, K}};
         for (int k = 0; k < K; ++k) linear.push_back(2 * k);

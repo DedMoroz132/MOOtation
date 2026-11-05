@@ -93,6 +93,7 @@ public:
     int gauge_dim = 0;
     std::vector<Blocks> blocks;
     std::vector<int> linear;
+    std::vector<int> res_blocks;  // the residuals' blocks (task 19, §19.5; Native::res_blocks)
     Bounds bounds;
     Vec optimum;                  // the teacher's point where the student has its size (else empty)
 

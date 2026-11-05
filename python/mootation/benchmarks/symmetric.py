@@ -183,6 +183,7 @@ class Sumexp:
         y = self._model(np.array(a), np.array(s))
         self.y = _noise(_rng("sumexp", inst.instance, len(a), len(self.t)), inst.noise, y)
         self.K = inst.student or len(a)
+        self.res_blocks = [len(self.t) // 2, len(self.t) - len(self.t) // 2]   # SE-4 (task 19, §19.5)
 
     def _model(self, a, s):
         return np.exp(-np.outer(self.t, np.exp(-s))) @ a
@@ -416,13 +417,15 @@ class MlpPlateau:
 
 class Chaboche:
     def __init__(self, inst: Instance):
-        strain = []
+        strain, self.res_blocks = [], []
         for a in (0.004, 0.008, 0.012):
             q = int(a / 0.0004 + 0.5)
+            before = len(strain)
             for _ in range(2):
                 strain += [0.0004 * i for i in range(1, q + 1)]
                 strain += [0.0004 * i for i in range(q - 1, -q - 1, -1)]
                 strain += [0.0004 * i for i in range(-q + 1, 1)]
+            self.res_blocks.append(len(strain) - before)                    # CH-4 (task 19, §19.5)
         self.strain = strain
         teacher, scale = [200000.0, 200.0, 100.0, 10.0], 1.0
         for _ in range(inst.teacher):

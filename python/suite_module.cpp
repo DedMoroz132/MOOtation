@@ -25,6 +25,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include <mootation/suite/blocks_objectives.hpp>
 #include <mootation/suite/suite.hpp>
 #include <mootation/suite/wrap.hpp>
 
@@ -218,14 +219,41 @@ py::dict dict_of(const suite::Spec& s)
 
 const suite::Problem& problem_of(const suite::Native& p)
 {
+    if (auto* b = dynamic_cast<const suite::BlocksObjectives*>(&p)) return problem_of(b->problem());
     auto* q = dynamic_cast<const suite::Problem*>(&p);
     if (q == nullptr) throw std::runtime_error("suite: not a problem of the suite");
     return *q;
 }
 
+// The problem of a spec; with "objectives": "blocks" (and "block_weights") its
+// residual blocks as objectives (task 19, §19.5; blocks_objectives.hpp).
+std::shared_ptr<suite::Native> native_of(const py::dict& spec)
+{
+    std::shared_ptr<suite::Native> p(suite::make(spec_of(spec)));
+    if (!spec.contains("objectives")) return p;
+    const std::string how = spec["objectives"].cast<std::string>();
+    if (how == "one") return p;
+    if (how != "blocks") throw std::invalid_argument("suite spec: objectives = 'one' or 'blocks', not '" + how + "'");
+    std::vector<double> w;
+    if (spec.contains("block_weights")) w = spec["block_weights"].cast<std::vector<double>>();
+    return std::make_shared<suite::BlocksObjectives>(std::move(p), std::move(w));
+}
+
 const suite::Spec& spec_of(const suite::Native& p)
 {
     return problem_of(p).spec();
+}
+
+// The spec of a problem, with "objectives" and "block_weights" where it is
+// a BlocksObjectives (native_of's inverse)
+py::dict spec_dict(const suite::Native& p)
+{
+    py::dict d = dict_of(spec_of(p));
+    if (auto* b = dynamic_cast<const suite::BlocksObjectives*>(&p)) {
+        d["objectives"] = "blocks";
+        if (!b->weights().empty()) d["block_weights"] = b->weights();
+    }
+    return d;
 }
 
 // X as n rows of n_var values: a 1-D or 2-D array whose size is a multiple
@@ -285,10 +313,7 @@ void bind_suite(py::module_& m)
         "sin, cos, exp, log and pow are the C library's (benchmarks/_rows.py, agrees) and, for "
         "bbob-biobj, its BLAS adds in the order suite/bbob.hpp writes out. Hand it to "
         "a run as Problem.native and the core evaluates it without calling Python.")
-        .def(py::init([](const py::dict& spec) {
-                 return std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));
-             }),
-             py::arg("spec"))
+        .def(py::init([](const py::dict& spec) { return native_of(spec); }), py::arg("spec"))
         .def_readonly("n_var", &suite::Native::n_var)
         .def_readonly("n_obj", &suite::Native::n_obj)
         .def_readonly("n_con", &suite::Native::n_con)
@@ -311,7 +336,7 @@ void bind_suite(py::module_& m)
              py::arg("x"), py::arg("jacobian") = false,
              "A least-squares problem's (MGH, NIST) n_res residuals at x, its objective 1/2 ||r||^2; "
              "jacobian=True: (r, J) (has_jacobian).")
-        .def_property_readonly("spec", [](const suite::Native& p) { return dict_of(spec_of(p)); },
+        .def_property_readonly("spec", [](const suite::Native& p) { return spec_dict(p); },
                                "The spec the problem was made from.")
         // task 19, §19.1: the symmetries, the gradient and the start (suite/native.hpp)
         .def_property_readonly("blocks",
@@ -327,6 +352,8 @@ void bind_suite(py::module_& m)
         .def_readonly("has_gradient", &suite::Native::has_gradient)
         .def_readonly("has_start", &suite::Native::has_start)
         .def_readonly("gauge_dim", &suite::Native::gauge_dim)
+        .def_readonly("res_blocks", &suite::Native::res_blocks,
+                      "The sizes of the residuals' blocks, in order (task 19, §19.5; empty: one block).")
         .def("canon",
              [](const suite::Native& p, std::vector<double> x) {
                  if (static_cast<int>(x.size()) != p.n_var) throw std::invalid_argument("canon: x needs n_var values");
@@ -409,11 +436,21 @@ void bind_suite(py::module_& m)
                  return out;
              },
              py::arg("n"), "About n points of the global Pareto set, every part: an (rows, n_var) array.")
-        .def(py::pickle(
-            [](const suite::Native& p) { return dict_of(spec_of(p)); },
-            [](const py::dict& spec) {
-                return std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));
-            }));
+        .def(py::pickle([](const suite::Native& p) { return spec_dict(p); },
+                        [](const py::dict& spec) { return native_of(spec); }));
+
+    m.def("block_objectives",
+          [](const std::vector<double>& r, const std::vector<int>& sizes, const std::vector<double>& weights) {
+              const std::vector<int> s = suite::residual_blocks(sizes, static_cast<int>(r.size()));
+              if (!weights.empty() && weights.size() != s.size())
+                  throw std::invalid_argument("block_objectives: one weight per block");
+              std::vector<double> f(s.size());
+              suite::block_objectives(r.data(), s, weights, f.data());
+              return f;
+          },
+          py::arg("r"), py::arg("sizes"), py::arg("weights") = std::vector<double>{},
+          "f_b = 1/2 w_b ||r_b||^2 of the residuals r in blocks of the given sizes (task 19, §19.5; "
+          "suite/blocks_objectives.hpp, BO-1).");
 
     py::class_<suite::Wrapped, suite::Native, std::shared_ptr<suite::Wrapped>>(m, "Wrapped",
         "A problem seen through the wrappers of include/mootation/suite/wrap.hpp (task 20, "

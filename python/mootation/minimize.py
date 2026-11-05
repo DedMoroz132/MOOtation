@@ -111,6 +111,54 @@ KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
 from ._hv_time import exact_hv_time_warning  # noqa: E402  (task 14: exact at every M)
 
 
+def _blocks_as_objectives(args: dict):
+    """minimize(objectives="blocks"): the residuals' blocks as objectives
+    (task 19, §19.5; suite/blocks_objectives.hpp's block_objectives, BO-1,
+    BO-2); the run is minimize's of the B objectives."""
+    if args["objectives"] != "blocks":
+        raise ValueError(f"objectives = 'one' or 'blocks', not {args['objectives']!r}")
+    residuals, sizes = args["residuals"], args["residual_blocks"]
+    if residuals is None or sizes is None:
+        raise ValueError("objectives = 'blocks' needs residuals and residual_blocks (their sizes)")
+    if args["fn"] is not None:
+        raise ValueError("objectives = 'blocks': the residuals give the objectives, fn must be None")
+    sizes = [int(s) for s in sizes]
+    weights = [] if args["block_weights"] is None else [float(w) for w in args["block_weights"]]
+    B = len(sizes)
+    if args["n_objs"] is not None and int(args["n_objs"]) != B:
+        raise ValueError(f"objectives = 'blocks': n_objs must be the blocks' count {B}, got {args['n_objs']}")
+    if weights and len(weights) != B:
+        raise ValueError(f"block_weights: one per block ({B}), got {len(weights)}")
+    if any(not (w >= 0.0) or w == float("inf") for w in weights):
+        raise ValueError("block_weights must be finite and >= 0")
+    if args["jac"] is not None or args["gauge_basis"] is not None:
+        raise ValueError("objectives = 'blocks': no jac or gauge_basis (the objectives are not least squares)")
+    if B > 8:
+        warnings.warn(f"objectives = 'blocks': {B} objectives; the multi-objective cores lose selection "
+                      "pressure above 8 (BO-3)", stacklevel=3)
+
+    centre = [0.5 * (float(lo) + float(hi)) for lo, hi in args["bounds"]]
+    n_res = len(list(residuals(centre)))       # the sizes checked before the run, outside its budget
+    if sum(sizes) != n_res or min(sizes) < 1:
+        raise ValueError(f"residual_blocks {sizes}: sizes >= 1 that add up to the residuals' {n_res}")
+
+    def fn(x):
+        return _core.block_objectives(list(residuals(x)), sizes, weights)
+
+    knobs, bounds = args.pop("knobs"), args.pop("bounds")
+    for k in ("fn", "n_objs", "objectives", "residuals", "residual_blocks", "block_weights", "jac"):
+        args.pop(k)
+    result = minimize(fn, bounds, B, **args, **knobs)
+    totals = []
+    for f in result.objectives:                     # in block order, as block_total (BO-2)
+        t = 0.0
+        for v in f:
+            t += v
+        totals.append(t)
+    result.sum_of_squares = totals
+    return result
+
+
 def minimize(
     fn: Callable[[Sequence[float]], Sequence[float]],
     bounds: Iterable[tuple[float, float]],
@@ -162,6 +210,9 @@ def minimize(
     sym_blocks=None,
     canon=None,
     align=None,
+    objectives: str = "one",
+    residual_blocks=None,
+    block_weights=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -358,6 +409,16 @@ def minimize(
                 align(x, ref) x moved to ref (default: canon, then the blocks
                 permuted to ref's, mootation.symmetry.align). The population
                 methods use them with the knob sym = canon | align.
+    objectives  "one" (the default) or "blocks": with residuals and
+                residual_blocks (their sizes, in order), the problem of B =
+                len(residual_blocks) objectives f_b = 1/2 w_b ||r_b||^2
+                (block_weights, 1 each by default; task 19, §19.5;
+                suite/blocks_objectives.hpp), for any algorithm, with n_objs
+                = B (None: B); one call of the residuals at the box's
+                centre, outside the budget, checks the sizes.
+                result.sum_of_squares: sum_b f_b of each
+                answer point, the problem's 1/2 ||r||^2 at one objective up
+                to rounding (BO-2). Above 8 blocks a warning.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -365,6 +426,10 @@ def minimize(
     `.active_n`, `.ignored`, `.evaluations`, `.unique_evaluations`,
     `.n_failed`, `.eq_tol`.
     """
+    if objectives != "one":
+        return _blocks_as_objectives(dict(locals()))
+    if residual_blocks is not None or block_weights is not None:
+        raise ValueError("residual_blocks and block_weights go with objectives = 'blocks'")
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if wrap is not None:
         if sym_blocks is not None or canon is not None or align is not None:

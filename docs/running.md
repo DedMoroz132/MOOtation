@@ -1553,6 +1553,15 @@ the suite's problems give their blocks and `canon`. `sym = off` (the
 default) and no block knob: the runs of before (POP-9); what each method
 aligns is in [symmetric-problems.md](symmetric-problems.md).
 
+**Residual blocks as objectives** (task 19, §19.5; `suite/blocks_objectives.hpp`):
+`minimize(None, bounds, None, residuals=r, objectives="blocks",
+residual_blocks=[sizes...], block_weights=None, algorithm="nsga2")` runs the
+problem of B objectives f_b = 1/2 w_b ||r_b||^2 with any multi-objective core;
+`result.sum_of_squares` is sum_b f_b of each answer point, the problem's 1/2
+||r||^2 up to rounding (BO-2). A suite problem with blocks (`chaboche1d`,
+`sumexp`; `Native.res_blocks`) is `_core.Native({**spec, "objectives":
+"blocks"})`. Above 8 blocks a warning (BO-3).
+
 **The problem's derivatives** (task 18, stage 1, §1.1; `scalar/evaluator.hpp`):
 `minimize(..., grad=g)` gives the objective's gradient (for a constrained
 problem the pair (gradient, the constraints' Jacobian)), `residuals=r` the

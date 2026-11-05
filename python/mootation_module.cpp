@@ -310,7 +310,7 @@ PYBIND11_MODULE(_core, m)
                        "0 = run n_gen steps; > 0 = step until this many evaluations are "
                        "spent (n_gen is then ignored).");
 
-    py::class_<PyResult>(m, "Result")
+    py::class_<PyResult>(m, "Result", py::dynamic_attr())   // minimize's sum_of_squares (task 19, §19.5)
         .def_readonly("objectives", &PyResult::objectives)
         .def_readonly("variables",  &PyResult::variables)
         .def_readonly("cv",         &PyResult::cv)
