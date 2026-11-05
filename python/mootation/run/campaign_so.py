@@ -17,7 +17,13 @@ with symmetries (task 19) its gradient where it is not a sum of squares
 runs at the instance [campaign] bbob_instance says: "by_run" (the default)
 its run's seed (seeds 1, 2, ... by default: instance k on run k), "fixed"
 instance 1; its f_opt is that instance's (the owner's decision of 01.11,
-§1.1; the numbers are the library's, not COCO's).
+§1.1; the numbers are the library's, not COCO's). With [campaign]
+wrap_shift, wrap_rotate or wrap_perm (task 20, §20.2.1) the run sees the
+problem through the wrappers of suite/wrap.hpp (_core.Wrapped, keyed by the
+problem's name; "by_run": the run's seed as the instance): the box, the
+start and the answer in the wrapped coordinates, f_opt the problem's,
+meta.json's so.wrap the instances; a wrapper the problem refuses (a rotation
+of a problem with a box, WRAP-3; blocks, WRAP-7) makes the job incompatible.
 
 WHAT IT WRITES (docs/running.md, "A campaign at one objective"):
   improvements.csv  every record: evaluations, grad_calls, f, cv
@@ -165,6 +171,21 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
     why = refusal(job.algorithm, p)
     if why is not None:
         return failed(why, True)
+    bounds, x0, wrap = p.bounds, (list(p.x0) if p.x0 is not None else None), None
+    w = {k: (job.seed if v == "by_run" else int(v))
+         for k, v in (("shift", spec.wrap_shift), ("rotate", spec.wrap_rotate), ("perm", spec.wrap_perm))}
+    if any(w.values()):
+        bbob = native.spec.get("family") == "bbob"
+        try:
+            native = _core.Wrapped(native, job.problem, w["shift"], w["rotate"], w["perm"],
+                                   spec.wrap_shift_scale, bbob, [tuple(b) for b in p.bounds],
+                                   list(native.spec["bbob"][0]["x_opt"]) if bbob else [],
+                                   x0 or [])
+        except ValueError as e:
+            return failed(f"{e} (incompatible by construction)", True)
+        bounds = [tuple(b) for b in native.wrap_bounds]
+        x0 = native.to_run(x0) if x0 is not None else None
+        wrap = {**w, "shift_scale": spec.wrap_shift_scale, "instance": native.instance}
 
     # the counting functions (THE RUN)
     ledger = _core.RunLedger(1, p.n_vars, False, None, None, None, None)
@@ -209,10 +230,10 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         derivatives = {"grad": gradient}
     if native.gauge_dim > 0:
         derivatives["gauge_basis"] = lambda x: [list(row) for row in native.gauge_basis(x)]
-    if job.algorithm in LOCAL and p.x0 is not None:
-        derivatives["x0"] = list(p.x0)
+    if job.algorithm in LOCAL and x0 is not None:
+        derivatives["x0"] = list(x0)
     try:
-        res = minimize(None if "residuals" in derivatives else fn, bounds=p.bounds, n_objs=1,
+        res = minimize(None if "residuals" in derivatives else fn, bounds=bounds, n_objs=1,
                  algorithm=job.algorithm, pop_size=job.pop, n_gen=job.gens, seed=job.seed,
                  max_evaluations=job.budget, **{k: v for k, v in derivatives.items() if v is not None},
                  f_stop=f_opt + spec.stop_at if spec.stop_at > 0 and f_opt is not None else None,
@@ -262,7 +283,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             "instance": iid, "targets": kind, "precisions": precisions, "f_x0": f_x0,
             "runtimes": runtimes, "grad_cost": grad_cost, "cost": fe + grad_cost * grad_calls,
             "improvements": len(records), **_peaks(p, res, so),
-            **({"stop_at": spec.stop_at} if spec.stop_at > 0 else {})},
+            **({"stop_at": spec.stop_at} if spec.stop_at > 0 else {}),
+            **({"wrap": wrap} if wrap is not None else {})},
         final=({} if best is None else {"f": best[2], "delta_f": delta(best[2]), "cv": best[3],
                                          "fe_best": best[0], "grad_calls_best": best[1]}),
         finished=time.strftime("%Y-%m-%dT%H:%M:%S"), seconds=round(time.perf_counter() - t0, 3))

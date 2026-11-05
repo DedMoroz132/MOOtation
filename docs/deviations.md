@@ -664,3 +664,4 @@ from the paper's text.
 | WRAP-4 | The scale of the shift, per variable of the run: the width of its box, ub - lb, where both bounds are finite; else max(1, \|a\|_inf), a = x_opt where known, else x0, else 1 alone. | `wrap.hpp` |
 | WRAP-5 | This is a shift of the whole problem, box and all: relative to its box the optimum does not move. | `wrap.hpp` |
 | WRAP-6 | perm and shift know the variables only as a box: a problem whose variables carry more structure (types other than real, blocks or symmetries) is the caller's to refuse, or to permute along; a shift or a rotation of in... | `wrap.hpp` |
+| WRAP-7 | A problem with interchangeable blocks, a canonical form or linear parameters (task 19, sym.hpp) is refused by Wrapped as soon as one wrapper is on: a shift or a rotation breaks the blocks' symmetry, and a permutation... | `wrap.hpp` |

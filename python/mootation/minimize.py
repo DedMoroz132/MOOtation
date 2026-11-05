@@ -157,6 +157,7 @@ def minimize(
     x0=None,
     gauge_basis=None,
     f_stop=None,
+    wrap: dict | None = None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -334,6 +335,17 @@ def minimize(
     gauge_basis  gauge_basis(x): the n x k directions (rows of k) along which
                 the residuals do not change to first order; lm takes them
                 with lm_gauge = "on" (task 19, §19.3.1).
+    wrap        the problem seen through the wrappers (task 20, §20.2.1;
+                benchmarks/wrap.py, include/mootation/suite/wrap.hpp): a dict
+                of name (the key's, required), shift, rotate, perm (instance
+                numbers, 0: off), shift_scale (1), defined_everywhere (False)
+                and x_opt (the optimum, where known: the rotation's centre).
+                The run sees x in the box wrap gives, fn and the rest are
+                called at y = T(x), grad, jac and gauge_basis pulled back, x0
+                taken to T^-1(x0); the answer is in the run's coordinates and
+                result.wrap names the instances. Not with batch, var_types
+                other than real, or a problem of the suite evaluated by the
+                core (it is called through Python).
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -342,6 +354,24 @@ def minimize(
     `.n_failed`, `.eq_tol`.
     """
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
+    if wrap is not None:
+        return _wrapped_minimize(wrap, fn, bounds, n_objs, constraints=constraints, eq_constraints=eq_constraints,
+                                 batch=batch, var_types=var_types, grad=grad, residuals=residuals, jac=jac, x0=x0,
+                                 gauge_basis=gauge_basis,
+                                 rest=dict(algorithm=algorithm, pop_size=pop_size, n_gen=n_gen,
+                                           max_evaluations=max_evaluations, seed=seed, n_cons=n_cons, n_eq=n_eq,
+                                           eq_tol=eq_tol, eq_tol_schedule=eq_tol_schedule, eq_tol0=eq_tol0,
+                                           constraint_mode=constraint_mode, eps_schedule=eps_schedule,
+                                           batch_with_constraints=batch_with_constraints,
+                                           seed_population=seed_population, on_size_mismatch=on_size_mismatch,
+                                           save_population=save_population, log_evaluations=log_evaluations,
+                                           on_generation=on_generation, record_every=record_every,
+                                           operator_stats=operator_stats, init=init, init_share=init_share,
+                                           budget_counts=budget_counts, int_repair=int_repair, eta_int=eta_int,
+                                           on_failure=on_failure, failure_exceptions=failure_exceptions,
+                                           max_failure_share=max_failure_share, failure_window=failure_window,
+                                           native=native, on_rows=on_rows, stochastic=stochastic, f_stop=f_stop,
+                                           **knobs))
     from .scalar import SINGLE
     derivatives = [k for k, v in (("grad", grad), ("residuals", residuals), ("jac", jac),
                                   ("x0", x0), ("gauge_basis", gauge_basis)) if v is not None]
@@ -867,3 +897,43 @@ def minimize(
     # values as floats), its binary_variables the integer genome: bits, and
     # categorical variables' label indices (var_types.py; Layout.to_user)
     return result
+
+
+def _wrapped_minimize(wrap, fn, bounds, n_objs, *, constraints, eq_constraints, batch, var_types, grad,
+                      residuals, jac, x0, gauge_basis, rest):
+    """minimize(..., wrap=...): the run on the wrapped problem (benchmarks/wrap.py)."""
+    import numpy as np
+    from .benchmarks.wrap import WrapMap
+    known = {"name", "shift", "rotate", "perm", "shift_scale", "defined_everywhere", "x_opt"}
+    if not isinstance(wrap, dict) or set(wrap) - known:
+        raise ValueError(f"wrap: a dict of {', '.join(sorted(known))}; got {wrap!r}")
+    if batch is not None:
+        raise ValueError("wrap: not with batch (the wrapped problem is called a point at a time)")
+    if var_types is not None and any(t != "real" for t in var_types):
+        raise ValueError("wrap: real variables only (a shift or rotation would make the others real; WRAP-6)")
+    m = WrapMap(str(wrap.get("name", "")), len(bounds), n_objs, bounds,
+                perm=int(wrap.get("perm", 0)), rotate=int(wrap.get("rotate", 0)), shift=int(wrap.get("shift", 0)),
+                shift_scale=float(wrap.get("shift_scale", 1.0)),
+                defined_everywhere=bool(wrap.get("defined_everywhere", False)),
+                x_opt=wrap.get("x_opt"), x0=x0)
+
+    def at(f):                                   # f at y = T(x), a plain function (no .native)
+        return None if f is None else (lambda x, _f=f: _f(list(m.to_problem(x))))
+
+    def grad_x(x):
+        g = grad(list(m.to_problem(x)))
+        if isinstance(g, tuple):                 # (gradient, the constraints' Jacobian rows)
+            return list(m.pull(g[0])), [list(m.pull(row)) for row in g[1]]
+        return list(m.pull(g))
+
+    def gauge_x(x):
+        N = np.asarray(gauge_basis(list(m.to_problem(x))), float)
+        return [list(row) for row in np.column_stack([m.pull(N[:, c]) for c in range(N.shape[1])])]
+
+    res = minimize(at(fn), m.bounds(), n_objs, constraints=at(constraints), eq_constraints=at(eq_constraints),
+                   var_types=var_types, grad=None if grad is None else grad_x, residuals=at(residuals),
+                   jac=None if jac is None else (lambda x: [list(r) for r in m.jacobian(jac(list(m.to_problem(x))))]),
+                   x0=None if x0 is None else list(m.to_run(x0)),
+                   gauge_basis=None if gauge_basis is None else gauge_x, **rest)
+    res.wrap = m.describe()
+    return res

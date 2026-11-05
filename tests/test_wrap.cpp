@@ -188,6 +188,44 @@ std::string read_file(const std::string& path)
     return ss.str();
 }
 
+// A problem of no box with a gradient, gauge directions and a start of its
+// own: f(y) = sum_i a_i (y_i - y_0)^2, invariant along (1, ..., 1) (the gauge
+// direction), its start (1, 2, ..., n) — the task-19 members Wrapped passes
+// through (WRAP-7); blocks when asked, which Wrapped refuses
+struct Toy final : S::Native {
+    explicit Toy(int n, bool with_blocks = false)
+    {
+        n_var = n;
+        n_obj = 1;
+        has_gradient = has_start = true;
+        gauge_dim = 1;
+        if (with_blocks) blocks.push_back({0, 1, n});
+    }
+    double a(int i) const { return 1.0 + 0.5 * i; }
+    void evaluate(const double* y, double* f, double*) const override
+    {
+        double s = 0.0;
+        for (int i = 1; i < n_var; ++i) s += a(i) * (y[i] - y[0]) * (y[i] - y[0]);
+        f[0] = s;
+    }
+    void gradient(const double* y, double* g) const override
+    {
+        g[0] = 0.0;
+        for (int i = 1; i < n_var; ++i) {
+            g[i] = 2.0 * a(i) * (y[i] - y[0]);
+            g[0] -= g[i];
+        }
+    }
+    void gauge_basis(const double*, double* N) const override
+    {
+        for (int i = 0; i < n_var; ++i) N[i] = 1.0;
+    }
+    void start(double* y0) const override
+    {
+        for (int i = 0; i < n_var; ++i) y0[i] = i + 1.0;
+    }
+};
+
 }   // namespace
 
 int main()
@@ -452,6 +490,48 @@ int main()
             ++cases;
         }
         check(cases == 5 && points_checked == 15, "wrap_python.json: 5 cases, 15 points");
+    }
+
+    {   // WRAP-7: the gradient, the gauge directions and the start pulled through; blocks refused
+        const int n = 6;
+        auto toy = std::make_shared<const Toy>(n);
+        const S::Bounds free(static_cast<std::size_t>(n), {-std::numeric_limits<double>::infinity(),
+                                                           std::numeric_limits<double>::infinity()});
+        S::WrapSpec w;
+        w.name = "toy";
+        w.shift = 2;
+        w.rotate = 3;
+        w.perm = 1;
+        const S::Wrapped wt(toy, S::WrapMap(w, n, 1, free, {}, Vec{1, 2, 3, 4, 5, 6}));
+        check(wt.has_gradient && wt.has_start && wt.gauge_dim == 1 && wt.blocks.empty(),
+              "Wrapped: has_gradient, has_start and gauge_dim of the problem");
+        const Vec x = {0.3, -1.2, 2.5, 0.7, -0.4, 1.9};
+        Vec g(static_cast<std::size_t>(n));
+        wt.gradient(x.data(), g.data());
+        const Vec fd = fd_gradient(wt, x);
+        bool grad = true;
+        for (std::size_t j = 0; j < g.size(); ++j) grad = grad && std::abs(g[j] - fd[j]) <= 1e-6 * (1.0 + std::abs(fd[j]));
+        check(grad, "Wrapped: its gradient against central differences of its objective");
+        Vec N(static_cast<std::size_t>(n));
+        wt.gauge_basis(x.data(), N.data());
+        bool gauge = true;
+        for (double t : {1e-3, 0.7}) {
+            Vec xt = x;
+            for (std::size_t j = 0; j < xt.size(); ++j) xt[j] += t * N[j];
+            gauge = gauge && std::abs(objective(wt, xt) - objective(wt, x)) <= 1e-12 * (1.0 + objective(wt, x));
+        }
+        check(gauge, "Wrapped: the objective does not change along its gauge direction");
+        Vec x0(static_cast<std::size_t>(n)), y0(static_cast<std::size_t>(n));
+        wt.start(x0.data());
+        wt.map().to_problem(x0.data(), y0.data());
+        check(close(y0, Vec{1, 2, 3, 4, 5, 6}, 1e-12), "Wrapped: its start is T^-1 of the problem's");
+        auto blocked = std::make_shared<const Toy>(n, true);
+        S::WrapSpec off;
+        off.name = "toy";
+        check(throws([&] { S::Wrapped(blocked, S::WrapMap(w, n, 1, free)); }),
+              "Wrapped: a problem with blocks is refused with a wrapper on (WRAP-7)");
+        check(!throws([&] { S::Wrapped(blocked, S::WrapMap(off, n, 1, free)); }),
+              "Wrapped: ... and taken as it is with every wrapper off");
     }
 
     std::printf("wrap: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");

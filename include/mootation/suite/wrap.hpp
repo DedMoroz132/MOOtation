@@ -83,6 +83,13 @@
 //     symmetries) is the caller's to refuse, or to permute along; a shift or
 //     a rotation of integer variables would make them real, and is refused by
 //     the caller.
+//   WRAP-7. A problem with interchangeable blocks, a canonical form or
+//     linear parameters (task 19, sym.hpp) is refused by Wrapped as soon as
+//     one wrapper is on: a shift or a rotation breaks the blocks' symmetry,
+//     and a permutation would have to carry the blocks, canon and the linear
+//     parameters along, which no experiment asks for. Its gradient, gauge
+//     directions and start are pulled through the map (dx = (P Q)^T dy;
+//     x0 = T^-1(y0)); the order of its residuals does not change.
 //
 // Sources: R. Tanabe, A. Fukunaga, "Reevaluating exponential crossover in
 // differential evolution", PPSN XIII, 2014 (source
@@ -289,18 +296,32 @@ private:
 };
 
 // A problem seen through a WrapMap: its values at x are the problem's at
-// T(x), its residuals' Jacobian J_y P Q. const and without state, as Native.
+// T(x), its residuals' Jacobian J_y P Q, its gradient and its gauge
+// directions pulled the same way (dx = (P Q)^T dy), its own start T^-1 of
+// the problem's. const and without state, as Native. A problem with blocks,
+// a canonical form or linear parameters (task 19) is refused when a wrapper
+// is on (WRAP-7).
 class Wrapped final : public Native {
 public:
     Wrapped(std::shared_ptr<const Native> problem, WrapMap map) : p_(std::move(problem)), m_(std::move(map))
     {
         if (!p_) throw std::invalid_argument("wrap: no problem");
         if (p_->n_var != m_.n_var()) throw std::invalid_argument("wrap: the map is not of the problem's n");
+        if (m_.active() && (!p_->blocks.empty() || p_->has_canon || !p_->linear.empty()))
+            throw std::invalid_argument("wrap: " + m_.spec().name +
+                                        ": a problem with blocks, a canonical form or linear parameters "
+                                        "(task 19): the wrappers do not carry them along (WRAP-7)");
         n_var = p_->n_var;
         n_obj = p_->n_obj;
         n_con = p_->n_con;
         n_res = p_->n_res;
         has_jacobian = p_->has_jacobian;
+        has_gradient = p_->has_gradient;
+        has_start = p_->has_start;
+        gauge_dim = p_->gauge_dim;
+        blocks = p_->blocks;                             // empty unless every wrapper is off
+        linear = p_->linear;
+        has_canon = p_->has_canon && !m_.active();
     }
 
     void evaluate(const double* x, double* f, double* g) const override
@@ -319,6 +340,38 @@ public:
         if (J)
             for (std::size_t row = 0; row < m; ++row) m_.pull(Jy.data() + row * n, J + row * n);
     }
+
+    void gradient(const double* x, double* gx) const override
+    {
+        const std::size_t n = static_cast<std::size_t>(n_var);
+        std::vector<double> y(n), gy(n);
+        m_.to_problem(x, y.data());
+        p_->gradient(y.data(), gy.data());
+        m_.pull(gy.data(), gx);
+    }
+
+    // N_x = (P Q)^T N_y, column by column (n_var rows of gauge_dim)
+    void gauge_basis(const double* x, double* N) const override
+    {
+        const std::size_t n = static_cast<std::size_t>(n_var), k = static_cast<std::size_t>(gauge_dim);
+        std::vector<double> y(n), Ny(n * k), cy(n), cx(n);
+        m_.to_problem(x, y.data());
+        p_->gauge_basis(y.data(), Ny.data());
+        for (std::size_t c = 0; c < k; ++c) {
+            for (std::size_t i = 0; i < n; ++i) cy[i] = Ny[i * k + c];
+            m_.pull(cy.data(), cx.data());
+            for (std::size_t i = 0; i < n; ++i) N[i * k + c] = cx[i];
+        }
+    }
+
+    void start(double* x0) const override
+    {
+        std::vector<double> y(static_cast<std::size_t>(n_var));
+        p_->start(y.data());
+        m_.to_run(y.data(), x0);
+    }
+
+    void canon(double* x) const override { p_->canon(x); }   // only with every wrapper off
 
     const WrapMap& map() const { return m_; }
     const Native& problem() const { return *p_; }

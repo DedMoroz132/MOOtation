@@ -26,6 +26,7 @@
 #include <pybind11/stl.h>
 
 #include <mootation/suite/suite.hpp>
+#include <mootation/suite/wrap.hpp>
 
 namespace py = pybind11;
 namespace suite = mootation::suite;
@@ -413,6 +414,54 @@ void bind_suite(py::module_& m)
             [](const py::dict& spec) {
                 return std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));
             }));
+
+    py::class_<suite::Wrapped, suite::Native, std::shared_ptr<suite::Wrapped>>(m, "Wrapped",
+        "A problem seen through the wrappers of include/mootation/suite/wrap.hpp (task 20, "
+        "§20.2.1): shift, rotate and perm from the run's x, an instance number each (0: off), "
+        "keyed by the problem's name; the run sees the box wrap_bounds, its values are the "
+        "problem's at to_problem(x). campaign_so.py's [campaign] wrap_*; benchmarks/wrap.py "
+        "is the cross-check.")
+        .def(py::init([](std::shared_ptr<suite::Native> problem, const std::string& name, int shift, int rotate,
+                         int perm, double shift_scale, bool defined_everywhere,
+                         const std::vector<std::pair<double, double>>& bounds, const std::vector<double>& x_opt,
+                         const std::vector<double>& x0) {
+                 if (!problem) throw std::invalid_argument("wrap: no problem");
+                 suite::WrapSpec w;
+                 w.name = name;
+                 w.shift = shift;
+                 w.rotate = rotate;
+                 w.perm = perm;
+                 w.shift_scale = shift_scale;
+                 w.defined_everywhere = defined_everywhere;
+                 suite::WrapMap map(w, problem->n_var, problem->n_obj, bounds, x_opt, x0);
+                 return std::make_shared<suite::Wrapped>(std::move(problem), std::move(map));
+             }),
+             py::arg("problem"), py::arg("name"), py::arg("shift") = 0, py::arg("rotate") = 0, py::arg("perm") = 0,
+             py::arg("shift_scale") = 1.0, py::arg("defined_everywhere") = false, py::arg("bounds"),
+             py::arg("x_opt") = std::vector<double>{}, py::arg("x0") = std::vector<double>{})
+        .def_property_readonly("wrap_bounds",
+                               [](const suite::Wrapped& p) {
+                                   py::list out;
+                                   for (const auto& [lo, hi] : p.map().bounds()) out.append(py::make_tuple(lo, hi));
+                                   return out;
+                               },
+                               "The box in the run's coordinates, [(lower, upper), ...].")
+        .def("to_problem",
+             [](const suite::Wrapped& p, const std::vector<double>& x) {
+                 if (static_cast<int>(x.size()) != p.n_var) throw std::invalid_argument("to_problem: x needs n_var values");
+                 std::vector<double> y(x.size());
+                 p.map().to_problem(x.data(), y.data());
+                 return y;
+             },
+             py::arg("x"), "y = T(x): the problem's point of the run's x.")
+        .def("to_run",
+             [](const suite::Wrapped& p, const std::vector<double>& y) {
+                 if (static_cast<int>(y.size()) != p.n_var) throw std::invalid_argument("to_run: y needs n_var values");
+                 return p.map().to_run(y);
+             },
+             py::arg("y"), "x = T^-1(y): a point of the problem in the run's coordinates.")
+        .def_property_readonly("instance", [](const suite::Wrapped& p) { return p.map().describe(); },
+                               "The wrappers' instances and their key (WrapMap::describe).");
 
     m.def("nist_dataset",
           [](const std::string& name) {

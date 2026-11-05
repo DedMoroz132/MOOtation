@@ -1624,6 +1624,22 @@ strategy's later rounds and restarts included), `meta.json`'s `so.stop_at`
 names it. 0, the default, never stops; a problem without `f_opt` runs its
 budget. `minimize(..., f_stop=)` is the same, absolute.
 
+`[campaign] wrap_shift`, `wrap_rotate` and `wrap_perm` put every problem of a
+campaign at one objective behind the wrappers of `suite/wrap.hpp` (task 20,
+§20.2.1): the run sees x, the problem is evaluated at y = T(x), shift, then
+rotation, then permutation from x. Each takes an instance number (0, the
+default: off) or `"by_run"`, the run's seed, and draws from its own key, the
+problem's name; `wrap_shift_scale` (1) scales the shift (WRAP-4). The box,
+the start and the answer are in the run's coordinates, `f_opt` is the
+problem's, and `meta.json`'s `so.wrap` names the instances. A rotation is for
+a problem without a box or defined on all of R^n (bbob, around its x_opt);
+a CEC 2013 problem, with its box, is refused (WRAP-3), and so is any wrapper
+on a problem with blocks (`lj_cluster` and the other symmetric ones, WRAP-7):
+incompatible, in both engines alike. The keys do nothing at more objectives.
+`minimize(fn, bounds, 1, wrap={"name": ..., "shift": 1, "rotate": 2, ...})`
+does the same for a function of the user's (benchmarks/wrap.py;
+`result.wrap` names the instances).
+
 `[campaign] bbob_instance = "by_run"` (the default) runs a bbob problem at the
 instance of its run's seed — seeds 1, 2, … by default, so instance k on run
 k, as COCO takes its instances for repetitions — and `"fixed"` at instance 1;
