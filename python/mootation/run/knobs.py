@@ -118,6 +118,7 @@ _FALLBACK_TEXT = {
     "cma_bounds": ("penalty", "none"),
     "ils_accept": ("better", "rw", "restart", "lsmc"),
     "memetic_pick": ("best", "spread"),
+    "keep_points": ("all", "best"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 

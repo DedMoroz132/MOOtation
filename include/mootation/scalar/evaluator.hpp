@@ -44,6 +44,15 @@
 // has spent (BudgetSpent), so that nothing evaluates after it — a strategy's
 // rounds and restarts included (as COCO's runs end at the final target).
 //
+// THE LEAN MODE (task 18, group 3g; lean = true, set before the first
+// evaluation, one objective only): no archive. The evaluator keeps two
+// points, the best so far (index 0) and the last (index 1, overwritten by the
+// next), and looks no point up: a point asked for again is evaluated again
+// and counted. The answer is the best point; the counts, the records of the
+// best, the observer and THE TARGET are as without it. For long runs of
+// methods that never ask for a point twice (ipop, bipop: keep_points = best),
+// whose archive of every point would not fit in memory (1e6 D evaluations).
+//
 // THE COUNTS (addendum 1, §4). evaluations: the calls of the problem's
 // values (evaluate, residuals); grad_calls: the calls of a gradient or a
 // Jacobian; a joint call is one of each. What the budget is spent by is
@@ -157,6 +166,7 @@ public:
     bool over = false;                 // the run has ended: the final tolerance
     bool recorded = false;             // gen 0 has gone to the observer
     long long gen0 = 0;                // gens before this evaluator (polish.hpp)
+    bool lean = false;                 // THE LEAN MODE: the best and the last point only
     ImprovementLog improvements;       // m = 1: the best point's records (improvements.hpp)
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
@@ -175,6 +185,7 @@ public:
     // The archive index of x, evaluating it if it is new.
     std::size_t index(const std::vector<double>& x)
     {
+        if (lean) return fresh(x, std::string(), false);                       // THE LEAN MODE: no lookup
         const std::string key = key_of(x);
         auto it = where_.find(key);
         if (it != where_.end()) return it->second;
@@ -311,6 +322,7 @@ public:
     // non-dominated points by DSS, or the least violating ones.
     std::vector<std::size_t> answer(long long k = -1)
     {
+        if (lean) return X.empty() ? std::vector<std::size_t>{} : std::vector<std::size_t>{0};   // THE LEAN MODE
         const std::size_t kk = static_cast<std::size_t>(k < 0 ? pop_size : k);
         if (!nd_set || nd_tol != eq_tol()) rebuild();
         if (!nd.empty()) {
@@ -473,6 +485,7 @@ private:
     std::size_t keep(const std::vector<double>& x, const std::vector<double>& f,
                      const std::vector<double>& g, bool bad, const std::string& key, bool count)
     {
+        if (lean) return keep_lean(x, f, g, bad, count);
         const std::size_t i = X.size();
         X.push_back(x);
         F.push_back(f);
@@ -489,6 +502,54 @@ private:
             record();
         }
         if (m == 1 && count && !bad && f[0] <= P.stop_at && cv(i) <= 0.0) {     // THE TARGET
+            budget = spent;
+            limit = std::min(limit, spent);
+            throw BudgetSpent{};
+        }
+        return i;
+    }
+
+    // THE LEAN MODE's keep: the point into slot 1 (slot 0 for the first), the
+    // best of the two into slot 0 (feasible first, then f; Deb)
+    std::size_t keep_lean(const std::vector<double>& x, const std::vector<double>& f,
+                          const std::vector<double>& g, bool bad, bool count)
+    {
+        if (m != 1) throw std::logic_error("the lean evaluator is for one objective");
+        std::size_t i = 0;
+        if (X.size() < 2) {
+            i = X.size();
+            X.push_back(x);
+            F.push_back(f);
+            G.push_back(g);
+            R.push_back(r_);
+            failed.push_back(static_cast<char>(bad));
+        } else {
+            i = 1;
+            X[1] = x;
+            F[1] = f;
+            G[1] = g;
+            R[1] = r_;
+            failed[1] = static_cast<char>(bad);
+        }
+        r_.clear();
+        if (count) ++spent;
+        if (!bad) improvements.offer(f[0], cv(i), spent, grad_calls);
+        if (i == 1 && !bad) {
+            const double c1 = cv(1), c0 = cv(0);
+            const bool better = failed[0] || (c1 <= 0.0 && c0 <= 0.0 ? F[1][0] < F[0][0] : c1 < c0);
+            if (better) {
+                X[0] = X[1];
+                F[0] = F[1];
+                G[0] = G[1];
+                R[0] = R[1];
+                failed[0] = 0;
+            }
+        }
+        if (observer && count && spent >= next_record) {
+            while (next_record <= spent) next_record += stride;
+            record();
+        }
+        if (count && !bad && f[0] <= P.stop_at && cv(i) <= 0.0) {               // THE TARGET
             budget = spent;
             limit = std::min(limit, spent);
             throw BudgetSpent{};

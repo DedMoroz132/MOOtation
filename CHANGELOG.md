@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (`scalar/evaluator.hpp`; task 18, group 3g): the evaluator's lean
+  mode, opt-in, for one objective: no archive, the best and the last point
+  only, no lookup of repeated points, the counts, the records, the observer
+  and the target as before. `ipop`, `bipop` and `bipop_2009` take it with
+  `keep_points = best` (default `all`): the archive of every point of a
+  budget of 10^6 D does not fit in memory (about 0.4 KB a point at D = 10).
 - Added (task 20, §20.2.1): `suite/wrap.hpp`, a permutation, rotation and
   shift over any Native problem. The run sees x; the problem
   is evaluated at y = T(x): shift u = x - s, rotate v = c + Q (u - c),

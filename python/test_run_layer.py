@@ -11880,6 +11880,11 @@ def a_strategy_runs_its_inner_solver_through_minimize():
     runs_b = json.loads(dict(bip.settings)["restarts"])
     assert bip.objectives[0][0] < 1e-8 and runs_b[0][:2] == [0, 6] and runs_b[1][0] == 1, runs_b[:3]
     assert dict(bip.settings)["cma_weights"] == "positive" and bip.evaluations <= 4000
+    # group 3g: keep_points = best, the evaluator's lean mode, the same run here (no point asked twice)
+    lean = mootation.minimize(f, box, 1, algorithm="bipop_2009", max_evaluations=4000, seed=1,
+                              keep_points="best")
+    assert (lean.variables, lean.evaluations) == (bip.variables, bip.evaluations)
+    assert dict(lean.settings)["keep_points"] == "best"
     for inner, why in (({"local_tol": 1.0}, "is not a single-objective solver or strategy"),
                        ({"solver": "nsga2"}, "is not a single-objective solver or strategy"),
                        ({"solver": "cmaes", "bogus": 1}, "inner.bogus: unknown parameter"),

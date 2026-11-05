@@ -203,6 +203,45 @@ void target_in_regime_2()
               std::to_string(runs.items.size()) + " runs, " + std::to_string(r.evaluations) + " evaluations)");
 }
 
+// THE LEAN MODE (evaluator.hpp; group 3g): 50000 points kept as two, the
+// records and the best those of the full archive; bipop_2009 with
+// keep_points = best the run of keep_points = all, bit for bit (bbob is
+// evaluated beyond the box, cma_bounds = none: no point repeats)
+void lean()
+{
+    sc::Problem P = bbob(15, 5);
+    sc::Evaluator full(P, 1e-6, false, 0.0, 100000, 1, {}, 0), thin(P, 1e-6, false, 0.0, 100000, 1, {}, 0);
+    thin.lean = true;
+    std::mt19937 g(9);
+    for (int k = 0; k < 50000; ++k) {
+        Vec x(5);
+        for (double& v : x) v = -5.0 + 10.0 * mootation::rnd::uniform01(g);
+        full.index(x);
+        thin.index(x);
+    }
+    const auto a = full.improvements.records(), b = thin.improvements.records();
+    bool same = a.size() == b.size();
+    for (std::size_t i = 0; same && i < a.size(); ++i)
+        same = a[i].evaluations == b[i].evaluations && a[i].f == b[i].f;
+    const std::size_t best = full.answer()[0];
+    check(thin.X.size() == 2 && full.X.size() == 50000 && thin.spent == 50000 && same &&
+              thin.answer() == std::vector<std::size_t>{0} && thin.X[0] == full.X[best],
+          "the lean evaluator: 50000 points kept as 2, the same " + std::to_string(b.size()) +
+              " records and the same best point");
+    const sc::Knobs all{{"cma_bounds", word("none")}};
+    const sc::Knobs best_only{{"cma_bounds", word("none")}, {"keep_points", word("best")}};
+    const sc::Result r1 = sc::run("bipop_2009", bbob(15, 5), 1e-6, false, 0.0, 10, 200000, 3, all, {}, 0, {});
+    const sc::Result r2 = sc::run("bipop_2009", bbob(15, 5), 1e-6, false, 0.0, 10, 200000, 3, best_only, {}, 0, {});
+    bool same_run = r1.improvements.size() == r2.improvements.size();
+    for (std::size_t i = 0; same_run && i < r1.improvements.size(); ++i)
+        same_run = r1.improvements[i].evaluations == r2.improvements[i].evaluations &&
+                   r1.improvements[i].f == r2.improvements[i].f;
+    check(same_run && r1.evaluations == r2.evaluations && r1.variables[0] == r2.variables[0] &&
+              setting(r2, "keep_points") == "best" && setting(r1, "restarts") == setting(r2, "restarts"),
+          "bipop_2009, bbob f15 D = 5, keep_points = best: the run of keep_points = all, bit for bit (" +
+              std::to_string(r2.evaluations) + " evaluations)");
+}
+
 void refusals()
 {
     std::string why;
@@ -235,6 +274,7 @@ int main()
     bounds();
     target();
     target_in_regime_2();
+    lean();
     refusals();
     std::printf("%s (%d failed)\n", g_failed == 0 ? "PASS" : "FAIL", g_failed);
     return g_failed == 0 ? 0 : 1;

@@ -377,6 +377,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"cma_bounds",   {"penalty", "none"}},
         {"ils_accept",   {"better", "rw", "restart", "lsmc"}},
         {"memetic_pick", {"best", "spread"}},
+        {"keep_points",  {"all", "best"}},
     };
     return v;
 }
@@ -416,7 +417,7 @@ inline bool is_core_word(const std::string& name)
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
                           "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
                           "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept",
-                          "memetic_pick"})
+                          "memetic_pick", "keep_points"})
         if (name == k) return true;
     return false;
 }

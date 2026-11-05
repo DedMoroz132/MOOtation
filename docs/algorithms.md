@@ -147,7 +147,7 @@ with the same result, bit for bit; a point two starts evaluate counts once.
 | Strategy | Knobs |
 |---|---|
 | `multistart` | `inner`, `n_starts` (10), `start_points` (`sobol`, `lhs`, `uniform`, `halton_rand`, `sobol_owen`), `threads` (1), `min_dist` (1e-3), `min_df` (1e-8) |
-| `ipop` (Auger & Hansen, CEC 2005) | `cma_weights`, `cma_cmu`, `cma_sigma0` (0.5 of the box's width), `start_share` (0), `cma_bounds` (`penalty`, `none`), `min_dist`, `min_df` |
+| `ipop` (Auger & Hansen, CEC 2005) | `cma_weights`, `cma_cmu`, `cma_sigma0` (0.5 of the box's width), `start_share` (0), `cma_bounds` (`penalty`, `none`), `keep_points` (`all`, `best`), `min_dist`, `min_df` |
 | `bipop`, `bipop_2009` (Hansen, GECCO 2009) | as `ipop`, `cma_sigma0` 0.2, `start_share` 0.1, and `bipop_large` (9) |
 | `mlsl` (Rinnooy Kan & Timmer 1987) | `inner`, `mlsl_n` (100), `mlsl_sigma` (4), `mlsl_gamma` (0.2), `mlsl_tau` (0), `mlsl_nu` (0), `threads`, `start_budget` (0) |
 | `ils` (Lourenço, Martin & Stützle 2001) | `inner`, `ils_accept` (`better`, `rw`, `restart`, `lsmc`), `ils_step` (0.1 of the width), `ils_restart` (10), `ils_temperature` (1), `start_budget` |
@@ -173,6 +173,10 @@ positive weights and its c_μ. The start mean is uniform in the box less
 `cma_bounds = none` evaluates points beyond the box, for a function defined
 there (bbob). A shorter budget gives the same run cut short. Every run is in
 the settings (`restarts`: regime, λ, σ⁰, evaluations, what stopped it).
+`keep_points = best` runs them on the evaluator's lean mode: no archive, only
+the best and the last point, so that budgets of 10^6 D fit in memory; a run
+that asks for no point twice (with `cma_bounds = none`) is the same, bit for
+bit.
 
 The strategies around a local solver (`scalar/search.hpp`): `mlsl` grows a
 uniform sample and starts the inner solver only from points with no lower

@@ -32,7 +32,10 @@
 // (penalty: a point outside the box is evaluated at its clip plus the squared
 // distance times 1 + |f|, as SCALAR-7; none: evaluated where it is, for a
 // function defined beyond the box, as bbob is, В5); bipop_large (9, the
-// restarts of regime 1); min_dist, min_df (the minima log, strategy.hpp).
+// restarts of regime 1); keep_points (all: the evaluator's archive of every
+// point, the default; best: its lean mode, evaluator.hpp, for budgets whose
+// archive would not fit in memory: a run that never asks for a point twice
+// is the same with either); min_dist, min_df (the minima log, strategy.hpp).
 // Every run is in the settings ("restarts": regime, λ, σ⁰, evaluations, the
 // criterion that stopped it).
 //
@@ -160,7 +163,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     using restarts::Run;
     const bool bipop = name != "ipop";
     std::vector<std::string> own{"cma_weights", "cma_cmu", "cma_sigma0", "start_share", "cma_bounds", "min_dist",
-                                 "min_df"};
+                                 "min_df", "keep_points"};
     if (bipop) own.push_back("bipop_large");
     StrategyKnobs k(name, knobs, own);
     CMAESOptions o;
@@ -174,6 +177,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     const bool clip = k.word("cma_bounds", "penalty", {"penalty", "none"}) == "penalty";
     const long long large = bipop ? k.whole("bipop_large", 9, 1) : 0;
     const double min_dist = k.number("min_dist", 1e-3), min_df = k.number("min_df", 1e-8);
+    const bool lean = k.word("keep_points", "all", {"all", "best"}) == "best";
     if (!(sigma_share > 0.0)) throw std::invalid_argument(name + ": cma_sigma0 must be > 0");
     if (!(share >= 0.0 && share < 0.5)) throw std::invalid_argument(name + ": start_share must be in [0, 0.5)");
     if (P.m != 1)
@@ -192,6 +196,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     std::sort(ignored.begin(), ignored.end());
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.lean = lean;
     const std::size_t lam_def = 4 + static_cast<std::size_t>(std::floor(3.0 * dm::log(static_cast<double>(n))));
     const double sigma_large = sigma_share * width;
     std::vector<Run> runs;
