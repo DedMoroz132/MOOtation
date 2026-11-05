@@ -75,6 +75,12 @@ always listed under **Changed** or **Removed**.
   the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and
   the polynomial mutation, then KPCM (IAMD-1). Default runs keep their golden
   fingerprints.
+- Added (`run/report_so.py`; task 18, stage 5): `--so-report`, the report of a
+  campaign at one objective: ERT by problem at COCO's table precisions, the
+  ECDF by dimension and bbob class, the median f - f_opt at budgets of 10^k D,
+  and per dimension, class and budget the algorithms no worse than the best
+  (Friedman, then the exact Wilcoxon signed-rank test with Holm's
+  correction). `stats.friedman` with the correction for ties.
 - Added: a run at one objective may end at a target (`scalar::Problem::
   stop_at`; `minimize(f_stop=)`; `[campaign] stop_at`, a precision above the
   problem's `f_opt`, in both engines): the evaluator keeps and records the

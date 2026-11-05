@@ -11634,6 +11634,98 @@ def the_cec2013_niching_problems_are_registered_and_cross_checked():
 
 
 @test
+def friedman_test_by_hand():
+    """Task 18, stage 5 (stats.friedman): three blocks ranking three
+    treatments alike give T = 6, p = exp(-3) (chi^2 with 2 degrees of
+    freedom); ties are ranked on average; no spread at all is p = 1."""
+    import math
+    from mootation.run.stats import friedman
+    r = friedman([[1.0, 2.0, 3.0], [10.0, 20.0, 30.0], [0.1, 0.2, 0.3]])
+    assert abs(r["statistic"] - 6.0) < 1e-12 and abs(r["p"] - math.exp(-3.0)) < 1e-10, r
+    assert r["mean_ranks"] == [1.0, 2.0, 3.0]
+    t = friedman([[1.0, 1.0, 2.0], [1.0, 2.0, 3.0], [2.0, 1.0, 3.0]])
+    # ranks (1.5, 1.5, 3), (1, 2, 3), (2, 1, 3): R = (4.5, 4.5, 9), sum r^2 = 41.5, c = 36
+    assert abs(t["statistic"] - 2 * ((4.5 - 6) ** 2 * 2 + 9) / 5.5) < 1e-12, t
+    assert friedman([[1.0, 1.0], [2.0, 2.0]])["p"] == 1.0
+
+
+@test
+def the_single_objective_report_reads_a_campaign():
+    """Task 18, stage 5 (run/report_so.py): on a small bbob campaign the ERT
+    of a cell is the evaluations of all its runs to the target over the hits
+    (H16 §4.1); the ECDF shares rise from 0 to at most 1 per dimension and
+    class; the values at budgets are the medians of f - f_opt; the methods
+    no worse than the best include the best; --so-report prints the four
+    tables."""
+    from mootation.run import campaign as C
+    if not _have_numpy() or _core_with("so_metrics") is None or _core_with("scalar") is None:
+        print("  skip  the_single_objective_report...: no _core"); return
+    import contextlib
+    import io
+    from mootation import _core
+    from mootation.run import report_so as RS
+    from mootation.run.config import load
+    toml = """[run]
+name = "rep"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 4
+problems = ["bbob01_n02_1D", "bbob15_n02_1D", "bbob20_n02_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 2000
+storage = "store"
+[[algorithms]]
+name = "cmaes"
+pop = 0
+gens = 0
+[[algorithms]]
+name = "nelder_mead"
+pop = 0
+gens = 0
+[[algorithms]]
+name = "de"
+pop = 0
+gens = 0
+"""
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "rep.toml"
+        path.write_text(toml, encoding="utf-8")
+        cfg = load(path)
+        assert validate(cfg) == [], validate(cfg)
+        spec = C.campaign_spec(cfg)
+        root = C.out_root(cfg, spec)
+        C.run_campaign(cfg, workers=2, engine="python")
+        rs = RS.runs(root)
+        assert len(rs) == 36 and {RS.problem_class(r["problem"]) for r in rs} == {
+            "separable", "multimodal, adequate structure", "multimodal, weak structure"}
+        table = RS.ert_table(rs)
+        cell = table[("bbob01_n02_1D", "cmaes")]
+        group = [r for r in rs if (r["problem"], r["algorithm"]) == ("bbob01_n02_1D", "cmaes")]
+        so = _core.so_metrics
+        times = [so.runtime(r["records"], r["so"]["f_opt"] + cell["precisions"][2], 1.0) for r in group]
+        hits = [x for x in times if x is not None]
+        lengths = sum(RS._cost(r) for r, x in zip(group, times) if x is None)
+        assert cell["hits"][2] == len(hits) and abs(cell["ert"][2] - (sum(hits) + lengths) / len(hits)) < 1e-9, cell
+        e = RS.ecdf(rs)[2]
+        for c, algs in e.items():
+            for a, row in algs.items():
+                sh = row["share"]
+                assert all(0.0 <= x <= 1.0 for x in sh) and sh == sorted(sh), (c, a, sh)
+        vals = RS.values_at(rs)
+        assert set(vals[("bbob15_n02_1D", "de")]) == {20, 200, 2000}, vals[("bbob15_n02_1D", "de")]
+        ind = RS.indistinct(rs)
+        assert ind and all(cell["best"] in cell["same"] and cell["blocks"] == 4
+                           for (D, c, b), cell in ind.items()), ind
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert C.main([str(path), "--so-report"]) == 0
+        text = out.getvalue()
+        assert "## ERT" in text and "## ECDF" in text and "no worse than the best" in text, text[:300]
+
+
+@test
 def a_campaign_stops_at_its_target_in_both_engines():
     """Task 18, stage 3, §3.6 ([campaign] stop_at; evaluator.hpp, THE
     TARGET): a run at one objective ends at the first point within stop_at of

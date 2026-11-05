@@ -273,6 +273,32 @@ def bootstrap_mean_ranks(ranks_by_problem: dict, *, n_boot: int = 2000,
     return {a: (float(lo[j]), float(hi[j])) for j, a in enumerate(algs)}
 
 
+def friedman(blocks: Sequence[Sequence[float]], *, lower_better: bool = True) -> dict:
+    """Friedman's test of k treatments over n blocks (M. Friedman, "The use of
+    ranks to avoid the assumption of normality implicit in the analysis of
+    variance", JASA 32(200):675-701, 1937): each block's values ranked 1..k
+    (ties sharing the average rank), the statistic with the correction for ties
+    T = (k - 1) sum_j (R_j - n (k + 1) / 2)^2 / (sum_ij r_ij^2 - n k (k + 1)^2 / 4),
+    R_j the treatments' rank sums, against chi^2 with k - 1 degrees of freedom
+    (W.J. Conover, Practical Nonparametric Statistics, 3rd ed., §5.8). Every
+    block has a value of every treatment. Returns {"n", "k", "statistic",
+    "p", "mean_ranks"}; with no spread at all (every block tied
+    throughout) the statistic is 0 and p is 1."""
+    from .report import _chi2_sf
+    n = len(blocks)
+    k = len(blocks[0]) if n else 0
+    if n == 0 or k < 2:
+        return {"n": n, "k": k, "statistic": 0.0, "p": 1.0, "mean_ranks": [1.0] * k}
+    ranks = [average_ranks([v if lower_better else -v for v in b]) for b in blocks]
+    R = [sum(r[j] for r in ranks) for j in range(k)]
+    a = sum(x * x for r in ranks for x in r)
+    c = n * k * (k + 1) ** 2 / 4.0
+    if a - c <= 0.0:
+        return {"n": n, "k": k, "statistic": 0.0, "p": 1.0, "mean_ranks": [rj / n for rj in R]}
+    t = (k - 1) * sum((rj - n * (k + 1) / 2.0) ** 2 for rj in R) / (a - c)
+    return {"n": n, "k": k, "statistic": t, "p": _chi2_sf(t, k - 1), "mean_ranks": [rj / n for rj in R]}
+
+
 def mark(p: float | None, better: str | None, alpha: float = 0.05) -> str:
     """The usual table marker: '+' A significantly better, '-' worse, '=' neither."""
     if p is None or better is None or p >= alpha:

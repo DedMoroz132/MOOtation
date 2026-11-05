@@ -4031,6 +4031,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--ecdf", metavar="METRIC",
                     help="print the runtime ECDF of METRIC over (run, target) pairs, targets "
                          "at fixed distances from the best known value, and exit")
+    ap.add_argument("--so-report", action="store_true",
+                    help="print the report of the runs at one objective (run/report_so.py: ERT, "
+                         "ECDF by class, values at budgets, the methods no worse than the best "
+                         "by Friedman and Wilcoxon + Holm at --alpha) and exit")
     ap.add_argument("--bias", action="store_true",
                     help="print where each algorithm searched (Kudela et al. 2026): binsizes "
                          "over 20 bins at the bounds and in the centre for the final "
@@ -4318,6 +4322,10 @@ def main(argv: list[str] | None = None) -> int:
                         keep_caveats=args.cover_keep_caveats,
                         calibration=args.is_calibration, weight=args.is_weight,
                         bbob_features=args.is_bbob_features))
+        return 0
+    if args.so_report:
+        from . import report_so
+        print(report_so.report(root, alpha=args.alpha, problems=only_problems))
         return 0
     if args.behaviour:
         if args.scenario == "archive":

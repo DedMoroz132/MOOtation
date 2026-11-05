@@ -1601,6 +1601,21 @@ run writes:
 | `final.csv` | the answer: the best point, one row |
 | `meta.json` | the job, `so` (f_opt and `f_opt_kind`, the kind of targets and their precisions, f(x0), the runtime to each target, the run's cost, the bbob instance), `final` (the best point's f, delta_f, cv, `fe_best`, `grad_calls_best`) |
 
+**The report at one objective** (task 18, stage 5; `run/report_so.py`):
+`python -m mootation.run.campaign campaign.toml --so-report [--alpha 0.05]`
+prints four tables off the runs' improvement records, with the measures of
+`so_metrics.hpp`, as COCO defines them (Hansen et al. 2016, 2022):
+
+| Table | What |
+|---|---|
+| ERT | per problem and algorithm, at the precisions of COCO's tables (1e1 … 1e-7; Moré and Wild's 1e-1 … 1e-7 for the relative targets): every evaluation of every run until it hit the target over the hits, inf without one, and the hits |
+| ECDF | per dimension (never over dimensions), per bbob class (separable f1-f5, low or moderate conditioning f6-f9, high conditioning f10-f14, multimodal with adequate f15-f19 and with weak structure f20-f24; another family is its own class) and over all problems: the share of (run, target) pairs hit by x D evaluations, over COCO's 51 targets, a miss in the denominator |
+| values at budgets | the median f - f_opt at 10^k D evaluations (an ordinal scale only) |
+| no worse than the best | per dimension, class and budget: Friedman's test over the blocks (problem, seed — an instance with `bbob_instance = "by_run"`); where it rejects, the best by mean rank against each other by the exact Wilcoxon signed-rank test, Holm-adjusted; the algorithms it cannot tell from the best |
+
+A run's cost is evaluations + `grad_cost` x gradient calls. The test is
+Friedman + Holm until the atlas's protocol decides one (task 18, §5).
+
 `[campaign] stop_at = 1e-8` ends a run at one objective at its first feasible
 point within that much of the problem's `f_opt`, as COCO's runs end at the
 final target (task 18, stage 3; `Problem::stop_at`, evaluator.hpp THE
