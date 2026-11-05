@@ -157,6 +157,7 @@ with the same result, bit for bit; a point two starts evaluate counts once.
 | `halving` (Jamieson & Talwalkar 2016) | `inner`, `n_starts` (16), `start_points`, `threads` |
 | `tiktak` (Arnoud, Guvenen & Kleineberg 2019, 2023; task 19) | `inner` (a local solver), `tiktak_n` (100), `tiktak_share` (0.1), `start_points`, `start_budget` (0), `min_dist`, `min_df` |
 | `data_continuation` (task 19) | `inner`, `dc_stages` (the stages before the problem: `[[w_1, ...], {"window": [a, b]}, ...]`), `dc_share` (0.5), `min_dist`, `min_df` |
+| `pap` (Peng, Tang, Chen & Yao 2010; task 19) | `pap_members` (`[{"solver": "de", "np": 70}, {"solver": "pso", "np": 16}, {"solver": "cmaes", "np": 14}]`; members: `de`, `jade`, `shade`, `lshade`, `ga_sbx`, `ssga`, `g3_pcx`, `pso`, `spso2011`, `cmaes`), `pap_interval` (0: MAX_GEN / 20), `pap_size` (1) |
 | `memetic` | `inner` (the global solver), `local_solver`, `memetic_every` (1000), `memetic_points` (1), `memetic_pick` (`best`, `spread`), `local_share` (0.2), `start_budget`, `threads` |
 
 `tiktak` evaluates `tiktak_n` design points, keeps the best `tiktak_share` of them
@@ -169,6 +170,11 @@ searches.
 residuals with its own block weights, or a window of them, from the previous
 stage's answer, the problem itself last (`scalar/continuation.hpp`, DC-1 to
 DC-5); every point goes into the run's archive with the problem's weights.
+
+`pap` runs its members' generations in lockstep on their own subpopulations and
+every `pap_interval` generations copies the best `pap_size` of the others into
+each, in place of its worst; CMA-ES takes them by injection (`scalar/pap.hpp`,
+PAP-1 to PAP-7). One member is that method's own run, bit for bit.
 
 `multistart` shares the budget evenly among `n_starts` starts in one round:
 start 0 is the inner solver's own run (its plan, or `x0`), the others start

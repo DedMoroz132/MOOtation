@@ -180,6 +180,8 @@ public:
     const Vec& values() const { return f_; }
     const Vec& violations() const { return v_; }
     std::size_t best() const { return evo::best(f_, v_); }
+    // a migrant (pap, task 19): the worst member's place where it is better
+    void migrate(const Vec& x, double f, double v) { evo::replace_worst(x_, f_, v_, x, f, v); }
 
 private:
     Vec lo_, hi_;

@@ -11320,7 +11320,8 @@ def scalar_presets_budget_and_refusals():
                                   "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes", "lm",
                                   "lbfgsb", "eki", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                   "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
-                                  "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic")
+                                  "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic",
+                                  "tiktak", "data_continuation", "pap")
     calls = [0]
     def f(x):
         calls[0] += 1
@@ -11485,7 +11486,8 @@ def single_objective_solvers_and_baselines_at_one_objective():
     from mootation.scalar import SINGLE
     assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "de", "jade", "shade", "lshade",
                       "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
-                      "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic")
+                      "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak",
+                      "data_continuation", "pap")
     for name in SINGLE[5:]:                          # eki, stage 4's population methods, stage 3's strategies
         assert check_pop(name, 20, 2) == (f"{name} is a single-objective algorithm: n_objs must "
                                           "be 1, got 2"), name
@@ -11903,7 +11905,7 @@ def a_strategy_runs_its_inner_solver_through_minimize():
     assert len(minima) == 2 and sum(m[2] for m in minima) == 6, minima
     assert sorted(round(m[3]) for m in minima) == [-1, 1], minima
     assert STRATEGIES == ("multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils",
-                          "memetic", "tiktak", "data_continuation")
+                          "memetic", "tiktak", "data_continuation", "pap")
     assert [s for s in STRATEGIES if not depends_on_budget(s)] == ["ipop", "bipop", "bipop_2009"]
     mem = mootation.minimize(f, box, 1, algorithm="memetic", max_evaluations=3000, seed=2,
                              inner={"solver": "de"}, local_solver={"solver": "nelder_mead"}, memetic_every=500)

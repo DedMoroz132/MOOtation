@@ -61,6 +61,12 @@ always listed under **Changed** or **Removed**.
   nothing (SRCH-9). A global solver stopped by its own criteria evaluates
   nothing new when rerun; with every archive point already a local start the
   loop went on without end below the budget.
+- Added: `pap` (task 19, §19.6), Peng, Tang, Chen & Yao's population-based
+  algorithm portfolio (`scalar/pap.hpp`): stage 4's methods and CMA-ES on
+  their own subpopulations, migration of the best every MAX_GEN / 20
+  generations (`pap_members`, `pap_interval`, `pap_size`); the stage-4
+  methods get a `migrate()`, unused elsewhere (every run as before).
+  `minimize()` takes `dc_stages` and `pap_members` as lists.
 - Added: `data_continuation` (task 19, §19.6), a search strategy solving a
   least-squares problem in stages of the residuals' block weights or windows
   (`dc_stages`, `dc_share`), each from the previous stage's answer, the

@@ -63,6 +63,23 @@ inline std::size_t best(const Vec& f, const Vec& v)
 
 // np points, uniform in the box: point by point, coordinate by coordinate,
 // lo + U(0, 1) (hi - lo) — the draw of gde3's setup().
+// A migrant (x, f, v) into a population: it takes the place of the worst
+// member, the last of equals, where it is better (task 19, §19.6: PAP's
+// "discard the worst after the emigrants joined"). Returns the place, or
+// x.size() where it stays out.
+inline std::size_t replace_worst(Rows& X, Vec& F, Vec& V, const Vec& x, double f, double v)
+{
+    if (X.empty()) return 0;
+    std::size_t w = 0;
+    for (std::size_t i = 1; i < X.size(); ++i)
+        if (!better(F[i], V[i], F[w], V[w])) w = i;
+    if (!better(f, v, F[w], V[w])) return X.size();
+    X[w] = x;
+    F[w] = f;
+    V[w] = v;
+    return w;
+}
+
 inline Rows uniform(const Vec& lo, const Vec& hi, std::size_t np, std::mt19937& rng)
 {
     rnd::uniform_real_distribution<double> U01(0.0, 1.0);

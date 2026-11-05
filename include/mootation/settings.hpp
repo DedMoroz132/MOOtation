@@ -119,7 +119,7 @@ inline const std::vector<std::string>& knob_names() {
         // task 19, §19.2.3: ga's block operators (scalar/ga.hpp)
         "ga_block_uniform", "ga_block_mutation",
         // task 19, §19.6: tiktak (scalar/tiktak.hpp)
-        "tiktak_n", "tiktak_share", "dc_share"
+        "tiktak_n", "tiktak_share", "dc_share", "pap_interval", "pap_size"
     };
     return v;
 }
@@ -209,7 +209,7 @@ inline bool is_core_param(const std::string& name)
                           "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature",
                           "bh_step", "bh_accept_rate", "bh_interval", "ils_step", "ils_restart",
                           "ils_temperature", "memetic_every", "memetic_points", "local_share",
-                          "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share", "dc_share"})
+                          "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share", "dc_share", "pap_interval", "pap_size"})
         if (name == k) return true;
     return false;
 }

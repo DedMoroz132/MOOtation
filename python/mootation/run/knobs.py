@@ -44,6 +44,7 @@ _FALLBACK = (
     "ga_block_uniform", "ga_block_mutation",
     "tiktak_n", "tiktak_share",
     "dc_share",
+    "pap_interval", "pap_size",
 )
 _FALLBACK_TEXT = {
     "bound_repair": ("clip", "reflect", "random", "midpoint", "resample", "wrap", "native", "r_reflect"),

@@ -113,9 +113,9 @@ POPULATION = ("de", "jade", "shade", "lshade", "ga_sbx", "ssga", "g3_pcx", "chc"
               "sep_cmaes")
 # the strategies of stage 3 (task 18, §3; strategy.hpp, restarts.hpp)
 STRATEGIES = ("multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic",
-              "tiktak", "data_continuation")
+              "tiktak", "data_continuation", "pap")
 # those that lay the budget out among their starts: a run that depends on it
-SHARING = ("multistart", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak", "data_continuation")
+SHARING = ("multistart", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap")
 # the single-objective algorithms (task 18, item 2.3, stages 1, 3 and 4)
 SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki") + POPULATION + STRATEGIES
 # the methods beside the scalarization methods, on the same evaluator,
@@ -213,7 +213,7 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
     seeds = None if seed_points is None else [(list(x), list(f), list(g)) for x, f, g in seed_points]
     d = core.run(name, fn, constraints, bounds, int(n_objs), int(n_cons), int(n_eq), float(eq_tol),
                  eq_tol0, int(pop_size), int(budget), int(seed),
-                 {k: (canonical(v) if isinstance(v, dict) else v) for k, v in knobs.items()},
+                 {k: (canonical(v) if isinstance(v, (dict, list)) else v) for k, v in knobs.items()},
                  on_generation=on_generation if int(record_every) > 0 else None,
                  record_every=int(record_every), design=design,
                  seed_points=seeds if name != "mosqp" else None, grad=grad, residuals=residuals,

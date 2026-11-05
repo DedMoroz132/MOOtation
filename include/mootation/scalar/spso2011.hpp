@@ -182,6 +182,15 @@ public:
     const Vec& values() const { return pf_; }
     const Vec& violations() const { return pv_; }
     std::size_t best() const { return evo::best(pf_, pv_); }
+    // a migrant (pap, task 19): the worst particle's best and position where
+    // it is better, its velocity 0 (L_i from the next tell)
+    void migrate(const Vec& x, double f, double v)
+    {
+        const std::size_t w = evo::replace_worst(p_, pf_, pv_, x, f, v);
+        if (w == p_.size()) return;
+        x_[w] = x;
+        v_[w].assign(x.size(), 0.0);
+    }
     const Rows& positions() const { return x_; }
     const Rows& velocities() const { return v_; }
 

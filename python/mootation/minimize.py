@@ -43,7 +43,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature", "bh_step",
                "bh_accept_rate", "bh_interval", "ils_step", "ils_restart", "ils_temperature", "memetic_every",
                "memetic_points", "local_share",
-               "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share", "dc_share")
+               "ga_block_uniform", "ga_block_mutation", "tiktak_n", "tiktak_share", "dc_share", "pap_interval", "pap_size")
 WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index",
               "portfolio", "portfolio_credit",
               "sa_energy", "sa_step", "sa_weights", "sa_tch_accept", "coords", "survival",
@@ -64,6 +64,9 @@ POLISH_KNOBS = ("polish", "polish_share", "polish_points")
 # A strategy's inner solver (task 18, stage 3; scalar/strategy.hpp): a dict
 # {"solver": name, its knobs ...}, handed over as its canonical JSON text.
 SOLVER_KNOBS = ("inner", "local_solver")
+# Knobs whose value is a JSON array (task 19, §19.6): data_continuation's
+# stages, pap's members; handed over as its canonical JSON text.
+JSON_KNOBS = ("dc_stages", "pap_members")
 
 
 def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constraints=None,
@@ -106,7 +109,7 @@ KNOBS = ("eta_c", "eta_m", "pc", "pm", "T", "delta", "nr", "kappa",
          "K", "n_clusters", "theta", "alpha", "F", "CR", "div", "normalize",
          "bound_repair", "crossover", "mutation", "mutation_scale", "mixture_q", "blx_alpha",
          "sbx_var_prob", "sbx_bounds", "crowding_space", "dms_init", "dms_poll", "step_share",
-         "F_spread") + PARAM_KNOBS + WORD_KNOBS + POLISH_KNOBS + SOLVER_KNOBS
+         "F_spread") + PARAM_KNOBS + WORD_KNOBS + POLISH_KNOBS + SOLVER_KNOBS + JSON_KNOBS
 
 from ._hv_time import exact_hv_time_warning  # noqa: E402  (task 14: exact at every M)
 

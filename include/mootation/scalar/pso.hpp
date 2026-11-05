@@ -173,6 +173,16 @@ public:
     const Vec& values() const { return pf_; }
     const Vec& violations() const { return pv_; }
     std::size_t best() const { return g_; }
+    // a migrant (pap, task 19): the worst particle's best and position where
+    // it is better, its velocity 0; p_g again
+    void migrate(const Vec& x, double f, double v)
+    {
+        const std::size_t w = evo::replace_worst(p_, pf_, pv_, x, f, v);
+        if (w == p_.size()) return;
+        x_[w] = x;
+        v_[w].assign(x.size(), 0.0);
+        g_ = evo::best(pf_, pv_);
+    }
     const Rows& positions() const { return x_; }
 
 private:
