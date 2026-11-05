@@ -118,7 +118,7 @@ def cf_rows(i: int, X):
     if i >= 8:
         S = []
         for Js in sets:
-            Yc = Y[:, Js - first]
+            Yc = np.ascontiguousarray(Y[:, Js - first])
             T = 4.0 * Yc * Yc - np.cos(8.0 * np.pi * Yc) + 1.0 if i == 10 else Yc * Yc
             S.append(2.0 / len(Js) * np.sum(T, axis=1))
         x2 = X[:, 1]
@@ -134,7 +134,7 @@ def cf_rows(i: int, X):
     if i in (1, 2, 3):
         S = []
         for Js in sets:
-            Yc = Y[:, Js - first]
+            Yc = np.ascontiguousarray(Y[:, Js - first])
             if i == 3:
                 sq = np.sum(Yc * Yc, axis=1)
                 pr = np.prod(np.cos(20.0 * Yc * np.pi / np.sqrt(Js)), axis=1)
@@ -165,7 +165,7 @@ def cf_rows(i: int, X):
             H[:, col] = y * y
         else:
             H[:, col] = 2.0 * y * y - np.cos(4.0 * np.pi * y) + 1.0
-    s1, s2 = np.sum(H[:, sets[0] - 2], axis=1), np.sum(H[:, sets[1] - 2], axis=1)
+    s1, s2 = (np.sum(np.ascontiguousarray(H[:, Js - 2]), axis=1) for Js in sets[:2])
     if i in (4, 5):
         F = np.column_stack([x1 + s1, 1.0 - x1 + s2])
         base = np.sin(6.0 * np.pi * x1 + 2.0 * np.pi / n)

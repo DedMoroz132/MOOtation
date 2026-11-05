@@ -33,8 +33,9 @@ READINGS (the report's text):
   and bounds).
 
 The order of every operation is the one uf.hpp repeats (common.hpp, NUMPY'S
-ORDER): a set's terms summed with np.sum (pairwise), the cosines multiplied
-with np.prod (left to right), y^2 as y * y.
+ORDER): a set's terms summed with np.sum (pairwise, the set's columns copied
+row by row first), the cosines multiplied with np.prod (left to right), y^2
+as y * y.
 """
 
 from __future__ import annotations
@@ -91,7 +92,7 @@ def _sums(i: int, Y: np.ndarray, sets) -> list:
     first = 3 if i >= 8 else 2
     out = []
     for Js in sets:
-        Yc = Y[:, Js - first]
+        Yc = np.ascontiguousarray(Y[:, Js - first])     # rows in memory: pairwise sums (_rows.py)
         if i in (3, 6):
             sq = np.sum(Yc * Yc, axis=1)
             pr = np.prod(np.cos(20.0 * Yc * np.pi / np.sqrt(Js)), axis=1)

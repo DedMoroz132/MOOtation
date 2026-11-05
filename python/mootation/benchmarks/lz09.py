@@ -30,8 +30,9 @@ The variant of jMetal's code (reading P5: variables in [0, 1] stretched to
 here yet.
 
 The order of every operation is the one lz09.hpp repeats (common.hpp, NUMPY'S
-ORDER): the set's terms summed with np.sum (pairwise), F8's cosines
-multiplied with np.prod (left to right), y^2 as y * y.
+ORDER): the set's terms summed with np.sum (pairwise: the columns a set
+picks copied row by row first, _rows.py), F8's cosines multiplied with
+np.prod (left to right), y^2 as y * y.
 """
 
 from __future__ import annotations
@@ -99,7 +100,7 @@ def lz09_rows(i: int, X) -> np.ndarray:
     x1 = X[:, 0]
     if i == 6:
         x2 = X[:, 1]
-        S = [np.sum(Y[:, c] * Y[:, c], axis=1) for c in cols]
+        S = [np.sum(Yc * Yc, axis=1) for Yc in (np.ascontiguousarray(Y[:, c]) for c in cols)]
         c1, c2 = np.cos(0.5 * x1 * np.pi), np.cos(0.5 * x2 * np.pi)
         s1, s2 = np.sin(0.5 * x1 * np.pi), np.sin(0.5 * x2 * np.pi)
         return np.column_stack([c1 * c2 + 2.0 / len(sets[0]) * S[0],
@@ -107,15 +108,16 @@ def lz09_rows(i: int, X) -> np.ndarray:
                                 s1 + 2.0 / len(sets[2]) * S[2]])
     if i == 7:
         H = 4.0 * Y * Y - np.cos(8.0 * Y * np.pi) + 1.0
-        S = [np.sum(H[:, c], axis=1) for c in cols]
+        S = [np.sum(np.ascontiguousarray(H[:, c]), axis=1) for c in cols]
     elif i == 8:
         S = []
         for Js, c in zip(sets, cols):
-            sq = np.sum(Y[:, c] * Y[:, c], axis=1)
-            pr = np.prod(np.cos(20.0 * Y[:, c] * np.pi / np.sqrt(Js)), axis=1)
+            Yc = np.ascontiguousarray(Y[:, c])
+            sq = np.sum(Yc * Yc, axis=1)
+            pr = np.prod(np.cos(20.0 * Yc * np.pi / np.sqrt(Js)), axis=1)
             S.append(4.0 * sq - 2.0 * pr + 2.0)
     else:
-        S = [np.sum(Y[:, c] * Y[:, c], axis=1) for c in cols]
+        S = [np.sum(Yc * Yc, axis=1) for Yc in (np.ascontiguousarray(Y[:, c]) for c in cols)]
     a2 = 1.0 - x1 * x1 if i == 9 else 1.0 - np.sqrt(x1)
     return np.column_stack([x1 + 2.0 / len(sets[0]) * S[0], a2 + 2.0 / len(sets[1]) * S[1]])
 
