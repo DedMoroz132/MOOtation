@@ -10,6 +10,9 @@
 //     the same bit for bit;
 //   - the weights scale each block; what passes through (residuals, canon,
 //     start, the symmetries) is the problem's;
+//   - a problem with residual blocks and no blocks of coordinates under task
+//     20's wrappers (wrap.hpp) keeps res_blocks (WRAP-8), its blocks as
+//     objectives the wrapped residuals'; chaboche1d under one refused (WRAP-7);
 //   - refused: a problem without residuals, weights of the wrong count or
 //     negative, blocks that do not add up.
 // ============================================================================
@@ -25,6 +28,7 @@
 
 #include <mootation/suite/blocks_objectives.hpp>
 #include <mootation/suite/suite.hpp>
+#include <mootation/suite/wrap.hpp>
 
 namespace {
 
@@ -168,6 +172,63 @@ void weights_and_what_passes_through()
     check(through, "residuals, canon, start and the symmetries are the problem's (BO-4)");
 }
 
+// a test's own problem: two parameters, residuals in blocks of 2 and 4, no blocks of coordinates
+struct Line final : S::Native {
+    Line()
+    {
+        n_var = 2;
+        n_obj = 1;
+        n_res = 6;
+        res_blocks = {2, 4};
+    }
+    void evaluate(const double* x, double* f, double*) const override
+    {
+        double r[6], s = 0.0;
+        residuals(x, r, nullptr);
+        for (double v : r) s += v * v;
+        f[0] = 0.5 * s;
+    }
+    void residuals(const double* x, double* r, double*) const override
+    {
+        for (int i = 0; i < 6; ++i) r[i] = x[0] + x[1] * i - 0.5 * i;
+    }
+};
+
+void under_a_wrapper()
+{
+    S::WrapSpec w;
+    w.name = "line";
+    w.perm = 1;
+    w.shift = 1;
+    const auto line = std::make_shared<const Line>();
+    const S::Bounds box{{-1.0, 1.0}, {-1.0, 1.0}};
+    const auto wr = std::make_shared<const S::Wrapped>(line, S::WrapMap(w, 2, 1, box));
+    const S::BlocksObjectives a(wr);
+    std::mt19937 rng(3);
+    bool same = true;
+    for (int rep = 0; rep < 10; ++rep) {
+        std::uniform_real_distribution<double> U(-0.5, 0.5);
+        const Vec x{U(rng), U(rng)};
+        Vec r(6), f(2), want(2);
+        wr->residuals(x.data(), r.data(), nullptr);
+        a.evaluate(x.data(), f.data(), nullptr);
+        S::block_objectives(r.data(), {2, 4}, {}, want.data());
+        same = same && f == want;
+    }
+    check(wr->res_blocks == line->res_blocks && a.n_obj == 2 && same,
+          "a problem with res_blocks and no blocks of coordinates under perm and shift: res_blocks pass through "
+          "(WRAP-8), f_b of the wrapped residuals");
+    S::sym::Instance in;
+    in.teacher = 2;
+    bool refused = false;
+    try {
+        S::wrap(sym_spec("chaboche1d", in), w);
+    } catch (const std::invalid_argument&) {
+        refused = true;
+    }
+    check(refused, "chaboche1d (blocks of coordinates, canon) under a wrapper: refused (WRAP-7)");
+}
+
 void refusals()
 {
     auto refused = [](auto make) {
@@ -195,6 +256,7 @@ int main()
     the_families_blocks();
     objectives_and_their_sum();
     weights_and_what_passes_through();
+    under_a_wrapper();
     refusals();
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);

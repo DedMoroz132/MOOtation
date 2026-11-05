@@ -115,13 +115,14 @@ block_weights=None, algorithm=...)`, whose `result.sum_of_squares` is Σ_b f_b o
 or `_core.Native({**spec, "objectives": "blocks", "block_weights": [...]})` for a suite problem (its
 spec and pickle carry the two keys). Readings BO-1 to BO-5 in the header: f_b's order of addition, Σ_b
 f_b against ½‖r‖² (within 2γ_{n_res}; one block bit for bit), above 8 blocks a warning, what passes
-through (residuals, symmetries, start), the weights the adapter's. Not yet: the problems as campaign
-instances of their own, and over task 20's wrappers.
+through (residuals, symmetries, start), the weights the adapter's. Task 20's wrappers (`wrap.hpp`)
+pass the residual blocks through (WRAP-8); a problem with blocks of coordinates or a canon is
+refused under them (WRAP-7). Not yet: the problems as campaign instances of their own.
 
 | check | where |
 |---|---|
 | the families' blocks: 80 + 160 + 240 (chaboche1d), the grid's halves (sumexp); C++ = NumPy | `tests/test_blocks_objectives.cpp`, `python/test_symmetric.py` |
 | f_b from one call of the residuals, block by block, bit for bit; Σ_b f_b within 2γ_{n_res} of ½‖r‖²; one block of weight 1 the objective at M = 1 bit for bit | `tests/test_blocks_objectives.cpp` |
-| the weights; residuals, canon, start passed through; the refusals | `tests/test_blocks_objectives.cpp` |
+| the weights; residuals, canon, start passed through; under perm and shift a problem without blocks of coordinates keeps res_blocks and f_b are the wrapped residuals's, chaboche1d refused; the refusals | `tests/test_blocks_objectives.cpp` |
 | f_b from C++ = NumPy's to 10⁻¹² at every registered instance with blocks; the spec and pickle make the adapter again | `python/test_symmetric.py` |
 | `minimize(objectives="blocks")` under nsga2 and moead: every answer point's f_b and `sum_of_squares` as above; one block = the run at one objective bit for bit; the refusals and the warning | `python/test_run_layer.py` |

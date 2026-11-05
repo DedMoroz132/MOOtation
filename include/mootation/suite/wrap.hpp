@@ -90,6 +90,8 @@
 //     parameters along, which no experiment asks for. Its gradient, gauge
 //     directions and start are pulled through the map (dx = (P Q)^T dy;
 //     x0 = T^-1(y0)); the order of its residuals does not change.
+//   WRAP-8. The residuals' blocks (res_blocks; task 19, §19.5) pass through
+//     unchanged: T maps x, not r, so the residuals keep their order and length.
 //
 // Sources: R. Tanabe, A. Fukunaga, "Reevaluating exponential crossover in
 // differential evolution", PPSN XIII, 2014 (source
@@ -322,6 +324,7 @@ public:
         blocks = p_->blocks;                             // empty unless every wrapper is off
         linear = p_->linear;
         has_canon = p_->has_canon && !m_.active();
+        res_blocks = p_->res_blocks;                     // WRAP-8
     }
 
     void evaluate(const double* x, double* f, double* g) const override
