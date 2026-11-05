@@ -11952,6 +11952,14 @@ def a_campaign_of_a_strategy_writes_the_same_files_from_both_engines():
                        encoding="utf-8")
         issues = validate(load(bad))
         assert any("inner.solver = 'nsga2' is not a single-objective solver or strategy" in i for i in issues), issues
+        # threads > 1 refused in a campaign (the job's count is not thread-safe yet), at any depth; 1 accepted
+        from mootation.run.knobs import THREADS_REFUSAL
+        for old, new, refused in (('solver = "nelder_mead"', 'solver = "nelder_mead", threads = 1', False),
+                                  ("n_starts = ", "threads = 4, n_starts = ", True),
+                                  ('solver = "nelder_mead"', 'solver = "multistart", threads = 2', True)):
+            bad.write_text(_STRATEGY_TOML.replace("NAME", "bad").replace(old, new, 1), encoding="utf-8")
+            issues = validate(load(bad))
+            assert (("algorithms[0] (multistart): " + THREADS_REFUSAL) in issues) == refused, (new, issues)
 
 
 @test

@@ -16,6 +16,12 @@ always listed under **Changed** or **Removed**.
   and the target as before. `ipop`, `bipop` and `bipop_2009` take it with
   `keep_points = best` (default `all`): the archive of every point of a
   budget of 10^6 D does not fit in memory (about 0.4 KB a point at D = 10).
+- Changed (campaign config, both engines; task 18): `threads` above 1 in an
+  algorithm's params or any solver table inside them is refused, with the
+  same message from C++ and Python. A single-objective job counts its
+  evaluations from the thread that makes them (`job_so.hpp`, `account()`),
+  which raced with a strategy's starts in threads (found by task 20). The
+  refusal stays until the count moves to the merge of the starts.
 - Fixed (`scalar/search.hpp`; task 18): `memetic` ends when a phase spends
   nothing (SRCH-9). A global solver stopped by its own criteria evaluates
   nothing new when rerun; with every archive point already a local start the

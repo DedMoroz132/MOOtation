@@ -1536,7 +1536,10 @@ the table's canonical JSON text (keys sorted, no spaces), which is what
 `result.settings` and `meta.json` show. A table that names no solver, a
 multi-objective core, or a knob that is not one is refused, by the config and
 by `minimize()`. The strategy's starts run in `threads` threads with the same
-result; with a Python `fn` they call it in turn, under the GIL. A strategy
+result; with a Python `fn` they call it in turn, under the GIL. A campaign
+refuses `threads` above 1, at any depth of the tables, for now: its
+single-objective job counts the evaluations from the thread that makes them,
+which is not yet safe for a strategy's starts in threads. A strategy
 shares its budget among its starts, so it depends on `max_evaluations`.
 
 **The problem's derivatives** (task 18, stage 1, §1.1; `scalar/evaluator.hpp`):

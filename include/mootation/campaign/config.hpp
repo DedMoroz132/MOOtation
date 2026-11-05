@@ -282,6 +282,26 @@ inline bool two_layer(std::int64_t m, std::int64_t p)
 }   // namespace pop
 
 // A reason pop is unusable for the core at m objectives, or nothing.
+// A campaign's single-objective job counts its evaluations (job_so.hpp,
+// account()) from whichever thread evaluates: a strategy's starts in threads
+// would race on its ledger. Until the count moves to the merge of the starts,
+// threads > 1 is refused, at any depth of the solver tables (knobs.threads_above_one).
+inline const char* const kThreadsRefusal =
+    "threads > 1 is refused in a campaign for now: a single-objective job counts its evaluations from the "
+    "starts' threads, not yet safely; use threads = 1";
+
+inline bool threads_above_one(const Value& v)
+{
+    if (v.kind != Kind::Object) return false;
+    for (std::size_t k = 0; k < v.keys.size(); ++k) {
+        const Value& x = v.items[k];
+        if (v.keys[k] == "threads" && ((x.kind == Kind::Int && x.i > 1) || (x.kind == Kind::Float && x.f > 1.0)))
+            return true;
+        if (threads_above_one(x)) return true;
+    }
+    return false;
+}
+
 // What is wrong with the solver table `value` of knob `name` (knobs.solver_issues):
 // no solver, or one that is not a single-objective solver or strategy, or a
 // knob that is not one (its own solver tables checked the same way).
@@ -940,6 +960,7 @@ inline std::vector<std::string> validate(Config& cfg, const Registry& reg,
             if (std::find(reg.solver_knobs.begin(), reg.solver_knobs.end(), a.params.keys[k]) != reg.solver_knobs.end())
                 for (const std::string& issue : solver_issues(reg, valid_knobs, a.params.keys[k], a.params.items[k]))
                     bad(where, issue);
+        if (threads_above_one(a.params)) bad(where, kThreadsRefusal);
         for (std::size_t k = 0; k < a.params.keys.size(); ++k) {
             const auto* words = reg.words_of(a.params.keys[k]);
             if (!words) continue;
