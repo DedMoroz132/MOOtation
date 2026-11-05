@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added: `maoea_iamd`'s knob `kpcm_pm` (the owner's decisions of
+  2026-11-05). `off`, the default and unchanged, puts KPCM in the place of
+  the polynomial mutation; `on` breeds as PlatEMO's GA operator does, SBX and
+  the polynomial mutation, then KPCM (IAMD-1). Default runs keep their golden
+  fingerprints.
 - Added: six knobs for readings of six cores' papers (the owner's decisions
   of 2026-11-02), every default unchanged, so default runs keep their golden
   fingerprints. `edv`: `pm_literal` (`on`, the letter p_m = 1/pop_size, or

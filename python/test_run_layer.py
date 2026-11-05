@@ -7396,7 +7396,8 @@ def readings_knobs_of_2026_11_02():
     cases = [("edv", "pm_literal", "on", "off"), ("naemo", "flag1", "off", "on"),
              ("naemo", "flag2", "off", "on"), ("irea", "fitness_reading", "swap", "ibea"),
              ("moead_ds", "extreme_weights", "nsga3", "literal"),
-             ("maoea_iamd", "noise_frac", 0.01, 0.316), ("aprd", "slot_exclusive", "off", "on")]
+             ("maoea_iamd", "noise_frac", 0.01, 0.316), ("aprd", "slot_exclusive", "off", "on"),
+             ("maoea_iamd", "kpcm_pm", "off", "on")]      # 2026-11-05 (IAMD-1)
     for alg, knob, dflt, other in cases:
         d = minimize(d2.evaluate, algorithm=alg, **k)
         n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)

@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-387 items: 313 yes, 17 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+388 items: 313 yes, 18 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -212,7 +212,8 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `maoea_iamd` | maoea_iamd.1 | the replacement in Alg. 7 runs only while \|F_k\|−1 >= N−\|P\|; otherwise the loop can exhaust F_k before \|P\| = N, a case the paper leaves undefined; | yes | `maoea_iamd.hpp` |
 | `maoea_iamd` | maoea_iamd.2 | Φ (Eq. 6) is stored as log Φ — a monotone guard against underflow; | yes | `maoea_iamd.hpp` |
 | `maoea_iamd` | maoea_iamd.3 | degenerate cases the paper does not cover: a singular knee hyperplane falls back to d = −Σ of the normalized objectives; a zero derivative or an excursion to q <= 0 in Newton–Raphson gives q = 1; zero perturbation cov... | yes | `maoea_iamd.hpp` |
-| `maoea_iamd` | maoea_iamd.4 | eta_m_ / set_eta_mutation are kept for interface compatibility but are unused, since the paper replaces PM with KPCM. | yes | `maoea_iamd.hpp` |
+| `maoea_iamd` | maoea_iamd.4 | eta_m_ / set_eta_mutation act only under kpcm_pm = on (IAMD-1); by default the paper's KPCM replaces PM. | yes | `maoea_iamd.hpp` |
+| `maoea_iamd` | IAMD-1 (READING; knob kpcm_pm, off by default) | §4.3(2): "all compared algorithms employ SBX and PM", and the experiments ran on PlatEMO (§4), whose real-coded GA (OperatorGA, OperatorGAhalf) is SBX followed by Deb's polynomial mutation in one call, with no SBX-onl... | no: option | `maoea_iamd.hpp` |
 | `sms_emoa` | SMS-1 | Several fronts. EJOR has two Reduce procedures: the basic one (Algorithm 2, Eq. 3, as in 2005) removes the smallest ΔS of the worst front F_v whatever the number of fronts; | yes | `sms_emoa.hpp` |
 | `sms_emoa` | SMS-2 | Contributions (hv_contribution.hpp; hv::ContribChoice decides): exact at every M by default (the owner's word of 2026-10-21, after task 14's measurement: the approximations chose badly from M = 5; from task 13 of 2026... | yes | `sms_emoa.hpp` |
 | `sms_emoa` | SMS-3 | A tie in the smallest contribution removes the point that comes first in the population, the offspring last. | yes | `sms_emoa.hpp` |

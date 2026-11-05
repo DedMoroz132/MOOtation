@@ -101,6 +101,7 @@ _FALLBACK_TEXT = {
     "fitness_reading": ("swap", "ibea"),
     "extreme_weights": ("nsga3", "literal"),
     "slot_exclusive": ("off", "on"),
+    "kpcm_pm": ("off", "on"),
 }
 
 _BLOCK = re.compile(

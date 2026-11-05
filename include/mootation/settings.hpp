@@ -276,6 +276,8 @@ inline bool is_core_param(const std::string& name)
 //                 (literal; DDS-8)
 //   slot_exclusive aprd: a subregion's slots may repeat an individual (off,
 //                 the default; APRD-4) or take distinct ones (on; APRD-11)
+//   kpcm_pm       maoea_iamd: KPCM in place of the polynomial mutation (off,
+//                 the default) or after SBX + PM, as PlatEMO's GA (on; IAMD-1)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -345,6 +347,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"fitness_reading", {"swap", "ibea"}},
         {"extreme_weights", {"nsga3", "literal"}},
         {"slot_exclusive", {"off", "on"}},
+        {"kpcm_pm",      {"off", "on"}},
     };
     return v;
 }
@@ -372,7 +375,7 @@ inline bool is_core_word(const std::string& name)
                           "scalarization",
                           "local", "sub_plan", "tch_weights", "sqp_line_search", "polish", "hv_algo",
                           "hv_contrib", "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
-                          "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive"})
+                          "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive", "kpcm_pm"})
         if (name == k) return true;
     return false;
 }
