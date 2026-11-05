@@ -23,7 +23,12 @@
 //                        SDTLZ's factors suite/spec_numbers.hpp's
 //   zdt1 .. zdt6         registry._pf_zdt* (zdt1 also ZDT4's, catZDT1's)
 //   bt_concave, bt5, bt9 bt.pf_*
-//   mop1 .. mop7         mop.pf_*
+//   mop1 .. mop7         mop.pf_* (also LZ09's and UF1-UF4, UF8, UF10's)
+//   uf5, uf6, uf7, uf9   uf.front: UF5's 2N + 1 points, UF6's point and N
+//                        segments, UF7's line, UF9's two planar parts, the
+//                        image of uf_positions (task 20, §20.1.1)
+//   cf                   cf.front: CF<i>'s own objectives at its Pareto set's
+//                        sample (cf_positions, suite/cf.hpp's pareto_point)
 //   sch, fon, sph        classic.pareto_front ("M" SPH's)
 //   binary               binary.front, minimized: "which" (LOTZ, OMM, OJZJ),
 //                        "n", "k"
@@ -60,6 +65,8 @@
 #include "../suite/lircmop.hpp"
 #include "../suite/mmo.hpp"
 #include "../suite/polygon.hpp"
+#include "../suite/cf.hpp"
+#include "../suite/uf.hpp"
 #include "../suite/spec_numbers.hpp"
 #include "fronts_classic.hpp"
 #include "fronts_mw.hpp"
@@ -1326,6 +1333,129 @@ inline Rows text_rows(const std::filesystem::path& path)
     return F;
 }
 
+// uf.positions: the Pareto set's x_1 (and x_2) behind about n points — UF5's
+// x_1 = i / 2N, UF6's 0 and max(2, (n - 1) / N) points over each of its N
+// intervals, UF9's (x_1, x_2) over q points of [0, 1/4] and q of [3/4, 1]
+// times q of [0, 1] (q = round(sqrt(n / 2))), UF8's and UF10's a p x p grid
+// (p = round(sqrt(n))), the others x_1 = linspace(0, 1, n); x_1 the faster
+inline Rows uf_positions(int i, std::size_t n)
+{
+    auto grid = [](const std::vector<double>& a, std::size_t q) {
+        Rows P = rows_of(0, 2);
+        for (double b : linspace(0.0, 1.0, q))
+            for (double v : a) {
+                const double r[2] = {v, b};
+                push_row(P, r);
+            }
+        return P;
+    };
+    Rows P = rows_of(0, 1);
+    if (i == 9) {
+        const auto q = std::max<std::size_t>(2, static_cast<std::size_t>(round_half_even(std::sqrt(static_cast<double>(n) / 2.0))));
+        std::vector<double> a = linspace(0.0, 0.25, q);
+        for (double v : linspace(0.75, 1.0, q)) a.push_back(v);
+        return grid(a, q);
+    }
+    if (i >= 8) {
+        const auto p = std::max<std::size_t>(2, static_cast<std::size_t>(round_half_even(std::sqrt(static_cast<double>(n)))));
+        return grid(linspace(0.0, 1.0, p), p);
+    }
+    if (i == 5) {
+        const int N = suite::uf::parts(5);
+        for (int k = 0; k <= 2 * N; ++k) {
+            const double v = k / (2.0 * N);
+            push_row(P, &v);
+        }
+        return P;
+    }
+    if (i == 6) {
+        const int N = suite::uf::parts(6);
+        const std::size_t m = std::max<std::size_t>(2, (n - 1) / static_cast<std::size_t>(N));
+        const double zero = 0.0;
+        push_row(P, &zero);
+        for (int k = 1; k <= N; ++k)
+            for (double v : linspace((2 * k - 1) / (2.0 * N), 2 * k / (2.0 * N), m)) push_row(P, &v);
+        return P;
+    }
+    for (double v : linspace(0.0, 1.0, n)) push_row(P, &v);
+    return P;
+}
+
+// cf.positions: x_1 (and x_2) of about n Pareto-optimal points of CF<i> —
+// CF1's i / 2N; CF2's and CF3's 0 and max(2, (n - 1) / N) points over each of
+// the N intervals of x_1 ([((2k - 1) / 2N)^2, (2k / 2N)^2], CF3 their square
+// roots' [sqrt((2k - 1) / 2N), sqrt(2k / 2N)]); CF4-CF7 linspace(0, 1, n);
+// CF8-CF10 x_2 = (2 / pi) acos(sqrt(r)) over r = k / 2N (CF8, k = 0 .. 2N) or
+// 0 and m points over each [(2k - 1) / 2N, 2k / 2N] (CF9, CF10), times q
+// values of x_1 over [0, 1] (CF8 q = round(n / (2N + 1)), else round(sqrt(n))
+// and m = max(2, (q - 1) / N)); x_1 the faster
+inline Rows cf_positions(int i, std::size_t n)
+{
+    const int N = suite::cf::parts(i);
+    const double twoN = 2.0 * N;
+    Rows P = rows_of(0, 1);
+    auto push = [&P](double v) { push_row(P, &v); };
+    if (i == 1) {
+        for (int k = 0; k <= 2 * N; ++k) push(k / twoN);
+        return P;
+    }
+    if (i == 2 || i == 3) {
+        const std::size_t m = std::max<std::size_t>(2, (n - 1) / static_cast<std::size_t>(N));
+        push(0.0);
+        for (int k = 1; k <= N; ++k) {
+            double lo = (2 * k - 1) / twoN, hi = 2 * k / twoN;
+            if (i == 2) {
+                lo = lo * lo;
+                hi = hi * hi;
+            } else {
+                lo = std::sqrt(lo);
+                hi = std::sqrt(hi);
+            }
+            for (double v : linspace(lo, hi, m)) push(v);
+        }
+        return P;
+    }
+    if (i < 8) {
+        for (double v : linspace(0.0, 1.0, n)) push(v);
+        return P;
+    }
+    std::size_t q = std::max<std::size_t>(2, static_cast<std::size_t>(round_half_even(std::sqrt(static_cast<double>(n)))));
+    std::vector<double> r;
+    if (i == 8) {
+        for (int k = 0; k <= 2 * N; ++k) r.push_back(k / twoN);
+        q = std::max<std::size_t>(2, static_cast<std::size_t>(round_half_even(static_cast<double>(n) / (twoN + 1.0))));
+    } else {
+        const std::size_t m = std::max<std::size_t>(2, (q - 1) / static_cast<std::size_t>(N));
+        r.push_back(0.0);
+        for (int k = 1; k <= N; ++k)
+            for (double v : linspace((2 * k - 1) / twoN, 2 * k / twoN, m)) r.push_back(v);
+    }
+    Rows Q = rows_of(0, 2);
+    const std::vector<double> a = linspace(0.0, 1.0, q);
+    for (double v : r) {
+        const double x2 = 2.0 / dm::kPi * dm::acos(std::sqrt(v));
+        for (double x1 : a) {
+            const double row[2] = {x1, x2};
+            push_row(Q, row);
+        }
+    }
+    return Q;
+}
+
+// cf.pareto_set: the rows of cf_positions made Pareto-optimal (cf.hpp)
+inline Rows cf_pareto_set(int i, std::size_t n)
+{
+    const Rows P = cf_positions(i, n);
+    Rows X = rows_of(0, suite::cf::kN);
+    std::vector<double> x(suite::cf::kN, 0.0);
+    for (std::size_t r = 0; r < P.n; ++r) {
+        std::copy(P.row(r), P.row(r) + P.m, x.begin());
+        suite::cf::pareto_point(i, x.data());
+        push_row(X, x.data());
+    }
+    return X;
+}
+
 }   // namespace detail
 
 // The rows of the sampler a front's spec names, for n; piece (where given)
@@ -1395,6 +1525,29 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
             return 1.0 - std::sqrt(u) * (c * c);
         }));
     if (kind == "mop6") return simplex_grid(3, n);
+    if (kind == "cf") {
+        const int i = static_cast<int>(count(spec, "i"));
+        const Rows X = cf_pareto_set(i, n);
+        Rows F = rows_of(X.n, static_cast<std::size_t>(suite::cf::n_obj(i)));
+        std::vector<double> g(static_cast<std::size_t>(suite::cf::n_con(i)));
+        for (std::size_t r = 0; r < X.n; ++r) suite::cf::evaluate(i, X.row(r), F.row(r), g.data());
+        return F;
+    }
+    if (kind == "uf5" || kind == "uf6" || kind == "uf7" || kind == "uf9") {
+        const int i = kind[2] - '0';
+        if (i == 9) {
+            const Rows P = uf_positions(9, n);
+            Rows F = rows_of(0, 3);
+            for (std::size_t r = 0; r < P.n; ++r) {
+                const double x1 = P.row(r)[0], x2 = P.row(r)[1];
+                const double f[3] = {x1 * x2, (1.0 - x1) * x2, 1.0 - x2};
+                push_row(F, f);
+            }
+            return F;
+        }
+        const Rows P = i == 7 ? uf_positions(1, n) : uf_positions(i, n);
+        return curve(P.v, [](double f1) { return 1.0 - f1; });
+    }
     if (kind == "mop7")
         return octant_grid(std::max<std::size_t>(2, static_cast<std::size_t>(round_half_even(std::sqrt(static_cast<double>(n))))));
     if (kind == "sch") {

@@ -99,6 +99,14 @@ def _kind(name: str, p) -> dict | None:
         return {"kind": "mop1"}
     if name in ("MOP2", "MOP3", "MOP4", "MOP6", "MOP7"):
         return {"kind": name.lower()}
+    if stem == "LZ09":                                # task 20: alpha's front, MOP's samplers
+        i = int(name[len("LZ09_F"):])
+        return {"kind": {6: "mop7", 9: "mop2"}.get(i, "mop1")}
+    if name.startswith("CF") and name.endswith("-CEC2009"):   # its own image of its Pareto set
+        return {"kind": "cf", "i": int(name[2:-len("-CEC2009")])}
+    if stem.startswith("UF") and stem[2:].isdigit():  # UF1-3 and 4: MOP's curves, 8 and 10 the octant
+        i = int(stem[2:])
+        return {"kind": {1: "mop1", 2: "mop1", 3: "mop1", 4: "mop2", 8: "mop7", 10: "mop7"}.get(i, f"uf{i}")}
     if name in ("SCH", "FON"):
         return {"kind": name.lower()}
     if name in ("SPH_2D", "SPH_3D"):
@@ -176,8 +184,10 @@ def _set_kind(name: str, p) -> dict | None:
     # the shifted problems' optimum: C++'s (suite/spec_numbers.hpp)
     if stem in ("shiftDTLZ1", "shiftDTLZ2", "shiftDTLZ3", "shiftDTLZ4") or (stem == "shiftDTLZ6" and M <= 3):
         return {"kind": "dtlz", **half, "rest": "shift"}
-    if stem == "shiftDTLZ7":
+    if stem == "shiftDTLZ7" or stem == "shiftMaF7":
         return {"kind": "dtlz7", **half, "rest": "shift"}
+    if stem in ("shiftMaF1", "shiftMaF2", "shiftMaF3", "shiftMaF4", "shiftMaF5") or (stem == "shiftMaF6" and M <= 5):
+        return {"kind": "dtlz", **half, "rest": "shift"}
     if name in ("ZDT1", "ZDT2", "ZDT3", "ZDT4", "ZDT6"):
         return {"kind": "zdt", "base": name, "rest": 0.0}
     if name.startswith("shiftZDT"):
@@ -187,6 +197,12 @@ def _set_kind(name: str, p) -> dict | None:
         return {"kind": name.lower()}
     if name in ("SPH_2D", "SPH_3D"):
         return {"kind": "sph", "M": M}
+    if stem == "LZ09":
+        return {"kind": "lz09", "i": int(name[len("LZ09_F"):])}
+    if stem.startswith("UF") and stem[2:].isdigit():
+        return {"kind": "uf", "i": int(stem[2:])}
+    if name.startswith("CF") and name.endswith("-CEC2009"):
+        return {"kind": "cf", "i": int(name[2:-len("-CEC2009")])}
     return None
 
 

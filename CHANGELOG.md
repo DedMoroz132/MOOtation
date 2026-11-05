@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 20, §20.1): problems for checking the cores against their
+  papers, 64 rows of data/registry.json, the earlier rows unchanged. LZ09
+  F1-F9 (Li & Zhang 2009, Table I: `LZ09_F1` .. `LZ09_F9`, the paper's sizes,
+  n = 30 but 10 for F6-F8); UF1-UF10 and CF1-CF10 of the CEC 2009
+  competition (Zhang et al., CES-487, the version of 20 April 2009: `UF1` ..
+  `UF10`, n = 30; `CF1-CEC2009` .. `CF10-CEC2009`, n = 10, constrained);
+  shiftMaF1-7 at 3, 5, 8, 10 and 15 objectives, MaF1-MaF7 with every distance
+  variable's optimum moved off the middle of the box (cyclic for MaF1-MaF6,
+  folded for MaF7, as shiftDTLZ). Each in C++ (suite/lz09.hpp, uf.hpp,
+  cf.hpp; shiftMaF through the suite's maps) with a NumPy module as its
+  cross-check, its front and Pareto set by formula (refs/fronts.hpp,
+  sets.hpp), its readings of the sources in docs/deviations.md.
 - Added: Kudela et al.'s variants alpha and gamma of the uninformative
   problems f2-f4 (GECCO 2026, Table 1), at 2 and 10 variables:
   `uninformative_f2a_n02_2D` ... `uninformative_f4g_n10_2D`, 12 rows. The same

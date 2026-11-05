@@ -15,7 +15,9 @@ supplement 3, stage 3a: DAS-CMOP1-9, LIR-CMOP1-14, MW1-14, DOC1-9, Polygon
 with rcPolygon and c0Polygon, IPolygon, SYM-PART, Omni-test, MMF1-15, RE and
 CRE (RE91 without a seed; its seeded stream, re.RE91Evaluator, stays
 Python's), and the multimodal problems' and the polygons' Pareto sets
-(attach: p.pareto_set). Not moved: every other family.
+(attach: p.pareto_set). Task 20 (§20.1): LZ09 F1-F9, UF1-UF10, CF1-CF10 and
+shiftMaF1-7 (MaF1-7 behind the maps cyclic and fold). Not moved: every other
+family.
 
 With the extension built, such a problem's evaluate, evaluate_batch,
 constraints, constraints_batch and evaluate_with_constraints are C++ (attach):
@@ -50,7 +52,7 @@ import numpy as np
 # the stems of the problems with an objective count (<stem>_<M>D), and of ZDT
 _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2|SDTLZ[12]|"
                     r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-9]|1[0-5])|"
-                    r"ZCAT([1-9]|1[0-9]|20)|WFG[1-9])_(\d+)D")
+                    r"ZCAT([1-9]|1[0-9]|20)|WFG[1-9]|shiftMaF[1-7])_(\d+)D")
 # MaF10-12: WFG1, WFG2 and WFG9 with M - 1 positions (Cheng et al. 2017, 2.10-2.12)
 _MAF_WFG = {"MaF10": "WFG1", "MaF11": "WFG2", "MaF12": "WFG9"}
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
@@ -63,8 +65,9 @@ _OTHER = re.compile(r"LIR-CMOP\d+|DOC\d|(I?Polygon)_(\d+)D|(MW\d+)(_\d+D)?")
 _MMO = re.compile(r"SYM-PART_(simple|rotated)|Omni-test|MMF\d+(_[aez])?")
 _RE = re.compile(r"RE\d\dc?|CRE\d\d")
 # BT1-9 and MOP1-7, and RWMOP's RCM problems (task 17, stage 5; bt.hpp, mop.hpp,
-# rcm.hpp)
-_BT_MOP = re.compile(r"BT[1-9]|MOP[1-7]|RCM\d\d|catZDT1")
+# rcm.hpp); LZ09 F1-F9, UF1-UF10 and CF1-CF10 (task 20, §20.1; lz09.hpp,
+# uf.hpp, cf.hpp)
+_BT_MOP = re.compile(r"BT[1-9]|MOP[1-7]|RCM\d\d|catZDT1|LZ09_F[1-9]|UF([1-9]|10)|CF([1-9]|10)-CEC2009")
 # the bit strings (bits.hpp): OMM_n<n>, LOTZ_n<n>, OJZJ_n<n>_k<k>
 _BITS = re.compile(r"(OMM|LOTZ)_n\d+|OJZJ_n\d+_k(\d+)")
 # the verification set (task 17, supplement 2, §3; classic.hpp): its names
@@ -191,6 +194,8 @@ def spec(name: str, p, rotated=None) -> dict | None:
         return _base(stem[5:], n, M, map="cyclic", first=M - 1)
     if stem in ("shiftDTLZ6", "shiftDTLZ7"):
         return _base(stem[5:], n, M, map="fold", first=M - 1)
+    if stem.startswith("shiftMaF"):                   # task 20, §20.1.4: MaF7 folds
+        return _base(stem[5:], n, M, map="fold" if stem == "shiftMaF7" else "cyclic", first=M - 1)
     return _base(stem, n, M)                           # SDTLZ, C-DTLZ
 
 

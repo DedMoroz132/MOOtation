@@ -609,8 +609,17 @@ from the paper's text.
 
 | item | what | file |
 |---|---|---|
+| CF-1 | No clipping of x into the box inside the problem (the task's reading P3): PlatEMO clips in CF8 and CF9; the box is the algorithm's. | `cf.hpp` |
+| CF-2 | The competition's tolerance (§IV, c >= -1e-6) belongs to its assessment, not to the problem: g = -c as printed. | `cf.hpp` |
+| CF-3 | CF8-CF10 divide by 1 - f3^2, 0 at the front's pole f3 = 1 (x_1 = 1, the J3 terms at their optimum): there the constraint is 0/0 or x/0 and comes out NaN, as the printed formula and PlatEMO's code give it. | `cf.hpp` |
+| CF-4 | CF8-CF10 as in the version of 20 April 2009 (the task's reading P2: the competition's final report says earlier versions had misprints there; results of 2008-2009 on CF8-CF10 are no reference). | `cf.hpp` |
+| CF-5 | \|sin\| in CF1 and CF8, sin without the modulus in CF2, CF3, CF9 and CF10; the threshold of CF4's and CF5's h_2 is 3/2 (1 - sqrt(2)/2): as printed. | `cf.hpp` |
+| LZ09-1 | J1 = {j odd, 2 <= j <= n} into f1, J2 = {j even} into f2 (F6: j - 1, j - 2 and j multiples of 3, 3 <= j <= n, into f1, f2, f3), as the table prints them; j counts the variables from 1. jMetal's code swaps J1 and J2 an... | `lz09.hpp` |
+| LZ09-2 | F8's cosine is cos(20 y_j pi / sqrt(j)), j the variable's number as printed (jMetal: the index within the set). | `lz09.hpp` |
 | RE-24 | x2 in [0.5, 50], the code's: the supplement's S.1.4 prints "x2 in [4, 50]", but the published front (reference_points_RE24.dat: f1 from 60.5 = 0.5 + 120 * 0.5, x2 = 0.5) was computed within the code's bounds. | `re.hpp` |
 | RE-25 | x2 in [0.6, 3]: the supplement's S.1.5 prints "x2 in [0.6, 30]"; the code and Kumar et al. 2021 for the same spring (RCM15, "0.6 <= x2 (continuous) <= 3") have 3. | `re.hpp` |
+| UF-1 | UF10's sums: f2's over J2 and f3's over J3, where the report prints J1 for all three (the task's reading P1): pagmo2, PlatEMO and jMetal sum so, and the report's own factors 2/\|J2\| and 2/\|J3\| say so. | `uf.hpp` |
+| UF-2 | Harmless misprints read as meant: UF3's "the same as those of F1" (UF1's), UF4's "y_i = x_j - ..." (y_j), UF4's "Its PF is f2 = 1 - f2^2" (1 - f1^2), UF10's "f1^2 + f2^2 + f3^3 = 1" (f3^2). | `uf.hpp` |
 | WRAP-1 | The order shift, rotate, perm from x (above). | `wrap.hpp` |
 | WRAP-2 | The centre of the rotation is the optimum, c = P^T x_opt (c_pi(i) = x_opt_i, the optimum in v's coordinates), where x_opt is known (bbob: the instance's), so that the optimum stays where it was relative to the box; el... | `wrap.hpp` |
 | WRAP-3 | A rotation only for a problem without a box (every bound infinite: MGH, NIST) or whose formula is defined on all of R^n and is marked so (defined_everywhere; bbob, whose functions are defined outside [-5, 5]^D and pen... | `wrap.hpp` |

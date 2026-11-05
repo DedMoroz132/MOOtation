@@ -72,7 +72,7 @@ from .mop     import MOP_SPECS, mop_nadir, mop_ideal
 from . import mop as _mop
 from .dtlz_variants import (SPECS as DTLZV_SPECS, variant_n_vars,
                            hv_ref_raw as dv_hv_ref, SHIFT_BASES, shift_dtlz, shift_dtlz_rows,
-                           shift_centres, WIDE_M, wide_bounds)
+                           shift_centres, cyclic_input, WIDE_M, wide_bounds)
 from .maf     import MAF_FIX, MAF_FIX_ROWS, maf_n_vars
 from . import maf as _maf
 from ._rows   import math_cos, math_exp, math_sin, spow
@@ -103,6 +103,9 @@ from . import mw as _mw
 from . import failing as _fail
 from . import least_squares as _lsq
 from . import symmetric as _sym
+from . import lz09 as _lz09
+from . import uf as _uf
+from . import cf as _cf
 
 
 # =============================================================
@@ -480,7 +483,7 @@ def _pf_dtlz7(M: int, n: int) -> np.ndarray:
 # at all, and at M = 8 the front runs to the bound of g like DTLZ5's (f_7 up
 # to 244.7). (Ishibuchi et al. 2016 predates MaF, 2017; the old entry
 # "MaF6: 4" was carried over from DTLZ5.)
-DEGENERATE_SUBSET_FROM = {"DTLZ5": 4, "DTLZ6": 4, "shiftDTLZ6": 4, "MaF6": 7, "WFG3": 3}
+DEGENERATE_SUBSET_FROM = {"DTLZ5": 4, "DTLZ6": 4, "shiftDTLZ6": 4, "MaF6": 7, "shiftMaF6": 7, "WFG3": 3}
 
 _DEGENERATE_WARNED: set[str] = set()
 
@@ -2877,6 +2880,129 @@ def _register_binary():
 
 
 _register_binary()
+
+
+# =============================================================
+#  Task 20, §20.1: the problems for checking the cores against their papers.
+#  LZ09 F1-F9 (Li & Zhang 2009, Table I; lz09.py, suite/lz09.hpp): the
+#  front alpha's (f2 = 1 - sqrt(f1), F9 1 - f1^2, F6 the sphere's octant),
+#  the Pareto set Theorem 1's.
+def _register_lz09():
+    fronts = {**{i: _mop.pf_mop1 for i in (1, 2, 3, 4, 5, 7, 8)}, 6: _mop.pf_mop7, 9: _mop.pf_mop2}
+    for i in range(1, 10):
+        key, M = _lz09.name(i), _lz09.n_obj(i)
+        pop, ng = _budget(M)
+        ideal, nadir = (0.0,) * M, (1.0,) * M
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=_lz09.N_VARS[i], bounds=_lz09.bounds(i), n_obj=M,
+            evaluate=lambda x, _i=i: _lz09.lz09_rows(_i, [list(x)])[0].tolist(), constraints=_no_cons,
+            evaluate_batch=lambda X, _i=i: _lz09.lz09_rows(_i, X),
+            hv_ref_raw=tuple(v * 1.1 for v in nadir),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+            ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+            pareto_front=lambda n, _p=fronts[i]: _p(n),
+            pareto_set=lambda n, _i=i: _lz09.pareto_set(_i, n))
+
+
+#  UF1-UF10 (CEC 2009, CES-487 §II; uf.py, suite/uf.hpp): UF1-UF4, UF8 and
+#  UF10 on MOP's curves, UF5, UF6, UF7 and UF9 their own (uf.front).
+def _register_uf():
+    fronts = {1: _mop.pf_mop1, 2: _mop.pf_mop1, 3: _mop.pf_mop1, 4: _mop.pf_mop2, 8: _mop.pf_mop7,
+              10: _mop.pf_mop7}
+    for i in range(1, 11):
+        key, M = _uf.name(i), _uf.n_obj(i)
+        pop, ng = _budget(M)
+        ideal, nadir = (0.0,) * M, (1.0,) * M
+        pf = fronts.get(i) or (lambda n, _i=i: _uf.front(_i, n))
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=_uf.N_VARS, bounds=_uf.bounds(i), n_obj=M,
+            evaluate=lambda x, _i=i: _uf.uf_rows(_i, [list(x)])[0].tolist(), constraints=_no_cons,
+            evaluate_batch=lambda X, _i=i: _uf.uf_rows(_i, X),
+            hv_ref_raw=tuple(v * 1.1 for v in nadir),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+            ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+            pareto_front=lambda n, _p=pf: _p(n),
+            pareto_set=lambda n, _i=i: _uf.pareto_set(_i, n))
+
+
+#  CF1-CF10 (CEC 2009, CES-487 §III; cf.py, suite/cf.hpp): the front the
+#  problem's own image of its Pareto set (cf.front).
+def _register_cf():
+    for i in range(1, 11):
+        key, M = _cf.name(i), _cf.n_obj(i)
+        pop, ng = _budget(M)
+        ideal, nadir = (0.0,) * M, (1.0,) * M
+        PROBLEMS[key] = BenchProblem(
+            name=key, n_vars=_cf.N_VARS, bounds=_cf.bounds(i), n_obj=M,
+            evaluate=lambda x, _i=i: _cf.cf_rows(_i, [list(x)])[0][0].tolist(),
+            constraints=lambda x, _i=i: _cf.cf_rows(_i, [list(x)])[1][0].tolist(),
+            evaluate_batch=lambda X, _i=i: _cf.cf_rows(_i, X)[0],
+            evaluate_with_constraints=lambda X, _i=i: _cf.cf_rows(_i, X),
+            hv_ref_raw=tuple(v * 1.1 for v in nadir),
+            hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+            ideal=ideal, nadir=nadir,
+            pop_size=pop, n_gen=ng, K_runs=21, has_cons=True,
+            pareto_front=lambda n, _i=i: _cf.front(_i, n),
+            pareto_set=lambda n, _i=i: _cf.pareto_set(_i, n))
+
+
+#  shiftMaF1-7 (task 20, §20.1.4; X17 of the candidates' list): MaF1-MaF7 with
+#  every distance variable's optimum moved off the middle of the box, the way
+#  of shiftDTLZ and shiftZDT (dtlz_variants.py, shifted.py; the C++ suite's
+#  maps "cyclic" and "fold"): MaF1-MaF6 read x_i through (x_i - c_i + 1/2) mod 1,
+#  each term of their g taking the same value at 0 and at 1 — (x - 1/2)^2
+#  (MaF1, MaF5, MaF6), ((x/2 + 1/4) - 1/2)^2 (MaF2), (x - 1/2)^2 - cos(20 pi
+#  (x - 1/2)) (MaF3, MaF4; Cheng et al. 2017, Eq. 1-14) — so g stays continuous
+#  across the seam; MaF7's g = 1 + 9/K sum x_i is linear, and it folds, h(x) =
+#  |x - c| / max(c, 1 - c), as shiftDTLZ7. The centres dtlz_variants.
+#  shift_centres. g's attainable values do not change, so the box, the front,
+#  the ideal and the nadir are the base's (FRAME_OF); the Pareto set is the
+#  base's positions with the distance variables at the centres (MaF6 from
+#  eight objectives, whose front has a part with g > 0, has none). Not
+#  shifted: MaF8 and MaF9 (two variables, no distance part), MaF10-12 (WFG:
+#  the optimum 0.35 * 2i is off the middle already, and the rotations are
+#  rWFG), MaF13 (variables linked through sin), MaF14 and MaF15 (LSMOP's
+#  linkage). Kudela (Nature Machine Intelligence 2022) and Ibehej et al.
+#  (2025) show why a centre-seeking core gets such optima for free; the set
+#  itself is this library's control, not a published suite.
+SHIFT_MAF_M = (3, 5, 8, 10, 15)
+
+
+def _register_shifted_maf():
+    for M in SHIFT_MAF_M:
+        for i in range(1, 8):
+            b = PROBLEMS[f"MaF{i}_{M}D"]
+            ref = (b.reference or {}).get("evaluate_batch", b.evaluate_batch)
+            k = b.n_vars - M + 1
+            c = shift_centres(k)
+            if i == 7:
+                def _in(X, _M=M, _c=c): return _shift.dtlz_input(X, _M, _c)
+            else:
+                def _in(X, _M=M): return cyclic_input(X, _M)
+            def _batch(X, _f=ref, _in=_in, _n=b.n_vars):
+                return np.asarray(_f(_in(np.asarray(X, float).reshape(-1, _n))), float)
+            def _eval(x, _b=_batch): return _b([list(x)])[0].tolist()
+            _ps = None
+            if i == 7:
+                def _ps(n, _M=M, _nv=b.n_vars, _c=c):
+                    return _psets.fill(_pf_dtlz7(_M, n)[:, :_M - 1], _nv, _c)
+            elif i != 6 or M <= 5:
+                def _ps(n, _M=M, _nv=b.n_vars, _c=c): return _psets.dtlz(_M, _nv, n, _c)
+            name = f"shiftMaF{i}_{M}D"
+            _add_shifted(name, b, _eval, _ps, _batch)
+            PROBLEMS[name].pareto_front = b.pareto_front      # _shifted_fronts ran before
+            if b.name in FULL_FRONT:
+                FULL_FRONT.add(name)
+            if i != 7:
+                PROBLEMS[name].cyclic_vars = tuple(range(M - 1, b.n_vars))
+
+
+_register_lz09()
+_register_uf()
+_register_cf()
+_register_shifted_maf()
 _native.attach(PROBLEMS, ROTATED)
 # catZDT1's C++ evaluation reads the label's index (catzdt.hpp); the caller
 # hands the label itself (var_types decoded) or its index

@@ -17,6 +17,12 @@
 //               front sample — the others at "rest"
 //   sch, fon, sph
 //               classic.pareto_set
+//   lz09        lz09.pareto_set: x_1 = linspace(0, 1, n) (F6: x_1, x_2 on a
+//               p x p grid, p = round(sqrt(n)), x_1 the faster), the rest
+//               the paper's g(x_I) (suite/lz09.hpp, optimum)
+//   uf          uf.pareto_set: fronts.hpp's uf_positions, the rest the
+//               report's "Its PS" (suite/uf.hpp, optimum)
+//   cf          cf.pareto_set: fronts.hpp's cf_pareto_set
 //
 // halton(n, d): the radical inverses of 1, 2, ... in the first d primes,
 // the digits added as pareto_sets.halton adds them.
@@ -28,6 +34,7 @@
 #include <string>
 #include <vector>
 
+#include "../suite/lz09.hpp"
 #include "../suite/maf.hpp"
 #include "../suite/spec_numbers.hpp"
 #include "fronts.hpp"
@@ -348,6 +355,48 @@ inline Rows pareto_set(const json::Value& spec, std::size_t n)
         Rows X = rows_of(rows, 100);
         for (std::size_t i = 0; i < rows; ++i) std::copy(W.begin() + static_cast<std::ptrdiff_t>(i * m),
                                                          W.begin() + static_cast<std::ptrdiff_t>((i + 1) * m), X.row(i));
+        return X;
+    }
+    if (kind == "lz09") {
+        const int i = static_cast<int>(count(spec, "i"));
+        const std::size_t nv = static_cast<std::size_t>(suite::lz09::n_var(i));
+        Rows X = rows_of(0, nv);
+        std::vector<double> x(nv, 0.0);
+        auto add = [&] {
+            for (int j = suite::lz09::first(i); j <= static_cast<int>(nv); ++j)
+                x[static_cast<std::size_t>(j - 1)] = suite::lz09::optimum(i, x.data(), j);
+            push_row(X, x.data());
+        };
+        if (i == 6) {
+            const auto p = std::max<std::size_t>(2, static_cast<std::size_t>(round_half_even(std::sqrt(static_cast<double>(n)))));
+            const std::vector<double> t = linspace(0.0, 1.0, p);
+            for (double b : t)
+                for (double a : t) {
+                    x[0] = a;
+                    x[1] = b;
+                    add();
+                }
+        } else {
+            for (double a : linspace(0.0, 1.0, n)) {
+                x[0] = a;
+                add();
+            }
+        }
+        return X;
+    }
+    if (kind == "cf") return cf_pareto_set(static_cast<int>(count(spec, "i")), n);
+    if (kind == "uf") {
+        const int i = static_cast<int>(count(spec, "i"));
+        const Rows P = uf_positions(i, n);
+        const std::size_t nv = suite::uf::kN;
+        Rows X = rows_of(0, nv);
+        std::vector<double> x(nv, 0.0);
+        for (std::size_t r = 0; r < P.n; ++r) {
+            std::copy(P.row(r), P.row(r) + P.m, x.begin());
+            for (int j = suite::uf::first(i); j <= suite::uf::kN; ++j)
+                x[static_cast<std::size_t>(j - 1)] = suite::uf::optimum(i, x.data(), j);
+            push_row(X, x.data());
+        }
         return X;
     }
     throw std::invalid_argument("a Pareto set of kind \"" + kind + "\" is not built in C++ yet");

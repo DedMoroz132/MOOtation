@@ -240,7 +240,7 @@ ZDT, DTLZ, WFG, MaF, ZCAT, bbob-biobj, the Ishibuchi polygon family, MOP and
 BT, the DTLZ variants, the uninformative probes, the constrained C-DTLZ, MW, DAS-CMOP, LIR-CMOP and DOC, rotated
 ZDT, DTLZ, WFG, MaF, ZCAT and Polygon, noisy and failing copies and the real-world RE and CRE, bbob-biobj-mixint and catZDT1,
 the multimodal SYM-PART, Omni-test and MMF of the CEC 2019 competition, and RWMOP's mechanical, chemical and process
-problems RCM01–29: 1357 problems across 49 families, each
+problems RCM01–29, and (task 20) LZ09 F1–F9, the CEC 2009 competition's UF1–10 and CF1–10 and shiftMaF1–7: 1357 problems across 49 families (counted before task 20 added 64), each
 with bounds, an evaluator, the
 reference point a hypervolume needs and, where a closed form exists, a sampler
 of the true Pareto front. Objective counts run from 2 to 15. Point a config at
@@ -319,7 +319,7 @@ and the rotations over them (rZDT, rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF,
 r0/c0MaF, rZCAT, rWFG), bbob-biobj and bbob-biobj-mixint, bbob's 24 functions (family `bbob`, one objective), DAS-CMOP,
 LIR-CMOP, MW, DOC, Polygon and IPolygon, SYM-PART, Omni-test, MMF, RE and
 CRE, BT1–9, MOP1–7, RWMOP's RCM problems, the bit strings (OneMinMax, LOTZ,
-OneJumpZeroJump) and catZDT1 are computed in C++ when the extension is built
+OneJumpZeroJump), catZDT1, LZ09 F1–F9, UF1–10, CF1–10 and shiftMaF1–7 are computed in C++ when the extension is built
 (`include/mootation/suite`, `benchmarks/native.py`): `p.evaluate`,
 `p.evaluate_batch` and the constraints call it, the loop over a batch runs in
 C++, and `p.native` is the `_core.Native` behind them. The NumPy code stays,

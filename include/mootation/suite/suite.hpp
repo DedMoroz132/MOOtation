@@ -65,10 +65,14 @@
 // (bits.hpp): family "OMM", "LOTZ" or "OJZJ" (`k` its jump), n bits; catZDT1
 // (catzdt.hpp): family "catZDT1", the label's index and ten reals.
 //
+// Task 20, §20.1: LZ09 F1-F9 (lz09.hpp): family "LZ09_F<i>", the paper's
+// sizes; UF1-UF10 (uf.hpp): family "UF<i>", 30 variables; CF1-CF10 (cf.hpp):
+// family "CF<i>-CEC2009", 10 variables.
+//
 // THE MAPS (dtlz_variants.py, shifted.py, rotated.py): the point the family
 // is evaluated at, its variables from `first` on read as
-//   cyclic       y = (x - c + 1/2) mod 1          shiftDTLZ1-4
-//   fold         y = |x - c| / spread             shiftZDT1-3, 6, shiftDTLZ6, 7
+//   cyclic       y = (x - c + 1/2) mod 1          shiftDTLZ1-4, shiftMaF1-6
+//   fold         y = |x - c| / spread             shiftZDT1-3, 6, shiftDTLZ6, 7, shiftMaF7
 //   shift        y = x - c                        shiftZDT4
 //   rotate_half  y = 1/2 + A (x - c)              rDTLZ, rcDTLZ, r0/c0DTLZ, rMaF, rcMaF, r0/c0MaF
 //   rotate_abs   y = |A (x - c)| / spread         rZDT1-3, 6
@@ -100,6 +104,7 @@
 #include "bits.hpp"
 #include "bt.hpp"
 #include "catzdt.hpp"
+#include "cf.hpp"
 #include "chaboche.hpp"
 #include "classic.hpp"
 #include "common.hpp"
@@ -110,6 +115,7 @@
 #include "instances.hpp"
 #include "lircmop.hpp"
 #include "lj.hpp"
+#include "lz09.hpp"
 #include "maf.hpp"
 #include "mgh.hpp"
 #include "mmo.hpp"
@@ -120,6 +126,7 @@
 #include "polygon.hpp"
 #include "rcm.hpp"
 #include "spec_numbers.hpp"
+#include "uf.hpp"
 #include "re.hpp"
 #include "sumexp.hpp"
 #include "wfg.hpp"
@@ -213,6 +220,11 @@ public:
         else if ((which_ = number_after(f, "MW")) != 0) kind_ = Kind::MW;
         else if ((which_ = number_after(f, "BT")) != 0) kind_ = Kind::BT;
         else if ((which_ = number_after(f, "MOP")) != 0) kind_ = Kind::MOP;
+        else if ((which_ = number_after(f, "LZ09_F")) != 0) kind_ = Kind::LZ09;
+        else if ((which_ = number_after(f, "UF")) != 0) kind_ = Kind::UF;
+        else if (f.size() > 10 && f.compare(f.size() - 8, 8, "-CEC2009") == 0 &&
+                 (which_ = number_after(f.substr(0, f.size() - 8), "CF")) != 0)
+            kind_ = Kind::CF;
         else if ((which_ = number_after(f, "RCM")) != 0) kind_ = Kind::RCM;
         else if (bits::parse(f, bits_)) kind_ = Kind::Bits;
         else if (f == "catZDT1") kind_ = Kind::CatZDT;
@@ -317,6 +329,15 @@ public:
                 return;
             case Kind::MOP:
                 mop::evaluate(which_, p, f);
+                return;
+            case Kind::LZ09:
+                lz09::evaluate(which_, p, f);
+                return;
+            case Kind::UF:
+                uf::evaluate(which_, p, f);
+                return;
+            case Kind::CF:
+                cf::evaluate(which_, p, f, g);
                 return;
             case Kind::RCM:
                 rcm::evaluate(which_, p, f, g);
@@ -479,6 +500,9 @@ public:
                 return b;
             }
             case Kind::RCM: return rcm::bounds(which_);
+            case Kind::LZ09: return lz09::bounds(which_);
+            case Kind::UF: return uf::bounds(which_);
+            case Kind::CF: return cf::bounds(which_);
             case Kind::CatZDT: {                           // the label's index of three, then ten reals
                 Bounds b = box(n, 0.0, 1.0);
                 b[0] = {0.0, 2.0};
@@ -519,7 +543,7 @@ public:
 
 private:
     enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, BBOB1, DASCMOP, LIRCMOP,
-                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, RCM, Bits, CatZDT, MGH, NIST, Sym };
+                      DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, LZ09, UF, CF, RCM, Bits, CatZDT, MGH, NIST, Sym };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
                          RotateWfg035 };
 
@@ -731,6 +755,19 @@ private:
             case Kind::MOP:
                 if (which_ < 1 || which_ > 7 || n != mop::kN || M != mop::n_obj(which_))
                     fail("MOP1-5 two objectives, MOP6-7 three, 10 variables");
+                break;
+            case Kind::LZ09:
+                if (which_ < 1 || which_ > 9 || n != lz09::n_var(which_) || M != lz09::n_obj(which_))
+                    fail("LZ09 F1-F9: the paper's sizes (F6 three objectives)");
+                break;
+            case Kind::UF:
+                if (which_ < 1 || which_ > 10 || n != uf::kN || M != uf::n_obj(which_))
+                    fail("UF1-UF7 two objectives, UF8-UF10 three, 30 variables");
+                break;
+            case Kind::CF:
+                if (which_ < 1 || which_ > 10 || n != cf::kN || M != cf::n_obj(which_))
+                    fail("CF1-CF7 two objectives, CF8-CF10 three, 10 variables");
+                n_con = cf::n_con(which_);
                 break;
             case Kind::Bits:
                 if (n < 1 || M != 2 || s_.k < 0 || (bits_ == bits::Kind::OJZJ && (s_.k < 2 || 2 * s_.k >= n)))

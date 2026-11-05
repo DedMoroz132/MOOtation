@@ -4833,6 +4833,107 @@ def kudelas_problems_and_where_the_points_fell():
 
 
 @test
+def lz09_uf_and_cf_pareto_sets_lie_on_their_fronts():
+    """Task 20, §20.1.6: LZ09 F1-F9, UF1-UF10 and CF1-CF10 at the samples of
+    their Pareto sets — Theorem 1's g(x_I) (LZ09), the report's "Its PS"
+    (UF), the constraints' boundary where it holds the optimum off y = 0 (CF)
+    — have every distance term at 0, lie on the front's formula, in the box,
+    and (CF) are feasible: g <= 1e-12 (the boundary's rounding, reading CF-2),
+    NaN only at CF8-CF10's pole f3 = 1 (reading CF-3). UF1, UF2 and UF3 are
+    LZ09's F2, F5 and F8; the registry has 29 problems."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import cf as C, get, lz09 as L, names, uf as U
+    new = [n for n in names() if n.startswith(("LZ09_F", "UF")) or n.endswith("-CEC2009")]
+    assert len(new) == 29, new
+
+    def on_front(kind, F):
+        f1 = F[:, 0]
+        want = {"sqrt": 1.0 - np.sqrt(np.maximum(f1, 0.0)), "square": 1.0 - f1 * f1, "line": 1.0 - f1}
+        if kind in want:
+            return float(np.max(np.abs(F[:, 1] - want[kind])))
+        if kind == "plane":
+            return float(np.max(np.abs(F.sum(axis=1) - 1.0)))
+        if kind == "sphere":
+            return float(np.max(np.abs((F * F).sum(axis=1) - 1.0)))
+        if kind == "cf45":
+            w = np.where(f1 <= 0.5, 1.0 - f1, np.where(f1 <= 0.75, 0.75 - 0.5 * f1, 1.125 - f1))
+        else:                                              # cf67
+            w = np.where(f1 <= 0.5, (1.0 - f1) ** 2, np.where(f1 <= 0.75, 0.5 * (1.0 - f1),
+                                                               0.25 * np.sqrt(1.0 - f1)))
+        return float(np.max(np.abs(F[:, 1] - w)))
+
+    lz = {1: "sqrt", 2: "sqrt", 3: "sqrt", 4: "sqrt", 5: "sqrt", 6: "sphere", 7: "sqrt", 8: "sqrt", 9: "square"}
+    ufk = {1: "sqrt", 2: "sqrt", 3: "sqrt", 4: "square", 5: "line", 6: "line", 7: "line", 8: "sphere",
+           9: "plane", 10: "sphere"}
+    cfk = {1: "line", 2: "sqrt", 3: "square", 4: "cf45", 5: "cf45", 6: "cf67", 7: "cf67", 8: "sphere",
+           9: "sphere", 10: "sphere"}
+    cases = ([(L.name(i), lz[i]) for i in lz] + [(U.name(i), ufk[i]) for i in ufk]
+             + [(C.name(i), cfk[i]) for i in cfk])
+    for name, kind in cases:
+        p = get(name)
+        X = np.asarray(p.pareto_set(120), float)
+        lo, hi = np.array(p.bounds).T
+        assert np.all((X >= lo) & (X <= hi)), name
+        F = np.asarray(p.evaluate_batch(X), float)
+        assert on_front(kind, F) < 1e-12, (name, on_front(kind, F))
+        if p.has_cons:
+            G = np.asarray(p.constraints_batch(X), float)
+            pole = np.abs(F[:, -1] - 1.0) < 1e-15 if p.n_obj == 3 else np.zeros(len(F), bool)
+            assert np.all(np.isnan(G[pole])) and np.all(G[~pole] <= 1e-12), (name, float(np.nanmax(G)))
+        # nothing of a random sample of the box (feasible, for CF) dominates them
+        R = lo + (hi - lo) * np.random.default_rng(len(name)).random((4000, len(lo)))
+        FR = np.asarray(p.evaluate_batch(R), float)
+        if p.has_cons:
+            FR = FR[np.all(np.asarray(p.constraints_batch(R), float) <= 0.0, axis=1)]
+        for f in F[::7]:
+            assert not np.any(np.all(FR <= f - 1e-9, axis=1)), (name, f)
+    X = np.random.default_rng(3).random((50, 30)) * 2.0 - 1.0
+    X[:, 0] = np.abs(X[:, 0])
+    for ui, li in ((1, 2), (2, 5)):
+        assert np.array_equal(U.uf_rows(ui, X), L.lz09_rows(li, X)), (ui, li)
+
+
+@test
+def shifted_maf_keeps_its_base_where_the_map_is_the_identity():
+    """Task 20, §20.1.4: shiftMaF1-7 at M = 3, 5, 8, 10, 15 (35 problems): with
+    the centre where the map is the identity (cyclic: 1/2, fold: 0, spread
+    1) the C++ suite gives the base's values, to rounding; at the shifted optimum g = 0
+    (the base's values with the distance variables at 1/2, MaF7's at 0); the
+    front, frame and box are the base's."""
+    if not _have_numpy() or _core_with("Native") is None:
+        print("    (skipped: no NumPy or no extension)"); return
+    import numpy as np
+    from mootation import _core
+    from mootation.benchmarks import get, names
+    shifted = [n for n in names() if n.startswith("shiftMaF")]
+    assert len(shifted) == 35, len(shifted)
+    rng = np.random.default_rng(20)
+    for M in (3, 5, 8, 10, 15):
+        for i in range(1, 8):
+            s, b = get(f"shiftMaF{i}_{M}D"), get(f"MaF{i}_{M}D")
+            assert s.bounds == b.bounds and s.ideal == b.ideal and s.nadir == b.nadir
+            assert np.array_equal(s.pareto_front(200), b.pareto_front(200)), s.name
+            k = b.n_vars - M + 1
+            X = rng.random((60, b.n_vars)) * 0.999
+            fold = i == 7
+            ident = _core.Native({"family": f"MaF{i}", "n_var": b.n_vars, "n_obj": M,
+                                  "map": "fold" if fold else "cyclic", "first": M - 1,
+                                  "centre": [0.0 if fold else 0.5] * k, "spread": [1.0] * k})
+            # (x - 1/2 + 1/2) mod 1 is x but for its last bit: to 1e-12 of the value
+            A, B = np.asarray(ident.evaluate_batch(X)), np.asarray(b.evaluate_batch(X))
+            assert np.allclose(A, B, rtol=1e-12, atol=1e-12), (s.name, float(np.max(np.abs(A - B))))
+            if s.pareto_set is None:
+                assert i == 6 and M >= 8, s.name
+                continue
+            P = np.asarray(s.pareto_set(40), float)
+            Y = P.copy()
+            Y[:, M - 1:] = 0.0 if fold else 0.5
+            assert np.allclose(s.evaluate_batch(P), b.evaluate_batch(Y), rtol=0.0, atol=1e-12), s.name
+
+
+@test
 def kudelas_variants_alpha_and_gamma():
     """f2a-f4g (task 20, §20.1.5): the same functions as beta's with Table 1's
     weights r, each in a draw domain of its own (so f2b-f5's streams stay
@@ -11950,7 +12051,9 @@ _SUITE_STEMS = (r"(shift)?ZDT[12346]", r"DTLZ[1-7]_\d+D", r"wideDTLZ3_\d+D",
                 # task 17, supplement 3, stage 3a
                 r"DAS-CMOP\d_(t\d\d|f6)", r"LIR-CMOP\d+", r"MW\d+(_\d+D)?", r"DOC\d",
                 r"I?Polygon_\d+D", r"SYM-PART_(simple|rotated)", r"Omni-test", r"MMF\d+(_[aez])?",
-                r"RE\d\dc?", r"CRE\d\d")
+                r"RE\d\dc?", r"CRE\d\d",
+                # task 20, §20.1
+                r"LZ09_F[1-9]", r"UF([1-9]|10)", r"CF([1-9]|10)-CEC2009", r"shiftMaF[1-7]_\d+D")
 
 
 def _suite_names(R):
