@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 20, §20.2.1): `suite/wrap.hpp`, a permutation, rotation and
+  shift over any Native problem. The run sees x; the problem
+  is evaluated at y = T(x): shift u = x - s, rotate v = c + Q (u - c),
+  permute y_i = v_pi(i), in that order. The inverse gives the start point and
+  the optimum in the run's coordinates; Jacobians and gradients follow the
+  chain rule. Each wrapper draws from its own key with the maps' generators;
+  with every instance 0 it is the identity, bit for bit. The readings of the
+  sources are WRAP-1 .. WRAP-6 in docs/deviations.md. A rotation is applied
+  only to a problem without a box or to a formula defined on all of R^n, and
+  never to a multi-objective problem (its rotations are the r* problems). `benchmarks/wrap.py` is its Python twin, and
+  tests/test_wrap.cpp holds the header against it. Not wired into `minimize`
+  or the campaign yet; nothing existing changes.
 - Added (task 20, §20.1): problems for checking the cores against their
   papers, 64 rows of data/registry.json, the earlier rows unchanged. LZ09
   F1-F9 (Li & Zhang 2009, Table I: `LZ09_F1` .. `LZ09_F9`, the paper's sizes,
@@ -21,7 +33,15 @@ always listed under **Changed** or **Removed**.
   folded for MaF7, as shiftDTLZ). Each in C++ (suite/lz09.hpp, uf.hpp,
   cf.hpp; shiftMaF through the suite's maps) with a NumPy module as its
   cross-check, its front and Pareto set by formula (refs/fronts.hpp,
-  sets.hpp), its readings of the sources in docs/deviations.md.
+  sets.hpp), its readings of the sources in docs/deviations.md, and its row
+  of benchmarks.properties (the front read off the formulas; LZ09, UF and CF
+  with linkage, multimodal where a distance term has cosines; shiftMaF the
+  base's row, neither medial nor extremal).
+- Fixed: the run layer's test that every problem evaluates draws each
+  problem's point from a stream of its own (new rows no longer move the
+  others' points), and a problem without a box within 5 % of its start
+  rather than 0.5 off it (NIST Misra1c's b2 = 2e-4 turned negative, its model
+  NaN).
 - Added: Kudela et al.'s variants alpha and gamma of the uninformative
   problems f2-f4 (GECCO 2026, Table 1), at 2 and 10 variables:
   `uninformative_f2a_n02_2D` ... `uninformative_f4g_n10_2D`, 12 rows. The same

@@ -91,6 +91,27 @@ Huband analyses:
               the edge of the domain (multimodal), MOP2-4's |t|/(1 + e^|t|)
               rises all the way (not). Its "imbalance" (g multiplied by
               sin(pi x_1), zero at the ends) is none of Huband's biases: None.
+  LZ09, UF, CF
+              Li & Zhang, IEEE TEVC 13(2), 2009, Table I (LZ09 F1-F9), and
+              Zhang et al., CES-487, 2009, sections II-III (UF1-UF10, CF1-CF10;
+              lz09.py, uf.py, cf.py): every Pareto set is a curve or surface
+              in x_1 (and x_2), x_j a function of them (linkage, not
+              separable), spanning its variable's range (neither medial nor
+              extremal). The front read off the formulas: f2 = 1 - sqrt(f1)
+              convex (LZ09 F1-F5, F7, F8; UF1-UF3), 1 - f1^2 concave (LZ09 F9,
+              UF4), the sphere's octant concave (LZ09 F6, UF8, UF10), the
+              line or plane linear (UF7), and in pieces disconnected: UF5's
+              and CF1's 2N + 1 points, UF6's and UF9's parts of the line and
+              the plane, CF2's and CF3's pieces of the convex and concave
+              curves, CF8-CF10's of the sphere. CF4-CF7's fronts are joined
+              pieces, linear with a convex and a concave kink (CF4, CF5) or
+              convex, linear and concave (CF6, CF7): mixed. Multimodal where
+              a distance term has cosines: LZ09 F7 and F8, UF3, UF5, UF6, UF10,
+              CF3, CF5, CF7, CF10. All objectives on the front span [0, 1]
+              (not scaled); bias is not stated: None.
+  shiftMaF1-7 MaF1-MaF7 with every distance variable's optimum off the
+              middle of the box (task 20, §20.1.4; registry.py): the base's
+              row, not medial and not extremal, as shiftDTLZ's
   BT1-9       Li, Zhang & Deng, IEEE TCYB 47(1), 2017, Section III-B: every
               problem has a distance-related bias (bias), BT3 and BT4 a
               position-related one too; BT5's front is disconnected, BT9's the
@@ -380,6 +401,31 @@ _MOP_FRONT = {1: "convex", 2: "concave", 3: "concave", 4: "disconnected", 5: "co
               6: "linear", 7: "concave"}
 _MOP_MULTIMODAL = {1: True, 2: False, 3: False, 4: False, 5: True, 6: True, 7: True}
 
+# LZ09, UF and CF (see the module docstring): the front's geometry, and the
+# problems whose distance terms have cosines (multimodal)
+_LZ09_FRONT = {i: "convex" for i in (1, 2, 3, 4, 5, 7, 8)}
+_LZ09_FRONT.update({6: "concave", 9: "concave"})
+_UF_FRONT = {1: "convex", 2: "convex", 3: "convex", 4: "concave", 5: "linear+disconnected",
+             6: "linear+disconnected", 7: "linear", 8: "concave", 9: "linear+disconnected",
+             10: "concave"}
+_CF_FRONT = {1: "linear+disconnected", 2: "convex+disconnected", 3: "concave+disconnected",
+             4: "mixed", 5: "mixed", 6: "mixed", 7: "mixed", 8: "concave+disconnected",
+             9: "concave+disconnected", 10: "concave+disconnected"}
+_LZ_UF_CF_MULTIMODAL = {("LZ09", 7), ("LZ09", 8), ("UF", 3), ("UF", 5), ("UF", 6), ("UF", 10),
+                        ("CF", 3), ("CF", 5), ("CF", 7), ("CF", 10)}
+
+
+def _lz_uf_cf(name: str) -> tuple | None:
+    """(family, i) for LZ09_F<i>, UF<i> and CF<i>-CEC2009; None otherwise."""
+    if name.startswith("LZ09_F") and name[6:].isdigit():
+        return "LZ09", int(name[6:])
+    if name.startswith("UF") and name[2:].isdigit():
+        return "UF", int(name[2:])
+    if name.startswith("CF") and name.endswith("-CEC2009") and name[2:-8].isdigit():
+        return "CF", int(name[2:-8])
+    return None
+
+
 # Li, Zhang & Deng 2017, Section III-B and Appendix A
 _BT_FRONT = {i: "convex" for i in (1, 2, 3, 4, 6, 7, 8)}
 _BT_FRONT.update({5: "disconnected", 9: "concave"})
@@ -419,6 +465,10 @@ def properties(name: str) -> dict | None:
         row["linkage"] = _LINKAGE["ZCAT"]
     elif stem.startswith("MOP"):
         row["linkage"] = _LINKAGE["MOP"]
+    elif _lz_uf_cf(name):
+        row["linkage"] = True
+    elif stem.startswith("shiftMaF"):
+        row["linkage"] = False
     elif stem in ("Polygon", "rcPolygon", "c0Polygon"):
         row["linkage"] = _LINKAGE["Polygon"]
     elif stem in _MW:
@@ -444,7 +494,7 @@ def properties(name: str) -> dict | None:
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
     elif stem.startswith("bbob") and stem[4:].isdigit():
         row["bbob_groups"] = _bbob1_group(int(stem[4:]))
-    row["front_dim"] = _front_dim(stem, row["n_obj"], front)
+    row["front_dim"] = _front_dim(stem[5:] if stem.startswith("shiftMaF") else stem, row["n_obj"], front)
     from ..families import VERIFICATION, is_engineering
     row["family_kind"] = ("verification" if name in VERIFICATION else
                           "engineering" if is_engineering(name) else "synthetic")
@@ -704,6 +754,15 @@ def _huband(name: str) -> dict | None:
     if stem.startswith("MOP") and stem[3:].isdigit():
         i = int(stem[3:])
         return _p(_MOP_FRONT[i], _MOP_MULTIMODAL[i], None, False, False, False, False)
+    if _lz_uf_cf(name):
+        family, i = _lz_uf_cf(name)
+        front = {"LZ09": _LZ09_FRONT, "UF": _UF_FRONT, "CF": _CF_FRONT}[family][i]
+        return _p(front, (family, i) in _LZ_UF_CF_MULTIMODAL, None, False, False, False, False,
+                  deceptive=None)
+    if stem.startswith("shiftMaF") and stem[5:] in _MAF:
+        row = _huband(f"{stem[5:]}_{m}D")
+        row["centre"] = row["boundary"] = False
+        return row
     if stem.startswith("BT") and stem[2:].isdigit():
         i = int(stem[2:])
         return _p(_BT_FRONT[i], i == 8, True, False, i not in _BT_LINKAGE, False, False)

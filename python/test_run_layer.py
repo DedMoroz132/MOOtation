@@ -1095,17 +1095,23 @@ def every_benchmark_evaluates_without_raising():
         print("    (skipped: no NumPy)"); return
     import math
     import random
+    import zlib
     from mootation.benchmarks.registry import PROBLEMS
-    random.seed(7)
     broken = []
     # Straight off PROBLEMS rather than through get(): get() also resolves the
     # reference frame, which samples a Pareto front per problem and would turn
     # a two-second test into a two-minute one. Evaluating needs neither ideal
     # nor nadir.
+    # Each problem draws from a stream of its own, so a new row does not move
+    # the others' points. Without a box (task 18, §1d) the point is about the
+    # start, within 5 % of each value (0.05 where it is 0): a start's scale
+    # is the problem's (NIST Misra1c's b2 = 2e-4 turns negative, and its
+    # model NaN, under a shift of 0.5).
     for nm, p in PROBLEMS.items():
-        x = [lo + random.random() * (hi - lo) for lo, hi in p.bounds]
+        rnd = random.Random(zlib.crc32(nm.encode()))
+        x = [lo + rnd.random() * (hi - lo) for lo, hi in p.bounds]
         if p.x0 is not None and any(math.isinf(v) for b in p.bounds for v in b):
-            x = [v + random.random() - 0.5 for v in p.x0]     # no box (task 18, §1d): about the start
+            x = [v + (abs(v) or 1.0) * 0.1 * (rnd.random() - 0.5) for v in p.x0]
         if _without_balls(nm):
             continue
         try:
