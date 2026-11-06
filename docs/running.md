@@ -1635,8 +1635,9 @@ every trajectory row `repair_checked`, `repair_out_children` and
 `repair_out_vars` at its `fe`, the last row the totals; `minimize` gives the
 same as `result.repairs`. What counts is SCALAR-14 (de and its kin, the GA
 presets, the PSOs, the CMA-ES family, nelder_mead, slsqp, lbfgsb's
-projections; not lm). On a strategy with `threads` above 1 the rows are null
-and the totals stay exact (SCALAR-15); the default, one thread, fills them.
+projections; not lm). On a strategy with `threads` above 1 the rows would be
+null and the totals stay exact (SCALAR-15); a campaign refuses such a
+strategy for now (task 18), so its rows are full.
 
 `[campaign] wrap_shift`, `wrap_rotate` and `wrap_perm` put every problem of a
 campaign at one objective behind the wrappers of `suite/wrap.hpp` (task 20,

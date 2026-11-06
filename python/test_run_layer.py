@@ -14003,12 +14003,6 @@ name = "multistart"
 pop = 0
 gens = 0
 params = { n_starts = 4, inner = { solver = "cmaes", cma_sigma0 = 2.0 } }
-[[algorithms]]
-label = "ms4"
-name = "multistart"
-pop = 0
-gens = 0
-params = { n_starts = 4, threads = 4, inner = { solver = "cmaes", cma_sigma0 = 2.0 } }
 """
 
 
@@ -14017,10 +14011,11 @@ def a_campaign_at_one_objective_records_the_points_that_left_the_box():
     """Task 20, §20.2.2: meta.json's so.repairs (checked, out_children,
     out_vars of the run) and every trajectory row's repair_checked,
     repair_out_children, repair_out_vars (the counts at its fe; the last row
-    the totals), the same in both engines. On one thread the rows only grow
-    and the last is so.repairs; a strategy on four threads gives the same run
-    and the same totals as on one, and null rows (the job's counter is not the
-    run's there: SCALAR-15)."""
+    the totals), the same in both engines: the rows only grow and the last
+    is so.repairs. A strategy on threads is refused by the config (task 18's
+    3g, until a job counts at the merge; its rows would be null, SCALAR-15);
+    on threads outside a campaign the totals are those of one thread
+    (a_run_at_one_objective_counts_the_points_that_left_the_box)."""
     from mootation.run import campaign as C
     if C.engine_path() is None or not _have_numpy() or _core_with("repair_counts") is None:
         print("  skip  a_campaign_at_one_objective_records_the_points...: no C++ engine or _core.repair_counts"); return
@@ -14045,24 +14040,17 @@ def a_campaign_at_one_objective_records_the_points_that_left_the_box():
             rep = meta["so"]["repairs"]
             rows = [json.loads(line) for line in (a / "trajectory.jsonl").read_text(encoding="utf-8").splitlines()]
             totals[(job.problem, job.key, job.seed)] = (rep, meta["final"]["f"])
-            if job.key == "ms4":
-                # the records of a strategy on threads follow the threads' order
-                # (the job's counting functions are called from them); what does
-                # not: null rows, the totals, the answer
-                mc = json.loads((b / "meta.json").read_text(encoding="utf-8"))
-                rows_c = [json.loads(line) for line in (b / "trajectory.jsonl").read_text(encoding="utf-8").splitlines()]
-                assert all(r[k] is None for r in rows + rows_c for k in keys), job.key
-                assert (mc["so"]["repairs"], mc["final"]["f"]) == (rep, meta["final"]["f"]), job.key
-                continue
             _same_run(a, b)
             got = [tuple(r[k] for k in keys) for r in rows]
             assert all(None not in g for g in got), (job.key, got[:3])
             assert all(x <= y for g, h in zip(got, got[1:]) for x, y in zip(g, h)), (job.key, got)
             assert got[-1] == (rep["checked"], rep["out_children"], rep["out_vars"]), (job.key, got[-1], rep)
             assert rep["checked"] > 0 and 0 <= rep["out_children"] <= rep["checked"], (job.key, rep)
-        for (problem, key, seed), (rep, f) in totals.items():
-            if key == "ms4":
-                assert (rep, f) == totals[(problem, "ms1", seed)], (problem, seed)
+        from mootation.run.knobs import THREADS_REFUSAL
+        bad = Path(td) / "threads.toml"
+        bad.write_text(_REPAIR_TOML.replace("NAME", "t").replace("n_starts = 4,", "n_starts = 4, threads = 4,"),
+                       encoding="utf-8")
+        assert ("algorithms[2] (multistart): " + THREADS_REFUSAL) in validate(load(bad)), validate(load(bad))
         assert any(r["out_children"] > 0 for (_, key, _), (r, _) in totals.items() if key == "cmaes"), totals
 
 

@@ -86,21 +86,6 @@ def refusal(algorithm: str, problem) -> str | None:
     return None
 
 
-def threaded(params) -> bool:
-    """A strategy on more than one thread (its knob threads, or an inner
-    table's): the counter of the job's thread is not the run's between
-    rounds, and the trajectory's counts of the box are null (job_so.hpp)."""
-    if isinstance(params, str) and params.startswith("{"):
-        try:
-            params = json.loads(params)
-        except ValueError:
-            return False
-    if not isinstance(params, dict):
-        return False
-    return any((k == "threads" and isinstance(v, int) and not isinstance(v, bool) and v > 1) or threaded(v)
-               for k, v in params.items())
-
-
 def grid_of(spec, budget: int, pop: int) -> list:
     """The sample grid's counts up to the budget (record_grid)."""
     from .campaign import budget_grid, log_grid
@@ -208,7 +193,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
     # the counts of the box at each count of the grid (task 20, §20.2.2): the
     # thread's counter, which only grows, since the run began (job_so.hpp)
     grid = grid_of(spec, job.budget, job.pop)
-    counts0, snaps, row_counts = _core.repair_counts(), [], not threaded(job.params)
+    from .knobs import threads_above_one          # refused by the config since task 18's 3g
+    counts0, snaps, row_counts = _core.repair_counts(), [], not threads_above_one(job.params)
 
     def account(X, F):
         nonlocal fe
@@ -287,7 +273,7 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
                 rec.update(grad_calls=None, f=None, delta_f=None, cv=None)
                 rec.update({f"x{j + 1}": None for j in range(p.n_vars)})
             # the counts of the box at b; the last row the run's totals (the points
-            # made but not evaluated included); null on threads (threaded)
+            # made but not evaluated included); null on threads (SCALAR-15)
             c = (None if not row_counts else totals if row + 1 == len(counts)
                  else snaps[row] if row < len(snaps) else None)
             rec.update(repair_checked=None if c is None else c[0], repair_out_children=None if c is None else c[1],

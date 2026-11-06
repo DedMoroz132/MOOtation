@@ -142,7 +142,10 @@
 //     the counter is thread_local, and between rounds the job's thread holds
 //     only what the rounds added, not the starts' points as they are made.
 //     The run's totals (meta.json so.repairs, the last row) are exact on any
-//     number of threads (strategy.hpp, round).
+//     number of threads (strategy.hpp, round). A campaign refuses threads > 1
+//     for now (task 18's 3g, config.hpp, until a job counts at the merge of
+//     the starts), so its rows are full; the null rows are the rule for when
+//     it takes them again.
 //
 // METHOD_VERSION: the version of these methods' trajectories, in every
 // result's settings (a campaign's meta): 1 — SciPy's SLSQP and Nelder-Mead and

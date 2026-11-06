@@ -90,7 +90,7 @@ public:
         ledger_->set_reads({}, {});
         grid_ = grid();
         counts0_ = ops::repair_counts();
-        row_counts_ = !threaded(job_.params);
+        row_counts_ = !threads_above_one(job_.params);   // refused by the config since task 18's 3g
         try {
             scalar::Start st;
             if (local(job_.algorithm) && !p_.x0.empty()) {
@@ -339,28 +339,6 @@ private:
             grid_counts_.push_back(ops::repair_counts() - counts0_);
             ++grid_next_;
         }
-    }
-
-    // a strategy on more than one thread (its knob threads, or an inner
-    // table's): the counter of the job's thread is not the run's between
-    // rounds, and the trajectory's counts are null (the run's totals stay
-    // exact: strategy.hpp, round)
-    static bool threaded(const json::Value& params)
-    {
-        if (params.kind == json::Value::Kind::String && !params.s.empty() && params.s[0] == '{') {
-            try {
-                return threaded(json::parse(params.s));
-            } catch (const std::exception&) {
-                return false;
-            }
-        }
-        if (params.kind != json::Value::Kind::Object) return false;
-        for (std::size_t i = 0; i < params.keys.size(); ++i) {
-            const json::Value& v = params.items[i];
-            if (params.keys[i] == "threads" && v.kind == json::Value::Kind::Int && v.i > 1) return true;
-            if (threaded(v)) return true;
-        }
-        return false;
     }
 
     // the problem as the algorithm sees it: the counting functions
