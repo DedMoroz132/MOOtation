@@ -11968,10 +11968,13 @@ def the_task19_strategies_run_through_minimize():
     """Task 19, §19.6 (tiktak.hpp, continuation.hpp, pap.hpp): tiktak with
     nelder_mead finds the lower of two minima and reports N*; pap with its
     members as a list (canonical JSON) and one member alone is that method's
-    run; data_continuation without residuals refused."""
+    run; data_continuation with residual blocks at one objective: one stage
+    is lm itself, a window stage then the problem; without residuals
+    refused, and block weights without blocks."""
     if _core_with("scalar") is None:
         print("  skip  the_task19_strategies...: no _core.scalar"); return
     import json
+    import math
     import mootation
     box = [(-2.0, 2.0)] * 2
 
@@ -11995,6 +11998,31 @@ def the_task19_strategies_run_through_minimize():
         assert "residuals are needed" in str(e), str(e)
     else:
         raise AssertionError("data_continuation without residuals not refused")
+    # data_continuation with residual blocks (contract 1a at one objective): r_i = a exp(-b t_i) - y_i
+    t = [0.25 * i for i in range(20)]
+    y = [2.0 * math.exp(-0.7 * ti) + 0.01 * math.sin(3.0 * i) for i, ti in enumerate(t)]
+    rr = lambda x: [x[0] * math.exp(-x[1] * ti) - yi for ti, yi in zip(t, y)]       # noqa: E731
+    lbox = [(0.1, 10.0), (0.01, 5.0)]
+    lm = {"solver": "lm"}
+    one = mootation.minimize(None, lbox, 1, algorithm="data_continuation", residuals=rr, residual_blocks=[10, 10],
+                             inner=lm, x0=[5.0, 2.0], max_evaluations=400, seed=3)
+    own = mootation.minimize(None, lbox, 1, algorithm="lm", residuals=rr, residual_blocks=[10, 10], x0=[5.0, 2.0],
+                             max_evaluations=400, seed=3)
+    assert one.variables == own.variables and one.evaluations == own.evaluations, (one.variables, own.variables)
+    two = mootation.minimize(None, lbox, 1, algorithm="data_continuation", residuals=rr, residual_blocks=[10, 10],
+                             inner=lm, x0=[5.0, 2.0], max_evaluations=400, seed=3,
+                             dc_stages=[{"window": [0, 10]}], dc_share=0.5)
+    s = dict(two.settings)
+    assert s["stages"] == "2" and json.loads(s["dc_stages"]) == [{"window": [0, 10]}], s
+    assert abs(two.objectives[0][0] - 0.5 * sum(v * v for v in rr(two.variables[0]))) <= 1e-12
+    for fn, kw, why in ((None, {"residuals": rr, "block_weights": [1.0, 1.0]}, "go with residual_blocks"),
+                        (lambda x: [0.0], {"residual_blocks": [10, 10]}, "go with residuals")):
+        try:
+            mootation.minimize(fn, lbox, 1, algorithm="lm", max_evaluations=10, **kw)
+        except ValueError as e:
+            assert why in str(e), str(e)
+            continue
+        raise AssertionError(f"not refused: {kw}")
 
 
 @test

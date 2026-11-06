@@ -425,7 +425,11 @@ def minimize(
                 centre, outside the budget, checks the sizes.
                 result.sum_of_squares: sum_b f_b of each
                 answer point, the problem's 1/2 ||r||^2 at one objective up
-                to rounding (BO-2). Above 8 blocks a warning.
+                to rounding (BO-2). Above 8 blocks a warning. With "one",
+                residual_blocks and block_weights are the residual problem's
+                blocks and their weights (task 18's contract 1a: the objective
+                1/2 sum_b w_b ||r_b||^2), for the single-objective algorithms;
+                data_continuation's stages (dc_stages) weigh the same blocks.
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -435,8 +439,10 @@ def minimize(
     """
     if objectives != "one":
         return _blocks_as_objectives(dict(locals()))
-    if residual_blocks is not None or block_weights is not None:
-        raise ValueError("residual_blocks and block_weights go with objectives = 'blocks'")
+    if (residual_blocks is not None or block_weights is not None) and residuals is None:
+        raise ValueError("residual_blocks and block_weights go with residuals")
+    if block_weights is not None and residual_blocks is None:
+        raise ValueError("block_weights go with residual_blocks")
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if wrap is not None:
         if sym_blocks is not None or canon is not None or align is not None:
@@ -462,7 +468,8 @@ def minimize(
     from .scalar import SINGLE
     derivatives = [k for k, v in (("grad", grad), ("residuals", residuals), ("jac", jac),
                                   ("x0", x0), ("gauge_basis", gauge_basis), ("sym_blocks", sym_blocks),
-                                  ("canon", canon), ("align", align)) if v is not None]
+                                  ("canon", canon), ("align", align), ("residual_blocks", residual_blocks))
+                   if v is not None]
     lsq = (residuals, jac, bounds) if residuals is not None else None   # result.profile's
     if derivatives and algorithm not in SINGLE:
         raise ValueError(f"{', '.join(derivatives)}: for the single-objective algorithms "
@@ -791,7 +798,8 @@ def minimize(
                 init=init, init_share=float(init_share), seed_points=seeds,
                 unique_count=lambda: points.count, guard=guard, grad=grad,
                 residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop,
-                sym_blocks=sym_blocks, canon=canon, align=align)
+                sym_blocks=sym_blocks, canon=canon, align=align, res_blocks=residual_blocks,
+                res_weights=block_weights)
             result._lsq = lsq
             result = _polished(result)
         finally:

@@ -249,7 +249,8 @@ void bind_scalar(py::module_& m)
              const std::shared_ptr<mootation::suite::Native>& native, const py::object& grad,
              const py::object& residuals, const py::object& jac, const py::object& x0,
              const py::object& gauge_basis, const py::object& f_stop, const py::object& sym_blocks,
-             const py::object& canon, const py::object& align) {
+             const py::object& canon, const py::object& align, const py::object& res_blocks,
+             const py::object& res_weights) {
               if (fn.is_none() == residuals.is_none() && !native)
                   throw std::invalid_argument("give fn or residuals, one of them");
               sc::Problem P = problem_of(fn, constraints, bounds, n_objs, n_cons, n_eq, native);
@@ -268,6 +269,14 @@ void bind_scalar(py::module_& m)
                       P.sym_blocks.push_back({py::cast<std::size_t>(t[0]), py::cast<std::size_t>(t[1]),
                                               py::cast<std::size_t>(t[2])});
                   }
+              }
+              if (!res_blocks.is_none()) {           // the residuals' blocks and weights (contract 1a; task 19, §19.6)
+                  P.blocks = res_blocks.cast<std::vector<int>>();
+                  P.weights = res_weights.is_none() ? Vec(P.blocks.size(), 1.0) : floats(res_weights);
+                  P.n_res = 0;
+                  for (int b : P.blocks) P.n_res += b;
+              } else if (!res_weights.is_none()) {
+                  throw std::invalid_argument("res_weights go with res_blocks");
               }
               if (!canon.is_none())
                   P.canon = [canon = held(canon)](Vec& x) {
@@ -332,6 +341,7 @@ void bind_scalar(py::module_& m)
           py::arg("jac") = py::none(), py::arg("x0") = py::none(), py::arg("gauge_basis") = py::none(),
           py::arg("f_stop") = py::none(),
           py::arg("sym_blocks") = py::none(), py::arg("canon") = py::none(), py::arg("align") = py::none(),
+          py::arg("res_blocks") = py::none(), py::arg("res_weights") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
           "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
           "for the scalar presets, solutions; at one objective improvements, the best point's\n"
