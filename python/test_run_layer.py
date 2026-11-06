@@ -11952,6 +11952,40 @@ params = { n_starts = 3, inner = { solver = "nelder_mead", local_tol = 1e-10 } }
 
 
 @test
+def the_task19_strategies_run_through_minimize():
+    """Task 19, §19.6 (tiktak.hpp, continuation.hpp, pap.hpp): tiktak with
+    nelder_mead finds the lower of two minima and reports N*; pap with its
+    members as a list (canonical JSON) and one member alone is that method's
+    run; data_continuation without residuals refused."""
+    if _core_with("scalar") is None:
+        print("  skip  the_task19_strategies...: no _core.scalar"); return
+    import json
+    import mootation
+    box = [(-2.0, 2.0)] * 2
+
+    def f(x):
+        return [(x[0] ** 2 - 1.0) ** 2 + x[1] ** 2 + 0.1 * x[0]]
+
+    nm = {"solver": "nelder_mead", "local_tol": 1e-10}
+    t = mootation.minimize(f, box, 1, algorithm="tiktak", inner=nm, tiktak_n=50, max_evaluations=3000, seed=11)
+    s = dict(t.settings)
+    assert t.variables[0][0] < 0.0 and s["tiktak_n_star"] == "5" and s["local_searches"] == "5", s
+    members = [{"solver": "de", "np": 20}, {"solver": "pso", "np": 10}]
+    p = mootation.minimize(f, box, 1, algorithm="pap", pap_members=members, max_evaluations=2000, seed=3)
+    assert json.loads(dict(p.settings)["pap_members"]) == [{"np": 20, "solver": "de"}, {"np": 10, "solver": "pso"}]
+    one = mootation.minimize(f, box, 1, algorithm="pap", pap_members=[{"solver": "de", "np": 20}],
+                             max_evaluations=2000, seed=3)
+    de = mootation.minimize(f, box, 1, algorithm="de", np=20, max_evaluations=2000, seed=3)
+    assert one.variables == de.variables and one.objectives == de.objectives
+    try:
+        mootation.minimize(f, box, 1, algorithm="data_continuation", inner=nm, max_evaluations=100)
+    except ValueError as e:
+        assert "residuals are needed" in str(e), str(e)
+    else:
+        raise AssertionError("data_continuation without residuals not refused")
+
+
+@test
 def a_campaign_of_a_strategy_writes_the_same_files_from_both_engines():
     """Task 18, stage 3, §3.4: a strategy in a campaign, its inner solver a
     TOML table; both engines write the same files (meta.json with the
