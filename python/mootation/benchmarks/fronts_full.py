@@ -105,6 +105,17 @@ MaF6 at eight objectives — before objectives() was made to use the exact
 zero there. The problems' own code keeps the rounded value; step 5 accepts
 the difference, which is below 1e-13.
 
+THE BUILT FRONTS OF WFG3 at ten objectives (task 20 of 2026-11-02, after
+verify2's finding that SIZES named WFG3_6D and WFG3_10D, whose files had
+never been built, so that their reference was the curve): WFG3_10D, at
+half the sample (n_int 50 000, n_face 5 000) and the full verification,
+took 28 715 s on one thread: 88 651 points of the sample nondominated,
+87 378 after the descent; of them 5 993 beaten by the 1 080 208 points of
+the fresh sample, 49 by the grid, 5 694 by the local search and 28 935 by
+the exact test (wfg3_dominated), 46 707 verified, 68.2 % of them off the
+curve, the frame f_m in [0, 2m] but f_9 to 17.75. MaF6_15D, listed here
+and never built either, left SIZES (see there).
+
 Regenerate the shipped files with `python -m mootation.benchmarks.make_fronts`.
 """
 
@@ -126,11 +137,16 @@ SIZES = {
     # DTLZ6_10D, DTLZ5_15D and DTLZ6_15D are left out: a full front of them would
     # take hours to build (a tenth of the samples took 11 times DTLZ6_8D's time at
     # ten objectives; task 14 of 2026-10-21), so they keep no full front
-    # and stay out of the atlas (their reference is doubtful: cover.reference_caveat)
+    # and stay out of the atlas (their reference is doubtful: cover.reference_caveat).
+    # MaF6_15D likewise (task 20 of 2026-11-02, owner's decision): it was listed
+    # here, but its file was never built, so its reference was the curve all
+    # along; it keeps it, with degenerate_subset_note's caveat (MaF6 leaves the
+    # curve from seven objectives). Every size listed has its file
+    # (test_run_layer: every_full_front_size_has_its_file).
     "DTLZ5": (4, 5, 6, 8, 10),
     "DTLZ6": (4, 5, 6, 8),
-    "MaF6":  (8, 10, 15),
-    "WFG3":  (3, 4, 5, 6, 10),
+    "MaF6":  (8, 10),
+    "WFG3":  (3, 4, 5, 10),          # 6 follows when its build ends (task 20, §4 of its report)
 }
 SHARED: dict = {}      # none: DTLZ5 and DTLZ6 reach different g (see the header)
 

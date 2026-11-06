@@ -2733,8 +2733,15 @@ REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
 # pieces, their ends computed; the last step of every front is a
 # deterministic nondominated filter; Polygon, MaF8 and MaF9 take their exact
 # frame (polygon.exact_frame). Every front changes: REFERENCE_CHANGED[5].
-REFERENCE_VERSION = 5
+# Version 6 (2026-11-06, task 20 of 2026-11-02, after verify2's finding):
+# WFG3_10D, then WFG3_6D, take their full fronts (fronts_full): SIZES
+# named them, but their files were never built, so their reference was
+# the degenerate curve (the frame its curve's). The fronts and frames of
+# REFERENCE_CHANGED[6] change; MaF6_15D, listed but never built either,
+# leaves SIZES and keeps the curve with its caveat.
+REFERENCE_VERSION = 6
 REFERENCE_CHANGED[3] = frozenset({"IPolygon_3D", "IPolygon_4D", "IPolygon_8D"})
+REFERENCE_CHANGED[6] = frozenset({"WFG3_10D"})
 # the problems whose DEFINITION changed with a version: their older runs
 # answered another problem and are run again, not recomputed
 PROBLEM_CHANGED: Dict[int, frozenset] = {

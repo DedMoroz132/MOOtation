@@ -1,7 +1,7 @@
 {
  "format": 1,
- "code_stamp": "v5-14f0adf5194b2fdc",
- "reference_version": 5,
+ "code_stamp": "v6-6548dd4c16f6d1c6",
+ "reference_version": 6,
  "mootation": "0.1.0",
  "names": {
   "baselines": [
@@ -28,6 +28,7 @@
    "cmaes",
    "lm",
    "lbfgsb",
+   "eki",
    "de",
    "jade",
    "shade",
@@ -38,7 +39,16 @@
    "chc",
    "pso",
    "spso2011",
-   "sep_cmaes"
+   "sep_cmaes",
+   "multistart",
+   "ipop",
+   "bipop",
+   "bipop_2009",
+   "halving",
+   "mlsl",
+   "basin_hopping",
+   "ils",
+   "memetic"
   ],
   "scalar_others": [
    "boostdms",
@@ -48,6 +58,7 @@
    "cmaes",
    "lm",
    "lbfgsb",
+   "eki",
    "de",
    "jade",
    "shade",
@@ -57,7 +68,10 @@
    "chc",
    "pso",
    "spso2011",
-   "sep_cmaes"
+   "sep_cmaes",
+   "ipop",
+   "bipop",
+   "bipop_2009"
   ],
   "design_kinds": [
    "sobol",
@@ -174,6 +188,33 @@
    "pso_phi",
    "spso_k",
    "noise_frac",
+   "eki_ensemble",
+   "eki_sigma0",
+   "eki_gamma",
+   "eki_noise",
+   "eki_tau",
+   "n_starts",
+   "threads",
+   "min_dist",
+   "min_df",
+   "start_share",
+   "bipop_large",
+   "mlsl_n",
+   "mlsl_sigma",
+   "mlsl_gamma",
+   "mlsl_tau",
+   "mlsl_nu",
+   "start_budget",
+   "bh_temperature",
+   "bh_step",
+   "bh_accept_rate",
+   "bh_interval",
+   "ils_step",
+   "ils_restart",
+   "ils_temperature",
+   "memetic_every",
+   "memetic_points",
+   "local_share",
    "eta_int",
    "bound_repair",
    "crossover",
@@ -236,7 +277,23 @@
    "fitness_reading",
    "extreme_weights",
    "slot_exclusive",
-   "int_repair"
+   "nm_coefficients",
+   "lm_gauge",
+   "eki_init",
+   "eki_perturb",
+   "kpcm_pm",
+   "edv_tournament",
+   "cma_weights",
+   "cma_cmu",
+   "cma_stop",
+   "start_points",
+   "cma_bounds",
+   "ils_accept",
+   "memetic_pick",
+   "keep_points",
+   "int_repair",
+   "inner",
+   "local_solver"
   ],
   "text_knobs": [
    [
@@ -726,6 +783,110 @@
     ]
    ],
    [
+    "nm_coefficients",
+    [
+     "adaptive",
+     "standard"
+    ]
+   ],
+   [
+    "lm_gauge",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "eki_init",
+    [
+     "around",
+     "sobol",
+     "lhs"
+    ]
+   ],
+   [
+    "eki_perturb",
+    [
+     "yes",
+     "no"
+    ]
+   ],
+   [
+    "kpcm_pm",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "edv_tournament",
+    [
+     "fitness",
+     "random"
+    ]
+   ],
+   [
+    "cma_weights",
+    [
+     "active",
+     "positive"
+    ]
+   ],
+   [
+    "cma_cmu",
+    [
+     "tutorial2016",
+     "hansen2009"
+    ]
+   ],
+   [
+    "cma_stop",
+    [
+     "spread",
+     "h09"
+    ]
+   ],
+   [
+    "start_points",
+    [
+     "sobol",
+     "lhs",
+     "uniform",
+     "halton_rand",
+     "sobol_owen"
+    ]
+   ],
+   [
+    "cma_bounds",
+    [
+     "penalty",
+     "none"
+    ]
+   ],
+   [
+    "ils_accept",
+    [
+     "better",
+     "rw",
+     "restart",
+     "lsmc"
+    ]
+   ],
+   [
+    "memetic_pick",
+    [
+     "best",
+     "spread"
+    ]
+   ],
+   [
+    "keep_points",
+    [
+     "all",
+     "best"
+    ]
+   ],
+   [
     "int_repair",
     [
      "lamarck",
@@ -785,6 +946,10 @@
    "rvea_star",
    "srv",
    "srv_nsga3"
+  ],
+  "solver_knobs": [
+   "inner",
+   "local_solver"
   ]
  },
  "problems": [
