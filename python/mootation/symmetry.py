@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 """Symmetries of a problem (task 19, §19.2.1): the Python cross-check of
 include/mootation/scalar/symmetry.hpp.
 
