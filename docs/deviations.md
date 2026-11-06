@@ -407,7 +407,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-242 items: 235 yes, 7 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+260 items: 253 yes, 7 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -432,6 +432,11 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cmaes` | CMA-3 | TolHistFun and EqualFunVals are tested only once there are as many iterations as their window holds (10 + ⌈30D/λ⌉, D). | yes | `cmaes.hpp` |
 | `cmaes` | CMA-4 | "Numerically constant": m_i + δ_i == m_i in double for every i (NoEffectAxis), for some i (NoEffectCoor). | yes | `cmaes.hpp` |
 | `cmaes` | CMA-5 | The eigendecomposition of C at every iteration, where H09 makes it every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves time and changes no update but the sampling's B and D between decompositions. | yes | `cmaes.hpp` |
+| `continuation` | DC-1 | The problem itself is always the last stage: the stages given lead up to it, and the answer is the problem's (its archive's best point, which may come from an earlier stage). | yes | `continuation.hpp` |
+| `continuation` | DC-2 | Stage 1 starts where the inner solver would (its plan, or x0); stage k + 1 from stage k's answer. | yes | `continuation.hpp` |
+| `continuation` | DC-3 | The budget: the stages before the last share dc_share of it evenly (the first ones one more, as STRAT-3); the last stage has what is left. | yes | `continuation.hpp` |
+| `continuation` | DC-4 | A stage evaluates through its own view (Stage below): a point an earlier stage, or this one, met is answered from the problem's raw residuals kept then (every point of the run comes through a stage), a new one calls t... | yes | `continuation.hpp` |
+| `continuation` | DC-5 | A window [a, b) becomes three blocks (a, b - a, n_res - b; empty ones dropped) at weights 0, 1, 0; a weight vector needs the problem's blocks, one weight each, finite and >= 0, and at least one > 0. | yes | `continuation.hpp` |
 | `de` | DE-1 | The trial (4) is built coordinate by coordinate: rnbr(i) is drawn first, then one U(0, 1) for every j (j = rnbr(i) included), and v_j is taken where U < CR or j = rnbr(i). | yes | `de.hpp` |
 | `de` | DE-2 | Bounds. The paper's box is the initial parameter range (IPR) only; its f9 and f28 have their minima outside it, and DE finds them. | yes | `de.hpp` |
 | `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |
@@ -542,6 +547,13 @@ Their readings, from every comment of each file (the first column the file's nam
 | `nelder_mead` | NM-1 | The initial simplex: x_0 and x_0 + tau e_i, tau = 0.05 in every coordinate, x_0 - tau e_i where x_0 + tau e_i would leave the box (the box is meant normalized to [0, 1]^n: Gao & Han's (3.1), fminsearch's, takes 0.0002... | yes | `nelder_mead.hpp` |
 | `nelder_mead` | NM-2 | Every point the method makes is clipped to the box before it is evaluated and becomes a vertex (Lagarias et al. and Gao & Han treat unconstrained problems). | yes | `nelder_mead.hpp` |
 | `nelder_mead` | NM-3 | The initial vertices are ordered by value, ties in their order of construction (x_0 first). | yes | `nelder_mead.hpp` |
+| `pap` | PAP-1 | The constituents run generation by generation in lockstep, in the order given: a generation of each is one of its ask/tell steps, so the evaluations go to each in proportion to what its generation asks (its subpopulat... | yes | `pap.hpp` |
+| `pap` | PAP-2 | A migration takes the emigrants of every constituent from the subpopulations as they stand before it ("combine the subpopulations of the remaining m - 1 algorithms, identify and duplicate the best migration_size indiv... | yes | `pap.hpp` |
+| `pap` | PAP-3 | PSO's "gbest": the migrant replaces the worst particle's best and position, its velocity 0, and gbest is the best of the bests again (§II-C: "updating the gbest once a better solution emerges in the whole population")... | yes | `pap.hpp` |
+| `pap` | PAP-4 | CMA-ES's "covariance matrix updated after the migration": the migrant is injected (cmaes.hpp, inject; task 19, §19.4.3) into its next generation, which updates the distribution with it; it is evaluated again, free (th... | yes | `pap.hpp` |
+| `pap` | PAP-5 | A constituent that ends (its done(): a collapsed population) leaves its time to the others: they go on until the budget is spent, in proportion to their generations as before (§II-C: "in proportion to the sizes of the... | yes | `pap.hpp` |
+| `pap` | PAP-6 | Constituent k's generator is start_seed(seed, k) (strategy.hpp STRAT-1): one constituent, no migration, is that method's own run, bit for bit. lshade's MAX_NFE is its share of the budget, np / sum(np). | yes | `pap.hpp` |
+| `pap` | PAP-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for the emigrants and the migrants; | yes | `pap.hpp` |
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
 | `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |
@@ -653,6 +665,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `symmetry` | SYM-8 | de, jade, shade, lshade: align — the base vector and the difference vectors aligned to the target x_i before the mutation; canon — the target too canonical, and the trial's crossover and the bound repair take canon(x_i). | yes | `symmetry.hpp` |
 | `symmetry` | SYM-9 | pso, spso2011: align only — the particle's own best and its neighbourhood's best aligned to its position before it moves; the velocity stays in the particle's representation (§19.2.2). canon is refused: it would chang... | yes | `symmetry.hpp` |
 | `symmetry` | SYM-10 | The points a kernel makes are evaluated and stored as made; the Evaluator's archive (repeats) is by the raw x. | yes | `symmetry.hpp` |
+| `tiktak` | TT-1 | Step 0's "order them in descending order, as s_1, ..., s_N*, with f(s_1) <= ... <= f(s_N*)" (2019 A.6) is ascending, as §2.1 of both says: the best point first. | yes | `tiktak.hpp` |
+| `tiktak` | TT-2 | i = 1: no minimum is known yet ("If i > 1", Step 1.2), S_1 = s_1. | yes | `tiktak.hpp` |
+| `tiktak` | TT-3 | N* = max(1, round(share N)); failed or infeasible points of the sample count as +inf and are kept last. | yes | `tiktak.hpp` |
+| `tiktak` | TT-4 | The sample: start_points of designs.hpp (sobol: the Sobol sequence under the seed's linear matrix scrambling), so runs of different seeds differ; the paper's Sobol sequence is unscrambled. | yes | `tiktak.hpp` |
+| `tiktak` | TT-5 | The searches are sequential (S_i needs p_low of searches 1 ... i - 1): a round of one start each, the generator start_seed(seed, i) (STRAT-1). | yes | `tiktak.hpp` |
+| `tiktak` | TT-6 | The budget: Step 0 spends what its N points cost; search i gets start_budget, or what is left shared among the N* - i + 1 searches left, so a search that stops early leaves its rest to the later ones. | yes | `tiktak.hpp` |
 
 ## The problems
 
@@ -686,3 +704,4 @@ from the paper's text.
 | WRAP-5 | This is a shift of the whole problem, box and all: relative to its box the optimum does not move. | `wrap.hpp` |
 | WRAP-6 | perm and shift know the variables only as a box: a problem whose variables carry more structure (types other than real, blocks or symmetries) is the caller's to refuse, or to permute along; a shift or a rotation of in... | `wrap.hpp` |
 | WRAP-7 | A problem with interchangeable blocks, a canonical form or linear parameters (task 19, sym.hpp) is refused by Wrapped as soon as one wrapper is on: a shift or a rotation breaks the blocks' symmetry, and a permutation... | `wrap.hpp` |
+| WRAP-8 | The residuals' blocks (res_blocks; task 19, §19.5) pass through unchanged: T maps x, not r, so the residuals keep their order and length. | `wrap.hpp` |
