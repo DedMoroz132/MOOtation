@@ -194,17 +194,32 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
     # the counts of the box at each count of the grid (task 20, §20.2.2): the
     # thread's counter, which only grows, since the run began (job_so.hpp)
     grid = grid_of(spec, job.budget, job.pop)
-    from .knobs import threads_above_one          # refused by the config since task 18's 3g
-    counts0, snaps, row_counts = _core.repair_counts(), [], not threads_above_one(job.params)
+    counts0, snaps = _core.repair_counts(), []      # exact on any threads (SCALAR-15)
+
+    # the count of an evaluation or of a gradient call: at once, or at the
+    # round's end where a strategy's start runs in a thread (strategy.hpp,
+    # THE DEFERRED COUNT; job_so.hpp the same)
+    defer = getattr(_core.scalar, "defer", None)
 
     def account(X, F):
+        if defer is None or not defer(lambda: account_now(X, F)):
+            account_now(X, F)
+
+    def count_grad():
+        def one():
+            nonlocal grad_calls
+            grad_calls += 1
+        if defer is None or not defer(one):
+            one()
+
+    def account_now(X, F):
         nonlocal fe
         ledger.set_grad_calls(grad_calls)
         ledger.begin(np.asarray(X, float).reshape(-1, p.n_vars), np.asarray(F, float).reshape(-1, 1))
         while ledger.next() >= 0:
             pass
         fe = ledger.fe
-        while row_counts and len(snaps) < len(grid) and grid[len(snaps)] <= fe:
+        while len(snaps) < len(grid) and grid[len(snaps)] <= fe:
             snaps.append(tuple(a - b for a, b in zip(_core.repair_counts(), counts0)))
 
     def fn(x):
@@ -221,15 +236,13 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         return r
 
     def jacobian(x):
-        nonlocal grad_calls
-        grad_calls += 1
+        count_grad()
         return native.residuals(x, True)[1]
 
     from ..scalar import SINGLE
     derivatives = {}
     def gradient(x):
-        nonlocal grad_calls
-        grad_calls += 1
+        count_grad()
         return list(native.gradient(x))
 
     if native.n_res and job.algorithm in SINGLE:
@@ -278,9 +291,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
                 rec.update(grad_calls=None, f=None, delta_f=None, cv=None)
                 rec.update({f"x{j + 1}": None for j in range(p.n_vars)})
             # the counts of the box at b; the last row the run's totals (the points
-            # made but not evaluated included); null on threads (SCALAR-15)
-            c = (None if not row_counts else totals if row + 1 == len(counts)
-                 else snaps[row] if row < len(snaps) else None)
+            # made but not evaluated included); the same on any threads (SCALAR-15)
+            c = totals if row + 1 == len(counts) else snaps[row] if row < len(snaps) else None
             rec.update(repair_checked=None if c is None else c[0], repair_out_children=None if c is None else c[1],
                        repair_out_vars=None if c is None else c[2])
             fh.write(json.dumps(rec, separators=(",", ":")) + "\n")

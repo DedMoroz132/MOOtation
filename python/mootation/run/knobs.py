@@ -203,27 +203,6 @@ def canonical(value) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
-# A campaign's single-objective job counts its evaluations (campaign_so.py,
-# and job_so.hpp's account()) from whichever thread evaluates: a strategy's
-# starts in threads would race on its ledger. Until the count moves to the
-# merge of the starts, threads > 1 is refused, at any depth of the solver
-# tables (config.hpp, threads_above_one).
-THREADS_REFUSAL = ("threads > 1 is refused in a campaign for now: a single-objective job counts its "
-                   "evaluations from the starts' threads, not yet safely; use threads = 1")
-
-
-def threads_above_one(params) -> bool:
-    """A knob `threads` above 1 in params or any solver table inside it."""
-    if not isinstance(params, dict):
-        return False
-    for k, v in params.items():
-        if k == "threads" and isinstance(v, (int, float)) and not isinstance(v, bool) and v > 1:
-            return True
-        if threads_above_one(v):
-            return True
-    return False
-
-
 def solver_issues(name: str, value, algorithms) -> list[str]:
     """What is wrong with the solver table `value` of knob `name`: it names
     no solver or one not in `algorithms`, or a knob of it is not a knob (its

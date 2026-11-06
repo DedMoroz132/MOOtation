@@ -74,7 +74,7 @@ static cg::Registry registry()
     reg.algorithms = {"moead_de", "nsga2", "nsga3"};
     reg.problems = {{"DTLZ2_3D", 3}, {"ZDT1", 2}, {"bbob01_n02_1D", 1}};
     reg.scalar_names = {"cmaes", "nelder_mead", "multistart"};
-    reg.knob_names = {"local_tol", "n_starts", "start_points", "inner", "threads"};
+    reg.knob_names = {"local_tol", "n_starts", "start_points", "inner"};
     reg.text_knobs = {{"start_points", {"sobol", "lhs"}}};
     reg.solver_knobs = {"inner"};
     reg.executable_findable = [](const std::string& argv0) { return argv0 == "python"; };
@@ -149,18 +149,6 @@ int main()
     same("an inner solver as a number",
          replaced(strategy, "inner = { solver = \"nelder_mead\", local_tol = 1e-10 }", "inner = 3"),
          "algorithms[0].params.inner: expected a table {solver = name, its knobs ...}, got 3");
-    // a strategy's threads in a campaign: refused until the job counts at the merge
-    const std::string in_threads =
-        "algorithms[0] (multistart): threads > 1 is refused in a campaign for now: a single-objective job counts "
-        "its evaluations from the starts' threads, not yet safely; use threads = 1";
-    same("a strategy in threads", replaced(strategy, "n_starts = 3", "n_starts = 3, threads = 4"), "", {in_threads},
-         {"bbob01_n02_1D"});
-    same("an inner strategy in threads",
-         replaced(strategy, "inner = { solver = \"nelder_mead\", local_tol = 1e-10 }",
-                  "inner = { solver = \"multistart\", threads = 2, inner = { solver = \"nelder_mead\" } }"),
-         "", {in_threads}, {"bbob01_n02_1D"});
-    same("a strategy in one thread", replaced(strategy, "n_starts = 3", "n_starts = 3, threads = 1"), "", {},
-         {"bbob01_n02_1D"});
 
     if (failures) {
         std::printf("%d failure(s)\n", failures);

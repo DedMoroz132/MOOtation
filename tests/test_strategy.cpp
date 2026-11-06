@@ -4,6 +4,9 @@
 //   - one start is the inner solver's run, bit for bit (§3.1): multistart
 //     with n_starts = 1 against cmaes, nelder_mead, de and lbfgsb alone;
 //   - 1 thread and 12 give the same run, bit for bit (§3.2);
+//   - THE DEFERRED COUNT: what the problem's function hands to
+//     defer_or_run() happens in the order of 1 thread, with 12 threads and
+//     with a strategy in threads within one in threads;
 //   - a round's views: a point two starts evaluated counts once, for the
 //     first; a point of an earlier round is free;
 //   - the minima log finds the two minima of (x^2 - 1)^2 + y^2;
@@ -11,6 +14,7 @@
 // ============================================================================
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -110,6 +114,43 @@ void threads_change_nothing()
           "multistart of 8 cmaes: 1 thread and 12 the same run (" + std::to_string(r[0].evaluations) + " evaluations)");
 }
 
+// THE DEFERRED COUNT: the problem's function logs each x through
+// defer_or_run() into a plain vector (no lock): in threads it is filled at the
+// rounds' ends, in the order of the starts, as 1 thread fills it at once
+void the_count_is_deferred()
+{
+    auto run = [](const std::string& inner, int threads, std::vector<Vec>& log, long long& calls) {
+        auto made = std::make_shared<std::atomic<long long>>(0);
+        sc::Problem P = sphere(std::make_shared<long long>(0));
+        const auto f = P.evaluate;
+        P.evaluate = [f, made, &log](const Vec& x, Vec& fx, Vec& g) {
+            ++*made;
+            sc::strategy::defer_or_run([&log, x] { log.push_back(x); });
+            f(x, fx, g);
+        };
+        const sc::Knobs kn{{"inner", word(inner)}, {"n_starts", number(6)}, {"threads", number(threads)}};
+        const sc::Result r = sc::run("multistart", P, 1e-6, false, 0.0, 20, 6000, 3, kn, {}, 0, {});
+        calls = *made;
+        return r;
+    };
+    const std::string cma = "{\"cma_sigma0\":0.2,\"solver\":\"cmaes\"}";
+    std::vector<Vec> one, twelve;
+    long long c1 = 0, c12 = 0;
+    const sc::Result r1 = run(cma, 1, one, c1), r12 = run(cma, 12, twelve, c12);
+    check(same(r1, r12) && one == twelve && static_cast<long long>(one.size()) == c1 && c12 == c1,
+          "multistart of 6 cmaes: the problem's deferred log in 12 threads is the log of 1 (" +
+              std::to_string(one.size()) + " entries)");
+    const std::string nested =
+        "{\"inner\":{\"solver\":\"nelder_mead\"},\"n_starts\":3,\"solver\":\"multistart\",\"threads\":3}";
+    const std::string nested1 = "{\"inner\":{\"solver\":\"nelder_mead\"},\"n_starts\":3,\"solver\":\"multistart\"}";
+    std::vector<Vec> a, b;
+    long long ca = 0, cb = 0;
+    const sc::Result ra = run(nested1, 1, a, ca), rb = run(nested, 4, b, cb);
+    check(same(ra, rb) && a == b && static_cast<long long>(a.size()) == ca && cb == ca,
+          "a multistart in 3 threads within one in 4: the deferred log of 1 thread (" + std::to_string(a.size()) +
+              " entries)");
+}
+
 void a_point_counts_once()
 {
     auto calls = std::make_shared<long long>(0);
@@ -192,6 +233,7 @@ int main()
 {
     one_start_is_the_inner_run();
     threads_change_nothing();
+    the_count_is_deferred();
     a_point_counts_once();
     two_minima();
     nesting_and_refusals();

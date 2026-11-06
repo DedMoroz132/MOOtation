@@ -1545,11 +1545,11 @@ the table's canonical JSON text (keys sorted, no spaces), which is what
 `result.settings` and `meta.json` show. A table that names no solver, a
 multi-objective core, or a knob that is not one is refused, by the config and
 by `minimize()`. The strategy's starts run in `threads` threads with the same
-result; with a Python `fn` they call it in turn, under the GIL. A campaign
-refuses `threads` above 1, at any depth of the tables, for now: its
-single-objective job counts the evaluations from the thread that makes them,
-which is not yet safe for a strategy's starts in threads. A strategy
-shares its budget among its starts, so it depends on `max_evaluations`.
+result; with a Python `fn` they call it in turn, under the GIL. A campaign's
+single-objective job counts its evaluations in the order of one thread
+whatever `threads` is (THE DEFERRED COUNT, `scalar/strategy.hpp`). A strategy
+within another's start runs its starts in that start's thread (STRAT-7). A
+strategy shares its budget among its starts, so it depends on `max_evaluations`.
 
 **Symmetries** (task 19, §19.2; `scalar/symmetry.hpp`): `minimize(...,
 sym_blocks=[(offset, size, count), ...], canon=None, align=None)` tells the
@@ -1664,9 +1664,9 @@ every trajectory row `repair_checked`, `repair_out_children` and
 `repair_out_vars` at its `fe`, the last row the totals; `minimize` gives the
 same as `result.repairs`. What counts is SCALAR-14 (de and its kin, the GA
 presets, the PSOs, the CMA-ES family, nelder_mead, slsqp, lbfgsb's
-projections; not lm). On a strategy with `threads` above 1 the rows would be
-null and the totals stay exact (SCALAR-15); a campaign refuses such a
-strategy for now (task 18), so its rows are full.
+projections; not lm). The rows and the totals are the same on any number of
+`threads` (SCALAR-15: a start in a thread defers its count with its repair
+counts, and the round replays them in the order of the starts).
 
 `[campaign] wrap_shift`, `wrap_rotate` and `wrap_perm` put every problem of a
 campaign at one objective behind the wrappers of `suite/wrap.hpp` (task 20,

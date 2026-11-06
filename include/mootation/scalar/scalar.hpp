@@ -136,16 +136,11 @@
 //     method's geometry, not a point outside), lm (Coleman-Li's interior
 //     steps stay inside; x_0 outside is refused), eki. A point made but not
 //     evaluated (the budget ends within a generation) is counted.
-//   SCALAR-15. A campaign's trajectory rows carry the counts at their fe
-//     (job_so.hpp, campaign_so.py) where the run is on one thread; a strategy
-//     on more than one (threads > 1, or an inner table's) gives null rows:
-//     the counter is thread_local, and between rounds the job's thread holds
-//     only what the rounds added, not the starts' points as they are made.
-//     The run's totals (meta.json so.repairs, the last row) are exact on any
-//     number of threads (strategy.hpp, round). A campaign refuses threads > 1
-//     for now (task 18's 3g, config.hpp, until a job counts at the merge of
-//     the starts), so its rows are full; the null rows are the rule for when
-//     it takes them again.
+//   SCALAR-15. A campaign's trajectory rows carry the counts of the box at
+//     their fe on any number of threads: a start in a thread defers its count
+//     with its own counter's delta, and the round replays both in start
+//     order, so the rows are threads = 1's bit for bit (strategy.hpp, THE
+//     DEFERRED COUNT).
 //
 // METHOD_VERSION: the version of these methods' trajectories, in every
 // result's settings (a campaign's meta): 1 — SciPy's SLSQP and Nelder-Mead and

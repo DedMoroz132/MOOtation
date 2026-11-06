@@ -84,10 +84,19 @@
 //     then local searches at the end, as polish.
 //   SRCH-8. A local search's result is the inner solver's answer; worse means
 //     more violating, then larger f (Deb).
-//   SRCH-9. memetic: a phase that spends nothing ends the strategy (as RST-8):
-//     the global solver stopped by its own criteria evaluates nothing new when
-//     rerun, and with every archive point already a local start there is
-//     nothing left to search from.
+//   SRCH-9. memetic: a phase whose global run spends nothing is the last (as
+//     RST-8): the global solver has stopped by its own criteria (rerun, it
+//     evaluates nothing new), and the local searches alone would go on in
+//     phases of a few evaluations each (5380 phases of a budget of 20000 on a
+//     linear f with its minimum in the box's corner), or of none at all once
+//     every archive point has been a local start.
+//   SRCH-10. ils and basin_hopping: 100 steps in a row that spend nothing end
+//     the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing
+//     ends it (its sample would grow without end); basin_hopping's step grows
+//     to the box's width at most (a larger one is only clipped more, SRCH-4).
+//     With the minima on the box's bounds (CEC 2013 F1) the step grew without
+//     end, every point was clipped onto a known one, and the walk went on
+//     below its budget without evaluating anything.
 // ============================================================================
 
 #include <algorithm>
@@ -228,6 +237,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     long long searches = 0, iterations = 0;
     try {
         for (long long it = 1;; ++it) {
+            const double before = ev.used();
             for (long long s = 0; s < N; ++s) {                                // the sample grows
                 Vec u(n), x(n);
                 for (std::size_t j = 0; j < n; ++j) {
@@ -288,7 +298,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
                 minima.push_back(u);
             }
             searches += static_cast<long long>(res.size());
-            if (search::left(ev) <= 0) break;
+            if (search::left(ev) <= 0 || ev.used() == before) break;                             // SRCH-10
         }
     } catch (const BudgetSpent&) {
     }
@@ -342,8 +352,9 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     };
     try {
         search::Found cur = local(start, 0), best = cur;
-        long long since = 0, accepted = 0, tried = 0;
-        for (long long s = 1; cur.ok && search::left(ev) > 0; ++s) {
+        long long since = 0, accepted = 0, tried = 0, idle = 0;
+        for (long long s = 1; cur.ok && search::left(ev) > 0 && idle < 100; ++s) {                  // SRCH-10
+            const double before = ev.used();
             Vec y = cur.x;
             for (std::size_t j = 0; j < n; ++j)                                                  // SRCH-4
                 y[j] = std::min(P.hi[j], std::max(P.lo[j], y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
@@ -376,8 +387,10 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
             }
             if (bh && tried == interval) {                                                       // SRCH-5
                 step = static_cast<double>(accepted) / static_cast<double>(tried) > target ? step / 0.9 : step * 0.9;
+                step = std::min(step, 1.0);                                                       // SRCH-10
                 accepted = tried = 0;
             }
+            idle = ev.used() == before ? idle + 1 : 0;
         }
     } catch (const BudgetSpent&) {
     }
@@ -491,6 +504,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
             g.fresh = std::min(every, search::left(ev));                                          // SRCH-7
             g.allowance += g.fresh;
             strategy::round(ev, global, {g}, 1, pop_size);
+            const bool global_done = ev.used() == before;                                         // SRCH-9
             ++phases;
             // the local searches' starts: the archive's best, or the best and then the farthest among the best tenth
             std::vector<std::size_t> order;
@@ -542,7 +556,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
                 if (b.ok) log.add(b.x, b.f, searches + static_cast<long long>(q));
             }
             searches += static_cast<long long>(res.size());
-            if (ev.used() == before) break;                                                       // SRCH-9
+            if (global_done) break;                                                               // SRCH-9
         }
     } catch (const BudgetSpent&) {
     }

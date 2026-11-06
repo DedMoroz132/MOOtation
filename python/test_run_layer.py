@@ -12028,19 +12028,28 @@ def a_campaign_of_a_strategy_writes_the_same_files_from_both_engines():
                 assert ma["status"] == "failed", ma
                 continue
             assert ma["status"] == "done" and ma["fe"] <= 600, ma
+        # THE DEFERRED COUNT (strategy.hpp): the job's count in threads is the count of 1 thread, both
+        # engines (task 20 saw 28 records against 27 and an access violation before it)
+        threaded = {}
+        for name, engine, threads in (("t1", "cxx", 1), ("t4c", "cxx", 4), ("t4p", "python", 4)):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_STRATEGY_TOML.replace("NAME", name).replace("n_starts = 3", f"n_starts = 4, threads = {threads}")
+                            .replace("budget_fe = 600", "budget_fe = 800"), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            threaded[name] = (C.out_root(cfg, spec), C.expand_jobs(cfg, spec), C.run_campaign(cfg, workers=1, engine=engine))
+        (r1, jobs1, s1) = threaded["t1"]
+        for other in ("t4c", "t4p"):
+            ro, _, so = threaded[other]
+            assert (so["done"], so["failed"]) == (s1["done"], s1["failed"]), (other, so, s1)
+            for job in jobs1:
+                _same_run(C.run_dir_of(r1, job), C.run_dir_of(ro, job), knob="threads")
         bad = Path(td) / "bad.toml"
         bad.write_text(_STRATEGY_TOML.replace("NAME", "bad").replace('solver = "nelder_mead"', 'solver = "nsga2"'),
                        encoding="utf-8")
         issues = validate(load(bad))
         assert any("inner.solver = 'nsga2' is not a single-objective solver or strategy" in i for i in issues), issues
-        # threads > 1 refused in a campaign (the job's count is not thread-safe yet), at any depth; 1 accepted
-        from mootation.run.knobs import THREADS_REFUSAL
-        for old, new, refused in (('solver = "nelder_mead"', 'solver = "nelder_mead", threads = 1', False),
-                                  ("n_starts = ", "threads = 4, n_starts = ", True),
-                                  ('solver = "nelder_mead"', 'solver = "multistart", threads = 2', True)):
-            bad.write_text(_STRATEGY_TOML.replace("NAME", "bad").replace(old, new, 1), encoding="utf-8")
-            issues = validate(load(bad))
-            assert (("algorithms[0] (multistart): " + THREADS_REFUSAL) in issues) == refused, (new, issues)
 
 
 @test
@@ -13644,10 +13653,12 @@ def _store_campaign(td, name, extra):
     return cfg, spec, C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
 
 
-def _same_run(a, b, keep="full"):
+def _same_run(a, b, keep="full", knob=None):
     """The files of two run folders (a Path or a store.StoredRun) hold the same
     results: meta.json without _VOLATILE, the trajectory without its clock,
-    the CSV text, the .npz arrays; keep = "standard": b has no archive_at.npz."""
+    the CSV text, the .npz arrays; keep = "standard": b has no archive_at.npz;
+    knob: a knob the two runs differ in, left out of meta.json's params and of
+    the settings the solver reports (so.settings)."""
     import numpy as np
     for name in ("meta.json", "trajectory.jsonl", "final.csv", "archive.csv", "archive_at.npz"):
         fa, fb = a / name, b / name
@@ -13659,8 +13670,20 @@ def _same_run(a, b, keep="full"):
             continue
         if name == "meta.json":
             ma, mb = (json.loads(f.read_text(encoding="utf-8")) for f in (fa, fb))
+            if knob is not None:
+                def drop(d):                       # the knob out of params and its solver tables
+                    if isinstance(d, dict):
+                        d.pop(knob, None)
+                        for v in d.values():
+                            drop(v)
+                for m in (ma, mb):
+                    drop(m.get("params", {}))
+                    if isinstance(m.get("so"), dict) and isinstance(m["so"].get("settings"), dict):
+                        m["so"]["settings"].pop(knob, None)
             assert {k: v for k, v in ma.items() if k not in _VOLATILE} == \
-                   {k: v for k, v in mb.items() if k not in _VOLATILE}, (a, b)
+                   {k: v for k, v in mb.items() if k not in _VOLATILE}, \
+                (a, b, {k: (ma.get(k), mb.get(k)) for k in set(ma) | set(mb)
+                        if k not in _VOLATILE and ma.get(k) != mb.get(k)})
         elif name == "trajectory.jsonl":
             ta, tb = ([{k: v for k, v in json.loads(line).items() if k != "t"}
                        for line in f.read_text(encoding="utf-8").splitlines()] for f in (fa, fb))
@@ -14060,9 +14083,9 @@ def a_campaign_at_one_objective_records_the_points_that_left_the_box():
     out_vars of the run) and every trajectory row's repair_checked,
     repair_out_children, repair_out_vars (the counts at its fe; the last row
     the totals), the same in both engines: the rows only grow and the last
-    is so.repairs. A strategy on threads is refused by the config (task 18's
-    3g, until a job counts at the merge; its rows would be null, SCALAR-15);
-    on threads outside a campaign the totals are those of one thread
+    is so.repairs. A strategy on threads gives the files of one thread, the
+    rows included, in both engines (SCALAR-15; strategy.hpp, THE DEFERRED
+    COUNT); on threads outside a campaign the totals are those of one thread
     (a_run_at_one_objective_counts_the_points_that_left_the_box)."""
     from mootation.run import campaign as C
     if C.engine_path() is None or not _have_numpy() or _core_with("repair_counts") is None:
@@ -14094,11 +14117,37 @@ def a_campaign_at_one_objective_records_the_points_that_left_the_box():
             assert all(x <= y for g, h in zip(got, got[1:]) for x, y in zip(g, h)), (job.key, got)
             assert got[-1] == (rep["checked"], rep["out_children"], rep["out_vars"]), (job.key, got[-1], rep)
             assert rep["checked"] > 0 and 0 <= rep["out_children"] <= rep["checked"], (job.key, rep)
-        from mootation.run.knobs import THREADS_REFUSAL
-        bad = Path(td) / "threads.toml"
-        bad.write_text(_REPAIR_TOML.replace("NAME", "t").replace("n_starts = 4,", "n_starts = 4, threads = 4,"),
-                       encoding="utf-8")
-        assert ("algorithms[2] (multistart): " + THREADS_REFUSAL) in validate(load(bad)), validate(load(bad))
+        # the strategy on 4 threads: one thread's files, rows and so.repairs included, both engines
+        for name, engine in (("tp", "python"), ("tc", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_REPAIR_TOML.replace("NAME", name).replace("n_starts = 4,", "n_starts = 4, threads = 4,"),
+                            encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            rt = C.out_root(cfg, spec)
+            got = C.run_campaign(cfg, workers=2, engine=engine)
+            assert got["done"] == len(jobs), (name, got)
+            for job in jobs:
+                _same_run(C.run_dir_of(rc, job), C.run_dir_of(rt, job), knob="threads")
+        # a multistart of multistarts, threads at both levels (STRAT-7): one thread's files, both engines
+        nest = 'inner = { solver = "multistart", n_starts = 2, THREADS inner = { solver = "cmaes", cma_sigma0 = 2.0 } }'
+        flat = 'inner = { solver = "cmaes", cma_sigma0 = 2.0 }'
+        nested = {}
+        for name, engine, outer, inner in (("n1", "cxx", "", ""), ("n4c", "cxx", "threads = 4,", "threads = 2,"),
+                                           ("n4p", "python", "threads = 4,", "threads = 2,")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_REPAIR_TOML.replace("NAME", name).replace("n_starts = 4,", f"n_starts = 4, {outer}")
+                            .replace(flat, nest.replace("THREADS", inner)), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            nested[name] = C.out_root(cfg, spec)
+            got = C.run_campaign(cfg, workers=2, engine=engine)
+            assert got["done"] == len(jobs), (name, got)
+        for job in jobs:
+            for other in ("n4c", "n4p"):
+                _same_run(C.run_dir_of(nested["n1"], job), C.run_dir_of(nested[other], job), knob="threads")
         assert any(r["out_children"] > 0 for (_, key, _), (r, _) in totals.items() if key == "cmaes"), totals
 
 

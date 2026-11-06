@@ -415,7 +415,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-260 items: 253 yes, 7 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+263 items: 256 yes, 7 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -588,7 +588,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `restarts` | RST-5 | "The first and last restart are conducted under the first regime": after regime 1's last run (λ = 2^bipop_large λ_def) the strategy stops. | yes | `restarts.hpp` |
 | `restarts` | RST-6 | The box gives the start: a bound that is not finite is refused, and so are constraints (bounds only). | yes | `restarts.hpp` |
 | `restarts` | RST-7 | A run's generator and its start mean come from start_seed(seed, k) (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and σ⁰ of a run of regime 2 from it before the start mean. | yes | `restarts.hpp` |
-| `restarts` | RST-8 | A run that evaluates nothing ends the strategy: the budget, or the run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's own allowance says. | yes | `restarts.hpp` |
+| `restarts` | RST-8 | A run that evaluates nothing ends the strategy (ipop, bipop and bipop_2009): the budget, or the run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's own allowance says, or every point the run asks f... | yes | `restarts.hpp` |
 | `scalar` | SCALAR-1 | n_sub from the budget: what is left after the plan's start and the anchors, over 10 (n + 1) evaluations a subproblem for sqp — about ten iterations from a neighbour's solution — and 100 n for nm and cmaes; at most pop... | yes | `scalar.hpp` |
 | `scalar` | SCALAR-2 | nm, cmaes: an infeasible point is worth the worst feasible value known for its subproblem plus its violation (Deb's rule as a penalty). | yes | `scalar.hpp` |
 | `scalar` | SCALAR-3 | tch: w_i = 1 / max(d_i, 1e-6) for the lattice's direction d, so that the solutions lie on the rays F̄ ∝ d the lattice spreads evenly; the reference point is z*. | yes | `scalar.hpp` |
@@ -602,7 +602,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | SCALAR-11 | A subproblem whose solver ends where it started runs again, with what is left of its allowance, from the initial plan's best point for it: the archive's best is often an anchor or a neighbour's solution at a corner of... | yes | `scalar.hpp` |
 | `scalar` | SCALAR-12 | The anchors' stages see the objectives scaled by the initial plan's range (its minimum to 0, its maximum to 1): SQP stops early on a raw objective of 1e7 (bbob-biobj f2's ellipsoid). | yes | `scalar.hpp` |
 | `scalar` | SCALAR-14 | Result::repairs counts a point when a method makes it and it is looked at against the box, as Kononova, Caraffini and Bäck count (Information Sciences 581, 2021; task 20, section 20.2.2) — de's, jade's, shade's and ls... | yes | `scalar.hpp` |
-| `scalar` | SCALAR-15 | A campaign's trajectory rows carry the counts at their fe (job_so.hpp, campaign_so.py) where the run is on one thread; a strategy on more than one (threads > 1, or an inner table's) gives null rows: the counter is thr... | yes | `scalar.hpp` |
+| `scalar` | SCALAR-15 | A campaign's trajectory rows carry the counts of the box at their fe on any number of threads: a start in a thread defers its count with its own counter's delta, and the round replays both in start order, so the rows... | yes | `scalar.hpp` |
 | `scalar` | SINGLE-1 | One run of the solver: one that stops before the budget leaves the rest unspent, as DMS does. | yes | `scalar.hpp` |
 | `scalar` | SINGLE-2 | The solver sees f scaled by the initial plan's range (its least value to 0, its greatest to 1), as scalar's anchors do (SCALAR-12), in the box normalized to [0, 1]^n, as every solver of solvers.hpp: a bound that is no... | yes | `scalar.hpp` |
 | `scalar` | SINGLE-3 | A start x0 (the problem's coordinates) is the plan: one point, and the solver from it; the frame of SINGLE-2 is then f(x0) to 0 with scale 1 (subproblems.hpp: a range of 0 is a scale of 1). slsqp takes the problem's g... | yes | `scalar.hpp` |
@@ -625,7 +625,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-6 | halving: a round reruns each arm with its whole allowance so far; its earlier points come from the archive, free, and only what goes beyond costs (a solver whose run does not depend on the budget repeats itself exactl... | yes | `search.hpp` |
 | `search` | SRCH-7 | memetic: the global solver is rerun with its allowance grown by memetic_every, its earlier points free (as SRCH-6); it does not see the local searches' points (no Lamarckian step), they only enter the answer. | yes | `search.hpp` |
 | `search` | SRCH-8 | A local search's result is the inner solver's answer; worse means more violating, then larger f (Deb). | yes | `search.hpp` |
-| `search` | SRCH-9 | memetic: a phase that spends nothing ends the strategy (as RST-8): the global solver stopped by its own criteria evaluates nothing new when rerun, and with every archive point already a local start there is nothing le... | yes | `search.hpp` |
+| `search` | SRCH-9 | memetic: a phase whose global run spends nothing is the last (as RST-8): the global solver has stopped by its own criteria (rerun, it evaluates nothing new), and the local searches alone would go on in phases of a few... | yes | `search.hpp` |
+| `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-3 | Ranking: the comparison of evo.hpp (NSGA-II's constrained- domination at M = 1 for constraints g <= 0, not in the paper), ties in the order told (stable). | yes | `sep_cmaes.hpp` |
@@ -663,6 +664,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-4 | The minima log: a start's answer joins the first minimum within min_dist (the box normalized to [0, 1]^n where it is finite, else the problem's coordinates; the largest coordinate difference) and min_df in f, else is... | yes | `strategy.hpp` |
 | `strategy` | STRAT-5 | The run's equalities' tolerance schedule (eq_tol0) is the inner solver's, on its own allowance. | yes | `strategy.hpp` |
 | `strategy` | STRAT-6 | A start may spend on new points at most what it was given (its allowance, or less where a strategy reruns a start whose earlier points are free, search.hpp SRCH-6): past it the view ends the inner run as the budget do... | yes | `strategy.hpp` |
+| `strategy` | STRAT-7 | A round within a start (a strategy as another's inner solver) runs its starts in the start's own thread, one after another, whatever its threads knob: its views reach the outer start's view, which one thread owns. | yes | `strategy.hpp` |
+| `strategy` | STRAT-8 | Every strategy ends below its budget too where its points cost nothing (the archive answers them: points clipped onto known ones, a box of zero width): a loop over the budget ends when a pass of it spends nothing. mul... | yes | `strategy.hpp` |
 | `symmetry` | SYM-1 | Ties: Step 1 takes the first non-covered zero in row-major order and the Preliminaries star in row-major order, so the assignment is a function of the matrix: equal blocks or equal costs give the same answer every time. | yes | `symmetry.hpp` |
 | `symmetry` | SYM-2 | A zero is an entry equal to 0.0. In floating point Step 3 makes the least non-covered entry exactly 0 (y - y), so the zero the method needs is there; the other entries carry the rounding of the subtractions, which can... | yes | `symmetry.hpp` |
 | `symmetry` | SYM-3 | align(x, ref) with x a permutation of ref's blocks returns ref bit for bit: the permutation's cost is 0, the least possible, and the result copies x's blocks, which are ref's. | yes | `symmetry.hpp` |

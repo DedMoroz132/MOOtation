@@ -59,9 +59,10 @@
 //   RST-7. A run's generator and its start mean come from start_seed(seed, k)
 //     (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and
 //     σ⁰ of a run of regime 2 from it before the start mean.
-//   RST-8. A run that evaluates nothing ends the strategy: the budget, or the
-//     run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's
-//     own allowance says.
+//   RST-8. A run that evaluates nothing ends the strategy (ipop, bipop and
+//     bipop_2009): the budget, or the run's target (evaluator.hpp, THE
+//     TARGET), is spent, whatever regime 2's own allowance says, or every
+//     point the run asks for is in the archive (a box of zero width).
 // ============================================================================
 
 #include <algorithm>
@@ -218,7 +219,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
         if (ev.spent >= ev.budget) break;                        // ev.budget: THE TARGET shortens it
         if (!bipop) {
             const Run r = one(0, lam_def << q, sigma_large, 0, rng);
-            if (r.budget_out) break;
+            if (r.budget_out || r.evaluations == 0) break;                                    // RST-8
             continue;
         }
         // bipop (H09 §2.1; RST-3 ... RST-5)

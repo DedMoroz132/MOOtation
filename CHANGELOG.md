@@ -51,16 +51,42 @@ always listed under **Changed** or **Removed**.
   and the target as before. `ipop`, `bipop` and `bipop_2009` take it with
   `keep_points = best` (default `all`): the archive of every point of a
   budget of 10^6 D does not fit in memory (about 0.4 KB a point at D = 10).
-- Changed (campaign config, both engines; task 18): `threads` above 1 in an
-  algorithm's params or any solver table inside them is refused, with the
-  same message from C++ and Python. A single-objective job counts its
-  evaluations from the thread that makes them (`job_so.hpp`, `account()`),
-  which raced with a strategy's starts in threads (found by task 20). The
-  refusal stays until the count moves to the merge of the starts.
-- Fixed (`scalar/search.hpp`; task 18): `memetic` ends when a phase spends
-  nothing (SRCH-9). A global solver stopped by its own criteria evaluates
-  nothing new when rerun; with every archive point already a local start the
-  loop went on without end below the budget.
+- Fixed (`scalar/strategy.hpp`, the campaign's single-objective job, both
+  engines; task 18): a job counted its evaluations from the thread that
+  made them, which raced with a strategy's starts in threads (found by task
+  20: an access violation, and 28 records against 27). THE DEFERRED COUNT:
+  a start in a thread of its own holds what the problem's functions do
+  besides evaluating (`defer_or_run`, `_core.scalar.defer`), and the round
+  runs it start by start when the starts are done, which is the order of one
+  thread. A campaign gives the same files with any `threads`, the C++ and
+  Python engines alike. STRAT-7: a round within a start runs its starts in
+  that start's thread (its views reach the outer start's view, which one
+  thread owns; nested starts in threads raced there too). With one thread
+  nothing changes. A held call keeps its start's repair counts so far, and
+  the round sets the job thread's counter to one thread's value when it
+  runs it: a campaign's trajectory rows carry the counts of the box on any
+  number of threads, threads = 1's bit for bit (SCALAR-15; they were null on
+  threads before).
+- Fixed (`scalar/strategy.hpp`, `restarts.hpp`, `search.hpp`; task 18):
+  every strategy ends below its budget too where its points cost nothing
+  (STRAT-8). `ipop` ends on a run that evaluates nothing (RST-8, as `bipop`;
+  in a box of zero width its population doubled without end); `memetic`'s
+  phase whose global run spends nothing is its last (SRCH-9: once the global
+  solver had stopped, the local searches went on in phases of a few
+  evaluations, 5380 phases of a budget of 20000). test_search runs every
+  strategy with nelder_mead, cmaes and de inside on a minimum in the box's
+  corner, on CEC 2013 F1 and in a box of zero width.
+- Fixed (`scalar/search.hpp`; task 18): `basin_hopping` and `ils` end after
+  100 steps in a row that spend nothing, and `mlsl` after an iteration that
+  spends nothing (SRCH-10); `basin_hopping`'s step grows to the box's width at
+  most. On CEC 2013 F1, whose minima sit on the box's bounds, the step grew
+  without end, every point was clipped onto a known one, and the walk went on
+  below its budget without evaluating (seed 1 of a 5·10^4 budget). Runs that
+  ended before are unchanged.
+- Fixed (`scalar/search.hpp`; task 18): `memetic` ends after a phase whose
+  global run spends nothing (SRCH-9). A global solver stopped by its own
+  criteria evaluates nothing new when rerun; with every archive point
+  already a local start the loop went on without end below the budget.
 - Added: `pap` (task 19, §19.6), Peng, Tang, Chen & Yao's population-based
   algorithm portfolio (`scalar/pap.hpp`): stage 4's methods and CMA-ES on
   their own subpopulations, migration of the best every MAX_GEN / 20

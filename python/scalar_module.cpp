@@ -225,6 +225,21 @@ void bind_scalar(py::module_& m)
     s.attr("METHOD_VERSION") = sc::METHOD_VERSION;
     s.attr("NAMES") = py::cast(sc::names());
 
+    s.def(
+        "defer",
+        [](const py::function& what) {
+            if (sc::strategy::deferred_here() == nullptr) return false;
+            sc::strategy::defer_or_run([what = held(what)] {
+                py::gil_scoped_acquire gil;
+                (*what)();
+            });
+            return true;
+        },
+        py::arg("what"),
+        "THE DEFERRED COUNT (strategy.hpp): in a thread that runs a strategy's start (a round in\n"
+        "threads > 1), hold what(), to be called at the round's end in the order of the starts,\n"
+        "and return True; elsewhere return False (the caller does it at once).");
+
     s.def("run",
           [](const std::string& name, const py::object& fn, const py::object& constraints,
              const py::object& bounds, int n_objs, int n_cons, int n_eq, double eq_tol,

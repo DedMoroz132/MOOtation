@@ -91,7 +91,6 @@ public:
         ledger_->set_reads({}, {});
         grid_ = grid();
         counts0_ = ops::repair_counts();
-        row_counts_ = !threads_above_one(job_.params);   // refused by the config since task 18's 3g
         try {
             scalar::Start st;
             if (local(job_.algorithm) && !p_.x0.empty()) {
@@ -327,7 +326,28 @@ private:
         return out;
     }
 
+    // the count of an evaluation, or of a gradient call: at once, or at the
+    // round's end where a strategy's start runs in a thread (strategy.hpp,
+    // THE DEFERRED COUNT)
     void account(const std::vector<double>& x, double f)
+    {
+        if (scalar::strategy::deferred_here()) {
+            scalar::strategy::defer_or_run([this, x, f] { account_now(x, f); });
+            return;
+        }
+        account_now(x, f);
+    }
+
+    void count_grad()
+    {
+        if (scalar::strategy::deferred_here()) {
+            scalar::strategy::defer_or_run([this] { ++grad_calls_; });
+            return;
+        }
+        ++grad_calls_;
+    }
+
+    void account_now(const std::vector<double>& x, double f)
     {
         ledger_->set_grad_calls(grad_calls_);
         ledger_->begin(x.data(), &f, 1, nullptr, 0, nullptr);
@@ -336,7 +356,7 @@ private:
         // the counts of the box at each count of the grid (task 20, §20.2.2):
         // the thread's counter, which only grows, since the run began; on one
         // thread only (a strategy's threads call this from theirs: SCALAR-15)
-        while (row_counts_ && grid_next_ < grid_.size() && grid_[grid_next_] <= ledger_->fe()) {
+        while (grid_next_ < grid_.size() && grid_[grid_next_] <= ledger_->fe()) {
             grid_counts_.push_back(ops::repair_counts() - counts0_);
             ++grid_next_;
         }
@@ -367,7 +387,7 @@ private:
             };
             if (native_->has_jacobian)
                 P.jacobian = [this, m, n](const std::vector<double>& x, scalar::Rows& J) {
-                    ++grad_calls_;
+                    count_grad();
                     std::vector<double> r(m), flat(m * n);
                     native_->residuals(x.data(), r.data(), flat.data());
                     J.assign(m, std::vector<double>(n));
@@ -379,7 +399,7 @@ private:
         const std::size_t n = static_cast<std::size_t>(p_.n_var);
         if (native_->n_res == 0 && native_->has_gradient && single(job_.algorithm))
             P.gradient = [this, n](const std::vector<double>& x, std::vector<double>& gf, scalar::Rows&) {
-                ++grad_calls_;
+                count_grad();
                 gf.assign(n, 0.0);
                 native_->gradient(x.data(), gf.data());
             };
@@ -457,9 +477,7 @@ private:
             // points made but not evaluated included); null on threads (above)
             const std::size_t row = lines.size();
             const bool last = row + 1 == counts.size();
-            const ops::RepairCounts* c = !row_counts_ ? nullptr
-                                         : last ? &repairs_
-                                         : row < grid_counts_.size() ? &grid_counts_[row] : nullptr;
+            const ops::RepairCounts* c = last ? &repairs_ : row < grid_counts_.size() ? &grid_counts_[row] : nullptr;
             rec.set("repair_checked", c ? V::integer(c->checked) : V::null());
             rec.set("repair_out_children", c ? V::integer(c->out_children) : V::null());
             rec.set("repair_out_vars", c ? V::integer(c->out_vars) : V::null());
@@ -552,7 +570,6 @@ private:
     std::size_t grid_next_ = 0;
     std::vector<ops::RepairCounts> grid_counts_;      // the counts of the box at each of them
     ops::RepairCounts counts0_;
-    bool row_counts_ = true;
     std::optional<double> f_opt_;
     std::optional<std::int64_t> instance_;
     std::unique_ptr<RunLedger> ledger_;

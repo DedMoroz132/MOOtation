@@ -9,6 +9,11 @@
 //     every one;
 //   - halving: ⌈log2 8⌉ = 3 rounds of 8, 4, 2 arms, each round's allowance
 //     B/(|S| 3) more per arm (Jamieson & Talwalkar, Algorithm 1);
+//   - STRAT-8: every strategy, with nelder_mead, cmaes and de inside, ends
+//     on a minimum in the box's corner, on CEC 2013 F1 and in a box of zero
+//     width;
+//   - basin_hopping on CEC 2013 F1 (its minima on the box's bounds), seed 1:
+//     ends within its budget (SRCH-10: it went on without end before);
 //   - memetic: de with nelder_mead as it goes; a phase that spends nothing
 //     ends it (SRCH-9: a box of zero width, every point the same one);
 //   - every strategy within its budget, also with lshade (whose run depends
@@ -24,6 +29,7 @@
 #include <vector>
 
 #include <mootation/scalar/scalar.hpp>
+#include <mootation/suite/cec2013.hpp>
 
 namespace {
 
@@ -194,6 +200,83 @@ void memetic_without_progress()
               std::to_string(r.evaluations) + " evaluations (budget 100000)");
 }
 
+// SRCH-10: CEC 2013 F1's two global minima sit on the box's bounds; the
+// walk's step grew past the box, every point was clipped onto a known one and
+// the walk went on without evaluating (seed 1 did, seed 4 ended)
+void walk_on_the_bounds()
+{
+    const mootation::suite::cec2013::Problem F1(1);
+    sc::Problem P;
+    P.lo = {0.0};
+    P.hi = {30.0};
+    P.m = 1;
+    P.evaluate = [F1](const Vec& x, Vec& f, Vec&) { f = {-F1.value(x)}; };
+    for (unsigned seed : {1u, 4u}) {
+        const sc::Result r = sc::run("basin_hopping", P, 1e-6, false, 0.0, 100, 50000, seed, {{"inner", word(kNM)}},
+                                     {}, 0, {});
+        check(r.evaluations <= 50000 && std::stod(setting(r, "bh_step_end")) <= 1.0 && r.objectives[0][0] <= -200.0,
+              "basin_hopping on CEC 2013 F1, seed " + std::to_string(seed) + ": ends, " +
+                  std::to_string(r.evaluations) + " evaluations, " + setting(r, "steps") + " steps, step " +
+                  setting(r, "bh_step_end") + ", f = " + std::to_string(r.objectives[0][0]));
+    }
+    // a box of zero width: after the first local search every step is free; 100 of them end the walk
+    sc::Problem Z = P;
+    Z.lo = {0.5};
+    Z.hi = {0.5};
+    for (const char* name : {"basin_hopping", "ils"}) {
+        const sc::Result r = sc::run(name, Z, 1e-6, false, 0.0, 100, 50000, 1, {{"inner", word(kNM)}}, {}, 0, {});
+        check(r.evaluations == 1 && setting(r, "steps") == "100",
+              std::string(name) + " in a box of zero width: " + setting(r, "steps") + " free steps end it, " +
+                  std::to_string(r.evaluations) + " evaluation");
+    }
+    const sc::Result m = sc::run("mlsl", Z, 1e-6, false, 0.0, 100, 50000, 1, {{"inner", word(kNM)}}, {}, 0, {});
+    check(m.evaluations == 1 && setting(m, "iterations") == "2",
+          "mlsl in a box of zero width: the free iteration " + setting(m, "iterations") + " ends it, " +
+              std::to_string(m.evaluations) + " evaluation");
+}
+
+// STRAT-8: where the archive answers the points (clipped onto known ones, a box
+// of zero width) every strategy still ends; a hang here is the failure
+void every_strategy_ends()
+{
+    const mootation::suite::cec2013::Problem F1(1);
+    sc::Problem corner, f1, zero;
+    corner.lo = {0.0, 0.0};
+    corner.hi = {1.0, 1.0};
+    corner.m = 1;
+    corner.evaluate = [](const Vec& x, Vec& f, Vec&) { f = {-(x[0] + x[1])}; };
+    f1.lo = {0.0};
+    f1.hi = {30.0};
+    f1.m = 1;
+    f1.evaluate = [F1](const Vec& x, Vec& f, Vec&) { f = {-F1.value(x)}; };
+    zero = corner;
+    zero.lo = {0.5, 0.5};
+    zero.hi = {0.5, 0.5};
+    const std::pair<const char*, const sc::Problem*> problems[] = {{"corner", &corner}, {"F1", &f1}, {"zero", &zero}};
+    int ended = 0, runs = 0;
+    std::string memetic_phases;
+    for (const auto& [what, P] : problems)
+        for (const char* name : {"multistart", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak", "ipop",
+                                 "bipop", "bipop_2009", "pap"}) {
+            const bool cma = std::string(name).find("pop") != std::string::npos || std::string(name) == "pap";
+            for (const char* inner : {"nelder_mead", "cmaes", "de"}) {
+                if (cma && std::string(inner) != "nelder_mead") continue;
+                sc::Knobs kn;
+                if (!cma) kn.push_back({"inner", word(std::string("{\"solver\":\"") + inner + "\"}")});
+                if (std::string(name) == "memetic") kn.push_back({"local_solver", word(kNM)});
+                const sc::Result r = sc::run(name, *P, 1e-6, false, 0.0, 20, 5000, 1, kn, {}, 0, {});
+                ++runs;
+                if (r.evaluations <= 5000 && !r.objectives.empty()) ++ended;
+                if (std::string(name) == "memetic" && std::string(what) == "corner")
+                    memetic_phases += std::string(memetic_phases.empty() ? "" : ", ") + setting(r, "phases");
+            }
+        }
+    check(ended == runs && runs == 75,
+          "every strategy ends on a corner minimum, on CEC 2013 F1 and in a box of zero width: " +
+              std::to_string(ended) + " of " + std::to_string(runs) + " runs (memetic's phases on the corner: " +
+              memetic_phases + ")");
+}
+
 void within_the_budget()
 {
     std::uint64_t h = 1469598103934665603ull;          // the runs' answers, the same with MSVC and clang
@@ -227,6 +310,8 @@ int main()
     halving();
     memetic();
     memetic_without_progress();
+    walk_on_the_bounds();
+    every_strategy_ends();
     within_the_budget();
     std::printf("%s (%d failed)\n", g_failed == 0 ? "PASS" : "FAIL", g_failed);
     return g_failed == 0 ? 0 : 1;

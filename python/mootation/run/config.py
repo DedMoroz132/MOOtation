@@ -558,7 +558,7 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
             bad(where,
                 f"unknown parameter(s): {', '.join(unknown)}. "
                 f"Known: {', '.join(sorted(valid_knobs))}")
-        from .knobs import THREADS_REFUSAL, accepts, solver_issues, solver_knobs, text_knobs, threads_above_one
+        from .knobs import accepts, solver_issues, solver_knobs, text_knobs
         for k, v in a.params.items():
             allowed = text_knobs().get(k)
             if allowed is not None and not accepts(k, v):
@@ -567,8 +567,6 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
                 from ..scalar import NAMES as _SCALAR_NAMES
                 for issue in solver_issues(k, v, _SCALAR_NAMES):
                     bad(where, issue)
-        if threads_above_one(a.params):
-            bad(where, THREADS_REFUSAL)
 
         if cfg.n_objs >= 1 and a.pop >= 2:
             reason = check_pop(a.name, a.pop, cfg.n_objs, a.params)

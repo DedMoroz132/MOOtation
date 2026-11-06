@@ -20,6 +20,19 @@
 // archive does not change during a round, so its starts may run in any
 // number of threads: 1 thread and 12 give the same run, bit for bit.
 //
+// THE DEFERRED COUNT. What a problem's functions do besides evaluating (a
+// campaign job's count of the evaluations and their records) is not
+// thread-safe: a start in a thread of its own (a round in threads > 1) hands
+// it to defer_or_run(), which holds it in the start's list; when the starts
+// are done, the round runs the lists start by start, in the order of the
+// starts, which is the order one thread runs them in. So any number of
+// threads gives the count of 1 thread, bit for bit. Elsewhere (one thread, or
+// the run outside a round) defer_or_run() does it at once. A held call keeps
+// the box's repair counts its start had made so far (ops::repair_counts, a
+// thread's own); the round sets the counter to what 1 thread shows at that
+// call (the earlier starts' totals, then this one's so far) when it runs it,
+// and leaves it at every start's total (SCALAR-15).
+//
 // THE ANSWER is every algorithm's (evaluator.hpp): at one objective the best
 // point of the archive. Each start's own answer goes to the minima log, which
 // groups the starts that found the same minimum (min_dist, min_df).
@@ -56,6 +69,25 @@
 //     allowance, or less where a strategy reruns a start whose earlier
 //     points are free, search.hpp SRCH-6): past it the view ends the inner
 //     run as the budget does, so a round never spends past the run's budget.
+//   STRAT-7. A round within a start (a strategy as another's inner solver)
+//     runs its starts in the start's own thread, one after another, whatever
+//     its threads knob: its views reach the outer start's view, which one
+//     thread owns. The run is the same (1 thread and 12 give the same run).
+//   STRAT-8. Every strategy ends below its budget too where its points cost
+//     nothing (the archive answers them: points clipped onto known ones, a
+//     box of zero width): a loop over the budget ends when a pass of it
+//     spends nothing. multistart is one round and halving ceil(log2 n); ipop,
+//     bipop and bipop_2009 end on a run that evaluates nothing (RST-8), each
+//     CMA-ES run on its own criteria (max_iter among them); memetic on a phase
+//     whose global run spends nothing (SRCH-9); mlsl on an iteration that
+//     spends nothing, ils and basin_hopping on 100 steps in a row that spend
+//     nothing (SRCH-10; one free step, clipped onto a known point, is fine);
+//     tiktak is its n_star starts, data_continuation its stages, and pap ends
+//     on POP-2's generations in a row with no new point.
+//     test_search runs every strategy, with nelder_mead, cmaes and de inside,
+//     on a minimum in the box's corner, on CEC 2013 F1 (its minima on the
+//     bounds) and in a box of zero width (data_continuation, for least
+//     squares only, aside).
 // ============================================================================
 
 #include <algorithm>
@@ -64,6 +96,7 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <random>
@@ -94,6 +127,40 @@ inline unsigned start_seed(unsigned seed, std::uint64_t k)
 
 // One start's road to the problem: the archive at the round's beginning, read
 // only, and the start's own new points.
+// THE DEFERRED COUNT: this thread's list, while it runs a start of a round
+// in threads; none elsewhere
+struct DeferredCall {
+    std::function<void()> what;
+    ops::RepairCounts at;             // the start's repair counts at the call
+};
+using Deferred = std::vector<DeferredCall>;
+
+inline Deferred*& deferred_here()
+{
+    thread_local Deferred* list = nullptr;
+    return list;
+}
+
+// this thread's repair counts when its start began
+inline ops::RepairCounts& start_counts0()
+{
+    thread_local ops::RepairCounts c;
+    return c;
+}
+
+// how many starts this thread is running within one another (STRAT-7)
+inline int& start_depth()
+{
+    thread_local int depth = 0;
+    return depth;
+}
+
+inline void defer_or_run(std::function<void()> what)
+{
+    if (Deferred* list = deferred_here()) list->push_back({std::move(what), ops::repair_counts() - start_counts0()});
+    else what();
+}
+
 class View {
 public:
     using Vec = std::vector<double>;
@@ -354,9 +421,12 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
             ev, static_cast<double>(starts[k].fresh >= 0 ? starts[k].fresh : starts[k].allowance)));
     std::vector<Result> out(n);
     std::vector<std::exception_ptr> error(n);
+    std::vector<Deferred> later(n);                   // THE DEFERRED COUNT, start by start
+    std::vector<ops::RepairCounts> made(n);            // each start's repair counts
     const double eq_tol = ev.eq_tol_end, eq_tol0 = ev.eq_tol0;
     const bool has_tol0 = ev.has_tol0;
     auto one = [&](std::size_t k) {
+        ++start_depth();
         try {
             if (starts[k].allowance > 0)
                 out[k] = run(inner.name, views[k]->problem, eq_tol, has_tol0, eq_tol0, pop_size,
@@ -364,8 +434,10 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
         } catch (...) {
             error[k] = std::current_exception();
         }
+        --start_depth();
     };
-    const std::size_t T = std::min<std::size_t>(n, static_cast<std::size_t>(std::max(1, threads)));
+    const std::size_t T = start_depth() > 0 ? 1                                       // STRAT-7
+                                            : std::min<std::size_t>(n, static_cast<std::size_t>(std::max(1, threads)));
     if (T <= 1) {
         for (std::size_t k = 0; k < n; ++k) one(k);
     } else {
@@ -373,10 +445,28 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
         std::vector<std::thread> pool;
         for (std::size_t t = 0; t < T; ++t)
             pool.emplace_back([&]() {
-                for (std::size_t k = next++; k < n; k = next++) one(k);
+                for (std::size_t k = next++; k < n; k = next++) {
+                    deferred_here() = &later[k];
+                    start_counts0() = ops::repair_counts();
+                    one(k);
+                    made[k] = ops::repair_counts() - start_counts0();
+                    deferred_here() = nullptr;
+                }
             });
         for (auto& th : pool) th.join();
-        for (const Result& r : out) ops::repair_counts() += r.repairs;   // counted on the pool's threads
+        const ops::RepairCounts base = ops::repair_counts();
+        ops::RepairCounts before{};                   // the earlier starts' totals
+        for (std::size_t k = 0; k < n; ++k) {         // in the order of the starts (a round within a
+            for (DeferredCall& call : later[k]) {     // start's thread: into its list)
+                ops::repair_counts() = base;
+                ops::repair_counts() += before;
+                ops::repair_counts() += call.at;
+                defer_or_run(std::move(call.what));
+            }
+            before += made[k];
+        }
+        ops::repair_counts() = base;
+        ops::repair_counts() += before;
     }
     for (std::size_t k = 0; k < n; ++k)
         if (error[k]) std::rethrow_exception(error[k]);
