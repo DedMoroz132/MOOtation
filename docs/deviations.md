@@ -415,7 +415,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-263 items: 256 yes, 7 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+266 items: 257 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -561,6 +561,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pap` | PAP-4 | CMA-ES's "covariance matrix updated after the migration": the migrant is injected (cmaes.hpp, inject; task 19, §19.4.3) into its next generation, which updates the distribution with it; it is evaluated again, free (th... | yes | `pap.hpp` |
 | `pap` | PAP-5 | A constituent that ends (its done(): a collapsed population) leaves its time to the others: they go on until the budget is spent, in proportion to their generations as before (§II-C: "in proportion to the sizes of the... | yes | `pap.hpp` |
 | `pap` | PAP-6 | Constituent k's generator is start_seed(seed, k) (strategy.hpp STRAT-1): one constituent, no migration, is that method's own run, bit for bit. lshade's MAX_NFE is its share of the budget, np / sum(np). | yes | `pap.hpp` |
+| `pap` | PAP-8 | sym = off \| align (task 19, §19.2.2; off by default): the members' own sym (align; symmetry.hpp SYM-7 ... 9), and a migrant into CMA-ES aligned to its mean before it is injected (§19.2.2's "injected points to the curr... | no: option | `pap.hpp` |
 | `pap` | PAP-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for the emigrants and the migrants; | yes | `pap.hpp` |
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
@@ -666,6 +667,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-6 | A start may spend on new points at most what it was given (its allowance, or less where a strategy reruns a start whose earlier points are free, search.hpp SRCH-6): past it the view ends the inner run as the budget do... | yes | `strategy.hpp` |
 | `strategy` | STRAT-7 | A round within a start (a strategy as another's inner solver) runs its starts in the start's own thread, one after another, whatever its threads knob: its views reach the outer start's view, which one thread owns. | yes | `strategy.hpp` |
 | `strategy` | STRAT-8 | Every strategy ends below its budget too where its points cost nothing (the archive answers them: points clipped onto known ones, a box of zero width): a loop over the budget ends when a pass of it spends nothing. mul... | yes | `strategy.hpp` |
+| `strategy` | STRAT-9 | min_sym = off \| canon \| align (task 19, §19.2.2, S5; off by default): the log's distance between a start's answer and a minimum taken after the answer is aligned to the minimum (align), or both are canonical (canon),... | no: option | `strategy.hpp` |
+| `strategy` | STRAT-9 | the log grouped by the problem's symmetries where min_sym is given | yes | `strategy.hpp` |
 | `symmetry` | SYM-1 | Ties: Step 1 takes the first non-covered zero in row-major order and the Preliminaries star in row-major order, so the assignment is a function of the matrix: equal blocks or equal costs give the same answer every time. | yes | `symmetry.hpp` |
 | `symmetry` | SYM-2 | A zero is an entry equal to 0.0. In floating point Step 3 makes the least non-covered entry exactly 0 (y - y), so the zero the method needs is there; the other entries carry the rounding of the subtractions, which can... | yes | `symmetry.hpp` |
 | `symmetry` | SYM-3 | align(x, ref) with x a permutation of ref's blocks returns ref bit for bit: the permutation's cost is 0, the least possible, and the result copies x's blocks, which are ref's. | yes | `symmetry.hpp` |
