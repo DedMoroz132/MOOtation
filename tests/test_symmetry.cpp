@@ -16,6 +16,11 @@
 //     ga::cross (with and without block_uniform), pso::move, spso2011::move;
 //     sym = off on the same inputs differs (the check can fail);
 //   - block_uniform and block_mutation do what GA-7 and GA-8 say;
+//   - min_sym (strategy.hpp STRAT-9): two minima equal but for the blocks'
+//     order are one in the minima log with align, two without; pap's CMA-ES
+//     member injects a migrant aligned to its mean, so a migrant and its
+//     permutation give the same point (PAP-8); pap with sym = align runs and
+//     is refused without blocks;
 //   - through scalar::run: sym = off given runs as no knob, the knobs go to
 //     the settings only where given, and the refusals (no symmetries, pso
 //     with canon, block operators without blocks, blocks with two boxes).
@@ -446,6 +451,67 @@ void through_run()
     check(!refused("de", {}, two_boxes), "no sym knob: the groups are not checked, the run as before");
 }
 
+// min_sym and pap's sym (STRAT-9, PAP-8)
+void strategies()
+{
+    namespace sc = mootation::scalar;
+    sc::Problem P;                                            // minima at (1, -1) and (-1, 1): one up to the order
+    P.lo = {-2.0, -2.0};
+    P.hi = {2.0, 2.0};
+    P.m = 1;
+    P.evaluate = [](const Vec& x, Vec& f, Vec&) {
+        const double a = (x[0] - 1.0) * (x[0] - 1.0) + (x[1] + 1.0) * (x[1] + 1.0);
+        const double b = (x[0] + 1.0) * (x[0] + 1.0) + (x[1] - 1.0) * (x[1] - 1.0);
+        f.assign(1, a * b);
+    };
+    P.sym_blocks = {{0, 1, 2}};
+    const sc::Knob nm{true, "{\"local_tol\":1e-12,\"solver\":\"nelder_mead\"}", 0.0};
+    auto minima = [&](const sc::Knobs& extra) {
+        sc::Knobs k{{"inner", nm}, {"n_starts", {false, "", 12.0}}, {"min_dist", {false, "", 1e-4}}};
+        k.insert(k.end(), extra.begin(), extra.end());
+        const sc::Result r = sc::run("multistart", P, 1e-6, false, 0.0, 10, 6000, 2, k, {}, 0, {});
+        std::string text;
+        for (const auto& kv : r.settings)
+            if (kv.first == "minima") text = kv.second;
+        return mootation::json::parse(text).items.size();
+    };
+    const std::size_t off = minima({}), on = minima({{"min_sym", {true, "align", 0.0}}});
+    check(off == 2 && on == 1, "min_sym = align: (1, -1) and (-1, 1) one minimum (" + std::to_string(on) +
+                                   "), two without (" + std::to_string(off) + ") (STRAT-9)");
+    // pap's CMA-ES member: a migrant and its permutation inject the same point
+    const std::vector<S::Blocks> g{{0, 2, 3}};
+    S::Sym s;
+    s.mode = S::Mode::align;
+    s.groups = g;
+    const Vec lo(6, -1.0), hi(6, 1.0);
+    sc::pap::Cma a(5, lo, hi, 6, s), b(5, lo, hi, 6, s);
+    const Vec q{0.1, 0.2, -0.3, 0.4, 0.5, -0.6}, pq{0.5, -0.6, 0.1, 0.2, -0.3, 0.4};
+    a.migrate({q, 0.0, 0.0});
+    b.migrate({pq, 0.0, 0.0});
+    check(a.ask()[0] == b.ask()[0], "pap's CMA-ES: a migrant and its permutation, the same point injected (PAP-8)");
+    sc::Problem Q = P;
+    Q.lo.assign(6, -1.0);
+    Q.hi.assign(6, 1.0);
+    Q.sym_blocks = g;
+    Q.evaluate = [](const Vec& x, Vec& f, Vec&) {
+        double t = 0.0;
+        for (std::size_t k = 0; k < 3; ++k) t += (x[2 * k] * x[2 * k] + x[2 * k + 1] * x[2 * k + 1] - 0.25) *
+                                                 (x[2 * k] * x[2 * k] + x[2 * k + 1] * x[2 * k + 1] - 0.25);
+        f.assign(1, t);
+    };
+    const sc::Result r = sc::run("pap", Q, 1e-6, false, 0.0, 10, 4000, 3, {{"sym", {true, "align", 0.0}}}, {}, 0, {});
+    bool refused = false;
+    try {
+        sc::Problem bare = Q;
+        bare.sym_blocks.clear();
+        sc::run("pap", bare, 1e-6, false, 0.0, 10, 100, 3, {{"sym", {true, "align", 0.0}}}, {}, 0, {});
+    } catch (const std::invalid_argument&) {
+        refused = true;
+    }
+    check(r.evaluations <= 4000 && std::isfinite(r.objectives[0][0]) && refused,
+          "pap with sym = align runs (f = " + std::to_string(r.objectives[0][0]) + "); without blocks refused");
+}
+
 }   // namespace
 
 int main()
@@ -457,6 +523,7 @@ int main()
     ga_steps();
     pso_steps();
     through_run();
+    strategies();
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);
         return 1;

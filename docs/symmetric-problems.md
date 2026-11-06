@@ -89,8 +89,9 @@ The knob `sym = off | canon | align` (`off` by default: every method runs as bef
 
 `ga_sbx` and `ssga` also take `ga_block_uniform` (each block whole from one parent, with this
 probability a pair; GA-7) and `ga_block_mutation` (one block's coordinates mutated, with this
-probability a child; GA-8). The Evaluator's archive is by the raw x (SYM-10). Not wired yet: the
-points injected into `cmaes` (§19.4.3) and grouping by distance (with task 18's stage 3).
+probability a child; GA-8). The Evaluator's archive is by the raw x (SYM-10). The strategies' minima log groups minima equal but for the blocks' order with `min_sym = canon |
+align` (STRAT-9), and `pap`'s `sym = align` aligns its members and the migrants it injects into
+CMA-ES to that member's mean (PAP-8).
 
 | check | where |
 |---|---|
@@ -101,6 +102,7 @@ points injected into `cmaes` (§19.4.3) and grouping by distance (with task 18's
 | `block_uniform`: each block whole from one parent; `block_mutation`: one block changed, in the box | `tests/test_symmetry.cpp` |
 | `sym = off` given: every method as without the knob, bit for bit; the knobs in the settings only where given; the refusals | `tests/test_symmetry.cpp`, `python/test_run_layer.py` |
 | without the knobs: the checksums of `tests/test_scalar.cpp` and the methods' own tests (twins `gde3`, `nsga2`, `sms_emoa` bit for bit) unchanged | `tests/test_scalar.cpp`, `test_de`, `test_ga`, … |
+| `min_sym = align`: two minima equal but for the blocks' order one in the log; `pap`'s CMA-ES injects a migrant and its permutation as the same point | `tests/test_symmetry.cpp` |
 | C++ against Python: the Hungarian method, `align` and the built-in canon, bit for bit | `python/test_run_layer.py` |
 | a campaign with `sym` on `sumexp` and `lj_cluster`: the same files from both engines | `python/test_run_layer.py` |
 

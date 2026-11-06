@@ -305,6 +305,9 @@ inline bool is_core_param(const std::string& name)
 //                 non-dominated solutions (random; EDV-5)
 //   kpcm_pm       maoea_iamd: KPCM in place of the polynomial mutation (off,
 //                 the default) or after SBX + PM, as PlatEMO's GA (on; IAMD-1)
+//   min_sym       the strategies' minima log (task 19, S5; strategy.hpp
+//                 STRAT-9): minima equal but for the problem's symmetries
+//                 are one
 //   sym           the single-objective population methods (task 19, §19.2.2;
 //                 scalar/symmetry.hpp): the points they combine as they are,
 //                 canonical or aligned to each other; no core has it
@@ -420,6 +423,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"clia_rpil",    {"on", "off"}},
         {"gng_ties",     {"first", "random"}},
         {"arv_linkage",  {"single", "average", "complete"}},
+        {"min_sym",      {"off", "canon", "align"}},
     };
     return v;
 }
@@ -463,7 +467,7 @@ inline bool is_core_word(const std::string& name)
                           "cv_rule", "cv_norm",
                           "nadir_source",
                           "drs_guard",
-                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage"})
+                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage", "min_sym"})
         if (name == k) return true;
     return false;
 }

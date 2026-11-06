@@ -53,6 +53,13 @@
 //   PAP-6. Constituent k's generator is start_seed(seed, k) (strategy.hpp
 //     STRAT-1): one constituent, no migration, is that method's own run, bit
 //     for bit. lshade's MAX_NFE is its share of the budget, np / sum(np).
+//   PAP-8. sym = off | align (task 19, §19.2.2; off by default): the
+//     members' own sym (align; symmetry.hpp SYM-7 ... 9), and a migrant into
+//     CMA-ES aligned to its mean before it is injected (§19.2.2's "injected
+//     points to the current mean"), in the normalized box with the built-in
+//     alignment on the problem's sym_blocks (its canon and align are in its
+//     own coordinates; the groups' blocks share their bounds, SYM-6, so a
+//     permutation commutes with the normalization).
 //   PAP-7. Constraints g <= 0: NSGA-II's constrained-domination at M = 1
 //     (evo.hpp) for the emigrants and the migrants; CMA-ES's value of an
 //     infeasible point is +inf.
@@ -147,8 +154,13 @@ private:
 // CMA-ES in the box normalized (PAP-4)
 class Cma final : public Member {
 public:
-    Cma(unsigned seed, const Vec& lo, const Vec& hi, std::size_t lambda) : Member(seed), lo_(lo), hi_(hi)
+    Cma(unsigned seed, const Vec& lo, const Vec& hi, std::size_t lambda, const symmetry::Sym& sym)
+        : Member(seed), lo_(lo), hi_(hi)
     {
+        if (sym.on()) {                                                      // PAP-8
+            sym_.mode = symmetry::Mode::align;
+            sym_.groups = sym.groups;
+        }
         Vec y0(lo.size());
         for (double& v : y0) v = rnd::uniform01(rng);
         es_ = std::make_unique<CMAES>(y0, 0.3, rng, static_cast<int>(lambda));
@@ -181,6 +193,7 @@ public:
     {
         Vec y(lo_.size());
         for (std::size_t j = 0; j < y.size(); ++j) y[j] = (m.x[j] - lo_[j]) / (hi_[j] - lo_[j]);
+        if (sym_.on()) y = sym_.aligned(y, es_->mean());                     // PAP-8
         es_->inject({y});
     }
     std::vector<Individual> best(std::size_t k) const override { return best_of(X_, F_, V_, k); }
@@ -188,6 +201,7 @@ public:
 
 private:
     Vec lo_, hi_;
+    symmetry::Sym sym_;
     std::unique_ptr<CMAES> es_;
     Rows X_;
     Vec F_, V_, d2_;
@@ -215,32 +229,38 @@ inline std::vector<Spec> members_of(const std::string& text)
     return out;
 }
 
-inline std::unique_ptr<Member> member(const Spec& s, unsigned seed, const Vec& lo, const Vec& hi, long long nfe)
+inline std::unique_ptr<Member> member(const Spec& s, unsigned seed, const Vec& lo, const Vec& hi, long long nfe,
+                                      const symmetry::Sym& sym)
 {
     if (s.solver == "de") {
         de::Options o;
         o.np = s.np;
+        o.sym = sym;
         return std::make_unique<Kernel<de::DE>>(seed, lo, hi, o, true);
     }
     if (s.solver == "jade") {
         jade::Options o;
         o.np = s.np;
+        o.sym = sym;
         return std::make_unique<Kernel<jade::JADE>>(seed, lo, hi, o, true);
     }
     if (s.solver == "shade") {
         shade::Options o;
         o.np = s.np;
+        o.sym = sym;
         return std::make_unique<Kernel<shade::SHADE>>(seed, lo, hi, o, true);
     }
     if (s.solver == "lshade") {
         lshade::Options o;
         o.r_ninit = static_cast<double>(s.np) / static_cast<double>(lo.size());
         o.max_nfe = std::max(1LL, nfe);                                                     // PAP-6
+        o.sym = sym;
         return std::make_unique<Kernel<lshade::LSHADE>>(seed, lo, hi, o, true);
     }
     if (s.solver == "ga_sbx" || s.solver == "ssga") {
         ga::Options o = s.solver == "ssga" ? ga::ssga() : ga::ga_sbx();
         o.mu = s.np;
+        o.sym = sym;
         return std::make_unique<Kernel<ga::GA>>(seed, lo, hi, o, true);
     }
     if (s.solver == "g3_pcx") {
@@ -251,14 +271,16 @@ inline std::unique_ptr<Member> member(const Spec& s, unsigned seed, const Vec& l
     if (s.solver == "pso") {
         pso::Options o;
         o.n = s.np;
+        o.sym = sym;
         return std::make_unique<Kernel<pso::PSO>>(seed, lo, hi, o, true);
     }
     if (s.solver == "spso2011") {
         spso2011::Options o;
         o.n = s.np;
+        o.sym = sym;
         return std::make_unique<Kernel<spso2011::SPSO2011>>(seed, lo, hi, o, false);
     }
-    if (s.solver == "cmaes") return std::make_unique<Cma>(seed, lo, hi, s.np);
+    if (s.solver == "cmaes") return std::make_unique<Cma>(seed, lo, hi, s.np, sym);
     throw std::invalid_argument("pap: '" + s.solver +
                                 "' is not a member (de, jade, shade, lshade, ga_sbx, ssga, g3_pcx, pso, spso2011, cmaes)");
 }
@@ -269,7 +291,7 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
                       unsigned seed, const Knobs& knobs, Observer observer, int record_every)
 {
     using namespace strategy;
-    StrategyKnobs k("pap", knobs, {"pap_members", "pap_interval", "pap_size"});
+    StrategyKnobs k("pap", knobs, {"pap_members", "pap_interval", "pap_size", "sym"});
     std::string text = "[{\"np\":70,\"solver\":\"de\"},{\"np\":16,\"solver\":\"pso\"},{\"np\":14,\"solver\":\"cmaes\"}]";
     if (const Knob* v = k.find("pap_members")) {
         if (!v->is_word) throw std::invalid_argument("pap: pap_members must be a JSON array");
@@ -280,6 +302,16 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
     const long long size = k.whole("pap_size", 1, 1);
     if (P.m != 1) throw std::invalid_argument("pap is a single-objective algorithm: n_objs must be 1");
     search::finite_box("pap", P);
+    symmetry::Sym sym;                                                                     // PAP-8
+    if (k.find("sym") != nullptr && k.word("sym", "off", {"off", "align"}) == "align") {
+        if (P.sym_blocks.empty()) throw std::invalid_argument("pap: sym = align needs the problem's sym_blocks");
+        symmetry::check(P.sym_blocks, P.lo.size());
+        symmetry::check_bounds(P.sym_blocks, P.lo, P.hi);
+        sym.mode = symmetry::Mode::align;
+        sym.groups = P.sym_blocks;
+        sym.canon = P.canon;
+        sym.align = P.align;
+    }
     const std::vector<pap::Spec> specs = pap::members_of(text);
     std::size_t total = 0;
     for (const pap::Spec& s : specs) total += s.np;
@@ -288,7 +320,7 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
     std::vector<std::unique_ptr<pap::Member>> m;
     for (std::size_t i = 0; i < specs.size(); ++i)
         m.push_back(pap::member(specs[i], start_seed(seed, i), P.lo, P.hi,
-                                budget * static_cast<long long>(specs[i].np) / static_cast<long long>(total)));
+                                budget * static_cast<long long>(specs[i].np) / static_cast<long long>(total), sym));
     long long generations = 0, migrations = 0, interval = interval_knob;
     try {
         int idle = 0;
@@ -336,6 +368,7 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
     } catch (const BudgetSpent&) {
     }
     MinimaLog log(P.lo, P.hi, 1e-3, 1e-8);
+    group_by_symmetry(k, P, log);
     return search::finish(ev, k, log,
                           {{"migration_interval", std::to_string(interval)}, {"generations", std::to_string(generations)},
                            {"migrations", std::to_string(migrations)}});

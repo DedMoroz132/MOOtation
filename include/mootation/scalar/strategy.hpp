@@ -88,6 +88,12 @@
 //     on a minimum in the box's corner, on CEC 2013 F1 (its minima on the
 //     bounds) and in a box of zero width (data_continuation, for least
 //     squares only, aside).
+//   STRAT-9. min_sym = off | canon | align (task 19, §19.2.2, S5; off by
+//     default): the log's distance between a start's answer and a minimum
+//     taken after the answer is aligned to the minimum (align), or both are
+//     canonical (canon), the problem's symmetries' (symmetry.hpp; its
+//     sym_blocks, canon, align), so that minima equal but for a permutation
+//     of the blocks are one. In the settings only where given.
 // ============================================================================
 
 #include <algorithm>
@@ -487,6 +493,9 @@ public:
     MinimaLog(const Vec& lo, const Vec& hi, double min_dist, double min_df)
         : lo_(lo), hi_(hi), dist_(min_dist), df_(min_df) {}
 
+    // STRAT-9: the distance between symmetric points
+    void symmetric(const symmetry::Sym& s) { sym_ = s; }
+
     void add(const Vec& x, double f, long long start)
     {
         for (Minimum& m : list_)
@@ -523,9 +532,13 @@ private:
     Vec lo_, hi_;
     double dist_, df_;
     std::vector<Minimum> list_;
+    symmetry::Sym sym_;
 
-    double distance(const Vec& a, const Vec& b) const
+    double distance(const Vec& a0, const Vec& b0) const
     {
+        Vec ka, kb;                                   // STRAT-9's copies
+        const Vec& a = sym_.mode == symmetry::Mode::canon ? sym_.view(a0, a0, ka) : a0;
+        const Vec& b = sym_.view(b0, a0, kb);
         double d = 0.0;
         for (std::size_t j = 0; j < a.size(); ++j) {
             const double w = hi_[j] - lo_[j];
@@ -590,7 +603,7 @@ public:
     {
         std::vector<std::string> out;
         for (const auto& kv : knobs_)
-            if (!detail::listed(own_, kv.first)) out.push_back(kv.first);
+            if (!detail::listed(own_, kv.first) && kv.first != "min_sym") out.push_back(kv.first);   // STRAT-9
         std::sort(out.begin(), out.end());
         return out;
     }
@@ -602,6 +615,23 @@ private:
     const Knobs& knobs_;
     std::vector<std::string> own_;
 };
+
+// STRAT-9: the log grouped by the problem's symmetries where min_sym is given
+inline void group_by_symmetry(StrategyKnobs& k, const Problem& P, MinimaLog& log)
+{
+    if (k.find("min_sym") == nullptr) return;
+    const std::string w = k.word("min_sym", "off", {"off", "canon", "align"});
+    symmetry::Sym s;
+    s.mode = w == "canon" ? symmetry::Mode::canon : w == "align" ? symmetry::Mode::align : symmetry::Mode::off;
+    if (!s.on()) return;
+    if (P.sym_blocks.empty() && !(s.mode == symmetry::Mode::canon ? bool(P.canon) : bool(P.align)))
+        throw std::invalid_argument("min_sym = " + w + ": the problem gives no symmetries (sym_blocks, canon or align)");
+    if (!P.sym_blocks.empty()) symmetry::check(P.sym_blocks, P.lo.size());
+    s.groups = P.sym_blocks;
+    s.canon = P.canon;
+    s.align = P.align;
+    log.symmetric(s);
+}
 
 }   // namespace strategy
 
@@ -687,6 +717,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
     }
     if (!ev.recorded) ev.record();
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    group_by_symmetry(k, P, log);
     if (P.m == 1)
         for (std::size_t s = 0; s < runs.size(); ++s)
             if (!runs[s].objectives.empty())

@@ -251,6 +251,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     }
     if (!ev.recorded) ev.record();
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    strategy::group_by_symmetry(k, P, log);
     json::Value list = json::Value::array();
     for (std::size_t q = 0; q < runs.size(); ++q) {
         const Run& r = runs[q];

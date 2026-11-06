@@ -229,6 +229,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     const double dn = static_cast<double>(n);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    strategy::group_by_symmetry(k, P, log);
     std::mt19937 sampler(seed);
     std::vector<Vec> U;                       // the sample, normalized
     std::vector<double> f;                    // its values (failed or infeasible: +inf)
@@ -339,6 +340,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    strategy::group_by_symmetry(k, P, log);
     std::mt19937 rng(start_seed(seed, 0x9E3779B9u));             // the walk's own draws
     long long steps = 0, accepted_all = 0;
     auto local = [&](const Start& st, long long s) {
@@ -416,6 +418,7 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
     if (n_arms > 1) search::finite_box("halving", P);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    strategy::group_by_symmetry(k, P, log);
     const std::vector<double> D =
         n_arms > 1 ? designs::design(points, static_cast<std::size_t>(n_arms - 1), static_cast<int>(n), seed)
                    : std::vector<double>();
@@ -489,6 +492,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    strategy::group_by_symmetry(k, P, log);
     StartSpec g;
     g.seed = seed;
     g.start = start;

@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
+  align` groups minima equal but for a problem's symmetries as one;
+  `pap`'s `sym = align` for its members and the migrants it injects into
+  CMA-ES; `minimize(residuals=..., residual_blocks=..., block_weights=...)`
+  at one objective (the residual problem's blocks), which
+  `data_continuation`'s stages weigh. Off by default.
 - Added (task 20, §20.2.2): the single-objective methods count the points
   they make outside the box, as the multi-objective operators do
   (RepairCounts): de, jade, shade, lshade, g3_pcx, pso, spso2011, the

@@ -133,6 +133,7 @@ _FALLBACK_TEXT = {
     "clia_rpil": ("on", "off"),
     "gng_ties": ("first", "random"),
     "arv_linkage": ("single", "average", "complete"),
+    "min_sym": ("off", "canon", "align"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 

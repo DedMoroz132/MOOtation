@@ -89,6 +89,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    strategy::group_by_symmetry(k, P, log);
     long long searches = 0;
     try {
         // Step 0: the sample, evaluated, its N* best in ascending order (TT-1, TT-3)

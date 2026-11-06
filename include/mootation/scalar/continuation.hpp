@@ -272,6 +272,7 @@ inline Result run_data_continuation(const Problem& P, double eq_tol, bool has_to
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    strategy::group_by_symmetry(k, P, log);
     long long done = 0;
     try {
         int n_res = P.n_res;                                    // DC-5: a window needs the count
