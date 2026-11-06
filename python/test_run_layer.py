@@ -1043,6 +1043,29 @@ def the_shipped_full_fronts_leave_the_curve_and_survive_a_fresh_sample():
 
 
 @test
+def every_full_front_size_has_its_file():
+    """Task 20 (verify2's finding): fronts_full.SIZES names the full fronts the
+    library ships, and each has its file in benchmarks/_fronts — without it
+    _attach_full_fronts sets nothing and the reference silently stays the
+    degenerate curve (WFG3_6D, WFG3_10D and MaF6_15D were so until 2026-11).
+    Each is a FULL_FRONT problem with no caveat, its frame the stored set's."""
+    if not _have_numpy():
+        print("    (skipped: no NumPy)"); return
+    import numpy as np
+    from mootation.benchmarks import fronts_full as FF, get
+    from mootation.benchmarks.registry import FULL_FRONT, degenerate_subset_note
+    keys = [(name, M) for name, sizes in FF.SIZES.items() for M in sizes]
+    missing = [f"{name}_{M}D" for name, M in keys if not FF.has_front(name, M)]
+    assert not missing, missing
+    for name, M in keys:
+        key = f"{name}_{M}D"
+        assert key in FULL_FRONT and degenerate_subset_note(key) is None, key
+        _, rep = FF.load(name, M)
+        p = get(key)
+        assert np.allclose(p.nadir, rep["nadir"]) and np.allclose(p.ideal, rep["ideal"]), key
+
+
+@test
 def full_fronts_contain_the_points_the_analysis_says_they_must():
     """(3,1,1) on WFG3_3D (Ishibuchi et al.'s counterexample) and the far corner of DTLZ6."""
     if not _have_numpy():

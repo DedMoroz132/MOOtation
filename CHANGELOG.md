@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed: reference version 6 (REFERENCE_VERSION, refs::kReferenceVersion;
+  task 20, after verify2's finding). fronts_full.SIZES named WFG3_6D and
+  WFG3_10D, but their files had never been built, so their reference was the
+  degenerate curve, and its frame the curve's. WFG3_10D now takes its full
+  front (benchmarks/_fronts/WFG3_10D.npz: 46 707 verified points, 68 % off
+  the curve), its frame that set's; REFERENCE_CHANGED[6] lists it, and a run
+  measured against the curve is set aside by --cover until recomputed.
+  WFG3_6D follows when its build ends; until then SIZES has WFG3 at 3, 4, 5
+  and 10. MaF6_15D, listed and never built either, leaves SIZES and keeps the
+  curve with degenerate_subset_note's caveat. A new test: every size SIZES
+  lists has its file, is a FULL_FRONT problem and has the stored set's frame.
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into

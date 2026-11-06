@@ -38,8 +38,9 @@
 namespace mootation::refs {
 
 // registry.REFERENCE_VERSION of the references C++ builds: 5 (the library's
-// draw where Python's took default_rng's)
-constexpr int kReferenceVersion = 5;
+// draw where Python's took default_rng's), 6 (task 20: WFG3_10D's and
+// WFG3_6D's full fronts, REFERENCE_CHANGED[6])
+constexpr int kReferenceVersion = 6;
 
 constexpr std::size_t kDenseSizes[] = {1000, 2000, 5000, 10000, 20000, 50000, 100000};
 constexpr double kDenseRatio = 3.0;
