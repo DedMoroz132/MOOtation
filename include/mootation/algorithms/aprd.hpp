@@ -128,6 +128,14 @@
 //     and Algorithm 2's generic d(x_i, x_j) is the angle. Angles are taken
 //     from the origin (§I assumes non-negative objectives).
 //
+//   APRD-12 (READING; knob aprd_pbi, off by default: canonical). The other
+//     reading of APRD-10: the paper writes PBI that way throughout - its recap
+//     of the standard PBI (Eq.6, md:250) already has d2 = |F - (z* - d1 lam)|
+//     with an unnormalized lam - so Eq.7-8 may be the authors' PBI, not a
+//     misprint. aprd_pbi = printed takes them literally: d1 = |(F-Z)^T V|/|V|
+//     (unsigned), d2 = |F - (Z - d1 V)| with V = (-b2, ..., -bn, 1) as it is,
+//     g = d1 + theta d2 (Eq.4); its d2 grows with d1, a pressure towards the
+//     front that the canonical distance to the line lacks.
 //   APRD-10 (ARBITRATION — the printed PBI equations are misprinted).
 //     Eq.(7)-(8) as printed are dimensionally inconsistent (d1 already divided
 //     by ‖V‖, then multiplied by the unnormalized V) and subtract the
@@ -203,6 +211,7 @@ private:
     double theta_ = 5.0;
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;
     bool   slot_exclusive_ = false;   // APRD-11: knob slot_exclusive
+    bool   pbi_printed_ = false;      // APRD-12: knob aprd_pbi (printed Eq.7-8)
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt{}; };
@@ -357,6 +366,12 @@ private:
     double pbi(const std::vector<double>& F, const std::vector<double>& Z) const {
         double vv=0; for(int k=0;k<m_;++k) vv+=V_[k]*V_[k];
         double vn=std::sqrt(std::max(vv,1e-300));
+        if(pbi_printed_){   // APRD-12: Eq.7 d1 = |(F-Z)^T V|/|V|, Eq.8 d2 = |F - (Z - d1 V)|, V as is
+            double dot=0; for(int k=0;k<m_;++k) dot+=(F[k]-Z[k])*V_[k];
+            double d1=std::abs(dot)/vn;
+            double s2=0; for(int k=0;k<m_;++k){ double r=F[k]-(Z[k]-d1*V_[k]); s2+=r*r; }
+            return d1 + theta_*std::sqrt(std::max(s2,0.0));
+        }
         double d1=0; for(int k=0;k<m_;++k) d1+=(F[k]-Z[k])*V_[k]/vn;
         double s2=0; for(int k=0;k<m_;++k){ double pr=F[k]-(Z[k]+d1*V_[k]/vn); s2+=pr*pr; }
         return d1 + theta_*std::sqrt(std::max(s2,0.0));
@@ -514,6 +529,12 @@ public:
     void set_pm(double v){ pm_=v; }
     void set_seed(unsigned s){ rng_.seed(s); }
     bool set_word(const std::string& k, const std::string& w){
+        if(k=="aprd_pbi"){                                   // APRD-12
+            if(w!="canonical" && w!="printed")
+                throw std::invalid_argument("aprd: aprd_pbi = '"+w+"': canonical or printed");
+            pbi_printed_=(w=="printed");
+            return true;
+        }
         if(k!="slot_exclusive") return false;                // APRD-11
         if(w!="on" && w!="off")
             throw std::invalid_argument("aprd: slot_exclusive = '"+w+"': on or off");

@@ -134,6 +134,7 @@ _FALLBACK_TEXT = {
     "gng_ties": ("first", "random"),
     "arv_linkage": ("single", "average", "complete"),
     "min_sym": ("off", "canon", "align"),
+    "aprd_pbi": ("canonical", "printed"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 

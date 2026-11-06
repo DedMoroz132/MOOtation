@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-398 items: 316 yes, 25 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+399 items: 316 yes, 26 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -140,6 +140,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `aprd` | APRD-7 (resolved) | update_archive receives Arc u Q in BOTH cases (Alg.1: "Arc <- UpdateArchive(Arc u Q, N_a)"), not pop u Q as it once did. | no: fixed | `aprd.hpp` |
 | `aprd` | APRD-8 (resolved) | the partition P_1..P_K is built by Algorithm 3 (update_subpops) and REUSED by the next generation's mating (Alg.1: for k, foreach x in P_k), rather than recomputed by a random-start FPS at every step. | no: fixed | `aprd.hpp` |
 | `aprd` | APRD-9 (FIXED 2026-09-06, full-paper checklist) | Algorithm 2 truncates the archive by the Max-Min principle of §II-B, whose measure is the ANGLE: "select the first point in the remaining points and make it have the maximum angle to first selected point; … the next p... | no: fixed | `aprd.hpp` |
+| `aprd` | APRD-12 (READING; knob aprd_pbi, off by default: canonical) | The other reading of APRD-10: the paper writes PBI that way throughout - its recap of the standard PBI (Eq.6, md:250) already has d2 = \|F - (z* - d1 lam)\| with an unnormalized lam - so Eq.7-8 may be the authors' PBI,... | no: option | `aprd.hpp` |
 | `aprd` | APRD-10 (ARBITRATION — the printed PBI equations are misprinted) | Eq.(7)-(8) as printed are dimensionally inconsistent (d1 already divided by ‖V‖, then multiplied by the unnormalized V) and subtract the projection where the orthogonal residual is meant, so they do not define a dista... | yes | `aprd.hpp` |
 | `liu_gu2011` | LG-1 (MINOR) | R=1 = "non-dominated within its internal set" (the paper: «non-dominated solutions within internal set», recomputed every T); offspring are marked R=1 on entry. | yes | `liu_gu2011.hpp` |
 | `liu_gu2011` | LG-2 (MINOR) | The NSGA-II selection of internal — canonical NDS + crowding distance (the paper cites NSGA-II [6]); the boundary-front tie-break is by CD. | yes | `liu_gu2011.hpp` |

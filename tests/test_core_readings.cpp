@@ -217,6 +217,8 @@ void test_knobs_of_2026_11_02()
     word_knob<IR, IREACore<IR>>("irea", "91 fa799b2a4188d24b", "fitness_reading", "swap", "ibea");
     word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "extreme_weights", "nsga3", "literal");
     word_knob<AP, APRDCore<AP>>("aprd", "91 dee9a93dd30901ff", "slot_exclusive", "off", "on", 300);
+    // 2026-11-06: aprd's aprd_pbi (APRD-12)
+    word_knob<AP, APRDCore<AP>>("aprd", "91 dee9a93dd30901ff", "aprd_pbi", "canonical", "printed", 300);
     // 2026-11-05: maoea_iamd's kpcm_pm (IAMD-1)
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "kpcm_pm", "off", "on");
     // 2026-11-05: edv's edv_tournament (EDV-5) and normalize (EDV-6)

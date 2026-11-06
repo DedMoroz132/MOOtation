@@ -7581,7 +7581,8 @@ def readings_knobs_of_2026_11_02():
              ("clia", "clia_rpil", "on", "off"),                  # 2026-11-06 (CLIA-9)
              ("dea_gng", "gng_ties", "first", "random"),          # 2026-11-06 (GNG-11)
              ("dea_gng", "gng_eps", 0.05 * 3.141592653589793, 0.314),
-             ("maoeaarv", "arv_linkage", "single", "average")]   # 2026-11-06 (ARV-2)
+             ("maoeaarv", "arv_linkage", "single", "average"),   # 2026-11-06 (ARV-2)
+             ("aprd", "aprd_pbi", "canonical", "printed")]       # 2026-11-06 (APRD-12)
     for alg, knob, dflt, other in cases:
         d = minimize(d2.evaluate, algorithm=alg, **k)
         n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)

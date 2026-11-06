@@ -16,6 +16,9 @@ always listed under **Changed** or **Removed**.
   CMA-ES; `minimize(residuals=..., residual_blocks=..., block_weights=...)`
   at one objective (the residual problem's blocks), which
   `data_continuation`'s stages weigh. Off by default.
+- Added: `aprd`'s knob `aprd_pbi`, default unchanged, so default runs keep
+  their golden fingerprints: `canonical` keeps the canonical PBI the port
+  reads Eq.7-8 as (APRD-10); `printed` takes Eq.7-8 as printed (APRD-12).
 - Added (task 20, §20.2.2): the single-objective methods count the points
   they make outside the box, as the multi-objective operators do
   (RepairCounts): de, jade, shade, lshade, g3_pcx, pso, spso2011, the

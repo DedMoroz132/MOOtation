@@ -331,6 +331,8 @@ inline bool is_core_param(const std::string& name)
 //                 default; GNG-9) or at random, as PlatEMO (random; GNG-11)
 //   arv_linkage   maoeaarv: the hierarchical clustering's linkage, single
 //                 (the default), average or complete (ARV-2)
+//   aprd_pbi      aprd: PBI in the canonical form (canonical, the default;
+//                 APRD-10) or as Eq.7-8 print it (printed; APRD-12)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -424,6 +426,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"gng_ties",     {"first", "random"}},
         {"arv_linkage",  {"single", "average", "complete"}},
         {"min_sym",      {"off", "canon", "align"}},
+        {"aprd_pbi",     {"canonical", "printed"}},
     };
     return v;
 }
@@ -467,7 +470,7 @@ inline bool is_core_word(const std::string& name)
                           "cv_rule", "cv_norm",
                           "nadir_source",
                           "drs_guard",
-                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage", "min_sym"})
+                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage", "min_sym", "aprd_pbi"})
         if (name == k) return true;
     return false;
 }
