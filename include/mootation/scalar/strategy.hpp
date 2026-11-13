@@ -176,6 +176,7 @@ public:
         Vec x, f, g, r, gf;
         Rows J;
         bool bad = false, has_grad = false;
+        int verdict = -1;             // accept_success's answer here (evaluator.hpp SUCC-3); -1: not asked
     };
     std::vector<Known> own;           // the start's points, in the order it met them
 
@@ -225,6 +226,21 @@ public:
             };
         if (P_.jacobian)
             problem.jacobian = [this](const Vec& x, Rows& J) { J = get(x, Call::grad).J; };
+        // THE SUCCESS (evaluator.hpp SUCC-3): the start's run asks here; the
+        // cost goes to the start's allowance, the verdict to the merge
+        if (P_.accept_success) {
+            problem.success_cost = 0.0;
+            problem.accept_success = [this](const Vec& x) {
+                const auto it = where_.find(key_of(x));
+                if (it == where_.end()) return P_.accept_success(x);     // not a point of this start
+                Known& k = own[it->second];
+                if (k.verdict < 0) {
+                    k.verdict = P_.accept_success(x) ? 1 : 0;
+                    spent_ += P_.success_cost;
+                }
+                return k.verdict == 1;
+            };
+        }
     }
 
     View(const View&) = delete;
@@ -237,7 +253,8 @@ public:
         for (const Event& e : events_) {
             const Known& k = own[e.at];
             const bool g = e.grads > 0;
-            ev.adopt(k.x, k.f, k.g, k.r, k.bad, e.evals, e.grads, g ? &k.gf : nullptr, g ? &k.J : nullptr);
+            ev.adopt(k.x, k.f, k.g, k.r, k.bad, e.evals, e.grads, g ? &k.gf : nullptr, g ? &k.J : nullptr,
+                     k.verdict);
         }
     }
 

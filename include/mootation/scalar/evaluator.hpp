@@ -44,6 +44,34 @@
 // has spent (BudgetSpent), so that nothing evaluates after it — a strategy's
 // rounds and restarts included (as COCO's runs end at the final target).
 //
+// THE SUCCESS (task 24, §24.1.5; off by default): with Problem::
+// accept_success, the target is the user's measure of success instead of
+// stop_at: a feasible point of one objective with f <= post_at is handed to
+// accept_success(x), and the first it accepts ends the run as THE TARGET
+// does (stop_at is then not looked at). Each call costs success_cost of the
+// budget (declared; 0 by default: the call spends nothing, as a hook that
+// does not evaluate f) and is counted apart (success_calls, success_spent;
+// success_at: the evaluations spent when it accepted, -1 where it did not).
+// READINGS (all of them off by default: with accept_success only):
+//   SUCC-1. Off by default. A point is handed over once: where it is met
+//     again it is not evaluated again (the archive), and neither is its
+//     verdict asked again.
+//   SUCC-2. Off by default. The cost is charged after the call, so a call
+//     may take the spending past the budget; the run then ends at its next
+//     ask (BudgetSpent), as after a gradient's cost.
+//   SUCC-3. Off by default. In a strategy's start (strategy.hpp, View) the
+//     start's own run asks, its View charges the cost to the start's
+//     allowance and keeps the verdict, and the run's evaluator takes that
+//     verdict when the round merges, counting the call and its cost then,
+//     once; a point the start did not hand over (infeasible at its tolerance
+//     of the moment) the run's evaluator hands over itself at the merge, in
+//     the merge's order. A start merged after the round's target has its
+//     calls uncounted, as its evaluations are (the run ended before them),
+//     though the hook was called. The hook may be called from a strategy's
+//     threads: it is const and without state, as the problem is.
+//   SUCC-4. Off by default. An exception of the hook ends the run with its
+//     message and the number of the evaluation (UO-1).
+//
 // THE LEAN MODE (task 18, group 3g; lean = true, set before the first
 // evaluation, one objective only): no archive. The evaluator keeps two
 // points, the best so far (index 0) and the last (index 1, overwritten by the
@@ -133,6 +161,11 @@ struct Problem {
     std::vector<symmetry::Blocks> sym_blocks;
     std::function<void(Vec& x)> canon;
     std::function<void(const Vec& x, const Vec& ref, Vec& out)> align;
+    // THE SUCCESS (task 24, §24.1.5): the user's measure of success, asked
+    // at the feasible points with f <= post_at; empty: stop_at's target
+    std::function<bool(const Vec& x)> accept_success;
+    double post_at = std::numeric_limits<double>::infinity();
+    double success_cost = 0.0;        // the budget one call spends (declared)
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }
@@ -176,6 +209,9 @@ public:
     long long gen0 = 0;                // gens before this evaluator (polish.hpp)
     bool lean = false;                 // THE LEAN MODE: the best and the last point only
     ImprovementLog improvements;       // m = 1: the best point's records (improvements.hpp)
+    long long success_calls = 0;       // THE SUCCESS: accept_success's calls,
+    double success_spent = 0.0;        // ... their cost in the budget,
+    long long success_at = -1;         // ... and the evaluations spent when it accepted
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
               int pop_size_, Observer obs, int record_every)
@@ -203,7 +239,7 @@ public:
     // What the budget is spent by: evaluations + grad_cost * grad_calls.
     double used() const
     {
-        return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls);
+        return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls) + success_spent;
     }
 
     // ── gradients (SO-2) ────────────────────────────────────────────────────
@@ -269,8 +305,10 @@ public:
     // J the gradient where it has one. What an earlier start of the round
     // brought already costs nothing again (the round's rule: a point two
     // starts evaluated counts for the first).
+    // verdict: accept_success's answer at x where the start asked it (SUCC-3;
+    // -1: not asked)
     std::size_t adopt(const Vec& x, const Vec& f, const Vec& g, const Vec& r, bool bad, int evals, int grads,
-                      const Vec* gf, const Rows* J)
+                      const Vec* gf, const Rows* J, int verdict = -1)
     {
         const std::string key = key_of(x);
         auto it = where_.find(key);
@@ -288,7 +326,7 @@ public:
         if (n_res == 0) n_res = static_cast<int>(r.size());
         grad_calls += grads;                      // before keep(), as fresh() counts a joint call
         r_ = r;
-        i = keep(x, f, g, bad, key, evals > 0);
+        i = keep(x, f, g, bad, key, evals > 0, verdict);
         if (with_grad) {
             gf_[i] = *gf;
             jac_[i] = *J;
@@ -491,9 +529,9 @@ private:
     }
 
     std::size_t keep(const std::vector<double>& x, const std::vector<double>& f,
-                     const std::vector<double>& g, bool bad, const std::string& key, bool count)
+                     const std::vector<double>& g, bool bad, const std::string& key, bool count, int verdict = -1)
     {
-        if (lean) return keep_lean(x, f, g, bad, count);
+        if (lean) return keep_lean(x, f, g, bad, count, verdict);
         const std::size_t i = X.size();
         X.push_back(x);
         F.push_back(f);
@@ -509,7 +547,7 @@ private:
             while (next_record <= spent) next_record += stride;
             record();
         }
-        if (m == 1 && count && !bad && f[0] <= P.stop_at && cv(i) <= 0.0) {     // THE TARGET
+        if (m == 1 && count && !bad && reached(x, f[0], i, verdict)) {          // THE TARGET
             budget = spent;
             limit = std::min(limit, spent);
             throw BudgetSpent{};
@@ -517,10 +555,31 @@ private:
         return i;
     }
 
+    // THE TARGET at point i (x, f, feasible or not): f <= stop_at, or THE
+    // SUCCESS's verdict — the start's (SUCC-3), or asked now
+    bool reached(const std::vector<double>& x, double f, std::size_t i, int verdict)
+    {
+        if (!P.accept_success) return f <= P.stop_at && cv(i) <= 0.0;
+        if (!(f <= P.post_at) || cv(i) > 0.0) return false;
+        ++success_calls;
+        success_spent += P.success_cost;
+        bool ok = verdict == 1;
+        if (verdict < 0) {
+            try {
+                ok = P.accept_success(x);
+            } catch (const std::exception& e) {
+                throw std::runtime_error("accept_success failed at evaluation " + std::to_string(spent) + ": " +
+                                         e.what() + " (SUCC-4)");
+            }
+        }
+        if (ok) success_at = spent;
+        return ok;
+    }
+
     // THE LEAN MODE's keep: the point into slot 1 (slot 0 for the first), the
     // best of the two into slot 0 (feasible first, then f; Deb)
     std::size_t keep_lean(const std::vector<double>& x, const std::vector<double>& f,
-                          const std::vector<double>& g, bool bad, bool count)
+                          const std::vector<double>& g, bool bad, bool count, int verdict = -1)
     {
         if (m != 1) throw std::logic_error("the lean evaluator is for one objective");
         std::size_t i = 0;
@@ -557,7 +616,7 @@ private:
             while (next_record <= spent) next_record += stride;
             record();
         }
-        if (count && !bad && f[0] <= P.stop_at && cv(i) <= 0.0) {               // THE TARGET
+        if (count && !bad && reached(x, f[0], i, verdict)) {                    // THE TARGET
             budget = spent;
             limit = std::min(limit, spent);
             throw BudgetSpent{};

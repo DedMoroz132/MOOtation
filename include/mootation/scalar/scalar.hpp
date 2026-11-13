@@ -211,6 +211,11 @@ struct Result {
     // al. 2021): every repair, clip and projection of the run, its strategy's
     // starts included (task 20, §20.2.2)
     ops::RepairCounts repairs;
+    // THE SUCCESS (evaluator.hpp; task 24, §24.1.5): accept_success's calls,
+    // their cost in the budget, the evaluations spent when it accepted (-1: never)
+    long long success_calls = 0;
+    double success_spent = 0.0;
+    long long success_at = -1;
 };
 
 // How the first points come: seed points (planted), rows of a design
@@ -483,6 +488,9 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     }
     r.evaluations = ev.spent;
     r.grad_calls = ev.grad_calls;
+    r.success_calls = ev.success_calls;
+    r.success_spent = ev.success_spent;
+    r.success_at = ev.success_at;
     r.improvements = ev.improvements.records();
     for (char f : ev.failed) r.n_failed += f ? 1 : 0;
     return r;

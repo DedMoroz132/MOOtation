@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.1.5): a measure of success of the user's own at one
+  objective, in C++: `scalar::Problem::accept_success(x)`, asked at the
+  feasible points with f <= `post_at`, its first acceptance ends the run as
+  `stop_at`'s target does; `success_cost` the budget a call spends
+  (declared, 0 by default). `Result::success_calls`, `success_spent`,
+  `success_at`. A strategy's starts ask it on their threads and the round's
+  merge counts each verdict once (SUCC-1 ... SUCC-4). Off by default:
+  without the hook every run is as before.
 - Changed (task 24, §24.3.2): the Sobol sequence in C++ (`sobol.hpp`) has all
   21 201 dimensions of Joe & Kuo's new-joe-kuo-6.21201, not 100: dimensions
   101 and up come from `sobol_joe_kuo.hpp`, which `tools/gen_sobol_joe_kuo.py`

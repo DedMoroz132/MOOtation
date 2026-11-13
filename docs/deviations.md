@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-274 items: 264 yes, 10 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+278 items: 264 yes, 14 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -464,6 +464,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `eki` | EKI-4 | J = max(10, 2 n) by default; gamma = 1 (the residuals taken as divided by the noise's sigma); perturb = true (their p. 7: without the perturbation the results were less accurate); tau = 1.5 (their tau > 1). | yes | `eki.hpp` |
 | `eki` | EKI-5 | The answer: the mean of the last ensemble, evaluated once; the best member evaluated on the way is returned beside it. | yes | `eki.hpp` |
 | `eki` | EKI-6 | The draws: one std::mt19937 seeded with seed; the initial ensemble around x0 member after member, then eta per iteration member after member, rnd::normal01. | yes | `eki.hpp` |
+| `evaluator` | SUCC-1 | Off by default. A point is handed over once: where it is met again it is not evaluated again (the archive), and neither is its verdict asked again. | no: option | `evaluator.hpp` |
+| `evaluator` | SUCC-2 | Off by default. The cost is charged after the call, so a call may take the spending past the budget; the run then ends at its next ask (BudgetSpent), as after a gradient's cost. | no: option | `evaluator.hpp` |
+| `evaluator` | SUCC-3 | Off by default. In a strategy's start (strategy.hpp, View) the start's own run asks, its View charges the cost to the start's allowance and keeps the verdict, and the run's evaluator takes that verdict when the round... | no: option | `evaluator.hpp` |
+| `evaluator` | SUCC-4 | Off by default. An exception of the hook ends the run with its message and the number of the evaluation (UO-1). | no: option | `evaluator.hpp` |
 | `evaluator` | SO-1 | A problem with residuals takes its objective from them: evaluate, if it is given too, is not called, and such a problem has no constraints (n_cons = 0; the least-squares solvers of this library take none). | yes | `evaluator.hpp` |
 | `evaluator` | SO-2 | A gradient asked for at a point not yet evaluated is a joint call where the problem has one (value_grad, residuals_jac), else the values and then the gradient: either way one evaluation and one grad_call. | yes | `evaluator.hpp` |
 | `evaluator` | SO-3 | A problem that gives only the joint call (value_grad without evaluate, residuals_jac without residuals) is evaluated by it every time: every evaluation is then a grad_call too. | yes | `evaluator.hpp` |
