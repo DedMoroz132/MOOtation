@@ -53,6 +53,10 @@ option(MOOTATION_BUILD_C_API    "Build the C ABI shared library" OFF)
 # stage 5). Built with the tests and the examples where this is the
 # top-level project.
 option(MOOTATION_BUILD_ENGINE   "Build the mootation campaign engine" ${MOOTATION_IS_TOP_LEVEL})
+# A folder of external problems (task 24, §24.7.1; include/mootation/campaign/
+# external.hpp): its sources compiled into the engine, its problems.toml read
+# beside the registry. Empty (the default): none, the engine as before.
+set(MOOTATION_EXTERNAL_PROBLEMS "" CACHE PATH "A folder of external problems for the campaign engine (empty: none)")
 
 # ── The library ─────────────────────────────────────────────────────────────
 # Header-only, so an INTERFACE target: it carries include paths and the required
@@ -259,5 +263,6 @@ if(MOOTATION_IS_TOP_LEVEL)
                    "examples=${MOOTATION_BUILD_EXAMPLES} "
                    "c_api=${MOOTATION_BUILD_C_API} "
                    "sanitize=${MOOTATION_SANITIZE} "
+                   "external_problems=${MOOTATION_EXTERNAL_PROBLEMS} "
                    "python=${MOOTATION_BUILD_PYTHON})")
 endif()

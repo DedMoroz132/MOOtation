@@ -2592,6 +2592,81 @@ command line is reported as the Python commands report theirs (the usage,
 then `mootation <command>: error: ...`, exit status 2), a config's as
 `config error — ...`.
 
+### External problems: a private folder in the engine
+
+A problem whose code and data stay outside the repository — a private
+folder of its own — runs in the C++ engine's campaigns as a problem of the
+registry, at one objective (task 24, §24.7.1;
+`include/mootation/campaign/external.hpp`, `external_rows.hpp`). The folder
+holds C++ sources (`*.cpp`, one of them defining the registration) and
+`problems.toml`, the problems' rows; it is given to the build:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMOOTATION_EXTERNAL_PROBLEMS=/path/to/folder
+cmake --build build --target mootation_engine
+build/engine/mootation --version        # names the folder
+```
+
+Its sources are compiled into the engine with the library's compiler and
+flags (no contraction into fused multiply-adds), so a seed gives the same
+bits as for a problem of the suite; a `mootation_problems.cmake` in the
+folder, where there is one, adds what they need to the target
+`${MOOTATION_EXTERNAL_TARGET}` (include paths, definitions). The
+registration adds each family once with the function that makes a row's
+problem, a `suite::Native` (`suite/native.hpp`: the objective, and where it
+has them its residuals and Jacobian, gradient, symmetries and start):
+
+```cpp
+#include <mootation/campaign/external.hpp>
+
+void mootation_external_problems(mootation::campaign::ExternalProblems& reg)
+{
+    reg.add("my_family", [](const mootation::json::Value& params, int n_var) {
+        return std::make_shared<MyProblem>(n_var, params);     // a suite::Native
+    }, "1");                                                   // the family's code version
+}
+```
+
+`problems.toml` is read when the engine starts (a new row needs no new
+build), one `[[problem]]` table a problem:
+
+```toml
+[[problem]]
+name = "my_problem_n10"          # not a name of the registry
+family = "my_family"
+n_var = 10
+lo = 0.0                         # the box (a number, or n_var numbers); none: -inf, inf
+hi = 1.0
+f_opt = 0.0                      # the minimum where it is known, with its kind
+f_opt_kind = "best_known"
+pop_size = 100                   # the budget pop_size * n_gen where the campaign gives none
+n_gen = 250
+problem_version = 1
+[problem.params]                 # anything else: handed to the family's function
+k = 3
+```
+
+`x0` (the start of `lm`, `lbfgsb` and `eki`), `targets = "absolute" |
+"relative"` (relative needs `x0`) are optional; `external_rows.hpp` says
+every key. A key it does not know, a name the registry has, a family not
+registered, a second objective or constraints are refused when the engine
+starts, with the row and the reason. Each run's `meta.json` says what it
+was made of without the problem itself (`external`): the family, its
+version, the CRC-32C of the row and the SHA-256 of the folder's sources
+(`*.cpp`, `*.hpp`, `*.h`, `*.cmake`, stamped on every build,
+`engine/external_stamp.cmake`). The rows are names like any other in a
+campaign's `problems`; the campaign runs with the C++ executable
+(`mootation run camp.toml`) alone. The Python engine does not run them:
+its config check (`python -m mootation.run.campaign`, which asks the
+engine it finds for its folder) refuses such a campaign with
+`external problem '<name>': the C++ engine alone runs it (...)`, and the
+C++ engine refuses it with the same words, before anything runs, where a
+job of it is one it would leave to the Python engine. `minimize` does not
+know external problems. A relative folder is taken from the build folder.
+`tests/external_example/` is a folder of this kind (the extended Rosenbrock
+function; at n = 2 the bits of `MGH01_n02_m02_x1_1D`), read by
+`tests/test_external.cpp`.
+
 ### All 58 algorithms on another machine
 
 [`python/examples/campaign_all.toml`](../python/examples/campaign_all.toml)

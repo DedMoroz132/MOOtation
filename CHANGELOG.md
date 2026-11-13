@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.7.1): external problems in the C++ campaign engine.
+  The build's `MOOTATION_EXTERNAL_PROBLEMS=<folder>` compiles the folder's
+  sources into the engine with the library's flags; its registration
+  (`mootation_external_problems`, `campaign/external.hpp`) adds families of
+  `suite::Native` problems, and its `problems.toml` (`campaign/
+  external_rows.hpp`) their rows, read beside the registry when the engine
+  starts: one objective, box, start, f_opt, the family's parameters. A run's
+  `meta.json` names the family, its version and the row's checksum. Off by
+  default: without the folder the engine is built and runs as before.
+  `tests/external_example/` is an example folder.
 - Added (task 20, package 24-27, §24.6.2): three public problem families
   for checking strategies against their papers, C++ with a NumPy cross-check
   (`suite/morse.hpp`, `suite/circles.hpp`; `benchmarks/symmetric.py`).

@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -182,6 +183,11 @@ struct RegistryProblem {
     std::vector<double> f_local;                  // MGH: the local minima its paper prints, halved (levels)
     std::optional<bool> large_residual;           // MGH: the global minimum is not zero
     std::string targets;                          // "absolute" (bbob) or "relative" (MGH, NIST): so_metrics.hpp
+    // an external problem (task 24, §24.7.1; external_rows.hpp): its
+    // evaluation made from its row, and what meta.json says of it; empty for
+    // a problem of the registry
+    std::function<std::shared_ptr<suite::Native>()> external;
+    json::Value external_meta;
 };
 
 // The lists of the Python modules a config is checked against and a
@@ -485,6 +491,7 @@ inline ProblemRegistry load_registry(const std::filesystem::path& path)
 // why the C++ engine does not run this problem (the Python engine does), or nothing
 inline std::optional<std::string> engine_refusal(const RegistryProblem& p)
 {
+    if (p.external) return std::nullopt;            // task 24, §24.7.1: its own C++ (external_rows.hpp)
     if (!p.spec && !p.failing_region && !p.noise && !p.uninformative) return "not a problem of the C++ suite";
     if (p.own_evaluator && !p.noise && !p.uninformative && !p.seeded_stream) return "an evaluator of the run's own";
     if (p.typed && p.user_kinds.empty()) return "typed variables";
@@ -862,6 +869,7 @@ private:
 // run's noisy evaluation is make_run_native's)
 inline std::shared_ptr<suite::Native> make_native(const RegistryProblem& p)
 {
+    if (p.external) return p.external();
     if (p.noise) return std::shared_ptr<suite::Native>(suite::make(spec_of(p.noise->spec)));
     if (p.failing_region) {
         std::shared_ptr<suite::Native> base(suite::make(spec_of(p.failing_region->spec)));
