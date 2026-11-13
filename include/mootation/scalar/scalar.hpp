@@ -240,7 +240,8 @@ inline const std::vector<std::string>& names()
                                             "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                             "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes",
                                             "multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
-                                            "basin_hopping", "ils", "memetic"};
+                                            "basin_hopping", "ils", "memetic", "tiktak", "data_continuation",
+                                            "pap"};
     return v;
 }
 
