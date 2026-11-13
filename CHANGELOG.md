@@ -177,6 +177,27 @@ always listed under **Changed** or **Removed**.
 - Added (`scalar/normal_cdf.hpp`; task 25): the normal distribution
   function, its inverse and the chi-squared quantile with one degree of
   freedom from the library's own exp and log.
+- Added (task 25): `include/mootation/so_confidence.hpp` (Kavetski et al.
+  2018: the share of successful runs, the runs M_95 that find the optimum
+  with 95 % confidence and their cost, typ and spread over problems; Qin et
+  al. 2022's values at budgets), in `_core.so_metrics` and as a fifth table
+  of the single-objective report (`--so-report`); the solvers
+  `scalar/chain_ls.hpp` (Solis-Wets, SSW, MTS-LS1, MTS-LS2 with their
+  state), `scalar/rgn.hpp` (robust Gauss-Newton), `scalar/atomic_measure.hpp`
+  (the best positive sum of kernel columns, Ruhe 1980), `scalar/lm_ma_es.hpp`
+  (LM-MA-ES), in C++, not yet methods of `minimize`. No existing run
+  changes.
+- Added (task 25; strategies over local minima, C++ knobs only for now):
+  `pbh` (population basin hopping, Grosso, Locatelli & Schoen 2007), `mde`
+  (differential evolution over local minima and its greedy, distance and
+  hybrid variants, Locatelli et al. 2014, Cabassi & Locatelli 2016) and
+  `ma_chains` (memetic algorithms with local search chains, Molina et al.
+  2010, 2011), in `scalar::names()` and both engines; `ils` and
+  `basin_hopping` gain `step_units`, acceptance by Lai et al.'s dynamic
+  threshold and by a relative Metropolis temperature, a strength ladder and
+  the problem's own move (`perturb = user`); `basin_hopping` with the
+  threshold and its adaptive step warns once. Default runs are unchanged,
+  bit for bit.
 
 - Added (`scalar/cmaes.hpp`, `restarts.hpp`; task 18): the knob
   `cma_stagnation` = `h09` | `either` | `off` for `cmaes` (with `cma_stop =
@@ -188,17 +209,6 @@ always listed under **Changed** or **Removed**.
 - Added (campaign, both engines; task 18): `[campaign] keep_restarts = true`
   keeps the runs of ipop, bipop and bipop_2009 (regime, λ, σ⁰, evaluations,
   the stopping criterion) in `meta.json`'s `so.restarts`. Off by default.
-- Added (task 25): `include/mootation/so_confidence.hpp` (Kavetski et al.
-  2018: the share of successful runs, the runs M_95 that find the optimum
-  with 95 % confidence and their cost, typ and spread over problems; Qin et
-  al. 2022's values at budgets), in `_core.so_metrics` and as a fifth table
-  of the single-objective report (`--so-report`); the solvers
-  `scalar/chain_ls.hpp` (Solis-Wets, SSW, MTS-LS1, MTS-LS2 with their
-  state), `scalar/rgn.hpp` (robust Gauss-Newton), `scalar/atomic_measure.hpp`
-  (the best positive sum of kernel columns, Ruhe 1980), `scalar/lm_ma_es.hpp`
-  (LM-MA-ES) and `scalar/normal_cdf.hpp`, in C++, not yet methods of
-  `minimize`. No existing run changes.
-
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into
