@@ -2670,6 +2670,12 @@ engine it finds for its folder) refuses such a campaign with
 C++ engine refuses it with the same words, before anything runs, where a
 job of it is one it would leave to the Python engine. `minimize` does not
 know external problems. A relative folder is taken from the build folder.
+A problem may carry a measure of success of its own (`suite::Native::
+has_success`, `accept_success(x)`, `post_at`, `success_cost`; task 24,
+§24.1.5): with `[campaign] success = "user"` (C++ engine only) the run's
+target is that measure (`scalar/evaluator.hpp`, THE SUCCESS) and
+`meta.json`'s `so.success` holds its calls, their cost and the evaluation
+at which it accepted; a problem without one is incompatible.
 `tests/external_example/` is a folder of this kind (the extended Rosenbrock
 function; at n = 2 the bits of `MGH01_n02_m02_x1_1D`), read by
 `tests/test_external.cpp`.

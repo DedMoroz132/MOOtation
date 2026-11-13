@@ -86,6 +86,14 @@ public:
             incompatible_ = true;
             return out;
         }
+        if (spec_.success == "user" && (!native_->has_success || wrapped_)) {      // task 24, §24.1.5
+            out.status = "failed";
+            out.error = std::string(wrapped_ ? "success = \"user\" with the wrappers"
+                                             : "success = \"user\": the problem has no measure of success of its own") +
+                        " (incompatible by construction)";
+            incompatible_ = true;
+            return out;
+        }
         ledger_ = std::make_unique<RunLedger>(1, static_cast<std::size_t>(p_.n_var), false, nullptr, nullptr, nullptr,
                                               nullptr);
         ledger_->set_reads({}, {});
@@ -105,6 +113,9 @@ public:
                 for (const auto& [k, v] : res.settings)
                     if (k == "restarts") restarts_ = json::parse(v);
             repairs_ = res.repairs;
+            success_calls_ = res.success_calls;                  // task 24, §24.1.5
+            success_spent_ = res.success_spent;
+            success_at_ = res.success_at;
         } catch (const std::exception& e) {
             out.status = "failed";
             out.error = e.what();
@@ -198,6 +209,13 @@ public:
         if (spec_.stop_at > 0.0) s.set("stop_at", V::number(spec_.stop_at));
         if (restarts_.kind == V::Kind::Array) s.set("restarts", restarts_);
         if (wrapped_) s.set("wrap", wrap_meta());
+        if (spec_.success == "user") {                   // task 24, §24.1.5: the problem's own measure
+            V u = V::object();
+            u.set("calls", V::integer(success_calls_));
+            u.set("spent", V::number(success_spent_));
+            u.set("at", success_at_ >= 0 ? V::integer(success_at_) : V::null());
+            s.set("success", u);
+        }
         meta.set("so", s);
         V fin = V::object();
         if (!records.empty()) {
@@ -434,6 +452,11 @@ private:
                     for (std::size_t c = 0; c < k; ++c) N[i][c] = flat[i * k + c];
             };
         }
+        if (spec_.success == "user" && native_->has_success) {      // task 24, §24.1.5 (THE SUCCESS)
+            P.accept_success = [this](const std::vector<double>& x) { return native_->accept_success(x.data()); };
+            P.post_at = native_->post_at;
+            P.success_cost = native_->success_cost;
+        }
         if (single(job_.algorithm)) {                    // its symmetries, for sym (task 19, §19.2)
             for (const suite::Blocks& b : native_->blocks)
                 P.sym_blocks.push_back({static_cast<std::size_t>(b.offset), static_cast<std::size_t>(b.size),
@@ -588,6 +611,8 @@ private:
     std::shared_ptr<suite::Wrapped> wrapped_;           // [campaign] wrap_*: native_ through the wrappers
     std::string wrap_refusal_;
     ops::RepairCounts repairs_;
+    long long success_calls_ = 0, success_at_ = -1;      // task 24, §24.1.5
+    double success_spent_ = 0.0;
     std::vector<std::int64_t> grid_;                  // the trajectory's counts (grid())
     std::size_t grid_next_ = 0;
     std::vector<ops::RepairCounts> grid_counts_;      // the counts of the box at each of them

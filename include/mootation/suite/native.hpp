@@ -8,6 +8,7 @@
 // alone, without contraction into fused multiply-adds (common.hpp).
 // ============================================================================
 
+#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -48,6 +49,12 @@ struct Native {
     bool has_canon = false, has_gradient = false, has_start = false;
     int gauge_dim = 0;
     std::vector<int> res_blocks;       // empty: one block of n_res
+    // a measure of success of the problem's own (task 24, §24.1.5; scalar/
+    // evaluator.hpp THE SUCCESS): asked at the feasible points with f <=
+    // post_at in a campaign with [campaign] success = "user"; each call costs
+    // success_cost of the budget (declared). It is const, as evaluate is.
+    bool has_success = false;
+    double post_at = std::numeric_limits<double>::infinity(), success_cost = 0.0;
     virtual ~Native() = default;
     virtual void evaluate(const double* x, double* f, double* g) const = 0;
     virtual void residuals(const double*, double*, double*) const
@@ -64,6 +71,10 @@ struct Native {
         throw std::logic_error("suite: the problem gives no gradient");
     }
     virtual void start(double*) const { throw std::logic_error("suite: the problem has no start of its own"); }
+    virtual bool accept_success(const double*) const
+    {
+        throw std::logic_error("suite: the problem has no measure of success of its own");
+    }
 };
 
 }   // namespace mootation::suite

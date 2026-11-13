@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.1.5): a problem's own measure of success in the C++
+  campaign engine: `suite::Native::has_success`, `accept_success`,
+  `post_at`, `success_cost`; `[campaign] success = "target" | "user"`
+  (C++ engine only); `meta.json`'s `so.success` (calls, cost, the
+  evaluation it accepted at). Off by default.
 - Added (task 24, §24.3.3): `keep_points = best` for slsqp, nelder_mead,
   cmaes, lm, lbfgsb and eki too (SINGLE-5, LOCAL-7): the plan's range and
   best taken as the plan comes. Fixed in the lean mode (reached only by

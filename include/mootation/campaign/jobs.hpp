@@ -71,6 +71,8 @@ struct CampaignSpec {
     std::string bbob_instance = "by_run";                 // one objective: a bbob problem's instance (job_run.hpp)
     double stop_at = 0.0;                                 // one objective: end a run at f_opt + stop_at (0: never)
     bool keep_restarts = false;                           // one objective: meta.json so.restarts, a strategy's runs
+    std::string success = "target";                       // one objective: "user", the problem's own measure
+                                                          // (task 24, §24.1.5; C++ engine only)
     // one objective: the wrappers of every problem (suite/wrap.hpp; task 20,
     // §20.2.1), shift, rotate and perm in that order from the run's x: an
     // instance number each (0: off), or "by_run" (the run's seed); the shift's
@@ -264,7 +266,8 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
         "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
         "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
         "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout", "archive_cap",
-        "bbob_instance", "stop_at", "keep_restarts", "wrap_perm", "wrap_rotate", "wrap_shift", "wrap_shift_scale"};
+        "bbob_instance", "stop_at", "keep_restarts", "wrap_perm", "wrap_rotate", "wrap_shift", "wrap_shift_scale",
+        "success"};
     const std::set<std::string> known_set(known.begin(), known.end());
     std::set<std::string> unknown;
     for (const auto& k : raw.keys)
@@ -355,6 +358,7 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
     spec.archive_mode = word(raw, "archive_mode", "online", {"online", "posthoc"}, "\"online\" or \"posthoc\", not ");
     spec.native = word(raw, "native", "auto", {"auto", "off"}, "\"auto\" or \"off\", not ");
     spec.bbob_instance = word(raw, "bbob_instance", "by_run", {"by_run", "fixed"}, "\"by_run\" or \"fixed\", not ");
+    spec.success = word(raw, "success", "target", {"target", "user"}, "\"target\" or \"user\", not ");
     if (const Value* v = raw.find("stop_at")) {
         if ((v->kind != Kind::Int && v->kind != Kind::Float) || !(as_float(*v) >= 0.0))
             throw ConfigError("campaign.stop_at", "a number >= 0 (0: never), not " + py_repr(*v));

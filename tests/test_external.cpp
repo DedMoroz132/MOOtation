@@ -298,6 +298,40 @@ static int body()
 
     // a box, a population method and a strategy over threads: one thread and three the same
     used = &preg;
+    // [campaign] success = "user" (task 24, §24.1.5): the problem's own measure in
+    // the run, its calls and the evaluation of the success in meta.json; a
+    // problem without one refused
+    {
+        cg::ProblemRegistry withs = preg;
+        cg::add_external_rows(withs,
+                              "[[problem]]\nname = \"ext_rosenbrock_n02_success\"\nfamily = "
+                              "\"extended_rosenbrock_example\"\nn_var = 2\nx0 = [-1.2, 1.0]\nf_opt = 0.0\n"
+                              "f_opt_kind = \"exact\"\ntargets = \"relative\"\npop_size = 1\nn_gen = 1000\n"
+                              "[problem.params]\nsuccess_tol = 1e-3\npost_at = 1e-4\n",
+                              "success.toml", reg);
+        used = &withs;
+        const std::string s = head + "problems = [\"ext_rosenbrock_n02_success\", \"ext_rosenbrock_n02_x1\"]\n"
+                                     "[campaign]\nout = \"res/{name}\"\nbudget_fe = 400\nstorage = \"store\"\n"
+                                     "success = \"user\"\n[[algorithms]]\nname = \"lm\"\npop = 0\ngens = 0\n";
+        const cg::EngineCounts c = run("success", s, 2);
+        CHECK(c.total == 4 && c.done == 2 && c.failed == 2);
+        const Records r = records(tmp / "success" / "res" / "ext" / "store");
+        std::size_t seen = 0;
+        for (const auto& [key, blocks] : r) {
+            const js::Value meta = js::parse(blocks.at("meta.json"));
+            if (key.find("ext_rosenbrock_n02_success") != std::string::npos) {
+                const js::Value* u = meta.find("so") ? meta.find("so")->find("success") : nullptr;
+                CHECK(u && u->find("calls")->i >= 1 && u->find("at")->kind == js::Value::Kind::Int &&
+                      u->find("at")->i == meta.find("fe")->i);
+                ++seen;
+            } else {
+                CHECK(meta.find("status")->s == "failed" &&
+                      meta.find("error")->s.find("no measure of success of its own") != std::string::npos);
+            }
+        }
+        CHECK(seen == 2);
+        used = &preg;
+    }
     // a job of an external problem the engine would leave to the Python
     // engine (here: the learned coordinates' diagnostics): the campaign
     // refused before anything runs, with the text run/config.py gives
