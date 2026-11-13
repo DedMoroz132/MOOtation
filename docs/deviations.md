@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-279 items: 264 yes, 15 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+281 items: 264 yes, 17 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -676,6 +676,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-1 | A start's generator: the run's seed for start 0, else a 32-bit word of std::seed_seq{seed, k} (the standard defines its words), so one start is the inner solver's own run, bit for bit (§3.1's test). | yes | `strategy.hpp` |
 | `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |
+| `strategy` | STRAT-10 | start_points = around_x0 (task 24, §24.2.5; off by default): start 0 is the start (x0, which it needs), start k >= 1 is x0 + N(0, sigma^2) coordinate by coordinate, sigma = start_sigma times the coordinate's width whe... | no: option | `strategy.hpp` |
+| `strategy` | STRAT-11 | allowance = sequential (task 24, §24.2.5; off by default: even, STRAT-3) runs multistart's starts one after another, each with all the budget left (its floor), until the budget or the target is spent; one thread, and... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-4 | The minima log: a start's answer joins the first minimum within min_dist (the box normalized to [0, 1]^n where it is finite, else the problem's coordinates; the largest coordinate difference) and min_df in f, else is... | yes | `strategy.hpp` |
 | `strategy` | STRAT-5 | The run's equalities' tolerance schedule (eq_tol0) is the inner solver's, on its own allowance. | yes | `strategy.hpp` |
 | `strategy` | STRAT-6 | A start may spend on new points at most what it was given (its allowance, or less where a strategy reruns a start whose earlier points are free, search.hpp SRCH-6): past it the view ends the inner run as the budget do... | yes | `strategy.hpp` |

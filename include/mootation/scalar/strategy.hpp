@@ -59,6 +59,17 @@
 //     stops before the run has spent its allowance.
 //   STRAT-3. The budget shared evenly: start k's allowance is budget / n,
 //     the first budget mod n starts one more.
+//   STRAT-10. start_points = around_x0 (task 24, §24.2.5; off by default):
+//     start 0 is the start (x0, which it needs), start k >= 1 is x0 + N(0,
+//     sigma^2) coordinate by coordinate, sigma = start_sigma times the
+//     coordinate's width where the box is finite, start_sigma itself where
+//     it is not, clipped to the box; the normal draws from mt19937(seed),
+//     start by start, coordinate by coordinate. start_sigma = 0: every start
+//     is x0. allowance and start_sigma go to the settings only where given.
+//   STRAT-11. allowance = sequential (task 24, §24.2.5; off by default:
+//     even, STRAT-3) runs multistart's starts one after another, each with
+//     all the budget left (its floor), until the budget or the target is
+//     spent; one thread, and the starts' points are the same.
 //   STRAT-4. The minima log: a start's answer joins the first minimum within
 //     min_dist (the box normalized to [0, 1]^n where it is finite, else the
 //     problem's coordinates; the largest coordinate difference) and min_df in
@@ -697,14 +708,27 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
 {
     using namespace strategy;
     StrategyKnobs k("multistart", knobs,
-                    {"inner", "n_starts", "start_points", "threads", "min_dist", "min_df"});
+                    {"inner", "n_starts", "start_points", "threads", "min_dist", "min_df", "allowance", "start_sigma"});
     const Inner inner = k.inner("inner");
     const long long n_starts = k.whole("n_starts", 10, 1);
-    const std::string points = k.word("start_points", "sobol", {"sobol", "lhs", "uniform", "halton_rand", "sobol_owen"});
+    const std::string points =
+        k.word("start_points", "sobol", {"sobol", "lhs", "uniform", "halton_rand", "sobol_owen", "around_x0"});
     const long long threads = k.whole("threads", 1, 1);
     const double min_dist = k.number("min_dist", 1e-3), min_df = k.number("min_df", 1e-8);
+    const bool sequential =                                                          // STRAT-11
+        k.find("allowance") && k.word("allowance", "even", {"even", "sequential"}) == "sequential";
+    const bool around = points == "around_x0";                                       // STRAT-10
+    const double sigma = around ? k.number("start_sigma", 0.1) : 0.0;
     const std::size_t n = P.lo.size();
-    if (n_starts > 1)
+    if (sequential && threads > 1)
+        throw std::invalid_argument("multistart: allowance = sequential runs one start at a time (threads = 1)");
+    if (around && !start.has_x0) throw std::invalid_argument("multistart: start_points = around_x0 needs x0");
+    if (around && start.x0.size() != n)
+        throw std::invalid_argument("multistart: x0 has " + std::to_string(start.x0.size()) + " values for " +
+                                    std::to_string(n) + " variables");
+    if (around && !(sigma >= 0.0 && std::isfinite(sigma)))
+        throw std::invalid_argument("multistart: start_sigma must be a finite number >= 0");
+    if (n_starts > 1 && !around)
         for (std::size_t j = 0; j < n; ++j)
             if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
                 throw std::invalid_argument("multistart draws its starts in the box: every bound must be finite");
@@ -712,14 +736,25 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     std::vector<StartSpec> starts(static_cast<std::size_t>(n_starts));
     const std::vector<double> U =
-        n_starts > 1 ? designs::design(points, static_cast<std::size_t>(n_starts - 1), static_cast<int>(n), seed)
-                     : std::vector<double>();
+        n_starts > 1 && !around
+            ? designs::design(points, static_cast<std::size_t>(n_starts - 1), static_cast<int>(n), seed)
+            : std::vector<double>();
+    std::mt19937 jitter(seed);                                                       // STRAT-10
     for (std::size_t s = 0; s < starts.size(); ++s) {
         StartSpec& sp = starts[s];
         sp.allowance = budget / n_starts + (static_cast<long long>(s) < budget % n_starts ? 1 : 0);   // STRAT-3
         sp.seed = start_seed(seed, s);
         if (s == 0) {
             sp.start = start;                                                 // the inner solver's own
+        } else if (around) {
+            sp.start.has_x0 = true;
+            sp.start.x0 = start.x0;
+            for (std::size_t j = 0; j < n; ++j) {
+                const bool box = std::isfinite(P.lo[j]) && std::isfinite(P.hi[j]);
+                const double z = rnd::normal01(jitter);
+                const double step = sigma * (box ? P.hi[j] - P.lo[j] : 1.0);
+                sp.start.x0[j] = std::min(P.hi[j], std::max(P.lo[j], start.x0[j] + step * z));
+            }
         } else {
             sp.start.has_x0 = true;
             sp.start.x0.resize(n);
@@ -729,7 +764,16 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
     }
     std::vector<Result> runs;
     try {
-        runs = round(ev, inner, starts, static_cast<int>(threads), pop_size);
+        if (!sequential) {
+            runs = round(ev, inner, starts, static_cast<int>(threads), pop_size);
+        } else {                                                                      // STRAT-11
+            for (StartSpec& sp : starts) {
+                const double left = static_cast<double>(ev.budget) - ev.used();
+                if (left < 1.0) break;
+                sp.allowance = static_cast<long long>(left);
+                runs.push_back(round(ev, inner, {sp}, 1, pop_size).at(0));
+            }
+        }
     } catch (const BudgetSpent&) {
     }
     if (!ev.recorded) ev.record();

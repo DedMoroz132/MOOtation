@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.2.5): multistart's `allowance = sequential` (each
+  start, one after another, all the budget left, until the budget or the
+  target; STRAT-11) and `start_points = around_x0` (x0 and x0 + N(0, σ²) per
+  coordinate, σ = `start_sigma` times the width, clipped to the box;
+  STRAT-10). Off by default (`even`, `sobol`): runs as before.
 - Added (task 24, §24.4.1): `warm_start = "on"` (C++ for now; off by
   default) for the single-objective population methods de ... spso2011:
   the start — x0, then the seed points (free: their values known) or the
