@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-439 items: 383 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+443 items: 387 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -502,6 +502,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `de` | DE-4 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp); not in the paper. | yes | `de.hpp` |
 | `de` | DE-5 | done() is true once all NP points are equal: every difference vector is zero and no trial can differ from its target. | yes | `de.hpp` |
 | `de` | DE-6 | sym (task 19, symmetry.hpp SYM-8; off by default): after the index draws, x_r1, x_r2 and x_r3 aligned to the target (align), or the four canonical (canon: the crossover and the bound repair then take canon(x_i)); no d... | no: option | `de.hpp` |
+| `discriminate` | TD-1 | The candidates are a finite set (AF75a's Example 2 searches a grid of 21 points): the sup over X is the largest psi over them; the first candidate on ties. | yes | `discriminate.hpp` |
+| `discriminate` | TD-2 | fit2 receives the weights of every candidate (zero off the design) and must return C predictions; a design whose weights do not determine the rival's parameters is the caller's to avoid (AF75a starts from three points... | yes | `discriminate.hpp` |
+| `discriminate` | TD-3 | The weights returned are the trials over N (the design xi_N); the trials themselves are kept, and the candidate chosen at each stage. | yes | `discriminate.hpp` |
+| `discriminate` | TD-4 | AF75a's Example 2 gives eta_t(1) = -0.131; 4.5 - 1.5 e - 2/e is -0.313 (its other values, -1.488 at -1 and the maximum 1.036 at 0.144, agree): read as the digits transposed. | yes | `discriminate.hpp` |
 | `eki` | EKI-1 | (C^pp + Gamma)^-1 v: where J <= m by the Sherman-Morrison-Woodbury identity, gamma^-2 (v - P~ (J gamma^2 I + P~^T P~)^-1 P~^T v), P~ the m x J matrix of the p~^(j), a J x J Cholesky system; where J > m the m x m syste... | yes | `eki.hpp` |
 | `eki` | EKI-2 | (22) prints C^pp with p-hat (uncentred); we take the covariance (11) prints, centred, which (37)-(38) use as well. | yes | `eki.hpp` |
 | `eki` | EKI-3 | The initial ensemble (their §2.2 leaves it to the user as a draw from a prior): J points of a design in the box (init = sobol: the scrambled Sobol points of designs.hpp; lhs: its Latin hypercube; seed the design's), o... | yes | `eki.hpp` |
@@ -833,10 +837,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `structure_hooks` | HOOK-4 | decode of a tree writes back its canonical form (canonicalize): the children of a commutative node in the key's order. | yes | `structure_hooks.hpp` |
 | `structure_hooks` | HOOK-5 | A GE derivation with more parameters than P keeps the first P in the genome; the others take the middle of their production's range on every decode and are not active (GE-7). | yes | `structure_hooks.hpp` |
 | `structure_hooks` | HOOK-6 | canon_key (the cache of 24.1.4 with cache = canon) is the structure's key without the parameters (TREE-5): one evaluation per structure, right where evaluate fits the parameters itself (a local fit inside the evaluati... | no: option | `structure_hooks.hpp` |
-| `subspace` | CC-1 | The groups are optimized one after another (Gauss-Seidel, as Potter and De Jong's round robin), each from the context as the earlier groups of the cycle left it; a variable in two groups takes the value of the later o... | yes | `subspace.hpp` |
-| `subspace` | CC-2 | cc_groups = neighbors: group j is {j} and neighbors(x)[j], sorted; a group equal to an earlier one is dropped; the groups are taken anew at the start of every cycle, from the context. | yes | `subspace.hpp` |
-| `subspace` | CC-3 | Without an x0 the first context (and lns's first point) is a uniform point of the box, from the run's stream; it is evaluated as the first group's (or step's) start. | yes | `subspace.hpp` |
-| `subspace` | CC-4 | A group's run is the inner solver's on the subproblem, its seed start_seed(seed, s) for the s-th run (0 the first); its points are the run's, in the run's budget (the views of strategy.hpp). | yes | `subspace.hpp` |
+| `subspace` | COEV-1 | The groups are optimized one after another (Gauss-Seidel, as Potter and De Jong's round robin), each from the context as the earlier groups of the cycle left it; a variable in two groups takes the value of the later o... | yes | `subspace.hpp` |
+| `subspace` | COEV-2 | cc_groups = neighbors: group j is {j} and neighbors(x)[j], sorted; a group equal to an earlier one is dropped; the groups are taken anew at the start of every cycle, from the context. | yes | `subspace.hpp` |
+| `subspace` | COEV-3 | Without an x0 the first context (and lns's first point) is a uniform point of the box, from the run's stream; it is evaluated as the first group's (or step's) start. | yes | `subspace.hpp` |
+| `subspace` | COEV-4 | A group's run is the inner solver's on the subproblem, its seed start_seed(seed, s) for the s-th run (0 the first); its points are the run's, in the run's budget (the views of strategy.hpp). | yes | `subspace.hpp` |
 | `subspace` | LNS-1 | The destroyed point is the repair's start: the inner solver starts from it, and the current point is replaced only by a better answer (SRCH-8: feasibility, then f). | yes | `subspace.hpp` |
 | `subspace` | LNS-2 | lns_window = worst needs the contributions hook; the window is that variable with its neighbors (the hook) or the lns_size - 1 after it; a tie for the largest contribution takes the first. | yes | `subspace.hpp` |
 | `subspace` | LNS-3 | The draws per step: the window's variable (random) and then the window's new values, from one stream seeded by the run's seed. | yes | `subspace.hpp` |

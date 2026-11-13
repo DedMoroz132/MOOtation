@@ -69,6 +69,16 @@ READINGS:
     percentiles are by nearest rank (the ceil(q N)-th smallest); a cell
     without a hit has none (H16 §3.2). In the ECDF a (problem, target) cell
     without a hit adds N misses, as a missed pair does in ecdf.
+  REP-6. The comparisons (opt-in: report(compare=True), --so-compare; task
+    26, Г4 and Г5): per dimension, class and budget the blocks of
+    `indistinct`, compared by stats.compare_ranks (Iman and Davenport's F,
+    Nemenyi's critical difference at alpha and the groups of the CD
+    diagram, Demšar 2006); the stability of the ranks along the budgets,
+    Kendall's tau-b between the mean ranks at neighbouring budgets
+    (Piotrowski et al. 2024's question: do ranks carry over between
+    budgets?); Dolan and Moré's performance profiles over the problems, the
+    cost being the ERT at the finest table precision (an unsolved problem
+    inf, profiles.py DM-1).
   REP-5. Kavetski's success ("within a tolerance of the best known value")
     is the run's reaching the finest target of its kind; R is safeguarded to
     [1/(n + 1), 1 - 1/(n + 1)] over its n runs (K18 after (12)), so a cell
@@ -358,6 +368,60 @@ def confidence(rs: list, *, alpha: float = 0.95) -> dict:
     return {"cells": cells, "algorithms": algs}
 
 
+def compare_table(rs: list, *, alpha: float = 0.05) -> dict:
+    """{(D, class, budget): stats.compare_ranks of the blocks indistinct
+    takes} (REP-6)."""
+    from .stats import compare_ranks
+    algs = sorted({r["algorithm"] for r in rs})
+    groups = {}
+    for r in rs:
+        if r["so"].get("f_opt") is None:
+            continue
+        groups.setdefault((dimension(r), problem_class(r["problem"])), []).append(r)
+    out = {}
+    for (D, c), group in sorted(groups.items()):
+        cell = {}
+        for r in group:
+            cell.setdefault((r["problem"], r["seed"]), {})[r["algorithm"]] = r
+        longest = max(_cost(r) for r in group)
+        for b in budgets_of(D, longest):
+            blocks = [[_value(cell[k][a], b) for a in algs] for k in sorted(cell) if len(cell[k]) == len(algs)]
+            if len(blocks) < 2 or len(algs) < 2:
+                continue
+            out[(D, c, b)] = compare_ranks(blocks, algs, alpha=alpha)
+    return out
+
+
+def rank_stability(table: dict) -> dict:
+    """{(D, class): [(budget, next budget, Kendall's tau-b of the mean
+    ranks)]} from compare_table's cells (REP-6)."""
+    from .stats import kendall_tau
+    by = {}
+    for (D, c, b), cell in sorted(table.items()):
+        by.setdefault((D, c), []).append((b, cell["mean_ranks"]))
+    out = {}
+    for key, seq in by.items():
+        rows = []
+        for (b1, r1), (b2, r2) in zip(seq, seq[1:]):
+            names = sorted(set(r1) & set(r2))
+            rows.append((b1, b2, kendall_tau([r1[a] for a in names], [r2[a] for a in names])))
+        out[key] = rows
+    return out
+
+
+def profiles_table(rs: list) -> dict:
+    """profiles.summary over the problems, the cost the ERT at the finest
+    table precision (REP-6)."""
+    from . import profiles
+    costs = {}
+    for (p, a), row in ert_table(rs).items():
+        v = row["ert"][-1] if row["ert"] else math.inf
+        costs.setdefault(p, {})[a] = v if v > 0 else math.inf
+    algs = sorted({a for row in costs.values() for a in row})
+    costs = {p: {a: row.get(a, math.inf) for a in algs} for p, row in costs.items()}
+    return profiles.summary(costs) if costs else {"problems": 0, "ratios": {}, "solvers": {}}
+
+
 def _g(v) -> str:
     if v is None:
         return "-"
@@ -366,7 +430,7 @@ def _g(v) -> str:
     return f"{v:.3g}"
 
 
-def report(root: Path, *, alpha: float = 0.05, problems=None, simulated: int = 0) -> str:
+def report(root: Path, *, alpha: float = 0.05, problems=None, simulated: int = 0, compare: bool = False) -> str:
     """The five tables as text (markdown); with simulated = N > 0 two more,
     the simulated restarts' percentiles and ECDF (REP-4)."""
     rs = runs(root, problems)
@@ -410,4 +474,22 @@ def report(root: Path, *, alpha: float = 0.05, problems=None, simulated: int = 0
                 for a, e in algs.items():
                     pts = ", ".join(f"{x:.3g}: {s:.3f}" for x, s in zip(e["x"][::5], e["share"][::5]))
                     lines.append(f"- D {D} | {c} | {a}: {pts}")
+    if compare:                                                   # REP-6
+        table = compare_table(rs, alpha=alpha)
+        lines += ["", f"## Iman-Davenport and Nemenyi's critical difference (alpha = {alpha:g}; Demšar 2006)", ""]
+        for (D, c, b), cell in table.items():
+            ranks = ", ".join(f"{a} {r:.2f}" for a, r in sorted(cell["mean_ranks"].items(), key=lambda kv: kv[1]))
+            groups = "; ".join("[" + ", ".join(g) + "]" for g in cell.get("groups", []))
+            lines.append(f"- D {D} | {c} | budget {b:g}: F_F = {_g(cell['iman_davenport']['statistic'])} "
+                         f"(p = {_g(cell['iman_davenport']['p'])}), CD = {_g(cell.get('cd'))}; ranks {ranks}; "
+                         f"groups {groups or '-'}")
+        lines += ["", "## Stability of the ranks along the budgets (Kendall's tau-b)", ""]
+        for (D, c), rows in rank_stability(table).items():
+            lines.append(f"- D {D} | {c}: " + ", ".join(f"{b1:g} -> {b2:g}: {_g(t)}" for b1, b2, t in rows))
+        prof = profiles_table(rs)
+        lines += ["", f"## Performance profiles (Dolan and Moré 2002) over {prof['problems']} problems, "
+                      f"ERT at the finest precision", ""]
+        for a, row in prof["solvers"].items():
+            at = ", ".join(f"rho({t:g}) {v:.2f}" for t, v in row["at"].items())
+            lines.append(f"- {a}: wins {row['wins']:.2f}, solved {row['solved']:.2f}; {at}")
     return "\n".join(lines)

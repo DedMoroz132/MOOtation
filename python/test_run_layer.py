@@ -11991,6 +11991,23 @@ gens = 0
             assert C.main([str(path), "--so-report", "--so-simulated", "100"]) == 0
         text = out.getvalue()
         assert "## Simulated restarts, 100 samples" in text and "## ECDF of the simulated runtimes" in text, text[-400:]
+        # task 26, Г4 and Г5 (REP-6): the comparisons behind --so-compare; Г1: --portfolio at one objective
+        ct = RS.compare_table(rs)
+        assert ct and all(c["k"] == 3 and c["n"] == 4 and c["cd"] > 0 for c in ct.values()), ct
+        stab = RS.rank_stability(ct)
+        assert all(t is None or -1.0 <= t <= 1.0 for rows in stab.values() for _, _, t in rows), stab
+        prof = RS.profiles_table(rs)
+        assert prof["problems"] == 3 and set(prof["solvers"]) == {"cmaes", "nelder_mead", "de"}, prof
+        assert any(row["wins"] > 0 for row in prof["solvers"].values())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert C.main([str(path), "--so-report", "--so-compare"]) == 0
+        text = out.getvalue()
+        assert "Nemenyi" in text and "Kendall" in text and "Performance profiles" in text, text[-600:]
+        from mootation.run import portfolio as PF
+        so_text = PF.run_so(root)
+        assert "portfolio (one objective): 3 problems" in so_text and (root / "_portfolio_so" /
+                                                                       "portfolio_so_summary.csv").exists(), so_text
 
 
 @test

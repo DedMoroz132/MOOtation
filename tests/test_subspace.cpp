@@ -116,7 +116,7 @@ int main()
         with_neighbors(Q);
         const sc::Result c = run("coevolution", Q, {{"cc_groups", word("neighbors")}}, 40000, from);
         check(best(c) < 1e-6 && setting(c, "groups") == std::to_string(n),
-              "coevolution on the neighbors hook's groups (CC-2) solves the chain");
+              "coevolution on the neighbors hook's groups (COEV-2) solves the chain");
         bool threw = false;
         try { run("coevolution", P, {{"cc_groups", word("neighbors")}}, 1000, from); } catch (const std::invalid_argument&) { threw = true; }
         check(threw, "coevolution: cc_groups = neighbors without the hook refused");
@@ -124,7 +124,7 @@ int main()
         try { run("coevolution", P, {{"cc_window", number(3)}, {"cc_stride", number(4)}}, 1000, from); } catch (const std::invalid_argument&) { threw = true; }
         check(threw, "coevolution: groups that do not overlap (stride > window) refused");
         const sc::Result u = run("coevolution", P, win, 20000, {});
-        check(best(u) < 1e-3, "coevolution from a uniform point (CC-3)");
+        check(best(u) < 1e-3, "coevolution from a uniform point (COEV-3)");
     }
 
     // ── lns ─────────────────────────────────────────────────────────────────

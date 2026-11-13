@@ -16,16 +16,16 @@
 //   for a band of interactions). A context vector x holds the best point;
 //   a cycle runs the inner solver on every group in turn, on the subproblem
 //   "group free, the rest frozen at x" from x's values of the group, and
-//   writes its answer into x when it is better (CC-1). Knobs: inner,
+//   writes its answer into x when it is better (COEV-1). Knobs: inner,
 //   cc_groups = window (cc_window variables from every cc_stride-th on, the
 //   last window ending at the last variable) | neighbors (the problem's
-//   neighbors hook, CC-2), cc_window (10), cc_stride (0: half the window,
+//   neighbors hook, COEV-2), cc_window (10), cc_stride (0: half the window,
 //   at least 1), cc_cycles (0: until the budget), start_budget (each
 //   group's run; 0: what is left shared among the cycle's groups), min_dist,
 //   min_df, keep_points.
 //
 // lns — large neighbourhood search by windows: from the run's start (its
-//   x0, else a uniform point, CC-3), at every step a window of variables is
+//   x0, else a uniform point, COEV-3), at every step a window of variables is
 //   destroyed (drawn anew, uniformly in the box) and repaired by the inner
 //   solver on the subproblem "window free, the rest frozen"; the result
 //   replaces the current point when it is better (a monotone acceptance,
@@ -43,20 +43,20 @@
 // variable in order is the problem itself; the seed is the run's, STRAT-1).
 //
 // READINGS:
-//   CC-1. The groups are optimized one after another (Gauss-Seidel, as
+//   COEV-1. The groups are optimized one after another (Gauss-Seidel, as
 //     Potter and De Jong's round robin), each from the context as the
 //     earlier groups of the cycle left it; a variable in two groups takes
 //     the value of the later one that improved. Strasser et al.'s
 //     competition and sharing steps (a shared variable's value chosen among
 //     the groups) are not made: with one context vector the later group
 //     already starts from the earlier's value.
-//   CC-2. cc_groups = neighbors: group j is {j} and neighbors(x)[j], sorted;
+//   COEV-2. cc_groups = neighbors: group j is {j} and neighbors(x)[j], sorted;
 //     a group equal to an earlier one is dropped; the groups are taken anew
 //     at the start of every cycle, from the context.
-//   CC-3. Without an x0 the first context (and lns's first point) is a
+//   COEV-3. Without an x0 the first context (and lns's first point) is a
 //     uniform point of the box, from the run's stream; it is evaluated as
 //     the first group's (or step's) start.
-//   CC-4. A group's run is the inner solver's on the subproblem, its seed
+//   COEV-4. A group's run is the inner solver's on the subproblem, its seed
 //     start_seed(seed, s) for the s-th run (0 the first); its points are the
 //     run's, in the run's budget (the views of strategy.hpp). The cycle ends
 //     early when the budget is spent; the run ends on a cycle that spends
@@ -94,7 +94,7 @@ using strategy::View;
 using Groups = std::vector<std::vector<std::size_t>>;
 
 // The inner solver on "idx free, the rest frozen at context", from the
-// context's values (CC-4): its answer in the whole space.
+// context's values (COEV-4): its answer in the whole space.
 inline search::Found sub_run(Evaluator& ev, const Inner& inner, const Vec& context, const Start& from,
                              const std::vector<std::size_t>& idx, long long allowance, unsigned seed,
                              int pop_size)
@@ -148,7 +148,7 @@ inline Groups windows(std::size_t n, std::size_t w, std::size_t stride)
     return g;
 }
 
-inline Groups by_neighbors(const Problem& P, const Vec& x)                       // CC-2
+inline Groups by_neighbors(const Problem& P, const Vec& x)                       // COEV-2
 {
     const std::vector<std::vector<std::size_t>> nb = P.neighbors(x);
     const std::size_t n = x.size();
@@ -167,7 +167,7 @@ inline Groups by_neighbors(const Problem& P, const Vec& x)                      
     return g;
 }
 
-inline Vec first_point(const Problem& P, const Start& start, std::mt19937& rng)  // CC-3
+inline Vec first_point(const Problem& P, const Start& start, std::mt19937& rng)  // COEV-3
 {
     if (start.has_x0) return start.x0;
     Vec x(P.lo.size());
@@ -218,14 +218,14 @@ inline Result run_coevolution(const Problem& P, double eq_tol, bool has_tol0, do
                                                           pop_size);
                 if (r.ok) log.add(r.x, r.f, runs);
                 ++runs;
-                if (search::better(r, cur)) {                                        // CC-1
+                if (search::better(r, cur)) {                                        // COEV-1
                     cur = r;
                     context = r.x;
                     ++accepted;
                 }
             }
             ++done_cycles;
-            if (ev.used() == before) break;                                          // CC-4
+            if (ev.used() == before) break;                                          // COEV-4
         }
     } catch (const BudgetSpent&) {
     }
@@ -270,7 +270,7 @@ inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_
         return win;
     };
     try {
-        // the first point: the inner solver over every variable from the start (CC-3)
+        // the first point: the inner solver over every variable from the start (COEV-3)
         const Vec x0 = subspace::first_point(P, start, rng);
         std::vector<std::size_t> all(n);
         for (std::size_t j = 0; j < n; ++j) all[j] = j;

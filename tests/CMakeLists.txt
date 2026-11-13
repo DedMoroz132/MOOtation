@@ -101,7 +101,8 @@ set(MOOTATION_TESTS
     test_minima
     test_subspace
     test_cluster_ga
-    test_param)
+    test_param
+    test_discriminate)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
