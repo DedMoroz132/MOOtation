@@ -10,6 +10,48 @@ target_link_libraries(mootation_engine PRIVATE MOOtation::MOOtation mootation_wa
 find_package(Threads REQUIRED)
 target_link_libraries(mootation_engine PRIVATE Threads::Threads)
 
+# External problems (task 24, §24.7.1; include/mootation/campaign/external.hpp,
+# docs/running.md): the folder's *.cpp compiled into the engine with the
+# library's flags (no contraction into fused multiply-adds: the same bits as
+# a problem of the suite), the folder on the include path, problems.toml read
+# from it at run time; mootation_problems.cmake in the folder, where there is
+# one, adds what its sources need (include paths, definitions) to the target
+# ${MOOTATION_EXTERNAL_TARGET}. Without the folder the engine is built as before.
+if(MOOTATION_EXTERNAL_PROBLEMS)
+    # a relative path is taken from the build folder
+    get_filename_component(_mootation_ext "${MOOTATION_EXTERNAL_PROBLEMS}" ABSOLUTE BASE_DIR "${CMAKE_BINARY_DIR}")
+    if(NOT IS_DIRECTORY "${_mootation_ext}")
+        message(FATAL_ERROR "MOOTATION_EXTERNAL_PROBLEMS: ${_mootation_ext} is not a folder")
+    endif()
+    if(NOT EXISTS "${_mootation_ext}/problems.toml")
+        message(FATAL_ERROR "MOOTATION_EXTERNAL_PROBLEMS: ${_mootation_ext} has no problems.toml (the problems' rows)")
+    endif()
+    file(GLOB _mootation_ext_sources CONFIGURE_DEPENDS "${_mootation_ext}/*.cpp")
+    if(NOT _mootation_ext_sources)
+        message(FATAL_ERROR "MOOTATION_EXTERNAL_PROBLEMS: ${_mootation_ext} has no *.cpp "
+                            "(one of them defines mootation_external_problems)")
+    endif()
+    target_sources(mootation_engine PRIVATE ${_mootation_ext_sources})
+    target_include_directories(mootation_engine PRIVATE "${_mootation_ext}")
+    target_compile_definitions(mootation_engine PRIVATE "MOOTATION_EXTERNAL_PROBLEMS_DIR=\"${_mootation_ext}\"")
+    if(EXISTS "${_mootation_ext}/mootation_problems.cmake")
+        set(MOOTATION_EXTERNAL_TARGET mootation_engine)
+        include("${_mootation_ext}/mootation_problems.cmake")
+    endif()
+    # the SHA-256 of the folder's sources, for meta.json (external_stamp.cmake)
+    add_custom_target(mootation_engine_external_stamp
+        COMMAND ${CMAKE_COMMAND}
+                -DDIR=${_mootation_ext}
+                -DOUT=${CMAKE_CURRENT_BINARY_DIR}/generated/mootation_external_stamp.h
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/external_stamp.cmake
+        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/generated/mootation_external_stamp.h
+        COMMENT "MOOtation: stamping the external problems' sources"
+        VERBATIM)
+    add_dependencies(mootation_engine mootation_engine_external_stamp)
+    list(LENGTH _mootation_ext_sources _n)
+    message(STATUS "MOOtation: external problems from ${_mootation_ext} (${_n} sources)")
+endif()
+
 # The source revision it is built from, for --version and meta.json's
 # revision: python/git_stamp.cmake, rewritten on every build.
 find_package(Git QUIET)

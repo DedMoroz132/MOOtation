@@ -631,6 +631,44 @@ def validate(cfg: Config, *, base: Path | None = None) -> list[str]:
     return problems
 
 
+def external_refusal(name: str) -> str:
+    """The refusal of a campaign naming an external problem (task 24, §24.7.1;
+    include/mootation/campaign/external.hpp's external_refusal: the same text).
+    External problems are C++ compiled into the C++ engine
+    (MOOTATION_EXTERNAL_PROBLEMS); the Python engine does not run them."""
+    return (f"external problem '{name}': the C++ engine alone runs it (mootation run <config>; "
+            f"task 24, section 24.7.1), the Python engine does not know it")
+
+
+_EXTERNAL_NAMES: list = []
+
+
+def external_names() -> set:
+    """The names of the external problems the C++ engine was built with: the
+    rows of problems.toml in the folder its --version names ("external
+    problems: <folder>"); empty where there is no engine, no folder or no
+    file to read (the name is then an unknown one, as before)."""
+    if _EXTERNAL_NAMES:
+        return _EXTERNAL_NAMES[0]
+    import subprocess
+    names: set = set()
+    try:
+        import tomllib
+        from .campaign import engine_path
+        exe = engine_path()
+        if exe is not None:
+            out = subprocess.run([str(exe), "--version"], capture_output=True, text=True, timeout=30).stdout
+            for line in out.splitlines():
+                if line.startswith("external problems: "):
+                    rows = Path(line[len("external problems: "):].strip()) / "problems.toml"
+                    with open(rows, "rb") as f:
+                        names = {str(r.get("name")) for r in tomllib.load(f).get("problem", [])}
+    except (OSError, ValueError, subprocess.SubprocessError, ImportError):
+        names = set()
+    _EXTERNAL_NAMES.append(names)
+    return names
+
+
 def _benchmark_selection(spec: dict, bad) -> list:
     """Resolve and check a [benchmarks] section against the real registry.
 
@@ -664,7 +702,11 @@ def _benchmark_selection(spec: dict, bad) -> list:
             bad("benchmarks.problems", f"expected a list of problem names, got {wanted!r}")
             return []
         missing = [p for p in wanted if p not in registry]
+        external = external_names() if missing else set()
         for p in missing:
+            if p in external:
+                bad("benchmarks.problems", external_refusal(p))
+                continue
             # Suggest by the FULL stem first — "DTLZ2" from "DTLZ2_M3" — before
             # falling back to the family. Sorting the family alphabetically
             # would offer DTLZ1_10D..DTLZ1_4D for a DTLZ2 typo, which is a

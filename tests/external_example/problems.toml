@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+# The rows of the example's external problems (task 24, §24.7.1;
+# include/mootation/campaign/external_rows.hpp says every key).
+
+# MGH's problem 1 (MGH01_n02_m02_x1_1D) as an external row: no box, x0 = x_s
+[[problem]]
+name = "ext_rosenbrock_n02_x1"
+family = "extended_rosenbrock_example"
+n_var = 2
+x0 = [-1.2, 1.0]
+f_opt = 0.0
+f_opt_kind = "exact"
+targets = "relative"
+pop_size = 1
+n_gen = 1000
+[problem.params]
+scale = 10.0
+
+# in a box, for the methods that need one
+[[problem]]
+name = "ext_rosenbrock_n04_box"
+family = "extended_rosenbrock_example"
+n_var = 4
+lo = -5.0
+hi = 5.0
+f_opt = 0.0
+f_opt_kind = "exact"
+pop_size = 20
+n_gen = 50

@@ -10,6 +10,10 @@
 //     mootation refs check [--problems A,B] [--n-ref N] [--registry FILE]
 //     mootation --version
 //
+// A build with MOOTATION_EXTERNAL_PROBLEMS=<folder> (task 24, §24.7.1;
+// campaign/external.hpp) has that folder's problems beside the registry's:
+// load_problems below; --version names the folder.
+//
 // `run` runs a campaign with storage = "store" as `python -m
 // mootation.run.campaign` does (include/mootation/campaign/engine.hpp): the
 // jobs not done yet, by a pool of threads, each record appended to the
@@ -60,6 +64,7 @@ extern "C" __declspec(dllimport) unsigned long __stdcall GetModuleFileNameW(void
 #include <cstdint>
 
 #include <mootation/campaign/engine.hpp>
+#include <mootation/campaign/external_rows.hpp>
 #include <mootation/campaign/refs_build.hpp>
 #include <mootation/campaign/store_export.hpp>
 #include <mootation/campaign/store_tools.hpp>
@@ -68,6 +73,12 @@ extern "C" __declspec(dllimport) unsigned long __stdcall GetModuleFileNameW(void
 
 #if __has_include("mootation_git_stamp.h")
 #include "mootation_git_stamp.h"
+#endif
+#if defined(MOOTATION_EXTERNAL_PROBLEMS_DIR) && __has_include("mootation_external_stamp.h")
+#include "mootation_external_stamp.h"
+#endif
+#ifndef MOOTATION_EXTERNAL_SOURCES_SHA256
+#define MOOTATION_EXTERNAL_SOURCES_SHA256 ""
 #endif
 #ifndef MOOTATION_GIT_COMMIT
 #define MOOTATION_GIT_COMMIT "unknown"
@@ -224,6 +235,21 @@ std::filesystem::path newest_registry()
     return best;
 }
 
+// The registry and, where the build has an external folder (task 24,
+// §24.7.1: MOOTATION_EXTERNAL_PROBLEMS, engine/CMakeLists.txt), its
+// problems: the families its sources register, the rows of its problems.toml.
+cg::ProblemRegistry load_problems(const std::filesystem::path& registry)
+{
+    cg::ProblemRegistry preg = cg::load_registry(registry);
+#ifdef MOOTATION_EXTERNAL_PROBLEMS_DIR
+    cg::ExternalProblems reg;
+    mootation_external_problems(reg);
+    cg::add_external(preg, mootation::store::file::path_of(MOOTATION_EXTERNAL_PROBLEMS_DIR) / "problems.toml", reg,
+                     MOOTATION_EXTERNAL_SOURCES_SHA256);
+#endif
+    return preg;
+}
+
 // meta.json's process fields, as the engine says them of itself
 cg::Process process_fields()
 {
@@ -307,7 +333,7 @@ int run(const std::vector<std::string>& args)
     }
     if (config.empty()) throw UsageError(prog, kRunUsage, "the following arguments are required: config");
     if (registry.empty()) registry = newest_registry();
-    const cg::ProblemRegistry preg = cg::load_registry(registry);
+    const cg::ProblemRegistry preg = load_problems(registry);
     const auto source = mootation::store::file::path_of(config);
     std::ifstream in(source, std::ios::binary);
     if (!in) throw std::runtime_error("cannot read " + config);
@@ -399,7 +425,7 @@ int store_command(const std::vector<std::string>& args)
     }
     if (cmd == "ls") {
         if (registry.empty()) registry = newest_registry();
-        const cg::ProblemRegistry preg = cg::load_registry(registry);
+        const cg::ProblemRegistry preg = load_problems(registry);
         std::map<std::string, std::map<std::string, std::size_t>> by;
         const auto idx = cg::store_index(dir);
         for (const auto& [key, e] : idx) {
@@ -442,7 +468,7 @@ int store_command(const std::vector<std::string>& args)
     }
     if (cmd == "compact") {
         if (registry.empty()) registry = newest_registry();
-        const cg::ProblemRegistry preg = cg::load_registry(registry);
+        const cg::ProblemRegistry preg = load_problems(registry);
         auto family_of = [&preg](const std::string& problem) {
             const auto it = preg.problems.find(problem);
             if (it == preg.problems.end() || it->second.family.empty())
@@ -509,7 +535,7 @@ int refs_command(const std::vector<std::string>& args)
         else throw UsageError("mootation refs " + cmd, kRefsUsage, "unrecognized arguments: " + a);
     }
     if (registry.empty()) registry = newest_registry();
-    const cg::ProblemRegistry preg = cg::load_registry(registry);
+    const cg::ProblemRegistry preg = load_problems(registry);
     std::vector<std::string> names;
     for (std::size_t at = 0; at < problems.size();) {
         const auto comma = problems.find(',', at);
@@ -586,6 +612,9 @@ int main(int argc, char** argv)
         if (args[0] == "--version") {
             std::printf("mootation %s (%s%s)\n", mootation::version(), MOOTATION_GIT_COMMIT,
                         MOOTATION_GIT_DIRTY ? ", dirty" : "");
+#ifdef MOOTATION_EXTERNAL_PROBLEMS_DIR
+            std::printf("external problems: %s\n", MOOTATION_EXTERNAL_PROBLEMS_DIR);
+#endif
             return 0;
         }
         if (args[0] == "run") return run(std::vector<std::string>(args.begin() + 1, args.end()));

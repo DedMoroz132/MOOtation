@@ -231,10 +231,16 @@ private:
         return v->kind == json::Value::Kind::Float ? v->f : static_cast<double>(v->i);
     }
 
-    // the problem of the suite, a bbob one at the run's instance
+    // the problem of the suite, a bbob one at the run's instance; an external
+    // one (task 24, §24.7.1) made from its row
     void make_native()
     {
         f_opt_ = p_.f_opt;
+        if (p_.external) {                               // task 24, §24.7.1 (external_rows.hpp)
+            native_ = p_.external();
+            wrap();
+            return;
+        }
         json::Value spec = *p_.spec;
         const json::Value* fam = spec.find("family");
         const bool bbob = fam && fam->s == "bbob";
@@ -246,6 +252,12 @@ private:
         }
         native_ = std::shared_ptr<suite::Native>(suite::make(spec_of(spec)));
         cec_ = spec_of(spec).cec_problem;
+        wrap(bbob ? std::optional<suite::Spec>(spec_of(spec)) : std::nullopt);
+    }
+
+    // [campaign] wrap_*: native_ through the wrappers; bbob's spec where the problem is one
+    void wrap(const std::optional<suite::Spec>& bbob = std::nullopt)
+    {
         suite::WrapSpec w;
         w.name = job_.problem;
         w.shift = wrap_instance(spec_.wrap_shift);
@@ -255,7 +267,7 @@ private:
         if (w.shift == 0 && w.rotate == 0 && w.perm == 0) return;
         std::vector<double> x_opt;
         if (bbob) {                                      // WRAP-2, WRAP-3: bbob's optimum, defined on R^n
-            const suite::Spec s = spec_of(spec);
+            const suite::Spec& s = *bbob;
             x_opt = s.bbob.empty() ? suite::bbob::instance(s.bbob_fid, s.bbob_iid, s.n_var).x_opt : s.bbob[0].x_opt;
             w.defined_everywhere = true;
         }
@@ -534,6 +546,7 @@ private:
         meta.set("record_every", V::integer(spec_.record_every));
         meta.set("problem_version", V::integer(p_.problem_version));
         meta.set("modification", p_.modification);
+        if (p_.external) meta.set("external", p_.external_meta);     // task 24, §24.7.1
         meta.set("code_stamp", V::string(code_stamp_));
         meta.set("trajectory_version", V::integer(2));
         meta.set("ignored_at_m1", ignored());

@@ -38,6 +38,7 @@
 #include "../store/record.hpp"
 #include "../store/run_json.hpp"
 #include "config.hpp"
+#include "external.hpp"
 #include "job_so.hpp"
 #include "job_run.hpp"
 #include "jobs.hpp"
@@ -591,6 +592,16 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
     const CampaignSpec spec = campaign_spec(cfg, jreg);
     if (spec.storage != "store") throw ConfigError("campaign.storage", "the C++ engine writes a store");
     const std::vector<Job> jobs = expand_jobs(cfg, spec, jreg);
+    // a job of an external problem (task 24, §24.7.1) that this engine would
+    // leave to the Python engine, which does not know the problem: the
+    // campaign refused before anything runs
+    const auto cores = runner::algorithm_names();
+    for (const auto& j : jobs) {
+        const RegistryProblem& p = preg.problems.at(j.problem);
+        if (!p.external) continue;
+        if (auto why = refusal(j, spec, p, cores, preg.names.baselines))
+            throw ConfigError("benchmarks.problems", external_refusal(p.name) + " (" + j.key() + ": " + *why + ")");
+    }
     const auto root = out_root(cfg, spec);
     if (!root) throw ConfigError("campaign.out", "a path with {name} and nothing else in braces");
     write_campaign_json(*root, cfg, spec, jobs);
@@ -630,7 +641,10 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
             counts.left_jobs.push_back(j->index);
             continue;
         }
-        if (!p.shared_reference && !own_references(*root, preg, spec, *j)) {
+        // an external problem (task 24, §24.7.1) has no reference to build:
+        // its run at one objective reads none, and the Python engine, which
+        // builds the others', does not know it
+        if (!p.shared_reference && !p.external && !own_references(*root, preg, spec, *j)) {
             ++counts.left["a reference built for the campaign, not built yet (the Python engine builds it)"];
             counts.left_jobs.push_back(j->index);
             continue;

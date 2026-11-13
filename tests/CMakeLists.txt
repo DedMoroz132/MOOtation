@@ -69,7 +69,8 @@ set(MOOTATION_TESTS
     test_refs
     test_registry_bounds
     test_core_readings
-    test_wrap)
+    test_wrap
+    test_external)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
@@ -94,6 +95,11 @@ foreach(_t IN LISTS MOOTATION_TESTS)
 
     add_test(NAME ${_t} COMMAND ${_t})
 endforeach()
+
+# The example folder of external problems (task 24, §24.7.1) in the test
+# that reads it: its registration compiled in, as the engine compiles a
+# folder given by MOOTATION_EXTERNAL_PROBLEMS.
+target_sources(test_external PRIVATE external_example/extended_rosenbrock.cpp)
 
 # The suite of benchmark problems (include/mootation/suite) as the extension
 # compiles it: without contraction into fused multiply-adds
