@@ -58,6 +58,7 @@ set(MOOTATION_TESTS
     test_blocks_objectives
     test_so_metrics
     test_so_confidence
+    test_chain_ls
     test_store_codec
     test_json
     test_toml
