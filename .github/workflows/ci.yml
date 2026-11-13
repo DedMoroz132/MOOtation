@@ -49,6 +49,8 @@ jobs:
       - uses: actions/setup-python@v6
         with: { python-version: '3.11' }
 
+      # two jobs since round 4: the every-core test units outgrew the runner at
+      # four (C ABI, g++ 20, python binding)
       - name: Build the module
         run: |
           python -m pip install --upgrade pip pybind11
@@ -63,7 +65,7 @@ jobs:
                 -DMOOTATION_BUILD_EXAMPLES=OFF \
                 -DPython_EXECUTABLE=$(which python) \
                 -Dpybind11_DIR=$(python -m pybind11 --cmakedir)
-          cmake --build build-py -j 4
+          cmake --build build-py -j 2
 
       - name: The extension was built for THIS interpreter
         run: |
@@ -304,10 +306,12 @@ jobs:
       - uses: actions/setup-python@v6
         with: { python-version: '3.11' }
 
+      # two jobs since round 4: the every-core test units outgrew the runner at
+      # four (C ABI, g++ 20, python binding)
       - name: Build
         run: |
           cmake -S . -B build-c             -DCMAKE_BUILD_TYPE=Release             -DMOOTATION_BUILD_C_API=ON             -DMOOTATION_BUILD_EXAMPLES=OFF             -DMOOTATION_WERROR=ON
-          cmake --build build-c -j 4
+          cmake --build build-c -j 2
 
       - name: C and ctypes consumers
         run: ctest --test-dir build-c --output-on-failure -R '^capi\.'
@@ -383,12 +387,15 @@ jobs:
           -DCMAKE_CXX_STANDARD_REQUIRED=ON
           -DMOOTATION_WERROR=ON
 
-      # four jobs, not -j alone: unbounded, the units that include every core
+      # two jobs, not -j alone: unbounded, the units that include every core
       # outgrew the runner's memory and the runner was shut down mid-build
-      # (g++ 20, task 15; the sanitized build's below since task 14)
+      # (g++ 20, task 15; the sanitized build's below since task 14); at four
+      # since round 4 too (C ABI, g++ 20, python binding)
       - name: Build
-        run: cmake --build build -j 4
+        run: cmake --build build -j 2
 
+      # two jobs since round 4: the every-core test units outgrew the runner at
+      # four (C ABI, g++ 20, python binding)
       - name: Test
         # -LE nightly skips test_convergence and test_constraints, which are
         # ~10 of the suite's ~11 minutes. They run on the schedule below, and
@@ -410,11 +417,13 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_INSTALL_PREFIX=$PWD/stage \
                 -DMOOTATION_BUILD_TESTS=OFF -DMOOTATION_BUILD_EXAMPLES=OFF
-          cmake --build build -j 4
+          cmake --build build -j 2
           cmake --install build
           test -f stage/share/mootation/registry.json
           test -d stage/share/mootation/_fronts
 
+      # two jobs since round 4: the every-core test units outgrew the runner at
+      # four (C ABI, g++ 20, python binding)
       - name: refs build, then a campaign
         run: |
           mkdir -p "$RUNNER_TEMP/camp"
@@ -467,7 +476,7 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_INSTALL_PREFIX=$PWD/stage \
                 -DMOOTATION_BUILD_TESTS=OFF -DMOOTATION_BUILD_EXAMPLES=OFF
-          cmake --build build -j 4
+          cmake --build build -j 2
           cmake --install build
 
       # The install rule copies by filesystem glob, so it sees the working tree
@@ -819,11 +828,12 @@ jobs:
           -DMOOTATION_WERROR=ON
           -DMOOTATION_BUILD_C_API=ON
 
-      # four jobs, not -j alone: unbounded, the units that include every core
+      # two jobs, not -j alone: unbounded, the units that include every core
       # outgrew the runner's memory and the runner was shut down mid-build
-      # (g++ 20, task 15; the sanitized build's below since task 14)
+      # (g++ 20, task 15; the sanitized build's below since task 14); at four
+      # since round 4 too (C ABI, g++ 20, python binding)
       - name: Build
-        run: cmake --build build -j 4
+        run: cmake --build build -j 2
 
       - name: The tests every push skips
         run: ctest --test-dir build --output-on-failure -L nightly
