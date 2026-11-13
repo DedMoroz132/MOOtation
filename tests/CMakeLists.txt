@@ -119,15 +119,15 @@ if(NOT MSVC)
     target_compile_options(test_blocks_objectives PRIVATE -ffp-contract=off)
 endif()
 
-# ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Labels: which tests every push pays for, and which run nightly ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+# ── Labels: which tests every push pays for, and which run nightly ──────────
 # test_convergence and test_constraints each instantiate all 58 algorithms and
 # run them; together they are ~10 minutes of the ~11-minute suite. Paying that
 # on every push, across a six-way compiler/standard matrix, means every pull
 # request waits on the slowest thing in the repository.
 #
 # They are labelled `nightly` rather than deleted or shortened, because what
-# they check ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â that all 58 converge, and that every constraint_mode switch
-# actually does something ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â is exactly what must not silently rot. CI runs
+# they check — that all 58 converge, and that every constraint_mode switch
+# actually does something — is exactly what must not silently rot. CI runs
 # `-LE nightly` on push and the full set on a schedule.
 #
 #   ctest -LE nightly     everything quick (the default for a push)
@@ -138,7 +138,7 @@ set_tests_properties(test_convergence test_constraints PROPERTIES LABELS nightly
 # test_scale_invariance instantiates all 58 twice as well, but runs each for
 # 25 generations only: it asks whether a decision CHANGES when the objectives
 # are rescaled, and a decision that changes at all changes early. That keeps
-# it in the push tier, where it belongs ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the defects it found (a fitness
+# it in the push tier, where it belongs — the defects it found (a fitness
 # whose exponential underflowed to zero, a reference set living in the wrong
 # coordinates) are exactly the kind that reappear silently.
 
@@ -155,7 +155,7 @@ set_tests_properties(test_convergence test_constraints PROPERTIES LABELS nightly
 # distinguish "slow" from "hung".
 #
 # Measured, not guessed: test_convergence under a Debug sanitizer build takes
-# 2 h 19 min end to end ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â against the thirty-minute limit it used to have, which
+# 2 h 19 min end to end — against the thirty-minute limit it used to have, which
 # is why the nightly job had been red for ten nights. Eight gives four hours,
 # comfortably above the measurement rather than a few minutes above it, because
 # a runner slower than the machine that measured it must not turn a passing test
@@ -191,7 +191,7 @@ mootation_test_timeout(test_bound_repair 300)
 mootation_test_timeout(test_core_readings 300)
 # Cheap to run, expensive to compile: it includes embed.hpp, which instantiates
 # all 58 algorithms for the run-time dispatch. Stays in the push tier because
-# the property it guards ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â that a warm start costs no function evaluations ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â is
+# the property it guards — that a warm start costs no function evaluations — is
 # the whole reason to have one.
 mootation_test_timeout(test_warm_start 600)
 
@@ -204,7 +204,7 @@ set_target_properties(test_umbrella_selfcontained PROPERTIES FOLDER tests)
 add_test(NAME test_umbrella_selfcontained COMMAND test_umbrella_selfcontained)
 
 # Every algorithm's fingerprints against the list in the repository (task 14
-# of 2026-10-20, ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§8): the same on every platform, built here with the
+# of 2026-10-20, §8): the same on every platform, built here with the
 # MOOtation target's flags, as a consumer builds it.
 add_executable(compat_dump compat_dump.cpp)
 target_link_libraries(compat_dump PRIVATE MOOtation::MOOtation)
@@ -226,7 +226,7 @@ if(MOOTATION_FMA_PROBE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(fma_probe PRIVATE -march=haswell)
 endif()
 
-# ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ The TOML/runner layer (pure Python, no dependencies) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+# ── The TOML/runner layer (pure Python, no dependencies) ────────────────────
 # Registered here rather than under python/ because it needs no pybind11 and no
 # build step: it is a plain interpreter run, and skipping it when Python is
 # missing is better than making Python a build requirement.
@@ -235,8 +235,8 @@ if(Python3_Interpreter_FOUND AND NOT Python3_VERSION VERSION_LESS 3.11)
     add_test(NAME python.mootation_run
              COMMAND ${Python3_EXECUTABLE}
                      ${CMAKE_CURRENT_SOURCE_DIR}/../python/test_run_layer.py)
-    # Six minutes: the suite runs real campaigns now ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the recording grid, the
-    # archive and its scenario, the report flags, the ablations ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â which is most
+    # Six minutes: the suite runs real campaigns now — the recording grid, the
+    # archive and its scenario, the report flags, the ablations — which is most
     # of its time, and a loaded runner must not turn that into a red build.
     set_tests_properties(python.mootation_run PROPERTIES TIMEOUT 600)
 
