@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-362 items: 317 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+365 items: 320 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -628,6 +628,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pbh` | PBH-3 | The children are made from the population at the iteration's start (their local searches one round of K starts) and placed one after the other in the members' order. | yes | `pbh.hpp` |
 | `pbh` | PBH-4 | The draws: per child its n coordinates' moves and then one more uniform, as ils draws its acceptance's u at every step, so that K = 1 follows ils's stream; the extra members' uniform points come from the same stream b... | yes | `pbh.hpp` |
 | `pbh` | PBH-5 | Ties: the nearest and the worst are the first in the members' order; | yes | `pbh.hpp` |
+| `pbh` | PBH-6 | pbh_distance = user needs the problem's distance hook (task 24, §24.1.3) and refuses a problem without one; perturb = user the problem's perturb hook, its result clipped or wrapped as SRCH-19 (the draws of PBH-4 then... | yes | `pbh.hpp` |
 | `periodic` | PER-1 | Off by default. The wrap is lo + fmod(v - lo, hi - lo), negatives raised by a period; a result that rounds to hi is lo (no point on the seam). | no: option | `periodic.hpp` |
 | `periodic` | PER-2 | Off by default. A wrapped coordinate is not a repair (RepairCounts, task 20, §20.2.2, does not count it) and costs no penalty (SCALAR-7, POP-4): the point is inside the problem's domain. | no: option | `periodic.hpp` |
 | `periodic` | PER-3 | Off by default. A difference d of a periodic coordinate is min(\|d\|, period - \|d\|). | no: option | `periodic.hpp` |
@@ -718,6 +719,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-16 | Acceptance by a threshold (ils_accept = threshold, bh_accept = threshold; task 25, §24.2.4): X. | yes | `search.hpp` |
 | `search` | SRCH-17 | Metropolis on a relative scale (ils_accept = lsmc_rel, bh_accept = metropolis_rel; task 25): the first walk_t0_trials (10) steps accept the better only and record \|dE\| != 0; then T = walk_t_rel (1) times their median,... | yes | `search.hpp` |
 | `search` | SRCH-18 | The strength ladder (task 25, §24.2.4; IDLS, Lai et al. 2025, source structural-optimization-atomic_lai2025, Algorithm 1): with ladder_max > 0 the step is ladder_min after a new best, else grows by ladder_step, back t... | yes | `search.hpp` |
+| `search` | SRCH-19 | perturb = user (task 25, §24.2.4; task 24's Problem::perturb, §24.1.3): the move is the problem's, perturb(y, step, rng) on a copy of the current minimum with the walk's own generator and the step (the ladder's where... | yes | `search.hpp` |
+| `search` | SRCH-20 | basin_hopping with bh_accept = threshold and its adaptive step (no ladder) warns once (mootation::warn): DTS is meant for a fixed move (SRCH-16); the run itself is unchanged. | yes | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |

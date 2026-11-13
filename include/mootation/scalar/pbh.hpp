@@ -25,10 +25,10 @@
 // ils_accept = better (GLS07 §2.3), and the run is ils's bit for bit.
 //
 // Knobs: inner, pbh_K (10), pbh_step (0.1), step_units (box | absolute),
-// pbh_distance = fdiff (|f(X) - f(Y)|, GLS07's measure for Schwefel's
+// perturb (builtin | user), pbh_distance = fdiff (|f(X) - f(Y)|, GLS07's measure for Schwefel's
 // function) | euclid (the Euclidean distance in the box normalized to [0,
-// 1]^n, the short way round a periodic coordinate) | aligned (the problem's
-// align to y, else symmetry::distance on sym_blocks and canon, SYM-11),
+// 1]^n, the short way round a periodic coordinate) | aligned (distance_of,
+// hooks.hpp) | user (the problem's distance, PBH-6),
 // pbh_dcut (0: inf; c > 0: c times the mean pairwise d of the first
 // population, GLS07 §4: 0.5 for d_ord^3, 1.5 for d_H), pbh_dcut_anneal (off |
 // on: d_cut times 0.85 every 50 iterations in the first 250, 2P-PBH*),
@@ -49,6 +49,10 @@
 //     search (0 the first member's) has the seed start_seed(seed, s), as ils.
 //   PBH-5. Ties: the nearest and the worst are the first in the members'
 //     order; "better" is SRCH-8's (feasibility, then f).
+//   PBH-6. pbh_distance = user needs the problem's distance hook (task 24,
+//     §24.1.3) and refuses a problem without one; perturb = user the
+//     problem's perturb hook, its result clipped or wrapped as SRCH-19 (the
+//     draws of PBH-4 then are the hook's and the one extra uniform).
 // ============================================================================
 
 #include <algorithm>
@@ -60,6 +64,7 @@
 #include <string>
 #include <vector>
 
+#include "hooks.hpp"
 #include "strategy.hpp"
 
 namespace mootation::scalar {
@@ -68,24 +73,18 @@ namespace search {
 
 // The dissimilarity of two local minima (pbh, mde): fdiff |f(a) - f(b)|;
 // euclid the Euclidean distance in the box normalized to [0, 1]^n, the short
-// way round a periodic coordinate; aligned the problem's align of a to b and
-// then euclid, else symmetry::distance on sym_blocks and canon (SYM-11), else
-// euclid
+// way round a periodic coordinate; aligned and user task 24's distance_of
+// (hooks.hpp: the problem's distance where it gives one, else the Euclidean
+// distance after its align, else symmetry::distance on sym_blocks and canon,
+// SYM-11) — user insists on the problem's own (PBH-6)
 inline double dissimilarity(const Problem& P, const std::string& kind, const Found& a, const Found& b,
                             const Vec& period)
 {
     if (kind == "fdiff") return std::fabs(a.f - b.f);
+    if (kind == "aligned" || kind == "user") return distance_of(P, a.x, b.x);
+    (void)period;
     const std::size_t n = P.lo.size();
-    Vec x = a.x;
-    if (kind == "aligned") {
-        if (P.align) {
-            Vec out;
-            P.align(a.x, b.x, out);
-            x = out;
-        } else if (!P.sym_blocks.empty()) {
-            return symmetry::distance(a.x, b.x, P.sym_blocks, P.canon, period);
-        }
-    }
+    const Vec& x = a.x;
     double s = 0.0;
     for (std::size_t j = 0; j < n; ++j) {
         const double w = width(P, j);
@@ -103,12 +102,15 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
     using namespace strategy;
     StrategyKnobs k("pbh", knobs,
                     {"inner", "pbh_K", "pbh_step", "step_units", "pbh_distance", "pbh_dcut", "pbh_dcut_anneal",
-                     "pbh_maxstep", "threads", "start_budget", "min_dist", "min_df", "keep_points"});
+                     "pbh_maxstep", "threads", "start_budget", "min_dist", "min_df", "keep_points", "perturb"});
     const Inner inner = k.inner("inner");
     const long long K = k.whole("pbh_K", 10, 1), threads = k.whole("threads", 1, 1);
     const double step = k.number("pbh_step", 0.1);
     const bool absolute = k.word("step_units", "box", {"box", "absolute"}) == "absolute";
-    const std::string dist = k.word("pbh_distance", "fdiff", {"fdiff", "euclid", "aligned"});
+    const std::string dist = k.word("pbh_distance", "fdiff", {"fdiff", "euclid", "aligned", "user"});
+    const bool user_move = k.find("perturb") && k.word("perturb", "builtin", {"builtin", "user"}) == "user";
+    if (dist == "user" && !P.distance) throw std::invalid_argument("pbh: pbh_distance = user needs the problem's distance hook");
+    if (user_move && !P.perturb) throw std::invalid_argument("pbh: perturb = user needs the problem's perturb hook");
     const double dcut_c = k.number("pbh_dcut", 0.0);
     const bool anneal = k.word("pbh_dcut_anneal", "off", {"off", "on"}) == "on";
     const long long maxstep = k.whole("pbh_maxstep", 0, 0);
@@ -174,11 +176,19 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
             const long long first_kid = searches;
             for (long long p = 0; p < K; ++p) {
                 Vec y = pop[static_cast<std::size_t>(p)].x;
-                for (std::size_t j = 0; j < n; ++j) {
-                    const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
-                                                    (absolute ? 1.0 : search::width(P, j));
-                    y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])
-                                                       : std::min(P.hi[j], std::max(P.lo[j], moved));
+                if (user_move) {                                                     // PBH-6, SRCH-19
+                    P.perturb(y, step, rng);
+                    if (y.size() != n) throw std::runtime_error("pbh: the perturb hook changed the point's length");
+                    for (std::size_t j = 0; j < n; ++j)
+                        y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
+                                                           : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+                } else {
+                    for (std::size_t j = 0; j < n; ++j) {
+                        const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
+                                                        (absolute ? 1.0 : search::width(P, j));
+                        y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])
+                                                           : std::min(P.hi[j], std::max(P.lo[j], moved));
+                    }
                 }
                 (void)rnd::uniform01(rng);                                           // PBH-4
                 kids.push_back(spec(search::at(y)));

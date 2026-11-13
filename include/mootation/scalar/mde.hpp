@@ -18,7 +18,7 @@
 //             p_i + phi F (p_r - p_i), the candidate against p_i;
 //   distance  D-MDE, CL16 Algorithm 7: G-MDE's candidate against the member
 //             nearest to it by mde_distance (fdiff, CL16's |f(s) - f(u)|;
-//             euclid; aligned: pbh.hpp's dissimilarity);
+//             euclid; aligned; user — pbh.hpp's dissimilarity);
 //   hybrid    H-MDE, CL16 Algorithm 8: D-MDE's selection when phi = -1,
 //             G-MDE's when phi = +1.
 // As CL16 Algorithm 1 the members are taken in order and each candidate is
@@ -120,7 +120,8 @@ inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_
     const long long K = k.whole("mde_pop", 40, 2);
     const double F = k.number("mde_F", 0.5), CR = k.number("mde_CR", 1.0);
     const std::string match = k.word("mde_match", "off", {"off", "align", "greedy"});
-    const std::string dist = k.word("mde_distance", "fdiff", {"fdiff", "euclid", "aligned"});
+    const std::string dist = k.word("mde_distance", "fdiff", {"fdiff", "euclid", "aligned", "user"});
+    if (dist == "user" && !P.distance) throw std::invalid_argument("mde: mde_distance = user needs the problem's distance hook");
     const std::size_t n = P.lo.size();
     const long long noimprove = k.whole("mde_noimprove", 0, 0) > 0 ? k.whole("mde_noimprove", 0, 0)
                                                                     : 100 * static_cast<long long>(n);

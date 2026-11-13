@@ -2781,6 +2781,18 @@ python -m mootation.run.campaign campaign_all.toml --ranks igd
 python -m mootation.run --tui campaign_all.toml       # Compare tab, then t
 ```
 
+### Acceptance by a threshold in `ils` and `basin_hopping`
+
+`ils_accept = threshold` and `bh_accept = threshold` (task 25; C++ only for
+now) take Lai et al.'s dynamic threshold (EJOR 2022): a new minimum is
+accepted when it is below the current one by less than the threshold and not
+equal to it, and the threshold shrinks or grows with the share accepted so far.
+It is meant for a fixed move. `basin_hopping` adapts its step to an acceptance
+ratio; with the threshold the step shrinks until the local search mostly
+returns to the current minimum, an equal minimum counts as refused, and the
+threshold grows without end. The run says so once (`mootation::warn`) and is
+otherwise unchanged; for a fixed step set `ladder_min = ladder_max` to the step.
+
 ### Choosing k of n points
 
 An archive reduced to N points, and so the hypervolume taken of it, depends

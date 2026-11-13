@@ -143,6 +143,15 @@
 //     best, else grows by ladder_step, back to ladder_min past ladder_max;
 //     ladder_min = ladder_max, ladder_step = 0 is a constant step. With the
 //     ladder basin_hopping's step adaptation (SRCH-5) is off.
+//   SRCH-19. perturb = user (task 25, §24.2.4; task 24's Problem::perturb,
+//     §24.1.3): the move is the problem's, perturb(y, step, rng) on a copy of
+//     the current minimum with the walk's own generator and the step (the
+//     ladder's where there is one) as its strength; the result is clipped to
+//     the box, a periodic coordinate wrapped (PER-2), as the builtin move. A
+//     hook that repeats the builtin move gives the builtin run bit for bit.
+//   SRCH-20. basin_hopping with bh_accept = threshold and its adaptive step
+//     (no ladder) warns once (mootation::warn): DTS is meant for a fixed move
+//     (SRCH-16); the run itself is unchanged.
 //   SRCH-10. ils and basin_hopping: 100 steps in a row that spend nothing end
 //     the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing
 //     ends it (its sample would grow without end); basin_hopping's step grows
@@ -162,6 +171,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "../warn.hpp"
+#include "hooks.hpp"
 #include "strategy.hpp"
 
 namespace mootation::scalar {
@@ -426,7 +437,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     if (bh) own.insert(own.end(), {"bh_temperature", "bh_step", "bh_accept_rate", "bh_interval", "bh_accept"});
     else own.insert(own.end(), {"ils_accept", "ils_step", "ils_restart", "ils_temperature"});
     own.insert(own.end(), {"step_units", "walk_th0", "walk_th_mu", "walk_t0_trials", "walk_t_rel", "ladder_min",
-                           "ladder_max", "ladder_step"});                                     // task 25, §24.2.4
+                           "ladder_max", "ladder_step", "perturb"});                          // task 25, §24.2.4
     StrategyKnobs k(name, knobs, own);
     const Inner inner = k.inner("inner");
     const long long cap = k.whole("start_budget", 0, 0);
@@ -466,6 +477,12 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     if (ladder && !(ladder_min > 0.0 && ladder_min <= ladder_max && ladder_step >= 0.0))
         throw std::invalid_argument(name + ": 0 < ladder_min <= ladder_max and ladder_step >= 0");
     if (ladder) step = ladder_min;
+    const bool user_move = k.find("perturb") && k.word("perturb", "builtin", {"builtin", "user"}) == "user";   // SRCH-19
+    if (user_move && !P.perturb) throw std::invalid_argument(name + ": perturb = user needs the problem's perturb hook");
+    if (bh && accept == "threshold" && !ladder)                                          // SRCH-20
+        mootation::warn("basin_hopping: bh_accept = threshold (DTS) is meant for a fixed move; the adaptive step "
+                        "(bh_accept_rate) shrinks it until most new minima are the current one, which counts as a "
+                        "refusal and drives the threshold up. A fixed step: ladder_min = ladder_max = the step.");
     search::finite_box(name, P);
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
@@ -492,11 +509,19 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
         for (long long s = 1; cur.ok && search::left(ev) > 0 && idle < 100; ++s) {                  // SRCH-10
             const double before = ev.used();
             Vec y = cur.x;
-            for (std::size_t j = 0; j < n; ++j) {                                                // SRCH-4
-                const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
-                                                (absolute ? 1.0 : search::width(P, j));        // SRCH-15
-                y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])  // PER-2
-                                                   : std::min(P.hi[j], std::max(P.lo[j], moved));
+            if (user_move) {                                                                     // SRCH-19
+                P.perturb(y, step, rng);
+                if (y.size() != n) throw std::runtime_error(name + ": the perturb hook changed the point's length");
+                for (std::size_t j = 0; j < n; ++j)
+                    y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
+                                                       : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+            } else {
+                for (std::size_t j = 0; j < n; ++j) {                                            // SRCH-4
+                    const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
+                                                    (absolute ? 1.0 : search::width(P, j));    // SRCH-15
+                    y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])  // PER-2
+                                                       : std::min(P.hi[j], std::max(P.lo[j], moved));
+                }
             }
             const double u = rnd::uniform01(rng);
             const search::Found next = local(search::at(y), s);

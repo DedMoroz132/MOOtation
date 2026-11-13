@@ -9,15 +9,21 @@
 //   threshold (DTS, Lai et al. 2022) and lsmc_rel (T from the median |dE|)
 //     find Rastrigin's global minimum in 2-D from a far start (ils) and
 //     report their final threshold / temperature;
-//   the ladder moves the step (a run with a ladder differs from one without).
+//   the ladder moves the step (a run with a ladder differs from one without);
+//   perturb = user with a hook that repeats the builtin move: the builtin run
+//     bit for bit (ils, basin_hopping; SRCH-19); without the hook refused;
+//   basin_hopping with bh_accept = threshold and its adaptive step warns once
+//     (SRCH-20), with a fixed step (the ladder) not at all.
 // ============================================================================
 
 #include <cmath>
 #include <cstdio>
+#include <random>
 #include <string>
 #include <vector>
 
 #include <mootation/scalar/scalar.hpp>
+#include <mootation/warn.hpp>
 
 namespace {
 
@@ -54,6 +60,17 @@ sc::Problem rastrigin(int n, double lo, double hi)
         f.assign(1, s);
     };
     return P;
+}
+
+// the builtin move as the problem's hook: every coordinate by U[-1, 1] times
+// the strength times the box's width, from the walk's generator
+void builtin_move(sc::Problem& P)
+{
+    const Vec lo = P.lo, hi = P.hi;
+    P.perturb = [lo, hi](Vec& y, double strength, std::mt19937& rng) {
+        for (std::size_t j = 0; j < y.size(); ++j)
+            y[j] += (2.0 * mootation::rnd::uniform01(rng) - 1.0) * strength * (hi[j] - lo[j]);
+    };
 }
 
 const char* kNM = "{\"local_tol\":1e-10,\"solver\":\"nelder_mead\"}";
@@ -142,10 +159,37 @@ void new_rules()
 
 }   // namespace
 
+void user_move_and_warning()
+{
+    const sc::Problem P = rastrigin(2, -5.12, 5.12);
+    sc::Problem U = P;
+    builtin_move(U);
+    const sc::Start far = far_start(4.0);
+    check(same(run("ils", P, {}, 8000, far), run("ils", U, {{"perturb", word("user")}}, 8000, far)) &&
+              same(run("basin_hopping", P, {}, 8000, far), run("basin_hopping", U, {{"perturb", word("user")}}, 8000, far)),
+          "perturb = user repeating the builtin move: ils and basin_hopping bit for bit (SRCH-19)");
+    bool threw = false;
+    try {
+        (void)run("ils", P, {{"perturb", word("user")}}, 1000, far);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    check(threw, "perturb = user without the problem's hook: refused");
+    int warned = 0;
+    mootation::set_warn_handler([&](const std::string& m) { warned += m.find("bh_accept = threshold") != std::string::npos; });
+    (void)run("basin_hopping", P, {{"bh_accept", word("threshold")}}, 4000, far);
+    const int adaptive = warned;
+    (void)run("basin_hopping", P,
+              {{"bh_accept", word("threshold")}, {"ladder_min", number(0.05)}, {"ladder_max", number(0.05)}}, 4000, far);
+    mootation::set_warn_handler({});
+    check(adaptive == 1 && warned == 1, "bh_accept = threshold: one warning with the adaptive step, none with a fixed one");
+}
+
 int main()
 {
     neutral();
     new_rules();
+    user_move_and_warning();
     std::printf("\n%s\n", g_failed == 0 ? "all passed" : "FAILURES");
     return g_failed == 0 ? 0 : 1;
 }

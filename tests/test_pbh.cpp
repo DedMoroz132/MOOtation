@@ -8,7 +8,10 @@
 //     threads bit for bit;
 //   pbh_dcut = 1.5 (c d_ave) with the 2P-PBH* annealing: d_cut reported and
 //     smaller than at the start; pbh_distance = euclid and aligned (sym_blocks)
-//     run; a bad knob is refused.
+//     run; a bad knob is refused;
+//   perturb = user repeating the builtin move: the builtin run bit for bit;
+//     pbh_distance = user with the problem's distance hook runs, without it
+//     is refused.
 // ============================================================================
 
 #include <cmath>
@@ -16,6 +19,8 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include <random>
 
 #include <mootation/scalar/scalar.hpp>
 
@@ -54,6 +59,17 @@ sc::Problem rastrigin(int n)
         f.assign(1, s);
     };
     return P;
+}
+
+// the builtin move as the problem's hook: every coordinate by U[-1, 1] times
+// the strength times the box's width, from the walk's generator
+void builtin_move(sc::Problem& P)
+{
+    const Vec lo = P.lo, hi = P.hi;
+    P.perturb = [lo, hi](Vec& y, double strength, std::mt19937& rng) {
+        for (std::size_t j = 0; j < y.size(); ++j)
+            y[j] += (2.0 * mootation::rnd::uniform01(rng) - 1.0) * strength * (hi[j] - lo[j]);
+    };
 }
 
 const char* kNM = "{\"local_tol\":1e-10,\"solver\":\"nelder_mead\"}";
@@ -135,9 +151,35 @@ void dissimilarity()
 
 }   // namespace
 
+void hooks()
+{
+    const sc::Problem P = rastrigin(3);
+    sc::Problem U = P;
+    builtin_move(U);
+    check(same(run("pbh", P, {{"pbh_K", number(4)}}, 20000, far(3)),
+               run("pbh", U, {{"pbh_K", number(4)}, {"perturb", word("user")}}, 20000, far(3))),
+          "perturb = user repeating the builtin move: the builtin run bit for bit");
+    sc::Problem D = P;
+    D.distance = [](const Vec& x, const Vec& y) {
+        double s = 0.0;
+        for (std::size_t j = 0; j < x.size(); ++j) s += std::fabs(x[j] - y[j]);
+        return s;
+    };
+    const sc::Result r = run("pbh", D, {{"pbh_K", number(5)}, {"pbh_distance", word("user")}, {"pbh_dcut", number(1.0)}},
+                             40000, far(3));
+    bool threw = false;
+    try {
+        (void)run("pbh", P, {{"pbh_distance", word("user")}}, 1000, far(3));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    check(r.objectives[0][0] < 1e-6 && threw, "pbh_distance = user (an L1 hook) solves; without the hook refused");
+}
+
 int main()
 {
     mbh();
+    hooks();
     population();
     dissimilarity();
     std::printf("\n%s\n", g_failed == 0 ? "all passed" : "FAILURES");
