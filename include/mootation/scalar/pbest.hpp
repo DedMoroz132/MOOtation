@@ -69,7 +69,7 @@ inline std::vector<std::size_t> ranking(const Vec& f, const Vec& v)
 // of `order` (PB-1); sym: PB-3.
 inline Vec trial(const Rows& P, const Rows& A, std::size_t i, const std::vector<std::size_t>& order,
                  std::size_t top, double F, double CR, const Vec& lo, const Vec& hi, std::mt19937& rng,
-                 const symmetry::Sym& sym = {})
+                 const symmetry::Sym& sym = {}, const std::vector<char>& periodic = {})
 {
     const std::size_t n = P.size(), d = lo.size();
     rnd::uniform_int_distribution<std::size_t> pick_top(0, top - 1), pick_p(0, n - 1), pick_pa(0, n + A.size() - 1),
@@ -88,9 +88,11 @@ inline Vec trial(const Rows& P, const Rows& A, std::size_t i, const std::vector<
     ops::RepairTally tally;                                    // the mutant (task 20, §20.2.2)
     for (std::size_t j = 0; j < d; ++j) {
         double v = xi[j] + F * (xb[j] - xi[j]) + F * (x1[j] - x2[j]);
-        if (v < lo[j] || v > hi[j]) tally.out();
-        if (v < lo[j]) v = (lo[j] + xi[j]) / 2.0;
-        else if (v > hi[j]) v = (hi[j] + xi[j]) / 2.0;
+        if ((v < lo[j] || v > hi[j]) && !evo::wrapped(v, lo, hi, periodic, j)) {        // periodic.hpp PER-2
+            tally.out();
+            if (v < lo[j]) v = (lo[j] + xi[j]) / 2.0;
+            else if (v > hi[j]) v = (hi[j] + xi[j]) / 2.0;
+        }
         u[j] = U01(rng) < CR || j == jr ? v : xi[j];
     }
     return u;

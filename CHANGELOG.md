@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.4.2): periodic variables at one objective, in C++:
+  `scalar::Problem::periodic` (a flag per variable, its period the box's
+  width; `scalar/periodic.hpp`). Where a method would repair, clip or
+  penalize a coordinate that left the box, a periodic one is wrapped into
+  [lo, hi) — de, jade, shade, lshade, g3_pcx, pso, spso2011, the normalized
+  box of cmaes, nelder_mead and sep_cmaes, ipop and bipop's samples, ils
+  and basin_hopping's steps — and the strategies' minima log measures the
+  shorter way round (PER-1 ... PER-3). Off by default: without the flags
+  every run is as before.
 - Added (task 24, §24.3.3): `keep_points = best` (the evaluator's lean mode:
   the best point and the last) for the population methods, multistart, ils,
   basin_hopping, mlsl, tiktak and local_search (C++ for now); a strategy's

@@ -30,6 +30,8 @@
 
 #include "../random.hpp"
 
+#include "periodic.hpp"
+
 namespace mootation::scalar::evo {
 
 using Vec = std::vector<double>;
@@ -87,6 +89,16 @@ inline Rows uniform(const Vec& lo, const Vec& hi, std::size_t np, std::mt19937& 
     for (std::size_t i = 0; i < np; ++i)
         for (std::size_t j = 0; j < lo.size(); ++j) x[i][j] = lo[j] + U01(rng) * (hi[j] - lo[j]);
     return x;
+}
+
+// coordinate j of v brought back into [lo, hi): wrapped where it is periodic
+// (periodic.hpp; task 24, §24.4.2); true when it was (the caller's repair is
+// then not applied)
+inline bool wrapped(double& v, const Vec& lo, const Vec& hi, const std::vector<char>& periodic, std::size_t j)
+{
+    if (!periodic::is(periodic, j)) return false;
+    v = periodic::wrap_into(v, lo[j], hi[j]);
+    return true;
 }
 
 // The first population with seeds (task 24, §24.4.1; scalar.hpp POP-7): the

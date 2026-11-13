@@ -126,6 +126,7 @@
 #include "../fp_contract.hpp"
 #include "../warn.hpp"
 #include "genome.hpp"
+#include "periodic.hpp"
 #include "improvements.hpp"
 #include "symmetry.hpp"
 
@@ -212,6 +213,9 @@ struct Problem {
     std::function<void(Vec& x)> repair;
     std::function<Decoded(const Vec& x)> decode;
     std::function<void(Vec& x, std::mt19937& rng)> sample;     // x arrives with n values
+    // PERIODIC VARIABLES (task 24, §24.4.2; periodic.hpp): 1 where variable j
+    // is periodic, its period hi - lo; empty: none
+    std::vector<char> periodic;
     // set by a strategy's start (strategy.hpp, View), not by the user: a
     // point whose values are known, for the run's archive at the merge (ULS-2)
     std::function<void(const Vec& x, const Vec& f)> known_point;
@@ -277,6 +281,15 @@ public:
         next_record = stride;
         limit = budget;
         if (p.has_residuals()) check_residual_problem();
+        if (!p.periodic.empty()) {                                  // periodic.hpp
+            if (p.periodic.size() != p.lo.size())
+                throw std::invalid_argument("periodic: " + std::to_string(p.periodic.size()) + " flags for " +
+                                            std::to_string(p.lo.size()) + " variables");
+            for (std::size_t j = 0; j < p.lo.size(); ++j)
+                if (p.periodic[j] && !(std::isfinite(p.lo[j]) && std::isfinite(p.hi[j]) && p.lo[j] < p.hi[j]))
+                    throw std::invalid_argument("periodic: variable " + std::to_string(j) +
+                                                " needs a finite box of positive width, its period");
+        }
     }
 
     // ── evaluating ──────────────────────────────────────────────────────────

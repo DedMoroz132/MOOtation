@@ -60,6 +60,7 @@ struct Options {
     bool archive = true;
     symmetry::Sym sym;                  // task 19 (pbest.hpp PB-3)
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
+    std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
 };
 
 namespace detail {
@@ -136,7 +137,7 @@ public:
             const double p = pick_p(rng_);                               // (20)
             const std::size_t top = static_cast<std::size_t>(std::ceil(nn * p));   // SHADE-1
             u_[i] = pbest::trial(x_, a_, i, order, std::max<std::size_t>(top, 2), F_[i], cr_[i], lo_, hi_, rng_,
-                                 o_.sym);
+                                 o_.sym, o_.periodic);
         }
         return u_;
     }

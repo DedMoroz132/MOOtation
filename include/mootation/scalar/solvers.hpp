@@ -81,8 +81,11 @@ struct Run {
     std::vector<double> x_of(const std::vector<double>& y) const
     {
         std::vector<double> x(width.size());
-        for (std::size_t i = 0; i < x.size(); ++i)
-            x[i] = ev.lo[i] + std::min(1.0, std::max(0.0, y[i])) * width[i];
+        for (std::size_t i = 0; i < x.size(); ++i) {
+            const double yi = periodic::is(ev.P.periodic, i) ? periodic::wrap01(y[i])          // PER-2
+                                                             : std::min(1.0, std::max(0.0, y[i]));
+            x[i] = ev.lo[i] + yi * width[i];
+        }
         return x;
     }
 
@@ -340,6 +343,12 @@ inline void nm(Run& run, const std::vector<double>& y0, const std::vector<std::s
     o.max_iter = 1000000000LL;
     const long long cap = 100 * static_cast<long long>(n + 1);
     long long idle = 0, spent = run.ev.spent;
+    std::vector<double> lo(n, 0.0), hi(n, 1.0);
+    for (std::size_t j = 0; j < n; ++j)                         // periodic.hpp: no edge, x_of wraps (PER-2)
+        if (periodic::is(run.ev.P.periodic, j)) {
+            lo[j] = -kInf;
+            hi[j] = kInf;
+        }
     try {
         nelder_mead::minimize(
             [&](const std::vector<double>& y) {
@@ -352,7 +361,7 @@ inline void nm(Run& run, const std::vector<double>& y0, const std::vector<std::s
                 }
                 return v;
             },
-            y0, std::vector<double>(n, 0.0), std::vector<double>(n, 1.0), o);
+            y0, lo, hi, o);
     } catch (const SubBudgetSpent&) {
     } catch (const Idle&) {
     }
@@ -375,6 +384,10 @@ inline void cmaes(Run& run, const std::vector<double>& y0, const std::vector<std
                 double d2 = 0.0;
                 ops::RepairTally tally;                          // the sample (task 20, §20.2.2)
                 for (std::size_t j = 0; j < yc.size(); ++j) {
+                    if (periodic::is(run.ev.P.periodic, j)) {              // periodic.hpp PER-2
+                        yc[j] = periodic::wrap01(yc[j]);
+                        continue;
+                    }
                     yc[j] = std::min(1.0, std::max(0.0, yc[j]));
                     if (yc[j] != y[j]) tally.out();
                     d2 += (y[j] - yc[j]) * (y[j] - yc[j]);

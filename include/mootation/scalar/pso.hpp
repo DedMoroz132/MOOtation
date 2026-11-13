@@ -72,6 +72,7 @@ struct Options {
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // PSO-6
     symmetry::Sym sym;                                     // PSO-9
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
+    std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
 };
 
 // (4.17)
@@ -94,7 +95,7 @@ inline void move(Vec& x, Vec& v, const Vec& p, const Vec& g, const Options& o, d
         const double phi1 = U01(rng) * o.phi_max / 2.0, phi2 = U01(rng) * o.phi_max / 2.0;
         v[j] = chi * (v[j] + phi1 * (pa[j] - x[j]) + phi2 * (ga[j] - x[j]));
         double y = x[j] + v[j];
-        if (y < lo[j] || y > hi[j]) {
+        if ((y < lo[j] || y > hi[j]) && !evo::wrapped(y, lo, hi, o.periodic, j)) {   // periodic.hpp PER-2
             tally.out();
             if (o.repair != ops::BoundRepair::Native)
                 y = ops::repair_value(y, lo[j], hi[j], x[j], o.repair, rng);   // PSO-6

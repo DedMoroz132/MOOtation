@@ -75,6 +75,7 @@ struct Options {
     double w = 1.0 / (2.0 * 0.6931471805599453);           // 1 / (2 ln 2)
     symmetry::Sym sym;                                     // SPSO-9
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
+    std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
 };
 
 // A particle's move ((2a-c), (3), (1b), SPSO-3, SPSO-5, SPSO-6): X and V from
@@ -113,7 +114,7 @@ inline void move(Vec& X, Vec& V, const Vec& P0, const Vec& L0, const Options& o,
         const double vmax = (hi[j] - lo[j]) / 2.0;                       // SPSO-5
         V[j] = std::clamp(o.w * V[j] + xp - X[j], -vmax, vmax);          // (3)
         X[j] += V[j];                                                    // (1b)
-        if (X[j] < lo[j] || X[j] > hi[j]) {                              // SPSO-6
+        if ((X[j] < lo[j] || X[j] > hi[j]) && !evo::wrapped(X[j], lo, hi, o.periodic, j)) {   // SPSO-6, PER-2
             tally.out();
             X[j] = X[j] < lo[j] ? lo[j] : hi[j];
             V[j] = 0.0;

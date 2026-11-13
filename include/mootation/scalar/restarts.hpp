@@ -119,10 +119,13 @@ inline Run run_cma(Evaluator& ev, const Vec& m0, double sigma0, std::size_t lamb
         {
             ops::RepairTally tally;                              // the sample (task 20, §20.2.2)
             for (std::size_t j = 0; j < n; ++j)
-                if (y[j] < ev.lo[j] || y[j] > ev.hi[j]) tally.out();
+                if ((y[j] < ev.lo[j] || y[j] > ev.hi[j]) && !periodic::is(ev.P.periodic, j)) tally.out();
         }
+        for (std::size_t j = 0; j < n; ++j)                     // periodic.hpp PER-2, with or without clip
+            if (periodic::is(ev.P.periodic, j)) x[j] = periodic::wrap_into(y[j], ev.lo[j], ev.hi[j]);
         if (clip)
             for (std::size_t j = 0; j < n; ++j) {
+                if (periodic::is(ev.P.periodic, j)) continue;
                 x[j] = std::min(ev.hi[j], std::max(ev.lo[j], y[j]));
                 d2 += (y[j] - x[j]) * (y[j] - x[j]);
             }

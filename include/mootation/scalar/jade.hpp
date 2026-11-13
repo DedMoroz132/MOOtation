@@ -67,6 +67,7 @@ struct Options {
     bool archive = true;
     symmetry::Sym sym;                  // task 19 (pbest.hpp PB-3)
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
+    std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
 };
 
 class JADE {
@@ -99,7 +100,7 @@ public:
         for (std::size_t i = 0; i < n; ++i) {                            // JADE-5
             cr_[i] = pbest::draw_CR(rng_, mu_cr_);                       // (8)
             F_[i] = pbest::draw_F(rng_, mu_f_);                          // (10)
-            u_[i] = pbest::trial(x_, a_, i, order, top, F_[i], cr_[i], lo_, hi_, rng_, o_.sym);   // (7), (4), §II
+            u_[i] = pbest::trial(x_, a_, i, order, top, F_[i], cr_[i], lo_, hi_, rng_, o_.sym, o_.periodic);   // (7), (4), §II
         }
         return u_;
     }

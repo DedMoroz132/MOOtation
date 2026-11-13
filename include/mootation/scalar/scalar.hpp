@@ -1709,6 +1709,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         if (name == "de") {
             de::Options o;
             o.seeds = seeds;
+            o.periodic = P.periodic;                                     // periodic.hpp
             o.np = np;
             o.F = k.number("F", o.F);
             o.CR = k.number("CR", o.CR);
@@ -1720,6 +1721,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         } else if (name == "jade") {
             jade::Options o;
             o.seeds = seeds;
+            o.periodic = P.periodic;                                     // periodic.hpp
             o.np = np;
             o.p = k.number("jade_p", o.p);
             o.c = k.number("jade_c", o.c);
@@ -1731,6 +1733,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         } else if (name == "shade") {
             shade::Options o;
             o.seeds = seeds;
+            o.periodic = P.periodic;                                     // periodic.hpp
             if (np) o.np = np;
             o.H = k.whole("shade_h", o.H);
             o.p_max = k.number("shade_p_max", o.p_max);
@@ -1742,6 +1745,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         } else if (name == "lshade") {
             lshade::Options o;
             o.seeds = seeds;
+            o.periodic = P.periodic;                                     // periodic.hpp
             if (np) o.r_ninit = static_cast<double>(np) / static_cast<double>(lo.size());   // N_init = np
             o.H = k.whole("shade_h", o.H);
             o.p = k.number("lshade_p", o.p);
@@ -1799,6 +1803,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         } else if (name == "g3_pcx") {
             ga::G3Options o;
             o.seeds = seeds;
+            o.periodic = P.periodic;                                     // periodic.hpp
             if (np) o.n = np;
             o.mu = k.whole("g3_mu", o.mu);
             o.lambda = k.whole("g3_lambda", o.lambda);
@@ -1821,6 +1826,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         } else if (name == "pso") {
             pso::Options o;
             o.seeds = seeds;
+            o.periodic = P.periodic;                                     // periodic.hpp
             if (np) o.n = np;
             o.phi_max = k.number("pso_phi", o.phi_max);
             o.kappa = k.number("kappa", o.kappa);
@@ -1834,6 +1840,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         } else if (name == "spso2011") {
             spso2011::Options o;
             o.seeds = seeds;
+            o.periodic = P.periodic;                                     // periodic.hpp
             if (np) o.n = np;
             o.K = k.whole("spso_k", o.K);
             o.sym = k.sym(P);

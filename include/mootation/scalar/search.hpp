@@ -373,9 +373,11 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
         for (long long s = 1; cur.ok && search::left(ev) > 0 && idle < 100; ++s) {                  // SRCH-10
             const double before = ev.used();
             Vec y = cur.x;
-            for (std::size_t j = 0; j < n; ++j)                                                  // SRCH-4
-                y[j] = std::min(P.hi[j], std::max(P.lo[j], y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
-                                                                     search::width(P, j)));
+            for (std::size_t j = 0; j < n; ++j) {                                                // SRCH-4
+                const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step * search::width(P, j);
+                y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])  // PER-2
+                                                   : std::min(P.hi[j], std::max(P.lo[j], moved));
+            }
             const double u = rnd::uniform01(rng);
             const search::Found next = local(search::at(y), s);
             if (!next.ok) break;

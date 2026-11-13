@@ -560,6 +560,8 @@ public:
 
     // STRAT-9: the distance between symmetric points
     void symmetric(const symmetry::Sym& s) { sym_ = s; }
+    // the problem's periodic variables (periodic.hpp PER-3; task 24, §24.4.2)
+    void periodic(const std::vector<char>& mask) { periodic_ = mask; }
 
     void add(const Vec& x, double f, long long start)
     {
@@ -598,6 +600,7 @@ private:
     double dist_, df_;
     std::vector<Minimum> list_;
     symmetry::Sym sym_;
+    std::vector<char> periodic_;
 
     double distance(const Vec& a0, const Vec& b0) const
     {
@@ -608,7 +611,7 @@ private:
         for (std::size_t j = 0; j < a.size(); ++j) {
             const double w = hi_[j] - lo_[j];
             const double s = std::isfinite(w) && w > 0.0 ? w : 1.0;
-            d = std::max(d, std::fabs(a[j] - b[j]) / s);
+            d = std::max(d, periodic::gap(a[j], b[j], periodic::is(periodic_, j), w) / s);
         }
         return d;
     }
@@ -690,6 +693,7 @@ inline bool lean_of(StrategyKnobs& k)
 // STRAT-9: the log grouped by the problem's symmetries where min_sym is given
 inline void group_by_symmetry(StrategyKnobs& k, const Problem& P, MinimaLog& log)
 {
+    if (!P.periodic.empty()) log.periodic(P.periodic);           // periodic.hpp PER-3
     if (k.find("min_sym") == nullptr) return;
     const std::string w = k.word("min_sym", "off", {"off", "canon", "align"});
     symmetry::Sym s;

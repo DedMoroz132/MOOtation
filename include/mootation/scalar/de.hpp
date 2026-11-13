@@ -72,6 +72,7 @@ struct Options {
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // DE-2
     symmetry::Sym sym;                                     // DE-6
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
+    std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
 };
 
 // The trial of x_i (DE-1, (2), (4)); sym: DE-6.
@@ -96,7 +97,7 @@ inline Vec trial(const Rows& x, std::size_t i, const Options& o, const Vec& lo, 
     ops::RepairTally tally;                                        // the mutant (task 20, §20.2.2)
     for (std::size_t j = 0; j < d; ++j) {
         double v = xc[j] + o.F * (xa[j] - xb[j]);                  // (2)
-        if (v < lo[j] || v > hi[j]) {
+        if ((v < lo[j] || v > hi[j]) && !evo::wrapped(v, lo, hi, o.periodic, j)) {   // PER-2
             tally.out();
             if (o.repair != ops::BoundRepair::Native)
                 v = ops::repair_value(v, lo[j], hi[j], xi[j], o.repair, rng);   // DE-2

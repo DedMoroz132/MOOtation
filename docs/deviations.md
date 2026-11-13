@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-293 items: 264 yes, 29 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+296 items: 264 yes, 32 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -582,6 +582,9 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
 | `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |
+| `periodic` | PER-1 | Off by default. The wrap is lo + fmod(v - lo, hi - lo), negatives raised by a period; a result that rounds to hi is lo (no point on the seam). | no: option | `periodic.hpp` |
+| `periodic` | PER-2 | Off by default. A wrapped coordinate is not a repair (RepairCounts, task 20, §20.2.2, does not count it) and costs no penalty (SCALAR-7, POP-4): the point is inside the problem's domain. | no: option | `periodic.hpp` |
+| `periodic` | PER-3 | Off by default. A difference d of a periodic coordinate is min(\|d\|, period - \|d\|). | no: option | `periodic.hpp` |
 | `polish` | POLISH-1 | The objective improved goes round the objectives (the first point f_1, the second f_2, ...) in DSS order; the objectives are normalized by the range of the points chosen. | yes | `polish.hpp` |
 | `polish` | POLISH-2 | The answer after polishing is the non-dominated union of the algorithm's answer and the polished points, not the archive's; cut to pop_size, it keeps a point weakly dominating each point of the algorithm's answer firs... | yes | `polish.hpp` |
 | `polish` | POLISH-3 | The subproblem's constraints f_i <= f_i(a) hold to a slack (SLACK, in the normalized objectives): a result a hair worse than a in one objective does not dominate a, and both stay. | yes | `polish.hpp` |

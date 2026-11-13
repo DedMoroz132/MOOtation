@@ -414,6 +414,7 @@ struct G3Options {
     bool best_centre = true;                               // §3.2.1, G3-1
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // GA-4
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
+    std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
 };
 
 class G3 {
@@ -445,8 +446,10 @@ public:
             {
                 ops::RepairTally tally;                                  // the child (task 20, §20.2.2)
                 for (std::size_t j = 0; j < y.size(); ++j)
-                    if (y[j] < lo_[j] || y[j] > hi_[j]) tally.out();
+                    if ((y[j] < lo_[j] || y[j] > hi_[j]) && !periodic::is(o_.periodic, j)) tally.out();
             }
+            for (std::size_t j = 0; j < y.size(); ++j)                   // periodic.hpp PER-2
+                if (y[j] < lo_[j] || y[j] > hi_[j]) evo::wrapped(y[j], lo_, hi_, o_.periodic, j);
             if (o_.repair != ops::BoundRepair::Native)
                 for (std::size_t j = 0; j < y.size(); ++j)
                     if (y[j] < lo_[j] || y[j] > hi_[j]) y[j] = ops::repair_value(y[j], lo_[j], hi_[j], P[p][j], o_.repair, rng_);
