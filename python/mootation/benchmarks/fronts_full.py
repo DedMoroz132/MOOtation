@@ -105,11 +105,16 @@ MaF6 at eight objectives — before objectives() was made to use the exact
 zero there. The problems' own code keeps the rounded value; step 5 accepts
 the difference, which is below 1e-13.
 
-THE BUILT FRONTS OF WFG3 at ten objectives (task 20 of 2026-11-02, after
-verify2's finding that SIZES named WFG3_6D and WFG3_10D, whose files had
-never been built, so that their reference was the curve): WFG3_10D, at
-half the sample (n_int 50 000, n_face 5 000) and the full verification,
-took 28 715 s on one thread: 88 651 points of the sample nondominated,
+THE BUILT FRONTS OF WFG3 at six and ten objectives (task 20 of 2026-11-02,
+after verify2's finding that SIZES named WFG3_6D and WFG3_10D, whose files
+had never been built, so that their reference was the curve). WFG3_6D, at
+the full sample (n_int 100 000, n_face 10 000), took 43 910 s on one
+thread: 134 021 points of the sample nondominated, 133 688 after the
+descent; of them 1 409 beaten by the 1 038 540 points of the fresh sample,
+874 by the grid, 3 384 by the local search and 7 056 by the exact test,
+120 965 verified, 80.8 % of them off the curve, the frame f_m in [0, 2m]
+but f_5 to 9.47. WFG3_10D, at half the sample (n_int 50 000, n_face 5 000)
+and the full verification, took 28 715 s on one thread: 88 651 points of the sample nondominated,
 87 378 after the descent; of them 5 993 beaten by the 1 080 208 points of
 the fresh sample, 49 by the grid, 5 694 by the local search and 28 935 by
 the exact test (wfg3_dominated), 46 707 verified, 68.2 % of them off the
@@ -146,7 +151,7 @@ SIZES = {
     "DTLZ5": (4, 5, 6, 8, 10),
     "DTLZ6": (4, 5, 6, 8),
     "MaF6":  (8, 10),
-    "WFG3":  (3, 4, 5, 10),          # 6 follows when its build ends (task 20, §4 of its report)
+    "WFG3":  (3, 4, 5, 6, 10),
 }
 SHARED: dict = {}      # none: DTLZ5 and DTLZ6 reach different g (see the header)
 

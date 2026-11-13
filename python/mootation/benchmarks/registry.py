@@ -2781,7 +2781,7 @@ REFERENCE_CHANGED: Dict[int, frozenset] = {2: frozenset({
 # leaves SIZES and keeps the curve with its caveat.
 REFERENCE_VERSION = 6
 REFERENCE_CHANGED[3] = frozenset({"IPolygon_3D", "IPolygon_4D", "IPolygon_8D"})
-REFERENCE_CHANGED[6] = frozenset({"WFG3_10D"})
+REFERENCE_CHANGED[6] = frozenset({"WFG3_10D", "WFG3_6D"})
 # the problems whose DEFINITION changed with a version: their older runs
 # answered another problem and are run again, not recomputed
 PROBLEM_CHANGED: Dict[int, frozenset] = {
