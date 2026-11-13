@@ -57,6 +57,7 @@ set(MOOTATION_TESTS
     test_symmetry
     test_blocks_objectives
     test_so_metrics
+    test_so_confidence
     test_store_codec
     test_json
     test_toml
