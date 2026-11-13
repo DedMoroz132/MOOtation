@@ -73,7 +73,8 @@ set(MOOTATION_TESTS
     test_core_readings
     test_wrap
     test_external
-    test_success)
+    test_success
+    test_warm_start_so)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

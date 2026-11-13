@@ -73,6 +73,7 @@ struct Options {
     std::size_t n_min = 4;              // §II-F
     long long max_nfe = 0;              // 0: 10000 D (§III)
     symmetry::Sym sym;                  // task 19 (pbest.hpp PB-3)
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 class LSHADE {
@@ -101,7 +102,7 @@ public:
 
     Rows ask()
     {
-        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, n_, rng_);
+        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, n_, rng_, o_.seeds);
         const std::vector<std::size_t> order = pbest::ranking(f_, v_);
         const std::size_t top = std::max<std::size_t>(                   // LSHADE-1
             2, static_cast<std::size_t>(std::ceil(o_.p * static_cast<double>(n_))));

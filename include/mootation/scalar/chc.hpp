@@ -73,6 +73,7 @@ struct Options {
     double alpha = 0.5;                                    // 1993 §4
     unsigned bits = 10;                                    // CHC-1
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // CHC-6
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 class CHC {
@@ -92,7 +93,7 @@ public:
 
     Rows ask()
     {
-        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.m, rng_);
+        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.m, rng_, o_.seeds);
         if (pending_) return diverge();
         diverged_ = false;
         const auto b = ops_bounds();

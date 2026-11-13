@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-278 items: 264 yes, 14 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+279 items: 264 yes, 15 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -603,6 +603,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `restarts` | RST-6 | The box gives the start: a bound that is not finite is refused, and so are constraints (bounds only). | yes | `restarts.hpp` |
 | `restarts` | RST-7 | A run's generator and its start mean come from start_seed(seed, k) (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and σ⁰ of a run of regime 2 from it before the start mean. | yes | `restarts.hpp` |
 | `restarts` | RST-8 | A run that evaluates nothing ends the strategy (ipop, bipop and bipop_2009): the budget, or the run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's own allowance says, or every point the run asks f... | yes | `restarts.hpp` |
+| `restarts` | RST-9 | With warm_start = on (task 24, §24.4.1; off by default: x0 is ignored and reported, as before) x0 is the start mean of the first run only; the restarts draw theirs as before (the decision of 13.11: INJ-3 stays). | no: option | `restarts.hpp` |
 | `scalar` | SCALAR-1 | n_sub from the budget: what is left after the plan's start and the anchors, over 10 (n + 1) evaluations a subproblem for sqp — about ten iterations from a neighbour's solution — and 100 n for nm and cmaes; at most pop... | yes | `scalar.hpp` |
 | `scalar` | SCALAR-2 | nm, cmaes: an infeasible point is worth the worst feasible value known for its subproblem plus its violation (Deb's rule as a penalty). | yes | `scalar.hpp` |
 | `scalar` | SCALAR-3 | tch: w_i = 1 / max(d_i, 1e-6) for the lattice's direction d, so that the solutions lie on the rays F̄ ∝ d the lattice spreads evenly; the reference point is z*. | yes | `scalar.hpp` |
@@ -628,7 +629,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | LOCAL-6 | lm_gauge = on needs the problem's gauge_basis; its k and \|\|J N\|\| / \|\|J\|\| at lm's solution (lm.hpp LMN-4) go to the settings (lm_gauge_k, lm_gauge_ratio). | yes | `scalar.hpp` |
 | `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
-| `scalar` | POP-7 | The first population is the method's draw: x0, a design (init) and seed points are not used and are reported as ignored, except x0 for sep_cmaes, its mean (normalized and clipped to the box); without x0 the mean is a... | yes | `scalar.hpp` |
+| `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
 | `scalar` | POP-9 | sym = off \| canon \| align (task 19, §19.2.2; symmetry.hpp SYM-7 ... | yes | `scalar.hpp` |
 | `search` | SRCH-1 | MLSL's r_k: part II's (2) prints it without Γ; it refers to part I's Single Linkage analysis, whose (35) has Γ(1 + n/2) (the volume of the unit ball): taken with Γ. m(S) = 1, distances in the box normalized to [0, 1]^n. | yes | `search.hpp` |

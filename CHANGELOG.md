@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.4.1): `warm_start = "on"` (C++ for now; off by
+  default) for the single-objective population methods de ... spso2011:
+  the start — x0, then the seed points (free: their values known) or the
+  design's rows — is the first population's first rows, the method's own
+  uniform draw made in full all the same (POP-7); for ipop and bipop x0 is
+  the first run's mean (RST-9). Without the knob a start is ignored and
+  reported as before, which the strategies' starts (x0 to their inner
+  solver) rely on.
 - Added (task 24, §24.1.5): a measure of success of the user's own at one
   objective, in C++: `scalar::Problem::accept_success(x)`, asked at the
   feasible points with f <= `post_at`, its first acceptance ends the run as

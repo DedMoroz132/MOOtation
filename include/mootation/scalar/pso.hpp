@@ -71,6 +71,7 @@ struct Options {
     bool ring = true;                                      // PSO-4
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // PSO-6
     symmetry::Sym sym;                                     // PSO-9
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 // (4.17)
@@ -119,7 +120,7 @@ public:
     {
         const std::size_t d = lo_.size();
         if (x_.empty()) {
-            x_ = evo::uniform(lo_, hi_, o_.n, rng_);
+            x_ = evo::uniform(lo_, hi_, o_.n, rng_, o_.seeds);
             v_.assign(o_.n, Vec(d, 0.0));
             if (!o_.v0_zero) {                                           // PSO-3
                 rnd::uniform_real_distribution<double> U01(0.0, 1.0);

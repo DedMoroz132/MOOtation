@@ -89,4 +89,14 @@ inline Rows uniform(const Vec& lo, const Vec& hi, std::size_t np, std::mt19937& 
     return x;
 }
 
+// The first population with seeds (task 24, §24.4.1; scalar.hpp POP-7): the
+// uniform draw as without them — the same draws, so that the run's stream
+// goes on as before — its first rows replaced by the seeds, at most np
+inline Rows uniform(const Vec& lo, const Vec& hi, std::size_t np, std::mt19937& rng, const Rows& seeds)
+{
+    Rows x = uniform(lo, hi, np, rng);
+    for (std::size_t i = 0; i < seeds.size() && i < np; ++i) x[i] = seeds[i];
+    return x;
+}
+
 }   // namespace mootation::scalar::evo

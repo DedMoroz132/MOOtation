@@ -1316,10 +1316,22 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
 //   POP-6. The population is the method's own (np), not pop_size: the papers'
 //     sizes are part of the methods (lshade's N_init = 18 D, pso's 20).
 //     pop_size still sets the observer's stride (evaluator.hpp).
-//   POP-7. The first population is the method's draw: x0, a design (init)
-//     and seed points are not used and are reported as ignored, except x0
-//     for sep_cmaes, its mean (normalized and clipped to the box); without
-//     x0 the mean is a uniform point of the box, drawn first.
+//   POP-7. The first population is the method's draw. With warm_start = on
+//     (task 24, §24.4.1; off by default) its first rows are the start
+//     (scalar/evo.hpp): x0, then the
+//     seed points (planted, their values known: no evaluation) or else the
+//     design's rows (init), at most the population's size; the uniform draw
+//     is made in full all the same, so that the run's stream goes on as
+//     without a start. Seed points past the population's size stay in the
+//     archive (and the answer), outside the population; design rows past it
+//     are not evaluated. A start outside the box is refused. sep_cmaes takes
+//     x0 alone, as its mean (normalized and clipped to the box), and reports
+//     the design and the seed points as ignored; without x0 the mean is a
+//     uniform point of the box, drawn first. With warm_start = off (the
+//     default) the start is ignored and reported, as before task 24 — a
+//     strategy hands its inner solver x0 (search::at), which a population
+//     method has always ignored, so that the strategies' runs stay as they
+//     were; warm_start goes to the settings only where given.
 //   POP-8. lshade's MAX_NFE is the run's budget unless lshade_max_nfe is
 //     set: §III's MAX_NFE is the budget the run is given.
 //   POP-9. sym = off | canon | align (task 19, §19.2.2; symmetry.hpp SYM-7
@@ -1342,6 +1354,7 @@ namespace detail {
 inline std::vector<std::string> population_knobs(const std::string& name)
 {
     std::vector<std::string> k{"np"};
+    if (name != "sep_cmaes") k.push_back("warm_start");                             // POP-7
     if (name == "de") k.insert(k.end(), {"F", "CR", "bound_repair", "sym"});
     else if (name == "jade") k.insert(k.end(), {"jade_p", "jade_c", "de_archive", "sym"});
     else if (name == "shade") k.insert(k.end(), {"shade_h", "shade_p_max", "de_archive", "sym"});
@@ -1485,19 +1498,43 @@ inline Result run_population(const std::string& name, const Problem& P, double e
         throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
                                     std::to_string(P.lo.size()) + " variables");
     detail::PopulationKnobs k(name, knobs);
-    if (start.has_x0 && name != "sep_cmaes") k.ignored.push_back("x0");             // POP-7
-    if (start.has_design) k.ignored.push_back("init");
-    if (start.has_seed_points) k.ignored.push_back("seed_points");
+    const bool cma = name == "sep_cmaes";
+    const bool warm = !cma && k.given("warm_start") && k.word("warm_start", "off", {"off", "on"}) == "on";
+    if (start.has_x0 && !cma && !warm) k.ignored.push_back("x0");                   // POP-7
+    if (start.has_design && !warm) k.ignored.push_back("init");
+    if (start.has_seed_points && !warm) k.ignored.push_back("seed_points");
     std::sort(k.ignored.begin(), k.ignored.end());
+    // the first population's first rows (POP-7): x0, the seed points or the design
+    Rows seeds;
+    if (warm) {
+        if (start.has_x0) seeds.push_back(start.x0);
+        if (start.has_seed_points)
+            for (const Point& q : start.seed_points) seeds.push_back(q.x);
+        else if (start.has_design)
+            for (const Vec& x : start.design) seeds.push_back(x);
+        for (std::size_t i = 0; i < seeds.size(); ++i) {
+            if (seeds[i].size() != P.lo.size())
+                throw std::invalid_argument(name + ": start point " + std::to_string(i) + " has " +
+                                            std::to_string(seeds[i].size()) + " values for " +
+                                            std::to_string(P.lo.size()) + " variables");
+            for (std::size_t j = 0; j < P.lo.size(); ++j)
+                if (!(P.lo[j] <= seeds[i][j] && seeds[i][j] <= P.hi[j]))
+                    throw std::invalid_argument(name + ": start point " + std::to_string(i) +
+                                                " is outside the box (variable " + std::to_string(j) + ")");
+        }
+    }
     const std::vector<std::string> yes_no{"yes", "no"};
     const Vec lo = P.lo, hi = P.hi;
     const std::size_t np = k.np();
 
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    if (warm && start.has_seed_points)                                              // POP-7: known, free
+        for (const Point& q : start.seed_points) ev.plant(q.x, q.f, q.g);
     try {
         if (name == "de") {
             de::Options o;
+            o.seeds = seeds;
             o.np = np;
             o.F = k.number("F", o.F);
             o.CR = k.number("CR", o.CR);
@@ -1508,6 +1545,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [&] { return m.done(); });
         } else if (name == "jade") {
             jade::Options o;
+            o.seeds = seeds;
             o.np = np;
             o.p = k.number("jade_p", o.p);
             o.c = k.number("jade_c", o.c);
@@ -1518,6 +1556,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [&] { return m.done(); });
         } else if (name == "shade") {
             shade::Options o;
+            o.seeds = seeds;
             if (np) o.np = np;
             o.H = k.whole("shade_h", o.H);
             o.p_max = k.number("shade_p_max", o.p_max);
@@ -1528,6 +1567,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [&] { return m.done(); });
         } else if (name == "lshade") {
             lshade::Options o;
+            o.seeds = seeds;
             if (np) o.r_ninit = static_cast<double>(np) / static_cast<double>(lo.size());   // N_init = np
             o.H = k.whole("shade_h", o.H);
             o.p = k.number("lshade_p", o.p);
@@ -1541,6 +1581,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [&] { return m.done(); });
         } else if (name == "ga_sbx" || name == "ssga") {
             ga::Options o = name == "ssga" ? ga::ssga() : ga::ga_sbx();
+            o.seeds = seeds;
             if (np) o.mu = np;
             o.pc = k.number("pc", o.pc);
             o.eta_c = k.number("eta_c", o.eta_c);
@@ -1557,6 +1598,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [&] { return m.done(); });
         } else if (name == "g3_pcx") {
             ga::G3Options o;
+            o.seeds = seeds;
             if (np) o.n = np;
             o.mu = k.whole("g3_mu", o.mu);
             o.lambda = k.whole("g3_lambda", o.lambda);
@@ -1567,6 +1609,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [] { return false; });
         } else if (name == "chc") {
             chc::Options o;
+            o.seeds = seeds;
             if (np) o.m = np;
             o.divergence = k.number("chc_divergence", o.divergence);
             o.alpha = k.number("blx_alpha", o.alpha);
@@ -1577,6 +1620,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [] { return false; });
         } else if (name == "pso") {
             pso::Options o;
+            o.seeds = seeds;
             if (np) o.n = np;
             o.phi_max = k.number("pso_phi", o.phi_max);
             o.kappa = k.number("kappa", o.kappa);
@@ -1589,6 +1633,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             population::drive(m, ev, [&] { return m.done(); });
         } else if (name == "spso2011") {
             spso2011::Options o;
+            o.seeds = seeds;
             if (np) o.n = np;
             o.K = k.whole("spso_k", o.K);
             o.sym = k.sym(P);

@@ -74,6 +74,7 @@ struct Options {
     double c = 0.5 + 0.6931471805599453;                   // 0.5 + ln 2
     double w = 1.0 / (2.0 * 0.6931471805599453);           // 1 / (2 ln 2)
     symmetry::Sym sym;                                     // SPSO-9
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 // A particle's move ((2a-c), (3), (1b), SPSO-3, SPSO-5, SPSO-6): X and V from
@@ -134,7 +135,7 @@ public:
         const std::size_t d = lo_.size();
         rnd::uniform_real_distribution<double> U01(0.0, 1.0);
         if (x_.empty()) {                                                // (4a-b)
-            x_ = evo::uniform(lo_, hi_, o_.n, rng_);
+            x_ = evo::uniform(lo_, hi_, o_.n, rng_, o_.seeds);
             v_.assign(o_.n, Vec(d));
             for (std::size_t i = 0; i < o_.n; ++i)
                 for (std::size_t j = 0; j < d; ++j)

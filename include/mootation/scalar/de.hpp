@@ -71,6 +71,7 @@ struct Options {
     double CR = 0.1;                                       // §4
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // DE-2
     symmetry::Sym sym;                                     // DE-6
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 // The trial of x_i (DE-1, (2), (4)); sym: DE-6.
@@ -121,7 +122,7 @@ public:
 
     Rows ask()
     {
-        if (x_.empty()) return trial_ = evo::uniform(lo_, hi_, o_.np, rng_);
+        if (x_.empty()) return trial_ = evo::uniform(lo_, hi_, o_.np, rng_, o_.seeds);
         trial_.assign(o_.np, Vec());
         for (std::size_t i = 0; i < o_.np; ++i) trial_[i] = trial(x_, i, o_, lo_, hi_, rng_);
         return trial_;

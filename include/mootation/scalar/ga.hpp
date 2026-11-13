@@ -120,6 +120,7 @@ struct Options {
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // GA-4 (BLX)
     symmetry::Sym sym;                                     // GA-6
     double block_uniform = 0.0, block_mutation = 0.0;      // GA-7, GA-8 (sym's groups)
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 inline Options ga_sbx() { return Options{}; }
@@ -212,7 +213,7 @@ public:
 
     Rows ask()
     {
-        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.mu, rng_);
+        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.mu, rng_, o_.seeds);
         u_.clear();
         Vec c1, c2;
         rnd::uniform_int_distribution<int> coin(0, 1);
@@ -314,6 +315,7 @@ struct G3Options {
     bool modified = false;                                 // §3.2.2
     bool best_centre = true;                               // §3.2.1, G3-1
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // GA-4
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 class G3 {
@@ -329,7 +331,7 @@ public:
 
     Rows ask()
     {
-        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.n, rng_);
+        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.n, rng_, o_.seeds);
         rnd::uniform_int_distribution<std::size_t> pick(0, o_.n - 1);
         std::vector<std::size_t> idx{evo::best(f_, v_)};                // (1), G3-2
         while (idx.size() < o_.mu) {

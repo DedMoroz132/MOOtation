@@ -64,6 +64,12 @@
 //     bipop_2009): the budget, or the run's target (evaluator.hpp, THE
 //     TARGET), is spent, whatever regime 2's own allowance says, or every
 //     point the run asks for is in the archive (a box of zero width).
+//   RST-9. With warm_start = on (task 24, §24.4.1; off by default: x0 is
+//     ignored and reported, as before) x0 is the start mean of the first run
+//     only; the restarts draw
+//     theirs as before (the decision of 13.11: INJ-3 stays). The first run's
+//     uniform mean is drawn all the same and then replaced, so that its
+//     stream goes on as without x0. An x0 outside the box is refused.
 // ============================================================================
 
 #include <algorithm>
@@ -171,7 +177,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     using restarts::Run;
     const bool bipop = name != "ipop";
     std::vector<std::string> own{"cma_weights", "cma_cmu", "cma_sigma0", "start_share", "cma_bounds", "min_dist",
-                                 "min_df", "keep_points", "cma_stagnation"};
+                                 "min_df", "keep_points", "cma_stagnation", "warm_start"};
     if (bipop) own.push_back("bipop_large");
     StrategyKnobs k(name, knobs, own);
     CMAESOptions o;
@@ -204,9 +210,18 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
             throw std::invalid_argument(name + " draws its start in the box: every bound must be finite (RST-6)");
         width = std::max(width, P.hi[j] - P.lo[j]);
     }
+    const bool warm = k.find("warm_start") && k.word("warm_start", "off", {"off", "on"}) == "on";   // RST-9
     std::vector<std::string> ignored = k.ignored();
-    if (start.has_x0) ignored.push_back("x0");
+    if (start.has_x0 && !warm) ignored.push_back("x0");
     std::sort(ignored.begin(), ignored.end());
+    if (start.has_x0 && warm) {
+        if (start.x0.size() != n)
+            throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
+                                        std::to_string(n) + " variables");
+        for (std::size_t j = 0; j < n; ++j)
+            if (!(P.lo[j] <= start.x0[j] && start.x0[j] <= P.hi[j]))
+                throw std::invalid_argument(name + ": x0 is outside the box (variable " + std::to_string(j) + ")");
+    }
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     ev.lean = lean;
@@ -214,7 +229,8 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     const double sigma_large = sigma_share * width;
     std::vector<Run> runs;
     auto one = [&](int regime, std::size_t lambda, double sigma0, long long allowance, std::mt19937& rng) {
-        const Vec m0 = restarts::start_mean(P.lo, P.hi, share, rng);
+        Vec m0 = restarts::start_mean(P.lo, P.hi, share, rng);
+        if (warm && start.has_x0 && runs.empty()) m0 = start.x0;                        // RST-9
         Run r = restarts::run_cma(ev, m0, sigma0, lambda, o, clip, allowance, rng);
         r.regime = regime;
         runs.push_back(r);

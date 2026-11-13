@@ -1530,9 +1530,16 @@ goes through the evaluator: counted, kept in the archive, and the best
 point's records with it; a point asked for again is not evaluated again
 (POP-2). The budget may end inside a generation (POP-1). `np` sets the
 population, 0 (the default) the paper's size (de 10 D, lshade 18 D, pso 20,
-...); `pop_size` does not (POP-6). Every bound must be finite (POP-5); `x0`, a
-design and seed points are ignored and reported, but `sep_cmaes` takes `x0`
-as its mean (POP-7). A shorter budget gives the same run cut short, except
+...); `pop_size` does not (POP-6). Every bound must be finite (POP-5). With
+`warm_start = "on"` (task 24, §24.4.1; C++ for now, off by default: the
+start is ignored and reported, as before) a start is the first
+population's first rows (POP-7): `x0`, then
+the seed points (`seed_population`, their values known, no evaluation) or
+the design's rows (`init`), at most `np`; the rest of the population is the
+method's own uniform draw, made in full so that the run goes on as without
+a start. `sep_cmaes` takes `x0` alone, as its mean, without the knob; `ipop`
+and `bipop` with `warm_start = "on"` take `x0` as their first run's mean
+(RST-9). A shorter budget gives the same run cut short, except
 for `lshade`, whose population shrinks over the budget (POP-8,
 `lshade_max_nfe`); the others do not depend on `max_evaluations`.
 

@@ -59,6 +59,7 @@ struct Options {
     double p_max = 0.2;                 // (20)
     bool archive = true;
     symmetry::Sym sym;                  // task 19 (pbest.hpp PB-3)
+    Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
 };
 
 namespace detail {
@@ -119,7 +120,7 @@ public:
 
     Rows ask()
     {
-        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.np, rng_);
+        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.np, rng_, o_.seeds);
         const std::size_t n = o_.np;
         const double nn = static_cast<double>(n);
         const std::vector<std::size_t> order = pbest::ranking(f_, v_);
