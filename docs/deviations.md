@@ -415,7 +415,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-294 items: 285 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+298 items: 289 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -550,6 +550,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lm` | LMP-2 | The automatic grid: steps of h = sqrt(2 threshold C_jj) / 10, C = (J^T J)^+ at x_hat (the quadratic model's crossing in ten steps), or 0.1 max(1, \|x_hat_j\|) where C_jj = 0; max_steps nodes a side at most; a side ends... | yes | `lm.hpp` |
 | `lm` | LMP-3 | Flat: every node's cost within flat_tol max(1, cost_hat) of cost_hat (flat_tol = 1e-8). | yes | `lm.hpp` |
 | `lm` | LMP-4 | chi2_quantile: the regularized lower incomplete gamma P(df/2, x/2) by its power series, the definition's integrand e^-t t^(a-1) expanded and integrated term by term: P(a, z) = z^a e^-z / Gamma(a + 1) sum_k z^k / ((a +... | yes | `lm.hpp` |
+| `lm_ma_es` | LMMA-1 | c_sigma = 2 lambda / n is meant for large n (L18's experiments: n = 128 ... 8192); at 2 lambda >= n it is 1 or more and line 13 breaks down (n = 10: c_sigma = 2, sqrt(mu_w c (2 - c)) = 0). | yes | `lm_ma_es.hpp` |
+| `lm_ma_es` | LMMA-2 | Algorithm 1 leaves the stopping criterion open ("until stopping criterion is met"): here the budget, f <= f_target, sigma below tol_sigma times its start, and max_iter iterations. | yes | `lm_ma_es.hpp` |
+| `lm_ma_es` | LMMA-3 | The ranking is a stable sort of f (ties in sampling order); a NaN ranks last. | yes | `lm_ma_es.hpp` |
+| `lm_ma_es` | LMMA-4 | The best point evaluated is the answer (the mean y is not evaluated, as in Algorithm 1). | yes | `lm_ma_es.hpp` |
 | `lshade` | LSHADE-1 | "the top N p members": the ceil(N p) best, at least 2 (SHADE's p_min = 2/N); ranking and the trial's draws as pbest.hpp (PB-1, PB-2). | yes | `lshade.hpp` |
 | `lshade` | LSHADE-2 | The draws for x_i, in Algorithm 2's order: r_i, CR_i (none when M_CR,r_i = ⊥), F_i, then the trial's. | yes | `lshade.hpp` |
 | `lshade` | LSHADE-3 | Algorithm 2, line 25 reads "if N_G < N_G+1"; the text says "whenever N_G+1 < N_G, the worst-ranking individuals are deleted" — taken. | yes | `lshade.hpp` |
