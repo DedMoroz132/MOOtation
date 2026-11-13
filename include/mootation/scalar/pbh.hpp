@@ -64,6 +64,39 @@
 
 namespace mootation::scalar {
 
+namespace search {
+
+// The dissimilarity of two local minima (pbh, mde): fdiff |f(a) - f(b)|;
+// euclid the Euclidean distance in the box normalized to [0, 1]^n, the short
+// way round a periodic coordinate; aligned the problem's align of a to b and
+// then euclid, else symmetry::distance on sym_blocks and canon (SYM-11), else
+// euclid
+inline double dissimilarity(const Problem& P, const std::string& kind, const Found& a, const Found& b,
+                            const Vec& period)
+{
+    if (kind == "fdiff") return std::fabs(a.f - b.f);
+    const std::size_t n = P.lo.size();
+    Vec x = a.x;
+    if (kind == "aligned") {
+        if (P.align) {
+            Vec out;
+            P.align(a.x, b.x, out);
+            x = out;
+        } else if (!P.sym_blocks.empty()) {
+            return symmetry::distance(a.x, b.x, P.sym_blocks, P.canon, period);
+        }
+    }
+    double s = 0.0;
+    for (std::size_t j = 0; j < n; ++j) {
+        const double w = width(P, j);
+        const double g = periodic::gap(x[j], b.x[j], periodic::is(P.periodic, j), w) / (w > 0.0 ? w : 1.0);
+        s += g * g;
+    }
+    return std::sqrt(s);
+}
+
+}   // namespace search
+
 inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
                       unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start)
 {
@@ -93,24 +126,7 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
     const Vec period = symmetry::periods(P.periodic, P.lo, P.hi);
 
     auto d = [&](const search::Found& a, const search::Found& b) {
-        if (dist == "fdiff") return std::fabs(a.f - b.f);
-        Vec x = a.x;
-        if (dist == "aligned") {
-            if (P.align) {
-                Vec out;
-                P.align(a.x, b.x, out);
-                x = out;
-            } else if (!P.sym_blocks.empty()) {
-                return symmetry::distance(a.x, b.x, P.sym_blocks, P.canon, period);
-            }
-        }
-        double s = 0.0;
-        for (std::size_t j = 0; j < n; ++j) {
-            const double w = search::width(P, j);
-            const double g = periodic::gap(x[j], b.x[j], periodic::is(P.periodic, j), w) / (w > 0.0 ? w : 1.0);
-            s += g * g;
-        }
-        return std::sqrt(s);
+        return search::dissimilarity(P, dist, a, b, period);
     };
     long long searches = 0, steps = 0, accepted = 0, iterations = 0;
     auto spec = [&](const Start& st) {

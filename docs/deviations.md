@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-349 items: 304 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+355 items: 310 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -587,6 +587,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lsq` | LSQ-5 | A Householder transformation whose part to be zeroed is zero already is the identity (H1 would flip the pivot's sign; the identity keeps triangular input exact). | yes | `lsq.hpp` |
 | `lsq` | LSQ-7 | The sum of H2's Step 8 is taken in four running sums (terms l, l + 4, ... in the first, and so on), then (s0 + s1) + (s2 + s3): the order is the code's, the same everywhere, and four times shorter a chain of additions... | yes | `lsq.hpp` |
 | `lsq` | LSQ-6 | HFTI's pseudorank: the diagonal elements above max(m, n) eps \|r_11\| (Step 13 leaves tau to the caller; this is NumPy's default rcond for lstsq, measured on R's diagonal instead of the singular values). | yes | `lsq.hpp` |
+| `mde` | MDE-1 | CR in the classical sense (§24.9 item 17): the probability that a coordinate is the mutant's, so mde_CR = 1 is LMS14's CR = 0 (their test "U < CR: keep x_i's coordinate", no crossover) and CL16's CR = 1. | yes | `mde.hpp` |
+| `mde` | MDE-2 | k1, k2, k3 all different and different from i (LMS14 Algorithm 2; its §3 allows repeats "without significant change"): mde needs mde_pop >= 4, the others >= 2. | yes | `mde.hpp` |
+| `mde` | MDE-3 | mde_match relabels at the start of every sweep each member to the best one (the record): align — the problem's align, else symmetry::align on sym_blocks and canon; greedy — LMS14 §4, Algorithm 4: within each group of... | yes | `mde.hpp` |
+| `mde` | MDE-4 | The local search of the s-th search has the seed start_seed(seed, s); the strategy's own draws (the indices, the coins) come from mt19937(start_seed(seed, 0x4D444531)). | yes | `mde.hpp` |
+| `mde` | MDE-5 | "The population does not change": the members' values (f, cv) are the same as at the sweep's start (LMS14 §3: "the objective values"). | yes | `mde.hpp` |
+| `mde` | MDE-6 | A trial is clipped to the box (wrapped on a periodic coordinate). | yes | `mde.hpp` |
 | `mosqp` | MS-1 | τ = 1e-8 (mosqp_tau), μ = 1e-4 (mosqp_mu, Armijo), β = 1/2 (mosqp_beta); n̄ = pop_size. | yes | `mosqp.hpp` |
 | `mosqp` | MS-2 | H_i = I in both stages: the first of §6's three cases (the others need second derivatives the problems here do not give). | yes | `mosqp.hpp` |
 | `mosqp` | MS-3 | Gradients and Jacobians by forward differences (fd_step in the box normalized to [0, 1], as sqp in solvers.hpp), n evaluations a point. | yes | `mosqp.hpp` |
