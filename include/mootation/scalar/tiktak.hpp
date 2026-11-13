@@ -76,7 +76,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
     using namespace strategy;
     StrategyKnobs k("tiktak", knobs,
                     {"inner", "tiktak_n", "tiktak_share", "start_points", "start_budget", "min_dist", "min_df",
-                     "keep_points"});
+                     "keep_points", "minima_bayes"});
     const Inner inner = k.inner("inner");
     const long long N = k.whole("tiktak_n", 100, 1);
     const double share = k.number("tiktak_share", 0.1);
@@ -132,8 +132,11 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
         }
     } catch (const BudgetSpent&) {
     }
-    return search::finish(ev, k, log,
-                          {{"tiktak_n_star", std::to_string(n_star)}, {"local_searches", std::to_string(searches)}});
+    std::vector<std::pair<std::string, std::string>> extra{{"tiktak_n_star", std::to_string(n_star)},
+                                                           {"local_searches", std::to_string(searches)}};
+    if (bayes_of(k))                                                                              // STRAT-13
+        for (auto& e : bayes_estimates(static_cast<long long>(log.list().size()), searches)) extra.push_back(e);
+    return search::finish(ev, k, log, extra);
 }
 
 }   // namespace mootation::scalar

@@ -97,6 +97,11 @@
 //     2^32)) in the order of the searches. The global run then differs from
 //     the last phase's, and its earlier points are free only where met
 //     again. lamarck and lamarck_share go to the settings only where given.
+//   SRCH-13. mlsl_stop = bayes (task 24, §24.2.5; off by default: budget):
+//     mlsl stops after the iteration where w (gamma k N - 1) / (gamma k N - w
+//     - 2) <= w + 1/2 (part II, (3)), w the minima log's minima (at least
+//     one), gamma k N the reduced sample (floor, as the iteration's); the
+//     sample grows by mlsl_n as before, not to part II's (4).
 //   SRCH-9. memetic: a phase whose global run spends nothing is the last (as
 //     RST-8): the global solver has stopped by its own criteria (rerun, it
 //     evaluates nothing new), and the local searches alone would go on in
@@ -228,7 +233,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     using namespace strategy;
     StrategyKnobs k("mlsl", knobs,
                     {"inner", "mlsl_n", "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "threads", "start_budget",
-                     "min_dist", "min_df", "keep_points"});
+                     "min_dist", "min_df", "keep_points", "mlsl_stop", "minima_bayes"});
     const Inner inner = k.inner("inner");
     const long long N = k.whole("mlsl_n", 100, 1);
     const double sigma = k.number("mlsl_sigma", 4.0), gamma = k.number("mlsl_gamma", 0.2);
@@ -237,6 +242,10 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     const double min_dist = k.number("min_dist", 1e-3), min_df = k.number("min_df", 1e-8);
     if (!(sigma > 0.0) || !(gamma > 0.0 && gamma <= 1.0))
         throw std::invalid_argument("mlsl: mlsl_sigma must be > 0 and mlsl_gamma in (0, 1]");
+    const bool bayes_stop =                                                          // SRCH-13
+        k.find("mlsl_stop") && k.word("mlsl_stop", "budget", {"budget", "bayes"}) == "bayes";
+    const bool bayes = bayes_of(k);                                                  // strategy.hpp STRAT-13
+    long long reduced_last = 0;
     search::finite_box("mlsl", P);
     const std::size_t n = P.lo.size();
     const double dn = static_cast<double>(n);
@@ -313,12 +322,20 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
                 minima.push_back(u);
             }
             searches += static_cast<long long>(res.size());
+            reduced_last = static_cast<long long>(reduced);
+            if (bayes_stop) {                                                                    // SRCH-13
+                const double w = static_cast<double>(log.list().size()), gN = static_cast<double>(reduced);
+                if (w >= 1.0 && gN > w + 2.0 && w * (gN - 1.0) / (gN - w - 2.0) <= w + 0.5) break;
+            }
             if (search::left(ev) <= 0 || ev.used() == before) break;                             // SRCH-10
         }
     } catch (const BudgetSpent&) {
     }
-    return search::finish(ev, k, log,
-                          {{"iterations", std::to_string(iterations)}, {"local_searches", std::to_string(searches)}});
+    std::vector<std::pair<std::string, std::string>> extra{{"iterations", std::to_string(iterations)},
+                                                           {"local_searches", std::to_string(searches)}};
+    if (bayes)                                                                                    // STRAT-13
+        for (auto& e : bayes_estimates(static_cast<long long>(log.list().size()), reduced_last)) extra.push_back(e);
+    return search::finish(ev, k, log, extra);
 }
 
 // ── ils, basin_hopping ──────────────────────────────────────────────────────

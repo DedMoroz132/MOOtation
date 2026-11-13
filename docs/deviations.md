@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-296 items: 264 yes, 32 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+299 items: 264 yes, 35 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -654,6 +654,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-7 | memetic: the global solver is rerun with its allowance grown by memetic_every, its earlier points free (as SRCH-6); it does not see the local searches' points (no Lamarckian step), they only enter the answer. | yes | `search.hpp` |
 | `search` | SRCH-8 | A local search's result is the inner solver's answer; worse means more violating, then larger f (Deb). | yes | `search.hpp` |
 | `search` | SRCH-12 | memetic's lamarck (task 24, §24.1.1; off by default, and then SRCH-7 holds): on — every local search's answer x' (its values from the archive) is a seed of the global solver's later runs, the newest first, with warm_s... | no: option | `search.hpp` |
+| `search` | SRCH-13 | mlsl_stop = bayes (task 24, §24.2.5; off by default: budget): mlsl stops after the iteration where w (gamma k N - 1) / (gamma k N - w - 2) <= w + 1/2 (part II, (3)), w the minima log's minima (at least one), gamma k N... | no: option | `search.hpp` |
 | `search` | SRCH-9 | memetic: a phase whose global run spends nothing is the last (as RST-8): the global solver has stopped by its own criteria (rerun, it evaluates nothing new), and the local searches alone would go on in phases of a few... | yes | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
@@ -692,6 +693,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |
 | `strategy` | STRAT-10 | start_points = around_x0 (task 24, §24.2.5; off by default): start 0 is the start (x0, which it needs), start k >= 1 is x0 + N(0, sigma^2) coordinate by coordinate, sigma = start_sigma times the coordinate's width whe... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-12 | keep_points = best (task 24, §24.3.3; off by default: all): the run's evaluator keeps its best point and its last (evaluator.hpp THE LEAN MODE) — multistart, ils, basin_hopping, mlsl, tiktak; a start's own run keeps i... | no: option | `strategy.hpp` |
+| `strategy` | STRAT-13 | minima_bayes = on (task 24, §24.2.5; off by default): the settings get Boender's posterior expectations (Rinnooy Kan & Timmer 1987, part I, Proposition 2): the number of minima w (N - 1) / (N - w - 2) (11), "inf" wher... | no: option | `strategy.hpp` |
+| `strategy` | STRAT-14 | start_filter = oqnlp (task 24, §24.2.5; off by default: every start runs): Ugray, Lasdon, Plummer, Glover, Kelly & Marti 2007, §3.4, Table 2. multistart's starts become trial points, one after another: the first oq_st... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-11 | allowance = sequential (task 24, §24.2.5; off by default: even, STRAT-3) runs multistart's starts one after another, each with all the budget left (its floor), until the budget or the target is spent; one thread, and... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-4 | The minima log: a start's answer joins the first minimum within min_dist (the box normalized to [0, 1]^n where it is finite, else the problem's coordinates; the largest coordinate difference) and min_df in f, else is... | yes | `strategy.hpp` |
 | `strategy` | STRAT-5 | The run's equalities' tolerance schedule (eq_tol0) is the inner solver's, on its own allowance. | yes | `strategy.hpp` |

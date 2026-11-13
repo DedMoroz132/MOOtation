@@ -74,6 +74,37 @@
 //     so that no more than a chunk's points are held at once; the chunk does
 //     not depend on threads (1 thread = N threads). A point met by two
 //     starts is counted in both (there is no archive to find it in).
+//   STRAT-13. minima_bayes = on (task 24, §24.2.5; off by default): the
+//     settings get Boender's posterior expectations (Rinnooy Kan & Timmer
+//     1987, part I, Proposition 2): the number of minima w (N - 1) / (N - w -
+//     2) (11), "inf" where N <= w + 2, and the share of the space in the
+//     regions of attraction not yet found w (w + 1) / (N (N - 1)) (12) — w the
+//     minima log's minima, N the local searches that gave an answer
+//     (multistart, tiktak), the reduced sample gamma k N for mlsl (part I,
+//     §3). The proposition's prior: uniform starting points; at a design
+//     (sobol, lhs) or about x0 they are an indication.
+//   STRAT-14. start_filter = oqnlp (task 24, §24.2.5; off by default: every
+//     start runs): Ugray, Lasdon, Plummer, Glover, Kelly & Marti 2007, §3.4,
+//     Table 2. multistart's starts become trial points, one after another:
+//     the first oq_stage1 (200) are evaluated, the inner solver runs from
+//     the best; then each later trial point is evaluated and the inner
+//     solver runs from it only if it passes both filters — the distance
+//     filter (its Euclidean distance to every local solution found is at
+//     least oq_distfactor (0.75) times that solution's maxdist, the largest
+//     distance from a start that led to it) and the merit filter (its P1 at
+//     most the threshold, which becomes its P1); after oq_waitcycle (20) trial
+//     points in a row above the threshold, threshold += oq_threshfactor (0.2)
+//     * (1 + |threshold|). The threshold starts at the first solution's P1
+//     (feasible), else at the best stage 1 point's. Each run of the inner
+//     solver has all the budget left (STRAT-11). Readings: OQ-1 the
+//     threshold's rule of §3.4, not §5's; OQ-2 §5's proposals (automatic
+//     threshfactor, disjoint spheres) not made; OQ-3 P1 = f + cv (5) with
+//     the weights 1: the library's solvers give no multipliers (the weights'
+//     positive lower limit); OQ-4 the run of rejections restarts after an
+//     increase and at a point not above the threshold; OQ-5 a local solution
+//     is the minima log's (min_dist, min_df), the same minimum found again
+//     raises its maxdist; an infeasible one is not kept; OQ-6 the trial
+//     points are start 0's x0, where the start has one, and the design's.
 //   STRAT-11. allowance = sequential (task 24, §24.2.5; off by default:
 //     even, STRAT-3) runs multistart's starts one after another, each with
 //     all the budget left (its floor), until the budget or the target is
@@ -117,6 +148,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <cmath>
 #include <cstdint>
@@ -565,8 +597,10 @@ public:
 
     void add(const Vec& x, double f, long long start)
     {
-        for (Minimum& m : list_)
+        for (std::size_t q = 0; q < list_.size(); ++q) {
+            Minimum& m = list_[q];
             if (distance(m.x, x) <= dist_ && std::fabs(m.f - f) <= df_) {
+                joined_ = q;
                 ++m.found;
                 if (f < m.f) {
                     m.x = x;
@@ -575,8 +609,13 @@ public:
                 }
                 return;
             }
+        }
+        joined_ = list_.size();
         list_.push_back({x, f, start, 1});
     }
+
+    // the minimum the last add() joined or opened
+    std::size_t joined() const { return joined_; }
 
     const std::vector<Minimum>& list() const { return list_; }
 
@@ -601,6 +640,7 @@ private:
     std::vector<Minimum> list_;
     symmetry::Sym sym_;
     std::vector<char> periodic_;
+    std::size_t joined_ = 0;
 
     double distance(const Vec& a0, const Vec& b0) const
     {
@@ -684,6 +724,26 @@ private:
     std::vector<std::string> own_;
 };
 
+// STRAT-13's estimates, as settings
+inline std::vector<std::pair<std::string, std::string>> bayes_estimates(long long w, long long N)
+{
+    const double dw = static_cast<double>(w), dN = static_cast<double>(N);
+    auto full = [](double v) {                        // all 17 digits, not the settings' 6
+        char b[32];
+        std::snprintf(b, sizeof b, "%.17g", v);
+        return std::string(b);
+    };
+    const std::string expected = N > w + 2 ? full(dw * (dN - 1.0) / (dN - dw - 2.0)) : "inf";
+    const std::string uncovered = N > 1 ? full(dw * (dw + 1.0) / (dN * (dN - 1.0))) : "1";
+    return {{"minima_found", std::to_string(w)}, {"minima_searches", std::to_string(N)},
+            {"minima_expected", expected}, {"minima_uncovered", uncovered}};
+}
+
+inline bool bayes_of(StrategyKnobs& k)
+{
+    return k.find("minima_bayes") && k.word("minima_bayes", "off", {"off", "on"}) == "on";
+}
+
 // the lean mode, where keep_points = best is given (see STRAT-12)
 inline bool lean_of(StrategyKnobs& k)
 {
@@ -755,7 +815,8 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
 {
     using namespace strategy;
     StrategyKnobs k("multistart", knobs, {"inner", "n_starts", "start_points", "threads", "min_dist", "min_df",
-                                          "allowance", "start_sigma", "keep_points"});
+                                          "allowance", "start_sigma", "keep_points", "minima_bayes", "start_filter",
+                                          "oq_stage1", "oq_waitcycle", "oq_threshfactor", "oq_distfactor"});
     const Inner inner = k.inner("inner");
     const long long n_starts = k.whole("n_starts", 10, 1);
     const std::string points =
@@ -766,6 +827,18 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
         k.find("allowance") && k.word("allowance", "even", {"even", "sequential"}) == "sequential";
     const bool around = points == "around_x0";                                       // STRAT-10
     const double sigma = around ? k.number("start_sigma", 0.1) : 0.0;
+    const bool bayes = bayes_of(k);                                                  // STRAT-13
+    const bool oqnlp =                                                               // STRAT-14
+        k.find("start_filter") && k.word("start_filter", "off", {"off", "oqnlp"}) == "oqnlp";
+    const long long oq_stage1 = oqnlp ? k.whole("oq_stage1", 200, 1) : 0;
+    const long long oq_wait = oqnlp ? k.whole("oq_waitcycle", 20, 1) : 0;
+    const double oq_thresh = oqnlp ? k.number("oq_threshfactor", 0.2) : 0.0;
+    const double oq_dist = oqnlp ? k.number("oq_distfactor", 0.75) : 0.0;
+    if (oqnlp && (threads > 1 || sequential))
+        throw std::invalid_argument("multistart: start_filter = oqnlp runs its starts one by one (threads = 1, "
+                                    "allowance even)");
+    if (oqnlp && !(oq_thresh >= 0.0 && oq_dist >= 0.0))
+        throw std::invalid_argument("multistart: oq_threshfactor and oq_distfactor must be >= 0");
     const std::size_t n = P.lo.size();
     if (sequential && threads > 1)
         throw std::invalid_argument("multistart: allowance = sequential runs one start at a time (threads = 1)");
@@ -811,8 +884,98 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
         }
     }
     std::vector<Result> runs;
+    MinimaLog log(P.lo, P.hi, min_dist, min_df);
+    group_by_symmetry(k, P, log);
+    long long oq_starts = 0, oq_rejected_merit = 0, oq_rejected_distance = 0;
     try {
-        if (!sequential) {
+        if (oqnlp) {                                                                  // STRAT-14
+            auto p1 = [&](const Vec& x) {                                             // OQ-3
+                const std::size_t i = ev.index(x);
+                if (ev.failed[i]) return std::numeric_limits<double>::infinity();
+                return ev.F[i][0] + ev.cv(i);
+            };
+            auto x0_of = [&](const StartSpec& sp) { return sp.start.has_x0 ? sp.start.x0 : Vec(); };
+            std::vector<double> maxdist;                                              // a solution's, by log index
+            auto run_from = [&](StartSpec sp, const Vec& from) {
+                const double left = static_cast<double>(ev.budget) - ev.used();
+                if (left < 1.0) throw BudgetSpent{};
+                sp.allowance = static_cast<long long>(left);
+                const Result r = round(ev, inner, {sp}, 1, pop_size).at(0);
+                runs.push_back(r);
+                ++oq_starts;
+                if (P.m != 1 || r.objectives.empty() || !(r.cv.empty() || r.cv[0] <= 0.0)) return;   // OQ-5
+                const std::size_t before = log.list().size();
+                log.add(r.variables[0], r.objectives[0][0], static_cast<long long>(runs.size() - 1));
+                double d2 = 0.0;
+                for (std::size_t j = 0; j < n; ++j) d2 += (r.variables[0][j] - from[j]) * (r.variables[0][j] - from[j]);
+                const double d = std::sqrt(d2);
+                const std::size_t at = log.joined();                                  // the solution it joined
+                (void)before;
+                if (at >= maxdist.size()) maxdist.resize(at + 1, 0.0);
+                maxdist[at] = std::max(maxdist[at], d);
+            };
+            // the trial points (OQ-6): start 0's x0 where the start has one, then
+            // the starts of the design; stage 1: the first oq_stage1 evaluated,
+            // the inner solver from the best
+            std::vector<Vec> trial;
+            std::vector<StartSpec> specs;
+            for (std::size_t q = 0; q < starts.size(); ++q) {
+                const Vec x = x0_of(starts[q]);
+                if (x.empty()) continue;
+                trial.push_back(x);
+                StartSpec sp = starts[q];
+                sp.start = Start();
+                sp.start.has_x0 = true;
+                sp.start.x0 = x;
+                specs.push_back(sp);
+            }
+            if (trial.empty()) throw std::invalid_argument("multistart: start_filter = oqnlp needs trial points "
+                                                           "(n_starts >= 2, or x0)");
+            const std::size_t s1 = std::min<std::size_t>(trial.size(), static_cast<std::size_t>(oq_stage1));
+            std::size_t best = 0;
+            double best_p = std::numeric_limits<double>::infinity();
+            for (std::size_t t = 0; t < s1; ++t) {
+                const double v = p1(trial[t]);
+                if (v < best_p) {
+                    best_p = v;
+                    best = t;
+                }
+            }
+            if (!ev.recorded) ev.record();
+            double threshold = best_p;
+            run_from(specs[best], trial[best]);
+            if (!runs.back().objectives.empty() && (runs.back().cv.empty() || runs.back().cv[0] <= 0.0))
+                threshold = runs.back().objectives[0][0] + (runs.back().cv.empty() ? 0.0 : runs.back().cv[0]);
+            // stage 2: the filters
+            long long above = 0;
+            for (std::size_t t = s1; t < trial.size(); ++t) {
+                const double v = p1(trial[t]);
+                bool far = true;
+                for (std::size_t q = 0; q < log.list().size() && far; ++q) {
+                    double d2 = 0.0;
+                    for (std::size_t j = 0; j < n; ++j)
+                        d2 += (trial[t][j] - log.list()[q].x[j]) * (trial[t][j] - log.list()[q].x[j]);
+                    far = !(std::sqrt(d2) < oq_dist * (q < maxdist.size() ? maxdist[q] : 0.0));
+                }
+                const bool merit = v <= threshold;
+                if (!merit) ++oq_rejected_merit;
+                if (!far) ++oq_rejected_distance;
+                if (merit && far) {
+                    threshold = v;
+                    above = 0;
+                    run_from(specs[t], trial[t]);
+                    continue;
+                }
+                if (merit) {
+                    above = 0;                                                        // OQ-4
+                    continue;
+                }
+                if (++above >= oq_wait) {                                             // OQ-1
+                    threshold += oq_thresh * (1.0 + std::fabs(threshold));
+                    above = 0;
+                }
+            }
+        } else if (!sequential) {
             runs = round(ev, inner, starts, static_cast<int>(threads), pop_size);
         } else {                                                                      // STRAT-11
             for (StartSpec& sp : starts) {
@@ -825,18 +988,26 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
     } catch (const BudgetSpent&) {
     }
     if (!ev.recorded) ev.record();
-    MinimaLog log(P.lo, P.hi, min_dist, min_df);
-    group_by_symmetry(k, P, log);
+    long long answered = 0;
     if (P.m == 1)
         for (std::size_t s = 0; s < runs.size(); ++s)
-            if (!runs[s].objectives.empty())
-                log.add(runs[s].variables[0], runs[s].objectives[0][0], static_cast<long long>(s));
+            if (!runs[s].objectives.empty()) {
+                if (!oqnlp) log.add(runs[s].variables[0], runs[s].objectives[0][0], static_cast<long long>(s));
+                ++answered;
+            }
     ev.over = true;
     const std::vector<std::size_t> idx = ev.answer();
     ev.record(true);
     Result r = detail::result_of(ev, idx);
     r.ignored = k.ignored();
     r.settings = k.settings;
+    if (oqnlp) {                                                                      // STRAT-14
+        r.settings.push_back({"oq_starts", std::to_string(oq_starts)});
+        r.settings.push_back({"oq_rejected_merit", std::to_string(oq_rejected_merit)});
+        r.settings.push_back({"oq_rejected_distance", std::to_string(oq_rejected_distance)});
+    }
+    if (bayes)                                                                        // STRAT-13
+        for (auto& e : bayes_estimates(static_cast<long long>(log.list().size()), answered)) r.settings.push_back(e);
     r.settings.push_back({"minima", log.json_text()});
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;

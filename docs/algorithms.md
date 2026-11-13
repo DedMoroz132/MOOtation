@@ -150,14 +150,14 @@ with the same result, bit for bit; a point two starts evaluate counts once.
 
 | Strategy | Knobs |
 |---|---|
-| `multistart` | `inner`, `n_starts` (10), `start_points` (`sobol`, `lhs`, `uniform`, `halton_rand`, `sobol_owen`, `around_x0` with `start_sigma` (0.1): x0 + N(0, σ²) per coordinate, σ a share of the width, STRAT-10), `allowance` (`even`, `sequential`: each start all the budget left, STRAT-11), `threads` (1), `min_dist` (1e-3), `min_df` (1e-8) |
+| `multistart` | `inner`, `n_starts` (10), `start_points` (`sobol`, `lhs`, `uniform`, `halton_rand`, `sobol_owen`, `around_x0` with `start_sigma` (0.1): x0 + N(0, σ²) per coordinate, σ a share of the width, STRAT-10), `allowance` (`even`, `sequential`: each start all the budget left, STRAT-11), `threads` (1), `min_dist` (1e-3), `min_df` (1e-8), `minima_bayes` (STRAT-13), `start_filter` (`off`, `oqnlp`: Ugray et al. 2007's distance and merit filters, STRAT-14) with `oq_stage1` (200), `oq_waitcycle` (20), `oq_threshfactor` (0.2), `oq_distfactor` (0.75) |
 | `ipop` (Auger & Hansen, CEC 2005) | `cma_weights`, `cma_cmu`, `cma_sigma0` (0.5 of the box's width), `start_share` (0), `cma_bounds` (`penalty`, `none`), `keep_points` (`all`, `best`), `min_dist`, `min_df` |
 | `bipop`, `bipop_2009` (Hansen, GECCO 2009) | as `ipop`, `cma_sigma0` 0.2, `start_share` 0.1, and `bipop_large` (9) |
-| `mlsl` (Rinnooy Kan & Timmer 1987) | `inner`, `mlsl_n` (100), `mlsl_sigma` (4), `mlsl_gamma` (0.2), `mlsl_tau` (0), `mlsl_nu` (0), `threads`, `start_budget` (0) |
+| `mlsl` (Rinnooy Kan & Timmer 1987) | `inner`, `mlsl_n` (100), `mlsl_sigma` (4), `mlsl_gamma` (0.2), `mlsl_tau` (0), `mlsl_nu` (0), `threads`, `start_budget` (0), `mlsl_stop` (`budget`, `bayes`: part II's (3), SRCH-13), `minima_bayes` (`off`, `on`: Boender's estimates, STRAT-13) |
 | `ils` (Lourenço, Martin & Stützle 2001) | `inner`, `ils_accept` (`better`, `rw`, `restart`, `lsmc`), `ils_step` (0.1 of the width), `ils_restart` (10), `ils_temperature` (1), `start_budget` |
 | `basin_hopping` (Wales & Doye 1997) | `inner`, `bh_temperature` (1), `bh_step` (0.05 of the width), `bh_accept_rate` (0.5), `bh_interval` (10), `start_budget` |
 | `halving` (Jamieson & Talwalkar 2016) | `inner`, `n_starts` (16), `start_points`, `threads` |
-| `tiktak` (Arnoud, Guvenen & Kleineberg 2019, 2023; task 19) | `inner` (a local solver), `tiktak_n` (100), `tiktak_share` (0.1), `start_points`, `start_budget` (0), `min_dist`, `min_df` |
+| `tiktak` (Arnoud, Guvenen & Kleineberg 2019, 2023; task 19) | `inner` (a local solver), `tiktak_n` (100), `tiktak_share` (0.1), `start_points`, `start_budget` (0), `min_dist`, `min_df`, `minima_bayes` (STRAT-13) |
 | `data_continuation` (task 19) | `inner`, `dc_stages` (the stages before the problem: `[[w_1, ...], {"window": [a, b]}, ...]`), `dc_share` (0.5), `min_dist`, `min_df` |
 | `pap` (Peng, Tang, Chen & Yao 2010; task 19) | `pap_members` (`[{"solver": "de", "np": 70}, {"solver": "pso", "np": 16}, {"solver": "cmaes", "np": 14}]`; members: `de`, `jade`, `shade`, `lshade`, `ga_sbx`, `ssga`, `g3_pcx`, `pso`, `spso2011`, `cmaes`), `pap_interval` (0: MAX_GEN / 20), `pap_size` (1) |
 | `memetic` | `inner` (the global solver), `local_solver`, `memetic_every` (1000), `memetic_points` (1), `memetic_pick` (`best`, `spread`), `local_share` (0.2), `start_budget`, `threads`, `lamarck` (`off`, `on`, `share`: the local searches' answers seed the global solver's later runs, SRCH-12), `lamarck_share` (0.25) |

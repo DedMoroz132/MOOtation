@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.2.5): `minima_bayes = on` for multistart, mlsl and
+  tiktak — Boender's posterior expectations of the number of minima and of
+  the share not yet found (Rinnooy Kan & Timmer 1987, part I, (11), (12))
+  in the settings (STRAT-13); `mlsl_stop = bayes`, part II's rule (3)
+  (SRCH-13); multistart's `start_filter = oqnlp`, the distance and merit
+  filters of Ugray et al. 2007, §3.4, with `oq_stage1`, `oq_waitcycle`,
+  `oq_threshfactor`, `oq_distfactor` (STRAT-14, OQ-1 ... OQ-6). Off by
+  default: runs as before.
 - Added (task 24, §24.4.2): periodic variables at one objective, in C++:
   `scalar::Problem::periodic` (a flag per variable, its period the box's
   width; `scalar/periodic.hpp`). Where a method would repair, clip or
