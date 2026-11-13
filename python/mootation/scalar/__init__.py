@@ -38,7 +38,8 @@ stage 1; scalar.hpp, run_local; LOCAL-1 to LOCAL-4):
   lm           lm_ftol, lm_xtol, lm_gtol, lm_loss, lm_f_scale, lm_gauge (the
                problem's residuals; Moré 1978; lm_gauge = on: the step off the
                problem's gauge_basis, task 19); lm_max_iter, lm_failed,
-               lm_geodesic, lm_geodesic_alpha, lm_geodesic_h (task 25, LOCAL-8)
+               lm_geodesic, lm_geodesic_alpha, lm_geodesic_h (task 25, LOCAL-8),
+               lm_varpro (with minimize's linear; LOCAL-9)
   lbfgsb       lbfgsb_m, lbfgsb_pgtol, lbfgsb_ftol (Byrd, Lu, Nocedal, Zhu 1995)
   eki          eki_ensemble, eki_init, eki_sigma0, eki_gamma, eki_perturb,
                eki_noise, eki_tau (the residuals; ensemble Kalman inversion,
@@ -201,7 +202,7 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
         seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
         x0=None, gauge_basis=None, f_stop=None, sym_blocks=None, canon=None, align=None, res_blocks=None,
-        res_weights=None, discrete=None):
+        res_weights=None, discrete=None, linear=None):
     from ..run.knobs import canonical
     core = _module()
     design = None
@@ -226,7 +227,8 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
                  canon=canon, align=align,
                  res_blocks=None if res_blocks is None else [int(b) for b in res_blocks],
                  res_weights=None if res_weights is None else [float(w) for w in res_weights],
-                 discrete=None if discrete is None else [[float(v) for v in d] for d in discrete])
+                 discrete=None if discrete is None else [[float(v) for v in d] for d in discrete],
+                 linear=None if linear is None else [int(i) for i in linear])
     n_failed = guard.n_failed if guard is not None else d["n_failed"]
     unique = unique_count() if unique_count is not None else d["evaluations"]
     return ScalarResult(d, d["ignored"], n_failed, eq_tol if n_eq else 0.0, unique)

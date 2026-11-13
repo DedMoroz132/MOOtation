@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-404 items: 349 yes, 52 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+405 items: 349 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -721,6 +721,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | LOCAL-7 | keep_points = best (task 24, §24.3.3; off by default: all): the evaluator's lean mode (the best point and the last); the start is the plan's best, kept in the best's slot; a point asked for again is evaluated again an... | no: option | `scalar.hpp` |
 | `scalar` | LOCAL-6 | lm_gauge = on needs the problem's gauge_basis; its k and \|\|J N\|\| / \|\|J\|\| at lm's solution (lm.hpp LMN-4) go to the settings (lm_gauge_k, lm_gauge_ratio). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-8 | lm's knobs of task 25 (§24.3.5), each off by default and in the settings only where given (then with lm_iterations, lm's accepted steps): lm_max_iter (0: no limit; lm.hpp LM-10, the short polish of Kommenda et al. 202... | no: option | `scalar.hpp` |
+| `scalar` | LOCAL-9 | lm_varpro = off \| on \| kaufman (task 25, §24.3.5; off by default): lm.hpp's varpro (Golub & Pereyra 2003, VP; kaufman: Kaufman's Jacobian) on the problem's residuals, its linear variables a = x[Problem::linear] elimin... | no: option | `scalar.hpp` |
 | `scalar` | ULS-1 | Off by default. The hook's calls of the problem are counted against the budget as every solver's (and a solver it runs within, on ctx.problem, is that solver's run, bit for bit); past the budget the call throws and th... | no: option | `scalar.hpp` |
 | `scalar` | ULS-2 | Off by default. x' with f known (has_f) is planted, not evaluated: free, as a seed point; with constraints or residuals it is evaluated all the same (its constraint values, its residuals are not known). | no: option | `scalar.hpp` |
 | `scalar` | ULS-3 | Off by default. The declared cost is charged to the budget after the call (as THE SUCCESS's, SUCC-2); a hook that neither calls the problem nor declares a cost spends nothing (the owner's decision of 13.11), counted a... | no: option | `scalar.hpp` |

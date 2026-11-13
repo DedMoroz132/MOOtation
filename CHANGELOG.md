@@ -263,7 +263,9 @@ always listed under **Changed** or **Removed**.
   `lm_failed = stop | refuse` (a trial point whose residuals are not finite
   refused as `lm.hpp`'s LM-9 refuses one, instead of ending the run) and
   `lm_geodesic` with `lm_geodesic_alpha`, `lm_geodesic_h` from `minimize` and
-  campaigns (LOCAL-8); for `cmaes`, `cma_eigen_every` and CMA-ES with margin
+  campaigns (LOCAL-8), and `lm_varpro = off | on | kaufman` (variable
+  projection on residuals y − Φ(α) a, the linear variables from `minimize`'s
+  `linear` or a suite problem's own; LOCAL-9); for `cmaes`, `cma_eigen_every` and CMA-ES with margin
   (`cma_margin`, `cma_margin_alpha`; SINGLE-6) on the problem's discrete
   values (`scalar::Problem::discrete`); `minimize`'s `var_types` for the
   single-objective methods: integer, discrete and binary variables, the

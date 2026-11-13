@@ -1168,7 +1168,8 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 // lm_loss (linear | huber | cauchy; lm.hpp's IRLS), lm_f_scale (1) and
 // lm_gauge (off | on: the step in the complement of the problem's
 // gauge_basis, lm.hpp LMN; task 19, §19.3.1), lm_max_iter, lm_failed,
-// lm_geodesic, lm_geodesic_alpha, lm_geodesic_h (LOCAL-8) for lm; lbfgsb_m (5),
+// lm_geodesic, lm_geodesic_alpha, lm_geodesic_h (LOCAL-8), lm_varpro (LOCAL-9)
+// for lm; lbfgsb_m (5),
 // lbfgsb_pgtol (1e-5), lbfgsb_ftol (0) for lbfgsb; grad_cost (1;
 // evaluator.hpp THE COUNTS) for both; for eki (eki.hpp's Options, task 19,
 // §19.4.1) eki_ensemble (J; 0: max(10, 2 n), EKI-4), eki_init (around |
@@ -1209,6 +1210,20 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //     with lm_geodesic_alpha (0.75) and lm_geodesic_h (0.1), Transtrum &
 //     Sethna's acceleration (lm.hpp LMG), refused with a finite bound
 //     (LMB-5: so with a start x0, LOCAL-4) and with lm_gauge (LMN-3).
+//   LOCAL-9. lm_varpro = off | on | kaufman (task 25, §24.3.5; off by
+//     default): lm.hpp's varpro (Golub & Pereyra 2003, VP; kaufman: Kaufman's
+//     Jacobian) on the problem's residuals, its linear variables a =
+//     x[Problem::linear] eliminated, the rest alpha. The residuals must be
+//     GP's r = y - Phi(alpha) a: y = r(alpha_0, a = 0) and Phi's column l =
+//     r(alpha, 0) - r(alpha, e_l), each an evaluation (p + 1 a basis; the
+//     differences of r_2 for the Jacobian, VP-2); a basis whose r(alpha, 0)
+//     differs from y (beyond 1e-12 (1 + |y_i|)) refuses the run (the
+//     residuals are not of that form). With every basis the point (alpha,
+//     a(alpha)) is evaluated too, a = Phi^- y clipped to the box (GP's a has
+//     no bound): so the answer is a fitted point, also where the budget ends
+//     lm. x0's linear values are not used. Not with lm_gauge or a periodic
+//     variable; failed points as lm_failed says. Settings: lm_varpro_rank,
+//     Phi's pseudorank at the end (0 where the run ended first).
 // ── THE USER'S LOCAL SEARCH (task 24, §24.1.1) ──────────────────────────────
 // The solver "local_search": the problem's local_search hook (evaluator.hpp),
 // called once from the start — x0, else the best of the initial plan (as
@@ -1398,21 +1413,22 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
     const std::vector<std::string> own =
         name == "lm"    ? std::vector<std::string>{"lm_ftol", "lm_xtol", "lm_gtol", "lm_loss", "lm_f_scale", "lm_gauge",
                                                    "grad_cost", "lm_max_iter", "lm_failed", "lm_geodesic",
-                                                   "lm_geodesic_alpha", "lm_geodesic_h"}
+                                                   "lm_geodesic_alpha", "lm_geodesic_h", "lm_varpro"}
         : name == "eki" ? std::vector<std::string>{"eki_ensemble", "eki_init", "eki_sigma0", "eki_gamma", "eki_perturb",
                                                    "eki_noise", "eki_tau"}
                         : std::vector<std::string>{"lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol", "grad_cost"};
     static const std::map<std::string, std::vector<std::string>> words{
         {"lm_loss", {"linear", "huber", "cauchy"}}, {"lm_gauge", {"off", "on"}},
         {"eki_init", {"around", "sobol", "lhs"}}, {"eki_perturb", {"yes", "no"}},
-        {"lm_failed", {"stop", "refuse"}}, {"lm_geodesic", {"off", "on"}}};
+        {"lm_failed", {"stop", "refuse"}}, {"lm_geodesic", {"off", "on"}},
+        {"lm_varpro", {"off", "on", "kaufman"}}};
     lm::Options lo;
     std::vector<std::string> lm_given;                 // LOCAL-8: the task-25 knobs given, for the settings
     lbfgsb::Options bo;
     eki::Options eo;
     std::map<std::string, std::string> word{{"lm_loss", "linear"}, {"lm_gauge", "off"},
                                             {"eki_init", "around"}, {"eki_perturb", "yes"},
-                                            {"lm_failed", "stop"}, {"lm_geodesic", "off"}};
+                                            {"lm_failed", "stop"}, {"lm_geodesic", "off"}, {"lm_varpro", "off"}};
     double grad_cost = 1.0;
     std::vector<std::string> ignored;
     bool lean = false;
@@ -1426,7 +1442,7 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
             continue;
         }
         if (k == "lm_max_iter" || k == "lm_failed" || k == "lm_geodesic" || k == "lm_geodesic_alpha" ||
-            k == "lm_geodesic_h")
+            k == "lm_geodesic_h" || k == "lm_varpro")
             lm_given.push_back(k);
         if (words.count(k)) {
             const std::string w = detail::shown(v);
@@ -1487,6 +1503,24 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                 throw std::invalid_argument("lm_geodesic = 'on' takes no finite bound (lm.hpp LMB-5): "
                                             "bounds -inf, +inf and a start x0");
     if (lo.geodesic && gauge) throw std::invalid_argument("lm_geodesic and lm_gauge: one or the other (lm.hpp LMN-3)");
+    const std::string varpro = word["lm_varpro"];                                   // LOCAL-9
+    std::vector<std::size_t> lin, non;                                               // a's places, alpha's
+    if (varpro != "off") {
+        std::vector<char> is_lin(n, 0);
+        for (int i : P.linear) {
+            if (i < 0 || static_cast<std::size_t>(i) >= n || is_lin[static_cast<std::size_t>(i)])
+                throw std::invalid_argument("lm_varpro: the problem's linear variables, each once, 0 .. n - 1");
+            is_lin[static_cast<std::size_t>(i)] = 1;
+        }
+        for (std::size_t j = 0; j < n; ++j) (is_lin[j] ? lin : non).push_back(j);
+        if (lin.empty() || non.empty())
+            throw std::invalid_argument("lm_varpro = '" + varpro + "' needs the problem's linear variables "
+                                        "(minimize's linear), some but not all (LOCAL-9)");
+        if (gauge) throw std::invalid_argument("lm_varpro and lm_gauge: one or the other (LOCAL-9)");
+        for (std::size_t j = 0; j < n; ++j)
+            if (periodic::is(P.periodic, j)) throw std::invalid_argument("lm_varpro: no periodic variable (LOCAL-9)");
+    }
+    std::size_t varpro_rank = 0;
     const bool refuse_failed = word["lm_failed"] == "refuse";                       // LOCAL-3, LOCAL-8
     const long long no_limit = std::numeric_limits<long long>::max() / 4;   // LOCAL-2
     lo.max_nfev = no_limit;
@@ -1574,7 +1608,62 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                             for (std::size_t b = 0; b < k; ++b) N(a, b) = Nr[a][b];
                         }
                     };
-                lr = lm::solve_robust(p, x0, lo);
+                if (varpro == "off") {
+                    lr = lm::solve_robust(p, x0, lo);
+                } else {                                  // LOCAL-9: GP's variable projection on the residuals
+                    const std::size_t mr = p.m;
+                    auto full = [&](const Vec& al, const Vec& a) {
+                        Vec x(n);
+                        for (std::size_t j = 0; j < non.size(); ++j) x[non[j]] = al[j];
+                        for (std::size_t l = 0; l < lin.size(); ++l) x[lin[l]] = a[l];
+                        return x;
+                    };
+                    auto res_at = [&](const Vec& x) {
+                        const std::size_t i = at(x);
+                        if (ev.failed[i] && !refuse_failed) throw FailedPoint{};              // LOCAL-3
+                        Vec r = ev.R[i];
+                        if (r.size() != mr) r.assign(mr, std::numeric_limits<double>::quiet_NaN());
+                        return r;
+                    };
+                    lm::Separable sp;
+                    sp.m = mr;
+                    sp.k = non.size();
+                    sp.p = lin.size();
+                    Vec alpha0(non.size());
+                    for (std::size_t j = 0; j < non.size(); ++j) {
+                        alpha0[j] = x0[non[j]];
+                        sp.lo.push_back(slo[non[j]]);
+                        sp.hi.push_back(shi[non[j]]);
+                    }
+                    const Vec zero(lin.size(), 0.0);
+                    sp.y = res_at(full(alpha0, zero));        // y = r(alpha, 0)
+                    sp.basis = [&](const Vec& al, lm::Matrix& Phi) {
+                        const Vec r0 = res_at(full(al, zero));
+                        for (std::size_t i = 0; i < mr; ++i)  // y must not depend on alpha (LOCAL-9)
+                            if (std::isfinite(r0[i]) && std::isfinite(sp.y[i]) &&
+                                std::fabs(r0[i] - sp.y[i]) > 1e-12 * (1.0 + std::fabs(sp.y[i])))
+                                throw std::invalid_argument("lm_varpro: r(alpha, a = 0) depends on alpha: the residuals "
+                                                            "are not y - Phi(alpha) a (LOCAL-9)");
+                        bool finite = true;
+                        for (std::size_t l = 0; l < lin.size(); ++l) {
+                            Vec e = zero;
+                            e[l] = 1.0;
+                            const Vec rl = res_at(full(al, e));
+                            for (std::size_t i = 0; i < mr; ++i) {
+                                Phi(i, l) = r0[i] - rl[i];
+                                finite = finite && std::isfinite(Phi(i, l));
+                            }
+                        }
+                        if (!finite) return;                  // lm refuses or stops there (LM-9)
+                        Vec a = lm::detail::Projection(Phi).coef(sp.y);   // the point (alpha, a(alpha)) evaluated
+                        for (std::size_t l = 0; l < lin.size(); ++l)
+                            a[l] = std::min(shi[lin[l]], std::max(slo[lin[l]], a[l]));
+                        at(full(al, a));
+                    };
+                    const lm::SeparableResult sr = lm::varpro(sp, alpha0, lo, varpro == "kaufman");
+                    lr = sr.fit;
+                    varpro_rank = sr.rank;
+                }
             } else if (name == "eki") {
                 eki::minimize([&](const Vec& x, Vec& r) { r = ev.R[value(x)]; },
                               static_cast<std::size_t>(ev.n_res), P.lo, P.hi, x0, eo);
@@ -1616,6 +1705,7 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
             else if (k == "lm_geodesic_h") r.settings.push_back({k, g_format(lo.geodesic_h)});
             else r.settings.push_back({k, word[k]});
         }
+        if (varpro != "off") r.settings.push_back({"lm_varpro_rank", std::to_string(varpro_rank)});   // LOCAL-9
         if (!lm_given.empty())                        // LM-10: lm's accepted steps (0 where the run ended first)
             r.settings.push_back({"lm_iterations", std::to_string(lr.iterations)});
     } else if (name == "eki") {

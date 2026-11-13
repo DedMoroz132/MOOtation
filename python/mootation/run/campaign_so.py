@@ -258,6 +258,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         derivatives["sym_blocks"] = list(native.blocks)
         if native.has_canon:
             derivatives["canon"] = lambda x: list(native.canon(x))
+    if native.linear and job.algorithm in SINGLE:      # for lm_varpro (task 25; job_so.hpp as well)
+        derivatives["linear"] = list(native.linear)
     if job.algorithm in LOCAL and x0 is not None:
         derivatives["x0"] = list(x0)
     try:

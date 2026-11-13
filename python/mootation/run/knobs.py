@@ -116,6 +116,7 @@ _FALLBACK_TEXT = {
     "lm_failed": ("stop", "refuse"),
     "lm_geodesic": ("off", "on"),
     "cma_margin": ("off", "on"),
+    "lm_varpro": ("off", "on", "kaufman"),
     "eki_init": ("around", "sobol", "lhs"),
     "eki_perturb": ("yes", "no"),
     "kpcm_pm": ("off", "on"),

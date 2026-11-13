@@ -58,7 +58,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
               "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
-              "lm_failed", "lm_geodesic", "cma_margin",
+              "lm_failed", "lm_geodesic", "cma_margin", "lm_varpro",
               "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points", "sym",
               "cv_rule", "cv_norm",
               "nadir_source",
@@ -223,6 +223,7 @@ def minimize(
     objectives: str = "one",
     residual_blocks=None,
     block_weights=None,
+    linear=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -414,6 +415,11 @@ def minimize(
     gauge_basis  gauge_basis(x): the n x k directions (rows of k) along which
                 the residuals do not change to first order; lm takes them
                 with lm_gauge = "on" (task 19, §19.3.1).
+    linear      the indices of the variables the residuals are linear in,
+                r(x) = y - Phi(alpha) a with a = x[linear] and y not
+                depending on the others, alpha: lm takes them with
+                lm_varpro = "on" (variable projection, Golub & Pereyra 2003;
+                task 25, scalar.hpp LOCAL-9).
     wrap        the problem seen through the wrappers (task 20, §20.2.1;
                 benchmarks/wrap.py, include/mootation/suite/wrap.hpp): a dict
                 of name (the key's, required), shift, rotate, perm (instance
@@ -465,6 +471,8 @@ def minimize(
         if sym_blocks is not None or canon is not None or align is not None:
             raise ValueError("wrap: not with sym_blocks, canon or align (a wrapper does not carry "
                              "symmetries; suite/wrap.hpp WRAP-7)")
+        if linear is not None:
+            raise ValueError("wrap: not with linear (a rotation mixes the linear parameters with the others)")
         return _wrapped_minimize(wrap, fn, bounds, n_objs, constraints=constraints, eq_constraints=eq_constraints,
                                  batch=batch, var_types=var_types, grad=grad, residuals=residuals, jac=jac, x0=x0,
                                  gauge_basis=gauge_basis,
@@ -485,7 +493,8 @@ def minimize(
     from .scalar import SINGLE
     derivatives = [k for k, v in (("grad", grad), ("residuals", residuals), ("jac", jac),
                                   ("x0", x0), ("gauge_basis", gauge_basis), ("sym_blocks", sym_blocks),
-                                  ("canon", canon), ("align", align), ("residual_blocks", residual_blocks))
+                                  ("canon", canon), ("align", align), ("residual_blocks", residual_blocks),
+                                  ("linear", linear))
                    if v is not None]
     lsq = (residuals, jac, bounds) if residuals is not None else None   # result.profile's
     if derivatives and algorithm not in SINGLE:
@@ -825,7 +834,7 @@ def minimize(
                 unique_count=lambda: points.count, guard=guard, grad=grad,
                 residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop,
                 sym_blocks=sym_blocks, canon=canon, align=align, res_blocks=residual_blocks,
-                res_weights=block_weights, discrete=so_discrete)
+                res_weights=block_weights, discrete=so_discrete, linear=linear)
             result._lsq = lsq
             result = _polished(result)
             if so_discrete is not None and int_repair == "lamarck":   # SO-VT: the answer decoded

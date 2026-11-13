@@ -1530,6 +1530,7 @@ Bounds only — a problem with constraints is refused (LOCAL-1). Knobs:
 | `lm_max_iter` | lm's accepted steps at most (0: no limit, the default; lm.hpp LM-10): the short polish of Kommenda et al. 2020, who stop after 10; where given, the settings say it and `lm_iterations` (LOCAL-8) |
 | `lm_failed` | `stop` (the default): a failed evaluation ends the run (LOCAL-3); `refuse`: a trial point whose residuals are not finite (NaN, ±inf) is a refused step and lm goes on (lm.hpp LM-9; LOCAL-8) |
 | `lm_geodesic`, `lm_geodesic_alpha`, `lm_geodesic_h` | `off` (the default) or `on`: Transtrum & Sethna's geodesic acceleration (lm.hpp LMG), α (0.75) and h (0.1); bounds `-inf` / `+inf` only, so with `x0` (LMB-5), and not with `lm_gauge` (LMN-3) |
+| `lm_varpro` | `off` (the default), `on` or `kaufman`: variable projection (Golub & Pereyra 2003; lm.hpp's `varpro`) on residuals of the form y − Φ(α) a, a the variables `minimize(..., linear=[...])` names (a suite problem's own `linear` in a campaign); Φ from the residuals themselves, p + 1 evaluations a basis, a residual not of that form refused; `lm_varpro_rank` in the settings (LOCAL-9) |
 | `lbfgsb_m`, `lbfgsb_pgtol`, `lbfgsb_ftol` | the memory (5), the projected-gradient test (1e-5), the relative reduction test (0: off) |
 | `grad_cost` | what a call of the problem's gradient or Jacobian costs of the budget (1); every single-objective algorithm but `eki` |
 

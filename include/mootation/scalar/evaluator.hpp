@@ -288,6 +288,11 @@ struct Problem {
     // with cma_margin = on takes them as HM22's discrete values (scalar.hpp
     // SINGLE-6).
     std::vector<Vec> discrete;
+    // SEPARABLE LEAST SQUARES (task 25, §24.3.5): the variables the residuals
+    // are linear in, r(x) = y - Phi(alpha) a with a = x[linear] and y not
+    // depending on alpha (suite::Native's linear; scalar.hpp LOCAL-9, lm's
+    // lm_varpro); empty: none.
+    std::vector<int> linear;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }

@@ -12312,7 +12312,8 @@ def single_objective_methods_take_mixed_variables_and_lm_s_new_knobs():
     gets the decoded point (int, 0/1, a listed value), the answer's variables
     decoded; cma_margin = on through minimize, its alpha in the settings;
     cat, grad and jac refused with var_types, residuals still too;
-    lm_max_iter = 10 and lm_failed = refuse through minimize."""
+    lm_max_iter = 10, lm_failed = refuse and lm_varpro with linear through
+    minimize."""
     if _core_with("scalar") is None:
         print("  skip  single_objective_methods_take_mixed...: no _core.scalar"); return
     import math
@@ -12382,6 +12383,18 @@ def single_objective_methods_take_mixed_variables_and_lm_s_new_knobs():
     # stop: the run ends at the first trial point in the hole, x0 and its difference point evaluated
     assert 40.0 < stop.objectives[0][0] <= 40.5 and refuse.objectives[0][0] < 1e-12, (stop.objectives, refuse.objectives)
     assert dict(refuse.settings)["lm_failed"] == "refuse" and refuse.n_failed >= 1, refuse.n_failed
+
+    # lm_varpro with minimize's linear: two exponentials, a = (x0, x2) eliminated
+    ts = [0.1 * i for i in range(31)]
+
+    def expo(x):
+        return [x[0] * math.exp(-x[1] * t) + x[2] * math.exp(-x[3] * t)
+                - (2.0 * math.exp(-0.5 * t) + math.exp(-3.0 * t)) for t in ts]
+    vp = mootation.minimize(None, [(-inf, inf)] * 4, 1, algorithm="lm", residuals=expo, linear=[0, 2],
+                            x0=[0.0, 0.3, 0.0, 5.0], max_evaluations=3000, seed=1, lm_varpro="on")
+    st_vp = dict(vp.settings)
+    assert vp.objectives[0][0] < 1e-20 and st_vp["lm_varpro_rank"] == "2", (vp.objectives, st_vp)
+    assert abs(vp.variables[0][1] - 0.5) < 1e-8 and abs(vp.variables[0][3] - 3.0) < 1e-8, vp.variables
 
 
 @test

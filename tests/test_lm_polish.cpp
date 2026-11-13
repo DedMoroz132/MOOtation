@@ -222,7 +222,63 @@ int main()
         check(refused, "lm_geodesic = on with a finite bound: refused (LMB-5)");
     }
 
-    // 5. the knobs' values
+    // 5. lm_varpro (LOCAL-9): y(t) = 2 e^{-0.5 t} + 1 e^{-3 t} at t = 0, 0.1, ..., 3;
+    //    x = (a_1, alpha_1, a_2, alpha_2), a linear (x_0, x_2)
+    {
+        sc::Problem E;
+        const double inf = kInf;
+        E.lo.assign(4, -inf);
+        E.hi.assign(4, inf);
+        E.m = 1;
+        E.n_res = 31;
+        E.linear = {0, 2};
+        E.residuals = [](const Vec& x, Vec& r) {
+            r.assign(31, 0.0);
+            for (int i = 0; i <= 30; ++i) {
+                const double t = 0.1 * i;
+                const double d = 2.0 * mootation::dm::exp(-0.5 * t) + mootation::dm::exp(-3.0 * t);
+                r[static_cast<std::size_t>(i)] =
+                    x[0] * mootation::dm::exp(-x[1] * t) + x[2] * mootation::dm::exp(-x[3] * t) - d;
+            }
+        };
+        const Vec start{0.0, 0.3, 0.0, 5.0};
+        for (const char* how : {"on", "kaufman"}) {
+            const sc::Result v = run_lm(E, {{"lm_varpro", word(how)}}, start, 3000);
+            const Vec& x = v.variables[0];
+            std::printf("      lm_varpro = %s: f = %.3g, x = (%.10g, %.10g, %.10g, %.10g), %lld evaluations\n", how,
+                        v.objectives[0][0], x[0], x[1], x[2], x[3], v.evaluations);
+            check(v.objectives[0][0] < 1e-20 && std::fabs(x[1] - 0.5) < 1e-8 && std::fabs(x[3] - 3.0) < 1e-8 &&
+                      std::fabs(x[0] - 2.0) < 1e-8 && std::fabs(x[2] - 1.0) < 1e-8 &&
+                      setting(v, "lm_varpro") == how && setting(v, "lm_varpro_rank") == "2",
+                  std::string("lm_varpro = ") + how + ": the two exponentials found, Phi of rank 2");
+        }
+        sc::Problem B = E;                            // y depends on alpha: refused
+        B.residuals = [](const Vec& x, Vec& r) {
+            r.assign(31, 0.0);
+            for (int i = 0; i <= 30; ++i) {
+                const double t = 0.1 * i;
+                r[static_cast<std::size_t>(i)] = x[0] * mootation::dm::exp(-x[1] * t) + x[2] * t + x[3] * x[3] - 1.0;
+            }
+        };
+        bool refused = false;
+        try {
+            run_lm(B, {{"lm_varpro", word("on")}}, start, 3000);
+        } catch (const std::invalid_argument&) {
+            refused = true;
+        }
+        check(refused, "lm_varpro: residuals whose r(alpha, a = 0) moves with alpha are refused");
+        sc::Problem C = E;
+        C.linear.clear();
+        refused = false;
+        try {
+            run_lm(C, {{"lm_varpro", word("on")}}, start, 3000);
+        } catch (const std::invalid_argument&) {
+            refused = true;
+        }
+        check(refused, "lm_varpro without the problem's linear variables: refused");
+    }
+
+    // 6. the knobs' values
     for (const auto& [k, v] : std::vector<std::pair<std::string, sc::Knob>>{{"lm_max_iter", number(2.5)},
                                                                            {"lm_max_iter", number(-1)},
                                                                            {"lm_failed", word("maybe")},

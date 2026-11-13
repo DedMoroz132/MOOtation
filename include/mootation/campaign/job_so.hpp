@@ -462,6 +462,7 @@ private:
                 P.sym_blocks.push_back({static_cast<std::size_t>(b.offset), static_cast<std::size_t>(b.size),
                                         static_cast<std::size_t>(b.count)});
             if (native_->has_canon) P.canon = [this](std::vector<double>& x) { native_->canon(x.data()); };
+            P.linear = native_->linear;                  // for lm_varpro (task 25, §24.3.5; scalar.hpp LOCAL-9)
         }
         return P;
     }
