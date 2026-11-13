@@ -175,8 +175,10 @@ inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_st
     const std::size_t n_eq = static_cast<std::size_t>(ev.n_eq);
     const std::size_t nz = n + (sub.aux ? 1 : 0);
 
-    auto clip01 = [](std::vector<double> y) {
-        for (double& v : y) v = std::min(1.0, std::max(0.0, v));
+    auto clip01 = [&run](std::vector<double> y) {
+        for (std::size_t j = 0; j < y.size(); ++j)
+            y[j] = periodic::is(run.ev.P.periodic, j) ? periodic::wrap01(y[j])         // periodic.hpp
+                                                      : std::min(1.0, std::max(0.0, y[j]));
         return y;
     };
     auto point = [&](const std::vector<double>& z) {
@@ -206,6 +208,11 @@ inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_st
     nlp.n_ineq = sub.ineq.size() + k_ineq;
     nlp.lo.assign(nz, 0.0);
     nlp.hi.assign(nz, 1.0);
+    for (std::size_t j = 0; j < n; ++j)                         // periodic.hpp: no edge, x_of wraps
+        if (periodic::is(ev.P.periodic, j)) {
+            nlp.lo[j] = -kInf;
+            nlp.hi[j] = kInf;
+        }
     if (sub.aux) {
         nlp.lo[n] = -kInf;
         nlp.hi[n] = kInf;

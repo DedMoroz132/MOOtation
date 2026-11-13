@@ -9,10 +9,12 @@
 // the shorter way round. The seam is one point: hi is lo.
 //
 // Where: de, jade, shade, lshade, g3_pcx, pso, spso2011 (their repairs),
-// the normalized box of cmaes, nelder_mead (no edge: its simplex goes round)
-// and sep_cmaes, ipop and bipop's samples, ils and basin_hopping's steps, the
-// strategies' minima log. Not yet: slsqp, lbfgsb, lm, eki (they keep the box),
-// chc (its bit coding), the operators' symmetry (align, distance).
+// the normalized box of cmaes, nelder_mead and slsqp (no edge: they go
+// round, their points wrapped), lm and lbfgsb (no bound on the variable,
+// their points wrapped), sep_cmaes, ipop and bipop's samples, ils and
+// basin_hopping's steps, the strategies' minima log, the symmetries' align
+// and distance (symmetry.hpp, SYM-11). eki keeps the box (its ensemble is
+// laid out in it); chc never leaves it (its genes are bits of the box).
 //
 // READINGS (all of them off by default: with Problem::periodic only)
 //   PER-1. Off by default. The wrap is lo + fmod(v - lo, hi - lo), negatives

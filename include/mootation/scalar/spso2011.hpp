@@ -76,6 +76,7 @@ struct Options {
     symmetry::Sym sym;                                     // SPSO-9
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
     std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
+    std::vector<int> var_repair;        // a variable's own repair (task 24, §24.4.2)
 };
 
 // A particle's move ((2a-c), (3), (1b), SPSO-3, SPSO-5, SPSO-6): X and V from
@@ -116,7 +117,8 @@ inline void move(Vec& X, Vec& V, const Vec& P0, const Vec& L0, const Options& o,
         X[j] += V[j];                                                    // (1b)
         if ((X[j] < lo[j] || X[j] > hi[j]) && !evo::wrapped(X[j], lo, hi, o.periodic, j)) {   // SPSO-6, PER-2
             tally.out();
-            X[j] = X[j] < lo[j] ? lo[j] : hi[j];
+            if (!evo::own_repair(X[j], lo, hi, X[j] - V[j], o.var_repair, j, rng))   // a variable's own first
+                X[j] = X[j] < lo[j] ? lo[j] : hi[j];
             V[j] = 0.0;
         }
     }

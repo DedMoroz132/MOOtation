@@ -432,6 +432,7 @@ struct G3Options {
     ops::BoundRepair repair = ops::BoundRepair::Reflect;   // GA-4
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
     std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
+    std::vector<int> var_repair;        // a variable's own repair (task 24, §24.4.2)
 };
 
 class G3 {
@@ -467,9 +468,10 @@ public:
             }
             for (std::size_t j = 0; j < y.size(); ++j)                   // periodic.hpp PER-2
                 if (y[j] < lo_[j] || y[j] > hi_[j]) evo::wrapped(y[j], lo_, hi_, o_.periodic, j);
-            if (o_.repair != ops::BoundRepair::Native)
-                for (std::size_t j = 0; j < y.size(); ++j)
-                    if (y[j] < lo_[j] || y[j] > hi_[j]) y[j] = ops::repair_value(y[j], lo_[j], hi_[j], P[p][j], o_.repair, rng_);
+            for (std::size_t j = 0; j < y.size(); ++j)                   // a variable's own repair first
+                if ((y[j] < lo_[j] || y[j] > hi_[j]) && !evo::own_repair(y[j], lo_, hi_, P[p][j], o_.var_repair, j, rng_) &&
+                    o_.repair != ops::BoundRepair::Native)
+                    y[j] = ops::repair_value(y[j], lo_[j], hi_[j], P[p][j], o_.repair, rng_);
             u_.push_back(std::move(y));
         }
         chosen_.clear();                                                 // (3)

@@ -774,6 +774,7 @@ inline void group_by_symmetry(StrategyKnobs& k, const Problem& P, MinimaLog& log
     s.groups = P.sym_blocks;
     s.canon = P.canon;
     s.align = P.align;
+    s.period = symmetry::periods(P.periodic, P.lo, P.hi);                           // SYM-11
     log.symmetric(s);
 }
 

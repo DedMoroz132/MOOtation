@@ -73,6 +73,7 @@ struct Options {
     symmetry::Sym sym;                                     // DE-6
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
     std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
+    std::vector<int> var_repair;        // a variable's own repair (task 24, §24.4.2)
 };
 
 // The trial of x_i (DE-1, (2), (4)); sym: DE-6.
@@ -99,7 +100,7 @@ inline Vec trial(const Rows& x, std::size_t i, const Options& o, const Vec& lo, 
         double v = xc[j] + o.F * (xa[j] - xb[j]);                  // (2)
         if ((v < lo[j] || v > hi[j]) && !evo::wrapped(v, lo, hi, o.periodic, j)) {   // PER-2
             tally.out();
-            if (o.repair != ops::BoundRepair::Native)
+            if (!evo::own_repair(v, lo, hi, xi[j], o.var_repair, j, rng) && o.repair != ops::BoundRepair::Native)
                 v = ops::repair_value(v, lo[j], hi[j], xi[j], o.repair, rng);   // DE-2
         }
         u[j] = U01(rng) < o.CR || j == jr ? v : xi[j];             // (4)

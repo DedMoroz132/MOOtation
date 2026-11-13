@@ -1399,8 +1399,30 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         if (!ev.recorded) ev.record();                // gen 0
         if (st >= 0 && !ev.failed[static_cast<std::size_t>(st)]) {
             const Vec x0 = ev.X[static_cast<std::size_t>(st)];
+            // a periodic variable (periodic.hpp; task 24, §24.4.2) has no bound
+            // for lm and lbfgsb: their points are wrapped into the box (PER-2)
+            Vec slo = P.lo, shi = P.hi;
+            for (std::size_t j = 0; j < n; ++j)
+                if (periodic::is(P.periodic, j)) {
+                    slo[j] = -std::numeric_limits<double>::infinity();
+                    shi[j] = std::numeric_limits<double>::infinity();
+                }
+            auto at = [&](const Vec& x) {
+                if (P.periodic.empty()) return ev.index(x);
+                Vec y = x;
+                for (std::size_t j = 0; j < n; ++j)
+                    if (periodic::is(P.periodic, j)) y[j] = periodic::wrap_into(y[j], P.lo[j], P.hi[j]);
+                return ev.index(y);
+            };
+            auto at_grad = [&](const Vec& x) {
+                if (P.periodic.empty()) return ev.index_grad(x);
+                Vec y = x;
+                for (std::size_t j = 0; j < n; ++j)
+                    if (periodic::is(P.periodic, j)) y[j] = periodic::wrap_into(y[j], P.lo[j], P.hi[j]);
+                return ev.index_grad(y);
+            };
             auto value = [&](const Vec& x) {
-                const std::size_t i = ev.index(x);
+                const std::size_t i = at(x);
                 if (ev.failed[i]) throw FailedPoint{};     // LOCAL-3
                 return i;
             };
@@ -1408,12 +1430,12 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                 lm::Problem p;
                 p.n = n;
                 p.m = static_cast<std::size_t>(ev.n_res);
-                p.lo = P.lo;
-                p.hi = P.hi;
+                p.lo = slo;
+                p.hi = shi;
                 p.residuals = [&](const Vec& x, Vec& r) { r = ev.R[value(x)]; };
                 if (P.has_gradient())
                     p.jacobian = [&](const Vec& x, lm::Matrix& J) {
-                        const std::size_t i = ev.index_grad(x);
+                        const std::size_t i = at_grad(x);
                         if (ev.failed[i]) throw FailedPoint{};
                         const Rows& Jr = ev.jac(i);
                         for (std::size_t a = 0; a < J.rows; ++a)
@@ -1438,12 +1460,12 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
             } else {
                 lbfgsb::Problem p;
                 p.n = n;
-                p.lo = P.lo;
-                p.hi = P.hi;
+                p.lo = slo;
+                p.hi = shi;
                 p.f = [&](const Vec& x) { return ev.F[value(x)][0]; };
                 if (P.has_gradient())
                     p.fg = [&](const Vec& x, Vec& g) {
-                        const std::size_t i = ev.index_grad(x);
+                        const std::size_t i = at_grad(x);
                         if (ev.failed[i]) throw FailedPoint{};
                         g = ev.grad(i);
                         return ev.F[i][0];
@@ -1663,6 +1685,7 @@ public:
         s.groups = P.sym_blocks;
         s.canon = P.canon;
         s.align = P.align;
+        s.period = symmetry::periods(P.periodic, P.lo, P.hi);                       // SYM-11
         if (s.on() && s.groups.empty() && !(s.mode == symmetry::Mode::canon ? bool(P.canon) : bool(P.align)))
             throw std::invalid_argument("sym = " + w + ": the problem gives no symmetries (sym_blocks, canon or align)");
         return s;
@@ -1753,6 +1776,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             de::Options o;
             o.seeds = seeds;
             o.periodic = P.periodic;                                     // periodic.hpp
+            o.var_repair = P.var_repair;
             o.np = np;
             o.F = k.number("F", o.F);
             o.CR = k.number("CR", o.CR);
@@ -1765,6 +1789,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             jade::Options o;
             o.seeds = seeds;
             o.periodic = P.periodic;                                     // periodic.hpp
+            o.var_repair = P.var_repair;
             o.np = np;
             o.p = k.number("jade_p", o.p);
             o.c = k.number("jade_c", o.c);
@@ -1777,6 +1802,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             shade::Options o;
             o.seeds = seeds;
             o.periodic = P.periodic;                                     // periodic.hpp
+            o.var_repair = P.var_repair;
             if (np) o.np = np;
             o.H = k.whole("shade_h", o.H);
             o.p_max = k.number("shade_p_max", o.p_max);
@@ -1789,6 +1815,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             lshade::Options o;
             o.seeds = seeds;
             o.periodic = P.periodic;                                     // periodic.hpp
+            o.var_repair = P.var_repair;
             if (np) o.r_ninit = static_cast<double>(np) / static_cast<double>(lo.size());   // N_init = np
             o.H = k.whole("shade_h", o.H);
             o.p = k.number("lshade_p", o.p);
@@ -1847,6 +1874,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             ga::G3Options o;
             o.seeds = seeds;
             o.periodic = P.periodic;                                     // periodic.hpp
+            o.var_repair = P.var_repair;
             if (np) o.n = np;
             o.mu = k.whole("g3_mu", o.mu);
             o.lambda = k.whole("g3_lambda", o.lambda);
@@ -1870,6 +1898,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             pso::Options o;
             o.seeds = seeds;
             o.periodic = P.periodic;                                     // periodic.hpp
+            o.var_repair = P.var_repair;
             if (np) o.n = np;
             o.phi_max = k.number("pso_phi", o.phi_max);
             o.kappa = k.number("kappa", o.kappa);
@@ -1884,6 +1913,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             spso2011::Options o;
             o.seeds = seeds;
             o.periodic = P.periodic;                                     // periodic.hpp
+            o.var_repair = P.var_repair;
             if (np) o.n = np;
             o.K = k.whole("spso_k", o.K);
             o.sym = k.sym(P);

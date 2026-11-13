@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-301 items: 264 yes, 37 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+303 items: 264 yes, 39 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -657,6 +657,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-8 | A local search's result is the inner solver's answer; worse means more violating, then larger f (Deb). | yes | `search.hpp` |
 | `search` | SRCH-12 | memetic's lamarck (task 24, §24.1.1; off by default, and then SRCH-7 holds): on — every local search's answer x' (its values from the archive) is a seed of the global solver's later runs, the newest first, with warm_s... | no: option | `search.hpp` |
 | `search` | SRCH-13 | mlsl_stop = bayes (task 24, §24.2.5; off by default: budget): mlsl stops after the iteration where w (gamma k N - 1) / (gamma k N - w - 2) <= w + 1/2 (part II, (3)), w the minima log's minima (at least one), gamma k N... | no: option | `search.hpp` |
+| `search` | SRCH-14 | mlsl_cells = on (task 24, §24.2.5; off by default): the check "a sample point of lower f within r_k" looks in the cell of the point and its 3^n neighbours only — the sample in cubes of side r_k (1 + 1e-9) of the norma... | no: option | `search.hpp` |
 | `search` | SRCH-9 | memetic: a phase whose global run spends nothing is the last (as RST-8): the global solver has stopped by its own criteria (rerun, it evaluates nothing new), and the local searches alone would go on in phases of a few... | yes | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
@@ -715,6 +716,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `symmetry` | SYM-8 | de, jade, shade, lshade: align — the base vector and the difference vectors aligned to the target x_i before the mutation; canon — the target too canonical, and the trial's crossover and the bound repair take canon(x_i). | yes | `symmetry.hpp` |
 | `symmetry` | SYM-9 | pso, spso2011: align only — the particle's own best and its neighbourhood's best aligned to its position before it moves; the velocity stays in the particle's representation (§19.2.2). canon is refused: it would chang... | yes | `symmetry.hpp` |
 | `symmetry` | SYM-10 | The points a kernel makes are evaluated and stored as made; the Evaluator's archive (repeats) is by the raw x. | yes | `symmetry.hpp` |
+| `symmetry` | SYM-11 | Off by default (the problem's periodic variables only; task 24, §24.4.2, periodic.hpp): a periodic coordinate's difference in align's costs and in distance is the shorter way round, and align returns each periodic coo... | no: option | `symmetry.hpp` |
 | `tiktak` | TT-1 | Step 0's "order them in descending order, as s_1, ..., s_N*, with f(s_1) <= ... <= f(s_N*)" (2019 A.6) is ascending, as §2.1 of both says: the best point first. | yes | `tiktak.hpp` |
 | `tiktak` | TT-2 | i = 1: no minimum is known yet ("If i > 1", Step 1.2), S_1 = s_1. | yes | `tiktak.hpp` |
 | `tiktak` | TT-3 | N* = max(1, round(share N)); failed or infeasible points of the sample count as +inf and are kept last. | yes | `tiktak.hpp` |

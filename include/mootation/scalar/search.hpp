@@ -102,6 +102,14 @@
 //     - 2) <= w + 1/2 (part II, (3)), w the minima log's minima (at least
 //     one), gamma k N the reduced sample (floor, as the iteration's); the
 //     sample grows by mlsl_n as before, not to part II's (4).
+//   SRCH-14. mlsl_cells = on (task 24, §24.2.5; off by default): the check
+//     "a sample point of lower f within r_k" looks in the cell of the point
+//     and its 3^n neighbours only — the sample in cubes of side r_k (1 +
+//     1e-9) of the normalized box, rebuilt each iteration (part II, §3, the
+//     static form; not Bentley's dynamic one) — with the full scan's test,
+//     term by term: any point within r_k differs by less than a side in
+//     every coordinate, so the decisions are the full scan's. n at most 10
+//     (3^10 cells a point).
 //   SRCH-9. memetic: a phase whose global run spends nothing is the last (as
 //     RST-8): the global solver has stopped by its own criteria (rerun, it
 //     evaluates nothing new), and the local searches alone would go on in
@@ -124,6 +132,7 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "strategy.hpp"
@@ -233,7 +242,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     using namespace strategy;
     StrategyKnobs k("mlsl", knobs,
                     {"inner", "mlsl_n", "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "threads", "start_budget",
-                     "min_dist", "min_df", "keep_points", "mlsl_stop", "minima_bayes"});
+                     "min_dist", "min_df", "keep_points", "mlsl_stop", "minima_bayes", "mlsl_cells"});
     const Inner inner = k.inner("inner");
     const long long N = k.whole("mlsl_n", 100, 1);
     const double sigma = k.number("mlsl_sigma", 4.0), gamma = k.number("mlsl_gamma", 0.2);
@@ -246,6 +255,8 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
         k.find("mlsl_stop") && k.word("mlsl_stop", "budget", {"budget", "bayes"}) == "bayes";
     const bool bayes = bayes_of(k);                                                  // strategy.hpp STRAT-13
     long long reduced_last = 0;
+    const bool cells = k.find("mlsl_cells") && k.word("mlsl_cells", "off", {"off", "on"}) == "on";   // SRCH-14
+    if (cells && P.lo.size() > 10) throw std::invalid_argument("mlsl: mlsl_cells for n <= 10 (3^n cells a point)");
     search::finite_box("mlsl", P);
     const std::size_t n = P.lo.size();
     const double dn = static_cast<double>(n);
@@ -282,6 +293,19 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
             for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
             std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return f[a] < f[b]; });
             const std::size_t reduced = std::max<std::size_t>(1, static_cast<std::size_t>(gamma * kN));
+            // SRCH-14: the sample by cell, a cell's key its integer coordinates' bytes
+            const double side = rk * (1.0 + 1e-9);
+            std::unordered_map<std::string, std::vector<std::size_t>> grid;
+            auto cell_of = [&](const Vec& u) {
+                std::vector<long long> c(n);
+                for (std::size_t w = 0; w < n; ++w) c[w] = static_cast<long long>(std::floor(u[w] / side));
+                return c;
+            };
+            auto key_of_cell = [](const std::vector<long long>& c) {
+                return std::string(reinterpret_cast<const char*>(c.data()), c.size() * sizeof(long long));
+            };
+            if (cells)
+                for (std::size_t j = 0; j < U.size(); ++j) grid[key_of_cell(cell_of(U[j]))].push_back(j);
             std::vector<StartSpec> run;
             std::vector<std::size_t> from;
             for (std::size_t q = 0; q < reduced && q < order.size(); ++q) {
@@ -296,11 +320,37 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
                 }
                 if (excluded) continue;
                 bool lower_near = false;
-                for (std::size_t j = 0; j < U.size() && !lower_near; ++j) {
-                    if (!(f[j] < f[i])) continue;
+                auto near_lower = [&](std::size_t j) {         // the full scan's test, term by term
+                    if (!(f[j] < f[i])) return false;
                     double d2 = 0.0;
                     for (std::size_t c = 0; c < n; ++c) d2 += (U[j][c] - U[i][c]) * (U[j][c] - U[i][c]);
-                    lower_near = d2 <= rk * rk;
+                    return d2 <= rk * rk;
+                };
+                if (!cells) {
+                    for (std::size_t j = 0; j < U.size() && !lower_near; ++j) lower_near = near_lower(j);
+                } else {                                                                   // SRCH-14
+                    const std::vector<long long> home = cell_of(U[i]);
+                    std::vector<int> off(n, -1);
+                    for (bool more = true; more && !lower_near;) {
+                        std::vector<long long> c = home;
+                        for (std::size_t w = 0; w < n; ++w) c[w] += off[w];
+                        const auto hit = grid.find(key_of_cell(c));
+                        if (hit != grid.end())
+                            for (std::size_t j : hit->second)
+                                if (near_lower(j)) {
+                                    lower_near = true;
+                                    break;
+                                }
+                        more = false;                          // the next offset in {-1, 0, 1}^n
+                        for (std::size_t w = 0; w < n && !more; ++w) {
+                            if (off[w] < 1) {
+                                ++off[w];
+                                more = true;
+                            } else {
+                                off[w] = -1;
+                            }
+                        }
+                    }
                 }
                 if (lower_near) continue;
                 used[i] = 1;

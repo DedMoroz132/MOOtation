@@ -75,6 +75,7 @@ struct Options {
     symmetry::Sym sym;                  // task 19 (pbest.hpp PB-3)
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
     std::vector<char> periodic;         // periodic variables (task 24, §24.4.2; periodic.hpp)
+    std::vector<int> var_repair;        // a variable's own repair (task 24, §24.4.2)
 };
 
 class LSHADE {
@@ -115,7 +116,7 @@ public:
             const std::size_t r = pick_h(rng_);
             cr_[i] = terminal_[r] ? 0.0 : pbest::draw_CR(rng_, m_cr_[r]);   // (1)
             F_[i] = pbest::draw_F(rng_, m_f_[r]);                         // (2)
-            u_[i] = pbest::trial(x_, a_, i, order, std::min(top, n_), F_[i], cr_[i], lo_, hi_, rng_, o_.sym, o_.periodic);
+            u_[i] = pbest::trial(x_, a_, i, order, std::min(top, n_), F_[i], cr_[i], lo_, hi_, rng_, o_.sym, o_.periodic, o_.var_repair);
         }
         return u_;
     }

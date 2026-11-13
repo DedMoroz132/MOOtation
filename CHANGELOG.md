@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.4.2, §24.2.5): periodic variables in lbfgsb, lm and
+  slsqp too (no bound on them, their points wrapped), and in the
+  symmetries' align and distance (SYM-11); `scalar::Problem::var_repair`,
+  a variable's own bound repair in de, jade, shade, lshade, g3_pcx, pso and
+  spso2011; mlsl's `mlsl_cells = on`, the lower-point check in cells
+  (Rinnooy Kan & Timmer 1987, part II, §3; the full scan's decisions,
+  SRCH-14). Off by default: runs as before.
 - Fixed (task 24): the C++ campaign engine run by itself (`mootation run`)
   left every job at one objective to the Python engine, waiting for the
   campaign's reference the Python driver builds, which no run at one

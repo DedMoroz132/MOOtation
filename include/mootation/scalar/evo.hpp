@@ -30,6 +30,7 @@
 
 #include "../random.hpp"
 
+#include "../operators/bound_repair.hpp"
 #include "periodic.hpp"
 
 namespace mootation::scalar::evo {
@@ -98,6 +99,19 @@ inline bool wrapped(double& v, const Vec& lo, const Vec& hi, const std::vector<c
 {
     if (!periodic::is(periodic, j)) return false;
     v = periodic::wrap_into(v, lo[j], hi[j]);
+    return true;
+}
+
+// coordinate j of v, out of the box, repaired by the variable's own repair
+// (task 24, §24.4.2; Problem::var_repair); false where it has none (the
+// caller's repair then applies). native leaves it.
+template <class RNG>
+inline bool own_repair(double& v, const Vec& lo, const Vec& hi, double parent, const std::vector<int>& var_repair,
+                       std::size_t j, RNG& rng)
+{
+    if (var_repair.empty() || var_repair[j] < 0) return false;
+    const auto how = static_cast<ops::BoundRepair>(var_repair[j]);
+    if (how != ops::BoundRepair::Native) v = ops::repair_value(v, lo[j], hi[j], parent, how, rng);
     return true;
 }
 

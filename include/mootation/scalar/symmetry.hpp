@@ -74,6 +74,12 @@
 //     velocity's.
 //   SYM-10. The points a kernel makes are evaluated and stored as made; the
 //     Evaluator's archive (repeats) is by the raw x.
+//   SYM-11. Off by default (the problem's periodic variables only; task 24,
+//     §24.4.2, periodic.hpp): a periodic coordinate's difference in align's
+//     costs and in distance is the shorter way round, and align returns each
+//     periodic coordinate of x in its representation nearest ref's (ref +
+//     the signed shorter difference, which may lie past the box: a kernel
+//     wraps what it makes, PER-2). A problem's own align is its own.
 // ============================================================================
 
 #include <algorithm>
@@ -85,6 +91,7 @@
 #include <vector>
 
 #include "../fp_contract.hpp"
+#include "periodic.hpp"
 
 namespace mootation::scalar::symmetry {
 
@@ -198,10 +205,18 @@ inline void check(const std::vector<Blocks>& groups, std::size_t n)
     }
 }
 
+// a - b of a coordinate of period p (0: not periodic), the shorter way round (SYM-11)
+inline double difference(double a, double b, double p)
+{
+    const double d = a - b;
+    return p > 0.0 ? d - p * std::floor(d / p + 0.5) : d;
+}
+
 // align(x, ref): canon (where given), then each group's blocks permuted to
-// ref's by the Hungarian method on the squared distances.
+// ref's by the Hungarian method on the squared distances; period: a
+// coordinate's period, 0 where it has none (SYM-11; empty: none)
 inline Vec align(const Vec& x, const Vec& ref, const std::vector<Blocks>& groups,
-                 const std::function<void(Vec&)>& canon = {})
+                 const std::function<void(Vec&)>& canon = {}, const Vec& period = {})
 {
     if (x.size() != ref.size()) throw std::invalid_argument("symmetry: x and ref differ in length");
     Vec y = x;
@@ -214,7 +229,10 @@ inline Vec align(const Vec& x, const Vec& ref, const std::vector<Blocks>& groups
             for (std::size_t j = 0; j < m; ++j) {
                 double sum = 0.0;
                 for (std::size_t k = 0; k < s; ++k) {
-                    const double d = y[b.offset + i * s + k] - ref[b.offset + j * s + k];
+                    const double d = period.empty()
+                                         ? y[b.offset + i * s + k] - ref[b.offset + j * s + k]
+                                         : difference(y[b.offset + i * s + k], ref[b.offset + j * s + k],
+                                                      period[b.offset + j * s + k]);
                     sum += d * d;
                 }
                 cost[i * m + j] = sum;
@@ -223,16 +241,31 @@ inline Vec align(const Vec& x, const Vec& ref, const std::vector<Blocks>& groups
         for (std::size_t i = 0; i < m; ++i)
             for (std::size_t k = 0; k < s; ++k) out[b.offset + a[i] * s + k] = y[b.offset + i * s + k];
     }
+    for (std::size_t c = 0; c < out.size() && !period.empty(); ++c)              // SYM-11
+        if (period[c] > 0.0) out[c] = ref[c] + difference(out[c], ref[c], period[c]);
     return out;
 }
 
 inline double distance(const Vec& x, const Vec& y, const std::vector<Blocks>& groups,
-                       const std::function<void(Vec&)>& canon = {})
+                       const std::function<void(Vec&)>& canon = {}, const Vec& period = {})
 {
-    const Vec a = align(x, y, groups, canon);
+    const Vec a = align(x, y, groups, canon, period);
     double sum = 0.0;
-    for (std::size_t i = 0; i < a.size(); ++i) sum += (a[i] - y[i]) * (a[i] - y[i]);
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const double d = period.empty() ? a[i] - y[i] : difference(a[i], y[i], period[i]);
+        sum += d * d;
+    }
     return std::sqrt(sum);
+}
+
+// a problem's periods (SYM-11): hi - lo where periodic, else 0; empty where none
+inline Vec periods(const std::vector<char>& periodic, const Vec& lo, const Vec& hi)
+{
+    if (periodic.empty()) return {};
+    Vec p(lo.size(), 0.0);
+    for (std::size_t j = 0; j < p.size(); ++j)
+        if (periodic[j]) p[j] = hi[j] - lo[j];
+    return p;
 }
 
 // The built-in canon (SYM-5): each group's blocks sorted lexicographically.
@@ -272,6 +305,7 @@ struct Sym {
     std::vector<Blocks> groups;
     std::function<void(Vec&)> canon;
     std::function<void(const Vec& x, const Vec& ref, Vec& out)> align;
+    Vec period;                       // SYM-11: a coordinate's period, 0 where none; empty: none
 
     bool on() const { return mode != Mode::off; }
 
@@ -285,7 +319,7 @@ struct Sym {
 
     Vec aligned(const Vec& x, const Vec& ref) const
     {
-        if (!align) return symmetry::align(x, ref, groups, canon);
+        if (!align) return symmetry::align(x, ref, groups, canon, period);
         Vec out;
         align(x, ref, out);
         return out;

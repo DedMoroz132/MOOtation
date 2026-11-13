@@ -218,6 +218,10 @@ struct Problem {
     // PERIODIC VARIABLES (task 24, §24.4.2; periodic.hpp): 1 where variable j
     // is periodic, its period hi - lo; empty: none
     std::vector<char> periodic;
+    // a variable's own repair (task 24, §24.4.2, "bounded(method)"): -1 the
+    // method's, else an ops::BoundRepair (operators/bound_repair.hpp) for
+    // de, jade, shade, lshade, g3_pcx, pso, spso2011; empty: the method's
+    std::vector<int> var_repair;
     // set by a strategy's start (strategy.hpp, View), not by the user: a
     // point whose values are known, for the run's archive at the merge (ULS-2)
     std::function<void(const Vec& x, const Vec& f)> known_point;
@@ -283,6 +287,15 @@ public:
         next_record = stride;
         limit = budget;
         if (p.has_residuals()) check_residual_problem();
+        if (!p.var_repair.empty()) {                                // a variable's own repair
+            if (p.var_repair.size() != p.lo.size())
+                throw std::invalid_argument("var_repair: " + std::to_string(p.var_repair.size()) +
+                                            " entries for " + std::to_string(p.lo.size()) + " variables");
+            for (std::size_t j = 0; j < p.var_repair.size(); ++j)
+                if (p.var_repair[j] < -1 || p.var_repair[j] > 7 || p.var_repair[j] == 4)
+                    throw std::invalid_argument("var_repair: variable " + std::to_string(j) +
+                                                ": -1 or a bound repair but resample (0 ... 7, not 4)");
+        }
         if (!p.periodic.empty()) {                                  // periodic.hpp
             if (p.periodic.size() != p.lo.size())
                 throw std::invalid_argument("periodic: " + std::to_string(p.periodic.size()) + " flags for " +
