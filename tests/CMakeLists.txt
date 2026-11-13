@@ -60,6 +60,7 @@ set(MOOTATION_TESTS
     test_rgn
     test_atomic_measure
     test_lm_ma_es
+    test_normal_cdf
     test_store_codec
     test_json
     test_toml

@@ -415,7 +415,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-298 items: 289 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+300 items: 291 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -578,6 +578,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `nelder_mead` | NM-1 | The initial simplex: x_0 and x_0 + tau e_i, tau = 0.05 in every coordinate, x_0 - tau e_i where x_0 + tau e_i would leave the box (the box is meant normalized to [0, 1]^n: Gao & Han's (3.1), fminsearch's, takes 0.0002... | yes | `nelder_mead.hpp` |
 | `nelder_mead` | NM-2 | Every point the method makes is clipped to the box before it is evaluated and becomes a vertex (Lagarias et al. and Gao & Han treat unconstrained problems). | yes | `nelder_mead.hpp` |
 | `nelder_mead` | NM-3 | The initial vertices are ordered by value, ties in their order of construction (x_0 first). | yes | `nelder_mead.hpp` |
+| `normal_cdf` | NCDF-1 | The series and the continued fraction meet at \|x\| = 2 (z = sqrt 2): there both converge in about 40 terms; the lower tail keeps its relative accuracy (erfc is never 1 - erf there). | yes | `normal_cdf.hpp` |
+| `normal_cdf` | NCDF-2 | The inverse takes the tail it is in (p > 1/2: -Phi^-1(1 - p)), so that p near 1 is not lost to 1 - p's rounding more than the input already is. | yes | `normal_cdf.hpp` |
 | `pap` | PAP-1 | The constituents run generation by generation in lockstep, in the order given: a generation of each is one of its ask/tell steps, so the evaluations go to each in proportion to what its generation asks (its subpopulat... | yes | `pap.hpp` |
 | `pap` | PAP-2 | A migration takes the emigrants of every constituent from the subpopulations as they stand before it ("combine the subpopulations of the remaining m - 1 algorithms, identify and duplicate the best migration_size indiv... | yes | `pap.hpp` |
 | `pap` | PAP-3 | PSO's "gbest": the migrant replaces the worst particle's best and position, its velocity 0, and gbest is the best of the bests again (§II-C: "updating the gbest once a better solution emerges in the whole population")... | yes | `pap.hpp` |
