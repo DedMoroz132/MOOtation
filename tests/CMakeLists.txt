@@ -45,6 +45,8 @@ set(MOOTATION_TESTS
     test_sep_cmaes
     test_cmaes_inject
     test_cmaes_h09
+    test_cmaes_margin
+    test_normal_cdf
     test_strategy
     test_restarts
     test_search

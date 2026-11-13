@@ -78,9 +78,43 @@
 //     either holds when one of them stagnates; off never stops a run on it.
 //     H09's "respectively, in the two arrays" admits the first two; the
 //     archive's runs (cmaes.m 3.30) are not read here (task 18, the f23 probe).
-//   CMA-5. The eigendecomposition of C at every iteration, where H09 makes it
-//     every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves time and changes
-//     no update but the sampling's B and D between decompositions.
+//   CMA-5. The eigendecomposition of C at every iteration by default, where
+//     H09 makes it every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves
+//     time and changes no update but the sampling's B and D between
+//     decompositions. The option eigen_every (task 25, 24.3.1): 1 (the
+//     default) every iteration, the runs unchanged; k > 1 every k-th tell; 0
+//     H09's interval, max(1, ⌊1/((c_1 + c_μ) 10 D)⌋). Between decompositions
+//     B, D (the sampling, C^-1/2 in tell) and the eigenvalues stop() reads are
+//     the last decomposition's (CMA-7).
+//   CMA-7. A lazy run decomposes at the tells t with t mod k = 0; C itself is
+//     updated at every tell.
+//
+// CMA-ES WITH MARGIN (task 25, 24.3.4): R. Hamano, S. Saito, M. Nomura, S.
+// Shirakawa, "CMA-ES with Margin: Lower-Bounding Marginal Probability for
+// Mixed-Integer Black-Box Optimization", GECCO 2022 (source cma-margin_
+// hamano2022, "HM22"), §4 and Algorithm 1 (Appendix A). The options
+// margin_values (per coordinate its discrete values in increasing order;
+// empty: continuous; two: binary) and margin_alpha (the margin α; 0, the
+// default, is off and the runs are unchanged; HM22 §5.1 takes α = 1/(Nλ)).
+// With the margin, ask() returns v = m + σ A y (HM22 step 2), A a diagonal
+// matrix, I at the start; the caller evaluates f at encode(v), each discrete
+// coordinate moved to its value by the midpoint thresholds ℓ (§4.1); tell()
+// updates m, σ, C from the y as before (step 4), then corrects m and A (step
+// 5): a binary coordinate, and an integer one whose mean is beyond the
+// outermost thresholds, by HM22 (13)-(14) (m moved towards the threshold ℓ(m)
+// so that the confidence interval CI(1 - 2α) = sqrt(χ²_ppf(1 - 2α)) σ
+// sqrt(A²C_jj) reaches it; A kept); any other integer one by (15)-(24) and
+// Appendix A (m and A_j from the restricted probabilities p''_low, p''_up).
+//   CMM-1. The distribution functions are normal_cdf.hpp's (Φ, and χ²_ppf
+//     with one degree of freedom, χ²_ppf(1 - 2p) = Φ^-1(1 - p)²).
+//   CMM-2. The integer correction (15)-(24) is made only when p_low or p_up is
+//     below α/2: otherwise (20)-(23) leave p_low and p_up as they are and (24)
+//     returns the same m and A_j, up to rounding (Algorithm 1 makes it every
+//     iteration).
+//   CMM-3. Where 1 - 2p'' is not positive (p'' >= 1/2: the variance so large
+//     that no value is fixed, HM22 after (24)) the coordinate is left as it is.
+//   CMM-4. An injected point x enters with y = A^-1 (x - m) / σ, so that the
+//     v of ask() is x itself.
 // ============================================================================
 
 #include <algorithm>
@@ -89,12 +123,14 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <vector>
 
 #include "../detmath.hpp"
 #include "../fp_contract.hpp"
 #include "../random.hpp"
 #include "eigen.hpp"
+#include "normal_cdf.hpp"
 
 namespace mootation::scalar {
 
@@ -104,6 +140,12 @@ struct CMAESOptions {
     enum class Weights { active, positive } weights = Weights::active;
     enum class Cmu { tutorial2016, hansen2009 } cmu = Cmu::tutorial2016;
     enum class Stagnation { h09, either, off } stagnation = Stagnation::h09;
+    // CMA-5: decompose C every eigen_every tells; 1 every tell, 0 H09's interval
+    int eigen_every = 1;
+    // CMA-ES with margin (HM22): α (0: off) and each coordinate's discrete
+    // values in increasing order (empty: continuous)
+    double margin_alpha = 0.0;
+    std::vector<std::vector<double>> margin_values;
 };
 
 class CMAES {
@@ -133,7 +175,8 @@ public:
     CMAES(std::vector<double> mean, double sigma, std::mt19937& rng, int popsize = 0,
           const CMAESOptions& options = CMAESOptions())
         : m_(std::move(mean)), n_(m_.size()), sigma_(sigma), sigma0_(sigma), rng_(rng),
-          stagnation_(options.stagnation)
+          stagnation_(options.stagnation), margin_alpha_(options.margin_alpha),
+          margin_values_(options.margin_values)
     {
         const double n = static_cast<double>(n_);
         const bool positive = options.weights == CMAESOptions::Weights::positive;
@@ -182,6 +225,26 @@ public:
         B_ = lsq::Matrix(n_, n_);
         for (std::size_t i = 0; i < n_; ++i) C_(i, i) = B_(i, i) = 1.0;
         D_.assign(n_, 1.0);
+        // CMA-5: the interval of the decomposition
+        if (options.eigen_every < 0) throw std::invalid_argument("CMAES: eigen_every >= 0");
+        eigen_every_ = options.eigen_every > 0
+                           ? options.eigen_every
+                           : std::max(1, static_cast<int>(std::floor(1.0 / ((c1_ + cmu_) * 10.0 * n))));
+        // the margin: thresholds at the midpoints of the discrete values (HM22 §4.1)
+        if (!margin_values_.empty() && margin_values_.size() != n_)
+            throw std::invalid_argument("CMAES: margin_values needs a list per coordinate (empty: continuous)");
+        if (margin_alpha_ < 0.0 || margin_alpha_ >= 0.5) throw std::invalid_argument("CMAES: margin_alpha in [0, 1/2)");
+        thresholds_.assign(n_, {});
+        for (std::size_t j = 0; j < margin_values_.size(); ++j) {
+            const auto& z = margin_values_[j];
+            if (z.size() == 1) throw std::invalid_argument("CMAES: a discrete coordinate needs two values or more");
+            for (std::size_t k = 0; k + 1 < z.size(); ++k) {
+                if (!(z[k] < z[k + 1])) throw std::invalid_argument("CMAES: margin_values must increase");
+                thresholds_[j].push_back((z[k] + z[k + 1]) / 2.0);
+            }
+            margin_on_ = margin_on_ || (margin_alpha_ > 0.0 && z.size() >= 2);
+        }
+        A_.assign(n_, 1.0);
     }
 
     std::size_t lambda() const { return lam_; }
@@ -190,6 +253,23 @@ public:
     const std::vector<double>& weights() const { return w_; }
     double mu_eff() const { return mueff_; }
     double c_mu() const { return cmu_; }
+    int eigen_every() const { return eigen_every_; }
+    long long decompositions() const { return decompositions_; }
+    const std::vector<double>& margin_scale() const { return A_; }
+
+    // HM22's ENCODING_f (§4.1): each discrete coordinate to its value by the
+    // midpoint thresholds, the continuous ones as they are
+    std::vector<double> encode(std::vector<double> v) const
+    {
+        for (std::size_t j = 0; j < margin_values_.size() && j < v.size(); ++j) {
+            const auto& z = margin_values_[j];
+            if (z.empty()) continue;
+            std::size_t k = 0;
+            while (k < thresholds_[j].size() && v[j] > thresholds_[j][k]) ++k;
+            v[j] = z[k];
+        }
+        return v;
+    }
 
     // Injection's parameters (INJ-2), 0: Table 1's; the first injection
     // switches them on with Table 1's where none were set
@@ -235,7 +315,8 @@ public:
             if (k < injected_.size()) {                                         // (1), (2)
                 is_injected_[k] = true;
                 x[k] = injected_[k];
-                for (std::size_t i = 0; i < n_; ++i) y_[k][i] = (x[k][i] - m_[i]) / sigma_;
+                for (std::size_t i = 0; i < n_; ++i)                            // CMM-4
+                    y_[k][i] = margin_on_ ? (x[k][i] - m_[i]) / sigma_ / A_[i] : (x[k][i] - m_[i]) / sigma_;
                 continue;
             }
             std::vector<double> z(n_);
@@ -244,7 +325,7 @@ public:
                 double s = 0.0;
                 for (std::size_t j = 0; j < n_; ++j) s += z[j] * D_[j] * B_(i, j);
                 y_[k][i] = s;
-                x[k][i] = m_[i] + sigma_ * s;
+                x[k][i] = margin_on_ ? m_[i] + sigma_ * (A_[i] * s) : m_[i] + sigma_ * s;   // HM22 step 2
             }
         }
         injected_.clear();
@@ -341,8 +422,12 @@ public:
         sigma_ *= dm::exp(injecting_ ? std::min(dsmax_, log_step) : log_step);   // (11)
         for (std::size_t i = 0; i < n_; ++i)
             for (std::size_t j = 0; j < n_; ++j) C_(i, j) = (Cn(i, j) + Cn(j, i)) / 2.0;
-        eigen::symmetric(C_, ev_, B_);
-        for (std::size_t i = 0; i < n_; ++i) D_[i] = std::sqrt(std::max(ev_[i], 1e-300));
+        if (g_ % eigen_every_ == 0) {                                            // CMA-5, CMA-7
+            eigen::symmetric(C_, ev_, B_);
+            for (std::size_t i = 0; i < n_; ++i) D_[i] = std::sqrt(std::max(ev_[i], 1e-300));
+            ++decompositions_;
+        }
+        if (margin_on_) apply_margin();                                         // HM22 step 5
         // what H09's criteria read (CMA-1, CMA-2)
         const std::size_t k = std::min(lam_, 1 + static_cast<std::size_t>(std::ceil(0.1 + static_cast<double>(lam_) / 4.0)));
         best_hist_.push_back(values[order[0]]);
@@ -409,11 +494,52 @@ public:
     }
 
 private:
+    // HM22 step 5: the margin's corrections of m and A (Algorithm 1, lines 15-29)
+    void apply_margin()
+    {
+        const double alpha = margin_alpha_;
+        for (std::size_t j = 0; j < n_; ++j) {
+            const auto& l = thresholds_[j];
+            if (l.empty()) continue;
+            const double sd = sigma_ * A_[j] * std::sqrt(C_(j, j));
+            double& m = m_[j];
+            if (l.size() == 1 || m <= l.front() || m > l.back()) {                // (13)-(14)
+                const double ell = l.size() == 1 ? l[0] : (m <= l.front() ? l.front() : l.back());
+                const double ci = std::sqrt(ncdf::chi2_1_quantile(1.0 - 2.0 * alpha)) * sd;
+                const double d = m - ell;
+                const double sg = d > 0.0 ? 1.0 : (d < 0.0 ? -1.0 : 0.0);
+                m = ell + sg * std::min(std::fabs(d), ci);
+                continue;
+            }
+            const double lo = *(std::lower_bound(l.begin(), l.end(), m) - 1);      // (15): max{l < m}
+            const double up = *std::lower_bound(l.begin(), l.end(), m);            // (16): min{l >= m}
+            const double p_low = ncdf::normal_cdf((lo - m) / sd);                 // (17)
+            const double p_up = ncdf::normal_cdf((m - up) / sd);                  // (18)
+            const double p_mid = 1.0 - p_low - p_up;                              // (19)
+            if (p_low >= alpha / 2.0 && p_up >= alpha / 2.0) continue;            // CMM-2
+            const double pl1 = std::max(alpha / 2.0, p_low), pu1 = std::max(alpha / 2.0, p_up);   // (20), (21)
+            const double scale = (1.0 - pl1 - pu1 - p_mid) / (pl1 + pu1 + p_mid - 3.0 * alpha / 2.0);
+            const double pl2 = pl1 + scale * (pl1 - alpha / 2.0);                 // (22)
+            const double pu2 = pu1 + scale * (pu1 - alpha / 2.0);                 // (23)
+            if (!(1.0 - 2.0 * pl2 > 0.0 && 1.0 - 2.0 * pu2 > 0.0)) continue;      // CMM-3
+            const double ql = std::sqrt(ncdf::chi2_1_quantile(1.0 - 2.0 * pl2));
+            const double qu = std::sqrt(ncdf::chi2_1_quantile(1.0 - 2.0 * pu2));
+            m = (lo * qu + up * ql) / (ql + qu);                                  // Appendix A
+            A_[j] = (up - lo) / (sigma_ * std::sqrt(C_(j, j)) * (ql + qu));
+        }
+    }
+
     std::vector<double> m_;
     std::size_t n_;
     double sigma_, sigma0_;
     std::mt19937& rng_;
     CMAESOptions::Stagnation stagnation_;
+    double margin_alpha_ = 0.0;                                                // HM22
+    std::vector<std::vector<double>> margin_values_, thresholds_;
+    bool margin_on_ = false;
+    std::vector<double> A_;
+    int eigen_every_ = 1;                                                      // CMA-5
+    long long decompositions_ = 0;
     std::vector<double> ev_ = std::vector<double>(n_, 1.0);                   // C's eigenvalues, increasing
     std::vector<double> best_hist_, median_hist_;                              // per iteration (CMA-1)
     std::vector<bool> equal_hist_;

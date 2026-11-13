@@ -52,6 +52,16 @@ always listed under **Changed** or **Removed**.
   percentiles 10/50/90 and the mean per problem, algorithm and precision, and
   their ECDF per dimension and class (REP-4). The report without it is as
   before.
+- Added (`scalar/cmaes.hpp`, C++ options of `CMAESOptions`; task 25):
+  `eigen_every` decomposes C every k-th iteration (0: H09's interval
+  max(1, floor(1/((c_1 + c_mu) 10 D)))), 1 by default (every iteration, as
+  before); CMA-ES with margin (Hamano et al. 2022) for integer and binary
+  coordinates, `margin_values` and `margin_alpha` (0 by default: off), with
+  `CMAES::encode`. Default runs are unchanged, bit for bit. Not yet knobs of
+  `minimize` or the strategies.
+- Added (`scalar/normal_cdf.hpp`; task 25): the normal distribution
+  function, its inverse and the chi-squared quantile with one degree of
+  freedom from the library's own exp and log.
 
 - Added (`scalar/cmaes.hpp`, `restarts.hpp`; task 18): the knob
   `cma_stagnation` = `h09` | `either` | `off` for `cmaes` (with `cma_stop =
