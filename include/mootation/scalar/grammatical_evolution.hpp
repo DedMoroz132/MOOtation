@@ -42,8 +42,12 @@
 //     at the end": the start s uniform in [0, L), the number k uniform in
 //     [1, L - s]; nothing is done when L + k would exceed max_len (> 0).
 //   GE-5. The wrap limit: the paper gives none ("even after several
-//     wrapping events"). max_wraps counts the times the reading restarts
-//     from the first codon (0: no wrapping); the default 10 is ours.
+//     wrapping events"), nor do its experiments (Tables II-IV list
+//     population, generations and the operators' probabilities only).
+//     max_wraps counts the times the reading restarts from the first codon
+//     (0: no wrapping); the default 10 is ours: with the initial lengths of
+//     GE-6 (up to ten codons) it lets a derivation read up to about a
+//     hundred codons before it is declared invalid.
 //   GE-6. "The initialization range of ten codons" (§IV-D) read as lengths
 //     uniform in [1, 10].
 //   GE-7. Real parameters: the codons give the structure only. The genome
@@ -91,7 +95,7 @@ struct GEOptions {
     bool mutation_codon = false;  // GE-2
 };
 
-struct Decoded {
+struct Mapping {
     bool valid = false;
     Tree tree;                    // empty when not valid
     std::size_t codons_read = 0;  // codon reads, wraps included
@@ -99,7 +103,7 @@ struct Decoded {
 };
 
 // O'Neill & Ryan §IV-A: the leftmost non-terminal first, one codon a choice.
-inline Decoded decode(const Grammar& g, const GEOptions& o, const Genome& x)
+inline Mapping decode(const Grammar& g, const GEOptions& o, const Genome& x)
 {
     if (o.codon_bits < 1 || o.codon_bits > 30)
         throw std::invalid_argument("grammatical evolution: codon_bits must be in [1, 30]");
@@ -109,7 +113,7 @@ inline Decoded decode(const Grammar& g, const GEOptions& o, const Genome& x)
             throw std::invalid_argument("grammatical evolution: codon " + std::to_string(k) + " = " +
                                         std::to_string(x.codons[k]) + " is not in [0, " +
                                         std::to_string(top) + ")");
-    Decoded d;
+    Mapping d;
     const auto invalid = [&d]() {
         d.tree.nodes.clear();
         return d;                                              // valid stays false
@@ -208,7 +212,7 @@ inline bool duplication(const GEOptions& o, Genome& x, G& rng)
 }
 
 // Pruning (reading GE-3); d must be decode(x); true if codons were removed.
-inline bool prune(Genome& x, const Decoded& d)
+inline bool prune(Genome& x, const Mapping& d)
 {
     if (!d.valid || d.wraps > 0) return false;
     const std::size_t keep = std::max<std::size_t>(d.codons_read, 1);

@@ -305,7 +305,7 @@ static void correct_by_construction()
     wrong = unreduced = 0;
     for (int k = 0; k < 10000; ++k) {
         const Genome x = random_genome(ge, rng);
-        Decoded d = decode(g, ge, x);
+        Mapping d = decode(g, ge, x);
         if (!d.valid) continue;
         ++valid;
         check(obeys(g, d.tree), "GE: a valid derivation obeys the grammar");
@@ -397,7 +397,7 @@ static void parameters()
         Genome y = random_genome(ge, rng);
         if (decode(g, ge, y).valid) x = y;
     }
-    Decoded d = decode(g, ge, x);
+    Mapping d = decode(g, ge, x);
     for (const Node& n : d.tree.nodes)
         for (double p : n.params) check(p == 0.5 * (0.1 + 10.0), "GE-7: a missing parameter is the middle");
     std::vector<double> fitted = params_of(d.tree);
@@ -449,7 +449,7 @@ static void grammatical_evolution()
     // later codons of Fig. 2 do not give the paper's final expression), here
     // closed by 55 (*), 203 102 (X), 53 (-), 203 101 (1.0)
     const Genome steps{{220, 240, 220, 203, 101, 53, 202, 203, 102, 55, 203, 102, 53, 203, 101}, {}};
-    const Decoded d = decode(g, o, steps);
+    const Mapping d = decode(g, o, steps);
     std::size_t end = 0;
     const std::string s = d.valid ? text(g, d.tree, 0, &end) : std::string();
     check(d.valid && d.wraps == 0 && d.codons_read == 15, "§IV-B: the steps decode without wrapping");
@@ -463,8 +463,8 @@ static void grammatical_evolution()
     const Genome fig2{{220, 240, 220, 203, 101, 53, 202, 203, 102, 55, 220, 202,
                        241, 130, 37, 202, 203, 140, 39, 202, 203, 102},
                       {}};
-    const Decoded d2 = decode(g, o, fig2);
-    const Decoded d3 = decode(g, o, fig2);
+    const Mapping d2 = decode(g, o, fig2);
+    const Mapping d3 = decode(g, o, fig2);
     check(d2.valid == d3.valid && d2.codons_read == d3.codons_read && d2.wraps == d3.wraps,
           "decoding is a function of the genome");
     check(!d2.valid, "GE-9: Fig. 2 as printed does not complete under Table I's grammar within 10 wraps");
@@ -473,7 +473,7 @@ static void grammatical_evolution()
     for (int wraps : {0, 1, 10}) {
         GEOptions w = o;
         w.max_wraps = wraps;
-        const Decoded bad = decode(g, w, Genome{{0, 4, 8}, {}});
+        const Mapping bad = decode(g, w, Genome{{0, 4, 8}, {}});
         check(!bad.valid && bad.tree.nodes.empty() && bad.wraps == wraps,
               "an endless derivation is invalid after max_wraps = " + std::to_string(wraps));
     }
@@ -481,7 +481,7 @@ static void grammatical_evolution()
     {
         GEOptions w = o;
         w.max_wraps = 1;
-        const Decoded one = decode(g, w, Genome{{3}, {}});
+        const Mapping one = decode(g, w, Genome{{3}, {}});
         check(one.valid && one.wraps == 1 && one.codons_read == 2, "one codon read twice by wrapping");
         w.max_wraps = 0;
         check(!decode(g, w, Genome{{3}, {}}).valid, "the same with no wrapping is invalid");
@@ -492,18 +492,18 @@ static void grammatical_evolution()
     int checked = 0;
     for (int k = 0; k < 5000; ++k) {
         Genome x = random_genome(o, rng);
-        const Decoded dx = decode(g, o, x);
+        const Mapping dx = decode(g, o, x);
         if (!dx.valid || dx.wraps > 0) continue;
         ++checked;
         Genome y = x;
         duplication(o, y, rng);
-        const Decoded dy = decode(g, o, y);
+        const Mapping dy = decode(g, o, y);
         check(dy.valid && params_of(dy.tree) == params_of(dx.tree) && dy.tree.nodes.size() == dx.tree.nodes.size() &&
                   dy.codons_read == dx.codons_read,
               "duplication keeps the derivation");
         Genome z = y;
         prune(z, dy);
-        const Decoded dz = decode(g, o, z);
+        const Mapping dz = decode(g, o, z);
         check(dz.valid && dz.tree.nodes.size() == dx.tree.nodes.size() && z.codons.size() <= y.codons.size(),
               "pruning keeps the derivation");
         for (std::size_t n = 0; n < dz.tree.nodes.size(); ++n)
