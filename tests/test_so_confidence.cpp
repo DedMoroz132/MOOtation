@@ -3,8 +3,7 @@
 // include/mootation/so_confidence.hpp (task 25, item 24.7.3), on numbers
 // worked out by hand:
 //   characteristic_effort  M_95 = 29 / 9 / 5 / 2 at R = 0.1 / 0.3 / 0.5 / 0.9
-//                          (the table of the Ersatz protocol, П14 §5.1, from
-//                          K18 (12)); the safeguard at R = 0 and R = 1; an
+//                          (K18 (12)); the safeguard at R = 0 and R = 1; an
 //                          integer quotient not rounded up (KAV-2)
 //   batch_reliability      K18 (9); M_95 runs reach 95 %, M_95 - 1 do not
 //   characteristic_cost, efficiency_ratio   K18 (13), (15)
