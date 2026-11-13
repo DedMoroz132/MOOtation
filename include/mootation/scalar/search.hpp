@@ -152,6 +152,14 @@
 //   SRCH-20. basin_hopping with bh_accept = threshold and its adaptive step
 //     (no ladder) warns once (mootation::warn): DTS is meant for a fixed move
 //     (SRCH-16); the run itself is unchanged.
+//   SRCH-21. memetic on a problem with decode (task 24, §24.1.1, §24.1.2;
+//     off by default): a builtin local solver searches only the variables
+//     its start's genome has active (hooks.hpp active_of; the subproblem
+//     restricted(P, x, active), RES-1, its points through the run's
+//     evaluator and embedded back), so it does not move a structure's slots;
+//     a start with no active variable, or that does not decode, is skipped.
+//     The user's local_search gets the whole x and the mask instead
+//     (scalar.hpp ULS-7).
 //   SRCH-10. ils and basin_hopping: 100 steps in a row that spend nothing end
 //     the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing
 //     ends it (its sample would grow without end); basin_hopping's step grows
@@ -759,6 +767,13 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
                 if (again) continue;
                 started.push_back(ev.X[i]);
                 StartSpec sp;
+                if (P.decode && local.name != "local_search") {                              // SRCH-21
+                    const std::vector<char> active = active_of(P, ev.X[i], "memetic");
+                    for (std::size_t j = 0; j < active.size(); ++j)
+                        if (active[j]) sp.free.push_back(j);
+                    if (!active.empty() && sp.free.empty()) continue;      // nothing to move
+                    if (sp.free.size() == n) sp.free.clear();
+                }
                 sp.seed = start_seed(seed, static_cast<std::uint64_t>(1 + searches + static_cast<long long>(specs.size())));
                 sp.start = search::at(ev.X[i]);
                 specs.push_back(sp);

@@ -173,6 +173,7 @@
 #include "de.hpp"
 #include "eki.hpp"
 #include "ga.hpp"
+#include "hooks.hpp"
 #include "jade.hpp"
 #include "lbfgsb.hpp"
 #include "lm.hpp"
@@ -224,6 +225,7 @@ struct Result {
     Vec ls_state;
     long long decode_invalid = 0;    // genomes that did not decode, not evaluated (task 24, §24.1.2)
     long long cache_hits = 0;        // THE CACHE (task 24, §24.1.4): points given their structure's values
+    bool cache_ended = false;        // ... and the run ended on them (evaluator.hpp CACHE-5)
     long long delta_calls = 0;       // THE DELTA (task 24, §24.1.6): the hook's calls, their declared cost
     double delta_spent = 0.0;
 };
@@ -520,6 +522,7 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     r.hook_seconds = ev.hook_seconds;
     r.decode_invalid = ev.decode_invalid;
     r.cache_hits = ev.cache_hits;
+    r.cache_ended = ev.cache_ended;
     r.delta_calls = ev.delta_calls;
     r.delta_spent = ev.delta_spent;
     r.improvements = ev.improvements.records();
@@ -1162,6 +1165,10 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //     the order of the starts.
 //   ULS-6. Off by default. The run's answer is the evaluator's best, as every
 //     method's; the hook's state comes back in Result::ls_state.
+//   ULS-7. Off by default (a problem with decode). ctx.mask is the start's
+//     decode(x0).active (hooks.hpp active_of): empty, all variables may move;
+//     a start that does not decode, none. The hook is asked to keep the
+//     others; the run does not undo what it moves.
 inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                              long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
                              const Start& start)
@@ -1239,6 +1246,7 @@ inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, dou
             (void)idx;
         }
         LocalContext ctx{Q, static_cast<long long>(static_cast<double>(ev.budget) - ev.used()), rng, {}};
+        ctx.mask = active_of(P, x0, "local_search");                                      // ULS-7
         const auto t0 = std::chrono::steady_clock::now();
         ++ev.hook_calls;
         try {

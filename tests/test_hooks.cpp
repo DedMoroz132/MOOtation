@@ -13,7 +13,13 @@
 //     the whole's at the assembled point, its gradient the whole's columns;
 //   * delta: a pair energy's incremental delta, f(x) + delta = f(x') within
 //     ulp times the pairs; the hook's declared cost charged, no evaluation;
-//     without it the two points evaluated.
+//     without it the two points evaluated;
+//   * CACHE-5: ga_sbx, de and pso with the cache canon, and ga_sbx of the
+//     user's operators with exact, on 8 structures and a budget of 200 end
+//     on the repeats; de on a continuous problem spends its budget;
+//   * the active variables: memetic's nelder_mead on a genome with decode
+//     keeps the inactive slots (and moves them without decode), one thread =
+//     three; local_search's ctx.mask is decode(x0).active.
 
 #include <algorithm>
 #include <array>
@@ -341,6 +347,160 @@ int main()
             why = e.what();
         }
         check(why.find("1 values for a block of 2") != std::string::npos, "delta: a wrong block refused");
+    }
+
+    // CACHE-5: on a finite space of structures the run ends once it asks for
+    // repeats only (8 structures, budget 200: it would not end otherwise)
+    {
+        auto tiny = [](std::shared_ptr<long long> calls, sc::Problem::Cache cache) {
+            sc::Problem P;
+            P.lo.assign(3, 0.0);
+            P.hi.assign(3, 1.0);
+            P.m = 1;
+            P.evaluate = [calls](const Vec& x, Vec& f, Vec&) {
+                ++*calls;
+                f[0] = (x[0] < 0.5 ? 0.0 : 1.0) + (x[1] < 0.5 ? 0.0 : 2.0) + (x[2] < 0.5 ? 0.0 : 4.0);
+            };
+            P.canon_key = [](const Vec& x) {
+                std::string s;
+                for (double v : x) s += v < 0.5 ? '0' : '1';
+                return s;
+            };
+            P.cache = cache;
+            return P;
+        };
+        for (const std::string m : {"ga_sbx", "de", "pso"}) {
+            auto calls = std::make_shared<long long>(0);
+            const sc::Result r =
+                sc::run(m, tiny(calls, sc::Problem::Cache::canon), 1e-6, false, 0.0, 20, 200, 3, {}, {}, 0, {});
+            check(r.cache_ended && *calls <= 8 && r.evaluations == *calls && r.cache_hits >= 200,
+                  m + ", canon, 8 structures, budget 200: ends on the repeats (" + std::to_string(*calls) +
+                      " evaluated, " + std::to_string(r.cache_hits) + " hits)");
+            std::printf("  %s, cache canon, 8 structures, budget 200: %lld evaluated, %lld hits, ended by CACHE-5\n",
+                        m.c_str(), r.evaluations, r.cache_hits);
+        }
+        // exact: a GA of the user's operators on the 8 genomes of {0, 1}^3
+        auto calls = std::make_shared<long long>(0);
+        sc::Problem B = tiny(calls, sc::Problem::Cache::exact);
+        B.sample = [](Vec& x, std::mt19937& r) {
+            for (double& v : x) v = mootation::rnd::uniform01(r) < 0.5 ? 0.0 : 1.0;
+        };
+        B.crossover = [](const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& r) {
+            c1 = p1;
+            c2 = p2;
+            for (std::size_t j = 0; j < p1.size(); ++j)
+                if (mootation::rnd::uniform01(r) < 0.5) std::swap(c1[j], c2[j]);
+        };
+        B.mutate = [](Vec& x, std::mt19937& r) {
+            for (double& v : x)
+                if (mootation::rnd::uniform01(r) < 0.2) v = 1.0 - v;
+        };
+        const sc::Knobs ops{{"ga_crossover", {true, "user", 0.0}}, {"ga_mutation", {true, "user", 0.0}},
+                            {"ga_init", {true, "user", 0.0}}};
+        const sc::Result e = sc::run("ga_sbx", B, 1e-6, false, 0.0, 20, 200, 3, ops, {}, 0, {});
+        check(e.cache_ended && *calls <= 8 && e.evaluations == *calls,
+              "exact, the 8 genomes of {0, 1}^3, budget 200: ends on the repeats (" + std::to_string(*calls) +
+                  " evaluated)");
+        // a run that keeps finding new structures is not ended
+        sc::Problem C = points(k, nullptr);
+        C.cache = sc::Problem::Cache::canon;
+        const sc::Result c = sc::run("de", C, 1e-6, false, 0.0, 20, 2000, 3, {}, {}, 0, {});
+        check(!c.cache_ended && c.evaluations == 2000, "canon on a continuous problem: the budget, not CACHE-5");
+    }
+
+    // the active variables (ULS-7, SRCH-21): genes 0 and 1 the values, 2 and 3
+    // the structure's slots (0.25 or 0.75), active {1, 1, 0, 0}
+    {
+        auto genome = [](std::shared_ptr<Rows> seen, bool decoding) {
+            sc::Problem P;
+            P.lo.assign(4, 0.0);
+            P.hi.assign(4, 1.0);
+            P.m = 1;
+            P.evaluate = [seen](const Vec& x, Vec& f, Vec&) {
+                if (seen) seen->push_back(x);
+                f[0] = (x[0] - 0.3) * (x[0] - 0.3) + (x[1] - 0.6) * (x[1] - 0.6) + x[2] + 2.0 * x[3];
+            };
+            P.sample = [](Vec& x, std::mt19937& r) {
+                x[0] = mootation::rnd::uniform01(r);
+                x[1] = mootation::rnd::uniform01(r);
+                x[2] = mootation::rnd::uniform01(r) < 0.5 ? 0.25 : 0.75;
+                x[3] = mootation::rnd::uniform01(r) < 0.5 ? 0.25 : 0.75;
+            };
+            P.crossover = [](const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& r) {
+                c1 = p1;
+                c2 = p2;
+                for (std::size_t j = 0; j < p1.size(); ++j)
+                    if (mootation::rnd::uniform01(r) < 0.5) std::swap(c1[j], c2[j]);
+            };
+            P.mutate = [](Vec& x, std::mt19937& r) {
+                for (std::size_t j = 0; j < 2; ++j)
+                    x[j] = std::min(1.0, std::max(0.0, x[j] + 0.1 * mootation::rnd::normal01(r)));
+                for (std::size_t j = 2; j < 4; ++j)
+                    if (mootation::rnd::uniform01(r) < 0.2) x[j] = x[j] == 0.25 ? 0.75 : 0.25;
+            };
+            if (decoding)
+                P.decode = [](const Vec& x) {
+                    sc::Decoded d;
+                    d.x_canon = x;
+                    d.active = {1, 1, 0, 0};
+                    return d;
+                };
+            return P;
+        };
+        auto slots_kept = [](const Rows& xs) {
+            for (const Vec& x : xs)
+                for (std::size_t j = 2; j < 4; ++j)
+                    if (x[j] != 0.25 && x[j] != 0.75) return false;
+            return true;
+        };
+        const sc::Knob ga{true,
+                          "{\"solver\":\"ga_sbx\",\"ga_crossover\":\"user\",\"ga_mutation\":\"user\","
+                          "\"ga_init\":\"user\"}",
+                          0.0};
+        const sc::Knob nm{true, "{\"solver\":\"nelder_mead\"}", 0.0};
+        auto memetic = [&](std::shared_ptr<Rows> seen, bool decoding, int threads) {
+            const sc::Knobs kn{{"inner", ga},
+                               {"local_solver", nm},
+                               {"memetic_every", {false, "", 200.0}},
+                               {"memetic_points", {false, "", 2.0}},
+                               {"threads", {false, "", static_cast<double>(threads)}}};
+            return sc::run("memetic", genome(seen, decoding), 1e-6, false, 0.0, 20, 1000, 3, kn, {}, 0, {});
+        };
+        auto with = std::make_shared<Rows>(), without = std::make_shared<Rows>();
+        const sc::Result a = memetic(with, true, 1);
+        const sc::Result b = memetic(without, false, 1);
+        std::string searches;
+        for (const auto& s : a.settings)
+            if (s.first == "local_searches") searches = s.second;
+        check(!searches.empty() && searches != "0" && slots_kept(*with),
+              "memetic with decode: nelder_mead moves the active genes only (" + searches + " searches)");
+        check(!slots_kept(*without), "memetic without decode: nelder_mead moves the slots too");
+        check(same(a, memetic(nullptr, true, 3)), "memetic with decode: one thread = three");
+        // the user's local search gets the mask of its start
+        auto masks = std::make_shared<std::vector<std::vector<char>>>();
+        sc::Problem L = genome(nullptr, true);
+        L.local_search = [masks](const Vec& x, sc::LocalContext& ctx, const Vec&) {
+            masks->push_back(ctx.mask);
+            sc::LocalOutcome o;
+            o.x = x;
+            return o;
+        };
+        sc::Start st;
+        st.has_x0 = true;
+        st.x0 = {0.5, 0.5, 0.25, 0.75};
+        sc::run("local_search", L, 1e-6, false, 0.0, 20, 50, 1, {}, {}, 0, st);
+        L.decode = [](const Vec& x) {
+            sc::Decoded d;
+            d.x_canon = x;
+            d.valid = false;
+            return d;
+        };
+        sc::run("local_search", L, 1e-6, false, 0.0, 20, 50, 1, {}, {}, 0, st);
+        L.decode = nullptr;
+        sc::run("local_search", L, 1e-6, false, 0.0, 20, 50, 1, {}, {}, 0, st);
+        check(masks->size() == 3 && (*masks)[0] == std::vector<char>({1, 1, 0, 0}) &&
+                  (*masks)[1] == std::vector<char>(4, 0) && (*masks)[2].empty(),
+              "local_search: ctx.mask is decode(x0).active, none where it does not decode, empty without decode");
     }
 
     if (failures) {

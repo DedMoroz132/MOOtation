@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-386 items: 340 yes, 46 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+389 items: 340 yes, 49 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -496,6 +496,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `evaluator` | CACHE-2 | Off by default. canon: a point whose structure (canon_key_of: the problem's canon_key, else the bytes of canon(x)) was evaluated in this run is not evaluated: it is kept with that structure's values, free, and counted... | no: option | `evaluator.hpp` |
 | `evaluator` | CACHE-3 | Off by default. A structure's values are its first point's, in the order the run met them. | no: option | `evaluator.hpp` |
 | `evaluator` | CACHE-4 | Off by default. A strategy's start (strategy.hpp, View) reads the run's cache as it was at the round's start and keeps its own; its hits go to the run at the merge, its points as known ones (free). | no: option | `evaluator.hpp` |
+| `evaluator` | CACHE-5 | Off by default (with the cache). As many points in a row as the budget, each a cache hit (CACHE-1, CACHE-2) and none evaluated between, end the run as its budget's end would (Result::cache_ended): on a finite space of... | no: option | `evaluator.hpp` |
 | `evaluator` | SO-1 | A problem with residuals takes its objective from them: evaluate, if it is given too, is not called, and such a problem has no constraints (n_cons = 0; the least-squares solvers of this library take none). | yes | `evaluator.hpp` |
 | `evaluator` | SO-2 | A gradient asked for at a point not yet evaluated is a joint call where the problem has one (value_grad, residuals_jac), else the values and then the gradient: either way one evaluation and one grad_call. | yes | `evaluator.hpp` |
 | `evaluator` | SO-3 | A problem that gives only the joint call (value_grad without evaluate, residuals_jac without residuals) is evaluated by it every time: every evaluation is then a grad_call too. | yes | `evaluator.hpp` |
@@ -711,6 +712,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | ULS-4 | Off by default. x' of the wrong length or not finite, or an exception of the hook (other than the budget's end), ends the run with the message (UO-1). | no: option | `scalar.hpp` |
 | `scalar` | ULS-5 | Off by default. In a strategy's start the counts (calls, cost, time) are the start's and go to the run's when the round merges the start, in the order of the starts. | no: option | `scalar.hpp` |
 | `scalar` | ULS-6 | Off by default. The run's answer is the evaluator's best, as every method's; the hook's state comes back in Result::ls_state. | no: option | `scalar.hpp` |
+| `scalar` | ULS-7 | Off by default (a problem with decode). ctx.mask is the start's decode(x0).active (hooks.hpp active_of): empty, all variables may move; a start that does not decode, none. | no: option | `scalar.hpp` |
 | `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
@@ -735,6 +737,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-18 | The strength ladder (task 25, §24.2.4; IDLS, Lai et al. 2025, source structural-optimization-atomic_lai2025, Algorithm 1): with ladder_max > 0 the step is ladder_min after a new best, else grows by ladder_step, back t... | yes | `search.hpp` |
 | `search` | SRCH-19 | perturb = user (task 25, §24.2.4; task 24's Problem::perturb, §24.1.3): the move is the problem's, perturb(y, step, rng) on a copy of the current minimum with the walk's own generator and the step (the ladder's where... | yes | `search.hpp` |
 | `search` | SRCH-20 | basin_hopping with bh_accept = threshold and its adaptive step (no ladder) warns once (mootation::warn): DTS is meant for a fixed move (SRCH-16); the run itself is unchanged. | yes | `search.hpp` |
+| `search` | SRCH-21 | memetic on a problem with decode (task 24, §24.1.1, §24.1.2; off by default): a builtin local solver searches only the variables its start's genome has active (hooks.hpp active_of; the subproblem restricted(P, x, acti... | no: option | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |

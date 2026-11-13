@@ -18,6 +18,9 @@
 //                         columns idx); idx all the variables in order: the
 //                         problem itself (RES-1)
 //   embed(xf, idx, z)     the way back: xf with x[idx[k]] = z[k]
+//   active_of(P, x, who)  the variables a local search may move at x: the
+//                         problem's decode(x).active (empty: all; a genome
+//                         that does not decode: none)
 //
 // READINGS
 //   RES-1. Off by default (a strategy that asks for a subproblem). The
@@ -58,6 +61,26 @@ inline double distance_of(const Problem& P, const std::vector<double>& x, const 
         sum += d * d;
     }
     return std::sqrt(sum);
+}
+
+// the variables a local search may move at x (task 24, §24.1.1, §24.1.2;
+// ULS-7, SRCH-21): the problem's decode(x).active, 1 where variable j may
+// move; empty: all of them (no decode, or decode gives no mask); a genome
+// that does not decode: none
+inline std::vector<char> active_of(const Problem& P, const std::vector<double>& x, const std::string& who)
+{
+    if (!P.decode) return {};
+    Decoded d;
+    try {
+        d = P.decode(x);
+    } catch (const std::exception& e) {
+        throw std::runtime_error(who + ": the user's decode failed: " + e.what());
+    }
+    if (!d.valid) return std::vector<char>(x.size(), 0);
+    if (!d.active.empty() && d.active.size() != x.size())
+        throw std::invalid_argument(who + ": decode gave " + std::to_string(d.active.size()) + " active flags for " +
+                                    std::to_string(x.size()) + " variables");
+    return d.active;
 }
 
 // the subproblem's z back in the whole: x_frozen with x[idx[k]] = z[k]

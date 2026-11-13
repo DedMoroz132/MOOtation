@@ -86,6 +86,13 @@
 //   CACHE-4. Off by default. A strategy's start (strategy.hpp, View) reads the
 //     run's cache as it was at the round's start and keeps its own; its hits go
 //     to the run at the merge, its points as known ones (free).
+//   CACHE-5. Off by default (with the cache). As many points in a row as the
+//     budget, each a cache hit (CACHE-1, CACHE-2) and none evaluated between,
+//     end the run as its budget's end would (Result::cache_ended): on a finite
+//     space of structures a run that has met them all asks only for repeats,
+//     spends nothing and would not end (as STRAT-8, SRCH-9, SRCH-10, RST-8).
+//     An evaluation starts the count again, so a run that still finds new
+//     structures goes on; it makes at most budget x (budget + 1) points.
 // THE DELTA (task 24, §24.1.6): Evaluator::delta(x, block, values) is the
 // problem's delta, its declared delta_cost charged after the call
 // (DELTA-1, as SUCC-2), counted in delta_calls, delta_spent; a value not
@@ -333,6 +340,7 @@ public:
     double hook_seconds = 0.0;         // ... and its time (reported, never in a trajectory)
     long long decode_invalid = 0;      // THE USER'S GENOME: genomes that did not decode, not evaluated
     long long cache_hits = 0;          // THE CACHE: points not evaluated, their structure's values taken
+    bool cache_ended = false;          // ... and the run ended by CACHE-5
     long long delta_calls = 0;         // THE DELTA: the hook's calls,
     double delta_spent = 0.0;          // ... their declared cost in the budget
 
@@ -377,7 +385,10 @@ public:
         const std::string key = key_of(x);
         auto it = where_.find(key);
         if (it != where_.end()) {
-            if (P.cache == Problem::Cache::exact) ++cache_hits;                // CACHE-1
+            if (P.cache == Problem::Cache::exact) {                            // CACHE-1
+                ++cache_hits;
+                free_point();                                                  // CACHE-5
+            }
             return it->second;
         }
         if (const Cached* c = cached(x)) return from_cache(x, *c, key);
@@ -402,8 +413,18 @@ public:
     std::size_t from_cache(const std::vector<double>& x, const Cached& c, const std::string& key)
     {
         ++cache_hits;
+        free_point();                                                          // CACHE-5
         r_ = c.r;
         return keep(x, c.f, c.g, c.bad, key, false);
+    }
+
+    // CACHE-5: the budget's worth of points in a row that the cache gave free
+    // ends the run as its budget's end would
+    void free_point()
+    {
+        if (++free_run_ < budget) return;
+        cache_ended = true;
+        throw BudgetSpent{};
     }
 
     // THE DELTA (task 24, §24.1.6): f(x with x[block] = values) - f(x) — the
@@ -620,6 +641,7 @@ public:
 private:
     std::unordered_map<std::string, std::size_t> where_;   // x's bytes -> archive index
     std::unordered_map<std::string, Cached> canon_;          // THE CACHE: a structure's key -> its values
+    long long free_run_ = 0;                                 // CACHE-5: cache hits since the last evaluation
 
     // THE CACHE: the first point of a structure gives it its values (CACHE-3)
     void remember(const std::vector<double>& x, const Vec& f, const Vec& g, bool bad)
@@ -722,6 +744,7 @@ private:
         const bool joint = res ? (P.residuals_jac && (with_grad || !P.residuals))
                                : (P.value_grad && (with_grad || !P.evaluate));
         charge(joint ? 1.0 + grad_cost : 1.0);
+        free_run_ = 0;                                                         // CACHE-5
         Vec f(static_cast<std::size_t>(m), 0.0), g(static_cast<std::size_t>(n_cons), 0.0), gf;
         Rows J;
         r_.clear();

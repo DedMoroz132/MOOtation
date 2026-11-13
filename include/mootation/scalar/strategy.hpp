@@ -529,7 +529,31 @@ struct StartSpec {
     unsigned seed = 0;
     Start start;
     long long fresh = -1;
+    // the variables the start may move, the others frozen at start.x0
+    // (search.hpp SRCH-21); empty: all
+    std::vector<std::size_t> free;
 };
+
+// A start on its free variables only (SRCH-21): the inner run on the
+// subproblem of the view's problem (hooks.hpp restricted, RES-1: its
+// evaluations through the view), its points embedded back in the whole.
+inline Result run_on_free(const Inner& inner, const Problem& view_problem, const StartSpec& s, double eq_tol,
+                          bool has_tol0, double eq_tol0, int pop_size)
+{
+    if (!s.start.has_x0) throw std::invalid_argument("a start on some variables needs its x0");
+    Problem whole = view_problem;
+    whole.restrict_to = nullptr;           // the view's evaluations, not a subproblem of the user's own
+    const Problem sub = restricted(whole, s.start.x0, s.free);
+    Start st;
+    st.has_x0 = true;
+    for (std::size_t j : s.free) st.x0.push_back(s.start.x0[j]);
+    st.ls_state = s.start.ls_state;
+    Result r = run(inner.name, sub, eq_tol, has_tol0, eq_tol0, pop_size, s.allowance, s.seed, inner.knobs, {}, 0, st);
+    for (Vec& row : r.variables) row = embed(s.start.x0, s.free, row);
+    for (Vec& row : r.solutions)
+        if (row.size() == s.free.size()) row = embed(s.start.x0, s.free, row);
+    return r;
+}
 
 // One round (ROUNDS): every start's inner run on its view, in `threads`
 // threads, then the views merged in the order of the starts. Returns each
@@ -562,7 +586,9 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
     auto one = [&](std::size_t k) {
         ++start_depth();
         try {
-            if (starts[k].allowance > 0)
+            if (starts[k].allowance > 0 && !starts[k].free.empty())                     // SRCH-21
+                out[k] = run_on_free(inner, views[k]->problem, starts[k], eq_tol, has_tol0, eq_tol0, pop_size);
+            else if (starts[k].allowance > 0)
                 out[k] = run(inner.name, views[k]->problem, eq_tol, has_tol0, eq_tol0, pop_size,
                              starts[k].allowance, starts[k].seed, inner.knobs, {}, 0, starts[k].start);
         } catch (...) {

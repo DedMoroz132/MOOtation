@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed (task 24, after task 27's findings): the run with the cache
+  (`Problem::cache = exact | canon`) ends once it asks for repeats only:
+  as many cache hits in a row as the budget, none evaluated between, end
+  it as its budget's end would (`Result::cache_ended`; evaluator.hpp
+  CACHE-5). On a finite space of structures such a run spent nothing and
+  did not end. The user's local search gets the variables it may move,
+  `ctx.mask` = the start's `decode(x0).active` (scalar.hpp ULS-7; it was
+  always empty), and memetic's builtin local solver on a problem with
+  `decode` searches the start's active variables only (`restricted`,
+  search.hpp SRCH-21) instead of moving a structure's slots. Runs without
+  the cache or `decode` are unchanged.
 - Added (task 26, item 24.5.1, A1): objectives that depend on the
   population for the multi-objective cores. `DataVault::set_aux(k, fn)`
   gives every slot k objectives after the problem's own, computed from the
