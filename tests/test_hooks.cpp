@@ -276,6 +276,18 @@ int main()
             return R;
         };
         check(sc::restricted(U, xf, {0}).hi == Vec({1.0}), "the problem's own subproblem");
+        check(sc::embed(xf, {1, 3}, {0.4, 0.9}) == Vec({0.3, 0.4, 0.7, 0.9}), "embed: the way back");
+        // the symmetries of a part (RES-1): a group wholly inside idx, in order, remapped; else dropped
+        sc::Problem S = points(4, nullptr);                                   // one group: 4 blocks of 2
+        S.sym_blocks = {{2, 2, 2}};                                           // points 1 and 2 only
+        const Vec x8(8, 0.5);
+        const sc::Problem in = sc::restricted(S, x8, {0, 2, 3, 4, 5});
+        check(in.sym_blocks.size() == 1 && in.sym_blocks[0].offset == 1 && in.sym_blocks[0].size == 2 &&
+                  in.sym_blocks[0].count == 2,
+              "a group inside idx, in order: kept, remapped");
+        check(sc::restricted(S, x8, {2, 4, 3, 5}).sym_blocks.empty(), "a group out of order: dropped");
+        check(sc::restricted(S, x8, {2, 3, 4}).sym_blocks.empty(), "a group cut by idx: dropped");
+        check(sc::restricted(S, x8, {0, 2, 3, 4, 5}).stop_at == S.stop_at, "stop_at as it is");
     }
 
     // delta: a pair energy, one variable moved

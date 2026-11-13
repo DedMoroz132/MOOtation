@@ -10,20 +10,27 @@
 //                         ... SYM-11): invariant to the problem's symmetries;
 //                         a periodic coordinate the shorter way (SYM-11)
 //   restricted(P, xf, idx) the problem's restrict_to, else the default: the
-//                         variables idx free, the others frozen at xf; its
-//                         values, gradient, residuals and Jacobian the
-//                         problem's at the assembled point (their columns
-//                         idx); idx all the variables in order: the problem
-//                         itself (RES-1)
+//                         variables idx free, the others frozen at xf — the
+//                         subproblem's variable k is x[idx[k]], in idx's
+//                         order, its bounds P.lo/hi[idx[k]]; its values,
+//                         gradient, residuals and Jacobian the problem's at
+//                         the assembled point embed(xf, idx, z) (their
+//                         columns idx); idx all the variables in order: the
+//                         problem itself (RES-1)
+//   embed(xf, idx, z)     the way back: xf with x[idx[k]] = z[k]
 //
 // READINGS
 //   RES-1. Off by default (a strategy that asks for a subproblem). The
 //     default subproblem keeps the problem's box (on idx), its
-//     constraints, targets (stop_at; accept_success at the assembled point),
-//     its periodic and var_repair masks (on idx); not its symmetries (the
-//     blocks of a part are not the problem's), gauge directions, start or
-//     hooks of task 24 (perturb, distance, canon_key, local_search, the
-//     genome's): a subproblem with those is the user's restrict_to.
+//     constraints, targets (stop_at as it is, f_sub(z) being f(embed(z));
+//     accept_success at the assembled point), its periodic and var_repair
+//     masks (on idx), and those groups of sym_blocks whose coordinates are
+//     all in idx and there in their order, one after another (remapped to
+//     the subproblem's positions; a group cut by idx, or laid out otherwise,
+//     is dropped); not canon or align (they are the whole problem's), gauge
+//     directions, start or hooks of task 24 (perturb, distance, canon_key,
+//     local_search, the genome's): a subproblem with those is the user's
+//     restrict_to.
 // ============================================================================
 
 #include <cmath>
@@ -51,6 +58,18 @@ inline double distance_of(const Problem& P, const std::vector<double>& x, const 
         sum += d * d;
     }
     return std::sqrt(sum);
+}
+
+// the subproblem's z back in the whole: x_frozen with x[idx[k]] = z[k]
+inline std::vector<double> embed(const std::vector<double>& x_frozen, const std::vector<std::size_t>& idx,
+                                 const std::vector<double>& z)
+{
+    if (z.size() != idx.size())
+        throw std::invalid_argument("embed: " + std::to_string(z.size()) + " values for " +
+                                    std::to_string(idx.size()) + " variables");
+    std::vector<double> x = x_frozen;
+    for (std::size_t k = 0; k < idx.size(); ++k) x.at(idx[k]) = z[k];
+    return x;
 }
 
 inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen, const std::vector<std::size_t>& idx)
@@ -92,6 +111,18 @@ inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen,
     Q.blocks = P.blocks;
     Q.weights = P.weights;
     Q.stop_at = P.stop_at;
+    for (const symmetry::Blocks& b : P.sym_blocks) {                                    // RES-1
+        std::size_t first = idx.size();
+        bool kept = true;
+        for (std::size_t t = 0; t < b.count * b.size && kept; ++t) {
+            std::size_t at = idx.size();
+            for (std::size_t q = 0; q < idx.size(); ++q)
+                if (idx[q] == b.offset + t) at = q;
+            if (t == 0) first = at;
+            kept = at < idx.size() && at == first + t;
+        }
+        if (kept) Q.sym_blocks.push_back({first, b.size, b.count});
+    }
     Q.post_at = P.post_at;
     Q.success_cost = P.success_cost;
     if (P.evaluate) Q.evaluate = [whole, full](const Vec& z, Vec& f, Vec& g) { whole->evaluate(full(z), f, g); };
