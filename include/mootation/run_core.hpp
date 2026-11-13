@@ -32,6 +32,7 @@
 #include <climits>
 #include <cmath>
 #include <functional>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -747,7 +748,60 @@ struct RunConfig {
     // would never reach eps = 0). The answer's cv is the violation.
     bool   eps_level = false;
     double eps_tau = 0.1, eps_alpha = 0.95, eps_theta = 0.05, eps_tc = 0.8;
+    // Population-dependent objectives (task 26, item 24.5.1, A1; data_vault.hpp,
+    // POPULATION-DEPENDENT OBJECTIVES): the core ranks M + k objectives, the
+    // problem's M and k computed from the population after every evaluation;
+    // the answer, the observer's rows and the inner archive carry the M only.
+    //   "none"  (the default) nothing: the run is the one it was, bit for bit;
+    //   "dcn"   k = 1, Tran, Brockhoff and Derbel's second objective (GECCO
+    //           2013, §2.1): DCN(i) = min over the others j of ||x_i - x_j||,
+    //           minimized as max_j DCN(j) - DCN(i); x in the box scaled to
+    //           [0, 1] per variable (a variable with an infinite bound
+    //           unscaled), the binary genome not counted (AUX-1);
+    //   "user"  k = aux_n, aux_fn's (data_vault.hpp, DataVault::AuxFn: the
+    //           variables and the problem's objectives of the evaluated
+    //           members that did not fail, in, k values per member out).
+    // AUX-1. DCN over a population of one is 0. Equal points are at distance
+    //   0 from each other: a copy is the nearest neighbour of its original,
+    //   and both get the worst value.
+    std::string aux = "none";
+    int         aux_n = 0;
+    std::function<void(const std::vector<const std::vector<double>*>&,
+                       const std::vector<std::vector<double>>&,
+                       std::vector<std::vector<double>>&)> aux_fn;
 };
+
+// The builtin population-dependent objective "dcn" (RunConfig::aux, AUX-1)
+// over points in a box [lo, hi] (scaled to [0, 1] where both are finite).
+inline void aux_dcn(const std::vector<std::pair<double, double>>& box,
+                    const std::vector<const std::vector<double>*>& X,
+                    std::vector<std::vector<double>>& A)
+{
+    const std::size_t n = X.size();
+    std::vector<double> scale(box.size(), 1.0), shift(box.size(), 0.0);
+    for (std::size_t j = 0; j < box.size(); ++j)
+        if (std::isfinite(box[j].first) && std::isfinite(box[j].second) &&
+                box[j].second > box[j].first) {
+            shift[j] = box[j].first;
+            scale[j] = 1.0 / (box[j].second - box[j].first);
+        }
+    std::vector<double> dcn(n, 0.0);
+    for (std::size_t i = 0; i < n; ++i) {
+        double best = std::numeric_limits<double>::infinity();
+        for (std::size_t k = 0; k < n; ++k) {
+            if (k == i) continue;
+            double d2 = 0.0;
+            for (std::size_t j = 0; j < box.size() && j < X[i]->size(); ++j) {
+                const double d = ((*X[i])[j] - shift[j]) * scale[j] - ((*X[k])[j] - shift[j]) * scale[j];
+                d2 += d * d;
+            }
+            best = std::min(best, d2);
+        }
+        dcn[i] = n > 1 ? std::sqrt(best) : 0.0;
+    }
+    const double top = n > 0 ? *std::max_element(dcn.begin(), dcn.end()) : 0.0;
+    for (std::size_t i = 0; i < n; ++i) A[i][0] = top - dcn[i];
+}
 
 struct RunResult {
     std::vector<std::vector<double>> objectives;
@@ -813,6 +867,25 @@ RunResult run_core(const RunConfig& cfg)
     if (st().problem->native) vault.set_batch_executor(&native_run_batch);
     else if (st().problem->evaluate_batch) vault.set_batch_executor(&callback_run_batch);
     vault.set_fail_raise(cfg.fail_raise);
+    if (cfg.aux == "dcn") {
+        vault.set_aux(1, [box = st().problem->bounds](
+                             const std::vector<const std::vector<double>*>& X,
+                             const std::vector<std::vector<double>>&, std::vector<std::vector<double>>& A) {
+            aux_dcn(box, X, A);
+        });
+    } else if (cfg.aux == "user") {
+        if (cfg.aux_n < 1 || !cfg.aux_fn)
+            throw std::invalid_argument("aux = \"user\" needs aux_n >= 1 and aux_fn");
+        vault.set_aux(cfg.aux_n, cfg.aux_fn);
+    } else if (cfg.aux != "none") {
+        throw std::invalid_argument("aux = '" + cfg.aux + "': none, dcn or user");
+    }
+    const std::size_t own_m = static_cast<std::size_t>(st().problem->n_objectives);
+    // the problem's own objectives of a row the core ranks (RunConfig::aux)
+    auto own = [own_m](const std::vector<double>& f) {
+        return f.size() > own_m ? std::vector<double>(f.begin(), f.begin() + static_cast<std::ptrdiff_t>(own_m))
+                                : f;
+    };
     if (cfg.n_eq > 0) {
         if (cfg.eq_linear && cfg.max_evaluations <= 0)
             throw std::invalid_argument("mootation: the linear schedule of eq_tol runs over "
@@ -1018,10 +1091,10 @@ RunResult run_core(const RunConfig& cfg)
             }
             return X;
         };
-        st().points = [&opt]() {
+        st().points = [&opt, own]() {
             auto& v = opt.get_vault();
-            auto row = [](const mootation::VaultPoint& p) {
-                return PointRow{p.variables, p.objectives, p.limits, p.cv_raw, p.failed};
+            auto row = [&own](const mootation::VaultPoint& p) {
+                return PointRow{p.variables, own(p.objectives), p.limits, p.cv_raw, p.failed};
             };
             std::pair<std::vector<PointRow>, std::vector<PointRow>> out;
             const std::size_t n = std::min<std::size_t>(
@@ -1087,7 +1160,7 @@ RunResult run_core(const RunConfig& cfg)
             P.reserve(n);
             for (std::size_t i = 0; i < n; ++i) {
                 const auto& f = v.objectives_of(i);              // evaluates a dirty slot
-                if (!v.is_failed(i)) P.push_back(f);             // a failure is no answer
+                if (!v.is_failed(i)) P.push_back(own(f));        // a failure is no answer
             }
             const auto gil = hold_lock();
             flush_native_rows();                         // the rows behind this population
@@ -1197,7 +1270,7 @@ RunResult run_core(const RunConfig& cfg)
     }
     if constexpr (has_inner_archive<Core>::value) {
         for (const auto& m : alg.inner_archive()) {
-            r.inner_objectives.push_back(m.f);
+            r.inner_objectives.push_back(own(m.f));
             r.inner_variables.push_back(m.x);
         }
     }
@@ -1208,7 +1281,7 @@ RunResult run_core(const RunConfig& cfg)
     for (std::size_t i = 0; i < rows; ++i) {
         const auto& f = v.objectives_of(i);
         if (v.is_failed(i)) { --r.active_n; continue; }  // a failure is no answer
-        r.objectives.push_back(f);
+        r.objectives.push_back(own(f));
         r.variables.push_back(v.variables_of(i));
         if (v.bin_vars_n() > 0) r.binary_variables.push_back(v.binary_variables_of(i));
         r.cv.push_back(v.get_cv(i));

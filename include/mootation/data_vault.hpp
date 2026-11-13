@@ -72,6 +72,25 @@
 // outside (a seed population, a resume); with constraints it needs their
 // values: without them it throws, where it used to write zeros, a violating
 // point passing for a feasible one.
+//
+// POPULATION-DEPENDENT OBJECTIVES (task 26, item 24.5.1, A1). set_aux(k, fn)
+// gives every slot k objectives after the problem's own M: the core sees M +
+// k, and fn fills the k from the whole active population - what a criterion
+// of the kind "distance to the nearest other member" (Tran, Brockhoff and
+// Derbel 2013), an age or a novelty needs, which no evaluation of one point
+// can give. fn(X, F, A) receives the variables X and the problem's own
+// objectives F of the active slots that are evaluated and did not fail, in
+// active order, and writes A (as many rows of k). It runs after every
+// evaluation the vault makes - the whole dirty set at sync(), one slot at an
+// ensure_ready, a refresh_objectives - and before the first read after
+// seeded points were written (seed_individual with the problem's M values),
+// so a core reads the k values of the population it is about to select from
+// (parents and offspring at a generational core's selection). The k values
+// cost no evaluation. A failed slot gets, in each of the k, one span above
+// the worst value fn gave the others (span = worst - best, 1 while that is
+// 0), the rule of FAILED EVALUATIONS. A slot read by a core keeps the k
+// values of the last refresh until the next one. Without set_aux (k = 0)
+// none of this runs: the vault is the one it was, bit for bit.
 // ============================================================================
 
 #include <algorithm>
@@ -179,6 +198,17 @@ private:
     BatchExecutor         batch_executor_;
     std::function<void()> post_sync_hook_;
     std::function<void(std::vector<double>&)> snap_;   // integer and discrete variables
+
+    // -- Population-dependent objectives (POPULATION-DEPENDENT OBJECTIVES) ---
+public:
+    using AuxFn = std::function<void(const std::vector<const std::vector<double>*>& X,
+                                     const std::vector<std::vector<double>>& F,
+                                     std::vector<std::vector<double>>& A)>;
+private:
+    int   user_objs_ = 0;                         // the problem's own M
+    int   aux_n_     = 0;                         // k, after them
+    AuxFn aux_fn_;
+    bool  aux_stale_ = false;                     // seeded points wait for their k values
 
     // ── Failed evaluations (FAILED EVALUATIONS above) ───────────────────────
     bool                fail_raise_ = false;
@@ -383,6 +413,7 @@ private:
 
     void calc_one(std::size_t r) {
         problem_.calc_objs(buf_[r]);
+        if (aux_n_ > 0) pad_aux(buf_[r].objectives, "the problem");
         equalize(buf_[r]);
         settle(r);
         calc_cv_slot(r);
@@ -402,9 +433,10 @@ private:
         batch_executor_(req, resp);
 
         if (resp.objectives.empty()) return;   // executor gave no answer → slot stays dirty
-        if (static_cast<int>(resp.objectives[0].size()) != num_objs_)
+        if (static_cast<int>(resp.objectives[0].size()) != user_objs_)
             throw std::logic_error("BatchExecutor: objectives[0] wrong size");
         buf_[r].objectives = resp.objectives[0];
+        if (aux_n_ > 0) pad_aux(buf_[r].objectives, "BatchExecutor");
         if (!resp.limits.empty() && !resp.limits[0].empty()) {
             if (static_cast<int>(resp.limits[0].size()) != num_lims_)
                 throw std::logic_error("BatchExecutor: limits[0] wrong size");
@@ -420,9 +452,68 @@ private:
 
     // Lazy evaluation of a single slot (priority: batch_executor → Problem).
     void ensure_ready(std::size_t r) {
-        if (!dirty_[r]) return;
+        if (!dirty_[r]) { if (aux_stale_) refresh_aux(); return; }
         if (batch_executor_) run_batch_single(r);
         else                 calc_one(r);
+        if (aux_n_ > 0) refresh_aux();
+    }
+
+    // POPULATION-DEPENDENT OBJECTIVES: an evaluation's M values, k zeros after
+    // (a Problem<> that writes its M values in place leaves the M + k slots).
+    void pad_aux(std::vector<double>& objs, const char* who) const {
+        if (static_cast<int>(objs.size()) == num_objs_) return;
+        if (static_cast<int>(objs.size()) != user_objs_)
+            throw std::logic_error(std::string(who) + " gave " + std::to_string(objs.size()) +
+                                   " objectives; the problem has " + std::to_string(user_objs_));
+        objs.resize(static_cast<std::size_t>(num_objs_), 0.0);
+    }
+
+    // The k values of every active slot from the population (set_aux).
+    void refresh_aux() {
+        aux_stale_ = false;
+        if (aux_n_ == 0) return;
+        const std::size_t m = static_cast<std::size_t>(user_objs_);
+        const std::size_t k = static_cast<std::size_t>(aux_n_);
+        std::vector<std::size_t> live, dead;
+        for (std::size_t r : active_) {
+            if (dirty_[r]) continue;
+            (buf_[r].failed ? dead : live).push_back(r);
+        }
+        std::vector<const std::vector<double>*> X;
+        std::vector<std::vector<double>> F, A(live.size(), std::vector<double>(k, 0.0));
+        X.reserve(live.size());
+        F.reserve(live.size());
+        for (std::size_t r : live) {
+            X.push_back(&buf_[r].variables);
+            F.emplace_back(buf_[r].objectives.begin(),
+                           buf_[r].objectives.begin() + static_cast<std::ptrdiff_t>(m));
+        }
+        if (!live.empty()) aux_fn_(X, F, A);
+        if (A.size() != live.size())
+            throw std::logic_error("set_aux: the function gave " + std::to_string(A.size()) +
+                                   " rows for " + std::to_string(live.size()) + " points");
+        std::vector<double> lo(k, std::numeric_limits<double>::infinity()),
+                            hi(k, -std::numeric_limits<double>::infinity());
+        for (std::size_t i = 0; i < live.size(); ++i) {
+            if (A[i].size() != k)
+                throw std::logic_error("set_aux: a row of " + std::to_string(A[i].size()) +
+                                       " values; k = " + std::to_string(k));
+            for (std::size_t j = 0; j < k; ++j) {
+                const double a = A[i][j];
+                if (!std::isfinite(a))
+                    throw std::runtime_error("set_aux: a non-finite value for point " +
+                                             std::to_string(i) + " of the population");
+                buf_[live[i]].objectives[m + j] = a;
+                lo[j] = std::min(lo[j], a);
+                hi[j] = std::max(hi[j], a);
+            }
+        }
+        for (std::size_t r : dead)
+            for (std::size_t j = 0; j < k; ++j) {
+                if (live.empty()) { buf_[r].objectives[m + j] = 1.0; continue; }
+                const double span = hi[j] > lo[j] ? hi[j] - lo[j] : 1.0;
+                buf_[r].objectives[m + j] = hi[j] + span;
+            }
     }
 
     void run_batch_executor() {
@@ -456,9 +547,10 @@ private:
         for (std::size_t i = 0; i < req.size(); ++i) {
             std::size_t r = req.real_indices[i];
             const auto& o = resp.objectives[i];
-            if (static_cast<int>(o.size()) != num_objs_)
+            if (static_cast<int>(o.size()) != user_objs_)
                 throw std::logic_error("BatchExecutor: objectives[i] wrong size");
             buf_[r].objectives = o;
+            if (aux_n_ > 0) pad_aux(buf_[r].objectives, "BatchExecutor");
             if (has_lims) {
                 const auto& g = resp.limits[i];
                 if (static_cast<int>(g.size()) != num_lims_)
@@ -484,6 +576,7 @@ public:
         num_bin_vars_ = problem_.get_bin_vars_n();
         num_objs_     = problem_.get_objs_n();
         num_lims_     = problem_.get_lims_n();
+        user_objs_    = num_objs_;
 
         // Base buffer 2*N: N active + N free.
         // grow_buf adds more when slots run out.
@@ -505,6 +598,22 @@ public:
 
     void set_batch_executor(BatchExecutor e)         { batch_executor_ = std::move(e); }
     void set_post_sync_hook(std::function<void()> h) { post_sync_hook_ = std::move(h); }
+
+    // POPULATION-DEPENDENT OBJECTIVES: k objectives after the problem's own,
+    // filled by fn from the active population. Before the first evaluation.
+    void set_aux(int k, AuxFn fn) {
+        if (k < 0) throw std::invalid_argument("set_aux: k >= 0");
+        if (k > 0 && !fn) throw std::invalid_argument("set_aux: k > 0 needs a function");
+        if (!fin_lo_.empty() || failed_n_ > 0)
+            throw std::logic_error("set_aux: set before the first evaluation");
+        aux_n_    = k;
+        aux_fn_   = std::move(fn);
+        num_objs_ = user_objs_ + k;
+        for (auto& s : buf_) s.objectives.assign(static_cast<std::size_t>(num_objs_), 0.0);
+    }
+    // The problem's own M (objs_n() is M + k with set_aux) and k.
+    int user_objs_n() const { return user_objs_; }
+    int aux_n() const { return aux_n_; }
 
     // FAILED EVALUATIONS: throw on a non-finite value instead of the penalty.
     void set_fail_raise(bool r) { fail_raise_ = r; }
@@ -710,6 +819,7 @@ public:
                 if (dirty_[r]) calc_one(r);
             }
         }
+        if (aux_n_ > 0) refresh_aux();
         if (post_sync_hook_) post_sync_hook_();
     }
 
@@ -757,6 +867,7 @@ public:
         dirty_[r] = 1;
         if (batch_executor_) run_batch_single(r);
         else                 calc_one(r);
+        if (aux_n_ > 0) refresh_aux();
     }
 
     // Whether active individual v still waits for its evaluation. For an
@@ -971,7 +1082,8 @@ public:
             throw std::invalid_argument(
                 "seed_individual: vars size " + std::to_string(vars.size()) +
                 " != " + std::to_string(num_vars_));
-        if (static_cast<int>(objs.size()) != num_objs_)
+        const bool own_only = aux_n_ > 0 && static_cast<int>(objs.size()) == user_objs_;
+        if (static_cast<int>(objs.size()) != num_objs_ && !own_only)
             throw std::invalid_argument(
                 "seed_individual: objs size " + std::to_string(objs.size()) +
                 " != " + std::to_string(num_objs_));
@@ -998,6 +1110,10 @@ public:
             else for (int j = 0; j < num_bin_vars_; ++j) buf_[r].binary_variables[j] = ops::clamp_gene(j, bvars[j]);
         }
         buf_[r].objectives = objs;
+        if (own_only) {                       // the k values from the population, at the next read
+            buf_[r].objectives.resize(static_cast<std::size_t>(num_objs_), 0.0);
+            aux_stale_ = true;
+        }
         if (num_lims_ > 0) {
             if (lims.empty()) std::fill(buf_[r].limits.begin(), buf_[r].limits.end(), 0.0);
             else buf_[r].limits = lims;

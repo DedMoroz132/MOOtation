@@ -91,7 +91,8 @@ set(MOOTATION_TESTS
     test_periodic
     test_multistart_filters
     test_bounds_mask
-    test_hooks)
+    test_hooks
+    test_aux)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

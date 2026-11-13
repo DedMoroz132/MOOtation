@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 26, item 24.5.1, A1): objectives that depend on the
+  population for the multi-objective cores. `DataVault::set_aux(k, fn)`
+  gives every slot k objectives after the problem's own, computed from the
+  whole active population after every evaluation (parents and offspring at a
+  generational core's selection) and costing no evaluation;
+  `runner::RunConfig::aux = "none" | "dcn" | "user"` (C++ only for now):
+  "dcn" is Tran, Brockhoff and Derbel's distance to the nearest other member
+  (GECCO 2013), "user" a function of the caller's. The answer, the
+  observer's rows and the inner archive carry the problem's objectives only.
+  Off by default: every run is the same.
 - Added (task 26, items 24.7.2, 24.7.4, 24.7.5): the report layer's
   comparisons at one objective. `run/stats.py`: Iman and Davenport's F after
   Friedman, Nemenyi's and Bonferroni-Dunn's critical differences (critical
