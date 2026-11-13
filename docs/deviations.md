@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-365 items: 320 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+380 items: 335 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -509,6 +509,15 @@ Their readings, from every comment of each file (the first column the file's nam
 | `ga` | G3-1 | PCX's index parent x_p is the best of the parents (best_centre, on by default: §3.2.1, "For a faster convergence, the best parent is always used"), not the operator's own pick "with equal probability" (§2.2), which be... | yes | `ga.hpp` |
 | `ga` | G3-2 | Step (1)'s mu - 1 others differ from the best and from each other; step (3)'s two differ. | yes | `ga.hpp` |
 | `ga` | G3-3 | Step (4) keeps the two best of the family in its order (the two chosen, then the offspring), stably; the better goes to the first chosen place. | yes | `ga.hpp` |
+| `grammatical_evolution` | GE-1 | One-point crossover of variable length (§IV-D names it only): a cut point drawn in each parent independently, c1 in [1, L1], c2 in [1, L2]; the children are a[0, c1) + b[c2, L2) and b[0, c2) + a[c1, L1). | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-2 | Mutation: the paper's is point mutation of the binary string, probability 0.01 a bit (Tables II-IV): each bit of each codon flips with probability p. mutation_codon = true instead redraws a whole codon uniformly with... | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-3 | Pruning is not in O'Neill & Ryan 2001 (§IV-D has duplication only); it comes from Ryan, Collins & O'Neill 1998 (EuroGP, LNCS 1391), not in the corpus. | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-4 | Duplication: "randomly selecting a number of codons to duplicate and the starting position of the first codon in this set ... placed at the end": the start s uniform in [0, L), the number k uniform in [1, L - s]; noth... | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-5 | The wrap limit: the paper gives none ("even after several wrapping events"). max_wraps counts the times the reading restarts from the first codon (0: no wrapping); the default 10 is ours. | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-6 | "The initialization range of ten codons" (§IV-D) read as lengths uniform in [1, 10]. | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-7 | Real parameters: the codons give the structure only. | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-8 | Codons are ints in [0, 2^codon_bits); a genome with a codon outside is refused by decode (with the codon's position in the message). | yes | `grammatical_evolution.hpp` |
+| `grammatical_evolution` | GE-9 | The worked example of §IV-B: its steps with the first nine codons of Fig. 2 (1.0 - Sin(X), <pre-op> reading no codon) are what decode does (tests/test_structure.cpp). | yes | `grammatical_evolution.hpp` |
 | `hooks` | RES-1 | Off by default (a strategy that asks for a subproblem). | no: option | `hooks.hpp` |
 | `improvements` | SO-4 | The violation is judged as the point is evaluated, at the tolerance of that moment (an eq_tol schedule: the tolerance then), and the records are not judged again. | yes | `improvements.hpp` |
 | `improvements` | SO-5 | A violation that is not finite (a constraint value NaN) is +inf (EVO-1): such a point is the best only while every point so far is as bad. | yes | `improvements.hpp` |
@@ -785,6 +794,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `tiktak` | TT-4 | The sample: start_points of designs.hpp (sobol: the Sobol sequence under the seed's linear matrix scrambling), so runs of different seeds differ; the paper's Sobol sequence is unscrambled. | yes | `tiktak.hpp` |
 | `tiktak` | TT-5 | The searches are sequential (S_i needs p_low of searches 1 ... i - 1): a round of one start each, the generator start_seed(seed, i) (STRAT-1). | yes | `tiktak.hpp` |
 | `tiktak` | TT-6 | The budget: Step 0 spends what its N points cost; search i gets start_budget, or what is left shared among the N* - i + 1 searches left, so a search that stops early leaves its rest to the later ones. | yes | `tiktak.hpp` |
+| `typed_tree` | TREE-1 | Depth. Ratle & Sebag §6.2 allow at level m "derivations with index less than D_max - m"; their own examples (D_max = 2 leaves <E> only <op><V><V>, index 2; | yes | `typed_tree.hpp` |
+| `typed_tree` | TREE-2 | Size. The masking of §6.2 bounds the depth only. | yes | `typed_tree.hpp` |
+| `typed_tree` | TREE-3 | Crossover without a partner. No node of the symbol in the second parent: both parents stay as they are and crossover returns false (Montana §2.1: "returns either the parents or nothing" — the parents). | yes | `typed_tree.hpp` |
+| `typed_tree` | TREE-4 | Mutation. The new subtree's budget is max_depth - level + 1 (the root at level 1), and at most mutation_depth when that is > 0 (Montana's MAX-MUTATION-TREE-DEPTH, §1.1). | yes | `typed_tree.hpp` |
+| `typed_tree` | TREE-5 | The key is the structure without the parameters: a leaf's label; a node's label and its children's keys in brackets, sorted for a commutative production. canonicalize sorts the children of a commutative node that have... | yes | `typed_tree.hpp` |
+| `typed_tree` | TREE-6 | Defaults: max_depth 7 and init_depth 5 are Montana's §3.3-3.4 settings (maximum depth 7, maximum initial depth 5); | yes | `typed_tree.hpp` |
 
 ## The problems
 

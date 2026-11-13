@@ -59,6 +59,7 @@ set(MOOTATION_TESTS
     test_pap
     test_cec2013
     test_symmetry
+    test_structure
     test_blocks_objectives
     test_so_metrics
     test_so_confidence

@@ -245,6 +245,20 @@ always listed under **Changed** or **Removed**.
 - Added (campaign, both engines; task 18): `[campaign] keep_restarts = true`
   keeps the runs of ipop, bipop and bipop_2009 (regime, λ, σ⁰, evaluations,
   the stopping criterion) in `meta.json`'s `so.restarts`. Off by default.
+
+- Added (task 27, item 24.1.2): two structural genotypes, C++ headers
+  only. `scalar/typed_tree.hpp`: a typed grammar (its types the
+  non-terminals), derivation trees, initialization by the minimum-depth
+  index with masked productions (Ratle & Sebag 2001, §6.2), crossover of
+  subtrees of one type and subtree and point mutation (Montana 1995, §2.1;
+  Ratle & Sebag §6.1), depth and size limits, a canonical key unchanged by
+  permuting the children of a commutative node, and the parameters' write-
+  back. `scalar/grammatical_evolution.hpp`: integer codons of variable
+  length mapped by "codon MOD number of productions" with wrapping and a
+  wrap limit (an incomplete mapping is invalid, not a NaN), one-point
+  crossover, bitwise and codon mutation, duplication and pruning (O'Neill &
+  Ryan 2001). Readings TREE-1...6, GE-1...9. Nothing uses them yet: every
+  run is as before.
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into
