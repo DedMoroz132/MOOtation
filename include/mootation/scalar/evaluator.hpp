@@ -80,6 +80,12 @@
 // best, the observer and THE TARGET are as without it. For long runs of
 // methods that never ask for a point twice (ipop, bipop: keep_points = best),
 // whose archive of every point would not fit in memory (1e6 D evaluations).
+// keep_points = best (task 24, §24.3.3) asks for it in the population methods,
+// multistart, ils, basin_hopping, mlsl, tiktak and local_search too; halving
+// and memetic refuse it (their reruns are free only through the archive,
+// SRCH-6, SRCH-7). Without it, a run of one objective whose archive would
+// pass kArchiveWarnBytes (budget times the bytes of a point) warns once
+// through mootation::warn, before its first point.
 //
 // THE COUNTS (addendum 1, §4). evaluations: the calls of the problem's
 // values (evaluate, residuals); grad_calls: the calls of a gradient or a
@@ -118,6 +124,7 @@
 
 #include "../dss.hpp"
 #include "../fp_contract.hpp"
+#include "../warn.hpp"
 #include "genome.hpp"
 #include "improvements.hpp"
 #include "symmetry.hpp"
@@ -206,7 +213,7 @@ struct Problem {
     std::function<Decoded(const Vec& x)> decode;
     std::function<void(Vec& x, std::mt19937& rng)> sample;     // x arrives with n values
     // set by a strategy's start (strategy.hpp, View), not by the user: a
-    // point whose values are known, for the run's archive at the merge (LS-2)
+    // point whose values are known, for the run's archive at the merge (ULS-2)
     std::function<void(const Vec& x, const Vec& f)> known_point;
 
     bool has_residuals() const { return residuals || residuals_jac; }
@@ -250,6 +257,7 @@ public:
     bool recorded = false;             // gen 0 has gone to the observer
     long long gen0 = 0;                // gens before this evaluator (polish.hpp)
     bool lean = false;                 // THE LEAN MODE: the best and the last point only
+    static constexpr double kArchiveWarnBytes = 2147483648.0;     // 2 GiB (task 24, §24.3.3)
     ImprovementLog improvements;       // m = 1: the best point's records (improvements.hpp)
     long long success_calls = 0;       // THE SUCCESS: accept_success's calls,
     double success_spent = 0.0;        // ... their cost in the budget,
@@ -578,6 +586,7 @@ private:
                      const std::vector<double>& g, bool bad, const std::string& key, bool count, int verdict = -1)
     {
         if (lean) return keep_lean(x, f, g, bad, count, verdict);
+        if (X.empty() && m == 1) warn_archive(x.size());
         const std::size_t i = X.size();
         X.push_back(x);
         F.push_back(f);
@@ -599,6 +608,18 @@ private:
             throw BudgetSpent{};
         }
         return i;
+    }
+
+    // the archive's size at the budget, warned of where it is large (THE LEAN MODE)
+    void warn_archive(std::size_t n) const
+    {
+        const double per = 16.0 * static_cast<double>(n) + 8.0 * static_cast<double>(m + n_cons + n_res) + 96.0;
+        const double bytes = per * static_cast<double>(budget);
+        if (!(bytes > kArchiveWarnBytes)) return;
+        mootation::warn("scalar: the archive of every point may take about " +
+                        std::to_string(static_cast<long long>(bytes / 1073741824.0 + 0.5)) + " GiB (budget " +
+                        std::to_string(budget) + ", " + std::to_string(n) +
+                        " variables); keep_points = best keeps the best point and the last");
     }
 
     // THE TARGET at point i (x, f, feasible or not): f <= stop_at, or THE

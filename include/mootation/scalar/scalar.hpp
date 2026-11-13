@@ -1099,25 +1099,26 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 // local_solver). C++ only for now (not in names(): neither Python nor the
 // campaigns name it).
 // READINGS (all of them off by default: the solver local_search only):
-//   LS-1. Off by default. The hook's calls of the problem are counted against
+//   ULS-1. Off by default. The hook's calls of the problem are counted against
 //     the budget as every solver's (and a solver it runs within, on ctx.problem,
 //     is that solver's run, bit for bit); past the budget the call throws and
 //     the search ends there, its answer the archive's best.
-//   LS-2. Off by default. x' with f known (has_f) is planted, not evaluated:
+//   ULS-2. Off by default. x' with f known (has_f) is planted, not evaluated:
 //     free, as a seed point; with constraints or residuals it is evaluated all
-//     the same (its constraint values, its residuals are not known). Without f, x' is evaluated
-//     (counted; nothing where it is in the archive already).
-//   LS-3. Off by default. The declared cost is charged to the budget after the
+//     the same (its constraint values, its residuals are not known). Without f,
+//     x' is evaluated (counted; nothing where it is in the archive already, or
+//     is the last point the hook evaluated).
+//   ULS-3. Off by default. The declared cost is charged to the budget after the
 //     call (as THE SUCCESS's, SUCC-2); a hook that neither calls the problem nor
 //     declares a cost spends nothing (the owner's decision of 13.11), counted
 //     apart (hook_calls, hook_seconds).
-//   LS-4. Off by default. x' of the wrong length or not finite, or an
+//   ULS-4. Off by default. x' of the wrong length or not finite, or an
 //     exception of the hook (other than the budget's end), ends the run with the
 //     message (UO-1).
-//   LS-5. Off by default. In a strategy's start the counts (calls, cost, time)
+//   ULS-5. Off by default. In a strategy's start the counts (calls, cost, time)
 //     are the start's and go to the run's when the round merges the start, in
 //     the order of the starts.
-//   LS-6. Off by default. The run's answer is the evaluator's best, as every
+//   ULS-6. Off by default. The run's answer is the evaluator's best, as every
 //     method's; the hook's state comes back in Result::ls_state.
 inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                              long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
@@ -1136,12 +1137,24 @@ inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, dou
             if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
                 throw std::invalid_argument("local_search: a bound that is not finite needs a start x0 (LOCAL-4)");
     std::vector<std::string> ignored;
-    for (const auto& kv : knobs) ignored.push_back(kv.first);
+    bool lean = false;
+    for (const auto& kv : knobs) {
+        if (kv.first != "keep_points") {
+            ignored.push_back(kv.first);
+            continue;
+        }
+        const std::string w = detail::shown(kv.second);
+        if (!kv.second.is_word || (w != "all" && w != "best"))
+            throw std::invalid_argument("keep_points = '" + w + "': all, best");
+        lean = w == "best";
+    }
     std::sort(ignored.begin(), ignored.end());
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.lean = lean;                                                                   // THE LEAN MODE
     std::mt19937 rng(seed);
     Vec x0;
-    // the problem through this evaluator (LS-1): its values and gradients from the archive
+    Point last;                                                // the last point the hook evaluated
+    // the problem through this evaluator (ULS-1): its values and gradients from the archive
     Problem Q = P;
     Q.stop_at = -std::numeric_limits<double>::infinity();     // THE TARGET is this evaluator's
     Q.accept_success = nullptr;
@@ -1159,10 +1172,11 @@ inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, dou
         Q.residuals = [&ev](const Vec& x, Vec& r) { r = ev.R[ev.index(x)]; };
         if (P.has_gradient()) Q.jacobian = [&ev](const Vec& x, Rows& J) { J = ev.jac(ev.index_grad(x)); };
     } else {
-        Q.evaluate = [&ev](const Vec& x, Vec& f, Vec& g) {
+        Q.evaluate = [&ev, &last](const Vec& x, Vec& f, Vec& g) {
             const std::size_t i = ev.index(x);
             f = ev.F[i];
             g = ev.G[i];
+            last = Point{x, f, g};                             // ULS-2: x' met again, without the archive
         };
         if (P.has_gradient())
             Q.gradient = [&ev](const Vec& x, Vec& gf, Rows& JG) {
@@ -1194,23 +1208,25 @@ inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, dou
             ev.hook_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
             throw;
         } catch (const std::exception& e) {
-            throw std::runtime_error(std::string("local_search: the hook failed: ") + e.what() + " (LS-4)");
+            throw std::runtime_error(std::string("local_search: the hook failed: ") + e.what() + " (ULS-4)");
         }
         ev.hook_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         if (out.x.size() != n)
             throw std::runtime_error("local_search: the hook gave x' of " + std::to_string(out.x.size()) +
-                                     " values for " + std::to_string(n) + " variables (LS-4)");
+                                     " values for " + std::to_string(n) + " variables (ULS-4)");
         for (double v : out.x)
-            if (!std::isfinite(v)) throw std::runtime_error("local_search: the hook gave x' not finite (LS-4)");
+            if (!std::isfinite(v)) throw std::runtime_error("local_search: the hook gave x' not finite (ULS-4)");
         if (out.has_f && !std::isfinite(out.f))
-            throw std::runtime_error("local_search: the hook gave f(x') not finite (LS-4)");
+            throw std::runtime_error("local_search: the hook gave f(x') not finite (ULS-4)");
         if (!(out.cost >= 0.0) || !std::isfinite(out.cost))
-            throw std::runtime_error("local_search: the hook declared a cost that is not a number >= 0 (LS-4)");
-        ev.hook_spent += out.cost;                                                         // LS-3
-        if (out.has_f && P.n_cons == 0 && !P.has_residuals()) {                            // LS-2
+            throw std::runtime_error("local_search: the hook declared a cost that is not a number >= 0 (ULS-4)");
+        ev.hook_spent += out.cost;                                                         // ULS-3
+        if (out.has_f && P.n_cons == 0 && !P.has_residuals()) {                            // ULS-2
             const bool fresh = !ev.known(out.x);
             ev.plant(out.x, {out.f}, {});
             if (fresh && P.known_point) P.known_point(out.x, {out.f});                     // to the strategy's run
+        } else if (!P.has_residuals() && !last.x.empty() && last.x == out.x) {
+            ev.plant(out.x, last.f, last.g);                   // evaluated already (the lean mode keeps no archive)
         } else {
             ev.index(out.x);
         }
@@ -1482,6 +1498,12 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
 //     strategy hands its inner solver x0 (search::at), which a population
 //     method has always ignored, so that the strategies' runs stay as they
 //     were; warm_start goes to the settings only where given.
+//   POP-10. keep_points = best (task 24, §24.3.3; off by default: all)
+//     keeps the best point and the last (evaluator.hpp THE LEAN MODE): a
+//     point asked for again is evaluated again and counted (POP-2 does not
+//     hold), so a method that repeats points spends more; one that does not
+//     runs as with every point kept. keep_points goes to the settings only
+//     where given.
 //   POP-8. lshade's MAX_NFE is the run's budget unless lshade_max_nfe is
 //     set: §III's MAX_NFE is the budget the run is given.
 //   POP-9. sym = off | canon | align (task 19, §19.2.2; symmetry.hpp SYM-7
@@ -1503,7 +1525,7 @@ namespace detail {
 // The knobs of a population method.
 inline std::vector<std::string> population_knobs(const std::string& name)
 {
-    std::vector<std::string> k{"np"};
+    std::vector<std::string> k{"np", "keep_points"};                                 // evaluator.hpp THE LEAN MODE
     if (name != "sep_cmaes") k.push_back("warm_start");                             // POP-7
     if (name == "de") k.insert(k.end(), {"F", "CR", "bound_repair", "sym"});
     else if (name == "jade") k.insert(k.end(), {"jade_p", "jade_c", "de_archive", "sym"});
@@ -1680,6 +1702,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
 
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    if (k.given("keep_points")) ev.lean = k.word("keep_points", "all", {"all", "best"}) == "best";   // POP-10
     if (warm && start.has_seed_points)                                              // POP-7: known, free
         for (const Point& q : start.seed_points) ev.plant(q.x, q.f, q.g);
     try {

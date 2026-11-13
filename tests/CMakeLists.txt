@@ -77,7 +77,8 @@ set(MOOTATION_TESTS
     test_warm_start_so
     test_multistart_starts
     test_local_search
-    test_genome_ops)
+    test_genome_ops
+    test_keep_points)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

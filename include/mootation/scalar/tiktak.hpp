@@ -75,7 +75,8 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
 {
     using namespace strategy;
     StrategyKnobs k("tiktak", knobs,
-                    {"inner", "tiktak_n", "tiktak_share", "start_points", "start_budget", "min_dist", "min_df"});
+                    {"inner", "tiktak_n", "tiktak_share", "start_points", "start_budget", "min_dist", "min_df",
+                     "keep_points"});
     const Inner inner = k.inner("inner");
     const long long N = k.whole("tiktak_n", 100, 1);
     const double share = k.number("tiktak_share", 0.1);
@@ -88,6 +89,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
     const long long n_star = std::max(1LL, std::llround(share * static_cast<double>(N)));            // TT-3
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.lean = lean_of(k);                                                            // strategy.hpp STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     long long searches = 0;

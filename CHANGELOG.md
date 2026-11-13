@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.3.3): `keep_points = best` (the evaluator's lean mode:
+  the best point and the last) for the population methods, multistart, ils,
+  basin_hopping, mlsl, tiktak and local_search (C++ for now); a strategy's
+  round then runs 64 starts at a time (STRAT-12); halving and memetic
+  refuse it. A run of one objective whose archive would pass 2 GiB warns
+  once (`mootation::warn`). Off by default: runs as before.
 - Added (task 24, §24.1.2): the user's genome of fixed length for ga_sbx and
   ssga, in C++: `scalar::Problem::crossover`, `mutate`, `repair`, `sample`
   (knobs `ga_crossover`, `ga_mutation`, `ga_repair = builtin | user | off`,
@@ -25,7 +31,7 @@ always listed under **Changed** or **Removed**.
   and the run's generator — as the inner or local solver of every strategy
   (`inner = {"solver": "local_search"}`). Its calls of the problem are
   counted, a declared cost spent exactly, a hook that does neither spends
-  nothing; its calls, cost and time are counted apart (LS-1 ... LS-6).
+  nothing; its calls, cost and time are counted apart (ULS-1 ... ULS-6).
   memetic's `lamarck = off | on | share` (`lamarck_share`) writes the local
   searches' answers back as seeds of the global solver (SRCH-12). Off by
   default: runs as before.

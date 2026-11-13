@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-291 items: 264 yes, 27 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+293 items: 264 yes, 29 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -630,15 +630,16 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | LOCAL-4 | Without x0, a bound that is not finite is refused: there is no box to draw the plan in, and no frame is put on x (addendum 1, §3.1). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-5 | eki starts as lm does, from x0 or the plan's best point: its initial ensemble around that point by default (eki_init = around, EKI-3), or a design in the box (sobol, lhs; finite bounds). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-6 | lm_gauge = on needs the problem's gauge_basis; its k and \|\|J N\|\| / \|\|J\|\| at lm's solution (lm.hpp LMN-4) go to the settings (lm_gauge_k, lm_gauge_ratio). | yes | `scalar.hpp` |
-| `scalar` | LS-1 | Off by default. The hook's calls of the problem are counted against the budget as every solver's (and a solver it runs within, on ctx.problem, is that solver's run, bit for bit); past the budget the call throws and th... | no: option | `scalar.hpp` |
-| `scalar` | LS-2 | Off by default. x' with f known (has_f) is planted, not evaluated: free, as a seed point; with constraints or residuals it is evaluated all the same (its constraint values, its residuals are not known). | no: option | `scalar.hpp` |
-| `scalar` | LS-3 | Off by default. The declared cost is charged to the budget after the call (as THE SUCCESS's, SUCC-2); a hook that neither calls the problem nor declares a cost spends nothing (the owner's decision of 13.11), counted a... | no: option | `scalar.hpp` |
-| `scalar` | LS-4 | Off by default. x' of the wrong length or not finite, or an exception of the hook (other than the budget's end), ends the run with the message (UO-1). | no: option | `scalar.hpp` |
-| `scalar` | LS-5 | Off by default. In a strategy's start the counts (calls, cost, time) are the start's and go to the run's when the round merges the start, in the order of the starts. | no: option | `scalar.hpp` |
-| `scalar` | LS-6 | Off by default. The run's answer is the evaluator's best, as every method's; the hook's state comes back in Result::ls_state. | no: option | `scalar.hpp` |
+| `scalar` | ULS-1 | Off by default. The hook's calls of the problem are counted against the budget as every solver's (and a solver it runs within, on ctx.problem, is that solver's run, bit for bit); past the budget the call throws and th... | no: option | `scalar.hpp` |
+| `scalar` | ULS-2 | Off by default. x' with f known (has_f) is planted, not evaluated: free, as a seed point; with constraints or residuals it is evaluated all the same (its constraint values, its residuals are not known). | no: option | `scalar.hpp` |
+| `scalar` | ULS-3 | Off by default. The declared cost is charged to the budget after the call (as THE SUCCESS's, SUCC-2); a hook that neither calls the problem nor declares a cost spends nothing (the owner's decision of 13.11), counted a... | no: option | `scalar.hpp` |
+| `scalar` | ULS-4 | Off by default. x' of the wrong length or not finite, or an exception of the hook (other than the budget's end), ends the run with the message (UO-1). | no: option | `scalar.hpp` |
+| `scalar` | ULS-5 | Off by default. In a strategy's start the counts (calls, cost, time) are the start's and go to the run's when the round merges the start, in the order of the starts. | no: option | `scalar.hpp` |
+| `scalar` | ULS-6 | Off by default. The run's answer is the evaluator's best, as every method's; the hook's state comes back in Result::ls_state. | no: option | `scalar.hpp` |
 | `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
+| `scalar` | POP-10 | keep_points = best (task 24, §24.3.3; off by default: all) keeps the best point and the last (evaluator.hpp THE LEAN MODE): a point asked for again is evaluated again and counted (POP-2 does not hold), so a method tha... | no: option | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
 | `scalar` | POP-9 | sym = off \| canon \| align (task 19, §19.2.2; symmetry.hpp SYM-7 ... | yes | `scalar.hpp` |
 | `search` | SRCH-1 | MLSL's r_k: part II's (2) prints it without Γ; it refers to part I's Single Linkage analysis, whose (35) has Γ(1 + n/2) (the volume of the unit ball): taken with Γ. m(S) = 1, distances in the box normalized to [0, 1]^n. | yes | `search.hpp` |
@@ -687,6 +688,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |
 | `strategy` | STRAT-10 | start_points = around_x0 (task 24, §24.2.5; off by default): start 0 is the start (x0, which it needs), start k >= 1 is x0 + N(0, sigma^2) coordinate by coordinate, sigma = start_sigma times the coordinate's width whe... | no: option | `strategy.hpp` |
+| `strategy` | STRAT-12 | keep_points = best (task 24, §24.3.3; off by default: all): the run's evaluator keeps its best point and its last (evaluator.hpp THE LEAN MODE) — multistart, ils, basin_hopping, mlsl, tiktak; a start's own run keeps i... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-11 | allowance = sequential (task 24, §24.2.5; off by default: even, STRAT-3) runs multistart's starts one after another, each with all the budget left (its floor), until the budget or the target is spent; one thread, and... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-4 | The minima log: a start's answer joins the first minimum within min_dist (the box normalized to [0, 1]^n where it is finite, else the problem's coordinates; the largest coordinate difference) and min_df in f, else is... | yes | `strategy.hpp` |
 | `strategy` | STRAT-5 | The run's equalities' tolerance schedule (eq_tol0) is the inner solver's, on its own allowance. | yes | `strategy.hpp` |

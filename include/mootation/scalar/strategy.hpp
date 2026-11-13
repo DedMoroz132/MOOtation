@@ -66,6 +66,14 @@
 //     it is not, clipped to the box; the normal draws from mt19937(seed),
 //     start by start, coordinate by coordinate. start_sigma = 0: every start
 //     is x0. allowance and start_sigma go to the settings only where given.
+//   STRAT-12. keep_points = best (task 24, §24.3.3; off by default: all):
+//     the run's evaluator keeps its best point and its last (evaluator.hpp
+//     THE LEAN MODE) — multistart, ils, basin_hopping, mlsl, tiktak; a
+//     start's own run keeps its points as before. A round then runs its
+//     starts kLeanChunk at a time, each chunk merged before the next starts,
+//     so that no more than a chunk's points are held at once; the chunk does
+//     not depend on threads (1 thread = N threads). A point met by two
+//     starts is counted in both (there is no archive to find it in).
 //   STRAT-11. allowance = sequential (task 24, §24.2.5; off by default:
 //     even, STRAT-3) runs multistart's starts one after another, each with
 //     all the budget left (its floor), until the budget or the target is
@@ -239,7 +247,7 @@ public:
             problem.jacobian = [this](const Vec& x, Rows& J) { J = get(x, Call::grad).J; };
         problem.known_point = nullptr;
         if (P_.m == 1 && P_.n_cons == 0 && !P_.has_residuals())
-            problem.known_point = [this](const Vec& x, const Vec& f) {      // planted (scalar.hpp LS-2)
+            problem.known_point = [this](const Vec& x, const Vec& f) {      // planted (scalar.hpp ULS-2)
                 const std::string key = key_of(x);
                 if (where_.count(key)) return;
                 Known k;
@@ -458,10 +466,21 @@ struct StartSpec {
 // One round (ROUNDS): every start's inner run on its view, in `threads`
 // threads, then the views merged in the order of the starts. Returns each
 // start's result.
+inline constexpr std::size_t kLeanChunk = 64;   // STRAT-12
+
 inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::vector<StartSpec>& starts,
                                  int threads, int pop_size)
 {
     const std::size_t n = starts.size();
+    if (ev.lean && n > kLeanChunk) {                  // STRAT-12: a chunk at a time
+        std::vector<Result> all;
+        for (std::size_t c = 0; c < n; c += kLeanChunk) {
+            const std::vector<StartSpec> chunk(starts.begin() + static_cast<std::ptrdiff_t>(c),
+                                               starts.begin() + static_cast<std::ptrdiff_t>(std::min(n, c + kLeanChunk)));
+            for (Result& r : round(ev, inner, chunk, threads, pop_size)) all.push_back(std::move(r));
+        }
+        return all;
+    }
     std::vector<std::unique_ptr<View>> views;
     for (std::size_t k = 0; k < n; ++k)
         views.push_back(std::make_unique<View>(
@@ -519,7 +538,7 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
         if (error[k]) std::rethrow_exception(error[k]);
     for (std::size_t k = 0; k < n; ++k) {
         views[k]->merge_into(ev);
-        ev.hook_calls += out[k].hook_calls;           // the user's local search (scalar.hpp LS-5)
+        ev.hook_calls += out[k].hook_calls;           // the user's local search (scalar.hpp ULS-5)
         ev.hook_spent += out[k].hook_spent;
         ev.hook_seconds += out[k].hook_seconds;
     }
@@ -662,6 +681,12 @@ private:
     std::vector<std::string> own_;
 };
 
+// the lean mode, where keep_points = best is given (see STRAT-12)
+inline bool lean_of(StrategyKnobs& k)
+{
+    return k.find("keep_points") && k.word("keep_points", "all", {"all", "best"}) == "best";
+}
+
 // STRAT-9: the log grouped by the problem's symmetries where min_sym is given
 inline void group_by_symmetry(StrategyKnobs& k, const Problem& P, MinimaLog& log)
 {
@@ -725,8 +750,8 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
                              int record_every, const Start& start)
 {
     using namespace strategy;
-    StrategyKnobs k("multistart", knobs,
-                    {"inner", "n_starts", "start_points", "threads", "min_dist", "min_df", "allowance", "start_sigma"});
+    StrategyKnobs k("multistart", knobs, {"inner", "n_starts", "start_points", "threads", "min_dist", "min_df",
+                                          "allowance", "start_sigma", "keep_points"});
     const Inner inner = k.inner("inner");
     const long long n_starts = k.whole("n_starts", 10, 1);
     const std::string points =
@@ -752,6 +777,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
                 throw std::invalid_argument("multistart draws its starts in the box: every bound must be finite");
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.lean = lean_of(k);                                                            // STRAT-12
     std::vector<StartSpec> starts(static_cast<std::size_t>(n_starts));
     const std::vector<double> U =
         n_starts > 1 && !around

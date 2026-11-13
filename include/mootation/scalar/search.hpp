@@ -228,7 +228,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     using namespace strategy;
     StrategyKnobs k("mlsl", knobs,
                     {"inner", "mlsl_n", "mlsl_sigma", "mlsl_gamma", "mlsl_tau", "mlsl_nu", "threads", "start_budget",
-                     "min_dist", "min_df"});
+                     "min_dist", "min_df", "keep_points"});
     const Inner inner = k.inner("inner");
     const long long N = k.whole("mlsl_n", 100, 1);
     const double sigma = k.number("mlsl_sigma", 4.0), gamma = k.number("mlsl_gamma", 0.2);
@@ -241,6 +241,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     const std::size_t n = P.lo.size();
     const double dn = static_cast<double>(n);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     std::mt19937 sampler(seed);
@@ -327,7 +328,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
 {
     using namespace strategy;
     const bool bh = name == "basin_hopping";
-    std::vector<std::string> own{"inner", "start_budget", "min_dist", "min_df"};
+    std::vector<std::string> own{"inner", "start_budget", "min_dist", "min_df", "keep_points"};
     if (bh) own.insert(own.end(), {"bh_temperature", "bh_step", "bh_accept_rate", "bh_interval"});
     else own.insert(own.end(), {"ils_accept", "ils_step", "ils_restart", "ils_temperature"});
     StrategyKnobs k(name, knobs, own);
@@ -352,6 +353,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     search::finite_box(name, P);
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     std::mt19937 rng(start_seed(seed, 0x9E3779B9u));             // the walk's own draws
@@ -421,7 +423,11 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
                           const Start& start)
 {
     using namespace strategy;
-    StrategyKnobs k("halving", knobs, {"inner", "n_starts", "start_points", "threads", "min_dist", "min_df"});
+    StrategyKnobs k("halving", knobs,
+                    {"inner", "n_starts", "start_points", "threads", "min_dist", "min_df", "keep_points"});
+    if (lean_of(k))                                                                  // STRAT-12
+        throw std::invalid_argument("halving: keep_points = best is refused: its arms' reruns are free only "
+                                    "through the archive of every point (SRCH-6)");
     const Inner inner = k.inner("inner");
     const long long n_arms = k.whole("n_starts", 16, 1);
     const std::string points = k.word("start_points", "sobol", {"sobol", "lhs", "uniform", "halton_rand", "sobol_owen"});
@@ -493,7 +499,11 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     using namespace strategy;
     StrategyKnobs k("memetic", knobs,
                     {"inner", "local_solver", "memetic_every", "memetic_points", "memetic_pick", "local_share",
-                     "start_budget", "threads", "min_dist", "min_df", "lamarck", "lamarck_share"});
+                     "start_budget", "threads", "min_dist", "min_df", "lamarck", "lamarck_share", "keep_points"});
+    if (lean_of(k))                                                                  // STRAT-12
+        throw std::invalid_argument("memetic: keep_points = best is refused: its global reruns are free only "
+                                    "through the archive of every point, and its local starts are drawn from it "
+                                    "(SRCH-7)");
     const Inner global = k.inner("inner");
     const Inner local = k.inner("local_solver");
     const long long every = k.whole("memetic_every", 1000, 1), n_points = k.whole("memetic_points", 1, 1);

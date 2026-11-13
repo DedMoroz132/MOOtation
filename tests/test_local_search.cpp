@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // THE USER'S LOCAL SEARCH (task 24, §24.1.1; scalar.hpp run_user_local,
-// LS-1 ... LS-6): Problem::local_search as the solver "local_search".
+// ULS-1 ... ULS-6): Problem::local_search as the solver "local_search".
 //   * a hook that runs the library's lbfgsb on ctx.problem is lbfgsb, bit for
 //     bit: alone and as the inner solver of multistart (one thread and
 //     three), basin_hopping, ils, mlsl and memetic's local_solver;
@@ -12,7 +12,7 @@
 //   * x' without f is evaluated, with f planted;
 //   * the state goes in and comes back;
 //   * a stochastic hook on ctx.rng: one thread and three alike;
-//   * x' of the wrong length, not finite, or an exception: refused (LS-4).
+//   * x' of the wrong length, not finite, or an exception: refused (ULS-4).
 
 #include <cmath>
 #include <cstdio>
@@ -268,7 +268,7 @@ int main()
                     r_off.objectives[0][0], r_on.objectives[0][0], a.objectives[0][0]);
     }
 
-    // the mistakes (LS-4)
+    // the mistakes (ULS-4)
     auto refused = [&](std::function<sc::LocalOutcome(const Vec&, sc::LocalContext&, const Vec&)> hook,
                        const std::string& part) {
         sc::Problem P = rastrigin(nullptr);
