@@ -185,6 +185,15 @@ always listed under **Changed** or **Removed**.
   `lj_cluster` (bbob's budgets, absolute targets). `lj_cluster` now shares
   its box, blocks, gauge, canon and start with `morse_cluster` (`Cluster` in
   `lj.hpp`), bit for bit as before; the other instances' specs are unchanged.
+- Added (task 24, §24.3.4): `scalar/catcma.hpp`, CatCMA (Hamano et al.,
+  GECCO 2024) for mixed continuous and categorical variables: a Gaussian on
+  the continuous part, categorical distributions updated by the ASNG's
+  natural gradient with an adaptive trust region, and the margin
+  (1 - 0.73^(1/N_ca)) / (K_n - 1). A standalone ask/tell solver, not yet
+  registered (no var_types path yet); readings CC-1..CC-11 in the header and
+  docs/deviations.md. tests/test_catcma.cpp: Table 1, Proposition 4.1, the
+  margin after every update, the paper's SPHERECOM and MCPROXIMITY runs
+  short (N_co = N_ca = K = 10), the ablation, a run checksum.
 - Changed: reference version 6 (REFERENCE_VERSION, refs::kReferenceVersion;
   task 20, after verify2's finding). fronts_full.SIZES named WFG3_6D and
   WFG3_10D, but their files had never been built, so their reference was the

@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-390 items: 340 yes, 50 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+401 items: 348 yes, 50 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -437,6 +437,17 @@ Their readings, from every comment of each file (the first column the file's nam
 | `boostdms` | BD-3 | "80 % ... in B(x_k; 3Δ_k)": the nearest points of the ball, then the nearest outside it, up to their shares of (n + 1)(n + 2); fewer when the cache holds fewer. | yes | `boostdms.hpp` |
 | `boostdms` | BD-4 | A candidate equal to a point of the cache is not evaluated again. | yes | `boostdms.hpp` |
 | `boostdms` | BD-5 | Constraints: the extreme barrier, as dms (an infeasible point never enters the list; a start without a feasible point keeps the least violating). | yes | `boostdms.hpp` |
+| `catcma` | CC-1 | c_1 = 2 / ((N_co + 1.3)^2 + mu_w): Table 1 prints N_ca, but every other rate of the continuous part has N_co and Table 1 follows [9, Table 2] (Hansen's tutorial), whose n is the Gaussian's. | yes | `catcma.hpp` |
+| `catcma` | CC-2 (not a deviation) | q_n^min = (1 - 0.73^(1/N_ca)) / (K_n - 1), as Table 1, (31) and §4.1 print it. | no: fixed | `catcma.hpp` |
+| `catcma` | CC-3 (not a deviation) | (18)-(19) carry sqrt(c (2 - c) mu_w), as printed. | no: fixed | `catcma.hpp` |
+| `catcma` | CC-4 (not a deviation) | h_sigma = 1 where \|\|p_sigma\|\| < sqrt(1 - (1 - c_sigma)^(2(t+1))) (1.4 + 2 / (N_co + 1)) E\|\|N(0, I)\|\|, as printed. | no: fixed | `catcma.hpp` |
+| `catcma` | CC-5 | F^(1/2)(q) in (24): the exact symmetric square root of each block, by its eigendecomposition (the ASNG approximates it, footnote 3 and [4, App. | yes | `catcma.hpp` |
+| `catcma` | CC-6 | \|\|G\|\|_F = 0 (the selected categories average to q exactly): (22) is skipped, (24)-(26) applied with a zero direction (s decays, gamma takes its beta (2 - beta), delta follows). | yes | `catcma.hpp` |
+| `catcma` | CC-7 | Ties in f: the earlier candidate ranks first (stable). | yes | `catcma.hpp` |
+| `catcma` | CC-8 | Draws, candidate by candidate: N_co normals for y_i, then one uniform per categorical variable, the category the first k with u < q_{n,1} + ... + q_{n,k} (the last where rounding leaves none). | yes | `catcma.hpp` |
+| `catcma` | CC-9 | N_co >= 1 (the rates of Table 1 divide by it), N_ca >= 0, K_n >= 2. | yes | `catcma.hpp` |
+| `catcma` | CC-10 | enhanced = false is §5.3's ablation: no rank-one update, no step size adaptation and no (27) (sigma stays sigma^(0)), c_m = 1, c_mu as Table 1, and the categories by (15) with eta_n = 1 / (N_ca (K_n - 1)), then the ma... | yes | `catcma.hpp` |
+| `catcma` | CC-11 | (24)-(25) accumulate the unit step: s gets sqrt(beta (2 - beta)) F^(1/2) G / \|\|G\|\|_F, the direction (22) actually moves q along, and gamma gets beta (2 - beta). | yes | `catcma.hpp` |
 | `chain_ls` | SW-1 | "More than": rho doubles after the 6th success in a row and halves after the 4th failure (Fig. 2's "> 5", "> 3"; | yes | `chain_ls.hpp` |
 | `chain_ls` | SW-2 | Every evaluation counts: Fig. 2 counts a step as one evaluation though its second trial is another (Fig. 5 counts both). | yes | `chain_ls.hpp` |
 | `chain_ls` | SW-3 | rho is the standard deviation of dif (§3.1: "a normal distribution whose standard deviation is given by a parameter rho"; | yes | `chain_ls.hpp` |
