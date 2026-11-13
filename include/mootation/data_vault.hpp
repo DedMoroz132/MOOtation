@@ -91,6 +91,15 @@
 // 0), the rule of FAILED EVALUATIONS. A slot read by a core keeps the k
 // values of the last refresh until the next one. Without set_aux (k = 0)
 // none of this runs: the vault is the one it was, bit for bit.
+//
+// IMPROVING NEW POINTS (task 26, item 24.5.1, A7). set_improve(fn): every point
+// the vault evaluates for the first time (a dirty slot at sync() or at a lazy
+// evaluation) and that did not fail is handed to fn(x, f) right after its
+// evaluation, before the population-dependent objectives and before the core
+// reads it; fn may move x and must then give the problem's M objectives at
+// the new x (it evaluates them itself, and those evaluations are the
+// caller's to count). The slot keeps what fn returns: the Lamarckian write.
+// Without set_improve nothing runs.
 // ============================================================================
 
 #include <algorithm>
@@ -209,6 +218,12 @@ private:
     int   aux_n_     = 0;                         // k, after them
     AuxFn aux_fn_;
     bool  aux_stale_ = false;                     // seeded points wait for their k values
+    // IMPROVING NEW POINTS: x and the problem's M objectives in, the improved
+    // ones out; true when it moved the point
+public:
+    using ImproveFn = std::function<bool(std::vector<double>& x, std::vector<double>& f)>;
+private:
+    ImproveFn improve_;
 
     // ── Failed evaluations (FAILED EVALUATIONS above) ───────────────────────
     bool                fail_raise_ = false;
@@ -455,7 +470,25 @@ private:
         if (!dirty_[r]) { if (aux_stale_) refresh_aux(); return; }
         if (batch_executor_) run_batch_single(r);
         else                 calc_one(r);
+        if (improve_) improve_slot(r);
         if (aux_n_ > 0) refresh_aux();
+    }
+
+    // IMPROVING NEW POINTS: slot r, evaluated, through improve_.
+    void improve_slot(std::size_t r) {
+        Ind_type& s = buf_[r];
+        if (s.failed) return;
+        std::vector<double> x = s.variables;
+        std::vector<double> f(s.objectives.begin(),
+                              s.objectives.begin() + static_cast<std::ptrdiff_t>(user_objs_));
+        if (!improve_(x, f)) return;
+        if (static_cast<int>(x.size()) != num_vars_ || static_cast<int>(f.size()) != user_objs_)
+            throw std::logic_error("set_improve: the function changed the sizes of x or f");
+        s.variables = x;
+        if (snap_) snap_(s.variables);                // sym = canon: f unchanged by the symmetry
+        std::copy(f.begin(), f.end(), s.objectives.begin());
+        settle(r);
+        calc_cv_slot(r);
     }
 
     // POPULATION-DEPENDENT OBJECTIVES: an evaluation's M values, k zeros after
@@ -598,6 +631,8 @@ public:
 
     void set_batch_executor(BatchExecutor e)         { batch_executor_ = std::move(e); }
     void set_post_sync_hook(std::function<void()> h) { post_sync_hook_ = std::move(h); }
+    // IMPROVING NEW POINTS: before the first evaluation.
+    void set_improve(ImproveFn fn) { improve_ = std::move(fn); }
 
     // POPULATION-DEPENDENT OBJECTIVES: k objectives after the problem's own,
     // filled by fn from the active population. Before the first evaluation.
@@ -814,6 +849,9 @@ public:
     // Evaluates all dirty slots of the active population:
     // batch_executor_ (if set) or the built-in Problem.calc_objs.
     void sync() {
+        std::vector<std::size_t> fresh;               // IMPROVING NEW POINTS
+        if (improve_)
+            for (std::size_t r : active_) if (dirty_[r]) fresh.push_back(r);
         if (batch_executor_) {
             run_batch_executor();
         } else {
@@ -822,6 +860,7 @@ public:
                 if (dirty_[r]) calc_one(r);
             }
         }
+        for (std::size_t r : fresh) improve_slot(r);
         if (aux_n_ > 0) refresh_aux();
         if (post_sync_hook_) post_sync_hook_();
     }

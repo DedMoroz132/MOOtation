@@ -299,5 +299,53 @@ int main()
         check(refused(kinds, blocky()), "blocks of a group with other variable kinds refused (MSYM-2)");
     }
 
+    // ── local search in the cores (A7; LS-1 ... LS-4) ───────────────────────
+    {
+        auto sphere = [](int n) {
+            RunProblem p;
+            p.bounds.assign(static_cast<std::size_t>(n), {-1.0, 1.0});
+            p.n_objectives = 1;
+            p.evaluate = [](std::vector<double> x) {
+                double s = 0.0;
+                for (double v : x) s += (v - 0.3) * (v - 0.3);
+                return std::vector<double>{s};
+            };
+            return p;
+        };
+        RunConfig cfg;
+        cfg.pop_size = 8;
+        cfg.n_gen = 1;
+        cfg.seed = 4;
+        cfg.aux = "dcn";
+        cfg.local = "nm";
+        cfg.local_evals = 400;
+        RunProblem a = sphere(2), b = sphere(2);
+        const RunResult r1 = mootation::runner::run("nsga2", a, cfg), r2 = mootation::runner::run("nsga2", b, cfg);
+        double best = std::numeric_limits<double>::infinity();
+        for (const auto& f : r1.objectives) best = std::min(best, f[0]);
+        check(best < 1e-12, "local = nm: the sphere's minimum in one generation (A7's check)");
+        check(same(r1, r2), "local = nm: two runs alike");
+        RunConfig plain = cfg;
+        plain.local = "none";
+        RunProblem c = sphere(2);
+        const RunResult r0 = mootation::runner::run("nsga2", c, plain);
+        check(r1.evaluations > r0.evaluations && r1.evaluations <= r0.evaluations * 400,
+              "local = nm: the searches' evaluations counted, at most local_evals per point");
+        auto refused = [&](RunConfig k, RunProblem p) {
+            try { mootation::runner::run("nsga2", p, k); } catch (const std::invalid_argument&) { return true; }
+            return false;
+        };
+        check(refused(cfg, zdt1(6)), "local = nm with two objectives refused (LS-1)");
+        RunProblem con = sphere(2);
+        con.n_limits = 1;
+        con.limits_batch = [](std::vector<std::vector<double>> X) {
+            return std::vector<std::vector<double>>(X.size(), std::vector<double>{-1.0});
+        };
+        check(refused(cfg, con), "local = nm with constraints refused (LS-2)");
+        RunConfig word = cfg;
+        word.local = "sqp";
+        check(refused(word, sphere(2)), "an unknown local refused");
+    }
+
     return mootation::testing::report("test_aux");
 }

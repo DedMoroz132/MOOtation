@@ -45,6 +45,7 @@
 #include <vector>
 
 #include "mootation.hpp"
+#include "scalar/nelder_mead.hpp"
 #include "scalar/symmetry.hpp"
 #include "settings.hpp"
 #include "suite/native.hpp"
@@ -795,6 +796,30 @@ struct RunConfig {
     //   here (the single-objective GA, DE and PSO have it, SYM-7 ... 9).
     // MSYM-2. The blocks of a group need the same bounds (SYM-6) and, with
     //   integer variables, the same kinds; refused otherwise.
+    // Local search inside the multi-objective cores (task 26, item 24.5.1, A7;
+    // data_vault.hpp, IMPROVING NEW POINTS): every new point a core makes is
+    // improved before the core selects, and the result written back
+    // (Lamarck), as in Segura et al.'s memetic MULTI_DYNAMIC (IEEE Trans.
+    // Cybern. 46(12), 2016, Algorithm 3: the local search of every offspring,
+    // not of the best tenth).
+    //   local = "none" (the default) nothing: the run it was, bit for bit;
+    //   local = "nm"   Nelder-Mead (scalar/nelder_mead.hpp) in the box scaled
+    //     to [0, 1], from the new point, on the problem's objective, at most
+    //     local_evals evaluations, every one counted in the run's budget.
+    // LS-1. The search minimizes the problem's own objective, which needs M =
+    //   1: the population-dependent objectives of aux (A1) are not its
+    //   business (Segura et al.; task 26, A7: "the local search minimizes the
+    //   target f only"). M > 1 is refused.
+    // LS-2. Constraints, binary or integer variables and an infinite bound
+    //   are refused (a box search over real variables).
+    // LS-3. The budget is checked between the core's steps, as for every
+    //   core: a step can overshoot it by up to pop_size x local_evals.
+    // LS-4. local_evals (default 100) includes the new point's own
+    //   evaluation, made before; Nelder-Mead's initial simplex is n + 1 of
+    //   them. The search keeps the best point it evaluated, which is the
+    //   new point where nothing better was found (nothing moves).
+    std::string local = "none";
+    long long   local_evals = 100;
     std::string sym = "off";
     std::vector<mootation::scalar::symmetry::Blocks> sym_blocks;
     std::function<void(std::vector<double>&)> sym_canon;
@@ -979,6 +1004,52 @@ RunResult run_core(const RunConfig& cfg)
                 }
             }
         });
+    }
+    // local search of every new point (RunConfig::local, A7, LS-1 ... LS-4)
+    if (cfg.local == "nm") {
+        const RunProblem& rp = *st().problem;
+        if (rp.n_objectives != 1)
+            throw std::invalid_argument("local = nm needs one objective of the problem (LS-1); "
+                                        "aux adds the others");
+        if (rp.n_limits > 0 || rp.n_bin > 0 || !cfg.var_kinds.empty())
+            throw std::invalid_argument("local = nm: no constraints, binary or integer variables (LS-2)");
+        if (cfg.local_evals < 2)
+            throw std::invalid_argument("local_evals: at least 2 (LS-4)");
+        std::vector<double> lo, hi;
+        for (const auto& b : rp.bounds) {
+            if (!std::isfinite(b.first) || !std::isfinite(b.second) || !(b.second > b.first))
+                throw std::invalid_argument("local = nm needs a finite box (LS-2)");
+            lo.push_back(b.first);
+            hi.push_back(b.second);
+        }
+        vault.set_improve([lo, hi, budget = cfg.local_evals](std::vector<double>& x,
+                                                            std::vector<double>& f) {
+            struct Spent {};
+            const std::size_t n = x.size();
+            std::vector<double> best = x, unit(n, 0.0), zero(n, 0.0), one(n, 1.0), y(n), objs, lims;
+            double fbest = f[0];
+            long long left = budget - 1;                     // LS-4: the point's own evaluation
+            for (std::size_t j = 0; j < n; ++j) unit[j] = (x[j] - lo[j]) / (hi[j] - lo[j]);
+            auto fun = [&](const std::vector<double>& u) {
+                if (left <= 0) throw Spent{};
+                --left;
+                for (std::size_t j = 0; j < n; ++j) y[j] = std::min(hi[j], std::max(lo[j], lo[j] + u[j] * (hi[j] - lo[j])));
+                eval_into(y, objs, lims);
+                const double v = objs[0];
+                if (std::isfinite(v) && v < fbest) { fbest = v; best = y; }
+                return std::isfinite(v) ? v : std::numeric_limits<double>::infinity();
+            };
+            try {
+                nelder_mead::minimize(fun, unit, zero, one, nelder_mead::Options{});
+            } catch (const Spent&) {
+            }
+            if (!(fbest < f[0])) return false;
+            x = best;
+            f[0] = fbest;
+            return true;
+        });
+    } else if (cfg.local != "none") {
+        throw std::invalid_argument("local = '" + cfg.local + "': none or nm");
     }
     // sym = canon (RunConfig::sym, MSYM-1): after the rounding, at every write
     if (cfg.sym == "canon") {

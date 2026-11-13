@@ -26,6 +26,13 @@ always listed under **Changed** or **Removed**.
   canonical form, so that all the cores combine canonical parents; and
   `aux_metric = "sym"`, the distance to the nearest other member after
   alignment. C++ only for now; off by default.
+- Added (task 26, item 24.5.1, A7): local search inside the multi-objective
+  cores. `DataVault::set_improve(fn)` improves every new point before the
+  core selects and keeps the result (Lamarck);
+  `RunConfig::local = "none" | "nm"`, `local_evals`: Nelder-Mead from every
+  new point on the problem's single objective (with `aux` for the others),
+  its evaluations counted in the run's budget. C++ only for now; off by
+  default.
 - Added (task 26, items 24.7.2, 24.7.4, 24.7.5): the report layer's
   comparisons at one objective. `run/stats.py`: Iman and Davenport's F after
   Friedman, Nemenyi's and Bonferroni-Dunn's critical differences (critical
