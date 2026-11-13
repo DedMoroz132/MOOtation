@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-400 items: 316 yes, 27 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+403 items: 316 yes, 30 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -212,6 +212,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `if_maoea` | IF-MaOEA-5 (MINOR) | Real-valued genome; binary is out of scope. | yes | `if_maoea.hpp` |
 | `if_maoea` | IF-MaOEA-6 (MINOR) | The archive AS is truncated by the same sieve to ≤N; | yes | `if_maoea.hpp` |
 | `if_maoea` | IF-MaOEA-7 | (AMBIGUOUS — the paper contradicts itself on the normalization range). | yes | `if_maoea.hpp` |
+| `if_maoea` | IF-MaOEA-12 (READING; knob if_range, off by default: pool) | The other side of IF-MaOEA-7: if_range = alg1 keeps Alg.1's persistent Range, z^nad from the initial population and z lowered by every generation's offspring (line 11), for every normalization; pool, the default, keep... | no: option | `if_maoea.hpp` |
 | `if_maoea` | IF-MaOEA-8 (PAPER MISPRINT, resolved from the paper's own text) | Alg.2 line 8 reads "Calculate the MINIMUM cosine of the angle between ASS and RefPoint". | yes | `if_maoea.hpp` |
 | `if_maoea` | IF-MaOEA-10 (FIXED 2026-09-05, FE-trajectory audit) | The reference set is ONE angular lattice of at most N points. | no: fixed | `if_maoea.hpp` |
 | `if_maoea` | IF-MaOEA-9 (PAPER PSEUDOCODE BROKEN, resolved from §2.4) | Alg.3 as printed cannot run: (a) lines 5-10 accumulate the critical-layer picks into p and then "return Q" at line 12 without ever merging p into Q, and line 8's "p <- argmax fitness(F_k)" overwrites p instead of appe... | yes | `if_maoea.hpp` |
@@ -259,6 +260,8 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `mbra` | mbra.6 | M7: CM_old is refreshed at EVERY Condition1 trigger, not only after an AdjustVector. | yes | `mbra.hpp` |
 | `nrv_moea` | NRV-1 (FIXED 2026-09-06, third primary-source pass) | the port used to | no: fixed | `nrv_moea.hpp` |
 | `nrv_moea` | NRV-2 (FIXED 2026-09-16) | Arc ∪ P kept a solution twice when it sat in | no: fixed | `nrv_moea.hpp` |
+| `nrv_moea` | NRV-3 (READING; knob nrv_archive, off by default: letter) | Of the authors' code: PlatEMO 4.16's NRV-MOEA, which cites this paper, manages the archive otherwise than assumption (1) below: the epsilon fitness on the objectives normalized over the archive, with a per-column C, a... | no: option | `nrv_moea.hpp` |
+| `nrv_moea` | NRV-4 (READING; knob nrv_pool, off by default: letter) | Of the authors' code: there the archive joins the population before the selection, so its members compete for the next population; nrv_pool = platemo adds the archive to the pool P u Q. | no: option | `nrv_moea.hpp` |
 | `nrv_moea` | nrv_moea.1 | with set_population_pruning(true) only — topping the population up when <N survive the pruning (by the Σ of normalized objectives), a guard of the fixed-N framework; under the letter P_c has exactly N members (N_n who... | yes | `nrv_moea.hpp` |
 | `dea_gng` | GNG-1 | — RESOLVED (audit 2026-09). The A_S update follows §III-C literally: the first front only (i = 1), Alg.2 normalization and association against the current R, then per reference vector the closest solution while c_J =... | yes | `dea_gng.hpp` |
 | `dea_gng` | GNG-2 (MINOR) | sub-networks = the connected components of the edges (BFS). | yes | `dea_gng.hpp` |

@@ -145,6 +145,11 @@
 //     each pool it is given. A visible consequence: Alg.1 line 11, which
 //     updates z from the offspring, has no counterpart here — under
 //     recomputation it would be redundant.
+//   IF-MaOEA-12 (READING; knob if_range, off by default: pool). The other side
+//     of IF-MaOEA-7: if_range = alg1 keeps Alg.1's persistent Range, z^nad
+//     from the initial population and z lowered by every generation's
+//     offspring (line 11), for every normalization; pool, the default, keeps
+//     §2.3-A's min and max over the pool at hand.
 //   IF-MaOEA-8 (PAPER MISPRINT, resolved from the paper's own text). Alg.2
 //     line 8 reads "Calculate the MINIMUM cosine of the angle between ASS and
 //     RefPoint". Taken literally that selects the FARTHEST reference vector,
@@ -197,6 +202,7 @@
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -218,6 +224,13 @@ public:
 
     IFMaOEACore() = default;
     void set_seed(unsigned s) { rng_.seed(s); }
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k != "if_range") return false;                   // IF-MaOEA-12
+        if (w != "pool" && w != "alg1")
+            throw std::invalid_argument("if_maoea: if_range = '" + w + "': pool or alg1");
+        range_alg1_ = (w == "alg1");
+        return true;
+    }
     void set_t_max(int t) { t_max_ = t; }
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation(double e) { eta_m_ = e; }
@@ -225,6 +238,8 @@ public:
     void set_pm(double p) { pm_ = p; }
 
 private:
+    bool range_alg1_ = false;                 // IF-MaOEA-12 (knob if_range)
+    std::vector<double> rz_, rznad_;          // Alg.1's Range [z, z^nad] (IF-MaOEA-12)
     std::mt19937 rng_{std::random_device{}()};
     int    t_max_ = 250, t_ = 0;
     double eta_c_ = 20.0, eta_m_ = 20.0, pc_ = 1.0, pm_ = -1.0;  // §3.1 Table 2
@@ -439,12 +454,22 @@ private:
         return detail::dominates(constraint_mode, a.objs, a.cv, b.objs, b.cv);
     }
 
+    // IF-MaOEA-12: Alg.1 lines 3-5, Range = [z, z^nad] from the initial population
+    void init_range() {
+        rz_.assign(m_, std::numeric_limits<double>::max());
+        rznad_.assign(m_, -std::numeric_limits<double>::max());
+        for (const auto& s : P_)
+            for (int k = 0; k < m_; ++k) { rz_[k] = std::min(rz_[k], s.objs[k]); rznad_[k] = std::max(rznad_[k], s.objs[k]); }
+    }
+
     // Normalisation z / z^nad over a pool (Eq.5). Returns normalised objs.
     std::vector<std::vector<double>> normalize(const std::vector<Sol>& pool) const {
         std::vector<double> z(m_, std::numeric_limits<double>::max());
         std::vector<double> zn(m_, -std::numeric_limits<double>::max());
-        for (const auto& s : pool)
-            for (int k = 0; k < m_; ++k) { z[k] = std::min(z[k], s.objs[k]); zn[k] = std::max(zn[k], s.objs[k]); }
+        if (range_alg1_) { z = rz_; zn = rznad_; }   // IF-MaOEA-12: Alg.1's persistent Range
+        else
+            for (const auto& s : pool)
+                for (int k = 0; k < m_; ++k) { z[k] = std::min(z[k], s.objs[k]); zn[k] = std::max(zn[k], s.objs[k]); }
         std::vector<std::vector<double>> F(pool.size(), std::vector<double>(m_));
         for (std::size_t i = 0; i < pool.size(); ++i)
             for (int k = 0; k < m_; ++k) {
@@ -673,6 +698,7 @@ public:
         read_pop(vault, P_);
         AS_.clear();
         t_ = 0;
+        init_range();
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
@@ -685,6 +711,7 @@ public:
         read_pop(vault, P_);
         AS_.clear();
         t_ = 0;
+        init_range();
     }
 
     void step(DataVault<Ind_t>& vault) {
@@ -708,6 +735,10 @@ public:
             const Sol& b = Pp[(i + 1) % Pp.size()];
             O.push_back(breed(a, b, vault, scratch));
         }
+
+        // Alg.1 line 11: z updated by the offspring (IF-MaOEA-12, if_range = alg1)
+        if (range_alg1_)
+            for (const auto& o : O) for (int k = 0; k < m_; ++k) rz_[k] = std::min(rz_[k], o.objs[k]);
 
         // CA = P ∪ O
         std::vector<Sol> CA = P_;

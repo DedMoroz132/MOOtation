@@ -45,6 +45,17 @@
 //      Reproduction drew such a solution twice as often. The union now enters
 //      each solution (identical variables) once, as a set union does.
 //
+//   NRV-3 (READING; knob nrv_archive, off by default: letter). Of the
+//     authors' code: PlatEMO 4.16's NRV-MOEA, which cites this paper, manages the
+//     archive otherwise than assumption (1) below: the epsilon fitness on the
+//     objectives normalized over the archive, with a per-column C, and then
+//     the members farther than ten times the mean distance from the archive's
+//     minimum removed (UpdateArchive.m). nrv_archive = platemo does that.
+//   NRV-4 (READING; knob nrv_pool, off by default: letter). Of the authors'
+//     code: there the archive joins the population before the selection,
+//     so its members compete for the next population; nrv_pool = platemo
+//     adds the archive to the pool P u Q. (Its later truncation of the
+//     selected set removes nothing when that set has N members, as it does.)
 // PAPER DEFAULTS = §Experimental settings: p_c=1, p_m=1/V, η_c=η_m=20,
 //   f_r=0.1.
 // ASSUMPTIONS (gaps in the paper, each filled deliberately):
@@ -82,6 +93,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../detmath.hpp"
@@ -116,6 +129,8 @@ private:
     int          t_max_ = 1000;
     int          current_gen_ = 0;
     bool         population_pruning_ = false;   // NRV-1: true = the previous port
+    bool         archive_platemo_ = false;      // NRV-3: PlatEMO's UpdateArchive (knob nrv_archive)
+    bool         pool_platemo_ = false;         // NRV-4: the archive in the selection pool (knob nrv_pool)
     std::vector<double> s_rng_;             // cache of s (frozen for f_r·MaxG)
     int          s_age_ = -1;               // when s was last updated
     std::mt19937 rng_{std::random_device{}()};
@@ -308,6 +323,21 @@ public:
     void set_seed(unsigned s)        { rng_.seed(s); }
     void set_t_max(int t)            { t_max_ = (t > 0) ? t : 1; }
     void set_population_pruning(bool b) { population_pruning_ = b; }   // NRV-1
+    bool set_word(const std::string& k, const std::string& w) {
+        if (k == "nrv_archive") {                            // NRV-3
+            if (w != "letter" && w != "platemo")
+                throw std::invalid_argument("nrv_moea: nrv_archive = '" + w + "': letter or platemo");
+            archive_platemo_ = (w == "platemo");
+            return true;
+        }
+        if (k == "nrv_pool") {                               // NRV-4
+            if (w != "letter" && w != "platemo")
+                throw std::invalid_argument("nrv_moea: nrv_pool = '" + w + "': letter or platemo");
+            pool_platemo_ = (w == "platemo");
+            return true;
+        }
+        return false;
+    }
 
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
@@ -336,6 +366,64 @@ public:
         int n = vault.pop_size();
         if (vault.archive_size() == 0)
             for (int i = 0; i < n; ++i) vault.archive_push(i);
+    }
+
+    // NRV-3: PlatEMO 4.16 NRV-MOEA/UpdateArchive.m. The non-dominated items;
+    // above N: I(i,j) = max_k(f'_i,k - f'_j,k) on the objectives normalized by
+    // their min and max over those items, C(j) = max_i |I(i,j)|, F(j) = 1 +
+    // sum_i -exp(-I(i,j)/C(j)/0.05); the least F leaves and F += exp(-I(x,.)/
+    // C(x)/0.05), until N remain; then the items farther than 10 times their
+    // mean distance from their own minimum leave.
+    std::vector<int> platemo_archive_select(const std::vector<std::vector<double>>& F,
+                                            const std::vector<int>& items, int N) {
+        std::vector<int> nd;
+        for (int a : items) {
+            bool dom = false;
+            for (int b : items) if (a != b && dom_obj(F[b], F[a])) { dom = true; break; }
+            if (!dom) nd.push_back(a);
+        }
+        const int K = static_cast<int>(nd.size());
+        if (K <= N) return nd;
+        const int m = static_cast<int>(F[nd[0]].size());
+        std::vector<double> lo(m, std::numeric_limits<double>::max()), hi(m, -std::numeric_limits<double>::max());
+        for (int a : nd) for (int k = 0; k < m; ++k) { lo[k] = std::min(lo[k], F[a][k]); hi[k] = std::max(hi[k], F[a][k]); }
+        std::vector<std::vector<double>> G(K, std::vector<double>(m));
+        for (int i = 0; i < K; ++i)
+            for (int k = 0; k < m; ++k) {
+                double r = hi[k] - lo[k];
+                G[i][k] = (F[nd[i]][k] - lo[k]) / (r > 0.0 ? r : 1.0);
+            }
+        std::vector<std::vector<double>> I(K, std::vector<double>(K));
+        for (int i = 0; i < K; ++i) for (int j = 0; j < K; ++j) I[i][j] = eps_plus(G[i], G[j]);
+        std::vector<double> C(K, 0.0);
+        for (int j = 0; j < K; ++j) {
+            for (int i = 0; i < K; ++i) C[j] = std::max(C[j], std::abs(I[i][j]));
+            if (!(C[j] > 0.0)) C[j] = 1e-12;
+        }
+        std::vector<double> fit(K, 1.0);
+        for (int j = 0; j < K; ++j) for (int i = 0; i < K; ++i) fit[j] += -dm::exp(-I[i][j] / C[j] / KAPPA_);
+        std::vector<char> alive(K, 1);
+        for (int left = K; left > N; --left) {
+            int x = -1;
+            for (int j = 0; j < K; ++j) if (alive[j] && (x < 0 || fit[j] < fit[x])) x = j;
+            alive[x] = 0;
+            for (int j = 0; j < K; ++j) fit[j] += dm::exp(-I[x][j] / C[x] / KAPPA_);
+        }
+        std::vector<int> kept;
+        for (int j = 0; j < K; ++j) if (alive[j]) kept.push_back(j);
+        std::vector<double> mn(m, std::numeric_limits<double>::max());
+        for (int j : kept) for (int k = 0; k < m; ++k) mn[k] = std::min(mn[k], F[nd[j]][k]);
+        std::vector<double> d(kept.size(), 0.0);
+        double mean = 0.0;
+        for (std::size_t q = 0; q < kept.size(); ++q) {
+            double s = 0.0;
+            for (int k = 0; k < m; ++k) { double v = F[nd[kept[q]]][k] - mn[k]; s += v * v; }
+            d[q] = std::sqrt(s); mean += d[q];
+        }
+        mean /= static_cast<double>(kept.size());
+        std::vector<int> out;
+        for (std::size_t q = 0; q < kept.size(); ++q) if (!(d[q] > 10.0 * mean)) out.push_back(nd[kept[q]]);
+        return out;
     }
 
     void step(DataVault<Ind_t>& vault) {
@@ -389,7 +477,8 @@ public:
                 seen_v.push_back(std::move(v));
                 seen_b.push_back(std::move(b));
             }
-            auto keep = eps_archive_select(F, items, N);
+            auto keep = archive_platemo_ ? platemo_archive_select(F, items, N)   // NRV-3
+                                         : eps_archive_select(F, items, N);
             // rewrite the archive: keep the non-dominated survivors whole
             std::vector<VaultPoint> kp;
             for (int idx : keep)
@@ -441,6 +530,14 @@ public:
         }
         vault.sync();
         int pool = n * 2;
+        // NRV-4: PlatEMO's NRVMOEA.m joins the archive to the population before
+        // the selection (Population = [Population Archive]; UniPop = [Population,
+        // Offspring]), so archive members compete for the next population too
+        if (pool_platemo_ && A > 0) {
+            int ab = vault.expand(A);
+            for (int i = 0; i < A; ++i) vault.put_point(static_cast<std::size_t>(ab + i), vault.archive_point_of(static_cast<std::size_t>(i)));
+            pool += A;
+        }
 
         // ── NDS, accept whole fronts, critical front Fl ────────────────────
         auto fronts = fast_nds(vault, pool);

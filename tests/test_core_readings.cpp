@@ -135,6 +135,8 @@ MOOTATION_TEST_PROBLEM(CL, NSGAII_Individual,    DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(DG, NSGAII_Individual,    DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(AR, MaOEAARV_Individual,  DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(RD, NSGAII_Individual,    DTLZ2Spec)
+MOOTATION_TEST_PROBLEM(IF, NSGAII_Individual,    DTLZ2Spec)
+MOOTATION_TEST_PROBLEM(NV, NRVMOEA_Individual,   DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(AP, NSGAII_Individual,    DTLZ2Spec)
 
 using namespace mootation;
@@ -222,6 +224,10 @@ void test_knobs_of_2026_11_02()
     word_knob<AP, APRDCore<AP>>("aprd", "91 dee9a93dd30901ff", "aprd_pbi", "canonical", "printed", 300);
     // 2026-11-13: rd_emo's rd_ideal (RDE-9)
     word_knob<RD, RDEMOCore<RD>>("rd_emo", golden_of<RD, RDEMOCore<RD>>(), "rd_ideal", "running", "origin");
+    // 2026-11-13: if_maoea's if_range (IF-MaOEA-12), nrv_moea's nrv_archive, nrv_pool (NRV-3, -4)
+    word_knob<IF, IFMaOEACore<IF>>("if_maoea", golden_of<IF, IFMaOEACore<IF>>(), "if_range", "pool", "alg1");
+    word_knob<NV, NRVMOEACore<NV>>("nrv_moea", golden_of<NV, NRVMOEACore<NV>>(), "nrv_archive", "letter", "platemo");
+    word_knob<NV, NRVMOEACore<NV>>("nrv_moea", golden_of<NV, NRVMOEACore<NV>>(), "nrv_pool", "letter", "platemo");
     // 2026-11-05: maoea_iamd's kpcm_pm (IAMD-1)
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "kpcm_pm", "off", "on");
     // 2026-11-05: edv's edv_tournament (EDV-5) and normalize (EDV-6)

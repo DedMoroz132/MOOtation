@@ -137,6 +137,9 @@ _FALLBACK_TEXT = {
     "min_sym": ("off", "canon", "align"),
     "aprd_pbi": ("canonical", "printed"),
     "rd_ideal": ("running", "origin"),
+    "if_range": ("pool", "alg1"),
+    "nrv_archive": ("letter", "platemo"),
+    "nrv_pool": ("letter", "platemo"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 _FALLBACK_JSON = ("dc_stages", "pap_members")

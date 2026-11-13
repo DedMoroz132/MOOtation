@@ -335,6 +335,13 @@ inline bool is_core_param(const std::string& name)
 //                 APRD-10) or as Eq.7-8 print it (printed; APRD-12)
 //   rd_ideal      rd_emo: z* the running ideal (running, the default; RDE-3)
 //                 or the origin, as §4.1 (origin; RDE-9)
+//   if_range      if_maoea: the normalization range over the pool at hand
+//                 (pool, the default; §2.3-A) or Alg.1's persistent one (alg1;
+//                 IF-MaOEA-12)
+//   nrv_archive   nrv_moea: the archive's epsilon management as assumed
+//                 (letter, the default) or as PlatEMO's code (platemo; NRV-3)
+//   nrv_pool      nrv_moea: the selection pool P u Q (letter, the default) or
+//                 with the archive, as PlatEMO's code (platemo; NRV-4)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -431,6 +438,9 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"min_sym",      {"off", "canon", "align"}},
         {"aprd_pbi",     {"canonical", "printed"}},
         {"rd_ideal",     {"running", "origin"}},
+        {"if_range",     {"pool", "alg1"}},
+        {"nrv_archive",  {"letter", "platemo"}},
+        {"nrv_pool",     {"letter", "platemo"}},
     };
     return v;
 }
@@ -484,7 +494,8 @@ inline bool is_core_word(const std::string& name)
                           "cv_rule", "cv_norm",
                           "nadir_source",
                           "drs_guard",
-                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage", "min_sym", "aprd_pbi", "rd_ideal"})
+                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage", "min_sym", "aprd_pbi", "rd_ideal",
+                          "if_range", "nrv_archive", "nrv_pool"})
         if (name == k) return true;
     return false;
 }

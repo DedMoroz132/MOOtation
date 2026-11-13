@@ -268,6 +268,10 @@ always listed under **Changed** or **Removed**.
 - Added: `rd_emo`'s knob `rd_ideal`, default unchanged, so default runs keep
   their golden fingerprints: `running` keeps z* the running ideal (RDE-3);
   `origin` pins it at the origin, as the paper's §4.1 states (RDE-9).
+- Added: `if_maoea`'s knob `if_range` (`pool` | `alg1`; IF-MaOEA-12) and
+  `nrv_moea`'s knobs `nrv_archive` and `nrv_pool` (`letter` | `platemo`;
+  NRV-3, NRV-4), every default unchanged, so default runs keep their
+  golden fingerprints.
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into
