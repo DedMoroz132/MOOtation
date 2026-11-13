@@ -60,6 +60,7 @@ set(MOOTATION_TESTS
     test_cec2013
     test_symmetry
     test_structure
+    test_structure_hooks
     test_blocks_objectives
     test_so_metrics
     test_so_confidence

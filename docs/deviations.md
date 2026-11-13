@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-380 items: 335 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+386 items: 340 yes, 46 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -777,6 +777,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-8 | Every strategy ends below its budget too where its points cost nothing (the archive answers them: points clipped onto known ones, a box of zero width): a loop over the budget ends when a pass of it spends nothing. mul... | yes | `strategy.hpp` |
 | `strategy` | STRAT-9 | min_sym = off \| canon \| align (task 19, §19.2.2, S5; off by default): the log's distance between a start's answer and a minimum taken after the answer is aligned to the minimum (align), or both are canonical (canon),... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-9 | the log grouped by the problem's symmetries where min_sym is given | yes | `strategy.hpp` |
+| `structure_hooks` | HOOK-1 | A malformed vector (a count or a production out of range, a derivation that ends before or after the count, a non-integer where an integer belongs) is refused with std::invalid_argument naming the coordinate; the oper... | yes | `structure_hooks.hpp` |
+| `structure_hooks` | HOOK-2 | Parameters live in one box [param_lo, param_hi] for every slot (the vector's bounds cannot depend on the structure); by default the union of the productions' ranges. | yes | `structure_hooks.hpp` |
+| `structure_hooks` | HOOK-3 | The probabilities inside the hooks. The GA calls crossover for every pair in SBX's place (ga.hpp GA-9), so the hook draws its own coin: a pair is crossed with p_crossover, else the children are the parents — 0.8 for t... | yes | `structure_hooks.hpp` |
+| `structure_hooks` | HOOK-4 | decode of a tree writes back its canonical form (canonicalize): the children of a commutative node in the key's order. | yes | `structure_hooks.hpp` |
+| `structure_hooks` | HOOK-5 | A GE derivation with more parameters than P keeps the first P in the genome; the others take the middle of their production's range on every decode and are not active (GE-7). | yes | `structure_hooks.hpp` |
+| `structure_hooks` | HOOK-6 | canon_key (the cache of 24.1.4 with cache = canon) is the structure's key without the parameters (TREE-5): one evaluation per structure, right where evaluate fits the parameters itself (a local fit inside the evaluati... | no: option | `structure_hooks.hpp` |
 | `symmetry` | SYM-1 | Ties: Step 1 takes the first non-covered zero in row-major order and the Preliminaries star in row-major order, so the assignment is a function of the matrix: equal blocks or equal costs give the same answer every time. | yes | `symmetry.hpp` |
 | `symmetry` | SYM-2 | A zero is an entry equal to 0.0. In floating point Step 3 makes the least non-covered entry exactly 0 (y - y), so the zero the method needs is there; the other entries carry the rounding of the subtractions, which can... | yes | `symmetry.hpp` |
 | `symmetry` | SYM-3 | align(x, ref) with x a permutation of ref's blocks returns ref bit for bit: the permutation's cost is 0, the least possible, and the result copies x's blocks, which are ref's. | yes | `symmetry.hpp` |

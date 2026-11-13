@@ -245,7 +245,6 @@ always listed under **Changed** or **Removed**.
 - Added (campaign, both engines; task 18): `[campaign] keep_restarts = true`
   keeps the runs of ipop, bipop and bipop_2009 (regime, λ, σ⁰, evaluations,
   the stopping criterion) in `meta.json`'s `so.restarts`. Off by default.
-
 - Added (task 27, item 24.1.2): two structural genotypes, C++ headers
   only. `scalar/typed_tree.hpp`: a typed grammar (its types the
   non-terminals), derivation trees, initialization by the minimum-depth
@@ -259,6 +258,13 @@ always listed under **Changed** or **Removed**.
   crossover, bitwise and codon mutation, duplication and pruning (O'Neill &
   Ryan 2001). Readings TREE-1...6, GE-1...9. Nothing uses them yet: every
   run is as before.
+- Added (task 27 on task 24's genome contract): `scalar/structure_hooks.hpp`
+  packs a tree or a GE genome into the vector of fixed length the methods
+  keep, and `make_tree_hooks` / `make_ge_hooks` fill a Problem's `sample`,
+  `crossover`, `mutate`, `decode` (the canonical genome written back, the
+  used parameters active) and `canon_key`, for `ga_sbx` and `ssga` with
+  `ga_crossover`, `ga_mutation`, `ga_init = user`. Readings HOOK-1...6.
+  Only a problem that asks for them uses them.
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into
