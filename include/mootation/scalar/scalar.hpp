@@ -467,23 +467,36 @@ namespace detail {
 
 // The first points of a run (THE PLAN, 1); the archive indices.
 inline std::vector<std::size_t> first_points(Evaluator& ev, const Start& st, int pop_size,
-                                             std::mt19937& rng, bool uniform_default)
+                                             std::mt19937& rng, bool uniform_default,
+                                             std::vector<double>* values = nullptr)
 {
     std::vector<std::size_t> out;
     const std::size_t n = ev.lo.size();
+    auto noted = [&](std::size_t i) {              // values: the plan's f, failed points left out
+        if (values && !ev.failed[i]) values->push_back(ev.F[i][0]);
+        return i;
+    };
     if (st.has_seed_points) {
-        for (const Point& p : st.seed_points) out.push_back(ev.plant(p.x, p.f, p.g));
+        for (const Point& p : st.seed_points) out.push_back(noted(ev.plant(p.x, p.f, p.g)));
     } else if (st.has_design) {
-        for (const Vec& x : st.design) out.push_back(ev.index(x));
+        for (const Vec& x : st.design) out.push_back(noted(ev.index(x)));
     } else if (uniform_default) {
         for (int k = 0; k < pop_size; ++k) {
             Vec x(n);
             for (std::size_t j = 0; j < n; ++j)
                 x[j] = ev.lo[j] + rnd::uniform01(rng) * (ev.hi[j] - ev.lo[j]);
-            out.push_back(ev.index(x));
+            out.push_back(noted(ev.index(x)));
         }
     }
     return out;
+}
+
+// keep_points = all | best (task 24, §24.3.3) among a solver's knobs: true for best
+inline bool lean_word(const Knob& v)
+{
+    const std::string w = shown(v);
+    if (!v.is_word || (w != "all" && w != "best")) throw std::invalid_argument("keep_points = '" + w + "': all, best");
+    return w == "best";
 }
 
 inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
@@ -919,6 +932,11 @@ inline Result run_boostdms_named(const Problem& P, double eq_tol, bool has_tol0,
 //     problem's gradient where it gives one (solvers.hpp SCALAR-13), and
 //     grad_cost then counts it (evaluator.hpp THE COUNTS; reported in the
 //     settings only where there is a gradient).
+//   SINGLE-5. keep_points = best (task 24, §24.3.3; off by default: all):
+//     the evaluator's lean mode (the best point and the last); the plan's
+//     range of SINGLE-2 is taken from its values as they come, its best is
+//     kept in the best's slot; a point asked for again is evaluated again
+//     and counted.
 inline const std::vector<std::string>& single_names()
 {
     static const std::vector<std::string> v{"slsqp", "nelder_mead", "cmaes"};
@@ -945,8 +963,11 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     Knobs taken;
     std::vector<std::string> ignored, none;
     double grad_cost = 1.0;
+    bool lean = false;
     for (const auto& kv : knobs) {
-        if (kv.first == "grad_cost") {
+        if (kv.first == "keep_points") {                                             // SINGLE-5
+            lean = detail::lean_word(kv.second);
+        } else if (kv.first == "grad_cost") {
             grad_cost = detail::number_of(kv.first, kv.second);
             if (!std::isfinite(grad_cost) || grad_cost < 0.0) throw std::invalid_argument("grad_cost must be a number >= 0");
         } else if (detail::listed(own, kv.first)) {
@@ -981,12 +1002,19 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     ev.grad_cost = grad_cost;
+    ev.lean = lean;                                                                   // SINGLE-5
     try {
-        if (start.has_x0) ev.index(start.x0);         // the plan: x0 alone (SINGLE-3)
-        else detail::first_points(ev, start, pop_size, rng, true);
+        std::vector<double> plan;                    // the plan's values (SINGLE-5)
+        if (start.has_x0) {                          // the plan: x0 alone (SINGLE-3)
+            const std::size_t i = ev.index(start.x0);
+            if (!ev.failed[i]) plan.push_back(ev.F[i][0]);
+        } else {
+            detail::first_points(ev, start, pop_size, rng, true, &plan);
+        }
         if (!ev.recorded) ev.record();               // gen 0, unless the plan's last point gave it
         long long st = -1;
-        for (std::size_t i = 0; i < ev.X.size(); ++i) {
+        if (ev.lean && !ev.X.empty() && !ev.failed[0]) st = 0;                     // the best's slot
+        for (std::size_t i = 0; i < ev.X.size() && !ev.lean; ++i) {
             if (ev.failed[i]) continue;
             if (st < 0) {
                 st = static_cast<long long>(i);
@@ -998,11 +1026,15 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
         }
         if (st >= 0) {
             double lo = ev.F[static_cast<std::size_t>(st)][0], hi = lo;
-            for (std::size_t i = 0; i < ev.X.size(); ++i)
+            for (std::size_t i = 0; i < ev.X.size() && !ev.lean; ++i)
                 if (!ev.failed[i]) {
                     lo = std::min(lo, ev.F[i][0]);
                     hi = std::max(hi, ev.F[i][0]);
                 }
+            for (std::size_t q = 0; q < plan.size() && ev.lean; ++q) {               // SINGLE-5
+                lo = std::min(lo, plan[q]);
+                hi = std::max(hi, plan[q]);
+            }
             const Frame frame = Frame::from_anchors({{lo}, {hi}});   // SINGLE-2
             Sub sub;
             sub.kind = "lexi";
@@ -1086,6 +1118,10 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //     is the run's; its own stop on evaluations is off (LOCAL-2), so its
 //     last mean (EKI-5) is evaluated only where the budget leaves room: the
 //     answer is the evaluator's, as every method's.
+//   LOCAL-7. keep_points = best (task 24, §24.3.3; off by default: all):
+//     the evaluator's lean mode (the best point and the last); the start is
+//     the plan's best, kept in the best's slot; a point asked for again is
+//     evaluated again and counted.
 //   LOCAL-6. lm_gauge = on needs the problem's gauge_basis; its k and ||J N||
 //     / ||J|| at lm's solution (lm.hpp LMN-4) go to the settings
 //     (lm_gauge_k, lm_gauge_ratio).
@@ -1285,7 +1321,12 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                                             {"eki_init", "around"}, {"eki_perturb", "yes"}};
     double grad_cost = 1.0;
     std::vector<std::string> ignored;
+    bool lean = false;
     for (const auto& [k, v] : knobs) {
+        if (k == "keep_points") {                                                    // LOCAL-7
+            lean = detail::lean_word(v);
+            continue;
+        }
         if (!detail::listed(own, k)) {
             ignored.push_back(k);
             continue;
@@ -1343,13 +1384,15 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     ev.grad_cost = grad_cost;
+    ev.lean = lean;                                                                   // LOCAL-7
     try {
         long long st = -1;
         if (start.has_x0) {
             st = static_cast<long long>(ev.index(start.x0));
         } else {
             detail::first_points(ev, start, pop_size, rng, true);
-            for (std::size_t i = 0; i < ev.X.size(); ++i)
+            if (ev.lean && !ev.X.empty() && !ev.failed[0]) st = 0;                 // the best's slot
+            for (std::size_t i = 0; i < ev.X.size() && !ev.lean; ++i)
                 if (!ev.failed[i] && (st < 0 || ev.F[i][0] < ev.F[static_cast<std::size_t>(st)][0]))
                     st = static_cast<long long>(i);
         }

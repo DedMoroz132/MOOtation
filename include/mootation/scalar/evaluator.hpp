@@ -80,8 +80,10 @@
 // best, the observer and THE TARGET are as without it. For long runs of
 // methods that never ask for a point twice (ipop, bipop: keep_points = best),
 // whose archive of every point would not fit in memory (1e6 D evaluations).
-// keep_points = best (task 24, §24.3.3) asks for it in the population methods,
-// multistart, ils, basin_hopping, mlsl, tiktak and local_search too; halving
+// keep_points = best (task 24, §24.3.3) asks for it in the single and local
+// solvers (SINGLE-5, LOCAL-7), the population methods, multistart, ils,
+// basin_hopping, mlsl, tiktak and local_search too (a gradient is kept by
+// slot, and goes with its point); halving
 // and memetic refuse it (their reruns are free only through the archive,
 // SRCH-6, SRCH-7). Without it, a run of one objective whose archive would
 // pass kArchiveWarnBytes (budget times the bytes of a point) warns once
@@ -315,9 +317,22 @@ public:
     std::size_t index_grad(const std::vector<double>& x)
     {
         if (!P.has_gradient()) throw std::logic_error("index_grad: the problem gives no gradient");
+        if (lean) {                                   // THE LEAN MODE: its two slots, a gradient kept by slot
+            std::size_t i = X.size();
+            for (std::size_t s = 0; s < X.size(); ++s)
+                if (X[s] == x && (i == X.size() || (gf_.count(s) && !gf_.count(i)))) i = s;
+            if (i == X.size()) i = fresh(x, std::string(), true);
+            return with_gradient(x, i);
+        }
         const std::string key = key_of(x);
         auto it = where_.find(key);
         const std::size_t i = it != where_.end() ? it->second : fresh(x, key, true);
+        return with_gradient(x, i);
+    }
+
+    // point i (x) with its gradient: computed where it is not known (SO-2)
+    std::size_t with_gradient(const std::vector<double>& x, std::size_t i)
+    {
         if (!gf_.count(i)) {
             charge(grad_cost);
             ++grad_calls;
@@ -673,6 +688,8 @@ private:
         } else {
             i = 1;
             X[1] = x;
+            gf_.erase(1);                             // slot 1's gradient was the point before
+            jac_.erase(1);
             F[1] = f;
             G[1] = g;
             R[1] = r_;
@@ -686,6 +703,13 @@ private:
             const bool better = failed[0] || (c1 <= 0.0 && c0 <= 0.0 ? F[1][0] < F[0][0] : c1 < c0);
             if (better) {
                 X[0] = X[1];
+                if (gf_.count(1)) {                   // the gradient goes with the point
+                    gf_[0] = gf_[1];
+                    jac_[0] = jac_[1];
+                } else {
+                    gf_.erase(0);
+                    jac_.erase(0);
+                }
                 F[0] = F[1];
                 G[0] = G[1];
                 R[0] = R[1];

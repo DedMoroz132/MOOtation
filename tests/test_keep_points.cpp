@@ -116,6 +116,64 @@ int main()
                     same(a, b) ? " (the same run)" : "");
     }
 
+    // the single and local solvers (SINGLE-5, LOCAL-7); lbfgsb's gradients in
+    // the lean mode's slots (a point's gradient never another's)
+    {
+        sc::Problem R;                                    // Rosenbrock's residuals, with their Jacobian
+        R.lo = {-5.0, -5.0};
+        R.hi = {5.0, 5.0};
+        R.m = 1;
+        R.residuals = [](const Vec& x, Vec& r) { r = {10.0 * (x[1] - x[0] * x[0]), 1.0 - x[0]}; };
+        R.jacobian = [](const Vec& x, sc::Rows& J) { J = {{-20.0 * x[0], 10.0}, {-1.0, 0.0}}; };
+        sc::Start from;
+        from.has_x0 = true;
+        from.x0 = {-1.2, 1.0};
+        struct Single {
+            std::string name;
+            bool repeats;
+        };
+        for (const Single& c : std::vector<Single>{{"lbfgsb", false}, {"lm", true}, {"cmaes", false},
+                                                   {"nelder_mead", true}, {"slsqp", true}}) {
+            const sc::Problem& P = c.name == "lm" ? R : rastrigin(3);
+            const sc::Knobs best{{"keep_points", word("best")}};
+            for (bool x0 : {false, true}) {
+                sc::Start st;
+                if (x0) st = c.name == "lm" ? from : sc::Start{{}, {}, false, false, {1.0, 2.0, -1.0}, true, {}};
+                const sc::Result a = sc::run(c.name, P, 1e-6, false, 0.0, 20, 3000, 5, {}, {}, 0, st);
+                const sc::Result b = sc::run(c.name, P, 1e-6, false, 0.0, 20, 3000, 5, best, {}, 0, st);
+                const std::string label = c.name + (x0 ? " from x0" : " from its plan");
+                if (!c.repeats) check(same(a, b), label + ": keep_points = best is the same run");
+                else check(!b.objectives.empty() && b.evaluations <= 3000, label + ": keep_points = best runs");
+                bool listed = false;
+                for (const auto& w : b.ignored) listed = listed || w == "keep_points";
+                check(!listed, label + ": keep_points taken");
+                std::printf("  %-26s all: f %-10.4g %5lld + %lld; best: f %-10.4g %5lld + %lld%s\n", label.c_str(),
+                            a.objectives[0][0], a.evaluations, a.grad_calls, b.objectives[0][0], b.evaluations,
+                            b.grad_calls, same(a, b) ? " (the same run)" : "");
+            }
+        }
+        // a local search on ctx.problem's gradients in the lean mode
+        sc::Problem G = rastrigin(3);
+        G.local_search = [](const Vec& x, sc::LocalContext& ctx, const Vec&) {
+            sc::Start s;
+            s.has_x0 = true;
+            s.x0 = x;
+            const sc::Result r = sc::run("lbfgsb", ctx.problem, 1e-6, false, 0.0, 20, ctx.budget, 1, {}, {}, 0, s);
+            sc::LocalOutcome o;
+            o.x = r.variables.at(0);
+            o.has_f = true;
+            o.f = r.objectives.at(0).at(0);
+            return o;
+        };
+        sc::Start st;
+        st.has_x0 = true;
+        st.x0 = {1.0, 2.0, -1.0};
+        const sc::Result a = sc::run("lbfgsb", rastrigin(3), 1e-6, false, 0.0, 20, 3000, 5, {}, {}, 0, st);
+        const sc::Result b =
+            sc::run("local_search", G, 1e-6, false, 0.0, 20, 3000, 5, {{"keep_points", word("best")}}, {}, 0, st);
+        check(same(a, b), "local_search over lbfgsb, keep_points = best: lbfgsb's run (the gradients by slot)");
+    }
+
     // 200 starts in chunks of 64: one thread and three alike
     {
         const sc::Knobs k1{{"inner", L}, {"n_starts", number(200)}, {"keep_points", word("best")}};

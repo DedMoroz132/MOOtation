@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-299 items: 264 yes, 35 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+301 items: 264 yes, 37 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -627,11 +627,13 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | SINGLE-1 | One run of the solver: one that stops before the budget leaves the rest unspent, as DMS does. | yes | `scalar.hpp` |
 | `scalar` | SINGLE-2 | The solver sees f scaled by the initial plan's range (its least value to 0, its greatest to 1), as scalar's anchors do (SCALAR-12), in the box normalized to [0, 1]^n, as every solver of solvers.hpp: a bound that is no... | yes | `scalar.hpp` |
 | `scalar` | SINGLE-3 | A start x0 (the problem's coordinates) is the plan: one point, and the solver from it; the frame of SINGLE-2 is then f(x0) to 0 with scale 1 (subproblems.hpp: a range of 0 is a scale of 1). slsqp takes the problem's g... | yes | `scalar.hpp` |
+| `scalar` | SINGLE-5 | keep_points = best (task 24, §24.3.3; off by default: all): the evaluator's lean mode (the best point and the last); the plan's range of SINGLE-2 is taken from its values as they come, its best is kept in the best's s... | no: option | `scalar.hpp` |
 | `scalar` | LOCAL-1 | Bounds only: a problem with constraints is refused, and lm refuses a problem without residuals (its objective is 1/2 \|\|r~\|\|^2). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-2 | Neither solver's own limit on evaluations (lm's max_nfev, lbfgsb's max_nfev and max_iter) is put: the budget stops them. | yes | `scalar.hpp` |
 | `scalar` | LOCAL-3 | A failed evaluation ends the run, as sqp's (SCALAR-6): neither method can step over a hole in the function. | yes | `scalar.hpp` |
 | `scalar` | LOCAL-4 | Without x0, a bound that is not finite is refused: there is no box to draw the plan in, and no frame is put on x (addendum 1, §3.1). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-5 | eki starts as lm does, from x0 or the plan's best point: its initial ensemble around that point by default (eki_init = around, EKI-3), or a design in the box (sobol, lhs; finite bounds). | yes | `scalar.hpp` |
+| `scalar` | LOCAL-7 | keep_points = best (task 24, §24.3.3; off by default: all): the evaluator's lean mode (the best point and the last); the start is the plan's best, kept in the best's slot; a point asked for again is evaluated again an... | no: option | `scalar.hpp` |
 | `scalar` | LOCAL-6 | lm_gauge = on needs the problem's gauge_basis; its k and \|\|J N\|\| / \|\|J\|\| at lm's solution (lm.hpp LMN-4) go to the settings (lm_gauge_k, lm_gauge_ratio). | yes | `scalar.hpp` |
 | `scalar` | ULS-1 | Off by default. The hook's calls of the problem are counted against the budget as every solver's (and a solver it runs within, on ctx.problem, is that solver's run, bit for bit); past the budget the call throws and th... | no: option | `scalar.hpp` |
 | `scalar` | ULS-2 | Off by default. x' with f known (has_f) is planted, not evaluated: free, as a seed point; with constraints or residuals it is evaluated all the same (its constraint values, its residuals are not known). | no: option | `scalar.hpp` |

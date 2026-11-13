@@ -199,9 +199,10 @@ the settings (`restarts`: regime, λ, σ⁰, evaluations, what stopped it).
 `keep_points = best` runs them on the evaluator's lean mode: no archive, only
 the best and the last point, so that budgets of 10^6 D fit in memory; a run
 that asks for no point twice (with `cma_bounds = none`) is the same, bit for
-bit. Since task 24 (§24.3.3; C++ for now) the population methods,
-`multistart`, `ils`, `basin_hopping`, `mlsl`, `tiktak` and `local_search`
-take it too: a point asked for again, or met by two starts, is evaluated
+bit. Since task 24 (§24.3.3; C++ for now) the single and local solvers
+(`slsqp`, `nelder_mead`, `cmaes`, `lm`, `lbfgsb`, `eki`), the population
+methods, `multistart`, `ils`, `basin_hopping`, `mlsl`, `tiktak` and
+`local_search` take it too: a point asked for again, or met by two starts, is evaluated
 again and counted; a strategy then runs its starts 64 at a time (STRAT-12,
 POP-10). `halving` and `memetic` refuse it (their reruns are free only
 through the archive). A run of one objective whose archive would pass 2 GiB

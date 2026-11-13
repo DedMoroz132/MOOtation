@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.3.3): `keep_points = best` for slsqp, nelder_mead,
+  cmaes, lm, lbfgsb and eki too (SINGLE-5, LOCAL-7): the plan's range and
+  best taken as the plan comes. Fixed in the lean mode (reached only by
+  task 24's new users of it, not by ipop and bipop): a gradient is kept by
+  the slot of its point and moves with it, so that a slot overwritten by
+  another point never answers with the earlier point's gradient.
 - Added (task 24, §24.2.5): `minima_bayes = on` for multistart, mlsl and
   tiktak — Boender's posterior expectations of the number of minima and of
   the share not yet found (Rinnooy Kan & Timmer 1987, part I, (11), (12))
