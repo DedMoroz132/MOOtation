@@ -415,10 +415,17 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-287 items: 278 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+294 items: 285 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
+| `atomic_measure` | AM-1 | Phase 2's start a = E(l)_W^+ y (Algorithm 2, step 1): when that has a coefficient <= 0, the start is NNLS on E(l) instead and the exponents with a zero coefficient are dropped (R80 assumes phase 1's clusters give a po... | yes | `atomic_measure.hpp` |
+| `atomic_measure` | AM-2 | The line search (R80: "line search to determine mu_s", no rule): mu = 1, 1/2, 1/4, ... | yes | `atomic_measure.hpp` |
+| `atomic_measure` | AM-3 | The certificate is checked with a tolerance and a scale: rho(lambda) / (\|\|y\|\|_W \|\|e(lambda)\|\|_W) <= tol_cert (1e-9), on the grid of phase 1's formula with 10 m points and 10 d (the same span, ten times denser). | yes | `atomic_measure.hpp` |
+| `atomic_measure` | AM-4 | Phase 2 runs at most max_iter = 100 steps; the convergence test is R80's absolute \|\| J h \|\|_W < tol (scale the data, or set tol). | yes | `atomic_measure.hpp` |
+| `atomic_measure` | AM-5 | Phase 1's grids stop at m_max = 160; the result is then the last phase 2's, with certified = false. | yes | `atomic_measure.hpp` |
+| `atomic_measure` | AM-6 | NNLS takes the problem scaled by sqrt(w_i) row by row. | yes | `atomic_measure.hpp` |
+| `atomic_measure` | AM-7 | Phase 2 converges quadratically only at the global optimum, where -alpha_k rho''(lambda_k) >= 0 and \|G\| is the true (2,2) block. | yes | `atomic_measure.hpp` |
 | `boostdms` | BD-1 | The box normalized to [0, 1]^n (as dms, DMS-1); α_0 = 1; the start DMS(n, line), §5. | yes | `boostdms.hpp` |
 | `boostdms` | BD-2 | The candidates are accepted by simple decrease (the list's filter), as dms; the papers' integer-lattice or sufficient-decrease globalization of the search points is not imposed. | yes | `boostdms.hpp` |
 | `boostdms` | BD-3 | "80 % ... in B(x_k; 3Δ_k)": the nearest points of the ball, then the nearest outside it, up to their shares of (n + 1)(n + 2); fewer when the cache holds fewer. | yes | `boostdms.hpp` |
