@@ -642,10 +642,10 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
             counts.left_jobs.push_back(j->index);
             continue;
         }
-        // an external problem (task 24, §24.7.1) has no reference to build:
-        // its run at one objective reads none, and the Python engine, which
-        // builds the others', does not know it
-        if (!p.shared_reference && !p.external && !own_references(*root, preg, spec, *j)) {
+        // a run at one objective reads no reference (job_so.hpp): it does not
+        // wait for the one the Python engine builds for the campaign (task 24;
+        // an external problem's, §24.7.1, the Python engine could not build)
+        if (!p.shared_reference && p.n_obj != 1 && !own_references(*root, preg, spec, *j)) {
             ++counts.left["a reference built for the campaign, not built yet (the Python engine builds it)"];
             counts.left_jobs.push_back(j->index);
             continue;

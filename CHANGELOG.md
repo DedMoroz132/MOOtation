@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed (task 24): the C++ campaign engine run by itself (`mootation run`)
+  left every job at one objective to the Python engine, waiting for the
+  campaign's reference the Python driver builds, which no run at one
+  objective reads. It runs them now; a campaign handed over by the Python
+  driver runs them in C++ as before, with the same records.
 - Added (task 24, §24.1.5): a problem's own measure of success in the C++
   campaign engine: `suite::Native::has_success`, `accept_success`,
   `post_at`, `success_cost`; `[campaign] success = "target" | "user"`

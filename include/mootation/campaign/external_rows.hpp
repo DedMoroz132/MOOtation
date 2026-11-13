@@ -37,11 +37,10 @@
 //          which an external problem does not give (refused);
 //   EXT-4  no constraints (n_con = 0): the campaign's single-objective path
 //          (job_so.hpp) hands the methods none (refused);
-//   EXT-5  no reference of the campaign is waited for (engine.hpp): a run
-//          at one objective reads none, and the Python engine, which builds
-//          the registry's problems' ones, does not know the problem; a job
-//          the C++ engine would leave to the Python engine refuses the
-//          campaign (external_refusal, external.hpp).
+//   EXT-5  no reference of the campaign is waited for (engine.hpp: at one
+//          objective, for any problem, a run reads none); a job the C++
+//          engine would leave to the Python engine refuses the campaign
+//          (external_refusal, external.hpp).
 // ============================================================================
 
 #include <algorithm>

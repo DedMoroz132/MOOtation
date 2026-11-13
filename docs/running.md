@@ -2538,7 +2538,7 @@ approximate front: RE, CRE, KUR, bbob-biobj; none: the uninformative
 problems) it runs once that reference is in `<results>/_references/`, for
 the same code and the same metrics, which the Python command builds before
 it hands the campaign over; run by itself, the executable leaves those jobs
-too.
+too — not at one objective, whose runs read no reference (task 24).
 
 Two runners in one results folder at once are not supported; each leaves a
 store whose runner still beats unrepaired.

@@ -232,9 +232,8 @@ static int body()
     std::filesystem::remove_all(tmp);
     set_env("MOOTATION_REFS_DIR", (tmp / "refs").string());
     // the registry with the external rows, and a copy in which MGH01 is made
-    // from its own row of the suite as an external problem is, so that the
-    // engine runs it alone too (no reference of the campaign to wait for):
-    // the bits to compare the external row with
+    // from its own row of the suite as an external problem is: the bits to
+    // compare the external row, and the registry's own MGH01 run, with
     cg::ProblemRegistry beside = preg;
     {
         cg::RegistryProblem& m = beside.problems.at("MGH01_n02_m02_x1_1D");
@@ -259,11 +258,10 @@ static int body()
                               "[campaign]\nout = \"res/{name}\"\nbudget_fe = 400\nstorage = \"store\"\n"
                               "[[algorithms]]\nname = \"lm\"\npop = 0\ngens = 0\n"
                               "[[algorithms]]\nname = \"lbfgsb\"\npop = 0\ngens = 0\n";
-    // the registry's MGH01 waits for its campaign reference, which the Python
-    // engine builds (as before); the external row runs
+    // the registry's MGH01 runs in the engine alone too: a run at one
+    // objective waits for no reference of the campaign (engine.hpp)
     const cg::EngineCounts alone = run("alone", local, 2);
-    CHECK(alone.total == 8 && alone.done == 4 && alone.left.size() == 1 && alone.left.begin()->second == 4);
-    CHECK(alone.left.begin()->first.find("a reference built for the campaign") != std::string::npos);
+    CHECK(alone.total == 8 && alone.done == 8 && alone.left.empty());
     used = &beside;
     const cg::EngineCounts four = run("four", local, 4);
     CHECK(four.total == 8 && four.done == 8 && four.failed == 0 && four.left.empty());
@@ -295,6 +293,23 @@ static int body()
         CHECK(meta.find("fe")->i == base_meta.find("fe")->i);
     }
     CHECK(same >= 4);
+    // MGH01 run by the engine alone (no _references/ of the campaign): the
+    // records of MGH01 made from its own row as an external problem is, bit
+    // for bit — the reference the Python driver builds is read by no run at
+    // one objective
+    {
+        const Records r = records(tmp / "alone" / "res" / "ext" / "store");
+        std::size_t compared = 0;
+        for (const auto& [key, blocks] : r) {
+            if (key.find("MGH01_n02_m02_x1_1D") == std::string::npos) continue;
+            for (const auto& [name, data] : blocks)
+                if (name != "meta.json") {
+                    CHECK(a.at(key).at(name) == data);
+                    ++compared;
+                }
+        }
+        CHECK(compared >= 4);
+    }
 
     // a box, a population method and a strategy over threads: one thread and three the same
     used = &preg;
