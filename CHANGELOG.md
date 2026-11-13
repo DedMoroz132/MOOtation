@@ -22,6 +22,23 @@ always listed under **Changed** or **Removed**.
   `decode` searches the start's active variables only (`restricted`,
   search.hpp SRCH-21) instead of moving a structure's slots. Runs without
   the cache or `decode` are unchanged.
+- Added (task 26, items 24.2.6 to 24.2.11, 24.5.2): the second layer of
+  strategies over local minima, default-off, each with its degenerate case
+  equal to an existing method bit for bit. The minima log searches by a
+  window of f (the same log, in O(log M)); `classify_minima`
+  (scalar/minima_classes.hpp): copy, connected or distinct by a barrier.
+  `coevolution` (overlapping windows or the problem's neighbors) and `lns`
+  (windows destroyed and repaired) on task 24's subproblems
+  (scalar/subspace.hpp); `cluster_ga` (scalar/cluster_ga.hpp: cut and
+  splice, the problem's crossover and mutate hooks, Lamarckian children,
+  replacement worst_if_better, multi_dynamic after Segura et al. 2016 or
+  afpo after Schmidt and Lipson 2010); `shrink` over a parameter of the
+  problem (geometric, bisect, ilsqn, idts, ladder for continuation) and
+  `replica_ladder` (Hukushima and Nemoto's exchange, rl_fs 1), on the new
+  problem fields param, at_param and rescale (scalar/param.hpp,
+  scalar/replica.hpp); `reformulation`, reformulation descent over the new
+  fields n_formulations, formulation, to_formulation, from_formulation
+  (scalar/reformulation.hpp). C++ only for now.
 - Added (task 26, item 24.5.1, A1): objectives that depend on the
   population for the multi-objective cores. `DataVault::set_aux(k, fn)`
   gives every slot k objectives after the problem's own, computed from the

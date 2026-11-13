@@ -337,7 +337,7 @@ inline std::optional<std::string> check_pop(const std::string& name, std::int64_
                                                  "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes",
                                                  "multistart", "ipop", "bipop", "bipop_2009", "halving",
                                                  "mlsl", "basin_hopping", "ils", "memetic", "pbh", "mde",
-                                                 "ma_chains"};
+                                                 "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder"};
     if (std::find(single.begin(), single.end(), name) != single.end() && m != 1)
         return name + " is a single-objective algorithm: n_objs must be 1, got " + std::to_string(m);
     if (pop::free_h().count(name)) {

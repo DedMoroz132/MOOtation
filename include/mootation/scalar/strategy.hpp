@@ -122,6 +122,12 @@
 //     min_dist (the box normalized to [0, 1]^n where it is finite, else the
 //     problem's coordinates; the largest coordinate difference) and min_df in
 //     f, else is a minimum of its own; a minimum keeps its best point.
+//     The search (task 26, item 24.2.6): the minima are kept ordered by f
+//     and only those within min_df of the answer's f are looked at, in
+//     O(log M) and the window instead of O(M) (M minima); of those within
+//     both, the first opened joins, the one the scan of every minimum in
+//     the order opened would have found, so the log is the same. A NaN f
+//     never joins (|NaN - f| <= min_df is false) and is kept apart.
 //   STRAT-5. The run's equalities' tolerance schedule (eq_tol0) is the inner
 //     solver's, on its own allowance.
 //   STRAT-6. A start may spend on new points at most what it was given (its
@@ -163,7 +169,9 @@
 #include <cstdint>
 #include <exception>
 #include <functional>
+#include <iterator>
 #include <limits>
+#include <map>
 #include <memory>
 #include <random>
 #include <sstream>
@@ -662,21 +670,34 @@ public:
 
     void add(const Vec& x, double f, long long start)
     {
-        for (std::size_t q = 0; q < list_.size(); ++q) {
-            Minimum& m = list_[q];
-            if (distance(m.x, x) <= dist_ && std::fabs(m.f - f) <= df_) {
-                joined_ = q;
-                ++m.found;
-                if (f < m.f) {
-                    m.x = x;
-                    m.f = f;
-                    m.start = start;
-                }
-                return;
+        // STRAT-4: the minima within min_df of f, the first opened that is
+        // within min_dist too
+        std::size_t q = list_.size();
+        if (!std::isnan(f)) {
+            auto it = by_f_.lower_bound(f - df_);
+            while (it != by_f_.begin() && std::fabs(std::prev(it)->first - f) <= df_) --it;   // rounding of f - df
+            for (; it != by_f_.end(); ++it) {
+                if (!(it->first <= f + df_) && !(std::fabs(it->first - f) <= df_)) break;
+                const std::size_t c = it->second;
+                if (c < q && std::fabs(list_[c].f - f) <= df_ && distance(list_[c].x, x) <= dist_) q = c;
             }
+        }
+        if (q < list_.size()) {
+            Minimum& m = list_[q];
+            joined_ = q;
+            ++m.found;
+            if (f < m.f) {
+                unindex(q);
+                m.x = x;
+                m.f = f;
+                m.start = start;
+                by_f_.emplace(f, q);
+            }
+            return;
         }
         joined_ = list_.size();
         list_.push_back({x, f, start, 1});
+        if (!std::isnan(f)) by_f_.emplace(f, joined_);
     }
 
     // the minimum the last add() joined or opened
@@ -703,9 +724,21 @@ private:
     Vec lo_, hi_;
     double dist_, df_;
     std::vector<Minimum> list_;
+    std::multimap<double, std::size_t> by_f_;     // STRAT-4: the minima by f (NaN apart)
     symmetry::Sym sym_;
     std::vector<char> periodic_;
     std::size_t joined_ = 0;
+
+    // minimum q out of the order by f (its f is about to change)
+    void unindex(std::size_t q)
+    {
+        auto range = by_f_.equal_range(list_[q].f);
+        for (auto it = range.first; it != range.second; ++it)
+            if (it->second == q) {
+                by_f_.erase(it);
+                return;
+            }
+    }
 
     double distance(const Vec& a0, const Vec& b0) const
     {
@@ -840,7 +873,7 @@ inline const std::vector<std::string>& strategy_names()
 {
     static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
                                             "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap",
-                                            "pbh", "mde", "ma_chains"};
+                                            "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder"};
     return v;
 }
 
@@ -856,6 +889,26 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
 inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                           long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
                           const Start& start);
+
+// coevolution, lns (subspace.hpp, included at the end; task 26, §24.2.9, §24.2.10)
+inline Result run_coevolution(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                              long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
+                              const Start& start);
+inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
+                      unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start);
+// shrink (param.hpp), reformulation (reformulation.hpp); task 26, §24.2.7, §24.2.11
+inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
+                         unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start);
+inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                                long long budget, unsigned seed, const Knobs& knobs, Observer observer,
+                                int record_every, const Start& start);
+inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                                 long long budget, unsigned seed, const Knobs& knobs, Observer observer,
+                                 int record_every, const Start& start);
+// cluster_ga (cluster_ga.hpp, included at the end; task 26, §24.2.9)
+inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                             long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
+                             const Start& start);
 
 // pbh (pbh.hpp, included at the end; task 25, §24.2.2)
 inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
@@ -1128,6 +1181,24 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
     if (name == "mde")
         return run_mde(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
                        start);
+    if (name == "coevolution")
+        return run_coevolution(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                               record_every, start);
+    if (name == "lns")
+        return run_lns(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
+                       start);
+    if (name == "replica_ladder")
+        return run_replica_ladder(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                                  record_every, start);
+    if (name == "shrink")
+        return run_shrink(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
+                          start);
+    if (name == "reformulation")
+        return run_reformulation(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                                 record_every, start);
+    if (name == "cluster_ga")
+        return run_cluster_ga(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                              record_every, start);
     if (name == "tiktak")
         return run_tiktak(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                           record_every);
@@ -1144,3 +1215,8 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
 #include "pbh.hpp"
 #include "mde.hpp"
 #include "ma_chains.hpp"
+#include "subspace.hpp"
+#include "cluster_ga.hpp"
+#include "param.hpp"
+#include "reformulation.hpp"
+#include "replica.hpp"

@@ -293,6 +293,21 @@ struct Problem {
     // depending on alpha (suite::Native's linear; scalar.hpp LOCAL-9, lm's
     // lm_varpro); empty: none.
     std::vector<int> linear;
+    // A parameter of the problem (task 26, §24.2.7, §24.2.8; scalar/param.hpp):
+    // its value here (NaN: none), the same problem at another value L (the
+    // same n; it evaluates directly, so a strategy runs each level on an
+    // Evaluator of its own), and the warm start from one value to another
+    // (absent: x unchanged; either way clipped to the new box after)
+    double param = std::numeric_limits<double>::quiet_NaN();
+    std::function<Problem(double L)> at_param;
+    std::function<void(Vec& x, double from, double to)> rescale;
+    // Other formulations of the problem (task 26, §24.2.11; scalar/reformulation.hpp):
+    // how many, formulation k's problem in its own variables y (k = 1 ...
+    // n_formulations; 0 is this problem), and the maps x -> y and y -> x
+    std::size_t n_formulations = 0;
+    std::function<Problem(std::size_t k)> formulation;
+    std::function<void(std::size_t k, const Vec& x, Vec& y)> to_formulation;
+    std::function<void(std::size_t k, const Vec& y, Vec& x)> from_formulation;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }

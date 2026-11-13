@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-405 items: 349 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+439 items: 383 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -467,6 +467,15 @@ Their readings, from every comment of each file (the first column the file's nam
 | `chc` | CHC-5 | A child is accepted when it is among the M best of parents and children (stably by the comparison of evo.hpp, parents first); | yes | `chc.hpp` |
 | `chc` | CHC-6 | BLX-0.5 children outside the box are repaired by the operator, ops::BoundRepair `reflect` by default (real_crossover.hpp). | yes | `chc.hpp` |
 | `chc` | CHC-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) in the selection; not in the papers. | yes | `chc.hpp` |
+| `cluster_ga` | CGA-1 | The built-in cut and splice (DH95) needs the problem's first symmetry group to be of points (blocks of 2 or 3 coordinates): a random direction (uniform in the ball [-1, 1]^d, by rejection), each parent's points about... | yes | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-2 | With one member there is no pair: every child is the member mutated (cga_mut_rate is not drawn). | yes | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-3 | The draws per child: the parents (boltzmann: two uniforms; a parent drawn twice is kept, a child of one parent and itself), the crossover's, one uniform for the mutation's choice (not with one member), the mutation's... | yes | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-4 | cga_de's default 1e-6 is Johnston's duplicate threshold (Birmingham GA, Dalton Trans. 2003, §3; not checked on its text); | yes | `cluster_ga.hpp` |
+| `cluster_ga` | MD-1 | D_I = md_di G, G the largest distance of two points: sqrt(n) in the box scaled to [0, 1]^n (md_distance = euclid), else (aligned: hooks.hpp distance_of) the largest distance between two members of the first population. | yes | `cluster_ga.hpp` |
+| `cluster_ga` | MD-2 | A child is in the joined set as it is; the members' and the children's ties in the non-dominated choice ("without repetitions") are the first of each (f, DCN) pair; the random choice is one uniform. | yes | `cluster_ga.hpp` |
+| `cluster_ga` | AF-1 | The newcomer is a uniform point of the box, searched locally like every child, age 1; the ages of the members grow by one after the selection. | yes | `cluster_ga.hpp` |
+| `cluster_ga` | AF-2 | A Pareto tournament draws afpo_tournament distinct members (a partial Fisher-Yates draw) and removes those another of them dominates; the selection stops at cga_pop or when no member of the whole population is dominated. | yes | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-1 | the cut and splice of a and b over the point blocks of g | yes | `cluster_ga.hpp` |
 | `cmaes` | INJ-1 | The strategy's own parameters stay the tutorial's (Table 1 of the report lists those of [5], Hansen & Kern 2004; the report itself advises keeping the original strategy parameters, p. 7). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-2 | Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5 says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m = sqrt(2n) + 2n/(n + 2) (Table 1). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-3 | The tutorial's negative weights: an injected point among the worst is clipped by (3) as well; the report expects no harm (p. 9: the clipping of long steps even helps the negative update). | yes | `cmaes.hpp` |
@@ -628,6 +637,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `mde` | MDE-4 | The local search of the s-th search has the seed start_seed(seed, s); the strategy's own draws (the indices, the coins) come from mt19937(start_seed(seed, 0x4D444531)). | yes | `mde.hpp` |
 | `mde` | MDE-5 | "The population does not change": the members' values (f, cv) are the same as at the sweep's start (LMS14 §3: "the objective values"). | yes | `mde.hpp` |
 | `mde` | MDE-6 | A trial is clipped to the box (wrapped on a periodic coordinate). | yes | `mde.hpp` |
+| `minima_classes` | MC-1 | "Copy" needs sym on: a log made with min_sym on has merged such minima already; one made without keeps them apart, and this tells them. | yes | `minima_classes.hpp` |
+| `minima_classes` | MC-2 | The segment is straight in the problem's coordinates, inside the box (it is convex); periodic variables are not taken the short way. | yes | `minima_classes.hpp` |
+| `minima_classes` | MC-3 | tol (default 0) absorbs rounding: a flat valley with f equal along it is "connected". | yes | `minima_classes.hpp` |
+| `minima_classes` | MC-4 | A non-finite f on the segment is a barrier (+inf): the minima are "distinct". | yes | `minima_classes.hpp` |
 | `mosqp` | MS-1 | τ = 1e-8 (mosqp_tau), μ = 1e-4 (mosqp_mu, Armijo), β = 1/2 (mosqp_beta); n̄ = pop_size. | yes | `mosqp.hpp` |
 | `mosqp` | MS-2 | H_i = I in both stages: the first of §6's three cases (the others need second derivatives the problems here do not give). | yes | `mosqp.hpp` |
 | `mosqp` | MS-3 | Gradients and Jacobians by forward differences (fd_step in the box normalized to [0, 1], as sqp in solvers.hpp), n evaluations a point. | yes | `mosqp.hpp` |
@@ -648,6 +661,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pap` | PAP-6 | Constituent k's generator is start_seed(seed, k) (strategy.hpp STRAT-1): one constituent, no migration, is that method's own run, bit for bit. lshade's MAX_NFE is its share of the budget, np / sum(np). | yes | `pap.hpp` |
 | `pap` | PAP-8 | sym = off \| align (task 19, §19.2.2; off by default): the members' own sym (align; symmetry.hpp SYM-7 ... 9), and a migrant into CMA-ES aligned to its mean before it is injected (§19.2.2's "injected points to the curr... | no: option | `pap.hpp` |
 | `pap` | PAP-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for the emigrants and the migrants; | yes | `pap.hpp` |
+| `param` | PARAM-1 | problem_at refuses a problem without at_param, a non-finite L, a problem at L whose n differs or whose param is not L (std::isnan, never ==, for "none"); the message names L. | yes | `param.hpp` |
+| `param` | PARAM-2 | The rescale is the source problem's (from and to are its terms); without one x goes unchanged into the new box, clipped. | yes | `param.hpp` |
+| `param` | PARAM-3 | Success is the level's own target (stop_at, accept_success); a level's success cost belongs to its Evaluator (SUCC-2). | yes | `param.hpp` |
+| `param` | PARAM-4 | A level's budget: start_budget, else what is left over the levels still allowed (shrink_rounds), else a tenth of what is left (the rules other than ladder do not know their number of levels); ladder shares what is lef... | yes | `param.hpp` |
+| `param` | PARAM-5 | No observer across the levels: each level's run has its own archive; the run's trajectory is the best level's. | yes | `param.hpp` |
+| `param` | PARAM-6 | The levels in the settings (shrink_trail, param_best) carry 17 significant digits, so that they read back as the values tried. | yes | `param.hpp` |
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
 | `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |
@@ -676,6 +695,13 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pso` | PSO-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(x_i) < f(p_i)" and for p_g; not in the papers. | yes | `pso.hpp` |
 | `pso` | PSO-8 | done() is true once every velocity is 0 and every x_i = p_i = p_g. | yes | `pso.hpp` |
 | `pso` | PSO-9 | sym (task 19, symmetry.hpp SYM-9; off by default): align only — p_i and p_g aligned to x_i before the particle moves, the velocity left in the particle's representation; canon refused. | no: option | `pso.hpp` |
+| `reformulation` | RF-1 | The first search is in formulation 0 from the run's start; then k = 1; a search in k that improves sets k = 0 (step 3: "restart the full loop ... from the first formulation"), else k + 1; k past n_formulations ends. | yes | `reformulation.hpp` |
+| `reformulation` | RF-2 | Improvement is measured in the problem (formulation 0): the mapped answer evaluated there, one evaluation counted. | yes | `reformulation.hpp` |
+| `reformulation` | RF-3 | A search's budget: start_budget, else what is left over the formulations' count plus one. | yes | `reformulation.hpp` |
+| `replica` | RL-1 | Over a parameter the replicas carry configurations between two problems (a Hamiltonian exchange): Hukushima and Nemoto's detailed balance with H_m(X) in place of beta_m H(X); the configuration moved to another level i... | yes | `replica.hpp` |
+| `replica` | RL-2 | The geometric ladder is this library's default where no list is given (Hukushima and Nemoto choose their temperatures by the acceptance; their rule is not taken up). | yes | `replica.hpp` |
+| `replica` | RL-3 | An exchange's uniform comes from one stream seeded by the run's seed, drawn only where Delta > 0 (W = 1 otherwise). | yes | `replica.hpp` |
+| `replica` | RL-4 | The answer: over a parameter the last level's best piece (the ladder ends at the level wanted); over a knob the best piece of any replica (all solve the problem itself). | yes | `replica.hpp` |
 | `restarts` | RST-1 | One set of termination criteria for both, H09's (§2.2): AH05's are the same in substance (equalfunvalhist, TolFun, TolX, noeffectaxis, noeffectcoord, conditioncov) but for TolFun over the last generation's values; | yes | `restarts.hpp` |
 | `restarts` | RST-2 | U[0,1]² of λ_s is the square of one uniform number; the second draw (σ⁰) is another (H09: "independent uniformly distributed numbers"). | yes | `restarts.hpp` |
 | `restarts` | RST-3 | "Half of the recent large budget": half of the evaluations of the last run of regime 1. | yes | `restarts.hpp` |
@@ -807,6 +833,14 @@ Their readings, from every comment of each file (the first column the file's nam
 | `structure_hooks` | HOOK-4 | decode of a tree writes back its canonical form (canonicalize): the children of a commutative node in the key's order. | yes | `structure_hooks.hpp` |
 | `structure_hooks` | HOOK-5 | A GE derivation with more parameters than P keeps the first P in the genome; the others take the middle of their production's range on every decode and are not active (GE-7). | yes | `structure_hooks.hpp` |
 | `structure_hooks` | HOOK-6 | canon_key (the cache of 24.1.4 with cache = canon) is the structure's key without the parameters (TREE-5): one evaluation per structure, right where evaluate fits the parameters itself (a local fit inside the evaluati... | no: option | `structure_hooks.hpp` |
+| `subspace` | CC-1 | The groups are optimized one after another (Gauss-Seidel, as Potter and De Jong's round robin), each from the context as the earlier groups of the cycle left it; a variable in two groups takes the value of the later o... | yes | `subspace.hpp` |
+| `subspace` | CC-2 | cc_groups = neighbors: group j is {j} and neighbors(x)[j], sorted; a group equal to an earlier one is dropped; the groups are taken anew at the start of every cycle, from the context. | yes | `subspace.hpp` |
+| `subspace` | CC-3 | Without an x0 the first context (and lns's first point) is a uniform point of the box, from the run's stream; it is evaluated as the first group's (or step's) start. | yes | `subspace.hpp` |
+| `subspace` | CC-4 | A group's run is the inner solver's on the subproblem, its seed start_seed(seed, s) for the s-th run (0 the first); its points are the run's, in the run's budget (the views of strategy.hpp). | yes | `subspace.hpp` |
+| `subspace` | LNS-1 | The destroyed point is the repair's start: the inner solver starts from it, and the current point is replaced only by a better answer (SRCH-8: feasibility, then f). | yes | `subspace.hpp` |
+| `subspace` | LNS-2 | lns_window = worst needs the contributions hook; the window is that variable with its neighbors (the hook) or the lns_size - 1 after it; a tie for the largest contribution takes the first. | yes | `subspace.hpp` |
+| `subspace` | LNS-3 | The draws per step: the window's variable (random) and then the window's new values, from one stream seeded by the run's seed. | yes | `subspace.hpp` |
+| `subspace` | LNS-4 | Without start_budget the first run (every variable, from the start) gets a tenth of the budget and every repair a twentieth of what is left, plus one: the paper-free choice of this library, so that the first point is... | yes | `subspace.hpp` |
 | `symmetry` | SYM-1 | Ties: Step 1 takes the first non-covered zero in row-major order and the Preliminaries star in row-major order, so the assignment is a function of the matrix: equal blocks or equal costs give the same answer every time. | yes | `symmetry.hpp` |
 | `symmetry` | SYM-2 | A zero is an entry equal to 0.0. In floating point Step 3 makes the least non-covered entry exactly 0 (y - y), so the zero the method needs is there; the other entries carry the rounding of the subtractions, which can... | yes | `symmetry.hpp` |
 | `symmetry` | SYM-3 | align(x, ref) with x a permutation of ref's blocks returns ref bit for bit: the permutation's cost is 0, the least possible, and the result copies x's blocks, which are ref's. | yes | `symmetry.hpp` |

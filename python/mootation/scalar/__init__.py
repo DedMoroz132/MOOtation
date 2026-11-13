@@ -115,10 +115,10 @@ POPULATION = ("de", "jade", "shade", "lshade", "ga_sbx", "ssga", "g3_pcx", "chc"
               "sep_cmaes")
 # the strategies of stage 3 (task 18, §3; strategy.hpp, restarts.hpp)
 STRATEGIES = ("multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic",
-              "tiktak", "data_continuation", "pap", "pbh", "mde", "ma_chains")
+              "tiktak", "data_continuation", "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
 # those that lay the budget out among their starts: a run that depends on it
 SHARING = ("multistart", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap",
-           "pbh", "mde", "ma_chains")
+           "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
 # the single-objective algorithms (task 18, item 2.3, stages 1, 3 and 4)
 SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki") + POPULATION + STRATEGIES
 # the methods beside the scalarization methods, on the same evaluator,
