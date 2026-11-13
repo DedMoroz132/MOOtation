@@ -44,8 +44,9 @@
 //     probability, subtree mutation (0.2) and point mutation (0.8) to a tree
 //     (Ratle & Sebag, Table 2), and to a GE genome the mutation of every bit
 //     (p_mutation 0.01), then duplication (0.01) (O'Neill & Ryan, Tables
-//     II-IV), then pruning (default 0: its source is not in the corpus,
-//     GE-3).
+//     II-IV), then pruning (default 0: Ryan, Collins & O'Neill 1998 apply
+//     it "with a probability" and give none, and O'Neill & Ryan 2001 do not
+//     use it; GE-3).
 //   HOOK-4. decode of a tree writes back its canonical form (canonicalize):
 //     the children of a commutative node in the key's order. A GE genome's
 //     codons fix the derivation's order, so its decode writes back only the

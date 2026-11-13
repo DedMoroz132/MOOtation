@@ -33,14 +33,22 @@
 //     with probability p. mutation_codon = true instead redraws a whole
 //     codon uniformly with probability p (off by default).
 //   GE-3. Pruning is not in O'Neill & Ryan 2001 (§IV-D has duplication
-//     only); it comes from Ryan, Collins & O'Neill 1998 (EuroGP, LNCS 1391),
-//     not in the corpus. Here: the codons after the last one read are
-//     removed, for a valid individual whose reading did not wrap (one codon
-//     is kept at least). Whether and how often to prune is the caller's.
+//     only); it is Ryan, Collins & O'Neill 1998 (EuroGP'98, LNCS 1391,
+//     §5.2; source grammatical-evolution-arbitrary-language_ryan1998):
+//     "applied with a probability to any individuals that don't express all
+//     of their genes. Any genes not used in the genotype to phenotype
+//     mapping process are discarded." The codons are read in order, so the
+//     ones not used are those after the last one read; an individual whose
+//     reading wrapped (or that is invalid: it read to the end) expressed
+//     them all and is left. Ours: one codon is kept at least (a grammar with
+//     no choice reads none). The paper gives no probability (Tables 4-5: M
+//     = 500, G = 51 only); whether and how often to prune is the caller's.
 //   GE-4. Duplication: "randomly selecting a number of codons to duplicate
 //     and the starting position of the first codon in this set ... placed
-//     at the end": the start s uniform in [0, L), the number k uniform in
-//     [1, L - s]; nothing is done when L + k would exceed max_len (> 0).
+//     at the end" (2001; Ryan et al. 1998 §5.1: "placed into the position of
+//     the last gene on the chromosome", read as the same): the start s
+//     uniform in [0, L), the number k uniform in [1, L - s]; nothing is done
+//     when L + k would exceed max_len (> 0).
 //   GE-5. The wrap limit: the paper gives none ("even after several
 //     wrapping events"), nor do its experiments (Tables II-IV list
 //     population, generations and the operators' probabilities only).
