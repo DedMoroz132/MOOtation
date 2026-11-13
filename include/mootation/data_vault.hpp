@@ -774,6 +774,9 @@ public:
     // Lamarckian repair, the rounded value written into the genome, for every
     // algorithm that writes through set_variables. Unset: every variable real.
     void set_snap(std::function<void(std::vector<double>&)> f) { snap_ = std::move(f); }
+    // The function set_snap set (empty without one), for a caller that adds a
+    // step after it (run_core.hpp: sym = canon after the rounding).
+    const std::function<void(std::vector<double>&)>& snap() const { return snap_; }
 
     void set_all_variables(std::size_t v,
                            const std::vector<double>& rvars,

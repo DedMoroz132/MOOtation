@@ -45,6 +45,7 @@
 #include <vector>
 
 #include "mootation.hpp"
+#include "scalar/symmetry.hpp"
 #include "settings.hpp"
 #include "suite/native.hpp"
 
@@ -764,18 +765,49 @@ struct RunConfig {
     // AUX-1. DCN over a population of one is 0. Equal points are at distance
     //   0 from each other: a copy is the nearest neighbour of its original,
     //   and both get the worst value.
+    // aux_metric (AUX-2): "euclid" (the default) or "sym", DCN after the
+    // symmetries below: d(i, j) = the scaled distance from align(x_i, x_j) to
+    // x_j (scalar/symmetry.hpp), the problem's align and canon where given.
+    // AUX-2. With sym the distance is taken in the direction "i aligned to
+    //   j"; for the built-in align (the Hungarian method on squared block
+    //   distances, every block of a group in the same bounds, SYM-6) it is
+    //   the same both ways.
     std::string aux = "none";
+    std::string aux_metric = "euclid";
     int         aux_n = 0;
     std::function<void(const std::vector<const std::vector<double>*>&,
                        const std::vector<std::vector<double>>&,
                        std::vector<std::vector<double>>&)> aux_fn;
+    // Symmetries of the genome in the multi-objective cores (task 26, item
+    // 24.5.4; scalar/symmetry.hpp, task 19): groups of interchangeable blocks
+    // of the real variables, and the problem's own canon and align (optional;
+    // SYM-5's sorted blocks and the Hungarian alignment otherwise).
+    //   sym = "off"   (the default) nothing: the run it was, bit for bit;
+    //   sym = "canon" every genome a core writes is put in canonical form
+    //     (after the rounding of integer variables), so that every core's
+    //     operators combine canonical parents — SYM-7's canon for all the
+    //     cores at once, in the vault (MSYM-1).
+    // MSYM-1. canon at the write, not before each crossover: the core then
+    //   keeps the canonical point as its member (a Lamarckian write, f
+    //   unchanged by the problem's symmetry). Seeds (a warm start) are kept
+    //   as given. "align" — a parent aligned to the other before the
+    //   crossover — needs the pairs a core makes, inside each core: refused
+    //   here (the single-objective GA, DE and PSO have it, SYM-7 ... 9).
+    // MSYM-2. The blocks of a group need the same bounds (SYM-6) and, with
+    //   integer variables, the same kinds; refused otherwise.
+    std::string sym = "off";
+    std::vector<mootation::scalar::symmetry::Blocks> sym_blocks;
+    std::function<void(std::vector<double>&)> sym_canon;
+    std::function<void(const std::vector<double>&, const std::vector<double>&,
+                       std::vector<double>&)> sym_align;
 };
 
 // The builtin population-dependent objective "dcn" (RunConfig::aux, AUX-1)
 // over points in a box [lo, hi] (scaled to [0, 1] where both are finite).
 inline void aux_dcn(const std::vector<std::pair<double, double>>& box,
                     const std::vector<const std::vector<double>*>& X,
-                    std::vector<std::vector<double>>& A)
+                    std::vector<std::vector<double>>& A,
+                    const mootation::scalar::symmetry::Sym* sym = nullptr)
 {
     const std::size_t n = X.size();
     std::vector<double> scale(box.size(), 1.0), shift(box.size(), 0.0);
@@ -791,8 +823,10 @@ inline void aux_dcn(const std::vector<std::pair<double, double>>& box,
         for (std::size_t k = 0; k < n; ++k) {
             if (k == i) continue;
             double d2 = 0.0;
-            for (std::size_t j = 0; j < box.size() && j < X[i]->size(); ++j) {
-                const double d = ((*X[i])[j] - shift[j]) * scale[j] - ((*X[k])[j] - shift[j]) * scale[j];
+            std::vector<double> keep;
+            const std::vector<double>& xi = sym ? (keep = sym->aligned(*X[i], *X[k])) : *X[i];
+            for (std::size_t j = 0; j < box.size() && j < xi.size(); ++j) {
+                const double d = (xi[j] - shift[j]) * scale[j] - ((*X[k])[j] - shift[j]) * scale[j];
                 d2 += d * d;
             }
             best = std::min(best, d2);
@@ -867,11 +901,43 @@ RunResult run_core(const RunConfig& cfg)
     if (st().problem->native) vault.set_batch_executor(&native_run_batch);
     else if (st().problem->evaluate_batch) vault.set_batch_executor(&callback_run_batch);
     vault.set_fail_raise(cfg.fail_raise);
+    // the problem's symmetries (RunConfig::sym, aux_metric = sym)
+    mootation::scalar::symmetry::Sym symm;
+    symm.groups = cfg.sym_blocks;
+    symm.canon  = cfg.sym_canon;
+    symm.align  = cfg.sym_align;
+    const bool want_sym = cfg.sym != "off" || cfg.aux_metric == "sym";
+    if (cfg.sym != "off" && cfg.sym != "canon")
+        throw std::invalid_argument("sym = '" + cfg.sym + "': off or canon in the multi-objective "
+                                    "cores (align needs the parents a core pairs, MSYM-1)");
+    if (cfg.aux_metric != "euclid" && cfg.aux_metric != "sym")
+        throw std::invalid_argument("aux_metric = '" + cfg.aux_metric + "': euclid or sym");
+    if (want_sym) {
+        const std::size_t nv = st().problem->bounds.size();
+        if (cfg.sym_blocks.empty())
+            throw std::invalid_argument("sym and aux_metric = sym need sym_blocks");
+        mootation::scalar::symmetry::check(cfg.sym_blocks, nv);
+        std::vector<double> lo, hi;
+        for (const auto& b : st().problem->bounds) { lo.push_back(b.first); hi.push_back(b.second); }
+        mootation::scalar::symmetry::check_bounds(cfg.sym_blocks, lo, hi);
+        if (!cfg.var_kinds.empty())                          // MSYM-2
+            for (const auto& g : cfg.sym_blocks)
+                for (std::size_t k = 1; k < g.count; ++k)
+                    for (std::size_t c = 0; c < g.size; ++c) {
+                        const std::size_t i = g.offset + c, j = g.offset + k * g.size + c;
+                        const int ki = i < cfg.var_kinds.size() ? cfg.var_kinds[i] : 0;
+                        const int kj = j < cfg.var_kinds.size() ? cfg.var_kinds[j] : 0;
+                        if (ki != kj)
+                            throw std::invalid_argument("sym: the blocks of a group need the "
+                                                        "same variable kinds (MSYM-2)");
+                    }
+    }
     if (cfg.aux == "dcn") {
-        vault.set_aux(1, [box = st().problem->bounds](
+        const bool by_sym = cfg.aux_metric == "sym";
+        vault.set_aux(1, [box = st().problem->bounds, symm, by_sym](
                              const std::vector<const std::vector<double>*>& X,
                              const std::vector<std::vector<double>>&, std::vector<std::vector<double>>& A) {
-            aux_dcn(box, X, A);
+            aux_dcn(box, X, A, by_sym ? &symm : nullptr);
         });
     } else if (cfg.aux == "user") {
         if (cfg.aux_n < 1 || !cfg.aux_fn)
@@ -912,6 +978,14 @@ RunResult run_core(const RunConfig& cfg)
                     else x[j] = (x[j] - *(it - 1) <= *it - x[j]) ? *(it - 1) : *it;
                 }
             }
+        });
+    }
+    // sym = canon (RunConfig::sym, MSYM-1): after the rounding, at every write
+    if (cfg.sym == "canon") {
+        symm.mode = mootation::scalar::symmetry::Mode::canon;
+        vault.set_snap([prev = vault.snap(), symm](std::vector<double>& x) {
+            if (prev) prev(x);
+            x = symm.canonical(x);
         });
     }
     {

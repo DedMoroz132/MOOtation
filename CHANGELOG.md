@@ -20,6 +20,12 @@ always listed under **Changed** or **Removed**.
   (GECCO 2013), "user" a function of the caller's. The answer, the
   observer's rows and the inner archive carry the problem's objectives only.
   Off by default: every run is the same.
+- Added (task 26, item 24.5.4): the genome's symmetries in the
+  multi-objective cores, `RunConfig::sym = "off" | "canon"` with `sym_blocks`
+  (and the problem's canon and align): every genome a core writes put in
+  canonical form, so that all the cores combine canonical parents; and
+  `aux_metric = "sym"`, the distance to the nearest other member after
+  alignment. C++ only for now; off by default.
 - Added (task 26, items 24.7.2, 24.7.4, 24.7.5): the report layer's
   comparisons at one objective. `run/stats.py`: Iman and Davenport's F after
   Friedman, Nemenyi's and Bonferroni-Dunn's critical differences (critical

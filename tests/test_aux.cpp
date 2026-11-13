@@ -226,5 +226,78 @@ int main()
         check(ok, "aux = dcn: a warm start of two objectives runs");
     }
 
+    // ── sym in the multi-objective cores (24.5.4; MSYM-1, MSYM-2, AUX-2) ────
+    {
+        using mootation::scalar::symmetry::Blocks;
+        // two objectives invariant under permutations of three blocks of two
+        auto blocky = [] {
+            RunProblem p;
+            p.bounds.assign(6, {0.0, 1.0});
+            p.n_objectives = 2;
+            p.evaluate = [](std::vector<double> x) {
+                double a = 0.0, b = 0.0;
+                for (int k = 0; k < 3; ++k) {
+                    const double u = x[static_cast<std::size_t>(2 * k)], v = x[static_cast<std::size_t>(2 * k + 1)];
+                    a += u * u + v;
+                    b += (u - 1.0) * (u - 1.0) + v;
+                }
+                return std::vector<double>{a, b};
+            };
+            return p;
+        };
+        RunConfig cfg;
+        cfg.pop_size = 16;
+        cfg.n_gen = 8;
+        cfg.seed = 9;
+        cfg.sym = "canon";
+        cfg.sym_blocks = {Blocks{0, 2, 3}};
+        RunProblem p1 = blocky(), p2 = blocky();
+        const RunResult r1 = mootation::runner::run("nsga2", p1, cfg), r2 = mootation::runner::run("nsga2", p2, cfg);
+        bool sorted = !r1.variables.empty();
+        for (const auto& x : r1.variables) {
+            const std::vector<double> b0(x.begin(), x.begin() + 2), b1(x.begin() + 2, x.begin() + 4),
+                b2(x.begin() + 4, x.begin() + 6);
+            sorted = sorted && !(b1 < b0) && !(b2 < b1);
+        }
+        check(sorted, "sym = canon: every member's blocks in canonical (sorted) order");
+        check(same(r1, r2), "sym = canon: two runs alike");
+        // aux_metric = sym: a permutation of a point is at distance 0
+        mootation::scalar::symmetry::Sym s;
+        s.groups = {Blocks{0, 2, 3}};
+        std::vector<double> a{0.1, 0.2, 0.5, 0.6, 0.9, 0.0}, b{0.9, 0.0, 0.1, 0.2, 0.5, 0.6}, c{0.3, 0.3, 0.3, 0.3, 0.3, 0.3};
+        std::vector<const std::vector<double>*> X{&a, &b, &c};
+        std::vector<std::vector<double>> A(3, std::vector<double>(1, -1.0)), E(3, std::vector<double>(1, -1.0));
+        std::vector<std::pair<double, double>> box(6, {0.0, 1.0});
+        mootation::runner::aux_dcn(box, X, A, &s);
+        mootation::runner::aux_dcn(box, X, E);
+        check(A[0][0] == A[1][0] && A[0][0] > A[2][0] && A[2][0] == 0.0,
+              "aux_metric = sym: a and b, one point permuted, are nearest at distance 0");
+        check(E[0][0] < A[0][0], "aux_metric = euclid sees them apart");
+        RunConfig dsym = cfg;
+        dsym.sym = "off";
+        dsym.aux = "dcn";
+        dsym.aux_metric = "sym";
+        RunProblem p3 = blocky();
+        bool ok = true;
+        try { mootation::runner::run("nsga2", p3, dsym); } catch (const std::exception&) { ok = false; }
+        check(ok, "aux = dcn with aux_metric = sym runs");
+        auto refused = [&](RunConfig c, RunProblem p) {
+            try { mootation::runner::run("nsga2", p, c); } catch (const std::invalid_argument&) { return true; }
+            return false;
+        };
+        RunConfig al = cfg;
+        al.sym = "align";
+        check(refused(al, blocky()), "sym = align refused in the multi-objective cores (MSYM-1)");
+        RunConfig nob = cfg;
+        nob.sym_blocks.clear();
+        check(refused(nob, blocky()), "sym = canon without blocks refused");
+        RunProblem uneven = blocky();
+        uneven.bounds[4] = {0.0, 2.0};
+        check(refused(cfg, uneven), "blocks of a group in other bounds refused (SYM-6)");
+        RunConfig kinds = cfg;
+        kinds.var_kinds = {1, 0, 0, 0, 0, 0};
+        check(refused(kinds, blocky()), "blocks of a group with other variable kinds refused (MSYM-2)");
+    }
+
     return mootation::testing::report("test_aux");
 }
