@@ -42,6 +42,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "../operators/bound_repair.hpp"
@@ -52,6 +53,18 @@ namespace mootation::scalar::population {
 using Vec = std::vector<double>;
 
 inline constexpr int kIdleGenerations = 1000;   // POP-2
+
+// whether a method marks rows invalid (ga.hpp: decoding(), invalid())
+template <class Method>
+constexpr auto has_invalid(int) -> decltype(std::declval<Method&>().invalid(), bool())
+{
+    return true;
+}
+template <class Method>
+constexpr bool has_invalid(long)
+{
+    return false;
+}
 
 // The values of a generation, point by point through the evaluator (POP-3);
 // true when one of them was a new evaluation.
@@ -70,7 +83,32 @@ inline bool values(Evaluator& ev, const Rows& X, Vec& f, Vec& v)
     return ev.spent > before;
 }
 
+// As values(), but the rows the method marks invalid (a genome that does not
+// decode; task 24, §24.1.2, ga.hpp GA-11) are not evaluated: told +inf in f
+// and v, counted in ev.decode_invalid.
+inline bool values_decoded(Evaluator& ev, const Rows& X, const std::vector<char>& invalid, Vec& f, Vec& v)
+{
+    const double nan = std::numeric_limits<double>::quiet_NaN(), inf = std::numeric_limits<double>::infinity();
+    const long long before = ev.spent;
+    f.assign(X.size(), nan);
+    v.assign(X.size(), nan);
+    for (std::size_t k = 0; k < X.size(); ++k) {
+        if (invalid[k]) {
+            f[k] = v[k] = inf;
+            ++ev.decode_invalid;
+            continue;
+        }
+        const std::size_t i = ev.index(X[k]);
+        if (ev.failed[i]) continue;
+        f[k] = ev.F[i][0];
+        v[k] = ev.cv(i);
+    }
+    return ev.spent > before;
+}
+
 // ask/tell until stop() or the budget (BudgetSpent goes to the caller).
+// A method with invalid() (ga.hpp with a decoder) has its invalid rows told
+// without an evaluation (values_decoded).
 template <class Method, class Stop>
 void drive(Method& method, Evaluator& ev, Stop stop)
 {
@@ -79,7 +117,10 @@ void drive(Method& method, Evaluator& ev, Stop stop)
     while (!stop()) {
         const Rows X = method.ask();
         Vec f, v;
-        const bool fresh = values(ev, X, f, v);
+        bool fresh = false;
+        if constexpr (has_invalid<Method>(0)) fresh = method.decoding() ? values_decoded(ev, X, method.invalid(), f, v)
+                                                                          : values(ev, X, f, v);
+        else fresh = values(ev, X, f, v);
         if (first && !ev.recorded) ev.record();          // gen 0: the initial population
         first = false;
         idle = fresh ? 0 : idle + 1;

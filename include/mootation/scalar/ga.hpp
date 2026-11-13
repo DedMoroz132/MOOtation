@@ -63,6 +63,24 @@
 //     the polynomial mutation (eta_m, p_m = 1) within its bounds — the
 //     operator on the block alone (its per-variable eta, the MO runs' integer
 //     variables, is not set at M = 1). o.block_mutation = 0 draws nothing.
+//   GA-9. The user's genome (task 24, §24.1.2; off by default: the builtin
+//     operators): ga_crossover = user calls Problem::crossover(p1, p2, c1,
+//     c2, rng) in SBX's place, ga_mutation = user Problem::mutate(c, rng) in
+//     the polynomial mutation's (each child, GA-3's order kept), ga_init =
+//     user Problem::sample(x, rng) for each member of the first population
+//     (the seeds of POP-7 then over its first rows); rng is the run's, drawn
+//     through rnd:: only. The block operators (GA-7, GA-8) are the builtin's
+//     and are refused beside the user's.
+//   GA-10. Off by default. A row of the user's operators is repaired
+//     (ga_repair: builtin clips each coordinate to the box — SBX and the
+//     polynomial mutation stay in it, so the builtin run is unchanged; user
+//     calls Problem::repair; off leaves it) and then must have n finite values
+//     in the box, or the run is refused with the row's number and generation.
+//   GA-11. Off by default. With Problem::decode every row is decoded before it
+//     is evaluated, its canonical genome written back (Lamarckian; checked as
+//     GA-10); a row that does not decode (valid = false) is not evaluated, costs
+//     nothing, and is told +inf in f and v (the worst), counted in
+//     Result::decode_invalid.
 //   G3-1. PCX's index parent x_p is the best of the parents (best_centre, on
 //     by default: §3.2.1, "For a faster convergence, the best parent is
 //     always used"), not the operator's own pick "with equal probability"
@@ -83,8 +101,11 @@
 // ============================================================================
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <functional>
 #include <numeric>
+#include <string>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -98,6 +119,7 @@
 #include "../operators/sbx.hpp"
 #include "../random.hpp"
 #include "evo.hpp"
+#include "genome.hpp"
 #include "symmetry.hpp"
 
 namespace mootation::scalar::ga {
@@ -121,6 +143,12 @@ struct Options {
     symmetry::Sym sym;                                     // GA-6
     double block_uniform = 0.0, block_mutation = 0.0;      // GA-7, GA-8 (sym's groups)
     Rows seeds;                         // the first population's first rows (task 24, §24.4.1; POP-7)
+    // the user's genome (task 24, §24.1.2; GA-9 ... GA-11): empty, the builtin
+    std::function<void(const Vec&, const Vec&, Vec&, Vec&, std::mt19937&)> user_crossover;
+    std::function<void(Vec&, std::mt19937&)> user_mutate, user_sample;
+    std::function<void(Vec&)> user_repair;
+    bool clip = true;                   // repair = builtin after a user operator: clipped to the box
+    std::function<Decoded(const Vec&)> decode;
 };
 
 inline Options ga_sbx() { return Options{}; }
@@ -213,22 +241,39 @@ public:
 
     Rows ask()
     {
-        if (x_.empty()) return u_ = evo::uniform(lo_, hi_, o_.mu, rng_, o_.seeds);
+        ++gen_;
+        if (x_.empty()) {
+            if (o_.user_sample) {                                        // GA-9
+                u_.assign(o_.mu, Vec(lo_.size(), 0.0));
+                for (Vec& x : u_) o_.user_sample(x, rng_);
+                for (std::size_t i = 0; i < o_.seeds.size() && i < o_.mu; ++i) u_[i] = o_.seeds[i];
+            } else {
+                u_ = evo::uniform(lo_, hi_, o_.mu, rng_, o_.seeds);
+            }
+            prepare();
+            return u_;
+        }
         u_.clear();
         Vec c1, c2;
         rnd::uniform_int_distribution<int> coin(0, 1);
         while (u_.size() < o_.lambda) {
             const Vec& p1 = x_[tournament()];
             const Vec& p2 = x_[tournament()];
-            cross(p1, p2, c1, c2, b_, o_, rng_);
+            if (o_.user_crossover) o_.user_crossover(p1, p2, c1, c2, rng_);   // GA-9
+            else cross(p1, p2, c1, c2, b_, o_, rng_);
             const int keep = o_.coin ? coin(rng_) : -1;                  // GA-3
             if (keep != 1) mutate(c1);
             if (keep != 0) mutate(c2);
             if (keep != 1) u_.push_back(c1);
             if (keep != 0 && u_.size() < o_.lambda) u_.push_back(c2);
         }
+        prepare();
         return u_;
     }
+
+    // GA-11: the rows of the last ask() that do not decode, not to be evaluated
+    bool decoding() const { return static_cast<bool>(o_.decode); }
+    const std::vector<char>& invalid() const { return invalid_; }
 
     void tell(const Vec& f, const Vec& v = {})
     {
@@ -286,8 +331,59 @@ public:
 private:
     void mutate(Vec& c)
     {
+        if (o_.user_mutate) {                                            // GA-9
+            o_.user_mutate(c, rng_);
+            return;
+        }
         if (o_.mutation) ops::polynomial_mutation(c, b_, o_.eta_m, o_.pm, rng_);
         block_mutation(c, b_, o_, rng_);                                 // GA-8
+    }
+
+    bool user() const { return o_.user_crossover || o_.user_mutate || o_.user_sample; }
+
+    // GA-10: a row of the user's operators or decoder of the right length,
+    // finite, in the box; else the run is refused with the row's number
+    void checked(const Vec& x, std::size_t k, const char* what) const
+    {
+        const std::string where = "ga: " + std::string(what) + ", individual " + std::to_string(k) +
+                                  " of generation " + std::to_string(gen_ - 1);
+        if (x.size() != lo_.size())
+            throw std::invalid_argument(where + ": " + std::to_string(x.size()) + " values for " +
+                                        std::to_string(lo_.size()) + " variables");
+        for (std::size_t j = 0; j < x.size(); ++j) {
+            if (!std::isfinite(x[j])) throw std::invalid_argument(where + ": a value not finite (variable " +
+                                                                  std::to_string(j) + ")");
+            if (x[j] < lo_[j] || x[j] > hi_[j])
+                throw std::invalid_argument(where + ": outside the box (variable " + std::to_string(j) + ")");
+        }
+    }
+
+    // GA-10, GA-11: the user's rows repaired and checked, every row decoded
+    // and its canonical genome written back
+    void prepare()
+    {
+        invalid_.assign(u_.size(), 0);
+        if (!user() && !o_.decode) return;
+        for (std::size_t k = 0; k < u_.size(); ++k) {
+            Vec& x = u_[k];
+            if (user()) {
+                if (o_.user_repair) {
+                    o_.user_repair(x);
+                } else if (o_.clip && x.size() == lo_.size()) {
+                    for (std::size_t j = 0; j < x.size(); ++j)
+                        if (std::isfinite(x[j])) x[j] = std::min(hi_[j], std::max(lo_[j], x[j]));
+                }
+                checked(x, k, "the user's operators");
+            }
+            if (!o_.decode) continue;
+            Decoded d = o_.decode(x);
+            if (!d.valid) {
+                invalid_[k] = 1;
+                continue;
+            }
+            checked(d.x_canon, k, "the decoder's canonical genome");
+            x = std::move(d.x_canon);
+        }
     }
 
     std::size_t tournament()                                             // GA-1
@@ -307,6 +403,8 @@ private:
     Bounds b_;
     Rows x_, u_;
     Vec f_, v_;
+    std::vector<char> invalid_;
+    long long gen_ = 0;
 };
 
 struct G3Options {

@@ -222,6 +222,7 @@ struct Result {
     long long hook_calls = 0;
     double hook_spent = 0.0, hook_seconds = 0.0;
     Vec ls_state;
+    long long decode_invalid = 0;    // genomes that did not decode, not evaluated (task 24, §24.1.2)
 };
 
 // How the first points come: seed points (planted), rows of a design
@@ -501,6 +502,7 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     r.hook_calls = ev.hook_calls;
     r.hook_spent = ev.hook_spent;
     r.hook_seconds = ev.hook_seconds;
+    r.decode_invalid = ev.decode_invalid;
     r.improvements = ev.improvements.records();
     for (char f : ev.failed) r.n_failed += f ? 1 : 0;
     return r;
@@ -1509,7 +1511,8 @@ inline std::vector<std::string> population_knobs(const std::string& name)
     else if (name == "lshade")
         k.insert(k.end(), {"shade_h", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "sym"});
     else if (name == "ga_sbx" || name == "ssga")
-        k.insert(k.end(), {"pc", "eta_c", "pm", "eta_m", "ga_tournament", "sym", "ga_block_uniform", "ga_block_mutation"});
+        k.insert(k.end(), {"pc", "eta_c", "pm", "eta_m", "ga_tournament", "sym", "ga_block_uniform", "ga_block_mutation",
+                           "ga_crossover", "ga_mutation", "ga_repair", "ga_init"});
     else if (name == "g3_pcx") k.insert(k.end(), {"g3_mu", "g3_lambda", "g3_sigma", "bound_repair"});
     else if (name == "chc") k.insert(k.end(), {"chc_divergence", "blx_alpha", "chc_bits", "bound_repair"});
     else if (name == "pso") k.insert(k.end(), {"pso_phi", "kappa", "pso_topology", "pso_v0", "bound_repair", "sym"});
@@ -1741,6 +1744,32 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             o.block_mutation = k.block("ga_block_mutation", P);
             if ((o.block_uniform > 0.0 || o.block_mutation > 0.0) && o.sym.groups.empty())
                 o.sym.groups = P.sym_blocks;                                              // GA-7, GA-8
+            // the user's genome (task 24, §24.1.2; ga.hpp GA-9 ... GA-11), where asked for
+            auto user = [&](const char* knob, const std::vector<std::string>& words) {
+                return k.given(knob) && k.word(knob, "builtin", words) == "user";
+            };
+            if (user("ga_crossover", {"builtin", "user"})) {
+                if (!P.crossover) throw std::invalid_argument(name + ": ga_crossover = user: the problem gives no crossover");
+                o.user_crossover = P.crossover;
+            }
+            if (user("ga_mutation", {"builtin", "user"})) {
+                if (!P.mutate) throw std::invalid_argument(name + ": ga_mutation = user: the problem gives no mutate");
+                o.user_mutate = P.mutate;
+            }
+            if (user("ga_init", {"builtin", "user"})) {
+                if (!P.sample) throw std::invalid_argument(name + ": ga_init = user: the problem gives no sample");
+                o.user_sample = P.sample;
+            }
+            const std::string repair =
+                k.given("ga_repair") ? k.word("ga_repair", "builtin", {"builtin", "user", "off"}) : "builtin";
+            if (repair == "user") {
+                if (!P.repair) throw std::invalid_argument(name + ": ga_repair = user: the problem gives no repair");
+                o.user_repair = P.repair;
+            }
+            o.clip = repair == "builtin";
+            o.decode = P.decode;
+            if ((o.user_crossover || o.user_mutate) && (o.block_uniform > 0.0 || o.block_mutation > 0.0))
+                throw std::invalid_argument(name + ": the block operators are the builtin's (GA-7, GA-8), not with the user's");
             ga::GA m(lo, hi, o, rng);
             k.size(m.mu());
             population::drive(m, ev, [&] { return m.done(); });

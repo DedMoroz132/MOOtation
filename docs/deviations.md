@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-288 items: 264 yes, 24 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+291 items: 264 yes, 27 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -480,6 +480,9 @@ Their readings, from every comment of each file (the first column the file's nam
 | `ga` | GA-6 | sym (task 19, symmetry.hpp SYM-7; off by default): the second parent aligned to the first (align), or both canonical (canon), after the tournaments and before the crossover; no draw changes, and sym = off is GA as bef... | no: option | `ga.hpp` |
 | `ga` | GA-7 | block_uniform (task 19, §19.2.3; off by default): with probability o.block_uniform a pair, after its crossover (which made the free coordinates), every block of sym's groups whole from one parent: a fair coin a block,... | no: option | `ga.hpp` |
 | `ga` | GA-8 | block_mutation (§19.2.3; off by default): with probability o.block_mutation a child, after its mutation, one block of all the groups' blocks drawn uniformly and each of its coordinates mutated by the polynomial mutati... | no: option | `ga.hpp` |
+| `ga` | GA-9 | The user's genome (task 24, §24.1.2; off by default: the builtin operators): ga_crossover = user calls Problem::crossover(p1, p2, c1, c2, rng) in SBX's place, ga_mutation = user Problem::mutate(c, rng) in the polynomi... | no: option | `ga.hpp` |
+| `ga` | GA-10 | Off by default. A row of the user's operators is repaired (ga_repair: builtin clips each coordinate to the box — SBX and the polynomial mutation stay in it, so the builtin run is unchanged; user calls Problem::repair;... | no: option | `ga.hpp` |
+| `ga` | GA-11 | Off by default. With Problem::decode every row is decoded before it is evaluated, its canonical genome written back (Lamarckian; checked as GA-10); a row that does not decode (valid = false) is not evaluated, costs no... | no: option | `ga.hpp` |
 | `ga` | G3-1 | PCX's index parent x_p is the best of the parents (best_centre, on by default: §3.2.1, "For a faster convergence, the best parent is always used"), not the operator's own pick "with equal probability" (§2.2), which be... | yes | `ga.hpp` |
 | `ga` | G3-2 | Step (1)'s mu - 1 others differ from the best and from each other; step (3)'s two differ. | yes | `ga.hpp` |
 | `ga` | G3-3 | Step (4) keeps the two best of the family in its order (the two chosen, then the offspring), stably; the better goes to the first chosen place. | yes | `ga.hpp` |

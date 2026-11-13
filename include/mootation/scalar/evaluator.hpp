@@ -118,6 +118,7 @@
 
 #include "../dss.hpp"
 #include "../fp_contract.hpp"
+#include "genome.hpp"
 #include "improvements.hpp"
 #include "symmetry.hpp"
 
@@ -196,6 +197,14 @@ struct Problem {
     // THE USER'S LOCAL SEARCH (task 24, §24.1.1): the solver "local_search"
     // (scalar.hpp) calls it once from its start: (x, ctx, state) -> outcome
     std::function<LocalOutcome(const Vec& x, LocalContext& ctx, const Vec& state)> local_search;
+    // THE USER'S GENOME (task 24, §24.1.2; ga.hpp GA-9 ... GA-11): operators
+    // on the genome of fixed length for ga_sbx and ssga (ga_crossover,
+    // ga_mutation, ga_repair, ga_init = user), and its decoding, written back
+    std::function<void(const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& rng)> crossover;
+    std::function<void(Vec& x, std::mt19937& rng)> mutate;
+    std::function<void(Vec& x)> repair;
+    std::function<Decoded(const Vec& x)> decode;
+    std::function<void(Vec& x, std::mt19937& rng)> sample;     // x arrives with n values
     // set by a strategy's start (strategy.hpp, View), not by the user: a
     // point whose values are known, for the run's archive at the merge (LS-2)
     std::function<void(const Vec& x, const Vec& f)> known_point;
@@ -248,6 +257,7 @@ public:
     long long hook_calls = 0;          // THE USER'S LOCAL SEARCH: its calls,
     double hook_spent = 0.0;           // ... the budget it declared spent,
     double hook_seconds = 0.0;         // ... and its time (reported, never in a trajectory)
+    long long decode_invalid = 0;      // THE USER'S GENOME: genomes that did not decode, not evaluated
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
               int pop_size_, Observer obs, int record_every)

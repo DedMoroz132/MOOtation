@@ -130,7 +130,7 @@ constrained-domination at one objective (`scalar/evo.hpp`), in no paper:
 | JADE (Zhang & Sanderson) | 2009 | `jade` | `jade_p`, `jade_c`, `de_archive`, `sym` |
 | SHADE (Tanabe & Fukunaga) | 2013 | `shade` | `shade_h`, `shade_p_max`, `de_archive`, `sym` |
 | L-SHADE (Tanabe & Fukunaga) | 2014 | `lshade` | `shade_h`, `lshade_p`, `lshade_r_arc`, `lshade_n_min`, `lshade_max_nfe` (0: the budget), `sym` |
-| real-coded GA (Deb & Deb), its steady state | 2014 | `ga_sbx`, `ssga` | `pc`, `eta_c`, `pm`, `eta_m`, `ga_tournament`, `sym`, `ga_block_uniform`, `ga_block_mutation` |
+| real-coded GA (Deb & Deb), its steady state | 2014 | `ga_sbx`, `ssga` | `pc`, `eta_c`, `pm`, `eta_m`, `ga_tournament`, `sym`, `ga_block_uniform`, `ga_block_mutation`; C++: `ga_crossover`, `ga_mutation`, `ga_init` (`builtin`, `user`: the problem's operators), `ga_repair` (`builtin`, `user`, `off`), the problem's `decode` (GA-9 ... GA-11), `warm_start` (POP-7) |
 | G3 with PCX (Deb, Anand, Joshi) | 2002 | `g3_pcx` | `g3_mu`, `g3_lambda`, `g3_sigma`, `bound_repair` |
 | CHC with BLX-0.5 (Eshelman; Eshelman & Schaffer) | 1991, 1993 | `chc` | `chc_divergence`, `blx_alpha`, `chc_bits`, `bound_repair` |
 | PSO, constriction Type 1'' (Clerc & Kennedy) | 2002 | `pso` | `pso_phi`, `kappa`, `pso_topology` (ring \| global), `pso_v0` (random \| zero), `bound_repair`, `sym` |

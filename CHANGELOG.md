@@ -10,6 +10,14 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.1.2): the user's genome of fixed length for ga_sbx and
+  ssga, in C++: `scalar::Problem::crossover`, `mutate`, `repair`, `sample`
+  (knobs `ga_crossover`, `ga_mutation`, `ga_repair = builtin | user | off`,
+  `ga_init = builtin | user`) and `decode(x) -> {x_canon, active, valid}`,
+  its canonical genome written back before the evaluation, a genome that
+  does not decode not evaluated and told the worst values
+  (`Result::decode_invalid`; `scalar/genome.hpp`; GA-9 ... GA-11). Off by
+  default: runs as before.
 - Added (task 24, §24.1.1): the user's local search, in C++:
   `scalar::Problem::local_search(x, ctx, state)` returning x', f(x') where
   known, a declared cost and its state; the solver `"local_search"` calls it
