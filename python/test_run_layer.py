@@ -11365,7 +11365,7 @@ def scalar_presets_budget_and_refusals():
                                   "lbfgsb", "eki", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                   "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
                                   "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic",
-                                  "tiktak", "data_continuation", "pap")
+                                  "tiktak", "data_continuation", "pap", "pbh", "mde", "ma_chains")
     calls = [0]
     def f(x):
         calls[0] += 1
@@ -11531,7 +11531,7 @@ def single_objective_solvers_and_baselines_at_one_objective():
     assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "de", "jade", "shade", "lshade",
                       "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
                       "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak",
-                      "data_continuation", "pap")
+                      "data_continuation", "pap", "pbh", "mde", "ma_chains")
     for name in SINGLE[5:]:                          # eki, stage 4's population methods, stage 3's strategies
         assert check_pop(name, 20, 2) == (f"{name} is a single-objective algorithm: n_objs must "
                                           "be 1, got 2"), name
