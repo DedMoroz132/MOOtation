@@ -308,6 +308,10 @@ struct Problem {
     std::function<Problem(std::size_t k)> formulation;
     std::function<void(std::size_t k, const Vec& x, Vec& y)> to_formulation;
     std::function<void(std::size_t k, const Vec& y, Vec& x)> from_formulation;
+    // Categorical variables (task 26, the solver catcma; scalar/catcma_run.hpp):
+    // the levels K of each of the last cat_levels.size() variables, whose
+    // values are the category's index 0 ... K - 1 (empty: every variable real)
+    std::vector<int> cat_levels;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }

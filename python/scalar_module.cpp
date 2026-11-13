@@ -250,7 +250,8 @@ void bind_scalar(py::module_& m)
              const py::object& residuals, const py::object& jac, const py::object& x0,
              const py::object& gauge_basis, const py::object& f_stop, const py::object& sym_blocks,
              const py::object& canon, const py::object& align, const py::object& res_blocks,
-             const py::object& res_weights, const py::object& discrete, const py::object& linear) {
+             const py::object& res_weights, const py::object& discrete, const py::object& linear,
+             const py::object& cat_levels) {
               if (fn.is_none() == residuals.is_none() && !native)
                   throw std::invalid_argument("give fn or residuals, one of them");
               sc::Problem P = problem_of(fn, constraints, bounds, n_objs, n_cons, n_eq, native);
@@ -273,6 +274,7 @@ void bind_scalar(py::module_& m)
                   if (P.discrete.size() != P.lo.size())
                       throw std::invalid_argument("discrete: a list of values per variable (empty: continuous)");
               }
+              if (!cat_levels.is_none()) P.cat_levels = cat_levels.cast<std::vector<int>>();   // catcma (task 26)
               if (!sym_blocks.is_none()) {           // (offset, size, count) each (task 19, §19.2.1)
                   P.sym_blocks.clear();
                   for (py::handle b : sym_blocks) {
@@ -355,6 +357,7 @@ void bind_scalar(py::module_& m)
           py::arg("sym_blocks") = py::none(), py::arg("canon") = py::none(), py::arg("align") = py::none(),
           py::arg("res_blocks") = py::none(), py::arg("res_weights") = py::none(),
           py::arg("discrete") = py::none(), py::arg("linear") = py::none(),
+          py::arg("cat_levels") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
           "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
           "for the scalar presets, solutions; at one objective improvements, the best point's\n"

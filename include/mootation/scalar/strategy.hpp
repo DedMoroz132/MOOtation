@@ -1220,3 +1220,4 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
 #include "param.hpp"
 #include "reformulation.hpp"
 #include "replica.hpp"
+#include "catcma_run.hpp"

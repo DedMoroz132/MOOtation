@@ -11372,7 +11372,7 @@ def scalar_presets_budget_and_refusals():
     assert tuple(PRESETS) == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm",
                               "eps_cmaes") and NAMES == tuple(PRESETS) + (
                                   "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes", "lm",
-                                  "lbfgsb", "eki", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
+                                  "lbfgsb", "eki", "catcma", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                   "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
                                   "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic",
                                   "tiktak", "data_continuation", "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
@@ -11538,7 +11538,7 @@ def single_objective_solvers_and_baselines_at_one_objective():
     from mootation.run.baselines import run_baseline
     from mootation.run.budget import depends_on_budget
     from mootation.scalar import SINGLE
-    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "de", "jade", "shade", "lshade",
+    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "catcma", "de", "jade", "shade", "lshade",
                       "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
                       "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak",
                       "data_continuation", "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
@@ -11885,6 +11885,34 @@ def model_choice_rules_by_hand():
     assert abs(M.bic(4.9, 100, 3) - (100 * math.log(0.049) + 3 * math.log(100))) < 1e-12
     ch = M.choose(ms)
     assert ch["eps_0.1"]["name"] == "k2" and ch["knee"]["name"] == "k2" and ch["bic"]["name"] == "k2"
+
+
+@test
+def catcma_through_minimize_with_categorical_variables():
+    """Task 26 (catcma_run.hpp): minimize(..., algorithm="catcma") takes real
+    and categorical var_types, fn receiving the labels; it finds the label
+    that zeroes f (the answer's label index, as the cores give it); int is
+    refused with catcma, cat with another single-objective solver, catcma
+    without categories."""
+    if _core_with("scalar") is None:
+        print("  skip  catcma_through_minimize...: no _core"); return
+    import mootation
+
+    def f(x):
+        return [(x[0] - 0.2) ** 2 + (x[1] + 0.4) ** 2 + (0.0 if x[2] == "b" else 1.0)]
+    vt = ["real", "real", ("cat", ["a", "b", "c"])]
+    box = [(-1.0, 1.0), (-1.0, 1.0), (0, 2)]
+    r = mootation.minimize(f, box, 1, algorithm="catcma", var_types=vt, max_evaluations=4000, seed=3)
+    # the answer as the cores': the reals in variables, the label indices in binary_variables
+    assert len(r.variables[0]) == 2 and r.binary_variables[0] == [1] and r.objectives[0][0] < 1e-6, (
+        r.variables[0], r.binary_variables[0], r.objectives[0])
+    for bad, alg in ((["int", "real", ("cat", ["a", "b", "c"])], "catcma"), (vt, "cmaes"), (None, "catcma")):
+        try:
+            mootation.minimize(f if bad is not None else (lambda x: [x[0] ** 2]), box if bad is not None else
+                               [(-1.0, 1.0)], 1, algorithm=alg, var_types=bad, max_evaluations=100)
+        except ValueError:
+            continue
+        raise AssertionError(f"{alg} with {bad} must be refused")
 
 
 @test

@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 26): `catcma`, task 19's CatCMA (scalar/catcma.hpp) as a
+  single-objective solver (scalar/catcma_run.hpp) on problems whose last
+  variables are categorical (`Problem::cat_levels`); `minimize(...,
+  algorithm="catcma", var_types=[..., ("cat", labels)])`, the answer's reals
+  in `variables` and its label indices in `binary_variables`, as the cores
+  give them. The report at one objective: `--so-compare` (Iman-Davenport,
+  Nemenyi's critical difference and the CD diagram's groups, the ranks'
+  stability along the budgets, Dolan-Moré profiles) and `--portfolio` for
+  campaigns at one objective. `discriminate::t_optimal`
+  (scalar/discriminate.hpp): T-optimum designs for discriminating two
+  models after Atkinson and Fedorov 1975. Off by default.
 - Fixed (task 24, after task 27's findings): the run with the cache
   (`Problem::cache = exact | canon`) ends once it asks for repeats only:
   as many cache hits in a row as the budget, none evaluated between, end

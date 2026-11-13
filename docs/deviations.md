@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-443 items: 387 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+447 items: 391 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -448,6 +448,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `catcma` | CC-9 | N_co >= 1 (the rates of Table 1 divide by it), N_ca >= 0, K_n >= 2. | yes | `catcma.hpp` |
 | `catcma` | CC-10 | enhanced = false is §5.3's ablation: no rank-one update, no step size adaptation and no (27) (sigma stays sigma^(0)), c_m = 1, c_mu as Table 1, and the categories by (15) with eta_n = 1 / (N_ca (K_n - 1)), then the ma... | yes | `catcma.hpp` |
 | `catcma` | CC-11 | By default (update = asng) (24)-(25) accumulate the unit step: s gets sqrt(beta (2 - beta)) F^(1/2) G / \|\|G\|\|_F, the direction (22) actually moves q along, and gamma gets beta (2 - beta). | yes | `catcma.hpp` |
+| `catcma_run` | CCR-1 | A continuous sample outside the scaled box is evaluated clipped to it and told the value plus the squared distance clipped (in the scaled box), as cmaes's samples (SCALAR-7). | yes | `catcma_run.hpp` |
+| `catcma_run` | CCR-2 | The start: the continuous part of x0 where the run has one (scaled), else the box's centre; the categories start uniform (CatCMA's q^(0)). | yes | `catcma_run.hpp` |
+| `catcma_run` | CCR-3 | Constraints are refused (CatCMA ranks by f alone); a problem without categorical variables is refused (it is CMA-ES: cmaes). | yes | `catcma_run.hpp` |
+| `catcma_run` | CCR-4 | The run ends when the budget is spent (the evaluator's). | yes | `catcma_run.hpp` |
 | `chain_ls` | SW-1 | "More than": rho doubles after the 6th success in a row and halves after the 4th failure (Fig. 2's "> 5", "> 3"; | yes | `chain_ls.hpp` |
 | `chain_ls` | SW-2 | Every evaluation counts: Fig. 2 counts a step as one evaluation though its second trial is another (Fig. 5 counts both). | yes | `chain_ls.hpp` |
 | `chain_ls` | SW-3 | rho is the standard deviation of dif (§3.1: "a normal distribution whose standard deviation is given by a parameter rho"; | yes | `chain_ls.hpp` |

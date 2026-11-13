@@ -255,7 +255,7 @@ inline const std::vector<std::string>& names()
 {
     static const std::vector<std::string> v{"scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp",
                                             "eps_nm", "eps_cmaes", "boostdms", "mosqp",
-                                            "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki",
+                                            "slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "catcma",
                                             "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
                                             "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes",
                                             "multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
@@ -266,6 +266,9 @@ inline const std::vector<std::string>& names()
 
 // the strategies (strategy.hpp, included at the end)
 inline const std::vector<std::string>& strategy_names();
+// catcma (catcma_run.hpp, included by strategy.hpp; task 26)
+inline Result run_catcma(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
+                         unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start);
 inline Result run_strategy(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
                            double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
                            Observer observer, int record_every, const Start& start);
@@ -2206,6 +2209,9 @@ inline Result detail::run_named(const std::string& name, const Problem& P, doubl
     if (detail::listed(strategy_names(), name))
         return run_strategy(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
                             std::move(observer), record_every, start);
+    if (name == "catcma")                                                             // task 26 (catcma_run.hpp)
+        return run_catcma(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                          record_every, start);
     if (name == "mosqp")
         return run_mosqp_named(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, knobs, std::move(observer),
                                record_every);

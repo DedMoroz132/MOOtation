@@ -120,7 +120,7 @@ STRATEGIES = ("multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl", "b
 SHARING = ("multistart", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap",
            "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
 # the single-objective algorithms (task 18, item 2.3, stages 1, 3 and 4)
-SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki") + POPULATION + STRATEGIES
+SINGLE = ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "catcma") + POPULATION + STRATEGIES
 # the methods beside the scalarization methods, on the same evaluator,
 # answer and observer: those of task 9 and the single-objective algorithms.
 # None lays its run out over the budget (budget.py) but lshade, whose
@@ -202,7 +202,7 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
         seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
         x0=None, gauge_basis=None, f_stop=None, sym_blocks=None, canon=None, align=None, res_blocks=None,
-        res_weights=None, discrete=None, linear=None):
+        res_weights=None, discrete=None, linear=None, cat_levels=None):
     from ..run.knobs import canonical
     core = _module()
     design = None
@@ -228,7 +228,8 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
                  res_blocks=None if res_blocks is None else [int(b) for b in res_blocks],
                  res_weights=None if res_weights is None else [float(w) for w in res_weights],
                  discrete=None if discrete is None else [[float(v) for v in d] for d in discrete],
-                 linear=None if linear is None else [int(i) for i in linear])
+                 linear=None if linear is None else [int(i) for i in linear],
+                 cat_levels=None if cat_levels is None else [int(k) for k in cat_levels])
     n_failed = guard.n_failed if guard is not None else d["n_failed"]
     unique = unique_count() if unique_count is not None else d["evaluations"]
     return ScalarResult(d, d["ignored"], n_failed, eq_tol if n_eq else 0.0, unique)

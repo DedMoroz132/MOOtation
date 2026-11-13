@@ -695,12 +695,12 @@ def minimize(
     if var_types is not None:
         from .var_types import Layout
         from .scalar import SINGLE as _SO_NAMES
-        if algorithm in _SO_NAMES:
+        if algorithm in _SO_NAMES and algorithm != "catcma":     # catcma: its own path below
             var_types, bounds = _so_var_types(algorithm, var_types, list(bounds))
         layout = Layout(var_types, list(bounds))
         if layout.trivial():
             layout = None
-        elif algorithm in _SO_NAMES:
+        elif algorithm in _SO_NAMES and algorithm != "catcma":
             so_discrete = _so_discrete(layout)
     n_bin = 0
     if layout is not None:
@@ -793,7 +793,19 @@ def minimize(
 
     if algorithm in SCALAR_NAMES:
         # scalarization with a local solver (mootation.scalar, _core.scalar): not a core
-        if layout is not None and so_discrete is None:
+        cat_levels = None
+        if algorithm == "catcma":
+            # catcma (task 26): real variables and categorical ones (or bits, two
+            # levels), the core's genome reals then genes, as layout.to_user reads it
+            if layout is None:
+                raise ValueError("catcma needs categorical variables: var_types with ('cat', labels) or "
+                                 "'bin'; without them use cmaes")
+            if any(k in ("int", "discrete") for k in layout.kinds):
+                raise ValueError("catcma takes real and categorical variables ('real', 'bin', "
+                                 "('cat', labels)): no 'int' or 'discrete'")
+            cat_levels = layout.gene_levels() or [2] * len(layout.genes)
+            bounds = list(bounds) + [(0.0, float(k - 1)) for k in cat_levels]
+        elif layout is not None and so_discrete is None:
             raise ValueError(f"{algorithm} takes real variables only: no var_types other "
                              "than 'real'")
         if constraint_mode != "feasibility":
@@ -834,12 +846,17 @@ def minimize(
                 unique_count=lambda: points.count, guard=guard, grad=grad,
                 residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop,
                 sym_blocks=sym_blocks, canon=canon, align=align, res_blocks=residual_blocks,
-                res_weights=block_weights, discrete=so_discrete, linear=linear)
+                res_weights=block_weights, discrete=so_discrete, linear=linear, cat_levels=cat_levels)
             result._lsq = lsq
             result = _polished(result)
             if so_discrete is not None and int_repair == "lamarck":   # SO-VT: the answer decoded
                 result.variables = [[float(layout.decode_one(i, v)) for i, v in enumerate(row)]
                                     for row in result.variables]
+            if cat_levels is not None:          # catcma: as the cores' answers, reals and label indices
+                nr = len(layout.real)
+                rows = [list(map(float, x)) for x in result.variables]
+                result.binary_variables = [[int(round(v)) for v in x[nr:]] for x in rows]
+                result.variables = [x[:nr] for x in rows]
         finally:
             if log is not None:
                 log.close()

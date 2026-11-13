@@ -202,9 +202,10 @@ void methods()
             std::find(sc::local_names().begin(), sc::local_names().end(), name) != sc::local_names().end() ||
             std::find(sc::population_names().begin(), sc::population_names().end(), name) !=
                 sc::population_names().end() ||
-            std::find(sc::strategy_names().begin(), sc::strategy_names().end(), name) != sc::strategy_names().end())
+            std::find(sc::strategy_names().begin(), sc::strategy_names().end(), name) != sc::strategy_names().end() ||
+            name == "catcma")
             continue;                               // one objective only: single(), local_solvers(), population(),
-                                                    // test_strategy
+                                                    // test_strategy; catcma (categorical variables): test_catcma_run
         for (int which = 0; which < 2; ++which) {
             Counted c = which == 0 ? zdt1() : constrained();
             const sc::Result r = sc::run(name, c.P, 1e-3, false, 0.0, 20, budget, 7, {}, {}, 0, {});
