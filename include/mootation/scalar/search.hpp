@@ -81,9 +81,22 @@
 //     memetic_every, its earlier points free (as SRCH-6); it does not see the
 //     local searches' points (no Lamarckian step), they only enter the answer.
 //     With memetic_every as large as the budget it is the global solver and
-//     then local searches at the end, as polish.
+//     then local searches at the end, as polish. lamarck (SRCH-12) writes
+//     them back.
 //   SRCH-8. A local search's result is the inner solver's answer; worse means
 //     more violating, then larger f (Deb).
+//   SRCH-12. memetic's lamarck (task 24, §24.1.1; off by default, and then
+//     SRCH-7 holds): on — every local search's answer x' (its values from
+//     the archive) is a seed of the global solver's later runs, the newest
+//     first, with warm_start = on handed to it (scalar.hpp POP-7: the first
+//     population's first rows; a single solver starts from the best seed);
+//     the strategy's x0 is no longer the global run's x0 (the oldest seed
+//     where it was evaluated);
+//     share — each x' is written with probability lamarck_share (0.25;
+//     Houck et al. 1997: 20-40 %), the coins from mt19937(start_seed(seed,
+//     2^32)) in the order of the searches. The global run then differs from
+//     the last phase's, and its earlier points are free only where met
+//     again. lamarck and lamarck_share go to the settings only where given.
 //   SRCH-9. memetic: a phase whose global run spends nothing is the last (as
 //     RST-8): the global solver has stopped by its own criteria (rerun, it
 //     evaluates nothing new), and the local searches alone would go on in
@@ -480,7 +493,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     using namespace strategy;
     StrategyKnobs k("memetic", knobs,
                     {"inner", "local_solver", "memetic_every", "memetic_points", "memetic_pick", "local_share",
-                     "start_budget", "threads", "min_dist", "min_df"});
+                     "start_budget", "threads", "min_dist", "min_df", "lamarck", "lamarck_share"});
     const Inner global = k.inner("inner");
     const Inner local = k.inner("local_solver");
     const long long every = k.whole("memetic_every", 1000, 1), n_points = k.whole("memetic_points", 1, 1);
@@ -489,6 +502,15 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     const long long cap = k.whole("start_budget", 0, 0), threads = k.whole("threads", 1, 1);
     const double min_dist = k.number("min_dist", 1e-3), min_df = k.number("min_df", 1e-8);
     if (!(share > 0.0 && share < 1.0)) throw std::invalid_argument("memetic: local_share must be in (0, 1)");
+    const std::string lamarck =                                                                 // SRCH-12
+        k.find("lamarck") ? k.word("lamarck", "off", {"off", "on", "share"}) : std::string("off");
+    const double lamarck_share = lamarck == "share" ? k.number("lamarck_share", 0.25) : 1.0;
+    if (!(lamarck_share >= 0.0 && lamarck_share <= 1.0))
+        throw std::invalid_argument("memetic: lamarck_share must be in [0, 1]");
+    std::mt19937 coins(start_seed(seed, std::uint64_t{1} << 32));
+    std::vector<Point> written;                       // the local searches' answers, the newest first
+    Inner seeded = global;
+    if (lamarck != "off") seeded.knobs.push_back({"warm_start", Knob{true, "on", 0.0}});
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
@@ -507,7 +529,17 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
             const double before = ev.used();
             g.fresh = std::min(every, search::left(ev));                                          // SRCH-7
             g.allowance += g.fresh;
-            strategy::round(ev, global, {g}, 1, pop_size);
+            if (!written.empty()) {                                                               // SRCH-12
+                g.start = start;
+                g.start.has_seed_points = true;
+                g.start.seed_points = written;
+                if (start.has_x0 && ev.known(start.x0)) {     // x0, if evaluated: the oldest seed
+                    const std::size_t i = ev.index(start.x0);
+                    g.start.seed_points.push_back(Point{ev.X[i], ev.F[i], ev.G[i]});
+                }
+                g.start.has_x0 = false;
+            }
+            strategy::round(ev, lamarck == "off" ? global : seeded, {g}, 1, pop_size);
             const bool global_done = ev.used() == before;                                         // SRCH-9
             ++phases;
             // the local searches' starts: the archive's best, or the best and then the farthest among the best tenth
@@ -558,6 +590,10 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
             for (std::size_t q = 0; q < res.size(); ++q) {
                 const search::Found b = search::found(res[q]);
                 if (b.ok) log.add(b.x, b.f, searches + static_cast<long long>(q));
+                if (lamarck == "off" || !b.ok) continue;                                          // SRCH-12
+                if (lamarck == "share" && !(rnd::uniform01(coins) < lamarck_share)) continue;
+                const std::size_t i = ev.index(b.x);                                             // in the archive
+                written.insert(written.begin(), Point{ev.X[i], ev.F[i], ev.G[i]});
             }
             searches += static_cast<long long>(res.size());
             if (global_done) break;                                                               // SRCH-9

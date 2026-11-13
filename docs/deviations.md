@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-281 items: 264 yes, 17 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+288 items: 264 yes, 24 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -627,6 +627,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | LOCAL-4 | Without x0, a bound that is not finite is refused: there is no box to draw the plan in, and no frame is put on x (addendum 1, §3.1). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-5 | eki starts as lm does, from x0 or the plan's best point: its initial ensemble around that point by default (eki_init = around, EKI-3), or a design in the box (sobol, lhs; finite bounds). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-6 | lm_gauge = on needs the problem's gauge_basis; its k and \|\|J N\|\| / \|\|J\|\| at lm's solution (lm.hpp LMN-4) go to the settings (lm_gauge_k, lm_gauge_ratio). | yes | `scalar.hpp` |
+| `scalar` | LS-1 | Off by default. The hook's calls of the problem are counted against the budget as every solver's (and a solver it runs within, on ctx.problem, is that solver's run, bit for bit); past the budget the call throws and th... | no: option | `scalar.hpp` |
+| `scalar` | LS-2 | Off by default. x' with f known (has_f) is planted, not evaluated: free, as a seed point; with constraints or residuals it is evaluated all the same (its constraint values, its residuals are not known). | no: option | `scalar.hpp` |
+| `scalar` | LS-3 | Off by default. The declared cost is charged to the budget after the call (as THE SUCCESS's, SUCC-2); a hook that neither calls the problem nor declares a cost spends nothing (the owner's decision of 13.11), counted a... | no: option | `scalar.hpp` |
+| `scalar` | LS-4 | Off by default. x' of the wrong length or not finite, or an exception of the hook (other than the budget's end), ends the run with the message (UO-1). | no: option | `scalar.hpp` |
+| `scalar` | LS-5 | Off by default. In a strategy's start the counts (calls, cost, time) are the start's and go to the run's when the round merges the start, in the order of the starts. | no: option | `scalar.hpp` |
+| `scalar` | LS-6 | Off by default. The run's answer is the evaluator's best, as every method's; the hook's state comes back in Result::ls_state. | no: option | `scalar.hpp` |
 | `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
@@ -640,6 +646,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-6 | halving: a round reruns each arm with its whole allowance so far; its earlier points come from the archive, free, and only what goes beyond costs (a solver whose run does not depend on the budget repeats itself exactl... | yes | `search.hpp` |
 | `search` | SRCH-7 | memetic: the global solver is rerun with its allowance grown by memetic_every, its earlier points free (as SRCH-6); it does not see the local searches' points (no Lamarckian step), they only enter the answer. | yes | `search.hpp` |
 | `search` | SRCH-8 | A local search's result is the inner solver's answer; worse means more violating, then larger f (Deb). | yes | `search.hpp` |
+| `search` | SRCH-12 | memetic's lamarck (task 24, §24.1.1; off by default, and then SRCH-7 holds): on — every local search's answer x' (its values from the archive) is a seed of the global solver's later runs, the newest first, with warm_s... | no: option | `search.hpp` |
 | `search` | SRCH-9 | memetic: a phase whose global run spends nothing is the last (as RST-8): the global solver has stopped by its own criteria (rerun, it evaluates nothing new), and the local searches alone would go on in phases of a few... | yes | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |

@@ -151,6 +151,7 @@
 // ============================================================================
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -216,6 +217,11 @@ struct Result {
     long long success_calls = 0;
     double success_spent = 0.0;
     long long success_at = -1;
+    // THE USER'S LOCAL SEARCH (task 24, §24.1.1): the hook's calls, the
+    // budget it declared, its time (seconds), and its last state
+    long long hook_calls = 0;
+    double hook_spent = 0.0, hook_seconds = 0.0;
+    Vec ls_state;
 };
 
 // How the first points come: seed points (planted), rows of a design
@@ -226,6 +232,7 @@ struct Start {
     bool has_seed_points = false, has_design = false;
     Vec x0;                          // a start in the problem's coordinates (task 18, addendum 1, §3.1)
     bool has_x0 = false;
+    Vec ls_state;                    // the user's local search's state (task 24, §24.1.1)
 };
 
 // The names: the presets of `scalar`, then the methods beside it, then the
@@ -491,6 +498,9 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     r.success_calls = ev.success_calls;
     r.success_spent = ev.success_spent;
     r.success_at = ev.success_at;
+    r.hook_calls = ev.hook_calls;
+    r.hook_spent = ev.hook_spent;
+    r.hook_seconds = ev.hook_seconds;
     r.improvements = ev.improvements.records();
     for (char f : ev.failed) r.n_failed += f ? 1 : 0;
     return r;
@@ -1077,6 +1087,144 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //   LOCAL-6. lm_gauge = on needs the problem's gauge_basis; its k and ||J N||
 //     / ||J|| at lm's solution (lm.hpp LMN-4) go to the settings
 //     (lm_gauge_k, lm_gauge_ratio).
+// ── THE USER'S LOCAL SEARCH (task 24, §24.1.1) ──────────────────────────────
+// The solver "local_search": the problem's local_search hook (evaluator.hpp),
+// called once from the start — x0, else the best of the initial plan (as
+// lm's, LOCAL-4) — with the problem through this run's evaluator, the budget,
+// the run's generator and the start's state. It is a solver like lbfgsb for
+// the strategies: inner = {"solver": "local_search"} is `ls = user` of the
+// task (multistart, mlsl, ils, basin_hopping, halving, tiktak, memetic's
+// local_solver). C++ only for now (not in names(): neither Python nor the
+// campaigns name it).
+// READINGS (all of them off by default: the solver local_search only):
+//   LS-1. Off by default. The hook's calls of the problem are counted against
+//     the budget as every solver's (and a solver it runs within, on ctx.problem,
+//     is that solver's run, bit for bit); past the budget the call throws and
+//     the search ends there, its answer the archive's best.
+//   LS-2. Off by default. x' with f known (has_f) is planted, not evaluated:
+//     free, as a seed point; with constraints or residuals it is evaluated all
+//     the same (its constraint values, its residuals are not known). Without f, x' is evaluated
+//     (counted; nothing where it is in the archive already).
+//   LS-3. Off by default. The declared cost is charged to the budget after the
+//     call (as THE SUCCESS's, SUCC-2); a hook that neither calls the problem nor
+//     declares a cost spends nothing (the owner's decision of 13.11), counted
+//     apart (hook_calls, hook_seconds).
+//   LS-4. Off by default. x' of the wrong length or not finite, or an
+//     exception of the hook (other than the budget's end), ends the run with the
+//     message (UO-1).
+//   LS-5. Off by default. In a strategy's start the counts (calls, cost, time)
+//     are the start's and go to the run's when the round merges the start, in
+//     the order of the starts.
+//   LS-6. Off by default. The run's answer is the evaluator's best, as every
+//     method's; the hook's state comes back in Result::ls_state.
+inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                             long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
+                             const Start& start)
+{
+    const std::size_t n = P.lo.size();
+    if (!P.local_search) throw std::invalid_argument("local_search: the problem gives no local_search hook");
+    if (P.m != 1)
+        throw std::invalid_argument("local_search is a single-objective solver: n_objs must be 1, got " +
+                                    std::to_string(P.m));
+    if (start.has_x0 && start.x0.size() != n)
+        throw std::invalid_argument("local_search: x0 has " + std::to_string(start.x0.size()) + " values for " +
+                                    std::to_string(n) + " variables");
+    if (!start.has_x0 && !start.has_seed_points && !start.has_design)
+        for (std::size_t j = 0; j < n; ++j)
+            if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
+                throw std::invalid_argument("local_search: a bound that is not finite needs a start x0 (LOCAL-4)");
+    std::vector<std::string> ignored;
+    for (const auto& kv : knobs) ignored.push_back(kv.first);
+    std::sort(ignored.begin(), ignored.end());
+    Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    std::mt19937 rng(seed);
+    Vec x0;
+    // the problem through this evaluator (LS-1): its values and gradients from the archive
+    Problem Q = P;
+    Q.stop_at = -std::numeric_limits<double>::infinity();     // THE TARGET is this evaluator's
+    Q.accept_success = nullptr;
+    Q.local_search = nullptr;
+    Q.known_point = nullptr;
+    Q.blocks.clear();                                          // r~ comes scaled (SO-1)
+    Q.weights.clear();
+    Q.evaluate = nullptr;
+    Q.value_grad = nullptr;
+    Q.gradient = nullptr;
+    Q.residuals = nullptr;
+    Q.jacobian = nullptr;
+    Q.residuals_jac = nullptr;
+    if (P.has_residuals()) {
+        Q.residuals = [&ev](const Vec& x, Vec& r) { r = ev.R[ev.index(x)]; };
+        if (P.has_gradient()) Q.jacobian = [&ev](const Vec& x, Rows& J) { J = ev.jac(ev.index_grad(x)); };
+    } else {
+        Q.evaluate = [&ev](const Vec& x, Vec& f, Vec& g) {
+            const std::size_t i = ev.index(x);
+            f = ev.F[i];
+            g = ev.G[i];
+        };
+        if (P.has_gradient())
+            Q.gradient = [&ev](const Vec& x, Vec& gf, Rows& JG) {
+                const std::size_t i = ev.index_grad(x);
+                gf = ev.grad(i);
+                JG = ev.jac_g(i);
+            };
+    }
+    LocalOutcome out;
+    bool returned = false;
+    try {
+        if (start.has_x0) {
+            x0 = start.x0;
+        } else {
+            const auto idx = detail::first_points(ev, start, pop_size, rng, true);
+            x0 = ev.X[ev.answer().at(0)];
+            (void)idx;
+        }
+        LocalContext ctx{Q, static_cast<long long>(static_cast<double>(ev.budget) - ev.used()), rng, {}};
+        const auto t0 = std::chrono::steady_clock::now();
+        ++ev.hook_calls;
+        try {
+            out = P.local_search(x0, ctx, start.ls_state);
+            returned = true;
+        } catch (const BudgetSpent&) {
+            ev.hook_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            throw;
+        } catch (const SubBudgetSpent&) {
+            ev.hook_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+            throw;
+        } catch (const std::exception& e) {
+            throw std::runtime_error(std::string("local_search: the hook failed: ") + e.what() + " (LS-4)");
+        }
+        ev.hook_seconds += std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+        if (out.x.size() != n)
+            throw std::runtime_error("local_search: the hook gave x' of " + std::to_string(out.x.size()) +
+                                     " values for " + std::to_string(n) + " variables (LS-4)");
+        for (double v : out.x)
+            if (!std::isfinite(v)) throw std::runtime_error("local_search: the hook gave x' not finite (LS-4)");
+        if (out.has_f && !std::isfinite(out.f))
+            throw std::runtime_error("local_search: the hook gave f(x') not finite (LS-4)");
+        if (!(out.cost >= 0.0) || !std::isfinite(out.cost))
+            throw std::runtime_error("local_search: the hook declared a cost that is not a number >= 0 (LS-4)");
+        ev.hook_spent += out.cost;                                                         // LS-3
+        if (out.has_f && P.n_cons == 0 && !P.has_residuals()) {                            // LS-2
+            const bool fresh = !ev.known(out.x);
+            ev.plant(out.x, {out.f}, {});
+            if (fresh && P.known_point) P.known_point(out.x, {out.f});                     // to the strategy's run
+        } else {
+            ev.index(out.x);
+        }
+    } catch (const BudgetSpent&) {
+    } catch (const SubBudgetSpent&) {
+    }
+    ev.over = true;
+    const std::vector<std::size_t> idx = ev.answer();
+    ev.record(true);
+    Result r = detail::result_of(ev, idx);
+    r.ignored = ignored;
+    if (returned) r.ls_state = out.state;
+    r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
+    return r;
+}
+
 inline const std::vector<std::string>& local_names()
 {
     static const std::vector<std::string> v{"lm", "lbfgsb", "eki"};
@@ -1710,6 +1858,9 @@ inline Result detail::run_named(const std::string& name, const Problem& P, doubl
     if (name == "mosqp")
         return run_mosqp_named(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, knobs, std::move(observer),
                                record_every);
+    if (name == "local_search")                                                       // task 24, §24.1.1
+        return run_user_local(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                              record_every, start);
     if (name == "boostdms")
         return run_boostdms_named(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, knobs,
                                   std::move(observer), record_every, start);

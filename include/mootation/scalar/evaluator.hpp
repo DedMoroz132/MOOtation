@@ -110,6 +110,7 @@
 #include <functional>
 #include <limits>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -127,6 +128,32 @@ struct SubBudgetSpent {};    // the current subproblem's allowance is spent
 struct FailedPoint {};       // sqp met a failed evaluation (solvers.hpp)
 
 using Rows = std::vector<std::vector<double>>;
+
+struct Problem;
+
+// THE USER'S LOCAL SEARCH (task 24, §24.1.1; scalar.hpp, run_user_local):
+// what Problem::local_search is handed — the problem through the run's
+// evaluator (every call counted against the budget, kept in the archive), the
+// budget it may spend, the run's generator (draw with rnd:: only), and the
+// variables it may move (empty: all) — and what it gives back: x', f(x')
+// where it knows it (x' is then not evaluated again), the budget it spent
+// besides the problem's calls (declared), and its state (a vector of the
+// hook's own meaning: lambda and scales of LM, multipliers of ALM, a step;
+// handed back at the next search of the same start where a strategy keeps it).
+struct LocalContext {
+    const Problem& problem;
+    long long budget;
+    std::mt19937& rng;
+    std::vector<char> mask;
+};
+
+struct LocalOutcome {
+    std::vector<double> x;
+    bool has_f = false;
+    double f = 0.0;
+    double cost = 0.0;
+    std::vector<double> state;
+};
 
 // The problem as the methods see it: n = lo.size() variables in [lo, hi], m
 // objectives, n_cons constraint values (the inequalities, g <= 0, then the
@@ -166,6 +193,12 @@ struct Problem {
     std::function<bool(const Vec& x)> accept_success;
     double post_at = std::numeric_limits<double>::infinity();
     double success_cost = 0.0;        // the budget one call spends (declared)
+    // THE USER'S LOCAL SEARCH (task 24, §24.1.1): the solver "local_search"
+    // (scalar.hpp) calls it once from its start: (x, ctx, state) -> outcome
+    std::function<LocalOutcome(const Vec& x, LocalContext& ctx, const Vec& state)> local_search;
+    // set by a strategy's start (strategy.hpp, View), not by the user: a
+    // point whose values are known, for the run's archive at the merge (LS-2)
+    std::function<void(const Vec& x, const Vec& f)> known_point;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }
@@ -212,6 +245,9 @@ public:
     long long success_calls = 0;       // THE SUCCESS: accept_success's calls,
     double success_spent = 0.0;        // ... their cost in the budget,
     long long success_at = -1;         // ... and the evaluations spent when it accepted
+    long long hook_calls = 0;          // THE USER'S LOCAL SEARCH: its calls,
+    double hook_spent = 0.0;           // ... the budget it declared spent,
+    double hook_seconds = 0.0;         // ... and its time (reported, never in a trajectory)
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
               int pop_size_, Observer obs, int record_every)
@@ -239,7 +275,7 @@ public:
     // What the budget is spent by: evaluations + grad_cost * grad_calls.
     double used() const
     {
-        return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls) + success_spent;
+        return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls) + success_spent + hook_spent;
     }
 
     // ── gradients (SO-2) ────────────────────────────────────────────────────

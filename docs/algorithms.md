@@ -160,7 +160,7 @@ with the same result, bit for bit; a point two starts evaluate counts once.
 | `tiktak` (Arnoud, Guvenen & Kleineberg 2019, 2023; task 19) | `inner` (a local solver), `tiktak_n` (100), `tiktak_share` (0.1), `start_points`, `start_budget` (0), `min_dist`, `min_df` |
 | `data_continuation` (task 19) | `inner`, `dc_stages` (the stages before the problem: `[[w_1, ...], {"window": [a, b]}, ...]`), `dc_share` (0.5), `min_dist`, `min_df` |
 | `pap` (Peng, Tang, Chen & Yao 2010; task 19) | `pap_members` (`[{"solver": "de", "np": 70}, {"solver": "pso", "np": 16}, {"solver": "cmaes", "np": 14}]`; members: `de`, `jade`, `shade`, `lshade`, `ga_sbx`, `ssga`, `g3_pcx`, `pso`, `spso2011`, `cmaes`), `pap_interval` (0: MAX_GEN / 20), `pap_size` (1) |
-| `memetic` | `inner` (the global solver), `local_solver`, `memetic_every` (1000), `memetic_points` (1), `memetic_pick` (`best`, `spread`), `local_share` (0.2), `start_budget`, `threads` |
+| `memetic` | `inner` (the global solver), `local_solver`, `memetic_every` (1000), `memetic_points` (1), `memetic_pick` (`best`, `spread`), `local_share` (0.2), `start_budget`, `threads`, `lamarck` (`off`, `on`, `share`: the local searches' answers seed the global solver's later runs, SRCH-12), `lamarck_share` (0.25) |
 
 `tiktak` evaluates `tiktak_n` design points, keeps the best `tiktak_share` of them
 and runs local searches from them in order of value, one a round, each from

@@ -237,6 +237,19 @@ public:
             };
         if (P_.jacobian)
             problem.jacobian = [this](const Vec& x, Rows& J) { J = get(x, Call::grad).J; };
+        problem.known_point = nullptr;
+        if (P_.m == 1 && P_.n_cons == 0 && !P_.has_residuals())
+            problem.known_point = [this](const Vec& x, const Vec& f) {      // planted (scalar.hpp LS-2)
+                const std::string key = key_of(x);
+                if (where_.count(key)) return;
+                Known k;
+                k.x = x;
+                k.f = f;
+                for (double v : f) k.bad = k.bad || !std::isfinite(v);
+                own.push_back(std::move(k));
+                where_[key] = own.size() - 1;
+                events_.push_back({own.size() - 1, 0, 0});
+            };
         // THE SUCCESS (evaluator.hpp SUCC-3): the start's run asks here; the
         // cost goes to the start's allowance, the verdict to the merge
         if (P_.accept_success) {
@@ -504,7 +517,12 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
     }
     for (std::size_t k = 0; k < n; ++k)
         if (error[k]) std::rethrow_exception(error[k]);
-    for (std::size_t k = 0; k < n; ++k) views[k]->merge_into(ev);
+    for (std::size_t k = 0; k < n; ++k) {
+        views[k]->merge_into(ev);
+        ev.hook_calls += out[k].hook_calls;           // the user's local search (scalar.hpp LS-5)
+        ev.hook_spent += out[k].hook_spent;
+        ev.hook_seconds += out[k].hook_seconds;
+    }
     return out;
 }
 

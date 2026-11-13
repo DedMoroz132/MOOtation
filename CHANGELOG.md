@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.1.1): the user's local search, in C++:
+  `scalar::Problem::local_search(x, ctx, state)` returning x', f(x') where
+  known, a declared cost and its state; the solver `"local_search"` calls it
+  from its start with the problem through the run's evaluator, the budget
+  and the run's generator — as the inner or local solver of every strategy
+  (`inner = {"solver": "local_search"}`). Its calls of the problem are
+  counted, a declared cost spent exactly, a hook that does neither spends
+  nothing; its calls, cost and time are counted apart (LS-1 ... LS-6).
+  memetic's `lamarck = off | on | share` (`lamarck_share`) writes the local
+  searches' answers back as seeds of the global solver (SRCH-12). Off by
+  default: runs as before.
 - Added (task 24, §24.2.5): multistart's `allowance = sequential` (each
   start, one after another, all the budget left, until the budget or the
   target; STRAT-11) and `start_points = around_x0` (x0 and x0 + N(0, σ²) per
