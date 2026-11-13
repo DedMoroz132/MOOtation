@@ -57,7 +57,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
               "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
-              "cma_weights", "cma_cmu", "cma_stop", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points", "sym",
+              "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points", "sym",
               "cv_rule", "cv_norm",
               "nadir_source",
               "drs_guard",

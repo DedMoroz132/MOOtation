@@ -119,6 +119,7 @@ _FALLBACK_TEXT = {
     "cma_weights": ("active", "positive"),
     "cma_cmu": ("tutorial2016", "hansen2009"),
     "cma_stop": ("spread", "h09"),
+    "cma_stagnation": ("h09", "either", "off"),
     "start_points": ("sobol", "lhs", "uniform", "halton_rand", "sobol_owen"),
     "cma_bounds": ("penalty", "none"),
     "ils_accept": ("better", "rw", "restart", "lsmc"),

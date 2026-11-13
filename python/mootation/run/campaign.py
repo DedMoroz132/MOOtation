@@ -237,6 +237,10 @@ class CampaignSpec:
     # instance 1 (the owner's decision of 01.11, §1.1)
     bbob_instance: str = "by_run"
     stop_at: float = 0.0
+    # One objective: meta.json's so.restarts, the runs of ipop, bipop and
+    # bipop_2009 (their "restarts" setting: regime, lambda, sigma0,
+    # evaluations, the criterion that stopped each), when true
+    keep_restarts: bool = False
     # One objective (task 20, §20.2.1; suite/wrap.hpp, campaign_so.py): the
     # wrappers of every problem, shift, rotate and perm in that order from the
     # run's x — an instance number each (0: off), or "by_run" (the run's
@@ -393,7 +397,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
              "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
              "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout",
-             "archive_cap", "bbob_instance", "stop_at", "wrap_perm", "wrap_rotate", "wrap_shift",
+             "archive_cap", "bbob_instance", "stop_at", "keep_restarts", "wrap_perm", "wrap_rotate", "wrap_shift",
              "wrap_shift_scale"}
     unknown = sorted(set(raw) - known)
     if unknown:
@@ -507,6 +511,9 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     if isinstance(stop_at, bool) or not isinstance(stop_at, (int, float)) or not stop_at >= 0:
         raise ConfigError("campaign.stop_at", f"a number >= 0 (0: never), not {stop_at!r}")
     spec.stop_at = float(stop_at)
+    spec.keep_restarts = raw.get("keep_restarts", False)
+    if not isinstance(spec.keep_restarts, bool):
+        raise ConfigError("campaign.keep_restarts", "true or false")
     for key in ("wrap_perm", "wrap_rotate", "wrap_shift"):
         v = raw.get(key, 0)
         if not ((isinstance(v, int) and not isinstance(v, bool) and v >= 0) or v == "by_run"):

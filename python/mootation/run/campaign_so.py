@@ -317,6 +317,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             "repairs": {k: int(res.repairs.get(k, 0)) for k in ("checked", "out_children", "out_vars")},
             **_peaks(p, res, so),
             **({"stop_at": spec.stop_at} if spec.stop_at > 0 else {}),
+            **({"restarts": json.loads(dict(res.settings)["restarts"])}
+               if spec.keep_restarts and "restarts" in dict(res.settings) else {}),
             **({"wrap": wrap} if wrap is not None else {})},
         final=({} if best is None else {"f": best[2], "delta_f": delta(best[2]), "cv": best[3],
                                          "fe_best": best[0], "grad_calls_best": best[1]}),

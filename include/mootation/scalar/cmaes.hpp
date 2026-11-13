@@ -74,6 +74,10 @@
 //     iterations as their window holds (10 + ⌈30D/λ⌉, D).
 //   CMA-4. "Numerically constant": m_i + δ_i == m_i in double for every i
 //     (NoEffectAxis), for some i (NoEffectCoor).
+//   CMA-6. cma_stagnation: h09 (the default) is CMA-2's reading, both arrays;
+//     either holds when one of them stagnates; off never stops a run on it.
+//     H09's "respectively, in the two arrays" admits the first two; the
+//     archive's runs (cmaes.m 3.30) are not read here (task 18, the f23 probe).
 //   CMA-5. The eigendecomposition of C at every iteration, where H09 makes it
 //     every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves time and changes
 //     no update but the sampling's B and D between decompositions.
@@ -94,10 +98,12 @@
 
 namespace mootation::scalar {
 
-// The weights and c_μ: the tutorial's (the default) or H09's.
+// The weights and c_μ: the tutorial's (the default) or H09's; H09's
+// Stagnation (CMA-6): in both arrays (h09, CMA-2), in either, or never.
 struct CMAESOptions {
     enum class Weights { active, positive } weights = Weights::active;
     enum class Cmu { tutorial2016, hansen2009 } cmu = Cmu::tutorial2016;
+    enum class Stagnation { h09, either, off } stagnation = Stagnation::h09;
 };
 
 class CMAES {
@@ -126,7 +132,8 @@ public:
 
     CMAES(std::vector<double> mean, double sigma, std::mt19937& rng, int popsize = 0,
           const CMAESOptions& options = CMAESOptions())
-        : m_(std::move(mean)), n_(m_.size()), sigma_(sigma), sigma0_(sigma), rng_(rng)
+        : m_(std::move(mean)), n_(m_.size()), sigma_(sigma), sigma0_(sigma), rng_(rng),
+          stagnation_(options.stagnation)
     {
         const double n = static_cast<double>(n_);
         const bool positive = options.weights == CMAESOptions::Weights::positive;
@@ -377,7 +384,7 @@ public:
         const double l_max = ev_.back(), l_min = ev_.front();
         if (scale > 1e20 * std::sqrt(l_max)) return Stop::tol_up_sigma;
         const std::size_t window = static_cast<std::size_t>(std::ceil(0.2 * t + 120.0 + 30.0 * n / lam));
-        if (len >= window && window >= 20) {                                      // CMA-2
+        if (stagnation_ != CMAESOptions::Stagnation::off && len >= window && window >= 20) {   // CMA-2, CMA-6
             auto median20 = [](std::vector<double> v) {
                 std::sort(v.begin(), v.end());
                 return (v[9] + v[10]) / 2.0;
@@ -387,7 +394,8 @@ public:
                 const std::vector<double> oldest(start, start + 20), newest(h.end() - 20, h.end());
                 return !(median20(newest) < median20(oldest));
             };
-            if (stagnant(best_hist_) && stagnant(median_hist_)) return Stop::stagnation;
+            const bool b = stagnant(best_hist_), m = stagnant(median_hist_);
+            if (stagnation_ == CMAESOptions::Stagnation::either ? (b || m) : (b && m)) return Stop::stagnation;
         }
         if (!(l_min > 0.0) || l_max / l_min > 1e14) return Stop::condition_cov;
         const std::size_t axis = n_ - 1 - static_cast<std::size_t>(g_ % static_cast<long long>(n_));
@@ -405,6 +413,7 @@ private:
     std::size_t n_;
     double sigma_, sigma0_;
     std::mt19937& rng_;
+    CMAESOptions::Stagnation stagnation_;
     std::vector<double> ev_ = std::vector<double>(n_, 1.0);                   // C's eigenvalues, increasing
     std::vector<double> best_hist_, median_hist_;                              // per iteration (CMA-1)
     std::vector<bool> equal_hist_;

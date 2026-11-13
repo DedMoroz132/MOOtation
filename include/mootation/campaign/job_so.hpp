@@ -101,6 +101,9 @@ public:
                 scalar::run(job_.algorithm, problem(), kEqTol, false, 0.0, static_cast<int>(job_.pop), job_.budget(),
                             static_cast<unsigned>(job_.seed), scalar_knobs(job_.params), {}, 0, st);
             if (cec_ > 0) peaks_ = peaks(res);
+            if (spec_.keep_restarts)                     // [campaign] keep_restarts: ipop, bipop, bipop_2009's runs
+                for (const auto& [k, v] : res.settings)
+                    if (k == "restarts") restarts_ = json::parse(v);
             repairs_ = res.repairs;
         } catch (const std::exception& e) {
             out.status = "failed";
@@ -193,6 +196,7 @@ public:
         s.set("repairs", rep);
         if (cec_ > 0) s.set("peaks", peaks_);
         if (spec_.stop_at > 0.0) s.set("stop_at", V::number(spec_.stop_at));
+        if (restarts_.kind == V::Kind::Array) s.set("restarts", restarts_);
         if (wrapped_) s.set("wrap", wrap_meta());
         meta.set("so", s);
         V fin = V::object();
@@ -577,6 +581,7 @@ private:
     bool incompatible_ = false;
     int cec_ = 0;                                       // a CEC 2013 problem's number
     json::Value peaks_;
+    json::Value restarts_;                            // keep_restarts: the strategy's "restarts" setting
     json::Value meta_;
 };
 

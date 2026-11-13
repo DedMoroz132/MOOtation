@@ -12,6 +12,10 @@
 //   - bipop_2009 on bbob f15 (Rastrigin, rotated), D = 3: below 1e-8; its
 //     settings; the same seed, the same run; a checksum, MSVC = clang;
 //   - cma_bounds = none evaluates beyond the box, penalty does not;
+//   - cma_stagnation (CMA-6): off stops no run on Stagnation, either stops
+//     some (its runs differ from h09's, so not a count to compare); named
+//     h09 is the default run; given, it is in the settings, by default not
+//     (a default run's settings as before); a word it does not know refused;
 //   - refusals: a bound that is not finite, constraints.
 // ============================================================================
 
@@ -242,6 +246,35 @@ void lean()
               std::to_string(r2.evaluations) + " evaluations)");
 }
 
+// CMA-6 on bbob f23 (Katsuura), D = 5, where H09's Stagnation ends most runs
+void stagnation_knob()
+{
+    auto stops = [](const sc::Result& r, const char* what) {
+        int k = 0;
+        for (const auto& run : mootation::json::parse(setting(r, "restarts")).items)
+            if (run.items[4].s == what) ++k;
+        return k;
+    };
+    auto go = [](const char* w) {
+        sc::Knobs kn{{"cma_bounds", word("none")}};
+        if (w) kn.push_back({"cma_stagnation", word(w)});
+        return sc::run("bipop_2009", bbob(23, 5), 1e-6, false, 0.0, 10, 100000, 1, kn, {}, 0, {});
+    };
+    const sc::Result h09 = go(nullptr), off = go("off"), either = go("either"), named = go("h09");
+    const int s_h09 = stops(h09, "Stagnation"), s_off = stops(off, "Stagnation"), s_either = stops(either, "Stagnation");
+    check(s_h09 > 0 && s_off == 0 && s_either >= 1 && setting(h09, "cma_stagnation").empty() &&
+              setting(off, "cma_stagnation") == "off" && setting(named, "restarts") == setting(h09, "restarts"),
+          "bipop_2009 on bbob f23, D = 5: Stagnation stops " + std::to_string(s_h09) + " runs (h09), " +
+              std::to_string(s_either) + " (either), " + std::to_string(s_off) + " (off); h09 named = default");
+    std::string why;
+    try {
+        go("never");
+    } catch (const std::invalid_argument& e) {
+        why = e.what();
+    }
+    check(why == "cma_stagnation = 'never': h09, either, off", "cma_stagnation = never: " + why);
+}
+
 void refusals()
 {
     std::string why;
@@ -275,6 +308,7 @@ int main()
     target();
     target_in_regime_2();
     lean();
+    stagnation_knob();
     refusals();
     std::printf("%s (%d failed)\n", g_failed == 0 ? "PASS" : "FAIL", g_failed);
     return g_failed == 0 ? 0 : 1;

@@ -1657,6 +1657,12 @@ strategy's later rounds and restarts included), `meta.json`'s `so.stop_at`
 names it. 0, the default, never stops; a problem without `f_opt` runs its
 budget. `minimize(..., f_stop=)` is the same, absolute.
 
+`[campaign] keep_restarts = true` keeps the runs of `ipop`, `bipop` and
+`bipop_2009` in `meta.json`'s `so.restarts`, one row each: the regime (0 the
+first run, 1 large, 2 small), λ, σ⁰, the evaluations and the criterion that
+stopped it (H09's, or `budget`: the budget, the target or a small run's cap).
+Off by default; both engines write the same rows.
+
 A run at one objective counts the points its method makes outside the box
 (task 20, §20.2.2; Kononova et al., Inf. Sci. 581, 2021, the multi-objective
 runs' `oob_share`): `meta.json`'s `so.repairs` has `checked` (the points made),
