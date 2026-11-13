@@ -26,7 +26,9 @@
 //               hash of (seed, j) — the same points as designs.py's
 //   lhs         the maximin Latin hypercube of designs.py (Morris & Mitchell
 //               1995, its annealing and its two departures), its random
-//               choices from mt19937(seed), then a point drawn in each cell
+//               choices from mt19937(seed), then a point drawn in each cell;
+//               it keeps two n x n matrices (16 n^2 bytes: 1.6 GB at n =
+//               10 000) and warns past 1 GiB (mootation::warn)
 // ============================================================================
 
 #include <algorithm>
@@ -42,6 +44,7 @@
 #include "detmath.hpp"
 #include "random.hpp"
 #include "sobol.hpp"
+#include "warn.hpp"
 
 namespace mootation::designs {
 
@@ -381,6 +384,16 @@ inline std::vector<int> maximin_lhs(std::size_t n, std::size_t k, G& g)
 
 inline std::vector<double> lhs(std::size_t n, int d, std::int64_t seed)
 {
+    // the annealing keeps two n x n matrices of doubles (D2, T), and its
+    // distances are updated by accumulated steps, so that it cannot do
+    // without them and give the same design (task 24, §24.3.2): a large n is
+    // warned of, and the design is as before
+    const double bytes = 2.0 * 8.0 * static_cast<double>(n) * static_cast<double>(n);
+    if (bytes > 1073741824.0)
+        mootation::warn("lhs: " + std::to_string(n) + " points keep two " + std::to_string(n) + " x " +
+                        std::to_string(n) + " matrices, about " +
+                        std::to_string(static_cast<long long>(bytes / 1073741824.0 + 0.5)) +
+                        " GiB; sobol, sobol_owen and halton_rand need no such memory");
     std::mt19937 g(seed32(seed));
     const std::size_t k = static_cast<std::size_t>(d);
     const auto L = maximin_lhs(n, k, g);

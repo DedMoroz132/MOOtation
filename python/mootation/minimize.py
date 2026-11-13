@@ -389,10 +389,16 @@ def minimize(
                 1/2 ||r||^2 and fn None; jac(x): their Jacobian (rows), with
                 residuals only; lm needs residuals, and lm and lbfgsb take no
                 constraints. x0: the start, where a bound is -inf / +inf (lm,
-                lbfgsb) or instead of the initial plan. A call of grad or jac is
-                one grad_call, counted at grad_cost (a knob, 1) against the
-                budget beside the evaluations (result.grad_calls); finite
-                differences are evaluations. A run with residuals answers
+                lbfgsb) or instead of the initial plan. The population methods
+                (de ... spso2011) and ipop / bipop ignore x0, init and
+                seed_population and report them in result.ignored (sep_cmaes
+                takes x0 as its mean); the C++ knob warm_start = "on" makes
+                them the first population's first rows, ipop / bipop's x0 the
+                first run's mean (task 24, §24.4.1; scalar.hpp POP-7,
+                restarts.hpp RST-9) — not yet a knob of minimize. A call of
+                grad or jac is one grad_call, counted at grad_cost (a knob,
+                1) against the budget beside the evaluations
+                (result.grad_calls); finite differences are evaluations. A run with residuals answers
                 result.profile(j, ...) (mootation.scalar).
     gauge_basis  gauge_basis(x): the n x k directions (rows of k) along which
                 the residuals do not change to first order; lm takes them

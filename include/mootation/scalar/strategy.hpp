@@ -104,7 +104,16 @@
 //     increase and at a point not above the threshold; OQ-5 a local solution
 //     is the minima log's (min_dist, min_df), the same minimum found again
 //     raises its maxdist; an infeasible one is not kept; OQ-6 the trial
-//     points are start 0's x0, where the start has one, and the design's.
+//     points are start 0's x0, where the start has one, and the design's;
+//     OQ-7 the number of searches is not the paper's: on the six-hump
+//     camelback, 1000 uniform trial points start 22 searches where the
+//     paper's 846 OptQuest points start 9 (§4, Figure 2). The likely causes:
+//     the trial points (scatter search crowds them about good points, where
+//     the distance filter rejects them; uniform points reach every basin,
+//     and the merit filter's threshold rises over the bad ones), and maxdist
+//     (a minimum found from one start has the radius of that start only, so
+//     the distance filter is weak until a basin was entered twice). The
+//     filters are §3.4's; the comparison is of the order, a few per cent.
 //   STRAT-11. allowance = sequential (task 24, §24.2.5; off by default:
 //     even, STRAT-3) runs multistart's starts one after another, each with
 //     all the budget left (its floor), until the budget or the target is
