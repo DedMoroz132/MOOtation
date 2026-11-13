@@ -140,6 +140,7 @@ _FALLBACK_TEXT = {
     "if_range": ("pool", "alg1"),
     "nrv_archive": ("letter", "platemo"),
     "nrv_pool": ("letter", "platemo"),
+    "isde_directions": ("lattice", "exact"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 _FALLBACK_JSON = ("dc_stages", "pap_members")

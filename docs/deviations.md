@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-403 items: 316 yes, 30 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+404 items: 316 yes, 31 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -164,6 +164,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `isde_rd` | ISDE-8 (FIXED 2026-09-05) | Alg.3 line 13, P = P ∪ o, is written INSIDE the "for each p in P_k" loop, so the line-10 partner ("randomly choose q from P") is drawn from P as it grows during the generation and can be an offspring bred earlier in t... | no: fixed | `isde_rd.hpp` |
 | `isde_rd` | ISDE-9 (FIXED 2026-09-06, full-paper checklist) | Alg.3 line 2 only ASSIGNS the initial population to the subregions; the quota selection (line 17 = Alg.1) sits inside the generation loop. | no: fixed | `isde_rd.hpp` |
 | `isde_rd` | ISDE-10 (FIXED 2026-09-06, full-paper checklist) | Alg.1 line 6 / §II-C Case 2: "randomly select S_k − \|P_k\| individuals from P" — DISTINCT members of P that are not already in P_k (partial Fisher–Yates), the reading used for the same rule in moead_m2m / sms_m2m. | no: fixed | `isde_rd.hpp` |
+| `isde_rd` | ISDE-11 (READING; knob isde_directions, off by default: lattice) | The run-layer switch of ISDE-2: lattice keeps the Das-Dennis round-up of K; exact honours K through set_exact_directions(true), the way moead_m2m and sms_m2m build their subregions. | no: option | `isde_rd.hpp` |
 | `dhea` | DHEA-1 (FIXED 2026-09-05, second primary-source pass) | §Mating selection: binary tournament (dominance→Knee→Div, "select one solution randomly if all the three principles fail"), "Repeat until N solutions are selected" — the mating pool P' holds N winners. | no: fixed | `dhea.hpp` |
 | `dhea` | DHEA-4 (ARBITRATED) | Alg.1 line 6-7 passes FrontNo to MatingSelection, but the prose defines the first tournament level as "If one solution is dominated by the other" — a pairwise test, not a rank comparison. | yes | `dhea.hpp` |
 | `dhea` | DHEA-2 (MINOR) | w (the local nadir) with protection against zero components (1e-12); cos is clamped to [−1,1]. | yes | `dhea.hpp` |

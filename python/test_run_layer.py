@@ -7610,7 +7610,8 @@ def readings_knobs_of_2026_11_02():
              ("rd_emo", "rd_ideal", "running", "origin"),         # 2026-11-13 (RDE-9)
              ("if_maoea", "if_range", "pool", "alg1"),          # 2026-11-13 (IF-MaOEA-12)
              ("nrv_moea", "nrv_archive", "letter", "platemo"),   # 2026-11-13 (NRV-3)
-             ("nrv_moea", "nrv_pool", "letter", "platemo")]      # 2026-11-13 (NRV-4)
+             ("nrv_moea", "nrv_pool", "letter", "platemo"),      # 2026-11-13 (NRV-4)
+             ("isde_rd", "isde_directions", "lattice", "exact")]  # 2026-11-13 (ISDE-11)
     for alg, knob, dflt, other in cases:
         d = minimize(d2.evaluate, algorithm=alg, **k)
         n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)
@@ -7619,7 +7620,9 @@ def readings_knobs_of_2026_11_02():
         assert not o.ignored, (alg, knob, o.ignored)
         # aprd's slots and maoea_iamd's classification rules agree on DTLZ2 (CV = the
         # distance variables under every rule; test_core_readings checks the sets)
-        if alg != "aprd" and knob not in ("cv_rule", "cv_norm", "clia_rpil"):
+        # isde_rd's default K = 10 is on the lattice at M = 3 (test_core_readings
+        # checks exact where it is not)
+        if alg != "aprd" and knob not in ("cv_rule", "cv_norm", "clia_rpil", "isde_directions"):
             assert o.objectives != d.objectives, (alg, knob, other)
         r = minimize(d2.evaluate, algorithm="nsga2", **{knob: other}, **k)
         assert r.ignored == [knob], (knob, r.ignored)

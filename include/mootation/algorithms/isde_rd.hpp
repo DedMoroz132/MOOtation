@@ -110,6 +110,11 @@
 //     reading used for the same rule in moead_m2m / sms_m2m. Previously the
 //     draws were i.i.d. over the whole pool, so a member of P_k itself, or the
 //     same outsider, could be added twice.
+//   ISDE-11 (READING; knob isde_directions, off by default: lattice). The
+//     run-layer switch of ISDE-2: lattice keeps the Das-Dennis round-up of K;
+//     exact honours K through set_exact_directions(true), the way moead_m2m
+//     and sms_m2m build their subregions. Where the lattice attains K the two
+//     are the same run.
 //
 // CONSTRAINTS (beyond the paper, off by default). ISDE+RD's only preference
 //   relation is the per-subregion truncation by I_SDE^+ (smallest indicator
@@ -265,6 +270,13 @@ public:
     // sms_m2m. The generator draws no random numbers, so the switch changes
     // the geometry without shifting the RNG stream.
     void set_exact_directions(bool b){ exact_K_=b; }
+    bool set_word(const std::string& k, const std::string& w){
+        if(k!="isde_directions") return false;               // ISDE-11
+        if(w!="lattice" && w!="exact")
+            throw std::invalid_argument("isde_rd: isde_directions = '"+w+"': lattice or exact");
+        exact_K_=(w=="exact");
+        return true;
+    }
     void set_ideal_shift(bool b){ ideal_shift_=b; }   // ISDE-3: false = angles from the origin ([4] Eq.2 letter)
     void set_n_clusters(int k){ K_req_=k; }
     void set_inprob(double p){ inprob_=p; }

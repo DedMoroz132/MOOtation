@@ -137,6 +137,7 @@ MOOTATION_TEST_PROBLEM(AR, MaOEAARV_Individual,  DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(RD, NSGAII_Individual,    DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(IF, NSGAII_Individual,    DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(NV, NRVMOEA_Individual,   DTLZ2Spec)
+MOOTATION_TEST_PROBLEM(IS, NSGAII_Individual,    DTLZ2Spec)
 MOOTATION_TEST_PROBLEM(AP, NSGAII_Individual,    DTLZ2Spec)
 
 using namespace mootation;
@@ -228,6 +229,26 @@ void test_knobs_of_2026_11_02()
     word_knob<IF, IFMaOEACore<IF>>("if_maoea", golden_of<IF, IFMaOEACore<IF>>(), "if_range", "pool", "alg1");
     word_knob<NV, NRVMOEACore<NV>>("nrv_moea", golden_of<NV, NRVMOEACore<NV>>(), "nrv_archive", "letter", "platemo");
     word_knob<NV, NRVMOEACore<NV>>("nrv_moea", golden_of<NV, NRVMOEACore<NV>>(), "nrv_pool", "letter", "platemo");
+    // 2026-11-13: isde_rd's isde_directions (ISDE-11). At M = 3 the lattice attains
+    // the default K = 10, so exact is the default run there; K = 8 is off it.
+    {
+        using C = ISDERDCore<IS>;
+        std::cout << "-- isde_rd: isde_directions (lattice by default, exact) --\n";
+        const std::string golden = golden_of<IS, C>();
+        auto lattice = [](C& c) { c.set_word("isde_directions", "lattice"); };
+        auto exact   = [](C& c) { c.set_word("isde_directions", "exact"); };
+        auto k8      = [](C& c) { c.set_K(8); };
+        auto k8exact = [](C& c) { c.set_K(8); c.set_word("isde_directions", "exact"); };
+        check(fingerprint_with<IS, C>(91, 30, lattice) == golden, "isde_rd isde_directions = lattice as golden");
+        check(fingerprint_with<IS, C>(91, 30, exact) == golden, "isde_rd isde_directions = exact on the lattice as golden");
+        check(fingerprint_with<IS, C>(91, 30, k8exact) != fingerprint_with<IS, C>(91, 30, k8),
+              "isde_rd isde_directions = exact runs otherwise at K = 8");
+        C core;
+        bool threw = false;
+        try { core.set_word("isde_directions", "maybe"); } catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "isde_rd isde_directions = maybe refused");
+        check(!core.set_word("k_share", "pp"), "isde_rd does not take another core's knob");
+    }
     // 2026-11-05: maoea_iamd's kpcm_pm (IAMD-1)
     word_knob<MI, MaOEAIAMDCore<MI>>("maoea_iamd", "91 1e27b57e7dab0642", "kpcm_pm", "off", "on");
     // 2026-11-05: edv's edv_tournament (EDV-5) and normalize (EDV-6)

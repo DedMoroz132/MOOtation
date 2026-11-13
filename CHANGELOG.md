@@ -272,6 +272,9 @@ always listed under **Changed** or **Removed**.
   `nrv_moea`'s knobs `nrv_archive` and `nrv_pool` (`letter` | `platemo`;
   NRV-3, NRV-4), every default unchanged, so default runs keep their
   golden fingerprints.
+- Added: `isde_rd`'s knob `isde_directions`, default unchanged: `lattice`
+  rounds the number of subregions K up to the Das-Dennis lattice (ISDE-2);
+  `exact` honours K, as `moead_m2m` and `sms_m2m` do (ISDE-11).
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into
