@@ -302,9 +302,9 @@ int main()
     }
 
     if (failures) {
-        std::printf("test_local_search: %d failure(s)\n", failures);
+        std::printf("test_localsearch: %d failure(s)\n", failures);
         return 1;
     }
-    std::printf("test_local_search: all checks passed\n");
+    std::printf("test_localsearch: all checks passed\n");
     return 0;
 }

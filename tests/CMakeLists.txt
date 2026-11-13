@@ -76,7 +76,7 @@ set(MOOTATION_TESTS
     test_success
     test_warm_start_so
     test_multistart_starts
-    test_local_search
+    test_localsearch
     test_genome_ops
     test_keep_points
     test_periodic
