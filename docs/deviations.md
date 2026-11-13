@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-303 items: 264 yes, 39 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+308 items: 264 yes, 44 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -468,6 +468,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `evaluator` | SUCC-2 | Off by default. The cost is charged after the call, so a call may take the spending past the budget; the run then ends at its next ask (BudgetSpent), as after a gradient's cost. | no: option | `evaluator.hpp` |
 | `evaluator` | SUCC-3 | Off by default. In a strategy's start (strategy.hpp, View) the start's own run asks, its View charges the cost to the start's allowance and keeps the verdict, and the run's evaluator takes that verdict when the round... | no: option | `evaluator.hpp` |
 | `evaluator` | SUCC-4 | Off by default. An exception of the hook ends the run with its message and the number of the evaluation (UO-1). | no: option | `evaluator.hpp` |
+| `evaluator` | CACHE-1 | Off by default. exact: the archive's own rule (a point asked for again is not evaluated), its repeats counted in cache_hits. | no: option | `evaluator.hpp` |
+| `evaluator` | CACHE-2 | Off by default. canon: a point whose structure (canon_key_of: the problem's canon_key, else the bytes of canon(x)) was evaluated in this run is not evaluated: it is kept with that structure's values, free, and counted... | no: option | `evaluator.hpp` |
+| `evaluator` | CACHE-3 | Off by default. A structure's values are its first point's, in the order the run met them. | no: option | `evaluator.hpp` |
+| `evaluator` | CACHE-4 | Off by default. A strategy's start (strategy.hpp, View) reads the run's cache as it was at the round's start and keeps its own; its hits go to the run at the merge, its points as known ones (free). | no: option | `evaluator.hpp` |
 | `evaluator` | SO-1 | A problem with residuals takes its objective from them: evaluate, if it is given too, is not called, and such a problem has no constraints (n_cons = 0; the least-squares solvers of this library take none). | yes | `evaluator.hpp` |
 | `evaluator` | SO-2 | A gradient asked for at a point not yet evaluated is a joint call where the problem has one (value_grad, residuals_jac), else the values and then the gradient: either way one evaluation and one grad_call. | yes | `evaluator.hpp` |
 | `evaluator` | SO-3 | A problem that gives only the joint call (value_grad without evaluate, residuals_jac without residuals) is evaluated by it every time: every evaluation is then a grad_call too. | yes | `evaluator.hpp` |
@@ -486,6 +490,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `ga` | G3-1 | PCX's index parent x_p is the best of the parents (best_centre, on by default: §3.2.1, "For a faster convergence, the best parent is always used"), not the operator's own pick "with equal probability" (§2.2), which be... | yes | `ga.hpp` |
 | `ga` | G3-2 | Step (1)'s mu - 1 others differ from the best and from each other; step (3)'s two differ. | yes | `ga.hpp` |
 | `ga` | G3-3 | Step (4) keeps the two best of the family in its order (the two chosen, then the offspring), stably; the better goes to the first chosen place. | yes | `ga.hpp` |
+| `hooks` | RES-1 | Off by default (a strategy that asks for a subproblem). | no: option | `hooks.hpp` |
 | `improvements` | SO-4 | The violation is judged as the point is evaluated, at the tolerance of that moment (an eq_tol schedule: the tolerance then), and the records are not judged again. | yes | `improvements.hpp` |
 | `improvements` | SO-5 | A violation that is not finite (a constraint value NaN) is +inf (EVO-1): such a point is the best only while every point so far is as bad. | yes | `improvements.hpp` |
 | `improvements` | SO-6 | A tie (equal f of two feasible points, equal violation of two infeasible ones) is not an improvement: the earlier point stays best. | yes | `improvements.hpp` |

@@ -247,6 +247,7 @@ public:
         : parent_(parent), P_(parent.P), fresh_(fresh)
     {
         problem = P_;
+        problem.cache = Problem::Cache::off;   // THE CACHE is the view's (evaluator.hpp CACHE-4)
         problem.blocks.clear();       // r~ comes scaled already (SO-1)
         problem.weights.clear();
         if (problem.n_res == 0) problem.n_res = parent.n_res;
@@ -339,6 +340,23 @@ private:
     };
     const Evaluator& parent_;
     const Problem& P_;
+    std::unordered_map<std::string, Evaluator::Cached> own_canon_;   // THE CACHE: this start's structures
+    long long cache_hits_ = 0;
+
+    // the values of x's structure: the run's (at the round's start) or this start's
+    const Evaluator::Cached* cached(const Vec& x) const
+    {
+        if (P_.cache != Problem::Cache::canon) return nullptr;
+        const std::string k = canon_key_of(P_, x);
+        if (const Evaluator::Cached* c = parent_.cached_key(k)) return c;
+        const auto it = own_canon_.find(k);
+        return it == own_canon_.end() ? nullptr : &it->second;
+    }
+
+public:
+    long long cache_hits() const { return cache_hits_; }
+
+private:
     std::unordered_map<std::string, std::size_t> where_;
     std::vector<Event> events_;
     double fresh_, spent_ = 0.0;
@@ -444,8 +462,17 @@ private:
                     k.J = parent_.jac(i);
                     k.has_grad = true;
                 }
+            } else if (const Evaluator::Cached* c = cached(x)) {   // THE CACHE (CACHE-4): free
+                k.f = c->f;
+                k.g = c->g;
+                k.r = c->r;
+                k.bad = c->bad;
+                events_.push_back({own.size(), 0, 0});
+                ++cache_hits_;
             } else {
                 values(k, own.size(), call == Call::joint);
+                if (P_.cache == Problem::Cache::canon)
+                    own_canon_.emplace(canon_key_of(P_, x), Evaluator::Cached{k.f, k.g, k.r, k.bad});
             }
             it = where_.emplace(key, own.size()).first;
             own.push_back(std::move(k));
@@ -582,6 +609,9 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
         ev.hook_calls += out[k].hook_calls;           // the user's local search (scalar.hpp ULS-5)
         ev.hook_spent += out[k].hook_spent;
         ev.hook_seconds += out[k].hook_seconds;
+        ev.cache_hits += views[k]->cache_hits();          // THE CACHE (evaluator.hpp CACHE-4)
+        ev.delta_calls += out[k].delta_calls;             // THE DELTA
+        ev.delta_spent += out[k].delta_spent;
     }
     return out;
 }

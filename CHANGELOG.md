@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 24, §24.1.3, §24.1.4, §24.1.6): the problem's hooks for the
+  strategies over minima, in C++: `scalar::Problem::perturb`, `distance`,
+  `contributions`, `canon_key`, `cache = off | exact | canon` (a structure
+  met again is not evaluated: `Result::cache_hits`; CACHE-1 ... CACHE-4),
+  `restrict_to`, `delta` with `delta_cost` (`Evaluator::delta`,
+  `Result::delta_calls`, `delta_spent`), `neighbors`; `scalar/hooks.hpp`:
+  `distance_of` (symmetry::distance after the problem's align, canon and
+  blocks, periods the short way) and `restricted` (a subproblem on some
+  variables, RES-1); `canon_key_of`. Off by default: runs as before.
 - Added (task 24, §24.4.2, §24.2.5): periodic variables in lbfgsb, lm and
   slsqp too (no bound on them, their points wrapped), and in the
   symmetries' align and distance (SYM-11); `scalar::Problem::var_repair`,

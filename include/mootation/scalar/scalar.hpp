@@ -223,6 +223,9 @@ struct Result {
     double hook_spent = 0.0, hook_seconds = 0.0;
     Vec ls_state;
     long long decode_invalid = 0;    // genomes that did not decode, not evaluated (task 24, §24.1.2)
+    long long cache_hits = 0;        // THE CACHE (task 24, §24.1.4): points given their structure's values
+    long long delta_calls = 0;       // THE DELTA (task 24, §24.1.6): the hook's calls, their declared cost
+    double delta_spent = 0.0;
 };
 
 // How the first points come: seed points (planted), rows of a design
@@ -516,6 +519,9 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     r.hook_spent = ev.hook_spent;
     r.hook_seconds = ev.hook_seconds;
     r.decode_invalid = ev.decode_invalid;
+    r.cache_hits = ev.cache_hits;
+    r.delta_calls = ev.delta_calls;
+    r.delta_spent = ev.delta_spent;
     r.improvements = ev.improvements.records();
     for (char f : ev.failed) r.n_failed += f ? 1 : 0;
     return r;
@@ -1196,6 +1202,7 @@ inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, dou
     Q.accept_success = nullptr;
     Q.local_search = nullptr;
     Q.known_point = nullptr;
+    Q.cache = Problem::Cache::off;                             // THE CACHE is this evaluator's
     Q.blocks.clear();                                          // r~ comes scaled (SO-1)
     Q.weights.clear();
     Q.evaluate = nullptr;

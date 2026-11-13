@@ -72,6 +72,26 @@
 //   SUCC-4. Off by default. An exception of the hook ends the run with its
 //     message and the number of the evaluation (UO-1).
 //
+// THE CACHE (task 24, §24.1.4; Problem::cache, off by default):
+//   CACHE-1. Off by default. exact: the archive's own rule (a point asked for
+//     again is not evaluated), its repeats counted in cache_hits.
+//   CACHE-2. Off by default. canon: a point whose structure (canon_key_of: the
+//     problem's canon_key, else the bytes of canon(x)) was evaluated in this run
+//     is not evaluated: it is kept with that structure's values, free, and
+//     counted in cache_hits; a gradient asked for it is computed (it is x's, not
+//     the structure's representative's). The lean mode keeps the structures'
+//     values too.
+//   CACHE-3. Off by default. A structure's values are its first point's, in
+//     the order the run met them.
+//   CACHE-4. Off by default. A strategy's start (strategy.hpp, View) reads the
+//     run's cache as it was at the round's start and keeps its own; its hits go
+//     to the run at the merge, its points as known ones (free).
+// THE DELTA (task 24, §24.1.6): Evaluator::delta(x, block, values) is the
+// problem's delta, its declared delta_cost charged after the call
+// (DELTA-1, as SUCC-2), counted in delta_calls, delta_spent; a value not
+// finite ends the run (DELTA-2); without the hook the two points are
+// evaluated (counted, archived).
+//
 // THE LEAN MODE (task 18, group 3g; lean = true, set before the first
 // evaluation, one objective only): no archive. The evaluator keeps two
 // points, the best so far (index 0) and the last (index 1, overwritten by the
@@ -225,10 +245,46 @@ struct Problem {
     // set by a strategy's start (strategy.hpp, View), not by the user: a
     // point whose values are known, for the run's archive at the merge (ULS-2)
     std::function<void(const Vec& x, const Vec& f)> known_point;
+    // THE MOVE, THE DISTANCE, THE SHARES (task 24, §24.1.3; hooks.hpp): a
+    // move of x in place (strength: the strategy's step, its meaning the
+    // hook's), a dissimilarity (>= 0, symmetric; default distance_of), each
+    // element's share of f (its length the hook's). The strategies that use
+    // them are tasks 25 and 26's.
+    std::function<void(Vec& x, double strength, std::mt19937& rng)> perturb;
+    std::function<double(const Vec& x, const Vec& y)> distance;
+    std::function<void(const Vec& x, Vec& c)> contributions;
+    // THE CACHE (task 24, §24.1.4; CACHE-1 ... CACHE-4): the bytes of x's
+    // canonical structure (default canon_key_of), and the run's cache by it
+    std::function<std::string(const Vec& x)> canon_key;
+    enum class Cache { off, exact, canon };
+    Cache cache = Cache::off;
+    // THE SUBPROBLEM AND THE DELTA (task 24, §24.1.6; hooks.hpp): the user's
+    // subproblem on the variables idx, the others frozen at x_frozen
+    // (default restricted()); f(x with x[block] = values) - f(x), at the
+    // declared cost delta_cost (Evaluator::delta); the variables each one
+    // interacts with
+    std::function<Problem(const Vec& x_frozen, const std::vector<std::size_t>& idx)> restrict_to;
+    std::function<double(const Vec& x, const std::vector<std::size_t>& block, const Vec& values)> delta;
+    double delta_cost = 1.0;
+    std::function<std::vector<std::vector<std::size_t>>(const Vec& x)> neighbors;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }
 };
+
+// THE CACHE's key (task 24, §24.1.4): the problem's canon_key, else the bytes
+// of canon(x) — the problem's canon, else its blocks sorted (symmetry.hpp
+// SYM-5) — else the bytes of x
+inline std::string canon_key_of(const Problem& P, const std::vector<double>& x)
+{
+    if (P.canon_key) return P.canon_key(x);
+    std::vector<double> y = x;
+    if (P.canon) P.canon(y);
+    else if (!P.sym_blocks.empty()) symmetry::sort_blocks(y, P.sym_blocks);
+    std::string k(y.size() * sizeof(double), '\0');
+    if (!y.empty()) std::memcpy(&k[0], y.data(), k.size());
+    return k;
+}
 
 // A point whose values are known (a seed population, an algorithm's evaluations).
 struct Point {
@@ -276,6 +332,9 @@ public:
     double hook_spent = 0.0;           // ... the budget it declared spent,
     double hook_seconds = 0.0;         // ... and its time (reported, never in a trajectory)
     long long decode_invalid = 0;      // THE USER'S GENOME: genomes that did not decode, not evaluated
+    long long cache_hits = 0;          // THE CACHE: points not evaluated, their structure's values taken
+    long long delta_calls = 0;         // THE DELTA: the hook's calls,
+    double delta_spent = 0.0;          // ... their declared cost in the budget
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
               int pop_size_, Observer obs, int record_every)
@@ -311,17 +370,70 @@ public:
     // The archive index of x, evaluating it if it is new.
     std::size_t index(const std::vector<double>& x)
     {
-        if (lean) return fresh(x, std::string(), false);                       // THE LEAN MODE: no lookup
+        if (lean) {                                                             // THE LEAN MODE: no lookup
+            if (const Cached* c = cached(x)) return from_cache(x, *c, std::string());
+            return fresh(x, std::string(), false);
+        }
         const std::string key = key_of(x);
         auto it = where_.find(key);
-        if (it != where_.end()) return it->second;
+        if (it != where_.end()) {
+            if (P.cache == Problem::Cache::exact) ++cache_hits;                // CACHE-1
+            return it->second;
+        }
+        if (const Cached* c = cached(x)) return from_cache(x, *c, key);
         return fresh(x, key, false);
+    }
+
+    // THE CACHE (task 24, §24.1.4): a structure's values, by canon_key_of
+    struct Cached {
+        Vec f, g, r;
+        bool bad = false;
+    };
+
+    // the values of x's structure, where the cache (canon) has them
+    const Cached* cached(const std::vector<double>& x) const
+    {
+        if (P.cache != Problem::Cache::canon) return nullptr;
+        const auto it = canon_.find(canon_key_of(P, x));
+        return it == canon_.end() ? nullptr : &it->second;
+    }
+
+    // x kept with its structure's values, not evaluated (CACHE-2)
+    std::size_t from_cache(const std::vector<double>& x, const Cached& c, const std::string& key)
+    {
+        ++cache_hits;
+        r_ = c.r;
+        return keep(x, c.f, c.g, c.bad, key, false);
+    }
+
+    // THE DELTA (task 24, §24.1.6): f(x with x[block] = values) - f(x) — the
+    // problem's delta, its declared cost charged (DELTA-1), or the two points
+    // through this evaluator
+    double delta(const std::vector<double>& x, const std::vector<std::size_t>& block, const std::vector<double>& values)
+    {
+        if (block.size() != values.size())
+            throw std::invalid_argument("delta: " + std::to_string(values.size()) + " values for a block of " +
+                                        std::to_string(block.size()));
+        for (std::size_t j : block)
+            if (j >= x.size()) throw std::invalid_argument("delta: variable " + std::to_string(j) + " past n");
+        if (P.delta) {
+            ++delta_calls;
+            delta_spent += P.delta_cost;
+            const double d = P.delta(x, block, values);
+            if (!std::isfinite(d)) throw std::runtime_error("delta: the hook gave a value not finite (DELTA-2)");
+            return d;
+        }
+        std::vector<double> y = x;
+        for (std::size_t k = 0; k < block.size(); ++k) y[block[k]] = values[k];
+        const double fx = F[index(x)][0];                                     // read before y's evaluation
+        return F[index(y)][0] - fx;
     }
 
     // What the budget is spent by: evaluations + grad_cost * grad_calls.
     double used() const
     {
-        return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls) + success_spent + hook_spent;
+        return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls) + success_spent + hook_spent +
+               delta_spent;
     }
 
     // ── gradients (SO-2) ────────────────────────────────────────────────────
@@ -507,6 +619,24 @@ public:
 
 private:
     std::unordered_map<std::string, std::size_t> where_;   // x's bytes -> archive index
+    std::unordered_map<std::string, Cached> canon_;          // THE CACHE: a structure's key -> its values
+
+    // THE CACHE: the first point of a structure gives it its values (CACHE-3)
+    void remember(const std::vector<double>& x, const Vec& f, const Vec& g, bool bad)
+    {
+        if (P.cache != Problem::Cache::canon) return;
+        canon_.emplace(canon_key_of(P, x), Cached{f, g, r_, bad});
+    }
+
+public:
+    // a structure's values in this run's cache, or nullptr (a strategy's start reads them: strategy.hpp)
+    const Cached* cached_key(const std::string& k) const
+    {
+        const auto it = canon_.find(k);
+        return it == canon_.end() ? nullptr : &it->second;
+    }
+
+private:
     std::unordered_map<std::size_t, Vec> gf_;              // archive index -> the objective's gradient
     std::unordered_map<std::size_t, Rows> jac_;            // ... -> r~'s or the constraints' Jacobian
     Vec r_;                                                // r~ of the point being kept
@@ -633,6 +763,7 @@ private:
         F.push_back(f);
         G.push_back(g);
         R.push_back(r_);
+        remember(x, f, g, bad);                                                 // THE CACHE
         r_.clear();
         failed.push_back(static_cast<char>(bad));
         where_[key] = i;
@@ -708,6 +839,7 @@ private:
             R[1] = r_;
             failed[1] = static_cast<char>(bad);
         }
+        remember(x, f, g, bad);                                                 // THE CACHE
         r_.clear();
         if (count) ++spent;
         if (!bad) improvements.offer(f[0], cv(i), spent, grad_calls);
