@@ -75,7 +75,9 @@
 //     (ga_repair: builtin clips each coordinate to the box — SBX and the
 //     polynomial mutation stay in it, so the builtin run is unchanged; user
 //     calls Problem::repair; off leaves it) and then must have n finite values
-//     in the box, or the run is refused with the row's number and generation.
+//     in the box, or the run is refused with the row's number and generation;
+//     so is an exception of a hook (sample, crossover, mutate, repair,
+//     decode), with its message.
 //   GA-11. Off by default. With Problem::decode every row is decoded before it
 //     is evaluated, its canonical genome written back (Lamarckian; checked as
 //     GA-10); a row that does not decode (valid = false) is not evaluated, costs
@@ -245,7 +247,7 @@ public:
         if (x_.empty()) {
             if (o_.user_sample) {                                        // GA-9
                 u_.assign(o_.mu, Vec(lo_.size(), 0.0));
-                for (Vec& x : u_) o_.user_sample(x, rng_);
+                for (std::size_t k = 0; k < u_.size(); ++k) guarded("sample", k, [&] { o_.user_sample(u_[k], rng_); });
                 for (std::size_t i = 0; i < o_.seeds.size() && i < o_.mu; ++i) u_[i] = o_.seeds[i];
             } else {
                 u_ = evo::uniform(lo_, hi_, o_.mu, rng_, o_.seeds);
@@ -259,11 +261,12 @@ public:
         while (u_.size() < o_.lambda) {
             const Vec& p1 = x_[tournament()];
             const Vec& p2 = x_[tournament()];
-            if (o_.user_crossover) o_.user_crossover(p1, p2, c1, c2, rng_);   // GA-9
+            if (o_.user_crossover)                                       // GA-9
+                guarded("crossover", u_.size(), [&] { o_.user_crossover(p1, p2, c1, c2, rng_); });
             else cross(p1, p2, c1, c2, b_, o_, rng_);
             const int keep = o_.coin ? coin(rng_) : -1;                  // GA-3
-            if (keep != 1) mutate(c1);
-            if (keep != 0) mutate(c2);
+            if (keep != 1) mutate(c1, u_.size());
+            if (keep != 0) mutate(c2, u_.size() + (keep != 1 ? 1 : 0));
             if (keep != 1) u_.push_back(c1);
             if (keep != 0 && u_.size() < o_.lambda) u_.push_back(c2);
         }
@@ -329,10 +332,10 @@ public:
     void migrate(const Vec& x, double f, double v) { evo::replace_worst(x_, f_, v_, x, f, v); }
 
 private:
-    void mutate(Vec& c)
+    void mutate(Vec& c, std::size_t k)
     {
         if (o_.user_mutate) {                                            // GA-9
-            o_.user_mutate(c, rng_);
+            guarded("mutate", k, [&] { o_.user_mutate(c, rng_); });
             return;
         }
         if (o_.mutation) ops::polynomial_mutation(c, b_, o_.eta_m, o_.pm, rng_);
@@ -340,6 +343,19 @@ private:
     }
 
     bool user() const { return o_.user_crossover || o_.user_mutate || o_.user_sample; }
+
+    // GA-10: an exception of the user's hook, refused with the row's number
+    // and generation (the budget's end passes through)
+    template <class Fn>
+    void guarded(const char* hook, std::size_t k, Fn&& fn) const
+    {
+        try {
+            fn();
+        } catch (const std::exception& e) {
+            throw std::invalid_argument("ga: the user's " + std::string(hook) + ", individual " + std::to_string(k) +
+                                        " of generation " + std::to_string(gen_ - 1) + ": " + e.what());
+        }
+    }
 
     // GA-10: a row of the user's operators or decoder of the right length,
     // finite, in the box; else the run is refused with the row's number
@@ -368,7 +384,7 @@ private:
             Vec& x = u_[k];
             if (user()) {
                 if (o_.user_repair) {
-                    o_.user_repair(x);
+                    guarded("repair", k, [&] { o_.user_repair(x); });
                 } else if (o_.clip && x.size() == lo_.size()) {
                     for (std::size_t j = 0; j < x.size(); ++j)
                         if (std::isfinite(x[j])) x[j] = std::min(hi_[j], std::max(lo_[j], x[j]));
@@ -376,7 +392,8 @@ private:
                 checked(x, k, "the user's operators");
             }
             if (!o_.decode) continue;
-            Decoded d = o_.decode(x);
+            Decoded d;
+            guarded("decode", k, [&] { d = o_.decode(x); });
             if (!d.valid) {
                 invalid_[k] = 1;
                 continue;

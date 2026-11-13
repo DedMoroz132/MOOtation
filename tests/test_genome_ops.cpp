@@ -169,6 +169,11 @@ int main()
         sc::Problem Q = squares(nullptr);
         Q.decode = [](const Vec&) { return sc::Decoded{{0.5}, {}, true}; };
         refused(Q, {}, "the decoder's canonical genome, individual 0 of generation 0: 1 values for 4 variables");
+        Q.decode = [](const Vec&) -> sc::Decoded { throw std::invalid_argument("a malformed genome"); };
+        refused(Q, {}, "ga: the user's decode, individual 0 of generation 0: a malformed genome");
+        sc::Problem R = squares(nullptr);
+        R.crossover = [](const Vec&, const Vec&, Vec&, Vec&, std::mt19937&) { throw std::runtime_error("no pair"); };
+        refused(R, {{"ga_crossover", word("user")}}, "ga: the user's crossover, individual 0 of generation 1: no pair");
     }
 
     if (failures) {
