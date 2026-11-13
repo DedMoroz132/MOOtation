@@ -814,7 +814,7 @@ inline const std::vector<std::string>& strategy_names()
 {
     static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
                                             "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap",
-                                            "pbh", "mde"};
+                                            "pbh", "mde", "ma_chains"};
     return v;
 }
 
@@ -834,6 +834,11 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
 // pbh (pbh.hpp, included at the end; task 25, §24.2.2)
 inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
                       unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start);
+
+// ma_chains (ma_chains.hpp, included at the end; task 25, §24.2.1)
+inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                            long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
+                            const Start& start);
 
 // mde (mde.hpp, included at the end; task 25, §24.2.3)
 inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
@@ -1091,6 +1096,9 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
     if (name == "pbh")
         return run_pbh(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
                        start);
+    if (name == "ma_chains")
+        return run_ma_chains(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                             record_every, start);
     if (name == "mde")
         return run_mde(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
                        start);
@@ -1109,3 +1117,4 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
 #include "pap.hpp"
 #include "pbh.hpp"
 #include "mde.hpp"
+#include "ma_chains.hpp"

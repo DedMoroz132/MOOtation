@@ -53,6 +53,7 @@ set(MOOTATION_TESTS
     test_walk_accept
     test_pbh
     test_mde
+    test_ma_chains
     test_tiktak
     test_continuation
     test_pap

@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-355 items: 310 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+362 items: 317 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -587,6 +587,13 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lsq` | LSQ-5 | A Householder transformation whose part to be zeroed is zero already is the identity (H1 would flip the pivot's sign; the identity keeps triangular input exact). | yes | `lsq.hpp` |
 | `lsq` | LSQ-7 | The sum of H2's Step 8 is taken in four running sums (terms l, l + 4, ... in the first, and so on), then (s0 + s1) + (s2 + s3): the order is the code's, the same everywhere, and four times shorter a chain of additions... | yes | `lsq.hpp` |
 | `lsq` | LSQ-6 | HFTI's pseudorank: the diagonal elements above max(m, n) eps \|r_11\| (Step 13 leaves tau to the caller; this is NumPy's default rcond for lstsq, measured on R's diagonal instead of the singular values). | yes | `lsq.hpp` |
+| `ma_chains` | MAC-1 | An empty S_LS restarts the population at random keeping the best (CEC 2010 and M11; | yes | `ma_chains.hpp` |
+| `ma_chains` | MAC-2 | BGA mutates one gene, chosen uniformly ("the gene to be mutated", M10 §4.4.4); the first parent and the n_ass candidates are uniform (M10 §4.4.3: "in our experiments all the parents are selected at random"). | yes | `ma_chains.hpp` |
+| `ma_chains` | MAC-3 | The first value of a chain's step size (M11 §4.2, §4.4: half the distance to the nearest member) is taken in the normalized box, at least 1e-12; a member without a chain (never searched, or a new child) starts one. | yes | `ma_chains.hpp` |
+| `ma_chains` | MAC-4 | n_freq rounds to the nearest whole number, at least 1; the GA's share is counted in evaluations spent (a repeated point is free). | yes | `ma_chains.hpp` |
+| `ma_chains` | MAC-5 | A child or a restarted member starts without a chain; a member replaced by a local search's result keeps the chain of that search. | yes | `ma_chains.hpp` |
+| `ma_chains` | MAC-7 | A GA phase stops early after 100 n_freq children in a row that spend nothing (all repeats), and a phase (GA and local search) that spends nothing ends the run (as SRCH-9, SRCH-10). | yes | `ma_chains.hpp` |
+| `ma_chains` | MAC-6 | The strategy's draws come from mt19937(start_seed(seed, 0x4D41434Cu)), the coins of lamarck = share from start_seed(seed, 1 << 32) as memetic's (SRCH-12); ma_local = inner's s-th search has the seed start_seed(seed, s). | yes | `ma_chains.hpp` |
 | `mde` | MDE-1 | CR in the classical sense (§24.9 item 17): the probability that a coordinate is the mutant's, so mde_CR = 1 is LMS14's CR = 0 (their test "U < CR: keep x_i's coordinate", no crossover) and CL16's CR = 1. | yes | `mde.hpp` |
 | `mde` | MDE-2 | k1, k2, k3 all different and different from i (LMS14 Algorithm 2; its §3 allows repeats "without significant change"): mde needs mde_pop >= 4, the others >= 2. | yes | `mde.hpp` |
 | `mde` | MDE-3 | mde_match relabels at the start of every sweep each member to the best one (the record): align — the problem's align, else symmetry::align on sym_blocks and canon; greedy — LMS14 §4, Algorithm 4: within each group of... | yes | `mde.hpp` |
