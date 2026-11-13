@@ -101,6 +101,20 @@ int main()
         for (const auto& b : g1.F)
             CHECK(!(a[0] <= b[0] && a[1] <= b[1] && (a[0] < b[0] || a[1] < b[1])));
 
+    // task 24, §24.3.2: the Sobol designs past 100 dimensions (sobol.hpp up
+    // to 21 201); a coordinate's scrambling is drawn for it alone, so the
+    // first 100 of 300 coordinates are the 100 coordinates' design
+    for (const char* kind : {"sobol", "sobol_owen"}) {
+        const auto W = mootation::designs::design(kind, 16, 300, 5);
+        const auto N = mootation::designs::design(kind, 16, 100, 5);
+        CHECK(W.size() == 16 * 300);
+        bool prefix = true;
+        for (std::size_t i = 0; i < 16; ++i)
+            for (std::size_t j = 0; j < 100; ++j) prefix = prefix && W[i * 300 + j] == N[i * 100 + j];
+        CHECK(prefix);
+        for (double u : W) CHECK(u >= 0.0 && u < 1.0);
+    }
+
     if (failures) {
         std::printf("%d failure(s)\n", failures);
         return 1;

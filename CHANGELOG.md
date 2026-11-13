@@ -10,6 +10,16 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (task 24, §24.3.2): the Sobol sequence in C++ (`sobol.hpp`) has all
+  21 201 dimensions of Joe & Kuo's new-joe-kuo-6.21201, not 100: dimensions
+  101 and up come from `sobol_joe_kuo.hpp`, which `tools/gen_sobol_joe_kuo.py`
+  writes from the file (`--check` compares). The designs `sobol` and
+  `sobol_owen`, and so `start_points = sobol` of `multistart`, `halving` and
+  `tiktak` and `init = "sobol"`, work past 100 variables, where they threw.
+  Up to 100 dimensions every point is as before; multiglods' search step
+  keeps its limit of 100 (`sobol::max_dims`). Checked against SciPy's
+  unscrambled points in 300 dimensions and a hash of all 21 201
+  (`tests/data/scipy-1.18.1_sobol_21201.txt`).
 - Added (task 24, §24.7.1): external problems in the C++ campaign engine.
   The build's `MOOTATION_EXTERNAL_PROBLEMS=<folder>` compiles the folder's
   sources into the engine with the library's flags; its registration
