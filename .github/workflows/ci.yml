@@ -133,6 +133,12 @@ jobs:
         if: matrix.shard == 0
         run: PYTHONPATH=python python python/test_symmetric.py
 
+      - name: bbob-largescale, C++ against NumPy
+        # task 20, section 24.6.5: suite/bbob_largescale.hpp and
+        # benchmarks/bbob_largescale.py, every function in 20, 80, 640 variables
+        if: matrix.shard == 0
+        run: PYTHONPATH=python python python/test_bbob_largescale.py
+
       - name: The run layer against the built extension
         # The run-layer jobs below have no extension, so test_run_layer.py
         # skips its campaign round trip there. Here it runs for real, and it

@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 20, package 24-27, §24.6.5): bbob-largescale, the 24 bbob
+  functions in any dimension as Varelas et al. 2020 define them
+  (`suite/bbob_largescale.hpp`, family `bbob_largescale`; NumPy cross-check
+  `benchmarks/bbob_largescale.py`): rotations P_left B P_right with blocks of
+  min(n, 40) and Algorithm 1's truncated uniform swaps, gamma(n) = min(1,
+  40/n), ceil(n/40) axes for Discus, Bent Cigar and Sharp Ridge, the
+  Rosenbrocks' scale by the block size. Written from the papers, with the
+  library's own instances (LS-1), not COCO's. 144 registry rows
+  `bbobls<fid>_n<DDD>_1D` (n = 20 ... 640), bbob's budgets and absolute
+  targets. At n = 20 and 40 with bbob's instance handed over each function
+  gives bbob's values (f14 squared: both papers print it without bbob's
+  square root, LS-3).
 - Added (task 20, package 24-27, §24.6.2): three public problem families
   for checking strategies against their papers, C++ with a NumPy cross-check
   (`suite/morse.hpp`, `suite/circles.hpp`; `benchmarks/symmetric.py`).

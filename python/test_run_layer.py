@@ -1769,13 +1769,14 @@ def the_registry_has_problems_at_one_objective():
     from mootation.benchmarks import bbob, least_squares as L
     from mootation.benchmarks.registry import PROBLEMS
     one = {k: q for k, q in PROBLEMS.items() if q.n_obj == 1}
-    by = {f: [k for k in one if k.startswith(f)] for f in ("bbob", "MGH", "NIST")}
+    by = {f: [k for k in one if k.startswith(f) and not k.startswith("bbobls")] for f in ("bbob", "MGH", "NIST")}
     sizes = {f: len(v) for f, v in by.items()}
     assert sizes == {"bbob": 144, "MGH": 54, "NIST": 54}, sizes
     from mootation.families import SYMMETRIC          # task 19, §19.1 (benchmarks/symmetric.py)
     sym = [k for k in one if k.startswith(tuple(f + "_" for f in SYMMETRIC))]
     cec = [k for k in one if k.startswith("cec2013_p")]   # task 18, stage 3, §3.5 (suite/cec2013.hpp)
-    assert len(one) - len(sym) - len(cec) == 252, len(one)
+    ls = [k for k in one if k.startswith("bbobls")]        # task 20, §24.6.5 (suite/bbob_largescale.hpp)
+    assert len(one) - len(sym) - len(cec) - len(ls) == 252 and len(ls) in (0, 144), (len(one), len(ls))
     assert len(sym) == 27 + 16 and len(cec) in (0, 20), (len(sym), len(cec))   # task 20, §24.6.2: 4 + 4 + 8
     for k in by["bbob"]:
         q = one[k]

@@ -2544,6 +2544,39 @@ _register_symmetric()
 
 
 # =============================================================
+#  bbob-largescale (task 20, package 24-27, §24.6.5, variant (b))
+# =============================================================
+#  suite/bbob_largescale.hpp (Varelas et al. 2020): the 24 functions in 20,
+#  40, 80, 160, 320 and 640 variables, instance 1 of the library's draws (LS-1:
+#  not COCO's), on [-5, 5]^D; bbobls<fid>_n<DDD>_1D. Registered with the
+#  extension only (C++ evaluates them; bbob_largescale.py's NumPy is the
+#  cross-check); bbob's budgets (10^4 D) and absolute targets.
+def _register_bbob_largescale():
+    try:
+        from .. import _core
+    except ImportError:
+        return
+    from . import bbob_largescale as _ls
+    for D in _ls.DIMS:
+        for fid in range(1, 25):
+            spec = {"family": "bbob_largescale", "n_var": D, "n_obj": 1, "bbob_fid": fid, "bbob_iid": 1}
+            try:
+                nat = _core.Native(spec)
+            except ValueError:                         # an extension built before §24.6.5
+                return
+            key = f"bbobls{fid:02d}_n{D:03d}_1D"
+            PROBLEMS[key] = BenchProblem(
+                name=key, n_vars=D, bounds=[(-5.0, 5.0)] * D, n_obj=1,
+                evaluate=nat.evaluate, constraints=_no_cons, evaluate_batch=nat.evaluate_batch,
+                hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
+                pop_size=100, n_gen=100 * D, K_runs=15, has_cons=False, f_opt=_ls.f_opt(fid, 1, D),
+                f_opt_kind="exact", native=nat, targets="absolute")
+
+
+_register_bbob_largescale()
+
+
+# =============================================================
 #  Residual blocks as objectives (task 19, §19.5; suite/blocks_objectives.hpp)
 # =============================================================
 #  chaboche1d and sumexp instances whose blocks compete — noisy data or a
