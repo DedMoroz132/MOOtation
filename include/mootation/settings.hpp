@@ -450,6 +450,15 @@ inline const std::vector<std::string>& solver_knobs()
     return v;
 }
 
+// Knobs whose value is a JSON array (task 19, §19.6): data_continuation's
+// stages and pap's members, which a caller hands to the library as the
+// array's canonical JSON text (keys sorted, no spaces), as a solver table.
+inline const std::vector<std::string>& json_knobs()
+{
+    static const std::vector<std::string> v{"dc_stages", "pap_members"};
+    return v;
+}
+
 // The text knobs a core takes through set_word (above, is_core_param).
 inline bool is_core_word(const std::string& name)
 {

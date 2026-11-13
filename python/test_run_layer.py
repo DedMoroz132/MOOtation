@@ -11992,7 +11992,7 @@ def the_task19_strategies_run_through_minimize():
     """Task 19, §19.6 (tiktak.hpp, continuation.hpp, pap.hpp): tiktak with
     nelder_mead finds the lower of two minima and reports N*; pap with its
     members as a list (canonical JSON) and one member alone is that method's
-    run; data_continuation with residual blocks at one objective: one stage
+    run; the C++ names (the engine's) are Python's; data_continuation with residual blocks at one objective: one stage
     is lm itself, a window stage then the problem; without residuals
     refused, and block weights without blocks."""
     if _core_with("scalar") is None:
@@ -12005,6 +12005,9 @@ def the_task19_strategies_run_through_minimize():
     def f(x):
         return [(x[0] ** 2 - 1.0) ** 2 + x[1] ** 2 + 0.1 * x[0]]
 
+    from mootation import _core
+    from mootation.scalar import NAMES
+    assert tuple(_core.scalar.NAMES) == tuple(NAMES), set(NAMES) ^ set(_core.scalar.NAMES)   # the C++ engine's list
     nm = {"solver": "nelder_mead", "local_tol": 1e-10}
     t = mootation.minimize(f, box, 1, algorithm="tiktak", inner=nm, tiktak_n=50, max_evaluations=3000, seed=11)
     s = dict(t.settings)
@@ -12047,6 +12050,85 @@ def the_task19_strategies_run_through_minimize():
             assert why in str(e), str(e)
             continue
         raise AssertionError(f"not refused: {kw}")
+
+
+_TASK19_STRATEGIES_TOML = """[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["sumexp_K3_r4_snr1e3_1D", "bbob01_n02_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 500
+storage = "store"
+[[algorithms]]
+name = "data_continuation"
+pop = 0
+gens = 0
+params = { dc_stages = [ { window = [0, 32] } ], inner = { solver = "lm" } }
+[[algorithms]]
+name = "pap"
+pop = 0
+gens = 0
+params = { pap_members = [ { solver = "de", np = 20 }, { solver = "pso", np = 10 } ] }
+[[algorithms]]
+name = "tiktak"
+pop = 0
+gens = 0
+params = { tiktak_n = 40, inner = { solver = "nelder_mead", local_tol = 1e-10 } }
+"""
+
+
+@test
+def a_campaign_of_the_task19_strategies_writes_the_same_files_from_both_engines():
+    """Task 19, §19.6: data_continuation (its stages an array of tables),
+    pap (its members an array) and tiktak in a campaign of both engines, the
+    C++ engine running every job itself (none left to Python): the same files; the arrays in meta.json's params; data_continuation on sumexp
+    takes its residual blocks and refuses bbob (no residuals) in both; an
+    array knob given a number refused by both configs with one message."""
+    import contextlib
+    import io
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_of_the_task19_strategies...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_TASK19_STRATEGIES_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            said = io.StringIO()
+            with contextlib.redirect_stderr(said):
+                made[name] = (root, jobs, C.run_campaign(cfg, workers=2, engine=engine))
+            if engine == "cxx":                     # the engine ran every job itself, none left to Python
+                assert "left to the Python engine" not in said.getvalue(), said.getvalue()
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert len(jobs) == 6 and (cp["done"], cp["failed"]) == (cc["done"], cc["failed"]) == (5, 1), (cp, cc)
+        for job in jobs:
+            a, b = C.run_dir_of(rp, job), C.run_dir_of(rc, job)
+            _same_run(a, b)
+            ma = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            if job.algorithm == "data_continuation" and job.problem.startswith("bbob"):
+                assert ma["status"] == "failed" and ma.get("incompatible"), ma
+                continue
+            assert ma["status"] == "done" and ma["fe"] <= 500, ma
+            if job.algorithm == "pap":
+                assert ma["params"]["pap_members"] == [{"solver": "de", "np": 20}, {"solver": "pso", "np": 10}], ma
+        bad = Path(td) / "bad.toml"
+        bad.write_text(_TASK19_STRATEGIES_TOML.replace("NAME", "bad").replace(
+            "dc_stages = [ { window = [0, 32] } ]", "dc_stages = 3"), encoding="utf-8")
+        try:
+            load(bad)
+        except ConfigError as e:
+            assert "expected an array" in str(e), str(e)
+        else:
+            raise AssertionError("dc_stages = 3 not refused")
 
 
 @test

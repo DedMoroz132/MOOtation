@@ -258,13 +258,13 @@ def names() -> dict:
     from ..scalar import NAMES, OTHERS
     from .baselines import BASELINES
     from .budget import BUDGET_DEPENDENT
-    from .knobs import LIST_KNOBS, knob_names, solver_knobs, text_knobs
+    from .knobs import LIST_KNOBS, json_knobs, knob_names, solver_knobs, text_knobs
     from .metric_names import METRIC_NAMES
     return {"baselines": list(BASELINES), "scalar_names": list(NAMES), "scalar_others": list(OTHERS),
             "design_kinds": list(designs.KINDS), "knob_names": list(knob_names()),
             "text_knobs": [[k, list(v)] for k, v in text_knobs().items()], "list_knobs": list(LIST_KNOBS),
             "metric_names": list(METRIC_NAMES), "budget_dependent": sorted(BUDGET_DEPENDENT),
-            "solver_knobs": list(solver_knobs())}
+            "solver_knobs": list(solver_knobs()), "json_knobs": list(json_knobs())}
 
 
 REPO_FILE = Path(__file__).resolve().parents[3] / "data" / "registry.json"

@@ -73,10 +73,11 @@ static cg::Registry registry()
     cg::Registry reg;
     reg.algorithms = {"moead_de", "nsga2", "nsga3"};
     reg.problems = {{"DTLZ2_3D", 3}, {"ZDT1", 2}, {"bbob01_n02_1D", 1}};
-    reg.scalar_names = {"cmaes", "nelder_mead", "multistart"};
-    reg.knob_names = {"local_tol", "n_starts", "start_points", "inner"};
+    reg.scalar_names = {"cmaes", "nelder_mead", "multistart", "pap"};
+    reg.knob_names = {"local_tol", "n_starts", "start_points", "inner", "pap_members"};
     reg.text_knobs = {{"start_points", {"sobol", "lhs"}}};
     reg.solver_knobs = {"inner"};
+    reg.json_knobs = {"pap_members"};
     reg.executable_findable = [](const std::string& argv0) { return argv0 == "python"; };
     reg.regex_groups = [](const std::string&, std::string&) { return 0; };
     return reg;
@@ -149,6 +150,17 @@ int main()
     same("an inner solver as a number",
          replaced(strategy, "inner = { solver = \"nelder_mead\", local_tol = 1e-10 }", "inner = 3"),
          "algorithms[0].params.inner: expected a table {solver = name, its knobs ...}, got 3");
+    // task 19, §19.6: a knob whose value is a JSON array (knobs.json_knobs)
+    const std::string portfolio =
+        replaced(replaced(BUILTIN, "problems = [\"ZDT1\", \"DTLZ2_3D\"]", "problems = [\"bbob01_n02_1D\"]"),
+                 "name = \"nsga3\"\npop = 92\ngens = 5",
+                 "name = \"pap\"\npop = 10\ngens = 5\n"
+                 "params = { pap_members = [ { solver = \"de\", np = 20 }, { solver = \"pso\", np = 10 } ] }");
+    same("an array knob", portfolio, "", {}, {"bbob01_n02_1D"});
+    same("an array knob as a number",
+         replaced(portfolio, "pap_members = [ { solver = \"de\", np = 20 }, { solver = \"pso\", np = 10 } ]",
+                  "pap_members = 3"),
+         "algorithms[0].params.pap_members: expected an array [...], got 3");
 
     if (failures) {
         std::printf("%d failure(s)\n", failures);

@@ -117,6 +117,24 @@ A test (`every_core_has_a_row_in_verification_md`) keeps this table complete too
 | `spso2011` | 2026-10 | CEC 2013: not in the library (the sphere, rotation invariance and the walls instead) | — | `test_spso2011` |
 | `sep_cmaes` | 2026-10 | Ros & Hansen 2008, Tables 2–4: evaluations to the target, 7 cases | — | `test_sep_cmaes` |
 
+## The solvers and strategies of task 19
+
+Single-objective algorithms added in task 19 (2026-11), in `include/mootation/scalar/`, each read against its
+source (the readings in [deviations.md](deviations.md), second table). The paper's own experiment is named where it
+ran; where it could not, the property that stands in for it. The symmetries, the residual blocks as objectives and
+`lm`'s gauge, equalities and profiles are mapped in [symmetric-problems.md](symmetric-problems.md).
+
+| method | read against | the paper's experiment, or what stands in | tests |
+|---|---|---|---|
+| `eki` | Iglesias, Law & Stuart 2013, Algorithm 1 | their Darcy and Navier–Stokes problems are not in the library: the ensemble stays in the initial ensemble's affine hull (their Theorem 2.1, tighter); a linear problem's first mean is their (39) | `test_lm`, `test_run_layer` |
+| `nelder_mead` with `nm_coefficients = adaptive` | Gao & Han 2012, (4.1) | at n = 2 the adaptive coefficients are the standard ones (the same run, bit for bit); at n = 5 not | `test_run_layer` |
+| `tiktak` | Arnoud, Guvenen & Kleineberg 2019 (App. A.6) and 2023 (App. B) | the starts S_i = (1 − θ_i) s_i + θ_i p_low from the sample the problem saw, bit for bit; one search is the inner solver's run, bit for bit | `test_tiktak`, `test_run_layer` |
+| `data_continuation` | no source (the task's B8): readings DC-1…5 | one stage is the inner solver's run, bit for bit (`lm`, `nelder_mead`); a window stage is the inner solver on the weighted problem, bit for bit; every call of the residuals one evaluation | `test_continuation`, `test_run_layer` |
+| `pap` | Peng, Tang, Chen & Yao 2010, Fig. 1, §II-C, §IV-B | one member without migration is that method's run, bit for bit (`de`, `pso`, `ga_sbx`); the migration interval MAX_GEN / 20 and the migrations counted; a migrant into CMA-ES aligned to its mean | `test_pap`, `test_symmetry`, `test_run_layer` |
+
+Every one of them runs in a campaign of both engines with the same files (`test_run_layer`), the array knobs
+(`dc_stages`, `pap_members`) given in TOML.
+
 ## The problems of task 20
 
 Problems added in task 20 (2026-11), each checked against its source as the

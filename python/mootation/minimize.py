@@ -70,7 +70,7 @@ POLISH_KNOBS = ("polish", "polish_share", "polish_points")
 SOLVER_KNOBS = ("inner", "local_solver")
 # Knobs whose value is a JSON array (task 19, §19.6): data_continuation's
 # stages, pap's members; handed over as its canonical JSON text.
-JSON_KNOBS = ("dc_stages", "pap_members")
+JSON_KNOBS = ("dc_stages", "pap_members")          # settings.hpp, json_knobs()
 
 
 def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constraints=None,

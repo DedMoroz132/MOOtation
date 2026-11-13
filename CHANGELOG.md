@@ -20,6 +20,16 @@ always listed under **Changed** or **Removed**.
   curve is set aside by --cover until recomputed. MaF6_15D, listed and never built either, leaves SIZES and keeps the
   curve with degenerate_subset_note's caveat. A new test: every size SIZES
   lists has its file, is a FULL_FRONT problem and has the stored set's frame.
+- Fixed (`scalar/scalar.hpp`): `scalar::names()` lacked `tiktak`,
+  `data_continuation` and `pap`, so the C++ campaign engine left their jobs to
+  the Python engine ("not a core of algorithms.def"); the runs themselves were
+  right. A test now holds the C++ names to Python's.
+- Added (task 19, §19.6): the array knobs `dc_stages` and `pap_members` in
+  campaign configs of both engines (`settings.hpp` `json_knobs()`, the
+  registry header's `json_knobs`), handed to the library as canonical JSON;
+  a campaign hands `chaboche1d`'s and `sumexp`'s residual blocks (weight 1:
+  the same objective, bit for bit) to the single-objective algorithms.
+  `docs/verification.md` maps task 19's solvers and strategies.
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into

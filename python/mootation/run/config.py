@@ -301,10 +301,13 @@ def loads(text: str, *, source_path: Path | None = None) -> Config:
             raise ConfigError(where, f"unknown key(s): {', '.join(unknown)}; an algorithm's "
                                      f"knobs go in params = {{ ... }}")
         params = _opt(a, "params", {}, where, dict)
-        from .knobs import LIST_KNOBS, solver_knobs, text_knobs
+        from .knobs import LIST_KNOBS, json_knobs, solver_knobs, text_knobs
         words = text_knobs()
         for k, v in params.items():
-            if k in solver_knobs():
+            if k in json_knobs():
+                if not isinstance(v, list):
+                    raise ConfigError(f"{where}.params.{k}", f"expected an array [...], got {v!r}")
+            elif k in solver_knobs():
                 if not isinstance(v, dict):
                     raise ConfigError(f"{where}.params.{k}",
                                       f"expected a table {{solver = name, its knobs ...}}, got {v!r}")

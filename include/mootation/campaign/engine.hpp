@@ -125,6 +125,7 @@ inline Registry config_registry(const ProblemRegistry& preg)
     r.text_knobs = preg.names.text_knobs;
     r.list_knobs = preg.names.list_knobs;
     r.solver_knobs = preg.names.solver_knobs;
+    r.json_knobs = preg.names.json_knobs;
     for (const auto& [name, p] : preg.problems) r.problems.emplace_back(name, p.n_obj);
 #if defined(_WIN32)
     r.platform = "windows";

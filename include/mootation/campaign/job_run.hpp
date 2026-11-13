@@ -476,8 +476,8 @@ inline scalar::Knobs scalar_knobs(const json::Value& params)
             kn.number = static_cast<double>(v.i);
         } else if (v.kind == json::Value::Kind::Bool) {
             kn.number = v.b ? 1.0 : 0.0;
-        } else if (v.kind == json::Value::Kind::Object) {
-            kn.is_word = true;                          // a solver: its canonical text (knobs.canonical)
+        } else if (v.kind == json::Value::Kind::Object || v.kind == json::Value::Kind::Array) {
+            kn.is_word = true;                          // a solver or a JSON array: its canonical text (knobs.canonical)
             kn.word = canonical_json(v);
         } else {
             throw std::invalid_argument("parameter " + k + " takes a number or a word, got " + py_repr(v));

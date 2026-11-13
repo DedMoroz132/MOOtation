@@ -57,7 +57,7 @@ public:
         if (!single(algorithm))
             return algorithm + ": not a single-objective algorithm (mootation.scalar.SINGLE; incompatible by "
                                "construction)";
-        if ((algorithm == "lm" || algorithm == "eki") && native.n_res == 0)
+        if ((algorithm == "lm" || algorithm == "eki" || algorithm == "data_continuation") && native.n_res == 0)
             return algorithm + ": the problem gives no residuals (incompatible by construction)";
         bool boxless = false;
         for (const auto& [lo, hi] : p.bounds) boxless = boxless || std::isinf(lo) || std::isinf(hi);
@@ -378,6 +378,11 @@ private:
         };
         if (native_->n_res > 0 && single(job_.algorithm)) {
             const std::size_t m = static_cast<std::size_t>(native_->n_res), n = static_cast<std::size_t>(p_.n_var);
+            if (!native_->res_blocks.empty()) {          // its residual blocks at weight 1 (task 19; data_continuation)
+                P.blocks = native_->res_blocks;
+                P.weights.assign(P.blocks.size(), 1.0);
+                P.n_res = native_->n_res;
+            }
             P.residuals = [this, m](const std::vector<double>& x, std::vector<double>& r) {
                 r.assign(m, 0.0);
                 native_->residuals(x.data(), r.data(), nullptr);

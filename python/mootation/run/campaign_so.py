@@ -45,8 +45,9 @@ answer, the hard budgets, the snapshots) do not apply: meta.json names them
 
 REFUSALS (incompatible, as campaign.py records them): an algorithm that is
 not a single-objective one (mootation.scalar.SINGLE, stage 4's population
-methods included); lm or eki on a problem without residuals; an algorithm
-other than lm, lbfgsb and eki on a problem without a box (bounds -inf / +inf).
+methods included); lm, eki or data_continuation on a problem without
+residuals; an algorithm other than lm, lbfgsb and eki on a problem without a
+box (bounds -inf / +inf).
 """
 
 from __future__ import annotations
@@ -79,7 +80,7 @@ def refusal(algorithm: str, problem) -> str | None:
     from ..scalar import SINGLE
     if algorithm not in SINGLE:
         return f"{algorithm}: not a single-objective algorithm (mootation.scalar.SINGLE; incompatible by construction)"
-    if algorithm in ("lm", "eki") and problem.native.n_res == 0:
+    if algorithm in ("lm", "eki", "data_continuation") and problem.native.n_res == 0:
         return f"{algorithm}: the problem gives no residuals (incompatible by construction)"
     if algorithm not in LOCAL and any(math.isinf(v) for b in problem.bounds for v in b):
         return (f"{algorithm}: a problem without a box (bounds -inf / +inf) is for lm, lbfgsb and eki "
@@ -251,6 +252,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
         derivatives = {"grad": gradient}
     if native.gauge_dim > 0:
         derivatives["gauge_basis"] = lambda x: [list(row) for row in native.gauge_basis(x)]
+    if "residuals" in derivatives and native.res_blocks:  # its residual blocks at weight 1 (task 19; data_continuation)
+        derivatives["residual_blocks"] = list(native.res_blocks)
     if native.blocks and job.algorithm in SINGLE:      # its symmetries, for sym (task 19, §19.2)
         derivatives["sym_blocks"] = list(native.blocks)
         if native.has_canon:

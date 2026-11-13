@@ -137,6 +137,9 @@ _FALLBACK_TEXT = {
     "aprd_pbi": ("canonical", "printed"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
+_FALLBACK_JSON = ("dc_stages", "pap_members")
+_JSON_BLOCK = re.compile(
+    r"json_knobs\s*\(\s*\)\s*\{.*?\{(?P<body>.*?)\}\s*;", re.S)
 
 _BLOCK = re.compile(
     r"knob_names\s*\(\s*\)\s*\{.*?\{(?P<body>.*?)\}\s*;", re.S)
@@ -197,6 +200,21 @@ def solver_knobs() -> tuple[str, ...]:
     """The knobs whose value is a solver: a table {solver = name, its knobs}
     (settings.hpp, solver_knobs(); scalar/strategy.hpp)."""
     return _read_solver()
+
+
+@lru_cache(maxsize=1)
+def _read_json() -> tuple[str, ...]:
+    p = _settings_hpp()
+    if p is None:
+        return _FALLBACK_JSON
+    m = _JSON_BLOCK.search(p.read_text(encoding="utf-8"))
+    return tuple(_STRING.findall(m.group("body"))) if m else _FALLBACK_JSON
+
+
+def json_knobs() -> tuple[str, ...]:
+    """The knobs whose value is a JSON array: data_continuation's stages,
+    pap's members (settings.hpp, json_knobs(); task 19, §19.6)."""
+    return _read_json()
 
 
 def canonical(value) -> str:
@@ -261,7 +279,8 @@ def text_knobs() -> dict:
 def knob_names() -> tuple[str, ...]:
     """Every key accepted in `[[algorithms]] params`: the numeric knobs, then the text ones."""
     return (_read()[0] + PY_KNOBS + tuple(k for k in text_knobs() if k not in _read()[0])
-            + tuple(k for k in solver_knobs() if k not in _read()[0]))
+            + tuple(k for k in solver_knobs() if k not in _read()[0])
+            + tuple(k for k in json_knobs() if k not in _read()[0]))
 
 
 def knob_source() -> str:

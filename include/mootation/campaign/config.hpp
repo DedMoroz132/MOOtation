@@ -199,6 +199,7 @@ struct Registry {
     std::vector<std::pair<std::string, std::vector<std::string>>> text_knobs;   // knob, its words
     std::vector<std::string> list_knobs;
     std::vector<std::string> solver_knobs;                // a table {solver = name, ...} (knobs.solver_knobs)
+    std::vector<std::string> json_knobs;                  // a JSON array (knobs.json_knobs; task 19)
     std::vector<std::pair<std::string, int>> problems;    // the benchmarks: name, objectives
     std::string platform = "windows";                     // windows, darwin, linux
     std::string algorithms_error;                         // a registry that could not be read: its message
@@ -588,7 +589,12 @@ inline Config loads(const std::string& text, const Registry& reg,
                     const bool listed = std::find(reg.list_knobs.begin(), reg.list_knobs.end(), name) != reg.list_knobs.end();
                     const bool solver =
                         std::find(reg.solver_knobs.begin(), reg.solver_knobs.end(), name) != reg.solver_knobs.end();
-                    if (solver) {
+                    const bool array =
+                        std::find(reg.json_knobs.begin(), reg.json_knobs.end(), name) != reg.json_knobs.end();
+                    if (array) {
+                        if (pv.kind != Kind::Array)
+                            throw ConfigError(where + ".params." + name, "expected an array [...], got " + py_repr(pv));
+                    } else if (solver) {
                         if (pv.kind != Kind::Object)
                             throw ConfigError(where + ".params." + name,
                                               "expected a table {solver = name, its knobs ...}, got " + py_repr(pv));
