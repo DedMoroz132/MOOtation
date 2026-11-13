@@ -123,32 +123,35 @@ inline double characteristic_cost(long long effort_m, double mean_run_cost) { re
 // K18 (15): kappa^{A/B} = C^B / C^A
 inline double efficiency_ratio(double cost_a, double cost_b) { return cost_b / cost_a; }
 
-// KAV-4: the q-quantile, linear between order statistics (Hyndman-Fan 7)
-inline double quantile(std::vector<double> v, double q)
+// KAV-4: the q-quantile of values sorted in increasing order, linear between
+// order statistics (Hyndman-Fan 7)
+inline double quantile_sorted(const std::vector<double>& v, double q)
 {
     if (v.empty()) throw std::invalid_argument("so::quantile: no values");
-    std::sort(v.begin(), v.end());
     const double h = (static_cast<double>(v.size()) - 1.0) * q;
     const std::size_t lo = static_cast<std::size_t>(std::floor(h));
     const std::size_t hi = std::min(lo + 1, v.size() - 1);
     return v[lo] + (h - static_cast<double>(lo)) * (v[hi] - v[lo]);
 }
 
-// K18 (16): typ M = the median of M over problems
-inline std::vector<double> as_doubles(const std::vector<long long>& efforts)
+// The efforts as doubles, sorted (one vector, no copies of it below)
+inline std::vector<double> sorted_doubles(const std::vector<long long>& efforts)
 {
     std::vector<double> v;
+    v.reserve(efforts.size());
     for (long long m : efforts) v.push_back(static_cast<double>(m));
+    std::sort(v.begin(), v.end());
     return v;
 }
 
-inline double typ(const std::vector<long long>& efforts) { return quantile(as_doubles(efforts), 0.5); }
+// K18 (16): typ M = the median of M over problems
+inline double typ(const std::vector<long long>& efforts) { return quantile_sorted(sorted_doubles(efforts), 0.5); }
 
 // K18 (17): spread M = the interquartile range of M over problems
 inline double spread(const std::vector<long long>& efforts)
 {
-    const std::vector<double> v = as_doubles(efforts);
-    return quantile(v, 0.75) - quantile(v, 0.25);
+    const std::vector<double> v = sorted_doubles(efforts);
+    return quantile_sorted(v, 0.75) - quantile_sorted(v, 0.25);
 }
 
 // Q22's budgets (§3.4)
