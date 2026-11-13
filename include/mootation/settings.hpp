@@ -333,6 +333,8 @@ inline bool is_core_param(const std::string& name)
 //                 (the default), average or complete (ARV-2)
 //   aprd_pbi      aprd: PBI in the canonical form (canonical, the default;
 //                 APRD-10) or as Eq.7-8 print it (printed; APRD-12)
+//   rd_ideal      rd_emo: z* the running ideal (running, the default; RDE-3)
+//                 or the origin, as §4.1 (origin; RDE-9)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -428,6 +430,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"arv_linkage",  {"single", "average", "complete"}},
         {"min_sym",      {"off", "canon", "align"}},
         {"aprd_pbi",     {"canonical", "printed"}},
+        {"rd_ideal",     {"running", "origin"}},
     };
     return v;
 }
@@ -481,7 +484,7 @@ inline bool is_core_word(const std::string& name)
                           "cv_rule", "cv_norm",
                           "nadir_source",
                           "drs_guard",
-                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage", "min_sym", "aprd_pbi"})
+                          "clia_norm", "clia_rpil", "gng_ties", "arv_linkage", "min_sym", "aprd_pbi", "rd_ideal"})
         if (name == k) return true;
     return false;
 }

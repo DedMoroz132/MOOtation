@@ -136,6 +136,7 @@ _FALLBACK_TEXT = {
     "arv_linkage": ("single", "average", "complete"),
     "min_sym": ("off", "canon", "align"),
     "aprd_pbi": ("canonical", "printed"),
+    "rd_ideal": ("running", "origin"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 _FALLBACK_JSON = ("dc_stages", "pap_members")

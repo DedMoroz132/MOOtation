@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-399 items: 316 yes, 26 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+400 items: 316 yes, 27 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -124,6 +124,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `rd_emo` | RDE-1 (NOT A DEVIATION — kept as a note) | θ = 5 IS stated: §4.1 says "θ = 5 suggested in MOEA/D is set in RD-EMO". | no: fixed | `rd_emo.hpp` |
 | `rd_emo` | RDE-2 (MINOR) | A region is argmin d2 to a reference line, i.e. the "nearest reference line". | yes | `rd_emo.hpp` |
 | `rd_emo` | RDE-3 (DEVIATION — overriding a stated value) | z* is the RUNNING ideal: the per-objective minimum over the population and every offspring seen. | yes | `rd_emo.hpp` |
+| `rd_emo` | RDE-9 (READING; knob rd_ideal, off by default: running) | RDE-3's equivalence holds only once the population has reached the front: until then the running ideal lies above the origin, the reference lines start from it, and the regions (RDE-2) and the PBI of Eq.2 differ from... | no: option | `rd_emo.hpp` |
 | `rd_emo` | RDE-3b (MINOR) | Alg.1 line 18 draws the second parent's region from the T-neighbourhood U_n restricted to regions with RD > 0; when every region of U_n is empty (only possible at very small N) the paper has no rule, and this port fal... | yes | `rd_emo.hpp` |
 | `rd_emo` | RDE-4 (MINOR) | The distance between regions is the Euclidean distance between reference points; | yes | `rd_emo.hpp` |
 | `rd_emo` | RDE-5 (MINOR) | Reference points = Das–Dennis(pop_size) via generate_auto, with automatic layering. | yes | `rd_emo.hpp` |

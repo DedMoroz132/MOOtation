@@ -265,6 +265,9 @@ always listed under **Changed** or **Removed**.
   used parameters active) and `canon_key`, for `ga_sbx` and `ssga` with
   `ga_crossover`, `ga_mutation`, `ga_init = user`. Readings HOOK-1...6.
   Only a problem that asks for them uses them.
+- Added: `rd_emo`'s knob `rd_ideal`, default unchanged, so default runs keep
+  their golden fingerprints: `running` keeps z* the running ideal (RDE-3);
+  `origin` pins it at the origin, as the paper's §4.1 states (RDE-9).
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into

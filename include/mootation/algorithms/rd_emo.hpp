@@ -41,6 +41,12 @@
 //     is attained at 0, and stays well-defined otherwise. A caller who wants
 //     the paper's letter on an f ≥ 0 problem
 //     loses nothing; on a problem with f < 0 the letter is the broken choice.
+//   RDE-9 (READING; knob rd_ideal, off by default: running). RDE-3's
+//     equivalence holds only once the population has reached the front: until
+//     then the running ideal lies above the origin, the reference lines start
+//     from it, and the regions (RDE-2) and the PBI of Eq.2 differ from the
+//     paper's. rd_ideal = origin pins z* at the origin, the letter of §4.1;
+//     running, the default, keeps RDE-3.
 //   RDE-3b (MINOR). Alg.1 line 18 draws the second parent's region from the
 //     T-neighbourhood U_n restricted to regions with RD > 0; when every
 //     region of U_n is empty (only possible at very small N) the paper has no
@@ -100,6 +106,8 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "../constraint_mode.hpp"
@@ -123,6 +131,7 @@ private:
     int    T_ = 20, W_ = 5;
     double theta_ = 5.0;
     double eta_c_ = 30.0, eta_m_ = 20.0, pc_ = 0.9, pm_ = -1.0;
+    bool ideal_origin_ = false;   // RDE-9: z* at the origin (knob rd_ideal)
     std::mt19937 rng_{std::random_device{}()};
 
     struct Sol { std::vector<double> vars, objs; std::vector<int> bvars; double cv=0.0; VaultPoint pt{}; };
@@ -157,6 +166,7 @@ private:
     }
     // RDE-3: z* is the running ideal (minimum over the population).
     void upd_ideal_pop(){
+        if(ideal_origin_){ z_.assign(m_,0.0); return; }   // RDE-9: the origin, as §4.1
         for(const auto& s:pop_) for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],s.objs[k]);
     }
 
@@ -248,6 +258,13 @@ public:
     RDEMOCore() = default;
     void set_T(int t){ if(t>0){T_=t;W_=std::max(1,t/4);} }
     void set_theta(double t){ if(t>0) theta_=t; }
+    bool set_word(const std::string& k, const std::string& w){
+        if(k!="rd_ideal") return false;                      // RDE-9
+        if(w!="running" && w!="origin")
+            throw std::invalid_argument("rd_emo: rd_ideal = '"+w+"': running or origin");
+        ideal_origin_=(w=="origin");
+        return true;
+    }
     void set_eta_crossover(double e){ eta_c_=e; }
     void set_eta_mutation(double e){ eta_m_=e; }
     void set_pc(double p){ pc_=p; }
@@ -331,7 +348,7 @@ public:
 
         // ── Algorithm 2: update ──
         for(auto& q:Q){
-            for(int kk=0;kk<m_;++kk) z_[kk]=std::min(z_[kk],q.objs[kk]);   // running ideal
+            if(!ideal_origin_) for(int kk=0;kk<m_;++kk) z_[kk]=std::min(z_[kk],q.objs[kk]);   // running ideal (RDE-9: or the origin)
             std::vector<int> rd=region_degrees();
             int n=0; for(int i=1;i<N_;++i) if(rd[i]>rd[n]) n=i;
             int k=assoc(q.objs);
