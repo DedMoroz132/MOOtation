@@ -11722,6 +11722,24 @@ def friedman_test_by_hand():
 
 
 @test
+def the_cost_to_an_optimum_with_95_percent_confidence():
+    """Task 25, 24.7.3 (so_confidence.hpp through _core.so_metrics): M_95 =
+    29 / 9 / 5 / 2 at R = 0.1 / 0.3 / 0.5 / 0.9 (Kavetski et al. 2018, (12));
+    the safeguard 1/(n + 1) at R = 0; the cost, the efficiency ratio, typ and
+    spread (the median and the interquartile range)."""
+    so = _core_with("so_metrics")
+    if so is None or not hasattr(so.so_metrics, "characteristic_effort"):
+        print("  skip  the_cost_to_an_optimum...: no _core, or one before task 25"); return
+    C = so.so_metrics
+    assert [C.characteristic_effort(R, 0.95, 100) for R in (0.1, 0.3, 0.5, 0.9)] == [29, 9, 5, 2]
+    assert C.characteristic_effort(0.0, 0.95, 99) == 299 and C.characteristic_effort(0.5, 0.75, 100) == 2
+    assert C.reliability([True, False, True, True]) == 0.75 and C.characteristic_cost(9, 250.0) == 2250.0
+    assert C.efficiency_ratio(2000.0, 6000.0) == 3.0 and abs(C.batch_reliability(0.5, 5) - 0.96875) < 1e-15
+    assert C.typ([4, 1, 3, 2]) == 2.5 and C.spread([4, 1, 3, 2]) == 1.5
+    assert C.q22_budgets() == [200.0, 500.0, 1000.0, 2000.0, 3000.0, 5000.0]
+
+
+@test
 def the_single_objective_report_reads_a_campaign():
     """Task 18, stage 5 (run/report_so.py): on a small bbob campaign the ERT
     of a cell is the evaluations of all its runs to the target over the hits
@@ -11782,6 +11800,14 @@ gens = 0
         hits = [x for x in times if x is not None]
         lengths = sum(RS._cost(r) for r, x in zip(group, times) if x is None)
         assert cell["hits"][2] == len(hits) and abs(cell["ert"][2] - (sum(hits) + lengths) / len(hits)) < 1e-9, cell
+        conf = RS.confidence(rs)
+        cc = conf["cells"][("bbob01_n02_1D", "cmaes")]
+        finest = so.runtime                                 # the finest absolute target: f_opt + 1e-8
+        hit8 = [finest(r["records"], r["so"]["f_opt"] + 1e-8, 1.0) is not None for r in group]
+        assert cc["runs"] == 4 and cc["R"] == sum(hit8) / 4 and cc["M"] == so.characteristic_effort(cc["R"], 0.95, 4), cc
+        assert abs(cc["cost"] - cc["M"] * sum(RS._cost(r) for r in group) / 4) < 1e-9 * max(1.0, cc["cost"]), cc
+        assert set(conf["algorithms"]) == {"cmaes", "nelder_mead", "de"} and all(
+            row["problems"] == 3 for row in conf["algorithms"].values()), conf["algorithms"]
         e = RS.ecdf(rs)[2]
         for c, algs in e.items():
             for a, row in algs.items():
@@ -11796,7 +11822,7 @@ gens = 0
         with contextlib.redirect_stdout(out):
             assert C.main([str(path), "--so-report"]) == 0
         text = out.getvalue()
-        assert "## ERT" in text and "## ECDF" in text and "no worse than the best" in text, text[:300]
+        assert "## ERT" in text and "## ECDF" in text and "no worse than the best" in text and "95 % confidence" in text, text[:300]
         assert "Simulated restarts" not in text and text.strip() == RS.report(root).strip()   # the default as before
         # the simulated restarts (H16 §3.2; so_metrics.hpp SOM-6, SOM-7): C++ = the Python mirror, bit for bit;
         # the mean of many samples near ERT; their table and ECDF behind --so-simulated
