@@ -59,6 +59,7 @@ set(MOOTATION_TESTS
     test_so_metrics
     test_so_confidence
     test_chain_ls
+    test_rgn
     test_store_codec
     test_json
     test_toml

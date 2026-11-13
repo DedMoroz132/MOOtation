@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-320 items: 276 yes, 44 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+329 items: 285 yes, 44 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -627,6 +627,15 @@ Their readings, from every comment of each file (the first column the file's nam
 | `restarts` | RST-7 | A run's generator and its start mean come from start_seed(seed, k) (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and σ⁰ of a run of regime 2 from it before the start mean. | yes | `restarts.hpp` |
 | `restarts` | RST-8 | A run that evaluates nothing ends the strategy (ipop, bipop and bipop_2009): the budget, or the run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's own allowance says, or every point the run asks f... | yes | `restarts.hpp` |
 | `restarts` | RST-9 | With warm_start = on (task 24, §24.4.1; off by default: x0 is ignored and reported, as before) x0 is the start mean of the first run only; the restarts draw theirs as before (the decision of 13.11: INJ-3 stays). | no: option | `restarts.hpp` |
+| `rgn` | RGN-1 | Step 1 evaluates r at theta_i again every iteration; here theta_i and its residuals come from the line search or the difference points, so no evaluation is repeated (the library's evaluator does not count a point twic... | yes | `rgn.hpp` |
+| `rgn` | RGN-2 | Every line search trial is an evaluation (the pseudocode adds 1 to N_Phi only for the accepted one). | yes | `rgn.hpp` |
+| `rgn` | RGN-3 | The expected reduction of B2, delta^T g + 1/2 delta^T H delta, is taken for the projected step (Appendix A writes it for delta_rdc before the projection of step 7); | yes | `rgn.hpp` |
+| `rgn` | RGN-4 | "The SVD" of the symmetric positive semidefinite H_free is its eigendecomposition (eigen.hpp): W the eigenvalues; those at or below the threshold, the slightly negative ones of round-off included, are dropped. | yes | `rgn.hpp` |
+| `rgn` | RGN-5 | A budget (max_evals, the library's) may end an iteration midway: the run then returns the best point it has evaluated (the current one or a difference point). | yes | `rgn.hpp` |
+| `rgn` | RGN-6 | A residual that is not finite gives Phi = +inf, worse than any finite value; a Jacobian column with a nonfinite residual is set to 0. | yes | `rgn.hpp` |
+| `rgn` | RGN-7 | The box must be finite (h_max is a fraction of its width) and contain the start. | yes | `rgn.hpp` |
+| `rgn` | RGN-8 | theta_scale = 10 and Phi_scale = 1 are Q18's absolute scales: in a problem whose parameters are of order 1, theta changes below 1e-4 count as "no change" (§4.4, criterion 3). | yes | `rgn.hpp` |
+| `rgn` | RGN-9 | Free / locked / releasable as B1-B3; B3's "comparable gradient" tests use \|g_k\| max(\|theta_k\|, theta_scale), as written. | yes | `rgn.hpp` |
 | `scalar` | SCALAR-1 | n_sub from the budget: what is left after the plan's start and the anchors, over 10 (n + 1) evaluations a subproblem for sqp — about ten iterations from a neighbour's solution — and 100 n for nm and cmaes; at most pop... | yes | `scalar.hpp` |
 | `scalar` | SCALAR-2 | nm, cmaes: an infeasible point is worth the worst feasible value known for its subproblem plus its violation (Deb's rule as a penalty). | yes | `scalar.hpp` |
 | `scalar` | SCALAR-3 | tch: w_i = 1 / max(d_i, 1e-6) for the lattice's direction d, so that the solutions lie on the rays F̄ ∝ d the lattice spreads evenly; the reference point is z*. | yes | `scalar.hpp` |
