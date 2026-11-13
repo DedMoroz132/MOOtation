@@ -70,6 +70,7 @@ struct CampaignSpec {
     std::string archive_mode = "online", native = "auto";
     std::string bbob_instance = "by_run";                 // one objective: a bbob problem's instance (job_run.hpp)
     double stop_at = 0.0;                                 // one objective: end a run at f_opt + stop_at (0: never)
+    bool keep_restarts = false;                           // one objective: meta.json so.restarts, a strategy's runs
     // one objective: the wrappers of every problem (suite/wrap.hpp; task 20,
     // §20.2.1), shift, rotate and perm in that order from the run's x: an
     // instance number each (0: off), or "by_run" (the run's seed); the shift's
@@ -263,7 +264,7 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
         "answer_k", "pop_fit", "ladder_min_gens", "dense_reference", "answer_select",
         "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
         "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout", "archive_cap",
-        "bbob_instance", "stop_at", "wrap_perm", "wrap_rotate", "wrap_shift", "wrap_shift_scale"};
+        "bbob_instance", "stop_at", "keep_restarts", "wrap_perm", "wrap_rotate", "wrap_shift", "wrap_shift_scale"};
     const std::set<std::string> known_set(known.begin(), known.end());
     std::set<std::string> unknown;
     for (const auto& k : raw.keys)
@@ -359,6 +360,7 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
             throw ConfigError("campaign.stop_at", "a number >= 0 (0: never), not " + py_repr(*v));
         spec.stop_at = as_float(*v);
     }
+    spec.keep_restarts = flag(raw, "keep_restarts", false);
     for (const auto& [key, field] : {std::pair<const char*, Value*>{"wrap_perm", &spec.wrap_perm},
                                      {"wrap_rotate", &spec.wrap_rotate}, {"wrap_shift", &spec.wrap_shift}})
         if (const Value* v = raw.find(key)) {

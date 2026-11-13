@@ -11804,7 +11804,9 @@ def a_campaign_stops_at_its_target_in_both_engines():
     f_opt, as COCO's runs end at the final target: ipop on bbob f1 and f2
     stops far below its budget, the last record the hit, meta's so.stop_at
     the precision; both engines write the same files; a stop_at below 0 is
-    refused."""
+    refused. keep_restarts = true puts ipop's runs in meta's so.restarts
+    (regime, lambda, sigma0, evaluations, stop), their evaluations the run's;
+    false (the default) none; a number refused."""
     from mootation.run import campaign as C
     if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
         print("  skip  a_campaign_stops_at_its_target...: no C++ engine or _core.so_metrics"); return
@@ -11853,6 +11855,31 @@ gens = 0
             assert "stop_at" in str(e), str(e)
         else:
             raise AssertionError("stop_at = -1 not refused")
+        # keep_restarts: meta's so.restarts is the strategy's "restarts" setting, both engines; off, none
+        kept = {}
+        for name, engine in (("kp", "python"), ("kc", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(toml.replace("NAME", name)
+                            .replace("stop_at = 1e-8", "stop_at = 1e-8\nkeep_restarts = true"), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [] and C.campaign_spec(cfg).keep_restarts, validate(cfg)
+            spec = C.campaign_spec(cfg)
+            kept[name] = C.out_root(cfg, spec)
+            assert C.run_campaign(cfg, workers=2, engine=engine)["done"] == 4
+        for job in jobs:
+            a, b = C.run_dir_of(kept["kp"], job), C.run_dir_of(kept["kc"], job)
+            _same_run(a, b)
+            m = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+            runs = m["so"]["restarts"]
+            assert runs and sum(r[3] for r in runs) == m["fe"] and all(len(r) == 5 for r in runs), runs
+            assert "restarts" not in json.loads((C.run_dir_of(rp, job) / "meta.json").read_text(encoding="utf-8"))["so"]
+        bad.write_text(toml.replace("NAME", "bad").replace("stop_at = 1e-8", "keep_restarts = 1"), encoding="utf-8")
+        try:
+            C.campaign_spec(load(bad))
+        except Exception as e:                                   # noqa: BLE001
+            assert "keep_restarts" in str(e), str(e)
+        else:
+            raise AssertionError("keep_restarts = 1 not refused")
 
 
 _CEC_TOML = """[run]

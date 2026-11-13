@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-266 items: 257 yes, 9 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
+267 items: 257 yes, 10 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -440,6 +440,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cmaes` | CMA-2 | Stagnation holds when it holds in both arrays, the best and the median values ("respectively"), and is tested only once the iterations reach the window's length (with fewer, 20 newest and 20 oldest overlap or are not... | yes | `cmaes.hpp` |
 | `cmaes` | CMA-3 | TolHistFun and EqualFunVals are tested only once there are as many iterations as their window holds (10 + ⌈30D/λ⌉, D). | yes | `cmaes.hpp` |
 | `cmaes` | CMA-4 | "Numerically constant": m_i + δ_i == m_i in double for every i (NoEffectAxis), for some i (NoEffectCoor). | yes | `cmaes.hpp` |
+| `cmaes` | CMA-6 | cma_stagnation: h09 (the default) is CMA-2's reading, both arrays; either holds when one of them stagnates; off never stops a run on it. | no: option | `cmaes.hpp` |
 | `cmaes` | CMA-5 | The eigendecomposition of C at every iteration, where H09 makes it every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves time and changes no update but the sampling's B and D between decompositions. | yes | `cmaes.hpp` |
 | `continuation` | DC-1 | The problem itself is always the last stage: the stages given lead up to it, and the answer is the problem's (its archive's best point, which may come from an earlier stage). | yes | `continuation.hpp` |
 | `continuation` | DC-2 | Stage 1 starts where the inner solver would (its plan, or x0); stage k + 1 from stage k's answer. | yes | `continuation.hpp` |

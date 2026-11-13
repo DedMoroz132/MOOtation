@@ -99,7 +99,9 @@ campaign at more objectives refuses them) are the local solvers of
 `cma_weights` = `active` | `positive`, `cma_cmu` = `tutorial2016` |
 `hansen2009`, `cma_stop` = `spread` | `h09`: the tutorial's weights and c_μ, the
 defaults, or those of BIPOP-CMA-ES (Hansen, GECCO 2009), and the run stopped by
-its spread at `local_tol` or by that paper's termination criteria). A run is the
+its spread at `local_tol` or by that paper's termination criteria;
+`cma_stagnation` = `h09` | `either` | `off`: that paper's Stagnation in both
+arrays of best and median values, the default, in either, or never, CMA-6). A run is the
 initial plan (`pop_size` uniform points, the design of `init` or the seed
 population) and the solver once from its best point, until the solver's own
 tolerance or the budget; a run that stops early leaves the rest of the budget

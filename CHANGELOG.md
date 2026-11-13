@@ -42,6 +42,17 @@ always listed under **Changed** or **Removed**.
   a campaign hands `chaboche1d`'s and `sumexp`'s residual blocks (weight 1:
   the same objective, bit for bit) to the single-objective algorithms.
   `docs/verification.md` maps task 19's solvers and strategies.
+- Added (`scalar/cmaes.hpp`, `restarts.hpp`; task 18): the knob
+  `cma_stagnation` = `h09` | `either` | `off` for `cmaes` (with `cma_stop =
+  h09`), `ipop`, `bipop` and `bipop_2009`: H09's Stagnation in both arrays of
+  best and median values (the default, CMA-2), in either of them, or never
+  (CMA-6). In the settings only when given: default runs are unchanged, byte
+  for byte. Made for the f23 (Katsuura) check, where Stagnation ends most
+  runs of bipop_2009 at D = 40.
+- Added (campaign, both engines; task 18): `[campaign] keep_restarts = true`
+  keeps the runs of ipop, bipop and bipop_2009 (regime, λ, σ⁰, evaluations,
+  the stopping criterion) in `meta.json`'s `so.restarts`. Off by default.
+
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into
