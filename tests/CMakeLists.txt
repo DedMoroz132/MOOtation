@@ -62,6 +62,7 @@ set(MOOTATION_TESTS
     test_symmetry
     test_structure
     test_structure_hooks
+    test_structure_fit
     test_blocks_objectives
     test_so_metrics
     test_so_confidence

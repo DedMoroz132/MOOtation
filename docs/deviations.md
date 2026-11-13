@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-447 items: 391 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+451 items: 395 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -835,6 +835,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-8 | Every strategy ends below its budget too where its points cost nothing (the archive answers them: points clipped onto known ones, a box of zero width): a loop over the budget ends when a pass of it spends nothing. mul... | yes | `strategy.hpp` |
 | `strategy` | STRAT-9 | min_sym = off \| canon \| align (task 19, §19.2.2, S5; off by default): the log's distance between a start's answer and a minimum taken after the answer is aligned to the minimum (align), or both are canonical (canon),... | no: option | `strategy.hpp` |
 | `strategy` | STRAT-9 | the log grouped by the problem's symmetries where min_sym is given | yes | `strategy.hpp` |
+| `structure_fit` | FIT-1 | The inner run's budget is the hook's allowance (ctx.budget), at most fit_budget evaluations when that is > 0; its generator's seed is drawn from the hook's generator (rnd::below(2^32)), its eq_tol 1e-6 (a structure's... | yes | `structure_fit.hpp` |
+| `structure_fit` | FIT-2 | A genome that does not decode, or that has no active gene, comes back canonical (decode's x_canon, or x itself when invalid) with nothing spent. | yes | `structure_fit.hpp` |
+| `structure_fit` | FIT-3 | The answer is the inner run's best point embedded into the canonical genome; its f is not declared (it is in the archive, so free: ULS-2). | yes | `structure_fit.hpp` |
+| `structure_fit` | FIT-4 | An empty active mask means "every gene active" in task 24's contract (genome.hpp), and the fit then moves every gene — right only for a genome of parameters alone. structure_hooks.hpp's decoders always give the full m... | yes | `structure_fit.hpp` |
 | `structure_hooks` | HOOK-1 | A malformed vector (a count or a production out of range, a derivation that ends before or after the count, a non-integer where an integer belongs) is refused with std::invalid_argument naming the coordinate; the oper... | yes | `structure_hooks.hpp` |
 | `structure_hooks` | HOOK-2 | Parameters live in one box [param_lo, param_hi] for every slot (the vector's bounds cannot depend on the structure); by default the union of the productions' ranges. | yes | `structure_hooks.hpp` |
 | `structure_hooks` | HOOK-3 | The probabilities inside the hooks. The GA calls crossover for every pair in SBX's place (ga.hpp GA-9), so the hook draws its own coin: a pair is crossed with p_crossover, else the children are the parents — 0.8 for t... | yes | `structure_hooks.hpp` |

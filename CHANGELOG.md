@@ -330,6 +330,12 @@ always listed under **Changed** or **Removed**.
   used parameters active) and `canon_key`, for `ga_sbx` and `ssga` with
   `ga_crossover`, `ga_mutation`, `ga_init = user`. Readings HOOK-1...6.
   Only a problem that asks for them uses them.
+- Added (task 27, item 27.1): `scalar/structure_fit.hpp`'s
+  `set_active_fit(P, {inner, fit_budget})` gives a problem with a decoder a
+  `local_search` hook that fits only the decoded genome's active genes (a
+  structure's parameters) with an inner solver on `restricted()`'s
+  subproblem, the structure frozen; `memetic` with `lamarck = on` writes
+  the fit back. Readings FIT-1...4. Only a problem that asks for it uses it.
 - Added: `rd_emo`'s knob `rd_ideal`, default unchanged, so default runs keep
   their golden fingerprints: `running` keeps z* the running ideal (RDE-3);
   `origin` pins it at the origin, as the paper's §4.1 states (RDE-9).
