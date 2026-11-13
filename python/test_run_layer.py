@@ -1837,7 +1837,9 @@ def single_objective_measures_agree_with_their_python_cross_check():
     x_s, 10 x_s and 100 x_s with relative targets, cmaes on bbob's f1 and f8
     (D = 5, three seeds) with COCO's absolute ones: the same targets (the
     absolute grid within an ulp: pow), runtimes, ERT, ECDF and values at
-    budgets; each problem of the registry at one objective says its kind."""
+    budgets; each problem of the registry at one objective says its kind.
+    The simulated restarts' mirror: its mt19937 gives the standard's
+    10000th word, and its samples are C++'s from seeds 0 ... 2^32 - 1."""
     try:
         from mootation import _core
     except ImportError:
@@ -1853,6 +1855,14 @@ def single_objective_measures_agree_with_their_python_cross_check():
     assert C.coco_table_precisions() == P.coco_table_precisions() and C.more_wild_factors() == P.more_wild_factors()
     assert all(abs(a - b) <= 4.5e-16 * b for a, b in zip(C.coco_precisions(), P.coco_precisions()))   # pow: an ulp or two
     assert len(C.coco_precisions()) == 51 and len(C.coco_precisions(-6)) == 41
+    # the mirror's mt19937 (SOM-7): the standard's check, std::mt19937's 10000th word from the default seed 5489
+    # is 4123659995 ([rand.predef]); and the simulated restarts C++ = Python from seeds over the 32-bit range
+    w = P._Words(5489)
+    assert [w.word32() for _ in range(10000)][-1] == 4123659995
+    rt, ln = [None, 3.0, None, 7.0, None], [11.0, 3.0, 13.0, 7.0, 17.0]
+    for seed in (0, 1, 2 ** 31, 2 ** 32 - 1):
+        for first in (True, False):
+            assert list(C.simulated_runtimes(rt, ln, 400, seed, first)) == P.simulated_runtimes(rt, ln, 400, seed, first)
     one = [q for q in PROBLEMS.values() if q.n_obj == 1]
     # lj_cluster (task 19, symmetric.py, SYMR-3): absolute, as bbob; and task 20's global problems (§24.6.2)
     assert all(q.targets == ("absolute" if q.name.startswith(("bbob", "lj_cluster", "cec2013", "morse_cluster",
