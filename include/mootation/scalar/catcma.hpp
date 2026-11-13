@@ -47,15 +47,20 @@
 //     size adaptation and no (27) (sigma stays sigma^(0)), c_m = 1, c_mu as
 //     Table 1, and the categories by (15) with eta_n = 1 / (N_ca (K_n - 1)),
 //     then the margin.
-//   CC-11. (24)-(25) accumulate the unit step: s gets sqrt(beta (2 - beta))
-//     F^(1/2) G / ||G||_F, the direction (22) actually moves q along, and
-//     gamma gets beta (2 - beta). The PDF prints F^(1/2) G and beta (2 -
-//     beta) ||G||_F^2, unnormalized. Both keep E||s||^2 = gamma when the
+//   CC-11. By default (update = asng) (24)-(25) accumulate the unit step: s
+//     gets sqrt(beta (2 - beta)) F^(1/2) G / ||G||_F, the direction (22)
+//     actually moves q along, and gamma gets beta (2 - beta). The PDF (p. 4)
+//     prints F^(1/2) G and beta (2 - beta) ||G||_F^2, unnormalized; update =
+//     printed takes them literally. Both keep E||s||^2 = gamma when the
 //     ranking is random, but printed so the exponent of (26) scales with
 //     ||G||_F^2, whose expectation under a random ranking is sum (K_n - 1) /
 //     mu_w (about 24 at N_ca = K_n = 10): delta then jumps by e^several in a
 //     generation, the step of (22) throws q onto the margin, and the
-//     categories fix on what one generation favoured.
+//     categories fix on what one generation favoured. The printed form
+//     stalls in the paper's short runs (tests/test_catcma.cpp, N_co = N_ca
+//     = K_n = 10), which the paper reports solved; its results likely come
+//     from the authors' normalized code (the ASNG's, [4]), not on this
+//     machine to check. Hence asng is the default.
 // ============================================================================
 
 #include <algorithm>
@@ -76,11 +81,15 @@ namespace mootation::scalar::catcma {
 
 using Vec = std::vector<double>;
 
+// (24)-(25): the unit step (CC-11, the default) or as the PDF prints them
+enum class Update { asng, printed };
+
 struct Options {
     int popsize = 0;                      // 0: Table 1's lambda
     double q_min = -1.0;                  // < 0: CC-2's margin; else this one for every n
     bool enhanced = true;                 // CC-10
     double lambda_min = 1e-30;            // (27)
+    Update update = Update::asng;         // CC-11; the knob catcma_update = "asng" | "printed"
 };
 
 // a candidate: its continuous part and its categories (0-based, one a variable)
@@ -339,13 +348,14 @@ private:
         if (gf > 0.0)                                                                        // (22), CC-6
             for (std::size_t v = 0; v < nca_; ++v) step(v, G[v], delta_ / gf);
         const double beta = delta_ / std::sqrt(static_cast<double>(dims_));
-        const double unit = gf > 0.0 ? 1.0 / gf : 0.0;                                      // CC-11
+        const bool printed = o_.update == Update::printed;                                  // CC-11
+        const double unit = printed ? 1.0 : gf > 0.0 ? 1.0 / gf : 0.0;
         double s2 = 0.0;
         for (std::size_t i = 0; i < dims_; ++i) {                                           // (24)
             s_[i] = (1.0 - beta) * s_[i] + std::sqrt(beta * (2.0 - beta)) * root[i] * unit;
             s2 += s_[i] * s_[i];
         }
-        gamma_ = (1.0 - beta) * (1.0 - beta) * gamma_ + beta * (2.0 - beta);                // (25), CC-11
+        gamma_ = (1.0 - beta) * (1.0 - beta) * gamma_ + beta * (2.0 - beta) * (printed ? gf2 : 1.0);   // (25), CC-11
         delta_ *= dm::exp(beta * (s2 / 1.5 - gamma_));                                      // (26), alpha = 1.5
         margins();
     }

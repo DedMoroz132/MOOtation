@@ -15,6 +15,9 @@
 //     than the large one 1 / (N_ca (K - 1)) (Figure 4's direction); CatCMA
 //     does better than its ablation without the enhancements (§5.3, Figure
 //     6's direction);
+//   - update = printed ((24)-(25) as the PDF prints them, CC-11) stalls
+//     there: SPHERECOM's median stays above 0.1 where the default reaches
+//     1e-10;
 //   - N_ca = 0 is the plain CMA-ES and solves the sphere; bad arguments are
 //     refused (CC-9);
 //   - a checksum of the runs, the same bits on every platform.
@@ -193,6 +196,16 @@ void experiment()
     }
 }
 
+void printed()
+{
+    C::Options lit;
+    lit.update = C::Update::printed;
+    const double a = median(sphere_com, 10, 10, 10000, lit);
+    char line[200];
+    std::snprintf(line, sizeof line, "update = printed, SPHERECOM N = K = 10, 1e4 evaluations: median %.2e, stalled (CC-11)", a);
+    check(a > 0.1, line);
+}
+
 void plain()
 {
     std::mt19937 rng(3);
@@ -244,10 +257,11 @@ int main()
     proposition();
     margins();
     experiment();
+    printed();
     plain();
     refusals();
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
-    check(g_hash == 0xb5499bff73dc4e9bull, "the checksum of the runs, the same bits on every platform");
+    check(g_hash == 0x54fc979e74626851ull, "the checksum of the runs, the same bits on every platform");
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;
 }

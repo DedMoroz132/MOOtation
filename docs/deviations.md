@@ -447,7 +447,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `catcma` | CC-8 | Draws, candidate by candidate: N_co normals for y_i, then one uniform per categorical variable, the category the first k with u < q_{n,1} + ... + q_{n,k} (the last where rounding leaves none). | yes | `catcma.hpp` |
 | `catcma` | CC-9 | N_co >= 1 (the rates of Table 1 divide by it), N_ca >= 0, K_n >= 2. | yes | `catcma.hpp` |
 | `catcma` | CC-10 | enhanced = false is §5.3's ablation: no rank-one update, no step size adaptation and no (27) (sigma stays sigma^(0)), c_m = 1, c_mu as Table 1, and the categories by (15) with eta_n = 1 / (N_ca (K_n - 1)), then the ma... | yes | `catcma.hpp` |
-| `catcma` | CC-11 | (24)-(25) accumulate the unit step: s gets sqrt(beta (2 - beta)) F^(1/2) G / \|\|G\|\|_F, the direction (22) actually moves q along, and gamma gets beta (2 - beta). | yes | `catcma.hpp` |
+| `catcma` | CC-11 | By default (update = asng) (24)-(25) accumulate the unit step: s gets sqrt(beta (2 - beta)) F^(1/2) G / \|\|G\|\|_F, the direction (22) actually moves q along, and gamma gets beta (2 - beta). | yes | `catcma.hpp` |
 | `chain_ls` | SW-1 | "More than": rho doubles after the 6th success in a row and halves after the 4th failure (Fig. 2's "> 5", "> 3"; | yes | `chain_ls.hpp` |
 | `chain_ls` | SW-2 | Every evaluation counts: Fig. 2 counts a step as one evaluation though its second trial is another (Fig. 5 counts both). | yes | `chain_ls.hpp` |
 | `chain_ls` | SW-3 | rho is the standard deviation of dif (§3.1: "a normal distribution whose standard deviation is given by a parameter rho"; | yes | `chain_ls.hpp` |
