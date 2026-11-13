@@ -11704,7 +11704,9 @@ def the_single_objective_report_reads_a_campaign():
     (H16 §4.1); the ECDF shares rise from 0 to at most 1 per dimension and
     class; the values at budgets are the medians of f - f_opt; the methods
     no worse than the best include the best; --so-report prints the four
-    tables."""
+    tables, as before by default. The simulated restarts: the C++ samples are
+    the Python mirror's, bit for bit; their mean is near ERT; their
+    percentiles ordered and their ECDF rising; --so-simulated N adds both."""
     from mootation.run import campaign as C
     if not _have_numpy() or _core_with("so_metrics") is None or _core_with("scalar") is None:
         print("  skip  the_single_objective_report...: no _core"); return
@@ -11771,6 +11773,26 @@ gens = 0
             assert C.main([str(path), "--so-report"]) == 0
         text = out.getvalue()
         assert "## ERT" in text and "## ECDF" in text and "no worse than the best" in text, text[:300]
+        assert "Simulated restarts" not in text and text.strip() == RS.report(root).strip()   # the default as before
+        # the simulated restarts (H16 §3.2; so_metrics.hpp SOM-6, SOM-7): C++ = the Python mirror, bit for bit;
+        # the mean of many samples near ERT; their table and ECDF behind --so-simulated
+        from mootation.run import so_metrics as PS
+        times = [so.runtime(r["records"], r["so"]["f_opt"] + cell["precisions"][2], 1.0) for r in group]
+        lens = [RS._cost(r) for r in group]
+        for first in (True, False):
+            assert list(so.simulated_runtimes(times, lens, 300, 12345, first)) == PS.simulated_runtimes(
+                times, lens, 300, 12345, first)
+        sim = so.simulated_runtimes(times, lens, 20000, 7)
+        assert abs(sum(sim) / len(sim) - cell["ert"][2]) < 0.05 * cell["ert"][2], (sum(sim) / len(sim), cell)
+        st = RS.simulated_table(rs, n=200)[("bbob01_n02_1D", "cmaes")]
+        assert st["p10"][2] <= st["p50"][2] <= st["p90"][2], st
+        se = RS.simulated_ecdf(rs, n=50)[2]["all"]
+        assert all(row["share"] == sorted(row["share"]) and row["share"][-1] <= 1.0 for row in se.values()), se
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            assert C.main([str(path), "--so-report", "--so-simulated", "100"]) == 0
+        text = out.getvalue()
+        assert "## Simulated restarts, 100 samples" in text and "## ECDF of the simulated runtimes" in text, text[-400:]
 
 
 @test

@@ -44,6 +44,15 @@
 // THE VALUE AT A BUDGET: the best feasible f among the records of cost at
 // most the budget (H22 §III-D: an ordinal measure only).
 //
+// SIMULATED RESTARTS (H16 §3.2, H22 §V-A): the runtime of the restarted
+// algorithm off K runs at one target. A sample picks runs until one hit the
+// target; its runtime is the whole cost of the runs that missed plus the
+// runtime of the one that hit (H22 Eq. (2)). N samples bootstrap the
+// distribution (H16 §3.2.1, H22 §V-A 1); their mean estimates ERT (H22
+// §V-B), their ECDF is COCO's runtime distribution with simulated restarts
+// (H22 §VI). With no run that hit, there is no sample (the procedure would
+// never stop, H16 §3.2).
+//
 // READINGS:
 //   SOM-1. "At or below": a record hits tau when f <= tau (H22's first
 //     hitting of the target line).
@@ -53,8 +62,17 @@
 //   SOM-3. The absolute grid's exponents are k = k_max - i / 5, i = 0, 1,
 //     ..., 5 (k_max - k_min), each 10^k by the library's pow (dm::), so the
 //     same targets on every platform.
-//   SOM-4. The bootstrap of simulated restarts (H16 §3.2, H22 §V-A) is not
-//     here; the atlas (stage 5) will take it.
+//   SOM-4. The simulated restarts are here (simulated_runtimes), per run
+//     set and target; their aggregation (percentiles, the ECDF over
+//     problems) is the report's (run/report_so.py, REP-4).
+//   SOM-6. The first run of sample s, s = 0 ... N - 1, is run perm[s mod K]
+//     of one random permutation of the K runs, drawn before the samples
+//     (first = permuted, the default): H22 §V-A 1 picks the first trials
+//     "without replacement", H16 §3.2.1 picks the (1 + (N mod K))-th and its
+//     footnote 12 suggests a random permutation first. The further runs, and
+//     every run with first = random, uniform with replacement.
+//   SOM-7. The draws are std::mt19937(seed)'s words through rnd::below and
+//     rnd::shuffle (random.hpp), so the same samples on every platform.
 // ============================================================================
 
 #include <algorithm>
@@ -62,11 +80,13 @@
 #include <cstddef>
 #include <limits>
 #include <optional>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "detmath.hpp"
+#include "random.hpp"
 #include "scalar/improvements.hpp"
 
 namespace mootation::so {
@@ -158,6 +178,37 @@ inline std::vector<double> ecdf(const std::vector<std::optional<double>>& runtim
         std::size_t below = 0;
         for (const auto& t : runtimes) below += t && *t <= x ? 1 : 0;
         out.push_back(runtimes.empty() ? 0.0 : static_cast<double>(below) / static_cast<double>(runtimes.size()));
+    }
+    return out;
+}
+
+// N simulated runtimes off runs at one target (SIMULATED RESTARTS, SOM-6,
+// SOM-7): runtimes[i] the run's runtime (none: missed), lengths[i] its whole
+// cost; first_permuted false draws the first run of a sample like the others.
+// Empty when no run hit the target.
+inline std::vector<double> simulated_runtimes(const std::vector<std::optional<double>>& runtimes,
+                                              const std::vector<double>& lengths, std::size_t n, unsigned seed,
+                                              bool first_permuted = true)
+{
+    if (runtimes.size() != lengths.size()) throw std::invalid_argument("so_metrics: a length per run");
+    const std::size_t k = runtimes.size();
+    bool any = false;
+    for (const auto& t : runtimes) any = any || t.has_value();
+    std::vector<double> out;
+    if (!any) return out;
+    std::mt19937 g(seed);
+    std::vector<std::size_t> perm(k);
+    for (std::size_t i = 0; i < k; ++i) perm[i] = i;
+    if (first_permuted) rnd::shuffle(perm.begin(), perm.end(), g);
+    out.reserve(n);
+    for (std::size_t s = 0; s < n; ++s) {
+        double total = 0.0;
+        std::size_t i = first_permuted ? perm[s % k] : static_cast<std::size_t>(rnd::below(g, k));
+        while (!runtimes[i]) {
+            total += lengths[i];
+            i = static_cast<std::size_t>(rnd::below(g, k));
+        }
+        out.push_back(total + *runtimes[i]);
     }
     return out;
 }

@@ -2,10 +2,12 @@
 """The single-objective measures of a run in Python: the cross-check of
 include/mootation/so_metrics.hpp (task 18, stage 1, §1.3), which is the one
 implementation (_core.so_metrics). The definitions and readings (SOM-1 to
-SOM-4) are that header's: targets absolute (COCO, H22 §III-F item 2) or
+SOM-7) are that header's: targets absolute (COCO, H22 §III-F item 2) or
 relative (Moré and Wild, item 1), the runtime to a target, ERT, the ECDF and
 the value at a fixed budget, read off a run's improvement records
-(evaluations, grad_calls, f, cv).
+(evaluations, grad_calls, f, cv); the simulated restarts (H16 §3.2, H22
+§V-A), bit for bit: std::mt19937(seed) is NumPy's MT19937 with its legacy
+seeding, and rnd::below and rnd::shuffle (random.hpp) are written out here.
 
 Python's 10 ** k is the C library's pow, the header's dm::pow the library's
 own: the absolute grid may differ in the last bit, and a test holds the two
@@ -76,6 +78,56 @@ def ert(runtimes, lengths) -> float:
 def ecdf(runtimes, xs) -> list:
     n = len(runtimes)
     return [0.0 if not n else sum(1 for t in runtimes if t is not None and t <= x) / n for x in xs]
+
+
+class _Words:
+    """std::mt19937(seed)'s 32-bit words (NumPy's MT19937, legacy seeding)."""
+
+    def __init__(self, seed: int):
+        from numpy.random import MT19937
+        self._g = MT19937(0)
+        self._g._legacy_seeding(seed)
+
+    def word32(self) -> int:
+        return int(self._g.random_raw())
+
+
+def _below(g: _Words, n: int) -> int:
+    """rnd::below for n <= 2^32 (Lemire, random.hpp)."""
+    m = g.word32() * n
+    low = m & 0xFFFFFFFF
+    if low < n:
+        t = ((1 << 32) - n) % n
+        while low < t:
+            m = g.word32() * n
+            low = m & 0xFFFFFFFF
+    return m >> 32
+
+
+def simulated_runtimes(runtimes, lengths, n: int, seed: int, first_permuted: bool = True) -> list:
+    """N simulated runtimes off runs at one target (so_metrics.hpp, SOM-6,
+    SOM-7); [] when no run hit it."""
+    if len(runtimes) != len(lengths):
+        raise ValueError("so_metrics: a length per run")
+    k = len(runtimes)
+    if not any(t is not None for t in runtimes):
+        return []
+    g = _Words(seed)
+    perm = list(range(k))
+    if first_permuted:
+        for i in range(k, 1, -1):                       # rnd::shuffle: Fisher-Yates from the last
+            j = _below(g, i)
+            if j != i - 1:
+                perm[i - 1], perm[j] = perm[j], perm[i - 1]
+    out = []
+    for s in range(n):
+        total = 0.0
+        i = perm[s % k] if first_permuted else _below(g, k)
+        while runtimes[i] is None:
+            total += lengths[i]
+            i = _below(g, k)
+        out.append(total + runtimes[i])
+    return out
 
 
 def value_at(records, budget: float, grad_cost: float = 1.0):

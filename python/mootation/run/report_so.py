@@ -33,6 +33,13 @@ TEVC 26(6) 2022, H22):
                 from the best is listed. If Friedman does not reject, all are.
                 The test of the atlas's protocol replaces it once decided
                 (task 18, §5).
+  simulated     (opt-in: report(simulated=N), --so-simulated N) per problem,
+                algorithm and table precision the 10th, 50th and 90th
+                percentile and the mean of N simulated runtimes (H16 §3.2,
+                H22 §V-A; so_metrics.hpp SIMULATED RESTARTS), and per
+                dimension and class the ECDF of the simulated runtimes over
+                COCO's 51 targets (H22 §VI: the runtime distribution with
+                simulated restarts).
 
 READINGS:
   REP-1. The bbob classes are RR-6829's headings (Hansen et al. 2009):
@@ -47,6 +54,13 @@ READINGS:
     f_opt, is not a value: such runs are left out of values_at, and a block
     with one is left out of indistinct. A run without a feasible point at a
     budget counts as +inf there (worse than any value).
+  REP-4. Simulated restarts: the runs of one problem and algorithm (its
+    instances, H22 §IV) at one precision are the K runs; N samples each, the
+    first run of a sample permuted (SOM-6); the seed of a cell is CRC-32 of
+    "problem|algorithm|precision", so a report is the same each time. The
+    percentiles are by nearest rank (the ceil(q N)-th smallest); a cell
+    without a hit has none (H16 §3.2). In the ECDF a (problem, target) cell
+    without a hit adds N misses, as a missed pair does in ecdf.
 """
 
 from __future__ import annotations
@@ -183,6 +197,69 @@ def ecdf(rs: list) -> dict:
     return out
 
 
+def _cell_seed(*parts) -> int:
+    import zlib
+    return zlib.crc32("|".join(str(p) for p in parts).encode("utf-8"))
+
+
+def _nearest_rank(sorted_values: list, q: float) -> float:
+    return sorted_values[max(1, math.ceil(q * len(sorted_values))) - 1]
+
+
+def simulated_table(rs: list, *, n: int = 1000) -> dict:
+    """{(problem, algorithm): {"precisions", "p10", "p50", "p90", "mean"}}
+    of N simulated runtimes at each table precision (REP-4); None where no
+    run hit."""
+    so = _so()
+    by = {}
+    for r in rs:
+        by.setdefault((r["problem"], r["algorithm"]), []).append(r)
+    out = {}
+    for (p, a), group in sorted(by.items()):
+        kind = group[0]["so"].get("targets")
+        if group[0]["so"].get("f_opt") is None or not kind:
+            continue
+        eps = _table_precisions(kind)
+        cell = {"precisions": eps, "p10": [], "p50": [], "p90": [], "mean": []}
+        for i, e in enumerate(eps):
+            times = [so.runtime(r["records"], _targets(r, eps)[i], float(r["so"].get("grad_cost", 1.0)))
+                     for r in group]
+            sim = sorted(so.simulated_runtimes(times, [_cost(r) for r in group], n, _cell_seed(p, a, e)))
+            for q, key in ((0.1, "p10"), (0.5, "p50"), (0.9, "p90")):
+                cell[key].append(_nearest_rank(sim, q) if sim else None)
+            cell["mean"].append(sum(sim) / len(sim) if sim else None)
+        out[(p, a)] = cell
+    return out
+
+
+def simulated_ecdf(rs: list, *, n: int = 1000) -> dict:
+    """ecdf's shape over the simulated runtimes: per (problem, algorithm,
+    target) N samples, each divided by D (REP-4)."""
+    so = _so()
+    by = {}
+    for r in rs:
+        if r["so"].get("f_opt") is not None and r["so"].get("targets"):
+            by.setdefault((dimension(r), r["problem"], r["algorithm"]), []).append(r)
+    out, longest = {}, {}
+    for (D, p, a), group in sorted(by.items()):
+        eps = list(so.default_precisions(group[0]["so"]["targets"]))
+        lengths = [_cost(r) for r in group]
+        for i, e in enumerate(eps):
+            times = [so.runtime(r["records"], _targets(r, eps)[i], float(r["so"].get("grad_cost", 1.0)))
+                     for r in group]
+            sim = so.simulated_runtimes(times, lengths, n, _cell_seed(p, a, e))
+            scaled = [t / D for t in sim] if sim else [None] * n
+            longest[D] = max([longest.get(D, 1.0)] + [t for t in scaled if t is not None])
+            for c in (problem_class(p), "all"):
+                out.setdefault(D, {}).setdefault(c, {}).setdefault(a, []).extend(scaled)
+    result = {}
+    for D, classes in sorted(out.items()):
+        xs = [10 ** (i / 5) for i in range(0, int(math.floor(5 * math.log10(max(longest[D], 1.0)))) + 2)]
+        result[D] = {c: {a: {"x": xs, "share": list(so.ecdf(v, xs))} for a, v in sorted(algs.items())}
+                     for c, algs in sorted(classes.items())}
+    return result
+
+
 def _value(run: dict, budget: float) -> float | None:
     v = _so().value_at(run["records"], budget, float(run["so"].get("grad_cost", 1.0)))
     return math.inf if v is None else v - run["so"]["f_opt"]       # REP-3
@@ -255,8 +332,9 @@ def _g(v) -> str:
     return f"{v:.3g}"
 
 
-def report(root: Path, *, alpha: float = 0.05, problems=None) -> str:
-    """The four tables as text (markdown)."""
+def report(root: Path, *, alpha: float = 0.05, problems=None, simulated: int = 0) -> str:
+    """The four tables as text (markdown); with simulated = N > 0 two more,
+    the simulated restarts' percentiles and ECDF (REP-4)."""
     rs = runs(root, problems)
     if not rs:
         return "no finished run at one objective"
@@ -278,4 +356,17 @@ def report(root: Path, *, alpha: float = 0.05, problems=None) -> str:
     for (D, c, b), cell in indistinct(rs, alpha=alpha).items():
         lines.append(f"- D {D} | {c} | budget {b:g}: {', '.join(cell['same'])} "
                      f"(best {cell['best']}, Friedman p = {cell['friedman_p']:.3g}, {cell['blocks']} blocks)")
+    if simulated > 0:
+        lines += ["", f"## Simulated restarts, {simulated} samples: runtime p10 / p50 / p90 (mean)", ""]
+        for (p, a), cell in simulated_table(rs, n=simulated).items():
+            cells = ", ".join(f"{e:g}: " + ("—" if m is None else f"{_g(q1)} / {_g(q5)} / {_g(q9)} ({_g(m)})")
+                              for e, q1, q5, q9, m in zip(cell["precisions"], cell["p10"], cell["p50"],
+                                                          cell["p90"], cell["mean"]))
+            lines.append(f"- {p} | {a}: {cells}")
+        lines += ["", "## ECDF of the simulated runtimes by evaluations / D", ""]
+        for D, classes in simulated_ecdf(rs, n=simulated).items():
+            for c, algs in classes.items():
+                for a, e in algs.items():
+                    pts = ", ".join(f"{x:.3g}: {s:.3f}" for x, s in zip(e["x"][::5], e["share"][::5]))
+                    lines.append(f"- D {D} | {c} | {a}: {pts}")
     return "\n".join(lines)

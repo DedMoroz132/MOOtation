@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (`so_metrics.hpp`, `run/report_so.py`; task 18, Г3 of the package
+  24-27): COCO's simulated restarts (H16 §3.2, H22 §V-A),
+  `so::simulated_runtimes` (`_core.so_metrics.simulated_runtimes`, its Python
+  mirror bit for bit in `run/so_metrics.py`): N runtimes of the restarted
+  algorithm off K runs at one target, the first run of each sample from one
+  permutation of the runs (SOM-6), the draws by `rnd::` (SOM-7). The report
+  takes them behind `--so-simulated N` (`report(simulated=N)`): the
+  percentiles 10/50/90 and the mean per problem, algorithm and precision, and
+  their ECDF per dimension and class (REP-4). The report without it is as
+  before.
+
 - Added (`scalar/cmaes.hpp`, `restarts.hpp`; task 18): the knob
   `cma_stagnation` = `h09` | `either` | `off` for `cmaes` (with `cma_stop =
   h09`), `ipop`, `bipop` and `bipop_2009`: H09's Stagnation in both arrays of

@@ -9,9 +9,15 @@
 //             grad_cost counted; none where no record is;
 //   ert       the runs' costs over the hits (H16 §4.1), +inf without a hit;
 //   ecdf      misses in the denominator;
-//   value_at  the best feasible f within the budget.
+//   value_at  the best feasible f within the budget;
+//   simulated_runtimes (SOM-4, SOM-6): every run hit and N = K, each runtime
+//             once (the first runs a permutation); one hit and one miss of
+//             cost 100, every sample 10 + 100 j and the mean near ERT = 110,
+//             with the first run permuted or drawn; no hit, no sample; the
+//             same seed, the same samples.
 // ============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <limits>
@@ -77,6 +83,31 @@ void ert_ecdf()
     check(e == std::vector<double>{0.0, 0.25, 0.5, 0.75}, "ECDF: misses in the denominator");
 }
 
+void simulated()
+{
+    using O = std::optional<double>;
+    std::vector<double> got = so::simulated_runtimes({O(3.0), O(1.0), O(2.0), O(5.0)}, {3.0, 1.0, 2.0, 5.0}, 4, 7);
+    std::sort(got.begin(), got.end());
+    check(got == std::vector<double>{1.0, 2.0, 3.0, 5.0}, "every run hit, N = K: each runtime once");
+    for (bool permuted : {true, false}) {
+        const std::vector<double> s = so::simulated_runtimes({O(), O(10.0)}, {100.0, 10.0}, 20000, 11, permuted);
+        bool shape = s.size() == 20000;
+        double mean = 0.0;
+        for (double v : s) {
+            const double j = (v - 10.0) / 100.0;
+            shape = shape && j >= 0.0 && j == std::floor(j);
+            mean += v / static_cast<double>(s.size());
+        }
+        check(shape && std::fabs(mean - 110.0) < 0.03 * 110.0,
+              std::string("a hit of 10 and a miss of 100, first ") + (permuted ? "permuted" : "drawn") +
+                  ": every sample 10 + 100 j, mean " + std::to_string(mean) + " near ERT 110");
+    }
+    check(so::simulated_runtimes({O(), O()}, {5.0, 6.0}, 10, 1).empty(), "no hit: no sample");
+    check(so::simulated_runtimes({O(), O(4.0), O()}, {9.0, 4.0, 2.0}, 50, 3) ==
+              so::simulated_runtimes({O(), O(4.0), O()}, {9.0, 4.0, 2.0}, 50, 3),
+          "the same seed, the same samples");
+}
+
 }   // namespace
 
 int main()
@@ -84,6 +115,7 @@ int main()
     targets();
     runtimes();
     ert_ecdf();
+    simulated();
     if (g_failed) {
         std::printf("%d check(s) failed\n", g_failed);
         return 1;
