@@ -406,6 +406,7 @@ public:
         for (int left = K; left > N; --left) {
             int x = -1;
             for (int j = 0; j < K; ++j) if (alive[j] && (x < 0 || fit[j] < fit[x])) x = j;
+            if (x < 0) break;                  // unreachable: left > N alive members remain
             alive[x] = 0;
             for (int j = 0; j < K; ++j) fit[j] += dm::exp(-I[x][j] / C[x] / KAPPA_);
         }
